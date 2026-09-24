@@ -173,6 +173,7 @@ class Lemma:
     closure: list = field(default_factory=list)        # literals true on every placement of the frame (implied facts)
     value: dict = field(default_factory=dict)          # mean outcome where the claim held / of the exceptions, inside the frame's world
     sampled_small: bool = False                        # decided on the quarter sample (sequential sampling)
+    heterogeneous: list = field(default_factory=list)  # abstract slots whose leaf types behave differently (exception rates apart): split them
     refined: int = 0                                   # false positives of the inherited guards removed here by refining their terms ("unless ..., except when ...")
 
     def full_guard(self):
@@ -595,6 +596,36 @@ class Generator:
             return None
         return self._fit(frame, slot, inherits, rows, complete)
 
+    def heterogeneous_slots(self, frame: Frame, rows, exc: int, gap: float = 0.15, min_rows: int = 30) -> list:
+        """TOP-DOWN SPLITTING BY EVIDENCE: an abstract slot whose leaf types have exception rates far apart (some
+        leaf's rate differs from the pooled rate by `gap` with at least `min_rows` rows) hides distinct lemmas; the
+        frame is split on that slot even when the pooled guard is clean. Leaf types come from the domain's entities."""
+        if self.dom.entities is None:
+            return []
+        out = []
+        n = len(rows); pooled = _popcount(exc) / max(1, n)
+        for i, t in enumerate(frame.types):
+            if not self.dom.children(t):
+                continue
+            by_leaf: dict = {}
+            for k, (state, ids, _, _) in enumerate(rows):
+                leaf = self._leaf_type(state, ids[i])
+                c = by_leaf.setdefault(leaf, [0, 0]); c[0] += 1; c[1] += (exc >> k) & 1
+            if any(cnt >= min_rows and abs(e / cnt - pooled) >= gap for cnt, e in by_leaf.values()):
+                out.append(i)
+        return out
+
+    def _leaf_type(self, state, e):
+        cache = getattr(self, "_leaf_cache", None)
+        if cache is None:
+            cache = self._leaf_cache = {}
+        key = (id(state), e)
+        if key not in cache:
+            if len(cache) > 50000:
+                cache.clear()
+            cache[key] = dict(self.dom.entities(state.board)).get(e)
+        return cache[key]
+
     def _decisive(self, lem: "Lemma") -> bool:
         n_exc = lem.covered + lem.residual
         cov = lem.covered / n_exc if n_exc else 1.0
@@ -617,6 +648,7 @@ class Generator:
         exc = (all_mask & ~loses) if claim in ("acting loses", "acting does not gain") else loses
         holds = n - _popcount(exc)
         cache: dict = {}
+        heterogeneous = self.heterogeneous_slots(frame, rows, exc) if self.dom.type_tree else []
         inherited = []; parents = []; reversed_ = False
         for pclaim, pguard, ptext, missing in inherits:
             if any(self.term_mask(rows, ((r, sl, pol),), cache, all_mask) != all_mask for r, sl, pol in missing):
@@ -641,7 +673,7 @@ class Generator:
         examples = pick_examples(self, rows, exc, rest, guard, cache, all_mask)
         closure = self.frame_closure(rows, frame, cache, all_mask)
         lem = Lemma(frame, slot, claim, n, holds, guard, covered, purity, residual, complete, examples, inherited, broke, reversed_, parents)
-        lem.refined = refined
+        lem.refined = refined; lem.heterogeneous = heterogeneous
         lem.closure = closure
         lem.value = frame_values(rows, exc)
         lem.sig = sig
@@ -903,6 +935,8 @@ class Generator:
                     evaluated += 1
                     if lem.support < min_support:
                         continue
+                    if lem.heterogeneous:
+                        pending_splits.extend(self.splits(fr, lem.heterogeneous))   # the leaf types disagree: refine that slot whatever the pooled verdict
                     if inh and lem.broke == 0 and lem.refined == 0:
                         if lem.support - lem.holds > 0:
                             extend_this = True                                # nothing new to SAY, but there are exceptions (explained by the parents' guards): the next size is where their interactions live
@@ -999,10 +1033,13 @@ class Generator:
                         out.append(Frame(frame.types + (t,), frame.literals + ((r.name, sl, True),), parent=frame))
         return out
 
-    def splits(self, frame: Frame) -> list[Frame]:
-        """One slot refined to each of its children: the frames tried when an abstract frame's guard is not clean."""
+    def splits(self, frame: Frame, slots=None) -> list[Frame]:
+        """One slot refined to each of its children: the frames tried when an abstract frame's guard is not clean, or
+        when a slot's leaf types behave differently (`slots`)."""
         out = []
         for i, t in enumerate(frame.types):
+            if slots is not None and i not in slots:
+                continue
             for c in self.dom.children(t):
                 out.append(Frame(frame.types[:i] + (c,) + frame.types[i + 1:], frame.literals, parent=frame, joined=frame.joined))
         return out

@@ -3,6 +3,8 @@
 //! outcome (one reply or the k-ply episode with a pass), and literal masks over many rows at once. Move generation
 //! comes from shakmaty (import, don't reinvent). Nothing here knows what a lemma is.
 use pyo3::prelude::*;
+use std::sync::atomic::{AtomicU64, Ordering};
+static NODES: AtomicU64 = AtomicU64::new(0);
 use shakmaty::{fen::Fen, CastlingMode, Chess, Color, FromSetup, Move, Position, Role, Square, Piece};
 
 fn value(role: Role) -> f64 {
@@ -52,6 +54,7 @@ fn ids_after(ids: &[i32], m: &Move, pos: &Chess) -> Vec<i32> {
 /// the frame episode: `depth` plies, pass allowed (the line goes on), captures/checks by anyone, quiet moves by
 /// frame pieces; material of `side` at the leaves, mate +-1000
 fn episode(pos: &Chess, ids: &[i32], side: Color, depth: u32, mut alpha: f64, mut beta: f64) -> f64 {
+    NODES.fetch_add(1, Ordering::Relaxed);
     let legals = pos.legal_moves();
     let in_check = pos.is_check();
     let mate = if in_check && legals.is_empty() { if pos.turn() == side { -1000.0 } else { 1000.0 } } else { 0.0 };
@@ -165,9 +168,13 @@ fn outcomes(fen: String, ids: Vec<i32>, actor: i32, depth: u32, relative: bool) 
     Ok(out)
 }
 
+#[pyfunction]
+fn nodes() -> u64 { NODES.swap(0, Ordering::Relaxed) }
+
 #[pymodule]
 fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(literal_masks, m)?)?;
     m.add_function(wrap_pyfunction!(outcomes, m)?)?;
+    m.add_function(wrap_pyfunction!(nodes, m)?)?;
     Ok(())
 }

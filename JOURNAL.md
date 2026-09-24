@@ -22874,6 +22874,35 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 11:40 PDT — ideas as live frames; the listener; top-down abstraction; the Rust core (OBS)
+
+Kaveh's position (black to move, `2kr3r/ppp2ppp/2nb1n2/7q/3P2b1/2P2N2/PP1NBPPP/R1BQ1RK1`): Bxh2+ deflects the
+knight, then Bxe2 hits queen and rook; after Rf1-e1 "the same tactic works but only wins a pawn"; "the idea of
+modifying a frame's result logically is what I want us to add"; and a "listener": "which frame is affected by the
+knight?" -> the fork frame and the check-response frame.
+
+What the layers said before the build: Stockfish +2.45 (Bxh2+ Nxh2 Bxe2 Qb3 Bxf1); our depth-3 search +0.46 by a
+shallow accident; 3,332 one-reply lemma verdicts on Bxh2+, all "loses"; the chain held at −2.9. The frame EPISODE
+sees it: the eight-piece frame values Bxh2+ at −2.0 (one reply), +1.0 (three plies), +4.0 (five plies); with the
+rook on e1, +1.0 at five plies -- Kaveh's "only a pawn", from the same frame.
+
+Built (`frames.py`, tested on this position): an Idea = pieces + line, value = the frame's episode along the line,
+logic = its relation SIGNATURE; `Listener.affected(square)` names the frames a piece is in; `apply(move, by)`
+re-derives only touched frames and records the changed relations as the reason. `why("bishop sacrifice")` after
+Re1: "defends(e1,e2) False->True; value 4.0 -> 1.0". The take-e2 frame is not even legal at first (the knight
+blocks the diagonal: an armed tactic); after the check-response frame's line moves the knight, the listener
+re-derives it: "touched by check response; attacks(g4,e2) False->True", value None -> positive.
+
+Generator (fast, part two): top-down types (root -> kind -> colour) with splitting where the guard fails AND where
+the leaf types' exception rates disagree (evidence-based); abstract frames sample up to 4x the cap; frames with any
+exceptions extend. Sampled world sizes ≤2: 107 lemmas in 24 s from one root lemma ("a piece keeps unless it
+lands attacked") and the duty at the root pair ("unless the other is attacked").
+
+Rust core (`rust/analyst_core`, shakmaty + pyo3, `maturin develop`): relations, the episode outcome, batched
+literal masks; equivalence tests against Python pass (outcomes at depths 1/3/0, absolute and relative; every base
+relation on 1,000+ rows). Speed is NOT yet there: depth-5 episode 410-675 ms against Python's 143 ms (2,014
+nodes) -- a pruning/ordering difference to find before it replaces anything.
+
 ## 2026-09-24 11:26 PDT — the fast generator, part one: checkpoints, equivalences, sequential sampling, shapes (OBS)
 
 Kaveh: "Why is it taking so long? Many of them should be equivalent ... I understand it in a couple of seconds ...
