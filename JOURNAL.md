@@ -23349,6 +23349,33 @@ The proof pass now holds the generator to its word: a sampled guard is a conject
 times the placements agrees, and 45% of size three did not. The next build is the tie class (above), then the
 games-as-frame-source ordering Kaveh asked for.
 
+## 2026-09-23 20:13 PDT — guard refinement: a term's false positives get their own "except when"
+
+Kaveh, after the game-669 trace: "why did the library not have a lemma that said a trade usually keeps its value,
+unless...? It should hold for pretty much any piece type." Diagnosis on the 219-lemma frame-local library: 100
+guards use `lands_attacked`, none uses `captures_worth_ge`, though the relation exists. Two generic rules caused it:
+(1) guards explain exceptions to the claim, never the guard's own false positives (in the two-queen frame the trade
+KEEPS, so it is not an exception; it only lowered purity, which stayed above the bar, and the child frame was dropped
+as "nothing new"); (2) terms are ranked by coverage, then Occam, then purity, so `lands_attacked & not
+captures_worth_ge` always lost to `lands_attacked` on length.
+
+Built (`lemma_gen.refine_term`): after a term is chosen (own guard) or inherited into a child frame, the rows it
+fires on where the claim still held are treated as the exceptions of the term's own sub-world; the literal that
+separates them from the term's true exceptions is added (keeping ≥90% of those, purity gain ≥0.05, ≥10 false
+positives, up to two literals). A child frame whose inherited terms were refined counts as new: admitted and
+extended (`Lemma.refined`). Guard terms may no longer duplicate or nest a chosen term. Tests: hand-made trade rows
+(`_trade_rows`): `lands_attacked` (fires 102, 11 false positives) → `lands_attacked & not captures_worth_ge(0)`
+(fires 91, 0 false positives), i.e. "unless it lands attacked, except when it captures a piece worth at least
+itself" — the mover's own worth, so one lemma for every piece type; the inherited path, json, no nested terms.
+8 lemma tests, 37 analyst tests pass.
+
+OBS smoke (`run_games_refine_smoke.log`, 6,000 positions, sizes ≤2, cap 300, 150 frames): the size-1 guards now
+read `lands_attacked & not attacked(0)` (purity 0.96–0.99 vs 0.84–0.93 before: under the relative outcome a piece
+already attacked loses nothing more by landing attacked); 6 of 10 size-2 lemmas exist only through refinement
+("refined off 14–45 false positives"). The trade frame itself is rare at this size and did not appear; the
+full frame-local run (60k positions, sizes ≤4, 6,000 frames) was stopped (old code) and re-queued with the
+refinement behind the gain chain. The running gain library is unaffected (old code in memory).
+
 ## 2026-09-23 19:25 PDT — analysis values were bounds, not values (fixed); the game-669 trace page
 
 While writing the trace page for game 669 (ply 36, `r4rk1/pb1n1p2/2p1p1p1/1p5q/3P3Q/3B4/PPP2P2/1K1R2NR w`), the

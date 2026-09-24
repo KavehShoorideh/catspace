@@ -333,8 +333,8 @@ class Generator:
             if best is None:
                 break
             term, m = self.refine_term(rows, best[1], best[2], exc_all, cache, all_mask, frame.size)
-            if any(set(term) == set(t) for t in chosen):
-                break
+            if any(set(t) <= set(term) for t in chosen):
+                terms = [tm for tm in terms if tm[0] != best[1]]; continue    # refined into a chosen term or inside one: nothing new
             chosen.append(term); covered |= m & exc
         matched_any = 0
         for term in chosen:
