@@ -58,6 +58,22 @@ def placements(types: tuple, cap: int, seed: int):
     """Boards holding exactly the frame's entities plus both kings (added if the frame does not name them). The
     first slot's square is fixed to the ten canonical squares (symmetry). Exhaustive when the raw count fits the
     cap, else a uniform sample with the flag False. White to move; actions flip the turn to the actor's side."""
+    abstract = [t for t in types if t not in TYPES]
+    if abstract:                                                      # TOP-DOWN types (Kaveh 2026-09-24): an abstract slot is drawn as one of its leaf types per placement
+        rng0 = random.Random(seed + 7)
+        pools = [leaves_of(t) for t in types]
+        if all(len(pl) == 1 for pl in pools):
+            pools = None
+        if pools is not None:
+            yielded = 0; attempts = 0
+            while yielded < cap and attempts < cap * 50:
+                attempts += 1
+                concrete = tuple(rng0.choice(pl) for pl in pools)
+                got = 0
+                for st, _ in placements(concrete, 1, rng0.randrange(1 << 30)):
+                    yield st, False; yielded += 1; got += 1
+                    break
+            return
     pieces = [_piece(t) for t in types]
     if sum(1 for p in pieces if p.piece_type == chess.KING and p.color) > 1 or sum(1 for p in pieces if p.piece_type == chess.KING and not p.color) > 1:
         return                                                        # a domain rule: one king a side; such a frame has no placements
@@ -116,6 +132,8 @@ def placements(types: tuple, cap: int, seed: int):
 
 def placement_count(types: tuple) -> int:
     """How many placements `placements` would enumerate exhaustively (before legality filtering): the raw count."""
+    if any(t not in TYPES for t in types):
+        return 10 ** 12                                                       # abstract frames are never enumerated exhaustively
     pieces = [_piece(t) for t in types]
     n = len(pieces) + (0 if any(p.piece_type == chess.KING and p.color for p in pieces) else 1) + (0 if any(p.piece_type == chess.KING and not p.color for p in pieces) else 1)
     raw = len(CANON)
@@ -601,13 +619,13 @@ def game_placements(fens: list):
         scan = getattr(placements, "scan_limit", None)                   # the frequency count scans a bounded prefix of the positions
         if scan:
             order = order[:scan]
-        need = [_piece(t) for t in types]
+        need = [[_piece(x) for x in leaves_of(t)] for t in types]
         yielded = 0
         for k in order:
             b = boards.get(k)
             if b is None:
                 b = boards[k] = chess.Board(fens[k])
-            pools = [list(b.pieces(p.piece_type, p.color)) for p in need]
+            pools = [[sq for p in ps for sq in b.pieces(p.piece_type, p.color)] for ps in need]
             if any(not pl for pl in pools):
                 continue
             for ids in itertools.product(*pools):
@@ -669,6 +687,13 @@ def tb_reply_scalar(after: State, e: int) -> float:
 
 
 COLOUR_FLIP = {t: ("b" if t[0] == "w" else "w") + t[1:] for t in TYPES}     # the one symmetry of the rules: colours swap (relations and outcomes are colour-blind)
+TYPE_TREE = {"*": ["K", "Q", "R", "B", "N", "P"], **{k: ["w" + k, "b" + k] for k in "KQRBNP"}}   # any piece -> a kind -> a colour: the rules' own hierarchy (kinds move differently; colours are the symmetry)
+
+
+def leaves_of(t: str) -> list:
+    if t in TYPES:
+        return [t]
+    return [x for c in TYPE_TREE[t] for x in leaves_of(c)]
 
 
 def domain(fens: list | None = None, oracle: str = "material", worth: str = "canonical", worth_tau: float = 4.0, depth: int = 1, shapes: bool = True) -> Domain:
@@ -688,11 +713,11 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
         from functools import partial
         return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, frame_scalar, partial(frame_reply_scalar, depth=depth),
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
-                      placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], null_reply_scalar=partial(frame_null_reply_scalar, depth=depth), episode=partial(frame_episode_states, depth=depth), threat=frame_threat_state)
+                      placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], type_tree=TYPE_TREE, root="*", null_reply_scalar=partial(frame_null_reply_scalar, depth=depth), episode=partial(frame_episode_states, depth=depth), threat=frame_threat_state)
     if oracle == "resolved":
         return Domain("chess_resolved" if fens is None else "chess_games_resolved", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, resolved_reply_scalar,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
-                      placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], null_reply_scalar=resolved_null_reply_scalar)
+                      placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], type_tree=TYPE_TREE, root="*", null_reply_scalar=resolved_null_reply_scalar)
     if oracle == "tablebase":
         assert fens is None, "the tablebase oracle is for sampled frames (at most five men)"
         rels = [Relation("tb_worth_ge", 2, fn=tb_worth_ge) if r.name == "worth_ge" else Relation("captures_tb_worth_ge", 1, True, tb_captures_worth_ge) if r.name == "captures_worth_ge" else r for r in rels]
@@ -702,7 +727,7 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
         rels = [Relation("worth_ge", 2, fn=worth_ge_blend) if r.name == "worth_ge" else Relation("captures_worth_ge", 1, True, captures_worth_ge_blend) if r.name == "captures_worth_ge" else r for r in rels]
     return Domain("chess" if fens is None else "chess_games", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, reply_scalar,
                   entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
-                  placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], null_reply_scalar=null_reply_scalar)
+                  placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], type_tree=TYPE_TREE, root="*", null_reply_scalar=null_reply_scalar)
 
 
 def entities(board: chess.Board) -> list:

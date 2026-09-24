@@ -286,3 +286,24 @@ def test_checkpoint_round_trip(tmp_path, monkeypatch):
     st = g2.load_checkpoint()
     assert st is not None and len(g2.library) == len(lib)
     assert [l.id for l in g2.library] == [l.id for l in lib]
+
+
+def test_type_tree_splits_and_embeds_across_levels():
+    """Top-down types (Kaveh 2026-09-24): frames start at the root and split a slot into its children; a lemma at an
+    abstract type embeds in any frame whose types are its descendants."""
+    from catspace.incubator.analyst.chess_domain import domain
+    dom = domain()
+    assert dom.root == "*" and dom.leaves("Q") == ["wQ", "bQ"] and len(dom.leaves("*")) == 12
+    assert dom.is_a("wQ", "Q") and dom.is_a("wQ", "*") and not dom.is_a("Q", "wQ")
+    g = lg.Generator(dom, cap=200, log=lambda *a, **k: None, sequential=False)
+    root = lg.Frame(("*", "*"), (("attacks", (0, 1), True),))
+    kids = g.splits(root)
+    assert len(kids) == 12 and all(k.size == 2 for k in kids) and any(k.types == ("Q", "*") for k in kids)
+    l1 = g.evaluate(lg.Frame(("*",), ()), 0, [])
+    assert l1 is not None and l1.support >= 30
+    from collections import defaultdict
+    by = defaultdict(list); by["*"].append(l1)
+    inh = g.applicable(lg.Frame(("wQ", "bN"), (("attacks", (0, 1), True),)), 0, by)
+    assert inh, "the root lemma must embed in a concrete frame"
+    st = next(iter(dom.placements(("Q", "*"), 5, 0)))[0]
+    assert st.board.piece_at(st.ids[0]).piece_type == 5                                     # a queen of either colour

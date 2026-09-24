@@ -22874,6 +22874,30 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 11:26 PDT — the fast generator, part one: checkpoints, equivalences, sequential sampling, shapes (OBS)
+
+Kaveh: "Why is it taking so long? Many of them should be equivalent ... I understand it in a couple of seconds ...
+always add checkpointing ... Rust." Built and committed before any full run: (1) checkpoint every 100 frames and at
+size boundaries, `--resume`, provenance-checked; (2) frames canonical under slot permutation and the domain's
+declared symmetries (chess: the colour flip) -- subsumption and the applier work through the images; (3) one
+literal per truth column in the guard search; (4) sequential sampling: a quarter of the cap decides clear cases;
+(5) one centred placement per shape (translation and left-right mirror; pawns fix the vertical), Kaveh's
+"infinite chessboard": the edges are the rest of the board.
+
+| same smoke (3,000 positions, sizes ≤3, cap 200, 80 frames, 2 workers) | before | after |
+|---|---|---|
+| wall time | ~350 s | 45 s |
+| lemmas | 23 | 24 |
+
+| one-piece theorems, 4 workers | before | shapes |
+|---|---|---|
+| wall time | 45 s | 7 s |
+| the lone queen's universe (rows) | 489,461 | 105,303 |
+| theorems | 10/10 | 10/10 |
+
+Next in the chain: top-down type abstraction (root "any piece" -> kind -> colour; split only where the guard fails),
+then the Rust core.
+
 ## 2026-09-24 07:42 PDT — PAUSE (Kaveh: "need my cpu back")
 
 Killed: the overnight full-vocabulary library (`run_games_vocab.log`: size 2 done, size 3 at 450/3,000 frames after

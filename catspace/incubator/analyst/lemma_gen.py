@@ -71,6 +71,18 @@ class Domain:
     episode: Callable[[Any], list] = None                            # state after our action -> the states along the outcome's line before its last ply (None: no episode lift)
     threat: Callable[[Any, Any], Any] = None                         # (state, entity id) -> the state after that entity's side PASSES and the opponent's best reply lands: the threat executed (None: no threat lift)
     symmetries: list = None                                          # type maps {type: type} that leave the domain's rules and relations invariant (chess: the colour flip); frames are canonical under them and under slot permutation
+    type_tree: dict = None                                           # abstract type -> children (leaves are the concrete types); frames start at `root` and split a slot only where the guard fails (TOP-DOWN, Kaveh 2026-09-24)
+    root: str = None                                                 # the most abstract type (None: no hierarchy, frames start concrete)
+
+    def children(self, t: str) -> list:
+        return list((self.type_tree or {}).get(t, []))
+
+    def leaves(self, t: str) -> list:
+        ch = self.children(t)
+        return [t] if not ch else [x for c in ch for x in self.leaves(c)]
+
+    def is_a(self, t: str, ancestor: str) -> bool:
+        return t == ancestor or any(self.is_a(t, c) for c in self.children(ancestor))
     null_reply_scalar: Callable[[Any, Any], float] = None            # (state, entity id) -> the scalar after the opponent's best reply if the entity's side PASSES (None: no null action); the RELATIVE outcome baseline
 
 
@@ -777,12 +789,18 @@ class Generator:
         for sigma in maps:                                                    # a library lemma embeds also through its symmetry images (the colour flip)
             for lem in by_actor_type.get(next((k for k, v in sigma.items() if v == frame.types[slot]), frame.types[slot]) if sigma else frame.types[slot], []):
                 cands.append((lem, tuple(sigma.get(t, t) for t in lem.frame.types)))
+        if self.dom.type_tree:                                                # abstract library lemmas embed wherever their types are ancestors of the frame's
+            cands = [(lem, tuple(sigma.get(t, t) for t in lem.frame.types)) for sigma in maps for lems in by_actor_type.values() for lem in lems]
+        seen_c = set()
         for lem, ltypes in cands:
+            if (id(lem), ltypes) in seen_c:
+                continue
+            seen_c.add((id(lem), ltypes))
             lf = lem.frame
             if lf.size >= frame.size:
                 continue
             for m in itertools.permutations(range(frame.size), lf.size):
-                if m[lem.slot] != slot or any(frame.types[m[i]] != ltypes[i] for i in range(lf.size)):
+                if m[lem.slot] != slot or any(not self.dom.is_a(frame.types[m[i]], ltypes[i]) for i in range(lf.size)):
                     continue
                 # a sub-frame literal absent from this frame's literal set may still be IMPLIED by it (e.g. by the slot
                 # types); such literals are checked on the frame's placements in evaluate(), and the embedding holds
@@ -820,7 +838,8 @@ class Generator:
 
     def run(self, max_size: int = 3, min_support: int = 60, admit_cov: float = 0.9, admit_pur: float = 0.8, resume: bool = False, ckpt_every: int = 100):
         t0 = time.perf_counter()
-        frontier = list({f.types: f for f in (Frame((t,), ()).canon(self.dom.symmetries) for t in self.dom.types)}.values())
+        starts = [self.dom.root] if self.dom.root else list(self.dom.types)
+        frontier = list({f.types: f for f in (Frame((t,), ()).canon(self.dom.symmetries) for t in starts)}.values())
         by_actor: dict = defaultdict(list)
         deferred: dict = defaultdict(list)                                    # joins land at larger sizes than size + 1
         start_size = 1; done: set = set(); carried = None
@@ -841,7 +860,22 @@ class Generator:
             if carried and size == start_size:
                 next_frontier, c = carried; admitted, evaluated, broke_frames = c["admitted"], c["evaluated"], c["broke_frames"]; carried = None
             todo = [f for f in frontier if (f.types, f.literals) not in done]
-            for fi, (fr, results) in enumerate(self._evaluate_frontier(todo, by_actor)):
+            pending_splits = []
+            def frames_to_do():
+                nonlocal todo
+                while todo:
+                    for fr, results in self._evaluate_frontier(todo, by_actor):
+                        yield fr, results
+                    uniq_s = {}
+                    for f in pending_splits:
+                        f = f.canon(self.dom.symmetries)
+                        if (f.types, f.literals) not in done:
+                            uniq_s.setdefault((f.types, f.literals), f)
+                    todo = list(uniq_s.values()); pending_splits.clear()
+                    if todo:
+                        frontier.extend(todo)
+                        self.log(f"[lemma_gen] size {size}: {len(todo)} split frames (an abstract slot refined to its children)")
+            for fi, (fr, results) in enumerate(frames_to_do()):
                 done.add((fr.types, fr.literals))
                 if fi and fi % 50 == 0:
                     self.log(f"[lemma_gen] size {size}: {len(done)}/{len(frontier)} frames, admitted {admitted} so far ({time.perf_counter() - t0:.0f}s)")
@@ -866,6 +900,8 @@ class Generator:
                         self.log(f"  ADMIT  {lem.text()}")
                     else:
                         self.residual_frames.append((fr, lem.residual))
+                        if self.dom.type_tree and any(self.dom.children(t) for t in fr.types):
+                            pending_splits.extend(self.splits(fr))            # not explainable at this level of abstraction: refine one slot
                     if not inh or lem.broke > 0 or lem.refined > 0:
                         extend_this = True
                 if size < max_size and extend_this:
@@ -940,13 +976,21 @@ class Generator:
         """One more slot, joined to an existing slot through one binary relation."""
         out = []
         k = frame.size
-        for t in self.dom.types:
+        for t in ([self.dom.root] if self.dom.root else self.dom.types):     # the new slot starts at the root type and splits only if its guard fails
             for r in self.state_rels:
                 if r.arity != 2:
                     continue
                 for s in range(k):
                     for sl in ((s, k), (k, s)):
                         out.append(Frame(frame.types + (t,), frame.literals + ((r.name, sl, True),), parent=frame))
+        return out
+
+    def splits(self, frame: Frame) -> list[Frame]:
+        """One slot refined to each of its children: the frames tried when an abstract frame's guard is not clean."""
+        out = []
+        for i, t in enumerate(frame.types):
+            for c in self.dom.children(t):
+                out.append(Frame(frame.types[:i] + (c,) + frame.types[i + 1:], frame.literals, parent=frame, joined=frame.joined))
         return out
 
     def joins(self, frame: Frame, max_size: int) -> list[Frame]:

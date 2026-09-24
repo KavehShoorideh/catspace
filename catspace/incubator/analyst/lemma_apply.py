@@ -95,7 +95,7 @@ class Applier:
             by_type[t].append(e)
         out = []; cache: dict = {}
         for types, lemmas in self.by_types.items():
-            pools = [by_type.get(t, []) for t in types]
+            pools = [[e for lt in self.dom.leaves(t) for e in by_type.get(lt, [])] for t in types]
             if any(not p for p in pools):
                 continue
             for ids in itertools.product(*pools):
@@ -122,7 +122,7 @@ class Applier:
         verdicts: dict = defaultdict(list); embeddings = []
         cache: dict = {}
         for types, lemmas in self.by_types.items():
-            pools = [by_type.get(t, []) for t in types]
+            pools = [[e for lt in self.dom.leaves(t) for e in by_type.get(lt, [])] for t in types]   # an abstract type pools its leaves
             if any(not p for p in pools):
                 continue
             for ids in itertools.product(*pools):
