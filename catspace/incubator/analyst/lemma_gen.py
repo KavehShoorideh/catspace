@@ -391,10 +391,22 @@ class Generator:
         self.seen_signatures: dict = {}
 
     # ---------------------------------------------------------------- instances of a frame
+    def abstract_scale(self, frame: Frame) -> int:
+        """An abstract frame stands for many concrete ones and pools their types into one sample: its cap grows with
+        the square root of the number of leaf combinations, up to four times (the games smoke of 2026-09-24 stopped at
+        size 2 with 149 rows for the root pair)."""
+        if not self.dom.type_tree:
+            return 1
+        combos = 1
+        for t in frame.types:
+            combos *= len(self.dom.leaves(t))
+        return max(1, min(4, int(round(combos ** 0.5))))
+
     def instances(self, frame: Frame, cap: int | None = None):
         """(state, slot ids, complete) for every placement matching the frame's literals."""
         complete = True
-        for state, exhaustive in self.dom.placements(frame.types, cap or self.cap, self.seed):
+        cap = (cap or self.cap) * self.abstract_scale(frame)
+        for state, exhaustive in self.dom.placements(frame.types, cap, self.seed):
             complete = complete and exhaustive
             ids = self.dom.slots_of(state)
             if not all(self._lit(state, ids, r, sl, pol) for r, sl, pol in frame.literals):
