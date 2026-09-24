@@ -23901,7 +23901,7 @@ curves): |composed - truth| L1 1.77 -> L5 1.66 (falls with bodies, as with the 5
 (the 58-lemma library +0.49; the sampled library +0.60); best-move rank share 0.33 -> 0.35; 4,457 moves spoken
 about. The chain gauge on this library is queued behind the interface-mode runs.
 
-## 2026-09-23 19:10 PDT — interface-driven expansion: the guard names the piece, and that is most of the gain
+## 2026-09-23 19:03 PDT — interface-driven expansion: the guard names the piece, and that is most of the gain
 
 Same 150 positions, 58-lemma library, expansion by INTERFACE (the outside pieces whose removal flips a literal of
 the deciding lemma's frame or guard come first), OBS: with the relation heuristic breaking ties, held big-stake
