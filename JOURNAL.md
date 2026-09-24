@@ -22874,6 +22874,36 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-23 21:39 PDT — chunked chains: a piece joins with its known frame (gauge), the frame episode, joins
+
+Kaveh: "once we've identified frames, when extending out one piece at a time, we can also extend out one
+known-frame at a time" (and, on intermezzi and duties: "it'll fall out" -- no operators). Built three things:
+
+1. `chains --mode chunk`: when a piece joins a chain, the largest proved frame that holds it and touches the chain
+joins whole (its verdict is carried in by the applier). OBS, 150 positions, 187-lemma library, graph guide, one seed
+(`gauge_chains_f4_chunk_tf.log` vs the interface baseline `gauge_chains_f4_iface_tf.json`):
+
+| | interface | chunk |
+|---|---|---|
+| held, big stakes, right | 115/145 = 79% | 251/313 = 80% |
+| unexpanded, big stakes, right | 730/926 = 79% | 598/761 = 79% |
+| refuted chains whose seed was wrong | 4/10 | 9/11 |
+| the engine's best move seeded a held chain | 4 | 8 |
+| chains ending at 6 bodies | 146 | 1,106 |
+
+Same accuracy, twice as many chains reach a verdict, refutations more often right (small counts), at the cost of
+spending the body budget faster. Directional; the lever stays the library.
+
+2. `chess_domain.frame_episode_scalar` (`--depth k`, 0 = the frame's size): after the action, k plies where the
+side to move may stand pat, capture or check with any piece, or move a FRAME piece quietly; frame material at the
+leaves. Test: [wR wB bN bR] Rxn Rxr Bxr reads −2 at one reply and +3 at three plies. Smoke runs at depth 1 and 3
+launched for cost and for the trade lemma's claim.
+
+3. `Generator.joins` (`--joins K`): a frame is also extended by joining it with up to K known library frames of size
+≥2 (highest stake first), no literal across the parts; both parents embed, so subsumption inherits both guards and
+the join's own guard is their interaction. Joins land in the frontier at their size (deferred buckets). Smoke run
+launched (joins 3, sizes ≤4).
+
 ## 2026-09-23 21:10 PDT — THEOREM: proofs by exhaustion in the frame's closed world
 
 Kaveh: "can't we do actual proofs like in proof assistants? At least in the pure frame sense; the interactions
