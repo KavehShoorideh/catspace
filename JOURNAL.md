@@ -23874,3 +23874,20 @@ sampled library's single "lands attacked" lemma. Sixty lemmas is a small library
 thousand. The direction Kaveh set is confirmed at the sign level, not yet at a size that changes play. Next: grow
 the frame-local library (more positions, deeper frontier, sizes 4) and re-measure the same curve; then the guide,
 retrained on this library's shares.
+
+## 2026-09-23 18:40 PDT — chains instead of averages (Kaveh: "follow up on the threat one, expand the gain one ... a deterministic chain; the guards are the interface")
+
+`chains.py`: an IDEA = an embedded lemma whose verdict on a move implies |value| >= 1; each seeds a chain from the
+lemma's own pieces; each step brings in one outside piece and lets the MOST SPECIFIC lemma that speaks decide;
+HELD while the sign survives, REFUTED when a larger frame flips it, stopped after two silent pieces or at six.
+Expansion order: INTERFACE first (the outside pieces whose removal flips a literal of the deciding lemma's frame or
+guard -- "unless the rook is attacked" names the attacker), the policy (graph guide) for the rest. Two rules fixes on
+the way: castling moves the rook's id, en passant removes the right pawn (a castling chain had read "the king loses
+the rook").
+Gauge, 150 real positions, frame-local library (58 proved), policy-only expansion, conclusion vs the truth's sign:
+  heuristic policy: held big-stake chains right 16/31 = 52%; unexpanded big 725/925 = 78%; small stakes ~40-56%.
+  graph guide:      held big-stake chains right 44/51 = 86%; unexpanded big 694/901 = 77%; refuted 4 (seed wrong
+                    in 1 of 4); the engine's best move seeded 22 chains, all unexpanded (no larger lemma spoke).
+Reading: when a chain is expanded and HOLDS under the guide's ordering it is right six times in seven at big stakes;
+the heuristic brings in pieces whose lemmas mislead. Most chains stay unexpanded because a 58-lemma library rarely
+has a larger frame to speak -- the size-four library (running) is what chains need. Interface-mode gauges queued.
