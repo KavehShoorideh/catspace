@@ -150,7 +150,7 @@ def best_goal(app, board: chess.Board, prune: bool = True, depth: int = 0, max_o
         opened += 1
         if o is None:
             continue
-        c.value = o.value; c.outcome = o
+        c.value = (1000.0 if o.value >= MATE else -1000.0 if o.value <= -MATE else o.value); c.outcome = o   # a mate is a mate: the material behind it is not a ranking (the audit's last disagreement was 1000 vs 1001)
         alpha = max(alpha, c.value)
     scored = [c for c in choices if c.value is not None]
     best = max(scored, key=lambda c: c.value) if scored else None
