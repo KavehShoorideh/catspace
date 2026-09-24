@@ -364,7 +364,10 @@ class Generator:
     def _lit(self, state, ids, rname, slots, pol, action=None) -> bool:
         r = self.rel[rname]
         args = [ids[s] for s in slots]
-        v = bool(r.fn(state, action, *args)) if r.on_action else bool(r.fn(state, *args))
+        try:
+            v = bool(r.fn(state, action, *args)) if r.on_action else bool(r.fn(state, *args))
+        except Exception:
+            v = False                                                         # as lit_mask: a relation that cannot be evaluated here is false (an en-passant capture crashed the overnight run, 2026-09-24)
         return v == pol
 
     def rows_of(self, frame: Frame, slot: int):

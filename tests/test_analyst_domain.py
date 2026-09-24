@@ -125,3 +125,16 @@ def test_episode_lift_sees_the_state_after_the_reply_and_never_the_last_ply():
     assert rels["then_attacked"].fn(st, (b, mv), chess.C1) is False           # nothing reaches the bishop after ...Rxa3
     rels1 = {r.name: r for r in lift_episode(cd.domain(oracle="frame", depth=1))}
     assert rels1["then_attacked"].fn(st, (b, mv), chess.A8) is False         # one reply only: no state before the last ply
+
+
+def test_captures_worth_ge_handles_en_passant():
+    """An en-passant capture's victim stands beside the destination, not on it (the overnight run of 2026-09-24
+    crashed on it inside the quantifier lift)."""
+    import chess
+    from catspace.incubator.analyst import chess_domain as cd
+    b = chess.Board("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 2")
+    m = chess.Move.from_uci("e5d6")
+    assert b.is_en_passant(m)
+    st = cd.State(b, [chess.E5, chess.D5])
+    assert cd.captures_worth_ge(st, (b, m), chess.D5) is True                 # a pawn is worth at least a pawn
+    assert cd.captures_worth_ge(st, (b, chess.Move.from_uci("e5e6")), chess.D5) is False

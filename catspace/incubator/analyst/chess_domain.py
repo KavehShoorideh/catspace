@@ -260,9 +260,10 @@ def worth_ge_blend(state, i, j):
 
 def captures_worth_ge_blend(state, action, j):
     b, m = action
-    if not b.is_capture(m):
+    if _captured(b, m) is None:
         return False
-    return blend_worth(b, m.to_square) >= blend_worth(b, j)
+    sq = chess.square(chess.square_file(m.to_square), chess.square_rank(m.from_square)) if b.is_en_passant(m) else m.to_square
+    return blend_worth(b, sq) >= blend_worth(b, j)
 
 
 def tb_worth_ge(state, i, j):
@@ -299,11 +300,21 @@ def captures(state, action):
     b, m = action; return b.is_capture(m)
 
 
+def _captured(b: chess.Board, m: chess.Move):
+    """The piece a move captures (en passant takes the pawn beside the destination), or None."""
+    if not b.is_capture(m):
+        return None
+    if b.is_en_passant(m):
+        return b.piece_at(chess.square(chess.square_file(m.to_square), chess.square_rank(m.from_square)))
+    return b.piece_at(m.to_square)
+
+
 def captures_worth_ge(state, action, j):
     b, m = action
-    if not b.is_capture(m):
+    p = _captured(b, m)
+    if p is None:
         return False
-    return VAL[b.piece_at(m.to_square).piece_type] >= VAL[b.piece_at(j).piece_type]
+    return VAL[p.piece_type] >= VAL[b.piece_at(j).piece_type]
 
 
 def stays_aligned(state, action, j):
