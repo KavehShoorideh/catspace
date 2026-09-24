@@ -31,7 +31,8 @@ def truth(dom, b: chess.Board, mv: chess.Move) -> float | None:
     if base is None:
         return None
     after = dom.transition(st, (st.board, mv))
-    return resolved_reply_scalar(after, after.ids[0]) - base
+    d = resolved_reply_scalar(after, after.ids[0]) - base
+    return max(-10.0, min(10.0, d))                                          # material units, as the lemma values are (a mate would own the mean error)
 
 
 def run(n: int, lo: int, hi: int, library: Path, proved: Path, max_bodies: int = 5, seed: int = 0, log=print, ranker=None, tag: str = ""):
