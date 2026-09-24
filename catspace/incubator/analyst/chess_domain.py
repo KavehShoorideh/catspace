@@ -85,6 +85,16 @@ def placements(types: tuple, cap: int, seed: int):
         yield State(b, list(squares[:len(types)])), exhaustive
 
 
+def placement_count(types: tuple) -> int:
+    """How many placements `placements` would enumerate exhaustively (before legality filtering): the raw count."""
+    pieces = [_piece(t) for t in types]
+    n = len(pieces) + (0 if any(p.piece_type == chess.KING and p.color for p in pieces) else 1) + (0 if any(p.piece_type == chess.KING and not p.color for p in pieces) else 1)
+    raw = len(CANON)
+    for i in range(1, n):
+        raw *= (64 - i)
+    return raw
+
+
 def slots_of(state: State):
     return state.ids
 
@@ -533,11 +543,11 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
     if oracle == "frame":
         return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, frame_scalar, frame_reply_scalar,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
-                      null_reply_scalar=frame_null_reply_scalar)
+                      placement_count=(placement_count if fens is None else None), null_reply_scalar=frame_null_reply_scalar)
     if oracle == "resolved":
         return Domain("chess_resolved" if fens is None else "chess_games_resolved", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, resolved_reply_scalar,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
-                      null_reply_scalar=resolved_null_reply_scalar)
+                      placement_count=(placement_count if fens is None else None), null_reply_scalar=resolved_null_reply_scalar)
     if oracle == "tablebase":
         assert fens is None, "the tablebase oracle is for sampled frames (at most five men)"
         rels = [Relation("tb_worth_ge", 2, fn=tb_worth_ge) if r.name == "worth_ge" else Relation("captures_tb_worth_ge", 1, True, tb_captures_worth_ge) if r.name == "captures_worth_ge" else r for r in rels]
@@ -547,7 +557,7 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
         rels = [Relation("worth_ge", 2, fn=worth_ge_blend) if r.name == "worth_ge" else Relation("captures_worth_ge", 1, True, captures_worth_ge_blend) if r.name == "captures_worth_ge" else r for r in rels]
     return Domain("chess" if fens is None else "chess_games", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, reply_scalar,
                   entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
-                  null_reply_scalar=null_reply_scalar)
+                  placement_count=(placement_count if fens is None else None), null_reply_scalar=null_reply_scalar)
 
 
 def entities(board: chess.Board) -> list:

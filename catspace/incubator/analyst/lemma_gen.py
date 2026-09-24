@@ -66,6 +66,7 @@ class Domain:
     entities: Callable[[Any], list] = None                           # raw state -> [(entity id, type)] (the applier: real states, not placements)
     state_of: Callable[[Any, list], Any] = None                      # (raw state, slot ids) -> State, so relations can be evaluated on a real state
     actor_ok: Callable[[Any, Any], bool] = None                      # (raw state, entity id) -> may this entity act now (e.g. its side is to move)
+    placement_count: Callable[[tuple], int] = None                   # types -> how many placements an exhaustive pass would enumerate (None: unknown; no exhaustion)
     null_reply_scalar: Callable[[Any, Any], float] = None            # (state, entity id) -> the scalar after the opponent's best reply if the entity's side PASSES (None: no null action); the RELATIVE outcome baseline
 
 
@@ -781,7 +782,11 @@ def _check(dom: Domain, fr: Frame, slot: int, claim: str, guard: list, cap: int,
     # a lemma admitted with NO guard claimed the outcome held on every sampled row; at the larger cap a handful of
     # exceptions appear (2 of 5,000): it still holds as a near-total claim if the exception rate stays under 2%
     near_total = not guard and n_exc <= 0.02 * n
-    status = "PROVED" if (n_exc == 0 or near_total or (cov >= min_cov and pur >= min_pur)) else "conjecture"
+    # THEOREM (Kaveh 2026-09-24, "actual proofs, at least in the pure frame sense"): the placements were EXHAUSTIVE and
+    # the stored guard covers every exception -- the lemma is a fact of the frame's closed world, checked case by
+    # case like a proof assistant's `decide`. PROVED is the weaker thing: a re-test on a fresh sample.
+    theorem = complete and (n_exc == 0 or cov == 1.0)
+    status = "THEOREM" if theorem else "PROVED" if (n_exc == 0 or near_total or (cov >= min_cov and pur >= min_pur)) else "conjecture"
     return dict(id=lemma_id(fr.types, fr.literals, slot, claim, guard), frame=fr.text(), slot=slot, claim=claim, support=n, exceptions=n_exc, coverage=cov, purity=pur, complete=complete, status=status, guard=guard_text(guard), near_total=near_total)
 
 
@@ -789,9 +794,13 @@ _WORKER_DOM = None
 
 
 def _prove_job(args):
-    entry, cap, min_cov, min_pur = args
+    entry, cap, min_cov, min_pur, max_raw = args
     fr = Frame(tuple(entry["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in entry["literals"])) if "types" in entry else parse_frame(entry["frame"])
     guard = guard_from_json(entry.get("inherited")) + guard_from_json(entry.get("guard"))
+    if max_raw and _WORKER_DOM.placement_count is not None:                  # exhaustion: the cap becomes the frame's whole placement count, when it fits the budget
+        raw = _WORKER_DOM.placement_count(fr.types)
+        if raw <= max_raw:
+            cap = raw
     return _check(_WORKER_DOM, fr, entry["slot"], entry["claim"], guard, cap, min_cov, min_pur)
 
 
@@ -811,15 +820,19 @@ def _pool_map(fn, jobs, workers: int, log, label: str):
     return out
 
 
-def prove(dom: Domain, library_path: Path, cap: int, min_cov: float = 0.95, min_pur: float = 0.8, limit: int = 0, log=print, workers: int = 1):
-    """THE EXHAUSTIVE PASS: re-run each admitted lemma with a far larger cap (exhaustive where the frame fits) and
-    check the STORED full guard (inherited + own) -- not a re-fit -- for coverage and purity."""
+def prove(dom: Domain, library_path: Path, cap: int, min_cov: float = 0.95, min_pur: float = 0.8, limit: int = 0, log=print, workers: int = 1, max_raw: int = 0, max_size: int = 0):
+    """THE RE-TEST: re-run each admitted lemma with a far larger cap and check the STORED full guard (inherited + own)
+    -- not a re-fit -- for coverage and purity. With max_raw > 0 the pass is EXHAUSTIVE for every frame whose
+    placement count fits the budget: those lemmas come back THEOREM when the guard covers every exception.
+    max_size > 0 restricts the pass to frames of at most that size."""
     global _WORKER_DOM
     _WORKER_DOM = dom
     lib = json.load(open(library_path))
     entries = lib[: limit or len(lib)]
+    if max_size:
+        entries = [e for e in entries if len(e["types"] if "types" in e else parse_frame(e["frame"]).types) <= max_size]
     t0 = time.perf_counter()
-    out = _pool_map(_prove_job, [(e, cap, min_cov, min_pur) for e in entries], workers, log, "prove")
+    out = _pool_map(_prove_job, [(e, cap, min_cov, min_pur, max_raw) for e in entries], workers, log, "prove")
     for o in out:
         if "support" in o:
             log(f"  {o['status']:<10} {o.get('id', '')} {o['frame']} :: slot {o['slot']} {o['claim']} {100 * (o['support'] - o['exceptions']) / o['support']:.1f}% of {o['support']}; guard {o['guard']}: covers {100 * o['coverage']:.1f}% of {o['exceptions']} exceptions, purity {o['purity']:.2f}" + (" (complete)" if o["complete"] else f" (cap {cap})"))
@@ -894,7 +907,7 @@ def generalize(dom: Domain, library_path: Path, proved_path: Path | None, cap: i
             status[(e["frame"], e["slot"])] = p.get("status")
     groups: dict = defaultdict(list)
     for e in lib:
-        if only_proved and status and status.get((e["frame"], e["slot"])) != "PROVED":
+        if only_proved and status and status.get((e["frame"], e["slot"])) not in ("PROVED", "THEOREM"):
             continue
         groups[schema_key(e, over_literals)].append(e)
     cache = {}
@@ -930,13 +943,13 @@ def generalize(dom: Domain, library_path: Path, proved_path: Path | None, cap: i
         for u in unseen:
             hit = cache.get((pk, tuple(u)))
             if hit is not None:
-                (s["unseen_proved"] if hit[1] == "PROVED" else s["unseen_failed"]).append(hit); continue
+                (s["unseen_proved"] if hit[1] in ("PROVED", "THEOREM") else s["unseen_failed"]).append(hit); continue
             jobs.append((u[:size], lits_of(u), slot, claim, list(guard), cap, min_cov, min_pur)); job_owner.append(len(schemas) - 1)
     log(f"[lemma_gen/generalize] {len(lib)} lemmas ({'proved only' if only_proved and status else 'all'}) -> {len(groups)} schemas; {len(jobs)} unseen instantiations to check ({len(cache)} cached)")
     results = _pool_map(_gen_job, jobs, workers, log, "generalize")
     for owner, job, o in zip(job_owner, jobs, results):
         cell = list(job[0]) + ([r for r, _, _ in job[1]] if over_literals else [])
-        (schemas[owner]["unseen_proved"] if o.get("status") == "PROVED" else schemas[owner]["unseen_failed"]).append([cell, o.get("status"), round(o.get("coverage", 0) or 0, 2), round(o.get("purity", 0) or 0, 2)])
+        (schemas[owner]["unseen_proved"] if o.get("status") in ("PROVED", "THEOREM") else schemas[owner]["unseen_failed"]).append([cell, o.get("status"), round(o.get("coverage", 0) or 0, 2), round(o.get("purity", 0) or 0, 2)])
     for s in schemas:
         held = {tuple(o) for o in s["observed"]} | {tuple(u[0]) for u in s["unseen_proved"]}
         w = s["width"]
@@ -1011,6 +1024,8 @@ def main(argv=None):
     ap.add_argument("cmd", choices=["run", "prove", "generalize", "examples"]); ap.add_argument("--domain", default="chess")
     ap.add_argument("--library", default=str(OUT / "library_chess.json")); ap.add_argument("--proved", default=str(OUT / "proved_chess.json")); ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--max-size", type=int, default=3); ap.add_argument("--cap", type=int, default=3000); ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--exhaustive", type=int, default=0, help="prove: enumerate every placement of frames with at most this many placements (THEOREM status); 0 = sampled re-test")
+    ap.add_argument("--prove-max-size", type=int, default=0, help="prove: only frames of at most this size")
     ap.add_argument("--workers", type=int, default=1); ap.add_argument("--max-conj", type=int, default=2); ap.add_argument("--all", action="store_true", help="generalize: over all lemmas, not only the proved")
     ap.add_argument("--over-literals", action="store_true", help="generalize: the frame literals' relation names are variables too"); ap.add_argument("--max-unseen", type=int, default=0)
     ap.add_argument("--source", choices=["sampled", "games"], default="sampled", help="placements: sampled frames (only the frame's pieces) or real game positions")
@@ -1038,7 +1053,7 @@ def main(argv=None):
     global _RELATIVE, _LIFT, _GAIN
     _RELATIVE = a.relative; _LIFT = a.lift; _GAIN = a.gain
     if a.cmd == "prove":
-        prove(dom, Path(a.library), a.cap, limit=a.limit, workers=a.workers); return
+        prove(dom, Path(a.library), a.cap, limit=a.limit, workers=a.workers, max_raw=a.exhaustive, max_size=a.prove_max_size); return
     if a.cmd == "examples":
         refresh_examples(dom, Path(a.library), a.cap, a.workers); return
     if a.cmd == "generalize":

@@ -158,3 +158,16 @@ def test_guard_terms_are_not_nested_duplicates(gen):
     for a in sets:
         for b in sets:
             assert a is b or not (a < b), f"nested terms {a} < {b}"
+
+
+def test_exhaustive_check_yields_a_theorem():
+    """Exhaustion (Kaveh 2026-09-24: "actual proofs, at least in the pure frame sense"): every placement of the frame's
+    closed world is enumerated; a guard that covers every exception makes the lemma a THEOREM of that world."""
+    from catspace.incubator.analyst import chess_domain as cd
+    dom = domain()
+    raw = cd.placement_count(("wK",))
+    assert raw == 10 * 63
+    o = lg._check(dom, lg.Frame(("wK",), ()), 0, "acting keeps", [], cap=raw, min_cov=0.95, min_pur=0.8)
+    assert o["complete"] and o["status"] == "THEOREM" and o["exceptions"] == 0 and o["support"] > 1000
+    o = lg._check(dom, lg.Frame(("wK",), ()), 0, "acting keeps", [], cap=100, min_cov=0.95, min_pur=0.8)
+    assert not o["complete"] and o["status"] == "PROVED"                     # a sample never makes a theorem

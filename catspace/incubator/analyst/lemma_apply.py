@@ -45,7 +45,7 @@ def load_library(library_path: Path, proved_path: Path | None = None, proved_onl
         status = [p.get("status") for p in json.load(open(proved_path))]
     out = []
     for i, e in enumerate(lib):
-        if proved_only and status is not None and status[i] != "PROVED":
+        if proved_only and status is not None and status[i] not in ("PROVED", "THEOREM"):
             continue
         fr = Frame(tuple(e["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in e["literals"]))
         guard = guard_from_json(e.get("inherited")) + guard_from_json(e.get("guard"))
