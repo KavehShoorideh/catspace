@@ -22874,6 +22874,27 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-23 23:02 PDT — the quantifier words close most of the king gap (OBS)
+
+`run_some_smoke.log` (3,000 positions, sizes ≤3, cap 200, 80 frames per size; lifts after,then,some; one reply)
+against the same run without the quantifier words (`residual_before_some.json`):
+
+| | before | with some_ |
+|---|---|---|
+| frames rejected (guard below the bar) | 108 | 59 |
+| rejected frames holding a king | 71 | 33 |
+| unexplained exceptions in those king frames | 757 | 138 |
+| lemmas admitted | 23 | 28 |
+| admitted guards that use a some_ word | -- | 17 of 28 |
+
+Guards that appeared: `[wK wB bN]: the king keeps unless the bishop attacks the knight and the king has a move
+that stays aligned with the knight` (a fork shape written as a quantifier); `[wK wN wP]: ... or the knight can give
+check and ...`; `[wK wP wQ]: ... or the queen cannot give check`. Cost: size 3 took about five times the base run
+(the literal count 270 vs 99 at three slots). One seed, small run: directional.
+
+Decision: the full-vocabulary library (after,then,some; depth = frame size) is the coherent next library and about
+five times the cost of tonight's refined run; it goes overnight after the chain gauge on the refined library.
+
 ## 2026-09-23 22:51 PDT — compositions instead of primitives: the quantifier and the threat lifts
 
 Kaveh: the king gap "should be explainable in terms of other primitives" (an escape square = a king square not
