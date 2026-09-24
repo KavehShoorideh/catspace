@@ -130,6 +130,7 @@ class Lemma:
     sig: tuple = ()
     closure: list = field(default_factory=list)        # literals true on every placement of the frame (implied facts)
     value: dict = field(default_factory=dict)          # mean outcome where the claim held / of the exceptions, inside the frame's world
+    refined: int = 0                                   # false positives of the inherited guards removed here by refining their terms ("unless ..., except when ...")
 
     def full_guard(self):
         return list(self.inherited) + list(self.guard)
@@ -143,7 +144,7 @@ class Lemma:
         cl = (" [" + "; ".join(f"{tag} {lit_text(r, sl, pol)}" for r, sl, pol, tag in self.closure[:6]) + "]") if self.closure else ""
         return (f"{self.id} {self.frame.text()}{cl} :: slot {self.slot} {self.claim} in {100 * self.holds / max(1, self.support):.1f}% of {self.support}"
                 + (f"; unless {g} (covers {self.covered}/{self.covered + self.residual} exceptions, purity {self.purity:.2f})" if self.guard else f"; {self.residual} exceptions unexplained")
-                + (f"; inherited [{guard_text(self.inherited)}] {'REVERSED' if self.reversed else 'broke'} on {self.broke}" if self.parents else "") + ("" if self.complete else " [sampled]"))
+                + (f"; inherited [{guard_text(self.inherited)}] {'REVERSED' if self.reversed else 'broke'} on {self.broke}" + (f", refined off {self.refined} false positives" if self.refined else "") if self.parents else "") + ("" if self.complete else " [sampled]"))
 
 
 def _popcount(x: int) -> int:
@@ -331,13 +332,48 @@ class Generator:
                     best = (key, term, m, pur)
             if best is None:
                 break
-            chosen.append(best[1]); covered |= best[2] & exc
+            term, m = self.refine_term(rows, best[1], best[2], exc_all, cache, all_mask, frame.size)
+            chosen.append(term); covered |= m & exc
         matched_any = 0
         for term in chosen:
             matched_any |= self.term_mask(rows, term, cache, all_mask)
         cov = _popcount(matched_any & exc)
         purity = _popcount(matched_any & exc_all) / max(1, _popcount(matched_any))
         return chosen, cov, purity, _popcount(matched_any)
+
+    # ---------------------------------------------------------------- refinement: a term's false positives get their own "except when"
+    def refine_term(self, rows, term, m: int, exc_all: int, cache: dict, all_mask: int, k: int, min_fp: int = 10, min_gain: float = 0.05, keep: float = 0.9):
+        """A guard term explains exceptions; the rows it fires on where the claim still HELD are its false positives, and
+        the generator never looked at them (Kaveh 2026-09-24: "why did the library not have a lemma that a trade keeps
+        its value?" -- in the two-queen frame 'lands attacked' fired on the queen trade, the claim held, and Occam kept
+        the shorter term). Here the false positives are treated as the exceptions of the term's own sub-world: add the
+        literal that separates them from the term's true exceptions, keeping at least `keep` of those. The term grows by
+        one literal per pass; a term is refined only when it has at least `min_fp` false positives and the purity gains
+        `min_gain`. Generic: any literal of the vocabulary, either polarity."""
+        for _ in range(2):
+            fired = _popcount(m)
+            fp = fired - _popcount(m & exc_all)
+            pur = 1 - fp / max(1, fired)
+            if fp < min_fp or pur >= 1 - min_gain:
+                return term, m
+            best = None
+            for rname, sl in self.candidate_literals(k):
+                if any(r == rname and s == sl for r, s, _ in term):
+                    continue
+                lm = self.lit_mask(rows, rname, sl, cache)
+                for pol, lmask in ((True, lm), (False, all_mask & ~lm)):
+                    m2 = m & lmask
+                    kept = _popcount(m2 & exc_all)
+                    if kept < keep * _popcount(m & exc_all) or not m2:
+                        continue
+                    pur2 = kept / _popcount(m2)
+                    key = (round(pur2, 4), kept)
+                    if pur2 >= pur + min_gain and (best is None or key > best[0]):
+                        best = (key, (rname, sl, pol), m2)
+            if best is None:
+                return term, m
+            term = tuple(term) + (best[1],); m = best[2]
+        return term, m
 
     # ---------------------------------------------------------------- evaluate one frame, one slot, given the sub-frames' lemmas
     def evaluate(self, frame: Frame, slot: int, inherits: list | None = None) -> Lemma | None:
@@ -371,9 +407,13 @@ class Generator:
                 parents.append(ptext + " [opposite claim]")
                 continue
             inherited.extend(t for t in pguard if t not in inherited); parents.append(ptext)
-        covered_inh = 0
+        covered_inh = 0; refined = 0; inherited_refined = []
         for term in inherited:
-            covered_inh |= self.term_mask(rows, term, cache, all_mask) & exc
+            m = self.term_mask(rows, term, cache, all_mask)
+            term2, m2 = self.refine_term(rows, term, m, exc, cache, all_mask, frame.size)
+            refined += _popcount(m & ~exc) - _popcount(m2 & ~exc)           # false positives the refinement removed on this frame's rows
+            inherited_refined.append(term2); covered_inh |= m2 & exc
+        inherited = inherited_refined
         broke = _popcount(exc & ~covered_inh)
         rest = exc & ~covered_inh
         sig = (tuple(frame.types), slot, n, holds, hash(exc))
@@ -382,6 +422,7 @@ class Generator:
         examples = pick_examples(self, rows, exc, rest, guard, cache, all_mask)
         closure = self.frame_closure(rows, frame, cache, all_mask)
         lem = Lemma(frame, slot, claim, n, holds, guard, covered, purity, residual, complete, examples, inherited, broke, reversed_, parents)
+        lem.refined = refined
         lem.closure = closure
         lem.value = frame_values(rows, exc)
         lem.sig = sig
@@ -571,7 +612,7 @@ class Generator:
                     evaluated += 1
                     if lem.support < min_support:
                         continue
-                    if inh and lem.broke == 0:
+                    if inh and lem.broke == 0 and lem.refined == 0:
                         continue                                              # the sub-frames' lemmas hold here unchanged: nothing new
                     n_exc = lem.covered + lem.residual
                     clean = n_exc == 0 or (lem.covered / n_exc >= admit_cov and lem.purity >= admit_pur)
@@ -580,7 +621,7 @@ class Generator:
                         self.log(f"  ADMIT  {lem.text()}")
                     else:
                         self.residual_frames.append((fr, lem.residual))
-                    if not inh or lem.broke > 0:
+                    if not inh or lem.broke > 0 or lem.refined > 0:
                         extend_this = True
                 if size < max_size and extend_this:
                     broke_frames += 1
@@ -664,7 +705,7 @@ class Generator:
 def lemma_to_json(l: Lemma) -> dict:
     return dict(id=l.id, closure=[[r, list(sl), pol, tag] for r, sl, pol, tag in l.closure], value=l.value, frame=l.frame.text(), types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim,
                 support=l.support, holds=l.holds, guard=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.guard],
-                inherited=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.inherited], parents=l.parents, reversed=l.reversed, broke=l.broke,
+                inherited=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.inherited], parents=l.parents, reversed=l.reversed, broke=l.broke, refined=l.refined,
                 covered=l.covered, purity=l.purity, residual=l.residual, complete=l.complete, examples=l.examples)
 
 

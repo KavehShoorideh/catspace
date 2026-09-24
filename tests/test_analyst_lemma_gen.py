@@ -90,3 +90,57 @@ def test_prove_at_the_generation_cap_reproduces_coverage(gen, tmp_path):
     assert out[0]["support"] == lem.support
     assert out[0]["exceptions"] == lem.support - lem.holds
     assert out[0]["coverage"] == pytest.approx((lem.covered) / max(1, lem.covered + lem.residual), abs=1e-9)
+
+
+def _trade_rows(n_pos: int = 14):
+    """Hand-made rows of a [wQ bQ bP] world where the white queen attacks a black queen defended by a pawn: the trade
+    keeps material, a queen landing on any other attacked square loses it. Outcome by hand: captured value minus nine
+    when black can take back, else the captured value."""
+    import random
+    from catspace.incubator.analyst.chess_domain import State, VAL
+    rng = random.Random(3); rows = []
+    while len(rows) < n_pos * 15:
+        b = chess.Board(None)
+        sq = rng.sample(range(64), 5)
+        b.set_piece_at(sq[0], chess.Piece(chess.QUEEN, chess.WHITE)); b.set_piece_at(sq[1], chess.Piece(chess.QUEEN, chess.BLACK))
+        b.set_piece_at(sq[2], chess.Piece(chess.PAWN, chess.BLACK)); b.set_piece_at(sq[3], chess.Piece(chess.KING, chess.WHITE)); b.set_piece_at(sq[4], chess.Piece(chess.KING, chess.BLACK))
+        b.turn = chess.WHITE
+        if not b.is_valid() or b.is_check() or not b.is_attacked_by(chess.WHITE, sq[1]) or sq[1] not in b.attacks(sq[2]) or chess.square_rank(sq[2]) in (0, 7):
+            continue
+        st = State(b, [sq[0], sq[1], sq[2]])
+        for m in b.legal_moves:
+            if m.from_square != sq[0]:
+                continue
+            cap = VAL[b.piece_at(m.to_square).piece_type] if b.is_capture(m) else 0
+            nb = b.copy(stack=False); nb.push(m)
+            d = cap - (9 if nb.attackers(chess.BLACK, m.to_square) else 0)
+            rows.append((st, [sq[0], sq[1], sq[2]], (b, m), float(d)))
+    return rows
+
+
+def test_refinement_adds_the_except_when_literal(gen):
+    """The trade: 'lands attacked' fires on Qxq, where the claim (keeps) still holds. The refinement adds the literal
+    that separates the false positives ('except when it captures a piece worth at least the queen'), keeping the true
+    exceptions (2026-09-24, from game 669)."""
+    rows = _trade_rows(); n = len(rows); all_mask = (1 << n) - 1; cache = {}
+    exc = sum(1 << i for i, r in enumerate(rows) if r[3] < 0)
+    term = (("lands_attacked", (), True),)
+    m = gen.term_mask(rows, term, cache, all_mask)
+    fp = lg._popcount(m & ~exc)
+    assert fp >= 10, f"the hand-made world must hold at least ten trades that land attacked, got {fp}"
+    term2, m2 = gen.refine_term(rows, term, m, exc, cache, all_mask, 3)
+    assert len(term2) == 2 and term2[0] == term[0]
+    r, sl, pol = term2[1]
+    assert pol is False and r in ("captures_worth_ge", "captures"), term2
+    assert lg._popcount(m2 & ~exc) < fp and lg._popcount(m2 & exc) >= 0.9 * lg._popcount(m & exc)
+    # the inherited path: a parent's 'lands attacked' arrives in this frame, is refined here, and the frame counts as new
+    fr = lg.Frame(("wQ", "bQ", "bP"), (("attacks", (0, 1), True), ("defends", (2, 1), True)))
+    saved = gen.rows_of
+    gen.rows_of = lambda frame, slot: (rows, False)
+    try:
+        lem = gen.evaluate(fr, 0, [("acting keeps", [term], "[wQ] slot 0 as (0,)", ())])
+    finally:
+        gen.rows_of = saved
+    assert lem.claim == "acting keeps" and lem.refined == fp - lg._popcount(m2 & ~exc) and lem.refined > 0
+    assert lem.inherited == [term2] and lem.parents and lem.reversed is False
+    js = lg.lemma_to_json(lem); assert js["refined"] == lem.refined and lg.guard_from_json(js["inherited"]) == [term2]
