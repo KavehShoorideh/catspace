@@ -501,6 +501,24 @@ def frame_episode_states(after: State, depth: int | None = None) -> list:
     return pv[:-1]                                                            # every state before the last ply
 
 
+def frame_threat_state(state: State, e: int) -> State | None:
+    """The threat executed: e's side passes, the opponent plays the best reply of the frame episode (one ply). None
+    when the pass is illegal (in check). The opponent's pass leaves the board as it is: no threat."""
+    b = state.board.copy(stack=False)
+    side = b.piece_at(e).color if b.piece_at(e) else None
+    if side is None:
+        return None
+    b.turn = side
+    if b.is_check():
+        return None
+    b.turn = not side
+    if not b.is_valid():
+        return None
+    passed = State(b, list(state.ids))
+    _, pv = frame_episode_pv(passed, side, 1)
+    return pv[0] if pv else passed
+
+
 def frame_null_reply_scalar(state: State, e: int, depth: int | None = None) -> float:
     b = state.board.copy(stack=False)
     side = b.piece_at(e).color
@@ -626,7 +644,7 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
         from functools import partial
         return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, frame_scalar, partial(frame_reply_scalar, depth=depth),
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
-                      placement_count=(placement_count if fens is None else None), null_reply_scalar=partial(frame_null_reply_scalar, depth=depth), episode=partial(frame_episode_states, depth=depth))
+                      placement_count=(placement_count if fens is None else None), null_reply_scalar=partial(frame_null_reply_scalar, depth=depth), episode=partial(frame_episode_states, depth=depth), threat=frame_threat_state)
     if oracle == "resolved":
         return Domain("chess_resolved" if fens is None else "chess_games_resolved", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, resolved_reply_scalar,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,

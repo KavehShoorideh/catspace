@@ -207,3 +207,22 @@ def test_quantifier_lift_names_the_escape_square():
     st2 = cd.State(b2, [chess.A8])
     assert rels["some_not_lands_attacked"].fn(st2, chess.A8) is True
     assert rels["some_captures"].arity == 1 and rels["some_captures_worth_ge"].arity == 2
+
+
+def test_threat_lift_rolls_the_threat_forward_and_the_quantifier_finds_the_escape():
+    """Kaveh 2026-09-24: 'roll the game state forward, place the king in check, and the escape squares are the legal
+    moves that remove the threat'. threat_some_not_lands_attacked(king) = once the opponent's best reply has landed,
+    some king move lands unattacked."""
+    from catspace.incubator.analyst import chess_domain as cd
+    dom = lg.lifted(cd.domain(oracle="frame"), ("some", "threat"))
+    rels = {r.name: r for r in dom.relations}
+    assert "threat_some_not_lands_attacked" in rels and rels["threat_some_not_lands_attacked"].arity == 2
+    # the threat must be their best reply, so it captures a frame piece: king a1, rook d2, black queen h2 -> ...Qxd2,
+    # after which b1 is still free for the king
+    b = chess.Board("6k1/8/8/8/8/8/3R3q/K7 w - - 0 1")
+    st = cd.State(b, [chess.A1, chess.D2, chess.H2])
+    assert rels["threat_some_not_lands_attacked"].fn(st, chess.A1, chess.A1) is True
+    b2 = chess.Board("6k1/8/8/8/8/8/1R5q/K7 w - - 0 1")                    # rook b2: ...Qxb2 is check and covers a2, b1
+    st2 = cd.State(b2, [chess.A1, chess.B2, chess.H2])
+    assert rels["threat_some_not_lands_attacked"].fn(st2, chess.A1, chess.A1) is False
+    assert rels["threat_attacked"].fn(st2, chess.A1, chess.A1) is True      # the king is in check once the threat lands

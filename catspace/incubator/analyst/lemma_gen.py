@@ -68,6 +68,7 @@ class Domain:
     actor_ok: Callable[[Any, Any], bool] = None                      # (raw state, entity id) -> may this entity act now (e.g. its side is to move)
     placement_count: Callable[[tuple], int] = None                   # types -> how many placements an exhaustive pass would enumerate (None: unknown; no exhaustion)
     episode: Callable[[Any], list] = None                            # state after our action -> the states along the outcome's line before its last ply (None: no episode lift)
+    threat: Callable[[Any, Any], Any] = None                         # (state, entity id) -> the state after that entity's side PASSES and the opponent's best reply lands: the threat executed (None: no threat lift)
     null_reply_scalar: Callable[[Any, Any], float] = None            # (state, entity id) -> the scalar after the opponent's best reply if the entity's side PASSES (None: no null action); the RELATIVE outcome baseline
 
 
@@ -270,6 +271,62 @@ def lift_some(dom: Domain) -> list:
     return out
 
 
+def lift_threat(dom: Domain) -> list:
+    """THE THREAT LIFT (Kaveh 2026-09-24: "roll the game state forward, place the king in check, and the escape squares
+    are the legal moves at that position that remove the threat"): every state relation R becomes threat_R(i, ...) =
+    R on the state after i's side passes and the opponent's best reply lands, the frame's pieces followed. With the
+    quantifier it says "some move of the king, once the threat has landed, does not land attacked" -- the escape
+    square, unnamed. Not lifted further (the vocabulary would square)."""
+    if dom.threat is None:
+        return []
+    cache: dict = {}
+    def threat_of(state, i):
+        key = (state.board.fen() if hasattr(state, "board") else id(state), tuple(getattr(state, "ids", ())), i)
+        if key not in cache:
+            if len(cache) > 20000:
+                cache.clear()
+            cache[key] = dom.threat(state, i)
+        return cache[key]
+    out = []
+    for r in dom.relations:
+        if r.on_action or r.name.startswith(("after_", "then_", "threat_")):
+            continue
+        def make(rel):
+            def fn(state, i, *ids):
+                t = threat_of(state, i)
+                if t is None:
+                    return False
+                moved = {a: b for a, b in zip(state.ids, t.ids)}
+                mapped = [moved.get(x, x) for x in ids]
+                if any(x is None for x in mapped) or moved.get(i, i) is None:
+                    return False
+                return rel.fn(t, *mapped)
+            return fn
+        out.append(Relation("threat_" + r.name, r.arity + 1, False, make(r)))
+    return out
+
+
+LIFTS = ("after", "then", "some", "threat")
+
+
+def lifted(dom: Domain, prefixes) -> Domain:
+    """The vocabulary with the chosen lifts: some (quantified over an entity's actions) and threat (after the pass and
+    the reply) make state relations; after and then lift every state relation to the move and the reply."""
+    prefixes = set(prefixes)
+    rels = list(dom.relations)
+    if "some" in prefixes:
+        rels = rels + lift_some(Domain(**{**dom.__dict__, "relations": rels}))
+    if "threat" in prefixes:
+        rels = rels + lift_threat(Domain(**{**dom.__dict__, "relations": rels}))
+    base = Domain(**{**dom.__dict__, "relations": rels})
+    more = []
+    if "after" in prefixes:
+        more += lift_after(base)
+    if "then" in prefixes:
+        more += lift_episode(base)
+    return Domain(**{**base.__dict__, "relations": rels + more})
+
+
 def made_under(library_path) -> dict:
     """The outcome definition a library was made under (oracle, depth, relative, lift, gain), from its first lemma."""
     try:
@@ -279,12 +336,10 @@ def made_under(library_path) -> dict:
 
 
 class Generator:
-    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0):
+    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0, prefixes=None):
         self.max_joins = max_joins
         if lift:
-            some = lift_some(dom)
-            base = Domain(**{**dom.__dict__, "relations": list(dom.relations) + some})   # the quantified state relations are lifted after the move and after the reply like any other
-            dom = Domain(**{**base.__dict__, "relations": list(base.relations) + lift_after(base) + lift_episode(base)})
+            dom = lifted(dom, prefixes if prefixes is not None else ("after", "then", "some"))
         self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj; self.term_purity = term_purity
         self.relative = relative                                             # outcome = reply scalar minus the NULL-action reply scalar (what the standing threats already take)
         self.gain_threshold = gain_threshold                                 # None: partition at 0 (loses / keeps); a number: partition at that gain (gains / does not gain)
@@ -862,12 +917,13 @@ def parse_frame(text: str) -> Frame:
 
 # ---------------------------------------------------------------- the exhaustive pass, and generalization, share one check
 _RELATIVE = False                                                            # the outcome definition the prove/generalize passes use (set by main)
+_PREFIXES = None                                                             # the lifts in the vocabulary (None: the default set)
 _LIFT = False                                                                # whether the after-the-move relations are in the vocabulary (set by main)
 _GAIN = None                                                                 # the gain threshold of the partition, when the library was made with one (set by main)
 
 
 def _check(dom: Domain, fr: Frame, slot: int, claim: str, guard: list, cap: int, min_cov: float, min_pur: float) -> dict:
-    g = Generator(dom, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT, gain_threshold=_GAIN)
+    g = Generator(dom, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT, gain_threshold=_GAIN, prefixes=_PREFIXES)
     rows, complete = g.rows_of(fr, slot)
     if not rows:
         return dict(frame=fr.text(), slot=slot, claim=claim, status="no placements")
@@ -1086,7 +1142,7 @@ def generalize(dom: Domain, library_path: Path, proved_path: Path | None, cap: i
 def _examples_job(args):
     entry, cap = args
     fr = Frame(tuple(entry["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in entry["literals"]))
-    g = Generator(_WORKER_DOM, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT, gain_threshold=_GAIN)
+    g = Generator(_WORKER_DOM, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT, gain_threshold=_GAIN, prefixes=_PREFIXES)
     rows, _ = g.rows_of(fr, entry["slot"])
     if not rows:
         return entry.get("examples", {})
@@ -1142,6 +1198,7 @@ def main(argv=None):
     ap.add_argument("--max-frames", type=int, default=0, help="per size, evaluate only the most frequent frames")
     ap.add_argument("--oracle", choices=["material", "resolved", "frame", "tablebase"], default="material", help="the outcome: 1-ply material after the best capture/check reply, or the tablebase's WDL (sampled frames of <= 5 men)")
     ap.add_argument("--lift", action="store_true", help="add every state relation's after-the-move form as an action-level relation (predicate invention by composition)")
+    ap.add_argument("--prefixes", default="after,then,some", help="the lifts in the vocabulary when --lift: after (our move), then (their reply), some (quantified over an entity's actions), threat (after the pass and their reply)")
     ap.add_argument("--gain", type=float, default=None, help="partition the outcome at this GAIN instead of at zero: claims become 'acting gains' / 'acting does not gain'")
     ap.add_argument("--worth", choices=["canonical", "blend"], default="canonical", help="the worth relations: the value table, or the tables' removal value blended toward it by distance to the five-men edge"); ap.add_argument("--worth-tau", type=float, default=4.0)
     a = ap.parse_args(argv)
@@ -1158,9 +1215,9 @@ def main(argv=None):
         dom = domain(fens, oracle=a.oracle, worth=a.worth, worth_tau=a.worth_tau, depth=a.depth)
     else:
         raise SystemExit(f"unknown domain {a.domain}")
-    global _RELATIVE, _LIFT, _GAIN
-    _RELATIVE = a.relative; _LIFT = a.lift; _GAIN = a.gain
-    _PROVENANCE.update(oracle=a.oracle, depth=a.depth, relative=a.relative, lift=a.lift, gain=a.gain)
+    global _RELATIVE, _LIFT, _GAIN, _PREFIXES
+    _RELATIVE = a.relative; _LIFT = a.lift; _GAIN = a.gain; _PREFIXES = tuple(x for x in a.prefixes.split(",") if x)
+    _PROVENANCE.update(oracle=a.oracle, depth=a.depth, relative=a.relative, lift=a.lift, gain=a.gain, prefixes=a.prefixes if a.lift else "")
     if a.cmd in ("prove", "examples", "generalize") and a.library:
         made = next((e.get("made_under") for e in json.load(open(a.library)) if e.get("made_under")), None)
         if made and any(made.get(k) != _PROVENANCE.get(k) for k in made):
@@ -1171,7 +1228,7 @@ def main(argv=None):
         refresh_examples(dom, Path(a.library), a.cap, a.workers); return
     if a.cmd == "generalize":
         generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
-    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins)
+    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins, prefixes=_PREFIXES)
     lib = g.run(max_size=a.max_size)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
 
