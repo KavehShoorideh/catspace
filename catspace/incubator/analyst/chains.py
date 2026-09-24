@@ -217,7 +217,7 @@ def gauge(n: int, library: Path, proved: Path, lo: int = 10, hi: int = 80, seed:
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", nargs="?", default="show", choices=["show", "gauge"]); ap.add_argument("--fen"); ap.add_argument("--n", type=int, default=150)
+    ap.add_argument("cmd", nargs="?", default="show", choices=["show", "gauge", "imagine"]); ap.add_argument("--fen"); ap.add_argument("--n", type=int, default=150)
     ap.add_argument("--library", default=str(OUT / "library_games_frame.json")); ap.add_argument("--proved", default=str(OUT / "proved_games_frame.json")); ap.add_argument("--guide", default=""); ap.add_argument("--tag", default=""); ap.add_argument("--mode", default="interface", choices=["interface", "policy"])
     a = ap.parse_args(argv)
     from .chess_domain import domain
@@ -229,12 +229,104 @@ def main(argv=None):
         gauge(a.n, Path(a.library), Path(a.proved), ranker=ranker, tag=a.tag, mode=a.mode); return
     app = Applier(domain(), load_library(Path(a.library), Path(a.proved)))
     b = chess.Board(a.fen or chess.STARTING_FEN)
+    if a.cmd == "imagine":
+        imagined_report(app, b); return
     for ch in chains(app, b, ranker=ranker, mode=a.mode):
         i = ch["idea"]
         print(f"{b.san(i['move']):7s} stake {i['stake']:.1f} ({'gain' if i['value'] > 0 else 'loss'}) -> {ch['conclusion']} at {ch['bodies']} bodies, final {ch['final']:+.1f}")
         for t in ch["trace"]:
             who = f"{t.get('side') or '':6s} {t.get('role') or '':6s}"
             print(f"    {t['event']:9s} {who} bodies {','.join(t['bodies'])}  value {t['value']:+.1f}  {t.get('lemma') or ''}" + (f"  by {t['by']}" if t.get('by') else ""))
+
+
+
+# ---------------------------------------------------------------- imagined future frames (Kaveh 2026-09-23)
+def imagined_ideas(app: Applier, board: chess.Board, min_stake: float = 1.0, max_blockers: int = 2, max_out: int = 40) -> list:
+    """IMAGINED FUTURE FRAMES (Kaveh 2026-09-23): "if this piece weren't here, we would have a discovered attack --
+    how do we clear the line?" For every lemma whose GUARD names a gaining condition (claim "acting does not gain",
+    the exceptions being the gains) embedded in the position, and every action of its actor on which no gaining term
+    fires now: remove one outside piece (then pairs); if a gaining term fires with the piece gone, that piece is a
+    BLOCKER and the action an imagined gain. Several per position, several blockers, no guarantee (Kaveh): each is a
+    starting point, kept only with a clearing move, ranked by stake, competing with the real ideas."""
+    import itertools
+    dom = app.dom
+    ents = dom.entities(board)
+    by_type = defaultdict(list)
+    for e, t in ents:
+        by_type[t].append(e)
+    out = []
+    for c in app.lemmas:
+        if not c.value or c.claim != "acting does not gain" or c.value["exception"] < min_stake or not c.guard:
+            continue
+        pools = [by_type.get(t, []) for t in c.frame.types]
+        if any(not p for p in pools):
+            continue
+        for ids in itertools.product(*pools):
+            if len(set(ids)) < len(ids):
+                continue
+            e = ids[c.slot]
+            if not dom.actor_ok(board, e):
+                continue
+            st = dom.state_of(board, list(ids))
+            if not all(app._lit(st, ids, r, sl, pol) for r, sl, pol in c.frame.literals):
+                continue
+            for a in dom.actions(st, e):
+                fires_now = any(all(app._lit(st, ids, r, sl, pol, action=a) for r, sl, pol in term) for term in c.guard)
+                if fires_now:
+                    continue                                                  # a real gain, not an imagined one
+                outside = [x for x, _ in ents if x not in ids and x != a[1].to_square]
+                found = None
+                for k in range(1, max_blockers + 1):
+                    for blockers in itertools.combinations(outside, k):
+                        b2 = board.copy(stack=False)
+                        for x in blockers:
+                            b2.remove_piece_at(x)
+                        if not b2.is_valid():
+                            continue
+                        st2 = dom.state_of(b2, list(ids))
+                        try:
+                            a2 = next(aa for aa in dom.actions(st2, e) if aa[1] == a[1])
+                        except StopIteration:
+                            continue
+                        if any(all(app._lit(st2, ids, r, sl, pol, action=a2) for r, sl, pol in term) for term in c.guard):
+                            found = blockers; break
+                    if found:
+                        break
+                if found:
+                    clearing = [cm for x in found for cm in clearing_moves(board, x, ids)]
+                    out.append(dict(lemma=c, ids=list(ids), move=a[1], blockers=list(found), stake=c.value["exception"], clearing=clearing, feasible=bool(clearing)))
+        if len(out) >= max_out:
+            break
+    out.sort(key=lambda i: (-i["feasible"], -i["stake"], len(i["blockers"])))
+    return out
+
+
+def clearing_moves(board: chess.Board, blocker: int, ids: list) -> list:
+    """Our moves that address a blocker: capture it; attack it (force it to move); or, if it is OUR piece, move it
+    away with tempo (a capture or a check) -- the discovered attack itself."""
+    ours = board.turn
+    out = []
+    p = board.piece_at(blocker)
+    for m in board.legal_moves:
+        if m.to_square == blocker and p.color != ours:
+            out.append((m, "captures the blocker"))
+        elif p.color == ours and m.from_square == blocker and (board.is_capture(m) or board.gives_check(m)):
+            out.append((m, "the blocker leaves with tempo"))
+        elif p.color != ours and m.from_square not in ids:
+            b2 = board.copy(stack=False); b2.push(m)
+            if blocker in b2.attacks(m.to_square) and not board.is_attacked_by(ours, blocker):
+                out.append((m, "attacks the blocker"))
+    return out
+
+
+def imagined_report(app: Applier, board: chess.Board, top: int = 8):
+    ideas_ = imagined_ideas(app, board)
+    print(f"{len(ideas_)} imagined gains ({sum(1 for i in ideas_ if i['feasible'])} with a clearing move)")
+    for i in ideas_[:top]:
+        print(f"imagine {','.join(chess.square_name(x) for x in i['blockers'])} gone: {board.san(i['move'])} would gain ~{i['stake']:+.1f} by {i['lemma'].text[:90]} [{','.join(chess.square_name(x) for x in i['ids'])}]" + ("" if i["feasible"] else "  (no clearing move: a starting point only)"))
+        for m, why in i["clearing"][:4]:
+            print(f"    clearing: {board.san(m):7s} {why}")
+    return ideas_
 
 
 if __name__ == "__main__":
