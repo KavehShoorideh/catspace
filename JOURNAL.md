@@ -22874,6 +22874,22 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-23 21:53 PDT — joins and depth = frame size: first observations
+
+OBS joins (`run_joins_smoke.log`: 3,000 positions, sizes ≤4, cap 200, 80 frames per size, `--joins 3`): 89 lemmas,
+54 of them joined size-4 frames (two known two-piece frames, no literal across). Most joined lemmas add nothing
+beyond refinement ("broke on 0, refined off 14–22 false positives": the other part's `attacked` literal sharpens an
+inherited term under the relative outcome). One is a true interaction: `[wR bN wR bQ] worth_ge(0,1) & worth_ge(3,2)
+(join): the knight acting keeps, unless the queen (the other part) is unattacked now and attacked after the move`
+-- a discovered attack across two frames that never shared a relation, 22/22 exceptions, purity 1.00. The join is
+where such things fall out; the price is 54 near-duplicates for one interaction, so the collapse of joins that add
+only refinement is the next thing to decide.
+
+OBS depth = frame size (`run_depth0_smoke.log`, same settings as the depth-1 smoke): 19 lemmas vs 23; size 1
+identical (one piece, one ply), size 2: 7 = 7, size 3: 1 vs 5; about 2x the time. The k-ply episode admits fewer
+three-piece lemmas with today's after-the-move vocabulary: the guards that explain a three-ply outcome need
+after-the-episode relations. Not built; the lever is named.
+
 ## 2026-09-23 21:45 PDT — the frame episode at a fixed depth 3: dearer and less explainable; depth = frame size is the coherent setting
 
 OBS (`run_depth1_smoke.log` vs `run_depth3_smoke.log`; 3,000 positions, sizes ≤3, cap 200, 80 frames, 2 workers, both
