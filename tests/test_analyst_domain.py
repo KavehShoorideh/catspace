@@ -101,11 +101,8 @@ def test_frame_episode_sees_the_recapture_at_ply_three():
     st = cd.State(b, ids)
     mv = chess.Move.from_uci("a1a3")
     after = cd.transition(st, (b, mv))
-    cd._EPISODE["depth"] = 1
-    one = cd.frame_reply_scalar(after, after.ids[0]) - cd.frame_scalar(st, chess.A1)
-    cd._EPISODE["depth"] = 3
-    three = cd.frame_reply_scalar(after, after.ids[0]) - cd.frame_scalar(st, chess.A1)
-    cd._EPISODE["depth"] = 1
+    one = cd.frame_reply_scalar(after, after.ids[0], depth=1) - cd.frame_scalar(st, chess.A1)
+    three = cd.frame_reply_scalar(after, after.ids[0], depth=3) - cd.frame_scalar(st, chess.A1)
     assert one == -2.0, one                                                   # rook (5) for knight (3) after ...Rxa3
     assert three == 3.0, three                                                # ...Rxa3 Bxa3: the knight was won
 
@@ -126,6 +123,5 @@ def test_episode_lift_sees_the_state_after_the_reply_and_never_the_last_ply():
     assert rels["then_attacked"].fn(st, (b, mv), chess.A8) is True
     assert rels["then_attacked"].fn(st, (b, mv), chess.A1) is False
     assert rels["then_attacked"].fn(st, (b, mv), chess.C1) is False           # nothing reaches the bishop after ...Rxa3
-    cd._EPISODE["depth"] = 1
-    assert rels["then_attacked"].fn(st, (b, mv), chess.A8) is False
-    cd._EPISODE["depth"] = 1
+    rels1 = {r.name: r for r in lift_episode(cd.domain(oracle="frame", depth=1))}
+    assert rels1["then_attacked"].fn(st, (b, mv), chess.A8) is False         # one reply only: no state before the last ply

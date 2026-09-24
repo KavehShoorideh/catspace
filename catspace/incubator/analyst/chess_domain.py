@@ -401,13 +401,14 @@ def frame_scalar(state: State, e: int) -> float:
     return _frame_material(state, state.board.piece_at(e).color)
 
 
-def frame_reply_scalar(after: State, e: int) -> float:
+def frame_reply_scalar(after: State, e: int, depth: int | None = None) -> float:
     """The frame's material from the actor's side after the opponent's best immediate reply (the reply that minimizes
-    it): a capture of a frame piece counts, a capture elsewhere does not; a checkmate counts as +-1000. With the
-    episode depth above 1 (`_EPISODE`), the k-ply frame episode instead."""
+    it): a capture of a frame piece counts, a capture elsewhere does not; a checkmate counts as +-1000. With an
+    episode depth above 1, the k-ply frame episode instead (depth 0: the frame's size; None: the module default)."""
     b = after.board
     side = not b.turn
-    depth = _EPISODE["depth"] if _EPISODE["depth"] > 0 else len(after.ids)     # 0: each frame piece gets its move (Kaveh 2026-09-24)
+    depth = _EPISODE["depth"] if depth is None else depth
+    depth = depth if depth > 0 else len(after.ids)                            # 0: each frame piece gets its move (Kaveh 2026-09-24)
     if depth > 1:
         return frame_episode_scalar(after, side, depth)
     if b.is_checkmate():
@@ -487,11 +488,12 @@ def frame_episode_pv(st: State, side: chess.Color, depth: int) -> tuple:
     return _episode(st, side, depth, -1e9, 1e9, True)
 
 
-def frame_episode_states(after: State) -> list:
+def frame_episode_states(after: State, depth: int | None = None) -> list:
     """The domain's EPISODE hook: from the state after our action, the states along the episode's line, one per ply
     (the opponent's reply first). Empty when the episode has no ply beyond the last (depth < 3), so a lifted
     relation can never restate the outcome."""
-    depth = _EPISODE["depth"] if _EPISODE["depth"] > 0 else len(after.ids)
+    depth = _EPISODE["depth"] if depth is None else depth
+    depth = depth if depth > 0 else len(after.ids)
     if depth < 3:
         return []
     side = not after.board.turn
@@ -499,7 +501,7 @@ def frame_episode_states(after: State) -> list:
     return pv[:-1]                                                            # every state before the last ply
 
 
-def frame_null_reply_scalar(state: State, e: int) -> float:
+def frame_null_reply_scalar(state: State, e: int, depth: int | None = None) -> float:
     b = state.board.copy(stack=False)
     side = b.piece_at(e).color
     b.turn = side
@@ -508,7 +510,7 @@ def frame_null_reply_scalar(state: State, e: int) -> float:
     b.turn = not side
     if not b.is_valid():
         return None
-    return frame_reply_scalar(State(b, list(state.ids)), e)
+    return frame_reply_scalar(State(b, list(state.ids)), e, depth)
 
 
 def null_reply_scalar(state: State, e: int) -> float:
@@ -621,9 +623,10 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
             Relation("captures_worth_ge", 1, True, captures_worth_ge), Relation("stays_aligned", 1, True, stays_aligned),
             Relation("lands_attacked", 0, True, lands_attacked)]
     if oracle == "frame":
-        return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, frame_scalar, frame_reply_scalar,
+        from functools import partial
+        return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, frame_scalar, partial(frame_reply_scalar, depth=depth),
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
-                      placement_count=(placement_count if fens is None else None), null_reply_scalar=frame_null_reply_scalar, episode=frame_episode_states)
+                      placement_count=(placement_count if fens is None else None), null_reply_scalar=partial(frame_null_reply_scalar, depth=depth), episode=partial(frame_episode_states, depth=depth))
     if oracle == "resolved":
         return Domain("chess_resolved" if fens is None else "chess_games_resolved", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, resolved_reply_scalar,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,

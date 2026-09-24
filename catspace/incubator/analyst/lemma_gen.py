@@ -222,7 +222,7 @@ def lift_episode(dom: Domain) -> list:
         return []
     cache: dict = {}
     def states_of(state, action):
-        key = (id(state.board), str(action[1]))
+        key = (state.board.fen(), tuple(state.ids), str(action[1]))         # by content: board ids are reused after collection
         if key not in cache:
             if len(cache) > 20000:
                 cache.clear()
