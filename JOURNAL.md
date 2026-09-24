@@ -23875,7 +23875,7 @@ thousand. The direction Kaveh set is confirmed at the sign level, not yet at a s
 the frame-local library (more positions, deeper frontier, sizes 4) and re-measure the same curve; then the guide,
 retrained on this library's shares.
 
-## 2026-09-23 18:40 PDT — chains instead of averages (Kaveh: "follow up on the threat one, expand the gain one ... a deterministic chain; the guards are the interface")
+## 2026-09-23 19:02 PDT — chains instead of averages (Kaveh: "follow up on the threat one, expand the gain one ... a deterministic chain; the guards are the interface")
 
 `chains.py`: an IDEA = an embedded lemma whose verdict on a move implies |value| >= 1; each seeds a chain from the
 lemma's own pieces; each step brings in one outside piece and lets the MOST SPECIFIC lemma that speaks decide;
