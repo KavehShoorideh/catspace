@@ -80,6 +80,29 @@ class Applier:
             cache[key] = v
         return v == pol
 
+    def embeddings(self, raw, proved_only: bool = True) -> list:
+        """Every embedded frame of the library in the raw state, whoever is to move: [(lemma, ids)]. A KNOWN FRAME is a
+        unit the search may take in one step (Kaveh 2026-09-24: "extend out one known frame at a time")."""
+        ents = self.dom.entities(raw)
+        by_type: dict = defaultdict(list)
+        for e, t in ents:
+            by_type[t].append(e)
+        out = []; cache: dict = {}
+        for types, lemmas in self.by_types.items():
+            pools = [by_type.get(t, []) for t in types]
+            if any(not p for p in pools):
+                continue
+            for ids in itertools.product(*pools):
+                if len(set(ids)) < len(ids):
+                    continue
+                state = self.dom.state_of(raw, list(ids))
+                for c in lemmas:
+                    if proved_only and getattr(c, "status", None) not in (None, "PROVED", "THEOREM"):
+                        continue
+                    if all(self._lit(state, ids, r, sl, pol, cache=cache) for r, sl, pol in c.frame.literals):
+                        out.append((c, ids))
+        return out
+
     def apply(self, raw, bodies=None, actor=None, only_action=None) -> dict:
         """-> {(actor id, action key): [(lemma, predicted 'keeps'|'loses', fired term text or None, ids)]} plus the
         list of embeddings; an action key is str(action[1]) (the move). bodies: restrict the frames' slots to these

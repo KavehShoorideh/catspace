@@ -128,3 +128,28 @@ def test_imagined_gains_never_come_from_a_threat_the_removal_created():
         for x in i["blockers"]:
             b2.remove_piece_at(x)
         assert not _baseline_dropped(app.dom, st, app.dom.state_of(b2, i["ids"]), i["ids"][i["lemma"].slot]), i["move"]
+
+
+def test_chunk_mode_takes_a_known_frame_whole():
+    """Kaveh 2026-09-24: 'extend out one known frame at a time'. In chunk mode, when a piece joins the chain and a
+    proved frame holding it touches the chain, the frame's other pieces join in the same step."""
+    from catspace.incubator.analyst.chains import chains, known_frames
+    from catspace.incubator.analyst.chess_domain import domain
+    lib, prov = Path("data/derived/lemmas/library_games_frame4.json"), Path("data/derived/lemmas/proved_games_frame4.json")
+    if not lib.exists():
+        pytest.skip("no frame library")
+    app = Applier(domain(oracle="frame"), load_library(lib, prov))
+    b = chess.Board("r4rk1/pb1n1p2/2p1p1p1/1p5q/3P3Q/3B4/PPP2P2/1K1R2NR w - - 0 19")
+    kf = known_frames(app, b)
+    assert kf and all(len(f) >= 1 for f, _ in kf)
+    chunked = 0; prev = None
+    for ch in chains(app, b, mode="chunk", max_bodies=8):
+        n_prev = len(ch["trace"][0]["bodies"])
+        for t in ch["trace"][1:]:
+            if t.get("role") == "chunk":
+                assert len(t["bodies"]) - n_prev >= 2                          # at least the piece and one frame-mate
+                pieces = {chess.parse_square(x) for x in t["bodies"]}
+                assert any(f <= pieces and chess.parse_square(t["by"]) in f for f, _ in kf)
+                chunked += 1
+            n_prev = len(t["bodies"])
+    assert chunked > 0, "no chunk was taken on a position with embedded proved frames"

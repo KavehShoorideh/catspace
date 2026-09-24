@@ -88,6 +88,22 @@ def interface(app: Applier, board: chess.Board, bodies: list, mv: chess.Move, le
     return score
 
 
+_KNOWN: dict = {}
+
+
+def known_frames(app: Applier, board: chess.Board) -> list:
+    """The proved frames embedded in the position, as units: [(frozenset of ids, lemma)], largest first; memoized per
+    position and library."""
+    key = (id(app), board.fen())
+    if key not in _KNOWN:
+        if len(_KNOWN) > 512:
+            _KNOWN.clear()
+        fr = [(frozenset(ids), c) for c, ids in app.embeddings(board)]
+        fr.sort(key=lambda x: (-len(x[0]), -abs((x[1].value or {}).get("exception", 0.0))))
+        _KNOWN[key] = fr
+    return _KNOWN[key]
+
+
 def expand(app: Applier, board: chess.Board, idea: dict, max_bodies: int = 8, ranker=None, mode: str = "interface", floor: float = 0.15) -> dict:
     """Follow one idea's chain as a DIALOGUE (Kaveh 2026-09-23): after a piece of one side joins, the other side
     answers next -- unless an interface piece of the deciding lemma is waiting (threat analysis, two pieces of one
@@ -100,7 +116,7 @@ def expand(app: Applier, board: chess.Board, idea: dict, max_bodies: int = 8, ra
     claim_value = idea["value"]; deciding = idea["lemma"]; deciding_ids = list(idea["ids"])
     trace = [dict(bodies=[chess.square_name(b) for b in bodies], value=claim_value, lemma=deciding.text[:110], event="seed", side="ours")]
     ents = dict(app.dom.entities(board))
-    last_side = our; top_score = None
+    last_side = our; top_score = None; chunk_text = None
     while len(bodies) < max_bodies:
         cand = [e for e in ents if e not in bodies]
         if not cand:
@@ -117,7 +133,7 @@ def expand(app: Applier, board: chess.Board, idea: dict, max_bodies: int = 8, ra
         if top_score is None:
             top_score = max(abs(sc) for sc, _ in ranked) or 1.0
         score = {c: sc for sc, c in ranked}
-        iface = interface(app, board, bodies, mv, deciding, deciding_ids, cand) if mode == "interface" else {}
+        iface = interface(app, board, bodies, mv, deciding, deciding_ids, cand) if mode in ("interface", "chunk") else {}
         # relevance: an interface piece, or a policy score above the floor
         relevant = [c for c in cand if c in iface or abs(score.get(c, 0.0)) >= floor * top_score]
         if not relevant:
@@ -128,12 +144,20 @@ def expand(app: Applier, board: chess.Board, idea: dict, max_bodies: int = 8, ra
         nxt = max(pool, key=lambda c: (iface.get(c, 0), score.get(c, 0.0)))
         role = "threat" if nxt in iface else "answer"
         bodies.append(nxt); last_side = board.piece_at(nxt).color
+        if mode == "chunk":
+            # take the KNOWN FRAME with the piece: the largest proved frame that holds `nxt`, touches the chain, and
+            # fits the budget joins whole, its verdict carried in by the applier below (Kaveh 2026-09-24)
+            room = max_bodies - len(bodies)
+            for fset, kc in known_frames(app, board):
+                new = [x for x in fset if x not in bodies]
+                if nxt in fset and new and len(new) <= room and (fset & set(bodies)) - {nxt}:
+                    bodies.extend(new); role = "chunk"; chunk_text = kc.text[:110]; break
         res = app.apply(board, bodies=set(bodies), actor=actor, only_action=mv)
         vs = [v for vl in res["verdicts"].values() for v in vl]
         spoke = [(c, fired, ids) for c, pred, fired, ids in vs if implied_value(c, fired) is not None and c.frame.size > deciding.frame.size]
         side = "ours" if last_side == our else "theirs"
         if not spoke:
-            trace.append(dict(bodies=[chess.square_name(b) for b in bodies], value=claim_value, lemma=None, event="silent", side=side, role=role, by=chess.square_name(nxt)))
+            trace.append(dict(bodies=[chess.square_name(b) for b in bodies], value=claim_value, lemma=chunk_text if role == "chunk" else None, event="silent", side=side, role=role, by=chess.square_name(nxt)))
             continue
         c, fired, ids = max(spoke, key=lambda x: x[0].frame.size)
         v = implied_value(c, fired)
@@ -275,7 +299,7 @@ def narrate(board: chess.Board, app: Applier, gain_app: Applier | None = None, r
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", nargs="?", default="show", choices=["show", "gauge", "imagine", "narrate"]); ap.add_argument("--fen"); ap.add_argument("--n", type=int, default=150)
-    ap.add_argument("--library", default=str(OUT / "library_games_frame.json")); ap.add_argument("--proved", default=str(OUT / "proved_games_frame.json")); ap.add_argument("--guide", default=""); ap.add_argument("--tag", default=""); ap.add_argument("--mode", default="interface", choices=["interface", "policy"]); ap.add_argument("--played"); ap.add_argument("--best")
+    ap.add_argument("--library", default=str(OUT / "library_games_frame.json")); ap.add_argument("--proved", default=str(OUT / "proved_games_frame.json")); ap.add_argument("--guide", default=""); ap.add_argument("--tag", default=""); ap.add_argument("--mode", default="interface", choices=["interface", "policy", "chunk"]); ap.add_argument("--played"); ap.add_argument("--best")
     a = ap.parse_args(argv)
     from .chess_domain import domain
     ranker = None
