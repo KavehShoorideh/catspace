@@ -209,4 +209,4 @@ def achievable(board: chess.Board, ids: list, actor: int, goal, depth: int = 0, 
         return dict(yes=False, move=None, fates=None, value=None)
     v, m, ln = best
     f = fates_of(st, ln)
-    return dict(yes=goal(f), move=m, fates=f, value=v - (10000.0 if goal(f) else 0.0))
+    return dict(yes=goal(f), move=m, fates=f, value=v - (10000.0 if goal(f) else 0.0) - frame_scalar(st, actor))   # value: the frame's material delta along the found line

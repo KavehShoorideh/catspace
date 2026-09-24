@@ -5,7 +5,7 @@ import chess
 from catspace.incubator.analyst import fates as F
 from catspace.incubator.analyst.chess_domain import domain
 
-FEN = "3r2k1/8/3b4/8/4N3/8/8/6K1 w - - 0 1"       # white knight e4 attacks the bishop d6; the rook d8 defends it
+FEN = "3r2k1/8/3b4/8/4N3/8/8/7K w - - 0 1"       # white knight e4 attacks the bishop d6; the rook d8 defends it (king h1: off the c5-g1 diagonal, or Nf2 would be pinned)
 IDS = [chess.E4, chess.D6, chess.D8]              # pony, juicer, rook
 
 
