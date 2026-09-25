@@ -22874,6 +22874,48 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 22:05 PDT — review, part two: the frame episode, fates and goals (a second reader; OBS)
+
+A second reader went through today's fates.py and goals.py with a script per finding; I re-ran eight of them.
+
+Fixed, with tests:
+4. A pass (the null move) kept the en-passant square after a double pawn push; python-chess calls that board
+   invalid, so every pass there read as illegal. `pass_value` came back None in `4k3/8/8/3n4/4P3/8/8/4K3 b - e3`
+   (−1.0 with the field cleared), and black's reply spent elsewhere after d2d4 left the knight alive (0.0; +3.0
+   now). One helper, `chess_domain.passed`, now makes every pass in the frame oracle, fates and goals. The compiled
+   core already dropped the right (its relative outcomes list 7 actions with the ep field and without), so
+   lemma_gen's outcomes are untouched; only its Python baseline check dropped those positions: 72 of 62,561 (0.1%).
+5. En passant: the captor was recorded as an outside piece (now the frame pawn that moved), and the move's
+   neighbourhood left out the pawn taken (exd6 valued 0.0; +1.0 now).
+6. `achievable` searched one ply less than `outcome`: the knight fork Nc7+ takes the rook on ply 3 and read
+   unachievable.
+7. goals read its positions, and its test its library, by relative paths (the test skipped outside the repo root);
+   both go through `paths.derived` now.
+
+For a decision (each changes what the goal search chooses):
+F. The prune is unsound under the relative value. A move's value is its episode minus the pass episode, and the
+   bound counts only enemy worth; when standing still loses our pieces, a retreat is worth what it saves.
+   `4r2k/6pp/5p2/4p3/3Q4/8/8/6K1 w`: prune off Qd7 +9.0, prune on Qxe5 +1.0. A sound bound adds what standing still
+   can lose (our frame's non-king worth) and will prune much less; the pass episode per frame costs as much as
+   opening the move.
+G. The mate class is read from the relative value, so parrying a mate threat (standing still is mated) clamps to
+   1000 like delivering mate. `6k1/5ppp/8/8/5n2/7q/5PP1/3R2K1 w`: gxh3 (raw 1009) is chosen and the prune drops
+   Rd8#, the mate in one; with the rook removed the best value is still 1000. Proposal: classes from the two
+   episodes separately (mate delivered by the move; mate avoided against the pass), not from their difference.
+H. `decide` subtracts the opponent's best goal after our move from our value, but our value already contains
+   their best in-frame reply: Qd5?? (hangs the queen) scores −19; the even trade Nxd6 in the pony position scores
+   −3 and ranks below every quiet move. Its docstring also promises the best pruned moves by bound; the code
+   keeps only opened ones.
+I. A game-over draw scores as the material taken: `decide` ranks a stalemating capture first at +1.0 in two
+   positions (`8/8/4R3/1K6/8/1Q4p1/8/5k2 w`, `8/8/k7/2p3Q1/8/8/1R6/5K2 w`). What a draw is worth depends on the
+   game, not the frame.
+J. `with_passes`/`compose` spend A's own plies on the inserted passes instead of extending its horizon (the pony
+   composition, k=2 over 4 plies: +3.0 at the default depth, 0.0 at depth 5, where black's rook recaptures); a
+   forced pass while in check ends the line at the static count, a stop the checking side can choose; an Outcome's
+   intermezzi are measured from the material before while its value is measured from the pass episode.
+Patterns to sweep: relative `data/derived` paths run through the analyst package (lemma_gen's `OUT`, chains, ...);
+turn-flip passes checked with `is_valid()` remain in gauge_lemmas, watchers and rank.
+
 ## 2026-09-24 21:40 PDT — review (Kaveh: "do a review to find some bugs and make sure everything is ok"): three fixes, five findings for a decision (OBS)
 
 State on resuming: the full2 run was alive (not killed): size 3's 3,000 frames finished at 21:09 (2,000 admitted),
