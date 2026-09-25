@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 import chess
 
 from .chains import known_frames
-from .chess_domain import VAL, passed
+from .chess_domain import VAL, _ids_after, passed
 from .fates import Outcome, outcome
 
 MATE = 500.0                                                                 # values beyond this are mates: their own class, above any material bound
@@ -105,9 +105,12 @@ def reach_worth(board: chess.Board, our: list) -> float:
 
 def move_bound(app, board: chess.Board, move: chess.Move, frame: list) -> float:
     """Optimistic value of the move in its frame: the worth of every enemy piece in the frame (the episode counts only
-    the frame's pieces, so nothing more can ever be won there), never below the largest gain the library claims."""
+    the frame's pieces, so nothing more can ever be won there) plus the worth of ours (the value is measured from the
+    pass episode, and standing still can lose at most our frame pieces: a retreat is worth what it saves -- review
+    2026-09-24, where the bound without it pruned Qd7 +9 and chose Qxe5 +1), never below the largest gain the library
+    claims. Sound for material; a quiet move that forces mate inside the episode stays outside it, as before."""
     us = board.turn
-    bound = sum(VAL[board.piece_at(x).piece_type] for x in frame if board.piece_at(x) is not None and board.piece_at(x).color != us and board.piece_at(x).piece_type != chess.KING)
+    bound = sum(VAL[board.piece_at(x).piece_type] for x in frame if board.piece_at(x) is not None and board.piece_at(x).piece_type != chess.KING)
     # a promotion gains without capturing (audit 2026-09-24: h8=Q read 8 against a bound of 5): every pawn of ours in
     # the frame that can reach the last rank within the episode adds a queen's worth less its own
     for x in frame:
@@ -128,6 +131,19 @@ def move_bound(app, board: chess.Board, move: chess.Move, frame: list) -> float:
     except Exception:
         pass
     return max(bound, claimed)
+
+
+def value_of(o: Outcome) -> float:
+    """A move's value in CLASSES (review 2026-09-24): a mate in the move's own episode is +1000 (delivered) or -1000
+    (suffered) whatever the baseline; otherwise the material difference between the move's episode and its baseline,
+    the baseline's mate term removed -- parrying a mate threat is worth what it keeps. Read off the relative value, a
+    parry (raw 1009) stood beside Rd8# at 1000 and the mate prune dropped the mate."""
+    if o.end >= MATE:
+        return 1000.0
+    if o.end <= -MATE:
+        return -1000.0
+    base = o.baseline - (1000.0 if o.baseline >= MATE else -1000.0 if o.baseline <= -MATE else 0.0)
+    return o.end - base
 
 
 def best_goal(app, board: chess.Board, prune: bool = True, depth: int = 0, max_open: int = 64) -> dict:
@@ -152,7 +168,7 @@ def best_goal(app, board: chess.Board, prune: bool = True, depth: int = 0, max_o
         opened += 1
         if o is None:
             continue
-        c.value = (1000.0 if o.value >= MATE else -1000.0 if o.value <= -MATE else o.value); c.outcome = o   # a mate is a mate: the material behind it is not a ranking (the audit's last disagreement was 1000 vs 1001)
+        c.value = value_of(o); c.outcome = o                                  # a mate is a mate: the material behind it is not a ranking (the audit's last disagreement was 1000 vs 1001)
         alpha = max(alpha, c.value)
     scored = [c for c in choices if c.value is not None]
     best = max(scored, key=lambda c: c.value) if scored else None
@@ -169,18 +185,31 @@ def threats(app, board: chess.Board, depth: int = 0) -> dict:
 
 def decide(app, board: chess.Board, k: int = 5, depth: int = 0) -> list:
     """Kaveh 2026-09-24: "we still have to evaluate all those frames for our opponent". For the k best moves by our
-    achieved value (plus the k best by bound among the pruned), the opponent's best goal AFTER the move, unpruned;
-    score = our gain minus theirs. Returns [(score, choice, their best value)] best first."""
+    achieved value plus the k best by bound among the pruned (opened here), the opponent's best goal AFTER the move,
+    unpruned, among the goals our value does not already hold: our frame's episode played their best reply against our
+    frame pieces, so their captures there are not counted again (review 2026-09-24: Qd5?? scored -19 for a 9-point
+    loss, the even trade Nxd6 -3); their mates always count. A drawn game-over is worth minus our material lead (a
+    stalemating capture ranked first at +1). score = our gain minus theirs. Returns [(score, choice, their best)]."""
     r = best_goal(app, board, prune=True, depth=depth)
+    us = board.turn
     cands = sorted([c for c in r["choices"] if c.value is not None], key=lambda c: -c.value)[:k]
+    for c in sorted([c for c in r["choices"] if c.pruned], key=lambda c: -c.bound)[:k]:
+        o = outcome(app.dom, board, c.frame, c.move, depth, app=None, relative=True)
+        if o is not None:
+            c.value = value_of(o); c.outcome = o; cands.append(c)
+    lead = sum((1 if p.color == us else -1) * VAL[p.piece_type] for p in board.piece_map().values() if p.piece_type != chess.KING)
     out = []
     for c in cands:
         nb = board.copy(stack=False); nb.push(c.move)
         if nb.is_game_over():
-            out.append((c.value, c, 0.0)); continue
+            out.append((c.value if nb.is_checkmate() else -lead, c, 0.0)); continue
+        ours = {sq for sq in _ids_after(list(c.frame), board, c.move) if sq is not None and nb.piece_at(sq) is not None and nb.piece_at(sq).color == us}
         t = best_goal(app, nb, prune=False, depth=depth)                       # their side, never pruned
-        theirs = t["best"].value if t["best"] else 0.0
-        out.append((c.value - max(0.0, theirs), c, theirs))
+        def target(m):
+            return chess.square(chess.square_file(m.to_square), chess.square_rank(m.from_square)) if nb.is_en_passant(m) else m.to_square
+        vals = [t2.value for t2 in t["choices"] if t2.value is not None and (t2.value >= MATE or target(t2.move) not in ours)]
+        theirs = max(vals) if vals else 0.0
+        out.append((c.value if c.value <= -MATE else c.value - max(0.0, theirs), c, theirs))   # a move already mated in its own episode is -1000 once
     out.sort(key=lambda x: -x[0])
     return out
 

@@ -646,22 +646,28 @@ def contests(board: chess.Board, max_pieces: int = 4) -> list:
     return out
 
 
-def game_placements(fens: list):
+def game_placements(fens: list, per_position: int = 4, try_factor: int = 50):
     """A placements source drawn from REAL positions (games): for a frame's types, every assignment of distinct pieces
     of those types on each position, in a seeded order, up to the cap; never exhaustive. The rest of the board stays,
-    so a lemma learned here is learned where it is applied."""
+    so a lemma learned here is learned where it is applied.
+
+    With `accept` (the frame's literals) the cap counts ACCEPTED placements -- the frame's evidence -- at most
+    `per_position` from one position, looking at no more than cap * try_factor assignments, and a board is copied
+    only when it is accepted. Without it the cap counts assignments (relation discovery draws plain placements).
+    Review 2026-09-24: with the cap counting tries and one shuffled order for every frame, all frames read the same
+    few boards (full2's size-3 lemmas: a median of 22 positions) and a rare frame got no rows at any corpus size."""
     import random as _r
 
     boards: dict = {}                                                   # parsed once per process (fork copies what the parent parsed)
 
-    def placements(types: tuple, cap: int, seed: int):
+    def placements(types: tuple, cap: int, seed: int, accept=None):
         rng = _r.Random(seed)
         order = list(range(len(fens))); rng.shuffle(order)
         scan = getattr(placements, "scan_limit", None)                   # the frequency count scans a bounded prefix of the positions
         if scan:
             order = order[:scan]
         need = [[_piece(x) for x in leaves_of(t)] for t in types]
-        yielded = 0
+        yielded = 0; looked = 0; budget = cap * try_factor
         for k in order:
             b = boards.get(k)
             if b is None:
@@ -669,13 +675,24 @@ def game_placements(fens: list):
             pools = [[sq for p in ps for sq in b.pieces(p.piece_type, p.color)] for ps in need]
             if any(not pl for pl in pools):
                 continue
+            here = 0
             for ids in itertools.product(*pools):
                 if len(set(ids)) < len(ids):
                     continue
+                if accept is not None:
+                    looked += 1
+                    if looked > budget:
+                        return
+                    if not accept(State(b, list(ids))):                   # the literals read the shared board; only an accepted placement is copied
+                        continue
                 yield State(b.copy(stack=False), list(ids)), False
-                yielded += 1
+                yielded += 1; here += 1
                 if yielded >= cap:
                     return
+                if accept is not None and per_position and here >= per_position:
+                    break
+    placements.accepts = True
+    placements.sampling = f"matches, {per_position} a position, {try_factor}x tries"
     return placements
 
 
@@ -776,7 +793,7 @@ def core_literals(rows, lits):
     return out
 
 
-def domain(fens: list | None = None, oracle: str = "material", worth: str = "canonical", worth_tau: float = 4.0, depth: int = 1, shapes: bool = True) -> Domain:
+def domain(fens: list | None = None, oracle: str = "material", worth: str = "canonical", worth_tau: float = 4.0, depth: int = 1, shapes: bool = True, per_position: int = 4, try_factor: int = 50) -> Domain:
     """depth: plies of the frame episode after the action (frame oracle only); 1 = the single best reply. shapes: the
     sampled placements are one centred placement per configuration up to translation and mirror."""
     _EPISODE["depth"] = depth; _SHAPES["on"] = shapes
@@ -792,12 +809,12 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
     if oracle == "frame":
         from functools import partial
         contests_of = (lambda: [(pri, t, ids, lits) for f in fens[: 5000] for pri, t, ids, lits in contests(chess.Board(f))]) if fens is not None else None
-        return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, frame_scalar, partial(frame_reply_scalar, depth=depth), contests=contests_of,
+        return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens, per_position, try_factor), slots_of, actions, transition, frame_scalar, partial(frame_reply_scalar, depth=depth), contests=contests_of,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
                       placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], type_tree=TYPE_TREE, root="*", null_reply_scalar=partial(frame_null_reply_scalar, depth=depth), episode=partial(frame_episode_states, depth=depth), threat=frame_threat_state,
                       batch_outcomes=(core_outcomes(depth) if _core is not None and worth == "canonical" else None), batch_literals=(core_literals if _core is not None else None))
     if oracle == "resolved":
-        return Domain("chess_resolved" if fens is None else "chess_games_resolved", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, resolved_reply_scalar,
+        return Domain("chess_resolved" if fens is None else "chess_games_resolved", TYPES, rels, placements if fens is None else game_placements(fens, per_position, try_factor), slots_of, actions, transition, scalar, resolved_reply_scalar,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
                       placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], type_tree=TYPE_TREE, root="*", null_reply_scalar=resolved_null_reply_scalar)
     if oracle == "tablebase":
@@ -807,7 +824,7 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn)
     if worth == "blend":
         rels = [Relation("worth_ge", 2, fn=worth_ge_blend) if r.name == "worth_ge" else Relation("captures_worth_ge", 1, True, captures_worth_ge_blend) if r.name == "captures_worth_ge" else r for r in rels]
-    return Domain("chess" if fens is None else "chess_games", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, reply_scalar,
+    return Domain("chess" if fens is None else "chess_games", TYPES, rels, placements if fens is None else game_placements(fens, per_position, try_factor), slots_of, actions, transition, scalar, reply_scalar,
                   entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
                   placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], type_tree=TYPE_TREE, root="*", null_reply_scalar=null_reply_scalar)
 

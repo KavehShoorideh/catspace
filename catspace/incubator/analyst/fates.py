@@ -94,6 +94,8 @@ class Outcome:
     counts: dict = field(default_factory=dict)
     judgment: dict = field(default_factory=dict)
     intermezzi: list = field(default_factory=list)   # [(ply, side, value, fates)]: the outcome if a pass is IMPOSED at that ply (Kaveh 2026-09-24: a move spent outside the frame)
+    end: float | None = None                         # the move's own episode: the frame's material at the end of the line from the mover's side, mate +-1000
+    baseline: float | None = None                    # what `value` is measured from: the pass episode (relative) or the material before
 
     def achieved_by(self, slot: int):
         """Who captured this slot: the capturing slot, -1 for an outside piece, None if it lives."""
@@ -136,7 +138,7 @@ def outcome(dom, board: chess.Board, ids: list, move: chess.Move, depth: int = 0
     sig = signature(dom, end.board, end.ids)
     counts = move_counts(dom, end)
     jud = judge(app, end) if app is not None else {}
-    o = Outcome(move, v - before, line, fates, sig, counts, jud)
+    o = Outcome(move, v - before, line, fates, sig, counts, jud, end=v, baseline=before)
     if with_intermezzi:
         o.intermezzi = intermezzi(board, ids, move, depth, max_depth)
     return o

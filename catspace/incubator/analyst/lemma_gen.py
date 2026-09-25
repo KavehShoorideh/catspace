@@ -412,9 +412,20 @@ class Generator:
         return max(1, min(4, int(round(combos ** 0.5))))
 
     def instances(self, frame: Frame, cap: int | None = None):
-        """(state, slot ids, complete) for every placement matching the frame's literals."""
+        """(state, slot ids, complete) for every placement matching the frame's literals. A source that takes the
+        literals (`accepts`: real positions) counts its cap in MATCHES and spreads them over boards; otherwise the
+        cap counts placements and the literals filter them here (the sampled world). Frames carrying lifted words
+        (older libraries) are filtered here too: those relations play moves, and the source's check reads a shared
+        board."""
         complete = True
         cap = (cap or self.cap) * self.abstract_scale(frame)
+        geometric = not any(r.startswith(("after_", "then_", "some_", "threat_")) or self.rel[r].on_action for r, sl, pol in frame.literals)
+        if getattr(self.dom.placements, "accepts", False) and geometric:
+            accept = lambda st: all(self._lit(st, self.dom.slots_of(st), r, sl, pol) for r, sl, pol in frame.literals)
+            for state, exhaustive in self.dom.placements(frame.types, cap, self.seed, accept=accept):
+                complete = complete and exhaustive
+                yield state, self.dom.slots_of(state), complete
+            return
         for state, exhaustive in self.dom.placements(frame.types, cap, self.seed):
             complete = complete and exhaustive
             ids = self.dom.slots_of(state)
@@ -639,8 +650,12 @@ class Generator:
         far; that term joins the working guard. A counterexample no term separates stays pending (the residual). The
         stream ends after `confirm` consecutive rows that changed nothing, or at the row cap. Then the guard is made
         CANONICAL: re-chosen over everything seen by the batch search, so the lemma's identity does not depend on the
-        order of the draw (the first smoke showed order-shaped guards). Belief = confirmations since the last
-        revision, recorded on the lemma; no coverage or purity bar decides admission. Literal truth columns are kept
+        order of the draw (the first smoke showed order-shaped guards). The CLAIM is made canonical the same way:
+        the majority over everything seen (review 2026-09-24: stated from five rows of one piece in one position and
+        never revised, 27 of 59 lemmas claimed what held in under half their rows). Belief = confirmations since the
+        last revision, recorded on the lemma (0 when the canonical claim is the other one); admission is the
+        generator's coverage and purity bar, as in batch mode. The leaf types' disagreement (heterogeneous slots) is
+        computed as in batch mode, so evidence-based type splits happen here too. Literal truth columns are kept
         incrementally, so a counterexample costs bitset operations, not a pass over the rows."""
         inherits = inherits or []
         thr = self.gain_threshold
@@ -653,6 +668,18 @@ class Generator:
         complete = True
         def fires(term, i):
             return all(((cols[(r, sl)] >> i) & 1) == (1 if pol else 0) for r, sl, pol in term)
+        majority = lambda n_lose, n: ("acting loses" if thr is None else "acting does not gain") if n_lose * 2 >= n else ("acting keeps" if thr is None else "acting gains")
+        def take_inherits(claim, rows):
+            """The embedded parents of the same claim lend their guards; those of the opposite claim mark the lemma
+            reversed; a parent whose missing literal fails on a row seen does not embed."""
+            inh = []; par = []; rev = False
+            for pclaim, pguard, ptext, missing in inherits:
+                if any(not self.lit_value(r[0], r[1], r[2], rr, sl) == pol for r in rows for rr, sl, pol in missing):
+                    continue
+                if pclaim != claim:
+                    rev = True; par.append(ptext + " [opposite claim]"); continue
+                inh.extend(t for t in pguard if t not in inh); par.append(ptext)
+            return inh, par, rev
         for row, complete in self.iter_rows(frame, slot):
             i = len(rows); rows.append(row)
             state, ids, a, d = row
@@ -663,13 +690,8 @@ class Generator:
                 if len(rows) < warm:
                     continue
                 n_lose = sum(1 for r in rows if lose(r[3]))
-                claim = ("acting loses" if thr is None else "acting does not gain") if n_lose * 2 >= len(rows) else ("acting keeps" if thr is None else "acting gains")
-                for pclaim, pguard, ptext, missing in inherits:
-                    if any(not self.lit_value(r[0], r[1], r[2], rr, sl) == pol for r in rows for rr, sl, pol in missing):
-                        continue
-                    if pclaim != claim:
-                        reversed_ = True; parents.append(ptext + " [opposite claim]"); continue
-                    inherited.extend(t for t in pguard if t not in inherited); parents.append(ptext)
+                claim = majority(n_lose, len(rows))
+                inherited, parents, reversed_ = take_inherits(claim, rows)
                 todo = list(range(len(rows)))
             else:
                 todo = [i]
@@ -692,6 +714,9 @@ class Generator:
             return None
         n = len(rows); all_mask = (1 << n) - 1
         cache = {l: m for l, m in cols.items()}                              # the batch search reuses the columns
+        streamed = claim
+        claim = majority(sum(1 for r in rows if lose(r[3])), n)               # the canonical claim: the majority over everything seen
+        inherited, parents, reversed_ = take_inherits(claim, rows)          # the parents re-read over every row seen, for the canonical claim
         exc = sum(1 << k for k in range(n) if self._is_exc(rows[k], claim, lose))
         holds = n - _popcount(exc)
         covered_inh = 0
@@ -705,7 +730,8 @@ class Generator:
         lem.closure = self.frame_closure(rows, frame, cache, all_mask)
         lem.value = frame_values(rows, exc)
         lem.sig = (tuple(frame.types), slot, n, holds, hashlib.sha1(exc.to_bytes((exc.bit_length() + 7) // 8 or 1, "little")).hexdigest()[:12])
-        lem.confirmations = since
+        lem.confirmations = since if claim == streamed else 0
+        lem.heterogeneous = self.heterogeneous_slots(frame, rows, exc) if self.dom.type_tree else []
         return lem
 
     def _separating_term_masks(self, cols: dict, pending: list, held_mask: int, n: int, purity: float = 0.9):
@@ -1625,6 +1651,8 @@ def main(argv=None):
     ap.add_argument("--no-sequential", action="store_true", help="always draw the full cap (no quarter-sample early decision)")
     ap.add_argument("--no-core", action="store_true", help="do not use the compiled core (analyst_core) for outcomes and base literals")
     ap.add_argument("--tag", default="", help="suffix for the library/residual/checkpoint files of this run")
+    ap.add_argument("--per-position", type=int, default=4, help="real positions: at most this many matching placements of a frame from one position (its evidence spreads over boards)")
+    ap.add_argument("--tries", type=int, default=50, help="real positions: look at no more than cap x this many assignments for a frame's matches")
     ap.add_argument("--max-rows", type=int, default=20000, help="a frame's evidence is cut past this many rows (flagged incomplete)")
     ap.add_argument("--frames", default="extend", choices=["extend", "contests"], help="extend: frames grow by types x geometry; contests: frames are the contested pieces with their attackers and defenders found in the positions, by priority")
     ap.add_argument("--mode", default="batch", choices=["batch", "counter"], help="batch: majority claim + guard search with coverage/purity; counter: believe until a counterexample, add what separates it, stop after 200 confirmations")
@@ -1670,12 +1698,14 @@ def main(argv=None):
                     rows.append(fen)
             _r.Random(a.seed).shuffle(rows); fens = rows[: a.positions]
             print(f"[lemma_gen] lichess source ({a.split} part): {len(fens)} positions of the general population")
-        dom = domain(fens, oracle=a.oracle, worth=a.worth, worth_tau=a.worth_tau, depth=a.depth, shapes=not a.no_shapes)
+        dom = domain(fens, oracle=a.oracle, worth=a.worth, worth_tau=a.worth_tau, depth=a.depth, shapes=not a.no_shapes, per_position=a.per_position, try_factor=a.tries)
     else:
         raise SystemExit(f"unknown domain {a.domain}")
     global _RELATIVE, _LIFT, _GAIN, _PREFIXES
     _RELATIVE = a.relative; _LIFT = a.lift; _GAIN = a.gain; _PREFIXES = tuple(x for x in a.prefixes.split(",") if x)
     _PROVENANCE.update(oracle=a.oracle, depth=a.depth, relative=a.relative, lift=a.lift, gain=a.gain, prefixes=a.prefixes if a.lift else "", mode=a.mode, frames=a.frames)
+    if getattr(dom.placements, "sampling", None):
+        _PROVENANCE["sampling"] = dom.placements.sampling                  # real positions: the cap counts matches spread over boards (review 2026-09-24)
     _USE_CORE[0] = not a.no_core
     if a.cmd in ("prove", "examples", "generalize") and a.library:
         made = next((e.get("made_under") for e in json.load(open(a.library)) if e.get("made_under")), None)

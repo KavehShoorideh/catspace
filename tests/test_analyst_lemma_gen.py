@@ -362,3 +362,14 @@ def test_contest_run_resumed_at_a_size_boundary_evaluates_that_size(tmp_path, mo
     n3 = len(g2.contest_frontier()[3])
     assert n3 > 0
     assert any(l.startswith(f"[lemma_gen] size 3: {n3} frames to evaluate") for l in lines), [l for l in lines if "size 3" in l]
+
+
+def test_counterexample_mode_states_the_majority_claim():
+    """Review 2026-09-24: the claim came from the first five rows (one piece, one position) and was never revised, so
+    lemmas claimed what held in a tenth of their rows; the claim is canonical now, like the guard."""
+    g = lg.Generator(domain(), cap=800, log=lambda *a, **k: None, mode="counter")
+    for fr, slot in ((lg.Frame(("P", "R"), (("aligned", (0, 1), True),)), 1), (lg.Frame(("K", "N"), (("aligned", (0, 1), True),)), 1),
+                     (lg.Frame(("P", "Q"), (("aligned", (0, 1), True),)), 1)):
+        l = g.evaluate(fr, slot, [])
+        assert l is not None and l.holds * 2 >= l.support, (fr.text(), slot, l.claim, l.holds, l.support)
+        assert isinstance(l.heterogeneous, list)
