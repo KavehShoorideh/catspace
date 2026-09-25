@@ -1021,7 +1021,20 @@ class Generator:
         self.seen_signatures = {deep_tuple(k): None for k in st["seen"]}
         return st
 
-    def run(self, max_size: int = 3, min_support: int = 60, admit_cov: float = 0.9, admit_pur: float = 0.8, resume: bool = False, ckpt_every: int = 100):
+    def rebuild_frontier(self, size: int) -> list:
+        """The frontier of `size` rebuilt from the library: every admitted or rejected frame of size-1 extended and
+        joined under the CURRENT extension rules (for a resume after the rules changed)."""
+        seen = {}
+        frames = [l.frame for l in self.library if l.frame.size == size - 1] + [f for f, r in self.residual_frames if f.size == size - 1]
+        for fr in frames:
+            for f in self.extend(fr) + self.joins(fr, size):
+                if f.size != size:
+                    continue
+                f = f.canon(self.dom.symmetries)
+                seen.setdefault((f.types, f.literals), f)
+        return list(seen.values())
+
+    def run(self, max_size: int = 3, min_support: int = 60, admit_cov: float = 0.9, admit_pur: float = 0.8, resume: bool = False, ckpt_every: int = 100, rebuild: bool = False):
         t0 = time.perf_counter()
         starts = [self.dom.root] if self.dom.root else list(self.dom.types)
         frontier = list({f.types: f for f in (Frame((t,), ()).canon(self.dom.symmetries) for t in starts)}.values())
@@ -1036,6 +1049,12 @@ class Generator:
                 carried = ([frame_from_json(f) for f in st["next_frontier"]], st["counters"])
                 for l in self.library:
                     by_actor[l.frame.types[l.slot]].append(l)
+                if rebuild and not done:
+                    frontier = self.rebuild_frontier(start_size)
+                    if self.max_frames and len(frontier) > self.max_frames:
+                        counts = self._count_frontier(frontier)
+                        frontier = [f for f, _ in sorted(zip(frontier, counts), key=lambda fc: -fc[1])[: self.max_frames]]
+                    self.log(f"[lemma_gen] frontier REBUILT for size {start_size} under the current extension rules: {len(frontier)} frames")
                 self.log(f"[lemma_gen] RESUME at size {start_size}: {len(done)}/{len(frontier)} frames done, {len(self.library)} lemmas")
         for size in range(start_size, max_size + 1):
             if deferred.get(size) and not (carried and size == start_size):
@@ -1168,8 +1187,8 @@ class Generator:
         det = self.type_determined() if self.dom.type_tree else set()       # worth, side, kind are type attributes: with top-down types they are SPLITS, not frame literals (the full run of 2026-09-24 stalled on 'any piece, any piece, a king worth at least each': true of every triple, 100k rows a frame)
         for t in ([self.dom.root] if self.dom.root else self.dom.types):     # the new slot starts at the root type and splits only if its guard fails
             for r in self.state_rels:
-                if r.arity != 2 or r.name in det:
-                    continue
+                if r.arity != 2 or r.name in det or r.name.startswith(("after_", "then_", "some_", "threat_")):
+                    continue                                                  # a frame is GEOMETRY between pieces (attacks, defends, aligned); the lifted and quantified words explain outcomes -- as frame literals they are near-tautologies ('the knight has some move that does not capture' headed the second frontier, 17:23)
                 for s in range(k):
                     for sl in ((s, k), (k, s)):
                         out.append(Frame(frame.types + (t,), frame.literals + ((r.name, sl, True),), parent=frame))
@@ -1565,6 +1584,7 @@ def main(argv=None):
     ap.add_argument("--library", default=str(OUT / "library_chess.json")); ap.add_argument("--proved", default=str(OUT / "proved_chess.json")); ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--max-size", type=int, default=3); ap.add_argument("--cap", type=int, default=3000); ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", action="store_true", help="continue a run from its checkpoint (same flags)")
+    ap.add_argument("--rebuild-frontier", action="store_true", help="on resume at a size boundary, rebuild that size's frontier from the library under the current extension rules")
     ap.add_argument("--no-sequential", action="store_true", help="always draw the full cap (no quarter-sample early decision)")
     ap.add_argument("--no-core", action="store_true", help="do not use the compiled core (analyst_core) for outcomes and base literals")
     ap.add_argument("--tag", default="", help="suffix for the library/residual/checkpoint files of this run")
@@ -1631,7 +1651,7 @@ def main(argv=None):
         generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
     g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins, prefixes=_PREFIXES, sequential=not a.no_sequential, use_core=not a.no_core, max_rows=a.max_rows, mode=a.mode)
     g.tag = a.tag
-    lib = g.run(max_size=a.max_size, resume=a.resume)
+    lib = g.run(max_size=a.max_size, resume=a.resume, rebuild=a.rebuild_frontier)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
 
 
