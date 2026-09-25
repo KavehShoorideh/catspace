@@ -435,11 +435,8 @@ def resolved_reply_scalar(after: State, e: int) -> float:
 def resolved_null_reply_scalar(state: State, e: int) -> float:
     b = state.board.copy(stack=False)
     side = b.piece_at(e).color
-    b.turn = side
-    if b.is_check():
-        return None
-    b.turn = not side
-    if not b.is_valid():
+    b = passed(b, side)
+    if b is None:
         return None
     return resolved_reply_scalar(State(b, list(state.ids)), e)
 
@@ -502,6 +499,20 @@ def _ids_after(ids: list, b: chess.Board, m: chess.Move) -> list:
     return [moved.get(s, None if s in captured else s) for s in ids]
 
 
+def passed(board: chess.Board, side: chess.Color | None = None) -> chess.Board | None:
+    """THE PASS (the null move) by `side` (default: the side to move): the turn goes to the opponent and the
+    en-passant right lapses, as after any real move and as the compiled core's swap_turn does. None when `side` is in
+    check (standing still is illegal). A bare turn flip kept the en-passant square, which python-chess calls invalid,
+    so every pass after a double pawn push read as illegal (review 2026-09-24)."""
+    b = board.copy(stack=False)
+    if side is not None:
+        b.turn = side
+    if b.is_check():
+        return None
+    b.turn = not b.turn; b.ep_square = None
+    return b if b.is_valid() else None
+
+
 def _episode(st: State, side: chess.Color, depth: int, alpha: float, beta: float, want_pv: bool) -> tuple:
     """THE FRAME EPISODE (Kaveh 2026-09-24: "k pieces in a frame imply as many plies -- each piece makes its move in
     its right time"): after the action, up to `depth` plies; the side to move may PASS (the null move: the line goes
@@ -520,8 +531,8 @@ def _episode(st: State, side: chess.Color, depth: int, alpha: float, beta: float
         moves = list(b.legal_moves)
     else:
         moves = [m for m in b.legal_moves if b.is_capture(m) or m.promotion or b.gives_check(m) or (depth > 1 and m.from_square in frame_sq)]
-        nb = b.copy(stack=False); nb.turn = not nb.turn
-        if nb.is_valid():
+        nb = passed(b)
+        if nb is not None:
             children.append(State(nb, list(st.ids)))                         # the pass
     moves.sort(key=lambda m: -(VAL[b.piece_at(m.to_square).piece_type] if b.piece_at(m.to_square) else 0.0))
     for m in moves:
@@ -570,25 +581,19 @@ def frame_threat_state(state: State, e: int) -> State | None:
     side = b.piece_at(e).color if b.piece_at(e) else None
     if side is None:
         return None
-    b.turn = side
-    if b.is_check():
+    b = passed(b, side)
+    if b is None:
         return None
-    b.turn = not side
-    if not b.is_valid():
-        return None
-    passed = State(b, list(state.ids))
-    _, pv = frame_episode_pv(passed, side, 1)
-    return pv[0] if pv else passed
+    after_pass = State(b, list(state.ids))
+    _, pv = frame_episode_pv(after_pass, side, 1)
+    return pv[0] if pv else after_pass
 
 
 def frame_null_reply_scalar(state: State, e: int, depth: int | None = None) -> float:
     b = state.board.copy(stack=False)
     side = b.piece_at(e).color
-    b.turn = side
-    if b.is_check():
-        return None
-    b.turn = not side
-    if not b.is_valid():
+    b = passed(b, side)
+    if b is None:
         return None
     return frame_reply_scalar(State(b, list(state.ids)), e, depth)
 
@@ -600,11 +605,8 @@ def null_reply_scalar(state: State, e: int) -> float:
     when the actor is in check: there is no null move."""
     b = state.board.copy(stack=False)
     side = b.piece_at(e).color
-    b.turn = side
-    if b.is_check():
-        return None
-    b.turn = not side
-    if not b.is_valid():
+    b = passed(b, side)
+    if b is None:
         return None
     return reply_scalar(State(b, list(state.ids)), e)
 

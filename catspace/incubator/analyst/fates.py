@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 import chess
 
-from .chess_domain import State, _ids_after, frame_episode_pv, frame_scalar, _frame_material
+from .chess_domain import State, _ids_after, frame_episode_pv, frame_scalar, _frame_material, passed
 from .frames import signature
 
 
@@ -34,7 +34,9 @@ def fates_of(start: State, line: list) -> list:
         cur = list(st.ids)
         for i, (a, b) in enumerate(zip(prev, cur)):
             if a is not None and b is None:
-                captor = next((j for j, (pa, pb) in enumerate(zip(prev, cur)) if j != i and pa != pb and pb == a), -1)
+                captor = next((j for j, (pa, pb) in enumerate(zip(prev, cur)) if j != i and pa != pb and pb == a), None)
+                if captor is None:                                            # en passant: no slot lands on the victim's square; one move a ply, so the slot that moved took it
+                    captor = next((j for j, (pa, pb) in enumerate(zip(prev, cur)) if j != i and pa is not None and pb is not None and pa != pb), -1)
                 out[i] = Fate(i, False, captor, k, None)
         prev = cur
     for i, sq in enumerate(prev):
@@ -102,11 +104,8 @@ class Outcome:
 def pass_value(board: chess.Board, ids: list, side: chess.Color, depth: int) -> float | None:
     """The frame's episode value if `side` stands still (the null move): the baseline a move is measured against, so
     a quiet move does not get credit for a tactic that was available anyway. None when standing still is illegal."""
-    b = board.copy(stack=False); b.turn = side
-    if b.is_check():
-        return None
-    b.turn = not side
-    if not b.is_valid():
+    b = passed(board, side)
+    if b is None:
         return None
     v, _ = frame_episode_pv(State(b, list(ids)), side, depth)
     return v
@@ -155,10 +154,9 @@ def _episode_forced_pass(st: State, side: chess.Color, depth: int, ply: int, at,
     us = b.turn == side
     frame_sq = {x for x in st.ids if x is not None}
     children = []
-    if not b.is_check():
-        nb = b.copy(stack=False); nb.turn = not nb.turn
-        if nb.is_valid():
-            children.append((0.0, State(nb, list(st.ids))))
+    nb = passed(b)
+    if nb is not None:
+        children.append((0.0, State(nb, list(st.ids))))
     forced = (ply in at) if isinstance(at, (set, frozenset, tuple, list)) else (ply == at)
     if not forced:                                                            # at an intermezzo ply only the pass is available
         for m in b.legal_moves:
@@ -269,10 +267,9 @@ def _episode_goal(st: State, side: chess.Color, depth: int, goal, start: State, 
     us = b.turn == side
     frame_sq = {x for x in st.ids if x is not None}
     children = []
-    if not b.is_check():
-        nb = b.copy(stack=False); nb.turn = not nb.turn
-        if nb.is_valid():
-            children.append((0.0, State(nb, list(st.ids))))
+    nb = passed(b)
+    if nb is not None:
+        children.append((0.0, State(nb, list(st.ids))))
     for m in b.legal_moves:
         if b.is_check() or b.is_capture(m) or m.promotion or b.gives_check(m) or (depth > 1 and m.from_square in frame_sq):
             nb = b.copy(stack=False); nb.push(m)
@@ -303,7 +300,7 @@ def achievable(board: chess.Board, ids: list, actor: int, goal, depth: int = 0, 
             continue
         nb = board.copy(stack=False); nb.push(m)
         after = State(nb, _ids_after(list(ids), board, m))
-        v, ln = _episode_goal(after, side, d - 1, goal, st, [after], -1e9, 1e9)
+        v, ln = _episode_goal(after, side, d, goal, st, [after], -1e9, 1e9)   # d plies after the move, as outcome() counts them (d - 1 missed a fork that wins on ply 3)
         if best is None or v > best[0]:
             best = (v, m, ln)
     if best is None:

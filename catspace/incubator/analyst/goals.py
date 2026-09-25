@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 import chess
 
 from .chains import known_frames
-from .chess_domain import VAL
+from .chess_domain import VAL, passed
 from .fates import Outcome, outcome
 
 MATE = 500.0                                                                 # values beyond this are mates: their own class, above any material bound
@@ -55,6 +55,8 @@ def neighbourhood(board: chess.Board, move: chess.Move, max_pieces: int = 12) ->
     ids = [move.from_square]
     if board.piece_at(move.to_square) is not None:
         ids.append(move.to_square)
+    elif board.is_en_passant(move):
+        ids.append(chess.square(chess.square_file(move.to_square), chess.square_rank(move.from_square)))   # the pawn taken en passant stands beside the destination
     frontier = [(0, move.to_square)]
     for hop in range(3):
         nxt = []
@@ -159,11 +161,8 @@ def best_goal(app, board: chess.Board, prune: bool = True, depth: int = 0, max_o
 
 def threats(app, board: chess.Board, depth: int = 0) -> dict:
     """The opponent's best goal if we pass: never pruned. None when we are in check (no pass)."""
-    b = board.copy(stack=False)
-    if b.is_check():
-        return dict(best=None, choices=[], opened=0)
-    b.turn = not b.turn
-    if not b.is_valid():
+    b = passed(board)
+    if b is None:
         return dict(best=None, choices=[], opened=0)
     return best_goal(app, b, prune=False, depth=depth)
 
@@ -225,7 +224,8 @@ def main(argv=None):
         for score, c, theirs in decide(app, b)[:5]:
             print(f"  {b.san(c.move):7s} score {score:+.1f} = ours {c.value:+.1f} - theirs {theirs:+.1f}")
     else:
-        rows = [json.loads(l)["fen"] for l in open("data/derived/chessbench_positions.jsonl")]
+        from catspace.io import paths
+        rows = [json.loads(l)["fen"] for l in open(paths.derived("chessbench_positions.jsonl"))]
         random.Random(5).shuffle(rows)
         boards = [chess.Board(f) for f in rows[: a.n] if not chess.Board(f).is_game_over()]
         audit(app, boards)

@@ -58,3 +58,26 @@ def test_intermezzo_by_composition_needs_no_big_frame():
     assert v23 == 0.0 and not f23[0].alive and f23[0].ply == 4
     c = F.compose(b, IDS, chess.Move.from_uci("e4d6"), k=2, b_value=1.0, b_plies=2, depth=4)
     assert c["value"] == 1.0 and c["a_value"] == 0.0 and c["at"] == 2
+
+
+def test_en_passant_in_the_frame_episode():
+    """Review 2026-09-24: a pass after a double pawn push is legal (the en-passant right lapses; a bare turn flip kept
+    it and read as illegal), and a pawn taken en passant was taken by the frame pawn that moved, not by an outsider."""
+    from catspace.incubator.analyst.chess_domain import passed
+    dom = domain(oracle="frame")
+    with_ep, without = chess.Board("4k3/8/8/3n4/4P3/8/8/4K3 b - e3 0 1"), chess.Board("4k3/8/8/3n4/4P3/8/8/4K3 b - - 0 1")
+    assert passed(with_ep) is not None and passed(with_ep).turn == chess.WHITE
+    ids = [chess.D5, chess.E4]
+    assert F.pass_value(with_ep, ids, chess.BLACK, 2) == F.pass_value(without, ids, chess.BLACK, 2)
+    b = chess.Board("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1")
+    o = F.outcome(dom, b, [chess.E5, chess.D5], chess.Move.from_uci("e5d6"))
+    assert o.fates[1].alive is False and o.fates[1].captor == 0
+
+
+def test_achievable_searches_as_deep_as_the_outcome():
+    """The knight fork wins the rook on ply 3; the outcome sees it, so the goal is achievable (d - 1 plies missed it)."""
+    dom = domain(oracle="frame")
+    b = chess.Board("r3k3/8/8/1N6/8/8/8/6K1 w - - 0 1"); ids = [chess.B5, chess.A8]
+    assert F.outcome(dom, b, ids, chess.Move.from_uci("b5c7")).fates[1].alive is False
+    a = F.achievable(b, ids, chess.B5, F.captured(1))
+    assert a["yes"] and a["move"] == chess.Move.from_uci("b5c7")
