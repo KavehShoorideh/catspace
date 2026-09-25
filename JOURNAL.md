@@ -22874,6 +22874,23 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 19:27 PDT — the exchange-centric frontier: first smoke (OBS)
+
+Kaveh, after the reasoning exercise: "you have the strong part that I am lacking, use that to guide the way the
+lemmas are calculated." The atom of that reasoning is a contested piece with its attackers and defenders, asked in
+order: king in check, undefended, balanced, rest. Built as `Domain.contests` + `--frames contests`: the frontier per
+size is the contest frames found in the positions (kind-level types, attack/defend literals), canonical, ordered by
+priority then frequency; everything after the frontier is unchanged.
+
+Smoke (5,000 general-population positions, sizes ≤4, cap 300, 2 workers): 17,415 contests seen -> 35 distinct frames
+at size 2, 249 at size 3, 635 at size 4 (against 1,809 / 3,000 / 3,000 for types x relations); 65 lemmas in 239 s;
+size 4 admitted nothing because with 5,000 positions the specific four-piece contests fall under the 30-row
+support (more positions, not more frames, is the fix). The lemmas read like the reasoning: `[B P] attacks(0,1): the
+pawn acting keeps unless it lands attacked`, `[K N] attacks(0,1): the knight acting keeps unless it lands attacked`
+(the king attacks it: it must move to a safe square), `[N P] attacks(1,0): the knight keeps unless it is attacked and
+can capture`. Next: the same frontier on 50,000 positions in counter mode as the cheap library, and the two
+libraries through the chain gauge and the used-lemma count.
+
 ## 2026-09-24 18:28 PDT — counter mode vs batch on the sampled world (OBS, sizes ≤2, cap 800, 2 workers)
 
 | | counter | batch |
