@@ -1014,8 +1014,10 @@ class Generator:
         if not p.exists():
             return None
         st = json.load(open(p))
-        if st.get("made_under") != dict(_PROVENANCE):
-            raise SystemExit(f"[lemma_gen] checkpoint was made under {st.get('made_under')}, this run is {dict(_PROVENANCE)}: not resuming")
+        made = dict(st.get("made_under") or {})
+        now = dict(_PROVENANCE)
+        if any(made.get(k, now.get(k)) != v for k, v in now.items() if k != "mode") or made.get("mode", "batch") != now.get("mode", "batch"):
+            raise SystemExit(f"[lemma_gen] checkpoint was made under {made}, this run is {now}: not resuming")
         self.library = [lemma_from_json(e) for e in st["library"]]
         self.residual_frames = [(frame_from_json(f), r) for f, r in st["residual"]]
         self.seen_signatures = {deep_tuple(k): None for k in st["seen"]}
