@@ -22874,6 +22874,16 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 17:55 PDT — size 3 moving: 100 frames in 16 minutes (OBS)
+
+After the rebuild the pool advances: frames 1-100 of 3,000 in 960 s with 10 workers (about 10 s a frame), 56
+admitted among them, 308 lemmas in all. At that rate size 3 ends in roughly eight hours; size 4 would be longer
+and is a decision for the morning (Kaveh: "having the threes fully enumerated is actually useful"). One leftover:
+the size-2 library was built before the geometry rule, so some size-2 frames carry a quantified literal (`[* N]
+some_not_captures_worth_ge`) and their size-3 children inherit it beside a geometric one (`aligned(2,0) &
+some_not_captures_worth_ge(2,1)`); those lemmas are redundant with their geometric parents, not wrong, and the
+next run from scratch will not have them.
+
 ## 2026-09-24 17:35 PDT — the second frontier stall: frames are geometry, guards are vocabulary
 
 The relaunched run's size-3 frontier was headed by `[* * N] some_not_captures_worth_ge(2,0) &
