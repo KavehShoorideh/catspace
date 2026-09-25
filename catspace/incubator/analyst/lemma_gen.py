@@ -633,27 +633,37 @@ class Generator:
         then look at it until we figure out what we need to add ... get out of the statistics entirely"). The law is
         stated from the first `warm` rows; rows then stream one at a time and nothing happens on a confirming row. A
         counterexample -- the claim fails and no guard term fires -- triggers the search for the term (one or two
-        literals) that is true on it and on the pending counterexamples and false on nearly every row where the law
-        held so far; that term joins the guard. A counterexample no term separates stays pending (the residual). The
-        fit ends after `confirm` consecutive rows that changed nothing, or at the row cap. Belief = confirmations
-        since the last revision, recorded on the lemma; no coverage or purity bar."""
+        literals) true on it and on the pending counterexamples and false on nearly every row where the law held so
+        far; that term joins the working guard. A counterexample no term separates stays pending (the residual). The
+        stream ends after `confirm` consecutive rows that changed nothing, or at the row cap. Then the guard is made
+        CANONICAL: re-chosen over everything seen by the batch search, so the lemma's identity does not depend on the
+        order of the draw (the first smoke showed order-shaped guards). Belief = confirmations since the last
+        revision, recorded on the lemma; no coverage or purity bar decides admission. Literal truth columns are kept
+        incrementally, so a counterexample costs bitset operations, not a pass over the rows."""
         inherits = inherits or []
         thr = self.gain_threshold
         lose = lambda d: (d < 0) if thr is None else (d < thr)
-        rows = []; claim = None; exc_rows = []; inherited = []; parents = []; reversed_ = False
-        guard: list = []; pending: list = []; since = 0; cache: dict = {}
-        stream = self.iter_rows(frame, slot)
+        rows = []; claim = None; inherited = []; parents = []; reversed_ = False
+        guard: list = []; pending: list = []; since = 0
+        lits = self.candidate_literals(frame.size)
+        cols = {l: 0 for l in lits}                                          # literal -> truth column over the rows seen (bitset)
+        held_mask = 0; exc_mask = 0
         complete = True
-        for row, complete in stream:
-            rows.append(row)
-            i = len(rows) - 1
+        def fires(term, i):
+            return all(((cols[(r, sl)] >> i) & 1) == (1 if pol else 0) for r, sl, pol in term)
+        for row, complete in self.iter_rows(frame, slot):
+            i = len(rows); rows.append(row)
+            state, ids, a, d = row
+            for l in lits:
+                if self.lit_value(state, ids, a, l[0], l[1]):
+                    cols[l] |= 1 << i
             if claim is None:
                 if len(rows) < warm:
                     continue
                 n_lose = sum(1 for r in rows if lose(r[3]))
                 claim = ("acting loses" if thr is None else "acting does not gain") if n_lose * 2 >= len(rows) else ("acting keeps" if thr is None else "acting gains")
                 for pclaim, pguard, ptext, missing in inherits:
-                    if any(not self._lit(r[0], r[1], rr, sl, pol) for r in rows for rr, sl, pol in missing):
+                    if any(not self.lit_value(r[0], r[1], r[2], rr, sl) == pol for r in rows for rr, sl, pol in missing):
                         continue
                     if pclaim != claim:
                         reversed_ = True; parents.append(ptext + " [opposite claim]"); continue
@@ -662,34 +672,32 @@ class Generator:
             else:
                 todo = [i]
             for j in todo:
-                r = rows[j]
-                is_exc = (not lose(r[3])) if claim in ("acting loses", "acting does not gain") else lose(r[3])
+                is_exc = self._is_exc(rows[j], claim, lose)
                 if not is_exc:
+                    held_mask |= 1 << j; since += 1; continue
+                exc_mask |= 1 << j
+                if any(fires(t, j) for t in inherited + guard):
                     since += 1; continue
-                if any(all(self._lit(r[0], r[1], rr, sl, pol, action=r[2]) == True for rr, sl, pol in term) for term in inherited + guard):
-                    since += 1; continue                                      # explained by a term already in the guard
                 pending.append(j); since = 0
-                term = self._separating_term(frame, rows, [k for k in range(len(rows)) if k not in pending and not self._is_exc(rows[k], claim, lose)], pending, cache)
+                term = self._separating_term_masks(cols, pending, held_mask, len(rows))
                 if term is not None:
                     guard.append(term)
-                    pending = [k for k in pending if not all(self._lit(rows[k][0], rows[k][1], rr, sl, pol, action=rows[k][2]) for rr, sl, pol in term)]
+                    pending = [k for k in pending if not fires(term, k)]
             if since >= confirm and claim is not None:
                 complete = False
                 break
         if claim is None or len(rows) < warm:
             return None
         n = len(rows); all_mask = (1 << n) - 1
+        cache = {l: m for l, m in cols.items()}                              # the batch search reuses the columns
         exc = sum(1 << k for k in range(n) if self._is_exc(rows[k], claim, lose))
         holds = n - _popcount(exc)
         covered_inh = 0
         for term in inherited:
             covered_inh |= self.term_mask(rows, term, cache, all_mask) & exc
         rest = exc & ~covered_inh
-        matched = 0
-        for term in guard:
-            matched |= self.term_mask(rows, term, cache, all_mask)
-        covered = _popcount(matched & rest); residual = _popcount(rest) - covered
-        purity = _popcount(matched & exc) / max(1, _popcount(matched)) if guard else 1.0
+        guard, covered, purity, matched = self.find_guard(rows, rest, frame, cache, exc_all=exc)   # canonical form over everything seen
+        residual = _popcount(rest) - covered
         examples = pick_examples(self, rows, exc, rest, guard, cache, all_mask)
         lem = Lemma(frame, slot, claim, n, holds, guard, covered, purity, residual, complete, examples, inherited, _popcount(rest), reversed_, parents)
         lem.closure = self.frame_closure(rows, frame, cache, all_mask)
@@ -698,44 +706,41 @@ class Generator:
         lem.confirmations = since
         return lem
 
-    def _is_exc(self, row, claim, lose) -> bool:
-        return (not lose(row[3])) if claim in ("acting loses", "acting does not gain") else lose(row[3])
-
-    def _separating_term(self, frame: Frame, rows, held: list, pending: list, cache: dict, purity: float = 0.9):
-        """The literal (or pair) true on the most pending counterexamples and false on at least `purity` of the rows
-        where the law held: what has to be added to the law."""
-        if not pending:
-            return None
-        lits = []
-        for rname, sl in self.candidate_literals(frame.size):
-            on_p = [self.lit_value(rows[k][0], rows[k][1], rows[k][2], rname, sl) for k in pending]
-            for pol in (True, False):
-                hit = sum(1 for v in on_p if v == pol)
+    def _separating_term_masks(self, cols: dict, pending: list, held_mask: int, n: int, purity: float = 0.9):
+        """Over the truth columns: the literal (or pair) true on the most pending counterexamples and false on at
+        least `purity` of the rows where the law held."""
+        pend = sum(1 << k for k in pending)
+        n_held = _popcount(held_mask)
+        all_mask = (1 << n) - 1
+        best = None; scored = []
+        for l, m in cols.items():
+            for pol, mm in ((True, m), (False, all_mask & ~m)):
+                hit = _popcount(mm & pend)
                 if hit == 0:
                     continue
-                lits.append(((rname, sl, pol), hit))
-        lits.sort(key=lambda x: -x[1])
-        best = None
-        for lit, hit in lits[:40]:
-            fp = sum(1 for k in held if self.lit_value(rows[k][0], rows[k][1], rows[k][2], lit[0], lit[1]) == lit[2])
-            pur = 1 - fp / max(1, len(held))
-            if pur >= purity and (best is None or (hit, pur) > best[0]):
-                best = ((hit, pur), (lit,))
-        if best is None:                                                      # try pairs among the top literals
-            top = [l for l, _ in lits[:12]]
-            for a in range(len(top)):
-                for b in range(a + 1, len(top)):
-                    if top[a][0] == top[b][0] and top[a][1] == top[b][1]:
-                        continue
-                    term = (top[a], top[b])
-                    hit = sum(1 for k in pending if all(self.lit_value(rows[k][0], rows[k][1], rows[k][2], r, sl) == pol for r, sl, pol in term))
-                    if hit == 0:
-                        continue
-                    fp = sum(1 for k in held if all(self.lit_value(rows[k][0], rows[k][1], rows[k][2], r, sl) == pol for r, sl, pol in term))
-                    pur = 1 - fp / max(1, len(held))
-                    if pur >= purity and (best is None or (hit, pur) > best[0]):
-                        best = ((hit, pur), term)
+                pur = 1 - _popcount(mm & held_mask) / max(1, n_held)
+                scored.append((hit, pur, (l[0], l[1], pol), mm))
+                if pur >= purity and (best is None or (hit, pur) > best[0]):
+                    best = ((hit, pur), ((l[0], l[1], pol),))
+        if best is not None:
+            return best[1]
+        scored.sort(key=lambda x: -x[0])
+        top = scored[:12]
+        for a in range(len(top)):
+            for b in range(a + 1, len(top)):
+                if top[a][2][:2] == top[b][2][:2]:
+                    continue
+                mm = top[a][3] & top[b][3]
+                hit = _popcount(mm & pend)
+                if hit == 0:
+                    continue
+                pur = 1 - _popcount(mm & held_mask) / max(1, n_held)
+                if pur >= purity and (best is None or (hit, pur) > best[0]):
+                    best = ((hit, pur), (top[a][2], top[b][2]))
         return best[1] if best else None
+
+    def _is_exc(self, row, claim, lose) -> bool:
+        return (not lose(row[3])) if claim in ("acting loses", "acting does not gain") else lose(row[3])
 
     def heterogeneous_slots(self, frame: Frame, rows, exc: int, gap: float = 0.15, min_rows: int = 30) -> list:
         """TOP-DOWN SPLITTING BY EVIDENCE: an abstract slot whose leaf types have exception rates far apart (some
