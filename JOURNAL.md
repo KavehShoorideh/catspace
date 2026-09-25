@@ -22874,6 +22874,17 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 17:35 PDT — the second frontier stall: frames are geometry, guards are vocabulary
+
+The relaunched run's size-3 frontier was headed by `[* * N] some_not_captures_worth_ge(2,0) &
+some_not_captures_worth_ge(2,1)` -- "the knight has some move that does not capture something worth at least
+each" -- true almost everywhere (31,818 counts, the maximum), the same disease as the king's worth in another suit.
+Rule made explicit: a frame is GEOMETRY between pieces (attacks, defends, aligned, between); the lifted and
+quantified words explain outcomes and belong to guards only. `extend` now uses base binary geometry alone. Resume
+gained `--rebuild-frontier` (the size's frontier rebuilt from the library under the current rules) and provenance
+compares only the keys a checkpoint has. The run resumed at size 3 from the 252-lemma state; the two-mode smoke
+(counter vs batch on the sampled world) restarted after my kill pattern took it down with the run.
+
 ## 2026-09-24 17:11 PDT — the counterexample mode (built): believe until refuted, then add what separates
 
 Kaveh: "until we see a counterexample we should believe in something ... then look at it until we figure out what
