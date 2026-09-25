@@ -321,3 +321,14 @@ def test_resume_mid_size_continues_from_the_checkpoint(tmp_path, monkeypatch):
     g2 = lg.Generator(domain(), cap=60, log=lambda *a, **k: None)
     lib = g2.run(max_size=2, resume=True)
     assert len(lib) >= 1 and g2.load_checkpoint()["size"] == 3
+
+
+def test_counterexample_mode_learns_the_law_from_few_rows():
+    """Believe until a counterexample: the lone queen's law and its guard arrive from a few hundred rows, with the
+    belief recorded as confirmations; the batch mode's guard on the same frame is the same word."""
+    g = lg.Generator(domain(), cap=2000, log=lambda *a, **k: None, mode="counter")
+    l = g.evaluate(lg.Frame(("wQ",), ()), 0, [])
+    assert l is not None and l.claim == "acting keeps"
+    assert any(any(r == "lands_attacked" for r, sl, pol in t) for t in l.guard), l.guard
+    assert l.support < 2000 * 20 and l.confirmations >= 100
+    assert l.residual <= 0.05 * (l.covered + l.residual + 1)

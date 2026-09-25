@@ -22874,6 +22874,22 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 17:11 PDT — the counterexample mode (built): believe until refuted, then add what separates
+
+Kaveh: "until we see a counterexample we should believe in something ... then look at it until we figure out what
+we need to add ... get out of the statistics entirely." Built `--mode counter` (`Generator.fit_counterexamples`):
+the law is stated from the first five rows; rows stream one at a time; a confirming row does nothing; a
+counterexample (the claim fails, no guard term fires) triggers the search for the literal or pair true on it and the
+pending counterexamples and false on ≥90% of the rows where the law held -- that term joins the guard; a
+counterexample nothing separates stays pending (the residual); the fit stops after 200 consecutive confirmations.
+No coverage or purity bar; the belief is the confirmation count, recorded on the lemma and in the provenance.
+
+OBS, the lone queen in the sampled world: counter mode 210 rows in 0.1 s, guard `lands_attacked`, 16/16
+counterexamples explained, 200 confirmations; batch mode 20,026 rows in 1.2 s, the same guard, 1,702/1,702. Same
+law, a hundredth of the evidence. A two-mode smoke on the sampled world (sizes ≤2, cap 800) is running for the
+agreement between the two libraries and the rows used. The full run (batch, sizes ≤4) continues as Kaveh asked:
+the fully enumerated threes are the material for fives and sixes.
+
 ## 2026-09-24 16:20 PDT — the full run stalled on vacuous frames; two generic fixes; relaunch
 
 Two hours into size 3 with no progress mark. Isolated timings said frames take 1-50 s (the most frequent

@@ -177,6 +177,7 @@ class Lemma:
     sampled_small: bool = False                        # decided on the quarter sample (sequential sampling)
     heterogeneous: list = field(default_factory=list)  # abstract slots whose leaf types behave differently (exception rates apart): split them
     refined: int = 0                                   # false positives of the inherited guards removed here by refining their terms ("unless ..., except when ...")
+    confirmations: int = 0                             # counterexample mode: rows since the last revision (the belief)
 
     def full_guard(self):
         return list(self.inherited) + list(self.guard)
@@ -378,11 +379,12 @@ def made_under(library_path) -> dict:
 
 
 class Generator:
-    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0, prefixes=None, sequential: bool = True, use_core: bool = True, max_rows: int = 20000):
+    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0, prefixes=None, sequential: bool = True, use_core: bool = True, max_rows: int = 20000, mode: str = "batch"):
         self.max_joins = max_joins
         self.sequential = sequential
         self.use_core = use_core
         self.max_rows = max_rows
+        self.mode = mode
         if lift:
             dom = lifted(dom, prefixes if prefixes is not None else ("after", "then", "some"))
         self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj; self.term_purity = term_purity
@@ -608,6 +610,8 @@ class Generator:
         with the same actor. The frame's claim is its own majority; the inherited guards of the same polarity are
         applied first, and only what they leave is explained here."""
         inherits = inherits or []
+        if self.mode == "counter":
+            return self.fit_counterexamples(frame, slot, inherits)
         # SEQUENTIAL SAMPLING (Kaveh 2026-09-24: "I understand it in a couple of seconds"): a quarter of the cap first;
         # when the verdict is decisive either way the full sample is not drawn. The small sample is a prefix of the
         # full one (same seed), so the two agree where they overlap.
@@ -622,6 +626,116 @@ class Generator:
         if len(rows) < 30:
             return None
         return self._fit(frame, slot, inherits, rows, complete)
+
+    # ---------------------------------------------------------------- the counterexample mode
+    def fit_counterexamples(self, frame: Frame, slot: int, inherits: list, confirm: int = 200, warm: int = 5) -> Lemma | None:
+        """COUNTEREXAMPLE-DRIVEN (Kaveh 2026-09-24: "until we see a counterexample we should believe in something ...
+        then look at it until we figure out what we need to add ... get out of the statistics entirely"). The law is
+        stated from the first `warm` rows; rows then stream one at a time and nothing happens on a confirming row. A
+        counterexample -- the claim fails and no guard term fires -- triggers the search for the term (one or two
+        literals) that is true on it and on the pending counterexamples and false on nearly every row where the law
+        held so far; that term joins the guard. A counterexample no term separates stays pending (the residual). The
+        fit ends after `confirm` consecutive rows that changed nothing, or at the row cap. Belief = confirmations
+        since the last revision, recorded on the lemma; no coverage or purity bar."""
+        inherits = inherits or []
+        thr = self.gain_threshold
+        lose = lambda d: (d < 0) if thr is None else (d < thr)
+        rows = []; claim = None; exc_rows = []; inherited = []; parents = []; reversed_ = False
+        guard: list = []; pending: list = []; since = 0; cache: dict = {}
+        stream = self.iter_rows(frame, slot)
+        complete = True
+        for row, complete in stream:
+            rows.append(row)
+            i = len(rows) - 1
+            if claim is None:
+                if len(rows) < warm:
+                    continue
+                n_lose = sum(1 for r in rows if lose(r[3]))
+                claim = ("acting loses" if thr is None else "acting does not gain") if n_lose * 2 >= len(rows) else ("acting keeps" if thr is None else "acting gains")
+                for pclaim, pguard, ptext, missing in inherits:
+                    if any(not self._lit(r[0], r[1], rr, sl, pol) for r in rows for rr, sl, pol in missing):
+                        continue
+                    if pclaim != claim:
+                        reversed_ = True; parents.append(ptext + " [opposite claim]"); continue
+                    inherited.extend(t for t in pguard if t not in inherited); parents.append(ptext)
+                todo = list(range(len(rows)))
+            else:
+                todo = [i]
+            for j in todo:
+                r = rows[j]
+                is_exc = (not lose(r[3])) if claim in ("acting loses", "acting does not gain") else lose(r[3])
+                if not is_exc:
+                    since += 1; continue
+                if any(all(self._lit(r[0], r[1], rr, sl, pol, action=r[2]) == True for rr, sl, pol in term) for term in inherited + guard):
+                    since += 1; continue                                      # explained by a term already in the guard
+                pending.append(j); since = 0
+                term = self._separating_term(frame, rows, [k for k in range(len(rows)) if k not in pending and not self._is_exc(rows[k], claim, lose)], pending, cache)
+                if term is not None:
+                    guard.append(term)
+                    pending = [k for k in pending if not all(self._lit(rows[k][0], rows[k][1], rr, sl, pol, action=rows[k][2]) for rr, sl, pol in term)]
+            if since >= confirm and claim is not None:
+                complete = False
+                break
+        if claim is None or len(rows) < warm:
+            return None
+        n = len(rows); all_mask = (1 << n) - 1
+        exc = sum(1 << k for k in range(n) if self._is_exc(rows[k], claim, lose))
+        holds = n - _popcount(exc)
+        covered_inh = 0
+        for term in inherited:
+            covered_inh |= self.term_mask(rows, term, cache, all_mask) & exc
+        rest = exc & ~covered_inh
+        matched = 0
+        for term in guard:
+            matched |= self.term_mask(rows, term, cache, all_mask)
+        covered = _popcount(matched & rest); residual = _popcount(rest) - covered
+        purity = _popcount(matched & exc) / max(1, _popcount(matched)) if guard else 1.0
+        examples = pick_examples(self, rows, exc, rest, guard, cache, all_mask)
+        lem = Lemma(frame, slot, claim, n, holds, guard, covered, purity, residual, complete, examples, inherited, _popcount(rest), reversed_, parents)
+        lem.closure = self.frame_closure(rows, frame, cache, all_mask)
+        lem.value = frame_values(rows, exc)
+        lem.sig = (tuple(frame.types), slot, n, holds, hashlib.sha1(exc.to_bytes((exc.bit_length() + 7) // 8 or 1, "little")).hexdigest()[:12])
+        lem.confirmations = since
+        return lem
+
+    def _is_exc(self, row, claim, lose) -> bool:
+        return (not lose(row[3])) if claim in ("acting loses", "acting does not gain") else lose(row[3])
+
+    def _separating_term(self, frame: Frame, rows, held: list, pending: list, cache: dict, purity: float = 0.9):
+        """The literal (or pair) true on the most pending counterexamples and false on at least `purity` of the rows
+        where the law held: what has to be added to the law."""
+        if not pending:
+            return None
+        lits = []
+        for rname, sl in self.candidate_literals(frame.size):
+            on_p = [self.lit_value(rows[k][0], rows[k][1], rows[k][2], rname, sl) for k in pending]
+            for pol in (True, False):
+                hit = sum(1 for v in on_p if v == pol)
+                if hit == 0:
+                    continue
+                lits.append(((rname, sl, pol), hit))
+        lits.sort(key=lambda x: -x[1])
+        best = None
+        for lit, hit in lits[:40]:
+            fp = sum(1 for k in held if self.lit_value(rows[k][0], rows[k][1], rows[k][2], lit[0], lit[1]) == lit[2])
+            pur = 1 - fp / max(1, len(held))
+            if pur >= purity and (best is None or (hit, pur) > best[0]):
+                best = ((hit, pur), (lit,))
+        if best is None:                                                      # try pairs among the top literals
+            top = [l for l, _ in lits[:12]]
+            for a in range(len(top)):
+                for b in range(a + 1, len(top)):
+                    if top[a][0] == top[b][0] and top[a][1] == top[b][1]:
+                        continue
+                    term = (top[a], top[b])
+                    hit = sum(1 for k in pending if all(self.lit_value(rows[k][0], rows[k][1], rows[k][2], r, sl) == pol for r, sl, pol in term))
+                    if hit == 0:
+                        continue
+                    fp = sum(1 for k in held if all(self.lit_value(rows[k][0], rows[k][1], rows[k][2], r, sl) == pol for r, sl, pol in term))
+                    pur = 1 - fp / max(1, len(held))
+                    if pur >= purity and (best is None or (hit, pur) > best[0]):
+                        best = ((hit, pur), term)
+        return best[1] if best else None
 
     def heterogeneous_slots(self, frame: Frame, rows, exc: int, gap: float = 0.15, min_rows: int = 30) -> list:
         """TOP-DOWN SPLITTING BY EVIDENCE: an abstract slot whose leaf types have exception rates far apart (some
@@ -1113,7 +1227,7 @@ _PROVENANCE: dict = {}                                                       # t
 def lemma_to_json(l: Lemma) -> dict:
     return dict(id=l.id, made_under=dict(_PROVENANCE), closure=[[r, list(sl), pol, tag] for r, sl, pol, tag in l.closure], value=l.value, frame=l.frame.text(), joined=l.frame.joined, types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim,
                 support=l.support, holds=l.holds, guard=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.guard],
-                inherited=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.inherited], parents=l.parents, reversed=l.reversed, broke=l.broke, refined=l.refined,
+                inherited=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.inherited], parents=l.parents, reversed=l.reversed, broke=l.broke, refined=l.refined, confirmations=l.confirmations,
                 covered=l.covered, purity=l.purity, residual=l.residual, complete=l.complete, examples=l.examples)
 
 
@@ -1455,6 +1569,7 @@ def main(argv=None):
     ap.add_argument("--no-core", action="store_true", help="do not use the compiled core (analyst_core) for outcomes and base literals")
     ap.add_argument("--tag", default="", help="suffix for the library/residual/checkpoint files of this run")
     ap.add_argument("--max-rows", type=int, default=20000, help="a frame's evidence is cut past this many rows (flagged incomplete)")
+    ap.add_argument("--mode", default="batch", choices=["batch", "counter"], help="batch: majority claim + guard search with coverage/purity; counter: believe until a counterexample, add what separates it, stop after 200 confirmations")
     ap.add_argument("--no-shapes", action="store_true", help="sampled placements: keep every board position of a configuration instead of one centred placement per shape")
     ap.add_argument("--joins", type=int, default=0, help="extend each frame also by joining it with up to this many known library frames (size >= 2), highest stake first")
     ap.add_argument("--depth", type=int, default=1, help="frame oracle: plies of the frame episode after the action (1 = one best reply; 0 = the frame's size, each piece gets its move)")
@@ -1502,7 +1617,7 @@ def main(argv=None):
         raise SystemExit(f"unknown domain {a.domain}")
     global _RELATIVE, _LIFT, _GAIN, _PREFIXES
     _RELATIVE = a.relative; _LIFT = a.lift; _GAIN = a.gain; _PREFIXES = tuple(x for x in a.prefixes.split(",") if x)
-    _PROVENANCE.update(oracle=a.oracle, depth=a.depth, relative=a.relative, lift=a.lift, gain=a.gain, prefixes=a.prefixes if a.lift else "")
+    _PROVENANCE.update(oracle=a.oracle, depth=a.depth, relative=a.relative, lift=a.lift, gain=a.gain, prefixes=a.prefixes if a.lift else "", mode=a.mode)
     _USE_CORE[0] = not a.no_core
     if a.cmd in ("prove", "examples", "generalize") and a.library:
         made = next((e.get("made_under") for e in json.load(open(a.library)) if e.get("made_under")), None)
@@ -1514,7 +1629,7 @@ def main(argv=None):
         refresh_examples(dom, Path(a.library), a.cap, a.workers); return
     if a.cmd == "generalize":
         generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
-    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins, prefixes=_PREFIXES, sequential=not a.no_sequential, use_core=not a.no_core, max_rows=a.max_rows)
+    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins, prefixes=_PREFIXES, sequential=not a.no_sequential, use_core=not a.no_core, max_rows=a.max_rows, mode=a.mode)
     g.tag = a.tag
     lib = g.run(max_size=a.max_size, resume=a.resume)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
