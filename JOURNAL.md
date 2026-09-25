@@ -22874,6 +22874,25 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 18:28 PDT — counter mode vs batch on the sampled world (OBS, sizes ≤2, cap 800, 2 workers)
+
+| | counter | batch |
+|---|---|---|
+| wall time | 5 s | 87 s |
+| lemmas | 36 | 107 |
+| mean rows per lemma | 531 | 1,099 |
+| frames in both libraries | 14 | 14 |
+| identical claim and guard on those | 10 of 14 | |
+
+The first version (per-row literal scans, order-shaped guards) took 2,870 s for 96 lemmas with 2 of 8 shared frames
+identical; the rewrite (incremental truth columns, canonical final guard) is 17x faster than the batch and agrees
+with it on most shared frames. It admits a third as many lemmas because the evidence-based type splits need 30
+rows per leaf and the stream stops at 200 confirmations, so fewer slots split; that is "weaker claims from fewer
+positions" (Kaveh) made concrete, and whether the 36 explain as much as the 107 is for the chain and surprise
+gauges, not for the counts. The four shared frames that differ are guards of equal purity written differently
+(`[bB bP] aligned: attacked(0)` vs `not attacks(0,1) or (defended(1) & ...)`): the canonical search sees a
+different row set, so the tie-break lands elsewhere -- a reason to prefer the shortest guard at equal coverage.
+
 ## 2026-09-24 17:55 PDT — size 3 moving: 100 frames in 16 minutes (OBS)
 
 After the rebuild the pool advances: frames 1-100 of 3,000 in 960 s with 10 workers (about 10 s a frame), 56
