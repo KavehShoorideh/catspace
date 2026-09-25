@@ -74,6 +74,7 @@ class Domain:
     type_tree: dict = None                                           # abstract type -> children (leaves are the concrete types); frames start at `root` and split a slot only where the guard fails (TOP-DOWN, Kaveh 2026-09-24)
     root: str = None                                                 # the most abstract type (None: no hierarchy, frames start concrete)
     batch_outcomes: Callable = None                                  # (state, entity id, relative) -> [(action, delta)] for every action of the entity, in one call (a compiled core); None: the Python path
+    contests: Callable = None                                        # () -> [(priority, types, ids, literals)] over the source's positions: the contested entities with their attackers and defenders (the exchange-centric frontier)
     batch_literals: Callable = None                                  # (rows, [(relation name, slots)]) -> [bitmask int per literal] for the BASE relations it knows; None: the Python path
 
     def children(self, t: str) -> list:
@@ -379,12 +380,13 @@ def made_under(library_path) -> dict:
 
 
 class Generator:
-    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0, prefixes=None, sequential: bool = True, use_core: bool = True, max_rows: int = 20000, mode: str = "batch"):
+    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0, prefixes=None, sequential: bool = True, use_core: bool = True, max_rows: int = 20000, mode: str = "batch", frames: str = "extend"):
         self.max_joins = max_joins
         self.sequential = sequential
         self.use_core = use_core
         self.max_rows = max_rows
         self.mode = mode
+        self.frames = frames
         if lift:
             dom = lifted(dom, prefixes if prefixes is not None else ("after", "then", "some"))
         self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj; self.term_purity = term_purity
@@ -1028,6 +1030,27 @@ class Generator:
         self.seen_signatures = {deep_tuple(k): None for k in st["seen"]}
         return st
 
+    def contest_frontier(self) -> dict:
+        """The frontier from the CONTESTS in the source's positions (Kaveh 2026-09-24: the human atom is a contested
+        square with its attackers and defenders): frames of each size, canonical, ordered by priority (king in
+        check, undefended, balanced, rest) then by how often they occur. Types at the kind level; the evidence-based
+        splits refine them."""
+        from collections import Counter
+        cnt = Counter(); pri = {}
+        for p, types, ids, lits in self.dom.contests():
+            f = Frame(types, lits).canon(self.dom.symmetries)
+            key = (f.types, f.literals)
+            cnt[key] += 1; pri[key] = min(pri.get(key, 9), p)
+        by_size = defaultdict(list)
+        for key, n in cnt.items():
+            by_size[len(key[0])].append((pri[key], -n, Frame(key[0], key[1])))
+        out = {}
+        for size, lst in by_size.items():
+            lst.sort(key=lambda x: (x[0], x[1]))
+            out[size] = [f for _, _, f in lst]
+        self.log(f"[lemma_gen] contest frontier: " + ", ".join(f"size {k}: {len(v)}" for k, v in sorted(out.items())) + f" ({sum(cnt.values())} contests seen)")
+        return out
+
     def rebuild_frontier(self, size: int) -> list:
         """The frontier of `size` rebuilt from the library: every admitted or rejected frame of size-1 extended and
         joined under the CURRENT extension rules (for a resume after the rules changed)."""
@@ -1045,6 +1068,7 @@ class Generator:
         t0 = time.perf_counter()
         starts = [self.dom.root] if self.dom.root else list(self.dom.types)
         frontier = list({f.types: f for f in (Frame((t,), ()).canon(self.dom.symmetries) for t in starts)}.values())
+        contest_by_size = self.contest_frontier() if (self.frames == "contests" and self.dom.contests is not None) else None
         by_actor: dict = defaultdict(list)
         deferred: dict = defaultdict(list)                                    # joins land at larger sizes than size + 1
         start_size = 1; done: set = set(); carried = None
@@ -1064,6 +1088,8 @@ class Generator:
                     self.log(f"[lemma_gen] frontier REBUILT for size {start_size} under the current extension rules: {len(frontier)} frames")
                 self.log(f"[lemma_gen] RESUME at size {start_size}: {len(done)}/{len(frontier)} frames done, {len(self.library)} lemmas")
         for size in range(start_size, max_size + 1):
+            if contest_by_size is not None and size >= 2 and not (carried and size == start_size):
+                frontier = contest_by_size.get(size, [])[: self.max_frames or None]   # the exchange-centric frontier replaces types x relations
             if deferred.get(size) and not (carried and size == start_size):
                 frontier = frontier + deferred.pop(size)
             self.log(f"[lemma_gen] size {size}: {len(frontier)} frames to evaluate ({time.perf_counter() - t0:.0f}s)")
@@ -1126,6 +1152,8 @@ class Generator:
                         (next_frontier if jf.size == size + 1 else deferred[jf.size]).append(jf)
             self.log(f"[lemma_gen] size {size}: evaluated {evaluated}, admitted {admitted}; {broke_frames} frames extended -> {len(next_frontier)} candidates at size {size + 1}")
             done = set()
+            if contest_by_size is not None:
+                next_frontier = []                                            # the next size comes from the contests, not from extension
             uniq = {}
             for f in next_frontier:
                 f = f.canon(self.dom.symmetries)                               # one frame per equivalence class (slot order, colour)
@@ -1596,6 +1624,7 @@ def main(argv=None):
     ap.add_argument("--no-core", action="store_true", help="do not use the compiled core (analyst_core) for outcomes and base literals")
     ap.add_argument("--tag", default="", help="suffix for the library/residual/checkpoint files of this run")
     ap.add_argument("--max-rows", type=int, default=20000, help="a frame's evidence is cut past this many rows (flagged incomplete)")
+    ap.add_argument("--frames", default="extend", choices=["extend", "contests"], help="extend: frames grow by types x geometry; contests: frames are the contested pieces with their attackers and defenders found in the positions, by priority")
     ap.add_argument("--mode", default="batch", choices=["batch", "counter"], help="batch: majority claim + guard search with coverage/purity; counter: believe until a counterexample, add what separates it, stop after 200 confirmations")
     ap.add_argument("--no-shapes", action="store_true", help="sampled placements: keep every board position of a configuration instead of one centred placement per shape")
     ap.add_argument("--joins", type=int, default=0, help="extend each frame also by joining it with up to this many known library frames (size >= 2), highest stake first")
@@ -1644,7 +1673,7 @@ def main(argv=None):
         raise SystemExit(f"unknown domain {a.domain}")
     global _RELATIVE, _LIFT, _GAIN, _PREFIXES
     _RELATIVE = a.relative; _LIFT = a.lift; _GAIN = a.gain; _PREFIXES = tuple(x for x in a.prefixes.split(",") if x)
-    _PROVENANCE.update(oracle=a.oracle, depth=a.depth, relative=a.relative, lift=a.lift, gain=a.gain, prefixes=a.prefixes if a.lift else "", mode=a.mode)
+    _PROVENANCE.update(oracle=a.oracle, depth=a.depth, relative=a.relative, lift=a.lift, gain=a.gain, prefixes=a.prefixes if a.lift else "", mode=a.mode, frames=a.frames)
     _USE_CORE[0] = not a.no_core
     if a.cmd in ("prove", "examples", "generalize") and a.library:
         made = next((e.get("made_under") for e in json.load(open(a.library)) if e.get("made_under")), None)
@@ -1656,7 +1685,7 @@ def main(argv=None):
         refresh_examples(dom, Path(a.library), a.cap, a.workers); return
     if a.cmd == "generalize":
         generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
-    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins, prefixes=_PREFIXES, sequential=not a.no_sequential, use_core=not a.no_core, max_rows=a.max_rows, mode=a.mode)
+    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins, prefixes=_PREFIXES, sequential=not a.no_sequential, use_core=not a.no_core, max_rows=a.max_rows, mode=a.mode, frames=a.frames)
     g.tag = a.tag
     lib = g.run(max_size=a.max_size, resume=a.resume, rebuild=a.rebuild_frontier)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")

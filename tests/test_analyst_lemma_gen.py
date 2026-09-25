@@ -332,3 +332,17 @@ def test_counterexample_mode_learns_the_law_from_few_rows():
     assert any(any(r == "lands_attacked" for r, sl, pol in t) for t in l.guard), l.guard
     assert l.support < 2000 * 20 and l.confirmations >= 100
     assert l.residual <= 0.05 * (l.covered + l.residual + 1)
+
+
+def test_contests_are_the_human_atom():
+    """A contested piece with its attackers and defenders, the king in check first, undefended next."""
+    from catspace.incubator.analyst import chess_domain as cd
+    b = chess.Board("2kr3r/ppp2ppp/2nb1n2/7q/3P2b1/2P2N2/PP1NBPPP/R1BQ1RK1 b - - 0 1")
+    cs = cd.contests(b)
+    assert cs and all(len(t) == len(ids) and len(ids) <= 4 for _, t, ids, _ in cs)
+    h2 = next(c for c in cs if c[2][0] == chess.H2)                              # the h2 pawn: attacked by the bishop d6 and the queen h5, defended by the king and the knight
+    assert h2[1][0] == "P" and {chess.D6, chess.H5} <= set(h2[2]) and any(r == "defends" for r, sl, p in h2[3])
+    assert min(c[0] for c in cs) >= 1                                            # no king in check here
+    b2 = chess.Board("4k3/8/8/8/8/8/8/4K2r w - - 0 1")                            # rook gives check: the king's contest comes first
+    cs2 = cd.contests(b2)
+    assert cs2[0][0] == 0 if cs2 and cs2[0][1][0] == "K" else any(c[0] == 0 for c in cs2)

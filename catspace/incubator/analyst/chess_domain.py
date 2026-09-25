@@ -609,6 +609,41 @@ def null_reply_scalar(state: State, e: int) -> float:
     return reply_scalar(State(b, list(state.ids)), e)
 
 
+KIND_NAME = {v: k for k, v in KIND.items()}
+
+
+def contests(board: chess.Board, max_pieces: int = 4) -> list:
+    """THE HUMAN ATOM (Kaveh 2026-09-24, from the reasoning exercise: "what attacks this piece, what defends it, is
+    that enough"): every attacked piece with its attackers and defenders, nearest by worth first, capped. Returns
+    [(priority, types at the KIND level, ids, literals)] with literals attacks(i,0) / defends(j,0). Priority: the
+    king in check first, then undefended attacked pieces, then contests where attackers and defenders balance,
+    then the rest -- the order of the questions, computable from the rules."""
+    out = []
+    for sq, p in board.piece_map().items():
+        att = sorted(board.attackers(not p.color, sq), key=lambda a: VAL[board.piece_at(a).piece_type])
+        if not att:
+            continue
+        dfd = sorted(board.attackers(p.color, sq), key=lambda a: VAL[board.piece_at(a).piece_type])
+        ids = [sq]; lits = []
+        for a in att:
+            if len(ids) >= max_pieces: break
+            lits.append(("attacks", (len(ids), 0), True)); ids.append(a)
+        for d in dfd:
+            if len(ids) >= max_pieces: break
+            lits.append(("defends", (len(ids), 0), True)); ids.append(d)
+        if p.piece_type == chess.KING:
+            pri = 0
+        elif not dfd:
+            pri = 1
+        elif len(att) >= len(dfd):
+            pri = 2
+        else:
+            pri = 3
+        types = tuple(KIND_NAME[board.piece_at(i).piece_type] for i in ids)
+        out.append((pri, types, ids, tuple(lits)))
+    return out
+
+
 def game_placements(fens: list):
     """A placements source drawn from REAL positions (games): for a frame's types, every assignment of distinct pieces
     of those types on each position, in a seeded order, up to the cap; never exhaustive. The rest of the board stays,
@@ -754,7 +789,8 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
             Relation("lands_attacked", 0, True, lands_attacked)]
     if oracle == "frame":
         from functools import partial
-        return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, frame_scalar, partial(frame_reply_scalar, depth=depth),
+        contests_of = (lambda: [(pri, t, ids, lits) for f in fens[: 5000] for pri, t, ids, lits in contests(chess.Board(f))]) if fens is not None else None
+        return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, frame_scalar, partial(frame_reply_scalar, depth=depth), contests=contests_of,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
                       placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], type_tree=TYPE_TREE, root="*", null_reply_scalar=partial(frame_null_reply_scalar, depth=depth), episode=partial(frame_episode_states, depth=depth), threat=frame_threat_state,
                       batch_outcomes=(core_outcomes(depth) if _core is not None and worth == "canonical" else None), batch_literals=(core_literals if _core is not None else None))
