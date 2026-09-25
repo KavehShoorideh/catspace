@@ -22874,6 +22874,53 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-25 10:20 PDT — Kaveh's three calls: sampling fixed and full2 stopped, counter claims canonical, goal search fixed (OBS)
+
+Kaveh, on the review: fix the sampling, stop full2 and rerun; counter mode's claim canonical with the bar kept; all
+four goal-search fixes.
+
+full2 stopped at 08:15 at size-3 frame 18,751 of 22,036 (the splits kept coming), 15,615 admitted. Every one of its
+size-3 frames carried a lifted word (15,565 of 15,565 lemmas): size 3 was grown from the pre-rule size-2 library, not
+"some" of it as the 17:55 entry said. Its checkpoint stays as the record.
+
+Sampling on real positions: the source now takes the frame's literals, the cap counts MATCHES, at most `--per-position`
+come from one board, and no more than cap x `--tries` assignments are looked at; the sampling is written into every
+lemma's provenance. The sampled world is unchanged (its exhaustive re-test depends on its semantics). Same probes as
+the review, before -> after:
+
+| | before | after |
+|---|---|---|
+| top-20 size-4 contest frames, median rows, cap 300, 5,000 / 50,000 positions | 0 / 0 | 22 / 23 |
+| same, cap 3,000 | 6 / 3 | 72 / 269 |
+| size-3 geometric frames, distinct positions behind one frame (median, min) | 22, 1 | 631, 180 |
+
+More positions now bring more evidence. The price: the size ≤2 smoke at cap 800 took 4,328 s, with rows per lemma
+median 638 against 201 before (p90 3,514 against 779) and a tail of 17 frames taking 47 minutes. The full run
+therefore runs at cap 250 (about the old rows per lemma) with 2 placements a position (at least 125 boards a frame at
+the full cap), sizes 1-3 (Kaveh: stop before size 4), then the re-test at cap 1,000 (a cap of matches now: four
+times the generation's evidence) and the examples: `run_full3.log`, launched 10:13, watchdog `watchdog_full3.log`.
+
+Counter mode: the claim is re-stated as the majority over everything seen (the parents re-read for it), heterogeneous
+slots are computed as in batch, and the docstring names the bar that admits. On the sampled world `[P R] aligned(0,1)`
+slot 1 claimed "acting loses" with 18 of 209 rows holding; the test now requires the majority. The cheap library
+reruns on the fixed code (`run_contests_counter2.log`, launched 10:15) and goes straight to its re-test, the chain
+gauge (interface and chunk, graph guide, 150 positions) and the used-lemma count.
+
+Goal search, after the fixes (the audit 20/20; episodes opened 419 with the prune against 574 without -- 27% saved,
+43% under the unsound bound):
+- the prune position `4r2k/6pp/5p2/4p3/3Q4/8/8/6K1 w`: Qd7 +9.0 with the prune and without; no value above its bound;
+- `6k1/5ppp/8/8/5n2/7q/5PP1/3R2K1 w`: Rd8# 1000, the parry gxh3 +9.0; without the rook gxh3 +9.0, not a mate;
+- Qd5?? in `4k3/8/4p3/8/8/8/8/3QK3 w`: −9.0 (was −19); the pony's Nxd6: 0.0 (was −3);
+- the stalemating captures no longer lead: in `8/8/k7/2p3Q1/8/8/1R6/5K2 w` decide now finds Qg2, a quiet move that
+  forces mate inside the episode (1000).
+One expectation fell: the test's Greek gift (`2kr3r/.../R1BQ1RK1 b`). decide now ranks Bxf3 (+2.0 in its frame)
+above Bxh2+ (+1.0); before, Bxf3 scored −998 because White's best goal after it was a parry read as a mate. Stockfish
+depth 20: Bxh2+ +2.34, Bxf3 −2.47. The scoring is now consistent and the frame values are what mislead here; the
+expectation stays as a strict xfail, so it announces itself when the values improve.
+
+Still open from the review: the contest frontier reads the first 5,000 positions whatever `--positions` says; the
+intermezzo depth, the check-freeze and the intermezzi's baseline (J); the counter-mode duplicate check (latent).
+
 ## 2026-09-24 22:05 PDT — review, part two: the frame episode, fates and goals (a second reader; OBS)
 
 A second reader went through today's fates.py and goals.py with a script per finding; I re-ran eight of them.
