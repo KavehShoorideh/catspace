@@ -22874,6 +22874,55 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 21:40 PDT — review (Kaveh: "do a review to find some bugs and make sure everything is ok"): three fixes, five findings for a decision (OBS)
+
+State on resuming: the full2 run was alive (not killed): size 3's 3,000 frames finished at 21:09 (2,000 admitted),
+and 9,437 split frames (an abstract slot refined to its children) are now in the pool, about 6 s a frame -- roughly
+half a day more before size 3 closes. The contest frontier in counter mode ran on 50,000 positions: 59 lemmas (41
+at size 2, 17 at size 3, none at size 4) in 513 s; the findings below say why size 4 is still empty.
+
+Fixed, with tests:
+1. A contest run resumed at a size boundary evaluated NOTHING at that size: for contests the boundary checkpoint's
+   frontier is empty, and the resume kept it. Probe (500 positions, sizes ≤2, then resumed to 3): "size 3: 0 frames
+   to evaluate" against 136 contest frames; after the fix all 136 are evaluated. A checkpoint is mid-size iff its
+   done set is non-empty; only then does its frontier stand in for the size's contests and pending joins (the joins
+   had the same hole at every boundary resume; full2's 17:34 resume lost none -- its checkpoint holds pending joins
+   for size 4 only, 1,774). `--rebuild-frontier` no longer applies to contest runs. The test fails on the old code.
+2. `prove` wrote `proved_<domain>.json` whatever the run, so two re-tests at once overwrote each other; it takes
+   `--tag` now (the untagged name is unchanged for full2's queued re-test).
+3. Operations: the stop script queued for full2 would have re-tested the 17:26 library (252 lemmas): the library is
+   written only after the next size's frontier count (2,375 s at the size-3 boundary), and the script killed the run
+   90 s after "size 3: evaluated"; it also killed by "lemma_gen run", which takes down any concurrent run. Replaced:
+   it waits for the size-4 start line and kills by the run's tag; the watchdog counts only full2's processes.
+
+Findings, measured, NOT changed (each changes what the generator learns):
+A. The cap counts placements TRIED, not instances. `game_placements` stops after `cap` type assignments and
+   `instances` filters them by the frame's literals afterwards; the shuffled position order is the same for every
+   frame. So every frame reads the same short prefix of the positions, and the rarer its geometry the fewer rows it
+   gets. Top 20 size-4 contest frames, median matching instances: cap 300 -> 0 with 5,000 positions and 0 with
+   50,000; cap 3,000 -> 6 and 3; 2 of 20 reach 30 rows either way. full2's lemmas at cap 800 (30 sampled per size):
+   size 2 median 43 distinct positions (min 6), size 3 median 22 (min 1, max 102). The 19:27 conclusion "more
+   positions, not more frames, is the fix" cannot hold under this cap, and the re-test's cap has the same semantics.
+   Proposal: the cap counts matching instances under a try budget, with at most a few instances per position so a
+   lemma's evidence spreads over boards; tries are cheap (the probe scanned 12,000 a frame for 20 frames in about a
+   second).
+B. Counter mode states its claim from the first five rows (one piece in one position) and never revises it;
+   admission lets a minority claim through when a parent embeds (`holds/support >= 0.5 or inh`), which is nearly
+   always true above size 1. Claims holding in fewer than half their own rows: 27/59 (contests, counter, 50k), 34/86
+   (its smoke), 20/36 (sampled world, counter); 0 in both batch libraries; lowest 9%. The guard then carries the
+   majority ("loses unless G", G firing on most rows): equivalent content, but order-shaped -- the disease the
+   canonical final guard cured. Proposal: re-state the claim canonically too (the majority over everything seen).
+C. Counter mode never computes the heterogeneous slots, so the evidence-based type splits never happen in that
+   mode; the 18:28 explanation (30 rows per leaf) was wrong -- it is zero by construction.
+D. Counter mode's docstring and the 17:11 entry say no coverage or purity bar decides admission; `run()` applies
+   the batch bar to every lemma: 48 frames of the 50k counter run were rejected by it (59 admitted).
+E. The contest frontier reads the first 5,000 positions whatever `--positions` says (`fens[: 5000]` in
+   `chess_domain.domain`).
+Latent, not observed: `Lemma.sig` (types, slot, rows, holds, exception-mask hash) is the duplicate check; in counter
+mode the row count is where the stream stopped, so two same-typed frames whose streams saw no exception would share
+it and the second would be skipped. 0 collisions among 67 size-2 contest lemmas; no admitted counter lemma has zero
+exceptions.
+
 ## 2026-09-24 19:27 PDT — the exchange-centric frontier: first smoke (OBS)
 
 Kaveh, after the reasoning exercise: "you have the strong part that I am lacking, use that to guide the way the
