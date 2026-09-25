@@ -1071,16 +1071,17 @@ class Generator:
         contest_by_size = self.contest_frontier() if (self.frames == "contests" and self.dom.contests is not None) else None
         by_actor: dict = defaultdict(list)
         deferred: dict = defaultdict(list)                                    # joins land at larger sizes than size + 1
-        start_size = 1; done: set = set(); carried = None
+        start_size = 1; done: set = set(); carried = None; resumed_mid = False
         if resume:
             st = self.load_checkpoint()
             if st:
                 start_size = st["size"]; frontier = [frame_from_json(f) for f in st["frontier"]]; done = set(deep_tuple(x) for x in st["done"])
                 deferred = defaultdict(list, {int(k): [frame_from_json(f) for f in v] for k, v in st["deferred"].items()})
                 carried = ([frame_from_json(f) for f in st["next_frontier"]], st["counters"])
+                resumed_mid = bool(done)                                        # a mid-size checkpoint has frames done; a size-boundary one has none (and its frontier lacks the size's contests and joins)
                 for l in self.library:
                     by_actor[l.frame.types[l.slot]].append(l)
-                if rebuild and not done:
+                if rebuild and not done and contest_by_size is None:
                     frontier = self.rebuild_frontier(start_size)
                     if self.max_frames and len(frontier) > self.max_frames:
                         counts = self._count_frontier(frontier)
@@ -1088,9 +1089,10 @@ class Generator:
                     self.log(f"[lemma_gen] frontier REBUILT for size {start_size} under the current extension rules: {len(frontier)} frames")
                 self.log(f"[lemma_gen] RESUME at size {start_size}: {len(done)}/{len(frontier)} frames done, {len(self.library)} lemmas")
         for size in range(start_size, max_size + 1):
-            if contest_by_size is not None and size >= 2 and not (carried and size == start_size):
+            mid = resumed_mid and size == start_size                            # resuming INSIDE this size: the checkpoint's frontier already holds its contests and joins (a boundary resume skipped the whole size, 2026-09-24 21:28)
+            if contest_by_size is not None and size >= 2 and not mid:
                 frontier = contest_by_size.get(size, [])[: self.max_frames or None]   # the exchange-centric frontier replaces types x relations
-            if deferred.get(size) and not (carried and size == start_size):
+            if deferred.get(size) and not mid:
                 frontier = frontier + deferred.pop(size)
             self.log(f"[lemma_gen] size {size}: {len(frontier)} frames to evaluate ({time.perf_counter() - t0:.0f}s)")
             next_frontier = []; admitted = 0; evaluated = 0; broke_frames = 0
@@ -1414,7 +1416,7 @@ def _pool_map(fn, jobs, workers: int, log, label: str):
     return out
 
 
-def prove(dom: Domain, library_path: Path, cap: int, min_cov: float = 0.95, min_pur: float = 0.8, limit: int = 0, log=print, workers: int = 1, max_raw: int = 0, max_size: int = 0):
+def prove(dom: Domain, library_path: Path, cap: int, min_cov: float = 0.95, min_pur: float = 0.8, limit: int = 0, log=print, workers: int = 1, max_raw: int = 0, max_size: int = 0, tag: str = ""):
     """THE RE-TEST: re-run each admitted lemma with a far larger cap and check the STORED full guard (inherited + own)
     -- not a re-fit -- for coverage and purity. With max_raw > 0 the pass is EXHAUSTIVE for every frame whose
     placement count fits the budget: those lemmas come back THEOREM when the guard covers every exception.
@@ -1431,7 +1433,7 @@ def prove(dom: Domain, library_path: Path, cap: int, min_cov: float = 0.95, min_
         if "support" in o:
             log(f"  {o['status']:<10} {o.get('id', '')} {o['frame']} :: slot {o['slot']} {o['claim']} {100 * (o['support'] - o['exceptions']) / o['support']:.1f}% of {o['support']}; guard {o['guard']}: covers {100 * o['coverage']:.1f}% of {o['exceptions']} exceptions, purity {o['purity']:.2f}" + (" (complete)" if o["complete"] else f" (cap {cap})"))
     OUT.mkdir(parents=True, exist_ok=True)
-    json.dump(out, open(OUT / f"proved_{dom.name}.json", "w"), indent=1)
+    json.dump(out, open(OUT / f"proved_{dom.name}{('_' + tag) if tag else ''}.json", "w"), indent=1)   # tagged like run's files: two re-tests at once must not overwrite each other
     c = Counter(o["status"] for o in out)
     log(f"[lemma_gen/prove] {dict(c)} ({time.perf_counter() - t0:.0f}s)")
     return out
@@ -1680,7 +1682,7 @@ def main(argv=None):
         if made and any(made.get(k) != _PROVENANCE.get(k) for k in made):
             print(f"[lemma_gen] WARNING: the library was made under {made}; this pass runs under {_PROVENANCE} -- the outcome definitions differ")
     if a.cmd == "prove":
-        prove(dom, Path(a.library), a.cap, limit=a.limit, workers=a.workers, max_raw=a.exhaustive, max_size=a.prove_max_size); return
+        prove(dom, Path(a.library), a.cap, limit=a.limit, workers=a.workers, max_raw=a.exhaustive, max_size=a.prove_max_size, tag=a.tag); return
     if a.cmd == "examples":
         refresh_examples(dom, Path(a.library), a.cap, a.workers); return
     if a.cmd == "generalize":

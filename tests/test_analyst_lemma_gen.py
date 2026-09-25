@@ -346,3 +346,19 @@ def test_contests_are_the_human_atom():
     b2 = chess.Board("4k3/8/8/8/8/8/8/4K2r w - - 0 1")                            # rook gives check: the king's contest comes first
     cs2 = cd.contests(b2)
     assert cs2[0][0] == 0 if cs2 and cs2[0][1][0] == "K" else any(c[0] == 0 for c in cs2)
+
+
+def test_contest_run_resumed_at_a_size_boundary_evaluates_that_size(tmp_path, monkeypatch):
+    """A contests run resumed at a size boundary evaluates that size's contest frames: the boundary checkpoint's
+    frontier is empty for contests, and the resume used to keep it and skip the whole size (2026-09-24 21:28)."""
+    from catspace.incubator.analyst.chess_domain import domain
+    monkeypatch.setattr(lg, "OUT", tmp_path)
+    fens = ["2kr3r/ppp2ppp/2nb1n2/7q/3P2b1/2P2N2/PP1NBPPP/R1BQ1RK1 b - - 0 1",
+            "r1bqkbnr/1ppp1ppp/p1n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4"]
+    mk = lambda lines: lg.Generator(domain(fens, oracle="frame", depth=0), cap=20, mode="counter", frames="contests", log=lines.append)
+    first = []; mk(first).run(max_size=2)
+    lines = []; g2 = mk(lines)
+    g2.run(max_size=3, resume=True)
+    n3 = len(g2.contest_frontier()[3])
+    assert n3 > 0
+    assert any(l.startswith(f"[lemma_gen] size 3: {n3} frames to evaluate") for l in lines), [l for l in lines if "size 3" in l]
