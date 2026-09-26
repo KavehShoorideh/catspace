@@ -22874,6 +22874,21 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-25 23:17 PDT — the current approach is now the default (Kaveh: "these flags will be forgotten")
+
+A bare `lemma_gen run` is now the full run: real Lichess positions, the frame oracle over the frame's own plies,
+outcomes relative to standing still, the after/then/some vocabulary, each frame's evidence drawn as matching
+placements at most 2 from one position, sizes 1-3, the 3,000 most frequent frames a size, joins, all cores but one.
+Cap, seed, split and positions default per command: `run` 250 matches a frame on 50,000 positions; `prove` 1,000 on
+the 12,000 held-out positions with seed 1; `examples` 300. `prove` and `examples` read the library `run` wrote for the
+same settings and `--tag`. Switches are `--lift/--no-lift`, `--relative/--no-relative`. Batch mode and grown frames
+stay the default (counter mode and the contest frontier are the open experiment). The defaults reproduce full3's
+provenance exactly, so the pause entry's resume commands shorten to:
+- full3: `lemma_gen run --tag full3 --resume`, then `lemma_gen prove --tag full3`, then `lemma_gen examples --tag full3`;
+- the cheap library: `lemma_gen run --frames contests --mode counter --cap 300 --max-size 4 --tag contests_counter2
+  --resume`, then `lemma_gen prove --frames contests --mode counter --tag contests_counter2`, then the gauges.
+A test pins the defaults.
+
 ## 2026-09-25 20:00 PDT — PAUSE (Kaveh: "ok time to pause")
 
 Stopped both runs, their chain scripts and the watchdog; nothing of the analyst is running. Both checkpoint every

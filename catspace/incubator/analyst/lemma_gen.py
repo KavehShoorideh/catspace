@@ -25,13 +25,16 @@ a state, the actions and the transition, a scalar, and a way to place entities. 
            per slot; the unseen instantiations (the product of the sets minus the observed tuples) are checked by
            the prover, so a schema is stated exactly over what held
 
-    python -m catspace.incubator.analyst.lemma_gen run --domain chess --max-size 3 --cap 1000 --workers 10
-    python -m catspace.incubator.analyst.lemma_gen prove --cap 10000 --workers 10
-    python -m catspace.incubator.analyst.lemma_gen generalize --cap 10000 --workers 10
+    python -m catspace.incubator.analyst.lemma_gen run          # the full run: Lichess positions, sizes 1-3
+    python -m catspace.incubator.analyst.lemma_gen prove        # its re-test on the held-out positions
+    python -m catspace.incubator.analyst.lemma_gen examples     # fresh examples for its lemmas
+The defaults ARE the current approach (Kaveh 2026-09-25: "these flags will be forgotten, make the right approach the
+default"); a flag is for departing from it. `--tag X` names a run's files; prove/examples read the tagged library.
 """
 from __future__ import annotations
 
 import argparse
+import os
 import hashlib
 import itertools
 import json
@@ -1641,39 +1644,56 @@ def refresh_examples(dom: Domain, library_path: Path, cap: int, workers: int, lo
     log(f"[lemma_gen/examples] {len(lib)} lemmas, examples recomputed ({changed} changed) -> {library_path}")
 
 
-def main(argv=None):
+PER_COMMAND = {"run": dict(cap=250, seed=0, split="gen", positions=50000), "prove": dict(cap=1000, seed=1, split="test", positions=12000),
+               "examples": dict(cap=300, seed=0, split="gen", positions=50000), "generalize": dict(cap=3000, seed=0, split="gen", positions=50000)}
+
+
+def arguments(argv=None):
+    """The command line with the current approach as its defaults: real Lichess positions, the frame oracle over the
+    frame's own plies, outcomes relative to standing still, the after/then/some vocabulary, the cap counted in
+    matching placements (at most 2 from one position), sizes 1-3, the 3,000 most frequent frames a size, joins. The
+    cap, seed, split and number of positions default per command (PER_COMMAND): the re-test draws a different seed on
+    the held-out positions with four times the generation's evidence."""
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["run", "prove", "generalize", "examples"]); ap.add_argument("--domain", default="chess")
-    ap.add_argument("--library", default=str(OUT / "library_chess.json")); ap.add_argument("--proved", default=str(OUT / "proved_chess.json")); ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--max-size", type=int, default=3); ap.add_argument("--cap", type=int, default=3000); ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--library", default=None, help="default: the library `run` writes for these settings and --tag"); ap.add_argument("--proved", default=None, help="default: the file `prove` writes for them"); ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--max-size", type=int, default=3); ap.add_argument("--cap", type=int, default=None, help="matching placements a frame draws; default per command: run 250, prove 1000, examples 300, generalize 3000"); ap.add_argument("--seed", type=int, default=None, help="default: 0, the re-test 1")
     ap.add_argument("--resume", action="store_true", help="continue a run from its checkpoint (same flags)")
     ap.add_argument("--rebuild-frontier", action="store_true", help="on resume at a size boundary, rebuild that size's frontier from the library under the current extension rules")
     ap.add_argument("--no-sequential", action="store_true", help="always draw the full cap (no quarter-sample early decision)")
     ap.add_argument("--no-core", action="store_true", help="do not use the compiled core (analyst_core) for outcomes and base literals")
     ap.add_argument("--tag", default="", help="suffix for the library/residual/checkpoint files of this run")
-    ap.add_argument("--per-position", type=int, default=4, help="real positions: at most this many matching placements of a frame from one position (its evidence spreads over boards)")
+    ap.add_argument("--per-position", type=int, default=2, help="real positions: at most this many matching placements of a frame from one position (its evidence spreads over boards)")
     ap.add_argument("--tries", type=int, default=50, help="real positions: look at no more than cap x this many assignments for a frame's matches")
     ap.add_argument("--max-rows", type=int, default=20000, help="a frame's evidence is cut past this many rows (flagged incomplete)")
     ap.add_argument("--frames", default="extend", choices=["extend", "contests"], help="extend: frames grow by types x geometry; contests: frames are the contested pieces with their attackers and defenders found in the positions, by priority")
     ap.add_argument("--mode", default="batch", choices=["batch", "counter"], help="batch: majority claim + guard search with coverage/purity; counter: believe until a counterexample, add what separates it, stop after 200 confirmations")
     ap.add_argument("--no-shapes", action="store_true", help="sampled placements: keep every board position of a configuration instead of one centred placement per shape")
-    ap.add_argument("--joins", type=int, default=0, help="extend each frame also by joining it with up to this many known library frames (size >= 2), highest stake first")
-    ap.add_argument("--depth", type=int, default=1, help="frame oracle: plies of the frame episode after the action (1 = one best reply; 0 = the frame's size, each piece gets its move)")
+    ap.add_argument("--joins", type=int, default=2, help="extend each frame also by joining it with up to this many known library frames (size >= 2), highest stake first")
+    ap.add_argument("--depth", type=int, default=0, help="frame oracle: plies of the frame episode after the action (1 = one best reply; 0 = the frame's size, each piece gets its move)")
     ap.add_argument("--exhaustive", type=int, default=0, help="prove: enumerate every placement of frames with at most this many placements (THEOREM status); 0 = sampled re-test")
     ap.add_argument("--prove-max-size", type=int, default=0, help="prove: only frames of at most this size")
-    ap.add_argument("--workers", type=int, default=1); ap.add_argument("--max-conj", type=int, default=2); ap.add_argument("--all", action="store_true", help="generalize: over all lemmas, not only the proved")
+    ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1)); ap.add_argument("--max-conj", type=int, default=2); ap.add_argument("--all", action="store_true", help="generalize: over all lemmas, not only the proved")
     ap.add_argument("--over-literals", action="store_true", help="generalize: the frame literals' relation names are variables too"); ap.add_argument("--max-unseen", type=int, default=0)
-    ap.add_argument("--source", choices=["sampled", "games", "lichess"], default="sampled", help="placements: sampled frames (only the frame's pieces) or real game positions")
-    ap.add_argument("--split", default="gen", choices=["gen", "test"], help="lichess source: the generation part or the disjoint re-test part (by position hash)")
-    ap.add_argument("--positions", type=int, default=20000, help="games source: how many positions from the knowledge corpus"); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=120)
-    ap.add_argument("--relative", action="store_true", help="outcome relative to the null action (what the standing threats already take)")
-    ap.add_argument("--max-frames", type=int, default=0, help="per size, evaluate only the most frequent frames")
-    ap.add_argument("--oracle", choices=["material", "resolved", "frame", "tablebase"], default="material", help="the outcome: 1-ply material after the best capture/check reply, or the tablebase's WDL (sampled frames of <= 5 men)")
-    ap.add_argument("--lift", action="store_true", help="add every state relation's after-the-move form as an action-level relation (predicate invention by composition)")
+    ap.add_argument("--source", choices=["sampled", "games", "lichess"], default="lichess", help="placements: sampled frames (only the frame's pieces) or real game positions")
+    ap.add_argument("--split", default=None, choices=["gen", "test"], help="lichess source: the generation part or the disjoint re-test part (by position hash)")
+    ap.add_argument("--positions", type=int, default=None, help="real positions to draw from; default 50,000, the re-test 12,000"); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=200)
+    ap.add_argument("--relative", action=argparse.BooleanOptionalAction, default=True, help="outcome relative to the null action (what the standing threats already take)")
+    ap.add_argument("--max-frames", type=int, default=3000, help="per size, evaluate only the most frequent frames")
+    ap.add_argument("--oracle", choices=["material", "resolved", "frame", "tablebase"], default="frame", help="the outcome: 1-ply material after the best capture/check reply, or the tablebase's WDL (sampled frames of <= 5 men)")
+    ap.add_argument("--lift", action=argparse.BooleanOptionalAction, default=True, help="add every state relation's after-the-move form as an action-level relation (predicate invention by composition)")
     ap.add_argument("--prefixes", default="after,then,some", help="the lifts in the vocabulary when --lift: after (our move), then (their reply), some (quantified over an entity's actions), threat (after the pass and their reply)")
     ap.add_argument("--gain", type=float, default=None, help="partition the outcome at this GAIN instead of at zero: claims become 'acting gains' / 'acting does not gain'")
     ap.add_argument("--worth", choices=["canonical", "blend"], default="canonical", help="the worth relations: the value table, or the tables' removal value blended toward it by distance to the five-men edge"); ap.add_argument("--worth-tau", type=float, default=4.0)
     a = ap.parse_args(argv)
+    for k, v in PER_COMMAND[a.cmd].items():
+        if getattr(a, k) is None:
+            setattr(a, k, v)
+    return a
+
+
+def main(argv=None):
+    a = arguments(argv)
     if a.domain == "chess":
         from .chess_domain import domain
         fens = None
@@ -1707,7 +1727,10 @@ def main(argv=None):
     if getattr(dom.placements, "sampling", None):
         _PROVENANCE["sampling"] = dom.placements.sampling                  # real positions: the cap counts matches spread over boards (review 2026-09-24)
     _USE_CORE[0] = not a.no_core
-    if a.cmd in ("prove", "examples", "generalize") and a.library:
+    name = dom.name + (f"_{a.tag}" if a.tag else "")
+    a.library = a.library or str(OUT / f"library_{name}.json")                # what `run` writes for these settings and tag
+    a.proved = a.proved or str(OUT / f"proved_{name}.json")                    # what `prove` writes for them
+    if a.cmd in ("prove", "examples", "generalize") and Path(a.library).exists():
         made = next((e.get("made_under") for e in json.load(open(a.library)) if e.get("made_under")), None)
         if made and any(made.get(k) != _PROVENANCE.get(k) for k in made):
             print(f"[lemma_gen] WARNING: the library was made under {made}; this pass runs under {_PROVENANCE} -- the outcome definitions differ")

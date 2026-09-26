@@ -646,7 +646,7 @@ def contests(board: chess.Board, max_pieces: int = 4) -> list:
     return out
 
 
-def game_placements(fens: list, per_position: int = 4, try_factor: int = 50):
+def game_placements(fens: list, per_position: int = 2, try_factor: int = 50):
     """A placements source drawn from REAL positions (games): for a frame's types, every assignment of distinct pieces
     of those types on each position, in a seeded order, up to the cap; never exhaustive. The rest of the board stays,
     so a lemma learned here is learned where it is applied.
@@ -793,7 +793,7 @@ def core_literals(rows, lits):
     return out
 
 
-def domain(fens: list | None = None, oracle: str = "material", worth: str = "canonical", worth_tau: float = 4.0, depth: int = 1, shapes: bool = True, per_position: int = 4, try_factor: int = 50) -> Domain:
+def domain(fens: list | None = None, oracle: str = "material", worth: str = "canonical", worth_tau: float = 4.0, depth: int = 1, shapes: bool = True, per_position: int = 2, try_factor: int = 50) -> Domain:
     """depth: plies of the frame episode after the action (frame oracle only); 1 = the single best reply. shapes: the
     sampled placements are one centred placement per configuration up to translation and mirror."""
     _EPISODE["depth"] = depth; _SHAPES["on"] = shapes

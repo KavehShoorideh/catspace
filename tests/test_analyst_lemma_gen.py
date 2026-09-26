@@ -373,3 +373,14 @@ def test_counterexample_mode_states_the_majority_claim():
         l = g.evaluate(fr, slot, [])
         assert l is not None and l.holds * 2 >= l.support, (fr.text(), slot, l.claim, l.holds, l.support)
         assert isinstance(l.heterogeneous, list)
+
+
+def test_the_defaults_are_the_current_approach():
+    """Kaveh 2026-09-25: flags are forgotten, so the defaults must be the approach: a bare `run` is the full run on real
+    positions (frame oracle, relative, lifted vocabulary, matches spread 2 a position), `prove` its re-test on the
+    held-out positions with its own seed and four times the evidence."""
+    r, p = lg.arguments(["run"]), lg.arguments(["prove"])
+    assert (r.source, r.oracle, r.depth, r.relative, r.lift, r.prefixes) == ("lichess", "frame", 0, True, True, "after,then,some")
+    assert (r.per_position, r.cap, r.max_size, r.max_frames, r.joins, r.split, r.seed) == (2, 250, 3, 3000, 2, "gen", 0)
+    assert (p.cap, p.split, p.seed, p.positions) == (1000, "test", 1, 12000)
+    assert lg.arguments(["run", "--no-lift", "--cap", "80"]).lift is False and lg.arguments(["run", "--cap", "80"]).cap == 80
