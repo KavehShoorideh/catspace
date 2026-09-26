@@ -22874,6 +22874,37 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-25 20:00 PDT — PAUSE (Kaveh: "ok time to pause")
+
+Stopped both runs, their chain scripts and the watchdog; nothing of the analyst is running. Both checkpoint every
+100 frames, so a resume loses at most 99 frames each.
+
+- full3 (the full run on the fixed sampling): size 3 at frame 4,751 of 14,636 -- the splits grew the 3,000-frame
+  frontier as they did in full2 -- 2,549 admitted, checkpoint 19:53. At about 7 s a frame the rest of size 3 is
+  most of a day.
+- the cheap library (contest frontier, counter mode, `contests_counter2`): size 4 at frame 901 of 1,284, 896
+  admitted, checkpoint 19:31. Its re-test and gauges have not run.
+
+To resume, from the repo root, with C = `--source lichess --hi 200 --oracle frame --relative --lift --prefixes
+after,then,some --depth 0 --per-position 2`:
+- full3: `caffeinate -i .venv/bin/python -u -m catspace.incubator.analyst.lemma_gen run $C --positions 50000
+  --max-size 3 --cap 250 --workers 10 --max-frames 3000 --joins 2 --tag full3 --resume >> data/derived/lemmas/run_full3.log`;
+  then `prove $C --split test --positions 12000 --seed 1 --library data/derived/lemmas/library_chess_games_frame_full3.json
+  --cap 1000 --workers 10 --tag full3`; then `examples $C --positions 50000 --library (same) --cap 300 --workers 10`.
+- the cheap library: `lemma_gen run $C --frames contests --mode counter --positions 50000 --max-size 4 --cap 300
+  --max-frames 3000 --workers 2 --tag contests_counter2 --resume`; then `prove $C --frames contests --mode counter
+  --split test --positions 12000 --seed 1 --library data/derived/lemmas/library_chess_games_frame_contests_counter2.json
+  --cap 1000 --tag contests_counter2`; then `chains gauge --n 150 --guide tf --mode interface` and `--mode chunk` on
+  that library and its `proved_..._contests_counter2.json`, and `gauge_compose --n 200` for the used-lemma count.
+
+Waiting on Kaveh (asked before the pause; nothing done): which chess-specific parts to take out of the generic
+layer -- (1) move the sampling policy (matches, per-record limit, try budget) from `chess_domain.game_placements`
+into `lemma_gen` as a declared Domain field, `--per-position` -> `--per-record`; (2) a row-identity hook instead of the
+FEN keys in `lemma_gen` (examples); (3) the chess and corpus wiring out of `lemma_gen`'s CLI; (4) a generic
+seed-frames hook in place of `contests`; (5) fates and goals made generic (pass, terminal values, worth, the
+neighbourhood's relations as hooks). Also open: the contest frontier reads the first 5,000 positions; J from the
+review (intermezzo depth, check-freeze, intermezzi baseline); the counter-mode duplicate check (latent).
+
 ## 2026-09-25 10:20 PDT — Kaveh's three calls: sampling fixed and full2 stopped, counter claims canonical, goal search fixed (OBS)
 
 Kaveh, on the review: fix the sampling, stop full2 and rerun; counter mode's claim canonical with the bar kept; all
