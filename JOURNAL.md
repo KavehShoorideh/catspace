@@ -22874,6 +22874,32 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-26 19:49 PDT — the verdict gauge: no library beats a one-line rule (OBS; Kaveh: "do it")
+
+The question put before any more generation: does a library's verdict on a move predict what Stockfish says the
+move does, better than a one-line rule? `gauge_verdicts` (`gauge_verdicts_n1000.log`): 1,000 held-out Lichess
+positions (the re-test split; none of the libraries was fitted on them; positions in check skipped), all 31,003 legal
+moves, Stockfish depth 12. A move 'loses' when it is 1.5 pawns or more worse -- than standing still (the lemmas' own
+relative outcome) or than the best move (what a player needs). The library's verdict: the most specific lemmas that
+speak on the move decide. Balanced accuracy (0.5 = always 'keeps'), with a 95% interval over positions for library
+minus 'hangs' ("lands attacked, and undefended or attacked by a cheaper piece"):
+
+| | vs standing still (19.9% lose) | vs the best move (56.8% lose) |
+|---|---|---|
+| always 'keeps' | 0.500 | 0.500 |
+| lands attacked and undefended | 0.712 | 0.623 |
+| hangs | 0.802 | 0.674 |
+| refined library (905 proved lemmas) | 0.751 (−0.051; −0.059 .. −0.042) | 0.619 (−0.055; −0.061 .. −0.049) |
+| full3, partial (2,659 lemmas, not re-tested) | 0.753 (−0.048; −0.056 .. −0.040) | 0.628 (−0.046; −0.052 .. −0.039) |
+| cheap library, partial (2,642 lemmas, not re-tested) | 0.674 (−0.128; −0.137 .. −0.117) | 0.583 (−0.091; −0.100 .. −0.082) |
+
+The libraries speak on almost every move (the root lemma embeds everywhere) and say what 'hangs' says on 84%, 83% and
+65% of moves. The two frame libraries beat 'undefended' and lose to 'hangs' by about five points; the fixed sampling
+(full3) did not move the refined library's number. The interval covers the choice of positions only: one library per
+approach, one Stockfish depth, one threshold, one combination rule (the most specific frame decides; the chains and
+the lemma values are not used). Within that, the gap is not noise. Reading, directional: on the full-board question
+the lemmas as combined here carry less than the one-line rule they mostly restate.
+
 ## 2026-09-25 23:17 PDT — the current approach is now the default (Kaveh: "these flags will be forgotten")
 
 A bare `lemma_gen run` is now the full run: real Lichess positions, the frame oracle over the frame's own plies,
