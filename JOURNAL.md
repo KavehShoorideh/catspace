@@ -22874,6 +22874,17 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-27 11:45 PDT — the square conditions, and a silent all-false column caught on the way (OBS)
+
+Kaveh's generic conditions as vocabulary (`chess_domain`): `attacked_by_lower(i)` (an enemy piece worth less
+attacks it), `outnumbered(i)` (more attackers than defenders), `last_attacker(i, j)` (nothing of i's side comes
+after it on j); their after-the-move forms come from the lift. Adding them broke the core parity test, and the break
+was real: the generator sent every base relation to the compiled core, which answers False for a name it does not
+know, and cached the answer. Measured on a queen-attacked-by-a-pawn frame: `attacked_by_lower` true on 0 of 63 rows
+by the old path, 63 of 63 in Python. The core now answers only for `CORE_RELATIONS`; the rest go through Python; a
+test pins it. New tests pin the exchange frame (d4: 0 in the full frame, −1 without the defenders), the stakes, the
+ledger and the labeler.
+
 ## 2026-09-27 11:36 PDT — pass variations, the cross-frame ledger, and judging a move against the best one (OBS)
 
 Kaveh's first item, continued. `fates.exchange_variations`: along the exchange line, for every ply, the value if the
