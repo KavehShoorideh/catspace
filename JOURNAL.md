@@ -22874,6 +22874,28 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-27 16:48 PDT — exch2: exchange frames learned where the exchanges happened; bigger frames finally add, a little (OBS)
+
+Two fixes on the way, each found by its example: random assignment draws never found a big star (the most frequent
+six-piece exchange frame, seen in 33 training exchanges: 0 instances in 50,000 positions), so instances are now
+found by a BACKTRACKING JOIN (the centre first, each next slot drawn among the pieces its literals allow); and a
+rare frame needs the positions where it occurs, so `--source exchanges` draws from the 9,025 start positions of the
+training exchanges (the same frame: 75 instances from 58 positions, 0.7 s). exch1 (the general positions, before
+the join) had learned nothing above size 4.
+
+exch2 (`run_exch2.log`, 15,154 s, 10 workers, checkpointed): 5,232 lemmas -- size 3: 1,491, 4: 2,845, 5: 724, 6: 90,
+7: 3. Verdict gauge, 1,000 held-out positions: against standing still 0.813 (hangs 0.802; +0.011, +0.008 .. +0.015),
+against the best move 0.671 (−0.003); the exchange computation itself stays ahead (the ledger 0.846 and 0.813).
+Diagnosis on 300 of them (`gauge_verdicts_diagnosis_exch2.log`): where a four-piece frame decides (2,729 moves) the
+library 0.848 against 'hangs' 0.825 on the same moves; size 3 +0.012, size 5 +0.020; size 6 −0.149 on 43 moves. The
+problems, with examples:
+- the count condition is too crude: f6 in `4b3/5kpp/R7/1pp2P2/8/2r3P1/P4K2/8 w` is 'outnumbered' (Kf7 and g7 against
+  Ra6), but Kxf6 is illegal -- the rook covers f6; Stockfish −31, the root lemma says loses;
+- lemmas are binary: d5 in `5rk1/p3bppp/1p1p1n2/4p3/P1P1P3/5N2/5PPP/1R4K1 b` loses a pawn and the lemma says loses,
+  Stockfish −47 -- 'loses' in a lemma is any loss, in the gauge 1.5 pawns; the exchange computation keeps the size;
+- counts ignore the order of values: c4 in `1k1r3r/ppq5/5p2/3p2p1/1P1P2p1/PQP5/5P2/2KR3R w` (attacked by a pawn and a
+  queen, defended by a queen) is 'outnumbered'; Stockfish +15.
+
 ## 2026-09-27 12:03 PDT — lemmas learned on exchange frames close the gap to 'hangs'; a king-sampling bug found by its example (OBS)
 
 Kaveh's second item, the learning half: `--frames exchanges` makes the frontier the labeled exchanges of the

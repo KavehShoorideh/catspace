@@ -107,6 +107,22 @@ def _verdicts_job(args):
     return i, library_verdicts(_APP, chess.Board(fen))
 
 
+def _raw_job(args):
+    i, fen = args
+    return i, library_verdicts(_APP, chess.Board(fen), raw=True)
+
+
+def raw_all(app, boards: list, workers: int) -> dict:
+    """position index -> every verdict [(lemma, prediction, fired, ids)] per move, over a fork pool."""
+    global _APP
+    _APP = app
+    if workers <= 1:
+        return {i: library_verdicts(app, b, raw=True) for i, b in enumerate(boards)}
+    import multiprocessing as mp
+    with mp.get_context("fork").Pool(workers) as pool:
+        return dict(pool.imap_unordered(_raw_job, [(i, b.fen()) for i, b in enumerate(boards)], chunksize=2))
+
+
 def verdicts_all(app, boards: list, workers: int) -> dict:
     """position index -> the library's verdicts, over a fork pool (the applier is inherited, not pickled)."""
     global _APP
@@ -156,15 +172,12 @@ def library_spec(spec: str):
     return name, lp, (Path(prov) if prov else None)
 
 
-def diagnose(boards, rows, name, app, n_examples: int = 3, log=print) -> dict:
+def diagnose(boards, rows, name, app, n_examples: int = 3, log=print, workers: int = 1) -> dict:
     """Where the library loses to 'hangs' (truth: against standing still): accuracy by the largest frame allowed to
     decide, the disagreements with 'hangs' and who is right, the lemmas that decide the moves it gets wrong where
     'hangs' is right, and worked examples of the most frequent ones."""
     col = 2
-    raw = {}
-    for i, b in enumerate(boards):
-        for key, vs in library_verdicts(app, b, raw=True).items():
-            raw[(i, key)] = vs
+    raw = {(i, key): vs for i, per in raw_all(app, boards, workers).items() for key, vs in per.items()}
     t = lambda r: r[col] <= -LOSS_CP
     out = dict(by_cap={})
     for k in (1, 2, 3, 4):
@@ -382,7 +395,7 @@ def main(argv=None):
         for spec in specs:
             name, lp, prov = library_spec(spec)
             app = Applier(domain_of(lp), load_library(lp, prov))
-            report["diagnosis"][name] = diagnose(boards, rows, name, app)
+            report["diagnosis"][name] = diagnose(boards, rows, name, app, workers=a.workers)
         out = Path(paths.derived("lemmas", f"gauge_verdicts_diagnosis{('_' + a.tag) if a.tag else ''}.json"))
         json.dump(report, open(out, "w"), indent=1, default=str)
         print(f"[verdicts] -> {out} ({time.perf_counter() - t0:.0f}s)"); return
