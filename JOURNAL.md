@@ -22874,6 +22874,30 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-27 12:03 PDT — lemmas learned on exchange frames close the gap to 'hangs'; a king-sampling bug found by its example (OBS)
+
+Kaveh's second item, the learning half: `--frames exchanges` makes the frontier the labeled exchanges of the
+training games and every sub-frame that keeps the contested piece (68,628 frame instances; sizes 1-8), stars with
+kind-level types (an attacker: attacks & not same_side; a defender: defends; an x-ray: between, through its
+blocker). `--oracle exchange` values each action by the board's exchange frames against standing still -- the
+lemma's frame groups situations, the outcome is the board's, and the square conditions carry what the frame leaves
+out ("[N P] the pawn defends the knight: the knight keeps unless it lands outnumbered", 43/43 exceptions).
+
+The first smoke's one-piece lemma said "a move keeps material in 100% of 485 rows" -- impossible when a fifth of real
+moves lose. Its 750 samples were all kings: taking a position's first two matches in piece order takes the kings.
+The matches-per-position sampling of 2026-09-25 had this bias, so full3's and the cheap library's abstract slots are
+king-heavy too (neither is to be resumed; the sampling provenance now names the random order, so a resume refuses).
+A position's assignments are now drawn in a seeded random order: the root frame's 750 samples come from 375
+positions, 382 pawns, 119 rooks, 75 kings, 72 bishops, 63 knights, 39 queens. The corrected one-piece lemma:
+"a move keeps unless it lands outnumbered, or attacked by a lower-value piece, where it was not" -- 'hangs' in the
+interface words (121/121 exceptions, purity 0.96).
+
+Verdict gauge, 1,000 held-out positions, the smoke library (sizes ≤4, 5,000 positions, 329 lemmas): against
+standing still 0.806 (hangs 0.802; +0.004, interval +0.000 .. +0.008), against the best move 0.670 (−0.004); it says
+what 'hangs' says on 95% of moves -- the gap of the older libraries (−0.051) is closed, the exchange computation's own
+0.846 is not reached. The full run (`exch1`: sizes 1-8, 50,000 positions) is running, checkpointed, with a watchdog;
+the gauge follows it. The gauge now applies a library over a fork pool (65 s for 905 lemmas, was 406 s).
+
 ## 2026-09-27 11:45 PDT — the square conditions, and a silent all-false column caught on the way (OBS)
 
 Kaveh's generic conditions as vocabulary (`chess_domain`): `attacked_by_lower(i)` (an enemy piece worth less
