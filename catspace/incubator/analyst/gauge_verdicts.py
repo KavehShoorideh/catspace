@@ -223,6 +223,48 @@ def diagnose(boards, rows, name, app, n_examples: int = 3, log=print) -> dict:
     return out
 
 
+def frame_gauge(boards, rows, n_examples: int = 3, log=print) -> dict:
+    """Moves judged in EXCHANGE FRAMES (Kaveh 2026-09-27): each move's value against standing still is the exchange
+    at its destination minus the exchange standing still allows on its origin, inside the frame a chooser picks
+    around each square: the learned prior, the square's direct attackers and defenders, the old four-piece contest.
+    'loses' when the value is at most -LOSS_CP/100 pawns."""
+    from .fates import exchange_move_value
+    from .frame_prior import Prior, rule_frames
+    prior = Prior.load()
+    choosers = dict(prior=prior.frame, direct=lambda b, s: rule_frames(b, s)["direct"], contest4=lambda b, s: rule_frames(b, s)["contest4"])
+    out = {}
+    for name, fo in choosers.items():
+        t0 = time.perf_counter(); vals = {}
+        for r in rows:
+            b = boards[r[0]]; vals[(r[0], r[1])] = exchange_move_value(b, chess.Move.from_uci(r[1]), fo)
+        pred = lambda r: vals[(r[0], r[1])][0] <= -LOSS_CP / 100
+        rep_ = {}
+        for truth_name, col in (("vs standing still", 2), ("vs the best move", 3)):
+            sc = scores([(r[col] <= -LOSS_CP, pred(r)) for r in rows]); sh = scores([(r[col] <= -LOSS_CP, r[5]) for r in rows])
+            lo, hi = bootstrap_diff(rows, col, pred, lambda r: r[5])
+            log(f"OBS exchange frames by {name:8s} {truth_name}: balanced acc {sc['bacc']:.3f} (p {sc['prec']:.3f} r {sc['rec']:.3f}) vs hangs {sh['bacc']:.3f}; "
+                f"difference {sc['bacc'] - sh['bacc']:+.3f} (95% over positions {lo:+.3f} .. {hi:+.3f})  [{time.perf_counter() - t0:.0f}s]")
+            rep_[truth_name] = dict(frames=sc, hangs=sh, ci=[lo, hi])
+        out[name] = rep_
+        if name == "prior":
+            wrong = [r for r in rows if pred(r) != (r[2] <= -LOSS_CP) and r[5] == (r[2] <= -LOSS_CP)]
+            log(f"OBS prior frames wrong where 'hangs' is right: {len(wrong)} of {len(rows)} moves "
+                f"(says loses: {sum(1 for r in wrong if pred(r))}, says keeps: {sum(1 for r in wrong if not pred(r))})")
+            shown = set()
+            for r in wrong:
+                if len(shown) >= n_examples or r[0] in shown:
+                    continue
+                shown.add(r[0]); b = boards[r[0]]; m = chess.Move.from_uci(r[1]); v, dl, ol = vals[(r[0], r[1])]
+                nb = b.copy(stack=False); nb.push(m)
+                fr = prior.frame(nb, m.to_square)
+                log(f"\nEXAMPLE (prior frames wrong, 'hangs' right): {b.fen()}  {'white' if b.turn else 'black'} to move: {b.san(m)}")
+                log(b.unicode(borders=False, empty_square='·'))
+                log(f"  Stockfish: {r[2]:+d} cp against standing still, {r[3]:+d} against the best move -> {'LOSES' if r[2] <= -LOSS_CP else 'keeps'}")
+                log(f"  frame around {chess.square_name(m.to_square)} after the move: {' '.join(nb.piece_at(q).symbol() + chess.square_name(q) for q in fr)}")
+                log(f"  exchange value {v:+.1f}: destination line {dl or '(nobody captures)'}; standing still would lose on the origin: {ol or 'nothing'}; hangs says {'loses' if r[5] else 'keeps'}")
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=300); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--depth", type=int, default=12)
@@ -230,6 +272,7 @@ def main(argv=None):
     ap.add_argument("--library", action="append", default=None, help="name=library.json[:proved.json] (repeatable; a checkpoint_*.json gives its library)")
     ap.add_argument("--tag", default="")
     ap.add_argument("--diagnose", action="store_true", help="where each library loses to 'hangs', with worked examples")
+    ap.add_argument("--frames", action="store_true", help="moves judged in exchange frames picked by the prior / the direct rule / the old contest, instead of libraries")
     a = ap.parse_args(argv)
     L = paths.derived("lemmas")
     specs = a.library or [f"refined905={L}/library_games_frame6k.json:{L}/proved_games_frame6k.json",
@@ -258,6 +301,11 @@ def main(argv=None):
             s = scores([(r[col] <= -LOSS_CP, f(r)) for r in rows])
             print(f"OBS   {pname:10s} balanced acc {s['bacc']:.3f}  precision {s['prec']:.3f}  recall {s['rec']:.3f}")
             report.setdefault("rules", {})[f"{truth_name}|{pname}"] = s
+    if a.frames:
+        report["frames"] = frame_gauge(boards, rows)
+        out = Path(paths.derived("lemmas", f"gauge_verdicts_frames{('_' + a.tag) if a.tag else ''}.json"))
+        json.dump(report, open(out, "w"), indent=1, default=str)
+        print(f"[verdicts] -> {out} ({time.perf_counter() - t0:.0f}s)"); return
     if a.diagnose:
         report["diagnosis"] = {}
         for spec in specs:

@@ -97,7 +97,7 @@ class Prior:
 
     @staticmethod
     def load(path=None) -> "Prior":
-        return pickle.load(open(path or paths.derived("frame_prior.pkl"), "rb"))
+        return Prior(pickle.load(open(path or paths.derived("frame_prior.pkl"), "rb")))   # the fitted model only: a pickled Prior made under `python -m` names __main__.Prior
 
 
 def frame_scores(pred: list, true: list) -> dict:
@@ -143,7 +143,7 @@ def main(argv=None):
         for q in sorted((t - pr) | (pr - t)):
             d = e["pieces"].get(chess.square_name(q), {})
             print(f"   {b.piece_at(q).symbol()}{chess.square_name(q)}: label {d.get('link', 'not in the frame')} {'direct' if d.get('direct') else ('x-ray/later' if d else '')} {d.get('role', '')}")
-    pickle.dump(prior, open(paths.derived("frame_prior.pkl"), "wb"))
+    pickle.dump(model, open(paths.derived("frame_prior.pkl"), "wb"))
     json.dump(report, open(paths.derived("frame_prior_report.json"), "w"), indent=1)
     print(f"[frame_prior] -> {paths.derived('frame_prior.pkl')}")
 

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 import chess
 
-from .chess_domain import State, _ids_after, frame_episode_pv, frame_scalar, _frame_material, passed
+from .chess_domain import VAL, State, _ids_after, frame_episode_pv, frame_scalar, _frame_material, passed
 from .frames import signature
 
 
@@ -310,6 +310,57 @@ def achievable(board: chess.Board, ids: list, actor: int, goal, depth: int = 0, 
     v, m, ln = best
     f = fates_of(st, ln)
     return dict(yes=goal(f), move=m, fates=f, value=v - (10000.0 if goal(f) else 0.0) - frame_scalar(st, actor))   # value: the frame's material delta along the found line
+
+
+def exchange(b: chess.Board, s: int, frame: set, side: chess.Color | None = None, alpha: float = -1e9, beta: float = 1e9) -> tuple:
+    """THE EXCHANGE FRAME (Kaveh 2026-09-27: "a frame essentially is a sequence of moves ... we will inject a pass at
+    each move ... an alpha beta search"). On square s, the side to move either captures there with one of the frame's
+    pieces (legal moves only: a pinned or blocked piece waits until the line is clear) or PASSES, which ends the
+    exchange for it. Minimax with alpha-beta; the value is material won from `side`'s point of view (default: the side
+    to move at the start). Returns (value, line of captures in uci)."""
+    side = b.turn if side is None else side
+    us = b.turn == side
+    best = 0.0; best_line = []                                   # the pass: the exchange stops here
+    if us:
+        alpha = max(alpha, best)
+    else:
+        beta = min(beta, best)
+    victim = b.piece_at(s)
+    if victim is None or alpha >= beta:
+        return best, best_line
+    gain = (1 if us else -1) * VAL[victim.piece_type]
+    for m in sorted((m for m in b.legal_moves if m.to_square == s and m.from_square in frame), key=lambda m: VAL[b.piece_at(m.from_square).piece_type]):
+        nb = b.copy(stack=False); nb.push(m)
+        promo = (1 if us else -1) * (VAL[m.promotion] - VAL[chess.PAWN]) if m.promotion else 0.0
+        v, ln = exchange(nb, s, (frame - {m.from_square}) | {s}, side, alpha - gain - promo, beta - gain - promo)
+        v += gain + promo
+        if (us and v > best) or (not us and v < best):
+            best, best_line = v, [m.uci()] + ln
+        if us:
+            alpha = max(alpha, best)
+        else:
+            beta = min(beta, best)
+        if alpha >= beta:
+            break
+    return best, best_line
+
+
+def exchange_move_value(b: chess.Board, m: chess.Move, frame_of) -> tuple:
+    """A move judged in exchange frames, against standing still: what it wins on its destination (the capture itself
+    and the exchange the opponent can start there) minus what standing still would lose on its origin (the exchange
+    the opponent can start on the piece where it stands). frame_of(board, square) -> the frame's squares.
+    Returns (value, destination line, origin line)."""
+    side = b.turn
+    cap = b.piece_at(m.to_square) if not b.is_en_passant(m) else chess.Piece(chess.PAWN, not side)
+    won = (VAL[cap.piece_type] if cap else 0.0) + ((VAL[m.promotion] - VAL[chess.PAWN]) if m.promotion else 0.0)
+    nb = b.copy(stack=False); nb.push(m)
+    dest, dline = exchange(nb, m.to_square, set(frame_of(nb, m.to_square)), side) if not nb.is_checkmate() else (1000.0, [])
+    stand = passed(b)                                            # the opponent to move with our piece where it stands
+    if stand is None:
+        orig, oline = 0.0, []
+    else:
+        orig, oline = exchange(stand, m.from_square, set(frame_of(stand, m.from_square)), side)
+    return won + dest - orig, dline, oline
 
 
 def line_san(board: chess.Board, move: chess.Move, line: list) -> str:

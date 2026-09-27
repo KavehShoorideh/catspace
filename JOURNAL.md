@@ -22874,6 +22874,38 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-27 11:33 PDT — frames from exchanges: labels, a detection prior, and moves judged in exchange frames (OBS)
+
+Kaveh's two items (frames from the exchanges in games; a frame is the move sequence on its square with a pass at
+every ply and alpha-beta over it). Built and measured:
+
+1. `exchanges.py`: an exchange is a chain of captures on one square (an intermezzo of up to two plies allowed); its
+   frame is whoever captured, was captured, attacked or defended the square on any board of the chain -- a star
+   around the contested piece. 11,773 exchanges in the 1,477 knowledge games; sizes 2: 3,802, 3: 2,841, 4: 3,064,
+   5: 1,431, 6: 453, 7: 156, 8+: 26. (First definition, consecutive captures, merged interleaved exchanges into
+   16-piece "frames" -- game 1235, plies 20-25 -- and was replaced.)
+2. `frame_prior.py`: per-piece logistic prior (attacks/defends the square, x-ray behind a participant or not, one
+   move away, kind, distance ...), held-out games: exact frame 0.957 (the square's direct attackers and defenders
+   0.905; the old four-piece contest 0.789). The x-ray split came from two worked mistakes (Ra8 behind the capturing
+   queen missed; Rf1 behind an immobile pawn added).
+3. `fates.exchange`: the frame's outcome as the capture sequence on its square, each side capturing with a frame
+   piece or passing, alpha-beta; a move's value against standing still = the exchange at its destination minus the
+   one standing still allows on its origin. The d4 case: 0.0 in the prior's frame, −1.0 in the four-piece frame.
+4. `gauge_verdicts --frames`, the same 1,000 held-out positions and 31,003 moves:
+
+| frames picked by | vs standing still (hangs 0.802) | vs the best move (hangs 0.674) |
+|---|---|---|
+| the prior | 0.826 (+0.024; +0.020 .. +0.028) | 0.663 (−0.011; −0.015 .. −0.007) |
+| direct attackers and defenders | 0.825 (+0.023) | 0.663 (−0.011) |
+| the old four-piece contest | 0.825 (+0.023) | 0.663 (−0.011) |
+
+The first predictor to beat 'hangs' against standing still -- but the frame choice does not move this gauge: the gain
+is the exchange computation, and the big exchanges where the frame matters are rare among all legal moves. What the
+exchange frames still miss, with examples (`gauge_verdicts_frames_n1000.log`): a pawn lost with more (g4, Bxg4: −1
+in the frame, Stockfish −203; b5, Bxb5+ with check: −1, −188), and a threat outside the frame (Nd3 with the white
+queen on d8: 0 in the frame, a mate score for Stockfish; Rxd8 was the move) -- the "higher-value intermezzo" the
+frames must expose as a condition.
+
 ## 2026-09-27 11:04 PDT — why defence does not register: a frame's scoreboard counts only its own pieces (OBS)
 
 Kaveh: "why did the defense not register? is it not in the lemma?" It is not: the lemma behind the d4 error has no
