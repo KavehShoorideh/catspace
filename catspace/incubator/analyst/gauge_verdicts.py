@@ -99,6 +99,25 @@ def library_verdicts(app, b: chess.Board, raw: bool = False) -> dict:
     return {key: decide(vs)[:3] for (e, key), vs in res["verdicts"].items()}
 
 
+_APP = None
+
+
+def _verdicts_job(args):
+    i, fen = args
+    return i, library_verdicts(_APP, chess.Board(fen))
+
+
+def verdicts_all(app, boards: list, workers: int) -> dict:
+    """position index -> the library's verdicts, over a fork pool (the applier is inherited, not pickled)."""
+    global _APP
+    _APP = app
+    if workers <= 1:
+        return {i: library_verdicts(app, b) for i, b in enumerate(boards)}
+    import multiprocessing as mp
+    with mp.get_context("fork").Pool(workers) as pool:
+        return dict(pool.imap_unordered(_verdicts_job, [(i, b.fen()) for i, b in enumerate(boards)], chunksize=4))
+
+
 def scores(pairs: list) -> dict:
     """pairs of (truth loses, predicted loses) -> balanced accuracy, precision and recall of 'loses', n, base rate."""
     tp = sum(1 for t, p in pairs if t and p); fn = sum(1 for t, p in pairs if t and not p)
@@ -314,7 +333,7 @@ def ledger_gauge(boards, rows, n_examples: int = 3, log=print) -> dict:
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=300); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--depth", type=int, default=12)
-    ap.add_argument("--threads", type=int, default=8)
+    ap.add_argument("--threads", type=int, default=8); ap.add_argument("--workers", type=int, default=max(1, (__import__("os").cpu_count() or 2) - 1))
     ap.add_argument("--library", action="append", default=None, help="name=library.json[:proved.json] (repeatable; a checkpoint_*.json gives its library)")
     ap.add_argument("--tag", default="")
     ap.add_argument("--diagnose", action="store_true", help="where each library loses to 'hangs', with worked examples")
@@ -371,10 +390,7 @@ def main(argv=None):
         name, lp, prov = library_spec(spec)
         t1 = time.perf_counter()
         app = Applier(domain_of(lp), load_library(lp, prov))
-        says = {}
-        for i, b in enumerate(boards):
-            for key, v in library_verdicts(app, b).items():
-                says[(i, key)] = v
+        says = {(i, key): v for i, vs in verdicts_all(app, boards, a.workers).items() for key, v in vs.items()}
         spoken = [r for r in rows if (r[0], r[1]) in says]
         ties = sum(1 for r in spoken if says[(r[0], r[1])][2])
         agree = sum(1 for r in spoken if says[(r[0], r[1])][0] == r[5])

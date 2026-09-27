@@ -730,7 +730,7 @@ def game_placements(fens: list, per_position: int = 2, try_factor: int = 50):
                 if accept is not None and per_position and here >= per_position:
                     break
     placements.accepts = True
-    placements.sampling = f"matches, {per_position} a position, {try_factor}x tries"
+    placements.sampling = f"matches, {per_position} a position in random order, {try_factor}x tries"   # the order is part of the semantics: the first-in-piece-order sampling (full3, contests_counter2) must not be resumed under this
     return placements
 
 
