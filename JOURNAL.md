@@ -22874,6 +22874,37 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-27 10:54 PDT — why the libraries lose to 'hangs': four problems, each with an example (OBS)
+
+`gauge_verdicts --diagnose` on the same 1,000 held-out positions (`gauge_verdicts_diagnosis_n1000.log`), truth against
+standing still unless said otherwise; 'hangs' scores 0.802.
+
+1. Bigger frames add nothing. Letting frames up to size k decide: refined 0.749 / 0.752 / 0.752 / 0.751 for k = 1..4;
+   full3 0.749 / 0.749 / 0.753 / 0.753. What the libraries know is their one-piece lemma ("keeps unless it lands
+   attacked and was not attacked before"), a weaker 'hangs'.
+2. "Lands attacked" is read as lost, defenders ignored. The most frequent wrong verdict (refined: one lemma, in six
+   slot orders, decides 1,380 of them; full3: its top three 3,047 / 2,855 / 2,703). Example
+   `r1bq1rk1/pp3p1p/2n1pbp1/2pp4/2B1P3/2PPB3/PP1Q1PPP/RN2K2R w`, d4: the pawn is attacked by c5, Nc6, Bf6 and defended
+   by Qd2, c3, Be3; Stockfish −22 against standing still (keeps); both libraries say loses, the guard term that fired
+   being `lands_attacked & not attacked(before)`. The vocabulary has `after_defended`; the two-literal guard, admitted
+   at 80% purity, never needed it. When a library says 'loses' where 'hangs' says 'keeps', Stockfish disagrees with
+   the library 2,460 of 2,724 times (refined) and 3,398 of 3,762 (full3).
+3. "Already attacked" is read as safe. Example `8/2k1r2p/1p1R2p1/p1pKP3/3p4/6B1/1P4PP/8 w`, Rd8: the rook on d6 was
+   attacked by the king but defended by Kd5; on d8 it is attacked and undefended; Stockfish −942; full3 says keeps --
+   the "not attacked before" clause exempts a piece that was attacked at all, defended or not.
+4. The relative outcome hides blunders. Example `r3k2r/ppp4p/2n3p1/2b1p1q1/4b3/N1P2N1Q/PP1P1P2/R1B1K3 b`, Qh6: the
+   queen was attacked by Nf3; on h6 it hangs to Qh3. Against standing still +181 (standing still loses the queen), so
+   the library's 'keeps' counts as right -- against the best move −827. Under the player's truth (against the best
+   move) every library is further behind 'hangs' (−0.055, −0.046, −0.091).
+And the frames that decide are the ones that embed everywhere: refined, 24,124 of 31,003 moves are decided at size 4
+by geometry-free frames like `[wK wP wP bP] same_side & worth_ge`; full3, 30,808 by `[* * *]` triples; "the most
+specific frame" means the largest, not the most relevant.
+
+The one encouraging hint died at scale: "'hangs' unless the library says keeps" looked better on 5 and 300 positions;
+on 1,000 it is below 'hangs' (refined −0.023, interval −0.030 .. −0.015; full3 −0.009, −0.015 .. −0.003). The
+library's 'keeps' overrides are right 69-74% of the time, but they cost more true losses than they save false alarms.
+Reading, directional: the generator re-derives a weaker 'hangs' and wraps it in frames that do not add information.
+
 ## 2026-09-26 19:49 PDT — the verdict gauge: no library beats a one-line rule (OBS; Kaveh: "do it")
 
 The question put before any more generation: does a library's verdict on a move predict what Stockfish says the
