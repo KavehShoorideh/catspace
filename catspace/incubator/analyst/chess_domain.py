@@ -8,6 +8,8 @@ import itertools
 import random
 
 import chess
+
+from catspace.io import paths as _paths
 import chess.syzygy
 
 from .lemma_gen import Domain, Relation
@@ -700,7 +702,19 @@ def game_placements(fens: list, per_position: int = 2, try_factor: int = 50):
             if any(not pl for pl in pools):
                 continue
             here = 0
-            for ids in itertools.product(*pools):
+            prng = _r.Random(seed * 1000003 + k)                        # a position's assignments in a seeded random order: in piece order the first two
+            total = 1                                                   # matches of an abstract slot were always the kings (the root frame's 750 rows, 2026-09-27)
+            for pl in pools:
+                total *= len(pl)
+            if total <= 512:
+                combos = list(itertools.product(*pools)); prng.shuffle(combos)
+            else:
+                seen_c = set(); combos = []
+                for _ in range(512):
+                    t = tuple(prng.choice(pl) for pl in pools)
+                    if t not in seen_c:
+                        seen_c.add(t); combos.append(t)
+            for ids in combos:
                 if len(set(ids)) < len(ids):
                     continue
                 if accept is not None:
@@ -826,7 +840,65 @@ def core_literals(rows, lits):
     return out
 
 
-def domain(fens: list | None = None, oracle: str = "material", worth: str = "canonical", worth_tau: float = 4.0, depth: int = 1, shapes: bool = True, per_position: int = 2, try_factor: int = 50) -> Domain:
+def exchange_frames_of(path, max_pieces: int = 8):
+    """FRAMES FROM EXCHANGES (Kaveh 2026-09-27: "when we see a six-piece frame and we label it, let's learn it ... that
+    six-piece frame can be deconstructed to a five, four, three, two, one-piece frame"). -> () -> [(priority, types,
+    ids, literals)] over the labeled exchanges of the TRAINING games (game id % 5 != 0) and every sub-frame that keeps
+    the contested piece: stars around it, kind-level types, an attacker linked by attacks(i,0) & not same_side(i,0), a
+    defender by defends(i,0), an x-ray by between(k,i,0) through its blocker k (so it enters a sub-frame only with
+    its blocker); a piece with no link at the start (it arrived later) is left out."""
+    import itertools, json as _json
+
+    def fn():
+        out = []
+        for line in open(path):
+            e = _json.loads(line)
+            if e["game"] % 5 == 0:
+                continue
+            b = chess.Board(e["fen"]); c = e["squares"][0]; occ = b.piece_at(c)
+            members = {chess.parse_square(n) for n in e["pieces"]} - {c}
+            direct = []; xray = []
+            for q in sorted(members):
+                pc = b.piece_at(q)
+                if pc is None:
+                    continue
+                if q in b.attackers(pc.color, c):
+                    direct.append((q, (("defends", None, True),) if pc.color == occ.color else (("attacks", None, True), ("same_side", None, False))))
+                elif pc.piece_type in (chess.BISHOP, chess.ROOK, chess.QUEEN) and chess.SquareSet.ray(q, c):
+                    blockers = [x for x in chess.SquareSet.between(q, c) if b.piece_at(x) is not None]
+                    if len(blockers) == 1 and blockers[0] in members:
+                        xray.append((q, blockers[0]))
+            links = (direct + [(q, ("xray", k)) for q, k in xray])[: max_pieces - 1]
+            for n in range(0, len(links) + 1):
+                for sub in itertools.combinations(links, n):
+                    chosen = {q for q, _ in sub}
+                    if any(isinstance(l, tuple) and l and l[0] == "xray" and l[1] not in chosen for _, l in sub):
+                        continue                                          # an x-ray without its blocker is no link
+                    ids = [c] + [q for q, _ in sub]
+                    pos = {q: j for j, q in enumerate(ids)}
+                    lits = []
+                    for q, l in sub:
+                        if l[0] == "xray":
+                            lits.append(("between", (pos[l[1]], pos[q], 0), True))
+                        else:
+                            lits.extend((r, (pos[q], 0), pol) for r, _, pol in l)
+                    out.append((0, tuple(KIND_NAME[b.piece_at(i).piece_type] for i in ids), ids, tuple(lits)))
+        return out
+    return fn
+
+
+def exchange_outcomes(state: State, e: int, relative: bool = True):
+    """THE EXCHANGE ORACLE: every action of e valued by the exchange frames on the real board -- what it wins, the
+    exchange the opponent can start on its destination, against the one standing still allows on its origin
+    (fates.exchange_move_value, the direct frames). The lemma's frame groups situations; the outcome is the board's."""
+    from .fates import direct_frame, exchange_move_value
+    b = state.board.copy(stack=False); b.turn = state.board.piece_at(e).color
+    if not b.is_valid():
+        return []
+    return [((b, m), exchange_move_value(b, m, direct_frame)[0]) for m in b.legal_moves if m.from_square == e]
+
+
+def domain(fens: list | None = None, oracle: str = "material", worth: str = "canonical", worth_tau: float = 4.0, depth: int = 1, shapes: bool = True, per_position: int = 2, try_factor: int = 50, frames: str = "extend") -> Domain:
     """depth: plies of the frame episode after the action (frame oracle only); 1 = the single best reply. shapes: the
     sampled placements are one centred placement per configuration up to translation and mirror."""
     _EPISODE["depth"] = depth; _SHAPES["on"] = shapes
@@ -840,9 +912,19 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
             Relation("captures_worth_ge", 1, True, captures_worth_ge), Relation("stays_aligned", 1, True, stays_aligned),
             Relation("lands_attacked", 0, True, lands_attacked),
             Relation("attacked_by_lower", 1, fn=attacked_by_lower), Relation("outnumbered", 1, fn=outnumbered), Relation("last_attacker", 2, fn=last_attacker)]
+    if frames == "exchanges":
+        contests_of = exchange_frames_of(_paths.derived("exchanges.jsonl"))
+    else:
+        contests_of = (lambda: [(pri, t, ids, lits) for f in fens[: 5000] for pri, t, ids, lits in contests(chess.Board(f))]) if fens is not None else None
+    if oracle == "exchange":
+        from functools import partial
+        return Domain("chess_exchange" if fens is None else "chess_games_exchange", TYPES, rels, placements if fens is None else game_placements(fens, per_position, try_factor), slots_of, actions, transition, frame_scalar, partial(frame_reply_scalar, depth=1), contests=contests_of,
+                      entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
+                      placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], type_tree=TYPE_TREE, root="*",
+                      null_reply_scalar=lambda st, e: None if passed(st.board, st.board.piece_at(e).color) is None else 0.0,   # the oracle's values are already against standing still
+                      episode=partial(frame_episode_states, depth=1), threat=frame_threat_state, batch_outcomes=exchange_outcomes, batch_literals=(core_literals if _core is not None else None))
     if oracle == "frame":
         from functools import partial
-        contests_of = (lambda: [(pri, t, ids, lits) for f in fens[: 5000] for pri, t, ids, lits in contests(chess.Board(f))]) if fens is not None else None
         return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens, per_position, try_factor), slots_of, actions, transition, frame_scalar, partial(frame_reply_scalar, depth=depth), contests=contests_of,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
                       placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], type_tree=TYPE_TREE, root="*", null_reply_scalar=partial(frame_null_reply_scalar, depth=depth), episode=partial(frame_episode_states, depth=depth), threat=frame_threat_state,

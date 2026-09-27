@@ -1098,7 +1098,7 @@ class Generator:
         t0 = time.perf_counter()
         starts = [self.dom.root] if self.dom.root else list(self.dom.types)
         frontier = list({f.types: f for f in (Frame((t,), ()).canon(self.dom.symmetries) for t in starts)}.values())
-        contest_by_size = self.contest_frontier() if (self.frames == "contests" and self.dom.contests is not None) else None
+        contest_by_size = self.contest_frontier() if (self.frames in ("contests", "exchanges") and self.dom.contests is not None) else None
         by_actor: dict = defaultdict(list)
         deferred: dict = defaultdict(list)                                    # joins land at larger sizes than size + 1
         start_size = 1; done: set = set(); carried = None; resumed_mid = False
@@ -1667,7 +1667,7 @@ def arguments(argv=None):
     ap.add_argument("--per-position", type=int, default=2, help="real positions: at most this many matching placements of a frame from one position (its evidence spreads over boards)")
     ap.add_argument("--tries", type=int, default=50, help="real positions: look at no more than cap x this many assignments for a frame's matches")
     ap.add_argument("--max-rows", type=int, default=20000, help="a frame's evidence is cut past this many rows (flagged incomplete)")
-    ap.add_argument("--frames", default="extend", choices=["extend", "contests"], help="extend: frames grow by types x geometry; contests: frames are the contested pieces with their attackers and defenders found in the positions, by priority")
+    ap.add_argument("--frames", default="extend", choices=["extend", "contests", "exchanges"], help="extend: frames grow by types x geometry; contests: frames are the contested pieces with their attackers and defenders found in the positions, by priority")
     ap.add_argument("--mode", default="batch", choices=["batch", "counter"], help="batch: majority claim + guard search with coverage/purity; counter: believe until a counterexample, add what separates it, stop after 200 confirmations")
     ap.add_argument("--no-shapes", action="store_true", help="sampled placements: keep every board position of a configuration instead of one centred placement per shape")
     ap.add_argument("--joins", type=int, default=2, help="extend each frame also by joining it with up to this many known library frames (size >= 2), highest stake first")
@@ -1681,7 +1681,7 @@ def arguments(argv=None):
     ap.add_argument("--positions", type=int, default=None, help="real positions to draw from; default 50,000, the re-test 12,000"); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=200)
     ap.add_argument("--relative", action=argparse.BooleanOptionalAction, default=True, help="outcome relative to the null action (what the standing threats already take)")
     ap.add_argument("--max-frames", type=int, default=3000, help="per size, evaluate only the most frequent frames")
-    ap.add_argument("--oracle", choices=["material", "resolved", "frame", "tablebase"], default="frame", help="the outcome: 1-ply material after the best capture/check reply, or the tablebase's WDL (sampled frames of <= 5 men)")
+    ap.add_argument("--oracle", choices=["material", "resolved", "frame", "tablebase", "exchange"], default="frame", help="the outcome: 1-ply material after the best capture/check reply, or the tablebase's WDL (sampled frames of <= 5 men)")
     ap.add_argument("--lift", action=argparse.BooleanOptionalAction, default=True, help="add every state relation's after-the-move form as an action-level relation (predicate invention by composition)")
     ap.add_argument("--prefixes", default="after,then,some", help="the lifts in the vocabulary when --lift: after (our move), then (their reply), some (quantified over an entity's actions), threat (after the pass and their reply)")
     ap.add_argument("--gain", type=float, default=None, help="partition the outcome at this GAIN instead of at zero: claims become 'acting gains' / 'acting does not gain'")
@@ -1719,7 +1719,7 @@ def main(argv=None):
                     rows.append(fen)
             _r.Random(a.seed).shuffle(rows); fens = rows[: a.positions]
             print(f"[lemma_gen] lichess source ({a.split} part): {len(fens)} positions of the general population")
-        dom = domain(fens, oracle=a.oracle, worth=a.worth, worth_tau=a.worth_tau, depth=a.depth, shapes=not a.no_shapes, per_position=a.per_position, try_factor=a.tries)
+        dom = domain(fens, oracle=a.oracle, worth=a.worth, worth_tau=a.worth_tau, depth=a.depth, shapes=not a.no_shapes, per_position=a.per_position, try_factor=a.tries, frames=a.frames)
     else:
         raise SystemExit(f"unknown domain {a.domain}")
     global _RELATIVE, _LIFT, _GAIN, _PREFIXES
