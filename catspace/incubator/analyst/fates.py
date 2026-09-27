@@ -363,6 +363,65 @@ def exchange_move_value(b: chess.Board, m: chess.Move, frame_of) -> tuple:
     return won + dest - orig, dline, oline
 
 
+def exchange_variations(b: chess.Board, s: int, frame: set, side: chess.Color | None = None) -> list:
+    """THE PASS AT EACH PLY (Kaveh 2026-09-27: "we will inject a pass at each move ... those will each be a separate
+    outcome"). Along the exchange's principal line, for every ply k: who is to move, the frame's value if that side
+    leaves the frame there (an intermezzo elsewhere: the exchange stops at k), the value if it continues, and its
+    STAKE -- what leaving costs it. A frame's outcome holds unless, at some ply, the side to move has a move elsewhere
+    worth more than its stake: the condition the frame offers the outside world. Values from `side`'s point of view."""
+    side = b.turn if side is None else side
+    value, line = exchange(b, s, frame, side)
+    out = []; so_far = 0.0; nb = b.copy(stack=False); fr = set(frame)
+    for k in range(len(line) + 1):
+        cont, _ = exchange(nb, s, fr, side)
+        mover = nb.turn
+        out.append(dict(ply=k, mover="us" if mover == side else "them", leaves=so_far, continues=so_far + cont,
+                        stake=(cont if mover == side else -cont)))
+        if k == len(line):
+            break
+        m = chess.Move.from_uci(line[k]); victim = nb.piece_at(s)
+        so_far += (1 if mover == side else -1) * (VAL[victim.piece_type] + ((VAL[m.promotion] - VAL[chess.PAWN]) if m.promotion else 0.0))
+        nb.push(m); fr = (fr - {m.from_square}) | {s}
+    return out
+
+
+def threats(b: chess.Board, frame_of, exclude: set = frozenset()) -> tuple:
+    """The side to move's best exchange anywhere: over every enemy piece its pieces attack (except squares in
+    `exclude`), the exchange in that piece's frame. -> (value, square, line)."""
+    best = (0.0, None, [])
+    for sq, pc in b.piece_map().items():
+        if pc.color == b.turn or sq in exclude or not b.attackers(b.turn, sq) or pc.piece_type == chess.KING:
+            continue
+        v, ln = exchange(b, sq, set(frame_of(b, sq)), b.turn)
+        if v > best[0]:
+            best = (v, sq, ln)
+    return best
+
+
+def ledger_move_value(b: chess.Board, m: chess.Move, frame_of) -> tuple:
+    """A move judged against standing still ACROSS FRAMES: what it wins now, minus the opponent's best exchange
+    anywhere after it, plus the opponent's best exchange anywhere if we had passed -- a threat elsewhere that the move
+    leaves or creates (a queen en prise, an abandoned defence, a discovered attack) is the higher-value intermezzo the
+    single frame could not see. A mate after the move is -1000 / +1000. -> (value, their best after, their best if
+    we pass)."""
+    side = b.turn
+    cap = b.piece_at(m.to_square) if not b.is_en_passant(m) else chess.Piece(chess.PAWN, not side)
+    won = (VAL[cap.piece_type] if cap else 0.0) + ((VAL[m.promotion] - VAL[chess.PAWN]) if m.promotion else 0.0)
+    nb = b.copy(stack=False); nb.push(m)
+    if nb.is_checkmate():
+        return 1000.0, (0.0, None, []), (0.0, None, [])
+    after = threats(nb, frame_of)
+    stand = passed(b)
+    before = threats(stand, frame_of) if stand is not None else (0.0, None, [])
+    return won - after[0] + before[0], after, before
+
+
+def direct_frame(b: chess.Board, s: int) -> set:
+    """The square's direct attackers and defenders with its occupant: the cheap frame (on the held-out exchanges,
+    exact 0.905 against the prior's 0.957; the same score on the verdict gauge)."""
+    return {s} | set(b.attackers(chess.WHITE, s)) | set(b.attackers(chess.BLACK, s))
+
+
 def line_san(board: chess.Board, move: chess.Move, line: list) -> str:
     """The episode's line in SAN: each state after one ply; a ply whose board is only the turn flipped is a pass."""
     b = board.copy(stack=False); out = [b.san(move)]; b.push(move)

@@ -22874,6 +22874,30 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-27 11:36 PDT — pass variations, the cross-frame ledger, and judging a move against the best one (OBS)
+
+Kaveh's first item, continued. `fates.exchange_variations`: along the exchange line, for every ply, the value if the
+side to move leaves the frame there (an intermezzo), if it continues, and its STAKE -- the condition a frame offers
+the outside world: the outcome holds unless the side to move has a move elsewhere worth more than its stake.
+`fates.ledger_move_value`: the cheapest honest version of that condition across the board -- what the move wins,
+minus the opponent's best exchange anywhere after it, plus their best if we had passed. Judged against the best move,
+a move 'loses' when its value is 1.5 or more below the position's best by the same measure (a comparison a one-move
+rule cannot make). `gauge_verdicts --ledger`, the same 1,000 held-out positions:
+
+| | vs standing still (hangs 0.802) | vs the best move (hangs 0.674) |
+|---|---|---|
+| single frame (the prior's), its own verdict | 0.826 (+0.024; +0.020 .. +0.028) | 0.663 (−0.011) |
+| single frame, against the best move's value | 0.721 | 0.802 (+0.128; +0.115 .. +0.143) |
+| ledger (direct frames), its own verdict | 0.846 (+0.044; +0.036 .. +0.051) | 0.655 (−0.019) |
+| ledger, against the best move's value | 0.743 | 0.813 (+0.139; +0.125 .. +0.153) |
+
+On the player's truth the frames compared across moves beat the one-line rule by fourteen points; the missed free
+capture is most of it. The ledger's misses where 'hangs' is right are mostly clean pawn losses: b4 in the Rd8 ending
+(cxb4: −1 in the frame, Stockfish −190 against the best move), g4 (Bxg4: −1, −225), b5 (Bxb5: −1, −179) -- a pawn is 1
+in material and often 1.5-2 to Stockfish, so it falls under the 1.5 threshold. Not re-tuned on these positions.
+Mates are not in the exchange values (Nd3 with the queen en prise on d8 is 0 across frames against standing still;
+against the best move Rxd8 at +9 makes it lose).
+
 ## 2026-09-27 11:33 PDT — frames from exchanges: labels, a detection prior, and moves judged in exchange frames (OBS)
 
 Kaveh's two items (frames from the exchanges in games; a frame is the move sequence on its square with a pass at

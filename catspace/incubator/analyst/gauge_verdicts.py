@@ -265,6 +265,52 @@ def frame_gauge(boards, rows, n_examples: int = 3, log=print) -> dict:
     return out
 
 
+def ledger_gauge(boards, rows, n_examples: int = 3, log=print) -> dict:
+    """Moves judged in exchange frames, two ways and against both truths (Kaveh 2026-09-27: the frame's interface is
+    the higher-value intermezzo elsewhere): SINGLE = the destination and origin frames (the prior's frames); LEDGER =
+    what the move wins, minus the opponent's best exchange anywhere after it, plus their best if we had passed (the
+    direct frames). 'vs standing still': loses when the value is at most -1.5; 'vs the best move': loses when it is
+    1.5 or more below the position's best value by the same measure -- a comparison between moves that a one-move
+    rule cannot make."""
+    from .fates import direct_frame, exchange_move_value, ledger_move_value
+    from .frame_prior import Prior
+    prior = Prior.load(); thr = LOSS_CP / 100
+    t0 = time.perf_counter(); single = {}; ledger = {}
+    for r in rows:
+        b = boards[r[0]]; m = chess.Move.from_uci(r[1])
+        single[(r[0], r[1])] = exchange_move_value(b, m, prior.frame)[0]
+        ledger[(r[0], r[1])] = ledger_move_value(b, m, lambda bb, s: direct_frame(bb, s))
+    best_s = {}; best_l = {}
+    for r in rows:
+        best_s[r[0]] = max(best_s.get(r[0], -1e9), single[(r[0], r[1])]); best_l[r[0]] = max(best_l.get(r[0], -1e9), ledger[(r[0], r[1])][0])
+    preds = {"single vs standing": lambda r: single[(r[0], r[1])] <= -thr, "single vs best": lambda r: single[(r[0], r[1])] <= best_s[r[0]] - thr,
+             "ledger vs standing": lambda r: ledger[(r[0], r[1])][0] <= -thr, "ledger vs best": lambda r: ledger[(r[0], r[1])][0] <= best_l[r[0]] - thr}
+    log(f"[verdicts] single and ledger values for {len(rows)} moves ({time.perf_counter() - t0:.0f}s)")
+    out = {}
+    for truth_name, col in (("vs standing still", 2), ("vs the best move", 3)):
+        sh = scores([(r[col] <= -LOSS_CP, r[5]) for r in rows])
+        for name, f in preds.items():
+            sc = scores([(r[col] <= -LOSS_CP, f(r)) for r in rows]); lo, hi = bootstrap_diff(rows, col, f, lambda r: r[5])
+            log(f"OBS truth {truth_name}: {name:18s} balanced acc {sc['bacc']:.3f} (p {sc['prec']:.3f} r {sc['rec']:.3f}) vs hangs {sh['bacc']:.3f}; "
+                f"difference {sc['bacc'] - sh['bacc']:+.3f} ({lo:+.3f} .. {hi:+.3f})")
+            out[f"{truth_name}|{name}"] = dict(scores=sc, hangs=sh, ci=[lo, hi])
+    f = preds["ledger vs best"]; col = 3
+    wrong = [r for r in rows if f(r) != (r[col] <= -LOSS_CP) and r[5] == (r[col] <= -LOSS_CP)]
+    log(f"OBS ledger vs best wrong where 'hangs' is right: {len(wrong)} (says loses {sum(1 for r in wrong if f(r))}, keeps {sum(1 for r in wrong if not f(r))})")
+    shown = set()
+    for r in wrong:
+        if len(shown) >= n_examples or r[0] in shown:
+            continue
+        shown.add(r[0]); b = boards[r[0]]; m = chess.Move.from_uci(r[1]); v, after, before = ledger[(r[0], r[1])]
+        bm = max((x for x in rows if x[0] == r[0]), key=lambda x: ledger[(x[0], x[1])][0])
+        nm = lambda t: f"{t[0]:+.0f} on {chess.square_name(t[1]) if t[1] is not None else '-'} {t[2]}"
+        log(f"\nEXAMPLE (ledger vs best wrong, 'hangs' right): {b.fen()}  {'white' if b.turn else 'black'} to move: {b.san(m)}")
+        log(b.unicode(borders=False, empty_square='·'))
+        log(f"  Stockfish: {r[2]:+d} against standing still, {r[3]:+d} against the best move -> {'LOSES' if r[3] <= -LOSS_CP else 'keeps'}; hangs says {'loses' if r[5] else 'keeps'}")
+        log(f"  ledger: {v:+.1f} (their best after: {nm(after)}; if we pass: {nm(before)}); the ledger's best move {b.san(chess.Move.from_uci(bm[1]))} {ledger[(bm[0], bm[1])][0]:+.1f}")
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=300); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--depth", type=int, default=12)
@@ -272,6 +318,7 @@ def main(argv=None):
     ap.add_argument("--library", action="append", default=None, help="name=library.json[:proved.json] (repeatable; a checkpoint_*.json gives its library)")
     ap.add_argument("--tag", default="")
     ap.add_argument("--diagnose", action="store_true", help="where each library loses to 'hangs', with worked examples")
+    ap.add_argument("--ledger", action="store_true", help="single frames and the cross-frame ledger, against standing still and against the best move")
     ap.add_argument("--frames", action="store_true", help="moves judged in exchange frames picked by the prior / the direct rule / the old contest, instead of libraries")
     a = ap.parse_args(argv)
     L = paths.derived("lemmas")
@@ -301,6 +348,11 @@ def main(argv=None):
             s = scores([(r[col] <= -LOSS_CP, f(r)) for r in rows])
             print(f"OBS   {pname:10s} balanced acc {s['bacc']:.3f}  precision {s['prec']:.3f}  recall {s['rec']:.3f}")
             report.setdefault("rules", {})[f"{truth_name}|{pname}"] = s
+    if a.ledger:
+        report["ledger"] = ledger_gauge(boards, rows)
+        out = Path(paths.derived("lemmas", f"gauge_verdicts_ledger{('_' + a.tag) if a.tag else ''}.json"))
+        json.dump(report, open(out, "w"), indent=1, default=str)
+        print(f"[verdicts] -> {out} ({time.perf_counter() - t0:.0f}s)"); return
     if a.frames:
         report["frames"] = frame_gauge(boards, rows)
         out = Path(paths.derived("lemmas", f"gauge_verdicts_frames{('_' + a.tag) if a.tag else ''}.json"))
