@@ -59,6 +59,8 @@ def test_base_relations_agree_with_python():
             rows.append((st, a))
     lits = []
     for name, r in rels.items():
+        if name not in cd.CORE_RELATIONS:
+            continue                                                                        # the core answers only for what it implements; the rest is the Python path
         k = 3
         for sl in __import__("itertools").permutations(range(k), r.arity):
             lits.append((name, list(sl)))

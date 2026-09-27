@@ -500,7 +500,8 @@ class Generator:
             try:
                 masks = self.dom.batch_literals(rows, lits)
                 for (rn, sl2), m in zip(lits, masks):
-                    cache[(rn, sl2)] = m
+                    if m is not None:                                 # None: a relation the core does not implement -- the Python path below
+                        cache[(rn, sl2)] = m
             except Exception:
                 pass
             if key in cache:

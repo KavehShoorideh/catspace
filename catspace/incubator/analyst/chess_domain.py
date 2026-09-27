@@ -377,6 +377,30 @@ def stays_aligned(state, action, j):
     return bool(chess.SquareSet.ray(m.to_square, j)) and not any(nb.piece_at(s) for s in chess.SquareSet.between(m.to_square, j))
 
 
+def attacked_by_lower(state, i):
+    """SQUARE CONDITIONS (Kaveh 2026-09-27: "whether or not a square is attacked by a piece of higher value or lower
+    value ... generic enough that can be used as an interface to the outside world"): an enemy piece worth less than
+    this one attacks it (whoever else is around, the first capture already wins)."""
+    p = state.board.piece_at(i)
+    return any(VAL[state.board.piece_at(a).piece_type] < VAL[p.piece_type] for a in state.board.attackers(not p.color, i))
+
+
+def outnumbered(state, i):
+    """More enemy pieces attack it than its own pieces defend it."""
+    p = state.board.piece_at(i)
+    return len(state.board.attackers(not p.color, i)) > len(state.board.attackers(p.color, i))
+
+
+def last_attacker(state, i, j):
+    """i attacks j and no other piece of i's side does: nothing comes after i (Kaveh: "is the bishop the last piece
+    attacking c5? No ... there's another attacker coming afterwards")."""
+    b = state.board; pi = b.piece_at(i); pj = b.piece_at(j)
+    if pi is None or pj is None or pi.color == pj.color:
+        return False
+    att = b.attackers(pi.color, j)
+    return i in att and len(att) == 1
+
+
 def lands_attacked(state, action):
     b, m = action; nb = b.copy(stack=False); nb.push(m)
     return bool(nb.attackers(nb.turn, m.to_square))
@@ -776,17 +800,26 @@ def core_outcomes(depth: int):
     return fn
 
 
+CORE_RELATIONS = frozenset({"same_side", "attacks", "defends", "aligned", "between", "worth_ge", "attacked", "defended", "slides",
+                            "gives_check", "captures", "captures_worth_ge", "lands_attacked", "stays_aligned"})   # what analyst_core's literal_masks implements
+
+
 def core_literals(rows, lits):
+    """Bitmasks for the literals the compiled core implements; None for any other relation (the core answers False
+    for a name it does not know -- a silent all-false column; the square conditions of 2026-09-27 would have been
+    one), so the caller computes those in Python."""
     packed = []
     for state, ids, a, _ in rows:
         bb, m = a
         packed.append((bb.fen(), [(-1 if i is None else i) for i in ids], m.uci()))
-    names = [(n, list(sl)) for n, sl in lits]
-    cols = _core.literal_masks(packed, names)
+    known = [(n, list(sl)) for n, sl in lits if n in CORE_RELATIONS]
+    cols = iter(_core.literal_masks(packed, known)) if known else iter(())
     out = []
-    for col in cols:
+    for n, sl in lits:
+        if n not in CORE_RELATIONS:
+            out.append(None); continue
         m = 0
-        for i, v in enumerate(col):
+        for i, v in enumerate(next(cols)):
             if v:
                 m |= 1 << i
         out.append(m)
@@ -805,7 +838,8 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
             Relation("attacked", 1, fn=attacked), Relation("defended", 1, fn=defended), Relation("slides", 1, fn=slides),
             Relation("gives_check", 0, True, gives_check), Relation("captures", 0, True, captures),
             Relation("captures_worth_ge", 1, True, captures_worth_ge), Relation("stays_aligned", 1, True, stays_aligned),
-            Relation("lands_attacked", 0, True, lands_attacked)]
+            Relation("lands_attacked", 0, True, lands_attacked),
+            Relation("attacked_by_lower", 1, fn=attacked_by_lower), Relation("outnumbered", 1, fn=outnumbered), Relation("last_attacker", 2, fn=last_attacker)]
     if oracle == "frame":
         from functools import partial
         contests_of = (lambda: [(pri, t, ids, lits) for f in fens[: 5000] for pri, t, ids, lits in contests(chess.Board(f))]) if fens is not None else None
