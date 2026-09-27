@@ -310,3 +310,35 @@ def achievable(board: chess.Board, ids: list, actor: int, goal, depth: int = 0, 
     v, m, ln = best
     f = fates_of(st, ln)
     return dict(yes=goal(f), move=m, fates=f, value=v - (10000.0 if goal(f) else 0.0) - frame_scalar(st, actor))   # value: the frame's material delta along the found line
+
+
+def line_san(board: chess.Board, move: chess.Move, line: list) -> str:
+    """The episode's line in SAN: each state after one ply; a ply whose board is only the turn flipped is a pass."""
+    b = board.copy(stack=False); out = [b.san(move)]; b.push(move)
+    for st in line[1:]:
+        m = next((x for x in b.legal_moves if (lambda c: (c.push(x), c.board_fen())[1])(b.copy(stack=False)) == st.board.board_fen()), None)
+        if m is None:
+            out.append("(pass)"); b.push(chess.Move.null())
+        else:
+            out.append(b.san(m)); b.push(m)
+    return " ".join(out)
+
+
+def main(argv=None):
+    """python -m catspace.incubator.analyst.fates --fen F --move uci --ids e1,d3,c3,c5 [--depth 0 --max-depth 8]:
+    the frame's outcome for the move -- the value against standing still, the frame material at the end and when
+    standing still, and the line."""
+    import argparse
+    from .chess_domain import domain
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--fen", required=True); ap.add_argument("--move", required=True); ap.add_argument("--ids", required=True)
+    ap.add_argument("--depth", type=int, default=0); ap.add_argument("--max-depth", type=int, default=8)
+    a = ap.parse_args(argv)
+    b = chess.Board(a.fen); m = chess.Move.from_uci(a.move); ids = [chess.parse_square(s) for s in a.ids.split(",")]
+    o = outcome(domain(oracle="frame", depth=a.depth), b, ids, m, depth=a.depth, max_depth=a.max_depth)
+    print(f"frame {' '.join(f'{b.piece_at(i).symbol()}{chess.square_name(i)}' for i in ids)}: value {o.value:+.1f} "
+          f"(frame material at the end {o.end:+.1f}, standing still {o.baseline:+.1f}); line: {line_san(b, m, o.line)}")
+
+
+if __name__ == "__main__":
+    main()

@@ -22874,6 +22874,23 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-27 11:04 PDT — why defence does not register: a frame's scoreboard counts only its own pieces (OBS)
+
+Kaveh: "why did the defense not register? is it not in the lemma?" It is not: the lemma behind the d4 error has no
+guard of its own; its "unless" is inherited from the one-pawn lemma ("a pawn that was not attacked, landing on an
+attacked square"). But the cause is deeper than a missing word. A frame's outcome counts only the frame's own
+pieces, so recapturing an attacker that is not in the frame scores nothing and the side passes instead
+(`python -m catspace.incubator.analyst.fates`, the d4 position of the diagnosis):
+
+- frame Ke1 Pd3 Pc3 pc5 (the lemma's): value −1.0; line d4 Bxd4 (pass) (pass) (pass)
+- the same move with Nc6, Bf6, Qd2, Be3 in the frame: value +0.0; line d4 dxc4 (pass) Qxd4 cxd4 Bxd4 Bxd4 cxd4 Qxd4
+
+The lemma is right about its world (it passed its re-test) and its world is wrong about the board whenever a
+recapture takes a piece from outside the frame. Growing the frame does not cure it: the frames grow by the frontier's
+choice, not by the exchange's pieces -- which is why frame size added nothing in the diagnosis. Open (Kaveh's call):
+exact rules as the tactical layer and back to the trajectory layer (ANALYST_PLAN section 32), or a scoreboard that
+counts what the whole exchange wins and a cheap regeneration against 'hangs'.
+
 ## 2026-09-27 10:54 PDT — why the libraries lose to 'hangs': four problems, each with an example (OBS)
 
 `gauge_verdicts --diagnose` on the same 1,000 held-out positions (`gauge_verdicts_diagnosis_n1000.log`), truth against
