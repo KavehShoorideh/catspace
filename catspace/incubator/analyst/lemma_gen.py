@@ -35,6 +35,8 @@ from __future__ import annotations
 
 import argparse
 import os
+
+from catspace.io import paths
 import hashlib
 import itertools
 import json
@@ -414,6 +416,21 @@ class Generator:
             combos *= len(self.dom.leaves(t))
         return max(1, min(4, int(round(combos ** 0.5))))
 
+    @staticmethod
+    def join_order(frame: Frame) -> list:
+        """The order a join fills a frame's slots: the most connected slot first (the centre of a star), then always the
+        slot with the most literals to those already placed -- so each slot is drawn among pieces its links allow."""
+        deg = defaultdict(int); link = defaultdict(set)
+        for r, sl, pol in frame.literals:
+            for a in sl:
+                deg[a] += 1
+                link[a] |= set(sl) - {a}
+        order = [max(range(frame.size), key=lambda i: (deg[i], -i))]
+        while len(order) < frame.size:
+            rest = [i for i in range(frame.size) if i not in order]
+            order.append(max(rest, key=lambda i: (len(link[i] & set(order)), deg[i], -i)))
+        return order
+
     def instances(self, frame: Frame, cap: int | None = None):
         """(state, slot ids, complete) for every placement matching the frame's literals. A source that takes the
         literals (`accepts`: real positions) counts its cap in MATCHES and spreads them over boards; otherwise the
@@ -423,6 +440,19 @@ class Generator:
         complete = True
         cap = (cap or self.cap) * self.abstract_scale(frame)
         geometric = not any(r.startswith(("after_", "then_", "some_", "threat_")) or self.rel[r].on_action for r, sl, pol in frame.literals)
+        if getattr(self.dom.placements, "joins", False) and geometric:
+            order = self.join_order(frame)
+            pos = {sl: d for d, sl in enumerate(order)}
+            closes = defaultdict(list)                                         # slot -> the literals it is the last to fill
+            for r, sl, pol in frame.literals:
+                if sl:
+                    closes[max(sl, key=lambda x: pos[x])].append((r, sl, pol))
+            join = lambda st, slot: all(self._lit(st, st.ids, r, sl, pol) for r, sl, pol in closes.get(slot, ()))
+            join.order = order
+            for state, exhaustive in self.dom.placements(frame.types, cap, self.seed, join=join):
+                complete = complete and exhaustive
+                yield state, self.dom.slots_of(state), complete
+            return
         if getattr(self.dom.placements, "accepts", False) and geometric:
             accept = lambda st: all(self._lit(st, self.dom.slots_of(st), r, sl, pol) for r, sl, pol in frame.literals)
             for state, exhaustive in self.dom.placements(frame.types, cap, self.seed, accept=accept):
@@ -1676,7 +1706,7 @@ def arguments(argv=None):
     ap.add_argument("--prove-max-size", type=int, default=0, help="prove: only frames of at most this size")
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1)); ap.add_argument("--max-conj", type=int, default=2); ap.add_argument("--all", action="store_true", help="generalize: over all lemmas, not only the proved")
     ap.add_argument("--over-literals", action="store_true", help="generalize: the frame literals' relation names are variables too"); ap.add_argument("--max-unseen", type=int, default=0)
-    ap.add_argument("--source", choices=["sampled", "games", "lichess"], default="lichess", help="placements: sampled frames (only the frame's pieces) or real game positions")
+    ap.add_argument("--source", choices=["sampled", "games", "lichess", "exchanges"], default="lichess", help="placements: sampled frames (only the frame's pieces) or real game positions")
     ap.add_argument("--split", default=None, choices=["gen", "test"], help="lichess source: the generation part or the disjoint re-test part (by position hash)")
     ap.add_argument("--positions", type=int, default=None, help="real positions to draw from; default 50,000, the re-test 12,000"); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=200)
     ap.add_argument("--relative", action=argparse.BooleanOptionalAction, default=True, help="outcome relative to the null action (what the standing threats already take)")
@@ -1705,6 +1735,18 @@ def main(argv=None):
             rows = [m["fen"] for m in meta if a.lo <= m["ply"] <= a.hi]
             _r.Random(a.seed).shuffle(rows); fens = rows[: a.positions]
             print(f"[lemma_gen] games source: {len(fens)} positions (plies {a.lo}-{a.hi}) -- Kaveh's own games")
+        elif a.source == "exchanges":
+            # THE POSITIONS WHERE THE EXCHANGES HAPPENED (Kaveh 2026-09-27: "when we see a six-piece frame and we label
+            # it, let's learn it right there"): the start positions of the labeled exchanges of the TRAINING games,
+            # where the exchange frames are dense (a six-piece frame: 11 instances in 50,000 general positions)
+            import random as _r
+            seen = set(); rows = []
+            for line in open(paths.derived("exchanges.jsonl")):
+                e = json.loads(line)
+                if e["game"] % 5 != 0 and e["fen"] not in seen:
+                    seen.add(e["fen"]); rows.append(e["fen"])
+            _r.Random(a.seed).shuffle(rows); fens = rows[: a.positions]
+            print(f"[lemma_gen] exchanges source: {len(fens)} positions where an exchange began (training games)")
         elif a.source == "lichess":
             # THE GENERAL POPULATION (Kaveh 2026-09-24: "why my games? why not just lichess in general?"): the ChessBench
             # positions on disk (Lichess games, many players and ratings). Split by a stable hash of the position:

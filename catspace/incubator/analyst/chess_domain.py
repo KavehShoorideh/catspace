@@ -686,7 +686,10 @@ def game_placements(fens: list, per_position: int = 2, try_factor: int = 50):
 
     boards: dict = {}                                                   # parsed once per process (fork copies what the parent parsed)
 
-    def placements(types: tuple, cap: int, seed: int, accept=None):
+    def placements(types: tuple, cap: int, seed: int, accept=None, join=None):
+        """join(state, slot) -> do the literals that `slot` closes hold (join.order: the slot order), a BACKTRACKING
+        JOIN: a slot is drawn only among pieces consistent with the slots already placed (a six-piece exchange star
+        had 0 instances in 50,000 positions by random draws, 2026-09-27)."""
         rng = _r.Random(seed)
         order = list(range(len(fens))); rng.shuffle(order)
         scan = getattr(placements, "scan_limit", None)                   # the frequency count scans a bounded prefix of the positions
@@ -702,7 +705,39 @@ def game_placements(fens: list, per_position: int = 2, try_factor: int = 50):
             if any(not pl for pl in pools):
                 continue
             here = 0
-            prng = _r.Random(seed * 1000003 + k)                        # a position's assignments in a seeded random order: in piece order the first two
+            prng = _r.Random(seed * 1000003 + k)
+            if join is not None:
+                budget_j = budget * 200                                  # a join's check is one literal on a shared board, not a copied try: a rare frame may scan the whole source
+                sh = [list(pl) for pl in pools]
+                for pl in sh:
+                    prng.shuffle(pl)
+                ids = [None] * len(sh); order_ = join.order
+
+                def dfs(d):
+                    nonlocal looked
+                    if d == len(order_):
+                        yield list(ids); return
+                    slot = order_[d]
+                    for c in sh[slot]:
+                        if c in ids:
+                            continue
+                        looked += 1
+                        if looked > budget_j:
+                            return
+                        ids[slot] = c
+                        if join(State(b, ids), slot):
+                            yield from dfs(d + 1)
+                        ids[slot] = None
+                for got in dfs(0):
+                    yield State(b.copy(stack=False), got), False
+                    yielded += 1; here += 1
+                    if yielded >= cap:
+                        return
+                    if per_position and here >= per_position:
+                        break
+                if looked > budget_j:
+                    return
+                continue                        # a position's assignments in a seeded random order: in piece order the first two
             total = 1                                                   # matches of an abstract slot were always the kings (the root frame's 750 rows, 2026-09-27)
             for pl in pools:
                 total *= len(pl)
@@ -730,7 +765,8 @@ def game_placements(fens: list, per_position: int = 2, try_factor: int = 50):
                 if accept is not None and per_position and here >= per_position:
                     break
     placements.accepts = True
-    placements.sampling = f"matches, {per_position} a position in random order, {try_factor}x tries"   # the order is part of the semantics: the first-in-piece-order sampling (full3, contests_counter2) must not be resumed under this
+    placements.joins = True
+    placements.sampling = f"matches by backtracking join (checks up to {200 * try_factor}x the cap), {per_position} a position in random order"   # the order is part of the semantics: the first-in-piece-order sampling (full3, contests_counter2) must not be resumed under this
     return placements
 
 
