@@ -24,7 +24,7 @@ import chess
 
 from catspace.io import paths
 
-from .fates import captured_value, joint_threats, ledger_move_value, passed, square_frame, threats
+from .fates import captured_value, changed_squares, joint_threats, joint_threats_book, ledger_move_value, passed, square_frame, threats
 from .gauge_verdicts import LOSS_CP, positions, truths
 from .engine import Engine
 
@@ -38,14 +38,14 @@ def choose(b: chess.Board) -> dict:
     we pass)}} -- the frames' own reasoning for every legal move."""
     stand = passed(b)
     if JOINT:
-        before = joint_threats(stand, square_frame, select=SELECT) if stand is not None else (0.0, None, [])
+        before, book = joint_threats_book(stand, square_frame, select=SELECT) if stand is not None else ((0.0, None, []), None)
     else:
         before = threats(stand, square_frame) if stand is not None else (0.0, None, [])
     values = {}; trace = {}
     for m in b.legal_moves:
         if JOINT:
             nb = b.copy(stack=False); nb.push(m)
-            after = (0.0, None, []) if nb.is_checkmate() else joint_threats(nb, square_frame, select=SELECT)
+            after = (0.0, None, []) if nb.is_checkmate() else joint_threats(nb, square_frame, select=SELECT, parent=book, changed=changed_squares(b, m))   # the pass position's book: only the frames the move touches
             v = 1000.0 if nb.is_checkmate() else captured_value(b, m) - after[0] + before[0]
             bef = before
         else:
