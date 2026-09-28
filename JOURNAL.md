@@ -22874,6 +22874,17 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-27 20:05 PDT — exch4, the improved lemmas at full size: a plateau at 'hangs' plus one point (OBS)
+
+`exch4` (the exchange oracle, sizes and legal counts, frames up to 8 pieces, the 9,025 exchange positions; 8,419 s,
+10 workers, checkpointed): 5,280 lemmas (size 3: 1,534, 4: 2,857, 5: 716, 6: 81, 7: 3). Verdict gauge, the same
+1,000 held-out positions: against standing still by size 0.813 (hangs 0.802; +0.012, +0.008 .. +0.015), binary 0.812;
+against the best move by size 0.666 (−0.008, −0.012 .. −0.005). The full run equals its four-minute smoke (sizes ≤3:
+0.814) and exch2 (0.813): the bigger exchange frames add nothing the gauge sees, and the lemmas stay below the exact
+exchange computation they are learned from (0.826 in the single frame, 0.846 across frames). Reading, directional:
+the lemma layer, as combined here (the most specific frame decides, by size), restates 'hangs' and a little more;
+where it could add, the exact computation already does.
+
 ## 2026-09-27 17:34 PDT — improving the lemmas (Kaveh's call): sizes and legal counts help a little; the ledger target hurts; 23x faster (OBS)
 
 Three changes bundled, one smoke each (sizes ≤3, 3,000 exchange positions, 1,000 held-out positions for the gauge):
