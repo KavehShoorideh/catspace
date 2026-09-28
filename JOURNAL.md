@@ -22874,6 +22874,37 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 09:53 PDT — the autonomous dig loop (Kaveh: "go autonomous until you stop seeing improvements"): joint frames, their interface, the frame book; the plateau (OBS)
+
+Each step came from a worked miss and kept every earlier case right (tests in `test_analyst_exchange_frames.py`):
+1. x-rays: a square's frame holds the pieces that attack it once the frame's pieces are lifted (`square_frame`;
+   Rxg3 missed the rook behind the rook). 200 positions: own misses 6 -> 5, Stockfish's best in the top set 166 -> 168.
+2. intermezzi: nesting per-frame threat scans could not work -- the innermost intermezzo is always unanswered (two
+   levels: Bxd5 still wrong, 119 s a position). Kaveh: resolve frames jointly and label the larger frames. The joint
+   frame is found without an engine: frames combine when resolving them together differs from resolving each alone
+   (after Bxd5, the d5 frame alone: exd5 Qxd5, +2 for Black; with what it pulls in -- the b1 rook's Rb6+ once e6 is
+   lifted, the kings, Black's queen -- 0). `local_resolve` (alpha-beta over a frame's captures of frame pieces and
+   forcing moves, stop where the pass is legal) and `interactors` (the pieces a frame pulls in). Bxd5 is now chosen.
+3. two holes the joint frames opened, each by its example: a frame piece taking a piece outside the frame left its
+   defenders out (Nb4/Ba7/Rfe1: a pawn or knight read as won) -> a capture opens its square to every bearer; and a line
+   a frame's own piece opens must bring in what it now attacks (after g6, exd6 uncovers Qd4 on h8) -> the attacker and
+   its target join. 200 positions: Stockfish's best in the top set 170, own misses 4; 1,000 positions: 849 against 843
+   per-frame (26 own misses against 27); the 300-position dig set: false-safe top moves 682 -> 635.
+4. Kaveh's rule for the prior: when in doubt take the bigger frame (join below 75% certainty that the smaller one is
+   right); the player now joins every interactor (the biggest frame), so the labeled prior (tasks 7-8) would only
+   trim it for speed and is not built.
+5. Kaveh's publish-subscribe: every frame subscribes to its relational state (its pieces, who attacks and defends
+   each, pins, the checks it can give); a child position keeps a frame whose state is unchanged. Identical values on
+   50 positions; 11% of resolutions reused, no time saved -- frames are wide and the forcing scan's positions move
+   kings and checkers (squares as subscriptions were worse: 59 of 64 squares a frame). Node pruning (only the moves
+   that can matter) gave 94 s -> 59 s on 50 positions, the same values.
+
+Where the misses are now (the 300-position set, the opponent's first reply in Stockfish's refutation of a
+false-safe move): quiet and attacking nothing new 312 (positional or slower plans), a capture or check 139 (dug:
+mostly tempo and structure -- Re6, exd5 -- and my surviving threat not credited -- Bxh4), one new target 126, a
+double attack 57. The next material-level step is a two-ply frame resolution (the opponent's reply weighs its gain
+against parrying my threats), minutes a position in Python today. The rest is positional: the trajectory layer's.
+
 ## 2026-09-28 07:15 PDT — the frame player: play positions, dig into the misses; the first fix (mates and forcing lines) (OBS)
 
 Kaveh: "try some positions and see if you make the best move ... if not, let's dig in ... the most generic and most
