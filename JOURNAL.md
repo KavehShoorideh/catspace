@@ -22874,6 +22874,24 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 15:35 PDT — a sample analysis, frame by frame: how many lemmas, used how (OBS)
+
+Kaveh: "how many lemmas do we use? how are the lemmas used? ... take a position, a sample analysis, see what it
+analyzes in what order". `frame_player --trace FEN` (fates.TRACE records every frame in the order analysed, with
+where its resolution came from; store and lemma library emptied first). Kaveh's position 7R/3b2r1/1p1kp3/p2p4/3PpN2/
+PP2P3/1KP2P2/8 b, 0.1 s:
+  1. if Black passed, White's frames: e6, d5 (the f4 knight's targets) and the black king frame -- all one joint frame
+     (the king defends both pawns; the knight has a check, the prior keeps the join): 8 pieces, resolved once, the other
+     two served from the store; +0, White threatens nothing;
+  2. each Black move, the same joint frame again after it (recomputed: a king frame is keyed on the board): Rg8 -5
+     (Rxg8), Rg2 -5 (Nxg2), Be8/Bc8/Ba4 -3, e5 -2, twelve moves 0 (Rf7 Re7 Rg5 Rg4 Rg1 Bc6 Bb5 Ke7 Kc7 Kc6 b5 a4);
+  3. decision: a twelve-way tie (Stockfish's Rg1 inside it).
+  Counts: 75 frames analysed -- 42 exact store, 24 computed without a lemma (can reach check), 7 computed as new
+  lemmas, 2 served by a lemma; 8 lemmas formed.
+So: the frame lemmas are built on the fly (not kept across runs) and, here, barely matter -- everything near the king is
+one frame that can reach check; about 4 lemma uses per position over 100 positions. The September lemma library is not
+used by the frame player.
+
 ## 2026-09-28 15:31 PDT — the king-join prior (Kaveh's pick; his 75% rule) (OBS)
 
 `king_join_prior.py`: for every frame the counter-check rule would join to a king frame (1,000 positions and six

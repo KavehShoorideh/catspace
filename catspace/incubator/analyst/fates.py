@@ -715,6 +715,8 @@ def joint_frame(b: chess.Board, squares: set, kings: set, frame_of=None) -> tupl
         gate = _king_gate() if checks else None
         if checks and (gate is None or gate(b, squares, kings, members, c, checks)):
             ks, km = king_frame(b, c); squares |= ks; members |= km; kings.add(c)
+        elif checks:
+            _LAST.setdefault("skipped", []).append(c)
     return frozenset(squares), frozenset(kings), frozenset(members)
 
 
@@ -857,6 +859,8 @@ def _slots_to_line(slot_line: tuple, ordered: list) -> list:
     return out
 
 
+TRACE: list | None = None                                          # when a list: every frame analysed, in order (frame_player --trace)
+_LAST: dict = {}                                                   # where the last resolution came from; king joins the prior skipped
 _LEMMAS: dict = {}                                                 # lemma_key -> (value, line in slot terms): frames generalized
 LEMMAS = __import__("os").environ.get("ANALYST_LEMMAS_FRAMES", "1") != "0"
 _RESOLVED: dict = {}                                               # frame_key -> (value, line): the persistent store of resolutions
@@ -871,6 +875,7 @@ def resolve_frame(b: chess.Board, squares, kings, members) -> tuple:
     hit = _RESOLVED.get(k)
     if hit is not None and not VERIFY_FRAMES:
         RESOLVED_STATS["hits"] += 1
+        _LAST["source"] = "exact store"
         return hit
     lk = lemma_key(b, squares, kings, members) if LEMMAS else None
     lem = _LEMMAS.get(lk[0]) if lk is not None else None
@@ -878,6 +883,7 @@ def resolve_frame(b: chess.Board, squares, kings, members) -> tuple:
         RESOLVED_STATS["lemma_hits"] = RESOLVED_STATS.get("lemma_hits", 0) + 1
         v = (lem[0], _slots_to_line(lem[1], lk[1]) if lem[1] is not None else [])
         _RESOLVED[k] = v
+        _LAST["source"] = "lemma"
         return v
     foot_hit = None
     if FOOTPRINTS and k[0] == "board" and hit is None:            # a frame that can reach check: served when its footprint is unchanged
@@ -923,6 +929,7 @@ def resolve_frame(b: chess.Board, squares, kings, members) -> tuple:
     if len(_RESOLVED) > 500000:
         _RESOLVED.clear()
     _RESOLVED[k] = v
+    _LAST["source"] = "computed" + (", new lemma" if lk is not None and lk[0] not in _LEMMAS else "" if lk is not None else ", no lemma (can reach check)")
     if lk is not None and lk[0] not in _LEMMAS:
         if len(_LEMMAS) > 500000:
             _LEMMAS.clear()
@@ -947,14 +954,16 @@ def frame_book(b: chess.Board, frame_of=None, select=None, parent: dict | None =
     in, and its resolution -- served by the persistent store (`resolve_frame`) whenever the frame's key recurs, in this
     position's parent, a sibling, or any other branch. `parent`/`changed` are kept for callers; the store supersedes
     them. `select(b, key, squares, kings, members)` may narrow a joined frame (the prior's choice)."""
-    specs = {}
+    specs = {}; skipped = {}
     if b.is_check():
         specs[("king", b.turn)] = joint_frame(b, set(), {b.turn}, frame_of)
     else:
         for sq, pc in b.piece_map().items():
             if pc.color == b.turn or pc.piece_type == chess.KING or not b.attackers(b.turn, sq):
                 continue
+            _LAST["skipped"] = []
             specs[("sq", sq)] = joint_frame(b, {sq}, set(), frame_of)
+            skipped[("sq", sq)] = _LAST.get("skipped", [])
         if b.king(not b.turn) is not None:
             specs[("king", not b.turn)] = joint_frame(b, set(), {not b.turn}, frame_of)
     book = {}
@@ -963,6 +972,9 @@ def frame_book(b: chess.Board, frame_of=None, select=None, parent: dict | None =
             fr = select(b, key, *fr)
         v, ln = resolve_frame(b, fr[0], fr[1], fr[2])             # the persistent store: unchanged frames are not recalculated
         book[key] = (fr, None, v, ln)
+        if TRACE is not None:
+            TRACE.append(dict(event="frame", fen=b.fen(), key=key, squares=sorted(fr[0]), kings=sorted(fr[1]), members=sorted(fr[2]),
+                              source=_LAST.get("source"), value=v, line=list(ln), skipped=skipped.get(key, [])))
     return book
 
 
@@ -976,6 +988,8 @@ def joint_threats(b: chess.Board, frame_of=None, forcing: int = 2, select=None, 
 def joint_threats_book(b: chess.Board, frame_of=None, forcing: int = 2, select=None, parent: dict | None = None, changed: frozenset = frozenset()) -> tuple:
     key = (b._transposition_key(), id(frame_of), id(select))
     if key in _JOINT:
+        if TRACE is not None:
+            TRACE.append(dict(event="book from memory", fen=b.fen()))
         return _JOINT[key]
     if len(_JOINT) > 100000:
         _JOINT.clear()

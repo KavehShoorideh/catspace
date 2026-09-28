@@ -138,6 +138,84 @@ def choose(b: chess.Board) -> dict:
     return dict(values=values, best=best, trace=trace, before=before, plans=plan_scores)
 
 
+def trace(fen: str, detail: int = 3) -> None:
+    """A SAMPLE ANALYSIS, in the order the frames are analysed (Kaveh 2026-09-28: "how many lemmas do we use? how are
+    the lemmas used? ... see what it analyzes in what order"): the store and the lemma library start empty, so what is
+    computed and what is reused is this analysis's own. First the opponent's frames if the side to move passed (their
+    threats), then each legal move's frames after it, then the counts and the decision."""
+    from . import fates
+    fates._JOINT.clear(); fates._RESOLVED.clear(); fates._LEMMAS.clear()
+    fates.TRACE = []
+    b = chess.Board(fen)
+    t0 = time.perf_counter()
+    c = choose(b)
+    dt = time.perf_counter() - t0
+    events = fates.TRACE; fates.TRACE = None
+    side = "White" if b.turn else "Black"; other = "Black" if b.turn else "White"
+
+    def pieces(f, sqs):
+        bb = chess.Board(f)
+        return " ".join(f"{bb.piece_at(q).symbol()}{chess.square_name(q)}" for q in sqs if bb.piece_at(q) is not None)
+
+    def san(f, line):
+        bb = chess.Board(f); out = []
+        for u in line:
+            m = chess.Move.from_uci(u)
+            if m not in bb.legal_moves:
+                break
+            out.append(bb.san(m)); bb.push(m)
+        return " ".join(out) or "nothing (stand)"
+
+    def name(e):
+        k = e["key"]
+        if k[0] == "king":
+            return f"the {'white' if k[1] else 'black'} king frame"
+        bb = chess.Board(e["fen"]); pc = bb.piece_at(k[1])
+        return f"the frame of {pc.symbol() if pc else ''}{chess.square_name(k[1])}"
+
+    def full(e):
+        joined = f"; king frame joined: {', '.join('white' if k else 'black' for k in e['kings'])}" if e["kings"] else ""
+        skipped = f"; king frame NOT joined (prior): {', '.join('white' if k else 'black' for k in e['skipped'])}" if e["skipped"] else ""
+        return (f"    {name(e)}: {len(e['squares'])} squares, pieces {pieces(e['fen'], e['members'])}{joined}{skipped}\n"
+                f"      -> {e['value']:+g} by {san(e['fen'], e['line'])}   [{e['source']}]")
+
+    stand = passed(b)
+    print(f"SAMPLE ANALYSIS {fen} ({side} to move); {dt:.1f}s")
+    print(f"1. If {side} passed, {other}'s frames (the threats it must answer):")
+    sfen = stand.fen() if stand is not None else None
+    for e in events:
+        if e.get("fen") == sfen and e["event"] == "frame":
+            print(full(e))
+    print(f"   their best: {c['before'][0]:+g}")
+    order = sorted(c["values"], key=lambda u: -c["values"][u])
+    shown = set(order[:detail])
+    print(f"2. {side}'s moves in the order they are generated: value = captured - {other}'s best frame after it + {other}'s best if we passed")
+    for m in b.legal_moves:
+        nb = b.copy(stack=False); nb.push(m)
+        es = [e for e in events if e.get("fen") == nb.fen()]
+        fr = [e for e in es if e["event"] == "frame"]
+        tag = "  <- top" if m.uci() in c["best"] else ""
+        if m.uci() in shown:
+            print(f"   {b.san(m)}: value {c['values'][m.uci()]:+g}{tag}")
+            for e in fr:
+                print(full(e))
+            if any(e["event"] == "book from memory" for e in es):
+                print("    (the whole position was met before: its book reused)")
+        else:
+            srcs = {}
+            for e in fr:
+                s = e["source"].split(",")[0]; srcs[s] = srcs.get(s, 0) + 1
+            print(f"   {b.san(m)}: value {c['values'][m.uci()]:+g}; {len(fr)} frames ({', '.join(f'{n} {s}' for s, n in srcs.items()) or 'book from memory'}){tag}")
+    fr = [e for e in events if e["event"] == "frame"]
+    by = {}
+    for e in fr:
+        by[e["source"]] = by.get(e["source"], 0) + 1
+    print("3. Counts: " + f"{len(fr)} frames analysed -- " + "; ".join(f"{n} {s}" for s, n in sorted(by.items(), key=lambda kv: -kv[1])))
+    print(f"   lemmas formed in this analysis: {len(fates._LEMMAS)}; king frames not joined by the prior: {sum(len(e['skipped']) for e in fr)}; "
+          f"whole positions met again (book reused): {sum(1 for e in events if e['event'] == 'book from memory')}")
+    print(f"4. Decision: {', '.join(b.san(chess.Move.from_uci(u)) for u in c['best'])} ({c['values'][c['best'][0]]:+g})")
+
+
 def _choose_fen(fen: str) -> dict:
     return choose(chess.Board(fen))
 
@@ -159,6 +237,7 @@ def main(argv=None):
     ap.add_argument("--plans", default=PLANS, help="the tactical plan layer that breaks ties in the top set (plan_layers.LAYERS)")
     ap.add_argument("--ledger", default=LEDGER, choices=["one_ply", "two_ply"])
     ap.add_argument("--no-king-prior", action="store_true", help="join every king frame the counter-check rule names (no learned prior)")
+    ap.add_argument("--trace", default=None, metavar="FEN", help="a sample analysis of one position, in the order the frames are analysed")
     a = ap.parse_args(argv)
     JOINT = not a.per_frame
     PLANS = a.plans
@@ -166,6 +245,9 @@ def main(argv=None):
     if a.no_king_prior:
         from . import fates
         fates.KING_JOIN_GATE = None
+    if a.trace:
+        trace(a.trace, a.show)
+        return
     t0 = time.perf_counter()
     eng = Engine(threads=8, depth=a.depth)
     try:
