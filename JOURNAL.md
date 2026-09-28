@@ -22874,6 +22874,25 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 07:15 PDT — the frame player: play positions, dig into the misses; the first fix (mates and forcing lines) (OBS)
+
+Kaveh: "try some positions and see if you make the best move ... if not, let's dig in ... the most generic and most
+elegant fix, not chess-specific." `frame_player.py` chooses from the frames alone -- the frames around every
+contested square resolved exactly, the ledger across them, the best value (ties listed) -- and is scored on the
+held-out positions against Stockfish's evaluation of every move. 200 positions: Stockfish's best among the frames'
+top moves in 167; the first tied pick loses 1.5 pawns or more in 38, but a tied move was fine in 30 of those (the
+frames cannot rank quiet moves -- the trajectory layer's job); the frames' own misses: 8.
+
+The worst three were mates. `2r1r1k1/pp3pp1/q7/8/3Qbb2/4N2P/PPP1RP2/2K3R1 b`: the frames chose Qxe2 (+5, a rook);
+Stockfish: Qxe2 Qxg7#. Expected: g7 attacked by Qd4 and Rg1, defended only by the king, a capture there is mate.
+Found: the g7 frame resolved to "+1 for White, a pawn" -- Qxg7, the king cannot take back, so the search let Black
+'pass', in check. The other two: cxd7 allowed Rf2+ Kh1 Qxh2#; Rxd4 allowed Re1# (quiet checks, not captures on a
+frame's square). The fixes, neither naming chess: (1) a side that can neither act nor pass has lost (±1000, not a
+material count); (2) the moves after which the opponent cannot pass (the domain's rule; in chess a check) join the
+threat search, two forcing levels deep. After: Qxe2 +5 against Re5/Bh6 +1001; cxd7 +1 against Kh1 .. Be1 (Stockfish's
+choice) +1000 (the frames found Rf2+ Kh1 Qxh2# behind standing still themselves); Rxd4 −998. The 200 positions again:
+the frames' own misses 6 (were 8); 0.3 s a position at most. The three mates are tests.
+
 ## 2026-09-27 22:09 PDT — a learned combination of the lemmas' verdicts (Kaveh's call): nothing more against standing still, +0.027 against the best move (OBS)
 
 `gauge_verdicts --combine` (`gauge_verdicts_combine_exch4.log`, 4,071 s): from every lemma of exch4 that speaks on a
