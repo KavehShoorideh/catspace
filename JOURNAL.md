@@ -22874,6 +22874,30 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-27 17:34 PDT — improving the lemmas (Kaveh's call): sizes and legal counts help a little; the ledger target hurts; 23x faster (OBS)
+
+Three changes bundled, one smoke each (sizes ≤3, 3,000 exchange positions, 1,000 held-out positions for the gauge):
+- legal counts: `outnumbered` and `attacked_by_lower` count captures that can happen (a pinned piece along its pin,
+  no king onto a defended square, a defending king only without a second attacker) -- f6 of the diagnosis is no
+  longer 'outnumbered';
+- sizes: every guard term stores the mean outcome of the rows where it fires; the gauge's second verdict calls a move
+  'loses' when the deciders' mean size is at most −1.5;
+- the ledger as the lemmas' target (`--oracle ledger`): it HURT. No one-piece lemma passed the bar (13 evaluated, 0
+  admitted), the library spoke on 60.7% of moves and scored 0.750 (−0.055 against 'hangs'). The ledger values a move
+  by the opponent's best capture anywhere, so whether a pawn move 'loses' depends on the rest of the board (a rook
+  already hanging hides the pawn); a local lemma cannot say that. The better truth to gauge against is a worse target
+  to learn -- reverted to the local exchange oracle.
+With the exchange oracle (`exch4_smoke`, 231 s): the root lemma is back ("keeps unless it lands outnumbered where it
+was not, or attacked by a lower-value piece, ...", 117/119 exceptions); by size 0.814 against standing still (hangs
+0.802; +0.012, +0.008 .. +0.015), binary 0.811, against the best move even (−0.002). The sizes add about 0.003; the
+smoke equals exch2's 4.2-hour library (0.813).
+
+Speed (profiled on one size-3 frame, 638 rows: 27.4 s): the quantifier lift regenerated an entity's legal moves for
+every row (161,824 times) -- now cached per state with its answers; the episode, threat and after lifts keyed their
+caches on FEN strings (8 s) -- now on the board's transposition key, and the after-state is cached per row; the
+exchange generates only the frame's captures onto the square. The same frame: 1.2 s, the same guard. The full run on
+these settings (`exch4`, sizes ≤8) is running.
+
 ## 2026-09-27 16:48 PDT — exch2: exchange frames learned where the exchanges happened; bigger frames finally add, a little (OBS)
 
 Two fixes on the way, each found by its example: random assignment draws never found a big star (the most frequent
