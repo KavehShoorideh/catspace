@@ -114,3 +114,14 @@ def test_joint_frames_find_the_intermezzo_and_keep_recaptures():
     b2 = chess.Board("r2q1rk1/1bppnp1p/1pn1p1p1/p3P3/P3P3/5N2/BPP1NPPP/R2Q1RK1 b - - 3 13")
     stand = F.passed(b2)
     assert F.joint_threats(stand, F.square_frame)[0] == 0.0                                 # White has nothing: Qxd7 is met by Qxd7
+
+
+def test_a_line_a_frame_opens_brings_in_what_it_now_attacks():
+    """Kaveh 2026-09-28, the g6 miss: after g6, exd6 opens the d6 frame's own queen onto h8 -- the rook joins the frame
+    (its defenders through the recapture rule), so Black cannot both take back on d6 and save the rook."""
+    from catspace.incubator.analyst.frame_player import choose
+    b = chess.Board("r1bqkbnr/ppp2ppp/3p4/4P3/3Q4/8/PPP2PPP/RNB1KB1R b KQkq - 0 6")
+    after = b.copy(); after.push_san("g6")
+    assert chess.H8 in F.interactors(after, F.square_frame(after, chess.D6))
+    c = choose(b)
+    assert c["values"][b.parse_san("g6").uci()] < 0 and b.parse_san("g6").uci() not in c["best"]

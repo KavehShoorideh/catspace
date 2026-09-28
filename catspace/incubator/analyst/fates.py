@@ -556,8 +556,10 @@ def interactors(b: chess.Board, frame: set) -> set:
         if q in frame or lifted.piece_at(q) is None:
             continue
         new = set(lifted.attacks(q)) - set(b.attacks(q))
-        if any(t in frame and b.piece_at(t).color != pc.color for t in new):
-            out.add(q)                                            # it reaches a frame piece once the frame's pieces leave
+        hit = {t for t in new if b.piece_at(t) is not None and b.piece_at(t).color != pc.color and b.piece_at(t).piece_type != chess.KING}
+        if hit:
+            out |= {q} | hit                                      # a line the frame opens: the attacker and what it now attacks (g6 in r1bqkbnr/ppp2ppp/..: exd6
+                                                                  # uncovers Qd4 on h8, 2026-09-28); the target's defenders take back through the recapture rule
         king = b.king(not pc.color)
         if king is None:
             continue
@@ -568,6 +570,16 @@ def interactors(b: chess.Board, frame: set) -> set:
             b2 = b.copy(stack=False); b2.remove_piece_at(q); b2.set_piece_at(t, pc)
             if king in l2.attacks(t) and king not in b2.attacks(t):
                 out |= {q, king}; break
+    for q in frame:                                               # a frame piece's own line, opened when the OTHER frame pieces leave (after g6, exd6
+        pc = b.piece_at(q)                                        # uncovers the d6 frame's own queen on h8)
+        if pc is None:
+            continue
+        l = b.copy(stack=False)
+        for r in frame:
+            if r != q:
+                l.remove_piece_at(r)
+        new = set(l.attacks(q)) - set(b.attacks(q))
+        out |= {t for t in new if t not in frame and b.piece_at(t) is not None and b.piece_at(t).color != pc.color and b.piece_at(t).piece_type != chess.KING}
     return out
 
 
