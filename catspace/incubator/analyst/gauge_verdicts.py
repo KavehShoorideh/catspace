@@ -359,6 +359,84 @@ def ledger_gauge(boards, rows, n_examples: int = 3, log=print) -> dict:
     return out
 
 
+COMBINE_SIZES = range(1, 9)
+
+
+def move_features(vs: list) -> list:
+    """A LEARNED COMBINATION's inputs (Kaveh 2026-09-27: "better lemma combination"): from every lemma that speaks on
+    a move, per frame size k = 1..8 -- the mean and the worst predicted size, the share saying 'loses', and whether any
+    speaks -- then the overall mean and worst size. Sizes are the fired term's mean outcome (size_of)."""
+    by = {k: [] for k in COMBINE_SIZES}; allv = []
+    for c, p, f, _ in vs:
+        v = size_of(c, p, f)
+        v = (-1.0 if p == "loses" else 0.0) if v is None else v
+        k = min(c.frame.size, max(COMBINE_SIZES))
+        by[k].append((v, p == "loses")); allv.append(v)
+    out = []
+    for k in COMBINE_SIZES:
+        xs = by[k]
+        out += [sum(v for v, _ in xs) / len(xs) if xs else 0.0, min((v for v, _ in xs), default=0.0),
+                sum(1 for _, l in xs if l) / len(xs) if xs else 0.0, 1.0 if xs else 0.0]
+    out += [sum(allv) / len(allv) if allv else 0.0, min(allv, default=0.0)]
+    return out
+
+
+FEATURE_NAMES = [f"size{k}_{n}" for k in COMBINE_SIZES for n in ("mean", "worst", "loses_share", "speaks")] + ["all_mean", "all_worst"]
+
+
+def combine_gauge(a, eng_depth: int, lib_spec: str, n_train: int, log=print) -> dict:
+    """Train the combination on moves of n_train further held-out positions (Stockfish's truth), apply it to the
+    gauge's 1,000 positions, against 'hangs' -- one logistic regression per truth, its weights printed; for the truth
+    against the best move a move's mean size relative to the position's best is added (a comparison between moves)."""
+    from sklearn.linear_model import LogisticRegression
+    from .chains import domain_of
+    from .lemma_apply import Applier, load_library
+    n_eval = a.n
+    boards = positions(n_eval + n_train, a.seed)
+    ev, tr = boards[:n_eval], boards[n_eval:]
+    eng = Engine(threads=a.threads, depth=eng_depth)
+    def rows_of(bs, offset):
+        out = []
+        for i, b in enumerate(bs):
+            t = truths(eng, b, eng_depth)
+            if t is None:
+                continue
+            for m in b.legal_moves:
+                if m.uci() in t:
+                    out.append((offset + i, m.uci(), *t[m.uci()], *rules(b, m)))
+        return out
+    t0 = time.perf_counter()
+    r_ev = rows_of(ev, 0); r_tr = rows_of(tr, n_eval); eng.close()
+    log(f"[combine] truths: {len(r_ev)} evaluation moves, {len(r_tr)} training moves ({time.perf_counter() - t0:.0f}s)")
+    name, lp, prov = library_spec(lib_spec)
+    app = Applier(domain_of(lp), load_library(lp, prov))
+    raw = {(i, key): vs for i, per in raw_all(app, boards, a.workers).items() for key, vs in per.items()}
+    log(f"[combine] library {name}: {len(app.lemmas)} lemmas applied to {len(boards)} positions ({time.perf_counter() - t0:.0f}s)")
+    def feats(rows):
+        F = [move_features(raw.get((r[0], r[1]), [])) for r in rows]
+        best = {}
+        for r, f in zip(rows, F):
+            best[r[0]] = max(best.get(r[0], -1e9), f[-2])
+        return np.array([f + [f[-2] - best[r[0]]] for r, f in zip(rows, F)])
+    import numpy as np
+    X_tr, X_ev = feats(r_tr), feats(r_ev)
+    out = {}
+    for truth_name, col in (("vs standing still", 2), ("vs the best move", 3)):
+        cols = slice(0, len(FEATURE_NAMES) + (1 if col == 3 else 0))
+        y_tr = np.array([r[col] <= -LOSS_CP for r in r_tr])
+        model = LogisticRegression(max_iter=3000, class_weight="balanced", C=1.0).fit(X_tr[:, cols], y_tr)
+        pred = dict(zip(((r[0], r[1]) for r in r_ev), model.predict(X_ev[:, cols])))
+        f = lambda r: bool(pred[(r[0], r[1])])
+        sc = scores([(r[col] <= -LOSS_CP, f(r)) for r in r_ev]); sh = scores([(r[col] <= -LOSS_CP, r[5]) for r in r_ev])
+        lo, hi = bootstrap_diff(r_ev, col, f, lambda r: r[5])
+        log(f"OBS {truth_name}: the learned combination {sc['bacc']:.3f} (p {sc['prec']:.3f} r {sc['rec']:.3f}) vs hangs {sh['bacc']:.3f}; "
+            f"difference {sc['bacc'] - sh['bacc']:+.3f} ({lo:+.3f} .. {hi:+.3f})")
+        names = FEATURE_NAMES + (["relative_to_best"] if col == 3 else [])
+        log("OBS   weights: " + ", ".join(f"{n} {w:+.2f}" for n, w in sorted(zip(names, model.coef_[0]), key=lambda t: -abs(t[1]))[:10]))
+        out[truth_name] = dict(scores=sc, hangs=sh, ci=[lo, hi], weights=dict(zip(names, model.coef_[0].tolist())))
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=300); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--depth", type=int, default=12)
@@ -366,6 +444,8 @@ def main(argv=None):
     ap.add_argument("--library", action="append", default=None, help="name=library.json[:proved.json] (repeatable; a checkpoint_*.json gives its library)")
     ap.add_argument("--tag", default="")
     ap.add_argument("--diagnose", action="store_true", help="where each library loses to 'hangs', with worked examples")
+    ap.add_argument("--combine", default="", help="name=library.json[:proved]: a learned combination of the library's verdicts, trained on --train further positions")
+    ap.add_argument("--train", type=int, default=2000)
     ap.add_argument("--ledger", action="store_true", help="single frames and the cross-frame ledger, against standing still and against the best move")
     ap.add_argument("--frames", action="store_true", help="moves judged in exchange frames picked by the prior / the direct rule / the old contest, instead of libraries")
     a = ap.parse_args(argv)
@@ -376,6 +456,11 @@ def main(argv=None):
     from .chains import domain_of
     from .lemma_apply import Applier, load_library
     t0 = time.perf_counter()
+    if a.combine:
+        rep_ = combine_gauge(a, a.depth, a.combine, a.train)
+        out = Path(paths.derived("lemmas", f"gauge_verdicts_combine{('_' + a.tag) if a.tag else ''}.json"))
+        json.dump(rep_, open(out, "w"), indent=1, default=str)
+        print(f"[verdicts] -> {out} ({time.perf_counter() - t0:.0f}s)"); return
     boards = positions(a.n, a.seed)
     eng = Engine(threads=a.threads, depth=a.depth)
     rows = []                                                             # (board index, uci, rel cp, best cp, undefended, hangs)
