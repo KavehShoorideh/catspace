@@ -506,6 +506,44 @@ def _mask(squares) -> int:
 FORCING = 3                                                       # checks on one line, at most (the king hunt Rf2+ Kg1 Qg3+ Kh1 Rh2# takes three)
 
 
+_READS: list | None = None                                         # the footprint being recorded ([bitmask]), or None
+
+
+def _closure(b: chess.Board, sq: int, deep: bool = False) -> int:
+    """The squares whose contents decide what bears on sq: the lines out of it up to the first piece (to the second
+    when `deep`: a pin, an x-ray onto a king), its knight squares, and itself."""
+    occ = b.occupied
+    m = (chess.BB_DIAG_ATTACKS[sq][chess.BB_DIAG_MASKS[sq] & occ] | chess.BB_RANK_ATTACKS[sq][chess.BB_RANK_MASKS[sq] & occ]
+         | chess.BB_FILE_ATTACKS[sq][chess.BB_FILE_MASKS[sq] & occ] | chess.BB_KNIGHT_ATTACKS[sq] | chess.BB_SQUARES[sq])
+    if deep:
+        occ2 = occ & ~(m & occ & ~chess.BB_SQUARES[sq])
+        m |= (chess.BB_DIAG_ATTACKS[sq][chess.BB_DIAG_MASKS[sq] & occ2] | chess.BB_RANK_ATTACKS[sq][chess.BB_RANK_MASKS[sq] & occ2]
+              | chess.BB_FILE_ATTACKS[sq][chess.BB_FILE_MASKS[sq] & occ2])
+    return m
+
+
+def _record(b: chess.Board, squares, members, cand: list) -> None:
+    """What this node of a resolution reads: both kings (two pieces deep), the frame's squares and pieces, the moves it
+    tries; under check also the king's neighbours, the checkers and the squares between them and the king."""
+    m = 0
+    for c in (chess.WHITE, chess.BLACK):
+        k = b.king(c)
+        if k is not None:
+            m |= _closure(b, k, True)
+    for q in set(squares) | set(members):
+        m |= _closure(b, q)
+    for _, mv, _ in cand:
+        m |= _closure(b, mv.from_square) | _closure(b, mv.to_square)
+    if b.is_check():
+        k = b.king(b.turn)
+        for q in chess.SquareSet(chess.BB_KING_ATTACKS[k] | b.checkers_mask()):
+            m |= _closure(b, q)
+        for c in chess.SquareSet(b.checkers_mask()):
+            for q in chess.SquareSet(chess.between(c, k)):
+                m |= _closure(b, q)
+    _READS[0] |= m
+
+
 def local_resolve(b: chess.Board, squares, members: set, kings=frozenset(), alpha: float = -1e9, beta: float = 1e9, forcing: int | None = None) -> tuple:
     """A FRAME RESOLVED (Kaveh 2026-09-28: "considering multiple frames simultaneously and resolving them jointly"). A
     frame is a set of SQUARES; its pieces are whatever bears on them. Alpha-beta over the captures ON the frame's squares
@@ -518,6 +556,8 @@ def local_resolve(b: chess.Board, squares, members: set, kings=frozenset(), alph
     forcing = FORCING if forcing is None else forcing
     if b.is_check():                                              # the pass is illegal: every evasion, none is mate
         cand = [(captured_value(b, m), m, False) for m in b.legal_moves]
+        if _READS is not None:
+            _record(b, squares, members, cand)
         if not cand:
             return -MATE, []
         best = -1e9
@@ -535,6 +575,8 @@ def local_resolve(b: chess.Board, squares, members: set, kings=frozenset(), alph
                 cand.append((captured_value(b, m), m, False))
             elif checks and b.gives_check(m):
                 cand.append((captured_value(b, m), m, True))
+        if _READS is not None:
+            _record(b, squares, members, cand)
     best_line = []
     cand.sort(key=lambda t: -t[0])
     for g, m, is_forcing in cand:
@@ -806,7 +848,38 @@ def resolve_frame(b: chess.Board, squares, kings, members) -> tuple:
         v = (lem[0], _slots_to_line(lem[1], lk[1]) if lem[1] is not None else [])
         _RESOLVED[k] = v
         return v
-    v = local_resolve(b, squares, set(members), kings)
+    foot_hit = None
+    if FOOTPRINTS and k[0] == "board" and hit is None:            # a frame that can reach check: served when its footprint is unchanged
+        ident = (frozenset(squares), frozenset(kings), frozenset(members))
+        for foot, contents, pos, fv in _FOOT.get(ident, ()):
+            if pos == (b.turn, b.castling_rights, b.ep_square) and contents == _contents(b, foot):
+                foot_hit = fv; break
+        if foot_hit is not None and not VERIFY_FRAMES:
+            RESOLVED_STATS["foot_hits"] = RESOLVED_STATS.get("foot_hits", 0) + 1
+            _RESOLVED[k] = foot_hit
+            return foot_hit
+    global _READS
+    outer = _READS
+    _READS = [0] if (FOOTPRINTS and k[0] == "board") else None
+    try:
+        v = local_resolve(b, squares, set(members), kings)
+        foot = _READS[0] if _READS is not None else 0
+    finally:
+        _READS = outer
+    if foot_hit is not None:
+        if (foot_hit[0], list(foot_hit[1])) != (v[0], list(v[1])):
+            RESOLVED_STATS["foot_mismatch"] = RESOLVED_STATS.get("foot_mismatch", 0) + 1
+            FOOT_MISMATCHES.append((b.fen(), sorted(squares), foot_hit, v))
+        else:
+            RESOLVED_STATS["foot_hits"] = RESOLVED_STATS.get("foot_hits", 0) + 1
+    if FOOTPRINTS and k[0] == "board" and foot:
+        ident = (frozenset(squares), frozenset(kings), frozenset(members))
+        lst = _FOOT.setdefault(ident, [])
+        lst.append((foot, _contents(b, foot), (b.turn, b.castling_rights, b.ep_square), v))
+        if len(lst) > 16:
+            del lst[0]
+        if len(_FOOT) > 200000:
+            _FOOT.clear()
     if hit is not None and (hit[0], list(hit[1])) != (v[0], list(v[1])):
         raise AssertionError(f"frame store: {b.fen()} squares {sorted(squares)} stored {hit} recomputed {v}")
     if lem is not None and lem[0] != v[0]:
@@ -827,6 +900,14 @@ def resolve_frame(b: chess.Board, squares, kings, members) -> tuple:
 
 
 LEMMA_MISMATCHES: list = []
+FOOT_MISMATCHES: list = []
+_FOOT: dict = {}                                                   # (squares, kings, members) -> [(footprint, its contents, turn/castling/ep, resolution)]
+FOOTPRINTS = __import__("os").environ.get("ANALYST_FOOTPRINTS") == "1"   # off by default: king frames read a median 59 of 64 squares, so
+                                                                          # footprints served 28 of 3,436 lookups and cost 38% more time (2026-09-28)
+
+
+def _contents(b: chess.Board, foot: int) -> tuple:
+    return tuple(int(b.pieces_mask(pt, c)) & foot for c in (chess.WHITE, chess.BLACK) for pt in range(1, 7))
 
 
 def frame_book(b: chess.Board, frame_of=None, select=None, parent: dict | None = None, changed: frozenset = frozenset()) -> dict:

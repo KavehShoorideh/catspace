@@ -22874,6 +22874,23 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 15:23 PDT — local king frames (Kaveh's pick): footprints are sound but king frames are global by nature (OBS)
+
+King frames (and every frame joined to one) were keyed on the whole board, because under check every legal evasion
+counts. The exact dependency is what the resolution reads, so `local_resolve` now can record a FOOTPRINT (the lines
+out of both kings to the second piece, of the frame's squares, pieces and tried moves to the first piece, knight
+squares; under check the king's neighbours, the checkers and the squares between -- bitboards), and `resolve_frame`
+can serve a king frame whenever the board's contents on its footprint are unchanged (the September memo's idea).
+Verify mode: 0 mismatches. But on 60 positions x every move, of 3,436 whole-board lookups an entry for the same frame
+existed in 898, their footprints cover a median 59 of 64 squares, and 28 were served; the recording cost 38% more
+time (35.7 s against 25.8 s). A king frame's resolution plays checks from long lines and every evasion by any piece:
+it reads nearly the whole board by nature. Footprints are off by default (ANALYST_FOOTPRINTS=1 turns them on).
+Locality has to come from the frame definition: most frames are joined to a king frame only by the counter-check rule
+(a king frame joins any frame whose pieces can check that king). Measured, 60 positions x 12 moves: 790 material
+frames had a king frame joined; joining changed the resolution in 190 (24%). Kaveh's joint criterion (join only when
+resolving together differs) would keep 76% of them local -- deciding it cheaply needs a prior (his frame prior with
+the 75% rule: at this base rate the smaller frame is right 76% of the time, just past his bar).
+
 ## 2026-09-28 15:16 PDT — frames generalized into lemmas (Kaveh's pick); a verify-mode bug; a retraction (OBS)
 
 Kaveh: "if we are evaluating a frame and we evaluate how it ends out, that should become a lemma, so that we keep
