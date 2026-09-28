@@ -22874,6 +22874,26 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-27 22:09 PDT — a learned combination of the lemmas' verdicts (Kaveh's call): nothing more against standing still, +0.027 against the best move (OBS)
+
+`gauge_verdicts --combine` (`gauge_verdicts_combine_exch4.log`, 4,071 s): from every lemma of exch4 that speaks on a
+move, per frame size 1..8 the mean and worst predicted size, the share saying 'loses', whether any speaks, the overall
+mean and worst; for the truth against the best move also the move's mean size relative to the position's best. A
+logistic regression per truth, trained on 2,000 further held-out positions (63,053 moves, Stockfish's truth), applied
+to the gauge's 1,000 positions (31,003 moves):
+
+| | vs standing still (hangs 0.802) | vs the best move (hangs 0.674) |
+|---|---|---|
+| exch4, the most specific frame decides, by size | 0.813 (+0.012) | 0.666 (−0.008) |
+| exch4, the learned combination | 0.814 (+0.012; +0.009 .. +0.015) | 0.701 (+0.027; +0.016 .. +0.038) |
+| the exact exchange computation (ledger) | 0.846 | 0.813 |
+
+Weights, against standing still: the 'loses' share of the size-3, size-2 and size-4 frames (+0.93, +0.91, +0.70), the
+overall mean size (−0.71); against the best move: the size relative to the position's best (−1.90), the overall mean
+(+1.29). Reading, directional: combining the verdicts adds nothing where the verdicts are the question (the
+information is not in them beyond 'hangs' plus a point); comparing moves adds what it adds everywhere -- and the exact
+frames compare better.
+
 ## 2026-09-27 20:05 PDT — exch4, the improved lemmas at full size: a plateau at 'hangs' plus one point (OBS)
 
 `exch4` (the exchange oracle, sizes and legal counts, frames up to 8 pieces, the 9,025 exchange positions; 8,419 s,
