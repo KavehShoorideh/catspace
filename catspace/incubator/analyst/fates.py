@@ -312,6 +312,13 @@ def achievable(board: chess.Board, ids: list, actor: int, goal, depth: int = 0, 
     return dict(yes=goal(f), move=m, fates=f, value=v - (10000.0 if goal(f) else 0.0) - frame_scalar(st, actor))   # value: the frame's material delta along the found line
 
 
+MATE = 1000.0
+
+
+def _no_action(b: chess.Board) -> bool:
+    return not any(True for _ in b.generate_legal_moves())
+
+
 def exchange(b: chess.Board, s: int, frame: set, side: chess.Color | None = None, alpha: float = -1e9, beta: float = 1e9) -> tuple:
     """THE EXCHANGE FRAME (Kaveh 2026-09-27: "a frame essentially is a sequence of moves ... we will inject a pass at
     each move ... an alpha beta search"). On square s, the side to move either captures there with one of the frame's
@@ -320,6 +327,8 @@ def exchange(b: chess.Board, s: int, frame: set, side: chess.Color | None = None
     to move at the start). Returns (value, line of captures in uci)."""
     side = b.turn if side is None else side
     us = b.turn == side
+    if passed(b) is None and _no_action(b):                      # it can neither act nor pass: it has lost (Kaveh 2026-09-28; Qxg7 in
+        return (-MATE if us else MATE), []                       # 2r1r1k1/pp3pp1/.. read '+1, a pawn': the king could not take back, so it 'passed')
     best = 0.0; best_line = []                                   # the pass: the exchange stops here
     if us:
         alpha = max(alpha, best)
@@ -388,9 +397,38 @@ def exchange_variations(b: chess.Board, s: int, frame: set, side: chess.Color | 
     return out
 
 
-def threats(b: chess.Board, frame_of, exclude: set = frozenset()) -> tuple:
-    """The side to move's best exchange anywhere: over every enemy piece its pieces attack (except squares in
-    `exclude`), the exchange in that piece's frame. -> (value, square, line)."""
+def captured_value(b: chess.Board, m: chess.Move) -> float:
+    victim = b.piece_at(m.to_square) if not b.is_en_passant(m) else chess.Piece(chess.PAWN, not b.turn)
+    return (VAL[victim.piece_type] if victim else 0.0) + ((VAL[m.promotion] - VAL[chess.PAWN]) if m.promotion else 0.0)
+
+
+def forcing_value(b: chess.Board, m: chess.Move, frame_of, forcing: int) -> tuple:
+    """A FORCING move (Kaveh 2026-09-28: the moves that take the opponent's pass away join the frame's line): what m
+    wins, then -- the opponent unable to pass -- the reply that hurts the mover most, answered by the mover's best
+    threat one forcing level deeper. No reply: the opponent has lost (or it is a draw when it could pass). Values from
+    the mover's side. -> (value, line)."""
+    won = captured_value(b, m)
+    nb = b.copy(stack=False); nb.push(m)
+    if _no_action(nb):
+        return (won + MATE if passed(nb) is None else won), [m.uci()]
+    worst = None
+    for r in nb.legal_moves:
+        lost = captured_value(nb, r)
+        nb2 = nb.copy(stack=False); nb2.push(r)
+        cont = threats(nb2, frame_of, forcing=forcing - 1)
+        v = -lost + cont[0]
+        if worst is None or v < worst[0]:
+            worst = (v, [r.uci()] + cont[2])
+    return won + worst[0], [m.uci()] + worst[1]
+
+
+def threats(b: chess.Board, frame_of, exclude: set = frozenset(), forcing: int = 2) -> tuple:
+    """The side to move's best threat: the exchange in the frame of every enemy piece its pieces attack (except
+    squares in `exclude`), and every FORCING move -- one after which the opponent cannot pass (the domain's rule; in
+    chess, a check) -- played out `forcing` levels deep. A side that can neither act nor pass has lost. -> (value,
+    square, line); 0 when nothing beats standing still."""
+    if passed(b) is None and _no_action(b):
+        return -MATE, None, []
     best = (0.0, None, [])
     for sq, pc in b.piece_map().items():
         if pc.color == b.turn or sq in exclude or not b.attackers(b.turn, sq) or pc.piece_type == chess.KING:
@@ -398,6 +436,16 @@ def threats(b: chess.Board, frame_of, exclude: set = frozenset()) -> tuple:
         v, ln = exchange(b, sq, set(frame_of(b, sq)), b.turn)
         if v > best[0]:
             best = (v, sq, ln)
+    if forcing > 0 and best[0] < MATE:
+        for m in b.legal_moves:
+            nb = b.copy(stack=False); nb.push(m)
+            if passed(nb) is not None:
+                continue                                          # the opponent may still pass: not forcing
+            v, ln = forcing_value(b, m, frame_of, forcing)
+            if v > best[0]:
+                best = (v, m.to_square, ln)
+            if best[0] >= MATE:
+                break
     return best
 
 

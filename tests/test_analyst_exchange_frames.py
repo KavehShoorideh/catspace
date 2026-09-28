@@ -25,7 +25,9 @@ def test_known_cases_and_the_ledger():
         assert F.exchange_move_value(b, m, F.direct_frame)[0] == want, u
         assert F.ledger_move_value(b, m, F.direct_frame)[0] == want, u
     b = chess.Board("r1bQr1k1/pp3pbp/2p2np1/4n3/4N3/2P2NP1/PP3PBP/R1B1R1K1 b - - 0 12")    # the white queen is en prise on d8
-    assert F.ledger_move_value(b, chess.Move.from_uci("e8d8"), F.direct_frame)[0] == 9.0
+    assert F.ledger_move_value(b, chess.Move.from_uci("e8d8"), F.direct_frame)[0] >= 9.0   # the queen, and more: standing still allowed Nxf6+ Bxf6 Qxe8+ (forcing lines, 2026-09-28)
+    from catspace.incubator.analyst.frame_player import choose
+    assert "e8d8" in choose(b)["best"]
 
 
 def test_the_pass_at_each_ply_has_a_stake():
@@ -68,3 +70,18 @@ def test_generation_computes_relations_the_core_does_not_know():
         want = sum(1 << i for i, (st, ids, a, _) in enumerate(rows) if g.rel[name].fn(st, ids[0]))
         assert g.lit_mask(rows, name, (0,), cache) == want, name
     assert any(g.lit_mask(rows, "attacked_by_lower", (0,), cache) for _ in [0])                # the queen attacked by a pawn: some rows true
+
+
+def test_the_frames_see_mates_and_forcing_lines():
+    """Kaveh 2026-09-28, from the frame player's worst misses: a side that can neither act nor pass has lost, and the
+    moves that take the pass away join the frame's line. Each old choice allowed a mate; the frames now refuse it."""
+    from catspace.incubator.analyst.frame_player import choose
+    cases = [("2r1r1k1/pp3pp1/q7/8/3Qbb2/4N2P/PPP1RP2/2K3R1 b - - 7 22", "Qxe2"),     # allowed Qxg7#
+             ("5r1k/p1pp3p/1pP1p3/6p1/P3P2q/2N5/1PPB2KP/R2Q4 w - - 1 21", "cxd7"),     # allowed Rf2+ Kh1 Qxh2#
+             ("8/5pk1/p6p/5B2/2np1p2/8/PP2rPPP/3R2K1 w - - 0 29", "Rxd4")]              # allowed Re1#
+    for fen, old in cases:
+        b = chess.Board(fen); c = choose(b); u = b.parse_san(old).uci()
+        assert u not in c["best"], old
+        for pick in c["best"]:                                                        # whatever the frames choose, it allows no mate in one
+            nb = b.copy(); nb.push(chess.Move.from_uci(pick))
+            assert not any((lambda x: (x.push(r), x.is_checkmate())[1])(nb.copy()) for r in nb.legal_moves), (old, pick)
