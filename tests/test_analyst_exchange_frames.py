@@ -85,3 +85,16 @@ def test_the_frames_see_mates_and_forcing_lines():
         for pick in c["best"]:                                                        # whatever the frames choose, it allows no mate in one
             nb = b.copy(); nb.push(chess.Move.from_uci(pick))
             assert not any((lambda x: (x.push(r), x.is_checkmate())[1])(nb.copy()) for r in nb.legal_moves), (old, pick)
+
+
+def test_a_square_frame_holds_the_pieces_behind_its_pieces():
+    """Kaveh 2026-09-28, the Rxg3 miss: the rook behind the recapturing rook belongs to the frame (it attacks the square
+    once the frame's pieces are lifted), a rook behind a pawn that never captures there does not."""
+    from catspace.incubator.analyst.frame_player import choose
+    b = chess.Board("6r1/p1k2pr1/3p1p1b/1b1PpP2/2p1P3/PpPn1RpP/1P2N1B1/1K1N2R1 w - - 3 30")
+    nb = b.copy(); nb.push(chess.Move.from_uci("f3g3"))
+    assert chess.G8 in F.square_frame(nb, chess.G3) and chess.G8 not in F.direct_frame(nb, chess.G3)
+    c = choose(b)
+    assert "f3g3" not in c["best"] and c["values"]["f3g3"] < 0
+    b2 = chess.Board("4k3/8/8/8/8/5n2/5P2/5RK1 w - - 0 1")                                  # Rf1 behind the f2 pawn: the pawn never takes on f3
+    assert chess.F1 not in F.square_frame(b2, chess.F3)

@@ -474,6 +474,24 @@ def direct_frame(b: chess.Board, s: int) -> set:
     return {s} | set(b.attackers(chess.WHITE, s)) | set(b.attackers(chess.BLACK, s))
 
 
+def square_frame(b: chess.Board, s: int) -> set:
+    """THE FRAME OF A SQUARE (Kaveh 2026-09-28, from the frame player's Rxg3 miss): its occupant, every piece that
+    attacks it, and every piece that would attack it once the frame's pieces are lifted off the board -- it arrives
+    when they leave -- to a fixed point. Only frame pieces are lifted: a piece blocked by something outside the frame
+    stays out. (Rxg3 in 6r1/p1k2pr1/..: the direct frame lacked the rook behind the rook, +1 for White; with it,
+    Rxg3 Nxg3 Rxg3, −3.)"""
+    frame = direct_frame(b, s)
+    while True:
+        lifted = b.copy(stack=False)
+        for q in frame:
+            if q != s:
+                lifted.remove_piece_at(q)
+        grown = frame | set(lifted.attackers(chess.WHITE, s)) | set(lifted.attackers(chess.BLACK, s))
+        if grown == frame:
+            return frame
+        frame = grown
+
+
 def line_san(board: chess.Board, move: chess.Move, line: list) -> str:
     """The episode's line in SAN: each state after one ply; a ply whose board is only the turn flipped is a pass."""
     b = board.copy(stack=False); out = [b.san(move)]; b.push(move)

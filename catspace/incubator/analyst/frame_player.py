@@ -3,7 +3,8 @@ you analyze the frames ... these frames may interact with the rest of the board 
 the resolution ... there's one stable output ... try some positions and see if you make the best move ... if not,
 let's dig in"). A move is chosen from the frames alone and its reasoning is kept:
 
-  1. the frames: around every contested square, the pieces that attack or defend it (the exchange frames);
+  1. the frames: around every contested square, the pieces that attack or defend it, and those that would once the
+     frame's pieces are lifted off (fates.square_frame);
   2. each frame resolved exactly: the capture sequence on its square, each side capturing or passing (alpha-beta);
   3. the stable output: a move's value is what it wins, minus the opponent's best frame after it, plus their best
      frame if we had passed (the ledger); the best value is chosen (ties: every tied move is listed).
@@ -23,7 +24,7 @@ import chess
 
 from catspace.io import paths
 
-from .fates import direct_frame, ledger_move_value, threats, exchange, passed
+from .fates import ledger_move_value, passed, square_frame, threats
 from .gauge_verdicts import LOSS_CP, positions, truths
 from .engine import Engine
 
@@ -32,10 +33,10 @@ def choose(b: chess.Board) -> dict:
     """-> {'values': {uci: value}, 'best': [ucis with the top value], 'trace': {uci: (their best after, their best if
     we pass)}} -- the frames' own reasoning for every legal move."""
     stand = passed(b)
-    before = threats(stand, direct_frame) if stand is not None else (0.0, None, [])
+    before = threats(stand, square_frame) if stand is not None else (0.0, None, [])
     values = {}; trace = {}
     for m in b.legal_moves:
-        v, after, bef = ledger_move_value(b, m, direct_frame, before=before)
+        v, after, bef = ledger_move_value(b, m, square_frame, before=before)
         values[m.uci()] = v; trace[m.uci()] = (after, bef)
     top = max(values.values())
     return dict(values=values, best=[u for u, v in values.items() if v == top], trace=trace, before=before)
