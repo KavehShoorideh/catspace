@@ -69,9 +69,9 @@ def flip_conditions(board: chess.Board, target: int, by: chess.Color, memo=None)
             return []
         defs = [value(board, q) for q in board.attackers(not by, target)]
         out = []
-        for v in (1.0, 3.0, 5.0, 9.0):
-            if _see_lists(value(board, target), [v], defs) > 0:
-                out.append(Flip("add_attacker", v)); break
+        for v in (9.0, 5.0, 3.0, 1.0):                   # the LARGEST value that still flips, as below (was ascending: the cap
+            if _see_lists(value(board, target), [v], defs) > 0:   # stuck at 1 and only pawns could join -- the rook on g7
+                out.append(Flip("add_attacker", v)); break         # in 7R/3b2r1/.. read "cannot be reached", 2026-09-28)
         return out
     if d.falls:
         return []

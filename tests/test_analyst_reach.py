@@ -41,3 +41,15 @@ def test_progress_changes_with_the_rules():
     ab = R.rules_for("antichess").board(); ab.set_fen(fen)
     an = {t.square: t.status for t in progress(ab, chess.WHITE, top=64)}
     assert ch[chess.B2] in ("held", "unreachable") and an[chess.B2] == "falls"
+
+
+def test_an_unattacked_target_takes_the_largest_attacker_that_flips():
+    """2026-09-28, Kaveh's position 7R/3b2r1/..: nothing attacks the undefended rook on g7 yet; one attacker of any
+    value wins it (was: the cap stuck at a pawn, so 'cannot be reached' although Rh8-g8 is one move); and for Black the
+    undefended f2 pawn is the rook's target (Stockfish's Rg1 idea: Rg1-f1)."""
+    b = chess.Board("7R/3b2r1/1p1kp3/p2p4/3PpN2/1P2P3/PKP2P2/8 w - - 0 29")
+    assert [f.max_value for f in flip_conditions(b, chess.G7, chess.WHITE) if f.kind == "add_attacker"] == [9.0]
+    b = chess.Board("7R/3b2r1/1p1kp3/p2p4/3PpN2/PP2P3/1KP2P2/8 b - - 0 29")
+    assert [f.max_value for f in flip_conditions(b, chess.F2, chess.BLACK) if f.kind == "add_attacker"] == [9.0]
+    p = reach(b, chess.G7, chess.F2)
+    assert p is not None and p.hops == 2                                                   # Rg1 then Rf1 (g2 is the knight's)
