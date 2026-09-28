@@ -68,8 +68,11 @@ def explain(b: chess.Board, u: str, c: dict) -> str:
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=200); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--depth", type=int, default=12)
+    ap.add_argument("--per-frame", action="store_true", help="resolve each frame alone (no pulled-in pieces), for comparison")
     ap.add_argument("--show", type=int, default=3); ap.add_argument("--workers", type=int, default=max(1, (__import__("os").cpu_count() or 2) - 1))
     a = ap.parse_args(argv)
+    global JOINT
+    JOINT = not a.per_frame
     t0 = time.perf_counter()
     eng = Engine(threads=8, depth=a.depth)
     rows = []
