@@ -670,12 +670,52 @@ def relations(b: chess.Board, squares, members) -> tuple:
     return (b.turn, tuple(rows))
 
 
+def frame_key(b: chess.Board, squares, kings, members) -> tuple:
+    """WHAT A FRAME'S RESOLUTION READS -- its key in the persistent store (Kaveh 2026-09-28: "persistent frames from move
+    to move ... every time something moves we incrementally change the state ... a minimal amount of rules based
+    calculation ... kind of like the NNUE"): the side to move, both kings' squares (a line opened onto a king changes
+    what is legal), the frame's squares with their occupants and who attacks each, and its pieces with their pins. A
+    move elsewhere leaves the key -- and so the resolution -- unchanged, whichever position or search branch the frame
+    turns up in. A frame that can reach check (a king frame joined, or the side in check) plays every legal evasion,
+    by any piece: its key is the whole board."""
+    if kings or b.is_check():
+        return ("board", b._transposition_key(), frozenset(squares), frozenset(kings), frozenset(members))
+    rows = tuple((s, None if b.piece_at(s) is None else b.piece_at(s).symbol(), int(b.attackers_mask(chess.WHITE, s)), int(b.attackers_mask(chess.BLACK, s)))
+                 for s in sorted(squares))
+    mem = tuple((m, None if b.piece_at(m) is None else b.piece_at(m).symbol(), b.piece_at(m) is not None and b.is_pinned(b.piece_at(m).color, m))
+                for m in sorted(members))
+    return ("local", b.turn, b.king(chess.WHITE), b.king(chess.BLACK), rows, mem)
+
+
+_RESOLVED: dict = {}                                               # frame_key -> (value, line): the persistent store of resolutions
+VERIFY_FRAMES = __import__("os").environ.get("ANALYST_VERIFY_FRAMES") == "1"   # recompute on every hit and assert equality (tests)
+RESOLVED_STATS = {"hits": 0, "computed": 0}
+
+
+def resolve_frame(b: chess.Board, squares, kings, members) -> tuple:
+    """A frame's resolution through the persistent store: computed once per key, reused wherever the key recurs."""
+    k = frame_key(b, squares, kings, members)
+    hit = _RESOLVED.get(k)
+    if hit is not None and not VERIFY_FRAMES:
+        RESOLVED_STATS["hits"] += 1
+        return hit
+    v = local_resolve(b, squares, set(members), kings)
+    if hit is not None and (hit[0], list(hit[1])) != (v[0], list(v[1])):
+        raise AssertionError(f"frame store: {b.fen()} squares {sorted(squares)} stored {hit} recomputed {v}")
+    RESOLVED_STATS["computed"] += hit is None
+    RESOLVED_STATS["hits"] += hit is not None
+    if len(_RESOLVED) > 500000:
+        _RESOLVED.clear()
+    _RESOLVED[k] = v
+    return v
+
+
 def frame_book(b: chess.Board, frame_of=None, select=None, parent: dict | None = None, changed: frozenset = frozenset()) -> dict:
     """THE FRAME BOOK of a position (Kaveh 2026-09-28, publish-subscribe): under check only the side's own king frame
     (the evasions); otherwise every contested square's frame and the enemy king's frame, each joined with what it pulls
-    in, with its relational state and its resolution. From a parent book, a frame whose composition and relational
-    state are unchanged keeps its resolution. `select(b, key, squares, kings, members)` may narrow a joined frame (the
-    prior's choice)."""
+    in, and its resolution -- served by the persistent store (`resolve_frame`) whenever the frame's key recurs, in this
+    position's parent, a sibling, or any other branch. `parent`/`changed` are kept for callers; the store supersedes
+    them. `select(b, key, squares, kings, members)` may narrow a joined frame (the prior's choice)."""
     specs = {}
     if b.is_check():
         specs[("king", b.turn)] = joint_frame(b, set(), {b.turn}, frame_of)
@@ -690,12 +730,8 @@ def frame_book(b: chess.Board, frame_of=None, select=None, parent: dict | None =
     for key, fr in specs.items():
         if select is not None:
             fr = select(b, key, *fr)
-        rel = relations(b, fr[0], fr[2])
-        e = parent.get(key) if parent is not None else None
-        if e is not None and e[0] == fr and e[1] == rel:
-            book[key] = e; continue
-        v, ln = local_resolve(b, fr[0], set(fr[2]), fr[1])
-        book[key] = (fr, rel, v, ln)
+        v, ln = resolve_frame(b, fr[0], fr[1], fr[2])             # the persistent store: unchanged frames are not recalculated
+        book[key] = (fr, None, v, ln)
     return book
 
 

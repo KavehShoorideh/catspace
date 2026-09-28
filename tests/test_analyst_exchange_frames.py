@@ -144,3 +144,20 @@ def test_frames_are_squares_and_kings_live_in_king_frames():
         assert u not in c["best"] and c["values"][u] < max(c["values"].values()), (fen, san)
     sq, members = F.king_frame(chess.Board("r3k3/8/8/3N4/8/8/8/4K3 b - - 0 1"), chess.BLACK)
     assert chess.A8 in sq and chess.C7 in sq                                               # the fork target and the check's square
+
+
+def test_the_persistent_frame_store_serves_only_what_it_would_recompute():
+    """Kaveh 2026-09-28 ("persistent frames from move to move ... like the NNUE"): a frame's resolution is stored under
+    what it reads (fates.frame_key) and reused wherever the key recurs; in verify mode every hit is recomputed and must
+    be equal, over every legal move of several positions."""
+    from catspace.incubator.analyst.frame_player import choose
+    old = F.VERIFY_FRAMES
+    F.VERIFY_FRAMES = True
+    try:
+        before = dict(F.RESOLVED_STATS)
+        for fen in ("1n3r2/1Q2qp2/p3pkp1/3p3p/3P4/2P3P1/B1P2PKP/1R6 w - - 0 24", "r2q1rk1/1bppnp1p/1pn1p1p1/p3P3/P3P3/5N2/BPP1NPPP/R2Q1RK1 b - - 3 13",
+                    "7R/3b2r1/1p1kp3/p2p4/3PpN2/PP2P3/1KP2P2/8 b - - 0 29"):
+            choose(chess.Board(fen))
+        assert F.RESOLVED_STATS["hits"] > before["hits"]                                   # the store was used, and every hit matched
+    finally:
+        F.VERIFY_FRAMES = old

@@ -140,12 +140,25 @@ def _run(a, eng, t0):
             continue
         c_cp = sum(r["cp"].get(u, -10000) for u in cred) / len(cred); o_cp = sum(r["cp"].get(u, -10000) for u in rest) / len(rest)
         gaps.append(c_cp - o_cp); better += c_cp > o_cp + 20; worse += c_cp < o_cp - 20; same += abs(c_cp - o_cp) <= 20
+    wrong = []
+    for r in rows:
+        ps = r["c"].get("plans") or {}
+        if ps and max(ps.values()) > 0:
+            hi = max(ps.values()); cred = [u for u in ps if ps[u] == hi]; rest = [u for u in ps if ps[u] != hi]
+            if rest and max(r["cp"].get(u, -10000) for u in cred) < max(r["cp"].get(u, -10000) for u in rest) - 20:
+                wrong.append((r, cred, rest))
+    for r, cred, rest in wrong[:a.show]:                              # the plan layer's wrong credits, for the dig
+        b = r["b"]; nm = lambda us: ", ".join(f"{b.san(chess.Move.from_uci(u))} ({r['cp'].get(u, 0):+d})" for u in us[:6])
+        print(f"\nWRONG CREDIT {b.fen()}  credited {nm(cred)} ({r['c']['plans'][cred[0]]:+g}); the best other tied moves {nm(sorted(rest, key=lambda u: -r['cp'].get(u, -10000)))}")
+        for line in _layer().explain(b)[:8]:
+            print("   ", line)
     if PLANS != "none":
         print(f"OBS the plan layer credited some tied moves over others in {len(gaps)}/{n} positions; Stockfish rates the credited moves above the "
               f"other tied moves by more than 0.2 in {better}, below in {worse}, within 0.2 in {same}; mean gap {sum(gaps) / max(1, len(gaps)):+.0f} cp")
     worst = sorted(mistakes, key=lambda r: -r["loss"])
-    json.dump([dict(fen=r["fen"], pick=r["pick"], loss=r["loss"], sf_best=r["sf_best"], n_top=r["n_top"], tied_ok=r["tied_ok"]) for r in rows],
-              open(paths.derived("frame_player_positions.json"), "w"), indent=1)
+    json.dump([dict(fen=r["fen"], pick=r["pick"], loss=r["loss"], sf_best=r["sf_best"], n_top=r["n_top"], tied_ok=r["tied_ok"], plans=r["c"].get("plans") or {},
+                    cp={u: r["cp"].get(u) for u in (r["c"].get("plans") or {})}) for r in rows],
+              open(paths.derived(f"frame_player_positions_{PLANS}.json"), "w"), indent=1)
     shown = 0
     for r in worst:
         if r["tied_ok"] or shown >= a.show:

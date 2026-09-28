@@ -184,7 +184,7 @@ def frame_on(b: chess.Board, t: int) -> tuple:
     """The frame of the square t joined with what it pulls in (fates.joint_frame), resolved for the side to move:
     -> (value, line). A plan is judged on its own target's frame, not on the board's best frame (after Bd3 in
     8/5pk1/.., the best frame is Bxe2; the c4 frame's own resolution is Bxc4)."""
-    from .fates import joint_frame, local_resolve
+    from .fates import joint_frame, resolve_frame
     if b.piece_at(t) is None or b.piece_at(t).color == b.turn:
         return 0.0, []
     key = (b._transposition_key(), t)
@@ -192,7 +192,7 @@ def frame_on(b: chess.Board, t: int) -> tuple:
         if len(_FRAME_ON) > 200000:
             _FRAME_ON.clear()
         sq, kings, members = joint_frame(b, {t}, set())
-        _FRAME_ON[key] = local_resolve(b, sq, set(members), kings)
+        _FRAME_ON[key] = resolve_frame(b, sq, kings, members)
     return _FRAME_ON[key]
 
 
