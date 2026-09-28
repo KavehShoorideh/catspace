@@ -22874,6 +22874,25 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 13:47 PDT — hypothetical what-ifs as edits; the answer price explained (OBS)
+
+Kaveh chose "hypothetical what-ifs": `whatif.py` asks the frames about EDITS of the board, not moves -- add(t, v)
+one more attacker of value v on an enemy piece; remove(t, d) its defender gone; relocate(p, q) an own piece on a
+square two quiet moves away (its best single role there: the roles of one placement are alternatives, not a sum);
+guard(t, v) one more enemy attacker on an own piece -- and tags each legal move with the edits it completes or
+starts. On Kaveh's position: 30 / 34 edits, 0.2-0.3 s. The priority test (`whatif_priority`, same 1,000 positions,
+same hash split, 255 held out) now fits two models:
+  learned, moves only      first choice = SF best 70/255, mean loss 76 cp, loses 1.5+ 38, SF best at what-if 5.89, top-3 127
+  learned, + edits         first choice = SF best 66/255, mean loss 80 cp, loses 1.5+ 36, SF best at what-if 5.58, top-3 132
+Indistinguishable at one run: the edits, answered with the opponent passing, add nothing measurable; weights:
+realized threat +0.49 first, 'completes a remove-defender edit' -0.22, 'starts a relocation' +0.20. Third time the
+same lesson: a what-if carries weight only once it is answered against the opponent's best reply.
+The answer price (Kaveh asked what it is): in frame_goals, a plan that can be stopped earns the cheapest price of
+its answers, and I set that price by hand -- the answering side's own plans that stop working and would otherwise
+have gone through, the largest one's gain. Every choice in it was mine; Stockfish prices White's answers to 29...Rg1
+at 0 (Rf8) to -1.87 (f3), my rule at 0 for all. It can be learned the same way: target = Stockfish's value of each
+answer against the answerer's best move; features = what the answering piece gives up in frame terms.
+
 ## 2026-09-28 13:29 PDT — persistent frames; "what if" as the search, its priority learned (OBS)
 
 1. Persistent frames (Kaveh: "persistent frames from move to move ... like the NNUE ... an incremental tactical

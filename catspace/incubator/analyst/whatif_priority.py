@@ -80,13 +80,15 @@ def features(b: chess.Board, m: chess.Move) -> list:
 
 def _collect(fen: str):
     from .frame_player import choose
+    from .whatif import edits, move_features
     import catspace.incubator.analyst.frame_player as FP
     FP.PLANS = "none"
     b = chess.Board(fen)
     c = choose(b)
     if len(c["best"]) < 2:
         return fen, []
-    return fen, [(u, features(b, chess.Move.from_uci(u))) for u in c["best"]]
+    es = edits(b)                                                     # the hypothetical what-ifs, asked once per position
+    return fen, [(u, features(b, chess.Move.from_uci(u)) + move_features(b, chess.Move.from_uci(u), es)) for u in c["best"]]
 
 
 def _split(fen: str) -> str:
@@ -121,19 +123,25 @@ def main(argv=None):
     finally:
         eng.close()
     train = [r for r in rows if r[0] == "train"]; test = [r for r in rows if r[0] == "test"]
+    from .whatif import FEATURES as EDIT_FEATURES
+    names = FEATURES + EDIT_FEATURES
+    nmove = len(FEATURES)
     X = np.array([f for r in train for _, f, _ in r[2]], dtype=float); y = np.array([loss <= a.good_cp for r in train for _, _, loss in r[2]])
     sc = StandardScaler().fit(X)
-    model = LogisticRegression(max_iter=3000, class_weight="balanced").fit(sc.transform(X), y)
+    model = LogisticRegression(max_iter=3000, class_weight="balanced").fit(sc.transform(X), y)             # moves + hypothetical edits
+    sc1 = StandardScaler().fit(X[:, :nmove])
+    model1 = LogisticRegression(max_iter=3000, class_weight="balanced").fit(sc1.transform(X[:, :nmove]), y)   # moves only (the first test)
     print(f"[whatif_priority] {len(rows)} positions with tied what-ifs ({len(train)} train, {len(test)} test), "
           f"{len(X)} training what-ifs ({y.mean():.2f} near-best), {time.perf_counter() - t0:.0f}s")
-    print("OBS learned weights (standardized): " + ", ".join(f"{n} {w:+.2f}" for n, w in sorted(zip(FEATURES, model.coef_[0]), key=lambda t: -abs(t[1]))))
+    print("OBS learned weights, moves + hypothetical edits (standardized): " + ", ".join(f"{n} {w:+.2f}" for n, w in sorted(zip(names, model.coef_[0]), key=lambda t: -abs(t[1]))[:16]))
     rng = random.Random(0)
     orders = {
         "frames' first tie": lambda cands: [0] * len(cands),
         "random tie": lambda cands: [rng.random() for _ in cands],
         "static what-if worth": lambda cands: [f[0] for _, f, _ in cands],
         "realized threat": lambda cands: [f[4] for _, f, _ in cands],
-        "learned priority": lambda cands: list(model.predict_proba(sc.transform(np.array([f for _, f, _ in cands], dtype=float)))[:, 1]),
+        "learned, moves only": lambda cands: list(model1.predict_proba(sc1.transform(np.array([f[:nmove] for _, f, _ in cands], dtype=float)))[:, 1]),
+        "learned, + edits": lambda cands: list(model.predict_proba(sc.transform(np.array([f for _, f, _ in cands], dtype=float)))[:, 1]),
     }
     for name, score in orders.items():
         firsts = 0; losses = []; bad = 0; ranks = []
@@ -148,7 +156,7 @@ def main(argv=None):
         print(f"OBS {name:22s}: first choice = Stockfish's best {firsts}/{n}; mean loss {np.mean(losses):.0f} cp; loses 1.5+ in {bad}/{n}; "
               f"where Stockfish's best is tied ({len(ranks)}), it comes up as what-if number {np.mean(ranks):.2f} on average "
               f"(top-1 {sum(r == 1 for r in ranks)}, top-3 {sum(r <= 3 for r in ranks)}; ties per position {np.mean([len(c) for _, _, c, _ in test]):.1f})")
-    json.dump({"features": FEATURES, "coef": model.coef_[0].tolist(), "mean": sc.mean_.tolist(), "scale": sc.scale_.tolist()},
+    json.dump({"features": names, "coef": model.coef_[0].tolist(), "mean": sc.mean_.tolist(), "scale": sc.scale_.tolist()},
               open(paths.derived("whatif_priority.json"), "w"), indent=1)
 
 
