@@ -31,6 +31,16 @@ from .engine import Engine
 
 JOINT = True                                                        # frames resolved jointly with the pieces they pull in (2026-09-28)
 SELECT = None                                                       # the prior's choice of pulled-in pieces (None: all of them)
+PLANS = "none"                                                      # the tactical plan layer that breaks ties in the top set (plan_layers)
+_LAYER = None
+
+
+def _layer():
+    global _LAYER
+    if _LAYER is None or _LAYER.name != PLANS:
+        from .plan_layers import get
+        _LAYER = get(PLANS)
+    return _LAYER
 
 
 def choose(b: chess.Board) -> dict:
@@ -52,7 +62,14 @@ def choose(b: chess.Board) -> dict:
             v, after, bef = ledger_move_value(b, m, square_frame, before=before)
         values[m.uci()] = v; trace[m.uci()] = (after, bef)
     top = max(values.values())
-    return dict(values=values, best=[u for u, v in values.items() if v == top], trace=trace, before=before)
+    best = [u for u, v in values.items() if v == top]
+    plan_scores = {}
+    if PLANS != "none" and len(best) > 1:                           # the plan layer ranks the moves the frames cannot tell apart
+        plan_scores = _layer().score_moves(b, [chess.Move.from_uci(u) for u in best])
+        hi = max(plan_scores.values())
+        if hi > 0:
+            best = [u for u in best if plan_scores.get(u, 0.0) == hi]
+    return dict(values=values, best=best, trace=trace, before=before, plans=plan_scores)
 
 
 def _choose_fen(fen: str) -> dict:
@@ -66,13 +83,15 @@ def explain(b: chess.Board, u: str, c: dict) -> str:
 
 
 def main(argv=None):
+    global JOINT, PLANS
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=200); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--depth", type=int, default=12)
     ap.add_argument("--per-frame", action="store_true", help="resolve each frame alone (no pulled-in pieces), for comparison")
     ap.add_argument("--show", type=int, default=3); ap.add_argument("--workers", type=int, default=max(1, (__import__("os").cpu_count() or 2) - 1))
+    ap.add_argument("--plans", default=PLANS, help="the tactical plan layer that breaks ties in the top set (plan_layers.LAYERS)")
     a = ap.parse_args(argv)
-    global JOINT
     JOINT = not a.per_frame
+    PLANS = a.plans
     t0 = time.perf_counter()
     eng = Engine(threads=8, depth=a.depth)
     rows = []
@@ -92,13 +111,16 @@ def main(argv=None):
                          n_top=len(c["best"]), tied_ok=tied_ok, false_safe=false_safe, c=c, cp=cp, b=b))
     n = len(rows)
     mistakes = [r for r in rows if r["loss"] >= LOSS_CP]
-    print(f"[frame_player] {n} held-out positions ({time.perf_counter() - t0:.0f}s)")
+    print(f"[frame_player] {n} held-out positions, plan layer {PLANS} ({time.perf_counter() - t0:.0f}s)")
     print(f"OBS Stockfish's best move among the frames' top moves: {sum(r['sf_in_top'] for r in rows)}/{n}; the frames' top set is a single move in "
           f"{sum(r['n_top'] == 1 for r in rows)}/{n}")
     print(f"OBS the pick (the first top move) loses 1.5 pawns or more against the best move: {len(mistakes)}/{n}; "
           f"of those, every top move does: {sum(1 for r in mistakes if r['tied_ok'] == 0)}")
     print(f"OBS false-safe top moves (a top move losing 1.5 pawns or more): {sum(r['false_safe'] for r in rows)} in {sum(r['false_safe'] > 0 for r in rows)}/{n} positions; "
           f"own misses (every top move does): {sum(r['false_safe'] == r['n_top'] for r in rows)}")
+    print(f"OBS the pick is Stockfish's best move: {sum(r['pick'] == r['sf_best'] for r in rows)}/{n}; the pick's mean loss against the best move "
+          f"{sum(min(r['loss'], 1000) for r in rows) / max(1, n):.0f} cp (capped at 1000); positions where the plan layer credited a tied move: "
+          f"{sum(1 for r in rows if r['c'].get('plans') and max(r['c']['plans'].values()) > 0)}")
     worst = sorted(mistakes, key=lambda r: -r["loss"])
     json.dump([dict(fen=r["fen"], pick=r["pick"], loss=r["loss"], sf_best=r["sf_best"], n_top=r["n_top"], tied_ok=r["tied_ok"]) for r in rows],
               open(paths.derived("frame_player_positions.json"), "w"), indent=1)

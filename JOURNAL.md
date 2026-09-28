@@ -22874,6 +22874,49 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 11:38 PDT — the tactical plan layer, modular: a graph of reasoning over frames, and three rivals (OBS)
+
+Kaveh, on his position 7R/3b2r1/1p1kp3/p2p4/3PpN2/PP2P3/1KP2P2/8 b (after 29.a3; the site's Stockfish 19 Lite d13:
+a3 +1.62, c4 best +1.78): build the layer that adds or removes defenders to break a frame (the pawn chain in front of
+the king: c4 as a lever, Rh6 pinning e6, the knight to d5); reason over the dilemmas through the frames' interfaces
+(how many times a piece is attacked); "graph of reasoning rather than chain -- might need branching"; lean on what
+proof search brought; "make it modular so that multiple different systems/algorithms can be tested".
+(My first report of "+3 for c4" came from a board with the side to move flipped -- an extra White tempo; the board
+before a3 gives c4 +2.00 / a3 +1.62 at depth 13, +2.86 / +2.64 at depth 22.)
+
+What exists and was reused: the September planner (`plans.py` backward chaining with reach and the exchange ledger,
+`goal_search.py` proof-number search with refutation-driven refinement). A live bug hid all its plans: for a target
+nothing attacks yet, `reach.flip_conditions` took the smallest attacker value that flips (a pawn) -- fixed (commit
+074e4d85, test); it then finds Black's "win f2 in 2: Rg1 Rf1, their answer Nh3". Its goals need material now, so
+the lever c4 (an even trade that breaks a chain) is not expressible there.
+
+New (`frame_goals.py`): goals = enemy frames to break; OR over operators (a route that adds an attacker; any single
+move that takes a counted defender off -- a pin, a block -- found by trying, not by name); AND inside a plan (c4
+and Rh6: either alone breaks nothing, both do -- Nxd5, e6 pinned); AND over the opponent's replies after each of our
+moves (replies off the plan's zone are the pass, as in Cazenave's trace, plus any reply that adds a counted defender:
+Nh3 touches no square of the proof but changes the count); every plan and answer judged by the frames with the null
+move of lambda-search (Thomsen 2000); dilemmas: a double attack (no single reply saves both: Bd3 in 8/5pk1/.. scores
++5) and answers that give up plans of their own that would have gone through. On Kaveh's position: White breaks d5
+with c4 + Rh5/Rh6; Black's Rg1 Rf1 against f2 is answered by Rh2 or Nh3 (Stockfish prices White's answers after
+29...Rg1 at d20: Rf8 0, a4 -0.20, Rh2 -0.51, Ne2 -0.83, Nh3 -1.07, f3 -1.87 -- Rf8 defends by an x-ray the frames
+do not see). With only plans that go through counted, Rg1 scores 0: its edge is positional (the answers cost
+activity, not plans that go through). Lambda-search over frames to order 2 finds no forced gain for either side
+(24,088 / 17,435 nodes, 284 s / 96 s). Bugs found by example on the way: gifts counted as answers (Rg8 hangs the
+rook), a pawn moving the target into a capture read as an answer (f3), the defender's captures not netted (Qf5
+Qxf5 gxf5 read as +9), castling moving a target rook (crash), `reach` giving one route per piece (Bg4, not Bd3).
+
+The modular layer (`plan_layers.py`): `score_moves(board, moves)` + `explain(board)`, a registry by name (none,
+frame_goals, logical_planner, lambda_frames); `frame_player --plans NAME` breaks ties in the frames' top set.
+300 held-out positions, Stockfish d12, one run each (directional; same positions):
+  layer            pick = SF best   pick's mean loss   pick loses 1.5+   own misses   SF best in top set   time
+  none                   66              90 cp               54               9              248            30 s
+  frame_goals            69              85 cp               48              10              238           292 s
+  logical_planner        79              84 cp               46              25              163            36 s
+  lambda_frames          70              83 cp               45              10              234           243 s
+All three move the pick the same way by similar small amounts; the September planner narrows the tie hardest (a
+single top move in 175 positions against 71) and triples the own misses. Not credited yet in any layer: stopping
+the opponent's plans (defence), and positional costs of answers (Rg1).
+
 ## 2026-09-28 10:24 PDT — frames are squares; kings live in king frames; no recapture code (Kaveh's restructure) (OBS)
 
 Kaveh: "there should not be kings in all frames ... only the frames involving the king or the pieces defending the
