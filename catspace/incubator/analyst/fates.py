@@ -496,6 +496,13 @@ def _victim(b: chess.Board, m: chess.Move) -> int:
     return chess.square(chess.square_file(m.to_square), chess.square_rank(m.from_square)) if b.is_en_passant(m) else m.to_square
 
 
+def _mask(squares) -> int:
+    m = 0
+    for q in squares:
+        m |= chess.BB_SQUARES[q]
+    return m
+
+
 def local_resolve(b: chess.Board, members: set, alpha: float = -1e9, beta: float = 1e9, forcing: int = 2, hot: frozenset = frozenset()) -> tuple:
     """A FRAME RESOLVED JOINTLY (Kaveh 2026-09-28: "considering multiple frames simultaneously and resolving them
     jointly"): alpha-beta over the moves of the frame's pieces that capture or take the opponent's pass away (`forcing`
@@ -503,30 +510,33 @@ def local_resolve(b: chess.Board, members: set, alpha: float = -1e9, beta: float
     (inside the frame or out); a side that can neither act nor pass has lost. `members`: the current squares of the
     frame's pieces, followed through the line. A capture on a square opens that square's exchange to every piece bearing
     on it (`hot`): whoever takes back there joins the line (the Nb4, Ba7 and Rfe1 positions of 2026-09-28 read a pawn or
-    a knight as won because its defender was outside the frame). -> (value for the side to move, line in uci)."""
-    can_pass = passed(b) is not None
-    moves = list(b.legal_moves)
-    if not moves:
-        return (0.0 if can_pass else -MATE), []
-    best = 0.0 if can_pass else -1e9; best_line = []
-    if can_pass:
+    a knight as won because its defender was outside the frame). Only the moves that can matter are generated: every
+    evasion under check, else the frame pieces' moves and the recaptures on hot squares (the same rule, 2026-09-28:
+    generating every legal move at every node cost most of a position's time). -> (value for the side to move, line)."""
+    if b.is_check():                                              # the pass is illegal: every evasion, none is mate
+        cand = [(captured_value(b, m), m, m.from_square in members, False) for m in b.legal_moves]
+        if not cand:
+            return -MATE, []
+        best = -1e9
+    else:
+        best = 0.0
         alpha = max(alpha, best)
         if alpha >= beta:
-            return best, best_line
-    cand = []
-    for m in moves:
-        inside = m.from_square in members
-        g = captured_value(b, m)
-        if not can_pass:
-            cand.append((g, m, inside, False))                    # in check: every evasion
-        elif inside and (m.promotion or (b.is_capture(m) and _victim(b, m) in members)):
-            cand.append((g, m, inside, False))                    # a frame is a closed world: its pieces take frame pieces (taking outside is another frame's business)
-        elif b.is_capture(m) and _victim(b, m) in hot:
-            cand.append((g, m, True, False))                      # a recapture on a square already fought over: its bearer joins
-        elif inside and forcing > 0:
-            nb = b.copy(stack=False); nb.push(m)
-            if passed(nb) is None:
-                cand.append((g, m, inside, True))
+            return best, []
+        cand = []; seen = set()
+        for m in b.generate_legal_moves(from_mask=_mask(members)):
+            seen.add(m)
+            if m.promotion or (b.is_capture(m) and _victim(b, m) in members):
+                cand.append((captured_value(b, m), m, True, False))          # a frame is a closed world: its pieces take frame pieces
+            elif b.is_capture(m) and _victim(b, m) in hot:
+                cand.append((captured_value(b, m), m, True, False))
+            elif forcing > 0 and b.gives_check(m):
+                cand.append((captured_value(b, m), m, True, True))           # takes the opponent's pass away
+        if hot:
+            for m in b.generate_legal_captures(to_mask=_mask(hot)):
+                if m not in seen:
+                    cand.append((captured_value(b, m), m, True, False))      # a recapture on a square already fought over: its bearer joins
+    best_line = []
     cand.sort(key=lambda t: -t[0])
     for g, m, inside, is_forcing in cand:
         nb = b.copy(stack=False); nb.push(m)
@@ -601,7 +611,7 @@ def joint_threats(b: chess.Board, frame_of, forcing: int = 2, select=None) -> tu
 
 
 def _joint_threats(b: chess.Board, frame_of, forcing: int, select) -> tuple:
-    if passed(b) is None and _no_action(b):
+    if b.is_check() and _no_action(b):
         return -MATE, None, []
     best = (0.0, None, [])
     for sq, pc in b.piece_map().items():
@@ -615,9 +625,9 @@ def _joint_threats(b: chess.Board, frame_of, forcing: int, select) -> tuple:
             best = (v, sq, ln)
     if forcing > 0 and best[0] < MATE:
         for m in b.legal_moves:
+            if not b.gives_check(m):
+                continue                                          # the opponent may still pass: not forcing
             nb = b.copy(stack=False); nb.push(m)
-            if passed(nb) is not None:
-                continue
             won = captured_value(b, m)
             if _no_action(nb):
                 v, ln = won + MATE, [m.uci()]
