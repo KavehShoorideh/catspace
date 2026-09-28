@@ -90,13 +90,29 @@ def decide(vs: list, max_size: int = 99):
     return n_lose * 2 > len(dec), len(dec), n_lose * 2 == len(dec), top, dec
 
 
+def size_of(c, pred: str, fired) -> float | None:
+    """A verdict's SIZE (Kaveh 2026-09-27: "give claims a size"): the mean outcome of the rows where the fired guard
+    term fires, else the lemma's mean over its exceptions (a term fired) or over the rows where it held."""
+    v = c.value or {}
+    if fired is not None and fired in (v.get("terms") or {}):
+        return v["terms"][fired]
+    if not v:
+        return None
+    return v.get("exception") if fired is not None else v.get("holds")
+
+
 def library_verdicts(app, b: chess.Board, raw: bool = False) -> dict:
-    """uci -> (says 'loses', number of lemmas at the top size, tie) for the moves the library speaks about; with raw,
-    uci -> every verdict [(lemma, prediction, fired term, ids)]."""
+    """uci -> (says 'loses', number of lemmas at the top size, tie, the deciders' mean size or None) for the moves the
+    library speaks about; with raw, uci -> every verdict [(lemma, prediction, fired term, ids)]."""
     res = app.apply(b)
     if raw:
         return {key: vs for (e, key), vs in res["verdicts"].items()}
-    return {key: decide(vs)[:3] for (e, key), vs in res["verdicts"].items()}
+    out = {}
+    for (e, key), vs in res["verdicts"].items():
+        d = decide(vs)
+        sizes = [x for x in (size_of(c, p, f) for c, p, f in d[4]) if x is not None]
+        out[key] = (*d[:3], sum(sizes) / len(sizes) if sizes else None)
+    return out
 
 
 _APP = None
@@ -411,6 +427,10 @@ def main(argv=None):
               f"top-size ties {ties}; says what 'hangs' says on {agree}/{len(spoken)} ({time.perf_counter() - t1:.0f}s)")
         rep = dict(lemmas=len(app.lemmas), spoken=len(spoken), ties=ties, agree_hangs=agree)
         for truth_name, col in (("vs standing still", 2), ("vs the best move", 3)):
+            sized = lambda r: (lambda v: v is not None and v[3] is not None and v[3] <= -LOSS_CP / 100)(says.get((r[0], r[1])))
+            s_size = scores([(r[col] <= -LOSS_CP, sized(r)) for r in rows]); lo_s, hi_s = bootstrap_diff(rows, col, sized, lambda r: r[5])
+            print(f"OBS   {truth_name}: by SIZE (the deciders' mean outcome <= -{LOSS_CP / 100:.1f}): balanced acc {s_size['bacc']:.3f} (p {s_size['prec']:.3f} r {s_size['rec']:.3f}); "
+                  f"minus 'hangs' {s_size['bacc'] - scores([(r[col] <= -LOSS_CP, r[5]) for r in rows])['bacc']:+.3f} ({lo_s:+.3f} .. {hi_s:+.3f})")
             s_all = scores([(r[col] <= -LOSS_CP, says.get((r[0], r[1]), (False,))[0]) for r in rows])
             s_lib = scores([(r[col] <= -LOSS_CP, says[(r[0], r[1])][0]) for r in spoken])
             s_hang = scores([(r[col] <= -LOSS_CP, r[5]) for r in spoken])

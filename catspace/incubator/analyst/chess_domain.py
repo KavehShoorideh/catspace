@@ -379,18 +379,30 @@ def stays_aligned(state, action, j):
     return bool(chess.SquareSet.ray(m.to_square, j)) and not any(nb.piece_at(s) for s in chess.SquareSet.between(m.to_square, j))
 
 
+def legal_attackers(b: chess.Board, color: chess.Color, sq: int) -> list:
+    """The pieces of `color` that attack sq and could take there: a pinned piece only along its pin."""
+    return [a for a in b.attackers(color, sq) if not b.is_pinned(color, a) or sq in b.pin(color, a)]
+
+
 def attacked_by_lower(state, i):
     """SQUARE CONDITIONS (Kaveh 2026-09-27: "whether or not a square is attacked by a piece of higher value or lower
     value ... generic enough that can be used as an interface to the outside world"): an enemy piece worth less than
     this one attacks it (whoever else is around, the first capture already wins)."""
     p = state.board.piece_at(i)
-    return any(VAL[state.board.piece_at(a).piece_type] < VAL[p.piece_type] for a in state.board.attackers(not p.color, i))
+    return any(VAL[state.board.piece_at(a).piece_type] < VAL[p.piece_type] for a in legal_attackers(state.board, not p.color, i))
 
 
 def outnumbered(state, i):
-    """More enemy pieces attack it than its own pieces defend it."""
-    p = state.board.piece_at(i)
-    return len(state.board.attackers(not p.color, i)) > len(state.board.attackers(p.color, i))
+    """More enemy pieces can take it than its own pieces can take back, counting only captures that can happen: a
+    pinned piece only along its pin, a king never onto a defended square, a defending king only when no second
+    attacker remains (f6 with Kf7 and g7 against Ra6 read as outnumbered, though Kxf6 is illegal; 2026-09-27)."""
+    b = state.board; p = b.piece_at(i)
+    att = legal_attackers(b, not p.color, i); dfd = legal_attackers(b, p.color, i)
+    if dfd:
+        att = [a for a in att if b.piece_at(a).piece_type != chess.KING]
+    if len(att) > 1:
+        dfd = [d for d in dfd if b.piece_at(d).piece_type != chess.KING]
+    return len(att) > len(dfd)
 
 
 def last_attacker(state, i, j):
@@ -923,6 +935,20 @@ def exchange_frames_of(path, max_pieces: int = 8):
     return fn
 
 
+def ledger_outcomes(state: State, e: int, relative: bool = True):
+    """THE LEDGER ORACLE: every action of e valued across the board's exchange frames -- what it wins, minus the
+    opponent's best exchange anywhere after it, plus their best if we had passed (fates.ledger_move_value, the direct
+    frames; the pass side computed once for all of e's actions). The better truth: on the verdict gauge the ledger
+    scored 0.846 against the single frame's 0.826."""
+    from .fates import direct_frame, ledger_move_value, threats
+    b = state.board.copy(stack=False); b.turn = state.board.piece_at(e).color
+    if not b.is_valid():
+        return []
+    stand = passed(b)
+    before = threats(stand, direct_frame) if stand is not None else (0.0, None, [])
+    return [((b, m), ledger_move_value(b, m, direct_frame, before=before)[0]) for m in b.legal_moves if m.from_square == e]
+
+
 def exchange_outcomes(state: State, e: int, relative: bool = True):
     """THE EXCHANGE ORACLE: every action of e valued by the exchange frames on the real board -- what it wins, the
     exchange the opponent can start on its destination, against the one standing still allows on its origin
@@ -952,13 +978,13 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
         contests_of = exchange_frames_of(_paths.derived("exchanges.jsonl"))
     else:
         contests_of = (lambda: [(pri, t, ids, lits) for f in fens[: 5000] for pri, t, ids, lits in contests(chess.Board(f))]) if fens is not None else None
-    if oracle == "exchange":
+    if oracle in ("exchange", "ledger"):
         from functools import partial
-        return Domain("chess_exchange" if fens is None else "chess_games_exchange", TYPES, rels, placements if fens is None else game_placements(fens, per_position, try_factor), slots_of, actions, transition, frame_scalar, partial(frame_reply_scalar, depth=1), contests=contests_of,
+        return Domain(f"chess_{oracle}" if fens is None else f"chess_games_{oracle}", TYPES, rels, placements if fens is None else game_placements(fens, per_position, try_factor), slots_of, actions, transition, frame_scalar, partial(frame_reply_scalar, depth=1), contests=contests_of,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
                       placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], type_tree=TYPE_TREE, root="*",
                       null_reply_scalar=lambda st, e: None if passed(st.board, st.board.piece_at(e).color) is None else 0.0,   # the oracle's values are already against standing still
-                      episode=partial(frame_episode_states, depth=1), threat=frame_threat_state, batch_outcomes=exchange_outcomes, batch_literals=(core_literals if _core is not None else None))
+                      episode=partial(frame_episode_states, depth=1), threat=frame_threat_state, batch_outcomes=(ledger_outcomes if oracle == "ledger" else exchange_outcomes), batch_literals=(core_literals if _core is not None else None))
     if oracle == "frame":
         from functools import partial
         return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens, per_position, try_factor), slots_of, actions, transition, frame_scalar, partial(frame_reply_scalar, depth=depth), contests=contests_of,

@@ -329,7 +329,10 @@ def exchange(b: chess.Board, s: int, frame: set, side: chess.Color | None = None
     if victim is None or alpha >= beta:
         return best, best_line
     gain = (1 if us else -1) * VAL[victim.piece_type]
-    for m in sorted((m for m in b.legal_moves if m.to_square == s and m.from_square in frame), key=lambda m: VAL[b.piece_at(m.from_square).piece_type]):
+    fmask = 0
+    for q in frame:
+        fmask |= chess.BB_SQUARES[q]
+    for m in sorted(b.generate_legal_moves(from_mask=fmask, to_mask=chess.BB_SQUARES[s]), key=lambda m: VAL[b.piece_at(m.from_square).piece_type]):   # only the frame's captures onto s: generating every legal move at every node cost most of the ledger
         nb = b.copy(stack=False); nb.push(m)
         promo = (1 if us else -1) * (VAL[m.promotion] - VAL[chess.PAWN]) if m.promotion else 0.0
         v, ln = exchange(nb, s, (frame - {m.from_square}) | {s}, side, alpha - gain - promo, beta - gain - promo)
@@ -398,7 +401,7 @@ def threats(b: chess.Board, frame_of, exclude: set = frozenset()) -> tuple:
     return best
 
 
-def ledger_move_value(b: chess.Board, m: chess.Move, frame_of) -> tuple:
+def ledger_move_value(b: chess.Board, m: chess.Move, frame_of, before=None) -> tuple:
     """A move judged against standing still ACROSS FRAMES: what it wins now, minus the opponent's best exchange
     anywhere after it, plus the opponent's best exchange anywhere if we had passed -- a threat elsewhere that the move
     leaves or creates (a queen en prise, an abandoned defence, a discovered attack) is the higher-value intermezzo the
@@ -411,8 +414,9 @@ def ledger_move_value(b: chess.Board, m: chess.Move, frame_of) -> tuple:
     if nb.is_checkmate():
         return 1000.0, (0.0, None, []), (0.0, None, [])
     after = threats(nb, frame_of)
-    stand = passed(b)
-    before = threats(stand, frame_of) if stand is not None else (0.0, None, [])
+    if before is None:                                           # the pass side: the same for every move of a position, so a caller may pass it in
+        stand = passed(b)
+        before = threats(stand, frame_of) if stand is not None else (0.0, None, [])
     return won - after[0] + before[0], after, before
 
 

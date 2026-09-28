@@ -249,18 +249,33 @@ def lift_after(dom: Domain) -> list:
     its action-level form after_R(slots) = R evaluated on the state the action leads to, the acting entity followed
     to where it lands. Nothing is named: "after the move, slot j is attacked" (the fork, the discovered attack),
     "after the move, the mover still defends j" arise as literals the guard search may pick or ignore."""
+    cache: dict = {}
+    def after_of(state, action):                                              # every after_R of a row replays the same move: once a row
+        k = (state_key(state), tuple(state.ids), str(action[1]))
+        if k not in cache:
+            if len(cache) > 20000:
+                cache.clear()
+            after = dom.transition(state, action)
+            cache[k] = (after, {a: b for a, b in zip(state.ids, after.ids)})
+        return cache[k]
     out = []
     for r in dom.relations:
         if r.on_action:
             continue
         def make(rel):
             def fn(state, action, *ids):
-                after = dom.transition(state, action)
-                moved = {a: b for a, b in zip(state.ids, after.ids)}
+                after, moved = after_of(state, action)
                 return rel.fn(after, *[moved.get(i, i) for i in ids])
             return fn
         out.append(Relation("after_" + r.name, r.arity, True, make(r)))
     return out
+
+
+def state_key(state):
+    """A cheap content key for a state (the board's transposition key -- bitboards, turn, castling, en passant --
+    rather than its FEN string, which cost eight seconds of a 27-second frame, 2026-09-27)."""
+    b = getattr(state, "board", None)
+    return b._transposition_key() if b is not None else id(state)
 
 
 def lift_episode(dom: Domain) -> list:
@@ -272,7 +287,7 @@ def lift_episode(dom: Domain) -> list:
         return []
     cache: dict = {}
     def states_of(state, action):
-        key = (state.board.fen(), tuple(state.ids), str(action[1]))         # by content: board ids are reused after collection
+        key = (state_key(state), tuple(state.ids), str(action[1]))          # by content: board ids are reused after collection
         if key not in cache:
             if len(cache) > 20000:
                 cache.clear()
@@ -303,6 +318,14 @@ def lift_some(dom: Domain) -> list:
     be attacked"): every base action relation R becomes two state relations over an entity i: some_R(i, ...) = some
     action of i satisfies R, some_not_R(i, ...) = some action of i violates it. "Has a safe move", "can give check",
     "can capture something worth at least j" are then literals, composed from the rules, never written."""
+    acts: dict = {}; memo: dict = {}                                      # an entity's actions and each quantified answer depend on the state, not on the row's action:
+    def actions_of(state, i):                                                 # the rows of one instance share them (161,824 action generations for 638 rows, 2026-09-27)
+        k = (state_key(state), i)
+        if k not in acts:
+            if len(acts) > 50000:
+                acts.clear(); memo.clear()
+            acts[k] = dom.actions(state, i)
+        return acts[k]
     out = []
     for r in dom.relations:
         if not r.on_action or r.name.startswith(("after_", "then_", "some_")):
@@ -310,11 +333,15 @@ def lift_some(dom: Domain) -> list:
         for neg in (False, True):
             def make(rel, negate):
                 def fn(state, i, *ids):
-                    for a in dom.actions(state, i):
-                        v = bool(rel.fn(state, a, *ids))
-                        if v != negate:
-                            return True
-                    return False
+                    k = (rel.name, negate, state_key(state), i, ids)
+                    if k in memo:
+                        return memo[k]
+                    res = False
+                    for a in actions_of(state, i):
+                        if bool(rel.fn(state, a, *ids)) != negate:
+                            res = True; break
+                    memo[k] = res
+                    return res
                 return fn
             out.append(Relation(("some_not_" if neg else "some_") + r.name, r.arity + 1, False, make(r, neg)))
     return out
@@ -330,7 +357,7 @@ def lift_threat(dom: Domain) -> list:
         return []
     cache: dict = {}
     def threat_of(state, i):
-        key = (state.board.fen() if hasattr(state, "board") else id(state), tuple(getattr(state, "ids", ())), i)
+        key = (state_key(state), tuple(getattr(state, "ids", ())), i)
         if key not in cache:
             if len(cache) > 20000:
                 cache.clear()
@@ -763,6 +790,7 @@ class Generator:
         lem = Lemma(frame, slot, claim, n, holds, guard, covered, purity, residual, complete, examples, inherited, _popcount(rest), reversed_, parents)
         lem.closure = self.frame_closure(rows, frame, cache, all_mask)
         lem.value = frame_values(rows, exc)
+        lem.value["terms"] = self.term_values(rows, lem.full_guard(), cache, all_mask)
         lem.sig = (tuple(frame.types), slot, n, holds, hashlib.sha1(exc.to_bytes((exc.bit_length() + 7) // 8 or 1, "little")).hexdigest()[:12])
         lem.confirmations = since if claim == streamed else 0
         lem.heterogeneous = self.heterogeneous_slots(frame, rows, exc) if self.dom.type_tree else []
@@ -884,8 +912,22 @@ class Generator:
         lem.refined = refined; lem.heterogeneous = heterogeneous
         lem.closure = closure
         lem.value = frame_values(rows, exc)
+        lem.value["terms"] = self.term_values(rows, lem.full_guard(), cache, all_mask)
         lem.sig = sig
         return lem
+
+    def term_values(self, rows, terms: list, cache: dict, all_mask: int) -> dict:
+        """THE SIZE OF EACH EXCEPTION (Kaveh 2026-09-27: "give claims a size"): for every guard term, the mean outcome
+        of the rows where it fires -- a lost pawn and a lost queen under one lemma are different sizes -- keyed by the
+        term's text, as the applier names the term that fired."""
+        clip = lambda d: max(-10.0, min(10.0, d))
+        out = {}
+        for term in terms:
+            m = self.term_mask(rows, term, cache, all_mask)
+            vals = [clip(rows[i][3]) for i in range(len(rows)) if (m >> i) & 1]
+            if vals:
+                out[" & ".join(lit_text(r, sl, pol) for r, sl, pol in term)] = round(sum(vals) / len(vals), 3)
+        return out
 
     def frame_closure(self, rows, frame: Frame, cache: dict, all_mask: int) -> list:
         """The state-level literals true on EVERY placement of the frame that are not among its stated literals: the
@@ -1711,7 +1753,7 @@ def arguments(argv=None):
     ap.add_argument("--positions", type=int, default=None, help="real positions to draw from; default 50,000, the re-test 12,000"); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=200)
     ap.add_argument("--relative", action=argparse.BooleanOptionalAction, default=True, help="outcome relative to the null action (what the standing threats already take)")
     ap.add_argument("--max-frames", type=int, default=3000, help="per size, evaluate only the most frequent frames")
-    ap.add_argument("--oracle", choices=["material", "resolved", "frame", "tablebase", "exchange"], default="frame", help="the outcome: 1-ply material after the best capture/check reply, or the tablebase's WDL (sampled frames of <= 5 men)")
+    ap.add_argument("--oracle", choices=["material", "resolved", "frame", "tablebase", "exchange", "ledger"], default="frame", help="the outcome: 1-ply material after the best capture/check reply, or the tablebase's WDL (sampled frames of <= 5 men)")
     ap.add_argument("--lift", action=argparse.BooleanOptionalAction, default=True, help="add every state relation's after-the-move form as an action-level relation (predicate invention by composition)")
     ap.add_argument("--prefixes", default="after,then,some", help="the lifts in the vocabulary when --lift: after (our move), then (their reply), some (quantified over an entity's actions), threat (after the pass and their reply)")
     ap.add_argument("--gain", type=float, default=None, help="partition the outcome at this GAIN instead of at zero: claims become 'acting gains' / 'acting does not gain'")
