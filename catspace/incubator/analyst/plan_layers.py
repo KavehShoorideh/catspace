@@ -13,6 +13,8 @@ Layers, by name (the registry is the only place that imports them):
     logical_planner   the September planner (`plans.plans_for`): backward chaining over win/defend goals with reach and
                       the exchange ledger, the opponent's counter-goals as a race
     lambda_frames     order-n threats over frames (`lambda_frames`, Thomsen's lambda-search with Cazenave's zones)
+    frame_placement   where each piece is worth most (`frame_placement`): a piece's marginal worth in the frames it
+                      bears on, read in hypothetical placements ("what if the knight were here")
 """
 from __future__ import annotations
 
@@ -91,7 +93,22 @@ class LambdaFrames:
         return [f"order <= {self.order}: {v:+.0f} by {line_san(board, ln)}"] if v > 0 else [f"order <= {self.order}: nothing forced"]
 
 
-LAYERS = {"none": NoPlans, "frame_goals": FrameGoals, "logical_planner": LogicalPlanner, "lambda_frames": LambdaFrames}
+class FramePlacement:
+    """Kaveh 2026-09-28, 'what if the knight joined this frame': a move scores the moved piece's worth in the frames it
+    bears on where it lands (or half of its best one quiet move further) less its worth where it stood."""
+    name = "frame_placement"
+
+    def score_moves(self, board, moves):
+        from .frame_placement import score_moves
+        return score_moves(board, moves)
+
+    def explain(self, board):
+        from .frame_placement import describe
+        return describe(board)
+
+
+LAYERS = {"none": NoPlans, "frame_goals": FrameGoals, "logical_planner": LogicalPlanner, "lambda_frames": LambdaFrames,
+          "frame_placement": FramePlacement}
 
 
 def get(name: str) -> PlanLayer:

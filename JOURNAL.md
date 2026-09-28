@@ -22874,6 +22874,47 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 13:40 PDT — persistent frames; "what if" as the search, its priority learned (OBS)
+
+1. Persistent frames (Kaveh: "persistent frames from move to move ... like the NNUE ... an incremental tactical
+layer"). Measured first: over 40 positions and every legal move, 84% of frames keep their resolved value across a
+move, but only 31% keep their composition and 21% were reused; resolving is 83% of the time. So the store keys a
+frame's resolution by what it reads (`fates.frame_key`: side to move, both kings, the frame's squares with occupants
+and attackers, its pieces with pins; the whole board for frames that can reach check) and serves it wherever the key
+recurs (`fates.resolve_frame`). Verify mode (ANALYST_VERIFY_FRAMES=1): 60 positions x every move, 1,649 store hits
+recomputed, all equal (test). frame_player on 300 positions: every number identical, 30 s -> 25 s. Where it stops:
+two thirds of the lookups (4,072 of 6,004) are frames joined to a king frame -- the counter-check rule joins a king
+frame to any frame whose pieces can check it -- and those are keyed on the whole board (their evasions may use any
+piece), served 16% of the time; local frames 52%.
+
+2. The frame-graph layer's wrong credits (dig, 7 of 30): four come from the answer price (a plan that is stopped,
+credited because its answers "give up" plans -- Bc7 attacking a rook that must move anyway), the rest from small
+tie-breaks; the plans that go through are the reliable part.
+
+3. Kaveh: "we always want to be asking a what-if question: what if there was a knight here? ... another attacker
+here? ... what if we removed this attacker? ... these what-if questions are the search, but knowing which ones to
+consider and in what priority is the main kind of learning ... put my idea to the test". `frame_placement.py`: a
+piece's roles = its marginal worth in each frame it bears on (with it, less without it, as attacker or defender),
+read in hypothetical placements; `plan_layers` 'frame_placement'. Raw, it is a coin flip against Stockfish on 300
+positions (credits tied moves in 188: better by 0.2+ in 69, worse in 63, mean gap -4 cp; own misses 9 -> 38): a
+what-if read with the opponent passing, summed over targets, counts threats as gains (Rg8 'wins' a rook that steps
+away; the rook on e7 'worth +15' for three targets it cannot all win). Fixed to count what survives the best reply,
+it is the order-1 threat search (lambda_frames: the best mean loss of the layers, 83 cp against 90).
+The priority test (`whatif_priority.py`): 1,000 positions, the frames' tied moves as what-ifs (14.6 per position),
+each asked in frame terms (static worth, realized threat) and in what it touches (kind, check, capture, mobility,
+attacks, defences, kings' distance, advance); a logistic model learns from 526 training positions (7,716 what-ifs,
+Stockfish near-best = within 0.3) and orders the what-ifs of 255 held-out positions (hash split by position identity).
+  ordering                first choice = SF best   mean loss   loses 1.5+   SF best comes up as what-if no.
+  frames' first tie               31/255             118 cp       61             8.37
+  random tie                      35/255             111 cp       57             7.70
+  static what-if worth            43/255             101 cp       48             6.74
+  realized threat                 40/255             106 cp       53             8.13
+  learned priority                70/255              76 cp       38             5.89
+Weights (standardized): realized threat +0.67, mobility gain +0.20, capture +0.17, enemy king closer -0.16, check
++0.16, defends gained +0.14, queen move -0.12, ... One run, a hash split: directional, but the gap to every hand-set
+order is large. What it tests is the priority over what-ifs a move makes true now; Kaveh's hypothetical edits (an
+attacker that is not there, a defender removed) are not yet in the set.
+
 ## 2026-09-28 13:07 PDT — defence credit in the frame-graph plan layer (Kaveh's pick) (OBS)
 
 Kaveh chose "defence credit" next. `frame_goals.defence`: what a candidate move takes away from the opponent's plans
