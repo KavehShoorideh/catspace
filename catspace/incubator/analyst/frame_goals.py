@@ -401,31 +401,76 @@ def joint_value(b: chess.Board, first: chess.Move, plans: list) -> float:
     return max(0.0, worst)
 
 
-def score_moves(b: chess.Board, moves) -> dict:
-    """The tactical plan layer's credit for the side to move's candidate moves: a move that starts a plan scores the
-    plan's gain when it goes through, else the cheapest price of stopping its final threat (every answer gives up
-    something); a move that starts one-move plans on two or more targets scores what no single reply saves (the
-    double attack); other moves 0."""
-    wanted = {m.uci() for m in moves}
-    out = {u: 0.0 for u in wanted}
-    ps = plans_for(b, b.turn)
-    by_first = {}
-    for p in ps:
-        if len(p.moves) == 1:
-            by_first.setdefault(p.moves[0].uci(), []).append(p)
-    for u, group in by_first.items():
-        if u in wanted and len({p.target for p in group}) > 1:
-            out[u] = max(out[u], joint_value(b, group[0].moves[0], group))
-    for p in ps:
-        u = p.moves[0].uci()
-        if u not in wanted:
-            continue
-        ok, _ = goes_through(b, p)
-        v = p.gain if ok else stopping_price(b, p)
-        out[u] = max(out[u], v)
+def _refresh(b: chess.Board, plans: list) -> list:
+    """The same plans judged on another board: those that still verify, with their gain and line re-read there."""
+    out = []
+    for q in plans:
+        got = verify(b, q.side, q.target, q.moves)
+        if got is not None:
+            out.append(Plan(q.side, q.target, q.ops, q.moves, got[0], got[1]))
     return out
 
 
+def offence(b: chess.Board, by_first: dict, priced: bool = True) -> dict:
+    """{first move uci: [plans that start with it]} -> {uci: credit} for the plans' side, on board b: a plan that goes
+    through scores its gain; else the cheapest price of stopping its final threat; one move that starts one-move plans
+    on two or more targets scores what no single reply saves (the double attack). priced=False: a plan that does not
+    go through scores 0 (a threat to parry is one that goes through; the defence's view, and far cheaper)."""
+    out = {}
+    for u, group in by_first.items():
+        group = _refresh(b, group)
+        v = 0.0
+        ones = [q for q in group if len(q.moves) == 1]
+        if len({q.target for q in ones}) > 1:
+            v = max(v, joint_value(b, ones[0].moves[0], ones))
+        for q in group:
+            ok, _ = goes_through(b, q)
+            v = max(v, q.gain if ok else (stopping_price(b, q) if priced else 0.0))
+        out[u] = v
+    return out
+
+
+def _by_first(plans: list, wanted=None) -> dict:
+    out = {}
+    for q in plans:
+        u = q.moves[0].uci()
+        if wanted is None or u in wanted:
+            out.setdefault(u, []).append(q)
+    return out
+
+
+def defence(b: chess.Board, moves) -> dict:
+    """What each candidate move takes away from the opponent's plans: their best plan credit if we passed, less their
+    best credit after the move (the ledger's 'before - after', one level up: plans of quiet moves, where the frames'
+    ledger covers only the captures they have now). Only the plans that threatened are re-judged after each move."""
+    wanted = {m.uci() for m in moves}
+    out = {u: 0.0 for u in wanted}
+    pb = passed(b)
+    if pb is None:
+        return out                                                # in check: the frames resolve it
+    theirs = _by_first(plans_for(pb, not b.turn))
+    threat = {u: v for u, v in offence(pb, theirs, priced=False).items() if v > 0}
+    if not threat:
+        return out
+    theirs = {u: qs for u, qs in theirs.items() if u in threat}
+    top = max(threat.values())
+    for m in moves:
+        nb = b.copy(stack=False); nb.push(m)
+        if nb.is_checkmate():
+            continue
+        live = {u: qs for u, qs in theirs.items() if chess.Move.from_uci(u) in nb.legal_moves}
+        after = max(offence(nb, live, priced=False).values(), default=0.0) if live and not nb.is_check() else 0.0
+        out[m.uci()] = max(0.0, top - after)
+    return out
+
+
+def score_moves(b: chess.Board, moves) -> dict:
+    """The tactical plan layer's credit for the side to move's candidate moves: offence (the plans a move starts) plus
+    defence (what it takes away from the opponent's plans; Kaveh 2026-09-28: 'defence credit')."""
+    wanted = {m.uci() for m in moves}
+    off = offence(b, _by_first(plans_for(b, b.turn), wanted))
+    dfn = defence(b, moves)
+    return {u: off.get(u, 0.0) + dfn.get(u, 0.0) for u in wanted}
 def _still_now(now: chess.Board, plan: Plan, before: float):
     """A one-move plan: after the reply, with us to move, do the frames still win more than before on a line through
     the target?"""

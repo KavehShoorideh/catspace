@@ -22874,6 +22874,28 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 13:07 PDT — defence credit in the frame-graph plan layer (Kaveh's pick) (OBS)
+
+Kaveh chose "defence credit" next. `frame_goals.defence`: what a candidate move takes away from the opponent's plans
+-- their best plan credit if we passed, less their best credit after the move (the frame player's 'before - after'
+ledger one level up: the frames' ledger covers the captures they have now, the plans cover what one or more quiet
+moves make). A threat to parry is a plan that goes through (or a double attack); only the plans that threatened are
+re-judged after each move. `score_moves` = offence + defence. `frame_player` now prints how the plan layer's credit
+compares with Stockfish on the tied moves, flushes every line, and closes the engine on a crash (a crash had hung
+the interpreter with the whole 30-minute run's output still in the buffer: lost, rerun).
+
+Fixes found by examples on the way: the defender's captures were not netted in the answer check (Qf5 in
+r3k2r/ppp4p/..: Qxf5 gxf5 read as +9; now a trade, 0), and captures along a multi-move line are carried to its end.
+With netting fixed, in Kaveh's position every plan of either side is stoppable at no price: its choice is positional.
+
+300 held-out positions, Stockfish d12, one run (directional), frame_goals with offence + defence:
+  pick = SF best 70 (none 66; offence only 69); the pick's mean loss 85 cp (90; 85); the pick loses 1.5+ in 46 (54;
+  48); own misses 11 (9; 10); Stockfish's best in the top set 234 (248; 238); 496 s (30 s; 292 s).
+  The layer credited some tied moves over others in 30/300 positions; Stockfish rates the credited moves above the
+  other tied moves by more than 0.2 in 17, below in 7, within 0.2 in 6; mean gap +54 cp.
+Reading: when the layer speaks it is mostly right, but it speaks in a tenth of the positions; the 7 wrong credits and
+the two extra own misses are the next dig.
+
 ## 2026-09-28 11:38 PDT — the tactical plan layer, modular: a graph of reasoning over frames, and three rivals (OBS)
 
 Kaveh, on his position 7R/3b2r1/1p1kp3/p2p4/3PpN2/PP2P3/1KP2P2/8 b (after 29.a3; the site's Stockfish 19 Lite d13:

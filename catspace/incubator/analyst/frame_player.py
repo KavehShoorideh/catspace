@@ -84,6 +84,8 @@ def explain(b: chess.Board, u: str, c: dict) -> str:
 
 def main(argv=None):
     global JOINT, PLANS
+    import sys
+    sys.stdout.reconfigure(line_buffering=True)                       # every OBS line reaches the log as it prints (a crash loses none)
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=200); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--depth", type=int, default=12)
     ap.add_argument("--per-frame", action="store_true", help="resolve each frame alone (no pulled-in pieces), for comparison")
@@ -94,6 +96,13 @@ def main(argv=None):
     PLANS = a.plans
     t0 = time.perf_counter()
     eng = Engine(threads=8, depth=a.depth)
+    try:
+        _run(a, eng, t0)
+    finally:
+        eng.close()                                                   # an open engine keeps the interpreter from exiting after a crash
+
+
+def _run(a, eng, t0):
     rows = []
     boards = positions(a.n, a.seed)
     import multiprocessing as mp
@@ -121,6 +130,19 @@ def main(argv=None):
     print(f"OBS the pick is Stockfish's best move: {sum(r['pick'] == r['sf_best'] for r in rows)}/{n}; the pick's mean loss against the best move "
           f"{sum(min(r['loss'], 1000) for r in rows) / max(1, n):.0f} cp (capped at 1000); positions where the plan layer credited a tied move: "
           f"{sum(1 for r in rows if r['c'].get('plans') and max(r['c']['plans'].values()) > 0)}")
+    better = worse = same = 0; gaps = []                              # the plan layer's credit, checked against Stockfish on the tied moves
+    for r in rows:
+        ps = r["c"].get("plans") or {}
+        if not ps or max(ps.values()) <= 0:
+            continue
+        hi = max(ps.values()); cred = [u for u in ps if ps[u] == hi]; rest = [u for u in ps if ps[u] != hi]
+        if not rest:
+            continue
+        c_cp = sum(r["cp"].get(u, -10000) for u in cred) / len(cred); o_cp = sum(r["cp"].get(u, -10000) for u in rest) / len(rest)
+        gaps.append(c_cp - o_cp); better += c_cp > o_cp + 20; worse += c_cp < o_cp - 20; same += abs(c_cp - o_cp) <= 20
+    if PLANS != "none":
+        print(f"OBS the plan layer credited some tied moves over others in {len(gaps)}/{n} positions; Stockfish rates the credited moves above the "
+              f"other tied moves by more than 0.2 in {better}, below in {worse}, within 0.2 in {same}; mean gap {sum(gaps) / max(1, len(gaps)):+.0f} cp")
     worst = sorted(mistakes, key=lambda r: -r["loss"])
     json.dump([dict(fen=r["fen"], pick=r["pick"], loss=r["loss"], sf_best=r["sf_best"], n_top=r["n_top"], tied_ok=r["tied_ok"]) for r in rows],
               open(paths.derived("frame_player_positions.json"), "w"), indent=1)
@@ -137,7 +159,6 @@ def main(argv=None):
         print(f"  Stockfish's best {explain(b, r['sf_best'], c)}   (Stockfish {r['cp'][r['sf_best']]:+d})")
         print(f"  Stockfish's line after the frames' move: {my_line.san_line(b, 8)}")
         print(f"  Stockfish's line after its best move:   {sf_line.san_line(b, 8)}")
-    eng.close()
 
 
 if __name__ == "__main__":
