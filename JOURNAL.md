@@ -22874,6 +22874,50 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 10:24 PDT — frames are squares; kings live in king frames; no recapture code (Kaveh's restructure) (OBS)
+
+Kaveh: "there should not be kings in all frames ... only the frames involving the king or the pieces defending the
+king are invalidated"; "the recaptures idea should be caught by the bigger frame ... remove any specific recapture
+code ... if the bigger frame or the joint frame doesn't solve the problem then that means we have a bug there";
+"replies are on the same square ... anything somewhere else would be an intermezzo" (the frame must not grow by
+recursively adding squares).
+
+What changed (`fates.py`; the lemma oracles keep their recorded behaviour):
+- A frame is a set of SQUARES; its pieces are whatever bears on them (x-rays included). `local_resolve` plays only
+  captures ON the frame's squares (by any piece), stops where a side may pass, and under check plays every evasion.
+  The special recapture rule is gone. A first attempt closed each frame under defence (every attacked frame piece
+  brought its own square's frame, to a fixed point); it was dropped on Kaveh's principle, not on size -- on 200
+  positions it grew frames from 3.6 to 3.9 pieces on average, and the largest growth was a 2-piece frame becoming 9
+  (Kaveh: a rare 9-piece frame is not unreasonably large).
+- Kings live in KING FRAMES: the king's square and its neighbours, the pieces bearing on them, the enemy pieces with a
+  check in one move, and -- since a check must be answered -- the other pieces each check attacks and the square it
+  lands on (the reply to a check is there). Checks are played only in a frame whose king frame is joined; a king frame
+  joins any frame whose pieces can check that king (counter-checks). Relational state per frame holds only its own
+  squares and pieces (no global check flag), so a king move touches only the frames the king is in.
+- Joining is one step, no recursion: the lines a frame opens once its pieces are lifted bring their targets' squares;
+  a check they open brings that king's frame. The board-wide forcing scan is gone. At most 3 checks a line.
+
+Bugs found by the dig, each with its example (tests in `test_analyst_exchange_frames.py`):
+1. a check's other targets were outside every frame: Nc7+ in r3k3/8/8/3N4/8/8/8/4K3 read 0 (fork of Ke8 and Ra8) -> +5;
+2. the recapture of a checker: f4? in r6r/pbp2kp1/.. (Ng4+ Rxg4 fxg4 wins the exchange) read as safe -> refused;
+3. counter-checks never counted: the side in check could not check back;
+4. `interactors` still tested "not a frame piece" instead of "not a frame square": Rg2? in 2r2r2/1b1k1p2/.. (d4+
+   opens the b7 bishop onto the g2 rook, itself a piece of White's king frame) read as safe -> −2, refused;
+5. a three-check mate (h3? Rf2+ Kg1 Qg3+ Kh1 Rh2#) was beyond a 2-check budget -> 3 checks (4 checks: 642 against
+   644 false-safe moves on 300 positions, 117 s against 32 s; kept at 3).
+
+Scores (`frame_player`, same positions, Stockfish depth 12; HEAD = commit a8080651 run in a scratch worktree):
+- 300 positions: Stockfish's best in the frames' top set 248 (HEAD 247); own misses (every top move loses 1.5 pawns)
+  9 (HEAD 10); false-safe top moves 642 in 128 positions (HEAD 634 in 131); 30 s (HEAD 124 s).
+- 1,000 positions: Stockfish's best in the top set 846 (HEAD 849, the 09:53 entry); own misses 26 (HEAD 26); 83 s.
+One run each: directional. Moves false-safe only in the new code: 59 in 14 positions; 35 of them in two positions with
+wide ties, where HEAD's narrower top set came from accidents of its old frames (a capture elsewhere that happened to
+fall inside a frame: Bd3 in 8/5pk1/.. is good because it attacks the e2 rook, a threat of its own; the new frames
+do not credit a move's own threats). The rest: king hunts past 3 checks (Bd5+ in r5k1/p1q3pp/..; Qxb7 in
+r6k/1b3Qp1/.., where the frames now see Bxd4+ Kh2 Qxf1 Qxa8+ and HEAD did not), quiet threats and positional moves.
+One HEAD-only false-safe case turned out right in the new code for a tactical reason: Bh6 in r2qk2r/pnbn1ppp/..
+reads 0 because gxh6 Bxd7+ (Qxd7 Nf6+) wins the piece back; Stockfish's objection there is tempo.
+
 ## 2026-09-28 09:53 PDT — the autonomous dig loop (Kaveh: "go autonomous until you stop seeing improvements"): joint frames, their interface, the frame book; the plateau (OBS)
 
 Each step came from a worked miss and kept every earlier case right (tests in `test_analyst_exchange_frames.py`):

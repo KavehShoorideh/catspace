@@ -503,18 +503,21 @@ def _mask(squares) -> int:
     return m
 
 
-def local_resolve(b: chess.Board, members: set, alpha: float = -1e9, beta: float = 1e9, forcing: int = 2, hot: frozenset = frozenset()) -> tuple:
-    """A FRAME RESOLVED JOINTLY (Kaveh 2026-09-28: "considering multiple frames simultaneously and resolving them
-    jointly"): alpha-beta over the moves of the frame's pieces that capture or take the opponent's pass away (`forcing`
-    such moves at most on a line), each side stopping where it may pass; a side in check answers with any legal move
-    (inside the frame or out); a side that can neither act nor pass has lost. `members`: the current squares of the
-    frame's pieces, followed through the line. A capture on a square opens that square's exchange to every piece bearing
-    on it (`hot`): whoever takes back there joins the line (the Nb4, Ba7 and Rfe1 positions of 2026-09-28 read a pawn or
-    a knight as won because its defender was outside the frame). Only the moves that can matter are generated: every
-    evasion under check, else the frame pieces' moves and the recaptures on hot squares (the same rule, 2026-09-28:
-    generating every legal move at every node cost most of a position's time). -> (value for the side to move, line)."""
+FORCING = 3                                                       # checks on one line, at most (the king hunt Rf2+ Kg1 Qg3+ Kh1 Rh2# takes three)
+
+
+def local_resolve(b: chess.Board, squares, members: set, kings=frozenset(), alpha: float = -1e9, beta: float = 1e9, forcing: int | None = None) -> tuple:
+    """A FRAME RESOLVED (Kaveh 2026-09-28: "considering multiple frames simultaneously and resolving them jointly"). A
+    frame is a set of SQUARES; its pieces are whatever bears on them. Alpha-beta over the captures ON the frame's squares
+    by any piece -- a reply is on the same square (Kaveh: "replies are on the same square, anything somewhere else would
+    be an intermezzo"), so what happens elsewhere belongs to a joint frame, not to this one -- and, when a king's frame
+    is joined (`kings`), the frame pieces' checks on that king (`forcing` such at most on a line); the square a check
+    lands on joins the frame for the rest of the line (the reply to a check is on its square); each side stops where it
+    may pass; under check every legal evasion (the rules); a side that can neither act nor pass has lost. `members`:
+    the frame's pieces, followed through the line (they give the checks). -> (value for the side to move, line)."""
+    forcing = FORCING if forcing is None else forcing
     if b.is_check():                                              # the pass is illegal: every evasion, none is mate
-        cand = [(captured_value(b, m), m, m.from_square in members, False) for m in b.legal_moves]
+        cand = [(captured_value(b, m), m, False) for m in b.legal_moves]
         if not cand:
             return -MATE, []
         best = -1e9
@@ -523,27 +526,24 @@ def local_resolve(b: chess.Board, members: set, alpha: float = -1e9, beta: float
         alpha = max(alpha, best)
         if alpha >= beta:
             return best, []
-        cand = []; seen = set()
+        cand = [(captured_value(b, m), m, False) for m in b.generate_legal_captures() if m.to_square in squares or _victim(b, m) in squares]
+        checks = forcing > 0 and (not b.turn) in kings
         for m in b.generate_legal_moves(from_mask=_mask(members)):
-            seen.add(m)
-            if m.promotion or (b.is_capture(m) and _victim(b, m) in members):
-                cand.append((captured_value(b, m), m, True, False))          # a frame is a closed world: its pieces take frame pieces
-            elif b.is_capture(m) and _victim(b, m) in hot:
-                cand.append((captured_value(b, m), m, True, False))
-            elif forcing > 0 and b.gives_check(m):
-                cand.append((captured_value(b, m), m, True, True))           # takes the opponent's pass away
-        if hot:
-            for m in b.generate_legal_captures(to_mask=_mask(hot)):
-                if m not in seen:
-                    cand.append((captured_value(b, m), m, True, False))      # a recapture on a square already fought over: its bearer joins
+            if b.is_capture(m) and (m.to_square in squares or _victim(b, m) in squares):
+                continue                                          # already a candidate
+            if m.promotion:
+                cand.append((captured_value(b, m), m, False))
+            elif checks and b.gives_check(m):
+                cand.append((captured_value(b, m), m, True))
     best_line = []
     cand.sort(key=lambda t: -t[0])
-    for g, m, inside, is_forcing in cand:
+    for g, m, is_forcing in cand:
         nb = b.copy(stack=False); nb.push(m)
         mem = set(members) - {_victim(b, m)}
-        if inside:
+        sq = (set(squares) | {m.to_square}) if is_forcing else squares
+        if m.from_square in mem or m.to_square in sq:             # a piece that lands on a frame square is a frame piece
             mem = (mem - {m.from_square}) | {m.to_square}
-        v, ln = local_resolve(nb, mem, -beta + g, -alpha + g, forcing - (1 if is_forcing else 0), (hot | {m.to_square}) if b.is_capture(m) else hot)
+        v, ln = local_resolve(nb, sq, mem, kings, -beta + g, -alpha + g, forcing - (1 if is_forcing else 0))
         v = g - v
         if v > best:
             best, best_line = v, [m.uci()] + ln
@@ -553,23 +553,55 @@ def local_resolve(b: chess.Board, members: set, alpha: float = -1e9, beta: float
     return (best if best > -1e9 else 0.0), best_line
 
 
-def interactors(b: chess.Board, frame: set) -> set:
-    """THE PIECES A FRAME PULLS IN (Kaveh 2026-09-28: "how do you know when to combine frames?"): outside the frame, every
-    piece that gains a capture or a forcing move once the frame's pieces are lifted off the board -- a line the frame
-    opens when its pieces leave -- and the royal piece such a forcing move would attack. (After Bxd5 in 1n3r2/1Q2qp2/..:
-    lifting the e6 pawn gives the b1 rook Rb6+, so the rook and Black's king join the d5 frame.)"""
+def king_squares(b: chess.Board, color: chess.Color) -> set:
+    k = b.king(color)
+    return set() if k is None else {k} | set(chess.SquareSet(chess.BB_KING_ATTACKS[k]))
+
+
+def king_frame(b: chess.Board, color: chess.Color) -> tuple:
+    """THE KING FRAME (Kaveh 2026-09-28: "there obviously should be some frames with kings in them ... only the frames
+    involving the king or the pieces defending the king are invalidated"): the king's square and the squares around it,
+    the pieces bearing on them (each square's frame), the enemy pieces that check it or can in one move, and -- since
+    a check must be answered, whatever else the checking piece attacks is an intermezzo the check brings -- the
+    squares of the other pieces it attacks from there, with their bearers (Nc7+ in r3k3/8/8/3N4/..: the a8 rook).
+    One step, no recursion. -> (squares, members)."""
+    sq = king_squares(b, color)
+    if not sq:
+        return set(), set()
+    members = set().union(*(square_frame(b, z) for z in sq))
+    own = lambda bb, x: bb.piece_at(x) is not None and bb.piece_at(x).color == color and bb.piece_at(x).piece_type != chess.KING
+    targets = set()
+    if b.turn == color and b.is_check():                          # the checkers on the board and their other targets
+        for q in b.checkers():
+            members.add(q); targets |= {x for x in b.attacks(q) if own(b, x)}
+    t = b if b.turn != color else passed(b)                       # the enemy to move: its checks in one move
+    if t is not None:
+        for m in t.generate_legal_moves():
+            if t.gives_check(m):
+                members.add(m.from_square)
+                nb = t.copy(stack=False); nb.push(m)
+                targets |= {x for x in nb.attacks(m.to_square) if own(nb, x)} | {m.to_square}   # and the square it lands on: the reply is there
+    return sq | targets, members | set().union(set(), *(square_frame(b, x) for x in targets))
+
+
+def interactors(b: chess.Board, members: set, squares=frozenset()) -> tuple:
+    """WHAT A FRAME PULLS IN (Kaveh 2026-09-28: "how do you know when to combine frames?"), one step, no recursion: the
+    lines the frame opens once its pieces are lifted off the board. A piece that gains an attack on an enemy piece
+    brings that piece's SQUARE into the frame (also the frame's own pieces: after g6, exd6 uncovers Qd4 on h8); a piece
+    that gains a check brings in that king's frame (after Bxd5 in 1n3r2/1Q2qp2/..: lifting the e6 pawn gives the b1 rook
+    Rb6+). A target already among the frame's `squares` is not new; a frame piece standing elsewhere is (after Rg2 in
+    2r2r2/1b1k1p2/..: d4+ opens the b7 bishop onto the g2 rook, a piece of White's king frame). -> (squares that join,
+    kings whose frame joins)."""
     lifted = b.copy(stack=False)
-    for q in frame:
+    for q in members:
         lifted.remove_piece_at(q)
-    out = set()
+    out = set(); kings = set()
+    enemy_piece = lambda t, c: b.piece_at(t) is not None and b.piece_at(t).color != c and b.piece_at(t).piece_type != chess.KING
     for q, pc in b.piece_map().items():
-        if q in frame or lifted.piece_at(q) is None:
+        if q in members:
             continue
         new = set(lifted.attacks(q)) - set(b.attacks(q))
-        hit = {t for t in new if b.piece_at(t) is not None and b.piece_at(t).color != pc.color and b.piece_at(t).piece_type != chess.KING}
-        if hit:
-            out |= {q} | hit                                      # a line the frame opens: the attacker and what it now attacks (g6 in r1bqkbnr/ppp2ppp/..: exd6
-                                                                  # uncovers Qd4 on h8, 2026-09-28); the target's defenders take back through the recapture rule
+        out |= {t for t in new if enemy_piece(t, pc.color)}
         king = b.king(not pc.color)
         if king is None:
             continue
@@ -579,47 +611,41 @@ def interactors(b: chess.Board, frame: set) -> set:
             l2 = lifted.copy(stack=False); l2.remove_piece_at(q); l2.set_piece_at(t, pc)
             b2 = b.copy(stack=False); b2.remove_piece_at(q); b2.set_piece_at(t, pc)
             if king in l2.attacks(t) and king not in b2.attacks(t):
-                out |= {q, king}; break
-    for q in frame:                                               # a frame piece's own line, opened when the OTHER frame pieces leave (after g6, exd6
-        pc = b.piece_at(q)                                        # uncovers the d6 frame's own queen on h8)
+                kings.add(not pc.color); break
+    for q in members:
+        pc = b.piece_at(q)
         if pc is None:
             continue
         l = b.copy(stack=False)
-        for r in frame:
+        for r in members:
             if r != q:
                 l.remove_piece_at(r)
         new = set(l.attacks(q)) - set(b.attacks(q))
-        out |= {t for t in new if t not in frame and b.piece_at(t) is not None and b.piece_at(t).color != pc.color and b.piece_at(t).piece_type != chess.KING}
-    return out
+        out |= {t for t in new if t not in squares and enemy_piece(t, pc.color)}
+    return out - set(squares), kings
+
+
+def joint_frame(b: chess.Board, squares: set, kings: set, frame_of=None) -> tuple:
+    """A frame joined with what it pulls in (one step): -> (squares, kings, members)."""
+    frame_of = frame_of or square_frame
+    members = set().union(set(), *(frame_of(b, t) for t in squares))
+    for c in kings:
+        ks, km = king_frame(b, c); squares = set(squares) | ks; members |= km
+    add, kadd = interactors(b, members, squares)
+    squares = set(squares) | add; members |= set().union(set(), *(frame_of(b, t) for t in add))
+    for c in kadd - set(kings):
+        ks, km = king_frame(b, c); squares |= ks; members |= km
+    kings = set(kings) | kadd
+    for c in (chess.WHITE, chess.BLACK):                          # a king whose frame a frame piece can check: its frame joins (counter-checks)
+        if c in kings or b.king(c) is None:
+            continue
+        t = b if b.turn != c else passed(b)
+        if t is not None and any(t.gives_check(m) for m in t.generate_legal_moves(from_mask=_mask(members))):
+            ks, km = king_frame(b, c); squares |= ks; members |= km; kings.add(c)
+    return frozenset(squares), frozenset(kings), frozenset(members)
 
 
 _JOINT: dict = {}
-_RAYS = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
-
-
-def subscriptions(b: chess.Board, members) -> frozenset:
-    """The squares a frame's resolution can read (its SUBSCRIPTIONS, Kaveh 2026-09-28: "whenever that piece is affected
-    or if that piece moves then we ask what else was depending on this piece"): each member's square, the rays from it
-    up to the second piece, its knight jumps and neighbours, and the same around both royal pieces (checks and their
-    evasions). A move that touches none of them leaves the frame's resolution as it was."""
-    out = set()
-    kings = [k for k in (b.king(chess.WHITE), b.king(chess.BLACK)) if k is not None]
-    for t in list(members) + kings:
-        out.add(t)
-        f0, r0 = chess.square_file(t), chess.square_rank(t)
-        for df, dr in _RAYS:                                      # up to the first piece; past it only if it can leave the ray in the line
-            f, r = f0 + df, r0 + dr                               # (a frame piece, or a slider that could take back) -- 59 of 64 squares a frame
-            passed_one = False                                    # with every ray to its second piece, 2026-09-28: nothing was ever reused
-            while 0 <= f < 8 and 0 <= r < 8:
-                q = chess.square(f, r); out.add(q)
-                pc = b.piece_at(q)
-                if pc is not None:
-                    if passed_one or not (q in members or pc.piece_type in (chess.BISHOP, chess.ROOK, chess.QUEEN)):
-                        break
-                    passed_one = True
-                f += df; r += dr
-        out |= set(chess.SquareSet(chess.BB_KNIGHT_ATTACKS[t])) | set(chess.SquareSet(chess.BB_KING_ATTACKS[t]))
-    return frozenset(out)
 
 
 def changed_squares(b: chess.Board, m: chess.Move) -> frozenset:
@@ -631,97 +657,71 @@ def changed_squares(b: chess.Board, m: chess.Move) -> frozenset:
     return frozenset(out)
 
 
-def relations(b: chess.Board, members) -> tuple:
+def relations(b: chess.Board, squares, members) -> tuple:
     """A frame's RELATIONAL STATE -- what it subscribes to (Kaveh 2026-09-28: "whenever that piece is affected or if that
-    piece moves then we ask what else was depending on this piece"): its pieces where they stand, who attacks and
-    defends each (both sides), which of them are pinned, which checks they can give, and whose turn it is. Squares were
-    the wrong grain (59 of 64 squares a frame, nothing reused); an unchanged relational state means an unchanged
-    resolution."""
+    piece moves then we ask what else was depending on this piece"): whose turn it is, and its squares and pieces as
+    they stand, who attacks and defends each, which are pinned. Nothing global: a king move touches only the frames the
+    king or its defenders are in."""
     rows = []
-    for t in sorted(members):
+    for t in sorted(set(squares) | set(members)):
         pc = b.piece_at(t)
-        if pc is None:
-            rows.append((t, None)); continue
-        rows.append((t, pc.symbol(), int(b.attackers_mask(chess.WHITE, t)), int(b.attackers_mask(chess.BLACK, t)), b.is_pinned(pc.color, t)))
-    mask = 0
-    for t in members:
-        mask |= chess.BB_SQUARES[t]
-    checks = tuple(sorted(m.uci() for m in b.generate_legal_moves(from_mask=mask) if b.gives_check(m)))
-    return (b.turn, b.is_check(), tuple(rows), checks)
+        rows.append((t, None if pc is None else pc.symbol(), int(b.attackers_mask(chess.WHITE, t)), int(b.attackers_mask(chess.BLACK, t)),
+                     pc is not None and b.is_pinned(pc.color, t)))
+    return (b.turn, tuple(rows))
 
 
-def frame_book(b: chess.Board, frame_of, select=None, parent: dict | None = None, changed: frozenset = frozenset()) -> dict:
-    """THE FRAME BOOK of a position (Kaveh 2026-09-28, publish-subscribe): for every enemy piece the side to move
-    attacks, its frame (with the pieces it pulls in), its relational state and its resolution. From a parent book (the
-    same side to move): a frame whose composition and relational state are unchanged keeps its resolution; the rest
-    are resolved again; newly contested squares open frames, frames whose piece left close."""
+def frame_book(b: chess.Board, frame_of=None, select=None, parent: dict | None = None, changed: frozenset = frozenset()) -> dict:
+    """THE FRAME BOOK of a position (Kaveh 2026-09-28, publish-subscribe): under check only the side's own king frame
+    (the evasions); otherwise every contested square's frame and the enemy king's frame, each joined with what it pulls
+    in, with its relational state and its resolution. From a parent book, a frame whose composition and relational
+    state are unchanged keeps its resolution. `select(b, key, squares, kings, members)` may narrow a joined frame (the
+    prior's choice)."""
+    specs = {}
+    if b.is_check():
+        specs[("king", b.turn)] = joint_frame(b, set(), {b.turn}, frame_of)
+    else:
+        for sq, pc in b.piece_map().items():
+            if pc.color == b.turn or pc.piece_type == chess.KING or not b.attackers(b.turn, sq):
+                continue
+            specs[("sq", sq)] = joint_frame(b, {sq}, set(), frame_of)
+        if b.king(not b.turn) is not None:
+            specs[("king", not b.turn)] = joint_frame(b, set(), {not b.turn}, frame_of)
     book = {}
-    for sq, pc in b.piece_map().items():
-        if pc.color == b.turn or pc.piece_type == chess.KING or not b.attackers(b.turn, sq):
-            continue
-        fr = set(frame_of(b, sq)); pulled = interactors(b, fr)
+    for key, fr in specs.items():
         if select is not None:
-            pulled = select(b, sq, fr, pulled)
-        members = frozenset(fr | pulled)
-        rel = relations(b, members)
-        e = parent.get(sq) if parent is not None else None
-        if e is not None and e[0] == members and e[1] == rel:
-            book[sq] = e
-            continue
-        v, ln = local_resolve(b, set(members))
-        book[sq] = (members, rel, v, ln)
+            fr = select(b, key, *fr)
+        rel = relations(b, fr[0], fr[2])
+        e = parent.get(key) if parent is not None else None
+        if e is not None and e[0] == fr and e[1] == rel:
+            book[key] = e; continue
+        v, ln = local_resolve(b, fr[0], set(fr[2]), fr[1])
+        book[key] = (fr, rel, v, ln)
     return book
 
 
-def joint_threats(b: chess.Board, frame_of, forcing: int = 2, select=None, parent: dict | None = None, changed: frozenset = frozenset()) -> tuple:
-    """The side to move's best threat with FRAMES RESOLVED JOINTLY (Kaveh 2026-09-28): the best entry of the position's
-    frame book (each enemy piece's frame with the pieces it pulls in, resolved by local_resolve; from `parent`, only
-    the frames the change touched are resolved again), and the forcing moves, played out `forcing` levels deep (each
-    check-and-reply position's book derived from this one). -> (value, square, line); 0 when nothing beats standing
-    still."""
+def joint_threats(b: chess.Board, frame_of=None, forcing: int = 2, select=None, parent: dict | None = None, changed: frozenset = frozenset()) -> tuple:
+    """The side to move's best outcome with FRAMES RESOLVED JOINTLY (Kaveh 2026-09-28): the best entry of the position's
+    frame book. -> (value, key square, line); 0 when nothing beats standing still (under check it may be negative: the
+    evasion costs)."""
     return joint_threats_book(b, frame_of, forcing, select, parent, changed)[0]
 
 
-def joint_threats_book(b: chess.Board, frame_of, forcing: int = 2, select=None, parent: dict | None = None, changed: frozenset = frozenset()) -> tuple:
-    key = (b._transposition_key(), forcing, id(frame_of), id(select))
+def joint_threats_book(b: chess.Board, frame_of=None, forcing: int = 2, select=None, parent: dict | None = None, changed: frozenset = frozenset()) -> tuple:
+    key = (b._transposition_key(), id(frame_of), id(select))
     if key in _JOINT:
         return _JOINT[key]
     if len(_JOINT) > 100000:
         _JOINT.clear()
-    _JOINT[key] = out = _joint_threats(b, frame_of, forcing, select, parent, changed)
-    return out
-
-
-def _joint_threats(b: chess.Board, frame_of, forcing: int, select, parent, changed) -> tuple:
-    if b.is_check() and _no_action(b):
-        return (-MATE, None, []), {}
     book = frame_book(b, frame_of, select, parent, changed)
-    best = (0.0, None, [])
-    for sq, (members, subs, v, ln) in book.items():
-        if v > best[0]:
-            best = (v, sq, ln)
-    if forcing > 0 and best[0] < MATE:
-        for m in b.legal_moves:
-            if not b.gives_check(m):
-                continue                                          # the opponent may still pass: not forcing
-            nb = b.copy(stack=False); nb.push(m)
-            won = captured_value(b, m)
-            if _no_action(nb):
-                v, ln = won + MATE, [m.uci()]
-            else:
-                worst = None; cm = changed_squares(b, m)
-                for r in nb.legal_moves:
-                    nb2 = nb.copy(stack=False); nb2.push(r)
-                    cont = joint_threats_book(nb2, frame_of, forcing - 1, select, book, cm | changed_squares(nb, r))[0]
-                    w = -captured_value(nb, r) + cont[0]
-                    if worst is None or w < worst[0]:
-                        worst = (w, [r.uci()] + cont[2])
-                v, ln = won + worst[0], [m.uci()] + worst[1]
+    if b.is_check():                                              # the evasions: the own king frame alone, its value may be negative
+        e = book[("king", b.turn)]; best = (e[2], b.king(b.turn), e[3])
+    else:
+        best = (0.0, None, [])
+        for k, (fr, rel, v, ln) in book.items():
             if v > best[0]:
-                best = (v, m.to_square, ln)
-            if best[0] >= MATE:
-                break
-    return best, book
+                best = (v, k[1] if k[0] == "sq" else b.king(k[1]), ln)
+    _JOINT[key] = out = (best, book)
+    return out
 
 
 def line_san(board: chess.Board, move: chess.Move, line: list) -> str:

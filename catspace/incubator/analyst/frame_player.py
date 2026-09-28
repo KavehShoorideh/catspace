@@ -87,8 +87,9 @@ def main(argv=None):
         cp = {l.move: l.cp for l in lines}; best_cp = max(cp.values()); sf_best = max(cp, key=cp.get)
         pick = c["best"][0]                                         # the first tied move in move order: the frames cannot tell tied moves apart
         tied_ok = sum(1 for u in c["best"] if cp.get(u, -1e9) > best_cp - LOSS_CP)
+        false_safe = sum(1 for u in c["best"] if cp.get(u, -1e9) <= best_cp - LOSS_CP)   # a top move Stockfish calls a loss
         rows.append(dict(i=i, fen=b.fen(), pick=pick, loss=best_cp - cp.get(pick, -10000), sf_best=sf_best, sf_in_top=sf_best in c["best"],
-                         n_top=len(c["best"]), tied_ok=tied_ok, c=c, cp=cp, b=b))
+                         n_top=len(c["best"]), tied_ok=tied_ok, false_safe=false_safe, c=c, cp=cp, b=b))
     n = len(rows)
     mistakes = [r for r in rows if r["loss"] >= LOSS_CP]
     print(f"[frame_player] {n} held-out positions ({time.perf_counter() - t0:.0f}s)")
@@ -96,6 +97,8 @@ def main(argv=None):
           f"{sum(r['n_top'] == 1 for r in rows)}/{n}")
     print(f"OBS the pick (the first top move) loses 1.5 pawns or more against the best move: {len(mistakes)}/{n}; "
           f"of those, every top move does: {sum(1 for r in mistakes if r['tied_ok'] == 0)}")
+    print(f"OBS false-safe top moves (a top move losing 1.5 pawns or more): {sum(r['false_safe'] for r in rows)} in {sum(r['false_safe'] > 0 for r in rows)}/{n} positions; "
+          f"own misses (every top move does): {sum(r['false_safe'] == r['n_top'] for r in rows)}")
     worst = sorted(mistakes, key=lambda r: -r["loss"])
     json.dump([dict(fen=r["fen"], pick=r["pick"], loss=r["loss"], sf_best=r["sf_best"], n_top=r["n_top"], tied_ok=r["tied_ok"]) for r in rows],
               open(paths.derived("frame_player_positions.json"), "w"), indent=1)

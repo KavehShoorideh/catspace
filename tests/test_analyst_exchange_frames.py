@@ -109,8 +109,10 @@ def test_joint_frames_find_the_intermezzo_and_keep_recaptures():
     assert choose(b)["best"] == ["a2d5"]
     after = b.copy(); after.push_san("Bxd5")
     fr = F.square_frame(after, chess.D5)
-    assert F.local_resolve(after, set(fr))[0] == 2.0                                       # the d5 frame alone: exd5 Qxd5
-    assert F.local_resolve(after, set(fr) | F.interactors(after, fr))[0] == 0.0            # with what it pulls in: taking does not pay
+    assert F.local_resolve(after, {chess.D5}, set(fr))[0] == 2.0                           # the d5 frame alone: exd5 Qxd5
+    squares, kings, members = F.joint_frame(after, {chess.D5}, set())
+    assert chess.WHITE in kings                                                            # lifting e6 gives the b1 rook a check: White's king frame joins
+    assert F.local_resolve(after, squares, set(members), kings)[0] == 0.0                  # with what it pulls in: taking does not pay
     b2 = chess.Board("r2q1rk1/1bppnp1p/1pn1p1p1/p3P3/P3P3/5N2/BPP1NPPP/R2Q1RK1 b - - 3 13")
     stand = F.passed(b2)
     assert F.joint_threats(stand, F.square_frame)[0] == 0.0                                 # White has nothing: Qxd7 is met by Qxd7
@@ -118,10 +120,27 @@ def test_joint_frames_find_the_intermezzo_and_keep_recaptures():
 
 def test_a_line_a_frame_opens_brings_in_what_it_now_attacks():
     """Kaveh 2026-09-28, the g6 miss: after g6, exd6 opens the d6 frame's own queen onto h8 -- the rook joins the frame
-    (its defenders through the recapture rule), so Black cannot both take back on d6 and save the rook."""
+    (its square, with the pieces bearing on it), so Black cannot both take back on d6 and save the rook."""
     from catspace.incubator.analyst.frame_player import choose
     b = chess.Board("r1bqkbnr/ppp2ppp/3p4/4P3/3Q4/8/PPP2PPP/RNB1KB1R b KQkq - 0 6")
     after = b.copy(); after.push_san("g6")
-    assert chess.H8 in F.interactors(after, F.square_frame(after, chess.D6))
+    assert chess.H8 in F.interactors(after, F.square_frame(after, chess.D6))[0]            # h8's square joins, not a recursive closure
     c = choose(b)
     assert c["values"][b.parse_san("g6").uci()] < 0 and b.parse_san("g6").uci() not in c["best"]
+
+
+def test_frames_are_squares_and_kings_live_in_king_frames():
+    """Kaveh 2026-09-28: a frame is its squares -- a reply is on the same square, anything elsewhere is an intermezzo --
+    and kings live in king frames. The holes the restructure opened, each by its example: a check's other targets
+    (Nc7+ forks the a8 rook); the square a check lands on (f4? Ng4+ Rxg4 fxg4 wins the exchange); a king hunt of three
+    checks (h3? Rf2+ Kg1 Qg3+ Kh1 Rh2#); a line a check opens onto a piece that is a frame piece but not on a frame
+    square (Rg2? d4+ Kf2 Bxg2)."""
+    from catspace.incubator.analyst.frame_player import choose
+    b = chess.Board("r3k3/8/8/3N4/8/8/8/4K3 w - - 0 1")
+    assert choose(b)["best"] == [b.parse_san("Nc7+").uci()]
+    for fen, san in [("r6r/pbp2kp1/1p2pnnp/5p2/3P3P/2PB1P2/PP1NNK1R/6R1 w - - 2 20", "f4"), ("5r1k/p1pp3p/1pP1p3/6p1/P3P2q/2N5/1PPB2KP/R2Q4 w - - 1 21", "h3"),
+                     ("2r2r2/1b1k1p2/4p3/pp1p3P/8/P1P1K3/PB6/6RR w - - 2 24", "Rg2")]:
+        b = chess.Board(fen); c = choose(b); u = b.parse_san(san).uci()
+        assert u not in c["best"] and c["values"][u] < max(c["values"].values()), (fen, san)
+    sq, members = F.king_frame(chess.Board("r3k3/8/8/3N4/8/8/8/4K3 b - - 0 1"), chess.BLACK)
+    assert chess.A8 in sq and chess.C7 in sq                                               # the fork target and the check's square
