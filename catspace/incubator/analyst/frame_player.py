@@ -72,7 +72,7 @@ def two_ply_value(b: chess.Board, m: chess.Move) -> tuple:
     move (the pass). -> (value, their best reply uci or '--', our best frame line after it)."""
     nb = b.copy(stack=False); nb.push(m)
     if nb.is_checkmate():
-        return 1000.0, None, []
+        return 1e6, None, []
     got = captured_value(b, m)
     ours = lambda p: (joint_threats(p, square_frame)[0], joint_threats(p, square_frame)[2]) if p.turn == b.turn else (-joint_threats(p, square_frame)[0], [])
     worst = None
@@ -122,7 +122,7 @@ def choose(b: chess.Board) -> dict:
         if JOINT:
             nb = b.copy(stack=False); nb.push(m)
             after = (0.0, None, []) if nb.is_checkmate() else joint_threats(nb, square_frame, select=SELECT, parent=book, changed=changed_squares(b, m))   # the pass position's book: only the frames the move touches
-            v = 1000.0 if nb.is_checkmate() else captured_value(b, m) - after[0] + before[0]
+            v = 1e6 if nb.is_checkmate() else captured_value(b, m) - after[0] + before[0]   # a mate dominates: parrying their mate threat is worth ~+1000 too (04QtS: Nxe4 +1001 beat Qf2#)
             bef = before
         else:
             v, after, bef = ledger_move_value(b, m, square_frame, before=before)

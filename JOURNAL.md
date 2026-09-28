@@ -22874,6 +22874,26 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 15:57 PDT — tactical puzzles: where the frames go wrong (Kaveh: "solve some tactical puzzles ... use that to improve") (OBS)
+
+Kaveh, on the sample analysis: the tactical layer is right there (no tactics; Rg1 is positional -- the open file).
+`frame_puzzles.py`: Lichess puzzles (the solver's position after the first move; each solver step asks
+frame_player.choose; 'unique' = the solution is the single top move, 'tied' = among the tied top moves; any mate counts
+where the solution mates) and WAC (best move, one try). First run, 300 Lichess puzzles (stride 997):
+  first move unique 170, tied 243; whole solution unique 141, tied 224; by rating (tied, whole): <1200 105/117,
+  1200-1600 58/69, 1600-2000 34/56, 2000+ 27/58; mate 97/106, mateIn2 36/43, fork 25/33, sacrifice 4/15, attraction 5/12.
+  WAC 300: first move unique 58, tied 143 (median 3 tied).
+Bugs found by the misses: (1) a mate scored 1000 while a move that parries the opponent's mate threat scores ~1001
+through 'their best if we passed' (04QtS: Nxe4 +1001 over Qf2#) -- a mate is now 1e6; (2) inside a king frame only
+the frame's pieces could give check, but deeper in a hunt new pieces get checks as the king moves (0Hb6O: Rxh7+ Kxh7
+Ng5+ -- the f3 knight checks only once the king stands on h7) -- any piece's check on a joined king is now a forcing
+move (budget 3). Same 300 puzzles: whole solution unique 154 (141), tied 236 (224); mate 106/106 (97), mateIn2 43/43
+(36), sacrifice 8/15 (4), kingsideAttack 18/20 (15); 2000+ 29/58 (27); 234 s (184 s). The 300 held-out game
+positions: unchanged but false-safe 625 (631); 33 s (21 s).
+Remaining misses, first look: surviving threats after an intermezzo (0Knjg: Nxg2+ Kd1 Bxc5 -- the two-ply ledger's
+case), quiet promotion threats (0KCNf e7), deflection toward a promotion (0M4g4), long king hunts (0Hb6O, rating 2416:
+Rxh7+ now 0, a king move escapes the three-check budget), endgame technique (pawn/rook/knight endings).
+
 ## 2026-09-28 15:42 PDT — the pin as a what-if in the analysis (Kaveh) (OBS)
 
 Kaveh, on the sample analysis of 7R/3b2r1/1p1kp3/p2p4/3PpN2/PP2P3/1KP2P2/8 b: White has a move that pins the pawn

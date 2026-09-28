@@ -573,8 +573,11 @@ def local_resolve(b: chess.Board, squares, members: set, kings=frozenset(), alph
                 continue                                          # already a candidate
             if m.promotion:
                 cand.append((captured_value(b, m), m, False))
-            elif checks and b.gives_check(m):
-                cand.append((captured_value(b, m), m, True))
+        if checks:                                                # a check on a joined king, by ANY piece: deeper in a hunt new pieces get checks
+            seen = {m for _, m, _ in cand}                        # as the king moves (0Hb6O: Rxh7+ Kxh7 Ng5+ Kg7 Ne6+ -- the f3 knight checks only
+            for m in b.legal_moves:                               # once the king stands on h7)
+                if m not in seen and b.gives_check(m):
+                    cand.append((captured_value(b, m), m, True))
         if _READS is not None:
             _record(b, squares, members, cand)
     best_line = []
