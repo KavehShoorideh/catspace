@@ -22874,6 +22874,34 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 14:29 PDT — back to the dig (Kaveh): where the frames break; the two-ply frame ledger (OBS)
+
+Kaveh: frames are lemmas to keep and reuse; the opponent's best reply should come from frames in their favour; we
+track the board as interactions and the possible things to do (how humans play); coherence length -- ~30 plies for
+Stockfish, 4-5 for us, negative under fog of war -- scopes this to definite chess for now (probabilistic later);
+"what are the examples where our system breaks ... how can we make our setup more robust in a generic way".
+Are lemmas used? The persistent store keeps every frame's resolution under what it reads and reuses it on exact
+recurrence (a lemma in substance, not generalized: the September lemma machinery is not wired in); in the frame
+player the opponent's reply is already their best frame; in the plan layers their replies are enumerated moves
+judged by frames. (`whatif_search.py` committed smoke-tested only: 7 min for 60 positions.)
+
+The 9 own misses on 300 positions (every top move loses 1.5+), each with Stockfish's line:
+  surviving threats (5): a4 in r4b1r/1ppkqNpp/.. (Nxh8 meets axb3); Nxd5 in r3k1nr/1pqb3p/..; Rxg4+ in r5rk/pbp2Q2/..
+    (Nxg4 deflects the f7 guard: Qxf7); Bxf2+ in 1nq2r1k/2p4n/.. (Kxf2 leaves Qxh7# standing); Rxa5 in 5rk1/5ppp/..
+    (Qc1+ Kh2 Ne2: a quiet move sets a mate);
+  king hunts past 3 checks, pins (3): Bxa8 in r5k1/p1q3pp/..; Qxb7 in r6k/1b3Qp1/..; Bxc7 in 5rk1/2B4p/.. (Rb7 pins);
+  positional (1): a won rook ending (Rxh6 vs Rh4).
+First fix, netting the book's chosen line by the other side's reply and counting a check's pending threats: worse on
+300 (own misses 9 -> 17, pick = SF best 66 -> 62): netting one line after the fact, without letting the opponent
+re-choose, is incoherent -- reverted. The coherent version, `frame_player --ledger two_ply`: our move, then every reply
+that can matter (captures, checks, evasions, moves of the pieces our frames target, onto their squares, adding a
+defender) or an irrelevant one, then our best frame; the move's value is its capture plus the minimum. It fixes a4
+(tied), Rxg4+ and the Bd3 fork; 300 positions (one run): own misses 8 (one-ply 9), pick loses 1.5+ 50 (54), false-safe
+605 (642), SF best in the top set 250 (248), pick = SF best 61 (66), mean loss 89 cp (90); 948 s (30 s). Not the default.
+What is left needs a QUIET move inside the line: after Nxd5 exd5 the refutation is Qe2 (a pin: Stockfish +2.31), in
+the mating net Ne2, in the king hunts quiet steps between checks -- the ledger's leaf would have to count our
+order-1 threats (a what-if made true by a quiet move and surviving the reply), not only our frames.
+
 ## 2026-09-28 13:47 PDT — hypothetical what-ifs as edits; the answer price explained (OBS)
 
 Kaveh chose "hypothetical what-ifs": `whatif.py` asks the frames about EDITS of the board, not moves -- add(t, v)

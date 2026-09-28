@@ -32,6 +32,8 @@ from .engine import Engine
 JOINT = True                                                        # frames resolved jointly with the pieces they pull in (2026-09-28)
 SELECT = None                                                       # the prior's choice of pulled-in pieces (None: all of them)
 PLANS = "none"                                                      # the tactical plan layer that breaks ties in the top set (plan_layers)
+LEDGER = "one_ply"                                                  # "one_ply": captured - their best frame after + their best if we pass;
+                                                                    # "two_ply": captured + min over their replies of (- their capture + our best frame after)
 _LAYER = None
 
 
@@ -43,6 +45,58 @@ def _layer():
     return _LAYER
 
 
+def _our_zone(b: chess.Board, book: dict) -> set:
+    """The squares our winning frames live on: their squares, pieces, and the lines between (the replies that touch
+    none of them cannot change what those frames win)."""
+    z = set()
+    for fr, rel, v, ln in book.values():
+        if v > 0:
+            z |= set(fr[0]) | set(fr[2])
+    zs = list(z)
+    for i, x in enumerate(zs):
+        for y in zs[i + 1:]:
+            z |= set(chess.SquareSet(chess.between(x, y)))
+    return z
+
+
+def _adds_defender(b: chess.Board, r: chess.Move, targets: set) -> bool:
+    nb = b.copy(stack=False); nb.push(r)
+    return any(len(nb.attackers(b.turn, t)) > len(b.attackers(b.turn, t)) for t in targets if b.piece_at(t) is not None and b.piece_at(t).color == b.turn)
+
+
+def two_ply_value(b: chess.Board, m: chess.Move) -> tuple:
+    """THE TWO-PLY FRAME LEDGER (2026-09-28, from the own misses: a4 in r4b1r/1ppkqNpp/.. -- Nxh8 walks into axb3;
+    Rxg4+ in r5rk/pbp2Q2/.. -- Nxg4 deflects the f7 guard; Bd3 in 8/5pk1/.. -- a fork is our threat): our move, then the
+    opponent's reply, then our best frame. Their replies are those that can matter -- every capture, check or evasion,
+    a move of a piece our frames target, a move onto their squares, a move that adds a defender -- and an irrelevant
+    move (the pass). -> (value, their best reply uci or '--', our best frame line after it)."""
+    nb = b.copy(stack=False); nb.push(m)
+    if nb.is_checkmate():
+        return 1000.0, None, []
+    got = captured_value(b, m)
+    ours = lambda p: (joint_threats(p, square_frame)[0], joint_threats(p, square_frame)[2]) if p.turn == b.turn else (-joint_threats(p, square_frame)[0], [])
+    worst = None
+    pb = passed(nb)
+    if pb is not None:                                                # the pass: our frames after the move stand
+        v, ln = ours(pb); worst = (v, "--", ln)
+        zone = _our_zone(pb, joint_threats_book(pb, square_frame)[1]); targets = {q for q in zone if nb.piece_at(q) is not None and nb.piece_at(q).color == nb.turn}
+    else:
+        zone = set(); targets = set()
+    for r in nb.legal_moves:
+        if not (nb.is_check() or nb.is_capture(r) or nb.gives_check(r) or r.from_square in zone or r.to_square in zone or _adds_defender(nb, r, targets)):
+            continue
+        ab = nb.copy(stack=False); ab.push(r)
+        if ab.is_checkmate():
+            return -1000.0, r.uci(), []
+        v, ln = ours(ab)
+        v -= captured_value(nb, r)
+        if worst is None or v < worst[0]:
+            worst = (v, r.uci(), ln)
+    if worst is None:
+        return 0.0, None, []                                          # stalemate
+    return got + worst[0], worst[1], worst[2]
+
+
 def choose(b: chess.Board) -> dict:
     """-> {'values': {uci: value}, 'best': [ucis with the top value], 'trace': {uci: (their best after, their best if
     we pass)}} -- the frames' own reasoning for every legal move."""
@@ -52,6 +106,18 @@ def choose(b: chess.Board) -> dict:
     else:
         before = threats(stand, square_frame) if stand is not None else (0.0, None, [])
     values = {}; trace = {}
+    if LEDGER == "two_ply":
+        for m in b.legal_moves:
+            v, r, ln = two_ply_value(b, m)
+            values[m.uci()] = v; trace[m.uci()] = ((v, None, [r] + ln if r else ln), before)
+        top = max(values.values()); best = [u for u, v in values.items() if v == top]
+        plan_scores = {}
+        if PLANS != "none" and len(best) > 1:
+            plan_scores = _layer().score_moves(b, [chess.Move.from_uci(u) for u in best])
+            hi = max(plan_scores.values())
+            if hi > 0:
+                best = [u for u in best if plan_scores.get(u, 0.0) == hi]
+        return dict(values=values, best=best, trace=trace, before=before, plans=plan_scores)
     for m in b.legal_moves:
         if JOINT:
             nb = b.copy(stack=False); nb.push(m)
@@ -83,7 +149,7 @@ def explain(b: chess.Board, u: str, c: dict) -> str:
 
 
 def main(argv=None):
-    global JOINT, PLANS
+    global JOINT, PLANS, LEDGER
     import sys
     sys.stdout.reconfigure(line_buffering=True)                       # every OBS line reaches the log as it prints (a crash loses none)
     ap = argparse.ArgumentParser()
@@ -91,9 +157,11 @@ def main(argv=None):
     ap.add_argument("--per-frame", action="store_true", help="resolve each frame alone (no pulled-in pieces), for comparison")
     ap.add_argument("--show", type=int, default=3); ap.add_argument("--workers", type=int, default=max(1, (__import__("os").cpu_count() or 2) - 1))
     ap.add_argument("--plans", default=PLANS, help="the tactical plan layer that breaks ties in the top set (plan_layers.LAYERS)")
+    ap.add_argument("--ledger", default=LEDGER, choices=["one_ply", "two_ply"])
     a = ap.parse_args(argv)
     JOINT = not a.per_frame
     PLANS = a.plans
+    LEDGER = a.ledger
     t0 = time.perf_counter()
     eng = Engine(threads=8, depth=a.depth)
     try:
@@ -120,7 +188,7 @@ def _run(a, eng, t0):
                          n_top=len(c["best"]), tied_ok=tied_ok, false_safe=false_safe, c=c, cp=cp, b=b))
     n = len(rows)
     mistakes = [r for r in rows if r["loss"] >= LOSS_CP]
-    print(f"[frame_player] {n} held-out positions, plan layer {PLANS} ({time.perf_counter() - t0:.0f}s)")
+    print(f"[frame_player] {n} held-out positions, ledger {LEDGER}, plan layer {PLANS} ({time.perf_counter() - t0:.0f}s)")
     print(f"OBS Stockfish's best move among the frames' top moves: {sum(r['sf_in_top'] for r in rows)}/{n}; the frames' top set is a single move in "
           f"{sum(r['n_top'] == 1 for r in rows)}/{n}")
     print(f"OBS the pick (the first top move) loses 1.5 pawns or more against the best move: {len(mistakes)}/{n}; "
