@@ -24,19 +24,32 @@ import chess
 
 from catspace.io import paths
 
-from .fates import ledger_move_value, passed, square_frame, threats
+from .fates import captured_value, joint_threats, ledger_move_value, passed, square_frame, threats
 from .gauge_verdicts import LOSS_CP, positions, truths
 from .engine import Engine
+
+
+JOINT = True                                                        # frames resolved jointly with the pieces they pull in (2026-09-28)
+SELECT = None                                                       # the prior's choice of pulled-in pieces (None: all of them)
 
 
 def choose(b: chess.Board) -> dict:
     """-> {'values': {uci: value}, 'best': [ucis with the top value], 'trace': {uci: (their best after, their best if
     we pass)}} -- the frames' own reasoning for every legal move."""
     stand = passed(b)
-    before = threats(stand, square_frame) if stand is not None else (0.0, None, [])
+    if JOINT:
+        before = joint_threats(stand, square_frame, select=SELECT) if stand is not None else (0.0, None, [])
+    else:
+        before = threats(stand, square_frame) if stand is not None else (0.0, None, [])
     values = {}; trace = {}
     for m in b.legal_moves:
-        v, after, bef = ledger_move_value(b, m, square_frame, before=before)
+        if JOINT:
+            nb = b.copy(stack=False); nb.push(m)
+            after = (0.0, None, []) if nb.is_checkmate() else joint_threats(nb, square_frame, select=SELECT)
+            v = 1000.0 if nb.is_checkmate() else captured_value(b, m) - after[0] + before[0]
+            bef = before
+        else:
+            v, after, bef = ledger_move_value(b, m, square_frame, before=before)
         values[m.uci()] = v; trace[m.uci()] = (after, bef)
     top = max(values.values())
     return dict(values=values, best=[u for u, v in values.items() if v == top], trace=trace, before=before)

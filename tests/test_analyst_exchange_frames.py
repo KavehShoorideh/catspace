@@ -98,3 +98,19 @@ def test_a_square_frame_holds_the_pieces_behind_its_pieces():
     assert "f3g3" not in c["best"] and c["values"]["f3g3"] < 0
     b2 = chess.Board("4k3/8/8/8/8/5n2/5P2/5RK1 w - - 0 1")                                  # Rf1 behind the f2 pawn: the pawn never takes on f3
     assert chess.F1 not in F.square_frame(b2, chess.F3)
+
+
+def test_joint_frames_find_the_intermezzo_and_keep_recaptures():
+    """Kaveh 2026-09-28: frames resolved jointly with the pieces they pull in. After Bxd5 exd5 the b1 rook's Rb6+ (a
+    line the e6 pawn opens) makes the capture lose, so the frames choose Bxd5 (Stockfish's move); and a capture opens
+    its square to every piece bearing on it (the d7 pawn the d8 queen defends is not 'won' by Qxd7)."""
+    from catspace.incubator.analyst.frame_player import choose
+    b = chess.Board("1n3r2/1Q2qp2/p3pkp1/3p3p/3P4/2P3P1/B1P2PKP/1R6 w - - 0 24")
+    assert choose(b)["best"] == ["a2d5"]
+    after = b.copy(); after.push_san("Bxd5")
+    fr = F.square_frame(after, chess.D5)
+    assert F.local_resolve(after, set(fr))[0] == 2.0                                       # the d5 frame alone: exd5 Qxd5
+    assert F.local_resolve(after, set(fr) | F.interactors(after, fr))[0] == 0.0            # with what it pulls in: taking does not pay
+    b2 = chess.Board("r2q1rk1/1bppnp1p/1pn1p1p1/p3P3/P3P3/5N2/BPP1NPPP/R2Q1RK1 b - - 3 13")
+    stand = F.passed(b2)
+    assert F.joint_threats(stand, F.square_frame)[0] == 0.0                                 # White has nothing: Qxd7 is met by Qxd7

@@ -492,6 +492,139 @@ def square_frame(b: chess.Board, s: int) -> set:
         frame = grown
 
 
+def _victim(b: chess.Board, m: chess.Move) -> int:
+    return chess.square(chess.square_file(m.to_square), chess.square_rank(m.from_square)) if b.is_en_passant(m) else m.to_square
+
+
+def local_resolve(b: chess.Board, members: set, alpha: float = -1e9, beta: float = 1e9, forcing: int = 2, hot: frozenset = frozenset()) -> tuple:
+    """A FRAME RESOLVED JOINTLY (Kaveh 2026-09-28: "considering multiple frames simultaneously and resolving them
+    jointly"): alpha-beta over the moves of the frame's pieces that capture or take the opponent's pass away (`forcing`
+    such moves at most on a line), each side stopping where it may pass; a side in check answers with any legal move
+    (inside the frame or out); a side that can neither act nor pass has lost. `members`: the current squares of the
+    frame's pieces, followed through the line. A capture on a square opens that square's exchange to every piece bearing
+    on it (`hot`): whoever takes back there joins the line (the Nb4, Ba7 and Rfe1 positions of 2026-09-28 read a pawn or
+    a knight as won because its defender was outside the frame). -> (value for the side to move, line in uci)."""
+    can_pass = passed(b) is not None
+    moves = list(b.legal_moves)
+    if not moves:
+        return (0.0 if can_pass else -MATE), []
+    best = 0.0 if can_pass else -1e9; best_line = []
+    if can_pass:
+        alpha = max(alpha, best)
+        if alpha >= beta:
+            return best, best_line
+    cand = []
+    for m in moves:
+        inside = m.from_square in members
+        g = captured_value(b, m)
+        if not can_pass:
+            cand.append((g, m, inside, False))                    # in check: every evasion
+        elif inside and (m.promotion or (b.is_capture(m) and _victim(b, m) in members)):
+            cand.append((g, m, inside, False))                    # a frame is a closed world: its pieces take frame pieces (taking outside is another frame's business)
+        elif b.is_capture(m) and _victim(b, m) in hot:
+            cand.append((g, m, True, False))                      # a recapture on a square already fought over: its bearer joins
+        elif inside and forcing > 0:
+            nb = b.copy(stack=False); nb.push(m)
+            if passed(nb) is None:
+                cand.append((g, m, inside, True))
+    cand.sort(key=lambda t: -t[0])
+    for g, m, inside, is_forcing in cand:
+        nb = b.copy(stack=False); nb.push(m)
+        mem = set(members) - {_victim(b, m)}
+        if inside:
+            mem = (mem - {m.from_square}) | {m.to_square}
+        v, ln = local_resolve(nb, mem, -beta + g, -alpha + g, forcing - (1 if is_forcing else 0), (hot | {m.to_square}) if b.is_capture(m) else hot)
+        v = g - v
+        if v > best:
+            best, best_line = v, [m.uci()] + ln
+        alpha = max(alpha, best)
+        if alpha >= beta:
+            break
+    return (best if best > -1e9 else 0.0), best_line
+
+
+def interactors(b: chess.Board, frame: set) -> set:
+    """THE PIECES A FRAME PULLS IN (Kaveh 2026-09-28: "how do you know when to combine frames?"): outside the frame, every
+    piece that gains a capture or a forcing move once the frame's pieces are lifted off the board -- a line the frame
+    opens when its pieces leave -- and the royal piece such a forcing move would attack. (After Bxd5 in 1n3r2/1Q2qp2/..:
+    lifting the e6 pawn gives the b1 rook Rb6+, so the rook and Black's king join the d5 frame.)"""
+    lifted = b.copy(stack=False)
+    for q in frame:
+        lifted.remove_piece_at(q)
+    out = set()
+    for q, pc in b.piece_map().items():
+        if q in frame or lifted.piece_at(q) is None:
+            continue
+        new = set(lifted.attacks(q)) - set(b.attacks(q))
+        if any(t in frame and b.piece_at(t).color != pc.color for t in new):
+            out.add(q)                                            # it reaches a frame piece once the frame's pieces leave
+        king = b.king(not pc.color)
+        if king is None:
+            continue
+        for t in lifted.attacks(q):                               # a move that attacks the royal piece only once the frame is lifted
+            if b.piece_at(t) is not None and b.piece_at(t).color == pc.color:
+                continue
+            l2 = lifted.copy(stack=False); l2.remove_piece_at(q); l2.set_piece_at(t, pc)
+            b2 = b.copy(stack=False); b2.remove_piece_at(q); b2.set_piece_at(t, pc)
+            if king in l2.attacks(t) and king not in b2.attacks(t):
+                out |= {q, king}; break
+    return out
+
+
+_JOINT: dict = {}
+
+
+def joint_threats(b: chess.Board, frame_of, forcing: int = 2, select=None) -> tuple:
+    """The side to move's best threat with FRAMES RESOLVED JOINTLY (Kaveh 2026-09-28): for every enemy piece its pieces
+    attack, that square's frame together with the pieces it pulls in (interactors; `select(b, square, frame, pulled)`
+    may keep only some -- the prior), resolved by local_resolve; and the forcing moves, played out `forcing` levels deep.
+    -> (value, square, line); 0 when nothing beats standing still."""
+    key = (b._transposition_key(), forcing, id(frame_of), id(select))
+    if key in _JOINT:
+        return _JOINT[key]
+    if len(_JOINT) > 200000:
+        _JOINT.clear()
+    _JOINT[key] = out = _joint_threats(b, frame_of, forcing, select)
+    return out
+
+
+def _joint_threats(b: chess.Board, frame_of, forcing: int, select) -> tuple:
+    if passed(b) is None and _no_action(b):
+        return -MATE, None, []
+    best = (0.0, None, [])
+    for sq, pc in b.piece_map().items():
+        if pc.color == b.turn or pc.piece_type == chess.KING or not b.attackers(b.turn, sq):
+            continue
+        fr = set(frame_of(b, sq)); pulled = interactors(b, fr)
+        if select is not None:
+            pulled = select(b, sq, fr, pulled)
+        v, ln = local_resolve(b, fr | pulled)
+        if v > best[0]:
+            best = (v, sq, ln)
+    if forcing > 0 and best[0] < MATE:
+        for m in b.legal_moves:
+            nb = b.copy(stack=False); nb.push(m)
+            if passed(nb) is not None:
+                continue
+            won = captured_value(b, m)
+            if _no_action(nb):
+                v, ln = won + MATE, [m.uci()]
+            else:
+                worst = None
+                for r in nb.legal_moves:
+                    nb2 = nb.copy(stack=False); nb2.push(r)
+                    cont = joint_threats(nb2, frame_of, forcing - 1, select)
+                    w = -captured_value(nb, r) + cont[0]
+                    if worst is None or w < worst[0]:
+                        worst = (w, [r.uci()] + cont[2])
+                v, ln = won + worst[0], [m.uci()] + worst[1]
+            if v > best[0]:
+                best = (v, m.to_square, ln)
+            if best[0] >= MATE:
+                break
+    return best
+
+
 def line_san(board: chess.Board, move: chess.Move, line: list) -> str:
     """The episode's line in SAN: each state after one ply; a ply whose board is only the turn flipped is a pass."""
     b = board.copy(stack=False); out = [b.san(move)]; b.push(move)
