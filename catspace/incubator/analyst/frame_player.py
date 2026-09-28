@@ -42,6 +42,10 @@ def choose(b: chess.Board) -> dict:
     return dict(values=values, best=[u for u, v in values.items() if v == top], trace=trace, before=before)
 
 
+def _choose_fen(fen: str) -> dict:
+    return choose(chess.Board(fen))
+
+
 def explain(b: chess.Board, u: str, c: dict) -> str:
     m = chess.Move.from_uci(u); after, bef = c["trace"][u]
     nm = lambda t: (f"{t[0]:+.0f} on {chess.square_name(t[1])} by {' '.join(t[2])}" if t[1] is not None else "nothing")
@@ -51,17 +55,20 @@ def explain(b: chess.Board, u: str, c: dict) -> str:
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=200); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--depth", type=int, default=12)
-    ap.add_argument("--show", type=int, default=3)
+    ap.add_argument("--show", type=int, default=3); ap.add_argument("--workers", type=int, default=max(1, (__import__("os").cpu_count() or 2) - 1))
     a = ap.parse_args(argv)
     t0 = time.perf_counter()
     eng = Engine(threads=8, depth=a.depth)
     rows = []
-    for i, b in enumerate(positions(a.n, a.seed)):
+    boards = positions(a.n, a.seed)
+    import multiprocessing as mp
+    with mp.get_context("fork").Pool(a.workers) as pool:                  # the frames' choice per position over a pool; Stockfish (cached) in the parent
+        chosen = pool.map(_choose_fen, [b.fen() for b in boards], chunksize=2)
+    for i, (b, c) in enumerate(zip(boards, chosen)):
         lines = eng.analyse(b, multipv=b.legal_moves.count(), depth=a.depth)
         if not lines:
             continue
         cp = {l.move: l.cp for l in lines}; best_cp = max(cp.values()); sf_best = max(cp, key=cp.get)
-        c = choose(b)
         pick = c["best"][0]                                         # the first tied move in move order: the frames cannot tell tied moves apart
         tied_ok = sum(1 for u in c["best"] if cp.get(u, -1e9) > best_cp - LOSS_CP)
         rows.append(dict(i=i, fen=b.fen(), pick=pick, loss=best_cp - cp.get(pick, -10000), sf_best=sf_best, sf_in_top=sf_best in c["best"],
