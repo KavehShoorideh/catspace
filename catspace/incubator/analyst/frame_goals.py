@@ -153,8 +153,20 @@ def operators(b: chess.Board, side: chess.Color, t: int) -> list:
         gone = before - counted_defenders(pb, t)
         if gone:
             d = min(gone)
-            out.append(Op("removes", m.from_square, (m,), f"{b0.san(m)} takes the {chess.piece_name(b0.piece_at(d).piece_type)} on {chess.square_name(d)} off {chess.square_name(t)}"))
+            out.append(Op("removes", m.from_square, (m,), f"{b0.san(m)} {_how_off(b0, pb, m, d, t)}"))
     return out
+
+
+def _how_off(b0: chess.Board, pb: chess.Board, m: chess.Move, d: int, t: int) -> str:
+    """Why the defender on d stops counting for t after the move, in words: pinned (to the king, or to a piece worth
+    more behind it), its line to t blocked, or tied elsewhere."""
+    dp = b0.piece_at(d); name = f"the {chess.piece_name(dp.piece_type)} on {chess.square_name(d)}"
+    if pb.is_pinned(dp.color, d) and not b0.is_pinned(dp.color, d):
+        k = pb.king(dp.color)
+        return f"pins {name} to the king on {chess.square_name(k)}, so it no longer defends {chess.square_name(t)}"
+    if t not in pb.attacks(d) and t in b0.attacks(d):
+        return f"blocks {name}'s line to {chess.square_name(t)}"
+    return f"takes {name} off {chess.square_name(t)}"
 
 
 def verify(b: chess.Board, side: chess.Color, t: int, moves: list) -> tuple | None:

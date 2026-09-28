@@ -22874,6 +22874,22 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 15:42 PDT — the pin as a what-if in the analysis (Kaveh) (OBS)
+
+Kaveh, on the sample analysis of 7R/3b2r1/1p1kp3/p2p4/3PpN2/PP2P3/1KP2P2/8 b: White has a move that pins the pawn
+beside the king (e6, on the king's rank; the pawn in front, d5, cannot be pinned that way), a lemma that should have been
+invoked, one or two plies of the opponent searched -- "what if there's a rook there? ... we have a rook in the
+neighborhood". The frame-graph layer already finds it by trying White's moves (Rh6: e6 stops counting for d5) as one
+half of a two-move plan; the analysis did not run it and did not name it. Now: the operator says why a defender stops
+counting (pinned to the king / its line blocked / taken off), and `frame_player --trace` has a step 1b -- the opponent's
+what-ifs one or two quiet moves deep, the answers at the last step, and the moves that defuse each now. Here:
+  Rh6 c4 (or c4 Rh6): wins d5 (+1, then Nxd5) -- Rh6 pins the pawn on e6 to the king on d6, so it no longer defends
+  d5; c4 adds an attacker; answered at the last step only by dxc4; defused now by Rh7, Bc8, e5.
+  Kc7 (unpinning in advance) does not defuse it by the frames: the king leaves d5's defence, cxd5 exd5 Nxd5.
+The pin plan is real and answerable in time (dxc4), so it does not force Black's move; Rg1's edge stays beyond these
+what-ifs. Asking the pin question on purpose -- only where a slider can reach a line through a king -- is the priority
+to learn (today every White move is tried per target: 1.2 s here).
+
 ## 2026-09-28 15:35 PDT — a sample analysis, frame by frame: how many lemmas, used how (OBS)
 
 Kaveh: "how many lemmas do we use? how are the lemmas used? ... take a position, a sample analysis, see what it

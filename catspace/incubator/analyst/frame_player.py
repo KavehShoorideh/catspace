@@ -187,6 +187,20 @@ def trace(fen: str, detail: int = 3) -> None:
         if e.get("fen") == sfen and e["event"] == "frame":
             print(full(e))
     print(f"   their best: {c['before'][0]:+g}")
+    from .frame_goals import plans_for, goes_through, final_answers, verify, _to_move, _line_san
+    t1 = time.perf_counter()
+    theirs = plans_for(b, not b.turn)                                  # what-ifs a quiet move or two deep (frame_goals)
+    print(f"1b. {other}'s what-ifs one or two quiet moves deep (each judged by the frames with {side} passing), "
+          f"{len(theirs)} found in {time.perf_counter() - t1:.1f}s:")
+    for q in theirs[:8]:
+        ok, _ = goes_through(b, q)
+        ans = [] if ok else final_answers(b, q)
+        defused = [b.san(m) for m in b.legal_moves if verify(_after(b, m), q.side, q.target, q.moves) is None]
+        tp = b.piece_at(q.target)
+        print(f"    {q.san(b)}: wins the {chess.piece_name(tp.piece_type)} on {chess.square_name(q.target)} (+{q.gain:g}, then "
+              f"{' '.join(_line_san(_to_move(b, q.side), q.moves, q.line))}) -- {'; '.join(o.text for o in q.ops)}")
+        print(f"      {'goes through' if ok else 'answered at the last step by ' + ', '.join(a.san for a in ans[:8])}; "
+              f"{side} moves that defuse it now: {', '.join(defused[:12]) or 'none'}{' ...' if len(defused) > 12 else ''}")
     order = sorted(c["values"], key=lambda u: -c["values"][u])
     shown = set(order[:detail])
     print(f"2. {side}'s moves in the order they are generated: value = captured - {other}'s best frame after it + {other}'s best if we passed")
@@ -214,6 +228,10 @@ def trace(fen: str, detail: int = 3) -> None:
     print(f"   lemmas formed in this analysis: {len(fates._LEMMAS)}; king frames not joined by the prior: {sum(len(e['skipped']) for e in fr)}; "
           f"whole positions met again (book reused): {sum(1 for e in events if e['event'] == 'book from memory')}")
     print(f"4. Decision: {', '.join(b.san(chess.Move.from_uci(u)) for u in c['best'])} ({c['values'][c['best'][0]]:+g})")
+
+
+def _after(b: chess.Board, m: chess.Move) -> chess.Board:
+    nb = b.copy(stack=False); nb.push(m); return nb
 
 
 def _choose_fen(fen: str) -> dict:
