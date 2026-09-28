@@ -158,10 +158,14 @@ def main(argv=None):
     ap.add_argument("--show", type=int, default=3); ap.add_argument("--workers", type=int, default=max(1, (__import__("os").cpu_count() or 2) - 1))
     ap.add_argument("--plans", default=PLANS, help="the tactical plan layer that breaks ties in the top set (plan_layers.LAYERS)")
     ap.add_argument("--ledger", default=LEDGER, choices=["one_ply", "two_ply"])
+    ap.add_argument("--no-king-prior", action="store_true", help="join every king frame the counter-check rule names (no learned prior)")
     a = ap.parse_args(argv)
     JOINT = not a.per_frame
     PLANS = a.plans
     LEDGER = a.ledger
+    if a.no_king_prior:
+        from . import fates
+        fates.KING_JOIN_GATE = None
     t0 = time.perf_counter()
     eng = Engine(threads=8, depth=a.depth)
     try:
@@ -188,7 +192,8 @@ def _run(a, eng, t0):
                          n_top=len(c["best"]), tied_ok=tied_ok, false_safe=false_safe, c=c, cp=cp, b=b))
     n = len(rows)
     mistakes = [r for r in rows if r["loss"] >= LOSS_CP]
-    print(f"[frame_player] {n} held-out positions, ledger {LEDGER}, plan layer {PLANS} ({time.perf_counter() - t0:.0f}s)")
+    from . import fates as _f
+    print(f"[frame_player] {n} held-out positions, ledger {LEDGER}, plan layer {PLANS}, king-join prior {'on' if _f._king_gate() else 'off'} ({time.perf_counter() - t0:.0f}s)")
     print(f"OBS Stockfish's best move among the frames' top moves: {sum(r['sf_in_top'] for r in rows)}/{n}; the frames' top set is a single move in "
           f"{sum(r['n_top'] == 1 for r in rows)}/{n}")
     print(f"OBS the pick (the first top move) loses 1.5 pawns or more against the best move: {len(mistakes)}/{n}; "

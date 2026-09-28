@@ -22874,6 +22874,24 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 15:31 PDT — the king-join prior (Kaveh's pick; his 75% rule) (OBS)
+
+`king_join_prior.py`: for every frame the counter-check rule would join to a king frame (1,000 positions and six
+children each), is the frame's resolution different with the king joined? Features in frame terms: whose king, the
+frame pieces' checks in one move (how many, captures, by the queen), the king's flights and attacked neighbours, the
+frame's value alone, target value, frame size, queens and pins in the frame, distance to the king, the king frame's
+size. Logistic, hash split by position; 2,254 held-out frames, 20% where joining changes the resolution:
+  threshold 0.10: joins 89% of what the rule joins, keeps 99% of the joins that matter (457/461), avoids 11%
+  threshold 0.25 (Kaveh's rule): joins 68%, keeps 91% (418/461), avoids 32%
+  threshold 0.50: joins 44%, keeps 76%, avoids 56%
+Strongest: whose king (-0.92: joining the mover's own king rarely matters), the king frame's size (+0.54), checks (+0.24).
+In play (frame_player, 300 positions, one run): pick = SF best 65 (without the prior 66), mean loss 90 cp (90), own
+misses 9 (9), pick loses 1.5+ 54 (54), false-safe 631 (642); 21 s against 28 s; one process, 100 positions: 26.1 s
+against 30.7 s, 48% of frame resolutions served by the store or a lemma against 30% (partly the gate's own lookups;
+fresh computations +10%, but they are the cheap local frames). Now the default (fates.KING_JOIN_GATE = 'auto', loaded
+from king_join_prior.json; frame_player --no-king-prior for the old rule); the 12 dig cases unchanged (Bd5+, the long
+king hunt, still missed).
+
 ## 2026-09-28 15:23 PDT — local king frames (Kaveh's pick): footprints are sound but king frames are global by nature (OBS)
 
 King frames (and every frame joined to one) were keyed on the whole board, because under check every legal evasion

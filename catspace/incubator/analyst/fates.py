@@ -667,8 +667,8 @@ def interactors(b: chess.Board, members: set, squares=frozenset()) -> tuple:
     return out - set(squares), kings
 
 
-def joint_frame(b: chess.Board, squares: set, kings: set, frame_of=None) -> tuple:
-    """A frame joined with what it pulls in (one step): -> (squares, kings, members)."""
+def joint_base(b: chess.Board, squares: set, kings: set, frame_of=None) -> tuple:
+    """A frame joined with what it pulls in, before the counter-check rule: -> (squares, kings, members)."""
     frame_of = frame_of or square_frame
     members = set().union(set(), *(frame_of(b, t) for t in squares))
     for c in kings:
@@ -677,12 +677,43 @@ def joint_frame(b: chess.Board, squares: set, kings: set, frame_of=None) -> tupl
     squares = set(squares) | add; members |= set().union(set(), *(frame_of(b, t) for t in add))
     for c in kadd - set(kings):
         ks, km = king_frame(b, c); squares |= ks; members |= km
-    kings = set(kings) | kadd
+    return set(squares), set(kings) | kadd, members
+
+
+def counter_checks(b: chess.Board, members, c: chess.Color) -> list:
+    """The checks the frame's pieces have in one move on the king of colour c (its side to move, the other passing)."""
+    t = b if b.turn != c else passed(b)
+    if t is None or b.king(c) is None:
+        return []
+    return [m for m in t.generate_legal_moves(from_mask=_mask(members)) if t.gives_check(m)]
+
+
+KING_JOIN_GATE = "auto"                                            # callable(b, squares, kings, members, c, checks) -> bool: the learned king-join prior;
+                                                                   # "auto": loaded from king_join_prior.json when it exists (Kaveh's 75% rule), else none
+
+
+def _king_gate():
+    global KING_JOIN_GATE
+    if KING_JOIN_GATE == "auto":
+        try:
+            from .king_join_prior import load
+            KING_JOIN_GATE = load()
+        except (FileNotFoundError, OSError):
+            KING_JOIN_GATE = None
+    return KING_JOIN_GATE
+
+
+def joint_frame(b: chess.Board, squares: set, kings: set, frame_of=None) -> tuple:
+    """A frame joined with what it pulls in (one step): -> (squares, kings, members). The counter-check rule: a king
+    whose frame a frame piece can check joins -- unless the king-join prior (Kaveh's 75% rule: join when the chance
+    that it changes the resolution is 25% or more) says it does not matter."""
+    squares, kings, members = joint_base(b, squares, kings, frame_of)
     for c in (chess.WHITE, chess.BLACK):                          # a king whose frame a frame piece can check: its frame joins (counter-checks)
         if c in kings or b.king(c) is None:
             continue
-        t = b if b.turn != c else passed(b)
-        if t is not None and any(t.gives_check(m) for m in t.generate_legal_moves(from_mask=_mask(members))):
+        checks = counter_checks(b, members, c)
+        gate = _king_gate() if checks else None
+        if checks and (gate is None or gate(b, squares, kings, members, c, checks)):
             ks, km = king_frame(b, c); squares |= ks; members |= km; kings.add(c)
     return frozenset(squares), frozenset(kings), frozenset(members)
 
@@ -751,7 +782,7 @@ def lemma_key(b: chess.Board, squares, kings, members) -> tuple | None:
     a capture that gives check): its evasions read the whole board."""
     if kings or b.is_check() or b.has_legal_en_passant():
         return None                                               # (en passant: the captor is no attacker of the target's square)
-    slots = sorted(set(members) | {q for q in squares if b.piece_at(q) is not None})
+    slots = sorted({q for q in set(members) | set(squares) if b.piece_at(q) is not None})   # (a king frame's members include empty squares)
     if not slots or len(slots) > 12:
         return None
     mover = b.turn
