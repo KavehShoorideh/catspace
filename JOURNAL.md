@@ -22874,7 +22874,7 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
-## 2026-09-28 13:40 PDT — persistent frames; "what if" as the search, its priority learned (OBS)
+## 2026-09-28 13:29 PDT — persistent frames; "what if" as the search, its priority learned (OBS)
 
 1. Persistent frames (Kaveh: "persistent frames from move to move ... like the NNUE ... an incremental tactical
 layer"). Measured first: over 40 positions and every legal move, 84% of frames keep their resolved value across a
