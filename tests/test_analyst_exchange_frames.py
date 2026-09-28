@@ -159,5 +159,7 @@ def test_the_persistent_frame_store_serves_only_what_it_would_recompute():
                     "7R/3b2r1/1p1kp3/p2p4/3PpN2/PP2P3/1KP2P2/8 b - - 0 29"):
             choose(chess.Board(fen))
         assert F.RESOLVED_STATS["hits"] > before["hits"]                                   # the store was used, and every hit matched
+        assert F.RESOLVED_STATS.get("lemma_mismatch", 0) == before.get("lemma_mismatch", 0)  # a lemma (the same relations on other squares) never served a different value
+        assert F.RESOLVED_STATS.get("lemma_hits", 0) > before.get("lemma_hits", 0)
     finally:
         F.VERIFY_FRAMES = old

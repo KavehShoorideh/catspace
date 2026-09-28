@@ -676,7 +676,8 @@ def frame_key(b: chess.Board, squares, kings, members) -> tuple:
     calculation ... kind of like the NNUE"): the side to move, both kings' squares (a line opened onto a king changes
     what is legal), the frame's squares with their occupants and who attacks each, and its pieces with their pins. A
     move elsewhere leaves the key -- and so the resolution -- unchanged, whichever position or search branch the frame
-    turns up in. A frame that can reach check (a king frame joined, or the side in check) plays every legal evasion,
+    turns up in. The en passant square counts when a capture there is legal (verify mode found a b5 frame served
+    'c5xb6 e.p.' in a position without the c5 pawn). A frame that can reach check (a king frame joined, or the side in check) plays every legal evasion,
     by any piece: its key is the whole board."""
     if kings or b.is_check():
         return ("board", b._transposition_key(), frozenset(squares), frozenset(kings), frozenset(members))
@@ -684,30 +685,148 @@ def frame_key(b: chess.Board, squares, kings, members) -> tuple:
                  for s in sorted(squares))
     mem = tuple((m, None if b.piece_at(m) is None else b.piece_at(m).symbol(), b.piece_at(m) is not None and b.is_pinned(b.piece_at(m).color, m))
                 for m in sorted(members))
-    return ("local", b.turn, b.king(chess.WHITE), b.king(chess.BLACK), rows, mem)
+    ep = b.ep_square if b.has_legal_en_passant() else None          # an en passant captor attacks the square behind, not the target
+    return ("local", b.turn, b.king(chess.WHITE), b.king(chess.BLACK), ep, rows, mem)
 
 
+def _wl(labels: list, edge) -> list:
+    """Weisfeiler-Lehman refinement: each slot's label absorbs its relations to the others, three rounds."""
+    n = len(labels)
+    for _ in range(3):
+        labels = [hash((labels[i], tuple(sorted((edge(i, j), edge(j, i), labels[j]) for j in range(n) if j != i)))) for i in range(n)]
+    return labels
+
+
+def lemma_key(b: chess.Board, squares, kings, members) -> tuple | None:
+    """A FRAME'S LEMMA KEY (Kaveh 2026-09-28: "if we are evaluating a frame and we evaluate how it ends out, that should
+    become a lemma, so that we keep using it again"): the frame described in the relations of the September lemma
+    vocabulary with the squares abstracted away -- its pieces as slots (kind, side relative to the mover, target or not,
+    pinned, a pawn a step from promotion) and, for every ordered pair, whether one attacks the other (for its own side:
+    defends), through how many frame pieces (x-ray), whether the capture is legal, whether it gives check, and which
+    frame pieces the captor bears on from where it lands. Slots in a
+    canonical order (labels refined over the relations), so the same relational situation on other squares has the same
+    key. -> (key, slots in that order), or None for a frame that can reach check (a king frame joined, the side in check,
+    a capture that gives check): its evasions read the whole board."""
+    if kings or b.is_check() or b.has_legal_en_passant():
+        return None                                               # (en passant: the captor is no attacker of the target's square)
+    slots = sorted(set(members) | {q for q in squares if b.piece_at(q) is not None})
+    if not slots or len(slots) > 12:
+        return None
+    mover = b.turn
+    info = {}
+    for q in slots:
+        pc = b.piece_at(q)
+        promo = pc.piece_type == chess.PAWN and chess.square_rank(q) == (6 if pc.color == chess.WHITE else 1)
+        info[q] = (pc.color == mover, pc.piece_type, q in squares, b.is_pinned(pc.color, q), promo)
+    rel = {}
+    occ = set(slots)
+    side_board = {}
+    for c in (chess.WHITE, chess.BLACK):                          # one board per side to move, captures tried by push/pop
+        t = b.copy(stack=True); t.turn = c; t.ep_square = None; side_board[c] = t
+    for i in slots:
+        for j in slots:
+            if i == j:
+                continue
+            pc = b.piece_at(i)
+            att = j in b.attacks(i)
+            between = [x for x in chess.SquareSet(chess.between(i, j))]
+            xr = -1
+            if not att and pc.piece_type in (chess.BISHOP, chess.ROOK, chess.QUEEN) and between and all(x in occ for x in between):
+                t = b.copy(stack=False)
+                for x in between:
+                    t.remove_piece_at(x)
+                if j in t.attacks(i):
+                    xr = len(between)
+            legal = chk = False
+            lands = frozenset()
+            if att and b.piece_at(j).color != pc.color:
+                t = side_board[pc.color]
+                mv = chess.Move(i, j, promotion=chess.QUEEN if pc.piece_type == chess.PAWN and chess.square_rank(j) in (0, 7) else None)
+                legal = t.is_legal(mv)
+                chk = legal and t.gives_check(mv)
+                if chk:
+                    return None                                   # a capture that gives check: the line leaves the frame
+                if legal:                                         # what it bears on from where it lands (the September 'lands_attacked':
+                    t.push(mv)                                    # verify mode found c5/d5 frames equal in relations, unequal after dxc5)
+                    lands = frozenset(k for k in t.attacks(j) if k in occ and k not in (i, j))
+                    t.pop()
+            rel[(i, j)] = (att, xr, legal, lands)
+    idx = {q: k for k, q in enumerate(slots)}
+    labels = _wl([hash(info[q]) for q in slots], lambda a, c: rel[(slots[a], slots[c])][:3] + (len(rel[(slots[a], slots[c])][3]),))
+    order = sorted(range(len(slots)), key=lambda k: (labels[k], k))
+    ordered = [slots[k] for k in order]
+    pos = {q: k for k, q in enumerate(ordered)}
+    key = ("lemma", tuple(info[q] for q in ordered),
+           tuple(rel[(x, y)][:3] + (tuple(sorted(pos[k] for k in rel[(x, y)][3])),) for x in ordered for y in ordered if x != y))
+    return key, ordered
+
+
+def _line_to_slots(b: chess.Board, line: list, ordered: list) -> tuple | None:
+    """A frame's line in slot terms (mover slot, victim slot per move), following the slots' squares; None if a move
+    is not a capture of one slot by another (a promotion push)."""
+    where = {q: k for k, q in enumerate(ordered)}
+    out = []
+    for u in line:
+        m = chess.Move.from_uci(u)
+        if m.from_square not in where or m.to_square not in where:
+            return None
+        a, v = where[m.from_square], where[m.to_square]
+        out.append((a, v, m.promotion))
+        del where[m.to_square]; where[m.to_square] = where.pop(m.from_square)
+    return tuple(out)
+
+
+def _slots_to_line(slot_line: tuple, ordered: list) -> list:
+    at = list(ordered); out = []
+    for a, v, promo in slot_line:
+        out.append(chess.Move(at[a], at[v], promotion=promo).uci())
+        at[a] = at[v]
+    return out
+
+
+_LEMMAS: dict = {}                                                 # lemma_key -> (value, line in slot terms): frames generalized
+LEMMAS = __import__("os").environ.get("ANALYST_LEMMAS_FRAMES", "1") != "0"
 _RESOLVED: dict = {}                                               # frame_key -> (value, line): the persistent store of resolutions
 VERIFY_FRAMES = __import__("os").environ.get("ANALYST_VERIFY_FRAMES") == "1"   # recompute on every hit and assert equality (tests)
 RESOLVED_STATS = {"hits": 0, "computed": 0}
 
 
 def resolve_frame(b: chess.Board, squares, kings, members) -> tuple:
-    """A frame's resolution through the persistent store: computed once per key, reused wherever the key recurs."""
+    """A frame's resolution through the persistent store: exact recurrence first, then the frame's LEMMA (the same
+    relational situation met on other squares); computed only when neither is known, and then stored as both."""
     k = frame_key(b, squares, kings, members)
     hit = _RESOLVED.get(k)
     if hit is not None and not VERIFY_FRAMES:
         RESOLVED_STATS["hits"] += 1
         return hit
+    lk = lemma_key(b, squares, kings, members) if LEMMAS else None
+    lem = _LEMMAS.get(lk[0]) if lk is not None else None
+    if lem is not None and hit is None and not VERIFY_FRAMES:
+        RESOLVED_STATS["lemma_hits"] = RESOLVED_STATS.get("lemma_hits", 0) + 1
+        v = (lem[0], _slots_to_line(lem[1], lk[1]) if lem[1] is not None else [])
+        _RESOLVED[k] = v
+        return v
     v = local_resolve(b, squares, set(members), kings)
     if hit is not None and (hit[0], list(hit[1])) != (v[0], list(v[1])):
         raise AssertionError(f"frame store: {b.fen()} squares {sorted(squares)} stored {hit} recomputed {v}")
+    if lem is not None and lem[0] != v[0]:
+        RESOLVED_STATS["lemma_mismatch"] = RESOLVED_STATS.get("lemma_mismatch", 0) + 1
+        LEMMA_MISMATCHES.append((b.fen(), sorted(squares), lem[0], v[0]))
+    elif lem is not None:
+        RESOLVED_STATS["lemma_hits"] = RESOLVED_STATS.get("lemma_hits", 0) + 1
     RESOLVED_STATS["computed"] += hit is None
     RESOLVED_STATS["hits"] += hit is not None
     if len(_RESOLVED) > 500000:
         _RESOLVED.clear()
     _RESOLVED[k] = v
+    if lk is not None and lk[0] not in _LEMMAS:
+        if len(_LEMMAS) > 500000:
+            _LEMMAS.clear()
+        _LEMMAS[lk[0]] = (v[0], _line_to_slots(b, v[1], lk[1]))
     return v
+
+
+LEMMA_MISMATCHES: list = []
 
 
 def frame_book(b: chess.Board, frame_of=None, select=None, parent: dict | None = None, changed: frozenset = frozenset()) -> dict:

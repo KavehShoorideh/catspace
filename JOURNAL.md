@@ -22874,6 +22874,31 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 15:16 PDT — frames generalized into lemmas (Kaveh's pick); a verify-mode bug; a retraction (OBS)
+
+Kaveh: "if we are evaluating a frame and we evaluate how it ends out, that should become a lemma, so that we keep
+using it again". `fates.lemma_key`: a material frame described in the September lemma vocabulary with the squares
+abstracted away -- its pieces as slots (kind, side relative to the mover, target, pinned, a pawn a step from
+promotion) and, for every ordered pair, attacks/defends, x-ray through how many frame pieces, legal capture, gives
+check, and which frame pieces the captor bears on from where it lands ('lands_attacked') -- slots in a canonical order
+(labels refined over the relations, Weisfeiler-Lehman). `resolve_frame` serves exact recurrence first, then the lemma
+(its line mapped back onto the squares), and stores both. Frames that can reach check (a king frame joined, the side
+in check, a capture that gives check) keep the exact key: their evasions read the whole board.
+Verify mode (every hit recomputed) on 300 positions x every legal move:
+  - a bug in the EXACT store, found by the first run: a b5 frame served 'c5xb6 e.p.' in a position without the c5 pawn
+    -- the key lacked the en passant square (the captor attacks the square behind the target); fixed, and no lemma key
+    when an en passant capture is legal;
+  - lemmas without the landing relation: 3 mismatches (e.g. the c5/d5 frame of rnbqk1nr/pp3ppp/3bp3/2pp4/..: lemma +1,
+    here 0 -- equal relations before the capture, unequal after dxc5); with it: 0 mismatches in 5,707 lemma checks,
+    2,611 lemmas learned.
+RETRACTION: I first read those verify-mode counts as '48% of resolutions reusable against 27%'. Wrong: in verify mode
+the lemma count includes frames the exact store serves anyway. In normal use (one process, 100 positions x every
+move): computed 6,865 with lemmas against 7,268 without -- the lemmas save 403 resolutions (5.5%) -- and the time is
+the same (29.9 s against 29.8 s: building the key costs what it saves); frame_player's 300-position numbers identical.
+Why so little: two thirds of the frames are joined to a king frame and cannot be abstracted (whole-board keys); a
+material frame met again on other squares is rare within 100 positions. The library would pay off persisted across
+runs, and once king frames get a local description.
+
 ## 2026-09-28 14:29 PDT — back to the dig (Kaveh): where the frames break; the two-ply frame ledger (OBS)
 
 Kaveh: frames are lemmas to keep and reuse; the opponent's best reply should come from frames in their favour; we
