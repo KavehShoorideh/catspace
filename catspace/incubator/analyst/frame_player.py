@@ -64,7 +64,7 @@ def _adds_defender(b: chess.Board, r: chess.Move, targets: set) -> bool:
     return any(len(nb.attackers(b.turn, t)) > len(b.attackers(b.turn, t)) for t in targets if b.piece_at(t) is not None and b.piece_at(t).color == b.turn)
 
 
-def two_ply_value(b: chess.Board, m: chess.Move) -> tuple:
+def two_ply_value(b: chess.Board, m: chess.Move, opponent: str = "all") -> tuple:
     """THE TWO-PLY FRAME LEDGER (2026-09-28, from the own misses: a4 in r4b1r/1ppkqNpp/.. -- Nxh8 walks into axb3;
     Rxg4+ in r5rk/pbp2Q2/.. -- Nxg4 deflects the f7 guard; Bd3 in 8/5pk1/.. -- a fork is our threat): our move, then the
     opponent's reply, then our best frame. Their replies are those that can matter -- every capture, check or evasion,
@@ -82,9 +82,13 @@ def two_ply_value(b: chess.Board, m: chess.Move) -> tuple:
         zone = _our_zone(pb, joint_threats_book(pb, square_frame)[1]); targets = {q for q in zone if nb.piece_at(q) is not None and nb.piece_at(q).color == nb.turn}
     else:
         zone = set(); targets = set()
-    for r in nb.legal_moves:
-        if not (nb.is_check() or nb.is_capture(r) or nb.gives_check(r) or r.from_square in zone or r.to_square in zone or _adds_defender(nb, r, targets)):
-            continue
+    if opponent == "instinct":                                           # the instinctive opponent (Kaveh): only first-instinct replies, or a pass
+        from .instincts import instincts
+        replies = [i.move for i in instincts(nb)]
+    else:
+        replies = [r for r in nb.legal_moves if nb.is_check() or nb.is_capture(r) or nb.gives_check(r) or r.from_square in zone
+                   or r.to_square in zone or _adds_defender(nb, r, targets)]
+    for r in replies:
         ab = nb.copy(stack=False); ab.push(r)
         if ab.is_checkmate():
             return -1000.0, r.uci(), []
@@ -120,17 +124,24 @@ def choose(b: chess.Board) -> dict:
     else:
         before = threats(stand, square_frame) if stand is not None else (0.0, None, [])
     values = {}; trace = {}
-    if LEDGER in ("two_ply", "two_ply_candidates"):
+    if LEDGER in ("two_ply", "two_ply_candidates", "two_ply_instinct"):
         moves = list(b.legal_moves)
-        if LEDGER == "two_ply_candidates":                                # the reply ply only where tactics live: the one-ply top moves,
+        if LEDGER in ("two_ply_candidates", "two_ply_instinct"):                                # the reply ply only where tactics live: the one-ply top moves,
             one = _one_ply_values(b, before, book)                        # every capture and check (Kaveh: which what-ifs to consider)
             ranked = sorted(one, key=lambda u: -one[u])
             top1 = max(one.values())
             keep = set(ranked[:CANDIDATES]) | {u for u in one if one[u] == top1} \
                 | {m.uci() for m in moves if b.is_capture(m) or b.gives_check(m) or m.promotion}   # (the one-ply top set: its quiet ties stay in)
+            now = joint_threats(b, square_frame)[0]                       # QUIET THREATS (puzzle dig 2026-09-28: 20 of 41 misses were quiet
+            for m in moves:                                               # moves never given the reply ply): the null-move what-if -- if they
+                if m.uci() in keep:                                       # did nothing after it, would our frames win more than they do now?
+                    continue
+                nb = b.copy(stack=False); nb.push(m); pb = passed(nb)
+                if pb is not None and joint_threats(pb, square_frame)[0] >= now + 0.5:
+                    keep.add(m.uci())
             moves = [m for m in moves if m.uci() in keep]
         for m in moves:
-            v, r, ln = two_ply_value(b, m)
+            v, r, ln = two_ply_value(b, m, "instinct" if LEDGER == "two_ply_instinct" else "all")
             values[m.uci()] = v; trace[m.uci()] = ((v, None, [r] + ln if r else ln), before)
         top = max(values.values()); best = [u for u, v in values.items() if v == top]
         plan_scores = {}
@@ -192,6 +203,8 @@ def trace(fen: str, detail: int = 3) -> None:
         k = e["key"]
         if k[0] == "king":
             return f"the {'white' if k[1] else 'black'} king frame"
+        if k[0] == "promo":
+            return f"the promotion frame of the pawn on {chess.square_name(k[1])}"
         bb = chess.Board(e["fen"]); pc = bb.piece_at(k[1])
         return f"the frame of {pc.symbol() if pc else ''}{chess.square_name(k[1])}"
 
@@ -223,6 +236,10 @@ def trace(fen: str, detail: int = 3) -> None:
               f"{' '.join(_line_san(_to_move(b, q.side), q.moves, q.line))}) -- {'; '.join(o.text for o in q.ops)}")
         print(f"      {'goes through' if ok else 'answered at the last step by ' + ', '.join(a.san for a in ans[:8])}; "
               f"{side} moves that defuse it now: {', '.join(defused[:12]) or 'none'}{' ...' if len(defused) > 12 else ''}")
+    from .ablation import describe as what_matters
+    print("1c. What matters, by ablation (each piece removed in turn; Kaveh: 'if the removal of this piece makes a big difference'):")
+    for line in what_matters(b):
+        print("    " + line)
     order = sorted(c["values"], key=lambda u: -c["values"][u])
     shown = set(order[:detail])
     print(f"2. {side}'s moves in the order they are generated: value = captured - {other}'s best frame after it + {other}'s best if we passed")
@@ -275,7 +292,7 @@ def main(argv=None):
     ap.add_argument("--per-frame", action="store_true", help="resolve each frame alone (no pulled-in pieces), for comparison")
     ap.add_argument("--show", type=int, default=3); ap.add_argument("--workers", type=int, default=max(1, (__import__("os").cpu_count() or 2) - 1))
     ap.add_argument("--plans", default=PLANS, help="the tactical plan layer that breaks ties in the top set (plan_layers.LAYERS)")
-    ap.add_argument("--ledger", default=LEDGER, choices=["one_ply", "two_ply", "two_ply_candidates"])
+    ap.add_argument("--ledger", default=LEDGER, choices=["one_ply", "two_ply", "two_ply_candidates", "two_ply_instinct"])
     ap.add_argument("--no-king-prior", action="store_true", help="join every king frame the counter-check rule names (no learned prior)")
     ap.add_argument("--trace", default=None, metavar="FEN", help="a sample analysis of one position, in the order the frames are analysed")
     a = ap.parse_args(argv)

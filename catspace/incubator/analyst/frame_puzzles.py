@@ -82,7 +82,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default="lichess", choices=["lichess", "wac", "bk"]); ap.add_argument("--n", type=int, default=300)
     ap.add_argument("--stride", type=int, default=997); ap.add_argument("--workers", type=int, default=10); ap.add_argument("--show", type=int, default=8)
-    ap.add_argument("--ledger", default="two_ply_candidates", choices=["one_ply", "two_ply", "two_ply_candidates"])   # tactics need the reply ply (2026-09-28)
+    ap.add_argument("--ledger", default="two_ply_candidates", choices=["one_ply", "two_ply", "two_ply_candidates", "two_ply_instinct"])   # tactics need the reply ply (2026-09-28)
     a = ap.parse_args(argv)
     from . import frame_player as FP
     FP.LEDGER = a.ledger
@@ -115,6 +115,8 @@ def main(argv=None):
                 continue
             rows.append(f"{t} {sum(r['solved'] for r in res if t in r['themes'])}/{k}")
         print("OBS by theme, whole solution among the tied top moves: " + "; ".join(rows[:16]))
+    import json
+    json.dump(res, open(paths.derived(f"frame_puzzles_{a.source}_{a.ledger}.json"), "w"))   # every puzzle's steps, for the dig
     misses = [r for r in res if not r["solved"]]
     for r in misses[:a.show]:
         s = next(x for x in r["steps"] if not x["tied"])

@@ -22874,6 +22874,28 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 20:10 PDT — instincts, and what matters by ablation (Kaveh) (OBS)
+
+Instincts (Kaveh: single-frame first instincts -- retreat an attacked piece to a safe or protected square, take back;
+planning = what it takes to beat an opponent who only replies by instinct): `instincts.py` labels the side to move's
+instinct moves (escape check, recapture, take, retreat (protected), retreat, defend, block; checks are tactics, not
+instincts); `--ledger two_ply_instinct` tests our candidates against an opponent who plays only those, or passes. On
+three dig puzzles: 0Knjg and 0BHVV solved against the instinctive opponent in 0.2-0.6 s (3.8-6.1 s against all replies);
+0Hb6O (Rxh7+, a king hunt) only against all replies -- against instincts a quiet Ng5 looks better: the planning case.
+Promotion: Kaveh -- not a frame; the pawn is in other frames and becomes a queen when it gets there. A frame's pawn two
+steps from the last rank now advances inside the frame's search (the promotion frames tried first are reverted).
+Quiet threats (the null-move what-if: after the move, if they did nothing, would our frames win more?) join the reply
+ply's candidates: 089nL (Rd4) solved; 0KCNf (e7), 0M4g4 (Nb4), 1HnWH (Qg4) need five or more plies.
+Kaveh's position 6k1/6p1/8/2r1P2Q/6K1/3P2P1/2r5/8 w (the king walk behind the e5 pawn fails: Rxe5+ gives a rook,
+the other rook skewers king and queen): Stockfish Kf5 -6.71, Kf4 +3.38, Qe8+ +5.11; the frames refuse Kf5 (-5) and pick
+Qe8+ -- the joint frame finds Rxe5+ Kxe5 Rc5+ Ke6 Rxh5 (+5 = queen 9 + pawn 1 - rook 5). Kaveh: "how do I attack this,
+how can it be stopped, how can I stop it from being stopped ... can the difference in the frame be a guidance ... if
+the removal of this piece makes a big difference". `ablation.py`: every piece removed in turn, each side's best frame
+re-resolved; a removal that leaves its own king in check marks a SHIELD. After Kf5: e5 is the shield; Black's +5
+depends on Qh5, Rc5 and Rc2 (removing any one drops it to 0 -- where it can be stopped); the attack question "how to
+remove the shield e5?" -- Rxe5+ nets +5. Before Kf5: e5 already holds +4 for Black, but Rxe5 nets -4 (Qxe5): Kf5 is
+what turns the pawn into a shield. In `frame_player --trace` as step 1c; test.
+
 ## 2026-09-28 18:42 PDT — the reply ply on candidates, all 300 puzzles and the 300 game positions (OBS)
 
 With frames 4.5x faster, `--ledger two_ply_candidates` (the reply ply on the one-ply top set, the top 6, every capture,

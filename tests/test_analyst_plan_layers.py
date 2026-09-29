@@ -35,3 +35,15 @@ def test_frame_goals_reads_kavehs_plans():
     b = chess.Board("8/5pk1/p6p/5B2/2np1p2/8/PP2rPPP/3R2K1 w - - 0 29")
     sc = G.score_moves(b, list(b.legal_moves))
     assert max(sc, key=sc.get) == b.parse_san("Bd3").uci()
+
+
+def test_ablation_finds_the_shield_and_its_removal():
+    """Kaveh 2026-09-28, 6k1/6p1/8/2r1P2Q/6K1/.. after Kf5: the e5 pawn shields the king from the c5 rook; Black removes
+    it with Rxe5+ and Rc5+ skewers king and queen (+5); the threat depends on both rooks and the queen."""
+    from catspace.incubator.analyst import ablation as A
+    b = chess.Board("6k1/6p1/8/2r1PK1Q/8/3P2P1/2r5/8 b - - 2 38")
+    amap = A.ablation_map(b)
+    assert amap[0].square == chess.E5 and amap[0].shield
+    assert {h.square for h in A.support(b, chess.BLACK, amap)} == {chess.H5, chess.C5, chess.C2}
+    q = A.attack(b, chess.BLACK, amap)[0]
+    assert q.target == chess.E5 and q.ways[0][0] == "Rxe5+" and q.ways[0][1] >= 4

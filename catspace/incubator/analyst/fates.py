@@ -627,9 +627,14 @@ def _resolve_node(b: chess.Board, squares, members: set, kings, alpha: float, be
         cand = [(captured_value(b, m), m, False) for m in b.generate_legal_captures(to_mask=sqmask)]
         if b.ep_square is not None:                               # en passant: the victim, not the landing square, is on the frame
             cand += [(captured_value(b, m), m, False) for m in b.generate_legal_ep() if _victim(b, m) in squares and not (chess.BB_SQUARES[m.to_square] & sqmask)]
+        near = (chess.BB_RANK_6 | chess.BB_RANK_7) if b.turn else (chess.BB_RANK_3 | chess.BB_RANK_2)
         for m in b.generate_legal_moves(from_mask=_mask(members)):
             if m.promotion and not (b.is_capture(m) and chess.BB_SQUARES[m.to_square] & sqmask):
                 cand.append((captured_value(b, m), m, False))
+            elif (b.pawns & near & chess.BB_SQUARES[m.from_square]) and not b.is_capture(m):
+                cand.append((0.0, m, False))                      # a frame's pawn two steps from the last rank advances: it becomes a
+                                                                  # queen when it gets there (Kaveh 2026-09-28: not a promotion frame --
+                                                                  # "the pawn should just suddenly promote" inside the frame's search)
         if forcing > 0 and (not b.turn) in kings:                 # a check on a joined king, by ANY piece: deeper in a hunt new pieces get checks
             seen = {m for _, m, _ in cand}                        # as the king moves (0Hb6O: Rxh7+ Kxh7 Ng5+ Kg7 Ne6+ -- the f3 knight checks only
             for m in _check_moves(b):                             # once the king stands on h7)
@@ -1175,7 +1180,7 @@ def joint_threats_book(b: chess.Board, frame_of=None, forcing: int = 2, select=N
         best = (0.0, None, [])
         for k, (fr, rel, v, ln) in book.items():
             if v > best[0]:
-                best = (v, k[1] if k[0] == "sq" else b.king(k[1]), ln)
+                best = (v, k[1] if k[0] in ("sq", "promo") else b.king(k[1]), ln)
     _JOINT[key] = out = (best, book)
     return out
 
