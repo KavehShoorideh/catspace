@@ -82,6 +82,21 @@ def _line(fen: str, ucis: list) -> str:
     return " ".join(out)
 
 
+def fresh_rows(n: int, stride: int, offset: int) -> list:
+    """Puzzles from rows i % stride == offset of the 6.1M-puzzle Lichess file, excluding the rows already used: the test
+    sample (i % 997 == 0) and the proposer's and the quiet set's rows (i % 97 in 49, 73)."""
+    import csv, io, zstandard
+    out = []
+    with open(paths.assets_dir() / "lichess" / "lichess_db_puzzle.csv.zst", "rb") as fh:
+        reader = csv.DictReader(io.TextIOWrapper(zstandard.ZstdDecompressor().stream_reader(fh), encoding="utf-8"))
+        for i, row in enumerate(reader):
+            if i % stride == offset and i % 997 != 0 and i % 97 not in (49, 73):
+                out.append(row)
+                if len(out) >= n:
+                    break
+    return out
+
+
 def compare(before: str, after: str) -> None:
     """Two runs on the same puzzles: solved counts, puzzles gained and lost, and whether each miss's solution move was
     ever a candidate (the reply ply's candidate set) or was one and was valued too low."""
@@ -112,6 +127,8 @@ def main(argv=None):
     ap.add_argument("--propose", type=int, default=0, help="zone_candidates: the moves realizing the what-if proposer's top-k edits join the candidates")
     ap.add_argument("--quiet-offset", type=int, default=73, help="lichess-quiet: rows i %% 97 == offset with a quiet theme (the proposer trained on 49)")
     ap.add_argument("--check-ext", type=int, default=None, help="zone search: checks that do not use up a ply, per line (zone_search.CHECK_EXT)")
+    ap.add_argument("--offset", type=int, default=0, help="lichess: fresh rows i %% stride == offset (never the test sample's, the proposer's or the quiet set's rows)")
+    ap.add_argument("--no-runners", action="store_true", help="zone search: no passed pawns in the root zone (ablation)")
     ap.add_argument("--compare", nargs=2, metavar=("BEFORE", "AFTER"), help="two runs' dumps (data/derived names): what changed, no solving")
     a = ap.parse_args(argv)
     if a.compare:
@@ -119,13 +136,18 @@ def main(argv=None):
     from . import frame_player as FP
     FP.LEDGER = a.ledger; FP.PROPOSE = a.propose
     tag = a.ledger + (f"_propose{a.propose}" if a.propose else "")
+    if a.no_runners:
+        from . import zone_search as Z
+        Z.RUNNERS = False; tag += "_norunners"
     if a.check_ext is not None:
         from . import zone_search as Z
         Z.CHECK_EXT = a.check_ext; tag += f"_ext{a.check_ext}"
     t0 = time.perf_counter()
     import multiprocessing as mp
     if a.source in ("lichess", "lichess-quiet"):
-        if a.source == "lichess":
+        if a.source == "lichess" and a.offset:
+            rows = fresh_rows(a.n, a.stride, a.offset); tag += f"_off{a.offset}"
+        elif a.source == "lichess":
             from .gauge_puzzles import sample
             rows = sample(str(paths.assets_dir() / "lichess" / "lichess_db_puzzle.csv.zst"), a.n, a.stride)
         else:                                                     # quiet-theme puzzles held out from the proposer's training rows

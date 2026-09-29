@@ -28,6 +28,7 @@ import chess
 from . import fates as F
 
 MATE = 1000.0
+RUNNERS = True                                                      # passed pawns near promotion join the root zone (hand-coded; to be replaced)
 KING_RING = False                                                   # the kings' neighbourhoods join the root zone (11Whs: h6 bears on g7)
 TIE = 0.5                                                           # rank: candidates within TIE of the best get exact values, the rest a bound
 CHECK_EXT = 0                                                       # checks that do not use up a ply, per line (0: off)
@@ -188,7 +189,8 @@ class ZoneSearch:
         for fr, _, fv, _ in F.joint_threats_book(bb, F.square_frame)[1].values():
             if fv > 0:                                            # a glance at the rest (Kaveh): the opponent's winning frames after the move
                 zone |= set(fr[0])                                # join the zone, so a threat elsewhere is not ignored
-        zone |= runners(bb)
+        if RUNNERS:                                                # (a stand-in for the opponent's subgoals: Kaveh 2026-09-29 -- to come from the layer above)
+            zone |= runners(bb)
         return F.captured_value(b, m), bb, frozenset(zone)
 
     def value(self, b: chess.Board, m: chess.Move, depths=(4, 6, 8)) -> tuple:

@@ -22906,6 +22906,16 @@ zones), not a new principle. What looks new (moderate confidence): subgoals DISC
 an exact adversarial tactics search in middlegames, the opponent's subgoals setting the defensive zone, and plan choice
 explained through the tactics layer. Read first: Berliner 1974; Shih et al. AAAI-22 with Thomsen 2000; Stilman's
 Linguistic Geometry with Adaptive Subgoal Search.
+What the hand-coded runners are worth (`frame_puzzles --no-runners`, one run each): 300 puzzles 291 -> 290 (single top
+move 235 -> 233; lost 1dGSs, gained none); 150 quiet puzzles 124 -> 119 (single 77 -> 73; lost 5, gained none). The
+cost of removing them before a subgoal layer exists: about 6 puzzles in 450, mostly pawn-heavy quiet ones.
+The 9 misses on the 300 (Stockfish depth 20 prefers the solution by 1.5+ pawns in 9/9): pawn races and breakthroughs 5
+(0OYpw g5, 0eOUW a4, 1m070 f2, 01I9J Kg3, 2ckKj c7), a queen trade into a won pawn ending 1 (0IGX0), exchange
+sacrifices with deep follow-ups 2 (10Hhy, 2asXa), a quiet defence outside the zone 1 (11Whs). In 2ckKj (8/p7/2P5/
+1P1rk3/R7/6p1/8/6K1 w) c7! is never a candidate -- its threat c8=Q is a promotion onto an empty square, not a frame
+target, so the quiet-threat test sees nothing -- and forced in, the zone search ties it with Rxa7 at +1 (8 plies: Black's
+checks fill the horizon); Stockfish +1.92 at depth 10, +4.83 at depth 22 vs Rxa7 -0.01 (Rxb5). The point is a
+subgoal (c7 deflects the rook off the d-file, so the b- and c-pawns both live), not material within 8 plies.
 
 ## 2026-09-29 03:29 PDT — the frame store leaked across positions (four ways, found by verify mode); zone search 291/300 on sound frames; the proposer on held-out quiet puzzles; the zone ledger in play (OBS)
 
