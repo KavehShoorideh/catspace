@@ -26,8 +26,9 @@ from catspace.io import paths
 from .gauge_verdicts import positions
 
 VAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
-FEATURES = ["own_king", "n_checks", "n_capture_checks", "checks_by_queen", "king_flights", "king_neighbours_attacked", "frame_value_alone",
+FEATURES = ["own_king", "n_checks", "n_capture_checks", "checks_by_queen", "king_flights", "king_neighbours_attacked",
             "target_value", "frame_pieces", "queens_in_frame", "pinned_in_frame", "king_distance", "king_in_frame", "king_frame_pieces"]
+# (the frame's value without the king was a feature -- weight -0.09 -- and cost a resolution per gate call: dropped 2026-09-28)
 THRESHOLD = 0.25
 
 
@@ -42,8 +43,6 @@ def features(b: chess.Board, squares, members, c: chess.Color, checks: list, alo
         attacked += hit
         pc = b.piece_at(q)
         flights += (not hit) and (pc is None or pc.color != c)
-    if alone is None:
-        alone = resolve_frame(b, squares, frozenset(kings), members)[0]
     targets = [q for q in squares if b.piece_at(q) is not None]
     tv = max((VAL[b.piece_at(q).piece_type] for q in targets), default=0)
     queens = sum(1 for q in members if b.piece_at(q) is not None and b.piece_at(q).piece_type == chess.QUEEN)
@@ -52,7 +51,7 @@ def features(b: chess.Board, squares, members, c: chess.Color, checks: list, alo
     ks, km = king_frame(b, c)
     qchecks = sum(1 for m in checks if b.piece_at(m.from_square) is not None and b.piece_at(m.from_square).piece_type == chess.QUEEN)
     capchecks = sum(1 for m in checks if b.piece_at(m.to_square) is not None)
-    return [c == b.turn, len(checks), capchecks, qchecks, flights, attacked, alone, tv, len(members), queens, pinned, dist, k in members, len(km)]
+    return [c == b.turn, len(checks), capchecks, qchecks, flights, attacked, tv, len(members), queens, pinned, dist, k in members, len(km)]
 
 
 def _rows(fen: str) -> list:
@@ -73,9 +72,9 @@ def _rows(fen: str) -> list:
             if pc.color == b.turn or pc.piece_type == chess.KING or not b.attackers(b.turn, sq):
                 continue
             squares, kings, members = joint_base(b, {sq}, set())
-            alone = resolve_frame(b, squares, frozenset(kings), members)[0] if not kings else None
             if kings:
                 continue                                          # a king already joined by a line the frame opens: not this rule's
+            alone = resolve_frame(b, squares, frozenset(kings), members)[0]
             for c in (chess.WHITE, chess.BLACK):
                 checks = counter_checks(b, members, c)
                 if not checks:

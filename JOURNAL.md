@@ -22874,6 +22874,24 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 18:14 PDT — faster frames (Kaveh's pick) (OBS)
+
+Profile of the two-ply ledger on 6 puzzle positions (219 s): frame resolution 76% -- 1.9 M nodes for 15.6 K frames --
+python-chess move generation and gives_check (the new 'any piece checks' rule) inside it. Changes, each checked exact
+against the old code (2,074 frames: values identical; 2,175 interactor/check-screen comparisons: identical):
+  - the resolver pushes and pops on one board copy instead of copying the board at every node;
+  - checks are screened by geometry first (lands where its kind attacks the king, uncovers a slider, promotes,
+    castles, en passant), on pseudo-legal moves, and only those are tested for legality and check;
+  - captures are generated only onto the frame's squares;
+  - a transposition table (alpha-beta bounds) shares nodes across move orders, frames and candidate moves;
+  - `interactors` with bitboards (only sliders gain attacks when frame pieces are lifted);
+  - `king_frame` memoized per position and colour; the king-join prior no longer resolves the frame without the king
+    (a feature of weight -0.09, retrained: at 0.25 it keeps 91% of the needed joins, 420/461, and avoids 31%).
+Times: the 6 positions two-ply 219 -> 156.7 -> 130.1 -> 48.7 s (4.5x); 300 puzzles one-ply 230 -> 157 s (whole solution
+tied 238, unique 156); 300 game positions 21 -> 20 s (own misses 8, pick = SF best 67, mean loss 89 cp -- the retrained
+prior moves a few joins). A test's expectation changed for a good reason: with any piece's checks, c4 alone threatens
+d5 in Kaveh's position (cxd5 exd5 Rh6+ Ke7 Nxd5+; Stockfish -4.77 for Black), where only c4 with the Rh6 pin did before.
+
 ## 2026-09-28 17:39 PDT — puzzles, second round: the reply ply is what tactics need (OBS)
 
 Dig of the remaining misses (each against Stockfish): 0BHVV -- the side in check's king frame lacked the checker's own

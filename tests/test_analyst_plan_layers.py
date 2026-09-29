@@ -25,7 +25,9 @@ def test_frame_goals_reads_kavehs_plans():
     b = chess.Board(KAVEH_BEFORE_A3)
     ps = G.plans_for(b, chess.WHITE, targets={chess.D5})
     sans = {p.san(b) for p in ps}
-    assert "c4 Rh6" in sans and "Rh6 c4" in sans and "c4" not in sans and "Rh6" not in sans
+    # since any piece's check counts on a joined king (2026-09-28), c4 alone threatens d5: cxd5 exd5 opens the 6th rank
+    # for Rh6+ (Stockfish: exd5 Rh6+ Ke7 Nxd5+, -4.77 for Black); before, only c4 with Rh6 (the pin) broke d5
+    assert "c4" in sans and "Rh6" not in sans
     b = chess.Board(KAVEH_AFTER_A3)
     p = next(p for p in G.plans_for(b, chess.BLACK, targets={chess.F2}) if p.san(b) == "Rg1 Rf1")
     ok, _ = G.goes_through(b, p)
