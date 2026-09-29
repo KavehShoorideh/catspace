@@ -22874,6 +22874,27 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 22:19 PDT — the instinctive opponent on 300 puzzles; neural provers mapped; next: an AlphaGeometry-style proposer (OBS)
+
+Same 300 Lichess puzzles (the reply ply on candidates incl. quiet threats; pawns promote inside frames):
+  opponent: all relevant replies   whole solution tied 269/300, unique 201; first move unique 227, tied 284;
+                                   2000+ 38/58, 1600-2000 48/56 (3,436 s, under memory pressure: not a timing)
+  opponent: instincts only         whole solution tied 255/300, unique 172; first move unique 203, tied 274;
+                                   2000+ 37/58, 1600-2000 43/56; 1,772 s
+  (one-ply, no reply: 238 / 156)
+By Kaveh's definition the 14 puzzles the full reply solves and the instinctive opponent does not are the planning
+layer's share (0Hb6O's king hunt among them). Memory: ten workers at 5.5 GB each had stalled a run on a 36 GB machine;
+the caches are now cleared per task (lemma library kept) and capped -- one worker peaks at 1.1 GB.
+Kaveh asked whether neural theorem provers were checked -- they had not been (only game proof search: lambda-search,
+Cazenave, proof-number search, PARADISE). Mapped: AlphaGeometry (Trinh et al., Nature 2024: a symbolic engine plus a
+language model proposing auxiliary constructions when it stalls, trained on 100 M synthetic proofs) -> frames are our
+engine, what-if edits our auxiliary constructions; HyperTree Proof Search (Lample et al., NeurIPS 2022: AND/OR search,
+policy + critic, online training; Metamath 65.4% -> 82.6%) -> the attack/stop/stop-the-stopper question graph; expert
+iteration (Polu et al., ICML 2022) -> solve, keep verified successes, retrain, curriculum by puzzle rating; subgoal
+search (Czechowski et al., NeurIPS 2021) -> frame states as subgoals; premise retrieval (LeanDojo/ReProver, NeurIPS
+2023) -> lemma retrieval. Kaveh chose AlphaGeometry + expert iteration: a proposer of what-if edits trained on
+frame-verified data (no Stockfish labels), used to choose the reply ply's candidates and order the questions.
+
 ## 2026-09-28 20:10 PDT — instincts, and what matters by ablation (Kaveh) (OBS)
 
 Instincts (Kaveh: single-frame first instincts -- retreat an attacked piece to a safe or protected square, take back;
