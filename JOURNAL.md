@@ -22874,6 +22874,25 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 17:39 PDT — puzzles, second round: the reply ply is what tactics need (OBS)
+
+Dig of the remaining misses (each against Stockfish): 0BHVV -- the side in check's king frame lacked the checker's own
+square, so after Nxh6+ Qxh6 the recapture Qxh6 was outside every frame: fixed (the reply to a check is on its square);
+300 puzzles: whole solution tied 238 (236), unique 155 (154). 0Knjg (Nxg2+ Kd1 Bxc5), 089nL (Rd4 Rxe5 Rxc4+), 0M4g4
+(Nb4 Nxb4 d8=Q): our threat survives their capture -- the two-ply ledger's case. 0IGX0: both checks look like parries
+of White's mate threat (a check only postpones). 0LRHp: four checks (Rc3+ f3 Rxf3+ Kh2 Rxh3+ Kg1 Nf3+), past the
+three-check budget; its false pick Nfxh3 is refuted by a quiet move (Rc8).
+The ledger on the first 100 puzzles (one run each, directional):
+  one_ply                  whole solution unique 54, tied 80; first move unique 64, tied 87; 2000+ 10/21;     75 s
+  two_ply                  whole solution unique 68, tied 90; first move unique 76, tied 95; 2000+ 14/21;  3,801 s
+  two_ply_candidates       whole solution unique 65, tied 81 (the reply ply on the top 6, captures, checks,
+                           promotions -- quiet solutions outside were never chosen);                         881 s
+  two_ply_candidates       + the one-ply top set: unique 68, tied 87; first move unique 76, tied 93;
+                           2000+ 13/21;                                                                        887 s
+Reading: tactics need the reply ply (our threat standing after their capture); restricted to the moves where tactics
+live it keeps nearly all of it at 12x the one-ply time. Not the default yet (speed). Which moves get the reply ply is
+Kaveh's "which what-ifs to consider" -- the learned priority is the natural chooser.
+
 ## 2026-09-28 15:57 PDT — tactical puzzles: where the frames go wrong (Kaveh: "solve some tactical puzzles ... use that to improve") (OBS)
 
 Kaveh, on the sample analysis: the tactical layer is right there (no tactics; Rg1 is positional -- the open file).
