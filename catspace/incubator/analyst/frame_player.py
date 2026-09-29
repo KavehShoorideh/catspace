@@ -97,6 +97,20 @@ def two_ply_value(b: chess.Board, m: chess.Move) -> tuple:
     return got + worst[0], worst[1], worst[2]
 
 
+CANDIDATES = 6                                                      # two_ply_candidates: the one-ply top moves that get the reply ply
+
+
+def _one_ply_values(b: chess.Board, before, book) -> dict:
+    out = {}
+    for m in b.legal_moves:
+        nb = b.copy(stack=False); nb.push(m)
+        if nb.is_checkmate():
+            out[m.uci()] = 1e6; continue
+        after = joint_threats(nb, square_frame, select=SELECT, parent=book, changed=changed_squares(b, m))
+        out[m.uci()] = captured_value(b, m) - after[0] + before[0]
+    return out
+
+
 def choose(b: chess.Board) -> dict:
     """-> {'values': {uci: value}, 'best': [ucis with the top value], 'trace': {uci: (their best after, their best if
     we pass)}} -- the frames' own reasoning for every legal move."""
@@ -106,8 +120,16 @@ def choose(b: chess.Board) -> dict:
     else:
         before = threats(stand, square_frame) if stand is not None else (0.0, None, [])
     values = {}; trace = {}
-    if LEDGER == "two_ply":
-        for m in b.legal_moves:
+    if LEDGER in ("two_ply", "two_ply_candidates"):
+        moves = list(b.legal_moves)
+        if LEDGER == "two_ply_candidates":                                # the reply ply only where tactics live: the one-ply top moves,
+            one = _one_ply_values(b, before, book)                        # every capture and check (Kaveh: which what-ifs to consider)
+            ranked = sorted(one, key=lambda u: -one[u])
+            top1 = max(one.values())
+            keep = set(ranked[:CANDIDATES]) | {u for u in one if one[u] == top1} \
+                | {m.uci() for m in moves if b.is_capture(m) or b.gives_check(m) or m.promotion}   # (the one-ply top set: its quiet ties stay in)
+            moves = [m for m in moves if m.uci() in keep]
+        for m in moves:
             v, r, ln = two_ply_value(b, m)
             values[m.uci()] = v; trace[m.uci()] = ((v, None, [r] + ln if r else ln), before)
         top = max(values.values()); best = [u for u, v in values.items() if v == top]
@@ -253,7 +275,7 @@ def main(argv=None):
     ap.add_argument("--per-frame", action="store_true", help="resolve each frame alone (no pulled-in pieces), for comparison")
     ap.add_argument("--show", type=int, default=3); ap.add_argument("--workers", type=int, default=max(1, (__import__("os").cpu_count() or 2) - 1))
     ap.add_argument("--plans", default=PLANS, help="the tactical plan layer that breaks ties in the top set (plan_layers.LAYERS)")
-    ap.add_argument("--ledger", default=LEDGER, choices=["one_ply", "two_ply"])
+    ap.add_argument("--ledger", default=LEDGER, choices=["one_ply", "two_ply", "two_ply_candidates"])
     ap.add_argument("--no-king-prior", action="store_true", help="join every king frame the counter-check rule names (no learned prior)")
     ap.add_argument("--trace", default=None, metavar="FEN", help="a sample analysis of one position, in the order the frames are analysed")
     a = ap.parse_args(argv)

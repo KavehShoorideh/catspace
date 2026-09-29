@@ -82,7 +82,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default="lichess", choices=["lichess", "wac", "bk"]); ap.add_argument("--n", type=int, default=300)
     ap.add_argument("--stride", type=int, default=997); ap.add_argument("--workers", type=int, default=10); ap.add_argument("--show", type=int, default=8)
+    ap.add_argument("--ledger", default="one_ply", choices=["one_ply", "two_ply", "two_ply_candidates"])
     a = ap.parse_args(argv)
+    from . import frame_player as FP
+    FP.LEDGER = a.ledger
     t0 = time.perf_counter()
     import multiprocessing as mp
     if a.source == "lichess":
@@ -96,7 +99,7 @@ def main(argv=None):
         with mp.get_context("fork").Pool(a.workers) as pool:
             res = pool.map(_solve_epd, [(pid, b.fen(), bms) for pid, b, bms in items], chunksize=2)
     n = len(res)
-    print(f"[frame_puzzles] {a.source}: {n} puzzles, {time.perf_counter() - t0:.0f}s")
+    print(f"[frame_puzzles] {a.source}: {n} puzzles, ledger {a.ledger}, {time.perf_counter() - t0:.0f}s")
     print(f"OBS first move: the frames' single top move {sum(r['first_unique'] for r in res)}/{n}; among the tied top moves {sum(r['first_tied'] for r in res)}/{n} "
           f"(top set size, median {sorted(r['steps'][0]['n_top'] for r in res)[n // 2]})")
     if a.source == "lichess":

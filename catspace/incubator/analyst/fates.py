@@ -616,9 +616,9 @@ def king_frame(b: chess.Board, color: chess.Color) -> tuple:
     members = set().union(*(square_frame(b, z) for z in sq))
     own = lambda bb, x: bb.piece_at(x) is not None and bb.piece_at(x).color == color and bb.piece_at(x).piece_type != chess.KING
     targets = set()
-    if b.turn == color and b.is_check():                          # the checkers on the board and their other targets
-        for q in b.checkers():
-            members.add(q); targets |= {x for x in b.attacks(q) if own(b, x)}
+    if b.turn == color and b.is_check():                          # the checkers on the board, their squares and their other targets:
+        for q in b.checkers():                                    # the reply to a check is on its square (0BHVV: Nxh6+ Qxh6, then Qxh6)
+            members.add(q); targets |= {x for x in b.attacks(q) if own(b, x)} | {q}
     t = b if b.turn != color else passed(b)                       # the enemy to move: its checks in one move
     if t is not None:
         for m in t.generate_legal_moves():
