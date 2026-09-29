@@ -26,6 +26,27 @@ def test_rank_compares_every_candidate_at_the_same_depth():
     assert got[ms[0]][0] > got[ms[1]][0]                      # the puzzle's Nb4 over the premature promotion
 
 
+def test_a_threat_shown_by_the_pass_brings_its_defences_into_the_zone():
+    # 0ROfv: after Kh8 Black threatens Qxh2#; White's pass is mated, but Rf2 (bearing on h2, outside the zone) holds.
+    # Without the threat's squares joining the zone, Kh8 read as a forced mate (+1000)
+    clear_caches()
+    b = chess.Board("r5k1/p4B1p/2P3p1/4n2n/NP3p1q/1Q3Pb1/1P1B3P/R4R1K b - - 0 25")
+    kh8, nxf7 = b.parse_san("Kh8"), b.parse_san("Nxf7")
+    got = ZoneSearch(20000).rank(b, [kh8, nxf7])
+    assert got[kh8][0] < 100
+    assert got[nxf7][0] > got[kh8][0]
+
+
+def test_the_checking_sacrifice_mate_is_found():
+    # 0K3Ll: Rg1+ Kxg1 Rg8+ Bg4 Rxg4# (a regression guard: missed in the quiet benchmark, found here; the cause of that
+    # miss is under study -- the check exemption in rank() is not what finds it)
+    clear_caches()
+    b = chess.Board("2kr4/pb3p1p/1p2p3/1P6/2PN4/P3P3/4BPrP/BN3R1K b - - 1 18")
+    rg1, rxf2 = b.parse_san("Rg1+"), b.parse_san("Rxf2+")
+    got = ZoneSearch(20000).rank(b, [rg1, rxf2])
+    assert got[rg1][0] >= 900 and got[rg1][0] > got[rxf2][0]
+
+
 def test_runners_are_passed_pawns_near_promotion_with_their_path():
     b = chess.Board("8/k2P4/N1n1N1p1/4p3/4P1rp/8/8/3K4 w - - 3 46")
     r = runners(b)

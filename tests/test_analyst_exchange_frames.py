@@ -187,3 +187,28 @@ def test_the_fast_resolver_equals_the_reference():
                         assert F.interactors(nb, mem, {sq}) == F._interactors_reference(nb, mem, {sq})
     finally:
         F.KING_JOIN_GATE = old_gate
+
+
+def test_a_frame_whose_line_gives_check_is_stored_by_the_whole_board():
+    # verify mode 2026-09-29: the d5 frames of these two boards shared a local key; cxd5+ is answered by Kc5 in one and by
+    # Kxc5 (a pawn outside the frame) in the other, so the stored value was served to the wrong board
+    import catspace.incubator.analyst.fates as F
+    a = chess.Board("8/8/2p5/2pP3p/2K1k3/7P/6P1/8 b - - 0 45")
+    b = chess.Board("8/8/2p5/3P3p/2K1k3/7P/6P1/8 b - - 0 45")
+    for first, second in ((a, b), (b, a)):
+        F.clear_caches(keep_lemmas=False)
+        v1 = F.resolve_frame(first, {chess.D5}, set(), F.square_frame(first, chess.D5))[0]
+        v2 = F.resolve_frame(second, {chess.D5}, set(), F.square_frame(second, chess.D5))[0]
+        assert {first.fen(): v1, second.fen(): v2} == {a.fen(): 0.0, b.fen(): 1.0}
+    quiet = chess.Board("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3")
+    assert F.frame_key(quiet, {chess.E5}, set(), F.square_frame(quiet, chess.E5))[0] == "local"
+
+
+def test_a_promotion_push_is_answered_on_its_square():
+    # verify mode 2026-09-29: after Rgxe8 the frame let d7-d8=Q stand (+8) because d8 was not a frame square; the reply to
+    # a promotion is on its square (Kaveh), so Rxd8 answers it and Black's Rxe8 nets +1 (Rgxe8 dxe8=Q Raxe8)
+    import catspace.incubator.analyst.fates as F
+    b = chess.Board("r3R1r1/3P3R/p7/2b1N1pp/P3P1pk/1P6/2P4P/7K b - - 1 38")
+    F.clear_caches(keep_lemmas=False)
+    assert F.resolve_frame(b, {chess.E8}, set(), F.square_frame(b, chess.E8))[0] == 1.0
+    assert F.frame_key(b, {chess.E8}, set(), F.square_frame(b, chess.E8))[0] == "board"

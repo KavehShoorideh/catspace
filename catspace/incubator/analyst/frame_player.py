@@ -306,7 +306,7 @@ def main(argv=None):
     ap.add_argument("--per-frame", action="store_true", help="resolve each frame alone (no pulled-in pieces), for comparison")
     ap.add_argument("--show", type=int, default=3); ap.add_argument("--workers", type=int, default=max(1, (__import__("os").cpu_count() or 2) - 1))
     ap.add_argument("--plans", default=PLANS, help="the tactical plan layer that breaks ties in the top set (plan_layers.LAYERS)")
-    ap.add_argument("--ledger", default=LEDGER, choices=["one_ply", "two_ply", "two_ply_candidates", "two_ply_instinct", "zone_candidates"])
+    ap.add_argument("--ledger", default="zone_candidates", choices=["one_ply", "two_ply", "two_ply_candidates", "two_ply_instinct", "zone_candidates"])   # the zone verifier: better on the 300 game positions (2026-09-29); LEDGER stays one-ply for library callers (a building block)
     ap.add_argument("--no-king-prior", action="store_true", help="join every king frame the counter-check rule names (no learned prior)")
     ap.add_argument("--trace", default=None, metavar="FEN", help="a sample analysis of one position, in the order the frames are analysed")
     a = ap.parse_args(argv)

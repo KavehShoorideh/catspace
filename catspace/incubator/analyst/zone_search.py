@@ -29,6 +29,7 @@ from . import fates as F
 
 MATE = 1000.0
 KING_RING = False                                                   # the kings' neighbourhoods join the root zone (11Whs: h6 bears on g7)
+TIE = 0.5                                                           # rank: candidates within TIE of the best get exact values, the rest a bound
 NULL_R = 2                                                          # the pass is searched NULL_R plies shallower (null-move reduction)
 
 
@@ -53,7 +54,7 @@ def _att(pt, color, sq, occ):
 
 class ZoneSearch:
     def __init__(self, budget: int = 4000, max_zone: int = 18):
-        self.budget = budget; self.max_zone = max_zone; self.nodes = 0; self.total = 0; self.tt = {}; self.reads = {}
+        self.budget = budget; self.max_zone = max_zone; self.nodes = 0; self.total = 0; self.tt = {}; self.reads = {}; self.history = {}
 
     def read(self, b: chess.Board, s: int) -> float:
         """A leaf's read of the frame on s: its own exchange (the square frame, no king joined -- the search above
@@ -133,12 +134,16 @@ class ZoneSearch:
             if pb is not None:                                    # the pass, searched (reduced by NULL_R): the opponent plays on
                 v, ln = self.search(pb, zone, depth - 1 - NULL_R, -beta, -alpha, False, ply + 1)
                 best, best_line = -v, [chess.Move.null()] + ln
+                if ln and ln[0] and -v < 0:                       # the pass shows a threat: its squares join the zone, so the
+                    zone = zone | {ln[0].from_square, ln[0].to_square}   # moves that stop it are searched (0ROfv: Qxh2# and Rf2)
             else:
                 best = self.stand(b, zone)
             alpha = max(alpha, best)
         if alpha < beta:
             ms = self.moves(b, zone)
-            ms.sort(key=lambda m: (m != hint, -(F.captured_value(b, m) + (5 if b.gives_check(m) else 0))))
+            hist = self.history                                   # quiet moves that refuted before are tried earlier (history heuristic)
+            ms.sort(key=lambda m: (m != hint, -(F.captured_value(b, m) + (5 if b.gives_check(m) else 0)),
+                                   -hist.get((b.piece_type_at(m.from_square), b.turn, m.to_square), 0)))
             for m in ms:
                 g = F.captured_value(b, m)
                 b.push(m)
@@ -154,6 +159,9 @@ class ZoneSearch:
                     best, best_line = v, [m] + ln
                 alpha = max(alpha, best)
                 if alpha >= beta:
+                    if not b.is_capture(m):
+                        k = (b.piece_type_at(m.from_square), b.turn, m.to_square)
+                        hist[k] = hist.get(k, 0) + depth * depth
                     break
         best = best if best > -1e9 else 0.0
         self.tt[key] = (depth, best, 2 if best <= alpha0 else 1 if best >= beta else 0, best_line)
@@ -189,7 +197,9 @@ class ZoneSearch:
         """The candidates deepened together: all at 4 plies, then at 6, ...; each candidate has the node budget for each
         iteration, and one that runs out keeps its previous depth's value (so an explosive candidate does not hold the
         others at a shallower depth -- 0Hb6O: with 27 candidates sharing one budget, none reached 8 plies, where the
-        rook sacrifice Rxh7+ pays). A candidate more than `margin` behind the best is not deepened further.
+        rook sacrifice Rxh7+ pays). A candidate more than `margin` behind the best is not deepened further, unless it
+        gives check. Candidates are searched best first; one that cannot come within TIE of the best so far gets an
+        upper bound, not its exact value (it is not a contender) -- the value it reports is at most that.
         -> {move: (value, line, depth)}."""
         roots = {m: self.root(b, m) for m in moves}
         got = {m: ((1e6, [m], 1) if r is None else (r[0], [m], 0)) for m, r in roots.items()}
@@ -197,17 +207,22 @@ class ZoneSearch:
         for i, d in enumerate(depths):
             top = max(v for v, _, _ in got.values())
             live = [m for m in moves if roots[m] is not None
-                    and (i == 0 or (got[m][0] >= top - margin and got[m][2] == depths[i - 1]))]   # (one out of budget stays out)
+                    and (i == 0 or ((got[m][0] >= top - margin or b.gives_check(m)) and got[m][2] == depths[i - 1]))]
+            # (one out of budget stays out; a check is never left behind for its value: a checking sacrifice pays late)
+            best_now = -1e9
             for m in sorted(live, key=lambda x: -got[x][0]):           # the previous depth's best first
                 g, bb, zone = roots[m]
-                self.nodes = 0
+                lo = best_now - TIE                                   # below this a candidate only needs a bound: it is not
+                self.nodes = 0                                        # a contender (fail-soft: the bound is its value's ceiling)
                 try:
-                    v, ln = self.search(bb, zone, d - 1, -1e9, 1e9)
+                    v, ln = self.search(bb, zone, d - 1, -1e9, g - lo if lo > -1e8 else 1e9)
                 except Budget:
                     continue                                          # out of budget at this depth: it keeps the last one
                 finally:
                     self.total += self.nodes
                 got[m] = (g - v, [m] + ln, d)
+                if g - v > lo:
+                    best_now = max(best_now, g - v)
         return got
 
 

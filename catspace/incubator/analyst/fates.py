@@ -657,7 +657,9 @@ def _resolve_node(b: chess.Board, squares, members: set, kings, alpha: float, be
     for g, m, is_forcing in cand:
         victim = _victim(b, m)
         mem = set(members) - {victim}
-        sq = (set(squares) | {m.to_square}) if is_forcing else squares
+        lands = is_forcing or m.promotion or (b.pawns & chess.BB_SQUARES[m.from_square] and not b.is_capture(m))
+        sq = (set(squares) | {m.to_square}) if lands else squares  # the reply to a check, a promotion or a pawn's advance is on
+                                                                  # its square (Kaveh): d8=Q is answered by Rxd8 (verify mode 2026-09-29)
         if m.from_square in mem or m.to_square in sq:             # a piece that lands on a frame square is a frame piece
             mem = (mem - {m.from_square}) | {m.to_square}
         b.push(m)
@@ -935,6 +937,58 @@ def relations(b: chess.Board, squares, members) -> tuple:
     return (b.turn, tuple(rows))
 
 
+def _piece_att(pt: int, color: chess.Color, sq: int, occ: int) -> int:
+    """The squares a piece of kind pt and colour on sq attacks, with occupancy occ."""
+    if pt == chess.PAWN:
+        return chess.BB_PAWN_ATTACKS[color][sq]
+    if pt == chess.KNIGHT:
+        return chess.BB_KNIGHT_ATTACKS[sq]
+    if pt == chess.KING:
+        return chess.BB_KING_ATTACKS[sq]
+    return _att(pt, sq, occ)
+
+
+def can_reach_check(b: chess.Board, squares, members) -> bool:
+    """CAN THE FRAME'S LINE GIVE CHECK? -- conservatively, with every frame and member square vacated (the line can open
+    any of them): a member landing on a frame square would attack the enemy king (a pawn on the last rank as a queen),
+    or a slider would attack a king through the vacated squares (a discovered check; a pin that could open). A frame
+    whose line can check plays every legal evasion, which reads the whole board: its store key cannot be local
+    (verify mode 2026-09-29: the d5 frame of 8/8/2p5/3P3p/2K1k3/.. and of 8/8/2p5/2pP3p/2K1k3/.. shared a local key;
+    cxd5+ is answered by Kc5 in one, by Kxc5 -- a pawn outside the frame -- in the other)."""
+    lifted = b.occupied
+    for q in set(squares) | set(members):
+        lifted &= ~chess.BB_SQUARES[q]
+    for c in (chess.WHITE, chess.BLACK):
+        k = b.king(not c)
+        if k is None:
+            continue
+        for m in members:
+            pc = b.piece_at(m)
+            if pc is None or pc.color != c or pc.piece_type == chess.KING:
+                continue
+            for s in squares:
+                pt = chess.QUEEN if pc.piece_type == chess.PAWN and chess.square_rank(s) in (0, 7) else pc.piece_type
+                if _piece_att(pt, c, s, lifted | chess.BB_SQUARES[s]) & chess.BB_SQUARES[k]:
+                    return True
+        for s in chess.SquareSet(b.occupied_co[c] & (b.bishops | b.rooks | b.queens)):
+            if _att(b.piece_type_at(s), s, lifted | chess.BB_SQUARES[s]) & chess.BB_SQUARES[k]:
+                return True
+    return False
+
+
+def near_promotion(b: chess.Board, members) -> bool:
+    """A member pawn within two steps of promotion: its advance lands on squares outside the frame, whose occupants and
+    attackers the local key does not record (verify mode 2026-09-29: an e8 frame served +1 from a board where d8 was
+    blocked to one where d7-d8=Q was open)."""
+    near = chess.BB_RANK_6 | chess.BB_RANK_7
+    far = chess.BB_RANK_3 | chess.BB_RANK_2
+    for m in members:
+        pc = b.piece_at(m)
+        if pc is not None and pc.piece_type == chess.PAWN and chess.BB_SQUARES[m] & (near if pc.color == chess.WHITE else far):
+            return True
+    return False
+
+
 def frame_key(b: chess.Board, squares, kings, members) -> tuple:
     """WHAT A FRAME'S RESOLUTION READS -- its key in the persistent store (Kaveh 2026-09-28: "persistent frames from move
     to move ... every time something moves we incrementally change the state ... a minimal amount of rules based
@@ -942,10 +996,12 @@ def frame_key(b: chess.Board, squares, kings, members) -> tuple:
     what is legal), the frame's squares with their occupants and who attacks each, and its pieces with their pins. A
     move elsewhere leaves the key -- and so the resolution -- unchanged, whichever position or search branch the frame
     turns up in. The en passant square counts when a capture there is legal (verify mode found a b5 frame served
-    'c5xb6 e.p.' in a position without the c5 pawn). A frame that can reach check (a king frame joined, or the side in check) plays every legal evasion,
-    by any piece: its key is the whole board."""
-    if kings or b.is_check():
-        return ("board", b._transposition_key(), frozenset(squares), frozenset(kings), frozenset(members))
+    'c5xb6 e.p.' in a position without the c5 pawn). A frame that can reach check (a king frame joined, the side in
+    check, or a line that can give check -- can_reach_check) plays every legal evasion, by any piece: its key is the
+    whole board."""
+    if kings or b.is_check() or can_reach_check(b, squares, members) or near_promotion(b, members) or b.has_legal_en_passant():
+        return ("board", b._transposition_key(), frozenset(squares), frozenset(kings), frozenset(members))   # (en passant lands
+                                                                  # off the frame and may check: hxg3+ e.p. in 7k/6p1/4P3/.. -- verify mode)
     rows = tuple((s, None if b.piece_at(s) is None else b.piece_at(s).symbol(), int(b.attackers_mask(chess.WHITE, s)), int(b.attackers_mask(chess.BLACK, s)))
                  for s in sorted(squares))
     mem = tuple((m, None if b.piece_at(m) is None else b.piece_at(m).symbol(), b.piece_at(m) is not None and b.is_pinned(b.piece_at(m).color, m))
@@ -972,7 +1028,7 @@ def lemma_key(b: chess.Board, squares, kings, members) -> tuple | None:
     canonical order (labels refined over the relations), so the same relational situation on other squares has the same
     key. -> (key, slots in that order), or None for a frame that can reach check (a king frame joined, the side in check,
     a capture that gives check): its evasions read the whole board."""
-    if kings or b.is_check() or b.has_legal_en_passant():
+    if kings or b.is_check() or b.has_legal_en_passant() or can_reach_check(b, squares, members) or near_promotion(b, members):
         return None                                               # (en passant: the captor is no attacker of the target's square)
     slots = sorted({q for q in set(members) | set(squares) if b.piece_at(q) is not None})   # (a king frame's members include empty squares)
     if not slots or len(slots) > 12:

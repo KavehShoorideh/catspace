@@ -3,7 +3,7 @@ puzzle not solved, looks at the step where it failed: the solution move's kind (
 the reply ply looked at it at all (a candidate), the frames' value of the solution and of their pick, and Stockfish's
 view of both (the gap confirms the miss). Prints the counts and examples per kind, for the dig.
 
-    python -m catspace.incubator.analyst.puzzle_dig --ledger two_ply_candidates --show 4
+    python -m catspace.incubator.analyst.puzzle_dig --ledger zone_candidates --show 4
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def kind(b: chess.Board, m: chess.Move) -> str:
 def main(argv=None):
     import sys
     sys.stdout.reconfigure(line_buffering=True)
-    ap = argparse.ArgumentParser(); ap.add_argument("--source", default="lichess"); ap.add_argument("--ledger", default="two_ply_candidates")
+    ap = argparse.ArgumentParser(); ap.add_argument("--source", default="lichess"); ap.add_argument("--ledger", default="zone_candidates")
     ap.add_argument("--show", type=int, default=4); ap.add_argument("--depth", type=int, default=16)
     a = ap.parse_args(argv)
     res = json.load(open(paths.derived(f"frame_puzzles_{a.source}_{a.ledger}.json")))

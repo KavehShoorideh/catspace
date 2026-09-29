@@ -23,8 +23,9 @@ from catspace.io import paths
 
 def _solve_lichess(row: dict) -> dict:
     from .frame_player import choose
-    from .fates import clear_caches
+    from .fates import clear_caches, LEMMA_MISMATCHES
     clear_caches()
+    seen = len(LEMMA_MISMATCHES)                                  # verify mode (ANALYST_VERIFY_FRAMES=1): this task's lemma mismatches
     b = chess.Board(row["FEN"]); moves = row["Moves"].split()
     b.push_uci(moves[0])
     start = b.fen(); sol = moves[1:]
@@ -47,6 +48,7 @@ def _solve_lichess(row: dict) -> dict:
         if i + 1 < len(sol):
             b.push_uci(sol[i + 1])
     return dict(id=row.get("PuzzleId"), rating=int(row.get("Rating", 0) or 0), themes=row.get("Themes", "").split(), start=start,
+                lemma_mismatches=[list(x[:2]) + [x[2], x[3]] for x in LEMMA_MISMATCHES[seen:]][:5], n_lemma_mismatches=len(LEMMA_MISMATCHES) - seen,
                 solution=sol, steps=steps, first_tied=steps[0]["tied"], first_unique=steps[0]["unique"],
                 solved=all(s["tied"] for s in steps) and len(steps) == (len(sol) + 1) // 2,
                 solved_unique=all(s["unique"] for s in steps) and len(steps) == (len(sol) + 1) // 2)
@@ -106,7 +108,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default="lichess", choices=["lichess", "lichess-quiet", "wac", "bk"]); ap.add_argument("--n", type=int, default=300)
     ap.add_argument("--stride", type=int, default=997); ap.add_argument("--workers", type=int, default=10); ap.add_argument("--show", type=int, default=8)
-    ap.add_argument("--ledger", default="two_ply_candidates", choices=["one_ply", "two_ply", "two_ply_candidates", "two_ply_instinct", "zone_candidates"])   # tactics need the reply ply (2026-09-28)
+    ap.add_argument("--ledger", default="zone_candidates", choices=["one_ply", "two_ply", "two_ply_candidates", "two_ply_instinct", "zone_candidates"])   # tactics need the reply ply (2026-09-28); the zone verifier (2026-09-29)
     ap.add_argument("--propose", type=int, default=0, help="zone_candidates: the moves realizing the what-if proposer's top-k edits join the candidates")
     ap.add_argument("--quiet-offset", type=int, default=73, help="lichess-quiet: rows i %% 97 == offset with a quiet theme (the proposer trained on 49)")
     ap.add_argument("--compare", nargs=2, metavar=("BEFORE", "AFTER"), help="two runs' dumps (data/derived names): what changed, no solving")
@@ -135,6 +137,11 @@ def main(argv=None):
             res = pool.map(_solve_epd, [(pid, b.fen(), bms) for pid, b, bms in items], chunksize=2)
     n = len(res)
     print(f"[frame_puzzles] {a.source}: {n} puzzles, ledger {tag}, {time.perf_counter() - t0:.0f}s")
+    from .fates import VERIFY_FRAMES
+    if VERIFY_FRAMES:                                             # the lemma library served a value its fresh resolution disagrees with
+        bad = [r for r in res if r.get("n_lemma_mismatches")]
+        print(f"OBS verify mode: lemma mismatches {sum(r.get('n_lemma_mismatches', 0) for r in res)} in {len(bad)}/{n} puzzles"
+              + "".join(f"\n   {r['id']}: {m[0]} squares {[chess.square_name(s) for s in m[1]]} lemma {m[2]:+g} fresh {m[3]:+g}" for r in bad[:6] for m in r["lemma_mismatches"][:1]))
     print(f"OBS first move: the frames' single top move {sum(r['first_unique'] for r in res)}/{n}; among the tied top moves {sum(r['first_tied'] for r in res)}/{n} "
           f"(top set size, median {sorted(r['steps'][0]['n_top'] for r in res)[n // 2]})")
     if a.source in ("lichess", "lichess-quiet"):
