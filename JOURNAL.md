@@ -22874,6 +22874,17 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 18:42 PDT — the reply ply on candidates, all 300 puzzles and the 300 game positions (OBS)
+
+With frames 4.5x faster, `--ledger two_ply_candidates` (the reply ply on the one-ply top set, the top 6, every capture,
+check and promotion) on the same 300 Lichess puzzles (one run each, directional):
+  whole solution tied 259/300 (one-ply 238), unique 196 (156); first move unique 222 (184), tied 275 (255);
+  by rating 0-1200 114/117 (111), 1200-1600 67/69 (60), 1600-2000 44/56 (38), 2000+ 34/58 (29);
+  fork 29/33 (24), discoveredAttack 16/17 (11), sacrifice 13/15 (8), kingsideAttack 20/20; 1,280 s (157 s).
+On the 300 held-out game positions it is mixed: pick loses 1.5+ 48 (54), false-safe 525 (620), mean loss 86 cp (89),
+but own misses 11 (8), pick = SF best 64 (67); 167 s (20 s). So the reply ply is the default for puzzles
+(frame_puzzles) and not yet for play (frame_player stays one-ply).
+
 ## 2026-09-28 18:14 PDT — faster frames (Kaveh's pick) (OBS)
 
 Profile of the two-ply ledger on 6 puzzle positions (219 s): frame resolution 76% -- 1.9 M nodes for 15.6 K frames --

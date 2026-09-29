@@ -82,7 +82,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", default="lichess", choices=["lichess", "wac", "bk"]); ap.add_argument("--n", type=int, default=300)
     ap.add_argument("--stride", type=int, default=997); ap.add_argument("--workers", type=int, default=10); ap.add_argument("--show", type=int, default=8)
-    ap.add_argument("--ledger", default="one_ply", choices=["one_ply", "two_ply", "two_ply_candidates"])
+    ap.add_argument("--ledger", default="two_ply_candidates", choices=["one_ply", "two_ply", "two_ply_candidates"])   # tactics need the reply ply (2026-09-28)
     a = ap.parse_args(argv)
     from . import frame_player as FP
     FP.LEDGER = a.ledger
@@ -122,7 +122,7 @@ def main(argv=None):
         print(f"\nMISS {r['id']} (rating {r['rating']}; {' '.join(r['themes'][:5])}) {s['fen']}  {'White' if b.turn else 'Black'} to move")
         print(f"  solution from here: {_line(s['fen'], r['solution'][2 * r['steps'].index(s):][:8])}")
         print(f"  the frames' top ({s['n_top']} tied at {s['v_top']:+g}): {', '.join(b.san(chess.Move.from_uci(u)) for u in s['best'])}; "
-              f"the solution move {b.san(chess.Move.from_uci(s['sol']))} scores {s['v_sol']:+g}")
+              f"the solution move {b.san(chess.Move.from_uci(s['sol']))} " + (f"scores {s['v_sol']:+g}" if s['v_sol'] is not None else "was not a candidate for the reply ply"))
 
 
 if __name__ == "__main__":
