@@ -22874,6 +22874,39 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-29 11:07 PDT — related work for the frames, the zone search and the subgoal layer (Kaveh: "has this been done before?")
+
+Kaveh's direction (this morning): the root zone should come from the layer above -- the opponent's (and our)
+SUBGOALS, discovered by a Monte-Carlo-tree-search exploration, not coded (promotion is one subgoal to be learned; the
+hand-coded "runners" are a stand-in); alpha-beta in the subgoal's frame is the tactics; interpretability either from
+granular subgoals or through the tactics layer ("A was unreachable because of this tactic, so B"); a reachability
+notion underneath. A literature search (items checked by search; two spot-checked by hand) found:
+- Zone-restricted tactics have strong precedent: Botvinnik's PIONEER (1970) and Stilman's Linguistic Geometry
+  (zones = a goal trajectory, the opponent's counter-trajectories that arrive in time, and ours against those);
+  Wilkins' PARADISE (1980, plans guide a tactics search); Berliner's CAPS-II (1974: a refutation's squares, paths and
+  threats are backed up the tree and only moves that capture, block or guard them are generated -- our "the pass's
+  threat joins the zone"); Thomsen's lambda-search (2000, null-move threat orders); Allis' threat-space search;
+  relevance zones in Connect6, Go and Hex (Wu & Lin 2010; Shih, Wu, Wei & Wu, AAAI-22: a zone outside which the
+  opponent need not search -- the soundness condition our frame store violated four ways on 2026-09-29).
+- MCTS with minimax inside: Baier & Winands, MCTS-minimax hybrids (IEEE TCIAIG 2015); Lanctot et al., implicit
+  minimax backups (2014); Ramanujan, Sabharwal & Selman (ICAPS 2010: shallow traps in chess are why plain UCT fails
+  there -- the case for a tactics verifier under the strategic search). Adversarial goal-level search: Ontañón & Buro,
+  adversarial HTN planning (IJCAI 2015), with hand-written goals.
+- Learned subgoals: the options framework (Sutton, Precup & Singh 1999); subgoal search kSubS (NeurIPS 2021) and
+  Adaptive Subgoal Search (ICLR 2023: a learned proposer and a reachability verifier); subgoal discovery inside MCTS
+  (Jeurissen et al., CoG 2021); OptionZero (ICLR 2025) -- single-agent, not adversarial. Chess endgames: Bratko's
+  Advice Languages and the Ljubljana goal-oriented explanations from tablebases.
+- Interpretability of chess engines is post hoc (McGrath et al. PNAS 2022; Schut et al. PNAS 2025; Jenner et al.
+  NeurIPS 2024, learned look-ahead in Leela); ours is by construction.
+- AlphaGeometry (Nature 2024) and expert iteration (Anthony et al. 2017) have no chess analogue that uses board-edit
+  constructions inside the search; a caution from geometry: hand-written constructions beat AlphaGeometry (HAGeo 2025)
+  -- measure a heuristic proposer before training one.
+Reading: the zone search is a chess instance of known principles (PIONEER, Linguistic Geometry, CAPS-II, relevance
+zones), not a new principle. What looks new (moderate confidence): subgoals DISCOVERED by exploration and certified by
+an exact adversarial tactics search in middlegames, the opponent's subgoals setting the defensive zone, and plan choice
+explained through the tactics layer. Read first: Berliner 1974; Shih et al. AAAI-22 with Thomsen 2000; Stilman's
+Linguistic Geometry with Adaptive Subgoal Search.
+
 ## 2026-09-29 03:29 PDT — the frame store leaked across positions (four ways, found by verify mode); zone search 291/300 on sound frames; the proposer on held-out quiet puzzles; the zone ledger in play (OBS)
 
 **The persistent frame store was unsound.** Running a benchmark with `ANALYST_VERIFY_FRAMES=1` (every stored or
