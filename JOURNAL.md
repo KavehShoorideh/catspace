@@ -22874,6 +22874,17 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-29 13:46 PDT — 2,000 more fresh puzzles: 1861/2000; the same picture (OBS)
+
+`frame_puzzles --n 2000 --offset 600` (rows i % 997 == 600, disjoint from every earlier set), zone ledger, one run
+(5,266 s, 10 workers): whole solution among the tied top moves 1861/2000, single top move 1551/2000; by rating 0-1200
+721/728, 1200-1600 473/483, 1600-2000 380/412, 2000+ 287/377; weakest themes quietMove 62/84, pawnEndgame 69/84,
+defensiveMove 91/116, advancedPawn 104/125, rookEndgame 102/120, sacrifice 117/133; mates 629/630.
+The 139 misses (`puzzle_dig`, Stockfish depth 18, 1.5+ pawns in 139/139): the solution is quiet in 84 (never a
+candidate in 27), a capture in 24, a check in 23, a checking capture in 8; Stockfish's line promotes a pawn in 50/139;
+the solver checks on 2+ of its first 4 moves in 35/139. With the 1,000 at offset 500: 3,000 unseen puzzles, 2791
+solved (the 930 and the 1861), 209 misses, of which 74 have a promotion in Stockfish's line and 52 a check series.
+
 ## 2026-09-29 12:09 PDT — 1,000 fresh puzzles: 930/1000; a third of the misses are pawn subgoals (OBS)
 
 Kaveh: "go to new puzzles ... keep going through them". The local Lichess file holds 6,100,960 puzzles; `frame_puzzles
