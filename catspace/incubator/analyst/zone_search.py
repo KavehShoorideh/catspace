@@ -30,6 +30,7 @@ from . import fates as F
 MATE = 1000.0
 KING_RING = False                                                   # the kings' neighbourhoods join the root zone (11Whs: h6 bears on g7)
 TIE = 0.5                                                           # rank: candidates within TIE of the best get exact values, the rest a bound
+CHECK_EXT = 0                                                       # checks that do not use up a ply, per line (0: off)
 NULL_R = 2                                                          # the pass is searched NULL_R plies shallower (null-move reduction)
 
 
@@ -105,7 +106,7 @@ class ZoneSearch:
                 out.append(m)
         return out
 
-    def search(self, b: chess.Board, zone: frozenset, depth: int, alpha: float, beta: float, null_ok: bool = True, ply: int = 0) -> tuple:
+    def search(self, b: chess.Board, zone: frozenset, depth: int, alpha: float, beta: float, null_ok: bool = True, ply: int = 0, ext: int = 0) -> tuple:
         """Negamax alpha-beta inside the zone. Standing pat is passing, and passing is a move: the opponent then plays on
         at depth - 1 - NULL_R (a two-move threat -- a pawn two pushes from queening -- is searched, not missed because the
         pass was read one move deep); near the horizon, and after a pass, the stand-pat is read statically. A side
@@ -132,7 +133,7 @@ class ZoneSearch:
         if not check:
             pb = F.passed(b) if null_ok and depth - 1 - NULL_R >= 1 else None
             if pb is not None:                                    # the pass, searched (reduced by NULL_R): the opponent plays on
-                v, ln = self.search(pb, zone, depth - 1 - NULL_R, -beta, -alpha, False, ply + 1)
+                v, ln = self.search(pb, zone, depth - 1 - NULL_R, -beta, -alpha, False, ply + 1, ext)
                 best, best_line = -v, [chess.Move.null()] + ln
                 if ln and ln[0] and -v < 0:                       # the pass shows a threat: its squares join the zone, so the
                     zone = zone | {ln[0].from_square, ln[0].to_square}   # moves that stop it are searched (0ROfv: Qxh2# and Rf2)
@@ -151,7 +152,8 @@ class ZoneSearch:
                 if len(nz) < self.max_zone:                       # a threat's target joins the zone: its replies are searched
                     nz |= {t for t in chess.SquareSet(b.attacks_mask(m.to_square)) if b.piece_at(t) is not None and b.piece_at(t).color == b.turn}
                 try:
-                    v, ln = self.search(b, frozenset(nz), depth - 1, -beta + g, -alpha + g, True, ply + 1)
+                    x = 1 if ext < CHECK_EXT and b.is_check() else 0   # a check does not use up a ply (up to CHECK_EXT a line)
+                    v, ln = self.search(b, frozenset(nz), depth - 1 + x, -beta + g, -alpha + g, True, ply + 1, ext + x)
                 finally:
                     b.pop()
                 v = g - v

@@ -22933,6 +22933,12 @@ from the 2026-09-28 18:42 entry:
 The zone ledger is the first reply-ply ledger that also helps in play; it costs about 22 s of CPU a position. It is now
 the command-line default of `frame_player` and `frame_puzzles` (`LEDGER` stays one-ply for library callers).
 
+**Two costs, measured after the store fixes (normal mode, one run each).** Soundness: the 300-puzzle zone run takes
+732 s (492 s before the key fixes, same 291/300) -- more frames are keyed by the whole board and reuse less. A check
+extension (a check does not use up a ply, up to 4 a line; `--check-ext 4`): 300 puzzles 286/300 (1 gained, 6 lost),
+single top move 236, 1,313 s; quiet 125/150 (3 gained, 2 lost), single 79, 836 s. Extended lines eat the
+per-candidate budget, so fewer candidates reach 8 plies; it stays off (`zone_search.CHECK_EXT = 0`).
+
 ## 2026-09-29 00:04 PDT — the zone search as the candidates' verifier: 300 puzzles 269 -> 288; the proposer trained (OBS)
 
 Stage 1 of the AlphaGeometry-style what-if proposer (`whatif_proposer.py train --solutions --offsets 49`; 600 training

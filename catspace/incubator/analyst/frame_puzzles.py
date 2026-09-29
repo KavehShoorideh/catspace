@@ -111,6 +111,7 @@ def main(argv=None):
     ap.add_argument("--ledger", default="zone_candidates", choices=["one_ply", "two_ply", "two_ply_candidates", "two_ply_instinct", "zone_candidates"])   # tactics need the reply ply (2026-09-28); the zone verifier (2026-09-29)
     ap.add_argument("--propose", type=int, default=0, help="zone_candidates: the moves realizing the what-if proposer's top-k edits join the candidates")
     ap.add_argument("--quiet-offset", type=int, default=73, help="lichess-quiet: rows i %% 97 == offset with a quiet theme (the proposer trained on 49)")
+    ap.add_argument("--check-ext", type=int, default=None, help="zone search: checks that do not use up a ply, per line (zone_search.CHECK_EXT)")
     ap.add_argument("--compare", nargs=2, metavar=("BEFORE", "AFTER"), help="two runs' dumps (data/derived names): what changed, no solving")
     a = ap.parse_args(argv)
     if a.compare:
@@ -118,6 +119,9 @@ def main(argv=None):
     from . import frame_player as FP
     FP.LEDGER = a.ledger; FP.PROPOSE = a.propose
     tag = a.ledger + (f"_propose{a.propose}" if a.propose else "")
+    if a.check_ext is not None:
+        from . import zone_search as Z
+        Z.CHECK_EXT = a.check_ext; tag += f"_ext{a.check_ext}"
     t0 = time.perf_counter()
     import multiprocessing as mp
     if a.source in ("lichess", "lichess-quiet"):
