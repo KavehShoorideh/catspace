@@ -274,6 +274,8 @@ def _after(b: chess.Board, m: chess.Move) -> chess.Board:
 
 
 def _choose_fen(fen: str) -> dict:
+    from .fates import clear_caches
+    clear_caches()
     return choose(chess.Board(fen))
 
 

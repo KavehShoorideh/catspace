@@ -587,6 +587,16 @@ def _check_moves(b: chess.Board) -> list:
 
 
 _TT: dict = {}                                                     # (position, squares, pieces, kings, checks left) -> (value, bound, line)
+
+
+def clear_caches(keep_lemmas: bool = True) -> None:
+    """Empty the per-position caches (called at the start of every pool task: ten workers holding 5.5 GB each
+    stalled a 300-puzzle run on a 36 GB machine, 2026-09-28); the lemma library is kept -- reuse across positions is
+    its point."""
+    from . import frame_goals
+    _TT.clear(); _JOINT.clear(); _RESOLVED.clear(); _KF.clear(); _FOOT.clear(); frame_goals._FRAME_ON.clear()
+    if not keep_lemmas:
+        _LEMMAS.clear()
 _EXACT, _LOWER, _UPPER = 0, 1, 2
 
 
@@ -604,7 +614,7 @@ def _resolve(b: chess.Board, squares, members: set, kings, alpha: float, beta: f
     alpha0 = alpha
     v, ln = _resolve_node(b, squares, members, kings, alpha, beta, forcing)
     if key is not None:
-        if len(_TT) > 2_000_000:
+        if len(_TT) > 300_000:
             _TT.clear()
         _TT[key] = (v, _UPPER if v <= alpha0 else _LOWER if v >= beta else _EXACT, ln)
     return v, ln
@@ -1106,12 +1116,12 @@ def resolve_frame(b: chess.Board, squares, kings, members) -> tuple:
         RESOLVED_STATS["lemma_hits"] = RESOLVED_STATS.get("lemma_hits", 0) + 1
     RESOLVED_STATS["computed"] += hit is None
     RESOLVED_STATS["hits"] += hit is not None
-    if len(_RESOLVED) > 500000:
+    if len(_RESOLVED) > 100000:
         _RESOLVED.clear()
     _RESOLVED[k] = v
     _LAST["source"] = "computed" + (", new lemma" if lk is not None and lk[0] not in _LEMMAS else "" if lk is not None else ", no lemma (can reach check)")
     if lk is not None and lk[0] not in _LEMMAS:
-        if len(_LEMMAS) > 500000:
+        if len(_LEMMAS) > 100000:
             _LEMMAS.clear()
         _LEMMAS[lk[0]] = (v[0], _line_to_slots(b, v[1], lk[1]))
     return v

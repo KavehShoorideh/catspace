@@ -23,6 +23,8 @@ from catspace.io import paths
 
 def _solve_lichess(row: dict) -> dict:
     from .frame_player import choose
+    from .fates import clear_caches
+    clear_caches()
     b = chess.Board(row["FEN"]); moves = row["Moves"].split()
     b.push_uci(moves[0])
     start = b.fen(); sol = moves[1:]
@@ -56,6 +58,8 @@ def _mates(b: chess.Board, u: str) -> bool:
 
 def _solve_epd(item) -> dict:
     from .frame_player import choose
+    from .fates import clear_caches
+    clear_caches()
     pid, fen, bms = item
     b = chess.Board(fen); c = choose(b)
     us = [m.uci() for m in bms]
