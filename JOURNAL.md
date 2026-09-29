@@ -22874,6 +22874,22 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-29 12:09 PDT — 1,000 fresh puzzles: 930/1000; a third of the misses are pawn subgoals (OBS)
+
+Kaveh: "go to new puzzles ... keep going through them". The local Lichess file holds 6,100,960 puzzles; `frame_puzzles
+--offset 500` takes rows i % 997 == 500, never the test sample's, the proposer's or the quiet set's. Zone ledger,
+runners on, one run (2,519 s, 10 workers): whole solution among the tied top moves 930/1000, single top move 789/1000;
+by rating 0-1200 394/398, 1200-1600 233/236, 1600-2000 173/189, 2000+ 130/177; weakest themes quietMove 24/36,
+pawnEndgame 28/37, defensiveMove 38/51, advancedPawn 44/51, rookEndgame 50/56, pin 54/60; mates 363/363.
+The 70 misses (`puzzle_dig`, Stockfish depth 18, which prefers the solution by 1.5+ pawns in 70/70): the solution is
+quiet in 44 (never a candidate in 17), a capture in 14, a check in 8, a checking capture in 4; Stockfish's line from the
+failing step PROMOTES a pawn in 24/70; the solver checks on 2+ of its first 4 moves in 17/70 (king attacks and check
+series longer than the zone search's horizon). Examples: pawn breaks 0fP78 b4, 19JFU g4, 2HcJa c4, 2Ocqf b6+; king
+attacks 0XeRy Bh5, 19w1G Bxh6, 3Na5L Qh5+. The frames' pick is usually a one-pawn gain inside the horizon (+1)
+against a solution whose point lies beyond it (0).
+Reading: on unseen puzzles the picture matches the 300: the misses are subgoals (promotion, a mating attack) the
+tactics layer cannot see within 8 plies, not tactics it gets wrong.
+
 ## 2026-09-29 11:07 PDT — related work for the frames, the zone search and the subgoal layer (Kaveh: "has this been done before?")
 
 Kaveh's direction (this morning): the root zone should come from the layer above -- the opponent's (and our)

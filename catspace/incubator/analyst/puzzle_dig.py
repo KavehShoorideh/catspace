@@ -50,7 +50,8 @@ def main(argv=None):
             gap = (ls[0].cp - lp[0].cp) if ls and lp else None
             rows.append(dict(r=r, step=k, fen=s["fen"], sol=b.san(sol), pick=b.san(pick), kind=kind(b, sol), pick_kind=kind(b, pick),
                              candidate=s["v_sol"] is not None, v_sol=s["v_sol"], v_top=s["v_top"], gap=gap,
-                             sf_line=ls[0].san_line(b, 8) if ls else "", pick_line=lp[0].san_line(b, 6) if lp else ""))
+                             sf_line=ls[0].san_line(b, 8) if ls else "", pick_line=lp[0].san_line(b, 6) if lp else "",
+                             pv=ls[0].san_line(b, 40) if ls else ""))
     finally:
         eng.close()
     n = len(rows)
@@ -60,6 +61,10 @@ def main(argv=None):
           f"the failing step is the first move in {sum(x['step'] == 0 for x in rows)}/{n}")
     print(f"OBS Stockfish prefers the solution to the frames' pick by 1.5+ pawns in {sum(1 for x in rows if x['gap'] is not None and x['gap'] >= 150)}/{n} "
           f"(by less: {sum(1 for x in rows if x['gap'] is not None and x['gap'] < 150)} -- the pick may be fine too)")
+    promo = sum(1 for x in rows if "=" in x["pv"])                # a promotion anywhere in Stockfish's line from the failing step
+    checks = sum(1 for x in rows if sum(1 for k, s in enumerate(x["pv"].split()[:8]) if k % 2 == 0 and "+" in s) >= 2)
+    print(f"OBS Stockfish's line from the failing step promotes a pawn in {promo}/{n}; the solver gives check on 2+ of its "
+          f"first 4 moves in {checks}/{n}")
     print("OBS themes of the misses: " + ", ".join(f"{t} {c}" for t, c in Counter(t for x in rows for t in x["r"]["themes"]
                                                                                 if t not in ("short", "long", "veryLong", "middlegame", "endgame", "crushing", "advantage")).most_common(14)))
     groups = defaultdict(list)
