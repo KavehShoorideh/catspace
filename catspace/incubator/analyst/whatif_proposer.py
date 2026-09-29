@@ -132,6 +132,34 @@ def solution_data(row: dict) -> list:
     return out
 
 
+_MODEL = {}
+
+
+def propose_moves(b: chess.Board, one: dict, k: int = 3, model: str = "whatif_proposer_solutions.pkl") -> dict:
+    """Stage 2 (the AlphaGeometry step): the proposer ranks the what-if edits of the side to move; the moves that start
+    or complete its top k become candidates for the search to verify. `one`: the one-ply values (uci -> value), the
+    context the proposer was trained with. -> {uci: (rank of the edit, edit kind, target square)}."""
+    import pickle
+    from .whatif import edits, realizes
+    if model not in _MODEL:
+        _MODEL[model] = pickle.load(open(paths.derived(model), "rb"))
+    es = edits(b)
+    if not es:
+        return {}
+    top1 = max(one.values())
+    ctx = dict(n_ties=sum(1 for v in one.values() if v == top1), top_value=top1, material=_material(b), n_pieces=len(b.piece_map()))
+    legal = list(b.legal_moves)
+    real = [[realizes(b, m, e) for m in legal] for e in es]
+    X = np.array([edit_features(b, e, sum(v == 1 for v in r), sum(v == 2 for v in r), ctx) for e, r in zip(es, real)], dtype=float)
+    p = _MODEL[model].predict_proba(X)[:, 1]
+    out = {}
+    for rank, i in enumerate(np.argsort(-p)[:k]):
+        for m, v in zip(legal, real[i]):
+            if v > 0 and m.uci() not in out:
+                out[m.uci()] = (rank, es[i].kind, es[i].target)
+    return out
+
+
 def cmd_solutions(a):
     import multiprocessing as mp
     rows = training_rows(a.n, a.offset, stride=a.stride)

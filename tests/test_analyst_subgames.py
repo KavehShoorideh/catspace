@@ -39,7 +39,8 @@ def test_a_plan_pays_for_what_its_piece_holds():
     pls = plans_for(b, chess.BLACK, memo=memo, top=3)
     nxe4 = next(p for p in pls if p.steps and p.steps[0].san == "Nxe4")
     assert nxe4.cost >= 100 and "keeps off Qxh7 (mate): not playable" in plan_text(b, nxe4)
-    assert pls.index(nxe4) == len(pls) - 1
+    assert all(p.cost >= 100 for p in pls[pls.index(nxe4):])   # the not-playable plans come last (since 074e4d85 the knight's
+    assert any(p.cost < 100 for p in pls)                      # Nd5-Nf4 plan is found too, and it leaves the mate guard as well)
     assert "keeps off Qxh7 (mate)" in holdings_lines(b, chess.BLACK, memo)[0]
     # a move that captures the lemma's own attacker breaks nothing: after 16.dxc5, Qxe5 leaves c6 but takes the knight that hit it
     b = chess.Board("r4rk1/2q1bppp/n1p1pn2/2PpN3/8/P1N1P3/5PPP/R2Q1RK1 b - - 0 16")

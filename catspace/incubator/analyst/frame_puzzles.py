@@ -80,21 +80,52 @@ def _line(fen: str, ucis: list) -> str:
     return " ".join(out)
 
 
+def compare(before: str, after: str) -> None:
+    """Two runs on the same puzzles: solved counts, puzzles gained and lost, and whether each miss's solution move was
+    ever a candidate (the reply ply's candidate set) or was one and was valued too low."""
+    import json
+    x = {r["id"]: r for r in json.load(open(paths.derived(before)))}
+    y = {r["id"]: r for r in json.load(open(paths.derived(after)))}
+    common = [k for k in x if k in y]
+    for name, d in ((before, x), (after, y)):
+        print(f"OBS {name}: whole solution among the tied top moves {sum(d[k]['solved'] for k in common)}/{len(common)}; "
+              f"single top move {sum(d[k]['solved_unique'] for k in common)}/{len(common)}")
+    gained = [k for k in common if y[k]["solved"] and not x[k]["solved"]]
+    lost = [k for k in common if x[k]["solved"] and not y[k]["solved"]]
+    print(f"OBS {after} against {before}: gained {len(gained)}, lost {len(lost)} ({', '.join(lost)})")
+    for name, d in ((before, x), (after, y)):
+        miss = [k for k in common if not d[k]["solved"]]
+        never = [k for k in miss if next((s for s in d[k]["steps"] if not s["tied"]), {}).get("v_sol", 0) is None]
+        print(f"OBS {name}: misses {len(miss)}; the solution move was never a candidate in {len(never)} ({', '.join(never)}), "
+              f"a candidate valued below the top in {len(miss) - len(never)}")
+
+
 def main(argv=None):
     import sys
     sys.stdout.reconfigure(line_buffering=True)
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", default="lichess", choices=["lichess", "wac", "bk"]); ap.add_argument("--n", type=int, default=300)
+    ap.add_argument("--source", default="lichess", choices=["lichess", "lichess-quiet", "wac", "bk"]); ap.add_argument("--n", type=int, default=300)
     ap.add_argument("--stride", type=int, default=997); ap.add_argument("--workers", type=int, default=10); ap.add_argument("--show", type=int, default=8)
-    ap.add_argument("--ledger", default="two_ply_candidates", choices=["one_ply", "two_ply", "two_ply_candidates", "two_ply_instinct"])   # tactics need the reply ply (2026-09-28)
+    ap.add_argument("--ledger", default="two_ply_candidates", choices=["one_ply", "two_ply", "two_ply_candidates", "two_ply_instinct", "zone_candidates"])   # tactics need the reply ply (2026-09-28)
+    ap.add_argument("--propose", type=int, default=0, help="zone_candidates: the moves realizing the what-if proposer's top-k edits join the candidates")
+    ap.add_argument("--quiet-offset", type=int, default=73, help="lichess-quiet: rows i %% 97 == offset with a quiet theme (the proposer trained on 49)")
+    ap.add_argument("--compare", nargs=2, metavar=("BEFORE", "AFTER"), help="two runs' dumps (data/derived names): what changed, no solving")
     a = ap.parse_args(argv)
+    if a.compare:
+        return compare(*a.compare)
     from . import frame_player as FP
-    FP.LEDGER = a.ledger
+    FP.LEDGER = a.ledger; FP.PROPOSE = a.propose
+    tag = a.ledger + (f"_propose{a.propose}" if a.propose else "")
     t0 = time.perf_counter()
     import multiprocessing as mp
-    if a.source == "lichess":
-        from .gauge_puzzles import sample
-        rows = sample(str(paths.assets_dir() / "lichess" / "lichess_db_puzzle.csv.zst"), a.n, a.stride)
+    if a.source in ("lichess", "lichess-quiet"):
+        if a.source == "lichess":
+            from .gauge_puzzles import sample
+            rows = sample(str(paths.assets_dir() / "lichess" / "lichess_db_puzzle.csv.zst"), a.n, a.stride)
+        else:                                                     # quiet-theme puzzles held out from the proposer's training rows
+            from .whatif_proposer import training_rows
+            rows = training_rows(a.n, a.quiet_offset, stride=97)
+            tag += f"_quiet{a.quiet_offset}"
         with mp.get_context("fork").Pool(a.workers) as pool:
             res = pool.map(_solve_lichess, rows, chunksize=2)
     else:
@@ -103,10 +134,10 @@ def main(argv=None):
         with mp.get_context("fork").Pool(a.workers) as pool:
             res = pool.map(_solve_epd, [(pid, b.fen(), bms) for pid, b, bms in items], chunksize=2)
     n = len(res)
-    print(f"[frame_puzzles] {a.source}: {n} puzzles, ledger {a.ledger}, {time.perf_counter() - t0:.0f}s")
+    print(f"[frame_puzzles] {a.source}: {n} puzzles, ledger {tag}, {time.perf_counter() - t0:.0f}s")
     print(f"OBS first move: the frames' single top move {sum(r['first_unique'] for r in res)}/{n}; among the tied top moves {sum(r['first_tied'] for r in res)}/{n} "
           f"(top set size, median {sorted(r['steps'][0]['n_top'] for r in res)[n // 2]})")
-    if a.source == "lichess":
+    if a.source in ("lichess", "lichess-quiet"):
         print(f"OBS the whole solution (every step of the solver): single top move each time {sum(r['solved_unique'] for r in res)}/{n}; "
               f"among the tied top moves each time {sum(r['solved'] for r in res)}/{n}")
         bands = [(0, 1200), (1200, 1600), (1600, 2000), (2000, 4000)]
@@ -120,7 +151,7 @@ def main(argv=None):
             rows.append(f"{t} {sum(r['solved'] for r in res if t in r['themes'])}/{k}")
         print("OBS by theme, whole solution among the tied top moves: " + "; ".join(rows[:16]))
     import json
-    json.dump(res, open(paths.derived(f"frame_puzzles_{a.source}_{a.ledger}.json"), "w"))   # every puzzle's steps, for the dig
+    json.dump(res, open(paths.derived(f"frame_puzzles_{a.source}_{tag}.json"), "w"))   # every puzzle's steps, for the dig
     misses = [r for r in res if not r["solved"]]
     for r in misses[:a.show]:
         s = next(x for x in r["steps"] if not x["tied"])

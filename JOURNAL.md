@@ -22874,6 +22874,44 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-29 00:04 PDT — the zone search as the candidates' verifier: 300 puzzles 269 -> 288; the proposer trained (OBS)
+
+Stage 1 of the AlphaGeometry-style what-if proposer (`whatif_proposer.py train --solutions --offsets 49`; 600 training
+puzzles, disjoint from the 300-puzzle test sample; held out by puzzle id): gradient-boosted trees on the edit
+features, 52,178 training edits (13.8% useful), 16,105 held out (12.7%), AUC 0.823 (the edit's static gain alone
+0.555). Positions whose solution move realizes an edit, the solution's edit among the proposer's top 1 / 3 / 5 (by
+static gain in brackets): all steps (323) 175 / 216 / 252 (57 / 129 / 179); steps the frames alone missed (61)
+26 / 36 / 42 (18 / 29 / 36); steps whose solution is quiet (94) 43 / 54 / 69 (27 / 48 / 61).
+
+The zone search (`zone_search.py`), made a verifier. Four changes, each from an example:
+- Every candidate is compared at the same depth (`rank`: all at 4 plies, then 6, then 8). Before, a candidate the
+  budget stopped at 6 plies was compared with ones searched to 8.
+- The pass is a searched move (null-move reduction R=2): the opponent plays on after it. Before, the pass was read one
+  move deep, so a two-move threat never showed (0M4g4: Nac5 read 0 with Black's h-pawn three steps from queening).
+  Passed pawns within three steps of promotion ("runners") join the root zone with the squares ahead of them.
+- Leaves read each zone square's own exchange (no king joined: the search above already plays the checks), and the side
+  to move at the horizon may cash in its best exchange (quiescence: max of standing pat and capturing). The joint-frame
+  read at every leaf was a search inside the search: 15 ms a node on 1HnWH, now about 0.1 ms.
+- Each candidate gets its own node budget (20,000) per depth; a candidate that runs out keeps its last completed depth,
+  and one more than 3 pawns behind the best is not deepened (0Hb6O: 27 candidates sharing one budget left every
+  candidate at 6 plies, where the rook sacrifice Rxh7+ reads -1; at 8 it reads +2 and is the top move).
+The zone search then values the reply-ply candidates of `frame_player` (`--ledger zone_candidates`: the one-ply top 6,
+every capture, check and promotion, the quiet threats). 300 Lichess puzzles (the fixed test sample), one run each:
+  two_ply_candidates (the previous best):       whole solution 269/300, single top move 201/300
+  zone, one budget shared (1,444 s, 10 workers): 287/300, 232/300; 2000+ rating 46/58 (two_ply_candidates 38/58)
+  zone, per-candidate budgets (561 s):          288/300, 232/300; 2000+ 47/58; below 1600 186/186
+  against two_ply_candidates: 23 gained, 4 lost (10Hhy, 11Whs, 1m070, 2hmp1); the two zone runs differ by 3 gained
+  and 2 lost -- indistinguishable at one run each.
+  Misses: 12, of which the solution move was never a candidate in 2 (0eOUW, 2ckKj) -- the same two as before; the
+  other 10 are candidates valued too low. Candidate generation is not what limits this sample; valuation is.
+The misses checked against Stockfish (depth 18-20): 10Hhy Rxf6 (+5.9) is a mating attack past 8 plies; 11Whs Kg8
+(+3.1): the refutation of the zone's choice Re8 (-3.9) is the quiet h6, which bears on g7, a square outside the
+zone; 1m070 f2 (+5.3) wins a pawn ending, which a material search cannot see. Adding the kings' neighbourhoods to the
+root zone solves 11Whs but loses 0Hb6O (a bigger zone, the sacrifice runs out of budget); it stays off (`KING_RING`).
+Reading: Kaveh's diagnosis holds -- plies are cheap inside the right zone; 8 plies in 1-5 s a move on most positions.
+The remaining misses are depth (mating attacks past 8 plies), zone boundaries (a quiet resource next to the king) and
+endgame knowledge. Next: the proposer's constructions as candidates, measured on held-out quiet-theme puzzles.
+
 ## 2026-09-28 22:35 PDT — the proposer's first data; the zone search (Kaveh: "going 6 plies shouldn't be hard") (OBS)
 
 AlphaGeometry-style proposer, first attempt (`whatif_proposer.py data`): what-if edits labelled useful when a realizing

@@ -1,49 +1,39 @@
 """THE ZONE SEARCH (Kaveh 2026-09-28: "I find it hard to believe that going like 6 plies is hard ... humans go 6 plies
 (takes takes takes!) without trouble. Either we aren't focusing on the right frames, or counting plies in the most
-important frame is too slow"). Prototype. Alpha-beta several plies deep inside the ZONE of an idea -- the squares of
-the frames its move touches, growing as the line touches new squares and as a move's threats name new targets -- with
-the moves that can matter there: captures, checks, evasions, promotions, moves of zone pieces or onto zone squares, and
-moves after which the moved piece bears on the zone (the frame interface). Standing pat is passing: minus what the
-opponent then wins in the zone (their threats count; promotions included). Leaves read only the zone's frames, not the
-whole board -- which is why it is cheap: Kaveh's Kf5 refutation (Rxe5+ Kxe5 Rc5+ Ke6 Rxh5) in about 300 nodes.
+important frame is too slow"). Alpha-beta several plies deep inside the ZONE of an idea -- the squares of the frames its
+move touches, growing as the line touches new squares and as a move's threats name new targets -- with the moves that
+can matter there: captures, checks, evasions, promotions, moves of zone pieces or onto zone squares, and moves after
+which the moved piece bears on the zone (the frame interface). Standing pat is passing, and the pass is searched (the
+opponent plays on; their threats count; promotions too). Leaves read only the zone's frames, each by its own exchange
+(no king joined: the search above plays the checks) -- which is why it is cheap: Kaveh's Kf5 refutation (Rxe5+ Kxe5 Rc5+ Ke6 Rxh5) in about 300 nodes.
 
-    python -m catspace.incubator.analyst.zone_search 8
+A transposition table (alpha-beta bounds, the depth searched, the best move tried first), a node budget and a cap on
+the zone's size keep it bounded; iterative deepening (4, 6, 8 plies) returns the deepest completed answer when the budget
+runs out. rank() deepens the candidates together -- all at 4 plies, then at 6, ... -- each with the budget for each
+iteration, so they are compared at the same depth unless one explodes (it keeps its last completed depth).
+
+RUNNERS: a passed pawn within three steps of promotion joins the root zone with the squares ahead of it, so its pushes
+and the pieces that could stop it are searched (0M4g4: Nac5 looked safe until the h-pawn ran, h3 h2 h1=Q). The pawn
+promotes inside the search -- not a promotion frame (Kaveh 2026-09-28).
+
+    python -m catspace.incubator.analyst.zone_search            # the test positions
 """
-import sys, time
+from __future__ import annotations
+
+import sys
+import time
+
 import chess
+
 from . import fates as F
-from .frame_goals import frame_on
 
-VAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
 MATE = 1000.0
-nodes = [0]
+KING_RING = False                                                   # the kings' neighbourhoods join the root zone (11Whs: h6 bears on g7)
+NULL_R = 2                                                          # the pass is searched NULL_R plies shallower (null-move reduction)
 
 
-def cap(b, m):
-    return F.captured_value(b, m)
-
-
-def gains(b, zone):
-    """What the side to move can win now in the zone: a frame on an enemy piece there, or a promotion that survives
-    (its gain less what the opponent then wins on the promotion square)."""
-    best = 0.0
-    for s in zone:
-        pc = b.piece_at(s)
-        if pc is not None and pc.color != b.turn and pc.piece_type != chess.KING:
-            best = max(best, frame_on(b, s)[0])
-    for m in b.generate_legal_moves(from_mask=b.pawns & b.occupied_co[b.turn]):
-        if m.promotion == chess.QUEEN:
-            b.push(m); lost = frame_on(b, m.to_square)[0] if not b.is_checkmate() else 0.0; b.pop()
-            best = max(best, cap(b, m) - max(0.0, lost))
-    return best
-
-
-def stand(b, zone):
-    """Standing pat is passing: minus what the opponent wins in the zone if we pass (their threats count)."""
-    if b.is_check():
-        return None
-    pb = F.passed(b)
-    return 0.0 if pb is None else -gains(pb, zone)
+class Budget(Exception):
+    pass
 
 
 def _att(pt, color, sq, occ):
@@ -61,80 +51,207 @@ def _att(pt, color, sq, occ):
     return m
 
 
-def moves_in_zone(b, zone):
-    if b.is_check():
-        return list(b.legal_moves)
-    zm = 0
-    for s in zone:
-        zm |= chess.BB_SQUARES[s]
-    out = []
-    for m in b.legal_moves:
-        pt = b.piece_type_at(m.from_square)
-        occ = (b.occupied & ~chess.BB_SQUARES[m.from_square]) | chess.BB_SQUARES[m.to_square]
-        bears = _att(pt, b.turn, m.to_square, occ) & zm                   # the frame interface: it comes to bear on the zone
-        if b.is_capture(m) or m.promotion or chess.BB_SQUARES[m.from_square] & zm or chess.BB_SQUARES[m.to_square] & zm or bears or b.gives_check(m):
-            out.append(m)
+class ZoneSearch:
+    def __init__(self, budget: int = 4000, max_zone: int = 18):
+        self.budget = budget; self.max_zone = max_zone; self.nodes = 0; self.total = 0; self.tt = {}; self.reads = {}
+
+    def read(self, b: chess.Board, s: int) -> float:
+        """A leaf's read of the frame on s: its own exchange (the square frame, no king joined -- the search above
+        already plays the checks and evasions; a capture-only read at the horizon, as a quiescence search does)."""
+        key = (b._transposition_key(), s)
+        v = self.reads.get(key)
+        if v is None:
+            v = self.reads[key] = F.resolve_frame(b, {s}, set(), F.square_frame(b, s))[0]
+        return v
+
+    def gains(self, b: chess.Board, zone: frozenset) -> float:
+        """What the side to move can win now in the zone: a frame on an enemy piece there, or a promotion that survives
+        (its gain less what the opponent then wins on the promotion square)."""
+        best = 0.0
+        for s in zone:
+            pc = b.piece_at(s)
+            if pc is not None and pc.color != b.turn and pc.piece_type != chess.KING and b.attackers_mask(b.turn, s):
+                best = max(best, self.read(b, s))                 # (a piece nothing attacks cannot be won: no frame to read)
+        for m in b.generate_legal_moves(from_mask=b.pawns & b.occupied_co[b.turn] & (chess.BB_RANK_7 if b.turn else chess.BB_RANK_2)):
+            if m.promotion == chess.QUEEN:
+                b.push(m); lost = 0.0 if b.is_checkmate() else self.read(b, m.to_square); b.pop()
+                best = max(best, F.captured_value(b, m) - max(0.0, lost))
+        return best
+
+    def stand(self, b: chess.Board, zone: frozenset) -> float:
+        """The static stand-pat (a pass after a pass): minus what the opponent wins in the zone at once if we pass
+        (their threats count)."""
+        pb = F.passed(b)
+        return 0.0 if pb is None else -self.gains(pb, zone)
+
+    def leaf(self, b: chess.Board, zone: frozenset) -> float:
+        """The horizon: the side to move stands pat or cashes in its best frame in the zone, whichever is better (as a
+        quiescence search chooses between the static value and its captures)."""
+        return max(self.stand(b, zone), self.gains(b, zone))
+
+    def moves(self, b: chess.Board, zone: frozenset) -> list:
+        if b.is_check():
+            return list(b.legal_moves)
+        zm = 0
+        for s in zone:
+            zm |= chess.BB_SQUARES[s]
+        out = []
+        for m in b.legal_moves:
+            pt = b.piece_type_at(m.from_square)
+            occ = (b.occupied & ~chess.BB_SQUARES[m.from_square]) | chess.BB_SQUARES[m.to_square]
+            if (b.is_capture(m) or m.promotion or chess.BB_SQUARES[m.from_square] & zm or chess.BB_SQUARES[m.to_square] & zm
+                    or _att(pt, b.turn, m.to_square, occ) & zm or b.gives_check(m)):
+                out.append(m)
+        return out
+
+    def search(self, b: chess.Board, zone: frozenset, depth: int, alpha: float, beta: float, null_ok: bool = True, ply: int = 0) -> tuple:
+        """Negamax alpha-beta inside the zone. Standing pat is passing, and passing is a move: the opponent then plays on
+        at depth - 1 - NULL_R (a two-move threat -- a pawn two pushes from queening -- is searched, not missed because the
+        pass was read one move deep); near the horizon, and after a pass, the stand-pat is read statically. A side
+        in check at the horizon is searched on (its evasions) up to ply 12."""
+        self.nodes += 1
+        if self.nodes > self.budget:
+            raise Budget()
+        if b.is_checkmate():
+            return -MATE, []
+        check = b.is_check()
+        if depth <= 0 and (not check or ply >= 12):
+            return (0.0 if check else self.leaf(b, zone)), []
+        depth = max(depth, 1)
+        key = (b._transposition_key(), zone, null_ok)
+        e = self.tt.get(key)
+        hint = None
+        if e is not None:
+            d0, v, flag, ln = e
+            if d0 >= depth and (flag == 0 or (flag == 1 and v >= beta) or (flag == 2 and v <= alpha)):
+                return v, ln
+            hint = ln[0] if ln else None                          # the best move of a shallower search is tried first
+        alpha0 = alpha
+        best = -1e9; best_line = []
+        if not check:
+            pb = F.passed(b) if null_ok and depth - 1 - NULL_R >= 1 else None
+            if pb is not None:                                    # the pass, searched (reduced by NULL_R): the opponent plays on
+                v, ln = self.search(pb, zone, depth - 1 - NULL_R, -beta, -alpha, False, ply + 1)
+                best, best_line = -v, [chess.Move.null()] + ln
+            else:
+                best = self.stand(b, zone)
+            alpha = max(alpha, best)
+        if alpha < beta:
+            ms = self.moves(b, zone)
+            ms.sort(key=lambda m: (m != hint, -(F.captured_value(b, m) + (5 if b.gives_check(m) else 0))))
+            for m in ms:
+                g = F.captured_value(b, m)
+                b.push(m)
+                nz = zone | {m.from_square, m.to_square}
+                if len(nz) < self.max_zone:                       # a threat's target joins the zone: its replies are searched
+                    nz |= {t for t in chess.SquareSet(b.attacks_mask(m.to_square)) if b.piece_at(t) is not None and b.piece_at(t).color == b.turn}
+                try:
+                    v, ln = self.search(b, frozenset(nz), depth - 1, -beta + g, -alpha + g, True, ply + 1)
+                finally:
+                    b.pop()
+                v = g - v
+                if v > best:
+                    best, best_line = v, [m] + ln
+                alpha = max(alpha, best)
+                if alpha >= beta:
+                    break
+        best = best if best > -1e9 else 0.0
+        self.tt[key] = (depth, best, 2 if best <= alpha0 else 1 if best >= beta else 0, best_line)
+        return best, best_line
+
+    def root(self, b: chess.Board, m: chess.Move):
+        """The move's root zone: the square frames of its from and to squares, the kings, the pieces its piece then
+        attacks, the squares of the opponent's winning frames after it, and the runners with the squares ahead of them.
+        -> (gain, board after, zone) or None when the move mates."""
+        zone = {m.from_square, m.to_square}
+        for s in list(zone):
+            zone |= F.square_frame(b, s)
+        for c in (chess.WHITE, chess.BLACK):
+            if b.king(c) is not None:
+                zone.add(b.king(c))
+                if KING_RING:                                     # the king's neighbourhood: a quiet move bearing on it is searched
+                    zone |= set(chess.SquareSet(chess.BB_KING_ATTACKS[b.king(c)]))
+        bb = b.copy(stack=False); bb.push(m)
+        if bb.is_checkmate():
+            return None
+        zone |= {t for t in chess.SquareSet(bb.attacks_mask(m.to_square)) if bb.piece_at(t) is not None and bb.piece_at(t).color == bb.turn}
+        for fr, _, fv, _ in F.joint_threats_book(bb, F.square_frame)[1].values():
+            if fv > 0:                                            # a glance at the rest (Kaveh): the opponent's winning frames after the move
+                zone |= set(fr[0])                                # join the zone, so a threat elsewhere is not ignored
+        zone |= runners(bb)
+        return F.captured_value(b, m), bb, frozenset(zone)
+
+    def value(self, b: chess.Board, m: chess.Move, depths=(4, 6, 8)) -> tuple:
+        """The move's value by the zone search: the deepest completed depth within the budget. -> (value, line, depth)."""
+        return self.rank(b, [m], depths)[m]
+
+    def rank(self, b: chess.Board, moves: list, depths=(4, 6, 8), margin: float = 3.0) -> dict:
+        """The candidates deepened together: all at 4 plies, then at 6, ...; each candidate has the node budget for each
+        iteration, and one that runs out keeps its previous depth's value (so an explosive candidate does not hold the
+        others at a shallower depth -- 0Hb6O: with 27 candidates sharing one budget, none reached 8 plies, where the
+        rook sacrifice Rxh7+ pays). A candidate more than `margin` behind the best is not deepened further.
+        -> {move: (value, line, depth)}."""
+        roots = {m: self.root(b, m) for m in moves}
+        got = {m: ((1e6, [m], 1) if r is None else (r[0], [m], 0)) for m, r in roots.items()}
+        self.total = 0
+        for i, d in enumerate(depths):
+            top = max(v for v, _, _ in got.values())
+            live = [m for m in moves if roots[m] is not None
+                    and (i == 0 or (got[m][0] >= top - margin and got[m][2] == depths[i - 1]))]   # (one out of budget stays out)
+            for m in sorted(live, key=lambda x: -got[x][0]):           # the previous depth's best first
+                g, bb, zone = roots[m]
+                self.nodes = 0
+                try:
+                    v, ln = self.search(bb, zone, d - 1, -1e9, 1e9)
+                except Budget:
+                    continue                                          # out of budget at this depth: it keeps the last one
+                finally:
+                    self.total += self.nodes
+                got[m] = (g - v, [m] + ln, d)
+        return got
+
+
+def runners(b: chess.Board, steps: int = 3) -> set:
+    """Passed pawns within `steps` of promotion, either side, with the squares ahead of them to the last rank."""
+    out = set()
+    for c in (chess.WHITE, chess.BLACK):
+        for s in b.pieces(chess.PAWN, c):
+            f, r = chess.square_file(s), chess.square_rank(s)
+            togo = 7 - r if c == chess.WHITE else r
+            if togo > steps:
+                continue
+            ahead = range(r + 1, 8) if c == chess.WHITE else range(r - 1, -1, -1)
+            if any(b.piece_at(chess.square(ff, rr)) == chess.Piece(chess.PAWN, not c)
+                   for ff in (f - 1, f, f + 1) if 0 <= ff < 8 for rr in ahead):
+                continue
+            out.add(s); out |= {chess.square(f, rr) for rr in ahead}
     return out
 
 
-def search(b, zone, depth, alpha, beta, line_out):
-    nodes[0] += 1
-    if b.is_checkmate():
-        return -MATE
-    sp = stand(b, zone)
-    if depth == 0:
-        return sp if sp is not None else -gains(b, zone)
-    best = sp if sp is not None else -1e9
-    if sp is not None:
-        alpha = max(alpha, sp)
-        if alpha >= beta:
-            return sp
-    ms = moves_in_zone(b, zone)
-    ms.sort(key=lambda m: -(cap(b, m) + (5 if b.gives_check(m) else 0)))
-    best_line = []
-    for m in ms:
-        g = cap(b, m)
-        b.push(m)
-        threatened = {t for t in chess.SquareSet(b.attacks_mask(m.to_square)) if b.piece_at(t) is not None and b.piece_at(t).color == b.turn}
-        nz = zone | {m.from_square, m.to_square} | threatened            # a threat's target joins: its replies are searched
-        sub = []
-        v = g - search(b, nz, depth - 1, -beta + g, -alpha + g, sub)
-        b.pop()
-        if v > best:
-            best = v; best_line = [m] + sub
-        alpha = max(alpha, best)
-        if alpha >= beta:
-            break
-    line_out[:] = best_line
-    return best if best > -1e9 else 0.0
+def _san(b: chess.Board, line: list) -> str:
+    bb = b.copy(); out = []
+    for m in line:
+        out.append("(pass)" if not m else bb.san(m)); bb.push(m)
+    return " ".join(out)
 
 
-def zone_of(b, m):
-    """The zone of a candidate move: the squares of the frames it touches (its from/to, the pieces bearing on them),
-    the kings' squares."""
-    z = {m.from_square, m.to_square}
-    for s in list(z):
-        z |= F.square_frame(b, s)
-    for c in (chess.WHITE, chess.BLACK):
-        k = b.king(c)
-        if k is not None:
-            z.add(k)
-    return z
+CASES = [("0KCNf", "2R5/6pk/4P1pp/Pn1K4/2p3rP/8/8/8 w - - 4 45", ["e7", "Rxc4"]),
+         ("0M4g4", "8/k2P4/N1n1N1p1/4p3/4P1rp/8/8/3K4 w - - 3 46", ["Nb4", "d8=Q", "Nac5"]),
+         ("Kaveh", "6k1/6p1/8/2r1P2Q/6K1/3P2P1/2r5/8 w - - 1 38", ["Kf5", "Qe8+", "Kf4"]),
+         ("1HnWH", "8/4N1pk/7p/1p3R2/q3n3/4P2P/2r1Q1P1/6K1 w - - 2 41", ["Qg4", "Qxb5"])]
+
+
+def main(argv=None):
+    budget = int((argv or sys.argv[1:] or ["4000"])[0])
+    for pid, fen, cands in CASES:
+        b = chess.Board(fen); ms = [b.parse_san(s) for s in cands]
+        zs = ZoneSearch(budget); t = time.perf_counter()
+        got = zs.rank(b, ms)
+        for m in ms:
+            v, ln, d = got[m]
+            print(f"{pid} {b.san(m)}: {v:+g} at {d} plies  {_san(b, ln)}")
+        print(f"   ({zs.total} nodes, {time.perf_counter() - t:.1f}s)")
 
 
 if __name__ == "__main__":
-    depth = int(sys.argv[1])
-    for pid, fen, cands in [("0KCNf", "2R5/6pk/4P1pp/Pn1K4/2p3rP/8/8/8 w - - 4 45", ["e7", "Rxc4"]),
-                            ("0M4g4", "8/k2P4/N1n1N1p1/4p3/4P1rp/8/8/3K4 w - - 3 46", ["Nb4", "d8=Q"]),
-                            ("Kaveh", "6k1/6p1/8/2r1P2Q/6K1/3P2P1/2r5/8 w - - 1 38", ["Kf5", "Qe8+", "Kf4"]),
-                            ("1HnWH", "8/4N1pk/7p/1p3R2/q3n3/4P2P/2r1Q1P1/6K1 w - - 2 41", ["Qg4", "Qxb5"])]:
-        b = chess.Board(fen)
-        for san in cands:
-            m = b.parse_san(san); z = zone_of(b, m)
-            nodes[0] = 0; t = time.perf_counter()
-            g = cap(b, m); b.push(m); line = []
-            v = g - search(b, z | {m.to_square}, depth - 1, -1e9, 1e9, line); b.pop()
-            bb = b.copy(); bb.push(m); ls = []
-            for x in line:
-                ls.append(bb.san(x)); bb.push(x)
-            print(f"{pid} {san}: zone search {depth} plies -> {v:+g}  line {san} {' '.join(ls)}  ({nodes[0]} nodes, {time.perf_counter()-t:.1f}s, zone {len(z)} squares)")
+    main()

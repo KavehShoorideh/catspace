@@ -102,6 +102,8 @@ def two_ply_value(b: chess.Board, m: chess.Move, opponent: str = "all") -> tuple
 
 
 CANDIDATES = 6                                                      # two_ply_candidates: the one-ply top moves that get the reply ply
+PROPOSE = 0                                                         # zone_candidates: the moves realizing the proposer's top-k what-if edits join (0: off)
+ZONE_BUDGET = 20000                                                 # zone_candidates: nodes per candidate per depth (all deepen together: 4, 6, 8 plies)
 
 
 def _one_ply_values(b: chess.Board, before, book) -> dict:
@@ -124,9 +126,9 @@ def choose(b: chess.Board) -> dict:
     else:
         before = threats(stand, square_frame) if stand is not None else (0.0, None, [])
     values = {}; trace = {}
-    if LEDGER in ("two_ply", "two_ply_candidates", "two_ply_instinct"):
+    if LEDGER in ("two_ply", "two_ply_candidates", "two_ply_instinct", "zone_candidates"):
         moves = list(b.legal_moves)
-        if LEDGER in ("two_ply_candidates", "two_ply_instinct"):                                # the reply ply only where tactics live: the one-ply top moves,
+        if LEDGER in ("two_ply_candidates", "two_ply_instinct", "zone_candidates"):                                # the reply ply only where tactics live: the one-ply top moves,
             one = _one_ply_values(b, before, book)                        # every capture and check (Kaveh: which what-ifs to consider)
             ranked = sorted(one, key=lambda u: -one[u])
             top1 = max(one.values())
@@ -139,7 +141,17 @@ def choose(b: chess.Board) -> dict:
                 nb = b.copy(stack=False); nb.push(m); pb = passed(nb)
                 if pb is not None and joint_threats(pb, square_frame)[0] >= now + 0.5:
                     keep.add(m.uci())
+            if PROPOSE and LEDGER == "zone_candidates":                    # the what-if proposer's top edits: the moves that realize them join
+                from .whatif_proposer import propose_moves                  # (AlphaGeometry-style constructions; the zone search verifies)
+                keep |= set(propose_moves(b, one, PROPOSE))
             moves = [m for m in moves if m.uci() in keep]
+        if LEDGER == "zone_candidates":                                     # the zone search verifies the candidates, all at the same depth
+            from .zone_search import ZoneSearch                             # (Kaveh: plies are cheap in the right frame)
+            got = ZoneSearch(ZONE_BUDGET).rank(b, moves)
+            for m in moves:
+                v, zl, _ = got[m]
+                values[m.uci()] = v; trace[m.uci()] = ((v, None, [x.uci() for x in zl[1:]]), before)
+            moves = []
         for m in moves:
             v, r, ln = two_ply_value(b, m, "instinct" if LEDGER == "two_ply_instinct" else "all")
             values[m.uci()] = v; trace[m.uci()] = ((v, None, [r] + ln if r else ln), before)
@@ -294,7 +306,7 @@ def main(argv=None):
     ap.add_argument("--per-frame", action="store_true", help="resolve each frame alone (no pulled-in pieces), for comparison")
     ap.add_argument("--show", type=int, default=3); ap.add_argument("--workers", type=int, default=max(1, (__import__("os").cpu_count() or 2) - 1))
     ap.add_argument("--plans", default=PLANS, help="the tactical plan layer that breaks ties in the top set (plan_layers.LAYERS)")
-    ap.add_argument("--ledger", default=LEDGER, choices=["one_ply", "two_ply", "two_ply_candidates", "two_ply_instinct"])
+    ap.add_argument("--ledger", default=LEDGER, choices=["one_ply", "two_ply", "two_ply_candidates", "two_ply_instinct", "zone_candidates"])
     ap.add_argument("--no-king-prior", action="store_true", help="join every king frame the counter-check rule names (no learned prior)")
     ap.add_argument("--trace", default=None, metavar="FEN", help="a sample analysis of one position, in the order the frames are analysed")
     a = ap.parse_args(argv)
