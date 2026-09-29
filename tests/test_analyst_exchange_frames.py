@@ -163,3 +163,27 @@ def test_the_persistent_frame_store_serves_only_what_it_would_recompute():
         assert F.RESOLVED_STATS.get("lemma_hits", 0) > before.get("lemma_hits", 0)
     finally:
         F.VERIFY_FRAMES = old
+
+
+def test_the_fast_resolver_equals_the_reference():
+    """2026-09-28 'make frames faster': the in-place resolver (transposition table, check screen, captures onto the
+    frame's squares) and the bitboard interactors must give exactly what the reference code gives."""
+    positions = ["7R/3b2r1/1p1kp3/p2p4/3PpN2/PP2P3/1KP2P2/8 b - - 0 29", "r4r2/1pq3kp/p2p2p1/4p3/4bPn1/1Q2PN2/PP1KB1P1/R6R w - - 0 21",
+                 "r5k1/p1p2p2/2p4p/3b1Nq1/3p1Q2/1PbPp1P1/P1P1P2P/1R4K1 w - - 1 25", "1n3r2/1Q2qp2/p3pkp1/3p3p/3P4/2P3P1/B1P2PKP/1R6 w - - 0 24"]
+    old_gate = F.KING_JOIN_GATE
+    F.KING_JOIN_GATE = None
+    try:
+        for fen in positions:
+            b = chess.Board(fen)
+            for m in list(b.legal_moves)[:8]:
+                nb = b.copy(); nb.push(m)
+                if nb.is_game_over():
+                    continue
+                for fr, _, v, ln in F.frame_book(nb, F.square_frame).values():
+                    assert F.local_resolve(nb, fr[0], set(fr[2]), fr[1])[0] == F._local_resolve_reference(nb, fr[0], set(fr[2]), fr[1])[0], (nb.fen(), fr)
+                for sq, pc in nb.piece_map().items():
+                    if pc.color != nb.turn and pc.piece_type != chess.KING and nb.attackers(nb.turn, sq):
+                        mem = F.square_frame(nb, sq)
+                        assert F.interactors(nb, mem, {sq}) == F._interactors_reference(nb, mem, {sq})
+    finally:
+        F.KING_JOIN_GATE = old_gate
