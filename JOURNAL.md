@@ -22874,6 +22874,38 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-29 14:18 PDT — the reachability frame: can the piece make it there? (OBS)
+
+Kaveh's calls: keep the hand-coded runners until a subgoal layer replaces them; build the reachability frame first;
+pause the puzzle batches. His design: "you don't need an interceptor ... consider the piece, and see if in the next few
+moves the piece can make it there ... in a frame"; the predicates ("no rook or bishop can cross this path") stay
+unevaluated "until something changes in one of these frames"; a piece that can come may be "tied up" -- its coming
+"costs something else". `piece_reach.py`:
+- PIECE REACH, one piece's own frame: the squares it can stand on and attack within k of its own moves, the others
+  still (pseudo-legal), with the move counts; the walk records every square it read (the rays up to the blocker, the
+  knight's and king's targets, the pawn's squares) and the answer is served again while those squares hold what they
+  held (verify mode recomputes and compares).
+- THE GOAL FRAME: a goal (a piece reaching a square; a pawn running to its last rank), its path and arrival times,
+  and its MEMBERS: the opposing pieces that can stand on or attack a path square before the goal piece gets there
+  (t - 1 of their moves when the goal side is to move, t when they are), or that can check the goal side's king in
+  time, directly or by stepping off a slider's line (a check buys a move -- the king frame joins, as in joint frames).
+  Each member carries its route and its JOB: what its side gives up if it is gone (our best frame's rise plus its
+  side's best frame's fall). No members: UNOPPOSED.
+Which goals to ask about stays with the layer above; the pawn run is the first user.
+Gauges, one run each:
+- Exact soundness (`piece_reach exact`): 3,000 random positions -- a white pawn within three moves of its last rank,
+  both kings, at most one black piece; `_gets_through` searches every Black defence (White only pushes or answers a
+  check): unopposed 962, the pawn gets through in 962 (0 failures); contested 2,038, stopped in 1,866, gets through
+  anyway in 172 (the frame cautious). King and pawn against king alone (`piece_reach tablebase`, Syzygy): unopposed
+  474/474 won -- the rule of the square, not coded. With checks as members, unopposed positions are won 719/745 (0.965;
+  0.910 before checks counted); the rest reach the last rank but lose the new queen (8/P7/K7/8/3r4/..: a8=Q, then a rook
+  skewer) -- "does the promoted piece survive" is the next frame, not this one.
+- Move to move (`piece_reach reuse`, 40 games of lichess_2015-06, 2,290 positions): each piece's reach (k=4) asked once
+  a position is served unchanged from an earlier position 32,655 times, computed 19,467 (0.627).
+- 2ckKj (8/p7/2P5/1P1rk3/R7/6p1/8/6K1 w): the c6 pawn's frame has one member, the rook on d5 (Rd8 attacks c8 in time),
+  with a job worth +1 (its threat on b5) -- the solution's point in the frame's own terms: the rook can stop the pawn
+  only by leaving b5.
+
 ## 2026-09-29 13:46 PDT — 2,000 more fresh puzzles: 1861/2000; the same picture (OBS)
 
 `frame_puzzles --n 2000 --offset 600` (rows i % 997 == 600, disjoint from every earlier set), zone ledger, one run
