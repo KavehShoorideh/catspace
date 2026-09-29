@@ -22874,6 +22874,30 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-28 22:35 PDT — the proposer's first data; the zone search (Kaveh: "going 6 plies shouldn't be hard") (OBS)
+
+AlphaGeometry-style proposer, first attempt (`whatif_proposer.py data`): what-if edits labelled useful when a realizing
+move beats the standard candidates by the frames' two-ply value -- 0 useful edits on 30 puzzle positions, and 0 on 29
+positions where the frames stall (quiet-theme puzzles): the two-ply check cannot verify a quiet construction (its
+payoff is 3-5 plies away). Kaveh chose "both, solutions first": stage 1 learns from puzzle solutions (an edit is
+useful when the solution move realizes it; training puzzles disjoint from the test sample) -- short run, 40 puzzles:
+116 solver steps, 93 whose solution realizes an edit; the frames alone missed 18, 14 of them with a realized edit.
+The 600-puzzle collection is running.
+Kaveh: "going like 6 plies ... humans go 6 plies (takes takes takes!) ... either we aren't focusing on the right
+frames, or counting plies in the most important frame is too slow". Both, measured: frames already follow captures to
+any depth (Rxe5+ Kxe5 Rc5+ Ke6 Rxh5 is one frame line), but quiet moves enter only at the ledger's top plies, and every
+ply re-reads the whole board (a full frame book per candidate and reply). `zone_search.py` (prototype): alpha-beta in
+the zone of the idea -- captures, checks, evasions, promotions, zone pieces' moves, moves onto zone squares or bearing on
+them; a threat's target joins the zone; standing pat = passing (the opponent's zone threats count, promotions too);
+leaves read only the zone's frames. At 8 plies (one run each):
+  Kaveh's king walk: Qe8+ 0, Kf4 -1, Kf5 -5 (Rxe5+ Kxe5 Rc5+ Ke6 Rxh5) -- Stockfish's order (Qe8+ +5.11, Kf4 +3.38,
+  Kf5 -6.71); 293 nodes, 0.3 s for Kf5.
+  0M4g4: Nb4 -2 over d8=Q -3 (Stockfish +3.52 vs -6.68); 1HnWH: Qg4 -4 over Qxb5 -7 (Stockfish: Qg4);
+  0KCNf: e7 0 = Rxc4 0 (not separated; Stockfish: e7).
+  Cost 0.3-18 s a move, one outlier 144 s (Qxb5: queen moves and checks grow the zone). Values are pessimistic against
+  Stockfish; the order is right in three of four. Next: a transposition table, a budget for zone growth, the zone
+  search as the verifier of candidates and proposed constructions.
+
 ## 2026-09-28 22:19 PDT — the instinctive opponent on 300 puzzles; neural provers mapped; next: an AlphaGeometry-style proposer (OBS)
 
 Same 300 Lichess puzzles (the reply ply on candidates incl. quiet threats; pawns promote inside frames):
