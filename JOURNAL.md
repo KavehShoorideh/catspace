@@ -22874,6 +22874,65 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-29 03:29 PDT — the frame store leaked across positions (four ways, found by verify mode); zone search 291/300 on sound frames; the proposer on held-out quiet puzzles; the zone ledger in play (OBS)
+
+**The persistent frame store was unsound.** Running a benchmark with `ANALYST_VERIFY_FRAMES=1` (every stored or
+lemma-served frame recomputed and compared; `frame_puzzles` now prints the lemma mismatches) stopped four times, each
+on a frame whose LOCAL key (its squares, occupants, attackers, pieces and pins) did not record something its line reads:
+- a capture that gives check: the d5 frames of 8/8/2p5/3P3p/2K1k3/.. and 8/8/2p5/2pP3p/2K1k3/.. shared a key; after
+  cxd5+ every legal evasion follows -- Kc5 in one board, Kxc5 (a pawn outside the frame) in the other: +1 vs 0;
+- a promotion push: an e8 frame (r3R1r1/3P3R/..) let d7-d8=Q stand unanswered (+8) because d8 was not a frame square,
+  and whether d8 was open was not in the key;
+- en passant that lands off the frame and checks (hxg3+ e.p. in 7k/6p1/4P3/..);
+- a capturer behind a member: after Bxh1 the e-file opens and the rook behind the bishop takes on e3 -- a rook on e8
+  and a rook on e7 gave the {h1, e3} frame the same key.
+Fixes (`fates.py`): a whole-board key and no lemma when the line can give check (`can_reach_check`, conservatively with
+every frame, member and potential-capturer square vacated), when a member pawn is within two steps of promotion, or
+when en passant is legal; the local key records every piece that could capture onto a frame square (`potential_capturers`,
+to a fixed point); the resolver adds a promotion's or a pawn advance's landing square to the frame (the reply is on its
+square, Kaveh's rule). Verify mode then ran clean: 0 store and 0 lemma mismatches on the 150 quiet puzzles and on the
+300-puzzle sample (both ledgers), and no store mismatch on the 300 game positions. The headline counts did not move --
+zone 291/300 and two_ply_candidates 269/300 are identical before and after (the leaks were real but rare on these
+samples; they could make a result depend on the order positions were met. 0K3Ll's mate was missed in a benchmark run
+and found when its puzzle was replayed alone -- whether a leak caused that miss is not established).
+Retraction: I first explained the 0K3Ll miss as the root margin cutting a checking sacrifice; tested, neither that nor
+the check exemption I added for it changes the result there. The exemption stays (a checking sacrifice pays late) but
+it is not supported by that example.
+
+**Zone search changes since 00:04** (each from an example): the threat a searched pass reveals joins the zone, so the
+moves that stop it are searched (0ROfv: Kh8 read as a forced mate, +1000, because White's pass was mated and Rf2 --
+bearing on h2, outside the zone -- was never tried); candidates are searched best first and one that cannot come within
+half a pawn of the best gets an upper bound (fail-soft), not an exact value; history move ordering.
+
+**300 Lichess puzzles, verify mode (sound frames), one run each:**
+  two_ply_candidates: whole solution 269/300, single top move 201/300; 2000+ 38/58; 2,483 s (verify mode)
+  zone_candidates:    whole solution 291/300, single top move 235/300; 2000+ 50/58; below 1600 186/186; 1,273 s
+  25 gained, 3 lost (10Hhy, 11Whs, 1m070 -- a mating attack past 8 plies, a quiet resource outside the zone, a pawn
+  ending); misses 31 -> 9, in 2 of which the solution was never a candidate (0eOUW, 2ckKj).
+
+**The proposer (stage 2) on held-out quiet-theme puzzles** (`--source lichess-quiet`: 150 puzzles with a quiet theme,
+rows disjoint from the proposer's training rows and from the test sample). The moves realizing the proposer's top 3
+what-if edits join the zone ledger's candidates (`--propose 3`), one run each, before the store fixes:
+  zone alone 122/150 (single top move 75), 370 s; zone + proposer 124/150 (75), 612 s; gained 2, lost 0; misses whose
+  solution was never a candidate 7 -> 5.
+Reading: the proposer does what it is for -- it brings in two of the seven solutions no rule proposed -- but only seven
+of the 28 misses are candidate misses; 21 are valuation. The ceiling for proposals on this set is small; expert
+iteration was not run. After the zone changes above: zone alone 124/150 (single 77), 261 s; in verify mode 124/150,
+0 lemma mismatches. Stockfish (depth 18) on the 26 misses of the proposer run: the solution is quiet in 17, a check in
+4, a capture in 3, a checking capture in 2; Stockfish prefers it by 1.5+ pawns in 26/26 (`puzzle_dig`).
+
+**In play: the 300 held-out game positions** (`frame_player --n 300`), one run each; one-ply and two_ply_candidates
+from the 2026-09-28 18:42 entry:
+                          one-ply   two_ply_candidates   zone (before store fixes)   zone (verify mode)
+  pick = Stockfish best      67            64                     79                        75
+  mean loss (cp)             89            86                     76                        76
+  pick loses 1.5+            54            48                     39                        42
+  false-safe top moves      620           525                    375 (in 90)               413 (in 94)
+  own misses                  8            11                     10                        10
+  time                       20 s         167 s                  674 s                   1,842 s (verify)
+The zone ledger is the first reply-ply ledger that also helps in play; it costs about 22 s of CPU a position. It is now
+the command-line default of `frame_player` and `frame_puzzles` (`LEDGER` stays one-ply for library callers).
+
 ## 2026-09-29 00:04 PDT — the zone search as the candidates' verifier: 300 puzzles 269 -> 288; the proposer trained (OBS)
 
 Stage 1 of the AlphaGeometry-style what-if proposer (`whatif_proposer.py train --solutions --offsets 49`; 600 training

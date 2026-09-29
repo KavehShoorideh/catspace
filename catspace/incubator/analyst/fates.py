@@ -948,6 +948,26 @@ def _piece_att(pt: int, color: chess.Color, sq: int, occ: int) -> int:
     return _att(pt, sq, occ)
 
 
+def potential_capturers(b: chess.Board, squares, members) -> int:
+    """Every piece that could capture onto a frame square during the frame's line (the resolver lets ANY piece capture
+    there): the attackers of the frame squares with the frame's squares, its members' squares and the capturers found
+    so far vacated, to a fixed point -- a rook behind a member bishop comes in once the bishop moves (verify mode
+    2026-09-29: an {h1, e3} frame of 4rk2/pp3q2/.. was served Re7xe3 from a board whose rook stood on e7). -> bitboard."""
+    lifted = b.occupied
+    for q in set(squares) | set(members):
+        lifted &= ~chess.BB_SQUARES[q]
+    pot = 0
+    while True:
+        new = 0
+        for s in squares:
+            new |= b.attackers_mask(chess.WHITE, s, lifted) | b.attackers_mask(chess.BLACK, s, lifted)
+        new &= ~pot
+        if not new:
+            return pot
+        pot |= new
+        lifted &= ~new
+
+
 def can_reach_check(b: chess.Board, squares, members) -> bool:
     """CAN THE FRAME'S LINE GIVE CHECK? -- conservatively, with every frame and member square vacated (the line can open
     any of them): a member landing on a frame square would attack the enemy king (a pawn on the last rank as a queen),
@@ -955,14 +975,15 @@ def can_reach_check(b: chess.Board, squares, members) -> bool:
     whose line can check plays every legal evasion, which reads the whole board: its store key cannot be local
     (verify mode 2026-09-29: the d5 frame of 8/8/2p5/3P3p/2K1k3/.. and of 8/8/2p5/2pP3p/2K1k3/.. shared a local key;
     cxd5+ is answered by Kc5 in one, by Kxc5 -- a pawn outside the frame -- in the other)."""
+    movers = set(members) | set(chess.SquareSet(potential_capturers(b, squares, members)))
     lifted = b.occupied
-    for q in set(squares) | set(members):
+    for q in set(squares) | movers:
         lifted &= ~chess.BB_SQUARES[q]
     for c in (chess.WHITE, chess.BLACK):
         k = b.king(not c)
         if k is None:
             continue
-        for m in members:
+        for m in movers:
             pc = b.piece_at(m)
             if pc is None or pc.color != c or pc.piece_type == chess.KING:
                 continue
@@ -1007,7 +1028,8 @@ def frame_key(b: chess.Board, squares, kings, members) -> tuple:
     mem = tuple((m, None if b.piece_at(m) is None else b.piece_at(m).symbol(), b.piece_at(m) is not None and b.is_pinned(b.piece_at(m).color, m))
                 for m in sorted(members))
     ep = b.ep_square if b.has_legal_en_passant() else None          # an en passant captor attacks the square behind, not the target
-    return ("local", b.turn, b.king(chess.WHITE), b.king(chess.BLACK), ep, rows, mem)
+    pot = tuple((q, b.piece_at(q).symbol()) for q in chess.SquareSet(potential_capturers(b, squares, members)))
+    return ("local", b.turn, b.king(chess.WHITE), b.king(chess.BLACK), ep, rows, mem, pot)
 
 
 def _wl(labels: list, edge) -> list:
@@ -1033,6 +1055,8 @@ def lemma_key(b: chess.Board, squares, kings, members) -> tuple | None:
     slots = sorted({q for q in set(members) | set(squares) if b.piece_at(q) is not None})   # (a king frame's members include empty squares)
     if not slots or len(slots) > 12:
         return None
+    if potential_capturers(b, squares, members) & ~_mask(slots):
+        return None                                               # a capturer from outside the frame's pieces: the relations do not see it
     mover = b.turn
     info = {}
     for q in slots:

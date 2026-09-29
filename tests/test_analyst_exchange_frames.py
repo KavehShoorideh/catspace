@@ -212,3 +212,15 @@ def test_a_promotion_push_is_answered_on_its_square():
     F.clear_caches(keep_lemmas=False)
     assert F.resolve_frame(b, {chess.E8}, set(), F.square_frame(b, chess.E8))[0] == 1.0
     assert F.frame_key(b, {chess.E8}, set(), F.square_frame(b, chess.E8))[0] == "board"
+
+
+def test_a_capturer_behind_a_member_is_in_the_key():
+    # verify mode 2026-09-29: after Bxh1 the e-file opens and the rook behind the bishop takes on e3; the rook on e8 and
+    # a rook on e7 gave the {h1, e3} frame the same local key and different resolutions
+    import catspace.incubator.analyst.fates as F
+    b = chess.Board("4rk2/pp3q2/2p2b2/6P1/4b3/4P3/PP3Q2/K3R2R b - - 2 38")
+    c = chess.Board("5k2/pp2rq2/2p2b2/6P1/4b3/4P3/PP3Q2/K3R2R b - - 2 38")
+    sq = {chess.H1, chess.E3}
+    members = F.square_frame(b, chess.H1) | F.square_frame(b, chess.E3)
+    assert chess.E8 in chess.SquareSet(F.potential_capturers(b, sq, members))
+    assert F.frame_key(b, sq, set(), members) != F.frame_key(c, sq, set(), members)
