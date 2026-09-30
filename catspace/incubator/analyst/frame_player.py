@@ -339,11 +339,16 @@ def main(argv=None):
     ap.add_argument("--plans", default=PLANS, help="the tactical plan layer that breaks ties in the top set (plan_layers.LAYERS)")
     ap.add_argument("--ledger", default="zone_candidates", choices=["one_ply", "two_ply", "two_ply_candidates", "two_ply_instinct", "zone_candidates"])   # the zone verifier: better on the 300 game positions (2026-09-29); LEDGER stays one-ply for library callers (a building block)
     ap.add_argument("--no-king-prior", action="store_true", help="join every king frame the counter-check rule names (no learned prior)")
+    ap.add_argument("--trades", action="store_true", help="the planner's material-count trade preference (tie-break among tactical ties)")
     ap.add_argument("--trace", default=None, metavar="FEN", help="a sample analysis of one position, in the order the frames are analysed")
     a = ap.parse_args(argv)
     JOINT = not a.per_frame
     PLANS = a.plans
     LEDGER = a.ledger
+    if a.trades:                                                      # the planner's material-count trade preference (a tie-break)
+        from .frame_planner import MaterialPlanner
+        global PLANNER
+        PLANNER = MaterialPlanner(trades=True)
     if a.no_king_prior:
         from . import fates
         fates.KING_JOIN_GATE = None

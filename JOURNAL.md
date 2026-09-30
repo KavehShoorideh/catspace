@@ -22874,6 +22874,18 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-30 10:59 PDT — the planner's trade preference: nothing to measure in puzzles, no effect in games (OBS)
+
+`frame_planner.MaterialPlanner(trades=True)` (ahead by 2+: prefer the moves that trade, behind: avoid them; only a
+tie-break among the moves the tactics tie), one run each: 300 puzzles 291/300, single top move 235, the same puzzles
+as without it (0 gained, 0 lost) -- bug check: of 642 solver steps, 27 had a lead of 2+ with a tied top set and the
+preference changed the tie in 1 (puzzles have one tactical answer; nothing for a preference to decide). The 300
+held-out game positions (`frame_player --trades`): pick = Stockfish's best 77 (without: 75 and 79 in two earlier
+runs), mean loss 75 cp (76), the pick loses 1.5+ in 41 (42, 39), Stockfish's best among the top moves 245 (247, 243),
+own misses 10 (10); single-move top sets 82 (79) -- it acted, and moved nothing past the spread of two baseline runs.
+Reading: indistinguishable at one run, in line with Kaveh's 2026-09-15 finding (trading when ahead does not pay,
++-0.02). Off by default; the learned planner's to decide.
+
 ## 2026-09-30 10:30 PDT — no hard-coded limits in the tactics; the planner sets them; how deep Stockfish looks (OBS)
 
 Kaveh, this morning: (1) the stop-or-continue decider -- "deep labels first, RL after", an overnight ladder to 12
