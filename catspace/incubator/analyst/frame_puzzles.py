@@ -139,6 +139,7 @@ def main(argv=None):
     ap.add_argument("--budget-policy", default="fixed", choices=["fixed", "watch", "learned"], help="zone search budget: equal shares, the king watches' rule, or the learned policy")
     ap.add_argument("--watch-zone", type=int, default=0, help="zone search: the king watches' top-N pursued members join the root zone")
     ap.add_argument("--king-watch", action="store_true", help="zone_candidates: the standing king frames' moves join the candidates")
+    ap.add_argument("--trades", action="store_true", help="the planner's material-count trade preference (a tie-break; measured)")
     ap.add_argument("--no-runners", action="store_true", help="zone search: no passed pawns in the root zone (ablation)")
     ap.add_argument("--compare", nargs=2, metavar=("BEFORE", "AFTER"), help="two runs' dumps (data/derived names): what changed, no solving")
     a = ap.parse_args(argv)
@@ -156,17 +157,21 @@ def main(argv=None):
         tag += "_matched"
     if a.budget_policy != "fixed":
         FP.BUDGET_POLICY = a.budget_policy; tag += f"_budget{a.budget_policy}"
+    planner_kw = {}                                               # every search limit and goal is the PLANNER's (frame_planner)
     if a.watch_zone:
-        from . import zone_search as Z
-        Z.WATCH_ZONE = a.watch_zone; tag += f"_watchzone{a.watch_zone}"
+        planner_kw["watch_zone"] = a.watch_zone; tag += f"_watchzone{a.watch_zone}"
     if a.king_watch:
         FP.KING_WATCH = True; tag += "_kingwatch"
     if a.no_runners:
-        from . import zone_search as Z
-        Z.RUNNERS = False; tag += "_norunners"
+        planner_kw["runner_steps"] = None; tag += "_norunners"
+    if a.trades:
+        planner_kw["trades"] = True; tag += "_trades"
     if a.check_ext is not None:
-        from . import zone_search as Z
-        Z.CHECK_EXT = a.check_ext; tag += f"_ext{a.check_ext}"
+        from .zone_search import TacticalSpec
+        planner_kw["spec"] = TacticalSpec(check_ext=a.check_ext); tag += f"_ext{a.check_ext}"
+    if planner_kw:
+        from .frame_planner import MaterialPlanner
+        FP.PLANNER = MaterialPlanner(**planner_kw)
     t0 = time.perf_counter()
     import multiprocessing as mp
     if a.source in ("lichess", "lichess-quiet"):

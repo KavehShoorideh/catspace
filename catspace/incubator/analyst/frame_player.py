@@ -107,6 +107,7 @@ NODES = [0]                                                         # the zone s
 BUDGET_POLICY = "fixed"                                            # zone_candidates: "fixed" (equal shares) | "watch" (the king watches' policy)
 KING_WATCH = False                                                  # zone_candidates: the king watches' moves join the candidates
 PROPOSE = 0                                                         # zone_candidates: the moves realizing the proposer's top-k what-if edits join (0: off)
+PLANNER = None                                                      # the planner (frame_planner): None -> MaterialPlanner() defaults
 ZONE_BUDGET = 20000                                                 # zone_candidates: nodes per candidate per depth (all deepen together: 4, 6, 8 plies)
 
 
@@ -154,8 +155,10 @@ def choose(b: chess.Board) -> dict:
             moves = [m for m in moves if m.uci() in keep]
         if LEDGER == "zone_candidates":                                     # the zone search verifies the candidates, all at the same depth
             from .zone_search import ZoneSearch                             # (Kaveh: plies are cheap in the right frame)
+            from .frame_planner import MaterialPlanner                      # the PLANNER sets every limit and names the goals
+            plan = (PLANNER or MaterialPlanner()).plan(b, moves)            # (Kaveh 2026-09-30: no hard-coded limits in the tactics)
             alloc = None
-            zs = ZoneSearch(ZONE_BUDGET); spent = 0
+            zs = ZoneSearch(spec=plan.spec); spent = 0
             if BUDGET_POLICY == "watch":                                    # the tactical policy's budget: king danger gets more, and deeper
                 from .king_watch import budget_policy
                 alloc = budget_policy(b, moves)
@@ -164,7 +167,7 @@ def choose(b: chess.Board) -> dict:
                 zs.budget = SMALL
                 zs.cap_total = TOTAL_CAP[0]
                 alloc = allocate(b, moves, zs); spent = zs.total
-                zs.budget = ZONE_BUDGET; zs.spent_before = spent
+                zs.budget = plan.spec.budget; zs.spent_before = spent
             if BUDGET_POLICY == "fixed":
                 zs.cap_total = TOTAL_CAP[0]
             got = zs.rank(b, moves, alloc=alloc)
@@ -173,6 +176,13 @@ def choose(b: chess.Board) -> dict:
                 v, zl, _ = got[m]
                 values[m.uci()] = v; trace[m.uci()] = ((v, None, [x.uci() for x in zl[1:]]), before)
             moves = []
+            top = max(values.values()); tied = [u for u, v in values.items() if v == top]
+            if plan.prefer is not None and len(tied) > 1:                  # the planner's preference, only among the moves the tactics tie
+                sc = {u: plan.prefer(b, chess.Move.from_uci(u), got[chess.Move.from_uci(u)][1]) for u in tied}
+                hi = max(sc.values())
+                for u in tied:
+                    if sc[u] < hi:
+                        values[u] -= 1e-3                                   # (a tie-break: below the top, above anything worse)
         for m in moves:
             v, r, ln = two_ply_value(b, m, "instinct" if LEDGER == "two_ply_instinct" else "all")
             values[m.uci()] = v; trace[m.uci()] = ((v, None, [r] + ln if r else ln), before)

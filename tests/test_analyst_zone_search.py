@@ -2,7 +2,8 @@
 import chess
 
 from catspace.incubator.analyst.fates import clear_caches
-from catspace.incubator.analyst.zone_search import ZoneSearch, runners
+from catspace.incubator.analyst.zone_search import ZoneSearch
+from catspace.incubator.analyst.frame_planner import runners
 
 
 def test_kaveh_kf5_is_refuted_by_the_rook_sacrifice():

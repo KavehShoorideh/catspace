@@ -103,6 +103,10 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   the overnight collect-train-benchmark chain died a third of the way into collection (95 of 300 puzzles). Fixed:
   `search_policy collect --resume` keeps whole puzzles and appends; anything over ~25 minutes runs under `nohup` with
   its PID recorded and a re-armed Monitor on its output.
+- **Overwrote a tracked file with a new module** (class 7; the SECOND time -- plans.py on 2026-09-28): wrote the new
+  planner module to `planner.py`, which already held Kaveh's 2026-09-11 planning layer; the write tool said "updated",
+  not "created". Found at once from that word; restored with `git checkout`, the new module moved to
+  `frame_planner.py`. Check: `git ls-files --error-unmatch <path>` before writing any "new" file.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).

@@ -9,12 +9,12 @@ opponent plays on; their threats count; promotions too). Leaves read only the zo
 
 A transposition table (alpha-beta bounds, the depth searched, the best move tried first), a node budget and a cap on
 the zone's size keep it bounded; iterative deepening (4, 6, 8 plies) returns the deepest completed answer when the budget
-runs out. rank() deepens the candidates together -- all at 4 plies, then at 6, ... -- each with the budget for each
+runs out (the schedule is the spec's). rank() deepens the candidates together -- all at 4 plies, then at 6, ... -- each with the budget for each
 iteration, so they are compared at the same depth unless one explodes (it keeps its last completed depth).
 
-RUNNERS: a passed pawn within three steps of promotion joins the root zone with the squares ahead of it, so its pushes
-and the pieces that could stop it are searched (0M4g4: Nac5 looked safe until the h-pawn ran, h3 h2 h1=Q). The pawn
-promotes inside the search -- not a promotion frame (Kaveh 2026-09-28).
+NO LIMIT OR GOAL IS FIXED HERE (Kaveh 2026-09-30): the depths, budgets, margins, reductions and extensions are a
+TacticalSpec the planner sets, and the planner's goals -- a pawn run (0M4g4: Nac5 looked safe until the h-pawn ran),
+a king watch -- enter the root zones as squares (`spec.hints`); see frame_planner.py.
 
     python -m catspace.incubator.analyst.zone_search            # the test positions
 """
@@ -22,18 +22,35 @@ from __future__ import annotations
 
 import sys
 import time
+from dataclasses import dataclass
 
 import chess
 
 from . import fates as F
 
 MATE = 1000.0
-WATCH_ZONE = 0                                                      # the king watches' top-N pursued members join the root zone (0: off)
-RUNNERS = True                                                      # passed pawns near promotion join the root zone (hand-coded; to be replaced)
-KING_RING = False                                                   # the kings' neighbourhoods join the root zone (11Whs: h6 bears on g7)
-TIE = 0.5                                                           # rank: candidates within TIE of the best get exact values, the rest a bound
-CHECK_EXT = 0                                                       # checks that do not use up a ply, per line (0: off)
-NULL_R = 2                                                          # the pass is searched NULL_R plies shallower (null-move reduction)
+
+
+@dataclass
+class TacticalSpec:
+    """EVERY LIMIT OF THE TACTICAL SEARCH, as a parameter the PLANNER sets (Kaveh 2026-09-30: "remove all the hard-coded
+    limits on how deep to search ... those should become parameters that we can tune or specify from the planner side;
+    the planner should be able to say don't spend a lot of effort here, or do ... the tactical layer doesn't understand
+    any plan, it understands frames"). Nothing here names a plan: depths, budgets, margins, and the squares the planner
+    wants in every root zone (its goals). The defaults are the values the zone search has been measured with."""
+    depths: tuple = (4, 6, 8)           # the iterative-deepening schedule (open-ended with a `stop`)
+    budget: int = 20000                 # nodes per candidate per depth
+    total_cap: int | None = None        # a hard node total for the position
+    margin: float = 3.0                 # a candidate this far behind the best is not deepened
+    exempt_checks: bool = True          # ... unless it gives check (a checking sacrifice pays late)
+    tie: float = 0.5                    # candidates within `tie` of the best get exact values, the rest a bound
+    null_r: int = 2                     # the pass is searched this many plies shallower (null-move reduction)
+    check_ext: int = 0                  # checks that do not use up a ply, per line
+    check_ply_cap: int = 12             # a side in check at the horizon is searched on up to this ply
+    max_zone: int = 18                  # a threat's target joins the zone while the zone is smaller than this
+    hints: tuple = ()                   # the planner's goals: callables (board after the candidate) -> squares for its root zone
+    alloc: dict | None = None           # the planner's effort per candidate: move -> (weight, deepest depth)
+    stop: object = None                 # the decider: stop(depth, got, history) -> bool after each completed depth
 
 
 class Budget(Exception):
@@ -56,8 +73,15 @@ def _att(pt, color, sq, occ):
 
 
 class ZoneSearch:
-    def __init__(self, budget: int = 4000, max_zone: int = 18):
-        self.budget = budget; self.max_zone = max_zone; self.nodes = 0; self.total = 0; self.tt = {}; self.reads = {}; self.history = {}
+    def __init__(self, budget: int | None = None, max_zone: int | None = None, spec: TacticalSpec | None = None):
+        self.spec = spec if spec is not None else TacticalSpec()
+        if budget is not None:
+            self.spec = TacticalSpec(**{**self.spec.__dict__, "budget": budget})
+        if max_zone is not None:
+            self.spec = TacticalSpec(**{**self.spec.__dict__, "max_zone": max_zone})
+        self.budget = self.spec.budget; self.max_zone = self.spec.max_zone
+        self.cap_total = self.spec.total_cap
+        self.nodes = 0; self.total = 0; self.tt = {}; self.reads = {}; self.history = {}
 
     def read(self, b: chess.Board, s: int) -> float:
         """A leaf's read of the frame on s: its own exchange (the square frame, no king joined -- the search above
@@ -119,7 +143,7 @@ class ZoneSearch:
         if b.is_checkmate():
             return -MATE, []
         check = b.is_check()
-        if depth <= 0 and (not check or ply >= 12):
+        if depth <= 0 and (not check or ply >= self.spec.check_ply_cap):
             return (0.0 if check else self.leaf(b, zone)), []
         depth = max(depth, 1)
         key = (b._transposition_key(), zone, null_ok)
@@ -133,9 +157,10 @@ class ZoneSearch:
         alpha0 = alpha
         best = -1e9; best_line = []
         if not check:
-            pb = F.passed(b) if null_ok and depth - 1 - NULL_R >= 1 else None
-            if pb is not None:                                    # the pass, searched (reduced by NULL_R): the opponent plays on
-                v, ln = self.search(pb, zone, depth - 1 - NULL_R, -beta, -alpha, False, ply + 1, ext)
+            r = self.spec.null_r
+            pb = F.passed(b) if null_ok and depth - 1 - r >= 1 else None
+            if pb is not None:                                    # the pass, searched (reduced by null_r): the opponent plays on
+                v, ln = self.search(pb, zone, depth - 1 - r, -beta, -alpha, False, ply + 1, ext)
                 best, best_line = -v, [chess.Move.null()] + ln
                 if ln and ln[0] and -v < 0:                       # the pass shows a threat: its squares join the zone, so the
                     zone = zone | {ln[0].from_square, ln[0].to_square}   # moves that stop it are searched (0ROfv: Qxh2# and Rf2)
@@ -154,7 +179,7 @@ class ZoneSearch:
                 if len(nz) < self.max_zone:                       # a threat's target joins the zone: its replies are searched
                     nz |= {t for t in chess.SquareSet(b.attacks_mask(m.to_square)) if b.piece_at(t) is not None and b.piece_at(t).color == b.turn}
                 try:
-                    x = 1 if ext < CHECK_EXT and b.is_check() else 0   # a check does not use up a ply (up to CHECK_EXT a line)
+                    x = 1 if ext < self.spec.check_ext and b.is_check() else 0   # a check does not use up a ply (up to check_ext a line)
                     v, ln = self.search(b, frozenset(nz), depth - 1 + x, -beta + g, -alpha + g, True, ply + 1, ext + x)
                 finally:
                     b.pop()
@@ -181,8 +206,6 @@ class ZoneSearch:
         for c in (chess.WHITE, chess.BLACK):
             if b.king(c) is not None:
                 zone.add(b.king(c))
-                if KING_RING:                                     # the king's neighbourhood: a quiet move bearing on it is searched
-                    zone |= set(chess.SquareSet(chess.BB_KING_ATTACKS[b.king(c)]))
         bb = b.copy(stack=False); bb.push(m)
         if bb.is_checkmate():
             return None
@@ -190,24 +213,15 @@ class ZoneSearch:
         for fr, _, fv, _ in F.joint_threats_book(bb, F.square_frame)[1].values():
             if fv > 0:                                            # a glance at the rest (Kaveh): the opponent's winning frames after the move
                 zone |= set(fr[0])                                # join the zone, so a threat elsewhere is not ignored
-        if RUNNERS:                                                # (a stand-in for the opponent's subgoals: Kaveh 2026-09-29 -- to come from the layer above)
-            zone |= runners(bb)
-        if WATCH_ZONE:                                             # the ROOT CHECK (Kaveh: the opponent's subgoal of mating us is always a
-            from .king_watch import watch, policy                  # root): both kings' standing frames -- the pursued members, where
-            for c in (chess.WHITE, chess.BLACK):                   # they check from and their routes, the conditions, the flights
-                if bb.king(c) is None:
-                    continue
-                w = watch(bb, c, operators=False)
-                for m_ in policy(w, WATCH_ZONE):
-                    zone |= {m_.square, m_.check_from} | set(m_.route) | set(m_.blockers)
-                zone |= {x.square for x in w.conditions if x.member in {m_.square for m_ in policy(w, WATCH_ZONE)}} | set(w.flights)
+        for hint in self.spec.hints:                              # the planner's goals (a pawn run, a king watch...) -- the tactical layer
+            zone |= set(hint(bb))                                 # only takes their squares
         return F.captured_value(b, m), bb, frozenset(zone)
 
-    def value(self, b: chess.Board, m: chess.Move, depths=(4, 6, 8)) -> tuple:
+    def value(self, b: chess.Board, m: chess.Move, depths=None) -> tuple:
         """The move's value by the zone search: the deepest completed depth within the budget. -> (value, line, depth)."""
         return self.rank(b, [m], depths)[m]
 
-    def rank(self, b: chess.Board, moves: list, depths=(4, 6, 8), margin: float = 3.0, alloc: dict | None = None) -> dict:
+    def rank(self, b: chess.Board, moves: list, depths=None, margin: float | None = None, alloc: dict | None = None, stop=None) -> dict:
         """The candidates deepened together: all at 4 plies, then at 6, ...; each candidate has the node budget for each
         iteration, and one that runs out keeps its previous depth's value (so an explosive candidate does not hold the
         others at a shallower depth -- 0Hb6O: with 27 candidates sharing one budget, none reached 8 plies, where the
@@ -218,6 +232,10 @@ class ZoneSearch:
         tactical policy"): move -> (weight, deepest depth); each candidate's budget per depth is its share of the same
         total (the base budget times the number of candidates), and it is deepened no further than its depth.
         -> {move: (value, line, depth)}."""
+        depths = self.spec.depths if depths is None else depths
+        margin = self.spec.margin if margin is None else margin
+        alloc = self.spec.alloc if alloc is None else alloc
+        stop = self.spec.stop if stop is None else stop
         roots = {m: self.root(b, m) for m in moves}
         got = {m: ((1e6, [m], 1) if r is None else (r[0], [m], 0)) for m, r in roots.items()}
         self.total = 0
@@ -235,12 +253,12 @@ class ZoneSearch:
                 break
             top = max(v for v, _, _ in got.values())
             live = [m for m in moves if roots[m] is not None and d <= deepest[m]
-                    and (i == 0 or ((got[m][0] >= top - margin or b.gives_check(m)) and got[m][2] == depths[i - 1]))]
+                    and (i == 0 or ((got[m][0] >= top - margin or (self.spec.exempt_checks and b.gives_check(m))) and got[m][2] == depths[i - 1]))]
             # (one out of budget stays out; a check is never left behind for its value: a checking sacrifice pays late)
             best_now = -1e9
             for m in sorted(live, key=lambda x: -got[x][0]):           # the previous depth's best first
                 g, bb, zone = roots[m]
-                lo = best_now - TIE                                   # below this a candidate only needs a bound: it is not
+                lo = best_now - self.spec.tie                         # below this a candidate only needs a bound: it is not
                 self.nodes = 0                                        # a contender (fail-soft: the bound is its value's ceiling)
                 self.budget = share[m] if cap is None else max(1, min(share[m], cap - spent0 - self.total))
                 if cap is not None and spent0 + self.total >= cap:
@@ -258,24 +276,9 @@ class ZoneSearch:
                 self.history[m].append((d, g - v, self.nodes))
                 if g - v > lo:
                     best_now = max(best_now, g - v)
+            if stop is not None and stop(d, got, self.history):    # the decider (depth_ladder): go on to the next depth or stop
+                break
         return got
-
-
-def runners(b: chess.Board, steps: int = 3) -> set:
-    """Passed pawns within `steps` of promotion, either side, with the squares ahead of them to the last rank."""
-    out = set()
-    for c in (chess.WHITE, chess.BLACK):
-        for s in b.pieces(chess.PAWN, c):
-            f, r = chess.square_file(s), chess.square_rank(s)
-            togo = 7 - r if c == chess.WHITE else r
-            if togo > steps:
-                continue
-            ahead = range(r + 1, 8) if c == chess.WHITE else range(r - 1, -1, -1)
-            if any(b.piece_at(chess.square(ff, rr)) == chess.Piece(chess.PAWN, not c)
-                   for ff in (f - 1, f, f + 1) if 0 <= ff < 8 for rr in ahead):
-                continue
-            out.add(s); out |= {chess.square(f, rr) for rr in ahead}
-    return out
 
 
 def _san(b: chess.Board, line: list) -> str:
