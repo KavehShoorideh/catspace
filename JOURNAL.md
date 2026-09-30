@@ -22874,6 +22874,34 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-30 15:08 PDT — the depth ladder on the 209 missed puzzles: the misses turn between 8 and 10 plies; a fifth lack the solution among the candidates (OBS)
+
+The labels for the stop-or-continue decider (Kaveh: "go very deep, see which depth changed the result, use that as
+training labels" -- deep labels first, RL after). `depth_ladder misses`: the failing step of each of the 209 fresh
+puzzles the zone player missed (70 of the 1,000 at offset 500, 139 of the 2,000 at offset 600), all candidates deepened
+together through 4, 6, 8, 10 and 12 plies, 150,000 nodes per candidate per depth, no margin pruning, the planner's
+goals as in play; 14,138 s on 10 workers; median 1,292,866 nodes a position (max 8,746,318), median 247 s (max 4,038).
+The pilot on 23 ordinary positions (10 puzzles): median 245,018 nodes, 25 s.
+Printed (`depth_ladder report`, one run): the solution is among the candidates in 165/209. The solution ALONE on top:
+at 4 plies 10, 6: 12, 8: 16, 10: 43, 12: 53 (the pilot: 17, 21, 21, 21, 22 of 23). The depth from which it stays
+alone on top (of the 165): 4: 1, 6: 6, 8: 8, 10: 28, 12: 10, never within 12: 112 (the pilot: 16 from 4, 5 from 6, 1
+from 12, none never). The decision at 8 plies differs from the deepest in 36/209 (at 10: 5/209; the pilot: 0/23 after
+6).
+Bug checks (docs/BUGS.md classes): (1) "the solution among the top" FELL with depth (45, 34, 27 at 4, 6, 8 plies)
+-- ties, not a search fault: a shallow search leaves many moves level (the top set's median 2 moves at 4-6 plies, 3 or
+more in 85 positions at 4) and a tie counted as a hit; the report now counts the solution alone on top, which rises.
+(2) The negative "never": of the 112, 56 had the solution's own search stop short of 12 plies by budget (its search
+reached 12 in 81/165), so half of it is unmeasured, not wrong; 43 tie on top at the deepest, 69 sit below another move.
+(3) The 44 without the solution among the candidates are all quiet moves: pawn 24, rook 8, queen 5, bishop 4, knight 3.
+Reading (one run, directional): the misses are not settled where ordinary puzzles are (by 6 plies); the step that
+turns them is 8 -> 10 plies (alone on top 16 -> 43), in line with the Stockfish study of the 9 misses on the 300 test
+puzzles (10:30 entry: nominal depth 7-10, payoff ply median 16 -- a different, smaller set). Depth alone found at least
+53 of the 209, at a median 1,292,866 nodes a position against the pilot's 245,018. Three levers the
+ladder separates: the DECIDER (the label "going past 8 changes the answer" is 36/209 here and 0/23 in the pilot -- its
+job is to find those few in ordinary play, so it needs a ladder on ordinary positions for the negatives), the
+CANDIDATES (44/209, all quiet, mostly pawn moves -- the what-if priority's gap, not depth's), and the BUDGET at 12
+plies (half the solutions did not finish 12 at 150,000 nodes).
+
 ## 2026-09-30 13:53 PDT — the job ledger: pins and their kin as knowledge; no speed-up in the zone search (OBS)
 
 Kaveh asked whether Stockfish plays a pinned knight's hop and re-finds the loss in sibling lines (to the king: no, a

@@ -157,10 +157,21 @@ def report(path: str, log=print) -> None:
     reached = {d: sum(1 for r in recs for h in r["history"].values() if any(dd == d and v is not None for dd, v, _ in h)) for d in ladder}
     total = sum(len(r["history"]) for r in recs)
     log("OBS candidates that completed each depth: " + ", ".join(f"{d}: {reached[d]}/{total}" for d in ladder))
+    decs = [decisions(r) for r in recs]
+    inset = [r for r in recs if r["sol"] in r["moves"]]
+    log(f"OBS the solution is among the candidates in {len(inset)}/{len(recs)} positions (no depth can find it in the rest)")
+    kinds = {}
+    for r in recs:
+        if r["sol"] not in r["moves"]:
+            b = chess.Board(r["fen"]); m = chess.Move.from_uci(r["sol"])
+            k = (b.piece_at(m.from_square).symbol().upper(), "capture" if b.is_capture(m) else "check" if b.gives_check(m)
+                 else "promotion" if m.promotion else "quiet")
+            kinds[k] = kinds.get(k, 0) + 1
+    if kinds:
+        log("OBS the absent solutions by piece and kind: " + ", ".join(f"{p} {k} {n}" for (p, k), n in sorted(kinds.items(), key=lambda x: -x[1])))
     for d in ladder[:-1]:
         changed = sol_right_now = sol_right_deep = 0
-        for r in recs:
-            dec = decisions(r)
+        for r, dec in zip(recs, decs):
             if d not in dec or not dec:
                 continue
             deep = dec[max(dec)]
@@ -168,6 +179,32 @@ def report(path: str, log=print) -> None:
             sol_right_now += r["sol"] in dec[d]; sol_right_deep += r["sol"] in deep
         log(f"OBS stopping at {d} plies: the decision differs from the deepest one in {changed}/{len(recs)} positions; "
             f"the solution among the top at {d}: {sol_right_now}, at the deepest: {sol_right_deep}")
+    # ties inflate "among the top" (a shallow search leaves many moves level; bug-check 2026-09-30): the solution ALONE
+    for d in ladder:
+        sizes = [len(dec.get(d, ())) for dec in decs]
+        alone = sum(1 for r, dec in zip(recs, decs) if dec.get(d) == {r["sol"]})
+        log(f"OBS at {d} plies: tied top moves median {st.median(sizes):g} (3 or more in {sum(s >= 3 for s in sizes)}); the solution alone on top: {alone}")
+    need = {}                                                         # the first depth from which the solution stays alone on top
+    for r, dec in zip(recs, decs):
+        if r["sol"] not in r["moves"]:
+            continue
+        first = None
+        for d in reversed(ladder):
+            if dec.get(d) == {r["sol"]}:
+                first = d
+            else:
+                break
+        need[first] = need.get(first, 0) + 1
+    log("OBS the depth from which the solution stays alone on top (solution among the candidates): "
+        + ", ".join(f"{d}: {need.get(d, 0)}" for d in ladder) + f", never: {need.get(None, 0)}")
+    # the negative's bug check: a "never" whose solution ran out of budget before the deepest rung is unmeasured, not wrong
+    top = ladder[-1]
+    full = lambda r: r["history"].get(r["sol"]) == [] or any(d == top and v is not None for d, v, _ in r["history"].get(r["sol"], []))
+    nev = [(r, dec) for r, dec in zip(recs, decs) if r["sol"] in r["moves"] and dec.get(top) != {r["sol"]}]
+    tied = sum(1 for r, dec in nev if r["sol"] in dec.get(top, ()))
+    log(f"OBS the solution's own search completed {top} plies in {sum(full(r) for r in inset)}/{len(inset)}; of the {len(nev)} never alone "
+        f"on top: {sum(not full(r) for r, _ in nev)} stopped short of {top} by budget, {tied} tied on top at the deepest, "
+        f"{len(nev) - tied} below another move")
 
 
 def main(argv=None):
