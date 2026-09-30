@@ -22874,6 +22874,32 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-29 18:08 PDT — the negative result bug-checked (three bugs); relation atoms match the raw board on material frames (OBS)
+
+Kaveh's standing rule from today: "always check your negative results for bugs ... focus on places with high
+probability of errors ... store bugs in a bugs file" (docs/BUGS.md: the log and the checklist of my error classes).
+`frame_profile check` (40 games, 2,717 positions): no position skipped; no frame-store mismatch in verify mode; 4.9%
+of frames over 16 pieces (one shared type); the position before the mate shows a mate frame for the mating side in 9
+of 9 games ending in mate (the label works); but the COLOUR MIRROR gave different types in 16 of 388 positions. Three
+bugs, fixed:
+- the canonical order was not canonical (ties among equally-labelled pieces broken by square number);
+- `joint_frame` judged the second king on a frame the first king's join had already enlarged (a colour-order
+  dependence, and a cascade against the one-step rule) -- after both fixes the mirror differs in 0 of 388;
+- the gauge used one regularisation for feature sets on different scales (adding atoms had LOWERED the mate AUC
+  0.854 -> 0.814); now scaled, with C chosen per feature set on held-in games.
+The 300 puzzles after the join fix: 291/300, single top move 235, the same puzzles (0 gained, 0 lost).
+Rerun (1,000 games, one run): whole-frame types 151,177, 67.5% seen once -- the vocabulary finding stands. Held-out
+AUC for a NEW mate frame within 4 plies (468 positives): material 0.791, raw board 0.844, frames 0.692, atoms 0.794,
+atoms+material 0.831, board+material 0.859, board+frames+material 0.861, board+atoms+material 0.862; within 8: 0.767 /
+0.824 / 0.687 / 0.777 / 0.812 / 0.837 / 0.835 / 0.830. A NEW frame winning 3+ within 4 plies: material 0.632, raw board
+0.709, frames 0.665, atoms 0.714, atoms+material 0.717, board+material 0.713, board+frames+material 0.717,
+board+atoms+material 0.723; within 8: 0.630 / 0.713 / 0.673 / 0.709 / 0.713 / 0.717 / 0.719 / 0.721.
+Reading (one run, directional): the earlier "adding atoms hurts" was the modelling bug. Whole frames stay useless as
+features (they do not recur). The frame's PARTS -- 6,762 relation atoms, 80% of occurrences in the top 500, 60% still
+present a ply later -- predict the coming material frames as well as the full raw board, and the coming mate frames
+less well (0.794 vs 0.844); on top of the board they add at most about 0.01. A legible vocabulary at the raw board's
+level on material, not beyond it; the mate side needs more than the frames present now (king safety the board shows).
+
 ## 2026-09-29 17:24 PDT — frames as the concepts, measured first: whole-frame types do not repeat (OBS)
 
 Kaveh: "one set of concepts could be all the frames that are present ... is there a future in which there is a
