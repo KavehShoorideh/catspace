@@ -82,6 +82,11 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   some open route to check, and the watch took it and skipped the rook's latent line -- losing Kaveh's
   three-blocker file. Found by the unit test written from his example. Fixed: a piece can be an open and a latent
   member; the answers keyed by member, not square.
+- **Not a bug, a noise source** (class 5): the zone search's transposition table is shared by all candidates of a
+  position, so a candidate's depth and value depend on which other candidates were searched (2WXJR: Qf3 alone 0.0 at 6
+  plies, among all 27 candidates 1.0 at 8). Benchmark churn of a few puzzles between two settings that change zones
+  (king ring, watch zone) is this and budget/horizon effects -- check the lost puzzles' depths before reading a
+  difference.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).

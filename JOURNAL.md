@@ -22874,6 +22874,26 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-29 21:49 PDT — the king watch in play: candidates null, the root check neutral on puzzles (OBS)
+
+Two uses of the standing king frame in the frame player (zone ledger), one run each:
+- Its moves as CANDIDATES (`--king-watch`): 300 puzzles 291/300, single top move 235 (the same puzzles; 900 s vs 732
+  s); 150 quiet 125/150 (+1: 06jl7's solution now a candidate), defensiveMove 35/43 unchanged. Bug check: the switch
+  fired (the tag, the time, the one new candidate); `king_watch candidates` over the 300 first positions: 9.4 standard
+  candidates a position, the watch's moves 6.0 of which 3.23 new, the solution among the new ones in 1 of 300 -- a
+  structural null: puzzle solutions are almost always candidates already; the misses are valuation.
+- As the ROOT CHECK (`--watch-zone 3`: both kings' watches -- the top 3 pursued members, where they check from,
+  their routes and blockers, the conditions, the flights -- join the zone search's root zone): 14 hard cases 10/14
+  (8/14 without; gained 0494Y Rf1+, 0F2gT Qc8+ now the single top move, 0NMfB dxc7+; lost 0Hb6O to budget); 300
+  puzzles 290/300 (3 gained, 4 lost), single 234, 974 s; 150 quiet 126/150 (5 gained, 3 lost), single 77, 597 s (261 s
+  without). Bug check of the losses: 1xAw2 budget (the solution stopped at 6 plies, the pick reached 8), 2qfMm horizon
+  (a larger zone changed the leaf reads: Nh4+ +5 -> +3), 2WXJR candidate-set dependence (Qf3 alone 0.0 at 6 plies,
+  among all 27 candidates 1.0 at 8 -- the transposition table is shared across candidates; its baseline "solve" was a
+  seven-way tie at +1). No watch-zone bug found; logged the table sharing as a noise source (docs/BUGS.md).
+Reading: indistinguishable on the puzzle benchmarks at one run, at 1.3-2.3x the time; it helps king attacks the zone
+missed and costs budget elsewhere. Off by default. What would decide it is the budget -- which candidate deserves the
+plies -- which is the tactical policy's job (Kaveh), not a fixed per-candidate budget.
+
 ## 2026-09-29 20:35 PDT — the standing king frame closes the mate gap (OBS)
 
 Kaveh's design and calls (19:30-20:20): the opponent's subgoal of mating us is the root check; keep every king
