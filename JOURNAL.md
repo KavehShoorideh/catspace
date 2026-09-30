@@ -22874,6 +22874,30 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-29 17:24 PDT — frames as the concepts, measured first: whole-frame types do not repeat (OBS)
+
+Kaveh: "one set of concepts could be all the frames that are present ... is there a future in which there is a
+checkmate frame like this, or similar? ... the frames are features; we track the trajectory". His calls: measure
+first; "a frame like this" = the same relational type. `frame_profile.py`: a position's PROFILE is every frame of both
+sides' frame books with its relational TYPE (fates.lemma_key(strict=False): the store key's relations with nothing
+refused -- kings, checks, a pawn near promotion, outside capturers and a capture that gives check become part of the
+description) and a COARSE type (which pieces are in the frame and the flags, without the pairwise relations), its owner
+and value. 1,000 games of lichess_2015-06 (992 with positions; 64,518 positions; 322,131 frames; one run):
+- Vocabulary: exact types 151,391, of which 67.4% seen once, the top 500 covering 21.7% of frames; coarse types
+  111,646, 61.1% seen once, top 500 covering 26.6%.
+- Persistence (a position's (owner, type) frames present L plies later, lags 1 and 2 for the side-to-move flip): exact
+  0.292 / 0.145; coarse 0.344 / 0.188.
+- Prediction, held out by game (logistic regression on hashed features): a NEW mate frame of the side to move within 4
+  plies (base rate 0.034; 468 test positives): material 0.780, raw board 0.844, frames 0.692, frames+material 0.797,
+  board+material 0.854, board+frames+material 0.852; within 8 plies: 0.765 / 0.824 / 0.687 / 0.774 / 0.832 / 0.828. A
+  NEW frame winning 3+ within 4 plies (base rate 0.329): 0.630 / 0.708 / 0.654 / 0.666 / 0.708 / 0.700; within 8:
+  0.629 / 0.712 / 0.660 / 0.672 / 0.712 / 0.700. (A 60-game pilot had frames+material ahead of the raw board, 0.813 vs
+  0.675 for the mate frame within 4 -- 32 positives; it did not survive the larger sample.)
+Reading: as whole-frame types, frame profiles are not better concepts than the raw board for predicting the frames to
+come, and add nothing on top of it. The vocabulary is the visible reason: a frame's relational type almost never
+recurs (two thirds are seen once), so nothing learned on one frame transfers to another. The relational DESCRIPTION
+is the reusable part, not the whole frame's hash -- the next gate is frames decomposed into their relations.
+
 ## 2026-09-29 14:18 PDT — the reachability frame: can the piece make it there? (OBS)
 
 Kaveh's calls: keep the hand-coded runners until a subgoal layer replaces them; build the reachability frame first;

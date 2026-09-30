@@ -183,7 +183,8 @@ def gauge(path: str, ks=(4, 8), log=print) -> None:
                 log(f"OBS {name} within {k}: too few positives (train {int(y[tr].sum())}, test {int(y[te].sum())})")
                 continue
             res = []
-            for fname, X in (("material", Xm), ("raw board", Xb), ("frames", Xf), ("frames+material", hstack([Xf, Xm]).tocsr())):
+            for fname, X in (("material", Xm), ("raw board", Xb), ("frames", Xf), ("frames+material", hstack([Xf, Xm]).tocsr()),
+                             ("board+material", hstack([Xb, Xm]).tocsr()), ("board+frames+material", hstack([Xb, Xf, Xm]).tocsr())):
                 m = LogisticRegression(C=0.5, max_iter=3000, solver="liblinear").fit(X[tr], y[tr])
                 res.append(f"{fname} {roc_auc_score(y[te], m.predict_proba(X[te])[:, 1]):.3f}")
             log(f"OBS a NEW {name} of the side to move within {k} plies: base rate {y[te].mean():.3f} (test {int(te.sum())} positions, "
