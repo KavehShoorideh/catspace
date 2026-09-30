@@ -22874,6 +22874,25 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-30 02:02 PDT — the learned search policy on 340 puzzles: it learns closeness to the best, and loses to equal shares by two (OBS)
+
+Data: 300 more training puzzles (fresh rows at offset 850; the overnight chain was stopped by the 30-minute background
+limit after 95, resumed with `collect --resume`; 3,983 more candidates in 3,553 s): 6,553 candidates from 340
+puzzles; more search changes a candidate by a pawn in 0.559, its STANDING against the best in 0.034 (~220). Held out by
+puzzle (1,446 candidates): the "changed" model 0.805 on its own label but 0.186 on the standing label -- it points the
+wrong way (the volatile candidates are far from the top; standing changes happen near it), which is why the first
+policy gained nothing; the "standing" model 0.890, with closeness to the best ALONE 0.877.
+The 300 test puzzles at MATCHED compute (each solver step capped at the fixed run's own nodes,
+`frame_puzzles --match-nodes`): fixed shares 291/300, single top move 235, 28,974 nodes a step (731 s); the learned
+standing policy 289/300, single 233, 28,511 nodes a step (720 s); 0 gained, 2 lost (0Hb6O, 1dGSs). 0Hb6O is the
+diagnostic loss: Rxh7+ reads -1 at 6 plies and pays at 8 -- a closeness-weighted budget gives such a sacrifice less
+than an equal share does.
+Reading (one run, directional): the decision-relevant signal in these features is mostly closeness to the best, which
+the fixed search already exploits (best first, exact values only near the top, the 3-pawn margin); learned on that,
+the policy starves the sacrifices that pay late. What would help is a feature for "looks bad now, pays later" -- none
+of the current ones (the 4-to-6 swing, checks, king-watch changes) beat closeness in the data. Code stays behind the
+flag (off).
+
 ## 2026-09-30 00:05 PDT — the learned tactical search policy, first round: equal to the fixed budget at equal compute (OBS)
 
 Kaveh's call: build the learned policy. `search_policy.py`: the deeper search is the teacher -- for every candidate of a
