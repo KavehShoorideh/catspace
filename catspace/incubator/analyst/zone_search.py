@@ -51,6 +51,8 @@ class TacticalSpec:
     hints: tuple = ()                   # the planner's goals: callables (board after the candidate) -> squares for its root zone
     alloc: dict | None = None           # the planner's effort per candidate: move -> (weight, deepest depth)
     stop: object = None                 # the decider: stop(depth, got, history) -> bool after each completed depth
+    knowledge: tuple = ()               # tactical facts the planner hands down (jobs.Job: a pin, a guard...), valid by footprint
+    prune_jobs: int = 0                 # drop a move that abandons a valid job worth more than it takes at depth <= this (0: order only)
 
 
 class Budget(Exception):
@@ -170,7 +172,16 @@ class ZoneSearch:
         if alpha < beta:
             ms = self.moves(b, zone)
             hist = self.history                                   # quiet moves that refuted before are tried earlier (history heuristic)
-            ms.sort(key=lambda m: (m != hint, -(F.captured_value(b, m) + (5 if b.gives_check(m) else 0)),
+            ab = {}
+            if self.spec.knowledge:                               # KNOWLEDGE (jobs): a move that walks away from a valid job worth more
+                from .jobs import abandons                        # than it takes goes last -- the pin known, not re-found in every
+                holders = {j.holder for j in self.spec.knowledge}  # sibling line; near the horizon it may be dropped
+                for m in ms:
+                    if m.from_square in holders:
+                        ab[m] = abandons(b, m, self.spec.knowledge)
+                if self.spec.prune_jobs and depth <= self.spec.prune_jobs:
+                    ms = [m for m in ms if ab.get(m, 0.0) <= 1.0 or b.gives_check(m)]
+            ms.sort(key=lambda m: (m != hint, ab.get(m, 0.0) > 0.5, -(F.captured_value(b, m) + (5 if b.gives_check(m) else 0)),
                                    -hist.get((b.piece_type_at(m.from_square), b.turn, m.to_square), 0)))
             for m in ms:
                 g = F.captured_value(b, m)

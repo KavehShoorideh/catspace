@@ -63,6 +63,7 @@ class MaterialPlanner:
     watch_zone: int = 0                 # the king watches' top-N pursued members as goals (0: none)
     trades: bool = False                # the material-count trade preference (measured; see the module note)
     trade_margin: float = 2.0
+    jobs: bool = False                  # hand the tactics the position's job ledger (jobs.py: pins, guards, discoveries)
 
     def plan(self, b: chess.Board, moves: list) -> Plan:
         hints = []
@@ -79,7 +80,11 @@ class MaterialPlanner:
                 want = lead > 0                                   # ahead: trade; behind: keep the pieces on
                 prefer = lambda board, m, line, want=want: 1.0 if _trades(board, m, line) == want else 0.0
                 notes.append(f"material {lead:+g}: {'prefer' if want else 'avoid'} trades")
-        return Plan(replace(self.spec, hints=tuple(self.spec.hints) + tuple(hints)), prefer, notes)
+        knowledge = tuple(self.spec.knowledge)
+        if self.jobs:
+            from .jobs import ledger
+            knowledge += tuple(ledger(b))
+        return Plan(replace(self.spec, hints=tuple(self.spec.hints) + tuple(hints), knowledge=knowledge), prefer, notes)
 
 
 def _watch_squares(bb: chess.Board, n: int) -> set:

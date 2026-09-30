@@ -139,6 +139,8 @@ def main(argv=None):
     ap.add_argument("--budget-policy", default="fixed", choices=["fixed", "watch", "learned"], help="zone search budget: equal shares, the king watches' rule, or the learned policy")
     ap.add_argument("--watch-zone", type=int, default=0, help="zone search: the king watches' top-N pursued members join the root zone")
     ap.add_argument("--king-watch", action="store_true", help="zone_candidates: the standing king frames' moves join the candidates")
+    ap.add_argument("--jobs", action="store_true", help="the job ledger: its knowledge orders the zone search, its moves join the candidates")
+    ap.add_argument("--prune-jobs", type=int, default=0, help="with --jobs: drop moves that abandon a job near the horizon (depth <= N)")
     ap.add_argument("--trades", action="store_true", help="the planner's material-count trade preference (a tie-break; measured)")
     ap.add_argument("--no-runners", action="store_true", help="zone search: no passed pawns in the root zone (ablation)")
     ap.add_argument("--compare", nargs=2, metavar=("BEFORE", "AFTER"), help="two runs' dumps (data/derived names): what changed, no solving")
@@ -166,6 +168,11 @@ def main(argv=None):
         planner_kw["runner_steps"] = None; tag += "_norunners"
     if a.trades:
         planner_kw["trades"] = True; tag += "_trades"
+    if a.jobs:
+        planner_kw["jobs"] = True; FP.JOBS = True; tag += "_jobs"
+    if a.prune_jobs:
+        from .zone_search import TacticalSpec
+        planner_kw["spec"] = TacticalSpec(prune_jobs=a.prune_jobs); tag += f"_prunejobs{a.prune_jobs}"
     if a.check_ext is not None:
         from .zone_search import TacticalSpec
         planner_kw["spec"] = TacticalSpec(check_ext=a.check_ext); tag += f"_ext{a.check_ext}"

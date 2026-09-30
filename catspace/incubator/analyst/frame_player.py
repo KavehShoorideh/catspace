@@ -107,6 +107,7 @@ NODES = [0]                                                         # the zone s
 BUDGET_POLICY = "fixed"                                            # zone_candidates: "fixed" (equal shares) | "watch" (the king watches' policy)
 KING_WATCH = False                                                  # zone_candidates: the king watches' moves join the candidates
 PROPOSE = 0                                                         # zone_candidates: the moves realizing the proposer's top-k what-if edits join (0: off)
+JOBS = False                                                        # zone_candidates: the job ledger's operator moves join the candidates
 PLANNER = None                                                      # the planner (frame_planner): None -> MaterialPlanner() defaults
 ZONE_BUDGET = 20000                                                 # zone_candidates: nodes per candidate per depth (all deepen together: 4, 6, 8 plies)
 
@@ -146,6 +147,9 @@ def candidates(b: chess.Board, before=None, book=None, ledger: str = "zone_candi
     if KING_WATCH and ledger == "zone_candidates":                     # the standing king frames: moves toward the enemy king (a member's
         from .king_watch import candidate_moves                         # route, a condition piece taken) and our king's answers
         keep |= set(candidate_moves(b))
+    if JOBS and ledger == "zone_candidates":                           # the job ledger's moves: pressure on holders, deflection of the
+        from .jobs import ledger as _jobs, operators                    # overloaded, a double-attacking discovery, our pins relieved
+        keep |= set(operators(b, _jobs(b)))
     if PROPOSE and ledger == "zone_candidates":                        # the what-if proposer's top edits: the moves that realize them join
         from .whatif_proposer import propose_moves                      # (AlphaGeometry-style constructions; the zone search verifies)
         keep |= set(propose_moves(b, one, PROPOSE))
