@@ -900,15 +900,19 @@ def joint_frame(b: chess.Board, squares: set, kings: set, frame_of=None) -> tupl
     whose frame a frame piece can check joins -- unless the king-join prior (Kaveh's 75% rule: join when the chance
     that it changes the resolution is 25% or more) says it does not matter."""
     squares, kings, members = joint_base(b, squares, kings, frame_of)
+    base = (frozenset(squares), frozenset(kings), frozenset(members))
+    joins = []
     for c in (chess.WHITE, chess.BLACK):                          # a king whose frame a frame piece can check: its frame joins (counter-checks)
-        if c in kings or b.king(c) is None:
-            continue
-        checks = counter_checks(b, members, c)
-        gate = _king_gate() if checks else None
-        if checks and (gate is None or gate(b, squares, kings, members, c, checks)):
-            ks, km = king_frame(b, c); squares |= ks; members |= km; kings.add(c)
+        if c in base[1] or b.king(c) is None:                     # -- both kings judged on the SAME base frame (bug 2026-09-29: judging
+            continue                                              # the second on the first's joins made the frame depend on colour order,
+        checks = counter_checks(b, base[2], c)                    # 16 of 388 positions differed under the colour mirror; and it was a
+        gate = _king_gate() if checks else None                   # cascade, which Kaveh's one-step rule forbids)
+        if checks and (gate is None or gate(b, set(base[0]), set(base[1]), set(base[2]), c, checks)):
+            joins.append(c)
         elif checks:
             _LAST.setdefault("skipped", []).append(c)
+    for c in joins:
+        ks, km = king_frame(b, c); squares |= ks; members |= km; kings.add(c)
     return frozenset(squares), frozenset(kings), frozenset(members)
 
 
@@ -1105,14 +1109,35 @@ def lemma_key(b: chess.Board, squares, kings, members, strict: bool = True) -> t
                     lands = frozenset(k for k in t.attacks(j) if k in occ and k not in (i, j))
                     t.pop()
             rel[(i, j)] = (att, xr, legal, lands) if strict else (att, xr, legal, lands, chk)
-    idx = {q: k for k, q in enumerate(slots)}
     labels = _wl([hash(info[q]) for q in slots], lambda a, c: rel[(slots[a], slots[c])][:3] + (len(rel[(slots[a], slots[c])][3]),))
-    order = sorted(range(len(slots)), key=lambda k: (labels[k], k))
-    ordered = [slots[k] for k in order]
-    pos = {q: k for k, q in enumerate(ordered)}
-    key = ("lemma" if strict else "type", tuple(info[q] for q in ordered),
-           tuple(rel[(x, y)][:3] + (tuple(sorted(pos[k] for k in rel[(x, y)][3])),) + rel[(x, y)][4:] for x in ordered for y in ordered if x != y)) + (flags if not strict else ())
-    return key, ordered
+
+    def build(ordered):
+        pos = {q: k for k, q in enumerate(ordered)}
+        return ("lemma" if strict else "type", tuple(info[q] for q in ordered),
+                tuple(rel[(x, y)][:3] + (tuple(sorted(pos[k] for k in rel[(x, y)][3])),) + rel[(x, y)][4:] for x in ordered for y in ordered if x != y)) + (flags if not strict else ())
+    # CANONICAL ORDER (bug 2026-09-29: ties among equally-labelled slots were broken by square number, so the same frame
+    # on mirrored squares got a different key -- 16 of 388 positions under the colour mirror): the smallest key over
+    # every order of each tied class; beyond 720 orders, square order with the key marked non-canonical (still sound:
+    # a non-canonical key can only miss a match, never serve a wrong one)
+    classes = {}
+    for k in range(len(slots)):
+        classes.setdefault(labels[k], []).append(k)
+    groups = [classes[l] for l in sorted(classes)]
+    import itertools, math
+    combos = math.prod(math.factorial(len(g)) for g in groups)
+    if combos == 1:
+        ordered = [slots[g[0]] for g in groups]
+        return build(ordered), ordered
+    if combos <= 720:
+        best = None
+        for perm in itertools.product(*(itertools.permutations(g) for g in groups)):
+            ordered = [slots[k] for g in perm for k in g]
+            key = build(ordered)
+            if best is None or key < best[0]:
+                best = (key, ordered)
+        return best
+    ordered = [slots[k] for k in sorted(range(len(slots)), key=lambda k: (labels[k], k))]
+    return build(ordered) + ("nc",), ordered
 
 
 def _line_to_slots(b: chess.Board, line: list, ordered: list) -> tuple | None:
