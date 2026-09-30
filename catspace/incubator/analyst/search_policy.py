@@ -101,17 +101,29 @@ def _puzzle_rows(row: dict) -> list:
     return out
 
 
-def collect(n: int = 40, offset: int = 800, workers: int = 10, log=print) -> str:
+def collect(n: int = 40, offset: int = 800, workers: int = 10, resume: bool = False, log=print) -> str:
     import multiprocessing as mp
     from .frame_puzzles import fresh_rows
     t0 = time.perf_counter()
     rows = fresh_rows(n, 997, offset)
     out = paths.derived(f"search_policy_{n}_{offset}.jsonl")
+    done = set()
+    if resume and __import__("os").path.exists(out):                                    # a stopped run: keep its whole puzzles, drop a broken last line
+        good = []
+        for line in open(out):
+            try:
+                d = json.loads(line); good.append(line if line.endswith("\n") else line + "\n"); done.add(d["pid"])
+            except json.JSONDecodeError:
+                break
+        open(out, "w").writelines(good)
+        rows = [r for r in rows if r["PuzzleId"] not in done]
+        log(f"[search_policy] resume: {len(done)} puzzles kept, {len(rows)} to go")
     k = 0
-    with mp.get_context("fork").Pool(workers) as pool, open(out, "w") as fh:
+    with mp.get_context("fork").Pool(workers) as pool, open(out, "a" if resume else "w") as fh:
         for rs in pool.imap_unordered(_puzzle_rows, rows, chunksize=1):
             for r in rs:
                 fh.write(json.dumps(r) + "\n"); k += 1
+            fh.flush()
     log(f"[search_policy] {len(rows)} puzzles, {k} candidates -> {out} ({time.perf_counter() - t0:.0f}s)")
     return str(out)
 
@@ -179,11 +191,11 @@ def main(argv=None):
     sys.stdout.reconfigure(line_buffering=True)
     ap = argparse.ArgumentParser(); sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("collect"); c.add_argument("--n", type=int, default=40); c.add_argument("--offset", type=int, default=800)
-    c.add_argument("--workers", type=int, default=10)
+    c.add_argument("--workers", type=int, default=10); c.add_argument("--resume", action="store_true")
     t = sub.add_parser("train"); t.add_argument("--data", nargs="+", default=None); t.add_argument("--label", default="changed", choices=["changed", "standing"])
     a = ap.parse_args(argv)
     if a.cmd == "collect":
-        collect(a.n, a.offset, a.workers)
+        collect(a.n, a.offset, a.workers, a.resume)
     else:
         train(a.data or [str(paths.derived("search_policy_40_800.jsonl"))], a.label)
 

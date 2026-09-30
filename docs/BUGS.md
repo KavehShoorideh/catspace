@@ -99,6 +99,10 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   nodes phase 2 had nothing (0Knjg: phase 1 spent 6,534 of a 6,533 cap) and it scored 3/14 against 8/14, with
   nonsense values on easy cases (a mate read 0.0). Found checking the negative result. Fixed: phase 1 to 6 plies,
   the model trained with the 8-ply features masked.
+- **A multi-hour chain launched as a tracked background task** (class 7): the runner stops tasks after 30 minutes, so
+  the overnight collect-train-benchmark chain died a third of the way into collection (95 of 300 puzzles). Fixed:
+  `search_policy collect --resume` keeps whole puzzles and appends; anything over ~25 minutes runs under `nohup` with
+  its PID recorded and a re-armed Monitor on its output.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
