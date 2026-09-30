@@ -53,13 +53,9 @@ def features(b: chess.Board, m: chess.Move, hist: list, value: float, depth: int
 
 
 def _candidates(b: chess.Board) -> list:
-    import catspace.incubator.analyst.frame_player as FP
-    stand = FP.passed(b)
-    before, book = FP.joint_threats_book(stand, FP.square_frame) if stand is not None else ((0.0, None, []), None)
-    one = FP._one_ply_values(b, before, book)
-    ranked = sorted(one, key=lambda u: -one[u]); top1 = max(one.values())
-    keep = set(ranked[:FP.CANDIDATES]) | {u for u in one if one[u] == top1} | {m.uci() for m in b.legal_moves if b.is_capture(m) or b.gives_check(m) or m.promotion}
-    return [m for m in b.legal_moves if m.uci() in keep]
+    """The player's own candidate set (frame_player.candidates)."""
+    from .frame_player import candidates
+    return candidates(b)
 
 
 def _position_rows(b: chess.Board, pid: str, step: int) -> list:

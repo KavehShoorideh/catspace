@@ -122,6 +122,36 @@ def _one_ply_values(b: chess.Board, before, book) -> dict:
     return out
 
 
+def candidates(b: chess.Board, before=None, book=None, ledger: str = "zone_candidates", count: int | None = None) -> list:
+    """THE CANDIDATE MOVES the reply ply or the zone search looks at -- one function for the player and every harness
+    (bug 2026-09-30: the ladder's own copy lacked the quiet threats): the one-ply top `count` (CANDIDATES) and its ties,
+    every capture, check and promotion, the quiet threats (the null-move what-if), and with the zone ledger the king
+    watches' moves and the proposer's constructions when those are switched on."""
+    if before is None:
+        stand = passed(b)
+        before, book = joint_threats_book(stand, square_frame, select=SELECT) if stand is not None else ((0.0, None, []), None)
+    moves = list(b.legal_moves)
+    one = _one_ply_values(b, before, book)                            # every capture and check (Kaveh: which what-ifs to consider)
+    ranked = sorted(one, key=lambda u: -one[u])
+    top1 = max(one.values())
+    keep = set(ranked[:(CANDIDATES if count is None else count)]) | {u for u in one if one[u] == top1} \
+        | {m.uci() for m in moves if b.is_capture(m) or b.gives_check(m) or m.promotion}   # (the one-ply top set: its quiet ties stay in)
+    now = joint_threats(b, square_frame)[0]                           # QUIET THREATS (puzzle dig 2026-09-28: 20 of 41 misses were quiet
+    for m in moves:                                                   # moves never given the reply ply): the null-move what-if -- if they
+        if m.uci() in keep:                                           # did nothing after it, would our frames win more than they do now?
+            continue
+        nb = b.copy(stack=False); nb.push(m); pb = passed(nb)
+        if pb is not None and joint_threats(pb, square_frame)[0] >= now + 0.5:
+            keep.add(m.uci())
+    if KING_WATCH and ledger == "zone_candidates":                     # the standing king frames: moves toward the enemy king (a member's
+        from .king_watch import candidate_moves                         # route, a condition piece taken) and our king's answers
+        keep |= set(candidate_moves(b))
+    if PROPOSE and ledger == "zone_candidates":                        # the what-if proposer's top edits: the moves that realize them join
+        from .whatif_proposer import propose_moves                      # (AlphaGeometry-style constructions; the zone search verifies)
+        keep |= set(propose_moves(b, one, PROPOSE))
+    return [m for m in moves if m.uci() in keep]
+
+
 def choose(b: chess.Board) -> dict:
     """-> {'values': {uci: value}, 'best': [ucis with the top value], 'trace': {uci: (their best after, their best if
     we pass)}} -- the frames' own reasoning for every legal move."""
@@ -133,26 +163,8 @@ def choose(b: chess.Board) -> dict:
     values = {}; trace = {}
     if LEDGER in ("two_ply", "two_ply_candidates", "two_ply_instinct", "zone_candidates"):
         moves = list(b.legal_moves)
-        if LEDGER in ("two_ply_candidates", "two_ply_instinct", "zone_candidates"):                                # the reply ply only where tactics live: the one-ply top moves,
-            one = _one_ply_values(b, before, book)                        # every capture and check (Kaveh: which what-ifs to consider)
-            ranked = sorted(one, key=lambda u: -one[u])
-            top1 = max(one.values())
-            keep = set(ranked[:CANDIDATES]) | {u for u in one if one[u] == top1} \
-                | {m.uci() for m in moves if b.is_capture(m) or b.gives_check(m) or m.promotion}   # (the one-ply top set: its quiet ties stay in)
-            now = joint_threats(b, square_frame)[0]                       # QUIET THREATS (puzzle dig 2026-09-28: 20 of 41 misses were quiet
-            for m in moves:                                               # moves never given the reply ply): the null-move what-if -- if they
-                if m.uci() in keep:                                       # did nothing after it, would our frames win more than they do now?
-                    continue
-                nb = b.copy(stack=False); nb.push(m); pb = passed(nb)
-                if pb is not None and joint_threats(pb, square_frame)[0] >= now + 0.5:
-                    keep.add(m.uci())
-            if KING_WATCH and LEDGER == "zone_candidates":                 # the standing king frames: moves toward the enemy king (a member's
-                from .king_watch import candidate_moves                     # route, a condition piece taken) and our king's answers
-                keep |= set(candidate_moves(b))
-            if PROPOSE and LEDGER == "zone_candidates":                    # the what-if proposer's top edits: the moves that realize them join
-                from .whatif_proposer import propose_moves                  # (AlphaGeometry-style constructions; the zone search verifies)
-                keep |= set(propose_moves(b, one, PROPOSE))
-            moves = [m for m in moves if m.uci() in keep]
+        if LEDGER in ("two_ply_candidates", "two_ply_instinct", "zone_candidates"):
+            moves = candidates(b, before, book, LEDGER)
         if LEDGER == "zone_candidates":                                     # the zone search verifies the candidates, all at the same depth
             from .zone_search import ZoneSearch                             # (Kaveh: plies are cheap in the right frame)
             from .frame_planner import MaterialPlanner                      # the PLANNER sets every limit and names the goals

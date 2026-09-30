@@ -107,6 +107,13 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   planner module to `planner.py`, which already held Kaveh's 2026-09-11 planning layer; the write tool said "updated",
   not "created". Found at once from that word; restored with `git checkout`, the new module moved to
   `frame_planner.py`. Check: `git ls-files --error-unmatch <path>` before writing any "new" file.
+- **Mates dropped out of the ladder's decisions** (class 2, a silent empty): the zone search scores a candidate that
+  mates at once and never searches it, so its per-depth history is empty; `depth_ladder.decisions` read only
+  histories, so in 7 of 23 pilot positions the mating solution vanished and "the solution is never on top, even at
+  12 plies" read 8/23 instead of 1/23. Found checking the result. Fixed: an empty history is a mate.
+- **A harness with its own candidate set** (class 9-like, a mismatch): `search_policy._candidates` (and the ladder
+  through it) lacked the player's quiet threats (00Ygn's Nc4 was never a candidate). Fixed: one function,
+  `frame_player.candidates`, for the player and every harness.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
