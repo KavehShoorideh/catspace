@@ -22874,6 +22874,31 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-30 13:53 PDT — the job ledger: pins and their kin as knowledge; no speed-up in the zone search (OBS)
+
+Kaveh asked whether Stockfish plays a pinned knight's hop and re-finds the loss in sibling lines (to the king: no, a
+bitboard of pinned pieces makes the move illegal and informs its exchange evaluation; to the queen: yes, re-found by
+search and remembered only statistically), then: "set up the structure so that our knowledge of the pin and similar
+tactics is leveraged to the maximum, so we are faster and better". `jobs.py`: a JOB is a piece whose presence keeps a
+frame from winning, found generically by removing the piece and re-reading the frame books -- shield (a pin; to the
+king: absolute), guard, block, and discovery (a piece in its own side's attack's way) -- with holder, target, attacker,
+value and a footprint (valid while those squares are unchanged); mate-valued jobs sit on the king. Knowledge flows
+through the planner (`MaterialPlanner(jobs=True)` -> `TacticalSpec.knowledge`): the zone search orders a move that
+abandons a valid job worth more than it takes last, and `prune_jobs` may drop such moves near the horizon; the jobs'
+operators (pressure on a holder, a hit on an overloaded holder's targets, a double-attacking discovery; for our own:
+the target off the line, interposition, a second guard) join the candidates (`frame_player JOBS`). Tests: the relative
+pin (Nf6 shields Qd8 against Bg5, +6), the back-rank guard (Rc8 guards against mate), an absolute pin, ordering only.
+The 14 hard cases, one run each, against 8/14 at 1,120,488 nodes: knowledge ordering 8/14, 1,165,590 nodes; plus the
+operators 8/14, 1,371,114; plus pruning 8/14, 1,729,836. Bug check: the knowledge fired at 39% of nodes, reordering
+429,192 moves -- the small "block" jobs were noise; with shields and guards worth a pawn or more only: 8/14, 1,138,957
+nodes (fired at 13% of nodes); with pruning at depth <= 2: 8/14, 1,157,990 nodes, 37,550 moves pruned.
+Reading (one run, directional): in the zone search the job knowledge does not make it faster -- a move abandoning a
+job is rarely the one that cuts, so alpha-beta must still prove it bad whatever the order, and near the horizon the
+pruned moves were cheap while their removal shifts the bounds; the search's cost is in the contenders' deep lines,
+which a static fact about a pin does not shorten. The structure stays (off by default): its value, if any, is where the
+knowledge replaces computation instead of ordering it -- a frame that is not re-resolved while its job holds, the
+tracker across moves, and the candidates it names in positions where they are missing.
+
 ## 2026-09-30 10:59 PDT — the planner's trade preference: nothing to measure in puzzles, no effect in games (OBS)
 
 `frame_planner.MaterialPlanner(trades=True)` (ahead by 2+: prefer the moves that trade, behind: avoid them; only a

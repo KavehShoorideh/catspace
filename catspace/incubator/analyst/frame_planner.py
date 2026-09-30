@@ -64,6 +64,8 @@ class MaterialPlanner:
     trades: bool = False                # the material-count trade preference (measured; see the module note)
     trade_margin: float = 2.0
     jobs: bool = False                  # hand the tactics the position's job ledger (jobs.py: pins, guards, discoveries)
+    job_kinds: tuple = ("shield", "guard", "block", "discovery")
+    job_min: float = 0.5
 
     def plan(self, b: chess.Board, moves: list) -> Plan:
         hints = []
@@ -83,7 +85,7 @@ class MaterialPlanner:
         knowledge = tuple(self.spec.knowledge)
         if self.jobs:
             from .jobs import ledger
-            knowledge += tuple(ledger(b))
+            knowledge += tuple(j for j in ledger(b) if j.kind in self.job_kinds and j.value >= self.job_min)
         return Plan(replace(self.spec, hints=tuple(self.spec.hints) + tuple(hints), knowledge=knowledge), prefer, notes)
 
 

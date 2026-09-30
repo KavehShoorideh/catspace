@@ -84,6 +84,7 @@ class ZoneSearch:
         self.budget = self.spec.budget; self.max_zone = self.spec.max_zone
         self.cap_total = self.spec.total_cap
         self.nodes = 0; self.total = 0; self.tt = {}; self.reads = {}; self.history = {}
+        self.kstats = {"nodes": 0, "fired": 0, "moves": 0, "pruned": 0}   # how often the knowledge acted
 
     def read(self, b: chess.Board, s: int) -> float:
         """A leaf's read of the frame on s: its own exchange (the square frame, no king joined -- the search above
@@ -179,8 +180,12 @@ class ZoneSearch:
                 for m in ms:
                     if m.from_square in holders:
                         ab[m] = abandons(b, m, self.spec.knowledge)
+                fired = sum(1 for v in ab.values() if v > 0.5)
+                self.kstats["nodes"] += 1; self.kstats["fired"] += bool(fired); self.kstats["moves"] += fired
                 if self.spec.prune_jobs and depth <= self.spec.prune_jobs:
+                    before_n = len(ms)
                     ms = [m for m in ms if ab.get(m, 0.0) <= 1.0 or b.gives_check(m)]
+                    self.kstats["pruned"] += before_n - len(ms)
             ms.sort(key=lambda m: (m != hint, ab.get(m, 0.0) > 0.5, -(F.captured_value(b, m) + (5 if b.gives_check(m) else 0)),
                                    -hist.get((b.piece_type_at(m.from_square), b.turn, m.to_square), 0)))
             for m in ms:

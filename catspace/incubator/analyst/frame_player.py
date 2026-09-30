@@ -103,6 +103,7 @@ def two_ply_value(b: chess.Board, m: chess.Move, opponent: str = "all") -> tuple
 
 CANDIDATES = 6                                                      # two_ply_candidates: the one-ply top moves that get the reply ply
 TOTAL_CAP = [None]                                                  # a hard node total for a position (equal-compute gauges); None: off
+KSTATS: dict = {}                                                   # the knowledge's firing counts, summed over choose calls
 NODES = [0]                                                         # the zone search's nodes for the last choose (for equal-compute gauges)
 BUDGET_POLICY = "fixed"                                            # zone_candidates: "fixed" (equal shares) | "watch" (the king watches' policy)
 KING_WATCH = False                                                  # zone_candidates: the king watches' moves join the candidates
@@ -188,6 +189,8 @@ def choose(b: chess.Board) -> dict:
                 zs.cap_total = TOTAL_CAP[0]
             got = zs.rank(b, moves, alloc=alloc)
             NODES[0] = spent + zs.total
+            for k2, v2 in zs.kstats.items():
+                KSTATS[k2] = KSTATS.get(k2, 0) + v2
             for m in moves:
                 v, zl, _ = got[m]
                 values[m.uci()] = v; trace[m.uci()] = ((v, None, [x.uci() for x in zl[1:]]), before)
