@@ -71,6 +71,13 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   used C=0.5 everywhere; adding atoms to board+material LOWERED the mate AUC 0.854 -> 0.814, the signature of a
   mis-set model, not of chess. Found checking the negative result per Kaveh's rule. Fixed: MaxAbsScaler and C chosen
   per feature set on held-in games.
+- **"Arrived" was true by definition** (class 4/6, a definition error): classifying how a mate's first check came, I
+  called the checking piece "arrived" when its start square differed from its checking square -- true for every
+  check but a discovered one (104 of 117 "arrived"). Found because the number looked too clean. Fixed: arrived = it
+  needed 2+ of its own moves (the check itself is one).
+- **Capture landings read as unreachable** (class 2-like, a silent None): the arrival distance used the reach map's
+  `stand`, which holds empty squares only; most mating checks are captures, so 65 of 117 read "not within 4 moves"
+  for mates within 4 plies. Found by the same check. Fixed: an occupied square costs its attack distance plus one.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).

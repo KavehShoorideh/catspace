@@ -22874,6 +22874,29 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-29 19:26 PDT — where the frames cannot predict mate: the attacker is not there yet (OBS)
+
+Kaveh: "find the situations where we cannot predict mate from the frames ... we should always be looking for mates ...
+every frame with a king in it, we keep that king frame ... if something around the king changes, we check again ... a
+king and the opponent's rook on the same file with pieces in between ... all three pieces have to go away ... how do we
+remove piece one, two, three". `frame_profile mate_misses` (1,000 games, held-out games): of the 468 positions where a
+new mate frame of the side to move appears within 4 plies, the quarter the atoms+material model scores lowest (MISSED,
+117) against the quarter it scores highest (CAUGHT, 117):
+- the mated king's frame is in the profile in 117 / 117 of both, but reads a threat (value > 0) in 19 missed vs 68
+  caught; a latent line on that king (a slider of the mating side in line, 1-3 pieces between) 19 vs 40; the mate's
+  first check comes down such a line 1 vs 10; the mating side's pieces within two king steps 0.32 vs 0.75 a position.
+- how the mate's first check came (the checking piece followed back to the start through the game's moves; its
+  distance by piece reach at the start): the piece had to ARRIVE (2+ of its own moves) in 71 missed vs 50 caught -- from
+  3+ moves away 29 vs 10, not within 4 moves 11 vs 4; the check was one move away and something else had to change 34
+  vs 64; a line had to OPEN (pieces on the check line at the start) 12 vs 3.
+Two bugs in the dig itself, fixed before these numbers (docs/BUGS.md): "arrived" had been true for every check that
+moves its piece, and capture landings read as unreachable.
+Reading (one run, directional): the mates the frames miss are mostly ARRIVALS -- the attacker is not bearing on anything
+near the king yet, often three or more moves away -- and, less often, lines that must open; latent lines with the
+slider already in place are not the missing piece (rarer among the missed). The frame profile is a snapshot of what
+bears on what now. Kaveh's standing king frame -- the pieces that CAN MAKE IT to a checking square in time (piece
+reach), the lines they would use and the pieces that would have to go -- is the missing reading.
+
 ## 2026-09-29 18:08 PDT — the negative result bug-checked (three bugs); relation atoms match the raw board on material frames (OBS)
 
 Kaveh's standing rule from today: "always check your negative results for bugs ... focus on places with high

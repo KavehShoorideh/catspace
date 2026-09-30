@@ -260,6 +260,155 @@ def gauge(path: str, ks=(4, 8), log=print) -> None:
                 f"{int(y[te].sum())} positive); held-out AUC: " + ", ".join(res))
 
 
+def latent_lines(b: chess.Board, by: chess.Color) -> list:
+    """`by`'s sliders in line with the other king with 1-3 pieces between (Kaveh: "a king and the opponent's rook on the
+    same file ... a few pieces in between ... suddenly three pieces are gone and I find myself in check"):
+    -> [(slider square, blocker squares)]."""
+    k = b.king(not by)
+    out = []
+    if k is None:
+        return out
+    for s in b.pieces(chess.BISHOP, by) | b.pieces(chess.ROOK, by) | b.pieces(chess.QUEEN, by):
+        if not chess.BB_RAYS[s][k]:
+            continue
+        orth = chess.square_file(s) == chess.square_file(k) or chess.square_rank(s) == chess.square_rank(k)
+        pt = b.piece_type_at(s)
+        if (pt == chess.ROOK and not orth) or (pt == chess.BISHOP and orth):
+            continue
+        between = [x for x in chess.SquareSet(chess.between(s, k)) if b.piece_at(x) is not None]
+        if 1 <= len(between) <= 3:
+            out.append((s, between))
+    return out
+
+
+def mate_misses(path: str, k: int = 4, show: int = 6, log=print) -> None:
+    """Kaveh: "find the situations where we cannot predict mate from the frames". On held-out games, the positions
+    where a NEW mate frame of the side to move appears within k plies: the atoms+material model's scores; the quarter
+    it scores lowest (MISSED) against the quarter it scores highest (CAUGHT), and what was there at the start -- the
+    mated king's frame in the profile and its value, the mating side's latent lines on that king (sliders in line
+    with 1-3 pieces between), its pieces within two king steps, the king's flight squares -- and how the mate came:
+    the first check of the mate frame's line, and whether it is a slider whose line to the king was blocked at the
+    start (a latent line that opened)."""
+    import numpy as np
+    from sklearn.feature_extraction import DictVectorizer
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.preprocessing import MaxAbsScaler
+    from scipy.sparse import hstack, csr_matrix
+    rows = _load(path); rows.sort(key=lambda r: (r["game"], r["ply"]))
+    by_game = {}
+    for i, r in enumerate(rows):
+        by_game.setdefault(r["game"], []).append(i)
+    n = len(rows)
+    y = np.zeros(n, dtype=bool); keep = np.zeros(n, dtype=bool); when = {}
+    turn = [chess.Board(r["fen"]).turn for r in rows]
+    owned = lambda i, c: any(f[0] == c and f[3] >= MATE_AT for f in rows[i]["frames"])
+    for idx in by_game.values():
+        for j, i in enumerate(idx):
+            if owned(i, turn[i]) or j + 1 >= len(idx):
+                continue
+            keep[i] = True
+            for x in idx[j + 1:j + 1 + k]:
+                if owned(x, turn[i]):
+                    y[i] = True; when[i] = x; break
+    fa, fm = [], []
+    for i, r in enumerate(rows):
+        me = turn[i]; b = chess.Board(r["fen"])
+        fa.append({f"{'us' if o == me else 'them'}:{a}": float(c) for o, a, c in r["atoms"]})
+        m = [len(b.pieces(pt, c)) for c in (me, not me) for pt in (1, 2, 3, 4, 5)]
+        fm.append(m)
+    Xa = DictVectorizer().fit_transform(fa); Xa.data = np.log1p(Xa.data)
+    X = hstack([Xa, csr_matrix(np.array(fm, dtype=float) / 10.0)]).tocsr()
+    test = np.array([int(hashlib.sha1(str(r["game"]).encode()).hexdigest()[:8], 16) % 5 == 0 for r in rows])
+    tr, te = ~test & keep, test & keep
+    X = MaxAbsScaler().fit(X[tr]).transform(X)
+    model = LogisticRegression(C=0.1, max_iter=3000, solver="liblinear").fit(X[tr], y[tr])
+    pos = np.where(te & y)[0]
+    sc = model.predict_proba(X[pos])[:, 1]
+    order = pos[np.argsort(sc)]
+    q = max(1, len(order) // 4)
+    groups = {"MISSED (lowest quarter)": order[:q], "CAUGHT (highest quarter)": order[-q:]}
+    log(f"[mate_misses] held-out positions where a new mate frame of the side to move appears within {k} plies: {len(pos)}")
+    for name, ids in groups.items():
+        stats = dict(king_frame=0, king_value_pos=0, latent=0, latent_opened=0, near=0, flights=0, check_first=0, n=0)
+        ex = []
+        for i in ids:
+            b = chess.Board(rows[i]["fen"]); me = turn[i]; kk = b.king(not me)
+            stats["n"] += 1
+            kf = [f for f in rows[i]["frames"] if f[0] == me and f[1] == "king"]
+            stats["king_frame"] += bool(kf); stats["king_value_pos"] += any(f[3] > 0 for f in kf)
+            lat = latent_lines(b, me)
+            stats["latent"] += bool(lat)
+            stats["near"] += sum(1 for s, p in b.piece_map().items() if p.color == me and chess.square_distance(s, kk) <= 2)
+            stats["flights"] += sum(1 for s in chess.SquareSet(chess.BB_KING_ATTACKS[kk]) if not b.is_attacked_by(me, s) and (b.piece_at(s) is None or b.piece_at(s).color == me))
+            later = chess.Board(rows[when[i]]["fen"])
+            t2 = later if later.turn == me else F.passed(later)
+            line = []
+            if t2 is not None:
+                book = F.frame_book(t2)
+                mf = [(v, ln) for key, (_fr, _, v, ln) in book.items() if v >= MATE_AT]
+                if mf:
+                    line = max(mf)[1]
+            first_check = None
+            if line and t2 is not None:
+                bb = t2.copy()
+                for u in line:
+                    mv = chess.Move.from_uci(u)
+                    if bb.turn == me and mv in bb.legal_moves and bb.gives_check(mv):
+                        first_check = (bb.piece_type_at(mv.from_square), mv.from_square); break
+                    if mv not in bb.legal_moves:
+                        break
+                    bb.push(mv)
+            if first_check:
+                stats["check_first"] += 1
+                if first_check[0] in (chess.BISHOP, chess.ROOK, chess.QUEEN) and any(s == first_check[1] for s, _ in lat):
+                    stats["latent_opened"] += 1
+                # HOW THE MATE CAME: follow the checking piece back to the start position through the game's moves; did it
+                # have to ARRIVE (piece reach from where it stood), and did its check line have to OPEN (pieces on it at
+                # the start, gone at the check)
+                path_idx = list(range(i, when[i]))
+                sq = first_check[1]
+                for x in reversed(path_idx):                      # the game's moves between the start and the mate frame
+                    b0, b1 = chess.Board(rows[x]["fen"]), chess.Board(rows[x + 1]["fen"])
+                    mv = next((mm for mm in b0.legal_moves if (lambda c: (c.push(mm), c.board_fen() == b1.board_fen())[1])(b0.copy(stack=False))), None)
+                    if mv is not None and mv.to_square == sq:
+                        sq = mv.from_square
+                start_sq = sq
+                pc0 = b.piece_at(start_sq)
+                chk_move = next((chess.Move.from_uci(u) for u in line if chess.Move.from_uci(u).from_square == first_check[1]), None)
+                arrived = opened = None
+                if pc0 is not None and pc0.color == me and chk_move is not None:
+                    target_sq = chk_move.to_square
+                    from .piece_reach import piece_reach
+                    rc = piece_reach(b, start_sq, k=4)
+                    if b.piece_at(target_sq) is None:                 # moves to stand on the checking square; a capture there:
+                        arrive_moves = rc.stand.get(target_sq)        # moves to attack it, plus the capture (bug 2026-09-29:
+                    else:                                             # 'stand' holds empty squares only, so capture checks read
+                        d_ = rc.attack.get(target_sq)                 # 'not reachable')
+                        arrive_moves = None if d_ is None else d_ + 1
+                    arrived = arrive_moves is None or arrive_moves >= 2   # (bug 2026-09-29: every check moves its piece -- 'arrived'
+                    blockers = [x for x in chess.SquareSet(chess.between(target_sq, kk)) if b.piece_at(x) is not None and x != start_sq] if kk is not None else []
+                    opened = bool(blockers) and first_check[0] in (chess.BISHOP, chess.ROOK, chess.QUEEN)   # means more than the check itself)
+                    kind = ("arrived and line opened" if arrived and opened else "arrived" if arrived else "line opened" if opened
+                            else "the check was one move away at the start")
+                    stats.setdefault("how", {}).setdefault(kind, 0); stats["how"][kind] += 1
+                    if arrived:
+                        stats.setdefault("arrive", []).append(arrive_moves if arrive_moves is not None else 9)
+            if len(ex) < show:
+                ex.append(f"   {rows[i]['fen']}  -> mate frame at +{rows[when[i]]['ply'] - rows[i]['ply']} ply: {' '.join(line[:6])}; "
+                          f"latent lines {[(chess.square_name(s), [chess.square_name(x) for x in bl]) for s, bl in lat]}")
+        m = max(stats['n'], 1)
+        log(f"OBS {name} ({stats['n']} positions): the mated king's frame in the profile {stats['king_frame']} (its value > 0: {stats['king_value_pos']}); "
+            f"a latent line on that king {stats['latent']}; the mate's first check comes down a latent line {stats['latent_opened']} "
+            f"(of {stats['check_first']} with a check read); mating side's pieces within 2 of the king {stats['near'] / m:.2f} a position; "
+            f"the king's flight squares {stats['flights'] / m:.2f}")
+        how = stats.get("how", {}); arr = stats.get("arrive", [])
+        log(f"   how the mate's first check came: " + ", ".join(f"{k2} {v}" for k2, v in sorted(how.items(), key=lambda kv: -kv[1]))
+            + (f"; arriving pieces needed (piece reach from the start) 1: {arr.count(1)}, 2: {arr.count(2)}, 3+: {sum(1 for a in arr if 3 <= a < 9)}, "
+               f"not within 4 own moves: {arr.count(9)}" if arr else ""))
+        for e in ex:
+            log(e)
+
+
 def check(games: int = 40, skip: int = 5000, log=print) -> None:
     """Bug checks for the gauge's negative result (docs/BUGS.md classes): (1) silent skips -- positions whose profile
     raised; (2) 'big' frames that collapse to one type; (3) perspective -- a position and its colour mirror must give
@@ -328,7 +477,10 @@ def main(argv=None):
     c.add_argument("--workers", type=int, default=10)
     g = sub.add_parser("gauge"); g.add_argument("--path", default=None); g.add_argument("--games", type=int, default=60); g.add_argument("--skip", type=int, default=0)
     k = sub.add_parser("check"); k.add_argument("--games", type=int, default=40); k.add_argument("--skip", type=int, default=5000)
+    mm = sub.add_parser("mate_misses"); mm.add_argument("--games", type=int, default=1000); mm.add_argument("--k", type=int, default=4)
     a = ap.parse_args(argv)
+    if a.cmd == "mate_misses":
+        return mate_misses(str(paths.derived(f"frame_profiles_{a.games}_0.jsonl.gz")), a.k)
     if a.cmd == "check":
         return check(a.games, a.skip)
     if a.cmd == "collect":
