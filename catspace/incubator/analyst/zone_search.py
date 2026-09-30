@@ -221,6 +221,7 @@ class ZoneSearch:
         roots = {m: self.root(b, m) for m in moves}
         got = {m: ((1e6, [m], 1) if r is None else (r[0], [m], 0)) for m, r in roots.items()}
         self.total = 0
+        self.history = {m: [] for m in moves}                         # per candidate: (depth, value or None if out of budget, nodes)
         alloc = alloc or {}
         base = self.budget
         W = sum(alloc.get(m, (1.0, 0))[0] for m in moves) or 1.0
@@ -241,11 +242,13 @@ class ZoneSearch:
                 try:
                     v, ln = self.search(bb, zone, d - 1, -1e9, g - lo if lo > -1e8 else 1e9)
                 except Budget:
+                    self.history[m].append((d, None, self.nodes))
                     continue                                          # out of budget at this depth: it keeps the last one
                 finally:
                     self.total += self.nodes
                     self.budget = base
                 got[m] = (g - v, [m] + ln, d)
+                self.history[m].append((d, g - v, self.nodes))
                 if g - v > lo:
                     best_now = max(best_now, g - v)
         return got

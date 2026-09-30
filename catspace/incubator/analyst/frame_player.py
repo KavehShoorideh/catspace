@@ -102,6 +102,7 @@ def two_ply_value(b: chess.Board, m: chess.Move, opponent: str = "all") -> tuple
 
 
 CANDIDATES = 6                                                      # two_ply_candidates: the one-ply top moves that get the reply ply
+NODES = [0]                                                         # the zone search's nodes for the last choose (for equal-compute gauges)
 BUDGET_POLICY = "fixed"                                            # zone_candidates: "fixed" (equal shares) | "watch" (the king watches' policy)
 KING_WATCH = False                                                  # zone_candidates: the king watches' moves join the candidates
 PROPOSE = 0                                                         # zone_candidates: the moves realizing the proposer's top-k what-if edits join (0: off)
@@ -153,10 +154,17 @@ def choose(b: chess.Board) -> dict:
         if LEDGER == "zone_candidates":                                     # the zone search verifies the candidates, all at the same depth
             from .zone_search import ZoneSearch                             # (Kaveh: plies are cheap in the right frame)
             alloc = None
+            zs = ZoneSearch(ZONE_BUDGET); spent = 0
             if BUDGET_POLICY == "watch":                                    # the tactical policy's budget: king danger gets more, and deeper
                 from .king_watch import budget_policy
                 alloc = budget_policy(b, moves)
-            got = ZoneSearch(ZONE_BUDGET).rank(b, moves, alloc=alloc)
+            elif BUDGET_POLICY == "learned":                                # phase 1 small; phase 2 shared by the learned chance that more
+                from .search_policy import allocate, SMALL                  # search changes a candidate (the table kept between phases)
+                zs.budget = SMALL
+                alloc = allocate(b, moves, zs); spent = zs.total
+                zs.budget = ZONE_BUDGET
+            got = zs.rank(b, moves, alloc=alloc)
+            NODES[0] = spent + zs.total
             for m in moves:
                 v, zl, _ = got[m]
                 values[m.uci()] = v; trace[m.uci()] = ((v, None, [x.uci() for x in zl[1:]]), before)

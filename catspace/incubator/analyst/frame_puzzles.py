@@ -40,8 +40,9 @@ def _solve_lichess(row: dict) -> dict:
                 mate_ok = any(_mates(b, x) for x in c["best"])
         ok_tied = u in c["best"] or mate_ok
         ok_unique = (c["best"] == [u]) or (mate_ok and len(c["best"]) == 1)
+        from . import frame_player as _FP
         steps.append(dict(fen=b.fen(), sol=u, tied=ok_tied, unique=ok_unique, n_top=len(c["best"]), best=c["best"][:6],
-                          v_sol=c["values"].get(u), v_top=max(c["values"].values())))
+                          v_sol=c["values"].get(u), v_top=max(c["values"].values()), nodes=_FP.NODES[0]))
         if not ok_tied:
             break
         b.push_uci(u)
@@ -128,7 +129,7 @@ def main(argv=None):
     ap.add_argument("--quiet-offset", type=int, default=73, help="lichess-quiet: rows i %% 97 == offset with a quiet theme (the proposer trained on 49)")
     ap.add_argument("--check-ext", type=int, default=None, help="zone search: checks that do not use up a ply, per line (zone_search.CHECK_EXT)")
     ap.add_argument("--offset", type=int, default=0, help="lichess: fresh rows i %% stride == offset (never the test sample's, the proposer's or the quiet set's rows)")
-    ap.add_argument("--budget-policy", default="fixed", choices=["fixed", "watch"], help="zone search budget: equal shares or the king watches' policy")
+    ap.add_argument("--budget-policy", default="fixed", choices=["fixed", "watch", "learned"], help="zone search budget: equal shares, the king watches' rule, or the learned policy")
     ap.add_argument("--watch-zone", type=int, default=0, help="zone search: the king watches' top-N pursued members join the root zone")
     ap.add_argument("--king-watch", action="store_true", help="zone_candidates: the standing king frames' moves join the candidates")
     ap.add_argument("--no-runners", action="store_true", help="zone search: no passed pawns in the root zone (ablation)")
@@ -173,6 +174,9 @@ def main(argv=None):
             res = pool.map(_solve_epd, [(pid, b.fen(), bms) for pid, b, bms in items], chunksize=2)
     n = len(res)
     print(f"[frame_puzzles] {a.source}: {n} puzzles, ledger {tag}, {time.perf_counter() - t0:.0f}s")
+    ns = [s.get("nodes", 0) for r in res for s in r["steps"]]
+    if any(ns):
+        print(f"OBS zone search nodes per solver step: mean {sum(ns) / len(ns):.0f} over {len(ns)} steps")
     from .fates import VERIFY_FRAMES
     if VERIFY_FRAMES:                                             # the lemma library served a value its fresh resolution disagrees with
         bad = [r for r in res if r.get("n_lemma_mismatches")]
