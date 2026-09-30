@@ -22874,6 +22874,28 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-30 00:05 PDT — the learned tactical search policy, first round: equal to the fixed budget at equal compute (OBS)
+
+Kaveh's call: build the learned policy. `search_policy.py`: the deeper search is the teacher -- for every candidate of a
+position, a small zone search (4,000 nodes a depth) and a large one (40,000 a depth, to 10 plies), each on its own
+table; the label: more search changed the candidate (its value by a pawn, or its standing against the best); the
+features: what the cheap phase knows (the move, its values by depth and their swing, nodes used, out of budget, its gap
+to the best, whether it changes a king watch); gradient-boosted trees; in play, phase 1 cheap, phase 2 the rest of the
+same total shared by the predicted chance of change times closeness to the best.
+First data (40 training puzzles from fresh rows, 879 candidates, 916 s): more search changes a candidate by a pawn in
+0.548, its standing against the best in 0.027 (about 24 candidates -- too few to learn from); held-out AUC (127
+candidates, 10 puzzles) 0.808 for "changed", the best single feature (the 4-to-6-ply swing) 0.572.
+On the 14 hard cases: without a total cap the learned allocation solved 9/14 against the fixed 8/14 -- at 2.6 times
+the nodes (2.93M vs 1.12M), not a comparison. At EQUAL total nodes (each position capped at the fixed policy's own
+spend) it first scored 3/14 -- a protocol flaw, not a verdict: phase 1 took every candidate to 8 plies and spent the
+whole cap (0Knjg: 6,534 of 6,533), leaving phase 2 nothing (a mate read 0.0). Fixed (phase 1 to 6 plies, the model
+retrained with the 8-ply features masked, AUC 0.799): 8/14, the same eight puzzles as the fixed policy, 1,120,502
+nodes vs 1,120,488. Both bugs of the day in the budget line are in docs/BUGS.md.
+Reading (one run, directional): at equal compute the first learned policy is no better than equal shares -- its label
+is mostly "this move is volatile", not "more search would change the decision" (2.7%). Running overnight: 300 more
+training puzzles (the decision label then has ~200 positives), the model on both labels, and the 300 test puzzles at
+matched nodes per step (`frame_puzzles --match-nodes`).
+
 ## 2026-09-29 22:49 PDT — the budget by a tactical policy: a rule cannot make the call (OBS)
 
 Kaveh's call: the budget by the tactical policy. `ZoneSearch.rank(alloc=...)`: each candidate's per-depth budget is its
