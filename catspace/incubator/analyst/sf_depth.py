@@ -63,7 +63,7 @@ def _analyse(args) -> dict:
     pid, fen, sol, dmax = args
     b = chess.Board(fen)
     rows = []
-    with _engine().analysis(b, chess.engine.Limit(depth=dmax)) as an:
+    with _engine().analysis(b, chess.engine.Limit(depth=dmax, time=20.0)) as an:   # (a time guard: a full run hung once)
         for info in an:
             if "depth" in info and "pv" in info and info.get("multipv", 1) == 1 and "seldepth" in info:
                 rows.append((info["depth"], info["seldepth"], info["pv"][0].uci(), info.get("score"), info["pv"]))
@@ -98,9 +98,13 @@ def main(argv=None):
             b.push_uci(sol[i])
             if i + 1 < len(sol):
                 b.push_uci(sol[i + 1])
-    with mp.get_context("fork").Pool(a.workers) as pool:
-        res = [x for x in pool.map(_analyse, items, chunksize=4) if x]
-    json.dump(res, open(paths.derived(f"sf_depth_{a.n}.json"), "w"))
+    out = paths.derived(f"sf_depth_{a.n}.jsonl")
+    res = []
+    with mp.get_context("fork").Pool(a.workers) as pool, open(out, "w") as fh:   # line by line: a stall loses nothing
+        for x in pool.imap_unordered(_analyse, items, chunksize=1):
+            if x:
+                x = {k: v for k, v in x.items()}
+                fh.write(json.dumps(x) + "\n"); fh.flush(); res.append(x)
     miss = set()
     try:
         for r in json.load(open(paths.derived(a.misses))):

@@ -22874,6 +22874,36 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-30 10:30 PDT — no hard-coded limits in the tactics; the planner sets them; how deep Stockfish looks (OBS)
+
+Kaveh, this morning: (1) the stop-or-continue decider -- "deep labels first, RL after", an overnight ladder to 12
+plies (queued, not started); (2) "learn from Stockfish how deep it goes past the point it should prune while it
+achieves quiescence -- that's the order of plies we have to go"; (3) "remove all the hard-coded limits on how deep to
+search ... those should become parameters ... from the planner side ... the tactical layer understands frames";
+(4) "solving puzzles without the planner is problematic -- at least a simple material count, whether we ought to be
+trading or avoiding trades ... later our learned planner layer".
+- `zone_search.TacticalSpec`: every limit the zone search had as a constant -- the depth schedule, the node budget, a
+  total cap, the 3-pawn margin and its check exemption, the tie window, the null-move reduction, the check extension
+  and its ply cap, the zone size -- plus the planner's goals as square hints, its effort per candidate and a stop rule.
+  `frame_planner.MaterialPlanner`, the rule-based stand-in for the learned planner (planner.py): the pawn runs (moved
+  out of the zone search) and the king watches as goals; a material-count trade preference as a tie-break among the
+  moves the tactics tie -- off, to be measured (Kaveh's 2026-09-15 finding: trading when ahead does not pay, +-0.02).
+  Behaviour at the defaults unchanged: the 14 hard cases 8/14 at exactly 1,120,488 nodes before and after.
+- `sf_depth.py` (Stockfish, one thread, to depth 24, every depth kept; 653 solver steps of the 300 test puzzles, one
+  run): the final move is the solution in 649. The nominal depth from which it settles on the solution: median 1, 90th
+  percentile 4, max 17; seldepth past that depth: median 3, 90th 6. The PAYOFF PLY -- where the line has secured its
+  gain (capped at a minor piece) and keeps it, a mate's ply: median 3, 90th 21; beyond 8 plies in 203 of 628, beyond
+  12 in 165. The zone ledger's 9 failing steps: Stockfish settles at nominal depth median 7 (90th 10, max 11), seldepth
+  3 beyond (90th 7), payoff ply median 16 (beyond 8 in 6 of 8).
+  (A first run hung -- the pool and ten engines at 0% CPU for 21 minutes; relaunched with a per-position time guard
+  and line-by-line output. A first payoff definition measured where the line's END material settled and was pushed
+  out by equal trades late in long lines; fixed before these numbers.)
+Reading (one run, directional): most puzzles need little lookahead -- Stockfish settles at nominal depth 1-5 and looks
+about 3 plies past it, the order of our 8 plies with leaf reads, which is why 291/300 are solved; the payoff ply
+overstates the need (leaf reads resolve exchanges; many long payoffs are mates). The misses are genuinely deep:
+Stockfish needs nominal 7-10 plus 3-7 selective plies, the gain secured around ply 16 -- about twice our cap. That is
+the order of plies the stop-or-continue decider must be able to reach.
+
 ## 2026-09-30 02:02 PDT — the learned search policy on 340 puzzles: it learns closeness to the best, and loses to equal shares by two (OBS)
 
 Data: 300 more training puzzles (fresh rows at offset 850; the overnight chain was stopped by the 30-minute background
