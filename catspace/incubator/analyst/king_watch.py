@@ -300,6 +300,46 @@ def candidate_moves(b: chess.Board, budget: int = 8) -> list:
     return seen[:budget]
 
 
+def danger_squares(b: chess.Board, top: int = 3) -> set:
+    """Both kings' watches, as squares: the pursued members, where they check from, their routes and blockers, the
+    conditions against them, the flights and the kings."""
+    out = set()
+    for c in (chess.WHITE, chess.BLACK):
+        if b.king(c) is None:
+            continue
+        w = watch(b, c, operators=False)
+        pursued = policy(w, top)
+        for m in pursued:
+            out |= {m.square, m.check_from} | set(m.route) | set(m.blockers)
+        ids = {m.square for m in pursued}
+        out |= {x.square for x in w.conditions if x.member in ids} | set(w.flights) | {w.king}
+    return out
+
+
+def _signature(w: Watch, top: int) -> tuple:
+    """What a king watch says, compactly: the pursued members' kinds and moves, and the conditions against them."""
+    pursued = policy(w, top)
+    ids = {m.square for m in pursued}
+    return (tuple(sorted((m.kind, m.moves, len(m.blockers)) for m in pursued)),
+            tuple(sorted((c.kind, c.square) for c in w.conditions if c.member in ids)), len(w.flights))
+
+
+def budget_policy(b: chess.Board, moves: list, top: int = 3, weight: float = 3.0, deep: int = 10, base_depth: int = 8) -> dict:
+    """THE TACTICAL POLICY FOR THE BUDGET (placeholder, to be learned): a candidate that CHANGES a king watch -- after it,
+    a pursued member checks sooner or later, a condition appears or goes, a flight opens or closes (Kaveh: "if it's not
+    changing we don't do anything; if something around the king changes, we check again") -- gets `weight` times the
+    others' share and may go on to `deep` plies; the others stop at `base_depth`. (Bug 2026-09-29: "touches a watch
+    square" marked 27 of 27 candidates -- with no horizon the watches cover most of the board -- a gate always on.)"""
+    before = {c: _signature(watch(b, c, operators=False), top) for c in (chess.WHITE, chess.BLACK) if b.king(c) is not None}
+    out = {}
+    for m in moves:
+        nb = b.copy(stack=False); nb.push(m)
+        changed = b.gives_check(m) or any(nb.king(c) is None or _signature(watch(nb, c, operators=False), top) != sig
+                                          for c, sig in before.items())
+        out[m] = (weight, deep) if changed else (1.0, base_depth)
+    return out
+
+
 def features(b: chess.Board) -> dict:
     """Both kings' watches as features for the side to move (distances binned, not cut): open and latent members by
     moves, the pieces they must get past, flights, and conditions."""

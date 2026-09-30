@@ -102,6 +102,7 @@ def two_ply_value(b: chess.Board, m: chess.Move, opponent: str = "all") -> tuple
 
 
 CANDIDATES = 6                                                      # two_ply_candidates: the one-ply top moves that get the reply ply
+BUDGET_POLICY = "fixed"                                            # zone_candidates: "fixed" (equal shares) | "watch" (the king watches' policy)
 KING_WATCH = False                                                  # zone_candidates: the king watches' moves join the candidates
 PROPOSE = 0                                                         # zone_candidates: the moves realizing the proposer's top-k what-if edits join (0: off)
 ZONE_BUDGET = 20000                                                 # zone_candidates: nodes per candidate per depth (all deepen together: 4, 6, 8 plies)
@@ -151,7 +152,11 @@ def choose(b: chess.Board) -> dict:
             moves = [m for m in moves if m.uci() in keep]
         if LEDGER == "zone_candidates":                                     # the zone search verifies the candidates, all at the same depth
             from .zone_search import ZoneSearch                             # (Kaveh: plies are cheap in the right frame)
-            got = ZoneSearch(ZONE_BUDGET).rank(b, moves)
+            alloc = None
+            if BUDGET_POLICY == "watch":                                    # the tactical policy's budget: king danger gets more, and deeper
+                from .king_watch import budget_policy
+                alloc = budget_policy(b, moves)
+            got = ZoneSearch(ZONE_BUDGET).rank(b, moves, alloc=alloc)
             for m in moves:
                 v, zl, _ = got[m]
                 values[m.uci()] = v; trace[m.uci()] = ((v, None, [x.uci() for x in zl[1:]]), before)

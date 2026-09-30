@@ -22874,6 +22874,22 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-29 22:49 PDT — the budget by a tactical policy: a rule cannot make the call (OBS)
+
+Kaveh's call: the budget by the tactical policy. `ZoneSearch.rank(alloc=...)`: each candidate's per-depth budget is its
+weighted share of the same total and its deepest depth is the policy's; `king_watch.budget_policy` (placeholder): a
+king-danger candidate gets three times the share and may go to 10 plies, the others stop at 8 (`frame_player
+BUDGET_POLICY`, `frame_puzzles --budget-policy watch`). The 14 hard cases, one run: fixed budget 8/14 (311 s); the
+budget policy 9/14 (692 s; +0494Y, 0Hb6O kept); the watch zone 10/14 (386 s); both 10/14 (780 s; 0Hb6O still lost).
+Bug check of the mixed result: the policy's gate fired on nearly every candidate -- "touches a king watch's squares"
+marked 27 of 27 in 0Hb6O, 16 of 16 in 0F2gT, 22 of 23 in 0NMfB -- so it reallocated nothing and only raised every cap
+and added a 10-ply iteration (twice the time). The second criterion, "the move CHANGES a king watch", marked 27/27,
+13/16, 21/23, 12/12, 20/20, 28/31: with no horizon every enemy piece is a member and nearly every move changes some
+member's distance. Logged in docs/BUGS.md; the flag stays off.
+Reading: without a horizon, which candidate deserves the plies cannot be a threshold rule on the watches -- it has to
+be LEARNED (which candidates, given more plies, change the decision -- trainable against Stockfish or the puzzle
+solutions), as Kaveh put it: the tactical policy's job. Not started; his call.
+
 ## 2026-09-29 21:49 PDT — the king watch in play: candidates null, the root check neutral on puzzles (OBS)
 
 Two uses of the standing king frame in the frame player (zone ledger), one run each:

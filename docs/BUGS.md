@@ -87,6 +87,13 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   plies, among all 27 candidates 1.0 at 8). Benchmark churn of a few puzzles between two settings that change zones
   (king ring, watch zone) is this and budget/horizon effects -- check the lost puzzles' depths before reading a
   difference.
+- **A policy gate that was always on** (class 2, a degenerate gate): the placeholder budget policy marked a candidate
+  "king danger" if it touched a king watch's squares; with no horizon those cover most of the board -- 27 of 27, 16
+  of 16, 22 of 23 candidates -- so it reallocated nothing and only raised every cap (twice the time, no gain). Found
+  checking a mixed result (print the gate's firing rate beside any gated result). The second criterion (danger = the
+  move CHANGES a king watch) fires on 12-28 of 12-31 candidates too: with no horizon every enemy piece is a member and
+  nearly every move changes some member's distance. Not fixable by a threshold rule -- the budget policy has to be
+  learned; flag stays off.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).

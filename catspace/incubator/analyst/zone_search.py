@@ -207,20 +207,29 @@ class ZoneSearch:
         """The move's value by the zone search: the deepest completed depth within the budget. -> (value, line, depth)."""
         return self.rank(b, [m], depths)[m]
 
-    def rank(self, b: chess.Board, moves: list, depths=(4, 6, 8), margin: float = 3.0) -> dict:
+    def rank(self, b: chess.Board, moves: list, depths=(4, 6, 8), margin: float = 3.0, alloc: dict | None = None) -> dict:
         """The candidates deepened together: all at 4 plies, then at 6, ...; each candidate has the node budget for each
         iteration, and one that runs out keeps its previous depth's value (so an explosive candidate does not hold the
         others at a shallower depth -- 0Hb6O: with 27 candidates sharing one budget, none reached 8 plies, where the
         rook sacrifice Rxh7+ pays). A candidate more than `margin` behind the best is not deepened further, unless it
         gives check. Candidates are searched best first; one that cannot come within TIE of the best so far gets an
         upper bound, not its exact value (it is not a contender) -- the value it reports is at most that.
+        `alloc` (the tactical policy's call -- Kaveh: "deciding whether to continue or not should be the job of a
+        tactical policy"): move -> (weight, deepest depth); each candidate's budget per depth is its share of the same
+        total (the base budget times the number of candidates), and it is deepened no further than its depth.
         -> {move: (value, line, depth)}."""
         roots = {m: self.root(b, m) for m in moves}
         got = {m: ((1e6, [m], 1) if r is None else (r[0], [m], 0)) for m, r in roots.items()}
         self.total = 0
+        alloc = alloc or {}
+        base = self.budget
+        W = sum(alloc.get(m, (1.0, 0))[0] for m in moves) or 1.0
+        share = {m: max(1, int(base * len(moves) * alloc.get(m, (1.0, 0))[0] / W)) for m in moves}
+        deepest = {m: alloc.get(m, (1.0, max(depths)))[1] for m in moves}
+        depths = tuple(sorted(set(depths) | set(range(max(depths) + 2, max(deepest.values(), default=0) + 1, 2))))
         for i, d in enumerate(depths):
             top = max(v for v, _, _ in got.values())
-            live = [m for m in moves if roots[m] is not None
+            live = [m for m in moves if roots[m] is not None and d <= deepest[m]
                     and (i == 0 or ((got[m][0] >= top - margin or b.gives_check(m)) and got[m][2] == depths[i - 1]))]
             # (one out of budget stays out; a check is never left behind for its value: a checking sacrifice pays late)
             best_now = -1e9
@@ -228,12 +237,14 @@ class ZoneSearch:
                 g, bb, zone = roots[m]
                 lo = best_now - TIE                                   # below this a candidate only needs a bound: it is not
                 self.nodes = 0                                        # a contender (fail-soft: the bound is its value's ceiling)
+                self.budget = share[m]
                 try:
                     v, ln = self.search(bb, zone, d - 1, -1e9, g - lo if lo > -1e8 else 1e9)
                 except Budget:
                     continue                                          # out of budget at this depth: it keeps the last one
                 finally:
                     self.total += self.nodes
+                    self.budget = base
                 got[m] = (g - v, [m] + ln, d)
                 if g - v > lo:
                     best_now = max(best_now, g - v)
