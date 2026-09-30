@@ -30,6 +30,8 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
    write-up traced to the printed line it came from.
 9. **Test assumptions** -- a test expecting what I believed the code did. Check: when a new test fails, decide first
    whether the code or the expectation is wrong, with the actual values printed.
+10. **A hit that ties count** -- "the answer is among the top" when the top is a tie of many: a metric a flat
+   evaluation passes. Check: print the tie sizes beside the hit rate, and count the answer ALONE on top.
 
 ## Log
 
@@ -114,6 +116,16 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
 - **A harness with its own candidate set** (class 9-like, a mismatch): `search_policy._candidates` (and the ladder
   through it) lacked the player's quiet threats (00Ygn's Nc4 was never a candidate). Fixed: one function,
   `frame_player.candidates`, for the player and every harness.
+
+- **Ties counted as hits in the depth ladder** (class 10): "the solution among the top" FELL with depth on the 209
+  missed puzzles (45, 34, 27 at 4, 6, 8 plies) -- read at first as deeper search losing the solution; it was shallow
+  searches leaving 2+ moves level (3+ in 85 positions at 4 plies) and ties breaking as depth grew. Found because a
+  quantity that should rise with depth fell. Fixed: `depth_ladder report` counts the solution alone on top (10, 12,
+  16, 43, 53) and prints the tie sizes.
+- **A negative that was half unmeasured** (class 5): "112 never alone on top within 12 plies" -- 56 of them had the
+  solution's own search stop short of 12 by budget. Fixed: the report splits "never" into stopped-short / tied / below.
+- **A comparison set misnamed** (class 8, caught in the draft): the journal draft called the Stockfish depth study
+  "the same misses"; it ran on the 9 misses of the 300 test puzzles, not these 209. Fixed before commit.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
