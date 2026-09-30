@@ -94,6 +94,11 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   move CHANGES a king watch) fires on 12-28 of 12-31 candidates too: with no horizon every enemy piece is a member and
   nearly every move changes some member's distance. Not fixable by a threshold rule -- the budget policy has to be
   learned; flag stays off.
+- **A two-phase policy that spent its whole budget in phase 1** (class 5, a protocol flaw): the learned budget
+  policy's phase 1 searched every candidate to 8 plies -- about the fixed search's whole cost -- so at equal total
+  nodes phase 2 had nothing (0Knjg: phase 1 spent 6,534 of a 6,533 cap) and it scored 3/14 against 8/14, with
+  nonsense values on easy cases (a mate read 0.0). Found checking the negative result. Fixed: phase 1 to 6 plies,
+  the model trained with the 8-ply features masked.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).

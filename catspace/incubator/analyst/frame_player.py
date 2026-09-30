@@ -102,6 +102,7 @@ def two_ply_value(b: chess.Board, m: chess.Move, opponent: str = "all") -> tuple
 
 
 CANDIDATES = 6                                                      # two_ply_candidates: the one-ply top moves that get the reply ply
+TOTAL_CAP = [None]                                                  # a hard node total for a position (equal-compute gauges); None: off
 NODES = [0]                                                         # the zone search's nodes for the last choose (for equal-compute gauges)
 BUDGET_POLICY = "fixed"                                            # zone_candidates: "fixed" (equal shares) | "watch" (the king watches' policy)
 KING_WATCH = False                                                  # zone_candidates: the king watches' moves join the candidates
@@ -161,8 +162,11 @@ def choose(b: chess.Board) -> dict:
             elif BUDGET_POLICY == "learned":                                # phase 1 small; phase 2 shared by the learned chance that more
                 from .search_policy import allocate, SMALL                  # search changes a candidate (the table kept between phases)
                 zs.budget = SMALL
+                zs.cap_total = TOTAL_CAP[0]
                 alloc = allocate(b, moves, zs); spent = zs.total
-                zs.budget = ZONE_BUDGET
+                zs.budget = ZONE_BUDGET; zs.spent_before = spent
+            if BUDGET_POLICY == "fixed":
+                zs.cap_total = TOTAL_CAP[0]
             got = zs.rank(b, moves, alloc=alloc)
             NODES[0] = spent + zs.total
             for m in moves:

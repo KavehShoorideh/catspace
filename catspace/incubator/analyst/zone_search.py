@@ -228,7 +228,11 @@ class ZoneSearch:
         share = {m: max(1, int(base * len(moves) * alloc.get(m, (1.0, 0))[0] / W)) for m in moves}
         deepest = {m: alloc.get(m, (1.0, max(depths)))[1] for m in moves}
         depths = tuple(sorted(set(depths) | set(range(max(depths) + 2, max(deepest.values(), default=0) + 1, 2))))
+        cap = getattr(self, "cap_total", None)                        # a hard total for the position (equal-compute comparisons):
+        spent0 = getattr(self, "spent_before", 0)                     # nodes already spent (phase 1) count against it
         for i, d in enumerate(depths):
+            if cap is not None and spent0 + self.total >= cap:
+                break
             top = max(v for v, _, _ in got.values())
             live = [m for m in moves if roots[m] is not None and d <= deepest[m]
                     and (i == 0 or ((got[m][0] >= top - margin or b.gives_check(m)) and got[m][2] == depths[i - 1]))]
@@ -238,7 +242,10 @@ class ZoneSearch:
                 g, bb, zone = roots[m]
                 lo = best_now - TIE                                   # below this a candidate only needs a bound: it is not
                 self.nodes = 0                                        # a contender (fail-soft: the bound is its value's ceiling)
-                self.budget = share[m]
+                self.budget = share[m] if cap is None else max(1, min(share[m], cap - spent0 - self.total))
+                if cap is not None and spent0 + self.total >= cap:
+                    self.budget = base
+                    break
                 try:
                     v, ln = self.search(bb, zone, d - 1, -1e9, g - lo if lo > -1e8 else 1e9)
                 except Budget:

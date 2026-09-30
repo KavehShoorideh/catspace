@@ -27,6 +27,9 @@ import chess
 from catspace.io import paths
 
 SMALL, LARGE = 4000, 40000
+PHASE1_DEPTHS = (4, 6)                                              # the cheap phase in play (bug 2026-09-30: phase 1 to 8 plies cost as
+MASK = ("v8", "nodes8", "swing68")                                  # much as the whole fixed search, leaving phase 2 nothing at equal
+                                                                    # compute); the model is trained with the 8-ply features masked to match
 FEATURES = ["capture", "check", "promotion", "quiet", "piece", "captured", "v4", "v6", "v8", "swing46", "swing68",
             "depth", "out_of_budget", "nodes4", "nodes6", "nodes8", "gap_to_best", "is_best", "n_candidates",
             "changes_watch"]
@@ -113,7 +116,7 @@ def collect(n: int = 40, offset: int = 800, workers: int = 10, log=print) -> str
     return str(out)
 
 
-def train(paths_in: list, log=print):
+def train(paths_in: list, label: str = "changed", log=print):
     import pickle
     import numpy as np
     from sklearn.ensemble import HistGradientBoostingClassifier
@@ -121,13 +124,17 @@ def train(paths_in: list, log=print):
     data = [json.loads(l) for p in paths_in for l in open(p)]
     test = np.array([int(hashlib.sha1(("sp" + d["pid"]).encode()).hexdigest()[:8], 16) % 4 == 0 for d in data])
     X = np.array([d["x"] for d in data], dtype=float); y = np.array([d["changed"] for d in data])
+    for name in MASK:                                                 # what phase 1 in play cannot know
+        X[:, FEATURES.index(name)] = -99.0 if name == "v8" else 0.0
     ys = np.array([d["standing"] for d in data])
     log(f"[search_policy] {len(data)} candidates from {len({d['pid'] for d in data})} puzzles; more search changes the candidate in "
         f"{y.mean():.3f} (its standing against the best in {ys.mean():.3f}); train {int((~test).sum())}, held out {int(test.sum())}")
+    if label == "standing":                                           # the decision-relevant label: more search moves its standing
+        y = ys
     model = HistGradientBoostingClassifier(max_iter=300, learning_rate=0.05, class_weight="balanced").fit(X[~test], y[~test])
     p = model.predict_proba(X[test])[:, 1]
     base = {name: X[test][:, FEATURES.index(name)] for name in ("swing46", "out_of_budget", "gap_to_best", "check", "changes_watch")}
-    log(f"OBS held-out AUC for 'more search changes it': model {roc_auc_score(y[test], p):.3f}; single features: "
+    log(f"OBS held-out AUC for '{'its standing changes' if label == 'standing' else 'more search changes it'}': model {roc_auc_score(y[test], p):.3f}; single features: "
         + ", ".join(f"{k} {roc_auc_score(y[test], np.abs(v) if k == 'swing46' else (-v if k == 'gap_to_best' else v)):.3f}" for k, v in base.items()))
     if ys[test].sum():
         log(f"OBS held-out AUC for 'its standing changes': model {roc_auc_score(ys[test], p):.3f}")
@@ -146,7 +153,7 @@ def allocate(b: chess.Board, moves: list, zs, weight_floor: float = 0.3, deep: i
     from .king_watch import _signature, watch
     if "m" not in _MODEL:
         _MODEL["m"] = pickle.load(open(paths.derived("search_policy.pkl"), "rb"))
-    got = zs.rank(b, moves)
+    got = zs.rank(b, moves, depths=PHASE1_DEPTHS)
     best = max(v for v, _, _ in got.values())
     before = {c: _signature(watch(b, c, operators=False), 3) for c in (chess.WHITE, chess.BLACK) if b.king(c) is not None}
     X = []
@@ -155,7 +162,10 @@ def allocate(b: chess.Board, moves: list, zs, weight_floor: float = 0.3, deep: i
         cw = b.gives_check(m) or any(nb.king(c) is None or _signature(watch(nb, c, operators=False), 3) != sig for c, sig in before.items())
         v, _, d = got[m]
         X.append(features(b, m, zs.history.get(m, []), v, d, best, len(moves), cw))
-    p = _MODEL["m"].predict_proba(np.array(X, dtype=float))[:, 1]
+    X = np.array(X, dtype=float)
+    for name in MASK:
+        X[:, FEATURES.index(name)] = -99.0 if name == "v8" else 0.0
+    p = _MODEL["m"].predict_proba(X)[:, 1]
     # what matters is a change that can move the DECISION (2.7% of candidates in the first data -- too rare to learn from
     # 40 puzzles): the chance of change times closeness to the best (a pawn behind halves it)
     close = np.array([0.5 ** max(0.0, best - got[m][0]) for m in moves])
@@ -170,12 +180,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(); sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("collect"); c.add_argument("--n", type=int, default=40); c.add_argument("--offset", type=int, default=800)
     c.add_argument("--workers", type=int, default=10)
-    t = sub.add_parser("train"); t.add_argument("--data", nargs="+", default=None)
+    t = sub.add_parser("train"); t.add_argument("--data", nargs="+", default=None); t.add_argument("--label", default="changed", choices=["changed", "standing"])
     a = ap.parse_args(argv)
     if a.cmd == "collect":
         collect(a.n, a.offset, a.workers)
     else:
-        train(a.data or [str(paths.derived("search_policy_40_800.jsonl"))])
+        train(a.data or [str(paths.derived("search_policy_40_800.jsonl"))], a.label)
 
 
 if __name__ == "__main__":

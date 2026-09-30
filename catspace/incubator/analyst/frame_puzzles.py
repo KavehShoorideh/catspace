@@ -21,6 +21,9 @@ import chess
 from catspace.io import paths
 
 
+MATCH_NODES: dict = {}
+
+
 def _solve_lichess(row: dict) -> dict:
     from .frame_player import choose
     from .fates import clear_caches, LEMMA_MISMATCHES
@@ -31,6 +34,9 @@ def _solve_lichess(row: dict) -> dict:
     start = b.fen(); sol = moves[1:]
     steps = []
     for i in range(0, len(sol), 2):
+        if MATCH_NODES:                                           # equal compute: this step's node total from another run's dump
+            from . import frame_player as _FPm
+            _FPm.TOTAL_CAP[0] = MATCH_NODES.get(b.fen())
         c = choose(b)
         u = sol[i]
         mate_ok = False
@@ -129,6 +135,7 @@ def main(argv=None):
     ap.add_argument("--quiet-offset", type=int, default=73, help="lichess-quiet: rows i %% 97 == offset with a quiet theme (the proposer trained on 49)")
     ap.add_argument("--check-ext", type=int, default=None, help="zone search: checks that do not use up a ply, per line (zone_search.CHECK_EXT)")
     ap.add_argument("--offset", type=int, default=0, help="lichess: fresh rows i %% stride == offset (never the test sample's, the proposer's or the quiet set's rows)")
+    ap.add_argument("--match-nodes", default=None, help="a dump (data/derived name) whose per-step nodes cap this run's steps: equal compute")
     ap.add_argument("--budget-policy", default="fixed", choices=["fixed", "watch", "learned"], help="zone search budget: equal shares, the king watches' rule, or the learned policy")
     ap.add_argument("--watch-zone", type=int, default=0, help="zone search: the king watches' top-N pursued members join the root zone")
     ap.add_argument("--king-watch", action="store_true", help="zone_candidates: the standing king frames' moves join the candidates")
@@ -140,6 +147,13 @@ def main(argv=None):
     from . import frame_player as FP
     FP.LEDGER = a.ledger; FP.PROPOSE = a.propose
     tag = a.ledger + (f"_propose{a.propose}" if a.propose else "")
+    if a.match_nodes:
+        import json as _json
+        for r in _json.load(open(paths.derived(a.match_nodes))):
+            for s in r["steps"]:
+                if s.get("nodes"):
+                    MATCH_NODES[s["fen"]] = s["nodes"]
+        tag += "_matched"
     if a.budget_policy != "fixed":
         FP.BUDGET_POLICY = a.budget_policy; tag += f"_budget{a.budget_policy}"
     if a.watch_zone:
