@@ -22874,6 +22874,34 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-29 20:35 PDT — the standing king frame closes the mate gap (OBS)
+
+Kaveh's design and calls (19:30-20:20): the opponent's subgoal of mating us is the root check; keep every king
+frame and re-check only when something around the king changes; latent lines -- a king and an enemy slider with
+pieces between, all of which must go -- make each blocker a root; one generic vocabulary: make the piece not be there
+(capture it, it moves, deflect it) or negate its effect (constrain it, add an attacker); "why limit to 4 moves?
+deciding whether to continue or not should be the job of a tactical policy". `king_watch.py`:
+- MEMBERS: every enemy piece that can check the king -- by an open route (piece reach, no horizon) or by a latent
+  line (it can stand on a line to the king with 1-3 pieces between; a piece can be both). CONDITIONS: the blockers
+  of latent lines and the guards of checking squares. OPERATORS on a condition: capture, force away, deflect (it has
+  another job), outnumber. The defender's ANSWERS: king steps, interpose, guard the checking square, take the member.
+  Kept under its footprint (the members' reach footprints and the king's lines), verify mode.
+- policy(): the placeholder tactical policy -- which members to pursue, open before latent, fewest moves and
+  blockers first, within a budget -- the stand-in for a learned one. No horizon anywhere: distances are kept; the
+  policy orders them.
+- One design bug found by the test from Kaveh's three-blocker file: a latent line was dropped whenever the piece also
+  had an open route (with no horizon, every rook has one) -- fixed, logged in docs/BUGS.md.
+The mate gauge with the watch as features (1,000 games, one run; held-out AUC, a NEW mate frame of the side to move
+within 4 plies, 468 positives): raw board 0.844, atoms 0.794, WATCH 0.840, atoms+watch+material 0.861, board+material
+0.859, board+atoms+watch+material 0.873; within 8 plies: 0.824 / 0.777 / 0.803 / 0.832 / 0.837 / 0.837. On material
+frames the watch alone reads 0.673 (board 0.709) -- it is about kings.
+The mates the frame profile missed (the 117 lowest-scored of the 468): the piece that gives the mate's first check is
+among the watch's members at the start, ranked by the placeholder policy, first in 52, in the top 3 in 102, in the
+top 8 in 112, not a member in 5 (the caught 117: 60 / 99 / 111 / 6).
+Reading (one run, directional): the standing king frame sees the arrivals the snapshot missed; with its few dozen
+features it reads mate about as well as the raw board, and the legible stack (atoms + watch + material) matches the
+board with material. The puzzles with the watch's candidate moves are running.
+
 ## 2026-09-29 19:26 PDT — where the frames cannot predict mate: the attacker is not there yet (OBS)
 
 Kaveh: "find the situations where we cannot predict mate from the frames ... we should always be looking for mates ...
