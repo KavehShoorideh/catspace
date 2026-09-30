@@ -113,7 +113,7 @@ def _contents(b: chess.Board, squares, ignore=frozenset()) -> tuple:
     return tuple((s, "-" if s in ignore else (b.piece_at(s).symbol() if b.piece_at(s) else None)) for s in sorted(squares))
 
 
-def piece_reach(b: chess.Board, sq: int, k: int = 4, ignore: frozenset = frozenset()) -> Reach:
+def piece_reach(b: chess.Board, sq: int, k: int | None = 4, ignore: frozenset = frozenset()) -> Reach:
     """The piece on sq: where it can stand and what it can attack within k of its own moves, the others still.
     `ignore`: squares read as empty (the goal piece, which will have moved on). Served from the store while the
     squares it read hold what they held -- whichever goal asked, if the walk never read that goal's square."""
@@ -141,7 +141,7 @@ def clear_store() -> None:
     _STORE.clear(); STATS.update(computed=0, served=0)
 
 
-def _compute(b: chess.Board, sq: int, k: int, ignore: frozenset) -> Reach:
+def _compute(b: chess.Board, sq: int, k: int | None, ignore: frozenset) -> Reach:
     pc = b.piece_at(sq)
     occ = b.occupied & ~chess.BB_SQUARES[sq]
     for s in ignore:
@@ -157,8 +157,8 @@ def _compute(b: chess.Board, sq: int, k: int, ignore: frozenset) -> Reach:
         for a in att:
             if a not in attack or attack[a] > d:
                 attack[a] = d
-        if d >= k:
-            continue
+        if k is not None and d >= k:                               # k None: until nothing new is reachable (Kaveh: no fixed
+            continue                                                  # horizon -- whether to go on is the tactical policy's call)
         for m in moves:
             if m not in stand:
                 stand[m] = d + 1; parent[m] = s; q.append(m)

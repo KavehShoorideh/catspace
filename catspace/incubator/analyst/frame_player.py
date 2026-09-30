@@ -102,6 +102,7 @@ def two_ply_value(b: chess.Board, m: chess.Move, opponent: str = "all") -> tuple
 
 
 CANDIDATES = 6                                                      # two_ply_candidates: the one-ply top moves that get the reply ply
+KING_WATCH = False                                                  # zone_candidates: the king watches' moves join the candidates
 PROPOSE = 0                                                         # zone_candidates: the moves realizing the proposer's top-k what-if edits join (0: off)
 ZONE_BUDGET = 20000                                                 # zone_candidates: nodes per candidate per depth (all deepen together: 4, 6, 8 plies)
 
@@ -141,6 +142,9 @@ def choose(b: chess.Board) -> dict:
                 nb = b.copy(stack=False); nb.push(m); pb = passed(nb)
                 if pb is not None and joint_threats(pb, square_frame)[0] >= now + 0.5:
                     keep.add(m.uci())
+            if KING_WATCH and LEDGER == "zone_candidates":                 # the standing king frames: moves toward the enemy king (a member's
+                from .king_watch import candidate_moves                     # route, a condition piece taken) and our king's answers
+                keep |= set(candidate_moves(b))
             if PROPOSE and LEDGER == "zone_candidates":                    # the what-if proposer's top edits: the moves that realize them join
                 from .whatif_proposer import propose_moves                  # (AlphaGeometry-style constructions; the zone search verifies)
                 keep |= set(propose_moves(b, one, PROPOSE))

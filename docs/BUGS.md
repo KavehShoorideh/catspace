@@ -78,6 +78,10 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
 - **Capture landings read as unreachable** (class 2-like, a silent None): the arrival distance used the reach map's
   `stand`, which holds empty squares only; most mating checks are captures, so 65 of 117 read "not within 4 moves"
   for mates within 4 plies. Found by the same check. Fixed: an occupied square costs its attack distance plus one.
+- **A latent line dropped when an open route existed** (class 6, a definition gap): with no horizon every rook has
+  some open route to check, and the watch took it and skipped the rook's latent line -- losing Kaveh's
+  three-blocker file. Found by the unit test written from his example. Fixed: a piece can be an open and a latent
+  member; the answers keyed by member, not square.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).

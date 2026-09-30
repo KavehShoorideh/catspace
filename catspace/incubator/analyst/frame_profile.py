@@ -109,8 +109,13 @@ def _game_rows(args) -> list:
         for o, k, tid, v, ct, ats in prof:
             for a in ats:
                 bag[(int(o), f"{k}|{a}")] = bag.get((int(o), f"{k}|{a}"), 0) + 1
+        from .king_watch import features as watch_features
+        try:
+            wf = watch_features(b)
+        except Exception as e:                                      # counted, not silent (docs/BUGS.md class 2)
+            wf = {"watch_error": 1.0}
         rows.append(dict(game=gid, ply=ply + 1, fen=b.fen(), frames=[[int(o), k, tid, v, ct] for o, k, tid, v, ct, _ in prof],
-                         atoms=[[o, a, c] for (o, a), c in bag.items()]))
+                         atoms=[[o, a, c] for (o, a), c in bag.items()], watch=wf))
         if ply % 10 == 0:
             F.clear_caches()
     return rows
@@ -197,7 +202,9 @@ def gauge(path: str, ks=(4, 8), log=print) -> None:
         return any(f[0] == colour and pred(f[3]) for f in r["frames"])
     is_mate = lambda v: v >= MATE_AT
     is_gain = lambda v: 3.0 <= v < MATE_AT
-    feats_frames, feats_mat, feats_board, feats_atoms, groups = [], [], [], [], []
+    feats_frames, feats_mat, feats_board, feats_atoms, feats_watch, groups = [], [], [], [], [], []
+    werr = sum(1 for r in rows if "watch_error" in r.get("watch", {}))
+    log(f"OBS king watch features: {sum(1 for r in rows if r.get('watch'))} positions with a watch, errors {werr}")
     for r in rows:
         b = chess.Board(r["fen"]); me = b.turn
         feats_frames.append([f"{'us' if f[0] == me else 'them'}:{f[1]}:{f[2]}" for f in r["frames"]]
@@ -208,6 +215,7 @@ def gauge(path: str, ks=(4, 8), log=print) -> None:
         for o, a, c in r["atoms"]:
             fa[f"{'us' if o == me else 'them'}:{a}"] = float(c)
         feats_atoms.append(fa)
+        feats_watch.append({k2: float(v2) for k2, v2 in r.get("watch", {}).items()})
         mat = []
         for c in (me, not me):
             for pt in (chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN):
@@ -225,6 +233,8 @@ def gauge(path: str, ks=(4, 8), log=print) -> None:
     from sklearn.feature_extraction import DictVectorizer
     Xa = DictVectorizer().fit_transform(feats_atoms)
     Xa.data = np.log1p(Xa.data)
+    Xw = DictVectorizer().fit_transform(feats_watch)
+    Xw.data = np.log1p(Xw.data)
     test = np.array(groups); train = ~test
     for name, pred in (("mate frame", is_mate), ("frame winning 3+", is_gain)):
         for k in ks:
@@ -246,7 +256,9 @@ def gauge(path: str, ks=(4, 8), log=print) -> None:
             fit, val = tr & ~gv, tr & gv                              # C chosen on held-in games (bug 2026-09-29: one fixed C for
             for fname, X in (("material", Xm), ("raw board", Xb), ("frames", Xf), ("frames+material", hstack([Xf, Xm]).tocsr()),
                              ("board+material", hstack([Xb, Xm]).tocsr()), ("board+frames+material", hstack([Xb, Xf, Xm]).tocsr()),
-                             ("atoms", Xa), ("atoms+material", hstack([Xa, Xm]).tocsr()), ("board+atoms+material", hstack([Xb, Xa, Xm]).tocsr())):
+                             ("atoms", Xa), ("atoms+material", hstack([Xa, Xm]).tocsr()), ("board+atoms+material", hstack([Xb, Xa, Xm]).tocsr()),
+                             ("watch", Xw), ("atoms+watch+material", hstack([Xa, Xw, Xm]).tocsr()),
+                             ("board+atoms+watch+material", hstack([Xb, Xa, Xw, Xm]).tocsr())):
                 X = MaxAbsScaler().fit(X[tr]).transform(X)
                 bestC, bestA = None, -1.0
                 for C in (0.01, 0.03, 0.1, 0.3, 1.0):
@@ -390,6 +402,10 @@ def mate_misses(path: str, k: int = 4, show: int = 6, log=print) -> None:
                     opened = bool(blockers) and first_check[0] in (chess.BISHOP, chess.ROOK, chess.QUEEN)   # means more than the check itself)
                     kind = ("arrived and line opened" if arrived and opened else "arrived" if arrived else "line opened" if opened
                             else "the check was one move away at the start")
+                    from .king_watch import watch as _watch, policy as _policy
+                    order = _policy(_watch(b, not me, operators=False), budget=99)
+                    rank = next((j for j, mm in enumerate(order) if mm.square == start_sq), None)
+                    stats.setdefault("rank", []).append(rank)
                     stats.setdefault("how", {}).setdefault(kind, 0); stats["how"][kind] += 1
                     if arrived:
                         stats.setdefault("arrive", []).append(arrive_moves if arrive_moves is not None else 9)
@@ -401,6 +417,11 @@ def mate_misses(path: str, k: int = 4, show: int = 6, log=print) -> None:
             f"a latent line on that king {stats['latent']}; the mate's first check comes down a latent line {stats['latent_opened']} "
             f"(of {stats['check_first']} with a check read); mating side's pieces within 2 of the king {stats['near'] / m:.2f} a position; "
             f"the king's flight squares {stats['flights'] / m:.2f}")
+        rk = stats.get("rank", [])
+        if rk:
+            log(f"   the checking piece in the watch of the mated king (policy order at the start): first {sum(1 for r_ in rk if r_ == 0)}, "
+                f"top 3 {sum(1 for r_ in rk if r_ is not None and r_ < 3)}, top 8 {sum(1 for r_ in rk if r_ is not None and r_ < 8)}, "
+                f"not a member {sum(1 for r_ in rk if r_ is None)} (of {len(rk)})")
         how = stats.get("how", {}); arr = stats.get("arrive", [])
         log(f"   how the mate's first check came: " + ", ".join(f"{k2} {v}" for k2, v in sorted(how.items(), key=lambda kv: -kv[1]))
             + (f"; arriving pieces needed (piece reach from the start) 1: {arr.count(1)}, 2: {arr.count(2)}, 3+: {sum(1 for a in arr if 3 <= a < 9)}, "
