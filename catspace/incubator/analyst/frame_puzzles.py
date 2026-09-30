@@ -138,6 +138,7 @@ def main(argv=None):
     ap.add_argument("--match-nodes", default=None, help="a dump (data/derived name) whose per-step nodes cap this run's steps: equal compute")
     ap.add_argument("--budget-policy", default="fixed", choices=["fixed", "watch", "learned", "decider"], help="zone search budget: equal shares, the king watches' rule, the learned policy, or the learned depth decider")
     ap.add_argument("--decider-threshold", type=float, default=0.5, help="--budget-policy decider: go on past a rung when the chance it changes the decision is at least this")
+    ap.add_argument("--decider-price", type=float, default=None, help="--budget-policy decider: a price on search instead (go on when the chance >= price x the next rung's nodes)")
     ap.add_argument("--depths", type=int, nargs="+", default=None, help="the zone search's rungs (the planner's; default TacticalSpec.depths)")
     ap.add_argument("--watch-zone", type=int, default=0, help="zone search: the king watches' top-N pursued members join the root zone")
     ap.add_argument("--king-watch", action="store_true", help="zone_candidates: the standing king frames' moves join the candidates")
@@ -162,7 +163,8 @@ def main(argv=None):
     if a.budget_policy != "fixed":
         FP.BUDGET_POLICY = a.budget_policy; tag += f"_budget{a.budget_policy}"
         if a.budget_policy == "decider":
-            FP.DECIDER_THRESHOLD[0] = a.decider_threshold; tag += f"{a.decider_threshold:g}"
+            FP.DECIDER_THRESHOLD[0] = a.decider_threshold; FP.DECIDER_PRICE[0] = a.decider_price
+            tag += f"_price{a.decider_price:g}" if a.decider_price is not None else f"{a.decider_threshold:g}"
     planner_kw = {}                                               # every search limit and goal is the PLANNER's (frame_planner)
     if a.watch_zone:
         planner_kw["watch_zone"] = a.watch_zone; tag += f"_watchzone{a.watch_zone}"

@@ -94,6 +94,35 @@ def features(b: chess.Board, d: int, history: dict, rungs: tuple) -> list:
             _material(b, me), _material(b, not me), _passed(b, me), _passed(b, not me), b.is_check()]
 
 
+def rung_nodes(history: dict, rungs: tuple, d: int) -> list:
+    """The nodes each rung up to d spent (all candidates)."""
+    return [sum(n for h in history.values() for dd, _, n in h if dd == r) for r in rungs if r <= d]
+
+
+def next_cost(spent: list, first_growth: float) -> float:
+    """The next rung's expected nodes: this rung's nodes times its growth over the last one (the first rung has no growth
+    of its own: the data's median)."""
+    here = spent[-1]
+    if len(spent) == 1:
+        return here * first_growth
+    return here * (here / spent[-2] if spent[-2] > 0 else 1.0)
+
+
+def first_growth(paths_in: list) -> dict:
+    """The median growth from the first rung to the second, per first rung, over ladder files."""
+    import statistics as st
+    g = {}
+    for path in paths_in:
+        for line in open(path):
+            rec = json.loads(line)
+            rungs = tuple(sorted({d for h in rec["history"].values() for d, _, _ in h}))
+            if len(rungs) > 1:
+                a, b2 = rung_nodes(rec["history"], rungs, rungs[1])
+                if a > 0:
+                    g.setdefault(rungs[0], []).append(b2 / a)
+    return {d: st.median(v) for d, v in g.items()}
+
+
 def rows(path: str) -> list:
     """The ladder file -> one row per position and rung below the deepest: features, label, puzzle id."""
     from .depth_ladder import decisions
@@ -142,20 +171,101 @@ def train(paths_in: list, log=print):
             k = src[test] == s
             if k.sum() and len(set(y[test][k])) > 1:
                 log(f"OBS held-out AUC within {s}: model {roc_auc_score(y[test][k], p[k]):.3f} ({int(k.sum())} rows, {int(y[test][k].sum())} positive)")
-    pickle.dump(dict(model=model, features=FEATURES), open(paths.derived(MODEL_NAME), "wb"))
+    calibrated = HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_depth=3).fit(X[~test], y[~test])
+    pickle.dump(dict(model=model, calibrated=calibrated, first_growth=first_growth(paths_in), features=FEATURES),
+                open(paths.derived(MODEL_NAME), "wb"))
     return model
+
+
+def replay(paths_in: list, thresholds=(0.7, 0.5, 0.3, 0.15), prices=(1e-4, 3e-5, 1e-5, 3e-6, 1e-6), folds: int = 4, log=print) -> None:
+    """The policies replayed on the ladder itself: stopping the ladder's search after rung d gives exactly its values up
+    to d (all candidates deepen together), so each policy's decision and nodes per position are read off the records.
+    Fixed depths against the decider at several thresholds; the decider's chance for a position comes from a model
+    that never saw its puzzle (k folds by puzzle). Per ladder file: the solution among the top / alone on top, and the
+    mean nodes (up to the stopping rung) -- the strength-per-node frontier.
+    Two rules: a THRESHOLD on the chance (one for every rung), and a PRICE on search (Kaveh 2026-08-12: "reward = win -
+    lambda * search effort"): go on when the calibrated chance of a change is worth the next rung's expected nodes,
+    chance >= price * (this rung's nodes x its growth over the last rung) -- a rung costing five times more needs five
+    times the chance."""
+    import numpy as np
+    from sklearn.ensemble import HistGradientBoostingClassifier
+    from .depth_ladder import decisions
+    recs = [dict(json.loads(l), src=p.rsplit("/", 1)[-1]) for p in paths_in for l in open(p)]
+    fold = lambda pid: int(hashlib.sha1(("dd" + pid).encode()).hexdigest()[:8], 16) % folds
+    pos = []
+    for rec in recs:
+        dec = decisions(rec)
+        if not dec:
+            continue
+        rungs = tuple(sorted(dec)); b = chess.Board(rec["fen"])
+        nodes = {d: sum(n for h in rec["history"].values() for dd, _, n in h if dd <= d) for d in rungs}
+        X = [features(b, d, rec["history"], rungs) for d in rungs[:-1]]
+        y = [not (dec[d] & dec[rungs[-1]]) for d in rungs[:-1]]
+        pos.append(dict(rec=rec, dec=dec, rungs=rungs, nodes=nodes, X=X, y=y, f=fold(rec["pid"])))
+    for k in range(folds):                                            # each position's chances from the model of the other folds
+        tr = [p for p in pos if p["f"] != k]
+        Xt = np.array([x for p in tr for x in p["X"]], dtype=float); yt = np.array([v for p in tr for v in p["y"]])
+        m = HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_depth=3, class_weight="balanced").fit(Xt, yt)
+        mc = HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_depth=3).fit(Xt, yt)     # calibrated: for the price
+        for p in pos:
+            if p["f"] == k and p["X"]:
+                p["p"] = list(m.predict_proba(np.array(p["X"], dtype=float))[:, 1])
+                p["pc"] = list(mc.predict_proba(np.array(p["X"], dtype=float))[:, 1])
+    fg = first_growth(paths_in)
+
+    def cost(p, i):
+        return next_cost(rung_nodes(p["rec"]["history"], p["rungs"], p["rungs"][i]), fg.get(p["rungs"][0], 1.0))
+    for src in sorted({p["rec"]["src"] for p in pos}):
+        ps = [p for p in pos if p["rec"]["src"] == src]
+        rungs = sorted({d for p in ps for d in p["rungs"]})
+
+        def score(stop_at):
+            among = alone = 0; nodes = []
+            for p in ps:
+                d = stop_at(p)
+                top = p["dec"][d]
+                among += p["rec"]["sol"] in top; alone += top == {p["rec"]["sol"]}; nodes.append(p["nodes"][d])
+            return among, alone, sum(nodes) / len(nodes)
+        log(f"OBS replay {src} ({len(ps)} positions; the solution among the top / alone on top / mean nodes up to the stop):")
+        for d in rungs:
+            a, s, n = score(lambda p, d=d: max(r for r in p["rungs"] if r <= d) if any(r <= d for r in p["rungs"]) else p["rungs"][0])
+            log(f"   fixed {d:>2} plies: {a} / {s} / {n:,.0f}")
+        for t in thresholds:
+            def stop_at(p, t=t):
+                for d, pr in zip(p["rungs"][:-1], p.get("p", [])):
+                    if pr < t:
+                        return d
+                return p["rungs"][-1]
+            a, s, n = score(stop_at)
+            where = {}
+            for p in ps:
+                d = stop_at(p); where[d] = where.get(d, 0) + 1
+            log(f"   decider {t:<4g}: {a} / {s} / {n:,.0f}  (stops at " + ", ".join(f"{d}: {where[d]}" for d in sorted(where)) + ")")
+        for lam in prices:
+            def stop_at(p, lam=lam):
+                for i, (d, pr) in enumerate(zip(p["rungs"][:-1], p.get("pc", []))):
+                    if pr < lam * cost(p, i):
+                        return d
+                return p["rungs"][-1]
+            a, s, n = score(stop_at)
+            where = {}
+            for p in ps:
+                d = stop_at(p); where[d] = where.get(d, 0) + 1
+            log(f"   priced {lam:<6g}: {a} / {s} / {n:,.0f}  (stops at " + ", ".join(f"{d}: {where[d]}" for d in sorted(where)) + ")")
 
 
 _MODEL = {}
 
 
-def stopper(b: chess.Board, rungs: tuple, threshold: float, log: list | None = None):
+def stopper(b: chess.Board, rungs: tuple, threshold: float = 0.5, price: float | None = None, log: list | None = None):
     """The zone search's `stop` callback for the position b: after rung d, stop unless the chance that going on changes
-    the decision is at least `threshold` (the planner's; 0 never stops early, 1 always stops at the first rung)."""
+    the decision is at least `threshold` -- or, with a `price` on search (the planner's), unless the calibrated chance is
+    at least price x the next rung's expected nodes."""
     import pickle
     import numpy as np
     if "m" not in _MODEL:
-        _MODEL["m"] = pickle.load(open(paths.derived(MODEL_NAME), "rb"))["model"]
+        saved = pickle.load(open(paths.derived(MODEL_NAME), "rb"))
+        _MODEL["m"] = saved["model"]; _MODEL["c"] = saved.get("calibrated"); _MODEL["g"] = saved.get("first_growth", {})
 
     def stop(d, got, history) -> bool:
         if d >= max(rungs):
@@ -164,19 +274,29 @@ def stopper(b: chess.Board, rungs: tuple, threshold: float, log: list | None = N
         for m, (v, _, dd) in got.items():                               # a mate at once: never searched, no history
             if dd == 1 and v >= 1e5:
                 h[m.uci() if isinstance(m, chess.Move) else m] = []
-        p = float(_MODEL["m"].predict_proba(np.array([features(b, d, h, rungs)], dtype=float))[:, 1][0])
+        model = _MODEL["m"] if price is None else _MODEL["c"]
+        p = float(model.predict_proba(np.array([features(b, d, h, rungs)], dtype=float))[:, 1][0])
         if log is not None:
             log.append((d, round(p, 3)))
-        return p < threshold
+        if price is None:
+            return p < threshold
+        return p < price * next_cost(rung_nodes(h, rungs, d), _MODEL["g"].get(min(rungs), 1.0))
     return stop
 
 
 def main(argv=None):
+    import os
     import sys
-    sys.stdout.reconfigure(line_buffering=True)
+    os.environ.setdefault("OMP_NUM_THREADS", "1")                     # small fits: OpenMP threads beside busy search workers spin at
+    sys.stdout.reconfigure(line_buffering=True)                       # barriers (2026-09-30: minutes, no progress, at 52% CPU)
     ap = argparse.ArgumentParser(); sub = ap.add_subparsers(dest="cmd", required=True)
     t = sub.add_parser("train"); t.add_argument("--data", nargs="+", default=["depth_ladder_misses.jsonl", "depth_ladder_150_700.jsonl"])
+    r = sub.add_parser("replay"); r.add_argument("--data", nargs="+", default=["depth_ladder_misses.jsonl", "depth_ladder_150_700.jsonl"])
+    r.add_argument("--thresholds", type=float, nargs="+", default=[0.7, 0.5, 0.3, 0.15])
+    r.add_argument("--prices", type=float, nargs="+", default=[1e-4, 3e-5, 1e-5, 3e-6, 1e-6])
     a = ap.parse_args(argv)
+    if a.cmd == "replay":
+        return replay([str(paths.derived(p)) for p in a.data], tuple(a.thresholds), tuple(a.prices))
     train([str(paths.derived(p)) for p in a.data])
 
 

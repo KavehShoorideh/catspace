@@ -108,6 +108,8 @@ NODES = [0]                                                         # the zone s
 BUDGET_POLICY = "fixed"                                            # zone_candidates: "fixed" (equal shares) | "watch" (the king watches' policy)
 DECIDER_THRESHOLD = [0.5]                                           # BUDGET_POLICY "decider": go on past a rung when the learned chance that it
                                                                     # changes the decision is at least this (depth_decider; the planner's knob)
+DECIDER_PRICE = [None]                                              # ... or, when set, a price on search: go on when the chance is worth
+                                                                    # price x the next rung's expected nodes (depth_decider.stopper)
 KING_WATCH = False                                                  # zone_candidates: the king watches' moves join the candidates
 PROPOSE = 0                                                         # zone_candidates: the moves realizing the proposer's top-k what-if edits join (0: off)
 JOBS = False                                                        # zone_candidates: the job ledger's operator moves join the candidates
@@ -189,7 +191,7 @@ def choose(b: chess.Board) -> dict:
                 zs.budget = plan.spec.budget; zs.spent_before = spent
             elif BUDGET_POLICY == "decider":                                # the learned stop-or-continue call after every rung
                 from .depth_decider import stopper                          # (depth_decider: trained on the depth ladder's labels)
-                stop = stopper(b, tuple(sorted(plan.spec.depths)), DECIDER_THRESHOLD[0])
+                stop = stopper(b, tuple(sorted(plan.spec.depths)), DECIDER_THRESHOLD[0], DECIDER_PRICE[0])
             if BUDGET_POLICY in ("fixed", "decider"):
                 zs.cap_total = TOTAL_CAP[0]
             got = zs.rank(b, moves, alloc=alloc, stop=stop)

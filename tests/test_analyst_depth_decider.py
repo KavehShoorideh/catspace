@@ -16,16 +16,16 @@ class _Const:
         return np.array([[1 - self.p, self.p]] * len(X))
 
 
-def _deepest(p, threshold=0.5):
+def _deepest(p, threshold=0.5, price=None):
     from catspace.incubator.analyst.zone_search import ZoneSearch, TacticalSpec
     clear_caches()
-    DD._MODEL["m"] = _Const(p)
+    DD._MODEL["m"] = _Const(p); DD._MODEL["c"] = _Const(p); DD._MODEL["g"] = {4: 5.0}
     b = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p1B1/4P3/2N5/PPPP1PPP/R2QKBNR b KQkq - 0 4")
     ms = [b.parse_san(s) for s in ("Be7", "h6", "d6")]
     rungs = (4, 6, 8)
     zs = ZoneSearch(spec=TacticalSpec(depths=rungs, budget=3000))
     seen = []
-    zs.rank(b, ms, stop=DD.stopper(b, rungs, threshold, log=seen))
+    zs.rank(b, ms, stop=DD.stopper(b, rungs, threshold, price, log=seen))
     DD._MODEL.clear()
     return max(d for h in zs.history.values() for d, _, _ in h), seen
 
@@ -55,3 +55,11 @@ def test_ladder_rows_label_a_changed_decision(tmp_path):
     p.write_text(json.dumps(rec) + "\n")
     rs = DD.rows(str(p))
     assert [(r["d"], r["y"]) for r in rs] == [(4, True), (6, True)]   # e4 on top at 4 and 6, d4 at the deepest
+
+
+def test_a_price_on_search_stops_where_the_next_rung_is_dear():
+    d, _ = _deepest(0.5, price=1.0)                                   # a chance of 0.5 is worth less than any rung's nodes
+    assert d == 4
+    d, _ = _deepest(0.5, price=0.0)                                   # search is free: go on to the deepest rung
+    assert d == 8
+    assert DD.next_cost([100], 5.0) == 500 and DD.next_cost([100, 400], 5.0) == 1600
