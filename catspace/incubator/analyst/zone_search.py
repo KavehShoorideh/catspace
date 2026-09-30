@@ -28,6 +28,7 @@ import chess
 from . import fates as F
 
 MATE = 1000.0
+WATCH_ZONE = 0                                                      # the king watches' top-N pursued members join the root zone (0: off)
 RUNNERS = True                                                      # passed pawns near promotion join the root zone (hand-coded; to be replaced)
 KING_RING = False                                                   # the kings' neighbourhoods join the root zone (11Whs: h6 bears on g7)
 TIE = 0.5                                                           # rank: candidates within TIE of the best get exact values, the rest a bound
@@ -191,6 +192,15 @@ class ZoneSearch:
                 zone |= set(fr[0])                                # join the zone, so a threat elsewhere is not ignored
         if RUNNERS:                                                # (a stand-in for the opponent's subgoals: Kaveh 2026-09-29 -- to come from the layer above)
             zone |= runners(bb)
+        if WATCH_ZONE:                                             # the ROOT CHECK (Kaveh: the opponent's subgoal of mating us is always a
+            from .king_watch import watch, policy                  # root): both kings' standing frames -- the pursued members, where
+            for c in (chess.WHITE, chess.BLACK):                   # they check from and their routes, the conditions, the flights
+                if bb.king(c) is None:
+                    continue
+                w = watch(bb, c, operators=False)
+                for m_ in policy(w, WATCH_ZONE):
+                    zone |= {m_.square, m_.check_from} | set(m_.route) | set(m_.blockers)
+                zone |= {x.square for x in w.conditions if x.member in {m_.square for m_ in policy(w, WATCH_ZONE)}} | set(w.flights)
         return F.captured_value(b, m), bb, frozenset(zone)
 
     def value(self, b: chess.Board, m: chess.Move, depths=(4, 6, 8)) -> tuple:

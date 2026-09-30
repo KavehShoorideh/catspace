@@ -128,6 +128,7 @@ def main(argv=None):
     ap.add_argument("--quiet-offset", type=int, default=73, help="lichess-quiet: rows i %% 97 == offset with a quiet theme (the proposer trained on 49)")
     ap.add_argument("--check-ext", type=int, default=None, help="zone search: checks that do not use up a ply, per line (zone_search.CHECK_EXT)")
     ap.add_argument("--offset", type=int, default=0, help="lichess: fresh rows i %% stride == offset (never the test sample's, the proposer's or the quiet set's rows)")
+    ap.add_argument("--watch-zone", type=int, default=0, help="zone search: the king watches' top-N pursued members join the root zone")
     ap.add_argument("--king-watch", action="store_true", help="zone_candidates: the standing king frames' moves join the candidates")
     ap.add_argument("--no-runners", action="store_true", help="zone search: no passed pawns in the root zone (ablation)")
     ap.add_argument("--compare", nargs=2, metavar=("BEFORE", "AFTER"), help="two runs' dumps (data/derived names): what changed, no solving")
@@ -137,6 +138,9 @@ def main(argv=None):
     from . import frame_player as FP
     FP.LEDGER = a.ledger; FP.PROPOSE = a.propose
     tag = a.ledger + (f"_propose{a.propose}" if a.propose else "")
+    if a.watch_zone:
+        from . import zone_search as Z
+        Z.WATCH_ZONE = a.watch_zone; tag += f"_watchzone{a.watch_zone}"
     if a.king_watch:
         FP.KING_WATCH = True; tag += "_kingwatch"
     if a.no_runners:

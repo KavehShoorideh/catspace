@@ -317,6 +317,30 @@ def features(b: chess.Board) -> dict:
     return out
 
 
+def gauge_candidates(n: int = 300, log=print) -> None:
+    """Does the watch add moves the zone ledger's standard candidates lack? Over the 300 test puzzles' first positions:
+    the standard candidate set (frame_player: one-ply top 6 and ties, every capture, check and promotion, the quiet
+    threats) and the watch's moves -- how many are new."""
+    from catspace.io import paths
+    from .gauge_puzzles import sample
+    from . import frame_player as FP
+    from .fates import clear_caches
+    rows = sample(str(paths.assets_dir() / "lichess" / "lichess_db_puzzle.csv.zst"), n, 997)
+    std_n = w_n = new_n = sol_new = 0
+    for r in rows:
+        clear_caches()
+        b = chess.Board(r["FEN"]); mv = r["Moves"].split(); b.push_uci(mv[0])
+        stand = FP.passed(b)
+        before, book = FP.joint_threats_book(stand, FP.square_frame) if stand is not None else ((0.0, None, []), None)
+        one = FP._one_ply_values(b, before, book)
+        ranked = sorted(one, key=lambda u: -one[u]); top1 = max(one.values())
+        std = set(ranked[:FP.CANDIDATES]) | {u for u in one if one[u] == top1} | {m.uci() for m in b.legal_moves if b.is_capture(m) or b.gives_check(m) or m.promotion}
+        wm = set(candidate_moves(b))
+        std_n += len(std); w_n += len(wm); new_n += len(wm - std); sol_new += mv[1] in (wm - std)
+    log(f"OBS {len(rows)} puzzle first positions: standard candidates {std_n / len(rows):.1f} a position; the watch's moves "
+        f"{w_n / len(rows):.1f}, of which new {new_n / len(rows):.2f}; the solution is one of the watch's new moves in {sol_new}")
+
+
 def explain(b: chess.Board, w: Watch, top: int = 6) -> list:
     n = lambda s: f"{b.piece_at(s).symbol() if b.piece_at(s) else ''}{chess.square_name(s)}"
     side = "White" if w.colour else "Black"
@@ -347,6 +371,8 @@ def explain(b: chess.Board, w: Watch, top: int = 6) -> list:
 
 def main(argv=None):
     import sys
+    if argv is None and len(sys.argv) > 1 and sys.argv[1] == "candidates":
+        return gauge_candidates()
     if argv is None and len(sys.argv) > 1 and sys.argv[1] == "misses":
         from .frame_profile import watch_misses
         from catspace.io import paths
