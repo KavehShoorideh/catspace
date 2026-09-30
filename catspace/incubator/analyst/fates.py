@@ -1040,7 +1040,7 @@ def _wl(labels: list, edge) -> list:
     return labels
 
 
-def lemma_key(b: chess.Board, squares, kings, members) -> tuple | None:
+def lemma_key(b: chess.Board, squares, kings, members, strict: bool = True) -> tuple | None:
     """A FRAME'S LEMMA KEY (Kaveh 2026-09-28: "if we are evaluating a frame and we evaluate how it ends out, that should
     become a lemma, so that we keep using it again"): the frame described in the relations of the September lemma
     vocabulary with the squares abstracted away -- its pieces as slots (kind, side relative to the mover, target or not,
@@ -1049,13 +1049,22 @@ def lemma_key(b: chess.Board, squares, kings, members) -> tuple | None:
     frame pieces the captor bears on from where it lands. Slots in a
     canonical order (labels refined over the relations), so the same relational situation on other squares has the same
     key. -> (key, slots in that order), or None for a frame that can reach check (a king frame joined, the side in check,
-    a capture that gives check): its evasions read the whole board."""
-    if kings or b.is_check() or b.has_legal_en_passant() or can_reach_check(b, squares, members) or near_promotion(b, members):
-        return None                                               # (en passant: the captor is no attacker of the target's square)
-    slots = sorted({q for q in set(members) | set(squares) if b.piece_at(q) is not None})   # (a king frame's members include empty squares)
-    if not slots or len(slots) > 12:
+    a capture that gives check): its evasions read the whole board.
+    strict=False: the frame's TYPE, a description for features, not a key that serves values -- nothing is refused;
+    the joined kings, the side in check, en passant, a pawn near promotion, a capturer from outside and a capture that
+    gives check are part of the description (Kaveh 2026-09-29: frames as the concepts; "a checkmate frame like this")."""
+    flags = ()
+    if strict:
+        if kings or b.is_check() or b.has_legal_en_passant() or can_reach_check(b, squares, members) or near_promotion(b, members):
+            return None                                           # (en passant: the captor is no attacker of the target's square)
+    else:
+        flags = (tuple(sorted(c == b.turn for c in kings)), b.is_check(), b.has_legal_en_passant(), near_promotion(b, members),
+                 bool(potential_capturers(b, squares, members) & ~_mask({q for q in set(members) | set(squares) if b.piece_at(q) is not None})))
+    slots = sorted({q for q in set(members) | set(squares) | set(b.king(c) for c in kings if b.king(c) is not None)
+                    if b.piece_at(q) is not None})                # (a king frame's members include empty squares)
+    if not slots or len(slots) > (12 if strict else 16):
         return None
-    if potential_capturers(b, squares, members) & ~_mask(slots):
+    if strict and potential_capturers(b, squares, members) & ~_mask(slots):
         return None                                               # a capturer from outside the frame's pieces: the relations do not see it
     mover = b.turn
     info = {}
@@ -1089,20 +1098,20 @@ def lemma_key(b: chess.Board, squares, kings, members) -> tuple | None:
                 mv = chess.Move(i, j, promotion=chess.QUEEN if pc.piece_type == chess.PAWN and chess.square_rank(j) in (0, 7) else None)
                 legal = t.is_legal(mv)
                 chk = legal and t.gives_check(mv)
-                if chk:
+                if chk and strict:
                     return None                                   # a capture that gives check: the line leaves the frame
                 if legal:                                         # what it bears on from where it lands (the September 'lands_attacked':
                     t.push(mv)                                    # verify mode found c5/d5 frames equal in relations, unequal after dxc5)
                     lands = frozenset(k for k in t.attacks(j) if k in occ and k not in (i, j))
                     t.pop()
-            rel[(i, j)] = (att, xr, legal, lands)
+            rel[(i, j)] = (att, xr, legal, lands) if strict else (att, xr, legal, lands, chk)
     idx = {q: k for k, q in enumerate(slots)}
     labels = _wl([hash(info[q]) for q in slots], lambda a, c: rel[(slots[a], slots[c])][:3] + (len(rel[(slots[a], slots[c])][3]),))
     order = sorted(range(len(slots)), key=lambda k: (labels[k], k))
     ordered = [slots[k] for k in order]
     pos = {q: k for k, q in enumerate(ordered)}
-    key = ("lemma", tuple(info[q] for q in ordered),
-           tuple(rel[(x, y)][:3] + (tuple(sorted(pos[k] for k in rel[(x, y)][3])),) for x in ordered for y in ordered if x != y))
+    key = ("lemma" if strict else "type", tuple(info[q] for q in ordered),
+           tuple(rel[(x, y)][:3] + (tuple(sorted(pos[k] for k in rel[(x, y)][3])),) + rel[(x, y)][4:] for x in ordered for y in ordered if x != y)) + (flags if not strict else ())
     return key, ordered
 
 
