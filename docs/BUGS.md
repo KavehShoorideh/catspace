@@ -127,6 +127,12 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
 - **A comparison set misnamed** (class 8, caught in the draft): the journal draft called the Stockfish depth study
   "the same misses"; it ran on the 9 misses of the 300 test puzzles, not these 209. Fixed before commit.
 
+- **One dict, two meanings** (class 1-like, a store keyed two ways): `ZoneSearch.history` held rank()'s per-candidate
+  records (Move -> list) AND the history heuristic's counters ((piece, colour, square) -> int), because rank() reset
+  it and search() wrote into it. Every reader indexed by candidate move, so no number was wrong; the depth decider
+  iterated it and crashed on an int. Fixed: the heuristic has its own store `hh`, reset at the same point; the
+  search's values and nodes on the module's cases unchanged (the same digest before and after).
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).

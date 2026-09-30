@@ -106,6 +106,8 @@ TOTAL_CAP = [None]                                                  # a hard nod
 KSTATS: dict = {}                                                   # the knowledge's firing counts, summed over choose calls
 NODES = [0]                                                         # the zone search's nodes for the last choose (for equal-compute gauges)
 BUDGET_POLICY = "fixed"                                            # zone_candidates: "fixed" (equal shares) | "watch" (the king watches' policy)
+DECIDER_THRESHOLD = [0.5]                                           # BUDGET_POLICY "decider": go on past a rung when the learned chance that it
+                                                                    # changes the decision is at least this (depth_decider; the planner's knob)
 KING_WATCH = False                                                  # zone_candidates: the king watches' moves join the candidates
 PROPOSE = 0                                                         # zone_candidates: the moves realizing the proposer's top-k what-if edits join (0: off)
 JOBS = False                                                        # zone_candidates: the job ledger's operator moves join the candidates
@@ -174,7 +176,7 @@ def choose(b: chess.Board) -> dict:
             from .zone_search import ZoneSearch                             # (Kaveh: plies are cheap in the right frame)
             from .frame_planner import MaterialPlanner                      # the PLANNER sets every limit and names the goals
             plan = (PLANNER or MaterialPlanner()).plan(b, moves)            # (Kaveh 2026-09-30: no hard-coded limits in the tactics)
-            alloc = None
+            alloc = None; stop = None
             zs = ZoneSearch(spec=plan.spec); spent = 0
             if BUDGET_POLICY == "watch":                                    # the tactical policy's budget: king danger gets more, and deeper
                 from .king_watch import budget_policy
@@ -185,9 +187,12 @@ def choose(b: chess.Board) -> dict:
                 zs.cap_total = TOTAL_CAP[0]
                 alloc = allocate(b, moves, zs); spent = zs.total
                 zs.budget = plan.spec.budget; zs.spent_before = spent
-            if BUDGET_POLICY == "fixed":
+            elif BUDGET_POLICY == "decider":                                # the learned stop-or-continue call after every rung
+                from .depth_decider import stopper                          # (depth_decider: trained on the depth ladder's labels)
+                stop = stopper(b, tuple(sorted(plan.spec.depths)), DECIDER_THRESHOLD[0])
+            if BUDGET_POLICY in ("fixed", "decider"):
                 zs.cap_total = TOTAL_CAP[0]
-            got = zs.rank(b, moves, alloc=alloc)
+            got = zs.rank(b, moves, alloc=alloc, stop=stop)
             NODES[0] = spent + zs.total
             for k2, v2 in zs.kstats.items():
                 KSTATS[k2] = KSTATS.get(k2, 0) + v2

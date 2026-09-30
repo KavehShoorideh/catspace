@@ -84,6 +84,8 @@ class ZoneSearch:
         self.budget = self.spec.budget; self.max_zone = self.spec.max_zone
         self.cap_total = self.spec.total_cap
         self.nodes = 0; self.total = 0; self.tt = {}; self.reads = {}; self.history = {}
+        self.hh = {}                                                  # the history heuristic's counters (its own store: bug 2026-09-30,
+                                                                      # they shared `history` with rank()'s per-candidate records)
         self.kstats = {"nodes": 0, "fired": 0, "moves": 0, "pruned": 0}   # how often the knowledge acted
 
     def read(self, b: chess.Board, s: int) -> float:
@@ -172,7 +174,7 @@ class ZoneSearch:
             alpha = max(alpha, best)
         if alpha < beta:
             ms = self.moves(b, zone)
-            hist = self.history                                   # quiet moves that refuted before are tried earlier (history heuristic)
+            hist = self.hh                                        # quiet moves that refuted before are tried earlier (history heuristic)
             ab = {}
             if self.spec.knowledge:                               # KNOWLEDGE (jobs): a move that walks away from a valid job worth more
                 from .jobs import abandons                        # than it takes goes last -- the pin known, not re-found in every
@@ -256,6 +258,7 @@ class ZoneSearch:
         got = {m: ((1e6, [m], 1) if r is None else (r[0], [m], 0)) for m, r in roots.items()}
         self.total = 0
         self.history = {m: [] for m in moves}                         # per candidate: (depth, value or None if out of budget, nodes)
+        self.hh = {}                                                  # the heuristic starts afresh with each rank (as it always has)
         alloc = alloc or {}
         base = self.budget
         W = sum(alloc.get(m, (1.0, 0))[0] for m in moves) or 1.0
