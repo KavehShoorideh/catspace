@@ -22876,6 +22876,11 @@ sibling pairs themselves, per material, is the next step; then the advised playe
 
 ## 2026-09-30 20:44 PDT — why the solution is valued below the top: the zone hid the refutation, then depth; every pawn move searched (OBS)
 
+> **Correction (added 2026-09-30 21:10):** the anatomy's class counts below were not reproducible (one Stockfish engine
+> per worker kept its hash across positions; two runs split 24/6 and 17/11), and the exit breakdown (plies, sides,
+> pawn moves, quiet threats) came from an ad hoc script, not the repo's. The reproducible, script-printed numbers are
+> in the next entry; the live puzzle results here stand.
+
 `miss_anatomy.py`: for each miss whose solution IS a candidate, Stockfish (depth 18, 10 s guard) on the solution S and
 the player's top move T, and each line replayed through the zone search's own rules (its root zone with the planner's
 hints, its growth rule) for 12 plies. On the 51 such misses of the offset-500 replay (proposer + decider, the 19:37

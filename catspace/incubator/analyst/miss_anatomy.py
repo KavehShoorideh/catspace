@@ -6,7 +6,8 @@ read by Stockfish (the score after the move, from the mover's side, and its prin
 through the zone search's own rules (its root zone with the planner's hints; a move outside the zone is a move the
 search never looks at). The classes, in order:
 - ALSO WINS: Stockfish rates T within a pawn of S (or both mate) -- the puzzle wants one answer; not an engine error.
-- T OVERRATED, ITS REFUTATION OUTSIDE ITS ZONE: Stockfish's reply line to T leaves T's zone within the search's reach.
+- T'S LINE LEAVES ITS ZONE: Stockfish's line after T leaves T's zone within the search's reach (an exit by the opponent's
+  move is a refutation the search never sees -- T overrated; the breakdown prints whose move left).
 - S UNDERRATED, ITS LINE OUTSIDE ITS ZONE: Stockfish's line after S leaves S's zone.
 - INSIDE BOTH ZONES: the lines are searchable; the difference is depth, budget or the leaf's material read.
 
@@ -96,7 +97,7 @@ def main(argv=None):
         if vt >= vs - 1.0 or (vs >= 100 and vt >= 100):
             c = "also wins"
         elif r["exit_T"] is not None:
-            c = "T overrated: refutation outside its zone"
+            c = "T's line leaves its zone"
         elif r["exit_S"] is not None:
             c = "S underrated: its line outside its zone"
         else:
@@ -106,11 +107,11 @@ def main(argv=None):
     json.dump(rows, open(paths.derived("miss_anatomy.json"), "w"))
     print(f"OBS {a.dump}: {len(rows)} misses with the solution a candidate valued below the top; Stockfish depth {a.depth}, zone reach {a.reach} plies"
           f"{', pawn moves in the zone' if pawn else ''}")
-    for c in ("also wins", "T overrated: refutation outside its zone", "S underrated: its line outside its zone", "inside both zones"):
+    for c in ("also wins", "T's line leaves its zone", "S underrated: its line outside its zone", "inside both zones"):
         rs = classes.get(c, [])
         gap = [r["S"][0] - r["T"][0] for r in rs if abs(r["S"][0]) < 100 and abs(r["T"][0]) < 100]
         print(f"   {c}: {len(rs)}" + (f" (Stockfish's S minus T, median {st.median(gap):+.1f} pawns)" if gap else ""))
-        if c.startswith("T overrated") and rs:                       # how the refutations leave: the ply, whose move, which piece
+        if c.startswith("T's line") and rs:                       # how the refutations leave: the ply, whose move, which piece
             from .fates import clear_caches, passed, joint_threats, square_frame
             exits = {}; side = {"opponent": 0, "ours": 0}; pawn_opp = qt = 0
             for r in rs:
