@@ -152,12 +152,14 @@ def _test(pid: str) -> bool:
     return int(hashlib.sha1(("dd" + pid).encode()).hexdigest()[:8], 16) % 4 == 0
 
 
-def train(paths_in: list, kind: str = "any", log=print):
+def train(paths_in: list, kind: str = "any", exclude: set = frozenset(), out: str = MODEL_NAME, log=print):
+    """`exclude`: puzzle ids kept out of training (a later replay of those puzzles stays clean); `out`: the model's
+    data/derived name (the player loads MODEL_NAME, which a harness may point elsewhere)."""
     import pickle
     import numpy as np
     from sklearn.ensemble import HistGradientBoostingClassifier
     from sklearn.metrics import roc_auc_score
-    data = [r for p in paths_in for r in rows(p, kind)]
+    data = [r for p in paths_in for r in rows(p, kind) if r["pid"] not in exclude]
     X = np.array([r["x"] for r in data], dtype=float); y = np.array([r["y"] for r in data])
     test = np.array([_test(r["pid"]) for r in data])
     src = np.array([r["src"] for r in data])
@@ -182,8 +184,8 @@ def train(paths_in: list, kind: str = "any", log=print):
     model = HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_depth=3, class_weight="balanced").fit(X, y)
     calibrated = HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_depth=3).fit(X, y)
     pickle.dump(dict(model=model, calibrated=calibrated, first_growth=first_growth(paths_in), features=FEATURES, label=kind,
-                     data=[p.rsplit("/", 1)[-1] for p in paths_in]), open(paths.derived(MODEL_NAME), "wb"))
-    log(f"[depth_decider] saved {paths.derived(MODEL_NAME)} (label {kind}, all {len(data)} rows)")
+                     data=[p.rsplit("/", 1)[-1] for p in paths_in], excluded=len(exclude)), open(paths.derived(out), "wb"))
+    log(f"[depth_decider] saved {paths.derived(out)} (label {kind}, all {len(data)} rows; {len(exclude)} puzzle ids excluded)")
     return model
 
 
@@ -277,6 +279,9 @@ def stopper(b: chess.Board, rungs: tuple, threshold: float = 0.5, price: float |
     if "m" not in _MODEL:
         saved = pickle.load(open(paths.derived(MODEL_NAME), "rb"))
         _MODEL["m"] = saved["model"]; _MODEL["c"] = saved.get("calibrated"); _MODEL["g"] = saved.get("first_growth", {})
+        _MODEL["name"] = MODEL_NAME
+        import sys
+        print(f"[depth_decider] model {MODEL_NAME} (label {saved.get('label')}, excluded {saved.get('excluded', 0)})", file=sys.stderr)
 
     def stop(d, got, history) -> bool:
         if d >= max(rungs):
@@ -303,6 +308,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(); sub = ap.add_subparsers(dest="cmd", required=True)
     t = sub.add_parser("train"); t.add_argument("--data", nargs="+", default=["depth_ladder_misses.jsonl", "depth_ladder_150_700.jsonl"])
     t.add_argument("--label", default="any", choices=["any", "disjoint"])
+    t.add_argument("--exclude-misses-of", nargs="*", default=[], help="frame_puzzles dumps: their unsolved puzzles stay out of training")
+    t.add_argument("--out", default=MODEL_NAME)
     r = sub.add_parser("replay"); r.add_argument("--data", nargs="+", default=["depth_ladder_misses.jsonl", "depth_ladder_150_700.jsonl"])
     r.add_argument("--thresholds", type=float, nargs="+", default=[0.7, 0.5, 0.3, 0.15])
     r.add_argument("--prices", type=float, nargs="+", default=[1e-4, 3e-5, 1e-5, 3e-6, 1e-6])
@@ -310,7 +317,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.cmd == "replay":
         return replay([str(paths.derived(p)) for p in a.data], tuple(a.thresholds), tuple(a.prices), kind=a.label)
-    train([str(paths.derived(p)) for p in a.data], a.label)
+    exclude = {r["id"] for d in a.exclude_misses_of for r in json.load(open(paths.derived(d))) if not r["solved"]}
+    train([str(paths.derived(p)) for p in a.data], a.label, exclude, a.out)
 
 
 if __name__ == "__main__":

@@ -138,7 +138,9 @@ def main(argv=None):
     ap.add_argument("--match-nodes", default=None, help="a dump (data/derived name) whose per-step nodes cap this run's steps: equal compute")
     ap.add_argument("--budget-policy", default="fixed", choices=["fixed", "watch", "learned", "decider"], help="zone search budget: equal shares, the king watches' rule, the learned policy, or the learned depth decider")
     ap.add_argument("--decider-threshold", type=float, default=0.5, help="--budget-policy decider: go on past a rung when the chance it changes the decision is at least this")
+    ap.add_argument("--decider-model", default=None, help="--budget-policy decider: the model's data/derived name (default depth_decider.pkl)")
     ap.add_argument("--decider-price", type=float, default=None, help="--budget-policy decider: a price on search instead (go on when the chance >= price x the next rung's nodes)")
+    ap.add_argument("--only-unsolved-in", default=None, help="lichess --offset: only the puzzles this earlier dump (data/derived name) missed")
     ap.add_argument("--depths", type=int, nargs="+", default=None, help="the zone search's rungs (the planner's; default TacticalSpec.depths)")
     ap.add_argument("--watch-zone", type=int, default=0, help="zone search: the king watches' top-N pursued members join the root zone")
     ap.add_argument("--king-watch", action="store_true", help="zone_candidates: the standing king frames' moves join the candidates")
@@ -165,6 +167,9 @@ def main(argv=None):
         if a.budget_policy == "decider":
             FP.DECIDER_THRESHOLD[0] = a.decider_threshold; FP.DECIDER_PRICE[0] = a.decider_price
             tag += f"_price{a.decider_price:g}" if a.decider_price is not None else f"{a.decider_threshold:g}"
+            if a.decider_model:
+                from . import depth_decider as _DD
+                _DD.MODEL_NAME = a.decider_model; tag += "_" + a.decider_model.rsplit(".", 1)[0]
     planner_kw = {}                                               # every search limit and goal is the PLANNER's (frame_planner)
     if a.watch_zone:
         planner_kw["watch_zone"] = a.watch_zone; tag += f"_watchzone{a.watch_zone}"
@@ -194,6 +199,10 @@ def main(argv=None):
     if a.source in ("lichess", "lichess-quiet"):
         if a.source == "lichess" and a.offset:
             rows = fresh_rows(a.n, a.stride, a.offset); tag += f"_off{a.offset}"
+            if a.only_unsolved_in:                                  # the misses of an earlier run, replayed (a targeted gauge)
+                import json as _jm                                  # (main imports json later: a local name here)
+                miss = {r["id"] for r in _jm.load(open(paths.derived(a.only_unsolved_in))) if not r["solved"]}
+                rows = [r for r in rows if r["PuzzleId"] in miss]; tag += "_onlymisses"
         elif a.source == "lichess":
             from .gauge_puzzles import sample
             rows = sample(str(paths.assets_dir() / "lichess" / "lichess_db_puzzle.csv.zst"), a.n, a.stride)
