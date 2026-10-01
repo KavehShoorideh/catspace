@@ -22874,6 +22874,33 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-01 06:43 PDT — PAUSE: the tactical layer, taking stock (Kaveh: "pause the tactics here")
+
+Kaveh's call after the deep-verdict dig, offered positional value at the leaf (planner terms or a distilled Stockfish)
+or a pause. Where the tactical layer stands (every number below from the entries of 2026-09-30, one run each):
+- The player: the frames' candidates, verified by the zone search (alpha-beta inside a zone of squares, a searched
+  pass, the frames' material read at the horizon), every limit set by the planner (`TacticalSpec`). On 300 fresh
+  puzzles (offset 300): plain fixed 8 plies 279 tied / 227 single at 30,490 nodes a step; the BEST BUNDLE -- the
+  learned what-if proposer (k=3), every pawn move searched, the depth decider (price 3e-6) -- 281 / 231 at 54,877
+  nodes and 1,606 s (twice the plain player's time, mostly the proposer's features). On the 70 misses of 1,000 fresh
+  puzzles (offset 500): 0 -> 18 (19 with the soundness switches).
+- What is left, from the anatomy of the misses (`miss_anatomy`, `verdict_dig`): every solution is now a candidate;
+  zone-caused misses 29 -> 12; of 44 misjudged line ends, depth at the node 12, search faults 7, tactics paying off
+  past 12 plies 8, POSITIONAL edges 17 (Stockfish's line from there wins no material within 20 plies) -- the planner's
+  side of the design.
+- Switches, all off by default (the plain player is unchanged): `frame_player` PROPOSE, PAWN_MOVES, BUDGET_POLICY
+  "decider" (DECIDER_PRICE); `TacticalSpec` pawn_moves, frame_ext (depth in frames: +3 on the misses at 3x nodes,
+  harmful with the decider), leaf_mates and zugzwang_guard (indistinguishable at one run), knowledge/prune_jobs (the
+  job ledger: no speed-up). The decider's models: `data/derived/depth_decider.pkl` (all ladder rows),
+  `depth_decider_no500.pkl` (the offset-500 misses held out).
+- Data: the depth ladders (`depth_ladder_misses.jsonl`, `depth_ladder_150_700.jsonl`, `depth_ladder_10_900.jsonl`),
+  `frame_split.json` (Stockfish's lines for the bet test), the puzzle dumps of every run (`frame_puzzles_lichess_*`).
+Resume: the bundle on any fresh set --
+  `python -m catspace.incubator.analyst.frame_puzzles --n 300 --offset 300 --propose 3 --pawn-moves --budget-policy decider --decider-price 3e-6 --depths 4 6 8 10 12`;
+the misses' anatomy -- `python -m catspace.incubator.analyst.verdict_dig --probe --dump <dump>`. Open when resumed:
+positional value at the leaf (named planner terms first, Kaveh's design), the 7 search faults' other 5, a decider
+retrained on the new searches (would unblock frame_ext and the guard), the proposer's wall time. Nothing is running.
+
 ## 2026-10-01 00:08 PDT — two soundness faults found and switched (mate in one at the horizon, the pass in pawn endings): no measurable change (OBS)
 
 The 7 "search fault" line ends of the 23:19 entry, read one by one: two are a MATE IN ONE for the side to move where
