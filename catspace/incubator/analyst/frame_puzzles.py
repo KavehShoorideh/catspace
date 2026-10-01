@@ -48,7 +48,7 @@ def _solve_lichess(row: dict) -> dict:
         ok_unique = (c["best"] == [u]) or (mate_ok and len(c["best"]) == 1)
         from . import frame_player as _FP
         steps.append(dict(fen=b.fen(), sol=u, tied=ok_tied, unique=ok_unique, n_top=len(c["best"]), best=c["best"][:6],
-                          v_sol=c["values"].get(u), v_top=max(c["values"].values()), nodes=_FP.NODES[0]))
+                          v_sol=c["values"].get(u), v_top=max(c["values"].values()), nodes=_FP.NODES[0], depth=_FP.DEPTH[0]))
         if not ok_tied:
             break
         b.push_uci(u)
@@ -213,6 +213,8 @@ def main(argv=None):
     ns = [s.get("nodes", 0) for r in res for s in r["steps"]]
     if any(ns):
         print(f"OBS zone search nodes per solver step: mean {sum(ns) / len(ns):.0f} over {len(ns)} steps")
+        ds = [s.get("depth", 0) for r in res for s in r["steps"]]
+        print("OBS the deepest rung completed per solver step: " + ", ".join(f"{d}: {ds.count(d)}" for d in sorted(set(ds))))
     from .fates import VERIFY_FRAMES
     if VERIFY_FRAMES:                                             # the lemma library served a value its fresh resolution disagrees with
         bad = [r for r in res if r.get("n_lemma_mismatches")]
