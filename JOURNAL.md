@@ -22874,6 +22874,27 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-01 00:08 PDT — two soundness faults found and switched (mate in one at the horizon, the pass in pawn endings): no measurable change (OBS)
+
+The 7 "search fault" line ends of the 23:19 entry, read one by one: two are a MATE IN ONE for the side to move where
+the zone line ends (8deXd: Rh8#, 8mNEv: Rh1#) -- the horizon returns the frames' material read and never asks whether
+the side to move mates (and my probe had counted them as not found: a move that mates at once is never searched and
+has an empty history -- the ladder's bug of 2026-09-30, repeated; fixed, logged); three are king-and-pawn endings whose
+line ends in a PASS (6VRuo, 7YHf8; 8llD6 likely) -- the searched pass is unsound where a side must move (zugzwang),
+which is why engines switch null moves off there. Switches, off by default (the zone search's outputs hash the same):
+`TacticalSpec.leaf_mates` (at the horizon the side to move's checking moves are tried for a mate) and
+`zugzwang_guard` (a king-and-pawns side may not pass above the horizon and all its legal moves are searched; the
+horizon's static stand-pat stays, as in a quiescence); tests (a first version of the guard's test expected no pass at
+all -- the expectation was wrong, logged). One run each, with the proposer, pawn moves and the decider (3e-6):
+- the 70 offset-500 misses: 19 tied / 6 single (without them 18 / 5), gained 4, lost 3; 116,897 nodes a step (98,932);
+  698 s (520); 12 plies completed in 1 step (20) -- full-width pawn endings make rungs dear, so the decider stops sooner.
+- the 300 fresh: 280 / 233 (281 / 231), gained 3, lost 4 (two of them the tie cases 02jzH and 1Z58D); 60,466 nodes
+  (54,877); 2,020 s (1,606).
+Reading: indistinguishable at one run on both sets, at 10-18% more nodes and a quarter more time; the faults are real
+but rare here. Kept off, flag-gated (to retest with a decider trained on these searches). The dig's map of the misses
+left stands (23:19): depth at the node 12 of 44 misjudged line ends, search faults 7 (now switchable), tactics past 12
+plies 8, positional edges 17 -- the last is the planner's side of the design.
+
 ## 2026-09-30 23:19 PDT — the wrong deep verdicts: the search stops reading a line where the opponent stands pat; most of what it misses there is position, not material (OBS)
 
 Kaveh's pick: dig why the zone search completes 10-12 plies and still prefers the wrong move. 02jzH by hand (pawn moves
