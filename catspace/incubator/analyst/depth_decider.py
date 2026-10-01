@@ -123,7 +123,14 @@ def first_growth(paths_in: list) -> dict:
     return {d: st.median(v) for d, v in g.items()}
 
 
-def rows(path: str) -> list:
+def label(shallow: set, deep: set, kind: str = "any") -> bool:
+    """Going on changed the decision: "any" -- the top set differs at all (a tie resolving counts: a tied top is an
+    undecided search); "disjoint" -- the deep top shares no move with this rung's (2026-09-30: this first label ignored
+    ties, and the decider trained on it matched fixed depth -- a negative made by the label; docs/BUGS.md)."""
+    return not (shallow & deep) if kind == "disjoint" else shallow != deep
+
+
+def rows(path: str, kind: str = "any") -> list:
     """The ladder file -> one row per position and rung below the deepest: features, label, puzzle id."""
     from .depth_ladder import decisions
     out = []
@@ -136,7 +143,7 @@ def rows(path: str) -> list:
         deep = dec[rungs[-1]]
         b = chess.Board(rec["fen"])
         for d in rungs[:-1]:
-            out.append(dict(pid=rec["pid"], d=d, x=features(b, d, rec["history"], rungs), y=not (dec[d] & deep),
+            out.append(dict(pid=rec["pid"], d=d, x=features(b, d, rec["history"], rungs), y=label(dec[d], deep, kind),
                             src=path.rsplit("/", 1)[-1]))
     return out
 
@@ -145,17 +152,17 @@ def _test(pid: str) -> bool:
     return int(hashlib.sha1(("dd" + pid).encode()).hexdigest()[:8], 16) % 4 == 0
 
 
-def train(paths_in: list, log=print):
+def train(paths_in: list, kind: str = "any", log=print):
     import pickle
     import numpy as np
     from sklearn.ensemble import HistGradientBoostingClassifier
     from sklearn.metrics import roc_auc_score
-    data = [r for p in paths_in for r in rows(p)]
+    data = [r for p in paths_in for r in rows(p, kind)]
     X = np.array([r["x"] for r in data], dtype=float); y = np.array([r["y"] for r in data])
     test = np.array([_test(r["pid"]) for r in data])
     src = np.array([r["src"] for r in data])
     log(f"[depth_decider] {len(data)} rows (position x rung) from {len({r['pid'] for r in data})} puzzles; going on changes the "
-        f"decision in {y.mean():.3f}; train {int((~test).sum())}, held out {int(test.sum())} (split by puzzle)")
+        f"decision ({kind}) in {y.mean():.3f}; train {int((~test).sum())}, held out {int(test.sum())} (split by puzzle)")
     for s in sorted(set(src)):
         k = src == s
         log(f"OBS {s}: {int(k.sum())} rows, label rate {y[k].mean():.3f}; by rung: "
@@ -171,13 +178,17 @@ def train(paths_in: list, log=print):
             k = src[test] == s
             if k.sum() and len(set(y[test][k])) > 1:
                 log(f"OBS held-out AUC within {s}: model {roc_auc_score(y[test][k], p[k]):.3f} ({int(k.sum())} rows, {int(y[test][k].sum())} positive)")
-    calibrated = HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_depth=3).fit(X[~test], y[~test])
-    pickle.dump(dict(model=model, calibrated=calibrated, first_growth=first_growth(paths_in), features=FEATURES),
-                open(paths.derived(MODEL_NAME), "wb"))
+    # the models for play: refit on every row once the held-out gauge is printed (play's puzzles are disjoint from these)
+    model = HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_depth=3, class_weight="balanced").fit(X, y)
+    calibrated = HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_depth=3).fit(X, y)
+    pickle.dump(dict(model=model, calibrated=calibrated, first_growth=first_growth(paths_in), features=FEATURES, label=kind,
+                     data=[p.rsplit("/", 1)[-1] for p in paths_in]), open(paths.derived(MODEL_NAME), "wb"))
+    log(f"[depth_decider] saved {paths.derived(MODEL_NAME)} (label {kind}, all {len(data)} rows)")
     return model
 
 
-def replay(paths_in: list, thresholds=(0.7, 0.5, 0.3, 0.15), prices=(1e-4, 3e-5, 1e-5, 3e-6, 1e-6), folds: int = 4, log=print) -> None:
+def replay(paths_in: list, thresholds=(0.7, 0.5, 0.3, 0.15), prices=(1e-4, 3e-5, 1e-5, 3e-6, 1e-6), folds: int = 4,
+           kind: str = "any", log=print) -> None:
     """The policies replayed on the ladder itself: stopping the ladder's search after rung d gives exactly its values up
     to d (all candidates deepen together), so each policy's decision and nodes per position are read off the records.
     Fixed depths against the decider at several thresholds; the decider's chance for a position comes from a model
@@ -200,7 +211,7 @@ def replay(paths_in: list, thresholds=(0.7, 0.5, 0.3, 0.15), prices=(1e-4, 3e-5,
         rungs = tuple(sorted(dec)); b = chess.Board(rec["fen"])
         nodes = {d: sum(n for h in rec["history"].values() for dd, _, n in h if dd <= d) for d in rungs}
         X = [features(b, d, rec["history"], rungs) for d in rungs[:-1]]
-        y = [not (dec[d] & dec[rungs[-1]]) for d in rungs[:-1]]
+        y = [label(dec[d], dec[rungs[-1]], kind) for d in rungs[:-1]]
         pos.append(dict(rec=rec, dec=dec, rungs=rungs, nodes=nodes, X=X, y=y, f=fold(rec["pid"])))
     for k in range(folds):                                            # each position's chances from the model of the other folds
         tr = [p for p in pos if p["f"] != k]
@@ -291,13 +302,15 @@ def main(argv=None):
     sys.stdout.reconfigure(line_buffering=True)                       # barriers (2026-09-30: minutes, no progress, at 52% CPU)
     ap = argparse.ArgumentParser(); sub = ap.add_subparsers(dest="cmd", required=True)
     t = sub.add_parser("train"); t.add_argument("--data", nargs="+", default=["depth_ladder_misses.jsonl", "depth_ladder_150_700.jsonl"])
+    t.add_argument("--label", default="any", choices=["any", "disjoint"])
     r = sub.add_parser("replay"); r.add_argument("--data", nargs="+", default=["depth_ladder_misses.jsonl", "depth_ladder_150_700.jsonl"])
     r.add_argument("--thresholds", type=float, nargs="+", default=[0.7, 0.5, 0.3, 0.15])
     r.add_argument("--prices", type=float, nargs="+", default=[1e-4, 3e-5, 1e-5, 3e-6, 1e-6])
+    r.add_argument("--label", default="any", choices=["any", "disjoint"])
     a = ap.parse_args(argv)
     if a.cmd == "replay":
-        return replay([str(paths.derived(p)) for p in a.data], tuple(a.thresholds), tuple(a.prices))
-    train([str(paths.derived(p)) for p in a.data])
+        return replay([str(paths.derived(p)) for p in a.data], tuple(a.thresholds), tuple(a.prices), kind=a.label)
+    train([str(paths.derived(p)) for p in a.data], a.label)
 
 
 if __name__ == "__main__":

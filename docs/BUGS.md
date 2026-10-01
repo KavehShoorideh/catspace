@@ -133,6 +133,15 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   iterated it and crashed on an int. Fixed: the heuristic has its own store `hh`, reset at the same point; the
   search's values and nodes on the module's cases unchanged (the same digest before and after).
 
+- **A negative made by the label** (class 10, inverted -- a label blind to ties): the depth decider trained on "the
+  deep top shares no move with this rung's" matched fixed depth (price 1e-6: 277 vs 280 alone on top on ordinary
+  positions, 19 vs 16 on the misses; within-misses AUC 0.583). That label calls a tie that resolves "no change", yet
+  a tied top IS an undecided search and the solution-alone gains (280 -> 288 from 8 to 10 plies) are exactly ties
+  resolving. With "the top set differs at all": held-out AUC 0.907 (misses 0.795), and the priced decider beats
+  fixed depth in the replay. Found by bug-checking the negative (my own label choice first).
+- **OpenMP threads spinning beside busy workers** (class 7): a tiny HistGradientBoosting fit sat minutes at 52% CPU
+  in libomp barriers while 10 search workers held the cores. Fixed: OMP_NUM_THREADS=1 for the decider (2 s).
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).

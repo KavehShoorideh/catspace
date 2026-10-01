@@ -22874,6 +22874,34 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-30 17:00 PDT — the depth decider: a price on search, learned from the ladder, beats fixed depth in replay once its label counts ties (OBS)
+
+The stop-or-continue call (Kaveh: "deciding whether to continue should be the job of a tactical policy"; deep labels
+first). Negatives first: `depth_ladder collect --n 150 --offset 700` -- the ladder on 150 ordinary fresh puzzles, 329
+positions, 6,509 s; median 465,084 nodes a position. Printed: the solution among the candidates in 327/329; alone on
+top at 4, 6, 8, 10, 12 plies: 241, 266, 280, 288, 289; the decision (no shared move) changes after 8 plies in 1/329,
+after 10 in 0/329. Ordinary puzzles are settled by 8 plies apart from ties.
+`depth_decider.py`: after each rung, features of what the search knows (the top set and whether it moved, the gap to
+the second, the top's swing, out-of-budget share, nodes and their growth) and of the board (material, passed pawns,
+check); label from the ladder; the zone search's `stop` callback in play (`frame_player` BUDGET_POLICY "decider").
+Two rules: a THRESHOLD on the chance; a PRICE on search (Kaveh 2026-08-12, reward = win - lambda x effort): go on when
+the calibrated chance >= price x the next rung's expected nodes (this rung's nodes x its growth). `replay`: stopping the
+ladder's search after a rung gives exactly its values there, so every policy's decision and nodes per position are read
+off the records; chances from 4 folds by puzzle. Printed (alone on top / mean nodes, one run):
+- label "disjoint" (the deep top shares no move with this rung's), price 1e-6: ordinary 277 at 22,175 (fixed 8 plies:
+  280 at 25,547); misses 19 at 61,515 (fixed 8: 16 at 67,515) -- no better than fixed depth; held-out AUC 0.754
+  overall, 0.583 within the misses.
+- bug check of that negative (my label first): it calls a tie that resolves "no change", while the 280 -> 288 gain
+  from 8 to 10 plies is ties resolving. Label "any" (the top set differs at all): held-out AUC 0.907 (best single
+  feature, the top's tie size, 0.777; within ordinary 0.959, within the misses 0.795). Replay, price 1e-6: ordinary
+  289 alone at 60,303 nodes (fixed 10: 288 at 210,083; fixed 12: 289 at 917,960); misses 36 at 161,586 (fixed 8: 16
+  at 67,515; fixed 10: 43 at 489,755); price 3e-7: misses 45 at 331,623; price 3e-6: ordinary 286 at 30,726, misses
+  26 at 81,663. Among the top (ties count) on the misses at 1e-6: 63 (fixed 8: 27, fixed 10: 84).
+Reading (one run, replay, directional): a price on search with a tie-aware label reaches fixed 10-12 plies' answers
+on ordinary puzzles at under a third of fixed 10's nodes, and on the misses gets more alone on top than fixed 10 with fewer nodes (price 3e-7); it deepens where
+the search is undecided and the next rung is cheap. The cost numbers are the ladder's search (150,000 a candidate a
+depth, no margin pruning); play prunes and caps, so the live run on fresh puzzles is the test (next).
+
 ## 2026-09-30 15:08 PDT — the depth ladder on the 209 missed puzzles: the misses turn between 8 and 10 plies; a fifth lack the solution among the candidates (OBS)
 
 The labels for the stop-or-continue decider (Kaveh: "go very deep, see which depth changed the result, use that as
