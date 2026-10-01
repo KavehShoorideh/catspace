@@ -73,3 +73,16 @@ def test_pawn_moves_join_the_zone_when_the_planner_asks():
     zone = frozenset({chess.H2, chess.E8, chess.E1})
     assert chess.Move.from_uci("a2a4") not in ZoneSearch(spec=TacticalSpec()).moves(b, zone)
     assert chess.Move.from_uci("a2a4") in ZoneSearch(spec=TacticalSpec(pawn_moves=True)).moves(b, zone)
+
+
+def test_a_reply_on_the_same_square_does_not_use_up_a_ply():
+    import chess
+    from catspace.incubator.analyst.zone_search import ZoneSearch, TacticalSpec, _frame
+    b = chess.Board("4k3/8/3p4/4n3/8/8/4R3/4K3 w - - 0 1")
+    m = b.parse_san("Rxe5"); b.push(m)
+    assert _frame(b, m) == frozenset({chess.E5, chess.E8})          # the rook's square and the king it now attacks
+    b2 = chess.Board("4k3/8/3p4/4n3/8/8/4R3/4K3 w - - 0 1")
+    ms = [b2.parse_san("Rxe5"), b2.parse_san("Kf1")]
+    off = ZoneSearch(spec=TacticalSpec(depths=(2,), budget=5000)); off.rank(b2, ms)
+    on = ZoneSearch(spec=TacticalSpec(depths=(2,), budget=5000, frame_ext=2)); on.rank(b2, ms)
+    assert on.total > off.total                                      # dxe5 (taking the rook) is searched on, free of depth

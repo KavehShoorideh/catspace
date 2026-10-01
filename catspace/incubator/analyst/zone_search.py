@@ -51,6 +51,10 @@ class TacticalSpec:
     hints: tuple = ()                   # the planner's goals: callables (board after the candidate) -> squares for its root zone
     alloc: dict | None = None           # the planner's effort per candidate: move -> (weight, deepest depth)
     stop: object = None                 # the decider: stop(depth, got, history) -> bool after each completed depth
+    frame_ext: int = 0                  # depth counted in FRAMES, not plies (Kaveh's bet, 2026-09-30: "each frame needs only two
+                                        # plies"): a REPLY ON THE SAME SQUARE -- taking the piece that just moved, or moving a piece
+                                        # it now attacks -- does not use up a ply, up to frame_ext a line; a move elsewhere (an
+                                        # intermezzo) does
     pawn_moves: bool = False            # every pawn move is searched, like captures, promotions and checks: the irreversible
                                         # moves -- races, breaks, tempo moves (miss_anatomy 2026-09-30: of 24 tops overrated
                                         # because the refutation left the zone, 17 refutation lines left it by a pawn move)
@@ -140,7 +144,8 @@ class ZoneSearch:
                 out.append(m)
         return out
 
-    def search(self, b: chess.Board, zone: frozenset, depth: int, alpha: float, beta: float, null_ok: bool = True, ply: int = 0, ext: int = 0) -> tuple:
+    def search(self, b: chess.Board, zone: frozenset, depth: int, alpha: float, beta: float, null_ok: bool = True, ply: int = 0, ext: int = 0,
+               frame: frozenset = frozenset()) -> tuple:
         """Negamax alpha-beta inside the zone. Standing pat is passing, and passing is a move: the opponent then plays on
         at depth - 1 - NULL_R (a two-move threat -- a pawn two pushes from queening -- is searched, not missed because the
         pass was read one move deep); near the horizon, and after a pass, the stand-pat is read statically. A side
@@ -168,7 +173,7 @@ class ZoneSearch:
             r = self.spec.null_r
             pb = F.passed(b) if null_ok and depth - 1 - r >= 1 else None
             if pb is not None:                                    # the pass, searched (reduced by null_r): the opponent plays on
-                v, ln = self.search(pb, zone, depth - 1 - r, -beta, -alpha, False, ply + 1, ext)
+                v, ln = self.search(pb, zone, depth - 1 - r, -beta, -alpha, False, ply + 1, ext)   # (a pass: no frame to reply in)
                 best, best_line = -v, [chess.Move.null()] + ln
                 if ln and ln[0] and -v < 0:                       # the pass shows a threat: its squares join the zone, so the
                     zone = zone | {ln[0].from_square, ln[0].to_square}   # moves that stop it are searched (0ROfv: Qxh2# and Rf2)
@@ -201,7 +206,11 @@ class ZoneSearch:
                     nz |= {t for t in chess.SquareSet(b.attacks_mask(m.to_square)) if b.piece_at(t) is not None and b.piece_at(t).color == b.turn}
                 try:
                     x = 1 if ext < self.spec.check_ext and b.is_check() else 0   # a check does not use up a ply (up to check_ext a line)
-                    v, ln = self.search(b, frozenset(nz), depth - 1 + x, -beta + g, -alpha + g, True, ply + 1, ext + x)
+                    if not x and self.spec.frame_ext and frame and ext < self.spec.check_ext + self.spec.frame_ext \
+                            and (m.from_square in frame or m.to_square in frame):
+                        x = 1                                     # a reply in the last move's frame (the counter is shared: ext)
+                    nf = _frame(b, m) if self.spec.frame_ext else frozenset()
+                    v, ln = self.search(b, frozenset(nz), depth - 1 + x, -beta + g, -alpha + g, True, ply + 1, ext + x, nf)
                 finally:
                     b.pop()
                 v = g - v
@@ -287,7 +296,8 @@ class ZoneSearch:
                     self.budget = base
                     break
                 try:
-                    v, ln = self.search(bb, zone, d - 1, -1e9, g - lo if lo > -1e8 else 1e9)
+                    nf = _frame(bb, m) if self.spec.frame_ext else frozenset()
+                    v, ln = self.search(bb, zone, d - 1, -1e9, g - lo if lo > -1e8 else 1e9, frame=nf)
                 except Budget:
                     self.history[m].append((d, None, self.nodes))
                     continue                                          # out of budget at this depth: it keeps the last one
@@ -301,6 +311,12 @@ class ZoneSearch:
             if stop is not None and stop(d, got, self.history):    # the decider (depth_ladder): go on to the next depth or stop
                 break
         return got
+
+
+def _frame(b: chess.Board, m: chess.Move) -> frozenset:
+    """The frame a move opens, on the board after it: the square it landed on and the pieces it now attacks -- a reply
+    there (taking it, moving a threatened piece) is a reply on the same square."""
+    return frozenset({m.to_square} | {t for t in chess.SquareSet(b.attacks_mask(m.to_square)) if b.piece_at(t) is not None and b.piece_at(t).color == b.turn})
 
 
 def _san(b: chess.Board, line: list) -> str:

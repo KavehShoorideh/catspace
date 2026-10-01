@@ -140,6 +140,7 @@ def main(argv=None):
     ap.add_argument("--decider-threshold", type=float, default=0.5, help="--budget-policy decider: go on past a rung when the chance it changes the decision is at least this")
     ap.add_argument("--decider-model", default=None, help="--budget-policy decider: the model's data/derived name (default depth_decider.pkl)")
     ap.add_argument("--decider-price", type=float, default=None, help="--budget-policy decider: a price on search instead (go on when the chance >= price x the next rung's nodes)")
+    ap.add_argument("--frame-ext", type=int, default=0, help="zone search: replies on the same square do not use up a ply (up to N a line)")
     ap.add_argument("--pawn-moves", action="store_true", help="every pawn move is a candidate and is searched in the zone search")
     ap.add_argument("--only-unsolved-in", default=None, help="lichess --offset: only the puzzles this earlier dump (data/derived name) missed")
     ap.add_argument("--depths", type=int, nargs="+", default=None, help="the zone search's rungs (the planner's; default TacticalSpec.depths)")
@@ -191,6 +192,8 @@ def main(argv=None):
         spec_kw["depths"] = tuple(sorted(a.depths)); tag += "_d" + "-".join(map(str, sorted(a.depths)))
     if a.pawn_moves:
         spec_kw["pawn_moves"] = True; FP.PAWN_MOVES = True; tag += "_pawnmoves"
+    if a.frame_ext:
+        spec_kw["frame_ext"] = a.frame_ext; tag += f"_frameext{a.frame_ext}"
     if spec_kw:
         from .zone_search import TacticalSpec
         planner_kw["spec"] = TacticalSpec(**spec_kw)

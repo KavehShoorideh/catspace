@@ -63,7 +63,9 @@ def _one(args) -> dict | None:
         m = chess.Move.from_uci(u); bb = b.copy(); bb.push(m)
         if bb.is_game_over():
             out[name] = (100.0 if bb.is_checkmate() else 0.0, [u]); continue
-        info = _engine().analyse(bb, chess.engine.Limit(depth=depth, time=10.0))
+        info = _engine().analyse(bb, chess.engine.Limit(depth=depth, time=10.0), game=(pid, name))   # a new game: the hash
+                                                          # cleared (bug 2026-09-30: one engine's hash carried across positions, so
+                                                          # two runs split T/S 24/6 and 17/11)
         out[name] = (_score(info, mover), [u] + [x.uci() for x in info.get("pv", [])])
     return out
 
@@ -108,6 +110,22 @@ def main(argv=None):
         rs = classes.get(c, [])
         gap = [r["S"][0] - r["T"][0] for r in rs if abs(r["S"][0]) < 100 and abs(r["T"][0]) < 100]
         print(f"   {c}: {len(rs)}" + (f" (Stockfish's S minus T, median {st.median(gap):+.1f} pawns)" if gap else ""))
+        if c.startswith("T overrated") and rs:                       # how the refutations leave: the ply, whose move, which piece
+            from .fates import clear_caches, passed, joint_threats, square_frame
+            exits = {}; side = {"opponent": 0, "ours": 0}; pawn_opp = qt = 0
+            for r in rs:
+                bb = chess.Board(r["fen"]); line = [chess.Move.from_uci(u) for u in r["T"][1]]; k = r["exit_T"]
+                for m in line[:k]:
+                    bb.push(m)
+                m = line[k]; who = "opponent" if k % 2 == 1 else "ours"; side[who] += 1
+                exits[k] = exits.get(k, 0) + 1
+                pawn_opp += who == "opponent" and bb.piece_type_at(m.from_square) == chess.PAWN
+                clear_caches(); now = joint_threats(bb, square_frame)[0]
+                nb = bb.copy(stack=False); nb.push(m); pb = passed(nb)
+                qt += pb is not None and joint_threats(pb, square_frame)[0] >= now + 0.5
+            print(f"      the refutation leaves the zone at ply " + ", ".join(f"{k}: {n}" for k, n in sorted(exits.items()))
+                  + f"; by the opponent's move {side['opponent']} (the side whose missing moves overrate T; a pawn move in {pawn_opp}), "
+                  f"by ours {side['ours']}; the leaving move a quiet threat (null-move what-if) in {qt}")
         if c == "inside both zones" and rs:                         # depth or the read: where the lines pay off against the depth the
             reach = lambda r: max(x for x in (r["pay_S"], r["pay_T"]) if x is not None) if (r["pay_S"] or r["pay_T"]) else None   # run reached
             known = [r for r in rs if reach(r) is not None and r["reached"]]
