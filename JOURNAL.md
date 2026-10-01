@@ -22874,6 +22874,18 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-30 22:49 PDT — a lower price on search buys nothing more on the misses: depth to 12 plies is spent (OBS)
+
+The decider's price swept on the 70 offset-500 misses (proposer k=3, pawn moves, rungs to 12, the clean model), one
+run each: 3e-6 (the 20:44 run) 18 tied / 5 single at 98,932 nodes a step; 1e-6 18 / 5 at 153,191 (647 s; 12 plies
+completed in 35 of 140 steps, against 20); 3e-7 18 / 5 at 225,055 (874 s; 12 plies in 39). Truncation check (six
+failing steps that reached 12 plies, replayed): the candidates completing 12 plies of those tried -- 7/7, 7/8, 4/10, 4/4,
+1/6, 8/8: in most the search finishes 12 plies and still prefers the wrong move. Reading (one run each, directional):
+on these misses the bundle saturates at 18 of 70; what is left pays off past 12 plies or is a deep verdict that is
+wrong (02jzH's kind), not a budget or a stopping problem. The levers that worked today, on the misses of 1,000 fresh
+puzzles (0 -> 18 of 70) and on 300 fresh puzzles (279 / 227 -> 281 / 231, at 1.8x nodes and 2.1x wall time): the
+learned proposer (candidates), every pawn move searched (the zone's leak), the depth decider (where to spend).
+
 ## 2026-09-30 22:23 PDT — the anatomy made reproducible; depth counted in frames, tried: a small gain at three times the nodes, harmful with the decider (OBS)
 
 Reproducible anatomy (`miss_anatomy`, a new game per analysis so each Stockfish starts with a cleared hash; two runs
