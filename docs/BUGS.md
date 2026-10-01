@@ -142,6 +142,11 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
 - **OpenMP threads spinning beside busy workers** (class 7): a tiny HistGradientBoosting fit sat minutes at 52% CPU
   in libomp barriers while 10 search workers held the cores. Fixed: OMP_NUM_THREADS=1 for the decider (2 s).
 
+- **A monitor that watched itself** (class 7): the heartbeat found the job with `pgrep -f "frame_puzzles --n 300"`,
+  which matched the monitor's own shell (its command line holds that text): "busy 0/10" while 10 workers ran, and a
+  stall check that could never fire. Fixed: a bracket pattern (`analyst.frame_[p]uzzles`) and the process that has
+  children.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).

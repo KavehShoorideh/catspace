@@ -22874,6 +22874,30 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-30 18:22 PDT — the depth decider in play: fixed 10 plies' score at a third of its nodes, on 300 fresh puzzles (OBS)
+
+The live test of the 17:00 entry. 300 fresh puzzles (`frame_puzzles --n 300 --offset 300`: rows i % 997 == 300, disjoint
+from every ladder and earlier set), four runs, one each, the decider model trained on the tie-aware label (all 2,151
+ladder rows); `frame_player.DEPTH` now records the deepest rung each step completed. Printed:
+- A, fixed 4-6-8 plies: single top move each step 227/300, among the tied top moves 279/300; mean 30,490 nodes a
+  solver step; 759 s.
+- C, fixed 4-6-8-10: 231, 279 (gained 3, lost 3); 105,122 nodes; 1,861 s; 10 plies completed in 415 of 671 steps (the
+  rest stopped at 8 by budget or by a mate).
+- B, decider at price 1e-6 (rungs to 12): 231, 279 (gained 3, lost 3); 64,101 nodes; 1,175 s; stops 4: 107, 6: 61,
+  8: 251, 10: 138, 12: 108.
+- D, decider at price 3e-6: 231, 278 (gained 1, lost 2); 35,977 nodes; 713 s; stops 4: 162, 6: 80, 8: 231, 10: 107,
+  12: 82.
+Bug check of the losses (a deeper player losing puzzles a shallower one solved): all of them come from going DEEPER,
+none from stopping early, and in each the baseline's "solve" was a tie (its top set held 2-3 level moves including the
+solution) that the deeper search resolved the wrong way -- the same puzzles in fixed 10 (02jzH, 1Z58D) as in the decider;
+two of the gains are ties the other way. The tied score swings around undecided searches; the single top move is the
+honest score here. 02jzH is worth a look later: at 10 plies the zone search puts g3g4 at +5 over the solution g3f3 (at
+most +4), a confident deep verdict against the puzzle -- a horizon or zone artefact, not run down.
+Reading (one run, 300 puzzles, directional): the priced decider (3e-6) reaches fixed 10 plies' single-move score with 18%
+more nodes than fixed 8 and about a third of fixed 10's, and finishes faster than fixed 8 in wall time -- the replay's
+picture holds in play. The size of the gain that depth buys on ordinary fresh puzzles is small either way (227 -> 231);
+the depth-fixable puzzles are the misses (the 15:08 entry), about 7% of puzzles.
+
 ## 2026-09-30 17:00 PDT — the depth decider: a price on search, learned from the ladder, beats fixed depth in replay once its label counts ties (OBS)
 
 The stop-or-continue call (Kaveh: "deciding whether to continue should be the job of a tactical policy"; deep labels
