@@ -22874,6 +22874,30 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-30 19:37 PDT — the learned what-if proposer with the depth decider: the misses' candidates found, then valued; the pawn moves stay out (OBS)
+
+Kaveh: "go auto". The biggest lever on the misses was the candidate set (15:08 entry: 44/209 never a candidate). Dig of
+the 44 (one-ply ordering, `frame_player.candidates`): the solution ranks median 12th of median 19.5 legal moves (8th or
+better in 13, 15th or better in 31), always at least a pawn below the one-ply top (median 1) -- sacrifices and pushes
+the one-ply read demotes, so widening the cut is the wrong fix; 24 pawn moves (12 passed-pawn pushes), endgames (median
+12.5 pieces). The learned what-if proposer (`whatif_proposer`, AlphaGeometry-style, trained on rows i % 97 == 49, which
+the fresh sets exclude; off by default) covers 27/44 at k=3, 33 at k=5 -- by piece at k=3: pawn 10/24, rook 7/8,
+bishop 3/4, queen 5/5, knight 2/3. Live, one run each (`frame_puzzles --only-unsolved-in`: the earlier run's misses
+replayed):
+- the 70 misses of the 1,000 fresh puzzles at offset 500 (baseline 0/70; the search is deterministic): proposer k=3,
+  fixed 8 plies: 7/70 (single top move 3), never a candidate 17 -> 6, the solution a candidate valued below the top
+  in 57; mean 79,791 nodes a step, 476 s. Proposer + depth decider (price 3e-6; a model trained WITHOUT these 70
+  puzzles, `depth_decider_no500.pkl`, the workers' log confirms it): 13/70 (single 4), gained 6 over the proposer
+  alone, lost 0; 76,614 nodes, 468 s.
+- the 300 fresh puzzles at offset 300 (both models clean): proposer + decider 231 single / 278 tied, the same puzzles
+  as the decider alone (gained 0, lost 0; the 18:22 entry's run D); 44,757 nodes a step against 35,977, and 1,491 s
+  against 713 s (the proposer's features cost wall time). Its 7 never-a-candidate misses stay out: the proposer offers
+  other moves (4 pawn moves and 3 rook moves; checked position by position).
+Reading (one run, directional): candidates and depth compound on the misses -- the proposer brings the solution in, the
+decider's extra plies value it (13 of 70, about 1.3% of the 1,000 puzzles) -- while on ordinary puzzles the proposer
+changes nothing at a quarter more nodes and twice the time. The remaining hole is the quiet PAWN move (the proposer
+covers 10/24); next: whether the reachability goal frames name them.
+
 ## 2026-09-30 18:46 PDT — Kaveh's bet, measured: a deep line is two or three chains, its longest about 9 plies with passes, not 2-ply frames (OBS)
 
 Kaveh's bet (2026-09-30: "you might need 16 plies because there might be 16 little tactics; if they are organized in
