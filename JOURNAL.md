@@ -22874,6 +22874,37 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-30 18:46 PDT — Kaveh's bet, measured: a deep line is two or three chains, its longest about 9 plies with passes, not 2-ply frames (OBS)
+
+Kaveh's bet (2026-09-30: "you might need 16 plies because there might be 16 little tactics; if they are organized in
+two-tactic pairs, each frame needs only two plies -- that's how we reduce depth by keeping track of the frames"); his
+pick of next step. `frame_split.py --n 300` (Stockfish depth 20, 20 s guard, 10 workers, about 2 minutes; no engine
+left running): the principal variation of each of the 300 test puzzles' first step (the sample) and of the failing
+step of 218 missed puzzles (9 + 70 + 139 from the three zone-ledger dumps), cut at its PAYOFF PLY (sf_depth: where the
+gain is secured; a mate's mating ply). Lines paying off at ply 8 or later: 78 in the sample (payoff median 16), 144 in
+the misses (median 13). Printed, one run:
+- Frames as Kaveh's square rule read TRANSITIVELY (a ply sharing any square with any ply of a frame joins it): the
+  longest frame median 10 plies in both; a single frame 13/78 and 30/144. Bug check of that negative (the reading was
+  mine): over 15 plies a piece that moves twice links its squares and every capture links two pieces, so nearly
+  everything merges (0UDSz: 30 of 31 plies in one frame) -- it measures "the line touches common squares", not
+  "the line is one tactic".
+- The CRITICAL PATH instead (`chain`): the longest chain of plies each enabled by an earlier one -- ply j depends on
+  the last ply that changed a square j reads (its from-, to- or passed squares) and, in check, on the checker; an
+  upper-bound variant also links the last ply whose piece attacks j's from- or to-square. Squares read: median 6
+  plies in both (sample: 4 or fewer in 16/78, 8+ in 23; misses: 17/144 and 31); the chain is half the line or less in
+  62/78 and 99/144. With attacks: median 8 and 7.
+- Played out by a frame-local search with passes elsewhere (`with_passes`: the chain plus a pass between two of the
+  same side's chain moves): squares read 8.5 (sample) and 9 (misses) plies, shorter than the line in 76/78 and
+  139/144; with attacks 11.5 and 10. Chains that are WALKS (pawn and king moves only -- the reachability frame's job,
+  not search's): 14/78 and 35/144; the other chains with passes: median 8 and 9 plies.
+Reading (one run, directional): the bet holds in part. A 13-16-ply winning line is two or three interleaved chains, and
+the deepest one, played out with passes elsewhere, needs about 9 plies against lines of 13-16 (the attack-
+linked bound: 10-11.5) -- not a stack of 2-ply frames: the chains are 5-7 plies of moves (three or four alternating
+moves). That is just past the zone search's 8 plies, in line with the decider finding the misses at 10 (the 18:22 and
+15:08 entries). A quarter of the misses' long chains are walks, for the reachability frame. Limits: discovered attacks
+are not linked (a slider unveiled by another piece), so the squares-read chain can understate; the line is Stockfish's,
+one of several that may win.
+
 ## 2026-09-30 18:22 PDT — the depth decider in play: fixed 10 plies' score at a third of its nodes, on 300 fresh puzzles (OBS)
 
 The live test of the 17:00 entry. 300 fresh puzzles (`frame_puzzles --n 300 --offset 300`: rows i % 997 == 300, disjoint
