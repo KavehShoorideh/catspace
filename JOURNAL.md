@@ -22874,6 +22874,28 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-30 23:19 PDT — the wrong deep verdicts: the search stops reading a line where the opponent stands pat; most of what it misses there is position, not material (OBS)
+
+Kaveh's pick: dig why the zone search completes 10-12 plies and still prefers the wrong move. 02jzH by hand (pawn moves
+on, 150,000 a depth, to 10 plies): the zone puts Kf3 (the solution) at 0.00 and Kg4 at +1.00; Stockfish (depth 22)
+Kf3 +4.31, Kg4 +0.28. Kf3's win (Rf2+ Ke3 Bg5+ Kd4 Bf6+ Kd3 g6 Ra7+ Bg7 Ree7, the rooks doubled on the seventh) pays
+off near ply 14; the zone's Kg4 line ends grabbing a pawn on its last ply (... Re6+ Kh7 Rxb6) with Black's counterplay
+after it unseen. `verdict_dig.py` (one run; each Stockfish analysis with a cleared hash): on the 52 misses left by the
+20:44 run (proposer, pawn moves, decider), S and T searched alone with the run's rules (49 still put S at or below T),
+and Stockfish reading the position WHERE EACH ZONE LINE ENDS (before a pass). T's line end overrated by 1.5+ pawns in
+30 (zone minus Stockfish median +4.2), S's underrated in 14 (+6.2), both read right in 8. The lines are short -- T's
+ends after median 3 plies, where the side to move STANDS PAT (no move beats its static read) with median 4.5 plies of
+depth left; Stockfish's best move there is inside the search's zone in 30/30 and 14/14. From those line ends, a fresh
+zone search on Stockfish's move (to 12 plies, 150,000 a depth) gains 1.5+ over standing pat first at depth 4 in 6, 6
+in 4, 8 in 1, 12 in 1 -- and not by 12 in 32 (24 of T's, 8 of S's). Of those 32, Stockfish's own line from there wins
+material or mates by ply 12 in 7, later in 8, and not within its line at all -- a positional edge -- in 17; a promotion
+in its line in 7, an unopposed runner on the board in 1.
+Reading (one run, directional): the misses left are not the zone's (Stockfish's moves are in it) and mostly not the
+stopping rule's: 12 of 44 misjudged line ends need a few more plies there, 7 are a real search fault (Stockfish's line
+pays by ply 12 and the search from the same node does not find it -- the next dig), 8 are tactics deeper than 12, and
+17 are positional advantages no material-only search sees at any depth we can afford -- the planner's side of the
+design (positional value at the leaf), not the tactics'. Runner proofs at the leaf would touch about one in five.
+
 ## 2026-09-30 22:49 PDT — a lower price on search buys nothing more on the misses: depth to 12 plies is spent (OBS)
 
 The decider's price swept on the 70 offset-500 misses (proposer k=3, pawn moves, rungs to 12, the clean model), one
