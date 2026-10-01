@@ -55,6 +55,12 @@ class TacticalSpec:
                                         # plies"): a REPLY ON THE SAME SQUARE -- taking the piece that just moved, or moving a piece
                                         # it now attacks -- does not use up a ply, up to frame_ext a line; a move elsewhere (an
                                         # intermezzo) does
+    leaf_mates: bool = False            # at the horizon, a mate in one for the side to move is seen (its checking moves tried):
+                                        # the frames' read is material and missed it (verdict_dig 2026-09-30: lines ending where
+                                        # the side to move had Rh8#, Rh1#)
+    zugzwang_guard: bool = False        # a side with only king and pawns may not pass inside the tree (no searched pass, no
+                                        # stand-pat above the horizon) and all its moves are searched: in pawn endings the pass is
+                                        # unsound (zugzwang) -- engines switch null moves off there (verdict_dig: lines ending in a pass)
     pawn_moves: bool = False            # every pawn move is searched, like captures, promotions and checks: the irreversible
                                         # moves -- races, breaks, tempo moves (miss_anatomy 2026-09-30: of 24 tops overrated
                                         # because the refutation left the zone, 17 refutation lines left it by a pawn move)
@@ -157,6 +163,12 @@ class ZoneSearch:
             return -MATE, []
         check = b.is_check()
         if depth <= 0 and (not check or ply >= self.spec.check_ply_cap):
+            if self.spec.leaf_mates and not check:
+                for m in b.legal_moves:
+                    if b.gives_check(m):
+                        b.push(m); mate = b.is_checkmate(); b.pop()
+                        if mate:
+                            return MATE, [m]
             return (0.0 if check else self.leaf(b, zone)), []
         depth = max(depth, 1)
         key = (b._transposition_key(), zone, null_ok)
@@ -169,7 +181,8 @@ class ZoneSearch:
             hint = ln[0] if ln else None                          # the best move of a shallower search is tried first
         alpha0 = alpha
         best = -1e9; best_line = []
-        if not check:
+        bare = self.spec.zugzwang_guard and not (b.occupied_co[b.turn] & ~(b.pawns | b.kings))   # king and pawns only: it must move
+        if not check and not bare:
             r = self.spec.null_r
             pb = F.passed(b) if null_ok and depth - 1 - r >= 1 else None
             if pb is not None:                                    # the pass, searched (reduced by null_r): the opponent plays on
@@ -181,7 +194,7 @@ class ZoneSearch:
                 best = self.stand(b, zone)
             alpha = max(alpha, best)
         if alpha < beta:
-            ms = self.moves(b, zone)
+            ms = list(b.legal_moves) if bare else self.moves(b, zone)
             hist = self.hh                                        # quiet moves that refuted before are tried earlier (history heuristic)
             ab = {}
             if self.spec.knowledge:                               # KNOWLEDGE (jobs): a move that walks away from a valid job worth more

@@ -152,6 +152,13 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   outside its zone" read 20 where the run's own rules give 6. Fixed: the check takes the run's rules (`--pawn-moves`,
   on by itself for a dump tagged _pawnmoves). Rule: a diagnostic replays the RUN's configuration, read from the run.
 
+- **Mates dropped from a probe, again** (class 2, the ladder's bug repeated): verdict_dig's probe read a move's history
+  to see whether a deeper search finds it; a move that mates at once is never searched (empty history), so Rh8# and
+  Rh1# read "not found by 12". Fixed: an immediate mate counts as found. The same pattern twice in a day: any reader of
+  ZoneSearch.history must treat an empty history as a mate.
+- **A test that expected the leaf not to stand pat** (class 9): the zugzwang-guard test asserted no pass at all; the
+  horizon's static read keeps its stand-pat by design (quiescence). The test now stubs the leaf and checks the tree.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).

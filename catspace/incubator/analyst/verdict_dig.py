@@ -76,8 +76,10 @@ def _one(args) -> dict | None:
                 if probe:                                       # depth or blindness: from there, does a deeper zone search find it?
                     stand = zs.stand(end, zone); found = None
                     pz = ZoneSearch(spec=replace(spec, depths=(4, 6, 8, 10, 12), budget=150000))
-                    pz.rank(end, [pv[0]])
-                    for dd, vv, _ in pz.history.get(pv[0], []):
+                    pg = pz.rank(end, [pv[0]])
+                    if pg[pv[0]][0] >= 1e5:                         # mates at once: rank() never searches it, its history is
+                        found = 1                                   # empty (bug 2026-09-30, the ladder's "mates dropped" again)
+                    for dd, vv, _ in ([] if found else pz.history.get(pv[0], [])):
                         if vv is not None and vv - stand >= GAP:
                             found = dd; break
                     out[name]["probe"] = found; out[name]["probe_top"] = max((dd for dd, vv, _ in pz.history.get(pv[0], []) if vv is not None), default=0)

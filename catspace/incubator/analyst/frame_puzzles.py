@@ -140,6 +140,8 @@ def main(argv=None):
     ap.add_argument("--decider-threshold", type=float, default=0.5, help="--budget-policy decider: go on past a rung when the chance it changes the decision is at least this")
     ap.add_argument("--decider-model", default=None, help="--budget-policy decider: the model's data/derived name (default depth_decider.pkl)")
     ap.add_argument("--decider-price", type=float, default=None, help="--budget-policy decider: a price on search instead (go on when the chance >= price x the next rung's nodes)")
+    ap.add_argument("--leaf-mates", action="store_true", help="zone search: a mate in one for the side to move is seen at the horizon")
+    ap.add_argument("--zugzwang-guard", action="store_true", help="zone search: a king-and-pawns side may not pass inside the tree")
     ap.add_argument("--frame-ext", type=int, default=0, help="zone search: replies on the same square do not use up a ply (up to N a line)")
     ap.add_argument("--pawn-moves", action="store_true", help="every pawn move is a candidate and is searched in the zone search")
     ap.add_argument("--only-unsolved-in", default=None, help="lichess --offset: only the puzzles this earlier dump (data/derived name) missed")
@@ -194,6 +196,10 @@ def main(argv=None):
         spec_kw["pawn_moves"] = True; FP.PAWN_MOVES = True; tag += "_pawnmoves"
     if a.frame_ext:
         spec_kw["frame_ext"] = a.frame_ext; tag += f"_frameext{a.frame_ext}"
+    if a.leaf_mates:
+        spec_kw["leaf_mates"] = True; tag += "_leafmates"
+    if a.zugzwang_guard:
+        spec_kw["zugzwang_guard"] = True; tag += "_zzguard"
     if spec_kw:
         from .zone_search import TacticalSpec
         planner_kw["spec"] = TacticalSpec(**spec_kw)

@@ -86,3 +86,30 @@ def test_a_reply_on_the_same_square_does_not_use_up_a_ply():
     off = ZoneSearch(spec=TacticalSpec(depths=(2,), budget=5000)); off.rank(b2, ms)
     on = ZoneSearch(spec=TacticalSpec(depths=(2,), budget=5000, frame_ext=2)); on.rank(b2, ms)
     assert on.total > off.total                                      # dxe5 (taking the rook) is searched on, free of depth
+
+
+def test_a_mate_in_one_at_the_horizon_is_seen_when_asked():
+    import chess
+    from catspace.incubator.analyst.zone_search import ZoneSearch, TacticalSpec, MATE
+    b = chess.Board("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1")           # Ra8# for the side to move, read at depth 0
+    zone = frozenset({chess.A1, chess.G8})
+    assert ZoneSearch(spec=TacticalSpec()).search(b, zone, 0, -1e9, 1e9)[0] < MATE
+    v, ln = ZoneSearch(spec=TacticalSpec(leaf_mates=True)).search(b, zone, 0, -1e9, 1e9)
+    assert v == MATE and ln == [chess.Move.from_uci("a1a8")]
+
+
+def test_a_king_and_pawns_side_may_not_pass_under_the_guard(monkeypatch):
+    import chess
+    from catspace.incubator.analyst import fates as F
+    from catspace.incubator.analyst.zone_search import ZoneSearch, TacticalSpec
+    b = chess.Board("8/8/4k3/8/4P3/4K3/8/8 w - - 0 1")
+    calls = []
+    real = F.passed
+    monkeypatch.setattr(F, "passed", lambda bb: calls.append(bb.turn) or real(bb))
+    zs = ZoneSearch(spec=TacticalSpec(zugzwang_guard=True))
+    monkeypatch.setattr(zs, "leaf", lambda bb, zone: 0.0)             # the horizon's static read keeps its stand-pat (a quiescence)
+    zs.search(b, frozenset({chess.E4, chess.E3, chess.E6}), 4, -1e9, 1e9)
+    assert not calls                                                  # above the horizon no side passed: both have king and pawns only
+    off = ZoneSearch(spec=TacticalSpec()); monkeypatch.setattr(off, "leaf", lambda bb, zone: 0.0)
+    off.search(b, frozenset({chess.E4, chess.E3, chess.E6}), 4, -1e9, 1e9)
+    assert calls                                                      # without the guard the pass is searched
