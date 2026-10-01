@@ -22874,6 +22874,33 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-30 20:44 PDT — why the solution is valued below the top: the zone hid the refutation, then depth; every pawn move searched (OBS)
+
+`miss_anatomy.py`: for each miss whose solution IS a candidate, Stockfish (depth 18, 10 s guard) on the solution S and
+the player's top move T, and each line replayed through the zone search's own rules (its root zone with the planner's
+hints, its growth rule) for 12 plies. On the 51 such misses of the offset-500 replay (proposer + decider, the 19:37
+entry): T also wins (within a pawn of S) 0 -- T is bad by a median five pawns; T OVERRATED because Stockfish's
+refutation of it leaves T's zone 24; S's line leaves S's zone 6; both lines inside their zones 21. The 24 refutations
+leave the zone at plies 1-11; by the opponent's side in 13 (the side whose missing moves overrate T), 9 of them pawn
+moves; only 8 of the 24 exits are quiet threats by the null-move what-if. Quiet pawn moves also were 24 of the 44
+absent solutions. `TacticalSpec.pawn_moves` + `frame_player.PAWN_MOVES` (`frame_puzzles --pawn-moves`, off by
+default): every pawn move is searched, like captures, promotions and checks, and is a candidate -- the irreversible
+moves (races, breaks, tempo moves); a test pins it. Printed, one run each, with the proposer and the decider (3e-6):
+- the 70 offset-500 misses: 18/70 (single 5), gained 5 over the 19:37 run, lost 0; never a candidate 6 -> 0; 98,932
+  nodes a step (76,614 without), 520 s.
+- the 300 fresh at offset 300: 281 tied / 231 single (without pawn moves 278 / 231: gained 3, lost 0; against the
+  plain fixed-8 player's 279 / 227: gained 3, lost 1, the tie case 2XxUc of the 18:22 entry); 54,877 nodes a step
+  (44,757 without; fixed 8: 30,490); 1,606 s; never a candidate 7 -> 3 (the three left are rook moves).
+- the anatomy of the 52 misses left (the zone check now with the run's own rules -- bug: its first version built the
+  default spec, without pawn moves): T also wins 1; T overrated by a refutation outside its zone 6; S's line outside
+  0; inside both zones 45 (43 on a rerun: Stockfish's time guard moves a couple). Of those inside both zones, the lines
+  pay off (sf_depth's payoff ply: the solution's gain, the top's refutation) BEYOND the deepest rung the run completed
+  in 31, within it in 10 (2 unknown); payoff median 13 plies, reached median 8.
+Reading (one run each, directional): the zone was hiding the refutations, and pawn moves were most of the hole -- with
+them searched, 30 zone-caused misses fall to 6 and every miss's solution is a candidate. What is left is depth: the
+lines pay off around ply 13 and the decider stopped near 8. Kaveh's bet points at the answer (18:46: the deepest chain
+needs about 9 plies with passes): count depth in frames, not plies.
+
 ## 2026-09-30 19:37 PDT — the learned what-if proposer with the depth decider: the misses' candidates found, then valued; the pawn moves stay out (OBS)
 
 Kaveh: "go auto". The biggest lever on the misses was the candidate set (15:08 entry: 44/209 never a candidate). Dig of

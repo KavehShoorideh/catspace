@@ -147,6 +147,11 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   stall check that could never fire. Fixed: a bracket pattern (`analyst.frame_[p]uzzles`) and the process that has
   children.
 
+- **A diagnostic with its own spec** (class 9-like, the harness mismatch again): miss_anatomy's zone check built the
+  default TacticalSpec (no pawn moves) while the run it judged searched every pawn move -- "T overrated, refutation
+  outside its zone" read 20 where the run's own rules give 6. Fixed: the check takes the run's rules (`--pawn-moves`,
+  on by itself for a dump tagged _pawnmoves). Rule: a diagnostic replays the RUN's configuration, read from the run.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).
