@@ -22874,6 +22874,34 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-30 22:23 PDT — the anatomy made reproducible; depth counted in frames, tried: a small gain at three times the nodes, harmful with the decider (OBS)
+
+Reproducible anatomy (`miss_anatomy`, a new game per analysis so each Stockfish starts with a cleared hash; two runs
+each, identical). The class "T's line leaves its zone" (renamed: an exit by OUR move does not overrate T, so whose
+move leaves is printed). The 51 misses of the offset-500 replay without pawn moves (the 19:37 run): T also wins 0; T's
+line leaves its zone 23 -- the exit at ply 1: 6, 2: 6, 3: 1, 4: 4, 6: 4, 7: 1, 11: 1; by the opponent's move 9 (a pawn
+move in 6), by ours 14; a quiet threat in 8; S's line leaves its zone 6; inside both zones 22 (payoff beyond the
+deepest rung reached in 19, within it in 3; payoff median 14 plies, reached 8). The 52 left WITH pawn moves (the 20:44
+run): T also wins 0; T's line leaves its zone 10 (by the opponent's move 4, a pawn move in 0; by ours 6); S's line 2;
+inside both zones 40 (payoff beyond reach 31, within 8, unknown 1; median 13 vs 8). These replace the 20:44 entry's
+anatomy numbers (see its banner): zone-caused misses 29 -> 12, depth the rest.
+Depth in frames (Kaveh's bet; `TacticalSpec.frame_ext`, `frame_puzzles --frame-ext`): a REPLY ON THE SAME SQUARE --
+taking the piece that just moved, or moving a piece it now attacks -- does not use up a ply, up to N a line; a move
+elsewhere does. Off by default (the zone search's outputs on its cases hash the same before and after); a test.
+Printed, one run each, every run with the proposer (k=3) and pawn moves:
+- 70 offset-500 misses, the decider (3e-6) + frame_ext 4: 18 tied (as without it) / 7 single (5), gained 6, lost 6;
+  120,025 nodes a step (98,932); 750 s -- the decider now stopped at 4 plies in 55 of 142 steps (an extended rung
+  costs more, so the price stops sooner; its model never saw extended searches).
+- 300 fresh, the same: 271 / 214 against 281 / 231 without it -- gained 5, lost 15; 73,984 nodes; stopped at 4 plies in
+  353 of 655 steps.
+- the bisection at fixed depth (4-6-8, no decider), 70 misses: without frame_ext 13 / 4 at 106,146 nodes (600 s); with
+  frame_ext 4: 16 / 7, gained 7, lost 4, at 320,614 nodes (1,362 s), and 8 plies completed in 61 of 138 steps.
+Reading (one run each, directional): counting same-square replies as free helps the misses a little at three times
+the nodes -- the decider gets more per node (18 at 98,932 with the same candidates); paired with the decider it is
+harmful, because the price rule reads extended rungs as dear and stops early. Kept off, flag-gated (a retest after the
+decider sees extended searches). The same four puzzles are lost in both extended runs (6EzaD, 8g78Q, 8rFnl, 8rvf1).
+The depth decider beat fixed 8 plies on the misses with the same candidates (18 vs 13, at 98,932 vs 106,146 nodes).
+
 ## 2026-09-30 20:44 PDT — why the solution is valued below the top: the zone hid the refutation, then depth; every pawn move searched (OBS)
 
 > **Correction (added 2026-09-30 21:10):** the anatomy's class counts below were not reproducible (one Stockfish engine
