@@ -51,6 +51,9 @@ class TacticalSpec:
     hints: tuple = ()                   # the planner's goals: callables (board after the candidate) -> squares for its root zone
     alloc: dict | None = None           # the planner's effort per candidate: move -> (weight, deepest depth)
     stop: object = None                 # the decider: stop(depth, got, history) -> bool after each completed depth
+    pawn_moves: bool = False            # every pawn move is searched, like captures, promotions and checks: the irreversible
+                                        # moves -- races, breaks, tempo moves (miss_anatomy 2026-09-30: of 24 tops overrated
+                                        # because the refutation left the zone, 17 refutation lines left it by a pawn move)
     knowledge: tuple = ()               # tactical facts the planner hands down (jobs.Job: a pin, a guard...), valid by footprint
     prune_jobs: int = 0                 # drop a move that abandons a valid job worth more than it takes at depth <= this (0: order only)
 
@@ -133,7 +136,7 @@ class ZoneSearch:
             pt = b.piece_type_at(m.from_square)
             occ = (b.occupied & ~chess.BB_SQUARES[m.from_square]) | chess.BB_SQUARES[m.to_square]
             if (b.is_capture(m) or m.promotion or chess.BB_SQUARES[m.from_square] & zm or chess.BB_SQUARES[m.to_square] & zm
-                    or _att(pt, b.turn, m.to_square, occ) & zm or b.gives_check(m)):
+                    or _att(pt, b.turn, m.to_square, occ) & zm or b.gives_check(m) or (self.spec.pawn_moves and pt == chess.PAWN)):
                 out.append(m)
         return out
 

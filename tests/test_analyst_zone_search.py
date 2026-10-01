@@ -64,3 +64,12 @@ def test_a_pass_is_a_null_move_in_the_line():
     for m in line:                                            # every move of the line, passes included, replays
         assert not m or m in bb.legal_moves
         bb.push(m)
+
+
+def test_pawn_moves_join_the_zone_when_the_planner_asks():
+    import chess
+    from catspace.incubator.analyst.zone_search import ZoneSearch, TacticalSpec
+    b = chess.Board("4k3/8/8/8/8/8/P6R/4K3 w - - 0 1")
+    zone = frozenset({chess.H2, chess.E8, chess.E1})
+    assert chess.Move.from_uci("a2a4") not in ZoneSearch(spec=TacticalSpec()).moves(b, zone)
+    assert chess.Move.from_uci("a2a4") in ZoneSearch(spec=TacticalSpec(pawn_moves=True)).moves(b, zone)

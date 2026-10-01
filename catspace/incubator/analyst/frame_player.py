@@ -114,6 +114,8 @@ DECIDER_PRICE = [None]                                              # ... or, wh
 KING_WATCH = False                                                  # zone_candidates: the king watches' moves join the candidates
 PROPOSE = 0                                                         # zone_candidates: the moves realizing the proposer's top-k what-if edits join (0: off)
 JOBS = False                                                        # zone_candidates: the job ledger's operator moves join the candidates
+PAWN_MOVES = False                                                  # zone_candidates: every pawn move joins the candidates (with the
+                                                                    # spec's pawn_moves: the quiet pawn move, the misses' gap -- 24/44)
 PLANNER = None                                                      # the planner (frame_planner): None -> MaterialPlanner() defaults
 ZONE_BUDGET = 20000                                                 # zone_candidates: nodes per candidate per depth (all deepen together: 4, 6, 8 plies)
 
@@ -156,6 +158,8 @@ def candidates(b: chess.Board, before=None, book=None, ledger: str = "zone_candi
     if JOBS and ledger == "zone_candidates":                           # the job ledger's moves: pressure on holders, deflection of the
         from .jobs import ledger as _jobs, operators                    # overloaded, a double-attacking discovery, our pins relieved
         keep |= set(operators(b, _jobs(b)))
+    if PAWN_MOVES and ledger == "zone_candidates":
+        keep |= {m.uci() for m in moves if b.piece_type_at(m.from_square) == chess.PAWN}
     if PROPOSE and ledger == "zone_candidates":                        # the what-if proposer's top edits: the moves that realize them join
         from .whatif_proposer import propose_moves                      # (AlphaGeometry-style constructions; the zone search verifies)
         keep |= set(propose_moves(b, one, PROPOSE))
