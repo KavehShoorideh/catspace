@@ -65,6 +65,7 @@ class MaterialPlanner:
     trade_margin: float = 2.0
     jobs: bool = False                  # hand the tactics the position's job ledger (jobs.py: pins, guards, discoveries)
     imagine: int = 0                    # the top-k imagined frames' squares join every candidate's root zone (imagine.goals)
+    lemmas: bool = False                # the learned high-value lemma detectors' P(any family) as the tie-break (lemma_detect)
     job_kinds: tuple = ("shield", "guard", "block", "discovery")
     job_min: float = 0.5
 
@@ -86,6 +87,10 @@ class MaterialPlanner:
             from .imagine import values                               # imagined frames (measured: the solution first in 482 of
             iv = values(b)                                            # 669 steps vs 456 for a random tie-break)
             prefer = lambda board, m, line, iv=iv: (lambda t: (1000.0 if t[0] else 0.0) + t[1])(iv.get(m.uci(), (False, 0.0)))
+        if self.lemmas and not self.trades:                           # the detectors (trained on what would have prevented 2,859
+            from .lemma_detect import values as lemma_values          # tactics; read with our own relations): the best tie-break
+            lv = lemma_values(b)                                      # offline on every set (2026-10-02)
+            prefer = lambda board, m, line, lv=lv: lv.get(m.uci(), (0.0, 0.0, None))[1]
         if self.trades:
             lead = material(b, b.turn)
             if abs(lead) >= self.trade_margin:

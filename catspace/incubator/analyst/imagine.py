@@ -55,6 +55,8 @@ def readings(b: chess.Board) -> dict:
     attack = [e for e in es if e.kind in ("add", "remove", "relocate") and e.gain >= HIGH]
     guard = [e for e in es if e.kind == "guard" and e.gain >= HIGH]
     fr = far(b)
+    from .lemma_detect import values as lemma_values                 # the learned high-value lemma detectors (lemma_detect)
+    lv = lemma_values(b)
     rows = {}
     for m in b.legal_moves:
         nb = b.copy(stack=False); nb.push(m)
@@ -72,7 +74,8 @@ def readings(b: chess.Board) -> dict:
         fs = fr.get(m.uci(), [])
         rows[m.uci()] = dict(mate=mate, one=one.get(m.uci(), 0.0), quiet=q, imagined=img, inter=len(targets), preempt=pre,
                              far_all=sum(g / k for t, k, g, d, f in fs), far_safe=sum(g / k for t, k, g, d, f in fs if not d),
-                             far_fixed=sum(g / k for t, k, g, d, f in fs if not d and f))
+                             far_fixed=sum(g / k for t, k, g, d, f in fs if not d and f),
+                             lemma=lv[m.uci()][0], lemma_any=lv[m.uci()][1], family=lv[m.uci()][2])
     return rows
 
 
@@ -245,7 +248,10 @@ ORDERS = [("frames one-ply (the player's order)", "one"), ("frames quiet threat"
           ("far: all (gain / moves)", "far_all"), ("far: not defensible in time", "far_safe"), ("far: and the target fixed", "far_fixed"),
           ("one-ply, tie-break imagined + far all", lambda r: (r["one"], r["imagined"] + r.get("far_all", 0.0))),
           ("one-ply, tie-break imagined + far safe", lambda r: (r["one"], r["imagined"] + r.get("far_safe", 0.0))),
-          ("one-ply, tie-break imagined + far fixed", lambda r: (r["one"], r["imagined"] + r.get("far_fixed", 0.0)))]
+          ("one-ply, tie-break imagined + far fixed", lambda r: (r["one"], r["imagined"] + r.get("far_fixed", 0.0))),
+          ("lemma detectors: value", lambda r: r.get("lemma", 0.0)), ("lemma detectors: P(any family)", lambda r: r.get("lemma_any", 0.0)),
+          ("one-ply, tie-break lemma P(any)", lambda r: (r["one"], r.get("lemma_any", 0.0))),
+          ("one-ply, tie-break imagined, then lemma", lambda r: (r["one"], r["imagined"], r.get("lemma_any", 0.0)))]
 
 
 def report(recs: list, log=print) -> None:

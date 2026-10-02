@@ -22874,6 +22874,37 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-02 14:36 PDT — the high-value lemmas in play: learned detectors over our own relations; named by the LLM layer (OBS)
+
+Kaveh's picks: "lemmas in play", recognized by "learned detectors" (Stockfish only in training); then "it's ok to use
+you as a final LLM layer to manually hand-label and name things that are chess-specific", and "the final product is
+important: to name why the normal human-looking move is not good, and why a different move that humans don't see is
+good". `lemma_detect.py`: the FAMILIES are the relations-only preventer groups of the 19:46 entry (k=16, the same seed;
+the same sizes), each with its STAKE (median, a mate capped at 20 pawns). A DETECTOR reads a candidate move with our own
+relations only (no oracle): the tactic_reasons relations around the move as if it were a tactic's first move, over every
+non-king piece and every enemy reply, plus the move's kind. Trained on the 2,859 tactics (offset 200): the solution move
+a positive of its family, the other legal moves 'none' (multinomial logistic regression; 88,352 moves featurized in
+12 s). A move's P(any family) and lemma value (sum of P(family) x stake). Names (`tactic_families.json`, marked
+named_by Claude): each family named from its preventers, theme lifts and three example puzzles, with why it works and
+why the move that allows it fails (in chess terms) -- clear: back-rank mate (13), mating net around a boxed-in king (4),
+mate down an open line (3), supported mate next to the king (11), pin (0), check that forks or skewers (14), royal fork
+or skewer (9), hanging piece (15), trapped piece (8), no defence left / zugzwang (12); mixed: removing the defender /
+in-between move (7), under-defended target (2), attack on an exposed king (6), endgame king out of play (1),
+unstoppable capture or promotion (5); unclear: pawn breakthrough (10, 16 tactics).
+Printed, one run: held out by puzzle (5 folds), the solution's rank among all legal moves (median 33): P(any family)
+first in 1,218 of 2,859 (top-3 2,189; mean 3.3; chance 16.0); lemma value 1,031 (1,884). On the other sets (the 17:06
+measurement rerun with the detector readings; the model trained on all 2,859; every set disjoint from offset 200),
+first / top-3: 300 fresh (669 steps) -- the one-ply order with the detectors' P(any) as its tie-break 512 / 590,
+with the imagined tie-break 482 / 551, a random tie-break 456.3 / 532.4, the detectors alone 300 / 504; the 70 misses
+-- 7 / 32, 6 / 28, 4.1 / 22.2, alone 8 / 31 (one-ply 2 / 16); the 52 left -- 4 / 22, 4 / 20, 2.5 / 16.9, alone 5 / 22;
+300 game positions (Stockfish's best) -- 91 / 162, 80 / 148, 67.5 / 121.8, alone 44 / 93 (one-ply 40 / 95). (The games
+rerun first crashed: a macOS fork-safety abort in the workers, the Stockfish engine's thread alive in the parent at
+fork; rerun with OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES.)
+Reading (one run, directional): the detectors -- trained only on what would have prevented 2,859 tactics, read in play
+with our own relations -- are the best tie-break so far on every set, puzzles and games, and alone they rank the
+missed solutions as well as the imagined frames do. Next: in the player as its tie-break; then the explainer (the
+product: name what the natural move allows and what the unseen move achieves, from the families' names).
+
 ## 2026-10-01 19:46 PDT — tactics grouped by what would have prevented them, without the themes: a pin family, a back-rank family (OBS)
 
 Kaveh's pick: group without the themes. `tactic_reasons groups` on the 2,859 tactics of the 18:59 entry: k-means on
