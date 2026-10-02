@@ -285,6 +285,66 @@ def report(path: str, log=print) -> None:
             + "; ".join(f"{f} {a:.2f} vs {b_:.2f}" for _, f, a, b_ in lifts[:3]))
 
 
+PIECE_NAMES = tuple(chess.piece_name(t) for t in chess.PIECE_TYPES)
+
+
+def _reason_only(c):
+    """Drop the piece-type features (who prevents) and keep the relations (how it prevents): the reasoning."""
+    from collections import Counter
+    return Counter({f: n for f, n in c.items() if f.split(":", 1)[1] not in PIECE_NAMES})
+
+
+def groups(path: str, ks=(10, 16, 24), detail_k: int = 16, reasons_only: bool = False, log=print) -> None:
+    """THE TACTICS GROUPED WITHOUT THE THEMES (Kaveh 2026-10-01: "all of those where the same thing would have
+    prevented this ... are all a pinning situation"): k-means on each tactic's preventer counts (log, L2-normalized
+    rows), the same on the control's (every piece and victim move, no prevention filter), and random groups of the
+    preventer groups' sizes. Each group is described by its most over-represented preventers -- its candidate LEMMA --
+    and checked against the themes afterwards: per theme, the best-matching group's F1."""
+    import numpy as np
+    from sklearn.cluster import KMeans
+    from sklearn.preprocessing import normalize
+    recs = [json.loads(l) for l in open(path)]
+    recs = [r for r in recs if "skipped" not in r]
+    pc = [_counts(r, False) for r in recs]; cc = [_counts(r, True) for r in recs]
+    if reasons_only:                                                  # (2026-10-01: with piece types the groups split by WHICH piece
+        pc = [_reason_only(c) for c in pc]; cc = [_reason_only(c) for c in cc]   # defends -- a description, not a reason)
+        log("[tactic_reasons] groups on the RELATIONS only (no piece types)")
+    vp = sorted({f for c in pc for f in c}); vc = sorted({f for c in cc for f in c})
+    Xp = normalize(np.log1p(np.array([[c.get(f, 0) for f in vp] for c in pc], dtype=float)))
+    Xc = normalize(np.log1p(np.array([[c.get(f, 0) for f in vc] for c in cc], dtype=float)))
+    themes = [t for t in THEMES if sum(t in r["themes"] for r in recs) >= 15]
+    Y = {t: np.array([t in r["themes"] for r in recs]) for t in themes}
+    rng = np.random.default_rng(0)
+
+    def best_f1(lab, t):
+        y = Y[t]; best = (0.0, -1, 0.0, 0.0)
+        for g in set(lab):
+            m = lab == g; tp = (m & y).sum()
+            if tp == 0:
+                continue
+            prec = tp / m.sum(); rec = tp / y.sum(); f1 = 2 * prec * rec / (prec + rec)
+            best = max(best, (f1, g, prec, rec))
+        return best
+    for k in ks:
+        lp = KMeans(k, n_init=10, random_state=0).fit_predict(Xp)
+        lc = KMeans(k, n_init=10, random_state=0).fit_predict(Xc)
+        lr = rng.permutation(lp)
+        log(f"OBS k={k}: per theme, the best-matching group's F1 -- preventer groups / control groups / random groups (the preventer groups' sizes)")
+        log("   " + "; ".join(f"{t} {best_f1(lp, t)[0]:.2f} / {best_f1(lc, t)[0]:.2f} / {best_f1(lr, t)[0]:.2f}" for t in themes))
+        if k == detail_k:
+            Xraw = np.log1p(np.array([[c.get(f, 0) for f in vp] for c in pc], dtype=float))
+            overall = Xraw.mean(0) + 1e-9
+            for g in sorted(set(lp), key=lambda g: -(lp == g).sum()):
+                m = lp == g
+                lift = Xraw[m].mean(0) / overall
+                share = (Xraw[m] > 0).mean(0)
+                top = [i for i in np.argsort(-lift) if share[i] >= 0.4][:4]
+                th = sorted(((Y[t][m].mean() / max(Y[t].mean(), 1e-9), t, Y[t][m].mean()) for t in themes), reverse=True)[:3]
+                ex = next(r["pid"] for r, x in zip(recs, m) if x)
+                log(f"   group {g:2d} ({int(m.sum()):4d}): prevented by " + ", ".join(f"{vp[i]} ({share[i]:.2f})" for i in top)
+                    + " | themes " + ", ".join(f"{t} {sh:.2f} (x{l:.1f})" for l, t, sh in th) + f" | e.g. {ex}")
+
+
 def main(argv=None):
     import sys
     os.environ.setdefault("OMP_NUM_THREADS", "1")
@@ -293,10 +353,14 @@ def main(argv=None):
     c = sub.add_parser("collect"); c.add_argument("--n", type=int, default=100); c.add_argument("--offset", type=int, default=200)
     c.add_argument("--workers", type=int, default=10)
     r = sub.add_parser("report"); r.add_argument("--path", default=None); r.add_argument("--n", type=int, default=100); r.add_argument("--offset", type=int, default=200)
+    g = sub.add_parser("groups"); g.add_argument("--path", default=None); g.add_argument("--n", type=int, default=3000); g.add_argument("--offset", type=int, default=200)
+    g.add_argument("--reasons-only", action="store_true")
     a = ap.parse_args(argv)
     try:
         if a.cmd == "collect":
             report(collect(a.n, a.offset, a.workers))
+        elif a.cmd == "groups":
+            groups(a.path or str(paths.derived(f"tactic_reasons_{a.n}_{a.offset}.jsonl")), reasons_only=a.reasons_only)
         else:
             report(a.path or str(paths.derived(f"tactic_reasons_{a.n}_{a.offset}.jsonl")))
     finally:

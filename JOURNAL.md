@@ -22874,6 +22874,32 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-01 19:46 PDT — tactics grouped by what would have prevented them, without the themes: a pin family, a back-rank family (OBS)
+
+Kaveh's pick: group without the themes. `tactic_reasons groups` on the 2,859 tactics of the 18:59 entry: k-means on
+each tactic's preventer counts (log, rows L2-normalized); the control: the same on the same relations over every piece
+and victim move (no prevention filter); and random groups of the preventer groups' sizes. Each group is labelled by
+its most over-represented preventers (its candidate lemma); the themes are read only afterwards (per theme, the best-
+matching group's F1). Printed, one run:
+- with piece types (who prevents): k=16 best-match F1, preventer / control / random -- fork 0.28 / 0.18 / 0.11, pin
+  0.15 / 0.14 / 0.10, backRankMate 0.27 / 0.15 / 0.08, skewer 0.21 / 0.12 / 0.06, kingsideAttack 0.34 / 0.23 / 0.12;
+  several groups split by WHICH piece type defends (a bishop move, a knight move) -- a description, not a reason.
+- RELATIONS only (`--reasons-only`: how it prevents): k=16 -- fork 0.27 / 0.24 / 0.12, pin 0.25 / 0.25 / 0.10,
+  backRankMate 0.35 / 0.28 / 0.08, skewer 0.18 / 0.24 / 0.06, hangingPiece 0.26 / 0.15 / 0.09, kingsideAttack 0.31 /
+  0.27 / 0.12, mate 0.27 / 0.23 / 0.17, advancedPawn 0.23 / 0.28 / 0.10. The groups (size; prevented by; the theme they
+  gather, lift): 148, an UNPINNING move (all of them), the king stepping away, a defender added -- pin x4.5; 170, LUFT
+  (a pawn next to the victim's king moving, all of them), the pawns boxing the king -- backRankMate x7.3; 196,
+  interposition and luft -- backRankMate x5.1; 200, interposition between key pieces, the king stepping away -- skewer
+  x4.7, discoveredAttack x3.5; 188, interposition, capturing the attacker, a defender added -- hangingPiece x5.2; 161,
+  interposition with our piece attacking -- kingsideAttack x4.3; 201, removing our defender of the key piece --
+  trappedPiece x6.2; 84, no free move prevents it, only a removal -- the defensiveMove theme x7.5.
+Reading (one run, directional): grouped by HOW the tactic would have been prevented, the tactics fall into reasoning
+families that match the human ones without being told them -- Kaveh's example verbatim: the group that unpinning
+prevents is the pin family; luft's group is the back rank. The prevention filter beats the plain relations for the
+back rank, hanging pieces, kingside attacks and mates, ties for pins and forks, loses for skewers and advanced pawns;
+F1 stays modest (themes overlap; a puzzle carries several). These groups are the candidate high-value lemmas: a
+lemma = its group's preventers (the conditions that must NOT hold) plus the stake.
+
 ## 2026-10-01 18:59 PDT — what would have prevented it: tactics described by their preventers recover the Lichess themes (OBS)
 
 Kaveh: "looking at games where, before material is lost, the evaluation suddenly swings ... there is a tactic
