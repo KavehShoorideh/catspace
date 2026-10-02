@@ -206,7 +206,27 @@ def _rank(rows: dict, sol: str, key) -> float:
     return above + (tie + 1) / 2
 
 
+def _games(n: int = 300, depth: int = 12) -> list:
+    """The held-out GAME positions of the frame player's gauge (gauge_verdicts.positions, seed 0; 300 as on 2026-09-30),
+    labelled by Stockfish's best move at depth 12 (the cached engine) -- where quiet plans decide, not puzzles."""
+    from .engine import Engine
+    from .gauge_verdicts import positions
+    eng = Engine(threads=8, depth=depth)
+    out = []
+    try:
+        for i, b in enumerate(positions(n, 0)):
+            lines = eng.analyse(b, multipv=b.legal_moves.count(), depth=depth)
+            if lines:
+                best = max(lines, key=lambda l: l.cp)
+                out.append((b.fen(), best.move, f"g{i}", "games300"))
+    finally:
+        eng.close()
+    return out
+
+
 def items_for(name: str) -> list:
+    if name == "games300":
+        return _games()
     dump, which = SETS[name]
     out = []
     for r in json.load(open(paths.derived(dump))):
@@ -291,12 +311,13 @@ def main(argv=None):
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     sys.stdout.reconfigure(line_buffering=True)
     ap = argparse.ArgumentParser(); ap.add_argument("--sets", nargs="+", default=list(SETS)); ap.add_argument("--workers", type=int, default=10)
+    ap.add_argument("--out", default="imagine.jsonl")
     ap.add_argument("--limit", type=int, default=None); ap.add_argument("--report-only", action="store_true")
     ap.add_argument("--lemma-view", nargs=2, metavar=("FEN", "SQUARE"), default=None)
     a = ap.parse_args(argv)
     if a.lemma_view:
         return lemma_view(*a.lemma_view)
-    out = paths.derived("imagine.jsonl")
+    out = paths.derived(a.out)
     if not a.report_only:
         items = [x for s in a.sets for x in items_for(s)][:a.limit]
         t0 = time.perf_counter()

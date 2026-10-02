@@ -22874,6 +22874,18 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-01 18:51 PDT — imagined frames on game positions: the tie-break holds, the far frames do not (OBS)
+
+The 18:43 entry's test where quiet plans decide (Kaveh: "both"): `imagine --sets games300` -- the 300 held-out game
+positions of the frame player's gauge (gauge_verdicts.positions, seed 0), the label Stockfish's best move at depth 12
+(cached); 298 with a label, 131 s. Printed: the frames' one-ply order puts the label first in 40 (top-3 95); with the
+imagined value as its tie-break 80 (148); a random tie-break, expected, 67.5 (121.8); adding the far frames 76-79
+(146-149). The label is the first step toward a far frame in 62 of 298 -- all moves 20.2% (not enriched); toward one
+not defensible in time in 9 (1.8%), fixed 6 (0.4%).
+Reading (one run, directional): the near imagined frames help as a tie-break in games as in puzzles (80 vs 67.5 over a
+random tie-break); the far frames as built ("one more attacker arriving in two to four quiet moves") carry nothing in
+either -- not the shape of a plan. Kaveh's next direction replaces them (the next entry).
+
 ## 2026-10-01 18:43 PDT — imagining further ahead: frames two to four quiet moves away do not point at puzzle solutions (OBS)
 
 Kaveh's pick: "imagine further ahead". `imagine.far`: a high-value 'one more attacker' frame on an enemy piece
