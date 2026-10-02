@@ -97,7 +97,33 @@ def _key(b: chess.Board, line: list) -> dict:
     if not won and first.to_square is not None:
         pieces |= {t for t in chess.SquareSet(_after(b, first).attacks_mask(first.to_square))
                    if b.piece_at(t) is not None and b.piece_at(t).color == victim}   # a quiet first move: what it hits
-    return dict(owner=owner, victim=victim, first=first, won=won, pieces=pieces, king=b.king(victim))
+    # (2026-10-02, finer families) what the LINE does beyond its first move: a line the first move OPENS (a slider of
+    # ours behind it now hits a piece of theirs), the victim pieces it makes MOVE (lured or deflected), the victim
+    # pieces PINNED partway through it -- all as the squares those pieces stand on now
+    af = _after(b, first)
+    discoverers, discovered, opened = set(), set(), set()
+    for s in chess.SquareSet(b.occupied_co[owner]):
+        if s == first.from_square or b.piece_type_at(s) not in (chess.BISHOP, chess.ROOK, chess.QUEEN):
+            continue
+        for t in chess.SquareSet(af.attacks_mask(s)) - chess.SquareSet(b.attacks_mask(s)):
+            if af.piece_at(t) is not None and af.piece_at(t).color == victim and _between(s, t, first.from_square):
+                discoverers.add(s); discovered.add(t); opened |= set(chess.SquareSet(chess.between(s, t)))
+    ident = {sq: sq for sq in chess.SquareSet(b.occupied)}           # where each piece stood at the start
+    bb = b.copy(); lured, pinned_later = set(), set()
+    for i, m in enumerate(line[:5]):
+        if bb.turn == victim and i <= 3 and m.from_square in ident:
+            lured.add(ident[m.from_square])
+        frm = ident.pop(m.from_square, None)
+        ident.pop(m.to_square, None)
+        if frm is not None:
+            ident[m.to_square] = frm
+        bb.push(m)
+        if i in (1, 3):
+            for t in chess.SquareSet(bb.occupied_co[victim]):
+                if bb.is_pinned(victim, t) and t in ident and not b.is_pinned(victim, ident[t]):
+                    pinned_later.add(ident[t])
+    return dict(owner=owner, victim=victim, first=first, won=won, pieces=pieces, king=b.king(victim),
+                discoverers=discoverers, discovered=discovered, opened=opened, lured=lured, pinned_later=pinned_later)
 
 
 def _after(b: chess.Board, m: chess.Move) -> chess.Board:
@@ -127,6 +153,14 @@ def describe_piece(b: chess.Board, sq: int, key: dict) -> list:
         out.append("owner:the_first_mover")
     if sq in key["won"]:
         out.append("victim:won_by_the_line")
+    if sq in key.get("discoverers", ()):
+        out.append(f"{side}:its_line_opened_by_the_first_move")
+    if sq in key.get("discovered", ()):
+        out.append(f"{side}:hit_through_the_opened_line")
+    if sq in key.get("lured", ()):
+        out.append(f"{side}:made_to_move_by_the_line")
+    if sq in key.get("pinned_later", ()):
+        out.append(f"{side}:pinned_in_the_line")
     return out
 
 
@@ -152,6 +186,14 @@ def describe_defence(b: chess.Board, r: chess.Move, key: dict) -> list:
     if b.is_pinned(pc.color, r.from_square) is False and any(b.is_pinned(pc.color, s) for s in chess.SquareSet(b.occupied_co[pc.color])) \
             and not any(nb.is_pinned(pc.color, s) for s in chess.SquareSet(nb.occupied_co[pc.color])):
         out.append("defend:unpins")
+    if r.to_square in key.get("opened", ()):
+        out.append("defend:blocks_the_opened_line")
+    if r.from_square in key.get("discovered", ()):
+        out.append("defend:the_discovered_target_moves")
+    if r.from_square in key.get("lured", ()):
+        out.append("defend:the_lured_piece_moves_first")
+    if r.from_square in key.get("pinned_later", ()):
+        out.append("defend:the_later_pinned_piece_moves")
     return out
 
 
@@ -192,6 +234,31 @@ def puzzle(row: dict) -> dict | None:
     pre, n_def = preventers_of(b, line, s0)
     return dict(pid=row["PuzzleId"], themes=row["Themes"].split(), rating=int(row.get("Rating") or 0), fen=b.fen(),
                 line=mv[1:], stake=s0, preventers=pre, n_pieces=len(b.piece_map()), n_defences=n_def)
+
+
+def refeature(path: str, out: str, log=print) -> str:
+    """Re-describe the stored preventers with the current relations (no Stockfish: which pieces and moves prevent is
+    kept; only their descriptions change)."""
+    k = 0; bad = 0
+    with open(out, "w") as fh:
+        for line_ in open(path):
+            r = json.loads(line_)
+            if "skipped" not in r:
+                b = chess.Board(r["fen"]); line = [chess.Move.from_uci(u) for u in r["line"]]
+                key = _key(b, line)
+                pb = b.copy(stack=False); pb.turn = key["victim"]; pb.ep_square = None
+                for p in r["preventers"]:
+                    try:
+                        if p["kind"] == "remove":
+                            p["feats"] = describe_piece(b, chess.parse_square(p["square"]), key)
+                        else:
+                            p["feats"] = describe_defence(pb, pb.parse_san(p["move"]), key)
+                    except ValueError:
+                        bad += 1
+                k += 1
+            fh.write(json.dumps(r) + "\n")
+    log(f"[tactic_reasons] re-described {k} tactics' preventers -> {out} ({bad} unparsable)")
+    return out
 
 
 def collect(n: int, offset: int, workers: int = 10, log=print) -> str:
@@ -362,13 +429,17 @@ def main(argv=None):
     c.add_argument("--workers", type=int, default=10)
     r = sub.add_parser("report"); r.add_argument("--path", default=None); r.add_argument("--n", type=int, default=100); r.add_argument("--offset", type=int, default=200)
     g = sub.add_parser("groups"); g.add_argument("--path", default=None); g.add_argument("--n", type=int, default=3000); g.add_argument("--offset", type=int, default=200)
-    g.add_argument("--reasons-only", action="store_true")
+    g.add_argument("--reasons-only", action="store_true"); g.add_argument("--ks", type=int, nargs="+", default=[10, 16, 24])
+    g.add_argument("--detail-k", type=int, default=16)
+    rf = sub.add_parser("refeature"); rf.add_argument("--path", default=None); rf.add_argument("--out", default=None)
     a = ap.parse_args(argv)
     try:
         if a.cmd == "collect":
             report(collect(a.n, a.offset, a.workers))
         elif a.cmd == "groups":
-            groups(a.path or str(paths.derived(f"tactic_reasons_{a.n}_{a.offset}.jsonl")), reasons_only=a.reasons_only)
+            groups(a.path or str(paths.derived(f"tactic_reasons_{a.n}_{a.offset}.jsonl")), tuple(a.ks), a.detail_k, reasons_only=a.reasons_only)
+        elif a.cmd == "refeature":
+            refeature(a.path or str(paths.derived("tactic_reasons_3000_200.jsonl")), a.out or str(paths.derived("tactic_reasons_3000_200_v2.jsonl")))
         else:
             report(a.path or str(paths.derived(f"tactic_reasons_{a.n}_{a.offset}.jsonl")))
     finally:

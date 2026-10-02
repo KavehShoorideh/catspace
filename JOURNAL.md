@@ -22874,6 +22874,32 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-02 15:53 PDT — finer families: what the line does (an opened line, a lured piece, a pin made inside it) and 32 groups (OBS)
+
+Kaveh's pick: finer families. New relations in tactic_reasons (from the line, generic): the line the first move OPENS
+(a slider of ours behind it now hits a piece of theirs: `its_line_opened_by_the_first_move`, `hit_through_the_opened_
+line`; defences `blocks_the_opened_line`, `the_discovered_target_moves`), the victim pieces the line MAKES MOVE in its
+first four plies (lured or deflected: `made_to_move_by_the_line`, `the_lured_piece_moves_first`), the victim pieces
+PINNED partway through it (`pinned_in_the_line`, `the_later_pinned_piece_moves`); each checked on a hand-made case
+(Nf5 opens the d-file onto the queen; Rb8+ Rxb8 draws the a8 rook; Bb5 h6 pins the c6 knight). `tactic_reasons
+refeature`: the stored preventers of the 2,859 tactics re-described, no Stockfish (which pieces and moves prevent is
+unchanged). Printed, one run (relations only; best-match F1, preventer / control / random): k=16 -- discoveredAttack
+0.56 / 0.47 / 0.09 (before the new relations 0.20), fork 0.34 / 0.24 / 0.13, pin 0.27 / 0.26 / 0.09, backRankMate 0.27
+/ 0.18 / 0.08; deflection 0.12, attraction 0.10 (not separated by the lure relation). Finer k lowers F1 (a theme spread
+over more groups) but raises how nameable the groups are: training tactics carrying their own family's typical themes
+-- k=16 0.27, 24 0.27, 32 0.31, 48 0.34 (v1 k=16 0.24). Chosen: k=32 (about 90 tactics a family). The 32 families named
+by the LLM layer (v2; the v1 files kept as *_v1_k16), among them: discovered attack (89 tactics; the theme in 70%,
+x13.9), pin (prevented by unpinning; x6.0), three back-rank kinds (direct; through a blocker -- Rd8+ Rf8 Rxf8#; after
+a decoy, Opera-style), smothered / swallow's-tail mates (x8-17), epaulette / Pillsbury mates. The names now survive
+only an identical rebuild (same source, k and labels). Detectors retrained on the 32: held out, P(any family) first in
+1,184 of 2,859 (16 families: 1,218). The explainer on the same 200 fresh puzzles: the named family's typical themes in
+the puzzle's Lichess themes in 44 of 178 (25%; 16 families 20%), ceiling 31% (24%), always the most common family 14
+(8%).
+Reading (one run, directional): what the line does is the missing description -- it made the discovered attack a family
+of its own and lifted the explainer's agreement from 20% to 25%, at the same fraction of its ceiling (0.81 vs 0.83).
+Read by hand, single names stay coarse where a family is a mixture (a check sequence still "zugzwang"; one exposed-king
+case now "endgame squeeze"): naming each INSTANCE from its own facts, not only its family, is the next lever.
+
 ## 2026-10-02 15:17 PDT — the lemmas in the player, and the first explainer: why the human move fails, why the unseen move works (OBS)
 
 In the player (`frame_puzzles --lemmas`: the detectors' P(any family) as the planner's tie-break among the moves the

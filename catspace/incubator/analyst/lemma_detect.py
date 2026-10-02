@@ -33,11 +33,11 @@ import chess
 
 from catspace.io import paths
 
-SOURCE = "tactic_reasons_3000_200.jsonl"
+SOURCE = "tactic_reasons_3000_200_v2.jsonl"                         # v2: the line relations (opened lines, lured, pinned in the line)
 FAMILIES = "tactic_families.json"
 FEATURES = "lemma_detect_features.jsonl.gz"
 MODEL = "lemma_detect.pkl"
-K = 16
+K = 32                                                              # 2026-10-02: finer families (Kaveh's pick; naming ceiling 0.31 vs 0.27)
 MATE_PAWNS = 20.0
 
 
@@ -63,15 +63,18 @@ def families(log=print) -> dict:
         th = Counter(t for r, x in zip(recs, m) if x for t in r["themes"])
         fams[int(g)] = dict(size=int(m.sum()), preventers=top, stake=st.median(stakes), themes=[t for t, _ in th.most_common(6)])
     keep = {}                                                         # the LLM layer's names survive a rebuild (2026-10-02: a rebuild
-    try:                                                              # once wiped them)
-        old = json.load(open(paths.derived(FAMILIES)))["families"]
-        keep = {int(g): {k: v for k, v in f.items() if k in ("name", "clarity", "why_it_works", "why_the_move_allowing_it_fails", "named_by")}
-                for g, f in old.items()}
+    try:                                                              # once wiped them) -- only when the families are the SAME ones
+        old_all = json.load(open(paths.derived(FAMILIES)))            # (the same source, k and labels; re-cut families need new names)
+        old = old_all["families"]
+        same = old_all.get("meta") == dict(source=SOURCE, k=K) and all(old_all["label"].get(r["pid"]) == int(g) for r, g in zip(recs, lab))
+        if same:
+            keep = {int(g): {k: v for k, v in f.items() if k in ("name", "clarity", "why_it_works", "why_the_move_allowing_it_fails", "named_by")}
+                    for g, f in old.items()}
     except (FileNotFoundError, KeyError, ValueError):
         pass
     for g in fams:
         fams[g].update(keep.get(g, {}))
-    out = dict(families=fams, label={r["pid"]: int(g) for r, g in zip(recs, lab)},
+    out = dict(meta=dict(source=SOURCE, k=K), families=fams, label={r["pid"]: int(g) for r, g in zip(recs, lab)},
                vocab=vocab, centroids=km.cluster_centers_.tolist())          # for naming a NEW tactic by its preventers (explain)
     json.dump(out, open(paths.derived(FAMILIES), "w"))
     for g, f in sorted(fams.items(), key=lambda kv: -kv[1]["size"]):
