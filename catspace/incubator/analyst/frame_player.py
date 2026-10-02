@@ -113,6 +113,7 @@ DECIDER_PRICE = [None]                                              # ... or, wh
                                                                     # price x the next rung's expected nodes (depth_decider.stopper)
 KING_WATCH = False                                                  # zone_candidates: the king watches' moves join the candidates
 PROPOSE = 0                                                         # zone_candidates: the moves realizing the proposer's top-k what-if edits join (0: off)
+IMAGINE = 0                                                         # zone_candidates: the moves advancing the top-k imagined frames join (imagine.goals; 0: off)
 JOBS = False                                                        # zone_candidates: the job ledger's operator moves join the candidates
 PAWN_MOVES = False                                                  # zone_candidates: every pawn move joins the candidates (with the
                                                                     # spec's pawn_moves: the quiet pawn move, the misses' gap -- 24/44)
@@ -160,6 +161,9 @@ def candidates(b: chess.Board, before=None, book=None, ledger: str = "zone_candi
         keep |= set(operators(b, _jobs(b)))
     if PAWN_MOVES and ledger == "zone_candidates":
         keep |= {m.uci() for m in moves if b.piece_type_at(m.from_square) == chess.PAWN}
+    if IMAGINE and ledger == "zone_candidates":                        # the imagined frames' moves (Kaveh: "imagine them, then find a way to
+        from .imagine import goals                                      # them, tactically"): double attacks first, then the frames' value
+        keep |= set(goals(b, IMAGINE)[0])
     if PROPOSE and ledger == "zone_candidates":                        # the what-if proposer's top edits: the moves that realize them join
         from .whatif_proposer import propose_moves                      # (AlphaGeometry-style constructions; the zone search verifies)
         keep |= set(propose_moves(b, one, PROPOSE))

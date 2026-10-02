@@ -72,6 +72,42 @@ def readings(b: chess.Board) -> dict:
     return rows
 
 
+_GOALS: dict = {}
+
+
+def goals(b: chess.Board, k: int = 3) -> tuple:
+    """THE IMAGINED FRAMES AS GOALS (Kaveh 2026-10-01: "imagine them, then find a way to them, tactically"; his pick: hand
+    them to the search). The moves of the side to move ranked by the high-value imagined frames they advance -- double
+    attacks first (frames completed against two or more enemy pieces at once), then the summed gains -- and the top k
+    with the squares of the frames they advance: the targets, the removed defenders, the relocations' destinations, and
+    the moves' own squares. -> ([ucis], frozenset of squares). Cached by position (the planner and the candidate set
+    both ask)."""
+    key = (b.fen(), k)
+    if key in _GOALS:
+        return _GOALS[key]
+    from .whatif import edits, realizes
+    attack = [e for e in edits(b) if e.kind in ("add", "remove", "relocate") and e.gain >= HIGH]
+    scored = []
+    for m in b.legal_moves:
+        img = 0.0; targets = set(); squares = set()
+        for e in attack:
+            r = realizes(b, m, e)
+            if r:
+                img += e.gain if r == 1 else e.gain / 2
+                squares |= {e.target} | ({e.arg} if e.kind in ("remove", "relocate") else set())
+                if r == 1 and e.kind in ("add", "remove"):
+                    targets.add(e.target)
+        if img > 0:
+            scored.append(((len(targets) >= 2, img), m, squares | {m.from_square, m.to_square}))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = scored[:k]
+    out = ([m.uci() for _, m, _ in top], frozenset(q for _, _, sq in top for q in sq))
+    if len(_GOALS) > 256:
+        _GOALS.clear()
+    _GOALS[key] = out
+    return out
+
+
 def position(args) -> dict | None:
     fen, sol, pid, tag = args
     b = chess.Board(fen)

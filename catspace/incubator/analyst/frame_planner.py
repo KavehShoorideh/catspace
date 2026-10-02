@@ -64,6 +64,7 @@ class MaterialPlanner:
     trades: bool = False                # the material-count trade preference (measured; see the module note)
     trade_margin: float = 2.0
     jobs: bool = False                  # hand the tactics the position's job ledger (jobs.py: pins, guards, discoveries)
+    imagine: int = 0                    # the top-k imagined frames' squares join every candidate's root zone (imagine.goals)
     job_kinds: tuple = ("shield", "guard", "block", "discovery")
     job_min: float = 0.5
 
@@ -75,6 +76,11 @@ class MaterialPlanner:
             hints.append(lambda bb, s=steps: runners(bb, s))
         if self.watch_zone:
             hints.append(lambda bb, n=self.watch_zone: _watch_squares(bb, n))
+        if self.imagine:                                              # the goals are the ROOT's imagined frames: the same squares
+            from .imagine import goals                                # whichever candidate is searched
+            squares = goals(b, self.imagine)[1]
+            hints.append(lambda bb, sq=squares: sq)
+            notes.append(f"imagined goals: {len(squares)} squares")
         prefer = None
         if self.trades:
             lead = material(b, b.turn)
