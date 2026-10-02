@@ -22874,6 +22874,39 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-01 18:59 PDT — what would have prevented it: tactics described by their preventers recover the Lichess themes (OBS)
+
+Kaveh: "looking at games where, before material is lost, the evaluation suddenly swings ... there is a tactic
+available ... that is the frame ... finding the similarity depends on finding the reasoning ... we start from a seed
+and ask what would have prevented this. And all of those where the same thing would have prevented this, like unpin,
+those are all a pinning situation." (He also named the high-value ones: pressure on a pinned piece, the back rank --
+the king boxed by its own pieces, two heavy pieces against one defender.) `tactic_reasons.py`. The seeds: Lichess
+puzzles -- each a game position right after a blunder, where a tactic became available, with the winning line and
+the site's THEME tags, used only to check. The oracle: Stockfish depth 12; the tactic's STAKE = its evaluation for the
+side with the tactic minus the material balance (an edit that changes material is not read as changing the tactic).
+PREVENTERS: removing one non-king piece (the pieces the tactic needs, or needs to be there), or giving the victim one
+free move (its defences), each when the stake falls below a third (and below a pawn). Each preventer described by
+generic relations to the tactic's key squares (the first solution move, the pieces the line wins, the victim's king):
+side and piece type, next to the victim's king, between two key pieces, attacks / defends a key piece, pinned; a
+defending move: moves the king, a pawn next to the king, lands between key pieces, captures, adds a defender,
+unpins. Read by hand first (008Nz: the three pawns boxing the king and the rook are the removal preventers, Kf8 and
+h6 the defences; a fork: the knight and the queen; a pin made inside the line is not visible at the root).
+Printed, one run (3,000 puzzles at rows i % 997 == 200, 2,859 with a stake of 2+ pawns; 298 s; a median 12 preventers
+a tactic, 3 removals and 8 defences): over-represented preventers per theme -- backRankMate: a victim pawn move next to
+its king 0.96 vs 0.32; pin: an unpinning move 0.44 vs 0.09; discoveredAttack: a victim piece attacking a key piece
+0.41 vs 0.10; fork: our knight 0.53 vs 0.25. Held-out AUC (5 folds by puzzle; feature counts) of the theme from the
+preventers / from the CONTROL (the same relations over every piece and every victim move, no prevention filter) /
+both: mate 0.977 / 0.898 / 0.988; backRankMate 0.980 / 0.963 / 0.988; trappedPiece 0.899 / 0.767 / 0.869; doubleCheck
+0.821 / 0.608 / 0.770; quietMove 0.794 / 0.712 / 0.782; discoveredAttack 0.816 / 0.801 / 0.844; pin 0.755 / 0.785 /
+0.799; fork 0.789 / 0.805 / 0.821; skewer 0.835 / 0.903 / 0.898; deflection 0.669 / 0.796 / 0.791; exposedKing 0.713
+/ 0.876 / 0.872; kingsideAttack 0.783 / 0.877 / 0.881.
+Reading (one run, directional): Kaveh's criterion works -- tactics described only by what would have prevented them
+fall into the human themes (AUC 0.64-0.98, a constant 0.5), and it carries reasoning the position's description does
+not where the tactic lives in the king's box or a trapped piece (mate, back rank, trapped piece, double check, quiet
+move); for pins, forks, skewers and deflections the relations to the line's key squares say as much or more, the
+prevention a sharp marker but not more. Next in his plan: group the tactics by their preventers WITHOUT the themes (do
+the groups come out as pins, back ranks ...?), then the situation that creates the frame (what the blunder changed).
+
 ## 2026-10-01 18:51 PDT — imagined frames on game positions: the tie-break holds, the far frames do not (OBS)
 
 The 18:43 entry's test where quiet plans decide (Kaveh: "both"): `imagine --sets games300` -- the 300 held-out game
