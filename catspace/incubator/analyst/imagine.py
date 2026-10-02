@@ -73,6 +73,31 @@ def readings(b: chess.Board) -> dict:
 
 
 _GOALS: dict = {}
+_VALUES: dict = {}
+
+
+def values(b: chess.Board) -> dict:
+    """Every legal move's imagined value (the high-value frames it advances: double attacks counted, then the summed
+    gains) -> {uci: (completes frames against 2+ enemy pieces, summed gain)}. Cached by position."""
+    key = b.fen()
+    if key in _VALUES:
+        return _VALUES[key]
+    from .whatif import edits, realizes
+    attack = [e for e in edits(b) if e.kind in ("add", "remove", "relocate") and e.gain >= HIGH]
+    out = {}
+    for m in b.legal_moves:
+        img = 0.0; targets = set()
+        for e in attack:
+            r = realizes(b, m, e)
+            if r:
+                img += e.gain if r == 1 else e.gain / 2
+                if r == 1 and e.kind in ("add", "remove"):
+                    targets.add(e.target)
+        out[m.uci()] = (len(targets) >= 2, img)
+    if len(_VALUES) > 256:
+        _VALUES.clear()
+    _VALUES[key] = out
+    return out
 
 
 def goals(b: chess.Board, k: int = 3) -> tuple:

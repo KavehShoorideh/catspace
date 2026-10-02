@@ -82,6 +82,10 @@ class MaterialPlanner:
             hints.append(lambda bb, sq=squares: sq)
             notes.append(f"imagined goals: {len(squares)} squares")
         prefer = None
+        if self.imagine and not self.trades:                          # among the moves the tactics tie: the one advancing more
+            from .imagine import values                               # imagined frames (measured: the solution first in 482 of
+            iv = values(b)                                            # 669 steps vs 456 for a random tie-break)
+            prefer = lambda board, m, line, iv=iv: (lambda t: (1000.0 if t[0] else 0.0) + t[1])(iv.get(m.uci(), (False, 0.0)))
         if self.trades:
             lead = material(b, b.turn)
             if abs(lead) >= self.trade_margin:
