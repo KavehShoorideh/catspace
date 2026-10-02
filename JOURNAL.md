@@ -22874,6 +22874,28 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-01 18:29 PDT — imagined frames in play: as goals they change little; as the tie-break they lift the player by about 9 of 300 (OBS)
+
+Kaveh's pick after the 17:06 measurement: "imagined goals for the search" -- his "find a way to them, tactically".
+`imagine.goals`: the moves ranked by the high-value imagined frames they advance (double attacks first, then the summed
+gains); the top 3 join the candidates (`frame_player.IMAGINE`) and their frames' squares join every candidate's root
+zone (`MaterialPlanner(imagine=3)`); then `imagine.values` as the planner's preference among the moves the tactics tie.
+Off by default (the zone search's outputs hash the same); a test (a knight fork is the first goal). The honest score
+for a player is ONE move: `frame_puzzles --compare` now prints the expected solves of a random pick among the tied top
+moves (the fair control for any tie-break). One run each, all with the proposer (k=3), pawn moves and the decider (3e-6):
+- the 70 misses of offset 500 (the clean decider model): the bundle 18 tied / 5 single, a random pick 8.5; + imagined
+  goals 21 / 5, random pick 9.1 (gained 3, lost 0; 96,402 nodes a step vs 98,932); + the imagined tie-break 11 / 10,
+  a random pick among what ties remain 10.3 (635 s).
+- the 300 fresh of offset 300: the plain fixed-8 player 279 / 227, random pick 237.3 (30,490 nodes a step); the bundle
+  281 / 231, 241.2 (54,877); + imagined goals 284 / 229, 241.3 (57,338; gained 3, lost 0); + the imagined tie-break
+  259 / 246, a random pick among what ties remain 250.0 (56,832 nodes, 1,666 s).
+Reading (one run each, directional): handed to the search as goals the imagined frames bring the solution into the top
+group a little more often but do not separate it (player level +0.6 and +0.1); as the tie-break among the moves the
+tactics tie they lift the player by 8.7 of 300 and 1.2 of 70 over a random pick -- the 17:06 measurement's tie-break
+result (482 vs 456 steps) holding in play. Best player so far: the bundle + imagined goals and tie-break, 250 of 300 at
+1.9x the plain player's nodes (plain: 237). The deeper imagination (frames two or more moves away; the opponent's
+visibility) is not yet in: these are frames one move from existing.
+
 ## 2026-10-01 17:06 PDT — imagined frames, measured: the moves that bring high-value frames closer point at the solutions the frames miss (OBS)
 
 Kaveh: "we see the board, we want to imagine a future where a frame might exist"; "we want high-value lemmas, and find

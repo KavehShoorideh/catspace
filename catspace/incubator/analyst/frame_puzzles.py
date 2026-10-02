@@ -111,9 +111,17 @@ def compare(before: str, after: str) -> None:
     x = {r["id"]: r for r in json.load(open(paths.derived(before)))}
     y = {r["id"]: r for r in json.load(open(paths.derived(after)))}
     common = [k for k in x if k in y]
+    def random_pick(r):                                           # a player must pick ONE move: with a random pick among the tied
+        if not r["solved"]:                                       # top moves, the chance it solves every step (the fair control
+            return 0.0                                            # for any tie-break, 2026-10-01)
+        p = 1.0
+        for st_ in r["steps"]:
+            p *= 1.0 / max(1, st_["n_top"])
+        return p
     for name, d in ((before, x), (after, y)):
         print(f"OBS {name}: whole solution among the tied top moves {sum(d[k]['solved'] for k in common)}/{len(common)}; "
-              f"single top move {sum(d[k]['solved_unique'] for k in common)}/{len(common)}")
+              f"single top move {sum(d[k]['solved_unique'] for k in common)}/{len(common)}; "
+              f"a random pick among ties, expected {sum(random_pick(d[k]) for k in common):.1f}")
     gained = [k for k in common if y[k]["solved"] and not x[k]["solved"]]
     lost = [k for k in common if x[k]["solved"] and not y[k]["solved"]]
     print(f"OBS {after} against {before}: gained {len(gained)}, lost {len(lost)} ({', '.join(lost)})")
