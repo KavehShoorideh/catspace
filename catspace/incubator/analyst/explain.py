@@ -177,6 +177,99 @@ def line_facts(b: chess.Board, pv: list, n: int = 8) -> list:
     return out
 
 
+MAIA_BAND = 1500
+_MAIA = {}
+
+
+def maia_policy(b: chess.Board, band: int = MAIA_BAND) -> dict:
+    """Maia's move probabilities for the side to move (lc0 with the Maia weights, one node: the policy head) -- how
+    HUMAN a move looks at that rating band. -> {uci: probability}."""
+    import re
+    import shutil
+    if band not in _MAIA:
+        w = paths.assets_dir() / "engines" / "maia" / f"maia-{band}.pb.gz"
+        _MAIA[band] = chess.engine.SimpleEngine.popen_uci([shutil.which("lc0"), f"--weights={w}", "--verbose-move-stats",
+                                                             "--threads=1", "--backend=eigen"])
+    rx = re.compile(r"^([a-h][1-8][a-h][1-8]\S*).*?P: *([0-9.]+)%")
+    with _MAIA[band].analysis(b, chess.engine.Limit(nodes=1), info=chess.engine.INFO_ALL) as an:
+        strings = [i["string"] for i in an if "string" in i]
+    ps = {}
+    for st_ in strings:
+        m = rx.search(st_)
+        if m and m.group(1) != "node":
+            ps[m.group(1)] = float(m.group(2)) / 100.0
+    tot = sum(ps.values())
+    return {k: v / tot for k, v in ps.items()} if tot > 0 else {}
+
+
+def pass_line(b: chess.Board, side: chess.Color) -> dict | None:
+    """`side`'s THREAT on b: Stockfish's line for `side` -- when it is not its turn, after the other side passes (None
+    when passing is illegal: a side in check cannot pass) -- and what it wins (material by the line's end, or mate)."""
+    pb = b.copy(stack=False)
+    if b.turn != side:
+        pb.turn = side; pb.ep_square = None
+        if not pb.is_valid():
+            return None
+    ev, pv = _sf(pb, side)
+    if not pv:
+        return None
+    V = {1: 1, 2: 3, 3: 3, 4: 5, 5: 9, 6: 0}
+    mat = lambda x: sum(V[p.piece_type] * (1 if p.color == side else -1) for p in x.piece_map().values())
+    bb = pb.copy(); m0 = mat(bb)
+    for m in pv[:8]:
+        bb.push(m)
+    return dict(line=line_facts(pb, pv, 6), eval=ev, wins_material=mat(bb) - m0, mates=bb.is_checkmate())
+
+
+def _edits_advanced(b: chess.Board, m: chess.Move) -> list:
+    """The what-if frames (whatif.edits: one more attacker, a defender gone, a piece relocated -- each answered by the
+    frames) that move m completes or starts, worth a pawn or more, in words."""
+    from .whatif import edits, realizes
+    out = []
+    for e in edits(b):
+        if e.kind not in ("add", "remove", "relocate") or e.gain < 1:
+            continue
+        r = realizes(b, m, e)
+        if not r:
+            continue
+        step = "completes" if r == 1 else "starts"
+        if e.kind == "add":
+            what = f"one more attacker on the {_name(b, e.target)}"
+        elif e.kind == "remove":
+            what = f"the {_name(b, e.arg)} no longer defending the {_name(b, e.target)}"
+        else:
+            what = f"the {_name(b, e.target)} on {chess.square_name(e.arg)}"
+        txt = f"{step} a what-if frame worth {e.gain:g}: {what}"
+        if txt not in out and not any(o.split(": ", 1)[1] == what for o in out):   # one per frame (2026-10-02: the same frame
+            out.append(txt)                                                         # once per attacker value)
+    return out[:5]
+
+
+def _activity(b: chess.Board, m: chess.Move) -> dict:
+    """The moved piece's mobility before and after, and whether it now reaches squares around the enemy king."""
+    bb = b.copy(stack=False); bb.push(m)
+    before = sum(1 for x in b.legal_moves if x.from_square == m.from_square)
+    t = bb.copy(stack=False); t.turn = b.turn; t.ep_square = None
+    after = sum(1 for x in t.legal_moves if x.from_square == m.to_square) if t.is_valid() else None
+    k = bb.king(not b.turn)
+    zone = set(chess.SquareSet(chess.BB_KING_ATTACKS[k])) | {k} if k is not None else set()
+    near = sorted(chess.square_name(s) for s in chess.SquareSet(bb.attacks_mask(m.to_square)) if s in zone)
+    return dict(mobility_before=before, mobility_after=after, reaches_enemy_king_squares=near)
+
+
+def _passed(b: chess.Board) -> dict:
+    out = {}
+    for c, name in ((chess.WHITE, "White"), (chess.BLACK, "Black")):
+        ps = []
+        for sq in b.pieces(chess.PAWN, c):
+            f, r = chess.square_file(sq), chess.square_rank(sq)
+            ahead = range(r + 1, 8) if c == chess.WHITE else range(0, r)
+            if not any(b.piece_at(chess.square(ff, rr)) == chess.Piece(chess.PAWN, not c) for ff in (f - 1, f, f + 1) if 0 <= ff < 8 for rr in ahead):
+                ps.append(chess.square_name(sq))
+        out[name] = ps
+    return out
+
+
 def facts(b: chess.Board, human: chess.Move) -> dict:
     """Everything the LLM layer may use to write one position's explanation, all computed: the evaluations, both
     lines annotated (line_facts), the family, the preventers in words, and how the better move heads the tactic off."""
@@ -195,9 +288,28 @@ def facts(b: chess.Board, human: chess.Move) -> dict:
             else:
                 words.append(f"if {out['side']} could play {p['move']} first")
         out["would_have_prevented"] = words[:10]
+    # WHAT THE HUMAN WAS PROBABLY THINKING (Kaveh 2026-10-02: "more facts first"): what the move grabs and hits, what
+    # it would threaten if allowed a second move, and how human it is (Maia)
+    pol = maia_policy(b)
+    rank = sorted(pol, key=lambda u: -pol[u])
+    hb = b.copy(stack=False); hb.push(human)
+    hits = [_name(hb, s) for s in chess.SquareSet(hb.attacks_mask(human.to_square))
+            if hb.piece_at(s) and hb.piece_at(s).color != me and hb.piece_type_at(s) != chess.PAWN]
+    out["human_thinking"] = dict(
+        grabs=(f"the {_name(b, human.to_square)}" if b.is_capture(human) and b.piece_at(human.to_square) else None),
+        attacks=hits, threat=pass_line(hb, me),
+        maia=dict(band=MAIA_BAND, p=round(pol.get(human.uci(), 0.0), 3), rank=(rank.index(human.uci()) + 1 if human.uci() in rank else None),
+                  top=[(b.san(chess.Move.from_uci(u)), round(pol[u], 3)) for u in rank[:3]]))
+    out["opponent_threat_before"] = pass_line(b, not me)             # what the opponent threatened before any move
     if e.get("why_better"):
         best_pv = [chess.Move.from_uci(u) for u in e["best_pv"]]
-        out["better"] = dict(move=e["why_better"]["move"], line=line_facts(b, best_pv), summary=e["why_better"]["text"])
+        bm = best_pv[0]
+        ab = b.copy(stack=False); ab.push(bm)
+        out["better"] = dict(move=e["why_better"]["move"], line=line_facts(b, best_pv), summary=e["why_better"]["text"],
+                             maia=dict(p=round(pol.get(bm.uci(), 0.0), 3), rank=(rank.index(bm.uci()) + 1 if bm.uci() in rank else None)),
+                             achieves=dict(threat=pass_line(ab, me), opponent_threat_after=pass_line(ab, not me),   # (their move now: no pass)
+                                           frames=_edits_advanced(b, bm), activity=_activity(b, bm),
+                                           passed_before=_passed(b), passed_after=_passed(ab)))
     return out
 
 
@@ -332,7 +444,7 @@ def main(argv=None):
         else:
             check(a.n, a.offset, a.workers)
     finally:
-        for e in _ENG.values():
+        for e in list(_ENG.values()) + list(_MAIA.values()):
             e.quit()
         from . import tactic_reasons as _tr
         for e in _tr._ENG.values():
