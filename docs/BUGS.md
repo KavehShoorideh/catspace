@@ -159,6 +159,19 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
 - **A test that expected the leaf not to stand pat** (class 9): the zugzwang-guard test asserted no pass at all; the
   horizon's static read keeps its stand-pat by design (quiescence). The test now stubs the leaf and checks the tree.
 
+### 2026-10-01 (imagined frames)
+- **Lemma world-means read as an action's gain** (class 5-like, a stored statistic misread): the first imagined-lemma
+  measurement composed lemma VALUES (means over each frame's world) as if they were a move's stake -- a free queen read
+  +1.0, a free rook 0, a lone rook's quiet moves six "targets". Caught by the zero share of interactions (0.000 of all
+  moves): a degenerate number. Fixed: stakes from the exact frames (what-if edits); lemmas as the naming layer.
+- **A claim from a sorted, truncated print** (class 6): "the forked queen has no three-piece lemma" -- my debug print
+  sorted frames by a stake column that was 0 for "keeps, unless" lemmas and cut at six rows; the queen's 3-piece frames
+  call all 23 of its actions losing. Retracted to Kaveh. Rule: a "none exists" claim needs an unsorted, untruncated
+  count.
+- **A sentinel inside the value range** (class 2-like): moves that mate were marked by adding 1,000 to every reading,
+  while frame gains can be mate-sized themselves (1,000) -- the counts with a "< 1e3" filter dropped real frames. Fixed:
+  a separate mate flag, ranked first.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).

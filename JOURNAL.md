@@ -22874,6 +22874,35 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-01 17:06 PDT — imagined frames, measured: the moves that bring high-value frames closer point at the solutions the frames miss (OBS)
+
+Kaveh: "we see the board, we want to imagine a future where a frame might exist"; "we want high-value lemmas, and find
+interactions of lemmas where our opponent cannot see"; "and imagine them, then find a way to them, tactically"; his
+pick: measure first. `imagine.py`. An IMAGINED FRAME is a what-if edit (whatif.py: one more attacker on an enemy piece,
+an enemy defender gone, one of our pieces standing elsewhere) answered exactly by the frames; high-value: a pawn or
+more. A move advances it when it completes the edit or takes its first step (`whatif.realizes`). Per legal move: the
+summed gains of the frames it advances (a first step half), and the enemy pieces it completes frames against at once
+(two or more: a double attack, the interaction). Bug checks before the run (docs/BUGS.md): the lemma library's values
+are means over each frame's world, not an instance's stake (composed as gains, a free queen read +1.0 -- dropped; the
+lemmas stay the naming layer: `--lemma-view` prints its 3-piece frames calling all 23 moves of a forked queen losing);
+a mate sentinel inside the value range; a "none exists" claim from a truncated print, retracted.
+Printed, one run (792 positions, 664 s; ties at their mean rank; the fair control for a tie-break is a random one):
+- 300 fresh (offset 300, every solver step, 669): the frames' one-ply order puts the solution first in 420 (top-3 504);
+  with the imagined value as its tie-break 482 (551); a random tie-break, expected, 456.3 (532.4). The imagined value
+  alone: 137 (255). The solution completes a double attack in 120 (18%; all moves 8.7%).
+- the 70 misses of 1,000 fresh (offset 500): one-ply first 2 (top-3 16); imagined alone 10 (27); one-ply with the
+  imagined tie-break 6 (28); random tie-break 4.1 (22.2). Double attack: the solution 13 (all moves 10.7%).
+- the 52 left after the proposer, pawn moves and the decider: one-ply 1 (14); imagined alone 7 (23); tie-break 4 (20);
+  random 2.5 (16.9). Double attack 11 (all moves 11.4%).
+- Unseen one move ahead: the solution advances a high-value imagined frame while the frames' quiet-threat read shows
+  no threat after it in 282 of the 669, 28 of the 70, 21 of the 52.
+Reading (one run, directional): imagined frames carry signal the frames' one-ply read lacks -- on the hard positions
+they put the solution first five to seven times as often (10 vs 2, 7 vs 1), as a tie-break they beat a random one on
+every set, and the solutions double-attack about twice as often as other moves. As a binary they are not selective
+(two thirds of all moves advance some high-value frame): the value is in the ranking. Next (Kaveh's "find a way to
+them, tactically"): hand the top imagined frames to the zone search as goals (their squares as zone hints, their
+realizing moves as candidates), and the visibility gap with an opponent model.
+
 ## 2026-10-01 06:43 PDT — PAUSE: the tactical layer, taking stock (Kaveh: "pause the tactics here")
 
 Kaveh's call after the deep-verdict dig, offered positional value at the leaf (planner terms or a distilled Stockfish)
