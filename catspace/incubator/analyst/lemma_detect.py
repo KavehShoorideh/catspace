@@ -52,7 +52,7 @@ def families(log=print) -> dict:
     pc = [_reason_only(_counts(r, False)) for r in recs]
     vocab = sorted({f for c in pc for f in c})
     raw = np.log1p(np.array([[c.get(f, 0) for f in vocab] for c in pc], dtype=float))
-    lab = KMeans(K, n_init=10, random_state=0).fit_predict(normalize(raw))
+    km = KMeans(K, n_init=10, random_state=0).fit(normalize(raw)); lab = km.labels_
     overall = raw.mean(0) + 1e-9
     fams = {}
     for g in sorted(set(lab)):
@@ -62,7 +62,17 @@ def families(log=print) -> dict:
         stakes = [min(r["stake"] / 100.0, MATE_PAWNS) for r, x in zip(recs, m) if x]
         th = Counter(t for r, x in zip(recs, m) if x for t in r["themes"])
         fams[int(g)] = dict(size=int(m.sum()), preventers=top, stake=st.median(stakes), themes=[t for t, _ in th.most_common(6)])
-    out = dict(families=fams, label={r["pid"]: int(g) for r, g in zip(recs, lab)})
+    keep = {}                                                         # the LLM layer's names survive a rebuild (2026-10-02: a rebuild
+    try:                                                              # once wiped them)
+        old = json.load(open(paths.derived(FAMILIES)))["families"]
+        keep = {int(g): {k: v for k, v in f.items() if k in ("name", "clarity", "why_it_works", "why_the_move_allowing_it_fails", "named_by")}
+                for g, f in old.items()}
+    except (FileNotFoundError, KeyError, ValueError):
+        pass
+    for g in fams:
+        fams[g].update(keep.get(g, {}))
+    out = dict(families=fams, label={r["pid"]: int(g) for r, g in zip(recs, lab)},
+               vocab=vocab, centroids=km.cluster_centers_.tolist())          # for naming a NEW tactic by its preventers (explain)
     json.dump(out, open(paths.derived(FAMILIES), "w"))
     for g, f in sorted(fams.items(), key=lambda kv: -kv[1]["size"]):
         log(f"   family {g:2d} ({f['size']:4d}; stake {f['stake']:.1f}): prevented by {', '.join(f['preventers'])} | themes {', '.join(f['themes'][:4])}")

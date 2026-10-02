@@ -172,6 +172,19 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   while frame gains can be mate-sized themselves (1,000) -- the counts with a "< 1e3" filter dropped real frames. Fixed:
   a separate mate flag, ranked first.
 
+### 2026-10-02 (lemmas in play, the explainer)
+- **A rebuild wiped hand labels** (class 7, a file with two writers): `lemma_detect.families()` rewrites
+  tactic_families.json; my merge script read the old names AFTER calling it and crashed on a key-type mismatch (int
+  keys in memory, string keys in JSON), so the LLM-layer names were gone and the explainer raised KeyError in 24 of 200
+  puzzles. Fixed: families() itself carries the names over; the names restored from the labelling script.
+- **A macOS fork-safety abort** (class 7): a multiprocessing pool forked while the parent's Stockfish engine thread was
+  alive; workers that then loaded numpy/sklearn aborted ("objc ... fork() ... Crashing instead") and the pool hung.
+  Fixed for the run with OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES; rule: no engine thread alive in a parent at fork.
+- **A calibration read as a decision** (class 10-like): the explainer called a move a tactic when the detectors gave it
+  P(any family) >= 0.5 -- balanced training inflates those probabilities (quiet moves at 0.95), so luft (f3) was named
+  "starts back-rank mate". Fixed: a tactic is decided by Stockfish's line (material or mate within 8 plies); the
+  detectors only name the family.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).

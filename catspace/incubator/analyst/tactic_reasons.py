@@ -155,16 +155,10 @@ def describe_defence(b: chess.Board, r: chess.Move, key: dict) -> list:
     return out
 
 
-def puzzle(row: dict) -> dict | None:
-    b = chess.Board(row["FEN"]); mv = row["Moves"].split()
-    b.push_uci(mv[0])                                                  # the blunder: now the tactic is available
-    line = [chess.Move.from_uci(u) for u in mv[1:]]
-    if not line or line[0] not in b.legal_moves:
-        return None
+def preventers_of(b: chess.Board, line: list, s0: float) -> tuple:
+    """The tactic on b (its side to move has it; `line` cashes it in; `s0` its stake) and what would have prevented it:
+    piece removals and the victim's free moves that collapse the stake. -> (preventers, the victim's move count)."""
     owner = b.turn
-    s0 = stake(b, owner)
-    if s0 is None or s0 < 200:
-        return dict(pid=row["PuzzleId"], skipped=f"stake {s0}")
     key = _key(b, line)
     th = s0 / 3
     pre = []
@@ -182,8 +176,22 @@ def puzzle(row: dict) -> dict | None:
             v = stake(bb, owner)
             if v is not None and v < max(th, 100):
                 pre.append(dict(kind="defend", move=pb.san(r), stake=v, feats=describe_defence(pb, r, key)))
+    return pre, (pb.legal_moves.count() if pb.is_valid() else 0)
+
+
+def puzzle(row: dict) -> dict | None:
+    b = chess.Board(row["FEN"]); mv = row["Moves"].split()
+    b.push_uci(mv[0])                                                  # the blunder: now the tactic is available
+    line = [chess.Move.from_uci(u) for u in mv[1:]]
+    if not line or line[0] not in b.legal_moves:
+        return None
+    owner = b.turn
+    s0 = stake(b, owner)
+    if s0 is None or s0 < 200:
+        return dict(pid=row["PuzzleId"], skipped=f"stake {s0}")
+    pre, n_def = preventers_of(b, line, s0)
     return dict(pid=row["PuzzleId"], themes=row["Themes"].split(), rating=int(row.get("Rating") or 0), fen=b.fen(),
-                line=mv[1:], stake=s0, preventers=pre, n_pieces=len(b.piece_map()), n_defences=pb.legal_moves.count() if pb.is_valid() else 0)
+                line=mv[1:], stake=s0, preventers=pre, n_pieces=len(b.piece_map()), n_defences=n_def)
 
 
 def collect(n: int, offset: int, workers: int = 10, log=print) -> str:

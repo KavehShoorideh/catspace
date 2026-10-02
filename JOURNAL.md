@@ -22874,6 +22874,37 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-02 15:17 PDT — the lemmas in the player, and the first explainer: why the human move fails, why the unseen move works (OBS)
+
+In the player (`frame_puzzles --lemmas`: the detectors' P(any family) as the planner's tie-break among the moves the
+tactics tie; with the proposer, pawn moves, the decider at 3e-6 and the imagined goals), one run each: the 70 misses
+of offset 500 -- 10 single / 10 tied, a random pick among ties 10.0 (the imagined tie-break 10.3; gained 2, lost 3;
+577 s); the 300 fresh of offset 300 -- 252 single / 255 tied, a random pick among ties 252.9 (the imagined tie-break
+250.0, the bundle 241.2, the plain player 237.3; gained 9, lost 13 on the tied count; 56,516 nodes a step; 1,642 s).
+Reading: in play the detector tie-break and the imagined one are indistinguishable at one run (+2.9 and -0.3); the
+best player so far, 252.9 of 300.
+The EXPLAINER (`explain.py`; Kaveh: "the final product is important: to name why the normal human-looking move is not
+good, and why a different move that humans don't see is good"): for a position and a human move -- WHY NOT: after it,
+Stockfish's line for the opponent (depth 14); with a swing of two pawns or more, the opponent's tactic is named by its
+family (its preventers computed with Stockfish -- tactic_reasons.preventers_of -- assigned to the nearest family
+centroid: the families' own definition; the detectors as the fallback) with the family's LLM-written words; BETTER:
+Stockfish's best move -- a tactic of ours when its line wins material or mates within 8 plies (named by the detectors),
+else the move that keeps the opponent from the tactic, said HOW from its relations to the tactic's key squares
+("gives the king luft", "unpins", "steps the king out of the line of fire", "adds a defender", "blocks the line",
+"captures a piece the tactic needs"), else "strategic (not yet named)". On Lichess puzzles the human move is the real
+blunder that made the puzzle. Example (16Ykx): "Nxh7 allows back-rank mate ... After Nxh7, Re8+ Nf8 Rxf8+ Kxf8" /
+"Kf8 steps the king out of the line of fire ... which keeps the opponent from back-rank mate (Stockfish +152, against
+mate after Nxh7)". Hand-made back rank: "Rd7 allows back-rank mate ... After Rd7, Ra1+ Rd1 Rxd1#" / "f3 gives the king
+luft, which keeps the opponent from back-rank mate". Printed, one run (200 fresh puzzles, rows i % 997 == 100, 26 s):
+the blunder swings 2+ pawns in 183; a family named in 183; the named family's typical themes among the puzzle's own
+Lichess themes in 36 (20%) -- the detectors alone 40 of 184 (22%); always naming the most common family 8 (4%); the
+CEILING of this check (the training tactics against their own family's themes) 686 of 2,859 (24%), any specific theme
+at all 69%. The better move a tactic of ours in 23.
+Reading (one run, directional): the explanations read as chess (by hand: the back-rank and exposed-king cases right;
+weak where a family is a mixture -- a check sequence named "zugzwang", a mating net "king out of play"); against
+Lichess's tags they are about as consistent as the families allow (20-22% against a 24% ceiling, 5x the trivial
+naming). The limit is the families, not the naming: finer families, or the LLM layer naming each instance, next.
+
 ## 2026-10-02 14:36 PDT — the high-value lemmas in play: learned detectors over our own relations; named by the LLM layer (OBS)
 
 Kaveh's picks: "lemmas in play", recognized by "learned detectors" (Stockfish only in training); then "it's ok to use
