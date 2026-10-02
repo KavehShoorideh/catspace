@@ -105,7 +105,7 @@ def _family_of(b: chess.Board, m: chess.Move) -> tuple:
     return (0.0, None) if v is None else (v[1], v[2])
 
 
-def _family_by_preventers(nb: chess.Board, line: list) -> int | None:
+def _family_by_preventers(nb: chess.Board, line: list, with_preventers: bool = False):
     """Name the tactic on nb (its side to move has it, `line` cashes it in) the way the families were DEFINED: its
     preventers (tactic_reasons, Stockfish), described by relations only, assigned to the nearest family centroid. The
     product may use Stockfish (it explains on top of it); the frame player cannot, and uses the detectors."""
@@ -114,18 +114,91 @@ def _family_by_preventers(nb: chess.Board, line: list) -> int | None:
     from .tactic_reasons import _reason_only, preventers_of, stake
     s0 = stake(nb, nb.turn)
     if s0 is None or s0 < 200:
-        return None
+        return (None, []) if with_preventers else None
     pre, _ = preventers_of(nb, line, s0)
     if not pre:
-        return None
+        return (None, pre) if with_preventers else None
     fam = json.load(open(paths.derived("tactic_families.json")))
     c = _reason_only(Counter(f for p in pre for f in p["feats"] + [f"{p['kind']}:any"]))
     v = np.log1p(np.array([c.get(f, 0) for f in fam["vocab"]], dtype=float))
     if not v.any():
-        return None
+        return (None, pre) if with_preventers else None
     v = v / np.linalg.norm(v)
     d = ((np.array(fam["centroids"]) - v) ** 2).sum(1)
-    return int(np.argmin(d))
+    return (int(np.argmin(d)), pre) if with_preventers else int(np.argmin(d))
+
+
+PIECE = {chess.PAWN: "pawn", chess.KNIGHT: "knight", chess.BISHOP: "bishop", chess.ROOK: "rook", chess.QUEEN: "queen", chess.KING: "king"}
+
+
+def _name(b: chess.Board, sq: int) -> str:
+    pc = b.piece_at(sq)
+    return f"{'White' if pc.color else 'Black'} {PIECE[pc.piece_type]} on {chess.square_name(sq)}" if pc else chess.square_name(sq)
+
+
+def line_facts(b: chess.Board, pv: list, n: int = 8) -> list:
+    """The line move by move with what python-chess can VERIFY about each move: check, mate, what it captures, the enemy
+    pieces newly pinned to their king, a fork (the moved piece attacking two or more enemy pieces worth a knight or more,
+    or the king and one), a discovered attack (another piece of the mover's that now hits a piece it did not). The LLM
+    layer writes only from these (2026-10-02: per-instance naming, grounded)."""
+    bb = b.copy(); out = []
+    for m in pv[:n]:
+        mover = bb.turn; them = not mover
+        san = bb.san(m); facts = []
+        if bb.is_capture(m):
+            cap = bb.piece_at(m.to_square) or chess.Piece(chess.PAWN, them)
+            facts.append(f"takes the {PIECE[cap.piece_type]}")
+        pinned_before = {s for s in chess.SquareSet(bb.occupied_co[them]) if bb.is_pinned(them, s)}
+        att_before = {s: set(chess.SquareSet(bb.attacks_mask(s))) for s in chess.SquareSet(bb.occupied_co[mover]) if s != m.from_square}
+        bb.push(m)
+        if bb.is_checkmate():
+            facts.append("checkmate")
+        elif bb.is_check():
+            facts.append("check")
+        for s in chess.SquareSet(bb.occupied_co[them]):
+            if bb.is_pinned(them, s) and s not in pinned_before:
+                facts.append(f"pins the {_name(bb, s)} to its king")
+        hit = [s for s in chess.SquareSet(bb.attacks_mask(m.to_square)) if bb.piece_at(s) and bb.piece_at(s).color == them
+               and (bb.piece_type_at(s) in (chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, chess.KING))]
+        if not bb.is_checkmate():                                      # a mate is not a fork (2026-10-02)
+            others = [s for s in hit if bb.piece_type_at(s) != chess.KING]
+            if bb.is_check() and others:
+                facts[facts.index("check")] = "check that also attacks the " + " and the ".join(_name(bb, s) for s in others)
+            elif len(others) >= 2:
+                facts.append("forks the " + " and the ".join(_name(bb, s) for s in others))
+        for s, before in att_before.items():
+            if bb.piece_at(s) is None or bb.piece_at(s).color != mover:
+                continue
+            new = [t for t in set(chess.SquareSet(bb.attacks_mask(s))) - before if bb.piece_at(t) and bb.piece_at(t).color == them
+                   and bb.piece_type_at(t) != chess.PAWN]
+            if new:
+                facts.append(f"uncovers the {_name(bb, s)} onto " + ", ".join(_name(bb, t) for t in new))
+        out.append(dict(move=san, by="White" if mover else "Black", facts=facts))
+    return out
+
+
+def facts(b: chess.Board, human: chess.Move) -> dict:
+    """Everything the LLM layer may use to write one position's explanation, all computed: the evaluations, both
+    lines annotated (line_facts), the family, the preventers in words, and how the better move heads the tactic off."""
+    e = explain(b, human)
+    nb = b.copy(); nb.push(human)
+    me = b.turn
+    opp_pv = [chess.Move.from_uci(u) for u in e["opp_pv"]]
+    out = dict(fen=b.fen(), side="White" if me else "Black", human=e["human"], eval_best=e["eval_best"], eval_after_human=e["eval_after_human"],
+               family=e["why_not"].get("name"), opponent_line=line_facts(nb, opp_pv) if opp_pv else [])
+    if e["why_not"].get("family") is not None and opp_pv:
+        _, pre = _family_by_preventers(nb, opp_pv, with_preventers=True)
+        words = []
+        for p in pre:
+            if p["kind"] == "remove":
+                words.append(f"without the {_name(nb, chess.parse_square(p['square']))}")
+            else:
+                words.append(f"if {out['side']} could play {p['move']} first")
+        out["would_have_prevented"] = words[:10]
+    if e.get("why_better"):
+        best_pv = [chess.Move.from_uci(u) for u in e["best_pv"]]
+        out["better"] = dict(move=e["why_better"]["move"], line=line_facts(b, best_pv), summary=e["why_better"]["text"])
+    return out
 
 
 def explain(b: chess.Board, human: chess.Move) -> dict:
@@ -134,7 +207,9 @@ def explain(b: chess.Board, human: chess.Move) -> dict:
     best_ev, best_pv, best_score = _sf(b, me, raw=True)
     nb = b.copy(); nb.push(human)
     after_ev, opp_pv = _sf(nb, me)
-    out = dict(fen=b.fen(), human=b.san(human), eval_best=best_ev, eval_after_human=after_ev, swing=best_ev - after_ev)
+    out = dict(fen=b.fen(), human=b.san(human), eval_best=best_ev, eval_after_human=after_ev, swing=best_ev - after_ev,
+               opp_pv=[m.uci() for m in opp_pv], best_pv=[m.uci() for m in best_pv])   # the lines as analysed: reused, never re-asked
+                                                                                          # (2026-10-02: a second call returned another best move)
     fams = _families()
     if best_ev - after_ev >= SWING and opp_pv:
         p, f = _family_of(nb, opp_pv[0])                               # the detectors (fallback)
@@ -234,9 +309,24 @@ def main(argv=None):
     sys.stdout.reconfigure(line_buffering=True)
     ap = argparse.ArgumentParser(); ap.add_argument("--n", type=int, default=200); ap.add_argument("--offset", type=int, default=100)
     ap.add_argument("--workers", type=int, default=10); ap.add_argument("--fen", default=None); ap.add_argument("--move", default=None)
+    ap.add_argument("--facts", type=int, default=0, help="print the fact sheets of N named puzzles of the set (for the LLM layer)")
     a = ap.parse_args(argv)
     try:
-        if a.fen:
+        if a.facts:
+            import random
+            from .frame_puzzles import fresh_rows
+            rows = fresh_rows(a.n, 997, a.offset); random.seed(1); random.shuffle(rows)
+            k = 0
+            for row in rows:
+                b = chess.Board(row["FEN"]); h = chess.Move.from_uci(row["Moves"].split()[0])
+                f = facts(b, h)
+                if not f.get("family"):
+                    continue
+                f["pid"] = row["PuzzleId"]; f["themes"] = [t for t in row["Themes"].split() if t not in GENERIC]
+                print(json.dumps(f, indent=1)); k += 1
+                if k >= a.facts:
+                    break
+        elif a.fen:
             b = chess.Board(a.fen); e = explain(b, chess.Move.from_uci(a.move))
             print("WHY NOT:", e["why_not"]["text"]); print("BETTER: ", e.get("why_better", {}).get("text", "(the move was best)"))
         else:
