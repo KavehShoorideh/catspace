@@ -72,11 +72,12 @@ Rxg7 Kxg7 Rg3+) the trades leave Black two points up (+2.2).
 **0KrJZ** — Black to move. `8/6p1/2P4p/K3b1kP/6P1/1B6/8/8 b - - 0 61`
 
 *Why not Kxg4?* It wins a pawn but takes the king away from White's h-pawn. After **Bf7 Kf4 Kb6 g5**, White takes
-**en passant (hxg6)** and gets a new passed pawn on the g-file; Black's bishop must give itself up on g7, and the
-ending is lost (Stockfish −4.5). The king was needed next to the h-pawn — the *endgame squeeze* family.
+**en passant (hxg6)** and gets a new passed pawn on the g-file; Black's bishop is pulled back to g7 to stop it
+(g7 Bxg7), and Stockfish judges the ending lost (−4.5). The king was needed next to the h-pawn — the *endgame squeeze*
+family.
 
-*Instead: Kf6* keeps the king beside the kingside pawns: after **Kb6 g6 hxg6 Kxg6** the king itself removes the
-danger, and the bishop alone can watch the c-pawn. Level (Stockfish 0.0).
+*Instead: Kf6* keeps the king beside the kingside pawns: after **Kb6 g6 hxg6 Kxg6** the king itself takes the
+dangerous pawn, and Stockfish calls the ending level (0.0).
 
 ---
 
