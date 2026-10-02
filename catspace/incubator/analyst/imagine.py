@@ -54,6 +54,7 @@ def readings(b: chess.Board) -> dict:
     es = edits(b)
     attack = [e for e in es if e.kind in ("add", "remove", "relocate") and e.gain >= HIGH]
     guard = [e for e in es if e.kind == "guard" and e.gain >= HIGH]
+    fr = far(b)
     rows = {}
     for m in b.legal_moves:
         nb = b.copy(stack=False); nb.push(m)
@@ -68,7 +69,10 @@ def readings(b: chess.Board) -> dict:
                 if r == 1 and e.kind in ("add", "remove"):
                     targets.add(e.target)
         pre = sum(e.gain for e in guard if realizes(b, m, e) == 1)
-        rows[m.uci()] = dict(mate=mate, one=one.get(m.uci(), 0.0), quiet=q, imagined=img, inter=len(targets), preempt=pre)
+        fs = fr.get(m.uci(), [])
+        rows[m.uci()] = dict(mate=mate, one=one.get(m.uci(), 0.0), quiet=q, imagined=img, inter=len(targets), preempt=pre,
+                             far_all=sum(g / k for t, k, g, d, f in fs), far_safe=sum(g / k for t, k, g, d, f in fs if not d),
+                             far_fixed=sum(g / k for t, k, g, d, f in fs if not d and f))
     return rows
 
 
@@ -133,6 +137,57 @@ def goals(b: chess.Board, k: int = 3) -> tuple:
     return out
 
 
+FAR = 4                                                             # our moves to arrive, at most (the measurement's reach)
+
+
+def far(b: chess.Board, K: int = FAR) -> dict:
+    """IMAGINED FRAMES FURTHER AHEAD (Kaveh 2026-10-01: "imagine further ahead"): a high-value 'one more attacker' frame
+    on an enemy piece (whatif add edits: what the edited frame wins, exactly) that one of our pieces can make true by
+    ARRIVING in 2..K quiet moves (piece_reach: the fewest moves after which it attacks the target, others standing).
+    For each: the target, our moves k, the gain, DEFENSIBLE (an opponent piece can come to defend the target within
+    its k-1 replies) and FIXED (the target cannot simply step away: a pawn, a pinned piece). The first move of the
+    route is the move that advances it. -> {uci of the first move: [(target, k, gain, defensible, fixed)]}."""
+    from .piece_reach import piece_reach
+    from .whatif import VALUE, edits
+    us, them = b.turn, not b.turn
+    adds = {}
+    for e in edits(b):
+        if e.kind == "add" and e.gain >= HIGH:
+            adds.setdefault(e.target, {})[e.arg] = max(e.gain, adds.get(e.target, {}).get(e.arg, 0.0))
+    if not adds:
+        return {}
+    opp = {o: piece_reach(b, o, K) for o in chess.SquareSet(b.occupied_co[them]) if b.piece_type_at(o) != chess.KING}
+    legal = {m.uci() for m in b.legal_moves}
+    out = {}
+    for p in chess.SquareSet(b.occupied_co[us]):
+        pt = b.piece_type_at(p)
+        w = VALUE[pt]
+        r = piece_reach(b, p, K)
+        for t, by_v in adds.items():
+            if pt == chess.KING:                                       # a king attacks only what nobody defends
+                if b.attackers(them, t):
+                    continue
+                gain = max(by_v.values())
+            else:
+                ok = [g for v, g in by_v.items() if v >= w]             # an attacker worth at most the edit's
+                if not ok:
+                    continue
+                gain = max(ok)
+            k = r.attack.get(t)
+            if k is None or k < 2 or k > K:
+                continue
+            route = r.attack_route(t)
+            if not route:
+                continue
+            uci = chess.Move(p, route[0]).uci()
+            if uci not in legal:
+                continue
+            defensible = any(ro.attack.get(t, 99) <= k - 1 for o, ro in opp.items() if o != t)
+            fixed = b.piece_type_at(t) == chess.PAWN or b.is_pinned(them, t)
+            out.setdefault(uci, []).append((t, k, gain, defensible, fixed))
+    return out
+
+
 def position(args) -> dict | None:
     fen, sol, pid, tag = args
     b = chess.Board(fen)
@@ -166,7 +221,11 @@ def items_for(name: str) -> list:
 
 ORDERS = [("frames one-ply (the player's order)", "one"), ("frames quiet threat", "quiet"), ("imagined frames advanced", "imagined"),
           ("interactions (targets advanced)", "inter"), ("pre-empt (their frames answered)", "preempt"),
-          ("one-ply, imagined as tie-break", lambda r: (r["one"], r["imagined"]))]
+          ("one-ply, imagined as tie-break", lambda r: (r["one"], r["imagined"])),
+          ("far: all (gain / moves)", "far_all"), ("far: not defensible in time", "far_safe"), ("far: and the target fixed", "far_fixed"),
+          ("one-ply, tie-break imagined + far all", lambda r: (r["one"], r["imagined"] + r.get("far_all", 0.0))),
+          ("one-ply, tie-break imagined + far safe", lambda r: (r["one"], r["imagined"] + r.get("far_safe", 0.0))),
+          ("one-ply, tie-break imagined + far fixed", lambda r: (r["one"], r["imagined"] + r.get("far_fixed", 0.0)))]
 
 
 def report(recs: list, log=print) -> None:
@@ -186,6 +245,12 @@ def report(recs: list, log=print) -> None:
             e3 += max(0.0, min(1.0, (3 - above) / tie))
         log(f"   {'one-ply, RANDOM tie-break (expected)':38s}             top-1 {e1:5.1f}  top-3 {e3:5.1f}")
         sol = [r["rows"][r["sol"]] for r in rs]
+        if "far_all" in sol[0]:
+            allm = [x for r in rs for x in r["rows"].values()]
+            log(f"   the solution is the first step toward a far frame (2-{FAR} moves) in {sum(1 for x in sol if x['far_all'] > 0)} (all moves "
+                f"{sum(1 for x in allm if x['far_all'] > 0) / len(allm):.3f}); not defensible in time {sum(1 for x in sol if x['far_safe'] > 0)} "
+                f"({sum(1 for x in allm if x['far_safe'] > 0) / len(allm):.3f}); and fixed {sum(1 for x in sol if x['far_fixed'] > 0)} "
+                f"({sum(1 for x in allm if x['far_fixed'] > 0) / len(allm):.3f})")
         allm = [x for r in rs for x in r["rows"].values()]
         log(f"   the solution advances a high-value imagined frame in {sum(1 for x in sol if x['imagined'] > 0)} (all moves: "
             f"{sum(1 for x in allm if x['imagined'] > 0) / len(allm):.3f}); completes frames against two or more enemy pieces (a double "

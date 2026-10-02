@@ -22874,6 +22874,26 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-01 18:43 PDT — imagining further ahead: frames two to four quiet moves away do not point at puzzle solutions (OBS)
+
+Kaveh's pick: "imagine further ahead". `imagine.far`: a high-value 'one more attacker' frame on an enemy piece
+(whatif add edits, valued exactly) that one of our pieces can make true by ARRIVING in 2-4 quiet moves (piece_reach:
+the fewest moves after which it attacks the target, the others standing; a king only on undefended targets); per frame
+the target, our moves k, the gain, DEFENSIBLE (an opponent piece can come to defend it within its k-1 replies) and
+FIXED (a pawn or a pinned piece: it cannot step away); the route's first move advances it; read as gain / k. A test
+(a knight's two-move route to a loose fixed pawn). On 02jzH it finds nothing: that win (the rooks to the seventh with
+Bg5+ and Bf6+) is not one more attacker on one target. Printed (the 17:06 measurement rerun, 792 positions, 663 s):
+- as a tie-break added to the imagined value: the solution first in 488 of the 669 fresh steps (imagined alone 482,
+  random tie-break 456.3); the 70 misses 6 (6; 4.1); the 52 left 4 (4; 2.5). Alone: 96, 2, 2 firsts.
+- the solution is the first step toward a far frame in 68 of 669 (all moves 15.5%), 4 of 70 (14.6%), 4 of 52
+  (15.8%) -- LESS often than an average move; toward one not defensible in time in 17 (all moves 1.3%), 3 (1.8%), 3
+  (1.9%) -- two to three times as often, and rare; and fixed 8, 2, 2.
+Reading (one run, directional; the negative's bug check finds a set bias, not a code bug): puzzle solutions are
+forcing; frames that need two to four quiet moves are plans, which a puzzle rarely asks for. The undefendable kind is
+enriched but too rare here to move the score. Its test belongs where quiet plans decide: game positions (the 300
+held-out game positions of 2026-09-30, Stockfish's best as the label), and a forcing variant -- frames reached by a
+chain of threats the opponent must answer (threat-space search) -- for the puzzles. Not wired into the player.
+
 ## 2026-10-01 18:29 PDT — imagined frames in play: as goals they change little; as the tie-break they lift the player by about 9 of 300 (OBS)
 
 Kaveh's pick after the 17:06 measurement: "imagined goals for the search" -- his "find a way to them, tactically".
