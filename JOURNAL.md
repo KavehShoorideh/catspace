@@ -22874,6 +22874,32 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-02 16:20 PDT — per-instance explanations: computed fact sheets, six written by hand, a faithfulness checker, a Claude writer waiting for credentials (OBS)
+
+Kaveh's picks: "name each instance" (a hand-written sample first), then "more facts first", then no preference (the
+recommended path: an LLM writes from the facts, a checker verifies). `explain.facts()`: the fact sheet a writer may use
+-- Stockfish's lines annotated move by move by python-chess (check, mate, captures, new pins, forks, uncovered lines);
+WHAT THE HUMAN SAW (what the move grabs and attacks, its own threat by Stockfish's line with the opponent passing,
+Maia-1500's probability and rank -- lc0 with the repo's Maia weights); the opponent's threat before the move; WHAT THE
+BETTER MOVE ACHIEVES (its threat, the opponent's best line after it, the what-if frames it completes, the moved piece's
+mobility and reach toward the enemy king, passed pawns); the family and the preventers. `docs/EXPLAIN_SAMPLES.md`: six
+fresh puzzles (rows i % 997 == 100) written by hand by the LLM layer from those facts only, extra claims checked on the
+board with python-chess. What the facts made visible: in four of six the blunder was Maia's first choice ("human-
+looking" is measurable); why it looked right (it grabs material, answers a threat, starts a plan); twice the human saw
+the right idea in the wrong order (Qxd6 then Qxf8+, where Qxf8+ at once wins the queen; Be4 then Rg8, where Rg8 at once
+keeps the edge); quiet better moves got a point (Qa7 turns a loss into a perpetual check; Kf6 keeps the king by the
+pawn); once the best move was itself the most human (Nf6, 44%) and the blunder the unusual one.
+`explain_text.py`: the fact sheet rendered for a writer, a fixed PROMPT (three parts, facts only, at most 150 words),
+and the faithfulness CHECKER -- every move (SAN), square, percentage and evaluation a text mentions is looked up in the
+facts. Printed: the six hand-written samples -- 146 checkable mentions, 0 unverified (after two checker false alarms
+were fixed: Maia's quoted top move, a FEN read as a move); tests: faithful text passes, a planted wrong move, Maia
+percentage, evaluation and square are each caught. The Claude writer (claude-opus-5-5, effort medium, server-side
+refusal fallbacks; `write --dry-run` prints what would be sent) is ready; this machine has no Anthropic credentials,
+so the automated run waits for Kaveh. Bugs on the way (docs/BUGS.md classes 7 and 2): a second Stockfish call returned
+a different best move than the one named (the lines are now reused, never re-asked); the opponent's threat after the
+better move read "none" in every sheet (a turn test skipped it); duplicate frames; a mate score rendered as "-100.0"
+pawns (now "gets mated").
+
 ## 2026-10-02 15:53 PDT — finer families: what the line does (an opened line, a lured piece, a pin made inside it) and 32 groups (OBS)
 
 Kaveh's pick: finer families. New relations in tactic_reasons (from the line, generic): the line the first move OPENS
