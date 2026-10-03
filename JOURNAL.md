@@ -22874,6 +22874,31 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-02 20:19 PDT — the discovered check as an armed lemma: Kaveh's own game, then 2,000 blitz games (OBS)
+
+Kaveh refocused on tactics with his game lichess 6IDKdXUd (1334 vs 1321, blitz): "I saw the discovered check a few moves
+before ... as long as a piece wasn't protected, I could win it, and a pawn for a bishop. So I kicked the other bishop
+away, took with my knight, setting up a baby trap, then I struck when the opponent took back with their queen. I want
+lemmas like this ... precalculated from a different game, remembered, imagined, set as a high level goal, and when the
+tactic presented itself I could execute without delay." His pick: one lemma end to end. `discovery.py`: BATTERY (our
+slider behind our own piece, the line beyond it); ARMED (the front piece has a checking move off the line, with its
+known COST: its value if it can be taken where it lands, less what it takes); STRIKE (an enemy piece worth more than the
+cost on the line, the departure verified by the zone search); LURE (a capture of ours on the line whose natural
+recapture puts a bigger piece there). His game replayed (0.2 s): armed from move 11 (Qd1 behind Bd3, Bxh7+ costing 2);
+at move 16 an immediate strike wins about a pawn (the loose d4 bishop); at move 17 the lure Nxd4 -- the queen takes
+back onto the line -- then Bxh7+ wins +7; at move 18 the strike. (His plan beat the immediate strike: wait for the
+bigger target.)
+On 2,000 Lichess games (January 2019, rated blitz 3-10 minutes, both players 1100-1700, normal termination; 26 s;
+one run): armed in 14,750 positions of 1,818 games; a strike available in 625 positions (winning 3+ in 314); struck 260
+(of the 3+: 166); missed -- the move played clearly worse by the same search -- 127 (of the 3+: 84; first bug check:
+mates played instead of the strike had counted as misses, now excluded); a lure available in 115 positions, played 25,
+the opponent took back onto the line 11 times, and the strike followed only 2. Caveat: a "strike" here is any checking
+departure that wins with a target on the line -- some of the gain can come from the departure's own capture.
+Reading (one run, directional): the armed discovered check is everywhere at club level, the strike when it is there
+is missed about a quarter of the time when it wins three or more, and the trap Kaveh set -- lure, then strike -- is
+rare and rarely finished (2 of 11 when the opponent fell for it). The lemma as a remembered, armed goal is exactly the
+gap.
+
 ## 2026-10-02 16:20 PDT — per-instance explanations: computed fact sheets, six written by hand, a faithfulness checker, a Claude writer waiting for credentials (OBS)
 
 Kaveh's picks: "name each instance" (a hand-written sample first), then "more facts first", then no preference (the

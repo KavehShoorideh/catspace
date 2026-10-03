@@ -165,11 +165,87 @@ def replay(pgn: str, side: chess.Color, start: int = 10, log=print) -> None:
         b.push(m)
 
 
+def _game_rows(pgn: str) -> list:
+    """Every position of one game: armed? the best strike and whether it was played; a lure and whether it was played;
+    after a played lure, did the opponent take back onto the line, and was the strike played next?"""
+    import io
+    import chess.pgn
+    g = chess.pgn.read_game(io.StringIO(pgn)); b = g.board(); moves = list(g.mainline_moves()); rows = []
+    for i, m in enumerate(moves):
+        arm = armed(b)
+        if arm:
+            st = strikes(b); lu = lures(b)
+            mates = b.copy(stack=False); mates.push(m)
+            played_value = (1e3 if mates.is_checkmate() else _verify(b, m)) if st and m != st[0][0] else None
+            row = dict(game=g.headers.get("Site", ""), ply=i, fen=b.fen(), played=b.san(m),
+                       strike=(b.san(st[0][0]), st[0][1]) if st else None, struck=bool(st) and m == st[0][0],
+                       missed=bool(st) and m != st[0][0] and played_value < st[0][1] - 1,   # not a mate, and clearly worse by the
+                                                                                               # same search (2026-10-03: mates read as misses)
+                       lure=[(b.san(x[0]), x[1], x[2]) for x in lu][:3], lured=any(m == x[0] for x in lu))
+            if row["lured"] and i + 2 < len(moves):                    # the trap: did they take back onto the line, and was it sprung?
+                after = b.copy(); after.push(m)
+                reply = moves[i + 1]
+                row["took_back"] = reply.to_square == m.to_square and after.is_capture(reply)
+                after.push(reply)
+                row["sprung"] = any(moves[i + 2] == s for s, _, _ in strikes(after)) if row["took_back"] else False
+            rows.append(row)
+        b.push(m)
+    return rows
+
+
+def games(n: int = 2000, lo: int = 1100, hi: int = 1700, workers: int = 10, log=print) -> None:
+    """The lemma on real games: rated blitz (3-10 minutes), both players rated lo-hi (Kaveh's game: 1334-1321)."""
+    import io
+    import json
+    import multiprocessing as mp
+    import time
+    import zstandard
+    from catspace.io import paths
+    t0 = time.perf_counter(); pgns = []; buf = []
+    fh = open(paths.assets_dir() / "corpora" / "raw" / "lichess_db_standard_rated_2019-01.pgn.zst", "rb")
+    rd = io.TextIOWrapper(zstandard.ZstdDecompressor().stream_reader(fh), encoding="utf-8")
+    head = {}
+    for line in rd:
+        if line.startswith("[") and not buf:
+            k, _, v = line[1:].partition(" "); head[k] = v.strip().rstrip("]").strip('"')
+            continue
+        if line.startswith("1.") or buf:
+            buf.append(line)
+            if line.strip() == "" or line.rstrip().endswith(("1-0", "0-1", "1/2-1/2", "*")):
+                tc = head.get("TimeControl", "-")
+                try:
+                    base = int(tc.split("+")[0]); we = int(head.get("WhiteElo", 0)); be = int(head.get("BlackElo", 0))
+                except ValueError:
+                    base = we = be = 0
+                if 180 <= base <= 600 and lo <= we <= hi and lo <= be <= hi and head.get("Termination") == "Normal":
+                    pgns.append(f'[Site "{head.get("Site", "")}"]\n\n' + "".join(buf))
+                buf = []; head = {}
+                if len(pgns) >= n:
+                    break
+    log(f"[discovery] {len(pgns)} games read ({time.perf_counter() - t0:.0f}s)")
+    with mp.get_context("fork").Pool(workers) as pool:
+        rows = [r for rs in pool.imap_unordered(_game_rows, pgns, chunksize=4) for r in rs]
+    json.dump(rows, open(paths.derived("discovery_games.json"), "w"))
+    st = [r for r in rows if r["strike"]]; big = [r for r in st if r["strike"][1] >= 3]
+    lu = [r for r in rows if r["lure"]]; played = [r for r in lu if r["lured"]]
+    log(f"OBS {len(pgns)} games ({time.perf_counter() - t0:.0f}s): armed positions {len(rows)} in {len({r['game'] for r in rows})} games; "
+        f"a strike available in {len(st)} positions (winning 3+ in {len(big)}), struck {sum(r['struck'] for r in st)} "
+        f"(of the 3+: {sum(r['struck'] for r in big)}), missed -- the move played clearly worse by the same search -- {sum(r['missed'] for r in st)} "
+        f"(of the 3+: {sum(r['missed'] for r in big)}); a lure available in {len(lu)}, played {len(played)}, the opponent took back onto "
+        f"the line {sum(r.get('took_back', False) for r in played)}, and the strike followed {sum(r.get('sprung', False) for r in played)}")
+    for r in [r for r in big if r["missed"]][:5]:
+        log(f"   MISSED {r['game']} ply {r['ply']}: played {r['played']}, the strike {r['strike'][0]} wins {r['strike'][1]:+g}  {r['fen']}")
+    for r in [r for r in played if r.get("sprung")][:5]:
+        log(f"   TRAP SPRUNG {r['game']} ply {r['ply']}: lure {r['played']}, then the strike")
+
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(); ap.add_argument("--game", action="store_true")
+    ap = argparse.ArgumentParser(); ap.add_argument("--game", action="store_true"); ap.add_argument("--games", type=int, default=0)
     a = ap.parse_args(argv)
     if a.game:
         replay(KAVEH_GAME, chess.WHITE)
+    if a.games:
+        games(a.games)
 
 
 if __name__ == "__main__":
