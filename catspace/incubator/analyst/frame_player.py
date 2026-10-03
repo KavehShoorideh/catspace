@@ -117,6 +117,7 @@ IMAGINE = 0                                                         # zone_candi
 DISCOVERY = False                                                   # the armed discovered-check lemma (discovery.py): a strike is played at
                                                                     # once, without search; its lures join the candidates (Kaveh 2026-10-03)
 STRIKES = [0]                                                       # how many choices were instant strikes (for the gauges)
+PIN = False                                                         # the armed pin lemma (pin.py), the same way: strikes at once, lures as candidates
 JOBS = False                                                        # zone_candidates: the job ledger's operator moves join the candidates
 PAWN_MOVES = False                                                  # zone_candidates: every pawn move joins the candidates (with the
                                                                     # spec's pawn_moves: the quiet pawn move, the misses' gap -- 24/44)
@@ -164,6 +165,9 @@ def candidates(b: chess.Board, before=None, book=None, ledger: str = "zone_candi
         keep |= set(operators(b, _jobs(b)))
     if PAWN_MOVES and ledger == "zone_candidates":
         keep |= {m.uci() for m in moves if b.piece_type_at(m.from_square) == chess.PAWN}
+    if PIN and ledger == "zone_candidates":                            # the pin's lures: moves that create a pin on a piece worth winning
+        from .pin import lures as pin_lures
+        keep |= {m.uci() for m, _, _ in pin_lures(b)}
     if DISCOVERY and ledger == "zone_candidates":                      # the armed discovered check's lures: a capture on the line whose
         from .discovery import lures                                    # natural recapture puts a bigger piece there (the baby trap)
         keep |= {m.uci() for m, _, _, _ in lures(b)}
@@ -191,9 +195,15 @@ def choose(b: chess.Board) -> dict:
             if mt:
                 return True
         return False
-    if DISCOVERY and LEDGER == "zone_candidates" and not _mate_in_one(b):
-        from .discovery import strikes                                  # the armed lemma fires: play it at once (Kaveh: "when the tactic
-        st = strikes(b)                                                 # presented itself I could execute without delay")
+    if (DISCOVERY or PIN) and LEDGER == "zone_candidates" and not _mate_in_one(b):
+        st = []                                                         # an armed lemma fires: play it at once (Kaveh: "when the tactic
+        if DISCOVERY:                                                   # presented itself I could execute without delay")
+            from .discovery import strikes
+            st += strikes(b)
+        if PIN:
+            from .pin import strikes as pin_strikes
+            st += pin_strikes(b)
+        st.sort(key=lambda x: -x[1])
         if st:
             m, gain, _ = st[0]
             STRIKES[0] += 1; NODES[0] = 0; DEPTH[0] = 0
