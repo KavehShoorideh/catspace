@@ -114,6 +114,9 @@ DECIDER_PRICE = [None]                                              # ... or, wh
 KING_WATCH = False                                                  # zone_candidates: the king watches' moves join the candidates
 PROPOSE = 0                                                         # zone_candidates: the moves realizing the proposer's top-k what-if edits join (0: off)
 IMAGINE = 0                                                         # zone_candidates: the moves advancing the top-k imagined frames join (imagine.goals; 0: off)
+DISCOVERY = False                                                   # the armed discovered-check lemma (discovery.py): a strike is played at
+                                                                    # once, without search; its lures join the candidates (Kaveh 2026-10-03)
+STRIKES = [0]                                                       # how many choices were instant strikes (for the gauges)
 JOBS = False                                                        # zone_candidates: the job ledger's operator moves join the candidates
 PAWN_MOVES = False                                                  # zone_candidates: every pawn move joins the candidates (with the
                                                                     # spec's pawn_moves: the quiet pawn move, the misses' gap -- 24/44)
@@ -161,6 +164,9 @@ def candidates(b: chess.Board, before=None, book=None, ledger: str = "zone_candi
         keep |= set(operators(b, _jobs(b)))
     if PAWN_MOVES and ledger == "zone_candidates":
         keep |= {m.uci() for m in moves if b.piece_type_at(m.from_square) == chess.PAWN}
+    if DISCOVERY and ledger == "zone_candidates":                      # the armed discovered check's lures: a capture on the line whose
+        from .discovery import lures                                    # natural recapture puts a bigger piece there (the baby trap)
+        keep |= {m.uci() for m, _, _, _ in lures(b)}
     if IMAGINE and ledger == "zone_candidates":                        # the imagined frames' moves (Kaveh: "imagine them, then find a way to
         from .imagine import goals                                      # them, tactically"): double attacks first, then the frames' value
         keep |= set(goals(b, IMAGINE)[0])
@@ -179,6 +185,19 @@ def choose(b: chess.Board) -> dict:
     else:
         before = threats(stand, square_frame) if stand is not None else (0.0, None, [])
     values = {}; trace = {}
+    def _mate_in_one(bd):
+        for mv in bd.legal_moves:
+            bd.push(mv); mt = bd.is_checkmate(); bd.pop()
+            if mt:
+                return True
+        return False
+    if DISCOVERY and LEDGER == "zone_candidates" and not _mate_in_one(b):
+        from .discovery import strikes                                  # the armed lemma fires: play it at once (Kaveh: "when the tactic
+        st = strikes(b)                                                 # presented itself I could execute without delay")
+        if st:
+            m, gain, _ = st[0]
+            STRIKES[0] += 1; NODES[0] = 0; DEPTH[0] = 0
+            return dict(values={m.uci(): float(gain)}, best=[m.uci()], trace={}, before=before, plans={}, strike=True)
     if LEDGER in ("two_ply", "two_ply_candidates", "two_ply_instinct", "zone_candidates"):
         moves = list(b.legal_moves)
         if LEDGER in ("two_ply_candidates", "two_ply_instinct", "zone_candidates"):

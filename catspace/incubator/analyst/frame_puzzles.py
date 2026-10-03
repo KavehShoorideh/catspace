@@ -148,6 +148,7 @@ def main(argv=None):
     ap.add_argument("--decider-threshold", type=float, default=0.5, help="--budget-policy decider: go on past a rung when the chance it changes the decision is at least this")
     ap.add_argument("--decider-model", default=None, help="--budget-policy decider: the model's data/derived name (default depth_decider.pkl)")
     ap.add_argument("--decider-price", type=float, default=None, help="--budget-policy decider: a price on search instead (go on when the chance >= price x the next rung's nodes)")
+    ap.add_argument("--discovery", action="store_true", help="the armed discovered-check lemma: strikes at once, lures as candidates")
     ap.add_argument("--lemmas", action="store_true", help="the learned high-value lemma detectors as the tie-break (lemma_detect)")
     ap.add_argument("--imagine", type=int, default=0, help="the top-k imagined frames: their moves join the candidates, their squares the zone")
     ap.add_argument("--leaf-mates", action="store_true", help="zone search: a mate in one for the side to move is seen at the horizon")
@@ -197,6 +198,8 @@ def main(argv=None):
         planner_kw["imagine"] = a.imagine; FP.IMAGINE = a.imagine; tag += f"_imagine{a.imagine}"
     if a.lemmas:
         planner_kw["lemmas"] = True; tag += "_lemmas"
+    if a.discovery:
+        FP.DISCOVERY = True; tag += "_discovery"
     if a.jobs:
         planner_kw["jobs"] = True; FP.JOBS = True; tag += "_jobs"
     spec_kw = {}                                                  # the tactical spec's limits, all the planner's
