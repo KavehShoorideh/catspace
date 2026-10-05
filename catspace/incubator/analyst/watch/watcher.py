@@ -23,7 +23,7 @@ import numpy as np
 
 from catspace.io import paths
 
-from .frames import attributes, live_frames, material, observe
+from .frames import FrameMemory, material, observe
 from .rules import KINDS, RuleBase, add_rule, bits, bucket, record_root
 
 STRIDE, RESIDUE = 97, 7
@@ -104,6 +104,7 @@ def watch_game(g: dict, rb: RuleBase, policy: str = "specific_newest") -> list[d
         nb.push(m)
         boards.append(nb)
     censored = g["termination"] == "Time forfeit"
+    mem = FrameMemory()                                                      # the game, a move at a time (Kaveh 2026-10-05)
     pending: list[tuple] = []                                                # (reveal at, kind, matched rules, outcome, attributes)
     results: list[tuple[list, str]] = []
     cases = []
@@ -112,17 +113,20 @@ def watch_game(g: dict, rb: RuleBase, policy: str = "specific_newest") -> list[d
             rb.update(item[2], item[3], item[4])
             pending.remove(item)
         b, mover = boards[t], not boards[t].turn
-        fr = live_frames(b)
+        frame_attrs = mem.step(boards[t - 1], moves[t - 1], b, t)
+        fr = sorted(frame_attrs)
         obs = observe(boards, moves, t)
         dists, frames_out = [], []
         for sq in fr:
-            a = attributes(b, sq, mover, moves[t - 1])
+            a = frame_attrs[sq]
             rid, matched = rb.select("frame", a, policy)
             d = np.array(rb.dist(rid, a))
             x = bucket("frame", obs["by_square"].get(sq, 0))
             dists.append(d)
+            top = sorted(range(21), key=lambda i: -d[i])[:3]
             frames_out.append(dict(sq=chess.square_name(sq), attrs=a, rule=rid, matched=matched, outcome=x,
-                                   p=float(d[x + 10]), p_all={m: rb.dist(m, a)[x + 10] for m in matched}))
+                                   p=float(d[x + 10]), p_all={m: rb.dist(m, a)[x + 10] for m in matched},
+                                   top=[(i - 10, float(d[i])) for i in top]))     # the forecast as made: its 3 likeliest outcomes
             pending.append((obs["end"], "frame", matched, x, a))
         pa = position_attrs(b, mover, fr, (g["white_elo"], g["black_elo"]))
         rid_e, matched_e = rb.select("elsewhere", pa, policy)
@@ -131,6 +135,10 @@ def watch_game(g: dict, rb: RuleBase, policy: str = "specific_newest") -> list[d
         dists.append(d_e)
         pending.append((obs["end"], "elsewhere", matched_e, x_e, pa))
         total, off = convolve(dists)
+        mean_delta = float(sum((i + off) * p for i, p in enumerate(total)))
+        pa["settled"] = int(round(pa["material"] + mean_delta))             # the material once the forecast exchanges settle
+        last = moves[t - 1]
+        pa["exchange_on"] = boards[t - 1].is_capture(last) and any(m.to_square == last.to_square and b.is_capture(m) for m in b.legal_moves)
         x_total = sum(f["outcome"] for f in frames_out) + x_e
         short_bits = bits(float(total[x_total - off]))
         case = dict(game=g["game_id"], ply=t, fen=b.fen(), move=moves[t - 1].uci(), mover="white" if mover else "black",
@@ -142,6 +150,7 @@ def watch_game(g: dict, rb: RuleBase, policy: str = "specific_newest") -> list[d
             res = mover_result(g["result"], mover)
             p_r = rb.dist(rid_r, pa)[KINDS["result"].index(res)]
             case.update(result=res, result_rule=rid_r, p_result=p_r, long_bits=bits(p_r), pattrs=pa,
+                        result_dist=dict(zip(KINDS["result"], rb.dist(rid_r, pa))),
                         p_result_all={m: rb.dist(m, pa)[KINDS["result"].index(res)] for m in matched_r})
             results.append((matched_r, res))
         cases.append(case)
@@ -271,6 +280,42 @@ def credit(batch: int | None = None) -> dict:
     return {r: dict(cases=n, vs_root=vr, vs_parent=vp) for r, (n, vr, vp) in cred.items()}
 
 
+def explain(case_id: str, batch: int | None = None) -> None:
+    """One position as the watcher saw it: the board, the move just played, every frame with the rule that forecast it,
+    its likeliest outcomes as forecast then, and what the game did; the off-frame term; the result forecast."""
+    st = load_state()
+    ks = range(len(st["batches"])) if batch is None else [batch]
+    gid, ply = (int(x) for x in case_id.split(":")[:2])
+    rb = RuleBase.load()
+    for k in ks:
+        for c in json.loads((data_root() / f"batch_{k:03d}.json").read_text())["cases"]:
+            if c["game"] != gid or c["ply"] != ply:
+                continue
+            g = games_by_id(gid)
+            moves = g["moves"].split()
+            b = chess.Board()
+            for u in moves[:ply - 1]:
+                b.push_uci(u)
+            san = b.san(chess.Move.from_uci(moves[ply - 1]))
+            b.push_uci(moves[ply - 1])
+            print(f"game {gid} (White {g['white_elo']}, Black {g['black_elo']}), after {ply} plies: {c['mover']} just played {san}\n")
+            print(b.unicode(borders=False, empty_square="."), "\n")
+            print("then:", b.variation_san([chess.Move.from_uci(u) for u in moves[ply:c["end"] + 1]]) or "(quiet)", "\n")
+            for f in c["frames"]:
+                r = rb.rules[f["rule"]]
+                fc = ", ".join(f"{o:+d} {p:.0%}" for o, p in f.get("top", []))
+                print(f"frame {f['sq']} ({'mover' if f['attrs']['occ_mover'] else 'opponent'}'s {f['attrs']['occ']}): rule {r.id} \"{r.text}\"")
+                print(f"    forecast {fc}; happened {f['outcome']:+d} (probability given {f['p']:.0%}, {bits(f['p']):.2f} bits)")
+            e = c["elsewhere"]
+            print(f"off the frames: rule {e['rule']} \"{rb.rules[e['rule']].text}\"; happened {e['outcome']:+d} (probability given {e['p']:.0%})")
+            print(f"material change for the mover: {c['delta']:+d}, probability given {c['p_delta']:.0%} ({c['short_bits']:.2f} bits)")
+            if "result_dist" in c:
+                rd = ", ".join(f"{k2} {v:.0%}" for k2, v in c["result_dist"].items())
+                print(f"result for the mover: rule {c['result_rule']} \"{rb.rules[c['result_rule']].text}\": {rd}; it was a {c['result']}")
+            return
+    print(f"no case {case_id}")
+
+
 def show(batch: int | None = None, top: int = 20) -> None:
     """The batch's largest surprises, with what Claude needs to backtrack: the position, the move, every frame's
     forecast and outcome, and the game's continuation until the window closed."""
@@ -310,7 +355,8 @@ def games_by_id(gid: int) -> dict:
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["batch", "show", "add", "replay", "credit", "health"])
+    ap.add_argument("cmd", choices=["batch", "show", "add", "replay", "credit", "health", "explain"])
+    ap.add_argument("--case", default=None, help="explain: game:ply")
     ap.add_argument("--games", type=int, default=20)
     ap.add_argument("--batch", type=int, default=None)
     ap.add_argument("--top", type=int, default=20)
@@ -331,6 +377,8 @@ def main(argv=None):
         credit(a.batch)
     elif a.cmd == "health":
         health()
+    elif a.cmd == "explain":
+        explain(a.case, a.batch)
     else:
         r = add_rule(a.kind, a.parent, json.loads(a.cond), a.text, a.cornerstone, ref=json.loads(a.ref) if a.ref else None)
         print(f"added {r.id} ({r.kind}, parent {r.parent}): {r.text}")

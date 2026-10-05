@@ -126,3 +126,117 @@ def observe(boards: list[chess.Board], moves: list[chess.Move], t: int) -> dict:
             by_sq[m.to_square] = by_sq.get(m.to_square, 0) + sign * (VAL[m.promotion] - 1)
         s += 1
     return dict(end=s, by_square=by_sq, delta=sum(by_sq.values()))
+
+
+# ---------------------------------------------------------------- memory across the game (Kaveh 2026-10-05)
+SUPER = {}                                                                   # square -> the squares a queen or a knight reaches from it on an empty board
+
+
+def _reach(sq: int) -> set[int]:
+    if sq not in SUPER:
+        q = chess.SquareSet(chess.BB_RANK_ATTACKS[sq][0] | chess.BB_FILE_ATTACKS[sq][0] | chess.BB_DIAG_ATTACKS[sq][0])
+        n = chess.SquareSet(chess.BB_KNIGHT_ATTACKS[sq])
+        SUPER[sq] = set(q) | set(n) | {sq}
+    return SUPER[sq]
+
+
+DIRS = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+SLIDERS = (chess.BISHOP, chess.ROOK, chess.QUEEN)
+
+
+def rays(b: chess.Board, sq: int) -> set[int]:
+    """The squares that can matter to sq along lines on THIS board: every ray from sq up to and including the first
+    piece, continuing past a slider (it may x-ray) to the next piece, and so on; with sq's knight jumps."""
+    out = {sq} | set(chess.SquareSet(chess.BB_KNIGHT_ATTACKS[sq]))
+    f0, r0 = chess.square_file(sq), chess.square_rank(sq)
+    for df, dr in DIRS:
+        f, r = f0 + df, r0 + dr
+        while 0 <= f < 8 and 0 <= r < 8:
+            t = chess.square(f, r)
+            out.add(t)
+            p = b.piece_at(t)
+            if p is not None and p.piece_type not in SLIDERS:
+                break
+            f, r = f + df, r + dr
+    return out
+
+
+def changed_squares(b: chess.Board, m: chess.Move) -> set[int]:
+    """The squares a move empties or fills: from, to, the pawn taken en passant, the castling rook's two squares."""
+    out = {m.from_square, m.to_square}
+    if b.is_en_passant(m):
+        out.add(chess.square(chess.square_file(m.to_square), chess.square_rank(m.from_square)))
+    if b.is_castling(m):
+        rank = chess.square_rank(m.from_square)
+        kside = chess.square_file(m.to_square) > chess.square_file(m.from_square)
+        out |= {chess.square(7 if kside else 0, rank), chess.square(5 if kside else 3, rank)}
+    return out
+
+
+HEAVY = ("n_att", "n_def", "min_att", "min_def", "att_lower", "hanging", "outnumbered", "see_att", "pinned")
+
+
+class FrameMemory:
+    """The watcher's memory of one game, a move at a time: every frame (a square and its occupant) persists while its
+    occupant stays and the square stays contested, with its AGE (plies since it became a frame) and the times the
+    attacker could take and DECLINED. Incremental: a move can change a square's attackers, defenders, pins and
+    exchange only if one of the squares it changes lies on a line that reaches the square (up to the pieces that stand
+    on it, past sliders) or on its knight jumps, or on such a line from a piece attacking or defending it (their pins
+    run along lines through them), on the board before or after the move; every
+    other frame keeps its heavy attributes from the last ply; the per-ply ones (whose move, the mover's side, check,
+    the last move) are refreshed always. tests/test_analyst_watch.py checks carried == recomputed on real games."""
+
+    def __init__(self):
+        self.frames: dict[int, dict] = {}                                  # square -> dict(occ, color, born, declined, attrs)
+        self.recomputed = 0
+        self.carried = 0
+
+    def step(self, before: chess.Board, m: chess.Move, after: chess.Board, ply: int) -> dict[int, dict]:
+        """After move m (before -> after): -> square -> the frame's attributes, memory included."""
+        mover = before.turn
+        touched = changed_squares(before, m)
+        live = live_frames(after)
+        out = {}
+        new: dict[int, dict] = {}
+        for sq in live:
+            p = after.piece_at(sq)
+            old = self.frames.get(sq)
+            same = old is not None and old["occ"] == p.piece_type and old["color"] == p.color and sq not in touched
+            affected = not same
+            if not affected:
+                zone = rays(before, sq) | rays(after, sq)                    # what reaches sq, before and after the move
+                near = set(after.attackers(chess.WHITE, sq)) | set(after.attackers(chess.BLACK, sq)) | \
+                       set(before.attackers(chess.WHITE, sq)) | set(before.attackers(chess.BLACK, sq))
+                for x in near:                                               # a pin on an attacker or defender runs along
+                    zone |= rays(before, x) | rays(after, x)                 # a line through IT
+                affected = bool(touched & zone)
+            if affected:
+                a = attributes(after, sq, mover, m)
+                self.recomputed += 1
+            else:
+                a = dict(old["attrs"])
+                light = attributes_light(after, sq, mover, m)
+                a.update(light)
+                a["see_mover"] = (-1 if light["occ_mover"] else 1) * a["see_att"]   # carried see_att, the mover's side flips
+                self.carried += 1
+            if same:
+                declined = old["declined"] + (1 if old["attrs"]["attacker_to_move"] and old["attrs"]["see_att"] > 0 and m.to_square != sq else 0)
+                born = old["born"]
+            else:
+                declined, born = 0, ply
+            a["age"] = ply - born
+            a["declined"] = declined
+            new[sq] = dict(occ=p.piece_type, color=p.color, born=born, declined=declined, attrs=a)
+            out[sq] = a
+        self.frames = new
+        return out
+
+
+def attributes_light(b: chess.Board, sq: int, mover: bool, last: chess.Move | None) -> dict:
+    """The per-ply attributes, cheap and global (whose move, the mover's side, check, the last move); the rest of
+    `attributes` is carried when the move cannot have changed it."""
+    p = b.piece_at(sq)
+    return dict(occ_mover=(p.color == mover), attacker_to_move=((not p.color) == b.turn),
+                just_moved=last is not None and last.to_square == sq,
+                recapture=last is not None and last.to_square == sq and _was_capture(b, last),
+                in_check=b.is_check())

@@ -20,6 +20,19 @@ The short forecast is the sum of one forecast per FRAME (a square holding a piec
 attackers and defenders) and one for ELSEWHERE (captures on squares that were not frames), combined by convolution.
 SURPRISE is minus log2 of the probability given to what happened, in bits.
 
+## Memory: a move at a time (Kaveh 2026-10-05)
+
+The watcher keeps a memory of the game (frames.FrameMemory). A FRAME (a square and its occupant) persists across
+plies while the occupant stays and the square stays contested, with its `age` (plies since it became a frame) and
+`declined` (the times the attacker could win it by exchange and played something else). The EXCHANGE IN PROGRESS is
+kept at the position: `exchange_on` (the last move captured and a recapture is available) and `settled` (the material
+once the forecast exchanges settle: material plus the forecast's expected change), which the result rules read
+instead of the material mid-exchange. INCREMENTAL: a move can change a frame's attackers, defenders, pins or
+exchange only if it touches a line that reaches the square (up to the pieces standing on it, past sliders) or its
+knight jumps, or such a line from a piece attacking or defending it, before or after the move; every other frame
+keeps its heavy attributes (a test checks carried == recomputed on real games). OBS: about 11% of frames are carried
+-- moves happen where the contested squares are.
+
 ## Rules
 
 A rule has a kind (frame, elsewhere, result), a condition in a small JSON language over attributes, a parent (an
@@ -51,8 +64,9 @@ python -m catspace.incubator.analyst.watch.watcher health                  # per
 Vocabulary today. Frame attributes (frames.attributes): `occ`, `occ_value`, `occ_mover` (the occupant is the
 mover's), `attacker_to_move`, `n_att`, `n_def`, `min_att`, `min_def`, `att_lower`, `hanging`, `outnumbered`,
 `see_att` (what the attackers win by exchange, each side free to stop), `see_mover` (that, in the mover's material),
-`just_moved`, `recapture`, `pinned`, `in_check`. Position attributes (watcher.position_attrs): `material`, `n_frames`,
-`in_check`, `phase`, `elo_diff`, `mover_elo`, `ply`, `mate1_tomove`, `promo_tomove`, `promo_mover`. A new word is a
+`just_moved`, `recapture`, `pinned`, `in_check`, and from memory `age`, `declined`. Position attributes (watcher.position_attrs): `material`, `n_frames`,
+`in_check`, `phase`, `elo_diff`, `mover_elo`, `ply`, `mate1_tomove`, `promo_tomove`, `promo_mover`, and for result
+rules `settled` and `exchange_on`. A new word is a
 plain function of the board with a test.
 
 - `catspace/incubator/analyst/watch/` -- frames.py (frames, attributes, the observation), rules.py (the language, the

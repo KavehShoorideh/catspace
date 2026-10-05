@@ -22874,6 +22874,39 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-05 13:41 PDT — the watcher remembers: frames across moves, the exchange in progress, incremental update (OBS)
+
+Kaveh: "it pays to have a memory that is consistent with ... state tracking across the game ... reduce the number of
+surprises and the amount of calculation ... take the game in one move at a time and maintain memory." He chose three
+(asked): frame memory, the exchange in progress, incremental update (player memory later). Built (docs/WATCH.md,
+Memory): a frame persists across plies with its AGE and how many times the attacker could win it and DECLINED; the
+position carries `exchange_on` and the SETTLED material (material plus the forecast's expected change), which new
+result rules read; a move recomputes only the frames it can reach. A test checks that every carried frame equals a
+full recomputation on real games (3,969 frames, all equal).
+
+OBS: incremental update carries 11% of frames (1,115 of 10,033 in 40 games) -- moves happen where the contested squares
+are; correct, a modest saving. On batch 4, our piece the side to move can win by exchange was taken as counted in 63%
+of 351 fresh cases, and in 24% of 139 cases after the attacker had already declined it (left alone 75%): memory
+carries signal. The settled material read 48 positions that were a piece up mid-exchange as level.
+Rules: R14/R15/R16 on settled material (cornerstone: game 7573, 19.Bxb8, where the old rule read a piece up before the
+recapture); F17 under F1: "already declined: usually left alone again".
+
+  batch   rules   short bits/position   bits/frame   long bits/position   health: frames / elsewhere / result saved per position
+  3       16      1.279                 0.471        1.234 (1,353)        +0.947 / -0.040 / +0.095
+  4       19      1.288                 0.417        1.516 (1,311)        +0.892 / +0.012 / -0.096
+  5       20      1.456                 0.535        1.191 (1,073)        +0.919 / +0.010 / +0.126
+Batch 4's result line: R14 +25.1 and R15 +35.4 bits in their first batch; R16 -186.8, of which -186.4 from ONE drawn
+game of 141 positions, where young R16 (it had seen only decisive games) gave a draw 2.4% against the root's 6%.
+Batch 5: F17 +75.6 against the root, -7.6 against its parent F1 (young: its counts start at zero though batch 4 held
+139 cases). Example (`watcher explain --case 11453:87 --batch 5`): White's c3 pawn en prise to the queen for 19 plies,
+declined 5 times; F17 forecast "left alone" 48%; Black played Qh5.
+
+READING (directional): memory carries signal -- a declined capture is likely declined again; the settled material is
+what the result depends on. Young rules cost: a rule with no counts supersedes an older one with many (R16, F17), and a
+long game multiplies one result's surprise by its length. OPEN for Kaveh: start a new rule from the past cases it
+covers, or from zero; let a young rule defer to the rule it supersedes until it has evidence (the prior over rules);
+score a game's result once in the health line.
+
 ## 2026-10-05 13:28 PDT — the surprise watcher, batch 2 and the health line (OBS)
 
 Second review (Claude, from batches 0 and 1): the off-frame surprises -- captures on squares that were not frames --

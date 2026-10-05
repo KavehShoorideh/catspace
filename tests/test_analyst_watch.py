@@ -115,3 +115,38 @@ def test_position_words():
     assert promotes_next(p, chess.WHITE) and not promotes_next(p, chess.BLACK)
     a = position_attrs(chess.Board("8/4P3/8/8/8/8/k7/6K1 w - - 0 1"), chess.BLACK, [], (1500, 1500))
     assert a["promo_tomove"] and not a["mate1_tomove"]
+
+
+def test_memory_carries_only_what_the_move_cannot_change():
+    """Every carried frame's attributes equal a full recomputation, on real games; memory counts age and declines."""
+    pytest.importorskip("pyarrow")
+    from catspace.incubator.analyst.watch.frames import FrameMemory, attributes
+    from catspace.incubator.analyst.watch.watcher import games
+    checked = carried = 0
+    for g in games(0, 15):
+        mem = FrameMemory()
+        b = chess.Board()
+        for i, u in enumerate(g["moves"].split()):
+            m = chess.Move.from_uci(u)
+            before = b.copy()
+            b.push(m)
+            got = mem.step(before, m, b, i + 1)
+            for sq, a in got.items():
+                full = attributes(b, sq, before.turn, m)
+                assert {k: a[k] for k in full} == full, (g["game_id"], i + 1, chess.square_name(sq))
+                checked += 1
+        carried += mem.carried
+    assert checked > 2000 and carried > 0                                    # carried where the move cannot reach, all of it right
+    # (OBS 2026-10-05: about 11% of frames are carried -- moves happen where the contested squares are)
+
+
+def test_memory_counts_declines():
+    from catspace.incubator.analyst.watch.frames import FrameMemory
+    mem = FrameMemory()
+    b = chess.Board("4k3/8/8/3n4/8/8/8/3QK3 w - - 0 1")                       # White to move; nothing attacked yet
+    seq = ["d1d4", "e8e7", "e1e2", "e7e8"]                                    # Qd4 hits the knight; Black moves the king instead
+    for i, u in enumerate(seq):
+        m = chess.Move.from_uci(u); before = b.copy(); b.push(m)
+        out = mem.step(before, m, b, i + 1)
+    a = out[chess.D5]                                                         # Black's d5 knight: attacked since ply 1
+    assert a["age"] == 3 and a["declined"] == 1                               # White could take at ply 3 (Ke2) and did not
