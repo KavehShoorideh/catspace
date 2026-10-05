@@ -22874,6 +22874,47 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-05 13:22 PDT — the surprise watcher: built, two batches, the first rules (OBS)
+
+Kaveh's design (asked and answered in session today): the tactical layer WATCHES games -- Lichess records on disk,
+anybody against anybody -- and after every move forecasts with probabilities, short-term (the material balance once
+the exchanges settle) and long-term (the game's result); SURPRISE = -log2 of the probability given to what happened;
+the short forecast is split into FRAMES (a square and the pieces contesting it) whose contributions add up; among the
+rules that apply, the more specific supersedes the less specific and the older (a learned prior over rules later; its
+slot exists and every rule's probability is logged as its training data); the rule base starts EMPTY; Claude, in
+session, reads the largest surprises after every 20 games and writes the missing rule with the position as its
+cornerstone; the judge is the moving-average surprise. docs/WATCH.md; catspace/incubator/analyst/watch.
+
+Rules are a Ripple-Down tree (an exception refines its parent) over frame attributes in a small JSON language (attacked,
+defended, cheapest attacker, the static exchange value, pins, check); a rule's forecast is the count of what happened
+when it held, smoothed toward its parent's (4 observations' weight), so a young rule says what its parent says.
+
+  batch   games   positions   frames   rules   short bits/position   bits/frame   long bits/position (uncensored)
+  0       20      1,385       4,962    roots   1.860                 0.747        1.244 (902)
+  1       20      1,481       4,952    +8      1.382                 0.428        1.355 (927)
+Credit on batch 1's own cases (bits saved against the root, and against the parent; `watcher credit --batch 1`):
+  F1 our piece the side to move wins by exchange (forecast relative to the exchange value)   310 cases  +469.9
+  F2 their piece we could win, but they move first: usually saved                            576 cases  +158.2
+  F3 our attacked piece no exchange wins: it stays                                          1,972 cases  +104.5
+  F4 their attacked piece no exchange wins: it stays                                        1,959 cases  +138.9
+  F5 a piece, not a pawn, en prise to the side to move (under F1)                            135 cases  +531.8 (+48.2 over F1)
+  R6 up a piece's worth or more                                                              168 cases   +14.7
+  R7 down a piece's worth or more                                                            118 cases   +25.6
+  R8 material within a piece                                                                 641 cases   -53.1
+Two rating rules were not written: batch 0 held no surprising position for them to stand on.
+
+A BUG found while building: each position counted as a separate observation of its game's result, so one long game
+outweighed everything (R8 read -279.3 bits). A game is one observation now, shared by its positions; batches 0 and 1
+were replayed with the fix (`watcher replay`): the long surprise read 1.054 and 2.056 before, 1.244 and 1.355 after.
+
+READING (two batches, directional): the exchange rules carry the frames; most frame surprise was "our piece en prise
+is taken" and "theirs is saved", and the base rate missed both. The result rules are young and learn one game at a
+time (R8 still costs). ELSEWHERE -- captures on squares that were not frames: combinations, promotions, mates --
+holds 1,063 bits of batch 0's surprise and nothing explains it yet: its rules need words the vocabulary lacks (a pawn
+about to promote, a pin, a discovered attack, an overloaded defender).
+OPEN for Kaveh: a frame that stays attacked is counted at every ply (each ply is a new chance to take it); the
+reference extension of the rule language; the next review.
+
 ## 2026-10-05 12:34 PDT — the loop's bug loop, pass 1, and corrections to the 11:55 entry (OBS)
 
 Kaveh: "let's ... go in a loop first, trying to address and find all of these bugs" -- and later: "bugs are fine to
