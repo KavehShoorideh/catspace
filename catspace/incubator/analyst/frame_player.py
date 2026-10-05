@@ -108,6 +108,8 @@ NODES = [0]                                                         # the zone s
 PROVED = [0]                                                        # nodes the proved back-rank mate closed in the last choose (spec.proved_mates)
 PASSER = False                                                      # the proved passer's push joins the candidates (the second form's prototype)
 PASSER_LEAVES = [0]                                                 # leaves credited with a proved passer in the last choose
+LOOP_ORDER = None                                                   # the loop's order use (loop.wiring.MinedOrder): a tie-break among tied top moves
+LOOP_ORDER_FIRED = [0]                                              # 1 when the loop's order use broke a tie in the last choose
 DEPTH = [0]                                                         # the deepest rung the zone search completed for the last choose
 BUDGET_POLICY = "fixed"                                            # zone_candidates: "fixed" (equal shares) | "watch" (the king watches' policy)
 DECIDER_THRESHOLD = [0.5]                                           # BUDGET_POLICY "decider": go on past a rung when the learned chance that it
@@ -255,6 +257,18 @@ def choose(b: chess.Board) -> dict:
                 for u in tied:
                     if sc[u] < hi:
                         values[u] -= 1e-3                                   # (a tie-break: below the top, above anything worse)
+            LOOP_ORDER_FIRED[0] = 0
+            if LOOP_ORDER is not None:                                      # the loop's order use: mined (conjecture-tier) ideas break
+                top2 = max(values[u] for u in tied)                         # what is still tied, never a value the search computed
+                still = [u for u in tied if values[u] == top2]
+                if len(still) > 1:
+                    sc = LOOP_ORDER(b, still)
+                    if sc:
+                        hi = max(sc.values())
+                        lo = [u for u in still if sc.get(u, hi) < hi]
+                        for u in lo:
+                            values[u] -= 1e-3
+                        LOOP_ORDER_FIRED[0] = int(bool(lo))
         for m in moves:
             v, r, ln = two_ply_value(b, m, "instinct" if LEDGER == "two_ply_instinct" else "all")
             values[m.uci()] = v; trace[m.uci()] = ((v, None, [r] + ln if r else ln), before)

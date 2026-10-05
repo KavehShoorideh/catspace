@@ -1748,7 +1748,8 @@ def arguments(argv=None):
     ap.add_argument("--prove-max-size", type=int, default=0, help="prove: only frames of at most this size")
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1)); ap.add_argument("--max-conj", type=int, default=2); ap.add_argument("--all", action="store_true", help="generalize: over all lemmas, not only the proved")
     ap.add_argument("--over-literals", action="store_true", help="generalize: the frame literals' relation names are variables too"); ap.add_argument("--max-unseen", type=int, default=0)
-    ap.add_argument("--source", choices=["sampled", "games", "lichess", "exchanges"], default="lichess", help="placements: sampled frames (only the frame's pieces) or real game positions")
+    ap.add_argument("--source", choices=["sampled", "games", "lichess", "exchanges", "fens"], default="lichess", help="placements: sampled frames (only the frame's pieces) or real game positions; fens: the positions in --fens-file (the idea loop's framed batch)")
+    ap.add_argument("--fens-file", default=None, help="--source fens: a file with one FEN per line")
     ap.add_argument("--split", default=None, choices=["gen", "test"], help="lichess source: the generation part or the disjoint re-test part (by position hash)")
     ap.add_argument("--positions", type=int, default=None, help="real positions to draw from; default 50,000, the re-test 12,000"); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=200)
     ap.add_argument("--relative", action=argparse.BooleanOptionalAction, default=True, help="outcome relative to the null action (what the standing threats already take)")
@@ -1789,6 +1790,10 @@ def main(argv=None):
                     seen.add(e["fen"]); rows.append(e["fen"])
             _r.Random(a.seed).shuffle(rows); fens = rows[: a.positions]
             print(f"[lemma_gen] exchanges source: {len(fens)} positions where an exchange began (training games)")
+        elif a.source == "fens":
+            # THE LOOP'S FRAMED BATCH (loop/stages/mine.py): the positions where the player went wrong, given as a file
+            fens = [l.strip() for l in open(a.fens_file) if l.strip()][: a.positions]
+            print(f"[lemma_gen] fens source: {len(fens)} positions from {a.fens_file}")
         elif a.source == "lichess":
             # THE GENERAL POPULATION (Kaveh 2026-09-24: "why my games? why not just lichess in general?"): the ChessBench
             # positions on disk (Lichess games, many players and ratings). Split by a stable hash of the position:

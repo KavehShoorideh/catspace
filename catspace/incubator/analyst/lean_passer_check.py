@@ -97,26 +97,23 @@ def parse(line: str):
     return out
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--n", type=int, default=2000)
-    ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--knights", type=int, default=0, help="our knights (allowed by the lemma: no sliders)")
-    ap.add_argument("--form", type=int, default=1, choices=[1, 2], help="1: bare enemy king; 2: enemy king and pawns")
-    ap.add_argument("--their-pawns", type=int, default=0, help="form 2: up to this many enemy pawns")
-    a = ap.parse_args(argv)
-    rng = random.Random(a.seed)
+def check(n: int = 2000, seed: int = 1, knights: int = 0, form: int = 1, their_pawns: int = 0, li: LeanIdeas | None = None) -> dict:
+    """The bridge as a function: n random pawn endings, every PROVED claim of the detector checked by the exhaustive
+    race search. -> dict(positions, proved, confirmed, wrong, oneaway, plies, examples, seconds)."""
+    rng = random.Random(seed)
     t0 = time.perf_counter()
     positions = proved = oneaway = confirmed = wrong = 0
     plies_hist = {}
     examples = []
-    with LeanIdeas() as li:
-        while positions < a.n:
-            b = random_pawn_ending(rng, a.knights, a.their_pawns if a.form == 2 else 0)
+    own = li is None
+    li = li or LeanIdeas()
+    try:
+        while positions < n:
+            b = random_pawn_ending(rng, knights, their_pawns if form == 2 else 0)
             if b is None:
                 continue
             positions += 1
-            (line,) = li._ask(("passer2 " if a.form == 2 else "passer ") + encode(b), until_end=False)
+            (line,) = li._ask(("passer2 " if form == 2 else "passer ") + encode(b), until_end=False)
             if line.startswith("error"):
                 raise RuntimeError(line)
             for sq, status, plies, cand in parse(line):
@@ -133,13 +130,27 @@ def main(argv=None):
                     wrong += 1
                     if len(examples) < 5:
                         examples.append((b.fen(), cand))
-                if len(examples) < 2 and ok and plies >= 5 and len([e for e in examples if e[1] == "ok"]) < 2:
-                    examples.append((b.fen(), "ok"))
-    print(f"OBS passer bridge (form {a.form}): {positions} random pawn endings (seed {a.seed}, knights {a.knights}, "
+    finally:
+        if own:
+            li.close()
+    return dict(positions=positions, proved=proved, confirmed=confirmed, wrong=wrong, oneaway=oneaway,
+                plies=dict(sorted(plies_hist.items())), examples=examples, seconds=time.perf_counter() - t0)
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--n", type=int, default=2000)
+    ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--knights", type=int, default=0, help="our knights (allowed by the lemma: no sliders)")
+    ap.add_argument("--form", type=int, default=1, choices=[1, 2], help="1: bare enemy king; 2: enemy king and pawns")
+    ap.add_argument("--their-pawns", type=int, default=0, help="form 2: up to this many enemy pawns")
+    a = ap.parse_args(argv)
+    r = check(a.n, a.seed, a.knights, a.form, a.their_pawns)
+    print(f"OBS passer bridge (form {a.form}): {r['positions']} random pawn endings (seed {a.seed}, knights {a.knights}, "
           f"their pawns <= {a.their_pawns}), "
-          f"PROVED claims {proved} (by plies: {dict(sorted(plies_hist.items()))}), confirmed by exhaustive race search "
-          f"{confirmed}/{proved}, WRONG {wrong}; one-away instances {oneaway}; {time.perf_counter() - t0:.0f}s")
-    for fen, what in examples:
+          f"PROVED claims {r['proved']} (by plies: {r['plies']}), confirmed by exhaustive race search "
+          f"{r['confirmed']}/{r['proved']}, WRONG {r['wrong']}; one-away instances {r['oneaway']}; {r['seconds']:.0f}s")
+    for fen, what in r["examples"]:
         print(f"  {what}: {fen}")
 
 
