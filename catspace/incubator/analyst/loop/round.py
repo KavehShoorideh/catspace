@@ -67,13 +67,12 @@ def run_round(n: int, only: str | None = None, extra: dict | None = None, force:
     config = merge(default_config(n), extra or {})
     check_gate(n, config)
     d, rec = round_dir(n), record_dir(n)
-    head_before = basis.head()
-    before_ids = sorted(basis.active())
-    inputs = read_json(rec / "inputs.json") if only else None
-    if not inputs:
-        inputs = dict(round=n, code=code_version(), config=config, basis_before=head_before, basis_before_ids=before_ids,
-                      time=time.strftime("%Y-%m-%d %H:%M %Z"))
+    inputs = read_json(rec / "inputs.json")
+    if not inputs or inputs.get("config") != config:                         # a re-run with the same config keeps the frozen
+        inputs = dict(round=n, code=code_version(), config=config,           # inputs (the basis it started from, its code)
+                      basis_before=basis.head(), basis_before_ids=sorted(basis.active()), time=time.strftime("%Y-%m-%d %H:%M %Z"))
         write_json(rec / "inputs.json", inputs)
+    head_before = inputs["basis_before"]
     ctx = Ctx(n, d, rec, config, inputs["code"])
     timings = read_json(d / "timings.json", {}) or {}
     prev_hash = digest(dict(basis=inputs["basis_before"], config=config.get("stages", {})))

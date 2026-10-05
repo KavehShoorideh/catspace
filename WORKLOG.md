@@ -3,6 +3,22 @@
 Kaveh's two-journals rule (2026-09-16): this file keeps the agent on track; JOURNAL.md is Kaveh's, written for review.
 Newest entry first. Times from `date` (PDT).
 
+## 2026-10-05 (day) — the idea loop's framework (Opus, executing Fable's plan)
+
+- Built catspace/incubator/analyst/loop: contracts, hash-chained append-only basis, six stages, ledger (4 controls),
+  gate (continue/rollback/swap), driver (stage cache by input hash; refuses N+1 without gate N; swap needs a new
+  module). Commit 4844bd3f. docs/LOOP.md. Tests: tests/test_analyst_loop.py (7, incl. the false idea -> RED).
+- DEVIATION from the plan: data/derived is git-ignored, so the reviewable record AND the basis live in artifacts/loop
+  (committed); bulky outputs stay in data/derived/loop. Rollback = retire lines (append-only), not a git revert:
+  rounds commit only records, the wiring is data (active.json from the basis).
+- lemma_gen --source fens --fens-file (the framed batch). 200 dev positions: run 58 s -> 91 lemmas; prove re-test
+  (lichess test split, 6000 positions, cap 400) 12 s -> 39 survived. lemma_gen "PROVED" = held-out evidence, tier
+  conjecture in the loop. Applier: 1 ms/position (fire scans and tie-breaks are cheap).
+- frame_player.LOOP_ORDER: tie-break among still-tied top moves only; per-step `order` flag in dumps.
+- Leakage check: first 150 dev rows (i%97==5, up to row 14458) share no row with the held-out sets.
+- Round 0 (11:01): axioms clean; bridges backrank held-out 306/306, random 318/318; passer1 972/972; passer2
+  random 1239/1239, held-out 112/112. Baseline re-runs for timing in progress.
+
 ## 2026-10-05 — passer second form PROVED (2026-10-05 01:29 PDT)
 
 - Ideas/Passer2.lean proved (no sorry; std axioms after replacing chess-lean's native_decide allSquares_nodup).

@@ -1,6 +1,8 @@
 """THE LEDGER: one page per round, for Kaveh's gate. Every number is read from the stage outputs of the round (never
 typed). Sections: inputs, mined, promoted, fired, changed, controls, proposed next, decision. The controls:
-- NOTHING FIRES: no instance of any newly promoted idea at the solver's positions of the held-out sets;
+- NOTHING FIRES: no newly promoted idea FIRES at the solver's positions of the held-out sets -- a Lean idea fires where
+  it is proved there (an instance is only a candidate: every pawn is a passer candidate), a mined idea where it gives
+  a verdict on a move;
 - RESULTS FALL: puzzles lost exceed puzzles gained on a held-out set (flagged for judgment, not a verdict);
 - UNSOUND (red): an idea with a Lean statement whose axioms or bridge failed; a red round cannot be gated continue;
 - WALL TIME: seconds per solver step, the round's player against the baseline's."""
@@ -16,7 +18,11 @@ def controls(out: dict, inputs: dict) -> dict:
     promoted = prove.get("promoted", [])
     new_ids = [p["candidate"]["id"] for p in promoted if p["candidate"]["id"] not in before and not p["unsound"]]
     fire = measure.get("fire", {})
-    inst = {i: sum((fire.get(s, {}).get(i) or {}).get("instances", 0) for s in fire) for i in new_ids}
+
+    def fires(rec):
+        rec = rec or {}
+        return rec.get("proved", 0) if "proved" in rec else rec.get("speaks", 0)
+    inst = {i: sum(fires(fire.get(s, {}).get(i)) for s in fire) for i in new_ids}
     nothing = bool(new_ids) and sum(inst.values()) == 0
     falls = []
     for m in measure.get("measurements", []):
@@ -130,8 +136,8 @@ def render(n: int, out: dict, inputs: dict, ctl: dict, timings: dict, heads: dic
           f"{p['before']:,} → {p['after']:,} ({p['ratio']:.3f}; fewer {p['fewer']}, more {p['more']}) | {wall} |")
     w("")
     w("## Controls")
-    w(f"- NOTHING FIRES: " + ("**FLAG** — no newly promoted idea has an instance in the held-out sets" if ctl["nothing_fires"]
-                               else f"ok — newly promoted ideas with instances: {sum(1 for v in ctl['instances'].values() if v)} of {len(ctl['new_ids'])}"))
+    w(f"- NOTHING FIRES: " + ("**FLAG** — no newly promoted idea fires in the held-out sets (a Lean idea fires where it is proved, a mined one where it gives a verdict on a move)" if ctl["nothing_fires"]
+                               else f"ok — newly promoted ideas that fire: {sum(1 for v in ctl['instances'].values() if v)} of {len(ctl['new_ids'])}"))
     w(f"- RESULTS FALL: " + ("**FLAG** for judgment — " + "; ".join(f"{f['set']}: lost {f['lost']} > gained {f['gained']}" for f in ctl["results_fall"])
                               if ctl["results_fall"] else "ok — no held-out set lost more puzzles than it gained"))
     w(f"- UNSOUND: " + ("**RED** — " + "; ".join(f"{u['id']}: {u['reason']}" for u in ctl["unsound"]) + ". This round cannot be gated continue."
