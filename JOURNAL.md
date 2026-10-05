@@ -22874,7 +22874,56 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-05 12:34 PDT — the loop's bug loop, pass 1, and corrections to the 11:55 entry (OBS)
+
+Kaveh: "let's ... go in a loop first, trying to address and find all of these bugs" -- and later: "bugs are fine to
+fix, but design choices ... that's where you should stop to ask." Pass 1: an independent reviewer (a separate agent,
+read-only, running its claims on temporary copies) read the loop's code, and I checked the round-1 artifacts. Fixed
+(details and classes in docs/BUGS.md; commit 6b5575d6; 16 loop tests, each new one failing on the old code):
+- SAFETY: an idea found unsound on re-check stayed wired as a closure and no gate could retire it (the registered
+  Lean ideas were promoted in round 0); a second gate decision silently overwrote the first; the gate's commit swept
+  whatever else was staged.
+- THE DRIVER: a stage's cache key chained the configs, not the outputs (re-framing left the miner's output cached on
+  the old batch); stages read today's basis instead of the one the round started from; a re-run with a new config
+  re-froze the round's inputs from today's basis.
+- MEASUREMENT: the expected score read a tie of mating moves as a gamble, though the puzzle checker accepts any mate.
+  Round 0's general-set arm was an older run with the back-rank closure only; it was replayed with round 0's real
+  wiring (all three closures).
+- FRAMING: a "game loss" was read exactly 4 plies on, right after the opponent's move; the reviewer found 95 of round
+  1's 150 game positions back above the threshold one ply later (an exchange in progress), and 28 more were losses the
+  move's own forecast saw. Now the loss must still stand after the reply and the forecast must not have seen it.
+- WIRING AND RECORDS: order entries were loaded by library position without checking the lemma's id; the passer
+  switch followed form 1's acceptance though the player runs the passer2 detector; the dumps kept 6 of the tied moves.
+No design was changed without Kaveh: framing ties, and capping positions per game, are switches, off.
+
+ROUND 1, CORRECTED (OBS, re-rendered from the round's saved outputs; no game replayed; expected = puzzles a player
+picking at random among its tied top moves solves, any mating move counting as a solution):
+  set            plain   round 0   round 1   up / down vs round 0
+  back-rank      300.0   300.0     300.0      0 / 0
+  pawn endings    76.8    82.0      92.9     60 / 82
+  general        238.3   239.8     241.0     14 / 30
+The dig against round 0's arm, general set: down 21 (expected -4.0) where a lemma called the solution a loss, 9
+(-0.5) by the composed preference; up 9 (+3.6) by the composed preference, 5 (+2.2) where a lemma called a demoted
+rival a loss. Pawn endings unchanged from 11:55: loss verdicts +9.9 against -5.1, composed preference +8.1 against
+-1.9.
+
+CORRECTIONS to the 11:55 entry and to what I told Kaveh today:
+- the back-rank "rise" 294.5 -> 297.0 was the mate-tie artefact: nothing changed on the back-rank set;
+- the general set's gain over round 0 is 1.2, not 3.7 (1.5 of it was the passer closures, missing from round 0's old
+  arm; the rest the mate artefact);
+- the purity of a mined lemma (0.80 to 0.997) is the precision of its exception guard, not "accuracy";
+- "72 distinct lemmas", then "92", then "a fifth" and "1% of the votes repeat": wrong; I read the library's "Q" as a
+  white queen, but a bare letter is a kind of either colour. The 100 promoted lemmas are 100 distinct.
+
+READING (directional, one run per set): the round-1 batch was mostly mislabeled (exchanges in progress), so its
+lemmas say little about where the player goes wrong; measured fairly, their tie-breaks still helped pawn endings and
+barely moved the general set, where the loss verdicts cost more than they gained. Round 1 waits for Kaveh's gate.
+OPEN, for Kaveh: round 1's fate; framing ties and a per-game cap; whether a gate decision is final; whether a lemma
+votes once per move or once per partner piece in the composed preference; the next build (docs/LOOP.md, Proposals).
+
 ## 2026-10-05 11:55 PDT — the idea loop's framework, rounds 0 and 1 (OBS)
+
+> Corrected by the 12:34 entry above: the back-rank rise was a mate-tie artefact, the general gain is 1.2, not 3.7; the framed game batch was mostly mislabeled.
 
 Kaveh: "build the engineering loop first, and then we slot in different research pieces to see which one works ...
 plus some level of human in the loop testing that decides whether the loop is going off the rails." Fable wrote the

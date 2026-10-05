@@ -3,6 +3,19 @@
 Kaveh's two-journals rule (2026-09-16): this file keeps the agent on track; JOURNAL.md is Kaveh's, written for review.
 Newest entry first. Times from `date` (PDT).
 
+## 2026-10-05 12:34 — bug loop pass 1 (Kaveh: fix bugs, ASK on design choices)
+
+- Reviewer agent (read-only, 236k tokens, 17 min): 13 findings, fixed in 6b5575d6 with tests (16 loop tests). Mine
+  too: Applier keeps one copy of a lemma found twice (exch4 54/5280; loop library none); dumps store the whole tie.
+- Round 0's general arm replayed with its real wiring (loop000full); rounds 0 and 1 re-rendered (--render-only).
+  Corrected: backrank 300/300/300 (the +2.5 was the mate-tie artefact); pawns 76.8/82.0/92.9; general
+  238.3/239.8/241.0. JOURNAL 12:34 entry corrects the 11:55 one (banner added, old text untouched).
+- MY ERRORS today (BUGS.md): "accuracy" was guard precision; "72/92 distinct", "a fifth/1% of votes" from reading
+  Q as white (Q = either colour); the dig's step choice; claims before counting. Count, then narrate.
+- Design switches left OFF pending Kaveh: frame ties (cfg frame.ties), per-game cap (frame.per_game). Kept, flagged:
+  unspoken moves never demoted; a gate decision is final. Open: compose votes per partner vs per lemma.
+- NEXT: pass-2 review of the 6b5575d6 diff; Kaveh's answers (round 1's fate, design switches, next build).
+
 ## 2026-10-05 (day) — the idea loop's framework (Opus, executing Fable's plan)
 
 - Built catspace/incubator/analyst/loop: contracts, hash-chained append-only basis, six stages, ledger (4 controls),
