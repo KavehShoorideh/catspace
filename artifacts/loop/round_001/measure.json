@@ -19,7 +19,7 @@
     "sources": [],
     "code": "1a4ce48a"
    },
-   "expected": 294.5
+   "expected": 300.0
   },
   {
    "set": "backrank",
@@ -43,15 +43,9 @@
     "lost": [],
     "gained_single": 5,
     "lost_single": 0,
-    "expected_before": 294.5,
-    "expected_after": 297.0,
-    "up": [
-     "1SddV",
-     "1aLL8",
-     "5U96j",
-     "6FlA4",
-     "7UmJC"
-    ],
+    "expected_before": 300.0,
+    "expected_after": 300.0,
+    "up": [],
     "down": []
    },
    "gained": [],
@@ -62,18 +56,12 @@
     "sources": [],
     "code": "1a4ce48a"
    },
-   "expected": 297.0,
+   "expected": 300.0,
    "vs_previous": {
     "dump": "frame_puzzles_lichess_zone_candidates_proved1_off17_backRankMate_lean1004.json",
-    "expected_before": 294.5,
-    "expected_after": 297.0,
-    "up": [
-     "1SddV",
-     "1aLL8",
-     "5U96j",
-     "6FlA4",
-     "7UmJC"
-    ],
+    "expected_before": 300.0,
+    "expected_after": 300.0,
+    "up": [],
     "down": [],
     "tied_before": 300,
     "single_before": 289,
@@ -644,7 +632,7 @@
     "sources": [],
     "code": "1a4ce48a"
    },
-   "expected": 237.32784916200356
+   "expected": 238.32784916200356
   },
   {
    "set": "general",
@@ -701,7 +689,7 @@
     ],
     "gained_single": 10,
     "lost_single": 0,
-    "expected_before": 237.32784916200356,
+    "expected_before": 238.32784916200356,
     "expected_after": 241.04895833333333,
     "up": [
      "0GVNF",
@@ -712,11 +700,9 @@
      "0t61F",
      "0ydKJ",
      "1B1Uj",
-     "1NdW1",
      "1U04D",
      "1VrmG",
      "1kzBY",
-     "26BAK",
      "27Sqn",
      "29Kgv",
      "2D6v5",
@@ -799,8 +785,8 @@
    },
    "expected": 241.04895833333333,
    "vs_previous": {
-    "dump": "frame_puzzles_lichess_zone_candidates_proved1_off300_lean1004.json",
-    "expected_before": 237.32784916200356,
+    "dump": "frame_puzzles_lichess_zone_candidates_loopactive000_off300_loop000full.json",
+    "expected_before": 239.76832535247976,
     "expected_after": 241.04895833333333,
     "up": [
      "0GVNF",
@@ -809,15 +795,11 @@
      "0ftTh",
      "0kFdN",
      "0t61F",
-     "0ydKJ",
      "1B1Uj",
-     "1NdW1",
      "1U04D",
      "1VrmG",
      "1kzBY",
-     "26BAK",
      "27Sqn",
-     "29Kgv",
      "2D6v5",
      "2GsCE",
      "2lm5l"
@@ -854,9 +836,9 @@
      "2zfYm",
      "35ITm"
     ],
-    "tied_before": 279,
-    "single_before": 227,
-    "nodes_ratio": 0.9996766039112817
+    "tied_before": 280,
+    "single_before": 228,
+    "nodes_ratio": 1.0
    }
   }
  ],

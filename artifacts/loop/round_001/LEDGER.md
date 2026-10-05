@@ -1,6 +1,7 @@
-# Idea loop — round 001 (2026-10-05 11:51 PDT)
+# Idea loop — round 001 (2026-10-05 12:34 PDT)
 
-Code 1a4ce48a (ledger rendered by a7f51e14); basis before the round 3 ideas (head cf90a07d1e40), after 103 ideas (head ea66b6a9affa). Stages: frame 632s, mine 79s, translate 0s, prove 27s, use 0s, measure 946s; total 28.1 min.
+Code 1a4ce48a (ledger rendered by 3cfc2f65); basis before the round 3 ideas (head cf90a07d1e40), after 103 ideas (head ea66b6a9affa). Stages: frame 632s, mine 79s, translate 0s, prove 27s, use 0s, measure 946s; total 28.1 min.
+Rendered from the stage outputs on disk (--render-only); the code of frame, mine, translate, prove, use, measure changed since they ran (or predates the source digest).
 
 ## Inputs
 - Framed: 6 puzzle misses on development rows (i % 97 == 5) and 150 game positions where the frames rated the move safe and the game took material within the next plies (development games). Ids frozen in inputs_framed.json.
@@ -37,15 +38,15 @@ Code 1a4ce48a (ledger rendered by a7f51e14); basis before the round 3 ideas (hea
 | mined:L-357b3596 | 325/658, speaks 324 | 388/851, speaks 386 | 431/670, speaks 423 |
 | mined:L-b3306d88 | 228/658, speaks 228 | 1/851, speaks 1 | 334/670, speaks 331 |
 | mined:L-29baffdc | 229/658, speaks 229 | 0/851, speaks 0 | 296/670, speaks 292 |
-| mined:L-75ee9e46 | 181/658, speaks 166 | 0/851, speaks 0 | 278/670, speaks 264 |
+| mined:L-73527c48 | 181/658, speaks 166 | 0/851, speaks 0 | 278/670, speaks 264 |
 | ... 91 more |  |  |  |
 
 ## Changed (the player with this round's wiring, paired by position: plain = the frozen baseline, previous = the previous kept round's arm)
 | set | expected score: plain / previous / round | single top move: plain / previous / round | puzzles up / down vs previous | solution among tied (context): plain / previous / round | nodes vs plain on the same positions | wall / step |
 |---|---|---|---|---|---|---|
-| backrank | 294.5 / 294.5 / 297.0 | 289 / 289 / 294 | 5 / 0 | 300 / 300 / 300 of 300 | 1,063,544 → 836,385 (0.786; fewer 632, more 1) | 0.20s |
+| backrank | 300.0 / 300.0 / 300.0 | 289 / 289 / 294 | 0 / 0 | 300 / 300 / 300 of 300 | 1,063,544 → 836,385 (0.786; fewer 632, more 1) | 0.20s |
 | pawnendings | 76.8 / 82.0 / 92.9 | 48 / 53 / 72 | 60 / 82 | 249 / 251 / 169 of 300 | 1,601,503 → 1,639,414 (1.024; fewer 43, more 161) | 0.06s |
-| general | 237.3 / 237.3 / 241.0 | 227 / 227 / 237 | 18 / 30 | 279 / 279 / 250 of 300 | 19,210,971 → 18,933,498 (0.986; fewer 310, more 20) | 1.23s |
+| general | 238.3 / 239.8 / 241.0 | 227 / 228 / 237 | 14 / 30 | 279 / 280 / 250 of 300 | 19,210,971 → 18,933,498 (0.986; fewer 310, more 20) | 1.23s |
 
 Expected score: the puzzles a player picking at random among its tied top moves solves. A tie-break can only remove moves from the tied set, so 'solution among tied' can only fall and 'single top move' only rise when one acts; the expected score moves either way and is what RESULTS FALL reads.
 
