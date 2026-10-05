@@ -3,6 +3,15 @@
 Kaveh's two-journals rule (2026-09-16): this file keeps the agent on track; JOURNAL.md is Kaveh's, written for review.
 Newest entry first. Times from `date` (PDT).
 
+## 2026-10-05 13:28 — watcher batch 2, health line
+
+- Words: mate1_tomove, promo_tomove, promo_mover (tested). Rules F9 pinned, F10 in check (under F2), R11 mate in one,
+  E12 promotes now, E13 quiet. One-move what-if left out (182 ms/position, weak signal).
+- Health (bits saved/position vs base rates, same positions): frames +0.948 (b1), +1.005 (b2); elsewhere and result
+  about even. `watcher health`, `watcher credit`.
+- Scar x2 today: journal headers pre-written with a guessed time (13:22, 13:34) instead of `date` -> fixed commits.
+- NEXT: the next review (batch 2's surprises); off-frame tactics need words (forks by quiet moves, discovered attacks).
+
 ## 2026-10-05 13:21 — the surprise watcher (Kaveh's design; decisions asked one by one)
 
 - Pass 2 of the bug loop (reviewer #2 on my fixes): 10 more, fixed in 202c41f8 (18 loop tests). Old idea loop: round 1
