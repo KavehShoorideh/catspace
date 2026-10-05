@@ -204,42 +204,7 @@
   "mined:L-c62eccd3": 58
  },
  "nothing_fires": false,
- "results_fall": [
-  {
-   "set": "pawnendings",
-   "gained": 2,
-   "lost": 82,
-   "lost_ids": [
-    "046wz",
-    "0522i",
-    "09BPn",
-    "09Eof",
-    "0OwwP",
-    "0TWjp",
-    "0VPWX",
-    "0YetX",
-    "0hJWr",
-    "0uEku"
-   ]
-  },
-  {
-   "set": "general",
-   "gained": 1,
-   "lost": 30,
-   "lost_ids": [
-    "02jzH",
-    "0AF3g",
-    "0Rt3o",
-    "0XVeE",
-    "0ag1f",
-    "0dJDk",
-    "0hlwQ",
-    "0ojAF",
-    "0pOXI",
-    "13ZvZ"
-   ]
-  }
- ],
+ "results_fall": [],
  "unsound": [],
  "wall": [
   {
