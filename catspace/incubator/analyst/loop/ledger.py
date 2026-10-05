@@ -178,10 +178,19 @@ def render(n: int, out: dict, inputs: dict, ctl: dict, timings: dict, heads: dic
         props.append("Investigate the unsound ideas before anything else: a wrong claim means the detector, the kernel or the bridge disagree.")
     if ctl["nothing_fires"]:
         props.append("Nothing new fires on the held-out sets: frame from the sets' own themes, or swap the miner.")
-    if conj and not proved:
+    new_ids = set(ctl["new_ids"])                                            # the registered ideas are re-checked every round
+    if any(p["candidate"]["id"] in new_ids for p in conj) and not any(p["candidate"]["id"] in new_ids for p in proved):
         props.append("All new ideas are conjecture tier: slot R2 (the guard-to-Lean translator) and R3 (automatic proofs) decide whether any can close search.")
     if ctl["results_fall"]:
         props.append("A set's expected score fell: dig the puzzles that went down (MISS anatomy) before keeping the round's uses.")
+    lopsided = [m["set"] for m in rows if m["arm"] == "round" and m.get("vs_previous")
+                and len(m["vs_previous"]["down"]) > len(m["vs_previous"]["up"]) and m["set"] not in {f["set"] for f in ctl["results_fall"]}]
+    if lopsided:
+        props.append(f"More puzzles went down than up against the previous round on {', '.join(lopsided)}, though the expected score did not fall: "
+                     "the gain sits in fewer puzzles; dig the down ids (MISS anatomy) before relying on the round's uses.")
+    slow = [x["set"] for x in ctl["wall"] if x["round"] and x["baseline"] and x["round"] / x["baseline"] > 1.5]
+    if slow:
+        props.append(f"Time per step above 1.5x the baseline on {', '.join(slow)}: profile the round's uses before keeping them.")
     w("\n".join(f"- {x}" for x in props) or "- Continue: no control flagged.")
     w("")
     w("## Decision")
