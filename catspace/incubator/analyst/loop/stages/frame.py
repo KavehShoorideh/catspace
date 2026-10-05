@@ -1,7 +1,7 @@
 """FRAME: the batch a round learns from -- the positions where the player went wrong -- frozen by id.
 - puzzles: the player, wired with the basis the round started from, on development puzzle rows (i % 97 == 5, never
   the held-out rows; at most 260 of them, beyond which they meet the general held-out set); each puzzle gives its
-  first missed step (the solution outside the top moves); cfg "ties" adds the first step solved only inside a tie;
+  first step the player does not solve outright: missed, or solved only inside a tie (Kaveh 2026-10-05);
 - game losses: positions of development games (game_id % 97 == 5 in the 2019 Lichess records) where the side to move
   played a move its frames did not foresee losing (one-ply value >= 0 relative to passing, and the move's own
   forecast above -min_loss) and the game took at least `min_loss` pawns off it within `horizon` plies, the loss still
@@ -85,10 +85,10 @@ def puzzle_misses(ctx, cfg: dict, active_path: str) -> list[Framed]:
     res = json.load(open(dump))
     out, missed, tied = [], 0, 0
     for rec in res:
-        # the first step the player misses (the solution outside the top moves); with cfg "ties", also the first step
-        # solved only inside a tie with other moves (the reviewer's finding 6, 2026-10-05: 23 such puzzles were never
-        # framed) -- a design change, off until Kaveh decides
-        ties = cfg.get("ties", False)                                       # DESIGN, Kaveh's call (asked 2026-10-05): frame ties too
+        # the first step the player misses (the solution outside the top moves), or solves only inside a tie with
+        # other moves, where it picks at random (Kaveh 2026-10-05, on the reviewer's finding: 23 such puzzles of 150
+        # were never framed); cfg "ties": False frames misses only
+        ties = cfg.get("ties", True)                                        # Kaveh 2026-10-05: frame ties too
         step = next(((i, x) for i, x in enumerate(rec["steps"]) if not x["tied"] or (ties and (x.get("n_top") or 1) > 1)), None)
         if step is None:
             continue

@@ -207,7 +207,9 @@ def compose(verdicts: list) -> float | None:
     """The COMPOSED preference of a move from the lemmas that speak about it (Kaveh 2026-09-23: "lemmas from one
     frame usable in other frames ... prefer this by this much"): each lemma, a self-contained world, predicts the
     outcome its verdict implies (the exception mean when its guard fired, the holds mean otherwise); the move's
-    predicted outcome is the mean of those predictions. None when no lemma carries a value."""
+    predicted outcome is the mean of those predictions, ONE PER EMBEDDING: a lemma speaks once for each placement of
+    its frame around the move (each partner piece), so a lemma touching more pieces weighs more (Kaveh 2026-10-05,
+    asked: keep per partner). None when no lemma carries a value."""
     preds = []
     for c, pred, fired, ids in verdicts:
         if not c.value:
