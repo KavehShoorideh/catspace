@@ -49,7 +49,7 @@ def _solve_lichess(row: dict) -> dict:
         from . import frame_player as _FP
         steps.append(dict(fen=b.fen(), sol=u, tied=ok_tied, unique=ok_unique, n_top=len(c["best"]), best=c["best"][:6],
                           v_sol=c["values"].get(u), v_top=max(c["values"].values()), nodes=_FP.NODES[0], depth=_FP.DEPTH[0],
-                          proved=_FP.PROVED[0]))
+                          proved=_FP.PROVED[0], passer_leaves=_FP.PASSER_LEAVES[0]))
         if not ok_tied:
             break
         b.push_uci(u)
@@ -164,6 +164,7 @@ def main(argv=None):
     ap.add_argument("--proved-mates", type=int, default=0, choices=[0, 1, 2], help="zone search: a back-rank mate proved in Lean closes the node "
                     "(1 inside the tree, 2 also at the horizon)")
     ap.add_argument("--theme", default=None, help="lichess --offset: only puzzles with this theme (e.g. backRankMate)")
+    ap.add_argument("--proved-passer", action="store_true", help="the passer lemma (second form, prototype): its queen at the horizon, its push a candidate")
     ap.add_argument("--tag", default="", help="a suffix for the dump's name (keeps an earlier run's dump from being overwritten)")
     ap.add_argument("--frame-ext", type=int, default=0, help="zone search: replies on the same square do not use up a ply (up to N a line)")
     ap.add_argument("--pawn-moves", action="store_true", help="every pawn move is a candidate and is searched in the zone search")
@@ -231,6 +232,8 @@ def main(argv=None):
         spec_kw["zugzwang_guard"] = True; tag += "_zzguard"
     if a.proved_mates:
         spec_kw["proved_mates"] = a.proved_mates; tag += f"_proved{a.proved_mates}"
+    if a.proved_passer:
+        spec_kw["proved_passer"] = True; FP.PASSER = True; tag += "_passer"
     if spec_kw:
         from .zone_search import TacticalSpec
         planner_kw["spec"] = TacticalSpec(**spec_kw)
@@ -268,6 +271,9 @@ def main(argv=None):
         pv = [s.get("proved", 0) for r in res for s in r["steps"]]
         if any(pv):
             print(f"OBS proved back-rank mates closing zone-search nodes: {sum(pv)} in {sum(1 for x in pv if x)}/{len(pv)} steps")
+        pl = [s.get("passer_leaves", 0) for r in res for s in r["steps"]]
+        if any(pl):
+            print(f"OBS leaves credited with a proved passer: {sum(pl)} in {sum(1 for x in pl if x)}/{len(pl)} steps")
         ds = [s.get("depth", 0) for r in res for s in r["steps"]]
         print("OBS the deepest rung completed per solver step: " + ", ".join(f"{d}: {ds.count(d)}" for d in sorted(set(ds))))
     from .fates import VERIFY_FRAMES

@@ -68,6 +68,9 @@ class TacticalSpec:
                                         # node at MATE without expanding it -- a value the theorem guarantees (Kaveh 2026-10-04: "cut down
                                         # on search correctly"). 1: inside the tree only (where the search would find the mate itself);
                                         # 2: also at the horizon (mates the frames' material read misses, as leaf_mates by brute force)
+    proved_passer: bool = False         # a passer whose promotion the passer lemma (second form, Python prototype of the Lean
+                                        # hypotheses, 816/816 claims confirmed by exhaustive search 2026-10-05) proves counts at the
+                                        # horizon as the queen it brings, like a 7th-rank promotion already does in `gains`
     knowledge: tuple = ()               # tactical facts the planner hands down (jobs.Job: a pin, a guard...), valid by footprint
     prune_jobs: int = 0                 # drop a move that abandons a valid job worth more than it takes at depth <= this (0: order only)
 
@@ -126,6 +129,12 @@ class ZoneSearch:
             if m.promotion == chess.QUEEN:
                 b.push(m); lost = 0.0 if b.is_checkmate() else self.read(b, m.to_square); b.pop()
                 best = max(best, F.captured_value(b, m) - max(0.0, lost))
+        if self.spec.proved_passer:                           # a promotion further back, proved rather than read
+            from .lean_passer_v2_proto import proved_passer_gain
+            g = proved_passer_gain(b)
+            if g:
+                self.kstats["passer"] = self.kstats.get("passer", 0) + 1
+                best = max(best, g)
         return best
 
     def stand(self, b: chess.Board, zone: frozenset) -> float:

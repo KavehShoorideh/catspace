@@ -30,6 +30,14 @@ Newest entry first. Times from `date` (PDT).
   `some ⟨opp c,king⟩ = some ⟨c,pawn⟩` tries to unify colours first (use simp at h); `rfl` cannot reduce `c == c` for a
   variable c (go through Bool.eq_iff_iff + simp); docstrings cannot precede set_option; `first | A | B` picks A if it
   merely succeeds (a `cases` on a trivially true equation).
+- FIRE RATE v1 (bare king): 0 PROVED in 4,714 real positions (pawnEndgame/promotion/advancedPawn puzzles); the
+  one-aways fail bareKing (the enemy has pawns). v2 PROTOTYPE in Python (lean_passer_v2_proto.py): enemy king+pawns
+  with a pawn-distance bound to bad squares (path, our pawn, check squares, their promotion rank) and kingRoom (every
+  square the enemy king can reach has more free unattacked neighbours than the enemy has pawns): pawnEndgame 2672
+  positions -> PROVED 116, ONEAWAY 333 (kingOutside 110, pawnsFar 165, kingRoom 39, pathClear 10); race search
+  confirmed 116/116; random pawn endings 400/400. Hypotheses empirically sound -> worth proving, IF it pays in play.
+- Player on 300 held-out pawnEndgame puzzles (offset 17): plain 249/300 tied, 48/300 single, 2219 nodes/step, 16 s.
+  --proved-passer (prototype: queen at the horizon + the push as a candidate): running.
 - Passer v1 design (Ideas/Passer.lean): enemy = bare king; OUR side without sliders (a push could uncover a check and
   break the step-back argument); hyps ownPawn, pathClear, bareKing, noSliders, notInCheck, kingOutside, kingHasMove;
   goal: our queen on the promotion square within 2n-1 plies. Proof plan: induction on remaining pushes r with the

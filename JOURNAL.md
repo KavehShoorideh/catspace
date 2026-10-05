@@ -22874,6 +22874,81 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-05 01:00 PDT — the detector's economics closed, the passer proved in its first form, and a second form prototyped (OBS)
+
+Kaveh's plan for the night (00:0x): "in-process detector first, then the passer". Both done, with a turn in each.
+
+THE DETECTOR'S COST, MEASURED (not guessed; a `ping` command and an in-binary `bench`): a bare pipe round trip 10 us,
+parsing a FEN 90 us, the nine back-rank hypotheses 70-230 us. The plan's FFI (foreign function interface) would have
+saved the 10 us. Fixes, in the order found: the position as python-chess bitboards in hex (2.7 us to write, a FEN
+19 us; parsed into machine words in 4 us); hypotheses stopped at the second failure, cheap tests first (the midgame
+query 320 -> 173 us); fast primitives proved EQUAL to the kernel's (`Ideas/Fast.lean`: a ray-walk `rayBetween` equal
+to the kernel's 64-square filter by a kernel `decide` over all 4,096 pairs, about 80 s once; a per-square table of the
+35 squares that can attack at all; `isAttackedB'`, `inCheckB'`, `legalNormalB'`) -- which bought almost nothing
+(94 -> 87 us), because the loops were not the cost. The benchmark found it: every hypothesis recomputed the position
+after the move (an `applyMove`, 0.8 us, Finset bookkeeping) INSIDE its per-square lambda; `boxed` applied the move 56
+times, 51 us. The compiler floats a let used once into the lambda that uses it. Fix: `@[noinline]` wrappers that take
+the after-position as an argument. OBS per query: mate 186 -> 41 us, two candidates 325 -> 88, midgame 320 -> 55.
+Per fully evaluated candidate about 24 us, three 64-square scans through the board closure at 50-90 ns a lookup: the
+floor of this design. Stopped tuning there. The Python pre-gate (runs at every node) became a bitboard test, 0.25-1.4
+us. Reruns of yesterday's player gauges with the faster detector, same positions searched to the node (verdicts
+unchanged): back-rank 136 s (plain 133 s, unchanged), general 809 s (was 846; plain 762). READING: the detector now
+costs about 5% where it never fires; what a lemma can save is bounded by how often it fires, not by the query's price.
+
+THE PASSER, FIRST FORM, PROVED (`Ideas/Passer.lean`, about 800 lines; standard axioms only, no `sorry`): our pawn with
+`n` pushes to go against a BARE enemy king, our side without rook, bishop or queen. Hypotheses, each evaluable alone:
+ownPawn, pathClear, bareKing, noSliders, notInCheck, kingOutside (the rule of the square: the king's distance to the
+promotion square exceeds `n`, with the move), kingHasMove (no stalemate on the enemy's first turn). Conclusion: our
+queen stands on the promotion square within `2n - 1` plies whatever the opponent does. The proof is an induction on
+the pushes left with the Chebyshev invariant kdist(king, promotion square) > r: the enemy's legal moves are king
+steps (`bare_king_move`); the king is never in check (we have no sliders, so a push never uncovers one; the pawn's
+attack squares lie too near the promotion square) and can always step back to where it came from (no stalemate); the
+path stays clear because the king is too far. Why no sliders: with one, a push could open a line, check the enemy
+king, and break the step-back argument; a weaker conclusion ("promotes or mates") would be needed. Bridge: on 500
+random pawn endings the detector claimed PROVED 483 times, every claim confirmed by an exhaustive race search in
+python-chess (0 wrong). Detector: 7 hypotheses, one-away targets (the blocker on the path; the king in the square).
+
+WHERE IT FIRES: nowhere real. OBS on held-out Lichess puzzles (rows i % 97 == 17, 500 each): pawnEndgame 1,586
+solver positions, bare enemy king in 9, PROVED 0, one-away 430 -- 425 of them failing only `bareKing`; promotion and
+advancedPawn 1,631 and 1,497 positions, bare king in 0, PROVED 0. The enemy has pawns. The lemma must allow them.
+
+THE SECOND FORM, PROTOTYPED BEFORE PROVING (short runs before big runs, applied to a proof; `lean_passer_v2_proto.py`
+evaluates the intended Lean hypotheses in Python): enemy = king and pawns; every enemy pawn needs more than `n - 1`
+moves (a lower bound: max of the file distance and the rank distance less one for a possible double step) to reach any
+BAD square -- the path and our pawn's square, the squares from which it would check our king, its promotion rank; and
+kingRoom: every square the enemy king can reach in `n - 1` moves has more neighbours free of our pieces, our attacks
+(the passer's whole future attack set counted) and the path than the enemy has pawns, so it can never run out of king
+moves (no self-stalemate, which IS a real resource in pawn endings). OBS: on the 2,672 pawnEndgame positions PROVED
+116, one-away 333 (kingOutside 110, pawnsFar 165, kingRoom 39, pathClear 10); the exhaustive race search confirmed
+116/116 claims; on 2,000 random pawn endings with enemy pawns PROVED 1,550, confirmed 400/400 (the checked sample).
+No false claim in 816: the hypothesis set is sound as far as testing can tell, and worth the proof.
+
+IN PLAY, WITH THE PROTOTYPE AS DETECTOR (300 held-out pawnEndgame puzzles, one run each):
+  plain                 whole solution 249/300 among the tied top moves, 48/300 single; 2,219 nodes a step; 16 s.
+  passer, naive credit  (a proved passer counts as the queen it brings at the horizon; its push joins the candidates)
+                        248/300 tied (gained 2, lost 3), 60/300 single; a random pick among ties expected 76.8 -> 87.1;
+                        nodes 1.044; the credit fired at 327,736 leaves in 751/845 steps.
+  Bug check on the 3 losses (class 4/5, horizon): in 0bmcR the credit valued a line +8 for our proved promotion at ply
+  7 while the enemy's g-pawn promotes at ply 8 -- the lemma is right (we promote first), the VALUE is not (both do).
+  passer, conservative credit (only when every enemy pawn needs two more moves after our promotion; minus the value of
+                        our pieces their king or pawns can reach during the race):
+                        251/300 tied (gained 2, lost 0), 53/300 single; a random pick among ties expected 76.8 -> 82.2;
+                        nodes 1.024 (fewer in 48 steps, more in 184, equal 618); the credit fired at 133,499 leaves in
+                        697/853 steps; 47 s.
+  Of the plain run's 51 misses, 44 have every pawn failing two or more hypotheses (no form of this lemma speaks); 7
+  have a proved or one-away passer at the miss step; in one (3wFYb) the proved push was not even a candidate.
+
+READING (one run each, directional).
+- The passer's conclusion is a FACT about the pawn; its VALUE in a race depends on the opponent's counterplay in the
+  plies the proof does not cover. A leaf credit is therefore a heuristic on top of a theorem, and the first version
+  was wrong by a horizon. The sound uses are the ones Kaveh named: the push needs no verification, and the one-away
+  hypothesis names the target (the blocker, the king in the square).
+- A lemma pays in search only where it fires; the first form fired nowhere real, the second fires in about 4% of
+  pawn-ending positions and names a target in 12%. The proof of the second form is the remaining step for the passer
+  to be end to end on real positions.
+NEXT: prove the second form (the first form's proof is the template; new: pawn moves preserve the distance bound, the
+room count excludes stalemate); then the explainer's sentence for a proved passer and a one-away target.
+
 ## 2026-10-04 21:37 PDT — the back-rank mate, proved in Lean 4 and used in search: never wrong, cheaper, not yet much cheaper (OBS)
 
 Kaveh: "build that ... see if the theorem is useful in action ... a puzzle ... cut down on search correctly ... get it

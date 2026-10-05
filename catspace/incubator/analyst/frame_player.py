@@ -106,6 +106,8 @@ TOTAL_CAP = [None]                                                  # a hard nod
 KSTATS: dict = {}                                                   # the knowledge's firing counts, summed over choose calls
 NODES = [0]                                                         # the zone search's nodes for the last choose (for equal-compute gauges)
 PROVED = [0]                                                        # nodes the proved back-rank mate closed in the last choose (spec.proved_mates)
+PASSER = False                                                      # the proved passer's push joins the candidates (the second form's prototype)
+PASSER_LEAVES = [0]                                                 # leaves credited with a proved passer in the last choose
 DEPTH = [0]                                                         # the deepest rung the zone search completed for the last choose
 BUDGET_POLICY = "fixed"                                            # zone_candidates: "fixed" (equal shares) | "watch" (the king watches' policy)
 DECIDER_THRESHOLD = [0.5]                                           # BUDGET_POLICY "decider": go on past a rung when the learned chance that it
@@ -171,6 +173,10 @@ def candidates(b: chess.Board, before=None, book=None, ledger: str = "zone_candi
         keep |= set(operators(b, _jobs(b)))
     if PAWN_MOVES and ledger == "zone_candidates":
         keep |= {m.uci() for m in moves if b.piece_type_at(m.from_square) == chess.PAWN}
+    if PASSER and ledger == "zone_candidates":                         # the proved passer's push (its promotion needs no search)
+        from .lean_passer_v2_proto import proved_passers
+        for sq, _ in proved_passers(b):
+            keep |= {m.uci() for m in moves if m.from_square == sq}
     if ARMED and ledger == "zone_candidates":                          # the armed lemmas' lures: the moves that set the trap (a capture whose
         for mod in _armed_modules():                                    # recapture walks onto the line, a pinning move, a hit on the last
             keep |= {x[0].uci() for x in mod.lures(b)}                  # back-rank defender)
@@ -234,6 +240,7 @@ def choose(b: chess.Board) -> dict:
             got = zs.rank(b, moves, alloc=alloc, stop=stop)
             NODES[0] = spent + zs.total
             PROVED[0] = zs.kstats.get("proved", 0)
+            PASSER_LEAVES[0] = zs.kstats.get("passer", 0)
             DEPTH[0] = max((d for h in zs.history.values() for d, v, _ in h if v is not None), default=0)
             for k2, v2 in zs.kstats.items():
                 KSTATS[k2] = KSTATS.get(k2, 0) + v2
