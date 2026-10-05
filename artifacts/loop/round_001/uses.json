@@ -1,0 +1,3092 @@
+[
+ {
+  "idea": "lean:backRankMate",
+  "mode": "closure",
+  "switch": "TacticalSpec.proved_mates=1: a proved mate for the side to move closes the zone-search node",
+  "refused": false,
+  "reason": "proved, standard axioms, clean bridge",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "lean:backRankMate"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "lean:backRankMate",
+  "mode": "sentence",
+  "switch": "explain: {move} mates: the king is boxed in on its back rank, nothing can take the checker and nothing can step between (proved: Ideas.backRankMate_sound).",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "lean:backRankMate"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "lean:unstoppablePasser",
+  "mode": "closure",
+  "switch": "TacticalSpec.proved_passer + frame_player.PASSER: the queen counted at the horizon, the push a candidate (via the passer2 detector, which reports form-1 proofs)",
+  "refused": false,
+  "reason": "proved, standard axioms, clean bridge",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "lean:unstoppablePasser"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "lean:unstoppablePasser",
+  "mode": "sentence",
+  "switch": "explain: the pawn on {sq} cannot be stopped: the king is outside its square and has nothing else to stop it with (proved: Ideas.Passer.unstoppablePasser_sound').",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "lean:unstoppablePasser"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "lean:unstoppablePasser2",
+  "mode": "closure",
+  "switch": "TacticalSpec.proved_passer + frame_player.PASSER: the queen counted at the horizon, the push a candidate",
+  "refused": false,
+  "reason": "proved, standard axioms, clean bridge",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "lean:unstoppablePasser2"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "lean:unstoppablePasser2",
+  "mode": "sentence",
+  "switch": "explain: the pawn on {sq} cannot be stopped: the king is outside its square and no enemy pawn can get in its way in time (proved: Ideas.Passer2.unstoppablePasser2_sound).",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "lean:unstoppablePasser2"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-d7d626b1",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-d7d626b1"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-d7d626b1",
+  "mode": "sentence",
+  "switch": "explain: [*] moving the * keeps material, unless (lands_attacked() & not attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-d7d626b1"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-1f5b02aa",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-1f5b02aa"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-1f5b02aa",
+  "mode": "sentence",
+  "switch": "explain: [* *] moving the * loses material, unless not lands_attacked() or attacked(0) or (worth_ge(1,0) & not after_some_captures_worth_ge(0,1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-1f5b02aa"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-b3306d88",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-b3306d88"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-b3306d88",
+  "mode": "sentence",
+  "switch": "explain: [* Q] moving the Q keeps material, unless (lands_attacked() & not attacked(1)) or (not attacked_by_lower(1) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-b3306d88"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-f151403e",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-f151403e"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-f151403e",
+  "mode": "sentence",
+  "switch": "explain: [* B] moving the * keeps material, unless (lands_attacked() & not attacked(0)) or (after_outnumbered(0) & not attacked(0)) or (lands_attacked() & not attacked(0)) or (not defended(0) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-f151403e"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-357b3596",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-357b3596"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-357b3596",
+  "mode": "sentence",
+  "switch": "explain: [* P] moving the * loses material, unless (not lands_attacked() & after_some_lands_attacked(0)) or attacked(0) or (some_not_gives_check(1) & not lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-357b3596"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-1559d3ff",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-1559d3ff"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-1559d3ff",
+  "mode": "sentence",
+  "switch": "explain: [B K] moving the B keeps material, unless (lands_attacked() & not attacked(0)) or (not attacks(0,1) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-1559d3ff"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-c6ae56a8",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-c6ae56a8"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-c6ae56a8",
+  "mode": "sentence",
+  "switch": "explain: [N Q] moving the Q keeps material, unless (lands_attacked() & not attacked(1)) or (not some_not_lands_attacked(0) & not after_some_captures(0)) or (not some_captures_worth_ge(1,0) & lands_attacked()) or (not some_not_lands_attacked(0) & after_some_not_lands_attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-c6ae56a8"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-bd609052",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-bd609052"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-bd609052",
+  "mode": "sentence",
+  "switch": "explain: [Q R] moving the Q keeps material, unless (lands_attacked() & not attacked(0)) or (lands_attacked() & not attacked(0)) or (after_outnumbered(0) & not attacked(0)) or (defended(0) & after_outnumbered(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-bd609052"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-29add153",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-29add153"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-29add153",
+  "mode": "sentence",
+  "switch": "explain: [B R] moving the B keeps material, unless (lands_attacked() & not attacked(0) & not outnumbered(1)) or (some_captures(0) & lands_attacked() & not attacked(0) & not after_outnumbered(1)) or (stays_aligned(1) & lands_attacked()) or (same_side(0,1) & after_attacked(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-29add153"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-56151c64",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-56151c64"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-56151c64",
+  "mode": "sentence",
+  "switch": "explain: [B R] moving the R keeps material, unless (lands_attacked() & not attacked(1)) or (not outnumbered(1) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-56151c64"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-de3a4533",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-de3a4533"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-de3a4533",
+  "mode": "sentence",
+  "switch": "explain: [K N] moving the N keeps material, unless (lands_attacked() & not attacked(1)) or (lands_attacked() & after_attacks(0,1)) or (not some_stays_aligned(0,1) & not after_some_not_gives_check(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-de3a4533"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-7b864176",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-7b864176"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-7b864176",
+  "mode": "sentence",
+  "switch": "explain: [N Q] moving the Q keeps material, unless (lands_attacked() & not attacked(1)) or (defended(0) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-7b864176"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-4515f228",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-4515f228"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-4515f228",
+  "mode": "sentence",
+  "switch": "explain: [N R] moving the R keeps material, unless (lands_attacked() & not attacked(1)) or (last_attacker(0,1) & lands_attacked()) or (attacked(0) & not some_not_lands_attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-4515f228"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-d9be708a",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-d9be708a"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-d9be708a",
+  "mode": "sentence",
+  "switch": "explain: [P Q] moving the Q loses material, unless (not gives_check() & not after_attacked_by_lower(1) & not lands_attacked()) or attacked(1)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-d9be708a"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-f9e15236",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-f9e15236"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-f9e15236",
+  "mode": "sentence",
+  "switch": "explain: [K N] moving the N keeps material, unless (lands_attacked() & not attacked(1)) or lands_attacked()",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-f9e15236"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-ed25f52a",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-ed25f52a"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-ed25f52a",
+  "mode": "sentence",
+  "switch": "explain: [* bK] moving the * keeps material, unless (lands_attacked() & not attacked(0)) or (not stays_aligned(0) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-ed25f52a"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-00aa6565",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-00aa6565"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-00aa6565",
+  "mode": "sentence",
+  "switch": "explain: [B Q] moving the B keeps material, unless (lands_attacked() & not attacked(0)) or (not after_defended(1) & after_some_gives_check(1)) or (after_attacked_by_lower(0) & not after_some_captures(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-00aa6565"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-bdb86dcf",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-bdb86dcf"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-bdb86dcf",
+  "mode": "sentence",
+  "switch": "explain: [B Q] moving the Q keeps material, unless (lands_attacked() & not attacked(1)) or (not some_gives_check(1) & after_outnumbered(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-bdb86dcf"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-01a8cd95",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-01a8cd95"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-01a8cd95",
+  "mode": "sentence",
+  "switch": "explain: [N Q] moving the N keeps material, unless (lands_attacked() & not attacked(0)) or (not attacked(1) & after_attacked(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-01a8cd95"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-ad2a52af",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-ad2a52af"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-ad2a52af",
+  "mode": "sentence",
+  "switch": "explain: [N Q] moving the Q keeps material, unless (lands_attacked() & not attacked(1)) or (not attacked_by_lower(1) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-ad2a52af"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-48197c55",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-48197c55"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-48197c55",
+  "mode": "sentence",
+  "switch": "explain: [B R] moving the B keeps material, unless (lands_attacked() & not attacked(0) & not some_captures_worth_ge(1,0)) or (attacked(0) & after_some_captures_worth_ge(1,0)) or (defended(1) & after_outnumbered(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-48197c55"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-3ac8018e",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-3ac8018e"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-3ac8018e",
+  "mode": "sentence",
+  "switch": "explain: [B R] moving the B loses material, unless not lands_attacked() or attacked(0)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-3ac8018e"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-ce75cee3",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-ce75cee3"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-ce75cee3",
+  "mode": "sentence",
+  "switch": "explain: [B N] moving the B keeps material, unless (lands_attacked() & not attacked(0) & not attacked(1)) or (not attacked(1) & some_gives_check(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-ce75cee3"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-b83aeac7",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-b83aeac7"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-b83aeac7",
+  "mode": "sentence",
+  "switch": "explain: [B N] moving the N keeps material, unless (lands_attacked() & not attacked(1) & not attacked(0)) or (not defended(1) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-b83aeac7"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-43da595f",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-43da595f"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-43da595f",
+  "mode": "sentence",
+  "switch": "explain: [N N] moving the N keeps material, unless (lands_attacked() & not attacked(0) & not attacked(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-43da595f"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-aa926631",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-aa926631"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-aa926631",
+  "mode": "sentence",
+  "switch": "explain: [N N] moving the N keeps material, unless (lands_attacked() & not attacked(1) & not attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-aa926631"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-4bf125c1",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-4bf125c1"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-4bf125c1",
+  "mode": "sentence",
+  "switch": "explain: [P Q] moving the Q loses material, unless (not gives_check() & not after_attacked_by_lower(1) & not lands_attacked()) or attacked(1)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-4bf125c1"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-16a354b6",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-16a354b6"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-16a354b6",
+  "mode": "sentence",
+  "switch": "explain: [* bP] moving the bP keeps material, unless (lands_attacked() & not attacked(1)) or (some_not_lands_attacked(1) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-16a354b6"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-1d7c0c27",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-1d7c0c27"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-1d7c0c27",
+  "mode": "sentence",
+  "switch": "explain: [B K] moving the B keeps material, unless (lands_attacked() & not attacked(0)) or (lands_attacked() & not attacked(0)) or (not some_not_gives_check(1) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-1d7c0c27"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-a1f72a0e",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-a1f72a0e"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-a1f72a0e",
+  "mode": "sentence",
+  "switch": "explain: [K N] moving the N keeps material, unless (lands_attacked() & not attacked(1)) or (attacks(0,1) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-a1f72a0e"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-52955e52",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-52955e52"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-52955e52",
+  "mode": "sentence",
+  "switch": "explain: [B R] moving the B keeps material, unless (lands_attacked() & not attacked(0)) or (lands_attacked() & after_some_stays_aligned(1,0) & not after_some_gives_check(1)) or (same_side(0,1) & after_some_captures_worth_ge(1,0)) or (lands_attacked() & after_some_captures(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-52955e52"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-0b0f3174",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-0b0f3174"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-0b0f3174",
+  "mode": "sentence",
+  "switch": "explain: [N R] moving the R keeps material, unless (lands_attacked() & not attacked(1)) or (after_attacked_by_lower(1) & not attacked(1)) or (not some_captures(0) & after_attacked_by_lower(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-0b0f3174"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-75ee9e46",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-75ee9e46"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-75ee9e46",
+  "mode": "sentence",
+  "switch": "explain: [N P] moving the N keeps material, unless (lands_attacked() & not attacked(0)) or (last_attacker(1,0) & lands_attacked()) or (not defended(0) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-75ee9e46"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-d3916895",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-d3916895"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-d3916895",
+  "mode": "sentence",
+  "switch": "explain: [N Q] moving the Q loses material, unless not lands_attacked() or attacked(1) or (stays_aligned(0) & not after_some_not_gives_check(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-d3916895"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-29baffdc",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-29baffdc"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-29baffdc",
+  "mode": "sentence",
+  "switch": "explain: [* bQ] moving the bQ loses material, unless (not after_attacked_by_lower(1) & not after_outnumbered(1) & not lands_attacked()) or attacked(1) or (some_not_lands_attacked(0) & not after_outnumbered(1) & not lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-29baffdc"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-4053e55e",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-4053e55e"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-4053e55e",
+  "mode": "sentence",
+  "switch": "explain: [B N] moving the B keeps material, unless (lands_attacked() & not attacked(0) & not captures_worth_ge(0)) or (not some_not_lands_attacked(1) & not after_attacks(0,1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-4053e55e"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-08910f53",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-08910f53"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-08910f53",
+  "mode": "sentence",
+  "switch": "explain: [B P] moving the B loses material, unless not lands_attacked() or attacked(0)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-08910f53"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-a1a8c886",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-a1a8c886"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-a1a8c886",
+  "mode": "sentence",
+  "switch": "explain: [N P] moving the N keeps material, unless (lands_attacked() & not attacked(0)) or (not attacked(0) & not some_not_lands_attacked(1)) or (some_gives_check(1) & lands_attacked()) or (not after_some_not_gives_check(0) & after_some_not_lands_attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-a1a8c886"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-ec84b25c",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-ec84b25c"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-ec84b25c",
+  "mode": "sentence",
+  "switch": "explain: [* bN] moving the * keeps material, unless (lands_attacked() & not attacked(0) & not captures_worth_ge(0)) or (not attacked(0) & not some_not_lands_attacked(1)) or (not defended(1) & lands_attacked()) or (last_attacker(1,0) & after_some_captures_worth_ge(0,1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-ec84b25c"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-8a07ceea",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-8a07ceea"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-8a07ceea",
+  "mode": "sentence",
+  "switch": "explain: [B bK] moving the B keeps material, unless (lands_attacked() & not attacked(0)) or lands_attacked()",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-8a07ceea"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-5c90eaf4",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-5c90eaf4"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-5c90eaf4",
+  "mode": "sentence",
+  "switch": "explain: [B bQ] moving the bQ keeps material, unless (lands_attacked() & not attacked(1)) or (lands_attacked() & not attacked(1)) or (after_attacked_by_lower(1) & not attacked(1)) or (attacks(0,1) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-5c90eaf4"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-8f32c770",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-8f32c770"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-8f32c770",
+  "mode": "sentence",
+  "switch": "explain: [Q bN] moving the Q keeps material, unless (lands_attacked() & not attacked(0)) or (not same_side(0,1) & not some_not_lands_attacked(1)) or (outnumbered(1) & after_last_attacker(1,0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-8f32c770"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-04b4938b",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-04b4938b"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-04b4938b",
+  "mode": "sentence",
+  "switch": "explain: [Q bB] moving the bB keeps material, unless (lands_attacked() & not attacked(1)) or after_attacked(0)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-04b4938b"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-629a2802",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-629a2802"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-629a2802",
+  "mode": "sentence",
+  "switch": "explain: [R bB] moving the R keeps material, unless (lands_attacked() & not attacked(0)) or (not outnumbered(0) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-629a2802"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-88e0c1a6",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-88e0c1a6"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-88e0c1a6",
+  "mode": "sentence",
+  "switch": "explain: [R bB] moving the bB keeps material, unless (lands_attacked() & not attacked(1)) or (same_side(0,1) & after_attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-88e0c1a6"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-4bd51cfa",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-4bd51cfa"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-4bd51cfa",
+  "mode": "sentence",
+  "switch": "explain: [N bQ] moving the bQ keeps material, unless (lands_attacked() & not attacked(1)) or (some_captures(0) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-4bd51cfa"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-2d728031",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-2d728031"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-2d728031",
+  "mode": "sentence",
+  "switch": "explain: [N bR] moving the bR keeps material, unless (lands_attacked() & not attacked(1)) or (not same_side(0,1) & lands_attacked()) or (attacked(0) & not some_not_lands_attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-2d728031"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-a0005aec",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-a0005aec"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-a0005aec",
+  "mode": "sentence",
+  "switch": "explain: [N bB] moving the N keeps material, unless (lands_attacked() & not attacked(0) & not after_attacked(1)) or (outnumbered(1) & after_attacks(1,0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-a0005aec"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-292c80b0",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-292c80b0"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-292c80b0",
+  "mode": "sentence",
+  "switch": "explain: [B bN] moving the B keeps material, unless (lands_attacked() & not attacked(0) & not attacked(1)) or (last_attacker(1,0) & after_some_captures(0)) or (outnumbered(1) & after_attacks(1,0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-292c80b0"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-4316842e",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-4316842e"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-4316842e",
+  "mode": "sentence",
+  "switch": "explain: [K bN] moving the bN keeps material, unless (lands_attacked() & not attacked(1)) or (after_some_stays_aligned(1,0) & not after_some_not_lands_attacked(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-4316842e"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-53e6d711",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-53e6d711"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-53e6d711",
+  "mode": "sentence",
+  "switch": "explain: [P bP] moving the P keeps material, unless (lands_attacked() & not attacked(0)) or (not same_side(0,1) & after_some_not_lands_attacked(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-53e6d711"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-f06c717c",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-f06c717c"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-f06c717c",
+  "mode": "sentence",
+  "switch": "explain: [Q bP] moving the Q keeps material, unless (lands_attacked() & not attacked(0)) or (some_lands_attacked(1) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-f06c717c"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-c8f5a8c6",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-c8f5a8c6"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-c8f5a8c6",
+  "mode": "sentence",
+  "switch": "explain: [N bK] moving the N keeps material, unless (lands_attacked() & not attacked(0)) or (after_some_stays_aligned(0,1) & not after_some_not_lands_attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-c8f5a8c6"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-2aa7c098",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-2aa7c098"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-2aa7c098",
+  "mode": "sentence",
+  "switch": "explain: [B bQ] moving the bQ keeps material, unless (lands_attacked() & not attacked(1)) or lands_attacked()",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-2aa7c098"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-8407accb",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-8407accb"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-8407accb",
+  "mode": "sentence",
+  "switch": "explain: [B bR] moving the B keeps material, unless (lands_attacked() & not attacked(0)) or after_attacked_by_lower(1)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-8407accb"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-7510e0c5",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-7510e0c5"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-7510e0c5",
+  "mode": "sentence",
+  "switch": "explain: [B bR] moving the B keeps material, unless (lands_attacked() & not attacked(0) & not some_gives_check(0)) or after_some_captures_worth_ge(1,0) or (not some_captures(0) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-7510e0c5"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-6ffa0c92",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-6ffa0c92"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-6ffa0c92",
+  "mode": "sentence",
+  "switch": "explain: [N bB] moving the N keeps material, unless (lands_attacked() & not attacked(0)) or (some_captures_worth_ge(0,1) & not after_some_not_stays_aligned(0,1)) or (some_captures_worth_ge(0,1) & not after_some_lands_attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-6ffa0c92"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-d4b3c707",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-d4b3c707"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-d4b3c707",
+  "mode": "sentence",
+  "switch": "explain: [N bB] moving the bB keeps material, unless (lands_attacked() & not attacked(1) & not attacked(0)) or (not attacked(0) & some_captures_worth_ge(0,1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-d4b3c707"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-1f100928",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-1f100928"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-1f100928",
+  "mode": "sentence",
+  "switch": "explain: [B bN] moving the B keeps material, unless (lands_attacked() & not attacked(0) & not attacked(1)) or (not attacked(1) & some_captures_worth_ge(1,0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-1f100928"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-33b52267",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-33b52267"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-33b52267",
+  "mode": "sentence",
+  "switch": "explain: [B bN] moving the bN keeps material, unless (lands_attacked() & not attacked(1)) or (some_captures_worth_ge(1,0) & not after_some_not_stays_aligned(1,0)) or (some_captures_worth_ge(1,0) & not after_some_lands_attacked(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-33b52267"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-dee93c9d",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-dee93c9d"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-dee93c9d",
+  "mode": "sentence",
+  "switch": "explain: [R bB] moving the bB keeps material, unless (lands_attacked() & not attacked(1)) or after_attacked(0)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-dee93c9d"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-6cedc504",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-6cedc504"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-6cedc504",
+  "mode": "sentence",
+  "switch": "explain: [R bN] moving the R keeps material, unless (lands_attacked() & not attacked(0)) or (attacked(1) & not some_not_lands_attacked(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-6cedc504"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-c269a0d8",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-c269a0d8"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-c269a0d8",
+  "mode": "sentence",
+  "switch": "explain: [N bR] moving the bR keeps material, unless (lands_attacked() & not attacked(1)) or (attacked(0) & not some_not_lands_attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-c269a0d8"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-9c0b9669",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-9c0b9669"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-9c0b9669",
+  "mode": "sentence",
+  "switch": "explain: [N bB] moving the bB keeps material, unless (lands_attacked() & not attacked(1) & not attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-9c0b9669"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-1f4b5a89",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-1f4b5a89"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-1f4b5a89",
+  "mode": "sentence",
+  "switch": "explain: [B bN] moving the B keeps material, unless (lands_attacked() & not attacked(0) & not attacked(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-1f4b5a89"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-550f2eff",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-550f2eff"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-550f2eff",
+  "mode": "sentence",
+  "switch": "explain: [Q bP] moving the Q loses material, unless not after_attacked_by_lower(0) or attacked(0)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-550f2eff"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-dba71e72",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-dba71e72"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-dba71e72",
+  "mode": "sentence",
+  "switch": "explain: [B bQ] moving the B keeps material, unless (lands_attacked() & not attacked(0)) or after_attacked(1)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-dba71e72"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-45053bcb",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-45053bcb"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-45053bcb",
+  "mode": "sentence",
+  "switch": "explain: [P bQ] moving the bQ loses material, unless not after_attacked_by_lower(1) or attacked(1)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-45053bcb"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-d7fdc561",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-d7fdc561"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-d7fdc561",
+  "mode": "sentence",
+  "switch": "explain: [B bR] moving the B keeps material, unless (lands_attacked() & not attacked(0)) or after_attacked(1)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-d7fdc561"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-f1227c57",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-f1227c57"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-f1227c57",
+  "mode": "sentence",
+  "switch": "explain: [Q bB] moving the bB keeps material, unless (lands_attacked() & not attacked(1)) or after_outnumbered(0)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-f1227c57"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-a34c4fc4",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-a34c4fc4"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-a34c4fc4",
+  "mode": "sentence",
+  "switch": "explain: [R bB] moving the bB keeps material, unless (lands_attacked() & not attacked(1) & not some_gives_check(1)) or after_some_captures_worth_ge(0,1) or (not some_captures(1) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-a34c4fc4"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-cea43420",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-cea43420"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-cea43420",
+  "mode": "sentence",
+  "switch": "explain: [K bN] moving the bN keeps material, unless (lands_attacked() & not attacked(1)) or lands_attacked()",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-cea43420"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-c7bd49f6",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-c7bd49f6"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-c7bd49f6",
+  "mode": "sentence",
+  "switch": "explain: [Q bN] moving the bN keeps material, unless (lands_attacked() & not attacked(1)) or (not attacked(0) & after_attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-c7bd49f6"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-b0731ab2",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-b0731ab2"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-b0731ab2",
+  "mode": "sentence",
+  "switch": "explain: [R bB] moving the bB keeps material, unless (lands_attacked() & not attacked(1)) or (last_attacker(0,1) & after_some_captures(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-b0731ab2"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-16aff81a",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-16aff81a"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-16aff81a",
+  "mode": "sentence",
+  "switch": "explain: [R bN] moving the R keeps material, unless (lands_attacked() & not attacked(0)) or after_attacked_by_lower(0)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-16aff81a"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-6e72a89b",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-6e72a89b"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-6e72a89b",
+  "mode": "sentence",
+  "switch": "explain: [K bN] moving the bN keeps material, unless (lands_attacked() & not attacked(1)) or (some_gives_check(1) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-6e72a89b"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-73527c48",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-73527c48"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-73527c48",
+  "mode": "sentence",
+  "switch": "explain: [P bN] moving the bN keeps material, unless (lands_attacked() & not attacked(1)) or (some_gives_check(1) & after_defended(1)) or (outnumbered(0) & after_defended(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-73527c48"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-18074b36",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-18074b36"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-18074b36",
+  "mode": "sentence",
+  "switch": "explain: [R bQ] moving the bQ keeps material, unless (lands_attacked() & not attacked(1)) or (after_outnumbered(1) & not outnumbered(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-18074b36"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-e134dc96",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-e134dc96"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-e134dc96",
+  "mode": "sentence",
+  "switch": "explain: [P bB] moving the bB loses material, unless (not after_attacked_by_lower(1) & not after_outnumbered(1)) or attacked(1) or not some_not_gives_check(1)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-e134dc96"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-7a0db8b5",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-7a0db8b5"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-7a0db8b5",
+  "mode": "sentence",
+  "switch": "explain: [B bP] moving the B loses material, unless not lands_attacked() or attacked(0)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-7a0db8b5"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-108587bc",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-108587bc"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-108587bc",
+  "mode": "sentence",
+  "switch": "explain: [bQ wR] moving the bQ keeps material, unless (lands_attacked() & not attacked(0)) or (after_outnumbered(0) & not outnumbered(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-108587bc"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-29f5a46a",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-29f5a46a"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-29f5a46a",
+  "mode": "sentence",
+  "switch": "explain: [bB bQ] moving the bB keeps material, unless (lands_attacked() & not attacked(0)) or after_outnumbered(1)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-29f5a46a"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-f48dee18",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-f48dee18"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-f48dee18",
+  "mode": "sentence",
+  "switch": "explain: [bN bQ] moving the bN keeps material, unless (lands_attacked() & not attacked(0)) or (not attacked(1) & after_attacked(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-f48dee18"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-e5c07f2f",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-e5c07f2f"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-e5c07f2f",
+  "mode": "sentence",
+  "switch": "explain: [bB bR] moving the bB keeps material, unless (lands_attacked() & not attacked(0) & not some_gives_check(0)) or after_some_captures_worth_ge(1,0) or (not some_captures(0) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-e5c07f2f"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-25c565fb",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-25c565fb"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-25c565fb",
+  "mode": "sentence",
+  "switch": "explain: [bB bN] moving the bB keeps material, unless (lands_attacked() & not attacked(0) & not attacked(1)) or (not attacked(1) & some_captures_worth_ge(1,0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-25c565fb"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-808713fd",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-808713fd"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-808713fd",
+  "mode": "sentence",
+  "switch": "explain: [bB bN] moving the bN keeps material, unless (lands_attacked() & not attacked(1)) or (some_captures_worth_ge(1,0) & not after_some_not_stays_aligned(1,0)) or (some_captures_worth_ge(1,0) & not after_some_lands_attacked(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-808713fd"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-3584cc2e",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-3584cc2e"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-3584cc2e",
+  "mode": "sentence",
+  "switch": "explain: [bB wP] moving the bB loses material, unless not lands_attacked() or attacked(0) or not some_not_gives_check(0)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-3584cc2e"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-5baf35ff",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-5baf35ff"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-5baf35ff",
+  "mode": "sentence",
+  "switch": "explain: [bB bP] moving the bP keeps material, unless (lands_attacked() & not attacked(1)) or (not defended(0) & stays_aligned(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-5baf35ff"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-11d650f7",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-11d650f7"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-11d650f7",
+  "mode": "sentence",
+  "switch": "explain: [bN bR] moving the bR keeps material, unless (lands_attacked() & not attacked(1)) or (attacked(0) & not some_not_lands_attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-11d650f7"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-fc4cdffe",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-fc4cdffe"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-fc4cdffe",
+  "mode": "sentence",
+  "switch": "explain: [bB bN] moving the bB keeps material, unless (lands_attacked() & not attacked(0) & not attacked(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-fc4cdffe"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-968d0186",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-968d0186"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-968d0186",
+  "mode": "sentence",
+  "switch": "explain: [bP bQ] moving the bQ loses material, unless not after_attacked_by_lower(1) or attacked(1)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-968d0186"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-7604a2e0",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-7604a2e0"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-7604a2e0",
+  "mode": "sentence",
+  "switch": "explain: [bN wR] moving the wR loses material, unless not after_attacked_by_lower(1) or (attacked(1) & after_some_gives_check(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-7604a2e0"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-545c0000",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-545c0000"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-545c0000",
+  "mode": "sentence",
+  "switch": "explain: [bB bB] moving the bB keeps material, unless (lands_attacked() & not attacked(0) & not attacked(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-545c0000"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-6a62ec77",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-6a62ec77"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-6a62ec77",
+  "mode": "sentence",
+  "switch": "explain: [bB bB] moving the bB keeps material, unless (lands_attacked() & not attacked(1) & not attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-6a62ec77"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-3d13f074",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-3d13f074"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-3d13f074",
+  "mode": "sentence",
+  "switch": "explain: [bB bN] moving the bB keeps material, unless (lands_attacked() & not attacked(0) & not attacked(1)) or some_captures_worth_ge(1,0)",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-3d13f074"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-0187cf82",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-0187cf82"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-0187cf82",
+  "mode": "sentence",
+  "switch": "explain: [bB bN] moving the bN keeps material, unless (lands_attacked() & not attacked(1)) or (some_gives_check(1) & stays_aligned(0)) or (some_captures_worth_ge(1,0) & not after_some_lands_attacked(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-0187cf82"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-e3cec022",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-e3cec022"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-e3cec022",
+  "mode": "sentence",
+  "switch": "explain: [bB bP] moving the bP keeps material, unless (lands_attacked() & not attacked(1)) or (some_gives_check(0) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-e3cec022"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-7325cdad",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-7325cdad"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-7325cdad",
+  "mode": "sentence",
+  "switch": "explain: [bN bN] moving the bN keeps material, unless (lands_attacked() & not attacked(0) & not attacked(1))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-7325cdad"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-69fe6e6d",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-69fe6e6d"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-69fe6e6d",
+  "mode": "sentence",
+  "switch": "explain: [bN bN] moving the bN keeps material, unless (lands_attacked() & not attacked(1) & not attacked(0))",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-69fe6e6d"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-c62eccd3",
+  "mode": "order",
+  "switch": "frame_player.LOOP_ORDER: a tie-break among the moves the tactics tie, by the lemmas' composed verdicts",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-c62eccd3"
+   ],
+   "code": "1a4ce48a"
+  }
+ },
+ {
+  "idea": "mined:L-c62eccd3",
+  "mode": "sentence",
+  "switch": "explain: [bK bN] moving the bN keeps material, unless (lands_attacked() & not attacked(1)) or (attacks(0,1) & lands_attacked())",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 1,
+   "stage": "use",
+   "sources": [
+    "mined:L-c62eccd3"
+   ],
+   "code": "1a4ce48a"
+  }
+ }
+]

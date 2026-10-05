@@ -1,0 +1,18 @@
+{
+ "round": 1,
+ "timings": {
+  "frame": 632.2061445838772,
+  "mine": 78.85627695801668,
+  "translate": 0.004470624960958958,
+  "prove": 27.460118792019784,
+  "use": 0.003225291846320033,
+  "measure": 946.0280832501594
+ },
+ "heads": {
+  "before": "cf90a07d1e40f649b22bb01c271ea7238a68d8c9764f1d51f24988f39e75b582",
+  "after": "ea66b6a9affafaf80e2cbc5869c906ac75d9173b102cf24202214a59f91339f6",
+  "after_count": 103
+ },
+ "new_ideas": 100,
+ "red": false
+}

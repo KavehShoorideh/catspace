@@ -1,0 +1,36 @@
+{
+ "round": 1,
+ "code": "1a4ce48a",
+ "config": {
+  "stages": {},
+  "frame": {
+   "puzzles": 150,
+   "games_max": 400,
+   "games_max_records": 150,
+   "horizon": 4,
+   "min_loss": 2
+  },
+  "mine": {
+   "max_size": 2,
+   "max_frames": 300,
+   "cap": 120,
+   "retest_positions": 6000,
+   "retest_cap": 400
+  },
+  "translate": {
+   "recheck_registered": true
+  },
+  "prove": {},
+  "use": {},
+  "measure": {
+   "mode": "player"
+  }
+ },
+ "basis_before": "cf90a07d1e40f649b22bb01c271ea7238a68d8c9764f1d51f24988f39e75b582",
+ "basis_before_ids": [
+  "lean:backRankMate",
+  "lean:unstoppablePasser",
+  "lean:unstoppablePasser2"
+ ],
+ "time": "2026-10-05 11:17 PDT"
+}

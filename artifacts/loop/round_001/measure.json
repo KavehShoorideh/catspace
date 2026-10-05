@@ -1,0 +1,1960 @@
+{
+ "measurements": [
+  {
+   "set": "backrank",
+   "arm": "baseline",
+   "dump": "frame_puzzles_lichess_zone_candidates_off17_backRankMate_lean1004.json",
+   "puzzles": 300,
+   "steps": 658,
+   "mean_nodes": 1616.3282674772036,
+   "tied": 300,
+   "single": 289,
+   "wall_s": 138.1111806249246,
+   "paired": null,
+   "gained": [],
+   "lost": [],
+   "provenance": {
+    "round": 1,
+    "stage": "measure",
+    "sources": [],
+    "code": "1a4ce48a"
+   }
+  },
+  {
+   "set": "backrank",
+   "arm": "round",
+   "dump": "frame_puzzles_lichess_zone_candidates_loopactive001_off17_backRankMate_loop001.json",
+   "puzzles": 300,
+   "steps": 658,
+   "mean_nodes": 1271.1018237082067,
+   "tied": 300,
+   "single": 294,
+   "wall_s": 129.2834664580878,
+   "paired": {
+    "steps": 658,
+    "before": 1063544,
+    "after": 836385,
+    "ratio": 0.7864131620318482,
+    "fewer": 632,
+    "more": 1,
+    "equal": 25,
+    "gained": [],
+    "lost": [],
+    "gained_single": 5,
+    "lost_single": 0
+   },
+   "gained": [],
+   "lost": [],
+   "provenance": {
+    "round": 1,
+    "stage": "measure",
+    "sources": [],
+    "code": "1a4ce48a"
+   }
+  },
+  {
+   "set": "pawnendings",
+   "arm": "baseline",
+   "dump": "frame_puzzles_lichess_zone_candidates_off17_pawnEndgame_lean1005.json",
+   "puzzles": 300,
+   "steps": 851,
+   "mean_nodes": 2218.7062279670977,
+   "tied": 249,
+   "single": 48,
+   "wall_s": 15.762323125032708,
+   "paired": null,
+   "gained": [],
+   "lost": [],
+   "provenance": {
+    "round": 1,
+    "stage": "measure",
+    "sources": [],
+    "code": "1a4ce48a"
+   }
+  },
+  {
+   "set": "pawnendings",
+   "arm": "round",
+   "dump": "frame_puzzles_lichess_zone_candidates_loopactive001_off17_pawnEndgame_loop001.json",
+   "puzzles": 300,
+   "steps": 726,
+   "mean_nodes": 2277.216253443526,
+   "tied": 169,
+   "single": 72,
+   "wall_s": 40.61432599998079,
+   "paired": {
+    "steps": 723,
+    "before": 1601503,
+    "after": 1639414,
+    "ratio": 1.02367213798538,
+    "fewer": 43,
+    "more": 161,
+    "equal": 519,
+    "gained": [
+     "3wFYb",
+     "4ypEY"
+    ],
+    "lost": [
+     "046wz",
+     "0522i",
+     "09BPn",
+     "09Eof",
+     "0OwwP",
+     "0TWjp",
+     "0VPWX",
+     "0YetX",
+     "0hJWr",
+     "0uEku",
+     "0uIRb",
+     "11t7X",
+     "15tpD",
+     "16QsQ",
+     "16yWj",
+     "1AEwE",
+     "1DIes",
+     "1VXQR",
+     "1lrp8",
+     "1rUmz",
+     "1t8rx",
+     "25x6V",
+     "2EjfK",
+     "2FXmO",
+     "2JVsy",
+     "2w8CI",
+     "32l43",
+     "3Nn25",
+     "3Ty2s",
+     "3WoRQ",
+     "3flep",
+     "3g8lg",
+     "3j7Em",
+     "3k58t",
+     "3pH7I",
+     "3sip4",
+     "42P5j",
+     "48QT8",
+     "48xdC",
+     "4JJQC",
+     "4WxuM",
+     "4ZV3k",
+     "4ethu",
+     "4f5Vp",
+     "4hVH7",
+     "4ozhc",
+     "4vkVl",
+     "53Wif",
+     "557iK",
+     "59SsI",
+     "5Ecmt",
+     "5PQ5Q",
+     "5Pv25",
+     "5Qgcq",
+     "5THSG",
+     "5WPNH",
+     "5YnsC",
+     "5Yv1n",
+     "5d7Sf",
+     "5nG2h",
+     "5pmoN",
+     "5wCig",
+     "61zHt",
+     "635F7",
+     "6PB88",
+     "6eQiZ",
+     "6nTRn",
+     "6nvUR",
+     "6oo1w",
+     "6s39o",
+     "6ulSU",
+     "6xIBv",
+     "71BsR",
+     "72zie",
+     "74IQV",
+     "7GViE",
+     "7Jrm8",
+     "7Sdw6",
+     "7a1f7",
+     "7dY9x",
+     "7jSYN",
+     "7lQQ9"
+    ],
+    "gained_single": 26,
+    "lost_single": 2
+   },
+   "gained": [
+    "3wFYb",
+    "4ypEY"
+   ],
+   "lost": [
+    "046wz",
+    "0522i",
+    "09BPn",
+    "09Eof",
+    "0OwwP",
+    "0TWjp",
+    "0VPWX",
+    "0YetX",
+    "0hJWr",
+    "0uEku",
+    "0uIRb",
+    "11t7X",
+    "15tpD",
+    "16QsQ",
+    "16yWj",
+    "1AEwE",
+    "1DIes",
+    "1VXQR",
+    "1lrp8",
+    "1rUmz",
+    "1t8rx",
+    "25x6V",
+    "2EjfK",
+    "2FXmO",
+    "2JVsy",
+    "2w8CI",
+    "32l43",
+    "3Nn25",
+    "3Ty2s",
+    "3WoRQ",
+    "3flep",
+    "3g8lg",
+    "3j7Em",
+    "3k58t",
+    "3pH7I",
+    "3sip4",
+    "42P5j",
+    "48QT8",
+    "48xdC",
+    "4JJQC",
+    "4WxuM",
+    "4ZV3k",
+    "4ethu",
+    "4f5Vp",
+    "4hVH7",
+    "4ozhc",
+    "4vkVl",
+    "53Wif",
+    "557iK",
+    "59SsI",
+    "5Ecmt",
+    "5PQ5Q",
+    "5Pv25",
+    "5Qgcq",
+    "5THSG",
+    "5WPNH",
+    "5YnsC",
+    "5Yv1n",
+    "5d7Sf",
+    "5nG2h",
+    "5pmoN",
+    "5wCig",
+    "61zHt",
+    "635F7",
+    "6PB88",
+    "6eQiZ",
+    "6nTRn",
+    "6nvUR",
+    "6oo1w",
+    "6s39o",
+    "6ulSU",
+    "6xIBv",
+    "71BsR",
+    "72zie",
+    "74IQV",
+    "7GViE",
+    "7Jrm8",
+    "7Sdw6",
+    "7a1f7",
+    "7dY9x",
+    "7jSYN",
+    "7lQQ9"
+   ],
+   "provenance": {
+    "round": 1,
+    "stage": "measure",
+    "sources": [],
+    "code": "1a4ce48a"
+   }
+  },
+  {
+   "set": "general",
+   "arm": "baseline",
+   "dump": "frame_puzzles_lichess_zone_candidates_off300_lean1004.json",
+   "puzzles": 300,
+   "steps": 670,
+   "mean_nodes": 30489.54029850746,
+   "tied": 279,
+   "single": 227,
+   "wall_s": 747.6847009169869,
+   "paired": null,
+   "gained": [],
+   "lost": [],
+   "provenance": {
+    "round": 1,
+    "stage": "measure",
+    "sources": [],
+    "code": "1a4ce48a"
+   }
+  },
+  {
+   "set": "general",
+   "arm": "round",
+   "dump": "frame_puzzles_lichess_zone_candidates_loopactive001_off300_loop001.json",
+   "puzzles": 300,
+   "steps": 624,
+   "mean_nodes": 30351.76923076923,
+   "tied": 250,
+   "single": 237,
+   "wall_s": 769.1229394581169,
+   "paired": {
+    "steps": 623,
+    "before": 19210971,
+    "after": 18933498,
+    "ratio": 0.9855565343365518,
+    "fewer": 310,
+    "more": 20,
+    "equal": 293,
+    "gained": [
+     "2GsCE"
+    ],
+    "lost": [
+     "02jzH",
+     "0AF3g",
+     "0Rt3o",
+     "0XVeE",
+     "0ag1f",
+     "0dJDk",
+     "0hlwQ",
+     "0ojAF",
+     "0pOXI",
+     "13ZvZ",
+     "19p7U",
+     "1E9DJ",
+     "1HNfh",
+     "1JEyO",
+     "1Z58D",
+     "1awnn",
+     "1jkAh",
+     "1lb6Z",
+     "1t3f7",
+     "1xM8D",
+     "1xzQT",
+     "29xIq",
+     "2I7BY",
+     "2P7qt",
+     "2XxUc",
+     "2bi4F",
+     "2n4Jc",
+     "2z3cR",
+     "2zfYm",
+     "35ITm"
+    ],
+    "gained_single": 10,
+    "lost_single": 0
+   },
+   "gained": [
+    "2GsCE"
+   ],
+   "lost": [
+    "02jzH",
+    "0AF3g",
+    "0Rt3o",
+    "0XVeE",
+    "0ag1f",
+    "0dJDk",
+    "0hlwQ",
+    "0ojAF",
+    "0pOXI",
+    "13ZvZ",
+    "19p7U",
+    "1E9DJ",
+    "1HNfh",
+    "1JEyO",
+    "1Z58D",
+    "1awnn",
+    "1jkAh",
+    "1lb6Z",
+    "1t3f7",
+    "1xM8D",
+    "1xzQT",
+    "29xIq",
+    "2I7BY",
+    "2P7qt",
+    "2XxUc",
+    "2bi4F",
+    "2n4Jc",
+    "2z3cR",
+    "2zfYm",
+    "35ITm"
+   ],
+   "provenance": {
+    "round": 1,
+    "stage": "measure",
+    "sources": [],
+    "code": "1a4ce48a"
+   }
+  }
+ ],
+ "fire": {
+  "backrank": {
+   "lean:backRankMate": {
+    "positions": 658,
+    "instances": 656,
+    "proved": 297,
+    "oneaway": 332
+   },
+   "lean:unstoppablePasser": {
+    "positions": 658,
+    "instances": 658,
+    "proved": 0,
+    "oneaway": 1
+   },
+   "lean:unstoppablePasser2": {
+    "positions": 658,
+    "instances": 658,
+    "proved": 0,
+    "oneaway": 0
+   },
+   "mined:L-00aa6565": {
+    "positions": 658,
+    "instances": 17,
+    "speaks": 17
+   },
+   "mined:L-0187cf82": {
+    "positions": 658,
+    "instances": 27,
+    "speaks": 26
+   },
+   "mined:L-01a8cd95": {
+    "positions": 658,
+    "instances": 22,
+    "speaks": 22
+   },
+   "mined:L-04b4938b": {
+    "positions": 658,
+    "instances": 13,
+    "speaks": 13
+   },
+   "mined:L-08910f53": {
+    "positions": 658,
+    "instances": 45,
+    "speaks": 43
+   },
+   "mined:L-0b0f3174": {
+    "positions": 658,
+    "instances": 128,
+    "speaks": 120
+   },
+   "mined:L-108587bc": {
+    "positions": 658,
+    "instances": 91,
+    "speaks": 91
+   },
+   "mined:L-11d650f7": {
+    "positions": 658,
+    "instances": 36,
+    "speaks": 33
+   },
+   "mined:L-1559d3ff": {
+    "positions": 658,
+    "instances": 57,
+    "speaks": 51
+   },
+   "mined:L-16a354b6": {
+    "positions": 658,
+    "instances": 649,
+    "speaks": 622
+   },
+   "mined:L-16aff81a": {
+    "positions": 658,
+    "instances": 128,
+    "speaks": 120
+   },
+   "mined:L-18074b36": {
+    "positions": 658,
+    "instances": 86,
+    "speaks": 86
+   },
+   "mined:L-1d7c0c27": {
+    "positions": 658,
+    "instances": 79,
+    "speaks": 73
+   },
+   "mined:L-1f100928": {
+    "positions": 658,
+    "instances": 7,
+    "speaks": 7
+   },
+   "mined:L-1f4b5a89": {
+    "positions": 658,
+    "instances": 5,
+    "speaks": 5
+   },
+   "mined:L-1f5b02aa": {
+    "positions": 658,
+    "instances": 586,
+    "speaks": 585
+   },
+   "mined:L-25c565fb": {
+    "positions": 658,
+    "instances": 7,
+    "speaks": 7
+   },
+   "mined:L-292c80b0": {
+    "positions": 658,
+    "instances": 14,
+    "speaks": 14
+   },
+   "mined:L-29add153": {
+    "positions": 658,
+    "instances": 55,
+    "speaks": 55
+   },
+   "mined:L-29baffdc": {
+    "positions": 658,
+    "instances": 229,
+    "speaks": 229
+   },
+   "mined:L-29f5a46a": {
+    "positions": 658,
+    "instances": 17,
+    "speaks": 17
+   },
+   "mined:L-2aa7c098": {
+    "positions": 658,
+    "instances": 12,
+    "speaks": 12
+   },
+   "mined:L-2d728031": {
+    "positions": 658,
+    "instances": 53,
+    "speaks": 50
+   },
+   "mined:L-33b52267": {
+    "positions": 658,
+    "instances": 7,
+    "speaks": 6
+   },
+   "mined:L-357b3596": {
+    "positions": 658,
+    "instances": 325,
+    "speaks": 324
+   },
+   "mined:L-3584cc2e": {
+    "positions": 658,
+    "instances": 59,
+    "speaks": 55
+   },
+   "mined:L-3ac8018e": {
+    "positions": 658,
+    "instances": 45,
+    "speaks": 45
+   },
+   "mined:L-3d13f074": {
+    "positions": 658,
+    "instances": 27,
+    "speaks": 27
+   },
+   "mined:L-4053e55e": {
+    "positions": 658,
+    "instances": 4,
+    "speaks": 4
+   },
+   "mined:L-4316842e": {
+    "positions": 658,
+    "instances": 32,
+    "speaks": 32
+   },
+   "mined:L-43da595f": {
+    "positions": 658,
+    "instances": 4,
+    "speaks": 4
+   },
+   "mined:L-45053bcb": {
+    "positions": 658,
+    "instances": 30,
+    "speaks": 30
+   },
+   "mined:L-4515f228": {
+    "positions": 658,
+    "instances": 53,
+    "speaks": 50
+   },
+   "mined:L-48197c55": {
+    "positions": 658,
+    "instances": 49,
+    "speaks": 45
+   },
+   "mined:L-4bd51cfa": {
+    "positions": 658,
+    "instances": 12,
+    "speaks": 12
+   },
+   "mined:L-4bf125c1": {
+    "positions": 658,
+    "instances": 30,
+    "speaks": 30
+   },
+   "mined:L-52955e52": {
+    "positions": 658,
+    "instances": 109,
+    "speaks": 103
+   },
+   "mined:L-53e6d711": {
+    "positions": 658,
+    "instances": 441,
+    "speaks": 395
+   },
+   "mined:L-545c0000": {
+    "positions": 658,
+    "instances": 6,
+    "speaks": 6
+   },
+   "mined:L-550f2eff": {
+    "positions": 658,
+    "instances": 30,
+    "speaks": 30
+   },
+   "mined:L-56151c64": {
+    "positions": 658,
+    "instances": 55,
+    "speaks": 54
+   },
+   "mined:L-5baf35ff": {
+    "positions": 658,
+    "instances": 147,
+    "speaks": 132
+   },
+   "mined:L-5c90eaf4": {
+    "positions": 658,
+    "instances": 39,
+    "speaks": 39
+   },
+   "mined:L-629a2802": {
+    "positions": 658,
+    "instances": 55,
+    "speaks": 54
+   },
+   "mined:L-69fe6e6d": {
+    "positions": 658,
+    "instances": 1,
+    "speaks": 1
+   },
+   "mined:L-6a62ec77": {
+    "positions": 658,
+    "instances": 6,
+    "speaks": 6
+   },
+   "mined:L-6cedc504": {
+    "positions": 658,
+    "instances": 36,
+    "speaks": 33
+   },
+   "mined:L-6e72a89b": {
+    "positions": 658,
+    "instances": 52,
+    "speaks": 37
+   },
+   "mined:L-6ffa0c92": {
+    "positions": 658,
+    "instances": 7,
+    "speaks": 6
+   },
+   "mined:L-7325cdad": {
+    "positions": 658,
+    "instances": 1,
+    "speaks": 1
+   },
+   "mined:L-73527c48": {
+    "positions": 658,
+    "instances": 181,
+    "speaks": 166
+   },
+   "mined:L-7510e0c5": {
+    "positions": 658,
+    "instances": 49,
+    "speaks": 45
+   },
+   "mined:L-75ee9e46": {
+    "positions": 658,
+    "instances": 181,
+    "speaks": 166
+   },
+   "mined:L-7604a2e0": {
+    "positions": 658,
+    "instances": 66,
+    "speaks": 66
+   },
+   "mined:L-7a0db8b5": {
+    "positions": 658,
+    "instances": 45,
+    "speaks": 43
+   },
+   "mined:L-7b864176": {
+    "positions": 658,
+    "instances": 12,
+    "speaks": 12
+   },
+   "mined:L-808713fd": {
+    "positions": 658,
+    "instances": 7,
+    "speaks": 6
+   },
+   "mined:L-8407accb": {
+    "positions": 658,
+    "instances": 55,
+    "speaks": 55
+   },
+   "mined:L-88e0c1a6": {
+    "positions": 658,
+    "instances": 55,
+    "speaks": 55
+   },
+   "mined:L-8a07ceea": {
+    "positions": 658,
+    "instances": 57,
+    "speaks": 51
+   },
+   "mined:L-8f32c770": {
+    "positions": 658,
+    "instances": 47,
+    "speaks": 47
+   },
+   "mined:L-968d0186": {
+    "positions": 658,
+    "instances": 30,
+    "speaks": 30
+   },
+   "mined:L-9c0b9669": {
+    "positions": 658,
+    "instances": 5,
+    "speaks": 5
+   },
+   "mined:L-a0005aec": {
+    "positions": 658,
+    "instances": 7,
+    "speaks": 7
+   },
+   "mined:L-a1a8c886": {
+    "positions": 658,
+    "instances": 24,
+    "speaks": 24
+   },
+   "mined:L-a1f72a0e": {
+    "positions": 658,
+    "instances": 52,
+    "speaks": 37
+   },
+   "mined:L-a34c4fc4": {
+    "positions": 658,
+    "instances": 49,
+    "speaks": 45
+   },
+   "mined:L-aa926631": {
+    "positions": 658,
+    "instances": 4,
+    "speaks": 4
+   },
+   "mined:L-ad2a52af": {
+    "positions": 658,
+    "instances": 22,
+    "speaks": 22
+   },
+   "mined:L-b0731ab2": {
+    "positions": 658,
+    "instances": 109,
+    "speaks": 103
+   },
+   "mined:L-b3306d88": {
+    "positions": 658,
+    "instances": 228,
+    "speaks": 228
+   },
+   "mined:L-b83aeac7": {
+    "positions": 658,
+    "instances": 5,
+    "speaks": 5
+   },
+   "mined:L-bd609052": {
+    "positions": 658,
+    "instances": 149,
+    "speaks": 149
+   },
+   "mined:L-bdb86dcf": {
+    "positions": 658,
+    "instances": 17,
+    "speaks": 17
+   },
+   "mined:L-c269a0d8": {
+    "positions": 658,
+    "instances": 36,
+    "speaks": 33
+   },
+   "mined:L-c62eccd3": {
+    "positions": 658,
+    "instances": 47,
+    "speaks": 32
+   },
+   "mined:L-c6ae56a8": {
+    "positions": 658,
+    "instances": 47,
+    "speaks": 47
+   },
+   "mined:L-c7bd49f6": {
+    "positions": 658,
+    "instances": 22,
+    "speaks": 22
+   },
+   "mined:L-c8f5a8c6": {
+    "positions": 658,
+    "instances": 32,
+    "speaks": 32
+   },
+   "mined:L-ce75cee3": {
+    "positions": 658,
+    "instances": 7,
+    "speaks": 7
+   },
+   "mined:L-cea43420": {
+    "positions": 658,
+    "instances": 26,
+    "speaks": 15
+   },
+   "mined:L-d3916895": {
+    "positions": 658,
+    "instances": 22,
+    "speaks": 22
+   },
+   "mined:L-d4b3c707": {
+    "positions": 658,
+    "instances": 7,
+    "speaks": 7
+   },
+   "mined:L-d7d626b1": {
+    "positions": 658,
+    "instances": 658,
+    "speaks": 658
+   },
+   "mined:L-d7fdc561": {
+    "positions": 658,
+    "instances": 45,
+    "speaks": 45
+   },
+   "mined:L-d9be708a": {
+    "positions": 658,
+    "instances": 33,
+    "speaks": 33
+   },
+   "mined:L-dba71e72": {
+    "positions": 658,
+    "instances": 12,
+    "speaks": 12
+   },
+   "mined:L-de3a4533": {
+    "positions": 658,
+    "instances": 32,
+    "speaks": 32
+   },
+   "mined:L-dee93c9d": {
+    "positions": 658,
+    "instances": 45,
+    "speaks": 45
+   },
+   "mined:L-e134dc96": {
+    "positions": 658,
+    "instances": 45,
+    "speaks": 43
+   },
+   "mined:L-e3cec022": {
+    "positions": 658,
+    "instances": 196,
+    "speaks": 177
+   },
+   "mined:L-e5c07f2f": {
+    "positions": 658,
+    "instances": 49,
+    "speaks": 45
+   },
+   "mined:L-ec84b25c": {
+    "positions": 658,
+    "instances": 72,
+    "speaks": 69
+   },
+   "mined:L-ed25f52a": {
+    "positions": 658,
+    "instances": 623,
+    "speaks": 565
+   },
+   "mined:L-f06c717c": {
+    "positions": 658,
+    "instances": 33,
+    "speaks": 33
+   },
+   "mined:L-f1227c57": {
+    "positions": 658,
+    "instances": 17,
+    "speaks": 17
+   },
+   "mined:L-f151403e": {
+    "positions": 658,
+    "instances": 147,
+    "speaks": 137
+   },
+   "mined:L-f48dee18": {
+    "positions": 658,
+    "instances": 22,
+    "speaks": 22
+   },
+   "mined:L-f9e15236": {
+    "positions": 658,
+    "instances": 26,
+    "speaks": 15
+   },
+   "mined:L-fc4cdffe": {
+    "positions": 658,
+    "instances": 5,
+    "speaks": 5
+   }
+  },
+  "pawnendings": {
+   "lean:backRankMate": {
+    "positions": 851,
+    "instances": 0,
+    "proved": 0,
+    "oneaway": 0
+   },
+   "lean:unstoppablePasser": {
+    "positions": 851,
+    "instances": 851,
+    "proved": 0,
+    "oneaway": 221
+   },
+   "lean:unstoppablePasser2": {
+    "positions": 851,
+    "instances": 851,
+    "proved": 62,
+    "oneaway": 62
+   },
+   "mined:L-00aa6565": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-0187cf82": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-01a8cd95": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-04b4938b": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-08910f53": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-0b0f3174": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-108587bc": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-11d650f7": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-1559d3ff": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-16a354b6": {
+    "positions": 851,
+    "instances": 652,
+    "speaks": 449
+   },
+   "mined:L-16aff81a": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-18074b36": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-1d7c0c27": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-1f100928": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-1f4b5a89": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-1f5b02aa": {
+    "positions": 851,
+    "instances": 397,
+    "speaks": 396
+   },
+   "mined:L-25c565fb": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-292c80b0": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-29add153": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-29baffdc": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-29f5a46a": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-2aa7c098": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-2d728031": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-33b52267": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-357b3596": {
+    "positions": 851,
+    "instances": 388,
+    "speaks": 386
+   },
+   "mined:L-3584cc2e": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-3ac8018e": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-3d13f074": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-4053e55e": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-4316842e": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-43da595f": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-45053bcb": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-4515f228": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-48197c55": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-4bd51cfa": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-4bf125c1": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-52955e52": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-53e6d711": {
+    "positions": 851,
+    "instances": 492,
+    "speaks": 315
+   },
+   "mined:L-545c0000": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-550f2eff": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-56151c64": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-5baf35ff": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-5c90eaf4": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-629a2802": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-69fe6e6d": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-6a62ec77": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-6cedc504": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-6e72a89b": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-6ffa0c92": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-7325cdad": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-73527c48": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-7510e0c5": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-75ee9e46": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-7604a2e0": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-7a0db8b5": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-7b864176": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-808713fd": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-8407accb": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-88e0c1a6": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-8a07ceea": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-8f32c770": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-968d0186": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-9c0b9669": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-a0005aec": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-a1a8c886": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-a1f72a0e": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-a34c4fc4": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-aa926631": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-ad2a52af": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-b0731ab2": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-b3306d88": {
+    "positions": 851,
+    "instances": 1,
+    "speaks": 1
+   },
+   "mined:L-b83aeac7": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-bd609052": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-bdb86dcf": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-c269a0d8": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-c62eccd3": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-c6ae56a8": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-c7bd49f6": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-c8f5a8c6": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-ce75cee3": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-cea43420": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-d3916895": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-d4b3c707": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-d7d626b1": {
+    "positions": 851,
+    "instances": 851,
+    "speaks": 851
+   },
+   "mined:L-d7fdc561": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-d9be708a": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-dba71e72": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-de3a4533": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-dee93c9d": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-e134dc96": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-e3cec022": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-e5c07f2f": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-ec84b25c": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-ed25f52a": {
+    "positions": 851,
+    "instances": 500,
+    "speaks": 321
+   },
+   "mined:L-f06c717c": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-f1227c57": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-f151403e": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-f48dee18": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-f9e15236": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   },
+   "mined:L-fc4cdffe": {
+    "positions": 851,
+    "instances": 0,
+    "speaks": 0
+   }
+  },
+  "general": {
+   "lean:backRankMate": {
+    "positions": 670,
+    "instances": 335,
+    "proved": 21,
+    "oneaway": 88
+   },
+   "lean:unstoppablePasser": {
+    "positions": 670,
+    "instances": 661,
+    "proved": 3,
+    "oneaway": 27
+   },
+   "lean:unstoppablePasser2": {
+    "positions": 670,
+    "instances": 661,
+    "proved": 16,
+    "oneaway": 9
+   },
+   "mined:L-00aa6565": {
+    "positions": 670,
+    "instances": 70,
+    "speaks": 67
+   },
+   "mined:L-0187cf82": {
+    "positions": 670,
+    "instances": 79,
+    "speaks": 79
+   },
+   "mined:L-01a8cd95": {
+    "positions": 670,
+    "instances": 87,
+    "speaks": 84
+   },
+   "mined:L-04b4938b": {
+    "positions": 670,
+    "instances": 41,
+    "speaks": 39
+   },
+   "mined:L-08910f53": {
+    "positions": 670,
+    "instances": 74,
+    "speaks": 71
+   },
+   "mined:L-0b0f3174": {
+    "positions": 670,
+    "instances": 132,
+    "speaks": 116
+   },
+   "mined:L-108587bc": {
+    "positions": 670,
+    "instances": 78,
+    "speaks": 75
+   },
+   "mined:L-11d650f7": {
+    "positions": 670,
+    "instances": 33,
+    "speaks": 31
+   },
+   "mined:L-1559d3ff": {
+    "positions": 670,
+    "instances": 68,
+    "speaks": 56
+   },
+   "mined:L-16a354b6": {
+    "positions": 670,
+    "instances": 626,
+    "speaks": 565
+   },
+   "mined:L-16aff81a": {
+    "positions": 670,
+    "instances": 132,
+    "speaks": 116
+   },
+   "mined:L-18074b36": {
+    "positions": 670,
+    "instances": 67,
+    "speaks": 64
+   },
+   "mined:L-1d7c0c27": {
+    "positions": 670,
+    "instances": 102,
+    "speaks": 87
+   },
+   "mined:L-1f100928": {
+    "positions": 670,
+    "instances": 39,
+    "speaks": 38
+   },
+   "mined:L-1f4b5a89": {
+    "positions": 670,
+    "instances": 28,
+    "speaks": 27
+   },
+   "mined:L-1f5b02aa": {
+    "positions": 670,
+    "instances": 540,
+    "speaks": 535
+   },
+   "mined:L-25c565fb": {
+    "positions": 670,
+    "instances": 39,
+    "speaks": 38
+   },
+   "mined:L-292c80b0": {
+    "positions": 670,
+    "instances": 40,
+    "speaks": 39
+   },
+   "mined:L-29add153": {
+    "positions": 670,
+    "instances": 66,
+    "speaks": 63
+   },
+   "mined:L-29baffdc": {
+    "positions": 670,
+    "instances": 296,
+    "speaks": 292
+   },
+   "mined:L-29f5a46a": {
+    "positions": 670,
+    "instances": 70,
+    "speaks": 67
+   },
+   "mined:L-2aa7c098": {
+    "positions": 670,
+    "instances": 50,
+    "speaks": 50
+   },
+   "mined:L-2d728031": {
+    "positions": 670,
+    "instances": 41,
+    "speaks": 39
+   },
+   "mined:L-33b52267": {
+    "positions": 670,
+    "instances": 39,
+    "speaks": 39
+   },
+   "mined:L-357b3596": {
+    "positions": 670,
+    "instances": 431,
+    "speaks": 423
+   },
+   "mined:L-3584cc2e": {
+    "positions": 670,
+    "instances": 101,
+    "speaks": 97
+   },
+   "mined:L-3ac8018e": {
+    "positions": 670,
+    "instances": 54,
+    "speaks": 51
+   },
+   "mined:L-3d13f074": {
+    "positions": 670,
+    "instances": 79,
+    "speaks": 75
+   },
+   "mined:L-4053e55e": {
+    "positions": 670,
+    "instances": 21,
+    "speaks": 21
+   },
+   "mined:L-4316842e": {
+    "positions": 670,
+    "instances": 47,
+    "speaks": 46
+   },
+   "mined:L-43da595f": {
+    "positions": 670,
+    "instances": 2,
+    "speaks": 2
+   },
+   "mined:L-45053bcb": {
+    "positions": 670,
+    "instances": 66,
+    "speaks": 65
+   },
+   "mined:L-4515f228": {
+    "positions": 670,
+    "instances": 41,
+    "speaks": 39
+   },
+   "mined:L-48197c55": {
+    "positions": 670,
+    "instances": 78,
+    "speaks": 72
+   },
+   "mined:L-4bd51cfa": {
+    "positions": 670,
+    "instances": 47,
+    "speaks": 47
+   },
+   "mined:L-4bf125c1": {
+    "positions": 670,
+    "instances": 66,
+    "speaks": 65
+   },
+   "mined:L-52955e52": {
+    "positions": 670,
+    "instances": 150,
+    "speaks": 138
+   },
+   "mined:L-53e6d711": {
+    "positions": 670,
+    "instances": 434,
+    "speaks": 341
+   },
+   "mined:L-545c0000": {
+    "positions": 670,
+    "instances": 10,
+    "speaks": 10
+   },
+   "mined:L-550f2eff": {
+    "positions": 670,
+    "instances": 66,
+    "speaks": 65
+   },
+   "mined:L-56151c64": {
+    "positions": 670,
+    "instances": 60,
+    "speaks": 58
+   },
+   "mined:L-5baf35ff": {
+    "positions": 670,
+    "instances": 172,
+    "speaks": 131
+   },
+   "mined:L-5c90eaf4": {
+    "positions": 670,
+    "instances": 103,
+    "speaks": 103
+   },
+   "mined:L-629a2802": {
+    "positions": 670,
+    "instances": 60,
+    "speaks": 58
+   },
+   "mined:L-69fe6e6d": {
+    "positions": 670,
+    "instances": 2,
+    "speaks": 2
+   },
+   "mined:L-6a62ec77": {
+    "positions": 670,
+    "instances": 10,
+    "speaks": 10
+   },
+   "mined:L-6cedc504": {
+    "positions": 670,
+    "instances": 33,
+    "speaks": 31
+   },
+   "mined:L-6e72a89b": {
+    "positions": 670,
+    "instances": 80,
+    "speaks": 69
+   },
+   "mined:L-6ffa0c92": {
+    "positions": 670,
+    "instances": 39,
+    "speaks": 39
+   },
+   "mined:L-7325cdad": {
+    "positions": 670,
+    "instances": 2,
+    "speaks": 2
+   },
+   "mined:L-73527c48": {
+    "positions": 670,
+    "instances": 278,
+    "speaks": 264
+   },
+   "mined:L-7510e0c5": {
+    "positions": 670,
+    "instances": 78,
+    "speaks": 72
+   },
+   "mined:L-75ee9e46": {
+    "positions": 670,
+    "instances": 278,
+    "speaks": 264
+   },
+   "mined:L-7604a2e0": {
+    "positions": 670,
+    "instances": 58,
+    "speaks": 55
+   },
+   "mined:L-7a0db8b5": {
+    "positions": 670,
+    "instances": 74,
+    "speaks": 71
+   },
+   "mined:L-7b864176": {
+    "positions": 670,
+    "instances": 47,
+    "speaks": 47
+   },
+   "mined:L-808713fd": {
+    "positions": 670,
+    "instances": 39,
+    "speaks": 39
+   },
+   "mined:L-8407accb": {
+    "positions": 670,
+    "instances": 66,
+    "speaks": 63
+   },
+   "mined:L-88e0c1a6": {
+    "positions": 670,
+    "instances": 66,
+    "speaks": 63
+   },
+   "mined:L-8a07ceea": {
+    "positions": 670,
+    "instances": 68,
+    "speaks": 56
+   },
+   "mined:L-8f32c770": {
+    "positions": 670,
+    "instances": 134,
+    "speaks": 132
+   },
+   "mined:L-968d0186": {
+    "positions": 670,
+    "instances": 66,
+    "speaks": 65
+   },
+   "mined:L-9c0b9669": {
+    "positions": 670,
+    "instances": 28,
+    "speaks": 27
+   },
+   "mined:L-a0005aec": {
+    "positions": 670,
+    "instances": 54,
+    "speaks": 51
+   },
+   "mined:L-a1a8c886": {
+    "positions": 670,
+    "instances": 83,
+    "speaks": 80
+   },
+   "mined:L-a1f72a0e": {
+    "positions": 670,
+    "instances": 80,
+    "speaks": 69
+   },
+   "mined:L-a34c4fc4": {
+    "positions": 670,
+    "instances": 78,
+    "speaks": 72
+   },
+   "mined:L-aa926631": {
+    "positions": 670,
+    "instances": 2,
+    "speaks": 2
+   },
+   "mined:L-ad2a52af": {
+    "positions": 670,
+    "instances": 87,
+    "speaks": 85
+   },
+   "mined:L-b0731ab2": {
+    "positions": 670,
+    "instances": 150,
+    "speaks": 138
+   },
+   "mined:L-b3306d88": {
+    "positions": 670,
+    "instances": 334,
+    "speaks": 331
+   },
+   "mined:L-b83aeac7": {
+    "positions": 670,
+    "instances": 28,
+    "speaks": 25
+   },
+   "mined:L-bd609052": {
+    "positions": 670,
+    "instances": 100,
+    "speaks": 98
+   },
+   "mined:L-bdb86dcf": {
+    "positions": 670,
+    "instances": 70,
+    "speaks": 70
+   },
+   "mined:L-c269a0d8": {
+    "positions": 670,
+    "instances": 33,
+    "speaks": 31
+   },
+   "mined:L-c62eccd3": {
+    "positions": 670,
+    "instances": 37,
+    "speaks": 26
+   },
+   "mined:L-c6ae56a8": {
+    "positions": 670,
+    "instances": 134,
+    "speaks": 132
+   },
+   "mined:L-c7bd49f6": {
+    "positions": 670,
+    "instances": 87,
+    "speaks": 84
+   },
+   "mined:L-c8f5a8c6": {
+    "positions": 670,
+    "instances": 47,
+    "speaks": 46
+   },
+   "mined:L-ce75cee3": {
+    "positions": 670,
+    "instances": 39,
+    "speaks": 38
+   },
+   "mined:L-cea43420": {
+    "positions": 670,
+    "instances": 17,
+    "speaks": 11
+   },
+   "mined:L-d3916895": {
+    "positions": 670,
+    "instances": 53,
+    "speaks": 52
+   },
+   "mined:L-d4b3c707": {
+    "positions": 670,
+    "instances": 39,
+    "speaks": 38
+   },
+   "mined:L-d7d626b1": {
+    "positions": 670,
+    "instances": 670,
+    "speaks": 670
+   },
+   "mined:L-d7fdc561": {
+    "positions": 670,
+    "instances": 54,
+    "speaks": 51
+   },
+   "mined:L-d9be708a": {
+    "positions": 670,
+    "instances": 71,
+    "speaks": 70
+   },
+   "mined:L-dba71e72": {
+    "positions": 670,
+    "instances": 34,
+    "speaks": 33
+   },
+   "mined:L-de3a4533": {
+    "positions": 670,
+    "instances": 47,
+    "speaks": 46
+   },
+   "mined:L-dee93c9d": {
+    "positions": 670,
+    "instances": 54,
+    "speaks": 51
+   },
+   "mined:L-e134dc96": {
+    "positions": 670,
+    "instances": 74,
+    "speaks": 71
+   },
+   "mined:L-e3cec022": {
+    "positions": 670,
+    "instances": 256,
+    "speaks": 221
+   },
+   "mined:L-e5c07f2f": {
+    "positions": 670,
+    "instances": 78,
+    "speaks": 72
+   },
+   "mined:L-ec84b25c": {
+    "positions": 670,
+    "instances": 112,
+    "speaks": 110
+   },
+   "mined:L-ed25f52a": {
+    "positions": 670,
+    "instances": 584,
+    "speaks": 528
+   },
+   "mined:L-f06c717c": {
+    "positions": 670,
+    "instances": 71,
+    "speaks": 70
+   },
+   "mined:L-f1227c57": {
+    "positions": 670,
+    "instances": 70,
+    "speaks": 67
+   },
+   "mined:L-f151403e": {
+    "positions": 670,
+    "instances": 224,
+    "speaks": 202
+   },
+   "mined:L-f48dee18": {
+    "positions": 670,
+    "instances": 87,
+    "speaks": 84
+   },
+   "mined:L-f9e15236": {
+    "positions": 670,
+    "instances": 17,
+    "speaks": 11
+   },
+   "mined:L-fc4cdffe": {
+    "positions": 670,
+    "instances": 28,
+    "speaks": 27
+   }
+  }
+ }
+}

@@ -1,0 +1,847 @@
+[
+ {
+  "id": "lean:backRankMate",
+  "tier": "unconditional",
+  "unsound": false,
+  "reason": "Lean theorem with standard axioms; bridge 624 claims, 0 wrong",
+  "bridge": {
+   "checked": 624,
+   "wrong": 0
+  },
+  "axioms": [
+   "propext",
+   "Classical.choice",
+   "Quot.sound"
+  ]
+ },
+ {
+  "id": "lean:unstoppablePasser",
+  "tier": "unconditional",
+  "unsound": false,
+  "reason": "Lean theorem with standard axioms; bridge 972 claims, 0 wrong",
+  "bridge": {
+   "checked": 972,
+   "wrong": 0
+  },
+  "axioms": [
+   "propext",
+   "Classical.choice",
+   "Quot.sound"
+  ]
+ },
+ {
+  "id": "lean:unstoppablePasser2",
+  "tier": "unconditional",
+  "unsound": false,
+  "reason": "Lean theorem with standard axioms; bridge 1351 claims, 0 wrong",
+  "bridge": {
+   "checked": 1351,
+   "wrong": 0
+  },
+  "axioms": [
+   "propext",
+   "Classical.choice",
+   "Quot.sound"
+  ]
+ },
+ {
+  "id": "mined:L-d7d626b1",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-1f5b02aa",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-b3306d88",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-f151403e",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-357b3596",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-1559d3ff",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-c6ae56a8",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-bd609052",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-29add153",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-56151c64",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-de3a4533",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-7b864176",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-4515f228",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-d9be708a",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-f9e15236",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-ed25f52a",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-00aa6565",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-bdb86dcf",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-01a8cd95",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-ad2a52af",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-48197c55",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-3ac8018e",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-ce75cee3",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-b83aeac7",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-43da595f",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-aa926631",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-4bf125c1",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-16a354b6",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-1d7c0c27",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-a1f72a0e",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-52955e52",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-0b0f3174",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-75ee9e46",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-d3916895",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-29baffdc",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-4053e55e",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-08910f53",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-a1a8c886",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-ec84b25c",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-8a07ceea",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-5c90eaf4",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-8f32c770",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-04b4938b",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-629a2802",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-88e0c1a6",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-4bd51cfa",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-2d728031",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-a0005aec",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-292c80b0",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-4316842e",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-53e6d711",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-f06c717c",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-c8f5a8c6",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-2aa7c098",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-8407accb",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-7510e0c5",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-6ffa0c92",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-d4b3c707",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-1f100928",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-33b52267",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-dee93c9d",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-6cedc504",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-c269a0d8",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-9c0b9669",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-1f4b5a89",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-550f2eff",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-dba71e72",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-45053bcb",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-d7fdc561",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-f1227c57",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-a34c4fc4",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-cea43420",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-c7bd49f6",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-b0731ab2",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-16aff81a",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-6e72a89b",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-73527c48",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-18074b36",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-e134dc96",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-7a0db8b5",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-108587bc",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-29f5a46a",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-f48dee18",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-e5c07f2f",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-25c565fb",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-808713fd",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-3584cc2e",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-5baf35ff",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-11d650f7",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-fc4cdffe",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-968d0186",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-7604a2e0",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-545c0000",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-6a62ec77",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-3d13f074",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-0187cf82",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-e3cec022",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-7325cdad",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-69fe6e6d",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ },
+ {
+  "id": "mined:L-c62eccd3",
+  "tier": "conjecture",
+  "unsound": false,
+  "reason": "survived lemma_gen's held-out re-test (PROVED; no Lean statement)",
+  "bridge": {},
+  "axioms": null
+ }
+]
