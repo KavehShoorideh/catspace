@@ -1,0 +1,92 @@
+[
+ {
+  "idea": "lean:backRankMate",
+  "mode": "closure",
+  "switch": "TacticalSpec.proved_mates=1: a proved mate for the side to move closes the zone-search node",
+  "refused": false,
+  "reason": "proved, standard axioms, clean bridge",
+  "provenance": {
+   "round": 0,
+   "stage": "use",
+   "sources": [
+    "lean:backRankMate"
+   ],
+   "code": "4844bd3f"
+  }
+ },
+ {
+  "idea": "lean:backRankMate",
+  "mode": "sentence",
+  "switch": "explain: {move} mates: the king is boxed in on its back rank, nothing can take the checker and nothing can step between (proved: Ideas.backRankMate_sound).",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 0,
+   "stage": "use",
+   "sources": [
+    "lean:backRankMate"
+   ],
+   "code": "4844bd3f"
+  }
+ },
+ {
+  "idea": "lean:unstoppablePasser",
+  "mode": "closure",
+  "switch": "TacticalSpec.proved_passer + frame_player.PASSER: the queen counted at the horizon, the push a candidate (via the passer2 detector, which reports form-1 proofs)",
+  "refused": false,
+  "reason": "proved, standard axioms, clean bridge",
+  "provenance": {
+   "round": 0,
+   "stage": "use",
+   "sources": [
+    "lean:unstoppablePasser"
+   ],
+   "code": "4844bd3f"
+  }
+ },
+ {
+  "idea": "lean:unstoppablePasser",
+  "mode": "sentence",
+  "switch": "explain: the pawn on {sq} cannot be stopped: the king is outside its square and has nothing else to stop it with (proved: Ideas.Passer.unstoppablePasser_sound').",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 0,
+   "stage": "use",
+   "sources": [
+    "lean:unstoppablePasser"
+   ],
+   "code": "4844bd3f"
+  }
+ },
+ {
+  "idea": "lean:unstoppablePasser2",
+  "mode": "closure",
+  "switch": "TacticalSpec.proved_passer + frame_player.PASSER: the queen counted at the horizon, the push a candidate",
+  "refused": false,
+  "reason": "proved, standard axioms, clean bridge",
+  "provenance": {
+   "round": 0,
+   "stage": "use",
+   "sources": [
+    "lean:unstoppablePasser2"
+   ],
+   "code": "4844bd3f"
+  }
+ },
+ {
+  "idea": "lean:unstoppablePasser2",
+  "mode": "sentence",
+  "switch": "explain: the pawn on {sq} cannot be stopped: the king is outside its square and no enemy pawn can get in its way in time (proved: Ideas.Passer2.unstoppablePasser2_sound).",
+  "refused": false,
+  "reason": "",
+  "provenance": {
+   "round": 0,
+   "stage": "use",
+   "sources": [
+    "lean:unstoppablePasser2"
+   ],
+   "code": "4844bd3f"
+  }
+ }
+]

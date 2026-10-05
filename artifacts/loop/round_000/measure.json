@@ -1,0 +1,228 @@
+{
+ "measurements": [
+  {
+   "set": "backrank",
+   "arm": "baseline",
+   "dump": "frame_puzzles_lichess_zone_candidates_off17_backRankMate_lean1004.json",
+   "puzzles": 300,
+   "steps": 658,
+   "mean_nodes": 1616.3282674772036,
+   "tied": 300,
+   "single": 289,
+   "wall_s": 138.1111806249246,
+   "paired": null,
+   "gained": [],
+   "lost": [],
+   "provenance": {
+    "round": 0,
+    "stage": "measure",
+    "sources": [],
+    "code": "4844bd3f"
+   }
+  },
+  {
+   "set": "backrank",
+   "arm": "round",
+   "dump": "frame_puzzles_lichess_zone_candidates_proved1_off17_backRankMate_lean1004.json",
+   "puzzles": 300,
+   "steps": 658,
+   "mean_nodes": 1271.1018237082067,
+   "tied": 300,
+   "single": 289,
+   "wall_s": null,
+   "paired": {
+    "steps": 658,
+    "before": 1063544,
+    "after": 836385,
+    "ratio": 0.7864131620318482,
+    "fewer": 632,
+    "more": 1,
+    "equal": 25,
+    "gained": [],
+    "lost": [],
+    "gained_single": 0,
+    "lost_single": 0
+   },
+   "gained": [],
+   "lost": [],
+   "provenance": {
+    "round": 0,
+    "stage": "measure",
+    "sources": [],
+    "code": "4844bd3f"
+   }
+  },
+  {
+   "set": "pawnendings",
+   "arm": "baseline",
+   "dump": "frame_puzzles_lichess_zone_candidates_off17_pawnEndgame_lean1005.json",
+   "puzzles": 300,
+   "steps": 851,
+   "mean_nodes": 2218.7062279670977,
+   "tied": 249,
+   "single": 48,
+   "wall_s": 15.762323125032708,
+   "paired": null,
+   "gained": [],
+   "lost": [],
+   "provenance": {
+    "round": 0,
+    "stage": "measure",
+    "sources": [],
+    "code": "4844bd3f"
+   }
+  },
+  {
+   "set": "pawnendings",
+   "arm": "round",
+   "dump": "frame_puzzles_lichess_zone_candidates_passer_off17_pawnEndgame_lean1005c.json",
+   "puzzles": 300,
+   "steps": 853,
+   "mean_nodes": 2276.6694021101994,
+   "tied": 251,
+   "single": 53,
+   "wall_s": null,
+   "paired": {
+    "steps": 850,
+    "before": 1882225,
+    "after": 1926848,
+    "ratio": 1.0237075801245865,
+    "fewer": 44,
+    "more": 175,
+    "equal": 631,
+    "gained": [
+     "3wFYb",
+     "4ypEY"
+    ],
+    "lost": [],
+    "gained_single": 7,
+    "lost_single": 2
+   },
+   "gained": [
+    "3wFYb",
+    "4ypEY"
+   ],
+   "lost": [],
+   "provenance": {
+    "round": 0,
+    "stage": "measure",
+    "sources": [],
+    "code": "4844bd3f"
+   }
+  },
+  {
+   "set": "general",
+   "arm": "baseline",
+   "dump": "frame_puzzles_lichess_zone_candidates_off300_lean1004.json",
+   "puzzles": 300,
+   "steps": 670,
+   "mean_nodes": 30489.54029850746,
+   "tied": 279,
+   "single": 227,
+   "wall_s": 747.6847009169869,
+   "paired": null,
+   "gained": [],
+   "lost": [],
+   "provenance": {
+    "round": 0,
+    "stage": "measure",
+    "sources": [],
+    "code": "4844bd3f"
+   }
+  },
+  {
+   "set": "general",
+   "arm": "round",
+   "dump": "frame_puzzles_lichess_zone_candidates_proved1_off300_lean1004.json",
+   "puzzles": 300,
+   "steps": 670,
+   "mean_nodes": 30078.84776119403,
+   "tied": 279,
+   "single": 227,
+   "wall_s": null,
+   "paired": {
+    "steps": 670,
+    "before": 20427992,
+    "after": 20152828,
+    "ratio": 0.9865300515097127,
+    "fewer": 318,
+    "more": 3,
+    "equal": 349,
+    "gained": [],
+    "lost": [],
+    "gained_single": 0,
+    "lost_single": 0
+   },
+   "gained": [],
+   "lost": [],
+   "provenance": {
+    "round": 0,
+    "stage": "measure",
+    "sources": [],
+    "code": "4844bd3f"
+   }
+  }
+ ],
+ "fire": {
+  "backrank": {
+   "lean:backRankMate": {
+    "positions": 658,
+    "instances": 656,
+    "proved": 297,
+    "oneaway": 332
+   },
+   "lean:unstoppablePasser": {
+    "positions": 658,
+    "instances": 658,
+    "proved": 0,
+    "oneaway": 1
+   },
+   "lean:unstoppablePasser2": {
+    "positions": 658,
+    "instances": 658,
+    "proved": 0,
+    "oneaway": 0
+   }
+  },
+  "pawnendings": {
+   "lean:backRankMate": {
+    "positions": 851,
+    "instances": 0,
+    "proved": 0,
+    "oneaway": 0
+   },
+   "lean:unstoppablePasser": {
+    "positions": 851,
+    "instances": 851,
+    "proved": 0,
+    "oneaway": 221
+   },
+   "lean:unstoppablePasser2": {
+    "positions": 851,
+    "instances": 851,
+    "proved": 62,
+    "oneaway": 62
+   }
+  },
+  "general": {
+   "lean:backRankMate": {
+    "positions": 670,
+    "instances": 335,
+    "proved": 21,
+    "oneaway": 88
+   },
+   "lean:unstoppablePasser": {
+    "positions": 670,
+    "instances": 661,
+    "proved": 3,
+    "oneaway": 27
+   },
+   "lean:unstoppablePasser2": {
+    "positions": 670,
+    "instances": 661,
+    "proved": 16,
+    "oneaway": 9
+   }
+  }
+ }
+}

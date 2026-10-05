@@ -1,0 +1,33 @@
+{
+ "new_ids": [
+  "lean:backRankMate",
+  "lean:unstoppablePasser",
+  "lean:unstoppablePasser2"
+ ],
+ "instances": {
+  "lean:backRankMate": 991,
+  "lean:unstoppablePasser": 2170,
+  "lean:unstoppablePasser2": 2170
+ },
+ "nothing_fires": false,
+ "results_fall": [],
+ "unsound": [],
+ "wall": [
+  {
+   "set": "backrank",
+   "round": null,
+   "baseline": 0.20989541128407993
+  },
+  {
+   "set": "pawnendings",
+   "round": null,
+   "baseline": 0.018522118830825746
+  },
+  {
+   "set": "general",
+   "round": null,
+   "baseline": 1.115947314801473
+  }
+ ],
+ "red": false
+}

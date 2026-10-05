@@ -1,0 +1,30 @@
+{
+ "round": 0,
+ "code": "4844bd3f",
+ "config": {
+  "stages": {},
+  "frame": {
+   "skip": true
+  },
+  "mine": {
+   "skip": true
+  },
+  "translate": {
+   "recheck_registered": true
+  },
+  "prove": {},
+  "use": {},
+  "measure": {
+   "mode": "dumps",
+   "arms": {
+    "backrank": "frame_puzzles_lichess_zone_candidates_proved1_off17_backRankMate_lean1004.json",
+    "pawnendings": "frame_puzzles_lichess_zone_candidates_passer_off17_pawnEndgame_lean1005c.json",
+    "general": "frame_puzzles_lichess_zone_candidates_proved1_off300_lean1004.json"
+   },
+   "time_baselines": true
+  }
+ },
+ "basis_before": "0000000000000000000000000000000000000000000000000000000000000000",
+ "basis_before_ids": [],
+ "time": "2026-10-05 11:01 PDT"
+}

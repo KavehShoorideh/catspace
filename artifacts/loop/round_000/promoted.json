@@ -1,0 +1,47 @@
+[
+ {
+  "id": "lean:backRankMate",
+  "tier": "unconditional",
+  "unsound": false,
+  "reason": "Lean theorem with standard axioms; bridge 624 claims, 0 wrong",
+  "bridge": {
+   "checked": 624,
+   "wrong": 0
+  },
+  "axioms": [
+   "propext",
+   "Classical.choice",
+   "Quot.sound"
+  ]
+ },
+ {
+  "id": "lean:unstoppablePasser",
+  "tier": "unconditional",
+  "unsound": false,
+  "reason": "Lean theorem with standard axioms; bridge 972 claims, 0 wrong",
+  "bridge": {
+   "checked": 972,
+   "wrong": 0
+  },
+  "axioms": [
+   "propext",
+   "Classical.choice",
+   "Quot.sound"
+  ]
+ },
+ {
+  "id": "lean:unstoppablePasser2",
+  "tier": "unconditional",
+  "unsound": false,
+  "reason": "Lean theorem with standard axioms; bridge 1351 claims, 0 wrong",
+  "bridge": {
+   "checked": 1351,
+   "wrong": 0
+  },
+  "axioms": [
+   "propext",
+   "Classical.choice",
+   "Quot.sound"
+  ]
+ }
+]
