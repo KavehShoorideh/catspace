@@ -17,7 +17,19 @@ Newest entry first. Times from `date` (PDT).
 - frame_player.LOOP_ORDER: tie-break among still-tied top moves only; per-step `order` flag in dumps.
 - Leakage check: first 150 dev rows (i%97==5, up to row 14458) share no row with the held-out sets.
 - Round 0 (11:01): axioms clean; bridges backrank held-out 306/306, random 318/318; passer1 972/972; passer2
-  random 1239/1239, held-out 112/112. Baseline re-runs for timing in progress.
+  random 1239/1239, held-out 112/112. Baseline re-runs identical to the frozen dumps (138 s, 16 s, 748 s). Gated
+  continue by me (baseline only), 1a4ce48a; Kaveh to confirm.
+- Round 1 (11:17-11:45, 28.1 min): 6/150 dev misses + 150 game positions (32 games) -> 199 lemmas -> 100 survive the
+  re-test -> 103 promoted (3 Lean + 100 conjecture), 206 uses. Expected score (random pick among tied top moves):
+  backrank 294.5 -> 297.0, pawns 82.0 -> 92.9, general 237.3 -> 241.0 vs round 0's arm. Ledger 04097b86.
+- MY BUG + RETRACTION: first ledger flagged RESULTS FALL from tied-set membership (pawns "lost 82"); a tie-break can
+  only shrink ties (BUGS class 10 mirror). I told Kaveh "249 -> 169" and "22 from a flaw in my code" (the flaw is
+  lemma_apply.compose, the design). Push correction sent ~11:47. Fix f6fd8312 (expected_score, vs_previous, enrich),
+  a7f51e14 (proposals), re-render from cache.
+- loop/dig.py: classes the moved puzzles at the step that moved them. Trap: dumps keep best[:6]; use n_top for tie
+  sizes (27 pawn / 16 general classified puzzles read a truncated list).
+- Acceptance: round 2 REFUSED without gate 1 (exit 1). NEXT: Kaveh's gate on round 1; Fable's analysis; research
+  slots R1-R6. Open: frame yield (6 misses/10.5 min), game clustering (cap per game), pawn step time 3.02x.
 
 ## 2026-10-05 — passer second form PROVED (2026-10-05 01:29 PDT)
 

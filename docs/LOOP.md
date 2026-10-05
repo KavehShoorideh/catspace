@@ -14,6 +14,7 @@ replace stages and are judged by the same ledger.
 ```
 python -m catspace.incubator.analyst.loop.round --round N           # needs the gate of round N-1
 python -m catspace.incubator.analyst.loop.gate --round N --decision continue|rollback|swap [--stage NAME] --note "..."
+python -m catspace.incubator.analyst.loop.dig --round N --set pawnendings  # before the gate: the puzzles the round moved
 ```
 
 | Stage | Reads | Writes | Day-one piece | Research slot |

@@ -22874,6 +22874,103 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-05 11:55 PDT — the idea loop's framework, rounds 0 and 1 (OBS)
+
+Kaveh: "build the engineering loop first, and then we slot in different research pieces to see which one works ...
+plus some level of human in the loop testing that decides whether the loop is going off the rails." Fable wrote the
+plan; Opus executed it. What exists now, in `catspace/incubator/analyst/loop` (docs/LOOP.md):
+
+THE FRAMEWORK. A ROUND runs six stages on a frozen batch: FRAME (where the player went wrong: its misses on
+development puzzle rows, i % 97 == 5, and game positions where its frames rated a move safe and the game's
+continuation took material), MINE (lemma_gen's guards around those positions, then lemma_gen's re-test on held-out
+positions), TRANSLATE (guards and the hand-registered Lean ideas into candidates: named hypotheses, a footprint, a
+bounded claim, a sentence), PROVE (a tier: unconditional or forcing needs a Lean theorem whose axioms are exactly
+propext, Classical.choice and Quot.sound, checked by a script, plus a BRIDGE -- the detector's claims checked by
+exhaustive search in python-chess -- that checked at least one claim and found none wrong; held-out evidence alone
+gives tier conjecture), USE (a CLOSURE -- an idea's conclusion used as a search value -- only for proved ideas; a
+conjecture-tier idea may only break ties among moves the search values equally, and speak in a sentence), MEASURE
+(the player on three held-out sets, paired by position against frozen baselines). Every stage reads and writes typed
+records with provenance, so a research piece replaces a stage without touching the rest. The BASIS of ideas is
+append-only and hash-chained: a rollback appends retire lines, nothing is deleted. Each round ends in a one-page
+LEDGER (artifacts/loop/round_NNN/LEDGER.md) with four controls -- NOTHING FIRES, RESULTS FALL (since round 1: the expected score, below), UNSOUND (red: the
+round cannot be gated continue), WALL TIME -- and a GATE by Kaveh: continue, rollback, or swap a stage (the next round
+then refuses to run until the stage is replaced). One deviation from the plan: data/derived is ignored by git, so the
+reviewable record and the basis live in artifacts/loop, where a round's commit carries them.
+
+ROUND 0, the baseline (OBS, every number read from the dumps on disk, equal to the journal's): the three Lean ideas
+registered; axioms standard for all three; bridges clean -- back-rank 306/306 held-out claims and 318/318 on 1,000
+random boxed-king positions, passer form 1 972/972 random, passer form 2 1,239/1,239 random and 112/112 held-out.
+The plain baselines re-run once to time them, each identical to its frozen dump to the node: back-rank 138 s,
+pawn endings 16 s, general 748 s. With the three proved ideas wired: back-rank 300/300 (paired nodes 0.786), pawn
+endings 251/300 against 249 (gained 2, lost 0), general 279/300 (0.987). Fire scan: the back-rank mate is proved at
+297 of 658 back-rank solver positions and 21 of 670 general ones; the passer's second form at 62 of 851 pawn-ending
+positions and 16 general; the first form at 3 general positions and none in pawn endings. Gated continue by the
+agent (a baseline decides nothing); Kaveh to confirm.
+
+ROUND 1, the first full pass with day-one pieces in every slot (OBS):
+FRAME: 150 development puzzles (rows i % 97 == 5) played with the proved ideas wired, 6 missed (the stage took
+632 s); 32 development games scanned, 150 positions where the frames rated the move safe and the game took 2 pawns or
+more within 4 plies. MINE: 156 framed positions gave 199 lemmas; lemma_gen's held-out re-test kept 100 (its PROVED)
+and left 99 at conjecture (79 s). PROVE: the 3 Lean ideas re-checked (axioms standard; bridges 306 + 318, 972,
+1,239 + 112 claims checked, 0 wrong); the 100 survivors promoted at tier conjecture, 99 not promoted, 0 unsound. USE:
+206 uses accepted, 0 refused: the 3 Lean closures and 100 order uses (tie-breaks only). What the 100 say: material
+over two plies, about one or two pieces; nearly all are variants of "a piece that was safe and moves onto a square
+the enemy attacks loses material", their exceptions written in the miner's relation vocabulary (attacked, defended,
+attacked by a cheaper piece, outnumbered, gives check, stays on a line).
+
+MEASURE, the player with all 103 ideas wired on the three held-out sets of 300 (one run each). EXPECTED = the puzzles
+a player picking at random among its tied top moves solves; SINGLE = the solution is the only top move; TIED = the
+solution is among the tied top moves. A tie-break can only shrink tied sets, so TIED can only fall and SINGLE only
+rise when one acts; the expected score moves either way.
+
+  set            expected: plain / round 0 / round 1   single: plain / r0 / r1   tied: plain / r0 / r1   up / down vs r0
+  back-rank      294.5 / 294.5 / 297.0                 289 / 289 / 294           300 / 300 / 300          5 / 0
+  pawn endings    76.8 /  82.0 /  92.9                  48 /  53 /  72           249 / 251 / 169         60 / 82
+  general        237.3 / 237.3 / 241.0                 227 / 227 / 237           279 / 279 / 250         18 / 30
+
+Search nodes on the same positions against plain: 0.786, 1.024, 0.986 (back-rank and pawn endings equal round 0's: a
+tie-break never changes what the search computed). Time per solver step against plain: 0.20 s vs 0.21, 0.06 s vs
+0.02 (3.02x: the rules are applied at every tied choice), 1.23 s vs 1.12. The round took 28.1 min.
+
+THE DIG (`python -m catspace.incubator.analyst.loop.dig --round 1 --set S`): every puzzle that moved against round
+0's arm, read at the step that moved it (a puzzle that went down at the step that demoted its solution, one that went
+up at the first step whose tie shrank around it), the rules re-applied with the code the player ran.
+  pawn endings  down 60 (expected -5.1): a rule called the solution a loss; down 22 (-1.9): every rule said "keeps"
+                and the COMPOSED PREFERENCE (each rule's mean outcome when it holds, averaged over the rules that
+                speak; lemma_apply.compose) ranked other moves higher; up 34 (+9.9): a rule called a demoted rival a
+                loss; up 24 (+8.1): the composed preference ranked the solution higher; 2 other (+0.1).
+                The solutions called a loss were above all pawn pushes onto an attacked square (30 defended, 9
+                undefended), then king moves to a safe, undefended square (7). The rule most often responsible (40
+                times): "moving a piece keeps material, unless it was not attacked and lands on an attacked square".
+  general       down 21 (-4.0) by a loss verdict on the solution; down 9 (-0.5) by the composed preference; up 9
+                (+3.7) by the composed preference; up 8 (+3.4) by a loss verdict on a rival; 1 not classified.
+  back-rank     up 5 (+2.5), all by the composed preference; nothing down.
+  27 pawn-ending and 16 general puzzles had ties longer than the 6 top moves a dump stores; their classes read the
+  stored 6 (the tie size, which the expected score uses, is exact).
+
+READING (one round, directional).
+- Measured fairly, the mined rules used as tie-breaks raised the expected score on all three sets against round 0's
+  arm. In pawn endings both of their mechanisms come out positive on balance: the loss verdicts (+9.9 against -5.1)
+  and the composed preference (+8.1 against -1.9). In the general set the loss verdicts come out about even (+3.4
+  against -4.0) and the composed preference positive (+3.7 against -0.5). One run per set: directional, no verdict.
+- Where a loss verdict demoted a pawn-ending solution, the solution was mostly a pawn pushed onto an attacked square:
+  a lever, a breakthrough, a sacrifice. The rule's claim is two plies of material, and the search, eight plies deep,
+  had already valued those moves equal to the others; a two-ply material verdict breaking an eight-ply material tie
+  is the shorter horizon overruling the longer one. That it still helped on balance says the pawn-ending ties are
+  wide and often uninformed, so a two-ply heuristic beats a coin there more often than not.
+- The first render of round 1's ledger flagged RESULTS FALL from the tied count ("pawn endings lost 82 > gained 2").
+  I relayed that to Kaveh as "the mined rules cut pawn endings from 249 to 169" and called 22 of the losses a flaw in
+  my code. Both were wrong and were retracted within the hour (docs/BUGS.md, 2026-10-05): the tied count can only fall
+  under a tie-break, and the ranking I called a flaw is the designed composition. The ledger now reads the expected
+  score against the plain baseline and the previous kept round; round 1 was re-rendered from its cached stages
+  (nothing replayed).
+- Framing is thin: the frame stage spent 632 s to find 6 misses in 150 development puzzles, and the game positions
+  cluster (150 from 32 games). All 100 new ideas are conjecture tier: they can order, never close search.
+- The order use triples the time per step in pawn endings (0.06 s against 0.02 s).
+ACCEPTANCE of Fable's plan: round 0's ledger reproduces the journal; round 1 ran end to end and its ledger renders;
+the driver refuses round 2 without a gate (REFUSED, exit 1). Next: Kaveh's gate on round 1,
+`python -m catspace.incubator.analyst.loop.gate --round 1 --decision continue|rollback|swap [--stage NAME] --note "..."`.
+
 ## 2026-10-05 01:29 PDT — the passer's second form PROVED: enemy king and pawns; the player on the Lean detector (OBS)
 
 The second form of 01:00 is now a theorem (`Ideas/Passer2.lean`, about 1,300 lines; `unstoppablePasser2_sound`
