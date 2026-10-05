@@ -5,9 +5,9 @@
   "lean:unstoppablePasser2"
  ],
  "instances": {
-  "lean:backRankMate": 991,
-  "lean:unstoppablePasser": 2170,
-  "lean:unstoppablePasser2": 2170
+  "lean:backRankMate": 318,
+  "lean:unstoppablePasser": 3,
+  "lean:unstoppablePasser2": 78
  },
  "nothing_fires": false,
  "results_fall": [],

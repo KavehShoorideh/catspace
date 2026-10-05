@@ -29,7 +29,7 @@ Code 4844bd3f; basis before the round 0 ideas (head 000000000000), after 3 ideas
 | general | 279/300 / 227 | 279/300 / 227 | 0 | 0 | 20,427,992 → 20,152,828 (0.987; fewer 318, more 3) | not timed |
 
 ## Controls
-- NOTHING FIRES: ok — newly promoted ideas with instances: 3 of 3
+- NOTHING FIRES: ok — newly promoted ideas that fire: 3 of 3
 - RESULTS FALL: ok — no held-out set lost more puzzles than it gained
 - UNSOUND: ok — every Lean statement has standard axioms and a clean bridge
 - WALL TIME: backrank: n/a a step against 0.21s; pawnendings: n/a a step against 0.02s; general: n/a a step against 1.12s
