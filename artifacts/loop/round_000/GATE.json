@@ -1,0 +1,10 @@
+{
+ "round": 0,
+ "decision": "continue",
+ "stage": null,
+ "note": "baseline only: the ledger reproduces the journal (0.786, 0.987, 251/300 from the dumps); three baseline re-runs identical to the frozen dumps; nothing mined, nothing to decide -- Kaveh to confirm",
+ "by": "agent",
+ "time": "2026-10-05 11:17 PDT",
+ "retired": [],
+ "basis_head": "cf90a07d1e40f649b22bb01c271ea7238a68d8c9764f1d51f24988f39e75b582"
+}
