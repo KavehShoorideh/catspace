@@ -33,10 +33,15 @@ speak in a sentence.
 ## The ledger and the gate
 
 `artifacts/loop/round_NNN/LEDGER.md`: inputs, mined, promoted, fired, changed, controls, proposed next, decision.
+"Changed" pairs the round's player by position against the frozen plain baseline and against the previous kept
+round's arm (the player before this round's ideas), so a round's effect is attributed to its own ideas.
 The four controls:
 
 - **NOTHING FIRES** — no newly promoted idea has an instance at the solver's positions of the held-out sets.
-- **RESULTS FALL** — a held-out set lost more puzzles than it gained (for judgment, not a verdict).
+- **RESULTS FALL** — a held-out set's expected score fell against the plain baseline or the previous kept round (for
+  judgment, not a verdict). The expected score is the number of puzzles a player picking at random among its tied top
+  moves solves. "Solution among the tied top moves" is not used: a tie-break only shrinks tied sets, so it can only
+  fall when one acts (round 1's misreading, docs/BUGS.md 2026-10-05).
 - **UNSOUND** (red) — an idea with a Lean statement whose axioms or bridge failed. A red round cannot be gated continue.
 - **WALL TIME** — seconds per solver step against the baseline's.
 

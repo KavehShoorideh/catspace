@@ -31,7 +31,9 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
 9. **Test assumptions** -- a test expecting what I believed the code did. Check: when a new test fails, decide first
    whether the code or the expectation is wrong, with the actual values printed.
 10. **A hit that ties count** -- "the answer is among the top" when the top is a tie of many: a metric a flat
-   evaluation passes. Check: print the tie sizes beside the hit rate, and count the answer ALONE on top.
+   evaluation passes. Check: print the tie sizes beside the hit rate, and count the answer ALONE on top. The mirror
+   form: a TIE-BREAK judged by "among the tied top" can only lose (it only removes moves from the tie) and by "alone
+   on top" can only win; judge it by the expected score of a random pick among the tied top moves.
 
 ## Log
 
@@ -213,6 +215,19 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
 - **An axiom through the kernel** (class 7-like): chess-lean's `allSquares_nodup` is `native_decide`; using it put
   `native_decide.ax` into our theorem's axioms. `#print axioms` after every theorem; reprove with `decide`.
 - **Docstring before `set_option`** (three times tonight): a `/-- -/` must precede a declaration; use `--`.
+
+### 2026-10-05 (the idea loop, round 1)
+- **The ledger judged a tie-break by tied-set membership** (class 10, mirror form). RESULTS FALL fired when a set
+  "lost" more puzzles than it "gained", lost meaning the solution left the tied top moves. A tie-break only removes
+  moves from the tie, so that count can only fall when one acts, right or wrong. Round 1 read "pawn endings 249 -> 169,
+  lost 82" while the expected score of a random pick among the tied top moves ROSE (round 0's arm 82.0 -> 92.9). I
+  reported the fall to Kaveh as a finding before checking it against class 10, and retracted it within the hour. Found
+  by asking what a fair measure of an order use is. Fix: `measure.expected_score`; RESULTS FALL reads it against the
+  plain baseline and the previous kept round (`vs_previous`); tied/single stay as context; two tests.
+- **"A flaw in my code" that was the design** (class 6, a claim not tested): I told Kaveh that 22 of the down puzzles
+  came from a flaw, the tie-break ranking unanimous "keeps" moves by each rule's average gain. That ranking is
+  lemma_apply.compose, Kaveh's "prefer this by this much" (2026-09-23), and on net the tie-break beat chance. Retracted.
+  Rule: before calling a mechanism a bug, check whether it is the design, and measure its net effect.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).

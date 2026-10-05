@@ -3,7 +3,10 @@ typed). Sections: inputs, mined, promoted, fired, changed, controls, proposed ne
 - NOTHING FIRES: no newly promoted idea FIRES at the solver's positions of the held-out sets -- a Lean idea fires where
   it is proved there (an instance is only a candidate: every pawn is a passer candidate), a mined idea where it gives
   a verdict on a move;
-- RESULTS FALL: puzzles lost exceed puzzles gained on a held-out set (flagged for judgment, not a verdict);
+- RESULTS FALL: a held-out set's expected score (the puzzles a player picking at random among its tied top moves
+  solves; measure.expected_score) fell against the plain baseline or against the previous kept round (flagged for
+  judgment, not a verdict). Not 'lost > gained' in tied-set membership: a tie-break only shrinks tied sets, so that
+  count falls whenever one acts, right or wrong (round 1, 2026-10-05);
 - UNSOUND (red): an idea with a Lean statement whose axioms or bridge failed; a red round cannot be gated continue;
 - WALL TIME: seconds per solver step, the round's player against the baseline's."""
 from __future__ import annotations
@@ -26,8 +29,21 @@ def controls(out: dict, inputs: dict) -> dict:
     nothing = bool(new_ids) and sum(inst.values()) == 0
     falls = []
     for m in measure.get("measurements", []):
-        if m["arm"] == "round" and len(m["lost"]) > len(m["gained"]):
-            falls.append(dict(set=m["set"], gained=len(m["gained"]), lost=len(m["lost"]), lost_ids=m["lost"][:10]))
+        if m["arm"] != "round":
+            continue
+        p, v = m.get("paired") or {}, m.get("vs_previous") or {}
+        if m.get("expected") is None or p.get("expected_before") is None:   # no dumps to score: the old count, labelled
+            if len(m["lost"]) > len(m["gained"]):
+                falls.append(dict(set=m["set"], why=[f"lost {len(m['lost'])} > gained {len(m['gained'])} in tied-set membership (no expected score)"],
+                                  down=m["lost"][:10]))
+            continue
+        why = []
+        if m["expected"] < p["expected_before"] - 1e-9:
+            why.append(f"expected {m['expected']:.1f} < plain {p['expected_before']:.1f}")
+        if v and v["expected_after"] < v["expected_before"] - 1e-9:
+            why.append(f"expected {v['expected_after']:.1f} < previous round {v['expected_before']:.1f}")
+        if why:
+            falls.append(dict(set=m["set"], why=why, down=(v.get("down") if v else p.get("down", []))[:10]))
     unsound = [dict(id=p["candidate"]["id"], reason=p["reason"]) for p in promoted if p["unsound"]]
     wall = []
     base = {m["set"]: m for m in measure.get("measurements", []) if m["arm"] == "baseline"}
@@ -55,7 +71,8 @@ def render(n: int, out: dict, inputs: dict, ctl: dict, timings: dict, heads: dic
     w = L.append
     w(f"# Idea loop — round {n:03d} ({time.strftime('%Y-%m-%d %H:%M %Z')})")
     w("")
-    w(f"Code {inputs.get('code')}; basis before the round {len(inputs.get('basis_before_ids', []))} ideas (head {heads.get('before', '')[:12]}), "
+    w(f"Code {inputs.get('code')} (ledger rendered by {heads.get('render_code', inputs.get('code'))}); "
+      f"basis before the round {len(inputs.get('basis_before_ids', []))} ideas (head {heads.get('before', '')[:12]}), "
       f"after {heads.get('after_count', '?')} ideas (head {heads.get('after', '')[:12]}). Stages: "
       + ", ".join(f"{k} {v:.0f}s" for k, v in timings.items()) + f"; total {sum(timings.values()) / 60:.1f} min.")
     w("")
@@ -121,25 +138,36 @@ def render(n: int, out: dict, inputs: dict, ctl: dict, timings: dict, heads: dic
         if len(ids) > 12:
             w(f"| ... {len(ids) - 12} more | " + " | ".join("" for _ in sets) + " |")
     w("")
-    w("## Changed (the player with this round's wiring, paired by position against the frozen plain baselines)")
+    w("## Changed (the player with this round's wiring, paired by position: plain = the frozen baseline, previous = the previous kept round's arm)")
     rows = me.get("measurements", [])
     base = {m["set"]: m for m in rows if m["arm"] == "baseline"}
-    w("| set | baseline tied / single | round tied / single | gained | lost | nodes on the same positions | wall / step |")
+
+    def num(x, f="{:.1f}"):
+        return "—" if x is None else f.format(x)
+    w("| set | expected score: plain / previous / round | single top move: plain / previous / round | puzzles up / down vs previous | solution among tied (context): plain / previous / round | nodes vs plain on the same positions | wall / step |")
     w("|---|---|---|---|---|---|---|")
     for m in rows:
         if m["arm"] != "round":
             continue
         b = base[m["set"]]
         p = m["paired"]
+        v = m.get("vs_previous") or {}
+        ud = f"{len(v['up'])} / {len(v['down'])}" if v else (f"{len(p['up'])} / {len(p['down'])} (vs plain)" if "up" in p else "—")
         wall = f"{m['wall_s'] / m['steps']:.2f}s" if m.get("wall_s") else "not timed"
-        w(f"| {m['set']} | {b['tied']}/{b['puzzles']} / {b['single']} | {m['tied']}/{m['puzzles']} / {m['single']} | {len(m['gained'])} | {len(m['lost'])} | "
+        w(f"| {m['set']} | {num(b.get('expected'))} / {num(v.get('expected_before'))} / {num(m.get('expected'))} | "
+          f"{b['single']} / {num(v.get('single_before'), '{}')} / {m['single']} | {ud} | "
+          f"{b['tied']} / {num(v.get('tied_before'), '{}')} / {m['tied']} of {m['puzzles']} | "
           f"{p['before']:,} → {p['after']:,} ({p['ratio']:.3f}; fewer {p['fewer']}, more {p['more']}) | {wall} |")
+    w("")
+    w("Expected score: the puzzles a player picking at random among its tied top moves solves. A tie-break can only remove "
+      "moves from the tied set, so 'solution among tied' can only fall and 'single top move' only rise when one acts; "
+      "the expected score moves either way and is what RESULTS FALL reads.")
     w("")
     w("## Controls")
     w(f"- NOTHING FIRES: " + ("**FLAG** — no newly promoted idea fires in the held-out sets (a Lean idea fires where it is proved, a mined one where it gives a verdict on a move)" if ctl["nothing_fires"]
                                else f"ok — newly promoted ideas that fire: {sum(1 for v in ctl['instances'].values() if v)} of {len(ctl['new_ids'])}"))
-    w(f"- RESULTS FALL: " + ("**FLAG** for judgment — " + "; ".join(f"{f['set']}: lost {f['lost']} > gained {f['gained']}" for f in ctl["results_fall"])
-                              if ctl["results_fall"] else "ok — no held-out set lost more puzzles than it gained"))
+    w(f"- RESULTS FALL: " + ("**FLAG** for judgment — " + "; ".join(f"{f['set']}: " + ", ".join(f["why"]) for f in ctl["results_fall"])
+                              if ctl["results_fall"] else "ok — no held-out set's expected score fell against the plain baseline or the previous round"))
     w(f"- UNSOUND: " + ("**RED** — " + "; ".join(f"{u['id']}: {u['reason']}" for u in ctl["unsound"]) + ". This round cannot be gated continue."
                         if ctl["unsound"] else "ok — every Lean statement has standard axioms and a clean bridge"))
     w(f"- WALL TIME: " + ("; ".join(_fmt_wall(x) for x in ctl["wall"]) or "not measured"))
@@ -153,7 +181,7 @@ def render(n: int, out: dict, inputs: dict, ctl: dict, timings: dict, heads: dic
     if conj and not proved:
         props.append("All new ideas are conjecture tier: slot R2 (the guard-to-Lean translator) and R3 (automatic proofs) decide whether any can close search.")
     if ctl["results_fall"]:
-        props.append("A set lost puzzles: dig the lost ids (MISS anatomy) before keeping the round's order uses.")
+        props.append("A set's expected score fell: dig the puzzles that went down (MISS anatomy) before keeping the round's uses.")
     w("\n".join(f"- {x}" for x in props) or "- Continue: no control flagged.")
     w("")
     w("## Decision")

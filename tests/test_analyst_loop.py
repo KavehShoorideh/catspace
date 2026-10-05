@@ -149,3 +149,54 @@ def test_axioms_script():
     ax, _ = axioms(["Ideas.backRankMate_sound", "Chess.allSquares_nodup"])
     assert set(ax["Ideas.backRankMate_sound"]) <= {"propext", "Classical.choice", "Quot.sound"}
     assert any("native_decide" in a for a in ax["Chess.allSquares_nodup"])
+
+
+def _puzzle(pid, steps):
+    """A dump record: steps as (solution among the tied top moves, how many tied top moves)."""
+    st = [dict(fen=f"{pid}-{i}", tied=t, n_top=k, nodes=10) for i, (t, k) in enumerate(steps)]
+    return dict(id=pid, steps=st, solved=all(t for t, _ in steps), solved_unique=all(t and k == 1 for t, k in steps))
+
+
+def test_expected_score_reads_a_tie_break_fairly():
+    """A tie-break that is right more often than chance raises the expected score although tied-set membership can only
+    fall (the round-1 misreading: 'lost 82 > gained 2' while the expected score rose)."""
+    from catspace.incubator.analyst.loop.ledger import controls
+    from catspace.incubator.analyst.loop.stages.measure import expected_score, pair, summarize
+    assert expected_score(_puzzle("a", [(True, 4), (True, 2)])) == pytest.approx(1 / 8)
+    assert expected_score(_puzzle("b", [(True, 1), (False, 3)])) == 0.0
+    base = [_puzzle("p1", [(True, 4)]), _puzzle("p2", [(True, 4)]), _puzzle("p3", [(True, 5)])]
+    arm = [_puzzle("p1", [(True, 1)]), _puzzle("p2", [(True, 1)]), _puzzle("p3", [(False, 1)])]   # right twice, wrong once
+    p = pair(base, arm)
+    assert p["lost"] == ["p3"] and not p["gained"]                       # the old count says: fell
+    assert p["expected_before"] == pytest.approx(0.25 + 0.25 + 0.2) and p["expected_after"] == pytest.approx(2.0)
+    assert p["up"] == ["p1", "p2"] and p["down"] == ["p3"]
+    s = summarize(arm)
+    m = dict(set="x", arm="round", lost=p["lost"], gained=p["gained"], expected=s["expected"], paired=p, steps=3, wall_s=None,
+             vs_previous=dict(expected_before=p["expected_before"], expected_after=p["expected_after"], up=p["up"], down=p["down"]))
+    assert not controls(dict(measure=dict(measurements=[m])), dict(basis_before_ids=[]))["results_fall"]
+    worse = [_puzzle("p1", [(False, 1)]), _puzzle("p2", [(True, 1)]), _puzzle("p3", [(False, 1)])]   # right once in three still beats chance here
+    q = pair(base, worse)
+    assert q["expected_after"] == pytest.approx(1.0)
+    awful = [_puzzle("p1", [(False, 1)]), _puzzle("p2", [(False, 1)]), _puzzle("p3", [(False, 1)])]
+    r = pair(base, awful)
+    m2 = dict(m, expected=0.0, lost=r["lost"], paired=r, vs_previous=dict(expected_before=r["expected_before"], expected_after=0.0, up=[], down=r["down"]))
+    falls = controls(dict(measure=dict(measurements=[m2])), dict(basis_before_ids=[]))["results_fall"]
+    assert falls and "plain" in falls[0]["why"][0] and "previous round" in falls[0]["why"][1]
+
+
+def test_enrich_pairs_against_the_previous_kept_round(roots, monkeypatch):
+    from catspace.incubator.analyst.loop.stages import measure as M
+    dumps = {"base.json": [_puzzle("p1", [(True, 4)]), _puzzle("p2", [(True, 2)])],
+             "prev.json": [_puzzle("p1", [(True, 2)]), _puzzle("p2", [(True, 2)])],
+             "now.json": [_puzzle("p1", [(True, 1)]), _puzzle("p2", [(False, 1)])]}
+    monkeypatch.setattr(M, "load_dump", lambda name: dumps[name])
+    out = dict(measurements=[dict(set="s", arm="baseline", dump="base.json", lost=[], gained=[], paired=None),
+                             dict(set="s", arm="round", dump="now.json", lost=["p2"], gained=[], paired=dict(before=1, after=1))])
+    prev = dict(measurements=[dict(set="s", arm="round", dump="prev.json")])
+    e, obs = M.enrich(out, prev)
+    r = e["measurements"][1]
+    assert r["expected"] == pytest.approx(1.0) and e["measurements"][0]["expected"] == pytest.approx(0.75)
+    assert r["vs_previous"]["expected_before"] == pytest.approx(1.0) and r["vs_previous"]["up"] == ["p1"] and r["vs_previous"]["down"] == ["p2"]
+    assert r["paired"]["before"] == 1 and r["paired"]["expected_before"] == pytest.approx(0.75)   # the old fields are kept
+    assert obs and obs[0].startswith("OBS s: expected score")
+    assert out["measurements"][1].get("expected") is None                 # enrich does not touch its input

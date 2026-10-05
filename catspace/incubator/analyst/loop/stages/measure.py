@@ -2,7 +2,8 @@
 back-rank puzzles (rows i % 97 == 17), pawn-ending puzzles (the same rows), and the general set (stride 997, offset
 300). For a round: a static FIRE scan of every active idea at the solver's positions of each set (instances, proved,
 one-away), then the player with the round's wiring (active.json) on each set, paired by position against the
-baseline: nodes, solved among the tied top moves and as the single top move, gained and lost puzzles, wall time.
+baseline: nodes, solved among the tied top moves and as the single top move, the expected score of a random pick among
+the tied top moves (what the controls read), gained and lost puzzles, wall time.
 Round 0 measures from the dumps already on disk (mode "dumps"); later rounds run the player (mode "player")."""
 from __future__ import annotations
 
@@ -33,18 +34,36 @@ def load_dump(name: str) -> list:
     return json.load(open(paths.derived(name)))
 
 
+def expected_score(r: dict) -> float:
+    """The chance that a player picking at random among its tied top moves plays a puzzle's whole solution: the product
+    over the solution's steps of 1 / (the number of tied top moves), 0 at a step where the solution is not among them.
+    'Solution among the tied top moves' is an upper bound (a perfect tie-break) and 'the single top move' a lower bound
+    (no tie-break); a tie-break can only shrink tied sets, so it moves both bounds in fixed directions whatever it picks.
+    This score moves either way, and it is what the RESULTS FALL control reads (loop round 1, 2026-10-05)."""
+    p = 1.0
+    for s in r["steps"]:
+        if not s["tied"]:
+            return 0.0
+        p /= max(s.get("n_top") or 1, 1)
+    return p
+
+
 def summarize(res: list) -> dict:
     ns = [s.get("nodes", 0) or 0 for r in res for s in r["steps"]]
     return dict(puzzles=len(res), steps=len(ns), mean_nodes=sum(ns) / max(len(ns), 1),
-                tied=sum(r["solved"] for r in res), single=sum(r["solved_unique"] for r in res))
+                tied=sum(r["solved"] for r in res), single=sum(r["solved_unique"] for r in res),
+                expected=sum(expected_score(r) for r in res))
 
 
 def pair(base: list, arm: list) -> dict:
     """The arm against the baseline on the same puzzles: nodes on the steps both searched from the same position,
-    puzzles gained and lost (whole solution among the tied top moves)."""
+    puzzles gained and lost (whole solution among the tied top moves: context only, see expected_score), and the
+    expected scores with the puzzles whose expected score went up and down."""
     x = {r["id"]: r for r in base}
     y = {r["id"]: r for r in arm}
     common = [k for k in x if k in y]
+    ex = {k: expected_score(x[k]) for k in common}
+    ey = {k: expected_score(y[k]) for k in common}
     pairs = [(sx["nodes"], sy["nodes"]) for k in common for sx in x[k]["steps"] for sy in y[k]["steps"]
              if sx["fen"] == sy["fen"] and sx.get("nodes") is not None and sy.get("nodes") is not None]
     nx = sum(a for a, _ in pairs)
@@ -54,7 +73,53 @@ def pair(base: list, arm: list) -> dict:
                 gained=sorted(k for k in common if y[k]["solved"] and not x[k]["solved"]),
                 lost=sorted(k for k in common if x[k]["solved"] and not y[k]["solved"]),
                 gained_single=sum(1 for k in common if y[k]["solved_unique"] and not x[k]["solved_unique"]),
-                lost_single=sum(1 for k in common if x[k]["solved_unique"] and not y[k]["solved_unique"]))
+                lost_single=sum(1 for k in common if x[k]["solved_unique"] and not y[k]["solved_unique"]),
+                expected_before=sum(ex.values()), expected_after=sum(ey.values()),
+                up=sorted(k for k in common if ey[k] > ex[k] + 1e-12), down=sorted(k for k in common if ey[k] < ex[k] - 1e-12))
+
+
+def enrich(out: dict, previous: dict | None) -> dict:
+    """The measure output with every expected score, and each round arm paired against the previous kept round's arm
+    (the player before this round's ideas: the attribution of the round), all recomputed from the dumps the
+    measurements name. Idempotent; a missing dump leaves its fields unset. -> a new dict and its OBS lines."""
+    import copy
+    out = copy.deepcopy(out or {})
+    obs = []
+
+    def dump(name):
+        try:
+            return load_dump(name)
+        except FileNotFoundError:
+            return None
+    prev_arms = {m["set"]: m["dump"] for m in (previous or {}).get("measurements", []) if m["arm"] == "round"}
+    rows = out.get("measurements", [])
+    for m in rows:
+        res = dump(m["dump"])
+        if res is not None:
+            m["expected"] = summarize(res)["expected"]
+    for m in rows:
+        if m["arm"] != "round" or m.get("expected") is None:
+            continue
+        res = dump(m["dump"])
+        base = next((b for b in rows if b["set"] == m["set"] and b["arm"] == "baseline"), None)
+        bres = dump(base["dump"]) if base else None
+        if bres is not None:
+            p = pair(bres, res)
+            m["paired"] = {**(m.get("paired") or {}), **{k: p[k] for k in ("expected_before", "expected_after", "up", "down")}}
+        pd = prev_arms.get(m["set"])
+        pres = dump(pd) if pd and pd != m["dump"] else None
+        if pres is not None:
+            q, s = pair(pres, res), summarize(pres)
+            m["vs_previous"] = dict(dump=pd, expected_before=q["expected_before"], expected_after=q["expected_after"],
+                                    up=q["up"], down=q["down"], tied_before=s["tied"], single_before=s["single"],
+                                    nodes_ratio=q["ratio"])
+        v = m.get("vs_previous") or {}
+        obs.append(f"OBS {m['set']}: expected score (random pick among the tied top moves): plain "
+                   f"{(m.get('paired') or {}).get('expected_before', float('nan')):.1f}"
+                   + (f", previous round {v['expected_before']:.1f}" if v else "")
+                   + f", this round {m['expected']:.1f}"
+                   + (f"; against the previous round {len(v['up'])} puzzles up, {len(v['down'])} down" if v else ""))
+    return out, obs
 
 
 def positions_of(res: list) -> list[str]:
@@ -144,6 +209,8 @@ def run(ctx) -> dict:
                     f"{m.mean_nodes:.0f} nodes/step; paired {p['before']} -> {p['after']} ({p['ratio']:.3f}; fewer {p['fewer']}, "
                     f"more {p['more']}, equal {p['equal']}); gained {len(p['gained'])}, lost {len(p['lost'])}"
                     + (f"; wall {wall:.0f}s" if wall else ""))
+            ctx.log(f"OBS {name}: expected score (random pick among the tied top moves): baseline {summarize(base)['expected']:.1f}, "
+                    f"round {m.expected:.1f}; puzzles up {len(p['up'])}, down {len(p['down'])}")
             out["fire"][name] = fire_scan(active, li, positions_of(base), orderer)
             for idea, rec in out["fire"][name].items():
                 ctx.log(f"OBS fire {name} {idea}: {rec}")

@@ -126,6 +126,8 @@ class Measurement:
     gained: list
     lost: list
     provenance: Provenance
+    expected: float | None = None  # puzzles a player picking at random among its tied top moves solves (measure.expected_score)
+    vs_previous: dict | None = None  # against the previous kept round's arm: the attribution of this round's ideas
 
 
 def to_dict(obj):

@@ -17,6 +17,7 @@ import time
 from . import basis, gate
 from .ctx import Ctx
 from .ledger import controls, render
+from .stages.measure import enrich
 from .store import code_version, digest, read_json, record_dir, round_dir, write_json
 
 STAGES = ("frame", "mine", "translate", "prove", "use", "measure")
@@ -63,6 +64,16 @@ def check_gate(n: int, config: dict) -> None:
             raise RoundError(f"round {n - 1} was gated 'swap {st}': name the replacement module in the config (stages.{st})")
 
 
+def previous_measure(n: int) -> dict | None:
+    """The measure record of the latest round before n whose ideas were kept (gated continue or swap): its arm is the
+    player before round n's ideas, so pairing against it attributes the round."""
+    for k in range(n - 1, -1, -1):
+        g = gate.gate_of(k)
+        if g is not None and g["decision"] != "rollback":
+            return read_json(record_dir(k) / "measure.json")
+    return None
+
+
 def run_round(n: int, only: str | None = None, extra: dict | None = None, force: bool = False, commit: bool = True) -> dict:
     config = merge(default_config(n), extra or {})
     check_gate(n, config)
@@ -97,6 +108,10 @@ def run_round(n: int, only: str | None = None, extra: dict | None = None, force:
         write_json(d / "timings.json", timings)
         prev_hash = h
     outs = {st: (read_json(d / f"{st}.json") or {}).get("output") for st in STAGES}
+    if outs.get("measure"):                                                  # expected scores, and the previous kept round's arm,
+        outs["measure"], obs = enrich(outs["measure"], previous_measure(n))  # from the dumps (rounds measured before the fields too)
+        for line in obs:
+            ctx.log(line)
     ctl = controls(outs, inputs)
     # the basis: the round's sound ideas that are new, with their accepted uses
     promoted = (outs.get("prove") or {}).get("promoted", [])
@@ -107,7 +122,7 @@ def run_round(n: int, only: str | None = None, extra: dict | None = None, force:
     already = {e["id"] for e in basis.read() if e["op"] == "promote" and e["round"] == n}
     new = [p for p in promoted if not p["unsound"] and p["candidate"]["id"] not in basis.active() and p["candidate"]["id"] not in already]
     head_after = basis.promote(n, new, uses) if new else basis.head()
-    heads = dict(before=head_before, after=head_after, after_count=len(basis.active()))
+    heads = dict(before=head_before, after=head_after, after_count=len(basis.active()), render_code=code_version())
     text = render(n, outs, inputs, ctl, timings, heads)
     (rec / "LEDGER.md").write_text(text)
     write_json(rec / "controls.json", ctl)
@@ -116,9 +131,10 @@ def run_round(n: int, only: str | None = None, extra: dict | None = None, force:
                                             axioms=p["evidence"].get("axioms")) for p in promoted])
     write_json(rec / "uses.json", (outs.get("use") or {}).get("uses", []))
     write_json(rec / "measure.json", dict(measurements=(outs.get("measure") or {}).get("measurements", []), fire=(outs.get("measure") or {}).get("fire", {})))
-    write_json(rec / "round.json", dict(round=n, timings=timings, heads=heads, new_ideas=len(new), red=ctl["red"]))
+    n_new = sum(1 for e in basis.read() if e["op"] == "promote" and e["round"] == n)   # promoted by this round (a re-render too)
+    write_json(rec / "round.json", dict(round=n, timings=timings, heads=heads, new_ideas=n_new, red=ctl["red"]))
     if commit:
-        headline = f"{len(new)} new ideas; " + ("UNSOUND red; " if ctl["red"] else "") + ("nothing fires; " if ctl["nothing_fires"] else "") + \
+        headline = f"{n_new} new ideas; " + ("UNSOUND red; " if ctl["red"] else "") + ("nothing fires; " if ctl["nothing_fires"] else "") + \
                    ("results fall; " if ctl["results_fall"] else "") + f"{sum(timings.values()) / 60:.1f} min"
         gate._commit([rec, basis.path()], f"loop round {n:03d}: {headline} (artifacts/loop/round_{n:03d}/LEDGER.md)")
     ctx.log(f"ledger: {rec / 'LEDGER.md'}")
