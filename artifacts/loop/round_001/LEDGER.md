@@ -1,6 +1,6 @@
 # Idea loop — round 001 (2026-10-05 11:51 PDT)
 
-Code 1a4ce48a (ledger rendered by f6fd8312); basis before the round 3 ideas (head cf90a07d1e40), after 103 ideas (head ea66b6a9affa). Stages: frame 632s, mine 79s, translate 0s, prove 27s, use 0s, measure 946s; total 28.1 min.
+Code 1a4ce48a (ledger rendered by a7f51e14); basis before the round 3 ideas (head cf90a07d1e40), after 103 ideas (head ea66b6a9affa). Stages: frame 632s, mine 79s, translate 0s, prove 27s, use 0s, measure 946s; total 28.1 min.
 
 ## Inputs
 - Framed: 6 puzzle misses on development rows (i % 97 == 5) and 150 game positions where the frames rated the move safe and the game took material within the next plies (development games). Ids frozen in inputs_framed.json.
@@ -56,7 +56,9 @@ Expected score: the puzzles a player picking at random among its tied top moves 
 - WALL TIME: backrank: 0.20s a step against 0.21s (0.94x); pawnendings: 0.06s a step against 0.02s (3.02x); general: 1.23s a step against 1.12s (1.10x)
 
 ## Proposed next
-- Continue: no control flagged.
+- All new ideas are conjecture tier: slot R2 (the guard-to-Lean translator) and R3 (automatic proofs) decide whether any can close search.
+- More puzzles went down than up against the previous round on pawnendings, general, though the expected score did not fall: the gain sits in fewer puzzles; dig the down ids (MISS anatomy) before relying on the round's uses.
+- Time per step above 1.5x the baseline on pawnendings: profile the round's uses before keeping them.
 
 ## Decision
 - pending: `python -m catspace.incubator.analyst.loop.gate --round 1 --decision continue|rollback|swap [--stage NAME] --note "..."`
