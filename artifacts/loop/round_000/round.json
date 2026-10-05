@@ -1,18 +1,27 @@
 {
  "round": 0,
  "timings": {
-  "frame": 0.0005215839482843876,
-  "mine": 0.00013929209671914577,
-  "translate": 0.00024583307094872,
-  "prove": 23.404732041992247,
-  "use": 0.0004289161879569292,
-  "measure": 901.9908090000972
+  "frame": 0.0005277090240269899,
+  "mine": 0.0003118750173598528,
+  "translate": 0.0019320410210639238,
+  "prove": 23.360850582830608,
+  "use": 0.001809790963307023,
+  "measure": 6.652695958036929
  },
  "heads": {
   "before": "0000000000000000000000000000000000000000000000000000000000000000",
-  "after": "cf90a07d1e40f649b22bb01c271ea7238a68d8c9764f1d51f24988f39e75b582",
-  "after_count": 3
+  "after": "ea66b6a9affafaf80e2cbc5869c906ac75d9173b102cf24202214a59f91339f6",
+  "after_count": 103,
+  "render_code": "6b5575d6",
+  "render_only": true,
+  "stale": [
+   "frame",
+   "mine",
+   "translate",
+   "use",
+   "measure"
+  ]
  },
- "new_ideas": 0,
+ "new_ideas": 3,
  "red": false
 }
