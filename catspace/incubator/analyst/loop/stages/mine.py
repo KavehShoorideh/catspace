@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import glob
 import json
+import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 from catspace.io import paths
 
@@ -34,10 +36,19 @@ def run(ctx) -> dict:
         (ctx.dir / f"{name}.log").write_text(r.stdout + r.stderr)
         if r.returncode != 0:
             raise RuntimeError(f"lemma_gen {name} failed: " + r.stderr[-2000:])
-    lib_path = next(iter(sorted(glob.glob(str(paths.REPO_ROOT / "data" / "derived" / "lemmas" / f"library_*_{tag}.json")))))
-    proved_path = lib_path.replace("library_", "proved_")
+    found = sorted(glob.glob(str(paths.REPO_ROOT / "data" / "derived" / "lemmas" / f"library_*_{tag}.json")))
+    if len(found) != 1:
+        raise RuntimeError(f"expected one library for tag {tag}, found {found}")
+    made_proved = found[0].replace("library_", "proved_")
+    if not Path(made_proved).exists():
+        raise RuntimeError(f"the re-test wrote no {made_proved}")
+    lib_path, proved_path = str(ctx.dir / "library.json"), str(ctx.dir / "proved.json")   # the round's own copies: lemma_gen
+    shutil.copyfile(found[0], lib_path)                                                    # rewrites its files when a stage
+    shutil.copyfile(made_proved, proved_path)                                              # re-runs; the wiring reads these
     lib = json.load(open(lib_path))
-    proved = json.load(open(proved_path)) if glob.glob(proved_path) else [{} for _ in lib]
+    proved = json.load(open(proved_path))
+    if len(proved) != len(lib):
+        raise RuntimeError(f"library {len(lib)} lemmas, re-test {len(proved)} entries")
     guards = []
     for i, (e, p) in enumerate(zip(lib, proved)):
         held = dict(status=p.get("status"), coverage=p.get("coverage"), purity=p.get("purity"), support=p.get("support"))

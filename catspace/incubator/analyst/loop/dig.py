@@ -77,7 +77,9 @@ def dig(n: int, name: str, show: int = 0) -> dict:
             sol = sn["sol"]
             kept = sn["best"]
             demoted = sorted(set(sp["best"]) - set(sn["best"]))
-            if kind == "down":
+            if not sn.get("order") or sp.get("v_top") != sn.get("v_top"):      # the step moved, but not by the tie-break: the
+                c = "the search's values changed (the tie-break did not act at this step)"   # search's own values differ (reviewer, 2026-10-05)
+            elif kind == "down":
                 vs = preds(sol)
                 if not vs:
                     c = "unspoken: no mined idea speaks about the solution"

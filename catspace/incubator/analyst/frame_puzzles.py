@@ -47,7 +47,7 @@ def _solve_lichess(row: dict) -> dict:
         ok_tied = u in c["best"] or mate_ok
         ok_unique = (c["best"] == [u]) or (mate_ok and len(c["best"]) == 1)
         from . import frame_player as _FP
-        steps.append(dict(fen=b.fen(), sol=u, tied=ok_tied, unique=ok_unique, n_top=len(c["best"]), best=c["best"][:6],
+        steps.append(dict(fen=b.fen(), sol=u, tied=ok_tied, unique=ok_unique, n_top=len(c["best"]), best=c["best"],
                           v_sol=c["values"].get(u), v_top=max(c["values"].values()), nodes=_FP.NODES[0], depth=_FP.DEPTH[0],
                           proved=_FP.PROVED[0], passer_leaves=_FP.PASSER_LEAVES[0], order=_FP.LOOP_ORDER_FIRED[0]))
         if not ok_tied:
@@ -75,7 +75,7 @@ def _solve_epd(item) -> dict:
     us = [m.uci() for m in bms]
     tied = any(u in c["best"] for u in us); unique = len(c["best"]) == 1 and c["best"][0] in us
     return dict(id=pid, rating=0, themes=[], start=fen, solution=us[:1],
-                steps=[dict(fen=fen, sol=us[0], tied=tied, unique=unique, n_top=len(c["best"]), best=c["best"][:6],
+                steps=[dict(fen=fen, sol=us[0], tied=tied, unique=unique, n_top=len(c["best"]), best=c["best"],
                             v_sol=c["values"].get(us[0]), v_top=max(c["values"].values()))],
                 first_tied=tied, first_unique=unique, solved=tied, solved_unique=unique)
 

@@ -16,7 +16,7 @@ REGISTERED = [
          hypotheses=["ownPawn", "pathClear", "bareKing", "noSliders", "notInCheck", "kingOutside", "kingHasMove"],
          protagonist="our pawn", footprint="the pawn, its path, the enemy king and its square (Lean detector `passer`)",
          bridges=["passer1_random"],
-         uses=[("closure", "TacticalSpec.proved_passer + frame_player.PASSER: the queen counted at the horizon, the push a candidate (via the passer2 detector, which reports form-1 proofs)")],
+         uses=[("closure", "TacticalSpec.proved_passer + frame_player.PASSER: the queen counted at the horizon, the push a candidate (via the passer2 detector, which reports form-1 proofs; it is switched on only with lean:unstoppablePasser2's closure, whose bridges check what that detector reports)")],
          sentence="the pawn on {sq} cannot be stopped: the king is outside its square and has nothing else to stop it with (proved: Ideas.Passer.unstoppablePasser_sound')."),
     dict(id="lean:unstoppablePasser2", theorem="Ideas.Passer2.unstoppablePasser2_sound", tier="unconditional", detector="passer2",
          claim=dict(kind="promotion", horizon=13, value=8.0, text="our pawn promotes to a queen within 2n-1 plies whatever the opponent does"),

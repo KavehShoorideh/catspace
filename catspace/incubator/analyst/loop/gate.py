@@ -34,11 +34,18 @@ def decide(n: int, decision: str, note: str, stage: str | None = None, by: str =
         raise GateError(f"round {n} has a RED control (unsound: {ctl.get('unsound')}); it cannot be gated continue -- rollback or swap")
     if decision == "swap" and stage not in STAGES:
         raise GateError(f"swap needs --stage one of {STAGES}")
+    if gate_of(n) is not None:                                               # a decision is final: re-gating used to overwrite
+        raise GateError(f"round {n} is already gated ({gate_of(n)['decision']}); a decision is final -- "   # GATE.json and
+                        "record a correction in the next round")                                         # leave the basis as it was
     retired = []
     if decision == "rollback":
         retired = sorted({e["id"] for e in basis.read() if e["op"] == "promote" and e["round"] == n} & set(basis.active()))
-        if retired:
-            basis.retire(n, retired, f"rollback of round {n}: {note}")
+    unsound = sorted({u["id"] for u in ctl.get("unsound", [])} & set(basis.active()) - set(retired))
+    if retired:
+        basis.retire(n, retired, f"rollback of round {n}: {note}")
+    if unsound:                                                              # a red round retires its unsound ideas whatever
+        basis.retire(n, unsound, f"unsound in round {n}'s re-check: {note}")  # round promoted them (a registered idea too)
+        retired = sorted(set(retired) | set(unsound))
     g = dict(round=n, decision=decision, stage=stage, note=note, by=by, time=time.strftime("%Y-%m-%d %H:%M %Z"),
              retired=retired, basis_head=basis.head())
     write_json(rec / "GATE.json", g)
@@ -55,8 +62,8 @@ def _commit(pathlist, message: str) -> None:
     root = paths.REPO_ROOT
     rel = [str(p.relative_to(root)) if str(p).startswith(str(root)) else str(p) for p in pathlist]
     subprocess.run(["git", "add", "--", *rel], cwd=root, check=True)
-    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=root).returncode != 0:
-        subprocess.run(["git", "commit", "-q", "-m", message], cwd=root, check=True)
+    if subprocess.run(["git", "diff", "--cached", "--quiet", "--", *rel], cwd=root).returncode != 0:
+        subprocess.run(["git", "commit", "-q", "-m", message, "--", *rel], cwd=root, check=True)   # these paths only
 
 
 def main(argv=None):

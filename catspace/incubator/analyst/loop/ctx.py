@@ -18,6 +18,7 @@ class Ctx:
     config: dict
     code: str
     log_lines: list = field(default_factory=list)
+    basis_before: str | None = None  # the basis head the round started from (inputs.json); None: today's basis
 
     def load(self, stage: str) -> dict | None:
         """An earlier stage's output (None when it has not run)."""

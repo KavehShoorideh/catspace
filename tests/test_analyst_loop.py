@@ -151,9 +151,16 @@ def test_axioms_script():
     assert any("native_decide" in a for a in ax["Chess.allSquares_nodup"])
 
 
+QUIET = "8/8/8/8/8/8/8/K6k w - - 0 1"                                      # nothing on it mates
+
+
 def _puzzle(pid, steps):
-    """A dump record: steps as (solution among the tied top moves, how many tied top moves)."""
-    st = [dict(fen=f"{pid}-{i}", tied=t, n_top=k, nodes=10) for i, (t, k) in enumerate(steps)]
+    """A dump record: steps as (solution among the tied top moves, how many tied top moves), on a quiet board where no
+    top move mates; the other top moves are well-formed placeholders."""
+    st = []
+    for i, (t, k) in enumerate(steps):
+        others = [f"{f}1{f}2" for f in "bcdefgh"][: k - (1 if t else 0)]
+        st.append(dict(fen=QUIET, sol="a1a2", tied=t, n_top=k, nodes=10, best=(["a1a2"] if t else []) + others))
     return dict(id=pid, steps=st, solved=all(t for t, _ in steps), solved_unique=all(t and k == 1 for t, k in steps))
 
 
@@ -200,3 +207,110 @@ def test_enrich_pairs_against_the_previous_kept_round(roots, monkeypatch):
     assert r["paired"]["before"] == 1 and r["paired"]["expected_before"] == pytest.approx(0.75)   # the old fields are kept
     assert obs and obs[0].startswith("OBS s: expected score")
     assert out["measurements"][1].get("expected") is None                 # enrich does not touch its input
+
+
+def test_frozen_inputs_survive_a_new_config(roots):
+    """Re-running a round under another config keeps the basis it started from (it used to take today's basis)."""
+    from catspace.incubator.analyst.loop import basis, contracts as C
+    from catspace.incubator.analyst.loop.round import default_config, frozen_inputs
+    first = frozen_inputs(0, default_config(0))
+    assert first["basis_before_ids"] == []
+    basis.promote(1, [C.to_dict(C.Promoted(_candidate(C, "later"), "conjecture", C.Evidence(), False, "", C.Provenance(1, "prove")))])
+    cfg = default_config(0)
+    cfg["measure"]["arms"]["general"] = "another.json"
+    again = frozen_inputs(0, cfg)
+    assert again["basis_before_ids"] == [] and again["basis_before"] == first["basis_before"]
+    assert again["config"] == cfg and again["reconfigured"][0]["before"] == first["config"]
+
+
+def test_order_never_demotes_a_move_no_lemma_speaks_about():
+    """A move without a verdict has no evidence: it reads as 'no change' and is never demoted; a move the lemmas
+    call a loss falls below it; among spoken moves the composed preference still ranks."""
+    from types import SimpleNamespace
+    from catspace.incubator.analyst.loop.wiring import MinedOrder
+
+    def lemma(holds, exception, claim="acting keeps"):
+        return SimpleNamespace(value=dict(holds=holds, exception=exception), frame=SimpleNamespace(size=2, text=lambda: f"f{holds}"), claim=claim)
+    b = chess.Board("4k3/8/8/8/8/8/3P4/R3K3 w - - 0 1")
+    verdicts = {(chess.A1, "a1a8"): [(lemma(0.3, -5.0), "loses", "lands attacked", (0,))],     # a guard fired: predicted -5
+                (chess.D2, "d2d4"): [(lemma(0.5, -1.0), "keeps", None, (0,))]}                 # predicted +0.5
+    mo = MinedOrder.__new__(MinedOrder)
+    mo.app = SimpleNamespace(apply=lambda board: dict(verdicts=verdicts, embeddings=[]))
+    mo.fired = 0
+    sc = mo(b, ["a1a8", "d2d4", "e1e2"])                                   # e1e2: no lemma speaks
+    hi = max(sc.values())
+    kept = [u for u in sc if sc[u] == hi]
+    assert set(kept) == {"d2d4", "e1e2"} and sc["a1a8"] < hi
+    sc2 = mo(b, ["a1a8", "e1e2"])
+    assert sc2["e1e2"] > sc2["a1a8"]                                        # the predicted loss falls below 'no evidence'
+    assert mo(b, ["e1e2", "e1d1"]) == {}                                    # nobody speaks: no tie-break
+
+
+def test_expected_score_credits_every_mate():
+    """frame_puzzles accepts any mating move; a tie of mates is not a gamble, and a mate before the last step ends it."""
+    from catspace.incubator.analyst.loop.stages.measure import expected_score
+    two_mates = "6k1/5ppp/8/8/8/8/5PPP/3RR1K1 w - - 0 1"                       # Rd8# and Re8#
+    assert expected_score(dict(steps=[dict(fen=two_mates, sol="d1d8", tied=True, n_top=2, best=["d1d8", "e1e8"])])) == 1.0
+    early = dict(steps=[dict(fen=two_mates, sol="g2g3", tied=True, n_top=3, best=["g2g3", "d1d8", "h2h3"]),
+                        dict(fen=QUIET, sol="a1a2", tied=True, n_top=2, best=["a1a2", "b1b2"])])
+    assert expected_score(early) == pytest.approx(1 / 3 + (1 / 3) * (1 / 2))   # the mate now, or the solution and then 1 in 2
+
+
+def test_wiring_drops_a_closure_refused_this_round_and_the_gate_retires_it(roots):
+    from catspace.incubator.analyst.loop import basis, contracts as C, gate
+    from catspace.incubator.analyst.loop.stages.use import wiring
+    from catspace.incubator.analyst.loop.store import record_dir, write_json
+    old = C.to_dict(C.Promoted(_candidate(C, "lean:x"), "unconditional", C.Evidence(), False, "", C.Provenance(0, "prove")))
+    head = basis.promote(0, [old], {"lean:x": [dict(idea="lean:x", mode="closure", switch="s", refused=False)]})
+    assert wiring(3, [], [], before=basis.active(at=head))["closures"] == ["lean:x"]
+    refused = [C.UseRecord("lean:x", "closure", "s", True, "unsound: bridge 1 wrong", C.Provenance(3, "use"))]
+    assert wiring(3, [], refused, before=basis.active(at=head))["closures"] == []
+    write_json(record_dir(3) / "controls.json", dict(red=True, unsound=[dict(id="lean:x", reason="bridge 1 wrong")]))
+    g = gate.decide(3, "swap", "the kernel changed", stage="prove", commit=False)
+    assert g["retired"] == ["lean:x"] and "lean:x" not in basis.active()
+    with pytest.raises(gate.GateError):
+        gate.decide(3, "rollback", "a second decision", commit=False)
+    assert "lean:x" in basis.active(at=head)                                   # the past view still has it
+
+
+def test_stage_keys_chain_outputs(roots, monkeypatch):
+    """A stage re-run with a new result re-runs everything after it (keys used to chain configs, not outputs)."""
+    import sys, types, importlib.machinery
+    from catspace.incubator.analyst.loop.round import STAGES, run_round
+    batch = [1]
+    def fake(name, run):
+        m = types.ModuleType(name); m.__spec__ = importlib.machinery.ModuleSpec(name, None); m.run = run
+        monkeypatch.setitem(sys.modules, name, m)
+        return name
+    stages = {st: fake(f"fake_loop_{st}", lambda ctx: {}) for st in STAGES}
+    stages["frame"] = fake("fake_loop_frame", lambda ctx: dict(batch=batch[0]))
+    stages["mine"] = fake("fake_loop_mine", lambda ctx: dict(from_batch=ctx.load("frame")["batch"]))
+    stages["measure"] = fake("fake_loop_measure", lambda ctx: dict(measurements=[], fire={}))
+    run_round(0, extra=dict(stages=stages), commit=False)
+    from catspace.incubator.analyst.loop.store import read_json, round_dir
+    assert read_json(round_dir(0) / "mine.json")["output"]["from_batch"] == 1
+    batch[0] = 2
+    run_round(0, only="frame", extra=dict(stages=stages), commit=False)
+    assert read_json(round_dir(0) / "mine.json")["output"]["from_batch"] == 2
+
+
+def test_order_entry_must_hold_the_promoted_lemma(tmp_path):
+    from catspace.incubator.analyst.loop.wiring import MinedOrder
+    lib = tmp_path / "library.json"
+    lib.write_text(json.dumps([dict(id="L-x", types=["wB", "bN"], literals=[["attacks", [0, 1], True]], slot=0, claim="acting keeps", guard=[])]))
+    MinedOrder([dict(id="mined:L-x", guard="L-x", library=str(lib), index=0)])
+    with pytest.raises(ValueError):
+        MinedOrder([dict(id="mined:L-y", guard="L-y", library=str(lib), index=0)])
+    with pytest.raises(ValueError):
+        MinedOrder([dict(id="mined:L-x", guard="L-x", library=str(lib), index=5)])
+
+
+def test_a_loss_must_stand_after_the_reply():
+    """An exchange in progress is not a loss: the material must still be down one ply after the horizon."""
+    from catspace.incubator.analyst.loop.stages.frame import loss_stands
+    full = chess.Board("4k3/8/8/8/8/2n5/8/2N1K3 w - - 0 1")                   # level
+    down = chess.Board("4k3/8/8/8/8/2n5/8/4K3 w - - 0 1")                     # White's knight gone
+    back = chess.Board("4k3/8/8/8/8/8/8/4K3 w - - 0 1")                       # and Black's too: level again
+    assert loss_stands([full, full, down, back], 0, 2, chess.WHITE, 2) is None
+    assert loss_stands([full, full, down, down], 0, 2, chess.WHITE, 2) == 3
+    assert loss_stands([full, full, down], 0, 2, chess.WHITE, 2) == 3          # the game ends at the horizon

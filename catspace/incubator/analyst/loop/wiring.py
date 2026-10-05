@@ -27,8 +27,10 @@ class MinedOrder:
             if lib not in libs:
                 libs[lib] = {c.idx: c for c in load_library(Path(lib), None, proved_only=False)}
             c = libs[lib].get(e.get("index"))
-            if c is not None:
-                compiled.append(c)
+            if c is None or c.id != e.get("guard"):                           # (library, index) must still hold the promoted lemma:
+                raise ValueError(f"order entry {e.get('id')}: {lib} index {e.get('index')} holds "   # a re-written library would
+                                 f"{c.id if c else 'nothing'}, not {e.get('guard')}")                 # wire another lemma silently
+            compiled.append(c)
         self.ids = sorted({"mined:" + c.id for c in compiled})
         self.app = Applier(domain(), compiled) if compiled else None
         self.fired = 0
@@ -39,18 +41,20 @@ class MinedOrder:
             return {}
         res = self.app.apply(b)
         out = {}
-        spoke = False
         for u in ucis:
             m = chess.Move.from_uci(u)
             vs = res["verdicts"].get((m.from_square, u), [])
             if not vs:
-                out[u] = 0.0
                 continue
-            spoke = True
             v = compose(vs)
             out[u] = v if v is not None else float(sum(p == "keeps" for _, p, _, _ in vs) - sum(p == "loses" for _, p, _, _ in vs))
-        self.fired += spoke
-        return out if spoke else {}
+        if not out:
+            return {}
+        self.fired += 1
+        neutral = max(0.0, max(out.values()))                                 # a move no lemma speaks about has no evidence: it reads
+        for u in ucis:                                                        # as 'no change' and is never demoted (it used to score
+            out.setdefault(u, neutral)                                        # 0 and lose every tie to a 'keeps' move: BUGS 2026-10-05)
+        return out
 
     def fire(self, fens: list[str]) -> dict:
         """Per idea: positions where its frame embeds (instances) and where it gives a verdict on a move (speaks)."""
@@ -75,9 +79,9 @@ def activate(active: dict, FP, spec_kw: dict) -> str:
     closures = set(active.get("closures", []))
     if "lean:backRankMate" in closures:
         spec_kw["proved_mates"] = 1
-    if closures & {"lean:unstoppablePasser", "lean:unstoppablePasser2"}:
-        spec_kw["proved_passer"] = True
-        FP.PASSER = True
+    if "lean:unstoppablePasser2" in closures:                               # the player runs the passer2 detector (it reports both
+        spec_kw["proved_passer"] = True                                     # forms) and passer2's bridges check what it reports;
+        FP.PASSER = True                                                    # form 1 alone switched it on before (reviewer, 2026-10-05)
     if active.get("order"):
         FP.LOOP_ORDER = MinedOrder(active["order"])
     return f"_loopactive{int(active.get('round', 0)):03d}"

@@ -229,6 +229,59 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   lemma_apply.compose, Kaveh's "prefer this by this much" (2026-09-23), and on net the tie-break beat chance. Retracted.
   Rule: before calling a mechanism a bug, check whether it is the design, and measure its net effect.
 
+- **"Mirror duplicates" that were not** (class 3, colour, plus class 6, a claim not tested). Counting the mined
+  lemmas "distinct up to colour", I treated the library's "Q" and "P" as white pieces. In chess_domain's type tree a
+  bare letter is a KIND, a piece of either colour ("Q" = any queen); only "wQ"/"bQ" carry a colour. The scratch count
+  merged different lemmas, and I told Kaveh "72 distinct", then "92 distinct", then "a fifth of the votes repeat",
+  then "1% of votes are mirrored copies" -- all wrong; with the domain's own COLOUR_FLIP the loop's library has 199
+  distinct of 199. Sentences also omit a frame's own literals ("defends(0,1)"), so two sentences can read alike for
+  different lemmas. Rule: identify "the same lemma" by `lemma_apply.canonical_form` (the domain's symmetries, the frame
+  literals, the guard), never by text; and count before narrating.
+- **Exact duplicates in older libraries** (real, small): the same lemma found twice (up to the colour flip and slot
+  order) voted twice through the Applier; exch4 holds 54 of 5,280, exch2 50 of 5,232, none in the loop's. Fix:
+  `Applier` keeps one per `canonical_form` (`app.duplicates` lists the dropped); test
+  `test_applier_drops_a_lemma_found_twice` (fails with the dedupe disabled).
+- **"Accuracy 80% to 99.7%"** (class 6): lemma_gen's purity is the precision of a lemma's EXCEPTION GUARD (of the
+  rows where the guard fires, the share that are real exceptions), not the rule's accuracy. Told Kaveh; retracted.
+- **The dig's step choice** (class 4-like): the first step where the two arms' top sets differ is not the step that
+  moved the puzzle; a tie-break only shrinks ties, so DOWN = the step that demoted the solution. And the dumps keep
+  only best[:6]; tie sizes come from n_top. Both fixed in loop/dig.py before its numbers were quoted.
+- **Not a bug, checked**: lifted "after_*" relations raise TypeError when the move captures a frame piece (316 of
+  411,278 evaluations on the held-out positions); both lemma_gen's `_lit` and the Applier read that as False
+  (deliberate since 2026-09-24), so mining and play agree.
+- **Independent review of the loop (a reviewer agent, read-only, demos on temp roots; 13 findings, most confirmed by
+  running).** Fixed, each with a test where it is testable:
+  - an idea found unsound on re-check stayed wired as a closure, and no gate could retire it (a registered idea was
+    promoted in round 0): the wiring drops closures refused this round; a red round's gate retires its unsound ideas
+    whatever round promoted them (class 6);
+  - stage keys chained configs, not outputs: `--stage frame --force` left mine..measure cached on the old batch; keys
+    now hold the previous stage's OUTPUT and the stage module's source; `--stage X` reruns X and what follows it (1);
+  - stages read today's basis, not the one the round started from; a re-run with a new config re-froze the inputs
+    from today's basis (round 0 would have counted round 1's ideas as its own): `basis.active(at=head)`, inputs
+    written once (1);
+  - game-loss framing read material exactly 4 plies on, right after the opponent's move: 95 of 150 positions were
+    back above the threshold after our recapture; 28 more were losses the move's own forecast saw. Now the loss must
+    stand after the reply, and the move's own forecast must not have seen it (4, 5);
+  - expected_score read a tie of mating moves as a gamble; frame_puzzles accepts any mate. The back-rank "rise"
+    (294.5 -> 297.0) was this artefact (10);
+  - MinedOrder trusted (library, index) without checking the id; the mine stage took the first glob match and
+    tolerated a missing re-test file; now an id mismatch raises, the round keeps its own copies of the library and
+    the re-test, and the record keeps the promoted lemmas' definitions (lemmas.json) (2, 7);
+  - one passer switch served two ideas: form 1's acceptance alone switched on the passer2 detector (6);
+  - re-gating overwrote GATE.json and left the basis as the first decision made it: a second decision is refused (7);
+  - gate._commit committed the whole index: path-scoped now (7);
+  - off-by-ones in game_losses (the last horizon, the games counter) (4);
+  - the back-rank bridge did not count legal-move disagreements as wrong (6);
+  - dig classed puzzles the tie-break never touched (order = 0, values changed) as tie-break effects (6).
+  Checked fine by the reviewer: frames_value equals the player's one-ply value (150/150), library/proved/active
+  alignment, n_top on every step, dev/held-out disjointness (latent: dev rows meet the general set past 260 puzzles;
+  the frame stage now refuses that).
+- **The dumps kept best[:6]** while n_top was exact: analysis of ties larger than 6 read a truncated list. frame_puzzles
+  now stores the whole tie.
+- **A move no lemma speaks about scored 0** in MinedOrder and lost every tie to a "keeps" move (whose composed value is
+  a mean outcome above 0): no evidence read as evidence. Now it is never demoted (round 1 unaffected: every move was
+  spoken about). Flagged to Kaveh as possibly a design question.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).

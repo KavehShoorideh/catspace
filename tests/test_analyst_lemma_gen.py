@@ -384,3 +384,20 @@ def test_the_defaults_are_the_current_approach():
     assert (r.per_position, r.cap, r.max_size, r.max_frames, r.joins, r.split, r.seed) == (2, 250, 3, 3000, 2, "gen", 0)
     assert (p.cap, p.split, p.seed, p.positions) == (1000, "test", 1, 12000)
     assert lg.arguments(["run", "--no-lift", "--cap", "80"]).lift is False and lg.arguments(["run", "--cap", "80"]).cap == 80
+
+
+def test_applier_drops_a_lemma_found_twice():
+    """One lemma entered three times -- itself, its exact colour mirror, and with its slots in the other order -- votes
+    once per move; a different lemma on the same pieces still votes (lemma_apply.canonical_form, 2026-10-05)."""
+    a = Compiled(0, lg.Frame(("wB", "bN"), (("attacks", (0, 1), True),)), 0, "acting keeps", [], "La a")
+    mirror = Compiled(1, lg.Frame(("bB", "wN"), (("attacks", (0, 1), True),)), 0, "acting keeps", [], "Lb b")
+    swapped = Compiled(2, lg.Frame(("bN", "wB"), (("attacks", (1, 0), True),)), 1, "acting keeps", [], "Lc c")
+    other = Compiled(3, lg.Frame(("wB", "bN"), (("attacks", (0, 1), True),)), 0, "acting loses", [], "Ld d")
+    app = Applier(domain(), [a, mirror, swapped, other])
+    assert len(app.duplicates) == 2
+    b = chess.Board("4k3/8/8/3n4/8/1B6/8/4K3 w - - 0 1")                  # the bishop on b3 attacks the knight on d5
+    res = app.apply(b)
+    bishop = [vs for (e, u), vs in res["verdicts"].items() if e == chess.B3]
+    assert bishop
+    for vs in bishop:
+        assert sum(c.idx in (0, 1, 2) for c, _, _, _ in vs) == 1 and sum(c.idx == 3 for c, _, _, _ in vs) == 1

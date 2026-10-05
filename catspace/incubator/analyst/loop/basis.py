@@ -68,10 +68,20 @@ def retire(round_: int, ids: list[str], reason: str) -> str:
     return _append([dict(op="retire", round=round_, id=i, reason=reason) for i in ids])
 
 
-def active() -> dict:
-    """id -> the latest promote record of every idea not retired after it."""
+def active(at: str | None = None) -> dict:
+    """id -> the latest promote record of every idea not retired after it. With `at` (a head hash), the basis as it
+    stood at that head: a round reads the basis it started from, never today's (BUGS 2026-10-05)."""
+    lines = read()
+    if at is not None:
+        if at == GENESIS:
+            lines = []
+        else:
+            idx = next((i for i, e in enumerate(lines) if e.get("hash") == at), None)
+            if idx is None:
+                raise BasisError(f"head {at[:12]} is not in the basis")
+            lines = lines[: idx + 1]
     out: dict = {}
-    for e in read():
+    for e in lines:
         if e["op"] == "promote":
             out[e["id"]] = e
         elif e["op"] == "retire":

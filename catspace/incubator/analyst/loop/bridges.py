@@ -19,7 +19,9 @@ def backrank_heldout(li: LeanIdeas, n: int = 300, offset: int = 17) -> dict:
     t0 = time.perf_counter()
     rows = puzzle_rows(n, 97, offset, None)
     r = bridge(rows, li, log=lambda *a: None)
-    return dict(checked=r["mate_claims"], wrong=r["mate_claims"] - r["mate_true"], what=f"MATE claims on {r['positions']} positions of {n} held-out back-rank puzzle lines (rows i % 97 == {offset}); legal-move sets agree {r['agree']}/{r['positions']}",
+    return dict(checked=r["mate_claims"] + r["positions"], wrong=(r["mate_claims"] - r["mate_true"]) + (r["positions"] - r["agree"]),   # a legal-move
+                what=f"MATE claims on {r['positions']} positions of {n} held-out back-rank puzzle lines (rows i % 97 == {offset}), "     # disagreement is
+                     f"each checked as checkmate, and the kernel's legal-move set against python-chess's at each: {r['agree']}/{r['positions']} agree",  # wrong too
                 legal_agree=r["agree"], positions=r["positions"], seconds=time.perf_counter() - t0)
 
 
@@ -77,8 +79,9 @@ def passer_random(li: LeanIdeas, form: int, n: int, seed: int, their_pawns: int 
 
 
 def passer_heldout(li: LeanIdeas, n: int = 500, offset: int = 17, max_plies: int = 11) -> dict:
-    """Every solver position along n held-out pawn-ending puzzle lines: each PROVED claim of the passer2 detector (either
-    form) checked by the exhaustive race search (claims longer than max_plies are counted, not searched)."""
+    """Every position along n held-out pawn-ending puzzle lines, both sides to move: each PROVED claim of the passer2
+    detector (either form) checked by the exhaustive race search (claims longer than max_plies are counted, not
+    searched)."""
     from ..lean_backrank_puzzles import puzzle_rows
     from ..lean_passer_check import promotes_within
     t0 = time.perf_counter()

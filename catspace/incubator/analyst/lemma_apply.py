@@ -54,6 +54,26 @@ def load_library(library_path: Path, proved_path: Path | None = None, proved_onl
     return out
 
 
+def canonical_form(c: Compiled, symmetries) -> str:
+    """A lemma's form up to the domain's symmetries (the colour flip of the leaf types: wQ <-> bQ; a kind like Q, a
+    queen of either colour, is its own image) and the order of its non-acting slots. Two library entries with one form
+    are one lemma found twice, and both would vote on every move they cover. OBS 2026-10-05: none in the loop's round-1
+    library (199 of 199 distinct); exchange libraries hold up to 1% (exch4: 5,226 distinct of 5,280)."""
+    n = len(c.frame.types)
+    best = None
+    for perm in itertools.permutations(range(n)):
+        if perm[0] != c.slot:
+            continue
+        inv = {old: new for new, old in enumerate(perm)}
+        for sigma in [{}] + list(symmetries or []):
+            types = tuple(sigma.get(c.frame.types[o], c.frame.types[o]) for o in perm)
+            lits = sorted((r, tuple(inv[s] for s in sl), pol) for r, sl, pol in c.frame.literals)
+            guard = sorted(sorted((r, tuple(inv[s] for s in sl), pol) for r, sl, pol in t) for t in c.guard)
+            k = repr((types, lits, c.claim, guard))
+            best = k if best is None or k < best else best
+    return best
+
+
 class Applier:
     def __init__(self, dom: Domain, lemmas: list[Compiled]):
         names = {r for c in lemmas for t in c.guard for r, _, _ in t} | {r for c in lemmas for r, _, _ in c.frame.literals}
@@ -66,7 +86,16 @@ class Applier:
         self.by_types: dict = defaultdict(list)
         self.lemmas_by_idx: dict = {c.idx: c for c in lemmas}
         import dataclasses
+        seen: set = set()
+        self.duplicates: list = []                                            # (kept id, dropped id): one lemma found twice
+        kept: dict = {}
         for c in lemmas:
+            form = canonical_form(c, dom.symmetries)
+            if form in seen:
+                self.duplicates.append((kept[form], c.id))
+                continue
+            seen.add(form)
+            kept[form] = c.id
             self.by_types[c.frame.types].append(c)
             for sigma in (dom.symmetries or []):                              # a canonical lemma applies through its symmetry images too (the colour flip)
                 t2 = tuple(sigma.get(t, t) for t in c.frame.types)

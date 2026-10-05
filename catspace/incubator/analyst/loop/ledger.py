@@ -75,6 +75,9 @@ def render(n: int, out: dict, inputs: dict, ctl: dict, timings: dict, heads: dic
       f"basis before the round {len(inputs.get('basis_before_ids', []))} ideas (head {heads.get('before', '')[:12]}), "
       f"after {heads.get('after_count', '?')} ideas (head {heads.get('after', '')[:12]}). Stages: "
       + ", ".join(f"{k} {v:.0f}s" for k, v in timings.items()) + f"; total {sum(timings.values()) / 60:.1f} min.")
+    if heads.get("render_only"):
+        w("Rendered from the stage outputs on disk (--render-only)" + (f"; the code of {', '.join(heads['stale'])} changed since they ran "
+          "(or predates the source digest)." if heads.get("stale") else "; every stage's code is unchanged since it ran."))
     w("")
     w("## Inputs")
     fr = out.get("frame") or {}

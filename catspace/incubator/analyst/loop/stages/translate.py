@@ -34,7 +34,7 @@ def mined(g: dict, ctx) -> Candidate:
 
 def run(ctx) -> dict:
     cfg = ctx.cfg("translate")
-    active = basis.active()
+    active = basis.active(at=ctx.basis_before)                               # the basis the round started from
     cands = [registered(e, ctx) for e in REGISTERED if e["id"] not in active or cfg.get("recheck_registered", True)]
     for g in (ctx.load("mine") or {}).get("guards", []):
         cands.append(mined(g, ctx))

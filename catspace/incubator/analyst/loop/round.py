@@ -1,11 +1,16 @@
 """THE DRIVER: one round, six stages, a ledger, a commit.
-    python -m catspace.incubator.analyst.loop.round --round N [--stage NAME] [--config extra.json] [--force] [--no-commit]
+    python -m catspace.incubator.analyst.loop.round --round N [--stage NAME] [--config extra.json] [--force]
+                                                     [--render-only] [--no-commit]
 - refuses round N >= 1 without a gate decision for round N-1, and after a 'swap STAGE' gate until the config names a
   different module for that stage (config["stages"][STAGE]);
-- runs the stages in order; a stage whose inputs (its config, its module, the earlier stages' outputs, the basis head
-  it started from) hash to what is on disk is not rerun (--force reruns);
+- runs the stages in order; a stage is not rerun when its key -- its module, the module's source, its config, the
+  previous stage's OUTPUT, the round -- matches what is on disk, so a stage that re-runs with a new result re-runs
+  everything after it (--force reruns all; --stage NAME reruns that stage, and what follows it reruns when stale);
+- the round's frozen inputs (inputs.json: the basis head it started from) are written once; stages read the basis as
+  it stood then;
 - appends the round's sound new ideas to the basis with their accepted uses, renders artifacts/loop/round_NNN/LEDGER.md
-  with its controls, and commits the round's record and the basis (--no-commit to skip)."""
+  with its controls, and commits the round's record and the basis (--no-commit to skip); --render-only re-renders the
+  ledger from the stage outputs on disk and runs no stage."""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +18,7 @@ import copy
 import importlib
 import json
 import time
+from pathlib import Path
 
 from . import basis, gate
 from .ctx import Ctx
@@ -26,7 +32,7 @@ MODULE = "catspace.incubator.analyst.loop.stages.{}"
 ROUND0_ARMS = {
     "backrank": "frame_puzzles_lichess_zone_candidates_proved1_off17_backRankMate_lean1004.json",
     "pawnendings": "frame_puzzles_lichess_zone_candidates_passer_off17_pawnEndgame_lean1005c.json",
-    "general": "frame_puzzles_lichess_zone_candidates_proved1_off300_lean1004.json",
+    "general": "frame_puzzles_lichess_zone_candidates_loopactive000_off300_loop000full.json",   # round 0's wiring replayed (the 10-04 dump had the back-rank closure only)
 }
 
 
@@ -74,39 +80,66 @@ def previous_measure(n: int) -> dict | None:
     return None
 
 
-def run_round(n: int, only: str | None = None, extra: dict | None = None, force: bool = False, commit: bool = True) -> dict:
+def frozen_inputs(n: int, config: dict) -> dict:
+    """The round's frozen inputs, written once: the basis it started from and its code. A re-run under another config
+    records the change and keeps the basis the round started from (it used to take the basis as it stands now: a
+    reconfigured round 0 would have read round 1's ideas as its own; BUGS 2026-10-05)."""
+    rec = record_dir(n)
+    inputs = read_json(rec / "inputs.json")
+    if not inputs:
+        inputs = dict(round=n, code=code_version(), config=config,
+                      basis_before=basis.head(), basis_before_ids=sorted(basis.active()), time=time.strftime("%Y-%m-%d %H:%M %Z"))
+        write_json(rec / "inputs.json", inputs)
+    elif inputs.get("config") != config:
+        inputs = dict(inputs, config=config, reconfigured=inputs.get("reconfigured", []) + [
+            dict(time=time.strftime("%Y-%m-%d %H:%M %Z"), code=code_version(), before=inputs.get("config"))])
+        write_json(rec / "inputs.json", inputs)
+    return inputs
+
+
+def module_source(modname: str) -> str | None:
+    """A digest of a stage module's own source. A cached stage output is reused only when the code that made it is the
+    code that would run now (the key used to omit the code: BUGS 2026-10-05)."""
+    import importlib.util
+    spec = importlib.util.find_spec(modname)
+    return digest(open(spec.origin).read()) if spec and spec.origin else None
+
+
+def run_round(n: int, only: str | None = None, extra: dict | None = None, force: bool = False, commit: bool = True,
+              render_only: bool = False) -> dict:
     config = merge(default_config(n), extra or {})
     check_gate(n, config)
     d, rec = round_dir(n), record_dir(n)
-    inputs = read_json(rec / "inputs.json")
-    if not inputs or inputs.get("config") != config:                         # a re-run with the same config keeps the frozen
-        inputs = dict(round=n, code=code_version(), config=config,           # inputs (the basis it started from, its code)
-                      basis_before=basis.head(), basis_before_ids=sorted(basis.active()), time=time.strftime("%Y-%m-%d %H:%M %Z"))
-        write_json(rec / "inputs.json", inputs)
+    inputs = frozen_inputs(n, config)
     head_before = inputs["basis_before"]
-    ctx = Ctx(n, d, rec, config, inputs["code"])
+    ctx = Ctx(n, d, rec, config, inputs["code"], basis_before=inputs["basis_before"])
     timings = read_json(d / "timings.json", {}) or {}
     prev_hash = digest(dict(basis=inputs["basis_before"], config=config.get("stages", {})))
+    stale: list = []                                                         # --render-only: stages whose code changed since they ran
     for st in STAGES:
         modname = config.get("stages", {}).get(st, MODULE.format(st))
-        h = digest(dict(stage=st, module=modname, config=config.get(st), prev=prev_hash, round=n))
+        src = module_source(modname)
+        h = digest(dict(stage=st, module=modname, source=src, config=config.get(st), prev=prev_hash, round=n))
         cached = read_json(d / f"{st}.json")
-        if only and st != only:
+        if render_only:                                                      # the ledger from the outputs on disk, whatever made them
             if cached is None:
-                raise RoundError(f"stage {st} has not run; run the round without --stage first")
-            prev_hash = cached["hash"]
+                raise RoundError(f"--render-only: stage {st} has no output")
+            if cached.get("source") != src:
+                stale.append(st)
+            prev_hash = digest(cached["output"])
             continue
-        if cached and cached["hash"] == h and not force:
+        if cached and cached["hash"] == h and not force and only != st:
             ctx.log(f"stage {st}: cached")
-            prev_hash = h
+            prev_hash = digest(cached["output"])
             continue
         ctx.log(f"stage {st}: running ({modname})")
         t0 = time.perf_counter()
         out = importlib.import_module(modname).run(ctx)
         timings[st] = time.perf_counter() - t0
-        write_json(d / f"{st}.json", dict(hash=h, output=out, seconds=timings[st]))
+        write_json(d / f"{st}.json", dict(hash=h, output=out, seconds=timings[st], source=src, code=code_version()))
         write_json(d / "timings.json", timings)
-        prev_hash = h
+        prev_hash = digest(read_json(d / f"{st}.json")["output"])            # the NEXT stage's key holds this OUTPUT, so a stage
+                                                                             # re-run with a new result re-runs everything after it
     outs = {st: (read_json(d / f"{st}.json") or {}).get("output") for st in STAGES}
     if outs.get("measure"):                                                  # expected scores, and the previous kept round's arm,
         outs["measure"], obs = enrich(outs["measure"], previous_measure(n))  # from the dumps (rounds measured before the fields too)
@@ -122,7 +155,8 @@ def run_round(n: int, only: str | None = None, extra: dict | None = None, force:
     already = {e["id"] for e in basis.read() if e["op"] == "promote" and e["round"] == n}
     new = [p for p in promoted if not p["unsound"] and p["candidate"]["id"] not in basis.active() and p["candidate"]["id"] not in already]
     head_after = basis.promote(n, new, uses) if new else basis.head()
-    heads = dict(before=head_before, after=head_after, after_count=len(basis.active()), render_code=code_version())
+    heads = dict(before=head_before, after=head_after, after_count=len(basis.active()), render_code=code_version(),
+                 render_only=render_only, stale=stale)
     text = render(n, outs, inputs, ctl, timings, heads)
     (rec / "LEDGER.md").write_text(text)
     write_json(rec / "controls.json", ctl)
@@ -130,6 +164,16 @@ def run_round(n: int, only: str | None = None, extra: dict | None = None, force:
                                             bridge={k: v for k, v in (p["evidence"].get("bridge") or {}).items() if k != "parts"},
                                             axioms=p["evidence"].get("axioms")) for p in promoted])
     write_json(rec / "uses.json", (outs.get("use") or {}).get("uses", []))
+    libs: dict = {}
+    lemmas = []                                                              # the promoted mined lemmas' full definitions, in the
+    for p in promoted:                                                       # committed record: the basis survives the loss of the
+        o = p["candidate"].get("origin") or {}                               # git-ignored library files
+        if o.get("library") and Path(o["library"]).exists():
+            lib = libs.setdefault(o["library"], read_json(Path(o["library"])))
+            if 0 <= o.get("index", -1) < len(lib) and lib[o["index"]].get("id") == p["candidate"].get("guard"):
+                lemmas.append(dict(id=p["candidate"]["id"], entry=lib[o["index"]]))
+    if lemmas:
+        write_json(rec / "lemmas.json", lemmas)
     write_json(rec / "measure.json", dict(measurements=(outs.get("measure") or {}).get("measurements", []), fire=(outs.get("measure") or {}).get("fire", {})))
     n_new = sum(1 for e in basis.read() if e["op"] == "promote" and e["round"] == n)   # promoted by this round (a re-render too)
     write_json(rec / "round.json", dict(round=n, timings=timings, heads=heads, new_ideas=n_new, red=ctl["red"]))
@@ -148,10 +192,11 @@ def main(argv=None):
     ap.add_argument("--config", default=None, help="a JSON file merged over the round's default configuration")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--no-commit", action="store_true")
+    ap.add_argument("--render-only", action="store_true", help="re-render the ledger from the stage outputs on disk; never run a stage")
     a = ap.parse_args(argv)
     extra = json.load(open(a.config)) if a.config else None
     try:
-        r = run_round(a.round, a.stage, extra, a.force, commit=not a.no_commit)
+        r = run_round(a.round, a.stage, extra, a.force, commit=not a.no_commit, render_only=a.render_only)
     except (RoundError, gate.GateError, basis.BasisError) as e:
         raise SystemExit(f"REFUSED: {e}")
     print(f"round {a.round}: red={r['controls']['red']} nothing_fires={r['controls']['nothing_fires']} "

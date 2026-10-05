@@ -49,33 +49,38 @@ def run(ctx) -> dict:
     for r in records:
         if r.refused:
             ctx.log(f"REFUSED {r.mode} for {r.idea}: {r.reason}")
-    active = wiring(ctx.round, promoted, records)
+    active = wiring(ctx.round, promoted, records, before=basis.active(at=ctx.basis_before))
     write_json(ctx.dir / "active.json", active)
     ctx.log(f"OBS use: {sum(not r.refused for r in records)} uses accepted, {sum(r.refused for r in records)} refused; "
             f"active: closures {active['closures']}, order {len(active['order'])}")
     return dict(uses=[to_dict(r) for r in records], active=active, active_path=str(ctx.dir / "active.json"))
 
 
-def wiring(round_: int, promoted: list[Promoted], records: list[UseRecord]) -> dict:
-    """The player's wiring: the accepted uses of this round's ideas and of every active idea already in the basis."""
+def wiring(round_: int, promoted: list[Promoted], records: list[UseRecord], before: dict | None = None) -> dict:
+    """The player's wiring: the accepted uses of this round's ideas and of every idea active in the basis the round
+    started from (`before`; None: today's basis). An idea this round re-checked and refused a closure loses its old
+    closure too (an unsound re-check used to leave it wired: BUGS 2026-10-05); each idea is wired once, this round's
+    record over an older one."""
+    before = basis.active() if before is None else before
     accepted = {(r.idea, r.mode) for r in records if not r.refused}
-    closures, order, sentences = set(), [], {}
-    for e in basis.active().values():                                        # earlier rounds
+    refused_now = {r.idea for r in records if r.refused and r.mode == "closure"}
+    closures, order, sentences = set(), {}, {}
+    for e in before.values():                                                # earlier rounds
         for u in e.get("uses", []):
-            if u["refused"]:
+            if u["refused"] or (u["mode"] == "closure" and u["idea"] in refused_now):
                 continue
             if u["mode"] == "closure":
                 closures.add(u["idea"])
             elif u["mode"] == "order":
                 c = e["record"]["candidate"]
-                order.append(dict(id=c["id"], guard=c["guard"], **(c.get("origin") or {})))
+                order[c["id"]] = dict(id=c["id"], guard=c["guard"], **(c.get("origin") or {}))
     by_id = {p.candidate.id: p for p in promoted}
     for idea, mode in sorted(accepted):
         p = by_id[idea]
         if mode == "closure":
             closures.add(idea)
         elif mode == "order":
-            order.append(dict(id=idea, guard=p.candidate.guard, **(p.candidate.origin or {})))
+            order[idea] = dict(id=idea, guard=p.candidate.guard, **(p.candidate.origin or {}))
         elif mode == "sentence":
             sentences[idea] = p.candidate.sentence
-    return dict(round=round_, closures=sorted(closures), order=order, sentences=sentences)
+    return dict(round=round_, closures=sorted(closures), order=list(order.values()), sentences=sentences)

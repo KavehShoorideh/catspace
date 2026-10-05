@@ -1,10 +1,12 @@
 """FRAME: the batch a round learns from -- the positions where the player went wrong -- frozen by id.
-- puzzle misses: the player, wired with the basis as it stands, on development puzzle rows (i % 97 == 5, never the
-  held-out rows); each puzzle it fails gives its first missed step: the position, the move it chose, the solution;
-- game losses: positions of development games (game_id % 97 == 5 in the 2019 Lichess records) where the side to
-  move played a move its frames rated as safe (one-ply frame value >= 0) and the game's continuation took at least
-  `min_loss` pawns off it within `horizon` plies: the frames and the game disagree.
-Research slot: other framers (engine disagreements, the opponent's tactics) write the same Framed records."""
+- puzzles: the player, wired with the basis the round started from, on development puzzle rows (i % 97 == 5, never
+  the held-out rows; at most 260 of them, beyond which they meet the general held-out set); each puzzle gives its
+  first missed step (the solution outside the top moves); cfg "ties" adds the first step solved only inside a tie;
+- game losses: positions of development games (game_id % 97 == 5 in the 2019 Lichess records) where the side to move
+  played a move its frames did not foresee losing (one-ply value >= 0 relative to passing, and the move's own
+  forecast above -min_loss) and the game took at least `min_loss` pawns off it within `horizon` plies, the loss still
+  standing after the mover's reply (an exchange in progress is not a loss); `per_game` caps positions per game (off).
+Research slot: other framers (engine disagreements, the opponent's tactics, surprise) write the same Framed records."""
 from __future__ import annotations
 
 import json
@@ -15,6 +17,7 @@ import chess
 
 from catspace.io import paths
 
+from .. import basis
 from ..contracts import Framed, to_dict
 from ..store import write_json
 
@@ -37,22 +40,41 @@ def frame_squares(b: chess.Board, moves: list[chess.Move]) -> list[str]:
     return sorted(chess.square_name(s) for s in sq)
 
 
-def frames_value(b: chess.Board, m: chess.Move) -> float:
-    """The frames' one-ply value of a move (the player's own static read): what it takes, less what the opponent's
-    frames then win, plus what they win if we pass (frame_player._one_ply_values, for one move)."""
+def frames_value(b: chess.Board, m: chess.Move) -> tuple[float, float]:
+    """The frames' one-ply read of a move (the player's own static read; frame_player._one_ply_values for one move):
+    -> (value, own). value = what it takes, less what the opponent's frames then win, plus what they win if we pass
+    (relative to passing); own = what it takes less what they then win (the forecast of the move itself)."""
     from ... import frame_player as FP
     stand = FP.passed(b)
     before, book = FP.joint_threats_book(stand, FP.square_frame, select=FP.SELECT) if stand is not None else ((0.0, None, []), None)
     nb = b.copy(stack=False)
     nb.push(m)
     if nb.is_checkmate():
-        return 1e6
+        return 1e6, 1e6
     after = FP.joint_threats(nb, FP.square_frame, select=FP.SELECT, parent=book, changed=FP.changed_squares(b, m))
-    return FP.captured_value(b, m) - after[0] + before[0]
+    own = FP.captured_value(b, m) - after[0]
+    return own + before[0], own
+
+
+def loss_stands(boards: list, p: int, horizon: int, side: bool, min_loss: int) -> int | None:
+    """The material the mover lost `horizon` plies after position p, when the loss still stands one ply later (after
+    the mover's reply: an exchange in progress is not a loss) or the game ends there. -> the loss, or None. (The loss
+    used to be read at exactly p + horizon, right after the opponent's move: 95 of round 1's 150 game positions were
+    back above the threshold one ply later; the reviewer, 2026-10-05.)"""
+    if p + horizon >= len(boards):
+        return None
+    base = material(boards[p], side)
+    at = material(boards[p + horizon], side) - base
+    later = material(boards[p + horizon + 1], side) - base if p + horizon + 1 < len(boards) else at
+    worst_kept = max(at, later)
+    return -worst_kept if worst_kept <= -min_loss else None
 
 
 def puzzle_misses(ctx, cfg: dict, active_path: str) -> list[Framed]:
-    cmd = [sys.executable, "-m", "catspace.incubator.analyst.frame_puzzles", "--n", str(cfg.get("puzzles", 150)),
+    puzzles = cfg.get("puzzles", 150)
+    if puzzles > 260:                                                       # row 5 + 97 * 260 = 25,225 is also a general held-out row
+        raise RuntimeError("development puzzle rows beyond 260 meet the general held-out set (i % 997 == 300); exclude it first")
+    cmd = [sys.executable, "-m", "catspace.incubator.analyst.frame_puzzles", "--n", str(puzzles),
            "--stride", "97", "--offset", "5", "--show", "0", "--tag", f"loop{ctx.round:03d}dev", "--loop-active", active_path]
     ctx.log("frame: the player on development rows: " + " ".join(cmd[2:]))
     r = subprocess.run(cmd, cwd=paths.REPO_ROOT, capture_output=True, text=True)
@@ -61,19 +83,29 @@ def puzzle_misses(ctx, cfg: dict, active_path: str) -> list[Framed]:
         raise RuntimeError("frame_puzzles failed: " + r.stderr[-2000:])
     dump = next(l.split("wrote ", 1)[1] for l in r.stdout.splitlines() if l.startswith("wrote "))
     res = json.load(open(dump))
-    out = []
+    out, missed, tied = [], 0, 0
     for rec in res:
-        if rec["solved"]:
+        # the first step the player misses (the solution outside the top moves); with cfg "ties", also the first step
+        # solved only inside a tie with other moves (the reviewer's finding 6, 2026-10-05: 23 such puzzles were never
+        # framed) -- a design change, off until Kaveh decides
+        ties = cfg.get("ties", False)                                       # DESIGN, Kaveh's call (asked 2026-10-05): frame ties too
+        step = next(((i, x) for i, x in enumerate(rec["steps"]) if not x["tied"] or (ties and (x.get("n_top") or 1) > 1)), None)
+        if step is None:
             continue
-        k, s = next((i, x) for i, x in enumerate(rec["steps"]) if not x["tied"])
+        k, s = step
         b = chess.Board(s["fen"])
-        played = chess.Move.from_uci(s["best"][0])
+        alts = [u for u in (s.get("best") or []) if u != s["sol"]]
+        played = chess.Move.from_uci(alts[0] if alts else s["best"][0])
         better = chess.Move.from_uci(s["sol"])
+        kind = "miss" if not s["tied"] else "tie"
+        missed += kind == "miss"
+        tied += kind == "tie"
         out.append(Framed(f"puzzle:{rec['id']}:{k}", s["fen"], played.uci(), better.uci(), None, "puzzle-solution",
                           frame_squares(b, [played, better]), "puzzle",
-                          dict(rating=rec["rating"], themes=rec["themes"][:6], v_top=s.get("v_top"), v_sol=s.get("v_sol"), n_top=s.get("n_top"), dump=dump.rsplit("/", 1)[-1]),
+                          dict(kind=kind, rating=rec["rating"], themes=rec["themes"][:6], v_top=s.get("v_top"), v_sol=s.get("v_sol"),
+                               n_top=s.get("n_top"), dump=dump.rsplit("/", 1)[-1]),
                           ctx.prov("frame", [rec["id"]])))
-    ctx.log(f"OBS frame: {len(res)} development puzzles, {len(out)} missed")
+    ctx.log(f"OBS frame: {len(res)} development puzzles: {missed} missed, {tied} solved only inside a tie")
     return out
 
 
@@ -82,15 +114,16 @@ def game_losses(ctx, cfg: dict) -> list[Framed]:
     shard = cfg.get("shard", "records_00000.parquet")
     stride, residue = cfg.get("stride", 97), cfg.get("residue", 5)
     horizon, min_loss, min_ply = cfg.get("horizon", 4), cfg.get("min_loss", 2), cfg.get("min_ply", 10)
-    cap, max_games = cfg.get("games_max_records", 150), cfg.get("games_max", 400)
+    cap, max_games, per_game = cfg.get("games_max_records", 150), cfg.get("games_max", 400), cfg.get("per_game")   # per_game: a cap
+                                                                             # per game (DESIGN, asked 2026-10-05; None: no cap)
     t = pq.read_table(paths.REPO_ROOT / "data" / "records" / "lichess_2019-01" / shard, columns=["game_id", "moves", "white_elo", "black_elo"])
-    out, games = [], 0
+    out, games, foreseen, contributing = [], 0, 0, 0
     for row in t.to_pylist():
         if row["game_id"] % stride != residue:
             continue
-        games += 1
-        if games > max_games or len(out) >= cap:
+        if games >= max_games or len(out) >= cap:
             break
+        games += 1                                                          # counted when scanned (it counted the game it broke on)
         moves = row["moves"].split()
         boards = [chess.Board()]
         try:
@@ -100,22 +133,29 @@ def game_losses(ctx, cfg: dict) -> list[Framed]:
                 boards.append(nb)
         except ValueError:
             continue
-        for p in range(min_ply, len(moves) - horizon):
+        taken = 0
+        for p in range(min_ply, len(moves) - horizon + 1):                  # the last horizon may end on the final position
             b, side = boards[p], boards[p].turn
-            realized = material(boards[p + horizon], side) - material(b, side)
-            if realized > -min_loss:
+            lost = loss_stands(boards, p, horizon, side, min_loss)
+            if lost is None:
                 continue
             m = chess.Move.from_uci(moves[p])
-            v = frames_value(b, m)
-            if v < 0:
-                continue                                                    # the frames saw it coming: no disagreement
-            out.append(Framed(f"game:{row['game_id']}:{p}", b.fen(), m.uci(), None, float(-realized), "game-continuation",
+            v, own = frames_value(b, m)
+            if v < 0 or own <= -min_loss:                                   # the frames saw it coming (relative to passing, or
+                foreseen += own <= -min_loss and v >= 0                     # the move's own forecast): no surprise
+                continue
+            out.append(Framed(f"game:{row['game_id']}:{p}", b.fen(), m.uci(), None, float(lost), "game-continuation",
                               frame_squares(b, [m]), "game",
-                              dict(elo=row["white_elo"] if side else row["black_elo"], frames_value=v, continuation=" ".join(moves[p:p + horizon])),
+                              dict(elo=row["white_elo"] if side else row["black_elo"], frames_value=v, frames_own=own,
+                                   continuation=" ".join(moves[p:p + horizon + 1])),
                               ctx.prov("frame", [str(row["game_id"])])))
-            if len(out) >= cap:
+            taken += 1
+            if len(out) >= cap or (per_game and taken >= per_game):
                 break
-    ctx.log(f"OBS frame: {games} development games scanned, {len(out)} positions where the frames said safe and the game took >= {min_loss} pawns within {horizon} plies")
+        contributing += taken > 0
+    ctx.log(f"OBS frame: {games} development games scanned, {contributing} contributed {len(out)} positions where the frames "
+            f"forecast no loss and the game took >= {min_loss} pawns within {horizon} plies, still standing after the reply; "
+            f"{foreseen} more were losses the move's own forecast saw")
     return out
 
 
@@ -124,7 +164,7 @@ def run(ctx) -> dict:
     cfg = ctx.cfg("frame")
     if cfg.get("skip"):
         return dict(framed=[], skipped=True)
-    active = wiring(ctx.round, [], [])                                       # the basis as it stands before this round
+    active = wiring(ctx.round, [], [], before=basis.active(at=ctx.basis_before))   # the basis the round started from
     path = ctx.dir / "active_frame.json"
     write_json(path, active)
     framed = []
