@@ -53,6 +53,20 @@ def failing (I : Idea P) (p : Position) (ps : P) : List String :=
 def evalHyps (I : Idea P) (p : Position) (ps : P) : List (String × Bool) :=
   I.hyps.map (fun h => (h.name, h.test p ps))
 
+/-- The hypotheses in order, stopping after the second failure: the verdicts MATE (none fail) and
+ONEAWAY (exactly one fails) need every hypothesis; FAIL needs only two, so the expensive tests at the
+end of the list are skipped where the cheap ones already settle it. -/
+def evalUntil (I : Idea P) (p : Position) (ps : P) : List (String × Bool) :=
+  go I.hyps 0 []
+where
+  go : List (Hyp P) → Nat → List (String × Bool) → List (String × Bool)
+    | [], _, acc => acc.reverse
+    | h :: hs, fails, acc =>
+        let v := h.test p ps
+        let fails' := if v then fails else fails + 1
+        if fails' ≥ 2 then ((h.name, v) :: acc).reverse
+        else go hs fails' ((h.name, v) :: acc)
+
 end Idea
 
 /-- The board read once into an array: the same function, constant-time lookups for the
@@ -60,8 +74,9 @@ detector (FEN parsing builds it as 64 nested updates). -/
 def sqOfIndex (i : Fin 64) : Square :=
   (⟨i.val / 8, by omega⟩, ⟨i.val % 8, by omega⟩)
 
-/-- A board backed by a 64-entry array. -/
-def boardOfArray (arr : Array (Option Piece)) (h : arr.size = 64) : Board :=
+/-- A board backed by a 64-entry array. `noinline`: inlined, the compiler floats the array's construction
+into the returned closure and rebuilds it on every lookup (100-300 ms a query, found 2026-10-04). -/
+@[noinline] def boardOfArray (arr : Array (Option Piece)) (h : arr.size = 64) : Board :=
   fun s => arr[s.1.val * 8 + s.2.val]'(by
     have h1 := s.1.isLt
     have h2 := s.2.isLt

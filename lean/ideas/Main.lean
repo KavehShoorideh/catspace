@@ -35,6 +35,47 @@ def moveUci : Move → String
 
 /-- Parse a FEN and read its board into an array once (`memoBoard`, equal to the parsed board by
 `memoBoard_eq`; the array is bound here so every lookup shares it). -/
+def hexDigit (c : Char) : Option Nat :=
+  if '0' ≤ c ∧ c ≤ '9' then some (c.toNat - '0'.toNat)
+  else if 'a' ≤ c ∧ c ≤ 'f' then some (c.toNat - 'a'.toNat + 10)
+  else if 'A' ≤ c ∧ c ≤ 'F' then some (c.toNat - 'A'.toNat + 10)
+  else none
+
+/-- A hex bitboard as a machine word (a `Nat` above 2^63 is a bignum; every bit test would allocate). -/
+def parseHex (s : String) : Option UInt64 :=
+  s.toList.foldlM (fun acc c => (hexDigit c).map fun d => acc * 16 + d.toUInt64) 0
+
+def testBit (bb : UInt64) (i : Nat) : Bool := (bb >>> i.toUInt64) &&& 1 == 1
+
+/-- The 64 squares from python-chess bitboards (bit `rank * 8 + file`): pawns, knights, bishops, rooks,
+queens, kings, and the white occupancy. -/
+@[noinline] def arrayOfBitboards (bbs : List UInt64) (white : UInt64) : Array (Option Piece) :=
+  let kinds : List (UInt64 × PieceKind) :=
+    bbs.zip [.pawn, .knight, .bishop, .rook, .queen, .king]
+  Array.ofFn fun i : Fin 64 =>
+    let sq := sqOfIndex i                      -- (file, rank)
+    let bit := sq.2.val * 8 + sq.1.val
+    match kinds.find? (fun (bb, _) => testBit bb bit) with
+    | some (_, k) => some ⟨if testBit white bit then .white else .black, k⟩
+    | none => none
+
+theorem arrayOfBitboards_size (bbs : List UInt64) (white : UInt64) : (arrayOfBitboards bbs white).size = 64 := by
+  simp [arrayOfBitboards]
+
+/-- `bb <w|b> <castling|-> <ep|-> <pawns> <knights> <bishops> <rooks> <queens> <kings> <white>` in hex. -/
+def readBitboards (fields : List String) : Option Position :=
+  match fields with
+  | [turn, castling, ep, p, n, b, r, q, k, w] => do
+      let t ← parseTurn turn.toList
+      let c ← parseCastling castling.toList
+      let e ← parseEnPassant ep.toList
+      let bbs ← [p, n, b, r, q, k].mapM parseHex
+      let wh ← parseHex w
+      let arr := arrayOfBitboards bbs wh
+      pure { board := boardOfArray arr (arrayOfBitboards_size bbs wh), turn := t, castling := c,
+             enPassant := e, halfmove := 0, fullmove := 1 }
+  | _ => none
+
 def readPosition (fen : String) : Option Position := do
   let p ← parseFen fen
   let arr := boardArray p.board
@@ -61,7 +102,7 @@ def candidates (p : Position) : List BackRankParams :=
         | none => []
 
 def report (p : Position) (ps : BackRankParams) : String :=
-  let vals := backRankMate.evalHyps p ps
+  let vals := backRankMate.evalUntil p ps
   let failing := (vals.filter (fun x => !x.2)).map (·.1)
   let status := match failing with
     | [] => "MATE"
@@ -73,12 +114,54 @@ def report (p : Position) (ps : BackRankParams) : String :=
   let hs := " ".intercalate (vals.map fun (n, b) => s!"{n}={if b then 1 else 0}")
   s!"cand {sqName ps.a}{sqName ps.c} {status} targets={tg} {hs}"
 
+/-- Passer candidates: every pawn of the side to move. -/
+def passerCandidates (p : Position) : List PasserParams :=
+  allSquares.filterMap fun sq =>
+    match p.board sq with
+    | some pc => if pc.color = p.turn ∧ pc.kind = .pawn then some ⟨sq⟩ else none
+    | none => none
+
+def reportPasser (p : Position) (ps : PasserParams) : String :=
+  let vals := unstoppablePasser.evalUntil p ps
+  let failing := (vals.filter (fun x => !x.2)).map (·.1)
+  let n := Passer.pushes p.turn ps.sq
+  let status := match failing with
+    | [] => s!"PROVED plies={2 * n - 1}"
+    | [h] => s!"ONEAWAY {h}"
+    | fs => s!"FAIL {fs.length}"
+  let tg := match failing with
+    | [h] => ",".intercalate ((Passer.targets p ps h).map sqName)
+    | _ => ""
+  let hs := " ".intercalate (vals.map fun (n, b) => s!"{n}={if b then 1 else 0}")
+  s!"cand {sqName ps.sq} {status} targets={tg} {hs}"
+
 def handle (line : String) : List String :=
   match (line.trimAscii.toString.splitOn " ").filter (· ≠ "") with
+  | ["ping"] => ["pong"]
+  | "parse" :: rest =>
+      match readPosition (" ".intercalate rest) with
+      | some p => [toString (candidates p).length]
+      | none => ["error bad fen"]
   | "backrank" :: rest =>
       match readPosition (" ".intercalate rest) with
       | some p => (candidates p).map (report p) ++ ["end"]
       | none => ["error bad fen", "end"]
+  | "bb" :: rest =>                                  -- one line: candidates separated by " | " (no sentinel)
+      match readBitboards rest with
+      | some p => [" | ".intercalate ((candidates p).map (report p))]
+      | none => ["error bad bitboards"]
+  | "passer" :: rest =>                              -- one line: candidates separated by " | "
+      match readBitboards rest with
+      | some p => [" | ".intercalate ((passerCandidates p).map (reportPasser p))]
+      | none => ["error bad bitboards"]
+  | "passerfen" :: rest =>
+      match readPosition (" ".intercalate rest) with
+      | some p => [" | ".intercalate ((passerCandidates p).map (reportPasser p))]
+      | none => ["error bad fen"]
+  | "bblegal" :: rest =>
+      match readBitboards rest with
+      | some p => [" ".intercalate ((legalMoves p).map moveUci)]
+      | none => ["error bad bitboards"]
   | "legal" :: rest =>
       match readPosition (" ".intercalate rest) with
       | some p => [" ".intercalate ((legalMoves p).map moveUci)]
@@ -89,13 +172,57 @@ def handle (line : String) : List String :=
       | none => ["error bad fen"]
   | _ => ["error unknown command"]
 
-partial def loop (stdin : IO.FS.Stream) (stdout : IO.FS.Stream) : IO Unit := do
+/-- Time `f` over `reps` runs; `f` gets the iteration index and the results are folded into a ref, so
+nothing is hoisted or elided. -/
+def benchOne (name : String) (reps : Nat) (f : Nat → Bool) : IO String := do
+  let acc ← IO.mkRef false
+  let t0 ← IO.monoNanosNow
+  for i in [:reps] do
+    let v := f i
+    acc.modify (fun a => a != v)
+  let t1 ← IO.monoNanosNow
+  let _ ← acc.get
+  pure s!"  {name}: {(t1 - t0) / 1000 / reps} us"
+
+/-- `bench <reps> <fen>`: each hypothesis of the first candidate, and the primitives, timed alone. -/
+def bench (reps : Nat) (fen : String) : IO (List String) := do
+  match readPosition fen with
+  | none => pure ["error bad fen"]
+  | some p =>
+    match candidates p with
+    | [] => pure ["no candidates"]
+    | ps :: _ =>
+      let q := BackRank.after p ps
+      -- a square that varies with the iteration, so nothing is hoisted
+      let sq (i : Nat) : Square := (⟨i % 8, Nat.mod_lt _ (by decide)⟩, ⟨(i / 8) % 8, Nat.mod_lt _ (by decide)⟩)
+      let mut out := [s!"candidate {sqName ps.a}{sqName ps.c} king {sqName ps.k}"]
+      for h in backRankMate.hyps do
+        out := out ++ [← benchOne h.name reps (fun i => h.test p { ps with k := if i % 2 = 0 then ps.k else ps.k })]
+      out := out ++ [← benchOne "applyMove" reps (fun i => (applyMove p (.normal ps.a (if i % 2 = 0 then ps.c else ps.c))).turn == .white)]
+      out := out ++ [← benchOne "kingSquare" reps (fun i => (kingSquare q.board (if i % 2 = 0 then q.turn else q.turn)).isSome)]
+      out := out ++ [← benchOne "isAttackedB' (64 squares)" reps (fun i => isAttackedB' q (Color.opposite q.turn) (sq i))]
+      out := out ++ [← benchOne "isAttackedB kernel (64 squares)" reps (fun i => isAttackedB q (Color.opposite q.turn) (sq i))]
+      out := out ++ [← benchOne "pieceAttacksB' (64 sources)" reps (fun i => pieceAttacksB' q (Color.opposite q.turn) (sq i) ps.k)]
+      out := out ++ [← benchOne "rayBetween (64)" reps (fun i => (rayBetween (sq i) ps.k).isEmpty)]
+      out := out ++ [← benchOne "board lookup (64)" reps (fun i => (q.board (sq i)).isSome)]
+      out := out ++ [← benchOne "kingGeometryB (64)" reps (fun i => kingGeometryB ps.k (sq i))]
+      out := out ++ [← benchOne "candidates" reps (fun i => (candidates (if i % 2 = 0 then p else p)).isEmpty)]
+      out := out ++ [← benchOne "readPosition(fen)" reps (fun i => (readPosition (if i % 2 = 0 then fen else fen)).isSome)]
+      let bbf := ["w", "-", "-", "e310080c10e300", "240000240000", "410000000000020", "2100000000000081", "800000000000008", "4000000000000010", "ffff"]
+      out := out ++ [← benchOne "readBitboards" reps (fun i => (readBitboards (if i % 2 = 0 then bbf else bbf)).isSome)]
+      pure out
+
+partial def loop (stdin : IO.FS.Stream) (stdout : IO.FS.Stream) (timing : Bool) : IO Unit := do
   let line ← stdin.getLine
   if line.isEmpty then return
-  for out in handle line do
+  let outs ← match (line.trimAscii.toString.splitOn " ").filter (· ≠ "") with
+    | "bench" :: reps :: rest => bench (reps.toNat?.getD 100) (" ".intercalate rest)
+    | _ => pure (handle line)
+  for out in outs do
     stdout.putStrLn out
   stdout.flush
-  loop stdin stdout
+  loop stdin stdout timing
 
-def main : IO Unit := do
-  loop (← IO.getStdin) (← IO.getStdout)
+def main (args : List String) : IO Unit := do
+  loop (← IO.getStdin) (← IO.getStdout) (args.contains "--time")
+

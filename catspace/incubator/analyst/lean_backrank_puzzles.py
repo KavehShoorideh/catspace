@@ -67,29 +67,35 @@ def start_position(row: dict) -> tuple[chess.Board, list[chess.Move]]:
 def bridge(rows: list, li: LeanIdeas, log=print) -> dict:
     """Legal-move sets and checkmate verdicts compared along every puzzle line; lemma MATE claims audited."""
     pos = agree = 0
+    same = total = 0
     mate_claims = mate_true = 0
     bad = []
     for row in rows:
         b = chess.Board(row["FEN"])
         for u in row["Moves"].split():
             py = {m.uci() for m in b.legal_moves}
-            ln = li.legal(b)
+            ln = li.legal(b, fen=True)
+            lb = li.legal(b)                                     # the bitboard input must give the same kernel answer
             pos += 1
-            if py == ln:
+            if py == ln == lb:
                 agree += 1
             elif len(bad) < 5:
-                bad.append((b.fen(), sorted(py - ln), sorted(ln - py)))
+                bad.append((b.fen(), sorted(py - ln), sorted(ln - py), sorted(lb ^ ln)))
+            fen_verdicts = {i.move.uci(): i.status for i in li.backrank(b, fen=True)}
             for inst in li.backrank(b):
+                same += fen_verdicts.get(inst.move.uci()) == inst.status
+                total += 1
                 if inst.status == "MATE":
                     mate_claims += 1
                     nb = b.copy(stack=False)
                     nb.push(inst.move)
                     mate_true += nb.is_checkmate()
             b.push_uci(u)
-    log(f"OBS bridge positions {pos}: legal-move sets agree {agree}/{pos}; lemma MATE claims {mate_claims}, "
+    log(f"OBS bridge positions {pos}: legal-move sets agree (python-chess, Lean from FEN, Lean from bitboards) {agree}/{pos}; "
+        f"verdicts equal from FEN and bitboards {same}/{total}; lemma MATE claims {mate_claims}, "
         f"checkmate by python-chess {mate_true}/{mate_claims}")
-    for fen, only_py, only_lean in bad:
-        log(f"  DISAGREE {fen}  only python-chess {only_py}  only Lean {only_lean}")
+    for fen, only_py, only_lean, bb_diff in bad:
+        log(f"  DISAGREE {fen}  only python-chess {only_py}  only Lean {only_lean}  bitboards vs FEN {bb_diff}")
     return dict(positions=pos, agree=agree, mate_claims=mate_claims, mate_true=mate_true)
 
 

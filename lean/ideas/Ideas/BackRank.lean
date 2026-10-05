@@ -1,5 +1,6 @@
 import Ideas.Schema
 import Ideas.Mate
+import Ideas.FastMate
 
 /-!
 # The back-rank mate
@@ -53,47 +54,59 @@ def onBackRankB (p : Position) (ps : BackRankParams) : Bool :=
 
 /-- The move is legal (fails when a piece stands in the path, or the piece is pinned). -/
 def legalB (p : Position) (ps : BackRankParams) : Bool :=
-  legalMoveB p (move ps)
+  legalNormalB' p ps.a ps.c
+
+/-! The tests over the position after the move take it as an argument behind a `noinline` boundary, so
+`after p ps` (an `applyMove`, about 0.8 us) is computed once per test, not once per square inside a
+loop (the benchmark of 2026-10-05 found `boxed` applying the move 56 times: 51 us). -/
 
 /-- The defender has one king, on `k`. -/
 def oneKingB (p : Position) (ps : BackRankParams) : Bool :=
-  kingOnlyAtB (after p ps).board (after p ps).turn ps.k
+  oneKingOn (after p ps) ps.k
+where
+  @[noinline] oneKingOn (q : Position) (k : Square) : Bool := kingOnlyAtB q.board q.turn k
 
 /-- The piece on `c` checks the king (fails when something stands between them on the rank). -/
 def checkB (p : Position) (ps : BackRankParams) : Bool :=
-  checksB (after p ps) ps.k ps.c
+  checksB' (after p ps) ps.k ps.c
 
 /-- Boxed: every flight off the home rank is held by the defender's own piece or covered. -/
 def boxedB (p : Position) (ps : BackRankParams) : Bool :=
-  allSquares.all (fun d => decide (d.2 = ps.k.2) || flightOkB (after p ps) ps.k d)
+  boxedOn (after p ps) ps.k
+where
+  @[noinline] boxedOn (q : Position) (k : Square) : Bool :=
+    allSquares.all (fun d => decide (d.2 = k.2) || flightOkB' q k d)
 
 /-- Every flight along the home rank (taking the checker included) is held or covered. -/
 def rankFlightsB (p : Position) (ps : BackRankParams) : Bool :=
-  allSquares.all (fun d => decide (d.2 ≠ ps.k.2) || flightOkB (after p ps) ps.k d)
+  rankFlightsOn (after p ps) ps.k
+where
+  @[noinline] rankFlightsOn (q : Position) (k : Square) : Bool :=
+    allSquares.all (fun d => decide (d.2 ≠ k.2) || flightOkB' q k d)
 
 /-- No defender's piece but the king attacks the landing square. -/
 def noDefenderB (p : Position) (ps : BackRankParams) : Bool :=
-  noCaptureB (after p ps) ps.k ps.c
+  noCaptureB' (after p ps) ps.k ps.c
 
 /-- No defender's piece can step between the landing square and the king. -/
 def noInterposeB (p : Position) (ps : BackRankParams) : Bool :=
-  noBlockB (after p ps) ps.k ps.c
+  noBlockB' (after p ps) ps.k ps.c
 
 /-- Where to look when one hypothesis fails: the squares that broke it. -/
 def targets (p : Position) (ps : BackRankParams) (hyp : String) : List Square :=
   let q := after p ps
   if hyp = "legal" then
-    (squaresBetween ps.a ps.c).filter (fun u => (p.board u).isSome)
+    (rayBetween ps.a ps.c).filter (fun u => (p.board u).isSome)
   else if hyp = "check" then
-    (squaresBetween ps.c ps.k).filter (fun u => (q.board u).isSome)
+    (rayBetween ps.c ps.k).filter (fun u => (q.board u).isSome)
   else if hyp = "boxed" then
-    allSquares.filter (fun d => decide (d.2 ≠ ps.k.2) && !flightOkB q ps.k d)
+    allSquares.filter (fun d => decide (d.2 ≠ ps.k.2) && !flightOkB' q ps.k d)
   else if hyp = "rankFlights" then
-    allSquares.filter (fun d => decide (d.2 = ps.k.2) && !flightOkB q ps.k d)
+    allSquares.filter (fun d => decide (d.2 = ps.k.2) && !flightOkB' q ps.k d)
   else if hyp = "noDefender" then
-    allSquares.filter (fun s => decide (s ≠ ps.k) && pieceAttacksB q q.turn s ps.c)
+    allSquares.filter (fun s => decide (s ≠ ps.k) && pieceAttacksB' q q.turn s ps.c)
   else if hyp = "noInterpose" then
-    allSquares.filter (fun s => (squaresBetween ps.c ps.k).any (fun u => couldReachEmptyB q s u))
+    allSquares.filter (fun s => (rayBetween ps.c ps.k).any (fun u => couldReachEmptyB' q s u))
   else []
 
 end BackRank
@@ -102,11 +115,11 @@ open BackRank in
 /-- The back-rank mate, in the schema. -/
 def backRankMate : Idea BackRankParams where
   id := "backRankMate"
+  -- cheap tests first: the detector stops at the second failure (`Idea.evalUntil`)
   hyps :=
-    [ ⟨"heavy", heavyB⟩, ⟨"onBackRank", onBackRankB⟩, ⟨"legal", legalB⟩,
-      ⟨"oneKing", oneKingB⟩, ⟨"check", checkB⟩, ⟨"boxed", boxedB⟩,
-      ⟨"rankFlights", rankFlightsB⟩, ⟨"noDefender", noDefenderB⟩,
-      ⟨"noInterpose", noInterposeB⟩ ]
+    [ ⟨"heavy", heavyB⟩, ⟨"onBackRank", onBackRankB⟩, ⟨"oneKing", oneKingB⟩,
+      ⟨"check", checkB⟩, ⟨"legal", legalB⟩, ⟨"rankFlights", rankFlightsB⟩,
+      ⟨"noDefender", noDefenderB⟩, ⟨"boxed", boxedB⟩, ⟨"noInterpose", noInterposeB⟩ ]
   protagonist := fun ps => ps.a
   tier := .unconditional
   horizon := 1
@@ -132,7 +145,15 @@ theorem backRankMate_sound (p : Position) (ps : BackRankParams)
     legalMoveB p (BackRank.move ps) = true ∧ checkmateB (BackRank.after p ps) = true := by
   simp only [Idea.holds, backRankMate, List.all_cons, List.all_nil, Bool.and_true,
     Bool.and_eq_true] at h
-  obtain ⟨hheavy, _, hlegal, hking, hcheck, hboxed, hrank, hdef, hint⟩ := h
+  obtain ⟨hheavy, _, hking, hcheck, hlegal, hrank, hdef, hboxed, hint⟩ := h
+  -- the fast tests are the kernel's tests
+  simp only [BackRank.checkB, checksB'_eq] at hcheck
+  simp only [BackRank.legalB, legalNormalB'_eq] at hlegal
+  simp only [BackRank.rankFlightsB, BackRank.rankFlightsB.rankFlightsOn, flightOkB'_eq] at hrank
+  simp only [BackRank.boxedB, BackRank.boxedB.boxedOn, flightOkB'_eq] at hboxed
+  simp only [BackRank.oneKingB, BackRank.oneKingB.oneKingOn] at hking
+  simp only [BackRank.noDefenderB, noCaptureB'_eq] at hdef
+  simp only [BackRank.noInterposeB, noBlockB'_eq] at hint
   refine ⟨hlegal, ?_⟩
   have hflights : flightsCoveredB (BackRank.after p ps) ps.k = true := by
     simp only [flightsCoveredB, List.all_eq_true]

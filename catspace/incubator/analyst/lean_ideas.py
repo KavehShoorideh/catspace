@@ -44,6 +44,13 @@ class Instance:
     hyps: dict[str, bool] = field(default_factory=dict)
 
 
+def encode(board: chess.Board) -> str:
+    """The position as python-chess bitboards in hex (2.7 us; a FEN costs 19 us to write and 90 us to parse)."""
+    ep = chess.square_name(board.ep_square) if board.ep_square is not None else "-"
+    return (f"{'w' if board.turn else 'b'} {board.castling_xfen() or '-'} {ep} {board.pawns:x} {board.knights:x} "
+            f"{board.bishops:x} {board.rooks:x} {board.queens:x} {board.kings:x} {board.occupied_co[chess.WHITE]:x}")
+
+
 def _parse_cand(line: str) -> Instance:
     # cand d1d8 ONEAWAY noDefender targets=e8 heavy=1 ...   |   cand d1d8 MATE targets= heavy=1 ...
     tok = line.split()
@@ -59,6 +66,39 @@ def _parse_cand(line: str) -> Instance:
     targets = [chess.parse_square(s) for s in tg.split(",") if s]
     hyps = {k: v == "1" for k, v in (t.split("=") for t in tok[i + 1:])}
     return Instance(move, status, failing, targets, hyps)
+
+
+PASSER_HYPS = ("ownPawn", "pathClear", "bareKing", "noSliders", "notInCheck", "kingOutside", "kingHasMove")
+
+
+@dataclass
+class PasserInstance:
+    """One pawn of ours: PROVED (promotes within `plies` whatever they do), ONEAWAY or FAIL."""
+    square: int
+    status: str
+    plies: int | None
+    failing: str | None
+    targets: list[int] = field(default_factory=list)
+    hyps: dict[str, bool] = field(default_factory=dict)
+
+
+def _parse_passer(line: str) -> PasserInstance:
+    # cand e3 PROVED plies=9 targets= ownPawn=1 ...  |  cand e3 ONEAWAY kingOutside targets=a4 ownPawn=1 ...
+    tok = line.split()
+    sq = chess.parse_square(tok[1])
+    status = tok[2]
+    plies = failing = None
+    i = 3
+    if status == "PROVED":
+        plies = int(tok[3].split("=")[1]); i = 4
+    elif status == "ONEAWAY":
+        failing = tok[3]; i = 4
+    else:
+        i = 4
+    tg = tok[i].split("=", 1)[1]
+    targets = [chess.parse_square(x) for x in tg.split(",") if x]
+    hyps = {k: v == "1" for k, v in (t.split("=") for t in tok[i + 1:])}
+    return PasserInstance(sq, status, plies, failing, targets, hyps)
 
 
 class LeanIdeas:
@@ -85,16 +125,29 @@ class LeanIdeas:
                 return out
             out.append(got)
 
-    def backrank(self, board: chess.Board) -> list[Instance]:
-        """Every rook/queen move onto the defender's home rank, with its hypotheses."""
-        lines = self._ask("backrank " + board.fen(), until_end=True)
+    def backrank(self, board: chess.Board, fen: bool = False) -> list[Instance]:
+        """Every rook/queen move onto the defender's home rank, with its hypotheses (those evaluated: the detector
+        stops at the second failure). `fen`: send the FEN instead of bitboards (the bridge check; one line per
+        candidate and an `end`; the bitboard answer is one line)."""
+        if fen:
+            lines = self._ask("backrank " + board.fen(), until_end=True)
+        else:
+            (line,) = self._ask("bb " + encode(board), until_end=False)
+            lines = [x for x in line.split(" | ") if x]
         if lines and lines[0].startswith("error"):
             raise ValueError(f"{lines[0]}: {board.fen()}")
         return [_parse_cand(l) for l in lines]
 
-    def legal(self, board: chess.Board) -> set[str]:
-        """The kernel's legal moves (UCI), for the bridge check against python-chess."""
-        (line,) = self._ask("legal " + board.fen(), until_end=False)
+    def passer(self, board: chess.Board) -> list["PasserInstance"]:
+        """Every pawn of the side to move, with the unstoppable-passer hypotheses (those evaluated)."""
+        (line,) = self._ask("passer " + encode(board), until_end=False)
+        if line.startswith("error"):
+            raise ValueError(f"{line}: {board.fen()}")
+        return [_parse_passer(x) for x in line.split(" | ") if x]
+
+    def legal(self, board: chess.Board, fen: bool = False) -> set[str]:
+        """The kernel's legal moves (UCI), for the bridge check against python-chess (FEN or bitboard input)."""
+        (line,) = self._ask(("legal " + board.fen()) if fen else ("bblegal " + encode(board)), until_end=False)
         if line.startswith("error"):
             raise ValueError(f"{line}: {board.fen()}")
         return set(line.split())
@@ -129,16 +182,21 @@ def detector() -> LeanIdeas:
 
 
 def rank_check_possible(b: chess.Board) -> bool:
-    """A necessary condition for a back-rank MATE instance, cheap in python-chess: the defender's king on its home rank
-    and a rook or queen of ours that can step onto that rank with check. Where it fails the detector is not asked."""
+    """A necessary condition for a back-rank MATE instance, cheap in python-chess (bitboards only, no move
+    generation): the defender's king on its home rank, and a rook or queen of ours that can land on a square of that
+    rank from which a rook attacks the king along the rank -- every other square of the rank is on the king's own
+    file or the king itself. Where it fails the detector is not asked (it runs at every node of the search)."""
     k = b.king(not b.turn)
     home = chess.BB_RANK_8 if b.turn == chess.WHITE else chess.BB_RANK_1
     if k is None or not chess.BB_SQUARES[k] & home:
         return False
-    for a in chess.SquareSet((b.rooks | b.queens) & b.occupied_co[b.turn]):
-        for c in chess.SquareSet(b.attacks_mask(a) & home & ~b.occupied_co[b.turn]):
-            if b.gives_check(chess.Move(a, c)):
-                return True
+    heavy = (b.rooks | b.queens) & b.occupied_co[b.turn]
+    if not heavy:
+        return False
+    landing = home & ~b.occupied_co[b.turn] & ~chess.BB_SQUARES[k]
+    for a in chess.scan_forward(heavy):
+        if b.attacks_mask(a) & landing:
+            return True
     return False
 
 

@@ -59,3 +59,35 @@ def test_checkmate_bridge(li):
     assert li.checkmate(b) and b.is_checkmate()
     b = chess.Board("3R2k1/5pp1/7p/8/8/8/8/6K1 b - - 1 1")
     assert not li.checkmate(b) and not b.is_checkmate()
+
+
+# (fen, pawn, status, failing, plies, targets)
+PASSER_CASES = [
+    ("8/8/8/8/8/4P3/8/K6k w - - 0 1", "e3", "PROVED", None, 9, []),                 # bare king far away
+    ("8/8/8/8/k7/4P3/8/K7 w - - 0 1", "e3", "ONEAWAY", "kingOutside", None, ["a4"]),   # the king is in the square
+    ("8/8/8/4N3/8/4P3/8/K6k w - - 0 1", "e3", "ONEAWAY", "pathClear", None, ["e5"]),  # our own knight blocks the path
+    ("R7/8/8/8/8/4P3/8/K6k w - - 0 1", "e3", "ONEAWAY", "noSliders", None, []),       # our rook: this form has no sliders
+    ("8/8/8/4b3/8/4P3/8/K6k w - - 0 1", "e3", "FAIL", None, None, []),                 # an enemy bishop blocks: two hypotheses fail
+    ("8/8/8/8/8/4P3/8/K5Nk w - - 0 1", "e3", "PROVED", None, 9, []),                 # our knight is allowed (no check from g1)
+]
+
+
+@pytest.mark.parametrize("fen,sq,status,failing,plies,targets", PASSER_CASES)
+def test_passer_verdicts(li, fen, sq, status, failing, plies, targets):
+    b = chess.Board(fen)
+    insts = {chess.square_name(i.square): i for i in li.passer(b)}
+    inst = insts[sq]
+    assert inst.status == status
+    assert inst.failing == failing
+    assert inst.plies == plies
+    assert sorted(chess.square_name(s) for s in inst.targets) == sorted(targets)
+
+
+def test_passer_proved_is_true(li):
+    """A PROVED claim holds in an exhaustive race search."""
+    from catspace.incubator.analyst.lean_passer_check import promotes_within
+    b = chess.Board("8/8/8/8/8/4P3/8/K6k w - - 0 1")
+    inst = {chess.square_name(i.square): i for i in li.passer(b)}["e3"]
+    assert inst.status == "PROVED"
+    assert promotes_within(b, chess.square_file(inst.square), inst.plies)
+    assert not promotes_within(b, chess.square_file(inst.square), inst.plies - 2)
