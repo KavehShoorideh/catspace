@@ -185,6 +185,22 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   "starts back-rank mate". Fixed: a tactic is decided by Stockfish's line (material or mate within 8 plies); the
   detectors only name the family.
 
+### 2026-10-04 (the Lean detector)
+- **A cache rebuilt on every lookup** (class 1-like; speed only, every value right): `memoBoard` built the board's
+  64-entry array and returned a closure over it in one definition; the Lean compiler eta-expanded the definition, so
+  every square lookup rebuilt the array through the FEN parser's 64 nested updates -- 100-300 ms a detector query, 2 s
+  for one legal-move list. Found by timing each command alone. Fixed: the array is bound at the call site
+  (`readPosition`) and the closure captures it -- 0.2-0.3 ms. Rule: in Lean, build a cache in the caller, never inside
+  a definition whose result is a function.
+- **An unsound hypothesis in a first draft** (class 6): the passer lemma's `noEnemyReach` read only the enemy's attacks
+  on today's board -- enemy pieces move -- and nothing excluded stalemate, so its (`sorry`) theorem was false as
+  stated. Caught on review before any build; the draft was deleted. Rule: for every hypothesis, ask what it says about
+  the opponent's NEXT moves, not about the current board.
+- **A filter hid two crashes** (class 2): a smoke loop passed `$flags` unquoted in zsh, which does not split words, so
+  argparse rejected "--proved-mates 1" as one argument and the runs exited at once; my `grep OBS` showed nothing and
+  the 0.07 s runtime was the only sign. Fixed: `${=flags}`. Rule: every grep over a run's output also matches
+  `error|usage|Traceback`.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).

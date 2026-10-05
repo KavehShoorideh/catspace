@@ -22874,30 +22874,96 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
-## 2026-10-02 20:19 PDT — the discovered check as an armed lemma: Kaveh's own game, then 2,000 blitz games (OBS)
+## 2026-10-04 21:37 PDT — the back-rank mate, proved in Lean 4 and used in search: never wrong, cheaper, not yet much cheaper (OBS)
 
-Kaveh refocused on tactics with his game lichess 6IDKdXUd (1334 vs 1321, blitz): "I saw the discovered check a few moves
-before ... as long as a piece wasn't protected, I could win it, and a pawn for a bishop. So I kicked the other bishop
-away, took with my knight, setting up a baby trap, then I struck when the opponent took back with their queen. I want
-lemmas like this ... precalculated from a different game, remembered, imagined, set as a high level goal, and when the
-tactic presented itself I could execute without delay." His pick: one lemma end to end. `discovery.py`: BATTERY (our
-slider behind our own piece, the line beyond it); ARMED (the front piece has a checking move off the line, with its
-known COST: its value if it can be taken where it lands, less what it takes); STRIKE (an enemy piece worth more than the
-cost on the line, the departure verified by the zone search); LURE (a capture of ours on the line whose natural
-recapture puts a bigger piece there). His game replayed (0.2 s): armed from move 11 (Qd1 behind Bd3, Bxh7+ costing 2);
-at move 16 an immediate strike wins about a pawn (the loose d4 bishop); at move 17 the lure Nxd4 -- the queen takes
-back onto the line -- then Bxh7+ wins +7; at move 18 the strike. (His plan beat the immediate strike: wait for the
-bigger target.)
-On 2,000 Lichess games (January 2019, rated blitz 3-10 minutes, both players 1100-1700, normal termination; 26 s;
-one run): armed in 14,750 positions of 1,818 games; a strike available in 625 positions (winning 3+ in 314); struck 260
-(of the 3+: 166); missed -- the move played clearly worse by the same search -- 127 (of the 3+: 84; first bug check:
-mates played instead of the strike had counted as misses, now excluded); a lure available in 115 positions, played 25,
-the opponent took back onto the line 11 times, and the strike followed only 2. Caveat: a "strike" here is any checking
-departure that wins with a target on the line -- some of the gain can come from the departure's own capture.
-Reading (one run, directional): the armed discovered check is everywhere at club level, the strike when it is there
-is missed about a quarter of the time when it wins three or more, and the trap Kaveh set -- lure, then strike -- is
-rare and rarely finished (2 of 11 when the opponent fell for it). The lemma as a remembered, armed goal is exactly the
-gap.
+Kaveh: "build that ... see if the theorem is useful in action ... a puzzle ... cut down on search correctly ... get it
+end to end for one lemma first". One lemma, end to end: the guard of `backrank.py` (hand-written 2026-10-02 from
+Kaveh's remarks, not machine-mined) restated as Lean hypotheses, proved for every position, compiled into a detector,
+and used in two searches on Lichess back-rank puzzles. Correction to the 17:35 entry below: its passer lemma was
+unsound as stated (its "no enemy piece reaches the path" read only today's attacks, but enemy pieces move; it ignored
+stalemate) and was deleted before any build; the build did run (first build 4.5 minutes).
+
+THE PROOF. Rule kernel imported: chess-lean (Ramos, Hulak, de Queiroz; Apache-2.0; a Lean port of their Isabelle/HOL
+chess kernel, written with an AI agent and self-reviewed; it proves the legal-move generator equal to the rules and its
+mate certificates adequate). Ours, in `lean/ideas`:
+- `checkmate_of_unmeetable_check` (Ideas/Mate.lean): in any position, if the defender's king stands alone on k, the
+  attacker's piece on c checks it, en passant is off, every square next to the king is held by the defender's own piece
+  or attacked once the king is lifted off the board, no defender's piece but the king attacks c (pins ignored), and
+  none can step between c and k (pawn pushes counted without their path), the side to move is checkmated. Every
+  condition over-approximates the defender: the detector may miss a mate, it never claims a false one.
+- `backRankMate_sound` (Ideas/BackRank.lean): the back-rank mate as an Idea with nine named hypotheses -- heavy (our
+  rook or queen), onBackRank, legal, oneKing, check, boxed, rankFlights, noDefender, noInterpose; tier unconditional,
+  horizon one ply. All nine hold => the move is legal and mates. They name squares and attacks, never which piece.
+- Both rest only on Lean's standard axioms (propext, Classical.choice, Quot.sound): no `sorry`, no `native_decide`.
+From the Python guard: boxed() -> onBackRank + boxed; _rank_checks() -> heavy + legal + check; strikes(), verified by
+the zone search -> rankFlights + noDefender + noInterpose + the theorem (no search); defenders() -> the failing set of
+noDefender, i.e. the one-away TARGET; lures() -> the TARGET ordering below.
+
+THE DETECTOR. The `ideas` binary runs the compiled hypothesis functions (the definitions the theorem is about) over
+stdin/stdout: 0.2-0.4 ms a query (OBS below) after one fix -- the compiler had folded the board's array copy back into
+every square lookup, 100-300 ms a query. When exactly one hypothesis fails it prints the squares that broke it: the
+defender of the landing square, the piece in the rook's path, the open flight square, the piece that can interpose.
+
+THE BRIDGE. The theorem is about chess-lean's rules; the searches run on python-chess. OBS development rows
+(i % 97 == 5, 300 back-rank puzzles, every position along their lines): legal-move sets agree 1234/1234; proved mates
+that python-chess confirms as checkmate 302/302. Held-out rows (i % 97 == 17): 1316/1316 and 306/306.
+
+EXPERIMENT 1 -- AN EXACT MATE SEARCH (`lean_backrank_puzzles`). AND/OR search: at our nodes one move must force mate, at
+theirs every reply must allow it; full width; checks first, then captures; at the last move only checks are tried. Arms:
+BASE; CLOSE (the detector is asked at every node of ours where a rook or queen can check on the back rank; a proved mate
+closes the node unexpanded); TARGET (CLOSE, and within each group of the base order the one-away moves themselves, then
+the moves touching their targets, go first). The searches are exact, so every arm must give the same verdict; the
+measure is positions pushed. Held-out back-rank puzzles, 300 per length, OBS (BASE = 1.000):
+  mate in 1: BASE 312, CLOSE 1 (0.003; 299/300 closed by the proof), TARGET 1.
+  mate in 2: BASE 1,227, CLOSE 888 (0.724; fewer in 297/300, more in 0), TARGET 773 (0.630; fewer 287, more 5).
+  mate in 3: BASE 21,003, CLOSE 20,488 (0.975; fewer in 300/300), TARGET 21,666 (1.032; fewer 241, more 58).
+  Every arm found the mate in all 900 puzzles with BASE's first move; audit failures (a closed node python-chess does
+  not confirm) 0 of 2,219 closures (CLOSE 299 + 325 + 479, TARGET 299 + 325 + 492). Wall time rises (mate in 3:
+  0.80 s BASE, 1.78 s CLOSE): a detector query, 0.26-0.37 ms, costs about eight nodes of this search (BASE: 0.80 s for
+  21,003 nodes, 38 us a node).
+Development rows, for the record of what was tuned: TARGET first ordered target-touching moves ahead of the checks
+(2.16x BASE at mate in 2 on 20 puzzles); then as a tie-break within groups (0.720 / 1.013 on 50); then with the one-away
+moves first (0.640 / 1.044). The bug check behind it: the targets were right but a move early -- on 33 dev mate-in-3
+puzzles with root targets, the solution's first move touches a target in 9, is a one-away move in 15, either in 22.
+
+EXPERIMENT 2 -- THE REPO'S PLAYER (`frame_puzzles`, zone search with `TacticalSpec.proved_mates`: 1 inside the tree,
+2 also at the horizon; off by default). OBS:
+  300 held-out back-rank puzzles (rows i % 97 == 17), 10 workers; positions paired by step (the same 658 positions
+  searched by every run; plain = 1.000):
+    plain        1,616 nodes a step; whole solution 300/300 among the tied top moves, 289/300 single top; 133 s.
+    proved 1     1,271 nodes a step; paired 1,063,544 -> 836,385 (0.786; fewer 632, more 1, equal 25); 300/300,
+                 289/300, gained 0, lost 0; 22,573 nodes closed by the proof in 645/658 steps; 136 s.
+    proved 2     1,283 nodes a step; paired 0.794 (fewer 600, more 41, equal 17); 300/300, 289/300; 78,728 closures in
+                 654/658 steps; 145 s.
+    leaf-mates   (the existing brute-force switch: mates in one tried at the horizon) 1,589 nodes a step; paired 0.983
+                 (fewer 157, more 160, equal 341); 300/300, 289/300; 136 s.
+  Control, 300 fresh puzzles of every theme (stride 997, offset 300 -- the set of the 2026-10-01 pause entry):
+    plain        30,490 nodes a step; 279/300 tied, 227/300 single top; 762 s. The pause entry's plain player had
+                 279 / 227 at 30,490: reproduced exactly, so the new switches change nothing while off.
+    proved 1     30,079 nodes a step; paired 20,427,992 -> 20,152,828 (0.987; fewer 318, more 3, equal 349); 279/300,
+                 227/300, gained 0, lost 0; 64,166 closures in 393/670 steps; 846 s (+11%: the detector's queries).
+
+READING (one run each: directional, not verdicts).
+- The proof does what it was asked: every one of the 2,219 nodes it closed in the mate search was mate, and no search
+  answer changed. It is the first lemma here whose claim needs no verification search.
+- The cut is real but small where the search is already good at the motif: a checks-first mate search finds a
+  back-rank mate in a ply or two, and a mate-in-one lemma can save only that ply. The savings shrink with depth
+  (0.72 at mate in 2, 0.975 at mate in 3) because the cost of a deeper puzzle is refuting wrong lines, where no mate
+  exists to prove.
+- In the player the proof cuts a fifth of the zone search on back-rank puzzles (0.786) and 1.3% on puzzles of every
+  theme (0.987), and changed no decision in either set. The saving comes from closing nodes inside the tree (adding the
+  horizon: 0.794; the brute-force switch, which acts only at the horizon, 0.983). Wall time is level on back-rank
+  puzzles and 11% worse on the general set: a query through a pipe (0.2-0.4 ms) costs more than the nodes it saves
+  where the lemma rarely fires. An in-process call (the plan's FFI, a foreign function interface) is the engineering
+  fix, not a research question.
+- The one-away TARGET is semantically right (the defender of the rank, the piece in the path) but arrives a move early:
+  it helps two-move combinations and hurts three-move ones. It is a heuristic, measured, and stays off in the player.
+- Where the big cuts should be: lemmas whose conclusion lies deeper than one ply -- a forcing-tier back-rank mate in
+  two (decoy or deflection of the last defender, the exact shape of the TARGET instances), the passer race (a proof
+  replaces a search of 2n plies) -- and searches that do not order checks first.
+NEXT: the generic bounded certificate (forced goal within n plies, any goal) proved adequate like chess-lean's mate
+certificate; a forcing-tier lemma (the one-away back-rank instance plus a forced deflection); then the passer (king and
+pawn against king first).
 
 ## 2026-10-04 17:35 PDT — Lean 4 is in, for targets and pruning, never for search (Kaveh's call; the §37 "NOT Lean" line reversed)
 
@@ -22926,6 +22992,31 @@ soundness theorem stated and `sorry`), `Main.lean` (the `ideas` binary: eval / t
 NOT BUILT: the harness refused to compile the cloned kernel (external code); the first `lake exe cache get && lake
 build` is Kaveh's to run. Open from the plan's M1: does `decide` close k <= 3 conclusions in acceptable time -- measure
 on this lemma first; three lemmas (passer, back-rank, fork) in the schema; the binary under 1 ms per eval on 1,000 FENs.
+
+## 2026-10-02 20:19 PDT — the discovered check as an armed lemma: Kaveh's own game, then 2,000 blitz games (OBS)
+
+Kaveh refocused on tactics with his game lichess 6IDKdXUd (1334 vs 1321, blitz): "I saw the discovered check a few moves
+before ... as long as a piece wasn't protected, I could win it, and a pawn for a bishop. So I kicked the other bishop
+away, took with my knight, setting up a baby trap, then I struck when the opponent took back with their queen. I want
+lemmas like this ... precalculated from a different game, remembered, imagined, set as a high level goal, and when the
+tactic presented itself I could execute without delay." His pick: one lemma end to end. `discovery.py`: BATTERY (our
+slider behind our own piece, the line beyond it); ARMED (the front piece has a checking move off the line, with its
+known COST: its value if it can be taken where it lands, less what it takes); STRIKE (an enemy piece worth more than the
+cost on the line, the departure verified by the zone search); LURE (a capture of ours on the line whose natural
+recapture puts a bigger piece there). His game replayed (0.2 s): armed from move 11 (Qd1 behind Bd3, Bxh7+ costing 2);
+at move 16 an immediate strike wins about a pawn (the loose d4 bishop); at move 17 the lure Nxd4 -- the queen takes
+back onto the line -- then Bxh7+ wins +7; at move 18 the strike. (His plan beat the immediate strike: wait for the
+bigger target.)
+On 2,000 Lichess games (January 2019, rated blitz 3-10 minutes, both players 1100-1700, normal termination; 26 s;
+one run): armed in 14,750 positions of 1,818 games; a strike available in 625 positions (winning 3+ in 314); struck 260
+(of the 3+: 166); missed -- the move played clearly worse by the same search -- 127 (of the 3+: 84; first bug check:
+mates played instead of the strike had counted as misses, now excluded); a lure available in 115 positions, played 25,
+the opponent took back onto the line 11 times, and the strike followed only 2. Caveat: a "strike" here is any checking
+departure that wins with a target on the line -- some of the gain can come from the departure's own capture.
+Reading (one run, directional): the armed discovered check is everywhere at club level, the strike when it is there
+is missed about a quarter of the time when it wins three or more, and the trap Kaveh set -- lure, then strike -- is
+rare and rarely finished (2 of 11 when the opponent fell for it). The lemma as a remembered, armed goal is exactly the
+gap.
 
 ## 2026-10-02 16:20 PDT — per-instance explanations: computed fact sheets, six written by hand, a faithfulness checker, a Claude writer waiting for credentials (OBS)
 

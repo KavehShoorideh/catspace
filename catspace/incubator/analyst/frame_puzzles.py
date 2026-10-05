@@ -127,6 +127,12 @@ def compare(before: str, after: str) -> None:
     gained = [k for k in common if y[k]["solved"] and not x[k]["solved"]]
     lost = [k for k in common if x[k]["solved"] and not y[k]["solved"]]
     print(f"OBS {after} against {before}: gained {len(gained)}, lost {len(lost)} ({', '.join(lost)})")
+    pairs = [(sx["nodes"], sy["nodes"]) for k in common for sx in x[k]["steps"] for sy in y[k]["steps"]
+             if sx["fen"] == sy["fen"] and sx.get("nodes") is not None and sy.get("nodes") is not None]
+    if pairs:                                                     # the search's work on the same positions (paired steps)
+        nx = sum(a for a, _ in pairs); ny = sum(c for _, c in pairs)
+        print(f"OBS zone-search nodes on the {len(pairs)} steps both runs searched: {nx} -> {ny} ({ny / max(nx, 1):.3f}); "
+              f"fewer {sum(c < a for a, c in pairs)}, more {sum(c > a for a, c in pairs)}, equal {sum(c == a for a, c in pairs)}")
     for name, d in ((before, x), (after, y)):
         miss = [k for k in common if not d[k]["solved"]]
         never = [k for k in miss if next((s for s in d[k]["steps"] if not s["tied"]), {}).get("v_sol", 0) is None]
@@ -158,6 +164,7 @@ def main(argv=None):
     ap.add_argument("--proved-mates", type=int, default=0, choices=[0, 1, 2], help="zone search: a back-rank mate proved in Lean closes the node "
                     "(1 inside the tree, 2 also at the horizon)")
     ap.add_argument("--theme", default=None, help="lichess --offset: only puzzles with this theme (e.g. backRankMate)")
+    ap.add_argument("--tag", default="", help="a suffix for the dump's name (keeps an earlier run's dump from being overwritten)")
     ap.add_argument("--frame-ext", type=int, default=0, help="zone search: replies on the same square do not use up a ply (up to N a line)")
     ap.add_argument("--pawn-moves", action="store_true", help="every pawn move is a candidate and is searched in the zone search")
     ap.add_argument("--only-unsolved-in", default=None, help="lichess --offset: only the puzzles this earlier dump (data/derived name) missed")
@@ -284,7 +291,9 @@ def main(argv=None):
             rows.append(f"{t} {sum(r['solved'] for r in res if t in r['themes'])}/{k}")
         print("OBS by theme, whole solution among the tied top moves: " + "; ".join(rows[:16]))
     import json
+    tag += f"_{a.tag}" if a.tag else ""
     json.dump(res, open(paths.derived(f"frame_puzzles_{a.source}_{tag}.json"), "w"))   # every puzzle's steps, for the dig
+    print(f"wrote {paths.derived(f'frame_puzzles_{a.source}_{tag}.json')}")
     misses = [r for r in res if not r["solved"]]
     for r in misses[:a.show]:
         s = next(x for x in r["steps"] if not x["tied"])
