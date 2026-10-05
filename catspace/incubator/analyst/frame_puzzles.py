@@ -48,7 +48,8 @@ def _solve_lichess(row: dict) -> dict:
         ok_unique = (c["best"] == [u]) or (mate_ok and len(c["best"]) == 1)
         from . import frame_player as _FP
         steps.append(dict(fen=b.fen(), sol=u, tied=ok_tied, unique=ok_unique, n_top=len(c["best"]), best=c["best"][:6],
-                          v_sol=c["values"].get(u), v_top=max(c["values"].values()), nodes=_FP.NODES[0], depth=_FP.DEPTH[0]))
+                          v_sol=c["values"].get(u), v_top=max(c["values"].values()), nodes=_FP.NODES[0], depth=_FP.DEPTH[0],
+                          proved=_FP.PROVED[0]))
         if not ok_tied:
             break
         b.push_uci(u)
@@ -89,15 +90,16 @@ def _line(fen: str, ucis: list) -> str:
     return " ".join(out)
 
 
-def fresh_rows(n: int, stride: int, offset: int) -> list:
+def fresh_rows(n: int, stride: int, offset: int, theme: str | None = None) -> list:
     """Puzzles from rows i % stride == offset of the 6.1M-puzzle Lichess file, excluding the rows already used: the test
-    sample (i % 997 == 0) and the proposer's and the quiet set's rows (i % 97 in 49, 73)."""
+    sample (i % 997 == 0) and the proposer's and the quiet set's rows (i % 97 in 49, 73); with `theme`, only puzzles
+    carrying it."""
     import csv, io, zstandard
     out = []
     with open(paths.assets_dir() / "lichess" / "lichess_db_puzzle.csv.zst", "rb") as fh:
         reader = csv.DictReader(io.TextIOWrapper(zstandard.ZstdDecompressor().stream_reader(fh), encoding="utf-8"))
         for i, row in enumerate(reader):
-            if i % stride == offset and i % 997 != 0 and i % 97 not in (49, 73):
+            if i % stride == offset and i % 997 != 0 and i % 97 not in (49, 73) and (theme is None or theme in row["Themes"].split()):
                 out.append(row)
                 if len(out) >= n:
                     break
@@ -153,6 +155,9 @@ def main(argv=None):
     ap.add_argument("--imagine", type=int, default=0, help="the top-k imagined frames: their moves join the candidates, their squares the zone")
     ap.add_argument("--leaf-mates", action="store_true", help="zone search: a mate in one for the side to move is seen at the horizon")
     ap.add_argument("--zugzwang-guard", action="store_true", help="zone search: a king-and-pawns side may not pass inside the tree")
+    ap.add_argument("--proved-mates", type=int, default=0, choices=[0, 1, 2], help="zone search: a back-rank mate proved in Lean closes the node "
+                    "(1 inside the tree, 2 also at the horizon)")
+    ap.add_argument("--theme", default=None, help="lichess --offset: only puzzles with this theme (e.g. backRankMate)")
     ap.add_argument("--frame-ext", type=int, default=0, help="zone search: replies on the same square do not use up a ply (up to N a line)")
     ap.add_argument("--pawn-moves", action="store_true", help="every pawn move is a candidate and is searched in the zone search")
     ap.add_argument("--only-unsolved-in", default=None, help="lichess --offset: only the puzzles this earlier dump (data/derived name) missed")
@@ -217,6 +222,8 @@ def main(argv=None):
         spec_kw["leaf_mates"] = True; tag += "_leafmates"
     if a.zugzwang_guard:
         spec_kw["zugzwang_guard"] = True; tag += "_zzguard"
+    if a.proved_mates:
+        spec_kw["proved_mates"] = a.proved_mates; tag += f"_proved{a.proved_mates}"
     if spec_kw:
         from .zone_search import TacticalSpec
         planner_kw["spec"] = TacticalSpec(**spec_kw)
@@ -227,7 +234,7 @@ def main(argv=None):
     import multiprocessing as mp
     if a.source in ("lichess", "lichess-quiet"):
         if a.source == "lichess" and a.offset:
-            rows = fresh_rows(a.n, a.stride, a.offset); tag += f"_off{a.offset}"
+            rows = fresh_rows(a.n, a.stride, a.offset, a.theme); tag += f"_off{a.offset}" + (f"_{a.theme}" if a.theme else "")
             if a.only_unsolved_in:                                  # the misses of an earlier run, replayed (a targeted gauge)
                 import json as _jm                                  # (main imports json later: a local name here)
                 miss = {r["id"] for r in _jm.load(open(paths.derived(a.only_unsolved_in))) if not r["solved"]}
@@ -251,6 +258,9 @@ def main(argv=None):
     ns = [s.get("nodes", 0) for r in res for s in r["steps"]]
     if any(ns):
         print(f"OBS zone search nodes per solver step: mean {sum(ns) / len(ns):.0f} over {len(ns)} steps")
+        pv = [s.get("proved", 0) for r in res for s in r["steps"]]
+        if any(pv):
+            print(f"OBS proved back-rank mates closing zone-search nodes: {sum(pv)} in {sum(1 for x in pv if x)}/{len(pv)} steps")
         ds = [s.get("depth", 0) for r in res for s in r["steps"]]
         print("OBS the deepest rung completed per solver step: " + ", ".join(f"{d}: {ds.count(d)}" for d in sorted(set(ds))))
     from .fates import VERIFY_FRAMES

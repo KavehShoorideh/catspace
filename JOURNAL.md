@@ -22899,6 +22899,34 @@ is missed about a quarter of the time when it wins three or more, and the trap K
 rare and rarely finished (2 of 11 when the opponent fell for it). The lemma as a remembered, armed goal is exactly the
 gap.
 
+## 2026-10-04 17:35 PDT — Lean 4 is in, for targets and pruning, never for search (Kaveh's call; the §37 "NOT Lean" line reversed)
+
+Kaveh brought the handoff plan ("Lean Chess — Idea Basis & Live Engine", Oct 4 2026) and asked how far we are. The
+audit against it (one pass over the repo, no numbers): the Python half is roughly half built -- the enumerator
+(`lemma_gen`, frames -> guards -> prove -> generalize), Maia-1/Maia-2 as the human baseline, a player whose every move
+carries a reason (`frame_player`), templates + a faithfulness checker for text; absent are the Idea schema (hypothesis
+list, protagonist/cast, tier, horizon), any Lichess live loop or per-ply idea state machine, the outcome-driven basis
+selector (gain - MDL, durability, matched contrast, the tactic-given-concept table), and Stockfish WDL labels on the
+19.4M-game corpus. The plan's diagnosis holds: the 219-lemma library has no consumer but gauges; the five armed lemmas
+(discovery, pin, backrank, fork, overload) bypass it with inline preconditions and private helpers.
+Lean had been rejected in one sentence (§37, 2026-09-21, my call during the theory-exploration review: "buys no
+search; encoding chess is its own project"). Kaveh: "let's use Lean ... I don't want search from it. I want to prune
+some branches, I want to find the search target from it ... a bishop blocking my pawn's path -- I don't need a search to
+know my pawn can promote, and I don't need a search to know my focus should be getting rid of that bishop." So: a proved
+lemma whose hypotheses are evaluable one by one; all hold -> a fact without search; exactly one fails -> that hypothesis
+is the subgoal, and branches that do not touch it are pruned. The zone search stays the searcher.
+Done today: elan + Lean 4.32.0 installed; the rule kernel is imported, not written -- Arthur742Ramos/chess-lean
+(Mathlib v4.32.0; legal moves with soundness/completeness theorems, strict FEN text, applyMove, attacks, perft
+regressions, mate certificates with an adequacy theorem), pinned by commit 3a59b2ce in `lean/ideas/lakefile.toml`
+(two alternatives looked at: IharBury/chess, 32k lines, proof-heavy, no FEN; dwrensha/Chess.lean, Lean 4.15, small).
+Scaffold in `lean/` (beside `rust/`, outside the wheel): `Ideas/Schema.lean` (the Idea record, `failing`, `oneAway`,
+`forcedWithinB` = bounded "reach the goal whatever they do"), `Ideas/Passer.lean` (the unstoppable passer with four
+hypotheses -- ownPawn, pathClear, noEnemyReach as an empty-board over-approximation, kingOutside -- tier unconditional,
+soundness theorem stated and `sorry`), `Main.lean` (the `ideas` binary: eval / target / legal over stdin).
+NOT BUILT: the harness refused to compile the cloned kernel (external code); the first `lake exe cache get && lake
+build` is Kaveh's to run. Open from the plan's M1: does `decide` close k <= 3 conclusions in acceptable time -- measure
+on this lemma first; three lemmas (passer, back-rank, fork) in the schema; the binary under 1 ms per eval on 1,000 FENs.
+
 ## 2026-10-02 16:20 PDT — per-instance explanations: computed fact sheets, six written by hand, a faithfulness checker, a Claude writer waiting for credentials (OBS)
 
 Kaveh's picks: "name each instance" (a hand-written sample first), then "more facts first", then no preference (the

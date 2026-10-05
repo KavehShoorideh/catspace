@@ -64,6 +64,10 @@ class TacticalSpec:
     pawn_moves: bool = False            # every pawn move is searched, like captures, promotions and checks: the irreversible
                                         # moves -- races, breaks, tempo moves (miss_anatomy 2026-09-30: of 24 tops overrated
                                         # because the refutation left the zone, 17 refutation lines left it by a pawn move)
+    proved_mates: int = 0               # a back-rank mate PROVED for the side to move (Lean, lean/ideas: backRankMate_sound) closes the
+                                        # node at MATE without expanding it -- a value the theorem guarantees (Kaveh 2026-10-04: "cut down
+                                        # on search correctly"). 1: inside the tree only (where the search would find the mate itself);
+                                        # 2: also at the horizon (mates the frames' material read misses, as leaf_mates by brute force)
     knowledge: tuple = ()               # tactical facts the planner hands down (jobs.Job: a pin, a guard...), valid by footprint
     prune_jobs: int = 0                 # drop a move that abandons a valid job worth more than it takes at depth <= this (0: order only)
 
@@ -162,6 +166,13 @@ class ZoneSearch:
         if b.is_checkmate():
             return -MATE, []
         check = b.is_check()
+        if self.spec.proved_mates and (depth > 0 or self.spec.proved_mates >= 2):
+            from .lean_ideas import proved_back_rank_mates
+            pms = proved_back_rank_mates(b)
+            if pms:                                               # proved: the side to move mates at once; nothing below is searched
+                self.kstats["proved"] = self.kstats.get("proved", 0) + 1
+                pm = max(pms, key=lambda x: F.captured_value(b, x))
+                return MATE + F.captured_value(b, pm), [pm]       # (the search's own value of a mate: MATE plus what the mating move takes)
         if depth <= 0 and (not check or ply >= self.spec.check_ply_cap):
             if self.spec.leaf_mates and not check:
                 for m in b.legal_moves:

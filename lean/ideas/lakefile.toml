@@ -1,0 +1,17 @@
+name = "Ideas"
+version = "0.1.0"
+defaultTargets = ["Ideas", "ideas"]
+
+# The rule kernel: Arthur742Ramos/chess-lean (Lean 4.32 + Mathlib v4.32.0), pinned by commit.
+# Legal moves, FEN text, applyMove, attacks, mate certificates with a soundness theorem.
+[[require]]
+name = "ChessLean"
+git = "https://github.com/Arthur742Ramos/chess-lean"
+rev = "3a59b2ce7e775e844f723976c182b2a96b2ea22c"
+
+[[lean_lib]]
+name = "Ideas"
+
+[[lean_exe]]
+name = "ideas"
+root = "Main"

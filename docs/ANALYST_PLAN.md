@@ -698,6 +698,11 @@ a training constraint; proposal round one against the residual (queen endings, p
 
 ## 37. The lemma loop: search once, remember the result as a lemma, search less (Kaveh 2026-09-21)
 
+> **2026-10-04 (Kaveh):** the "NOT Lean/Coq" line below is reversed. Lean 4 is in -- not for search but for
+> targets and pruning: a proved lemma with individually evaluable hypotheses gives the conclusion without search, and
+> the one failing hypothesis is the search target. Kernel imported (chess-lean), scaffold in `lean/`; see JOURNAL
+> 2026-10-04 and `lean/README.md`.
+
 THE END STATE. A loop: the searchers (our ledger and goal search, Stockfish, the tablebase) explore the space;
 where our fast evaluation falls short of what search found, or where search was expensive, we PROPOSE a lemma;
 we TEST it against the corpus, PROVE it where it is provable, and ADMIT it to a versioned library only if it
