@@ -1,0 +1,392 @@
+<title>Surprise Watcher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&family=Noto+Sans+Symbols+2&display=swap">
+<style>
+/* Layout: board and surprise trace on the left, the watcher's thinking on the right; one column on phones. */
+:root {
+  --bg: #f1f3f5; --panel: #ffffff; --ink: #1c232b; --muted: #5d6874; --line: #d7dde3;
+  --sq-light: #dde3e8; --sq-dark: #8ea1b0; --piece-w: #fbfcfd; --piece-b: #1c232b; --edge: #1c232b;
+  --accent: #2c6c8c; --hot: #d4502c; --warm: #e39a35; --calm: #9aa8b4;
+  --gain: #2b866a; --loss: #c2463a; --last: rgba(227, 154, 53, .38);
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-head: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-piece: "Noto Sans Symbols 2", "Segoe UI Symbol", "DejaVu Sans", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11161b; --panel: #192028; --ink: #e5e9ed; --muted: #95a2ad; --line: #2a333d;
+  --sq-light: #b4c0ca; --sq-dark: #5b7184; --piece-w: #fbfcfd; --piece-b: #10151a; --edge: #10151a;
+  --accent: #62b2d6; --hot: #f2734d; --warm: #f2b752; --calm: #6f7d89;
+  --gain: #4cc49c; --loss: #ee6a5b; --last: rgba(242, 183, 82, .42); color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #11161b; --panel: #192028; --ink: #e5e9ed; --muted: #95a2ad; --line: #2a333d;
+  --sq-light: #b4c0ca; --sq-dark: #5b7184; --piece-w: #fbfcfd; --piece-b: #10151a; --edge: #10151a;
+  --accent: #62b2d6; --hot: #f2734d; --warm: #f2b752; --calm: #6f7d89;
+  --gain: #4cc49c; --loss: #ee6a5b; --last: rgba(242, 183, 82, .42); color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font-family: var(--font-ui); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 18px 40px; display: grid; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 20px; }
+h1 { font-family: var(--font-head); font-weight: 600; font-size: 1.55rem; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+h1 small { font-family: var(--font-ui); font-weight: 400; font-size: .85rem; color: var(--muted); margin-left: .5em; }
+.picker { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+select, button { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+select { padding: 6px 8px; max-width: 100%; }
+button { padding: 6px 11px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:focus-visible, select:focus-visible, .ply:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button[aria-pressed="true"] { background: var(--accent); color: var(--panel); border-color: var(--accent); }
+.main { display: grid; grid-template-columns: minmax(0, 460px) minmax(0, 1fr); gap: 22px; align-items: start; }
+@media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.left, .right { min-width: 0; display: grid; gap: 12px; }
+.gameline { color: var(--muted); font-size: .9rem; }
+.gameline b { color: var(--ink); font-weight: 600; }
+
+.boardbox { position: relative; width: 100%; max-width: 460px; aspect-ratio: 1; }
+.board { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); width: 100%; height: 100%;
+  border: 2px solid var(--edge); border-radius: 4px; overflow: hidden; }
+.sq { position: relative; display: grid; place-items: center; user-select: none; }
+.sq.l { background: var(--sq-light); } .sq.d { background: var(--sq-dark); }
+.sq.last::before { content: ""; position: absolute; inset: 0; background: var(--last); }
+.sq .pc { position: relative; font-family: var(--font-piece); font-size: clamp(22px, 7.6vw, 44px); line-height: 1; }
+.pc.w { color: var(--piece-w); -webkit-text-stroke: 1.2px var(--edge); paint-order: stroke fill; text-shadow: 0 1px 0 rgba(0,0,0,.25); }
+.pc.b { color: var(--piece-b); }
+.sq .ring { position: absolute; inset: 3px; border-radius: 3px; border: 3px solid transparent; pointer-events: none; }
+.ring.loss { border-color: var(--loss); } .ring.gain { border-color: var(--gain); } .ring.stay { border-color: var(--calm); border-style: dashed; border-width: 2px; }
+.sq.sel .ring { box-shadow: 0 0 0 3px var(--accent) inset; }
+.sq .coord { position: absolute; font-family: var(--font-num); font-size: 10px; color: var(--ink); opacity: .55; }
+.coord.f { right: 3px; bottom: 1px; } .coord.r { left: 3px; top: 1px; }
+.sq .boom { position: absolute; right: 2px; top: 2px; font-family: var(--font-num); font-size: 10px; font-weight: 500;
+  padding: 0 3px; border-radius: 3px; color: var(--panel); }
+
+.controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.controls .grow { flex: 1; }
+.plyinfo { font-family: var(--font-num); font-size: .92rem; }
+.mode { font-size: .85rem; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 10px; min-width: 0; }
+.card h2 { font-family: var(--font-head); font-weight: 600; font-size: 1.02rem; margin: 0; letter-spacing: .02em; }
+.label { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.big { display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: baseline; }
+.big .n { font-family: var(--font-num); font-size: 1.9rem; font-weight: 500; line-height: 1; }
+.big .k { font-size: .82rem; color: var(--muted); }
+.then { font-family: var(--font-num); font-size: .9rem; overflow-wrap: anywhere; }
+.frame { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+.frame:first-of-type { border-top: 0; padding-top: 0; }
+.frame.sel { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 6px; }
+.chip { font-family: var(--font-num); font-size: .85rem; padding: 2px 7px; border-radius: 5px; border: 1px solid var(--line); white-space: nowrap; align-self: start; cursor: pointer; }
+.chip.loss { border-color: var(--loss); } .chip.gain { border-color: var(--gain); }
+.rule { font-size: .92rem; }
+.rule .id { font-family: var(--font-num); font-size: .78rem; color: var(--muted); margin-right: 4px; }
+.bars { display: flex; flex-wrap: wrap; gap: 4px 12px; font-family: var(--font-num); font-size: .82rem; color: var(--muted); }
+.bar { display: inline-flex; align-items: center; gap: 5px; }
+.bar i { display: inline-block; height: 8px; border-radius: 2px; background: var(--accent); }
+.bar.hit i { background: var(--warm); }
+.bar.hit { color: var(--ink); }
+.mem { display: flex; flex-wrap: wrap; gap: 5px; }
+.pill { font-size: .75rem; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--ink); }
+.pill.warn { background: color-mix(in srgb, var(--warm) 26%, transparent); }
+.out { font-family: var(--font-num); font-size: .84rem; }
+.heat0 { color: var(--muted); } .heat1 { color: var(--warm); } .heat2 { color: var(--hot); font-weight: 500; }
+.result { display: grid; gap: 6px; }
+.rbar { display: flex; height: 16px; border-radius: 4px; overflow: hidden; border: 1px solid var(--line); }
+.rbar span { display: block; height: 100%; }
+.rbar .L { background: var(--loss); } .rbar .D { background: var(--calm); } .rbar .W { background: var(--gain); }
+.rlegend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-family: var(--font-num); font-size: .82rem; color: var(--muted); }
+.rlegend b { color: var(--ink); font-weight: 500; }
+.hidden-out { color: var(--muted); font-style: italic; font-size: .85rem; }
+
+.trace { width: 100%; max-width: 460px; }
+.trace svg { width: 100%; height: auto; display: block; }
+.trace text { fill: var(--muted); font-family: var(--font-num); font-size: 9px; }
+.trace .grid { stroke: var(--line); stroke-width: 1; }
+.trace .barr { cursor: pointer; }
+.trace .now { stroke: var(--accent); stroke-width: 2; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .82rem; color: var(--muted); }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 5px; vertical-align: -2px; border: 3px solid; }
+.sw.loss { border-color: var(--loss); } .sw.gain { border-color: var(--gain); } .sw.stay { border: 2px dashed var(--calm); }
+.note { font-size: .82rem; color: var(--muted); max-width: 70ch; }
+.loading { padding: 40px 0; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { .sq .ring, .frame { transition: background .15s, border-color .15s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Surprise Watcher <small>a chess player's tactical layer, watching real games</small></h1>
+    <div class="picker">
+      <label class="label" for="game">Game</label>
+      <select id="game" aria-label="Choose a game"></select>
+      <button id="flip" type="button" aria-label="Flip the board">Flip</button>
+    </div>
+  </header>
+
+  <div id="app" class="loading">Loading the watched games…</div>
+</div>
+
+<script>
+(function () {
+  const PIECE = { K: "♚", Q: "♛", R: "♜", B: "♝", N: "♞", P: "♟" };
+  const VS = "︎";
+  const VAL = { P: 1, N: 3, B: 3, R: 5, Q: 9, K: 0 };
+  let DATA = null, G = null, ply = 1, flip = false, thinkFirst = false, revealed = true, timer = null, selSq = null;
+
+  const $ = (s, el = document) => el.querySelector(s);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const heat = (b) => (b >= 3 ? "heat2" : b >= 1 ? "heat1" : "heat0");
+  const sgn = (x) => (x > 0 ? "+" + x : String(x));
+  const pct = (p) => (p >= 0.995 ? ">99%" : p < 0.005 ? "<1%" : Math.round(p * 100) + "%");
+  const resultText = (r) => (r === 1 ? "1–0" : r === -1 ? "0–1" : "½–½");
+
+  function moveLabel(t) {                       // the move that reached position t (t half-moves played)
+    const n = Math.ceil(t / 2);
+    return (t % 2 === 1 ? n + ". " : n + "… ") + G.san[t - 1];
+  }
+
+  function parseFen(fen) {                       // -> {square: "wN"}, squares named a1..h8
+    const rows = fen.split(" ")[0].split("/"), out = {};
+    rows.forEach((row, i) => {
+      let f = 0;
+      for (const ch of row) {
+        if (/\d/.test(ch)) { f += +ch; continue; }
+        out["abcdefgh"[f] + (8 - i)] = (ch === ch.toUpperCase() ? "w" : "b") + ch.toUpperCase();
+        f += 1;
+      }
+    });
+    return out;
+  }
+
+  function expected(fr) {                         // the frame's expected outcome for the mover, from its forecast
+    return fr.top.reduce((s, [o, p]) => s + o * p, 0);
+  }
+  function ringClass(fr) {
+    const e = expected(fr);
+    return e <= -0.75 ? "loss" : e >= 0.75 ? "gain" : "stay";
+  }
+
+  function boardHTML(P) {
+    const pos = parseFen(G.fen[ply]);
+    const last = G.uci[ply - 1];
+    const lastSq = last ? [last.slice(0, 2), last.slice(2, 4)] : [];
+    const frames = {};
+    (P ? P.frames : []).forEach((fr) => (frames[fr.sq] = fr));
+    let h = "";
+    for (let i = 0; i < 64; i++) {
+      const r = flip ? Math.floor(i / 8) + 1 : 8 - Math.floor(i / 8);
+      const f = flip ? 7 - (i % 8) : i % 8;
+      const sq = "abcdefgh"[f] + r;
+      const light = (f + r) % 2 === 1;
+      const pc = pos[sq];
+      const fr = frames[sq];
+      let cls = "sq " + (light ? "l" : "d") + (lastSq.includes(sq) ? " last" : "") + (sq === selSq ? " sel" : "");
+      let inner = "";
+      if (fr) inner += `<span class="ring ${ringClass(fr)}"></span>`;
+      if (pc) inner += `<span class="pc ${pc[0]}" aria-hidden="true">${PIECE[pc[1]]}${VS}</span>`;
+      if (fr && revealed && fr.out !== 0) {
+        const c = fr.out < 0 ? "var(--loss)" : "var(--gain)";
+        inner += `<span class="boom" style="background:${c}">${sgn(fr.out)}</span>`;
+      }
+      if ((!flip && r === 1) || (flip && r === 8)) inner += `<span class="coord f">${"abcdefgh"[f]}</span>`;
+      if ((!flip && f === 0) || (flip && f === 7)) inner += `<span class="coord r">${r}</span>`;
+      const label = pc ? `${sq} ${pc[0] === "w" ? "white" : "black"} ${({K:"king",Q:"queen",R:"rook",B:"bishop",N:"knight",P:"pawn"})[pc[1]]}` : sq;
+      h += `<div class="${cls}" data-sq="${sq}" role="gridcell" aria-label="${label}${fr ? ", a frame" : ""}">${inner}</div>`;
+    }
+    return h;
+  }
+
+  function traceSVG() {
+    const W = 460, H = 120, padL = 26, padB = 16, padT = 8;
+    const n = G.plies.length, maxB = 10;
+    const bw = (W - padL - 4) / Math.max(n, 1);
+    const y = (b) => padT + (H - padT - padB) * (1 - Math.min(b, maxB) / maxB);
+    let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Surprise per move, in bits">`;
+    for (const t of [0, 2, 4, 6, 8, 10]) {
+      s += `<line class="grid" x1="${padL}" x2="${W - 2}" y1="${y(t)}" y2="${y(t)}"/><text x="${padL - 4}" y="${y(t) + 3}" text-anchor="end">${t}</text>`;
+    }
+    G.plies.forEach((P, i) => {
+      const b = P.sb, x = padL + i * bw;
+      const col = b >= 3 ? "var(--hot)" : b >= 1 ? "var(--warm)" : "var(--calm)";
+      s += `<rect class="barr" data-t="${P.t}" x="${x + 0.5}" y="${y(b)}" width="${Math.max(bw - 1, 1)}" height="${Math.max(H - padB - y(b), 0.5)}" fill="${col}"><title>${esc(moveLabel(P.t))}: ${b} bits</title></rect>`;
+    });
+    const k = G.plies.findIndex((P) => P.t === ply);
+    if (k >= 0) {
+      const x = padL + k * bw + bw / 2;
+      s += `<line class="now" x1="${x}" x2="${x}" y1="${padT}" y2="${H - padB}"/>`;
+    }
+    s += `<text x="${padL}" y="${H - 3}">move 1</text><text x="${W - 2}" y="${H - 3}" text-anchor="end">move ${Math.ceil(G.san.length / 2)}</text>`;
+    return s + "</svg>";
+  }
+
+  function frameHTML(fr) {
+    const rule = DATA.rules[fr.rule] || { text: fr.rule };
+    const name = ({K:"king",Q:"queen",R:"rook",B:"bishop",N:"knight",P:"pawn"})[fr.occ];
+    const owner = fr.own ? "mover's" : "opponent's";
+    const total = fr.top.reduce((s, [, p]) => s + p, 0) || 1;
+    const bars = fr.top.map(([o, p]) => {
+      const hit = revealed && o === fr.out;
+      return `<span class="bar${hit ? " hit" : ""}"><i style="width:${Math.max(4, Math.round(56 * p / total))}px"></i>${sgn(o)} ${pct(p)}</span>`;
+    }).join("");
+    const mem = [];
+    if (fr.age > 0) mem.push(`<span class="pill">a frame for ${fr.age} ${fr.age === 1 ? "ply" : "plies"}</span>`);
+    if (fr.dec > 0) mem.push(`<span class="pill warn">capture declined ×${fr.dec}</span>`);
+    if (fr.sup && fr.w < 0.99) mem.push(`<span class="pill">young rule: trusted ${Math.round(fr.w * 100)}%, the rest from ${esc(fr.sup)}</span>`);
+    const bits = -Math.log2(Math.max(fr.p, 1e-12));
+    const out = revealed
+      ? `<div class="out">happened <b>${sgn(fr.out)}</b> · probability given ${pct(fr.p)} · <span class="${heat(bits)}">${bits.toFixed(2)} bits</span></div>`
+      : `<div class="hidden-out">outcome hidden: press Next to reveal</div>`;
+    return `<div class="frame${fr.sq === selSq ? " sel" : ""}" data-sq="${fr.sq}">
+      <span class="chip ${ringClass(fr)}" data-sq="${fr.sq}">${fr.sq} ${PIECE[fr.occ]}${VS}</span>
+      <div class="rule"><span class="id">${esc(fr.rule)}</span>${esc(rule.text)} <span class="k">(${owner} ${name})</span></div>
+      <span></span><div class="bars" aria-label="forecast">${bars}</div>
+      ${mem.length ? `<span></span><div class="mem">${mem.join("")}</div>` : ""}
+      <span></span>${out}
+    </div>`;
+  }
+
+  function render() {
+    const P = G.plies.find((p) => p.t === ply);
+    const mover = ply % 2 === 1 ? "White" : "Black";
+    const app = $("#app");
+    const frames = P ? P.frames.map(frameHTML).join("") : "";
+    const cont = P ? G.san.slice(P.t, P.end + 1) : [];
+    let contText = "";
+    if (P) {
+      let n = P.t;
+      contText = cont.map((s, i) => {
+        const h = n + i + 1;
+        return (h % 2 === 1 ? Math.ceil(h / 2) + ". " : i === 0 ? Math.ceil(h / 2) + "… " : "") + s;
+      }).join(" ");
+    }
+    const sb = P ? P.sb : 0;
+    const rd = P && P.rd;
+    const resForMover = P && P.res;
+    const result = rd ? `<div class="result">
+        <div class="label">The game's result for ${mover}, forecast now</div>
+        <div class="rbar" aria-hidden="true"><span class="L" style="width:${rd[0] * 100}%"></span><span class="D" style="width:${rd[1] * 100}%"></span><span class="W" style="width:${rd[2] * 100}%"></span></div>
+        <div class="rlegend"><span>loss <b>${pct(rd[0])}</b></span><span>draw <b>${pct(rd[1])}</b></span><span>win <b>${pct(rd[2])}</b></span>
+          ${revealed ? `<span>it was a <b>${resForMover}</b> · <span class="${heat(P.lb)}">${P.lb} bits</span></span>` : ""}</div>
+        <div class="rule"><span class="id">${esc(P.rr)}</span>${esc((DATA.rules[P.rr] || {}).text || "")}</div>
+      </div>`
+      : `<div class="note">${G.term === "Time forfeit" ? "This game was lost on time, so the watcher does not score its result." : ""}</div>`;
+    app.className = "main";
+    app.innerHTML = `
+      <div class="left">
+        <div class="gameline">White <b>${G.we}</b> · Black <b>${G.be}</b> · ${resultText(G.result)} · ${esc(G.term)} · ${G.san.length} plies</div>
+        <div class="boardbox"><div class="board" role="grid" aria-label="Board">${boardHTML(P)}</div></div>
+        <div class="controls">
+          <button type="button" id="first" aria-label="First move">⏮</button>
+          <button type="button" id="prev" aria-label="Previous move">◀</button>
+          <button type="button" id="next" aria-label="Next">▶</button>
+          <button type="button" id="last" aria-label="Last move">⏭</button>
+          <button type="button" id="play" aria-pressed="${timer ? "true" : "false"}">${timer ? "Pause" : "Play"}</button>
+          <span class="grow"></span>
+          <span class="plyinfo">${esc(moveLabel(ply))}</span>
+        </div>
+        <label class="mode"><input type="checkbox" id="think" ${thinkFirst ? "checked" : ""}> Think, then reveal (Next shows the forecast first)</label>
+        <div class="card trace">
+          <div class="label">Surprise per move, in bits (click a bar to jump)</div>
+          ${traceSVG()}
+        </div>
+        <div class="legend">
+          <span><span class="sw loss"></span>frame forecast: the mover loses here</span>
+          <span><span class="sw gain"></span>the mover wins here</span>
+          <span><span class="sw stay"></span>nothing changes</span>
+        </div>
+      </div>
+      <div class="right">
+        <div class="card">
+          <div class="label">${mover} just played</div>
+          <h2>${esc(moveLabel(ply))}</h2>
+          ${P ? `<div class="big">
+              <div><div class="n ${revealed ? heat(sb) : "heat0"}">${revealed ? sb.toFixed(2) : "?"}</div><div class="k">bits of surprise (material)</div></div>
+              <div><div class="n">${revealed ? sgn(P.delta) : "?"}</div><div class="k">${mover}'s material once it settled</div></div>
+              <div><div class="n">${revealed ? pct(P.pd) : "?"}</div><div class="k">probability the watcher gave that</div></div>
+            </div>
+            ${revealed ? `<div><div class="label">What the game did next</div><div class="then">${esc(contText) || "two quiet moves: nothing happened"}</div></div>` : ""}`
+            : `<div class="note">No forecast is made before the first move.</div>`}
+        </div>
+        <div class="card">
+          <h2>Frames: the contested squares, and what each rule expects</h2>
+          ${frames || `<div class="note">No piece is attacked: there are no frames to forecast.</div>`}
+          ${P ? `<div class="frame" style="border-top:1px solid var(--line);padding-top:9px">
+              <span class="chip">off</span>
+              <div class="rule"><span class="id">${esc(P.el.rule)}</span>${esc((DATA.rules[P.el.rule] || {}).text || "")}: captures on squares that are not frames</div>
+              <span></span>${revealed ? `<div class="out">happened <b>${sgn(P.el.out)}</b> · probability given ${pct(P.el.p)}</div>` : `<div class="hidden-out">outcome hidden</div>`}
+            </div>` : ""}
+        </div>
+        <div class="card">${result}</div>
+        <div class="note">Each forecast was made as the game was watched, before the watcher saw what followed (Lichess, January 2019; batches ${[...new Set(DATA.games.map((g) => g.batch))].join(" and ")} of the watcher, ${DATA.games.length} games; exported ${esc(DATA.made)}). A frame is a square holding a piece the other side attacks. Its forecast is the mover's material change on that square once the exchanges settle.</div>
+      </div>`;
+    wire();
+  }
+
+  function wire() {
+    $("#first").onclick = () => go(G.plies[0].t, true);
+    $("#prev").onclick = () => go(ply - 1, true);
+    $("#next").onclick = step;
+    $("#last").onclick = () => go(G.plies[G.plies.length - 1].t, true);
+    $("#play").onclick = togglePlay;
+    $("#think").onchange = (e) => { thinkFirst = e.target.checked; revealed = true; save(); render(); };
+    document.querySelectorAll(".trace .barr").forEach((r) => (r.onclick = () => go(+r.dataset.t, true)));
+    document.querySelectorAll("[data-sq]").forEach((el) => {
+      if (el.classList.contains("sq") && !el.querySelector(".ring")) return;
+      el.onclick = () => { selSq = selSq === el.dataset.sq ? null : el.dataset.sq; render(); };
+    });
+  }
+
+  function go(t, reveal) {
+    const lo = G.plies[0].t, hi = G.plies[G.plies.length - 1].t;
+    ply = Math.max(lo, Math.min(hi, t));
+    revealed = reveal || !thinkFirst;
+    selSq = null;
+    save();
+    render();
+  }
+  function step() {
+    if (thinkFirst && !revealed) { revealed = true; save(); render(); return; }
+    const hi = G.plies[G.plies.length - 1].t;
+    if (ply >= hi) { stop(); return; }
+    go(ply + 1, !thinkFirst);
+  }
+  function togglePlay() { timer ? stop() : (timer = setInterval(step, 1100), render()); }
+  function stop() { if (timer) clearInterval(timer); timer = null; render(); }
+
+  function pickGame(id, t) {
+    G = DATA.games.find((g) => g.id === id) || DATA.games[0];
+    ply = t && G.plies.some((p) => p.t === t) ? t : G.plies[0].t;
+    revealed = true;
+    selSq = null;
+    $("#game").value = String(G.id);
+    save();
+    render();
+  }
+
+  function save() {
+    try { localStorage.setItem("watcher-view", JSON.stringify({ id: G && G.id, ply, flip, thinkFirst })); } catch (e) {}
+    if (window.claude?.hot?.snapshot) window.claude.hot.snapshot(() => ({ id: G && G.id, ply, flip, thinkFirst }));
+  }
+
+  function start(prev) {
+    fetch("games.json").then((r) => r.json()).then((d) => {
+      DATA = d;
+      const sel = $("#game");
+      sel.innerHTML = DATA.games.map((g) => {
+        const peak = Math.max(...g.plies.map((p) => p.sb));
+        return `<option value="${g.id}">Game ${g.id} · ${g.we}–${g.be} · ${resultText(g.result)} · ${g.san.length} plies · peak ${peak.toFixed(1)} bits</option>`;
+      }).join("");
+      sel.onchange = () => pickGame(+sel.value);
+      $("#flip").onclick = () => { flip = !flip; save(); render(); };
+      let st = prev && prev.id ? prev : null;
+      if (!st) { try { st = JSON.parse(localStorage.getItem("watcher-view") || "null"); } catch (e) { st = null; } }
+      if (st) { flip = !!st.flip; thinkFirst = !!st.thinkFirst; }
+      const startId = st && DATA.games.some((g) => g.id === st.id) ? st.id : (DATA.games.some((g) => g.id === 11453) ? 11453 : DATA.games[0].id);
+      pickGame(startId, st && st.id === startId ? st.ply : (startId === 11453 ? 87 : null));
+    }).catch(() => { $("#app").textContent = "The watched games did not load. Reload the page to try again."; });
+    document.addEventListener("keydown", (e) => {
+      if (!G || e.target.tagName === "SELECT" || e.target.tagName === "INPUT") return;
+      if (e.key === "ArrowRight") { e.preventDefault(); step(); }
+      if (e.key === "ArrowLeft") { e.preventDefault(); go(ply - 1, true); }
+    });
+  }
+  window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+})();
+</script>

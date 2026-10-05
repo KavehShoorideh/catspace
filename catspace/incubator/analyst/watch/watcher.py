@@ -409,6 +409,48 @@ def explain(case_id: str, batch: int | None = None) -> None:
     print(f"no case {case_id}")
 
 
+def export(batches: list[int], out: str) -> dict:
+    """The viewer's data (watch/viewer.html): for every game of the given batches, its header and moves, and for every
+    position what the watcher saw, forecast and was surprised by -- read from the batch records, as they were made."""
+    rb = RuleBase.load()
+    games_out = []
+    for k in batches:
+        d = json.loads((data_root() / f"batch_{k:03d}.json").read_text())
+        by_game: dict = {}
+        for c in d["cases"]:
+            by_game.setdefault(c["game"], []).append(c)
+        for gid, cs in by_game.items():
+            g = games_by_id(gid)
+            ucis = g["moves"].split()
+            b = chess.Board()
+            sans, fens = [], [b.fen()]
+            for u in ucis:
+                m = chess.Move.from_uci(u)
+                sans.append(b.san(m))
+                b.push(m)
+                fens.append(b.fen())
+            plies = []
+            for c in sorted(cs, key=lambda c: c["ply"]):
+                t0 = c["ply"]
+                fr = [dict(sq=f["sq"], occ=f["attrs"]["occ"], own=f["attrs"]["occ_mover"], rule=f["rule"],
+                           top=[[o, round(p, 3)] for o, p in f.get("top", [])], out=f["outcome"], p=round(f["p"], 3),
+                           age=f["attrs"].get("age", 0), dec=f["attrs"].get("declined", 0),
+                           w=round(f.get("blend", {}).get("weight", 1.0), 2), sup=f.get("blend", {}).get("superseded"))
+                      for f in c["frames"]]
+                e = c["elsewhere"]
+                plies.append(dict(t=t0, mover=c["mover"][0], frames=fr, el=dict(rule=e["rule"], out=e["outcome"], p=round(e["p"], 3)),
+                                  delta=c["delta"], pd=round(c["p_delta"], 3), sb=round(c["short_bits"], 2), end=c["end"],
+                                  res=c.get("result"), rr=c.get("result_rule"), lb=round(c["long_bits"], 2) if "long_bits" in c else None,
+                                  rd=[round(c["result_dist"][x], 3) for x in ("loss", "draw", "win")] if "result_dist" in c else None))
+            games_out.append(dict(id=gid, batch=k, we=g["white_elo"], be=g["black_elo"], result=g["result"], term=g["termination"],
+                                  san=sans, uci=ucis, fen=fens, plies=plies))
+    rules = {rid: dict(kind=r.kind, parent=r.parent, text=r.text) for rid, r in rb.rules.items()}
+    data = dict(made=time.strftime("%Y-%m-%d %H:%M %Z"), games=games_out, rules=rules)
+    Path(out).write_text(json.dumps(data, separators=(",", ":")))
+    print(f"OBS export: {len(games_out)} games, {sum(len(g['plies']) for g in games_out)} positions, {Path(out).stat().st_size // 1024} KB -> {out}")
+    return data
+
+
 def show(batch: int | None = None, top: int = 20) -> None:
     """The batch's largest surprises, with what Claude needs to backtrack: the position, the move, every frame's
     forecast and outcome, and the game's continuation until the window closed."""
@@ -448,7 +490,9 @@ def games_by_id(gid: int) -> dict:
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["batch", "show", "add", "replay", "credit", "health", "explain"])
+    ap.add_argument("cmd", choices=["batch", "show", "add", "replay", "credit", "health", "explain", "export"])
+    ap.add_argument("--batches", type=int, nargs="*", default=None, help="export: the batches to include (default: the last two)")
+    ap.add_argument("--out", default=None, help="export: the JSON file to write")
     ap.add_argument("--case", default=None, help="explain: game:ply")
     ap.add_argument("--games", type=int, default=20)
     ap.add_argument("--batch", type=int, default=None)
@@ -472,6 +516,9 @@ def main(argv=None):
         health()
     elif a.cmd == "explain":
         explain(a.case, a.batch)
+    elif a.cmd == "export":
+        n = len(load_state()["batches"])
+        export(a.batches if a.batches else list(range(max(0, n - 2), n)), a.out or str(data_root() / "viewer_games.json"))
     else:
         r = add_rule(a.kind, a.parent, json.loads(a.cond), a.text, a.cornerstone, ref=json.loads(a.ref) if a.ref else None)
         print(f"added {r.id} ({r.kind}, parent {r.parent}): {r.text}")

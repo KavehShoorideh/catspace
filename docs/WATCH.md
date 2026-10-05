@@ -61,7 +61,15 @@ python -m catspace.incubator.analyst.watch.watcher add --kind frame --parent F0 
 python -m catspace.incubator.analyst.watch.watcher replay                 # rebuild the state with today's code
 python -m catspace.incubator.analyst.watch.watcher credit [--batch N]      # each rule's bits saved, vs the root and its parent
 python -m catspace.incubator.analyst.watch.watcher health                  # per batch: bits saved per position vs the base rates
+python -m catspace.incubator.analyst.watch.watcher export --batches 4 5    # the viewer's data (data/derived/watch/viewer_games.json)
 ```
+
+THE VIEWER (`catspace/incubator/analyst/watch/viewer.html`, published as a private artifact with the exported games
+beside it as games.json): pick a watched game and step through it; at every position the board shows the frames
+(ringed by what their rule forecasts for the mover), each frame's rule, its forecast, its memory (age, captures
+declined, a young rule's blend) and, once revealed, what happened and the surprise in bits; a surprise trace under
+the board jumps to any move; "Think, then reveal" makes Next show the forecast before the outcome. It replays the
+records the watcher wrote while watching (prequential); watching a new game live would need the local server.
 
 Vocabulary today. Frame attributes (frames.attributes): `occ`, `occ_value`, `occ_mover` (the occupant is the
 mover's), `attacker_to_move`, `n_att`, `n_def`, `min_att`, `min_def`, `att_lower`, `hanging`, `outnumbered`,
