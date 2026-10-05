@@ -51,12 +51,32 @@ def games(start: int, n: int) -> list[dict]:
     return out
 
 
+def mate_in_one(b: chess.Board) -> bool:
+    """The side to move has a mating move."""
+    for m in b.legal_moves:
+        b.push(m)
+        mate = b.is_checkmate()
+        b.pop()
+        if mate:
+            return True
+    return False
+
+
+def promotes_next(b: chess.Board, side: bool) -> bool:
+    """`side` has a pawn one step from promotion with the square in front of it empty (a capture-promotion aside)."""
+    rank, step = (6, 8) if side == chess.WHITE else (1, -8)
+    return any(b.piece_at(sq + step) is None for sq in b.pieces(chess.PAWN, side) if chess.square_rank(sq) == rank)
+
+
 def position_attrs(b: chess.Board, mover: bool, frames: list[int], elo: tuple[int, int]) -> dict:
     """Position attributes for 'elsewhere' and 'result' rules."""
     nonpawn = sum(v for p, v in ((p, {1: 0, 2: 3, 3: 3, 4: 5, 5: 9, 6: 0}[p.piece_type]) for p in b.piece_map().values()))
     me, them = (elo[0], elo[1]) if mover == chess.WHITE else (elo[1], elo[0])
     return dict(material=material(b, mover), n_frames=len(frames), in_check=b.is_check(), phase=nonpawn,
-                elo_diff=(me or 0) - (them or 0), mover_elo=me or 0, ply=len(b.move_stack))
+                elo_diff=(me or 0) - (them or 0), mover_elo=me or 0, ply=len(b.move_stack),
+                mate1_tomove=mate_in_one(b),                                     # the side to move mates now
+                promo_tomove=any(m.promotion for m in b.legal_moves),           # the side to move can promote now
+                promo_mover=promotes_next(b, mover))                             # the mover can promote next move
 
 
 def mover_result(result: int, mover: bool) -> str:
@@ -198,6 +218,26 @@ def replay() -> list[dict]:
     return out
 
 
+def health() -> list[dict]:
+    """The loop's health line: per batch, the bits per position the rule base saved against the base rates (the roots)
+    on the SAME positions, by horizon -- unlike the raw averages, which move with the games a batch happens to hold."""
+    import math
+    L = lambda p: -math.log2(max(p, 1e-12))
+    out = []
+    for k in range(len(load_state()["batches"])):
+        d = json.loads((data_root() / f"batch_{k:03d}.json").read_text())
+        cs = d["cases"]
+        fr = sum(L(f["p_all"]["F0"]) - L(f["p"]) for c in cs for f in c["frames"])
+        el = sum(L(c["elsewhere"]["p_all"]["E0"]) - L(c["elsewhere"]["p"]) for c in cs if "p_all" in c["elsewhere"])
+        lg = [L(c["p_result_all"]["R0"]) - L(c["p_result"]) for c in cs if "p_result_all" in c]
+        h = dict(batch=k, positions=len(cs), rules=d["summary"]["rules"], frames_saved=fr / len(cs), elsewhere_saved=el / len(cs),
+                 long_saved=(sum(lg) / len(lg)) if lg else 0.0)
+        out.append(h)
+        print(f"OBS health batch {k}: {h['rules']} rules; bits saved per position against the base rates: frames {h['frames_saved']:+.3f}, "
+              f"elsewhere {h['elsewhere_saved']:+.3f}, result {h['long_saved']:+.3f} ({len(lg)} uncensored)")
+    return out
+
+
 def credit(batch: int | None = None) -> dict:
     """Each rule's credit on a batch: on the cases it decided, the bits it saved against its kind's root and against
     its parent (every applicable rule's probability of what happened is in the batch file)."""
@@ -270,7 +310,7 @@ def games_by_id(gid: int) -> dict:
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["batch", "show", "add", "replay", "credit"])
+    ap.add_argument("cmd", choices=["batch", "show", "add", "replay", "credit", "health"])
     ap.add_argument("--games", type=int, default=20)
     ap.add_argument("--batch", type=int, default=None)
     ap.add_argument("--top", type=int, default=20)
@@ -289,6 +329,8 @@ def main(argv=None):
         replay()
     elif a.cmd == "credit":
         credit(a.batch)
+    elif a.cmd == "health":
+        health()
     else:
         r = add_rule(a.kind, a.parent, json.loads(a.cond), a.text, a.cornerstone, ref=json.loads(a.ref) if a.ref else None)
         print(f"added {r.id} ({r.kind}, parent {r.parent}): {r.text}")

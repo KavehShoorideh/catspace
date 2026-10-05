@@ -44,7 +44,16 @@ python -m catspace.incubator.analyst.watch.watcher batch [--games 20]     # the 
 python -m catspace.incubator.analyst.watch.watcher show [--batch N] [--top 20]
 python -m catspace.incubator.analyst.watch.watcher add --kind frame --parent F0 --cond '{...}' --text "..." --cornerstone G:P:SQ [--ref '{"attr": "see_mover"}']
 python -m catspace.incubator.analyst.watch.watcher replay                 # rebuild the state with today's code
+python -m catspace.incubator.analyst.watch.watcher credit [--batch N]      # each rule's bits saved, vs the root and its parent
+python -m catspace.incubator.analyst.watch.watcher health                  # per batch: bits saved per position vs the base rates
 ```
+
+Vocabulary today. Frame attributes (frames.attributes): `occ`, `occ_value`, `occ_mover` (the occupant is the
+mover's), `attacker_to_move`, `n_att`, `n_def`, `min_att`, `min_def`, `att_lower`, `hanging`, `outnumbered`,
+`see_att` (what the attackers win by exchange, each side free to stop), `see_mover` (that, in the mover's material),
+`just_moved`, `recapture`, `pinned`, `in_check`. Position attributes (watcher.position_attrs): `material`, `n_frames`,
+`in_check`, `phase`, `elo_diff`, `mover_elo`, `ply`, `mate1_tomove`, `promo_tomove`, `promo_mover`. A new word is a
+plain function of the board with a test.
 
 - `catspace/incubator/analyst/watch/` -- frames.py (frames, attributes, the observation), rules.py (the language, the
   tree, counts, selection), watcher.py (the loop).
@@ -54,7 +63,11 @@ python -m catspace.incubator.analyst.watch.watcher replay                 # rebu
   rebuilds them).
 - `tests/test_analyst_watch.py`.
 
-## Judging
+## Judging (and Kaveh's decisions)
+
+Asked and answered on 2026-10-05: forecasts are material balance (short) and result (long); the observation is the
+watched game itself; rules attach to frames; more specific then newer supersedes; the rule base starts empty; reviews
+every 20 games; a frame is counted at every ply it is seen (each ply is a new chance); a game's result counts once.
 
 The health metric is the moving average of surprise per position, by horizon, over the batches. A rule's credit is the
 bits it saved against the root and against its parent on the cases it decided (both probabilities are logged), not

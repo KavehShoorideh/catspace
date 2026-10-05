@@ -22874,6 +22874,35 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-05 13:34 PDT — the surprise watcher, batch 2 and the health line (OBS)
+
+Second review (Claude, from batches 0 and 1): the off-frame surprises -- captures on squares that were not frames --
+began with a quiet move 16 times in the 40 largest, a capture 11, a check 4; 5 ended in mate and 4 in a promotion.
+New position words, each a plain function with a test: the side to move has MATE IN ONE (15 such positions in
+batches 0-1: the mover lost all 15), the side to move can PROMOTE now (6: three promotions followed), the mover can
+promote next move (15: mostly nothing). A one-move what-if (the player's frames read for every legal move) was left
+out: 182 ms a position, and in 400 positions its "wins 3 or more" (33) was followed by nothing off the frames 27 times.
+Under F2 (their piece we could win, they move first), we won it in 17% of free cases, 37% when PINNED (27) and 35%
+when they were IN CHECK (109). Five rules: F9 pinned and F10 in check (under F2), R11 mate in one, E12 promotes now,
+E13 no check and little contact.
+
+  batch   rules   short bits/position   bits/frame   long bits/position
+  2       16      1.532                 0.449        1.536 (1,025 uncensored)
+HEALTH (`watcher health`): bits saved per position against the base rates on the same positions --
+  batch 0: frames +0.000, elsewhere +0.000, result +0.000 (roots only)
+  batch 1: frames +0.948, elsewhere +0.000, result -0.014
+  batch 2: frames +1.005, elsewhere -0.013, result +0.024
+Credit on batch 2 (`watcher credit --batch 2`): F5 +603.9 (+60.6 over F1), F1 +283.3, F4 +168.2, F3 +156.7, F2
++140.7; young ones: F10 +58.1 vs the root, -2.6 vs its parent (70 cases); F9 -13.4 (21); R11 +2.3 (10; it learns one
+game at a time); E12 +5.1 (3); E13 -22.7 (393); R6 +18.7, R7 +27.4, R8 -24.2.
+
+READING (three batches, directional): the rule base saves about a bit per position on the frames, steady on new
+games; the off-frame and result rules are young and about even. The raw averages move with the games a batch holds
+(one drawn game shifts the long average), so the health line, not the averages, is the loop's measure.
+Kaveh, on rules (13:2x): "there's a saying in chess classes: to take is a mistake, which helps young players play
+better and maintain tension ... not saying it should" -- the kind of generic, often-wrong teaching a rule tree holds
+and refines with exceptions.
+
 ## 2026-10-05 13:21 PDT — the surprise watcher: built, two batches, the first rules (OBS)
 
 Kaveh's design (asked and answered in session today): the tactical layer WATCHES games -- Lichess records on disk,

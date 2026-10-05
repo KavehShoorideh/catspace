@@ -104,3 +104,14 @@ def test_a_reference_shifts_the_forecast(roots):
     assert sum(d) == pytest.approx(1.0) and max(range(21), key=lambda i: d[i]) - 10 == -5
     with pytest.raises(R.LanguageError):
         R.add_rule("frame", "F0", {"flag": "hanging"}, "bad", ["c"], ref={"attr": "x", "scale": 2})
+
+
+def test_position_words():
+    from catspace.incubator.analyst.watch.watcher import mate_in_one, position_attrs, promotes_next
+    b = chess.Board("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1")
+    assert mate_in_one(b)                                                    # Ra8#
+    assert not mate_in_one(chess.Board("6k1/5pp1/7p/8/8/8/8/R5K1 w - - 0 1"))   # luft on h7
+    p = chess.Board("8/4P3/8/8/8/8/k7/6K1 b - - 0 1")                         # Black to move; White's e7 pawn will promote
+    assert promotes_next(p, chess.WHITE) and not promotes_next(p, chess.BLACK)
+    a = position_attrs(chess.Board("8/4P3/8/8/8/8/k7/6K1 w - - 0 1"), chess.BLACK, [], (1500, 1500))
+    assert a["promo_tomove"] and not a["mate1_tomove"]
