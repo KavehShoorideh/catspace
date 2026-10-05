@@ -91,6 +91,8 @@ def _parse_passer(line: str) -> PasserInstance:
     i = 3
     if status == "PROVED":
         plies = int(tok[3].split("=")[1]); i = 4
+        if tok[4].startswith("form="):
+            i = 5
     elif status == "ONEAWAY":
         failing = tok[3]; i = 4
     else:
@@ -141,6 +143,13 @@ class LeanIdeas:
     def passer(self, board: chess.Board) -> list["PasserInstance"]:
         """Every pawn of the side to move, with the unstoppable-passer hypotheses (those evaluated)."""
         (line,) = self._ask("passer " + encode(board), until_end=False)
+        if line.startswith("error"):
+            raise ValueError(f"{line}: {board.fen()}")
+        return [_parse_passer(x) for x in line.split(" | ") if x]
+
+    def passer2(self, board: chess.Board) -> list["PasserInstance"]:
+        """The second form (enemy king and pawns): every pawn of the side to move with its hypotheses."""
+        (line,) = self._ask("passer2 " + encode(board), until_end=False)
         if line.startswith("error"):
             raise ValueError(f"{line}: {board.fen()}")
         return [_parse_passer(x) for x in line.split(" | ") if x]

@@ -201,6 +201,19 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   the 0.07 s runtime was the only sign. Fixed: `${=flags}`. Rule: every grep over a run's output also matches
   `error|usage|Traceback`.
 
+### 2026-10-05 (the passer lemma, second form)
+- **An unsound over-approximation in the prototype** (class 6, a claim not tested against the right adversary): the
+  Python kingRoom skipped every forbidden square when demanding room for the enemy king, including squares holding our
+  capturable pieces -- the king may take the piece and stand there. 816 exhaustive race-search checks had not hit a
+  case. Found by the Lean proof (the invariant could not be stated). Fix: skip only squares next to our king or within
+  one of the promotion square. Rule: an over-approximation is sound only if the excluded cases are IMPOSSIBLE, not
+  merely unlikely; the proof is the test.
+- **A hypothesis missing for illegal-but-representable records** (class 6): a pawn on its own back rank gains the
+  double step after one push, so the distance bound could drop by two; the record allows it. Fix: a hypothesis.
+- **An axiom through the kernel** (class 7-like): chess-lean's `allSquares_nodup` is `native_decide`; using it put
+  `native_decide.ax` into our theorem's axioms. `#print axioms` after every theorem; reprove with `decide`.
+- **Docstring before `set_option`** (three times tonight): a `/-- -/` must precede a declaration; use `--`.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).

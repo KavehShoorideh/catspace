@@ -61,7 +61,7 @@ def passer_v2(b: chess.Board, sq: int) -> dict:
     their_fwd = -fwd
     their_start = 6 if them == chess.BLACK else 1
     their_promo = 0 if them == chess.BLACK else 7
-    bad = set(path) | {sq} | {chess.square(x, their_promo) for x in range(8)}
+    bad = set(path) | {chess.square(x, their_promo) for x in range(8)}        # our pawn's own square: we push first
     if ok is not None:                                 # squares from which their pawn gives check
         for df in (-1, 1):
             cf, cr = chess.square_file(ok) + df, chess.square_rank(ok) - their_fwd
@@ -71,12 +71,10 @@ def passer_v2(b: chess.Board, sq: int) -> dict:
     def pawn_dist(e: int, t: int) -> float:
         ef, er = chess.square_file(e), chess.square_rank(e)
         tf, tr = chess.square_file(t), chess.square_rank(t)
-        ahead = (tr - er) * their_fwd                    # how many ranks t is ahead of the pawn
-        if ahead <= 0:
+        ahead = (tr - er) * their_fwd                    # how many ranks t is ahead of the pawn (0: its own rank)
+        if ahead < 0 or abs(tf - ef) > ahead:
             return float("inf")
-        if abs(tf - ef) > ahead:
-            return float("inf")
-        return max(abs(tf - ef), ahead - (1 if er == their_start else 0))
+        return max(abs(tf - ef), ahead - (1 if er == their_start else 0))   # 0 on its own square (the Lean pdist)
 
     h["pawnsFar"] = all(pawn_dist(e, t) > n - 1 for e in chess.SquareSet(b.pawns & b.occupied_co[them]) for t in bad)
     # king room: our attacks with the passer's whole future attack set, every square the enemy king can reach
@@ -94,10 +92,14 @@ def passer_v2(b: chess.Board, sq: int) -> dict:
     for t in path:
         forbidden |= chess.BB_SQUARES[t]
     n_their = len(chess.SquareSet(b.pawns & b.occupied_co[them]))
+    # the squares the enemy king can never stand on: next to our king, within one of the promotion square (the
+    # Lean `neverKingB`; skipping every forbidden square, as the first prototype did, was unsound for squares
+    # holding our capturable pieces, 2026-10-05)
+    promo_sq = chess.square(f, promo_rank)
     room = True
-    if ek is not None:
+    if ek is not None and ok is not None:
         for x in range(64):
-            if kdist(x, ek) <= n - 1 and not (chess.BB_SQUARES[x] & forbidden):
+            if kdist(x, ek) <= n - 1 and not (chess.BB_KING_ATTACKS[ok] & chess.BB_SQUARES[x]) and kdist(x, promo_sq) > 1:
                 free = sum(1 for d in chess.SquareSet(chess.BB_KING_ATTACKS[x]) if not (chess.BB_SQUARES[d] & forbidden))
                 if free <= n_their:
                     room = False
@@ -118,10 +120,17 @@ def passer_gate(b: chess.Board) -> bool:
         and not ((b.rooks | b.bishops | b.queens | b.knights) & b.occupied_co[not us])
 
 
+USE_LEAN = True         # the Lean detector (the proved definitions); False: this Python prototype of them
+
+
 def proved_passers(b: chess.Board) -> list[tuple[int, int]]:
-    """Our pawns whose promotion the second form proves: [(square, plies)]."""
+    """Our pawns whose promotion the second form proves: [(square, plies)]. By the Lean detector (`passer2`,
+    theorem unstoppablePasser2_sound) unless USE_LEAN is off."""
     if not passer_gate(b):
         return []
+    if USE_LEAN:
+        from .lean_ideas import detector
+        return [(i.square, i.plies) for i in detector().passer2(b) if i.status == "PROVED"]
     out = []
     for sq in chess.SquareSet(b.pawns & b.occupied_co[b.turn]):
         h = passer_v2(b, sq)

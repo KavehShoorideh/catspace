@@ -18,22 +18,29 @@ import chess
 from .lean_ideas import LeanIdeas, encode
 
 
-def random_pawn_ending(rng: random.Random, our_pieces: int = 0) -> chess.Board | None:
-    """Our king, one to three pawns (one of them the candidate), optional knights, vs a bare king; white to move."""
+def random_pawn_ending(rng: random.Random, our_pieces: int = 0, their_pawns: int = 0) -> chess.Board | None:
+    """Our king, one to three pawns (one of them the candidate), optional knights, vs a king with `their_pawns`
+    pawns at most; white to move."""
     b = chess.Board(None)
-    squares = rng.sample(range(64), 3 + rng.randint(0, 2) + our_pieces)
+    nt = rng.randint(0, their_pawns)
+    squares = rng.sample(range(64), 3 + rng.randint(0, 2) + our_pieces + nt)
     k, ek, *rest = squares
     if chess.square_distance(k, ek) <= 1:
         return None
     b.set_piece_at(k, chess.Piece(chess.KING, chess.WHITE))
     b.set_piece_at(ek, chess.Piece(chess.KING, chess.BLACK))
-    kinds = [chess.PAWN] * (len(rest) - our_pieces) + [chess.KNIGHT] * our_pieces
-    for sq, kind in zip(rest, kinds):
+    ours = rest[:len(rest) - nt]
+    kinds = [chess.PAWN] * (len(ours) - our_pieces) + [chess.KNIGHT] * our_pieces
+    for sq, kind in zip(ours, kinds):
         if kind == chess.PAWN and chess.square_rank(sq) in (0, 7):
             return None
         b.set_piece_at(sq, chess.Piece(kind, chess.WHITE))
+    for sq in rest[len(ours):]:
+        if chess.square_rank(sq) in (0, 7):
+            return None
+        b.set_piece_at(sq, chess.Piece(chess.PAWN, chess.BLACK))
     b.turn = chess.WHITE
-    if not b.is_valid() or b.is_check():
+    if not b.is_valid() or b.is_check() or b.attackers_mask(chess.WHITE, ek):
         return None
     return b
 
@@ -95,6 +102,8 @@ def main(argv=None):
     ap.add_argument("--n", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--knights", type=int, default=0, help="our knights (allowed by the lemma: no sliders)")
+    ap.add_argument("--form", type=int, default=1, choices=[1, 2], help="1: bare enemy king; 2: enemy king and pawns")
+    ap.add_argument("--their-pawns", type=int, default=0, help="form 2: up to this many enemy pawns")
     a = ap.parse_args(argv)
     rng = random.Random(a.seed)
     t0 = time.perf_counter()
@@ -103,11 +112,11 @@ def main(argv=None):
     examples = []
     with LeanIdeas() as li:
         while positions < a.n:
-            b = random_pawn_ending(rng, a.knights)
+            b = random_pawn_ending(rng, a.knights, a.their_pawns if a.form == 2 else 0)
             if b is None:
                 continue
             positions += 1
-            (line,) = li._ask("passer " + encode(b), until_end=False)
+            (line,) = li._ask(("passer2 " if a.form == 2 else "passer ") + encode(b), until_end=False)
             if line.startswith("error"):
                 raise RuntimeError(line)
             for sq, status, plies, cand in parse(line):
@@ -126,7 +135,8 @@ def main(argv=None):
                         examples.append((b.fen(), cand))
                 if len(examples) < 2 and ok and plies >= 5 and len([e for e in examples if e[1] == "ok"]) < 2:
                     examples.append((b.fen(), "ok"))
-    print(f"OBS passer bridge: {positions} random pawn endings (seed {a.seed}, knights {a.knights}), "
+    print(f"OBS passer bridge (form {a.form}): {positions} random pawn endings (seed {a.seed}, knights {a.knights}, "
+          f"their pawns <= {a.their_pawns}), "
           f"PROVED claims {proved} (by plies: {dict(sorted(plies_hist.items()))}), confirmed by exhaustive race search "
           f"{confirmed}/{proved}, WRONG {wrong}; one-away instances {oneaway}; {time.perf_counter() - t0:.0f}s")
     for fen, what in examples:

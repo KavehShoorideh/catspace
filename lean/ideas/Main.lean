@@ -135,6 +135,26 @@ def reportPasser (p : Position) (ps : PasserParams) : String :=
   let hs := " ".intercalate (vals.map fun (n, b) => s!"{n}={if b then 1 else 0}")
   s!"cand {sqName ps.sq} {status} targets={tg} {hs}"
 
+/-- Both forms are theorems, so a pawn is PROVED when either form's hypotheses all hold (the second form's
+room count over-approximates the passer's future attacks and loses some positions the first form keeps).
+Reported: the second form's hypotheses; `form=1` marks a proof by the first form. -/
+def reportPasser2 (p : Position) (ps : PasserParams) : String :=
+  let vals := unstoppablePasser2.evalUntil p ps
+  let failing := (vals.filter (fun x => !x.2)).map (·.1)
+  let n := Passer.pushes p.turn ps.sq
+  let byFirst := failing ≠ [] && unstoppablePasser.holds p ps
+  let status :=
+    if byFirst then s!"PROVED plies={2 * n - 1} form=1"
+    else match failing with
+    | [] => s!"PROVED plies={2 * n - 1}"
+    | [h] => s!"ONEAWAY {h}"
+    | fs => s!"FAIL {fs.length}"
+  let tg := match failing with
+    | [h] => if byFirst then "" else ",".intercalate ((Passer2.targets p ps h).map sqName)
+    | _ => ""
+  let hs := " ".intercalate (vals.map fun (n, b) => s!"{n}={if b then 1 else 0}")
+  s!"cand {sqName ps.sq} {status} targets={tg} {hs}"
+
 def handle (line : String) : List String :=
   match (line.trimAscii.toString.splitOn " ").filter (· ≠ "") with
   | ["ping"] => ["pong"]
@@ -153,6 +173,10 @@ def handle (line : String) : List String :=
   | "passer" :: rest =>                              -- one line: candidates separated by " | "
       match readBitboards rest with
       | some p => [" | ".intercalate ((passerCandidates p).map (reportPasser p))]
+      | none => ["error bad bitboards"]
+  | "passer2" :: rest =>
+      match readBitboards rest with
+      | some p => [" | ".intercalate ((passerCandidates p).map (reportPasser2 p))]
       | none => ["error bad bitboards"]
   | "passerfen" :: rest =>
       match readPosition (" ".intercalate rest) with

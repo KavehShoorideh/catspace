@@ -22874,6 +22874,39 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-05 01:29 PDT — the passer's second form PROVED: enemy king and pawns; the player on the Lean detector (OBS)
+
+The second form of 01:00 is now a theorem (`Ideas/Passer2.lean`, about 1,300 lines; `unstoppablePasser2_sound`
+rests on propext, Classical.choice and Quot.sound only -- one extra axiom crept in through chess-lean's
+`allSquares_nodup`, proved there by `native_decide`, and was removed by proving it with the kernel's `decide`). The
+proof is the first form's induction with three new pieces: (1) a pawn-distance bound -- an enemy pawn's lower bound of
+moves to a square, max(file distance, rank distance less one if it may double-step) -- that one legal pawn move lowers
+by at most one (`pdist_step`), so "more than r - 1 moves from every bad square" survives the enemy's move with r - 1
+replaced by r - 2; (2) the pigeonhole for self-stalemate: the forbidden set F (our pieces, our attacks with the
+passer's whole future attack set, the path) is fixed at the start and every later position's pieces and attacks stay
+inside it, so a king square with more F-free neighbours than the enemy has pawns always has an empty, unattacked one
+(`Finset.exists_mem_notMem_of_card_lt_card`); the pawn count is invariant under a pawn move (`filter_length_swap`,
+through Finset cards); (3) the characterization of the enemy's legal moves: a king step or a pawn's normal move --
+no promotion (a pawn one step from promotion is not far from a bad square), no en passant (our single push sets
+none), no castling (no rook).
+TWO THINGS THE PROOF FOUND. The Python prototype's kingRoom skipped every forbidden square when demanding room; that
+is unsound for a square holding one of our capturable pieces (the enemy king may take it and stand there). The sound
+skip set is the squares next to our king and those within one of the promotion square; Lean and Python now agree on
+11,734 of 11,736 instances (the two: Python called a pawn standing ON a bad square unreachable; fixed). And a pawn
+standing on its own back rank would gain the double-step allowance after one push, lowering the distance by two --
+impossible in a real position, allowed by the record: "no enemy pawn on its back rank" is now a hypothesis.
+BRIDGE (OBS): the Lean detector's PROVED claims against the exhaustive race search in python-chess -- 1,500 random
+pawn endings with up to three enemy pawns, 832/832 confirmed; 500 with a knight of ours as well, 285/285; the 2,672
+pawnEndgame positions (via the prototype, verdicts equal), 109/109. No false claim.
+THE PLAYER ON THE LEAN DETECTOR (`lean_passer_v2_proto.USE_LEAN`, the `passer2` command): 300 held-out pawnEndgame
+puzzles, one run: 251/300 among the tied top moves, 53/300 single, 2,277 nodes a step, 48 s -- the prototype's run to
+the puzzle (gained 0, lost 0; nodes 1.000), so the proof changed nothing the search does and everything about what it
+may claim: "the e-pawn promotes by force" is now a theorem's instance, not a prototype's guess.
+Fire rate (unchanged): PROVED in about 4% of pawn-ending positions, a one-away target in about 9%; the targets are the
+king in the square (kingOutside), the enemy pawn that could catch us (pawnsFar), and our own blocker (pathClear).
+NEXT: the explainer's sentence for a proved passer and a one-away target (the product use); a lemma that fires in
+middlegames (the enemy's pieces, with an over-approximated reach); the fork.
+
 ## 2026-10-05 01:00 PDT — the detector's economics closed, the passer proved in its first form, and a second form prototyped (OBS)
 
 Kaveh's plan for the night (00:0x): "in-process detector first, then the passer". Both done, with a turn in each.

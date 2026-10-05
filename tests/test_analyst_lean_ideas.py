@@ -91,3 +91,26 @@ def test_passer_proved_is_true(li):
     assert inst.status == "PROVED"
     assert promotes_within(b, chess.square_file(inst.square), inst.plies)
     assert not promotes_within(b, chess.square_file(inst.square), inst.plies - 2)
+
+
+# the second form: enemy king and pawns (PROVED by either form).  (fen, pawn, status, failing, plies)
+PASSER2_CASES = [
+    ("8/8/8/8/8/4P3/8/K6k w - - 0 1", "e3", "PROVED", None, 9),                     # bare king: by the first form
+    ("8/8/8/7P/5P1p/3k3K/8/8 w - - 0 1", "h5", "PROVED", None, 5),                   # an enemy pawn present, far
+    ("K7/8/8/p2P4/P7/5p2/5P2/6k1 w - - 0 1", "d5", "ONEAWAY", "pawnsFar", None),     # an enemy pawn can interfere
+    ("1K6/8/4P2k/2p5/3P4/8/8/8 w - - 0 1", "d4", "ONEAWAY", "kingOutside", None),    # the king is in the square
+    ("8/8/3Pp1P1/2K1p2k/8/8/8/8 w - - 0 1", "g6", "ONEAWAY", "kingRoom", None),      # the enemy king could run out of moves
+    ("8/8/8/4b3/8/4P3/8/K6k w - - 0 1", "e3", "FAIL", None, None),                   # an enemy bishop: two hypotheses fail
+]
+
+
+@pytest.mark.parametrize("fen,sq,status,failing,plies", PASSER2_CASES)
+def test_passer2_verdicts(li, fen, sq, status, failing, plies):
+    b = chess.Board(fen)
+    inst = {chess.square_name(i.square): i for i in li.passer2(b)}[sq]
+    assert inst.status == status
+    assert inst.failing == failing
+    assert inst.plies == plies
+    if status == "PROVED":
+        from catspace.incubator.analyst.lean_passer_check import promotes_within
+        assert promotes_within(b, chess.square_file(inst.square), inst.plies)

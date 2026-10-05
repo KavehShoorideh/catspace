@@ -3,6 +3,18 @@
 Kaveh's two-journals rule (2026-09-16): this file keeps the agent on track; JOURNAL.md is Kaveh's, written for review.
 Newest entry first. Times from `date` (PDT).
 
+## 2026-10-05 — passer second form PROVED (2026-10-05 01:29 PDT)
+
+- Ideas/Passer2.lean proved (no sorry; std axioms after replacing chess-lean's native_decide allSquares_nodup).
+- Proof found: Python kingRoom skipped forbidden squares (unsound: capturable pieces); back-rank pawn gap (double
+  step after one push). Lean vs Python agree 11734/11736. Bridge 832/832, 285/285, 109/109.
+- Player on the Lean detector: 251/300, 53 single, = prototype run exactly. Pawn-ending baseline 249/300, 48 single.
+- Lean traps added: docstring before set_option (3rd time!); `subst` eliminates the RHS var; `cases` on colour-
+  mismatched piece equations; `rfl` cannot reduce `c == c` for a variable; `first | A | B` picks a trivially
+  succeeding A; `simp_all` loses move equations -> extract coordinate equations first; a `cases` on a term does not
+  rewrite inside hypotheses (revert first); omega needs the bounds of every Fin in scope (isLt).
+- NEXT: explainer sentence for proved/one-away passers; middlegame lemma (enemy pieces, over-approximated reach).
+
 ## 2026-10-04 (late) — detector economics (Kaveh: in-process detector first, then the passer)
 
 - MEASURED (ping/parse commands): pipe round trip 10 us; FEN parse 90 us; hypotheses 70-230 us. FFI is NOT the fix.
