@@ -22874,7 +22874,7 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
-## 2026-10-05 13:34 PDT — the surprise watcher, batch 2 and the health line (OBS)
+## 2026-10-05 13:28 PDT — the surprise watcher, batch 2 and the health line (OBS)
 
 Second review (Claude, from batches 0 and 1): the off-frame surprises -- captures on squares that were not frames --
 began with a quiet move 16 times in the 40 largest, a capture 11, a check 4; 5 ended in mate and 4 in a promotion.
