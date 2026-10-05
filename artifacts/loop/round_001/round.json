@@ -10,9 +10,9 @@
  },
  "heads": {
   "before": "cf90a07d1e40f649b22bb01c271ea7238a68d8c9764f1d51f24988f39e75b582",
-  "after": "ea66b6a9affafaf80e2cbc5869c906ac75d9173b102cf24202214a59f91339f6",
-  "after_count": 103,
-  "render_code": "3cfc2f65",
+  "after": "c4d3652e6e23dc6496217fbbbd14b95dd45c226e7ed25cd0813e3b81aa8c3ae7",
+  "after_count": 3,
+  "render_code": "b6d04ded+dirty",
   "render_only": true,
   "stale": [
    "frame",
@@ -21,7 +21,15 @@
    "prove",
    "use",
    "measure"
-  ]
+  ],
+  "stage_codes": {
+   "frame": null,
+   "mine": null,
+   "translate": null,
+   "prove": null,
+   "use": null,
+   "measure": null
+  }
  },
  "new_ideas": 100,
  "red": false

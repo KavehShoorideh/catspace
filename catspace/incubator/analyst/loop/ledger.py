@@ -75,9 +75,12 @@ def render(n: int, out: dict, inputs: dict, ctl: dict, timings: dict, heads: dic
       f"basis before the round {len(inputs.get('basis_before_ids', []))} ideas (head {heads.get('before', '')[:12]}), "
       f"after {heads.get('after_count', '?')} ideas (head {heads.get('after', '')[:12]}). Stages: "
       + ", ".join(f"{k} {v:.0f}s" for k, v in timings.items()) + f"; total {sum(timings.values()) / 60:.1f} min.")
+    codes = sorted({c for c in (heads.get("stage_codes") or {}).values() if c and c != inputs.get("code")})
+    if codes:
+        w("Stages ran under code " + ", ".join(f"{st} {c}" for st, c in (heads.get("stage_codes") or {}).items() if c in codes) + ".")
     if heads.get("render_only"):
         w("Rendered from the stage outputs on disk (--render-only)" + (f"; the code of {', '.join(heads['stale'])} changed since they ran "
-          "(or predates the source digest)." if heads.get("stale") else "; every stage's code is unchanged since it ran."))
+          "(or predates the source digest)." if heads.get("stale") else "; the analyst and Lean source are unchanged since the stages ran."))
     w("")
     w("## Inputs")
     fr = out.get("frame") or {}

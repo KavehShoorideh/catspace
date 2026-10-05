@@ -10,17 +10,26 @@
  },
  "heads": {
   "before": "0000000000000000000000000000000000000000000000000000000000000000",
-  "after": "ea66b6a9affafaf80e2cbc5869c906ac75d9173b102cf24202214a59f91339f6",
-  "after_count": 103,
-  "render_code": "6b5575d6",
+  "after": "c4d3652e6e23dc6496217fbbbd14b95dd45c226e7ed25cd0813e3b81aa8c3ae7",
+  "after_count": 3,
+  "render_code": "b6d04ded+dirty",
   "render_only": true,
   "stale": [
    "frame",
    "mine",
    "translate",
+   "prove",
    "use",
    "measure"
-  ]
+  ],
+  "stage_codes": {
+   "frame": "94eaffc1+dirty",
+   "mine": "94eaffc1+dirty",
+   "translate": "94eaffc1+dirty",
+   "prove": "94eaffc1+dirty",
+   "use": "94eaffc1+dirty",
+   "measure": "94eaffc1+dirty"
+  }
  },
  "new_ideas": 3,
  "red": false

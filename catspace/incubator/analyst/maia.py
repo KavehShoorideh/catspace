@@ -20,6 +20,8 @@ _P = re.compile(r"(\S+)\s.*\(P:\s*([\d.]+)%\)")
 class Maia:
     def __init__(self, rating: int = 1100, weights: str | None = None, cache_path: str | None = None):
         self.rating = rating
+        self.tag = str(rating) if weights is None else str(weights).rsplit("/", 1)[-1]   # the cache key names the weights
+                                                                             # actually loaded (it said 1100 for any file passed)
         self._eng = chess.engine.SimpleEngine.popen_uci(
             ["lc0", f"--weights={weights or paths.engine(f'maia/maia-{rating}.pb.gz')}", "--verbose-move-stats", "--backend=blas"])
         self._db = sqlite3.connect(cache_path or paths.derived("analyst_cache.sqlite"), timeout=60)
@@ -28,8 +30,11 @@ class Maia:
         self.calls = self.hits = 0
 
     def policy(self, board: chess.Board) -> dict[str, float]:
-        """uci -> probability over LEGAL moves (renormalised); cached by (rating, fen)."""
-        k = f"{self.rating}|{board.fen()}"
+        """uci -> probability over LEGAL moves (renormalised); cached by (weights, fen, the last 8 moves). python-chess
+        sends lc0 the move history and Maia reads 8 history planes, so the same FEN after different moves can get a
+        different policy; the key used to be the FEN alone (2026-10-05)."""
+        hist = " ".join(m.uci() for m in board.move_stack[-8:])
+        k = f"{self.tag}|{board.fen()}|{hist}"
         row = self._db.execute("SELECT v FROM policy WHERE k=?", (k,)).fetchone()
         if row:
             self.hits += 1

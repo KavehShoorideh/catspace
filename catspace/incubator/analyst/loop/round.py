@@ -97,18 +97,42 @@ def frozen_inputs(n: int, config: dict) -> dict:
     return inputs
 
 
+_SOURCE: list = []
+
+
+def source_digest() -> str:
+    """A digest of all the source a stage can run: every .py under catspace/incubator/analyst (the loop, the player, the
+    miner, the wiring) and every .lean under lean/ideas. A stage's own file alone missed its helpers (pass 2,
+    2026-10-05); any change there now invalidates the cached outputs, and --render-only names the stale stages."""
+    if not _SOURCE:
+        from catspace.io import paths as _p
+        root = _p.REPO_ROOT
+        files = sorted(root.glob("catspace/incubator/analyst/**/*.py")) + sorted(f for f in root.glob("lean/ideas/**/*.lean") if ".lake" not in f.parts)
+        _SOURCE.append(digest([(str(f.relative_to(root)), digest(f.read_text())) for f in files]))
+    return _SOURCE[0]
+
+
 def module_source(modname: str) -> str | None:
-    """A digest of a stage module's own source. A cached stage output is reused only when the code that made it is the
-    code that would run now (the key used to omit the code: BUGS 2026-10-05)."""
+    """The stage's code: its module's own source (a module outside the analyst tree, e.g. a test's) with all the
+    analyst and Lean source it may call. A cached output is reused only when this matches the code that made it."""
     import importlib.util
     spec = importlib.util.find_spec(modname)
-    return digest(open(spec.origin).read()) if spec and spec.origin else None
+    own = digest(open(spec.origin).read()) if spec and spec.origin else None
+    return digest(dict(own=own, tree=source_digest()))
 
 
 def run_round(n: int, only: str | None = None, extra: dict | None = None, force: bool = False, commit: bool = True,
               render_only: bool = False) -> dict:
     config = merge(default_config(n), extra or {})
+    if render_only:                                                          # the round as it ran: its stored config, never a new
+        stored = read_json(record_dir(n) / "inputs.json")                    # one (a render used to overwrite it and defeat a swap)
+        if not stored:
+            raise RoundError(f"--render-only: round {n} has no inputs.json")
+        config = stored["config"]
     check_gate(n, config)
+    if gate.gate_of(n) is not None and not render_only:                      # a gated round is final: a re-run would promote ideas
+        raise RoundError(f"round {n} is gated ({gate.gate_of(n)['decision']}); its record is final -- "   # no gate reviews
+                         "re-render it with --render-only, or run the next round")
     d, rec = round_dir(n), record_dir(n)
     inputs = frozen_inputs(n, config)
     head_before = inputs["basis_before"]
@@ -116,6 +140,7 @@ def run_round(n: int, only: str | None = None, extra: dict | None = None, force:
     timings = read_json(d / "timings.json", {}) or {}
     prev_hash = digest(dict(basis=inputs["basis_before"], config=config.get("stages", {})))
     stale: list = []                                                         # --render-only: stages whose code changed since they ran
+    stage_codes: dict = {}                                                   # the code each stage's output was made with
     for st in STAGES:
         modname = config.get("stages", {}).get(st, MODULE.format(st))
         src = module_source(modname)
@@ -126,11 +151,13 @@ def run_round(n: int, only: str | None = None, extra: dict | None = None, force:
                 raise RoundError(f"--render-only: stage {st} has no output")
             if cached.get("source") != src:
                 stale.append(st)
-            prev_hash = digest(cached["output"])
+            prev_hash = digest(dict(prev=prev_hash, out=digest(cached["output"])))
+            stage_codes[st] = cached.get("code")
             continue
         if cached and cached["hash"] == h and not force and only != st:
             ctx.log(f"stage {st}: cached")
-            prev_hash = digest(cached["output"])
+            prev_hash = digest(dict(prev=prev_hash, out=digest(cached["output"])))   # every earlier output, not the last one:
+            stage_codes[st] = cached.get("code")                                    # prove reads mine directly (pass 2)
             continue
         ctx.log(f"stage {st}: running ({modname})")
         t0 = time.perf_counter()
@@ -138,8 +165,8 @@ def run_round(n: int, only: str | None = None, extra: dict | None = None, force:
         timings[st] = time.perf_counter() - t0
         write_json(d / f"{st}.json", dict(hash=h, output=out, seconds=timings[st], source=src, code=code_version()))
         write_json(d / "timings.json", timings)
-        prev_hash = digest(read_json(d / f"{st}.json")["output"])            # the NEXT stage's key holds this OUTPUT, so a stage
-                                                                             # re-run with a new result re-runs everything after it
+        prev_hash = digest(dict(prev=prev_hash, out=digest(read_json(d / f"{st}.json")["output"])))   # later keys hold every
+        stage_codes[st] = code_version()                                     # earlier OUTPUT: a new result re-runs what follows
     outs = {st: (read_json(d / f"{st}.json") or {}).get("output") for st in STAGES}
     if outs.get("measure"):                                                  # expected scores, and the previous kept round's arm,
         outs["measure"], obs = enrich(outs["measure"], previous_measure(n))  # from the dumps (rounds measured before the fields too)
@@ -156,7 +183,7 @@ def run_round(n: int, only: str | None = None, extra: dict | None = None, force:
     new = [p for p in promoted if not p["unsound"] and p["candidate"]["id"] not in basis.active() and p["candidate"]["id"] not in already]
     head_after = basis.promote(n, new, uses) if new else basis.head()
     heads = dict(before=head_before, after=head_after, after_count=len(basis.active()), render_code=code_version(),
-                 render_only=render_only, stale=stale)
+                 render_only=render_only, stale=stale, stage_codes=stage_codes)
     text = render(n, outs, inputs, ctl, timings, heads)
     (rec / "LEDGER.md").write_text(text)
     write_json(rec / "controls.json", ctl)

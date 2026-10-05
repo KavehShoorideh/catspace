@@ -40,24 +40,22 @@ def expected_score(r: dict) -> float:
     'Solution among the tied top moves' is an upper bound (a perfect tie-break) and 'the single top move' a lower bound
     (no tie-break); a tie-break can only shrink tied sets, so it moves both bounds in fixed directions whatever it picks.
     This score moves either way, and it is what the RESULTS FALL control reads (loop round 1, 2026-10-05).
-    A MATE solves wherever it is played: frame_puzzles accepts any mating move (Lichess does), so every mating move in
-    the tie counts, and a mate before the last step ends the puzzle (the reviewer's finding 3, 2026-10-05: ties of
-    mates had read as gambles). Dumps before 2026-10-05 kept only best[:6]; a solving move beyond the stored list is
-    then assumed to be the solution itself."""
-    p = 1.0                                                                  # the chance of solving from the step after this one
-    for s in reversed(r["steps"]):
+    MATES: where the solution itself mates, frame_puzzles accepts any mating move (Lichess does), so every mating move
+    in the tie counts (finding 3, 2026-10-05: ties of mates had read as gambles); where the solution does not mate,
+    only the solution counts (pass 2, 2026-10-05). Dumps before 2026-10-05 kept only best[:6]; a tied step whose stored
+    list lacks the solution assumes it beyond the list."""
+    p = 1.0
+    for s in r["steps"]:
         if not s["tied"]:
-            p = 0.0
-            continue
+            return 0.0
         n = max(s.get("n_top") or 1, 1)
         best = s.get("best") or []
-        mates = {u for u in best if _mates(s["fen"], u)}
-        sol_in = s["sol"] in best or not (mates or s["sol"] in best)        # tied with nothing solving in a truncated list
-        if s["sol"] in mates:
-            p = len(mates) / n
+        if _mates(s["fen"], s["sol"]):
+            good = sum(1 for u in best if u == s["sol"] or _mates(s["fen"], u)) or 1
         else:
-            p = len(mates) / n + (p / n if sol_in else 0.0)
-    return min(p, 1.0)
+            good = 1
+        p *= min(good, n) / n
+    return p
 
 
 def _mates(fen: str, uci: str) -> bool:
@@ -148,7 +146,8 @@ def enrich(out: dict, previous: dict | None) -> dict:
 
 def identical(a: list, b: list) -> bool:
     """Two dumps of the same puzzles agree step by step: position, tie size, top moves, nodes."""
-    key = lambda res: {r["id"]: [(s["fen"], s.get("n_top"), tuple(s.get("best") or ()), s.get("nodes")) for s in r["steps"]] for r in res}
+    key = lambda res: {r["id"]: [(s["fen"], s.get("n_top"), tuple((s.get("best") or ())[:6]), s.get("nodes")) for s in r["steps"]] for r in res}
+    # [:6]: the frozen baselines kept best[:6]; the whole tie is stored since 2026-10-05
     return key(a) == key(b)
 
 
@@ -168,8 +167,8 @@ def fire_scan(active: dict, li, fens: list[str], orderer=None) -> dict:
             one += any(i.status == "ONEAWAY" for i in got)
         out["lean:backRankMate"] = dict(positions=len(fens), instances=inst, proved=proved, oneaway=one)
     for idea, cmd in (("lean:unstoppablePasser", "passer"), ("lean:unstoppablePasser2", "passer2")):
-        if idea not in active.get("closures", []):
-            continue
+        if idea not in active.get("closures", []) or "lean:unstoppablePasser2" not in active.get("closures", []):
+            continue                                                        # the player switches on the passer only with passer2
         inst = proved = one = 0
         for f in fens:
             got = li.passer(chess.Board(f)) if cmd == "passer" else li.passer2(chess.Board(f))

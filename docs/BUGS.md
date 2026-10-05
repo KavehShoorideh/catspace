@@ -282,6 +282,21 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   a mean outcome above 0): no evidence read as evidence. Now it is never demoted (round 1 unaffected: every move was
   spoken about). Flagged to Kaveh as possibly a design question.
 
+- **Pass 2: an independent review of my pass-1 fixes (commit 6b5575d6) found 10 more, most confirmed by running.**
+  Fixed with tests (18 loop tests): a gated round could be re-run and promote ideas no gate reviews (now refused;
+  --render-only only); the output chain held only the previous stage's output while prove reads mine directly (now
+  every earlier output); the back-rank bridge's `checked` counted positions, so a bridge with zero MATE claims passed
+  "at least one claim checked" (now MATE claims; legal-move disagreements still count as wrong); the source digest
+  covered only the stage's own file (now all analyst .py and lean/ideas .lean); --render-only rewrote the stored
+  config and defeated a swap gate (now it renders under the stored config); `identical` compared whole ties against
+  frozen dumps that kept best[:6]; expected_score credited a mating move where the solution does not mate, and my test
+  had encoded that belief (class 9: a test of what I believed); the mine stage's copies were overwritten on a re-run
+  (now named by content); the fire scan credited passer form 1's closure, which the player no longer switches on;
+  stale text in dig.py. Ledger numbers unchanged (no affected steps in these dumps).
+- **Code drift found by the reviewer**: today's plain player differs from the frozen pawn-ending baseline in nodes at
+  56 steps, so a fresh baseline re-run would fail the reproducibility check. Not chased: the old miner's rounds are
+  retired (Kaveh, "roll back, move on"); any future loop must re-freeze its baselines under the code it measures.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).

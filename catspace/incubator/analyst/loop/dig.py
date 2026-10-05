@@ -8,7 +8,7 @@ step where the two arms' top moves differ, the mined ideas' verdicts are read ag
 - DOWN (read at the first step that demoted the solution), a rule calls the solution a loss: some verdict on it is 'loses';
 - DOWN, unanimous 'keeps': every verdict on the solution and on the moves kept is 'keeps', and the composed preference
   (lemma_apply.compose: the mean, over the rules that speak, of each rule's outcome when it holds) ranked the kept higher;
-- DOWN, unspoken: no mined idea speaks about the solution (it scores 0);
+- DOWN, unspoken: no mined idea speaks about the solution (since 2026-10-05 such a move is never demoted);
 - UP (read at the first step whose tie shrank), the same classes read on the moves the tie-break demoted.
 For DOWN by a loss, the solution's piece and its landing square (attacked or not after the move, defended or not).
     python -m catspace.incubator.analyst.loop.dig --round 1 --set pawnendings [--show 3]
@@ -34,7 +34,7 @@ def _split(prev: dict, now: dict, kind: str):
             return None
         if kind == "down" and sp["tied"] and not sn["tied"]:
             return sp, sn
-        if kind == "up" and sn["tied"] and sn["n_top"] < sp["n_top"]:          # n_top is exact; 'best' keeps only 6
+        if kind == "up" and sn["tied"] and sn["n_top"] < sp["n_top"]:          # n_top is exact; old dumps kept best[:6]
             return sp, sn
     return None
 
@@ -106,7 +106,7 @@ def dig(n: int, name: str, show: int = 0) -> dict:
                 elif dv and all(vs for vs in dv) and all(p == "keeps" for vs in dv + [preds(sol)] for _, p, _, _ in vs):
                     c = "unanimous 'keeps': the composed preference ranked the solution higher"
                 elif any(not vs for vs in dv):
-                    c = "a demoted rival is unspoken (scores 0)"
+                    c = "a demoted rival is unspoken"
                 else:
                     c = "other"
             classes[kind][c] += 1
@@ -120,7 +120,7 @@ def dig(n: int, name: str, show: int = 0) -> dict:
         for c, v in classes[kind].most_common():
             print(f"OBS {name} {kind} {v:3d} (expected {delta[(kind, c)]:+.1f}): {c}")
     print(f"OBS {name}: {partial} of the classified puzzles had a tie longer than the 6 top moves a dump stores; "
-          "their classes read the stored 6 (frame_puzzles keeps best[:6]; the tie size n_top is exact)")
+          "their classes read the stored 6 (dumps before 2026-10-05 kept best[:6]; the tie size n_top is exact)")
     for k, v in piece.most_common(8):
         print(f"OBS {name} down by a loss, the solution: {v:3d} {' '.join(k)}")
     for k, v in rules.most_common(6):

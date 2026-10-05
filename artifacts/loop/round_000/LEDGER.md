@@ -1,7 +1,8 @@
-# Idea loop — round 000 (2026-10-05 12:34 PDT)
+# Idea loop — round 000 (2026-10-05 13:03 PDT)
 
-Code 4844bd3f (ledger rendered by 6b5575d6); basis before the round 0 ideas (head 000000000000), after 103 ideas (head ea66b6a9affa). Stages: frame 0s, mine 0s, translate 0s, prove 23s, use 0s, measure 7s; total 0.5 min.
-Rendered from the stage outputs on disk (--render-only); the code of frame, mine, translate, use, measure changed since they ran (or predates the source digest).
+Code 4844bd3f (ledger rendered by b6d04ded+dirty); basis before the round 0 ideas (head 000000000000), after 3 ideas (head c4d3652e6e23). Stages: frame 0s, mine 0s, translate 0s, prove 23s, use 0s, measure 7s; total 0.5 min.
+Stages ran under code frame 94eaffc1+dirty, mine 94eaffc1+dirty, translate 94eaffc1+dirty, prove 94eaffc1+dirty, use 94eaffc1+dirty, measure 94eaffc1+dirty.
+Rendered from the stage outputs on disk (--render-only); the code of frame, mine, translate, prove, use, measure changed since they ran (or predates the source digest).
 
 ## Inputs
 - No framing this round (baseline round).

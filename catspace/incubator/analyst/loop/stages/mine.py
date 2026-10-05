@@ -42,9 +42,11 @@ def run(ctx) -> dict:
     made_proved = found[0].replace("library_", "proved_")
     if not Path(made_proved).exists():
         raise RuntimeError(f"the re-test wrote no {made_proved}")
-    lib_path, proved_path = str(ctx.dir / "library.json"), str(ctx.dir / "proved.json")   # the round's own copies: lemma_gen
-    shutil.copyfile(found[0], lib_path)                                                    # rewrites its files when a stage
-    shutil.copyfile(made_proved, proved_path)                                              # re-runs; the wiring reads these
+    from ..store import digest
+    tag_c = digest(Path(found[0]).read_text() + Path(made_proved).read_text())[:12]    # copies named by content: lemma_gen
+    lib_path, proved_path = str(ctx.dir / f"library_{tag_c}.json"), str(ctx.dir / f"proved_{tag_c}.json")   # rewrites its files
+    shutil.copyfile(found[0], lib_path)                                                    # on a re-run; an earlier round's copy
+    shutil.copyfile(made_proved, proved_path)                                              # stays where the basis points
     lib = json.load(open(lib_path))
     proved = json.load(open(proved_path))
     if len(proved) != len(lib):

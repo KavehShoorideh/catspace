@@ -247,13 +247,14 @@ def test_order_never_demotes_a_move_no_lemma_speaks_about():
 
 
 def test_expected_score_credits_every_mate():
-    """frame_puzzles accepts any mating move; a tie of mates is not a gamble, and a mate before the last step ends it."""
+    """Where the solution mates, frame_puzzles accepts any mating move, so a tie of mates is not a gamble; where it does
+    not mate, a mating move in the tie is a miss (pass 2: this test had encoded the opposite)."""
     from catspace.incubator.analyst.loop.stages.measure import expected_score
     two_mates = "6k1/5ppp/8/8/8/8/5PPP/3RR1K1 w - - 0 1"                       # Rd8# and Re8#
     assert expected_score(dict(steps=[dict(fen=two_mates, sol="d1d8", tied=True, n_top=2, best=["d1d8", "e1e8"])])) == 1.0
     early = dict(steps=[dict(fen=two_mates, sol="g2g3", tied=True, n_top=3, best=["g2g3", "d1d8", "h2h3"]),
                         dict(fen=QUIET, sol="a1a2", tied=True, n_top=2, best=["a1a2", "b1b2"])])
-    assert expected_score(early) == pytest.approx(1 / 3 + (1 / 3) * (1 / 2))   # the mate now, or the solution and then 1 in 2
+    assert expected_score(early) == pytest.approx((1 / 3) * (1 / 2))         # the solution g2g3 does not mate: Rd8# is a miss
 
 
 def test_wiring_drops_a_closure_refused_this_round_and_the_gate_retires_it(roots):
@@ -285,6 +286,7 @@ def test_stage_keys_chain_outputs(roots, monkeypatch):
     stages = {st: fake(f"fake_loop_{st}", lambda ctx: {}) for st in STAGES}
     stages["frame"] = fake("fake_loop_frame", lambda ctx: dict(batch=batch[0]))
     stages["mine"] = fake("fake_loop_mine", lambda ctx: dict(from_batch=ctx.load("frame")["batch"]))
+    stages["prove"] = fake("fake_loop_prove", lambda ctx: dict(saw=ctx.load("frame")["batch"]))   # reads two stages back
     stages["measure"] = fake("fake_loop_measure", lambda ctx: dict(measurements=[], fire={}))
     run_round(0, extra=dict(stages=stages), commit=False)
     from catspace.incubator.analyst.loop.store import read_json, round_dir
@@ -292,6 +294,7 @@ def test_stage_keys_chain_outputs(roots, monkeypatch):
     batch[0] = 2
     run_round(0, only="frame", extra=dict(stages=stages), commit=False)
     assert read_json(round_dir(0) / "mine.json")["output"]["from_batch"] == 2
+    assert read_json(round_dir(0) / "prove.json")["output"]["saw"] == 2          # the chain carries every earlier output
 
 
 def test_order_entry_must_hold_the_promoted_lemma(tmp_path):
@@ -314,3 +317,33 @@ def test_a_loss_must_stand_after_the_reply():
     assert loss_stands([full, full, down, back], 0, 2, chess.WHITE, 2) is None
     assert loss_stands([full, full, down, down], 0, 2, chess.WHITE, 2) == 3
     assert loss_stands([full, full, down], 0, 2, chess.WHITE, 2) == 3          # the game ends at the horizon
+
+
+def test_a_gated_round_is_final_and_a_render_keeps_its_config(roots, monkeypatch):
+    import sys, types, importlib.machinery
+    from catspace.incubator.analyst.loop import gate
+    from catspace.incubator.analyst.loop.round import STAGES, RoundError, run_round
+    from catspace.incubator.analyst.loop.store import read_json, record_dir
+    stages = {}
+    for st in STAGES:
+        m = types.ModuleType(f"fake_final_{st}"); m.__spec__ = importlib.machinery.ModuleSpec(m.__name__, None)
+        m.run = (lambda ctx: dict(measurements=[], fire={})) if st == "measure" else (lambda ctx: {})
+        monkeypatch.setitem(sys.modules, m.__name__, m)
+        stages[st] = m.__name__
+    run_round(0, extra=dict(stages=stages), commit=False)
+    gate.decide(0, "swap", "try another use stage", stage="use", commit=False)
+    with pytest.raises(RoundError):
+        run_round(0, extra=dict(stages=stages), commit=False)                  # a gated round is not re-run
+    run_round(0, commit=False, render_only=True)                               # a render keeps the stored config
+    assert read_json(record_dir(0) / "inputs.json")["config"]["stages"] == stages
+    with pytest.raises(RoundError):
+        run_round(1, extra=dict(stages=stages), commit=False)                  # the swap still binds
+
+
+def test_backrank_bridge_counts_mate_claims_not_positions(monkeypatch):
+    import catspace.incubator.analyst.lean_backrank_puzzles as LB
+    from catspace.incubator.analyst.loop.bridges import backrank_heldout
+    monkeypatch.setattr(LB, "puzzle_rows", lambda *a, **k: [])
+    monkeypatch.setattr(LB, "bridge", lambda rows, li, log=None: dict(mate_claims=0, mate_true=0, positions=1316, agree=1315))
+    r = backrank_heldout(None)
+    assert r["checked"] == 0 and r["wrong"] == 1                               # no claim checked; a legal-move disagreement is wrong

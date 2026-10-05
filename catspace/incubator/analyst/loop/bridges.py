@@ -19,7 +19,7 @@ def backrank_heldout(li: LeanIdeas, n: int = 300, offset: int = 17) -> dict:
     t0 = time.perf_counter()
     rows = puzzle_rows(n, 97, offset, None)
     r = bridge(rows, li, log=lambda *a: None)
-    return dict(checked=r["mate_claims"] + r["positions"], wrong=(r["mate_claims"] - r["mate_true"]) + (r["positions"] - r["agree"]),   # a legal-move
+    return dict(checked=r["mate_claims"], wrong=(r["mate_claims"] - r["mate_true"]) + (r["positions"] - r["agree"]),   # a legal-move
                 what=f"MATE claims on {r['positions']} positions of {n} held-out back-rank puzzle lines (rows i % 97 == {offset}), "     # disagreement is
                      f"each checked as checkmate, and the kernel's legal-move set against python-chess's at each: {r['agree']}/{r['positions']} agree",  # wrong too
                 legal_agree=r["agree"], positions=r["positions"], seconds=time.perf_counter() - t0)
