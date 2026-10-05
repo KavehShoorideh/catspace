@@ -22874,7 +22874,7 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
-## 2026-10-05 13:22 PDT — the surprise watcher: built, two batches, the first rules (OBS)
+## 2026-10-05 13:21 PDT — the surprise watcher: built, two batches, the first rules (OBS)
 
 Kaveh's design (asked and answered in session today): the tactical layer WATCHES games -- Lichess records on disk,
 anybody against anybody -- and after every move forecasts with probabilities, short-term (the material balance once

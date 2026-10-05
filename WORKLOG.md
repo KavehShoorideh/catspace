@@ -3,7 +3,7 @@
 Kaveh's two-journals rule (2026-09-16): this file keeps the agent on track; JOURNAL.md is Kaveh's, written for review.
 Newest entry first. Times from `date` (PDT).
 
-## 2026-10-05 13:22 — the surprise watcher (Kaveh's design; decisions asked one by one)
+## 2026-10-05 13:21 — the surprise watcher (Kaveh's design; decisions asked one by one)
 
 - Pass 2 of the bug loop (reviewer #2 on my fixes): 10 more, fixed in 202c41f8 (18 loop tests). Old idea loop: round 1
   ROLLED BACK by Kaveh ("move on"); frame ties ON; compose per partner kept.
