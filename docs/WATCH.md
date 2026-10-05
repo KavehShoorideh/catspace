@@ -42,9 +42,11 @@ value). Its forecast is the count of what happened each time its condition held,
 with weight ALPHA = 4 observations, so a new rule starts by saying what its parent says. A game's result counts as ONE
 observation, shared by the positions that saw it.
 
-When several rules apply (Kaveh, 2026-10-05): the more specific supersedes the less specific and the older. A learned
-prior over rules comes later; `rules.POLICIES` is its slot, and every applicable rule's probability of what happened
-is logged as its training data.
+When several rules apply (Kaveh, 2026-10-05): the more specific supersedes the less specific and the older. A young
+rule is BLENDED with the rule it supersedes, trusted n/(n+20) by its own cases n (`rules.forecast`, policy
+evidence_blend: a simple prior until a learned one; `rules.POLICIES` is the slot, and every applicable rule's
+probability of what happened is logged as its training data). A new rule's counts start from the stored past cases
+its condition covers (`watcher.backfill`; results once per game).
 
 The rule base started EMPTY (only the three roots, the base rates). After each batch of 20 games Claude, in session,
 reads the largest surprises (`show`), backtracks each (what was forecast, by which rule, what happened, which frame was

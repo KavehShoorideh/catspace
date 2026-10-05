@@ -95,7 +95,7 @@ def convolve(dists: list[np.ndarray]) -> tuple[np.ndarray, int]:
     return p, off
 
 
-def watch_game(g: dict, rb: RuleBase, policy: str = "specific_newest") -> list[dict]:
+def watch_game(g: dict, rb: RuleBase, policy: str = "evidence_blend") -> list[dict]:
     """Forecast, reveal, count, for every position of one game. -> one case per position."""
     moves = [chess.Move.from_uci(u) for u in g["moves"].split()]
     boards = [chess.Board()]
@@ -119,18 +119,18 @@ def watch_game(g: dict, rb: RuleBase, policy: str = "specific_newest") -> list[d
         dists, frames_out = [], []
         for sq in fr:
             a = frame_attrs[sq]
-            rid, matched = rb.select("frame", a, policy)
-            d = np.array(rb.dist(rid, a))
+            d, rid, matched, how = rb.forecast("frame", a, policy)
+            d = np.array(d)
             x = bucket("frame", obs["by_square"].get(sq, 0))
             dists.append(d)
             top = sorted(range(21), key=lambda i: -d[i])[:3]
             frames_out.append(dict(sq=chess.square_name(sq), attrs=a, rule=rid, matched=matched, outcome=x,
                                    p=float(d[x + 10]), p_all={m: rb.dist(m, a)[x + 10] for m in matched},
-                                   top=[(i - 10, float(d[i])) for i in top]))     # the forecast as made: its 3 likeliest outcomes
+                                   top=[(i - 10, float(d[i])) for i in top], blend=how))   # the forecast as made
             pending.append((obs["end"], "frame", matched, x, a))
         pa = position_attrs(b, mover, fr, (g["white_elo"], g["black_elo"]))
-        rid_e, matched_e = rb.select("elsewhere", pa, policy)
-        d_e = np.array(rb.dist(rid_e, pa))
+        d_e, rid_e, matched_e, _ = rb.forecast("elsewhere", pa, policy)
+        d_e = np.array(d_e)
         x_e = bucket("elsewhere", sum(v for s, v in obs["by_square"].items() if s not in fr))
         dists.append(d_e)
         pending.append((obs["end"], "elsewhere", matched_e, x_e, pa))
@@ -146,13 +146,14 @@ def watch_game(g: dict, rb: RuleBase, policy: str = "specific_newest") -> list[d
                                                       p_all={m: rb.dist(m, pa)[x_e + 10] for m in matched_e}),
                     delta=x_total, p_delta=float(total[x_total - off]), short_bits=short_bits, end=obs["end"])
         if not censored:
-            rid_r, matched_r = rb.select("result", pa, policy)
+            d_r, rid_r, matched_r, _ = rb.forecast("result", pa, policy)
             res = mover_result(g["result"], mover)
-            p_r = rb.dist(rid_r, pa)[KINDS["result"].index(res)]
+            p_r = d_r[KINDS["result"].index(res)]
             case.update(result=res, result_rule=rid_r, p_result=p_r, long_bits=bits(p_r), pattrs=pa,
-                        result_dist=dict(zip(KINDS["result"], rb.dist(rid_r, pa))),
+                        result_dist=dict(zip(KINDS["result"], d_r)),
                         p_result_all={m: rb.dist(m, pa)[KINDS["result"].index(res)] for m in matched_r})
             results.append((matched_r, res))
+        case.setdefault("pattrs", pa)
         cases.append(case)
     for item in pending:                                                     # the game is over: every outcome is known
         rb.update(item[2], item[3], item[4])
@@ -163,6 +164,95 @@ def watch_game(g: dict, rb: RuleBase, policy: str = "specific_newest") -> list[d
     for matched_r, res in results:
         rb.update(matched_r, res, None, {rid: 1.0 / seen[rid] for rid in matched_r})
     return cases
+
+
+def per_game_mean(cases: list[dict], key: str) -> float:
+    """The mean over GAMES of each game's mean (Kaveh 2026-10-05: a game's result counts once, in the score too)."""
+    by: dict = {}
+    for c in cases:
+        by.setdefault(c["game"], []).append(c[key])
+    return float(np.mean([np.mean(v) for v in by.values()]))
+
+
+def backfill(rb: RuleBase, ids: set, upto_batch: int) -> dict:
+    """Counts for rules that have none yet, from the stored past cases their conditions cover (Kaveh 2026-10-05: a new
+    rule starts from the evidence that motivated it). Results count once per game. A case that lacks an attribute
+    the condition reads (it predates the word) is skipped. -> {rule: [cases used, cases skipped]}."""
+    from .rules import ROOTS
+    ids = {i for i in ids if i not in ROOTS.values()}
+    if not ids or upto_batch == 0:
+        return {}
+    for i in ids:
+        rb.counts[i] = [0.0] * len(rb.counts[i])
+    used = {i: [0, 0] for i in ids}
+    for k in range(upto_batch):
+        f = data_root() / f"batch_{k:03d}.json"
+        if not f.exists():
+            continue
+        cases = json.loads(f.read_text())["cases"]
+        per_game: dict = {}
+        for c in cases:
+            for fr in c["frames"]:
+                _fill(rb, ids, "frame", fr["attrs"], fr["outcome"], 1.0, used)
+            if "pattrs" in c:
+                _fill(rb, ids, "elsewhere", c["pattrs"], c["elsewhere"]["outcome"], 1.0, used)
+            if "result" in c:                                               # scored positions only (time forfeits are censored)
+                per_game.setdefault(c["game"], []).append(c)
+        for g, cs in per_game.items():                                     # results: each game once, shared by its positions
+            hits: dict = {}
+            for c in cs:
+                for i in ids:
+                    if rb.rules[i].kind == "result" and _applies(rb, i, c["pattrs"]):
+                        hits[i] = hits.get(i, 0) + 1
+            for i in hits:
+                used[i][0] += 1                                             # one game
+            for c in cs:
+                for i, n in hits.items():
+                    if _applies(rb, i, c["pattrs"]):
+                        rb.counts[i][KINDS["result"].index(c["result"])] += 1.0 / n
+    for i, (u, sk) in used.items():
+        unit = "games" if rb.rules[i].kind == "result" else "cases"        # the result branch used to leave this at 0
+        print(f"OBS backfill {i}: {u} past {unit} counted, {sk} skipped (they predate a word the rule reads)")
+    return used
+
+
+def _applies(rb: RuleBase, rid: str, a: dict) -> bool:
+    """rid's condition and its ancestors' hold on a (False when a lacks a word they read)."""
+    from .rules import holds
+    r = rb.rules[rid]
+    try:
+        while r is not None:
+            if r.parent is not None and not holds(r.cond, a):
+                return False
+            r = rb.rules.get(r.parent) if r.parent else None
+        return True
+    except KeyError:
+        return False
+
+
+def _fill(rb, ids, kind, a, outcome, w, used) -> None:
+    from .rules import holds
+    for i in ids:
+        if rb.rules[i].kind != kind:
+            continue
+        try:
+            ok = _applies_strict(rb, i, a)
+        except KeyError:
+            used[i][1] += 1
+            continue
+        if ok:
+            rb.update([i], outcome, a, w)
+            used[i][0] += 1
+
+
+def _applies_strict(rb: RuleBase, rid: str, a: dict) -> bool:
+    from .rules import holds
+    r = rb.rules[rid]
+    while r is not None and r.parent is not None:
+        if not holds(r.cond, a):
+            return False
+        r = rb.rules[r.parent]
+    return True
 
 
 def load_state() -> dict:
@@ -178,11 +268,13 @@ def save_state(st: dict) -> None:
     tmp.replace(p)
 
 
-def run_batch(n_games: int = 20, policy: str = "specific_newest", upto: int | None = None) -> dict:
+def run_batch(n_games: int = 20, policy: str = "evidence_blend", upto: int | None = None) -> dict:
     """The next batch of the stream with the rules created before `upto` (default: every rule in the file)."""
     st = load_state()
+    fresh = {rid for rid in RuleBase.load(upto=upto).rules if rid not in st["counts"]}
     rb = RuleBase.load(counts=st["counts"], upto=upto)
     upto = max(r.created for r in rb.rules.values()) + 1 if upto is None else upto
+    filled = backfill(rb, fresh, len(st["batches"]))                       # a new rule starts from the past it covers
     t0 = time.perf_counter()
     gs = games(st["offset"], n_games)
     cases = []
@@ -191,10 +283,11 @@ def run_batch(n_games: int = 20, policy: str = "specific_newest", upto: int | No
     k = len(st["batches"])
     scored = [c for c in cases if "long_bits" in c]
     summary = dict(batch=k, games=len(gs), first_game=st["offset"], positions=len(cases), rules=len(rb.rules), rules_upto=upto,
+                   backfilled=filled,
                    short_bits=float(np.mean([c["short_bits"] for c in cases])),
                    frame_bits=float(np.mean([-np.log2(max(f["p"], 1e-12)) for c in cases for f in c["frames"]])) if any(c["frames"] for c in cases) else 0.0,
                    frames=sum(len(c["frames"]) for c in cases),
-                   long_bits=float(np.mean([c["long_bits"] for c in scored])) if scored else None, long_positions=len(scored),
+                   long_bits=per_game_mean(scored, "long_bits") if scored else None, long_positions=len(scored),
                    seconds=time.perf_counter() - t0, time=time.strftime("%Y-%m-%d %H:%M %Z"))
     st["offset"] += len(gs)
     st["counts"] = rb.counts
@@ -238,12 +331,12 @@ def health() -> list[dict]:
         cs = d["cases"]
         fr = sum(L(f["p_all"]["F0"]) - L(f["p"]) for c in cs for f in c["frames"])
         el = sum(L(c["elsewhere"]["p_all"]["E0"]) - L(c["elsewhere"]["p"]) for c in cs if "p_all" in c["elsewhere"])
-        lg = [L(c["p_result_all"]["R0"]) - L(c["p_result"]) for c in cs if "p_result_all" in c]
+        lg = [dict(game=c["game"], s=L(c["p_result_all"]["R0"]) - L(c["p_result"])) for c in cs if "p_result_all" in c]
         h = dict(batch=k, positions=len(cs), rules=d["summary"]["rules"], frames_saved=fr / len(cs), elsewhere_saved=el / len(cs),
-                 long_saved=(sum(lg) / len(lg)) if lg else 0.0)
+                 long_saved=per_game_mean(lg, "s") if lg else 0.0)          # a game's result counts once (Kaveh 2026-10-05)
         out.append(h)
         print(f"OBS health batch {k}: {h['rules']} rules; bits saved per position against the base rates: frames {h['frames_saved']:+.3f}, "
-              f"elsewhere {h['elsewhere_saved']:+.3f}, result {h['long_saved']:+.3f} ({len(lg)} uncensored)")
+              f"elsewhere {h['elsewhere_saved']:+.3f}, result per game {h['long_saved']:+.3f} ({len({x['game'] for x in lg})} games)")
     return out
 
 

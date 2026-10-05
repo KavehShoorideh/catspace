@@ -22874,6 +22874,31 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-05 15:12 PDT — the watcher's young rules: backfill, evidence blend, results once per game (OBS)
+
+Kaveh's three decisions (asked): a new rule's counts START FROM THE PAST CASES its condition covers (the evidence that
+motivated it; still judged only on later games); a young rule is BLENDED with the rule it supersedes by its own
+evidence, trust n/(n+20) for n cases (a simple prior until a learned one); a game's result COUNTS ONCE in the health
+line too. Implemented in watch/ (rules.forecast, watcher.backfill, per_game_mean), 10 watch tests; all six batches
+replayed under the new semantics (`watcher replay`; earlier entries keep the numbers they printed).
+
+Backfill (OBS, from the replay): F1 441 past cases, F2 604, F3 1,960, F4 1,957, F5 154, F9 27, F10 109, F17 694,
+E12 6, E13 988; R14 52 past games, R15 49, R16 62 (R14 started at loss 8.6, draw 2.0, win 41.4). A reporting bug:
+the backfill line printed "0 past cases" for every result rule; the counts were right (checked directly: R14 = the
+52 games with a scored position at settled >= 3); fixed.
+
+HEALTH after the replay (`watcher health`; bits saved against the base rates on the same positions; the result per
+game):
+  batch   rules   frames    elsewhere   result per game
+  1       11      +1.022    +0.000      +0.029  (14 games)
+  2       16      +1.057    +0.010      +0.044  (16)
+  3       16      +0.961    -0.024      +0.060  (18)
+  4       19      +0.902    +0.022      +0.074  (17)
+  5       20      +0.954    +0.010      +0.146  (20)
+READING (directional): with the evidence they were written from and a blend that defers while they are young, new
+rules no longer cost bits when they arrive; the result line rises batch by batch. The frames hold about a bit per
+position; the off-frame term is still unexplained.
+
 ## 2026-10-05 13:41 PDT — the watcher remembers: frames across moves, the exchange in progress, incremental update (OBS)
 
 Kaveh: "it pays to have a memory that is consistent with ... state tracking across the game ... reduce the number of

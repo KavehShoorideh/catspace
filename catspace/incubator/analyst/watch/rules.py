@@ -34,6 +34,7 @@ from catspace.io import paths
 KINDS = {"frame": list(range(-10, 11)), "elsewhere": list(range(-10, 11)), "result": ["loss", "draw", "win"]}
 ROOTS = {"frame": "F0", "elsewhere": "E0", "result": "R0"}
 ALPHA = 4.0                                                                  # the parent's weight, in cases, in a rule's forecast
+TRUST = 20.0                                                                 # evidence_blend: a rule is trusted n/(n+TRUST) against the rule it supersedes
 OPS = {"<": lambda a, b: a < b, "<=": lambda a, b: a <= b, "==": lambda a, b: a == b, ">=": lambda a, b: a >= b, ">": lambda a, b: a > b}
 
 
@@ -172,6 +173,24 @@ class RuleBase:
         """-> (the rule that forecasts, every rule that applies)."""
         m = self.matching(kind, a)
         return POLICIES[policy](self, m), m
+
+    def forecast(self, kind: str, a: dict, policy: str = "evidence_blend") -> tuple[list[float], str, list[str], dict]:
+        """-> (the forecast, the rule that leads it, every rule that applies, how it was made). evidence_blend (Kaveh
+        2026-10-05, a simple prior until a learned one): the leading rule (more specific, then newer) is trusted
+        n/(n+TRUST) by its own cases n against the rule it supersedes (the leader once it is set aside)."""
+        m = self.matching(kind, a)
+        lead = _specific_newest(self, m)
+        d = self.dist(lead, a)
+        if policy != "evidence_blend":
+            return d, lead, m, dict(lead=lead)
+        rest = [r for r in m if r != lead]
+        if not rest:
+            return d, lead, m, dict(lead=lead)
+        prev = _specific_newest(self, rest)
+        n = sum(self.counts[lead])
+        w = n / (n + TRUST)
+        dp = self.dist(prev, a)
+        return [w * x + (1 - w) * y for x, y in zip(d, dp)], lead, m, dict(lead=lead, superseded=prev, weight=w)
 
     def update(self, matched: list[str], outcome, a: dict | None = None, weight: dict | float = 1.0) -> None:
         """Count the outcome for every rule that applied (each rule estimates its own condition's frequencies); a rule

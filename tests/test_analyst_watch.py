@@ -150,3 +150,31 @@ def test_memory_counts_declines():
         out = mem.step(before, m, b, i + 1)
     a = out[chess.D5]                                                         # Black's d5 knight: attacked since ply 1
     assert a["age"] == 3 and a["declined"] == 1                               # White could take at ply 3 (Ke2) and did not
+
+
+def test_backfill_blend_and_per_game(roots):
+    """A new rule starts from the stored past cases it covers (results once per game; cases missing a word skipped);
+    a young rule with no cases forecasts what the rule it supersedes forecasts; results average per game."""
+    import json
+    from catspace.incubator.analyst.watch import rules as R
+    from catspace.incubator.analyst.watch.watcher import backfill, data_root, per_game_mean
+    d = data_root(); d.mkdir(parents=True, exist_ok=True)
+    fr = lambda h, o: dict(attrs=dict(hanging=h, occ_value=3), outcome=o)
+    cases = [dict(game=1, frames=[fr(True, -3), fr(False, 0)], elsewhere=dict(outcome=0), pattrs=dict(material=4), result="win"),
+             dict(game=1, frames=[fr(True, -3)], elsewhere=dict(outcome=0), pattrs=dict(material=5), result="win"),
+             dict(game=2, frames=[dict(attrs=dict(occ_value=3), outcome=0)], elsewhere=dict(outcome=0), pattrs=dict(material=-1), result="loss")]
+    (d / "batch_000.json").write_text(json.dumps(dict(summary={}, cases=cases)))
+    rf = R.add_rule("frame", "F0", {"flag": "hanging"}, "hanging", ["1:1:e4"])
+    rr = R.add_rule("result", "R0", {"cmp": "material", "op": ">=", "value": 3}, "up", ["1:1"])
+    rb = R.RuleBase.load()
+    used = backfill(rb, {rf.id, rr.id}, 1)
+    assert used[rf.id] == [2, 1]                                             # two hanging frames; one case predates the word
+    assert rb.counts[rf.id][-3 + 10] == 2
+    assert sum(rb.counts[rr.id]) == pytest.approx(1.0)                       # game 1's two positions share one observation
+    young = R.add_rule("frame", "F0", {"cmp": "occ_value", "op": ">=", "value": 3}, "a piece", ["1:2:e4"])
+    rb2 = R.RuleBase.load(counts={k: list(v) for k, v in rb.counts.items()})
+    a = dict(hanging=True, occ_value=3)
+    d_blend, lead, matched, how = rb2.forecast("frame", a)
+    assert lead == young.id and how["superseded"] == rf.id and how["weight"] == 0.0
+    assert d_blend == pytest.approx(rb2.dist(rf.id, a))                      # no cases yet: the superseded rule speaks
+    assert per_game_mean([dict(game=1, b=2.0), dict(game=1, b=4.0), dict(game=2, b=0.0)], "b") == pytest.approx(1.5)
