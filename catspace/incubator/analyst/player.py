@@ -403,16 +403,58 @@ def _choose_mcts(self, b: chess.Board):
 Player.choose_mcts = _choose_mcts
 
 
+class FrameMover:
+    """The frame player (frame_player.choose, LEDGER one_ply: no zone search) as a mover for play_games. A move is drawn
+    at random, seeded, among the ledger's tied top moves. The frame store's work per move is counted: resolutions served
+    from memory against computed (fates.RESOLVED_STATS), the rolled-forward state's measure."""
+
+    def __init__(self, rng: random.Random):
+        from . import fates, frame_player as FP
+        FP.LEDGER = "one_ply"
+        self.FP, self.fates, self.rng = FP, fates, rng
+        self.stats = Counter(pruned=0, legal=0, extended=0, decisions=0, sched_answered=0, sched_asked=0, sched_hit=0, sched_run=0)
+        self.lemma_usage = Counter()
+        self.sched = None
+        self.cache = type("NoCache", (), dict(hits=0, misses=0, save=lambda self: None))()
+        self.ties = Counter()
+
+    def choose(self, b: chess.Board) -> tuple[chess.Move, dict]:
+        st = self.fates.RESOLVED_STATS
+        h0, c0 = st["hits"], st["computed"]
+        c = self.FP.choose(b)
+        tied = sorted(c["best"])
+        u = self.rng.choice(tied)
+        self.stats["store_hits"] += st["hits"] - h0
+        self.stats["store_computed"] += st["computed"] - c0
+        self.stats["legal"] += len(c["values"])
+        self.ties[len(tied)] += 1
+        return chess.Move.from_uci(u), dict(move=u, value=c["values"][u], tied=len(tied), nodes=self.FP.NODES[0],
+                                            store=dict(hits=st["hits"] - h0, computed=st["computed"] - c0))
+
+    def observe(self, board_before, move, ply):
+        pass
+
+    def summary(self) -> str:
+        h, c = self.stats["store_hits"], self.stats["store_computed"]
+        n = sum(self.ties.values())
+        return (f"[frame] frames resolved: {h} served from the store, {c} computed ({100 * h / max(h + c, 1):.0f}% from memory); "
+                f"tied top sets: single {self.ties[1]} of {n} choices, mean size {sum(k * v for k, v in self.ties.items()) / max(n, 1):.2f}")
+
+
 def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: int, library: Path | None, proved: Path | None, use_lemmas: bool, guide: bool,
-               plies: int = 200, seed: int = 0, opponent: str = "maia", log=print, tag: str = "", search_kind: str = "ab", sims: int = 400, watchers: bool = False, frame_budget: int = 0, extend: int = 0, unsure: float = 0.15):
+               plies: int = 200, seed: int = 0, opponent: str = "maia", log=print, tag: str = "", search_kind: str = "ab", sims: int = 400, watchers: bool = False, frame_budget: int = 0, extend: int = 0, unsure: float = 0.15,
+               engine: str = "rules"):
     from .maia import Maia
     rng = random.Random(seed)
+    if engine == "frame":                                                    # the frame player at zero search (the PoC, Kaveh 2026-10-05)
+        tag = f"_frame{tag}"
     opp = Maia(rating=maia_rating) if opponent == "maia" else None
     sf = None
     if opponent == "stockfish":                                              # Stockfish at a UCI Elo (>= 1320), depth-limited: the ladder above Maia-1500
         sf = chess.engine.SimpleEngine.popen_uci("/opt/homebrew/bin/stockfish")
         sf.configure({"UCI_LimitStrength": True, "UCI_Elo": max(1320, maia_rating), "Threads": 1, "Hash": 64})
-    pl = Player(library, proved, depth=depth, node_cap=node_cap, max_bodies=max_bodies, cache_path=OUT / f"graph_cache{tag}.json", use_lemmas=use_lemmas, guide=guide, log=log)
+    pl = FrameMover(rng) if engine == "frame" else \
+        Player(library, proved, depth=depth, node_cap=node_cap, max_bodies=max_bodies, cache_path=OUT / f"graph_cache{tag}.json", use_lemmas=use_lemmas, guide=guide, log=log)
     pl.search_kind = search_kind; pl.sims = sims; pl.watchers = watchers; pl.extend_depth = extend; pl.unsure_margin = unsure
     if frame_budget:
         pl.attach_scheduler(frame_budget, store_path=OUT / f"scheduler_store{tag}.json")
@@ -446,6 +488,8 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
     log(f"[player] {n} games vs {opponent}-{maia_rating}, {search_kind}{' sims ' + str(sims) if search_kind == 'mcts' else ''}, depth {depth}{'+' + str(extend) + ' where unsure (' + str(pl.stats['extended']) + '/' + str(pl.stats['decisions']) + ')' if extend else ''}, node cap {node_cap}, lemmas {'on' if use_lemmas else 'off'}{' + guide' if guide else ''}: {dict(results)}; score {100 * score:.0f}%; nodes/move {sum(node_hist) / max(1, len(node_hist)):.0f}; s/move {sum(t_hist) / max(1, len(t_hist)):.2f}; pruned {pl.stats['pruned']}/{pl.stats['legal']} root moves")
     for t, k in pl.lemma_usage.most_common(6):
         log(f"    used {k:5d}  {t[:140]}")
+    if hasattr(pl, "summary"):
+        log(pl.summary())
     OUT.mkdir(parents=True, exist_ok=True)
     json.dump(dict(games=games, results=dict(results), score=score, nodes_per_move=sum(node_hist) / max(1, len(node_hist)), lemma_usage=pl.lemma_usage.most_common(40)), open(OUT / f"games{tag}.json", "w"), indent=1)
     if opp:
@@ -461,6 +505,7 @@ def main(argv=None):
     ap.add_argument("--depth", type=int, default=3, help="maximum depth; with --budget the node cap is the only limit and iterative deepening runs as deep as it allows"); ap.add_argument("--nodes", type=int, default=4000); ap.add_argument("--budget", action="store_true"); ap.add_argument("--max-bodies", type=int, default=4); ap.add_argument("--plies", type=int, default=200)
     ap.add_argument("--library", default="data/derived/lemmas/library_games_size3.json"); ap.add_argument("--proved", default="data/derived/lemmas/proved_games_size3.json")
     ap.add_argument("--no-lemmas", action="store_true"); ap.add_argument("--no-watchers", action="store_true"); ap.add_argument("--watchers", action="store_true"); ap.add_argument("--frame-budget", type=int, default=0, help="attach the scheduler: frame tasks run per move"); ap.add_argument("--extend", type=int, default=0, help="extra plies where the search is unsure"); ap.add_argument("--unsure", type=float, default=0.15, help="the margin between the top two that counts as unsure"); ap.add_argument("--search", choices=["ab", "mcts"], default="ab"); ap.add_argument("--sims", type=int, default=400); ap.add_argument("--guide", default="", help="'' | 'mlp' | 'tf': the body ranker"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--tag", default=""); ap.add_argument("--fen")
+    ap.add_argument("--engine", choices=["rules", "frame"], default="rules", help="rules: this file's player; frame: frame_player at zero search (its one-ply ledger over frames)")
     a = ap.parse_args(argv)
     if a.cmd == "analyse":
         pl = Player(Path(a.library), Path(a.proved), depth=a.depth, node_cap=a.nodes, max_bodies=a.max_bodies, use_lemmas=not a.no_lemmas, guide=a.guide)
@@ -472,7 +517,7 @@ def main(argv=None):
         pl = Player(Path(a.library), Path(a.proved), depth=a.depth, node_cap=a.nodes, max_bodies=a.max_bodies, use_lemmas=not a.no_lemmas, guide=a.guide)
         pl.search_kind = a.search; pl.sims = a.sims
         b = chess.Board(a.fen or chess.STARTING_FEN); m, info = pl.choose(b); print(b.san(m), json.dumps({k: v for k, v in info.items() if k != "counts"})); return
-    play_games(a.games, a.maia, (24 if a.budget else a.depth), a.nodes, a.max_bodies, Path(a.library), Path(a.proved), not a.no_lemmas, a.guide, plies=a.plies, seed=a.seed, opponent=a.opponent, tag=a.tag, search_kind=a.search, sims=a.sims, watchers=a.watchers and not a.no_watchers, frame_budget=a.frame_budget, extend=a.extend, unsure=a.unsure)
+    play_games(a.games, a.maia, (24 if a.budget else a.depth), a.nodes, a.max_bodies, Path(a.library), Path(a.proved), not a.no_lemmas, a.guide, plies=a.plies, seed=a.seed, opponent=a.opponent, tag=a.tag, search_kind=a.search, sims=a.sims, watchers=a.watchers and not a.no_watchers, frame_budget=a.frame_budget, extend=a.extend, unsure=a.unsure, engine=a.engine)
 
 
 if __name__ == "__main__":

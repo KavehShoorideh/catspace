@@ -308,6 +308,12 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   half-built index was stopped and rebuilt. Rule: any "material at time t" in this repo is read where it STANDS.
 - **A test with a wrong expectation** (class 9): my "success" line had a knight hanging to h6xg5; the rule was right.
 
+### 2026-10-05 (evening, the PoC baselines)
+- **zsh did not word-split `$args`, and my grep missed `usage`** (class 7, a REPEAT of the 2026-10-04 entry whose rule
+  reads "every grep over a run's output also matches error|usage|Traceback"): three baseline runs exited 0 in a second
+  having printed argparse's usage; my filter showed only my own headers, and I went to read the results. Caught by the
+  missing dumps. Fix: `${=args}`; the filter now matches `usage`. Rule restated: a run that ends in seconds has not run.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).
