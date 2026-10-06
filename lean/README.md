@@ -24,6 +24,11 @@ Source plan: "Lean Chess — Idea Basis & Live Engine: Handoff Plan" (Oct 4, 202
     path geometry.
   - `Ideas/Passer2.lean` — lemma 2, second form: enemy king and pawns (a pawn-distance bound to the bad squares,
     a king-room pigeonhole against self-stalemate), `unstoppablePasser2_sound`.
+  - `Ideas/Fork.lean` — rule 2, the double threat (fork, discovered attack): `localCheck` -- after our move every legal
+    reply is answered by a capture after which, whatever they reply, material is up by k (their mate counts as won, a
+    stalemate as no gain); `localCheck_sound`: it implies `forcedAtLeaves` (the goal read at the leaves, three plies on;
+    material is reversible, so `forcedWithinB`'s "reached at some node" would count a capture before its recapture).
+    The certificate the Python rule asks for (`ideas` command `fork <uci> <k> <fen>`).
   - `Main.lean` — the `ideas` binary: `bb` (back rank), `passer`, `passer2` over python-chess bitboards in hex;
     `backrank`/`passerfen`/`legal`/`checkmate` over FEN for the bridge; `bench`.
 - Rule kernel: [Arthur742Ramos/chess-lean](https://github.com/Arthur742Ramos/chess-lean)

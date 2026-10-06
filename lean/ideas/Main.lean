@@ -1,3 +1,4 @@
+import Ideas.Fork
 import Ideas
 import Chess.FENText
 
@@ -194,6 +195,13 @@ def handle (line : String) : List String :=
       match readPosition (" ".intercalate rest) with
       | some p => [if checkmateB p then "1" else "0"]
       | none => ["error bad fen"]
+  | "fork" :: uci :: kstr :: rest =>                 -- fork <uci> <k> <fen>: is a gain of k forced three plies after the move (our capture, their reply)?
+      match readPosition (" ".intercalate rest), kstr.toInt? with
+      | some p, some k =>
+          match (legalMoves p).find? (fun m => moveUci m == uci) with
+          | some m => [if localCheck p m k then s!"CERTIFIED {k}" else s!"FAIL {k}"]
+          | none => ["error illegal move"]
+      | _, _ => ["error bad fen or k"]
   | _ => ["error unknown command"]
 
 /-- Time `f` over `reps` runs; `f` gets the iteration index and the results are folded into a ref, so
