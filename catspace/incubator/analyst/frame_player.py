@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from dataclasses import dataclass
 
 import chess
 
@@ -133,6 +134,64 @@ PAWN_MOVES = False                                                  # zone_candi
                                                                     # spec's pawn_moves: the quiet pawn move, the misses' gap -- 24/44)
 PLANNER = None                                                      # the planner (frame_planner): None -> MaterialPlanner() defaults
 ZONE_BUDGET = 20000                                                 # zone_candidates: nodes per candidate per depth (all deepen together: 4, 6, 8 plies)
+RULES: list = []                                                    # THE RULES IN PLAY at zero search (Kaveh 2026-10-05, the PoC): each reads the
+                                                                    # board and claims, for the moves it covers, a bounded outcome. By tier: a rule
+                                                                    # PROVED in Lean adds its claim to the ledger value; a CONJECTURE (bridge-tested,
+                                                                    # unproved) only breaks ties among the moves the ledger values equally.
+RULES_FIRED = [0]                                                   # claims applied in the last choose
+
+
+@dataclass
+class Rule:
+    name: str
+    tier: str                                                       # "proved" | "conjecture"
+    fire: object                                                    # (board) -> {uci: (value, why)}: value = a material claim (proved) or a preference (conjecture)
+
+
+def apply_rules(b: chess.Board, values: dict) -> dict:
+    """Apply RULES to the ledger's values in place. -> {uci: [why, ...]} for the moves a rule touched. A proved rule's
+    claim is added to the value (the passer's conservative credit is the model); a conjecture may only lower, by 1e-3,
+    the tied top moves it ranks below its best -- a tied move it says nothing about keeps the top."""
+    notes: dict = {}
+    fired = 0
+    for r in RULES:
+        if r.tier != "proved":
+            continue
+        for u, (v, why) in r.fire(b).items():
+            if u in values:
+                values[u] += v; fired += 1
+                notes.setdefault(u, []).append(f"{r.name}: {why}")
+    top = max(values.values()); tied = [u for u, v in values.items() if v == top]
+    if len(tied) > 1:
+        for r in RULES:
+            if r.tier != "conjecture":
+                continue
+            sc = r.fire(b)
+            prefs = {u: sc[u][0] for u in tied if u in sc}
+            if not prefs:
+                continue
+            hi = max(prefs.values())
+            for u in tied:
+                if prefs.get(u, hi) < hi:
+                    values[u] -= 1e-3; fired += 1
+                    notes.setdefault(u, []).append(f"{r.name}: {sc[u][1]} (a tie-break)")
+    RULES_FIRED[0] = fired
+    return notes
+
+
+def _passer_fire(b: chess.Board) -> dict:
+    """The proved passer (Ideas.Passer2.unstoppablePasser2_sound) as a rule: its push is credited with its conservative
+    gain -- the queen it brings less what the enemy can reach during the race (lean_passer_v2_proto.proved_passer_gains)."""
+    from .lean_passer_v2_proto import proved_passer_gains
+    out = {}
+    for sq, (g, plies) in proved_passer_gains(b).items():
+        for m in b.legal_moves:
+            if m.from_square == sq and not b.is_capture(m):
+                out[m.uci()] = (g, f"the pawn on {chess.square_name(sq)} queens within {plies} plies whatever they do (proved); credit {g:+.1f} after their counterplay")
+    return out
+
+
+RULE_BOOK = {"passer": lambda: Rule("passer", "proved", _passer_fire)}   # by name, for the harnesses' --rules
 
 
 def _one_ply_values(b: chess.Board, before, book) -> dict:
@@ -289,6 +348,7 @@ def choose(b: chess.Board) -> dict:
         else:
             v, after, bef = ledger_move_value(b, m, square_frame, before=before)
         values[m.uci()] = v; trace[m.uci()] = (after, bef)
+    notes = apply_rules(b, values) if RULES else {}                 # the rules' claims, by tier (zero search)
     top = max(values.values())
     best = [u for u, v in values.items() if v == top]
     plan_scores = {}
@@ -297,7 +357,7 @@ def choose(b: chess.Board) -> dict:
         hi = max(plan_scores.values())
         if hi > 0:
             best = [u for u in best if plan_scores.get(u, 0.0) == hi]
-    return dict(values=values, best=best, trace=trace, before=before, plans=plan_scores)
+    return dict(values=values, best=best, trace=trace, before=before, plans=plan_scores, rules=notes)
 
 
 def trace(fen: str, detail: int = 3) -> None:

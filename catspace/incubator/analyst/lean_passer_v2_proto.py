@@ -142,20 +142,21 @@ def proved_passers(b: chess.Board) -> list[tuple[int, int]]:
 VALUE = {chess.PAWN: 1.0, chess.KNIGHT: 3.0, chess.BISHOP: 3.0, chess.ROOK: 5.0, chess.QUEEN: 9.0, chess.KING: 0.0}
 
 
-def proved_passer_gain(b: chess.Board) -> float:
-    """A conservative material credit for a proved passer of the side to move at the search's horizon: the queen it
+def proved_passer_gains(b: chess.Board) -> dict:
+    """-> {square: (gain, plies)} for each proved passer of the side to move whose credit is positive.
+    A conservative material credit for a proved passer of the side to move at the search's horizon: the queen it
     brings, minus the value of our pieces the enemy king (king distance) or pawns (pawn distance) can reach during the
     race, and only when every enemy pawn needs at least two more moves after our promotion to promote itself (else the
     race is level and the credit would be a horizon artefact: puzzle 0bmcR, 2026-10-05). 0 when none."""
     ps = proved_passers(b)
     if not ps:
-        return 0.0
+        return {}
     us, them = b.turn, not b.turn
     their_fwd = -1 if them == chess.BLACK else 1
     their_start = 6 if them == chess.BLACK else 1
     their_promo = 0 if them == chess.BLACK else 7
     ek = b.king(them)
-    best = 0.0
+    gains: dict = {}
     for sq, plies in ps:
         n = (plies + 1) // 2
         # their pawns: at least two more moves after our promotion
@@ -182,8 +183,14 @@ def proved_passer_gain(b: chess.Board) -> float:
                 if 0 < ahead and df <= ahead and max(df, ahead - (1 if chess.square_rank(e) == their_start else 0)) <= n - 1:
                     reachable += VALUE[pt]
                     break
-        best = max(best, QUEEN_GAIN - reachable)
-    return max(best, 0.0)
+        if QUEEN_GAIN - reachable > 0:
+            gains[sq] = (QUEEN_GAIN - reachable, plies)
+    return gains
+
+
+def proved_passer_gain(b: chess.Board) -> float:
+    """The best credit among proved_passer_gains (the zone search's leaf credit; 0 when none)."""
+    return max((g for g, _ in proved_passer_gains(b).values()), default=0.0)
 
 
 def random_pawn_ending(rng: random.Random) -> chess.Board | None:

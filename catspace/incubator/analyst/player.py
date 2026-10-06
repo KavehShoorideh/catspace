@@ -410,9 +410,10 @@ class FrameMover:
 
     KEYS = ("hits", "lemma_hits", "foot_hits", "computed")              # fates.RESOLVED_STATS: served exactly, served by a lemma
                                                                          # (the same frame on other squares), by footprint, computed
-    def __init__(self, rng: random.Random):
+    def __init__(self, rng: random.Random, rules: list | None = None):
         from . import fates, frame_player as FP
         FP.LEDGER = "one_ply"                                            # (the default; set so the mode cannot be inherited)
+        FP.RULES[:] = [FP.RULE_BOOK[name]() for name in (rules or [])]   # the rules in play, by name
         self.FP, self.fates, self.rng = FP, fates, rng                    # rng: this mover's OWN stream (seed + 1), so the opponent's
         self.stats = Counter(pruned=0, legal=0, extended=0, decisions=0, sched_answered=0, sched_asked=0, sched_hit=0, sched_run=0)   # draws
         self.lemma_usage = Counter()                                      # match those of any other engine (review 2026-10-05)
@@ -460,19 +461,19 @@ class FrameMover:
 
 def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: int, library: Path | None, proved: Path | None, use_lemmas: bool, guide: bool,
                plies: int = 200, seed: int = 0, opponent: str = "maia", log=print, tag: str = "", search_kind: str = "ab", sims: int = 400, watchers: bool = False, frame_budget: int = 0, extend: int = 0, unsure: float = 0.15,
-               engine: str = "rules"):
+               engine: str = "rules", rules: list | None = None):
     from .maia import Maia
     rng = random.Random(seed)
     if engine == "frame":                                                    # the frame player at zero search (the PoC, Kaveh 2026-10-05)
         if frame_budget:
             raise ValueError("--frame-budget is the rules player's scheduler; the frame engine has none")
-        tag = "_frame" + (("_" + tag.lstrip("_")) if tag else "")
+        tag = "_frame" + (("_rules_" + "-".join(rules)) if rules else "") + (("_" + tag.lstrip("_")) if tag else "")
     opp = Maia(rating=maia_rating) if opponent == "maia" else None
     sf = None
     if opponent == "stockfish":                                              # Stockfish at a UCI Elo (>= 1320), depth-limited: the ladder above Maia-1500
         sf = chess.engine.SimpleEngine.popen_uci("/opt/homebrew/bin/stockfish")
         sf.configure({"UCI_LimitStrength": True, "UCI_Elo": max(1320, maia_rating), "Threads": 1, "Hash": 64})
-    pl = FrameMover(random.Random(seed + 1)) if engine == "frame" else \
+    pl = FrameMover(random.Random(seed + 1), rules) if engine == "frame" else \
         Player(library, proved, depth=depth, node_cap=node_cap, max_bodies=max_bodies, cache_path=OUT / f"graph_cache{tag}.json", use_lemmas=use_lemmas, guide=guide, log=log)
     pl.search_kind = search_kind; pl.sims = sims; pl.watchers = watchers; pl.extend_depth = extend; pl.unsure_margin = unsure
     if frame_budget:
@@ -532,6 +533,7 @@ def main(argv=None):
     ap.add_argument("--library", default="data/derived/lemmas/library_games_size3.json"); ap.add_argument("--proved", default="data/derived/lemmas/proved_games_size3.json")
     ap.add_argument("--no-lemmas", action="store_true"); ap.add_argument("--no-watchers", action="store_true"); ap.add_argument("--watchers", action="store_true"); ap.add_argument("--frame-budget", type=int, default=0, help="attach the scheduler: frame tasks run per move"); ap.add_argument("--extend", type=int, default=0, help="extra plies where the search is unsure"); ap.add_argument("--unsure", type=float, default=0.15, help="the margin between the top two that counts as unsure"); ap.add_argument("--search", choices=["ab", "mcts"], default="ab"); ap.add_argument("--sims", type=int, default=400); ap.add_argument("--guide", default="", help="'' | 'mlp' | 'tf': the body ranker"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--tag", default=""); ap.add_argument("--fen")
     ap.add_argument("--engine", choices=["rules", "frame"], default="rules", help="rules: this file's player; frame: frame_player at zero search (its one-ply ledger over frames)")
+    ap.add_argument("--rules", nargs="*", default=[], choices=["passer"], help="--engine frame: the rules in play (frame_player.RULE_BOOK)")
     a = ap.parse_args(argv)
     if a.cmd == "analyse" and a.engine == "frame":
         raise SystemExit("analyse is the rules player's; for the frame player use frame_player --trace")
@@ -543,12 +545,12 @@ def main(argv=None):
         return
     if a.cmd == "move":
         if a.engine == "frame":
-            pl = FrameMover(random.Random(a.seed + 1))
+            pl = FrameMover(random.Random(a.seed + 1), a.rules)
         else:
             pl = Player(Path(a.library), Path(a.proved), depth=a.depth, node_cap=a.nodes, max_bodies=a.max_bodies, use_lemmas=not a.no_lemmas, guide=a.guide)
             pl.search_kind = a.search; pl.sims = a.sims
         b = chess.Board(a.fen or chess.STARTING_FEN); m, info = pl.choose(b); print(b.san(m), json.dumps({k: v for k, v in info.items() if k != "counts"})); return
-    play_games(a.games, a.maia, (24 if a.budget else a.depth), a.nodes, a.max_bodies, Path(a.library), Path(a.proved), not a.no_lemmas, a.guide, plies=a.plies, seed=a.seed, opponent=a.opponent, tag=a.tag, search_kind=a.search, sims=a.sims, watchers=a.watchers and not a.no_watchers, frame_budget=a.frame_budget, extend=a.extend, unsure=a.unsure, engine=a.engine)
+    play_games(a.games, a.maia, (24 if a.budget else a.depth), a.nodes, a.max_bodies, Path(a.library), Path(a.proved), not a.no_lemmas, a.guide, plies=a.plies, seed=a.seed, opponent=a.opponent, tag=a.tag, search_kind=a.search, sims=a.sims, watchers=a.watchers and not a.no_watchers, frame_budget=a.frame_budget, extend=a.extend, unsure=a.unsure, engine=a.engine, rules=a.rules)
 
 
 if __name__ == "__main__":

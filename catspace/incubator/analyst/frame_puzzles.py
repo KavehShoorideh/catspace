@@ -158,6 +158,7 @@ def main(argv=None):
     ap.add_argument("--decider-price", type=float, default=None, help="--budget-policy decider: a price on search instead (go on when the chance >= price x the next rung's nodes)")
     ap.add_argument("--armed", nargs="*", default=[], choices=["discovery", "pin", "backrank", "fork", "overload"], help="armed lemmas: strikes at once, lures as candidates")
     ap.add_argument("--lemmas", action="store_true", help="the learned high-value lemma detectors as the tie-break (lemma_detect)")
+    ap.add_argument("--rules", nargs="*", default=[], choices=["passer"], help="rules in play at zero search, by tier (frame_player.RULE_BOOK)")
     ap.add_argument("--imagine", type=int, default=0, help="the top-k imagined frames: their moves join the candidates, their squares the zone")
     ap.add_argument("--leaf-mates", action="store_true", help="zone search: a mate in one for the side to move is seen at the horizon")
     ap.add_argument("--zugzwang-guard", action="store_true", help="zone search: a king-and-pawns side may not pass inside the tree")
@@ -214,6 +215,8 @@ def main(argv=None):
         planner_kw["lemmas"] = True; tag += "_lemmas"
     for name in a.armed:                                          # the armed lemmas (discovery, pin, backrank)
         FP.ARMED.add(name); tag += f"_{name}"
+    for name in a.rules:                                          # the rules in play at zero search (frame_player.RULE_BOOK)
+        FP.RULES.append(FP.RULE_BOOK[name]()); tag += f"_rule_{name}"
     if a.jobs:
         planner_kw["jobs"] = True; FP.JOBS = True; tag += "_jobs"
     spec_kw = {}                                                  # the tactical spec's limits, all the planner's
