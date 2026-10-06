@@ -297,6 +297,17 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   56 steps, so a fresh baseline re-run would fail the reproducibility check. Not chased: the old miner's rounds are
   retired (Kaveh, "roll back, move on"); any future loop must re-freeze its baselines under the code it measures.
 
+### 2026-10-05 (the surprise watcher)
+- **Results counted once per position** (class 1-like, the evidence's unit): a game's result is ONE observation; one
+  long game outweighed every other. Fixed (per-game weights), replayed.
+- **The backfill's progress line said 0 for every result rule** while the counts were right (a report that did not
+  follow the code path: class 2). Checked directly (R14 = the 52 games), fixed.
+- **Sacrifice success read at a material PEAK mid-exchange** (class 4, the third time today: framing, settled
+  material, and now this): "the material comes back" counted the instant the queen took a knight, one reply before it
+  was taken. Caught by a constructed test before the index was used; the success must stand after the next reply; the
+  half-built index was stopped and rebuilt. Rule: any "material at time t" in this repo is read where it STANDS.
+- **A test with a wrong expectation** (class 9): my "success" line had a knight hanging to h6xg5; the rule was right.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).

@@ -178,3 +178,37 @@ def test_backfill_blend_and_per_game(roots):
     assert lead == young.id and how["superseded"] == rf.id and how["weight"] == 0.0
     assert d_blend == pytest.approx(rb2.dist(rf.id, a))                      # no cases yet: the superseded rule speaks
     assert per_game_mean([dict(game=1, b=2.0), dict(game=1, b=4.0), dict(game=2, b=0.0)], "b") == pytest.approx(1.5)
+
+
+def test_cases_exchange_outcome_and_retrieval(roots):
+    """The case database: a capture's exchange count, success = the material back within N plies (or mate), and
+    retrieval of the same event's nearest cases from the index."""
+    from catspace.incubator.analyst.watch import cases as C
+    assert C.exchange_for(chess.Board("4k3/8/2p5/3b4/8/8/8/3QK3 w - - 0 1"), chess.Move.from_uci("d1d5")) == -6
+    assert C.exchange_for(chess.Board("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1"), chess.Move.from_uci("e4d5")) == 1
+    # Bxf7+ Kxf7 then Qh5+ forking the king and the e8... built so White wins the material back with a queen fork
+    boards, moves = _game("e2e4 e7e5 f1c4 g8f6 c4f7 e8f7 d1h5 f6h5")
+    out = C.outcome(boards, 4, chess.WHITE)                                   # Bxf7+ gave a bishop for a pawn; the queen was then lost too
+    assert out["success"] == 0
+    boards, moves = _game("e2e4 e7e5 g1f3 b8c6 f1c4 g8f6 c4f7 e8f7 f3g5 f7g8 d1f3 d8e7 f3f6 e7f6")
+    assert C.outcome(boards, 6, chess.WHITE)["success"] == 0
+    # the material comes back and stands: Bxf7+ Kxf7, Ne5+ forks king and queen, Ke7, Nxd7 Kxd7
+    boards = [chess.Board("4k3/3q1p2/8/8/2B5/5N2/8/6K1 w - - 0 1")]
+    for u_ in "c4f7 e8f7 f3e5 f7e7 e5d7 e7d7".split():
+        nb = boards[-1].copy(); nb.push_uci(u_); boards.append(nb)
+    assert C.exchange_for(boards[0], chess.Move.from_uci("c4f7")) == -2      # a bishop for a pawn: a sacrifice
+    assert C.outcome(boards, 0, chess.WHITE)["success"] == 1
+    ev = C.scan_game(dict(game_id=1, white_elo=1600, black_elo=1600, result=1, termination="Normal",
+                          moves="e2e4 e7e5 g1f3 b8c6 f1c4 g8f6 c4f7 e8f7"))
+    assert [(e["capturer"], e["victim"], e["investment"], e["recapturer"]) for e in ev] == [("B", "P", 2, "K")]
+    import sqlite3
+    C.db_path().parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(C.db_path())
+    con.execute(f"CREATE TABLE events ({', '.join(C.COLS)}, PRIMARY KEY (game, ply))")
+    base = dict(fen="x", move="x", kind="sacrifice", capturer="Q", victim="B", recapturer="P", investment=6, gives_check=0, king_dist=4,
+                king_zone_attackers=2, king_shield=3, material=0, phase=40, elo=1800, elo_diff=0, result=0, term="Normal", back_in=None, mate=0)
+    rows_ = [dict(base, game=g, ply=1, king_dist=d, success=s) for g, d, s in ((1, 1, 1), (2, 1, 1), (3, 7, 0), (4, 6, 0), (5, 4, 1))]
+    con.executemany(f"INSERT INTO events VALUES ({', '.join('?' * len(C.COLS))})", [[r.get(c) for c in C.COLS] for r in rows_])
+    con.commit(); con.close()
+    near = C.similar(dict(base, game=99, ply=1, success=0), k=3)
+    assert [r["game"] for r in near][0] == 5                                 # the same event, the nearest king distance first
