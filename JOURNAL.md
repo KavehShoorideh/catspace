@@ -22874,6 +22874,53 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-05 20:30 PDT — the PoC, round 0: the zero-search frame player measured, the rules' hook, two rules (OBS)
+
+Kaveh (evening): "we've drifted away from my basic goal ... so many little bugs that we get bogged down ... we don't know
+if it's the algorithm at fault or if it's some bug." THE SCOPE, confirmed: the existing frame player with a world state
+that persists across moves; its move from the rules' verdicts at ZERO search nodes; rules written by the agent from its
+misses in a loop, the forced ones proved in Lean; measured by strength per rule on the held-out sets and against Maia.
+THREE STANDING RULES: off the shelf; a reference and an independent review for every piece before its numbers are
+quoted; one scope. Nothing new was built except the glue below; each commit was reviewed by a separate agent before
+its numbers were used (two reviews, 14 findings, none changing a move; all fixed).
+
+THE ZERO-SEARCH PLAYER already existed: frame_player's one-ply ledger (frames resolved exactly on their squares; a
+move's value = what it takes, less their best frame after, plus their best if we pass). Its memory also existed: the
+frame store serves a frame whose content recurs (fates.resolve_frame, keyed by content), with a verify switch that
+recomputes every hit. OBS, held-out sets of 300, one run each, verify mode clean (0 mismatches on all):
+  set            zone search: tied / single / expected (nodes per step)   zero search: tied / single / expected
+  back-rank      300 / 289 / 300.0  (1,616)                               300 / 289 / 300.0
+  general        279 / 227 / 238.3  (30,490)                              236 / 149 / 164.1
+  pawn endings   249 /  48 /  76.8  (2,219)                               226 /   6 /  22.0
+The gap (general: 48 puzzles lost to the search, 5 gained): the solution at the failing step was quiet 17, a capture
+14, a check 17; themes discovered attack 11, pin 6; none with a mate theme. Pawn endings: 35 lost, 30 of them quiet
+pawn or king moves; the ledger ties 5 to 9 moves there.
+GAMES (player --engine frame, 20 games, seed 0, reviewed harness): vs Maia-1100 at zero search 18 wins, 1 draw, 1 win
+on material at the 200-ply cap -- 98%; 0.93 s a move; 62.5 frames resolved a move, 21% of resolutions served from memory
+(exact 12,117, by lemma 1,762 of 67,329); tied top sets: single 265 of 855 choices, mean size 9.68 (a random pick
+among about ten quiet moves two times in three). Reading: Maia-1100 hangs material and the frames take it; that bar
+measures nothing about planning. Maia-1500/1900 and the random mover were started and stopped at Kaveh's request to free
+the CPU; to be run when it is free.
+
+THE RULES' HOOK (Kaveh's three calls, asked: claims by tier -- a rule PROVED in Lean adds or asserts its bounded claim,
+a CONJECTURE only breaks ties among the ledger's tied top moves and never demotes a move it says nothing about; a
+bounded LOCAL check inside the rule's own frame is allowed in play, no tree search; first rules of the general set's
+kind). frame_player.RULES, apply_rules in the one-ply path; 4 reference tests (no rules = the baseline; a proved claim
+adds exactly itself; a conjecture never lifts a move below the top).
+RULE 1, the passer (proved, Ideas.Passer2): its single push credited by the conservative gain. OBS: pawn endings 2
+puzzles up, 0 down (expected 22.0 -> 22.2); general 2 up, 0 down. Sound and nearly silent at the root.
+RULE 2, THE DOUBLE THREAT (tactic_rules.py; from development misses Nf6+ 03bzK, Bxh7+ 046Rc, Nd3 07i5h, Bxc3 0550Q): a
+move that newly attacks two pieces, or one with check; the local check: for every legal reply, our best exchange on a
+threatened piece, the recapture, or a piece the reply left undefended, net of what the reply took; the claim is the
+minimum. Its BRIDGE: the claim against the exact 3-ply enumeration -- 105 claims on 200 development positions, 0 wrong,
+slack 0 at the median (the check is tight). Tier CONJECTURE until its Lean statement exists. DIAGNOSTIC on the
+development set only (150 puzzles, rows i % 97 == 5; zero search solved 120 / 89 / 94.1, 30 misses): as if proved, the
+rule puts the solution on top in 4 of the 30 misses and disturbs 0 of 40 solved puzzles' first steps. Of the misses it
+does not catch: a threat whose point is a later quiet move (Bxc3 bxc3 f5), a pin or skewer (Bh4, Nf4), beyond 3 plies.
+READING (one run each, directional): the frames alone beat Maia-1100; the zero-search gap on puzzles is two-ply
+tactics, and the first rule for them is sound and tight on 200 positions; what it is worth on the held-out sets is
+measured only once it is proved (the tier rule), so the Lean statement is the next step.
+
 ## 2026-10-05 18:22 PDT — the case database: why a sacrifice's attack does or does not materialize (OBS)
 
 Kaveh, on game 11453's 35.Qxd3 (the watcher's biggest surprise of that game: White's queen took a bishop defended by

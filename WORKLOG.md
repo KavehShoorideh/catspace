@@ -3,6 +3,17 @@
 Kaveh's two-journals rule (2026-09-16): this file keeps the agent on track; JOURNAL.md is Kaveh's, written for review.
 Newest entry first. Times from `date` (PDT).
 
+## 2026-10-05 20:30 PDT — the PoC (Kaveh's scope; three standing rules)
+
+- Scope confirmed: zero-search frame player + rolled-forward state + agent-written rules; off the shelf; reference +
+  review per commit; one scope. Watcher/cases/viewer parked (committed, unused).
+- Baselines (one_ply, verify clean): general 236/149/164.1 (zone 279/227/238.3); pawns 226/6/22.0 (249/48/76.8);
+  backrank 300/289 both. Maia-1100 at zero search: 98% (20 games). Random-mover and Maia-1500/1900 runs killed (CPU).
+- player --engine frame (d05f29b5, review -> 864557a5); frame_player.RULES hook (7aa6abff, review -> ec822612);
+  passer rule (2 up/0 down); fork rule tactic_rules.py (bridge 105/0 wrong; dev misses fixed 4/30; 0/40 hurt).
+- Scars: zsh word-split repeat (usage not grepped); a test position with the king in check (my error, caught at once).
+- NEXT (Kaveh): the Lean statement for the double threat with the exhaustive-reply hypothesis; heavy runs when CPU free.
+
 ## 2026-10-05 13:28 — watcher batch 2, health line
 
 - Words: mate1_tomove, promo_tomove, promo_mover (tested). Rules F9 pinned, F10 in check (under F2), R11 mate in one,

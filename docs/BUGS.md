@@ -323,6 +323,10 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   `--engine`. Noted by the reviewer, not fixed: VERIFY asserts only exact-store hits -- lemma and footprint
   disagreements are counted (printed now), and the per-position book cache `_JOINT` is outside VERIFY's reach.
 
+- **A test position with the mover in check** (class 9): my knight-fork test put a black rook on the white king's
+  file; the fork move was illegal and the rule "claimed nothing". Caught by debugging the position, not the rule.
+  Rule: print `board.legal_moves` for a constructed test position before asserting what a rule does on it.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).
