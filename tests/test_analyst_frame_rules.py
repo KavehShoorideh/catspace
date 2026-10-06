@@ -52,9 +52,12 @@ def test_a_conjecture_only_breaks_ties(rules):
     assert len(base["best"]) == 20                                             # the opening: every move tied at 0
     rules.append(FP.Rule("centre", "conjecture", lambda b: {"e2e4": (1.0, "centre"), "d2d4": (1.0, "centre"), "a2a3": (0.0, "edge")}))
     c = _values(chess.STARTING_FEN)
-    assert set(c["best"]) == set(base["best"]) - {"a2a3"}                      # only the move it ranks below its best drops
+    assert set(c["best"]) == {"e2e4", "d2d4"}                                  # the claimed tied moves rank above the rest of the tie
     assert c["values"]["a2a3"] == pytest.approx(base["values"]["a2a3"] - 1e-3)
-    assert c["values"]["g1f3"] == base["values"]["g1f3"]                       # unspoken tied moves keep the top
+    assert c["values"]["g1f3"] == pytest.approx(base["values"]["g1f3"] - 1e-3) # an unclaimed tied move ranks below a positive claim
+    rules[:] = [FP.Rule("doom", "conjecture", lambda b: {"e2e4": (-2.0, "loses")})]
+    c3 = _values(chess.STARTING_FEN)
+    assert c3["values"] == base["values"]                                      # a negative claim demotes nobody (conjecture)
     tactical = "2kr3r/ppp2ppp/2nb1n2/7q/3P2b1/2P2N2/PP1NBPPP/R1BQ1RK1 b - - 0 1"
     b0 = _values(tactical)
     below = next(u for u, v in b0["values"].items() if v < max(b0["values"].values()))

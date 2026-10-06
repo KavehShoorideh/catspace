@@ -22,7 +22,6 @@ def test_a_fork_the_opponent_can_take_claims_nothing():
 
 
 def test_claims_are_sound_lower_bounds_on_dev_positions():
-    pytest.importorskip("pyarrow")
     import json
     from catspace.io import paths
     from pathlib import Path
@@ -46,3 +45,14 @@ def test_at_least_mode_lifts_to_the_claim():
         assert "d2d4" not in c["rules"]
     finally:
         FP.RULES[:] = old
+
+
+def test_bridge_regressions_from_the_review():
+    """A stalemating reply draws (no claim); a mating capture is MATE flat on both sides of the bridge."""
+    for fen in ("1k6/2q5/8/5r2/4N3/6r1/8/5b1K w - - 0 1",                       # Nxg3 Qxg3 stalemates White
+                "4r1k1/5ppp/8/6N1/8/1Q6/8/6K1 w - - 0 1"):                     # Qxf7+ Kh8 Qxe8#
+        r = bridge([fen])
+        assert r["wrong"] == 0, (fen, r["examples"])
+    assert "e4g3" not in fork_claims(chess.Board("1k6/2q5/8/5r2/4N3/6r1/8/5b1K w - - 0 1"))
+    c = fork_claims(chess.Board("4r1k1/5ppp/8/6N1/8/1Q6/8/6K1 w - - 0 1"))
+    assert c["b3f7"][0] == pytest.approx(1000.0)

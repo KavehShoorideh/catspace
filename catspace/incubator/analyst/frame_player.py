@@ -137,7 +137,8 @@ ZONE_BUDGET = 20000                                                 # zone_candi
 RULES: list = []                                                    # THE RULES IN PLAY at zero search (Kaveh 2026-10-05, the PoC): each reads the
                                                                     # board and claims, for the moves it covers, a bounded outcome. By tier: a rule
                                                                     # PROVED in Lean adds its claim to the ledger value; a CONJECTURE (bridge-tested,
-                                                                    # unproved) only breaks ties among the moves the ledger values equally.
+                                                                    # unproved) only breaks ties among the moves the ledger values equally: a
+                                                                    # tied move it claims wins ranks above the tied moves it does not claim.
 RULES_FIRED = [0]                                                   # claims applied in the last choose
 
 
@@ -177,13 +178,13 @@ def apply_rules(b: chess.Board, values: dict) -> dict:
             break
         sc = r.fire(b)
         prefs = {u: sc[u][0] for u in tied if u in sc}
-        if not prefs:
-            continue
-        hi = max(prefs.values())
-        for u in tied:
-            if prefs.get(u, hi) < hi:
-                values[u] -= 1e-3; fired += 1
-                notes.setdefault(u, []).append(f"{r.name}: {sc[u][1]} (a tie-break)")
+        hi = max(prefs.values(), default=0.0)
+        if hi <= 0:
+            continue                                                 # only a POSITIVE claim orders: a conjecture's "this loses" demotes nobody
+        for u in tied:                                               # a tied move with a positive claim ranks above the tied moves without one
+            if prefs.get(u, 0.0) < hi:                               # (review 2026-10-05: with the unspoken kept level, a claimed fork could
+                values[u] -= 1e-3; fired += 1                        # never rise above a quiet tied move -- the case the rule exists for)
+                notes.setdefault(u, []).append(f"{r.name}: {sc[u][1]} (a tie-break)" if u in sc else f"{r.name}: another tied move is claimed to win {hi:+.1f} (a tie-break)")
     RULES_FIRED[0] = fired
     return notes
 

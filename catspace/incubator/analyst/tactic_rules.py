@@ -62,7 +62,12 @@ def local_claim(b: chess.Board, m: chess.Move, targets: list[int]) -> tuple[floa
         gain = 0.0
         if nb2.is_checkmate():
             gain = -MATE
-        elif not nb2.is_stalemate():
+        elif nb2.is_stalemate():
+            total = 0.0                                                  # a stalemating reply draws: no material claim (review F2a)
+            if worst is None or total < worst:
+                worst, worst_reply = total, r
+            continue
+        else:
             squares = set(targets)
             squares.add(r.to_square)                                     # the recapture of the piece that just took (Nb5 Qxf2+ Kxf2)
             for t, p in nb2.piece_map().items():                         # a piece the reply left undefended (the deflection:
@@ -72,9 +77,16 @@ def local_claim(b: chess.Board, m: chess.Move, targets: list[int]) -> tuple[floa
                 p = nb2.piece_at(t)
                 if p is None or p.color == us or not nb2.is_attacked_by(us, t):
                     continue
-                v, _ = exchange(nb2, t, set(square_frame(nb2, t)), us)
-                gain = max(gain, v)
-        total = won - lost + gain
+                v, line = exchange(nb2, t, set(square_frame(nb2, t)), us)
+                if line:                                                 # the truth is 3 plies: our first capture's own outcome
+                    nb3 = nb2.copy(stack=False)                          # (a mate is MATE flat, a stalemate a draw: review F2b/F3)
+                    nb3.push(chess.Move.from_uci(line[0]))
+                    if nb3.is_checkmate():
+                        v = MATE
+                    elif nb3.is_stalemate():
+                        v = 0.0
+                gain = max(gain, min(v, MATE))
+        total = min(won - lost + gain, MATE)
         if worst is None or total < worst:
             worst, worst_reply = total, r
     if worst is None:                                                    # no legal reply: mate (the ledger's) or stalemate
@@ -117,7 +129,7 @@ def exact_3ply(b: chess.Board, m: chess.Move) -> float:
             for m2 in nb2.legal_moves:
                 nb3 = nb2.copy(stack=False)
                 nb3.push(m2)
-                x = MATE if nb3.is_checkmate() else material(nb3, us) - base
+                x = MATE if nb3.is_checkmate() else 0.0 if nb3.is_stalemate() else material(nb3, us) - base   # a stalemate draws, at any ply
                 v = x if v is None else max(v, x)
         worst = v if worst is None else min(worst, v)
     return worst if worst is not None else 0.0
