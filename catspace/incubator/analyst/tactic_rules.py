@@ -6,9 +6,10 @@ positions where it fires (0 wrong before any number is quoted), and is a CONJECT
 
 Rule 1, THE DOUBLE THREAT (fork and discovered attack; from development misses 03R2c Nf4, 0550Q Bxc3, 07i5h Nd3,
 03bzK Nf6+, 046Rc Bxh7+, 01wbG Qxg8+): a move that newly attacks two enemy pieces, or one with check. Claim: after
-ANY legal reply, we capture one of the threatened pieces for at least k (the exchange on its square, the frames'
-primitive), net of what the reply took and what the move itself took. k = the minimum over replies. A 3-ply material
-claim: our move, their reply, our capture; the exchange on the target's square is played out, nothing elsewhere.
+ANY legal reply, we capture for at least k (the exchange on its square, the frames' primitive) one of: the threatened
+pieces, the piece that just captured (the recapture), a piece the reply left undefended (the deflection); net of what
+the reply took and what the move itself took. k = the minimum over replies. A 3-ply material claim: our move, their
+reply, our capture; the exchange on the capture's square is played out, nothing elsewhere.
 """
 from __future__ import annotations
 
@@ -62,7 +63,12 @@ def local_claim(b: chess.Board, m: chess.Move, targets: list[int]) -> tuple[floa
         if nb2.is_checkmate():
             gain = -MATE
         elif not nb2.is_stalemate():
-            for t in targets:
+            squares = set(targets)
+            squares.add(r.to_square)                                     # the recapture of the piece that just took (Nb5 Qxf2+ Kxf2)
+            for t, p in nb2.piece_map().items():                         # a piece the reply left undefended (the deflection:
+                if p.color != us and p.piece_type != chess.KING and nb2.is_attacked_by(us, t) and not nb2.is_attacked_by(not us, t):   # Qxg8+ Kxg8 Bxa1)
+                    squares.add(t)
+            for t in squares:
                 p = nb2.piece_at(t)
                 if p is None or p.color == us or not nb2.is_attacked_by(us, t):
                     continue
