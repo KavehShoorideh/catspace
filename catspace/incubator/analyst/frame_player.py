@@ -146,6 +146,8 @@ class Rule:
     name: str
     tier: str                                                       # "proved" | "conjecture"
     fire: object                                                    # (board) -> {uci: (value, why)}: value = a material claim (proved) or a preference (conjecture)
+    mode: str = "add"                                               # proved claims: "add" to the ledger value (the passer's credit beyond the ledger's
+                                                                    # horizon) or "at_least" (an absolute bounded outcome: value = max(value, claim))
 
 
 def apply_rules(b: chess.Board, values: dict) -> dict:
@@ -159,22 +161,29 @@ def apply_rules(b: chess.Board, values: dict) -> dict:
             continue
         for u, (v, why) in r.fire(b).items():
             if u in values:
-                values[u] += v; fired += 1
+                if r.mode == "at_least":
+                    if v <= values[u]:
+                        continue
+                    values[u] = v
+                else:
+                    values[u] += v
+                fired += 1
                 notes.setdefault(u, []).append(f"{r.name}: {why}")
-    top = max(values.values()); tied = [u for u, v in values.items() if v == top]
-    if len(tied) > 1:
-        for r in RULES:
-            if r.tier != "conjecture":
-                continue
-            sc = r.fire(b)
-            prefs = {u: sc[u][0] for u in tied if u in sc}
-            if not prefs:
-                continue
-            hi = max(prefs.values())
-            for u in tied:
-                if prefs.get(u, hi) < hi:
-                    values[u] -= 1e-3; fired += 1
-                    notes.setdefault(u, []).append(f"{r.name}: {sc[u][1]} (a tie-break)")
+    for r in RULES:
+        if r.tier != "conjecture":
+            continue
+        top = max(values.values()); tied = [u for u, v in values.items() if v == top]   # what is STILL tied after the rules before
+        if len(tied) < 2:
+            break
+        sc = r.fire(b)
+        prefs = {u: sc[u][0] for u in tied if u in sc}
+        if not prefs:
+            continue
+        hi = max(prefs.values())
+        for u in tied:
+            if prefs.get(u, hi) < hi:
+                values[u] -= 1e-3; fired += 1
+                notes.setdefault(u, []).append(f"{r.name}: {sc[u][1]} (a tie-break)")
     RULES_FIRED[0] = fired
     return notes
 
@@ -184,14 +193,21 @@ def _passer_fire(b: chess.Board) -> dict:
     gain -- the queen it brings less what the enemy can reach during the race (lean_passer_v2_proto.proved_passer_gains)."""
     from .lean_passer_v2_proto import proved_passer_gains
     out = {}
+    fwd = 8 if b.turn == chess.WHITE else -8
     for sq, (g, plies) in proved_passer_gains(b).items():
-        for m in b.legal_moves:
-            if m.from_square == sq and not b.is_capture(m):
-                out[m.uci()] = (g, f"the pawn on {chess.square_name(sq)} queens within {plies} plies whatever they do (proved); credit {g:+.1f} after their counterplay")
+        m = chess.Move(sq, sq + fwd)                                 # the proof's first move: the single push (review 2026-10-05: the
+        if m in b.legal_moves and not m.promotion:                  # double push is another position's claim; a promotion is paid by
+            out[m.uci()] = (g, f"the pawn on {chess.square_name(sq)} queens within {plies} plies whatever they do (proved); credit {g:+.1f} after their counterplay")   # the ledger)
     return out
 
 
-RULE_BOOK = {"passer": lambda: Rule("passer", "proved", _passer_fire)}   # by name, for the harnesses' --rules
+def _fork_fire(b: chess.Board) -> dict:
+    from .tactic_rules import fork_claims
+    return fork_claims(b)
+
+
+RULE_BOOK = {"passer": lambda: Rule("passer", "proved", _passer_fire),     # by name, for the harnesses' --rules
+             "fork": lambda: Rule("fork", "conjecture", _fork_fire, "at_least")}   # conjecture until its Lean statement exists
 
 
 def _one_ply_values(b: chess.Board, before, book) -> dict:
@@ -348,6 +364,7 @@ def choose(b: chess.Board) -> dict:
         else:
             v, after, bef = ledger_move_value(b, m, square_frame, before=before)
         values[m.uci()] = v; trace[m.uci()] = (after, bef)
+    RULES_FIRED[0] = 0
     notes = apply_rules(b, values) if RULES else {}                 # the rules' claims, by tier (zero search)
     top = max(values.values())
     best = [u for u, v in values.items() if v == top]

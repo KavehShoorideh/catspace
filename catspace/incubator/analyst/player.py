@@ -433,6 +433,8 @@ class FrameMover:
         for k, v in delta.items():
             self.stats["store_" + k] += v
         self.stats["legal"] += len(c["values"])
+        self.stats["rules_fired"] += self.FP.RULES_FIRED[0]
+        self.stats["rules_moves"] += int(bool(c.get("rules")))
         self.ties[len(tied)] += 1
         return chess.Move.from_uci(u), dict(move=u, value=c["values"][u], tied=len(tied), nodes=0,   # zero zone-search nodes by
                                             resolved=delta["computed"], store=delta)                 # construction; the work is the
@@ -447,6 +449,7 @@ class FrameMover:
         return dict(engine="frame", served_exact=h, served_lemma=l, served_footprint=f, computed=c, resolved_total=h + l + f + c,
                     from_memory=(h + l + f) / max(h + l + f + c, 1), choices=n, single=self.ties[1],
                     mean_tie=sum(k * v for k, v in self.ties.items()) / max(n, 1), resolved_per_move=c / max(n, 1),
+                    rules=[r.name for r in self.FP.RULES], rules_fired=self.stats["rules_fired"], rules_moves=self.stats["rules_moves"],
                     verify_mode=bool(self.fates.VERIFY_FRAMES),
                     lemma_mismatches=len(self.fates.LEMMA_MISMATCHES), foot_mismatches=len(self.fates.FOOT_MISMATCHES))
 
@@ -456,7 +459,8 @@ class FrameMover:
         return (f"[frame] zero zone-search nodes; frames resolved per move {d['resolved_per_move']:.1f} (computed); served from memory "
                 f"{d['from_memory']:.0%} of {d['resolved_total']} resolutions (exact {d['served_exact']}, by lemma {d['served_lemma']}, "
                 f"by footprint {d['served_footprint']}){note}; mismatches lemma {d['lemma_mismatches']} foot {d['foot_mismatches']}; "
-                f"tied top sets: single {d['single']} of {d['choices']} choices, mean size {d['mean_tie']:.2f}")
+                f"tied top sets: single {d['single']} of {d['choices']} choices, mean size {d['mean_tie']:.2f}; "
+                f"rules {d['rules'] or 'none'}: {d['rules_fired']} claims applied in {d['rules_moves']} choices")
 
 
 def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: int, library: Path | None, proved: Path | None, use_lemmas: bool, guide: bool,
@@ -533,8 +537,11 @@ def main(argv=None):
     ap.add_argument("--library", default="data/derived/lemmas/library_games_size3.json"); ap.add_argument("--proved", default="data/derived/lemmas/proved_games_size3.json")
     ap.add_argument("--no-lemmas", action="store_true"); ap.add_argument("--no-watchers", action="store_true"); ap.add_argument("--watchers", action="store_true"); ap.add_argument("--frame-budget", type=int, default=0, help="attach the scheduler: frame tasks run per move"); ap.add_argument("--extend", type=int, default=0, help="extra plies where the search is unsure"); ap.add_argument("--unsure", type=float, default=0.15, help="the margin between the top two that counts as unsure"); ap.add_argument("--search", choices=["ab", "mcts"], default="ab"); ap.add_argument("--sims", type=int, default=400); ap.add_argument("--guide", default="", help="'' | 'mlp' | 'tf': the body ranker"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--tag", default=""); ap.add_argument("--fen")
     ap.add_argument("--engine", choices=["rules", "frame"], default="rules", help="rules: this file's player; frame: frame_player at zero search (its one-ply ledger over frames)")
-    ap.add_argument("--rules", nargs="*", default=[], choices=["passer"], help="--engine frame: the rules in play (frame_player.RULE_BOOK)")
+    from .frame_player import RULE_BOOK
+    ap.add_argument("--rules", nargs="*", default=[], choices=sorted(RULE_BOOK), help="--engine frame: the rules in play (frame_player.RULE_BOOK)")
     a = ap.parse_args(argv)
+    if a.rules and a.engine != "frame":
+        raise SystemExit("--rules belong to --engine frame (the rules player has its own lemma library)")
     if a.cmd == "analyse" and a.engine == "frame":
         raise SystemExit("analyse is the rules player's; for the frame player use frame_player --trace")
     if a.cmd == "analyse":
