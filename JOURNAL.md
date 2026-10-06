@@ -22921,6 +22921,17 @@ READING (one run each, directional): the frames alone beat Maia-1100; the zero-s
 tactics, and the first rule for them is sound and tight on 200 positions; what it is worth on the held-out sets is
 measured only once it is proved (the tier rule), so the Lean statement is the next step.
 
+ADDENDUM 21:28 PDT, after the double-threat rule's independent review (two real findings, both fixed, 56acd6f6):
+(1) the bridge scored a stalemating reply and a mating capture on different scales from its truth, and two constructed
+positions had claims above the truth (Nxg3 Qxg3 stalemate; Qxf7+ Kh8 Qxe8#) -- one convention now on both sides; the
+sampled 200 positions had not held such a case: a bridge needs constructed edge cases beside sampled ones. (2) The rule
+AS REGISTERED (conjecture) was inert: the hook kept every unclaimed tied move level with any claim, so a claimed quiet
+fork could never rise above a quiet tied move; the "4 of 30 misses" above was the rule run as if proved. Changed: a
+conjecture's positive claim ranks its move above the tied moves it does not claim (ties only, as Kaveh ruled; a
+negative claim demotes nobody). OBS, the registered rule on the development set's 307 solver steps, zero search, one
+run: solution among the tied top 277 -> 276, single top 216 -> 219, expected steps 228.6 -> 230.7; it acted in 4 steps.
+Directional: a tie-break can only move the single-top and expected counts, and did, by a little.
+
 ## 2026-10-05 18:22 PDT — the case database: why a sacrifice's attack does or does not materialize (OBS)
 
 Kaveh, on game 11453's 35.Qxd3 (the watcher's biggest surprise of that game: White's queen took a bishop defended by
