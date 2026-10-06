@@ -314,6 +314,15 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   having printed argparse's usage; my filter showed only my own headers, and I went to read the results. Caught by the
   missing dumps. Fix: `${=args}`; the filter now matches `usage`. Rule restated: a run that ends in seconds has not run.
 
+- **Review of the frame-engine harness (d05f29b5), 8 findings, none changing a move** (verify mode passed; three
+  seed-0 runs identical): the tie pick drew from the OPPONENT's random stream, so two engines were not opponent-matched
+  (now its own stream, seed + 1); the memory share counted exact-store hits only and missed frames served by a lemma
+  (`lemma_hits`) or a footprint; `nodes` read the zone search's stale counter (now 0 by construction, with the frames
+  resolved per move reported instead); the final log and the JSON described the rules player's parameters (now the
+  engine is named and the frame stats stored); `--frame-budget` crashed with the frame engine (refused); `move` ignored
+  `--engine`. Noted by the reviewer, not fixed: VERIFY asserts only exact-store hits -- lemma and footprint
+  disagreements are counted (printed now), and the per-position book cache `_JOINT` is outside VERIFY's reach.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).

@@ -408,37 +408,54 @@ class FrameMover:
     at random, seeded, among the ledger's tied top moves. The frame store's work per move is counted: resolutions served
     from memory against computed (fates.RESOLVED_STATS), the rolled-forward state's measure."""
 
+    KEYS = ("hits", "lemma_hits", "foot_hits", "computed")              # fates.RESOLVED_STATS: served exactly, served by a lemma
+                                                                         # (the same frame on other squares), by footprint, computed
     def __init__(self, rng: random.Random):
         from . import fates, frame_player as FP
-        FP.LEDGER = "one_ply"
-        self.FP, self.fates, self.rng = FP, fates, rng
-        self.stats = Counter(pruned=0, legal=0, extended=0, decisions=0, sched_answered=0, sched_asked=0, sched_hit=0, sched_run=0)
-        self.lemma_usage = Counter()
+        FP.LEDGER = "one_ply"                                            # (the default; set so the mode cannot be inherited)
+        self.FP, self.fates, self.rng = FP, fates, rng                    # rng: this mover's OWN stream (seed + 1), so the opponent's
+        self.stats = Counter(pruned=0, legal=0, extended=0, decisions=0, sched_answered=0, sched_asked=0, sched_hit=0, sched_run=0)   # draws
+        self.lemma_usage = Counter()                                      # match those of any other engine (review 2026-10-05)
         self.sched = None
         self.cache = type("NoCache", (), dict(hits=0, misses=0, save=lambda self: None))()
         self.ties = Counter()
 
+    def _snap(self) -> dict:
+        return {k: self.fates.RESOLVED_STATS.get(k, 0) for k in self.KEYS}
+
     def choose(self, b: chess.Board) -> tuple[chess.Move, dict]:
-        st = self.fates.RESOLVED_STATS
-        h0, c0 = st["hits"], st["computed"]
+        before = self._snap()
         c = self.FP.choose(b)
+        delta = {k: v - before[k] for k, v in self._snap().items()}
         tied = sorted(c["best"])
         u = self.rng.choice(tied)
-        self.stats["store_hits"] += st["hits"] - h0
-        self.stats["store_computed"] += st["computed"] - c0
+        for k, v in delta.items():
+            self.stats["store_" + k] += v
         self.stats["legal"] += len(c["values"])
         self.ties[len(tied)] += 1
-        return chess.Move.from_uci(u), dict(move=u, value=c["values"][u], tied=len(tied), nodes=self.FP.NODES[0],
-                                            store=dict(hits=st["hits"] - h0, computed=st["computed"] - c0))
+        return chess.Move.from_uci(u), dict(move=u, value=c["values"][u], tied=len(tied), nodes=0,   # zero zone-search nodes by
+                                            resolved=delta["computed"], store=delta)                 # construction; the work is the
+                                                                                                     # frames resolved (`resolved`)
 
     def observe(self, board_before, move, ply):
         pass
 
-    def summary(self) -> str:
-        h, c = self.stats["store_hits"], self.stats["store_computed"]
+    def summary_dict(self) -> dict:
+        h, l, f, c = (self.stats["store_" + k] for k in self.KEYS)
         n = sum(self.ties.values())
-        return (f"[frame] frames resolved: {h} served from the store, {c} computed ({100 * h / max(h + c, 1):.0f}% from memory); "
-                f"tied top sets: single {self.ties[1]} of {n} choices, mean size {sum(k * v for k, v in self.ties.items()) / max(n, 1):.2f}")
+        return dict(engine="frame", served_exact=h, served_lemma=l, served_footprint=f, computed=c, resolved_total=h + l + f + c,
+                    from_memory=(h + l + f) / max(h + l + f + c, 1), choices=n, single=self.ties[1],
+                    mean_tie=sum(k * v for k, v in self.ties.items()) / max(n, 1), resolved_per_move=c / max(n, 1),
+                    verify_mode=bool(self.fates.VERIFY_FRAMES),
+                    lemma_mismatches=len(self.fates.LEMMA_MISMATCHES), foot_mismatches=len(self.fates.FOOT_MISMATCHES))
+
+    def summary(self) -> str:
+        d = self.summary_dict()
+        note = " (verify mode: every lemma hit is recomputed and counted as computed; shares are not comparable)" if d["verify_mode"] else ""
+        return (f"[frame] zero zone-search nodes; frames resolved per move {d['resolved_per_move']:.1f} (computed); served from memory "
+                f"{d['from_memory']:.0%} of {d['resolved_total']} resolutions (exact {d['served_exact']}, by lemma {d['served_lemma']}, "
+                f"by footprint {d['served_footprint']}){note}; mismatches lemma {d['lemma_mismatches']} foot {d['foot_mismatches']}; "
+                f"tied top sets: single {d['single']} of {d['choices']} choices, mean size {d['mean_tie']:.2f}")
 
 
 def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: int, library: Path | None, proved: Path | None, use_lemmas: bool, guide: bool,
@@ -447,13 +464,15 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
     from .maia import Maia
     rng = random.Random(seed)
     if engine == "frame":                                                    # the frame player at zero search (the PoC, Kaveh 2026-10-05)
-        tag = f"_frame{tag}"
+        if frame_budget:
+            raise ValueError("--frame-budget is the rules player's scheduler; the frame engine has none")
+        tag = "_frame" + (("_" + tag.lstrip("_")) if tag else "")
     opp = Maia(rating=maia_rating) if opponent == "maia" else None
     sf = None
     if opponent == "stockfish":                                              # Stockfish at a UCI Elo (>= 1320), depth-limited: the ladder above Maia-1500
         sf = chess.engine.SimpleEngine.popen_uci("/opt/homebrew/bin/stockfish")
         sf.configure({"UCI_LimitStrength": True, "UCI_Elo": max(1320, maia_rating), "Threads": 1, "Hash": 64})
-    pl = FrameMover(rng) if engine == "frame" else \
+    pl = FrameMover(random.Random(seed + 1)) if engine == "frame" else \
         Player(library, proved, depth=depth, node_cap=node_cap, max_bodies=max_bodies, cache_path=OUT / f"graph_cache{tag}.json", use_lemmas=use_lemmas, guide=guide, log=log)
     pl.search_kind = search_kind; pl.sims = sims; pl.watchers = watchers; pl.extend_depth = extend; pl.unsure_margin = unsure
     if frame_budget:
@@ -485,13 +504,20 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
         if pl.sched:
             pl.sched.save()
     score = (results["win"] + results["win(cap)"] + 0.5 * (results["draw"] + results["draw(cap)"])) / max(1, n)
-    log(f"[player] {n} games vs {opponent}-{maia_rating}, {search_kind}{' sims ' + str(sims) if search_kind == 'mcts' else ''}, depth {depth}{'+' + str(extend) + ' where unsure (' + str(pl.stats['extended']) + '/' + str(pl.stats['decisions']) + ')' if extend else ''}, node cap {node_cap}, lemmas {'on' if use_lemmas else 'off'}{' + guide' if guide else ''}: {dict(results)}; score {100 * score:.0f}%; nodes/move {sum(node_hist) / max(1, len(node_hist)):.0f}; s/move {sum(t_hist) / max(1, len(t_hist)):.2f}; pruned {pl.stats['pruned']}/{pl.stats['legal']} root moves")
+    if engine == "frame":
+        log(f"[player] {n} games vs {opponent}-{maia_rating}, engine frame (the frames' one-ply ledger, zero search): {dict(results)}; "
+            f"score {100 * score:.0f}%; s/move {sum(t_hist) / max(1, len(t_hist)):.2f}")
+    else:
+        log(f"[player] {n} games vs {opponent}-{maia_rating}, {search_kind}{' sims ' + str(sims) if search_kind == 'mcts' else ''}, depth {depth}{'+' + str(extend) + ' where unsure (' + str(pl.stats['extended']) + '/' + str(pl.stats['decisions']) + ')' if extend else ''}, node cap {node_cap}, lemmas {'on' if use_lemmas else 'off'}{' + guide' if guide else ''}: {dict(results)}; score {100 * score:.0f}%; nodes/move {sum(node_hist) / max(1, len(node_hist)):.0f}; s/move {sum(t_hist) / max(1, len(t_hist)):.2f}; pruned {pl.stats['pruned']}/{pl.stats['legal']} root moves")
     for t, k in pl.lemma_usage.most_common(6):
         log(f"    used {k:5d}  {t[:140]}")
     if hasattr(pl, "summary"):
         log(pl.summary())
     OUT.mkdir(parents=True, exist_ok=True)
-    json.dump(dict(games=games, results=dict(results), score=score, nodes_per_move=sum(node_hist) / max(1, len(node_hist)), lemma_usage=pl.lemma_usage.most_common(40)), open(OUT / f"games{tag}.json", "w"), indent=1)
+    json.dump(dict(engine=engine, opponent=f"{opponent}-{maia_rating}", seed=seed, games=games, results=dict(results), score=score,
+                   nodes_per_move=sum(node_hist) / max(1, len(node_hist)), s_per_move=sum(t_hist) / max(1, len(t_hist)),
+                   lemma_usage=pl.lemma_usage.most_common(40), frame=(pl.summary_dict() if hasattr(pl, "summary_dict") else None)),
+              open(OUT / f"games{tag}.json", "w"), indent=1)
     if opp:
         opp.close()
     if sf is not None:
@@ -507,6 +533,8 @@ def main(argv=None):
     ap.add_argument("--no-lemmas", action="store_true"); ap.add_argument("--no-watchers", action="store_true"); ap.add_argument("--watchers", action="store_true"); ap.add_argument("--frame-budget", type=int, default=0, help="attach the scheduler: frame tasks run per move"); ap.add_argument("--extend", type=int, default=0, help="extra plies where the search is unsure"); ap.add_argument("--unsure", type=float, default=0.15, help="the margin between the top two that counts as unsure"); ap.add_argument("--search", choices=["ab", "mcts"], default="ab"); ap.add_argument("--sims", type=int, default=400); ap.add_argument("--guide", default="", help="'' | 'mlp' | 'tf': the body ranker"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--tag", default=""); ap.add_argument("--fen")
     ap.add_argument("--engine", choices=["rules", "frame"], default="rules", help="rules: this file's player; frame: frame_player at zero search (its one-ply ledger over frames)")
     a = ap.parse_args(argv)
+    if a.cmd == "analyse" and a.engine == "frame":
+        raise SystemExit("analyse is the rules player's; for the frame player use frame_player --trace")
     if a.cmd == "analyse":
         pl = Player(Path(a.library), Path(a.proved), depth=a.depth, node_cap=a.nodes, max_bodies=a.max_bodies, use_lemmas=not a.no_lemmas, guide=a.guide)
         b = chess.Board(a.fen or chess.STARTING_FEN)
@@ -514,8 +542,11 @@ def main(argv=None):
             print(f"{row['move']:7s} value {row['value']:+6.2f}  resolved {row['resolved']:+6.2f}  line: {row['line']:14s}  {row['lemmas']}" + (f"  leaves: {'; '.join(row['duties_left'])}" if row['duties_left'] else "") + (f"  answers: {'; '.join(row['answers'])}" if row['answers'] else ""))
         return
     if a.cmd == "move":
-        pl = Player(Path(a.library), Path(a.proved), depth=a.depth, node_cap=a.nodes, max_bodies=a.max_bodies, use_lemmas=not a.no_lemmas, guide=a.guide)
-        pl.search_kind = a.search; pl.sims = a.sims
+        if a.engine == "frame":
+            pl = FrameMover(random.Random(a.seed + 1))
+        else:
+            pl = Player(Path(a.library), Path(a.proved), depth=a.depth, node_cap=a.nodes, max_bodies=a.max_bodies, use_lemmas=not a.no_lemmas, guide=a.guide)
+            pl.search_kind = a.search; pl.sims = a.sims
         b = chess.Board(a.fen or chess.STARTING_FEN); m, info = pl.choose(b); print(b.san(m), json.dumps({k: v for k, v in info.items() if k != "counts"})); return
     play_games(a.games, a.maia, (24 if a.budget else a.depth), a.nodes, a.max_bodies, Path(a.library), Path(a.proved), not a.no_lemmas, a.guide, plies=a.plies, seed=a.seed, opponent=a.opponent, tag=a.tag, search_kind=a.search, sims=a.sims, watchers=a.watchers and not a.no_watchers, frame_budget=a.frame_budget, extend=a.extend, unsure=a.unsure, engine=a.engine)
 

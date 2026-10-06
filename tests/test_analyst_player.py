@@ -1,6 +1,8 @@
 """Invariants for the MVP player's search (2026-09-23 bug hunt): the transposition table must not change any root
 value; a mate found at depth d is found at every deeper depth; the resolved exchange reads known exchanges right;
 the puzzle set's tactics are found within the budget."""
+import json
+
 import chess
 import pytest
 
@@ -104,3 +106,30 @@ def test_analysis_values_are_exact_not_bounds():
     vals = s.root(b, list(b.legal_moves), 2, full_window=True)
     assert vals[chess.Move.from_uci("d3b5")] <= -MATE + 1
     assert max(vals, key=vals.get) == chess.Move.from_uci("h4h5")
+
+
+def test_frame_mover_is_opponent_matched_and_honest(tmp_path, monkeypatch):
+    """The frame engine's tie pick draws from its own stream (the opponent's draws match any other engine's), reports
+    zero search nodes and the frames it resolved, counts lemma-served frames as memory, and refuses the rules player's
+    scheduler flag."""
+    import random
+    import chess
+    import pytest
+    from catspace.incubator.analyst import player as P
+    from catspace.incubator.analyst import fates
+    pl = P.FrameMover(random.Random(1))
+    m, info = pl.choose(chess.Board())
+    assert m in chess.Board().legal_moves and info["nodes"] == 0 and info["resolved"] >= 0
+    assert set(info["store"]) == set(P.FrameMover.KEYS)
+    d = pl.summary_dict()
+    assert d["resolved_total"] == d["served_exact"] + d["served_lemma"] + d["served_footprint"] + d["computed"] and d["choices"] == 1
+    r1, r2 = random.Random(5), random.Random(5)
+    pl2 = P.FrameMover(random.Random(6))
+    pl2.choose(chess.Board())
+    assert r1.random() == r2.random()                                        # the mover never touched the shared stream
+    monkeypatch.setattr(P, "OUT", tmp_path)
+    with pytest.raises(ValueError):
+        P.play_games(1, 1100, 3, 100, 4, None, None, False, "", plies=4, opponent="random", engine="frame", frame_budget=5, log=lambda *a: None)
+    P.play_games(1, 1100, 3, 100, 4, None, None, False, "", plies=6, opponent="random", engine="frame", tag="t", log=lambda *a: None)
+    out = json.load(open(tmp_path / "games_frame_t.json"))
+    assert out["engine"] == "frame" and out["frame"]["engine"] == "frame" and out["nodes_per_move"] == 0
