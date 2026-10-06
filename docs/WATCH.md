@@ -96,3 +96,26 @@ every 20 games; a frame is counted at every ply it is seen (each ply is a new ch
 The health metric is the moving average of surprise per position, by horizon, over the batches. A rule's credit is the
 bits it saved against the root and against its parent on the cases it decided (both probabilities are logged), not
 the batch-to-batch change, which mixes games: one drawn game moves the long average by itself.
+
+## The case database: why an attack did or did not materialize (Kaveh 2026-10-05)
+
+Kaveh, on game 11453's 35.Qxd3: "when it's a blunder, the learning is that this is a case where an attack didn't
+materialize. Why is interesting if we could mine it. We'd need a memory of similar positions where the attack
+succeeded. We'd need an indexed database." His choices (asked): similar = the same event with nearby attributes;
+scope = an event index over the Lichess records; success = the material back within N moves (or mate).
+
+`catspace/incubator/analyst/watch/cases.py` indexes every SACRIFICE (a capture whose exchange, the capturer going
+first with that piece, loses at least 2 pawns) of the Lichess 2019-01 records, the watcher's own stream left out, into
+`data/derived/watch/cases.sqlite`, with named attributes (capturing, captured and recapturing pieces, investment,
+check, distance to the enemy king, the attacker's pieces bearing on the king's squares, the king's pawn shield,
+material, phase, ratings) and the outcome: SUCCESS when the material is back within 10 plies and still stands after
+the next reply, or the attacker mates.
+
+```
+python -m catspace.incubator.analyst.watch.cases build --shards 0 1 2 [--workers 10]
+python -m catspace.incubator.analyst.watch.cases similar --game 11453 --ply 69 [--k 60]   # a surprise's nearest cases
+python -m catspace.incubator.analyst.watch.cases mine --capturer Q [--victim B]          # what separates success
+```
+`similar` takes the cases with the same capturing and captured pieces, ranks them by distance over the attributes,
+and a shallow decision tree (scikit-learn) over the named attributes states what separated the attacks that worked
+from those that did not.

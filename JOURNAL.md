@@ -22874,6 +22874,35 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-05 18:22 PDT — the case database: why a sacrifice's attack does or does not materialize (OBS)
+
+Kaveh, on game 11453's 35.Qxd3 (the watcher's biggest surprise of that game: White's queen took a bishop defended by
+a pawn; Stockfish gave 35.Kd1 at -2.7 and did not list Qxd3 in its top three): "when it's a blunder, the learning is
+that this is a case where an attack didn't materialize. Why is interesting if we could mine it. We'd need a memory of
+similar positions where the attack succeeded. We'd need an indexed database." His choices (asked): similar = the same
+event with nearby attributes; scope = the Lichess records; success = the material back within N moves.
+
+Built (`watch/cases.py`, docs/WATCH.md): every SACRIFICE -- a capture whose exchange, the capturer going first with
+that piece, loses at least 2 pawns -- in the January 2019 Lichess records (the watcher's own stream left out), with
+named attributes and the outcome: SUCCESS when the material is back within 10 plies and still stands after the next
+reply, or the attacker mates. OBS: 10,037,280 sacrifices from 97 shards (about 19.35 million games); 1.4 GB.
+Two slips on the way, both caught before any number was read: success first counted a material PEAK mid-exchange
+(a constructed test caught it; the half-built index was rebuilt), and stopping that build left 10 pool workers
+running as orphans (stopped; memory updated); the rebuild's last shard was out of range (shard 97 of 0-96), which
+dropped 9 in-flight shards; they were rebuilt.
+
+OBS (success = the material back within 10 plies, standing; correlational; one month):
+  all sacrifices: 41% of 10,037,280.
+  investment > 3.5 pawns, rated > 1713: within 4.5 squares of the enemy king 41% (582,670), further 29% (174,653).
+  investment > 3.5, rated <= 1713: more than one attacker on the king's squares 33% (759,813), at most one 24%
+  (1,383,259).
+  queen for bishop: 18% of 324,109; rated <= 1740 in the middlegame with investment > 5.5: 14% (230,454).
+  35.Qxd3's 200 nearest cases (queen for bishop, pawn recapture): 18%; rated <= 1901: within 3.5 squares of the king
+  32% (34), further 11% (141) -- 35.Qxd3 was 4 squares away, by a 1791 player.
+READING (directional): an attack pays more often near the enemy king, with more pieces bearing on its squares, and
+by stronger players; 35.Qxd3 sat in the group where it pays about one time in nine. The watcher can now answer "why"
+for a surprising sacrifice by retrieving its neighbours; it does not yet turn that into a rule by itself.
+
 ## 2026-10-05 15:12 PDT — the watcher's young rules: backfill, evidence blend, results once per game (OBS)
 
 Kaveh's three decisions (asked): a new rule's counts START FROM THE PAST CASES its condition covers (the evidence that
