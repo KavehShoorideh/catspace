@@ -327,6 +327,19 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   file; the fork move was illegal and the rule "claimed nothing". Caught by debugging the position, not the rule.
   Rule: print `board.legal_moves` for a constructed test position before asserting what a rule does on it.
 
+- **The double-threat rule was inert as registered** (class 6, a claim not tested in the configuration that ships):
+  registered as a conjecture, it could only reorder claimed moves among themselves -- the hook kept every unclaimed tied
+  move level with the top, so a claimed quiet fork could never rise above a quiet tied move, the very case the rule was
+  written for. My "4 of 30 misses fixed" diagnostic had run the rule AS IF PROVED (the journal said so; the worklog did
+  not). Found by the independent review. Fix: a conjecture's positive claim ranks a tied move above the tied moves it
+  does not claim (still ties only); the worklog line now carries the qualifier.
+- **Two scales in one bridge** (class 4-like, horizon conventions): the claim scored a stalemating reply as material
+  won less lost, the truth as a flat draw; `exchange` returns VAL+1000 for a mating capture, the truth a flat 1000. Two
+  constructed positions had the claim above the truth (Nxg3 Qxg3 stalemate; Qxf7+ Kh8 Qxe8#). Found by the review's
+  adversarial positions, not by the 200-position bridge (such positions are rare in play). Fix: one convention on both
+  sides (a stalemate draws at any ply, a mate is 1000 flat), regression tests. Rule: a bridge needs CONSTRUCTED edge
+  cases beside the sampled ones -- stalemate, mate, en passant, promotion, check -- before "0 wrong" means anything.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).

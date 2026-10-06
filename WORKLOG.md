@@ -10,7 +10,8 @@ Newest entry first. Times from `date` (PDT).
 - Baselines (one_ply, verify clean): general 236/149/164.1 (zone 279/227/238.3); pawns 226/6/22.0 (249/48/76.8);
   backrank 300/289 both. Maia-1100 at zero search: 98% (20 games). Random-mover and Maia-1500/1900 runs killed (CPU).
 - player --engine frame (d05f29b5, review -> 864557a5); frame_player.RULES hook (7aa6abff, review -> ec822612);
-  passer rule (2 up/0 down); fork rule tactic_rules.py (bridge 105/0 wrong; dev misses fixed 4/30; 0/40 hurt).
+  passer rule (2 up/0 down); fork rule tactic_rules.py (bridge 105/0 wrong; AS IF PROVED: dev misses fixed 4/30, 0/40
+  hurt; as registered -- a conjecture -- it was inert until the review: fixed 56acd6f6, see BUGS).
 - Scars: zsh word-split repeat (usage not grepped); a test position with the king in check (my error, caught at once).
 - NEXT (Kaveh): the Lean statement for the double threat with the exhaustive-reply hypothesis; heavy runs when CPU free.
 
