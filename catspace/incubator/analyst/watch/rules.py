@@ -9,6 +9,7 @@ Kinds and their outcome buckets:
   frame      the mover's material change on one frame's square until the exchanges settle: -10..+10
   elsewhere  the mover's material change on squares that were not frames: -10..+10
   result     the game's result for the mover: loss, draw, win
+  attack     after a SACRIFICE (watch/cases.py), whether its material comes back within 10 plies and stands: fails, pays
 
 Selection among the rules that apply (Kaveh 2026-10-05): the more specific supersedes the less specific and the
 older; a learned prior over rules comes later (`select` is the slot: POLICIES). Every applicable rule's probability of
@@ -31,8 +32,9 @@ from pathlib import Path
 
 from catspace.io import paths
 
-KINDS = {"frame": list(range(-10, 11)), "elsewhere": list(range(-10, 11)), "result": ["loss", "draw", "win"]}
-ROOTS = {"frame": "F0", "elsewhere": "E0", "result": "R0"}
+KINDS = {"frame": list(range(-10, 11)), "elsewhere": list(range(-10, 11)), "result": ["loss", "draw", "win"],
+         "attack": ["fails", "pays"]}
+ROOTS = {"frame": "F0", "elsewhere": "E0", "result": "R0", "attack": "A0"}
 ALPHA = 4.0                                                                  # the parent's weight, in cases, in a rule's forecast
 TRUST = 20.0                                                                 # evidence_blend: a rule is trusted n/(n+TRUST) against the rule it supersedes
 OPS = {"<": lambda a, b: a < b, "<=": lambda a, b: a <= b, "==": lambda a, b: a == b, ">=": lambda a, b: a >= b, ">": lambda a, b: a > b}
@@ -133,11 +135,21 @@ class RuleBase:
         rules = []
         p = rules_path()
         if p.exists():
+            retired = set()
             for line in p.read_text().splitlines():
                 if line.strip():
                     d = json.loads(line)
-                    if upto is None or d["created"] < upto:
+                    if "retire" in d:                                         # Kaveh's gate: a retired rule (and every
+                        retired.add(d["retire"])                             # exception under it) no longer forecasts
+                    elif upto is None or d["created"] < upto:
                         rules.append(Rule(**d))
+            gone = set(retired)
+            while True:
+                more = {r.id for r in rules if r.parent in gone} - gone
+                if not more:
+                    break
+                gone |= more
+            rules = [r for r in rules if r.id not in gone]
         return cls(rules, counts)
 
     def matching(self, kind: str, a: dict) -> list[str]:
@@ -222,7 +234,7 @@ def ref_value(ref: dict, a: dict) -> int:
 
 
 def bucket(kind: str, x) -> object:
-    if kind == "result":
+    if kind in ("result", "attack"):
         return x
     return max(-10, min(10, int(x)))
 
@@ -233,7 +245,7 @@ def add_rule(kind: str, parent: str, cond: dict, text: str, cornerstones: list, 
     check(cond, attrs)
     if ref is not None:
         terms = ref["sum"] if "sum" in ref else [ref]
-        if kind == "result" or not all(set(t) <= {"attr", "sign"} and "attr" in t and (attrs is None or t["attr"] in attrs) for t in terms):
+        if kind in ("result", "attack") or not all(set(t) <= {"attr", "sign"} and "attr" in t and (attrs is None or t["attr"] in attrs) for t in terms):
             raise LanguageError(f"bad reference: {ref!r}")
     existing = RuleBase.load()
     if parent not in existing.rules or existing.rules[parent].kind != kind:
@@ -246,6 +258,13 @@ def add_rule(kind: str, parent: str, cond: dict, text: str, cornerstones: list, 
     with open(p, "a") as fh:
         fh.write(json.dumps(asdict(r), sort_keys=True) + "\n")
     return r
+
+
+def retire(rid: str, note: str, by: str = "kaveh") -> None:
+    """Retire a rule (append-only: the rule stays in the file, a retire line follows it)."""
+    p = rules_path()
+    with open(p, "a") as fh:
+        fh.write(json.dumps(dict(retire=rid, note=note, by=by, time=time.strftime("%Y-%m-%d %H:%M %Z")), sort_keys=True) + "\n")
 
 
 def bits(p: float) -> float:

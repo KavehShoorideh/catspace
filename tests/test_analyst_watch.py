@@ -212,3 +212,29 @@ def test_cases_exchange_outcome_and_retrieval(roots):
     con.commit(); con.close()
     near = C.similar(dict(base, game=99, ply=1, success=0), k=3)
     assert [r["game"] for r in near][0] == 5                                 # the same event, the nearest king distance first
+
+
+def test_attack_forecast_scores_the_side_that_sacrificed(roots):
+    """After a sacrifice the watcher forecasts whether it pays, and scores it for the side that made it."""
+    from catspace.incubator.analyst.watch import rules as R
+    from catspace.incubator.analyst.watch import cases as C
+    from catspace.incubator.analyst.watch.watcher import watch_game
+    import sqlite3
+    C.db_path().parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(C.db_path()); con.execute(f"CREATE TABLE events ({', '.join(C.COLS)}, PRIMARY KEY (game, ply))"); con.commit(); con.close()
+    g = dict(game_id=3, white_elo=1500, black_elo=1500, result=-1, termination="Normal",
+             moves="e2e4 e7e5 g1f3 b8c6 f1c4 g8f6 c4f7 e8f7 b1c3 d7d6 d2d3 h7h6 c1e3 a7a6 a2a3 b7b6 h2h3 a6a5")
+    cs = watch_game(g, R.RuleBase.load())
+    att = [c for c in cs if "attack" in c]
+    assert len(att) == 1 and att[0]["ply"] == 7 and att[0]["mover"] == "white"   # Bxf7+: a bishop for a pawn
+    assert att[0]["attack"]["outcome"] == "fails" and att[0]["attack"]["attrs"]["investment"] == 2
+
+
+def test_retire_removes_a_rule_and_its_exceptions(roots):
+    from catspace.incubator.analyst.watch import rules as R
+    a = R.add_rule("frame", "F0", {"flag": "hanging"}, "hanging", ["c1"])
+    b = R.add_rule("frame", a.id, {"flag": "pinned"}, "hanging and pinned", ["c2"])
+    c = R.add_rule("frame", "F0", {"flag": "in_check"}, "in check", ["c3"])
+    R.retire(a.id, "test")
+    ids = set(R.RuleBase.load().rules)
+    assert a.id not in ids and b.id not in ids and c.id in ids

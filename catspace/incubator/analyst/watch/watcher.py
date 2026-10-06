@@ -23,7 +23,11 @@ import numpy as np
 
 from catspace.io import paths
 
+from .cases import COLS as CASE_COLS, N_PLIES as ATTACK_PLIES, counts_for, outcome as attack_outcome, sacrifice_attrs
 from .frames import FrameMemory, material, observe
+
+ATTACK_ATTRS = ["capturer", "victim", "recapturer", "investment", "gives_check", "king_dist", "king_zone_attackers",
+                "king_shield", "material", "phase", "elo", "elo_diff"]
 from .rules import KINDS, RuleBase, add_rule, bits, bucket, record_root
 
 STRIDE, RESIDUE = 97, 7
@@ -153,6 +157,15 @@ def watch_game(g: dict, rb: RuleBase, policy: str = "evidence_blend") -> list[di
                         result_dist=dict(zip(KINDS["result"], d_r)),
                         p_result_all={m: rb.dist(m, pa)[KINDS["result"].index(res)] for m in matched_r})
             results.append((matched_r, res))
+        sac = sacrifice_attrs(boards, t - 1, moves[t - 1], g)                 # was the move just played a sacrifice?
+        if sac is not None:
+            sa = {k: sac[k] for k in ATTACK_ATTRS}
+            d_a, rid_a, matched_a, how_a = rb.forecast("attack", sa, policy)
+            res_a = "pays" if attack_outcome(boards, t - 1, mover)["success"] else "fails"   # for the side that sacrificed
+            p_a = d_a[KINDS["attack"].index(res_a)]
+            case["attack"] = dict(rule=rid_a, p_pays=d_a[1], outcome=res_a, p=p_a, bits=bits(p_a), attrs=sa, blend=how_a,
+                                  p_all={m: rb.dist(m, sa)[KINDS["attack"].index(res_a)] for m in matched_a})
+            pending.append((min(len(moves), t + ATTACK_PLIES + 1), "attack", matched_a, res_a, sa))
         case.setdefault("pattrs", pa)
         cases.append(case)
     for item in pending:                                                     # the game is over: every outcome is known
@@ -216,6 +229,22 @@ def backfill(rb: RuleBase, ids: set, upto_batch: int) -> dict:
     return used
 
 
+def backfill_attack(rb: RuleBase, ids: set) -> dict:
+    """Attack rules (the root included) start from the indexed sacrifices their condition chain covers (watch/cases.py:
+    the Lichess records without the watcher's stream), counted by SQL. -> {rule: [cases, 0]}."""
+    out = {}
+    for i in ids:
+        conds, r = [], rb.rules[i]
+        while r is not None and r.parent is not None:
+            conds.append(r.cond)
+            r = rb.rules[r.parent]
+        f, s = counts_for(conds)
+        rb.counts[i] = [float(f), float(s)]
+        out[i] = [f + s, 0]
+        print(f"OBS backfill {i}: {f + s} indexed sacrifices counted ({100 * s / max(f + s, 1):.0f}% paid)")
+    return out
+
+
 def _applies(rb: RuleBase, rid: str, a: dict) -> bool:
     """rid's condition and its ancestors' hold on a (False when a lacks a word they read)."""
     from .rules import holds
@@ -268,13 +297,14 @@ def save_state(st: dict) -> None:
     tmp.replace(p)
 
 
-def run_batch(n_games: int = 20, policy: str = "evidence_blend", upto: int | None = None) -> dict:
+def run_batch(n_games: int = 20, policy: str = "evidence_blend", upto: int | None = None, propose_after: bool = True) -> dict:
     """The next batch of the stream with the rules created before `upto` (default: every rule in the file)."""
     st = load_state()
     fresh = {rid for rid in RuleBase.load(upto=upto).rules if rid not in st["counts"]}
     rb = RuleBase.load(counts=st["counts"], upto=upto)
     upto = max(r.created for r in rb.rules.values()) + 1 if upto is None else upto
-    filled = backfill(rb, fresh, len(st["batches"]))                       # a new rule starts from the past it covers
+    filled = backfill(rb, {i for i in fresh if rb.rules[i].kind != "attack"}, len(st["batches"]))   # a new rule starts
+    filled.update(backfill_attack(rb, {i for i in fresh if rb.rules[i].kind == "attack"}))       # from the past it covers
     t0 = time.perf_counter()
     gs = games(st["offset"], n_games)
     cases = []
@@ -287,6 +317,8 @@ def run_batch(n_games: int = 20, policy: str = "evidence_blend", upto: int | Non
                    short_bits=float(np.mean([c["short_bits"] for c in cases])),
                    frame_bits=float(np.mean([-np.log2(max(f["p"], 1e-12)) for c in cases for f in c["frames"]])) if any(c["frames"] for c in cases) else 0.0,
                    frames=sum(len(c["frames"]) for c in cases),
+                   sacrifices=sum(1 for c in cases if "attack" in c),
+                   attack_bits=float(np.mean([c["attack"]["bits"] for c in cases if "attack" in c])) if any("attack" in c for c in cases) else None,
                    long_bits=per_game_mean(scored, "long_bits") if scored else None, long_positions=len(scored),
                    seconds=time.perf_counter() - t0, time=time.strftime("%Y-%m-%d %H:%M %Z"))
     st["offset"] += len(gs)
@@ -300,6 +332,11 @@ def run_batch(n_games: int = 20, policy: str = "evidence_blend", upto: int | Non
     rec.parent.mkdir(parents=True, exist_ok=True)
     with open(rec, "a") as fh:
         fh.write(json.dumps(summary) + "\n")
+    if propose_after and any("attack" in c for c in cases):                # the watcher proposes rules from its surprises
+        from .cases import db_path as _cases_db
+        if _cases_db().exists():
+            from .propose import run as _propose
+            _propose(k)
     print(f"OBS watch batch {k}: {summary['games']} games from #{summary['first_game']}, {summary['positions']} positions, "
           f"{summary['frames']} frames, {summary['rules']} rules; surprise per position: short {summary['short_bits']:.3f} bits, "
           f"per frame {summary['frame_bits']:.3f}, long {summary['long_bits'] if summary['long_bits'] is None else round(summary['long_bits'], 3)} bits "
@@ -316,7 +353,7 @@ def replay() -> list[dict]:
     (record_root() / "batches.jsonl").write_text("")
     out = []
     for b in old:
-        out.append(run_batch(b["games"], upto=b["rules_upto"]))
+        out.append(run_batch(b["games"], upto=b["rules_upto"], propose_after=False))
     return out
 
 
@@ -332,11 +369,14 @@ def health() -> list[dict]:
         fr = sum(L(f["p_all"]["F0"]) - L(f["p"]) for c in cs for f in c["frames"])
         el = sum(L(c["elsewhere"]["p_all"]["E0"]) - L(c["elsewhere"]["p"]) for c in cs if "p_all" in c["elsewhere"])
         lg = [dict(game=c["game"], s=L(c["p_result_all"]["R0"]) - L(c["p_result"])) for c in cs if "p_result_all" in c]
+        at = [L(c["attack"]["p_all"]["A0"]) - L(c["attack"]["p"]) for c in cs if "attack" in c]
         h = dict(batch=k, positions=len(cs), rules=d["summary"]["rules"], frames_saved=fr / len(cs), elsewhere_saved=el / len(cs),
-                 long_saved=per_game_mean(lg, "s") if lg else 0.0)          # a game's result counts once (Kaveh 2026-10-05)
+                 long_saved=per_game_mean(lg, "s") if lg else 0.0,          # a game's result counts once (Kaveh 2026-10-05)
+                 attack_saved=(sum(at) / len(at)) if at else 0.0, sacrifices=len(at))
         out.append(h)
         print(f"OBS health batch {k}: {h['rules']} rules; bits saved per position against the base rates: frames {h['frames_saved']:+.3f}, "
-              f"elsewhere {h['elsewhere_saved']:+.3f}, result per game {h['long_saved']:+.3f} ({len({x['game'] for x in lg})} games)")
+              f"elsewhere {h['elsewhere_saved']:+.3f}, result per game {h['long_saved']:+.3f} ({len({x['game'] for x in lg})} games), "
+              f"attack per sacrifice {h['attack_saved']:+.3f} ({h['sacrifices']})")
     return out
 
 
@@ -365,6 +405,8 @@ def credit(batch: int | None = None) -> dict:
             add(c["elsewhere"]["rule"], c["elsewhere"]["p_all"], c["elsewhere"]["p"], "E0")
         if "p_result_all" in c:
             add(c["result_rule"], c["p_result_all"], c["p_result"], "R0")
+        if "attack" in c:
+            add(c["attack"]["rule"], c["attack"]["p_all"], c["attack"]["p"], "A0")
     for r, (n, vr, vp) in sorted(cred.items(), key=lambda kv: (kv[0][0], int(kv[0][1:]))):
         if rb.rules[r].parent is None:
             print(f"OBS batch {k} {r} (root) decided {n}")
@@ -412,8 +454,8 @@ def explain(case_id: str, batch: int | None = None) -> None:
 def export(batches: list[int], out: str) -> dict:
     """The viewer's data (watch/viewer.html): for every game of the given batches, its header and moves, and for every
     position what the watcher saw, forecast and was surprised by -- read from the batch records, as they were made."""
-    rb = RuleBase.load()
-    games_out = []
+    rb = RuleBase.load(counts=load_state()["counts"])                         # with their counts (an after-the-fact attack
+    games_out = []                                                           # forecast read uniform without them, 2026-10-05)
     for k in batches:
         d = json.loads((data_root() / f"batch_{k:03d}.json").read_text())
         by_game: dict = {}
@@ -430,6 +472,9 @@ def export(batches: list[int], out: str) -> dict:
                 b.push(m)
                 fens.append(b.fen())
             plies = []
+            bl = [chess.Board()]
+            for u in ucis:
+                nb = bl[-1].copy(stack=False); nb.push_uci(u); bl.append(nb)
             for c in sorted(cs, key=lambda c: c["ply"]):
                 t0 = c["ply"]
                 fr = [dict(sq=f["sq"], occ=f["attrs"]["occ"], own=f["attrs"]["occ_mover"], rule=f["rule"],
@@ -441,7 +486,8 @@ def export(batches: list[int], out: str) -> dict:
                 plies.append(dict(t=t0, mover=c["mover"][0], frames=fr, el=dict(rule=e["rule"], out=e["outcome"], p=round(e["p"], 3)),
                                   delta=c["delta"], pd=round(c["p_delta"], 3), sb=round(c["short_bits"], 2), end=c["end"],
                                   res=c.get("result"), rr=c.get("result_rule"), lb=round(c["long_bits"], 2) if "long_bits" in c else None,
-                                  rd=[round(c["result_dist"][x], 3) for x in ("loss", "draw", "win")] if "result_dist" in c else None))
+                                  rd=[round(c["result_dist"][x], 3) for x in ("loss", "draw", "win")] if "result_dist" in c else None,
+                                  attack=_attack_view(c, bl, ucis, g, rb)))
             games_out.append(dict(id=gid, batch=k, we=g["white_elo"], be=g["black_elo"], result=g["result"], term=g["termination"],
                                   san=sans, uci=ucis, fen=fens, plies=plies))
     rules = {rid: dict(kind=r.kind, parent=r.parent, text=r.text) for rid, r in rb.rules.items()}
@@ -449,6 +495,32 @@ def export(batches: list[int], out: str) -> dict:
     Path(out).write_text(json.dumps(data, separators=(",", ":")))
     print(f"OBS export: {len(games_out)} games, {sum(len(g['plies']) for g in games_out)} positions, {Path(out).stat().st_size // 1024} KB -> {out}")
     return data
+
+
+def _attack_view(c: dict, boards: list, ucis: list, g: dict, rb: RuleBase) -> dict | None:
+    """The viewer's attack card for a position just after a sacrifice: the watcher's forecast (as made, or -- for a
+    batch watched before the attack rules existed -- by today's rules, marked so) and why: the nearest indexed cases."""
+    from .cases import db_path as _cdb, why
+    t = c["ply"]
+    sac = sacrifice_attrs(boards, t - 1, chess.Move.from_uci(ucis[t - 1]), g)
+    if sac is None:
+        return None
+    if "attack" in c:
+        a = c["attack"]
+        view = dict(rule=a["rule"], p_pays=round(a["p_pays"], 3), outcome=a["outcome"], bits=round(a["bits"], 2), after=False)
+    else:
+        sa = {k: sac[k] for k in ATTACK_ATTRS}
+        d, rid, _, _ = rb.forecast("attack", sa)
+        res = "pays" if attack_outcome(boards, t - 1, boards[t - 1].turn)["success"] else "fails"
+        p = d[KINDS["attack"].index(res)]
+        view = dict(rule=rid, p_pays=round(d[1], 3), outcome=res, bits=round(bits(p), 2), after=True)
+    view.update(capturer=sac["capturer"], victim=sac["victim"], recapturer=sac["recapturer"], investment=sac["investment"],
+                king_dist=sac["king_dist"], zone=sac["king_zone_attackers"], elo=sac["elo"])
+    if _cdb().exists():
+        w = why(dict(sac, kind="sacrifice", game=-1, ply=-1))
+        view["why"] = dict(n=w.get("n", 0), rate=round(w.get("rate", 0.0), 3),
+                           leaves=[dict(l, rate=round(l["rate"], 3)) for l in w.get("leaves", [])])
+    return view
 
 
 def show(batch: int | None = None, top: int = 20) -> None:
@@ -490,7 +562,9 @@ def games_by_id(gid: int) -> dict:
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["batch", "show", "add", "replay", "credit", "health", "explain", "export"])
+    ap.add_argument("cmd", choices=["batch", "show", "add", "replay", "credit", "health", "explain", "export", "retire"])
+    ap.add_argument("--rule", default=None, help="retire: the rule to retire")
+    ap.add_argument("--note", default="", help="retire: why")
     ap.add_argument("--batches", type=int, nargs="*", default=None, help="export: the batches to include (default: the last two)")
     ap.add_argument("--out", default=None, help="export: the JSON file to write")
     ap.add_argument("--case", default=None, help="explain: game:ply")
@@ -516,6 +590,10 @@ def main(argv=None):
         health()
     elif a.cmd == "explain":
         explain(a.case, a.batch)
+    elif a.cmd == "retire":
+        from .rules import retire
+        retire(a.rule, a.note)
+        print(f"retired {a.rule}: {a.note}")
     elif a.cmd == "export":
         n = len(load_state()["batches"])
         export(a.batches if a.batches else list(range(max(0, n - 2), n)), a.out or str(data_root() / "viewer_games.json"))

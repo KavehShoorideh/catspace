@@ -97,32 +97,81 @@ def scan_game(row: dict) -> list[dict]:
         return []
     out = []
     for t, u in enumerate(moves):
-        b = boards[t]
-        m = chess.Move.from_uci(u)
-        if not b.is_capture(m):
+        ev = sacrifice_attrs(boards, t, chess.Move.from_uci(u), row)
+        if ev is None:
             continue
-        x = exchange_for(b, m)
-        if x > -2:
-            continue
-        side = b.turn
-        after = boards[t + 1]
-        k = after.king(not side)
-        recap = legal_attackers(after, not side, m.to_square)
-        recapturer = min((after.piece_at(s).piece_type for s in recap), key=lambda p: VAL[p] if p != chess.KING else 100) if recap else None
-        me, them = (row["white_elo"], row["black_elo"]) if side == chess.WHITE else (row["black_elo"], row["white_elo"])
-        nonpawn = sum({1: 0, 2: 3, 3: 3, 4: 5, 5: 9, 6: 0}[p.piece_type] for p in b.piece_map().values())
-        ev = dict(game=row["game_id"], ply=t + 1, fen=b.fen(), move=u, kind="sacrifice",
-                  capturer=LETTER[b.piece_at(m.from_square).piece_type],
-                  victim=LETTER[(b.piece_at(m.to_square) or chess.Piece(chess.PAWN, not side)).piece_type],
-                  recapturer=LETTER[recapturer] if recapturer else "-",
-                  investment=-x, gives_check=int(b.gives_check(m)),
-                  king_dist=chess.square_distance(m.to_square, k) if k is not None else 8,
-                  material=material(b, side), phase=nonpawn, elo=me or 0, elo_diff=(me or 0) - (them or 0),
-                  result=(0 if row["result"] == 0 else (1 if (row["result"] == 1) == (side == chess.WHITE) else -1)),
-                  term=row["termination"], **king_features(after, side))
-        ev.update(outcome(boards, t, side))
+        ev.update(outcome(boards, t, boards[t].turn))
         out.append(ev)
     return out
+
+
+def sacrifice_attrs(boards: list[chess.Board], t: int, m: chess.Move, row: dict) -> dict | None:
+    """The sacrifice played from boards[t] (None when move m is not one): its named attributes, the same for the case
+    database and the watcher's attack forecast."""
+    b = boards[t]
+    if not b.is_capture(m):
+        return None
+    x = exchange_for(b, m)
+    if x > -2:
+        return None
+    side = b.turn
+    after = boards[t + 1]
+    k = after.king(not side)
+    recap = legal_attackers(after, not side, m.to_square)
+    recapturer = min((after.piece_at(s).piece_type for s in recap), key=lambda p: VAL[p] if p != chess.KING else 100) if recap else None
+    me, them = (row["white_elo"], row["black_elo"]) if side == chess.WHITE else (row["black_elo"], row["white_elo"])
+    nonpawn = sum({1: 0, 2: 3, 3: 3, 4: 5, 5: 9, 6: 0}[p.piece_type] for p in b.piece_map().values())
+    return dict(game=row["game_id"], ply=t + 1, fen=b.fen(), move=m.uci(), kind="sacrifice",
+                capturer=LETTER[b.piece_at(m.from_square).piece_type],
+                victim=LETTER[(b.piece_at(m.to_square) or chess.Piece(chess.PAWN, not side)).piece_type],
+                recapturer=LETTER[recapturer] if recapturer else "-",
+                investment=-x, gives_check=int(b.gives_check(m)),
+                king_dist=chess.square_distance(m.to_square, k) if k is not None else 8,
+                material=material(b, side), phase=nonpawn, elo=me or 0, elo_diff=(me or 0) - (them or 0),
+                result=(0 if row["result"] == 0 else (1 if (row["result"] == 1) == (side == chess.WHITE) else -1)),
+                term=row["termination"], **king_features(after, side))
+
+
+def cond_sql(cond: dict, cols: set[str]) -> tuple[str, list]:
+    """A rule condition (rules.py's JSON language) as a SQL WHERE clause over the events table: the rule language's
+    third backend (Python here, Rust and Lean later). Raises KeyError on an attribute the table lacks."""
+    if "all" in cond or "any" in cond:
+        k = "all" if "all" in cond else "any"
+        parts = [cond_sql(c, cols) for c in cond[k]]
+        if not parts:
+            return ("1" if k == "all" else "0"), []
+        return "(" + (" AND " if k == "all" else " OR ").join(p for p, _ in parts) + ")", [v for _, ps in parts for v in ps]
+    if "not" in cond:
+        q, ps = cond_sql(cond["not"], cols)
+        return f"(NOT {q})", ps
+    if "flag" in cond:
+        if cond["flag"] not in cols:
+            raise KeyError(cond["flag"])
+        return f"({cond['flag']} != 0)", []
+    if "is" in cond:
+        if cond["is"] not in cols:
+            raise KeyError(cond["is"])
+        return f"({cond['is']} = ?)", [cond["eq"]]
+    if cond["cmp"] not in cols:
+        raise KeyError(cond["cmp"])
+    v = cond["value"]
+    if isinstance(v, dict):
+        if v["attr"] not in cols:
+            raise KeyError(v["attr"])
+        return f"({cond['cmp']} {cond['op']} {v['attr']})", []
+    return f"({cond['cmp']} {cond['op']} ?)", [v]
+
+
+def counts_for(conds: list[dict]) -> tuple[int, int]:
+    """(failures, successes) among the indexed sacrifices where every condition holds."""
+    cols = set(COLS)
+    parts = [cond_sql(c, cols) for c in conds]
+    where = " AND ".join(["kind = 'sacrifice'"] + [q for q, _ in parts])
+    params = [v for _, ps in parts for v in ps]
+    con = sqlite3.connect(db_path())
+    got = dict(con.execute(f"SELECT success, COUNT(*) FROM events WHERE {where} GROUP BY success", params).fetchall())
+    con.close()
+    return got.get(0, 0), got.get(1, 0)
 
 
 def _scan_shard(args) -> list[dict]:
@@ -181,15 +230,21 @@ def rows(where: str = "", params=()) -> list[dict]:
     return out
 
 
+_SAME: dict = {}
+
+
 def similar(query: dict, k: int = 60) -> list[dict]:
     """The k cases of the same event with the same capturing and captured pieces, nearest over the attributes (each
     scaled by its spread among them)."""
-    same = rows("WHERE kind = ? AND capturer = ? AND victim = ?", (query["kind"], query["capturer"], query["victim"]))
-    same = [c for c in same if not (c["game"] == query["game"] and c["ply"] == query["ply"])]
+    key = (query["kind"], query["capturer"], query["victim"])
+    if key not in _SAME:                                                     # one load per piece pair in a process
+        allc = rows("WHERE kind = ? AND capturer = ? AND victim = ?", key)
+        import statistics as st
+        _SAME[key] = (allc, {f: (st.pstdev([c[f] for c in allc]) or 1.0) for f in FEATURES} if allc else {})
+    allc, scale = _SAME[key]
+    same = [c for c in allc if not (c["game"] == query["game"] and c["ply"] == query["ply"])]
     if not same:
         return []
-    import statistics as st
-    scale = {f: (st.pstdev([c[f] for c in same]) or 1.0) for f in FEATURES}
     key = lambda c: sum(((c[f] - query[f]) / scale[f]) ** 2 for f in FEATURES)
     return sorted(same, key=key)[:k]
 
@@ -216,6 +271,36 @@ def mine(cases: list[dict], depth: int = 2, min_leaf: int = 8) -> list[str]:
         f, thr = FEATURES[t.feature[node]], t.threshold[node]
         walk(t.children_left[node], conds + [f"{f} <= {thr:.1f}"])
         walk(t.children_right[node], conds + [f"{f} > {thr:.1f}"])
+    walk(0, [])
+    return out
+
+
+def why(query: dict, k: int = 200, depth: int = 2, min_leaf: int = 12) -> dict:
+    """For the viewer: a sacrifice's nearest cases, how often they paid, and the split a shallow tree finds among them,
+    each branch with its cases and rate, the branch that holds the query marked."""
+    from sklearn.tree import DecisionTreeClassifier
+    near = similar(query, k)
+    if not near:
+        return dict(n=0)
+    y = [c["success"] for c in near]
+    out = dict(n=len(near), rate=sum(y) / len(y), leaves=[])
+    if len(set(y)) < 2 or len(near) < 2 * min_leaf:
+        return out
+    X = [[c[f] for f in FEATURES] for c in near]
+    tree = DecisionTreeClassifier(max_depth=depth, min_samples_leaf=min_leaf, random_state=0).fit(X, y)
+    here = int(tree.apply([[query[f] for f in FEATURES]])[0])
+    t = tree.tree_
+    from .propose import PHRASE
+
+    def walk(node, parts):
+        if t.children_left[node] == -1:
+            v = t.value[node][0]
+            out["leaves"].append(dict(text=", ".join(parts) or "all", n=int(t.n_node_samples[node]),
+                                      rate=float(v[1] / v.sum()) if v.sum() else 0.0, here=bool(int(node) == here)))
+            return
+        f, thr = FEATURES[t.feature[node]], float(t.threshold[node])
+        walk(t.children_left[node], parts + [f"{PHRASE.get(f, f)} at most {thr:g}"])
+        walk(t.children_right[node], parts + [f"{PHRASE.get(f, f)} above {thr:g}"])
     walk(0, [])
     return out
 
