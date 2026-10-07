@@ -379,10 +379,13 @@ RULE_BOOK = {"passer": lambda: Rule("passer", "proved", _passer_fire),     # by 
              "tactic_map": lambda: Rule("tactic_map", "conjecture", _tactic_map_fire, "add", True)}   # the tactic map's expected gain: a tie-break
 
 
-RULE_ORDER = ("passer", "fork", "refute", "passer_setup", "fork_hint", "tactic_map", "opening")   # the order the harnesses apply them in:
+RULE_ORDER = ("passer", "fork", "refute", "passer_setup", "fork_hint", "opening", "tactic_map")   # the order the harnesses apply them in:
                                                                  # the measured bundles' order; tactics before the opening
                                                                  # subgoals (review 2026-10-06: listed first, the opening rule
-                                                                 # settled the ties and fork_hint's claims were dropped)
+                                                                 # settled the ties and fork_hint's claims were dropped); the
+                                                                 # opening principles before the map (2026-10-07: the map's
+                                                                 # hair-thin differences settled the opening ties first and
+                                                                 # the move-10 deficit came back, -164 -> -222 cp)
 assert set(RULE_ORDER) == set(RULE_BOOK)
 
 

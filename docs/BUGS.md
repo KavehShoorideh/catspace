@@ -399,6 +399,10 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   executing first) and theirs at `exposed` (the victim answering first) -- the other way round: about 2x too much for
   ours, 3x too little for theirs. The first puzzle read (pawn endings 24.6 -> 67.3) was not quoted. Fix: V for the side to
   move by its own tables, negated for the mover. Caught by checking the positive result, not the negative one.
+- **The map pre-empted the opening principles** (2026-10-07, class: rule interaction, missed in review): `tactic_map` ran
+  before `opening` in RULE_ORDER; in the opening, where no tactics exist, its hair-thin expected-gain differences settled
+  the ties and the principles rarely spoke -- the median after our 10th move went back from -164 to -222 cp in 80 games.
+  Fix: principles first in the opening, the map on what they leave tied. The games are re-run with the corrected order.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
