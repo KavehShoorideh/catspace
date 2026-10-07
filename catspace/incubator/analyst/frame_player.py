@@ -232,8 +232,17 @@ def _fork_fire(b: chess.Board) -> dict:
 
 FORK_STATS = {"claims": 0, "certified": 0, "lower": 0}            # proposals, certified, certified below the proposal
 
+def _fork_hint_fire(b: chess.Board) -> dict:
+    """The same rule's UNCERTIFIED proposals (the Python local check's claims the kernel did not certify at their full
+    gain): evidence, not proof -- a conjecture, so a tie-break only (Kaveh's tiers)."""
+    from .tactic_rules import fork_claims
+    certified = _fork_fire(b)
+    return {u: (v, why + " (uncertified: a hint)") for u, (v, why) in fork_claims(b).items() if u not in certified or certified[u][0] < v}
+
+
 RULE_BOOK = {"passer": lambda: Rule("passer", "proved", _passer_fire),     # by name, for the harnesses' --rules
-             "fork": lambda: Rule("fork", "proved", _fork_fire, "at_least")}   # proved: every claim it returns is Lean-certified
+             "fork": lambda: Rule("fork", "proved", _fork_fire, "at_least"),   # proved: every claim it returns is Lean-certified
+             "fork_hint": lambda: Rule("fork_hint", "conjecture", _fork_hint_fire)}   # its uncertified proposals: a tie-break
 
 
 def _one_ply_values(b: chess.Board, before, book) -> dict:
