@@ -11,7 +11,10 @@ Newest entry first. Times from `date` (PDT).
   as a conjecture. OBS 200 dev positions: 105 proposals, 43 certified, 62 refused. Checker bridge vs python 4-ply
   enumeration: 105/105 agree (test). Held-out: general 164.1 -> 168.7 (certified) / 172.1 (hint); pawns 22.0 -> 22.8 /
   24.7. Both tiers: running (poc3). Games zero search: Maia-1500 95%; 1900 + random running.
-- NEXT: both-tiers result; Maia-1900; the next miss family (the pin/skewer: Bh4, Rh5; the quiet threat: f6, Rc1).
+- Both tiers (poc3) 174.5; + pin family (poc4) 174.6 (null); review fixes (answers = captures ∪ attacked ∪ king moves;
+  hint max(claim, cert); cache; errors) -> poc5: general 176.2 (25/6), pawns 22.5 (15/7), dev 98.3. Cert 57/119.
+  Maia-1900 92%, random 100%. Depth-5 kernel check: minutes/claim (killed). BUGS: 5 entries (2026-10-06).
+- NEXT (Kaveh): composition vs faster generator vs wider proposers; Stockfish UCI_Elo 2000+ as the games bar.
 
 ## 2026-10-05 20:30 PDT — the PoC (Kaveh's scope; three standing rules)
 

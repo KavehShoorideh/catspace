@@ -22924,6 +22924,34 @@ tie-break), held-out, one run: general 237 / 162 / 174.5 (up 20, down 5) against
 either tier alone (168.7, 172.1); pawn endings 224 / 5 / 23.1 (up 17, down 5) against 22.0. The design's two tiers
 compose: the certificate lifts solutions the ledger had below the top, the hint settles the ties among the rest.
 
+ADDENDUM 17:38 PDT -- round 1 closed (OBS, one run each):
+GAMES at zero search, no rules, 20 each, seed 0: vs Maia-1900 92% (14 wins, 4 wins on material at the 200-ply cap, 1
+draw, 1 loss at the cap), 1.05 s a move; vs the random mover 100%. The frames alone beat every Maia on disk; the games
+measure exchange-reading, not planning. Stockfish at a UCI Elo of 2000 or more (the harness has it) is the next bar.
+THE PIN/SKEWER FAMILY as a second proposer for the same certificate (a slider attacks a piece with a dearer piece or
+the king behind it): bridge clean (69 claims, 0 wrong), 14 proposals more per 200 positions, nothing measurable
+(general 174.5 -> 174.6); of the five development misses it was written for it triggers on one (Bh4), which the
+kernel refuses (a fourth-ply check takes the gain back); the other four are quiet moves whose point comes two moves
+later. A FIVE-PLY kernel certificate was tried for them and never finished: minutes per claim with the kernel's move
+generator. The certificate's depth is bounded by the generator, not by the statement.
+THE REVIEW of the Lean integration (a separate agent): the kernel had demanded a CAPTURE as our answer at the third
+ply while the proposer let the move's own capture carry the gain -- one refusal in six was a true claim (Qxd8+ winning
+a rook: the only capture lost the queen; a quiet king move kept +5). Our answers are now captures, moves of attacked
+pieces and king moves (still a sublist: the theorem's proof unchanged; axioms unchanged); the hint carries every
+proposal at max(claim, certified gain), so a certified move never ranks below an uncertified one; one certification
+per position; a checker error counts as refused. Certification on 200 development positions: 119 proposals (both
+families), 57 certified (23 at the full gain, 34 lower), 62 refused, 0 errors; 480 ms a position (the wider answer
+set costs 2.5x). docs/BUGS.md has the five entries.
+HELD-OUT, both tiers, the reviewed certifier (tied / single / expected; up / down against no rules):
+  general        236 / 165 / 176.2  (25 / 6)   against 164.1 -- the round's headline: +12.1 expected puzzles of 300
+  pawn endings   219 /   6 /  22.5  (15 / 7)   against  22.0
+  development    119 /  94 /  98.3  ( 6 / 3)   against  94.1
+READING (directional): one certified rule with its evidence tier is worth about twelve expected puzzles of 300 at zero
+search on the general set and nothing on pawn endings, whose misses are quiet race moves. What is left in the general
+gap (about 62 expected puzzles) is mostly quiet moves whose point lies beyond three plies: the next step is a design
+choice -- compose certificates (a claim whose leaf goal is another rule's hypothesis), a faster Lean move generator for
+deeper ones, or wider proposers at this depth.
+
 ## 2026-10-05 20:30 PDT — the PoC, round 0: the zero-search frame player measured, the rules' hook, two rules (OBS)
 
 Kaveh (evening): "we've drifted away from my basic goal ... so many little bugs that we get bogged down ... we don't know
