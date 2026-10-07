@@ -22874,6 +22874,28 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-07 00:14 PDT — the games vs Stockfish-2000 at 100 a side: the opening fixed, the score not yet; the ties decide later (OBS)
+
+Ordinary games from the starting position vs Stockfish at UCI Elo 2000 (depth 8), zero search, colours alternating,
+seeds 1-5, 20 games a seed; Stockfish (full strength, depth 10) judging the positions afterwards. One run each.
+  arm                                                     games   wins  draws  losses   score
+  no rules (two processes stopped early)                    78      2      1     75     3.2%
+  fork + fork_hint                                         100      1      2     97     2.0%
+  passer, passer_setup, fork, refute, fork_hint, opening   100      4      2     94     5.0%
+  (seed 0, 20 a side: no rules 2.5%, fork + fork_hint 10%)
+  Fisher exact, the full bundle vs fork + fork_hint: wins 4/100 vs 1/100, p = 0.37; wins + draws 6 vs 3, p = 0.50 --
+  indistinguishable at this sample.
+  after our 5th move, median: fork + fork_hint -160 cp (56 of 100 below -150); the full bundle -50 (13 of 100)
+  after our 10th move, median: -364 (93 below -150, 63 below -300); -164 (55 below -150, 22 below -300)
+WHERE THE FULL BUNDLE'S GAMES ARE LOST (its 74 losses among the first 80 games): the median after our 15th move -348,
+20th -494; the first fall below -150 at ply 16 (median; 47 by ply 20, 20 at plies 21-40, 6 later), in a larger step
+(median 125 cp); at that fall a move the ledger tied with the played one stayed at or above -150 in 59 of 73. Over
+all our moves the median drop is 37 cp (fork + fork_hint's lost games: 50).
+Reading: the opening subgoals do what they were built for -- the deficit at move 10 is halved, in the short run and in
+100 full games -- but the player is still about a pawn and a half down by move 10, and the same failure follows a few
+moves later: a pick among moves the one-ply ledger cannot tell apart, now in the early middlegame and by bigger steps.
+The game score moved 2.0% -> 5.0%, within noise. What breaks the ties after the opening is the open question.
+
 ## 2026-10-06 22:21 PDT — opening subgoals as tie-breaks: built, reviewed, fixed; the opening deficit halved (OBS)
 
 Kaveh's call (asked): opening subgoals as tie-breaks. `catspace/incubator/analyst/opening_subgoals.py`: five classical

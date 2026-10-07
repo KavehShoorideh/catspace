@@ -219,3 +219,9 @@ Newest entry first. Times from `date` (PDT).
   RULE_BOOK "opening" (conjecture), 8 tests pass; review agent running; short run tmp/openprobe_* (40 games x 20 plies).
 - 2026-10-06 22:21 PDT opening rule reviewed (3 bugs fixed + docstring + RULE_ORDER), 13 tests; short run -71/-180 vs base -176/-356;
   WAC 60 20.6 -> 20.4. Launched sf2000x_open_s1..5 (full bundle + opening, 100 games). Stopped norules s1, s4.
+
+## 2026-10-07 00:14 PDT — games at 100 a side done
+- OBS: no rules 3.2% (78), fork+hint 2.0% (100), full bundle + opening 5.0% (100; Fisher p 0.37 wins). Opening medians
+  -160/-364 -> -50/-164 (moves 5/10). Candidate losses: first fall below -150 at ply 16, tied alternative fine in 59/73.
+- NEXT (Kaveh's pick): what breaks the middlegame ties -- search only among the ledger's ties / middlegame subgoals /
+  a Maia prior.
