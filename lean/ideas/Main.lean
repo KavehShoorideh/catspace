@@ -1,4 +1,5 @@
 import Ideas.Fork
+import Ideas.Setup
 import Ideas
 import Chess.FENText
 
@@ -202,6 +203,17 @@ def handle (line : String) : List String :=
           | some m => [if localCheck p m k then s!"CERTIFIED {k}" else s!"FAIL {k}"]
           | none => ["error illegal move"]
       | _, _ => ["error bad fen or k"]
+  | "passersetup" :: uci :: rest =>                  -- passersetup <uci> <fen>: after the move, every reply leaves a proved passer (second form)?
+      match readPosition (" ".intercalate rest) with
+      | some p =>
+          match (legalMoves p).find? (fun m => moveUci m == uci) with
+          | some m =>
+              let q := applyMove p m
+              let pawns := allSquares.filter (fun sq => q.board sq = some ⟨p.turn, .pawn⟩)
+              let proved := pawns.filter (fun sq => setsUpPasser2 p m sq)
+              [" | ".intercalate (proved.map (fun sq => s!"cand {sqName sq} PROVED plies={2 * Passer.pushes p.turn sq}"))]
+          | none => ["error illegal move"]
+      | none => ["error bad fen"]
   | _ => ["error unknown command"]
 
 /-- Time `f` over `reps` runs; `f` gets the iteration index and the results are folded into a ref, so

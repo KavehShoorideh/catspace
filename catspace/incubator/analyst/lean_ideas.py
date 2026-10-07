@@ -174,6 +174,21 @@ class LeanIdeas:
             raise ValueError(f"{line}: {board.fen()} {move.uci()}")
         return line.startswith("CERTIFIED")
 
+    def passer_setup(self, board: chess.Board, move: chess.Move) -> dict[int, int]:
+        """The passer's composition certificate (Ideas/Setup.lean, setsUpPasser2_sound): after `move`, does every legal
+        reply leave the same pawn of ours an unstoppable passer (the second form)? {square: plies after the move}
+        for each such pawn, by the kernel's rules; empty when none, or when the opponent has no reply. Raises on an
+        illegal move or a bad position."""
+        (line,) = self._ask(f"passersetup {move.uci()} {board.fen()}", until_end=False)
+        if line.startswith("error"):
+            raise ValueError(f"{line}: {board.fen()} {move.uci()}")
+        out = {}
+        for x in line.split(" | "):
+            tok = x.split()
+            if len(tok) >= 4 and tok[0] == "cand" and tok[2] == "PROVED":
+                out[chess.parse_square(tok[1])] = int(tok[3].split("=")[1])
+        return out
+
     def close(self):
         if self.proc.poll() is None:
             self.proc.stdin.close()

@@ -22,8 +22,11 @@ Source plan: "Lean Chess — Idea Basis & Live Engine: Handoff Plan" (Oct 4, 202
   - `Ideas/Passer.lean` — lemma 2, first form: the unstoppable passer against a bare king (rule of the square),
     `unstoppablePasser_sound'`; also `forcedWithinB` (reach a goal within n plies whatever they do) and the
     path geometry.
-  - `Ideas/Passer2.lean` — lemma 2, second form: enemy king and pawns (a pawn-distance bound to the bad squares,
+  - `Ideas/Passer2.lean` — lemma 2, second form: enemy king and pawns (a pawn-distance bound to the bad squares, or -- the cone form, 2026-10-06 -- the pawn cannot leave its file in time,
     a king-room pigeonhole against self-stalemate), `unstoppablePasser2_sound`.
+  - `Ideas/Setup.lean` — the passer composed over one reply: `setsUpPasser2` (after a move, every legal reply leaves the
+    same pawn an unstoppable passer of the second form), `setsUpPasser2_sound` (`forcedWithinB` at 2*pushes plies after
+    the move); the binary's `passersetup <uci> <fen>`, the wrapper's `passer_setup`.
   - `Ideas/Fork.lean` — rule 2, the double threat (fork, discovered attack): `localCheck` -- after our move every legal
     reply is answered by a capture after which, whatever they reply, material is up by k (their mate counts as won, a
     stalemate as no gain); `localCheck_sound`: it implies `forcedAtLeaves` (the goal read at the leaves, three plies on;

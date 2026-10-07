@@ -10,7 +10,10 @@ hypotheses replace `bareKing` and `kingHasMove`:
 * `pawnsFar`  -- every enemy pawn needs more than `n - 1` moves (a lower bound: the larger of the file
                  distance and the rank distance less one for a possible double step) to reach any BAD
                  square: the path and our pawn's square, the squares from which it would check our king,
-                 and its own promotion rank;
+                 and its own promotion rank -- or the bad square is off the pawn's file and the pawn cannot
+                 leave its file in time: a pawn changes file only by capturing, our pieces never move but
+                 the passer along its path, and the pawn is more than `n - 1` moves from every capture
+                 square on the files beside it (the cone form, 2026-10-06);
 * `kingRoom`  -- every square the enemy king can reach in `n - 1` moves has more neighbours free of our
                  pieces, of our attacks (the passer's whole future attack set counted) and of the path
                  than the enemy has pawns: it can never run out of king moves (no self-stalemate).
@@ -64,6 +67,13 @@ def badSquares (c : Color) (x ok : Square) : List Square :=
   path c x ++ allSquares.filter (fun s => pawnAttackGeometryB (Color.opposite c) s ok) ++
     allFiles.map (fun f => (f, promotionRank (Color.opposite c)))
 
+/-- The squares an enemy pawn could ever capture on during the race: our pieces (only the passer moves, along
+its path) and the path. An enemy pawn leaves its file only by capturing on one of them. -/
+def captureSquaresB (p : Position) (c : Color) (x d : Square) : Bool :=
+  (match p.board d with
+    | some pc => pc.color == c
+    | none => false) || (path c x).contains d
+
 /-- Squares our passer attacks now or later on its way: the adjacent files, strictly ahead. -/
 def futureAttackB (c : Color) (x d : Square) : Bool :=
   (absDiff d.1 x.1 == 1) &&
@@ -99,6 +109,15 @@ def enemyKingPawnsB (p : Position) (_ : PasserParams) : Bool :=
   | some k => allSquares.all fun s => (p.board s == some ⟨e, .king⟩) == decide (s = k)
   | none => false
 
+/-- One enemy pawn on `s` is harmless for `n - 1` enemy moves: it is more than `n - 1` moves from every bad
+square, or the square is off the pawn's file and the pawn cannot leave its file in time -- it is more than
+`n - 1` moves from every capture square on the files beside it (the cone form, 2026-10-06). -/
+def pawnFarB (p : Position) (c : Color) (x ok s : Square) (n : Nat) : Bool :=
+  let e := Color.opposite c
+  (badSquares c x ok).all fun t => farB e s t (n - 1) ||
+    ((t.1 != s.1) && allSquares.all fun d =>
+      !captureSquaresB p c x d || (absDiff s.1 d.1 != 1) || farB e s d (n - 1))
+
 def pawnsFarB (p : Position) (ps : PasserParams) : Bool :=
   match kingSquare p.board p.turn with
   | none => false
@@ -106,8 +125,7 @@ def pawnsFarB (p : Position) (ps : PasserParams) : Bool :=
     let e := Color.opposite p.turn
     let n := pushes p.turn ps.sq
     allSquares.all fun s =>
-      (p.board s != some ⟨e, .pawn⟩) ||
-        (badSquares p.turn ps.sq ok).all (fun t => farB e s t (n - 1))
+      (p.board s != some ⟨e, .pawn⟩) || pawnFarB p p.turn ps.sq ok s n
 
 /-- Squares the enemy king can never stand on during the race: next to our king, or within one of the
 promotion square (it is always more than one push away from it). -/
@@ -148,8 +166,7 @@ def Passer2.targets (p : Position) (ps : PasserParams) (hyp : String) : List Squ
     | some ok =>
       let e := Color.opposite p.turn
       let n := pushes p.turn ps.sq
-      allSquares.filter fun s => (p.board s == some ⟨e, .pawn⟩) &&
-        !(badSquares p.turn ps.sq ok).all (fun t => farB e s t (n - 1))
+      allSquares.filter fun s => (p.board s == some ⟨e, .pawn⟩) && !pawnFarB p p.turn ps.sq ok s n
   else if hyp = "enemyKingPawns" then
     allSquares.filter (fun s => match p.board s with
       | some pc => pc.color != p.turn && pc.kind != .king && pc.kind != .pawn
@@ -182,9 +199,12 @@ structure Inv2 (c : Color) (p : Position) (x : Square) (r : Nat) (ek ok : Square
   ourKing : kingSquare p.board c = some ok
   usSafe : ¬ inCheck p c
   themSafe : ¬ inCheck p (Color.opposite c)
-  /-- enemy pawns are more than `r - 1` moves from every bad square -/
+  /-- enemy pawns are more than `r - 1` moves from every bad square, or the square is off the pawn's file and
+      the pawn cannot leave its file in time: more than `r - 1` moves from every capture square beside it -/
   pawnsFar : ∀ s, p.board s = some ⟨Color.opposite c, .pawn⟩ →
-    ∀ t ∈ badSquares c x ok, farB (Color.opposite c) s t (r - 1) = true
+    ∀ t ∈ badSquares c x ok, farB (Color.opposite c) s t (r - 1) = true ∨
+      (t.1 ≠ s.1 ∧ ∀ d, captureSquaresB p c x d = true → absDiff s.1 d.1 = 1 →
+        farB (Color.opposite c) s d (r - 1) = true)
   /-- our pieces, our attacks, the path and our pawn's square stay inside `F` -/
   oursInF : ∀ d pc, p.board d = some pc → pc.color = c → F d = true
   attacksInF : ∀ d, isAttackedB p c d = true → F d = true
@@ -227,9 +247,9 @@ theorem enemy_pawn_not_on_bad {c : Color} {p : Position} {x : Square} {r : Nat} 
     {F : Square → Bool} {np : Nat} (h : Inv2 c p x r ek ok F np) {t : Square}
     (ht : t ∈ badSquares c x ok) : p.board t ≠ some ⟨Color.opposite c, .pawn⟩ := by
   intro hp
-  have := h.pawnsFar t hp t ht
-  rw [farB_self] at this
-  cases this
+  rcases h.pawnsFar t hp t ht with hh | ⟨hh, -⟩
+  · rw [farB_self] at hh; cases hh
+  · exact hh rfl
 
 /-- The enemy's pieces attack by geometry alone (king and pawns). -/
 theorem enemy_noslider {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Square}
@@ -621,6 +641,31 @@ theorem bad_mono {c : Color} {x y ok t : Square} (hy : ahead c x 1 = some y) (ht
   · exact Or.inr (Or.inl h)
   · exact Or.inr (Or.inr h)
 
+/-- After our push and the enemy's reply, the capture squares of the passer on `y` are capture squares of the
+passer on `x`: our pieces are the old ones but the passer, now on `y`, a square of the old path. -/
+theorem captureSquares_mono {c : Color} {p q q' : Position} {x y : Square} (hy : ahead c x 1 = some y)
+    (hqx : q.board x = none) (hqother : ∀ s, s ≠ y → s ≠ x → q.board s = p.board s)
+    (hq'_ours : ∀ u pc, q'.board u = some pc → pc.color = c → q.board u = some pc)
+    {d : Square} (hd : captureSquaresB q' c y d = true) : captureSquaresB p c x d = true := by
+  simp only [captureSquaresB, Bool.or_eq_true] at hd ⊢
+  rcases hd with hd | hd
+  · revert hd
+    cases hq'd : q'.board d with
+    | none => intro hd; simp at hd
+    | some pc =>
+        intro hd
+        simp only [beq_iff_eq] at hd
+        have hqd := hq'_ours d pc hq'd hd
+        by_cases hdy : d = y
+        · exact Or.inr (List.contains_iff_mem.mpr (by rw [hdy]; exact ahead_mem_path hy))
+        · by_cases hdx : d = x
+          · rw [hdx, hqx] at hqd; cases hqd
+          · left
+            rw [hqother d hdy hdx] at hqd
+            rw [hqd]
+            simp [hd]
+  · exact Or.inr (List.contains_iff_mem.mpr (path_of_ahead hy (List.contains_iff_mem.mp hd)).1)
+
 /-! ### The enemy's moves -/
 
 /-- In a position where the side to move has only its king on `ek` and pawns, none of them one step
@@ -630,12 +675,14 @@ theorem enemy_move2 {q : Position} {m : Move} {ek : Square}
     (hek : q.board ek = some ⟨q.turn, .king⟩)
     (hep : q.enPassant = none)
     (hnopromo : ∀ s, q.board s = some ⟨q.turn, .pawn⟩ → ∀ t, t.2 = promotionRank q.turn →
-      ¬ (pawnMoveGeometryB q.turn s t = true ∨ pawnAttackGeometryB q.turn s t = true))
+      ¬ (pawnMoveGeometryB q.turn s t = true ∨
+        (pawnAttackGeometryB q.turn s t = true ∧ ∃ pc, q.board t = some pc ∧ pc.color = Color.opposite q.turn)))
     (hl : legalMove q m) :
     (∃ t, m = .normal ek t ∧ kingGeometryB ek t = true ∧ destinationFriendlyB q q.turn t = true ∧
         ¬ inCheck (applyMove q m) q.turn) ∨
     (∃ s t, m = .normal s t ∧ q.board s = some ⟨q.turn, .pawn⟩ ∧
-        (pawnMoveGeometryB q.turn s t = true ∨ pawnAttackGeometryB q.turn s t = true ∨
+        (pawnMoveGeometryB q.turn s t = true ∨
+          (pawnAttackGeometryB q.turn s t = true ∧ ∃ pc, q.board t = some pc ∧ pc.color = Color.opposite q.turn) ∨
           pawnDoubleGeometryB q.turn s t = true) ∧
         t.2 ≠ promotionRank q.turn ∧ destinationFriendlyB q q.turn t = true ∧
         ¬ inCheck (applyMove q m) q.turn) := by
@@ -663,9 +710,13 @@ theorem enemy_move2 {q : Position} {m : Move} {ek : Square}
             refine ⟨s, t, rfl, hs, ?_, ?_, hfr, hnc⟩
             · unfold normalPieceGeometryB at hgeo
               simp only [Bool.or_eq_true, Bool.and_eq_true] at hgeo
-              rcases hgeo with (⟨h1, _⟩ | ⟨h1, _⟩) | ⟨⟨h1, _⟩, _⟩
+              rcases hgeo with (⟨h1, _⟩ | ⟨h1, h2⟩) | ⟨⟨h1, _⟩, _⟩
               · exact Or.inl h1
-              · exact Or.inr (Or.inl h1)
+              · refine Or.inr (Or.inl ⟨h1, ?_⟩)
+                revert h2
+                cases hqt : q.board t with
+                | none => intro h2; simp at h2
+                | some pc' => intro h2; exact ⟨pc', rfl, by simpa using h2⟩
               · exact Or.inr (Or.inr h1)
             · simpa using hpr
   | promotion s t k =>
@@ -685,9 +736,16 @@ theorem enemy_move2 {q : Position} {m : Move} {ek : Square}
           apply hnopromo s hs t hpr
           obtain ⟨-, hg⟩ := hps
           simp only [Bool.or_eq_true, Bool.and_eq_true] at hg
-          rcases hg with ⟨h1, _⟩ | ⟨h1, _⟩
+          rcases hg with ⟨h1, _⟩ | ⟨h1, h2⟩
           · exact Or.inl h1
-          · exact Or.inr h1
+          · refine Or.inr ⟨h1, ?_⟩
+            revert h2
+            cases hqt : q.board t with
+            | none => intro h2; simp at h2
+            | some pc' =>
+                intro h2
+                simp only [Bool.and_eq_true, beq_iff_eq] at h2
+                exact ⟨pc', rfl, h2.1⟩
   | enPassant s t =>
       exfalso
       simp only [pseudoLegal, pseudoLegalB] at hps
@@ -780,24 +838,34 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
         · intro hh; exact absurd hh (hcol_ne _ _)
       · rw [hqother s hsy hsx]
   have hq_ep : q.enPassant = none := push_enPassant_none h.turn hy
-  -- an enemy pawn's move never ends on a bad square (it is more than one move away)
+  -- an enemy pawn's move never ends on a bad square: straight, it was more than one move away; capturing,
+  -- it lands on a capture square it was more than one move away from
   have hmoved_not_bad : ∀ s t, p.board s = some ⟨Color.opposite c, .pawn⟩ →
-      (pawnMoveGeometryB (Color.opposite c) s t = true ∨ pawnAttackGeometryB (Color.opposite c) s t = true ∨
+      (pawnMoveGeometryB (Color.opposite c) s t = true ∨
+        (pawnAttackGeometryB (Color.opposite c) s t = true ∧ captureSquaresB p c x t = true) ∨
         pawnDoubleGeometryB (Color.opposite c) s t = true) →
       ∀ t', t' ∈ badSquares c x ok → t ≠ t' := by
     intro s t hs hmv t' ht' htt'
     subst htt'
-    have hfar := h.pawnsFar s hs t ht'
     have hback := h.pawnsOffBack s hs
-    have := pdist_step hback hmv (k := r) (by simpa using hfar)
-    rw [farB_self] at this
-    cases this
-  have hq_nopromo : ∀ s, q.board s = some ⟨q.turn, .pawn⟩ → ∀ t, t.2 = promotionRank q.turn →
-      ¬ (pawnMoveGeometryB q.turn s t = true ∨ pawnAttackGeometryB q.turn s t = true) := by
-    rw [hqturn]; intro s hs t ht hmv
-    have hp_s := (hq_pawn_eq s).1 hs
-    have hbad : t ∈ badSquares c x ok := mem_badSquares.mpr (Or.inr (Or.inr ht))
-    exact hmoved_not_bad s t hp_s (by rcases hmv with h1 | h1; exact Or.inl h1; exact Or.inr (Or.inl h1)) t hbad rfl
+    have hmvg : pawnMoveGeometryB (Color.opposite c) s t = true ∨ pawnAttackGeometryB (Color.opposite c) s t = true ∨
+        pawnDoubleGeometryB (Color.opposite c) s t = true := by
+      rcases hmv with h1 | ⟨h1, -⟩ | h1
+      · exact Or.inl h1
+      · exact Or.inr (Or.inl h1)
+      · exact Or.inr (Or.inr h1)
+    rcases h.pawnsFar s hs t ht' with hfar | ⟨hfile, hcone⟩
+    · have := pdist_step hback hmvg (k := r) (by simpa using hfar)
+      rw [farB_self] at this
+      cases this
+    · rcases hmv with h1 | ⟨h1, hcap⟩ | h1
+      · simp only [pawnMoveGeometryB, Bool.and_eq_true, beq_iff_eq] at h1; exact hfile h1.1.symm
+      · have hadj : absDiff s.1 t.1 = 1 := by
+          simp only [pawnAttackGeometryB, Bool.and_eq_true, beq_iff_eq] at h1; exact h1.1
+        have := pdist_step hback hmvg (k := r) (by simpa using hcone t hcap hadj)
+        rw [farB_self] at this
+        cases this
+      · simp only [pawnDoubleGeometryB, Bool.and_eq_true, beq_iff_eq] at h1; exact hfile h1.1.symm
   -- our kings and pieces, from p to q
   have hq_ours : ∀ s pc, q.board s = some pc → pc.color = c → s = y ∨ (s ≠ x ∧ p.board s = some pc) := by
     intro s pc hs hcol
@@ -806,6 +874,23 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
     · by_cases hsx : s = x
       · rw [hsx, hqx] at hs; cases hs
       · exact Or.inr ⟨hsx, by rw [← hqother s hsy hsx]; exact hs⟩
+  -- what an enemy pawn can capture in q stands on a capture square of p: our pieces moved only along the path
+  have hq_capture : ∀ t pc, q.board t = some pc → pc.color = c → captureSquaresB p c x t = true := by
+    intro t pc ht hcol
+    rcases hq_ours t pc ht hcol with hty | ⟨-, hp⟩
+    · simp only [captureSquaresB, Bool.or_eq_true]
+      exact Or.inr (List.contains_iff_mem.mpr (by rw [hty]; exact hymem))
+    · simp only [captureSquaresB, hp, hcol, beq_self_eq_true, Bool.true_or]
+  have hq_nopromo : ∀ s, q.board s = some ⟨q.turn, .pawn⟩ → ∀ t, t.2 = promotionRank q.turn →
+      ¬ (pawnMoveGeometryB q.turn s t = true ∨
+        (pawnAttackGeometryB q.turn s t = true ∧ ∃ pc, q.board t = some pc ∧ pc.color = Color.opposite q.turn)) := by
+    rw [hqturn]; intro s hs t ht hmv
+    have hp_s := (hq_pawn_eq s).1 hs
+    have hbad : t ∈ badSquares c x ok := mem_badSquares.mpr (Or.inr (Or.inr ht))
+    refine hmoved_not_bad s t hp_s ?_ t hbad rfl
+    rcases hmv with h1 | ⟨h1, pc, hpc, hcol⟩
+    · exact Or.inl h1
+    · exact Or.inr (Or.inl ⟨h1, hq_capture t pc hpc (by rw [Color.opposite_opposite] at hcol; exact hcol)⟩)
   have hq_kings : ∀ s, q.board s = some ⟨c, .king⟩ ↔ p.board s = some ⟨c, .king⟩ := by
     intro s
     by_cases hsy : s = y
@@ -975,7 +1060,11 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
         pawnsFar := by
           intro s hs t ht
           have hp_s := (hq_pawn_eq s).1 ((hq'_pawn_eq s).1 hs)
-          exact farB_mono (by omega) (h.pawnsFar s hp_s t (bad_mono hy ht))
+          have hmono : ∀ d, captureSquaresB q' c y d = true → captureSquaresB p c x d = true :=
+            fun d hd => captureSquares_mono hy hqx hqother hq'_ours hd
+          rcases h.pawnsFar s hp_s t (bad_mono hy ht) with hfar | ⟨hfile, hcone⟩
+          · exact Or.inl (farB_mono (by omega) hfar)
+          · exact Or.inr ⟨hfile, fun d hd hadj => farB_mono (by omega) (hcone d (hmono d hd) hadj)⟩
         oursInF := fun s pc hs hcol => hq_oursF s pc (hq'_ours s pc hs hcol) hcol
         attacksInF := by
           intro d' hatt
@@ -1001,13 +1090,26 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
   · -- ===== a pawn move s -> t =====
     set q' := applyMove q (.normal s t) with hq'
     have hboard' : q'.board = boardMove q.board s t := rfl
-    have hst : s ≠ t := by
-      intro e; rw [e] at hmv
-      cases c <;> simp [pawnMoveGeometryB, pawnAttackGeometryB, pawnDoubleGeometryB, absDiff, Color.opposite] at hmv <;> omega
     have hp_s : p.board s = some ⟨Color.opposite c, .pawn⟩ := (hq_pawn_eq s).1 (by rw [← hqturn]; exact hs)
+    -- the move, with a capture's target a capture square of p
+    have hmvc : pawnMoveGeometryB (Color.opposite c) s t = true ∨
+        (pawnAttackGeometryB (Color.opposite c) s t = true ∧ captureSquaresB p c x t = true) ∨
+        pawnDoubleGeometryB (Color.opposite c) s t = true := by
+      rcases hmv with h1 | ⟨h1, pc, hpc, hcol⟩ | h1
+      · exact Or.inl (by rw [← hqturn]; exact h1)
+      · exact Or.inr (Or.inl ⟨by rw [← hqturn]; exact h1,
+          hq_capture t pc hpc (by rw [hqturn, Color.opposite_opposite] at hcol; exact hcol)⟩)
+      · exact Or.inr (Or.inr (by rw [← hqturn]; exact h1))
     have hmv' : pawnMoveGeometryB (Color.opposite c) s t = true ∨ pawnAttackGeometryB (Color.opposite c) s t = true ∨
-        pawnDoubleGeometryB (Color.opposite c) s t = true := by rw [← hqturn]; exact hmv
-    have ht_not_bad : ∀ t', t' ∈ badSquares c x ok → t ≠ t' := hmoved_not_bad s t hp_s hmv'
+        pawnDoubleGeometryB (Color.opposite c) s t = true := by
+      rcases hmvc with h1 | ⟨h1, -⟩ | h1
+      · exact Or.inl h1
+      · exact Or.inr (Or.inl h1)
+      · exact Or.inr (Or.inr h1)
+    have hst : s ≠ t := by
+      intro e; rw [e] at hmv'
+      cases c <;> simp [pawnMoveGeometryB, pawnAttackGeometryB, pawnDoubleGeometryB, absDiff, Color.opposite] at hmv' <;> omega
+    have ht_not_bad : ∀ t', t' ∈ badSquares c x ok → t ≠ t' := hmoved_not_bad s t hp_s hmvc
     have hty : t ≠ y := ht_not_bad y (mem_badSquares.mpr (Or.inl hymem))
     have hsy : s ≠ y := by intro e; rw [e, hqy, hqturn] at hs; exact hcol_ne _ _ hs
     have hsek : s ≠ ek := by intro e; rw [e, hek_q] at hs; simp at hs
@@ -1110,9 +1212,31 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
         pawnsFar := by
           intro u hu t' ht'
           have ht'x := bad_mono hy ht'
-          rcases (hq'_pawn u).1 hu with rfl | ⟨hp_u, _⟩
-          · exact pdist_step (h.pawnsOffBack s hp_s) hmv' (k := r) (by simpa using h.pawnsFar s hp_s t' ht'x)
-          · exact farB_mono (by omega) (h.pawnsFar u hp_u t' ht'x)
+          have hmono : ∀ d, captureSquaresB q' c y d = true → captureSquaresB p c x d = true :=
+            fun d hd => captureSquares_mono hy hqx hqother hq'_ours hd
+          rcases (hq'_pawn u).1 hu with hut | ⟨hp_u, _⟩
+          · -- the moved pawn: one move nearer at most; a capture landed on a capture square it was far from
+            rw [hut]
+            have hback := h.pawnsOffBack s hp_s
+            rcases h.pawnsFar s hp_s t' ht'x with hfar | ⟨hfile, hcone⟩
+            · exact Or.inl (pdist_step hback hmv' (k := r) (by simpa using hfar))
+            · rcases hmvc with h1 | ⟨h1, hcap⟩ | h1
+              · have hst1 : s.1 = t.1 := by
+                  simp only [pawnMoveGeometryB, Bool.and_eq_true, beq_iff_eq] at h1; exact h1.1
+                refine Or.inr ⟨by rw [← hst1]; exact hfile, fun d hd hadj => ?_⟩
+                exact pdist_step hback hmv' (k := r) (by simpa using hcone d (hmono d hd) (by rw [hst1]; exact hadj))
+              · have hadj : absDiff s.1 t.1 = 1 := by
+                  simp only [pawnAttackGeometryB, Bool.and_eq_true, beq_iff_eq] at h1; exact h1.1
+                have := pdist_step hback hmv' (k := r) (by simpa using hcone t hcap hadj)
+                rw [farB_self] at this
+                cases this
+              · have hst1 : s.1 = t.1 := by
+                  simp only [pawnDoubleGeometryB, Bool.and_eq_true, beq_iff_eq] at h1; exact h1.1
+                refine Or.inr ⟨by rw [← hst1]; exact hfile, fun d hd hadj => ?_⟩
+                exact pdist_step hback hmv' (k := r) (by simpa using hcone d (hmono d hd) (by rw [hst1]; exact hadj))
+          · rcases h.pawnsFar u hp_u t' ht'x with hfar | ⟨hfile, hcone⟩
+            · exact Or.inl (farB_mono (by omega) hfar)
+            · exact Or.inr ⟨hfile, fun d hd hadj => farB_mono (by omega) (hcone d (hmono d hd) hadj)⟩
         oursInF := fun u pc hu hcol => hq_oursF u pc (hq'_ours u pc hu hcol) hcol
         attacksInF := by
           intro d' hatt
@@ -1232,7 +1356,7 @@ theorem unstoppablePasser2_sound (p : Position) (ps : PasserParams)
     | none => rw [hok] at hour; simp at hour
     | some ok =>
       simp only [kingOutsideB, hek, decide_eq_true_eq] at hout
-      simp only [pawnsFarB, hok, List.all_eq_true, Bool.or_eq_true, bne_iff_ne, ne_eq] at hfar
+      simp only [pawnsFarB, pawnFarB, hok, List.all_eq_true, Bool.or_eq_true, bne_iff_ne, ne_eq] at hfar
       simp only [kingRoomB, hek, hok, List.all_eq_true, Bool.or_eq_true, decide_eq_true_eq] at hroom
       have hpos : 1 ≤ pushes p.turn ps.sq := pushes_pos_of_not_promo hnotpromo
       apply race2 p.turn ps.sq.1 ok (forbiddenB p ps.sq) (enemyPawnCount p) (pushes p.turn ps.sq) p ps.sq ek rfl
@@ -1268,7 +1392,17 @@ theorem unstoppablePasser2_sound (p : Position) (ps : PasserParams)
             intro s hs t ht
             rcases hfar s (mem_allSquares s) with hh | hh
             · exact absurd hs hh
-            · exact hh t ht
+            · rcases hh t ht with hh' | hh'
+              · exact Or.inl hh'
+              · simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, List.all_eq_true] at hh'
+                obtain ⟨hfile, hall⟩ := hh'
+                refine Or.inr ⟨hfile, fun d hd hadj => ?_⟩
+                have hd' := hall d (mem_allSquares d)
+                simp only [Bool.or_eq_true, Bool.not_eq_true', bne_iff_ne, ne_eq] at hd'
+                rcases hd' with (hc | hc) | hc
+                · rw [hd] at hc; cases hc
+                · exact absurd hadj hc
+                · exact hc
           oursInF := by
             intro d pc hd hcol
             simp only [forbiddenB, hd, hcol, beq_self_eq_true, Bool.true_or]

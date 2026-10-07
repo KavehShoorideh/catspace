@@ -114,3 +114,34 @@ def test_passer2_verdicts(li, fen, sq, status, failing, plies):
     if status == "PROVED":
         from catspace.incubator.analyst.lean_passer_check import promotes_within
         assert promotes_within(b, chess.square_file(inst.square), inst.plies)
+
+
+def test_passer_setup_certificate():
+    """setsUpPasser2 (Ideas/Setup.lean, the composition over one reply): after the move every legal reply leaves the
+    same pawn a proved passer of the second form. The position's properties are asserted first, by the exhaustive
+    race search and the direct detector (constructed positions were wrong four times on 2026-10-06)."""
+    import pytest
+    from catspace.incubator.analyst.lean_ideas import detector
+    from catspace.incubator.analyst.lean_passer_check import promotes_within
+    li = detector()
+    b = chess.Board("1K6/3P2P1/8/k4P2/8/8/3PP3/8 w - - 0 1")
+    m = chess.Move.from_uci("b8c8")
+    assert m in b.legal_moves
+    q = b.copy(stack=False); q.push(m)
+    replies = list(q.legal_moves)
+    assert replies
+    for r in replies:                                   # after every reply the d-pawn queens on the next move
+        q2 = q.copy(stack=False); q2.push(r)
+        assert promotes_within(q2, chess.square_file(chess.D7), 1)
+        assert {i.square: i.status for i in li.passer2(q2)}[chess.D7] == "PROVED"
+    got = li.passer_setup(b, m)
+    assert got[chess.D7] == 2                             # the reply and the push
+    # a capturing reply refutes a set-up: the kernel refuses
+    b2 = chess.Board("8/8/8/8/3Pk3/8/8/1K6 w - - 0 1")
+    k = chess.Move.from_uci("b1c1")
+    assert k in b2.legal_moves
+    q = b2.copy(stack=False); q.push(k)
+    assert chess.Move.from_uci("e4d4") in q.legal_moves  # Kxd4
+    assert li.passer_setup(b2, k) == {}
+    with pytest.raises(ValueError):
+        li.passer_setup(b, chess.Move.from_uci("b8b6"))   # not a legal move

@@ -10,7 +10,10 @@ Hypotheses (us = side to move, pawn on `sq`, `n` pushes to promotion, the enemy 
   enemyKingPawns   -- the enemy has only its king and pawns
   pawnsFar         -- every enemy pawn needs more than n - 1 moves (a lower bound: max(|file diff|, rank diff minus
                       one for a possible double step)) to reach any BAD square: the path and our pawn's square, the
-                      squares from which it would check our king, and its promotion rank
+                      squares from which it would check our king, and its promotion rank -- or (the cone form,
+                      2026-10-06) the bad square is off the pawn's file and the pawn cannot leave its file in time:
+                      it is more than n - 1 moves from every square it could capture on beside it (our pieces, the
+                      path; nothing else of ours moves during the race)
   kingRoom         -- for every square the enemy king can reach in n - 1 moves, the number of its neighbours that
                       hold no piece of ours, are attacked by none of our pieces (our pawn's whole future attack set
                       counted), and are not on the path exceeds the number of enemy pawns: the enemy can never run
@@ -76,7 +79,16 @@ def passer_v2(b: chess.Board, sq: int) -> dict:
             return float("inf")
         return max(abs(tf - ef), ahead - (1 if er == their_start else 0))   # 0 on its own square (the Lean pdist)
 
-    h["pawnsFar"] = all(pawn_dist(e, t) > n - 1 for e in chess.SquareSet(b.pawns & b.occupied_co[them]) for t in bad)
+    # the cone form (Lean `pawnFarB`, 2026-10-06): a bad square off the pawn's file is also safe when the pawn cannot
+    # leave its file in time -- a pawn changes file only by capturing, our pieces never move but the passer along
+    # its path, and the pawn is more than n - 1 moves from every capture square on the files beside it
+    capturable = set(chess.SquareSet(b.occupied_co[us])) | set(path)
+
+    def stuck(e: int) -> bool:
+        return all(pawn_dist(e, d) > n - 1 for d in capturable if abs(chess.square_file(d) - chess.square_file(e)) == 1)
+
+    h["pawnsFar"] = all(pawn_dist(e, t) > n - 1 or (chess.square_file(t) != chess.square_file(e) and stuck(e))
+                        for e in chess.SquareSet(b.pawns & b.occupied_co[them]) for t in bad)
     # king room: our attacks with the passer's whole future attack set, every square the enemy king can reach
     our_attacks = 0
     for s in chess.SquareSet(b.occupied_co[us]):
