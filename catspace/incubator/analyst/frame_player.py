@@ -202,42 +202,63 @@ def _passer_fire(b: chess.Board) -> dict:
     return out
 
 
+_FORK_CACHE: dict = {}                                               # fen -> certified claims (one Lean round per position per choose)
+
+
 def _fork_fire(b: chess.Board) -> dict:
     """The double threat, CERTIFIED: the Python local check proposes a claim (tactic_rules.fork_claims), the Lean
     checker certifies it by the kernel's rules (Ideas/Fork.lean, localCheck_sound: a gain of k forced three plies after
-    the move); only certified claims are returned, at their certified integer gain. A claimed mate is a material claim
-    of what the mating line takes; the ledger sees mates in one itself."""
+    the move); only certified claims are returned, at the largest certified integer gain (a forced gain of k forces
+    every smaller k: a bisection). A claimed mate reads as a large material claim. A checker error counts as refused."""
+    key = b.fen()
+    if key in _FORK_CACHE:
+        return _FORK_CACHE[key]
     from .lean_ideas import detector
     from .tactic_rules import fork_claims
     out = {}
     li = detector()
     for u, (v, why) in fork_claims(b).items():
         m = chess.Move.from_uci(u)
-        hi = int(min(v, 40.0))                                       # a mate reads as a very large material claim: certify the material
+        hi = int(min(v, 40.0))
         FORK_STATS["claims"] += 1
-        if not li.fork(b, m, 1):                                     # a forced gain of k forces every smaller k: bisect for the largest
+        try:
+            if not li.fork(b, m, 1):
+                continue
+            lo = 1
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                if li.fork(b, m, mid):
+                    lo = mid
+                else:
+                    hi = mid - 1
+        except (ValueError, RuntimeError) as e:                      # the kernel and python-chess disagree, or the binary died:
+            FORK_STATS["errors"] += 1                                # refused, logged, never fatal to a game or a puzzle run
+            FORK_ERRORS.append((key, u, str(e)[:120]))
             continue
-        lo = 1
-        while lo < hi:
-            mid = (lo + hi + 1) // 2
-            if li.fork(b, m, mid):
-                lo = mid
-            else:
-                hi = mid - 1
         FORK_STATS["certified"] += 1
         FORK_STATS["lower"] += lo < int(min(v, 40.0))
         out[u] = (float(lo), f"{why}; certified by Lean for +{lo} (Ideas.localCheck_sound)")
+    if len(_FORK_CACHE) > 2000:
+        _FORK_CACHE.clear()
+    _FORK_CACHE[key] = out
     return out
 
 
-FORK_STATS = {"claims": 0, "certified": 0, "lower": 0}            # proposals, certified, certified below the proposal
+FORK_STATS = {"claims": 0, "certified": 0, "lower": 0, "errors": 0}   # proposals, certified, certified below the proposal, errors
+FORK_ERRORS: list = []
+
 
 def _fork_hint_fire(b: chess.Board) -> dict:
-    """The same rule's UNCERTIFIED proposals (the Python local check's claims the kernel did not certify at their full
-    gain): evidence, not proof -- a conjecture, so a tie-break only (Kaveh's tiers)."""
+    """The same rule's proposals as EVIDENCE (a conjecture: a tie-break only). Every proposal is carried at the larger
+    of its claim and its certified gain, so a certified move never ranks below an uncertified one of equal claim
+    (review 2026-10-06)."""
     from .tactic_rules import fork_claims
     certified = _fork_fire(b)
-    return {u: (v, why + " (uncertified: a hint)") for u, (v, why) in fork_claims(b).items() if u not in certified or certified[u][0] < v}
+    out = {}
+    for u, (v, why) in fork_claims(b).items():
+        c = certified.get(u, (0.0, ""))[0]
+        out[u] = (max(v, c), why + (" (certified)" if u in certified else " (uncertified: a hint)"))
+    return out
 
 
 RULE_BOOK = {"passer": lambda: Rule("passer", "proved", _passer_fire),     # by name, for the harnesses' --rules

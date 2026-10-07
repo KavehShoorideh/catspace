@@ -77,8 +77,8 @@ def test_lean_certificate_agrees_with_the_exact_truth():
 @pytest.mark.skipif(not __import__("catspace.incubator.analyst.lean_ideas", fromlist=["default_binary"]).default_binary().exists(), reason="lean/ideas not built")
 def test_lean_certificate_equals_an_independent_4ply_enumeration():
     """THE CHECKER'S BRIDGE: on development positions, the largest gain the kernel certifies equals an independent
-    exact enumeration in python-chess of the statement's shape (our move, their reply, our capture, their reply; their
-    mate = won, their stalemate = no gain). OBS 2026-10-06: 105 of 105 proposals on 200 positions agreed."""
+    exact enumeration in python-chess of the statement's shape (our move, their reply, our answer -- a capture, a move
+    of an attacked piece or a king move -- their reply; their mate = won, their stalemate = no gain)."""
     import json
     from pathlib import Path
     from catspace.io import paths
@@ -101,7 +101,9 @@ def test_lean_certificate_equals_an_independent_4ply_enumeration():
         nb = push(b, m); rs = list(nb.legal_moves)
         if not rs:
             return MATE if nb.is_check() else 0.0
-        return min(max((leaf(push(q2, x)) for x in q2.legal_moves if q2.is_capture(x)), default=-MATE) for q2 in (push(nb, r) for r in rs))
+        def answer(q2, x):                                                  # Fork.lean's answersB: a capture, a move of an attacked piece, a king move
+            return q2.is_capture(x) or q2.is_attacked_by(not q2.turn, x.from_square) or q2.piece_type_at(x.from_square) == chess.KING
+        return min(max((leaf(push(q2, x)) for x in q2.legal_moves if answer(q2, x)), default=-MATE) for q2 in (push(nb, r) for r in rs))
 
     li = detector(); checked = 0
     for fen in [s["fen"] for r in json.load(open(f)) for s in r["steps"]][:60]:

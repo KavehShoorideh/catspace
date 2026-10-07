@@ -340,6 +340,25 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   sides (a stalemate draws at any ply, a mate is 1000 flat), regression tests. Rule: a bridge needs CONSTRUCTED edge
   cases beside the sampled ones -- stalemate, mate, en passant, promotion, check -- before "0 wrong" means anything.
 
+### 2026-10-06 (the double threat certified in Lean)
+- **The first Lean statement was weaker than the claim it certified** (class 4/5, horizon): two plies after the move,
+  the goal read before the opponent's recapture; it certified Ng7+ for +3 where Kxe6 takes the knight back (+2). Caught
+  by the smoke query on the constructed test positions before any number; the reply ply was added and the goal moved
+  to the leaves (`forcedAtLeaves`). Rule: a material claim is read after THEIR last reply, never at a node of ours.
+- **Proposer and certifier stated different checks** (class 6; the review): the kernel demanded a CAPTURE as our answer
+  at ply 3, the Python proposer let the move's own capture carry the gain; one refusal in six was the certifier being
+  narrower than a true claim (Qxd8+ winning a rook: the only capture lost the queen, a quiet king move kept +5). Fix:
+  our answers = captures, moves of attacked pieces, king moves (still a sublist of the legal moves; the theorem's proof
+  unchanged). The module header had described the relaxed form while the code was the strict one (fixed).
+- **The hint could rank an uncertified proposal above a certified one** at equal value (class 6): the hint carried only
+  uncertified proposals, and the tie-break demoted every tied move it did not mention -- a certified move among them.
+  Fix: every proposal is carried at max(claim, certified gain). The hint without the proved rule is refused.
+- **Doubled Lean cost and double-counted stats** (class 7-like): the hint re-ran the whole certification; one cache per
+  position now; a checker error (the kernel and python-chess disagreeing on a move) propagated through the worker pool
+  and would have killed a run -- counted as refused instead.
+- **A five-ply kernel enumeration is minutes per claim** (measured by accident: the cost experiment never finished): the
+  certificate's depth is bounded by the kernel's move generator, not by the statement.
+
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
 - Split by list leaked 54/67 expert games -- class 2-like (split_by_identity_not_by_list).

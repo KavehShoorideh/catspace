@@ -5,19 +5,21 @@ import Chess.Game
 # Rule 2, THE DOUBLE THREAT (fork, discovered attack): a bounded local check, certified
 
 Kaveh 2026-10-05: a rule in play may run "a bounded local check inside its own frame, like the frames' exchange
-resolution", never a tree search over the position. The check: after our move `m`, for EVERY legal reply, either
-our material is already up by `k` or some legal answer of ours makes it so -- two plies, the kernel's legal moves,
-the kernel's `applyMove` (en passant, promotion, castling as the rules say). A node where we are to move and have no
-legal move (mated or stalemated) never counts as gained.
+resolution", never a tree search over the position. The check (`localCheck`): after our move `m`, for EVERY legal
+reply, one of our ANSWERS -- a capture, a move of a piece the opponent attacks, or a king move (the generic "nothing
+to do") -- leaves material up by `k` whatever they reply next: three plies after the move, the kernel's legal moves and
+`applyMove` throughout (en passant, promotion, castling as the rules say). Where the opponent has no legal move it
+counts as won if in check (mate) and as not gained otherwise (stalemate); where we have no answer it is not gained.
 
-`localCheck_sound`: the check implies `forcedWithinB` (Ideas.Passer: the goal holds within n plies whatever the
-opponent does) for two plies after the move. The proof is a rewrite: the check IS the forced-within computation,
-written in the detector's shape. What the theorem buys is the conventions: the Python prototype's bridge disagreed
-with its own truth twice on 2026-10-05 (a stalemating reply, a mating capture) because the two sides counted
-differently; here both are the kernel's.
+`localCheck_sound`: the check implies `forcedAtLeaves` for three plies -- the goal read at the LEAVES only (unlike
+`forcedWithinB`, which reads it at every node: right for a promotion, wrong for material, which a recapture reverses).
+The proof is a rewrite plus "our answers are a sublist of the legal moves"; the semantic weight is the kernel's. What
+the theorem buys is the conventions: the Python prototype's bridge disagreed with its own truth twice on 2026-10-05
+(a stalemating reply, a mating capture) because the two sides counted differently; here both are the kernel's.
 
-Not covered, deliberately: counterplay beyond the second ply (their recapture or counter-threat on ply 3): the claim
-is a fact about material two plies after the move, the ledger's own horizon kind.
+Not covered, deliberately: anything beyond the third ply after the move (their counterplay later on): the claim is a
+fact about material then, the ledger's own horizon kind. The certificate is per position; the Python side proposes
+(tactic_rules.fork_claims), the binary certifies (`fork <uci> <k> <fen>`), and only certified claims enter play.
 -/
 
 namespace Ideas
@@ -65,7 +67,20 @@ def forcedAtLeaves (c : Color) (goal : Position → Bool) : Position → Nat →
         if ms.isEmpty then inCheckB q q.turn
         else ms.all (fun r => forcedAtLeaves c goal (applyMove q r) n)
 
-/-- THE LOCAL CHECK of move `m` for a gain of `k`: every legal reply is answered by one of our CAPTURES after which,
+/-- A king move (castling included: the king is on its source square). -/
+def isKingMoveB (q : Position) (m : Move) : Bool :=
+  match q.board m.source with
+  | some pc => pc.kind = .king
+  | none => false
+
+/-- OUR ANSWERS at the third ply: a capture, a move of a piece the opponent attacks, or a king move -- a sublist of the
+legal moves (so the check stays sound) that keeps the branching small; the king move stands for "nothing to do" when
+the gain already stands (a review found the capture-only form refused one claim in six that was true). -/
+def answersB (q : Position) : List Move :=
+  (legalMoves q).filter (fun m2 =>
+    isCaptureB q m2 || isAttackedB q (Color.opposite q.turn) m2.source || isKingMoveB q m2)
+
+/-- THE LOCAL CHECK of move `m` for a gain of `k`: every legal reply is answered by one of our answers after which,
 whatever they reply, material is up by `k` (their mate counts as won, their stalemate as not gained). Three plies
 after the move, the kernel's legal moves and `applyMove` throughout. -/
 def localCheck (p : Position) (m : Move) (k : Int) : Bool :=
@@ -76,7 +91,7 @@ def localCheck (p : Position) (m : Move) (k : Int) : Bool :=
   if replies.isEmpty then inCheckB q q.turn
   else replies.all (fun r =>
     let q2 := applyMove q r
-    ((legalMoves q2).filter (isCaptureB q2)).any (fun m2 => forcedAtLeaves c goal (applyMove q2 m2) 1))
+    (answersB q2).any (fun m2 => forcedAtLeaves c goal (applyMove q2 m2) 1))
 
 theorem opposite_ne (c : Color) : Color.opposite c ≠ c := by
   cases c <;> simp [Color.opposite]
@@ -95,7 +110,7 @@ theorem localCheck_sound (p : Position) (m : Move) (k : Int) (h : localCheck p m
   have hr : ∀ r : Move, (applyMove (applyMove p m) r).turn = p.turn := by
     intro r
     rw [applyMove_turn, applyMove_turn, Color.opposite_opposite]
-  simp only [localCheck] at h
+  simp only [localCheck, answersB] at h
   show forcedAtLeaves p.turn (reached p.turn (material p p.turn + k)) (applyMove p m) (2 + 1) = true
   simp only [forcedAtLeaves, if_neg hq]
   by_cases hemp : (legalMoves (applyMove p m)).isEmpty = true
