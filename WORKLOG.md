@@ -225,3 +225,10 @@ Newest entry first. Times from `date` (PDT).
   -160/-364 -> -50/-164 (moves 5/10). Candidate losses: first fall below -150 at ply 16, tied alternative fine in 59/73.
 - NEXT (Kaveh's pick): what breaks the middlegame ties -- search only among the ledger's ties / middlegame subgoals /
   a Maia prior.
+
+## 2026-10-07 12:30 PDT — the tactic census built, reviewed, measured
+- tactic_census.py (tokens from the existing detectors, null-move opponent tokens, structure, Stockfish d10), 300 games
+  = 22,861 positions in 18 min; tactic_census_measure.py (episodes + bootstrap; ablations base/immediate/latent/structure).
+- Smoke caught two false gates; the review caught three bugs (censoring, reference, check gate) -> fixed, rows re-tokenized.
+- OBS gate: (a) PASS (back_rank 5.7x, discovery 4.3x, pin 2.0x ours; all five theirs); (b) FAIL as registered (latent
+  +0.004); post hoc: no-eval baseline at 10 plies latent +0.013/+0.019 (CI > 0). One of two -> inspect; Kaveh's call.

@@ -379,6 +379,21 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   dependence): `apply_rules` said an unclaimed tied move keeps the top -- it is lowered (by design since 2026-10-05); and
   `--rules opening fork_hint` would have let the opening rule settle the ties before the hint spoke. Fix: the docstring;
   `RULE_ORDER`, applied by both harnesses whatever the command line's order.
+- **Rates per position where the unit is an episode** (2026-10-07, the tactic census, class: inflated n): consecutive
+  positions are near-duplicates (double threat k = 1: 365 positions, 79 episodes). Fix: per-episode rates, a bootstrap
+  over games. Caught on the smoke set before the numbers.
+- **A trivial token carrying the whole result** (class: the degenerate baseline): `material_now` alone separated the
+  20-ply swing (38% vs 13%) -- one-ply search, not planning. Fix: immediate and latent tokens ablated separately.
+- **The horizon skip censored the firings** (class: survivorship): episodes whose 10-ply window ran past the game's
+  end were skipped, and a back-rank mate ends the game -- every firing back-rank episode dropped (the opponent's line
+  read 0 of 2,087). Fix: a cut window counts as fired when a firing was seen, else not fired (biased down). Found by
+  the review.
+- **The far state compared with itself** (class: a reference that is the thing): max(k) as the reference made pin's and
+  double threat's k = 1 their own reference, so the criterion could never be met there. Fix: the reference is the
+  state with fewer preconditions (k = 2, else absent), fixed per family before the numbers. Found by the review.
+- **`material_now` thrown away under check** (class: a gate on the wrong condition): a capture of the checking piece
+  that wins a bishop was labelled absent (355 of 1,685 in-check rows). Fix: no check gate; the >= 1 threshold already
+  excludes evasions that lose. Found by the review; the rows re-tokenized in place.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).

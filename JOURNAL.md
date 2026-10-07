@@ -22874,6 +22874,70 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-07 12:30 PDT — the tactic census: do barriers predict tactics, do tokens predict the future? (a) yes, (b) not beyond the immediate (OBS)
+
+Kaveh's planner idea (2026-10-07 morning, memory planner_tactic_tokens_2026_10_07): the world as tactic TOKENS, fired or
+latent, each with the conditions it still misses; statistics of which tokens follow which; the planner navigates
+toward tactical states that favour us; several planners, an RL selector, the tactical layer executes. His call:
+measure first ("a census"), no planner yet; and (asked): "I don't want a false gate".
+
+THE CENSUS (`tactic_census.py`): 300 ordinary Lichess games (shard 50 of the 2019-01 corpus; both players 1500-2200,
+3+ minutes, normal end, 40+ plies), 22,861 positions, 18 minutes on 8 workers. Per position, for the side to move
+and -- through a null move -- for the opponent: tokens (family, k, barrier) from the existing detectors: back_rank
+and passer (Lean: k = 0 the lemma holds, 1 one hypothesis fails and is named, 2 two or more), pin (0 a winning
+strike, 1 a pin without one), discovery (0 a strike, 1 a battery with a departure, 2 a battery without), double
+threat (0 a local check wins >= 1, 1 answered), material_now (0 the one-ply ledger wins >= 1); material, phase, pawn
+structure, Stockfish at depth 10.
+
+THE GATE, FIXED BEFORE THE NUMBERS: (a) in at least two families k = 1 fires (the tactic available to the same side
+within 10 plies) at >= 2x the reference state's rate (k = 2 for the Lean and discovery families; "absent" for pin and
+double threat, whose k never exceeds 1) with >= 50 episodes and the interval excluding 1x; (b) the latent tokens
+(k >= 1, ours and theirs) add >= 0.02 AUC over the evaluation + the immediate tokens on "a material swing of 2+ pawns
+within 20 plies", interval excluding 0. Both pass -> build; both fail -> no planner on this vocabulary; one -> inspect.
+
+TWO FALSE GATES CAUGHT BEFORE THE NUMBERS, on the 6-game smoke set: rates per POSITION inflate n (double threat
+k = 1: 365 positions, 79 episodes), so rates are per episode with a bootstrap over games; `material_now` alone gives
+38% vs 13% on the swing (one-ply search, not planning), so the immediate tokens' share is separated from the latent.
+THE REVIEW (an independent agent, probing on the shard and the census, before the numbers were read; docs/BUGS.md):
+no perspective or leakage bug (a full game recomputed by hand; eval flips sign with the side to move, r = -0.963;
+GroupKFold never splits a game); three issues, all fixed: the horizon skip censored the firings (a mate ends the
+game; every firing back-rank episode was dropped); the far state was max(k), so pin and double threat were compared
+with themselves; `material_now` was thrown away under check (21% of in-check rows' real wins). The 1,685 in-check
+positions were re-tokenized in place (355 changed); the measurement reads episodes cut by the game's end as fired
+only when a firing was seen (biased down).
+
+OBS (a), per episode, the tactic available to the same side within 10 plies; lift of k = 1 against the reference
+with its 95% interval over games:
+  ours (side to move):  back_rank  k=1 6.1% (n 376) vs k=2 1.1% (n 936): 5.7x [3.8, 11.7]   PASS
+                        discovery  k=1 7.0% (n 358) vs k=2 1.6% (n 1293): 4.3x [2.7, 7.6]   PASS
+                        pin        k=1 24.9% (n 1575) vs absent 12.2% (n 2077): 2.0x [1.8, 2.3]   at the line
+                        passer     k=1 6 of 62 vs k=2 0 of 652 (no ratio; absent 0 of 45)
+                        double threat k=1 40.9% (n 3074) vs absent 27.5%: 1.5x [1.4, 1.6]   below
+  theirs (null move):   back_rank 4.6x [2.3, 11.0] (n 405); passer 23.7x [8.1, 84.7] (n 71); pin 2.1x [1.9, 2.4];
+                        discovery 4.5x [2.8, 7.8]; double threat 2.1x [1.9, 2.4] -- all five pass
+  k = 0 persists: a pin that wins now is still winning 10 plies later in 40% of episodes, a double threat in 60%,
+  a proved passer in 79%. The ladder absent -> k=2 -> k=1 -> k=0 is monotone in every family, both sides.
+OBS (b), AUC, 5-fold by game, n 16,861 positions, 300 games (base rates: gain 20.4%, loss 22.3%; constant 0.500):
+  gain >= 2 in 20 plies: eval+material+phase 0.739; + immediate tokens 0.758 (+0.020 [+0.011, +0.029]);
+    + latent tokens 0.762 (+0.004 [-0.002, +0.010])   FAIL as registered; + structure 0.764 (+0.002)
+  loss >= 2 in 20 plies: 0.627; + immediate 0.640 (+0.013 [+0.007, +0.019]); + latent 0.645 (+0.005 [-0.001,
+    +0.011])   FAIL; + structure 0.654 (+0.009 [+0.002, +0.016])
+  POST HOC (added after the numbers, labelled): the zero-search player has no engine evaluation, so against the
+  player's own knowledge (material + phase): 20 plies, gain 0.628 -> + immediate 0.723 (+0.095 [+0.077, +0.113]) ->
+  + latent 0.728 (+0.004 [-0.004, +0.015]); loss 0.521 -> 0.593 (+0.072) -> 0.599 (+0.006). At 10 plies: gain
+  0.643 -> 0.794 (+0.151 [+0.132, +0.167]) -> 0.807 (+0.013 [+0.004, +0.026]); loss 0.531 -> 0.615 (+0.084) ->
+  0.634 (+0.019 [+0.011, +0.028]). With the evaluation, at 10 plies: latent +0.005 (gain), +0.014 [+0.007, +0.020]
+  (loss).
+
+READING (one census; directional). The vocabulary is real: the detectors' barrier counts say which tactics are coming,
+for us and for them, by factors of 2 to 6 (double threats excepted: too common to steer by). What the latent tokens
+add to predicting MATERIAL twenty plies out is small -- +0.004 beside Stockfish, +0.013 to +0.019 at ten plies beside
+what the player knows -- because at this level material moves on blunders, which the evaluation and the one-ply read
+already carry. By the gate: one of two, inspect per family. The families that navigate are back rank, discovery, pin
+and the passer; the planner's own claim -- that moving down a family's ladder wins -- is causal and is testable only in
+play. The immediate tokens' +0.15 AUC over material at ten plies says, once more, that the zero-search player's one-ply
+read is most of what it knows about its near future.
+
 ## 2026-10-07 00:14 PDT — the games vs Stockfish-2000 at 100 a side: the opening fixed, the score not yet; the ties decide later (OBS)
 
 Ordinary games from the starting position vs Stockfish at UCI Elo 2000 (depth 8), zero search, colours alternating,
