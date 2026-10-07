@@ -22874,6 +22874,43 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-07 16:56 PDT — the sound bundle: what was removed and what it cost; the exchange law prototyped, sound and rare (OBS)
+
+Kaveh: "remove the rules that can fall out of the basics; I would like the basics to be sound." Removed from the player
+(commit pending the suite): `fork_hint` (the uncertified double-threat proposals as a tie-break), `opening` (the hand
+principles; their job belongs to the map's pressure term), the pin/skewer motif proposer (its worth was null), and the
+hand credit formula of `passer` / `passer_setup` (the queen less what the enemy can reach, only when its pawns are slow):
+a proved passer is now priced by the census like everything else (+4.4 at our rating). What remains: the five Lean
+theorems behind `passer`, `passer_setup`, `fork`, `refute`, the one generic proposer (moves that create new threats),
+and the map (`tactic_map`) as the one tie-break. RULE_ORDER = passer, fork, refute, passer_setup, tactic_map.
+THE ABLATION that decided it (held-out, expected of 300, zero search): general -- no rules 164.1; the old bundle with
+opening 176.3; the map alone 179.6; fork + refute + map 184.6; everything 188.1. Pawn endings -- 22.0; 24.6; the map
+alone 68.5; fork + refute + map 67.5; everything 67.4.
+THE SOUND BUNDLE, measured: general 188.1 -> 184.6 (3 up, 5 down: the removal costs 3.5 of 300); pawn endings 67.4
+-> 71.8 (8 up, 1 down: the hand credit had ordered ties against the map). Its 100 games vs Stockfish-2000 are running.
+THE FIRST MAP ARM, final: 100 games vs Stockfish-2000 with the map in the old bundle, 5 wins, 6 draws, 89 losses =
+8.0% (the bundle without the map 5.0%; Fisher p ~ 0.4: indistinguishable). Its slide found an interaction missed in
+review: the map ran before the opening principles and settled the opening ties by hair-thin differences (median after
+our 10th move -222 cp against -164 with the principles first); the order was fixed, then the principles were removed.
+
+THE EXCHANGE LAW (Kaveh: "the tactics are exceptions to the exchange theorem"; prototype -> bridge -> prove). The law:
+on a square s with an enemy piece, if the frame is honest -- nine named hypotheses: a legal capture, no king among the
+participants, no pinned participant, no x-ray behind one, no promotion, no enemy capture elsewhere that pays and no
+participant of ours defending a piece they attack (the overload), no enemy check available and our king off every line
+and knight relation with s, no blockable slider attacker of ours, no enemy piece able to arrive as a defender -- then
+capturing with the cheapest attacker yields at least the static exchange against every legal reply. The bridge: an
+exact alpha-beta over every legal move to the sequence's depth. OBS on 3,000 census positions, 4,910 attacked enemy
+pieces: the law fires 36 (0.7%), the bridge agrees 36 of 36, WRONG 0. Where it does not fire, the first failing
+hypothesis: an enemy check available 1,217; an x-ray 1,203; a capture elsewhere that pays 811; a king among the
+participants 800; our capture illegal (in check, or the capturer pinned) 415; a blockable slider 236; an arriving
+defender 143; a pin 47. (Before the overload refinement the capture-elsewhere clause blocked 2,249 and the law fired 15;
+two bugs on the way: a promotion check blind to colour, a capture-move lookup that broke when we stood in check.)
+READING: the law is sound and the honest frame is rare -- in real games most contested squares carry at least one
+exception, so the law's worth is in NAMING the exception, and the per-position certificate (the fork theorem's
+enumeration) must do the proving where the schema cannot. Running: the bite rate -- for every frame where the static
+exchange says the capture wins, how often the exact outcome falls short, by the hypothesis that failed. That number is
+the tactic census by cause Kaveh asked for.
+
 ## 2026-10-07 14:34 PDT — addendum: the wide tables change nothing on the puzzles (OBS)
 
 The map on the wide-census tables (both ratings read as 1800), the same bundle and sets: general 188.1 (26 up, 39 down

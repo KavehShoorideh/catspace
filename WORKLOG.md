@@ -248,3 +248,10 @@ Newest entry first. Times from `date` (PDT).
   sf2000x_map_s1..5 (100 games, map in the bundle). 
 - 2026-10-07 14:24 PDT corrected map (c300 tables): general 176.3 -> 187.1 (25 up/40 down), pawn endings 24.6 -> 67.4 (103/93);
   gap check: downs median 0.28 (40 >= 0.5, confident misses: the opponent's k=2 passer unpriced), ups median 0.06. Stands.
+
+## 2026-10-07 16:56 PDT — removal to the sound bundle; the exchange law prototype
+- Removed fork_hint, opening (+module, tests), the pin proposer, the hand passer credit (now census-priced); RULE_ORDER
+  passer, fork, refute, passer_setup, tactic_map. Ablation + sound bundle: general 188.1 -> 184.6, pawn endings 67.4 -> 71.8.
+- First map arm 100 games: 8.0% (5W 6D). Order interaction (map before opening) found and fixed, then moot.
+- exchange_law.py: 9 hypotheses, SEE, exact bridge; census 36/4910 fire, 0 wrong; blockers noCheck/noXray/noOtherCapture/noKing.
+  Running: the bite census (per-exception shortfall rates). Sound games sf2000x_sound_s1..5 running. Suite running.
