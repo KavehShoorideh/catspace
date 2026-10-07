@@ -394,6 +394,11 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
 - **`material_now` thrown away under check** (class: a gate on the wrong condition): a capture of the checking piece
   that wins a bishop was labelled absent (355 of 1,685 in-check rows). Fix: no check gate; the >= 1 threshold already
   excludes evasions that lose. Found by the review; the rows re-tokenized in place.
+- **The map valued our tactics after our move as if we were to move** (2026-10-07, class: whose turn): `value_after`
+  read the position after our move with the opponent to move, but priced our latent tactics at `hold` (the holder
+  executing first) and theirs at `exposed` (the victim answering first) -- the other way round: about 2x too much for
+  ours, 3x too little for theirs. The first puzzle read (pawn endings 24.6 -> 67.3) was not quoted. Fix: V for the side to
+  move by its own tables, negated for the mover. Caught by checking the positive result, not the negative one.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).

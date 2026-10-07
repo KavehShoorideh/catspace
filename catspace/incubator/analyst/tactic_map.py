@@ -114,45 +114,56 @@ class TacticMap:
         self.bands = [tuple(b) for b in self.t["bands"]]
         self.elo_us, self.elo_them = elo_us, elo_them
 
-    def value_of_tokens(self, ours, theirs) -> float:
-        bu, bt = band_name(self.elo_us, self.bands), band_name(self.elo_them, self.bands)
+    def value_for_side_to_move(self, stm, opp, band_stm: str, band_opp: str) -> float:
+        """V for the side to move, from its own tables (both tables are fitted on rows where the actor is to move): its
+        tactics at hold, the opponent's at exposed; k = 1 tokens by the ladder's one-move chance of the side that would
+        fire them."""
         v = 0.0
         for f in FAMILIES:
-            ko = min((x[1] for x in (ours or []) if x[0] == f), default=None)
-            kt = min((x[1] for x in (theirs or []) if x[0] == f), default=None)
+            ks = min((x[1] for x in (stm or []) if x[0] == f), default=None)
+            ko = min((x[1] for x in (opp or []) if x[0] == f), default=None)
+            if ks == 0:
+                v += self.t["hold"][f"{f}|{band_stm}"]
+            elif ks == 1:
+                v += self.t["step"][f"{f}|{band_stm}"] * self.t["hold"][f"{f}|{band_stm}"]
             if ko == 0:
-                v += self.t["hold"][f"{f}|{bu}"]
+                v += self.t["exposed"][f"{f}|{band_stm}"]
             elif ko == 1:
-                v += self.t["step"][f"{f}|{bu}"] * self.t["hold"][f"{f}|{bu}"]
-            if kt == 0:
-                v += self.t["exposed"][f"{f}|{bu}"]
-            elif kt == 1:
-                v += self.t["step"][f"{f}|{bt}"] * self.t["exposed"][f"{f}|{bu}"]
+                v += self.t["step"][f"{f}|{band_opp}"] * self.t["exposed"][f"{f}|{band_stm}"]
         return v
 
+    def value_of_tokens(self, ours, theirs) -> float:
+        """V for us, to move, with our tactics `ours` and theirs `theirs` (the null-move reading)."""
+        return self.value_for_side_to_move(ours, theirs, band_name(self.elo_us, self.bands), band_name(self.elo_them, self.bands))
+
     def value(self, b: chess.Board) -> float:
-        """V for the side to move of `b`."""
+        """V for the side to move of `b` (taken as us)."""
         from .tactic_census import opponent_tokens, tokens
         return self.value_of_tokens(tokens(b), opponent_tokens(b))
 
     def value_after(self, b: chess.Board, m: chess.Move) -> float:
-        """V for the mover, read in the position after the move (where the opponent is to move): our tactics are the
-        null-move tokens there, theirs the side to move's."""
+        """V for the mover, read in the position after the move, where the OPPONENT is to move: the opponent's value by
+        its own tables (its tactics at hold -- it executes first; ours at exposed -- it answers first), negated (review
+        2026-10-07: the first version valued our tactics at hold and theirs at exposed after our move, about 2x too
+        much for ours and 3x too little for theirs)."""
         from .tactic_census import opponent_tokens, tokens
         nb = b.copy(stack=False); nb.push(m)
         if nb.is_checkmate():
             return 100.0
         theirs = tokens(nb); ours = opponent_tokens(nb)                 # None when the move gives check: our latent tactics unread
-        return self.value_of_tokens(ours, theirs)
+        return -self.value_for_side_to_move(theirs, ours, band_name(self.elo_them, self.bands), band_name(self.elo_us, self.bands))
 
 
 _MAP = None
 
 
 def _map():
+    """The map in play: the tables named by CATSPACE_TACTIC_MAP (default: wide, else c300), both ratings 1800 unless
+    CATSPACE_ELO_US / CATSPACE_ELO_THEM say otherwise."""
     global _MAP
     if _MAP is None:
-        _MAP = TacticMap()
+        import os
+        _MAP = TacticMap(os.environ.get("CATSPACE_TACTIC_MAP", "wide"), int(os.environ.get("CATSPACE_ELO_US", 1800)), int(os.environ.get("CATSPACE_ELO_THEM", 1800)))
     return _MAP
 
 
