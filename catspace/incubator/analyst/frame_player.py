@@ -192,7 +192,7 @@ def apply_rules(b: chess.Board, values: dict, trace: dict | None = None) -> dict
         top = max(values.values()); tied = [u for u, v in values.items() if v == top]   # what is STILL tied after the rules before
         if len(tied) < 2:
             break
-        sc = r.fire(b)
+        sc = r.fire(b, values, trace or {}) if r.reads_ledger else r.fire(b)   # a conjecture may read the ties (tactic_map)
         prefs = {u: sc[u][0] for u in tied if u in sc}
         hi = max(prefs.values(), default=0.0)
         if hi <= 0:
@@ -257,6 +257,14 @@ def _passer_setup_fire(b: chess.Board) -> dict:
                 out[u] = (g, f"after {u} the pawn on {chess.square_name(sq)} queens within {plies} more plies whatever they "
                              f"reply (proved composition); credit {g:+.1f} after their best reply")
     return out
+
+
+def _tactic_map_fire(b: chess.Board, values: dict, trace: dict) -> dict:
+    """The tactic map (tactic_map.TacticMap): the expected gain, by rating, of the exact token state after each of the
+    ledger's tied top moves; a conjecture, so it only orders those ties."""
+    from .tactic_map import map_fire
+    top = max(values.values()); tied = [u for u, v in values.items() if v == top]
+    return map_fire(b, tied)
 
 
 def _opening_fire(b: chess.Board) -> dict:
@@ -367,10 +375,11 @@ RULE_BOOK = {"passer": lambda: Rule("passer", "proved", _passer_fire),     # by 
              "refute": lambda: Rule("refute", "proved", _refute_fire, "veto", True),   # a proved negative claim on the tied top moves
              "fork": lambda: Rule("fork", "proved", _fork_fire, "at_least"),   # proved: every claim it returns is Lean-certified
              "fork_hint": lambda: Rule("fork_hint", "conjecture", _fork_hint_fire),   # its uncertified proposals: a tie-break
-             "opening": lambda: Rule("opening", "conjecture", _opening_fire)}   # the opening subgoals (opening_subgoals): a tie-break
+             "opening": lambda: Rule("opening", "conjecture", _opening_fire),   # the opening subgoals (opening_subgoals): a tie-break
+             "tactic_map": lambda: Rule("tactic_map", "conjecture", _tactic_map_fire, "add", True)}   # the tactic map's expected gain: a tie-break
 
 
-RULE_ORDER = ("passer", "fork", "refute", "passer_setup", "fork_hint", "opening")   # the order the harnesses apply them in:
+RULE_ORDER = ("passer", "fork", "refute", "passer_setup", "fork_hint", "tactic_map", "opening")   # the order the harnesses apply them in:
                                                                  # the measured bundles' order; tactics before the opening
                                                                  # subgoals (review 2026-10-06: listed first, the opening rule
                                                                  # settled the ties and fork_hint's claims were dropped)
