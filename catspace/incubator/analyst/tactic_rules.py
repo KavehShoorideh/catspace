@@ -201,3 +201,23 @@ def bridge(fens: list[str]) -> dict:
                 if len(examples) < 10:
                     examples.append(dict(fen=f, move=u, claim=k, truth=truth, why=why))
     return dict(positions=len(fens), claims=claims, wrong=wrong, slack=slack, examples=examples)
+
+
+def refutations(b: chess.Board, moves: list[str]) -> dict:
+    """Rule 4's PROPOSER, THE REFUTATION (Kaveh 2026-10-05: "to take is a mistake"; from development misses whose
+    ledger top was a capture worth +5 or +6 that a reply refutes: Rcb8 08BCo, Qxb2 07Ivz, Nxg3 07Fj0, Qf4 02qd6): for
+    each of OUR candidate moves, the opponent's best double threat after it (fork_claims from their side). -> {uci:
+    (their claim, their move, why)}. Certified, it is a proved NEGATIVE claim: a veto."""
+    out = {}
+    for u in moves:
+        m = chess.Move.from_uci(u)
+        nb = b.copy(stack=False)
+        nb.push(m)
+        if nb.is_game_over():
+            continue
+        their = fork_claims(nb)
+        if not their:
+            continue
+        tu, (v, why) = max(their.items(), key=lambda kv: kv[1][0])
+        out[u] = (v, tu, f"refuted by {nb.san(chess.Move.from_uci(tu))}: {why}")
+    return out

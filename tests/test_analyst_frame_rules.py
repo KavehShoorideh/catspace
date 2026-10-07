@@ -85,3 +85,36 @@ def test_passer_rule_credits_the_push(rules):
         assert proved_passer_gain(pe) == pytest.approx(max((v for v, _ in g.values()), default=0.0))
         n += 1
     assert n > 100
+
+
+def test_veto_charges_only_what_the_ledger_did_not(rules):
+    """A veto cuts a move by the certified gain less the ledger's own one-ply charge for it, and never lifts anything."""
+    base = _values(chess.STARTING_FEN)["values"]
+    rules.append(FP.Rule("v", "proved", lambda b, values, trace: {"e2e4": (3.0, "refuted")}, "veto", True))
+    c = _values(chess.STARTING_FEN)
+    assert c["values"]["e2e4"] == pytest.approx(base["e2e4"] - 3.0) and "e2e4" not in c["best"]
+    assert all(c["values"][u] == base[u] for u in base if u != "e2e4")
+    values = {"a": 2.0, "b": 2.0}; trace = {"a": ((1.5, None, []), (0.0, None, []))}
+    rules[:] = [FP.Rule("v2", "proved", lambda b, values, trace: {"a": (2.0, "x")}, "veto", True)]
+    FP.apply_rules(chess.Board(), values, trace)
+    assert values["a"] == pytest.approx(1.5) and values["b"] == 2.0         # the ledger had charged 1.5 of the 2.0
+
+
+@pytest.mark.skipif(not __import__("catspace.incubator.analyst.lean_ideas", fromlist=["default_binary"]).default_binary().exists(), reason="lean/ideas not built")
+def test_refutation_vetoes_a_capture_the_kernel_refutes(rules):
+    """Qxd5 grabs a pawn; the QUIET Nf4 then forks queen and rook (a check the frames would have read as a forcing
+    move): the kernel certifies Black's gain and the veto removes Qxd5 from the top."""
+    b = chess.Board("8/5ppk/6pp/3p3n/8/8/4R3/3Q2K1 w - - 0 1")
+    nb = b.copy(); nb.push_uci("d1d5")                                           # the position's own properties, checked before the rule's:
+    assert not nb.is_check() and chess.Move.from_uci("h5f4") in nb.legal_moves   # the capture gives no check, the fork is legal,
+    nf = nb.copy(); nf.push_uci("h5f4")
+    assert nf.is_attacked_by(chess.BLACK, chess.D5) and nf.is_attacked_by(chess.BLACK, chess.E2) and not nf.is_check()   # quiet,
+    assert not any(nf.gives_check(m) for m in nf.legal_moves)                   # and White has no counter-check (three wrong positions today)
+    from catspace.incubator.analyst.fates import clear_caches
+    clear_caches()
+    assert "d1d5" in FP.choose(b)["best"]                                       # the ledger likes the free pawn
+    rules.append(FP.RULE_BOOK["refute"]())
+    clear_caches()
+    c = FP.choose(b)
+    assert "d1d5" in c["rules"] and "certified by Lean for +" in c["rules"]["d1d5"][0]
+    assert "d1d5" not in c["best"]

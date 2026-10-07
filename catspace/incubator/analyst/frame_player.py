@@ -148,10 +148,13 @@ class Rule:
     tier: str                                                       # "proved" | "conjecture"
     fire: object                                                    # (board) -> {uci: (value, why)}: value = a material claim (proved) or a preference (conjecture)
     mode: str = "add"                                               # proved claims: "add" to the ledger value (the passer's credit beyond the ledger's
-                                                                    # horizon) or "at_least" (an absolute bounded outcome: value = max(value, claim))
+                                                                    # horizon), "at_least" (an absolute bounded outcome: value = max(value, claim)), or
+                                                                    # "veto" (the opponent's certified gain k after the move: the value loses what the
+                                                                    # ledger's one-ply read of their best capture did not already charge, k - after)
+    reads_ledger: bool = False                                      # fire(board, values, trace) instead of fire(board): the rule needs the ledger
 
 
-def apply_rules(b: chess.Board, values: dict) -> dict:
+def apply_rules(b: chess.Board, values: dict, trace: dict | None = None) -> dict:
     """Apply RULES to the ledger's values in place. -> {uci: [why, ...]} for the moves a rule touched. A proved rule's
     claim is added to the value (the passer's conservative credit is the model); a conjecture may only lower, by 1e-3,
     the tied top moves it ranks below its best -- a tied move it says nothing about keeps the top."""
@@ -160,12 +163,23 @@ def apply_rules(b: chess.Board, values: dict) -> dict:
     for r in RULES:
         if r.tier != "proved":
             continue
-        for u, (v, why) in r.fire(b).items():
+        claims = r.fire(b, values, trace or {}) if r.reads_ledger else r.fire(b)
+        for u, (v, why) in claims.items():
             if u in values:
                 if r.mode == "at_least":
                     if v <= values[u]:
                         continue
                     values[u] = v
+                elif r.mode == "veto":
+                    after = 0.0
+                    try:
+                        after = float((trace or {})[u][0][0])          # the ledger's own charge: their best frame after the move
+                    except (KeyError, TypeError, IndexError):
+                        pass
+                    cut = max(0.0, v - after)
+                    if cut <= 0:
+                        continue
+                    values[u] -= cut
                 else:
                     values[u] += v
                 fired += 1
@@ -261,7 +275,45 @@ def _fork_hint_fire(b: chess.Board) -> dict:
     return out
 
 
+def _refute_fire(b: chess.Board, values: dict, trace: dict) -> dict:
+    """THE REFUTATION, certified: for each move the ledger ties at the top, the opponent's best double threat after it,
+    certified by the kernel from their side (the same Fork.lean certificate); -> {uci: (their certified gain, why)}.
+    Only the decision set is checked (cost), and a veto never lifts another move."""
+    from .lean_ideas import detector
+    from .tactic_rules import refutations
+    if not values:
+        return {}
+    top = max(values.values())
+    tied = [u for u, v in values.items() if v == top]
+    li = detector()
+    out = {}
+    for u, (v, tu, why) in refutations(b, tied).items():
+        nb = b.copy(stack=False)
+        nb.push(chess.Move.from_uci(u))
+        tm = chess.Move.from_uci(tu)
+        hi = int(min(v, 40.0))
+        FORK_STATS["claims"] += 1
+        try:
+            if not li.fork(nb, tm, 1):
+                continue
+            lo = 1
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                if li.fork(nb, tm, mid):
+                    lo = mid
+                else:
+                    hi = mid - 1
+        except (ValueError, RuntimeError) as e:
+            FORK_STATS["errors"] += 1
+            FORK_ERRORS.append((b.fen(), u, str(e)[:120]))
+            continue
+        FORK_STATS["certified"] += 1
+        out[u] = (float(lo), f"{why}; certified by Lean for +{lo} to them (Ideas.localCheck_sound)")
+    return out
+
+
 RULE_BOOK = {"passer": lambda: Rule("passer", "proved", _passer_fire),     # by name, for the harnesses' --rules
+             "refute": lambda: Rule("refute", "proved", _refute_fire, "veto", True),   # a proved negative claim on the tied top moves
              "fork": lambda: Rule("fork", "proved", _fork_fire, "at_least"),   # proved: every claim it returns is Lean-certified
              "fork_hint": lambda: Rule("fork_hint", "conjecture", _fork_hint_fire)}   # its uncertified proposals: a tie-break
 
@@ -421,7 +473,7 @@ def choose(b: chess.Board) -> dict:
             v, after, bef = ledger_move_value(b, m, square_frame, before=before)
         values[m.uci()] = v; trace[m.uci()] = (after, bef)
     RULES_FIRED[0] = 0
-    notes = apply_rules(b, values) if RULES else {}                 # the rules' claims, by tier (zero search)
+    notes = apply_rules(b, values, trace) if RULES else {}          # the rules' claims, by tier (zero search)
     top = max(values.values())
     best = [u for u, v in values.items() if v == top]
     plan_scores = {}
