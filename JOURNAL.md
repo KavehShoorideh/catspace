@@ -22874,6 +22874,35 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-07 13:46 PDT — tactics in the field by player strength; the motif labeller (for later review); the census checkpointed (OBS)
+
+Kaveh's direction this hour: group the tactics by the probability of the outs conditioned on player strength from
+Lichess; each tactic then has an expectation (the chance it is executed, the chance the out is found, the gain), and
+the planner navigates the map of tactic states and their likelihoods toward the highest expected gain. And a standing
+rule: long mining jobs checkpoint per unit, resume without loss, and carry a health check (memory
+long_jobs_checkpoint_and_watchdog).
+OBS, the c300 census (both players 1500-2200), per recognizable family, by the actor's rating band (<1700 / 1700-1899
+/ >= 1900), "available" = the family at k = 0:
+  P(EXECUTED: the holder gains 1+ pawn within 4 plies | the holder's band):
+    material_now 60% / 62% / 59% (n 5,312; mean gain when held +1.16); double threat 59 / 57 / 58 (3,031; +0.98);
+    pin 56 / 66 / 67 (801; +1.03); discovery 66 / 67 / 54 (72; +1.14); passer 67 / 52 / 50 (33; +4.06)
+  P(the OUT is found: no loss of 1+ within 4 plies | the victim's band), the opponent's tactic available against the
+  side to move: material_now 71 / 73 / 74 (n 7,158); double threat 66 / 71 / 72 (4,342); pin 62 / 65 / 64 (1,273);
+    discovery 64 / 53 / 75 (154); back rank 85 / 75 / 67 (32); passer 50 / 53 / 40 (43)
+  Reading: at this level an available material-winning tactic is worth about a pawn over four plies and a proved
+  passer four; the dependence on rating INSIDE 1500-2200 is a few points -- the conditioning Kaveh wants needs the
+  wide band. Launched: the WIDE census, 150 games in each of 1000-1400, 1400-1700, 1700-2000, 2000-2500 (both
+  players inside the band), tag `wide`, checkpointed per game, a watchdog on it.
+THE LABELLER (`tactic_motifs.py`, tests on constructed positions -- two fixtures were wrong before they were right:
+a Python precedence slip, a knight giving check): an all-encompassing motif list (double attacks, lines, removing the
+guard, tempo, confinement, pawns, the king and its mating patterns, counting) and a structural reader of a fired
+tactic's start. OBS on the 920 fired tactics, the first label: unlabelled 251; insufficiently defended 102;
+discovered attack 66; capture of the defender 50; promotion / breakthrough 50; deflection / overload 47; the rest
+smaller. For Kaveh's later review (the LLM's eye on the unlabelled and a sample of each), not for play.
+THE CENSUS JOB: the unit of work is one game; its rows are appended and its id marked done as it finishes; a restart
+with the same tag resumes; rows of a game cut off before its mark are dropped at start. OBS the resume test: 3 games
+then 6 with the same tag = the one-shot run's 540 positions exactly, an injected unfinished game's rows dropped.
+
 ## 2026-10-07 13:22 PDT — the coverage gap of the tactical vocabulary, by Kaveh's definition of a tactic (OBS)
 
 Kaveh: a tactic is "a piece that is lost despite being visibly defended -- at first glance it is defended, but not

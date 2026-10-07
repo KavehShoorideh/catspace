@@ -240,3 +240,6 @@ Newest entry first. Times from `date` (PDT).
   moved: pressure on us 0.46 -> 0.57. Kaveh discussing the planner design.
 - 2026-10-07 13:22 PDT coverage by Kaveh's tactic definition (tactic_coverage.py + 3 tests; first version retracted): 920 fired
   tactics; motif attributed 16.5%, search-only 59%, gap 13.6%, nearly 6.8%. Family = same outs/guards (his def) recorded.
+- 2026-10-07 13:46 PDT Elo-conditioned execution/out rates (c300: weak dependence inside 1500-2200); labeller tactic_motifs.py
+  (920 labelled, 251 unlabelled; review deferred); census checkpointed per game + resume + reconcile + watchdog;
+  WIDE census launched (600 games, 4 bands, tag wide, log tmp/census_wide.log). Kill test running.
