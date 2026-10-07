@@ -367,6 +367,18 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   geometric clause, and the mirror now does too. No wrong claim had been made (every claim was bridge-checked).
 - **A fixture collides with its own test** (pre-existing on main): tests/fixtures/opera_game.pgn is tracked, and
   test_open_pgn_zst_streams asserted no .pgn in fixtures. The test now compares the fixture set before and after.
+- **The opening gate read the move number only** (2026-10-06 night, class: an input without the field): EPD suites
+  (WAC, BK) carry no move counters, so every position loads as move 1 and the opening rule fired on all of them, endings
+  included (WAC 60: solution among the tied 41 -> 33). Fix: the opening also needs unfinished development.
+- **A castled rook counted as unmoved** (class: a special move): scanning the move list for arrivals misses the rook,
+  whose square is not the move's to_square. Fix: replay the game following each piece; tested against a board-diff
+  replay on random games.
+- **A home square stood for its piece** (class: a proxy): a knight on f1 counted as an undeveloped bishop, a piece back
+  home as undeveloped. Fix: the type per home square, and the replayed history.
+- **A docstring contradicting its code, and an order that followed the command line** (class: stale words; a silent
+  dependence): `apply_rules` said an unclaimed tied move keeps the top -- it is lowered (by design since 2026-10-05); and
+  `--rules opening fork_hint` would have let the opening rule settle the ties before the hint spoke. Fix: the docstring;
+  `RULE_ORDER`, applied by both harnesses whatever the command line's order.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).

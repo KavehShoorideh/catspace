@@ -209,3 +209,13 @@ Newest entry first. Times from `date` (PDT).
   skewer +5); replay reproduced every played move. Attribution of the wins open (Stockfish limited mode is random).
 - Derived (tmp/derived.py): rules recover 17% of the general gap, 5% of pawn endings'.
 - NEXT: Kaveh picks A (search only where rules are silent; recommended) / B (prior tie-break) / C (subgoals) / D (families).
+
+## 2026-10-06 21:59 PDT — mate veto measured (no reach), the opening slide, opening subgoals started
+- tmp/mate_reach.py, tmp/mate_sf_judge.py: 18/37 avoidable first allowances, all 18 lost already (SF depth 16). Not built.
+- tmp/decisive_moves.py, tmp/eval_slide.py: decisive single move in 4/37; slide from move ~4; 32/36 crossings had a tied
+  alternative >= -150; opening ties median 19.
+- Bigger run partial (21:52): norules 2W/50L of 52; rules 0W/1D/66L of 67 -> the 10% was noise.
+- Kaveh: opening subgoals as tie-breaks. opening_subgoals.py (castle > develop > central > centre pawn > steady),
+  RULE_BOOK "opening" (conjecture), 8 tests pass; review agent running; short run tmp/openprobe_* (40 games x 20 plies).
+- 2026-10-06 22:21 PDT opening rule reviewed (3 bugs fixed + docstring + RULE_ORDER), 13 tests; short run -71/-180 vs base -176/-356;
+  WAC 60 20.6 -> 20.4. Launched sf2000x_open_s1..5 (full bundle + opening, 100 games). Stopped norules s1, s4.

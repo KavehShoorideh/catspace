@@ -22874,6 +22874,72 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-06 22:21 PDT — opening subgoals as tie-breaks: built, reviewed, fixed; the opening deficit halved (OBS)
+
+Kaveh's call (asked): opening subgoals as tie-breaks. `catspace/incubator/analyst/opening_subgoals.py`: five classical
+principles, each a pure function of (board, move), combined LEXICOGRAPHICALLY -- castle > develop (a knight or bishop
+that has not moved leaves its own starting square) > develop toward the centre (files c-f, ranks 3-6) > a centre pawn
+(our pawns cover more of d4/e4/d5/e5) > steady (no king walk, no early queen, no rook move before castling, no flank-pawn
+push, no second move of a piece). A conjecture-tier rule `opening` in frame_player: it only orders the moves the
+one-ply ledger already ties (AGENTS rule 7), only in the opening (fullmove <= 15 and development unfinished).
+
+REVIEW (an independent agent, probing with python-chess, before any number was used) found three bugs, all fixed with
+regression tests (docs/BUGS.md): the gate opened on every WAC/BK position (EPD carries no move counter: all load as move
+1); a rook that moved by castling counted as unmoved; the home-square test read the square, not the piece (a knight on
+f1 was "an undeveloped bishop"). What has moved is now a replay of the game following each piece; a test checks it
+against an independent board-diff replay on 150 random games (> 3,000 plies). The review also found `apply_rules`'s
+docstring contradicting its code (a tied move a conjecture says nothing about IS lowered; corrected) and that
+conjecture order followed the command line (now canonical: frame_player.RULE_ORDER, the measured bundles' order).
+
+OBS (one run each; directional):
+  opening short run vs Stockfish-2000, 40 games capped at 20 plies, seed 21, Stockfish depth 10 after our moves:
+    fork + fork_hint              after move 5: median -176 cp (24/40 below -150); move 10: -356 (37/40 below -150)
+    + opening (first version)     -76 (11/40); -221 (24/40)
+    + opening (reviewed, fixed)   -71 (9/40);  -180 (22/40)
+    the tied top set: mean 2.23 moves with the rule (first version; 6-7 without)
+  WAC, the first 60 at one ply: expected 20.6 -> 20.4 (4 down, 0 up; the first version's gate: solution among the tied
+    41 -> 33); the 4 are middlegames with one bishop at home, where the rule develops it instead of a tactic the frames
+    do not see (ties of 20-33 moves).
+  held-out general (300 Lichess puzzles), the bundle passer+fork+fork_hint+refute: expected 176.4 -> 176.3 with the
+    opening rule (2 down, 0 up; the gate open in 25 of 606 steps) -- the tie-break costs puzzles almost nothing.
+  The openings it plays: 1.Nf3 (11 of 20 games as White) or 1.Nc3 (9); as Black ...Nc6 (11) or ...Nf6 (9); it castles.
+    What still loses is tactical a move or two deep (e.g. ...e4 Bd6?? e5, a pawn fork) -- hence the candidate below
+    carries the refutation veto too.
+Running: the full bundle (passer, passer_setup, fork, refute, fork_hint, opening), 100 games vs Stockfish-2000. Two of
+the ten baseline processes (no rules, seeds 1 and 4) were stopped
+to free their cores (their per-game results are in the logs; the arm's 74 games settle its question).
+
+## 2026-10-06 21:59 PDT — where the games vs Stockfish-2000 are lost: the opening, not mates; the 10% does not hold (OBS)
+
+Kaveh's calls this evening: the next layer is C, subgoals with proven paths; first family the opponent's mating frame
+(defensive), "proven" = forced against every reply. Measured before building, it has no reach, so it was not built;
+Kaveh then re-targeted to opening subgoals as tie-breaks (asked).
+
+RETRACTION: I proposed the defensive mate family because "all 37 losses were mates" -- true (every loss ended in
+checkmate) but misleading: the games are decided long before the mate.
+
+THE MATE VETO'S REACH (python-chess, exact; the 37 lost games of the seed-0 runs, 1,839 of our moves): our move allowed
+a mate in 1 57 times (another legal move avoided it in 5) and a forced mate in 2 32 times (avoidable in 13); the FIRST
+such move per game was avoidable in 18 of 37 games. Full-strength Stockfish (depth 16) at those 18: the position was
+already lost in all 18 -- the best move is mated in 3 to 9 in 17, -7.21 in one. Material there: 12 of 18 at -7 or worse;
+the frame ledger had already charged the played move with the mate (>= 900) in 11. A mate veto at the two-move horizon
+would have delayed each mate and saved none.
+
+THE SLIDE (Stockfish depth 10 after each of our moves, the 37 lost games): median evaluation after our 5th move -163 cp
+(22 games below -150), after the 10th -335 (22 below -300), 15th -528, 20th -654. A single move from playable (>= -150)
+to lost (<= -300) in only 4 of 37 games. The first crossing below -150 comes at ply 8.5 (median), by ply 20 in 35 of 36,
+in a small step (median 60 cp); at that crossing a move TIED with the played one stayed at or above -150 in 32 of 36.
+Over our first five moves the one-ply ledger ties a median of 19 moves (all 20 at the start): nothing is at stake, so
+the seeded random pick plays the opening, and the position drifts about half a pawn a move.
+
+THE 10% DOES NOT HOLD: the bigger run (seeds 1-5, 20 games each per arm, running), tally at 21:52: no rules 52 games,
+2 wins (both as Black), 50 losses; fork + fork_hint 67 games, 0 wins, 1 draw, 66 losses. Seed 0's 2 wins against 0 was
+noise; the fork rules show no effect in games at this sample. The final counts go in when the run ends.
+
+Reading: against Stockfish-2000 the zero-search player loses in the first ten moves by tie-breaking at random among
+moves the ledger cannot tell apart; tactics and mates come later and do not decide. Hence the opening subgoals (next
+entry). Directional; one run each.
+
 ## 2026-10-06 20:38 PDT — THE MEASURED ANSWER, the proof of concept so far (rounds 0-3): what was tested, what the numbers mean, what is next (OBS)
 
 Kaveh's call at 19:45: stop adding families, write up the measured answer, then pick the next layer together.
