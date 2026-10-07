@@ -165,6 +165,15 @@ class LeanIdeas:
         (line,) = self._ask("checkmate " + board.fen(), until_end=False)
         return line == "1"
 
+    def fork(self, board: chess.Board, move: chess.Move, k: int) -> bool:
+        """The double threat's certificate (Ideas/Fork.lean, localCheck_sound): is a material gain of k forced three
+        plies after `move` -- every legal reply answered by a capture that stands whatever they reply -- by the
+        kernel's rules? Raises on an illegal move or a bad position."""
+        (line,) = self._ask(f"fork {move.uci()} {int(k)} {board.fen()}", until_end=False)
+        if line.startswith("error"):
+            raise ValueError(f"{line}: {board.fen()} {move.uci()}")
+        return line.startswith("CERTIFIED")
+
     def close(self):
         if self.proc.poll() is None:
             self.proc.stdin.close()

@@ -56,3 +56,19 @@ def test_bridge_regressions_from_the_review():
     assert "e4g3" not in fork_claims(chess.Board("1k6/2q5/8/5r2/4N3/6r1/8/5b1K w - - 0 1"))
     c = fork_claims(chess.Board("4r1k1/5ppp/8/6N1/8/1Q6/8/6K1 w - - 0 1"))
     assert c["b3f7"][0] == pytest.approx(1000.0)
+
+
+@pytest.mark.skipif(not __import__("catspace.incubator.analyst.lean_ideas", fromlist=["default_binary"]).default_binary().exists(), reason="lean/ideas not built")
+def test_lean_certificate_agrees_with_the_exact_truth():
+    """The kernel certifies exactly the gains the exact 3-ply enumeration allows, on the constructed positions."""
+    from catspace.incubator.analyst.lean_ideas import detector
+    li = detector()
+    b = chess.Board("4k3/8/4r3/5N2/8/8/8/6K1 w - - 0 1")
+    assert li.fork(b, chess.Move.from_uci("f5g7"), 2) and not li.fork(b, chess.Move.from_uci("f5g7"), 3)
+    assert not li.fork(chess.Board("1k6/2q5/8/5r2/4N3/6r1/8/5b1K w - - 0 1"), chess.Move.from_uci("e4g3"), 1)   # stalemated: no gain
+    assert li.fork(chess.Board("4r1k1/5ppp/8/6N1/8/1Q6/8/6K1 w - - 0 1"), chess.Move.from_uci("b3f7"), 6)       # Kh8 Qxe8#: the rook and pawn
+    with pytest.raises(ValueError):
+        li.fork(chess.Board(), chess.Move.from_uci("e2e5"), 1)
+    assert FP.RULE_BOOK["fork"]().tier == "proved"
+    c = FP.RULE_BOOK["fork"]().fire(b)
+    assert "f5g7" in c and c["f5g7"][0] == 2.0 and "certified" in c["f5g7"][1]

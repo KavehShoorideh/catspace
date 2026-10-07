@@ -203,12 +203,37 @@ def _passer_fire(b: chess.Board) -> dict:
 
 
 def _fork_fire(b: chess.Board) -> dict:
+    """The double threat, CERTIFIED: the Python local check proposes a claim (tactic_rules.fork_claims), the Lean
+    checker certifies it by the kernel's rules (Ideas/Fork.lean, localCheck_sound: a gain of k forced three plies after
+    the move); only certified claims are returned, at their certified integer gain. A claimed mate is a material claim
+    of what the mating line takes; the ledger sees mates in one itself."""
+    from .lean_ideas import detector
     from .tactic_rules import fork_claims
-    return fork_claims(b)
+    out = {}
+    li = detector()
+    for u, (v, why) in fork_claims(b).items():
+        m = chess.Move.from_uci(u)
+        hi = int(min(v, 40.0))                                       # a mate reads as a very large material claim: certify the material
+        FORK_STATS["claims"] += 1
+        if not li.fork(b, m, 1):                                     # a forced gain of k forces every smaller k: bisect for the largest
+            continue
+        lo = 1
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if li.fork(b, m, mid):
+                lo = mid
+            else:
+                hi = mid - 1
+        FORK_STATS["certified"] += 1
+        FORK_STATS["lower"] += lo < int(min(v, 40.0))
+        out[u] = (float(lo), f"{why}; certified by Lean for +{lo} (Ideas.localCheck_sound)")
+    return out
 
+
+FORK_STATS = {"claims": 0, "certified": 0, "lower": 0}            # proposals, certified, certified below the proposal
 
 RULE_BOOK = {"passer": lambda: Rule("passer", "proved", _passer_fire),     # by name, for the harnesses' --rules
-             "fork": lambda: Rule("fork", "conjecture", _fork_fire, "at_least")}   # conjecture until its Lean statement exists
+             "fork": lambda: Rule("fork", "proved", _fork_fire, "at_least")}   # proved: every claim it returns is Lean-certified
 
 
 def _one_ply_values(b: chess.Board, before, book) -> dict:
