@@ -22874,6 +22874,86 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-06 20:38 PDT — THE MEASURED ANSWER, the proof of concept so far (rounds 0-3): what was tested, what the numbers mean, what is next (OBS)
+
+Kaveh's call at 19:45: stop adding families, write up the measured answer, then pick the next layer together.
+
+THE QUESTION (Kaveh, 2026-10-05): can rules on small frames that we can reason about -- the forced ones proved in
+Lean -- kept in memory and rolled forward from move to move, take the place of search to a degree? Measured as
+strength at ZERO search nodes, against the same player with search.
+
+THE SETUP.
+- The player ("frame player", zero search). For every legal move it computes ONE number, the one-ply ledger: the
+  material the move wins, minus the opponent's best exchange on a contested square after it, plus the opponent's best
+  if we had passed. A contested square with its attackers and defenders is a FRAME; each frame's exchange is resolved
+  exactly and memoized by content, so the next move reuses what did not change (the rolled-forward state). It plays a
+  top-valued move; ties are broken by a seeded random pick. No lookahead beyond this.
+- The rules adjust those numbers. A PROVED rule asserts a value that a Lean theorem guarantees (kernel-checked; axioms
+  only propext, Classical.choice, Quot.sound); a CONJECTURE may only break ties. In play: `fork` (the double threat:
+  after our move every reply is answered by a capture that stands whatever they reply -- a gain of k forced within
+  three plies, `Ideas.localCheck_sound`; proposed in Python, certified per claim by the kernel), `fork_hint` (its
+  uncertified proposals, tie-break only), `passer` (an unstoppable passed pawn, `Ideas.Passer2.unstoppablePasser2_sound`),
+  `passer_setup` (a move after which every reply leaves the same pawn unstoppable, `Ideas.setsUpPasser2_sound`),
+  `refute` (the opponent's certified double threat after our tied top move, charged to that move).
+- Puzzles: Lichess puzzle rows held out from all development and never tuned on, 300 per set: back-rank mates,
+  general (every 997th row), pawn endings. The score is the EXPECTED number solved: per puzzle, the product over its
+  moves of 1/(size of the tied top set) when the solution is in it, else 0 -- what a random pick among the ties
+  actually solves. The comparison is the same player with its search on (the zone search, at its node budget).
+- Games: ordinary games from the starting position, colours alternating, 20 per opponent, seed 0, a 200-ply cap
+  (a capped game is scored on material, 3 pawns or more). Opponents: Maia-1100/1500/1900 (human-like networks), the
+  random mover, Stockfish limited to UCI Elo 2000 at depth 8.
+
+THE NUMBERS (OBS, every one printed by a script; one run each -- directional guides, not verdicts).
+  puzzles (expected, of 300)    search (nodes a step)   zero search, no rules   zero search, rules
+  back-rank                     300.0 (1,616)           300.0                   (not needed)
+  general                       238.3 (30,490)          164.1                   176.4  (fork, hint, passer, refute)
+  pawn endings                   76.8 (2,219)            22.0                    24.6  (the same + passer_setup)
+  -> the rules recover 12.3 of the general set's 74.2-puzzle gap to search (17%) and 2.6 of pawn endings' 54.8 (5%).
+  games at zero search          no rules                       fork + fork_hint
+  random mover                  100%                           --
+  Maia-1100 / 1500 / 1900       98% / 95% / 92%                --
+  Stockfish, UCI Elo 2000       2.5% (19 mated, 1 draw at      10% (2 wins by mate as White, 18 losses by mate);
+                                the cap)                       the rules applied claims in 15 of 1,066 choices (1.4%)
+  In the two won games (replayed move by move, rules off and on; the replay reproduced every played move) the rules
+  spoke in 7 of our 82 moves: six narrowed a tie to the move played (3, 13, 3->2, 12, 11, 8 tied moves), one put a
+  move on top the ledger alone did not -- Be4, a skewer through c6 certified by Lean for +5 (game 3, ply 81). So the
+  rules made decisions in both wins; whether the wins needed them is not established: Stockfish's limited-strength
+  mode is itself random, and one seed cannot separate the two.
+  The proof layer: the passer theorem's reach on the 814 held-out pawn-ending positions, 57 proved pawns -> 62 (the
+  `pawnsFar` invariant tightened, 19:22) -> 72 (`kingRoom`, 19:33), 0 wrong against an exhaustive race search; the
+  double-threat certificate accepted 57 of 119 proposals on 200 development positions (62 refused by the kernel);
+  composing certificates to reach deeper reached 1 of 16 quiet misses (the double threat after any reply), 0 of 30
+  (forced mate in two), and 1 position beyond the passer's own (a passer for SOME pawn after every reply); the same-
+  pawn passer composition was certified 185 of 185 times and moved pawn endings 23.7 -> 24.6.
+  The rolled-forward state: in the rules games 28% of 84,951 frame resolutions were served from memory, 0
+  mismatches against recomputation; the tied top set was a single move in 348 of 1,066 choices (mean size 6.17).
+
+THE ANSWER, graded.
+- PROVEN (Lean, kernel-checked): five properties -- back-rank mate, the passer (two forms), the double threat's
+  three-ply gain, the passer composed over one reply -- hold wherever their detectors say so; no bridge check found
+  a wrong claim.
+- MEASURED (directional): at zero search the proved rules take the place of search for the slice they cover --
+  about a sixth of the general set's gap, a twentieth of pawn endings' -- and never made a wrong claim. They do not
+  make the zero-search player respectable against Stockfish-2000 (2.5% -> 10%, attribution open). The frames alone
+  beat every Maia on disk: those opponents hang material, and exact exchange-reading takes it; Stockfish-2000 is the
+  first bar that measures planning.
+- WHERE IT STOPS: the misses left are king play in pawn endings (quiet pawn pushes in 52 of 80 missed steps:
+  opposition, tempo, breakthroughs) and piece play two pawns deep in the general set (the ledger's gap is 2 pawns or
+  more in 29 of 64 missed steps). Depth by composing certified facts -- the route to depth without search -- reached
+  almost nothing with the families in hand, and a five-ply kernel certificate costs minutes a claim.
+- THE ROLLED-FORWARD STATE is a cache today (frames reused, exact); it does not yet carry hypotheses across moves.
+
+THE NEXT LAYER, for Kaveh's pick:
+  A. Search only where the rules are silent: the zone search at a small budget on the positions and moves the rules do
+     not decide; the headline becomes strength per node -- how many search nodes the rules save at equal score.
+     (Recommended: it measures "take the place of search to a degree" directly, mostly with existing pieces.)
+  B. The probabilistic layer: replace the random tie-break with a prior (Maia's policy, or a frame-feature model);
+     the ties are large (single top move in about one choice in three), so tie-breaks carry much of the play.
+  C. Subgoals with proven paths: a planner proposes targets, the proof layer certifies reachability (the passer
+     composition is the first instance).
+  D. New families from the dig: king play for pawn endings, a deeper double threat for the general set -- days of
+     proof work per family, and each family so far moved the score a little.
+
 ## 2026-10-06 19:37 PDT — addendum: the dig -- what the held-out misses are, by family (OBS)
 
 Pawn endings, the bundle with passer_setup (807 steps, 80 missed): the solution is a QUIET PAWN PUSH in 52 of the 80

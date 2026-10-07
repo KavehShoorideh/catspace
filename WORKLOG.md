@@ -202,3 +202,10 @@ Newest entry first. Times from `date` (PDT).
 - 2026-10-06 19:37 PDT dig: pawn-ending misses are quiet pawn pushes 52/80; 5 certified set-ups refused by the race credit (right);
   only 9/52 one-away passers; any-pawn composition reaches 1 position. General misses: piece play, gap >= 2 in 29/64.
   NEXT family for pawn endings: king play (opposition/tempo/breakthrough), not passers; for the general set: the double threat.
+
+## 2026-10-06 20:38 PDT — the measured answer written (JOURNAL); SF-2000 phase 2
+- OBS SF-2000 with fork + fork_hint: 2 wins by mate (as White), 18 losses by mate; 10%; rules applied in 15/1,066 choices.
+- Replay of the two wins (tmp/attribute_wins.py): rules spoke in 7/82 of our moves (6 tie-narrowings, 1 certified Be4
+  skewer +5); replay reproduced every played move. Attribution of the wins open (Stockfish limited mode is random).
+- Derived (tmp/derived.py): rules recover 17% of the general gap, 5% of pawn endings'.
+- NEXT: Kaveh picks A (search only where rules are silent; recommended) / B (prior tie-break) / C (subgoals) / D (families).
