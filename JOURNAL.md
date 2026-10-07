@@ -22874,6 +22874,54 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-06 19:37 PDT — addendum: the dig -- what the held-out misses are, by family (OBS)
+
+Pawn endings, the bundle with passer_setup (807 steps, 80 missed): the solution is a QUIET PAWN PUSH in 52 of the 80
+(chosen instead: a king move in 37, a pawn capture in 9); the ledger's gap v_top - v_sol at the misses: median 1.00
+(a pawn), <= 0.5 in 7, >= 2 in 6. Of the 52 missed pushes: 5 are kernel-certified same-pawn set-ups that the rule
+refused to credit -- rightly: in each the opponent's own passer is too near (its pawn needs fewer than three moves at
+our promotion; `proved_passer_gains` withholds the credit, the kernel proves that we queen, not that we win the race;
+e.g. 8/1K6/8/2P5/1Pk5/P3p3/8/8 b, e3e2 vs c5c6); the pushed pawn after the first reply is one-away in 9
+(kingRoom 4, pawnsFar 4, kingOutside 1); "every reply leaves SOME proved pawn" (different pawns per reply, the
+breakthrough shape) reaches 1 position beyond the same-pawn set-up on the whole set and 0 of the missed pushes.
+General set, the bundle (611 steps, 64 missed): piece moves on both sides (quiet-for-quiet 9, capture-for-quiet 6,
+quiet-for-capture 6, checks in 12); the gap >= 2 pawns in 29 of 64 -- the ledger's one-ply read is far off there,
+not a tie-break away.
+Reading: on pawn endings the proved-passer family is close to its ceiling as a theorem (the three invariants proved
+today moved the proved count 57 -> 72 and the expected score by one puzzle); what the set asks for next is king
+play -- opposition, tempo, breakthroughs with a sacrifice -- a different family (a counting theorem on king races and
+spare tempi), not another passer invariant. On the general set the misses are piece play two pawns deep, the double
+threat's territory (round 2: composition reached 1 of 16 quiet misses). Directional; one run each.
+
+## 2026-10-06 19:33 PDT — the kingRoom invariant tightened by proof (only the pawns that can arrive count): 62 -> 72 proved pawns on held-out pawn endings, 0 wrong; play unchanged (OBS)
+
+Families with invariants, the second step. The room pigeonhole (no self-stalemate) counted EVERY enemy pawn against
+the free neighbours of every square the enemy king can reach; now only the pawns that can reach one of those
+neighbours within the moves left count (`nearPawnsB`, the same `farB` bound as `pawnsFar`). Prototyped first: it
+rescues 10 of the 25 held-out pawns blocked only by kingRoom, bridge 10/10 right (OBS). Lean (`Ideas/Passer2.lean`):
+`Inv2.room` compares the near count; the pigeonhole `exists_not_pawn` now takes the pawns ON the squares of G against
+the squares of G (the pawns standing on the king's free neighbours are all near, `farB_self`); preservation is "the
+count never grows": `filter_length_mono` for unmoved pawns (`farB_mono`), `filter_length_le_swap` for the moved pawn
+(`pdist_step`; a Finset argument: the new set lands inside insert t (erase s X)). Build 6.9 s; axioms of
+`unstoppablePasser2_sound`, `setsUpPasser2_sound`, `filter_length_le_swap`, `exists_not_pawn`: propext,
+Classical.choice, Quot.sound. The mirror matches (0 mismatches on 2,701 held-out and 828 random instances).
+OBS (one run each; directional):
+  held-out pawn endings (814 positions): PROVED 62 -> 72 (bridge 72/72 right); one-away now 81, blocked by
+    pawnsFar 35, kingOutside 28, kingRoom 15, enemyKingPawns 2, pathClear 1 (pawns two hypotheses away became
+    one away as kingRoom passed)
+  random pawn endings (1500 draws): PROVED 360 -> 366 (366/366 right); one-away 102: pawnsFar 39, pathClear 29,
+    kingOutside 26, kingRoom 8
+  play, held-out pawn endings at zero search, expected of 300, each arm paired against this afternoon's cone-form
+    dump: passer 22.2 -> 22.2; passer + passer_setup 23.1 -> 23.1; bundle 23.7 -> 23.7; bundle + passer_setup
+    24.6 -> 24.6 (0 puzzles up, 0 down in each)
+Reading: ten more proved pawns and not one decision changed on this set -- the proved passer is not where this
+set's misses are (the 19:22 reading stands: king manoeuvres). Within the family the next blockers are pawnsFar
+again (35) and kingOutside (28; the king inside the square needs our king's shielding, a different theorem). For
+the PoC the question is which family the misses belong to, which is the dig to do next, not another invariant.
+Tests: the verdict row 8/8/3Pp1P1/2K1p2k w g6 moved from ONEAWAY/kingRoom to PROVED in 3 plies (the race-search
+check in the test body); a new ONEAWAY/kingRoom row, the king's own pawns on its last free squares with our
+knight covering the other (7k/4N1pp/P7/8/8/8/8/1K6 w, a6).
+
 ## 2026-10-06 19:22 PDT — the passer's `pawnsFar` tightened BY PROOF (the cone form); the composition theorem measured and wired as a rule (OBS)
 
 Kaveh's call this afternoon: families with invariants -- tighten the passer's hypotheses the passer's way, by changing

@@ -192,3 +192,13 @@ Newest entry first. Times from `date` (PDT).
 - test_data fixture collision fixed (pre-existing). Full suite green. SF-2000 phase 1: 20 games: 19 losses, 1 draw at the 200-ply cap (game 19 as white); score 2%; s/move 6.11 (the player's summary line).
 - NEXT: kingRoom / kingOutside invariants (the blocked list); phase 2 games; Kaveh's view on a tempo tie-break
   between a queen now and a proved queen in three plies (equal credit today).
+
+## 2026-10-06 19:33 PDT — kingRoom tightened (nearPawnsB): 62 -> 72 held-out proved pawns; play unchanged
+- Prototype 10/25 rescued, bridge 10/10; Lean: nearPawnsB, Inv2.room, exists_not_pawn over G's pawns, filter_length_mono,
+  filter_length_le_swap (Finset), both room sites; build 6.9 s; axioms standard; mirror 0 mismatches.
+- OBS held-out PROVED 62 -> 72 (72/72), random 360 -> 366 (366/366); play arms 22.2/23.1/23.7/24.6 unchanged (0 up, 0 down).
+- Test row g6 -> PROVED 3 plies (bridge in the test); new kingRoom ONEAWAY row 7k/4N1pp/P7/8/8/8/8/1K6 w a6.
+- NEXT: dig which family the held-out misses belong to before another invariant; SF-2000 phase 2 result.
+- 2026-10-06 19:37 PDT dig: pawn-ending misses are quiet pawn pushes 52/80; 5 certified set-ups refused by the race credit (right);
+  only 9/52 one-away passers; any-pawn composition reaches 1 position. General misses: piece play, gap >= 2 in 29/64.
+  NEXT family for pawn endings: king play (opposition/tempo/breakthrough), not passers; for the general set: the double threat.
