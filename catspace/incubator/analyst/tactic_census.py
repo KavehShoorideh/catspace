@@ -20,8 +20,10 @@ Structure (python-chess): open files, our half-open files, our passed / isolated
 of our king (three files, two ranks).
 
     python -m catspace.incubator.analyst.tactic_census build --games 300 --shard 50 --workers 8 --tag c300
+    python -m catspace.incubator.analyst.tactic_census build --bands 1000-1400,1400-1700,1700-2000,2000-2500 --games 150 --tag wide
     python -m catspace.incubator.analyst.tactic_census measure --tag c300
-Rows go to data/derived/tactic_census/census_<tag>.jsonl (one per position)."""
+Rows go to data/derived/tactic_census/census_<tag>.jsonl (one per position); the job is CHECKPOINTED per game (a
+.done list beside the file) and resumes with the same tag (Kaveh 2026-10-07)."""
 from __future__ import annotations
 
 import argparse
@@ -153,15 +155,21 @@ def _game_rows(row: dict, engine=None, depth: int = 10) -> list:
     return out
 
 
-def _work(args) -> list:
-    rows, depth = args
+_ENGINE = None
+
+
+def _init_worker(depth: int) -> None:
+    """One Stockfish per worker process, created after the fork."""
+    global _ENGINE, _DEPTH
     import chess.engine
-    eng = chess.engine.SimpleEngine.popen_uci("stockfish")
-    eng.configure({"Threads": 1, "Hash": 32})
-    try:
-        return [r for row in rows for r in _game_rows(row, eng, depth)]
-    finally:
-        eng.quit()
+    _ENGINE = chess.engine.SimpleEngine.popen_uci("stockfish")
+    _ENGINE.configure({"Threads": 1, "Hash": 32})
+    _DEPTH = depth
+
+
+def _work_game(row: dict) -> tuple:
+    """One game: -> (game_id, rows). The unit of checkpointing (Kaveh 2026-10-07: never lose finished work)."""
+    return row["game_id"], _game_rows(row, _ENGINE, _DEPTH)
 
 
 def select_games(shard: int, n: int, lo: int = 1500, hi: int = 2200, min_base: int = 180, min_plies: int = 40) -> list:
@@ -183,25 +191,49 @@ def select_games(shard: int, n: int, lo: int = 1500, hi: int = 2200, min_base: i
     return out
 
 
+def select_bands(shard: int, bands: list, per_band: int) -> list:
+    """The first per_band games of each rating band (both players inside it), concatenated."""
+    out = []
+    for lo, hi in bands:
+        out += select_games(shard, per_band, lo, hi)
+    return out
+
+
 def census_path(tag: str) -> Path:
     return Path(paths.derived("tactic_census", f"census_{tag}.jsonl"))
 
 
-def build(n: int, shard: int, workers: int, tag: str, depth: int = 10) -> None:
+def build(games: list, workers: int, tag: str, depth: int = 10, label: str = "") -> None:
+    """Checkpointed: every finished game's rows are appended to the output at once and its id to the .done list; a
+    restart with the same tag skips the done games (no loss, no duplicates). Progress lines carry the clock."""
     t0 = time.time()
-    games = select_games(shard, n)
-    chunks = [games[i::workers] for i in range(workers)]
     out = census_path(tag)
     out.parent.mkdir(parents=True, exist_ok=True)
-    rows = 0
-    with Pool(workers) as pool, open(out, "w") as fh:
-        for part in pool.imap_unordered(_work, [(c, depth) for c in chunks if c]):
+    done_path = out.with_suffix(".done")
+    done = set(done_path.read_text().split()) if done_path.exists() else set()
+    if out.exists():                                                   # reconcile: rows of a game cut off before its done-mark are dropped
+        kept, dropped = [], set()
+        for line in open(out):
+            gid = str(json.loads(line)["game"])
+            (kept if gid in done else dropped.add(gid) or kept).append(line) if gid in done else dropped.add(gid)
+        if dropped:
+            open(out, "w").writelines(kept)
+            print(f"[census] reconciled: dropped the rows of {len(dropped)} unfinished game(s) {sorted(dropped)[:5]}", flush=True)
+    todo = [g for g in games if str(g["game_id"]) not in done]
+    print(f"[census] {tag}: {len(games)} games selected, {len(done)} done before, {len(todo)} to do; {workers} workers", flush=True)
+    finished = len(done); rows = 0
+    with Pool(workers, initializer=_init_worker, initargs=(depth,)) as pool, open(out, "a") as fh, open(done_path, "a") as dh:
+        for gid, part in pool.imap_unordered(_work_game, todo, chunksize=1):
             for r in part:
                 fh.write(json.dumps(r) + "\n")
-            rows += len(part)
-            print(f"[census] a worker done: {rows} positions so far; {time.time() - t0:.0f}s", flush=True)
-    print(f"OBS census {tag}: {len(games)} games from shard {shard} (both rated 1500-2200, base >= 180 s, normal end, >= 40 "
-          f"plies), {rows} positions; {time.time() - t0:.0f}s -> {out}")
+            fh.flush()
+            dh.write(f"{gid}\n"); dh.flush()
+            finished += 1; rows += len(part)
+            if finished % 10 == 0 or finished == len(games):
+                print(f"[census] {time.strftime('%H:%M:%S')} {finished}/{len(games)} games, {rows} new positions, {time.time() - t0:.0f}s", flush=True)
+    total = sum(1 for _ in open(out))
+    print(f"OBS census {tag}: {len(games)} games ({label or 'both rated 1500-2200'}, base >= 180 s, normal end, >= 40 plies), "
+          f"{total} positions in the file; this run {rows} positions in {time.time() - t0:.0f}s -> {out}")
 
 
 def main(argv=None):
@@ -212,9 +244,14 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--depth", type=int, default=10)
     ap.add_argument("--tag", default="c300")
+    ap.add_argument("--bands", default=None, help="rating bands 'lo-hi,lo-hi,...' with --games per band (both players inside)")
     a = ap.parse_args(argv)
     if a.cmd == "build":
-        build(a.games, a.shard, a.workers, a.tag, a.depth)
+        if a.bands:
+            bands = [tuple(int(x) for x in b.split("-")) for b in a.bands.split(",")]
+            build(select_bands(a.shard, bands, a.games), a.workers, a.tag, a.depth, label=f"{a.games} games per band {a.bands}")
+        else:
+            build(select_games(a.shard, a.games), a.workers, a.tag, a.depth)
     else:
         from .tactic_census_measure import measure
         measure(a.tag)
