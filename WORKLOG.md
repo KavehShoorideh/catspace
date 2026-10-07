@@ -3,6 +3,17 @@
 Kaveh's two-journals rule (2026-09-16): this file keeps the agent on track; JOURNAL.md is Kaveh's, written for review.
 Newest entry first. Times from `date` (PDT).
 
+## 2026-10-06 18:02 PDT — PoC round 2: composition reach, the refutation veto, four rules
+
+- Composition (solution, any reply, double threat >= 1): 1/16 quiet misses. Mate in 2/4: 0/30. Lines read: pins that
+  win later, king attacks, races, deflections; several tops were ledger false positives (+5/+6 captures refuted).
+- refute rule (veto, reads_ledger): opponent's certified double threat after each tied top; charges k - after0.
+  Dev: refutation exists in 8/30 tops, ledger had charged 6 (checks are forcing moves in the frames), veto fired 2.
+  Three wrong constructed test positions (diagonal check, Qd8+, Qg8+): tests now assert the position first.
+- Held-out: four rules general 176.4 (32/6), pawns 23.7 (31/7). SF-2000 games running (no rules -> all four).
+- NEXT (Kaveh): where depth comes from (composition has nothing to compose yet vs a fast proved generator); the
+  games' verdict; a pin family with a provable invariant?
+
 ## 2026-10-06 17:09 PDT — PoC round 1: the double threat in Lean, certified in play
 
 - Ideas/Fork.lean: localCheck (3 plies after m, captures as our answers, kernel rules) -> forcedAtLeaves; axioms std.

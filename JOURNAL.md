@@ -22874,6 +22874,44 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-06 18:02 PDT — the PoC, round 2: what composition reaches, the refutation veto, four rules on the held-out sets (OBS)
+
+Kaveh's calls (asked): compose certificates for the quiet moves whose point lies beyond three plies; Stockfish at a
+UCI Elo of 2000 as the games bar.
+
+COMPOSITION, MEASURED BEFORE BUILDING: "the solution, then after any reply a double threat worth +1 or more" reaches 1
+of the 16 quiet-move development misses (Bxc3 0550Q). "The solution forces mate in two (checks as answers)" reaches 0
+of the 30 misses, and mate in four 0 more (25 of the 307 development steps ARE mates in two, all already solved).
+Reading the 16 lines: pins that win later (Rh5, Rc1, Bh4), king attacks that are not forced mates (Qf6, Re2, Bf2),
+pawn races and rook-endgame technique (f6, e5, Rh8, Ra7, Kf4), deflections (Qxg8+, Nf4). In several the LEDGER'S TOP
+was the fault: a one-ply capture worth +5 or +6 in the frames' eyes that a reply refutes (Rcb8 08BCo, Qxb2 07Ivz,
+Nxg3 07Fj0, Qf4 02qd6).
+
+RULE 4, THE REFUTATION (Kaveh 2026-10-05: "to take is a mistake"): for each move the ledger ties at the top, the
+opponent's best double threat after it, certified by the kernel from their side -- the same Fork.lean certificate --
+and applied as a proved NEGATIVE claim (Rule.mode veto): the move is charged the certified gain less what the ledger's
+one-ply read of their best capture had already charged. OBS on the 30 development misses: a certified refutation of
+the top exists in 8, but in 6 of those the ledger had already charged it (the frames play out checks as forcing moves
+and read captures; what they miss is the QUIET fork), so the veto fired in 2 and lifted the solution in 1. Three of my
+constructed test positions were wrong today (a king on a diagonal, a counter-check, Qg8+); the test now asserts the
+position's own properties before the rule's -- the bug log's rule, made code.
+
+HELD-OUT, zero search, one run each (tied / single / expected; up / down against no rules), the rule set growing:
+  rules                         general                    pawn endings
+  none                          236 / 149 / 164.1          226 / 6 / 22.0
+  fork + hint                   236 / 165 / 176.2 (25/6)   219 / 6 / 22.5 (15/7)
+  + passer                      236 / 165 / 176.3 (27/6)   219 / 6 / 22.7 (17/7)
+  + refutation veto             236 / 165 / 176.4 (32/6)   220 / 6 / 23.7 (31/7)
+GAMES vs Stockfish at UCI Elo 2000 (depth 8), 20 games each, no rules then all four: running.
+
+READING (directional): the four rules together are worth about twelve expected puzzles of 300 on the general set and
+two on pawn endings; each new rule adds less than the one before, and the remaining misses are families whose claims
+are neither three-ply material nor mate: deeper pins, king attacks, races. The certificate's depth is bounded by the
+kernel's move generator (minutes at five plies), so depth must come from COMPOSITION of certified facts or from a
+faster generator proved equal to the kernel's -- and composition with the one family in hand reaches almost nothing.
+The honest state of the crux after two rounds: rules reasoned about in Lean DO replace search for the tactics they
+state (a fork, a refutation), soundly and cheaply; what they do not yet state is most of what the search was finding.
+
 ## 2026-10-06 17:09 PDT — the PoC, round 1: the double threat stated and certified in Lean; its worth on the held-out sets (OBS)
 
 Kaveh (2026-10-05 night): "CPU is free. Double attack is great." THE LEAN STATEMENT (lean/ideas/Ideas/Fork.lean):
