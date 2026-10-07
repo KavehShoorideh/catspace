@@ -22874,6 +22874,30 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-07 12:54 PDT — PRESSURE: the availability of tactics as a scalar; structure predicts the pressure to come; the f-pawn (OBS)
+
+Kaveh: predict not the specific tactics but how many are available -- pressure on me, pressure on them; a weakened
+f-pawn makes the position sharper in the opponent's favour, and from that grows a strategic desire. Measured on the
+c300 census (`tactic_pressure.py`): pressure on a side = the number of families (of six) its opponent has available
+(k = 0); future pressure = the mean over the opponent's next five turns; n 18,649 positions with the whole window.
+OBS (1) the pressure differential now (ours - theirs) and what follows:
+  <= -2 (n 2,628): material gain >= 2 within 20 plies 16%, loss 34%, mean result -0.178
+   = -1 (2,645): 21% / 28% / -0.063;   = 0 (10,363): 14% / 19% / +0.015;   = +1 (1,651): 42% / 16% / +0.217
+  >= +2 (1,362): 46% / 16% / +0.247   -- monotone: pressure is advantage.
+OBS (2) R2 (ridge, 5-fold by game) of future pressure, on us / on them: the pressure now 0.151 / 0.123; the engine's
+  evaluation + material + phase 0.047 / 0.089; STRUCTURE alone 0.111 / 0.137; now + eval 0.186 / 0.172; now +
+  structure 0.194 / 0.185; all three 0.223 / 0.214. Structure predicts the pressure to come better than the engine's
+  evaluation does, and adds to the pressure now.
+OBS (3) the f-pawn: our king castled kingside, f-pawn home (n 4,734): future pressure on us 0.46 (now 0.68), result
+  +0.070; f-pawn moved or gone (2,436): 0.57 (now 0.82), +0.051. Shelter intact (2,358): 0.47; broken, two or more
+  pawns moved or missing (1,603): 0.58. The weakness raises the pressure on us by about a quarter; the game result
+  barely moves at this level (the players who push f also attack -- confounded, correlational).
+READING (one census; directional): pressure in Kaveh's sense is a real scalar -- tied to outcomes monotonically, and
+foreseeable from structure (R2 0.11-0.14 on its own; pressure is noisy turn to turn, so the ceiling is low in R2 terms
+but the signal beats the engine's evaluation). This is the "who is better" standing the planner lacked, defined in
+his terms: predicted pressure on me and on them from named structural facts; the strategic desires (keep the f-pawn
+home) are the learned weights read back. The tactical layer executes; the pressure forecast steers.
+
 ## 2026-10-07 12:43 PDT — addendum: Kaveh's reframing of (b) -- predict futures where tactics are available for me and not for my foe (OBS)
 
 Kaveh (asked): "what do we expect of (b)? I just want to predict futures where tactics might be available for me and

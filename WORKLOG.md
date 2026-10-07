@@ -235,3 +235,6 @@ Newest entry first. Times from `date` (PDT).
 - 2026-10-07 12:43 PDT (b) reframed per Kaveh: 'ours only' state is worth reaching (gain 43% vs 12%, result +0.19 vs -0.12);
   predictable from tokens at 2-4 plies (AUC 0.70/0.62), not at 10+ (eval 0.63 beats tokens 0.59). Planner = short-horizon
   ladder gradient; long range needs 'who is better'. Kaveh's call next.
+- 2026-10-07 12:54 PDT pressure measured (tactic_pressure.py + test): differential monotone with outcomes (>= +2: gain 46%, result
+  +0.25; <= -2: loss 34%, -0.18); structure predicts future pressure R2 0.11-0.14 (> eval 0.05-0.09; all 0.22); f-pawn
+  moved: pressure on us 0.46 -> 0.57. Kaveh discussing the planner design.
