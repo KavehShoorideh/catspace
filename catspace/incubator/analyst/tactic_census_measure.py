@@ -203,3 +203,56 @@ def measure(tag: str, seed: int = 0) -> None:
         line.append(f"tokens alone {b:.3f}")
         print(f"OBS (b) material {target} >= 2 within {HORIZON_SWING} plies (n {len(y)}, {games} games, base rate {100 * y.mean():.1f}%; constant 0.500): "
               + "; ".join(line))
+
+
+# --- tactics in the field by player strength (Kaveh 2026-10-07: "group the tactics by the probability of outs conditioned
+# on player strength ... the expectation value of each tactic conditioned on Elo") ---
+
+FIELD_FAMILIES = ("material_now", "double_threat", "pin", "discovery", "back_rank", "passer")
+DEFAULT_BANDS = ((1000, 1400), (1400, 1700), (1700, 2000), (2000, 2500))
+
+
+def elo_curves(tag: str, bands=DEFAULT_BANDS, window: int = 4) -> dict:
+    """Per family and rating band of the ACTOR: P(executed) = the holder (a token at k = 0 for the side to move) gains 1+
+    pawn within `window` plies, with the mean gain; P(out found) = the side to move, with the opponent's family available
+    against it (the null-move tokens), loses no pawn within the window. -> {(family, band, kind): (n, rate, mean gain)};
+    prints OBS lines."""
+    rows = load(tag)
+    by = defaultdict(dict)
+    for r in rows:
+        by[r["game"]][r["ply"]] = r
+
+    def band_of(e):
+        for lo, hi in bands:
+            if lo <= e < hi or (e == hi and hi == bands[-1][1]):
+                return f"{lo}-{hi}"
+        return None
+
+    acc = defaultdict(lambda: [0, 0, 0.0])
+    for g, plies in by.items():
+        for t, r in plies.items():
+            later = plies.get(t + window)
+            if later is None:
+                continue
+            swing = (later["material"] if later["side"] == r["side"] else -later["material"]) - r["material"]
+            b = band_of(r["elo"])
+            if b is None:
+                continue
+            for f in FIELD_FAMILIES:
+                if any(x[0] == f and x[1] == 0 for x in r["stm"]):
+                    c = acc[(f, b, "executed")]; c[0] += 1; c[1] += swing >= 1; c[2] += swing
+                if any(x[0] == f and x[1] == 0 for x in (r["opp"] or [])):
+                    c = acc[(f, b, "out found")]; c[0] += 1; c[1] += swing > -1; c[2] += swing
+    out = {}
+    names = [f"{lo}-{hi}" for lo, hi in bands]
+    for kind, title in (("executed", f"P(executed: the holder gains 1+ within {window} plies | the holder's band), mean gain in brackets"),
+                        ("out found", f"P(the out is found: no loss of 1+ within {window} plies | the victim's band), the victim's mean swing in brackets")):
+        print(f"OBS {tag}: {title}")
+        for f in FIELD_FAMILIES:
+            cells = []
+            for b in names:
+                n, k, s = acc[(f, b, kind)]
+                out[(f, b, kind)] = (n, k / n if n else float("nan"), s / n if n else float("nan"))
+                cells.append(f"{b}: {100 * k / n:3.0f}% [{s / n:+.2f}] (n {n})" if n >= 20 else f"{b}: - (n {n})")
+            print(f"OBS   {f:13s} " + "  ".join(cells))
+    return out
