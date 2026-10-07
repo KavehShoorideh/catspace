@@ -72,3 +72,44 @@ def test_lean_certificate_agrees_with_the_exact_truth():
     assert FP.RULE_BOOK["fork"]().tier == "proved"
     c = FP.RULE_BOOK["fork"]().fire(b)
     assert "f5g7" in c and c["f5g7"][0] == 2.0 and "certified" in c["f5g7"][1]
+
+
+@pytest.mark.skipif(not __import__("catspace.incubator.analyst.lean_ideas", fromlist=["default_binary"]).default_binary().exists(), reason="lean/ideas not built")
+def test_lean_certificate_equals_an_independent_4ply_enumeration():
+    """THE CHECKER'S BRIDGE: on development positions, the largest gain the kernel certifies equals an independent
+    exact enumeration in python-chess of the statement's shape (our move, their reply, our capture, their reply; their
+    mate = won, their stalemate = no gain). OBS 2026-10-06: 105 of 105 proposals on 200 positions agreed."""
+    import json
+    from pathlib import Path
+    from catspace.io import paths
+    from catspace.incubator.analyst.lean_ideas import detector
+    from catspace.incubator.analyst.tactic_rules import MATE, fork_claims, material
+    f = Path(paths.derived("frame_puzzles_lichess_one_ply_off5_poc1.json"))
+    if not f.exists():
+        pytest.skip("no development dump")
+
+    def push(q, mv):
+        n = q.copy(stack=False); n.push(mv); return n
+
+    def truth(b, m):
+        us = b.turn; base = material(b, us)
+        def leaf(q):
+            ms = list(q.legal_moves)
+            if not ms:
+                return MATE if q.is_check() else 0.0
+            return min(material(push(q, r), us) - base for r in ms)
+        nb = push(b, m); rs = list(nb.legal_moves)
+        if not rs:
+            return MATE if nb.is_check() else 0.0
+        return min(max((leaf(push(q2, x)) for x in q2.legal_moves if q2.is_capture(x)), default=-MATE) for q2 in (push(nb, r) for r in rs))
+
+    li = detector(); checked = 0
+    for fen in [s["fen"] for r in json.load(open(f)) for s in r["steps"]][:60]:
+        b = chess.Board(fen)
+        for u, (v, _) in fork_claims(b).items():
+            m = chess.Move.from_uci(u); cap = int(min(v, 40))
+            lean = max([k for k in range(1, cap + 1) if li.fork(b, m, k)], default=0)
+            t = truth(b, m)
+            assert lean == min(int(min(t, 40)) if t >= 1 else 0, cap), (fen, u, v, t, lean)
+            checked += 1
+    assert checked >= 10
