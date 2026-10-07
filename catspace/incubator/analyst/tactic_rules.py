@@ -47,6 +47,48 @@ def double_threats(b: chess.Board) -> list[tuple[chess.Move, list[int], bool]]:
     return out
 
 
+SLIDER_RAYS = {chess.BISHOP: [(1, 1), (1, -1), (-1, 1), (-1, -1)], chess.ROOK: [(1, 0), (-1, 0), (0, 1), (0, -1)]}
+SLIDER_RAYS[chess.QUEEN] = SLIDER_RAYS[chess.BISHOP] + SLIDER_RAYS[chess.ROOK]
+
+
+def pins_and_skewers(b: chess.Board) -> list[tuple[chess.Move, list[int], bool]]:
+    """Rule 3's TRIGGER (the same certified claim, another family; from development misses Bh4 01hL1, Rh5 05iL1, Rc1
+    03jgY, Nf7+ 008LT): a move after which our slider attacks an enemy piece with a dearer enemy piece, or the king,
+    directly behind it on the line (a pin when the front piece is the cheaper, a skewer when the dearer stands in
+    front). The targets are both pieces on the line. -> [(move, [front, back], gives check)]."""
+    us = b.turn
+    out = []
+    for m in b.legal_moves:
+        nb = b.copy(stack=False)
+        nb.push(m)
+        if nb.is_checkmate():
+            continue
+        pc = nb.piece_at(m.to_square)
+        if pc is None or pc.piece_type not in SLIDER_RAYS:
+            continue
+        f0, r0 = chess.square_file(m.to_square), chess.square_rank(m.to_square)
+        targets = []
+        for df, dr in SLIDER_RAYS[pc.piece_type]:
+            f, r, line = f0 + df, r0 + dr, []
+            while 0 <= f < 8 and 0 <= r < 8 and len(line) < 2:
+                sq = chess.square(f, r)
+                q = nb.piece_at(sq)
+                if q is not None:
+                    if q.color == us:
+                        break
+                    line.append(sq)
+                f, r = f + df, r + dr
+            if len(line) == 2:
+                front, back = line
+                vf = VAL[nb.piece_at(front).piece_type]
+                vb = VAL[nb.piece_at(back).piece_type] if nb.piece_at(back).piece_type != chess.KING else 100.0
+                if vb > vf or nb.piece_at(back).piece_type == chess.KING or vf > vb:   # a pin (dearer behind) or a skewer (dearer in front)
+                    targets += [front] if nb.piece_at(back).piece_type == chess.KING else [front, back]
+        if targets:
+            out.append((m, sorted(set(targets)), nb.is_check()))
+    return out
+
+
 def local_claim(b: chess.Board, m: chess.Move, targets: list[int]) -> tuple[float, str]:
     """The bounded local check: for every legal reply, our best exchange on a threatened square (the frames'
     `exchange`), net of what the reply and the move itself took. -> (the minimum over replies, the worst reply)."""
@@ -94,14 +136,22 @@ def local_claim(b: chess.Board, m: chess.Move, targets: list[int]) -> tuple[floa
     return worst, nb.san(worst_reply)
 
 
-def fork_claims(b: chess.Board, min_gain: float = 1.0) -> dict:
-    """The rule in play: {uci: (claim, why)} for the double threats whose local check wins at least min_gain."""
+def fork_claims(b: chess.Board, min_gain: float = 1.0, families=("double threat", "pin")) -> dict:
+    """The proposer: {uci: (claim, why)} for the moves of the chosen families whose local check wins at least min_gain
+    (the certificate, Ideas/Fork.lean, is the same for every family: a forced gain three plies on)."""
     out = {}
-    for m, targets, check in double_threats(b):
-        k, reply = local_claim(b, m, targets)
-        if k >= min_gain:
-            names = ", ".join(chess.square_name(t) for t in targets)
-            out[m.uci()] = (k, f"{'check and ' if check else ''}new threats on {names}: after any reply we take at least {k:+.1f} (worst reply {reply})")
+    seen = set()
+    for fam in families:
+        trig = double_threats(b) if fam == "double threat" else pins_and_skewers(b)
+        for m, targets, check in trig:
+            if m.uci() in seen:
+                continue
+            k, reply = local_claim(b, m, targets)
+            if k >= min_gain:
+                seen.add(m.uci())
+                names = ", ".join(chess.square_name(t) for t in targets)
+                what = "new threats on" if fam == "double threat" else "a pin or skewer through"
+                out[m.uci()] = (k, f"{'check and ' if check else ''}{what} {names}: after any reply we take at least {k:+.1f} (worst reply {reply})")
     return out
 
 
