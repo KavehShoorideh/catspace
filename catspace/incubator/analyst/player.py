@@ -413,7 +413,7 @@ class FrameMover:
     def __init__(self, rng: random.Random, rules: list | None = None):
         from . import fates, frame_player as FP
         FP.LEDGER = "one_ply"                                            # (the default; set so the mode cannot be inherited)
-        FP.RULES[:] = [FP.RULE_BOOK[name]() for name in (rules or [])]   # the rules in play, by name
+        FP.RULES[:] = FP.rules_in_order(rules or [])                     # the rules in play, by name, in RULE_ORDER
         self.FP, self.fates, self.rng = FP, fates, rng                    # rng: this mover's OWN stream (seed + 1), so the opponent's
         self.stats = Counter(pruned=0, legal=0, extended=0, decisions=0, sched_answered=0, sched_asked=0, sched_hit=0, sched_run=0)   # draws
         self.lemma_usage = Counter()                                      # match those of any other engine (review 2026-10-05)

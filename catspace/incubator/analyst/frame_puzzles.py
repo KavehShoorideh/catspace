@@ -220,8 +220,9 @@ def main(argv=None):
         raise SystemExit("fork_hint is the double threat's uncertified evidence: it goes with --rules fork")
     if a.rules and a.ledger != "one_ply":
         raise SystemExit("--rules apply at zero search only: add --ledger one_ply (the hook is not in the zone-search path)")
-    for name in a.rules:                                          # the rules in play at zero search (frame_player.RULE_BOOK)
-        FP.RULES.append(FP.RULE_BOOK[name]()); tag += f"_rule_{name}"
+    FP.RULES.extend(FP.rules_in_order(a.rules))                   # the rules in play at zero search, in RULE_ORDER
+    for name in a.rules:                                          # (the tag keeps the command line's order: old dump names)
+        tag += f"_rule_{name}"
     if a.jobs:
         planner_kw["jobs"] = True; FP.JOBS = True; tag += "_jobs"
     spec_kw = {}                                                  # the tactical spec's limits, all the planner's

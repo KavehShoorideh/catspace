@@ -157,7 +157,9 @@ class Rule:
 def apply_rules(b: chess.Board, values: dict, trace: dict | None = None) -> dict:
     """Apply RULES to the ledger's values in place. -> {uci: [why, ...]} for the moves a rule touched. A proved rule's
     claim is added to the value (the passer's conservative credit is the model); a conjecture may only lower, by 1e-3,
-    the tied top moves it ranks below its best -- a tied move it says nothing about keeps the top."""
+    the tied top moves it ranks below its best positive claim -- a tied move it says nothing about is lowered too (review
+    2026-10-05: kept level, a claimed fork could never rise above a quiet tied move; this docstring said otherwise until
+    the review of 2026-10-06). Conjectures act in RULES order, each on what is still tied (canonical: RULE_ORDER)."""
     notes: dict = {}
     fired = 0
     for r in RULES:
@@ -255,6 +257,13 @@ def _passer_setup_fire(b: chess.Board) -> dict:
                 out[u] = (g, f"after {u} the pawn on {chess.square_name(sq)} queens within {plies} more plies whatever they "
                              f"reply (proved composition); credit {g:+.1f} after their best reply")
     return out
+
+
+def _opening_fire(b: chess.Board) -> dict:
+    """The opening subgoals (opening_subgoals.opening_claims: castle > develop > develop toward the centre > a centre pawn >
+    a steady move), a conjecture: it only orders the moves the ledger ties, in the opening only."""
+    from .opening_subgoals import opening_claims
+    return opening_claims(b)
 
 
 _FORK_CACHE: dict = {}                                               # fen -> certified claims (one Lean round per position per choose)
@@ -357,7 +366,23 @@ RULE_BOOK = {"passer": lambda: Rule("passer", "proved", _passer_fire),     # by 
              "passer_setup": lambda: Rule("passer_setup", "proved", _passer_setup_fire),   # the passer's composition over one reply
              "refute": lambda: Rule("refute", "proved", _refute_fire, "veto", True),   # a proved negative claim on the tied top moves
              "fork": lambda: Rule("fork", "proved", _fork_fire, "at_least"),   # proved: every claim it returns is Lean-certified
-             "fork_hint": lambda: Rule("fork_hint", "conjecture", _fork_hint_fire)}   # its uncertified proposals: a tie-break
+             "fork_hint": lambda: Rule("fork_hint", "conjecture", _fork_hint_fire),   # its uncertified proposals: a tie-break
+             "opening": lambda: Rule("opening", "conjecture", _opening_fire)}   # the opening subgoals (opening_subgoals): a tie-break
+
+
+RULE_ORDER = ("passer", "fork", "refute", "passer_setup", "fork_hint", "opening")   # the order the harnesses apply them in:
+                                                                 # the measured bundles' order; tactics before the opening
+                                                                 # subgoals (review 2026-10-06: listed first, the opening rule
+                                                                 # settled the ties and fork_hint's claims were dropped)
+assert set(RULE_ORDER) == set(RULE_BOOK)
+
+
+def rules_in_order(names) -> list:
+    """The named rules, built in RULE_ORDER whatever order they were given in."""
+    unknown = set(names) - set(RULE_BOOK)
+    if unknown:
+        raise KeyError(f"unknown rules: {sorted(unknown)}")
+    return [RULE_BOOK[n]() for n in RULE_ORDER if n in names]
 
 
 def _one_ply_values(b: chess.Board, before, book) -> dict:
