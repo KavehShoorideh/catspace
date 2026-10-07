@@ -22874,6 +22874,12 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-07 14:34 PDT — addendum: the wide tables change nothing on the puzzles (OBS)
+
+The map on the wide-census tables (both ratings read as 1800), the same bundle and sets: general 188.1 (26 up, 39 down
+against the bundle; against the 1500-2200 tables 1 up, 0 down); pawn endings 67.4 (103 up, 93 down; identical). At
+one rating the tables' Elo dependence is idle; it is for play against a known opponent (the games: us 1400, them 2000).
+
 ## 2026-10-07 14:24 PDT — the map in play, corrected: pawn endings 24.6 -> 67.4 and general 176.3 -> 187.1 at zero search; the positive result checked (OBS)
 
 The corrected map (the value after a move is the opponent's by its own tables, negated), the 1500-2200 tables, in the
