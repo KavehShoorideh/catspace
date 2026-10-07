@@ -22874,6 +22874,33 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-07 12:43 PDT — addendum: Kaveh's reframing of (b) -- predict futures where tactics are available for me and not for my foe (OBS)
+
+Kaveh (asked): "what do we expect of (b)? I just want to predict futures where tactics might be available for me and
+not available for my foe." The right pair of questions for a navigating planner: (i) is that state worth reaching;
+(ii) is it predictable from what we know, at a horizon we can act on. (b) as registered asked neither directly.
+STATE (the side to move's view): ours only = some family at k = 0 for us and none for them (null move); both; neither;
+theirs only. One census; directional.
+OBS (i), the value of the state now: ours only (n 1,929) material gain >= 2 within 20 plies 43.0%, loss 15.6%, mean
+  game result +0.185; both (1,952) 43.5% / 19.6% / +0.076; neither (8,396) 11.7% / 19.4% / +0.006; theirs only
+  (3,673) 13.9% / 32.2% / -0.120.
+OBS (ii), AUC for "ours only" h plies ahead (persistence / tokens / eval+material+phase / tokens+eval, with the tokens'
+  increment over the eval and its interval):
+  h=2  (n 19,503, base 13.9%; from ours-only now 35.6%): 0.615 / 0.695 / 0.670 / 0.716 (+0.046 [+0.036, +0.056])
+  h=4  (18,899, 14.2%; 26.4%): 0.560 / 0.620 / 0.653 / 0.663 (+0.010 [+0.004, +0.016])
+  h=6  (18,338, 14.5%; 24.1%): 0.538 / 0.598 / 0.641 / 0.644 (+0.002 [-0.003, +0.008])
+  h=10 (17,242, 14.8%; 22.4%): 0.526 / 0.590 / 0.629 / 0.630 (+0.001 [-0.005, +0.007])
+  h=20 (14,566, 15.7%; 21.6%): 0.516 / 0.548 / 0.603 / 0.598 (-0.004 [-0.011, +0.002])
+  the 10-ply transition table is nearly uniform: from ours only -> ours only 22%, both 19%, neither 34%, theirs
+  only 24%; from theirs only -> 13% / 19% / 39% / 29%; from neither -> 13% / 13% / 51% / 23%.
+READING: the goal state is worth reaching, and it is predictable from the tokens two to four plies out, no further;
+beyond that, who is better (the evaluation) predicts the future tactical asymmetry, not the present tactical
+configuration -- the tactical landscape has a short memory, while a single family's ladder persists ((a): a winning
+pin still wins 10 plies later in 40% of episodes, a proved passer in 79%). On this vocabulary the planner is a
+short-horizon GRADIENT over the ladders of the families that carry one (back rank, discovery, pin, passer), stepped
+each move among the tactical layer's safe equal moves; the long range needs a standing for "who is better", which the
+tokens do not carry and which, from the games, is where the player loses.
+
 ## 2026-10-07 12:30 PDT — the tactic census: do barriers predict tactics, do tokens predict the future? (a) yes, (b) not beyond the immediate (OBS)
 
 Kaveh's planner idea (2026-10-07 morning, memory planner_tactic_tokens_2026_10_07): the world as tactic TOKENS, fired or

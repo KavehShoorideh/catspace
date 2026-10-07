@@ -232,3 +232,6 @@ Newest entry first. Times from `date` (PDT).
 - Smoke caught two false gates; the review caught three bugs (censoring, reference, check gate) -> fixed, rows re-tokenized.
 - OBS gate: (a) PASS (back_rank 5.7x, discovery 4.3x, pin 2.0x ours; all five theirs); (b) FAIL as registered (latent
   +0.004); post hoc: no-eval baseline at 10 plies latent +0.013/+0.019 (CI > 0). One of two -> inspect; Kaveh's call.
+- 2026-10-07 12:43 PDT (b) reframed per Kaveh: 'ours only' state is worth reaching (gain 43% vs 12%, result +0.19 vs -0.12);
+  predictable from tokens at 2-4 plies (AUC 0.70/0.62), not at 10+ (eval 0.63 beats tokens 0.59). Planner = short-horizon
+  ladder gradient; long range needs 'who is better'. Kaveh's call next.
