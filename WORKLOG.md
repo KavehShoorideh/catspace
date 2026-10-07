@@ -238,3 +238,5 @@ Newest entry first. Times from `date` (PDT).
 - 2026-10-07 12:54 PDT pressure measured (tactic_pressure.py + test): differential monotone with outcomes (>= +2: gain 46%, result
   +0.25; <= -2: loss 34%, -0.18); structure predicts future pressure R2 0.11-0.14 (> eval 0.05-0.09; all 0.22); f-pawn
   moved: pressure on us 0.46 -> 0.57. Kaveh discussing the planner design.
+- 2026-10-07 13:22 PDT coverage by Kaveh's tactic definition (tactic_coverage.py + 3 tests; first version retracted): 920 fired
+  tactics; motif attributed 16.5%, search-only 59%, gap 13.6%, nearly 6.8%. Family = same outs/guards (his def) recorded.

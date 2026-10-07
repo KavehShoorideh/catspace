@@ -22874,6 +22874,30 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-07 13:22 PDT — the coverage gap of the tactical vocabulary, by Kaveh's definition of a tactic (OBS)
+
+Kaveh: a tactic is "a piece that is lost despite being visibly defended -- at first glance it is defended, but not
+really -- or not immediately under threat, but it will be lost in the near future, no way around it"; a pawn counts.
+And (asked): "don't gate on a fake measurement" -- the first version of this measurement is retracted before use:
+it counted the double threat (a 3-ply search) as a named family (613 of 663 'named' gains), read losses one ply
+late, took co-occurrence for attribution, dropped a game's last plies, and defined a tactic as a 2-pawn swing.
+THE MEASUREMENT (`tactic_coverage.py`, tested on a constructed fork and a constructed hang): a fired tactic against
+V = a piece of V that, with A to move, is visibly safe (not attacked) or visibly defended (attacked, defended, no
+cheaper attacker), captured within 6 plies (followed by identity), V's material down 1+ at the window's end, and
+FORCED: Stockfish (depth 10, the census) shows V a pawn or more worse at its next turn than at its previous one.
+What saw it at its start: a motif family (back rank, passer, pin, discovery) at k = 0 whose own strike is the move
+played (attributed) or merely on the board (co-occurring); the short exact searches only (double threat's 3-ply
+check, the one-ply read); a motif one away; nothing.
+OBS, c300, 300 games: pieces lost within 6 plies with the loser down 1+: 7,087 -- plain hangs 2,810; visibly safe
+  or defended but lost: FORCED 920 (not attacked at the start 498, visibly defended 422), not forced (a later error
+  by the victim) 3,345, unknown 12.
+  the 920 fired tactics at their start: motif attributed 152 = 16.5% (pawns 56, pieces 96); motif co-occurring 37 =
+  4.0%; search only 543 = 59.0%; nearly 63 = 6.8%; gap 125 = 13.6%. Motifs present: pin 172, discovery 26.
+READING (directional): the vocabulary names one fired tactic in six; three in five are seen only as material by the
+short exact reads -- the frames Kaveh wants recorded -- and one in five is not seen at six plies. "Forced" is a
+depth-10 evaluation proxy. Kaveh's family definition (same outs and guards, invariances folded in) recorded in memory;
+the outs signature is the next thing to extract.
+
 ## 2026-10-07 12:54 PDT — PRESSURE: the availability of tactics as a scalar; structure predicts the pressure to come; the f-pawn (OBS)
 
 Kaveh: predict not the specific tactics but how many are available -- pressure on me, pressure on them; a weakened
