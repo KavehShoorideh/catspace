@@ -22874,6 +22874,28 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-07 14:24 PDT — the map in play, corrected: pawn endings 24.6 -> 67.4 and general 176.3 -> 187.1 at zero search; the positive result checked (OBS)
+
+The corrected map (the value after a move is the opponent's by its own tables, negated), the 1500-2200 tables, in the
+bundle passer + passer_setup + fork + fork_hint + refute + opening, held-out sets of 300 at zero search, one run each:
+  general       bundle 234 tied / 165 single / 176.3 expected -> + tactic_map 195 / 181 / 187.1 (25 puzzles up, 40 down)
+  pawn endings  bundle 220 / 7 / 24.6 -> + tactic_map 127 / 52 / 67.4 (103 up, 93 down); the zone search: 76.8 at 2,219 nodes a step
+THE CHECK (Kaveh: "don't fire on a fake measurement"): the map scores every tied move, so a hair's difference breaks a
+tie. On pawn endings, the 93 DEMOTED puzzles: the map's gap over the solution median 0.28 pawns, >= 0.5 in 40, < 0.1 in
+21 -- confidently wrong, not noise. The 103 LIFTED: the solution's gap over the runner-up median 0.06, < 0.1 in 55 --
+won by a hair. A random order of an 8-move tie would demote seven times more than it lifts, so the hair-thin margins
+carry signal (the k = 1 terms and the one-ply read after the move); a threshold on the gap would cut 55 lifts to spare
+21 demotions and lose. The number stands as one run: the map turns 52 random picks among tied king and pawn moves
+into single correct tops, because the Lean passer detector, read ONE PLY AHEAD on every tied move, certifies "after
+this move my pawn is unstoppable" (+4.4 in the tables) -- the passer rule had credited only the push of a passer
+already proved, and passer_setup only the same-pawn set-up forced against every reply.
+THE CONFIDENT MISSES (40 with a gap >= 0.5): pawn solution, pawn chosen 19; pawn solution, king chosen 11; king
+solution, pawn chosen 7; king, king 3. Read by eye (five): the map takes its own passer (+3.6 for h3 in 01Nny) and
+does not see the opponent's -- their passer at k = 2 (two hypotheses fail: not proved, still running) costs nothing in
+the tables; the solution was the king move toward it. The blind spot is the vocabulary's: k = 2 is invisible, and a
+race is two passers. Reading: real and large on pawn endings, modest on the general set, and the misses are the
+unproved threats the tables cannot price. Directional; the wide-table run and 100 games vs Stockfish-2000 follow.
+
 ## 2026-10-07 14:18 PDT — the wide-Elo census: the rating dependence of a tactic is on the DEFENCE; the map's tables; a map bug caught on a positive result (OBS)
 
 THE CENSUS: 600 Lichess games, 150 in each of 1000-1400, 1400-1700, 1700-2000, 2000-2500 (both players inside the band;

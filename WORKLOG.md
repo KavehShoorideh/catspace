@@ -246,3 +246,5 @@ Newest entry first. Times from `date` (PDT).
 - 2026-10-07 14:18 PDT wide census done (600 games, 44,902 positions); Elo dependence is in the defence (outs 69->76%, exposed cost
   -0.40->-0.08); map bug (hold/exposed swapped after our move) fixed before quoting; runs: map2 (c300 tables), map3 (wide),
   sf2000x_map_s1..5 (100 games, map in the bundle). 
+- 2026-10-07 14:24 PDT corrected map (c300 tables): general 176.3 -> 187.1 (25 up/40 down), pawn endings 24.6 -> 67.4 (103/93);
+  gap check: downs median 0.28 (40 >= 0.5, confident misses: the opponent's k=2 passer unpriced), ups median 0.06. Stands.
