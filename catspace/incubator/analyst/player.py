@@ -540,8 +540,6 @@ def main(argv=None):
     from .frame_player import RULE_BOOK
     ap.add_argument("--rules", nargs="*", default=[], choices=sorted(RULE_BOOK), help="--engine frame: the rules in play (frame_player.RULE_BOOK)")
     a = ap.parse_args(argv)
-    if "fork_hint" in a.rules and "fork" not in a.rules:
-        raise SystemExit("fork_hint is the double threat's uncertified evidence: it goes with --rules fork")
     if a.rules and a.engine != "frame":
         raise SystemExit("--rules belong to --engine frame (the rules player has its own lemma library)")
     if a.cmd == "analyse" and a.engine == "frame":

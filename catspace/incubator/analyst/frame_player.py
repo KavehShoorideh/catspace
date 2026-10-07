@@ -206,29 +206,34 @@ def apply_rules(b: chess.Board, values: dict, trace: dict | None = None) -> dict
 
 
 def _passer_fire(b: chess.Board) -> dict:
-    """The proved passer (Ideas.Passer2.unstoppablePasser2_sound) as a rule: its push is credited with its conservative
-    gain -- the queen it brings less what the enemy can reach during the race (lean_passer_v2_proto.proved_passer_gains)."""
-    from .lean_passer_v2_proto import proved_passer_gains
+    """The proved passer (Ideas.Passer2.unstoppablePasser2_sound) as a rule: its push is credited with the census's price
+    for a proved passer at our rating (tactic_map.passer_credit; 2026-10-07: the hand formula -- the queen less what the
+    enemy can reach, only when its pawns are slow -- is gone, the basics price everything the same way)."""
+    from .lean_passer_v2_proto import proved_passers
+    from .tactic_map import passer_credit
     out = {}
     fwd = 8 if b.turn == chess.WHITE else -8
-    for sq, (g, plies) in proved_passer_gains(b).items():
+    g = passer_credit()
+    for sq, plies in proved_passers(b):
         m = chess.Move(sq, sq + fwd)                                 # the proof's first move: the single push (review 2026-10-05: the
         if m in b.legal_moves and not m.promotion:                  # double push is another position's claim; a promotion is paid by
-            out[m.uci()] = (g, f"the pawn on {chess.square_name(sq)} queens within {plies} plies whatever they do (proved); credit {g:+.1f} after their counterplay")   # the ledger)
+            out[m.uci()] = (g, f"the pawn on {chess.square_name(sq)} queens within {plies} plies whatever they do (proved); "   # the ledger
+                               f"credit {g:+.1f}, the census's price of a proved passer at our rating")
     return out
 
 
 def _passer_setup_fire(b: chess.Board) -> dict:
     """The passer's COMPOSITION (Ideas/Setup.lean, setsUpPasser2_sound): a move after which every legal reply leaves
-    the same pawn of ours an unstoppable passer of the second form, certified by the kernel for every reply. Its
-    credit is the passer's conservative gain (proved_passer_gains) read after the WORST reply; a move the direct
-    passer rule already credits (the proved passer's own push) is left to that rule, so the two never add up."""
+    the same pawn of ours an unstoppable passer of the second form, certified by the kernel for every reply; credited
+    with the census's price of a proved passer. A move the direct passer rule already credits is left to that rule."""
     from .lean_ideas import detector
-    from .lean_passer_v2_proto import passer_gate, proved_passer_gains
+    from .lean_passer_v2_proto import passer_gate
+    from .tactic_map import passer_credit
     if not passer_gate(b):
         return {}
     direct = _passer_fire(b)
     li = detector()
+    g = passer_credit()
     out = {}
     for m in b.legal_moves:
         u = m.uci()
@@ -238,24 +243,10 @@ def _passer_setup_fire(b: chess.Board) -> dict:
             got = li.passer_setup(b, m)
         except (ValueError, RuntimeError):                          # a checker error counts as refused
             continue
-        if not got:
-            continue
-        q = b.copy(stack=False); q.push(m)
-        replies = list(q.legal_moves)
-        for sq, plies in got.items():
-            credits = []
-            for r in replies:
-                q2 = q.copy(stack=False); q2.push(r)
-                g = proved_passer_gains(q2).get(sq)
-                if g is None:
-                    credits = None; break
-                credits.append(g[0])
-            if not credits:
-                continue
-            g = min(credits)
-            if g > 0 and g > out.get(u, (0.0,))[0]:
-                out[u] = (g, f"after {u} the pawn on {chess.square_name(sq)} queens within {plies} more plies whatever they "
-                             f"reply (proved composition); credit {g:+.1f} after their best reply")
+        if got:
+            sq, plies = min(got.items(), key=lambda kv: kv[1])
+            out[u] = (g, f"after {u} the pawn on {chess.square_name(sq)} queens within {plies} more plies whatever they "
+                         f"reply (proved composition); credit {g:+.1f}")
     return out
 
 
@@ -265,13 +256,6 @@ def _tactic_map_fire(b: chess.Board, values: dict, trace: dict) -> dict:
     from .tactic_map import map_fire
     top = max(values.values()); tied = [u for u, v in values.items() if v == top]
     return map_fire(b, tied)
-
-
-def _opening_fire(b: chess.Board) -> dict:
-    """The opening subgoals (opening_subgoals.opening_claims: castle > develop > develop toward the centre > a centre pawn >
-    a steady move), a conjecture: it only orders the moves the ledger ties, in the opening only."""
-    from .opening_subgoals import opening_claims
-    return opening_claims(b)
 
 
 _FORK_CACHE: dict = {}                                               # fen -> certified claims (one Lean round per position per choose)
@@ -320,19 +304,6 @@ FORK_STATS = {"claims": 0, "certified": 0, "lower": 0, "errors": 0}   # proposal
 FORK_ERRORS: list = []
 
 
-def _fork_hint_fire(b: chess.Board) -> dict:
-    """The same rule's proposals as EVIDENCE (a conjecture: a tie-break only). Every proposal is carried at the larger
-    of its claim and its certified gain, so a certified move never ranks below an uncertified one of equal claim
-    (review 2026-10-06)."""
-    from .tactic_rules import fork_claims
-    certified = _fork_fire(b)
-    out = {}
-    for u, (v, why) in fork_claims(b).items():
-        c = certified.get(u, (0.0, ""))[0]
-        out[u] = (max(v, c), why + (" (certified)" if u in certified else " (uncertified: a hint)"))
-    return out
-
-
 def _refute_fire(b: chess.Board, values: dict, trace: dict) -> dict:
     """THE REFUTATION, certified: for each move the ledger ties at the top, the opponent's best double threat after it,
     certified by the kernel from their side (the same Fork.lean certificate); -> {uci: (their certified gain, why)}.
@@ -371,21 +342,15 @@ def _refute_fire(b: chess.Board, values: dict, trace: dict) -> dict:
 
 
 RULE_BOOK = {"passer": lambda: Rule("passer", "proved", _passer_fire),     # by name, for the harnesses' --rules
-             "passer_setup": lambda: Rule("passer_setup", "proved", _passer_setup_fire),   # the passer's composition over one reply
              "refute": lambda: Rule("refute", "proved", _refute_fire, "veto", True),   # a proved negative claim on the tied top moves
              "fork": lambda: Rule("fork", "proved", _fork_fire, "at_least"),   # proved: every claim it returns is Lean-certified
-             "fork_hint": lambda: Rule("fork_hint", "conjecture", _fork_hint_fire),   # its uncertified proposals: a tie-break
-             "opening": lambda: Rule("opening", "conjecture", _opening_fire),   # the opening subgoals (opening_subgoals): a tie-break
-             "tactic_map": lambda: Rule("tactic_map", "conjecture", _tactic_map_fire, "add", True)}   # the tactic map's expected gain: a tie-break
+             "passer_setup": lambda: Rule("passer_setup", "proved", _passer_setup_fire),   # the passer's composition over one reply
+             "tactic_map": lambda: Rule("tactic_map", "conjecture", _tactic_map_fire, "add", True)}   # the census's expected gain: the one tie-break
+# 2026-10-07, Kaveh: "I would like the basics to be sound" -- removed: fork_hint (the uncertified proposals as a tie-break)
+# and opening (hand principles, whose job belongs to the map's pressure term); the pin/skewer proposer; the hand passer credit.
 
 
-RULE_ORDER = ("passer", "fork", "refute", "passer_setup", "fork_hint", "opening", "tactic_map")   # the order the harnesses apply them in:
-                                                                 # the measured bundles' order; tactics before the opening
-                                                                 # subgoals (review 2026-10-06: listed first, the opening rule
-                                                                 # settled the ties and fork_hint's claims were dropped); the
-                                                                 # opening principles before the map (2026-10-07: the map's
-                                                                 # hair-thin differences settled the opening ties first and
-                                                                 # the move-10 deficit came back, -164 -> -222 cp)
+RULE_ORDER = ("passer", "fork", "refute", "passer_setup", "tactic_map")   # the order the harnesses apply them in: proved rules, then the one tie-break
 assert set(RULE_ORDER) == set(RULE_BOOK)
 
 

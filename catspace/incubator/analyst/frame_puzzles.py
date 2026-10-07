@@ -216,8 +216,6 @@ def main(argv=None):
         planner_kw["lemmas"] = True; tag += "_lemmas"
     for name in a.armed:                                          # the armed lemmas (discovery, pin, backrank)
         FP.ARMED.add(name); tag += f"_{name}"
-    if "fork_hint" in a.rules and "fork" not in a.rules:
-        raise SystemExit("fork_hint is the double threat's uncertified evidence: it goes with --rules fork")
     if a.rules and a.ledger != "one_ply":
         raise SystemExit("--rules apply at zero search only: add --ledger one_ply (the hook is not in the zone-search path)")
     FP.RULES.extend(FP.rules_in_order(a.rules))                   # the rules in play at zero search, in RULE_ORDER

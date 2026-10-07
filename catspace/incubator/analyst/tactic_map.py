@@ -167,6 +167,13 @@ def _map():
     return _MAP
 
 
+def passer_credit() -> float:
+    """The census's price of a proved passer for a player of our rating: the `hold` of the passer family (the material
+    swing over the window when a proved passer is available at one's turn; +4.4 pawns in both censuses)."""
+    tm = _map()
+    return float(tm.t["hold"][f"passer|{band_name(tm.elo_us, tm.bands)}"])
+
+
 def map_fire(b: chess.Board, tied: list | None = None) -> dict:
     """The rule: {uci: (score, why)} over the moves (the ledger's ties when given, else every legal move); score = V after
     the move shifted to be positive (a conjecture's claim orders only when positive)."""

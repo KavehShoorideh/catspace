@@ -67,24 +67,13 @@ def test_a_conjecture_only_breaks_ties(rules):
 
 
 def test_passer_rule_credits_the_push(rules):
-    from catspace.incubator.analyst.lean_passer_v2_proto import QUEEN_GAIN, proved_passer_gain, proved_passer_gains, proved_passers, random_pawn_ending
+    from catspace.incubator.analyst.tactic_map import passer_credit
     b = chess.Board("7k/8/P7/8/8/8/8/1K6 w - - 0 1")                             # a6 queens; the black king is far
-    gains = proved_passer_gains(b)
-    assert set(gains) == {chess.A6} and gains[chess.A6][0] == QUEEN_GAIN
+    g = passer_credit()
+    assert 3.0 < g < 6.0                                                        # the census's price of a proved passer
     rules.append(FP.RULE_BOOK["passer"]())
     c = _values(b.fen())
-    assert c["best"] == ["a6a7"] and c["values"]["a6a7"] == pytest.approx(QUEEN_GAIN) and "proved" in c["rules"]["a6a7"][0]
-    rng = random.Random(3)
-    n = 0
-    for _ in range(300):
-        pe = random_pawn_ending(rng)
-        if pe is None:
-            continue
-        g = proved_passer_gains(pe)
-        assert set(g) <= {sq for sq, _ in proved_passers(pe)} and all(0 < v <= QUEEN_GAIN for v, _ in g.values())
-        assert proved_passer_gain(pe) == pytest.approx(max((v for v, _ in g.values()), default=0.0))
-        n += 1
-    assert n > 100
+    assert c["best"] == ["a6a7"] and c["values"]["a6a7"] == pytest.approx(g) and "proved" in c["rules"]["a6a7"][0]
 
 
 def test_veto_charges_only_what_the_ledger_did_not(rules):
