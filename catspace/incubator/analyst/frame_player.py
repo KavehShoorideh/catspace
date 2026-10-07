@@ -216,6 +216,47 @@ def _passer_fire(b: chess.Board) -> dict:
     return out
 
 
+def _passer_setup_fire(b: chess.Board) -> dict:
+    """The passer's COMPOSITION (Ideas/Setup.lean, setsUpPasser2_sound): a move after which every legal reply leaves
+    the same pawn of ours an unstoppable passer of the second form, certified by the kernel for every reply. Its
+    credit is the passer's conservative gain (proved_passer_gains) read after the WORST reply; a move the direct
+    passer rule already credits (the proved passer's own push) is left to that rule, so the two never add up."""
+    from .lean_ideas import detector
+    from .lean_passer_v2_proto import passer_gate, proved_passer_gains
+    if not passer_gate(b):
+        return {}
+    direct = _passer_fire(b)
+    li = detector()
+    out = {}
+    for m in b.legal_moves:
+        u = m.uci()
+        if m.promotion or u in direct:
+            continue
+        try:
+            got = li.passer_setup(b, m)
+        except (ValueError, RuntimeError):                          # a checker error counts as refused
+            continue
+        if not got:
+            continue
+        q = b.copy(stack=False); q.push(m)
+        replies = list(q.legal_moves)
+        for sq, plies in got.items():
+            credits = []
+            for r in replies:
+                q2 = q.copy(stack=False); q2.push(r)
+                g = proved_passer_gains(q2).get(sq)
+                if g is None:
+                    credits = None; break
+                credits.append(g[0])
+            if not credits:
+                continue
+            g = min(credits)
+            if g > 0 and g > out.get(u, (0.0,))[0]:
+                out[u] = (g, f"after {u} the pawn on {chess.square_name(sq)} queens within {plies} more plies whatever they "
+                             f"reply (proved composition); credit {g:+.1f} after their best reply")
+    return out
+
+
 _FORK_CACHE: dict = {}                                               # fen -> certified claims (one Lean round per position per choose)
 
 
@@ -313,6 +354,7 @@ def _refute_fire(b: chess.Board, values: dict, trace: dict) -> dict:
 
 
 RULE_BOOK = {"passer": lambda: Rule("passer", "proved", _passer_fire),     # by name, for the harnesses' --rules
+             "passer_setup": lambda: Rule("passer_setup", "proved", _passer_setup_fire),   # the passer's composition over one reply
              "refute": lambda: Rule("refute", "proved", _refute_fire, "veto", True),   # a proved negative claim on the tied top moves
              "fork": lambda: Rule("fork", "proved", _fork_fire, "at_least"),   # proved: every claim it returns is Lean-certified
              "fork_hint": lambda: Rule("fork_hint", "conjecture", _fork_hint_fire)}   # its uncertified proposals: a tie-break

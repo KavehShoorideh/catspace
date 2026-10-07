@@ -122,12 +122,13 @@ def _fixture_filter():
 
 
 def test_open_pgn_zst_streams(tmp_path):
+    before = set(FIXTURES.glob("*.pgn"))                  # fixtures may hold plain .pgn files of their own (opera_game.pgn)
     with open_pgn_zst(FIXTURE_PGN) as stream:
         head = stream.read(200)
     assert "[Event" in head
     # never materializes a decompressed .pgn anywhere on disk
     assert not list(tmp_path.glob("*.pgn"))
-    assert not list(FIXTURES.glob("*.pgn"))
+    assert set(FIXTURES.glob("*.pgn")) == before
 
 
 def test_fixture_filters():

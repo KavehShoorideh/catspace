@@ -178,3 +178,17 @@ Newest entry first. Times from `date` (PDT).
 - Journal entry 21:37 written (newest-first block; 17:35 entry moved above the Oct 2 entries). BUGS.md 2026-10-04.
 - NEXT: generic bounded certificate (any goal) proved adequate; forcing-tier back-rank mate in 2 (one-away + forced
   deflection); passer KPK; in-process detector (FFI) to remove the pipe cost.
+
+## 2026-10-06 19:22 PDT — the cone form proved; setsUpPasser2 measured and wired (passer_setup)
+- Passer2.lean: captureSquaresB, pawnFarB (cone form), Inv2.pawnsFar as a disjunction, enemy_move2 carries the captured
+  piece, captureSquares_mono, five proof sites; build 10.7 s first try; axioms standard (4 theorems checked).
+- Mirror (lean_passer_v2_proto.passer_v2) on the same pdist bound; 0 mismatches on 2,701 instances.
+- OBS: held-out pawn endings PROVED 57 -> 62 (bridge 62/62), random 354 -> 360 (360/360); blocked: kingRoom 25,
+  kingOutside 16, pawnsFar 10 (held-out).
+- Setup.lean + Main.lean passersetup + LeanIdeas.passer_setup; measurement bug: one-shot arguments to a stdin-loop
+  binary (0/185) -> through the wrapper 185/185 certified, 0 wrong; 17 held-out positions reached beyond the direct passer.
+- Rule passer_setup (frame_player.RULE_BOOK); tests in test_analyst_lean_ideas / test_analyst_frame_rules.
+- OBS held-out pawn endings expected: passer 22.2 (either kernel) -> +setup 23.1; bundle 23.7 -> +setup 24.6.
+- test_data fixture collision fixed (pre-existing). Full suite green. SF-2000 phase 1: 20 games: 19 losses, 1 draw at the 200-ply cap (game 19 as white); score 2%; s/move 6.11 (the player's summary line).
+- NEXT: kingRoom / kingOutside invariants (the blocked list); phase 2 games; Kaveh's view on a tempo tie-break
+  between a queen now and a proved queen in three plies (equal credit today).

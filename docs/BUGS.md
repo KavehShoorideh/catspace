@@ -358,6 +358,15 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   and would have killed a run -- counted as refused instead.
 - **A five-ply kernel enumeration is minutes per claim** (measured by accident: the cost experiment never finished): the
   certificate's depth is bounded by the kernel's move generator, not by the statement.
+- **A stdin-loop binary called with arguments** (2026-10-06 evening, class: wrong channel): the first measurement of
+  `setsUpPasser2` passed `passersetup <uci> <fen>` as process arguments; `main` ignores them and reads stdin, so every
+  call returned nothing and the count read 0 certified of 185. Caught because 0/185 contradicted the detector's exact
+  agreement with the Python mirror. Fix: `LeanIdeas.passer_setup` through the wrapper's line protocol; 185/185.
+- **A prototype bound looser than the proof's** (class 3-like): the cone-form prototype counted ranks ahead for the
+  capture squares, which misses a double step from the start rank; the Lean form uses the same `pdist` as the
+  geometric clause, and the mirror now does too. No wrong claim had been made (every claim was bridge-checked).
+- **A fixture collides with its own test** (pre-existing on main): tests/fixtures/opera_game.pgn is tracked, and
+  test_open_pgn_zst_streams asserted no .pgn in fixtures. The test now compares the fixture set before and after.
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).

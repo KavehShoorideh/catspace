@@ -22874,6 +22874,64 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-06 19:22 PDT — the passer's `pawnsFar` tightened BY PROOF (the cone form); the composition theorem measured and wired as a rule (OBS)
+
+Kaveh's call this afternoon: families with invariants -- tighten the passer's hypotheses the passer's way, by changing
+the invariant and re-proving, not by another search-style certificate.
+
+THE CONE FORM. A pawn changes file only by capturing; during the race no piece of ours moves but the passer, along its
+path; so the squares an enemy pawn could ever capture on are our pieces' squares and the path (`captureSquaresB`).
+`pawnsFar` now reads, for each enemy pawn and each bad square: the geometric bound (more than n-1 moves away, as
+before) OR the bad square is off the pawn's file and the pawn cannot leave its file in time -- it is more than n-1
+moves from every capture square on the files beside it. In Lean (`Ideas/Passer2.lean`): `Inv2.pawnsFar` takes the
+disjunction; `enemy_move2` now carries, for a diagonal pawn move, the piece that stood on the target (a capture needs
+one); `captureSquares_mono` (the capture squares after our push and their reply were capture squares before); the
+five proof sites repaired -- a straight move keeps the file and `pdist_step` carries both clauses, a capture lands on
+a capture square the pawn was far from, so the geometric clause held. Axioms of `unstoppablePasser2_sound`,
+`setsUpPasser2_sound`, `captureSquares_mono`, `localCheck_sound`: propext, Classical.choice, Quot.sound. The build
+passed first time (10.7 s). The Python mirror (`lean_passer_v2_proto.passer_v2`) carries the same form with the same
+`pdist` bound -- my prototype this afternoon counted ranks, which misses a double step: a soundness nit the proof
+caught before it mattered (no wrong claim had been made; the bridge had checked every claim).
+OBS (one run each; directional):
+  held-out pawn endings (814 positions): PROVED with the geometric rule 57 -> with the cone form 62; one-away 54,
+    blocked by kingRoom 25, kingOutside 16, pawnsFar 10, enemyKingPawns 2, pathClear 1
+  random pawn endings (1500 draws): PROVED 354 -> 360; one-away 94, blocked by pawnsFar 28, pathClear 28,
+    kingOutside 24, kingRoom 14
+  the bridge (exhaustive race search) on every PROVED claim: held-out 62/62 right, random 360/360 right;
+    prototype/kernel hypothesis mismatches 0 on 2,701 passer instances
+
+THE COMPOSITION (`Ideas/Setup.lean`, proved this afternoon, committed now). `setsUpPasser2 p m sq`: after the move m,
+every legal reply leaves sq an unstoppable passer of the second form; `setsUpPasser2_sound` composes
+`unstoppablePasser2_sound` over the reply ply (`forcedWithinB` at 2*pushes plies after m). The binary's
+`passersetup <uci> <fen>`, the wrapper's `LeanIdeas.passer_setup(board, move)`. A first measurement passed the command
+as process arguments and got 0 certified of 185 candidates: the binary is a stdin loop and ignores its arguments (a
+bug in my measurement, not in the theorem; caught because 0/185 contradicted the detector's exact agreement with
+the mirror). Through the wrapper, OBS:
+  held-out pawn endings: prototype candidates 185 (move, pawn) pairs, kernel-certified 185, bridge-checked 185
+    with 0 wrong; fires in 68 positions, 17 of them with no directly proved passer (direct: 62 positions); the
+    set-up move is the puzzle's solution in 58 of the 68
+  random pawn endings (600 draws): 709 certified, 0 wrong; 94 positions, 3 without a direct passer
+
+THE RULE `passer_setup` (proved tier, add): the passer's conservative credit (`proved_passer_gains`: the queen less
+what the enemy can reach during the race, only when its own pawns are slow) read after the WORST reply; it skips
+promotions (the ledger pays them) and the moves the direct passer rule credits, so the two never add up. Tests: the
+kernel certificate on a position whose properties are asserted first by the race search (b8c8 in
+1K6/3P2P1/8/k4P2/8/8/3PP3/8 w sets up d7; Kxd4 refutes any set-up in 8/8/8/8/3Pk3/8/8/1K6 w); the rule's single
+credit. The harness takes `--rules passer_setup` (frame_puzzles, player).
+OBS held-out pawn endings at zero search, expected score of 300 puzzles (one run each):
+  no rules 22.0; passer (old kernel) 22.2; passer (cone form) 22.2, paired against the old kernel 1 puzzle up, 0
+  down; passer + passer_setup 23.1 (1 up, 0 down); the bundle passer+fork+fork_hint+refute: old kernel 23.7, cone
+  form 23.7 (1 up, 0 down), + passer_setup 24.6 (1 up, 0 down).
+Reading: five more proved pawns among 814 positions moved one puzzle; the composition moved one more. This set's
+misses are mostly king manoeuvres (oppositions, the square of the pawn), not passers -- and the blocked list above
+says where the next invariant is: kingRoom (25) and kingOutside (16). Directional; one run each.
+
+Also: tests/test_data.py was failing on main before this work (the tracked fixture opera_game.pgn collides with its
+"no .pgn in fixtures" assertion); the test now compares the fixture set before and after. Full suite green.
+
+Stockfish at a UCI Elo of 2000, the frame player at zero search, phase 1 (no rules), OBS: 20 games: 19 losses, 1 draw at the 200-ply cap (game 19 as white); score 2%; s/move 6.11 (the player's summary line).
+Phase 2 (fork + fork_hint) is running; both phases in the next entry.
+
 ## 2026-10-06 18:02 PDT — the PoC, round 2: what composition reaches, the refutation veto, four rules on the held-out sets (OBS)
 
 Kaveh's calls (asked): compose certificates for the quiet moves whose point lies beyond three plies; Stockfish at a

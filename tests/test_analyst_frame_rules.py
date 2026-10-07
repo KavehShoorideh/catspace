@@ -118,3 +118,15 @@ def test_refutation_vetoes_a_capture_the_kernel_refutes(rules):
     c = FP.choose(b)
     assert "d1d5" in c["rules"] and "certified by Lean for +" in c["rules"]["d1d5"][0]
     assert "d1d5" not in c["best"]
+
+
+def test_passer_setup_rule_credits_the_setup_move_once():
+    """The composition rule credits a king move after which the d-pawn queens whatever they reply; a promotion is
+    left to the ledger and a proved passer's own push to the passer rule, so the two rules never add up."""
+    from catspace.incubator.analyst.frame_player import _passer_fire, _passer_setup_fire
+    b = chess.Board("1K6/3P2P1/8/k4P2/8/8/3PP3/8 w - - 0 1")
+    direct = _passer_fire(b)
+    setup = _passer_setup_fire(b)
+    assert "b8c8" in setup and setup["b8c8"][0] > 0
+    assert "d7d8q" not in setup
+    assert not (set(direct) & set(setup))
