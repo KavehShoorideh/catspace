@@ -22919,6 +22919,11 @@ uncertified hint, as a tie-break, buys more expected puzzles with more losses; t
 At zero search the frames alone beat Maia-1500 nearly every game: the measurement that discriminates planning from
 exchange-reading is Maia-1900 or above, or the puzzle gap itself.
 
+ADDENDUM 17:12 PDT: BOTH TIERS together (the certified claims as proved values, the uncertified proposals as a
+tie-break), held-out, one run: general 237 / 162 / 174.5 (up 20, down 5) against 164.1 with no rules -- more than
+either tier alone (168.7, 172.1); pawn endings 224 / 5 / 23.1 (up 17, down 5) against 22.0. The design's two tiers
+compose: the certificate lifts solutions the ledger had below the top, the hint settles the ties among the rest.
+
 ## 2026-10-05 20:30 PDT — the PoC, round 0: the zero-search frame player measured, the rules' hook, two rules (OBS)
 
 Kaveh (evening): "we've drifted away from my basic goal ... so many little bugs that we get bogged down ... we don't know
