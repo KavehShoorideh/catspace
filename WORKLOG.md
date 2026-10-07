@@ -3,6 +3,16 @@
 Kaveh's two-journals rule (2026-09-16): this file keeps the agent on track; JOURNAL.md is Kaveh's, written for review.
 Newest entry first. Times from `date` (PDT).
 
+## 2026-10-06 17:09 PDT — PoC round 1: the double threat in Lean, certified in play
+
+- Ideas/Fork.lean: localCheck (3 plies after m, captures as our answers, kernel rules) -> forcedAtLeaves; axioms std.
+  First 2-ply statement certified Ng7+ for +3 (the recapture!): caught by the smoke, reply ply added. Binary: fork cmd.
+- frame_player fork rule = Python proposes, Lean certifies (bisection), tier proved; fork_hint = uncertified proposals
+  as a conjecture. OBS 200 dev positions: 105 proposals, 43 certified, 62 refused. Checker bridge vs python 4-ply
+  enumeration: 105/105 agree (test). Held-out: general 164.1 -> 168.7 (certified) / 172.1 (hint); pawns 22.0 -> 22.8 /
+  24.7. Both tiers: running (poc3). Games zero search: Maia-1500 95%; 1900 + random running.
+- NEXT: both-tiers result; Maia-1900; the next miss family (the pin/skewer: Bh4, Rh5; the quiet threat: f6, Rc1).
+
 ## 2026-10-05 20:30 PDT — the PoC (Kaveh's scope; three standing rules)
 
 - Scope confirmed: zero-search frame player + rolled-forward state + agent-written rules; off the shelf; reference +

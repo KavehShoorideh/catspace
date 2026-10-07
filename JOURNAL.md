@@ -22874,6 +22874,51 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-06 17:09 PDT — the PoC, round 1: the double threat stated and certified in Lean; its worth on the held-out sets (OBS)
+
+Kaveh (2026-10-05 night): "CPU is free. Double attack is great." THE LEAN STATEMENT (lean/ideas/Ideas/Fork.lean):
+`localCheck p m k` -- after our move m, every legal reply is answered by one of our CAPTURES after which, whatever
+they reply, material is up by k; their mate counts as won, a stalemate as no gain; the kernel's legal moves and
+applyMove throughout (en passant, promotion, castling as the rules say). `localCheck_sound`: it implies
+`forcedAtLeaves` -- the goal read at the LEAVES three plies on (unlike the passer's `forcedWithinB`, which reads it at
+every node: right for a promotion, wrong for material, which a recapture reverses). Proof: a rewrite plus "our answers
+were a sublist of the legal moves" (List.any over a filter). Axioms: propext, Classical.choice, Quot.sound. The
+`ideas` binary gained `fork <uci> <k> <fen>`: CERTIFIED or FAIL.
+A first statement, two plies deep, was WEAKER than the Python claim: it certified Ng7+ for +3 where the king recaptures
+the knight on e6 (+2). Caught by the smoke query against the test positions; the reply ply was added. The two bridge
+conventions my Python had got wrong the day before (a stalemating reply, a mating capture) are, in Lean, the kernel's.
+
+THE RULE IN PLAY: the Python local check PROPOSES (tactic_rules.fork_claims), the Lean checker CERTIFIES (the largest
+integer gain, by bisection: a forced gain of k forces every smaller k), the rule returns certified claims only, tier
+PROVED, mode at_least. OBS on 200 development positions: 105 proposals, 43 certified (19 at the full gain, 24 lower),
+62 refused -- the Python truth stopped before the opponent's last reply and credited gains a counter-capture elsewhere
+takes back; 191 ms a position with the certificates. THE CHECKER'S BRIDGE: an independent exact enumeration in
+python-chess of the statement's shape agreed with the kernel's largest certified gain on 105 of 105 proposals (now a
+test). The two tiers from one rule: `fork` (certified, proved) and `fork_hint` (the uncertified proposals, a
+conjecture: a tie-break).
+
+OBS, held-out sets of 300 at zero search, verify mode clean, one run each (tied / single / expected; up / down against
+no rules):
+  set            no rules            hint only (tie-break)        certified (proved, at_least)
+  general        236 / 149 / 164.1   232 / 161 / 172.1  (18/4)    241 / 153 / 168.7  (10/2)
+  pawn endings   226 /   6 /  22.0   223 /   8 /  24.7  (17/3)    225 /   5 /  22.8  (12/4)
+  development    120 /  89 /  94.1   119 /  91 /  95.5  ( 3/1)    122 /  91 /  96.1  ( 3/1)
+On the 30 development misses the certified rule puts the solution on top in 2 (Nf6+ 03bzK certified +5, Bxh7+ 046Rc
++7); the two the Python check alone had claimed (Nd3 07i5h, Bxc3 0550Q) the kernel refused: a fourth-ply reply takes
+the gain back. Both tiers together: running.
+GAMES at zero search, no rules, 20 each, seed 0 (reviewed harness): vs Maia-1100 98% (18 wins, 1 draw, 1 win on
+material at the cap); vs Maia-1500 95% (19 wins, 1 loss), 1.05 s a move, 23% of resolutions from memory, tied top sets
+single 250 of 821 choices. Maia-1900 and the random mover: running.
+
+READING (one run each, directional): the certified rule is the first tactic rule end to end -- a miss, a Python
+prototype, a bridge, a Lean statement proved with standard axioms, a kernel certificate per claim, a hook that applies
+it by tier, a measurement -- and it is sound where the prototype was not (62 of 105 proposals refused). Its worth is
+small on these sets (+4.6 expected puzzles of 300 on the general set, +0.8 on pawn endings): the double threat is one
+family among the quiet-move misses, and the puzzle sets reward the deeper line the certificate does not see. The
+uncertified hint, as a tie-break, buys more expected puzzles with more losses; the two tiers together are the design.
+At zero search the frames alone beat Maia-1500 nearly every game: the measurement that discriminates planning from
+exchange-reading is Maia-1900 or above, or the puzzle gap itself.
+
 ## 2026-10-05 20:30 PDT — the PoC, round 0: the zero-search frame player measured, the rules' hook, two rules (OBS)
 
 Kaveh (evening): "we've drifted away from my basic goal ... so many little bugs that we get bogged down ... we don't know
