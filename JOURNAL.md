@@ -22874,6 +22874,39 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-07 14:18 PDT — the wide-Elo census: the rating dependence of a tactic is on the DEFENCE; the map's tables; a map bug caught on a positive result (OBS)
+
+THE CENSUS: 600 Lichess games, 150 in each of 1000-1400, 1400-1700, 1700-2000, 2000-2500 (both players inside the band;
+3+ minutes, normal end, 40+ plies), 44,902 positions, 31 minutes on 8 workers, checkpointed per game (the crash test
+beforehand: killed after two games, resumed, 540 of 540 positions identical to the one-shot run), a watchdog on it.
+OBS P(EXECUTED: the holder gains 1+ within 4 plies | the holder's band), mean gain in brackets, bands 1000-1400 /
+  1400-1700 / 1700-2000 / 2000-2500:
+  material_now 59 [+1.15] / 60 [+1.18] / 60 [+1.16] / 59% [+1.10] (n 2,741 / 2,778 / 2,555 / 2,649)
+  double threat 58 [+1.14] / 59 [+1.02] / 55 [+0.89] / 60 [+1.08] (n 1,593 / 1,518 / 1,449 / 1,343)
+  pin 59 [+1.08] / 57 [+0.94] / 64 [+1.07] / 60 [+0.94] (459 / 436 / 352 / 331)
+  discovery 57 [+1.60] / 54 [+1.15] / 58 [+0.78] / 50 [+0.08] (63 / 39 / 36 / 38); passer 52 [+4.48] / - / 57 [+4.40] / -
+OBS P(the OUT is found: no loss of 1+ within 4 plies | the victim's band), the victim's mean swing in brackets:
+  material_now 69 [-0.11] / 71 [-0.12] / 74 [-0.07] / 76% [-0.01] (n 3,416 / 3,702 / 3,457 / 3,614)
+  double threat 64 [-0.40] / 66 [-0.30] / 72 [-0.17] / 73 [-0.08] (2,066 / 2,177 / 2,047 / 2,074)
+  pin 61 [-0.49] / 63 [-0.42] / 65 [-0.41] / 66 [-0.28] (641 / 657 / 569 / 626)
+  discovery 64 [-0.59] / 68 [-0.61] / 56 [-0.59] / 78 [+0.00] (73 / 71 / 68 / 89); passer 57 [-3.61] / - / 48 [-3.88] / -
+READING (one census; directional): from 1000 to 2500 the chance that a player CASHES an available tactic does not move
+(about 60% for every material-winning family), but the chance that the victim PARRIES rises (69 -> 76%, 64 -> 73%,
+61 -> 66%) and what being exposed costs falls three to five times (a double threat -0.40 -> -0.08 pawns, a pin
+-0.49 -> -0.28, the one-ply read -0.11 -> -0.01). The proved passer is worth +4.4 at every rating (it is proved). A
+discovered attack available to a 2000+ player yields +0.08 (n 38): strong players neutralize them (small n). So the
+map's Elo dependence lives in `exposed`: against a stronger opponent our tactics are worth less, theirs cost us more
+by our own rating. Both players sit in one band in this census, so hold[f, band] is "a holder of that band against
+a victim of it"; mixed-band tables are a later refinement.
+THE MAP (`tactic_map.py`): hold / exposed / step tables per family and band (a mate inside the window counted as 20
+pawns against the mated side -- a choice); V for the side to move from its own tables; the rule `tactic_map` (a
+conjecture reading the ledger's ties) prefers, among tied moves, the highest expected gain of the exact token state
+after the move. A BUG caught on a POSITIVE result (docs/BUGS.md): the first reading of pawn endings jumped 24.6 ->
+67.3 and the general set 176.3 -> 184.7; checking the code path found our tactics after our move priced at hold
+(the holder to move) and theirs at exposed -- the other way round (it is their move): about 2x too much for ours,
+3x too little for theirs. Those numbers are retracted; the corrected runs (the 1500-2200 tables, then the wide) and
+100 games vs Stockfish-2000 with the map in the bundle (us read as 1400, them 2000) are running.
+
 ## 2026-10-07 13:46 PDT — tactics in the field by player strength; the motif labeller (for later review); the census checkpointed (OBS)
 
 Kaveh's direction this hour: group the tactics by the probability of the outs conditioned on player strength from

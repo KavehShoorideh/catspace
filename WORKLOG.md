@@ -243,3 +243,6 @@ Newest entry first. Times from `date` (PDT).
 - 2026-10-07 13:46 PDT Elo-conditioned execution/out rates (c300: weak dependence inside 1500-2200); labeller tactic_motifs.py
   (920 labelled, 251 unlabelled; review deferred); census checkpointed per game + resume + reconcile + watchdog;
   WIDE census launched (600 games, 4 bands, tag wide, log tmp/census_wide.log). Kill test running.
+- 2026-10-07 14:18 PDT wide census done (600 games, 44,902 positions); Elo dependence is in the defence (outs 69->76%, exposed cost
+  -0.40->-0.08); map bug (hold/exposed swapped after our move) fixed before quoting; runs: map2 (c300 tables), map3 (wide),
+  sf2000x_map_s1..5 (100 games, map in the bundle). 
