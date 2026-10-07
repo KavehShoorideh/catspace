@@ -16,7 +16,8 @@ hypotheses replace `bareKing` and `kingHasMove`:
                  square on the files beside it (the cone form, 2026-10-06);
 * `kingRoom`  -- every square the enemy king can reach in `n - 1` moves has more neighbours free of our
                  pieces, of our attacks (the passer's whole future attack set counted) and of the path
-                 than the enemy has pawns: it can never run out of king moves (no self-stalemate).
+                 than the enemy has pawns that can reach one of those neighbours in time (2026-10-06;
+                 before, every enemy pawn counted): it can never run out of king moves (no self-stalemate).
 
 Prototyped in Python first (`lean_passer_v2_proto.py`): 816 PROVED claims, all confirmed by an exhaustive
 race search. Conclusion as before: our queen on the promotion square within `2n - 1` plies whatever the
@@ -93,6 +94,12 @@ def forbiddenB (p : Position) (x : Square) (d : Square) : Bool :=
 def roomB (F : Square → Bool) (x' : Square) : Nat :=
   (allSquares.filter (fun d => kingGeometryB x' d && !F d)).length
 
+/-- The enemy pawns that can reach a neighbour of `x'` the king may use within `k` moves: the only pawns that can
+stand on those neighbours while the race lasts (2026-10-06; before, every enemy pawn counted). -/
+def nearPawnsB (p : Position) (c : Color) (F : Square → Bool) (k : Nat) (x' : Square) : Nat :=
+  (allSquares.filter fun s => (p.board s == some ⟨Color.opposite c, .pawn⟩) &&
+    (allSquares.filter (fun d => kingGeometryB x' d && !F d)).any (fun d => !farB (Color.opposite c) s d k)).length
+
 def enemyPawnCount (p : Position) : Nat :=
   (allSquares.filter (fun s => p.board s == some ⟨Color.opposite p.turn, .pawn⟩)).length
 
@@ -137,9 +144,9 @@ def kingRoomB (p : Position) (ps : PasserParams) : Bool :=
   | some ek, some ok =>
     let n := pushes p.turn ps.sq
     let F := forbiddenB p ps.sq
-    let np := enemyPawnCount p
     allSquares.all fun x' =>
-      decide (n - 1 < kdist x' ek) || neverKingB p.turn ps.sq ok x' || decide (np < roomB F x')
+      decide (n - 1 < kdist x' ek) || neverKingB p.turn ps.sq ok x' ||
+        decide (nearPawnsB p p.turn F (n - 1) x' < roomB F x')
   | _, _ => false
 
 end Passer2
@@ -212,8 +219,9 @@ structure Inv2 (c : Color) (p : Position) (x : Square) (r : Nat) (ek ok : Square
   pathInF : ∀ t ∈ path c x, F t = true
   /-- the enemy's pawn count is `np` -/
   count : (allSquares.filter (fun s => p.board s == some ⟨Color.opposite c, .pawn⟩)).length = np
-  /-- every square the enemy king can still reach and stand on has room -/
-  room : ∀ x', kdist x' ek ≤ r - 1 → neverKingB c x ok x' = true ∨ np < roomB F x'
+  /-- every square the enemy king can still reach and stand on has more free neighbours than the enemy has pawns
+      that can reach one of them in time (the pawns standing on them are among those) -/
+  room : ∀ x', kdist x' ek ≤ r - 1 → neverKingB c x ok x' = true ∨ nearPawnsB p c F (r - 1) x' < roomB F x'
 
 /-! ### Facts about the bad squares and the distance -/
 
@@ -418,21 +426,33 @@ theorem future_of_pawn_attack {c : Color} {x z d : Square} (hz : z ∈ path c x)
     simp only [futureAttackB, absDiff, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq]
     split_ifs at hd ⊢ <;> omega
 
-/-- The pigeonhole: more squares than enemy pawns leaves a square without one. -/
-theorem exists_not_pawn {p : Position} {e : Color} {G : Square → Bool} {np : Nat}
-    (hcount : (allSquares.filter (fun s => p.board s == some ⟨e, .pawn⟩)).length = np)
-    (hL : np < (allSquares.filter G).length) : ∃ d, G d = true ∧ p.board d ≠ some ⟨e, .pawn⟩ := by
+/-- Fewer squares satisfy the stronger predicate. -/
+theorem filter_length_mono {P P' : Square → Bool} (h : ∀ u, P' u = true → P u = true) :
+    (allSquares.filter P').length ≤ (allSquares.filter P).length := by
+  have : allSquares.filter P' = (allSquares.filter P).filter P' := by
+    rw [List.filter_filter]
+    apply List.filter_congr
+    intro u _
+    cases hu : P' u
+    · simp
+    · simp [h u hu]
+  rw [this]
+  exact List.length_filter_le _ _
+
+/-- The pigeonhole: more squares of `G` than enemy pawns on squares of `G` leaves a square of `G` without one. -/
+theorem exists_not_pawn {p : Position} {e : Color} {G : Square → Bool}
+    (hL : (allSquares.filter (fun s => p.board s == some ⟨e, .pawn⟩ && G s)).length < (allSquares.filter G).length) :
+    ∃ d, G d = true ∧ p.board d ≠ some ⟨e, .pawn⟩ := by
   by_contra hall
   push_neg at hall
-  have hfilt : (allSquares.filter G).filter (fun s => p.board s == some ⟨e, .pawn⟩) = allSquares.filter G :=
-    List.filter_eq_self.mpr (fun d hd => by
-      have := hall d (List.mem_filter.mp hd).2
-      simpa using this)
-  have hsub : ((allSquares.filter G).filter (fun s => p.board s == some ⟨e, .pawn⟩)).length ≤
-      (allSquares.filter (fun s => p.board s == some ⟨e, .pawn⟩)).length :=
-    List.Sublist.length_le (List.Sublist.filter _ List.filter_sublist)
-  rw [hfilt, hcount] at hsub
-  omega
+  have : allSquares.filter (fun s => p.board s == some ⟨e, .pawn⟩ && G s) = allSquares.filter G := by
+    apply List.filter_congr
+    intro u _
+    cases hG : G u
+    · simp
+    · simp [hall u hG]
+  rw [this] at hL
+  exact lt_irrefl _ hL
 
 theorem enemy_has_move2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Square}
     {F : Square → Bool} {np : Nat} (h : Inv2 c p x (r + 2) ek ok F np) {m : Move}
@@ -466,7 +486,15 @@ theorem enemy_has_move2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok
     · have := h.outside; omega
   rw [hnever] at hroom
   simp only [Bool.false_eq_true, false_or] at hroom
-  obtain ⟨d, hGd, hnotpawn⟩ := exists_not_pawn h.count hroom
+  -- the pawns standing on the king's free neighbours are among the pawns that can reach one in time
+  have hle : (allSquares.filter (fun s => p.board s == some ⟨Color.opposite c, .pawn⟩ &&
+      (kingGeometryB ek s && !F s))).length ≤ nearPawnsB p c F (r + 2 - 1) ek := by
+    unfold nearPawnsB
+    apply filter_length_mono
+    intro u hu
+    simp only [Bool.and_eq_true, List.any_eq_true, List.mem_filter, mem_allSquares, true_and] at hu ⊢
+    exact ⟨hu.1, u, hu.2, by rw [farB_self]; rfl⟩
+  obtain ⟨d, hGd, hnotpawn⟩ := exists_not_pawn (G := fun d => kingGeometryB ek d && !F d) (lt_of_le_of_lt hle hroom)
   simp only [Bool.and_eq_true, Bool.not_eq_true'] at hGd
   obtain ⟨hgeo, hFd⟩ := hGd
   have hdek : d ≠ ek := by intro e; rw [e] at hgeo; simp [kingGeometryB] at hgeo
@@ -782,6 +810,37 @@ theorem filter_length_swap {P P' : Square → Bool} {s t : Square} (hst : s ≠ 
   rw [hset, Finset.card_insert_of_notMem ht_not, Finset.card_erase_of_mem hs_mem]
   omega
 
+/-- One pawn moves from `s` to `t` and the predicate may only lose squares: the count does not grow. -/
+theorem filter_length_le_swap {P P' : Square → Bool} {s t : Square}
+    (hP' : ∀ u, P' u = true → u = t ∨ (P u = true ∧ u ≠ s)) (hPs : P' t = true → P s = true) :
+    (allSquares.filter P').length ≤ (allSquares.filter P).length := by
+  have huniv : allSquares.toFinset = (Finset.univ : Finset Square) := by
+    ext u; simp [mem_allSquares]
+  rw [← List.toFinset_card_of_nodup (allSquares_nodup'.filter _),
+    ← List.toFinset_card_of_nodup (allSquares_nodup'.filter _), List.toFinset_filter, List.toFinset_filter, huniv]
+  by_cases ht : P' t = true
+  · have hs_mem : s ∈ Finset.univ.filter (fun u => P u = true) := by simp [hPs ht]
+    have hpos : 0 < (Finset.univ.filter (fun u => P u = true)).card := Finset.card_pos.mpr ⟨s, hs_mem⟩
+    have hsub : Finset.univ.filter (fun u => P' u = true) ⊆
+        insert t ((Finset.univ.filter (fun u => P u = true)).erase s) := by
+      intro u hu
+      simp only [Finset.mem_filter, Finset.mem_univ, true_and] at hu
+      simp only [Finset.mem_insert, Finset.mem_erase, Finset.mem_filter, Finset.mem_univ, true_and]
+      rcases hP' u hu with h | ⟨h1, h2⟩
+      · exact Or.inl h
+      · exact Or.inr ⟨h2, h1⟩
+    calc (Finset.univ.filter (fun u => P' u = true)).card
+        ≤ (insert t ((Finset.univ.filter (fun u => P u = true)).erase s)).card := Finset.card_le_card hsub
+      _ ≤ ((Finset.univ.filter (fun u => P u = true)).erase s).card + 1 := Finset.card_insert_le _ _
+      _ = (Finset.univ.filter (fun u => P u = true)).card := by rw [Finset.card_erase_of_mem hs_mem]; omega
+  · have hsub : Finset.univ.filter (fun u => P' u = true) ⊆ Finset.univ.filter (fun u => P u = true) := by
+      intro u hu
+      simp only [Finset.mem_filter, Finset.mem_univ, true_and] at hu ⊢
+      rcases hP' u hu with h | ⟨h1, _⟩
+      · rw [h] at hu; exact absurd hu ht
+      · exact h1
+    exact Finset.card_le_card hsub
+
 theorem filter_length_congr {P P' : Square → Bool} (h : ∀ u, P' u = P u) :
     (allSquares.filter P').length = (allSquares.filter P).length := by
   rw [List.filter_congr (fun u _ => h u)]
@@ -1084,9 +1143,22 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
           apply Bool.eq_iff_iff.mpr; simp only [beq_iff_eq]; exact hq'_pawn_eq u
         room := by
           intro x' hx'
-          have := h.room x' (by have := kdist_triangle x' d ek; rw [kdist_comm d ek] at this; omega)
-          simp only [neverKingB, hpromo_y]
-          exact this }
+          have hr := h.room x' (by have := kdist_triangle x' d ek; rw [kdist_comm d ek] at this; omega)
+          simp only [neverKingB, hpromo_y] at hr ⊢
+          rcases hr with hr | hr
+          · exact Or.inl hr
+          · right
+            refine lt_of_le_of_lt ?_ hr
+            unfold nearPawnsB
+            apply filter_length_mono
+            intro u hu
+            simp only [Bool.and_eq_true, beq_iff_eq, List.any_eq_true, Bool.not_eq_true'] at hu ⊢
+            obtain ⟨hpu, dd, hdd, hfar⟩ := hu
+            refine ⟨(hq_pawn_eq u).1 ((hq'_pawn_eq u).1 hpu), dd, hdd, ?_⟩
+            cases hf : farB (Color.opposite c) u dd (r + 2 - 1)
+            · rfl
+            · have h2 : farB (Color.opposite c) u dd (r + 1 - 1) = true := farB_mono (by omega) hf
+              rw [h2] at hfar; cases hfar }
   · -- ===== a pawn move s -> t =====
     set q' := applyMove q (.normal s t) with hq'
     have hboard' : q'.board = boardMove q.board s t := rfl
@@ -1261,9 +1333,35 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
           · intro u; simp only [beq_iff_eq]; rw [hq'_pawn u, hq_pawn_eq]
         room := by
           intro x' hx'
-          have := h.room x' (by omega)
-          simp only [neverKingB, hpromo_y]
-          exact this }
+          have hr := h.room x' (by omega)
+          simp only [neverKingB, hpromo_y] at hr ⊢
+          rcases hr with hr | hr
+          · exact Or.inl hr
+          · right
+            refine lt_of_le_of_lt ?_ hr
+            unfold nearPawnsB
+            apply filter_length_le_swap (s := s) (t := t)
+            · -- a pawn near at r + 1 - 1 moves was near at r + 2 - 1: unmoved, by monotonicity; the moved one is t
+              intro u hu
+              simp only [Bool.and_eq_true, beq_iff_eq, List.any_eq_true, Bool.not_eq_true'] at hu ⊢
+              obtain ⟨hpu, dd, hdd, hfar⟩ := hu
+              rcases (hq'_pawn u).1 hpu with hut | ⟨hp_u, hus⟩
+              · exact Or.inl hut
+              · refine Or.inr ⟨⟨hp_u, dd, hdd, ?_⟩, hus⟩
+                cases hf : farB (Color.opposite c) u dd (r + 2 - 1)
+                · rfl
+                · have h2 : farB (Color.opposite c) u dd (r + 1 - 1) = true := farB_mono (by omega) hf
+                  rw [h2] at hfar; cases hfar
+            · -- the moved pawn, near on t: it was near on s, one move further back
+              intro ht
+              simp only [Bool.and_eq_true, beq_iff_eq, List.any_eq_true, Bool.not_eq_true'] at ht ⊢
+              obtain ⟨-, dd, hdd, hfar⟩ := ht
+              refine ⟨hp_s, dd, hdd, ?_⟩
+              cases hf : farB (Color.opposite c) s dd (r + 2 - 1)
+              · rfl
+              · have h2 : farB (Color.opposite c) t dd (r + 1 - 1) = true :=
+                  pdist_step (h.pawnsOffBack s hp_s) hmv' (k := r) (by simpa using hf)
+                rw [h2] at hfar; cases hfar }
 
 /-- The race, second form. -/
 theorem race2 (c : Color) (f : Fin 8) (ok : Square) (F : Square → Bool) (np : Nat) :

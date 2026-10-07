@@ -23,7 +23,7 @@ Source plan: "Lean Chess — Idea Basis & Live Engine: Handoff Plan" (Oct 4, 202
     `unstoppablePasser_sound'`; also `forcedWithinB` (reach a goal within n plies whatever they do) and the
     path geometry.
   - `Ideas/Passer2.lean` — lemma 2, second form: enemy king and pawns (a pawn-distance bound to the bad squares, or -- the cone form, 2026-10-06 -- the pawn cannot leave its file in time,
-    a king-room pigeonhole against self-stalemate), `unstoppablePasser2_sound`.
+    a king-room pigeonhole against self-stalemate over the pawns that can arrive in time), `unstoppablePasser2_sound`.
   - `Ideas/Setup.lean` — the passer composed over one reply: `setsUpPasser2` (after a move, every legal reply leaves the
     same pawn an unstoppable passer of the second form), `setsUpPasser2_sound` (`forcedWithinB` at 2*pushes plies after
     the move); the binary's `passersetup <uci> <fen>`, the wrapper's `passer_setup`.

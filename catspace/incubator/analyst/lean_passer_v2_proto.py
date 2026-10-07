@@ -103,7 +103,6 @@ def passer_v2(b: chess.Board, sq: int) -> dict:
     forbidden = our_attacks | b.occupied_co[us]
     for t in path:
         forbidden |= chess.BB_SQUARES[t]
-    n_their = len(chess.SquareSet(b.pawns & b.occupied_co[them]))
     # the squares the enemy king can never stand on: next to our king, within one of the promotion square (the
     # Lean `neverKingB`; skipping every forbidden square, as the first prototype did, was unsound for squares
     # holding our capturable pieces, 2026-10-05)
@@ -112,8 +111,11 @@ def passer_v2(b: chess.Board, sq: int) -> dict:
     if ek is not None and ok is not None:
         for x in range(64):
             if kdist(x, ek) <= n - 1 and not (chess.BB_KING_ATTACKS[ok] & chess.BB_SQUARES[x]) and kdist(x, promo_sq) > 1:
-                free = sum(1 for d in chess.SquareSet(chess.BB_KING_ATTACKS[x]) if not (chess.BB_SQUARES[d] & forbidden))
-                if free <= n_their:
+                free = [d for d in chess.SquareSet(chess.BB_KING_ATTACKS[x]) if not (chess.BB_SQUARES[d] & forbidden)]
+                # only the enemy pawns that can reach one of x's free neighbours in n - 1 moves count (the Lean
+                # `nearPawnsB`, 2026-10-06; before, every enemy pawn counted)
+                near = sum(1 for e in chess.SquareSet(b.pawns & b.occupied_co[them]) if any(pawn_dist(e, d) <= n - 1 for d in free))
+                if len(free) <= near:
                     room = False
                     break
     h["kingRoom"] = room

@@ -99,7 +99,8 @@ PASSER2_CASES = [
     ("8/8/8/7P/5P1p/3k3K/8/8 w - - 0 1", "h5", "PROVED", None, 5),                   # an enemy pawn present, far
     ("K7/8/8/p2P4/P7/5p2/5P2/6k1 w - - 0 1", "d5", "ONEAWAY", "pawnsFar", None),     # an enemy pawn can interfere
     ("1K6/8/4P2k/2p5/3P4/8/8/8 w - - 0 1", "d4", "ONEAWAY", "kingOutside", None),    # the king is in the square
-    ("8/8/3Pp1P1/2K1p2k/8/8/8/8 w - - 0 1", "g6", "ONEAWAY", "kingRoom", None),      # the enemy king could run out of moves
+    ("8/8/3Pp1P1/2K1p2k/8/8/8/8 w - - 0 1", "g6", "PROVED", None, 3),               # its pawns cannot reach the king's corner in time (2026-10-06)
+    ("7k/4N1pp/P7/8/8/8/8/1K6 w - - 0 1", "a6", "ONEAWAY", "kingRoom", None),        # the king's own pawns on its last free squares
     ("8/8/8/4b3/8/4P3/8/K6k w - - 0 1", "e3", "FAIL", None, None),                   # an enemy bishop: two hypotheses fail
 ]
 
