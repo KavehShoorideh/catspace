@@ -27777,3 +27777,24 @@ after the budget, exact after resuming 4,910/4,910; states expanded for the firs
 redone, the extra 4,246 nodes are re-entries of unfinished parents answered from the records. Tests: Kaveh's examples
 (queen takes a defended pawn -8; pawn takes a queen +9; the gun recursively; the pawn-or-knight recapture returns both
 orders for the plan layer), retract/reinstate/resume, the prior's estimates flagged.
+
+## 2026-10-08 11:33 PDT — every exchange in 300 real games predicted and graded; where the frame is surprised
+
+Kaveh's loop: replay games, predict every possible exchange at every ply (kept until its frame changes), predict
+whether the player takes it, and when taken, grade the outcome against what happened and against Stockfish -- the
+surprises name the next lemma. `exchange_predict.py` (all cores). OBS on c300 (300 games, 22,561 positions):
+frame predictions computed 22,282, kept from an earlier ply 14,648 (40%). THE TAKE: where the frame says a capture wins,
+the player takes that one in 65% (4,483 positions; takes nothing 28%); an even trade 31% (4,386); where nothing wins,
+2% (13,692). THE OUTCOME, 5,096 exchanges taken and graded (166 set aside where Stockfish sees a mate: a mate frame, not
+the exchange's), resolved in a median of 2 plies. Mean |prediction - the material left after the played exchange|:
+frame 0.48 pawns, plain count 0.53, frame with the intermezzo subtracted 0.63, no exchange model 1.89; median 0 for all
+three models. Against Stockfish at the end: frame 1.65, plain 1.69, with the intermezzo 1.73, no model 2.46, Stockfish
+before the capture 0.64 (what a full engine already knew; positional value included). A FINDING: subtracting the
+intermezzo's full price is a sound LOWER BOUND (the 97% check) but a worse PREDICTION -- it charges their capture
+elsewhere and ignores our answer to it; the frame alone predicts better. BY WHAT HAPPENED inside the exchange (events of
+the played line, not the hypotheses' names, which flag possibilities -- "check in between" was on 287 of 375 in the
+short run): a plain exchange 3,465, error 0.32 (no model 1.71); a capture elsewhere 1,112, error 1.70 (59% of all the
+model's error); a check in between 714, error 1.77 (39%; they overlap); the king took part 454, error 0.72; a
+promotion 10, error 7.4. THE NEXT LEMMA by these numbers: captures on more than one square -- the exchange frame joined
+with the frame of the capture elsewhere (moves on either square, both sides answering), then the check in between.
+Directional, one census.
