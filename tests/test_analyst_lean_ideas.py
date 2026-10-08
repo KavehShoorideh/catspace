@@ -180,3 +180,13 @@ def test_a_query_that_does_not_answer_in_time_is_abandoned_and_the_binary_restar
         li._ask("slow", until_end=False, timeout=0.3)
     assert li._ask("again", until_end=False, timeout=2) == ["quick"]
     li.close()
+
+
+def test_the_kernel_composed_tier_matches_the_prototype_on_the_intermezzo_frame():
+    from catspace.incubator.analyst.lean_ideas import detector
+    li = detector()
+    b = chess.Board("4k3/8/3b4/3n4/8/4N3/7P/1K6 w - - 0 1")
+    hyps, value, honest = li.exchange(b, chess.D5)
+    assert value == 3 and not honest and hyps["noOtherCapture"] is False and hyps["noOverload"] is True
+    assert li.exchange_composed(b, chess.D5) == (2, True)
+    assert li.exchange_cert(b, chess.D5, timeout=30, composed=True)

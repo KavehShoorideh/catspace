@@ -17,8 +17,9 @@ basically exceptions to the exchange theorem" -- each failure is a named tactic)
   noPin         every attacker's capture on `s` is legal now, and every defender's recapture is legal after it
   noXray        no slider of either side stands behind a single piece on a line to `s`
   noPromotion   no pawn participant on its seventh rank; `s` is not the en-passant square
-  noOtherCapture  after `c`'s first capture, no capture of the opponent off `s` wins by the static exchange, and no
-                attacker of `c` defends a piece of `c` the opponent attacks (an overloaded defender)
+  noOtherCapture  after `c`'s first capture, no capture of the opponent off `s` wins by the static exchange
+  noOverload    no attacker of `c` defends a piece of `c` the opponent attacks (an overloaded defender), and no
+                remaining attacker of `c` is attacked (trading one off changes the frame)
   noCheck       after `c`'s first capture the opponent has no checking move; `c`'s king shares no line and no knight
                 relation with `s`; no opponent slider shares a line with `c`'s king
   noInterpose   every attacker of `c` is a knight or a pawn or stands next to `s` (no blocking a recapture)
@@ -125,15 +126,18 @@ def hypotheses (p : Position) (s : Square) : List (String × Bool) :=
         decide ((if pc.color = .white then 7 - q.2.val else q.2.val) ≤ (n + 1) / 2)
     | none => false
   let noPromotion := parts.all (fun q => !seventhRankB p q) && (p.enPassant != some s) && allSquares.all (fun q => !pawnNear q)
-  let noOtherCapture := allSquares.all (fun q =>
+  let noOtherCapture := allSquares.all (fun q =>                  -- no capture elsewhere pays them by the static exchange
     match after.board q with
     | some pc => !(pc.color == c && pc.kind != .king && q != s) ||
         (!(attackersOf after o q).isEmpty →
-          (A.all (fun a => !pieceAttacksB after c a q)) &&
           decide (cheapest (valueAt after q) (valuesOf after o q) (valuesOf after c q) ≤ 0))
+    | none => true)
+  let noOverload := allSquares.all (fun q =>                      -- no attacker of ours defends a piece of ours they attack,
+    match after.board q with                                      -- and our remaining attackers are unattacked (an even
+    | some pc => !(pc.color == c && pc.kind != .king && q != s) ||  -- trade of one changes the frame): the other square's
+        (!(attackersOf after o q).isEmpty → A.all (fun a => !pieceAttacksB after c a q))   -- game is independent of ours
     | none => true) &&
-    A.all (fun a => a == s || (after.board a).isNone || (attackersOf after o a).isEmpty)   -- our remaining attackers unattacked:
-                                                                                              -- an even trade of one changes the frame
+    A.all (fun a => a == s || (after.board a).isNone || (attackersOf after o a).isEmpty)
   let noCheck := (legalMoves after).all (fun m => !inCheckB (applyMove after m) c) &&
     (match kingSquare p.board c with
       | some k => !(queenGeometryB s k || knightGeometryB s k) &&
@@ -142,10 +146,33 @@ def hypotheses (p : Position) (s : Square) : List (String × Bool) :=
   let noInterpose := A.all (fun q => isPawnAt p q || (match p.board q with | some pc => pc.kind == .knight | none => false) || kingGeometryB q s)
   let noArrival := (legalMoves after).all (fun m => D.contains m.source || m.destination == s || !pieceAttacksB (applyMove after m) o m.destination s)
   [("target", target), ("noKing", noKing), ("noPin", noPin), ("noXray", noXray), ("noPromotion", noPromotion),
-   ("noOtherCapture", noOtherCapture), ("noCheck", noCheck), ("noInterpose", noInterpose), ("noArrival", noArrival)]
+   ("noOtherCapture", noOtherCapture), ("noOverload", noOverload), ("noCheck", noCheck), ("noInterpose", noInterpose),
+   ("noArrival", noArrival)]
 
 def honestFrameB (p : Position) (s : Square) : Bool :=
   (hypotheses p s).all (fun h => h.2)
+
+/-- THE INTERMEZZO'S PRICE: the opponent's best static capture elsewhere after our first capture (0 when none pays). -/
+def intermezzoB (p : Position) (s : Square) : Int :=
+  let c := p.turn
+  let o := Color.opposite c
+  match cheapestCapture p s with
+  | none => 0
+  | some m =>
+      let after := applyMove p m
+      allSquares.foldl (fun acc q =>
+        match after.board q with
+        | some pc => if pc.color == c && pc.kind != .king && q != s
+            then max acc (cheapest (valueAt after q) (valuesOf after o q) (valuesOf after c q)) else acc
+        | none => acc) 0
+
+/-- THE COMPOSED TIER (measured 2026-10-08 before it was stated: on 452 frames the exact outcome is at least this in 97%):
+the honest frame with `noOtherCapture` dropped -- the opponent may have a capture elsewhere that pays, its static price
+subtracts. Its games are independent of ours by `noOverload`. -/
+def honestComposedB (p : Position) (s : Square) : Bool :=
+  (hypotheses p s).all (fun h => h.1 == "noOtherCapture" || h.2)
+
+def composedValue (p : Position) (s : Square) : Int := seeB p s - intermezzoB p s
 
 /-- A settled position for `c` on `s` (Kaveh 2026-10-07: "no paying recapture anywhere that creates a greater threat"):
 the opponent to move and either mated, or `c`'s material at least `target`, no recapture on `s` that pays them by the
@@ -164,16 +191,31 @@ def settledB (c : Color) (s : Square) (target : Int) (q : Position) : Bool :=
 
 /-- THE CLAIM: after `c`'s cheapest capture on `s`, a settled position within the frame's size in plies, whatever the
 opponent does. A per-position certificate until `exchangeLaw` is proved. -/
-def settledWithin (p : Position) (s : Square) : Bool :=
+def settledWithinAt (p : Position) (s : Square) (value : Int) : Bool :=
   match cheapestCapture p s with
   | none => false
   | some m =>
       let c := p.turn
       let n := (attackersOf p c s).length + (attackersOf p (Color.opposite c) s).length
-      forcedWithinB c (settledB c s (material p c + seeB p s)) (applyMove p m) n
+      forcedWithinB c (settledB c s (material p c + value)) (applyMove p m) n
+
+def settledWithin (p : Position) (s : Square) : Bool := settledWithinAt p s (seeB p s)
+
+/-- The composed tier's claim: the same, at the composed value (the intermezzo's horizon adds two plies). -/
+def settledWithinComposed (p : Position) (s : Square) : Bool :=
+  match cheapestCapture p s with
+  | none => false
+  | some m =>
+      let c := p.turn
+      let n := (attackersOf p c s).length + (attackersOf p (Color.opposite c) s).length + 2
+      forcedWithinB c (settledB c s (material p c + composedValue p s)) (applyMove p m) n
 
 /-- The exchange law, as a proposition: every honest frame's claim holds. (The proof is the work of part 2.) -/
 def exchangeLaw : Prop :=
   ∀ (p : Position) (s : Square), honestFrameB p s = true → settledWithin p s = true
+
+/-- The composed law: every composed-honest frame's claim holds at the composed value. -/
+def exchangeLawComposed : Prop :=
+  ∀ (p : Position) (s : Square), honestComposedB p s = true → settledWithinComposed p s = true
 
 end Ideas.ExchangeLaw

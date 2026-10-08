@@ -27689,3 +27689,15 @@ both; certificate SETTLED 12, NOT 0, timeout 4 (all frames of 4 participants, th
 agrees on all 16. OBS bite rates on 1,000 positions after the alignment (frames where the static exchange says the
 capture wins): honest 2 of 2 never fall short; noOtherCapture bites 37/60 = 62%, noPromotion 2/6, noXray 23/73 = 32%,
 noKing 9/45 = 20%, noCheck 2/69 = 3%; the reverse (static loses, exact wins): noXray 12/308, noCheck 11/297.
+
+## 2026-10-08 00:12 PDT — widening in bite order: the intermezzo as a second frame that subtracts (measured before built)
+
+Kaveh: proceed. The biggest exception (noOtherCapture, 62% bite) is the opponent's capture elsewhere after ours. If the
+two frames are independent, the opponent's static gain there should simply subtract. OBS on the first 8,000 census
+positions, the 452 frames where noOtherCapture fails (alone, or with the low-bite noArrival / noInterpose): the exact
+bridge (depth <= 4 + quiescence) is at least the plain static value in 319 (71%), at least the static value MINUS their
+best static capture elsewhere in 439 (97%); frames sharing no participant with the other square 335 of 342, sharing one
+72 of 73; the gap exact - predicted is +0..+3 in 369 of the 452. Directional (one census, one depth), but strong enough
+to build the composed tier: value = see(s) - max(0, their best static capture elsewhere), the hypotheses as honest with
+noOtherCapture's static clause dropped (the overload and attackers-unattacked clauses kept as their own hypothesis).
+The 13 misses are being listed for inspection first.

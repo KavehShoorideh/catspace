@@ -210,13 +210,21 @@ class LeanIdeas:
             raise ValueError(f"{line}: {board.fen()} {chess.square_name(square)}")
         tok = line.split()
         value = int(tok[0].split("=")[1]); honest = tok[1].split("=")[1] == "true"
-        return {k: v == "1" for k, v in (t.split("=") for t in tok[2:])}, value, honest
+        return {k: v == "1" for k, v in (t.split("=") for t in tok[4:])}, value, honest
 
-    def exchange_cert(self, board: chess.Board, square: int, timeout: float | None = None) -> bool:
+    def exchange_composed(self, board: chess.Board, square: int) -> tuple:
+        """The composed tier by the kernel: -> (value - the intermezzo's price, composed-honest)."""
+        (line,) = self._ask(f"exchange {chess.square_name(square)} {board.fen()}", until_end=False)
+        if line.startswith("error"):
+            raise ValueError(f"{line}: {board.fen()} {chess.square_name(square)}")
+        tok = line.split()
+        return int(tok[2].split("=")[1]), tok[3].split("=")[1] == "true"
+
+    def exchange_cert(self, board: chess.Board, square: int, timeout: float | None = None, composed: bool = False) -> bool:
         """The law's claim computed by the kernel for this position: after our cheapest capture on `square`, a settled
         position within the frame's size whatever they do. The tree is exponential in the frame's size: pass a
         `timeout` (TimeoutError, the binary restarted) beyond small frames."""
-        (line,) = self._ask(f"exchangecert {chess.square_name(square)} {board.fen()}", until_end=False, timeout=timeout)
+        (line,) = self._ask(f"exchangecert{'c' if composed else ''} {chess.square_name(square)} {board.fen()}", until_end=False, timeout=timeout)
         if line.startswith("error"):
             raise ValueError(f"{line}: {board.fen()} {chess.square_name(square)}")
         return line == "SETTLED"

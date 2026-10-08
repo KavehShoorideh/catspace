@@ -46,3 +46,15 @@ def test_a_check_in_between_is_the_exception():
     assert not b.is_check() and any(chess.Board("4k3/8/8/3p4/8/4N3/7r/4K3 b - - 0 1").gives_check(m) for m in chess.Board("4k3/8/8/3p4/8/4N3/7r/4K3 b - - 0 1").legal_moves)
     v = X.law(b, chess.D5)
     assert not v["holds"] and "noCheck" in v["failing"]
+
+
+def test_the_composed_tier_subtracts_the_intermezzo():
+    """Nxd5 wins a knight; Black's bishop then takes the loose h2 pawn: the strict law does not fire (noOtherCapture),
+    the composed tier claims 3 - 1 = 2 and the exact search agrees."""
+    from catspace.incubator.analyst.exchange_law import bridge, intermezzo, law
+    b = chess.Board("4k3/8/3b4/3n4/8/4N3/7P/1K6 w - - 0 1")
+    assert not b.attackers(chess.BLACK, chess.D5) and not b.attackers(chess.WHITE, chess.H2) and chess.D6 in b.attackers(chess.BLACK, chess.H2)
+    v = law(b, chess.D5)
+    assert v["value"] == 3 and intermezzo(b, chess.D5) == 1 and v["composed"] == 2
+    assert not v["holds"] and v["failing"] == ["noOtherCapture"] and v["composed_holds"]
+    assert bridge(b, chess.D5, 3) >= 2

@@ -40,7 +40,7 @@ import chess
 
 VAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 100}
 SLIDERS = (chess.BISHOP, chess.ROOK, chess.QUEEN)
-HYPS = ("target", "noKing", "noPin", "noXray", "noPromotion", "noOtherCapture", "noCheck", "noInterpose", "noArrival")
+HYPS = ("target", "noKing", "noPin", "noXray", "noPromotion", "noOtherCapture", "noOverload", "noCheck", "noInterpose", "noArrival")
 
 
 def material(b: chess.Board, side: chess.Color) -> int:
@@ -135,13 +135,16 @@ def hypotheses(b: chess.Board, s: int) -> dict:
     # from their side (an even trade of a non-participant would still cost the horizon), no participant of ours defends a
     # piece of ours they attack (an overloaded defender), and none of our remaining attackers is attacked at all (trading
     # one off changes the frame: the zwischenzug)
-    ok = True
+    other = overload = True
     for q, pc in b1.piece_map().items():
         if pc.color != c or pc.piece_type == chess.KING or q == s or not b1.attackers(not c, q):
             continue
-        if set(A) & set(b1.attackers(c, q)) or see(b1, q)[0] > 0:
-            ok = False; break
-    h["noOtherCapture"] = ok and all(b1.piece_at(a) is None or not b1.attackers(not c, a) for a in A)
+        if see(b1, q)[0] > 0:
+            other = False
+        if set(A) & set(b1.attackers(c, q)):
+            overload = False
+    h["noOtherCapture"] = other
+    h["noOverload"] = overload and all(b1.piece_at(a) is None or not b1.attackers(not c, a) for a in A)
     k = b.king(c)
     enemy_checks = any(b1.gives_check(m) for m in b1.legal_moves)                      # a check in between
     king_rel = k is not None and (bool(chess.BB_RAYS[s][k]) or _knight_relation(s, k))  # our king on a line or a knight's jump from s
@@ -159,13 +162,29 @@ def hypotheses(b: chess.Board, s: int) -> dict:
     return h
 
 
+def intermezzo(b: chess.Board, s: int) -> int:
+    """The opponent's best static capture elsewhere after our first capture on s (0 when none pays): the intermezzo's
+    price, which subtracts in the composed tier."""
+    A, _ = participants(b, s)
+    m0 = cheapest_capture(b, s, A)
+    if m0 is None:
+        return 0
+    c = b.turn
+    b1 = b.copy(stack=False); b1.push(m0)
+    return max([see(b1, q)[0] for q, pc in b1.piece_map().items()
+                if pc.color == c and pc.piece_type != chess.KING and q != s and b1.attackers(not c, q)] + [0])
+
+
 def law(b: chess.Board, s: int) -> dict:
-    """-> dict(holds, value, captures, failing): the law's verdict on capturing s."""
+    """-> dict(holds, value, captures, failing, composed, composed_holds): the law's verdict on capturing s, strict (all
+    hypotheses) and composed (noOtherCapture dropped, the intermezzo's price subtracted)."""
     h = hypotheses(b, s)
     failing = [k for k in HYPS if not h[k]]
-    out = dict(holds=not failing, failing=failing, hyps=h, value=None, captures=0)
+    out = dict(holds=not failing, failing=failing, hyps=h, value=None, captures=0, composed=None,
+               composed_holds=h["target"] and all(h[k] for k in HYPS if k != "noOtherCapture"))
     if h["target"]:
         out["value"], out["captures"] = see(b, s)
+        out["composed"] = out["value"] - intermezzo(b, s)
     return out
 
 
@@ -225,7 +244,7 @@ def bridge(b: chess.Board, s: int, depth: int) -> float:
 def census(tag: str, limit: int = 3000, max_depth: int = 5) -> None:
     from .tactic_census_measure import load
     rows = load(tag)[:limit]
-    fired = agree = wrong = long = 0; fails = Counter(); frames = 0; examples = []
+    fired = agree = wrong = long = 0; fails = Counter(); frames = 0; examples = []; cfired = cagree = cwrong = 0
     for r in rows:
         b = chess.Board(r["fen"]); c = b.turn
         for s, pc in b.piece_map().items():
@@ -235,6 +254,15 @@ def census(tag: str, limit: int = 3000, max_depth: int = 5) -> None:
             v = law(b, s)
             if not v["holds"]:
                 fails[v["failing"][0]] += 1
+                if v["composed_holds"]:                                   # the composed tier fires where only noOtherCapture failed
+                    cfired += 1
+                    got = bridge(b, s, min(2 * v["captures"] + 1, max_depth))
+                    if got >= v["composed"] - 1e-9:
+                        cagree += 1
+                    else:
+                        cwrong += 1
+                        if len(examples) < 5:
+                            examples.append((r["fen"], chess.square_name(s), v["composed"], got, "composed"))
                 continue
             fired += 1
             depth = 2 * v["captures"] - 1
@@ -250,8 +278,9 @@ def census(tag: str, limit: int = 3000, max_depth: int = 5) -> None:
     print(f"OBS exchange law on {len(rows)} positions of {tag}: attacked enemy pieces {frames}; the law fires {fired} ({100 * fired / max(frames, 1):.1f}%); "
           f"bridge-checked {agree + wrong} (sequences within {max_depth} plies; {long} longer): agree {agree}, WRONG {wrong}")
     print("OBS   first failing hypothesis where it does not fire: " + ", ".join(f"{k} {v}" for k, v in fails.most_common()))
+    print(f"OBS   the composed tier (noOtherCapture dropped, the intermezzo's price subtracted) fires on {cfired} more frames: agree {cagree}, WRONG {cwrong}")
     for e in examples:
-        print(f"OBS   wrong: {e[0]} on {e[1]}: law {e[2]:+d}, exact {e[3]:+.0f} at depth {e[4]}")
+        print(f"OBS   wrong: {e[0]} on {e[1]}: law {e[2]:+d}, exact {e[3]:+.0f} at {e[4]}")
 
 
 def bite(tag: str, limit: int = 1000, max_depth: int = 5) -> None:
