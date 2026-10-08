@@ -22874,6 +22874,29 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-07 17:45 PDT — the exchange law, part 2 stated in the kernel's terms; its claim holds on every honest frame the kernel finds (OBS)
+
+`lean/ideas/Ideas/ExchangeLaw.lean`: the frame on a square, the nine honest-frame hypotheses as Bools on the position,
+the static exchange, and the claim. The claim's shape (Kaveh: both forms, the fork convention first): after our cheapest
+capture on `s`, WITHIN the frame's size in plies and whatever the opponent does, a SETTLED position is reached -- the
+opponent to move, our material at least its value before plus the capture's static value, no recapture on `s` that pays
+them -- read with `forcedWithinB` (the goal at every node), so the path stops the moment the exchange has ended in our
+favour and no quiet move of ours is ever required. `exchangeLaw` is the proposition (every honest frame's claim holds);
+until proved, `settledWithin` is a per-position certificate the kernel computes. The binary: `exchange <sq> <fen>` (the
+hypotheses by name, the value) and `exchangecert <sq> <fen>` (the claim); the wrapper `exchange` / `exchange_cert`.
+A BUG CAUGHT BY THE CERTIFICATE: the first `seeB` floored the capture's value at 0 (the mover may stop), so a losing
+capture was claimed at 0 and the kernel's own certificate said NOT on 2 of 16 honest frames. The law is a lower bound on
+CAPTURING; its value is the capture's own, possibly negative. OBS after the fix, the 16 honest frames of 1,500 census
+positions: SETTLED 16 of 16 (values -6: 1, -2: 2, 0: 11, 1: 1, 3: 1).
+OBS kernel vs prototype, 2,408 frames: honest by the kernel 16, by the prototype 12, both 11; disagreements by
+hypothesis: noArrival 429 (the kernel reads the position AFTER our capture, the prototype before -- the kernel's is the
+proof's reading; the prototype is to be aligned), noPromotion 200, noXray 155, noCheck 142, noKing 138, noOtherCapture
+112, noInterpose 96, noPin 59, target 3. The kernel's hypotheses are now the sound detector of an honest frame; the
+prototype remains the fast proposer and the bridge to the exact search.
+NEXT: the proof of `exchangeLaw` (induction on the participants; the kernel's certificate is the oracle for every case),
+then the conservative form (the opponent's answer last, with a safe quiet move) as Kaveh asked; then widening the
+hypotheses in the order the bite rates gave (the overload, the x-ray, the king).
+
 ## 2026-10-07 17:32 PDT — the exchange law, part 1 in Lean: the capture game; the order of capture never matters on real squares (OBS)
 
 `lean/ideas/Ideas/Exchange.lean`: the capture game on one square with no chess in it -- a piece worth `onS` on the

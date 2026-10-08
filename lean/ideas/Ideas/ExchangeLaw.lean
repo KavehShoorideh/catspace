@@ -55,9 +55,13 @@ def valueAt (p : Position) (q : Square) : Int :=
 def valuesOf (p : Position) (c : Color) (s : Square) : List Int :=
   ((attackersOf p c s).map (valueAt p)).insertionSort (· ≤ ·)
 
-/-- The static exchange for the side to move capturing on `s`. -/
+/-- The static exchange for the side to move CAPTURING on `s` with its cheapest piece: what the capture itself is
+worth, the sequence beyond it played out with each side free to stop (possibly negative: the law is a lower bound on
+capturing, not a recommendation to capture; review 2026-10-07: flooring this at 0 made the claim false on two frames). -/
 def seeB (p : Position) (s : Square) : Int :=
-  cheapest (valueAt p s) (valuesOf p p.turn s) (valuesOf p (Color.opposite p.turn) s)
+  match valuesOf p p.turn s with
+  | [] => 0
+  | a :: rest => valueAt p s - cheapest a (valuesOf p (Color.opposite p.turn) s) rest
 
 /-- `c`'s cheapest legal capture on `s`, if any. -/
 def cheapestCapture (p : Position) (s : Square) : Option Move :=
