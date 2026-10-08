@@ -294,7 +294,7 @@ def kernel(tag: str, limit: int = 1500, max_depth: int = 5) -> None:
     from .tactic_census_measure import load
     li = detector()
     rows = load(tag)[:limit]
-    frames = k_honest = p_honest = both = vdiff = agree = wrong = 0; dis = Counter(); cert = Counter(); values = Counter(); examples = []
+    frames = k_honest = p_honest = both = vdiff = agree = wrong = 0; dis = Counter(); cert = Counter(); values = Counter(); examples = []; not_settled = []
     for r in rows:
         b = chess.Board(r["fen"]); c = b.turn
         for s, pc in b.piece_map().items():
@@ -303,15 +303,24 @@ def kernel(tag: str, limit: int = 1500, max_depth: int = 5) -> None:
             frames += 1
             v = law(b, s)
             kh, kv, khonest = li.exchange(b, s)
-            for name in HYPS:
-                if bool(kh.get(name)) != bool(v["hyps"][name]):
+            for name in HYPS:                                     # the prototype stops at a failed target: compare past it only when both see one
+                if bool(kh.get(name)) != bool(v["hyps"][name]) and (name == "target" or (kh.get("target") and v["hyps"]["target"])):
                     dis[name] += 1
             k_honest += khonest; p_honest += v["holds"]; both += khonest and v["holds"]
             if khonest:
                 values[kv] += 1
                 vdiff += v["value"] is not None and kv != v["value"]
-                cert[li.exchange_cert(b, s)] += 1
                 A, D = participants(b, s)
+                if len(A) + len(D) > max_depth:                      # the certificate's tree is exponential in the frame's size
+                    cert["skipped (large frame)"] += 1
+                else:
+                    try:
+                        verdict = "SETTLED" if li.exchange_cert(b, s, timeout=30) else "NOT"
+                    except TimeoutError:
+                        verdict = "timeout"
+                    cert[verdict] += 1
+                    if verdict != "SETTLED":
+                        not_settled.append((r["fen"], chess.square_name(s), kv, len(A) + len(D), verdict))
                 got = bridge(b, s, min(len(A) + len(D), max_depth))
                 if got >= kv - 1e-9:
                     agree += 1
@@ -321,10 +330,12 @@ def kernel(tag: str, limit: int = 1500, max_depth: int = 5) -> None:
                         examples.append((r["fen"], chess.square_name(s), kv, got))
     print(f"OBS kernel vs prototype on {len(rows)} positions of {tag}, {frames} frames: honest by the kernel {k_honest}, by the prototype {p_honest}, both {both}; "
           f"hypothesis disagreements: " + (", ".join(f"{k} {n}" for k, n in dis.most_common()) or "none"))
-    print(f"OBS   on the kernel's honest frames: value differs from the prototype's {vdiff}; certificate SETTLED {cert[True]} NOT {cert[False]}; "
+    print(f"OBS   on the kernel's honest frames: value differs from the prototype's {vdiff}; certificate " + " ".join(f"{k} {n}" for k, n in cert.items()) + "; "
           f"exact bridge agrees {agree}, WRONG {wrong}; values " + ", ".join(f"{k:+d}: {n}" for k, n in sorted(values.items())))
     for e in examples:
         print(f"OBS   wrong: {e[0]} on {e[1]}: kernel {e[2]:+d}, exact {e[3]:+.0f}")
+    for e in not_settled:
+        print(f"OBS   not certified: {e[0]} on {e[1]}: value {e[2]:+d}, frame {e[3]} participants, {e[4]}")
 
 
 def main(argv=None):

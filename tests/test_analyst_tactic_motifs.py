@@ -59,3 +59,41 @@ def test_trapped_bishop():
     b2 = chess.Board("4k3/8/8/8/8/8/PP6/b1K5 w - - 0 1")                   # Kc1 to move; the bishop a1 has b2 (defended by the king? c1 defends b2) -> after Kb1 it is lost
     seq2 = _seq(b2, ["Kb1"])
     assert "trapped piece" in T.label(b2, seq2[0], chess.A1, seq2)
+
+
+def test_deflection_needs_the_defender_to_leave_the_square_s_defence():
+    """Review 2026-10-07: the destination was tested against the defenders' squares before the move, so a rook that moved
+    along its own defending file was 'deflected'."""
+    from catspace.incubator.analyst.tactic_motifs import label
+    b = chess.Board("4k2r/8/8/7n/8/8/6PP/6K1 w - - 0 1")
+    assert chess.H8 in b.attackers(chess.BLACK, chess.H5)
+    stays = [chess.Move.from_uci(u) for u in ("g2g4", "h8h7", "g4h5", "h7h5")]
+    assert "deflection / overload" not in label(b, stays[0], chess.H5, stays)
+    leaves = [chess.Move.from_uci(u) for u in ("g2g4", "h8a8", "g4h5")]
+    assert "deflection / overload" in label(b, leaves[0], chess.H5, leaves)
+
+
+def test_trapped_piece_is_not_read_when_the_move_takes_it_or_gives_check():
+    from catspace.incubator.analyst.tactic_motifs import label
+    b = chess.Board("6k1/1r4BR/4p1p1/5p2/2pP4/3r2P1/5PK1/7R b - - 0 1")      # Rb7xg7 takes the bishop outright
+    m = chess.Move.from_uci("b7g7")
+    assert b.is_capture(m) and b.piece_at(chess.G7).piece_type == chess.BISHOP
+    assert "trapped piece" not in label(b, m, chess.G7, [m])
+    b2 = chess.Board("r2k4/8/8/3N4/8/8/8/3R2K1 w - - 0 1")                   # Nc7+ discovers the rook's check; the rook a8 has squares
+    m2 = chess.Move.from_uci("d5c7")
+    b3 = b2.copy(); b3.push(m2); assert b3.is_check() and chess.A8 in b3.attacks(chess.C7)
+    labs = label(b2, m2, chess.A8, [m2])
+    assert "discovered check" in labs and "trapped piece" not in labs
+
+
+def test_promotion_label_is_a_s_own_pawn():
+    from catspace.incubator.analyst.tactic_motifs import label
+    b = chess.Board("3k2r1/8/4p3/8/2B5/8/8/7K w - - 0 1")                    # a bishop's trip through a pawn's square is no promotion
+    seq = [chess.Move.from_uci(u) for u in ("c4e6", "d8c7", "e6f7", "c7b6", "f7g8")]
+    assert "promotion / breakthrough" not in label(b, seq[0], chess.G8, seq)
+    b2 = chess.Board("4k3/8/8/8/8/8/1p2K3/R6r w - - 0 1")                    # the VICTIM promotes: not A's motif
+    seq2 = [chess.Move.from_uci(u) for u in ("a1h1", "b2b1q", "h1b1")]
+    assert "promotion / breakthrough" not in label(b2, seq2[0], chess.H1, seq2)
+    b3 = chess.Board("4k3/P7/8/8/8/8/8/K6r w - - 0 1")
+    seq3 = [chess.Move.from_uci("a7a8q")]
+    assert "promotion / breakthrough" in label(b3, seq3[0], chess.H1, seq3)

@@ -203,6 +203,29 @@ def census_path(tag: str) -> Path:
     return Path(paths.derived("tactic_census", f"census_{tag}.jsonl"))
 
 
+def reconcile(out: Path, done_path: Path) -> set:
+    """The games finished so far: the .done list; rows of a game cut off before its done-mark are dropped from the rows
+    file. A rows file with NO .done beside it predates checkpointing and is complete: its games are taken as done and
+    the list written (review 2026-10-07: it was reconciled against an empty list and wiped)."""
+    if not done_path.exists() and out.exists() and out.stat().st_size > 0:
+        legacy = sorted({str(json.loads(line)["game"]) for line in open(out)})
+        done_path.write_text("".join(f"{g}\n" for g in legacy))
+        print(f"[census] no .done beside {out.name}: its {len(legacy)} games taken as finished and listed", flush=True)
+    done = set(done_path.read_text().split()) if done_path.exists() else set()
+    if out.exists():
+        kept, dropped = [], set()
+        for line in open(out):
+            gid = str(json.loads(line)["game"])
+            if gid in done:
+                kept.append(line)
+            else:
+                dropped.add(gid)
+        if dropped:
+            open(out, "w").writelines(kept)
+            print(f"[census] reconciled: dropped the rows of {len(dropped)} unfinished game(s) {sorted(dropped)[:5]}", flush=True)
+    return done
+
+
 def build(games: list, workers: int, tag: str, depth: int = 10, label: str = "") -> None:
     """Checkpointed: every finished game's rows are appended to the output at once and its id to the .done list; a
     restart with the same tag skips the done games (no loss, no duplicates). Progress lines carry the clock."""
@@ -210,16 +233,12 @@ def build(games: list, workers: int, tag: str, depth: int = 10, label: str = "")
     out = census_path(tag)
     out.parent.mkdir(parents=True, exist_ok=True)
     done_path = out.with_suffix(".done")
-    done = set(done_path.read_text().split()) if done_path.exists() else set()
-    if out.exists():                                                   # reconcile: rows of a game cut off before its done-mark are dropped
-        kept, dropped = [], set()
-        for line in open(out):
-            gid = str(json.loads(line)["game"])
-            (kept if gid in done else dropped.add(gid) or kept).append(line) if gid in done else dropped.add(gid)
-        if dropped:
-            open(out, "w").writelines(kept)
-            print(f"[census] reconciled: dropped the rows of {len(dropped)} unfinished game(s) {sorted(dropped)[:5]}", flush=True)
-    todo = [g for g in games if str(g["game_id"]) not in done]
+    done = reconcile(out, done_path)
+    seen = set(); todo = []
+    for g in games:                                                    # deduplicated: a game on a shared band edge was selected twice
+        gid = str(g["game_id"])
+        if gid not in done and gid not in seen:
+            seen.add(gid); todo.append(g)
     print(f"[census] {tag}: {len(games)} games selected, {len(done)} done before, {len(todo)} to do; {workers} workers", flush=True)
     finished = len(done); rows = 0
     with Pool(workers, initializer=_init_worker, initargs=(depth,)) as pool, open(out, "a") as fh, open(done_path, "a") as dh:

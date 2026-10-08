@@ -99,8 +99,13 @@ def label(b0: chess.Board, m: chess.Move, lost_sq: int, seq: list) -> list:
     # where is P now (it did not move: V is to move after m)
     p_sq = lost_sq
     attackers_after = list(b1.attackers(A, p_sq))
+    # m itself took P: the frame to read is the one BEFORE the capture (review 2026-10-07: after it, p_sq holds A's own
+    # capturer and its defenders were read as P's attackers -- 51 of 95 such captures were "trapped piece")
+    direct = m.to_square == lost_sq
+    bf = b0 if direct else b1                                      # the board on which P stands attacked
+    attackers_f = list(bf.attackers(A, p_sq))
     # discovered attack / check: a slider of A that attacks P (or the king) now and did not before, and m's origin lay on its line
-    for s in attackers_after:
+    for s in attackers_after if not direct else []:
         pc = b1.piece_at(s)
         if pc.piece_type in SLIDERS and s != mover_sq and m.from_square in _between_line(s, p_sq) and s not in b0.attackers(A, p_sq):
             labels.append("discovered attack"); break
@@ -127,39 +132,42 @@ def label(b0: chess.Board, m: chess.Move, lost_sq: int, seq: list) -> list:
             else:
                 labels.append({chess.QUEEN: "queen fork", chess.ROOK: "rook fork", chess.BISHOP: "bishop fork", chess.KING: "king fork"}.get(mover.piece_type, "double attack with check"))
     # skewer / pin along a line through P
-    for s in attackers_after:
-        pc = b1.piece_at(s)
+    for s in attackers_f:
+        pc = bf.piece_at(s)
         if pc.piece_type not in SLIDERS:
             continue
         beyond = [t for t in chess.SQUARES if chess.BB_SQUARES[t] & chess.BB_RAYS[s][p_sq] and t != s and t != p_sq
-                  and p_sq in _between_line(s, t) and not [u for u in _between_line(p_sq, t) if b1.piece_at(u)]]
+                  and p_sq in _between_line(s, t) and not [u for u in _between_line(p_sq, t) if bf.piece_at(u)]]
         for t in beyond:
-            q = b1.piece_at(t)
-            if q is not None and q.color == V and _attacks_through(b1, s, t):
+            q = bf.piece_at(t)
+            if q is not None and q.color == V and _attacks_through(bf, s, t):
                 if q.piece_type == chess.KING or VAL[q.piece_type] > VAL[P.piece_type]:
                     labels.append("absolute pin" if q.piece_type == chess.KING else "relative pin"); break
     # skewer the other way: a slider attacks a dearer piece of V in front, and P behind it on the same line
-    for s in list(b1.pieces(chess.QUEEN, A)) + list(b1.pieces(chess.ROOK, A)) + list(b1.pieces(chess.BISHOP, A)):
-        for front in b1.attacks(s):
-            q = b1.piece_at(front)
-            if q is None or q.color != V or front == p_sq or not _attacks_through(b1, s, p_sq):
+    for s in list(bf.pieces(chess.QUEEN, A)) + list(bf.pieces(chess.ROOK, A)) + list(bf.pieces(chess.BISHOP, A)):
+        for front in bf.attacks(s):
+            q = bf.piece_at(front)
+            if q is None or q.color != V or front == p_sq or not _attacks_through(bf, s, p_sq):
                 continue
-            if front in _between_line(s, p_sq) and not [u for u in _between_line(front, p_sq) if b1.piece_at(u)] and VAL[q.piece_type] > VAL[P.piece_type]:
+            if front in _between_line(s, p_sq) and not [u for u in _between_line(front, p_sq) if bf.piece_at(u)] and VAL[q.piece_type] > VAL[P.piece_type]:
                 labels.append("skewer")
     # pinned defender
-    defenders = list(b1.attackers(V, p_sq))
-    if defenders and all(b1.is_pinned(V, d) for d in defenders) and attackers_after:
+    defenders = list(bf.attackers(V, p_sq))
+    if defenders and all(bf.is_pinned(V, d) for d in defenders) and attackers_f:
         labels.append("pinned defender")
     # capture of the defender
     if b0.is_capture(m) and m.to_square in b0.attackers(V, lost_sq):
         labels.append("capture of the defender")
     # deflection / overload: a defender of P at the start moved away at V's next move, then P was taken
-    if len(seq) >= 3:
+    if len(seq) >= 3 and not direct:
         v_move = seq[1]
-        if v_move.from_square in b0.attackers(V, lost_sq) and v_move.to_square not in b1.attackers(V, p_sq) and any(x.to_square == p_sq for x in seq[2:4]):
+        b2 = b1.copy(stack=False); b2.push(v_move)                # (review 2026-10-07: the destination was tested against the
+        if v_move.from_square in b0.attackers(V, lost_sq) and p_sq not in b2.attacks(v_move.to_square) \
+                and any(x.to_square == p_sq for x in seq[2:4]):   # defenders' squares BEFORE the move: always true)
             labels.append("deflection / overload")
-    # trapped piece: attacked after m, no move of P lands on a square where it is not attacked (or capturing with safety)
-    if attackers_after and P.piece_type != chess.PAWN:
+    # trapped piece: attacked after m, no move of P lands on a square where it is not attacked (or capturing with safety);
+    # not read when m took P itself or V is in check (P's moves are then illegal for another reason)
+    if attackers_after and P.piece_type != chess.PAWN and not direct and not b1.is_check():
         safe = False
         for mv in b1.legal_moves if b1.turn == V else []:
             if mv.from_square == p_sq:
@@ -169,17 +177,21 @@ def label(b0: chess.Board, m: chess.Move, lost_sq: int, seq: list) -> list:
         if not safe:
             labels.append("trapped piece")
     # x-ray: an A slider attacks P through a piece of A (battery) that also attacks P
-    for s in b1.pieces(chess.QUEEN, A) | b1.pieces(chess.ROOK, A) | b1.pieces(chess.BISHOP, A):
-        through = _ray_through(b1, s, p_sq)
-        if through is not None and _attacks_through(b1, s, p_sq) and (q := b1.piece_at(through)) is not None and q.color == A and through in attackers_after:
+    for s in bf.pieces(chess.QUEEN, A) | bf.pieces(chess.ROOK, A) | bf.pieces(chess.BISHOP, A):
+        through = _ray_through(bf, s, p_sq)
+        if through is not None and _attacks_through(bf, s, p_sq) and (q := bf.piece_at(through)) is not None and q.color == A and through in attackers_f:
             labels.append("x-ray"); break
     # interference: m put a piece between P and one of its defenders
     for d in b0.attackers(V, lost_sq):
         if mover_sq in _between_line(d, lost_sq):
             labels.append("interference"); break
     # promotion / breakthrough in the window
-    if any(x.promotion for x in seq) or any(b0.piece_at(x.from_square) and b0.piece_at(x.from_square).piece_type == chess.PAWN and chess.square_rank(x.to_square) in (6, 1) and i % 2 == 0 for i, x in enumerate(seq)):
-        labels.append("promotion / breakthrough")
+    bb = b0.copy(stack=False); seventh = 6 if A == chess.WHITE else 1
+    for i, x in enumerate(seq):                                    # A's own pawn promotes or reaches its seventh (review
+        pc = bb.piece_at(x.from_square)                            # 2026-10-07: read from the start board, any colour)
+        if i % 2 == 0 and pc is not None and pc.color == A and pc.piece_type == chess.PAWN and (x.promotion or chess.square_rank(x.to_square) == seventh):
+            labels.append("promotion / breakthrough"); break
+        bb.push(x)
     # back rank: a rook or queen of A gives check on V's home rank in the window
     home = 7 if V == chess.BLACK else 0
     bb = b0.copy(stack=False)
@@ -202,3 +214,41 @@ def label(b0: chess.Board, m: chess.Move, lost_sq: int, seq: list) -> list:
     if not labels and b0.attackers(V, lost_sq) and attackers_after:
         labels.append("insufficiently defended")
     return labels
+
+
+def main(tag: str = "c300") -> None:
+    """Label every fired tactic of a census (tactic_coverage.events_of: a visibly safe or defended piece lost within the
+    window with the loser's material down and a Stockfish step) and write them for the LLM's review:
+    data/derived/tactic_census/fired_tactics_<tag>_labelled.json. Prints the label counts (OBS)."""
+    import json
+    import sys
+    from collections import Counter, defaultdict
+
+    from catspace.io import paths
+    from .tactic_census_measure import load
+    from .tactic_coverage import WINDOW, events_of, game_moves
+    rows = load(tag)
+    by = defaultdict(dict)
+    for r in rows:
+        by[r["game"]][r["ply"]] = r
+    out = []; counts = Counter(); n = 0
+    for g in sorted(by):
+        plies = by[g]; moves = game_moves(plies); last = max(plies)
+        for t, sq, pt, kind, forced, net, c in events_of(plies):
+            if kind == "hanging" or not forced:
+                continue
+            r = plies[t]; b = chess.Board(r["fen"])
+            seq = [moves[k] for k in range(t, min(t + WINDOW, last)) if k in moves]
+            labels = label(b, moves[t], sq, seq)
+            n += 1; counts.update(labels or ["(unlabelled)"])
+            out.append(dict(game=g, ply=t, fen=r["fen"], move=moves[t].uci(), lost=chess.square_name(sq), piece=chess.piece_name(pt),
+                            kind=kind, net=net, seen=c, labels=labels, seq=[m.uci() for m in seq]))
+    p = paths.derived("tactic_census", f"fired_tactics_{tag}_labelled.json")
+    json.dump(out, open(p, "w"), indent=0)
+    print(f"OBS {n} fired tactics of {tag} labelled -> {p}")
+    print("OBS   labels: " + ", ".join(f"{k} {v}" for k, v in counts.most_common()))
+
+
+if __name__ == "__main__":
+    import sys
+    main(sys.argv[sys.argv.index("--tag") + 1] if "--tag" in sys.argv else "c300")

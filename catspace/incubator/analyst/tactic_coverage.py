@@ -52,7 +52,8 @@ def classify(r: dict, played: str | None) -> str:
     toks = r["stm"] or []
     motifs0 = {t[0] for t in toks if t[1] == 0 and t[0] in MOTIF}
     if motifs0:
-        if played is not None and any(played in strike_moves(chess.Board(r["fen"]), f) for f in motifs0):
+        if played is not None and any(played[:4] in {u[:4] for u in strike_moves(chess.Board(r["fen"]), f)} for f in motifs0):   # by from-to: a 7th-rank
+            # passer's strike is "g2g1", the played move "g2g1q" (review 2026-10-07: 17 of 45 proved passers were "co-occurring")
             return "motif, attributed"
         return "motif, co-occurring"
     if any(t[1] == 0 for t in toks if t[0] in ("double_threat", "material_now")):

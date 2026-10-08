@@ -111,12 +111,25 @@ class LeanIdeas:
         self.proc = subprocess.Popen([self.binary], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
         self.calls = 0
 
-    def _ask(self, line: str, until_end: bool) -> list[str]:
+    def _restart(self):
+        """Kill the binary (a query that will not finish) and start a fresh one."""
+        self.proc.kill(); self.proc.wait(timeout=10)
+        self.proc = subprocess.Popen([self.binary], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+
+    def _ask(self, line: str, until_end: bool, timeout: float | None = None) -> list[str]:
+        """One query. With `timeout` (seconds) a query that has not answered in time is abandoned: the binary is
+        restarted and TimeoutError raised (the exchange certificate's tree can explode on a large frame)."""
         self.calls += 1
         self.proc.stdin.write(line + "\n")
         self.proc.stdin.flush()
         out = []
         while True:
+            if timeout is not None:
+                import select
+                ready, _, _ = select.select([self.proc.stdout], [], [], timeout)
+                if not ready:
+                    self._restart()
+                    raise TimeoutError(f"ideas binary: no answer in {timeout}s to: {line}")
             got = self.proc.stdout.readline()
             if not got:
                 raise RuntimeError(f"ideas binary exited on: {line}")
@@ -199,10 +212,11 @@ class LeanIdeas:
         value = int(tok[0].split("=")[1]); honest = tok[1].split("=")[1] == "true"
         return {k: v == "1" for k, v in (t.split("=") for t in tok[2:])}, value, honest
 
-    def exchange_cert(self, board: chess.Board, square: int) -> bool:
+    def exchange_cert(self, board: chess.Board, square: int, timeout: float | None = None) -> bool:
         """The law's claim computed by the kernel for this position: after our cheapest capture on `square`, a settled
-        position within the frame's size whatever they do (slow beyond small frames)."""
-        (line,) = self._ask(f"exchangecert {chess.square_name(square)} {board.fen()}", until_end=False)
+        position within the frame's size whatever they do. The tree is exponential in the frame's size: pass a
+        `timeout` (TimeoutError, the binary restarted) beyond small frames."""
+        (line,) = self._ask(f"exchangecert {chess.square_name(square)} {board.fen()}", until_end=False, timeout=timeout)
         if line.startswith("error"):
             raise ValueError(f"{line}: {board.fen()} {chess.square_name(square)}")
         return line == "SETTLED"

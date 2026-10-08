@@ -70,7 +70,7 @@ def test_passer_rule_credits_the_push(rules):
     from catspace.incubator.analyst.tactic_map import passer_credit
     b = chess.Board("7k/8/P7/8/8/8/8/1K6 w - - 0 1")                             # a6 queens; the black king is far
     g = passer_credit()
-    assert 3.0 < g < 6.0                                                        # the census's price of a proved passer
+    assert 3.0 < g < 20.0                                                       # the census's price of a proved passer: between a minor piece and a mate
     rules.append(FP.RULE_BOOK["passer"]())
     c = _values(b.fen())
     assert c["best"] == ["a6a7"] and c["values"]["a6a7"] == pytest.approx(g) and "proved" in c["rules"]["a6a7"][0]

@@ -164,3 +164,19 @@ def test_exchange_law_hypotheses_and_certificate():
     assert not honest2 and hyps2["noPin"] is False and value2 == -2       # the capture itself: a knight for a pawn
     hyps3, value3, honest3 = li.exchange(chess.Board("8/8/8/8/8/8/8/8 w - - 0 1"), chess.D5)   # an empty square: no target
     assert not honest3 and hyps3["target"] is False and value3 == 0
+
+
+def test_a_query_that_does_not_answer_in_time_is_abandoned_and_the_binary_restarted(tmp_path):
+    """A stand-in binary that answers after 5 s: a 0.3 s timeout raises TimeoutError and the next query (fresh process)
+    still answers."""
+    import os
+    from catspace.incubator.analyst.lean_ideas import LeanIdeas
+    fake = tmp_path / "slow.sh"
+    fake.write_text("#!/bin/sh\nwhile read l; do case \"$l\" in slow*) sleep 5; echo late;; *) echo quick;; esac; done\n")
+    os.chmod(fake, 0o755)
+    li = LeanIdeas(binary=fake)
+    assert li._ask("hello", until_end=False, timeout=2) == ["quick"]
+    with pytest.raises(TimeoutError):
+        li._ask("slow", until_end=False, timeout=0.3)
+    assert li._ask("again", until_end=False, timeout=2) == ["quick"]
+    li.close()

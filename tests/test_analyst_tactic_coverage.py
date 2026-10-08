@@ -51,3 +51,13 @@ def test_follow_tracks_a_piece_that_moves():
     moves = [chess.Move.from_uci(u) for u in ("a1a8", "e8d7", "a8a7", "d7c6", "a7b7", "c6b7")]
     assert C.follow(moves, b, chess.A1) == ("captured", 5)            # the rook, followed to b7, is taken there
     assert C.follow(moves[:5], b, chess.A1) == ("kept", None)
+
+
+def test_a_seventh_rank_passer_strike_is_attributed_with_its_promotion_suffix():
+    """Review 2026-10-07: the strike was 'g2g1', the played move 'g2g1q'; 17 of 45 proved passers read 'co-occurring'."""
+    from catspace.incubator.analyst.tactic_coverage import classify, strike_moves
+    b = chess.Board("8/2KP4/4k3/p6p/7P/1P6/P5p1/8 b - - 0 44")
+    strikes = strike_moves(b, "passer")
+    assert strikes and all(u[:4] == "g2g1" for u in strikes), strikes
+    r = dict(fen=b.fen(), stm=[("passer", 0, "")])
+    assert classify(r, "g2g1q") == "motif, attributed"

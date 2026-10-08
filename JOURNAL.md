@@ -27655,3 +27655,25 @@ still running (logs sf2000x_sound_s*.log).
 OPEN: reviewer 2's six findings on the census pipeline (the motif labels deflection / trapped piece / promotion fire on
 wrong evidence; a 7th-rank passer strike is "co-occurring" not "attributed" in coverage -- 17 of 45 proved passers;
 `build` wipes a rows file that has no `.done` beside it; a stale docstring) -- none touch the map tables or the law.
+
+## 2026-10-07 21:43 PDT — bug check, second half: the census pipeline's labels, and what the exchange certificate's goal must be
+
+Reviewer 2 (the census pipeline, by running code) found six defects, all fixed with a test from its probe (docs/BUGS.md,
+this date): the motif labeller's "deflection", "trapped piece" and "promotion" read wrong evidence -- the first tested the
+defender before it moved, the second fired on any piece without a legal move (taken by the move itself, or its side in
+check), the third counted the victim's promotion; a direct capture now reads the frame before the move. OBS relabelling
+the 920 fired tactics of c300: trapped piece 133 -> 28, deflection / overload 115 -> 44, promotion / breakthrough 76 -> 37,
+x-ray 46 -> 71, relative pin 63 -> 77, insufficiently defended 102 -> 136, unlabelled 251 -> 258. The coverage classifier
+matched a 7th-rank passer's strike by the full UCI ("g2g1" vs "g2g1q"); by from-to now; OBS the coverage numbers do not
+move (152 attributed / 37 co-occurring of 920), since no fired event in c300 carries a passer token. The census builder
+would have wiped a rows file that predates checkpointing (no .done beside it); its games are now taken as finished.
+THE EXCHANGE LAW, kernel against prototype after the alignment, OBS on 1,500 positions (2,408 frames): hypothesis
+disagreements 0; honest by both 16; the exact bridge agrees on all 16; the kernel's certificate SETTLED 5, NOT 7,
+timeout 4. The NOTs are the GOAL's fault, not the law's: a Python mirror of the certificate prints the refuting lines
+(scratch trace_cert.py) -- Rxd6 Kc4! hits c5 while the rook stays en prise; after Rd8 Kxc5 we are +4 against a target of
+0, the material claim holds, but "no capture anywhere that pays" rejects it. The earlier goal (recaptures on s only) was
+too weak (reviewer 3's zwischenzug), this one is too strong. The goal the exact bridge actually measures is a captures-
+only quiescence: SETTLED = the opponent to move and the quiescence value (each side free to stand pat) at least the
+target; forcedWithinB then covers the opponent's quiet moves within the frame's size. That redefines the claim, so it
+waits for Kaveh. Sound-bundle games vs Stockfish-2000 (OBS): seeds 1, 2, 4 complete at 10%, 2%, 8% (20 games each);
+seeds 3 and 5 died mid-run (0/16, 1W 1D of 14) -- 4 wins 3 draws in 90 games, 6.1%, within noise of the 5.0% baseline.

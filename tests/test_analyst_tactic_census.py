@@ -67,3 +67,16 @@ def test_rows_of_a_short_game():
     assert rows[1]["elo"] == 1650 and rows[1]["elo_opp"] == 1600
     assert rows[6]["fen"] == "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4"
     assert ("material_now", 0, "") in rows[6]["stm"] or ("double_threat", 0, "") in rows[6]["stm"]   # Qxf7 is on
+
+
+def test_reconcile_keeps_a_rows_file_that_has_no_done_list(tmp_path):
+    """Review 2026-10-07: a rows file from before checkpointing (no .done beside it) was reconciled against an empty list
+    and every row dropped."""
+    import json
+    from catspace.incubator.analyst.tactic_census import reconcile
+    out = tmp_path / "census_x.jsonl"
+    out.write_text("".join(json.dumps(dict(game=g, ply=p)) + "\n" for g in (7, 8) for p in (1, 2)))
+    done = reconcile(out, out.with_suffix(".done"))
+    assert done == {"7", "8"} and sum(1 for _ in open(out)) == 4
+    out.write_text(out.read_text() + json.dumps(dict(game=9, ply=1)) + "\n")   # a game cut off before its mark
+    assert reconcile(out, out.with_suffix(".done")) == {"7", "8"} and sum(1 for _ in open(out)) == 4

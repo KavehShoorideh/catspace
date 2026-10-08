@@ -154,8 +154,8 @@ def settledB (c : Color) (s : Square) (target : Int) (q : Position) : Bool :=
      (decide (target ≤ material q c) &&
       allSquares.all (fun u =>                                               -- no capture anywhere that pays the opponent by the
         match q.board u with                                                 -- static exchange (review 2026-10-07: reading only `s`
-        | some pc => !(pc.color == c) ||                                     -- certified a frame an even trade elsewhere refuted)
-            decide (cheapest (valueAt q u) (valuesOf q q.turn u) (valuesOf q c u) ≤ 0)
+        | some pc => !(pc.color == c && pc.kind != .king) ||                 -- certified a frame an even trade elsewhere refuted;
+            decide (cheapest (valueAt q u) (valuesOf q q.turn u) (valuesOf q c u) ≤ 0)   -- the king is not material)
         | none => true)))
 
 /-- THE CLAIM: after `c`'s cheapest capture on `s`, a settled position within the frame's size in plies, whatever the

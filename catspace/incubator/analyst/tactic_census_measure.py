@@ -48,7 +48,8 @@ def episodes(rows: list, who: str = "stm") -> dict:
     """(a): {family: [(game, k_now, fired)]} over EPISODES. who='stm': the side to move's tokens; an episode starts at a
     position whose same-side predecessor (two plies back) had a different k for the family; fired = the family on (k = 0)
     for the same side within HORIZON_FIRE plies. who='opp': the opponent's null-move tokens; fired = on for THEM at a
-    position where they are to move within the horizon. Positions without the whole horizon in the game are skipped."""
+    position where they are to move within the horizon. A window cut by the game's end counts as seen (fired if a firing
+    was observed, else not)."""
     by_game = defaultdict(dict)
     for r in rows:
         by_game[r["game"]][r["ply"]] = r
