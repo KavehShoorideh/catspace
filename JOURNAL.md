@@ -27798,3 +27798,16 @@ model's error); a check in between 714, error 1.77 (39%; they overlap); the king
 promotion 10, error 7.4. THE NEXT LEMMA by these numbers: captures on more than one square -- the exchange frame joined
 with the frame of the capture elsewhere (moves on either square, both sides answering), then the check in between.
 Directional, one census.
+
+## 2026-10-08 11:42 PDT — grading our judgment, not the player's choice (Kaveh)
+
+Kaveh: predicting "not worth taking" is RIGHT when the player takes it and loses -- grade our value against the actual
+gain, and a capture we called bad that gained is a frame to learn. OBS on the 5,096 graded exchanges of c300 (rows the
+frame's value, columns the material actually gained): frame + 3,392 (gained 3,108, even 189, lost 95; mean |value -
+gain| 0.45); frame 0 1,492 (gained 208, even 1,247, lost 37; 0.35); frame - 212 (gained 68, even 8, lost 136; 1.81).
+The frame's sign is right on 4,491 (88%). The 212 captures the frame called losing: 136 lost as predicted (the player's
+blunder, our correct call); 68 gained -- the queue of frames to learn. On those 68 the hypotheses that fail (several per
+frame): noArrival 56, noCheck 51, noInterpose 39, noOtherCapture 20, noPin 15, noKing 12, noXray 6, noOverload 6; none
+has every hypothesis holding -- every miss sits outside the honest frame, as it should. The pin is visible by eye in
+several (a recapture that is illegal because the recapturer is pinned to its king): the availability lemma from king
+safety is the frame's first missing piece for those.

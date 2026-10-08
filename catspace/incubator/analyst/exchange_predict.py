@@ -129,6 +129,34 @@ def run(tag: str, limit_games: int | None = None) -> None:
         ks = keys if truth == "truth" else keys[:4]
         print(f"OBS   mean |prediction - {label}|: " + ", ".join(f"{k} {statistics.mean(err(g, k, truth) for g in graded):.2f}" for k in ks)
               + "; median: " + ", ".join(f"{k} {statistics.median(err(g, k, truth) for g in graded):.2f}" for k in ks))
+    # OUR JUDGMENT vs WHAT HAPPENED (Kaveh 2026-10-08: predicting "not worth taking" is right when they take it and lose;
+    # what is graded is our value against the actual gain -- and a capture we called bad that gained is a frame to learn)
+    sign = lambda x: "+" if x > 0 else ("-" if x < 0 else "0")
+    conf = Counter(); err_by = defaultdict(list)
+    for g in graded:
+        v = g["frame"] - g["none"]; d = g["mat_end"] - g["none"]
+        conf[(sign(v), sign(d))] += 1; err_by[sign(v)].append(abs(v - d))
+    print("OBS our judgment of the capture taken (rows: the frame's value; columns: the material actually gained; a player taking a capture we "
+          "called losing and losing is OUR correct call, their blunder):")
+    for p in "+0-":
+        tot = sum(conf[(p, q)] for q in "+0-")
+        print(f"OBS     frame {p}  n {tot:5d}: gained + {conf[(p, '+')]:5d}, even {conf[(p, '0')]:5d}, lost - {conf[(p, '-')]:5d}; "
+              f"mean |our value - the actual gain| {statistics.mean(err_by[p]) if err_by[p] else 0:.2f}")
+    agree = sum(conf[(p, p)] for p in "+0-")
+    print(f"OBS   the frame's sign right on {agree}/{len(graded)} ({100 * agree / max(len(graded), 1):.0f}%); the player took a capture the frame called "
+          f"losing {sum(conf[('-', q)] for q in '+0-')} times: lost as predicted {conf[('-', '-')]} (their blunder, our call), gained {conf[('-', '+')]} "
+          f"(they saw something the frame did not: frames to learn)")
+    learn = sorted((g for g in graded if g["frame"] - g["none"] < 0 and g["mat_end"] - g["none"] > 0), key=lambda g: -(g["mat_end"] - g["frame"]))
+    from .exchange_law import HYPS, hypotheses
+    why = Counter()
+    for g in learn:                                         # which hypothesis of the plain count fails on them
+        h = hypotheses(chess.Board(g["fen"]), chess.parse_square(g["sq"]))
+        why.update(k for k in HYPS if k != "target" and not h[k])
+        why["(all hold)"] += all(h[k] for k in HYPS)
+    print(f"OBS   on the {len(learn)} frames to learn, the hypotheses that fail (several per frame): " + ", ".join(f"{k} {v}" for k, v in why.most_common()))
+    print("OBS   frames to learn (called losing, gained), the largest gaps first:")
+    for g in learn[:12]:
+        print(f"OBS     {g['fen']} on {g['sq']}: frame {g['frame'] - g['none']:+.0f}, gained {g['mat_end'] - g['none']:+d}; happened: {', '.join(g['events'])}")
     by_ev = defaultdict(list)
     for g in graded:
         for nm in g["events"]:
