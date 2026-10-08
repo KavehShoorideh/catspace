@@ -90,19 +90,67 @@ def claims(b: chess.Board, m: chess.Move, certify: bool = True) -> list:
     if pc is not None and pc.piece_type == chess.PAWN and chess.square_rank(m.to_square) == (6 if side == chess.WHITE else 1):
         out.append(Claim("promotion", m.uci(), VAL[chess.QUEEN] - 1, (chess.square_name(m.to_square),), False))
     if certify and out:
-        from .lean_ideas import detector
-        li = detector()
         for c in out:
-            try:
-                c.certified = li.fork(b, m, c.k)
-            except Exception:
-                c.certified = False
+            c.certified = local_check(b, m, c.k)
+    return out
+
+
+_CERT: dict = {}                                            # (fen, uci, k) -> bool: a conclusion is computed once
+VERIFY = __import__("os").environ.get("CATSPACE_VERIFY_CERT", "") == "1"   # re-check every Rust answer against Lean
+
+
+def local_check(b: chess.Board, m: chess.Move, k: int) -> bool:
+    """The kernel's localCheck (Fork.lean, proved sound by localCheck_sound), answered by its Rust mirror
+    (analyst_core.local_check -- Kaveh: hot loops to the Rust layer) and cached; with CATSPACE_VERIFY_CERT=1 every
+    answer is re-checked against the Lean binary and a disagreement raises."""
+    key = (b.fen(), m.uci(), k)
+    hit = _CERT.get(key)
+    if hit is not None:
+        return hit
+    try:
+        import analyst_core
+        ans = analyst_core.local_check(key[0], key[1], k)
+    except Exception:
+        ans = None
+    if ans is None or VERIFY:
+        from .lean_ideas import detector
+        lean = detector().fork(b, m, k)
+        if ans is not None and ans != lean:
+            raise AssertionError(f"Rust localCheck disagrees with the kernel: {key} rust {ans} lean {lean}")
+        ans = lean
+    _CERT[key] = ans
+    return ans
+
+
+_RUST: dict = {}                                            # fen -> {uci: certified gain}: the rule layer's conclusions, once
+
+
+def rust_gains(b: chess.Board) -> dict | None:
+    """{uci: largest certified gain} for every legal move, from the Rust rule layer (Ascent rules + the mirrored
+    certificate; analyst_core.threat_claims), cached per position; None if the core is unavailable."""
+    fen = b.fen()
+    hit = _RUST.get(fen)
+    if hit is not None:
+        return hit
+    try:
+        import analyst_core
+        rows = analyst_core.threat_claims(fen)
+    except Exception:
+        return None
+    out: dict = {}
+    for uci, name, k, cert, _ in rows:
+        if cert:
+            out[uci] = max(out.get(uci, 0), k)
+    _RUST[fen] = out
     return out
 
 
 def certified_gain(b: chess.Board, m: chess.Move) -> int:
     """The largest gain a certified threat lemma proves for m (0 when none): a lower bound on what m wins within three
-    plies, whatever the opponent does."""
+    plies, whatever the opponent does. The Rust rule layer when available, else the Python matcher."""
+    g = rust_gains(b)
+    if g is not None:
+        return g.get(m.uci(), 0)
     return max((c.k for c in claims(b, m) if c.certified), default=0)
 
 
@@ -110,10 +158,11 @@ def threat_moves(b: chess.Board) -> list:
     """The side to move's quiet moves that a certified threat lemma proves winning: [(move, k)]. Cheap prefilter first:
     a move must newly attack an enemy piece or give a mate threat to be checked by the kernel."""
     out = []
+    g = rust_gains(b)
     for m in b.legal_moves:
         if b.is_capture(m) or b.gives_check(m) or m.promotion:
             continue                                        # captures and checks are the frame's own moves
-        g = certified_gain(b, m)
-        if g > 0:
-            out.append((m, g))
+        k = g.get(m.uci(), 0) if g is not None else certified_gain(b, m)
+        if k > 0:
+            out.append((m, k))
     return out

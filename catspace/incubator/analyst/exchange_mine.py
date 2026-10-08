@@ -253,8 +253,10 @@ def _lemma_valuer():
         theirs = max((k for _, k in threat_moves(nb)), default=0) if not nb.is_check() else 0
         g = ForcingFrame(True).gain((b, HORIZON[0], HORIZON[1]), x)
         val = min(val, g - theirs) if theirs else val
-        return max(val, certified_gain(b, x))
-    return v
+        if b.is_capture(x) or b.gives_check(x) or x.promotion:  # the certificate is material THREE PLIES on, not a bound on
+            return val                                      # the end (bug 2026-10-08: max() with the frame hid the frame's
+        return max(val, certified_gain(b, x))               # deeper loss on a blundering capture) -- it only adds what the
+    return v                                                # frame cannot see: a quiet move's threat
 
 
 def _ledger_valuer(b0: chess.Board):
@@ -359,8 +361,9 @@ def blunder_test(tag: str, games: int | None = None, horizon=None) -> None:
     anyf = sum(r["hanging"] or r["joined"] or r["forcing"] or r["ledger"] or r["threat"] or r["parry"] or r["lemmas"] for r in recs)
     print(f"OBS   the forcing frame WITH the double threat AND the certified threat lemmas flags {f('lemmas')} ({100 * f('lemmas') / max(n, 1):.0f}%); "
           f"newly flagged against the double-threat frame {sum(r['lemmas'] and not r['threat'] for r in recs)}, lost {sum(r['threat'] and not r['lemmas'] for r in recs)}")
-    print(f"OBS   the forcing frame WITH the parry lemma flags {f('parry')} ({100 * f('parry') / max(n, 1):.0f}%); newly flagged against the double-threat "
-          f"frame {sum(r['parry'] and not r['threat'] for r in recs)}, lost {sum(r['threat'] and not r['parry'] for r in recs)}")
+    if PARRY:
+        print(f"OBS   the forcing frame WITH the parry lemma flags {f('parry')} ({100 * f('parry') / max(n, 1):.0f}%); newly flagged against the double-threat "
+              f"frame {sum(r['parry'] and not r['threat'] for r in recs)}, lost {sum(r['threat'] and not r['parry'] for r in recs)}")
     print(f"OBS   the forcing frame WITH the double-threat exit lemma flags {f('threat')} ({100 * f('threat') / max(n, 1):.0f}%); newly flagged against the "
           f"plain forcing frame {sum(r['threat'] and not r['forcing'] for r in recs)}, lost {sum(r['forcing'] and not r['threat'] for r in recs)}")
     print(f"OBS   the frame player's ledger (fates.ledger_move_value + joint_threats, the earlier work) flags {f('ledger')} ({100 * f('ledger') / max(n, 1):.0f}%); "

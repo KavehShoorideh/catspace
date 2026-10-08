@@ -3,6 +3,7 @@
 //! outcome (one reply or the k-ply episode with a pass), and literal masks over many rows at once. Move generation
 //! comes from shakmaty (import, don't reinvent). Nothing here knows what a lemma is.
 use pyo3::prelude::*;
+mod rules;
 use std::sync::atomic::{AtomicU64, Ordering};
 static NODES: AtomicU64 = AtomicU64::new(0);
 use shakmaty::{fen::Fen, CastlingMode, Chess, Color, FromSetup, Move, Position, Role, Square, Piece};
@@ -171,10 +172,130 @@ fn outcomes(fen: String, ids: Vec<i32>, actor: i32, depth: u32, relative: bool) 
 #[pyfunction]
 fn nodes() -> u64 { NODES.swap(0, Ordering::Relaxed) }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// THE KERNEL'S LOCAL CHECK, mirrored (Ideas/Fork.lean `localCheck`, proved sound by `localCheck_sound`): after move m,
+// EVERY legal reply is answered by one of our ANSWERS (a capture, a move of a piece the opponent attacks, or a king
+// move) after which, whatever they reply, our material is up by k at the leaves (their mate counts as reached, their
+// stalemate as not). The Lean kernel is the auditor: the Python wrapper verifies this mirror against the binary on a
+// sample (Kaveh 2026-10-08: "some things need to be sent out to the Rust layer"). Piece values as the kernel's
+// `pieceValue` (king 0).
+
+fn kernel_value(role: Role) -> i64 {
+    match role { Role::Pawn => 1, Role::Knight => 3, Role::Bishop => 3, Role::Rook => 5, Role::Queen => 9, Role::King => 0 }
+}
+
+fn kernel_material(pos: &Chess, side: Color) -> i64 {
+    let b = pos.board();
+    let mut tot = 0;
+    for sq in b.occupied() {
+        if let Some(p) = b.piece_at(sq) {
+            tot += if p.color == side { kernel_value(p.role) } else { -kernel_value(p.role) };
+        }
+    }
+    tot
+}
+
+fn after(pos: &Chess, m: &Move) -> Chess { let mut p = pos.clone(); p.play_unchecked(m); p }
+
+/// `forcedAtLeaves c goal q 1` with the opponent to move at q: every reply reaches the goal (no reply: mated = reached).
+fn holds_after_every_reply(q: &Chess, side: Color, target: i64) -> bool {
+    NODES.fetch_add(1, Ordering::Relaxed);
+    let ms = q.legal_moves();
+    if ms.is_empty() { return q.is_check(); }
+    ms.iter().all(|r| kernel_material(&after(q, r), side) >= target)
+}
+
+fn answers(q: &Chess) -> Vec<Move> {
+    let them = !q.turn();
+    let occ = q.board().occupied();
+    q.legal_moves().into_iter().filter(|m2| {
+        m2.is_capture()
+            || m2.role() == Role::King
+            || m2.from().map(|f| q.board().attacks_to(f, them, occ).any()).unwrap_or(false)
+    }).collect()
+}
+
+fn local_check_pos(p: &Chess, m: &Move, k: i64) -> bool {
+    let c = p.turn();
+    let target = kernel_material(p, c) + k;
+    let q = after(p, m);
+    let replies = q.legal_moves();
+    if replies.is_empty() { return q.is_check(); }
+    replies.iter().all(|r| {
+        let q2 = after(&q, r);
+        answers(&q2).iter().any(|m2| holds_after_every_reply(&after(&q2, m2), c, target))
+    })
+}
+
+/// local_check(fen, uci, k) -> Option<bool> (None: bad FEN or an illegal move)
+#[pyfunction]
+fn local_check(fen: String, uci: String, k: i64) -> PyResult<Option<bool>> {
+    let Some(pos) = parse(&fen) else { return Ok(None) };
+    let Ok(u) = uci.parse::<shakmaty::uci::UciMove>() else { return Ok(None) };
+    let Ok(m) = u.to_move(&pos) else { return Ok(None) };
+    Ok(Some(local_check_pos(&pos, &m, k)))
+}
+
+fn mate_in_one(pos: &Chess) -> bool {
+    pos.legal_moves().iter().any(|m| { let p = after(pos, m); p.is_checkmate() })
+}
+
+/// threat_claims(fen) -> [(uci, name, k, certified, targets)] for every legal move of the side to move: what the move
+/// CREATED by the rule layer (rules.rs), named (fork / fork with check / cornered piece / mate threat / promotion) and
+/// decided by the kernel's certificate (`local_check_pos`, mirrored from Fork.lean, bridge-tested against Lean).
+#[pyfunction]
+fn threat_claims(fen: String) -> PyResult<Vec<(String, String, i64, bool, Vec<String>)>> {
+    let Some(pos) = parse(&fen) else { return Ok(vec![]) };
+    let us = pos.turn();
+    let before = rules::threats_of(&pos, us);
+    let mate_before = match pos.clone().swap_turn() { Ok(_) => mate_in_one(&pos), Err(_) => false };
+    let mut out = Vec::new();
+    for m in pos.legal_moves() {
+        let q = after(&pos, &m);
+        if q.is_game_over() { continue; }
+        let now = rules::threats_of(&q, us);
+        let mut new: Vec<(u8, i64)> = now.iter().filter(|(t, g)| before.get(t).map_or(true, |g0| **g > *g0)).map(|(t, g)| (*t, *g)).collect();
+        new.sort_by(|a, b| b.1.cmp(&a.1));
+        let uci = m.to_uci(CastlingMode::Standard).to_string();
+        let names: Vec<String> = new.iter().map(|(t, _)| rules::square_name(*t)).collect();
+        let mut claim = |name: &str, k: i64, targets: Vec<String>| {
+            let cert = local_check_pos(&pos, &m, k);
+            out.push((uci.clone(), name.to_string(), k, cert, targets));
+        };
+        if new.len() >= 2 {
+            claim("fork", new[1].1, names.clone());
+        } else if new.len() == 1 {
+            claim(if q.is_check() { "fork with check" } else { "cornered piece" }, new[0].1, names.clone());
+        }
+        if !mate_before && !q.is_check() {
+            if let Ok(passed) = q.clone().swap_turn() {
+                if mate_in_one(&passed) { claim("mate threat", 50, vec![]); }
+            }
+        }
+        if m.role() == Role::Pawn && m.to().rank() == (if us == Color::White { shakmaty::Rank::Seventh } else { shakmaty::Rank::Second }) {
+            claim("promotion", 8, vec![m.to().to_string()]);
+        }
+    }
+    Ok(out)
+}
+
+/// local_check_many([(fen, uci, k)]) -> [Option<bool>] (one call for a batch)
+#[pyfunction]
+fn local_check_many(items: Vec<(String, String, i64)>) -> PyResult<Vec<Option<bool>>> {
+    Ok(items.into_iter().map(|(fen, uci, k)| {
+        let pos = parse(&fen)?;
+        let m = uci.parse::<shakmaty::uci::UciMove>().ok()?.to_move(&pos).ok()?;
+        Some(local_check_pos(&pos, &m, k))
+    }).collect())
+}
+
 #[pymodule]
 fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(literal_masks, m)?)?;
     m.add_function(wrap_pyfunction!(outcomes, m)?)?;
     m.add_function(wrap_pyfunction!(nodes, m)?)?;
+    m.add_function(wrap_pyfunction!(local_check, m)?)?;
+    m.add_function(wrap_pyfunction!(local_check_many, m)?)?;
+    m.add_function(wrap_pyfunction!(threat_claims, m)?)?;
     Ok(())
 }
