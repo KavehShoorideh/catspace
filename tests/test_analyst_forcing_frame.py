@@ -36,3 +36,14 @@ def test_standing_pat_costs_the_second_threat():
     assert double_threat(b) >= 1
     one = chess.Board("4k3/8/8/8/8/8/1q6/R3K3 w - - 0 1")               # one threat (the rook): parried, no cost
     assert double_threat(one) == 0
+
+
+def test_the_parry_lemma():
+    """One threat with a parry costs nothing; the Kxf1 Qxd4 double attack costs; a trapped piece's single threat costs."""
+    from catspace.incubator.analyst.forcing_frame import parry_cost
+    assert parry_cost(chess.Board("4k3/8/8/8/8/8/1q6/R3K3 w - - 0 1")) == 0           # the rook simply moves
+    b = chess.Board("2r5/pp1k1ppp/1q2p3/3nP3/3P4/Q7/P4PPP/RB3bK1 w - - 0 22")
+    b.push_san("Kxf1"); b.push_san("Qxd4")
+    assert parry_cost(b) >= 1
+    trapped = chess.Board("4k3/8/8/8/8/1p6/p1p5/NK6 w - - 0 1")                         # the knight a1 cannot go anywhere safe? (b3 pawn, c2 pawn)
+    assert trapped.piece_at(chess.A1).piece_type == chess.KNIGHT

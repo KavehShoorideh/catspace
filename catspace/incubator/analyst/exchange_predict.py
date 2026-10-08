@@ -103,6 +103,7 @@ def _game(plies: dict) -> dict:
         from .forcing_frame import capture_value                     # the oracles: the joined frame and the forcing frame
         v_join = capture_value(b, took, use_checks=False)[0]
         v_force = capture_value(b, took, use_checks=True)[0]
+        v_threat = capture_value(b, took, use_checks=True, threats=True)[0]
         v_nopin = max(root_values(Search(True), *frame_of(b, took, pins=False)).values())
         from .exchange_frame import linked_value
         v_link = linked_value(b, took)
@@ -110,7 +111,7 @@ def _game(plies: dict) -> dict:
                                   mat_end=(end["material"] if end["side"] == r["side"] else -end["material"]),
                                   events=sorted(events) or ["a plain exchange"], mate=abs(truth) >= MATE or abs(_pawns(r["eval"])) >= MATE, accurate=accurate,
                                   model=mat + vi, frame=mat + v, plain=mat + see(b, took)[0], none=mat, sf_now=_pawns(r["eval"]),
-                                  nopin=mat + v_nopin, joined=mat + v_join, forcing=mat + v_force, linked=mat + v_link,
+                                  nopin=mat + v_nopin, joined=mat + v_join, forcing=mat + v_force, linked=mat + v_link, threat=mat + v_threat,
                                   names=variants(b, took), elo=r["elo"]))
     return out
 
@@ -142,7 +143,7 @@ def run(tag: str, limit_games: int | None = None) -> None:
     err = lambda g, k, truth="truth": abs(g[k] - g[truth])
     print(f"OBS exchanges taken: {len(graded) + len(mates)}; set aside where Stockfish sees a mate (now or at the end; a mate frame, not the "
           f"exchange's) {len(mates)}; graded {len(graded)}, resolved in a median of {statistics.median([g['plies'] for g in graded]) if graded else 0} plies")
-    keys = ("nopin", "frame", "linked", "joined", "forcing", "plain", "none", "sf_now")
+    keys = ("nopin", "frame", "linked", "joined", "forcing", "threat", "plain", "none", "sf_now")
     for truth, label in (("mat_end", "the material actually left after the played exchange"), ("truth", "Stockfish at the end")):
         ks = keys if truth == "truth" else keys[:-1]
         print(f"OBS   mean |prediction - {label}|: " + ", ".join(f"{k} {statistics.mean(err(g, k, truth) for g in graded):.2f}" for k in ks)

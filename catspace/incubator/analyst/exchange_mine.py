@@ -274,7 +274,8 @@ def _blunders(plies: dict, horizon=None) -> list:
             out.append(dict(fen=plies[k]["fen"], move=bk.san(m), drop=round(e0 - e1, 1), elo=plies[k]["elo"], good=good,
                             hanging=_hanging(bk, m) >= 1, joined=_gap_to_best(bk, m, _forcing_valuer(False)) >= 1,
                             forcing=_gap_to_best(bk, m, _forcing_valuer(True)) >= 1, ledger=_gap_to_best(bk, m, _ledger_valuer(bk)) >= 1,
-                            threat=_gap_to_best(bk, m, _forcing_valuer(True, True)) >= 1))
+                            threat=_gap_to_best(bk, m, _forcing_valuer(True, True)) >= 1,
+                            parry=_gap_to_best(bk, m, _forcing_valuer(True, "parry")) >= 1))
     return out
 
 
@@ -329,12 +330,14 @@ def blunder_test(tag: str, games: int | None = None, horizon=None) -> None:
         for o in pool.imap_unordered(partial(_blunders, horizon=horizon), [by[g] for g in sorted(by)][:games], chunksize=2):
             recs += o
     goods = [r for r in recs if r["good"]]; recs = [r for r in recs if not r["good"]]
-    keys = ("hanging", "joined", "forcing", "ledger", "threat")
+    keys = ("hanging", "joined", "forcing", "ledger", "threat", "parry")
     print(f"OBS FALSE ALARMS on {len(goods)} good moves inside the same exchanges (Stockfish moves less than 0.3 pawns): " +
           ", ".join(f"{k} {sum(g[k] for g in goods)} ({100 * sum(g[k] for g in goods) / max(len(goods), 1):.1f}%)" for k in keys))
     n = len(recs)
     f = lambda k: sum(r[k] for r in recs)
-    anyf = sum(r["hanging"] or r["joined"] or r["forcing"] or r["ledger"] or r["threat"] for r in recs)
+    anyf = sum(r["hanging"] or r["joined"] or r["forcing"] or r["ledger"] or r["threat"] or r["parry"] for r in recs)
+    print(f"OBS   the forcing frame WITH the parry lemma flags {f('parry')} ({100 * f('parry') / max(n, 1):.0f}%); newly flagged against the double-threat "
+          f"frame {sum(r['parry'] and not r['threat'] for r in recs)}, lost {sum(r['threat'] and not r['parry'] for r in recs)}")
     print(f"OBS   the forcing frame WITH the double-threat exit lemma flags {f('threat')} ({100 * f('threat') / max(n, 1):.0f}%); newly flagged against the "
           f"plain forcing frame {sum(r['threat'] and not r['forcing'] for r in recs)}, lost {sum(r['forcing'] and not r['threat'] for r in recs)}")
     print(f"OBS   the frame player's ledger (fates.ledger_move_value + joint_threats, the earlier work) flags {f('ledger')} ({100 * f('ledger') / max(n, 1):.0f}%); "
@@ -346,7 +349,7 @@ def blunder_test(tag: str, games: int | None = None, horizon=None) -> None:
     big = [r for r in recs if r["drop"] >= 3]
     print(f"OBS   the large ones (a drop of 3+ pawns): {len(big)}; flagged by the forcing frame {sum(r['forcing'] for r in big)}, by any "
           f"{sum(r['hanging'] or r['joined'] or r['forcing'] or r['ledger'] or r['threat'] for r in big)}, by the ledger {sum(r['ledger'] for r in big)}, with the double threat {sum(r['threat'] for r in big)}")
-    miss = sorted((r for r in recs if not (r["hanging"] or r["joined"] or r["forcing"] or r["ledger"] or r["threat"])), key=lambda r: -r["drop"])
+    miss = sorted((r for r in recs if not (r["hanging"] or r["joined"] or r["forcing"] or r["ledger"] or r["threat"] or r["parry"])), key=lambda r: -r["drop"])
     # WHAT THE UNFLAGGED ARE: Stockfish's best reply to the blunder (depth 12), by kind
     kinds = Counter(); ex = defaultdict(list)
     with Pool(max(1, (os.cpu_count() or 2) - 1), initializer=_sf_init) as pool:

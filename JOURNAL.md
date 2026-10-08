@@ -27846,3 +27846,29 @@ capturing elsewhere): the one-shot two-sided intermezzo (each side's best static
 the explaining line (earlier grading): already loose 71, guard removed 12, discovered 9, a check 8. BLUNDER TEST (smoke,
 20 games): 75 blunders inside exchanges; flagged by the hanging-piece lemma 39%, the joined frame 33%, the forcing frame
 39%, any 55%. The full run and a read of the earlier frame-player work (Kaveh: some of this was solved before) are next.
+
+## 2026-10-08 13:24 PDT — lemma mining from blunders: the double-threat lemma in, the parry lemma out, the plateau
+
+Kaveh: blundered exchanges test the lemmas (the blunderer overlooked one); keep mining until the lemmas stop being
+needed; an earlier session had solved part of this (read: the one-ply ledger and joint frames of 09-27/09-28 -- my
+one-shot intermezzo repeated the 09-28 finding that per-frame intermezzo scans cannot work). THE TEST: inside the
+exchanges of c300, a blunder = Stockfish drops a pawn or more for the mover; a lemma set FLAGS it when, valued by that
+set, the move is a pawn worse than the BEST LEGAL ALTERNATIVE (review: against passing, a standing threat is netted out;
+against standing pat, a quiet defence is invisible); FALSE ALARMS on a sample of good moves (Stockfish moves < 0.3).
+OBS on 1,083 blunders / 1,721 good moves: hanging piece 27% / 9.5%; joined frame 36% / 6.7%; forcing frame 40% / 7.0%;
+the frame player's ledger (fates.ledger_move_value, the earlier work) 37% / 8.5%; forcing frame WITH THE DOUBLE-THREAT
+EXIT LEMMA 47% / 8.9% (89 newly flagged, 13 lost); all together 56%; of the large ones (3+ pawns) 163 of 210 (the lemma
+frame alone 154). A deeper horizon (12 plies, 4 checks) adds nothing (36% vs 36% on 60 games): the residue is not depth.
+THE DOUBLE-THREAT LEMMA (`forcing_frame.double_threat`): standing pat costs the opponent's SECOND-best threat on the
+safe null move -- one threat can be parried, two cannot both be (mined from Kxf1 Qxd4, the queen hitting a1 and more).
+THE PARRY LEMMA (`forcing_frame.parry_cost`, kept off): standing pat costs what the opponent still wins after our best
+single reply. After a bug fix (a check was read as a parry: Qa4+ against Qxd4) it flags 43% vs the double threat's 46%
+on 60 games (6 gained, 12 lost), false alarms 9.3% vs 9.0%, about 4x slower -- refuted. On the exchanges actually played,
+the double-threat frame predicts the material won worse (0.21 pawns vs the forcing frame's 0.14) and Stockfish at the
+end marginally better (1.25 vs 1.26): it charges threats realized after the exchange ends. BUGS caught on the way: the
+hanging check counted the opponent's capture without the move's own and counted captures illegal in check; bare
+side-to-move flips (now the safe null move). THE RESIDUE (478 blunders no lemma flags), by Stockfish's best reply: a
+capture 153, a quiet move winning nothing material 128, a quiet move making one threat 119, a quiet double threat 35, a
+quiet check 31, a mate threat 5, a pawn ending 7. THE PLATEAU (Kaveh's criterion): the last lemma did not add; deeper
+search did not add; what is left is quiet threats (a different frame: moves that create threats) and positional drops
+(the parked spread idea). Directional, one census.

@@ -32,10 +32,50 @@ def double_threat(b: chess.Board) -> float:
     return float(vals[1]) if len(vals) >= 2 else 0.0
 
 
+def _best_capture(b: chess.Board) -> int:
+    """The side to move's best LEGAL capture by the static exchange (0 when none wins)."""
+    from .exchange_law import see
+    best = 0
+    for x in b.legal_moves:
+        if b.is_capture(x):
+            t = b.piece_at(x.to_square)
+            if t is not None and t.piece_type != chess.KING:
+                best = max(best, see(b, x.to_square)[0])
+    return best
+
+
+def parry_cost(b: chess.Board) -> float:
+    """THE PARRY LEMMA (mined 2026-10-08 from unflagged blunders: 119 were answered by a quiet move making ONE threat --
+    a threat that cannot be parried): standing pat costs the least the opponent still wins by a capture after our best
+    single reply. Read only when the opponent has a threat (their best capture on the safe null move); it subsumes the
+    double threat (no single reply parries two), and catches trapped, pinned and overloaded targets. A reply that is
+    itself a capture counts its own gain. -> the cost (>= 0)."""
+    from .chess_domain import passed
+    p = passed(b)
+    if p is None or _best_capture(p) < 1:
+        return 0.0
+    best = None
+    for m in b.legal_moves:
+        g = 0
+        if b.is_capture(m):
+            t = b.piece_at(m.to_square)
+            g = VAL[t.piece_type] if t is not None else 1
+        nb = b.copy(stack=False); nb.push(m)
+        if nb.is_checkmate():
+            return 0.0
+        if nb.is_check():                                  # a check postpones the threat, it does not parry it (bug
+            continue                                       # 2026-10-08: Qa4+ read as a parry of the Qxd4 double attack)
+        loss = _best_capture(nb) - g
+        best = loss if best is None else min(best, loss)
+        if best <= 0:
+            return 0.0
+    return float(max(0, best if best is not None else 0))
+
+
 class ForcingFrame:
-    def __init__(self, checks: bool = True, threats: bool = False):
+    def __init__(self, checks: bool = True, threats: bool | str = False):
         self.checks = checks
-        self.threats = threats                           # the double-threat exit lemma on/off
+        self.threats = threats                           # False, True (the double-threat exit lemma) or "parry"
 
     def moves(self, st):
         b, plies, checks = st
@@ -68,6 +108,8 @@ class ForcingFrame:
         b, plies, _ = st
         if b.is_check():
             return -MATE if (plies <= 0 and b.is_checkmate()) or plies > 0 else 0.0   # in check: no standing pat
+        if self.threats == "parry":
+            return -parry_cost(b)
         return -double_threat(b) if self.threats else 0.0
 
     def key(self, st):
@@ -80,6 +122,9 @@ def forcing_lemmas(threats: bool = False):
 
     def stand(st):                                       # not in check, the side to move can always stand pat
         return None if st[0].is_check() else (0.0, float("inf"))
+    if threats == "parry":                               # standing pat costs what no single reply parries
+        return [Lemma("stand pat", "proved: the exit is a move of the frame (FrameSearch.exit)",
+                      state=lambda st: None if st[0].is_check() else (-parry_cost(st[0]), float("inf")))]
     if threats:                                          # standing pat now costs the double threat: the bound moves with it
         return [Lemma("stand pat", "proved: the exit is a move of the frame (FrameSearch.exit)",
                       state=lambda st: None if st[0].is_check() else (-double_threat(st[0]), float("inf")))]
