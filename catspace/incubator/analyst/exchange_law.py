@@ -18,8 +18,9 @@ THE HYPOTHESES (each a computable check on the position, named; a tactic is the 
                 slider shares a line with our king -- no in-between check (the "zwischenzug" exception)
   noInterpose   every attacker of ours is a knight, a pawn, or stands next to s -- the enemy cannot block our recapture
   noArrival     no enemy piece off the frame can move to a square attacking s in one move -- the defenders are fixed
-THE BRIDGE: an exact alpha-beta over every legal move to the sequence's depth (material at the leaves), which must never
-fall below see(p, s) when the hypotheses hold; where they fail, the gap is the tactic.
+THE BRIDGE: an exact alpha-beta over every legal move to the sequence's depth, with a captures-only quiescence at the
+leaves (either side may stand pat), which must never fall below see(p, s) when the hypotheses hold; where they fail,
+the gap is the tactic.
 
     python -m catspace.incubator.analyst.exchange_law census --tag c300 [--limit 3000]
 Prints OBS lines: how often the law fires, how often the bridge agrees (must be always), and which hypothesis fails most.
@@ -148,11 +149,34 @@ def bridge(b: chess.Board, s: int, depth: int) -> float:
     A, _ = participants(b, s)
     m0 = next(m for m in b.legal_moves if m.from_square == A[0] and m.to_square == s)
     base = material(b, c)
+    def quiesce(bb, alpha, beta, us, qd=8):
+        """Captures only at the horizon, either side free to stand pat (review 2026-10-07: a leaf after our capture
+        left the opponent's pending recapture uncounted and flattered the attacker)."""
+        if bb.is_checkmate():
+            return -1000.0 if bb.turn == us else 1000.0
+        stand = material(bb, us) - base
+        if qd == 0 or bb.is_stalemate():
+            return stand
+        mover = bb.turn == us
+        best = stand
+        caps = sorted((m for m in bb.legal_moves if bb.is_capture(m)), key=lambda m: -VAL.get((bb.piece_at(m.to_square) or chess.Piece(chess.PAWN, not bb.turn)).piece_type, 1))
+        for m in caps:
+            bb.push(m); v = quiesce(bb, alpha, beta, us, qd - 1); bb.pop()
+            if mover:
+                best = max(best, v); alpha = max(alpha, v)
+            else:
+                best = min(best, v); beta = min(beta, v)
+            if alpha >= beta:
+                break
+        return best
+
     def ab(bb, d, alpha, beta, us):
         if bb.is_checkmate():
             return -1000.0 if bb.turn == us else 1000.0
-        if bb.is_stalemate() or d == 0:
+        if bb.is_stalemate():
             return material(bb, us) - base
+        if d == 0:
+            return quiesce(bb, alpha, beta, us)
         moves = sorted(bb.legal_moves, key=lambda m: not bb.is_capture(m))
         if bb.turn == us:
             v = -1e9

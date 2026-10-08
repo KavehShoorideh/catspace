@@ -22874,6 +22874,28 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-07 17:24 PDT — the exceptions to the exchange law, with their bite rates (OBS)
+
+THE BRIDGE CORRECTED: the exact search evaluated material at an odd depth, after our last capture, so a pending recapture
+beyond the horizon went uncounted and flattered the attacker (the first "reverse" reading, 35-63%, is retracted). The
+leaves now carry a captures-only quiescence, either side free to stand pat. Under it the law still holds: 36 fires on
+4,910 attacked pieces of 3,000 positions, 36 agreements, 0 wrong.
+OBS the bite of each exception, 600 census positions, frames where the static exchange says the capture WINS, grouped by
+the first failing hypothesis -- the exact outcome falls short of the static one:
+  x-ray behind the frame (noXray)            13 of 44 = 29.5%, mean shortfall -3.1 pawns
+  a capture elsewhere pays / an overloaded defender of ours (noOtherCapture)   19 of 30 = 63.3% (the shortfall often a mate)
+  a king among the participants (noKing)      6 of 30 = 20.0%, -3.0
+  an enemy check available (noCheck)          1 of 33 =  3.0%
+  a pin (noPin) 0 of 2; a blockable attacker (noInterpose) 0 of 2; the honest frame 0 of 1
+OBS the reverse -- the static exchange says the capture loses, the exact search wins material anyway: noXray 12 of 190
+  (6%), noCheck 7 of 178 (4%), noKing 3 of 113, noOtherCapture 1 of 76, noInterpose 1 of 24, noArrival 2 of 19, noPin 1 of 11.
+READING (one census, small cells; the 3,000-position run follows): the static exchange is rarely too pessimistic and
+often too optimistic, by named cause -- "visibly defended, but not really" is the x-ray and the overload above all; an
+available check almost never changes the material within the sequence. This is the tactic census by cause Kaveh asked
+for, and the order in which the law's hypotheses are worth widening and proving: the overload clause (the biggest and
+the deadliest), the x-ray (a third of its frames), the king as a participant (a fifth); the check clause can stay strict
+for now at little cost.
+
 ## 2026-10-07 16:56 PDT — the sound bundle: what was removed and what it cost; the exchange law prototyped, sound and rare (OBS)
 
 Kaveh: "remove the rules that can fall out of the basics; I would like the basics to be sound." Removed from the player

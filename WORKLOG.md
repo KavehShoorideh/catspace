@@ -255,3 +255,5 @@ Newest entry first. Times from `date` (PDT).
 - First map arm 100 games: 8.0% (5W 6D). Order interaction (map before opening) found and fixed, then moot.
 - exchange_law.py: 9 hypotheses, SEE, exact bridge; census 36/4910 fire, 0 wrong; blockers noCheck/noXray/noOtherCapture/noKing.
   Running: the bite census (per-exception shortfall rates). Sound games sf2000x_sound_s1..5 running. Suite running.
+- 2026-10-07 17:24 PDT bridge quiescence; law 36/36 holds; bite rates: noXray 30%, noOtherCapture 63%, noKing 20%, noCheck 3%;
+  reverse 4-6% (the 35-63% retracted). 3,000-position bite census launched (tmp/exchange_bite3.log).
