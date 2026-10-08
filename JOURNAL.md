@@ -27701,3 +27701,21 @@ best static capture elsewhere in 439 (97%); frames sharing no participant with t
 to build the composed tier: value = see(s) - max(0, their best static capture elsewhere), the hypotheses as honest with
 noOtherCapture's static clause dropped (the overload and attackers-unattacked clauses kept as their own hypothesis).
 The 13 misses are being listed for inspection first.
+
+## 2026-10-08 00:50 PDT — the composed tier built; the next widening (the checking reply) measured and NOT built
+
+The composed tier is in the kernel and the prototype (commit 60ea2c91): `noOverload` split from `noOtherCapture`
+(the other square's game independent of ours), the intermezzo's price = the opponent's best static capture elsewhere
+after our first capture, composed value = static value minus it, `settledWithinComposed` with two more plies, the law
+`exchangeLawComposed` as a Prop; the binary prints `composed=` / `composedhonest=`, `exchangecertc`. OBS census,
+3,000 positions, 4,910 attacked pieces: the strict law fires 38 (0.8%), bridge 37 agree 0 wrong; the composed tier fires
+on 10 more, 10 agree 0 wrong. Small, because the other hypotheses fail first: noXray 1,204 frames, noCheck 1,173,
+noKing 801, noOtherCapture 716. The 13 misses of the intermezzo measurement (of 452) are two classes: two interacting
+captures elsewhere (one maximum cannot price two) and losing captures (value <= -1) whose losses compound -- the rule
+is a one-frame price by design.
+THE CHECKING REPLY, measured before building (experiments/exchange_check_measure.py): frames failing noCheck only by
+"the opponent has a checking reply" (our king off every line to the square, no enemy slider on its lines), 8,000
+positions: 984 frames; the exact bridge is at least the static value in 777 (79%), at least the composed value in 904
+(92%); 80 misses, 29 of them MATES (the checking reply starts a mating net). Below the intermezzo's 97% and the failure
+class is the mating net, so the checking-reply clause stays a hypothesis; a check tier waits for the mate machinery (the
+back-rank family is the first piece of it). Scripts kept under catspace/incubator/analyst/experiments/ (not shipped).
