@@ -22874,6 +22874,22 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-10-07 17:32 PDT — the exchange law, part 1 in Lean: the capture game; the order of capture never matters on real squares (OBS)
+
+`lean/ideas/Ideas/Exchange.lean`: the capture game on one square with no chess in it -- a piece worth `onS` on the
+square, the mover's pieces `mine` and the opponent's `theirs` as value lists; the mover stops or takes with ANY of its
+pieces and faces the opponent's best answer with that piece on the square. `value` is the true minimax (both sides free
+to choose the capturer), `cheapest` the classical static exchange (cheapest piece first), both by structural recursion on
+a fuel of the piece count; `value_nonneg`, `cheapest_nonneg`, `value_nil`, axioms propext / Classical.choice / Quot.sound.
+OBS the order of capture on real squares: on 2,408 attacked enemy pieces of 1,500 census positions, the free minimax
+equals the cheapest-first exchange in 2,408 -- so the simple static read is already the exact value of the capture game
+where it applies, and part 2 may state the law with `cheapest`.
+Part 2 (to state, then prove): the honest-frame hypotheses in the kernel's terms make the real game on the square the
+capture game, and the material outcome against every legal reply is at least `cheapest`. The design question before
+the statement is the leaf: the fork theorem reads material right after our capture (an odd depth), which the bite
+census showed flatters the attacker when a recapture is pending; the honest reading is after the opponent's answer,
+with the pending recapture counted -- which the claim must say.
+
 ## 2026-10-07 17:24 PDT — the exceptions to the exchange law, with their bite rates (OBS)
 
 THE BRIDGE CORRECTED: the exact search evaluated material at an odd depth, after our last capture, so a pending recapture

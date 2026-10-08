@@ -257,3 +257,4 @@ Newest entry first. Times from `date` (PDT).
   Running: the bite census (per-exception shortfall rates). Sound games sf2000x_sound_s1..5 running. Suite running.
 - 2026-10-07 17:24 PDT bridge quiescence; law 36/36 holds; bite rates: noXray 30%, noOtherCapture 63%, noKing 20%, noCheck 3%;
   reverse 4-6% (the 35-63% retracted). 3,000-position bite census launched (tmp/exchange_bite3.log).
+- 2026-10-07 17:32 PDT Ideas/Exchange.lean (capture game: value / cheapest, fuel recursion; 3 lemmas, axioms standard); free = cheapest on 2,408/2,408 frames.
