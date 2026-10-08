@@ -174,6 +174,7 @@ def main(argv=None):
 # Unflagged blunders are what our lemmas still miss.
 
 HORIZON = [8, 2]                                                  # plies, checks: the forcing frame's horizon (settable)
+PARRY = False                                                     # the parry lemma's detector (refuted 2026-10-08; slow)
 
 
 def _frame_value(b: chess.Board, checks: bool, threats: bool = False) -> float:
@@ -237,6 +238,25 @@ def _forcing_valuer(checks: bool, threats: bool = False):
     return v
 
 
+def _lemma_valuer():
+    """The forcing frame with the double-threat lemma, plus the THREAT LEMMAS (threat_lemmas.py, certified by the
+    kernel's localCheck): after the move, the opponent's best certified threat move counts against it; the move's own
+    certified threat counts for it (a fork, a cornered piece, a mate threat, a promotion -- quiet or not)."""
+    from .threat_lemmas import certified_gain, threat_moves
+    base = _forcing_valuer(True, True)
+
+    def v(b, x):
+        nb = b.copy(stack=False); nb.push(x)
+        if nb.is_checkmate():
+            return 1000.0
+        val = base(b, x)
+        theirs = max((k for _, k in threat_moves(nb)), default=0) if not nb.is_check() else 0
+        g = ForcingFrame(True).gain((b, HORIZON[0], HORIZON[1]), x)
+        val = min(val, g - theirs) if theirs else val
+        return max(val, certified_gain(b, x))
+    return v
+
+
 def _ledger_valuer(b0: chess.Board):
     from .chess_domain import passed
     from .fates import ledger_move_value, square_frame, threats
@@ -275,7 +295,8 @@ def _blunders(plies: dict, horizon=None) -> list:
                             hanging=_hanging(bk, m) >= 1, joined=_gap_to_best(bk, m, _forcing_valuer(False)) >= 1,
                             forcing=_gap_to_best(bk, m, _forcing_valuer(True)) >= 1, ledger=_gap_to_best(bk, m, _ledger_valuer(bk)) >= 1,
                             threat=_gap_to_best(bk, m, _forcing_valuer(True, True)) >= 1,
-                            parry=_gap_to_best(bk, m, _forcing_valuer(True, "parry")) >= 1))
+                            parry=_gap_to_best(bk, m, _forcing_valuer(True, "parry")) >= 1 if PARRY else False,
+                            lemmas=_gap_to_best(bk, m, _lemma_valuer()) >= 1))
     return out
 
 
@@ -330,12 +351,14 @@ def blunder_test(tag: str, games: int | None = None, horizon=None) -> None:
         for o in pool.imap_unordered(partial(_blunders, horizon=horizon), [by[g] for g in sorted(by)][:games], chunksize=2):
             recs += o
     goods = [r for r in recs if r["good"]]; recs = [r for r in recs if not r["good"]]
-    keys = ("hanging", "joined", "forcing", "ledger", "threat", "parry")
+    keys = ("hanging", "joined", "forcing", "ledger", "threat", "lemmas")
     print(f"OBS FALSE ALARMS on {len(goods)} good moves inside the same exchanges (Stockfish moves less than 0.3 pawns): " +
           ", ".join(f"{k} {sum(g[k] for g in goods)} ({100 * sum(g[k] for g in goods) / max(len(goods), 1):.1f}%)" for k in keys))
     n = len(recs)
     f = lambda k: sum(r[k] for r in recs)
-    anyf = sum(r["hanging"] or r["joined"] or r["forcing"] or r["ledger"] or r["threat"] or r["parry"] for r in recs)
+    anyf = sum(r["hanging"] or r["joined"] or r["forcing"] or r["ledger"] or r["threat"] or r["parry"] or r["lemmas"] for r in recs)
+    print(f"OBS   the forcing frame WITH the double threat AND the certified threat lemmas flags {f('lemmas')} ({100 * f('lemmas') / max(n, 1):.0f}%); "
+          f"newly flagged against the double-threat frame {sum(r['lemmas'] and not r['threat'] for r in recs)}, lost {sum(r['threat'] and not r['lemmas'] for r in recs)}")
     print(f"OBS   the forcing frame WITH the parry lemma flags {f('parry')} ({100 * f('parry') / max(n, 1):.0f}%); newly flagged against the double-threat "
           f"frame {sum(r['parry'] and not r['threat'] for r in recs)}, lost {sum(r['threat'] and not r['parry'] for r in recs)}")
     print(f"OBS   the forcing frame WITH the double-threat exit lemma flags {f('threat')} ({100 * f('threat') / max(n, 1):.0f}%); newly flagged against the "
@@ -349,7 +372,7 @@ def blunder_test(tag: str, games: int | None = None, horizon=None) -> None:
     big = [r for r in recs if r["drop"] >= 3]
     print(f"OBS   the large ones (a drop of 3+ pawns): {len(big)}; flagged by the forcing frame {sum(r['forcing'] for r in big)}, by any "
           f"{sum(r['hanging'] or r['joined'] or r['forcing'] or r['ledger'] or r['threat'] for r in big)}, by the ledger {sum(r['ledger'] for r in big)}, with the double threat {sum(r['threat'] for r in big)}")
-    miss = sorted((r for r in recs if not (r["hanging"] or r["joined"] or r["forcing"] or r["ledger"] or r["threat"] or r["parry"])), key=lambda r: -r["drop"])
+    miss = sorted((r for r in recs if not (r["hanging"] or r["joined"] or r["forcing"] or r["ledger"] or r["threat"] or r["parry"] or r["lemmas"])), key=lambda r: -r["drop"])
     # WHAT THE UNFLAGGED ARE: Stockfish's best reply to the blunder (depth 12), by kind
     kinds = Counter(); ex = defaultdict(list)
     with Pool(max(1, (os.cpu_count() or 2) - 1), initializer=_sf_init) as pool:
@@ -367,5 +390,109 @@ def blunder_test(tag: str, games: int | None = None, horizon=None) -> None:
 
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# THE RESIDUE, DUG (Kaveh 2026-10-08: "a capture is 153 of the blunders ... is that a capture in a different frame, the
+# same frame? should they have captured but didn't, or captured the wrong thing? ... is the one threat able to be
+# captured by our frames?"). For every blunder no lemma flags, Stockfish's line after it (depth 12):
+#   the blunder         a capture / a check / quiet
+#   the punishing capture's target, relative to the blunder:
+#     the piece that moved          (it moved into the capture)
+#     a piece it guarded            (the moved piece defended the target before: guard removed)
+#     a piece behind its line       (the capturer's line to the target ran through the vacated square: discovered)
+#     a piece already attacked      (the opponent had a winning capture there before the blunder: an ignored threat)
+#     other
+#   material in Stockfish's line    the blunderer's material change over its first 6 plies (a capture the blunder made
+#                                   counted): does the drop show up as material in short play, or is it positional?
+#   our frame after a quiet reply   the forcing frame (double-threat lemma) for the blunderer after Stockfish's quiet
+#                                   reply: does it see a loss of a pawn or more (the threat caught by our framing)?
+
+def _material(b: chess.Board, side: chess.Color) -> int:
+    return sum((VALS[p.piece_type] if p.color == side else -VALS[p.piece_type]) for p in b.piece_map().values())
+
+
+def _dig_one(r: dict) -> dict:
+    import chess.engine
+    from .chess_domain import passed
+    from .exchange_law import see
+    b = chess.Board(r["fen"]); m = b.parse_san(r["move"]); side = b.turn
+    nb = b.copy(stack=False); nb.push(m)
+    out = dict(fen=r["fen"], move=r["move"], drop=r["drop"],
+               blunder="a capture" if b.is_capture(m) else "a check" if b.gives_check(m) else "quiet")
+    if nb.is_game_over():
+        out["kind"] = "game over"; return out
+    info = _SF.analyse(nb, chess.engine.Limit(depth=12)); pv = info.get("pv", [])[:6]
+    if not pv:
+        out["kind"] = "no line"; return out
+    reply = pv[0]
+    bb = nb.copy(stack=False)
+    for x in pv:
+        bb.push(x)
+    out["material"] = _material(bb, side) - _material(b, side)                 # over the blunder and 6 plies of the line
+    out["reply"] = nb.san(reply)
+    if nb.is_capture(reply):
+        t = reply.to_square
+        before = passed(b) if b.turn == side else None                          # the opponent to move with the blunder not made
+        if t == m.to_square:
+            rel = "the piece that moved"
+        elif b.piece_at(m.from_square) is not None and t in b.attacks(m.from_square) and t != m.to_square:
+            rel = "a piece it guarded"
+        elif m.from_square in [q for q in chess.SQUARES if chess.BB_SQUARES[q] & chess.between(reply.from_square, t)]:
+            rel = "a piece behind its line"
+        elif before is not None and before.piece_at(t) is not None and before.attackers(before.turn, t) and see(before, t)[0] > 0:
+            rel = "a piece already attacked"
+        else:
+            rel = "other"
+        out["kind"] = "a capture"; out["rel"] = rel
+    elif nb.gives_check(reply):
+        out["kind"] = "a quiet check"
+    else:
+        out["kind"] = "a quiet move"
+        a = nb.copy(stack=False); a.push(reply)                                 # the blunderer to move after the quiet reply
+        v = _frame_value(a, True, True)
+        out["frame_sees"] = v <= -1
+        out["frame_value"] = v
+    return out
+
+
+def dig(tag: str, games: int | None = None) -> None:
+    from multiprocessing import Pool
+
+    from .tactic_census_measure import load
+    by = defaultdict(dict)
+    for r in load(tag):
+        by[r["game"]][r["ply"]] = r
+    recs = []
+    with Pool(max(1, (os.cpu_count() or 2) - 1)) as pool:
+        for o in pool.imap_unordered(_blunders, [by[g] for g in sorted(by)][:games], chunksize=2):
+            recs += o
+    miss = [r for r in recs if not r["good"] and not (r["hanging"] or r["joined"] or r["forcing"] or r["ledger"] or r["threat"])]
+    with Pool(max(1, (os.cpu_count() or 2) - 1), initializer=_sf_init) as pool:
+        dug = list(pool.imap_unordered(_dig_one, miss, chunksize=4))
+    caps = [d for d in dug if d.get("kind") == "a capture"]
+    print(f"OBS the residue dug: {len(dug)} blunders no lemma flags; Stockfish answers with a capture {len(caps)}, a quiet move "
+          f"{sum(d.get('kind') == 'a quiet move' for d in dug)}, a quiet check {sum(d.get('kind') == 'a quiet check' for d in dug)}")
+    shows = lambda d: d.get("material", 0) <= -1
+    print(f"OBS   THE CAPTURES ({len(caps)}): the blunder was " + ", ".join(f"{k} {v}" for k, v in Counter(d['blunder'] for d in caps).most_common())
+          + "; the punished target was " + ", ".join(f"{k} {v}" for k, v in Counter(d['rel'] for d in caps).most_common()))
+    print(f"OBS     material lost within 6 plies of Stockfish's line (the drop is material in short play): {sum(shows(d) for d in caps)}; "
+          f"not (the drop is positional, the capture only starts it) {sum(not shows(d) for d in caps)}")
+    for rel, _ in Counter(d['rel'] for d in caps).most_common():
+        g = [d for d in caps if d["rel"] == rel]
+        print(f"OBS     {rel:24s} n {len(g):4d}: material shows {sum(shows(d) for d in g)}")
+        for d in [x for x in g if shows(x)][:3]:
+            print(f"OBS       {d['fen']} {d['move']} ({d['blunder']}), Stockfish {d['reply']}: material {d['material']:+d} in 6 plies, drop {d['drop']:.1f}")
+    qs = [d for d in dug if d.get("kind") == "a quiet move"]
+    print(f"OBS   THE QUIET REPLIES ({len(qs)}): after the quiet move, our frame (forcing + double threat) sees a loss of a pawn or more for "
+          f"the blunderer in {sum(d['frame_sees'] for d in qs)}; material lost within 6 plies of the line {sum(shows(d) for d in qs)}; both "
+          f"{sum(d['frame_sees'] and shows(d) for d in qs)}; material shows but the frame does not see it {sum(shows(d) and not d['frame_sees'] for d in qs)}")
+    for d in [x for x in qs if shows(x) and not x["frame_sees"]][:5]:
+        print(f"OBS       unseen: {d['fen']} {d['move']}, Stockfish {d['reply']}: material {d['material']:+d}, our frame {d['frame_value']:+.0f}")
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "dig":
+        dig(sys.argv[sys.argv.index("--tag") + 1] if "--tag" in sys.argv else "c300",
+            int(sys.argv[sys.argv.index("--games") + 1]) if "--games" in sys.argv else None)
+    else:
+        main()

@@ -27872,3 +27872,30 @@ capture 153, a quiet move winning nothing material 128, a quiet move making one 
 quiet check 31, a mate threat 5, a pawn ending 7. THE PLATEAU (Kaveh's criterion): the last lemma did not add; deeper
 search did not add; what is left is quiet threats (a different frame: moves that create threats) and positional drops
 (the parked spread idea). Directional, one census.
+
+## 2026-10-08 15:18 PDT — the residue dug; winning frames recognized by matching lemmas after a move (Kaveh's plan)
+
+Kaveh asked what the 153 "capture" cases are (a capture in another frame? should have captured? captured the wrong
+thing?). OBS the residue dug on all of c300 (478 blunders no lemma flags; Stockfish depth 12 after each): Stockfish
+answers with a capture 155, a quiet move 289, a quiet check 34. THE CAPTURES: the blunder was itself a capture in 136
+(quiet 19); the punished target was the piece that had just moved in 110 (other 25, already attacked 10, a piece it
+guarded 7, behind its line 3); material lost within 6 plies of Stockfish's line in 26 only -- in 129 (83%) the exchange
+resolves level and the drop is the POSITION left behind (the recapture's choice, Kaveh's pawn-vs-knight subgoal), not a
+frame failure. THE QUIET REPLIES: material lost within 6 plies in 58; our frame (forcing + double threat), after the
+quiet move, sees the loss in 32 overall and misses it in 43 of the 58 material cases: threats created by a quiet move.
+KAVEH'S PLAN (2026-10-08): recognize WINNING FRAMES by reasoning -- after a move, loop over the lemmas and ask what it
+created. A knight on a fork square is already winning ("move this one and that one dies; the attacker cannot be taken,
+a knight cannot be blocked"); quiet or capturing does not matter (a pawn won on the way is +1). The defender's options
+are always: recapture, capture the attacker, or create a bigger threat (a check, an attack elsewhere); barring them the
+threatening side is winning. Cornering is ONE frame type -- mating a king is cornering it, and a queen, rook or bishop
+can be cornered (trapped) the same way: "we should be able to mate any piece". Promotion and mate are frames of their
+own. Leave room for a later LLM pass to catch bugs.
+BUILT: `threat_lemmas.py` -- `claims(b, m)`: what m created (enemy pieces newly attacked with a winning static
+exchange; a mate threat; a pawn to its seventh), named by shape (fork, fork with check, cornered piece, mate threat,
+promotion), each CERTIFIED by ONE existing kernel theorem -- `Fork.lean` `localCheck` / `localCheck_sound`: after m,
+every legal reply is answered by our capture or king move after which, whatever they reply, we are up k (their mate
+counts as won) -- or only MATCHED when the certificate fails (a candidate, not a fact). Tests: a quiet knight fork of two
+rooks certified (+2); the same shape escaped by ...Qe1+ matched, not certified; a royal fork certified (+9); a parriable
+single threat matched, not certified; a mate threat created by opening a file matched. Next: the certified threat moves
+inside the forcing frame (the opponent's after our move, ours as a move's value), measured on the blunders with false
+alarms; then the cornering frame proper (escape squares, Lean), mate threats, promotion.
