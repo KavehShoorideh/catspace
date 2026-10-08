@@ -27824,3 +27824,25 @@ PARKED, Kaveh's second idea (captured separately so as not to derail this): surp
 Stockfish SPREAD among positions our features rate alike -- a value predictor over our features, neighbourhoods by
 similar activations, the spread per neighbourhood; a position outside it is "uniquely advantageous" (or bad), and what
 makes it so is a new frame to extract, not only for exchanges.
+
+## 2026-10-08 12:01 PDT — mining the exchange's surprises: pins in, the forcing frame as oracle, three measurement bugs caught
+
+Kaveh: mine real games for lemmas until the lemmas stop being needed; check for bugs before every big run; blundered
+exchanges test the lemmas (the blunderer overlooked one). Built: the PIN from king safety in the exchange frame (a pinned
+piece captures only along its pin line); `forcing_frame.py` -- a frame on the board whose moves are the forcing ones
+(captures anywhere, checks with a budget, every evasion in check, no standing pat in check; the classical quiescence
+with checks as one frame of the generic engine); `exchange_mine.py` -- the surprises classified by the explaining
+frame's first move off the square, and the blunder test. MEASUREMENT BUGS caught before trusting numbers: (1) the played
+line's material carried the players' later blunders (8/8/5k2/KQ1q4: frame +1, "won" +10); (2) Stockfish right after the
+capture carried the whole position's positional worth (1,400 "surprises", 1,268 "beyond forcing"); (3) games ending
+inside an exchange left the material unsettled (Qxc6+ with Kxc6 never played: +9). Now graded only on ACCURATE
+exchanges (Stockfish moves less than a pawn per ply inside) that END with a played quiet move. OBS c300: 4,051 taken
+captures; set aside a blunder inside 881, cut by the game's end 330, mate 70; graded 3,981. Mean |prediction - material
+won|: exchange frame 0.25 pawns (0.27 without the pin), joined 0.14, forcing 0.14, plain count 0.32, no model 1.77. The
+frame's sign is right on 92%. Surprises (2+ pawns): 210; explained by the forcing frame 136, the joined 128, the one-shot
+"linked" frame 51; beyond forcing play 74. REFUTED (after a bug fix -- the capturer on s had been counted as also
+capturing elsewhere): the one-shot two-sided intermezzo (each side's best static capture elsewhere as a one-time move)
+-- 0.28 vs the frame's 0.25: captures elsewhere are not independent of the exchange. By the first move off the square in
+the explaining line (earlier grading): already loose 71, guard removed 12, discovered 9, a check 8. BLUNDER TEST (smoke,
+20 games): 75 blunders inside exchanges; flagged by the hanging-piece lemma 39%, the joined frame 33%, the forcing frame
+39%, any 55%. The full run and a read of the earlier frame-player work (Kaveh: some of this was solved before) are next.

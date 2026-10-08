@@ -62,6 +62,8 @@ def _game(plies: dict) -> dict:
             if pc.color == c or pc.piece_type == chess.KING or not b.attackers(c, s):
                 continue
             st = frame_of(b, s)
+            if not st[1]:                                           # every attacker pinned off the square: no capture to predict
+                continue
             key = (s, st)
             if key in seen:
                 v = seen[key]; out["reused"] += 1
@@ -89,14 +91,26 @@ def _game(plies: dict) -> dict:
             if x.promotion:
                 events.add("a promotion")
             bb.push(x); u += 1
+        if u not in moves:                                          # the game ended inside the exchange: not settled
+            out["take"][("cut", "by the game's end")] += 1          # (bug 2026-10-08: Qxc6+ with Kxc6 never played, +9)
+            continue
+        evs = [(_pawns(plies[k]["eval"]) if plies[k]["side"] == r["side"] else -_pawns(plies[k]["eval"])) for k in range(t, u + 1) if k in plies]
+        accurate = all(abs(evs[i + 1] - evs[i]) < 1.0 for i in range(len(evs) - 1))   # no blunder inside the exchange
         end = plies[u]
         truth = _pawns(end["eval"] if end["side"] == r["side"] else -end["eval"])
         mat = r["material"]
         v, vi = preds[took]
+        from .forcing_frame import capture_value                     # the oracles: the joined frame and the forcing frame
+        v_join = capture_value(b, took, use_checks=False)[0]
+        v_force = capture_value(b, took, use_checks=True)[0]
+        v_nopin = max(root_values(Search(True), *frame_of(b, took, pins=False)).values())
+        from .exchange_frame import linked_value
+        v_link = linked_value(b, took)
         out["graded"].append(dict(game=r["game"], ply=t, fen=r["fen"], sq=chess.square_name(took), plies=u - t, truth=truth,
                                   mat_end=(end["material"] if end["side"] == r["side"] else -end["material"]),
-                                  events=sorted(events) or ["a plain exchange"], mate=abs(truth) >= MATE or abs(_pawns(r["eval"])) >= MATE,
+                                  events=sorted(events) or ["a plain exchange"], mate=abs(truth) >= MATE or abs(_pawns(r["eval"])) >= MATE, accurate=accurate,
                                   model=mat + vi, frame=mat + v, plain=mat + see(b, took)[0], none=mat, sf_now=_pawns(r["eval"]),
+                                  nopin=mat + v_nopin, joined=mat + v_join, forcing=mat + v_force, linked=mat + v_link,
                                   names=variants(b, took), elo=r["elo"]))
     return out
 
@@ -116,17 +130,21 @@ def run(tag: str, limit_games: int | None = None) -> None:
     n_pos = sum(take.values())
     print(f"OBS exchange prediction on {len(games)} games of {tag} ({n_pos} positions): frame predictions computed {computed}, kept from an "
           f"earlier ply {reused} ({100 * reused / max(computed + reused, 1):.0f}%)")
-    for want in ("predicted take", "predicted even", "predicted none"):
+    for want in ("predicted take", "predicted even", "predicted none"):  # (the 'cut' bucket is reported below)
         row = {k[1]: v for k, v in take.items() if k[0] == want}; tot = sum(row.values())
         print(f"OBS   {want:15s} {tot:5d} positions: took it {row.get('took it', 0)} ({100 * row.get('took it', 0) / max(tot, 1):.0f}%), took another "
               f"{row.get('took another', 0)}, took none {row.get('took none', 0)} ({100 * row.get('took none', 0) / max(tot, 1):.0f}%)")
     mates = [g for g in graded if g["mate"]]; graded = [g for g in graded if not g["mate"]]
+    blunders = [g for g in graded if not g["accurate"]]; graded = [g for g in graded if g["accurate"]]
+    print(f"OBS   set aside: a blunder inside the exchange (Stockfish moves a pawn or more in one ply) {len(blunders)}; cut by the game's end "
+          f"{take.get(('cut', 'by the game\'s end'), 0)}")
     keys = ("model", "frame", "plain", "none", "sf_now")
     err = lambda g, k, truth="truth": abs(g[k] - g[truth])
     print(f"OBS exchanges taken: {len(graded) + len(mates)}; set aside where Stockfish sees a mate (now or at the end; a mate frame, not the "
           f"exchange's) {len(mates)}; graded {len(graded)}, resolved in a median of {statistics.median([g['plies'] for g in graded]) if graded else 0} plies")
+    keys = ("nopin", "frame", "linked", "joined", "forcing", "plain", "none", "sf_now")
     for truth, label in (("mat_end", "the material actually left after the played exchange"), ("truth", "Stockfish at the end")):
-        ks = keys if truth == "truth" else keys[:4]
+        ks = keys if truth == "truth" else keys[:-1]
         print(f"OBS   mean |prediction - {label}|: " + ", ".join(f"{k} {statistics.mean(err(g, k, truth) for g in graded):.2f}" for k in ks)
               + "; median: " + ", ".join(f"{k} {statistics.median(err(g, k, truth) for g in graded):.2f}" for k in ks))
     # OUR JUDGMENT vs WHAT HAPPENED (Kaveh 2026-10-08: predicting "not worth taking" is right when they take it and lose;
@@ -169,11 +187,16 @@ def run(tag: str, limit_games: int | None = None) -> None:
     for g in graded:
         for nm in g["events"]:
             by_ev[nm].append(g)
-    tot_err = sum(err(g, "model", "mat_end") for g in graded) or 1
-    print("OBS   by what happened inside the exchange (n; mean |model - material after|, |no exchange - material after|; share of the model's error):")
-    for nm, gs in sorted(by_ev.items(), key=lambda kv: -sum(err(g, "model", "mat_end") for g in kv[1])):
-        print(f"OBS     {nm:22s} n {len(gs):5d}: {statistics.mean(err(g, 'model', 'mat_end') for g in gs):5.2f} / {statistics.mean(err(g, 'none', 'mat_end') for g in gs):5.2f}; "
-              f"share {100 * sum(err(g, 'model', 'mat_end') for g in gs) / tot_err:4.1f}%")
+    tot_err = sum(err(g, "frame", "mat_end") for g in graded) or 1
+    print("OBS   by what happened inside the exchange (n; mean |prediction - material after| for frame / linked / joined / forcing / no model; the frame's error share):")
+    for nm, gs in sorted(by_ev.items(), key=lambda kv: -sum(err(g, "frame", "mat_end") for g in kv[1])):
+        print(f"OBS     {nm:22s} n {len(gs):5d}: " + " / ".join(f"{statistics.mean(err(g, k, 'mat_end') for g in gs):5.2f}" for k in ("frame", "linked", "joined", "forcing", "none"))
+              + f"; share {100 * sum(err(g, 'frame', 'mat_end') for g in gs) / tot_err:4.1f}%")
+    expl = [g for g in graded if err(g, "frame", "mat_end") >= 2]
+    fx = sum(err(g, "forcing", "mat_end") < 1 for g in expl); jx = sum(err(g, "joined", "mat_end") < 1 for g in expl)
+    lx = sum(err(g, "linked", "mat_end") < 1 for g in expl)
+    print(f"OBS   the frame's {len(expl)} surprises (>= 2 pawns): explained (within 1 pawn) by the linked frame {lx}, the joined frame {jx}, the forcing frame {fx}; "
+          f"by neither {len(expl) - max(fx, jx)} (beyond forcing play: no exchange lemma will fix them)")
     worst = sorted(graded, key=lambda g: -err(g, "model", "mat_end"))[:12]
     print("OBS   the biggest surprises against the material after the played exchange:")
     for g in worst:

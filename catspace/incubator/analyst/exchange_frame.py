@@ -65,11 +65,19 @@ def _behind(b: chess.Board, q: int, s: int) -> tuple:
     return tuple(out)
 
 
-def frame_of(b: chess.Board, s: int) -> tuple:
-    """-> (on_s, mover's rays, opponent's rays) for the side to move capturing on s; rays cheapest first."""
+def available(b: chess.Board, side: chess.Color, q: int, s: int) -> bool:
+    """THE PIN, from king safety (a legal move never leaves one's own king attacked; chess-lean `legalMove_kingSafe`): a
+    piece pinned to its king may capture on s only along its pin line. The lemma is read once per frame from the board
+    (python-chess's pin mask), never by trying the moves."""
+    return not b.is_pinned(side, q) or bool(b.pin(side, q) & chess.BB_SQUARES[s])
+
+
+def frame_of(b: chess.Board, s: int, pins: bool = True) -> tuple:
+    """-> (on_s, mover's rays, opponent's rays) for the side to move capturing on s; rays cheapest first; with `pins`,
+    a pinned piece that cannot capture along its pin line is not a participant."""
     c = b.turn
-    rays = lambda side: sorted((Ray(VAL[b.piece_at(q).piece_type], q, side == chess.WHITE, _behind(b, q, s)) for q in b.attackers(side, s)),
-                               key=lambda r: (r.value, r.square))
+    rays = lambda side: sorted((Ray(VAL[b.piece_at(q).piece_type], q, side == chess.WHITE, _behind(b, q, s)) for q in b.attackers(side, s)
+                                if not pins or available(b, side, q, s)), key=lambda r: (r.value, r.square))
     return VAL[b.piece_at(s).piece_type], tuple(rays(c)), tuple(rays(not c))
 
 
@@ -106,6 +114,70 @@ class ExchangeFrame:
 
     def key(self, st):
         return st
+
+
+class LinkedExchangeFrame(ExchangeFrame):
+    """THE TWO-SIDED INTERMEZZO LEMMA (mined 2026-10-08 from the replay: captures elsewhere carry 86% of the exchange
+    frame's error; the one-sided subtraction was a bound, not a prediction): the exchange frame on s, plus, for each side,
+    ONE move elsewhere worth its best static exchange on another square (a one-shot frame, independent of s), playable
+    once at any of its turns. State: (on_s, mine, theirs, my elsewhere gain or 0 if spent, theirs). The exit stays."""
+
+    def moves(self, st):
+        out = list(st[1])
+        if st[3] > 0:
+            out.append("elsewhere")
+        return out
+
+    def gain(self, st, m):
+        return st[3] if m == "elsewhere" else st[0]
+
+    def next(self, st, m):
+        on_s, mine, theirs, e_me, e_them = st
+        if m == "elsewhere":
+            return (on_s, theirs, mine, e_them, 0)              # s stands as it is; my one-shot spent
+        m2, t2 = _play(m, mine, theirs)
+        return (m.value, t2, m2, e_them, e_me)
+
+
+def elsewhere_gain(b: chess.Board, side: chess.Color, skip: int, busy=frozenset()) -> int:
+    """`side`'s best static exchange on any square but `skip` (0 when none pays), read on `b` with `side` to move, by
+    pieces NOT busy in the exchange on `skip` (the piece standing there and the participants: independence -- bug
+    2026-10-08: the capturer on s was counted as also capturing elsewhere). A busy piece is lifted off the board for the
+    count (its lines open: an approximation, measured)."""
+    from .exchange_law import see
+    bb = b.copy(stack=False); bb.turn = side; bb.ep_square = None
+    for q in busy | {skip}:
+        p = bb.piece_at(q)
+        if p is not None and p.color == side and p.piece_type != chess.KING:
+            bb.remove_piece_at(q)
+    best = 0
+    for q, pc in bb.piece_map().items():
+        if q != skip and pc.color != side and pc.piece_type != chess.KING and bb.attackers(side, q):
+            best = max(best, see(bb, q)[0])
+    return best
+
+
+def linked_value(b: chess.Board, s: int) -> int:
+    """The value of capturing on s for the side to move, with both sides' best capture elsewhere as one-shot moves: the
+    opponent's read after our capture (the capturer left its post), ours before it."""
+    from .frame_search import FrameSearch
+    on_s, mine, theirs = frame_of(b, s)
+    if not mine:
+        return 0
+    fs = FrameSearch(LinkedExchangeFrame(), [])
+    best = None
+    for ray in mine:
+        m = next((x for x in b.legal_moves if x.from_square == ray.square and x.to_square == s), None)
+        if m is None:
+            continue
+        b1 = b.copy(stack=False); b1.push(m)
+        busy = frozenset(r.square for r in mine + theirs)
+        e_them = elsewhere_gain(b1, b1.turn, s, busy)
+        e_me = elsewhere_gain(b1, not b1.turn, s, busy)
+        m2, t2 = _play(ray, mine, theirs)
+        v = on_s - fs.value((ray.value, t2, m2, e_them, e_me))
+        best = v if best is None else max(best, v)
+    return best if best is not None else 0
 
 
 def _exits_bound(st):

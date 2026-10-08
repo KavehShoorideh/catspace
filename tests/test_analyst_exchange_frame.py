@@ -91,3 +91,11 @@ def test_retract_reinstate_and_resume():
     assert not bud.finished()
     bud.resume(None)
     assert root_values(bud, *st) == exact and bud.finished()
+
+
+def test_the_two_sided_intermezzo_lets_us_answer_their_capture_elsewhere():
+    """Nxd5 (+3); Black's bishop takes the h2 pawn in between (one-shot elsewhere, +1 for them): the linked frame says
+    +2. With a white rook able to take a black pawn elsewhere too, our own one-shot answers theirs."""
+    from catspace.incubator.analyst.exchange_frame import linked_value
+    assert linked_value(chess.Board("4k3/8/3b4/3n4/8/4N3/7P/1K6 w - - 0 1"), chess.D5) == 2
+    assert linked_value(chess.Board("4k3/p7/3b4/3n4/8/4N3/7P/RK6 w - - 0 1"), chess.D5) == 3
