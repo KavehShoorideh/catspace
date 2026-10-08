@@ -27677,3 +27677,15 @@ only quiescence: SETTLED = the opponent to move and the quiescence value (each s
 target; forcedWithinB then covers the opponent's quiet moves within the frame's size. That redefines the claim, so it
 waits for Kaveh. Sound-bundle games vs Stockfish-2000 (OBS): seeds 1, 2, 4 complete at 10%, 2%, 8% (20 games each);
 seeds 3 and 5 died mid-run (0/16, 1W 1D of 14) -- 4 wins 3 draws in 90 games, 6.1%, within noise of the 5.0% baseline.
+
+## 2026-10-07 22:21 PDT — the settled goal, Kaveh's form: "no paying recapture anywhere that creates a greater threat"
+
+Kaveh's call on the certificate's goal, read as: the opponent to move; our material at least the target; no recapture on
+the square that pays them (the exchange is over); and no capture ELSEWHERE that pays them more than the slack in hand
+(material minus target) -- a pawn they can take while we stand four up is no refutation, a threat larger than the slack
+is. `ExchangeLaw.settledB` says this now; the Python mirror (scratch trace_cert.py) certifies the three frames the
+strong goal rejected. OBS kernel vs prototype, 1,500 positions, 2,408 frames: hypothesis disagreements 0; honest 16 by
+both; certificate SETTLED 12, NOT 0, timeout 4 (all frames of 4 participants, the tree beyond 30 s); the exact bridge
+agrees on all 16. OBS bite rates on 1,000 positions after the alignment (frames where the static exchange says the
+capture wins): honest 2 of 2 never fall short; noOtherCapture bites 37/60 = 62%, noPromotion 2/6, noXray 23/73 = 32%,
+noKing 9/45 = 20%, noCheck 2/69 = 3%; the reverse (static loses, exact wins): noXray 12/308, noCheck 11/297.

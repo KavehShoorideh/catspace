@@ -26,8 +26,9 @@ basically exceptions to the exchange theorem" -- each failure is a named tactic)
 
 THE CLAIM (`settledWithin`): after `c`'s cheapest capture on `s`, within the frame's size in plies and whatever the
 opponent does, a SETTLED position is reached -- the opponent to move, `c`'s material at least its value before plus the
-static exchange, and no recapture on `s` that pays the opponent (`forcedWithinB`: the goal read at every node, so the
-path stops the moment the exchange has ended in `c`'s favour; no quiet move of ours is ever required).
+static exchange, no recapture on `s` that pays the opponent, and no capture elsewhere that pays more than the slack in
+hand (`forcedWithinB`: the goal read at every node, so the path stops the moment the exchange has ended in `c`'s
+favour; no quiet move of ours is ever required).
 
 THE LAW, to prove (`exchangeLaw`): `honestFrameB p s = true → settledWithin p s = true`. The induction: on the number
 of participants left; at the opponent's node a recapture on `s` is answered by `c`'s next capture (legal: noPin,
@@ -146,16 +147,19 @@ def hypotheses (p : Position) (s : Square) : List (String × Bool) :=
 def honestFrameB (p : Position) (s : Square) : Bool :=
   (hypotheses p s).all (fun h => h.2)
 
-/-- A settled position for `c` on `s`: the opponent to move, `c`'s material at least `target`, and no recapture on `s`
-that pays the opponent by the static exchange. -/
+/-- A settled position for `c` on `s` (Kaveh 2026-10-07: "no paying recapture anywhere that creates a greater threat"):
+the opponent to move and either mated, or `c`'s material at least `target`, no recapture on `s` that pays them by the
+static exchange (the exchange is over), and no capture elsewhere that pays them MORE than the slack in hand
+(material - target): a pawn they can take while we stand four up is no refutation; a threat larger than the slack is. -/
 def settledB (c : Color) (s : Square) (target : Int) (q : Position) : Bool :=
   q.turn != c &&
-    (((legalMoves q).isEmpty && inCheckB q q.turn) ||                       -- the opponent is mated: won
+    (((legalMoves q).isEmpty && inCheckB q q.turn) ||
      (decide (target ≤ material q c) &&
-      allSquares.all (fun u =>                                               -- no capture anywhere that pays the opponent by the
-        match q.board u with                                                 -- static exchange (review 2026-10-07: reading only `s`
-        | some pc => !(pc.color == c && pc.kind != .king) ||                 -- certified a frame an even trade elsewhere refuted;
-            decide (cheapest (valueAt q u) (valuesOf q q.turn u) (valuesOf q c u) ≤ 0)   -- the king is not material)
+      allSquares.all (fun u =>
+        match q.board u with
+        | some pc => !(pc.color == c && pc.kind != .king) ||
+            (let pays := cheapest (valueAt q u) (valuesOf q q.turn u) (valuesOf q c u)
+             if u == s then decide (pays ≤ 0) else decide (pays ≤ material q c - target))
         | none => true)))
 
 /-- THE CLAIM: after `c`'s cheapest capture on `s`, a settled position within the frame's size in plies, whatever the
