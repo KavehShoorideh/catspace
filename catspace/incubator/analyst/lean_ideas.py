@@ -189,6 +189,24 @@ class LeanIdeas:
                 out[chess.parse_square(tok[1])] = int(tok[3].split("=")[1])
         return out
 
+    def exchange(self, board: chess.Board, square: int) -> tuple:
+        """The exchange law's hypotheses on `square` by the kernel (Ideas/ExchangeLaw.lean): -> ({name: bool}, static
+        exchange value, honest). Raises on a bad position."""
+        (line,) = self._ask(f"exchange {chess.square_name(square)} {board.fen()}", until_end=False)
+        if line.startswith("error"):
+            raise ValueError(f"{line}: {board.fen()} {chess.square_name(square)}")
+        tok = line.split()
+        value = int(tok[0].split("=")[1]); honest = tok[1].split("=")[1] == "true"
+        return {k: v == "1" for k, v in (t.split("=") for t in tok[2:])}, value, honest
+
+    def exchange_cert(self, board: chess.Board, square: int) -> bool:
+        """The law's claim computed by the kernel for this position: after our cheapest capture on `square`, a settled
+        position within the frame's size whatever they do (slow beyond small frames)."""
+        (line,) = self._ask(f"exchangecert {chess.square_name(square)} {board.fen()}", until_end=False)
+        if line.startswith("error"):
+            raise ValueError(f"{line}: {board.fen()} {chess.square_name(square)}")
+        return line == "SETTLED"
+
     def close(self):
         if self.proc.poll() is None:
             self.proc.stdin.close()

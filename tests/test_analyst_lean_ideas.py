@@ -146,3 +146,21 @@ def test_passer_setup_certificate():
     assert li.passer_setup(b2, k) == {}
     with pytest.raises(ValueError):
         li.passer_setup(b, chess.Move.from_uci("b8b6"))   # not a legal move
+
+
+def test_exchange_law_hypotheses_and_certificate():
+    """Ideas/ExchangeLaw.lean through the binary: an honest frame (a knight takes an undefended knight; no check, no
+    arrival possible) has every hypothesis and the kernel's certificate SETTLED; a pinned defender is named."""
+    from catspace.incubator.analyst.lean_ideas import detector
+    li = detector()
+    b = chess.Board("4k3/8/8/3n4/8/4N3/8/K7 w - - 0 1")
+    assert chess.E3 in b.attackers(chess.WHITE, chess.D5) and not b.attackers(chess.BLACK, chess.D5)
+    hyps, value, honest = li.exchange(b, chess.D5)
+    assert honest and all(hyps.values()) and value == 3
+    assert li.exchange_cert(b, chess.D5)
+    b2 = chess.Board("4k3/8/4b3/3p4/8/2N5/8/K3R3 w - - 0 1")
+    assert b2.is_pinned(chess.BLACK, chess.E6) and chess.E6 in b2.attackers(chess.BLACK, chess.D5)
+    hyps2, value2, honest2 = li.exchange(b2, chess.D5)
+    assert not honest2 and hyps2["noPin"] is False and value2 == 0
+    with pytest.raises(ValueError):
+        li.exchange(chess.Board("8/8/8/8/8/8/8/8 w - - 0 1"), chess.D5)        # no kings: not a position the kernel reads

@@ -24,6 +24,15 @@ open Chess Ideas
 def sqName (s : Square) : String :=
   String.ofList [Char.ofNat ('a'.toNat + s.1.val), Char.ofNat ('1'.toNat + s.2.val)]
 
+/-- "d5" -> the square; none on anything else. -/
+def parseSquare (s : String) : Option Square :=
+  match s.toList with
+  | [f, r] =>
+      let fi := f.toNat - 'a'.toNat
+      let ri := r.toNat - '1'.toNat
+      if h : fi < 8 ∧ ri < 8 then some (⟨fi, h.1⟩, ⟨ri, h.2⟩) else none
+  | _ => none
+
 def moveUci : Move → String
   | .normal s t => sqName s ++ sqName t
   | .enPassant s t => sqName s ++ sqName t
@@ -203,6 +212,17 @@ def handle (line : String) : List String :=
           | some m => [if localCheck p m k then s!"CERTIFIED {k}" else s!"FAIL {k}"]
           | none => ["error illegal move"]
       | _, _ => ["error bad fen or k"]
+  | "exchange" :: sqs :: rest =>                     -- exchange <sq> <fen>: the exchange law's hypotheses on the square, and the static exchange
+      match readPosition (" ".intercalate rest), parseSquare sqs with
+      | some p, some sq =>
+          let hs := Ideas.ExchangeLaw.hypotheses p sq
+          [s!"value={Ideas.ExchangeLaw.seeB p sq} honest={Ideas.ExchangeLaw.honestFrameB p sq} " ++
+            " ".intercalate (hs.map (fun h => s!"{h.1}={if h.2 then 1 else 0}"))]
+      | _, _ => ["error bad fen or square"]
+  | "exchangecert" :: sqs :: rest =>                 -- exchangecert <sq> <fen>: the claim itself, computed (a settled position reached whatever they do)
+      match readPosition (" ".intercalate rest), parseSquare sqs with
+      | some p, some sq => [if Ideas.ExchangeLaw.settledWithin p sq then "SETTLED" else "NOT"]
+      | _, _ => ["error bad fen or square"]
   | "passersetup" :: uci :: rest =>                  -- passersetup <uci> <fen>: after the move, every reply leaves a proved passer (second form)?
       match readPosition (" ".intercalate rest) with
       | some p =>

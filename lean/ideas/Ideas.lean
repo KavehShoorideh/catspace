@@ -8,3 +8,4 @@ import Ideas.Passer2
 import Ideas.Fork
 import Ideas.Setup
 import Ideas.Exchange
+import Ideas.ExchangeLaw
