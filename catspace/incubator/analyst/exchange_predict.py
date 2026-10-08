@@ -146,17 +146,25 @@ def run(tag: str, limit_games: int | None = None) -> None:
     print(f"OBS   the frame's sign right on {agree}/{len(graded)} ({100 * agree / max(len(graded), 1):.0f}%); the player took a capture the frame called "
           f"losing {sum(conf[('-', q)] for q in '+0-')} times: lost as predicted {conf[('-', '-')]} (their blunder, our call), gained {conf[('-', '+')]} "
           f"(they saw something the frame did not: frames to learn)")
-    learn = sorted((g for g in graded if g["frame"] - g["none"] < 0 and g["mat_end"] - g["none"] > 0), key=lambda g: -(g["mat_end"] - g["frame"]))
+    # ANY SURPRISE teaches (Kaveh: "we said -3 and it was -9, or -9 and it was -3"): the queue is every exchange whose
+    # actual gain differs from our value by SURPRISE pawns or more, either way
+    SURPRISE = 2
+    learn = sorted((g for g in graded if abs((g["mat_end"] - g["none"]) - (g["frame"] - g["none"])) >= SURPRISE),
+                   key=lambda g: -abs(g["mat_end"] - g["frame"]))
+    better = sum(g["mat_end"] > g["frame"] for g in learn)
+    print(f"OBS   SURPRISES (|our value - the actual gain| >= {SURPRISE} pawns, either way): {len(learn)}/{len(graded)}; it went better than "
+          f"we said {better}, worse {len(learn) - better}; by our value's sign: " +
+          ", ".join(f"{p} {sum(sign(g['frame'] - g['none']) == p for g in learn)}" for p in "+0-"))
     from .exchange_law import HYPS, hypotheses
     why = Counter()
     for g in learn:                                         # which hypothesis of the plain count fails on them
         h = hypotheses(chess.Board(g["fen"]), chess.parse_square(g["sq"]))
         why.update(k for k in HYPS if k != "target" and not h[k])
         why["(all hold)"] += all(h[k] for k in HYPS)
-    print(f"OBS   on the {len(learn)} frames to learn, the hypotheses that fail (several per frame): " + ", ".join(f"{k} {v}" for k, v in why.most_common()))
-    print("OBS   frames to learn (called losing, gained), the largest gaps first:")
+    print(f"OBS   on the {len(learn)} surprises, the hypotheses that fail (several per frame): " + ", ".join(f"{k} {v}" for k, v in why.most_common()))
+    print("OBS   the surprises, the largest gaps first:")
     for g in learn[:12]:
-        print(f"OBS     {g['fen']} on {g['sq']}: frame {g['frame'] - g['none']:+.0f}, gained {g['mat_end'] - g['none']:+d}; happened: {', '.join(g['events'])}")
+        print(f"OBS     {g['fen']} on {g['sq']}: we said {g['frame'] - g['none']:+.0f}, it gained {g['mat_end'] - g['none']:+d}; happened: {', '.join(g['events'])}")
     by_ev = defaultdict(list)
     for g in graded:
         for nm in g["events"]:

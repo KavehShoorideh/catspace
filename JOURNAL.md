@@ -27811,3 +27811,16 @@ frame): noArrival 56, noCheck 51, noInterpose 39, noOtherCapture 20, noPin 15, n
 has every hypothesis holding -- every miss sits outside the honest frame, as it should. The pin is visible by eye in
 several (a recapture that is illegal because the recapturer is pinned to its king): the availability lemma from king
 safety is the frame's first missing piece for those.
+
+## 2026-10-08 11:44 PDT — any surprise teaches; the spread idea parked
+
+Kaveh: "we said -3 and it was -9, or -9 and it was -3 -- we can learn from any kind of surprise." The learning queue is
+now every taken exchange whose actual material gain differs from the frame's value by 2 pawns or more, either way. OBS
+c300: 492 of 5,096 (it went better than we said 262, worse 230; our value was + on 304, 0 on 105, - on 83). Failing
+hypotheses on them (several each): noCheck 393, noArrival 386, noOtherCapture 271, noInterpose 249, noKing 105,
+noOverload 79, noPin 58, noXray 49, noPromotion 19; all holding 2. The largest are long forcing sequences with checks,
+captures elsewhere and promotions -- many frames at once, not one exchange.
+PARKED, Kaveh's second idea (captured separately so as not to derail this): surprise as an outlier against the
+Stockfish SPREAD among positions our features rate alike -- a value predictor over our features, neighbourhoods by
+similar activations, the spread per neighbourhood; a position outside it is "uniquely advantageous" (or bad), and what
+makes it so is a new frame to extract, not only for exchanges.
