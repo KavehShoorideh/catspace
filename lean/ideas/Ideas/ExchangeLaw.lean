@@ -46,9 +46,11 @@ open Ideas.Exchange
 def attackersOf (p : Position) (c : Color) (s : Square) : List Square :=
   allSquares.filter (fun q => pieceAttacksB p c q s)
 
+/-- A piece's value in the exchange: the king counts 100 (it cannot be won, and as a capturer it is dearer than anything;
+review 2026-10-07: at 0 it was a free recapturer). -/
 def valueAt (p : Position) (q : Square) : Int :=
   match p.board q with
-  | some pc => pieceValue pc.kind
+  | some pc => if pc.kind = .king then 100 else pieceValue pc.kind
   | none => 0
 
 /-- The values of `c`'s attackers of `s`, ascending. -/
@@ -116,14 +118,21 @@ def hypotheses (p : Position) (s : Square) : List (String × Bool) :=
   let noPin := A.all (fun q => (legalMoves p).any (fun m => m.source == q && m.destination == s)) &&
     D.all (fun q => (legalMoves after).any (fun m => m.source == q && m.destination == s))
   let noXray := allSquares.all (fun q => !(isSliderAt p q && !parts.contains q && q != s && sliderLineB p q s && oneBetweenB p q s))
-  let noPromotion := parts.all (fun q => !seventhRankB p q) && (p.enPassant != some s)
+  let n := parts.length                                           -- the claim's horizon in plies; the opponent moves (n + 1) / 2 times
+  let pawnNear := fun (q : Square) => match after.board q with    -- an enemy pawn that could promote inside the horizon (review
+    | some pc => pc.color == o && pc.kind == .pawn &&              -- 2026-10-07: a non-participant pawn promoted and refuted the law)
+        decide ((if pc.color = .white then 7 - q.2.val else q.2.val) ≤ (n + 1) / 2)
+    | none => false
+  let noPromotion := parts.all (fun q => !seventhRankB p q) && (p.enPassant != some s) && allSquares.all (fun q => !pawnNear q)
   let noOtherCapture := allSquares.all (fun q =>
     match after.board q with
     | some pc => !(pc.color == c && pc.kind != .king && q != s) ||
         (!(attackersOf after o q).isEmpty →
           (A.all (fun a => !pieceAttacksB after c a q)) &&
           decide (cheapest (valueAt after q) (valuesOf after o q) (valuesOf after c q) ≤ 0))
-    | none => true)
+    | none => true) &&
+    A.all (fun a => a == s || (after.board a).isNone || (attackersOf after o a).isEmpty)   -- our remaining attackers unattacked:
+                                                                                              -- an even trade of one changes the frame
   let noCheck := (legalMoves after).all (fun m => !inCheckB (applyMove after m) c) &&
     (match kingSquare p.board c with
       | some k => !(queenGeometryB s k || knightGeometryB s k) &&
@@ -140,10 +149,14 @@ def honestFrameB (p : Position) (s : Square) : Bool :=
 /-- A settled position for `c` on `s`: the opponent to move, `c`'s material at least `target`, and no recapture on `s`
 that pays the opponent by the static exchange. -/
 def settledB (c : Color) (s : Square) (target : Int) (q : Position) : Bool :=
-  q.turn != c && decide (target ≤ material q c) &&
-    (match q.board s with
-      | some pc => pc.color == c → decide (cheapest (valueAt q s) (valuesOf q q.turn s) (valuesOf q c s) ≤ 0)
-      | none => true)
+  q.turn != c &&
+    (((legalMoves q).isEmpty && inCheckB q q.turn) ||                       -- the opponent is mated: won
+     (decide (target ≤ material q c) &&
+      allSquares.all (fun u =>                                               -- no capture anywhere that pays the opponent by the
+        match q.board u with                                                 -- static exchange (review 2026-10-07: reading only `s`
+        | some pc => !(pc.color == c) ||                                     -- certified a frame an even trade elsewhere refuted)
+            decide (cheapest (valueAt q u) (valuesOf q q.turn u) (valuesOf q c u) ≤ 0)
+        | none => true)))
 
 /-- THE CLAIM: after `c`'s cheapest capture on `s`, a settled position within the frame's size in plies, whatever the
 opponent does. A per-position certificate until `exchangeLaw` is proved. -/

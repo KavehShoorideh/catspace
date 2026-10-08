@@ -424,3 +424,9 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
 - `assert ... or True`; a 0.000 loss meaning gated off -- class 2 (dead_asserts_and_silent_gates).
 - Parity ate a 1-ply future lift -- class 3 (health_gate_thresholds_dont_transfer).
 - Resume copied the EMA lag away -- class 1-like (resume_semantics_are_state).
+
+### 2026-10-07 18:40 PDT -- the exchange law's hypotheses and goal (reviewer 3, counterexamples found by the exact bridge)
+- Lean `valueAt` gave the king 0: it was a free recapturer / cheapest capturer in `cheapest`, `seeB`, `noOtherCapture`, `settledB` (`r6k/1p6/8/4p2p/1n6/6N1/P7/1K6 w` h5 honest+SETTLED, exact 0; `3r3k/1b6/8/3p4/3K4/4N3/8/8 w` d5 seeB +1 via Kxd5). Fix: the king counts 100 (a capture into a defended square is never chosen). Now noOtherCapture=0 and value -2 with noKing=0.
+- `noPromotion` looked only at participants: a non-participant pawn one step from promotion refuted the law (`1R6/7p/8/4B1pR/7p/7p/2K3kp/8 w` h4: see -4, exact -6). Fix: any enemy pawn that could promote inside the claim's horizon fails it.
+- `noOtherCapture` passed an even trade of our second attacker (the zwischenzug `7k/4bp2/4b3/3p4/1NP5/P7/5P2/6K1 w` d5: see +1, exact 0) and `settledB` read only `s`, so `exchangecert` said SETTLED. Fix: none of our remaining attackers may be attacked; the settled goal reads every square (no capture anywhere that pays) and counts a mated opponent.
+- The prototype read noCheck / noArrival on the null-moved board before our capture (the kernel: after it); noPin used `is_pinned` (the kernel: legality of each capture when its turn comes); the tie among equal attackers followed python-chess's square order (the kernel's `allSquares` is file-major); `target` required the cheapest attacker's capture legal (the kernel: the cheapest LEGAL one). All aligned to the kernel; `exchange_law kernel` is the standing bridge of the two.

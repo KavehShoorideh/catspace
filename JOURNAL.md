@@ -27631,3 +27631,27 @@ Reading: three times as many chains expand as with 58 lemmas, at the same ~80% a
 unexpanded seeds are also 79% right, so expansion today CONFIRMS rather than corrects; the correction signal is
 the refutations, 13 chains of which 7 caught a wrong seed. What moves this is library size (a chain can only be
 refuted by a lemma that exists) and a guide retrained on frame-local shares. Launching the larger generation.
+
+## 2026-10-07 18:40 PDT — the exchange law after review: four counterexamples closed, the prototype made the kernel's mirror
+
+A reviewer ran the exact bridge against the kernel's honest frames and found four frames the kernel certified or valued
+wrongly (docs/BUGS.md, this date): the king worth 0 inside the exchange (a free recapturer), a non-participant pawn
+promoting inside the horizon, an even trade of our second attacker (the zwischenzug) that `settledB` could not see
+because it read only `s`, and the mating capture left uncertified. Fixes in `Ideas/ExchangeLaw.lean`: the king counts
+100; `noPromotion` fails on any enemy pawn that could promote within (n+1)/2 opponent moves; `noOtherCapture` also
+requires every remaining attacker of ours unattacked; `settledB` is "the opponent mated, or our material at least the
+target and no capture anywhere that pays them by the static exchange". OBS the binary on the four probes after the fix:
+h4 noPromotion=0 (value -4); d5 (zwischenzug) noOtherCapture=0; h5 (king) noOtherCapture=0; Kxd5 frame noKing=0,
+value -2; Qxg8 mate SETTLED. The prototype (`exchange_law.py`) now mirrors the kernel clause by clause (noCheck and
+noArrival read after our capture, noPin as legality, the kernel's file-major tie order, the cheapest LEGAL capture), and
+`exchange_law kernel` bridges kernel, prototype and exact search in one run. 31 tests pass. The re-validation on the
+census (kernel bridge, 1,500 positions; census, 3,000) was launched and not yet read -- its OBS lines decide whether the
+hypotheses are now sound against the bridge (0 WRONG expected).
+OBS the tactic map with reviewer 1's fixes (no double charge of the recapture; a checking move reads our tactics before
+it; stalemate 0), the same two held-out puzzle sets: pawn endings whole solution 147/300 (earlier map versions 127-131,
+sound bundle 131), first move among the tied top 219/300 (202); general 198/300 (192-196; sound 193), 224/300 (221-224).
+Directional, one run each. Sound-bundle games vs Stockfish-2000: 2 of 5 seeds done, 10% and 8% (20 games each); 3 seeds
+still running (logs sf2000x_sound_s*.log).
+OPEN: reviewer 2's six findings on the census pipeline (the motif labels deflection / trapped piece / promotion fire on
+wrong evidence; a 7th-rank passer strike is "co-occurring" not "attributed" in coverage -- 17 of 45 proved passers;
+`build` wipes a rows file that has no `.done` beside it; a stale docstring) -- none touch the map tables or the law.

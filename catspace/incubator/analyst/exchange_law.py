@@ -9,20 +9,26 @@ valuable attacker, c's material against every legal reply is at least see(p, s) 
 THE HYPOTHESES (each a computable check on the position, named; a tactic is the failure of one of them):
   target        s holds an enemy piece that is not the king, and c attacks it
   noKing        no king among the attackers or defenders of s (a king cannot capture into an attack)
-  noPin         no attacker or defender is pinned to its king (every capture on s is legal when its turn comes)
+  noPin         every attacker's capture on s is legal now and every defender's recapture is legal after ours
   noXray        no slider of either side stands behind a single piece on a line to s (no second-row recapture)
-  noPromotion   no pawn participant stands on its seventh rank; no en passant on s
-  noOtherCapture  the enemy can capture nothing of ours but on s (our pieces off s are unattacked), so stopping the
-                exchange banks the material -- the "overloaded / loose piece" exceptions
-  noCheck       the enemy has no checking move now, our king shares no line or knight relation with s, and no enemy
-                slider shares a line with our king -- no in-between check (the "zwischenzug" exception)
+  noPromotion   no pawn participant stands on its seventh rank; no en passant on s; no enemy pawn could promote inside
+                the claim's horizon
+  noOtherCapture  after our first capture, no enemy capture off s is even or better by the static exchange, no attacker
+                of ours defends a piece of ours they attack (the overload), none of our remaining attackers is attacked
+                (trading one off changes the frame: the zwischenzug)
+  noCheck       after our first capture the enemy has no checking move; our king shares no line or knight relation
+                with s; no enemy slider shares a line with our king -- no in-between check
   noInterpose   every attacker of ours is a knight, a pawn, or stands next to s -- the enemy cannot block our recapture
-  noArrival     no enemy piece off the frame can move to a square attacking s in one move -- the defenders are fixed
+  noArrival     after our first capture no enemy piece off the frame can move to a square attacking s -- the defenders
+                are fixed
+Every clause is the kernel's (Ideas/ExchangeLaw.lean `hypotheses`), including the tie order among equal attackers.
 THE BRIDGE: an exact alpha-beta over every legal move to the sequence's depth, with a captures-only quiescence at the
 leaves (either side may stand pat), which must never fall below see(p, s) when the hypotheses hold; where they fail,
 the gap is the tactic.
 
-    python -m catspace.incubator.analyst.exchange_law census --tag c300 [--limit 3000]
+    python -m catspace.incubator.analyst.exchange_law census --tag c300 [--limit 3000]    # fire rate, bridge agreement
+    python -m catspace.incubator.analyst.exchange_law bite --tag c300                     # each exception's bite rate
+    python -m catspace.incubator.analyst.exchange_law kernel --tag c300 --limit 1500      # the kernel vs this file vs the bridge
 Prints OBS lines: how often the law fires, how often the bridge agrees (must be always), and which hypothesis fails most.
 """
 from __future__ import annotations
@@ -41,16 +47,33 @@ def material(b: chess.Board, side: chess.Color) -> int:
     return sum(VAL[p.piece_type] * (1 if p.color == side else -1) for p in b.piece_map().values() if p.piece_type != chess.KING)
 
 
+def _kernel_order(sq: int) -> int:
+    """The kernel's square order (`allSquares`: file-major, a1 a2 ... a8 b1 ...) for the tie among equal-value attackers."""
+    return chess.square_file(sq) * 8 + chess.square_rank(sq)
+
+
 def participants(b: chess.Board, s: int) -> tuple:
-    """(attackers of the side to move, defenders of the other side), as sorted lists of squares, cheapest first."""
+    """(attackers of the side to move, defenders of the other side), as lists of squares, cheapest first; equal values in
+    the kernel's square order."""
     c = b.turn
-    key = lambda sq: (VAL[b.piece_at(sq).piece_type], sq)
+    key = lambda sq: (VAL[b.piece_at(sq).piece_type], _kernel_order(sq))
     return sorted(b.attackers(c, s), key=key), sorted(b.attackers(not c, s), key=key)
+
+
+def cheapest_capture(b: chess.Board, s: int, A: list) -> chess.Move | None:
+    """Our capture on s by the cheapest attacker whose capture is legal (the kernel's `cheapestCapture`), or None."""
+    for q in A:
+        for m in b.legal_moves:
+            if m.from_square == q and m.to_square == s:
+                return m
+    return None
 
 
 def see(b: chess.Board, s: int) -> tuple:
     """The static exchange on s for the side to move: (value, number of captures in the sequence). The classical gain
-    list, each side capturing with its cheapest piece and free to stop; no x-rays (the hypothesis excludes them)."""
+    list, each side capturing with its cheapest piece and free to stop; no x-rays (the hypothesis excludes them). The
+    first capture is by the cheapest attacker by VALUE whether or not it is legal (the kernel's `seeB`); the value is the
+    capture's own, possibly negative."""
     A, D = participants(b, s)
     target = b.piece_at(s)
     gain = [VAL[target.piece_type]]
@@ -73,59 +96,63 @@ def _rays_to(s: int, sq: int) -> list:
     return [t for t in chess.SQUARES if chess.BB_SQUARES[t] & chess.between(sq, s)]
 
 
+def _knight_relation(a: int, b_: int) -> bool:
+    return {abs(chess.square_file(a) - chess.square_file(b_)), abs(chess.square_rank(a) - chess.square_rank(b_))} == {1, 2}
+
+
 def hypotheses(b: chess.Board, s: int) -> dict:
-    """The law's hypotheses on (b, s), each named -> bool."""
+    """The law's hypotheses on (b, s), each named -> bool: the kernel's reading (Ideas/ExchangeLaw.lean `hypotheses`);
+    whatever looks past our first capture is read in the position after it (b1, the opponent to move)."""
     c = b.turn
     h = {k: False for k in HYPS}
     p = b.piece_at(s)
     A, D = participants(b, s)
-    h["target"] = p is not None and p.color != c and p.piece_type != chess.KING and bool(A) \
-        and any(m.from_square == A[0] and m.to_square == s for m in b.legal_moves)        # our cheapest capture is legal (not in check, not pinned)
+    m0 = cheapest_capture(b, s, A)
+    h["target"] = p is not None and p.color != c and p.piece_type != chess.KING and m0 is not None
     if not h["target"]:
         return h
     parts = A + D
+    n = len(parts)                                                # the claim's horizon in plies
     h["noKing"] = all(b.piece_at(q).piece_type != chess.KING for q in parts)
-    h["noPin"] = all(not b.is_pinned(b.piece_at(q).color, q) for q in parts)
+    b1 = b.copy(stack=False); b1.push(m0)
+    to_s = lambda bb, q: any(m.from_square == q and m.to_square == s for m in bb.legal_moves)
+    h["noPin"] = all(to_s(b, q) for q in A) and all(to_s(b1, q) for q in D)    # every capture on s legal when its turn comes
     # x-rays: a slider of either side that does not attack s now but would if one piece were removed
     xray = False
     for q, pc in b.piece_map().items():
-        if pc.piece_type in SLIDERS and q not in parts and q != s and chess.BB_SQUARES[s] & chess.BB_RAYS[q][s] if chess.BB_RAYS[q][s] else False:
+        if pc.piece_type in SLIDERS and q not in parts and q != s and chess.BB_RAYS[q][s]:
             kind_ok = pc.piece_type == chess.QUEEN or (pc.piece_type == chess.ROOK and (chess.square_file(q) == chess.square_file(s) or chess.square_rank(q) == chess.square_rank(s))) \
                 or (pc.piece_type == chess.BISHOP and chess.square_file(q) != chess.square_file(s) and chess.square_rank(q) != chess.square_rank(s))
-            if kind_ok:
-                blockers = [t for t in _rays_to(s, q) if b.piece_at(t) is not None]
-                if len(blockers) == 1:
-                    xray = True
+            if kind_ok and len([t for t in _rays_to(s, q) if b.piece_at(t) is not None]) == 1:
+                xray = True
     h["noXray"] = not xray
     seventh = lambda q: chess.square_rank(q) == (6 if b.piece_at(q).color == chess.WHITE else 1)     # its own seventh rank
-    h["noPromotion"] = all(not (b.piece_at(q).piece_type == chess.PAWN and seventh(q)) for q in parts) and b.ep_square != s
-    # captures elsewhere, read in the position after our first capture (the target is gone): no enemy capture off s pays by
-    # the static exchange from their side, and no participant of ours defends a piece of ours they attack (an overloaded
-    # defender would leave it loose when it recaptures on s)
-    b1 = b.copy(stack=False); b1.push(next(m for m in b.legal_moves if m.from_square == A[0] and m.to_square == s))
+    steps = lambda q, pc: (7 - chess.square_rank(q)) if pc.color == chess.WHITE else chess.square_rank(q)   # to promotion
+    pawn_near = any(pc.color != c and pc.piece_type == chess.PAWN and steps(q, pc) <= (n + 1) // 2        # an enemy pawn that
+                    for q, pc in b1.piece_map().items())                                                   # could promote inside the horizon
+    h["noPromotion"] = all(not (b.piece_at(q).piece_type == chess.PAWN and seventh(q)) for q in parts) and b.ep_square != s and not pawn_near
+    # captures elsewhere, read after our first capture: no enemy capture off s is even or better by the static exchange
+    # from their side (an even trade of a non-participant would still cost the horizon), no participant of ours defends a
+    # piece of ours they attack (an overloaded defender), and none of our remaining attackers is attacked at all (trading
+    # one off changes the frame: the zwischenzug)
     ok = True
     for q, pc in b1.piece_map().items():
-        if pc.color != c or pc.piece_type == chess.KING or q == s:
+        if pc.color != c or pc.piece_type == chess.KING or q == s or not b1.attackers(not c, q):
             continue
-        if not b1.attackers(not c, q):
-            continue
-        if set(A) & set(b1.attackers(c, q)):                     # a participant of ours is among its defenders: overload
+        if set(A) & set(b1.attackers(c, q)) or see(b1, q)[0] > 0:
             ok = False; break
-        if see(b1, q)[0] > 0:                                     # the enemy, to move in b1, would win material there
-            ok = False; break
-    h["noOtherCapture"] = ok
+    h["noOtherCapture"] = ok and all(b1.piece_at(a) is None or not b1.attackers(not c, a) for a in A)
     k = b.king(c)
-    nb = b.copy(stack=False); nb.turn = not c
-    enemy_checks = any(nb.gives_check(m) for m in nb.legal_moves) if k is not None and not nb.is_check() else True
-    king_rel = k is not None and (chess.BB_SQUARES[k] & (chess.BB_RAYS[s][k] if chess.BB_RAYS[s][k] else 0) or chess.square_distance(s, k) <= 2)
+    enemy_checks = any(b1.gives_check(m) for m in b1.legal_moves)                      # a check in between
+    king_rel = k is not None and (bool(chess.BB_RAYS[s][k]) or _knight_relation(s, k))  # our king on a line or a knight's jump from s
     slider_line = k is not None and any(pc.color != c and pc.piece_type in SLIDERS and chess.BB_RAYS[q][k] for q, pc in b.piece_map().items())
-    h["noCheck"] = not enemy_checks and not king_rel and not slider_line
+    h["noCheck"] = k is not None and not enemy_checks and not king_rel and not slider_line
     h["noInterpose"] = all(b.piece_at(q).piece_type in (chess.KNIGHT, chess.PAWN) or chess.square_distance(q, s) == 1 for q in A)
     arrives = False
-    for m in nb.legal_moves:                                      # the enemy's moves now (a null move): can a non-participant come to attack s?
-        if m.from_square in D or m.from_square == s or m.to_square == s:                   # the target cannot move: we capture first
+    for m in b1.legal_moves:                                      # the enemy's moves after our capture: can a non-participant come to attack s?
+        if m.from_square in D or m.to_square == s:
             continue
-        nb2 = nb.copy(stack=False); nb2.push(m)
+        nb2 = b1.copy(stack=False); nb2.push(m)
         if m.to_square in nb2.attackers(not c, s):
             arrives = True; break
     h["noArrival"] = not arrives
@@ -147,7 +174,7 @@ def bridge(b: chess.Board, s: int, depth: int) -> float:
     legal move to `depth` plies (material at the leaves, from the mover's view, relative to now); checkmate +-1000."""
     c = b.turn
     A, _ = participants(b, s)
-    m0 = next(m for m in b.legal_moves if m.from_square == A[0] and m.to_square == s)
+    m0 = cheapest_capture(b, s, A)
     base = material(b, c)
     def quiesce(bb, alpha, beta, us, qd=8):
         """Captures only at the horizon, either side free to stand pat (review 2026-10-07: a leaf after our capture
@@ -258,13 +285,55 @@ def bite(tag: str, limit: int = 1000, max_depth: int = 5) -> None:
           ", ".join(f"{k} {rev[k]}/{rev_n[k]}" for k, _ in sorted(rev_n.items(), key=lambda kv: -kv[1])))
 
 
+def kernel(tag: str, limit: int = 1500, max_depth: int = 5) -> None:
+    """The kernel's reading (Ideas/ExchangeLaw.lean through the binary) against the prototype's and against the exact
+    search: on every frame the nine hypotheses by both (disagreements by name, which must be 0 once the prototype is the
+    kernel's mirror); on every frame the KERNEL calls honest, its value against the prototype's, its own certificate
+    (`settledWithin`) and the exact bridge, which must never fall below the value."""
+    from .lean_ideas import detector
+    from .tactic_census_measure import load
+    li = detector()
+    rows = load(tag)[:limit]
+    frames = k_honest = p_honest = both = vdiff = agree = wrong = 0; dis = Counter(); cert = Counter(); values = Counter(); examples = []
+    for r in rows:
+        b = chess.Board(r["fen"]); c = b.turn
+        for s, pc in b.piece_map().items():
+            if pc.color == c or pc.piece_type == chess.KING or not b.attackers(c, s):
+                continue
+            frames += 1
+            v = law(b, s)
+            kh, kv, khonest = li.exchange(b, s)
+            for name in HYPS:
+                if bool(kh.get(name)) != bool(v["hyps"][name]):
+                    dis[name] += 1
+            k_honest += khonest; p_honest += v["holds"]; both += khonest and v["holds"]
+            if khonest:
+                values[kv] += 1
+                vdiff += v["value"] is not None and kv != v["value"]
+                cert[li.exchange_cert(b, s)] += 1
+                A, D = participants(b, s)
+                got = bridge(b, s, min(len(A) + len(D), max_depth))
+                if got >= kv - 1e-9:
+                    agree += 1
+                else:
+                    wrong += 1
+                    if len(examples) < 5:
+                        examples.append((r["fen"], chess.square_name(s), kv, got))
+    print(f"OBS kernel vs prototype on {len(rows)} positions of {tag}, {frames} frames: honest by the kernel {k_honest}, by the prototype {p_honest}, both {both}; "
+          f"hypothesis disagreements: " + (", ".join(f"{k} {n}" for k, n in dis.most_common()) or "none"))
+    print(f"OBS   on the kernel's honest frames: value differs from the prototype's {vdiff}; certificate SETTLED {cert[True]} NOT {cert[False]}; "
+          f"exact bridge agrees {agree}, WRONG {wrong}; values " + ", ".join(f"{k:+d}: {n}" for k, n in sorted(values.items())))
+    for e in examples:
+        print(f"OBS   wrong: {e[0]} on {e[1]}: kernel {e[2]:+d}, exact {e[3]:+.0f}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["census", "bite"])
+    ap.add_argument("cmd", choices=["census", "bite", "kernel"])
     ap.add_argument("--tag", default="c300")
     ap.add_argument("--limit", type=int, default=3000)
     a = ap.parse_args(argv)
-    (census if a.cmd == "census" else bite)(a.tag, a.limit)
+    dict(census=census, bite=bite, kernel=kernel)[a.cmd](a.tag, a.limit)
 
 
 if __name__ == "__main__":
