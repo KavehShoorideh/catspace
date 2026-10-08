@@ -197,6 +197,7 @@ def hypotheses(b: chess.Board, s: int) -> dict:
     king_rel = k is not None and (bool(chess.BB_RAYS[s][k]) or _knight_relation(s, k))  # our king on a line or a knight's jump from s
     slider_line = k is not None and any(pc.color != c and pc.piece_type in SLIDERS and chess.BB_RAYS[q][k] for q, pc in b.piece_map().items())
     h["noCheck"] = k is not None and not enemy_checks and not king_rel and not slider_line
+    h["_checkReply"], h["_kingLine"], h["_sliderOnKing"] = enemy_checks, king_rel, slider_line   # the parts, for the names
     h["noInterpose"] = all(b.piece_at(q).piece_type in (chess.KNIGHT, chess.PAWN) or chess.square_distance(q, s) == 1 for q in A)
     arrives = False
     for m in b1.legal_moves:                                      # the enemy's moves after our capture: can a non-participant come to attack s?
@@ -207,6 +208,34 @@ def hypotheses(b: chess.Board, s: int) -> dict:
             arrives = True; break
     h["noArrival"] = not arrives
     return h
+
+
+VARIANTS = {                                                       # Kaveh 2026-10-08: keep the names even where a tier
+    "noKing": "king exchange",                                     # computes the variant with no extra code -- "this is not
+    "noPin": "pinned exchange",                                    # a regular exchange, it is an intermezzo exchange, a pawn
+    "noXray": "x-ray exchange",                                    # promotion exchange, an exchange where the king is a
+    "noPromotion": "promotion exchange",                           # participant"
+    "noOtherCapture": "intermezzo exchange",
+    "noOverload": "overloaded exchange",
+    "noCheck": "exchange with a check in between",
+    "noInterpose": "interposition exchange",
+    "noArrival": "exchange with an arriving defender",
+}
+
+
+def variants(b: chess.Board, s: int, h: dict | None = None) -> list:
+    """The names of the exchange on s: 'plain exchange' when every hypothesis holds, else one name per failing
+    hypothesis -- and the x-ray and king names whenever a hidden piece or a king takes part, whatever the hypotheses."""
+    h = h or hypotheses(b, s)
+    if not h["target"]:
+        return []
+    names = [VARIANTS[k] for k in HYPS if k != "target" and not h[k]]
+    A, D = participants(b, s)
+    if any(b.piece_at(q).piece_type == chess.KING for q in A + D) and "king exchange" not in names:
+        names.append("king exchange")
+    if see_x(b, s) != see(b, s) and "x-ray exchange" not in names:
+        names.append("x-ray exchange")
+    return names or ["plain exchange"]
 
 
 def intermezzo(b: chess.Board, s: int) -> int:
@@ -236,6 +265,7 @@ def law(b: chess.Board, s: int) -> dict:
         out["composed"] = out["value"] - g
         vx, out["xray_captures"] = see_x(b, s)
         out["xray"] = vx - g
+    out["variants"] = variants(b, s, h)
     return out
 
 
@@ -507,13 +537,58 @@ def xray(tag: str, limit: int = 8000, max_depth: int = 5) -> None:
         print(f"OBS   miss: {m[0]} on {m[1]}: plain {m[2]:+d}, predicted {m[3]:+d}, exact {m[4]:+.0f}")
 
 
+def _king_row(args):
+    fen, max_depth = args
+    b = chess.Board(fen); out = []
+    for s in _frames(b):
+        v = law(b, s); h = v["hyps"]
+        if not h["target"] or h["noKing"]:
+            continue
+        A, D = participants(b, s)
+        ours = any(b.piece_at(q).piece_type == chess.KING for q in A)
+        # the frame apart from the king: the hypotheses the tiers already price, and noCheck failing ONLY because our own
+        # participating king stands next to the square (the king line clause), not by a checking reply or a slider on it
+        allowed = {"noKing", "noOtherCapture", "noXray", "noArrival", "noInterpose"}
+        check_only_king = not h["noCheck"] and not h["_checkReply"] and not h["_sliderOnKing"] and ours
+        rest = set(v["failing"]) - allowed - ({"noCheck"} if check_only_king else set())
+        if rest:
+            continue
+        vx, caps = see_x(b, s)
+        pred = vx - intermezzo(b, s)
+        out.append(("ours" if ours else "theirs", v["value"], pred, bridge(b, s, min(2 * caps + 1, max_depth)), fen, chess.square_name(s)))
+    return out
+
+
+def king(tag: str, limit: int = 8000, max_depth: int = 5) -> None:
+    """Measured before built: on frames where a king takes part (ours or theirs; the king goes last -- at 100 it never
+    captures into a defended square, so the exchange's fold-back stops before it), with the priced hypotheses allowed to
+    fail, is the exact outcome at least the static exchange with x-rays minus the intermezzo's price?"""
+    from multiprocessing import Pool
+
+    from .tactic_census_measure import load
+    rows = load(tag)[:limit]
+    n = Counter(); ok = Counter(); ok_naive = Counter(); gap = Counter(); misses = []
+    with Pool(_workers()) as pool:
+        for recs in pool.imap_unordered(_king_row, [(r["fen"], max_depth) for r in rows], chunksize=8):
+            for who, v, pred, got, fen, sq in recs:
+                n[who] += 1; ok[who] += got >= pred - 1e-9; ok_naive[who] += got >= v - 1e-9; gap[int(round(got - pred))] += 1
+                if got < pred - 1e-9 and len(misses) < 12:
+                    misses.append((who, fen, sq, v, pred, got))
+    for who in ("ours", "theirs"):
+        print(f"OBS king exchange ({who} king takes part) in {len(rows)} positions of {tag}: {n[who]} frames; exact >= plain static {ok_naive[who]} "
+              f"({100 * ok_naive[who] / max(n[who], 1):.0f}%); exact >= x-ray static minus the intermezzo {ok[who]} ({100 * ok[who] / max(n[who], 1):.0f}%)")
+    print("OBS   exact minus predicted: " + ", ".join(f"{k:+d}: {c}" for k, c in sorted(gap.items())))
+    for m in misses:
+        print(f"OBS   miss ({m[0]}): {m[1]} on {m[2]}: plain {m[3]:+d}, predicted {m[4]:+d}, exact {m[5]:+.0f}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["census", "bite", "kernel", "xray"])
+    ap.add_argument("cmd", choices=["census", "bite", "kernel", "xray", "king"])
     ap.add_argument("--tag", default="c300")
     ap.add_argument("--limit", type=int, default=3000)
     a = ap.parse_args(argv)
-    dict(census=census, bite=bite, kernel=kernel, xray=xray)[a.cmd](a.tag, a.limit)
+    dict(census=census, bite=bite, kernel=kernel, xray=xray, king=king)[a.cmd](a.tag, a.limit)
 
 
 if __name__ == "__main__":

@@ -96,3 +96,11 @@ def test_the_static_exchange_with_xrays_counts_the_gun():
     assert see(gun, chess.D5)[0] == -2 and see_x(gun, chess.D5)[0] == 1 and bridge(gun, chess.D5, 5) >= 1 and law(gun, chess.D5)["xray_holds"]   # Rxd5 Bxd5 Rxd5
     plain = chess.Board("4k3/8/8/3n4/8/4N3/8/1K6 w - - 0 1")
     assert see_x(plain, chess.D5) == see(plain, chess.D5) == (3, 1)
+
+
+def test_every_exchange_carries_its_variant_names():
+    from catspace.incubator.analyst.exchange_law import law
+    assert law(chess.Board("4k3/8/8/3n4/8/4N3/8/1K6 w - - 0 1"), chess.D5)["variants"] == ["plain exchange"]
+    assert "intermezzo exchange" in law(chess.Board("4k3/8/3b4/3n4/8/4N3/7P/1K6 w - - 0 1"), chess.D5)["variants"]
+    assert "x-ray exchange" in law(chess.Board("4k3/8/4b3/3n4/3R4/3R4/3Q4/1K6 w - - 0 1"), chess.D5)["variants"]
+    assert "king exchange" in law(chess.Board("8/8/8/3n4/4K3/8/8/7k w - - 0 1"), chess.D5)["variants"]
