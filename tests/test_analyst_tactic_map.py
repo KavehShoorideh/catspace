@@ -40,3 +40,26 @@ def test_the_rule_is_registered_as_a_conjecture_that_reads_the_ties():
     r = FP.RULE_BOOK["tactic_map"]()
     assert r.tier == "conjecture" and r.reads_ledger
     assert "tactic_map" in FP.RULE_ORDER
+
+
+def test_value_after_does_not_double_charge_the_recapture(tm):
+    # Nxf6 is an even trade (knight for knight): the ledger already subtracts the recapture; the map must not again
+    b = chess.Board("7k/ppp2pp1/5n1p/8/4N3/3P4/PPP2PPP/6K1 w - - 0 1")
+    assert chess.F6 in b.attacks(chess.E4) and b.piece_at(chess.F6) == chess.Piece(chess.KNIGHT, chess.BLACK)
+    nb = b.copy(); nb.push_san("Nxf6"); assert nb.attackers(chess.BLACK, chess.F6)       # it is recaptured
+    trade, quiet = tm.value_after(b, chess.Move.from_uci("e4f6")), tm.value_after(b, chess.Move.from_uci("g1h1"))
+    assert abs(trade - quiet) < 0.5
+
+
+def test_a_checking_fork_is_not_read_as_tactic_free(tm):
+    b = chess.Board("r3k3/pp3ppp/8/3N4/5B2/8/PPP2PPP/6K1 w - - 0 1")
+    m = chess.Move.from_uci("d5c7")
+    nb = b.copy(); nb.push(m); assert nb.is_check() and chess.A8 in nb.attacks(chess.C7)     # the royal fork, with check
+    assert tm.value_after(b, m) >= tm.value_after(b, chess.Move.from_uci("g1h1")) - 0.1
+
+
+def test_a_stalemating_move_is_worth_nothing(tm):
+    b = chess.Board("k7/8/8/2K5/8/8/8/1Q6 w - - 0 1")
+    m = chess.Move.from_uci("b1b6")
+    nb = b.copy(); nb.push(m); assert nb.is_stalemate()
+    assert tm.value_after(b, m) == 0.0

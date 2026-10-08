@@ -23,12 +23,14 @@ from collections import Counter
 from pathlib import Path
 
 import chess
+
+from catspace.io import paths
 import chess.engine
 
 from . import nodes
 from .chess_domain import VAL
 
-OUT = Path("data/derived/player")
+OUT = Path(paths.derived("player"))
 MATE = 1000.0
 
 
@@ -70,7 +72,7 @@ class Search:
     def quiesce(self, b: chess.Board, side: chess.Color, alpha: float, beta: float, d: int) -> float:
         self.n += 1; nodes.tick("ledger")
         stand = evaluate(b, side)
-        if b.is_game_over() or d == 0 or self.n > self.node_cap:
+        if b.is_game_over(claim_draw=True) or d == 0 or self.n > self.node_cap:
             return stand
         to_move_us = b.turn == side
         if to_move_us:
@@ -100,7 +102,7 @@ class Search:
 
     def alphabeta(self, b: chess.Board, side: chess.Color, depth: int, alpha: float, beta: float) -> float:
         self.n += 1; nodes.tick("ledger")
-        if b.is_game_over():
+        if b.is_game_over(claim_draw=True):
             return evaluate(b, side)
         if depth == 0 or self.n > self.node_cap:
             return self.quiesce(b, side, alpha, beta, self.q_depth)
@@ -368,7 +370,7 @@ def _analyse(self, b: chess.Board, top: int = 6) -> list:
         # a light line: the reply the search would fear most, one ply, then our resolved answer
         b.push(m)
         reply = None
-        if not b.is_game_over():
+        if not b.is_game_over(claim_draw=True):
             worst = None
             for r in b.legal_moves:
                 b.push(r); v = s.quiesce(b, side, -MATE * 2, MATE * 2, 4); b.pop()
@@ -486,7 +488,7 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
     for g in range(n):
         b = chess.Board(); our = chess.WHITE if g % 2 == 0 else chess.BLACK
         moves = []
-        while not b.is_game_over() and len(moves) < plies:
+        while not b.is_game_over(claim_draw=True) and len(moves) < plies:
             if b.turn == our:
                 t = time.perf_counter(); m, info = pl.choose(b); t_hist.append(time.perf_counter() - t); node_hist.append(info["nodes"])
             elif sf is not None:
@@ -495,7 +497,7 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
                 m = opp.sample(b, temperature=1.0, rng=rng) if opp else rng.choice(list(b.legal_moves))
             moves.append(b.san(m)); before = b.copy(stack=False); b.push(m)
             pl.observe(before, m, len(moves))
-        oc = b.outcome()
+        oc = b.outcome(claim_draw=True)
         if oc is None:
             mat = material(b, our)
             res = "draw(cap)" if abs(mat) < 3 else ("win(cap)" if mat > 0 else "loss(cap)")

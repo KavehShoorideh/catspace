@@ -62,6 +62,8 @@ def fit(tag: str, bands=DEFAULT_BANDS, window: int = 4) -> dict:
         mated_side = None                                                  # the game ended in mate: the last row's mover won
         if any((lb.push(m), lb.is_checkmate(), lb.pop())[1] for m in lb.legal_moves):
             mated_side = "b" if plies[last]["side"] == "w" else "w"
+        elif plies[last]["result"] != 0:                                   # a resignation: the loser's last window ends in the loss
+            mated_side = plies[last]["side"] if plies[last]["result"] < 0 else ("b" if plies[last]["side"] == "w" else "w")
         for t, r in plies.items():
             b = band_name(r["elo"], bands)
             later = plies.get(t + window)
@@ -150,7 +152,12 @@ class TacticMap:
         nb = b.copy(stack=False); nb.push(m)
         if nb.is_checkmate():
             return 100.0
-        theirs = tokens(nb); ours = opponent_tokens(nb)                 # None when the move gives check: our latent tactics unread
+        if nb.is_stalemate():                                        # the game ends: nothing is gained or lost from here
+            return 0.0
+        theirs = [t for t in tokens(nb) if t[0] != "material_now"]   # their winning capture is the ledger's own charge (review
+        ours = opponent_tokens(nb)                                    # 2026-10-07: priced twice, every even trade lost its tie)
+        if ours is None:                                              # the move gives check: no null move; our tactics read before it
+            ours = tokens(b)
         return -self.value_for_side_to_move(theirs, ours, band_name(self.elo_them, self.bands), band_name(self.elo_us, self.bands))
 
 
@@ -162,15 +169,23 @@ def _map():
     CATSPACE_ELO_US / CATSPACE_ELO_THEM say otherwise."""
     global _MAP
     if _MAP is None:
-        import os
-        _MAP = TacticMap(os.environ.get("CATSPACE_TACTIC_MAP", "wide"), int(os.environ.get("CATSPACE_ELO_US", 1800)), int(os.environ.get("CATSPACE_ELO_THEM", 1800)))
+        import os, sys
+        tag = os.environ.get("CATSPACE_TACTIC_MAP", "wide")
+        if not map_path(tag).exists():
+            print(f"[tactic_map] no tables for {tag!r}; falling back to c300", file=sys.stderr)
+        _MAP = TacticMap(tag, int(os.environ.get("CATSPACE_ELO_US", 1800)), int(os.environ.get("CATSPACE_ELO_THEM", 1800)))
     return _MAP
 
 
 def passer_credit() -> float:
     """The census's price of a proved passer for a player of our rating: the `hold` of the passer family (the material
     swing over the window when a proved passer is available at one's turn; +4.4 pawns in both censuses)."""
-    tm = _map()
+    try:
+        tm = _map()
+    except FileNotFoundError:                                        # no census tables at all: the passer's long-run price
+        import sys
+        print("[tactic_map] no census tables: a proved passer credited +4.0", file=sys.stderr)
+        return 4.0
     return float(tm.t["hold"][f"passer|{band_name(tm.elo_us, tm.bands)}"])
 
 

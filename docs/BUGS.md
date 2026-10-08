@@ -403,6 +403,19 @@ checks for plausible-but-wrong positives are in docs/PROMPTS.md.
   before `opening` in RULE_ORDER; in the opening, where no tactics exist, its hair-thin expected-gain differences settled
   the ties and the principles rarely spoke -- the median after our 10th move went back from -164 to -222 cp in 80 games.
   Fix: principles first in the opening, the map on what they leave tied. The games are re-run with the corrected order.
+- **The map charged the recapture the ledger had already paid** (2026-10-07 evening review, class: two readers of one
+  event): after our move the opponent's `material_now` token (a winning capture) entered the map's value, and the one-ply
+  ledger had already subtracted that capture -- every even trade lost its tie to a quiet move (Nxf6 -1.5 vs Kh1 -0.1).
+  Fix: the map prices only what the ledger did not; their `material_now` is dropped.
+- **A checking move read our tactics as none** (class: an unreadable state): the null move is illegal in check, so after
+  a check `opponent_tokens` was None and a royal fork with check scored below a quiet move on ties. Fix: fall back to our
+  tokens before the move.
+- **No stalemate branch in the map** (class: a terminal unhandled): a stalemating move was valued by the frozen board's
+  tokens (+0.07 over a check). Fix: a stalemate is worth 0.
+- **The games harness never claimed a draw** (class: the rules of the game): no `claim_draw`, so a 50-move or repetition
+  draw ran to the 200-ply cap and was scored on material -- an unconverted KQ v K counted as a win. Fix: claim_draw=True
+  throughout; the output path through the registry (AGENTS rule 2). Resignations now count like mates (+-20 to the loser)
+  in the map's tables; before, decisive games ending by resignation dropped their last rows (202 of 288 in c300).
 
 ### Earlier scars (one line each; details in memory)
 - Side-to-move flip gave an extra tempo (+3.2 vs ~+2) -- class 3 (no_side_to_move_flip).
