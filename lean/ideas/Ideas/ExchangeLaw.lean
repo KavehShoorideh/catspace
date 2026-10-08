@@ -15,7 +15,7 @@ basically exceptions to the exchange theorem" -- each failure is a named tactic)
   target        the piece on `s` is the opponent's and not a king; `c` attacks it; `c`'s cheapest capture is legal
   noKing        no king among the attackers or defenders
   noPin         every attacker's capture on `s` is legal now, and every defender's recapture is legal after it
-  noXray        no slider of either side stands behind a single piece on a line to `s`
+  noXray        no slider of either side is hidden behind pieces that will all capture on `s` in sequence
   noPromotion   no pawn participant on its seventh rank; `s` is not the en-passant square
   noOtherCapture  after `c`'s first capture, no capture of the opponent off `s` wins by the static exchange
   noOverload    no attacker of `c` defends a piece of `c` the opponent attacks (an overloaded defender), and no
@@ -23,7 +23,7 @@ basically exceptions to the exchange theorem" -- each failure is a named tactic)
   noCheck       after `c`'s first capture the opponent has no checking move; `c`'s king shares no line and no knight
                 relation with `s`; no opponent slider shares a line with `c`'s king
   noInterpose   every attacker of `c` is a knight or a pawn or stands next to `s` (no blocking a recapture)
-  noArrival     no opponent piece off the frame can move to attack `s` in one move
+  noArrival     no move of the opponent off the frame adds an attacker of `s` (arrived or discovered)
 
 THE CLAIM (`settledWithin`): after `c`'s cheapest capture on `s`, within the frame's size in plies and whatever the
 opponent does, a SETTLED position is reached -- the opponent to move, `c`'s material at least its value before plus the
@@ -94,9 +94,20 @@ def sliderLineB (p : Position) (q s : Square) : Bool :=
   | some pc => pieceGeometryB pc.kind pc.color q s
   | none => false
 
-/-- Exactly one piece between `q` and `s`. -/
-def oneBetweenB (p : Position) (q s : Square) : Bool :=
-  (allSquares.filter (fun u => betweenB q u s && (p.board u).isSome)).length == 1
+/-- Chebyshev distance. -/
+def chebB (a b : Square) : Nat :=
+  max (if a.1.val ≥ b.1.val then a.1.val - b.1.val else b.1.val - a.1.val)
+      (if a.2.val ≥ b.2.val then a.2.val - b.2.val else b.2.val - a.2.val)
+
+/-- The slider on `q` is HIDDEN behind the exchange on `s` (Kaveh 2026-10-08: "recursively check if the piece will
+participate in sequence, for all pieces" -- Alekhine's gun, pawn-bishop-queen): every piece between `q` and `s` will
+capture on `s` in turn, the nearest a participant now, each one behind it a slider with geometry to `s` (revealed when
+the one in front of it captures). A blocker that never moves hides nothing (1,006 of 1,417 x-ray failures were such). -/
+def hiddenB (p : Position) (q s : Square) (parts : List Square) : Bool :=
+  let between := (allSquares.filter (fun u => betweenB q u s && (p.board u).isSome)).mergeSort (fun a b => chebB a s ≤ chebB b s)
+  match between with
+  | [] => false
+  | first :: rest => parts.contains first && rest.all (fun u => sliderLineB p u s)
 
 def seventhRankB (p : Position) (q : Square) : Bool :=
   match p.board q with
@@ -119,7 +130,7 @@ def hypotheses (p : Position) (s : Square) : List (String × Bool) :=
     | none => p
   let noPin := A.all (fun q => (legalMoves p).any (fun m => m.source == q && m.destination == s)) &&
     D.all (fun q => (legalMoves after).any (fun m => m.source == q && m.destination == s))
-  let noXray := allSquares.all (fun q => !(isSliderAt p q && !parts.contains q && q != s && sliderLineB p q s && oneBetweenB p q s))
+  let noXray := allSquares.all (fun q => !(isSliderAt p q && !parts.contains q && q != s && sliderLineB p q s && hiddenB p q s parts))
   let n := parts.length                                           -- the claim's horizon in plies; the opponent moves (n + 1) / 2 times
   let pawnNear := fun (q : Square) => match after.board q with    -- an enemy pawn that could promote inside the horizon (review
     | some pc => pc.color == o && pc.kind == .pawn &&              -- 2026-10-07: a non-participant pawn promoted and refuted the law)
@@ -144,7 +155,8 @@ def hypotheses (p : Position) (s : Square) : List (String × Bool) :=
           allSquares.all (fun q => !(isSliderAt p q && (match p.board q with | some pc => pc.color == o | none => false) && queenGeometryB q k))
       | none => false)
   let noInterpose := A.all (fun q => isPawnAt p q || (match p.board q with | some pc => pc.kind == .knight | none => false) || kingGeometryB q s)
-  let noArrival := (legalMoves after).all (fun m => D.contains m.source || m.destination == s || !pieceAttacksB (applyMove after m) o m.destination s)
+  let noArrival := (legalMoves after).all (fun m => D.contains m.source || m.destination == s ||   -- no NEW attacker of s after any
+    (attackersOf (applyMove after m) o s).all (fun q => D.contains q))                            -- move of theirs: arrived or discovered
   [("target", target), ("noKing", noKing), ("noPin", noPin), ("noXray", noXray), ("noPromotion", noPromotion),
    ("noOtherCapture", noOtherCapture), ("noOverload", noOverload), ("noCheck", noCheck), ("noInterpose", noInterpose),
    ("noArrival", noArrival)]

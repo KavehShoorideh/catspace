@@ -58,3 +58,30 @@ def test_the_composed_tier_subtracts_the_intermezzo():
     assert v["value"] == 3 and intermezzo(b, chess.D5) == 1 and v["composed"] == 2
     assert not v["holds"] and v["failing"] == ["noOtherCapture"] and v["composed_holds"]
     assert bridge(b, chess.D5, 3) >= 2
+
+
+def test_an_xray_needs_a_participant_in_front_and_a_discovered_defender_is_an_arrival():
+    from catspace.incubator.analyst.exchange_law import hypotheses
+    b = chess.Board("4k3/8/8/3n4/3P4/4N3/8/1K1R4 w - - 0 1")        # the d4 pawn (not a participant) blocks our rook's line to d5
+    assert chess.D4 in [t for t in chess.SQUARES if chess.BB_SQUARES[t] & chess.between(chess.D1, chess.D5)] and not b.attackers(chess.BLACK, chess.D5)
+    assert hypotheses(b, chess.D5)["noXray"] is True                   # nothing reveals the rook: no x-ray
+    b2 = chess.Board("4k3/8/8/3n4/8/3R4/8/1K1Q4 w - - 0 1")           # our rook d3 captures d5 and reveals the queen behind it
+    assert chess.D3 in b2.attackers(chess.WHITE, chess.D5) and chess.D1 not in b2.attackers(chess.WHITE, chess.D5)
+    assert hypotheses(b2, chess.D5)["noXray"] is False
+    b3 = chess.Board("3rk3/3b4/8/3n4/8/4N3/8/1K6 w - - 0 1")          # their bishop d7 blocks their rook's line; Bd7 moving reveals a defender
+    assert chess.D7 not in b3.attackers(chess.BLACK, chess.D5)
+    assert hypotheses(b3, chess.D5)["noArrival"] is False
+
+
+def test_the_xray_chain_is_recursive():
+    """Alekhine's gun: queen behind two rooks -- the second rook is revealed by the first, the queen by the second; a
+    bishop (not a rook) between breaks the chain."""
+    from catspace.incubator.analyst.exchange_law import hypotheses
+    gun = chess.Board("4k3/8/8/3n4/8/3R4/3R4/1K1Q4 w - - 0 1")
+    assert chess.D3 in gun.attackers(chess.WHITE, chess.D5) and chess.D2 not in gun.attackers(chess.WHITE, chess.D5)
+    assert hypotheses(gun, chess.D5)["noXray"] is False
+    broken = chess.Board("4k3/8/8/3n4/8/3R4/3B4/1K1Q4 w - - 0 1")     # a bishop on d2 never attacks d5 along the file
+    assert hypotheses(broken, chess.D5)["noXray"] is True
+    diagonal = chess.Board("4k3/8/8/3n4/2P5/1B6/Q7/1K6 w - - 0 1")    # pawn c4 takes d5, reveals the bishop b3, which reveals the queen a2
+    assert chess.C4 in diagonal.attackers(chess.WHITE, chess.D5) and chess.B3 not in diagonal.attackers(chess.WHITE, chess.D5)
+    assert hypotheses(diagonal, chess.D5)["noXray"] is False

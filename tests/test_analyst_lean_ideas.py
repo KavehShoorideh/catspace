@@ -190,3 +190,11 @@ def test_the_kernel_composed_tier_matches_the_prototype_on_the_intermezzo_frame(
     assert value == 3 and not honest and hyps["noOtherCapture"] is False and hyps["noOverload"] is True
     assert li.exchange_composed(b, chess.D5) == (2, True)
     assert li.exchange_cert(b, chess.D5, timeout=30, composed=True)
+
+
+def test_the_kernel_sees_alekhines_gun_as_an_xray_and_a_still_blocker_as_none():
+    from catspace.incubator.analyst.lean_ideas import detector
+    li = detector()
+    assert li.exchange(chess.Board("4k3/8/8/3n4/8/3R4/3R4/1K1Q4 w - - 0 1"), chess.D5)[0]["noXray"] is False
+    assert li.exchange(chess.Board("4k3/8/8/3n4/3P4/4N3/8/1K1R4 w - - 0 1"), chess.D5)[0]["noXray"] is True
+    assert li.exchange(chess.Board("4k3/8/8/3n4/2P5/1B6/Q7/1K6 w - - 0 1"), chess.D5)[0]["noXray"] is False

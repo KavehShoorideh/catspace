@@ -27719,3 +27719,21 @@ positions: 984 frames; the exact bridge is at least the static value in 777 (79%
 (92%); 80 misses, 29 of them MATES (the checking reply starts a mating net). Below the intermezzo's 97% and the failure
 class is the mating net, so the checking-reply clause stays a hypothesis; a check tier waits for the mate machinery (the
 back-rank family is the first piece of it). Scripts kept under catspace/incubator/analyst/experiments/ (not shipped).
+
+## 2026-10-08 10:32 PDT — the x-ray, counted then made recursive (Kaveh), and the runs on all cores
+
+Kaveh: "by extra ... a rook battery and the second rook ... I think the first one is what matters here"; "there might
+be an Alekhine gun with two blockers that are participants, or a pawn, a bishop and a queen; it has to recursively check
+if the piece will participate in sequence, for all pieces". OBS the 1,417 frames failing noXray in 3,000 positions, by
+kind: the single blocker is NOT a participant (nothing ever reveals the slider) 1,006; a battery (own piece in front)
+272, plus 115 mixed with the former; through the opponent's piece 19 (+5 mixed). So the hypothesis was needlessly strict
+on 1,006 frames, and the battery is the x-ray that matters. Both kernel and prototype now read a slider as HIDDEN only
+when every piece between it and the square will capture there in sequence: the nearest a participant now, each one
+behind it a slider with geometry to the square (`hiddenB`; Alekhine's gun and pawn-bishop-queen tested); and noArrival
+now rejects any NEW attacker of the square after an opponent move (arrived or discovered), which the one-blocker form
+had left to luck. OBS census, 3,000 positions: the strict law fires 47 (1.0%, was 38), bridge 46 agree 0 wrong; the
+composed tier +12, 0 wrong; first failures now noCheck 1,594, noOtherCapture 929, noKing 801, noXray 338. Kernel vs
+prototype, 1,500 positions: honest 23 = 23 = 23, disagreements 0, bridge 23/23, certificate 17 SETTLED 6 timeouts.
+Kaveh: "don't leave 10/11 cpus idle" -- census, bite and kernel bridge run on a worker pool now (the three together
+under ten minutes; one took 25-70 minutes before). Bite rates on 1,000 positions, re-read: noOtherCapture 51/68,
+noXray 6/13, noPromotion 2/7, noKing 9/45, noOverload 2/14, noCheck 3/97.
