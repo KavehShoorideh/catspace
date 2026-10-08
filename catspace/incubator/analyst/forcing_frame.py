@@ -16,9 +16,26 @@ VAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUE
 MATE = 20.0
 
 
+def double_threat(b: chess.Board) -> float:
+    """THE DOUBLE-THREAT EXIT LEMMA (mined 2026-10-08 from unflagged blunders: Kxf1 Qxd4 -- the frame let White stand pat
+    while the queen hit a1 and d-file at once): standing pat costs the opponent's SECOND-best threat. A threat = the
+    opponent's static exchange on one of our pieces were we to pass (the null-move loss, read on the safe null move);
+    one threat can be parried, two cannot both be. -> the cost (>= 0)."""
+    from .chess_domain import passed
+    from .exchange_law import see
+    p = passed(b)
+    if p is None:
+        return 0.0
+    vals = sorted((see(p, q)[0] for q, pc in p.piece_map().items()
+                   if pc.color == b.turn and pc.piece_type != chess.KING and p.attackers(p.turn, q)), reverse=True)
+    vals = [v for v in vals if v > 0]
+    return float(vals[1]) if len(vals) >= 2 else 0.0
+
+
 class ForcingFrame:
-    def __init__(self, checks: bool = True):
+    def __init__(self, checks: bool = True, threats: bool = False):
         self.checks = checks
+        self.threats = threats                           # the double-threat exit lemma on/off
 
     def moves(self, st):
         b, plies, checks = st
@@ -51,26 +68,29 @@ class ForcingFrame:
         b, plies, _ = st
         if b.is_check():
             return -MATE if (plies <= 0 and b.is_checkmate()) or plies > 0 else 0.0   # in check: no standing pat
-        return 0.0
+        return -double_threat(b) if self.threats else 0.0
 
     def key(self, st):
         b, plies, checks = st
         return (b.board_fen(), b.turn, b.castling_rights, b.ep_square, plies, checks)
 
 
-def forcing_lemmas():
+def forcing_lemmas(threats: bool = False):
     from .frame_search import Lemma
 
     def stand(st):                                       # not in check, the side to move can always stand pat
         return None if st[0].is_check() else (0.0, float("inf"))
+    if threats:                                          # standing pat now costs the double threat: the bound moves with it
+        return [Lemma("stand pat", "proved: the exit is a move of the frame (FrameSearch.exit)",
+                      state=lambda st: None if st[0].is_check() else (-double_threat(st[0]), float("inf")))]
     return [Lemma("stand pat", "proved: the exit is a move of the frame (FrameSearch.exit)", state=stand)]
 
 
-def capture_value(b: chess.Board, s: int, plies: int = 8, checks: int = 2, use_checks: bool = True) -> tuple:
+def capture_value(b: chess.Board, s: int, plies: int = 8, checks: int = 2, use_checks: bool = True, threats: bool = False) -> tuple:
     """The value for the side to move of capturing on s (its best legal capture there), in the forcing frame.
     -> (value, nodes)."""
     from .frame_search import FrameSearch
-    fs = FrameSearch(ForcingFrame(use_checks), forcing_lemmas())
+    fs = FrameSearch(ForcingFrame(use_checks, threats), forcing_lemmas(threats))
     fr = fs.frame; st = (b, plies, checks)
     best = None
     for m in b.legal_moves:

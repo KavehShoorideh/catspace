@@ -144,8 +144,11 @@ def elsewhere_gain(b: chess.Board, side: chess.Color, skip: int, busy=frozenset(
     pieces NOT busy in the exchange on `skip` (the piece standing there and the participants: independence -- bug
     2026-10-08: the capturer on s was counted as also capturing elsewhere). A busy piece is lifted off the board for the
     count (its lines open: an approximation, measured)."""
+    from .chess_domain import passed
     from .exchange_law import see
-    bb = b.copy(stack=False); bb.turn = side; bb.ep_square = None
+    bb = b.copy(stack=False) if b.turn == side else passed(b)    # the safe null move, not a bare turn flip (review 2026-10-08)
+    if bb is None:
+        return 0
     for q in busy | {skip}:
         p = bb.piece_at(q)
         if p is not None and p.color == side and p.piece_type != chess.KING:
@@ -158,8 +161,10 @@ def elsewhere_gain(b: chess.Board, side: chess.Color, skip: int, busy=frozenset(
 
 
 def linked_value(b: chess.Board, s: int) -> int:
-    """The value of capturing on s for the side to move, with both sides' best capture elsewhere as one-shot moves: the
-    opponent's read after our capture (the capturer left its post), ours before it."""
+    """The value of capturing on s for the side to move, with both sides' best capture elsewhere as one-shot moves, both
+    read after our capture (the capturer left its post). REFUTED 2026-10-08 as a predictor (0.28 vs the frame's 0.25):
+    it repeats the 2026-09-28 finding that per-frame intermezzo scans cannot work -- resolve frames jointly instead
+    (fates.joint_frame + local_resolve). Kept for the record and the test."""
     from .frame_search import FrameSearch
     on_s, mine, theirs = frame_of(b, s)
     if not mine:
