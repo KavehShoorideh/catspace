@@ -162,5 +162,5 @@ def test_exchange_law_hypotheses_and_certificate():
     assert b2.is_pinned(chess.BLACK, chess.E6) and chess.E6 in b2.attackers(chess.BLACK, chess.D5)
     hyps2, value2, honest2 = li.exchange(b2, chess.D5)
     assert not honest2 and hyps2["noPin"] is False and value2 == 0
-    with pytest.raises(ValueError):
-        li.exchange(chess.Board("8/8/8/8/8/8/8/8 w - - 0 1"), chess.D5)        # no kings: not a position the kernel reads
+    hyps3, value3, honest3 = li.exchange(chess.Board("8/8/8/8/8/8/8/8 w - - 0 1"), chess.D5)   # an empty square: no target
+    assert not honest3 and hyps3["target"] is False and value3 == 0
