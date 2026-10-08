@@ -198,3 +198,14 @@ def test_the_kernel_sees_alekhines_gun_as_an_xray_and_a_still_blocker_as_none():
     assert li.exchange(chess.Board("4k3/8/8/3n4/8/3R4/3R4/1K1Q4 w - - 0 1"), chess.D5)[0]["noXray"] is False
     assert li.exchange(chess.Board("4k3/8/8/3n4/3P4/4N3/8/1K1R4 w - - 0 1"), chess.D5)[0]["noXray"] is True
     assert li.exchange(chess.Board("4k3/8/8/3n4/2P5/1B6/Q7/1K6 w - - 0 1"), chess.D5)[0]["noXray"] is False
+
+
+def test_the_kernel_capture_game_with_chains_counts_the_gun():
+    from catspace.incubator.analyst.exchange_law import see_x
+    from catspace.incubator.analyst.lean_ideas import detector
+    li = detector()
+    gun = chess.Board("4k3/8/4b3/3n4/3R4/3R4/3Q4/1K6 w - - 0 1")
+    xv, xh, seex = li.exchange_xray(gun, chess.D5)
+    assert seex == 1 == see_x(gun, chess.D5)[0] and xv == 1 and xh
+    assert li.exchange(gun, chess.D5)[1] == -2                         # the plain count
+    # the x-ray certificate's horizon on the gun is six plies full-width: beyond the certificate (timeouts), not asserted

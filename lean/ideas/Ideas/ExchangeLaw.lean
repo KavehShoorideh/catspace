@@ -99,6 +99,33 @@ def chebB (a b : Square) : Nat :=
   max (if a.1.val ≥ b.1.val then a.1.val - b.1.val else b.1.val - a.1.val)
       (if a.2.val ≥ b.2.val then a.2.val - b.2.val else b.2.val - a.2.val)
 
+/-- What stands behind `q` on its line from `s`, nearest first, as long as each is a slider with geometry to `s` (the
+pieces the exchange would reveal in sequence, either colour), tagged White/Black. -/
+def chainBehind (p : Position) (s q : Square) : List (Bool × Int) :=
+  let beyond := (allSquares.filter (fun u => (p.board u).isSome && betweenB s q u)).mergeSort (fun a b => chebB a s ≤ chebB b s)
+  takeChain beyond
+where
+  takeChain : List Square → List (Bool × Int)
+    | [] => []
+    | u :: rest => if sliderLineB p u s then
+        (match p.board u with | some pc => (pc.color == Color.white, valueAt p u) | none => (true, 0)) :: takeChain rest
+      else []
+
+/-- `c`'s rays on `s`: its attackers with what stands behind each, cheapest first. -/
+def raysOf (p : Position) (c : Color) (s : Square) : List Ray :=
+  ((attackersOf p c s).map (fun q => (valueAt p q, chainBehind p s q))).mergeSort (fun a b => a.1 ≤ b.1)
+
+/-- The static exchange WITH X-RAYS for the side to move capturing on `s` with its cheapest piece (the capture's own
+value; `seeB` with what stands behind every participant). -/
+def seeXB (p : Position) (s : Square) : Int :=
+  let c := p.turn
+  let white := c == Color.white
+  match raysOf p c s with
+  | [] => 0
+  | (a, behind) :: mine =>
+      let (mine', theirs') := reveal white behind mine (raysOf p (Color.opposite c) s)
+      valueAt p s - cheapestXF 32 (!white) a theirs' mine'
+
 /-- The slider on `q` is HIDDEN behind the exchange on `s` (Kaveh 2026-10-08: "recursively check if the piece will
 participate in sequence, for all pieces" -- Alekhine's gun, pawn-bishop-queen): every piece between `q` and `s` will
 capture on `s` in turn, the nearest a participant now, each one behind it a slider with geometry to `s` (revealed when
@@ -186,6 +213,13 @@ def honestComposedB (p : Position) (s : Square) : Bool :=
 
 def composedValue (p : Position) (s : Square) : Int := seeB p s - intermezzoB p s
 
+/-- THE X-RAY TIER (measured 2026-10-08 before it was stated: 230 of 236 frames): the frame with `noXray` dropped --
+the hidden pieces play in the capture game with chains -- and `noOtherCapture` dropped, the intermezzo priced. -/
+def honestXrayB (p : Position) (s : Square) : Bool :=
+  (hypotheses p s).all (fun h => h.1 == "noOtherCapture" || h.1 == "noXray" || h.2)
+
+def xrayValue (p : Position) (s : Square) : Int := seeXB p s - intermezzoB p s
+
 /-- A settled position for `c` on `s` (Kaveh 2026-10-07: "no paying recapture anywhere that creates a greater threat"):
 the opponent to move and either mated, or `c`'s material at least `target`, no recapture on `s` that pays them by the
 static exchange (the exchange is over), and no capture elsewhere that pays them MORE than the slack in hand
@@ -222,6 +256,16 @@ def settledWithinComposed (p : Position) (s : Square) : Bool :=
       let n := (attackersOf p c s).length + (attackersOf p (Color.opposite c) s).length + 2
       forcedWithinB c (settledB c s (material p c + composedValue p s)) (applyMove p m) n
 
+/-- The x-ray tier's claim: the horizon counts the hidden pieces too, plus the intermezzo's two plies. -/
+def settledWithinXray (p : Position) (s : Square) : Bool :=
+  match cheapestCapture p s with
+  | none => false
+  | some m =>
+      let c := p.turn
+      let size := fun (rs : List Ray) => (rs.map (fun r => 1 + r.2.length)).foldl (· + ·) 0
+      let n := size (raysOf p c s) + size (raysOf p (Color.opposite c) s) + 2
+      forcedWithinB c (settledB c s (material p c + xrayValue p s)) (applyMove p m) n
+
 /-- The exchange law, as a proposition: every honest frame's claim holds. (The proof is the work of part 2.) -/
 def exchangeLaw : Prop :=
   ∀ (p : Position) (s : Square), honestFrameB p s = true → settledWithin p s = true
@@ -229,5 +273,8 @@ def exchangeLaw : Prop :=
 /-- The composed law: every composed-honest frame's claim holds at the composed value. -/
 def exchangeLawComposed : Prop :=
   ∀ (p : Position) (s : Square), honestComposedB p s = true → settledWithinComposed p s = true
+
+def exchangeLawXray : Prop :=
+  ∀ (p : Position) (s : Square), honestXrayB p s = true → settledWithinXray p s = true
 
 end Ideas.ExchangeLaw

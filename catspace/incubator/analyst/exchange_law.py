@@ -93,6 +93,43 @@ def see(b: chess.Board, s: int) -> tuple:
     return gain[0], i + 1
 
 
+def see_x(b: chess.Board, s: int) -> tuple:
+    """The static exchange WITH X-RAYS (Kaveh 2026-10-08: the battery is the x-ray that matters, recursively, for all
+    pieces): when a piece captures on s and leaves its square, the next piece behind it on the same ray, if a slider with
+    geometry to s, joins ITS side's attackers (either colour), cheapest first as before. -> (value, captures)."""
+    c = b.turn
+    A, D = participants(b, s); A, D = list(A), list(D)
+    removed = set()
+    key = lambda u: (VAL[b.piece_at(u).piece_type], _kernel_order(u))
+
+    def reveal(q):
+        if not chess.BB_RAYS[q][s]:
+            return
+        df = (chess.square_file(q) > chess.square_file(s)) - (chess.square_file(q) < chess.square_file(s))
+        dr = (chess.square_rank(q) > chess.square_rank(s)) - (chess.square_rank(q) < chess.square_rank(s))
+        f, r = chess.square_file(q) + df, chess.square_rank(q) + dr
+        while 0 <= f < 8 and 0 <= r < 8:
+            t = chess.square(f, r); p = b.piece_at(t)
+            if p is not None and t not in removed:
+                if p.piece_type in SLIDERS and _geometry(p.piece_type, t, s) and t not in A and t not in D:
+                    lst = A if p.color == c else D
+                    lst.append(t); lst.sort(key=key)
+                return
+            f += df; r += dr
+
+    gain = [VAL[b.piece_at(s).piece_type]]
+    q = A.pop(0); on_s = VAL[b.piece_at(q).piece_type]; removed.add(q); reveal(q)
+    side = [D, A]; i = 0
+    while side[i % 2]:
+        q = side[i % 2].pop(0)
+        gain.append(on_s - gain[-1])
+        on_s = VAL[b.piece_at(q).piece_type]; removed.add(q); reveal(q); i += 1
+    while len(gain) > 1:
+        last = gain.pop()
+        gain[-1] = -max(-gain[-1], last)
+    return gain[0], i + 1
+
+
 def _rays_to(s: int, sq: int) -> list:
     return [t for t in chess.SQUARES if chess.BB_SQUARES[t] & chess.between(sq, s)]
 
@@ -190,11 +227,15 @@ def law(b: chess.Board, s: int) -> dict:
     hypotheses) and composed (noOtherCapture dropped, the intermezzo's price subtracted)."""
     h = hypotheses(b, s)
     failing = [k for k in HYPS if not h[k]]
-    out = dict(holds=not failing, failing=failing, hyps=h, value=None, captures=0, composed=None,
-               composed_holds=h["target"] and all(h[k] for k in HYPS if k != "noOtherCapture"))
+    out = dict(holds=not failing, failing=failing, hyps=h, value=None, captures=0, composed=None, xray=None, xray_captures=0,
+               composed_holds=h["target"] and all(h[k] for k in HYPS if k != "noOtherCapture"),
+               xray_holds=h["target"] and all(h[k] for k in HYPS if k not in ("noOtherCapture", "noXray")))
     if h["target"]:
         out["value"], out["captures"] = see(b, s)
-        out["composed"] = out["value"] - intermezzo(b, s)
+        g = intermezzo(b, s)
+        out["composed"] = out["value"] - g
+        vx, out["xray_captures"] = see_x(b, s)
+        out["xray"] = vx - g
     return out
 
 
@@ -268,7 +309,8 @@ def _census_row(args):
     fen, max_depth = args
     b = chess.Board(fen); out = []
     for s in _frames(b):
-        v = law(b, s); rec = dict(sq=chess.square_name(s), holds=v["holds"], failing=v["failing"], composed_holds=v["composed_holds"], value=v["value"], composed=v["composed"], got=None, depth=None, long=False)
+        v = law(b, s); rec = dict(sq=chess.square_name(s), holds=v["holds"], failing=v["failing"], composed_holds=v["composed_holds"], xray_holds=v["xray_holds"],
+                                  value=v["value"], composed=v["composed"], xray=v["xray"], got=None, depth=None, long=False)
         if v["holds"]:
             depth = 2 * v["captures"] - 1
             if depth > max_depth:
@@ -277,6 +319,8 @@ def _census_row(args):
                 rec["got"], rec["depth"] = bridge(b, s, depth), depth
         elif v["composed_holds"]:
             rec["got"] = bridge(b, s, min(2 * v["captures"] + 1, max_depth))
+        elif v["xray_holds"]:
+            rec["got"] = bridge(b, s, min(2 * v["xray_captures"] + 1, max_depth))
         out.append(rec)
     return fen, out
 
@@ -286,7 +330,7 @@ def census(tag: str, limit: int = 3000, max_depth: int = 5) -> None:
 
     from .tactic_census_measure import load
     rows = load(tag)[:limit]
-    fired = agree = wrong = long = 0; fails = Counter(); frames = 0; examples = []; cfired = cagree = cwrong = 0
+    fired = agree = wrong = long = 0; fails = Counter(); frames = 0; examples = []; cfired = cagree = cwrong = 0; xfired = xagree = xwrong = 0
     with Pool(_workers()) as pool:
         for fen, recs in pool.imap_unordered(_census_row, [(r["fen"], max_depth) for r in rows], chunksize=8):
             for rec in recs:
@@ -301,6 +345,14 @@ def census(tag: str, limit: int = 3000, max_depth: int = 5) -> None:
                             cwrong += 1
                             if len(examples) < 5:
                                 examples.append((fen, rec["sq"], rec["composed"], rec["got"], "composed"))
+                    elif rec["xray_holds"]:                                # the x-ray tier: hidden pieces in the game, the intermezzo priced
+                        xfired += 1
+                        if rec["got"] >= rec["xray"] - 1e-9:
+                            xagree += 1
+                        else:
+                            xwrong += 1
+                            if len(examples) < 5:
+                                examples.append((fen, rec["sq"], rec["xray"], rec["got"], "x-ray"))
                     continue
                 fired += 1
                 if rec["long"]:
@@ -315,6 +367,7 @@ def census(tag: str, limit: int = 3000, max_depth: int = 5) -> None:
           f"bridge-checked {agree + wrong} (sequences within {max_depth} plies; {long} longer): agree {agree}, WRONG {wrong}")
     print("OBS   first failing hypothesis where it does not fire: " + ", ".join(f"{k} {v}" for k, v in fails.most_common()))
     print(f"OBS   the composed tier (noOtherCapture dropped, the intermezzo's price subtracted) fires on {cfired} more frames: agree {cagree}, WRONG {cwrong}")
+    print(f"OBS   the x-ray tier (noXray dropped too, the hidden pieces in the capture game) fires on {xfired} more frames: agree {xagree}, WRONG {xwrong}")
     for e in examples:
         print(f"OBS   wrong: {e[0]} on {e[1]}: law {e[2]:+d}, exact {e[3]:+.0f} at {e[4]}")
 
@@ -366,7 +419,9 @@ def _kernel_row(args):
         v = law(b, s)
         kh, kv, khonest = li.exchange(b, s)
         dis = [name for name in HYPS if bool(kh.get(name)) != bool(v["hyps"][name]) and (name == "target" or (kh.get("target") and v["hyps"]["target"]))]
-        rec = dict(sq=chess.square_name(s), dis=dis, khonest=khonest, phonest=v["holds"], kv=kv, vdiff=v["value"] is not None and kv != v["value"], verdict=None, n=None, got=None)
+        kx, kxh, kseex = li.exchange_xray(b, s)
+        rec = dict(sq=chess.square_name(s), dis=dis, khonest=khonest, phonest=v["holds"], kv=kv, vdiff=v["value"] is not None and kv != v["value"],
+                   xdiff=v["value"] is not None and (kseex != see_x(b, s)[0] or kxh != v["xray_holds"]), verdict=None, n=None, got=None)
         if khonest:
             A, D = participants(b, s); rec["n"] = len(A) + len(D)
             if rec["n"] > max_depth:
@@ -390,12 +445,12 @@ def kernel(tag: str, limit: int = 1500, max_depth: int = 5) -> None:
 
     from .tactic_census_measure import load
     rows = load(tag)[:limit]
-    frames = k_honest = p_honest = both = vdiff = agree = wrong = 0; dis = Counter(); cert = Counter(); values = Counter(); examples = []; not_settled = []
+    frames = k_honest = p_honest = both = vdiff = agree = wrong = xdiff = 0; dis = Counter(); cert = Counter(); values = Counter(); examples = []; not_settled = []
     with Pool(_workers()) as pool:
         for fen, recs in pool.imap_unordered(_kernel_row, [(r["fen"], max_depth) for r in rows], chunksize=8):
             for rec in recs:
                 frames += 1
-                dis.update(rec["dis"])
+                dis.update(rec["dis"]); xdiff += rec["xdiff"]
                 k_honest += rec["khonest"]; p_honest += rec["phonest"]; both += rec["khonest"] and rec["phonest"]
                 if rec["khonest"]:
                     values[rec["kv"]] += 1; vdiff += rec["vdiff"]; cert[rec["verdict"]] += 1
@@ -408,7 +463,7 @@ def kernel(tag: str, limit: int = 1500, max_depth: int = 5) -> None:
                         if len(examples) < 5:
                             examples.append((fen, rec["sq"], rec["kv"], rec["got"]))
     print(f"OBS kernel vs prototype on {len(rows)} positions of {tag}, {frames} frames: honest by the kernel {k_honest}, by the prototype {p_honest}, both {both}; "
-          f"hypothesis disagreements: " + (", ".join(f"{k} {n}" for k, n in dis.most_common()) or "none"))
+          f"hypothesis disagreements: " + (", ".join(f"{k} {n}" for k, n in dis.most_common()) or "none") + f"; x-ray value or tier disagreements {xdiff}")
     print(f"OBS   on the kernel's honest frames: value differs from the prototype's {vdiff}; certificate " + " ".join(f"{k} {n}" for k, n in cert.items()) + "; "
           f"exact bridge agrees {agree}, WRONG {wrong}; values " + ", ".join(f"{k:+d}: {n}" for k, n in sorted(values.items())))
     for e in examples:
@@ -417,13 +472,48 @@ def kernel(tag: str, limit: int = 1500, max_depth: int = 5) -> None:
         print(f"OBS   not certified: {e[0]} on {e[1]}: value {e[2]:+d}, frame {e[3]} participants, {e[4]}")
 
 
+def _xray_row(args):
+    fen, max_depth = args
+    b = chess.Board(fen); out = []
+    for s in _frames(b):
+        v = law(b, s)
+        if not v["hyps"]["target"] or "noXray" not in v["failing"] or set(v["failing"]) - {"noXray", "noOtherCapture", "noArrival", "noInterpose"}:
+            continue
+        A, D = participants(b, s)
+        vx, caps = see_x(b, s)
+        pred = vx - intermezzo(b, s)
+        out.append((v["value"], pred, bridge(b, s, min(2 * caps + 1, max_depth)), fen, chess.square_name(s)))
+    return out
+
+
+def xray(tag: str, limit: int = 8000, max_depth: int = 5) -> None:
+    """Measured before built: on frames failing noXray (alone, or with noOtherCapture priced as the intermezzo, noArrival,
+    noInterpose), is the exact outcome at least the static exchange WITH x-rays minus the intermezzo's price?"""
+    from multiprocessing import Pool
+
+    from .tactic_census_measure import load
+    rows = load(tag)[:limit]
+    n = ok = ok_naive = 0; gap = Counter(); misses = []
+    with Pool(_workers()) as pool:
+        for recs in pool.imap_unordered(_xray_row, [(r["fen"], max_depth) for r in rows], chunksize=8):
+            for v, pred, got, fen, sq in recs:
+                n += 1; ok += got >= pred - 1e-9; ok_naive += got >= v - 1e-9; gap[int(round(got - pred))] += 1
+                if got < pred - 1e-9 and len(misses) < 12:
+                    misses.append((fen, sq, v, pred, got))
+    print(f"OBS x-ray frames in {len(rows)} positions of {tag}: {n}; exact >= plain static {ok_naive} ({100 * ok_naive / max(n, 1):.0f}%); "
+          f"exact >= static WITH x-rays minus the intermezzo {ok} ({100 * ok / max(n, 1):.0f}%)")
+    print("OBS   exact minus predicted: " + ", ".join(f"{k:+d}: {c}" for k, c in sorted(gap.items())))
+    for m in misses:
+        print(f"OBS   miss: {m[0]} on {m[1]}: plain {m[2]:+d}, predicted {m[3]:+d}, exact {m[4]:+.0f}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["census", "bite", "kernel"])
+    ap.add_argument("cmd", choices=["census", "bite", "kernel", "xray"])
     ap.add_argument("--tag", default="c300")
     ap.add_argument("--limit", type=int, default=3000)
     a = ap.parse_args(argv)
-    dict(census=census, bite=bite, kernel=kernel)[a.cmd](a.tag, a.limit)
+    dict(census=census, bite=bite, kernel=kernel, xray=xray)[a.cmd](a.tag, a.limit)
 
 
 if __name__ == "__main__":

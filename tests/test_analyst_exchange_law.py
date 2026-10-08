@@ -85,3 +85,14 @@ def test_the_xray_chain_is_recursive():
     diagonal = chess.Board("4k3/8/8/3n4/2P5/1B6/Q7/1K6 w - - 0 1")    # pawn c4 takes d5, reveals the bishop b3, which reveals the queen a2
     assert chess.C4 in diagonal.attackers(chess.WHITE, chess.D5) and chess.B3 not in diagonal.attackers(chess.WHITE, chess.D5)
     assert hypotheses(diagonal, chess.D5)["noXray"] is False
+
+
+def test_the_static_exchange_with_xrays_counts_the_gun():
+    """Alekhine's gun against a knight defended by a bishop: the plain count loses the exchange (Rxd5 Bxd5), the x-ray
+    count nets a pawn (Rxd5 Bxd5 Rxd5), and the exact search agrees."""
+    from catspace.incubator.analyst.exchange_law import bridge, law, see, see_x
+    gun = chess.Board("4k3/8/4b3/3n4/3R4/3R4/3Q4/1K6 w - - 0 1")
+    assert chess.E6 in gun.attackers(chess.BLACK, chess.D5) and list(gun.attackers(chess.WHITE, chess.D5)) == [chess.D4]
+    assert see(gun, chess.D5)[0] == -2 and see_x(gun, chess.D5)[0] == 1 and bridge(gun, chess.D5, 5) >= 1 and law(gun, chess.D5)["xray_holds"]   # Rxd5 Bxd5 Rxd5
+    plain = chess.Board("4k3/8/8/3n4/8/4N3/8/1K6 w - - 0 1")
+    assert see_x(plain, chess.D5) == see(plain, chess.D5) == (3, 1)

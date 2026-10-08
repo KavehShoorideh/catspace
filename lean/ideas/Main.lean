@@ -218,11 +218,16 @@ def handle (line : String) : List String :=
           let hs := Ideas.ExchangeLaw.hypotheses p sq
           [s!"value={Ideas.ExchangeLaw.seeB p sq} honest={Ideas.ExchangeLaw.honestFrameB p sq} " ++
             s!"composed={Ideas.ExchangeLaw.composedValue p sq} composedhonest={Ideas.ExchangeLaw.honestComposedB p sq} " ++
+            s!"xray={Ideas.ExchangeLaw.xrayValue p sq} xrayhonest={Ideas.ExchangeLaw.honestXrayB p sq} seex={Ideas.ExchangeLaw.seeXB p sq} " ++
             " ".intercalate (hs.map (fun h => s!"{h.1}={if h.2 then 1 else 0}"))]
       | _, _ => ["error bad fen or square"]
   | "exchangecert" :: sqs :: rest =>                 -- exchangecert <sq> <fen>: the claim itself, computed (a settled position reached whatever they do)
       match readPosition (" ".intercalate rest), parseSquare sqs with
       | some p, some sq => [if Ideas.ExchangeLaw.settledWithin p sq then "SETTLED" else "NOT"]
+      | _, _ => ["error bad fen or square"]
+  | "exchangecertx" :: sqs :: rest =>                -- exchangecertx <sq> <fen>: the x-ray tier's claim, computed
+      match readPosition (" ".intercalate rest), parseSquare sqs with
+      | some p, some sq => [if Ideas.ExchangeLaw.settledWithinXray p sq then "SETTLED" else "NOT"]
       | _, _ => ["error bad fen or square"]
   | "exchangecertc" :: sqs :: rest =>                -- exchangecertc <sq> <fen>: the composed tier's claim, computed
       match readPosition (" ".intercalate rest), parseSquare sqs with

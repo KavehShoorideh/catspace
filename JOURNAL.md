@@ -27737,3 +27737,19 @@ prototype, 1,500 positions: honest 23 = 23 = 23, disagreements 0, bridge 23/23, 
 Kaveh: "don't leave 10/11 cpus idle" -- census, bite and kernel bridge run on a worker pool now (the three together
 under ten minutes; one took 25-70 minutes before). Bite rates on 1,000 positions, re-read: noOtherCapture 51/68,
 noXray 6/13, noPromotion 2/7, noKing 9/45, noOverload 2/14, noCheck 3/97.
+
+## 2026-10-08 10:50 PDT — the x-ray tier: hidden pieces play in the capture game (measured 97%, then built in the kernel)
+
+Measured first (`exchange_law xray`, 8,000 positions, all cores): on the 236 frames failing noXray (alone, or with the
+intermezzo priced, noArrival, noInterpose), the exact bridge is at least the plain static value in 214 (91%) and at
+least the static exchange WITH x-rays minus the intermezzo's price in 230 (97%); the six misses are -1/-2 (the order of
+capture). Then built: `Ideas/Exchange.lean` gets the capture game over RAYS -- a participant is its value plus the pieces
+behind it on its line, nearest first, each tagged with its owner; a capture reveals the next one into its owner's list
+(`reveal`, `cheapestXF`; proved: nonneg, and with nothing behind anyone it is the plain game, `cheapestXF_plain`).
+`ExchangeLaw.lean`: `chainBehind` (the pieces the exchange would reveal in sequence, either colour), `raysOf`, `seeXB`,
+the tier `honestXrayB` (noXray and noOtherCapture dropped), `xrayValue`, `settledWithinXray`, `exchangeLawXray`;
+the binary prints xray= / xrayhonest= / seex= and answers `exchangecertx`; the wrapper's `exchange_xray`; the
+prototype's `see_x` (the standard x-ray SEE) and the tier in `law`, the census and the kernel bridge. OBS census, 3,000
+positions: strict 47 frames (0 wrong), composed +12 (0 wrong), x-ray +6 (0 wrong); kernel vs prototype on 2,408 frames:
+x-ray value or tier disagreements 0, hypothesis disagreements 0. The tiers are small in number because noCheck (1,594
+first failures) and noKing (801) stand in front; those are the mating net and the king's own exchange, next.

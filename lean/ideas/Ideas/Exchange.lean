@@ -65,4 +65,48 @@ theorem value_nil (onS : Int) (theirs : List Int) : value onS [] theirs = 0 := b
   unfold value
   cases theirs <;> simp [valueF]
 
+/-! ## The capture game with chains (x-rays; Kaveh 2026-10-08: "it has to recursively check if the piece will
+participate in sequence, for all pieces")
+
+A participant is a RAY: its own value and the pieces standing behind it on its line, nearest first, each tagged with
+its owner (`true` = White). When a piece captures on the square it leaves its line, and the next piece behind it --
+whoever owns it -- joins that owner's list of capturers. -/
+
+abbrev Ray := Int × List (Bool × Int)
+
+/-- The piece behind the capturer joins its owner's list (cheapest first). `white`: the capturer was White's. -/
+def reveal (white : Bool) (behind : List (Bool × Int)) (mine theirs : List Ray) : List Ray × List Ray :=
+  match behind with
+  | [] => (mine, theirs)
+  | (owner, b) :: rest =>
+      if owner == white then (((b, rest) :: mine).mergeSort (fun x y => x.1 ≤ y.1), theirs)
+      else (mine, ((b, rest) :: theirs).mergeSort (fun x y => x.1 ≤ y.1))
+
+/-- The classical static exchange over rays: each side captures with its cheapest piece or stops; a capture reveals what
+stood behind the capturer. `white`: the mover is White. -/
+def cheapestXF : Nat → Bool → Int → List Ray → List Ray → Int
+  | 0, _, _, _, _ => 0
+  | _ + 1, _, _, [], _ => 0
+  | n + 1, white, onS, (a, behind) :: mine, theirs =>
+      let (mine', theirs') := reveal white behind mine theirs
+      max 0 (onS - cheapestXF n (!white) a theirs' mine')
+
+theorem cheapestXF_nonneg (n : Nat) (white : Bool) (onS : Int) (mine theirs : List Ray) : 0 ≤ cheapestXF n white onS mine theirs := by
+  cases n with
+  | zero => simp [cheapestXF]
+  | succ n =>
+    cases mine with
+    | nil => simp [cheapestXF]
+    | cons a mine => simp only [cheapestXF]; exact le_max_left _ _
+
+/-- With nothing behind anyone, the game is the plain one. -/
+theorem cheapestXF_plain (n : Nat) (white : Bool) (onS : Int) (mine theirs : List Int) :
+    cheapestXF n white onS (mine.map fun v => (v, [])) (theirs.map fun v => (v, [])) = cheapestF n onS mine theirs := by
+  induction n generalizing white onS mine theirs with
+  | zero => simp [cheapestXF, cheapestF]
+  | succ n ih =>
+    cases mine with
+    | nil => simp [cheapestXF, cheapestF]
+    | cons a mine => simp [cheapestXF, cheapestF, reveal, ih]
+
 end Ideas.Exchange
