@@ -255,8 +255,9 @@ def _lemma_valuer():
         val = min(val, g - theirs) if theirs else val
         if b.is_capture(x) or b.gives_check(x) or x.promotion:  # the certificate is material THREE PLIES on, not a bound on
             return val                                      # the end (bug 2026-10-08: max() with the frame hid the frame's
-        return max(val, certified_gain(b, x))               # deeper loss on a blundering capture) -- it only adds what the
-    return v                                                # frame cannot see: a quiet move's threat
+        k = certified_gain(b, x)                            # deeper loss on a blundering capture) -- it only adds what the
+        return max(val, k) if k > 0 else val               # frame cannot see: a quiet move's threat (bug 2026-10-08:
+    return v                                                # max(val, 0) without a claim lifted every losing quiet move to 0)
 
 
 def _ledger_valuer(b0: chess.Board):

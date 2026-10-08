@@ -27899,3 +27899,28 @@ rooks certified (+2); the same shape escaped by ...Qe1+ matched, not certified; 
 single threat matched, not certified; a mate threat created by opening a file matched. Next: the certified threat moves
 inside the forcing frame (the opponent's after our move, ours as a move's value), measured on the blunders with false
 alarms; then the cornering frame proper (escape squares, Lean), mate threats, promotion.
+
+## 2026-10-08 16:42 PDT — the rule layer in Rust (Ascent Datalog + the mirrored certificate); threats matched, certificates too short
+
+Kaveh: Lean felt slow -- is there a faster reasoning platform? Answer given: Lean is the right place to PROVE (once,
+offline: a lemma or a certificate is sound for every position); it was slow as a RUNTIME (the kernel's verified, naive
+move generator answering one certificate per call). Built: (1) `analyst_core.local_check` -- the kernel's `localCheck`
+(Fork.lean, proved by `localCheck_sound`) mirrored in Rust on shakmaty. OBS 0.03 ms vs 392 ms per call (about
+12,700x), equal to the Lean binary on every one of 500+ real (position, move, k) cases (test); Lean stays the auditor
+(CATSPACE_VERIFY_CERT=1 re-checks every answer). (2) The RULE LAYER: an Ascent (Datalog in Rust) program over the
+board facts piece(square, ours, value) and attacks(from, to), deriving defended, gain and best per target; and
+`analyst_core.threat_claims` naming what each legal move created (fork, fork with check, cornered piece, mate threat,
+promotion), each decided by the mirrored certificate. OBS 0.3 ms per position for every legal move with certificates
+(the Python matcher 8 ms); equal to the Python matcher's certified gain on 2,878 of 2,879 moves of 100 census
+positions (the one difference: a +1 the rule prefilter did not propose; the certificate decides, so the rule layer can
+only under-claim). BUGS caught: taking max(frame, certificate) hid a blundering capture's deeper loss (the certificate is
+material three plies on, not a bound on the end; now it credits only quiet moves), then max(frame, 0) without a claim
+lifted every losing quiet move to 0 (the detector had "lost" 44, then 20 blunders; after the fixes it equals the
+double-threat frame: 46% flagged, 9.0% false alarms, on 60 games). THE FINDING: the residue's quiet double threats ARE
+matched by the rule layer with the right targets (Ne2 on c3+g1, b5 on a4+c4, f6 on g7+e7) but the three-ply certificate
+refuses them at every k -- real forks are often settled a ply or two later (an interposed capture or check, or a quiet
+re-attack our restricted answers exclude). Next: a deeper certificate (five plies, the forcing frame's value at the
+leaves -- "certified modulo the frame's stand-pat", a new status until proved). The mathematical formulation Kaveh
+asked for was drafted (the state as the least fixed point of rules over base facts; lemmas as soundness theorems;
+frames as conditional, one-sided abstractions; search as proof; memory as assumption-based truth maintenance; lemma
+learning as variance reduction on the induced partition); kept outside the repo for his review.
