@@ -27753,3 +27753,27 @@ prototype's `see_x` (the standard x-ray SEE) and the tier in `law`, the census a
 positions: strict 47 frames (0 wrong), composed +12 (0 wrong), x-ray +6 (0 wrong); kernel vs prototype on 2,408 frames:
 x-ray value or tier disagreements 0, hypothesis disagreements 0. The tiers are small in number because noCheck (1,594
 first failures) and noKing (801) stand in front; those are the mating net and the king's own exchange, next.
+
+## 2026-10-08 11:21 PDT — search inside a frame: one generic engine, the exchange its first frame (lemmas prune, a prior steers, a truth-maintenance memory)
+
+Kaveh's structure (2026-10-08) for mixing human-like planning with search: a FRAME is a small game with its own moves
+and EXITS; a SEARCH runs inside it; LEMMAS are proved bounds that prune it; a PRIOR (his: "a classifier is basically a
+prior") decides where to search first and when to stop; the PLAN LAYER's subgoals choose among lines of equal value;
+and the search keeps its own process -- "pick up where we left off", and every decision tied to what it rested on, so
+a lemma later found not to apply retracts exactly those decisions and reinstating it redoes nothing.
+`catspace/incubator/analyst/frame_search.py`: `Frame` (moves, gain, next, exit, key), `Lemma` (name, status, a bound on a
+state or a move), `Prior` (order, estimate -- an accepted estimate is counted, never a proof), `FrameSearch` (negamax
+alpha-beta with exits; every result stored as (lo, hi, SUPPORT), the support = the lemmas and prior estimates it used and
+`open:` marks for nodes a budget left unfinished; a result answers only while its support is inside the CONTEXT; `retract`,
+`reinstate`, `decisions`, `resume` -- the assumption-based truth maintenance of de Kleer's ATMS in its smallest form).
+`exchange_frame.py`: the exchange as a Frame (participants as rays carrying the pieces behind them, either colour,
+revealed recursively), the first lemma family "both sides can exit" (a value lies between 0 and the target's worth; a
+capture with a piece worth a lies between on_s - a and on_s -- Kaveh's queen-takes-pawn cut). OBS census, 3,000
+positions, 4,910 frames: root values with and without the lemmas equal the unpruned search 4,910/4,910; the cheapest-first
+line equals the x-ray static count 4,910/4,910 and no other first capturer is ever better; nodes 15,649 -> 12,603 with
+the lemmas (-19%). Retracting both lemmas after the search: values exact 4,910/4,910, 4,198 frames had decisions resting
+on them, 9,045 nodes re-derived; reinstating: 0 re-derived. A budget of one node then resumed: 4,398 frames unfinished
+after the budget, exact after resuming 4,910/4,910; states expanded for the first time 12,480 either way -- nothing
+redone, the extra 4,246 nodes are re-entries of unfinished parents answered from the records. Tests: Kaveh's examples
+(queen takes a defended pawn -8; pawn takes a queen +9; the gun recursively; the pawn-or-knight recapture returns both
+orders for the plan layer), retract/reinstate/resume, the prior's estimates flagged.
