@@ -186,7 +186,9 @@ def _reasoned(args) -> dict:
     b = chess.Board(row["FEN"]); mv = row["Moves"].split(); b.push_uci(mv[0])
     r = reason(b)
     return dict(theme=theme, id=row["PuzzleId"], solved=r["move"] is not None and r["move"].uci() == mv[1],
-                answered=r["move"] is not None, ms=r["ms"], target=r["target"], gain=r["gain"])
+                answered=r["move"] is not None, ms=r["ms"], target=r["target"], gain=r["gain"],
+                defended=bool(r.get("defend_first")), move=b.san(r["move"]) if r["move"] else None, sol=b.san(chess.Move.from_uci(mv[1])),
+                fen=b.fen())
 
 
 def reasoner_coverage(per_theme: int, only: str | None, offset: int = 3) -> None:
@@ -202,6 +204,8 @@ def reasoner_coverage(per_theme: int, only: str | None, offset: int = 3) -> None
     by = defaultdict(list)
     for r in recs:
         by[r["theme"]].append(r)
+    import json
+    json.dump(recs, open(os.environ.get("CATSPACE_REASONER_DUMP", "/tmp/reasoner_last.json"), "w"))
     for t, g in sorted(by.items()):
         ms = sorted(r["ms"] for r in g)
         print(f"OBS reasoner {t:18s} n {len(g)}: solved {100 * sum(r['solved'] for r in g) / len(g):.0f}%, answered {100 * sum(r['answered'] for r in g) / len(g):.0f}%; "

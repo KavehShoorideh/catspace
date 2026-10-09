@@ -36,7 +36,32 @@ def _their_threat(b: chess.Board) -> int:
     return _best_capture(p) if p is not None else 0
 
 
-def reason(b: chess.Board, plies: int = 4, max_cands: int = 8) -> dict:
+def their_plan(b: chess.Board, plies: int = 4) -> dict:
+    """THE SAME REASONING FROM THEIR SIDE (Kaveh 2026-10-08: "what are the threats my opponent has against my king, then
+    my queen, then my major pieces -- the reverse of the same thing"): the target-first reasoner run for the opponent
+    on the null-move position (as if we passed). -> its result (their move, certified gain, target, trace)."""
+    from .chess_domain import passed
+    p = passed(b)
+    if p is None:                                                     # we are in check: the evasion is the frame's job
+        return dict(move=None, gain=0, target=None, trace=[])
+    return reason(p, plies, symmetric=False)
+
+
+def _their_gain_after(b: chess.Board, m: chess.Move, plies: int = 4) -> int:
+    """After our move m (their turn on the real board): their best certified gain by the same reasoning."""
+    nb = b.copy(stack=False); nb.push(m)
+    if nb.is_checkmate():
+        return -1000
+    return reason(nb, plies, symmetric=False)["gain"]
+
+
+import os as _os
+SYMMETRIC = _os.environ.get("CATSPACE_SYMMETRIC", "1") == "1"
+
+
+def reason(b: chess.Board, plies: int = 4, max_cands: int = 8, symmetric: bool | None = None) -> dict:
+    if symmetric is None:
+        symmetric = SYMMETRIC
     import analyst_core
     t0 = time.time()
     fen = b.fen(); us = b.turn
@@ -101,9 +126,58 @@ def reason(b: chess.Board, plies: int = 4, max_cands: int = 8) -> dict:
     threat = _their_threat(b)
     out = dict(move=best[0] if best else None, gain=best[1] if best else 0, target=best[2] if best else None,
                method=best[3] if best else None, their_threat=threat, trace=trace)
-    if best and threat > best[1]:
-        trace.append(f"their next threat is worth {threat} > our {best[1]}: defend first")
-        out["defend_first"] = True
+    if symmetric:
+        # THEIR PLAN, reasoned the same way (king first, then the queen, ...), and the decision between attack and defence
+        theirs = their_plan(b, plies)
+        tg = theirs["gain"]
+        if tg > 0:
+            trace.append(f"THEIR PLAN (as if we passed): {theirs['target']} by {theirs['method']}, certified +{tg}")
+        ours_g = best[1] if best else 0
+        # (no veto after our move: their full reasoning on the real board counts their ordinary recapture inside OUR
+        # exchange, which our certified value already paid -- the double count of 2026-10-07 again; bug 2026-10-09)
+        # DOES OUR ATTACK ALREADY ANSWER THEIRS? (2026-10-09: the symmetric step lost 11 and won 0 -- it defended where the
+        # attack took their attacker or out-threatened them; Kaveh's defender options: capture the attacker, a bigger
+        # threat.) Their PLANNED move after ours: illegal or certifying less than our gain -> attack.
+        if best is not None and tg > ours_g:
+            import analyst_core
+            nb = best[0]
+            after = b.copy(stack=False); after.push(nb)
+            tm = theirs["move"]
+            if after.is_checkmate() or tm is None or tm not in after.legal_moves:
+                left = 0
+            else:
+                g = analyst_core.certified_gain(after.fen(), tm.uci(), [theirs["target"].split()[-1]], plies, FIRST)
+                left = g if g is not None else tg
+            trace.append(f"  after our {b.san(nb)} their plan {b.san(tm) if tm is not None and tm in b.legal_moves else '-'} certifies +{max(0, left)}")
+            if ours_g >= max(0, left):
+                tg = 0                                                 # our attack answers theirs: no defence needed
+        if tg > ours_g:
+            # DEFEND: the moves that touch their plan -- moves of the threatened piece, moves from or to their target's
+            # frame, captures, checks -- each scored by what they can still certify after it (and ours, for ties)
+            tsq = chess.parse_square(theirs["target"].split()[-1]) if theirs["target"] else None
+            cands = [m for m in b.legal_moves if (tsq is not None and (m.from_square == tsq or tsq in b.attacks(m.to_square)))
+                     or b.is_capture(m) or b.gives_check(m)
+                     or (theirs["move"] is not None and m.to_square in (theirs["move"].from_square, theirs["move"].to_square))]
+            import analyst_core
+            scored = []
+            tm = theirs["move"]
+            for m in cands[:16]:                                        # ONE certificate per candidate (speed, 2026-10-09):
+                nb = b.copy(stack=False); nb.push(m)                     # does THEIR planned move still certify after ours?
+                if nb.is_checkmate():
+                    scored.append((-1000, m)); continue
+                if tm is None or tm not in nb.legal_moves:
+                    scored.append((0, m)); continue
+                g = analyst_core.certified_gain(nb.fen(), tm.uci(), [theirs["target"].split()[-1]], plies, FIRST)
+                scored.append((g if g is not None else tg, m))
+            if scored:
+                scored.sort(key=lambda x: x[0])
+                g, m = scored[0]
+                trace.append(f"DEFEND: {b.san(m)} leaves them +{max(0, g)} (their plan was +{tg})")
+                out.update(move=m, gain=-max(0, g), target=theirs["target"], method="defence", defend_first=True)
+                out["ms"] = round(1000 * (time.time() - t0))
+                return out
+        if best is None:
+            out.update(move=None, gain=0, target=None, method=None)
     if best:                                                          # why the strongest alternatives on the same target fail
         sqn = best[2].split()[-1]
         for uci, *_ in analyst_core.target_moves(fen, sqn)[:max_cands]:
