@@ -28221,3 +28221,42 @@ near the frame, nearer counting more): ranking quality (AUC) 0.630 against every
 the top half of frames by score holds 64% of the tactics. On two games it was 0.532 (27 tactics). Reading: the seeds
 already come from attacks (the rule layer matches who attacks what), so the map adds a weak ordering, not a cut; most
 tactics are created by the opponent's last move, which only the changed squares see.
+
+## 2026-10-09 15:58 PDT — frames tracked with stored proofs (5.3 s -> 0.26-0.58 s a position); review fixes; tactic labels spot-checked and corrected; the first reachability model
+
+Kaveh: track both sides' frames and reasoning on the board and re-examine only what the last move created or destroyed;
+then label tactics with Stockfish and predict them from the reasoning carried at earlier points; time every part.
+BUILT: the value search records, keyed by the path of moves, the move that decided each node (our answer or their
+refutation); a re-check tries it first. Order never changes an alpha-beta result inside one window, so a re-check equals
+a fresh search up to the node budget (audit, three games: 4 of 2,625 frame records differ, each a proof the stored order
+found within budget and the fresh search did not -- verified: "add a black rook on e7" certifies +3 at 2M nodes). Frame
+questions became null-window proofs at the goal. MEASURED where the work goes (one slow game, one thread, foreground:
+4.6M nodes a second, 8.1M nodes a position): refutations of hypothetical changes 69%, searches cut by the node cap 30%,
+successful proofs 0.2% -- a stored refutation cannot shorten a refutation (every one of our moves must still fail), so
+stored proofs save only 7-9%. The cut that worked: waiting conditions one move away (an added piece of ours must reach
+its square in one move): 390 -> 100 ms a position on all cores, half the conditions (those two or more moves away)
+dropped. 300 games: 584 ms a position on one core, 2.85M nodes.
+REVIEW (one reviewer, seven questions): the hint order is sound; no label leakage. Fixed: a castling king's focus
+followed the rook's square inside the search; the mate-condition control let a change that wins a promotion alone
+through (threshold 9 -> 8: "add our pawn on e7, e8 empty" could prove e8=Q#); a budget-spent "alone" value read as
+"wins nothing"; frames kept unevaluated when their owner had no null move were read as fresh (double counts, own
+checking moves credited to the opponent) -- now flagged stale and skipped; anticipation categories made disjoint (a met
+condition is verified on the board). Kaveh's note, not yet built: mate conditions are just trapping the king -- the
+check family should become the cornering frame on the king.
+OBS 300 games, corrected categories (5,579 tactics turning active for the side to move): created by the opponent's last
+move 59%; a threat the opponent left standing 22%; far before 7%; waiting with a listed condition their move met 2%;
+waiting but activated by an unlisted change 3%. A met condition held 15% of the time.
+LABELS, spot-checked with the game around them (Kaveh): the first definition (best beats second by 150 cp and wins 150
+cp) labelled 1,247 positions, and four of eight sampled were recaptures (Nxd5 after Bxd5, Rxf1 after Nxf1, Rxc6,
+gxh6) plus a forced king escape and a faster mate in a won ending. Corrected: the second best must not already win 3
+pawns, and Stockfish's line (8 plies) must leave the mover 2 pawns up against the position BEFORE the opponent's last
+move (or mate): 367 tactics (1.6%). Second sample: 7 of 8 genuine (Rxa8+ on the opened file, Qd5+ then b4 trapping the
+knight, a hanging queen, a queen trade that wins the d8 rook); one is the completion of the mover's own combination
+(32...Rxf4 33.Qxf4 Qxf4 labelled at the last capture) -- the label should be measured against the evaluation before
+the combination (an evaluation swing), not material alone. Not fixed yet.
+OBS REACHABILITY (22,261 positions, 300 games, grouped 5-fold by game; base rate 1.6%; inputs only from plies t-1 and
+t-2): frames carried AUC 0.708 / average precision 0.037 (boosted trees); board at t-1 0.742 / 0.043; frames + board
+0.778 / 0.067; Stockfish's eval at t-1 alone 0.616 / 0.029; all three 0.812 / 0.085. Strongest logistic features: the
+conditions and active frames of the OPPONENT at t-1 (negative), material, legal moves. Directional, one run.
+TIME: labels 217 s (Stockfish depth 12, two best moves, 10 processes, 22,861 positions); dataset 5.2 s (board features
+4.1 s); every model under 2.5 s; total 235 s. The frame replay: 300 games in about 22 minutes on 10 processes.
