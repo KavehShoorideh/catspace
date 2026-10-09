@@ -28147,3 +28147,23 @@ win -- how likely can I bring one? then search for how"); first a counting table
 census, later learned; every frame search yields training pairs (condition, features, reached or not) to retrain it
 frame by frame. Build order unchanged: language and extractors, index and move-update, reverse lookup, measurements,
 then the policy.
+
+## 2026-10-09 11:57 PDT — the 7 s tree profiled and pruned to 2 s; the frame-independence pruning audited and switched OFF
+
+Kaveh: 7 s is too long -- break it down, prune and order intelligently. PROFILE (one tree, cold): 58 positions where
+our claims are computed, 239M search nodes; Maia 18 ms in total; claims 658 ms a position on average, 3 s at worst --
+the worst has 39 claims over 28 moves, 26 of them "trapped piece" on the same knight, 6 moves certified. MEASURED: 95%
+of the nodes go to claims that never certify (107 uncertified claims, 81M nodes; 60 certified, 4.4M); 123 of 167 claims
+duplicate a (name, target) across moves; a 2-ply 10k-node pre-check rejects all 107 uncertified claims and 5 of the 60
+certified ones (those need 6 plies / 1.5M). BUILT: tiered budgets (pre-check 2 plies / 10k, then the frame's depth at
+50k inside a tree or 200k at the root, the deep tier only at the root); trap claims only on a move that changes
+something about the target; the claim cache keyed by mode; the frame dissolving into RESOLVED captures, not raw
+material (bug: ...Rxd5 counted -3 with Nxd5 winning the rook back); a perfect opponent = Maia-1900's plausible replies
+plus every capture and check, not all legal moves (34-154 s a tree -> 1-5 s). OBS the castling position: O-O-O vs
+Maia-1500 1.8 s (was 7 s warm, 31 s cold), P(mate) 80%, nothing 11%; vs a perfect opponent: nothing (c6), +0.
+THE AUDIT (the false-alarm check owed since the pruning went in): every claim certified with the frame-independence
+pruning re-run with EVERY opponent reply searched. OBS 400 positions, 366 claims: the exact search REFUTES 40 (10.9%)
+and certifies less than claimed in 17 (4.6%); the exact search costs 14 ms a claim. Unsound and unneeded: the pruning
+is OFF by default (`set_exact`). With exact replies, held-out puzzles hold: fork 88%, pin 85%, trapped piece 90% (root
+times up: medians 5-12 s). OPEN: the perfect-opponent line after Ke2 still strings certified claims into a -4 -- being
+traced (the leaf's resolution, or the claim's promise not cashed before re-branching).

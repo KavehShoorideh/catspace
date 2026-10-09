@@ -13,8 +13,8 @@ from catspace.io import paths
 
 def model(band: int | None) -> str:
     """The Maia model for a rating; None or above 1900: '' (a perfect opponent)."""
-    if band is None or band > 1900:
-        return ""
+    if band is None or band > 1900:                                   # a perfect opponent: Maia-1900's plausible replies
+        return "perfect:" + str(paths.assets_dir() / "engines" / "maia_onnx" / "maia-1900.onnx")   # plus every forcing one
     band = max(1100, min(1900, round(band / 100) * 100))
     return str(paths.assets_dir() / "engines" / "maia_onnx" / f"maia-{band}.onnx")
 

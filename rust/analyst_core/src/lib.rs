@@ -514,6 +514,14 @@ fn corner_check(fen: String, uci: String, k: i64, target: String) -> PyResult<Op
 }
 
 static BUDGET: AtomicU64 = AtomicU64::new(u64::MAX);
+static FAST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);   // inside a tree: no deep tier
+// EVERY opponent reply searched inside certificates (the frame-independence pruning OFF): the audit of 2026-10-09 found
+// the pruning certified 10.9% false claims (40 of 366) and the exact search costs 14 ms a claim -- unsound and unneeded.
+static EXACT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// set_exact(flag): search every opponent reply inside certificates (the frame-independence lemma off) -- the audit.
+#[pyfunction]
+fn set_exact(flag: bool) -> PyResult<()> { EXACT.store(flag, Ordering::Relaxed); Ok(()) }
 
 /// The pursuit at `plies`, then two plies deeper only if that failed -- under a node budget each time; an exhausted
 /// budget answers "not certified", which stays sound (2026-10-08: four trapped-piece puzzles certify at six plies, not
@@ -595,7 +603,7 @@ fn pursue_val(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha: i
         // the lines between); every other reply is ONE "pass" (the FRAME-INDEPENDENCE lemma: a move that touches no
         // frame square leaves the frame's outcome as it is -- not proved: certificates using it are "modulo frame
         // independence", watched by the false-alarm measurement). In check every evasion is searched.
-        let zone = if focus.is_empty() || q.is_check() { None } else { Some(frame_zone(q, side, focus)) };
+        let zone = if focus.is_empty() || q.is_check() || EXACT.load(Ordering::Relaxed) { None } else { Some(frame_zone(q, side, focus)) };
         let mut worst = 2000;
         let mut passed_once = false;
         for r in ms.iter() {
@@ -831,11 +839,12 @@ static CLAIMS: OnceLock<Mutex<HashMap<String, Option<(String, i64, String)>>>> =
 /// computations -- the same positions recur across branches and across rating bands).
 fn best_claim(q: &Chess) -> PyResult<Option<(String, i64, String)>> {
     let f = Fen::from_position(q.clone(), shakmaty::EnPassantMode::Legal).to_string();
+    let key = format!("{}|{}", f, FAST.load(Ordering::Relaxed));        // the tiers differ by mode
     let cache = CLAIMS.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Some(hit) = cache.lock().unwrap().get(&f) { return Ok(hit.clone()); }
-    let rows = threat_claims(f.clone())?;
+    if let Some(hit) = cache.lock().unwrap().get(&key) { return Ok(hit.clone()); }
+    let rows = threat_claims(f)?;
     let best = rows.into_iter().filter(|c| c.5 && c.2 >= 1).max_by_key(|c| c.2).map(|c| (c.0, c.2, c.1));
-    cache.lock().unwrap().insert(f, best.clone());
+    cache.lock().unwrap().insert(key, best.clone());
     Ok(best)
 }
 
@@ -858,10 +867,16 @@ fn branches(q: &Chess, model_path: &str, mass: f32) -> Result<Vec<(Move, f32)>, 
 fn their_node(q: &Chess, us: Color, model_path: &str, mass: f32, mat: f32, path: Vec<String>, depth: u32) -> PyResult<Vec<(f32, f32, Vec<String>)>> {
     let ms = q.legal_moves();
     if ms.is_empty() { return Ok(vec![(1.0, if q.is_check() { MATE_V } else { mat }, path)]); }
-    let perfect = model_path.is_empty();
+    let perfect = model_path.starts_with("perfect:");
     let mut rows: Vec<(f32, f32, Vec<String>)> = Vec::new();
-    let cand: Vec<(Move, f32)> = if perfect { ms.iter().map(|m| (m.clone(), 1.0)).collect() }
-        else { branches(q, model_path, mass).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))? };
+    let cand: Vec<(Move, f32)> = if perfect {
+        // "perfect:<maia-1900 path>": the strongest Maia's plausible replies plus every forcing reply (capture or
+        // check), the worst for us taken (2026-10-09: all legal replies at every node took 34-154 s a tree)
+        let base = branches(q, &model_path["perfect:".len()..], mass).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
+        let mut set: Vec<Move> = base.into_iter().map(|(m, _)| m).collect();
+        for m in ms.iter() { if (m.is_capture() || after(q, m).is_check()) && !set.contains(m) { set.push(m.clone()); } }
+        set.into_iter().map(|m| (m, 1.0)).collect()
+    } else { branches(q, model_path, mass).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))? };
     let mut per_branch: Vec<(f32, Vec<(f32, f32, Vec<String>)>)> = Vec::new();
     for (r, p) in cand {
         let taken = r.capture().map(kernel_value).unwrap_or(0) as f32;
@@ -886,10 +901,18 @@ fn their_node(q: &Chess, us: Color, model_path: &str, mass: f32, mat: f32, path:
 /// play the claim's move and branch again (until `depth` runs out: then the claim's certified gain stands).
 fn our_node(q: &Chess, us: Color, model_path: &str, mass: f32, mat: f32, path: Vec<String>, depth: u32) -> PyResult<Vec<(f32, f32, Vec<String>)>> {
     if q.is_game_over() { return Ok(vec![(1.0, if q.is_checkmate() { -MATE_V } else { mat }, path)]); }
-    let Some((u, k, name)) = best_claim(q)? else { return Ok(vec![(1.0, mat, path)]) };
+    // no lemma applies: the frame has dissolved -- but the remaining CAPTURES are resolved (either side free to stop),
+    // not left as raw material (bug 2026-10-09: ...Rxd5 counted -3 with Nxd5 winning the rook back)
+    let dissolved = |path: Vec<String>| -> Vec<(f32, f32, Vec<String>)> {
+        BUDGET.store(200_000, Ordering::Relaxed);
+        let v = settle_d(q, -2000, 2000, true, SETTLE_DEPTH) as f32;
+        BUDGET.store(u64::MAX, Ordering::Relaxed);
+        vec![(1.0, mat + v, path)]
+    };
+    let Some((u, k, name)) = best_claim(q)? else { return Ok(dissolved(path)) };
     if k >= 50 { let mut p = path; p.push(format!("{u} ({name}: mate)")); return Ok(vec![(1.0, MATE_V, p)]); }
-    let Ok(m) = u.parse::<shakmaty::uci::UciMove>().and_then(|x| Ok(x)) else { return Ok(vec![(1.0, mat, path)]) };
-    let Ok(m) = m.to_move(q) else { return Ok(vec![(1.0, mat, path)]) };
+    let Ok(m) = u.parse::<shakmaty::uci::UciMove>().and_then(|x| Ok(x)) else { return Ok(dissolved(path)) };
+    let Ok(m) = m.to_move(q) else { return Ok(dissolved(path)) };
     let gained = m.capture().map(kernel_value).unwrap_or(0) as f32;
     let mut p = path; p.push(format!("{} ({name} +{k})", m.to_uci(CastlingMode::Standard)));
     if depth == 0 { return Ok(vec![(1.0, mat + k as f32, p)]); }
@@ -908,7 +931,10 @@ fn frame_tree(fen: String, uci: String, model_path: String, mass: f32, depth: u3
     let gained = m.capture().map(kernel_value).unwrap_or(0) as f32;
     let q = after(&pos, &m);
     if q.is_checkmate() { return Ok(vec![(1.0, MATE_V, vec![uci])]); }
-    their_node(&q, us, &model_path, mass, gained, vec![uci], depth)
+    FAST.store(true, Ordering::Relaxed);                              // inside the tree: the cheap tiers only
+    let r = their_node(&q, us, &model_path, mass, gained, vec![uci], depth);
+    FAST.store(false, Ordering::Relaxed);
+    r
 }
 
 /// best_reply(fen, uci, focus, plies, budget) -> [(their reply, the value it holds us to)], best for them first: WHY a
@@ -984,6 +1010,10 @@ fn threat_claims(fen: String) -> PyResult<Vec<(String, String, i64, bool, Vec<St
         Ok(p) => rules::cornered(&p, us).into_iter().map(|(t, _)| t).collect(),
         Err(_) => Default::default(),
     };
+    let trapped_before: std::collections::HashSet<u8> = match pos.clone().swap_turn() {
+        Ok(p) => rules::trapped_unattacked(&p, us).into_iter().map(|(t, _)| t).collect(),
+        Err(_) => Default::default(),
+    };
     let mut out = Vec::new();
     // the pursuit's depth grows as the board empties (2026-10-08, puzzle 07bjx: a king hunting a trapped knight for
     // seven plies): with ten pieces or fewer the tree is small enough for eight plies
@@ -1010,8 +1040,10 @@ fn threat_claims(fen: String) -> PyResult<Vec<(String, String, i64, bool, Vec<St
             if let Some(&(t, v)) = big.first() {
                 let focus = [t];
                 let _ = v;
-                let mut got = certified_value(&pos, &m, &focus, plies, 200_000).filter(|x| *x >= 1);
-                if got.is_none() { got = certified_value(&pos, &m, &focus, plies + 2, 1_500_000).filter(|x| *x >= 1); }
+                let fast = FAST.load(Ordering::Relaxed);
+                let mut got = certified_value(&pos, &m, &focus, 2, 10_000).filter(|x| *x >= 1);
+                if got.is_none() { got = certified_value(&pos, &m, &focus, plies, if fast { 50_000 } else { 200_000 }).filter(|x| *x >= 1); }
+                if got.is_none() && !fast { got = certified_value(&pos, &m, &focus, plies + 2, 1_500_000).filter(|x| *x >= 1); }
                 if let Some(x) = got {
                     out.push((uci.clone(), "forcing chain".to_string(), x.min(1000), false, vec![t.to_string()], true));
                 }
@@ -1023,8 +1055,13 @@ fn threat_claims(fen: String) -> PyResult<Vec<(String, String, i64, bool, Vec<St
             // three-ply kernel certificate (Lean-proved) only at the claimed k, for the 'C' flag.
             let focus: Vec<Square> = targets.iter().filter_map(|s| s.parse::<Square>().ok()).collect();
             let d = if focus.is_empty() { 2 } else { plies };
-            let mut got = certified_value(&pos, &m, &focus, d, 200_000).filter(|v| *v >= 1);
-            if got.is_none() && !focus.is_empty() {
+            // TIERED (2026-10-09: 95% of the nodes went to claims that never certify): a 2-ply pre-check first (55
+            // of 60 certified claims pass it), then the frame's own depth, then two plies deeper -- the deep tier only
+            // at the root (FAST off); inside a tree the pre-check and the middle tier
+            let fast = FAST.load(Ordering::Relaxed);
+            let mut got = certified_value(&pos, &m, &focus, 2, 10_000).filter(|v| *v >= 1);
+            if got.is_none() { got = certified_value(&pos, &m, &focus, d, if fast { 50_000 } else { 200_000 }).filter(|v| *v >= 1); }
+            if got.is_none() && !focus.is_empty() && !fast {
                 got = certified_value(&pos, &m, &focus, d + 2, 1_500_000).filter(|v| *v >= 1);
             }
             let cert = local_check_pos(&pos, &m, k);
@@ -1047,7 +1084,11 @@ fn threat_claims(fen: String) -> PyResult<Vec<(String, String, i64, bool, Vec<St
         }
         if !q.is_check() {
             for (t, v) in rules::trapped_unattacked(&q, us) {           // no safe move yet, not yet attacked: the trap
-                if !corner_before.contains(&t) { claim("trapped piece", v, vec![rules::square_name(t)]); }
+                // only when THIS move changed something about the target (2026-10-09: the same trapped knight was
+                // claimed on 26 of 28 moves, each burning the full budget): newly trapped, or the move touches its frame
+                let tsq = Square::new(t as u32);
+                let touches = m.to() == tsq || attacks_any(&pos, &m, &[tsq]) || !trapped_before.contains(&t);
+                if touches && !corner_before.contains(&t) { claim("trapped piece", v, vec![rules::square_name(t)]); }
             }
         }
         if new.len() >= 2 {
@@ -1096,5 +1137,6 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(maia_policy, m)?)?;
     m.add_function(wrap_pyfunction!(frame_outs, m)?)?;
     m.add_function(wrap_pyfunction!(frame_tree, m)?)?;
+    m.add_function(wrap_pyfunction!(set_exact, m)?)?;
     Ok(())
 }
