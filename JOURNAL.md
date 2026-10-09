@@ -28121,3 +28121,29 @@ promotion / en-passant positions, Black's planes the mirror of White's); a bridg
 1500: bare positions top move 4/4; WITH HISTORY 3/3 and the largest probability difference 0.0003 -- the residual
 first-move mismatches of the bare-FEN bridge vanish with history. Example: 0.4 ms a position. `analyst_core` now uses
 the crate (one source of truth). README with accuracy, speed, licence, credits. Nothing pushed anywhere.
+
+## 2026-10-09 11:25 PDT — the frame as a tree of branches (Maia at every branching point); the plan for waiting frames and a policy over conditions
+
+Kaveh: the expectation over a frame's exits is about BRANCHES, not plies -- at every branching point assign Maia's
+probability to each branch and re-evaluate the lemmas conditioned on it (push the pawn in front of the king: no more
+mate, no more force, the rook runs); above 1900 the opponent is perfect; mate = 150 (anything that dominates); report
+P(mate), P(win a piece), P(nothing) inside the one frame. BUILT `analyst_core.frame_tree` + `frame_tree.summarize`:
+their branches = Maia's replies covering 95% of the policy (or the single worst for a perfect opponent); on each branch
+the best certified claim decides (none: the frame dissolved; a mate claim: 150; else its move and the next branching);
+the best claim per position cached (one tree: 31 s -> 7 s). OBS the castling position, O-O-O: vs Maia-1100 P(mate) 75%,
+win a piece 7%, nothing 17%; Maia-1500 80 / 2 / 17 (77% of the mass: O-O-O Nxf3 Ne7+ mate; 11% c6 nothing);
+Maia-1900 60 / 4 / 35. Against a perfect opponent and for Ke2 / Rh3: still running at compaction.
+THE PLAN AGREED IN PRINCIPLE (Kaveh wants a written plan before any code): (1) a typed CONDITION LANGUAGE with
+wildcards (Empty, Occupied(pattern), Attacks, Defended, LineOpen, SliderBehind, InCheck, FlightCovered, SafeEscapes=0,
+CanCastle, ToMove), each atom with its footprint; (2) DORMANT FRAMES kept, not discarded: target, method, gain, the
+missing conditions (one extractor per lemma family), status dormant / armed / active / dead, both sides in one pool;
+(3) a LIVE INDEX from footprints to waiting frames, re-checked only where a move changed something; (4) the REVERSE
+lookup: which of our moves satisfies a waiting frame's condition (O-O-O arms the discovered check on d8) and which
+hand them one; (5) measured on the census: anticipation (tactics that fired and were already waiting, how many plies
+ahead), false alarms, the castling position; (6) later a transformer over condition tokens; (7) Kaveh's addition: a
+POLICY OVER CONDITIONS -- P(condition materializes within k plies | board, the live analysis, the still-valid memory),
+conditions ranked by probability x gain become subgoals that prioritize the search ("if there were another attacker I'd
+win -- how likely can I bring one? then search for how"); first a counting table by condition type and rating on the
+census, later learned; every frame search yields training pairs (condition, features, reached or not) to retrain it
+frame by frame. Build order unchanged: language and extractors, index and move-update, reverse lookup, measurements,
+then the policy.

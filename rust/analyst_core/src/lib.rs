@@ -6,6 +6,8 @@ use pyo3::prelude::*;
 mod rules;
 mod maia;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
+use std::collections::HashMap;
 static NODES: AtomicU64 = AtomicU64::new(0);
 use shakmaty::{fen::Fen, CastlingMode, Chess, Color, FromSetup, Move, Position, Role, Square, Piece};
 
@@ -812,6 +814,103 @@ fn frame_outs(fen: String, uci: String, model_path: String, temp: f32, top: usiz
     Ok(out)
 }
 
+// THE FRAME AS A TREE OF BRANCHES (Kaveh 2026-10-09: "it's not about plies but about branches and the conditioning:
+// every time we reach a branching point, assign a probability to each branch and evaluate the lemmas and the frame
+// conditioned on that branch -- if they push the pawn in front of the king there is no more mate, no more forcing, and
+// the rook just runs away"). After our move, each reply of theirs is a BRANCH with Maia's probability (the replies
+// covering `mass` of Maia's policy) or, for a perfect opponent (`model_path` empty: everyone above 1900), the single
+// branch worst for us. On each branch the certified lemmas of the new position decide: no certified claim -> the
+// frame has dissolved, the branch ends with the material as it stands; a mate claim -> MATE (150); another claim -> we
+// play its move and the next branching follows. Outcome per path: material change (ours - theirs) or 150 for mate.
+
+const MATE_V: f32 = 150.0;
+
+static CLAIMS: OnceLock<Mutex<HashMap<String, Option<(String, i64, String)>>>> = OnceLock::new();
+
+/// The best certified claim at q, CACHED by position (2026-10-09: one tree spent 31 s, nearly all in repeated claim
+/// computations -- the same positions recur across branches and across rating bands).
+fn best_claim(q: &Chess) -> PyResult<Option<(String, i64, String)>> {
+    let f = Fen::from_position(q.clone(), shakmaty::EnPassantMode::Legal).to_string();
+    let cache = CLAIMS.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(hit) = cache.lock().unwrap().get(&f) { return Ok(hit.clone()); }
+    let rows = threat_claims(f.clone())?;
+    let best = rows.into_iter().filter(|c| c.5 && c.2 >= 1).max_by_key(|c| c.2).map(|c| (c.0, c.2, c.1));
+    cache.lock().unwrap().insert(f, best.clone());
+    Ok(best)
+}
+
+fn branches(q: &Chess, model_path: &str, mass: f32) -> Result<Vec<(Move, f32)>, String> {
+    let pol = maia::policy(q, model_path, 1.0)?;
+    let mut sorted = pol; sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    let mut out = Vec::new(); let mut acc = 0.0;
+    for (u, p) in sorted {
+        let Ok(m) = u.parse::<shakmaty::uci::UciMove>().and_then(|x| Ok(x)) else { continue };
+        let Ok(m) = m.to_move(q) else { continue };
+        out.push((m, p)); acc += p;
+        if acc >= mass { break; }
+    }
+    let z: f32 = out.iter().map(|x| x.1).sum();
+    Ok(out.into_iter().map(|(m, p)| (m, p / z)).collect())
+}
+
+/// Their branching point at q (they to move), material so far `mat` (ours - theirs, since our first move), `path` so
+/// far; returns [(probability, outcome, path)].
+fn their_node(q: &Chess, us: Color, model_path: &str, mass: f32, mat: f32, path: Vec<String>, depth: u32) -> PyResult<Vec<(f32, f32, Vec<String>)>> {
+    let ms = q.legal_moves();
+    if ms.is_empty() { return Ok(vec![(1.0, if q.is_check() { MATE_V } else { mat }, path)]); }
+    let perfect = model_path.is_empty();
+    let mut rows: Vec<(f32, f32, Vec<String>)> = Vec::new();
+    let cand: Vec<(Move, f32)> = if perfect { ms.iter().map(|m| (m.clone(), 1.0)).collect() }
+        else { branches(q, model_path, mass).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))? };
+    let mut per_branch: Vec<(f32, Vec<(f32, f32, Vec<String>)>)> = Vec::new();
+    for (r, p) in cand {
+        let taken = r.capture().map(kernel_value).unwrap_or(0) as f32;
+        let q2 = after(q, &r);
+        let mut p2 = path.clone(); p2.push(r.to_uci(CastlingMode::Standard).to_string());
+        let sub = if q2.is_checkmate() { vec![(1.0, -MATE_V, p2)] } else {
+            our_node(&q2, us, model_path, mass, mat - taken, p2, depth)?
+        };
+        per_branch.push((p, sub));
+    }
+    if perfect {
+        // the perfect opponent takes the branch whose expected outcome is worst for us
+        let ev = |sub: &Vec<(f32, f32, Vec<String>)>| sub.iter().map(|x| x.0 * x.1).sum::<f32>();
+        let worst = per_branch.into_iter().min_by(|a, b| ev(&a.1).partial_cmp(&ev(&b.1)).unwrap()).unwrap();
+        return Ok(worst.1);
+    }
+    for (p, sub) in per_branch { for (pp, v, pa) in sub { rows.push((p * pp, v, pa)); } }
+    Ok(rows)
+}
+
+/// Our turn at q: the certified lemmas decide -- no claim: the frame has dissolved; a mate claim: MATE; otherwise we
+/// play the claim's move and branch again (until `depth` runs out: then the claim's certified gain stands).
+fn our_node(q: &Chess, us: Color, model_path: &str, mass: f32, mat: f32, path: Vec<String>, depth: u32) -> PyResult<Vec<(f32, f32, Vec<String>)>> {
+    if q.is_game_over() { return Ok(vec![(1.0, if q.is_checkmate() { -MATE_V } else { mat }, path)]); }
+    let Some((u, k, name)) = best_claim(q)? else { return Ok(vec![(1.0, mat, path)]) };
+    if k >= 50 { let mut p = path; p.push(format!("{u} ({name}: mate)")); return Ok(vec![(1.0, MATE_V, p)]); }
+    let Ok(m) = u.parse::<shakmaty::uci::UciMove>().and_then(|x| Ok(x)) else { return Ok(vec![(1.0, mat, path)]) };
+    let Ok(m) = m.to_move(q) else { return Ok(vec![(1.0, mat, path)]) };
+    let gained = m.capture().map(kernel_value).unwrap_or(0) as f32;
+    let mut p = path; p.push(format!("{} ({name} +{k})", m.to_uci(CastlingMode::Standard)));
+    if depth == 0 { return Ok(vec![(1.0, mat + k as f32, p)]); }
+    let q2 = after(q, &m);
+    their_node(&q2, us, model_path, mass, mat + gained, p, depth - 1)
+}
+
+/// frame_tree(fen, our uci, maia model path ("" = a perfect opponent), mass, depth) -> [(probability, outcome, path)]
+#[pyfunction]
+#[pyo3(signature = (fen, uci, model_path, mass=0.95, depth=3))]
+fn frame_tree(fen: String, uci: String, model_path: String, mass: f32, depth: u32) -> PyResult<Vec<(f32, f32, Vec<String>)>> {
+    let Some(pos) = parse(&fen) else { return Ok(vec![]) };
+    let Ok(u) = uci.parse::<shakmaty::uci::UciMove>() else { return Ok(vec![]) };
+    let Ok(m) = u.to_move(&pos) else { return Ok(vec![]) };
+    let us = pos.turn();
+    let gained = m.capture().map(kernel_value).unwrap_or(0) as f32;
+    let q = after(&pos, &m);
+    if q.is_checkmate() { return Ok(vec![(1.0, MATE_V, vec![uci])]); }
+    their_node(&q, us, &model_path, mass, gained, vec![uci], depth)
+}
+
 /// best_reply(fen, uci, focus, plies, budget) -> [(their reply, the value it holds us to)], best for them first: WHY a
 /// claim is not certified -- the refutation, to be named (Kaveh 2026-10-08: "Ba6 would not have worked because the
 /// rook would be hanging").
@@ -996,5 +1095,6 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fact_pool, m)?)?;
     m.add_function(wrap_pyfunction!(maia_policy, m)?)?;
     m.add_function(wrap_pyfunction!(frame_outs, m)?)?;
+    m.add_function(wrap_pyfunction!(frame_tree, m)?)?;
     Ok(())
 }
