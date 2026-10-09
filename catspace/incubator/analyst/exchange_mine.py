@@ -244,17 +244,29 @@ def _lemma_valuer():
     certified threat counts for it (a fork, a cornered piece, a mate threat, a promotion -- quiet or not)."""
     from .threat_lemmas import certified_gain, threat_moves
     base = _forcing_valuer(True, True)
+    top: dict = {}                                          # fen -> the moves worth refining (speed, 2026-10-08)
+
+    def refine(b, x) -> bool:
+        """The opponent's certified threats are read only after OUR TOP FIVE moves by the frame's value (they decide
+        the choice; the rest cannot overtake them by losing more)."""
+        key = b.fen()
+        if key not in top:
+            vals = {y: base(b, y) for y in b.legal_moves}
+            top[key] = set(sorted(vals, key=vals.get, reverse=True)[:5])
+        return x in top[key]
 
     def v(b, x):
         nb = b.copy(stack=False); nb.push(x)
         if nb.is_checkmate():
             return 1000.0
         val = base(b, x)
-        theirs = max((k for _, k in threat_moves(nb)), default=0) if not nb.is_check() else 0
+        theirs = max((k for _, k in threat_moves(nb)), default=0) if (not nb.is_check() and refine(b, x)) else 0
         g = ForcingFrame(True).gain((b, HORIZON[0], HORIZON[1]), x)
         val = min(val, g - theirs) if theirs else val
-        if b.is_capture(x) or b.gives_check(x) or x.promotion:  # the certificate is material THREE PLIES on, not a bound on
-            return val                                      # the end (bug 2026-10-08: max() with the frame hid the frame's
+        if b.is_capture(x) or b.gives_check(x) or x.promotion:  # the three-ply certificate is material three plies on, not a
+            from .threat_lemmas import settled_gain         # bound on the end -- but a SETTLED certificate is (2026-10-08)
+            ks = settled_gain(b, x)
+            return max(val, ks) if ks > 0 else val          # (bug 2026-10-08: max() with the raw certificate hid the frame's
         k = certified_gain(b, x)                            # deeper loss on a blundering capture) -- it only adds what the
         return max(val, k) if k > 0 else val               # frame cannot see: a quiet move's threat (bug 2026-10-08:
     return v                                                # max(val, 0) without a claim lifted every losing quiet move to 0)

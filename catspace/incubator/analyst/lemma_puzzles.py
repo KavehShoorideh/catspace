@@ -67,10 +67,10 @@ def _one(args) -> dict:
                                                                 # move when the frames see nothing (all tie at 0)
 
 
-def run(per_theme: int) -> None:
+def run(per_theme: int, only: str | None = None) -> None:
     from multiprocessing import Pool
     rows = collect(per_theme)
-    jobs = [(t, r) for t, rs in rows.items() for r in rs]
+    jobs = [(t, r) for t, rs in rows.items() for r in rs if only is None or t == only]
     with Pool(max(1, (os.cpu_count() or 2) - 1)) as pool:
         recs = list(pool.imap_unordered(_one, jobs, chunksize=8))
     by = defaultdict(list)
@@ -98,11 +98,99 @@ def run(per_theme: int) -> None:
             print(f"OBS     {t}: {r['fen']} {r['move']} (rating {r['rating']}; {r['kind']}; names {r['names']})")
 
 
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# DIGGING THE FAILURES ONE BY ONE (Kaveh 2026-10-08: "follow along with Stockfish's line and at every point guess the
+# next move from our lemmas ... follow it down a few lines and see how it ends up; follow your own line a few lines
+# down ... then you understand the difference -- and that is the lemma you need"). For every puzzle of a theme our
+# lemmas do not find: the solution move against our pick (values, claims, Stockfish after each); the solution line
+# played out; OUR line (both sides playing our lemmas' top move) for six plies; Stockfish at the end of each.
+
+_ENG = None
+
+
+def _eng_init():
+    global _ENG
+    import chess.engine
+    _ENG = chess.engine.SimpleEngine.popen_uci("stockfish")
+
+
+def _sf(b: chess.Board, pov: chess.Color) -> float:
+    import chess.engine
+    if b.is_checkmate():
+        return -20.0 if b.turn == pov else 20.0
+    s = _ENG.analyse(b, chess.engine.Limit(depth=14))["score"].pov(pov)
+    return max(-20.0, min(20.0, s.score(mate_score=2000) / 100))
+
+
+def _mat(b: chess.Board, side: chess.Color) -> int:
+    V = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
+    return sum(V[p.piece_type] * (1 if p.color == side else -1) for p in b.piece_map().values())
+
+
+def _dig_one(args) -> str:
+    theme, row = args
+    import analyst_core
+    from .exchange_mine import _lemma_valuer
+    val = _lemma_valuer()
+    b = chess.Board(row["FEN"]); mv = row["Moves"].split()
+    b.push_uci(mv[0])
+    side = b.turn
+    sol = [chess.Move.from_uci(u) for u in mv[1:]]
+    vals = {x: val(b, x) for x in b.legal_moves}
+    ours = max(vals, key=vals.get)
+    claims = lambda bb, m: [f"{c[1]} +{c[2]}{' CERT' if c[3] else ' framed' if c[5] else ''}" for c in analyst_core.threat_claims(bb.fen()) if c[0] == m.uci()]
+    out = [f"=== {row['PuzzleId']} ({theme}, rating {row['Rating']}) {b.fen()}  {'White' if side else 'Black'} to move"]
+    for tag, m in (("solution", sol[0]), ("ours", ours)):
+        nb = b.copy(); nb.push(m)
+        out.append(f"  {tag:8s} {b.san(m):7s} our value {vals[m]:+.0f}; claims {claims(b, m) or '-'}; Stockfish after {_sf(nb, side):+.1f}")
+    top = sorted(vals.items(), key=lambda kv: -kv[1])[:5]
+    out.append("  our top five: " + ", ".join(f"{b.san(x)} {v:+.0f}" for x, v in top))
+    bb = b.copy(); line = []
+    for m in sol:
+        line.append(f"{bb.san(m)}[{_mat(bb, side):+d}]"); bb.push(m)
+    out.append(f"  SOLUTION line: {' '.join(line)} -> material {_mat(bb, side):+d}, Stockfish {_sf(bb, side):+.1f}")
+    bb = b.copy(); line = []
+    for i in range(6):
+        if bb.is_game_over():
+            break
+        v2 = _lemma_valuer()
+        vs = {x: v2(bb, x) for x in bb.legal_moves}
+        x = max(vs, key=vs.get)
+        line.append(f"{bb.san(x)}[{vs[x]:+.0f}]"); bb.push(x)
+    out.append(f"  OUR line:      {' '.join(line)} -> material {_mat(bb, side):+d}, Stockfish {_sf(bb, side):+.1f}")
+    return "\n".join(out)
+
+
+def dig(theme: str, per_theme: int = 150, path: str | None = None) -> None:
+    from multiprocessing import Pool
+    rows = collect(per_theme)[theme]
+    recs_needed = []
+    with Pool(max(1, (os.cpu_count() or 2) - 1)) as pool:
+        recs = list(pool.imap(_one, [(theme, r) for r in rows], chunksize=4))
+    for r, row in zip(recs, rows):
+        if not r["found"] and not r["mates"]:
+            recs_needed.append(row)
+    with Pool(max(1, (os.cpu_count() or 2) - 1), initializer=_eng_init) as pool:
+        texts = list(pool.imap(_dig_one, [(theme, r) for r in recs_needed], chunksize=1))
+    body = "\n".join(texts)
+    if path:
+        open(path, "w").write(body + "\n")
+    print(f"OBS {theme}: {len(rows)} puzzles, {len(recs_needed)} not found by our lemmas; reports -> {path}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
+    ap.add_argument("cmd", nargs="?", default="coverage", choices=["coverage", "dig"])
     ap.add_argument("--per-theme", type=int, default=150)
+    ap.add_argument("--theme", default=None)
+    ap.add_argument("--out", default=None)
     a = ap.parse_args(argv)
-    run(a.per_theme)
+    if a.cmd == "dig":
+        dig(a.theme or "trappedPiece", a.per_theme, a.out)
+    else:
+        run(a.per_theme, a.theme)
 
 
 if __name__ == "__main__":

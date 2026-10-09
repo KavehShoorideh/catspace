@@ -149,7 +149,28 @@ def rust_gains(b: chess.Board) -> dict | None:
         if cert or (FRAMED and framed):
             out[uci] = max(out.get(uci, 0), k)
     _RUST[fen] = out
+    settled: dict = {}                                      # the LARGEST settled gain per move (bug 2026-10-08: a dict
+    for u, name, k, cert, _, framed in rows:                # comprehension kept the last claim, +1 over a +3 forcing chain)
+        if FRAMED and framed:
+            settled[u] = max(settled.get(u, 0), k)
+    _SETTLED[fen] = settled
     return out
+
+
+_SETTLED: dict = {}                                         # fen -> {uci: gain} certified with a SETTLED leaf
+
+
+def settled_gain(b: chess.Board, m: chess.Move) -> int:
+    """The largest gain certified with the capture frames resolved at the leaf (frame-sized, pursuit, forcing chain):
+    a bound on the material when the capture sequence ends -- unlike the three-ply certificate's raw leaf, it may credit
+    captures and checks too (2026-10-08, puzzle 04XTY: Qg4+ certified, ignored because it was a check)."""
+    rust_gains(b)
+    rows = _SETTLED.get(b.fen(), {})
+    best = 0
+    for u, k in rows.items() if isinstance(rows, dict) else []:
+        if u == m.uci():
+            best = max(best, k)
+    return best
 
 
 _PASSER: dict = {}                                          # (fen, uci) -> bool: the passer certificate, once

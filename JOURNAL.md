@@ -27972,3 +27972,31 @@ piece 31% -> 47%, 17% -> 27%; zugzwang 42% -> 52%; promotion 59% -> 65%, 7% -> 1
 alarm is): a lemma could "explain" every surprise by over-claiming, so each new lemma is measured both ways -- surprises
 it now explains (blunders flagged) and non-surprises it wrongly calls bad (good moves flagged). OBS 60 games with the new
 frames: blunders flagged 46% -> 49% (8 gained, 1 lost), false alarms 9.0% -> 8.5%.
+
+## 2026-10-08 22:01 PDT — digging every trapped-piece failure: generic machinery from each surprise; the speed/reach wall
+
+Kaveh: dig every failure one at a time -- follow Stockfish's line and ours, find the difference, that is the lemma; build
+it as generically as possible (more complete reasoning chains, versions for every piece); "reason around the cornering:
+we kick the queen, it has three squares -- how do we cover all three?". THE TOOL: `lemma_puzzles dig` -- per failing
+puzzle the solution move against our pick (values, claims, Stockfish after each), the solution line and OUR line (both
+sides playing our lemmas' top move) with material and Stockfish at both ends. 80 of 150 trapped-piece puzzles were
+failures. GENERIC PIECES BUILT FROM THEM (Rust, analyst_core): (1) the LARGEST GAIN THAT HOLDS, not only the claimed one
+(03dkw, 04Izo: a desperado or a spite check lowers it); (2) the PURSUIT certificate -- our answers also re-attack the
+claim's target wherever it fled and cover its escape squares (01q0R, 03Cdz, 07bjx), the goal read at every one of our
+nodes; (3) a TRAPPED-NOT-YET-ATTACKED fact (03Cdz); (4) FORCING CHAINS -- a check, or a capture that does not already
+win, pursued against their most valuable pieces (06xqS, 0GUFM, 0ohjJ); (5) CHAINS OF LEMMAS -- inside a chain, a move
+that corners or traps ANY piece is an answer (076jI); (6) SETTLED certificates may credit captures and checks (04XTY);
+(7) depth grows as the board empties; (8) Kaveh's escape-set reasoning as the ORDER of our moves (fewest safe escapes
+first) and a separate escape-set search (`corner_check`); (9) ONE VALUE-RETURNING alpha-beta per claim (the largest
+certified gain) instead of a yes/no per k. SOUNDNESS BUG FOUND reading 04XTY: the leaf stood pat while in check; now a
+side in check must evade, with conservative cutoffs. Other bugs: the largest settled gain per move (a dict kept the
+last); a wrong requirement that a capture's chain beat the capture (threw away 0GUFM's +3); three slow paths (Ascent rules
+inside every node; a full-window leaf search with uncapped evasions -- threat_claims went to 1.7 s median, 56 s worst,
+now 233 ms median, 559 ms worst). OBS on the 80 former failures with the pursuit before the budgets: 67 found. THE LAST
+13, classified: planner (0CAq9, 0aJKK: long quiet maneuvers at 2564-2795; 0nRuL: a trapped piece can wait -- spend the
+tempo elsewhere); two-step quiet setups, a lemma that fires one move later (0n7Ar, 0vh85, 0jRnI) -- the job of the
+guided search; deep chains certified at six plies but beyond the node budgets now (0I7rM, 0M6sU, 0U9eM, 0k5nO); a
+trade into a won pawn ending (0dy3X) -- the promotion frame as a goal inside chains needs the passer lemma mirrored in
+Rust. THE WALL: every certificate needs every opponent reply at every ply; deeper chains cost more than a per-claim
+budget allows. Kaveh's game-time design is the answer: lemma chaining first, a real alpha-beta search (lemmas as bounds
+and as "what are we looking for") wherever no lemma applies -- next.

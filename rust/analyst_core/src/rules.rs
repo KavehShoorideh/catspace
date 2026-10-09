@@ -86,3 +86,30 @@ pub fn cornered(q: &Chess, us: Color) -> Vec<(u8, i64)> {
     }
     out
 }
+
+/// A TRAPPED PIECE NOT YET ATTACKED (2026-10-08, puzzle 03Cdz: Bf3 takes the queen's last escape, Rh3 attacks it next):
+/// their piece t (worth 3 or more) that we do not win where it stands, but every move of it lands on a square where we
+/// win it. The attack comes next; the pursuit certificate follows it. -> [(t, its value)].
+pub fn trapped_unattacked(q: &Chess, us: Color) -> Vec<(u8, i64)> {
+    let here = threats_of(q, us);
+    let them = !us;
+    let mut out = Vec::new();
+    for sq in q.board().by_color(them) {
+        let Some(p) = q.board().piece_at(sq) else { continue };
+        let v = val(p.role);
+        if v < 3 || p.role == Role::King || here.contains_key(&(sq as u8)) { continue; }
+        let mut any_move = false;
+        let mut trapped = true;
+        for mv in q.legal_moves() {
+            if mv.from() != Some(sq) { continue; }
+            any_move = true;
+            let mut q2 = q.clone(); q2.play_unchecked(&mv);
+            match threats_of(&q2, us).get(&(mv.to() as u8)) {
+                Some(&g2) if g2 > 0 => {}
+                _ => { trapped = false; break; }
+            }
+        }
+        if any_move && trapped { out.push((sq as u8, v)); }
+    }
+    out
+}
