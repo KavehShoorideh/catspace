@@ -10,9 +10,14 @@ up at least k (their mate counts as won). A fork, a trapped (cornered) piece, a 
 and a mate threat are all instances: the certificate does not care which; the NAME does, so the claim is named by its
 shape:
   fork              two or more enemy pieces newly attacked with a winning static exchange, the gain the second best
-  cornered piece    one piece newly attacked, the gain its own value: it cannot escape, be defended, or have its
-                    attacker taken or blocked -- "mating a piece" (Kaveh)
-  mate threat       a mate next move were the opponent to pass; certified as a gain no material can reach (MATE_K)
+  single threat     one piece newly attacked, the gain its static exchange (certified only if it cannot be parried)
+  cornered piece    (the rule layer, rules.rs `cornered`) a piece we win where it stands AND on every square it can
+                    move to, newly so after the move: "mating a piece" (Kaveh) -- usually a quiet move taking its last
+                    escape, not a new attack
+  cornered king     mate is cornering the king (Kaveh 2026-10-08): a check that leaves the king no flight, decided by the
+                    certificate (no block, no capture of the checker = mate); "(threat)" when a quiet move leaves a mate
+                    next move were the opponent to pass. Certified as a gain no material can reach (MATE_K)
+  mate threat       (the Python matcher's name for the threat form)
   promotion         a pawn newly on its seventh rank with its promotion square safe -- the certificate's gain is the
                     new queen
 A claim is CERTIFIED (the kernel's localCheck says yes: proved by localCheck_sound) or only MATCHED (the shape is
@@ -81,9 +86,9 @@ def claims(b: chess.Board, m: chess.Move, certify: bool = True) -> list:
     if len(new) >= 2:
         vals = sorted(new.values(), reverse=True)
         out.append(Claim("fork", m.uci(), vals[1], tuple(chess.square_name(q) for q in new), False))
-    elif len(new) == 1:
+    elif len(new) == 1:                                     # (the cornering frame is the rule layer's: rules.rs)
         (q, g), = new.items()                               # with check it is a fork of the king and the piece
-        out.append(Claim("fork with check" if nb.is_check() else "cornered piece", m.uci(), g, (chess.square_name(q),), False))
+        out.append(Claim("fork with check" if nb.is_check() else "single threat", m.uci(), g, (chess.square_name(q),), False))
     if not _mate_in_one(b, side) and _mate_in_one(nb, side):
         out.append(Claim("mate threat", m.uci(), MATE_K, (chess.square_name(nb.king(not side)),), False))
     pc = b.piece_at(m.from_square)
@@ -147,13 +152,40 @@ def rust_gains(b: chess.Board) -> dict | None:
     return out
 
 
+_PASSER: dict = {}                                          # (fen, uci) -> bool: the passer certificate, once
+
+
+def passer_claim(b: chess.Board, m: chess.Move) -> bool:
+    """THE PROMOTION FRAME: after m, does every legal reply leave a pawn of ours a PROVED unstoppable passer (the
+    kernel's Setup.lean setsUpPasser2, proved by setsUpPasser2_sound, through lean_ideas.passer_setup)? Asked only where
+    the lemma can hold -- the opponent has no queen, rook or bishop -- because it is a Lean call."""
+    them = not b.turn
+    if b.pieces(chess.QUEEN, them) or b.pieces(chess.ROOK, them) or b.pieces(chess.BISHOP, them):
+        return False
+    key = (b.fen(), m.uci())
+    hit = _PASSER.get(key)
+    if hit is None:
+        try:
+            from .lean_ideas import detector
+            hit = bool(detector().passer_setup(b, m))
+        except Exception:
+            hit = False
+        _PASSER[key] = hit
+    return hit
+
+
+PROMOTION_K = 8                                             # a queen for a pawn
+
+
 def certified_gain(b: chess.Board, m: chess.Move) -> int:
-    """The largest gain a certified threat lemma proves for m (0 when none): a lower bound on what m wins within three
-    plies, whatever the opponent does. The Rust rule layer when available, else the Python matcher."""
+    """The largest gain a certified threat lemma proves for m (0 when none): the rule layer's claims (fork, cornered
+    piece, single threat, mating attack, promotion push) decided by the certificate, and the promotion frame's proved
+    passer. The Rust rule layer when available, else the Python matcher."""
     g = rust_gains(b)
-    if g is not None:
-        return g.get(m.uci(), 0)
-    return max((c.k for c in claims(b, m) if c.certified), default=0)
+    k = g.get(m.uci(), 0) if g is not None else max((c.k for c in claims(b, m) if c.certified), default=0)
+    if k < PROMOTION_K and passer_claim(b, m):
+        k = PROMOTION_K
+    return k
 
 
 def threat_moves(b: chess.Board) -> list:
@@ -165,6 +197,8 @@ def threat_moves(b: chess.Board) -> list:
         if b.is_capture(m) or b.gives_check(m) or m.promotion:
             continue                                        # captures and checks are the frame's own moves
         k = g.get(m.uci(), 0) if g is not None else certified_gain(b, m)
+        if k < PROMOTION_K and passer_claim(b, m):
+            k = PROMOTION_K
         if k > 0:
             out.append((m, k))
     return out

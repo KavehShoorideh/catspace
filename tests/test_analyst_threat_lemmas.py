@@ -61,7 +61,33 @@ def test_the_rust_rule_layer_matches_the_python_matcher_on_the_cases():
     cases = {("r3r2k/8/8/1N6/8/8/5PPP/5RK1 w - - 0 1", "b5c7"): ("fork", 2, True),
              ("r3q1k1/8/8/1N6/8/8/8/6K1 w - - 0 1", "b5c7"): ("fork", 2, False),
              ("q3k3/8/8/1N6/8/8/8/6K1 w - - 0 1", "b5c7"): ("fork with check", 9, True),
-             ("6k1/2p2ppp/8/8/8/8/2R2PPP/6K1 w - - 0 1", "c2a2"): ("mate threat", 50, False)}
+             ("6k1/2p2ppp/8/8/8/8/2R2PPP/6K1 w - - 0 1", "c2a2"): ("cornered king (threat)", 50, False)}
     for (fen, uci), want in cases.items():
         got = [(c[1], c[2], c[3]) for c in analyst_core.threat_claims(fen) if c[0] == uci]
         assert want in got, (fen, uci, got)
+
+
+def test_the_cornering_frame_sees_a_trap_closed_by_a_quiet_move():
+    """The black knight on a1 is attacked by the h1 rook; its escapes are b3 (covered by the a2 pawn) and c2. Ke2-d2
+    covers c2 and attacks nothing new: the trap is closed by a quiet move -- a cornered piece, certified."""
+    import analyst_core
+    b = chess.Board("6k1/8/8/8/8/8/P3K3/n6R w - - 0 1")
+    assert b.is_valid()                                               # (the first fixture left Black in check: shakmaty refused it)
+    assert chess.H1 in b.attackers(chess.WHITE, chess.A1) and chess.A2 in b.attackers(chess.WHITE, chess.B3)
+    rows = [c for c in analyst_core.threat_claims(b.fen()) if c[0] == "e2d2"]
+    assert any(c[1] == "cornered piece" and c[2] == 3 and (c[3] or c[5]) for c in rows), rows
+
+
+def test_a_mate_threat_by_check_is_named_a_mating_attack():
+    """Re2-e8+ forces Rxe8, then Rxe8 mates: a certificate that holds by mating is a mating attack."""
+    import analyst_core
+    b = chess.Board("r5k1/5ppp/8/8/8/8/4RPPP/4R1K1 w - - 0 1")
+    nb = b.copy(); nb.push_san("Re8+"); assert nb.is_check() and [nb.san(x) for x in nb.legal_moves] == ["Rxe8"]
+    rows = [c for c in analyst_core.threat_claims(b.fen()) if c[0] == "e2e8"]
+    assert any(c[1] == "cornered king" and c[5] for c in rows), rows       # mate is cornering the king (Kaveh)
+
+
+def test_the_promotion_frame_uses_the_proved_passer():
+    from catspace.incubator.analyst.threat_lemmas import passer_claim
+    b = chess.Board("8/8/8/1P6/8/8/6k1/K7 w - - 0 1")                 # b5-b6: the black king is far; the pawn runs
+    assert passer_claim(b, chess.Move.from_uci("b5b6"))

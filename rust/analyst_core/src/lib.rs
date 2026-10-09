@@ -241,8 +241,9 @@ fn settle(pos: &Chess, mut alpha: i64, beta: i64) -> i64 {
     NODES.fetch_add(1, Ordering::Relaxed);
     if 0 >= beta { return 0; }                                     // standing pat already refutes the window
     if 0 > alpha { alpha = 0; }
-    let mut caps: Vec<Move> = pos.legal_moves().into_iter().filter(|m| m.is_capture()).collect();
-    caps.sort_by_key(|m| -(m.capture().map(kernel_value).unwrap_or(0)));
+    let mut caps: Vec<Move> = pos.legal_moves().into_iter()
+        .filter(|m| m.is_capture() || m.promotion() == Some(Role::Queen)).collect();   // promotions count (bug 2026-10-08)
+    caps.sort_by_key(|m| -(m.capture().map(kernel_value).unwrap_or(0) + if m.is_promotion() { 8 } else { 0 }));
     for m in caps {
         let g = m.capture().map(kernel_value).unwrap_or(0) + if m.is_promotion() { 8 } else { 0 };
         let q = after(pos, &m);
@@ -310,6 +311,10 @@ fn threat_claims(fen: String) -> PyResult<Vec<(String, String, i64, bool, Vec<St
     let us = pos.turn();
     let before = rules::threats_of(&pos, us);
     let mate_before = match pos.clone().swap_turn() { Ok(_) => mate_in_one(&pos), Err(_) => false };
+    let corner_before: std::collections::HashSet<u8> = match pos.clone().swap_turn() {
+        Ok(p) => rules::cornered(&p, us).into_iter().map(|(t, _)| t).collect(),
+        Err(_) => Default::default(),
+    };
     let mut out = Vec::new();
     for m in pos.legal_moves() {
         let q = after(&pos, &m);
@@ -324,14 +329,26 @@ fn threat_claims(fen: String) -> PyResult<Vec<(String, String, i64, bool, Vec<St
             let framed = cert || local_check_frames_pos(&pos, &m, k);
             out.push((uci.clone(), name.to_string(), k, cert, targets, framed));
         };
+        let king_sq = q.board().king_of(!us).map(|k| k as u8);
+        for (t, g) in rules::cornered(&q, us) {                         // THE CORNERING FRAME, one rule for every piece:
+            if Some(t) == king_sq {                                     // the king cornered is a check with no flight --
+                claim("cornered king", g, vec![rules::square_name(t)]); // mate if nothing blocks or takes (certificate)
+            } else if !corner_before.contains(&t) {                     // a piece newly with no escape
+                claim("cornered piece", g, vec![rules::square_name(t)]);
+            }
+        }
+        if q.is_check() && !rules::cornered(&q, us).iter().any(|(t, _)| Some(*t) == king_sq)
+            && local_check_frames_pos(&pos, &m, 50) {                   // a check that still forces mate (the king has a
+            claim("cornered king", 50, vec![]);                         // flight now, but every line mates): cornered later
+        }
         if new.len() >= 2 {
             claim("fork", new[1].1, names.clone());
         } else if new.len() == 1 {
-            claim(if q.is_check() { "fork with check" } else { "cornered piece" }, new[0].1, names.clone());
+            claim(if q.is_check() { "fork with check" } else { "single threat" }, new[0].1, names.clone());
         }
         if !mate_before && !q.is_check() {
             if let Ok(passed) = q.clone().swap_turn() {
-                if mate_in_one(&passed) { claim("mate threat", 50, vec![]); }
+                if mate_in_one(&passed) { claim("cornered king (threat)", 50, vec![]); }   // cornering the king next move
             }
         }
         if m.role() == Role::Pawn && m.to().rank() == (if us == Color::White { shakmaty::Rank::Seventh } else { shakmaty::Rank::Second }) {

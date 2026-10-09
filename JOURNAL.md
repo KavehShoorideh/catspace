@@ -27949,3 +27949,26 @@ themes 99-100% (mostly by the frame's own checks). The weak themes are the frame
 (trapped piece: matched, but trapping takes quiet moves the certificate does not search), PROMOTION (the proved passer
 lemmas are not yet claims), and the quiet / zugzwang themes outside material frames. A naming bug: a checking move whose
 certificate holds by mating is named "fork with check", not a mate threat.
+
+## 2026-10-08 19:22 PDT — the cornering frame (mate as its king case) and the promotion frame; bug fixes
+
+Kaveh: do the next frames with bug fixes; "mate is a specific type of cornering". MEASURED FIRST: in 150 trapped-piece
+puzzles the first move is quiet in 119 and the piece falls two plies later in 104 -- within the certificate's reach; the
+miss was the MATCHING (a quiet move that closes the last escape adds no attack). BUILT (rule layer, Rust): the CORNERING
+FRAME, one rule for every piece -- a target is cornered when it is lost where it stands and on every square it can move
+to; for a piece "lost" = we win it by the rules' static gain; for the KING "lost where it stands" = in check, and since
+a legal king move is never into attack, the king is cornered when in check with no move of its own -- the certificate
+decides whether a block or a capture saves it (none = mate); the threat form ("cornered king (threat)") is a mate next
+move were the opponent to pass. The PROMOTION FRAME: the kernel's proved passer certificate (Setup.lean setsUpPasser2,
+setsUpPasser2_sound) as a promotion claim, asked only where the lemma can hold (no enemy queen, rook or bishop). BUGS
+FIXED: a certificate holding by mate was named "fork with check"; a single new attack was named "cornered piece" (now
+"single threat"); the leaf's capture search ignored promotions; the puzzle test's "found" used only the three-ply
+certificate; two test fixtures were wrong (a bishop the king simply takes; a rook "check" blocked by a rook) and one was
+an illegal position (Black in check with White to move -- shakmaty refuses it and the rule layer returns no claims).
+OBS puzzles, 26 themes x 150, found (top set <= 2) before -> after, frame-sized certified before -> after: trapped
+piece 31% -> 47%, 17% -> 27%; zugzwang 42% -> 52%; promotion 59% -> 65%, 7% -> 15%; advanced pawn 51% -> 55%; pin 66%
+-> 68%, 21% -> 34%; mate in 2 cert 15% -> 69% (95 named cornered king); back-rank mate 21% -> 58%; intermezzo 35% ->
+64%; x-ray 27% -> 66%; quiet move 24% -> 26% and clearance 54% -> 54% unmoved. THE GUARD (Kaveh asked what a false
+alarm is): a lemma could "explain" every surprise by over-claiming, so each new lemma is measured both ways -- surprises
+it now explains (blunders flagged) and non-surprises it wrongly calls bad (good moves flagged). OBS 60 games with the new
+frames: blunders flagged 46% -> 49% (8 gained, 1 lost), false alarms 9.0% -> 8.5%.

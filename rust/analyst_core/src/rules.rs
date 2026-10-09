@@ -47,3 +47,42 @@ pub fn threats_of(pos: &Chess, us: Color) -> std::collections::HashMap<u8, i64> 
 }
 
 pub fn square_name(s: u8) -> String { Square::new(s as u32).to_string() }
+
+/// THE CORNERING FRAME (Kaveh 2026-10-08: "we should be able to mate any piece"; "mate is a specific type of
+/// cornering"): their piece t is CORNERED in `q`
+/// (them to move) when we win it where it stands (a gain g > 0 by the rules) and EVERY move it can make lands on a
+/// square where we win it again. The king's version of this is mate. -> [(t, the smallest gain over staying and its
+/// escapes)]. A trapped piece is usually cornered by a QUIET move that takes away its last escape, not by a new attack
+/// (2026-10-08: 119 of 150 trapped-piece puzzles open with a quiet move; the piece falls two plies later in 104).
+pub fn cornered(q: &Chess, us: Color) -> Vec<(u8, i64)> {
+    let here = threats_of(q, us);
+    let mut out = Vec::new();
+    for (&t, &g) in here.iter() {
+        let sq = Square::new(t as u32);
+        let mut worst = g;
+        let mut trapped = true;
+        for mv in q.legal_moves() {
+            if mv.from() != Some(sq) { continue; }
+            let mut q2 = q.clone(); q2.play_unchecked(&mv);
+            let to = mv.to() as u8;
+            match threats_of(&q2, us).get(&to) {
+                Some(&g2) if g2 > 0 => { if g2 < worst { worst = g2; } }
+                _ => { trapped = false; break; }
+            }
+        }
+        if trapped { out.push((t, worst)); }
+    }
+    // THE KING (Kaveh 2026-10-08: "mate is a specific type of cornering"): for the king "lost where it stands" is being
+    // in check, and its escapes are its own moves -- a legal king move is never into attack, so the king is cornered
+    // when it is in check and has no legal move of its own. Whether a block or a capture of the checker saves it is
+    // the certificate's question (no rescue = mate). Valued at MATE_K (50: no material reaches it).
+    let them = !us;
+    if q.turn() == them && q.is_check() {
+        if let Some(k) = q.board().king_of(them) {
+            if !q.legal_moves().iter().any(|m| m.from() == Some(k)) {
+                out.push((k as u8, 50));
+            }
+        }
+    }
+    out
+}
