@@ -655,6 +655,57 @@ fn certified_value(p: &Chess, m: &Move, focus: &[Square], plies: u32, budget: u6
     if spent { None } else { Some(v - base) }
 }
 
+// TARGET-FIRST REASONING, the primitives (Kaveh 2026-10-08: "start from the highest-value goal -- can I do anything
+// against the king? no -- but I can against the queen"; "the queen is so oddly placed, almost trapped ... a prior to
+// recognize that"; "either create a bigger threat at the same time, or keep chasing it until it cannot escape").
+
+/// target_profile(fen, square) -> (value, safe escapes, our attackers, their defenders, on the edge): the side to move
+/// is "us"; the piece on the square is theirs.
+#[pyfunction]
+fn target_profile(fen: String, sq: String) -> PyResult<Option<(i64, i64, i64, i64, bool)>> {
+    let Some(pos) = parse(&fen) else { return Ok(None) };
+    let Ok(t) = sq.parse::<Square>() else { return Ok(None) };
+    let us = pos.turn();
+    let b = pos.board();
+    let Some(p) = b.piece_at(t) else { return Ok(None) };
+    if p.color == us { return Ok(None); }
+    let occ = b.occupied();
+    let edge = matches!(t.file(), shakmaty::File::A | shakmaty::File::H) || matches!(t.rank(), shakmaty::Rank::First | shakmaty::Rank::Eighth);
+    let v = if p.role == Role::King { 100 } else { kernel_value(p.role) };
+    Ok(Some((v, safe_escapes(&pos, us, t), b.attacks_to(t, us, occ).count() as i64,
+             b.attacks_to(t, p.color, occ.without(t)).count() as i64, edge)))
+}
+
+/// target_moves(fen, square) -> [(uci, safe escapes left, attacks it, gives check)]: OUR moves that matter to the target
+/// -- they take it, or strictly increase our coverage of its frame (the target and the squares it can reach), counted
+/// on the whole board after the move, so a CLEARANCE (Bb7 opening the rank for the rook) counts as well as a direct
+/// attack. Ordered: captures of it, then the fewest safe escapes left.
+#[pyfunction]
+fn target_moves(fen: String, sq: String) -> PyResult<Vec<(String, i64, bool, bool)>> {
+    let Some(pos) = parse(&fen) else { return Ok(vec![]) };
+    let Ok(t) = sq.parse::<Square>() else { return Ok(vec![]) };
+    let us = pos.turn();
+    let Some(tp) = pos.board().piece_at(t) else { return Ok(vec![]) };
+    let frame = |q: &Chess| -> u32 {
+        let b = q.board();
+        let reach = shakmaty::attacks::attacks(t, tp, b.occupied()).with(t);
+        reach.into_iter().filter(|s| b.attacks_to(*s, us, b.occupied()).any()).count() as u32
+    };
+    let before = frame(&pos);
+    let mut out = Vec::new();
+    for m in pos.legal_moves() {
+        let q = after(&pos, &m);
+        let takes = m.to() == t;
+        if !takes && q.board().piece_at(t).map_or(true, |p| p.color == us) { continue; }
+        if !takes && frame(&q) <= before { continue; }
+        let attacks = takes || q.board().attacks_to(t, us, q.board().occupied()).any();
+        let e = if takes { -1 } else { safe_escapes(&q, us, t) };
+        out.push((m.to_uci(CastlingMode::Standard).to_string(), e, attacks, q.is_check()));
+    }
+    out.sort_by_key(|x| x.1);
+    Ok(out)
+}
+
 /// best_reply(fen, uci, focus, plies, budget) -> [(their reply, the value it holds us to)], best for them first: WHY a
 /// claim is not certified -- the refutation, to be named (Kaveh 2026-10-08: "Ba6 would not have worked because the
 /// rook would be hanging").
@@ -834,5 +885,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(corner_check, m)?)?;
     m.add_function(wrap_pyfunction!(certified_gain, m)?)?;
     m.add_function(wrap_pyfunction!(best_reply, m)?)?;
+    m.add_function(wrap_pyfunction!(target_profile, m)?)?;
+    m.add_function(wrap_pyfunction!(target_moves, m)?)?;
     Ok(())
 }

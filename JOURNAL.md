@@ -28026,3 +28026,19 @@ king there, found none, and ruled it out: a claim's missing condition (its barri
 (3) the rook + diagonal-piece back-rank pattern capturing a QUEEN on the edge -- a mating pattern used to corner another
 piece. Built: `analyst_core.best_reply` -- why a candidate fails. OBS Ba6: Qxa8 holds us to -5 (the rook hangs); Bd7:
 Qxa8 -4; Bb7: Qxh7 holds us to +3 (Qxa8 Bxa8 +4: the rook is defended).
+
+## 2026-10-08 22:39 PDT — target-first reasoning (Kaveh's procedure on NPpe0)
+
+Kaveh: "start from the highest-value goal -- can I do anything against the king? No (not enough pieces there), but I
+can against the queen; it is so oddly placed, almost trapped on the edge -- a prior to recognize that; threatened, it
+runs, so either a bigger threat at the same time (against the king) or chase it until it cannot escape; then, what is
+their next threat -- but don't start there." BUILT: `target_reasoner.py` (+ Rust primitives target_profile and
+target_moves -- the moves that take a target or increase our coverage of its frame on the whole board, so a clearance
+counts): targets by value, ties by a vulnerability prior (few escapes, few defenders, the edge); the king only with two
+of our pieces on its zone or a check leaving it at most one flight; per target, a bigger threat with check first, then
+the chase, each certified by the value search focused on the target; the first certified target decides; their next
+threat afterwards; a trace with the refutations of the alternatives. OBS NPpe0: king skipped (1 piece on its zone),
+queen g8 (7 escapes, undefended, on the edge): Bb7 certified +3; why not Ba6 / Bd7: Qxa8 (-5 / -4); f5: Qxh7+; 1.9 s
+(the scan-everything chooser: about 22 s). OBS as the chooser on 150 trapped-piece puzzles: solved 65%, answered 77%;
+median 2.2 s, 90th 6.6 s, max 12.9 s (the scan-everything frame valuer: 90% found, about 22 s a position). Next: dig
+the reasoner's misses (answered wrong 12%, unanswered 23%).

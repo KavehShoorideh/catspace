@@ -180,14 +180,43 @@ def dig(theme: str, per_theme: int = 150, path: str | None = None) -> None:
     print(f"OBS {theme}: {len(rows)} puzzles, {len(recs_needed)} not found by our lemmas; reports -> {path}")
 
 
+def _reasoned(args) -> dict:
+    theme, row = args
+    from .target_reasoner import reason
+    b = chess.Board(row["FEN"]); mv = row["Moves"].split(); b.push_uci(mv[0])
+    r = reason(b)
+    return dict(theme=theme, id=row["PuzzleId"], solved=r["move"] is not None and r["move"].uci() == mv[1],
+                answered=r["move"] is not None, ms=r["ms"], target=r["target"], gain=r["gain"])
+
+
+def reasoner_coverage(per_theme: int, only: str | None) -> None:
+    """The target-first reasoner as the move chooser: its move equals the puzzle's first move (solved), it gave a
+    certified move at all (answered), and its time per puzzle."""
+    import statistics
+    from multiprocessing import Pool
+    rows = collect(per_theme)
+    jobs = [(t, r) for t, rs in rows.items() for r in rs if only is None or t == only]
+    with Pool(max(1, (os.cpu_count() or 2) - 1)) as pool:
+        recs = list(pool.imap_unordered(_reasoned, jobs, chunksize=2))
+    by = defaultdict(list)
+    for r in recs:
+        by[r["theme"]].append(r)
+    for t, g in sorted(by.items()):
+        ms = sorted(r["ms"] for r in g)
+        print(f"OBS reasoner {t:18s} n {len(g)}: solved {100 * sum(r['solved'] for r in g) / len(g):.0f}%, answered {100 * sum(r['answered'] for r in g) / len(g):.0f}%; "
+              f"time median {ms[len(ms) // 2]} ms, 90th {ms[int(0.9 * len(ms))]} ms, max {ms[-1]} ms")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", nargs="?", default="coverage", choices=["coverage", "dig"])
+    ap.add_argument("cmd", nargs="?", default="coverage", choices=["coverage", "dig", "reasoner"])
     ap.add_argument("--per-theme", type=int, default=150)
     ap.add_argument("--theme", default=None)
     ap.add_argument("--out", default=None)
     a = ap.parse_args(argv)
-    if a.cmd == "dig":
+    if a.cmd == "reasoner":
+        reasoner_coverage(a.per_theme, a.theme)
+    elif a.cmd == "dig":
         dig(a.theme or "trappedPiece", a.per_theme, a.out)
     else:
         run(a.per_theme, a.theme)
