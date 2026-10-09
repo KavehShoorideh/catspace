@@ -1,0 +1,22 @@
+[package]
+name = "maia-chess"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+description = "Maia human-like chess move prediction in pure Rust: lc0's input encoding and policy table, Maia networks run with tract (ONNX)."
+readme = "README.md"
+keywords = ["chess", "maia", "lc0", "neural-network", "onnx"]
+categories = ["science", "games"]
+
+[lib]
+name = "maia_chess"
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = []
+python = ["dep:pyo3"]
+
+[dependencies]
+shakmaty = "0.27"
+tract-onnx = "0.23"
+pyo3 = { version = "0.25", features = ["extension-module"], optional = true }

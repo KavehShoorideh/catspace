@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.5"]
+build-backend = "maturin"
+
+[project]
+name = "maia-chess"
+version = "0.1.0"
+description = "Maia human-like chess move prediction, in Rust, for Python"
+license = { text = "GPL-3.0-only" }
+requires-python = ">=3.9"
+
+[tool.maturin]
+features = ["python"]
+module-name = "maia_chess"

@@ -56,3 +56,4 @@ artifacts/experiments/players/
 tmp/
 assets/lichess/
 data/external/lichess/
+rust/maia-chess/target

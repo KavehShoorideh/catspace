@@ -28106,3 +28106,18 @@ lc0's default policy temperature 1.359 (flattened probabilities) and never close
 fixed with atexit). THE OUTS (`analyst_core.frame_outs`, the clock slot reserved): after O-O-O, Maia 1100-1900 plays
 Nxf3?? 50-74% (walks into mate), c6 11-31% (defuses); after Ke2 or Rh3 nothing walks in (0-1%). 2.4-6.7 s per move's
 outs (the claims after each reply dominate).
+
+## 2026-10-09 10:36 PDT — maia-chess: Maia in pure Rust, packaged to share (GPL-3.0, local, not published)
+
+Kaveh: is there a Rust implementation of Maia? if not, package ours for the community. SEARCHED: none -- crates.io has
+no Maia or lc0 crate (the "maia" names are a Vulkan binding and an SDR project); the one Rust project mentioning Maia
+(xmiksay/chess-base) runs it through lc0 as an external UCI engine; lc0 network tooling is Python (lczerolens). Maia
+and lc0 are both GPL-3.0 (our move table is read from lc0) -> Kaveh: GPL-3.0, package locally, do not publish yet.
+BUILT `rust/maia-chess` (crate and PyPI names maia-chess both free): `Maia::load` (ONNX from `lc0 leela2onnx`;
+scripts/convert.sh), `policy` (any temperature; lc0's FEN history-fill rules), `policy_history` (the real game
+history, repetition planes counted up to each point), `wdl`; lc0's 1,858-move table; Python bindings (feature
+"python", maturin); an example; unit tests (table complete and distinct, every legal move indexed in castling /
+promotion / en-passant positions, Black's planes the mirror of White's); a bridge test against lc0. OBS bridge, Maia-
+1500: bare positions top move 4/4; WITH HISTORY 3/3 and the largest probability difference 0.0003 -- the residual
+first-move mismatches of the bare-FEN bridge vanish with history. Example: 0.4 ms a position. `analyst_core` now uses
+the crate (one source of truth). README with accuracy, speed, licence, credits. Nothing pushed anywhere.
