@@ -28179,3 +28179,45 @@ vs Maia-1100 / 1500 / 1900, nothing 15 / 11 / 27%; vs a perfect opponent +0 (c6)
 "win less than a piece" 25-53%, nothing otherwise, +0 against perfect -- consistent with Stockfish (Ke2 +2.7, O-O-O
 +2.0 against best play, the difference positional). Times: 2-391 ms a tree (the cold ones a few hundred ms; the claim
 cache warms across bands) -- from 7 s before the breakdown.
+
+## 2026-10-09 14:01 PDT — waiting frames built and measured on 60 games; the attention map (who attacks where) tested as a filter
+
+Kaveh approved the waiting-frames plan ("if the plan looks ready, let's get started") and added: each frame must also
+know what INVALIDATES it, so it re-fires when something happens. BUILT (`rust/analyst_core/src/waiting.rs`, commit
+7c4c236b): every frame -- a seed move with a focus and a goal (a check: mate; a new threat, fork, cornered or trapped
+piece: the rule layer's gain) -- is ACTIVE (its certificate holds), DORMANT (one board change inside the frame makes it
+hold) or FAR (no single change does). The MISSING CONDITION is found generically, not by an extractor per tactic: the
+single change (add one of our pieces, remove one of theirs, remove one of ours) under which the certificate passes,
+controlled against changes that win by themselves (bug found on the castling position: "add our pawn on e7" made four
+unrelated frames hold -- it promotes on d8 alone). Candidates are restricted to changes that can happen (a piece type we
+own; a pawn that can advance there). An active frame carries its BREAKERS (Kaveh's invalidation): the changes their next
+move can make under which the certificate fails (72 per frame before restricting to reachable changes, 3.3 after). The
+REVERSE LOOKUP lists, for each move, the frames it ARMS (ours, certified on the null move), HANDS them, or DEFUSES (one
+of their active frames' breakers). FramePool keeps frames across a game; reuse by footprint was audited stale on 4.0% of
+statuses (occupancy only), then 1.0% (occupancy and attack changes, six missed tactics) for 14% of the work saved -- so
+the pool recomputes everything by default. Per-thread node budget, so the condition searches use every core.
+OBS the castling position: Ne7+ waits on our rook or queen on d1-d4 or d6 (or a queen on e8); the reverse lookup proposes
+exactly Rd1 and O-O-O (both arm Ne7+, certified mate); after O-O-O the mate is active, its breakers include Black freeing
+c7, and 14 Black moves defuse it (c6, c5, b6, b5, Nd3+, Nc6, the knight moves to d7 / f7 / e6 / h7, Rd6, Rd7, Re8);
+Nxf3 is not among them.
+OBS 60 games of c300 (5,017 positions, 49,644 frame evaluations, 5.3 s a position on one core): 989 frames turned active
+for the side to move. Before that they were: created by the opponent's last move (a walk-in) 59% (468 piece tactics,
+120 checks); already a threat the opponent left (active on the null move) 20%; waiting with the condition met by the
+opponent's move 10%; far 10%. Lead when first seen waiting: median 2-3 plies (max 56). A waiting frame's condition came
+true 470 times; the frame then held 47 times (10%), stayed dormant 113, went far 22, and its seed vanished 288 times
+(mostly the seed piece moved -- the met-by-own-move and met-by-their-move cases are not yet separated). BASE RATES (the
+counting table for the policy over conditions), dormant frames active within 2 / 4 / 8 plies: check 1 / 1 / 1%,
+cornered piece 6 / 8 / 10%, fork 7 / 10 / 11%, single threat 7 / 9 / 11%, trapped piece 3 / 8 / 9% (37 frames).
+Directional, one run.
+
+ATTENTION (Kaveh: "when I see the board I can immediately see where the action is by looking at who is attacking
+where"; `catspace/incubator/analyst/attention.py`, Python prototype for the measurement): hot squares from the attack map
+-- contested pieces (attacked and undefended, by something cheaper, or more often than defended), loose pieces, a king
+zone with two or more squares attacked, the squares whose attackers the last move changed -- dilated 0-2 king steps; a
+frame is in the action when its focus or its seed's destination is hot. OBS on the 60 games (989 tactics; 41,801 far,
+8,720 dormant frame evaluations): no filter keeps most tactics while skipping much work -- contested+loose+king at one
+step keeps 86% of the tactics and 71% of the far frames; with the changed squares, 97% and 93%. Graded score (signals
+near the frame, nearer counting more): ranking quality (AUC) 0.630 against every other frame, 0.651 against far frames;
+the top half of frames by score holds 64% of the tactics. On two games it was 0.532 (27 tactics). Reading: the seeds
+already come from attacks (the rule layer matches who attacks what), so the map adds a weak ordering, not a cut; most
+tactics are created by the opponent's last move, which only the changed squares see.
