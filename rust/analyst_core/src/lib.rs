@@ -692,12 +692,18 @@ fn target_moves(fen: String, sq: String) -> PyResult<Vec<(String, i64, bool, boo
         reach.into_iter().filter(|s| b.attacks_to(*s, us, b.occupied()).any()).count() as u32
     };
     let before = frame(&pos);
+    let att = |q: &Chess| q.board().attacks_to(t, us, q.board().occupied()).count();
+    let att0 = att(&pos);
+    let esc0 = safe_escapes(&pos, us, t);
     let mut out = Vec::new();
     for m in pos.legal_moves() {
         let q = after(&pos, &m);
         let takes = m.to() == t;
         if !takes && q.board().piece_at(t).map_or(true, |p| p.color == us) { continue; }
-        if !takes && frame(&q) <= before { continue; }
+        // a move matters if it ADDS AN ATTACKER on the target, TAKES AWAY a safe escape, or widens our coverage of its
+        // frame (bug 2026-10-08: coverage alone missed 44 of 52 misses -- a bishop stepping from h6 to g5 to hit the
+        // queen gives up the squares it covered from h6, so the count did not rise)
+        if !takes && att(&q) <= att0 && safe_escapes(&q, us, t) >= esc0 && frame(&q) <= before { continue; }
         let attacks = takes || q.board().attacks_to(t, us, q.board().occupied()).any();
         let e = if takes { -1 } else { safe_escapes(&q, us, t) };
         out.push((m.to_uci(CastlingMode::Standard).to_string(), e, attacks, q.is_check()));

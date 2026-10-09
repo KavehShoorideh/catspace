@@ -28042,3 +28042,22 @@ queen g8 (7 escapes, undefended, on the edge): Bb7 certified +3; why not Ba6 / B
 (the scan-everything chooser: about 22 s). OBS as the chooser on 150 trapped-piece puzzles: solved 65%, answered 77%;
 median 2.2 s, 90th 6.6 s, max 12.9 s (the scan-everything frame valuer: 90% found, about 22 s a position). Next: dig
 the reasoner's misses (answered wrong 12%, unanswered 23%).
+
+## 2026-10-08 22:53 PDT — digging the reasoner's misses: three bugs, then 95% on the dug set and 80-93% held out
+
+Kaveh: dig. A classifier per miss (the solution's real target = the first piece the solver wins in the line, traced
+back): GENERATION (the solution is not among the moves that matter to its target), CERTIFICATE (generated, not
+certified), ORDER (certified, the reasoner chose otherwise), BUDGET. OBS 52 misses of 150: generation 44. BUG 1: a move
+"mattered" only if it widened our coverage of the target's frame -- a bishop stepping h6-g5 to hit the queen gives up
+what it covered from h6, so the count stayed flat; now it matters if it adds an attacker on the target, takes away a
+safe escape, or widens coverage -> 20 misses. BUG 2: the first-pass budget (200k nodes) sat just under what 4-ply
+certificates need (about 30 ms, 240k nodes): seven "certificate" misses certify at 4 plies with 2M (07qvG Bd2 +6, 0ZNxU
+Qxb2 +5, 0AogE Ra8 +4, 0PsUh Rf6 +4, 00kSx Ne5 +3, 0FfNo Qc7 +2, 0LzKm h5 +1), and a search that ran out at 4 plies was
+deepened to 6, where it explodes; now 2M first, deepen only a search that finished short. BUG 3 (a design gap): the
+first certified target ended the search, but a target worth v cannot yield more than v -- 0ZLzT and 0jyzC stopped at +1
+/ +2 on the queen when a lesser target gave +4 / +5; now targets go on while the next one's value exceeds the best gain.
+ADDED: a check first, then the chase (0t58R Nd6+, 0k5nO Nf6+). OBS on the dug 150 trapped-piece puzzles: solved 65% ->
+95%, answered 96%; median 3.3 s, 90th 10.5 s, max 21 s. HELD OUT (offset 5, 60 per theme, none dug): trapped piece 92%,
+fork 93%, hanging piece 92%, discovered attack 88%, pin 80%, quiet move 27% (the planner's); medians 0.9-3.5 s, the tail
+to 35 s. Left on the dug set: a pawn ending (0dy3X: the promotion frame inside chains), two-step quiet setups (0n7Ar,
+0vh85), a tempo decision (0nRuL), a king prophylaxis (0YOB0).

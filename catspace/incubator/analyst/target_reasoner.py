@@ -26,7 +26,7 @@ import time
 import chess
 
 MATE = 50
-FIRST, DEEP = 200_000, 1_500_000
+FIRST, DEEP = 2_000_000, 1_500_000   # (2026-10-08: 200k was just under what 4-ply certificates need -- about 30 ms each)
 
 
 def _their_threat(b: chess.Board) -> int:
@@ -54,6 +54,9 @@ def reason(b: chess.Board, plies: int = 4, max_cands: int = 8) -> dict:
     targets.sort(key=lambda x: (-x[0], -x[1]))
     best = None
     for value, prior, sq, (v, esc, att, dfd, edge) in targets:
+        if best is not None and value <= best[1]:
+            trace.append(f"stop: the next target is worth {value}, not more than the +{best[1]} found")
+            break
         name = f"{chess.piece_name(b.piece_at(sq).piece_type)} {chess.square_name(sq)}"
         cands = analyst_core.target_moves(fen, chess.square_name(sq))
         if b.piece_at(sq).piece_type == chess.KING:
@@ -74,22 +77,27 @@ def reason(b: chess.Board, plies: int = 4, max_cands: int = 8) -> dict:
                      f"{len(cands)} moves matter to it")
         bigger = [c for c in cands if c[2] and c[3]]                  # method A: attack it AND give check
         chase = [c for c in cands if c not in bigger]                 # method B: the chase
+        listed = {c[0] for c in cands}                                # method C: a check first, then the chase (2026-10-08,
+        forcing = [(m.uci(), 99, False, True) for m in b.legal_moves  # 0t58R Nd6+, 0k5nO Nf6+: the check touches nothing yet)
+                   if m.uci() not in listed and b.gives_check(m)]
         found = None
-        for method, group in (("a bigger threat at the same time (check)", bigger), ("the chase", chase)):
+        for method, group in (("a bigger threat at the same time (check)", bigger), ("the chase", chase), ("a check first, then the chase", forcing)):
             for uci, e_left, attacks, check in group[:max_cands]:
                 g = analyst_core.certified_gain(fen, uci, [chess.square_name(sq)], plies, FIRST)
-                if g is None or g < goal:
-                    g2 = analyst_core.certified_gain(fen, uci, [chess.square_name(sq)], plies + 2, DEEP)
-                    g = g2 if g2 is not None else g
+                if g is not None and g < goal:                         # deepen only a search that FINISHED short (one
+                    g2 = analyst_core.certified_gain(fen, uci, [chess.square_name(sq)], plies + 2, DEEP)   # that ran out
+                    g = g2 if g2 is not None else g                    # at 4 plies runs out at 6)
                 m = chess.Move.from_uci(uci)
                 trace.append(f"    {method}: {b.san(m)} (escapes left {e_left}) -> certified {g if g is not None else 'budget'}")
                 if g is not None and g >= goal and (found is None or g > found[1]):
                     found = (m, g, method)
             if found:
                 break
-        if found:
+        if found and (best is None or found[1] > best[1]):
             best = (found[0], found[1], name, found[2])
-            break
+    # (targets are tried from the most valuable down; the search goes on while the NEXT target's value could beat the
+    # best gain found -- a target worth v cannot yield more than v. 2026-10-08, 0ZLzT / 0jyzC: the first target gave +1
+    # / +2, a lesser target +4 / +5)
     threat = _their_threat(b)
     out = dict(move=best[0] if best else None, gain=best[1] if best else 0, target=best[2] if best else None,
                method=best[3] if best else None, their_threat=threat, trace=trace)

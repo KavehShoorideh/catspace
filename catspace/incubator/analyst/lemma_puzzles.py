@@ -189,13 +189,14 @@ def _reasoned(args) -> dict:
                 answered=r["move"] is not None, ms=r["ms"], target=r["target"], gain=r["gain"])
 
 
-def reasoner_coverage(per_theme: int, only: str | None) -> None:
+def reasoner_coverage(per_theme: int, only: str | None, offset: int = 3) -> None:
     """The target-first reasoner as the move chooser: its move equals the puzzle's first move (solved), it gave a
     certified move at all (answered), and its time per puzzle."""
     import statistics
     from multiprocessing import Pool
-    rows = collect(per_theme)
-    jobs = [(t, r) for t, rs in rows.items() for r in rs if only is None or t == only]
+    rows = collect(per_theme, offset=offset)
+    keep = set(only.split(",")) if only else None
+    jobs = [(t, r) for t, rs in rows.items() for r in rs if keep is None or t in keep]
     with Pool(max(1, (os.cpu_count() or 2) - 1)) as pool:
         recs = list(pool.imap_unordered(_reasoned, jobs, chunksize=2))
     by = defaultdict(list)
@@ -213,9 +214,10 @@ def main(argv=None):
     ap.add_argument("--per-theme", type=int, default=150)
     ap.add_argument("--theme", default=None)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--offset", type=int, default=3)
     a = ap.parse_args(argv)
     if a.cmd == "reasoner":
-        reasoner_coverage(a.per_theme, a.theme)
+        reasoner_coverage(a.per_theme, a.theme, a.offset)
     elif a.cmd == "dig":
         dig(a.theme or "trappedPiece", a.per_theme, a.out)
     else:
