@@ -11,3 +11,4 @@ crate-type = ["cdylib"]
 ascent = "0.8.1"
 pyo3 = { version = "0.25", features = ["extension-module"] }
 shakmaty = "0.27"
+tract-onnx = "0.23.8"

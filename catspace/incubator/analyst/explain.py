@@ -181,6 +181,21 @@ MAIA_BAND = 1500
 _MAIA = {}
 
 
+def _close_maia():
+    """Quit the Maia engines at exit (bug 2026-10-09: an unclosed SimpleEngine keeps its background thread alive and
+    the process never exits -- every script that asked Maia appeared to hang after finishing)."""
+    for eng in list(_MAIA.values()):
+        try:
+            eng.quit()
+        except Exception:
+            pass
+    _MAIA.clear()
+
+
+import atexit as _atexit
+_atexit.register(_close_maia)
+
+
 def maia_policy(b: chess.Board, band: int = MAIA_BAND) -> dict:
     """Maia's move probabilities for the side to move (lc0 with the Maia weights, one node: the policy head) -- how
     HUMAN a move looks at that rating band. -> {uci: probability}."""

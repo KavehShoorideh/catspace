@@ -4,6 +4,7 @@
 //! comes from shakmaty (import, don't reinvent). Nothing here knows what a lemma is.
 use pyo3::prelude::*;
 mod rules;
+mod maia;
 use std::sync::atomic::{AtomicU64, Ordering};
 static NODES: AtomicU64 = AtomicU64::new(0);
 use shakmaty::{fen::Fen, CastlingMode, Chess, Color, FromSetup, Move, Position, Role, Square, Piece};
@@ -770,6 +771,47 @@ fn fact_pool(fen: String) -> PyResult<(Vec<(usize, String, String, i64, bool, Ve
     Ok((strip(ours), strip(theirs), inter))
 }
 
+/// maia_policy(fen, model_path, temp) -> [(uci, probability)] -- Maia's move probabilities, in Rust (src/maia.rs).
+#[pyfunction]
+fn maia_policy(fen: String, model_path: String, temp: f32) -> PyResult<Vec<(String, f32)>> {
+    let Some(pos) = parse(&fen) else { return Ok(vec![]) };
+    maia::policy(&pos, &model_path, temp).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
+}
+
+/// frame_outs(fen, our uci, maia model path, temp, top, clock) -> [(reply uci, probability, outcome)]: THE OUTS OF A
+/// FRAME (Kaveh 2026-10-09): after our move, each reply of the opponent with Maia's probability for it (the model is
+/// the opponent's rating band) and its OUTCOME for us -- the material the reply takes, net of the largest gain we can
+/// then CERTIFY (threat_claims' settled certificates; a mate counts 50, being mated -50). `clock` is the opponent's
+/// remaining time, accepted and not used yet (the slot for a time-conditioned policy).
+#[pyfunction]
+#[pyo3(signature = (fen, uci, model_path, temp=1.0, top=12, clock=None))]
+fn frame_outs(fen: String, uci: String, model_path: String, temp: f32, top: usize, clock: Option<f32>) -> PyResult<Vec<(String, f32, i64)>> {
+    let _ = clock;
+    let Some(pos) = parse(&fen) else { return Ok(vec![]) };
+    let Ok(u) = uci.parse::<shakmaty::uci::UciMove>() else { return Ok(vec![]) };
+    let Ok(m) = u.to_move(&pos) else { return Ok(vec![]) };
+    let us = pos.turn();
+    let q = after(&pos, &m);
+    if q.is_game_over() { return Ok(vec![]); }
+    let mut pol = maia::policy(&q, &model_path, temp).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
+    pol.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    let mut out = Vec::new();
+    for (ru, p) in pol.into_iter().take(top) {
+        let Ok(r) = ru.parse::<shakmaty::uci::UciMove>().and_then(|x| Ok(x)) else { continue };
+        let Ok(rm) = r.to_move(&q) else { continue };
+        let taken = rm.capture().map(kernel_value).unwrap_or(0);
+        let q2 = after(&q, &rm);
+        let outcome = if q2.is_checkmate() { -50 } else {
+            let f = Fen::from_position(q2.clone(), shakmaty::EnPassantMode::Legal).to_string();
+            let best = threat_claims(f)?.into_iter().filter(|c| c.5).map(|c| c.2.min(50)).max().unwrap_or(0);
+            best - taken
+        };
+        let _ = us;
+        out.push((ru, p, outcome));
+    }
+    Ok(out)
+}
+
 /// best_reply(fen, uci, focus, plies, budget) -> [(their reply, the value it holds us to)], best for them first: WHY a
 /// claim is not certified -- the refutation, to be named (Kaveh 2026-10-08: "Ba6 would not have worked because the
 /// rook would be hanging").
@@ -952,5 +994,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(target_profile, m)?)?;
     m.add_function(wrap_pyfunction!(target_moves, m)?)?;
     m.add_function(wrap_pyfunction!(fact_pool, m)?)?;
+    m.add_function(wrap_pyfunction!(maia_policy, m)?)?;
+    m.add_function(wrap_pyfunction!(frame_outs, m)?)?;
     Ok(())
 }

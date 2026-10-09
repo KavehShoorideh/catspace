@@ -28085,3 +28085,24 @@ frame, and the interactions (answers: our move touches their frame, makes their 
 square in both frames); `fact_pool.choose`: our gain minus their largest SURVIVING claim. OBS against the reasoner on
 the same puzzles: defensive 35% vs 50%, fork 90% vs 90%, intermezzo 75% vs 80% -- faster, less complete: the pool's
 claims come from the narrower claim generator; next, the target-first reasoning for both sides fills the pool.
+
+## 2026-10-09 10:10 PDT — Kaveh's castling trap: the frame's outs, with Maia in Rust
+
+Kaveh's position (2kr1n1r/ppp3p1/6p1/3Nn1Pp/5N1P/P3PP2/1PP5/R3K2R w KQ): Black threatens ...Nxf3+; a knight check
+alone leads nowhere; O-O-O alone does nothing; but O-O-O ARMS a discovered check -- if Black takes the pawn, Ne7+ Kb8
+Rxd8# (Stockfish confirms: +99.98 after O-O-O Nxf3). The joined frame has several outs; one has a non-negligible
+probability. OBS Stockfish against best defence: O-O-O +1.97, Ke2 +2.70 (the trap costs about 0.7). Our reasoner played
+Rh3: castling attacks nothing, so target-first generation never sees an ARMING move (the latent tactic one condition
+away) -- open: latent tactics with their missing condition, arming moves by regression from the target, a
+reply-conditioned value.
+MAIA IN RUST (Kaveh: everything in a frame or tactical calculation in Rust): the nine Maia bands (1100-1900) converted
+with `lc0 leela2onnx`, run with tract (pure-Rust ONNX), lc0's classical 112-plane encoding, lc0's own policy table
+extracted from its --verbose-move-stats output (1858 entries; eight gaps filled by the table's ordering; knight
+promotion = the plain move; castling = king takes own rook). BRIDGE against lc0's printed probabilities, 204 positions,
+bands 1100 and 1900: same top move 203/204 at both; the residual two are first-move openings (lc0's history handling
+there not pinned down); 0.4 ms a position. Bugs found by the bridge: castling notation, knight-promotion keys, history
+fill (no fill at the starting position; the pre-double-step position for en passant). Also: the Python maia_policy uses
+lc0's default policy temperature 1.359 (flattened probabilities) and never closed its engines (scripts hung at exit --
+fixed with atexit). THE OUTS (`analyst_core.frame_outs`, the clock slot reserved): after O-O-O, Maia 1100-1900 plays
+Nxf3?? 50-74% (walks into mate), c6 11-31% (defuses); after Ke2 or Rh3 nothing walks in (0-1%). 2.4-6.7 s per move's
+outs (the claims after each reply dominate).
