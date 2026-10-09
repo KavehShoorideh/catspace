@@ -32,6 +32,8 @@ def summarize(b: chess.Board, m: chess.Move, band: int | None, depth: int = 3) -
         bb = b.copy(); out_ = []
         for step in path:
             u = step.split()[0]
+            if u.startswith("("):                                     # a note, not a move
+                out_.append(step); continue
             mv = chess.Move.from_uci(u)
             note = step[len(u):].strip()
             out_.append(bb.san(mv) + (f" {note}" if note else "")); bb.push(mv)

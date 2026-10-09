@@ -28167,3 +28167,15 @@ and certifies less than claimed in 17 (4.6%); the exact search costs 14 ms a cla
 is OFF by default (`set_exact`). With exact replies, held-out puzzles hold: fork 88%, pin 85%, trapped piece 90% (root
 times up: medians 5-12 s). OPEN: the perfect-opponent line after Ke2 still strings certified claims into a -4 -- being
 traced (the leaf's resolution, or the claim's promise not cashed before re-branching).
+
+## 2026-10-09 11:59 PDT — the tree traced: the certificates were sound, the tree did not cash them in; now 2-400 ms a tree
+
+The losing perfect-opponent line after Ke2 traced claim by claim: at every white node the 4-ply certificate held (+3
+at Rhd1, +3 at Nf5) and the opponent's best reply by it left us +3 -- the TREE lost the material: after Nf5 (fork +3)
+Nxf5 the recapture creates no new threat, so it is never a claim, and the tree followed a new +1 claim instead of taking
+the +3 it was promised. Fix: at our node the captures on the board are resolved first, and a claim is followed only
+when its certified gain beats cashing in. OBS the castling position, all twelve trees: O-O-O P(mate) 75 / 80 / 60%
+vs Maia-1100 / 1500 / 1900, nothing 15 / 11 / 27%; vs a perfect opponent +0 (c6); Ke2 and Rh3: no mate at any band,
+"win less than a piece" 25-53%, nothing otherwise, +0 against perfect -- consistent with Stockfish (Ke2 +2.7, O-O-O
++2.0 against best play, the difference positional). Times: 2-391 ms a tree (the cold ones a few hundred ms; the claim
+cache warms across bands) -- from 7 s before the breakdown.

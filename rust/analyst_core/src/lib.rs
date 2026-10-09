@@ -903,13 +903,15 @@ fn our_node(q: &Chess, us: Color, model_path: &str, mass: f32, mat: f32, path: V
     if q.is_game_over() { return Ok(vec![(1.0, if q.is_checkmate() { -MATE_V } else { mat }, path)]); }
     // no lemma applies: the frame has dissolved -- but the remaining CAPTURES are resolved (either side free to stop),
     // not left as raw material (bug 2026-10-09: ...Rxd5 counted -3 with Nxd5 winning the rook back)
-    let dissolved = |path: Vec<String>| -> Vec<(f32, f32, Vec<String>)> {
-        BUDGET.store(200_000, Ordering::Relaxed);
-        let v = settle_d(q, -2000, 2000, true, SETTLE_DEPTH) as f32;
-        BUDGET.store(u64::MAX, Ordering::Relaxed);
-        vec![(1.0, mat + v, path)]
-    };
+    BUDGET.store(200_000, Ordering::Relaxed);
+    let cash = settle_d(q, -2000, 2000, true, SETTLE_DEPTH) as f32;    // what the captures on the board are worth now
+    BUDGET.store(u64::MAX, Ordering::Relaxed);
+    let dissolved = |path: Vec<String>| -> Vec<(f32, f32, Vec<String>)> { vec![(1.0, mat + cash, path)] };
+    // CASH IN FIRST (bug 2026-10-09, the Ke2 line: after Nf5 (fork +3) Nxf5 the recapture creates no new threat, so it
+    // is never a claim -- the tree chose a new +1 claim and never took the +3 it was promised): a claim is followed
+    // only when its certified gain beats resolving the captures already on the board
     let Some((u, k, name)) = best_claim(q)? else { return Ok(dissolved(path)) };
+    if (k as f32) <= cash && k < 50 { let mut p = path; p.push(format!("(captures resolved {cash:+})")); return Ok(dissolved(p)); }
     if k >= 50 { let mut p = path; p.push(format!("{u} ({name}: mate)")); return Ok(vec![(1.0, MATE_V, p)]); }
     let Ok(m) = u.parse::<shakmaty::uci::UciMove>().and_then(|x| Ok(x)) else { return Ok(dissolved(path)) };
     let Ok(m) = m.to_move(q) else { return Ok(dissolved(path)) };
