@@ -227,6 +227,67 @@ fn local_check_pos(p: &Chess, m: &Move, k: i64) -> bool {
     })
 }
 
+// THE FRAME-SIZED CERTIFICATE (Kaveh 2026-10-08: "instead of a fixed ply depth ... reevaluate after one piece is gone,
+// the frame is smaller ... if the size of the frame is six, you need at least six move depths"): the same three plies as
+// localCheck, but the leaf is not raw material: the capture frames that remain are RESOLVED -- a captures-only search
+// where either side may stop (`settle`); every capture removes a piece, so it ends when the frames are exhausted, at a
+// depth set by their size, not a fixed horizon. Claim: we can force material >= start + k at the moment the capture
+// sequence ends. A Lean theorem for this form is still to be written (status: certified in Rust).
+
+/// The side to move's best net material gain from captures alone, either side free to stop: negamax alpha-beta with
+/// stand-pat, most valuable victim first (bug 2026-10-08: the first version gave every child the full window -- no
+/// pruning at all -- and did not return).
+fn settle(pos: &Chess, mut alpha: i64, beta: i64) -> i64 {
+    NODES.fetch_add(1, Ordering::Relaxed);
+    if 0 >= beta { return 0; }                                     // standing pat already refutes the window
+    if 0 > alpha { alpha = 0; }
+    let mut caps: Vec<Move> = pos.legal_moves().into_iter().filter(|m| m.is_capture()).collect();
+    caps.sort_by_key(|m| -(m.capture().map(kernel_value).unwrap_or(0)));
+    for m in caps {
+        let g = m.capture().map(kernel_value).unwrap_or(0) + if m.is_promotion() { 8 } else { 0 };
+        let q = after(pos, &m);
+        let v = if q.is_checkmate() { 1000 } else { g - settle(&q, g - beta, g - alpha) };
+        if v > alpha {
+            alpha = v;
+            if alpha >= beta { return alpha; }
+        }
+    }
+    alpha
+}
+
+fn holds_after_every_reply_settled(q: &Chess, side: Color, target: i64) -> bool {
+    NODES.fetch_add(1, Ordering::Relaxed);
+    let ms = q.legal_moves();
+    if ms.is_empty() { return q.is_check(); }
+    ms.iter().all(|r| {
+        let q4 = after(q, r);
+        if q4.is_checkmate() { return false; }                       // they mated us
+        let need = target - kernel_material(&q4, side);
+        need <= 0 || settle(&q4, need - 1, need) >= need          // a null window: only "at least the target" is asked
+    })
+}
+
+fn local_check_frames_pos(p: &Chess, m: &Move, k: i64) -> bool {
+    let c = p.turn();
+    let target = kernel_material(p, c) + k;
+    let q = after(p, m);
+    let replies = q.legal_moves();
+    if replies.is_empty() { return q.is_check(); }
+    replies.iter().all(|r| {
+        let q2 = after(&q, r);
+        answers(&q2).iter().any(|m2| holds_after_every_reply_settled(&after(&q2, m2), c, target))
+    })
+}
+
+/// local_check_frames(fen, uci, k) -> Option<bool>: the frame-sized certificate.
+#[pyfunction]
+fn local_check_frames(fen: String, uci: String, k: i64) -> PyResult<Option<bool>> {
+    let Some(pos) = parse(&fen) else { return Ok(None) };
+    let Ok(u) = uci.parse::<shakmaty::uci::UciMove>() else { return Ok(None) };
+    let Ok(m) = u.to_move(&pos) else { return Ok(None) };
+    Ok(Some(local_check_frames_pos(&pos, &m, k)))
+}
+
 /// local_check(fen, uci, k) -> Option<bool> (None: bad FEN or an illegal move)
 #[pyfunction]
 fn local_check(fen: String, uci: String, k: i64) -> PyResult<Option<bool>> {
@@ -244,7 +305,7 @@ fn mate_in_one(pos: &Chess) -> bool {
 /// CREATED by the rule layer (rules.rs), named (fork / fork with check / cornered piece / mate threat / promotion) and
 /// decided by the kernel's certificate (`local_check_pos`, mirrored from Fork.lean, bridge-tested against Lean).
 #[pyfunction]
-fn threat_claims(fen: String) -> PyResult<Vec<(String, String, i64, bool, Vec<String>)>> {
+fn threat_claims(fen: String) -> PyResult<Vec<(String, String, i64, bool, Vec<String>, bool)>> {
     let Some(pos) = parse(&fen) else { return Ok(vec![]) };
     let us = pos.turn();
     let before = rules::threats_of(&pos, us);
@@ -260,7 +321,8 @@ fn threat_claims(fen: String) -> PyResult<Vec<(String, String, i64, bool, Vec<St
         let names: Vec<String> = new.iter().map(|(t, _)| rules::square_name(*t)).collect();
         let mut claim = |name: &str, k: i64, targets: Vec<String>| {
             let cert = local_check_pos(&pos, &m, k);
-            out.push((uci.clone(), name.to_string(), k, cert, targets));
+            let framed = cert || local_check_frames_pos(&pos, &m, k);
+            out.push((uci.clone(), name.to_string(), k, cert, targets, framed));
         };
         if new.len() >= 2 {
             claim("fork", new[1].1, names.clone());
@@ -297,5 +359,6 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(local_check, m)?)?;
     m.add_function(wrap_pyfunction!(local_check_many, m)?)?;
     m.add_function(wrap_pyfunction!(threat_claims, m)?)?;
+    m.add_function(wrap_pyfunction!(local_check_frames, m)?)?;
     Ok(())
 }

@@ -27924,3 +27924,28 @@ leaves -- "certified modulo the frame's stand-pat", a new status until proved). 
 asked for was drafted (the state as the least fixed point of rules over base facts; lemmas as soundness theorems;
 frames as conditional, one-sided abstractions; search as proof; memory as assumption-based truth maintenance; lemma
 learning as variance reduction on the induced partition); kept outside the repo for his review.
+
+## 2026-10-08 17:06 PDT — the lemmas against annotated puzzles; a frame-sized certificate (depth from the frames, not a fixed ply)
+
+Kaveh: "use annotated chess data sources"; and "instead of a fixed ply depth, re-evaluate after one piece is gone --
+the remaining frames are smaller ... the size of the frame says how many plies". BUILT: (1) `lemma_puzzles.py` -- the
+Lichess puzzle themes as named ground truth: 26 themes x 150 puzzles (one pass over the 6.1M file, rows disjoint from
+the earlier benchmarks); the solution's first move checked for claims, certificates, and whether our lemma frames FIND
+it. A FAKE MEASUREMENT caught first: "within half a pawn of the best" counted every move when the frames saw nothing
+(all tie at 0); found now requires a top set of at most 2 moves (median top-set size printed). (2) The FRAME-SIZED
+CERTIFICATE (`analyst_core.local_check_frames`): localCheck's three plies, then the remaining capture frames resolved at
+the leaf by a captures-only search where either side may stop -- each capture removes a piece, so its depth is the
+frames' size. Claim: material >= start + k at the moment the capture sequence ends; sound for that claim by
+construction (every reply, a subset of our moves -- the structure of localCheck_sound); the Lean theorem is still to be
+written. A bug caught: the first leaf search passed every child the full window (no pruning) and did not return; now a
+null window ("at least the target"). OBS the three quiet forks the three-ply certificate refused (Ne2, b5, f6):
+certified at +2 by the frame-sized one, about 1 ms each. A Stockfish "audit" was discarded as invalid: it compared with
+the best move's value, so any non-best move counted as a loss.
+OBS puzzles (found = in a top set of at most 2; certified three-ply / frame-sized): fork 93% (29% / 51%); discovered
+attack 93% (11 / 27); intermezzo 88% (27 / 35); x-ray 88% (17 / 27); capturing the defender 85% (19 / 49);
+interference 85% (8 / 23); deflection 82%; skewer 81%; pin 66% (11 / 21); promotion 59%; defensive move 57%;
+clearance 54%; advanced pawn 51%; zugzwang 42%; trapped piece 31% (4 / 17, matched only 65%); quiet move 24%; the mate
+themes 99-100% (mostly by the frame's own checks). The weak themes are the frames Kaveh named as missing: CORNERING
+(trapped piece: matched, but trapping takes quiet moves the certificate does not search), PROMOTION (the proved passer
+lemmas are not yet claims), and the quiet / zugzwang themes outside material frames. A naming bug: a checking move whose
+certificate holds by mating is named "fork with check", not a mate threat.

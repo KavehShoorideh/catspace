@@ -123,6 +123,8 @@ def local_check(b: chess.Board, m: chess.Move, k: int) -> bool:
 
 
 _RUST: dict = {}                                            # fen -> {uci: certified gain}: the rule layer's conclusions, once
+FRAMED = __import__("os").environ.get("CATSPACE_FRAMED_CERT", "") == "1"   # also accept the frame-sized certificate
+                                                            # (captures resolved at the leaf; Rust-certified, theorem to write)
 
 
 def rust_gains(b: chess.Board) -> dict | None:
@@ -138,8 +140,8 @@ def rust_gains(b: chess.Board) -> dict | None:
     except Exception:
         return None
     out: dict = {}
-    for uci, name, k, cert, _ in rows:
-        if cert:
+    for uci, name, k, cert, _, framed in rows:
+        if cert or (FRAMED and framed):
             out[uci] = max(out.get(uci, 0), k)
     _RUST[fen] = out
     return out
