@@ -182,9 +182,14 @@ def dig(theme: str, per_theme: int = 150, path: str | None = None) -> None:
 
 def _reasoned(args) -> dict:
     theme, row = args
-    from .target_reasoner import reason
     b = chess.Board(row["FEN"]); mv = row["Moves"].split(); b.push_uci(mv[0])
-    r = reason(b)
+    if os.environ.get("CATSPACE_CHOOSER") == "pool":
+        from .fact_pool import choose
+        c = choose(b)
+        r = dict(move=c["move"] if c["net"] > 0 or c["their_claims"] else None, ms=c["ms"], target=None, gain=c["net"])
+    else:
+        from .target_reasoner import reason
+        r = reason(b)
     return dict(theme=theme, id=row["PuzzleId"], solved=r["move"] is not None and r["move"].uci() == mv[1],
                 answered=r["move"] is not None, ms=r["ms"], target=r["target"], gain=r["gain"],
                 defended=bool(r.get("defend_first")), move=b.san(r["move"]) if r["move"] else None, sol=b.san(chess.Move.from_uci(mv[1])),

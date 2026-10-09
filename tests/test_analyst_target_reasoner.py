@@ -9,3 +9,11 @@ def test_npe0_the_queen_is_chased_into_the_corner():
     r = reason(b)
     assert r["move"] == b.parse_san("Bb7") and r["target"] == "queen g8" and r["gain"] >= 3
     assert any("why not Ba6: Qxa8" in t for t in r["trace"]) and any("skip" in t for t in r["trace"] if t.startswith("king"))
+
+
+def test_the_fact_pool_holds_both_sides_claims():
+    import analyst_core
+    b = chess.Board("r1b3Q1/p3kp1p/1p2p1p1/4q3/8/2n1B2P/P4PP1/R3KB1R w KQ - 0 20"); b.push_uci("a1c1")
+    ours, theirs, inter = analyst_core.fact_pool(b.fen())
+    assert any(c[1] == b.parse_san("Bb7").uci() and c[4] for c in ours)        # our certified claim is in the pool
+    assert theirs and inter                                                     # theirs too, and the interactions

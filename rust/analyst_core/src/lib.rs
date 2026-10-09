@@ -712,6 +712,64 @@ fn target_moves(fen: String, sq: String) -> PyResult<Vec<(String, i64, bool, boo
     Ok(out)
 }
 
+// ONE POOL OF FACTS FOR BOTH SIDES (Kaveh 2026-10-09: "one common pool of facts and reasons and lemmas that apply both
+// to us and to them -- not two parallel independent runs; there are interactions between the reasons we find for us
+// and the reasons we find for them"). The pool holds, for each side, its CLAIMS (what each of its moves creates,
+// certified or matched -- ours on the real position, theirs on the null-move position: their reasons were we to pass),
+// each with its FRAME (the squares it uses: its move's squares and its targets); and the INTERACTIONS between our
+// claims and theirs, derived from shared frames:
+//   answers     our move touches their claim's frame -- it moves or takes a piece of it, lands on or blocks one of its
+//               squares, or makes their claimed move illegal (a capture of the attacker, a bigger threat with check)
+//   shares      a square in both frames: a piece that is our target and their attacker, or theirs and ours (overload)
+
+fn claim_frame(pos: &Chess, m: &Move, targets: &[String]) -> shakmaty::Bitboard {
+    let mut z = shakmaty::Bitboard::EMPTY;
+    if let Some(f) = m.from() { z.add(f); }
+    z.add(m.to());
+    for t in targets.iter().filter_map(|s| s.parse::<Square>().ok()) {
+        z.add(t);
+        z |= shakmaty::attacks::between(m.to(), t);
+    }
+    let _ = pos;
+    z
+}
+
+/// fact_pool(fen) -> (our claims, their claims, interactions): claims (index, uci, name, k, certified, frame squares);
+/// interactions (our index, their index, kind).
+#[pyfunction]
+fn fact_pool(fen: String) -> PyResult<(Vec<(usize, String, String, i64, bool, Vec<String>)>, Vec<(usize, String, String, i64, bool, Vec<String>)>, Vec<(usize, usize, String)>)> {
+    let Some(pos) = parse(&fen) else { return Ok((vec![], vec![], vec![])) };
+    let ours_raw = threat_claims(fen.clone())?;
+    let passed = pos.clone().swap_turn().ok();
+    let theirs_raw = match &passed {
+        Some(p) => threat_claims(Fen::from_position(p.clone(), shakmaty::EnPassantMode::Legal).to_string())?,
+        None => vec![],
+    };
+    let mk = |pp: &Chess, rows: Vec<(String, String, i64, bool, Vec<String>, bool)>| -> Vec<(usize, String, String, i64, bool, Vec<String>, shakmaty::Bitboard)> {
+        rows.into_iter().enumerate().filter_map(|(i, (u, n, k, c, t, fr))| {
+            let m = u.parse::<shakmaty::uci::UciMove>().ok()?.to_move(pp).ok()?;
+            let z = claim_frame(pp, &m, &t);
+            Some((i, u, n, k, c || fr, z.into_iter().map(|s| s.to_string()).collect(), z))
+        }).collect()
+    };
+    let ours = mk(&pos, ours_raw);
+    let theirs = match &passed { Some(p) => mk(p, theirs_raw), None => vec![] };
+    let mut inter = Vec::new();
+    for (i, u, _, _, _, _, zo) in ours.iter() {
+        let Ok(m) = u.parse::<shakmaty::uci::UciMove>().and_then(|x| Ok(x)) else { continue };
+        let Ok(mm) = m.to_move(&pos) else { continue };
+        let after_m = after(&pos, &mm);
+        for (j, ut, _, _, _, _, zt) in theirs.iter() {
+            let touches = mm.from().map_or(false, |f| zt.contains(f)) || zt.contains(mm.to());
+            let illegal = ut.parse::<shakmaty::uci::UciMove>().ok().and_then(|x| x.to_move(&after_m).ok()).is_none();
+            if touches || illegal || after_m.is_check() { inter.push((*i, *j, "answers".to_string())); }
+            if (*zo & *zt).any() { inter.push((*i, *j, "shares".to_string())); }
+        }
+    }
+    let strip = |v: Vec<(usize, String, String, i64, bool, Vec<String>, shakmaty::Bitboard)>| v.into_iter().map(|(a, b, c, d, e, f, _)| (a, b, c, d, e, f)).collect();
+    Ok((strip(ours), strip(theirs), inter))
+}
+
 /// best_reply(fen, uci, focus, plies, budget) -> [(their reply, the value it holds us to)], best for them first: WHY a
 /// claim is not certified -- the refutation, to be named (Kaveh 2026-10-08: "Ba6 would not have worked because the
 /// rook would be hanging").
@@ -893,5 +951,6 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(best_reply, m)?)?;
     m.add_function(wrap_pyfunction!(target_profile, m)?)?;
     m.add_function(wrap_pyfunction!(target_moves, m)?)?;
+    m.add_function(wrap_pyfunction!(fact_pool, m)?)?;
     Ok(())
 }

@@ -28061,3 +28061,27 @@ ADDED: a check first, then the chase (0t58R Nd6+, 0k5nO Nf6+). OBS on the dug 15
 fork 93%, hanging piece 92%, discovered attack 88%, pin 80%, quiet move 27% (the planner's); medians 0.9-3.5 s, the tail
 to 35 s. Left on the dug set: a pawn ending (0dy3X: the promotion frame inside chains), two-step quiet setups (0n7Ar,
 0vh85), a tempo decision (0nRuL), a king prophylaxis (0YOB0).
+
+## 2026-10-09 08:48 PDT — symmetric reasoning, the across-the-board sweep, one pool of facts for both sides
+
+Kaveh: analyse the opponent the same way (their threats against our king, then queen, ...); then puzzles across the
+board compared with before; and "one common pool of facts and reasons for us and them -- not two parallel runs; the
+reasons interact". SYMMETRIC: their plan by the same target-first reasoning on the null-move position. Two bugs before
+it stopped hurting: a veto after our move counted their ordinary recapture in OUR exchange (the double count of 10-07,
+again); and defending whenever their plan beat ours ignored that the attack is often the answer (capture the attacker,
+a bigger threat) -- it lost 11 puzzles and won 0; now: their planned move after our attack is checked by one certificate
+(illegal or certifying less -> attack). OBS same 120 puzzles: no loss, no gain against the one-sided reasoner;
+defensive-move puzzles 50% either way.
+THE SWEEP (26 themes x 40 held-out puzzles, offset 5; the reasoner; solved = its move is the puzzle's): smothered mate
+98%, mate in 2 98%, back-rank 95%, mate in 1 95%, mate in 3 95%, deflection 92%, discovered 92%, x-ray 92%, fork 90%,
+trapped piece 90%, capturing the defender 90%, attraction 90%, hanging piece 90%, double check 88%, interference 88%,
+pin 85%, skewer 82%, intermezzo 80%, sacrifice 78%, exposed king 72%, clearance 62%, defensive move 50%, promotion 40%,
+advanced pawn 40%, quiet move 20%, zugzwang 12%. Average 77% over all 26; 82% without quiet move and zugzwang (the
+planner's). Against this morning's frame valuer ("found", a different sample and metric): trapped piece 31 -> 90, pin 68
+-> 85, deflection 82 -> 92; DOWN: promotion 59 -> 40, advanced pawn 55 -> 40, zugzwang 42 -> 12 -- the reasoner has no
+promotion goal (the proved passer lemma is wired into the old chooser only) and looks only at targets. Medians 1-16 s.
+THE POOL: `analyst_core.fact_pool` -- both sides' claims (ours on the board, theirs on the null move), each with its
+frame, and the interactions (answers: our move touches their frame, makes their move illegal, or checks; shares: a
+square in both frames); `fact_pool.choose`: our gain minus their largest SURVIVING claim. OBS against the reasoner on
+the same puzzles: defensive 35% vs 50%, fork 90% vs 90%, intermezzo 75% vs 80% -- faster, less complete: the pool's
+claims come from the narrower claim generator; next, the target-first reasoning for both sides fills the pool.
