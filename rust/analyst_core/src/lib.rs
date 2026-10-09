@@ -596,12 +596,28 @@ fn hint_at(path: u64) -> Option<u32> { HINT_IN.with(|h| h.borrow().as_ref().and_
 fn record(path: u64, code: u32) { HINT_OUT.with(|h| if let Some(t) = h.borrow_mut().as_mut() { t.insert(path, code); }) }
 /// Run `f` with `hints` as the stored proof and return its result with the proof it recorded.
 pub fn with_hints<T>(hints: Option<std::sync::Arc<Hints>>, f: impl FnOnce() -> T) -> (T, Hints) {
+    struct Reset;                                                       // the thread's state is cleared even on a panic
+    impl Drop for Reset {
+        fn drop(&mut self) { HINT_IN.with(|h| *h.borrow_mut() = None); BUDGET.store(u64::MAX, Ordering::Relaxed); }
+    }
+    let _reset = Reset;
     HINT_IN.with(|h| *h.borrow_mut() = hints);
     HINT_OUT.with(|h| *h.borrow_mut() = Some(Hints::new()));
     let out = f();
-    HINT_IN.with(|h| *h.borrow_mut() = None);
     let rec = HINT_OUT.with(|h| h.borrow_mut().take()).unwrap_or_default();
     (out, rec)
+}
+
+/// Where a reply leaves a focus square: the piece that stood on `f` moved with `r` (a castling king lands on its own
+/// destination, not the rook's square shakmaty's `to()` names -- review 2026-10-09).
+fn focus_after(r: &Move, f: Square) -> Square {
+    match r {
+        Move::Castle { king, rook } if *king == f => {
+            let file = if rook.file() > king.file() { shakmaty::File::G } else { shakmaty::File::C };
+            Square::from_coords(file, king.rank())
+        }
+        _ => if r.from() == Some(f) { r.to() } else { f },
+    }
 }
 
 fn pursue_val(q: &Chess, side: Color, focus: &[Square], plies: u32, alpha: i64, beta: i64) -> i64 {
@@ -683,7 +699,7 @@ fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha:
             let q2 = after(q, r);
             let code = move_code(r);
             let v = if q2.is_checkmate() { -1000 } else if plies == 0 { leaf_value(&q2, side, alpha, beta) } else {
-                let f2: Vec<Square> = focus.iter().map(|f| if r.from() == Some(*f) { r.to() } else { *f }).collect();
+                let f2: Vec<Square> = focus.iter().map(|f| focus_after(r, *f)).collect();
                 pursue_val_p(&q2, side, &f2, plies - 1, alpha, beta, child_path(path, code))
             };
             if v < worst { worst = v; decided = Some(code); if worst < beta { beta = worst; } if alpha >= beta { break; } }
@@ -1042,7 +1058,7 @@ fn best_reply(fen: String, uci: String, focus: Vec<String>, plies: u32, budget: 
         let q2 = after(&q, &r);
         BUDGET.store(budget, Ordering::Relaxed);
         let v = if q2.is_checkmate() { -1000 } else {
-            let f2: Vec<Square> = f.iter().map(|x| if r.from() == Some(*x) { r.to() } else { *x }).collect();
+            let f2: Vec<Square> = f.iter().map(|x| focus_after(&r, *x)).collect();
             pursue_val(&q2, c, &f2, plies.saturating_sub(1), -2000, 2000)
         };
         BUDGET.store(u64::MAX, Ordering::Relaxed);

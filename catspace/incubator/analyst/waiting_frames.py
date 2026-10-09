@@ -50,7 +50,9 @@ def _replay(args) -> dict:
     for fen in fens:
         pool.observe(fen)
         snap = {}
-        for owner, uci, name, focus, goal, val, st, alts, brk, born in pool.frames():
+        for owner, uci, name, focus, goal, val, st, alts, brk, born, stale in pool.frames():
+            if stale:
+                continue                                               # kept unevaluated (its owner had no null move): not a reading
             snap[f"{owner}|{uci}|{','.join(focus)}"] = (st, [a[:3] for a in alts], born, name, val, [a[:3] for a in brk])
         hist.append(snap)
     return dict(game=gid, fens=fens, hist=hist, secs=time.time() - t0, rechecked=pool.rechecked, created=pool.created,
@@ -76,7 +78,11 @@ def run(tag: str, limit: int, audit: bool, workers: int) -> list:
     if os.path.exists(ck):
         with open(ck) as fh:
             for line in fh:
-                r = json.loads(line); done[(r["game"], r["proofs"])] = r
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue                                           # a line cut by a kill: redone
+                done[(r["game"], r["proofs"])] = r
     modes = (True, False) if audit else (True,)
     todo = [(g, f, e) for g, f in _games(tag, limit) for e in modes if (g, e) not in done]
     print(f"{len(done)} game runs checkpointed, {len(todo)} to go ({workers} processes)", flush=True)
@@ -109,11 +115,19 @@ def report(runs: list) -> None:
                     prev2 = hist[t - 2].get(key) if t > 1 else None
                     if prev2 is not None and prev2[0] == "active":
                         continue                                      # it was active for this side last turn too
-                    o = "created by their last move (walk-in)" if prev is None and prev2 is None else (prev or prev2)[0]
-                    if prev is not None and prev[0] == "active":
+                    b0 = chess.Board(fens[t - 1]); ob = chess.WHITE if owner == "w" else chess.BLACK
+                    if prev is None and prev2 is None:
+                        o = "created by their last move (walk-in)"
+                    elif prev is None:
+                        o = f"{prev2[0]} two plies ago, unreadable at t-1 (they were in check)"
+                    elif prev[0] == "active":
                         o = "a threat already (active on the null move)"
-                    elif prev is not None and prev[0] == "dormant":
+                    elif prev[0] == "dormant" and any(_atom_holds(b, ob, a) and not _atom_holds(b0, ob, a) for a in prev[1]):
                         o = "waiting (dormant), their move met the condition"
+                    elif prev[0] == "dormant":
+                        o = "waiting (dormant), activated by a change that was no listed condition"
+                    else:
+                        o = "far"
                     origin[(name if name in ("check",) else "piece", o)] += 1
                     first = min((s for s in range(t) if key in hist[s] and hist[s][key][0] == "dormant"), default=None)
                     if first is not None:

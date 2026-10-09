@@ -237,7 +237,8 @@ type Found = (Vec<(Atom, i64)>, Vec<(Option<Atom>, Hints)>);
 /// THE CONTROL (bug 2026-10-09, the castling position: "add our pawn on e7" made four unrelated frames hold -- the pawn
 /// promotes on d8 by itself): the seed must earn its goal BEYOND what the change alone wins by captures and promotions
 /// (the resolved captures with us to move, before the seed): the proof asks for goal + that, and a mate goal is refused
-/// when the change alone wins a piece's worth.
+/// when the change alone wins a promotion or a queen (review 2026-10-09: at 9 "add our pawn on e7" with e8 empty
+/// slipped through and e8=Q# "proved" the mate).
 pub fn conditions(pos: &Chess, s: &Seed, cache: &Cache) -> Found {
     let us = pos.turn();
     let z = zone(pos, s);
@@ -245,9 +246,11 @@ pub fn conditions(pos: &Chess, s: &Seed, cache: &Cache) -> Found {
         let p2 = perturb(pos, a, us)?;
         BUDGET.store(50_000, Ordering::Relaxed);
         let alone = settle_d(&p2, -2000, 2000, true, SETTLE_DEPTH).max(0);
+        let spent = BUDGET.load(Ordering::Relaxed) == 0;
         BUDGET.store(u64::MAX, Ordering::Relaxed);
+        if spent { return None; }                                       // unknown what the change wins alone: refuse it
         let mate = s.goal >= MATE_GOAL;
-        if mate && alone >= 9 { return None; }
+        if mate && alone >= 8 { return None; }                          // a promotion (8) or a queen: the change, not the seed
         let goal = if mate { s.goal } else { s.goal + alone };
         let (ok, rec) = prove(&p2, &s.uci, &s.focus, goal, cache.get(&Some(*a)).cloned());
         Some((*a, ok, if mate { 1000 } else { goal - alone }, rec))
@@ -286,6 +289,7 @@ pub struct Frame {
     pub breaks: Vec<(Atom, i64)>,    // active: what invalidates it (any one of them makes it fail)
     pub footprint: Bitboard, pub born: u32,
     pub cache: Cache,                // the stored proofs, re-checked on the next move
+    pub stale: bool,                 // kept from the last ply unevaluated (its owner had no null move: the other side in check)
 }
 
 /// Evaluate one seed on `p` (its owner to move): active with its breakers if it certifies, else dormant with its
@@ -310,7 +314,7 @@ pub fn evaluate(p: &Chess, s: &Seed, born: u32, cache: &Cache) -> Frame {
     let mut new_cache: Cache = recs.into_iter().map(|(k, h)| (k, std::sync::Arc::new(h))).collect();
     new_cache.insert(None, std::sync::Arc::new(rec));
     Frame { owner: p.turn(), seed: s.clone(), value: if holds { s.goal } else { -1000 }, status, alts, breaks,
-            footprint: fp, born, cache: new_cache }
+            footprint: fp, born, cache: new_cache, stale: false }
 }
 
 /// Both sides' frames: the side to move's on the position, the other side's on the null move (none when in check).
@@ -323,17 +327,17 @@ pub fn frames_both(pos: &Chess, born: u32) -> Vec<Frame> {
     out
 }
 
-type FrameRow = (String, String, String, Vec<String>, i64, i64, String, Vec<(String, String, String, i64)>, Vec<(String, String, String, i64)>, u32);
+type FrameRow = (String, String, String, Vec<String>, i64, i64, String, Vec<(String, String, String, i64)>, Vec<(String, String, String, i64)>, u32, bool);
 
 fn row(f: &Frame) -> FrameRow {
     (if f.owner == Color::White { "w" } else { "b" }.to_string(), f.seed.uci.clone(), f.seed.name.to_string(),
      f.seed.focus.iter().map(|s| s.to_string()).collect(), f.seed.goal, f.value, f.status.name().to_string(),
      f.alts.iter().map(|(a, v)| { let (k, r, s) = a.row(); (k, r, s, *v) }).collect(),
-     f.breaks.iter().map(|(a, v)| { let (k, r, s) = a.row(); (k, r, s, *v) }).collect(), f.born)
+     f.breaks.iter().map(|(a, v)| { let (k, r, s) = a.row(); (k, r, s, *v) }).collect(), f.born, f.stale)
 }
 
 /// waiting_frames(fen) -> [(owner, seed uci, name, focus, goal, certified value, status, waits on [(kind, role,
-/// square, value)], broken by [(kind, role, square, value left)], born)] for both sides.
+/// square, value)], broken by [(kind, role, square, value left)], born, stale)] for both sides.
 #[pyfunction]
 pub fn waiting_frames(fen: String) -> PyResult<Vec<FrameRow>> {
     let Some(pos) = parse(&fen) else { return Ok(vec![]) };
@@ -457,7 +461,7 @@ impl FramePool {
             }
         }
         // a side that could not be evaluated (the side to move is in check: no null move for the other) keeps its frames
-        for f in self.frames.iter().filter(|f| !alive_owners.contains(&f.owner)) { next.push(f.clone()); }
+        for f in self.frames.iter().filter(|f| !alive_owners.contains(&f.owner)) { let mut g = f.clone(); g.stale = true; next.push(g); }
         self.frames = next;
         self.nodes += NODES.load(Ordering::Relaxed).wrapping_sub(n0);
         self.last = Some(pos);
