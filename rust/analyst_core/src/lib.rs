@@ -569,7 +569,46 @@ fn leaf_value(q: &Chess, side: Color, alpha: i64, beta: i64) -> i64 {
     mat + settle_d(q, alpha - mat, beta - mat, true, SETTLE_DEPTH)
 }
 
-fn pursue_val(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha: i64, mut beta: i64) -> i64 {
+// STORED PROOFS (Kaveh 2026-10-09: "keep track of the frames ... only look at whatever the last move destroyed or
+// created, we don't have to search again every time"): while a search runs with HINT_OUT set, every node records the
+// move that decided it -- at our node the answer that reached the goal (the cutoff), at theirs the reply that refuted
+// it -- keyed by the PATH of moves from the frame's root. A later search on a changed board, with those tables in
+// HINT_IN, tries the stored move first at every node. Order never changes an alpha-beta result inside the same window,
+// so a re-check gives the same answer as a fresh search (up to the node budget) at the cost of checking the proof.
+pub type Hints = HashMap<u64, u32>;
+thread_local! {
+    static HINT_IN: std::cell::RefCell<Option<std::sync::Arc<Hints>>> = const { std::cell::RefCell::new(None) };
+    static HINT_OUT: std::cell::RefCell<Option<Hints>> = const { std::cell::RefCell::new(None) };
+}
+pub fn move_code(m: &Move) -> u32 {
+    let from = m.from().map_or(64u32, |f| f as u32);
+    let promo = m.promotion().map_or(0u32, |r| r as u32);
+    from | ((m.to() as u32) << 7) | (promo << 14)
+}
+fn child_path(path: u64, code: u32) -> u64 {
+    let mut z = path ^ (code as u64).wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+const PASS_CODE: u32 = 0x1F_FFFF;
+fn hint_at(path: u64) -> Option<u32> { HINT_IN.with(|h| h.borrow().as_ref().and_then(|t| t.get(&path).copied())) }
+fn record(path: u64, code: u32) { HINT_OUT.with(|h| if let Some(t) = h.borrow_mut().as_mut() { t.insert(path, code); }) }
+/// Run `f` with `hints` as the stored proof and return its result with the proof it recorded.
+pub fn with_hints<T>(hints: Option<std::sync::Arc<Hints>>, f: impl FnOnce() -> T) -> (T, Hints) {
+    HINT_IN.with(|h| *h.borrow_mut() = hints);
+    HINT_OUT.with(|h| *h.borrow_mut() = Some(Hints::new()));
+    let out = f();
+    HINT_IN.with(|h| *h.borrow_mut() = None);
+    let rec = HINT_OUT.with(|h| h.borrow_mut().take()).unwrap_or_default();
+    (out, rec)
+}
+
+fn pursue_val(q: &Chess, side: Color, focus: &[Square], plies: u32, alpha: i64, beta: i64) -> i64 {
+    pursue_val_p(q, side, focus, plies, alpha, beta, 0)
+}
+
+fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha: i64, mut beta: i64, path: u64) -> i64 {
     NODES.fetch_add(1, Ordering::Relaxed);
     let b = BUDGET.load(Ordering::Relaxed);
     if b == 0 { return -1000; }
@@ -596,12 +635,18 @@ fn pursue_val(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha: i
             (key, m2)
         }).collect();
         ordered.sort_by_key(|(k, _)| *k);
+        if let Some(h) = hint_at(path) {                                // the stored answer first
+            if let Some(i) = ordered.iter().position(|(_, m2)| move_code(m2) == h) { let x = ordered.remove(i); ordered.insert(0, x); }
+        }
+        let mut decided: Option<u32> = None;
         for (_, m2) in ordered {
             let q2 = after(q, &m2);
             let f2: Vec<Square> = focus.iter().filter(|f| q2.board().piece_at(**f).map_or(false, |p| p.color != side)).copied().collect();
-            let v = pursue_val(&q2, side, &f2, plies - 1, alpha, beta);
-            if v > best { best = v; if best > alpha { alpha = best; } if alpha >= beta { break; } }
+            let code = move_code(&m2);
+            let v = pursue_val_p(&q2, side, &f2, plies - 1, alpha, beta, child_path(path, code));
+            if v > best { best = v; decided = Some(code); if best > alpha { alpha = best; } if alpha >= beta { break; } }
         }
+        if let Some(c) = decided { record(path, c); }
         best
     } else {
         let ms = q.legal_moves();
@@ -615,6 +660,11 @@ fn pursue_val(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha: i
         let zone = if focus.is_empty() || q.is_check() || EXACT.load(Ordering::Relaxed) { None } else { Some(frame_zone(q, side, focus)) };
         let mut worst = 2000;
         let mut passed_once = false;
+        let mut ms: Vec<Move> = ms.into_iter().collect();
+        if let Some(h) = hint_at(path) {                                // the stored refutation first
+            if let Some(i) = ms.iter().position(|r| move_code(r) == h) { let x = ms.remove(i); ms.insert(0, x); }
+        }
+        let mut decided: Option<u32> = None;
         for r in ms.iter() {
             if let Some(z) = zone {
                 let q2p = after(q, r);
@@ -625,18 +675,20 @@ fn pursue_val(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha: i
                     if passed_once { continue; }                       // all the outside moves are one pass
                     passed_once = true;
                     let Ok(pass) = q.clone().swap_turn() else { continue };
-                    let v = if plies == 0 { leaf_value(&pass, side, alpha, beta) } else { pursue_val(&pass, side, focus, plies - 1, alpha, beta) };
-                    if v < worst { worst = v; if worst < beta { beta = worst; } if alpha >= beta { break; } }
+                    let v = if plies == 0 { leaf_value(&pass, side, alpha, beta) } else { pursue_val_p(&pass, side, focus, plies - 1, alpha, beta, child_path(path, PASS_CODE)) };
+                    if v < worst { worst = v; decided = Some(PASS_CODE); if worst < beta { beta = worst; } if alpha >= beta { break; } }
                     continue;
                 }
             }
             let q2 = after(q, r);
+            let code = move_code(r);
             let v = if q2.is_checkmate() { -1000 } else if plies == 0 { leaf_value(&q2, side, alpha, beta) } else {
                 let f2: Vec<Square> = focus.iter().map(|f| if r.from() == Some(*f) { r.to() } else { *f }).collect();
-                pursue_val(&q2, side, &f2, plies - 1, alpha, beta)
+                pursue_val_p(&q2, side, &f2, plies - 1, alpha, beta, child_path(path, code))
             };
-            if v < worst { worst = v; if worst < beta { beta = worst; } if alpha >= beta { break; } }
+            if v < worst { worst = v; decided = Some(code); if worst < beta { beta = worst; } if alpha >= beta { break; } }
         }
+        if let Some(c) = decided { record(path, c); }
         worst
     }
 }
@@ -660,6 +712,31 @@ fn frame_zone(q: &Chess, us: Color, focus: &[Square]) -> shakmaty::Bitboard {
     }
     z
 }
+
+/// PROVE: does m certify a gain of at least `goal` (relative to the material now)? A null-window search at the goal --
+/// at our nodes the first answer reaching it ends the node, at theirs the first refutation -- so the recorded moves
+/// are exactly a proof or a refutation. None: the budget ran out (nothing certified).
+pub fn prove_pos(p: &Chess, m: &Move, focus: &[Square], plies: u32, budget: u64, goal: i64) -> Option<bool> {
+    let c = p.turn();
+    let target = kernel_material(p, c) + goal;
+    let q = after(p, m);
+    if q.is_checkmate() { return Some(true); }
+    BUDGET.store(budget, Ordering::Relaxed);
+    let v = pursue_val_p(&q, c, focus, plies, target - 1, target, child_path(0, move_code(m)));
+    let left = BUDGET.load(Ordering::Relaxed);
+    let spent = left == 0;
+    BUDGET.store(u64::MAX, Ordering::Relaxed);
+    let used = budget - left;
+    let k = if spent { 2 } else if v >= target { 0 } else { 1 };
+    PROVE_STATS[k * 2].fetch_add(1, Ordering::Relaxed);
+    PROVE_STATS[k * 2 + 1].fetch_add(used, Ordering::Relaxed);
+    if spent { None } else { Some(v >= target) }
+}
+
+/// [proved, refuted, budget spent] x [count, nodes] since the last call (where the proof work goes)
+static PROVE_STATS: [AtomicU64; 6] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
+#[pyfunction]
+fn prove_stats() -> Vec<u64> { PROVE_STATS.iter().map(|a| a.swap(0, Ordering::Relaxed)).collect() }
 
 /// The certified gain of m (relative to the material now) with the given focus, plies and node budget; None if the
 /// budget ran out (nothing certified).
@@ -1153,5 +1230,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(waiting::arming_moves, m)?)?;
     m.add_class::<waiting::FramePool>()?;
     m.add_function(wrap_pyfunction!(waiting::set_deep_conditions, m)?)?;
+    m.add_function(wrap_pyfunction!(prove_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(waiting::set_one_move_waits, m)?)?;
     Ok(())
 }

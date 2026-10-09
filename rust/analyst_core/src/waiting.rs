@@ -23,6 +23,13 @@ use rayon::prelude::*;
 use shakmaty::{Bitboard, EnPassantMode};
 
 pub const MATE_GOAL: i64 = 500;
+/// WAITING CONDITIONS ONE MOVE AWAY (2026-10-09, measured: 85% of the frame work was ~1,000 completed refutations a
+/// position -- "this hypothetical change would NOT make the frame hold" -- which a stored refutation cannot shorten):
+/// an added piece of ours must be able to reach its square in one move. Conditions further away are the reachability
+/// model's to estimate, not the search's to enumerate.
+pub static ONE_MOVE_WAITS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_one_move_waits(flag: bool) -> PyResult<()> { ONE_MOVE_WAITS.store(flag, Ordering::Relaxed); Ok(()) }
 /// The condition and breaker searches use the 2-ply pre-check only (false) or the pre-check then the frame's depth
 /// (true). Measured before choosing a default (2026-10-09).
 pub static DEEP_CONDITIONS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
@@ -30,21 +37,34 @@ pub static DEEP_CONDITIONS: std::sync::atomic::AtomicBool = std::sync::atomic::A
 #[pyfunction]
 pub fn set_deep_conditions(flag: bool) -> PyResult<()> { DEEP_CONDITIONS.store(flag, Ordering::Relaxed); Ok(()) }
 
-fn certify_atom(p: &Chess, uci: &str, focus: &[Square], goal: i64) -> i64 {
-    if DEEP_CONDITIONS.load(Ordering::Relaxed) { return certify(p, uci, focus, goal); }
-    let Ok(u) = uci.parse::<shakmaty::uci::UciMove>() else { return -1000 };
-    let Ok(m) = u.to_move(p) else { return -1000 };
-    certified_value(p, &m, focus, 2, 10_000).unwrap_or(-1000)
+/// THE PROOF QUESTION of a frame: does the seed certify its goal on `p` (its owner to move)? The 2-ply pre-check, then
+/// the frame's depth (unless DEEP_CONDITIONS is off), each a null-window search at the goal run with the stored proof
+/// `hints` tried first -> (holds, the proof or refutation it recorded).
+pub fn prove(p: &Chess, uci: &str, focus: &[Square], goal: i64, hints: Option<std::sync::Arc<Hints>>) -> (bool, Hints) {
+    let Ok(u) = uci.parse::<shakmaty::uci::UciMove>() else { return (false, Hints::new()) };
+    let Ok(m) = u.to_move(p) else { return (false, Hints::new()) };
+    let deep = DEEP_CONDITIONS.load(Ordering::Relaxed);
+    let mut last = Hints::new();
+    for (d, b) in [(2u32, 10_000u64), (PURSUIT_PLIES, 50_000u64)] {
+        if d > 2 && !deep { break; }
+        let (r, rec) = with_hints(hints.clone(), || prove_pos(p, &m, focus, d, b, goal));
+        last = rec;
+        if r == Some(true) { return (true, last); }
+    }
+    (false, last)
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// A frame's stored proofs: one for the seed on the board (key None) and one for each candidate change (key Some).
+pub type Cache = HashMap<Option<Atom>, std::sync::Arc<Hints>>;
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Kind { AddOurs, AddTheirs, RemoveOurs, RemoveTheirs }
 
 /// One condition over one square, relative to the frame's owner: our / their `role` stands on `sq` (Add), or no
 /// longer stands there (Remove). A dormant frame WAITS on atoms (add ours, remove theirs, remove ours); an active
 /// frame is INVALIDATED by atoms (Kaveh 2026-10-09: "each frame also needs to know what is invalidated, so that it can
 /// re-fire if something happens") -- its BREAKERS: remove ours, add theirs, remove theirs (a flight square freed).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Atom { pub kind: Kind, pub role: Role, pub sq: Square }
 
 impl Atom {
@@ -192,8 +212,9 @@ fn candidates(pos: &Chess, s: &Seed, z: Bitboard, breakers: bool) -> Vec<Atom> {
         match b.piece_at(sq) {
             None => {
                 let (c, kind) = if breakers { (!us, Kind::AddTheirs) } else { (us, Kind::AddOurs) };
+                let near = breakers || ONE_MOVE_WAITS.load(Ordering::Relaxed);
                 for role in [Role::Queen, Role::Rook, Role::Bishop, Role::Knight, Role::Pawn] {
-                    if !can_arrive(pos, c, role, sq, breakers) { continue; }
+                    if !can_arrive(pos, c, role, sq, near) { continue; }
                     let reach = shakmaty::attacks::attacks(sq, Piece { color: c, role }, occ);
                     if z.contains(sq) || (reach & z).any() { out.push(Atom { kind, role, sq }); }
                 }
@@ -209,39 +230,46 @@ fn candidates(pos: &Chess, s: &Seed, z: Bitboard, breakers: bool) -> Vec<Atom> {
     out
 }
 
-/// The single changes under which the seed's certificate reaches its goal: [(atom, certified value)], best first.
-pub fn conditions(pos: &Chess, s: &Seed) -> Vec<(Atom, i64)> {
+type Found = (Vec<(Atom, i64)>, Vec<(Option<Atom>, Hints)>);
+
+/// The single changes under which the seed's certificate reaches its goal: [(atom, the gain it earns)], best first,
+/// with every candidate's recorded proof or refutation (for the next move's re-check).
+/// THE CONTROL (bug 2026-10-09, the castling position: "add our pawn on e7" made four unrelated frames hold -- the pawn
+/// promotes on d8 by itself): the seed must earn its goal BEYOND what the change alone wins by captures and promotions
+/// (the resolved captures with us to move, before the seed): the proof asks for goal + that, and a mate goal is refused
+/// when the change alone wins a piece's worth.
+pub fn conditions(pos: &Chess, s: &Seed, cache: &Cache) -> Found {
     let us = pos.turn();
     let z = zone(pos, s);
-    // THE CONTROL (bug 2026-10-09, the castling position: "add our pawn on e7" made four unrelated frames hold -- the
-    // pawn promotes on d8 by itself): a change counts only if the SEED earns its goal beyond what the change alone wins
-    // by captures and promotions (the resolved captures with us to move, before the seed)
-    let mut found: Vec<(Atom, i64)> = candidates(pos, s, z, false).par_iter().filter_map(|a| {
+    let rows: Vec<(Atom, bool, i64, Hints)> = candidates(pos, s, z, false).par_iter().filter_map(|a| {
         let p2 = perturb(pos, a, us)?;
-        let v = certify_atom(&p2, &s.uci, &s.focus, s.goal);
-        if v < s.goal { return None; }
         BUDGET.store(50_000, Ordering::Relaxed);
         let alone = settle_d(&p2, -2000, 2000, true, SETTLE_DEPTH).max(0);
         BUDGET.store(u64::MAX, Ordering::Relaxed);
-        let earned = if s.goal >= MATE_GOAL { if alone >= 9 { -1000 } else { v } } else { v - alone };
-        if earned >= s.goal { Some((*a, earned)) } else { None }
+        let mate = s.goal >= MATE_GOAL;
+        if mate && alone >= 9 { return None; }
+        let goal = if mate { s.goal } else { s.goal + alone };
+        let (ok, rec) = prove(&p2, &s.uci, &s.focus, goal, cache.get(&Some(*a)).cloned());
+        Some((*a, ok, if mate { 1000 } else { goal - alone }, rec))
     }).collect();
+    let mut found: Vec<(Atom, i64)> = rows.iter().filter(|r| r.1).map(|r| (r.0, r.2)).collect();
     found.sort_by(|a, b| b.1.cmp(&a.1).then((a.0.sq as u8).cmp(&(b.0.sq as u8))));
-    found
+    (found, rows.into_iter().map(|r| (Some(r.0), r.3)).collect())
 }
 
-/// What invalidates an active frame: the single changes under which its certificate falls below the goal --
-/// [(atom, the value left)], most damaging first.
-pub fn breakers(pos: &Chess, s: &Seed) -> Vec<(Atom, i64)> {
+/// What invalidates an active frame: the single changes (their next move can make) under which its certificate no
+/// longer reaches the goal -- [(atom, goal - 1: "below the goal")], with every candidate's recorded proof.
+pub fn breakers(pos: &Chess, s: &Seed, cache: &Cache) -> Found {
     let us = pos.turn();
     let z = zone(pos, s);
-    let mut found: Vec<(Atom, i64)> = candidates(pos, s, z, true).par_iter().filter_map(|a| {
+    let rows: Vec<(Atom, bool, Hints)> = candidates(pos, s, z, true).par_iter().filter_map(|a| {
         let p2 = perturb(pos, a, us)?;
-        let v = certify_atom(&p2, &s.uci, &s.focus, s.goal);
-        if v < s.goal { Some((*a, v)) } else { None }
+        let (ok, rec) = prove(&p2, &s.uci, &s.focus, s.goal, cache.get(&Some(*a)).cloned());
+        Some((*a, ok, rec))
     }).collect();
-    found.sort_by(|a, b| a.1.cmp(&b.1).then((a.0.sq as u8).cmp(&(b.0.sq as u8))));
-    found
+    let mut found: Vec<(Atom, i64)> = rows.iter().filter(|r| !r.1).map(|r| (r.0, s.goal - 1)).collect();
+    found.sort_by_key(|a| a.0.sq as u8);
+    (found, rows.into_iter().map(|r| (Some(r.0), r.2)).collect())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -257,30 +285,40 @@ pub struct Frame {
     pub alts: Vec<(Atom, i64)>,      // dormant: what it waits on (any one of them makes it hold)
     pub breaks: Vec<(Atom, i64)>,    // active: what invalidates it (any one of them makes it fail)
     pub footprint: Bitboard, pub born: u32,
+    pub cache: Cache,                // the stored proofs, re-checked on the next move
 }
 
 /// Evaluate one seed on `p` (its owner to move): active with its breakers if it certifies, else dormant with its
-/// missing conditions (or far). The footprint -- the squares whose change re-evaluates it -- holds the zone, the
-/// seed's squares and every atom's square, waiting or breaking.
-pub fn evaluate(p: &Chess, s: &Seed, born: u32) -> Frame {
-    let v = certify(p, &s.uci, &s.focus, s.goal);
+/// missing conditions (or far). With `cache` (the frame's stored proofs from the last move) every proof question is
+/// re-checked with its stored proof tried first -- the same answers as a fresh search, at the cost of checking. The
+/// value is a lower bound: the goal when active, -1000 otherwise. The footprint holds the zone, the seed's squares and
+/// every atom's square.
+pub fn evaluate(p: &Chess, s: &Seed, born: u32, cache: &Cache) -> Frame {
+    let (holds, rec) = prove(p, &s.uci, &s.focus, s.goal, cache.get(&None).cloned());
     let mut fp = zone(p, s);
     for f in &s.focus { fp.add(*f); }
     if let Some(f) = s.mv.from() { fp.add(f); }
     fp.add(s.mv.to());
-    let (status, alts, breaks) = if v >= s.goal { (Status::Active, vec![], breakers(p, s)) } else {
-        let a = conditions(p, s);
-        (if a.is_empty() { Status::Far } else { Status::Dormant }, a, vec![])
+    let (status, alts, breaks, recs) = if holds {
+        let (b, r) = breakers(p, s, cache);
+        (Status::Active, vec![], b, r)
+    } else {
+        let (a, r) = conditions(p, s, cache);
+        (if a.is_empty() { Status::Far } else { Status::Dormant }, a, vec![], r)
     };
     for (a, _) in alts.iter().chain(breaks.iter()) { fp.add(a.sq); }
-    Frame { owner: p.turn(), seed: s.clone(), value: v, status, alts, breaks, footprint: fp, born }
+    let mut new_cache: Cache = recs.into_iter().map(|(k, h)| (k, std::sync::Arc::new(h))).collect();
+    new_cache.insert(None, std::sync::Arc::new(rec));
+    Frame { owner: p.turn(), seed: s.clone(), value: if holds { s.goal } else { -1000 }, status, alts, breaks,
+            footprint: fp, born, cache: new_cache }
 }
 
 /// Both sides' frames: the side to move's on the position, the other side's on the null move (none when in check).
 pub fn frames_both(pos: &Chess, born: u32) -> Vec<Frame> {
-    let mut out: Vec<Frame> = seeds(pos).par_iter().map(|s| evaluate(pos, s, born)).collect();
+    let empty = Cache::new();
+    let mut out: Vec<Frame> = seeds(pos).par_iter().map(|s| evaluate(pos, s, born, &empty)).collect();
     if let Some(p) = pass(pos) {
-        out.extend(seeds(&p).par_iter().map(|s| evaluate(&p, s, born)).collect::<Vec<_>>());
+        out.extend(seeds(&p).par_iter().map(|s| evaluate(&p, s, born, &empty)).collect::<Vec<_>>());
     }
     out
 }
@@ -354,18 +392,20 @@ pub fn arming_moves(fen: String) -> PyResult<(Vec<ArmRow>, Vec<ArmRow>, Vec<ArmR
     Ok(arming_core(&pos, &frames))
 }
 
-/// THE LIVE POOL: frames kept across the moves of a game. `observe(fen)` diffs the board against the last position;
-/// a frame whose footprint holds no changed square is reused (unless `exact`), every other seed is re-evaluated; frames
-/// whose seed no longer exists are dropped. Returns the events: (owner, seed uci, name, focus, goal, value, status
+/// THE LIVE POOL: frames kept across the moves of a game, both sides. `observe(fen)`: the seeds the move CREATED are
+/// evaluated from scratch; the seeds it DESTROYED are dropped; every other frame is RE-CHECKED from its stored proofs
+/// (`proofs`, default; off = every frame from scratch, for the audit). (Reuse by footprint without re-checking was
+/// audited at 1.0% stale statuses for 14% saved and removed.) Returns the events: (owner, seed uci, name, focus, goal, value, status
 /// before ("new" if unseen), status after ("dead" if dropped), born ply).
 #[pyclass(unsendable)]
 pub struct FramePool {
     frames: Vec<Frame>,
     last: Option<Chess>,
     ply: u32,
-    exact: bool,
-    #[pyo3(get)] reused: u64,
-    #[pyo3(get)] recomputed: u64,
+    proofs: bool,
+    #[pyo3(get)] rechecked: u64,
+    #[pyo3(get)] created: u64,
+    #[pyo3(get)] nodes: u64,
 }
 
 type Event = (String, String, String, Vec<String>, i64, i64, String, String, u32);
@@ -378,27 +418,12 @@ fn event(f: &Frame, before: &str, after_: &str) -> Event {
 #[pymethods]
 impl FramePool {
     #[new]
-    #[pyo3(signature = (exact=true))]
-    fn new(exact: bool) -> Self { FramePool { frames: vec![], last: None, ply: 0, exact, reused: 0, recomputed: 0 } }
+    #[pyo3(signature = (proofs=true))]
+    fn new(proofs: bool) -> Self { FramePool { frames: vec![], last: None, ply: 0, proofs, rechecked: 0, created: 0, nodes: 0 } }
 
     fn observe(&mut self, fen: String) -> PyResult<Vec<Event>> {
         let Some(pos) = parse(&fen) else { return Ok(vec![]) };
-        let mut changed = Bitboard::FULL;
-        if let Some(last) = &self.last {
-            changed = Bitboard::EMPTY;
-            // what a move changes: the squares whose occupant changed AND the squares whose attackers changed (a line
-            // opened or closed far from the move; 2026-10-09 audit: occupancy alone left 4.0% of statuses stale, 12
-            // tactics among them)
-            let (o1, o2) = (last.board().occupied(), pos.board().occupied());
-            for i in 0..64u32 {
-                let s = Square::new(i);
-                if last.board().piece_at(s) != pos.board().piece_at(s)
-                    || last.board().attacks_to(s, Color::White, o1) != pos.board().attacks_to(s, Color::White, o2)
-                    || last.board().attacks_to(s, Color::Black, o1) != pos.board().attacks_to(s, Color::Black, o2) {
-                    changed.add(s);
-                }
-            }
-        }
+        let n0 = NODES.load(Ordering::Relaxed);
         let ply = self.ply;
         let mut events = Vec::new();
         let mut next: Vec<Frame> = Vec::new();
@@ -409,17 +434,17 @@ impl FramePool {
             alive_owners.push(owner);
             let ss = seeds(p);
             let old: HashMap<String, &Frame> = self.frames.iter().filter(|f| f.owner == owner).map(|f| (f.seed.key(), f)).collect();
-            let exact = self.exact;
+            let proofs = self.proofs;
+            let empty = Cache::new();
             let done: Vec<(Frame, Option<Status>, bool)> = ss.par_iter().map(|s| {
                 match old.get(&s.key()) {
-                    Some(f) if !exact && (f.footprint & changed).is_empty() => ((*f).clone(), Some(f.status), true),
-                    Some(f) => (evaluate(p, s, f.born), Some(f.status), false),
-                    None => (evaluate(p, s, ply), None, false),
+                    Some(f) => (evaluate(p, s, f.born, if proofs { &f.cache } else { &empty }), Some(f.status), true),
+                    None => (evaluate(p, s, ply, &empty), None, false),
                 }
             }).collect();
             let keys: std::collections::HashSet<String> = ss.iter().map(|s| s.key()).collect();
             for (f, before, reused) in done {
-                if reused { self.reused += 1 } else { self.recomputed += 1 }
+                if reused { self.rechecked += 1 } else { self.created += 1 }
                 match before {
                     None => events.push(event(&f, "new", f.status.name())),
                     Some(b) if b != f.status => events.push(event(&f, b.name(), f.status.name())),
@@ -434,6 +459,7 @@ impl FramePool {
         // a side that could not be evaluated (the side to move is in check: no null move for the other) keeps its frames
         for f in self.frames.iter().filter(|f| !alive_owners.contains(&f.owner)) { next.push(f.clone()); }
         self.frames = next;
+        self.nodes += NODES.load(Ordering::Relaxed).wrapping_sub(n0);
         self.last = Some(pos);
         self.ply += 1;
         Ok(events)

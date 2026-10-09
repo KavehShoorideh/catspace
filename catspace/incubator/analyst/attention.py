@@ -79,7 +79,7 @@ def _activations(hist, fens):
 
 def measure(path: str) -> None:
     runs = [json.loads(l) for l in open(path)]
-    runs = [r for r in runs if r["exact"]] or runs
+    runs = [r for r in runs if r.get("proofs", r.get("exact", True))] or runs
     rows = []                                                          # (variant, d, kind, in_action)
     tally = Counter(); totals = Counter(); scores = []
     for r in runs:
@@ -87,7 +87,7 @@ def measure(path: str) -> None:
         acts = set(_activations(hist, fens))
         comps = [components(chess.Board(fens[t]), chess.Board(fens[t - 1]) if t else None) for t in range(len(fens))]
         for t in range(len(fens)):
-            for key, (st, alts, born, name, val) in hist[t].items():
+            for key, (st, alts, born, name, val, *_) in hist[t].items():
                 owner, uci, focus = key.split("|")
                 sqs = {chess.parse_square(x) for x in focus.split(",") if x} | {chess.Move.from_uci(uci).to_square}
                 kind = "activation" if (t, key) in acts else st

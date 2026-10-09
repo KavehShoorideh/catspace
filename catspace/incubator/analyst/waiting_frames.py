@@ -5,7 +5,8 @@ if something happens").
 The engine is Rust (`analyst_core.FramePool`, `rust/analyst_core/src/waiting.rs`): every frame (a seed move, its focus
 and goal) is ACTIVE (its certificate holds), DORMANT (one change to the board inside the frame would make it hold: the
 conditions it waits on) or FAR; an active frame carries its BREAKERS (the changes their next move can make that break
-it). The pool recomputes every frame every move (reuse by footprint audited 1.0% stale, off; --lazy turns it on).
+it). The pool keeps every frame's stored proofs: after a move, the frames it created are searched, the ones it
+destroyed dropped, every other one RE-CHECKED from its stored proofs (the same answers as a fresh search, cheaper).
 
 This replays games through the pool and reports:
   ANTICIPATION   a frame turning active for the side to move: was it already waiting (dormant) for that side, already a
@@ -14,7 +15,7 @@ This replays games through the pool and reports:
                  not enough: a false alarm)
   BASE RATES     of the dormant frames, the share active within 2 / 4 / 8 plies, by family (the counting table the
                  policy over conditions starts from)
-  STALENESS      with --lazy --audit, the same games recomputed in full: how often a reused frame's status was wrong
+  AUDIT          with --audit, the same games from scratch: every status, condition and breaker compared, and the cost
 Games run in parallel processes (one Rust thread each); every finished game is checkpointed and a rerun resumes.
 """
 from __future__ import annotations
@@ -40,19 +41,20 @@ def _atom_holds(b: chess.Board, owner: chess.Color, atom) -> bool:
 
 
 def _replay(args) -> dict:
-    gid, fens, exact = args
+    gid, fens, proofs = args
     os.environ.setdefault("RAYON_NUM_THREADS", "1")
     import analyst_core
-    pool = analyst_core.FramePool(exact)
+    pool = analyst_core.FramePool(proofs)
     hist = []                                                          # per ply: {key: (status, alts, born)}
     t0 = time.time()
     for fen in fens:
         pool.observe(fen)
         snap = {}
         for owner, uci, name, focus, goal, val, st, alts, brk, born in pool.frames():
-            snap[f"{owner}|{uci}|{','.join(focus)}"] = (st, [a[:3] for a in alts], born, name, val)
+            snap[f"{owner}|{uci}|{','.join(focus)}"] = (st, [a[:3] for a in alts], born, name, val, [a[:3] for a in brk])
         hist.append(snap)
-    return dict(game=gid, fens=fens, hist=hist, secs=time.time() - t0, reused=pool.reused, recomputed=pool.recomputed, exact=exact)
+    return dict(game=gid, fens=fens, hist=hist, secs=time.time() - t0, rechecked=pool.rechecked, created=pool.created,
+                nodes=pool.nodes, proofs=proofs, exact=True)
 
 
 def _games(tag: str, limit: int) -> list:
@@ -67,39 +69,39 @@ def _games(tag: str, limit: int) -> list:
     return out
 
 
-def run(tag: str, limit: int, audit: bool, workers: int, lazy: bool = False) -> list:
+def run(tag: str, limit: int, audit: bool, workers: int) -> list:
     from multiprocessing import Pool
-    ck = paths.experiment(f"waiting_frames_{tag}_{limit}{'_lazy' if lazy else ''}{'_audit' if audit else ''}.jsonl")
+    ck = paths.experiment(f"waiting_frames_v2_{tag}_{limit}{'_audit' if audit else ''}.jsonl")
     done = {}
     if os.path.exists(ck):
         with open(ck) as fh:
             for line in fh:
-                r = json.loads(line); done[(r["game"], r["exact"])] = r
-    modes = (False, True) if (lazy and audit) else ((False,) if lazy else (True,))
+                r = json.loads(line); done[(r["game"], r["proofs"])] = r
+    modes = (True, False) if audit else (True,)
     todo = [(g, f, e) for g, f in _games(tag, limit) for e in modes if (g, e) not in done]
     print(f"{len(done)} game runs checkpointed, {len(todo)} to go ({workers} processes)", flush=True)
     if todo:
         with Pool(workers) as p, open(ck, "a") as fh:
             for i, r in enumerate(p.imap_unordered(_replay, todo, chunksize=1)):
                 fh.write(json.dumps(r) + "\n"); fh.flush()
-                done[(r["game"], r["exact"])] = r
-                print(f"  game {r['game']} exact={r['exact']}: {len(r['fens'])} plies in {r['secs']:.0f} s "
+                done[(r["game"], r["proofs"])] = r
+                print(f"  game {r['game']} proofs={r['proofs']}: {len(r['fens'])} plies in {r['secs']:.0f} s "
                       f"({1000 * r['secs'] / max(len(r['fens']), 1):.0f} ms a ply) [{i + 1}/{len(todo)}]", flush=True)
     return list(done.values())
 
 
 def report(runs: list) -> None:
-    lazy = [r for r in runs if not r["exact"]] or runs
+    lazy = [r for r in runs if r["proofs"]]
     plies = sum(len(r["fens"]) for r in lazy); secs = sum(r["secs"] for r in lazy)
-    reused = sum(r["reused"] for r in lazy); recomputed = sum(r["recomputed"] for r in lazy)
-    print(f"OBS {len(lazy)} games, {plies} positions: {1000 * secs / max(plies, 1):.0f} ms a position on one core; frames reused "
-          f"{reused}, recomputed {recomputed} ({100 * reused / max(reused + recomputed, 1):.0f}% reused)")
+    rc = sum(r["rechecked"] for r in lazy); cr = sum(r["created"] for r in lazy); nodes = sum(r["nodes"] for r in lazy)
+    print(f"OBS {len(lazy)} games, {plies} positions: {1000 * secs / max(plies, 1):.0f} ms a position on one core, "
+          f"{nodes / max(plies, 1):,.0f} nodes; frames re-checked from stored proofs {rc}, created {cr}")
     origin = Counter(); lead = defaultdict(list); met = Counter(); met_ex = []; base = defaultdict(lambda: Counter())
     for r in lazy:
         hist, fens = r["hist"], r["fens"]
         for t in range(len(hist)):
             b = chess.Board(fens[t]); stm = "w" if b.turn else "b"
-            for key, (st, alts, born, name, val) in hist[t].items():
+            for key, (st, alts, born, name, val, *_) in hist[t].items():
                 owner = key[0]
                 # ANTICIPATION: newly active for the side to move
                 if st == "active" and owner == stm:
@@ -147,21 +149,35 @@ def report(runs: list) -> None:
         row = "  ".join(f"k={k}: {base[(name, k)][True]}/{sum(base[(name, k)].values())} "
                         f"({100 * base[(name, k)][True] / max(sum(base[(name, k)].values()), 1):.0f}%)" for k in (2, 4, 8))
         print(f"OBS   {name:15s} {row}")
-    ex = {r["game"]: r for r in runs if r["exact"]}
-    if ex and any(not r["exact"] for r in runs):
-        n = stale = 0; kinds = Counter()
+    scratch = {r["game"]: r for r in runs if not r["proofs"]}
+    if scratch:
+        n = st_diff = alt_diff = brk_diff = missing = 0; kinds = Counter(); ex = []
+        s_secs = s_nodes = s_plies = 0
         for r in lazy:
-            e = ex.get(r["game"])
+            e = scratch.get(r["game"])
             if e is None:
                 continue
-            for a, b in zip(r["hist"], e["hist"]):
+            s_secs += e["secs"]; s_nodes += e["nodes"]; s_plies += len(e["fens"])
+            for t, (a, b) in enumerate(zip(r["hist"], e["hist"])):
                 for key, v in b.items():
                     n += 1
-                    got = a.get(key, ("missing",))[0]
-                    if got != v[0]:
-                        stale += 1; kinds[(got, v[0])] += 1
-        print(f"OBS STALENESS: {stale} of {n} frame statuses differ between reuse and full recomputation ({100 * stale / max(n, 1):.1f}%): "
-              f"{dict(kinds.most_common(6))}")
+                    w = a.get(key)
+                    if w is None:
+                        missing += 1; continue
+                    if w[0] != v[0]:
+                        st_diff += 1; kinds[(w[0], v[0])] += 1
+                        if len(ex) < 5:
+                            ex.append((r["fens"][t], key, w[0], v[0]))
+                    elif set(map(tuple, w[1])) != set(map(tuple, v[1])):
+                        alt_diff += 1
+                    elif set(map(tuple, w[5])) != set(map(tuple, v[5])):
+                        brk_diff += 1
+        print(f"OBS AUDIT against from-scratch on the same games: {n} frame records; status differs {st_diff} "
+              f"{dict(kinds)}, conditions differ {alt_diff}, breakers differ {brk_diff}, missing {missing}")
+        for fen, key, got, want in ex:
+            print(f"OBS   differs: {key} stored proofs {got}, scratch {want}  {fen}")
+        print(f"OBS COST from scratch: {1000 * s_secs / max(s_plies, 1):.0f} ms a position, {s_nodes / max(s_plies, 1):,.0f} nodes "
+              f"-- stored proofs: {1000 * secs / max(plies, 1):.0f} ms, {nodes / max(plies, 1):,.0f} nodes")
 
 
 def main(argv=None):
@@ -169,11 +185,10 @@ def main(argv=None):
     ap.add_argument("--tag", default="c300")
     ap.add_argument("--games", type=int, default=2)
     ap.add_argument("--audit", action="store_true")
-    ap.add_argument("--lazy", action="store_true", help="reuse frames whose footprint no move touched")
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     a = ap.parse_args(argv)
     t = time.time()
-    runs = run(a.tag, a.games, a.audit, a.workers, a.lazy)
+    runs = run(a.tag, a.games, a.audit, a.workers)
     report(runs)
     print(f"({time.time() - t:.0f} s)")
 
