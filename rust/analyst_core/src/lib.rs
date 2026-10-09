@@ -586,8 +586,30 @@ fn pursue_val(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha: i
     } else {
         let ms = q.legal_moves();
         if ms.is_empty() { return if q.is_check() { 1000 } else { kernel_material(q, side) }; }
+        // THEIR REPLIES, KEPT IN THE FRAME (Kaveh 2026-10-08: "use lemmas for the opponent reply too, and keep it in the
+        // frame"): with a focus, only the replies that touch the frame are searched -- the target's moves, captures,
+        // checks, and moves from, to or attacking a frame square (the target, its escapes, our pieces bearing on them,
+        // the lines between); every other reply is ONE "pass" (the FRAME-INDEPENDENCE lemma: a move that touches no
+        // frame square leaves the frame's outcome as it is -- not proved: certificates using it are "modulo frame
+        // independence", watched by the false-alarm measurement). In check every evasion is searched.
+        let zone = if focus.is_empty() || q.is_check() { None } else { Some(frame_zone(q, side, focus)) };
         let mut worst = 2000;
+        let mut passed_once = false;
         for r in ms.iter() {
+            if let Some(z) = zone {
+                let q2p = after(q, r);
+                let touches = r.is_capture() || q2p.is_check()
+                    || r.from().map_or(false, |f| z.contains(f)) || z.contains(r.to())
+                    || q2p.board().piece_at(r.to()).map_or(false, |p| (shakmaty::attacks::attacks(r.to(), p, q2p.board().occupied()) & z).any());
+                if !touches {
+                    if passed_once { continue; }                       // all the outside moves are one pass
+                    passed_once = true;
+                    let Ok(pass) = q.clone().swap_turn() else { continue };
+                    let v = if plies == 0 { leaf_value(&pass, side, alpha, beta) } else { pursue_val(&pass, side, focus, plies - 1, alpha, beta) };
+                    if v < worst { worst = v; if worst < beta { beta = worst; } if alpha >= beta { break; } }
+                    continue;
+                }
+            }
             let q2 = after(q, r);
             let v = if q2.is_checkmate() { -1000 } else if plies == 0 { leaf_value(&q2, side, alpha, beta) } else {
                 let f2: Vec<Square> = focus.iter().map(|f| if r.from() == Some(*f) { r.to() } else { *f }).collect();
@@ -597,6 +619,26 @@ fn pursue_val(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha: i
         }
         worst
     }
+}
+
+/// The frame's squares around the focus pieces: each target, the squares it can move to, our pieces bearing on those,
+/// and the squares between our sliders and them.
+fn frame_zone(q: &Chess, us: Color, focus: &[Square]) -> shakmaty::Bitboard {
+    let b = q.board();
+    let occ = b.occupied();
+    let mut z = shakmaty::Bitboard::EMPTY;
+    for &f in focus {
+        let Some(p) = b.piece_at(f) else { continue };
+        let reach = shakmaty::attacks::attacks(f, p, occ);
+        z |= reach; z.add(f);
+        for t in reach.with(f) {
+            for a in b.attacks_to(t, us, occ) {
+                z.add(a);
+                z |= shakmaty::attacks::between(a, t);
+            }
+        }
+    }
+    z
 }
 
 /// The certified gain of m (relative to the material now) with the given focus, plies and node budget; None if the
@@ -611,6 +653,34 @@ fn certified_value(p: &Chess, m: &Move, focus: &[Square], plies: u32, budget: u6
     let spent = BUDGET.load(Ordering::Relaxed) == 0;
     BUDGET.store(u64::MAX, Ordering::Relaxed);
     if spent { None } else { Some(v - base) }
+}
+
+/// best_reply(fen, uci, focus, plies, budget) -> [(their reply, the value it holds us to)], best for them first: WHY a
+/// claim is not certified -- the refutation, to be named (Kaveh 2026-10-08: "Ba6 would not have worked because the
+/// rook would be hanging").
+#[pyfunction]
+fn best_reply(fen: String, uci: String, focus: Vec<String>, plies: u32, budget: u64) -> PyResult<Vec<(String, i64)>> {
+    let Some(pos) = parse(&fen) else { return Ok(vec![]) };
+    let Ok(u) = uci.parse::<shakmaty::uci::UciMove>() else { return Ok(vec![]) };
+    let Ok(m) = u.to_move(&pos) else { return Ok(vec![]) };
+    let f: Vec<Square> = focus.iter().filter_map(|s| s.parse::<Square>().ok()).collect();
+    let c = pos.turn();
+    let base = kernel_material(&pos, c);
+    let q = after(&pos, &m);
+    let mut out = Vec::new();
+    for r in q.legal_moves() {
+        let q2 = after(&q, &r);
+        BUDGET.store(budget, Ordering::Relaxed);
+        let v = if q2.is_checkmate() { -1000 } else {
+            let f2: Vec<Square> = f.iter().map(|x| if r.from() == Some(*x) { r.to() } else { *x }).collect();
+            pursue_val(&q2, c, &f2, plies.saturating_sub(1), -2000, 2000)
+        };
+        BUDGET.store(u64::MAX, Ordering::Relaxed);
+        out.push((r.to_uci(CastlingMode::Standard).to_string(), v - base));
+    }
+    out.sort_by_key(|(_, v)| *v);
+    out.truncate(3);
+    Ok(out)
 }
 
 /// certified_gain(fen, uci, focus, plies, budget) -> Option<i64>
@@ -684,8 +754,8 @@ fn threat_claims(fen: String) -> PyResult<Vec<(String, String, i64, bool, Vec<St
             if let Some(&(t, v)) = big.first() {
                 let focus = [t];
                 let _ = v;
-                let mut got = certified_value(&pos, &m, &focus, plies, 40_000).filter(|x| *x >= 1);
-                if got.is_none() { got = certified_value(&pos, &m, &focus, plies + 2, 120_000).filter(|x| *x >= 1); }
+                let mut got = certified_value(&pos, &m, &focus, plies, 200_000).filter(|x| *x >= 1);
+                if got.is_none() { got = certified_value(&pos, &m, &focus, plies + 2, 1_500_000).filter(|x| *x >= 1); }
                 if let Some(x) = got {
                     out.push((uci.clone(), "forcing chain".to_string(), x.min(1000), false, vec![t.to_string()], true));
                 }
@@ -697,9 +767,9 @@ fn threat_claims(fen: String) -> PyResult<Vec<(String, String, i64, bool, Vec<St
             // three-ply kernel certificate (Lean-proved) only at the claimed k, for the 'C' flag.
             let focus: Vec<Square> = targets.iter().filter_map(|s| s.parse::<Square>().ok()).collect();
             let d = if focus.is_empty() { 2 } else { plies };
-            let mut got = certified_value(&pos, &m, &focus, d, 40_000).filter(|v| *v >= 1);
+            let mut got = certified_value(&pos, &m, &focus, d, 200_000).filter(|v| *v >= 1);
             if got.is_none() && !focus.is_empty() {
-                got = certified_value(&pos, &m, &focus, d + 2, 120_000).filter(|v| *v >= 1);
+                got = certified_value(&pos, &m, &focus, d + 2, 1_500_000).filter(|v| *v >= 1);
             }
             let cert = local_check_pos(&pos, &m, k);
             match got {
@@ -763,5 +833,6 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pursuit_check, m)?)?;
     m.add_function(wrap_pyfunction!(corner_check, m)?)?;
     m.add_function(wrap_pyfunction!(certified_gain, m)?)?;
+    m.add_function(wrap_pyfunction!(best_reply, m)?)?;
     Ok(())
 }

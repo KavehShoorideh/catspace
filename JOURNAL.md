@@ -28000,3 +28000,29 @@ trade into a won pawn ending (0dy3X) -- the promotion frame as a goal inside cha
 Rust. THE WALL: every certificate needs every opponent reply at every ply; deeper chains cost more than a per-claim
 budget allows. Kaveh's game-time design is the answer: lemma chaining first, a real alpha-beta search (lemmas as bounds
 and as "what are we looking for") wherever no lemma applies -- next.
+
+## 2026-10-08 22:29 PDT — opponent replies kept in the frame; trapped pieces 90%; a puzzle reasoned step by step (NPpe0)
+
+Kaveh: "use lemmas for the opponent reply too, and keep it in the frame". Built: with a focus, the opponent's replies
+searched are those that touch the frame (the target's moves, captures, checks, moves from / to / attacking a frame
+square: the target, its escapes, our pieces bearing on them, the lines between); every other reply is ONE pass -- the
+FRAME-INDEPENDENCE lemma (a move touching no frame square leaves the frame's outcome as it is), not proved: certificates
+using it are "modulo frame independence", to be watched by false alarms (not yet re-run). A budget bug: the node
+budgets (40k) were set without measuring speed -- the value search runs about 8 million nodes a second, 40k is 5 ms;
+now 200k, then 1.5M two plies deeper. OBS the 13 remaining trapped-piece failures: 6 now found (0CAq9, first classified
+as the planner's, is certified at +2); the rest: two need more than 1.5M nodes (0M6sU, 0U9eM), two are two-step quiet
+setups (0n7Ar, 0vh85), one is a tempo decision (0nRuL), one a deep maneuver (0aJKK), one a trade into a won pawn ending
+(0dy3X). OBS trapped-piece coverage, 150 puzzles: found 90% (31% at the start of the day, 47%, 63%), frame-sized
+certified 90%.
+NPpe0 (rated 1949, trappedPiece + clearance): the system plays 1...Bb7, the solution: of 16 claims only Bb7's is
+certified (+3: the rook on the opened rank attacks the queen; after Qxh7, Rh8 corners it). TIMING on this one position:
+the Rust claims 2.3 s (16.6M nodes, nearly all on the 15 claims that never certify, each burning its full budget); the
+Python forcing frame 5.7 s (137 ms a move); the opponent's certified threats after our top five 2.2-3.2 s each --
+about 22 s a position; to fix: the frame in Rust, one budget per position, deepen only promising claims, cache.
+KAVEH'S REASONING on it, as lemmas: (1) a CLEARANCE OPENS THE LINE BOTH WAYS -- Ba6 and Bd7 clear the rank too, but the
+rook on a8 then hangs to the queen; the clearing piece must land where it still defends what the line exposes (Bb7);
+(2) "WOULD WORK IF" -- Ba6 would work with check (the king on its diagonal); he looked for a forcing move to bring the
+king there, found none, and ruled it out: a claim's missing condition (its barrier) becomes a goal for forcing moves;
+(3) the rook + diagonal-piece back-rank pattern capturing a QUEEN on the edge -- a mating pattern used to corner another
+piece. Built: `analyst_core.best_reply` -- why a candidate fails. OBS Ba6: Qxa8 holds us to -5 (the rook hangs); Bd7:
+Qxa8 -4; Bb7: Qxh7 holds us to +3 (Qxa8 Bxa8 +4: the rook is defended).
