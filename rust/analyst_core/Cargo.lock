@@ -27,6 +27,7 @@ dependencies = [
  "ascent",
  "maia-chess",
  "pyo3",
+ "rayon",
  "shakmaty",
 ]
 

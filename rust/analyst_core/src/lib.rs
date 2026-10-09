@@ -5,6 +5,7 @@
 use pyo3::prelude::*;
 mod rules;
 mod maia;
+mod waiting;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::collections::HashMap;
@@ -513,7 +514,15 @@ fn corner_check(fen: String, uci: String, k: i64, target: String) -> PyResult<Op
     Ok(Some(corner_check_pos(&pos, &m, k, t)))
 }
 
-static BUDGET: AtomicU64 = AtomicU64::new(u64::MAX);
+// THE NODE BUDGET, one per thread (2026-10-09, waiting frames: the condition search runs certificates in parallel on
+// every core, and a shared counter would let one search spend another's budget). Same load/store calls as the atomic.
+thread_local! { static BUDGET_TL: std::cell::Cell<u64> = const { std::cell::Cell::new(u64::MAX) }; }
+struct Budget;
+impl Budget {
+    fn load(&self, _: Ordering) -> u64 { BUDGET_TL.with(|c| c.get()) }
+    fn store(&self, v: u64, _: Ordering) { BUDGET_TL.with(|c| c.set(v)) }
+}
+static BUDGET: Budget = Budget;
 static FAST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);   // inside a tree: no deep tier
 // EVERY opponent reply searched inside certificates (the frame-independence pruning OFF): the audit of 2026-10-09 found
 // the pruning certified 10.9% false claims (40 of 366) and the exact search costs 14 ms a claim -- unsound and unneeded.
@@ -1140,5 +1149,9 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(frame_outs, m)?)?;
     m.add_function(wrap_pyfunction!(frame_tree, m)?)?;
     m.add_function(wrap_pyfunction!(set_exact, m)?)?;
+    m.add_function(wrap_pyfunction!(waiting::waiting_frames, m)?)?;
+    m.add_function(wrap_pyfunction!(waiting::arming_moves, m)?)?;
+    m.add_class::<waiting::FramePool>()?;
+    m.add_function(wrap_pyfunction!(waiting::set_deep_conditions, m)?)?;
     Ok(())
 }
