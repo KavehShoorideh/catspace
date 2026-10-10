@@ -7,6 +7,7 @@ mod rules;
 mod maia;
 mod waiting;
 mod paths;
+mod plan;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::collections::HashMap;
@@ -1262,6 +1263,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(paths::path_audit, m)?)?;
     m.add_function(wrap_pyfunction!(paths::path_audit_counts, m)?)?;
     m.add_function(wrap_pyfunction!(paths::attack_paths_of, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::plan_trace, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::set_one_move_waits, m)?)?;
     Ok(())
 }
