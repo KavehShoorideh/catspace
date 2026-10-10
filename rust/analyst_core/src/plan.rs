@@ -40,7 +40,8 @@ pub struct Stats { pub fresh: u32, pub replay: u32, pub reuse_exact: u32, pub re
 
 #[derive(Default)]
 pub struct Memo { entries: HashMap<String, Vec<Entry>>, pub history: HashMap<String, f32>, pub stats: Stats,
-                  ledger: Option<crate::ledger::Ledger>, events: Vec<crate::ledger::Event> }
+                  ledger: Option<crate::ledger::Ledger>, events: Vec<crate::ledger::Event>,
+                  pool: Vec<crate::waiting::Frame>, pool_ply: u32 }
 const SNAPSHOTS: usize = 8;
 pub static REUSE_FAILS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 #[pyfunction]
@@ -435,6 +436,23 @@ fn overloads(pos: &Chess, side: Color) -> Vec<(Square, Square, Square, i64, Stri
 }
 
 pub static OVERLOAD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// THE WAITING-FRAMES POOL IN THE PLANNER (Kaveh 2026-10-10: wire the existing pool -- waiting.rs, 2026-10-09 -- rather
+/// than rebuild it): off by default until measured (it costs ~25-35 ms a position against the planner's ~14).
+pub static POOL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[pyfunction]
+pub fn set_pool(flag: bool) -> PyResult<()> { POOL.store(flag, Ordering::Relaxed); Ok(()) }
+/// The pool's SEEDS without the pool (measured 2026-10-10, pool_check.py, 100 games: the pool's active frames claiming 2+
+/// were as good as the planner's own wins -- median 0 cp from Stockfish's best, 8% losing 150+ -- those claiming 1 pawn
+/// were not, 11%; its armed decisions lost 150+ in 35%; and the pool cost 6x): waiting::seeds (forks, cornering, single
+/// threats) with a goal of 2+, each proved like a seed of our own.
+pub static FRAME_SEEDS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_frame_seeds(flag: bool) -> PyResult<()> { FRAME_SEEDS.store(flag, Ordering::Relaxed); Ok(()) }
+/// THE BLUNDER CHECK, direct (the pool's "hands" warning flagged decisions losing 150+ in 52% against 17% unwarned --
+/// the same question asked straight): after the decision, their immediate wins; reported in the trace.
+pub static AFTER_CHECK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_after_check(flag: bool) -> PyResult<()> { AFTER_CHECK.store(flag, Ordering::Relaxed); Ok(()) }
 pub static NUCLEUS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_nucleus(flag: bool) -> PyResult<()> { NUCLEUS.store(flag, Ordering::Relaxed); Ok(()) }
@@ -454,7 +472,39 @@ pub fn overload_check(fen: String) -> PyResult<Vec<(String, String, String, Stri
     Ok(v)
 }
 
-pub fn plan(pos: &Chess) -> Plan { plan_inner(pos, false) }
+pub fn plan(pos: &Chess) -> Plan {
+    let mut p = plan_inner(pos, false);
+    if AFTER_CHECK.load(Ordering::Relaxed) {
+        if let Some(d) = &p.best {
+            let mv = if d.0.is_empty() || d.0 == "defend" || d.0 == "cheapest" { d.1.clone() } else { d.0.clone() };
+            if let Some(m) = mv.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok()) {
+                let q = after(pos, &m);
+                if !q.is_checkmate() {
+                    let tp = with_tag("after".to_string(), || plan_inner(&q, true));
+                    p.proofs += tp.proofs; p.nodes += tp.nodes;
+                    if let Some(tb) = tp.best {
+                        let ours = if d.0.is_empty() { d.2 } else { 0 };
+                        if tb.2 > ours { p.trace.push(format!("after: {} lets them {} (worth {}, more than our {ours})", san(pos, &mv), tb.3, tb.2)); }
+                    }
+                }
+            }
+        }
+    }
+    // THE BLUNDER CHECK from the pool: does the decision hand them one of their waiting tactics?
+    if POOL.load(Ordering::Relaxed) {
+        let frames = MEMO.with(|m| m.borrow().as_ref().map(|m| m.pool.clone()).unwrap_or_default());
+        if let Some(d) = &p.best {
+            let mv = if d.0.is_empty() || d.0 == "defend" || d.0 == "cheapest" { &d.1 } else { &d.0 };
+            if let Some(m) = mv.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok()) {
+                for (u, name, v) in crate::waiting::hands_for(pos, &frames, &m) {
+                    let q = after(pos, &m);
+                    p.trace.push(format!("hands: {} hands them {name} {} (worth {v}) -- the waiting-frames pool", san(pos, mv), san(&q, &u)));
+                }
+            }
+        }
+    }
+    p
+}
 
 /// `immediate_only`: the immediate phase alone (targets, seeds, proofs) -- what the OPPONENT's threat is computed with,
 /// on the null move.
@@ -593,6 +643,35 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
         }
         None => vec![],
     };
+    // THE POOL'S ACTIVE FRAMES (ours, on this board): tactics the frames certified -- the same proof as a seed's
+    let pool: Vec<crate::waiting::Frame> = if immediate_only || !POOL.load(Ordering::Relaxed) { vec![] }
+        else { MEMO.with(|m| m.borrow().as_ref().map(|m| m.pool.clone()).unwrap_or_default()) };
+    for f in pool.iter().filter(|f| f.owner == us && f.status == crate::waiting::Status::Active && !f.stale) {
+        if f.seed.mv.from().map_or(true, |fr| b.piece_at(fr).map_or(true, |pc| pc.color != us)) { continue; }
+        if wins.iter().any(|w| w.0 == f.seed.uci) { continue; }
+        let Some(t) = f.seed.focus.first().copied() else { continue };
+        let v = f.seed.goal;
+        trace.push(format!("frame: {} {} holds (the waiting-frames pool) -- wins {v}", f.seed.name, san(pos, &f.seed.uci)));
+        wins.push((f.seed.uci.clone(), t, v));
+        if best.as_ref().map_or(true, |x| v > x.2) { best = Some((String::new(), f.seed.uci.clone(), v, format!("{} wins {v} ({}, from the frame pool)", san(pos, &f.seed.uci), f.seed.name))); best_target = Some(t); }
+    }
+    // THE POOL'S SEEDS (waiting::seeds, goal 2+), proved like our own -- where the target-first seeds did not already win
+    if !immediate_only && FRAME_SEEDS.load(Ordering::Relaxed) {
+        for sd in crate::waiting::seeds(pos) {
+            // (checks are the king target's seeds already: proving each again for mate doubled the cost)
+            if sd.goal < 2 || sd.name == "cornering king" || wins.iter().any(|w| w.0 == sd.uci) { continue; }
+            if best.as_ref().map_or(false, |x| x.0.is_empty() && x.2 >= sd.goal) { continue; }
+            if refused(&sd.mv).is_some() { continue; }
+            let (ok, n) = with_tag("frame".to_string(), || mprove(pos, &sd.uci, &sd.focus, sd.goal));
+            proofs += 1; nodes += n;
+            if ok {
+                let Some(t) = sd.focus.first().copied() else { continue };
+                trace.push(format!("frame seed: {} {} wins {} ({n} nodes)", sd.name, san(pos, &sd.uci), sd.goal));
+                wins.push((sd.uci.clone(), t, sd.goal));
+                if best.as_ref().map_or(true, |x| sd.goal > x.2) { best = Some((String::new(), sd.uci.clone(), sd.goal, format!("{} wins {} ({})", san(pos, &sd.uci), sd.goal, sd.name))); best_target = Some(t); }
+            }
+        }
+    }
     // 2 TARGETS by value
     let mut armed: Vec<(i64, Square, Vec<String>)> = Vec::new();        // failing seeds kept for the arming phase
     let mut targets: Vec<(i64, Square)> = b.by_color(them).into_iter().filter_map(|sq| b.piece_at(sq).map(|p| (val(p.role), sq))).filter(|(v, _)| *v >= 3).collect();
@@ -980,6 +1059,18 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
         }
       }
     }
+    // THE POOL'S ARMS (the reverse lookup): a preparing move that meets a dormant frame's missing condition, certified on
+    // the null move after it -- when nothing better was found and a preparing move is affordable
+    if best.is_none() && tempo && !pool.is_empty() {
+        let (arms, _, _) = crate::waiting::arming_core(pos, &pool);
+        if let Some(a) = arms.iter().max_by_key(|a| a.4) {
+            let q = a.0.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok()).map(|m| after(pos, &m));
+            let seed_san = q.as_ref().and_then(|q| pass(q)).map(|p| san(&p, &a.1)).unwrap_or(a.1.clone());
+            trace.push(format!("pool arm: {} meets {} -- then {} ({}) wins {} on the null move", san(pos, &a.0),
+                a.5.iter().map(|x| format!("{} {} {}", x.0, x.1, x.2)).collect::<Vec<_>>().join(", "), seed_san, a.2, a.4));
+            best = Some((a.0.clone(), a.1.clone(), a.4, format!("{} arms {} ({}, from the frame pool)", san(pos, &a.0), seed_san, a.2)));
+        }
+    }
     Plan { trace, best, proofs, nodes, target: best_target, immediate, wins }
 }
 
@@ -1036,6 +1127,11 @@ impl PlanState {
             memo.events = memo.ledger.as_ref().map(|prev| crate::ledger::diff(prev, &lg)).unwrap_or_default();
             memo.ledger = Some(lg);
         } else { memo.events.clear(); }
+        if POOL.load(Ordering::Relaxed) {
+            let (next, _, _, _) = crate::waiting::pool_step(&memo.pool, memo.pool_ply, &pos, true);
+            memo.pool = next;
+            memo.pool_ply += 1;
+        }
         MEMO.with(|m| *m.borrow_mut() = Some(memo));
         let t = std::time::Instant::now();
         let p = plan(&pos);

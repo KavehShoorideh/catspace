@@ -28670,3 +28670,16 @@ PlanState with it off and on. OBS (one run): 22,861 positions; ledger events in 
 jobs); immediate wins 2,799 -> 2,806 (gained 7, lost 0), 11 found by a freed piece's double threat; proofs a position
 13.8 -> 13.8; 70 s -> 72 s. Directional: the planner already starts from targets, so the nucleus adds few finds; its
 value so far is the explanation ("their rook on a8: what can it do? nothing").
+THE WAITING-FRAMES POOL WIRED IN (2026-10-10 ~14:00 PDT; Kaveh: wire what exists rather than rebuild -- waiting.rs's
+FramePool, 2026-10-09, measured but never used by the planner). waiting.rs pool_step (shared by FramePool and the
+planner's PlanState); plan.rs behind switches: the pool's active frames as wins, its arms as prepared threats, its
+"hands" lookup as a warning on the decision (set_pool). pool_check.py, 100 census games. OBS (one run): the pool costs
+6x (173 s vs 28 s); immediate wins 914 -> 1,337, but the pool's wins claiming 1 pawn (484) lose a median 27 cp to
+Stockfish's best, 11% lose 150+, against the planner's own (median 2 cp, 5%); those claiming 2+ (202) median 0 cp,
+8%; its armed decisions (144) median 86 cp, 35% lose 150+; decisions it warned "hands them a tactic" (29) lose 150+
+in 52% vs 17% unwarned. So, without the pool's cost: FRAME SEEDS (waiting::seeds -- forks, cornered pieces -- goal 2+,
+checks left to the king target, proved like our own; default on) and THE AFTER-CHECK (after the decision, their
+immediate reasoning once; a warning in the trace; default on). The pool stays off. frame_seed_check.py, 100 games.
+OBS: frame seeds add 9 immediate wins, lose 0 (Stockfish: median 9 cp, none losing 150+), proofs a position 15.6 ->
+18.7, time +6%. The after-check: decisions warned (611) lose 150+ cp in 68% (median 294 cp) vs 13% unwarned (median
+20 cp) -- the planner's blunders, named; acting on them (another move) is the next step.

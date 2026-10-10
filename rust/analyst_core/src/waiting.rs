@@ -668,12 +668,71 @@ pub fn arming_core(pos: &Chess, frames: &[Frame]) -> (Vec<ArmRow>, Vec<ArmRow>, 
     (a, h, d)
 }
 
+/// The dormant frames of theirs that our move `mv` HANDS them (a condition met, then certified with them to move):
+/// [(seed uci, name, certified value)] -- the blunder check on a decision.
+pub fn hands_for(pos: &Chess, frames: &[Frame], mv: &Move) -> Vec<(String, &'static str, i64)> {
+    let us = pos.turn();
+    let q = after(pos, mv);
+    let mut out = Vec::new();
+    for f in frames.iter().filter(|f| f.status == Status::Dormant && f.owner != us) {
+        if !f.alts.iter().any(|(a, _)| a.holds(&q, f.owner) && !a.holds(pos, f.owner)) { continue; }
+        let v = certify(&q, &f.seed.uci, &f.seed.focus, f.seed.goal);
+        if v >= f.seed.goal { out.push((f.seed.uci.clone(), f.seed.name, v)); }
+    }
+    out
+}
+
 /// arming_moves(fen) -> (arms, hands, defuses): [(our move, seed uci, name, focus, certified value, [atoms met])].
 #[pyfunction]
 pub fn arming_moves(fen: String) -> PyResult<(Vec<ArmRow>, Vec<ArmRow>, Vec<ArmRow>)> {
     let Some(pos) = parse(&fen) else { return Ok((vec![], vec![], vec![])) };
     let frames = frames_both(&pos, 0);
     Ok(arming_core(&pos, &frames))
+}
+
+/// ONE STEP OF THE LIVE POOL (shared by FramePool and the planner's PlanState): the frames of `old` re-checked on `pos`
+/// from their stored proofs, the seeds the move created evaluated from scratch, the destroyed ones dropped -> (the new
+/// frames, the events, re-checked, created).
+pub fn pool_step(old_frames: &[Frame], ply: u32, pos: &Chess, proofs: bool) -> (Vec<Frame>, Vec<Event>, u64, u64) {
+    let mut events = Vec::new();
+    let mut next: Vec<Frame> = Vec::new();
+    let (mut rechecked, mut created) = (0u64, 0u64);
+    let sides: Vec<Chess> = std::iter::once(pos.clone()).chain(pass(pos)).collect();
+    let mut alive_owners = Vec::new();
+    for (si, p) in sides.iter().enumerate() {
+        let owner = p.turn();
+        let real = si == 0;
+        alive_owners.push(owner);
+        let ss = seeds(p);
+        let old: HashMap<String, &Frame> = old_frames.iter().filter(|f| f.owner == owner).map(|f| (f.seed.key(), f)).collect();
+        let empty = Cache::new();
+        let done: Vec<(Frame, Option<Status>, bool)> = ss.par_iter().map(|s| {
+            match old.get(&s.key()) {
+                Some(f) => {
+                    let prev = if f.status == Status::Unsearched { f.last_searched } else { Some((f.status, f.alts.len())) };
+                    (evaluate(p, s, f.born, if proofs { &f.cache } else { &empty }, prev, real), Some(f.status), true)
+                }
+                None => (evaluate(p, s, ply, &empty, None, real), None, false),
+            }
+        }).collect();
+        let keys: std::collections::HashSet<String> = ss.iter().map(|s| s.key()).collect();
+        for (f, before, reused) in done {
+            if reused { rechecked += 1 } else { created += 1 }
+            if before == Some(Status::Far) && f.status == Status::Far { tally(A_FAR_AGAIN, f.nodes); }
+            match before {
+                None => events.push(event(&f, "new", f.status.name())),
+                Some(b) if b != f.status => events.push(event(&f, b.name(), f.status.name())),
+                _ => {}
+            }
+            next.push(f);
+        }
+        for f in old_frames.iter().filter(|f| f.owner == owner && !keys.contains(&f.seed.key())) {
+            events.push(event(f, f.status.name(), "dead"));
+        }
+    }
+    // a side that could not be evaluated (the side to move is in check: no null move for the other) keeps its frames
+    for f in old_frames.iter().filter(|f| !alive_owners.contains(&f.owner)) { let mut g = f.clone(); g.stale = true; next.push(g); }
+    (next, events, rechecked, created)
 }
 
 /// THE LIVE POOL: frames kept across the moves of a game, both sides. `observe(fen)`: the seeds the move CREATED are
@@ -692,7 +751,7 @@ pub struct FramePool {
     #[pyo3(get)] nodes: u64,
 }
 
-type Event = (String, String, String, Vec<String>, i64, i64, String, String, u32);
+pub type Event = (String, String, String, Vec<String>, i64, i64, String, String, u32);
 
 fn event(f: &Frame, before: &str, after_: &str) -> Event {
     (if f.owner == Color::White { "w" } else { "b" }.to_string(), f.seed.uci.clone(), f.seed.name.to_string(),
@@ -708,45 +767,8 @@ impl FramePool {
     fn observe(&mut self, fen: String) -> PyResult<Vec<Event>> {
         let Some(pos) = parse(&fen) else { return Ok(vec![]) };
         let n0 = NODES.load(Ordering::Relaxed);
-        let ply = self.ply;
-        let mut events = Vec::new();
-        let mut next: Vec<Frame> = Vec::new();
-        let sides: Vec<Chess> = std::iter::once(pos.clone()).chain(pass(&pos)).collect();
-        let mut alive_owners = Vec::new();
-        for (si, p) in sides.iter().enumerate() {
-            let owner = p.turn();
-            let real = si == 0;
-            alive_owners.push(owner);
-            let ss = seeds(p);
-            let old: HashMap<String, &Frame> = self.frames.iter().filter(|f| f.owner == owner).map(|f| (f.seed.key(), f)).collect();
-            let proofs = self.proofs;
-            let empty = Cache::new();
-            let done: Vec<(Frame, Option<Status>, bool)> = ss.par_iter().map(|s| {
-                match old.get(&s.key()) {
-                    Some(f) => {
-                        let prev = if f.status == Status::Unsearched { f.last_searched } else { Some((f.status, f.alts.len())) };
-                        (evaluate(p, s, f.born, if proofs { &f.cache } else { &empty }, prev, real), Some(f.status), true)
-                    }
-                    None => (evaluate(p, s, ply, &empty, None, real), None, false),
-                }
-            }).collect();
-            let keys: std::collections::HashSet<String> = ss.iter().map(|s| s.key()).collect();
-            for (f, before, reused) in done {
-                if reused { self.rechecked += 1 } else { self.created += 1 }
-                if before == Some(Status::Far) && f.status == Status::Far { tally(A_FAR_AGAIN, f.nodes); }
-                match before {
-                    None => events.push(event(&f, "new", f.status.name())),
-                    Some(b) if b != f.status => events.push(event(&f, b.name(), f.status.name())),
-                    _ => {}
-                }
-                next.push(f);
-            }
-            for f in self.frames.iter().filter(|f| f.owner == owner && !keys.contains(&f.seed.key())) {
-                events.push(event(f, f.status.name(), "dead"));
-            }
-        }
-        // a side that could not be evaluated (the side to move is in check: no null move for the other) keeps its frames
-        for f in self.frames.iter().filter(|f| !alive_owners.contains(&f.owner)) { let mut g = f.clone(); g.stale = true; next.push(g); }
+        let (next, events, rechecked, created) = pool_step(&self.frames, self.ply, &pos, self.proofs);
+        self.rechecked += rechecked; self.created += created;
         self.frames = next;
         self.nodes += NODES.load(Ordering::Relaxed).wrapping_sub(n0);
         self.last = Some(pos);

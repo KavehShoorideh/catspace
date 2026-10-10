@@ -1278,6 +1278,9 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plan::overload_check, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_overload, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_nucleus, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_pool, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_frame_seeds, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_after_check, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::set_one_move_waits, m)?)?;
     Ok(())
 }
