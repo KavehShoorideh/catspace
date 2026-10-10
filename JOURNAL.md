@@ -28368,3 +28368,36 @@ OBS `lake build Ideas` succeeds; `#print axioms` for all four: propext, Classica
 The Rust implementation (paths.rs) agreed with brute force on 836,694 moves; the theorem is the statement that the
 rule it implements is complete. It also licenses the cache across moves for attack facts: a fact about squares and
 lines the move did not touch carries over unchanged (search results still need their re-check).
+
+## 2026-10-09 22:55 PDT — geometric lemmas discovered without an LLM, proved in Lean, one wired into the planner
+
+Kaveh, on the position r1b1k3/3n1pb1/p1p1r1pp/8/5P2/2N2N2/PPPQ2PP/2KRR3 b: "does our system understand the knight on d7
+is pinned because the queen mates on d8 if it hops?"; "a knight that hops can never attack one of its adjacent squares
+... two pieces on opposite colours cannot be knight-forked ... how can we come up with these lemmas in a mathematically
+sound way, without an LLM?" (and: the LLM is for surprises against Stockfish -- the same loop: the sound miner explains a
+surprise first; only when the vocabulary cannot express it does an LLM propose a predicate, which the finite check
+then accepts or rejects). Correction on the record: a hopped knight never covers an ORTHOGONAL neighbour of its origin
+(the other colour); it can cover a diagonal one (d7 -> f6 attacks e8).
+BUILT geo_lemmas.py. Stage 1 (exact algebra on each piece's move vectors): exact linear invariants, every linear form
+mod m <= 8 that all moves shift by one constant, monotone forms, step bounds. OBS it finds, unprompted: the knight shifts
+(file + rank) mod 2 by 1 (the colour flip); the bishop preserves it; a pawn push keeps its file and raises its rank;
+a pawn capture adds 1 to the rank and keeps the colour; the king moves Chebyshev distance by at most 1; knight distance
+parity = colour difference (all 4,096 pairs). Stage 2 (Formal Concept Analysis; canonical Duquenne-Guigues basis by
+Ganter's NextClosure on the DISTINCT rows; fcapy has no basis): "a piece moves s -> t, a square x" (19 predicates, 103
+distinct rows of ~227k, 70 implications, 0.4 s) and "a piece on f, two squares x, y" (13 predicates, 112 rows, 8
+implications, 0.7 s); impossible premises reported separately as exclusions. OBS all six named lemmas follow from the
+basis: a hopped knight never covers an orthogonal neighbour; a knight blocker always leaves the line; a moving knight
+stops guarding EVERY square it guarded (new); a bishop never covers the other colour; a knight forks only same-coloured
+pieces; a knight fork of opposite colours never occurs.
+PROVED in Lean (Ideas/GeoLemmas.lean, on ChessLean's geometry, all squares): knight_flips_colour, bishop_keeps_colour,
+knight_hop_never_covers_orth_neighbour, knight_drops_every_guard, knight_leaves_every_line, knight_fork_same_colour;
+axioms propext and Quot.sound only; `lake build Ideas` succeeds.
+WIRED: the planner's PINNED-TO-WHAT fact -- for each pin against our king zone, lift the blocker and run their immediate
+reasoning; if they then win more than they threaten, the blocker's moves off the line are refused without proof (a
+knight's: all, by knight_leaves_every_line; taking the pinner and checks are still proved). OBS the position above:
+"our knight on d7 stands between their queen on d2 and d8; lifted, they have Qd8 mate -- every knight move opens the
+line: all frozen"; no knight move appears among Black's seeds, preparing moves or defences. Census: recall unchanged
+(frames' tactics 96%, Stockfish's 64%); proofs a position median 10 (9 before), mean 14.3 (11.9) -- the pin analysis
+costs more than the refusals save until the fact is cached across moves (sound for attack facts by the locality
+theorem). NOT BUILT: stage 3 (keep only the lemmas that would have skipped searches in the proof audit); mining from
+surprises (the separating implication over the existing vocabulary, then the LLM fallback).

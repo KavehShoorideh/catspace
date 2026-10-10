@@ -61,6 +61,48 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
         cap.max(their.as_ref().map_or(0, |x| x.2))
     };
     let tempo = threat <= 1;
+    // PINNED TO WHAT (Kaveh 2026-10-09: "the knight on d7 is pinned because the queen can give a mate on d8 if the knight
+    // hops"): for each pin of theirs against our king zone (paths.rs), ONE analysis: lift our blocker and run their
+    // immediate reasoning; if they then win more than they threaten now, the blocker is pinned to that loss, and its
+    // moves that leave the line are refused without proof -- for a knight every move, by the proved lemma
+    // Ideas.GeoLemmas.knight_leaves_every_line (taking the pinning piece, and a check, are still proved)
+    let mut frozen: HashMap<Square, (Square, i64, String)> = HashMap::new();
+    if !immediate_only {
+        if let Some(k) = b.king_of(us) {
+            let zone = shakmaty::attacks::king_attacks(k).with(k);
+            for p in attack_paths(pos, them, zone) {
+                if p.kind != "pin" { continue; }
+                let Some(bl) = p.via else { continue };
+                if frozen.contains_key(&bl) { continue; }
+                let mut setup = pos.clone().into_setup(shakmaty::EnPassantMode::Legal);
+                setup.board.discard_piece_at(bl);
+                setup.turn = them;
+                let lifted = Chess::from_setup(setup, CastlingMode::Standard).or_else(|e| e.ignore_invalid_castling_rights()).ok();
+                let Some(lifted) = lifted else { continue };
+                let lp = plan_inner(&lifted, true);
+                proofs += lp.proofs; nodes += lp.nodes;
+                if let Some(lb) = lp.best {
+                    if lb.2 > threat.max(1) {
+                        let role = b.piece_at(bl).map(|x| x.role);
+                        trace.push(format!("pin: our {:?} on {bl} stands between their {:?} on {} and {}; lifted, they have {} -- {}",
+                            role.unwrap_or(Role::Pawn), b.piece_at(p.piece).map(|x| x.role).unwrap_or(Role::Pawn), p.piece, p.target, lb.3,
+                            if role == Some(Role::Knight) { "every knight move opens the line (knight_leaves_every_line): all frozen".to_string() } else { "moves off the line frozen".to_string() }));
+                        frozen.insert(bl, (p.piece, lb.2, format!("{}", lb.3)));
+                    }
+                }
+            }
+        }
+    }
+    let refused = |m: &Move| -> Option<String> {
+        let from = m.from()?;
+        let (sl, loss, why) = frozen.get(&from)?;
+        if m.to() == *sl { return None; }                                // taking the pinning piece
+        if after(pos, m).is_check() { return None; }                       // a check is still proved
+        let on_line = b.piece_at(from).map_or(false, |x| x.role != Role::Knight)
+            && (shakmaty::attacks::between(*sl, b.king_of(us).unwrap_or(from)).contains(m.to()));
+        if on_line { return None; }
+        Some(format!("pinned: it would allow {why} (worth {loss})"))
+    };
     if !immediate_only {
         trace.push(format!("their threat if we pass: worth {threat}; a preparing move is {}", if tempo { "affordable" } else { "NOT affordable" }));
     }
@@ -132,6 +174,12 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
         let mut failed: Vec<String> = Vec::new();
         let before = rules::threats_of(pos, us);
         for s in &seeds {
+            if let Some(sm) = s.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok()) {
+                if let Some(why) = refused(&sm) {
+                    trace.push(format!("    {}: refused without proof -- {why}", san(pos, s)));
+                    continue;
+                }
+            }
             // THE LONE-ATTACK LEMMA (2026-10-09, the castling position went from 4 proofs to 10 on attacks the piece just
             // steps away from): a move that attacks a piece with a safe escape wins nothing unless it also gives check or
             // attacks a second piece (escapes count pins). Not for the king: a check is the frame itself.
@@ -215,6 +263,7 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
                 }
                 let mut cands: Vec<Move> = Vec::new();
                 for m in pos.legal_moves() {
+                    if refused(&m).is_some() { continue; }
                     let q = after(pos, &m);
                     let hit = Some(m.to()) == from || m.from() == Some(tt) || q.board().attacks_to(land, us, q.board().occupied()).any()
                         && !b.attacks_to(land, us, b.occupied()).any()
@@ -267,6 +316,7 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
             for a in &arms {
                 let Ok(au) = a.parse::<shakmaty::uci::UciMove>() else { continue };
                 let Ok(am) = au.to_move(pos) else { continue };
+                if refused(&am).is_some() { continue; }
                 let q = after(pos, &am);
                 if q.is_check() { continue; }
                 let Some(p) = pass(&q) else { continue };
