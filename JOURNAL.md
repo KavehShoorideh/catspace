@@ -28575,3 +28575,19 @@ proved the solution and the proof failed 46/28 (62%); an endgame 22/14 (61%); a 
 lemma skipped the solution => missed, unless 1 of 17". THE FIRST REVIEW (artifacts/experiments/lemma_review_missed.md):
 the lone-attack lemma's 28 exceptions -- lone attacks Stockfish says win (Rf5, Be5, Bc5, Ne4 ... 1.6-4.9 pawns) -- the
 exception set is the candidate concept: what do these lone attacks have that the lemma does not see?
+THE LEMMA REVIEWER (2026-10-10 ~09:15 PDT; Kaveh: "a lemma reviewer, which states the lemma ... what's missing, the
+positions that it does catch and the positions that it doesn't catch"): catspace/incubator/analyst/lemma_reviewer.py
+collects every firing of a lemma from the planner's trace (all 367 Stockfish-tactic positions + a random census
+sample), judges each refused move with Stockfish (depth 12 on the position after it), and fills a click-through page
+(lemma_reviewer.html; Lichess's cburnett pieces): SURPRISES (Stockfish disagrees), a few correct REFUSALS, a few
+correct LET-THROUGHS (quiet only-move tactics the lemma did not block and the planner won). Time: planner 9 s on 3229
+positions, Stockfish 35 s on 12,400 firings (all cores). Bug check before trusting it, three fixes: (1) the judge's
+8-ply line stopped short of 11 labelled wins (Bc5 before a8=Q) -> the labelled only-move win counts on its own; (2)
+material won along the line flagged blunders as the lemma's mistakes (Rc6 at -6.48 when bxa6 wins the queen) -> a
+surprise must be within 50 cp of the best; (3) material mid-exchange (+2 at +0.70) -> the label's own standard, +1.50
+and 2 pawns. (And my own count of 45 skipped solutions added the 17 let-throughs; the planner is deterministic, 28.)
+OBS (one run, directional) the lone-attack lemma: random sample 10,776 firings on 2,279 positions, Stockfish disagrees
+on 18 (0.2%); tactic positions 1,624 firings, 29 (1.8%). Candidate facts (Claude's, unreviewed), surprises vs correct
+refusals: the moving piece lands safe 45/47 (96%) vs 6915/12353 (56%); the attacked piece has no safe square 5/47
+(11%) vs 115/12353 (1%); the move answers their threat 8/47 (17%) vs 711/12353 (6%); the attacked piece guards another
+piece we attack 17/47 (36%) vs 3588/12353 (29%). Page: https://claude.ai/artifact/FuGiGwr3RCeBMehyYhyvbh

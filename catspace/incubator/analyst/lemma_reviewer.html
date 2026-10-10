@@ -1,0 +1,376 @@
+<title>Lemma Reviewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,600;1,8..60,400&display=swap">
+<style>
+/* Layout: a theorem block on top (the lemma, what is open), then a review desk -- the board beside the case notes,
+   a case strip to click through; one column on phones. The board keeps Lichess's own colours in both themes. */
+:root {
+  --bg: #f5f6f4; --panel: #ffffff; --ink: #1d2320; --muted: #5d6762; --line: #dfe3df;
+  --accent: #2c5e4a; --accent-soft: #e3eee8;
+  --bad: #a3361f; --bad-soft: #f7e6e1; --good: #2f6b3a; --good-soft: #e4f0e2; --pass: #2e5687; --pass-soft: #e3eaf5;
+  --sq-light: #f0d9b5; --sq-dark: #b58863; --lastmove: rgba(155, 199, 0, 0.41);
+  --brush-green: #15781b; --brush-blue: #003088; --brush-red: #882020;
+  --f-display: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161a18; --panel: #1f2421; --ink: #e6ebe7; --muted: #9aa59f; --line: #323a35;
+    --accent: #8cc7ab; --accent-soft: #24342c;
+    --bad: #f0927b; --bad-soft: #3a2420; --good: #93cf9c; --good-soft: #213224; --pass: #9ab8e6; --pass-soft: #1f2a3a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161a18; --panel: #1f2421; --ink: #e6ebe7; --muted: #9aa59f; --line: #323a35;
+  --accent: #8cc7ab; --accent-soft: #24342c;
+  --bad: #f0927b; --bad-soft: #3a2420; --good: #93cf9c; --good-soft: #213224; --pass: #9ab8e6; --pass-soft: #1f2a3a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); margin: 0; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 48px; display: grid; gap: 20px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+.mono { font-family: var(--f-mono); font-size: 13px; }
+.label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+
+/* the lemma */
+.lemma { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 20px 22px; display: grid; gap: 14px; }
+.lemma h1 { font: 600 22px/1.25 var(--f-display); }
+.lemma .statement { font: italic 400 19px/1.45 var(--f-display); max-width: 62ch; }
+.lemma .statement b { font-style: normal; font-weight: 600; }
+.lemma ul { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 2px; }
+.lemma .source { color: var(--muted); font-size: 13px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px 28px; }
+.cols > * { min-width: 0; }
+.open { background: var(--accent-soft); border-radius: 6px; padding: 14px 16px; display: grid; gap: 8px; }
+.open p { margin: 0; }
+table.facts { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+table.facts th, table.facts td { text-align: left; padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.facts td.n { text-align: right; white-space: nowrap; }
+.tablewrap { overflow-x: auto; }
+.counts { display: flex; flex-wrap: wrap; gap: 8px 22px; font-variant-numeric: tabular-nums; }
+.counts div { display: grid; }
+.counts b { font: 600 20px/1.2 var(--f-body); }
+
+/* groups */
+.groups { display: flex; flex-wrap: wrap; gap: 8px; }
+.groups button { font: 500 14px var(--f-body); border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 999px; padding: 7px 14px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+.groups button .dot { width: 9px; height: 9px; border-radius: 50%; }
+.groups button[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.groups button:focus-visible, .nav button:focus-visible, .strip button:focus-visible, .moves button:focus-visible, .tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.g-surprise .dot { background: var(--bad); } .g-refused .dot { background: var(--good); } .g-passed .dot { background: var(--pass); }
+.groupnote { color: var(--muted); margin: 0; max-width: 75ch; }
+
+/* desk */
+.desk { display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 860px) { .desk { grid-template-columns: minmax(0, 1fr); } }
+.boardcol { display: grid; gap: 10px; }
+.board { position: relative; width: 100%; max-width: 520px; aspect-ratio: 1; border-radius: 3px; overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0,0,0,.18); user-select: none; }
+.squares { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); }
+.sq { position: relative; }
+.sq.l { background: var(--sq-light); } .sq.d { background: var(--sq-dark); }
+.sq.hl::after { content: ""; position: absolute; inset: 0; background: var(--lastmove); }
+.pc { position: absolute; inset: 0; background-size: 100% 100%; z-index: 2; }
+.coord { position: absolute; font: 600 10px/1 var(--f-body); z-index: 1; pointer-events: none; }
+.coord.f { right: 3px; bottom: 2px; } .coord.r { left: 3px; top: 3px; }
+.sq.l .coord { color: var(--sq-dark); } .sq.d .coord { color: var(--sq-light); }
+svg.shapes { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }
+.nav { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.nav button, .stepper button { font: 500 14px var(--f-body); border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 4px; padding: 7px 12px; cursor: pointer; }
+.nav button:hover, .stepper button:hover { border-color: var(--muted); }
+.nav .count { font-variant-numeric: tabular-nums; color: var(--muted); margin-left: auto; }
+.hint { color: var(--muted); font-size: 12px; }
+
+.notes { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px; display: grid; gap: 14px; min-width: 0; }
+.chip { display: inline-block; font: 600 11px/1 var(--f-body); letter-spacing: .06em; text-transform: uppercase; padding: 5px 8px; border-radius: 3px; }
+.chip.surprise { background: var(--bad-soft); color: var(--bad); }
+.chip.refused { background: var(--good-soft); color: var(--good); }
+.chip.passed { background: var(--pass-soft); color: var(--pass); }
+.chip.plain { background: var(--accent-soft); color: var(--accent); }
+.headline { font: 600 19px/1.35 var(--f-display); margin: 0; }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; font-variant-numeric: tabular-nums; margin: 0; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; min-width: 0; }
+.factlist { display: flex; flex-wrap: wrap; gap: 6px; }
+.fact { font-size: 12px; border: 1px solid var(--line); border-radius: 3px; padding: 3px 7px; color: var(--muted); }
+.fact.on { border-color: var(--accent); color: var(--ink); background: var(--accent-soft); }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.tabs button { font: 500 13px var(--f-body); background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 6px 8px; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.moves { display: flex; flex-wrap: wrap; gap: 2px 4px; font: 14px var(--f-mono); }
+.moves .no { color: var(--muted); padding: 3px 0 3px 4px; }
+.moves button { font: inherit; background: none; border: 0; border-radius: 3px; padding: 3px 5px; color: var(--ink); cursor: pointer; }
+.moves button:hover { background: var(--accent-soft); }
+.moves button.cur { background: var(--accent); color: var(--panel); }
+.stepper { display: flex; gap: 6px; }
+.fenrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.fenrow code { font: 12px var(--f-mono); overflow-wrap: anywhere; color: var(--muted); min-width: 0; flex: 1 1 240px; }
+.fenrow button, .fenrow a { font: 500 13px var(--f-body); color: var(--accent); background: none; border: 1px solid var(--line); border-radius: 4px; padding: 4px 9px; cursor: pointer; text-decoration: none; }
+
+.strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.strip button { text-align: left; font: 13px var(--f-body); border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 4px; padding: 6px 8px; cursor: pointer; display: grid; gap: 1px; }
+.strip button .m { font: 500 13px var(--f-mono); }
+.strip button .s { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.strip button[aria-current="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.foot { color: var(--muted); font-size: 12px; }
+@media (prefers-reduced-motion: no-preference) { .pc { transition: none; } }
+</style>
+
+<div class="wrap">
+  <section class="lemma" aria-labelledby="lemma-name">
+    <div class="label">Lemma under review</div>
+    <h1 id="lemma-name"></h1>
+    <div class="statement" id="lemma-statement"></div>
+    <div class="cols">
+      <div>
+        <div class="label">Unless</div>
+        <ul id="lemma-unless"></ul>
+        <p class="source" id="lemma-source"></p>
+      </div>
+      <div class="open">
+        <div class="label">Open: what the lemma lacks</div>
+        <p id="open-text"></p>
+        <div class="tablewrap"><table class="facts" id="facts"></table></div>
+      </div>
+    </div>
+    <div class="counts" id="counts"></div>
+  </section>
+
+  <div class="groups" id="groups" role="group" aria-label="Which cases"></div>
+  <p class="groupnote" id="groupnote"></p>
+
+  <section class="desk">
+    <div class="boardcol">
+      <div class="board" id="board" aria-label="Chess board">
+        <div class="squares" id="squares"></div>
+        <svg class="shapes" id="shapes" viewBox="0 0 8 8" aria-hidden="true">
+          <defs>
+            <marker id="ah-g" orient="auto" overflow="visible" markerWidth="4" markerHeight="4" refX="2.05" refY="2"><path d="M0,0 V4 L3,2 Z" fill="var(--brush-green)"></path></marker>
+            <marker id="ah-b" orient="auto" overflow="visible" markerWidth="4" markerHeight="4" refX="2.05" refY="2"><path d="M0,0 V4 L3,2 Z" fill="var(--brush-blue)"></path></marker>
+          </defs>
+          <g id="shapes-g"></g>
+        </svg>
+      </div>
+      <div class="nav">
+        <button id="prev" type="button">&larr; Previous</button>
+        <button id="next" type="button">Next &rarr;</button>
+        <span class="count" id="count"></span>
+      </div>
+      <div class="hint">Keys: &larr; &rarr; positions, &uarr; &darr; step through the line. Green arrow: the move in question. Blue arrow: Stockfish's best, when different. Red ring: the attacked piece.</div>
+    </div>
+    <div class="notes" id="notes"></div>
+  </section>
+
+  <section>
+    <div class="label" style="margin-bottom:8px">All cases in this group</div>
+    <div class="strip" id="strip"></div>
+  </section>
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const PIECES = /*__PIECES__*/null;
+
+const GROUPS = {
+  surprise: { name: "Surprises", cls: "g-surprise",
+    note: "The lemma refused the move as a lone attack, and Stockfish says the move wins material (or it is the position's only winning move). These are the exceptions a new concept must explain." },
+  refused: { name: "Refused, correctly", cls: "g-refused",
+    note: "The lemma refused the move, and Stockfish agrees it wins nothing. A few for comparison, drawn at random." },
+  passed: { name: "Let through, correctly", cls: "g-passed",
+    note: "A quiet move (no capture, no check) that attacks something, which the lemma did NOT refuse because one of its 'unless' clauses applied. The planner proved it, and it is Stockfish's only winning move. A few for comparison." },
+};
+const groupOf = c => c.stratum === "passed" ? "passed" : (c.wrong ? "surprise" : "refused");
+const byGroup = { surprise: [], refused: [], passed: [] };
+DATA.cases.forEach(c => byGroup[groupOf(c)].push(c));
+
+let state = { group: "surprise", idx: 0, line: "move", step: 0 };
+try { const s = JSON.parse(localStorage.getItem("lemma-reviewer-" + DATA.lemma.name) || "null"); if (s && byGroup[s.group]) state = { ...state, group: s.group, idx: Math.min(s.idx, Math.max(byGroup[s.group].length - 1, 0)) }; } catch (e) {}
+const save = () => { try { localStorage.setItem("lemma-reviewer-" + DATA.lemma.name, JSON.stringify({ group: state.group, idx: state.idx })); } catch (e) {} };
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+const pct = (a, n) => n ? Math.round(100 * a / n) + "%" : "—";
+const cpText = (cp, mate) => mate ? "mate" : (cp >= 0 ? "+" : "−") + (Math.abs(cp) / 100).toFixed(2);
+const sqIdx = s => ({ f: s.charCodeAt(0) - 97, r: +s[1] - 1 });
+
+/* ---------- header ---------- */
+function header() {
+  const L = DATA.lemma, S = DATA.summary;
+  $("lemma-name").textContent = L.name;
+  $("lemma-statement").innerHTML = "<b>Lemma.</b> " + esc(L.statement);
+  $("lemma-unless").innerHTML = L.unless.map(u => `<li>${esc(u)}</li>`).join("");
+  $("lemma-source").textContent = "Source: " + L.source;
+  const sm = S.strata.sample, tc = S.strata.tactic;
+  $("open-text").textContent = `On a random sample of census positions the lemma fired ${sm.firings} times and Stockfish disagreed ${sm.wrong} times. ` +
+    `What do the surprises have that the refused-correctly cases lack? Claude's first guesses below (not reviewed) are counted on every firing.`;
+  const rows = Object.entries(S.facts).map(([k, v]) =>
+    `<tr><td>${esc(k)}</td><td class="n">${pct(v.wrong, v.n_wrong)} <span class="mono">(${v.wrong}/${v.n_wrong})</span></td><td class="n">${pct(v.right, v.n_right)} <span class="mono">(${v.right}/${v.n_right})</span></td></tr>`).join("");
+  $("facts").innerHTML = `<thead><tr><th>candidate fact</th><th class="n">in surprises</th><th class="n">in correct refusals</th></tr></thead><tbody>${rows}</tbody>`;
+  $("counts").innerHTML = [
+    [sm.firings, `firings on ${sm.positions} random positions`],
+    [`${sm.wrong} (${(100 * sm.wrong / Math.max(sm.firings, 1)).toFixed(1)}%)`, "of them surprises"],
+    [tc.firings, `firings on ${tc.positions} Stockfish-tactic positions`],
+    [`${tc.wrong} (${(100 * tc.wrong / Math.max(tc.firings, 1)).toFixed(1)}%)`, "of them surprises"],
+    [S.strata.passed.positions, "quiet tactics let through and won"],
+  ].map(([b, t]) => `<div><b>${b}</b><span class="label">${esc(t)}</span></div>`).join("");
+  $("foot").textContent = `Data: ${DATA.n_tactic} positions where Stockfish (depth 12) has an only-move tactic, plus ${DATA.n_sample} random positions, from the c300 census games. ` +
+    `A refused move counts as a surprise when it is the labelled only-move win, or when it wins by the same standard (Stockfish scores it +1.50 or better and its line leaves the mover 2+ pawns up, or mates) within 50 cp of Stockfish's best. Correct refusals shown are plausible moves (within 100 cp of the best) that win nothing. One run: directional, not a verdict. Built ${DATA.built}. Pieces: Lichess cburnett.`;
+}
+
+/* ---------- board ---------- */
+function drawBoard(fen, opts) {
+  const [placement, turn] = fen.split(" ");
+  const flip = opts.orient === "b";
+  const grid = Array.from({ length: 8 }, () => Array(8).fill(null));
+  placement.split("/").forEach((row, i) => {
+    let f = 0;
+    for (const ch of row) {
+      if (/\d/.test(ch)) { f += +ch; continue; }
+      grid[7 - i][f] = (ch === ch.toUpperCase() ? "w" : "b") + ch.toUpperCase();
+      f++;
+    }
+  });
+  const hl = new Set((opts.highlight || []).map(s => s));
+  let html = "";
+  for (let vr = 0; vr < 8; vr++) {
+    for (let vf = 0; vf < 8; vf++) {
+      const r = flip ? vr : 7 - vr, f = flip ? 7 - vf : vf;
+      const name = "abcdefgh"[f] + (r + 1);
+      const light = (r + f) % 2 === 1;
+      const p = grid[r][f];
+      let inner = p ? `<div class="pc" style="background-image:url('${PIECES[p]}')"></div>` : "";
+      if (vr === 7) inner += `<span class="coord f">${"abcdefgh"[f]}</span>`;
+      if (vf === 0) inner += `<span class="coord r">${r + 1}</span>`;
+      html += `<div class="sq ${light ? "l" : "d"}${hl.has(name) ? " hl" : ""}">${inner}</div>`;
+    }
+  }
+  $("squares").innerHTML = html;
+  const toXY = s => { const { f, r } = sqIdx(s); return flip ? [7 - f + .5, r + .5] : [f + .5, 7 - r + .5]; };
+  let shapes = "";
+  (opts.rings || []).forEach(s => { const [x, y] = toXY(s); shapes += `<circle cx="${x}" cy="${y}" r="0.46875" fill="none" stroke="var(--brush-red)" stroke-width="0.0625" opacity="0.9"></circle>`; });
+  (opts.arrows || []).forEach(([a, b, brush]) => {
+    const [x1, y1] = toXY(a), [x2, y2] = toXY(b);
+    const d = Math.hypot(x2 - x1, y2 - y1), k = (d - 0.31) / d;
+    shapes += `<line x1="${x1}" y1="${y1}" x2="${x1 + (x2 - x1) * k}" y2="${y1 + (y2 - y1) * k}" stroke="var(--brush-${brush === "b" ? "blue" : "green"})" stroke-width="0.15625" stroke-linecap="round" marker-end="url(#ah-${brush})" opacity="0.8"></line>`;
+  });
+  $("shapes-g").innerHTML = shapes;
+}
+
+/* ---------- case ---------- */
+function cur() { return byGroup[state.group][state.idx]; }
+function lineOf(c) { return state.line === "best" ? c.best_line : c.line; }
+
+function render() {
+  const list = byGroup[state.group];
+  document.querySelectorAll("#groups button").forEach(b => b.setAttribute("aria-pressed", b.dataset.g === state.group));
+  $("groupnote").textContent = GROUPS[state.group].note;
+  $("count").textContent = list.length ? `${state.idx + 1} / ${list.length}` : "0 / 0";
+  $("prev").disabled = !list.length; $("next").disabled = !list.length;
+  if (!list.length) { $("notes").innerHTML = "<p>No cases in this group.</p>"; $("strip").innerHTML = ""; drawBoard("8/8/8/8/8/8/8/8 w - - 0 1", {}); return; }
+  const c = cur();
+  const orient = c.fen.split(" ")[1];
+  const line = lineOf(c);
+  if (state.step === 0) {
+    const arrows = [[c.move.slice(0, 2), c.move.slice(2, 4), "g"]];
+    if (c.best_move && c.best_move !== c.move) arrows.push([c.best_move.slice(0, 2), c.best_move.slice(2, 4), "b"]);
+    drawBoard(c.fen, { orient, highlight: c.last ? [c.last.slice(0, 2), c.last.slice(2, 4)] : [], arrows, rings: c.target_sq ? [c.target_sq] : [] });
+  } else {
+    const st = line[state.step - 1];
+    drawBoard(st.fen, { orient, highlight: [st.uci.slice(0, 2), st.uci.slice(2, 4)] });
+  }
+  notes(c);
+  strip();
+  save();
+}
+
+function notes(c) {
+  const g = groupOf(c);
+  const side = c.fen.split(" ")[1] === "w" ? "White" : "Black";
+  const tgt = c.targets.length ? c.targets.join(", ") : "";
+  let head;
+  if (g === "passed") head = `${side} to move. The lemma let <span class="mono">${esc(c.san)}</span> through, and the planner won with it.`;
+  else head = `${side} to move. The lemma refused <span class="mono">${esc(c.san)}</span> as a lone attack on the ${esc(tgt)}.`;
+  const verdict = g === "surprise"
+    ? (c.sf_tactic ? "Stockfish: it is the only winning move here." : `Stockfish: its line after the move wins ${c.gain >= 2 ? c.gain + " pawns of material" : "by mate"}.`)
+    : g === "refused" ? `Stockfish: its line after the move wins nothing (${c.gain >= 0 ? "+" : ""}${c.gain} in material).` : "Stockfish: the only winning move.";
+  const line = lineOf(c);
+  let mv = "";
+  const fullmove = +c.fen.split(" ")[5];
+  let num = fullmove, black = c.fen.split(" ")[1] === "b";
+  line.forEach((m, i) => {
+    if (!black || i === 0) mv += `<span class="no">${num}${black && i === 0 ? "…" : "."}</span>`;
+    mv += `<button type="button" data-step="${i + 1}" class="${state.step === i + 1 ? "cur" : ""}">${esc(m.san)}</button>`;
+    if (black) num++;
+    black = !black;
+  });
+  const hasBest = c.best_line && c.best_line.length && c.best_move !== c.move;
+  const facts = Object.entries(c.facts || {}).map(([k, v]) => `<span class="fact${v ? " on" : ""}">${v ? "✓" : "✗"} ${esc(k)}</span>`).join("");
+  const lichess = "https://lichess.org/analysis/standard/" + c.fen.replace(/ /g, "_");
+  $("notes").innerHTML = `
+    <div><span class="chip ${g}">${GROUPS[g].name}</span> ${c.sf_tactic && g !== "passed" ? '<span class="chip plain">Stockfish only-move tactic</span>' : ""}</div>
+    <p class="headline">${head}</p>
+    <p style="margin:0">${verdict}</p>
+    <dl class="kv">
+      <dt>After ${esc(c.san)}</dt><dd>${cpText(c.cp, c.mate)} <span class="label">for ${side}</span></dd>
+      <dt>Stockfish's best</dt><dd>${c.best_san ? `<span class="mono">${esc(c.best_san)}</span> ${cpText(c.best, false)}` : "—"}</dd>
+      <dt>Played in the game</dt><dd>${c.played ? `<span class="mono">${esc(c.played)}</span>` : "—"} <span class="label">game ${c.game}, ply ${c.ply}</span></dd>
+    </dl>
+    ${facts ? `<div><div class="label" style="margin-bottom:6px">Candidate facts (Claude's guesses)</div><div class="factlist">${facts}</div></div>` : ""}
+    <div>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" data-line="move" aria-selected="${state.line === "move"}">Line after ${esc(c.san)}</button>
+        ${hasBest ? `<button type="button" role="tab" data-line="best" aria-selected="${state.line === "best"}">Stockfish's best line</button>` : ""}
+      </div>
+      <div class="moves" style="margin-top:8px">${mv || '<span class="hint">no line</span>'}</div>
+      <div class="stepper" style="margin-top:8px">
+        <button type="button" data-go="start">|&lsaquo;</button><button type="button" data-go="back">&lsaquo;</button>
+        <button type="button" data-go="fwd">&rsaquo;</button><button type="button" data-go="end">&rsaquo;|</button>
+      </div>
+    </div>
+    <div class="fenrow"><code id="fen">${esc(c.fen)}</code><button type="button" id="copy">Copy FEN</button><a href="${lichess}" target="_blank" rel="noopener">Open on Lichess</a></div>`;
+  $("notes").querySelectorAll("[data-step]").forEach(b => b.onclick = () => { state.step = +b.dataset.step; render(); });
+  $("notes").querySelectorAll("[data-line]").forEach(b => b.onclick = () => { state.line = b.dataset.line; state.step = 0; render(); });
+  $("notes").querySelectorAll("[data-go]").forEach(b => b.onclick = () => go(b.dataset.go));
+  $("copy").onclick = () => {
+    const done = () => { $("copy").textContent = "Copied"; setTimeout(() => { const el = $("copy"); if (el) el.textContent = "Copy FEN"; }, 1200); };
+    navigator.clipboard.writeText(c.fen).then(done).catch(() => { const r = document.createRange(); r.selectNodeContents($("fen")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); });
+  };
+}
+
+function strip() {
+  const list = byGroup[state.group];
+  $("strip").innerHTML = list.map((c, i) => {
+    const sub = groupOf(c) === "passed" ? `${cpText(c.best, false)}` : `${c.targets[0] || ""}`;
+    return `<button type="button" data-i="${i}" aria-current="${i === state.idx}"><span class="m">${i + 1}. ${esc(c.san)}</span><span class="s">${esc(sub)} · ${cpText(c.cp, c.mate)}</span></button>`;
+  }).join("");
+  $("strip").querySelectorAll("button").forEach(b => b.onclick = () => select(+b.dataset.i));
+}
+
+function select(i) { const n = byGroup[state.group].length; if (!n) return; state.idx = (i + n) % n; state.step = 0; state.line = "move"; render(); }
+function go(where) {
+  const n = lineOf(cur()).length;
+  state.step = where === "start" ? 0 : where === "end" ? n : where === "fwd" ? Math.min(n, state.step + 1) : Math.max(0, state.step - 1);
+  render();
+}
+
+$("groups").innerHTML = Object.entries(GROUPS).map(([k, g]) => `<button type="button" class="${g.cls}" data-g="${k}"><span class="dot"></span>${g.name} <span class="mono">${byGroup[k].length}</span></button>`).join("");
+$("groups").querySelectorAll("button").forEach(b => b.onclick = () => { state.group = b.dataset.g; state.idx = 0; state.step = 0; state.line = "move"; render(); });
+$("prev").onclick = () => select(state.idx - 1);
+$("next").onclick = () => select(state.idx + 1);
+document.addEventListener("keydown", e => {
+  if (e.target.closest && e.target.closest("input, textarea")) return;
+  if (e.key === "ArrowLeft") { select(state.idx - 1); e.preventDefault(); }
+  else if (e.key === "ArrowRight") { select(state.idx + 1); e.preventDefault(); }
+  else if (e.key === "ArrowDown") { go("fwd"); e.preventDefault(); }
+  else if (e.key === "ArrowUp") { go("back"); e.preventDefault(); }
+});
+header();
+render();
+</script>
