@@ -8,6 +8,7 @@ mod maia;
 mod waiting;
 mod paths;
 mod plan;
+mod threat;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::collections::HashMap;
@@ -1268,6 +1269,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(paths::attack_paths_of, m)?)?;
     m.add_function(wrap_pyfunction!(plan::plan_trace, m)?)?;
     m.add_function(wrap_pyfunction!(plan::threats_after, m)?)?;
+    m.add_function(wrap_pyfunction!(threat::threat_check, m)?)?;
     m.add_class::<plan::PlanState>()?;
     m.add_function(wrap_pyfunction!(plan::set_reuse_fails, m)?)?;
     m.add_function(wrap_pyfunction!(plan::line_pair_check, m)?)?;

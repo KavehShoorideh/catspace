@@ -29,7 +29,7 @@ def _one(args):
     return game, ply, fen, best, proofs, nodes, ms, imm
 
 
-def run(tag: str, frames_file: str, workers: int, limit: int) -> None:
+def run(tag: str, frames_file: str, workers: int, limit: int, save: str = "") -> None:
     from multiprocessing import Pool
     from .tactic_census_measure import load
     from .tactic_reach import is_tactic
@@ -45,6 +45,10 @@ def run(tag: str, frames_file: str, workers: int, limit: int) -> None:
           f"90th percentile {proofs[int(0.9 * n)]}, max {proofs[-1]}, mean {sum(proofs) / n:.1f}; nodes a position "
           f"{sum(r[5] for r in res) / n:,.0f}; ms a position median {ms[n // 2]:.1f}, max {ms[-1]:.0f}; found {dict(kinds)}")
     plan = {(r[0], r[1]): r for r in res}
+    if save:                                                      # per position, for diffing two builds
+        with open(paths.experiment(f"plan_check_{tag}_{save}.jsonl"), "w") as fh:
+            for r in res:
+                fh.write(json.dumps(dict(game=r[0], ply=r[1], fen=r[2], imm=r[7], best=r[3], proofs=r[4], ms=r[6])) + "\n")
     # the frames: immediate tactics (active, goal >= 3) for the side to move
     plies = defaultdict(list)
     for r in rows:
@@ -87,8 +91,9 @@ def main(argv=None):
     ap.add_argument("--frames", default="waiting_frames_v2_c300_300.jsonl")
     ap.add_argument("--limit", type=int, default=100000)
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
+    ap.add_argument("--save", default="", help="write each position's result to plan_check_<tag>_<save>.jsonl")
     a = ap.parse_args(argv)
-    run(a.tag, a.frames, a.workers, a.limit)
+    run(a.tag, a.frames, a.workers, a.limit, a.save)
 
 
 if __name__ == "__main__":

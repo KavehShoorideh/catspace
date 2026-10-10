@@ -28606,3 +28606,25 @@ first: the baseline had counted winning the attacked piece itself). OBS (directi
 4 of them mate or an exposed king: Rc1's queen guards Rc8#, Rg7's queen shields its king), correct refusals 149/1000
 (15%); a job OR a second threat -- surprises 31/47 (66%), correct refusals 360/1000 (36%). Proposed (awaiting Kaveh's
 go): one Threat type (a piece or the king, its value, how) in place of the piece-specific rules.
+THE GENERIC THREAT IN THE PLANNER (2026-10-10 ~11:00 PDT; Kaveh: "build the generic threat type into the planner ...
+anytime there is a generic thing you can build into the planner, go ahead"). rust/analyst_core/src/threat.rs: a THREAT
+of a side = what it wins if the other side does nothing, with a value -- MATERIAL (the static exchange), PROMOTION (a
+pawn that queens next move, priced by the exchange law), TRAPPED (a piece whose every move lands where we win it, with
+a move of ours onto it next: cornering a piece), MATE (a forced mate by checks within 3 of our moves, spite blocks
+searched: cornering the king). A JOB of a piece = a threat that appears when it is lifted. Into the planner: the
+lone-attack lemma became THE SINGLE-THREAT LEMMA (refuse a move attacking a piece only if the piece has a safe escape
+after which we have no new threat at all -- the hand-listed exceptions are gone; captures, promotions, checks proved);
+overload's jobs are generic threats, the pair checked by playing capture and recapture; "exposes" includes a newly
+allowed mate; the line-pair quiet test uses the threats; a failed seed proof is retried once at the next lower threat
+value. Bug sweep on the way (each from diffing the census per position against the old planner, plan_check --save):
+promotion missing from the threats (Kd1 with e8=Q waiting), a threat we cannot execute in check counted as in hand,
+a promotion move refused as a lone attack (c8=Q), trapped pieces missing (Rg4, b2), a mate threat inflating the goal
+(Rd8 proved at 9, wins 3); and Kaveh's Rc1 needs mate by checks through spite blocks (Rc8+ Bf8 Rxf8#), still open:
+Qd2 escapes the mate and loses only to a second attack (Bc3). I overwrote tests/test_analyst_threats.py by mistake and
+restored it from git; the new tests are tests/test_analyst_generic_threat.py.
+OBS census, 22,861 positions, old -> new (one run each): frames' immediate tactics 659 -> 664 of 681; Stockfish
+only-move tactics with an immediate win 241 -> 243 (with Stockfish's move 227 -> 227); proofs a position mean 14.8 ->
+13.1, median 10 -> 9; 58 s -> 52 s; immediate wins gained 89, lost 31 (23 of them worth 1). Endgame puzzles (360):
+30% -> 32% (rook 47% -> 52%, queen+rook 65% -> 67%; Maia-1900 53% overall). Lemma reviewer on the new lemma: random
+sample 13,006 firings, Stockfish disagrees on 23 (0.2%); it skips 19 Stockfish only-move solutions (the lone-attack
+lemma 28); candidate fact "the moving piece lands safe": 42/42 surprises vs 7,348/14,883 correct refusals (49%).

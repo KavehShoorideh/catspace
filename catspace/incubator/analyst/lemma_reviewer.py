@@ -39,6 +39,17 @@ LEMMAS = {
         source="plan.rs, 2026-10-09: the castling position went from 4 proofs to 10 on attacks the piece just steps away from",
         pattern=re.compile(r"^\s+(\S+): a lone attack on a piece that can step away"),
     ),
+    "single_threat": dict(
+        name="The single-threat lemma",
+        statement="A move that attacks a piece wins nothing if the piece has a safe escape after which we have no threat "
+                  "at all: no material to win, no promotion, no trapped piece, no mate by checks.",
+        unless=["the move captures or promotes (a gain in hand)", "the move gives check", "the attacked piece is the king",
+                "(no hand-made list beyond these: a second target, a job the piece gives up and a mate threat all show up "
+                "as a threat left after the escape)"],
+        source="plan.rs + threat.rs, 2026-10-10: the lone-attack lemma made generic (Kaveh: a threat is losing a piece "
+               "or the king, with a value)",
+        pattern=re.compile(r"^\s+(\S+): one threat, and the"),
+    ),
 }
 HEADER = re.compile(r"^(\w+) on ([a-h][1-8]) \(goal")
 VAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 100}
@@ -261,7 +272,8 @@ def page(data: dict, keep_right: int, seed: int) -> Path:
     passed = rng.sample(passed, min(keep_right, len(passed)))
     # what the reasoning we have already sees after each surprise (lone_attack_second_threat.py): a proved second win
     st_file = Path(paths.experiment("lone_attack_second_threat.json"))
-    seen = {(r["fen"], r["move"]): r["wins"] for r in json.loads(st_file.read_text())} if st_file.exists() else {}
+    seen = ({(r["fen"], r["move"]): r["wins"] for r in json.loads(st_file.read_text())}
+            if st_file.exists() and data["key"] == "lone_attack" else {})
     for c in wrong:
         w = seen.get((c["fen"], c["move"]))
         if w is None:

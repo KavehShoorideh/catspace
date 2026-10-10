@@ -17,6 +17,7 @@ use super::*;
 use shakmaty::Bitboard;
 use crate::paths::attack_paths;
 use crate::waiting::{escapes, prove_n, touched, MATE_GOAL};
+use crate::threat::{jobs_with, new_threats, threats, Threat};
 use std::cell::RefCell;
 
 // THE FRAME MEMORY (Kaveh 2026-10-09: "all of these frames ... have two or three outs, and each out is a value -- so we
@@ -147,6 +148,12 @@ fn exposes(pos: &Chess, m: &Move) -> Vec<(Square, i64)> {
         });
         if newly || (moved_here && x == m.to()) { out.push((x, g)); }
     }
+    // the generic threat (Kaveh 2026-10-10: losing the king is a threat like losing a piece): a mate in one our move
+    // newly allows exposes the king
+    if let Some(k) = q.board().king_of(us) {
+        let mate_now = |p: &Chess| threats(p, them).iter().any(|t| t.mate);
+        if mate_now(&q) && !mate_now(pos) { out.push((k, MATE_GOAL)); }
+    }
     out
 }
 
@@ -221,7 +228,7 @@ fn line_pair_lemma(pos: &Chess, sl: Square, f: Square, r: Square) -> Option<(Str
     // THE LEMMA APPLIES ONLY WHEN EVERY MOVE OF THE PAIR IS QUIET (verified 2026-10-09: the exchange law priced the
     // pair's moves as the search did in 84%; every miss was a check, a new threat of ours, or a check left to them --
     // a fork or a mate the captures do not see): no check, no new attack of ours, no check available to them
-    let before = rules::threats_of(pos, us);
+    let before = threats(pos, us);
     for m in pos.legal_moves() {
         let Some(from) = m.from() else { continue };
         if from != f && from != r { continue; }
@@ -229,7 +236,8 @@ fn line_pair_lemma(pos: &Chess, sl: Square, f: Square, r: Square) -> Option<(Str
         // the pair's own moves -- the rest of the exchange matters): the material the move takes, then their whole
         // capture sequence resolved (settle: either side may stop)
         let q = after(pos, &m);
-        let new_threat = rules::threats_of(&q, us).iter().any(|(x, g)| *g > 0 && before.get(x).map_or(true, |g0| *g > *g0) && *x != m.to() as u8);
+        let now_t = threats(&q, us);
+        let new_threat = new_threats(&now_t, &before).iter().any(|x| x.target != m.to());
         let their_check = q.board().king_of(us).map_or(false, |k| attack_paths(&q, them, Bitboard::from_square(k)).iter().any(|p| p.kind == "direct" || p.kind == "discovery"));
         if q.is_check() || new_threat || their_check { return None; }             // not quiet: the lemma does not apply
         let cap = kernel_material(&q, pos.turn()) - kernel_material(pos, pos.turn());
@@ -381,61 +389,46 @@ fn skewers(pos: &Chess, m: &Move, t: Square) -> bool {
 
 /// OVERLOAD (Kaveh 2026-10-10: "when a piece is needed in one frame and in another frame there is an opportunity cost
 /// ... that's where overloading comes from: it's doing two jobs in two different frames ... a rook can protect the whole
-/// back rank, a bishop cannot"). A JOB of `side`'s piece d: another piece x of `side` is safe now and would be won (the
-/// static count) if d were lifted -- d is its critical guard. A piece with two jobs is OVERLOADED unless one square
-/// serves both: after the attacker takes on one job and d recaptures there, d must still bear on the other (for both
-/// orders). The loss is value arithmetic: the attacker picks the order, the defender picks whether to recapture.
-/// -> [(d, first job taken, second job, attacker's capture move, loss, explanation)], the attacker = !side to move...
-/// computed for `side`'s pieces under `atk`'s attacks, whoever is to move.
+/// back rank, a bishop cannot"). Made generic the same day ("protecting against the threat should be generic and not
+/// specifically a piece"): a JOB of `side`'s piece d is any threat of the attacker that appears when d is lifted
+/// (threat.rs: a piece it guards, a line it blocks, a MATE it covers). A piece with two jobs is OVERLOADED when the
+/// attacker takes on the first job's square, d recaptures there, and the second job's threat then stands -- checked by
+/// playing the two moves, not by geometry. The loss is value arithmetic: the attacker picks the order, the defender
+/// picks whether to recapture (never into a mate). -> [(d, first job taken, second job's target, loss, explanation)].
 fn overloads(pos: &Chess, side: Color) -> Vec<(Square, Square, Square, i64, String)> {
     let atk = !side;
     let b = pos.board();
-    let occ = b.occupied();
-    let lifted_board = |d: Square| -> Option<Chess> {
-        let mut st = pos.clone().into_setup(shakmaty::EnPassantMode::Legal);
-        st.board.discard_piece_at(d); st.ep_square = None;
-        Chess::from_setup(st, CastlingMode::Standard).or_else(|e| e.ignore_invalid_castling_rights())
-            .or_else(|e| e.ignore_impossible_check()).ok()
-    };
-    let now = rules::threats_of(pos, atk);
-    let mut jobs: HashMap<Square, Vec<Square>> = HashMap::new();
-    for d in b.by_color(side) {
-        let Some(lp) = lifted_board(d) else { continue };
-        let without = rules::threats_of(&lp, atk);
-        for x in b.by_color(side) {
-            if x == d || b.piece_at(x).map_or(true, |p| p.role == Role::King) { continue; }
-            if !shakmaty::attacks::attacks(d, b.piece_at(d).unwrap(), occ).contains(x) { continue; }   // d guards x
-            if now.get(&(x as u8)).copied().unwrap_or(0) > 0 { continue; }                      // already lost: no job
-            if without.get(&(x as u8)).copied().unwrap_or(0) > 0 { jobs.entry(d).or_default().push(x); }
-        }
-    }
+    let Some(ap) = (if pos.turn() == atk { Some(pos.clone()) } else { pass(pos) }) else { return vec![] };
+    let now = threats(pos, atk);
+    let desc = |j: &Threat| if j.mate { format!("the mate {}", j.how.as_deref().unwrap_or("on its king")) } else { format!("{}", j.target) };
     let mut out = Vec::new();
-    for (d, xs) in jobs {
-        if xs.len() < 2 { continue; }
-        let dp = b.piece_at(d).unwrap();
-        for (i, &x1) in xs.iter().enumerate() {
-            for &x2 in xs.iter().skip(i + 1) {
-                // their cheapest capture on each job, and whether d still bears on the other job from there
-                let cheapest = |x: Square| b.attacks_to(x, atk, occ).into_iter().min_by_key(|a| b.piece_at(*a).map_or(99, |p| kernel_value(p.role)));
-                let still = |xa: Square, xb: Square, a: Square| -> bool {
-                    let occ2 = occ.without(d).without(a).with(xa);
-                    shakmaty::attacks::attacks(xa, dp, occ2).contains(xb)
-                };
-                let mut worst: Option<(Square, Square, i64)> = None;
-                for (xa, xb) in [(x1, x2), (x2, x1)] {
-                    let Some(a) = cheapest(xa) else { continue };
-                    if still(xa, xb, a) { continue; }
-                    let (va, vxa, vxb) = (kernel_value(b.piece_at(a).unwrap().role), kernel_value(b.piece_at(xa).unwrap().role), kernel_value(b.piece_at(xb).unwrap().role));
-                    let loss = vxa.min(vxa + vxb - va);                    // we recapture (lose both, win the attacker) or not
-                    if loss > 0 && worst.map_or(true, |w| loss > w.2) { worst = Some((xa, xb, loss)); }
-                }
-                if let Some((xa, xb, loss)) = worst {
-                    let why = format!("the {:?} on {d} guards both {xa} and {xb}; after a capture on {xa} and its recapture there it no longer bears on {xb}{}",
-                        dp.role, if dp.role == Role::Bishop && (xa.file() as u32 + xa.rank() as u32) % 2 != (xb.file() as u32 + xb.rank() as u32) % 2 { " (a bishop keeps its colour)" } else { "" }).to_lowercase();
-                    out.push((d, xa, xb, loss, why));
+    for d in b.by_color(side) {
+        let Some(dp) = b.piece_at(d) else { continue };
+        if dp.role == Role::King { continue; }
+        let js = jobs_with(pos, d, &now);
+        if js.len() < 2 { continue; }
+        let mut worst: Option<(Square, Square, i64, String)> = None;
+        for j1 in js.iter().filter(|j| !j.mate) {
+            let xa = j1.target;
+            let Some(a) = ap.legal_moves().into_iter().filter(|m| m.to() == xa).min_by_key(|m| kernel_value(m.role())) else { continue };
+            let q1 = after(&ap, &a);
+            let Some(rec) = q1.legal_moves().into_iter().find(|m| m.from() == Some(d) && m.to() == xa) else { continue };
+            let q2 = after(&q1, &rec);
+            let t2 = threats(&q2, atk);
+            for j2 in js.iter().filter(|j| j.target != xa) {
+                let stands = t2.iter().find(|t| t.mate == j2.mate && (j2.mate || t.target == j2.target));
+                let Some(st) = stands else { continue };
+                let (va, vxa) = (kernel_value(a.role()), b.piece_at(xa).map_or(0, |p| kernel_value(p.role)));
+                let loss = if j2.mate { vxa } else { vxa.min(vxa - va + st.value) };
+                if loss > 0 && worst.as_ref().map_or(true, |w| loss > w.2) {
+                    let why = format!("the {:?} on {d} has two jobs, {} and {}; after a capture on {xa} and its recapture there, {} stands{}",
+                        dp.role, desc(j1), desc(j2), desc(j2),
+                        if dp.role == Role::Bishop && !j2.mate && (xa.file() as u32 + xa.rank() as u32) % 2 != (j2.target.file() as u32 + j2.target.rank() as u32) % 2 { " (a bishop keeps its colour)" } else { "" }).to_lowercase();
+                    worst = Some((xa, j2.target, loss, why));
                 }
             }
         }
+        if let Some((xa, xb, loss, why)) = worst { out.push((d, xa, xb, loss, why)); }
     }
     out
 }
@@ -619,6 +612,9 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
         trace.push(format!("{name} (goal {goal}): {} moves on a path onto it: {}", seeds.len(), seeds.iter().map(|u| san(pos, u)).collect::<Vec<_>>().join(", ")));
         let mut failed: Vec<String> = Vec::new();
         let before = rules::threats_of(pos, us);
+        // (a threat we cannot execute now is not in hand: in check, nothing is -- 2026-10-10, Kd1 out of check with e8=Q
+        // waiting)
+        let before_t = if pos.is_check() { vec![] } else { threats(pos, us) };
         // HISTORY ORDER (Kaveh: "order the lemma check by the most recently used"): the moves that won most recently
         // first; once one wins the target outright, the rest of its moves are not proved
         let hist = MEMO.with(|m| m.borrow().as_ref().map(|m| m.history.clone()).unwrap_or_default());
@@ -637,47 +633,58 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
                     continue;
                 }
             }
-            // THE LONE-ATTACK LEMMA (2026-10-09, the castling position went from 4 proofs to 10 on attacks the piece just
-            // steps away from): a move that attacks a piece with a safe escape wins nothing unless it also gives check or
-            // attacks a second piece (escapes count pins). Not for the king: a check is the frame itself.
+            // THE SINGLE-THREAT LEMMA (the lone-attack lemma of 2026-10-09 made generic, Kaveh 2026-10-10: "a threat should
+            // have a value ... losing a piece, or becoming mate"): a move that attacks this piece wins nothing if the piece
+            // has a safe escape after which we have NO new threat at all -- material or mate (threat.rs). That one test
+            // replaces the hand-listed exceptions (a second target, a new path onto the king) and adds the JOB: the
+            // escape gives up what the piece parried (the lemma reviewer's surprises: Rc1's queen guarding Rc8#, Rg7's
+            // queen shielding its king). A capture (a gain in hand) and a check are proved. Not for the king.
             if !king {
                 if let Some(sm) = s.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok()) {
                     let q = after(pos, &sm);
-                    let now = rules::threats_of(&q, us);
-                    let new = now.iter().filter(|(x, g)| **g > 0 && before.get(x).map_or(true, |g0| **g > *g0)).count();
                     let capture = sm.to() == t;
-                    // ...and the king counts as a second target: a move that opens a new path onto their king (a check
-                    // available next move) is a double threat (2026-10-09: Rf5 wins the c5 bishop because Black must
-                    // answer the threat to the h5 king first)
-                    let king_threat = b.king_of(them).map_or(false, |k| {
-                        let n0 = attack_paths(pos, us, Bitboard::from_square(k)).iter().filter(|p| p.kind == "direct" || p.kind == "discovery").count();
-                        let n1 = pass(&q).map_or(0, |p| attack_paths(&p, us, Bitboard::from_square(k)).iter().filter(|p| p.kind == "direct" || p.kind == "discovery").count());
-                        n1 > n0
-                    });
-                    // (a capture elsewhere is a gain in hand: fxe5 attacking the f6 rook is a double threat)
-                    if !capture && !sm.is_capture() && !q.is_check() && !king_threat && new < 2 && escapes(&q, us, t).any() {
-                        trace.push(format!("    {}: a lone attack on a piece that can step away, no check, no second target, no new path onto the king -- no proof (the lone-attack lemma)", san(pos, s)));
-                        tally(|st| st.lone += 1);
-                        failed.push(s.clone());
-                        continue;
+                    // (a promotion is a gain in hand like a capture -- 2026-10-10: c8=Q attacking the e6 bishop was refused)
+                    if !capture && !sm.is_capture() && sm.promotion().is_none() && !q.is_check() {
+                        let esc = escapes(&q, us, t);
+                        let quiet = q.legal_moves().into_iter().filter(|e| e.from() == Some(t) && esc.contains(e.to()))
+                            .find(|e| new_threats(&threats(&after(&q, e), us), &before_t).is_empty());
+                        if let Some(e) = quiet {
+                            trace.push(format!("    {}: one threat, and the {name} steps away to {} leaving no threat of ours -- no proof (the single-threat lemma)", san(pos, s), e.to()));
+                            tally(|st| st.lone += 1);
+                            failed.push(s.clone());
+                            continue;
+                        } else if esc.any() {
+                            trace.push(format!("    {}: the {name} can step away, but every escape leaves a threat of ours (a second target, a job, a mate) -- proved", san(pos, s)));
+                        }
                     }
                 }
             }
             // THE GOAL OF A SEED is what it can win, not the target's full value (2026-10-09: e5 against a pinned rook
             // gains 4 -- the pawn may fall -- and a fork wins the second piece): the static gain on the target after the
             // move (the exchange's first term), for two or more new targets the second best, for a capture the gain now
+            // (the next lower threat value is tried once if the goal fails: with a mate threat among several, the defender
+            // parries the biggest and the second-best is a guess -- 2026-10-10: Rd8 proved at 9 failed, it wins 3)
+            let mut lower: Option<i64> = None;
             let g = if king { goal } else if let Some(sm) = s.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok()) {
                 let q = after(pos, &sm);
-                let now = rules::threats_of(&q, us);
-                let mut new: Vec<i64> = now.iter().filter(|(x, gg)| **gg > 0 && before.get(x).map_or(true, |g0| **gg > *g0)).map(|(_, gg)| *gg).collect();
+                let now_t = threats(&q, us);
+                // (generic threats: a mate threat beside the attack makes the attack the second-best threat -- it wins)
+                let mut new: Vec<i64> = new_threats(&now_t, &before_t).iter().map(|x| x.value).collect();
                 new.sort_by(|a, b| b.cmp(a));
                 if sm.to() == t { before.get(&(t as u8)).copied().unwrap_or(goal).max(1) }
-                else if new.len() >= 2 { new[1].max(1) }
-                else { now.get(&(t as u8)).copied().filter(|x| *x > 0).unwrap_or(goal).max(1) }
+                else if new.len() >= 2 { lower = new.iter().skip(2).copied().find(|x| *x < new[1] && *x > 0); new[1].max(1) }
+                else { now_t.iter().find(|x| x.target == t && !x.mate).map(|x| x.value).filter(|x| *x > 0).unwrap_or(goal).max(1) }
             } else { goal };
-            let (ok, n) = with_tag("seed".to_string(), || mprove(pos, s, &[t], g));
+            let (mut ok, n) = with_tag("seed".to_string(), || mprove(pos, s, &[t], g));
             proofs += 1; nodes += n;
             trace.push(format!("    prove {} (gain {g}): {} ({n} nodes)", san(pos, s), if ok { "HOLDS" } else { "fails" }));
+            let mut g = g;
+            if let (false, Some(g2)) = (ok, lower) {
+                let (ok2, n2) = with_tag("seed".to_string(), || mprove(pos, s, &[t], g2));
+                proofs += 1; nodes += n2;
+                trace.push(format!("    prove {} (gain {g2}, the next threat down): {} ({n2} nodes)", san(pos, s), if ok2 { "HOLDS" } else { "fails" }));
+                if ok2 { ok = true; g = g2; }
+            }
             if ok {
                 wins.push((s.clone(), t, g));
                 MEMO.with(|m| if let Some(m) = m.borrow_mut().as_mut() { *m.history.entry(hk(s)).or_insert(0.0) += 1.0; });

@@ -1,0 +1,134 @@
+//! THE THREAT (Kaveh 2026-10-10: "whenever we're protecting something, we should always protect against a threat ... a
+//! threat should have a value with it ... one threat is losing a piece, the other is becoming mate -- cornering a king
+//! or losing a king ... these generic concepts should be used in place of the very specific ones").
+//!
+//! A THREAT of side `by`: what `by` wins if the other side does nothing --
+//!   MATERIAL  a piece of theirs `by` wins by the static exchange (rules::threats_of), worth that gain
+//!   PROMOTION a pawn of `by` that queens next move, worth what the promotion keeps after their captures (the exchange
+//!             law) -- material like any other (2026-10-10: Kd1 attacking the e1 knight while e7-e8=Q waits was refused
+//!             as a single threat)
+//!   TRAPPED   a piece of theirs we do not win where it stands but whose every move lands where we win it, with a
+//!             move of ours onto it next (rules::trapped_unattacked: cornering a piece, as mate is cornering the king --
+//!             Kaveh 2026-10-10: "the lemma that covers mate is basically covering trapping"), worth its value
+//!   MATE      a forced mate by checks within MATE_CHECKS moves of `by` (every check, every reply -- spite blocks
+//!             included: Kaveh's Rc1, "the rook lands on the back rank and gives mate", is Rc8+ Bf8 Rxf8#): their king
+//!             is lost, worth MATE_GOAL
+//! A JOB of a piece: a threat it parries -- lift it off the board and a threat appears (a piece it guards, a mate square
+//! it covers, a line it blocks, the king it shields). The planner's piece-specific rules read these two concepts: the
+//! single-threat lemma (a move making one threat against a piece that can step away, giving up no job, wins nothing),
+//! overload (a piece with two jobs), the quiet test of the line-pair lemma.
+use super::*;
+use crate::waiting::MATE_GOAL;
+use shakmaty::Bitboard;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Threat {
+    pub target: Square,
+    pub value: i64,
+    pub mate: bool,
+    pub how: Option<String>,                  // the mating move (uci), for a mate
+}
+
+/// How many of the attacker's moves a mate threat may take, all of them checks.
+pub const MATE_CHECKS: u32 = 3;
+
+/// A FORCED MATE BY CHECKS for the side to move within `n` of its moves -- cornering the king: every move a check,
+/// every reply searched, until no reply is left. -> its first move. (n = 1: a mate in one.)
+pub fn mate_by_checks(p: &Chess, n: u32) -> Option<Move> {
+    let checks: Vec<(Move, Chess)> = p.legal_moves().into_iter().filter_map(|m| { let q = after(p, &m); q.is_check().then_some((m, q)) }).collect();
+    if let Some((m, _)) = checks.iter().find(|(_, q)| q.legal_moves().is_empty()) { return Some(m.clone()); }
+    if n <= 1 { return None; }
+    checks.into_iter().find(|(_, q)| q.legal_moves().iter().all(|r| mate_by_checks(&after(q, r), n - 1).is_some())).map(|(m, _)| m)
+}
+
+/// A mate in one for the side to move, if any.
+pub fn mate_in_one(p: &Chess) -> Option<Move> { mate_by_checks(p, 1) }
+
+/// Every threat of `by` in `pos` (`by` need not be to move: when not, the other side passes -- impossible when `by` is
+/// giving check, then only the material is read).
+pub fn threats(pos: &Chess, by: Color) -> Vec<Threat> {
+    let mut v: Vec<Threat> = rules::threats_of(pos, by).into_iter().filter(|(_, g)| *g > 0)
+        .map(|(x, g)| Threat { target: Square::new(x as u32), value: g, mate: false, how: None }).collect();
+    let p = if pos.turn() == by { Some(pos.clone()) } else { pass(pos) };
+    if let Some(p) = &p {
+        for (x, val) in rules::trapped_unattacked(p, by) {
+            let sq = Square::new(x as u32);
+            let reach = crate::paths::attack_paths(p, by, Bitboard::from_square(sq)).iter().any(|a| a.kind == "direct" || a.kind == "discovery");
+            if reach && v.iter().all(|t| t.target != sq) {
+                v.push(Threat { target: sq, value: val, mate: false, how: None });
+            }
+        }
+        for m in p.legal_moves() {
+            if m.promotion() != Some(Role::Queen) { continue; }
+            let q = after(p, &m);
+            let bud = BUDGET.load(Ordering::Relaxed);
+            BUDGET.store(200_000, Ordering::Relaxed);
+            let lost = settle_d(&q, -2000, 2000, false, SETTLE_DEPTH).max(0);
+            BUDGET.store(bud, Ordering::Relaxed);
+            let gain = kernel_material(&q, by) - kernel_material(p, by) - lost;
+            if gain > 0 && v.iter().all(|t| t.target != m.to() || t.value < gain) {
+                v.retain(|t| t.target != m.to());
+                v.push(Threat { target: m.to(), value: gain, mate: false, how: Some(m.to_uci(CastlingMode::Standard).to_string()) });
+            }
+        }
+    }
+    if let Some(p) = p {
+        if let (Some(m), Some(k)) = (mate_by_checks(&p, MATE_CHECKS), p.board().king_of(!by)) {
+            v.push(Threat { target: k, value: MATE_GOAL, mate: true, how: Some(m.to_uci(CastlingMode::Standard).to_string()) });
+        }
+    }
+    v.sort_by(|a, b| b.value.cmp(&a.value));
+    v
+}
+
+/// The threats in `now` that are NEW against `before`: a target not threatened before, or threatened for more.
+pub fn new_threats<'a>(now: &'a [Threat], before: &[Threat]) -> Vec<&'a Threat> {
+    now.iter().filter(|t| before.iter().find(|b| b.target == t.target && b.mate == t.mate).map_or(true, |b| t.value > b.value)).collect()
+}
+
+/// A board with the piece on `sq` lifted off it (the side to move unchanged), if it is a legal setup to read.
+pub fn lifted(pos: &Chess, sq: Square) -> Option<Chess> {
+    let mut st = pos.clone().into_setup(shakmaty::EnPassantMode::Legal);
+    st.board.discard_piece_at(sq);
+    st.ep_square = None;
+    Chess::from_setup(st, CastlingMode::Standard).or_else(|e| e.ignore_invalid_castling_rights())
+        .or_else(|e| e.ignore_impossible_check()).ok()
+}
+
+/// THE JOBS of the piece on `sq` (whoever's): the threats of its opponent that appear when it is lifted -- on another
+/// target, or for more than now. Lifting a piece that shields its own king from a check counts as a job worth a mate.
+pub fn jobs(pos: &Chess, sq: Square) -> Vec<Threat> {
+    let Some(pc) = pos.board().piece_at(sq) else { return vec![] };
+    jobs_with(pos, sq, &threats(pos, !pc.color))
+}
+
+/// `jobs` with the attacker's threats now (`now`) already computed.
+pub fn jobs_with(pos: &Chess, sq: Square, now: &[Threat]) -> Vec<Threat> {
+    let Some(pc) = pos.board().piece_at(sq) else { return vec![] };
+    let atk = !pc.color;
+    let Some(l) = lifted(pos, sq) else { return vec![] };
+    let king = l.board().king_of(pc.color);
+    if let Some(k) = king {
+        if l.board().attacks_to(k, atk, l.board().occupied()).any() && !pos.board().attacks_to(k, atk, pos.board().occupied()).any() {
+            return vec![Threat { target: k, value: MATE_GOAL, mate: true, how: None }];
+        }
+    }
+    let after_lift = threats(&l, atk);
+    new_threats(&after_lift, now).into_iter().filter(|t| t.target != sq).cloned().collect()
+}
+
+/// threat_check(fen) -> (the side to move's threats, the opponent's threats, and per piece of each side its jobs):
+/// the generic threat's verification.
+#[pyfunction]
+pub fn threat_check(fen: String) -> PyResult<(Vec<(String, i64, bool)>, Vec<(String, i64, bool)>, Vec<(String, Vec<(String, i64, bool)>)>)> {
+    let Some(pos) = parse(&fen) else { return Ok((vec![], vec![], vec![])) };
+    let f = |v: Vec<Threat>| v.into_iter().map(|t| (t.target.to_string(), t.value, t.mate)).collect::<Vec<_>>();
+    let us = pos.turn();
+    let mut js = Vec::new();
+    for sq in pos.board().occupied() {
+        if pos.board().piece_at(sq).map_or(false, |p| p.role == Role::King) { continue; }
+        let j = jobs(&pos, sq);
+        if !j.is_empty() { js.push((sq.to_string(), f(j))); }
+    }
+    Ok((f(threats(&pos, us)), f(threats(&pos, !us)), js))
+}
