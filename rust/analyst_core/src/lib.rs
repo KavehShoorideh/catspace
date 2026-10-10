@@ -766,7 +766,7 @@ fn prove_stats() -> Vec<u64> { PROVE_STATS.iter().map(|a| a.swap(0, Ordering::Re
 
 /// The certified gain of m (relative to the material now) with the given focus, plies and node budget; None if the
 /// budget ran out (nothing certified).
-fn certified_value(p: &Chess, m: &Move, focus: &[Square], plies: u32, budget: u64) -> Option<i64> {
+pub(crate) fn certified_value(p: &Chess, m: &Move, focus: &[Square], plies: u32, budget: u64) -> Option<i64> {
     let c = p.turn();
     let base = kernel_material(p, c);
     let q = after(p, m);

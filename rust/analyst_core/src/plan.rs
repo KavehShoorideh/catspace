@@ -522,7 +522,9 @@ fn net_after(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs: &mut
     let tp = with_tag("net".to_string(), || plan_inner(&q, true));
     *proofs += tp.proofs; *nodes += tp.nodes;
     let theirs = tp.best.as_ref().map_or(0, |b| b.2);
-    let net = (taken - theirs).max(proved.unwrap_or(i64::MIN));
+    // (a capture's proof is a FRAME certificate: it cannot speak for the rest of the board -- the net is the smaller of
+    // the two; 2026-10-10: fxe4 "certainly nets 3" in its frame, Qh7+ then wins outside it)
+    let net = match proved { Some(g) => g.min(taken - theirs), None => taken - theirs };
     (net, tp.best.map(|b| b.3))
 }
 
@@ -901,6 +903,19 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
             proofs += 1; nodes += n;
             trace.push(format!("    prove {} (gain {g}): {} ({n} nodes)", san(pos, s), if ok { "HOLDS" } else { "fails" }));
             let mut g = g;
+            // A CAPTURE'S VALUE, not only yes/no at one goal (2026-10-10, the decision review: Rxa2 taking our queen "fails"
+            // at 9 because Rxe1 wins a rook back -- it still wins 4; Bxd4 fails at 9, Bxd8 trades queens -- it still wins 6;
+            // the invisible wins made Qxa2+ and Bxc7 look safe): what the capture certainly nets in its frame
+            if !ok && !king {
+                if let Some(sm) = s.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok()).filter(|m| m.is_capture()) {
+                    if let Some(v) = certified_value(pos, &sm, &[t, sm.to()], 2, 20_000) {
+                        if v >= 1 {
+                            trace.push(format!("    {} certainly nets {v} (its value in the frame)", san(pos, s)));
+                            ok = true; g = v.min(g);
+                        }
+                    }
+                }
+            }
             if let (false, Some(g2)) = (ok, lower) {
                 let (ok2, n2) = with_tag("seed".to_string(), || mprove(pos, s, &[t], g2));
                 proofs += 1; nodes += n2;
@@ -988,6 +1003,34 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
     // geometry (the path lemma): take the attacking piece, move the target, guard the square it lands on, step onto a
     // line of theirs into the target's zone, free an escape next to the target, or check; one proof each: does their
     // move still win after ours?
+    // THE IMMEDIATE WINS RANKED BY THEIR NET (2026-10-10, the decision review: a win taken in its frame while the
+    // opponent wins more elsewhere -- Raxa7 nets 1, Nf4 forks the queen; Rxd3 takes a knight, Ra1+ mates): the best net
+    // among the proved wins; a win whose net is not positive is no win
+    if best.as_ref().map_or(false, |x| x.0.is_empty()) {
+        let mut cand: Vec<(String, Square, i64)> = Vec::new();
+        for w in &wins { if !cand.iter().any(|c| c.0 == w.0) { cand.push(w.clone()); } }
+        cand.sort_by(|a, b| b.2.cmp(&a.2));
+        let mut top: Option<(i64, String, Square, Option<String>)> = None;
+        for (u, t, _) in cand.into_iter().take(4) {
+            let Some(m) = u.parse::<shakmaty::uci::UciMove>().ok().and_then(|x| x.to_move(pos).ok()) else { continue };
+            let (net, why) = net_after(pos, &m, &wins, &mut proofs, &mut nodes);
+            if top.as_ref().map_or(true, |x| net > x.0) { top = Some((net, u, t, why)); }
+        }
+        match top {
+            Some((net, u, t, _)) if net > 0 => {
+                if best.as_ref().map_or(true, |x| x.1 != u || x.2 != net) {
+                    trace.push(format!("by net: {} nets {net}", san(pos, &u)));
+                    best = Some((String::new(), u.clone(), net, format!("{} wins {net} (by net)", san(pos, &u))));
+                    best_target = Some(t);
+                }
+            }
+            Some((net, u, _, why)) => {
+                trace.push(format!("by net: no win nets more than 0 ({} nets {net}{}) -- not a win", san(pos, &u), why.map(|w| format!("; they then have {w}")).unwrap_or_default()));
+                best = None; best_target = None;
+            }
+            None => {}
+        }
+    }
     let ours_now = best.as_ref().map_or(0, |x| x.2);
     let immediate = best.clone();
     if let Some((tseed, tt, tg)) = their.clone() {

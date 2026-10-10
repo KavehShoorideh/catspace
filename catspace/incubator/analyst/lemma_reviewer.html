@@ -190,6 +190,7 @@ const GROUPS = {
   passed: { name: "Let through, correctly", cls: "g-passed",
     note: "A quiet move (no capture, no check) that attacks something, which the lemma did NOT refuse because one of its 'unless' clauses applied. The planner proved it, and it is Stockfish's only winning move. A few for comparison." },
 };
+if (DATA.groups) for (const [k, g] of Object.entries(DATA.groups)) Object.assign(GROUPS[k], { name: g.name, note: g.note });
 const groupOf = c => c.stratum === "passed" ? "passed" : (c.wrong ? "surprise" : "refused");
 const byGroup = { surprise: [], refused: [], passed: [] };
 DATA.cases.forEach(c => byGroup[groupOf(c)].push(c));
@@ -212,11 +213,19 @@ function header() {
   $("lemma-unless").innerHTML = L.unless.map(u => `<li>${esc(u)}</li>`).join("");
   $("lemma-source").textContent = "Source: " + L.source;
   const sm = S.strata.sample, tc = S.strata.tactic;
-  $("open-text").textContent = `On a random sample of census positions the lemma fired ${sm.firings} times and Stockfish disagreed ${sm.wrong} times. ` +
+  if (DATA.open_text) {
+    $("open-text").textContent = DATA.open_text;
+  } else $("open-text").textContent = `On a random sample of census positions the lemma fired ${sm.firings} times and Stockfish disagreed ${sm.wrong} times. ` +
     `What do the surprises have that the refused-correctly cases lack? Claude's first guesses below (not reviewed) are counted on every firing.`;
   const rows = Object.entries(S.facts).map(([k, v]) =>
     `<tr><td>${esc(k)}</td><td class="n">${pct(v.wrong, v.n_wrong)} <span class="mono">(${v.wrong}/${v.n_wrong})</span></td><td class="n">${pct(v.right, v.n_right)} <span class="mono">(${v.right}/${v.n_right})</span></td></tr>`).join("");
-  $("facts").innerHTML = `<thead><tr><th>candidate fact</th><th class="n">in surprises</th><th class="n">in correct refusals</th></tr></thead><tbody>${rows}</tbody>`;
+  const cols = DATA.fact_cols || ["in surprises", "in correct refusals"];
+  $("facts").innerHTML = `<thead><tr><th>${DATA.fact_cols ? "" : "candidate fact"}</th><th class="n">${esc(cols[0])}</th><th class="n">${esc(cols[1])}</th></tr></thead><tbody>${rows}</tbody>`;
+  if (DATA.counts) {
+    $("counts").innerHTML = DATA.counts.map(([b, t]) => `<div><b>${esc(b)}</b><span class="label">${esc(t)}</span></div>`).join("");
+    $("foot").textContent = DATA.foot || "";
+    return;
+  }
   $("counts").innerHTML = [
     [sm.firings, `firings on ${sm.positions} random positions`],
     [`${sm.wrong} (${(100 * sm.wrong / Math.max(sm.firings, 1)).toFixed(1)}%)`, "of them surprises"],
@@ -299,9 +308,10 @@ function notes(c) {
   const side = c.fen.split(" ")[1] === "w" ? "White" : "Black";
   const tgt = c.targets.length ? c.targets.join(", ") : "";
   let head;
-  if (g === "passed") head = `${side} to move. The lemma let <span class="mono">${esc(c.san)}</span> through, and the planner won with it.`;
+  if (c.headline) head = esc(c.headline);
+  else if (g === "passed") head = `${side} to move. The lemma let <span class="mono">${esc(c.san)}</span> through, and the planner won with it.`;
   else head = `${side} to move. The lemma refused <span class="mono">${esc(c.san)}</span> as a lone attack on the ${esc(tgt)}.`;
-  const verdict = g === "surprise"
+  const verdict = c.verdict ? c.verdict : g === "surprise"
     ? (c.sf_tactic ? "Stockfish: it is the only winning move here." : `Stockfish: its line after the move wins ${c.gain >= 2 ? c.gain + " pawns of material" : "by mate"}.`)
     : g === "refused" ? `Stockfish: its line after the move wins nothing (${c.gain >= 0 ? "+" : ""}${c.gain} in material).` : "Stockfish: the only winning move.";
   const line = lineOf(c);
@@ -332,6 +342,7 @@ function notes(c) {
       <dt>Played in the game</dt><dd>${c.played ? `<span class="mono">${esc(c.played)}</span>` : "—"} <span class="label">game ${c.game}, ply ${c.ply}</span></dd>
     </dl>
     ${facts ? `<div><div class="label" style="margin-bottom:6px">Candidate facts (Claude's guesses)</div><div class="factlist">${facts}</div></div>` : ""}
+    ${c.reasons && c.reasons.length ? `<div><div class="label" style="margin-bottom:6px">The planner's trace</div><div class="mono" style="display:grid;gap:3px;overflow-wrap:anywhere">${c.reasons.map(x => `<div>${esc(x)}</div>`).join("")}</div></div>` : ""}
     <div>
       <div class="tabs" role="tablist">
         <button type="button" role="tab" data-line="move" aria-selected="${state.line === "move"}">Line after ${esc(c.san)}</button>
@@ -369,7 +380,7 @@ function go(where) {
   render();
 }
 
-$("groups").innerHTML = Object.entries(GROUPS).map(([k, g]) => `<button type="button" class="${g.cls}" data-g="${k}"><span class="dot"></span>${g.name} <span class="mono">${byGroup[k].length}</span></button>`).join("");
+$("groups").innerHTML = Object.entries(GROUPS).filter(([k]) => byGroup[k].length).map(([k, g]) => `<button type="button" class="${g.cls}" data-g="${k}"><span class="dot"></span>${g.name} <span class="mono">${byGroup[k].length}</span></button>`).join("");
 $("groups").querySelectorAll("button").forEach(b => b.onclick = () => { state.group = b.dataset.g; state.idx = 0; state.step = 0; state.line = "move"; render(); });
 $("prev").onclick = () => select(state.idx - 1);
 $("next").onclick = () => select(state.idx + 1);

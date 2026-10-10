@@ -28713,3 +28713,19 @@ flagging 30% of moves. As a gate on the net (certify only flagged moves): 160 s 
 (904 decisions vs Stockfish): losing 150+ cp 15.8% without the gate, 18.6% with the static flag, 18.3% with the
 forcing threats added -- off by default (no blunders first). Noted: the planner decides 902 vs 904 of the same
 positions across two identical runs -- a tie broken by hash-map order (to fix).
+THE DECISION REVIEW (2026-10-10 ~16:30 PDT; Kaveh: "you have the Stockfish continuation -- can't you just look at it and
+see what the issue is?"). decision_review.py (planner decisions on 4,000 census positions, Stockfish depth 12) and
+miss_causes.py (Stockfish depth 18 on the misses: missed mate / allowed mate / material lost / bigger win missed /
+positional). OBS (one run each): 1,187 decisions, 182 (15.3%) losing 150+ cp; causes positional 69, our move loses
+material 59, bigger win missed 25, allowed their mate 23, missed our mate 6. Read from the lines: (1) ALL-OR-NOTHING
+GOALS -- a capture proved only at the piece's full value: Rxa2 "fails" at 9 because Rxe1 wins a rook back (it still
+wins 4), Bxd4 fails at 9 (Bxd8 trades queens), Kxf7 fails at 3 (Qxg2) -- the opponent's real wins invisible, so
+Qxa2+, Bxc7, Bf7 looked safe. Fix: a failed capture proof asks certified_value (2 plies in its frame) what it certainly
+nets. (2) FRAME CERTIFICATES TRUSTED OVER THE BOARD -- fxe4 "nets 3" in its frame, Qh7+ wins outside it; Raxa7 nets 1,
+Nf4 forks the queen; Rxd3 takes a knight, Ra1+ mates. Fix: a capture's net is the smaller of its proof and what it takes
+minus their best proved win after it, and the planner's immediate wins are RANKED by net (none positive -> no win).
+(3) my classifier counted Qh4+ (a mating queen sacrifice) as lost material -- fixed. OBS after: decisions losing 150+
+15.3% -> 12.8% -> 11.2% (149 of 1,329); census Stockfish only-move tactics with an immediate win 246 -> 272 (74%), with
+Stockfish's move 232 -> 258; frames' immediate tactics 679 -> 676 (3 wins the net says are not); endgame puzzles 34%;
+cost 160 s -> 195 s (proofs a position 26.7 -> 28.7, max 14 s). Kaveh's next: a LOOP -- the Stockfish line to the most
+generic rule beside the existing ones, until the corrections run out, without unnecessary checks (speed).
