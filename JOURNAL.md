@@ -28439,3 +28439,23 @@ defence decisions that differ by the node budget (a stored proof changes the sea
 another move or the same move described differently; new searches a move median 9 / mean 12.4 (stateless 9 / 13.8),
 nodes 104k (117k). Reuse within a game is modest while failures are re-proved: the sound cut of the remaining cost is a
 complete support for refutations, not built.
+
+## 2026-10-10 00:35 PDT — the search fallback in the frame, and the first lemma learned from a search (not yet accepted)
+
+Kaveh: when the lemmas leave the answer open, a search must be the fallback -- "alpha beta in frame" -- and what the
+search finds should become a lemma: was it the piece type or just the values? BUILT: (1) ALPHA-BETA IN THE FRAME
+(frame_fallback): our first moves are the frame's (its pieces' moves, moves onto the attacking line or against the
+attacker, captures, checks), each valued by the value search focused on the frame's pieces, every reply of theirs
+searched; the planner's no-defence branch now chooses the cheapest way to lose with it. OBS Kaveh's d6/d7 position:
+"Bxh2 keeps -2" (the bishop takes a pawn, a minor piece falls), 10 first moves, 17 proofs in all. (2) THE LINE-PAIR
+LEMMA extracted from that search (the pair's own moves priced by values, the kinds entering only through the colour-lemma
+preconditions) and VERIFIED on the census before trust (line_pair_verify.py): as a decision rule over the pattern
+(front attacked, back behind, no cover) it agreed with the frame search in 54% of 5,925 instances; with Kaveh's
+preconditions (front winnable where it stands, back winnable once the front moves) 61 of 211 -- the better move
+usually comes from outside the pair (a capture elsewhere, a check, another piece: a7a5); as the narrower claim "it prices
+the pair's own moves" 106 of 211 with first-capture arithmetic, 178 of 211 (84%) with the EXCHANGE LAW; every remaining
+miss is a non-capture follow-up (a fork after Nxh8, a threat after Be5) -- the "unless" list; restricted to quiet moves
+it applies in 25 instances and agrees in 21. NOT ACCEPTED: the search decides and the lemma's prediction is recorded
+beside it as experience. What the loop showed: the generalization splits into pieces that are value arithmetic (the
+exchange law) and pieces that are other lemmas (forks, checks); an automatic explainer that labels each step of the
+found line with the lemma it uses, and composes them, is the next build.

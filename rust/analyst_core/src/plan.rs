@@ -178,6 +178,109 @@ fn line_pair(pos: &Chess, sl: Square, f: Square) -> Option<String> {
         pf, pr, b.piece_at(sl).map(|x| x.role)?, pf, why(pf, r), pr, why(pr, f), b.piece_at(sl).map(|x| x.role)?).to_lowercase())
 }
 
+/// THE BACK PIECE of a line under their slider `sl` through our front piece `f` (the first piece beyond f), if ours.
+fn back_piece(pos: &Chess, sl: Square, f: Square) -> Option<Square> {
+    let b = pos.board();
+    let occ = b.occupied();
+    let beyond = shakmaty::attacks::ray(sl, f) & !shakmaty::attacks::between(sl, f) & !Bitboard::from_square(sl) & !Bitboard::from_square(f);
+    let r = beyond.into_iter().filter(|x| occ.contains(*x) && !shakmaty::attacks::between(sl, *x).contains(*x))
+        .min_by_key(|x| shakmaty::attacks::between(f, *x).count())?;
+    if b.piece_at(r)?.color != pos.turn() { return None; }
+    Some(r)
+}
+
+/// ALPHA-BETA IN THE FRAME (Kaveh 2026-10-09: "we should always have the search as a fallback ... an alpha-beta mini
+/// search"; "alpha beta in frame"): our first moves are the frame's -- moves of its pieces, moves onto the attacking
+/// line or against the attacker, captures, checks -- each valued by the value search focused on the frame's pieces (our
+/// later moves the frame's answers, every reply of theirs searched) -> [(move, value relative to now)], best first.
+fn frame_fallback(pos: &Chess, frame: &[Square], line: Bitboard, budget: u64) -> Vec<(String, i64)> {
+    let mut out: Vec<(String, i64)> = Vec::new();
+    for m in pos.legal_moves() {
+        let in_frame = m.from().map_or(false, |f| frame.contains(&f)) || frame.contains(&m.to()) || line.contains(m.to())
+            || m.is_capture() || after(pos, &m).is_check();
+        if !in_frame { continue; }
+        if let Some(v) = certified_value(pos, &m, frame, 3, budget) {
+            out.push((m.to_uci(CastlingMode::Standard).to_string(), v));
+        }
+    }
+    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out
+}
+
+/// THE LINE-PAIR LEMMA (extracted 2026-10-09 from the fallback search on Kaveh's d6/d7 position, then verified on the
+/// census -- line_pair_check): under their slider, with neither of our two pieces able to cover the other after moving
+/// (the colour lemmas) and no defence found, the outcome is VALUE ARITHMETIC -- for each move of the front or the back
+/// piece: what it captures, minus the most they can then take (the piece left behind on the line, or the mover where it
+/// lands); the best of these is the cheapest way to lose. Piece directions and kinds enter only through the
+/// preconditions. -> (move, predicted net, explanation)
+fn line_pair_lemma(pos: &Chess, sl: Square, f: Square, r: Square) -> Option<(String, i64, String)> {
+    let them = !pos.turn();
+    let us = pos.turn();
+    let mut best: Option<(String, i64, String)> = None;
+    // THE LEMMA APPLIES ONLY WHEN EVERY MOVE OF THE PAIR IS QUIET (verified 2026-10-09: the exchange law priced the
+    // pair's moves as the search did in 84%; every miss was a check, a new threat of ours, or a check left to them --
+    // a fork or a mate the captures do not see): no check, no new attack of ours, no check available to them
+    let before = rules::threats_of(pos, us);
+    for m in pos.legal_moves() {
+        let Some(from) = m.from() else { continue };
+        if from != f && from != r { continue; }
+        // THE EXCHANGE LAW prices it (2026-10-09: "capture minus their first capture" agreed with the search on 50% of
+        // the pair's own moves -- the rest of the exchange matters): the material the move takes, then their whole
+        // capture sequence resolved (settle: either side may stop)
+        let q = after(pos, &m);
+        let new_threat = rules::threats_of(&q, us).iter().any(|(x, g)| *g > 0 && before.get(x).map_or(true, |g0| *g > *g0) && *x != m.to() as u8);
+        let their_check = q.board().king_of(us).map_or(false, |k| attack_paths(&q, them, Bitboard::from_square(k)).iter().any(|p| p.kind == "direct" || p.kind == "discovery"));
+        if q.is_check() || new_threat || their_check { return None; }             // not quiet: the lemma does not apply
+        let cap = kernel_material(&q, pos.turn()) - kernel_material(pos, pos.turn());
+        BUDGET.store(200_000, Ordering::Relaxed);
+        let theirs = settle_d(&q, -2000, 2000, false, SETTLE_DEPTH).max(0);
+        BUDGET.store(u64::MAX, Ordering::Relaxed);
+        let net = cap - theirs;
+        let _ = (them, r);
+        let why = format!("{} takes {cap}, then their captures resolve to {theirs}", m.to_uci(CastlingMode::Standard));
+        if best.as_ref().map_or(true, |b| net > b.1) { best = Some((m.to_uci(CastlingMode::Standard).to_string(), net, why)); }
+    }
+    let _ = sl;
+    best
+}
+
+/// line_pair_check(fen) -> for each line pair of the side to move under an attacking slider of theirs: (slider, front,
+/// back, the lemma's (move, net), the frame fallback's top three (move, value)) -- the lemma's verification.
+#[pyfunction]
+pub fn line_pair_check(fen: String) -> PyResult<Vec<(String, String, String, Option<(String, i64, String)>, Vec<(String, i64)>)>> {
+    let Some(pos) = parse(&fen) else { return Ok(vec![]) };
+    let us = pos.turn();
+    let them = !us;
+    let b = pos.board();
+    let mut out = Vec::new();
+    for f in b.by_color(us) {
+        if b.piece_at(f).map_or(true, |p| p.role == Role::King) { continue; }
+        for sl in b.attacks_to(f, them, b.occupied()) {
+            if !b.piece_at(sl).map_or(false, |p| matches!(p.role, Role::Rook | Role::Bishop | Role::Queen)) { continue; }
+            let Some(r) = back_piece(&pos, sl, f) else { continue };
+            if b.piece_at(r).map_or(true, |p| p.role == Role::King) { continue; }
+            if line_pair(&pos, sl, f).is_none() { continue; }                       // the no-cover precondition
+            // the lemma's other preconditions (2026-10-09: verified without them it agreed with the search on 54%): the
+            // FRONT piece is winnable where it stands, and the BACK piece is winnable once the front one is gone
+            let Some(pp) = pass(&pos) else { continue };
+            if rules::threats_of(&pp, them).get(&(f as u8)).copied().unwrap_or(0) <= 0 { continue; }
+            let mut setup = pp.clone().into_setup(shakmaty::EnPassantMode::Legal);
+            setup.board.discard_piece_at(f); setup.ep_square = None;
+            let Some(lifted) = Chess::from_setup(setup, CastlingMode::Standard).or_else(|e| e.ignore_invalid_castling_rights()).ok() else { continue };
+            if rules::threats_of(&lifted, them).get(&(r as u8)).copied().unwrap_or(0) <= 0 { continue; }
+            let lemma = line_pair_lemma(&pos, sl, f, r);
+            let mut line = shakmaty::attacks::between(sl, r); line.add(sl);
+            let fb = frame_fallback(&pos, &[f, r, sl], line, 50_000);
+            // the narrower claim: the lemma PRICES THE PAIR'S OWN MOVES -- compare with the search over those moves only
+            let pair: Vec<(String, i64)> = fb.iter().filter(|(u, _)| u.starts_with(&f.to_string()) || u.starts_with(&r.to_string())).cloned().collect();
+            let mut top: Vec<(String, i64)> = fb.into_iter().take(3).collect();
+            if let Some(pb) = pair.first() { top.push((format!("pair:{}", pb.0), pb.1)); }
+            out.push((sl.to_string(), f.to_string(), r.to_string(), lemma, top));
+        }
+    }
+    Ok(out)
+}
+
 pub fn plan(pos: &Chess) -> Plan { plan_inner(pos, false) }
 
 /// `immediate_only`: the immediate phase alone (targets, seeds, proofs) -- what the OPPONENT's threat is computed with,
@@ -510,7 +613,25 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
                     }
                 }
                 if best.as_ref().map_or(true, |x| x.0 != "defend") {
-                    trace.push(format!("no defence stops their {}: the loss is {tg} -- what remains is the cheapest way to lose it (not yet chosen)", san(&p0, &tseed)));
+                    // NO DEFENCE: the cheapest way to lose -- the line-pair lemma when the frame is a line pair (no search),
+                    // else alpha-beta in the frame (the fallback)
+                    // THE SEARCH DECIDES; the line-pair lemma's prediction is recorded beside it as EXPERIENCE until it is
+                    // verified (2026-10-09, line_pair_verify: 21 of 25 where it applies -- not yet a rule that skips search)
+                    let lp = sm.from().and_then(|sl| back_piece(pos, sl, tt).filter(|_| line_pair(pos, sl, tt).is_some())
+                        .and_then(|r| line_pair_lemma(pos, sl, tt, r)));
+                    if let Some((mv, net, why)) = &lp {
+                        trace.push(format!("no defence stops their {}: the line-pair lemma predicts {} nets {net} ({why}) -- checked by the search below", san(&p0, &tseed), san(pos, mv)));
+                    }
+                    {
+                        let mut line = Bitboard::EMPTY;
+                        if let Some(f0) = sm.from() { line = shakmaty::attacks::between(f0, tt); line.add(f0); }
+                        let fb = frame_fallback(pos, &[tt], line, 50_000);
+                        if let Some((mv, v)) = fb.first().cloned() {
+                            trace.push(format!("no defence stops their {}: alpha-beta in the frame ({} first moves) -- {} keeps {v}{}", san(&p0, &tseed), fb.len(), san(pos, &mv),
+                                match &lp { Some((_, net, _)) if *net == v => " (the lemma agreed)".to_string(), Some((_, net, _)) => format!(" (the lemma predicted {net})"), None => String::new() }));
+                            best = Some(("cheapest".to_string(), mv.clone(), v, format!("{} is the cheapest way to lose (frame search, {v})", san(pos, &mv))));
+                        }
+                    }
                 }
                 return Plan { trace, best, proofs, nodes, target: best_target, immediate, wins };
             }
