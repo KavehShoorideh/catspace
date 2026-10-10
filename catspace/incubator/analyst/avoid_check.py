@@ -15,6 +15,7 @@ def _one(args):
     fen, on = args
     os.environ["RAYON_NUM_THREADS"] = "1"
     import analyst_core
+    analyst_core.set_after_check(True)
     analyst_core.set_avoid(on)
     tr, dec, proofs, nodes, ms, imm = analyst_core.plan_trace(fen)
     mv = (dec[1] if dec[0] in ("", "defend", "cheapest") else dec[0]) if dec else None

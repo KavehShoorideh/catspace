@@ -450,7 +450,9 @@ pub static FRAME_SEEDS: std::sync::atomic::AtomicBool = std::sync::atomic::Atomi
 pub fn set_frame_seeds(flag: bool) -> PyResult<()> { FRAME_SEEDS.store(flag, Ordering::Relaxed); Ok(()) }
 /// THE BLUNDER CHECK, direct (the pool's "hands" warning flagged decisions losing 150+ in 52% against 17% unwarned --
 /// the same question asked straight): after the decision, their immediate wins; reported in the trace.
-pub static AFTER_CHECK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// (an AUDIT since the planner chooses every answer by its net -- 2026-10-10: it then found 2 "certain" blunders in 7,876
+/// positions, neither confirmed by Stockfish; off by default)
+pub static AFTER_CHECK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 #[pyfunction]
 pub fn set_after_check(flag: bool) -> PyResult<()> { AFTER_CHECK.store(flag, Ordering::Relaxed); Ok(()) }
 /// GRADING THE WARNING (Kaveh 2026-10-10: "is it a probable blunder or a certain blunder? If probable, we want to
@@ -461,6 +463,11 @@ pub static AVOID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool:
 #[pyfunction]
 pub fn set_avoid(flag: bool) -> PyResult<()> { AVOID.store(flag, Ordering::Relaxed); Ok(()) }
 const AVOID_MARGIN: i64 = 2;
+/// (off by default: decision_quality.py, 904 decisions -- with the gate 18.3% lose 150+ cp to Stockfish's best, without 15.8%;
+/// it saves ~20% cpu. No blunders first.)
+pub static CHANGE_GATE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[pyfunction]
+pub fn set_change_gate(flag: bool) -> PyResult<()> { CHANGE_GATE.store(flag, Ordering::Relaxed); Ok(()) }
 const AVOID_TOP: usize = 5;
 pub static NUCLEUS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
@@ -485,16 +492,38 @@ fn tb_of(tp: Plan) -> Option<(String, String, i64, String)> { tp.best }
 
 /// What a move nets right now: what we certainly win with it (a proved immediate win of the plan, else the material it
 /// captures) minus their best certified immediate win after it (their reasoning once).
+/// THE NET OF A MOVE (Kaveh 2026-10-10: "with a logic-based play there should be no blunders ... whatever the blunder
+/// guard is doing should be part of the main planner's job"): the one value every decision is chosen by --
+///   a quiet move with a proved win: its proved gain (the proof searched every reply)
+///   any other move: the material it takes now minus their best proved immediate win after it (their reasoning once),
+///                   and never less than a proved gain of its own (a capture's proof already counts the recapture --
+///                   2026-10-10: Nxh1 "wins 2" was flagged because Rxh1 wins 3; 5 - 3 = 2)
 fn net_after(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs: &mut u32, nodes: &mut u64) -> (i64, Option<String>) {
     let u = m.to_uci(CastlingMode::Standard).to_string();
     let q = after(pos, m);
     if q.is_checkmate() { return (MATE_GOAL, None); }
-    let ours = wins.iter().filter(|w| w.0 == u).map(|w| w.2).max()
-        .unwrap_or_else(|| (kernel_material(&q, pos.turn()) - kernel_material(pos, pos.turn())).max(0) + if m.is_capture() { 0 } else { 0 });
-    let tp = with_tag("avoid".to_string(), || plan_inner(&q, true));
+    let proved = wins.iter().filter(|w| w.0 == u).map(|w| w.2).max();
+    let taken = kernel_material(&q, pos.turn()) - kernel_material(pos, pos.turn());
+    if let Some(g) = proved { if taken <= 0 { return (g, None); } }
+    // THE CHANGE FLAG (Kaveh 2026-10-10: "see how this change changes the state of another piece -- attacked twice and
+    // defended twice, stable ... we remove a defender ... that change should flag the blunder"): their static threats
+    // after the move against before it (the static exchange on every piece, promotion, trapped, mate by checks). No new
+    // one -> the move's net is read statically (what it takes minus their biggest threat left); a new one -> their
+    // reasoning certifies it. (change_flag_check.py: the flag catches 84% of the new wins their reasoning finds.)
+    let them = !pos.turn();
+    let after_t = threats(&q, them);
+    let before_t = threats(pos, them);
+    // (the flag includes their FORCING threats -- a fork next move, material by checks: the static count alone let 16% of
+    // their new wins through and decisions losing 150+ rose from 15.4% to 18.6%)
+    if CHANGE_GATE.load(Ordering::Relaxed) && !crate::threat::any_new_threat(&q, them, &before_t) {
+        let left = after_t.iter().map(|t| t.value).max().unwrap_or(0);
+        return ((taken - left).max(proved.unwrap_or(i64::MIN)), None);
+    }
+    let tp = with_tag("net".to_string(), || plan_inner(&q, true));
     *proofs += tp.proofs; *nodes += tp.nodes;
     let theirs = tp.best.as_ref().map_or(0, |b| b.2);
-    (ours - theirs, tp.best.map(|b| b.3))
+    let net = (taken - theirs).max(proved.unwrap_or(i64::MIN));
+    (net, tp.best.map(|b| b.3))
 }
 
 /// The warning graded: every legal move's net (`net_after`) against the decision's (`net_m`); a move at least AVOID_MARGIN
@@ -502,6 +531,27 @@ fn net_after(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs: &mut
 fn grade_and_avoid(pos: &Chess, p: &mut Plan, mv: &str, net_m: i64) {
     let wins = p.wins.clone();
     let (mut pr, mut nd) = (0u32, 0u64);
+    let best = best_by_net(pos, &wins, mv, net_m, &mut pr, &mut nd);
+    p.proofs += pr; p.nodes += nd;
+    match best {
+        Some((net, u, why)) if net >= net_m + AVOID_MARGIN => {
+            p.trace.push(format!("    certain blunder: {} nets {net_m}; {} nets {net}{} -- {} instead ({pr} proofs)", san(pos, mv), san(pos, &u),
+                why.map(|w| format!(" (their best then: {w})")).unwrap_or_default(), san(pos, &u)));
+            let kind = if net > 0 && wins.iter().any(|w| w.0 == u) { String::new() } else { "defend".to_string() };
+            p.best = Some((kind, u.clone(), net, format!("{} avoids the blunder {} (nets {net} against {net_m})", san(pos, &u), san(pos, mv))));
+        }
+        Some((net, _, _)) => p.trace.push(format!("    unavoidable: no move nets more than {net} against {}'s {net_m} -- kept ({pr} proofs)", san(pos, mv))),
+        None => p.trace.push("    probable: no alternative to check".to_string()),
+    }
+}
+
+/// THE MOVE WITH THE BEST NET other than `skip` -- a cheap gate first (Kaveh 2026-10-09: "a cheap gate followed by a more
+/// thorough gate"): every move scored by what it takes now minus their biggest static threat after it (material,
+/// promotion, trapped, mate by checks); their reasoning (`net_after`) on the AVOID_TOP best, and on the rest while none of
+/// those beats `floor` by AVOID_MARGIN (probable -> certain). Used by the planner's defence and by the guard.
+fn best_by_net(pos: &Chess, wins: &[(String, Square, i64)], skip: &str, floor: i64, pr: &mut u32, nd: &mut u64) -> Option<(i64, String, Option<String>)> {
+    let mv = skip;
+    let net_m = floor;
     let mut best: Option<(i64, String, Option<String>)> = None;
     // a cheap gate first (Kaveh 2026-10-09: "a cheap gate followed by a more thorough gate"): every move scored by the
     // static threats -- what it wins now minus their biggest threat after it (material, promotion, trapped, mate by
@@ -520,20 +570,10 @@ fn grade_and_avoid(pos: &Chess, p: &mut Plan, mv: &str, net_m: i64) {
     for (i, (_, m)) in cands.into_iter().enumerate() {
         if i >= AVOID_TOP && best.as_ref().map_or(false, |b| b.0 >= net_m + AVOID_MARGIN) { break; }
         let u = m.to_uci(CastlingMode::Standard).to_string();
-        let (net, why) = net_after(pos, &m, &wins, &mut pr, &mut nd);
+        let (net, why) = net_after(pos, &m, wins, pr, nd);
         if best.as_ref().map_or(true, |b| net > b.0) { best = Some((net, u, why)); }
     }
-    p.proofs += pr; p.nodes += nd;
-    match best {
-        Some((net, u, why)) if net >= net_m + AVOID_MARGIN => {
-            p.trace.push(format!("    certain blunder: {} nets {net_m}; {} nets {net}{} -- {} instead ({pr} proofs)", san(pos, mv), san(pos, &u),
-                why.map(|w| format!(" (their best then: {w})")).unwrap_or_default(), san(pos, &u)));
-            let kind = if net > 0 && wins.iter().any(|w| w.0 == u) { String::new() } else { "defend".to_string() };
-            p.best = Some((kind, u.clone(), net, format!("{} avoids the blunder {} (nets {net} against {net_m})", san(pos, &u), san(pos, mv))));
-        }
-        Some((net, _, _)) => p.trace.push(format!("    unavoidable: no move nets more than {net} against {}'s {net_m} -- kept ({pr} proofs)", san(pos, mv))),
-        None => p.trace.push("    probable: no alternative to check".to_string()),
-    }
+    best
 }
 
 pub fn plan(pos: &Chess) -> Plan {
@@ -544,14 +584,13 @@ pub fn plan(pos: &Chess) -> Plan {
             if let Some(m) = mv.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok()) {
                 let q = after(pos, &m);
                 if !q.is_checkmate() {
-                    let tp = with_tag("after".to_string(), || plan_inner(&q, true));
-                    p.proofs += tp.proofs; p.nodes += tp.nodes;
-                    if let Some(tb) = tb_of(tp) {
-                        let ours = if d.0.is_empty() { d.2 } else { 0 };
-                        if tb.2 > ours {
-                            p.trace.push(format!("after: {} lets them {} (worth {}, more than our {ours})", san(pos, &mv), tb.3, tb.2));
-                            if AVOID.load(Ordering::Relaxed) { grade_and_avoid(pos, &mut p, &mv, ours - tb.2); }
-                        }
+                    let (mut pr, mut nd) = (0u32, 0u64);
+                    let wins = p.wins.clone();
+                    let (net, why) = net_after(pos, &m, &wins, &mut pr, &mut nd);
+                    p.proofs += pr; p.nodes += nd;
+                    if net < 0 {
+                        p.trace.push(format!("after: {} nets {net}{}", san(pos, &mv), why.map(|w| format!(" (they then have {w})")).unwrap_or_default()));
+                        if AVOID.load(Ordering::Relaxed) { grade_and_avoid(pos, &mut p, &mv, net); }
                     }
                 }
             }
@@ -1048,9 +1087,12 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
                         if ok { still = true; break; }
                     }
                     if !still {
-                        trace.push(format!("    {} stops it", san(pos, &mu)));
-                        if best.as_ref().map_or(true, |x| x.0 != "defend") {
-                            best = Some(("defend".to_string(), mu.clone(), -tg, format!("{} stops their {}", san(pos, &mu), san(&p0, &tseed))));
+                        // (defences RANKED by their net -- 2026-10-10: the first defence found was played; 337 of the
+                        // planner's 613 warned decisions were a defence that dropped something else: Nb4 stops Nxc6, cxb4)
+                        let (net, why) = net_after(pos, &m, &wins, &mut proofs, &mut nodes);
+                        trace.push(format!("    {} stops it (nets {net}{})", san(pos, &mu), why.map(|w| format!("; they then have {w}")).unwrap_or_default()));
+                        if best.as_ref().map_or(true, |x| x.0 != "defend" || net > x.2) {
+                            best = Some(("defend".to_string(), mu.clone(), net, format!("{} stops their {} (nets {net})", san(pos, &mu), san(&p0, &tseed))));
                         }
                     }
                 }
@@ -1067,7 +1109,18 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
                     {
                         let mut line = Bitboard::EMPTY;
                         if let Some(f0) = sm.from() { line = shakmaty::attacks::between(f0, tt); line.add(f0); }
-                        let fb = frame_fallback(pos, &[tt], line, 50_000);
+                        let mut fb = frame_fallback(pos, &[tt], line, 50_000);
+                        // (the frame search's best five re-valued by their net, which sees beyond the frame -- 2026-10-10:
+                        // Qxf5 "keeps -4" in the frame, gxf5 then wins the queen)
+                        let mut scored: Vec<(String, i64)> = Vec::new();
+                        for (u, _) in fb.iter().take(5) {
+                            if let Some(m) = u.parse::<shakmaty::uci::UciMove>().ok().and_then(|x| x.to_move(pos).ok()) {
+                                let (net, _) = net_after(pos, &m, &wins, &mut proofs, &mut nodes);
+                                scored.push((u.clone(), net));
+                            }
+                        }
+                        scored.sort_by(|a, b| b.1.cmp(&a.1));
+                        if let Some(top) = scored.first().cloned() { fb.retain(|x| x.0 != top.0); fb.insert(0, top); }
                         if let Some((mv, v)) = fb.first().cloned() {
                             trace.push(format!("no defence stops their {}: alpha-beta in the frame ({} first moves) -- {} keeps {v}{}", san(&p0, &tseed), fb.len(), san(pos, &mv),
                                 match &lp { Some((_, net, _)) if *net == v => " (the lemma agreed)".to_string(), Some((_, net, _)) => format!(" (the lemma predicted {net})"), None => String::new() }));
@@ -1075,6 +1128,19 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
                         }
                     }
                 }
+                // THE ANSWER IS THE MOVE WITH THE BEST NET (Kaveh 2026-10-10: the guard's job is the planner's): after the
+                // geometry's defences, every other move by the same net -- giving the piece back cheaply or a counter-capture
+                // can net more than any defence that stops the threat
+                let (cur_mv, cur_net) = best.as_ref().map(|x| (x.1.clone(), x.2)).unwrap_or((String::new(), -tg));
+                // (only when the answer found loses something: a move netting more than 0 would be an immediate win the
+                // planner already proved -- 2026-10-10: scanning always tripled the time)
+                if cur_net < 0 { if let Some((net, u, why)) = best_by_net(pos, &wins, &cur_mv, cur_net, &mut proofs, &mut nodes) {
+                    if net >= cur_net + AVOID_MARGIN || best.is_none() {
+                        trace.push(format!("    the best net: {} nets {net}{} -- better than {} ({cur_net})", san(pos, &u),
+                            why.map(|w| format!(" (they then have {w})")).unwrap_or_default(), if cur_mv.is_empty() { "nothing".to_string() } else { san(pos, &cur_mv) }));
+                        best = Some(("defend".to_string(), u.clone(), net, format!("{} answers their {} (nets {net})", san(pos, &u), san(&p0, &tseed))));
+                    }
+                } }
                 return Plan { trace, best, proofs, nodes, target: best_target, immediate, wins };
             }
         }
@@ -1120,6 +1186,9 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
                 proofs += 1; nodes += n;
                 trace.push(format!("        prove {} then {} (they pass): {} ({n} nodes)", san(pos, a), san(&p, s), if ok { "HOLDS -- an armed threat" } else { "fails" }));
                 if ok && best.as_ref().map_or(true, |x| goal > x.2) {
+                    // (the preparing move must not lose material by itself -- 2026-10-10: Bh6 arming Qxg7, Qxh6)
+                    let (net, why) = net_after(pos, &am, &wins, &mut proofs, &mut nodes);
+                    if net < 0 { trace.push(format!("        {} would net {net}{} -- not armed", san(pos, a), why.map(|w| format!(" (they then have {w})")).unwrap_or_default())); continue; }
                     best = Some((a.clone(), s.clone(), goal, format!("{} arms {} against the {name}", san(pos, a), san(&p, s))));
                 }
             }

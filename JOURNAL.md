@@ -28693,3 +28693,23 @@ graded certain 506, unavoidable 105; the blunders replaced lose a median 339 cp 
 the moves played instead a median 44 cp (21%); per position the new move better by 50+ cp in 404, worse in 58; the
 decisions kept as unavoidable a median 43 cp (24%). Cost: 35 s -> 48 s, proofs a position 18.7 -> 24.5. (Top 5 only:
 448 certain, unavoidable 163 losing 150+ in 34% -- why the rest are checked; every move: 76 s.)
+THE GUARD'S JOB IS THE PLANNER'S (2026-10-10 ~15:30 PDT; Kaveh: "with a logic-based play there should be no blunders
+... whatever the blunder guard is doing should be part of the main planner's job -- why are we not getting that?").
+blunder_origin.py on 100 census games, guard off: 613 warned decisions -- defences 447 (337 a defence that stops one
+threat and drops something else: the first defence found was played, never compared -- Nb4 stops Nxc6, cxb4; 110 not
+stopping it), armed preparing moves 74 (the preparing piece hung: Bh6, Qxh6), the frame search's cheapest loss 46
+(blind beyond the frame: Qxf5, gxf5), immediate wins 46 (mostly the guard double-counting a capture's recapture:
+Nxh1 "wins 2", Rxh1 "wins 3"). Fixed in the planner: ONE NET for every move (plan.rs net_after: a quiet proved win its
+proved gain; any other move what it takes minus their best proved immediate win after it, never less than its own
+proof); defences RANKED by net, the defence step ending with the best net over all moves when its answer loses
+something (cheap gate, their reasoning on the best 5, the rest when unsettled); preparing moves netting < 0 refused;
+the frame search's best 5 re-valued by net. The guard became an AUDIT (off by default). OBS (one run): the audit then
+finds 2 "certain" blunders in 7,876 positions, neither confirmed by Stockfish; census frames' immediate tactics 671 ->
+679 of 681, Stockfish only-move tactics 244 -> 246 (Stockfish's move 228 -> 232), no immediate win lost; endgame
+puzzles 32% -> 34%; but 75 s -> 160 s. Kaveh's CHANGE FLAG ("see how this change changes the state of another piece
+... we remove a defender ... that change should flag the blunder"): their static threats after the move against
+before. change_flag_check.py, 600 positions, 17,283 moves: it catches 84.2% of the new wins their reasoning finds,
+flagging 30% of moves. As a gate on the net (certify only flagged moves): 160 s -> 112 s, but decision_quality.py
+(904 decisions vs Stockfish): losing 150+ cp 15.8% without the gate, 18.6% with the static flag, 18.3% with the
+forcing threats added -- off by default (no blunders first). Noted: the planner decides 902 vs 904 of the same
+positions across two identical runs -- a tie broken by hash-map order (to fix).
