@@ -6,6 +6,7 @@ use pyo3::prelude::*;
 mod rules;
 mod maia;
 mod waiting;
+mod paths;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::collections::HashMap;
@@ -1252,6 +1253,15 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(prove_stats, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::audit, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::set_unified, m)?)?;
+    m.add_function(wrap_pyfunction!(waiting::set_gate, m)?)?;
+    m.add_function(wrap_pyfunction!(waiting::clear_gate, m)?)?;
+    m.add_function(wrap_pyfunction!(waiting::gate_feature_names, m)?)?;
+    m.add_function(wrap_pyfunction!(waiting::log_frames, m)?)?;
+    m.add_function(wrap_pyfunction!(waiting::frame_log, m)?)?;
+    m.add_function(wrap_pyfunction!(waiting::frame_trace, m)?)?;
+    m.add_function(wrap_pyfunction!(paths::path_audit, m)?)?;
+    m.add_function(wrap_pyfunction!(paths::path_audit_counts, m)?)?;
+    m.add_function(wrap_pyfunction!(paths::attack_paths_of, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::set_one_move_waits, m)?)?;
     Ok(())
 }

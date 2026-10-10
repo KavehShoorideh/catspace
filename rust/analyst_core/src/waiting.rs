@@ -45,11 +45,16 @@ pub fn prove(p: &Chess, uci: &str, focus: &[Square], goal: i64, hints: Option<st
     (ok, h)
 }
 
-/// `prove` with its cost: (holds, proof, nodes, the last tier ran out of budget).
 pub fn prove_n(p: &Chess, uci: &str, focus: &[Square], goal: i64, hints: Option<std::sync::Arc<Hints>>) -> (bool, Hints, u64, bool) {
-    let Ok(u) = uci.parse::<shakmaty::uci::UciMove>() else { return (false, Hints::new(), 0, false) };
-    let Ok(m) = u.to_move(p) else { return (false, Hints::new(), 0, false) };
-    let deep = DEEP_CONDITIONS.load(Ordering::Relaxed);
+    let (ok, h, n, spent, _) = prove_t(p, uci, focus, goal, hints, DEEP_CONDITIONS.load(Ordering::Relaxed));
+    (ok, h, n, spent)
+}
+
+/// `prove` with its cost: (holds, proof, nodes, the last tier ran out of budget, the tier that proved it: 1 = 2 plies,
+/// 2 = the frame's depth, 0 = none); `deep` off stops after the 2-ply tier.
+pub fn prove_t(p: &Chess, uci: &str, focus: &[Square], goal: i64, hints: Option<std::sync::Arc<Hints>>, deep: bool) -> (bool, Hints, u64, bool, u8) {
+    let Ok(u) = uci.parse::<shakmaty::uci::UciMove>() else { return (false, Hints::new(), 0, false, 0) };
+    let Ok(m) = u.to_move(p) else { return (false, Hints::new(), 0, false, 0) };
     let n0 = PROVE_NODES.with(|c| c.get());
     let mut last = Hints::new();
     let mut spent = false;
@@ -58,9 +63,9 @@ pub fn prove_n(p: &Chess, uci: &str, focus: &[Square], goal: i64, hints: Option<
         let (r, rec) = with_hints(hints.clone(), || prove_pos(p, &m, focus, d, b, goal));
         last = rec;
         spent = r.is_none();
-        if r == Some(true) { return (true, last, PROVE_NODES.with(|c| c.get()) - n0, false); }
+        if r == Some(true) { return (true, last, PROVE_NODES.with(|c| c.get()) - n0, false, if d > 2 { 2 } else { 1 }); }
     }
-    (false, last, PROVE_NODES.with(|c| c.get()) - n0, spent)
+    (false, last, PROVE_NODES.with(|c| c.get()) - n0, spent, 0)
 }
 
 // THE CALCULATION AUDIT (Kaveh 2026-10-09: "what are the calculations that are useless and lost?"): every proof search
@@ -73,7 +78,9 @@ pub const A_BRK_BREAKS: usize = 9; pub const A_BRK_HOLDS: usize = 10; pub const 
 pub const A_COND_CONTROL: usize = 12;                                            // refused by the control before any search
 pub const A_FAR_AGAIN: usize = 13;                                               // a far frame that was far last move too
 pub const A_ACTIVE: usize = 14; pub const A_DORMANT: usize = 15; pub const A_FAR: usize = 16;
-pub static AUDIT: [AtomicU64; 34] = [const { AtomicU64::new(0) }; 34];
+pub const A_GATED: usize = 17;                                                   // frames whose condition search the gate skipped
+pub const A_SHALLOW: usize = 18;                                                 // frames searched at 2 plies only (gate 2)
+pub static AUDIT: [AtomicU64; 40] = [const { AtomicU64::new(0) }; 40];
 pub fn tally(slot: usize, nodes: u64) { AUDIT[2 * slot].fetch_add(1, Ordering::Relaxed); AUDIT[2 * slot + 1].fetch_add(nodes, Ordering::Relaxed); }
 #[pyfunction]
 pub fn audit() -> Vec<u64> { AUDIT.iter().map(|a| a.swap(0, Ordering::Relaxed)).collect() }
@@ -420,7 +427,7 @@ type Found = (Vec<(Atom, i64)>, Vec<(Option<Atom>, Hints)>);
 /// (the resolved captures with us to move, before the seed): the proof asks for goal + that, and a mate goal is refused
 /// when the change alone wins a promotion or a queen (review 2026-10-09: at 9 "add our pawn on e7" with e8 empty
 /// slipped through and e8=Q# "proved" the mate).
-pub fn conditions(pos: &Chess, s: &Seed, cache: &Cache, base: &Hints) -> (Found, u64) {
+pub fn conditions(pos: &Chess, s: &Seed, cache: &Cache, base: &Hints, deep: bool) -> (Found, u64, u32) {
     let us = pos.turn();
     let z = zone(pos, s);
     let used = touched(base);
@@ -435,11 +442,11 @@ pub fn conditions(pos: &Chess, s: &Seed, cache: &Cache, base: &Hints) -> (Found,
         let q = after(pos, &s.mv);
         if s.focus.iter().any(|t| escapes(&q, us, *t).count() as u32 > CORNER_ESC) {
             tally(A_COND_CONTROL, 0);                                  // too many escapes for one change: far by count
-            return ((vec![], vec![]), 0);
+            return ((vec![], vec![]), 0, 0);
         }
     }
     let cands = if unified { key_candidates(pos, s) } else { candidates(pos, s, z, false) };
-    let rows: Vec<(Atom, bool, i64, Hints, u64)> = cands.par_iter().filter_map(|a| {
+    let rows: Vec<(Atom, bool, i64, Hints, u64, u8)> = cands.par_iter().filter_map(|a| {
         let p2 = perturb(pos, a, us)?;
         BUDGET.store(50_000, Ordering::Relaxed);
         let alone = settle_d(&p2, -2000, 2000, true, SETTLE_DEPTH).max(0);
@@ -449,16 +456,17 @@ pub fn conditions(pos: &Chess, s: &Seed, cache: &Cache, base: &Hints) -> (Found,
         let mate = s.goal >= MATE_GOAL;
         if mate && alone >= 8 { tally(A_COND_CONTROL, 0); return None; } // a promotion (8) or a queen: the change, not the seed
         let goal = if mate { s.goal } else { s.goal + alone };
-        let (ok, rec, n, spent) = prove_n(&p2, &s.uci, &s.focus, goal, cache.get(&Some(*a)).cloned());
+        let (ok, rec, n, spent, tier) = prove_t(&p2, &s.uci, &s.focus, goal, cache.get(&Some(*a)).cloned(), deep);
         let on = on_ref(a);
         tally(if ok { A_COND_FOUND } else if spent { A_COND_SPENT } else { A_COND_REFUTED }, n);
         tally(match (ok, on) { (true, true) => A_COND_FOUND_ON, (true, false) => A_COND_FOUND_OFF, (false, true) => A_COND_MISS_ON, _ => A_COND_MISS_OFF }, n);
-        Some((*a, ok, if mate { 1000 } else { goal - alone }, rec, n))
+        Some((*a, ok, if mate { 1000 } else { goal - alone }, rec, n, tier))
     }).collect();
     let nodes = rows.iter().map(|r| r.4).sum();
+    let shallow = rows.iter().filter(|r| r.5 == 1).count() as u32;
     let mut found: Vec<(Atom, i64)> = rows.iter().filter(|r| r.1).map(|r| (r.0, r.2)).collect();
     found.sort_by(|a, b| b.1.cmp(&a.1).then((a.0.sq as u8).cmp(&(b.0.sq as u8))));
-    ((found, rows.into_iter().map(|r| (Some(r.0), r.3)).collect()), nodes)
+    ((found, rows.into_iter().map(|r| (Some(r.0), r.3)).collect()), nodes, shallow)
 }
 
 /// What invalidates an active frame: the single changes (their next move can make) under which its certificate no
@@ -479,10 +487,10 @@ pub fn breakers(pos: &Chess, s: &Seed, cache: &Cache) -> (Found, u64) {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Status { Active, Dormant, Far }
+pub enum Status { Active, Dormant, Far, Unsearched }
 
 impl Status {
-    fn name(&self) -> &'static str { match self { Status::Active => "active", Status::Dormant => "dormant", Status::Far => "far" } }
+    fn name(&self) -> &'static str { match self { Status::Active => "active", Status::Dormant => "dormant", Status::Far => "far", Status::Unsearched => "unsearched" } }
 }
 
 #[derive(Clone)]
@@ -494,6 +502,52 @@ pub struct Frame {
     pub cache: Cache,                // the stored proofs, re-checked on the next move
     pub stale: bool,                 // kept from the last ply unevaluated (its owner had no null move: the other side in check)
     pub nodes: u64,                  // what evaluating it cost this move
+    pub last_searched: Option<(Status, usize)>,   // its status and conditions when last searched (carried through skips)
+}
+
+// THE GATES (Kaveh 2026-10-09: "a cheap gate followed by a more thorough gate"; the audit: 96% of the nodes went to
+// condition searches that found nothing). Gate 1, before any condition search: a linear score over features that cost
+// nothing (GATE_FEATURES) -- below `threshold` the frame is left UNSEARCHED (the seed proof still ran: a tactic is never
+// missed, only a waiting condition). Gate 2: frames scoring below `deep_threshold` are searched at 2 plies only. The
+// weights are trained offline (frame_gate.py) on the logged frames and set with `set_gate`.
+pub const GATE_FEATURES: [&str; 18] = ["family cornering king", "family cornering piece", "family fork", "goal",
+    "target value", "escapes", "targets", "candidate changes", "seed is a check", "seed is a capture",
+    "seed proof nodes (log2)", "dormant last move", "far last move", "new this move", "conditions last move",
+    "on the real board (not the null move)", "material for the owner", "pieces on the board"];
+#[derive(Clone)]
+pub struct Gate { pub w: Vec<f32>, pub b: f32, pub threshold: f32, pub deep_threshold: f32 }
+pub static GATE: std::sync::RwLock<Option<Gate>> = std::sync::RwLock::new(None);
+#[pyfunction]
+pub fn set_gate(w: Vec<f32>, b: f32, threshold: f32, deep_threshold: f32) -> PyResult<()> {
+    *GATE.write().unwrap() = Some(Gate { w, b, threshold, deep_threshold }); Ok(())
+}
+#[pyfunction]
+pub fn clear_gate() -> PyResult<()> { *GATE.write().unwrap() = None; Ok(()) }
+#[pyfunction]
+pub fn gate_feature_names() -> Vec<String> { GATE_FEATURES.iter().map(|s| s.to_string()).collect() }
+
+/// The logged frames (when LOG_FRAMES is on): (features, conditions found, found within 2 plies, condition-search nodes)
+pub static LOG_FRAMES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static FRAME_LOG: Mutex<Vec<(Vec<f32>, u32, u32, u64)>> = Mutex::new(Vec::new());
+#[pyfunction]
+pub fn log_frames(flag: bool) -> PyResult<()> { LOG_FRAMES.store(flag, Ordering::Relaxed); Ok(()) }
+#[pyfunction]
+pub fn frame_log() -> Vec<(Vec<f32>, u32, u32, u64)> { std::mem::take(&mut *FRAME_LOG.lock().unwrap()) }
+
+fn gate_features(p: &Chess, s: &Seed, prev: Option<(Status, usize)>, real: bool, n_seed: u64) -> Vec<f32> {
+    let us = p.turn();
+    let q = after(p, &s.mv);
+    let king = s.name == "cornering king";
+    let val = |t: &Square| p.board().piece_at(*t).map_or(0, |pc| if pc.role == Role::King { 10 } else { kernel_value(pc.role) });
+    let esc = s.focus.iter().map(|t| escapes(&q, us, *t).count()).min().unwrap_or(0).min(8);
+    let ncand = if UNIFIED.load(Ordering::Relaxed) { key_candidates(p, s).len() } else { 0 };
+    vec![king as u8 as f32, (s.name == "cornering piece") as u8 as f32, (s.name == "fork") as u8 as f32,
+         s.goal.min(10) as f32, s.focus.iter().map(val).max().unwrap_or(0) as f32, esc as f32, s.focus.len() as f32,
+         ncand as f32, q.is_check() as u8 as f32, s.mv.is_capture() as u8 as f32, ((n_seed + 1) as f32).log2(),
+         matches!(prev, Some((Status::Dormant, _))) as u8 as f32,
+         matches!(prev, Some((Status::Far, _)) | Some((Status::Unsearched, _))) as u8 as f32,
+         prev.is_none() as u8 as f32, prev.map_or(0, |x| x.1) as f32, real as u8 as f32,
+         kernel_material(p, us) as f32, p.board().occupied().count() as f32]
 }
 
 /// Evaluate one seed on `p` (its owner to move): active with its breakers if it certifies, else dormant with its
@@ -501,7 +555,7 @@ pub struct Frame {
 /// re-checked with its stored proof tried first -- the same answers as a fresh search, at the cost of checking. The
 /// value is a lower bound: the goal when active, -1000 otherwise. The footprint holds the zone, the seed's squares and
 /// every atom's square.
-pub fn evaluate(p: &Chess, s: &Seed, born: u32, cache: &Cache) -> Frame {
+pub fn evaluate(p: &Chess, s: &Seed, born: u32, cache: &Cache, prev: Option<(Status, usize)>, real: bool) -> Frame {
     let (holds, rec, n0, _) = prove_n(p, &s.uci, &s.focus, s.goal, cache.get(&None).cloned());
     tally(if holds { A_SEED_HOLD } else { A_SEED_FAIL }, n0);
     let mut fp = zone(p, s);
@@ -512,23 +566,43 @@ pub fn evaluate(p: &Chess, s: &Seed, born: u32, cache: &Cache) -> Frame {
         let ((b, r), n) = breakers(p, s, cache);
         (Status::Active, vec![], b, r, n)
     } else {
-        let ((a, r), n) = conditions(p, s, cache, &rec);
+        let gate = GATE.read().unwrap().clone();
+        let logging = LOG_FRAMES.load(Ordering::Relaxed);
+        let feats = if gate.is_some() || logging { gate_features(p, s, prev, real, n0) } else { vec![] };
+        let score = gate.as_ref().map(|g| g.b + g.w.iter().zip(&feats).map(|(w, x)| w * x).sum::<f32>());
+        if let (Some(g), Some(sc)) = (&gate, score) {
+            if sc < g.threshold {
+                tally(A_GATED, 0);
+                // (the skip carries the last SEARCHED status forward -- 2026-10-09: a skipped frame read as "far last move"
+                // was skipped again, and the held-out games kept 84% of the conditions against the 90% chosen offline)
+                return Frame { owner: p.turn(), seed: s.clone(), value: -1000, status: Status::Unsearched, alts: vec![],
+                               breaks: vec![], footprint: fp, born, cache: { let mut c = Cache::new(); c.insert(None, std::sync::Arc::new(rec)); c },
+                               stale: false, nodes: n0, last_searched: prev };
+            }
+        }
+        let deep = match (&gate, score) { (Some(g), Some(sc)) => sc >= g.deep_threshold, _ => DEEP_CONDITIONS.load(Ordering::Relaxed) };
+        if !deep { tally(A_SHALLOW, 0); }
+        let ((a, r), n, shallow) = conditions(p, s, cache, &rec, deep);
+        if logging {
+            FRAME_LOG.lock().unwrap().push((feats, a.len() as u32, shallow, n));
+        }
         (if a.is_empty() { Status::Far } else { Status::Dormant }, a, vec![], r, n)
     };
-    tally(match status { Status::Active => A_ACTIVE, Status::Dormant => A_DORMANT, Status::Far => A_FAR }, n0 + n1);
+    tally(match status { Status::Active => A_ACTIVE, Status::Dormant => A_DORMANT, _ => A_FAR }, n0 + n1);
     for (a, _) in alts.iter().chain(breaks.iter()) { fp.add(a.sq); }
     let mut new_cache: Cache = recs.into_iter().map(|(k, h)| (k, std::sync::Arc::new(h))).collect();
     new_cache.insert(None, std::sync::Arc::new(rec));
+    let nalts = alts.len();
     Frame { owner: p.turn(), seed: s.clone(), value: if holds { s.goal } else { -1000 }, status, alts, breaks,
-            footprint: fp, born, cache: new_cache, stale: false, nodes: n0 + n1 }
+            footprint: fp, born, cache: new_cache, stale: false, nodes: n0 + n1, last_searched: Some((status, nalts)) }
 }
 
 /// Both sides' frames: the side to move's on the position, the other side's on the null move (none when in check).
 pub fn frames_both(pos: &Chess, born: u32) -> Vec<Frame> {
     let empty = Cache::new();
-    let mut out: Vec<Frame> = seeds(pos).par_iter().map(|s| evaluate(pos, s, born, &empty)).collect();
+    let mut out: Vec<Frame> = seeds(pos).par_iter().map(|s| evaluate(pos, s, born, &empty, None, true)).collect();
     if let Some(p) = pass(pos) {
-        out.extend(seeds(&p).par_iter().map(|s| evaluate(&p, s, born, &empty)).collect::<Vec<_>>());
+        out.extend(seeds(&p).par_iter().map(|s| evaluate(&p, s, born, &empty, None, false)).collect::<Vec<_>>());
     }
     out
 }
@@ -639,8 +713,9 @@ impl FramePool {
         let mut next: Vec<Frame> = Vec::new();
         let sides: Vec<Chess> = std::iter::once(pos.clone()).chain(pass(&pos)).collect();
         let mut alive_owners = Vec::new();
-        for p in &sides {
+        for (si, p) in sides.iter().enumerate() {
             let owner = p.turn();
+            let real = si == 0;
             alive_owners.push(owner);
             let ss = seeds(p);
             let old: HashMap<String, &Frame> = self.frames.iter().filter(|f| f.owner == owner).map(|f| (f.seed.key(), f)).collect();
@@ -648,8 +723,11 @@ impl FramePool {
             let empty = Cache::new();
             let done: Vec<(Frame, Option<Status>, bool)> = ss.par_iter().map(|s| {
                 match old.get(&s.key()) {
-                    Some(f) => (evaluate(p, s, f.born, if proofs { &f.cache } else { &empty }), Some(f.status), true),
-                    None => (evaluate(p, s, ply, &empty), None, false),
+                    Some(f) => {
+                        let prev = if f.status == Status::Unsearched { f.last_searched } else { Some((f.status, f.alts.len())) };
+                        (evaluate(p, s, f.born, if proofs { &f.cache } else { &empty }, prev, real), Some(f.status), true)
+                    }
+                    None => (evaluate(p, s, ply, &empty, None, real), None, false),
                 }
             }).collect();
             let keys: std::collections::HashSet<String> = ss.iter().map(|s| s.key()).collect();
@@ -682,4 +760,42 @@ impl FramePool {
     fn arming(&self) -> (Vec<ArmRow>, Vec<ArmRow>, Vec<ArmRow>) {
         match &self.last { Some(p) => arming_core(p, &self.frames), None => (vec![], vec![], vec![]) }
     }
+}
+
+
+/// THE TRACE OF ONE ANALYSIS (Kaveh 2026-10-09: "walk me through one analysis"): for every seed of both sides (the
+/// side to move on the board, the other on the null move) -- its seed proof (holds?, nodes, ms), the gate's score and
+/// decision, the candidate changes tried, what was found (conditions or breakers), the nodes and ms of that search.
+#[pyfunction]
+pub fn frame_trace(fen: String) -> PyResult<Vec<((String, String, String, Vec<String>, i64), (bool, u64, f64, Option<f32>, String), (usize, Vec<String>, u64, f64))>> {
+    let Some(pos) = parse(&fen) else { return Ok(vec![]) };
+    let gate = GATE.read().unwrap().clone();
+    let mut out = Vec::new();
+    let sides: Vec<(Chess, bool)> = std::iter::once((pos.clone(), true)).chain(pass(&pos).map(|p| (p, false))).collect();
+    for (p, real) in sides {
+        for s in seeds(&p) {
+            let t0 = std::time::Instant::now();
+            let (holds, rec, n0, _) = prove_n(&p, &s.uci, &s.focus, s.goal, None);
+            let ms0 = t0.elapsed().as_secs_f64() * 1000.0;
+            let feats = gate_features(&p, &s, None, real, n0);
+            let score = gate.as_ref().map(|g| g.b + g.w.iter().zip(&feats).map(|(w, x)| w * x).sum::<f32>());
+            let t1 = std::time::Instant::now();
+            let (decision, ncand, found, n1) = if holds {
+                let ((b, r), n) = breakers(&p, &s, &Cache::new());
+                ("active: breakers searched".to_string(), r.len(), b.iter().map(|(a, _)| { let (k, ro, sq) = a.row(); format!("{k} {ro}@{sq}") }).collect::<Vec<_>>(), n)
+            } else if matches!((&gate, score), (Some(g), Some(sc)) if sc < g.threshold) {
+                ("skipped by gate 1".to_string(), 0, vec![], 0)
+            } else {
+                let deep = match (&gate, score) { (Some(g), Some(sc)) => sc >= g.deep_threshold, _ => true };
+                let ((a, r), n, _) = conditions(&p, &s, &Cache::new(), &rec, deep);
+                (format!("conditions searched ({})", if deep { "2 plies, then 4" } else { "2 plies only: gate 2" }), r.len(),
+                 a.iter().map(|(a, _)| { let (k, ro, sq) = a.row(); format!("{k} {ro}@{sq}") }).collect::<Vec<_>>(), n)
+            };
+            let ms1 = t1.elapsed().as_secs_f64() * 1000.0;
+            out.push(((if p.turn() == Color::White { "w" } else { "b" }.to_string(), s.uci.clone(), s.name.to_string(),
+                       s.focus.iter().map(|x| x.to_string()).collect::<Vec<String>>(), s.goal),
+                      (holds, n0, ms0, score, decision), (ncand, found, n1, ms1)));
+        }
+    }
+    Ok(out)
 }
