@@ -259,6 +259,16 @@ def page(data: dict, keep_right: int, seed: int) -> Path:
     right = rng.sample(right, min(keep_right, len(right)))
     passed = [c for c in cs if c["stratum"] == "passed"]
     passed = rng.sample(passed, min(keep_right, len(passed)))
+    # what the reasoning we have already sees after each surprise (lone_attack_second_threat.py): a proved second win
+    st_file = Path(paths.experiment("lone_attack_second_threat.json"))
+    seen = {(r["fen"], r["move"]): r["wins"] for r in json.loads(st_file.read_text())} if st_file.exists() else {}
+    for c in wrong:
+        w = seen.get((c["fen"], c["move"]))
+        if w is None:
+            continue
+        b = chess.Board(c["fen"]); b.push_uci(c["move"]); b.push(chess.Move.null())
+        c["second"] = [f"{b.san(chess.Move.from_uci(s_))} wins {g} on {t}" for s_, t, g in sorted(w, key=lambda x: -x[2])
+                       if t != c["target_sq"] and chess.Move.from_uci(s_) in b.legal_moves][:3]
     for c in wrong + right + passed:                                    # the board after each step of both lines
         for ln in (c["line"], c["best_line"]):
             b = chess.Board(c["fen"])
