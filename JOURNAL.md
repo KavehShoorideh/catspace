@@ -28260,3 +28260,36 @@ t-2): frames carried AUC 0.708 / average precision 0.037 (boosted trees); board 
 conditions and active frames of the OPPONENT at t-1 (negative), material, legal moves. Directional, one run.
 TIME: labels 217 s (Stockfish depth 12, two best moves, 10 processes, 22,861 positions); dataset 5.2 s (board features
 4.1 s); every model under 2.5 s; total 235 s. The frame replay: 300 games in about 22 minutes on 10 processes.
+
+## 2026-10-09 19:05 PDT — the calculation audit; one cornering frame for every piece (the king's is mate); which tactics pay and which waiting frames fire
+
+Kaveh: "how much calculation are you doing at each step, what is useless and lost, how can we avoid it?"; king frames
+use the same cornering mechanism as every other piece ("so that should be checkmate"); multiple frames can be active at
+once ("a pin and also a cornering"); "we don't want hypotheses that 98% don't work -- focus on the important stuff";
+"we need to know what tactics lead to victory and what positions lead to what tactics".
+OBS THE AUDIT (10 games, 959 positions, old families, every proof search tagged): 2.53M nodes a position. Useful:
+seed proofs that hold 519 nodes, seed proofs that fail 64k (2.5%), conditions found 14k (0.6%, 4.1 a position),
+breakers 31k (1.2%). Lost: 195 hypothetical changes refuted a position (69.6% of nodes) and 12 cut by the node cap
+(25.6%) -- 207 tries to find 4 conditions, a 2% hit rate. Far frames: 8.1 a position, 89% of the nodes; far frames
+that were far last move too: 50% of all nodes. Filtering candidates by the squares the base refutation used saves
+nothing (keeps 94% of the found and 89% of the failed: a refutation tree touches most of the board).
+BUILT -- one cornering frame for every piece: a new attack (a check for the king; a bigger gain than before counts as
+new) opens the frame, goal = the gain (the king: mate); escapes are counted from the piece's own moves (pawn pushes;
+a pin restricts them -- Kaveh's pin-and-cornering; a momentary check does not count against escapes, except that a check
+gives an attacked piece no time to escape this move: the fork with check, two frames from one move); conditions are
+read off the frame's KEY SQUARES (the target, its safe escapes, the attacker's square) and skipped when one change cannot
+close the escapes (more than 3). Parity found by bisection on the 10 games: gating frames on <= 2 escapes kept 20 of
+119 positions' tactics; adding pawns and grown gains 109; escapes from attack patterns gave pawns diagonal escapes and
+pinned pieces impossible ones (escapes from moves: 128, but a check made every attacked piece "cornered"); escapes
+without the check 111; the fork with check restored: 120 (old families 119). 144 -> 42 ms a position on all cores.
+OBS 300 games, unified frames: 186 ms a position on one core (584 before), 0.93M nodes (2.85M); the replay 7 min on
+10 processes (22 before). Anticipation unchanged in shape (walk-ins 57%, threats left standing 24%, waiting with a met
+condition 2%); reachability model frames + board AUC 0.772 (0.778 with the old families).
+OBS PAYOFF (tactic_value.py; side to move with an active frame; base over all positions: Stockfish has the mover up 1.5
+in 26.7%, mover won the game 47.0%): cornering king 100% / 91.7% (240 positions), fork 68.1% / 69.6% (562), cornering
+piece 64.6% / 66.9% (2,770). REACH (waiting frames active for their owner within 4 plies; in brackets the share
+Stockfish confirms): cornering piece waiting on removing one of ours (a discovered line) 12.6% (71%), on adding ours
+7.4% (78%), on removing theirs 6.8% (75%); fork 5.4-12.1%; cornering king waiting on adding ours 1.0% (100%) --
+mating nets rarely complete; far frames 0.2-1.2%. Far frames are 83% of the frames and carry 55% of the confirmed
+activations -- they come alive through changes of more than one move, which the seed proof (cheap) still catches;
+what they waste is the condition search, which returns nothing for them. Directional, one run.
