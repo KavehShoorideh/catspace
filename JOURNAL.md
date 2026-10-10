@@ -28628,3 +28628,14 @@ only-move tactics with an immediate win 241 -> 243 (with Stockfish's move 227 ->
 30% -> 32% (rook 47% -> 52%, queen+rook 65% -> 67%; Maia-1900 53% overall). Lemma reviewer on the new lemma: random
 sample 13,006 firings, Stockfish disagrees on 23 (0.2%); it skips 19 Stockfish only-move solutions (the lone-attack
 lemma 28); candidate fact "the moving piece lands safe": 42/42 surprises vs 7,348/14,883 correct refusals (49%).
+FORCING THREATS (2026-10-10 ~11:40 PDT; Kaveh on the single-threat lemma's surprise 1, Bc4 against the e6 queen: "the
+king has only two squares ... if I give the king a check ... my queen can swing over" -- Bc4 Qf7 Bxf7+ Kd8 Qd5+ Bd7
+Qxd7#). surprise_refutations.py: Stockfish (depth 18) on the escape the lemma took as quiet, for all 42 surprises --
+OBS refuted by a check 7, a capture 11, a fork next move 3, a quiet deeper move 21. threat.rs forcing_threats: the
+static threats plus GAIN BY CHECKS (checks, every reply searched, up to 2 of ours, ending with material won: the
+cornered king from mate to material -- Bf7+ Kd8 Nxc6+ bxc6 Qxc6) and A FORK next move (a quiet move winning two pieces by
+the static count); used only in the single-threat lemma's escape test. OBS census vs the static generic threat (one
+run): frames' immediate tactics 664 -> 671 of 681; Stockfish only-move tactics 243 -> 244 (Stockfish's move 227 ->
+228); immediate wins gained 26, lost 0; BUT 52 s -> 102 s, median 7.0 -> 17.1 ms a position. Next (Kaveh, same hour:
+"I reasoned through only the king movement ... I already searched the pony moves"): the defender's replies off the
+zone (the king's box and our lines) are one move -- the path lemma makes it sound -- to bring the cost back.

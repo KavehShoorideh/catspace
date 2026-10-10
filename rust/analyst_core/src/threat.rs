@@ -81,6 +81,90 @@ pub fn threats(pos: &Chess, by: Color) -> Vec<Threat> {
     v
 }
 
+/// THE FORCING THREATS (Kaveh 2026-10-10, on the single-threat lemma's first surprise: "the king has only two squares
+/// ... if I give the king a check, the king has one square to go to ... then my queen can swing over"): beyond the
+/// static threats, what `by` wins NEXT MOVE by force --
+///   BY CHECKS  a sequence of checks (every reply searched, up to GAIN_CHECKS of ours) ending where `by` has won material
+///              (the captures along it, plus the best static capture at its end): the cornered king generalized from
+///              mate to material -- Bf7+ Kd8 Nxc6+ bxc6 Qxc6
+///   A FORK     a quiet move after which `by` wins two pieces by the static count (worth the smaller), the moving piece
+///              not simply lost -- Nf7 against the queen and the h8 rook
+/// Used where a claim of "nothing left" needs it (the single-threat lemma's escapes); the cheap static set elsewhere.
+pub const GAIN_CHECKS: u32 = 2;
+
+fn material_edge(p: &Chess, by: Color) -> i64 { kernel_material(p, by) - kernel_material(p, !by) }
+
+fn best_capture(p: &Chess, by: Color) -> i64 { rules::threats_of(p, by).values().copied().max().unwrap_or(0).max(0) }
+
+/// What the side to move wins by checks within `n` of its moves (beyond the material edge now): -> (first check, gain).
+pub fn gain_by_checks(p: &Chess, n: u32) -> Option<(Move, i64)> {
+    let by = p.turn();
+    let base = material_edge(p, by);
+    fn val(p: &Chess, by: Color, base: i64, n: u32) -> i64 {
+        // `by` to move: the best of stopping here (the best capture now) and checking on
+        let here = material_edge(p, by) - base + best_capture(p, by);
+        if n == 0 { return here; }
+        let mut best = here;
+        for m in p.legal_moves() {
+            let q = after(p, &m);
+            if !q.is_check() { continue; }
+            let rs = q.legal_moves();
+            if rs.is_empty() { return MATE_GOAL; }
+            let v = rs.iter().map(|r| val(&after(&q, r), by, base, n - 1)).min().unwrap_or(0);
+            best = best.max(v);
+        }
+        best
+    }
+    let here = best_capture(p, by);
+    let mut out: Option<(Move, i64)> = None;
+    for m in p.legal_moves() {
+        let q = after(p, &m);
+        if !q.is_check() { continue; }
+        let rs = q.legal_moves();
+        let v = if rs.is_empty() { MATE_GOAL } else { rs.iter().map(|r| val(&after(&q, r), by, base, n - 1)).min().unwrap_or(0) };
+        if v > here && out.as_ref().map_or(true, |o| v > o.1) { out = Some((m, v)); }
+    }
+    out
+}
+
+/// A fork for the side to move: a quiet move after which it wins two pieces (static count, beyond what it wins now),
+/// the moving piece not lost for more than the smaller -> (the move, the smaller gain net of the moving piece's risk).
+pub fn fork_next(p: &Chess) -> Option<(Move, i64)> {
+    let by = p.turn();
+    let now = rules::threats_of(p, by);
+    let mut out: Option<(Move, i64)> = None;
+    for m in p.legal_moves() {
+        if m.is_capture() || m.is_promotion() { continue; }
+        let q = after(p, &m);
+        if q.is_check() { continue; }
+        let mut new: Vec<i64> = rules::threats_of(&q, by).iter().filter(|(x, g)| **g > 0 && now.get(x).map_or(true, |g0| **g > *g0)).map(|(_, g)| *g).collect();
+        if new.len() < 2 { continue; }
+        new.sort_by(|a, b| b.cmp(a));
+        let risk = rules::threats_of(&q, !by).get(&(m.to() as u8)).copied().unwrap_or(0).max(0);
+        let v = new[1] - risk;
+        if v > 0 && out.as_ref().map_or(true, |o| v > o.1) { out = Some((m, v)); }
+    }
+    out
+}
+
+/// The static threats of `by` plus the forcing ones (by checks, a fork) as threats on their king's square (by checks)
+/// or the forking move's square.
+pub fn forcing_threats(pos: &Chess, by: Color) -> Vec<Threat> {
+    let mut v = threats(pos, by);
+    let p = if pos.turn() == by { Some(pos.clone()) } else { pass(pos) };
+    if let Some(p) = p {
+        if let (Some((m, g)), Some(k)) = (gain_by_checks(&p, GAIN_CHECKS), p.board().king_of(!by)) {
+            if g < MATE_GOAL && v.iter().all(|t| !(t.target == k && t.value >= g)) {
+                v.push(Threat { target: k, value: g, mate: false, how: Some(m.to_uci(CastlingMode::Standard).to_string()) });
+            }
+        }
+        if let Some((m, g)) = fork_next(&p) {
+            v.push(Threat { target: m.to(), value: g, mate: false, how: Some(m.to_uci(CastlingMode::Standard).to_string()) });
+        }
+    }
+    v
+}
+
 /// The threats in `now` that are NEW against `before`: a target not threatened before, or threatened for more.
 pub fn new_threats<'a>(now: &'a [Threat], before: &[Threat]) -> Vec<&'a Threat> {
     now.iter().filter(|t| before.iter().find(|b| b.target == t.target && b.mate == t.mate).map_or(true, |b| t.value > b.value)).collect()
