@@ -28332,3 +28332,21 @@ of their winning move as our defences; (2) 4% of the frames' tactics missed: att
 are statically safe but each loses (Rf2 vs Qd2, Rf5 vs Qe5, Rg3 vs Qg6, Rd2 vs Bd6); (3) 36% of Stockfish's only-move
 tactics outside the planner (pawn targets are not yet targets); (4) the incremental cache -- per move the planner is
 already at 0-9 proofs from scratch on the castling line; (5) the 1-move path lemma in Lean.
+
+## 2026-10-09 21:40 PDT — the planner sees the opponent's threat and defends
+
+Kaveh's standard for this work: a surprise is closed only when the lemma that explains it makes the position cheap.
+The castling line's open surprise (after O-O-O Black's planner said "nothing") closed: the opponent's threat is the
+same immediate reasoning run for them on the null move (White's Ne7 mate, 2 proofs); when it beats our best immediate
+win, the defence phase reads candidates off their winning move's geometry -- take the attacker, move the target, guard
+its landing square, step onto one of their lines into the target's zone, free an escape next to it, check -- one proof
+each ("does their move still win after ours?"). OBS after O-O-O: 14 defences, the same list the brute-force breakers
+gave (b6, c6, b5, c5, Nd3+, Nc6, Ned7, Nfd7, Rxd5, Rd6, Rd7, Re8, Kd7, Kb8); Nxf3 not among them. A first census run
+lost 6% of the immediate wins by defending when our attack also stopped theirs -- fixed with one proof ("does our best
+move answer their threat?"; Kaveh 2026-10-08). OBS census: the frames' immediate tactics found 96% (decided 656 of
+657), Stockfish's only-move tactics 64%; proofs a position median 9 (4 before the threat and defence phases), mean
+11.9, 90th percentile 27; 107k nodes; 6.7 ms median. The castling line, proofs per move from scratch: 15 (Rd1 / O-O-O
+arm Ne7 mate), 19 (b6 stops it), 4 (Ne7 mates after Nxf3), 0, 6 (Rxd8 mates). Directional, one run.
+OPEN: the cache across moves (every count above is from scratch: their null-move analysis at one ply is most of our
+real analysis at the next); the defence phase tries every candidate (14 here) where a ranking could stop early; the
+statically-safe-but-lost escapes (4% of the frames' tactics); pawns as targets; the path lemma in Lean.
