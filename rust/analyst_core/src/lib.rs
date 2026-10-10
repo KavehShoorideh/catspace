@@ -746,8 +746,11 @@ pub fn prove_pos(p: &Chess, m: &Move, focus: &[Square], plies: u32, budget: u64,
     let k = if spent { 2 } else if v >= target { 0 } else { 1 };
     PROVE_STATS[k * 2].fetch_add(1, Ordering::Relaxed);
     PROVE_STATS[k * 2 + 1].fetch_add(used, Ordering::Relaxed);
+    PROVE_NODES.with(|c| c.set(c.get() + used));
     if spent { None } else { Some(v >= target) }
 }
+
+thread_local! { pub static PROVE_NODES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) }; }
 
 /// [proved, refuted, budget spent] x [count, nodes] since the last call (where the proof work goes)
 static PROVE_STATS: [AtomicU64; 6] = [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
@@ -1247,6 +1250,8 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<waiting::FramePool>()?;
     m.add_function(wrap_pyfunction!(waiting::set_deep_conditions, m)?)?;
     m.add_function(wrap_pyfunction!(prove_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(waiting::audit, m)?)?;
+    m.add_function(wrap_pyfunction!(waiting::set_unified, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::set_one_move_waits, m)?)?;
     Ok(())
 }

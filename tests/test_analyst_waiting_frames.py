@@ -14,7 +14,7 @@ def _frame(rows, owner, uci):
 
 def test_ne7_waits_on_a_rook_on_the_d_file():
     (f,) = _frame(analyst_core.waiting_frames(CASTLE), "w", "d5e7")
-    assert f[2] == "check" and f[6] == "dormant"
+    assert f[2] == "cornering king" and f[6] == "dormant"
     waits = {(k, r, s) for k, r, s, _ in f[7]}
     assert ("add ours", "R", "d1") in waits
     # the control: no condition that wins by itself (a pawn on e7 promotes on d8)
