@@ -28350,3 +28350,21 @@ arm Ne7 mate), 19 (b6 stops it), 4 (Ne7 mates after Nxf3), 0, 6 (Rxd8 mates). Di
 OPEN: the cache across moves (every count above is from scratch: their null-move analysis at one ply is most of our
 real analysis at the next); the defence phase tries every candidate (14 here) where a ranking could stop early; the
 statically-safe-but-lost escapes (4% of the frames' tactics); pawns as targets; the path lemma in Lean.
+
+## 2026-10-09 22:05 PDT — the path lemma proved in Lean
+
+Kaveh asked whether Lean can verify the path lemma, then said yes. `lean/ideas/Ideas/PathLemma.lean`, on ChessLean's own
+definitions (an attack of s on t reads only the piece on s and, for a slider, whether the squares strictly between are
+empty; a board is a function from squares to pieces):
+  new_attack_local  any two boards: a new attack of s on t needs a changed piece on s, or a square strictly between s
+                    and t that went from occupied to empty -- filling a square can only block
+  applyBoard_off    a move changes the board only on its touched squares (source, destination, the castling rook's
+                    two squares, en passant's captured square) -- every move kind, castling and en passant included
+  path_lemma        so after a move a new attack comes from a piece that arrived on a touched square, or through a
+                    touched square the move vacated on the line (a discovery)
+  no_new_attack     the safety form: no arriving piece attacks t and no line to t opens through a vacated square
+                    -> t is not newly attacked ("we have accounted for all the threats")
+OBS `lake build Ideas` succeeds; `#print axioms` for all four: propext, Classical.choice, Quot.sound only (no sorry).
+The Rust implementation (paths.rs) agreed with brute force on 836,694 moves; the theorem is the statement that the
+rule it implements is complete. It also licenses the cache across moves for attack facts: a fact about squares and
+lines the move did not touch carries over unchanged (search results still need their re-check).
