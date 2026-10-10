@@ -86,7 +86,7 @@ pub fn tally(slot: usize, nodes: u64) { AUDIT[2 * slot].fetch_add(1, Ordering::R
 pub fn audit() -> Vec<u64> { AUDIT.iter().map(|a| a.swap(0, Ordering::Relaxed)).collect() }
 
 /// The squares a refutation (or proof) used: the from- and to-squares of every move it recorded.
-fn touched(h: &Hints) -> Bitboard {
+pub fn touched(h: &Hints) -> Bitboard {
     let mut b = Bitboard::EMPTY;
     for &c in h.values() {
         if c == 0x1F_FFFF { continue; }

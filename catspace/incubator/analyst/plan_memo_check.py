@@ -1,0 +1,88 @@
+"""THE FRAME MEMORY, audited (Kaveh 2026-10-09: "make sure you do a bug sweep before trusting any results out of your new
+system").
+
+Every census game is replayed twice per position: the planner with the game's PlanState (rust/analyst_core/src/plan.rs:
+the frame memory and the history order, kept across the game's moves) and the stateless planner. Reported:
+  COST        new searches a move (fresh + re-proofs), replays, reuses, nodes, ms -- with and without the memory
+  AGREEMENT   positions where the decision or the best immediate win differs; each listed -- a memory that changes an
+              answer is a bug until shown otherwise (allowed: a stale "fails" can only MISS a tactic; a different
+              choice among equal wins is reported apart)
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import time
+from collections import Counter
+
+
+def _game(args):
+    gid, fens = args
+    os.environ.setdefault("RAYON_NUM_THREADS", "1")
+    import analyst_core
+    st = analyst_core.PlanState()
+    rows = []
+    for fen in fens:
+        r = st.observe(fen)
+        r0 = analyst_core.plan_trace(fen)
+        rows.append(dict(fen=fen, dec=r[1], dec0=r0[1], imm=r[5], imm0=r0[5], proofs=r[2], proofs0=r0[2], nodes=r[3],
+                         nodes0=r0[3], ms=r[4], ms0=r0[4], stats=r[6]))
+    return gid, rows
+
+
+def run(tag: str, games: int, workers: int) -> None:
+    from multiprocessing import Pool
+    from .waiting_frames import _games
+    t0 = time.time()
+    with Pool(workers) as p:
+        res = list(p.imap_unordered(_game, _games(tag, games), chunksize=1))
+    rows = [r for _, rs in res for r in rs]
+    n = len(rows)
+    s = [sum(r["stats"][i] for r in rows) for i in range(9)]
+    new = sorted(r["stats"][0] + r["stats"][4] for r in rows)
+    print(f"OBS {len(res)} games, {n} positions ({time.time() - t0:.0f} s on {workers} processes)")
+    print(f"OBS   with the memory: NEW searches a move median {new[n // 2]}, mean {sum(new) / n:.1f}, 90th percentile {new[int(0.9 * n)]}; "
+          f"replays {s[1] / n:.1f}, exact reuses {s[2] / n:.1f}, reused failures {s[3] / n:.1f} a move; nodes {sum(r['nodes'] for r in rows) / n:,.0f}; "
+          f"ms {sum(r['ms'] for r in rows) / n:.1f}")
+    p0 = sorted(r["proofs0"] for r in rows)
+    print(f"OBS   without:         searches a move median {p0[n // 2]}, mean {sum(p0) / n:.1f}, 90th percentile {p0[int(0.9 * n)]}; "
+          f"nodes {sum(r['nodes0'] for r in rows) / n:,.0f}; ms {sum(r['ms0'] for r in rows) / n:.1f}")
+    print(f"OBS   gates fired a move: lone-attack {s[5] / n:.1f}, frozen (pin) {s[6] / n:.2f}, escape filter {s[7] / n:.2f}, cut by the history order {s[8] / n:.2f}")
+    kinds = Counter(); ex = []
+    for r in rows:
+        if r["imm"] == r["imm0"] and r["dec"] == r["dec0"]:
+            continue
+        g, g0 = (r["imm"] or ("", "", 0, ""))[2], (r["imm0"] or ("", "", 0, ""))[2]
+        if g < g0:
+            k = "memory found a SMALLER immediate win (a stale 'fails' missed a tactic)"
+        elif g > g0:
+            k = "memory found a BIGGER immediate win (must be explained)"
+        elif r["imm"] != r["imm0"]:
+            k = "same gain, another move (order or history)"
+        else:
+            d, d0 = r["dec"] or ("", "", 0, ""), r["dec0"] or ("", "", 0, "")
+            if (d[0], d[1], d[2]) == (d0[0], d0[1], d0[2]):
+                k = "same decided move and value, described differently"
+            elif d[0] == d0[0] and d[2] == d0[2]:
+                k = "same kind and value of decision, another move (e.g. another defence of equal worth)"
+            else:
+                k = "DIFFERENT decision (kind or value)"
+        kinds[k] += 1
+        if len(ex) < 10 and (k.startswith("DIFFERENT") or "SMALLER" in k or "BIGGER" in k):
+            ex.append((k, r["imm"], r["imm0"], r["dec"], r["dec0"], r["fen"]))
+    print(f"OBS   AGREEMENT: {n - sum(kinds.values())} of {n} positions identical; differences {dict(kinds)}")
+    for k, i, i0, d, d0, fen in ex:
+        print(f"OBS     {k}: memory {i[3] if i else None} / {d[3] if d else None}; stateless {i0[3] if i0 else None} / {d0[3] if d0 else None}  {fen}")
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--tag", default="c300")
+    ap.add_argument("--games", type=int, default=60)
+    ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
+    a = ap.parse_args(argv)
+    run(a.tag, a.games, a.workers)
+
+
+if __name__ == "__main__":
+    main()

@@ -28401,3 +28401,41 @@ line: all frozen"; no knight move appears among Black's seeds, preparing moves o
 costs more than the refusals save until the fact is cached across moves (sound for attack facts by the locality
 theorem). NOT BUILT: stage 3 (keep only the lemmas that would have skipped searches in the proof audit); mining from
 surprises (the separating implication over the existing vocabulary, then the LLM fallback).
+
+## 2026-10-09 23:50 PDT — the frame memory, the line-pair frame, and the bug sweep that corrected the take-or-defend rule
+
+Kaveh: every frame has two or three likely outs, each with a value -- memorize them and pay only for the unless-
+conditions; order the lemma checks by recent use; then a new example (5rk1/pp1n1ppp/3b4/8/8/2N1P3/PPP2PPP/2KR3R b): the
+rook on d1 attacks the d6 bishop with the d7 knight behind -- the bishop cannot move and protect the knight, the knight
+cannot move and protect the bishop (adjacent), so one is lost unless the front piece is protected where it stands;
+"that should become a lemma we memorize"; and: "do a bug sweep before trusting any results out of the new system".
+BUILT: (1) the FRAME MEMORY (plan.rs, PlanState): every proof question (seed, focus, goal, side) is stored with its board,
+answer, stored proof or refutation and support; same board -> reused; held -> replayed (a re-check, every reply
+searched); failed -> re-proved with the refutation tried first. (2) HISTORY ORDER (the useful form of "order the lemmas
+by recent use" -- the cheap geometric gates cost nanoseconds, so ordering them buys nothing): our moves that won
+recently are proved first; after a mate the rest of that target's moves are skipped. (3) EXPOSURE, the vacated-square
+clause of the proved path lemma read for their attacks: a move that leaves their line exposes the piece behind, confirmed
+with one proof. (4) The LINE PAIR, explained from the proved colour lemmas. OBS Kaveh's position: "line pair: our bishop
+on d6 and knight on d7 under their rook on d1 -- the bishop cannot protect d7 from a new square (a bishop keeps its
+colour; d7 is the other colour), nor the knight protect d6 (a knight that hops never covers an orthogonal neighbour)";
+every bishop move refused as an exposure (Bb4 ... Bb8 expose d7; Bxh2, Ba3, Bg3, Bf4 hang); "no defence: the loss is 3"
+(17 proofs). Choosing the cheapest way to lose is not built.
+BUG SWEEP. (a) Identity: the same position twice -> 0 new searches, same decision. (b) Memory against stateless on 60
+games: the first version (failures reused when their support was untouched) missed two immediate mates and misread their
+threat -- a refutation rests on more than the squares it moved through -- so that reuse is OFF (an option, recorded
+unsafe); keying questions by where they were asked kept White's null-move analysis from serving Black a move later --
+keyed by the question alone. A two-mate position showed the threat phase stopped at the first win and the defence
+answered only it -- now every win of theirs is collected and a defence must stop all. (c) An independent review: the pin's
+on-line test used the line to the king, not the pin target (d8); the lifted-pin setup kept an ep square; a check made
+their move illegal and was read as "answered"; the history cut could skip a fork worth more; both sides shared one
+history -- all fixed. (d) Checked against Stockfish: of 99 positions where the planner found a win and defended instead,
+Stockfish preferred the win in 81. Causes: the capturing piece's own recapture counted again as an exposure; a trade
+(our win worth at least their threat) refused; and re-proving their MATERIAL threat after our certified win, although the
+win's proof already searched every reply with their captures and resolved the leaf captures. Now a certified win answers
+a material threat; only a mate threat is re-checked. OBS after: 8 such positions (Stockfish: win better 3, defence better
+1, within 50 cp 4); the frames' immediate tactics found 96% and played in 654 of 657; Stockfish only-move tactics 64%.
+OBS memory against stateless after all fixes, 60 games: 4,978 of 5,017 positions identical; 1 equivalent swap, 2
+defence decisions that differ by the node budget (a stored proof changes the search order), the rest equal wins by
+another move or the same move described differently; new searches a move median 9 / mean 12.4 (stateless 9 / 13.8),
+nodes 104k (117k). Reuse within a game is modest while failures are re-proved: the sound cut of the remaining cost is a
+complete support for refutations, not built.
