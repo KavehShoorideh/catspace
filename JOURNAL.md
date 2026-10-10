@@ -28553,3 +28553,25 @@ concept probing and discovery (McGrath 2022, Schut 2025); AlphaGeometry's deduct
 Ranked to adopt: utility ranking measured on real searches; the argument-based review (show the critical open case,
 counter-example the argument before accepting a concept); coverage-unique acceptance; rules with exceptions whose
 exception set becomes a candidate concept; relational (first-order) mining plus compression scoring.
+
+## 2026-10-10 04:30 PDT — what the literature points to, in the miner; the first loop from watching games; the first review
+
+Kaveh: do what the literature points to; start the first wider loop from watching games; notify him when the first
+level needs his review. BUILT in lemma_miner.analyse (shared by every loop): UTILITY (Minton's PRODIGY: support x
+(the target's cost - the premise's cost), measured per concept; lemmas that do not pay are retired from USE but kept as
+knowledge -- the open cases are counted against all verified lemmas); COVERAGE-UNIQUE acceptance (Graffiti's Sophie:
+proved lemmas first, then by utility, kept only if they decide a case no better lemma decides); RULES WITH EXCEPTIONS
+(Bain & Muggleton: near-rules, the exception cases kept as candidate concepts; base-rate rules dropped); the CRITICAL
+open case first in the review (argument-based ML: Mozina, Zabkar, Bratko; the largest group of undecided cases sharing
+one fact pattern). OBS stalemate with utility measured in Python: only "the move gave check => not stalemate" pays
+(0.4 us a context) -- python-chess's own stalemate test is cheaper than the free-piece premises; in the Rust planner
+the costs differ: utility must be measured where a lemma runs.
+THE GAMES LOOP (games_loop.py): every census position with a Stockfish only-move tactic (367 in 205 games) is a
+context; the question: did the planner MISS it (126 missed)? Vocabulary of the solution and of the planner's pipeline;
+mined on half the games, holdout the other half (split by game). OBS (directional): miss rates -- the lone-attack lemma
+skipped the solution 27 missed / 1 found (96%); a quiet solution 58/21 (73%); a king move 12/5 (71%); the planner
+proved the solution and the proof failed 46/28 (62%); an endgame 22/14 (61%); a capture 53/185 (22%); a check 25/86
+(23%). No zero-exception lemma (the target is not a function of these facts); the rule with exceptions "the lone-attack
+lemma skipped the solution => missed, unless 1 of 17". THE FIRST REVIEW (artifacts/experiments/lemma_review_missed.md):
+the lone-attack lemma's 28 exceptions -- lone attacks Stockfish says win (Rf5, Be5, Bc5, Ne4 ... 1.6-4.9 pawns) -- the
+exception set is the candidate concept: what do these lone attacks have that the lemma does not see?
