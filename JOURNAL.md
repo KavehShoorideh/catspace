@@ -28598,3 +28598,11 @@ opponent passes, the planner's immediate phase (seeds, skewers, overloads, passe
 lone_attack_second_threat.py. OBS (directional): a proved win on a second target after the refused move -- surprises
 26/47 (55%), correct refusals 236/1000 (24%); 11.5 ms median per firing (p90 43-58 ms). So about half the surprises are
 seen by reasoning we already have; the rest (Rg7, g3, g4, Be5 among the first twelve) are not.
+THE GENERIC THREAT, MEASURED (2026-10-10 ~10:00 PDT; Kaveh: trapping IS cornering -- the mate lemma covers it (my
+"no trapping lemma" retracted: waiting.rs has one cornering frame for every piece); "a threat should have a value ...
+losing a piece, or becoming mate"; protecting = parrying threats, generically). lone_attack_jobs.py: after the refused
+move, LIFT the attacked piece and run our reasoning; a JOB = the lift wins more than the other targets did (bug fixed
+first: the baseline had counted winning the attacked piece itself). OBS (directional): a job -- surprises 9/47 (19%,
+4 of them mate or an exposed king: Rc1's queen guards Rc8#, Rg7's queen shields its king), correct refusals 149/1000
+(15%); a job OR a second threat -- surprises 31/47 (66%), correct refusals 360/1000 (36%). Proposed (awaiting Kaveh's
+go): one Threat type (a piece or the king, its value, how) in place of the piece-specific rules.
