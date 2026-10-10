@@ -28660,3 +28660,13 @@ job targets -> 89% reusable but 3.6% stale; the path lemma's lines onto every sq
 0.44% stale; lines onto the piece, its job targets and the pieces it guards -> 29% reusable, 0.50% stale. Jobs for the
 whole board cost ~2 ms a position: caching is not the prize; the DIFF is -- the few pieces whose jobs changed are the
 nucleus. Kaveh: go (build the ledger diff as the search's starting point).
+THE NUCLEUS (2026-10-10 ~13:00 PDT; Kaveh's go on the piece ledger as the search's starting point). ledger.rs: per
+position every piece's jobs and the pins on the board; a game's PlanState keeps the last ledger and diffs it -> EVENTS
+(a piece lost a job: freed; gained one; a pin released: both pieces freed). The top-level plan states what changed,
+asks their freed pieces "what can it do?" (their moves that make a new threat if we pass -- "nothing" is Kaveh's step
+that frees our queen) and searches our freed pieces first: quiet moves making two new threats at once (a mate by
+checks among them), each proved. Switch: set_nucleus. nucleus_check.py replays the 300 census games through
+PlanState with it off and on. OBS (one run): 22,861 positions; ledger events in 12,895 (56% -- many are small pawn
+jobs); immediate wins 2,799 -> 2,806 (gained 7, lost 0), 11 found by a freed piece's double threat; proofs a position
+13.8 -> 13.8; 70 s -> 72 s. Directional: the planner already starts from targets, so the nucleus adds few finds; its
+value so far is the explanation ("their rook on a8: what can it do? nothing").

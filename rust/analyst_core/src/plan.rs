@@ -39,7 +39,8 @@ pub struct Stats { pub fresh: u32, pub replay: u32, pub reuse_exact: u32, pub re
                    pub nodes: u64, pub lone: u32, pub frozen: u32, pub escape_skip: u32, pub cut_by_history: u32 }
 
 #[derive(Default)]
-pub struct Memo { entries: HashMap<String, Vec<Entry>>, pub history: HashMap<String, f32>, pub stats: Stats }
+pub struct Memo { entries: HashMap<String, Vec<Entry>>, pub history: HashMap<String, f32>, pub stats: Stats,
+                  ledger: Option<crate::ledger::Ledger>, events: Vec<crate::ledger::Event> }
 const SNAPSHOTS: usize = 8;
 pub static REUSE_FAILS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 #[pyfunction]
@@ -434,6 +435,9 @@ fn overloads(pos: &Chess, side: Color) -> Vec<(Square, Square, Square, i64, Stri
 }
 
 pub static OVERLOAD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+pub static NUCLEUS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_nucleus(flag: bool) -> PyResult<()> { NUCLEUS.store(flag, Ordering::Relaxed); Ok(()) }
 #[pyfunction]
 pub fn set_overload(flag: bool) -> PyResult<()> { OVERLOAD.store(flag, Ordering::Relaxed); Ok(()) }
 
@@ -534,6 +538,39 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
     };
     if !immediate_only {
         trace.push(format!("their threat if we pass: worth {threat}; a preparing move is {}", if tempo { "affordable" } else { "NOT affordable" }));
+    }
+    // THE NUCLEUS (Kaveh 2026-10-10: "the pin is suddenly removed ... the knight becomes available to hop ... pony, where
+    // can you hop? ... it cannot do anything, so now my queen is free ... I reason from the point of view of my pieces"):
+    // the ledger's events since the last position (ledger.rs; a game's PlanState), searched first -- their freed pieces
+    // asked what they can do, ours what two threats they can make at once
+    let events = if immediate_only || !NUCLEUS.load(Ordering::Relaxed) { vec![] } else { MEMO.with(|m| m.borrow().as_ref().map(|m| m.events.clone()).unwrap_or_default()) };
+    if !events.is_empty() {
+        trace.push(format!("what changed: {}", events.iter().map(|e| e.text.clone()).collect::<Vec<_>>().join("; ")));
+        let mut asked: Vec<Square> = Vec::new();
+        for e in events.iter().filter(|e| e.freed) {
+            if asked.contains(&e.sq) { continue; }
+            asked.push(e.sq);
+            if b.piece_at(e.sq) != Some(e.piece) { continue; }
+            if e.piece.color == them {
+                let can = crate::ledger::threats_by_piece(pos, e.sq);
+                trace.push(if can.is_empty() { format!("    their {:?} on {}: what can it do? nothing -- no move of it makes a threat", e.piece.role, e.sq).to_lowercase() }
+                           else { format!("    their {:?} on {}: it threatens {}", e.piece.role, e.sq, can.iter().take(3).map(|(u, t, v)| format!("{} ({v} on {t})", san(&pass(pos).unwrap_or(pos.clone()), u))).collect::<Vec<_>>().join(", ")).to_lowercase() });
+                continue;
+            }
+            for (m, t, v, mate) in crate::ledger::double_threats_of(pos, e.sq).into_iter().take(3) {
+                let u = m.to_uci(CastlingMode::Standard).to_string();
+                let mut focus = vec![t];
+                if mate { if let Some(k) = b.king_of(them) { focus.push(k); } }
+                let (ok, n) = with_tag("nucleus".to_string(), || mprove(pos, &u, &focus, v));
+                proofs += 1; nodes += n;
+                trace.push(format!("    our freed {:?} on {}: {} makes two threats{} -- wins {v} on {t}? {} ({n} nodes)", e.piece.role, e.sq, san(pos, &u),
+                    if mate { " (one a mate)" } else { "" }, if ok { "HOLDS" } else { "fails" }).to_lowercase().replacen("holds", "HOLDS", 1));
+                if ok {
+                    wins.push((u.clone(), t, v));
+                    if best.as_ref().map_or(true, |x| v > x.2) { best = Some((String::new(), u.clone(), v, format!("{} makes two threats with the freed {:?} (wins {v})", san(pos, &u), e.piece.role).to_lowercase())); best_target = Some(t); }
+                }
+            }
+        }
     }
     // our checking moves: a check gives an already-attacked piece no time to escape (Kaveh: "a pin and also a cornering"
     // -- several frames from one move; 2026-10-09 misses: Qxf7+ winning the d1 bishop, f3+ the h3 rook, Qxf6+ the g2 bishop)
@@ -993,6 +1030,12 @@ impl PlanState {
         let mut memo = self.memo.take().unwrap_or_default();
         memo.stats = Stats::default();
         for v in memo.history.values_mut() { *v *= 0.8; }                    // recent wins weigh more
+        // the ledger of this position and what changed since the last one (the nucleus)
+        if NUCLEUS.load(Ordering::Relaxed) {
+            let lg = crate::ledger::ledger(&pos);
+            memo.events = memo.ledger.as_ref().map(|prev| crate::ledger::diff(prev, &lg)).unwrap_or_default();
+            memo.ledger = Some(lg);
+        } else { memo.events.clear(); }
         MEMO.with(|m| *m.borrow_mut() = Some(memo));
         let t = std::time::Instant::now();
         let p = plan(&pos);

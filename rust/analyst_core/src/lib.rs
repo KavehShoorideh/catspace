@@ -9,6 +9,7 @@ mod waiting;
 mod paths;
 mod plan;
 mod threat;
+mod ledger;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::collections::HashMap;
@@ -1276,6 +1277,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plan::line_pair_check, m)?)?;
     m.add_function(wrap_pyfunction!(plan::overload_check, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_overload, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_nucleus, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::set_one_move_waits, m)?)?;
     Ok(())
 }
