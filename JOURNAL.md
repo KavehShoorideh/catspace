@@ -28639,3 +28639,16 @@ run): frames' immediate tactics 664 -> 671 of 681; Stockfish only-move tactics 2
 228); immediate wins gained 26, lost 0; BUT 52 s -> 102 s, median 7.0 -> 17.1 ms a position. Next (Kaveh, same hour:
 "I reasoned through only the king movement ... I already searched the pony moves"): the defender's replies off the
 zone (the king's box and our lines) are one move -- the path lemma makes it sound -- to bring the cost back.
+THE KING'S SQUARES, NOT THE BOARD (2026-10-10 ~12:10 PDT; Kaveh: "I looked at the squares, I found that the king has
+these squares, and I reasoned through only the king movement ... I already searched the pony moves"). Two readings in
+our language: (1) the knight that "can't do anything" is OUR queen's job vanishing -- lifting the queen gives them no
+threat (threat.rs jobs), so the queen is free to swing; (2) the moves worth trying are the moves onto the king's
+squares: threat.rs checking_moves reads the checks off the paths onto their king (arrivals, discoveries; castling, en
+passant, promotions tried) -- the proved path lemma makes it complete. OBS checks_audit on the census: 20,339 checking
+moves, 0 missed, 0 extra. Fork candidates likewise: moves arriving on paths onto two of their pieces. And the escape
+test stops at the first threat found (any_new_threat: material, promotion, trapped, mate by checks, gain by checks, a
+fork). OBS census (one run): 102 s -> 75 s, median 17.1 -> 11.4 ms (the static generic threat: 52 s, 7.0 ms); frames'
+immediate tactics 671/681, Stockfish only-move tactics 244 (with Stockfish's move 228); vs the old planner immediate
+wins gained 101, lost 19. Lemma reviewer: random sample 12,190 firings, Stockfish disagrees on 24 (0.2%); Stockfish
+only-move solutions skipped 13 (lone-attack lemma 28, static single-threat 19); 37 surprises left, refuted by a quiet
+move 16, a capture 13, a check 5, a fork 2, a mate line 1.

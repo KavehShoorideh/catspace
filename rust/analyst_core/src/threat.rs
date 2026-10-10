@@ -29,13 +29,33 @@ pub struct Threat {
     pub how: Option<String>,                  // the mating move (uci), for a mate
 }
 
+/// THE CHECKING MOVES of the side to move, read off the paths onto their king (Kaveh 2026-10-10: "I looked at the squares
+/// the king has ... I reasoned through only the king"): arrivals and discoveries -- the proved path lemma
+/// (Ideas.PathLemma.path_lemma: a new attack comes from the arriving piece or through the vacated square) makes the list
+/// complete, so no other move is tried. -> (move, the board after it).
+pub fn checking_moves(p: &Chess) -> Vec<(Move, Chess)> {
+    let Some(k) = p.board().king_of(!p.turn()) else { return vec![] };
+    let mut cand: Vec<Move> = Vec::new();
+    let legal = p.legal_moves();
+    for a in crate::paths::attack_paths(p, p.turn(), Bitboard::from_square(k)) {
+        match a.kind {
+            "direct" => for m in legal.iter().filter(|m| Some(m.to_uci(CastlingMode::Standard).to_string()) == a.mv) { if !cand.contains(m) { cand.push(m.clone()); } },
+            "discovery" => for m in legal.iter().filter(|m| m.from() == a.via) { if !cand.contains(m) { cand.push(m.clone()); } },
+            _ => {}
+        }
+    }
+    // (castling, en passant and promotions are rare checkers: kept exact by trying the few legal ones)
+    for m in legal.iter().filter(|m| matches!(m, Move::Castle { .. } | Move::EnPassant { .. }) || m.is_promotion()) { if !cand.contains(m) { cand.push(m.clone()); } }
+    cand.into_iter().filter_map(|m| { let q = after(p, &m); q.is_check().then_some((m, q)) }).collect()
+}
+
 /// How many of the attacker's moves a mate threat may take, all of them checks.
 pub const MATE_CHECKS: u32 = 3;
 
 /// A FORCED MATE BY CHECKS for the side to move within `n` of its moves -- cornering the king: every move a check,
 /// every reply searched, until no reply is left. -> its first move. (n = 1: a mate in one.)
 pub fn mate_by_checks(p: &Chess, n: u32) -> Option<Move> {
-    let checks: Vec<(Move, Chess)> = p.legal_moves().into_iter().filter_map(|m| { let q = after(p, &m); q.is_check().then_some((m, q)) }).collect();
+    let checks = checking_moves(p);
     if let Some((m, _)) = checks.iter().find(|(_, q)| q.legal_moves().is_empty()) { return Some(m.clone()); }
     if n <= 1 { return None; }
     checks.into_iter().find(|(_, q)| q.legal_moves().iter().all(|r| mate_by_checks(&after(q, r), n - 1).is_some())).map(|(m, _)| m)
@@ -105,9 +125,7 @@ pub fn gain_by_checks(p: &Chess, n: u32) -> Option<(Move, i64)> {
         let here = material_edge(p, by) - base + best_capture(p, by);
         if n == 0 { return here; }
         let mut best = here;
-        for m in p.legal_moves() {
-            let q = after(p, &m);
-            if !q.is_check() { continue; }
+        for (_, q) in checking_moves(p) {
             let rs = q.legal_moves();
             if rs.is_empty() { return MATE_GOAL; }
             let v = rs.iter().map(|r| val(&after(&q, r), by, base, n - 1)).min().unwrap_or(0);
@@ -117,9 +135,7 @@ pub fn gain_by_checks(p: &Chess, n: u32) -> Option<(Move, i64)> {
     }
     let here = best_capture(p, by);
     let mut out: Option<(Move, i64)> = None;
-    for m in p.legal_moves() {
-        let q = after(p, &m);
-        if !q.is_check() { continue; }
+    for (m, q) in checking_moves(p) {
         let rs = q.legal_moves();
         let v = if rs.is_empty() { MATE_GOAL } else { rs.iter().map(|r| val(&after(&q, r), by, base, n - 1)).min().unwrap_or(0) };
         if v > here && out.as_ref().map_or(true, |o| v > o.1) { out = Some((m, v)); }
@@ -132,9 +148,16 @@ pub fn gain_by_checks(p: &Chess, n: u32) -> Option<(Move, i64)> {
 pub fn fork_next(p: &Chess) -> Option<(Move, i64)> {
     let by = p.turn();
     let now = rules::threats_of(p, by);
+    // candidates: a move that arrives on a path onto two or more of their pieces (worth 3+), read off the paths
+    let targets: Bitboard = p.board().by_color(!by) & !p.board().by_role(Role::King);
+    let mut hits: HashMap<String, Bitboard> = HashMap::new();
+    for a in crate::paths::attack_paths(p, by, targets) {
+        if a.kind == "direct" { if let Some(u) = &a.mv { hits.entry(u.clone()).or_default().add(a.target); } }
+    }
     let mut out: Option<(Move, i64)> = None;
     for m in p.legal_moves() {
         if m.is_capture() || m.is_promotion() { continue; }
+        if hits.get(&m.to_uci(CastlingMode::Standard).to_string()).map_or(true, |h| h.count() < 2) { continue; }
         let q = after(p, &m);
         if q.is_check() { continue; }
         let mut new: Vec<i64> = rules::threats_of(&q, by).iter().filter(|(x, g)| **g > 0 && now.get(x).map_or(true, |g0| **g > *g0)).map(|(_, g)| *g).collect();
@@ -163,6 +186,25 @@ pub fn forcing_threats(pos: &Chess, by: Color) -> Vec<Threat> {
         }
     }
     v
+}
+
+/// IS THERE ANY NEW THREAT of `by` (static or forcing) against `before`? -- the cheapest first, stopping at the first
+/// one found (material, promotion, trapped piece, mate by checks, gain by checks, a fork): a claim of "nothing left"
+/// pays for everything, a refutation of it for the first fact that settles it.
+pub fn any_new_threat(pos: &Chess, by: Color, before: &[Threat]) -> bool {
+    let is_new = |t: &Threat| before.iter().find(|b| b.target == t.target && b.mate == t.mate).map_or(true, |b| t.value > b.value);
+    for (x, g) in rules::threats_of(pos, by) {
+        if g > 0 && is_new(&Threat { target: Square::new(x as u32), value: g, mate: false, how: None }) { return true; }
+    }
+    let Some(p) = (if pos.turn() == by { Some(pos.clone()) } else { pass(pos) }) else { return false };
+    // promotion and trapped pieces, then the king: the full static set (cheap parts already settled above)
+    let st = threats(&p, by);
+    if st.iter().any(|t| is_new(t)) { return true; }
+    if let Some((_, g)) = gain_by_checks(&p, GAIN_CHECKS) {
+        if let Some(k) = p.board().king_of(!by) { if is_new(&Threat { target: k, value: g, mate: false, how: None }) { return true; } }
+    }
+    if let Some((m, g)) = fork_next(&p) { if is_new(&Threat { target: m.to(), value: g, mate: false, how: None }) { return true; } }
+    false
 }
 
 /// The threats in `now` that are NEW against `before`: a target not threatened before, or threatened for more.
@@ -215,4 +257,16 @@ pub fn threat_check(fen: String) -> PyResult<(Vec<(String, i64, bool)>, Vec<(Str
         if !j.is_empty() { js.push((sq.to_string(), f(j))); }
     }
     Ok((f(threats(&pos, us)), f(threats(&pos, !us)), js))
+}
+
+/// checks_audit(fen) -> (checking moves read off the paths, checking moves by brute force over the legal moves): the
+/// completeness check of `checking_moves`.
+#[pyfunction]
+pub fn checks_audit(fen: String) -> PyResult<(Vec<String>, Vec<String>)> {
+    let Some(p) = parse(&fen) else { return Ok((vec![], vec![])) };
+    let u = |m: &Move| m.to_uci(CastlingMode::Standard).to_string();
+    let mut a: Vec<String> = checking_moves(&p).iter().map(|(m, _)| u(m)).collect();
+    let mut b: Vec<String> = p.legal_moves().iter().filter(|m| after(&p, m).is_check()).map(u).collect();
+    a.sort(); b.sort();
+    Ok((a, b))
 }

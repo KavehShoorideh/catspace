@@ -17,7 +17,7 @@ use super::*;
 use shakmaty::Bitboard;
 use crate::paths::attack_paths;
 use crate::waiting::{escapes, prove_n, touched, MATE_GOAL};
-use crate::threat::{forcing_threats, jobs_with, new_threats, threats, Threat};
+use crate::threat::{any_new_threat, jobs_with, new_threats, threats, Threat};
 use std::cell::RefCell;
 
 // THE FRAME MEMORY (Kaveh 2026-10-09: "all of these frames ... have two or three outs, and each out is a value -- so we
@@ -647,7 +647,7 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
                     if !capture && !sm.is_capture() && sm.promotion().is_none() && !q.is_check() {
                         let esc = escapes(&q, us, t);
                         let quiet = q.legal_moves().into_iter().filter(|e| e.from() == Some(t) && esc.contains(e.to()))
-                            .find(|e| new_threats(&forcing_threats(&after(&q, e), us), &before_t).is_empty());
+                            .find(|e| !any_new_threat(&after(&q, e), us, &before_t));
                         if let Some(e) = quiet {
                             trace.push(format!("    {}: one threat, and the {name} steps away to {} leaving no threat of ours, none by checks, no fork -- no proof (the single-threat lemma)", san(pos, s), e.to()));
                             tally(|st| st.lone += 1);
