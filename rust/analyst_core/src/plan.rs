@@ -281,6 +281,103 @@ pub fn line_pair_check(fen: String) -> PyResult<Vec<(String, String, String, Opt
     Ok(out)
 }
 
+/// The knight-distance table (exact, by breadth-first search), computed once.
+fn knight_dist() -> &'static [[u8; 64]; 64] {
+    static T: OnceLock<[[u8; 64]; 64]> = OnceLock::new();
+    T.get_or_init(|| {
+        let mut t = [[255u8; 64]; 64];
+        for s in 0..64usize {
+            t[s][s] = 0;
+            let mut q = std::collections::VecDeque::from([s]);
+            while let Some(u) = q.pop_front() {
+                for v in shakmaty::attacks::knight_attacks(Square::new(u as u32)) {
+                    let v = v as usize;
+                    if t[s][v] == 255 { t[s][v] = t[s][u] + 1; q.push_back(v); }
+                }
+            }
+        }
+        t
+    })
+}
+
+/// THE UNSTOPPABLE PASSER (Kaveh 2026-10-10: "cheaply find endgame solutions instead of a deep search or a table
+/// lookup"): the rule of the square generalized to the minor pieces, read off exact geometry, with the side `side`'s
+/// OPPONENT to move in `q`. A pawn of `side` queens if (all conservative -- a doubt means "stoppable"): the opponent has
+/// no rook or queen; every square of its path to the last rank is empty and no enemy pawn stands on its file or the
+/// next ones ahead of it (passed); the pawn is not attacked now; the opponent's king cannot reach the queening square in
+/// time (Chebyshev distance > moves needed: the rule of the square, the defender to move); no enemy knight can block a
+/// path square or attack it before the pawn passes it (the knight-distance table); no enemy bishop stands on the colour
+/// of any path square still ahead (the proved lemma bishop_keeps_colour: a bishop never stops a pawn on the other
+/// colour). -> the fastest such pawn: (square, moves to queen).
+fn unstoppable(q: &Chess, side: Color) -> Option<(Square, u32)> { unstoppable_k(q, side, true) }
+
+/// `with_king`: whether the defending king counts as a stopper -- in a RACE it does not (2026-10-10 audit: Black's king
+/// "could catch" White's b-pawn, but not while Black spends every move pushing the h-pawn)
+fn unstoppable_k(q: &Chess, side: Color, with_king: bool) -> Option<(Square, u32)> {
+    let b = q.board();
+    let opp = !side;
+    if (b.by_color(opp) & (b.by_role(Role::Rook) | b.by_role(Role::Queen))).any() { return None; }
+    let kd = knight_dist();
+    let occ = b.occupied();
+    let fwd: i32 = if side == Color::White { 1 } else { -1 };
+    let last = if side == Color::White { 7 } else { 0 };
+    let mut best: Option<(Square, u32)> = None;
+    for p in b.by_color(side) & b.by_role(Role::Pawn) {
+        let (f, r) = (p.file() as i32, p.rank() as i32);
+        let path: Vec<Square> = (1..=((last - r) * fwd)).map(|k| Square::from_coords(shakmaty::File::new(f as u32), shakmaty::Rank::new((r + k * fwd) as u32))).collect();
+        if path.is_empty() || path.iter().any(|x| occ.contains(*x)) { continue; }
+        let passed = !(b.by_color(opp) & b.by_role(Role::Pawn)).into_iter().any(|e| (e.file() as i32 - f).abs() <= 1 && (e.rank() as i32 - r) * fwd > 0);
+        if !passed { continue; }
+        // attacked now: stopped -- except, in a race, by the defending king (busy with its own pawn)
+        let att = b.attacks_to(p, opp, occ) & if with_king { Bitboard::FULL } else { !b.by_role(Role::King) };
+        if att.any() { continue; }
+        let start = if side == Color::White { 1 } else { 6 };
+        let need = path.len() as u32 - if r == start && path.len() >= 2 { 1 } else { 0 };
+        let z = *path.last().unwrap();
+        if let Some(k) = b.king_of(opp).filter(|_| with_king) {
+            let d = (k.file() as i32 - z.file() as i32).abs().max((k.rank() as i32 - z.rank() as i32).abs()) as u32;
+            if d <= need + 1 { continue; }                              // (audit: the defender to move steps INTO the square: Kc5-b6 catches a6)
+        }
+        // the pawn reaches path[i] after its (i+1)-th move (the double step: path[1] after its first); the opponent has
+        // moved once more by then
+        let arrive = |i: usize| -> u32 { if r == start && path.len() >= 2 { if i == 0 { 1 } else { i as u32 } } else { i as u32 + 1 } };
+        let mut stopped = false;
+        for n in b.by_color(opp) & b.by_role(Role::Knight) {
+            for (i, x) in path.iter().enumerate() {
+                let t = arrive(i);
+                let reach_block = kd[n as usize][*x as usize] as u32;
+                let reach_attack = shakmaty::attacks::knight_attacks(*x).into_iter().map(|a| kd[n as usize][a as usize] as u32).min().unwrap_or(255);
+                if reach_block <= t || reach_attack <= t { stopped = true; break; }
+            }
+            if stopped { break; }
+        }
+        if stopped { continue; }
+        for bi in b.by_color(opp) & b.by_role(Role::Bishop) {
+            let bc = (bi.file() as u32 + bi.rank() as u32) % 2;
+            if path.iter().any(|x| (x.file() as u32 + x.rank() as u32) % 2 == bc) { stopped = true; break; }
+        }
+        if stopped { continue; }
+        if best.map_or(true, |(_, n)| need < n) { best = Some((p, need)); }
+    }
+    best
+}
+
+/// THE SKEWER, the x-ray through the king: our check whose line runs on past their king to the piece `t` behind it
+/// (the first piece beyond the king) -- when the king steps aside, `t` is attacked.
+fn skewers(pos: &Chess, m: &Move, t: Square) -> bool {
+    let them = !pos.turn();
+    let q = after(pos, m);
+    if !q.is_check() { return false; }
+    let Some(k) = q.board().king_of(them) else { return false };
+    let c = m.to();
+    let Some(pc) = q.board().piece_at(c) else { return false };
+    if !matches!(pc.role, Role::Rook | Role::Bishop | Role::Queen) { return false; }
+    let ray = shakmaty::attacks::ray(c, k);
+    ray.contains(t) && shakmaty::attacks::between(c, t).contains(k)
+        && (shakmaty::attacks::between(k, t) & q.board().occupied()).is_empty()
+        && shakmaty::attacks::attacks(c, pc, q.board().occupied().without(k)).contains(t)
+}
+
 pub fn plan(pos: &Chess) -> Plan { plan_inner(pos, false) }
 
 /// `immediate_only`: the immediate phase alone (targets, seeds, proofs) -- what the OPPONENT's threat is computed with,
@@ -426,6 +523,16 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
                 _ => {}
             }
         }
+        // the SKEWER: a check whose line runs on through their king to this piece (2026-10-10, endgame puzzles: the most
+        // common missed solution in rook endgames was a check)
+        if !king {
+            for c in &our_checks {
+                if seeds.contains(c) { continue; }
+                if let Some(cm) = c.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok()) {
+                    if skewers(pos, &cm, t) { trace.push(format!("    {}: a skewer through the king onto the {name}", san(pos, c))); seeds.push(c.clone()); }
+                }
+            }
+        }
         if seeds.is_empty() {
             trace.push(format!("{name}: no path onto it this move -- nothing to prove (the path lemma)"));
             continue;
@@ -501,6 +608,53 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
             else { failed.push(s.clone()); }
         }
         armed.push((goal, t, failed));
+    }
+    // THE PROMOTION LEMMA: a move after which we have an unstoppable passer and they have none faster (no search)
+    if best.as_ref().map_or(true, |x| x.2 < 8) {
+        let mut cand: Option<(String, u32, Square)> = None;
+        // (the Stockfish audit of 2026-10-10, 29 of 210 claims not winning, each an "unless": the move must not lose
+        // material by itself; they must have NO unstoppable passer of their own; their immediate tactics after the move
+        // must be worth less than a queen)
+        for m in pos.legal_moves() {
+            let q = after(pos, &m);
+            // promoting now counts as queening in 0 (2026-10-10 audit: with f8=Q on the board it chose a4)
+            // (the lemma's domain holds for it too: the opponent has no rook or queen -- audit: c8=Q against a queen and a mate)
+            let no_heavy = (b.by_color(them) & (b.by_role(Role::Rook) | b.by_role(Role::Queen))).is_empty();
+            // ...and ONE PROOF that the promotion wins a rook's worth against every reply (audit: the new queen taken or
+            // forked -- h8=Q met by the f7 knight)
+            let now = if m.promotion() == Some(Role::Queen) && no_heavy {
+                let u = m.to_uci(CastlingMode::Standard).to_string();
+                let (ok, n) = mprove(pos, &u, &[m.to()], 5); proofs += 1; nodes += n;
+                if ok { Some((m.to(), 0u32)) } else { continue }
+            } else { None };
+            let Some((p, n)) = now.or_else(|| unstoppable(&q, us)) else { continue };
+            if unstoppable_k(&q, them, false).is_some() { continue; }       // a race (our king is busy): decided by the rest of the material
+            BUDGET.store(200_000, Ordering::Relaxed);
+            let lost = settle_d(&q, -2000, 2000, false, SETTLE_DEPTH).max(0) - (kernel_material(&q, us) - kernel_material(pos, us)).max(0);
+            BUDGET.store(u64::MAX, Ordering::Relaxed);
+            if lost > 0 { continue; }                                      // the move gives material away
+            if cand.as_ref().map_or(true, |c| n < c.1) { cand = Some((m.to_uci(CastlingMode::Standard).to_string(), n, p)); }
+        }
+        // their immediate tactics after the chosen move (one analysis)
+        if let Some((mv, _, _)) = cand.clone() {
+            if let Some(m) = mv.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok()) {
+                let q = after(pos, &m);
+                if !immediate_only {
+                    let tp = plan_inner(&q, true);
+                    proofs += tp.proofs; nodes += tp.nodes;
+                    if tp.best.as_ref().map_or(false, |x| x.2 >= 8) {
+                        trace.push(format!("the promotion lemma's {} refused: they then have {}", san(pos, &mv), tp.best.unwrap().3));
+                        cand = None;
+                    }
+                }
+            }
+        }
+        if let Some((mv, n, p)) = cand {
+            trace.push(format!("the promotion lemma: after {} the pawn on {p} queens in {n} (the rule of the square; no knight in reach, no bishop of its path colour)", san(pos, &mv)));
+            best = Some((String::new(), mv.clone(), 8, format!("{} makes an unstoppable passer (queens in {n})", san(pos, &mv))));
+            best_target = Some(p);
+            wins.push((mv, p, 8));
+        }
     }
     if immediate_only { let im = best.clone(); return Plan { trace, best, proofs, nodes, target: best_target, immediate: im, wins }; }
     // 3b DEFENCE: their immediate win is bigger than ours -- the candidate defences are read off their winning move's

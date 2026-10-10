@@ -28459,3 +28459,29 @@ it applies in 25 instances and agrees in 21. NOT ACCEPTED: the search decides an
 beside it as experience. What the loop showed: the generalization splits into pieces that are value arithmetic (the
 exchange law) and pieces that are other lemmas (forks, checks); an automatic explainer that labels each step of the
 found line with the lemma it uses, and composes them, is the next build.
+
+## 2026-10-10 01:40 PDT — endgame puzzles: the planner's lemmas, the skewer and the unstoppable passer, audited
+
+Kaveh: before the playable engine, try the lemmas on endgame puzzles -- "cheaply find endgame solutions instead of a
+deep Stockfish-style search or a table lookup". endgame_puzzles.py: Lichess puzzles of the six endgame themes, 60 each
+from a slice no earlier experiment used; solved = the planner's move is the first solution move; reference Maia-1900.
+OBS first run: 28% solved (Maia 53%), a median of 3 proofs and 0.5 ms; no decision in 237 of 360. The misses by kind:
+pawn endgames -- pawn pushes 25, king moves 24 (races, breakthroughs, opposition, zugzwang); rook endgames -- a check
+in 17 of 34 (the skewer); knight and bishop endgames -- pawn pushes (promotion).
+BUILT: the SKEWER (a check whose line runs on through their king to the piece behind it is a seed against that piece);
+the UNSTOPPABLE PASSER, the rule of the square generalized from exact geometry (the opponent without rook or queen; the
+path empty; passed; the defending king's distance to the queening square against the moves needed, the defender to
+move; a knight's reach to block or attack each path square by the exact knight-distance table; a bishop stops it only on
+its own colour -- the proved bishop_keeps_colour). OBS 36% solved after both (pawn 0 -> 15%, knight 15 -> 30%, queen
+38 -> 45%, rook 43 -> 47%).
+BUG SWEEP against Stockfish (depth 18 after every claimed move, census + puzzles): 179 of 210 claims winning at first;
+fixed one "unless" at a time from the listed failures -- the defender to move steps INTO the square (distance <= moves
++ 1); the claimed move must not lose material itself; they must have no unstoppable passer (a race is decided by the
+rest of the material) -- and in a race our king is busy, so it neither catches their pawn nor counts as attacking it;
+promoting now counts, but only in the lemma's domain and with one proof that the new queen survives (h8=Q met by the
+f7 knight). OBS after: 107 of 109 claims winning (98%); the 2 others are draws (a blockading knight, a bishop
+fortress). The sound lemma claims less: endgame puzzles 30% overall (pawn 3%, rook 47%, queen 38%, queen+rook 65% --
+above Maia-1900 63%, knight 18%, bishop 10%); census unchanged (the frames' tactics 97%, Stockfish only-move 65%).
+NEXT (pawn endgames): the classical lemmas the misses name -- key squares and the opposition (king and pawn against
+king), the breakthrough (a pawn majority sacrifice creating a passer), outflanking and tempo counting (zugzwang); and
+alpha-beta in the frame with the passer lemma as its leaf, so a race line ends the moment a pawn is provably unstoppable.
