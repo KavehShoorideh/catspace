@@ -28485,3 +28485,24 @@ above Maia-1900 63%, knight 18%, bishop 10%); census unchanged (the frames' tact
 NEXT (pawn endgames): the classical lemmas the misses name -- key squares and the opposition (king and pawn against
 king), the breakthrough (a pawn majority sacrifice creating a passer), outflanking and tempo counting (zugzwang); and
 alpha-beta in the frame with the passer lemma as its leaf, so a race line ends the moment a pawn is provably unstoppable.
+
+## 2026-10-10 02:30 PDT — the overload lemma: jobs, joint coverage, and the opportunity cost
+
+Kaveh: the busy king is one case of a general rule -- a piece needed in two frames has an opportunity cost: resolve
+each frame with and without it and take the better; "that's where overloading comes from: doing two jobs in two
+different frames ... a rook can protect the entire back rank, a bishop cannot". BUILT (plan.rs `overloads`): a JOB of
+piece d is another piece x of its side that is safe now and would be won on the static count if d were lifted; a piece
+with two jobs is OVERLOADED unless one square serves both -- after the attacker takes on one job and d recaptures
+there, d must still bear on the other (both orders; a rook along a rank often does, a bishop off its diagonal never);
+the loss is value arithmetic (the attacker picks the order, the defender whether to recapture). The opponent's
+overloaded pieces give seeds -- take on the first job -- each proved once with both jobs in focus (pawns included). The
+same code runs for the opponent's threat, so our own overloaded pieces enter the defence. OBS puzzles (Lichess,
+100 deflection + 100 capturingDefender; "overloading" is not a Lichess theme): 57% without the lemma, 58% with it
+(Maia-1900 44%) -- the capture proofs already found most deflections. Census: the opponent has an overloaded piece in
+101 positions; the overload seed held in 31, and 31 times it gave a win the planner did not find otherwise, mostly a
+pawn (pawns are not targets) -- e.g. "the pawn on c3 guards both b4 and d4; after a capture on b4 and its recapture there
+it no longer bears on d4". Checked with Stockfish (depth 16): 21 of 31 within 50 cp of its best move, 5 within 150, 5
+worse -- a pawn grab when a mate was there (the mate not among the planner's seeds) or counterplay beyond the proof's
+horizon: the claims are certified, the CHOICE between a sure pawn and a better plan is the engine layer's job. NOT YET:
+the tempo form of the same idea (the passer race's busy king: shared MOVES, not shared pieces) and passers overloading a
+single stopper (two passers against one minor piece).

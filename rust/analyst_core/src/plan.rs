@@ -378,6 +378,84 @@ fn skewers(pos: &Chess, m: &Move, t: Square) -> bool {
         && shakmaty::attacks::attacks(c, pc, q.board().occupied().without(k)).contains(t)
 }
 
+/// OVERLOAD (Kaveh 2026-10-10: "when a piece is needed in one frame and in another frame there is an opportunity cost
+/// ... that's where overloading comes from: it's doing two jobs in two different frames ... a rook can protect the whole
+/// back rank, a bishop cannot"). A JOB of `side`'s piece d: another piece x of `side` is safe now and would be won (the
+/// static count) if d were lifted -- d is its critical guard. A piece with two jobs is OVERLOADED unless one square
+/// serves both: after the attacker takes on one job and d recaptures there, d must still bear on the other (for both
+/// orders). The loss is value arithmetic: the attacker picks the order, the defender picks whether to recapture.
+/// -> [(d, first job taken, second job, attacker's capture move, loss, explanation)], the attacker = !side to move...
+/// computed for `side`'s pieces under `atk`'s attacks, whoever is to move.
+fn overloads(pos: &Chess, side: Color) -> Vec<(Square, Square, Square, i64, String)> {
+    let atk = !side;
+    let b = pos.board();
+    let occ = b.occupied();
+    let lifted_board = |d: Square| -> Option<Chess> {
+        let mut st = pos.clone().into_setup(shakmaty::EnPassantMode::Legal);
+        st.board.discard_piece_at(d); st.ep_square = None;
+        Chess::from_setup(st, CastlingMode::Standard).or_else(|e| e.ignore_invalid_castling_rights())
+            .or_else(|e| e.ignore_impossible_check()).ok()
+    };
+    let now = rules::threats_of(pos, atk);
+    let mut jobs: HashMap<Square, Vec<Square>> = HashMap::new();
+    for d in b.by_color(side) {
+        let Some(lp) = lifted_board(d) else { continue };
+        let without = rules::threats_of(&lp, atk);
+        for x in b.by_color(side) {
+            if x == d || b.piece_at(x).map_or(true, |p| p.role == Role::King) { continue; }
+            if !shakmaty::attacks::attacks(d, b.piece_at(d).unwrap(), occ).contains(x) { continue; }   // d guards x
+            if now.get(&(x as u8)).copied().unwrap_or(0) > 0 { continue; }                      // already lost: no job
+            if without.get(&(x as u8)).copied().unwrap_or(0) > 0 { jobs.entry(d).or_default().push(x); }
+        }
+    }
+    let mut out = Vec::new();
+    for (d, xs) in jobs {
+        if xs.len() < 2 { continue; }
+        let dp = b.piece_at(d).unwrap();
+        for (i, &x1) in xs.iter().enumerate() {
+            for &x2 in xs.iter().skip(i + 1) {
+                // their cheapest capture on each job, and whether d still bears on the other job from there
+                let cheapest = |x: Square| b.attacks_to(x, atk, occ).into_iter().min_by_key(|a| b.piece_at(*a).map_or(99, |p| kernel_value(p.role)));
+                let still = |xa: Square, xb: Square, a: Square| -> bool {
+                    let occ2 = occ.without(d).without(a).with(xa);
+                    shakmaty::attacks::attacks(xa, dp, occ2).contains(xb)
+                };
+                let mut worst: Option<(Square, Square, i64)> = None;
+                for (xa, xb) in [(x1, x2), (x2, x1)] {
+                    let Some(a) = cheapest(xa) else { continue };
+                    if still(xa, xb, a) { continue; }
+                    let (va, vxa, vxb) = (kernel_value(b.piece_at(a).unwrap().role), kernel_value(b.piece_at(xa).unwrap().role), kernel_value(b.piece_at(xb).unwrap().role));
+                    let loss = vxa.min(vxa + vxb - va);                    // we recapture (lose both, win the attacker) or not
+                    if loss > 0 && worst.map_or(true, |w| loss > w.2) { worst = Some((xa, xb, loss)); }
+                }
+                if let Some((xa, xb, loss)) = worst {
+                    let why = format!("the {:?} on {d} guards both {xa} and {xb}; after a capture on {xa} and its recapture there it no longer bears on {xb}{}",
+                        dp.role, if dp.role == Role::Bishop && (xa.file() as u32 + xa.rank() as u32) % 2 != (xb.file() as u32 + xb.rank() as u32) % 2 { " (a bishop keeps its colour)" } else { "" }).to_lowercase();
+                    out.push((d, xa, xb, loss, why));
+                }
+            }
+        }
+    }
+    out
+}
+
+pub static OVERLOAD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_overload(flag: bool) -> PyResult<()> { OVERLOAD.store(flag, Ordering::Relaxed); Ok(()) }
+
+/// overload_check(fen) -> the overloaded pieces of BOTH sides: (side, piece, first job, second job, loss, explanation)
+#[pyfunction]
+pub fn overload_check(fen: String) -> PyResult<Vec<(String, String, String, String, i64, String)>> {
+    let Some(pos) = parse(&fen) else { return Ok(vec![]) };
+    let mut v = Vec::new();
+    for side in [Color::White, Color::Black] {
+        for (d, a, x, l, w) in overloads(&pos, side) {
+            v.push((if side == Color::White { "w" } else { "b" }.to_string(), d.to_string(), a.to_string(), x.to_string(), l, w));
+        }
+    }
+    Ok(v)
+}
+
 pub fn plan(pos: &Chess) -> Plan { plan_inner(pos, false) }
 
 /// `immediate_only`: the immediate phase alone (targets, seeds, proofs) -- what the OPPONENT's threat is computed with,
@@ -608,6 +686,22 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
             else { failed.push(s.clone()); }
         }
         armed.push((goal, t, failed));
+    }
+    // OVERLOAD: their overloaded pieces -- take on the first job, the guard is drawn off the second; one proof each,
+    // focused on both jobs (pawns included: Kaveh's bishop guarding two pawns)
+    for (d, xa, xb, loss, why) in if OVERLOAD.load(Ordering::Relaxed) { overloads(pos, them) } else { vec![] } {
+        if best.as_ref().map_or(false, |x| x.0.is_empty() && x.2 >= loss) { continue; }
+        let Some(cap) = pos.legal_moves().into_iter().filter(|m| m.to() == xa)
+            .min_by_key(|m| kernel_value(m.role())) else { continue };
+        let u = cap.to_uci(CastlingMode::Standard).to_string();
+        let (ok, n) = mprove(pos, &u, &[xa, xb], loss); proofs += 1; nodes += n;
+        trace.push(format!("overload: {why} -- {} wins {loss}? {} ({n} nodes)", san(pos, &u), if ok { "HOLDS" } else { "fails" }));
+        if ok && best.as_ref().map_or(true, |x| loss > x.2) {
+            let role = format!("{:?}", b.piece_at(d).map(|p| p.role).unwrap_or(Role::Pawn)).to_lowercase();
+            best = Some((String::new(), u.clone(), loss, format!("{} exploits the overloaded {role} on {d} (wins {loss})", san(pos, &u))));
+            best_target = Some(xa);
+            wins.push((u, xa, loss));
+        }
     }
     // THE PROMOTION LEMMA: a move after which we have an unstoppable passer and they have none faster (no search)
     if best.as_ref().map_or(true, |x| x.2 < 8) {

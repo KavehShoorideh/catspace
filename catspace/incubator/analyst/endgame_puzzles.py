@@ -22,9 +22,9 @@ from catspace.io import paths
 THEMES = ("pawnEndgame", "rookEndgame", "bishopEndgame", "knightEndgame", "queenEndgame", "queenRookEndgame")
 
 
-def collect(per_theme: int, stride: int = 11, offset: int = 5) -> dict:
+def collect(per_theme: int, stride: int = 11, offset: int = 5, themes=THEMES) -> dict:
     import csv, io, zstandard
-    out = {t: [] for t in THEMES}
+    out = {t: [] for t in themes}
     with open(paths.assets_dir() / "lichess" / "lichess_db_puzzle.csv.zst", "rb") as fh:
         reader = csv.DictReader(io.TextIOWrapper(zstandard.ZstdDecompressor().stream_reader(fh), encoding="utf-8"))
         for i, row in enumerate(reader):
@@ -48,9 +48,10 @@ def played(dec) -> str | None:
 
 
 def _one(args):
-    theme, row = args
+    theme, row, overload = args
     os.environ.setdefault("RAYON_NUM_THREADS", "1")
     import analyst_core
+    analyst_core.set_overload(overload)
     b = chess.Board(row["FEN"])
     moves = row["Moves"].split()
     b.push_uci(moves[0])
@@ -71,16 +72,19 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--per-theme", type=int, default=60)
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
+    ap.add_argument("--themes", default=",".join(THEMES))
+    ap.add_argument("--no-overload", action="store_true")
     a = ap.parse_args(argv)
+    themes = tuple(a.themes.split(","))
     t0 = time.time()
-    rows = collect(a.per_theme)
+    rows = collect(a.per_theme, themes=themes)
     print(f"TIME collect: {time.time() - t0:.0f} s", flush=True)
-    jobs = [(t, r) for t, rs in rows.items() for r in rs]
+    jobs = [(t, r, not a.no_overload) for t, rs in rows.items() for r in rs]
     t1 = time.time()
     with Pool(a.workers) as p:
         res = list(p.imap_unordered(_one, jobs, chunksize=4))
     print(f"TIME planner on {len(res)} puzzles: {time.time() - t1:.0f} s", flush=True)
-    out = paths.experiment(f"endgame_puzzles_{a.per_theme}.jsonl")
+    out = paths.experiment(f"endgame_puzzles_{a.per_theme}.jsonl" if themes == THEMES else f"puzzles_{'_'.join(themes)}_{a.per_theme}{'_nooverload' if a.no_overload else ''}.jsonl")
     with open(out, "w") as fh:
         for r in res:
             fh.write(json.dumps(r) + "\n")
@@ -89,7 +93,7 @@ def main(argv=None):
         by[r["theme"]].append(r)
     print(f"OBS endgame puzzles: solved = the planner's move is the first solution move; reference: Maia-1900's top move")
     print(f"OBS   {'theme':18s} {'n':>4s} {'planner':>8s} {'decided':>8s} {'Maia-1900':>10s} {'proofs med':>11s} {'ms med':>7s}")
-    for t in THEMES + ("ALL",):
+    for t in themes + ("ALL",):
         rs = res if t == "ALL" else by[t]
         n = len(rs)
         if not n:
