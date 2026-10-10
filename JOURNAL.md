@@ -28652,3 +28652,11 @@ immediate tactics 671/681, Stockfish only-move tactics 244 (with Stockfish's mov
 wins gained 101, lost 19. Lemma reviewer: random sample 12,190 firings, Stockfish disagrees on 24 (0.2%); Stockfish
 only-move solutions skipped 13 (lone-attack lemma 28, static single-threat 19); 37 surprises left, refuted by a quiet
 move 16, a capture 13, a check 5, a fork 2, a mate line 1.
+THE PIECE LEDGER, MEASURED (2026-10-10 ~12:30 PDT; Kaveh: "keep track of the jobs of the pieces ... I'll only
+recalculate it if something changed regarding my bishop"; the nucleus of search = what changed: a pin released, a
+piece freed, a job vanished). job_ledger_measure.py on 6,000 census moves, 121,572 pieces that stayed put. OBS (one
+run): jobs unchanged across a move 94.8%. Caching rules for a piece's jobs: untouched support = its square, attacks and
+job targets -> 89% reusable but 3.6% stale; the path lemma's lines onto every square it bears on -> 13% reusable,
+0.44% stale; lines onto the piece, its job targets and the pieces it guards -> 29% reusable, 0.50% stale. Jobs for the
+whole board cost ~2 ms a position: caching is not the prize; the DIFF is -- the few pieces whose jobs changed are the
+nucleus. Kaveh: go (build the ledger diff as the search's starting point).
