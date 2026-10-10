@@ -47,6 +47,7 @@ pub fn set_reuse_fails(flag: bool) -> PyResult<()> { REUSE_FAILS.store(flag, Ord
 thread_local! {
     static MEMO: RefCell<Option<Memo>> = const { RefCell::new(None) };
     static TAG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    static NO_STOP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };   // threats_after: every target, no stop rule
 }
 
 fn snapshot(p: &Chess) -> (Vec<u8>, String) {
@@ -570,7 +571,7 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
         // the STOP RULE counts only IMMEDIATE wins (2026-10-09: an armed threat -- they get a move to parry it -- stopped
         // the search before Rf5 won a bishop, Rd4 a knight)
         let have = best.as_ref().filter(|x| x.0.is_empty()).map_or(0, |x| x.2);
-        if have >= v.min(MATE_GOAL) {
+        if have >= v.min(MATE_GOAL) && !NO_STOP.with(|c| c.get()) {
             trace.push(format!("stop: {} on {t} is worth {}, not more than the {} already won", b.piece_at(t).unwrap().role.char(), v.min(MATE_GOAL), have));
             break;
         }
@@ -936,6 +937,23 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
       }
     }
     Plan { trace, best, proofs, nodes, target: best_target, immediate, wins }
+}
+
+/// threats_after(fen, uci) -> every immediate win (seed, target square, gain) the planner proves after the move if the
+/// opponent passes -- the immediate phase (seeds, the lone-attack lemma, skewers, overloads, passers, mates) with the
+/// stop rule off, so a second target after a first win is still looked at; and the ms it took. (Kaveh 2026-10-10 on the
+/// lone-attack lemma's surprises: "maybe it's not the lone attack lemma that's lacking, but bringing in the other
+/// lemmas" -- does the reasoning we have already see a second threat?)
+#[pyfunction]
+pub fn threats_after(fen: String, uci: String) -> PyResult<(Vec<(String, String, i64)>, f64)> {
+    let Some(pos) = parse(&fen) else { return Ok((vec![], 0.0)) };
+    let Some(m) = uci.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(&pos).ok()) else { return Ok((vec![], 0.0)) };
+    let t = std::time::Instant::now();
+    let Some(p) = pass(&after(&pos, &m)) else { return Ok((vec![], 0.0)) };
+    NO_STOP.with(|c| c.set(true));
+    let tp = plan_inner(&p, true);
+    NO_STOP.with(|c| c.set(false));
+    Ok((tp.wins.iter().map(|(s, t, g)| (s.clone(), t.to_string(), *g)).collect(), t.elapsed().as_secs_f64() * 1000.0))
 }
 
 /// plan_trace(fen) -> (trace lines, the decision (preparing move / "defend" / "", seed, gain, summary), proofs, nodes, ms,

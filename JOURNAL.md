@@ -28591,3 +28591,10 @@ on 18 (0.2%); tactic positions 1,624 firings, 29 (1.8%). Candidate facts (Claude
 refusals: the moving piece lands safe 45/47 (96%) vs 6915/12353 (56%); the attacked piece has no safe square 5/47
 (11%) vs 115/12353 (1%); the move answers their threat 8/47 (17%) vs 711/12353 (6%); the attacked piece guards another
 piece we attack 17/47 (36%) vs 3588/12353 (29%). Page: https://claude.ai/artifact/FuGiGwr3RCeBMehyYhyvbh
+SECOND THREATS (2026-10-10 ~09:40 PDT; Kaveh, reviewing the surprises: Bb5 has the queen and the rook on one line; Rc1's
+queen cannot leave the guard of the back-rank mate square; a rook trapped once a pawn moves -- "maybe it's not the lone
+attack lemma that's lacking, but bringing in the other lemmas"). analyst_core.threats_after(fen, move): the move, the
+opponent passes, the planner's immediate phase (seeds, skewers, overloads, passers, mates) with the stop rule off.
+lone_attack_second_threat.py. OBS (directional): a proved win on a second target after the refused move -- surprises
+26/47 (55%), correct refusals 236/1000 (24%); 11.5 ms median per firing (p90 43-58 ms). So about half the surprises are
+seen by reasoning we already have; the rest (Rg7, g3, g4, Be5 among the first twelve) are not.

@@ -1267,6 +1267,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(paths::path_audit_counts, m)?)?;
     m.add_function(wrap_pyfunction!(paths::attack_paths_of, m)?)?;
     m.add_function(wrap_pyfunction!(plan::plan_trace, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::threats_after, m)?)?;
     m.add_class::<plan::PlanState>()?;
     m.add_function(wrap_pyfunction!(plan::set_reuse_fails, m)?)?;
     m.add_function(wrap_pyfunction!(plan::line_pair_check, m)?)?;
