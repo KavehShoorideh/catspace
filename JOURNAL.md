@@ -28506,3 +28506,14 @@ worse -- a pawn grab when a mate was there (the mate not among the planner's see
 horizon: the claims are certified, the CHOICE between a sure pawn and a better plan is the engine layer's job. NOT YET:
 the tempo form of the same idea (the passer race's busy king: shared MOVES, not shared pieces) and passers overloading a
 single stopper (two passers against one minor piece).
+
+## 2026-10-10 03:05 PDT — stalemate: a soundness bug found from Kaveh's lemma
+
+Kaveh: "if the opponent has a piece that can move, they cannot be stalemated -- and as long as that piece exists I don't
+have to recheck"; and "give check with every move in the endgame and you never stalemate". Checking how the value search
+scores stalemate found a BUG: with the opponent to move, no legal move and not in check, `pursue_val_p` returned the
+current material -- a stalemate counted as keeping the material, i.e. as a win; the frame tree scored it the same.
+Fixed: a stalemate (either side) never satisfies a claim to win something (-1000); the frame tree scores it a draw (0).
+OBS all 300 stalemating moves in the census's positions of 10 pieces or fewer now certify as failures, none as a gain;
+census unchanged (the frames' tactics 97%, Stockfish only-move 66%), the passer audit unchanged (107 of 109 winning),
+endgame puzzles unchanged (30%), tests pass.

@@ -632,6 +632,7 @@ fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha:
     if b == 0 { return -1000; }
     if b != u64::MAX { BUDGET.store(b - 1, Ordering::Relaxed); }
     if q.turn() == side {
+        if !q.is_check() && q.legal_moves().is_empty() { return -1000; }   // the protagonist stalemated: a draw, no gain
         let stand = leaf_value(q, side, alpha, beta);
         if plies == 0 || stand >= beta { return stand; }
         let mut best = stand;
@@ -668,7 +669,9 @@ fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha:
         best
     } else {
         let ms = q.legal_moves();
-        if ms.is_empty() { return if q.is_check() { 1000 } else { kernel_material(q, side) }; }
+        // no legal reply: mate -- or STALEMATE, a draw, which no claim to win something survives (bug 2026-10-10, found
+        // from Kaveh's stalemate lemma: it was scored as keeping the material, i.e. as a win)
+        if ms.is_empty() { return if q.is_check() { 1000 } else { -1000 }; }
         // THEIR REPLIES, KEPT IN THE FRAME (Kaveh 2026-10-08: "use lemmas for the opponent reply too, and keep it in the
         // frame"): with a focus, only the replies that touch the frame are searched -- the target's moves, captures,
         // checks, and moves from, to or attacking a frame square (the target, its escapes, our pieces bearing on them,
@@ -973,7 +976,7 @@ fn branches(q: &Chess, model_path: &str, mass: f32) -> Result<Vec<(Move, f32)>, 
 /// far; returns [(probability, outcome, path)].
 fn their_node(q: &Chess, us: Color, model_path: &str, mass: f32, mat: f32, path: Vec<String>, depth: u32) -> PyResult<Vec<(f32, f32, Vec<String>)>> {
     let ms = q.legal_moves();
-    if ms.is_empty() { return Ok(vec![(1.0, if q.is_check() { MATE_V } else { mat }, path)]); }
+    if ms.is_empty() { return Ok(vec![(1.0, if q.is_check() { MATE_V } else { 0.0 }, path)]); }   // stalemate: a draw
     let perfect = model_path.starts_with("perfect:");
     let mut rows: Vec<(f32, f32, Vec<String>)> = Vec::new();
     let cand: Vec<(Move, f32)> = if perfect {
