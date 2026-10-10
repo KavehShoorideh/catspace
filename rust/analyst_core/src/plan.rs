@@ -453,6 +453,15 @@ pub fn set_frame_seeds(flag: bool) -> PyResult<()> { FRAME_SEEDS.store(flag, Ord
 pub static AFTER_CHECK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_after_check(flag: bool) -> PyResult<()> { AFTER_CHECK.store(flag, Ordering::Relaxed); Ok(()) }
+/// GRADING THE WARNING (Kaveh 2026-10-10: "is it a probable blunder or a certain blunder? If probable, we want to
+/// ascertain certainty; if certain, we want to not do it"): the warning is a certified win of theirs after our move; it
+/// is a CERTAIN blunder only if another move keeps them lower (net of what each move wins us) -- then that move is
+/// played; UNAVOIDABLE if every move lets them as much; PROBABLE if the alternatives could not settle it.
+pub static AVOID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_avoid(flag: bool) -> PyResult<()> { AVOID.store(flag, Ordering::Relaxed); Ok(()) }
+const AVOID_MARGIN: i64 = 2;
+const AVOID_TOP: usize = 5;
 pub static NUCLEUS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_nucleus(flag: bool) -> PyResult<()> { NUCLEUS.store(flag, Ordering::Relaxed); Ok(()) }
@@ -472,6 +481,61 @@ pub fn overload_check(fen: String) -> PyResult<Vec<(String, String, String, Stri
     Ok(v)
 }
 
+fn tb_of(tp: Plan) -> Option<(String, String, i64, String)> { tp.best }
+
+/// What a move nets right now: what we certainly win with it (a proved immediate win of the plan, else the material it
+/// captures) minus their best certified immediate win after it (their reasoning once).
+fn net_after(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs: &mut u32, nodes: &mut u64) -> (i64, Option<String>) {
+    let u = m.to_uci(CastlingMode::Standard).to_string();
+    let q = after(pos, m);
+    if q.is_checkmate() { return (MATE_GOAL, None); }
+    let ours = wins.iter().filter(|w| w.0 == u).map(|w| w.2).max()
+        .unwrap_or_else(|| (kernel_material(&q, pos.turn()) - kernel_material(pos, pos.turn())).max(0) + if m.is_capture() { 0 } else { 0 });
+    let tp = with_tag("avoid".to_string(), || plan_inner(&q, true));
+    *proofs += tp.proofs; *nodes += tp.nodes;
+    let theirs = tp.best.as_ref().map_or(0, |b| b.2);
+    (ours - theirs, tp.best.map(|b| b.3))
+}
+
+/// The warning graded: every legal move's net (`net_after`) against the decision's (`net_m`); a move at least AVOID_MARGIN
+/// better makes the decision a CERTAIN blunder and replaces it.
+fn grade_and_avoid(pos: &Chess, p: &mut Plan, mv: &str, net_m: i64) {
+    let wins = p.wins.clone();
+    let (mut pr, mut nd) = (0u32, 0u64);
+    let mut best: Option<(i64, String, Option<String>)> = None;
+    // a cheap gate first (Kaveh 2026-10-09: "a cheap gate followed by a more thorough gate"): every move scored by the
+    // static threats -- what it wins now minus their biggest threat after it (material, promotion, trapped, mate by
+    // checks); their reasoning is run on the AVOID_TOP best only
+    let them = !pos.turn();
+    let mut cands: Vec<(i64, Move)> = pos.legal_moves().into_iter().filter(|m| m.to_uci(CastlingMode::Standard).to_string() != mv).map(|m| {
+        let u = m.to_uci(CastlingMode::Standard).to_string();
+        let q = after(pos, &m);
+        let ours = wins.iter().filter(|w| w.0 == u).map(|w| w.2).max().unwrap_or_else(|| (kernel_material(&q, pos.turn()) - kernel_material(pos, pos.turn())).max(0));
+        let theirs = if q.is_checkmate() { -MATE_GOAL } else { threats(&q, them).iter().map(|t| t.value).max().unwrap_or(0) };
+        (ours - theirs, m)
+    }).collect();
+    cands.sort_by(|a, b| b.0.cmp(&a.0));
+    // PROBABLE -> CERTAIN: when the gate's best do not settle it, the rest are checked before "unavoidable" is said
+    // (2026-10-10: with the top 5 only, 34% of the decisions kept as unavoidable lost 150+ cp to Stockfish's best)
+    for (i, (_, m)) in cands.into_iter().enumerate() {
+        if i >= AVOID_TOP && best.as_ref().map_or(false, |b| b.0 >= net_m + AVOID_MARGIN) { break; }
+        let u = m.to_uci(CastlingMode::Standard).to_string();
+        let (net, why) = net_after(pos, &m, &wins, &mut pr, &mut nd);
+        if best.as_ref().map_or(true, |b| net > b.0) { best = Some((net, u, why)); }
+    }
+    p.proofs += pr; p.nodes += nd;
+    match best {
+        Some((net, u, why)) if net >= net_m + AVOID_MARGIN => {
+            p.trace.push(format!("    certain blunder: {} nets {net_m}; {} nets {net}{} -- {} instead ({pr} proofs)", san(pos, mv), san(pos, &u),
+                why.map(|w| format!(" (their best then: {w})")).unwrap_or_default(), san(pos, &u)));
+            let kind = if net > 0 && wins.iter().any(|w| w.0 == u) { String::new() } else { "defend".to_string() };
+            p.best = Some((kind, u.clone(), net, format!("{} avoids the blunder {} (nets {net} against {net_m})", san(pos, &u), san(pos, mv))));
+        }
+        Some((net, _, _)) => p.trace.push(format!("    unavoidable: no move nets more than {net} against {}'s {net_m} -- kept ({pr} proofs)", san(pos, mv))),
+        None => p.trace.push("    probable: no alternative to check".to_string()),
+    }
+}
+
 pub fn plan(pos: &Chess) -> Plan {
     let mut p = plan_inner(pos, false);
     if AFTER_CHECK.load(Ordering::Relaxed) {
@@ -482,9 +546,12 @@ pub fn plan(pos: &Chess) -> Plan {
                 if !q.is_checkmate() {
                     let tp = with_tag("after".to_string(), || plan_inner(&q, true));
                     p.proofs += tp.proofs; p.nodes += tp.nodes;
-                    if let Some(tb) = tp.best {
+                    if let Some(tb) = tb_of(tp) {
                         let ours = if d.0.is_empty() { d.2 } else { 0 };
-                        if tb.2 > ours { p.trace.push(format!("after: {} lets them {} (worth {}, more than our {ours})", san(pos, &mv), tb.3, tb.2)); }
+                        if tb.2 > ours {
+                            p.trace.push(format!("after: {} lets them {} (worth {}, more than our {ours})", san(pos, &mv), tb.3, tb.2));
+                            if AVOID.load(Ordering::Relaxed) { grade_and_avoid(pos, &mut p, &mv, ours - tb.2); }
+                        }
                     }
                 }
             }

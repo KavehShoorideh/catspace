@@ -28683,3 +28683,13 @@ immediate reasoning once; a warning in the trace; default on). The pool stays of
 OBS: frame seeds add 9 immediate wins, lose 0 (Stockfish: median 9 cp, none losing 150+), proofs a position 15.6 ->
 18.7, time +6%. The after-check: decisions warned (611) lose 150+ cp in 68% (median 294 cp) vs 13% unwarned (median
 20 cp) -- the planner's blunders, named; acting on them (another move) is the next step.
+GRADED BLUNDER WARNINGS (2026-10-10 ~14:40 PDT; Kaveh: "is it a probable blunder or a certain blunder? If probable, we
+want to ascertain certainty; if certain, we want to not do it"). plan.rs grade_and_avoid: the after-check's warning
+is a certified win of theirs after our decision; every alternative scored cheaply (what it wins now minus their biggest
+static threat after it: material, promotion, trapped, mate by checks), their reasoning run on the best 5 -- and on the
+rest when those do not settle it (probable -> certain); a move netting 2+ more makes the decision a CERTAIN blunder and
+replaces it; none -> UNAVOIDABLE, kept. avoid_check.py, 100 census games (7,876 positions). OBS (one run): warnings
+graded certain 506, unavoidable 105; the blunders replaced lose a median 339 cp to Stockfish's best (77% lose 150+),
+the moves played instead a median 44 cp (21%); per position the new move better by 50+ cp in 404, worse in 58; the
+decisions kept as unavoidable a median 43 cp (24%). Cost: 35 s -> 48 s, proofs a position 18.7 -> 24.5. (Top 5 only:
+448 certain, unavoidable 163 losing 150+ in 34% -- why the rest are checked; every move: 76 s.)
