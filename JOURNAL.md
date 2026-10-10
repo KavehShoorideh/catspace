@@ -28293,3 +28293,42 @@ Stockfish confirms): cornering piece waiting on removing one of ours (a discover
 mating nets rarely complete; far frames 0.2-1.2%. Far frames are 83% of the frames and carry 55% of the confirmed
 activations -- they come alive through changes of more than one move, which the seed proof (cheap) still catches;
 what they waste is the condition search, which returns nothing for them. Directional, one run.
+
+## 2026-10-09 21:10 PDT — the gates, the path lemma (exact), and the target-first planner: the castling idea in 9 proofs
+
+Kaveh: a cheap gate followed by a more thorough gate; then, on the castling position: "I still don't get why it's so
+many ... if I pass, all I'm going to lose is a pawn ... what attack can I cook up ... how do we see this frame without
+searching for it, and recognize that every other frame gives nothing -- there is no more valuable piece to win"; "if the
+line from the king is blocked, there's no piece that can attack from there -- a base lemma"; then the method: every
+surprise gets the lemma that solves it in a few NEW computations a move, and we do not move on until it does.
+GATES (frame_gate.py): a logistic gate on cheap frame features (AUC 0.919 out of fold; keeping 90% of conditions costs
+40% of the condition nodes offline); held-out 60 games: 197 -> 82 ms a position, tactics identical (1,535), conditions
+85% kept (a skipped frame carried "far last move" into the next decision -- fixed by carrying the last searched status;
+the rest is gate 2). The walk-through then showed the gate skipped Ne7+ -- the castling frame -- because mating frames
+rarely yield a condition: a gate trained on "finds any" ignores what a condition is worth. Superseded by the planner.
+THE PATH LEMMA (paths.rs): every NEW attack a side can make on a square with its next move is a piece arriving on a
+square bearing on it, or a discovery (our blocker leaves a line in front of our slider), or en passant's vacated
+square; batteries (a slider one move from loading behind our blocker) and pins are the two-move and relation paths.
+OBS audit against brute force, all 22,861 census positions, both sides, king zones and every piece (520,135 zones):
+836,694 new-attack moves, 0 missed, 0 over-claimed (the first run missed 5, all en passant). 1 s on 10 processes.
+THE PLANNER (plan.rs), Kaveh's procedure: their threat on the null move sets the tempo budget; targets by value, the
+king first; only moves on a path onto a target are proved, at the gain they can win (the static gain; a fork's second
+target); a check is a seed against any piece we already attack; the lone-attack lemma skips a move attacking a piece
+that can step away (no check, no second target, no new path onto the king, no capture elsewhere); arming only when
+nothing wins at once and a tempo is affordable: preparing moves on a path onto the escapes a failing seed leaves (a
+battery behind the seed's own piece, another piece covering an escape), proved only if at most one escape remains; the
+stop rule counts immediate wins only. Surprises fixed on the way, each from a listed miss: an armed threat stopped the
+search before an immediate win (Rf5 x bishop, Rd4 x knight, cxb7 x rook); checks winning an attacked piece (Qxf7+,
+f3+, Qxf6+); the lone-attack lemma first ignored the king as a second target (Rf5 vs the h5 king) and captures in hand
+(fxe5); goals at full value instead of the winnable gain (e5 vs a pinned rook, the f4 fork).
+OBS the castling position: 9 proofs, 13k nodes, 2.2 ms -> Rd1 / O-O-O arm Ne7+ mate (Ne7+ leaves d7 and b8; the
+battery behind the knight covers d7); along the line O-O-O / Nxf3 / Ne7+ / Kb8: 5, 2, 0, 2 proofs (Ne7+ and Rxd8
+found as mates). OBS census, 22,861 positions: proofs a position median 4, mean 6.0, 90th percentile 14, max 136;
+56k nodes (the frames 930k); 2.4 ms median; the frames' immediate tactics (goal >= 3) found in 96%; Stockfish only-move
+tactics in 64% (47% before the fixes; frames-free). Directional, one run.
+SURPRISES OPEN: (1) after O-O-O Black's planner says "nothing" -- the threat check counts only White's captures on the
+null move, not White's immediate mates; the opponent's threat must be the same planner run for them, with the breakers
+of their winning move as our defences; (2) 4% of the frames' tactics missed: attacks on a queen or bishop whose escapes
+are statically safe but each loses (Rf2 vs Qd2, Rf5 vs Qe5, Rg3 vs Qg6, Rd2 vs Bd6); (3) 36% of Stockfish's only-move
+tactics outside the planner (pawn targets are not yet targets); (4) the incremental cache -- per move the planner is
+already at 0-9 proofs from scratch on the castling line; (5) the 1-move path lemma in Lean.
