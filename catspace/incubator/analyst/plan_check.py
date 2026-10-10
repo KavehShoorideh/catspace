@@ -25,8 +25,8 @@ def _one(args):
     game, ply, fen = args
     os.environ.setdefault("RAYON_NUM_THREADS", "1")
     import analyst_core
-    trace, best, proofs, nodes, ms = analyst_core.plan_trace(fen)
-    return game, ply, fen, best, proofs, nodes, ms
+    trace, best, proofs, nodes, ms, imm = analyst_core.plan_trace(fen)
+    return game, ply, fen, best, proofs, nodes, ms, imm
 
 
 def run(tag: str, frames_file: str, workers: int, limit: int) -> None:
@@ -40,7 +40,7 @@ def run(tag: str, frames_file: str, workers: int, limit: int) -> None:
     dt = time.time() - t0
     n = len(res)
     proofs = sorted(r[4] for r in res); ms = sorted(r[6] for r in res)
-    kinds = Counter("immediate" if r[3] and not r[3][0] else ("armed" if r[3] else "nothing") for r in res)
+    kinds = Counter("immediate" if r[3] and not r[3][0] else ("defend" if r[3] and r[3][0] == "defend" else ("armed" if r[3] else "nothing")) for r in res)
     print(f"OBS planner on {n} positions ({dt:.0f} s on {workers} processes): proofs a position median {proofs[n // 2]}, "
           f"90th percentile {proofs[int(0.9 * n)]}, max {proofs[-1]}, mean {sum(proofs) / n:.1f}; nodes a position "
           f"{sum(r[5] for r in res) / n:,.0f}; ms a position median {ms[n // 2]:.1f}, max {ms[-1]:.0f}; found {dict(kinds)}")
@@ -62,16 +62,17 @@ def run(tag: str, frames_file: str, workers: int, limit: int) -> None:
             frame_tac[(g["game"], ps[i])] = [k for k, v in g["hist"][i].items() if k[0] == stm and v[0] == "active" and v[4] >= 3]
     both = [k for k in plan if k in frame_tac]
     ft = [k for k in both if frame_tac[k]]
-    found = [k for k in ft if plan[k][3] and not plan[k][3][0]]
+    found = [k for k in ft if plan[k][7]]
+    decided = [k for k in ft if plan[k][3] and not plan[k][3][0]]
     print(f"OBS   frames' immediate tactics (goal >= 3) in {len(ft)} positions: the planner has an immediate win in {len(found)} "
-          f"({100 * len(found) / max(len(ft), 1):.0f}%)")
+          f"({100 * len(found) / max(len(ft), 1):.0f}%); it decides to play one in {len(decided)}")
     labels = {(r["game"], r["ply"]): r for r in map(json.loads, open(paths.experiment(f"tactic_labels_{tag}_d12_pv.jsonl")))}
     prev = {}
     for r in rows:
         prev[(r["game"], r["ply"])] = r["fen"]
     sf = [k for k in plan if k in labels and (k[0], k[1] - 1) in prev and is_tactic(labels[k], prev[(k[0], k[1] - 1)], plan[k][2])]
-    sf_imm = [k for k in sf if plan[k][3] and not plan[k][3][0]]
-    sf_move = [k for k in sf_imm if plan[k][3][1] == labels[k]["move"]]
+    sf_imm = [k for k in sf if plan[k][7]]
+    sf_move = [k for k in sf_imm if plan[k][7][1] == labels[k]["move"]]
     print(f"OBS   Stockfish only-move tactics {len(sf)}: the planner has an immediate win in {len(sf_imm)} ({100 * len(sf_imm) / max(len(sf), 1):.0f}%), "
           f"with Stockfish's move {len(sf_move)}")
     for k in [k for k in ft if k not in found][:6]:

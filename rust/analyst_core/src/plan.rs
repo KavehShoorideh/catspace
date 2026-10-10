@@ -18,7 +18,8 @@ use shakmaty::Bitboard;
 use crate::paths::attack_paths;
 use crate::waiting::{escapes, prove_n, MATE_GOAL};
 
-pub struct Plan { pub trace: Vec<String>, pub best: Option<(String, String, i64, String)>, pub proofs: u32, pub nodes: u64 }
+pub struct Plan { pub trace: Vec<String>, pub best: Option<(String, String, i64, String)>, pub proofs: u32, pub nodes: u64, pub target: Option<Square>,
+                 pub immediate: Option<(String, String, i64, String)> }
 
 fn val(r: Role) -> i64 { if r == Role::King { 1000 } else { kernel_value(r) } }
 
@@ -27,7 +28,11 @@ fn san(pos: &Chess, uci: &str) -> String {
         .map(|m| shakmaty::san::San::from_move(pos, &m).to_string()).unwrap_or_else(|| uci.to_string())
 }
 
-pub fn plan(pos: &Chess) -> Plan {
+pub fn plan(pos: &Chess) -> Plan { plan_inner(pos, false) }
+
+/// `immediate_only`: the immediate phase alone (targets, seeds, proofs) -- what the OPPONENT's threat is computed with,
+/// on the null move.
+pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
     let us = pos.turn();
     let them = !us;
     let b = pos.board();
@@ -35,18 +40,30 @@ pub fn plan(pos: &Chess) -> Plan {
     let mut proofs = 0u32;
     let mut nodes = 0u64;
     let mut best: Option<(String, String, i64, String)> = None;    // (preparing move or "", seed, gain, how)
-    // 1 THEIR THREAT
-    let threat = match pass(pos) {
-        Some(p) => { BUDGET.store(200_000, Ordering::Relaxed); let v = settle_d(&p, -2000, 2000, true, SETTLE_DEPTH).max(0); BUDGET.store(u64::MAX, Ordering::Relaxed); v }
-        None => 0,
-    };
-    let checks: Vec<String> = match b.king_of(us) {
-        Some(k) => attack_paths(pos, them, Bitboard::from_square(k)).into_iter().filter(|p| p.kind == "direct").filter_map(|p| p.mv).collect(),
-        None => vec![],
+    let mut best_target: Option<Square> = None;
+    // 1 THEIR THREAT: their resolved captures if we pass, AND their immediate wins found by the same reasoning on the
+    // null move (2026-10-09, after O-O-O in the castling line: Black's planner said "nothing" -- the threat counted only
+    // White's captures, not White's mate)
+    let mut their: Option<(String, Square, i64)> = None;
+    let threat = if immediate_only { 0 } else {
+        let cap = match pass(pos) {
+            Some(p) => { BUDGET.store(200_000, Ordering::Relaxed); let v = settle_d(&p, -2000, 2000, true, SETTLE_DEPTH).max(0); BUDGET.store(u64::MAX, Ordering::Relaxed); v }
+            None => 0,
+        };
+        if let Some(p) = pass(pos) {
+            let tp = plan_inner(&p, true);
+            proofs += tp.proofs; nodes += tp.nodes;
+            if let (Some(bb), Some(tt)) = (tp.best, tp.target) {
+                trace.push(format!("their best immediate win if we pass: {} ({} proofs)", bb.3, tp.proofs));
+                their = Some((bb.1, tt, bb.2));
+            }
+        }
+        cap.max(their.as_ref().map_or(0, |x| x.2))
     };
     let tempo = threat <= 1;
-    trace.push(format!("their threat if we pass: captures worth {threat}; checks available to them: {}; a preparing move is {}",
-        checks.len(), if tempo { "affordable" } else { "NOT affordable" }));
+    if !immediate_only {
+        trace.push(format!("their threat if we pass: worth {threat}; a preparing move is {}", if tempo { "affordable" } else { "NOT affordable" }));
+    }
     // our checking moves: a check gives an already-attacked piece no time to escape (Kaveh: "a pin and also a cornering"
     // -- several frames from one move; 2026-10-09 misses: Qxf7+ winning the d1 bishop, f3+ the h3 rook, Qxf6+ the g2 bishop)
     let our_checks: Vec<String> = match b.king_of(them) {
@@ -155,10 +172,72 @@ pub fn plan(pos: &Chess) -> Plan {
             let (ok, _, n, _) = prove_n(pos, s, &[t], g, None);
             proofs += 1; nodes += n;
             trace.push(format!("    prove {} (gain {g}): {} ({n} nodes)", san(pos, s), if ok { "HOLDS" } else { "fails" }));
-            if ok { if best.as_ref().map_or(true, |x| g > x.2) { best = Some((String::new(), s.clone(), g, format!("{} wins {g} against the {name}", san(pos, s)))); } }
+            if ok { if best.as_ref().map_or(true, |x| g > x.2) { best = Some((String::new(), s.clone(), g, format!("{} wins {g} against the {name}", san(pos, s)))); best_target = Some(t); } }
             else { failed.push(s.clone()); }
         }
         armed.push((goal, t, failed));
+    }
+    if immediate_only { let im = best.clone(); return Plan { trace, best, proofs, nodes, target: best_target, immediate: im }; }
+    // 3b DEFENCE: their immediate win is bigger than ours -- the candidate defences are read off their winning move's
+    // geometry (the path lemma): take the attacking piece, move the target, guard the square it lands on, step onto a
+    // line of theirs into the target's zone, free an escape next to the target, or check; one proof each: does their
+    // move still win after ours?
+    let ours_now = best.as_ref().map_or(0, |x| x.2);
+    let immediate = best.clone();
+    if let Some((tseed, tt, tg)) = their.clone() {
+        // DOES OUR ATTACK ALREADY ANSWER THEIRS? (Kaveh 2026-10-09; the census: defending first lost 6% of the immediate
+        // wins) -- one proof: their winning move after our best one
+        let answered = match &immediate {
+            Some(x) => {
+                let q = x.1.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok()).map(|m| after(pos, &m));
+                match q {
+                    Some(q) if q.is_checkmate() => true,
+                    Some(q) => {
+                        let legal = tseed.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(&q).ok()).is_some();
+                        if !legal { true } else { let (ok, _, n, _) = prove_n(&q, &tseed, &[tt], tg, None); proofs += 1; nodes += n; !ok }
+                    }
+                    None => false,
+                }
+            }
+            None => false,
+        };
+        if answered { trace.push(format!("our {} also stops their threat", best.as_ref().unwrap().3)); }
+        if tg >= 2 && tg > ours_now && !answered {
+            let p0 = pass(pos).unwrap();
+            let sm = tseed.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(&p0).ok());
+            if let Some(sm) = sm {
+                let from = sm.from();
+                let land = sm.to();
+                let mut lines = Bitboard::EMPTY;                       // their lines into the target's zone
+                let zone = shakmaty::attacks::king_attacks(tt).with(tt);
+                for p in attack_paths(pos, them, zone) {
+                    if matches!(p.kind, "open" | "discovery" | "battery" | "direct") { lines |= shakmaty::attacks::between(p.piece, p.target); if let Some(r) = p.rear { lines.add(r); } }
+                }
+                let mut cands: Vec<Move> = Vec::new();
+                for m in pos.legal_moves() {
+                    let q = after(pos, &m);
+                    let hit = Some(m.to()) == from || m.from() == Some(tt) || q.board().attacks_to(land, us, q.board().occupied()).any()
+                        && !b.attacks_to(land, us, b.occupied()).any()
+                        || lines.contains(m.to()) || m.from().map_or(false, |f| shakmaty::attacks::king_attacks(tt).contains(f)) || q.is_check();
+                    if hit { cands.push(m); }
+                }
+                trace.push(format!("their {} wins {tg}: {} candidate defences on its geometry", san(&p0, &tseed), cands.len()));
+                for m in cands {
+                    let q = after(pos, &m);
+                    let mu = m.to_uci(CastlingMode::Standard).to_string();
+                    let t2 = if m.from() == Some(tt) { m.to() } else { tt };
+                    let legal = tseed.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(&q).ok()).is_some();
+                    let still = if legal { let (ok, _, n, _) = prove_n(&q, &tseed, &[t2], tg, None); proofs += 1; nodes += n; ok } else { false };
+                    if !still {
+                        trace.push(format!("    {} stops it", san(pos, &mu)));
+                        if best.as_ref().map_or(true, |x| x.0 != "defend") {
+                            best = Some(("defend".to_string(), mu.clone(), -tg, format!("{} stops their {}", san(pos, &mu), san(&p0, &tseed))));
+                        }
+                    }
+                }
+                return Plan { trace, best, proofs, nodes, target: best_target, immediate };
+            }
+        }
     }
     // 4 ARMING, only when no immediate win was found and a preparing move is affordable -- by value, stopping at the first
     // armed threat: the escapes each failing seed leaves, and our one-move paths onto them; a pair is proved only if the
@@ -206,14 +285,15 @@ pub fn plan(pos: &Chess) -> Plan {
         }
       }
     }
-    Plan { trace, best, proofs, nodes }
+    Plan { trace, best, proofs, nodes, target: best_target, immediate }
 }
 
-/// plan_trace(fen) -> (trace lines, (preparing move, seed, gain, summary) or None, proofs, nodes, ms)
+/// plan_trace(fen) -> (trace lines, the decision (preparing move / "defend" / "", seed, gain, summary), proofs, nodes, ms,
+/// the best immediate win found (whatever was decided))
 #[pyfunction]
-pub fn plan_trace(fen: String) -> PyResult<(Vec<String>, Option<(String, String, i64, String)>, u32, u64, f64)> {
-    let Some(pos) = parse(&fen) else { return Ok((vec![], None, 0, 0, 0.0)) };
+pub fn plan_trace(fen: String) -> PyResult<(Vec<String>, Option<(String, String, i64, String)>, u32, u64, f64, Option<(String, String, i64, String)>)> {
+    let Some(pos) = parse(&fen) else { return Ok((vec![], None, 0, 0, 0.0, None)) };
     let t = std::time::Instant::now();
     let p = plan(&pos);
-    Ok((p.trace, p.best, p.proofs, p.nodes, t.elapsed().as_secs_f64() * 1000.0))
+    Ok((p.trace, p.best, p.proofs, p.nodes, t.elapsed().as_secs_f64() * 1000.0, p.immediate))
 }
