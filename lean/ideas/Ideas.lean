@@ -11,3 +11,4 @@ import Ideas.Exchange
 import Ideas.ExchangeLaw
 import Ideas.PathLemma
 import Ideas.GeoLemmas
+import Ideas.StalemateLemmas

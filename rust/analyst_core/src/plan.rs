@@ -722,6 +722,9 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
                 if ok { Some((m.to(), 0u32)) } else { continue }
             } else { None };
             let Some((p, n)) = now.or_else(|| unstoppable(&q, us)) else { continue };
+            // THE STALEMATE GUARD, in the order the proved lemmas give (Ideas.StalemateLemmas): a check never stalemates
+            // (free); otherwise a legal move of theirs rules it out; a move that stalemates them is a draw, not a win
+            if !q.is_check() && q.legal_moves().is_empty() { continue; }
             if unstoppable_k(&q, them, false).is_some() { continue; }       // a race (our king is busy): decided by the rest of the material
             BUDGET.store(200_000, Ordering::Relaxed);
             let lost = settle_d(&q, -2000, 2000, false, SETTLE_DEPTH).max(0) - (kernel_material(&q, us) - kernel_material(pos, us)).max(0);

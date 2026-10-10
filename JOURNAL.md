@@ -28517,3 +28517,39 @@ Fixed: a stalemate (either side) never satisfies a claim to win something (-1000
 OBS all 300 stalemating moves in the census's positions of 10 pieces or fewer now certify as failures, none as a gain;
 census unchanged (the frames' tactics 97%, Stockfish only-move 66%), the passer audit unchanged (107 of 109 winning),
 endgame puzzles unchanged (30%), tests pass.
+
+## 2026-10-10 03:55 PDT — the lemma miner: vocabulary in, lemmas out; the review between Kaveh and Claude proposes vocabulary
+
+Kaveh: make it modular -- the proposer will someday be an API call; for now "the LLM is you and me reviewing something
+together and agreeing ... not the lemma, but the next piece of VOCABULARY, the highest level of abstraction"; and check
+the literature. BUILT: lemma_vocab.py (concepts: name, plain definition, level, SOURCE -- built in, or "review
+<date>: Kaveh + Claude -- <cases>"; 16 to start, every position concept also negated), lemma_miner.py (contexts = board,
+legal move, board after: census positions of <= 12 pieces and generated endgames; minimal premises of <= 4 concepts
+implying a target or its negation with zero exceptions, over the distinct rows -- 1 s; a holdout set, and a lemma counts
+as holdout-checked only with enough holdout cases of its premise; Lean-proved / empirical separated; open cases; the
+registry data/derived/lemma_registry.json), lemma_review.py (one Proposer interface: ReviewProposer writes
+artifacts/experiments/lemma_review_<target>.md -- the open cases and a template for the next concept -- and reads back
+the concepts whose source names a review; ApiProposer a stub; NoProposer). Lean: Ideas/StalemateLemmas.lean --
+check_not_stalemate, legal_move_not_stalemate, checking_move_never_stalemates (Kaveh's "give check every move"),
+not_check_not_checkmate, legal_move_not_checkmate. Planner: the passer lemma never claims a move that stalemates them
+(the guard in the proved order: check first, then a legal reply).
+OBS stalemate (157k contexts, holdout 113k): Kaveh's rules found unprompted and proved -- "the move gave check => not
+stalemate", "the defender has a free pawn / a free piece / a free king square => not stalemate" (5 proved); 16 empirical
+(stalemate's own definition recovered from data: not in check, no free pawn, piece or king square => stalemate; some
+genuine, some sampling accidents to review); 2 untested, 1 rejected by the holdout ("the move was a capture and a king
+move => not stalemate"); no open case. Checkmate: 4 proved, 11 empirical, 5 untested (no holdout case), 2 rejected; the
+empirical list keeps rules false in general ("a king move => not checkmate": a discovered or castling mate never
+occurred in the sample) -- the review's job, or a Lean proof's.
+LITERATURE (one research pass; sources verified by the agent): conjecture generation (Graffiti/TxGraffiti's Dalmatian
+and Sophie heuristics -- keep a rule only if it covers a case no accepted rule covers; HR's production rules for new
+concepts); theory exploration (QuickSpec, Hipster, IsaCoSy -- prune what accepted lemmas already imply, drop what the
+routine tactic closes); ILP and predicate invention (FOIL, Progol, Metagol, Popper; CIGOL's oracle naming invented
+predicates = our review); explanation-based learning and the UTILITY PROBLEM (Minton's PRODIGY: utility = savings x
+frequency - match cost, measured, negative rules deleted; operationality); library learning by compression (DreamCoder,
+Stitch, LILO); invariant inference (Daikon's minimum support; ICE learning's teacher-learner loop); chess (Quinlan's ID3
+on KRKN, Shapiro's structured induction with named sub-concepts, Bain & Muggleton's rules with exceptions on KRK,
+Morales' PAL, argument-based ML on tablebases -- Mozina, Guid, Bratko -- the closest analogue of our review); AlphaZero
+concept probing and discovery (McGrath 2022, Schut 2025); AlphaGeometry's deductive closure back to minimal premises.
+Ranked to adopt: utility ranking measured on real searches; the argument-based review (show the critical open case,
+counter-example the argument before accepting a concept); coverage-unique acceptance; rules with exceptions whose
+exception set becomes a candidate concept; relational (first-order) mining plus compression scoring.
