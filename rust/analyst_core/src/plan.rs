@@ -17,7 +17,7 @@ use super::*;
 use shakmaty::Bitboard;
 use crate::paths::attack_paths;
 use crate::waiting::{escapes, prove_n, touched, MATE_GOAL};
-use crate::threat::{any_new_threat, jobs_with, new_threats, threats, Threat};
+use crate::threat::{any_new_threat, gain_by_checks, jobs_with, new_threats, threats, Threat};
 use std::cell::RefCell;
 
 // THE FRAME MEMORY (Kaveh 2026-10-09: "all of these frames ... have two or three outs, and each out is a value -- so we
@@ -51,6 +51,9 @@ thread_local! {
     static MEMO: RefCell<Option<Memo>> = const { RefCell::new(None) };
     static TAG: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     static NO_STOP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };   // threats_after: every target, no stop rule
+    // their reasoning after a move, once per top-level plan (2026-10-10: the same move was valued up to four times --
+    // the wins' ranking, the defences, the best net, the audit)
+    static NET_CACHE: RefCell<HashMap<String, (i64, Option<String>, u32, u64)>> = RefCell::new(HashMap::new());
 }
 
 fn snapshot(p: &Chess) -> (Vec<u8>, String) {
@@ -404,7 +407,7 @@ fn overloads(pos: &Chess, side: Color) -> Vec<(Square, Square, Square, i64, Stri
     let now = threats(pos, atk);
     let desc = |j: &Threat| if j.mate { format!("the mate {}", j.how.as_deref().unwrap_or("on its king")) } else { format!("{}", j.target) };
     let mut out = Vec::new();
-    for d in b.by_color(side) {
+    for d in b.by_color(side) {                                   // (a Bitboard iterates in square order: deterministic)
         let Some(dp) = b.piece_at(d) else { continue };
         if dp.role == Role::King { continue; }
         let js = jobs_with(pos, d, &now);
@@ -492,6 +495,27 @@ fn tb_of(tp: Plan) -> Option<(String, String, i64, String)> { tp.best }
 
 /// What a move nets right now: what we certainly win with it (a proved immediate win of the plan, else the material it
 /// captures) minus their best certified immediate win after it (their reasoning once).
+/// THE TIE-BREAK between moves of equal net (Kaveh 2026-10-10, walking game 10000000: 10 of the 13 disagreements with
+/// Stockfish were equal-net answers chosen by search order -- a retreat where Stockfish traded the attacker, went to an
+/// active square or counter-threatened): our static threats after the move minus theirs (their recapture on the moved
+/// piece's square is in the net already), ten to one over safe mobility (our legal moves next minus theirs).
+/// (OFF: walking game 10000000 it moved the disagreements around -- 13 -> 11, total loss ~2440 -> ~2340 cp, Qd5 288 cp
+/// where Na5 lost 133 -- a static threat count rewards moves Stockfish dislikes; kept for the next idea)
+pub static TIE_BREAK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[pyfunction]
+pub fn set_tie_break(flag: bool) -> PyResult<()> { TIE_BREAK.store(flag, Ordering::Relaxed); Ok(()) }
+
+fn tie_score(pos: &Chess, m: &Move) -> i64 {
+    if !TIE_BREAK.load(Ordering::Relaxed) { return 0; }
+    let us = pos.turn();
+    let q = after(pos, m);
+    let cap = |v: i64| v.min(10);
+    let ours: i64 = threats(&q, us).iter().map(|t| cap(t.value)).sum();
+    let theirs: i64 = threats(&q, !us).iter().filter(|t| t.target != m.to()).map(|t| cap(t.value)).sum();
+    let mob = pass(&q).map_or(0, |p| p.legal_moves().len() as i64) - q.legal_moves().len() as i64;
+    10 * (ours - theirs) + mob
+}
+
 /// THE NET OF A MOVE (Kaveh 2026-10-10: "with a logic-based play there should be no blunders ... whatever the blunder
 /// guard is doing should be part of the main planner's job"): the one value every decision is chosen by --
 ///   a quiet move with a proved win: its proved gain (the proof searched every reply)
@@ -504,7 +528,7 @@ fn net_after(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs: &mut
     if q.is_checkmate() { return (MATE_GOAL, None); }
     let proved = wins.iter().filter(|w| w.0 == u).map(|w| w.2).max();
     let taken = kernel_material(&q, pos.turn()) - kernel_material(pos, pos.turn());
-    if let Some(g) = proved { if taken <= 0 { return (g, None); } }
+    if let Some(g) = proved { if taken <= 0 || g >= MATE_GOAL { return (g, None); } }
     // THE CHANGE FLAG (Kaveh 2026-10-10: "see how this change changes the state of another piece -- attacked twice and
     // defended twice, stable ... we remove a defender ... that change should flag the blunder"): their static threats
     // after the move against before it (the static exchange on every piece, promotion, trapped, mate by checks). No new
@@ -519,13 +543,31 @@ fn net_after(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs: &mut
         let left = after_t.iter().map(|t| t.value).max().unwrap_or(0);
         return ((taken - left).max(proved.unwrap_or(i64::MIN)), None);
     }
-    let tp = with_tag("net".to_string(), || plan_inner(&q, true));
-    *proofs += tp.proofs; *nodes += tp.nodes;
-    let theirs = tp.best.as_ref().map_or(0, |b| b.2);
-    // (a capture's proof is a FRAME certificate: it cannot speak for the rest of the board -- the net is the smaller of
-    // the two; 2026-10-10: fxe4 "certainly nets 3" in its frame, Qh7+ then wins outside it)
-    let net = match proved { Some(g) => g.min(taken - theirs), None => taken - theirs };
-    (net, tp.best.map(|b| b.3))
+    let key = shakmaty::fen::Fen::from_position(q.clone(), shakmaty::EnPassantMode::Legal).to_string();
+    let cached = NET_CACHE.with(|c| c.borrow().get(&key).cloned());
+    let (theirs, their_why) = match cached {
+        Some((v, w, _, _)) => (v, w),
+        None => {
+            let tp = with_tag("net".to_string(), || plan_inner(&q, true));
+            *proofs += tp.proofs; *nodes += tp.nodes;
+            let mut v = tp.best.as_ref().map_or(0, |b| b.2);
+            let mut w = tp.best.map(|b| b.3);
+            // (their reasoning targets pieces worth 3+; our PAWNS they win by the static exchange count too -- 2026-10-10,
+            // game 10000007 ply 56: "Na1 stops their Rxb2 (nets 0)", then Rexf2)
+            let us_c = !q.turn();
+            if let Some(pt) = threats(&q, q.turn()).into_iter().filter(|t| !t.mate && q.board().piece_at(t.target).map_or(false, |p| p.role == Role::Pawn && p.color == us_c)).max_by_key(|t| (t.value, t.target)) {
+                if pt.value > v { v = pt.value; w = Some(format!("the pawn on {} (worth {})", pt.target, pt.value)); }
+            }
+            NET_CACHE.with(|c| c.borrow_mut().insert(key, (v, w.clone(), tp.proofs, tp.nodes)));
+            (v, w)
+        }
+    };
+    // (a capture's proof is a FRAME certificate and a LOWER bound at its goal: it speaks neither for the rest of the
+    // board -- fxe4 "certainly nets 3" in its frame, Qh7+ then wins outside it -- nor for more than its goal: hxg8=Q+
+    // proved "4" (the rook's exchange value) takes a rook and queens, 13. A capture's net is what it takes minus their
+    // best proved win after it; only a mate's proof, checked on the whole board, stands as it is -- a mating sacrifice)
+    let net = match proved { Some(g) if g >= MATE_GOAL => g, _ => taken - theirs };
+    (net, their_why)
 }
 
 /// The warning graded: every legal move's net (`net_after`) against the decision's (`net_m`); a move at least AVOID_MARGIN
@@ -533,7 +575,7 @@ fn net_after(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs: &mut
 fn grade_and_avoid(pos: &Chess, p: &mut Plan, mv: &str, net_m: i64) {
     let wins = p.wins.clone();
     let (mut pr, mut nd) = (0u32, 0u64);
-    let best = best_by_net(pos, &wins, mv, net_m, &mut pr, &mut nd);
+    let best = best_by_net(pos, &wins, mv, net_m, AVOID_MARGIN, &mut pr, &mut nd);
     p.proofs += pr; p.nodes += nd;
     match best {
         Some((net, u, why)) if net >= net_m + AVOID_MARGIN => {
@@ -551,7 +593,7 @@ fn grade_and_avoid(pos: &Chess, p: &mut Plan, mv: &str, net_m: i64) {
 /// thorough gate"): every move scored by what it takes now minus their biggest static threat after it (material,
 /// promotion, trapped, mate by checks); their reasoning (`net_after`) on the AVOID_TOP best, and on the rest while none of
 /// those beats `floor` by AVOID_MARGIN (probable -> certain). Used by the planner's defence and by the guard.
-fn best_by_net(pos: &Chess, wins: &[(String, Square, i64)], skip: &str, floor: i64, pr: &mut u32, nd: &mut u64) -> Option<(i64, String, Option<String>)> {
+fn best_by_net(pos: &Chess, wins: &[(String, Square, i64)], skip: &str, floor: i64, margin: i64, pr: &mut u32, nd: &mut u64) -> Option<(i64, String, Option<String>)> {
     let mv = skip;
     let net_m = floor;
     let mut best: Option<(i64, String, Option<String>)> = None;
@@ -570,15 +612,18 @@ fn best_by_net(pos: &Chess, wins: &[(String, Square, i64)], skip: &str, floor: i
     // PROBABLE -> CERTAIN: when the gate's best do not settle it, the rest are checked before "unavoidable" is said
     // (2026-10-10: with the top 5 only, 34% of the decisions kept as unavoidable lost 150+ cp to Stockfish's best)
     for (i, (_, m)) in cands.into_iter().enumerate() {
-        if i >= AVOID_TOP && best.as_ref().map_or(false, |b| b.0 >= net_m + AVOID_MARGIN) { break; }
+        if i >= AVOID_TOP && best.as_ref().map_or(false, |b| b.0 >= net_m + margin) { break; }
         let u = m.to_uci(CastlingMode::Standard).to_string();
         let (net, why) = net_after(pos, &m, wins, pr, nd);
-        if best.as_ref().map_or(true, |b| net > b.0) { best = Some((net, u, why)); }
+        let better = best.as_ref().map_or(true, |b| net > b.0 || (net == b.0 && b.1.parse::<shakmaty::uci::UciMove>().ok()
+            .and_then(|x| x.to_move(pos).ok()).map_or(true, |bm| tie_score(pos, &m) > tie_score(pos, &bm))));
+        if better { best = Some((net, u, why)); }
     }
     best
 }
 
 pub fn plan(pos: &Chess) -> Plan {
+    NET_CACHE.with(|c| c.borrow_mut().clear());
     let mut p = plan_inner(pos, false);
     if AFTER_CHECK.load(Ordering::Relaxed) {
         if let Some(d) = &p.best {
@@ -751,6 +796,25 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
         }
         None => vec![],
     };
+    // MATERIAL BY CHECKS (2026-10-10, game 10000000 ply 76: Ba5+ Kc8 Rg8+ Kb7 Rb1+ Kc6 Rxa8 -- tried only as a mate):
+    // a chain of up to 3 checks, every reply searched, ending with 2+ won (threat.rs gain_by_checks, the cornered king
+    // from mate to material), confirmed by the value search before it counts
+    if !immediate_only {
+        if let Some((m, g)) = gain_by_checks(pos, 3) {
+            if g >= 2 && g < MATE_GOAL {
+                let u = m.to_uci(CastlingMode::Standard).to_string();
+                let focus: Vec<Square> = b.by_color(them).into_iter().collect();
+                if let Some(v) = certified_value(pos, &m, &focus, 6, 50_000) {
+                    trace.push(format!("by checks: {} wins {g} by checks; the value search confirms {v}", san(pos, &u)));
+                    if v >= 2 {
+                        let t = b.king_of(them).unwrap_or(m.to());
+                        wins.push((u.clone(), t, v));
+                        if best.as_ref().map_or(true, |x| v > x.2) { best = Some((String::new(), u.clone(), v, format!("{} wins {v} by checks", san(pos, &u)))); best_target = Some(t); }
+                    }
+                }
+            }
+        }
+    }
     // THE POOL'S ACTIVE FRAMES (ours, on this board): tactics the frames certified -- the same proof as a seed's
     let pool: Vec<crate::waiting::Frame> = if immediate_only || !POOL.load(Ordering::Relaxed) { vec![] }
         else { MEMO.with(|m| m.borrow().as_ref().map(|m| m.pool.clone()).unwrap_or_default()) };
@@ -907,7 +971,8 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
             // at 9 because Rxe1 wins a rook back -- it still wins 4; Bxd4 fails at 9, Bxd8 trades queens -- it still wins 6;
             // the invisible wins made Qxa2+ and Bxc7 look safe): what the capture certainly nets in its frame
             if !ok && !king {
-                if let Some(sm) = s.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok()).filter(|m| m.is_capture()) {
+                // (and a CHECK: Rd7+ Kh8 Rxc7 "fails" at 3 because Black wins h2 back -- it nets 2)
+                if let Some(sm) = s.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok()).filter(|m| m.is_capture() || after(pos, m).is_check()) {
                     if let Some(v) = certified_value(pos, &sm, &[t, sm.to()], 2, 20_000) {
                         if v >= 1 {
                             trace.push(format!("    {} certainly nets {v} (its value in the frame)", san(pos, s)));
@@ -1014,7 +1079,9 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
         for (u, t, _) in cand.into_iter().take(4) {
             let Some(m) = u.parse::<shakmaty::uci::UciMove>().ok().and_then(|x| x.to_move(pos).ok()) else { continue };
             let (net, why) = net_after(pos, &m, &wins, &mut proofs, &mut nodes);
-            if top.as_ref().map_or(true, |x| net > x.0) { top = Some((net, u, t, why)); }
+            let better = top.as_ref().map_or(true, |x| net > x.0 || (net == x.0 && x.1.parse::<shakmaty::uci::UciMove>().ok()
+                .and_then(|y| y.to_move(pos).ok()).map_or(true, |xm| tie_score(pos, &m) > tie_score(pos, &xm))));
+            if better { top = Some((net, u, t, why)); }
         }
         match top {
             Some((net, u, t, _)) if net > 0 => {
@@ -1134,7 +1201,14 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
                         // planner's 613 warned decisions were a defence that dropped something else: Nb4 stops Nxc6, cxb4)
                         let (net, why) = net_after(pos, &m, &wins, &mut proofs, &mut nodes);
                         trace.push(format!("    {} stops it (nets {net}{})", san(pos, &mu), why.map(|w| format!("; they then have {w}")).unwrap_or_default()));
-                        if best.as_ref().map_or(true, |x| x.0 != "defend" || net > x.2) {
+                        let better = match &best {
+                            Some(x) if x.0 == "defend" => net > x.2 || (net == x.2 && {
+                                let cur = x.1.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok());
+                                cur.map_or(true, |c| tie_score(pos, &m) > tie_score(pos, &c))
+                            }),
+                            _ => true,
+                        };
+                        if better {
                             best = Some(("defend".to_string(), mu.clone(), net, format!("{} stops their {} (nets {net})", san(pos, &mu), san(&p0, &tseed))));
                         }
                     }
@@ -1177,8 +1251,10 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
                 let (cur_mv, cur_net) = best.as_ref().map(|x| (x.1.clone(), x.2)).unwrap_or((String::new(), -tg));
                 // (only when the answer found loses something: a move netting more than 0 would be an immediate win the
                 // planner already proved -- 2026-10-10: scanning always tripled the time)
-                if cur_net < 0 { if let Some((net, u, why)) = best_by_net(pos, &wins, &cur_mv, cur_net, &mut proofs, &mut nodes) {
-                    if net >= cur_net + AVOID_MARGIN || best.is_none() {
+                // (the planner's own choice: any better net wins -- 2026-10-10, game 10000001 ply 37: Bh7 nets 0 against the
+                // frame search's -1, and the guard's margin of 2 kept the losing move)
+                if cur_net < 0 { if let Some((net, u, why)) = best_by_net(pos, &wins, &cur_mv, cur_net, 1, &mut proofs, &mut nodes) {
+                    if net > cur_net || best.is_none() {
                         trace.push(format!("    the best net: {} nets {net}{} -- better than {} ({cur_net})", san(pos, &u),
                             why.map(|w| format!(" (they then have {w})")).unwrap_or_default(), if cur_mv.is_empty() { "nothing".to_string() } else { san(pos, &cur_mv) }));
                         best = Some(("defend".to_string(), u.clone(), net, format!("{} answers their {} (nets {net})", san(pos, &u), san(&p0, &tseed))));

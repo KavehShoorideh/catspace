@@ -28729,3 +28729,22 @@ minus their best proved win after it, and the planner's immediate wins are RANKE
 Stockfish's move 232 -> 258; frames' immediate tactics 679 -> 676 (3 wins the net says are not); endgame puzzles 34%;
 cost 160 s -> 195 s (proofs a position 26.7 -> 28.7, max 14 s). Kaveh's next: a LOOP -- the Stockfish line to the most
 generic rule beside the existing ones, until the corrections run out, without unnecessary checks (speed).
+WALKING GAMES AGAINST STOCKFISH (2026-10-10 ~17:30 PDT; Kaveh: "start at the beginning of a game ... track the useless
+calculations ... the state that we carry forward ... anytime you see a disagreement, look at the Stockfish line").
+game_walk.py: per ply the planner through a game's PlanState (proofs, failed proofs, single-threat refusals, memory
+size, ledger changes) against Stockfish depth 12 (disagreement = the decision loses 100+ cp; missed = no decision while
+Stockfish has an only move). OBS game 10000000 (101 plies): 2,228 proofs, 16% failed; the memory grows to 1,592
+entries (never pruned); 34 decisions, 13 disagreements, 3 missed. Read from the lines: 10 of the 13 are EQUAL-NET
+choices made by search order (a retreat where Stockfish traded the attacker or went active; dxe5 where Bxe5); one is a
+check valued all-or-nothing (Rd7+ Kh8 Rxc7 fails at 3, nets 2); one material by a chain of checks (Ba5+ ... Rxa8).
+Fixes: a failed CHECK proof asks its certified value like a capture (Rd7+ now found); material by checks (up to 3) as a
+seed source, value-confirmed (did not catch Ba5+: not forced in 3 for every reply); a tie-break by our threats minus
+theirs -- tried and turned OFF (13 -> 11 disagreements but the loss moved, Qd5 288 cp where Na5 lost 133). Game
+10000001 (79 plies): the planner gave up a piece (frame search "Nxb6 -1") where Bh7 nets 0 -- the defence's best-net
+scan used the guard's margin of 2; inside the planner any better net now wins (disagreements 5 -> 4, proofs 3,080 ->
+2,705). Game 10000007 (83 plies): "Na1 stops their Rxb2 (nets 0)", then Rexf2 -- their reasoning targets pieces worth
+3+, so our pawns were invisible in the net; now their best after a move includes their static gain on our pawns
+(disagreements 4 -> 2). The rest across the three games: attack plans (f4 levers), endgame technique (rook trades,
+king moves), structure. OBS: on the 10 equal-net cases Maia-1900 prefers Stockfish's move in 9 (its top move in 8:
+Nxe5 0.70, Nxe7+ 0.82, Bxd3 0.55, Nxf6 0.53, Rxf3+ 0.77) against the planner's 0.001-0.11 -- a Maia tie-break is
+proposed to Kaveh, not built.
