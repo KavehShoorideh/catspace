@@ -17,7 +17,7 @@ use super::*;
 use shakmaty::Bitboard;
 use crate::paths::attack_paths;
 use crate::waiting::{escapes, prove_n, touched, MATE_GOAL};
-use crate::threat::{any_new_threat, gain_by_checks, jobs_with, new_threats, threats, Threat};
+use crate::threat::{any_new_threat, jobs_with, new_threats, threats, Threat};
 use std::cell::RefCell;
 
 // THE FRAME MEMORY (Kaveh 2026-10-09: "all of these frames ... have two or three outs, and each out is a value -- so we
@@ -578,7 +578,10 @@ fn net_after(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs: &mut
     if q.is_checkmate() { return (MATE_GOAL, None); }
     let proved = wins.iter().filter(|w| w.0 == u).map(|w| w.2).max();
     let taken = kernel_material(&q, pos.turn()) - kernel_material(pos, pos.turn());
-    if let Some(g) = proved { if taken <= 0 || g >= MATE_GOAL { return (g, None); } }
+    // (a quiet move with a FULL proof: its value stands -- the proof searched every reply; a FRAME value goes through the
+    // board below: 2026-10-11, Qc2 "wins 2" against the b1 rook in its frame, Rc1 then traps the queen)
+    let framed_quiet = proved.is_some() && taken <= 0 && FRAMED.with(|f| f.borrow().contains(&u));
+    if let Some(g) = proved { if (taken <= 0 && !framed_quiet) || g >= MATE_GOAL { return (g, None); } }
     // THE CHANGE FLAG (Kaveh 2026-10-10: "see how this change changes the state of another piece -- attacked twice and
     // defended twice, stable ... we remove a defender ... that change should flag the blunder"): their static threats
     // after the move against before it (the static exchange on every piece, promotion, trapped, mate by checks). No new
@@ -621,7 +624,8 @@ fn net_after(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs: &mut
     // its frame") is blind outside its frame -- fxe4 "nets 3", Qh7+ then wins outside it: the smaller of the two.
     let board = taken - theirs;
     let framed = FRAMED.with(|f| f.borrow().contains(&u));
-    let net = match proved { Some(g) if g >= MATE_GOAL => g, Some(g) if framed => g.min(board), Some(g) => g.max(board), None => board };
+    // (a quiet frame value: what it wins in its frame minus their best win after the move -- their counterplay comes first)
+    let net = match proved { Some(g) if g >= MATE_GOAL => g, Some(g) if framed_quiet => g - theirs, Some(g) if framed => g.min(board), Some(g) => g.max(board), None => board };
     (net, their_why)
 }
 
@@ -867,18 +871,18 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
     // from mate to material), confirmed by the value search before it counts -- for THEIR reasoning too (ply 77: Nc6
     // walked into Rg7+ Ne7 Rxe7+)
     {
-        if let Some((m, g)) = gain_by_checks(pos, 3) {
+        // (the forcing search's value -- checks, captures and quiet threats to the end of the forcing, no count -- in place
+        // of material by checks within 3)
+        if let Some((m, g)) = crate::threat::forcing_value(pos, crate::threat::FBUDGET.load(Ordering::Relaxed)) {
             if g >= 2 && g < MATE_GOAL {
                 let u = m.to_uci(CastlingMode::Standard).to_string();
-                let focus: Vec<Square> = b.by_color(them).into_iter().collect();
-                if let Some(v) = certified_value(pos, &m, &focus, 6, 50_000) {
-                    trace.push(format!("by checks: {} wins {g} by checks; the value search confirms {v}", san(pos, &u)));
-                    if v >= 2 {
-                        let t = b.king_of(them).unwrap_or(m.to());
-                        wins.push((u.clone(), t, v));
-                        if best.as_ref().map_or(true, |x| v > x.2) { best = Some((String::new(), u.clone(), v, format!("{} wins {v} by checks", san(pos, &u)))); best_target = Some(t); }
-                    }
-                }
+                // (the forcing search's proof is the certificate -- every reply searched, every leaf read by the exchange
+                // law; a second confirmation by the frame-limited value search ran out of budget on 7-ply lines and threw
+                // proved wins away -- 2026-10-11, Re7+ wins 5 after Bxc3 went unseen)
+                trace.push(format!("forced: {} wins {g} by force (checks, captures, threats; every reply searched)", san(pos, &u)));
+                let t = b.king_of(them).unwrap_or(m.to());
+                wins.push((u.clone(), t, g));
+                if best.as_ref().map_or(true, |x| g > x.2) { best = Some((String::new(), u.clone(), g, format!("{} wins {g} by force", san(pos, &u)))); best_target = Some(t); }
             }
         }
     }

@@ -28834,3 +28834,17 @@ incremental exchange rests on; built (lake build Ideas.PathLemma, 4.0 s); the Le
 run each): with a 2,000-expansion net the census took 815 s for the same tactics as a 200 net (406 s): Stockfish
 only-move tactics 284, frames 672/681; decision review 10.1% losing 150+; endgame puzzles 41%; walked games 7 / 3 / 1;
 tests 49 passed. The net stays at 200 (a hit proves, never refuses).
+QUIET FRAME VALUES AND THEIR FORCED WINS (2026-10-11 ~03:00 PDT; the autonomous loop, step 2: the decision review's
+"our move loses material" cases, 29 of 140, read). Two general holes: (1) a QUIET move's frame value was trusted
+outright -- Qc2 "wins 2" against the b1 rook in its frame, Rc1 then traps the queen; Qc7 "wins 2", Kxh7 takes our
+knight: a quiet move with a frame value now nets the value minus their best proved win after it (full proofs keep
+their value -- they searched every reply); (2) their forcing lines counted CHECKS only, within 3 (gain_by_checks) --
+after Bxc3, Re7+ Kc8 Rxf7 ... Rf8+ Rxa8 mixes checks and captures: threat.rs forcing_value (the proof-number forcing
+search on a ladder of gains 1, 2, 3, 5, 9; the first move of the proof) replaces it, for both sides, with no count --
+and its proof stands as the certificate (a second confirmation by the frame-limited value search ran out of budget on
+7-ply lines and threw proved wins away; found by forcing_value_of: Re7+ wins 5). OBS (one run each): census Stockfish
+only-move tactics 284 -> 298 (81%), with Stockfish's move 261 -> 274; frames 672 -> 670; census 406 s -> 343 s
+(the checks-only search was the expensive part); endgame puzzles 41% -> 44% (Maia-1900 53%); decision review 1,387 ->
+1,496 decisions, 10.1% -> 10.2% losing 150+; walked games 7 / 4 / 1 -- the new ones are new defensive decisions where
+none was made (bxa4 vs b4, Kb8 vs the queen trade -- positional) and a forced loss the 200-expansion ladder understated
+(Qd6 "nets -3", Stockfish's line -6). Tests 49 passed.

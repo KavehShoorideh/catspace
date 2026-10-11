@@ -222,7 +222,7 @@ pub fn forcing_stats(budget: Option<u64>) -> Vec<u64> {
 /// INCREMENTALLY (rules::threats_of_inc -- only the pieces a move can affect are recomputed; exact by the path lemma,
 /// audited equal on 175,502 move-side maps, 2026-10-11).
 #[derive(Clone)]
-pub struct FState { pos: Chess, thr: rules::ThrArr, edge: i64 }
+pub struct FState { pos: Chess, thr: rules::ThrArr, edge: i64, last: Option<Move> }
 
 /// (the material edge carried too: it changes only on a capture or a promotion)
 fn child_state(s: &FState, m: &Move, by: Color) -> FState {
@@ -231,7 +231,7 @@ fn child_state(s: &FState, m: &Move, by: Color) -> FState {
     let mover_is_by = s.pos.turn() == by;
     let mut d = m.capture().map_or(0, kernel_value) + m.promotion().map_or(0, |r| kernel_value(r) - 1);
     if !mover_is_by { d = -d; }
-    FState { pos: q, thr, edge: s.edge + d }
+    FState { pos: q, thr, edge: s.edge + d, last: Some(m.clone()) }
 }
 
 /// The squares of `by`'s pieces that stand ALONE between one of `by`'s sliders and a square of `targets` (moving one
@@ -313,14 +313,14 @@ fn forcing_moves_ref(s: &FState, by: Color) -> Vec<(Move, FState)> {
 /// mate; disproven where our forcing ends, at a stalemate, at a repetition. A node of theirs starts with as many proof
 /// steps as it has replies (a check, with few, looks cheap first), weighted by `line_prior`. The budget is only a safety
 /// net: hitting it is UNKNOWN. -> Some(true), Some(false), None.
-struct Forcing { by: Color, base: i64 }
+struct Forcing { by: Color, base: i64, need: i64 }
 
 impl crate::pns::Problem for Forcing {
     type State = FState;
     fn judge(&self, s: &FState, or: bool, root: bool) -> Option<bool> {
         if or {
             let best = s.thr.iter().copied().max().unwrap_or(0).max(0) as i64;
-            if !root && s.edge - self.base + best >= 1 { return Some(true); }
+            if !root && s.edge - self.base + best >= self.need { return Some(true); }
             None
         } else if s.pos.legal_moves().is_empty() { Some(s.pos.is_check()) } else { None }
     }
@@ -340,7 +340,7 @@ impl crate::pns::Problem for Forcing {
 pub fn forcing_moves_audit(fen: String) -> (u32, u32, u32) {
     let Some(p) = parse(&fen) else { return (0, 0, 0) };
     let by = p.turn();
-    let s = FState { pos: p.clone(), thr: rules::threats_arr(&p, by), edge: material_edge(&p, by) };
+    let s = FState { pos: p.clone(), thr: rules::threats_arr(&p, by), edge: material_edge(&p, by), last: None };
     let a: std::collections::HashSet<String> = forcing_moves(&s, by).iter().map(|(m, _)| m.to_uci(CastlingMode::Standard).to_string()).collect();
     let r: std::collections::HashSet<String> = forcing_moves_ref(&s, by).iter().map(|(m, _)| m.to_uci(CastlingMode::Standard).to_string()).collect();
     (a.len() as u32, r.len() as u32, a.intersection(&r).count() as u32)
@@ -348,8 +348,35 @@ pub fn forcing_moves_audit(fen: String) -> (u32, u32, u32) {
 
 pub fn forcing_gain(p: &Chess, budget: u64) -> Option<bool> {
     let by = p.turn();
-    let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), edge: material_edge(p, by) };
-    crate::pns::search(&Forcing { by, base: material_edge(p, by) }, root, budget)
+    let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), edge: material_edge(p, by), last: None };
+    crate::pns::search(&Forcing { by, base: material_edge(p, by), need: 1 }, root, budget)
+}
+
+/// forcing_value_of(fen, budget) -> the forcing value and its first move (uci) for the side to move, and the search
+/// statistics of the call -- for digging.
+#[pyfunction]
+pub fn forcing_value_of(fen: String, budget: u64) -> (Option<(String, i64)>, Vec<u64>) {
+    let Some(p) = parse(&fen) else { return (None, vec![]) };
+    crate::pns::STATS.iter().for_each(|a| { a.swap(0, Ordering::Relaxed); });
+    let v = forcing_value(&p, budget).map(|(m, g)| (m.to_uci(CastlingMode::Standard).to_string(), g));
+    (v, crate::pns::STATS.iter().map(|a| a.swap(0, Ordering::Relaxed)).collect())
+}
+
+/// WHAT THE SIDE TO MOVE CAN FORCE, AS A VALUE (in place of "material by checks within 3" -- a count, and checks only:
+/// 2026-10-11, after Bxc3 their Re7+ Kc8 Rxf7 ... Rf8+ Rxa8 mixes checks and captures): the largest gain of a material
+/// ladder (1, 2, 3, 5, 9) the forcing search proves, and the first move of that proof. Mates are the mate search's.
+pub fn forcing_value(p: &Chess, budget: u64) -> Option<(Move, i64)> {
+    let by = p.turn();
+    let base = material_edge(p, by);
+    let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), edge: base, last: None };
+    let mut best: Option<(Move, i64)> = None;
+    for need in [1i64, 2, 3, 5, 9] {
+        match crate::pns::search_with_proof(&Forcing { by, base, need }, root.clone(), budget) {
+            (Some(true), Some(c)) => { if let Some(m) = c.last { best = Some((m, need)); } }
+            _ => break,
+        }
+    }
+    best
 }
 
 /// IS THERE ANY NEW THREAT of `by` (static or forcing) against `before`? -- the cheapest first, stopping at the first

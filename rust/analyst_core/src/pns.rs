@@ -27,7 +27,10 @@ struct Node<S> { s: S, or: bool, parent: Option<usize>, kids: Vec<usize>, pn: f6
 pub static STATS: [std::sync::atomic::AtomicU64; 5] = [const { std::sync::atomic::AtomicU64::new(0) }; 5];
 
 /// Prove or disprove the root (an OR node). -> Some(true) proven, Some(false) disproven, None the budget ran out.
-pub fn search<P: Problem>(p: &P, root: P::State, budget: u64) -> Option<bool> {
+pub fn search<P: Problem>(p: &P, root: P::State, budget: u64) -> Option<bool> { search_with_proof(p, root, budget).0 }
+
+/// `search`, and when proven the root's proving child (the first move of the proof).
+pub fn search_with_proof<P: Problem>(p: &P, root: P::State, budget: u64) -> (Option<bool>, Option<P::State>) {
     use std::sync::atomic::Ordering::Relaxed;
     let rk = p.key(&root);
     let mut t: Vec<Node<P::State>> = vec![Node { s: root, or: true, parent: None, kids: vec![], pn: 1.0, dn: 1.0, open: true, key: rk }];
@@ -40,7 +43,7 @@ pub fn search<P: Problem>(p: &P, root: P::State, budget: u64) -> Option<bool> {
     };
     let _ = HashMap::<u64, ()>::new();
     while t[0].pn > 0.0 && t[0].dn > 0.0 {
-        if expanded >= budget { return fin(None, expanded); }
+        if expanded >= budget { return (fin(None, expanded), None); }
         let mut i = 0usize;
         while !t[i].open {
             let pick_pn = t[i].or;
@@ -93,5 +96,6 @@ pub fn search<P: Problem>(p: &P, root: P::State, budget: u64) -> Option<bool> {
         }
     }
     let r = Some(t[0].pn == 0.0);
-    fin(r, expanded)
+    let first = if t[0].pn == 0.0 { t[0].kids.iter().find(|k| t[**k].pn == 0.0).map(|k| t[*k].s.clone()) } else { None };
+    (fin(r, expanded), first)
 }
