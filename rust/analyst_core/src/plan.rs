@@ -62,7 +62,7 @@ pub static ZONE_REUSE: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 // THE CERTIFICATE REUSE (Kaveh 2026-10-11, the refutation certificate; Lean Ideas.Refutation.refuted_sound): a question
 // that FAILED before is re-checked with their stored replies fixed -- our moves searched, theirs not -- and reused when it
 // still fails; the search runs only when the certificate breaks. OFF until the equality audit passes.
-pub static CERT_REUSE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static CERT_REUSE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_cert_reuse(flag: bool) -> PyResult<()> { CERT_REUSE.store(flag, Ordering::Relaxed); Ok(()) }
 #[pyfunction]
@@ -746,7 +746,7 @@ fn net_bound(pos: &Chess, m: &Move, wins: &[(String, Square, i64)]) -> i64 {
     let g = wins.iter().filter(|w| w.0 == u).map(|w| w.2).max();
     g.map_or(taken - floor, |g| g.max(taken - floor))
 }
-pub static NET_BOUND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static NET_BOUND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_net_bound(flag: bool) -> PyResult<()> { NET_BOUND.store(flag, Ordering::Relaxed); Ok(()) }
 

@@ -1521,6 +1521,10 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plan::stage_times, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_net_bound, m)?)?;
     m.add_function(wrap_pyfunction!(threat::forcing_unknowns, m)?)?;
+    m.add_function(wrap_pyfunction!(threat::set_forcing_policy, m)?)?;
+    m.add_function(wrap_pyfunction!(threat::forcing_log, m)?)?;
+    m.add_function(wrap_pyfunction!(threat::set_forcing_log, m)?)?;
+    m.add_function(wrap_pyfunction!(threat::policy_stats, m)?)?;
     m.add_function(wrap_pyfunction!(prof::prim_times, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_frame_audit, m)?)?;
     m.add_function(wrap_pyfunction!(plan::frame_audit_stats, m)?)?;

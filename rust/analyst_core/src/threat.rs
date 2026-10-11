@@ -347,6 +347,55 @@ fn forcing_moves_ref(s: &FState, by: Color) -> Vec<(Move, FState)> {
 /// net: hitting it is UNKNOWN. -> Some(true), Some(false), None.
 struct Forcing { by: Color, base: i64, need: i64 }
 
+pub const POLICY_FEATURES: usize = 14;
+fn policy_features(f: &Forcing, s: &FState, depth: u32) -> Vec<f32> {
+    let b = s.pos.board();
+    let banked = (s.edge - f.base) as f32;
+    let replies = s.pos.legal_moves();
+    let flights = replies.iter().filter(|m| m.role() == Role::King).count() as f32;
+    let (cap, pv, promo) = match &s.last { Some(m) => (m.capture().map(kernel_value).unwrap_or(0) as f32, kernel_value(m.role()) as f32, m.is_promotion() as u8 as f32), None => (0.0, 0.0, 0.0) };
+    vec![depth as f32, banked, (f.need as f32) - banked,
+         s.thr.iter().copied().max().unwrap_or(0).max(0) as f32, s.them.iter().copied().max().unwrap_or(0).max(0) as f32,
+         s.pos.is_check() as u8 as f32, replies.len() as f32, flights,
+         (cap > 0.0) as u8 as f32, cap, pv, promo,
+         s.them.iter().filter(|v| **v > 0).count() as f32, s.thr.iter().filter(|v| **v > 0).count() as f32]
+        .into_iter().chain(std::iter::repeat(0.0)).take(POLICY_FEATURES).chain(std::iter::once(b.occupied().count() as f32)).take(POLICY_FEATURES).collect()
+}
+
+/// THE LEARNED STOP POLICY: a two-layer net on the features (trained in PyTorch, catspace/incubator/analyst/forcing_policy.py),
+/// p(this line ends in a proof); a line below `tau` is dropped. Loaded once from JSON (set_forcing_policy).
+pub struct Policy { w1: Vec<Vec<f32>>, b1: Vec<f32>, w2: Vec<f32>, b2: f32, mean: Vec<f32>, std: Vec<f32>, pub tau: f32 }
+impl Policy {
+    pub fn prob(&self, f: &[f32]) -> f32 {
+        let x: Vec<f32> = f.iter().zip(self.mean.iter().zip(self.std.iter())).map(|(v, (m, s))| (v - m) / s.max(1e-6)).collect();
+        let mut z = self.b2;
+        for (row, (bw, wo)) in self.w1.iter().zip(self.b1.iter().zip(self.w2.iter())) {
+            let h: f32 = row.iter().zip(x.iter()).map(|(a, b)| a * b).sum::<f32>() + bw;
+            z += wo * h.max(0.0);
+        }
+        1.0 / (1.0 + (-z).exp())
+    }
+}
+pub static POLICY: std::sync::OnceLock<Policy> = std::sync::OnceLock::new();
+/// set_forcing_policy(json): load the stop policy {w1, b1, w2, b2, mean, std, tau} (once per process).
+#[pyfunction]
+pub fn set_forcing_policy(json: String) -> PyResult<bool> {
+    let v: serde_json::Value = serde_json::from_str(&json).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    let f32s = |k: &str| -> Vec<f32> { v[k].as_array().map(|a| a.iter().map(|x| x.as_f64().unwrap_or(0.0) as f32).collect()).unwrap_or_default() };
+    let w1: Vec<Vec<f32>> = v["w1"].as_array().map(|rows| rows.iter().map(|r| r.as_array().map(|a| a.iter().map(|x| x.as_f64().unwrap_or(0.0) as f32).collect()).unwrap_or_default()).collect()).unwrap_or_default();
+    let pol = Policy { w1, b1: f32s("b1"), w2: f32s("w2"), b2: v["b2"].as_f64().unwrap_or(0.0) as f32, mean: f32s("mean"), std: f32s("std"), tau: v["tau"].as_f64().unwrap_or(0.0) as f32 };
+    Ok(POLICY.set(pol).is_ok())
+}
+/// forcing_log() -> the policy log since the last call: (features, the line ended proven, the root was proven).
+#[pyfunction]
+pub fn forcing_log() -> Vec<(Vec<f32>, bool, bool)> { crate::pns::take_log() }
+/// set_forcing_log(flag): record every line the forcing search creates.
+#[pyfunction]
+pub fn set_forcing_log(flag: bool) -> PyResult<()> { crate::pns::LOG.store(flag, Ordering::Relaxed); Ok(()) }
+/// policy_stats() -> [lines created, lines stopped by the policy] since the last call.
+#[pyfunction]
+pub fn policy_stats() -> Vec<u64> { crate::pns::POLICY_N.iter().map(|a| a.swap(0, Ordering::Relaxed)).collect() }
+
 impl crate::pns::Problem for Forcing {
     type State = FState;
     fn judge(&self, s: &FState, or: bool, root: bool) -> Option<bool> {
@@ -383,6 +432,16 @@ impl crate::pns::Problem for Forcing {
         else { s.pos.legal_moves().iter().map(|m| (child_state(s, m, self.by), 1.0)).collect() }
     }
     fn and_size(&self, s: &FState) -> f64 { s.pos.legal_moves().len().max(1) as f64 }
+    /// THE STOP POLICY's features for a line of ours, read on the position after our move (they to move): generic scalars,
+    /// no piece names -- the plies so far, the material banked, what is still needed, our best and their best static
+    /// threat, whether they are in check, their replies, their king's flight squares, the move's kind and values, the
+    /// counts of threatened pieces on each side.
+    fn features(&self, s: &FState, depth: u32) -> Option<Vec<f32>> { Some(policy_features(self, s, depth)) }
+    fn allow(&self, s: &FState, depth: u32) -> bool {
+        let Some(pol) = POLICY.get() else { return true };
+        let f = policy_features(self, s, depth);
+        pol.prob(&f) >= pol.tau
+    }
     fn key(&self, s: &FState) -> u64 {
         use shakmaty::zobrist::{Zobrist64, ZobristHash};
         s.pos.zobrist_hash::<Zobrist64>(shakmaty::EnPassantMode::Legal).0

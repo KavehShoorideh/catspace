@@ -19,9 +19,22 @@ pub trait Problem {
     fn and_size(&self, s: &Self::State) -> f64;
     /// A key for repetition (a repeated position on the path is disproven: a cycle wins nothing).
     fn key(&self, s: &Self::State) -> u64;
+    /// THE STOP POLICY (Kaveh 2026-10-11: "a policy on when to stop, preferably RL"): may this child of an OR node (a
+    /// line of ours, `depth` plies from the root) be followed? false: the line is dropped here -- a stop can only make a
+    /// proof harder, never certify one. Default: always.
+    fn allow(&self, _s: &Self::State, _depth: u32) -> bool { true }
+    /// The state's features for the policy's log (None: not logged).
+    fn features(&self, _s: &Self::State, _depth: u32) -> Option<Vec<f32>> { None }
 }
 
-struct Node<S> { s: S, or: bool, parent: Option<usize>, kids: Vec<usize>, pn: f64, dn: f64, open: bool, key: u64 }
+/// THE POLICY LOG: every line of ours the search created, its features, whether it ended proven, whether the root did.
+pub static LOG: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+thread_local! { pub static LOGV: std::cell::RefCell<Vec<(Vec<f32>, bool, bool)>> = const { std::cell::RefCell::new(Vec::new()) }; }
+pub fn take_log() -> Vec<(Vec<f32>, bool, bool)> { LOGV.with(|v| std::mem::take(&mut *v.borrow_mut())) }
+/// [lines created, lines stopped by the policy] since the last read.
+pub static POLICY_N: [std::sync::atomic::AtomicU64; 2] = [const { std::sync::atomic::AtomicU64::new(0) }; 2];
+
+struct Node<S> { s: S, or: bool, parent: Option<usize>, kids: Vec<usize>, pn: f64, dn: f64, open: bool, key: u64, depth: u32, feat: Option<Vec<f32>> }
 
 /// [searches, proven, disproven, unknown, expansions] since the last read.
 pub static STATS: [std::sync::atomic::AtomicU64; 5] = [const { std::sync::atomic::AtomicU64::new(0) }; 5];
@@ -33,7 +46,8 @@ pub fn search<P: Problem>(p: &P, root: P::State, budget: u64) -> Option<bool> { 
 pub fn search_with_proof<P: Problem>(p: &P, root: P::State, budget: u64) -> (Option<bool>, Option<P::State>) {
     use std::sync::atomic::Ordering::Relaxed;
     let rk = p.key(&root);
-    let mut t: Vec<Node<P::State>> = vec![Node { s: root, or: true, parent: None, kids: vec![], pn: 1.0, dn: 1.0, open: true, key: rk }];
+    let logging = LOG.load(Relaxed);
+    let mut t: Vec<Node<P::State>> = vec![Node { s: root, or: true, parent: None, kids: vec![], pn: 1.0, dn: 1.0, open: true, key: rk, depth: 0, feat: None }];
     let mut expanded = 0u64;
     let fin = |r: Option<bool>, e: u64| {
         STATS[0].fetch_add(1, Relaxed);
@@ -43,7 +57,7 @@ pub fn search_with_proof<P: Problem>(p: &P, root: P::State, budget: u64) -> (Opt
     };
     let _ = HashMap::<u64, ()>::new();
     while t[0].pn > 0.0 && t[0].dn > 0.0 {
-        if expanded >= budget { return (fin(None, expanded), None); }
+        if expanded >= budget { if logging { log_tree(&mut t, false); } return (fin(None, expanded), None); }
         let mut i = 0usize;
         while !t[i].open {
             let pick_pn = t[i].or;
@@ -67,8 +81,12 @@ pub fn search_with_proof<P: Problem>(p: &P, root: P::State, budget: u64) -> (Opt
                     // an OR node with no move: disproven; an AND node with no reply: proven (judge() handles mates)
                     if or { t[i].pn = INF; t[i].dn = 0.0; } else { t[i].pn = 0.0; t[i].dn = INF; }
                 }
+                let depth = t[i].depth + 1;
                 for (s, prior) in kids {
                     let child_or = !or;
+                    // the stop policy, on our lines only (the children of an OR node)
+                    if or { POLICY_N[0].fetch_add(1, Relaxed); if !p.allow(&s, depth) { POLICY_N[1].fetch_add(1, Relaxed); continue; } }
+                    let feat = if logging && or { p.features(&s, depth) } else { None };
                     let k = p.key(&s);
                     // a child judged on sight costs no expansion (a reply that ignores our threat is proven when made)
                     let (pn, dn, open) = match p.judge(&s, child_or, false) {
@@ -76,7 +94,7 @@ pub fn search_with_proof<P: Problem>(p: &P, root: P::State, budget: u64) -> (Opt
                         Some(false) => (INF, 0.0, false),
                         None => if child_or { (prior, 1.0, true) } else { (p.and_size(&s) * prior, 1.0, true) },
                     };
-                    t.push(Node { s, or: child_or, parent: Some(i), kids: vec![], pn, dn, open, key: k });
+                    t.push(Node { s, or: child_or, parent: Some(i), kids: vec![], pn, dn, open, key: k, depth, feat });
                     let c = t.len() - 1;
                     t[i].kids.push(c);
                 }
@@ -97,5 +115,10 @@ pub fn search_with_proof<P: Problem>(p: &P, root: P::State, budget: u64) -> (Opt
     }
     let r = Some(t[0].pn == 0.0);
     let first = if t[0].pn == 0.0 { t[0].kids.iter().find(|k| t[**k].pn == 0.0).map(|k| t[*k].s.clone()) } else { None };
+    if logging { log_tree(&mut t, r == Some(true)); }
     (fin(r, expanded), first)
+}
+
+fn log_tree<S>(t: &mut [Node<S>], root_proven: bool) {
+    LOGV.with(|v| { let mut v = v.borrow_mut(); for n in t.iter_mut() { if let Some(f) = n.feat.take() { v.push((f, n.pn == 0.0, root_proven)); } } });
 }
