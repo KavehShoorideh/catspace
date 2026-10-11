@@ -53,6 +53,22 @@ pub fn prove_n(p: &Chess, uci: &str, focus: &[Square], goal: i64, hints: Option<
 /// `prove` with its cost: (holds, proof, nodes, the last tier ran out of budget, the tier that proved it: 1 = 2 plies,
 /// 2 = the frame's depth, 0 = none); `deep` off stops after the 2-ply tier.
 pub fn prove_t(p: &Chess, uci: &str, focus: &[Square], goal: i64, hints: Option<std::sync::Arc<Hints>>, deep: bool) -> (bool, Hints, u64, bool, u8) {
+    let out = prove_t_inner(p, uci, focus, goal, hints, deep);
+    // THE MINING (Kaveh 2026-10-11: "if you chased and never got anything in return, maybe you don't need to chase --
+    // can you prove the chase is bad?"): every one-target question with the stopper verdict, the outcome, the cost and
+    // the proving line, for reading
+    if crate::lemma::MINE.load(Ordering::Relaxed) && focus.len() == 1 {
+        if let Some(m) = uci.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(p).ok()) {
+            let v = crate::lemma::threat_lemma(p, &m, focus[0]);
+            let line = if out.0 { crate::proof_line(p, &m, &out.1) } else { vec![] };
+            let ch = crate::lemma::chase_lemma(p, &m, focus[0], goal);
+            crate::lemma::mine_push(p, uci, focus[0], goal, v.stopper.unwrap_or("none"), out.0, out.4, out.2, line, ch);
+        }
+    }
+    out
+}
+
+fn prove_t_inner(p: &Chess, uci: &str, focus: &[Square], goal: i64, hints: Option<std::sync::Arc<Hints>>, deep: bool) -> (bool, Hints, u64, bool, u8) {
     let Ok(u) = uci.parse::<shakmaty::uci::UciMove>() else { return (false, Hints::new(), 0, false, 0) };
     let Ok(m) = u.to_move(p) else { return (false, Hints::new(), 0, false, 0) };
     let n0 = PROVE_NODES.with(|c| c.get());
@@ -73,6 +89,11 @@ pub fn prove_t(p: &Chess, uci: &str, focus: &[Square], goal: i64, hints: Option<
             None => crate::lemma::count(11),
             Some(why) => crate::lemma::count(1 + crate::lemma::STOPPERS.iter().position(|x| *x == why).unwrap_or(0)),
         }
+    }
+    // THE NO-CHASE LEMMA (lemma.rs chase_lemma): a harbour for the target and nothing else to collect -- no search
+    if crate::lemma::CHASE.load(Ordering::Relaxed) && focus.len() == 1 && crate::lemma::chase_lemma(p, &m, focus[0], goal) == 2 {
+        crate::lemma::count(1 + crate::lemma::STOPPERS.len() - 1);
+        return (false, Hints::new(), 0, false, 0);
     }
     let mut last = Hints::new();
     let mut spent = false;

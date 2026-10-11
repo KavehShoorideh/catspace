@@ -28960,3 +28960,28 @@ and almost no coverage; search proofs give coverage and ~38-square dependencies.
 VALUE-MARGIN reuse -- store the verdict's slack above the goal (needs a value search, the proofs today are null-window
 at the goal) and reuse when the small core's pieces and attacks, the index and their available checks are unchanged
 and the slack covers their best creatable quiet threat (one scan per position). Tests 26 passed.
+THE NO-CHASE LEMMA, MINED AND BUILT (2026-10-11 13:15 PDT; Kaveh: "a knight protected by a pawn can only be attacked
+with something worth three or less ... chasing it becomes pointless ... run the exception mining and figure this out,
+and add it"; "every time you add a lemma and it doesn't make it shorter, your lemma can use more lemmas"). The mining
+(chase_mine.py: every one-target proof question the planner asks, with the one-move threat lemma's stopper, the
+outcome, tier, nodes, line). OBS 20 census games, 76,817 questions: where the exchange on the target says nothing is
+won (27,191) the search held 1.07% and spent 45% of all nodes on failed proofs; "escape" 2.6% held, 28% of the failed
+nodes. Read by me: the 290 exchange-stopper holds were ALL one of -- the move banked material elsewhere (138), was
+forcing (check, promotion; 55), made a second bigger threat (fork, discovery), chased with a pawn, or a zugzwang -- the
+chase on the target itself almost never won. THE LEMMA (lemma.rs chase_lemma, flag CHASE off): the move fails when the
+target has a HARBOUR -- a real move (never a pass: zugzwang) to h, no capture, no check, after which (a) the search's
+leaf (material + capture settle) is below the goal, (b) no line of our checks wins what is missing (threat.rs
+gain_by_checks; the forcing search was tried first and could not DISPROVE within its safety net -- 46,226 unknowns on 6
+games), (c) no move of ours renews the attack on h or makes threats that win the goal against one reply (the fork law:
+the second best, the best only if its piece cannot step away; every kind of threat incl. mate -- the generic Threat);
+never for checks, promotions, pawn moves (Kaveh's pawn chase) or king targets. Residual loop (wrong skips on 20 games):
+38 -> 0 (stricter, 1,244 decided) -> forcing stopper 1,176 -> checks-only 4,104 -> fork law 9,317 / 3 wrong -> generic
+threat 7,695 / 2 wrong -> legal-move saveability 7,161 / 0 (a bug: escape_set reads a pawn's captures as escapes;
+logged in docs/BUGS.md with my other two). OBS HELD-OUT games 21-60: 124,526 questions, 11,807 decided, 0 held proofs
+skipped, 8% of failed-proof nodes; planner on vs off on 3,226 positions: decisions and immediate wins identical 100%,
+nodes 417,064 -> 384,169 a position, ms 191 -> 193 (cheapest-first ordering and the incremental exchange took the
+lemma's own cost from 225 ms to 3.6% of planner time; its ceiling is the ~8% of proof nodes it decides, and proofs are
+~30% of planner time -- the macOS sample: pursue_val_p 30%, the forcing PNS 19%, the rest the planner's own scans).
+Not proved in Lean (rule 11): the flag stays off. Explorer: 37 rules. The analogy Kaveh asked about: Ripple-Down Rules /
+sequential covering (a rule plus exceptions added from its residual), not boosting (no additive weights; soundness
+first; each split a provable concept).

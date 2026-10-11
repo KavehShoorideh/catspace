@@ -373,6 +373,14 @@ pub static COMPOSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBo
 #[pyfunction]
 pub fn set_composed(flag: bool) { COMPOSED.store(flag, Ordering::Relaxed); }
 
+/// Does the side to move force a gain of at least `need` (checks, captures, quiet threats; the proof-number search)?
+/// None: the safety net was hit (unknown).
+pub fn forcing_need(p: &Chess, need: i64, budget: u64) -> Option<bool> {
+    let by = p.turn();
+    let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), them: rules::threats_arr(p, !by), edge: material_edge(p, by), last: None };
+    crate::pns::search(&Forcing { by, base: material_edge(p, by), need }, root, budget)
+}
+
 pub fn forcing_gain(p: &Chess, budget: u64) -> Option<bool> {
     let by = p.turn();
     let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), them: rules::threats_arr(p, !by), edge: material_edge(p, by), last: None };

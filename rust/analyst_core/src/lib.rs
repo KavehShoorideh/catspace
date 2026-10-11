@@ -194,7 +194,7 @@ fn kernel_value(role: Role) -> i64 {
     match role { Role::Pawn => 1, Role::Knight => 3, Role::Bishop => 3, Role::Rook => 5, Role::Queen => 9, Role::King => 0 }
 }
 
-fn kernel_material(pos: &Chess, side: Color) -> i64 {
+pub(crate) fn kernel_material(pos: &Chess, side: Color) -> i64 {
     let b = pos.board();
     let mut tot = 0;
     for sq in b.occupied() {
@@ -249,7 +249,7 @@ fn local_check_pos(p: &Chess, m: &Move, k: i64) -> bool {
 /// leaf stood pat under check and could certify a false claim). `us`: the mover is the claim's protagonist. The search
 /// is bounded by `depth`; at the cutoff a side in check gets the conservative value -- the worst for us, the best for
 /// them -- so the bound stays sound.
-fn settle_d(pos: &Chess, mut alpha: i64, beta: i64, us: bool, depth: u32) -> i64 {
+pub(crate) fn settle_d(pos: &Chess, mut alpha: i64, beta: i64, us: bool, depth: u32) -> i64 {
     NODES.fetch_add(1, Ordering::Relaxed);
     let bud = BUDGET.load(Ordering::Relaxed);                       // the leaf search is charged to the same budget
     if bud == 0 { return if us { -1000 } else { 1000 }; }          // spent: conservative for the claim
@@ -287,7 +287,7 @@ fn settle_d(pos: &Chess, mut alpha: i64, beta: i64, us: bool, depth: u32) -> i64
     alpha
 }
 
-const SETTLE_DEPTH: u32 = 12;
+pub(crate) const SETTLE_DEPTH: u32 = 12;
 const PURSUIT_PLIES: u32 = 4;                                       // our answer, their reply, our answer, their reply
 
 fn holds_after_every_reply_settled(q: &Chess, side: Color, target: i64) -> bool {
@@ -599,6 +599,28 @@ fn idx_after(ix: &Idx, q2: &Chess, m: &Move, side: Color) -> Idx {
     out
 }
 fn kings(q: &Chess) -> shakmaty::Bitboard { q.board().kings() }
+/// The line a stored proof of `m` plays: our answers and their refutations from the hints (the proof's path starts at
+/// the move: prove_pos), "pass" for the outside reply; up to 12 plies.
+pub(crate) fn proof_line(p: &Chess, m: &Move, hints: &Hints) -> Vec<String> {
+    let mut line = vec![m.to_uci(CastlingMode::Standard).to_string()];
+    let mut q = after(p, m);
+    let mut path = child_path(0, move_code(m));
+    while let Some(code) = hints.get(&path).copied() {
+        if code == PASS_CODE {
+            line.push("pass".to_string());
+            let Ok(p2) = q.clone().swap_turn() else { break };
+            q = p2;
+        } else {
+            let Some(mv) = q.legal_moves().into_iter().find(|x| move_code(x) == code) else { break };
+            line.push(mv.to_uci(CastlingMode::Standard).to_string());
+            q = after(&q, &mv);
+        }
+        path = child_path(path, code);
+        if line.len() > 12 { break; }
+    }
+    line
+}
+
 /// frame_line(fen, uci, focus, plies, budget) -> (certified value or None, the line the value search decided on: our
 /// answers and their refutations from the recorded proof, "pass" for the outside reply) -- the review hook.
 #[pyfunction]
@@ -1481,6 +1503,11 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(lemma::set_lemma_audit, m)?)?;
     m.add_function(wrap_pyfunction!(lemma::lemma_stats, m)?)?;
     m.add_function(wrap_pyfunction!(lemma::threat_lemma_check, m)?)?;
+    m.add_function(wrap_pyfunction!(lemma::set_mine, m)?)?;
+    m.add_function(wrap_pyfunction!(lemma::set_chase, m)?)?;
+    m.add_function(wrap_pyfunction!(lemma::chase_why, m)?)?;
+    m.add_function(wrap_pyfunction!(lemma::chase_check, m)?)?;
+    m.add_function(wrap_pyfunction!(lemma::mine_cases, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::waiting_frames, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::arming_moves, m)?)?;
     m.add_class::<waiting::FramePool>()?;
