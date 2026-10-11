@@ -1,0 +1,168 @@
+<title>Lemma Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,600;1,8..60,400&display=swap">
+<style>
+/* Layout: an atlas -- the explanation first (seven steps, each pointing into the rules), then the rules by layer with a
+   detail panel, the connections graph, and the Lean results. Serif for the lemma statements, sans for the rest. */
+:root {
+  --bg: #f4f5f2; --panel: #ffffff; --ink: #1c211e; --muted: #5d6762; --line: #dde2dc;
+  --accent: #2c5e4a; --accent-soft: #e2ede7; --on: #2f6b3a; --on-soft: #e4f0e2; --off: #8a5a1b; --off-soft: #f6ecdc;
+  --lean: #3b4f8a; --lean-soft: #e5e9f5;
+  --f-display: "Source Serif 4", Georgia, serif; --f-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif; --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #151917; --panel: #1e2320; --ink: #e5eae6; --muted: #9aa49e; --line: #313833;
+  --accent: #8cc7ab; --accent-soft: #233229; --on: #93cf9c; --on-soft: #20301f; --off: #e0b26a; --off-soft: #3a2e1c;
+  --lean: #a9b8ef; --lean-soft: #232a40; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #151917; --panel: #1e2320; --ink: #e5eae6; --muted: #9aa49e; --line: #313833;
+  --accent: #8cc7ab; --accent-soft: #233229; --on: #93cf9c; --on-soft: #20301f; --off: #e0b26a; --off-soft: #3a2e1c;
+  --lean: #a9b8ef; --lean-soft: #232a40; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--f-body); margin: 0; }
+.wrap { max-width: 1200px; margin: 0 auto; padding-inline: 16px; padding-block: 22px 56px; display: grid; gap: 22px; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+h1 { font: 600 28px/1.2 var(--f-display); }
+h2 { font: 600 20px/1.25 var(--f-display); }
+.lede { color: var(--muted); max-width: 72ch; margin: 6px 0 0; }
+.label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--line); }
+.tabs button { font: 500 14px var(--f-body); background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 10px; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.tabs button:focus-visible, .rule:focus-visible, .chip:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.steps { display: grid; gap: 10px; counter-reset: s; }
+.step { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; display: grid; grid-template-columns: 2.2em minmax(0, 1fr); gap: 4px 12px; }
+.step::before { counter-increment: s; content: counter(s); font: 600 20px var(--f-display); color: var(--accent); grid-row: span 3; }
+.step h3 { font: 600 16px var(--f-body); }
+.step p { margin: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 500 12px var(--f-body); border: 1px solid var(--line); background: var(--accent-soft); color: var(--ink); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+.chip.lean { background: var(--lean-soft); color: var(--lean); border-color: transparent; cursor: default; font-family: var(--f-mono); }
+.atlas { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 820px) { .atlas { grid-template-columns: minmax(0, 1fr); } }
+.nav { display: grid; gap: 14px; }
+.nav input { width: 100%; font: 14px var(--f-body); padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
+.layer { display: grid; gap: 4px; }
+.layer .lname { font: 600 13px var(--f-body); }
+.layer .ldesc { color: var(--muted); font-size: 12px; }
+.rule { text-align: left; font: 14px var(--f-body); background: var(--panel); border: 1px solid var(--line); border-radius: 5px; padding: 6px 9px; cursor: pointer; color: var(--ink); display: flex; gap: 8px; align-items: center; }
+.rule[aria-current="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.dot.on { background: var(--on); } .dot.off, .dot.replaced { background: var(--off); }
+.rule .lmark { margin-left: auto; font: 500 10px var(--f-mono); color: var(--lean); }
+.detail { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 20px 22px; display: grid; gap: 14px; min-width: 0; }
+.detail .statement { font: italic 400 18px/1.45 var(--f-display); margin: 0; }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0; }
+.kv dt { color: var(--muted); font-size: 13px; } .kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.status { font: 600 11px var(--f-body); letter-spacing: .06em; text-transform: uppercase; padding: 4px 8px; border-radius: 3px; display: inline-block; }
+.status.on { background: var(--on-soft); color: var(--on); } .status.off, .status.replaced { background: var(--off-soft); color: var(--off); }
+.mono { font-family: var(--f-mono); font-size: 13px; }
+.graphwrap { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; overflow-x: auto; }
+table.lean { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.lean th, table.lean td { text-align: left; border-bottom: 1px solid var(--line); padding: 6px 8px 6px 0; vertical-align: top; }
+.tablewrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; }
+.foot { color: var(--muted); font-size: 12px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="label">The planner, taken stock</div>
+    <h1>Lemma Explorer</h1>
+    <p class="lede" id="lede"></p>
+  </header>
+  <nav class="tabs" role="tablist" id="tabs"></nav>
+
+  <section id="tab-explain" role="tabpanel">
+    <h2 style="margin-bottom:10px">How a move gets decided</h2>
+    <div class="steps" id="steps"></div>
+  </section>
+
+  <section id="tab-rules" role="tabpanel" hidden>
+    <div class="atlas">
+      <div class="nav">
+        <input id="q" type="search" placeholder="Search rules (e.g. mate, exchange, tempo)" aria-label="Search rules">
+        <div id="layers" style="display:grid;gap:16px"></div>
+      </div>
+      <article class="detail" id="detail"></article>
+    </div>
+  </section>
+
+  <section id="tab-graph" role="tabpanel" hidden>
+    <h2 style="margin-bottom:6px">Connections</h2>
+    <p class="lede" style="margin-bottom:12px">An arrow from A to B: B uses A. Grouped by layer.</p>
+    <div class="graphwrap"><pre class="mermaid" id="graph"></pre></div>
+  </section>
+
+  <section id="tab-lean" role="tabpanel" hidden>
+    <h2 style="margin-bottom:6px">Proved in Lean</h2>
+    <p class="lede" id="leanlede" style="margin-bottom:12px"></p>
+    <div class="tablewrap"><table class="lean" id="leantable"></table></div>
+  </section>
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const byId = Object.fromEntries(DATA.catalog.map(c => [c.id, c]));
+const nOn = DATA.catalog.filter(c => c.status === "on").length;
+$("lede").textContent = `${DATA.catalog.length} rules in ${DATA.layers.length} layers (${nOn} on), ${DATA.catalog.filter(c => c.lean.length).length} of them backed by a Lean theorem; ${DATA.lean.length} theorems proved in Lean in all. Start with how a move gets decided, then open any rule.`;
+$("foot").textContent = `Built ${DATA.built}. Evidence numbers are as printed by the runs (JOURNAL.md); one run each, directional. Generated by catspace/incubator/analyst/lemma_explorer.py.`;
+
+const TABS = [["explain", "How a move gets decided"], ["rules", "Rules by layer"], ["graph", "Connections"], ["lean", "Proved in Lean"]];
+let current = "explain";
+try { const t = localStorage.getItem("lemma-explorer-tab"); if (TABS.some(x => x[0] === t)) current = t; } catch (e) {}
+function showTab(t) {
+  current = t;
+  TABS.forEach(([k]) => { $("tab-" + k).hidden = k !== t; });
+  document.querySelectorAll("#tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.t === t));
+  try { localStorage.setItem("lemma-explorer-tab", t); } catch (e) {}
+}
+$("tabs").innerHTML = TABS.map(([k, n]) => `<button type="button" role="tab" data-t="${k}">${n}</button>`).join("");
+$("tabs").querySelectorAll("button").forEach(b => b.onclick = () => showTab(b.dataset.t));
+
+$("steps").innerHTML = DATA.explain.map(([title, text, ids]) =>
+  `<div class="step"><h3>${esc(title)}</h3><p>${esc(text)}</p><div class="chips">${ids.map(i => `<button type="button" class="chip" data-open="${i}">${esc(byId[i].name)}</button>`).join("")}</div></div>`).join("");
+
+let selected = DATA.catalog[0].id;
+function renderLayers() {
+  const q = $("q").value.trim().toLowerCase();
+  const hit = c => !q || (c.name + " " + c.plain + " " + c.why + " " + c.lean.join(" ")).toLowerCase().includes(q);
+  $("layers").innerHTML = DATA.layers.map(([lid, lname, ldesc]) => {
+    const rs = DATA.catalog.filter(c => c.layer === lid && hit(c));
+    if (!rs.length) return "";
+    return `<div class="layer"><div class="lname">${esc(lname)}</div><div class="ldesc">${esc(ldesc)}</div>` +
+      rs.map(c => `<button type="button" class="rule" data-open="${c.id}" aria-current="${c.id === selected}"><span class="dot ${c.status}"></span>${esc(c.name)}${c.lean.length ? '<span class="lmark">Lean</span>' : ""}</button>`).join("") + `</div>`;
+  }).join("") || '<p class="lede">No rule matches.</p>';
+}
+function renderDetail() {
+  const c = byId[selected];
+  const link = ids => ids.length ? ids.map(i => `<button type="button" class="chip" data-open="${i}">${esc(byId[i].name)}</button>`).join("") : '<span class="lede">none</span>';
+  $("detail").innerHTML = `
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="status ${c.status}">${c.status}</span><span class="label">${esc(DATA.layers.find(l => l[0] === c.layer)[1])}</span></div>
+    <h2>${esc(c.name)}</h2>
+    <p class="statement">${esc(c.plain)}</p>
+    <dl class="kv">
+      <dt>Why it exists</dt><dd>${esc(c.why)}</dd>
+      <dt>Evidence</dt><dd>${esc(c.evidence)}</dd>
+      <dt>Where</dt><dd class="mono">${esc(c.where)}</dd>
+      <dt>Proved in Lean</dt><dd><div class="chips">${c.lean.length ? c.lean.map(n => `<span class="chip lean">${esc(n)}</span>`).join("") : '<span class="lede">not yet -- a candidate for a theorem</span>'}</div></dd>
+      <dt>Uses</dt><dd><div class="chips">${link(c.uses)}</div></dd>
+      <dt>Used by</dt><dd><div class="chips">${link(DATA.used_by[c.id] || [])}</div></dd>
+    </dl>`;
+}
+function open(id) { selected = id; showTab("rules"); renderLayers(); renderDetail(); window.scrollTo({ top: 0, behavior: "smooth" }); }
+document.addEventListener("click", e => { const b = e.target.closest("[data-open]"); if (b) open(b.dataset.open); });
+$("q").addEventListener("input", renderLayers);
+
+$("graph").textContent = DATA.mermaid;
+const used = DATA.lean.filter(t => t.used_by.length).length;
+$("leanlede").textContent = `${DATA.lean.length} theorems; ${used} cited by the planner's code. Sorted by file.`;
+$("leantable").innerHTML = `<thead><tr><th>Theorem</th><th>File</th><th>What it says</th><th>Cited by</th></tr></thead><tbody>` +
+  DATA.lean.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line).map(t =>
+    `<tr><td class="mono">${esc(t.name)}</td><td class="mono">${esc(t.file)}:${t.line}</td><td>${esc(t.doc.split(". ")[0])}</td><td class="mono">${esc(t.used_by.map(f => f.split("/").pop()).join(", "))}</td></tr>`).join("") + `</tbody>`;
+
+showTab(current); renderLayers(); renderDetail();
+</script>
