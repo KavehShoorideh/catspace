@@ -103,7 +103,9 @@ pub fn touched_by(m: &shakmaty::Move) -> shakmaty::Bitboard {
 /// comes from a piece that arrived on a touched square or through a touched square vacated on its line; a lost one from
 /// a piece that left a touched square or a touched square blocking its line): only if a touched square lies on a line
 /// through t (a queen's rays on an empty board -- every slider, blocker and x-ray behind them), a knight's move from it,
-/// next to it (king, pawn), or is t itself. A superset, so a reuse is never stale.
+/// next to it (king, pawn), or is t itself. A superset, so a reuse is never stale. This "bears on t" relation is Lean
+/// Ideas.FrameLemma.reachB, and Ideas.FrameLemma.frame_unchanged proves the claim for a whole set of squares at once:
+/// no touched square bearing on any of them leaves their pieces and every attack onto them unchanged.
 pub fn exchange_affected(t: Square, touched: shakmaty::Bitboard) -> bool {
     use shakmaty::{attacks, Bitboard};
     let zone = attacks::queen_attacks(t, Bitboard::EMPTY) | attacks::knight_attacks(t) | attacks::king_attacks(t) | Bitboard::from_square(t);

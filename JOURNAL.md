@@ -28863,3 +28863,24 @@ cp 10.2% -> 8.7% (126 of 1,444); frames' immediate tactics 670 -> 677 of 681; St
 with Stockfish's move 274 -> 275; endgame puzzles 44% -> 43%; walked games 7 / 3 / 0 (game 0: no only-move missed);
 census 343 s -> 528 s (the strict stop's extra targets). Tests 49 passed. And the LEMMA EXPLORER (lemma_explorer.py,
 published): 35 rules in 7 layers, 10 backed by a Lean theorem; how a move gets decided in seven steps.
+THE FRAME-INDEPENDENCE LEMMA, PROVED (2026-10-11 ~11:05 PDT; Kaveh: "are you proposing to prove the frame independence
+theorem? If so, yes"). The context: I had called zone-based proof reuse unsafe; Kaveh corrected the framing -- the
+whole-board scan at the start already indexes every capture and threat for both sides as frames, so a proof about one
+frame should read its own frame and the opponent's other frames FROM THE INDEX, never research the board; then a move
+that touches nothing a proof depends on leaves it valid. Two more of his points, kept as design: the king is not
+special -- an attack on the king and an attack on the queen are the same kind of frame, differing only in value; and
+every threat can be IGNORED at a price (its exchange value) -- that is how a tempo is gained (the queen left hanging
+while the rook arrives) -- and a check is the threat whose price is the game, so no tempo exists under check; the
+current "in check only captures that answer it count" rule is that law at infinite price. Lean
+(lean/ideas/Ideas/FrameLemma.lean): `reachB t x` -- x bears on t: it is t, lies on a line through t, or is a knight's
+move from t; `attack_reach` (whoever attacks t stands on a square bearing on t; king and pawn attacks shown to lie on
+the queen's lines), `between_reach` (every square strictly between an attacker and t lies on a line through t),
+`frame_unchanged` (THE LEMMA: if no touched square bears on any square of a frame F, the board on F and every attack
+onto F are unchanged by the move), `attacked_unchanged` (per-square corollary). Proofs in the GeoLemmas style:
+unfold to coordinates, split the absolute values, omega. OBS lean_index build: 153 theorems/lemmas (0 open), 35 cited
+by code (was 146 / 31); lemma_explorer: 36 rules, 11 backed by Lean (was 35 / 10). What the theorem does NOT say, now
+written at the pass in lib.rs pursue_val_p: the current search reads beyond its frame (leaf_value counts and settles the
+whole board; captures and checks anywhere are searched as "touching"), so today's certificates are exact in the frame
+and "modulo the rest of the board" outside it. The obligation it puts on the next build: proofs read the opponent's
+frames from the index (their replies and the leaf), record which frames they joined, and are reused when no touched
+square bears on their zone and no joined frame changed. rules.rs exchange_affected is `reachB`; cited.

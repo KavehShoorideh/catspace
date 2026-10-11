@@ -678,9 +678,13 @@ fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha:
         // THEIR REPLIES, KEPT IN THE FRAME (Kaveh 2026-10-08: "use lemmas for the opponent reply too, and keep it in the
         // frame"): with a focus, only the replies that touch the frame are searched -- the target's moves, captures,
         // checks, and moves from, to or attacking a frame square (the target, its escapes, our pieces bearing on them,
-        // the lines between); every other reply is ONE "pass" (the FRAME-INDEPENDENCE lemma: a move that touches no
-        // frame square leaves the frame's outcome as it is -- not proved: certificates using it are "modulo frame
-        // independence", watched by the false-alarm measurement). In check every evasion is searched.
+        // the lines between); every other reply is ONE "pass" (the FRAME-INDEPENDENCE lemma, Lean
+        // Ideas.FrameLemma.frame_unchanged, 2026-10-11: a move that touches no square bearing on the frame -- on a line
+        // through a frame square, a knight's move from one, or the square itself -- leaves the frame's pieces and every
+        // attack onto them as they were. What the theorem does NOT cover is what this search reads beyond the frame:
+        // leaf_value counts the whole board and settles every capture on it, and captures and checks anywhere are
+        // searched as "touching"; so a certificate is exact in its frame and "modulo the rest of the board" outside it,
+        // until the proofs read the opponent's other frames from the index instead). In check every evasion is searched.
         let zone = if focus.is_empty() || q.is_check() || EXACT.load(Ordering::Relaxed) { None } else { Some(frame_zone(q, side, focus)) };
         let mut worst = 2000;
         let mut passed_once = false;
