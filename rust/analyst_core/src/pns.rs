@@ -98,6 +98,9 @@ pub fn search_with_proof<P: Problem>(p: &P, root: P::State, budget: u64) -> (Opt
                     let c = t.len() - 1;
                     t[i].kids.push(c);
                 }
+                // every line stopped by the policy: an OR node with no child left is disproven (an AND node cannot lose
+                // children -- the policy acts on our lines only)
+                if t[i].kids.is_empty() && or { t[i].pn = INF; t[i].dn = 0.0; }
             }
         }
         let mut a = Some(i);

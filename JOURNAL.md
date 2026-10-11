@@ -29041,3 +29041,22 @@ resolve, with 50x 3 of 40; at 2,000 expansions 22 disproven, 16 still unknown. T
 through every capture chain and check, and PNS's AND nodes are wide. Not changed yet -- the options are Kaveh's call
 (a prior to order the forcing lines; a tighter forcing-move definition; the escape test without the forcing search, which
 changes decisions where the search disproved). Tests 24 passed. Flags: caches always on (exact), NET_BOUND off.
+THE STOP POLICY, PHASE 1 (2026-10-11 16:43 PDT; Kaveh: "a policy on when to stop, preferably RL"; "cool, build this; later a
+transformer that predicts the reasoning trace"). The forcing search (PNS) gets a hook `allow(state, depth)` on every line
+of ours (pns.rs); a dropped line can only make a proof harder, never certify one -- the verdict stays the search's, and
+what a stop can cost is a real gain the search would have found (the recall, measured). Features (threat.rs
+policy_features, 14 generic scalars: plies, material banked, need remaining, our/their best static threat, in check,
+their replies, their king's flights, the move's kind and values, threatened-piece counts); a 14->16->1 net (PyTorch,
+forcing_policy.py), loaded into Rust as a weight table (set_forcing_policy; auto-loaded at import from
+data/derived/forcing_policy.json by the analyst package's __init__). The machine crashed once during the collection
+(watchdogd starved under 10 workers; docs/BUGS.md) and the first log was 14 GB; both fixed (6 workers, sampling).
+OBS data: 4,005,093 lines from 24 census games at budget 1,000 (64 s on 6 processes), 4.7% end proven. OBS train
+3,057,654 lines (18 games) / held-out 947,439 (6 games): AUC 0.983 / 0.981. The front (held-out): tau 0.02 recall 0.998
+stops 62%; 0.05 / 0.996 / 69%; 0.10 / 0.992 / 74%; 0.20 / 0.984 / 79%; 0.50 / 0.942 / 87%. Chosen tau 0.10. OBS game
+10000470 (the profiled game): 10.0 -> 5.2 s (123 -> 64 ms a move); forcing searches hitting the safety net 38% -> 3%,
+expansions 445,479 -> 98,300. OBS flag_onoff, held-out games 25-44, 1,433 positions: ms 165 -> 94 (-43%), proofs 40.8
+-> 34.2; decisions identical 96.65%; of the 48 changed, by the planner's values 10 higher, 11 lower, 27 incomparable --
+several gains are the search FINISHING where it used to run out ("exf6 wins 3 by force" found). OBS STOCKFISH
+(decision_review, 4,000 sampled positions, depth 12; 276 of the 300 games unseen in training): decisions losing 150+
+cp OFF 130 of 1,444 (9.0%), ON 132 of 1,459 (9.0%) -- the same rate at 77 s vs 127 s. SWITCHED ON. Phase 2 (policy
+gradient with reward = outcome - lambda * expansions on the deployed loop) and Kaveh's trace transformer are next.

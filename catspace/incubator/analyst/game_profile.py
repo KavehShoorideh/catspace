@@ -30,6 +30,8 @@ def run(tag: str, seed: int, game: str | None, sample_s: int, flags: dict) -> No
     else:
         pick = random.Random(seed).choice(games)
     gid, fens = pick
+    if flags.pop("policy", None):
+        analyst_core.set_forcing_policy(open(paths.derived("forcing_policy.json")).read())
     for k, v in flags.items():
         getattr(analyst_core, f"set_{k}")(v)
     out = paths.experiment(f"game_profile_{gid}.json")
@@ -110,6 +112,7 @@ def main(argv=None):
     ap.add_argument("--cert", action="store_true")
     ap.add_argument("--frame", action="store_true")
     ap.add_argument("--bound", action="store_true")
+    ap.add_argument("--policy", action="store_true", help="load data/derived/forcing_policy.json")
     a = ap.parse_args(argv)
     flags = {}
     if a.cert:
@@ -118,6 +121,8 @@ def main(argv=None):
         flags["frame_proofs"] = True
     if a.bound:
         flags["net_bound"] = True
+    if a.policy:
+        flags["policy"] = True
     run(a.tag, a.seed, a.game, a.sample, flags)
 
 

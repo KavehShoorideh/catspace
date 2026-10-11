@@ -28,10 +28,20 @@ def _collect_game(args):
     analyst_core.forcing_stats(budget)
     analyst_core.set_forcing_log(True)
     analyst_core.forcing_log()
+    import random
+    rng = random.Random(gid)
     rows = []
-    for fen in fens:
+    # every third position; the proven lines (the minority) all kept, the others sampled to at most 20x the proven count
+    # per position, so a game yields thousands of rows, not millions
+    for i, fen in enumerate(fens):
+        if i % 3: continue
+        analyst_core.forcing_log()
         analyst_core.plan_trace(fen)
-        for f, proven, root in analyst_core.forcing_log():
+        log = analyst_core.forcing_log()
+        pos = [r for r in log if r[1]]
+        neg = [r for r in log if not r[1]]
+        keep = pos + (rng.sample(neg, min(len(neg), max(200, 20 * len(pos))) ) if neg else [])
+        for f, proven, root in keep:
             rows.append((gid, f, int(proven), int(root)))
     return rows
 
@@ -43,9 +53,10 @@ def collect(tag: str, games: int, budget: int, workers: int) -> None:
     jobs = [(g, f, budget) for g, f in _games(tag, games)]
     with Pool(workers) as p:
         rows = [r for rs in p.imap_unordered(_collect_game, jobs, chunksize=1) for r in rs]
-    out = paths.derived("forcing_policy_rows.json")
-    with open(out, "w") as fh:
-        json.dump(rows, fh)
+    import numpy as np
+    out = paths.derived("forcing_policy_rows.npz")
+    np.savez_compressed(out, game=np.array([r[0] for r in rows]), X=np.array([r[1] for r in rows], dtype=np.float32),
+                        y=np.array([r[2] for r in rows], dtype=np.int8), root=np.array([r[3] for r in rows], dtype=np.int8))
     pos = sum(r[2] for r in rows)
     print(f"OBS collected {len(rows):,} lines from {games} games at budget {budget} ({time.time() - t0:.0f} s on {workers} processes): "
           f"proven {pos:,} ({100 * pos / max(len(rows), 1):.1f}%), roots proven {sum(r[3] for r in rows):,} -> {out}")
@@ -54,13 +65,11 @@ def collect(tag: str, games: int, budget: int, workers: int) -> None:
 def train(hidden: int, epochs: int, recall_target: float, seed: int) -> None:
     import numpy as np
     import torch
-    rows = json.load(open(paths.derived("forcing_policy_rows.json")))
-    games = sorted({r[0] for r in rows})
+    d = np.load(paths.derived("forcing_policy_rows.npz"))
+    X, y, g = d["X"], d["y"].astype(np.float32), d["game"]
+    games = sorted(set(g.tolist()))
     rng = np.random.default_rng(seed)
     held = set(rng.choice(games, size=max(1, len(games) // 4), replace=False).tolist())
-    X = np.array([r[1] for r in rows], dtype=np.float32)
-    y = np.array([r[2] for r in rows], dtype=np.float32)
-    g = np.array([r[0] for r in rows])
     tr = np.array([gg not in held for gg in g]); te = ~tr
     mean, std = X[tr].mean(0), X[tr].std(0) + 1e-6
     Xn = (X - mean) / std

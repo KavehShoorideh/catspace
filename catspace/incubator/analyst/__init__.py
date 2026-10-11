@@ -27,3 +27,17 @@ Layer stack; each layer imports ONLY the ones below it:
     L6 verbalize  names + the idea grammar: records -> text (deterministic)
 The Stockfish adapter (engine.py) is a service to L4/L5, not a layer.
 """
+
+# THE FORCING SEARCH'S STOP POLICY (2026-10-11): analyst_core loads it at import from this variable; the trained file is
+# the one in the registry. Unset it to run the full search.
+import os as _os
+try:
+    from catspace.io import paths as _paths
+    from pathlib import Path as _P
+    _pol = _P(_paths.derived("forcing_policy.json"))                      # the latest trained (data/, DVC)
+    if not _pol.exists():
+        _pol = _P(__file__).with_name("forcing_policy.json")               # the shipped copy (rule 3: the engine loads it at play time)
+    if _pol.exists():
+        _os.environ.setdefault("CATSPACE_FORCING_POLICY", str(_pol))
+except Exception:
+    pass

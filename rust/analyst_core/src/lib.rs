@@ -1495,6 +1495,11 @@ fn local_check_many(items: Vec<(String, String, i64)>) -> PyResult<Vec<Option<bo
 
 #[pymodule]
 fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    // THE STOP POLICY loads at import when CATSPACE_FORCING_POLICY names its JSON (the analyst package sets it to
+    // data/derived/forcing_policy.json when that file exists; 2026-10-11, graded equal to the full search by Stockfish)
+    if let Ok(path) = std::env::var("CATSPACE_FORCING_POLICY") {
+        if let Ok(txt) = std::fs::read_to_string(&path) { let _ = threat::set_forcing_policy(txt); }
+    }
     m.add_function(wrap_pyfunction!(literal_masks, m)?)?;
     m.add_function(wrap_pyfunction!(outcomes, m)?)?;
     m.add_function(wrap_pyfunction!(nodes, m)?)?;
@@ -1522,6 +1527,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plan::set_net_bound, m)?)?;
     m.add_function(wrap_pyfunction!(threat::forcing_unknowns, m)?)?;
     m.add_function(wrap_pyfunction!(threat::set_forcing_policy, m)?)?;
+    m.add_function(wrap_pyfunction!(threat::set_forcing_policy_on, m)?)?;
     m.add_function(wrap_pyfunction!(threat::forcing_log, m)?)?;
     m.add_function(wrap_pyfunction!(threat::set_forcing_log, m)?)?;
     m.add_function(wrap_pyfunction!(threat::policy_stats, m)?)?;

@@ -377,6 +377,10 @@ impl Policy {
     }
 }
 pub static POLICY: std::sync::OnceLock<Policy> = std::sync::OnceLock::new();
+pub static POLICY_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// set_forcing_policy_on(flag): the loaded stop policy decides (off: every line followed, the search as before).
+#[pyfunction]
+pub fn set_forcing_policy_on(flag: bool) -> PyResult<()> { POLICY_ON.store(flag, Ordering::Relaxed); Ok(()) }
 /// set_forcing_policy(json): load the stop policy {w1, b1, w2, b2, mean, std, tau} (once per process).
 #[pyfunction]
 pub fn set_forcing_policy(json: String) -> PyResult<bool> {
@@ -384,7 +388,9 @@ pub fn set_forcing_policy(json: String) -> PyResult<bool> {
     let f32s = |k: &str| -> Vec<f32> { v[k].as_array().map(|a| a.iter().map(|x| x.as_f64().unwrap_or(0.0) as f32).collect()).unwrap_or_default() };
     let w1: Vec<Vec<f32>> = v["w1"].as_array().map(|rows| rows.iter().map(|r| r.as_array().map(|a| a.iter().map(|x| x.as_f64().unwrap_or(0.0) as f32).collect()).unwrap_or_default()).collect()).unwrap_or_default();
     let pol = Policy { w1, b1: f32s("b1"), w2: f32s("w2"), b2: v["b2"].as_f64().unwrap_or(0.0) as f32, mean: f32s("mean"), std: f32s("std"), tau: v["tau"].as_f64().unwrap_or(0.0) as f32 };
-    Ok(POLICY.set(pol).is_ok())
+    let ok = POLICY.set(pol).is_ok();
+    POLICY_ON.store(true, Ordering::Relaxed);
+    Ok(ok)
 }
 /// forcing_log() -> the policy log since the last call: (features, the line ended proven, the root was proven).
 #[pyfunction]
@@ -438,6 +444,7 @@ impl crate::pns::Problem for Forcing {
     /// counts of threatened pieces on each side.
     fn features(&self, s: &FState, depth: u32) -> Option<Vec<f32>> { Some(policy_features(self, s, depth)) }
     fn allow(&self, s: &FState, depth: u32) -> bool {
+        if !POLICY_ON.load(Ordering::Relaxed) { return true; }
         let Some(pol) = POLICY.get() else { return true };
         let f = policy_features(self, s, depth);
         pol.prob(&f) >= pol.tau

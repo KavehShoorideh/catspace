@@ -25,6 +25,8 @@ def _one(fen):
     import analyst_core
     if os.environ.get("CATSPACE_HARASS") == "0":
         analyst_core.set_harass(False)
+    if os.environ.get("CATSPACE_POLICY"):                       # the forcing search's stop policy (2026-10-11)
+        analyst_core.set_forcing_policy(open(os.environ["CATSPACE_POLICY"]).read())
     tr, dec, proofs, nodes, ms, imm = analyst_core.plan_trace(fen)
     if not dec:
         return None
@@ -49,7 +51,7 @@ def collect(n: int, seed: int = 5) -> list:
     from multiprocessing import Pool
     from .waiting_frames import _games
     fens = random.Random(seed).sample([f for _, fs in _games("c300", 300) for f in fs], n)
-    with Pool(os.cpu_count()) as p:
+    with Pool(int(os.environ.get("CATSPACE_WORKERS", max(1, (os.cpu_count() or 2) - 1)))) as p:   # (the 2026-10-11 kernel panic: watchdogd starved under a full load)
         return [r for r in p.map(_one, fens, chunksize=8) if r]
 
 
@@ -127,7 +129,7 @@ def page(rv: dict) -> str:
 if __name__ == "__main__":
     import sys
     t0 = time.time()
-    store = paths.experiment("decision_review.json")
+    store = paths.experiment(os.environ.get("CATSPACE_REVIEW_STORE", "decision_review.json"))
     if "--page-only" in sys.argv:
         rows = json.load(open(store))
     else:

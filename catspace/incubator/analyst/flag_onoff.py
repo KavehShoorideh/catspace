@@ -16,6 +16,8 @@ def _game(args):
     gid, fens, flag = args
     os.environ.setdefault("RAYON_NUM_THREADS", "1")
     import analyst_core
+    if os.environ.get("CATSPACE_POLICY"):
+        analyst_core.set_forcing_policy(open(os.environ["CATSPACE_POLICY"]).read())
     setter = getattr(analyst_core, f"set_{flag}")
     out = []
     for fen in fens:
@@ -42,7 +44,22 @@ def run(tag: str, games: int, skip: int, flag: str, workers: int) -> None:
           f"ms a position off {sum(r['ms0'] for r in rows) / n:.1f} -> on {sum(r['ms1'] for r in rows) / n:.1f}; "
           f"proofs {sum(r['p0'] for r in rows) / n:.1f} -> {sum(r['p1'] for r in rows) / n:.1f}; "
           f"nodes {sum(r['n0'] for r in rows) / n:,.0f} -> {sum(r['n1'] for r in rows) / n:,.0f}")
-    for r in [r for r in rows if r not in same][:12]:
+    import json
+    from catspace.io import paths
+    diff = [r for r in rows if r not in same]
+    with open(paths.experiment(f"flag_onoff_{flag}.json"), "w") as fh:
+        json.dump(diff, fh, indent=1)
+    # a rough grading by the planner's own numbers: the immediate win's value and the decision's value, on vs off
+    def val(x):
+        return x[2] if x else None
+    up = down = 0
+    for r in diff:
+        a = val(r["i1"]) if r["i1"] else val(r["d1"]); b = val(r["i0"]) if r["i0"] else val(r["d0"])
+        if a is None or b is None: continue
+        if a > b: up += 1
+        elif a < b: down += 1
+    print(f"OBS   differences {len(diff)}: by the planner's own values on is higher in {up}, lower in {down}, equal/incomparable {len(diff) - up - down} -> {paths.experiment(f'flag_onoff_{flag}.json')}")
+    for r in diff[:12]:
         print(f"OBS   off {r['i0'][3] if r['i0'] else None} / {r['d0'][3] if r['d0'] else None}; on {r['i1'][3] if r['i1'] else None} / {r['d1'][3] if r['d1'] else None}  {r['fen']}")
 
 
