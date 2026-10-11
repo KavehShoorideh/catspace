@@ -28915,3 +28915,22 @@ into the search; not built. b5 "nets 1" against the bishop on a4 (frame 2 plies,
 wins the pawn the knight defended) is a composed gain, not a false claim. Tests 35 passed (memory, planner, proof,
 threats, Lean index). Recommendation given: commit behind the flags, run the Stockfish agreement round with the exact
 proofs; continue the frame line only if speed outranks that round.
+THE DEPENDENCY OF A SEARCH PROOF, ACCOUNTED EXACTLY (2026-10-11 ~14:30 PDT; Kaveh: "break down what are the squares that
+can affect this tactic ... only trigger recalculation when those squares change"; "squares that take us off the
+winning path, not squares that change the value slightly"; "when proving in Lean, prove the ways it can be stopped --
+that becomes the information Rust uses"). The line test ("a touched square on a line through anything read") replaced
+by the INPUTS test (plan.rs inputs_differ, piece-agnostic): (1) the pieces on the proof's squares D and the pawns that
+can push into D, (2) who attacks D -- first attackers and the x-rays behind them, both colours, on the real occupancy,
+(3) who can move to a square that attacks D (the one-step set, same test one step out), (4) the index at the root;
+equal inputs, same search, same verdict (the verdict is binary at the goal, so a value shift that does not cross it
+cannot move it). The recorded D tightened twice: from every searched move and every recomputed exchange (|D| 55) to
+the frames' cores (target + its reach + kings), the exchanges that CHANGED and the leaves' reads (|D| 42 -> 38).
+OBS plan_memo_check --frame --zone, 6 games / 540 positions: ZONE attempts 29.4 a move (re-proofs 27.9 a move are the
+candidates), reuses 0.0; failures: pieces on D 14,644, attacks onto D 961, one-step set 55, attacks onto it 162,
+index 28; |D| mean 41.8, one-step set 46.9. OBS 3 games, 8,293 proofs: core 29.9, changed exchanges 34.0, leaf reads
+23.9 squares a proof (union 37.9). THE FINDING: a 2-4 ply SEARCH proof reads ~38 of 64 squares even when accounted
+tightly -- a queen target's core alone is ~30 (its reach over the proof's nodes) -- so a game move nearly always
+touches one; reuse of search proofs across moves is rare by nature, not by accounting. Where reuse pays is Kaveh's
+lemma form: a tactic stated with its STOPPERS (block, capture of the attacker, escape, check), the Lean proof
+establishing the list complete, the dependency = the stoppers' squares, a handful; the exchange law is the existing
+instance (its index is reused exactly every move). Tests 35 passed. Flags stay off.

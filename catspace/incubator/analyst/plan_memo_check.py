@@ -26,10 +26,12 @@ def _game(args):
     st = analyst_core.PlanState()
     rows = []
     for fen in fens:
+        analyst_core.zone_stats()
         r = st.observe(fen)
+        z = analyst_core.zone_stats()
         r0 = analyst_core.plan_trace(fen)
         rows.append(dict(fen=fen, dec=r[1], dec0=r0[1], imm=r[5], imm0=r0[5], proofs=r[2], proofs0=r0[2], nodes=r[3],
-                         nodes0=r0[3], ms=r[4], ms0=r0[4], stats=r[6]))
+                         nodes0=r0[3], ms=r[4], ms0=r0[4], stats=r[6], zone=z))
     return gid, rows
 
 
@@ -50,6 +52,10 @@ def run(tag: str, games: int, workers: int) -> None:
     p0 = sorted(r["proofs0"] for r in rows)
     print(f"OBS   without:         searches a move median {p0[n // 2]}, mean {sum(p0) / n:.1f}, 90th percentile {p0[int(0.9 * n)]}; "
           f"nodes {sum(r['nodes0'] for r in rows) / n:,.0f}; ms {sum(r['ms0'] for r in rows) / n:.1f}")
+    z = [sum(r["zone"][i] for r in rows) for i in range(12)]
+    print(f"OBS   dependency of a proof: core {z[8] / max(z[11], 1):.1f}, changed exchanges {z[9] / max(z[11], 1):.1f}, leaf reads {z[10] / max(z[11], 1):.1f} squares ({z[11]} proofs)")
+    print(f"OBS   memory a move: fresh {s[0] / n:.1f}, re-proofs {s[4] / n:.1f}; ZONE attempts {z[0] / n:.2f} -- failed on pieces {z[1]}, attacks onto D {z[2]}, the one-step set {z[3]}, attacks onto it {z[4]}, the index {z[5]}; "
+          f"|D| mean {z[6] / max(z[0], 1):.1f}, one-step set mean {z[7] / max(z[0] - z[1] - z[2], 1):.1f}")
     print(f"OBS   gates fired a move: lone-attack {s[5] / n:.1f}, frozen (pin) {s[6] / n:.2f}, escape filter {s[7] / n:.2f}, cut by the history order {s[8] / n:.2f}")
     kinds = Counter(); ex = []
     for r in rows:

@@ -70,13 +70,70 @@ pub(crate) fn frame_audit_count(i: usize) { FRAME_AUDIT_N[i].fetch_add(1, Orderi
 pub fn set_frame_audit(flag: bool) -> PyResult<()> { FRAME_AUDIT.store(flag, Ordering::Relaxed); Ok(()) }
 #[pyfunction]
 pub fn frame_audit_stats() -> Vec<u64> { FRAME_AUDIT_N.iter().map(|a| a.swap(0, Ordering::Relaxed)).collect() }
-/// The squares that bear on any square of `d` (Lean Ideas.FrameLemma.reachB: the square, a line through it, a
-/// knight's move from it): a change off this set cannot change what was read on `d`.
-fn bearing(d: Bitboard) -> Bitboard {
-    let mut out = Bitboard::EMPTY;
-    for t in d { out |= shakmaty::attacks::queen_attacks(t, Bitboard::EMPTY) | shakmaty::attacks::knight_attacks(t) | shakmaty::attacks::king_attacks(t); out.add(t); }
-    out
+/// The board a snapshot encodes (see `snapshot`).
+fn board_of(v: &[u8]) -> shakmaty::Board {
+    let mut b = shakmaty::Board::empty();
+    for (i, x) in v.iter().enumerate() {
+        if *x == 0 { continue; }
+        let black = *x >= 10;
+        let role = match x - 1 - if black { 8 } else { 0 } { 1 => Role::Pawn, 2 => Role::Knight, 3 => Role::Bishop, 4 => Role::Rook, 5 => Role::Queen, _ => Role::King };
+        b.set_piece_at(Square::new(i as u32), shakmaty::Piece { color: if black { Color::Black } else { Color::White }, role });
+    }
+    b
 }
+
+/// THE INPUTS OF A STORED PROOF, compared exactly (Kaveh 2026-10-11: "break down what are the squares that can affect
+/// this tactic ... find the rule that only triggers recalculation when those squares change"): a frame proof read (1)
+/// the pieces on its squares `d` (and the pawns that could push into them), (2) who attacks those squares -- the first
+/// attackers and the x-ray attackers behind them, both colours, on the real occupancy (the path lemma: an attack is a
+/// piece and a clear line, nothing else), (3) who can move to a square that attacks them (their swing-in replies: the
+/// same test one step out, over the squares that bear on `d` now), and (4) the index (compared by the caller). Equal
+/// inputs, same search, same verdict -- a change elsewhere, however large, cannot move it.
+/// [attempts, pieces on d differ, attacks onto d differ, the one-step set differs, attacks onto it differ, the index
+/// differs, the sum of |d|, the sum of the one-step set's size] since the last read.
+static ZONE_N: [std::sync::atomic::AtomicU64; 12] = [const { std::sync::atomic::AtomicU64::new(0) }; 12];
+#[pyfunction]
+pub fn zone_stats() -> Vec<u64> { ZONE_N.iter().map(|a| a.swap(0, Ordering::Relaxed)).collect() }
+/// 0 when the inputs are equal, else which one differs (see ZONE_N).
+fn inputs_differ(old: &shakmaty::Board, new: &shakmaty::Board, d: Bitboard) -> usize {
+    use shakmaty::attacks;
+    let occ_o = old.occupied();
+    let occ_n = new.occupied();
+    for t in d { if old.piece_at(t) != new.piece_at(t) { return 1; } }
+    // the pawns that can push into d (a push is a move that is not an attack): one square, or two from the home rank
+    let pushers = |b: &shakmaty::Board, occ: Bitboard| -> Bitboard {
+        let wp = b.pawns() & b.white();
+        let bp = b.pawns() & b.black();
+        let one = (wp & d.shift(-8)) | (bp & d.shift(8));
+        let two = (wp & Bitboard::from_rank(shakmaty::Rank::Second) & (d & Bitboard::from_rank(shakmaty::Rank::Fourth)).shift(-16) & !occ.shift(-8))
+                | (bp & Bitboard::from_rank(shakmaty::Rank::Seventh) & (d & Bitboard::from_rank(shakmaty::Rank::Fifth)).shift(16) & !occ.shift(8));
+        one | two
+    };
+    if pushers(old, occ_o) != pushers(new, occ_n) { return 1; }
+    let att = |b: &shakmaty::Board, t: Square, c: Color, occ: Bitboard| -> (Bitboard, Bitboard) {
+        let first = b.attacks_to(t, c, occ);
+        let sliders = first & (b.by_role(Role::Bishop) | b.by_role(Role::Rook) | b.by_role(Role::Queen));
+        (first, b.attacks_to(t, c, occ ^ sliders) & !first)
+    };
+    let mut ca_o = Bitboard::EMPTY;
+    let mut ca_n = Bitboard::EMPTY;
+    for t in d {
+        for c in [Color::White, Color::Black] {
+            if att(old, t, c, occ_o) != att(new, t, c, occ_n) { return 2; }
+        }
+        ca_o |= attacks::queen_attacks(t, occ_o) | attacks::knight_attacks(t) | attacks::king_attacks(t);
+        ca_n |= attacks::queen_attacks(t, occ_n) | attacks::knight_attacks(t) | attacks::king_attacks(t);
+    }
+    ZONE_N[7].fetch_add(ca_n.count() as u64, Ordering::Relaxed);
+    if ca_o != ca_n { return 3; }
+    for x in ca_n & !d {
+        for c in [Color::White, Color::Black] {
+            if old.attacks_to(x, c, occ_o) != new.attacks_to(x, c, occ_n) { return 4; }
+        }
+    }
+    0
+}
+
 #[pyfunction]
 pub fn set_reuse_fails(flag: bool) -> PyResult<()> { REUSE_FAILS.store(flag, Ordering::Relaxed); Ok(()) }                                               // boards kept per question (the oldest dropped)
 
@@ -149,9 +206,14 @@ fn mprove(p: &Chess, seed: &str, focus: &[Square], goal: i64) -> (bool, u64) {
         if e.extra == extra {
             let diff: Bitboard = (0..64u32).filter(|i| e.board[*i as usize] != board[*i as usize]).map(Square::new).collect();
             if diff.is_empty() { tally(|s| s.reuse_exact += 1); return (e.holds, 0); }
-            if ZONE_REUSE.load(Ordering::Relaxed) && crate::frame_on() && !e.global && !e.spent && (diff & bearing(e.dep)).is_empty() {
+            if ZONE_REUSE.load(Ordering::Relaxed) && crate::frame_on() && !e.global && !e.spent {
                 if let Some(ix) = &e.idx {
-                    if ix.0 == rules::threats_arr(p, p.turn()) && ix.1 == rules::threats_arr(p, !p.turn()) { tally(|s| s.reuse_zone += 1); return (e.holds, 0); }
+                    ZONE_N[0].fetch_add(1, Ordering::Relaxed);
+                    ZONE_N[6].fetch_add(e.dep.count() as u64, Ordering::Relaxed);
+                    let why = inputs_differ(&board_of(&e.board), p.board(), e.dep);
+                    if why == 0 && !(ix.0 == rules::threats_arr(p, p.turn()) && ix.1 == rules::threats_arr(p, !p.turn())) { ZONE_N[5].fetch_add(1, Ordering::Relaxed); }
+                    else if why == 0 { tally(|s| s.reuse_zone += 1); return (e.holds, 0); }
+                    else { ZONE_N[why].fetch_add(1, Ordering::Relaxed); }
                 }
             }
             // (OFF by default -- the audit of 2026-10-09: reusing a "fails" whose support no move touched missed two
@@ -169,6 +231,7 @@ fn mprove(p: &Chess, seed: &str, focus: &[Square], goal: i64) -> (bool, u64) {
     let _ = crate::take_dep();
     let (ok, rec, n, spent) = prove_audited(p, seed, focus, goal, hints);
     let (dep, global) = crate::take_dep();
+    { let parts = crate::take_dep_parts(); for i in 0..3 { ZONE_N[8 + i].fetch_add(parts[i] as u64, Ordering::Relaxed); } ZONE_N[11].fetch_add(1, Ordering::Relaxed); }
     let idx = if crate::frame_on() { Some(Box::new((rules::threats_arr(p, p.turn()), rules::threats_arr(p, !p.turn())))) } else { None };
     let mut support = touched(&rec);
     for f in focus { support.add(*f); support |= shakmaty::attacks::king_attacks(*f); }

@@ -558,7 +558,12 @@ thread_local! {
     static FRAME_OFF_TL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };     // the audit's exact re-run
     static DEP: std::cell::Cell<shakmaty::Bitboard> = const { std::cell::Cell::new(shakmaty::Bitboard::EMPTY) };
     static GLOBAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    // the breakdown of DEP: the frames' cores, the exchanges that changed, the leaves' reads (the review)
+    static DEP_PARTS: std::cell::Cell<[shakmaty::Bitboard; 3]> = const { std::cell::Cell::new([shakmaty::Bitboard::EMPTY; 3]) };
 }
+fn dep_part(i: usize, b: shakmaty::Bitboard) { DEP_PARTS.with(|d| { let mut v = d.get(); v[i] |= b; d.set(v); }); dep_add(b); }
+/// The breakdown of the last proof's dependency: [core, changed exchanges, leaf reads] as square counts.
+pub(crate) fn take_dep_parts() -> [u32; 3] { DEP_PARTS.with(|d| { let v = d.replace([shakmaty::Bitboard::EMPTY; 3]); [v[0].count() as u32, v[1].count() as u32, v[2].count() as u32] }) }
 pub(crate) fn frame_on() -> bool { FRAME_PROOFS.load(Ordering::Relaxed) && !FRAME_OFF_TL.with(|c| c.get()) }
 /// Run `f` with frame proofs off on this thread (the audit's exact answer to the same question).
 pub(crate) fn with_frame_off<T>(f: impl FnOnce() -> T) -> T {
@@ -580,12 +585,13 @@ pub(crate) struct Idx { us: rules::ThrArr, them: rules::ThrArr }
 fn idx_root(q: &Chess, side: Color) -> Idx { Idx { us: rules::threats_arr(q, side), them: rules::threats_arr(q, !side) } }
 /// The index after `m` (played from the position before `q2`), the recomputed squares recorded as read.
 fn idx_after(ix: &Idx, q2: &Chess, m: &Move, side: Color) -> Idx {
-    let touched = rules::touched_by(m);
-    let b = q2.board();
-    let mut read = shakmaty::Bitboard::EMPTY;
-    for t in b.occupied() { if rules::exchange_affected(t, touched) { read.add(t); } }
-    dep_add(read | touched);
-    Idx { us: rules::threats_arr_inc(&ix.us, q2, m, side), them: rules::threats_arr_inc(&ix.them, q2, m, !side) }
+    let out = Idx { us: rules::threats_arr_inc(&ix.us, q2, m, side), them: rules::threats_arr_inc(&ix.them, q2, m, !side) };
+    // the squares whose exchange CHANGED are what the leaf's reading of the index depends on (a square recomputed to the
+    // same value influenced nothing); the moves themselves are covered by the attacks onto the frame (plan.rs inputs_differ)
+    let mut changed = shakmaty::Bitboard::EMPTY;
+    for t in 0..64usize { if out.us[t] != ix.us[t] || out.them[t] != ix.them[t] { changed.add(Square::new(t as u32)); } }
+    dep_part(1, changed);
+    out
 }
 fn kings(q: &Chess) -> shakmaty::Bitboard { q.board().kings() }
 /// frame_line(fen, uci, focus, plies, budget) -> (certified value or None, the line the value search decided on: our
@@ -636,7 +642,7 @@ fn promo_gain(q: &Chess, by: Color) -> (i64, Option<Move>) {
     let mut best = (0i64, None);
     for m in q.legal_moves() {
         if m.promotion() != Some(Role::Queen) { continue; }
-        dep_add(rules::touched_by(&m));
+        dep_part(2, shakmaty::Bitboard::from_square(m.to()));                 // (the pawn is a push-source of `to`)
         let q2 = after(q, &m);
         let back = rules::see(q2.board(), m.to(), !by).max(0);
         let g = 8 + m.capture().map(kernel_value).unwrap_or(0) - back;
@@ -663,14 +669,14 @@ fn composed_from_index(q: &Chess, ix: &Idx, side: Color) -> i64 {
     };
     let Some(mv) = mv else { return 0 };
     let t = mv.to();
-    dep_add(rules::touched_by(&mv));
+    dep_part(2, shakmaty::Bitboard::from_square(t));
     let q2 = after(q, &mv);
     // (a move that gives CHECK leaves them no capture elsewhere but an answer to the check -- the tempo)
     let legal_caps: shakmaty::Bitboard = if q2.is_check() { q2.legal_moves().iter().filter(|m| m.is_capture()).map(|m| m.to()).collect() } else { shakmaty::Bitboard::FULL };
     let them2 = rules::threats_arr_inc(&ix.them, &q2, &mv, !side);
-    let b = q2.board();
-    for x in b.occupied() { if rules::exchange_affected(x, rules::touched_by(&mv)) { dep_add(shakmaty::Bitboard::from_square(x)); } }
-    let price_cap = (0..64usize).filter(|x| *x != t as usize && legal_caps.contains(Square::new(*x as u32))).map(|x| them2[x] as i64).max().unwrap_or(0).max(0);
+    let px = (0..64usize).filter(|x| *x != t as usize && legal_caps.contains(Square::new(*x as u32))).max_by_key(|x| (them2[*x], *x));
+    let price_cap = px.map(|x| them2[x] as i64).unwrap_or(0).max(0);
+    if let Some(x) = px { if them2[x] > 0 { dep_part(2, shakmaty::Bitboard::from_square(Square::new(x as u32))); } }
     let price = price_cap.max(promo_gain(&q2, !side).0);
     (best - price).max(0)
 }
@@ -806,7 +812,7 @@ fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha:
         // frame of ours); a move of an attacked piece outside the zone only when the index says it is attacked (a live
         // frame of theirs); the cornering test on frame pieces only. The zone and every move searched are recorded.
         let z = ix.map(|_| frame_zone(q, side, focus) | kings(q));
-        if let Some(z) = z { dep_add(z); }
+        if ix.is_some() { dep_part(0, frame_core(q, focus) | kings(q)); }
         let mut ordered: Vec<(i64, Move)> = q.legal_moves().into_iter().filter(|m2| {
             (m2.is_capture() && match (ix, z) { (Some(ix), Some(z)) => z.contains(m2.to()) || ix.us[m2.to() as usize] > 0, _ => true })
                 || m2.role() == Role::King
@@ -861,7 +867,7 @@ fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha:
         let frame = ix.is_some();
         let zone = if focus.is_empty() || q.is_check() || (EXACT.load(Ordering::Relaxed) && !frame) { None }
                    else { Some(frame_zone(q, side, focus) | if frame { kings(q) } else { shakmaty::Bitboard::EMPTY }) };
-        if frame { if let Some(z) = zone { dep_add(z); } else { dep_add(q.checkers()); } }
+        if frame { if zone.is_some() { dep_part(0, frame_core(q, focus) | kings(q)); } else { dep_part(0, q.checkers() | kings(q)); } }
         let mut worst = 2000;
         let mut passed_once = false;
         let mut ms: Vec<Move> = ms.into_iter().collect();
@@ -898,6 +904,18 @@ fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha:
         if let Some(c) = decided { record(path, c); }
         worst
     }
+}
+
+/// The frame's CORE: each target and the squares it can move to (what a proof about it reads directly; whoever bears on
+/// them is read through the attacks onto them -- plan.rs inputs_differ).
+fn frame_core(q: &Chess, focus: &[Square]) -> shakmaty::Bitboard {
+    let b = q.board();
+    let mut z = shakmaty::Bitboard::EMPTY;
+    for &f in focus {
+        z.add(f);
+        if let Some(p) = b.piece_at(f) { z |= shakmaty::attacks::attacks(f, p, b.occupied()); }
+    }
+    z
 }
 
 /// The frame's squares around the focus pieces: each target, the squares it can move to, our pieces bearing on those,
@@ -1453,6 +1471,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plan::set_zone_reuse, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_frame_audit, m)?)?;
     m.add_function(wrap_pyfunction!(plan::frame_audit_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::zone_stats, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::waiting_frames, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::arming_moves, m)?)?;
     m.add_class::<waiting::FramePool>()?;
