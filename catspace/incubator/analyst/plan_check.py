@@ -25,6 +25,8 @@ def _one(args):
     game, ply, fen = args
     os.environ.setdefault("RAYON_NUM_THREADS", "1")
     import analyst_core
+    if os.environ.get("CATSPACE_SEE") == "0":
+        analyst_core.set_see_threats(False)
     trace, best, proofs, nodes, ms, imm = analyst_core.plan_trace(fen)
     return game, ply, fen, best, proofs, nodes, ms, imm
 

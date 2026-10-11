@@ -29,8 +29,56 @@ fn val(role: Role) -> i64 {
     match role { Role::Pawn => 1, Role::Knight => 3, Role::Bishop => 3, Role::Rook => 5, Role::Queen => 9, Role::King => 0 }
 }
 
+/// The static exchange is the Rust MIRROR of the verified exchange law (exchange_law.py `see_x`, the x-ray tier, checked
+/// against the Lean kernel 2026-10-08): equal to see_x on 3,028 of 3,028 attacked pieces (census sample, 2026-10-10).
+pub static SEE_THREATS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// THE STATIC EXCHANGE on `t` for `us` capturing first (2026-10-10, Kaveh: "if a piece is attacked twice and defended
+/// twice, it's stable ... we remove a defender ... that change should flag it"; game 10000007: two rooks on a pawn the
+/// king alone defends were read as no threat -- the old rule counted a defender, never how many): the captures alternate,
+/// the least valuable attacker first, pieces behind a slider joining as it leaves (the occupancy is updated), either
+/// side may stop; a king may not capture onto a square the other side still attacks. -> what `us` wins (>= 0).
+pub fn see(b: &shakmaty::Board, t: Square, us: Color) -> i64 {
+    let Some(tp) = b.piece_at(t) else { return 0 };
+    let mut occ = b.occupied();
+    let mut gains: Vec<i64> = vec![val(tp.role)];
+    let mut on_square = None::<i64>;
+    let mut side = us;
+    loop {
+        let atk = b.attacks_to(t, side, occ) & occ & b.by_color(side);
+        // the least valuable attacker; a king only if the other side has no attacker left on t
+        let pick = atk.into_iter().filter_map(|s| b.piece_at(s).map(|p| (s, p.role))).min_by_key(|(s, r)| (if *r == Role::King { 100 } else { val(*r) }, *s as u32));
+        let Some((s, r)) = pick else { break };
+        if r == Role::King && (b.attacks_to(t, !side, occ.without(s)) & occ.without(s) & b.by_color(!side)).any() { break; }
+        if let Some(v) = on_square { gains.push(v - gains.last().copied().unwrap_or(0)); }
+        on_square = Some(if r == Role::King { 1000 } else { val(r) });
+        occ = occ.without(s);
+        side = !side;
+    }
+    if gains.len() == 1 && on_square.is_none() { return 0; }       // no attacker of ours
+    // gains[i]: the material balance for the side making the i-th capture, before the reply; negamax back, each side may
+    // stop instead of capturing
+    for i in (1..gains.len()).rev() { gains[i - 1] = -(-gains[i - 1]).max(gains[i]); }
+    gains[0].max(0)
+}
+
 /// {target square: best static gain} for `us` in `pos` (whoever is to move).
 pub fn threats_of(pos: &Chess, us: Color) -> std::collections::HashMap<u8, i64> {
+    if !SEE_THREATS.load(std::sync::atomic::Ordering::Relaxed) { return threats_of_prefilter(pos, us); }
+    // the static exchange on every piece of theirs (the old Datalog prefilter -- undefended, or a cheaper attacker --
+    // counted no attackers and defenders: kept as threats_of_prefilter)
+    let b = pos.board();
+    let mut out = std::collections::HashMap::new();
+    for t in b.by_color(!us) {
+        if b.piece_at(t).map_or(true, |p| p.role == Role::King) { continue; }
+        let g = see(b, t, us);
+        if g > 0 { out.insert(t as u8, g); }
+    }
+    out
+}
+
+/// The old Datalog prefilter (undefended, or a cheaper attacker).
+pub fn threats_of_prefilter(pos: &Chess, us: Color) -> std::collections::HashMap<u8, i64> {
     let b = pos.board();
     let occ = b.occupied();
     let mut prog = ThreatRules::default();

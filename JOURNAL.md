@@ -28748,3 +28748,28 @@ scan used the guard's margin of 2; inside the planner any better net now wins (d
 king moves), structure. OBS: on the 10 equal-net cases Maia-1900 prefers Stockfish's move in 9 (its top move in 8:
 Nxe5 0.70, Nxe7+ 0.82, Bxd3 0.55, Nxf6 0.53, Rxf3+ 0.77) against the planner's 0.001-0.11 -- a Maia tie-break is
 proposed to Kaveh, not built.
+DIG, FIX, AND THE DUPLICATE EXCHANGE (2026-10-10 ~20:30 PDT; Kaveh: "keep digging until you can articulate exactly what
+Stockfish did and why we did not do it ... whenever there is a tie, prioritize piece activity ... build all fixes").
+dig.py (both Stockfish lines with the material along them, and the planner's own net for each move via net_of). What
+the lines said, and the fixes: (1) dxe5 vs Bxe5 -- the recapture alternatives were never generated (the stop rule cut
+the e5 knight's target after dxe5 "won 3" against the queen): SIBLING captures on the same square join the ranking;
+the line itself -- dxe5 lets Black trade queens and the f6 knight escape to e4 WITH a threat on c3 (Nxc3 three moves
+later): not yet in our reasoning. (2) "Na1 stops Rxb2", then Rexf2 -- the static rule saw no threat on f2 (two rooks
+against a king-defended pawn): the rule counted A defender, never how many. A static exchange written in Rust --
+which DUPLICATED the verified exchange law (exchange_law.py see_x, the x-ray tier, checked against the Lean kernel
+2026-10-08): it matches see_x on 3,028 of 3,028 attacked pieces, kept as its Rust mirror (rules.rs see, SEE_THREATS).
+Kaveh's rule from it: every frame/lemma proved in Lean and looked up there before anything is built. (3) Bxb8 "+1" --
+their recapture certified at 2 in its frame: their gain after our move now has the exchange law's floor on every
+piece of ours. (4) Ties: PIECE ACTIVITY (the moved piece's safe squares plus twice the pieces it attacks; a pawn move
+0; material taken now first) -- on the 14 tie cases it prefers Stockfish's move 11 times (a threats-minus-threats count:
+2 of 10; Maia: 9 of 10). (5) Rf5 against the e5 queen "fails" at 7 and 5 (wins 4) and lost the tie to Qxf6+: every
+failed seed asks its certified value. Then a REGRESSION (frames' immediate tactics 676 -> 630): not the exchange law
+(the old rule gives 634) but reading every capture by the board alone -- 75 real wins lost, e.g. Nxe5 uncovering Be2xg4
+(the recapture on e5 loses the bishop; the one-move board count cannot see it). Fixed by telling the two proofs apart:
+a FULL proof that holds is a lower bound (net = the larger of it and the board), the FRAME fallback's value is blind
+outside its frame (net = the smaller); and the stop rule's bound now includes a promotion capture (hxg8=Q+ was cut by
+"r on g8 is worth 5"). win_audit.py judged the swap: the lost "wins" were mostly 1-pawn trades the old accounting misread
+(median 14 cp from Stockfish's best). OBS (one run each): census frames' immediate tactics 671/681, Stockfish only-move
+tactics with an immediate win 281 (77%; this morning 241), with Stockfish's move 260; endgame puzzles 41% (this morning
+30%; Maia-1900 53%); decision review: decisions losing 150+ cp 9.1% (15.3% this afternoon); the three walked games 7 / 3
+/ 1 disagreements (18 before the round), 1,457 / 407 / 151 cp; census 190 s, median 16.5 ms a position.
