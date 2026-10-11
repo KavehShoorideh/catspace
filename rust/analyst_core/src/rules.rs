@@ -34,6 +34,10 @@ fn val(role: Role) -> i64 {
 /// exchange_law.py `see_x`: equal to see_x on 3,028 of 3,028 attacked pieces (census sample, 2026-10-10). See
 /// docs/LEAN_INDEX.md before writing another rule (Kaveh: Lean is the source of truth).
 pub static SEE_THREATS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// (debug: the incremental exchange recomputes everything -- for equivalence checks)
+pub static INC_OFF: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[pyo3::pyfunction]
+pub fn set_inc_off(flag: bool) { INC_OFF.store(flag, std::sync::atomic::Ordering::Relaxed); }
 
 /// THE STATIC EXCHANGE on `t` for `us` capturing first (2026-10-10, Kaveh: "if a piece is attacked twice and defended
 /// twice, it's stable ... we remove a defender ... that change should flag it"; game 10000007: two rooks on a pawn the
@@ -77,6 +81,89 @@ pub fn threats_of(pos: &Chess, us: Color) -> std::collections::HashMap<u8, i64> 
         if g > 0 { out.insert(t as u8, g); }
     }
     out
+}
+
+/// THE SQUARES A MOVE TOUCHES: its from and to, the pawn taken en passant, the castling rook's two squares.
+pub fn touched_by(m: &shakmaty::Move) -> shakmaty::Bitboard {
+    use shakmaty::{Bitboard, Move};
+    match m {
+        Move::Normal { from, to, .. } => Bitboard::from_square(*from).with(*to),
+        Move::EnPassant { from, to } => Bitboard::from_square(*from).with(*to).with(Square::from_coords(to.file(), from.rank())),
+        Move::Castle { king, rook } => {
+            let (kt, rt) = if rook.file() > king.file() { (shakmaty::File::G, shakmaty::File::F) } else { (shakmaty::File::C, shakmaty::File::D) };
+            Bitboard::from_square(*king).with(*rook).with(Square::from_coords(kt, king.rank())).with(Square::from_coords(rt, king.rank()))
+        }
+        Move::Put { to, .. } => Bitboard::from_square(*to),
+    }
+}
+
+/// CAN A MOVE CHANGE THE EXCHANGE ON `t`? (the path lemma both ways -- Lean Ideas.PathLemma.path_lemma,
+/// Ideas.PathLemma.lost_path_lemma, and Ideas.PathLemma.attack_unchanged: no touched square at s or between s and t
+/// leaves "s attacks t" as it was -- a new attack on t
+/// comes from a piece that arrived on a touched square or through a touched square vacated on its line; a lost one from
+/// a piece that left a touched square or a touched square blocking its line): only if a touched square lies on a line
+/// through t (a queen's rays on an empty board -- every slider, blocker and x-ray behind them), a knight's move from it,
+/// next to it (king, pawn), or is t itself. A superset, so a reuse is never stale.
+pub fn exchange_affected(t: Square, touched: shakmaty::Bitboard) -> bool {
+    use shakmaty::{attacks, Bitboard};
+    let zone = attacks::queen_attacks(t, Bitboard::EMPTY) | attacks::knight_attacks(t) | attacks::king_attacks(t) | Bitboard::from_square(t);
+    (zone & touched).any()
+}
+
+/// threats_of, INCREMENTALLY from the parent's map: the static exchange recomputed only on the pieces the move can affect
+/// (exchange_affected), the parent's value kept on the others. Exact by the path lemma (audited against threats_of).
+pub fn threats_of_inc(parent: &std::collections::HashMap<u8, i64>, child: &Chess, m: &shakmaty::Move, us: Color) -> std::collections::HashMap<u8, i64> {
+    if !SEE_THREATS.load(std::sync::atomic::Ordering::Relaxed) || INC_OFF.load(std::sync::atomic::Ordering::Relaxed) { return threats_of(child, us); }
+    let b = child.board();
+    let touched = touched_by(m);
+    let mut out = std::collections::HashMap::new();
+    for t in b.by_color(!us) {
+        if b.piece_at(t).map_or(true, |p| p.role == Role::King) { continue; }
+        let g = if exchange_affected(t, touched) { see(b, t, us) } else { parent.get(&(t as u8)).copied().unwrap_or(0) };
+        if g > 0 { out.insert(t as u8, g); }
+    }
+    out
+}
+
+/// A threat map as a fixed array (square -> static gain, 0 none): no allocation, no hashing -- the forcing search's node
+/// copy (2026-10-11, the profile: allocation and hashing were a fifth of the search's time).
+pub type ThrArr = [i16; 64];
+
+pub fn threats_arr(pos: &Chess, us: Color) -> ThrArr {
+    let mut a = [0i16; 64];
+    for (x, g) in threats_of(pos, us) { a[x as usize] = g as i16; }
+    a
+}
+
+/// threats_of_inc on arrays (the same rule: only the pieces the move can affect are recomputed).
+pub fn threats_arr_inc(parent: &ThrArr, child: &Chess, m: &shakmaty::Move, us: Color) -> ThrArr {
+    if !SEE_THREATS.load(std::sync::atomic::Ordering::Relaxed) || INC_OFF.load(std::sync::atomic::Ordering::Relaxed) { return threats_arr(child, us); }
+    let b = child.board();
+    let touched = touched_by(m);
+    let mut out = [0i16; 64];
+    for t in b.by_color(!us) {
+        if b.piece_at(t).map_or(true, |p| p.role == Role::King) { continue; }
+        let g = if exchange_affected(t, touched) { see(b, t, us) as i16 } else { parent[t as usize] };
+        if g > 0 { out[t as usize] = g; }
+    }
+    out
+}
+
+/// threats_inc_audit(fen) -> (moves checked, threat maps equal to a full recomputation) for both sides' maps after every
+/// legal move -- the exactness audit of the incremental exchange.
+#[pyo3::pyfunction]
+pub fn threats_inc_audit(fen: String) -> (u32, u32) {
+    let Some(p) = crate::parse(&fen) else { return (0, 0) };
+    let (mut n, mut eq) = (0u32, 0u32);
+    for us in [Color::White, Color::Black] {
+        let parent = threats_of(&p, us);
+        for m in p.legal_moves() {
+            let mut q = p.clone(); q.play_unchecked(&m);
+            n += 1;
+            if threats_of_inc(&parent, &q, &m, us) == threats_of(&q, us) { eq += 1; }
+        }
+    }
+    (n, eq)
 }
 
 /// The old Datalog prefilter (undefended, or a cheaper attacker).

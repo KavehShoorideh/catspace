@@ -1274,6 +1274,9 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(threat::threat_check, m)?)?;
     m.add_function(wrap_pyfunction!(threat::checks_audit, m)?)?;
     m.add_function(wrap_pyfunction!(threat::forcing_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(rules::threats_inc_audit, m)?)?;
+    m.add_function(wrap_pyfunction!(rules::set_inc_off, m)?)?;
+    m.add_function(wrap_pyfunction!(threat::forcing_moves_audit, m)?)?;
     m.add_class::<plan::PlanState>()?;
     m.add_function(wrap_pyfunction!(plan::set_reuse_fails, m)?)?;
     m.add_function(wrap_pyfunction!(plan::line_pair_check, m)?)?;

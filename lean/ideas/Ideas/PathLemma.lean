@@ -124,4 +124,45 @@ theorem no_new_attack (p : Position) (m : Move) (c : Color) (t : Square)
       · rw [harrive s hs] at h'; exact absurd h' (by decide)
       · rw [hline s u hb hu hne h0] at h'; exact absurd h' (by decide)
 
+/-- THE LOST ATTACK, for any two boards (the path lemma's other direction; 2026-10-11, the incremental static exchange
+rests on both): if `s` attacks `t` on the first board and not on the second, the piece on `s` changed, or a square
+strictly between them went from empty to occupied (filling a square blocks). The new-attack lemma with the boards
+swapped. -/
+theorem lost_attack_local (p p' : Position) (c : Color) (s t : Square)
+    (h : pieceAttacksB p c s t = true) (h' : pieceAttacksB p' c s t = false) :
+    p.board s ≠ p'.board s ∨ ∃ u, between s u t ∧ p'.board u ≠ none ∧ p.board u = none :=
+  new_attack_local p' p c s t h h'
+
+/-- THE LOST-ATTACK PATH LEMMA: after a move, an attack of `s` on `t` is lost only if `s` is a touched square (the piece
+left or was taken), or a touched square strictly between `s` and `t` became occupied (a piece arrived to block). -/
+theorem lost_path_lemma (p : Position) (m : Move) (c : Color) (s t : Square)
+    (h : pieceAttacksB p c s t = true) (h' : pieceAttacksB (applyMove p m) c s t = false) :
+    s ∈ touched p m ∨ ∃ u, between s u t ∧ u ∈ touched p m ∧ (applyMove p m).board u ≠ none ∧ p.board u = none := by
+  rcases lost_attack_local p (applyMove p m) c s t h h' with hs | ⟨u, hb, hne, h0⟩
+  · left
+    by_contra hn
+    exact hs (by rw [applyMove_board]; exact (applyBoard_off p m s hn).symm)
+  · right
+    refine ⟨u, hb, ?_, hne, h0⟩
+    by_contra hn
+    have hoff := applyBoard_off p m u hn
+    rw [applyMove_board, hoff] at hne
+    exact hne h0
+
+/-- ATTACKS ARE LOCAL TO THE TOUCHED SQUARES: if `s` is not touched and no touched square lies strictly between `s` and
+`t`, then whether `s` attacks `t` is the same before and after the move. (What lets the static exchange on `t` be kept
+when no touched square lies on a line through `t`, a knight's move from it or next to it: rules.rs exchange_affected.) -/
+theorem attack_unchanged (p : Position) (m : Move) (c : Color) (s t : Square)
+    (hs : s ∉ touched p m) (hb : ∀ u, between s u t → u ∉ touched p m) :
+    pieceAttacksB (applyMove p m) c s t = pieceAttacksB p c s t := by
+  cases h : pieceAttacksB p c s t <;> cases h' : pieceAttacksB (applyMove p m) c s t
+  · rfl
+  · rcases path_lemma p m c s t h' h with ⟨hs', _⟩ | ⟨u, hbu, hu, _, _⟩
+    · exact absurd hs' hs
+    · exact absurd hu (hb u hbu)
+  · rcases lost_path_lemma p m c s t h h' with hs' | ⟨u, hbu, hu, _, _⟩
+    · exact absurd hs' hs
+    · exact absurd hu (hb u hbu)
+  · rfl
+
 end Ideas.PathLemma

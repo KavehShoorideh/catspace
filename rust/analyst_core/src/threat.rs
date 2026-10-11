@@ -114,7 +114,10 @@ pub fn threats(pos: &Chess, by: Color) -> Vec<Threat> {
 /// Used where a claim of "nothing left" needs it (the single-threat lemma's escapes); the cheap static set elsewhere.
 pub const GAIN_CHECKS: u32 = 2;
 
-fn material_edge(p: &Chess, by: Color) -> i64 { kernel_material(p, by) - kernel_material(p, !by) }
+/// (kernel_material is already ours minus theirs -- 2026-10-11, the bug search: this subtracted it twice, doubling every
+/// material edge: a pawn won by checks counted 2, the forcing search's "standing 1 better" mixed doubled material with an
+/// undoubled capture)
+fn material_edge(p: &Chess, by: Color) -> i64 { kernel_material(p, by) }
 
 fn best_capture(p: &Chess, by: Color) -> i64 { rules::threats_of(p, by).values().copied().max().unwrap_or(0).max(0) }
 
@@ -198,7 +201,7 @@ pub fn forcing_threats(pos: &Chess, by: Color) -> Vec<Threat> {
 /// hitting it is UNKNOWN, never "nothing". (It replaces "material by checks within 2", which read its limit as "no
 /// threat" and refused Be1 -- two threats: the c3 knight and Ba5+'s chain of rook checks, through a quiet c6.)
 /// -> Some(true) a forced gain, Some(false) certainly none, None unknown.
-pub const FORCING_BUDGET: u64 = 2_000;
+pub const FORCING_BUDGET: u64 = 200;
 
 
 /// THE LINE PRIOR (Kaveh 2026-10-10: "a prior to decide how far to follow each line ... unity for now; when it is
@@ -215,22 +218,91 @@ pub fn forcing_stats(budget: Option<u64>) -> Vec<u64> {
     crate::pns::STATS.iter().map(|a| a.swap(0, Ordering::Relaxed)).collect()
 }
 
-/// The forcing moves of `by` (to move in q): checks, captures, promotions, and quiet moves that make a new threat worth
-/// 3+ (arriving on a path onto a piece of theirs, or uncovering one).
-fn forcing_moves(q: &Chess, by: Color) -> Vec<(Move, Chess)> {
-    let now = rules::threats_of(q, by);
+/// A node of the forcing search: the board and `by`'s threat map on it, carried down the tree and updated
+/// INCREMENTALLY (rules::threats_of_inc -- only the pieces a move can affect are recomputed; exact by the path lemma,
+/// audited equal on 175,502 move-side maps, 2026-10-11).
+#[derive(Clone)]
+pub struct FState { pos: Chess, thr: rules::ThrArr, edge: i64 }
+
+/// (the material edge carried too: it changes only on a capture or a promotion)
+fn child_state(s: &FState, m: &Move, by: Color) -> FState {
+    let q = after(&s.pos, m);
+    let thr = rules::threats_arr_inc(&s.thr, &q, m, by);
+    let mover_is_by = s.pos.turn() == by;
+    let mut d = m.capture().map_or(0, kernel_value) + m.promotion().map_or(0, |r| kernel_value(r) - 1);
+    if !mover_is_by { d = -d; }
+    FState { pos: q, thr, edge: s.edge + d }
+}
+
+/// The squares of `by`'s pieces that stand ALONE between one of `by`'s sliders and a square of `targets` (moving one
+/// uncovers the slider: a discovery) -- bitboards, no path lists.
+fn single_blockers(q: &Chess, by: Color, targets: Bitboard) -> Bitboard {
+    let b = q.board();
+    let occ = b.occupied();
+    let mut out = Bitboard::EMPTY;
+    for s in b.by_color(by) & (b.by_role(Role::Bishop) | b.by_role(Role::Rook) | b.by_role(Role::Queen)) {
+        let Some(p) = b.piece_at(s) else { continue };
+        for t in targets {
+            if !shakmaty::attacks::attacks(s, p, Bitboard::EMPTY).contains(t) { continue; }
+            let btw = shakmaty::attacks::between(s, t) & occ;
+            if btw.count() == 1 && (btw & b.by_color(by)).any() { out |= btw; }
+        }
+    }
+    out
+}
+
+/// The forcing moves of `by` (to move in s): checks, captures, promotions, and quiet moves that make a new threat worth
+/// 3+ -- the moved piece attacking a piece of theirs worth 3+ from its new square, or leaving a square where it alone
+/// blocked our slider from one (a discovery) -- each with its child node. Bitboard tests per move (2026-10-11, the
+/// profile: attack-path lists and move strings were the forcing search's largest costs).
+fn forcing_moves(s: &FState, by: Color) -> Vec<(Move, FState)> {
+    let q = &s.pos;
+    let b = q.board();
+    let occ = b.occupied();
+    let targets: Bitboard = b.by_color(!by) & !b.by_role(Role::Pawn) & !b.by_role(Role::King);
+    let king = b.king_of(!by);
+    let disc_t = single_blockers(q, by, targets);
+    let disc_k = king.map_or(Bitboard::EMPTY, |k| single_blockers(q, by, Bitboard::from_square(k)));
+    let mut out = Vec::new();
+    for m in q.legal_moves() {
+        let special = matches!(m, Move::Castle { .. } | Move::EnPassant { .. });
+        let forcing_now = m.is_capture() || m.is_promotion();
+        let from = m.from();
+        let to = m.to();
+        let role = m.promotion().unwrap_or(m.role());
+        let reach = shakmaty::attacks::attacks(to, shakmaty::Piece { color: by, role }, occ.without(from.unwrap_or(to)).with(to));
+        let checks = special || king.map_or(false, |k| reach.contains(k)) || from.map_or(false, |f| disc_k.contains(f));
+        // (castling and en passant move or remove a second piece: the child's threat map decides -- the audit's one miss
+        // was O-O-O, the rook arriving on d1 against the d4 bishop)
+        let quiet_cand = special || (reach & targets).any() || from.map_or(false, |f| disc_t.contains(f));
+        if !forcing_now && !quiet_cand && !checks { continue; }
+        let c = child_state(s, &m, by);
+        if forcing_now || c.pos.is_check() || (quiet_cand && (0..64).any(|x| c.thr[x] >= 3 && c.thr[x] > s.thr[x])) { out.push((m, c)); }
+    }
+    out
+}
+
+/// The reference generator (attack-path lists), kept for the equivalence audit.
+fn forcing_moves_ref(s: &FState, by: Color) -> Vec<(Move, FState)> {
+    let q = &s.pos;
     let targets: Bitboard = q.board().by_color(!by) & !q.board().by_role(Role::Pawn) & !q.board().by_role(Role::King);
     let paths = crate::paths::attack_paths(q, by, targets);
     let arriving: std::collections::HashSet<String> = paths.iter().filter(|a| a.kind == "direct").filter_map(|a| a.mv.clone()).collect();
     let disc_from: Vec<Square> = paths.iter().filter(|a| a.kind == "discovery").filter_map(|a| a.via).collect();
     let mut out = Vec::new();
     for m in q.legal_moves() {
-        let r = after(q, &m);
-        if r.is_check() || m.is_capture() || m.is_promotion() { out.push((m, r)); continue; }
+        let forcing_now = m.is_capture() || m.is_promotion();
         let u = m.to_uci(CastlingMode::Standard).to_string();
         let disc = m.from().map_or(false, |f| disc_from.contains(&f));
-        if !arriving.contains(&u) && !disc { continue; }
-        if rules::threats_of(&r, by).iter().any(|(x, g)| *g >= 3 && now.get(x).map_or(true, |g0| g > g0)) { out.push((m, r)); }
+        let quiet_cand = arriving.contains(&u) || disc;
+        if !forcing_now && !quiet_cand {
+            // a check is forcing too: only the board after it can tell
+            let r = after(q, &m);
+            if r.is_check() { let c = child_state(s, &m, by); out.push((m, c)); }
+            continue;
+        }
+        let c = child_state(s, &m, by);
+        if forcing_now || c.pos.is_check() || (0..64).any(|x| c.thr[x] >= 3 && c.thr[x] > s.thr[x]) { out.push((m, c)); }
     }
     out
 }
@@ -244,27 +316,40 @@ fn forcing_moves(q: &Chess, by: Color) -> Vec<(Move, Chess)> {
 struct Forcing { by: Color, base: i64 }
 
 impl crate::pns::Problem for Forcing {
-    type State = Chess;
-    fn judge(&self, s: &Chess, or: bool, root: bool) -> Option<bool> {
+    type State = FState;
+    fn judge(&self, s: &FState, or: bool, root: bool) -> Option<bool> {
         if or {
-            if !root && material_edge(s, self.by) - self.base + best_capture(s, self.by) >= 1 { return Some(true); }
+            let best = s.thr.iter().copied().max().unwrap_or(0).max(0) as i64;
+            if !root && s.edge - self.base + best >= 1 { return Some(true); }
             None
-        } else if s.legal_moves().is_empty() { Some(s.is_check()) } else { None }
+        } else if s.pos.legal_moves().is_empty() { Some(s.pos.is_check()) } else { None }
     }
-    fn expand(&self, s: &Chess, or: bool) -> Vec<(Chess, f64)> {
-        if or { forcing_moves(s, self.by).into_iter().map(|(m, r)| { let w = line_prior(s, &m); (r, w) }).collect() }
-        else { s.legal_moves().iter().map(|m| (after(s, m), 1.0)).collect() }
+    fn expand(&self, s: &FState, or: bool) -> Vec<(FState, f64)> {
+        if or { forcing_moves(s, self.by).into_iter().map(|(m, c)| { let w = line_prior(&s.pos, &m); (c, w) }).collect() }
+        else { s.pos.legal_moves().iter().map(|m| (child_state(s, m, self.by), 1.0)).collect() }
     }
-    fn and_size(&self, s: &Chess) -> f64 { s.legal_moves().len().max(1) as f64 }
-    fn key(&self, s: &Chess) -> u64 {
+    fn and_size(&self, s: &FState) -> f64 { s.pos.legal_moves().len().max(1) as f64 }
+    fn key(&self, s: &FState) -> u64 {
         use shakmaty::zobrist::{Zobrist64, ZobristHash};
-        s.zobrist_hash::<Zobrist64>(shakmaty::EnPassantMode::Legal).0
+        s.pos.zobrist_hash::<Zobrist64>(shakmaty::EnPassantMode::Legal).0
     }
+}
+
+/// forcing_moves_audit(fen) -> (positions' moves in the bitboard generator, in the reference, in both) for the side to move.
+#[pyfunction]
+pub fn forcing_moves_audit(fen: String) -> (u32, u32, u32) {
+    let Some(p) = parse(&fen) else { return (0, 0, 0) };
+    let by = p.turn();
+    let s = FState { pos: p.clone(), thr: rules::threats_arr(&p, by), edge: material_edge(&p, by) };
+    let a: std::collections::HashSet<String> = forcing_moves(&s, by).iter().map(|(m, _)| m.to_uci(CastlingMode::Standard).to_string()).collect();
+    let r: std::collections::HashSet<String> = forcing_moves_ref(&s, by).iter().map(|(m, _)| m.to_uci(CastlingMode::Standard).to_string()).collect();
+    (a.len() as u32, r.len() as u32, a.intersection(&r).count() as u32)
 }
 
 pub fn forcing_gain(p: &Chess, budget: u64) -> Option<bool> {
     let by = p.turn();
-    crate::pns::search(&Forcing { by, base: material_edge(p, by) }, p.clone(), budget)
+    let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), edge: material_edge(p, by) };
+    crate::pns::search(&Forcing { by, base: material_edge(p, by) }, root, budget)
 }
 
 /// IS THERE ANY NEW THREAT of `by` (static or forcing) against `before`? -- the cheapest first, stopping at the first

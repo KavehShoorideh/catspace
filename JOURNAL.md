@@ -28815,3 +28815,22 @@ every node, keyed by the path) and plays it out -- their reply read off the boar
 mate_playout_check.py: 6 census positions with a king-target mate proof, played against Stockfish's defence (depth 14):
 6 mates delivered, 11 of 22 moves from the stored solution with no search (the quiet ones the king target cannot find:
 Rf2, Qg1, Ra3). Stockfish (depth 24) confirmed the four mate claims checked (mate in 2-4).
+INCREMENTAL NODES, A BUG, AND THE LOST-ATTACK THEOREM (2026-10-11 ~01:30 PDT; Kaveh: "make everything incremental";
+autonomous: bug-search every step, keep it general). (1) The static exchange incrementally (rules.rs threats_of_inc /
+threats_arr_inc): recomputed only on pieces a move can affect -- a touched square on a line through the piece, a
+knight's move from it, next to it, or the piece itself (exchange_affected). OBS exact: 175,502 of 175,502 move-side
+maps equal to a full recount (3,000 census positions, every legal move, both sides); inside the search, incremental on
+and off gave identical decisions and forcing statistics. (2) No speed-up from it alone (65.7 s vs 64.3 s on 200
+positions): the profile (macOS sample) put attack-path lists and move strings first; the forcing-move generator now
+uses bitboard tests (the moved piece attacking a 3+ piece from its new square, or leaving a single-blocker square of
+our slider; castling and en passant decided by the child's map -- the equivalence audit's one miss was O-O-O, the rook
+arriving on d1): 24,720 of 24,720 moves equal to the reference generator on 6,000 positions; 65.7 s -> 44.9 s. (3)
+Nodes carry fixed-array threat maps and the material edge: 44.9 s -> 38.5 s -- and the bug search found the outcomes
+moved: material_edge (threat.rs, written 2026-10-10) subtracted kernel_material twice -- it is already ours minus
+theirs -- so every material edge was DOUBLED (a pawn won by checks counted 2; the forcing search's standing test mixed
+doubled material with an undoubled capture). Fixed. (4) Lean: Ideas.PathLemma.lost_attack_local, lost_path_lemma,
+attack_unchanged -- the path lemma's other direction and "attacks are local to the touched squares", what the
+incremental exchange rests on; built (lake build Ideas.PathLemma, 4.0 s); the Lean index now 146 theorems. OBS (one
+run each): with a 2,000-expansion net the census took 815 s for the same tactics as a 200 net (406 s): Stockfish
+only-move tactics 284, frames 672/681; decision review 10.1% losing 150+; endgame puzzles 41%; walked games 7 / 3 / 1;
+tests 49 passed. The net stays at 200 (a hit proves, never refuses).
