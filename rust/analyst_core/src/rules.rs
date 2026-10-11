@@ -105,7 +105,9 @@ pub fn touched_by(m: &shakmaty::Move) -> shakmaty::Bitboard {
 /// through t (a queen's rays on an empty board -- every slider, blocker and x-ray behind them), a knight's move from it,
 /// next to it (king, pawn), or is t itself. A superset, so a reuse is never stale. This "bears on t" relation is Lean
 /// Ideas.FrameLemma.reachB, and Ideas.FrameLemma.frame_unchanged proves the claim for a whole set of squares at once:
-/// no touched square bearing on any of them leaves their pieces and every attack onto them unchanged.
+/// no touched square bearing on any of them leaves their pieces and every attack onto them unchanged; and
+/// Ideas.ExchangeLocal.seeXB_local proves the exchange value itself is a function of the bearing squares -- so this
+/// incremental recomputation is exact by theorem (2026-10-11), not only by the 175,502-move audit.
 pub fn exchange_affected(t: Square, touched: shakmaty::Bitboard) -> bool {
     use shakmaty::{attacks, Bitboard};
     let zone = attacks::queen_attacks(t, Bitboard::EMPTY) | attacks::knight_attacks(t) | attacks::king_attacks(t) | Bitboard::from_square(t);

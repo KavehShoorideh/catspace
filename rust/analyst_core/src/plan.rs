@@ -40,7 +40,7 @@ struct Entry { board: Vec<u8>, extra: String, holds: bool, hints: std::sync::Arc
 #[derive(Default, Clone, Copy)]
 pub struct Stats { pub fresh: u32, pub replay: u32, pub reuse_exact: u32, pub reuse_fail: u32, pub reprove: u32,
                    pub nodes: u64, pub lone: u32, pub frozen: u32, pub escape_skip: u32, pub cut_by_history: u32,
-                   pub reuse_zone: u32 }
+                   pub reuse_zone: u32, pub reuse_cert: u32, pub cert_broke: u32 }
 
 #[derive(Default)]
 pub struct Memo { entries: HashMap<String, Vec<Entry>>, pub history: HashMap<String, f32>, pub stats: Stats,
@@ -59,6 +59,12 @@ pub static REUSE_FAILS: std::sync::atomic::AtomicBool = std::sync::atomic::Atomi
 // no square that bears on what it read changed (Lean Ideas.FrameLemma.frame_unchanged) and the index it read at the
 // root is the same; OFF until the equality audit (plan_memo_check) passes.
 pub static ZONE_REUSE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+// THE CERTIFICATE REUSE (Kaveh 2026-10-11, the refutation certificate; Lean Ideas.Refutation.refuted_sound): a question
+// that FAILED before is re-checked with their stored replies fixed -- our moves searched, theirs not -- and reused when it
+// still fails; the search runs only when the certificate breaks. OFF until the equality audit passes.
+pub static CERT_REUSE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[pyfunction]
+pub fn set_cert_reuse(flag: bool) -> PyResult<()> { CERT_REUSE.store(flag, Ordering::Relaxed); Ok(()) }
 #[pyfunction]
 pub fn set_zone_reuse(flag: bool) -> PyResult<()> { ZONE_REUSE.store(flag, Ordering::Relaxed); Ok(()) }
 // THE FRAME AUDIT: every frame proof answered again by the exact search; [agree, false claims (frame holds, exact
@@ -222,6 +228,12 @@ fn mprove(p: &Chess, seed: &str, focus: &[Square], goal: i64) -> (bool, u64) {
             // immediate mates and misread their threat in several positions on 60 games: a refutation depends on more
             // than the squares it moved through, e.g. a piece guarding the landing square from afar)
             if REUSE_FAILS.load(Ordering::Relaxed) && !e.holds && (diff & e.support).is_empty() { tally(|s| s.reuse_fail += 1); return (false, 0); }
+            if CERT_REUSE.load(Ordering::Relaxed) && !e.holds && !e.spent {
+                let (ok, _, n, spent) = crate::with_cert(|| prove_n(p, seed, focus, goal, Some(e.hints.clone())));
+                MEMO.with(|m| if let Some(m) = m.borrow_mut().as_mut() { m.stats.nodes += n; });
+                if !ok && !spent { tally(|s| s.reuse_cert += 1); return (false, n); }
+                tally(|s| s.cert_broke += 1);
+            }
             if e.holds { tally(|s| s.replay += 1); } else { tally(|s| s.reprove += 1); }
         } else {
             tally(|s| s.reprove += 1);
@@ -1591,7 +1603,7 @@ pub fn plan_trace(fen: String) -> PyResult<(Vec<String>, Option<(String, String,
 #[pyclass(unsendable)]
 pub struct PlanState { memo: Option<Memo> }
 
-type StatRow = (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32);
+type StatRow = (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32, u32, u32);
 
 #[pymethods]
 impl PlanState {
@@ -1599,7 +1611,7 @@ impl PlanState {
     fn new() -> Self { PlanState { memo: Some(Memo::default()) } }
 
     fn observe(&mut self, fen: String) -> PyResult<(Vec<String>, Option<(String, String, i64, String)>, u32, u64, f64, Option<(String, String, i64, String)>, StatRow)> {
-        let Some(pos) = parse(&fen) else { return Ok((vec![], None, 0, 0, 0.0, None, (0, 0, 0, 0, 0, 0, 0, 0, 0, 0))) };
+        let Some(pos) = parse(&fen) else { return Ok((vec![], None, 0, 0, 0.0, None, (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))) };
         let mut memo = self.memo.take().unwrap_or_default();
         memo.stats = Stats::default();
         for v in memo.history.values_mut() { *v *= 0.8; }                    // recent wins weigh more
@@ -1657,7 +1669,7 @@ impl PlanState {
         let s = memo.stats;
         self.memo = Some(memo);
         Ok((p.trace, p.best, p.proofs, s.nodes, ms, p.immediate,
-            (s.fresh, s.replay, s.reuse_exact, s.reuse_fail, s.reprove, s.lone, s.frozen, s.escape_skip, s.cut_by_history, s.reuse_zone)))
+            (s.fresh, s.replay, s.reuse_exact, s.reuse_fail, s.reprove, s.lone, s.frozen, s.escape_skip, s.cut_by_history, s.reuse_zone, s.reuse_cert, s.cert_broke)))
     }
 
     /// Entries in the memory.

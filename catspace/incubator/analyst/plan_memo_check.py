@@ -24,6 +24,7 @@ def _game(args):
     analyst_core.set_frame_proofs(os.environ.get("CATSPACE_FRAME") == "1")
     analyst_core.set_zone_reuse(os.environ.get("CATSPACE_ZONE") == "1")
     analyst_core.set_lemma(os.environ.get("CATSPACE_LEMMA") == "1")
+    analyst_core.set_cert_reuse(os.environ.get("CATSPACE_CERT") == "1")
     analyst_core.set_lemma_audit(os.environ.get("CATSPACE_LEMMA") == "1")
     st = analyst_core.PlanState()
     rows = []
@@ -45,11 +46,11 @@ def run(tag: str, games: int, workers: int) -> None:
         res = list(p.imap_unordered(_game, _games(tag, games), chunksize=1))
     rows = [r for _, rs in res for r in rs]
     n = len(rows)
-    s = [sum(r["stats"][i] for r in rows) for i in range(10)]
+    s = [sum(r["stats"][i] for r in rows) for i in range(12)]
     new = sorted(r["stats"][0] + r["stats"][4] for r in rows)
     print(f"OBS {len(res)} games, {n} positions ({time.time() - t0:.0f} s on {workers} processes)")
     print(f"OBS   with the memory: NEW searches a move median {new[n // 2]}, mean {sum(new) / n:.1f}, 90th percentile {new[int(0.9 * n)]}; "
-          f"replays {s[1] / n:.1f}, exact reuses {s[2] / n:.1f}, ZONE reuses {s[9] / n:.1f}, reused failures {s[3] / n:.1f} a move; nodes {sum(r['nodes'] for r in rows) / n:,.0f}; "
+          f"replays {s[1] / n:.1f}, exact reuses {s[2] / n:.1f}, ZONE reuses {s[9] / n:.1f}, CERTIFICATE reuses {s[10] / n:.1f} (broke {s[11] / n:.1f}), reused failures {s[3] / n:.1f} a move; nodes {sum(r['nodes'] for r in rows) / n:,.0f}; "
           f"ms {sum(r['ms'] for r in rows) / n:.1f}")
     p0 = sorted(r["proofs0"] for r in rows)
     print(f"OBS   without:         searches a move median {p0[n // 2]}, mean {sum(p0) / n:.1f}, 90th percentile {p0[int(0.9 * n)]}; "
@@ -98,11 +99,13 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     ap.add_argument("--frame", action="store_true", help="frame proofs in both runs")
     ap.add_argument("--zone", action="store_true", help="zone reuse in the memory run (needs --frame or --lemma)")
+    ap.add_argument("--cert", action="store_true", help="failed questions re-checked by their stored refutation before any search")
     ap.add_argument("--lemma", action="store_true", help="the one-move threat lemma decides 2-ply questions first (audited against the search)")
     a = ap.parse_args(argv)
     os.environ["CATSPACE_FRAME"] = "1" if a.frame else "0"
     os.environ["CATSPACE_ZONE"] = "1" if a.zone else "0"
     os.environ["CATSPACE_LEMMA"] = "1" if a.lemma else "0"
+    os.environ["CATSPACE_CERT"] = "1" if a.cert else "0"
     run(a.tag, a.games, a.workers)
 
 

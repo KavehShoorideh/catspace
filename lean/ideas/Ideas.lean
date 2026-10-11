@@ -12,5 +12,7 @@ import Ideas.ExchangeLaw
 import Ideas.PathLemma
 import Ideas.FrameLemma
 import Ideas.ThreatLemma
+import Ideas.ExchangeLocal
+import Ideas.Refutation
 import Ideas.GeoLemmas
 import Ideas.StalemateLemmas

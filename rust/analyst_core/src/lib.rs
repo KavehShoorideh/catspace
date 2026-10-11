@@ -564,6 +564,15 @@ thread_local! {
     // the squares whose one-step movers a lemma verdict read (its arrivals); empty: derive from the dependency
     static DEP_ONE_STEP: std::cell::Cell<shakmaty::Bitboard> = const { std::cell::Cell::new(shakmaty::Bitboard::EMPTY) };
 }
+thread_local! { static CERT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
+/// Run `f` as a CERTIFICATE CHECK: at their nodes only the stored reply is searched (Lean Ideas.Refutation.refuted_sound:
+/// fixing their replies can only make the claim easier, so a claim that still fails fails outright).
+pub(crate) fn with_cert<T>(f: impl FnOnce() -> T) -> T {
+    let was = CERT.with(|c| c.replace(true));
+    let out = f();
+    CERT.with(|c| c.set(was));
+    out
+}
 pub(crate) fn dep_one_step(b: shakmaty::Bitboard) { DEP_ONE_STEP.with(|d| d.set(d.get() | b)); }
 pub(crate) fn take_one_step() -> shakmaty::Bitboard { DEP_ONE_STEP.with(|d| d.replace(shakmaty::Bitboard::EMPTY)) }
 fn dep_part(i: usize, b: shakmaty::Bitboard) { DEP_PARTS.with(|d| { let mut v = d.get(); v[i] |= b; d.set(v); }); dep_add(b); }
@@ -892,14 +901,19 @@ fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha:
         // captures outside it from the index (their live frames) and the leaf from the index too; its soundness is
         // "modulo the pass" -- their preparatory moves outside the frame -- and is measured by the frame audit.
         let frame = ix.is_some();
-        let zone = if focus.is_empty() || q.is_check() || (EXACT.load(Ordering::Relaxed) && !frame) { None }
+        let mut zone = if focus.is_empty() || q.is_check() || (EXACT.load(Ordering::Relaxed) && !frame) { None }
                    else { Some(frame_zone(q, side, focus) | if frame { kings(q) } else { shakmaty::Bitboard::EMPTY }) };
         if frame { if zone.is_some() { dep_part(0, frame_core(q, focus) | kings(q)); } else { dep_part(0, q.checkers() | kings(q)); } }
         let mut worst = 2000;
         let mut passed_once = false;
         let mut ms: Vec<Move> = ms.into_iter().collect();
         if let Some(h) = hint_at(path) {                                // the stored refutation first
-            if let Some(i) = ms.iter().position(|r| move_code(r) == h) { let x = ms.remove(i); ms.insert(0, x); }
+            if let Some(i) = ms.iter().position(|r| move_code(r) == h) {
+                let x = ms.remove(i);
+                // THE CERTIFICATE CHECK: their reply fixed to the stored refutation, nothing else searched at this node
+                if CERT.with(|c| c.get()) { ms.clear(); zone = None; }
+                ms.insert(0, x);
+            }
         }
         let mut decided: Option<u32> = None;
         for r in ms.iter() {
@@ -1496,6 +1510,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(frame_leaf, m)?)?;
     m.add_function(wrap_pyfunction!(frame_line, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_zone_reuse, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_cert_reuse, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_frame_audit, m)?)?;
     m.add_function(wrap_pyfunction!(plan::frame_audit_stats, m)?)?;
     m.add_function(wrap_pyfunction!(plan::zone_stats, m)?)?;

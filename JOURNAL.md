@@ -28985,3 +28985,30 @@ lemma's own cost from 225 ms to 3.6% of planner time; its ceiling is the ~8% of 
 Not proved in Lean (rule 11): the flag stays off. Explorer: 37 rules. The analogy Kaveh asked about: Ripple-Down Rules /
 sequential covering (a rule plus exceptions added from its residual), not boosting (no additive weights; soundness
 first; each split a provable concept).
+THE REFUTATION CERTIFICATE AND THE EXCHANGE LAW'S LOCALITY, PROVED AND BUILT (2026-10-11 13:48 PDT; Kaveh: "I like the
+refutation certificate, but it doesn't have to check every pair of our moves -- every pair of moves in this frame or
+via pieces that can enter the frame ... speak in the language of threats, not moves"). The no-chase rule as built
+could not be proved (two constructible holes: an overloaded defender saved by stepping away; a quiet move then a fork
+past its one-move look-ahead), so its sound form was built instead: the DUAL of a proof. A proof fixes our moves and
+answers every reply; a refutation fixes THEIR replies and shows every move of ours falls short -- and fixing their
+replies can only make our claim easier, so a claim that still fails fails outright. Lean Ideas/Refutation.lean:
+`refutedAtLeaves` (their strategy, our moves all), `refuted_sound`: refuted → forcedAtLeaves = false (induction on the
+plies; the dual of Fork.lean's localCheck_sound). And the locality theorem Kaveh's frame language rests on,
+Ideas/ExchangeLocal.lean: `attack_local` (two boards agreeing on the squares bearing on t give the same attacks onto t),
+`seeXB_local` (THE EXCHANGE LAW IS LOCAL: same side to move, boards agreeing on the bearing squares of s, same
+exchange value with x-rays -- attackersOf, valueAt, chainBehind, raysOf each local), `seeXB_unchanged_two_plies` (the
+move form); so the incremental index (rules.rs exchange_affected) is exact BY THEOREM, and a certificate may ignore
+moves touching no bearing square of its frame. 170 theorems, 0 open, 37 cited. Rust: the stored proof of a FAILED
+question already holds their refuting reply at every node (the hints); lib.rs with_cert / pursue_val_p: at their nodes
+only the stored reply is searched (no pass, no alternatives); plan.rs mprove (flag CERT_REUSE, off): a failed entry on a
+changed board is re-checked by its certificate before any search and reused when it still fails within budget; the
+search runs only when the certificate breaks. In the threat language: our moves at our nodes are the search's own
+threat moves (the frame proof's filter), the leaf its leaf, so the certificate's cost is our threat branching only.
+OBS plan_memo_check --cert, 20 games / 1,791 positions, exact proofs: CERTIFICATE reuses 15.7 a move (of 27.9
+re-proofs; broke 9.0), new searches a move 43.0 -> 22.3, nodes 501,290 -> 447,734, ms 216 -> 208; decisions identical
+1,786 of 1,791 (5 another move of equal worth). OBS --frame --cert: reuses 22.0 a move (broke 4.4), new searches
+42.9 -> 16.5, nodes 25,969 -> 23,684, ms 235 -> 222; identical 1,785 of 1,791 (6 equal-worth/described differently).
+THE FINDING: the memory now settles most re-asked questions without research (the reuse Kaveh wanted, sound by
+theorem), but the time barely moves -- the proofs are ~30% of planner time (the profile: forcing PNS 19%, the
+planner's own scans the rest); speed needs the forcing search and the scans. Explorer 38 rules, 12 Lean-backed.
+Flags stay off pending Kaveh's word (decisions identical: ready to switch on).
