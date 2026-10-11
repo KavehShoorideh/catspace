@@ -28773,3 +28773,16 @@ outside its frame (net = the smaller); and the stop rule's bound now includes a 
 tactics with an immediate win 281 (77%; this morning 241), with Stockfish's move 260; endgame puzzles 41% (this morning
 30%; Maia-1900 53%); decision review: decisions losing 150+ cp 9.1% (15.3% this afternoon); the three walked games 7 / 3
 / 1 disagreements (18 before the round), 1,457 / 407 / 151 cp; census 190 s, median 16.5 ms a position.
+THE REMAINING DISAGREEMENTS, ARTICULATED (2026-10-10 ~21:40 PDT). The 11 left in the three walked games, each dug with
+both Stockfish lines: positional (5: Bxc4 vs dxc4 keeping the bishop; Nd5 giving h6 for a central knight; Ba5+ keeping
+pieces over Rc1's trade; f4's attack over Qg7+ winning a bishop; avoiding the queen trade when lost); structure (1: Be6
+allows Nxe6 fxe6); deeper tactics (5): Nc6 walks into Rg7+ Ne7 Rxe7+ (material by checks -- now in THEIR reasoning too);
+Qd5 -- my activity tie-break centralised the queen and c4 / Ra6 hunt it (the tie-break now charges 2 for each move of
+theirs that attacks the moved piece with a cheaper piece: on 15 tie cases 12 agree with Stockfish, 11 without); Rb1
+saves b2 but after Rexf2 the rooks on the 2nd rank win the knight; Be1 (twice) -- not a trap: two threats, the c3
+knight and Ba5+ opening a chain of rook checks (Na4/Nd5: Ba5+ Kc8 Rg8+ Kb7 Rb1+/c6+ ... Rxa8; Na2/Nb5: Ba5+ Kd7 Rd1+
+Ke7 c6, +6.6 to +7.4); the single-threat lemma refused it because after Na2 the win needs 3 checks and a quiet c6 --
+raising the escape test to 3 checks did not change it (reverted). OBS (one run each): game 0 7 -> 6 disagreements
+(1,457 -> 1,072 cp), games 1 and 2 unchanged; census 281 / 261 / 671 unchanged; endgame puzzles 41%; decision review
+9.9% losing 150+ (9.7% without the harassment term; 9.1% before this round -- a few positions); be1_position.html
+shows the position.

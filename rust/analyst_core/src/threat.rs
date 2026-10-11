@@ -97,7 +97,9 @@ pub fn threats(pos: &Chess, by: Color) -> Vec<Threat> {
             v.push(Threat { target: k, value: MATE_GOAL, mate: true, how: Some(m.to_uci(CastlingMode::Standard).to_string()) });
         }
     }
-    v.sort_by(|a, b| b.value.cmp(&a.value));
+    // (ties broken by square: threats_of is a HashMap, its order differs per process -- 2026-10-10: two identical runs
+    // decided 902 vs 904 of the same positions)
+    v.sort_by(|a, b| b.value.cmp(&a.value).then(a.target.cmp(&b.target)).then(a.mate.cmp(&b.mate)));
     v
 }
 

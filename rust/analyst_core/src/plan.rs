@@ -508,6 +508,10 @@ pub static TIE_BREAK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicB
 #[pyfunction]
 pub fn set_tie_break(flag: bool) -> PyResult<()> { TIE_BREAK.store(flag, Ordering::Relaxed); Ok(()) }
 
+pub static HARASS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_harass(flag: bool) -> PyResult<()> { HARASS.store(flag, Ordering::Relaxed); Ok(()) }
+
 fn tie_score(pos: &Chess, m: &Move) -> i64 {
     if !TIE_BREAK.load(Ordering::Relaxed) { return 0; }
     let us = pos.turn();
@@ -526,6 +530,19 @@ fn tie_score(pos: &Chess, m: &Move) -> i64 {
         let cheaper = (qb.attacks_to(t, !us, qb.occupied()) & qb.by_color(!us)).into_iter()
             .any(|a| qb.piece_at(a).map_or(false, |x| x.role == Role::King || kernel_value(x.role) < vp));
         if !cheaper { score += 1; }
+    }
+    // THEIR TEMPO against it (Kaveh's "ability to act", their side -- 2026-10-10, game 10000000 ply 27: Qd5 centralised,
+    // c4 / Ra6 then hunted the queen down; on 15 tie cases this keeps Stockfish's choice 12 times, 11 without): each move
+    // of theirs after which a cheaper piece of theirs attacks the moved piece costs 2
+    if !q.is_check() && HARASS.load(Ordering::Relaxed) {
+        for r in q.legal_moves() {
+            if r.to() == s { continue; }
+            let q2 = after(&q, &r);
+            if q2.board().piece_at(s) != Some(p) { continue; }
+            let hits = shakmaty::attacks::attacks(r.to(), q2.board().piece_at(r.to()).unwrap_or(p), q2.board().occupied()).contains(s);
+            let cheaper = q2.board().piece_at(r.to()).map_or(false, |x| kernel_value(x.role) < vp);
+            if hits && cheaper { score -= 2; }
+        }
     }
     1000 * taken + score
 }
@@ -818,8 +835,9 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
     };
     // MATERIAL BY CHECKS (2026-10-10, game 10000000 ply 76: Ba5+ Kc8 Rg8+ Kb7 Rb1+ Kc6 Rxa8 -- tried only as a mate):
     // a chain of up to 3 checks, every reply searched, ending with 2+ won (threat.rs gain_by_checks, the cornered king
-    // from mate to material), confirmed by the value search before it counts
-    if !immediate_only {
+    // from mate to material), confirmed by the value search before it counts -- for THEIR reasoning too (ply 77: Nc6
+    // walked into Rg7+ Ne7 Rxe7+)
+    {
         if let Some((m, g)) = gain_by_checks(pos, 3) {
             if g >= 2 && g < MATE_GOAL {
                 let u = m.to_uci(CastlingMode::Standard).to_string();

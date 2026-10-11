@@ -23,6 +23,8 @@ def _one(fen):
     global _ENG
     os.environ["RAYON_NUM_THREADS"] = "1"
     import analyst_core
+    if os.environ.get("CATSPACE_HARASS") == "0":
+        analyst_core.set_harass(False)
     tr, dec, proofs, nodes, ms, imm = analyst_core.plan_trace(fen)
     if not dec:
         return None

@@ -1286,6 +1286,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plan::set_tie_break, m)?)?;
     m.add_function(wrap_pyfunction!(plan::net_of, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_see_threats, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_harass, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::set_one_move_waits, m)?)?;
     Ok(())
 }
