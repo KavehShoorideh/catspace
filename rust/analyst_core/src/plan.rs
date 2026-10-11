@@ -570,7 +570,7 @@ fn net_after(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs: &mut
     let before_t = threats(pos, them);
     // (the flag includes their FORCING threats -- a fork next move, material by checks: the static count alone let 16% of
     // their new wins through and decisions losing 150+ rose from 15.4% to 18.6%)
-    if CHANGE_GATE.load(Ordering::Relaxed) && !crate::threat::any_new_threat(&q, them, &before_t) {
+    if CHANGE_GATE.load(Ordering::Relaxed) && crate::threat::any_new_threat(&q, them, &before_t) == Some(false) {
         let left = after_t.iter().map(|t| t.value).max().unwrap_or(0);
         return ((taken - left).max(proved.unwrap_or(i64::MIN)), None);
     }
@@ -977,9 +977,9 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
                     if !capture && !sm.is_capture() && sm.promotion().is_none() && !q.is_check() {
                         let esc = escapes(&q, us, t);
                         let quiet = q.legal_moves().into_iter().filter(|e| e.from() == Some(t) && esc.contains(e.to()))
-                            .find(|e| !any_new_threat(&after(&q, e), us, &before_t));
+                            .find(|e| any_new_threat(&after(&q, e), us, &before_t) == Some(false));   // certainly none: unknown proves
                         if let Some(e) = quiet {
-                            trace.push(format!("    {}: one threat, and the {name} steps away to {} leaving no threat of ours, none by checks, no fork -- no proof (the single-threat lemma)", san(pos, s), e.to()));
+                            trace.push(format!("    {}: one threat, and the {name} steps away to {} leaving no threat of ours, nothing forced -- no proof (the single-threat lemma)", san(pos, s), e.to()));
                             tally(|st| st.lone += 1);
                             failed.push(s.clone());
                             continue;

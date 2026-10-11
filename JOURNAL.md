@@ -28786,3 +28786,16 @@ raising the escape test to 3 checks did not change it (reverted). OBS (one run e
 (1,457 -> 1,072 cp), games 1 and 2 unchanged; census 281 / 261 / 671 unchanged; endgame puzzles 41%; decision review
 9.9% losing 150+ (9.7% without the harassment term; 9.1% before this round -- a few positions); be1_position.html
 shows the position.
+THE ESCAPE TEST WITHOUT A COUNT (2026-10-10 ~22:10 PDT; Kaveh: "why does there need to be a numeric check? ... the more
+principled version ... anywhere else, switch to principled versions as we meet them"; then "a prior should decide how
+far to follow each line -- unity for now, an RL agent later"). threat.rs forcing_gain: a proof search -- can the side to
+move FORCE a gain of 1+? -- over forcing moves (checks, captures, quiet moves making a new threat worth 3+ read off the
+attack paths), every reply searched, stopping where the forcing ends or a position repeats; a node budget and a depth
+cap only as safety nets, a hit meaning UNKNOWN -> the single-threat lemma proves the move instead of refusing it (the old
+"material by checks within 2" read its limit as "no threat" and refused Be1). A first build overflowed the stack (no
+depth bound) and took 12.7 s on the Be1 position (attack paths recomputed per candidate; a 20,000-node net). OBS (one
+run each) with a 200-node net: census Stockfish only-move tactics 281 -> 285, frames 671 -> 672, but 201 s -> 368 s,
+proofs a position 30.9 -> 45.8 (fewer refusals); decision review 9.9% -> 10.4% losing 150+; endgames 41%; walked games
+7 / 3 / 1 disagreements (game 0's new one: Re7 +5.17 where Stockfish mates in 5 -- not a blunder). UNITY (no node net):
+200 positions did not finish in 10 minutes (18 s with the net) -- the quiet-threat branch spawns every reply. Be1 is now
+proved (not refused) but nets ~1 (Ne2+ gives the knight back for two pawns) and ties Ra1 at 0.

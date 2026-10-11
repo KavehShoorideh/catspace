@@ -190,23 +190,90 @@ pub fn forcing_threats(pos: &Chess, by: Color) -> Vec<Threat> {
     v
 }
 
+/// WHAT THE SIDE TO MOVE CAN FORCE (Kaveh 2026-10-10: "why does there need to be a numeric check? ... the more principled
+/// version"): a proof search -- can it force a material gain of at least 1? Its moves are FORCING ones -- checks,
+/// captures, and quiet moves that make a new threat worth 3 or more (read off the paths onto their pieces) -- each reply
+/// of theirs searched; it may stop wherever it already stands better (the material won plus its best capture now). The
+/// search ends where the forcing ends (no forcing move left) or a position repeats; the budget is only a safety net:
+/// hitting it is UNKNOWN, never "nothing". (It replaces "material by checks within 2", which read its limit as "no
+/// threat" and refused Be1 -- two threats: the c3 knight and Ba5+'s chain of rook checks, through a quiet c6.)
+/// -> Some(true) a forced gain, Some(false) certainly none, None unknown.
+pub const FORCING_BUDGET: u64 = 200;
+/// (a second safety net, for the stack: a forcing line this long is UNKNOWN, like the budget -- 2026-10-10: unbounded
+/// recursion overflowed the stack)
+pub const FORCING_DEPTH: u32 = 24;
+
+pub fn forcing_gain(p: &Chess, budget: u64) -> Option<bool> {
+    let by = p.turn();
+    let base = material_edge(p, by);
+    let mut nodes = 0u64;
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let key = |q: &Chess| shakmaty::fen::Fen::from_position(q.clone(), shakmaty::EnPassantMode::Legal).to_string();
+    // the forcing moves of `by` (to move in q)
+    fn forcing(q: &Chess, by: Color) -> Vec<(Move, Chess)> {
+        let now = rules::threats_of(q, by);
+        let targets: Bitboard = q.board().by_color(!by) & !q.board().by_role(Role::Pawn) & !q.board().by_role(Role::King);
+        let paths = crate::paths::attack_paths(q, by, targets);
+        let arriving: std::collections::HashSet<String> = paths.iter().filter(|a| a.kind == "direct").filter_map(|a| a.mv.clone()).collect();
+        let disc_from: Vec<Square> = paths.iter().filter(|a| a.kind == "discovery").filter_map(|a| a.via).collect();
+        let mut out = Vec::new();
+        for m in q.legal_moves() {
+            let r = after(q, &m);
+            if r.is_check() || m.is_capture() || m.is_promotion() { out.push((m, r)); continue; }
+            let u = m.to_uci(CastlingMode::Standard).to_string();
+            let disc = m.from().map_or(false, |f| disc_from.contains(&f));
+            if !arriving.contains(&u) && !disc { continue; }
+            let new_big = rules::threats_of(&r, by).iter().any(|(x, g)| *g >= 3 && now.get(x).map_or(true, |g0| g > g0));
+            if new_big { out.push((m, r)); }
+        }
+        out
+    }
+    // us to move in q: can we force >= 1 from here? (at the root only by a forcing move -- what stands already is the
+    // static threats' business)
+    fn ours(q: &Chess, by: Color, base: i64, root: bool, depth: u32, nodes: &mut u64, budget: u64, seen: &mut std::collections::HashSet<String>, key: &dyn Fn(&Chess) -> String) -> Option<bool> {
+        *nodes += 1;
+        if *nodes > budget || depth > FORCING_DEPTH { return None; }
+        if !root && material_edge(q, by) - base + best_capture(q, by) >= 1 { return Some(true); }
+        let k = key(q);
+        if !seen.insert(k.clone()) { return Some(false); }        // a repetition gains nothing
+        let mut unknown = false;
+        for (_, r) in forcing(q, by) {
+            match theirs(&r, by, base, depth + 1, nodes, budget, seen, key) { Some(true) => { seen.remove(&k); return Some(true); }, None => unknown = true, _ => {} }
+        }
+        seen.remove(&k);
+        if unknown { None } else { Some(false) }
+    }
+    // them to move in r: does every reply leave us a forced gain?
+    fn theirs(r: &Chess, by: Color, base: i64, depth: u32, nodes: &mut u64, budget: u64, seen: &mut std::collections::HashSet<String>, key: &dyn Fn(&Chess) -> String) -> Option<bool> {
+        *nodes += 1;
+        if *nodes > budget || depth > FORCING_DEPTH { return None; }
+        let replies = r.legal_moves();
+        if replies.is_empty() { return Some(r.is_check()); }      // mate is a gain; stalemate is not
+        let mut unknown = false;
+        for m in replies {
+            match ours(&after(r, &m), by, base, false, depth + 1, nodes, budget, seen, key) { Some(false) => return Some(false), None => unknown = true, _ => {} }
+        }
+        if unknown { None } else { Some(true) }
+    }
+    ours(p, by, base, true, 0, &mut nodes, budget, &mut seen, &key)
+}
+
 /// IS THERE ANY NEW THREAT of `by` (static or forcing) against `before`? -- the cheapest first, stopping at the first
 /// one found (material, promotion, trapped piece, mate by checks, gain by checks, a fork): a claim of "nothing left"
 /// pays for everything, a refutation of it for the first fact that settles it.
-pub fn any_new_threat(pos: &Chess, by: Color, before: &[Threat]) -> bool {
+/// -> Some(true) a new threat, Some(false) certainly none, None unknown (the forcing search's safety net was hit).
+pub fn any_new_threat(pos: &Chess, by: Color, before: &[Threat]) -> Option<bool> {
     let is_new = |t: &Threat| before.iter().find(|b| b.target == t.target && b.mate == t.mate).map_or(true, |b| t.value > b.value);
     for (x, g) in rules::threats_of(pos, by) {
-        if g > 0 && is_new(&Threat { target: Square::new(x as u32), value: g, mate: false, how: None }) { return true; }
+        if g > 0 && is_new(&Threat { target: Square::new(x as u32), value: g, mate: false, how: None }) { return Some(true); }
     }
-    let Some(p) = (if pos.turn() == by { Some(pos.clone()) } else { pass(pos) }) else { return false };
+    let Some(p) = (if pos.turn() == by { Some(pos.clone()) } else { pass(pos) }) else { return None };
     // promotion and trapped pieces, then the king: the full static set (cheap parts already settled above)
     let st = threats(&p, by);
-    if st.iter().any(|t| is_new(t)) { return true; }
-    if let Some((_, g)) = gain_by_checks(&p, GAIN_CHECKS) {
-        if let Some(k) = p.board().king_of(!by) { if is_new(&Threat { target: k, value: g, mate: false, how: None }) { return true; } }
-    }
-    if let Some((m, g)) = fork_next(&p) { if is_new(&Threat { target: m.to(), value: g, mate: false, how: None }) { return true; } }
-    false
+    if st.iter().any(|t| is_new(t)) { return Some(true); }
+    if let Some((m, g)) = fork_next(&p) { if is_new(&Threat { target: m.to(), value: g, mate: false, how: None }) { return Some(true); } }
+    // what it can FORCE, to the end of the forcing (no count of checks)
+    forcing_gain(&p, FORCING_BUDGET)
 }
 
 /// The threats in `now` that are NEW against `before`: a target not threatened before, or threatened for more.
