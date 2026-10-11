@@ -9,6 +9,7 @@ mod waiting;
 mod paths;
 mod plan;
 pub mod lemma;
+pub mod prof;
 mod threat;
 mod ledger;
 mod pns;
@@ -983,6 +984,9 @@ fn frame_zone(q: &Chess, us: Color, focus: &[Square]) -> shakmaty::Bitboard {
 /// at our nodes the first answer reaching it ends the node, at theirs the first refutation -- so the recorded moves
 /// are exactly a proof or a refutation. None: the budget ran out (nothing certified).
 pub fn prove_pos(p: &Chess, m: &Move, focus: &[Square], plies: u32, budget: u64, goal: i64) -> Option<bool> {
+    prof::timed(if plies > 2 { "prove 4-ply" } else { "prove 2-ply" }, || prove_pos_inner(p, m, focus, plies, budget, goal))
+}
+fn prove_pos_inner(p: &Chess, m: &Move, focus: &[Square], plies: u32, budget: u64, goal: i64) -> Option<bool> {
     let c = p.turn();
     let target = kernel_material(p, c) + goal;
     let q = after(p, m);
@@ -1011,6 +1015,9 @@ fn prove_stats() -> Vec<u64> { PROVE_STATS.iter().map(|a| a.swap(0, Ordering::Re
 /// The certified gain of m (relative to the material now) with the given focus, plies and node budget; None if the
 /// budget ran out (nothing certified).
 pub(crate) fn certified_value(p: &Chess, m: &Move, focus: &[Square], plies: u32, budget: u64) -> Option<i64> {
+    prof::timed("certified_value (frame value)", || certified_value_inner(p, m, focus, plies, budget))
+}
+fn certified_value_inner(p: &Chess, m: &Move, focus: &[Square], plies: u32, budget: u64) -> Option<i64> {
     let c = p.turn();
     let base = kernel_material(p, c);
     let q = after(p, m);
@@ -1511,6 +1518,10 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(frame_line, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_zone_reuse, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_cert_reuse, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::stage_times, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_net_bound, m)?)?;
+    m.add_function(wrap_pyfunction!(threat::forcing_unknowns, m)?)?;
+    m.add_function(wrap_pyfunction!(prof::prim_times, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_frame_audit, m)?)?;
     m.add_function(wrap_pyfunction!(plan::frame_audit_stats, m)?)?;
     m.add_function(wrap_pyfunction!(plan::zone_stats, m)?)?;

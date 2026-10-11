@@ -53,7 +53,8 @@ fn moves_of(pos: &Chess, s: Color) -> Vec<Move> {
 }
 
 /// Every path of side `s` onto the squares `zone`.
-pub fn attack_paths(pos: &Chess, s: Color, zone: Bitboard) -> Vec<Path> {
+pub fn attack_paths(p: &Chess, by: Color, targets: Bitboard) -> Vec<Path> { crate::prof::timed("attack_paths", || attack_paths_inner(p, by, targets)) }
+fn attack_paths_inner(pos: &Chess, s: Color, zone: Bitboard) -> Vec<Path> {
     let b = pos.board();
     let occ = b.occupied();
     let ms = moves_of(pos, s);

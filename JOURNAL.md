@@ -29012,3 +29012,32 @@ THE FINDING: the memory now settles most re-asked questions without research (th
 theorem), but the time barely moves -- the proofs are ~30% of planner time (the profile: forcing PNS 19%, the
 planner's own scans the rest); speed needs the forcing search and the scans. Explorer 38 rules, 12 Lean-backed.
 Flags stay off pending Kaveh's word (decisions identical: ready to switch on).
+ONE GAME, MOVE BY MOVE, PROFILED (2026-10-11 14:07 PDT; Kaveh: "take a random game, step through the moves and analyze
+each move, and profile the time, and see what's taking long"). Tooling: plan.rs stage clock (mark at the end of each
+stage of plan_inner, depth 1 only; stage_times), prof.rs primitive clock (calls and inclusive ms per primitive:
+prim_times), game_profile.py (one census game by seed through PlanState: per move ms, stages, decision; totals; the
+Rust sample; the forcing search's outcome counts and its safety-net positions re-asked at 10x/50x), flag_onoff.py (a
+switch on vs off on the same positions: the equality audit any speed change must pass).
+OBS game 10000470 (seed 7), 81 plies, 11.3 s of planner time (140 ms a move) before any change. Stages: defence by
+net 35% (three defensive plies at 1.1-1.45 s: best_by_net runs their reasoning once per candidate move), 2 targets 23%,
+their threat (the null-move planner) 23%, wins by net 11%, pins 5%. Primitives (inclusive): their immediate reasoning
+(the inner planner) 7.9 s (70%, 291 calls, 27 ms each); any_new_threat (the single-threat lemma's escape test) 4.7 s
+(10,353 calls); prove 4-ply 4.1 s (3,509 calls, 1.2 ms); mate_by_checks 3.3 s (191,738 calls); best_by_net 2.6 s (5
+calls, 527 ms each); generic threats 1.2 s (16,476 calls = 203 a position); forcing PNS 0.5 s; prove 2-ply 0.2 s.
+THE PROOFS WE WORKED ON ALL DAY ARE A THIRD; the inner planner run 3.6 times a position (dozens on a defensive one), and
+inside it the escape test, are the cost.
+CHANGES, each measured on the same game: (1) EXACT position caches (threat.rs: threats, mate_by_checks, forcing_gain
+memoized by Zobrist within one plan(); no semantic change): 11.3 -> 10.6 s; mate_by_checks 3.3 -> 1.5 s, threats 1.2 ->
+0.6 s; this exposed forcing_gain at 3.9 s (37%, 4,767 calls, 0.83 ms). (2) THE BOUND-ORDERED DEFENCE SCAN (plan.rs
+their_floor = the floor their reasoning never falls below, shared with net_after; net_bound = an upper bound on a
+candidate's net from the floor alone; best_by_net scans in descending bound and stops when no move left can beat the
+best net -- the principled form of AVOID_TOP = 5; flag NET_BOUND, off): 10.6 -> 9.6 s, best_by_net 2.2 -> 1.2 s. OBS
+flag_onoff net_bound, 20 games / 1,791 positions: decisions identical 1,788 (99.83%; the 3 another move of equal net,
+a tie-break), ms 206.6 -> 194.3, proofs 43.0 -> 40.1. (3) THE FORCING SEARCH'S SAFETY NET: 4,737 searches a game,
+proven 1,949, disproven 972, UNKNOWN 1,816 (38%) -- the unknowns take ~79% of its expansions, i.e. ~30% of planner
+time is spent FAILING TO DISPROVE a forcing gain (unknown then forces a proof). Re-asked with 10x the budget 2 of 40
+resolve, with 50x 3 of 40; at 2,000 expansions 22 disproven, 16 still unknown. They are ordinary middlegame positions
+(root: 6 forcing moves, 1.3 checks, 2.5 captures, 40 legal replies): the disproof must refute every forcing move
+through every capture chain and check, and PNS's AND nodes are wide. Not changed yet -- the options are Kaveh's call
+(a prior to order the forcing lines; a tighter forcing-move definition; the escape test without the forcing search, which
+changes decisions where the search disproved). Tests 24 passed. Flags: caches always on (exact), NET_BOUND off.

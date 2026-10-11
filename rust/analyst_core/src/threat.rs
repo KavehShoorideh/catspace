@@ -55,6 +55,13 @@ pub const MATE_CHECKS: u32 = 3;
 /// A FORCED MATE BY CHECKS for the side to move within `n` of its moves -- cornering the king: every move a check,
 /// every reply searched, until no reply is left. -> its first move. (n = 1: a mate in one.)
 pub fn mate_by_checks(p: &Chess, n: u32) -> Option<Move> {
+    let key = (zkey(p), n);
+    if let Some(v) = MATE_CACHE.with(|c| c.borrow().get(&key).cloned()) { return v; }
+    let v = crate::prof::timed("mate_by_checks", || mate_by_checks_inner(p, n));
+    MATE_CACHE.with(|c| c.borrow_mut().insert(key, v.clone()));
+    v
+}
+fn mate_by_checks_inner(p: &Chess, n: u32) -> Option<Move> {
     let checks = checking_moves(p);
     if let Some((m, _)) = checks.iter().find(|(_, q)| q.legal_moves().is_empty()) { return Some(m.clone()); }
     if n <= 1 { return None; }
@@ -66,7 +73,31 @@ pub fn mate_in_one(p: &Chess) -> Option<Move> { mate_by_checks(p, 1) }
 
 /// Every threat of `by` in `pos` (`by` need not be to move: when not, the other side passes -- impossible when `by` is
 /// giving check, then only the material is read).
+// THE POSITION CACHES (2026-10-11, the game profile: the generic threat was computed 203 times a position and the mate
+// search 2,400 times, mostly on the same positions after the same candidate moves): pure functions of the position,
+// memoized by its Zobrist hash within one top-level plan() (plan.rs clears them). Exact: no semantic change.
+thread_local! {
+    static THREATS_CACHE: std::cell::RefCell<std::collections::HashMap<(u64, bool), Vec<Threat>>> = std::cell::RefCell::new(std::collections::HashMap::new());
+    static MATE_CACHE: std::cell::RefCell<std::collections::HashMap<(u64, u32), Option<Move>>> = std::cell::RefCell::new(std::collections::HashMap::new());
+    static FORCING_CACHE: std::cell::RefCell<std::collections::HashMap<(u64, u64), Option<bool>>> = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+pub fn clear_position_caches() {
+    THREATS_CACHE.with(|c| c.borrow_mut().clear());
+    MATE_CACHE.with(|c| c.borrow_mut().clear());
+    FORCING_CACHE.with(|c| c.borrow_mut().clear());
+}
+pub(crate) fn zkey(p: &Chess) -> u64 {
+    use shakmaty::zobrist::{Zobrist64, ZobristHash};
+    p.zobrist_hash::<Zobrist64>(shakmaty::EnPassantMode::Legal).0
+}
 pub fn threats(pos: &Chess, by: Color) -> Vec<Threat> {
+    let key = (zkey(pos), by == Color::White);
+    if let Some(v) = THREATS_CACHE.with(|c| c.borrow().get(&key).cloned()) { return v; }
+    let v = crate::prof::timed("threats (generic)", || threats_inner(pos, by));
+    THREATS_CACHE.with(|c| c.borrow_mut().insert(key, v.clone()));
+    v
+}
+fn threats_inner(pos: &Chess, by: Color) -> Vec<Threat> {
     let mut v: Vec<Threat> = rules::threats_of(pos, by).into_iter().filter(|(_, g)| *g > 0)
         .map(|(x, g)| Threat { target: Square::new(x as u32), value: g, mate: false, how: None }).collect();
     let p = if pos.turn() == by { Some(pos.clone()) } else { pass(pos) };
@@ -382,6 +413,19 @@ pub fn forcing_need(p: &Chess, need: i64, budget: u64) -> Option<bool> {
 }
 
 pub fn forcing_gain(p: &Chess, budget: u64) -> Option<bool> {
+    let key = (zkey(p), budget);
+    if let Some(v) = FORCING_CACHE.with(|c| c.borrow().get(&key).copied()) { return v; }
+    let v = crate::prof::timed("forcing_gain (PNS)", || forcing_gain_inner(p, budget));
+    FORCING_CACHE.with(|c| c.borrow_mut().insert(key, v));
+    if v.is_none() { UNKNOWNS.with(|u| { let mut u = u.borrow_mut(); if u.len() < 200 { u.push(shakmaty::fen::Fen::from_position(p.clone(), shakmaty::EnPassantMode::Legal).to_string()); } }); }
+    v
+}
+// the positions where the forcing search hit its safety net (the first 200 since the last read) -- for digging
+thread_local! { static UNKNOWNS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) }; }
+/// forcing_unknowns() -> the FENs (side to move = the side whose forcing gain was asked) where the forcing search ran out.
+#[pyfunction]
+pub fn forcing_unknowns() -> Vec<String> { UNKNOWNS.with(|u| std::mem::take(&mut *u.borrow_mut())) }
+fn forcing_gain_inner(p: &Chess, budget: u64) -> Option<bool> {
     let by = p.turn();
     let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), them: rules::threats_arr(p, !by), edge: material_edge(p, by), last: None };
     crate::pns::search(&Forcing { by, base: material_edge(p, by), need: 1 }, root, budget)
@@ -400,7 +444,8 @@ pub fn forcing_value_of(fen: String, budget: u64) -> (Option<(String, i64)>, Vec
 /// WHAT THE SIDE TO MOVE CAN FORCE, AS A VALUE (in place of "material by checks within 3" -- a count, and checks only:
 /// 2026-10-11, after Bxc3 their Re7+ Kc8 Rxf7 ... Rf8+ Rxa8 mixes checks and captures): the largest gain of a material
 /// ladder (1, 2, 3, 5, 9) the forcing search proves, and the first move of that proof. Mates are the mate search's.
-pub fn forcing_value(p: &Chess, budget: u64) -> Option<(Move, i64)> {
+pub fn forcing_value(p: &Chess, budget: u64) -> Option<(Move, i64)> { crate::prof::timed("forcing_value (PNS)", || forcing_value_inner(p, budget)) }
+fn forcing_value_inner(p: &Chess, budget: u64) -> Option<(Move, i64)> {
     let by = p.turn();
     let base = material_edge(p, by);
     let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), them: rules::threats_arr(p, !by), edge: base, last: None };
@@ -418,7 +463,8 @@ pub fn forcing_value(p: &Chess, budget: u64) -> Option<(Move, i64)> {
 /// one found (material, promotion, trapped piece, mate by checks, gain by checks, a fork): a claim of "nothing left"
 /// pays for everything, a refutation of it for the first fact that settles it.
 /// -> Some(true) a new threat, Some(false) certainly none, None unknown (the forcing search's safety net was hit).
-pub fn any_new_threat(pos: &Chess, by: Color, before: &[Threat]) -> Option<bool> {
+pub fn any_new_threat(pos: &Chess, by: Color, before: &[Threat]) -> Option<bool> { crate::prof::timed("any_new_threat", || any_new_threat_inner(pos, by, before)) }
+fn any_new_threat_inner(pos: &Chess, by: Color, before: &[Threat]) -> Option<bool> {
     let is_new = |t: &Threat| before.iter().find(|b| b.target == t.target && b.mate == t.mate).map_or(true, |b| t.value > b.value);
     for (x, g) in rules::threats_of(pos, by) {
         if g > 0 && is_new(&Threat { target: Square::new(x as u32), value: g, mate: false, how: None }) { return Some(true); }
