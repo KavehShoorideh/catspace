@@ -28799,3 +28799,19 @@ proofs a position 30.9 -> 45.8 (fewer refusals); decision review 9.9% -> 10.4% l
 7 / 3 / 1 disagreements (game 0's new one: Re7 +5.17 where Stockfish mates in 5 -- not a blunder). UNITY (no node net):
 200 positions did not finish in 10 minutes (18 s with the net) -- the quiet-threat branch spawns every reply. Be1 is now
 proved (not refused) but nets ~1 (Ne2+ gives the knight back for two pawns) and ties Ra1 at 0.
+PROOF-NUMBER SEARCH IN RUST AND PLAYING OUT A PROVEN MATE (2026-10-10 ~23:30 PDT; Kaveh: "take all of this proofing stuff
+into Rust"; "anytime we find a path to mate, we should play that ... you've found it, you've proven it ... no more search
+needed"; a prior to decide how far to follow each line -- unity now, a learned policy later). No proof-number search
+existed in Rust (crates.io: none -- `pns` is Petri nets); the Python one is goal_search.py (2026-09-06). rust pns.rs: a
+generic AND/OR proof-number search (Problem: judge on sight, expand, the size of an AND node, a key for repetition;
+the most-proving node expanded; a child judged on sight costs no expansion; the budget only a safety net -> UNKNOWN);
+threat.rs forcing_gain is its first user (line_prior = 1.0, the hook for a learned policy). OBS (200 census positions,
+budget 2,000): identical outcomes to the first version (7,033 searches: 3,392 proven, 1,937 disproven, 1,704 unknown),
+64.3 s vs 74.7 s (Zobrist keys). Settled vs unknown by budget (the depth-first form): 200 -> 54.5% unknown, 2,000 ->
+31.1%, 20,000 -> 12.8%; replies that ignore our threat proven on sight: 44.7% / 24.2% / 10.3% but slower per position
+-- every node recomputes the board (next: incremental nodes). MATE: a forced mate by checks ends the analysis before
+anything else; a king-target mate proof returns at once; the game's PlanState keeps the proof (the stored best move at
+every node, keyed by the path) and plays it out -- their reply read off the board, our answer off the proof, no search.
+mate_playout_check.py: 6 census positions with a king-target mate proof, played against Stockfish's defence (depth 14):
+6 mates delivered, 11 of 22 moves from the stored solution with no search (the quiet ones the king target cannot find:
+Rf2, Qg1, Ra3). Stockfish (depth 24) confirmed the four mate claims checked (mate in 2-4).

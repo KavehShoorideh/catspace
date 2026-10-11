@@ -198,64 +198,73 @@ pub fn forcing_threats(pos: &Chess, by: Color) -> Vec<Threat> {
 /// hitting it is UNKNOWN, never "nothing". (It replaces "material by checks within 2", which read its limit as "no
 /// threat" and refused Be1 -- two threats: the c3 knight and Ba5+'s chain of rook checks, through a quiet c6.)
 /// -> Some(true) a forced gain, Some(false) certainly none, None unknown.
-pub const FORCING_BUDGET: u64 = 200;
-/// (a second safety net, for the stack: a forcing line this long is UNKNOWN, like the budget -- 2026-10-10: unbounded
-/// recursion overflowed the stack)
-pub const FORCING_DEPTH: u32 = 24;
+pub const FORCING_BUDGET: u64 = 2_000;
+
+
+/// THE LINE PRIOR (Kaveh 2026-10-10: "a prior to decide how far to follow each line ... unity for now; when it is
+/// policy-based, a reinforcement-learning agent makes that decision"): the weight on a forcing move's proof number --
+/// 1.0 for every move today; the hook a learned policy fills later (AlphaProof / HyperTree-style: it orders the work,
+/// the proof still decides).
+pub fn line_prior(_q: &Chess, _m: &Move) -> f64 { 1.0 }
+
+/// Counters of the forcing search (pns::STATS): [calls, proven, disproven, unknown, expansions]; the budget settable.
+pub static FBUDGET: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(FORCING_BUDGET);
+#[pyfunction]
+pub fn forcing_stats(budget: Option<u64>) -> Vec<u64> {
+    if let Some(b) = budget { FBUDGET.store(b, Ordering::Relaxed); }
+    crate::pns::STATS.iter().map(|a| a.swap(0, Ordering::Relaxed)).collect()
+}
+
+/// The forcing moves of `by` (to move in q): checks, captures, promotions, and quiet moves that make a new threat worth
+/// 3+ (arriving on a path onto a piece of theirs, or uncovering one).
+fn forcing_moves(q: &Chess, by: Color) -> Vec<(Move, Chess)> {
+    let now = rules::threats_of(q, by);
+    let targets: Bitboard = q.board().by_color(!by) & !q.board().by_role(Role::Pawn) & !q.board().by_role(Role::King);
+    let paths = crate::paths::attack_paths(q, by, targets);
+    let arriving: std::collections::HashSet<String> = paths.iter().filter(|a| a.kind == "direct").filter_map(|a| a.mv.clone()).collect();
+    let disc_from: Vec<Square> = paths.iter().filter(|a| a.kind == "discovery").filter_map(|a| a.via).collect();
+    let mut out = Vec::new();
+    for m in q.legal_moves() {
+        let r = after(q, &m);
+        if r.is_check() || m.is_capture() || m.is_promotion() { out.push((m, r)); continue; }
+        let u = m.to_uci(CastlingMode::Standard).to_string();
+        let disc = m.from().map_or(false, |f| disc_from.contains(&f));
+        if !arriving.contains(&u) && !disc { continue; }
+        if rules::threats_of(&r, by).iter().any(|(x, g)| *g >= 3 && now.get(x).map_or(true, |g0| g > g0)) { out.push((m, r)); }
+    }
+    out
+}
+
+/// WHAT THE SIDE TO MOVE CAN FORCE, by PROOF-NUMBER SEARCH (pns.rs; the claim "we force a gain of 1+"): our nodes branch
+/// on forcing moves only, theirs on every reply; proven at a node of ours already standing 1+ better (the material won
+/// plus its best capture now; not at the root -- the standing threats are the static check's business) or at their
+/// mate; disproven where our forcing ends, at a stalemate, at a repetition. A node of theirs starts with as many proof
+/// steps as it has replies (a check, with few, looks cheap first), weighted by `line_prior`. The budget is only a safety
+/// net: hitting it is UNKNOWN. -> Some(true), Some(false), None.
+struct Forcing { by: Color, base: i64 }
+
+impl crate::pns::Problem for Forcing {
+    type State = Chess;
+    fn judge(&self, s: &Chess, or: bool, root: bool) -> Option<bool> {
+        if or {
+            if !root && material_edge(s, self.by) - self.base + best_capture(s, self.by) >= 1 { return Some(true); }
+            None
+        } else if s.legal_moves().is_empty() { Some(s.is_check()) } else { None }
+    }
+    fn expand(&self, s: &Chess, or: bool) -> Vec<(Chess, f64)> {
+        if or { forcing_moves(s, self.by).into_iter().map(|(m, r)| { let w = line_prior(s, &m); (r, w) }).collect() }
+        else { s.legal_moves().iter().map(|m| (after(s, m), 1.0)).collect() }
+    }
+    fn and_size(&self, s: &Chess) -> f64 { s.legal_moves().len().max(1) as f64 }
+    fn key(&self, s: &Chess) -> u64 {
+        use shakmaty::zobrist::{Zobrist64, ZobristHash};
+        s.zobrist_hash::<Zobrist64>(shakmaty::EnPassantMode::Legal).0
+    }
+}
 
 pub fn forcing_gain(p: &Chess, budget: u64) -> Option<bool> {
     let by = p.turn();
-    let base = material_edge(p, by);
-    let mut nodes = 0u64;
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let key = |q: &Chess| shakmaty::fen::Fen::from_position(q.clone(), shakmaty::EnPassantMode::Legal).to_string();
-    // the forcing moves of `by` (to move in q)
-    fn forcing(q: &Chess, by: Color) -> Vec<(Move, Chess)> {
-        let now = rules::threats_of(q, by);
-        let targets: Bitboard = q.board().by_color(!by) & !q.board().by_role(Role::Pawn) & !q.board().by_role(Role::King);
-        let paths = crate::paths::attack_paths(q, by, targets);
-        let arriving: std::collections::HashSet<String> = paths.iter().filter(|a| a.kind == "direct").filter_map(|a| a.mv.clone()).collect();
-        let disc_from: Vec<Square> = paths.iter().filter(|a| a.kind == "discovery").filter_map(|a| a.via).collect();
-        let mut out = Vec::new();
-        for m in q.legal_moves() {
-            let r = after(q, &m);
-            if r.is_check() || m.is_capture() || m.is_promotion() { out.push((m, r)); continue; }
-            let u = m.to_uci(CastlingMode::Standard).to_string();
-            let disc = m.from().map_or(false, |f| disc_from.contains(&f));
-            if !arriving.contains(&u) && !disc { continue; }
-            let new_big = rules::threats_of(&r, by).iter().any(|(x, g)| *g >= 3 && now.get(x).map_or(true, |g0| g > g0));
-            if new_big { out.push((m, r)); }
-        }
-        out
-    }
-    // us to move in q: can we force >= 1 from here? (at the root only by a forcing move -- what stands already is the
-    // static threats' business)
-    fn ours(q: &Chess, by: Color, base: i64, root: bool, depth: u32, nodes: &mut u64, budget: u64, seen: &mut std::collections::HashSet<String>, key: &dyn Fn(&Chess) -> String) -> Option<bool> {
-        *nodes += 1;
-        if *nodes > budget || depth > FORCING_DEPTH { return None; }
-        if !root && material_edge(q, by) - base + best_capture(q, by) >= 1 { return Some(true); }
-        let k = key(q);
-        if !seen.insert(k.clone()) { return Some(false); }        // a repetition gains nothing
-        let mut unknown = false;
-        for (_, r) in forcing(q, by) {
-            match theirs(&r, by, base, depth + 1, nodes, budget, seen, key) { Some(true) => { seen.remove(&k); return Some(true); }, None => unknown = true, _ => {} }
-        }
-        seen.remove(&k);
-        if unknown { None } else { Some(false) }
-    }
-    // them to move in r: does every reply leave us a forced gain?
-    fn theirs(r: &Chess, by: Color, base: i64, depth: u32, nodes: &mut u64, budget: u64, seen: &mut std::collections::HashSet<String>, key: &dyn Fn(&Chess) -> String) -> Option<bool> {
-        *nodes += 1;
-        if *nodes > budget || depth > FORCING_DEPTH { return None; }
-        let replies = r.legal_moves();
-        if replies.is_empty() { return Some(r.is_check()); }      // mate is a gain; stalemate is not
-        let mut unknown = false;
-        for m in replies {
-            match ours(&after(r, &m), by, base, false, depth + 1, nodes, budget, seen, key) { Some(false) => return Some(false), None => unknown = true, _ => {} }
-        }
-        if unknown { None } else { Some(true) }
-    }
-    ours(p, by, base, true, 0, &mut nodes, budget, &mut seen, &key)
+    crate::pns::search(&Forcing { by, base: material_edge(p, by) }, p.clone(), budget)
 }
 
 /// IS THERE ANY NEW THREAT of `by` (static or forcing) against `before`? -- the cheapest first, stopping at the first
@@ -273,7 +282,7 @@ pub fn any_new_threat(pos: &Chess, by: Color, before: &[Threat]) -> Option<bool>
     if st.iter().any(|t| is_new(t)) { return Some(true); }
     if let Some((m, g)) = fork_next(&p) { if is_new(&Threat { target: m.to(), value: g, mate: false, how: None }) { return Some(true); } }
     // what it can FORCE, to the end of the forcing (no count of checks)
-    forcing_gain(&p, FORCING_BUDGET)
+    forcing_gain(&p, FBUDGET.load(Ordering::Relaxed))
 }
 
 /// The threats in `now` that are NEW against `before`: a target not threatened before, or threatened for more.

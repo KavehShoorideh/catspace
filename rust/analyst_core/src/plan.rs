@@ -41,7 +41,14 @@ pub struct Stats { pub fresh: u32, pub replay: u32, pub reuse_exact: u32, pub re
 #[derive(Default)]
 pub struct Memo { entries: HashMap<String, Vec<Entry>>, pub history: HashMap<String, f32>, pub stats: Stats,
                   ledger: Option<crate::ledger::Ledger>, events: Vec<crate::ledger::Event>,
-                  pool: Vec<crate::waiting::Frame>, pool_ply: u32 }
+                  pool: Vec<crate::waiting::Frame>, pool_ply: u32, solution: Option<Solution> }
+
+/// A PROVEN MATE being played out (Kaveh 2026-10-10: "anytime we find a path to mate, we should play that ... you've found
+/// it, you've proven it, so you can just use it. There's no more search needed"): the proof's stored moves (every reply
+/// of theirs was searched, our answer to each recorded, keyed by the path of moves), where we are in it, and the board
+/// after our last move from it.
+#[derive(Clone)]
+pub struct Solution { owner: Color, hints: std::sync::Arc<Hints>, path: u64, after_ours: Chess }
 const SNAPSHOTS: usize = 8;
 pub static REUSE_FAILS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 #[pyfunction]
@@ -75,14 +82,26 @@ fn with_tag<T>(tag: String, f: impl FnOnce() -> T) -> T {
 
 fn tally(f: impl FnOnce(&mut Stats)) { MEMO.with(|m| if let Some(m) = m.borrow_mut().as_mut() { f(&mut m.stats) }); }
 
+fn question_key(p: &Chess, seed: &str, focus: &[Square], goal: i64) -> String {
+    format!("{}|{}|{}|{}|{}", seed, focus.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","), goal,
+            if p.turn() == Color::White { "w" } else { "b" }, crate::waiting::DEEP_CONDITIONS.load(Ordering::Relaxed))
+}
+
+/// The stored proof (hints) of a question asked on exactly this board, if the memory holds one that held.
+fn stored_proof(p: &Chess, seed: &str, focus: &[Square], goal: i64) -> Option<std::sync::Arc<Hints>> {
+    let key = question_key(p, seed, focus, goal);
+    let (board, extra) = snapshot(p);
+    MEMO.with(|m| m.borrow().as_ref().and_then(|m| m.entries.get(&key).and_then(|v| v.iter().rev()
+        .find(|e| e.board == board && e.extra == extra && e.holds).map(|e| e.hints.clone()))))
+}
+
 /// A proof question through the memory (or straight to the search when no memory is installed): (holds, nodes searched).
 fn mprove(p: &Chess, seed: &str, focus: &[Square], goal: i64) -> (bool, u64) {
     let installed = MEMO.with(|m| m.borrow().is_some());
     if !installed { let (ok, _, n, _) = prove_n(p, seed, focus, goal, None); return (ok, n); }
     // the QUESTION alone is the key -- where it was asked does not matter, the board comparison decides (2026-10-09: keyed
     // by where it was asked, White's null-move analysis of Black's threat never served Black's own analysis a move later)
-    let key = format!("{}|{}|{}|{}|{}", seed, focus.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","), goal,
-                      if p.turn() == Color::White { "w" } else { "b" }, crate::waiting::DEEP_CONDITIONS.load(Ordering::Relaxed));
+    let key = question_key(p, seed, focus, goal);
     let (board, extra) = snapshot(p);
     let prior = MEMO.with(|m| m.borrow().as_ref().and_then(|m| m.entries.get(&key).and_then(|v| {
         v.iter().filter(|e| e.extra == extra)
@@ -713,6 +732,16 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
     // White's captures, not White's mate)
     let mut their: Option<(String, Square, i64)> = None;
     let mut their_wins: Vec<(String, Square, i64)> = Vec::new();
+    // A MATE FIRST (Kaveh 2026-10-10: once a mate is found and proven, no more time is spent): a forced mate by checks --
+    // every reply searched -- ends the analysis before their threat is even computed
+    if !immediate_only {
+        if let Some(m) = crate::threat::mate_by_checks(pos, crate::threat::MATE_CHECKS) {
+            let u = m.to_uci(CastlingMode::Standard).to_string();
+            trace.push(format!("mate: {} mates by checks (proven: every reply searched) -- no further analysis", san(pos, &u)));
+            let d = Some((String::new(), u.clone(), MATE_GOAL, format!("{} mates by checks", san(pos, &u))));
+            return Plan { trace, best: d.clone(), proofs, nodes, target: b.king_of(them), immediate: d, wins: vec![(u, b.king_of(them).unwrap_or(m.to()), MATE_GOAL)] };
+        }
+    }
     let threat = if immediate_only { 0 } else {
         let cap = match pass(pos) {
             Some(p) => { BUDGET.store(200_000, Ordering::Relaxed); let v = settle_d(&p, -2000, 2000, true, SETTLE_DEPTH).max(0); BUDGET.store(u64::MAX, Ordering::Relaxed); v }
@@ -1038,6 +1067,12 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
             }
             if ok { if best.as_ref().map_or(true, |x| g > x.2) { best = Some((String::new(), s.clone(), g, format!("{} wins {g} against the {name}", san(pos, s)))); best_target = Some(t); } }
             else { failed.push(s.clone()); }
+            // (a proven MATE ends the analysis -- nothing else can beat it)
+            if ok && king && !immediate_only {
+                trace.push(format!("mate: {} is a proven mate -- no further analysis", san(pos, s)));
+                let d = Some((String::new(), s.clone(), MATE_GOAL, format!("{} mates (proven)", san(pos, s))));
+                return Plan { trace, best: d.clone(), proofs, nodes, target: Some(t), immediate: d, wins };
+            }
         }
         armed.push((goal, t, failed));
     }
@@ -1455,10 +1490,45 @@ impl PlanState {
             memo.pool = next;
             memo.pool_ply += 1;
         }
+        // PLAYING OUT A PROVEN MATE: their reply read off the board, our answer read off the stored proof -- no search
+        let mut played: Option<Plan> = None;
+        if let Some(sol) = memo.solution.clone() {
+            if pos.turn() == sol.owner {
+                let reply = sol.after_ours.legal_moves().into_iter().find(|r| { let x = after(&sol.after_ours, r); x.board() == pos.board() && x.turn() == pos.turn() });
+                let next = reply.and_then(|r| {
+                    let path = child_path(sol.path, move_code(&r));
+                    sol.hints.get(&path).copied().and_then(|code| pos.legal_moves().into_iter().find(|m| move_code(m) == code)).map(|m| (path, m))
+                });
+                match next {
+                    Some((path, m)) => {
+                        let u = m.to_uci(CastlingMode::Standard).to_string();
+                        let d = Some((String::new(), u.clone(), MATE_GOAL, format!("{} -- the proven mate, played out (no search)", san(&pos, &u))));
+                        let q = after(&pos, &m);
+                        memo.solution = if q.is_checkmate() { None } else { Some(Solution { owner: sol.owner, hints: sol.hints.clone(), path: child_path(path, move_code(&m)), after_ours: q }) };
+                        played = Some(Plan { trace: vec![format!("mate: playing out the proven solution -- {} (stored answer to their reply)", san(&pos, &u))],
+                                             best: d.clone(), proofs: 0, nodes: 0, target: pos.board().king_of(!pos.turn()), immediate: d, wins: vec![] });
+                    }
+                    None => { memo.solution = None; }
+                }
+            }
+        }
         MEMO.with(|m| *m.borrow_mut() = Some(memo));
         let t = std::time::Instant::now();
-        let p = plan(&pos);
+        let p = match played { Some(p) => p, None => plan(&pos) };
         let ms = t.elapsed().as_secs_f64() * 1000.0;
+        // a NEW proven mate (through the memory's stored proof) becomes the solution to play out
+        if p.proofs > 0 {
+            if let Some((k, u, v, _)) = &p.best {
+                if k.is_empty() && *v >= MATE_GOAL {
+                    if let (Some(m), Some(ks)) = (u.parse::<shakmaty::uci::UciMove>().ok().and_then(|x| x.to_move(&pos).ok()), pos.board().king_of(!pos.turn())) {
+                        if let Some(h) = stored_proof(&pos, u, &[ks], MATE_GOAL) {
+                            let sol = Solution { owner: pos.turn(), hints: h, path: child_path(0, move_code(&m)), after_ours: after(&pos, &m) };
+                            MEMO.with(|mm| if let Some(mm) = mm.borrow_mut().as_mut() { mm.solution = Some(sol); });
+                        }
+                    }
+                }
+            }
+        }
         let memo = MEMO.with(|m| m.borrow_mut().take()).unwrap_or_default();
         let s = memo.stats;
         self.memo = Some(memo);
