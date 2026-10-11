@@ -362,7 +362,7 @@ fn pursue(q: &Chess, side: Color, target: i64, focus: &[Square], plies: u32) -> 
                 // CHAINS OF LEMMAS (2026-10-08, puzzle 076jI: Bxb5 Rxe7 c4 traps ANOTHER piece): a move the lemma
                 // registry proposes -- one that corners or traps any of their pieces -- is an answer too; only while
                 // two or more plies remain (the rules run per move)
-                || (plies >= 2 && { let q2 = after(q, m2); !q2.is_check() && corners_any(&q2, side) })
+                || (plies >= 2 && { let q2 = after(q, m2); !q2.is_check() && corners_any(&q2, side, None) })
         }).collect();
         // THE ORDER (Kaveh 2026-10-08: reason around the cornering -- cover its escapes): captures of a focus piece first,
         // then the moves leaving it the fewest safe escapes (bitboards), then the rest
@@ -438,10 +438,10 @@ fn safe_escapes(q: &Chess, us: Color, t: Square) -> i64 { escape_set(q, us, t).0
 /// Does some piece of theirs (worth 3 or more) have no safe escape and stand where we attack it or attack all its
 /// escapes -- the cornering question answered with bitboards (2026-10-08: running the Ascent rules for every candidate
 /// at every node made the chains too slow).
-fn corners_any(q: &Chess, us: Color) -> bool {
+fn corners_any(q: &Chess, us: Color, z: Option<shakmaty::Bitboard>) -> bool {
     let b = q.board();
     let them = !us;
-    for sq in b.by_color(them) {
+    for sq in b.by_color(them) & z.unwrap_or(shakmaty::Bitboard::FULL) {
         let Some(p) = b.piece_at(sq) else { continue };
         if p.role == Role::King || kernel_value(p.role) < 3 { continue; }
         let (safe, reach) = escape_set(q, us, sq);
@@ -537,6 +537,145 @@ static EXACT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new
 #[pyfunction]
 fn set_exact(flag: bool) -> PyResult<()> { EXACT.store(flag, Ordering::Relaxed); Ok(()) }
 
+// FRAME PROOFS (Kaveh 2026-10-11: "we should have evaluated any potential capture of my opponent on the board already,
+// once ... they become multiple frames ... when we're checking opponent replies, check the moves that are available to
+// my opponent, or specific frames that have a synergy with this one ... we don't want to research anything"). A proof
+// reads its FRAME (the zone: the target, its escapes, the pieces bearing on them, the lines between, and BOTH KINGS --
+// an attack on the king is a frame like any other, differing in value only) and the INDEX of both sides' other frames
+// (the static exchange on every piece, carried through the search incrementally as the forcing search does), nothing
+// else: a reply outside the frame that is not one of their live frames is a pass; the leaf is the material plus the
+// composed standing read from the index (Lean Ideas.ExchangeLaw.exchangeLawComposed) instead of a capture search over
+// the whole board. What the proof read is RECORDED (`DEP`: every square it searched a move from or to, every square
+// whose exchange it recomputed, the zones) so the memory can reuse it when nothing it depends on changed (Lean
+// Ideas.FrameLemma.frame_unchanged for the static part); a proof that judged a stalemate read the whole board (GLOBAL).
+// Soundness is "modulo the pass": their preparatory moves outside the frame are not searched -- measured against the
+// exact proofs by the frame audit (plan.rs) before this is switched on.
+pub static FRAME_PROOFS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// set_frame_proofs(flag): proofs read their frame and the index, not the board (see FRAME_PROOFS).
+#[pyfunction]
+fn set_frame_proofs(flag: bool) -> PyResult<()> { FRAME_PROOFS.store(flag, Ordering::Relaxed); Ok(()) }
+thread_local! {
+    static FRAME_OFF_TL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };     // the audit's exact re-run
+    static DEP: std::cell::Cell<shakmaty::Bitboard> = const { std::cell::Cell::new(shakmaty::Bitboard::EMPTY) };
+    static GLOBAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+pub(crate) fn frame_on() -> bool { FRAME_PROOFS.load(Ordering::Relaxed) && !FRAME_OFF_TL.with(|c| c.get()) }
+/// Run `f` with frame proofs off on this thread (the audit's exact answer to the same question).
+pub(crate) fn with_frame_off<T>(f: impl FnOnce() -> T) -> T {
+    let was = FRAME_OFF_TL.with(|c| c.replace(true));
+    let out = f();
+    FRAME_OFF_TL.with(|c| c.set(was));
+    out
+}
+fn dep_add(b: shakmaty::Bitboard) { DEP.with(|d| d.set(d.get() | b)); }
+fn dep_global() { GLOBAL.with(|g| g.set(true)); }
+/// What the proofs since the last call read: (the squares, whether one read the whole board).
+pub(crate) fn take_dep() -> (shakmaty::Bitboard, bool) {
+    (DEP.with(|d| d.replace(shakmaty::Bitboard::EMPTY)), GLOBAL.with(|g| g.replace(false)))
+}
+/// The index a frame proof reads: the static exchange for `side` on each of their pieces (`us`) and for them on each of
+/// ours (`them`), as the forcing search carries them (threat.rs FState).
+#[derive(Clone, Copy)]
+pub(crate) struct Idx { us: rules::ThrArr, them: rules::ThrArr }
+fn idx_root(q: &Chess, side: Color) -> Idx { Idx { us: rules::threats_arr(q, side), them: rules::threats_arr(q, !side) } }
+/// The index after `m` (played from the position before `q2`), the recomputed squares recorded as read.
+fn idx_after(ix: &Idx, q2: &Chess, m: &Move, side: Color) -> Idx {
+    let touched = rules::touched_by(m);
+    let b = q2.board();
+    let mut read = shakmaty::Bitboard::EMPTY;
+    for t in b.occupied() { if rules::exchange_affected(t, touched) { read.add(t); } }
+    dep_add(read | touched);
+    Idx { us: rules::threats_arr_inc(&ix.us, q2, m, side), them: rules::threats_arr_inc(&ix.them, q2, m, !side) }
+}
+fn kings(q: &Chess) -> shakmaty::Bitboard { q.board().kings() }
+/// frame_line(fen, uci, focus, plies, budget) -> (certified value or None, the line the value search decided on: our
+/// answers and their refutations from the recorded proof, "pass" for the outside reply) -- the review hook.
+#[pyfunction]
+fn frame_line(fen: String, uci: String, focus: Vec<String>, plies: u32, budget: u64) -> PyResult<(Option<i64>, Vec<String>)> {
+    let Some(pos) = parse(&fen) else { return Ok((None, vec![])) };
+    let Ok(u) = uci.parse::<shakmaty::uci::UciMove>() else { return Ok((None, vec![])) };
+    let Ok(m) = u.to_move(&pos) else { return Ok((None, vec![])) };
+    let f: Vec<Square> = focus.iter().filter_map(|s| s.parse().ok()).collect();
+    let (v, rec) = with_hints(None, || certified_value(&pos, &m, &f, plies, budget));
+    let mut line = vec![];
+    let mut q = after(&pos, &m);
+    let mut path = 0u64;                                              // the value search records from the root
+    while let Some(code) = rec.get(&path).copied() {
+        if code == PASS_CODE {
+            line.push("pass".to_string());
+            let Ok(p2) = q.clone().swap_turn() else { break };
+            q = p2;
+        } else {
+            let Some(mv) = q.legal_moves().into_iter().find(|x| move_code(x) == code) else { break };
+            line.push(mv.to_uci(CastlingMode::Standard).to_string());
+            q = after(&q, &mv);
+        }
+        path = child_path(path, code);
+        if line.len() > 16 { break; }
+    }
+    Ok((v, line))
+}
+
+/// frame_leaf(fen) -> (material, composed standing, best capture by the exchange law, their best now) for the side to
+/// move, as a frame proof's leaf reads them from the index -- the review hook.
+#[pyfunction]
+fn frame_leaf(fen: String) -> PyResult<(i64, i64, i64, i64)> {
+    let Some(q) = parse(&fen) else { return Ok((0, 0, 0, 0)) };
+    let side = q.turn();
+    let ix = idx_root(&q, side);
+    let best = ix.us.iter().copied().max().unwrap_or(0).max(0) as i64;
+    let crude = ix.them.iter().copied().max().unwrap_or(0).max(0) as i64;
+    Ok((kernel_material(&q, side), composed_from_index(&q, &ix, side), best, crude))
+}
+/// THE PROMOTION a side to move can make now, by the exchange law on the promotion square: a queen (8 more than the
+/// pawn) plus what it takes, less what they win back on that square; the best over its promotions, never negative.
+/// (The leaf's index carries material only; the promotion is the other threat the capture search sees -- 2026-10-11:
+/// Kf5 "nets 1" with f7 and f8=Q to come.) The pawns and the squares read are recorded.
+fn promo_gain(q: &Chess, by: Color) -> (i64, Option<Move>) {
+    if q.turn() != by { return (0, None); }
+    let mut best = (0i64, None);
+    for m in q.legal_moves() {
+        if m.promotion() != Some(Role::Queen) { continue; }
+        dep_add(rules::touched_by(&m));
+        let q2 = after(q, &m);
+        let back = rules::see(q2.board(), m.to(), !by).max(0);
+        let g = 8 + m.capture().map(kernel_value).unwrap_or(0) - back;
+        if g > best.0 { best = (g, Some(m)); }
+    }
+    best
+}
+/// THE COMPOSED STANDING from the index, for the side to move: the best capture the exchange law gives it (or its best
+/// promotion), less the intermezzo price -- their best capture or promotion elsewhere after it (crude: their best now;
+/// exact: played out, as threat.rs Forcing::judge does); never below standing pat. A lower bound on what a capture
+/// search would settle (Lean Ideas.ExchangeLaw.exchangeLawComposed).
+fn composed_from_index(q: &Chess, ix: &Idx, side: Color) -> i64 {
+    let cap_best = ix.us.iter().copied().max().unwrap_or(0).max(0) as i64;
+    let (pro_best, pro_move) = promo_gain(q, side);
+    let best = cap_best.max(pro_best);
+    if best == 0 { return 0; }
+    let crude_cap = ix.them.iter().copied().max().unwrap_or(0).max(0) as i64;
+    let crude_pro = q.clone().swap_turn().map(|p| promo_gain(&p, !side).0).unwrap_or(0);
+    if crude_cap.max(crude_pro) == 0 { return best; }
+    // the move that stands: the cheapest capture on the best square, or the promotion
+    let mv = if pro_best > cap_best { pro_move } else {
+        let t = (0..64).max_by_key(|x| (ix.us[*x], *x)).map(|x| Square::new(x as u32)).unwrap();
+        q.legal_moves().into_iter().filter(|m| m.to() == t).min_by_key(|m| kernel_value(m.role()))
+    };
+    let Some(mv) = mv else { return 0 };
+    let t = mv.to();
+    dep_add(rules::touched_by(&mv));
+    let q2 = after(q, &mv);
+    // (a move that gives CHECK leaves them no capture elsewhere but an answer to the check -- the tempo)
+    let legal_caps: shakmaty::Bitboard = if q2.is_check() { q2.legal_moves().iter().filter(|m| m.is_capture()).map(|m| m.to()).collect() } else { shakmaty::Bitboard::FULL };
+    let them2 = rules::threats_arr_inc(&ix.them, &q2, &mv, !side);
+    let b = q2.board();
+    for x in b.occupied() { if rules::exchange_affected(x, rules::touched_by(&mv)) { dep_add(shakmaty::Bitboard::from_square(x)); } }
+    let price_cap = (0..64usize).filter(|x| *x != t as usize && legal_caps.contains(Square::new(*x as u32))).map(|x| them2[x] as i64).max().unwrap_or(0).max(0);
+    let price = price_cap.max(promo_gain(&q2, !side).0);
+    (best - price).max(0)
+}
+
+
 /// The pursuit at `plies`, then two plies deeper only if that failed -- under a node budget each time; an exhausted
 /// budget answers "not certified", which stays sound (2026-10-08: four trapped-piece puzzles certify at six plies, not
 /// four; six everywhere cost up to two seconds a claim).
@@ -568,10 +707,28 @@ fn pursuit_check(fen: String, uci: String, k: i64, focus: Vec<String>, plies: u3
 // as a lower bound for the same reason as localCheck_sound: our moves are a subset of the legal ones. A spent budget
 // returns the floor (-1000): nothing certified.
 
-fn leaf_value(q: &Chess, side: Color, alpha: i64, beta: i64) -> i64 {
+fn leaf_value(q: &Chess, side: Color, alpha: i64, beta: i64, ix: Option<&Idx>) -> i64 {
     // the protagonist to move at q: its material plus the resolved captures, searched inside the caller's window
     let mat = kernel_material(q, side);
-    mat + settle_d(q, alpha - mat, beta - mat, true, SETTLE_DEPTH)
+    let Some(ix) = ix else { return mat + settle_d(q, alpha - mat, beta - mat, true, SETTLE_DEPTH) };
+    // THE FRAME LEAF: the material plus the composed standing read from the index; in check, each evasion followed one
+    // ply with their standing read from the index after it (the evasions and what they recompute are recorded)
+    if q.is_check() {
+        dep_add(q.checkers());
+        let ms = q.legal_moves();
+        if ms.is_empty() { return mat - 1000; }
+        let mut best = -10000;
+        for e in ms {
+            let g = e.capture().map(kernel_value).unwrap_or(0) + if e.is_promotion() { 8 } else { 0 };
+            let q2 = after(q, &e);
+            let ix2 = idx_after(ix, &q2, &e, side);
+            let theirs = Idx { us: ix2.them, them: ix2.us };
+            let v = g - composed_from_index(&q2, &theirs, !side);
+            if v > best { best = v; }
+        }
+        return mat + best;
+    }
+    mat + composed_from_index(q, ix, side)
 }
 
 // STORED PROOFS (Kaveh 2026-10-09: "keep track of the frames ... only look at whatever the last move destroyed or
@@ -626,28 +783,39 @@ fn focus_after(r: &Move, f: Square) -> Square {
 }
 
 fn pursue_val(q: &Chess, side: Color, focus: &[Square], plies: u32, alpha: i64, beta: i64) -> i64 {
-    pursue_val_p(q, side, focus, plies, alpha, beta, 0)
+    let ix = if frame_on() { Some(idx_root(q, side)) } else { None };
+    pursue_val_p(q, side, focus, plies, alpha, beta, 0, ix.as_ref())
 }
-
-fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha: i64, mut beta: i64, path: u64) -> i64 {
+/// `ix`: the index of both sides' frames carried through the search -- a FRAME PROOF (see FRAME_PROOFS); None: the
+/// board-reading search.
+fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha: i64, mut beta: i64, path: u64, ix: Option<&Idx>) -> i64 {
     NODES.fetch_add(1, Ordering::Relaxed);
     let b = BUDGET.load(Ordering::Relaxed);
     if b == 0 { return -1000; }
     if b != u64::MAX { BUDGET.store(b - 1, Ordering::Relaxed); }
     if q.turn() == side {
-        if !q.is_check() && q.legal_moves().is_empty() { return -1000; }   // the protagonist stalemated: a draw, no gain
-        let stand = leaf_value(q, side, alpha, beta);
+        // the protagonist stalemated: a draw, no gain (a stalemate is read off the whole board)
+        if !q.is_check() && q.legal_moves().is_empty() { if ix.is_some() { dep_global(); } return -1000; }
+        let stand = leaf_value(q, side, alpha, beta, ix);
         if plies == 0 || stand >= beta { return stand; }
         let mut best = stand;
         if best > alpha { alpha = best; }
         let them = !side;
         let occ = q.board().occupied();
+        // OUR MOVES, IN THE FRAME (frame proofs): a capture outside the zone only when the index gives it a gain (a live
+        // frame of ours); a move of an attacked piece outside the zone only when the index says it is attacked (a live
+        // frame of theirs); the cornering test on frame pieces only. The zone and every move searched are recorded.
+        let z = ix.map(|_| frame_zone(q, side, focus) | kings(q));
+        if let Some(z) = z { dep_add(z); }
         let mut ordered: Vec<(i64, Move)> = q.legal_moves().into_iter().filter(|m2| {
-            m2.is_capture() || m2.role() == Role::King
-                || m2.from().map(|f| q.board().attacks_to(f, them, occ).any()).unwrap_or(false)
+            (m2.is_capture() && match (ix, z) { (Some(ix), Some(z)) => z.contains(m2.to()) || ix.us[m2.to() as usize] > 0, _ => true })
+                || m2.role() == Role::King
+                || m2.from().map(|f| match (ix, z) {
+                    (Some(ix), Some(z)) => (z.contains(f) && q.board().attacks_to(f, them, occ).any()) || ix.them[f as usize] > 0,
+                    _ => q.board().attacks_to(f, them, occ).any() }).unwrap_or(false)
                 || after(q, m2).is_check()
                 || attacks_any(q, m2, focus)
-                || (plies >= 2 && { let q2 = after(q, m2); !q2.is_check() && corners_any(&q2, side) })
+                || (plies >= 2 && { let q2 = after(q, m2); !q2.is_check() && corners_any(&q2, side, z) })
         }).map(|m2| {
             let q2 = after(q, &m2);
             let key = if focus.contains(&m2.to()) { -1 } else {
@@ -665,7 +833,8 @@ fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha:
             let q2 = after(q, &m2);
             let f2: Vec<Square> = focus.iter().filter(|f| q2.board().piece_at(**f).map_or(false, |p| p.color != side)).copied().collect();
             let code = move_code(&m2);
-            let v = pursue_val_p(&q2, side, &f2, plies - 1, alpha, beta, child_path(path, code));
+            let ix2 = ix.map(|x| idx_after(x, &q2, &m2, side));
+            let v = pursue_val_p(&q2, side, &f2, plies - 1, alpha, beta, child_path(path, code), ix2.as_ref());
             if v > best { best = v; decided = Some(code); if best > alpha { alpha = best; } if alpha >= beta { break; } }
         }
         if let Some(c) = decided { record(path, c); }
@@ -674,18 +843,25 @@ fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha:
         let ms = q.legal_moves();
         // no legal reply: mate -- or STALEMATE, a draw, which no claim to win something survives (bug 2026-10-10, found
         // from Kaveh's stalemate lemma: it was scored as keeping the material, i.e. as a win)
-        if ms.is_empty() { return if q.is_check() { 1000 } else { -1000 }; }
+        if ms.is_empty() {
+            if ix.is_some() { if q.is_check() { dep_add(q.checkers()); } else { dep_global(); } }
+            return if q.is_check() { 1000 } else { -1000 };
+        }
         // THEIR REPLIES, KEPT IN THE FRAME (Kaveh 2026-10-08: "use lemmas for the opponent reply too, and keep it in the
         // frame"): with a focus, only the replies that touch the frame are searched -- the target's moves, captures,
         // checks, and moves from, to or attacking a frame square (the target, its escapes, our pieces bearing on them,
         // the lines between); every other reply is ONE "pass" (the FRAME-INDEPENDENCE lemma, Lean
         // Ideas.FrameLemma.frame_unchanged, 2026-10-11: a move that touches no square bearing on the frame -- on a line
         // through a frame square, a knight's move from one, or the square itself -- leaves the frame's pieces and every
-        // attack onto them as they were. What the theorem does NOT cover is what this search reads beyond the frame:
-        // leaf_value counts the whole board and settles every capture on it, and captures and checks anywhere are
-        // searched as "touching"; so a certificate is exact in its frame and "modulo the rest of the board" outside it,
-        // until the proofs read the opponent's other frames from the index instead). In check every evasion is searched.
-        let zone = if focus.is_empty() || q.is_check() || EXACT.load(Ordering::Relaxed) { None } else { Some(frame_zone(q, side, focus)) };
+        // attack onto them as they were). In check every evasion is searched. The board-reading search (EXACT, the
+        // default since the 2026-10-09 audit found this pass certifying 10.9% false claims) searches every reply and
+        // reads the whole board at its leaf. The FRAME PROOF keeps the pass, puts both kings in the zone, takes the
+        // captures outside it from the index (their live frames) and the leaf from the index too; its soundness is
+        // "modulo the pass" -- their preparatory moves outside the frame -- and is measured by the frame audit.
+        let frame = ix.is_some();
+        let zone = if focus.is_empty() || q.is_check() || (EXACT.load(Ordering::Relaxed) && !frame) { None }
+                   else { Some(frame_zone(q, side, focus) | if frame { kings(q) } else { shakmaty::Bitboard::EMPTY }) };
+        if frame { if let Some(z) = zone { dep_add(z); } else { dep_add(q.checkers()); } }
         let mut worst = 2000;
         let mut passed_once = false;
         let mut ms: Vec<Move> = ms.into_iter().collect();
@@ -696,23 +872,26 @@ fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha:
         for r in ms.iter() {
             if let Some(z) = zone {
                 let q2p = after(q, r);
-                let touches = r.is_capture() || q2p.is_check()
+                // a capture is a live frame of theirs when the index gives it a gain (frame proofs); every capture otherwise
+                let live = match ix { Some(ix) => r.is_capture() && ix.them[r.to() as usize] > 0, None => r.is_capture() };
+                let touches = live || q2p.is_check() || (frame && r.is_promotion())
                     || r.from().map_or(false, |f| z.contains(f)) || z.contains(r.to())
                     || q2p.board().piece_at(r.to()).map_or(false, |p| (shakmaty::attacks::attacks(r.to(), p, q2p.board().occupied()) & z).any());
                 if !touches {
                     if passed_once { continue; }                       // all the outside moves are one pass
                     passed_once = true;
                     let Ok(pass) = q.clone().swap_turn() else { continue };
-                    let v = if plies == 0 { leaf_value(&pass, side, alpha, beta) } else { pursue_val_p(&pass, side, focus, plies - 1, alpha, beta, child_path(path, PASS_CODE)) };
+                    let v = if plies == 0 { leaf_value(&pass, side, alpha, beta, ix) } else { pursue_val_p(&pass, side, focus, plies - 1, alpha, beta, child_path(path, PASS_CODE), ix) };
                     if v < worst { worst = v; decided = Some(PASS_CODE); if worst < beta { beta = worst; } if alpha >= beta { break; } }
                     continue;
                 }
             }
             let q2 = after(q, r);
             let code = move_code(r);
-            let v = if q2.is_checkmate() { -1000 } else if plies == 0 { leaf_value(&q2, side, alpha, beta) } else {
+            let ix2 = ix.map(|x| idx_after(x, &q2, r, side));
+            let v = if q2.is_checkmate() { if frame { dep_add(q2.checkers()); } -1000 } else if plies == 0 { leaf_value(&q2, side, alpha, beta, ix2.as_ref()) } else {
                 let f2: Vec<Square> = focus.iter().map(|f| focus_after(r, *f)).collect();
-                pursue_val_p(&q2, side, &f2, plies - 1, alpha, beta, child_path(path, code))
+                pursue_val_p(&q2, side, &f2, plies - 1, alpha, beta, child_path(path, code), ix2.as_ref())
             };
             if v < worst { worst = v; decided = Some(code); if worst < beta { beta = worst; } if alpha >= beta { break; } }
         }
@@ -750,7 +929,8 @@ pub fn prove_pos(p: &Chess, m: &Move, focus: &[Square], plies: u32, budget: u64,
     let q = after(p, m);
     if q.is_checkmate() { return Some(true); }
     BUDGET.store(budget, Ordering::Relaxed);
-    let v = pursue_val_p(&q, c, focus, plies, target - 1, target, child_path(0, move_code(m)));
+    let ix = if frame_on() { Some(idx_root(&q, c)) } else { None };
+    let v = pursue_val_p(&q, c, focus, plies, target - 1, target, child_path(0, move_code(m)), ix.as_ref());
     let left = BUDGET.load(Ordering::Relaxed);
     let spent = left == 0;
     BUDGET.store(u64::MAX, Ordering::Relaxed);
@@ -780,7 +960,17 @@ pub(crate) fn certified_value(p: &Chess, m: &Move, focus: &[Square], plies: u32,
     let v = pursue_val(&q, c, focus, plies, -2000, 2000);
     let spent = BUDGET.load(Ordering::Relaxed) == 0;
     BUDGET.store(u64::MAX, Ordering::Relaxed);
-    if spent { None } else { Some(v - base) }
+    let out = if spent { None } else { Some(v - base) };
+    // THE FRAME AUDIT on values: the same value by the exact search; [3] equal, [4] the frame value LARGER (an
+    // overclaim), [5] smaller (counted only when both finished)
+    if plan::FRAME_AUDIT.load(Ordering::Relaxed) && frame_on() {
+        if let Some(fv) = out {
+            if let Some(xv) = with_frame_off(|| certified_value(p, m, focus, plies, budget)) {
+                plan::frame_audit_count(if fv == xv { 3 } else if fv > xv { 4 } else { 5 });
+            }
+        }
+    }
+    out
 }
 
 // TARGET-FIRST REASONING, the primitives (Kaveh 2026-10-08: "start from the highest-value goal -- can I do anything
@@ -1257,6 +1447,12 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(frame_outs, m)?)?;
     m.add_function(wrap_pyfunction!(frame_tree, m)?)?;
     m.add_function(wrap_pyfunction!(set_exact, m)?)?;
+    m.add_function(wrap_pyfunction!(set_frame_proofs, m)?)?;
+    m.add_function(wrap_pyfunction!(frame_leaf, m)?)?;
+    m.add_function(wrap_pyfunction!(frame_line, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_zone_reuse, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_frame_audit, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::frame_audit_stats, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::waiting_frames, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::arming_moves, m)?)?;
     m.add_class::<waiting::FramePool>()?;

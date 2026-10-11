@@ -28884,3 +28884,34 @@ whole board; captures and checks anywhere are searched as "touching"), so today'
 and "modulo the rest of the board" outside it. The obligation it puts on the next build: proofs read the opponent's
 frames from the index (their replies and the leaf), record which frames they joined, and are reused when no touched
 square bears on their zone and no joined frame changed. rules.rs exchange_affected is `reachB`; cited.
+FRAME PROOFS AND ZONE REUSE, BUILT AND MEASURED (2026-10-11 ~13:10 PDT; Kaveh: "yes but in rust, right?"). The
+build (rust/analyst_core, flags OFF by default): FRAME_PROOFS -- a proof reads its frame (the zone: target, escapes,
+pieces bearing on them, lines between, and BOTH KINGS) and the index of both sides' other frames (the static exchange on
+every piece, carried through the search incrementally as the forcing search's FState does; lib.rs Idx, idx_after); a
+reply outside the frame that is not a live frame of theirs (a capture with a gain in the index, a check, a promotion)
+is one pass; our captures and attacked-piece moves outside the zone count only when the index says so; the leaf is the
+material plus the composed standing read from the index (best capture or promotion less the intermezzo price, exact
+when the crude price does not settle it; promo_gain by the exchange law on the promotion square) in place of the
+whole-board capture search. Every proof RECORDS what it read (DEP: zones, every move searched, every exchange
+recomputed; GLOBAL on a stalemate judgement) and the index at its root (plan.rs Entry.dep/global/spent/idx); ZONE_REUSE
+reuses a stored proof when no changed square bears on its dependency (plan.rs bearing = Lean
+Ideas.FrameLemma.reachB) and the root index is the same. FRAME_AUDIT answers every frame question again exactly
+(prove_audited) and every frame value (certified_value): counters frame_audit_stats. Hooks: frame_leaf, frame_line.
+Scripts: frame_proof_check.py (both ways, all cores), plan_memo_check.py --frame --zone.
+OBS frame_proof_check, 20 census games, 1,791 positions (137 s on 10 processes): 76,776 proof questions, agree 99.5%,
+FALSE CLAIMS 133 (0.17%; the 2026-10-09 pass certified 10.9%), missed 246 (0.32%); frame values (49,709 both finished)
+equal 91.1%, frame LARGER 4.22%, smaller 4.71%; decisions identical 1,725 of 1,791 (96.3%); nodes a position 25,969
+vs 501,290 (19x fewer), ms 199 vs 213 without the audit (same) -- the profile (macOS sample, one process, 120
+positions): rules::see + threats_arr_inc about half the samples (the index recomputed at every node for both sides),
+allocation a fifth. OBS plan_memo_check --frame --zone, 20 games: ZONE reuses 0.0 a move (exact reuses 4.4, replays
+2.2; searches a move 42.9 -> 36.2, ms 228 -> 204, decisions identical 1,784 of 1,791, the 7 another move of equal
+worth). WHY ZERO: a multi-ply proof also reads which pieces can MOVE into its frame next ply; with the kings in the zone
+and every searched move recorded, the squares bearing on the dependency (lines through them) cover the board, so every
+game move invalidates every stored proof. Zone reuse of multi-ply proofs is structurally vacuous on a chessboard; the
+static index (exchange_affected) is where incremental reuse pays, and it is exact. A false-claim source read from the
+lines: their quiet move that CREATES a threat outside the frame is a pass (Kf5 "nets 1" against the rook on e4; f6-f7
+then f8=Q refutes it; the exact search says 0) -- the forcing-move generator's quiet threats would route such replies
+into the search; not built. b5 "nets 1" against the bishop on a4 (frame 2 plies, exact 4 plies agree: Bb3 b4 Na4 Nxe4
+wins the pawn the knight defended) is a composed gain, not a false claim. Tests 35 passed (memory, planner, proof,
+threats, Lean index). Recommendation given: commit behind the flags, run the Stockfish agreement round with the exact
+proofs; continue the frame line only if speed outranks that round.

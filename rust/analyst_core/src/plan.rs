@@ -32,11 +32,15 @@ use std::cell::RefCell;
 //   it FAILED                     -> re-prove, the stored refutation tried first (reusing a "fails" whose support was
 //                                    untouched is an option, OFF: audited unsafe -- see `mprove`)
 #[derive(Clone)]
-struct Entry { board: Vec<u8>, extra: String, holds: bool, hints: std::sync::Arc<Hints>, support: Bitboard }
+struct Entry { board: Vec<u8>, extra: String, holds: bool, hints: std::sync::Arc<Hints>, support: Bitboard,
+               // a FRAME PROOF's dependency (lib.rs FRAME_PROOFS): the squares it read, whether it read the whole
+               // board, whether its budget ran out (unknown, never reused), the index it read at the root
+               dep: Bitboard, global: bool, spent: bool, idx: Option<Box<(rules::ThrArr, rules::ThrArr)>> }
 
 #[derive(Default, Clone, Copy)]
 pub struct Stats { pub fresh: u32, pub replay: u32, pub reuse_exact: u32, pub reuse_fail: u32, pub reprove: u32,
-                   pub nodes: u64, pub lone: u32, pub frozen: u32, pub escape_skip: u32, pub cut_by_history: u32 }
+                   pub nodes: u64, pub lone: u32, pub frozen: u32, pub escape_skip: u32, pub cut_by_history: u32,
+                   pub reuse_zone: u32 }
 
 #[derive(Default)]
 pub struct Memo { entries: HashMap<String, Vec<Entry>>, pub history: HashMap<String, f32>, pub stats: Stats,
@@ -51,6 +55,28 @@ pub struct Memo { entries: HashMap<String, Vec<Entry>>, pub history: HashMap<Str
 pub struct Solution { owner: Color, hints: std::sync::Arc<Hints>, path: u64, after_ours: Chess }
 const SNAPSHOTS: usize = 8;
 pub static REUSE_FAILS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+// ZONE REUSE (Kaveh 2026-10-11: "we don't want to research anything"): a frame proof is reused, held or failed, when
+// no square that bears on what it read changed (Lean Ideas.FrameLemma.frame_unchanged) and the index it read at the
+// root is the same; OFF until the equality audit (plan_memo_check) passes.
+pub static ZONE_REUSE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[pyfunction]
+pub fn set_zone_reuse(flag: bool) -> PyResult<()> { ZONE_REUSE.store(flag, Ordering::Relaxed); Ok(()) }
+// THE FRAME AUDIT: every frame proof answered again by the exact search; [agree, false claims (frame holds, exact
+// fails), missed (frame fails, exact holds)] since the last read.
+pub static FRAME_AUDIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static FRAME_AUDIT_N: [std::sync::atomic::AtomicU64; 6] = [const { std::sync::atomic::AtomicU64::new(0) }; 6];
+pub(crate) fn frame_audit_count(i: usize) { FRAME_AUDIT_N[i].fetch_add(1, Ordering::Relaxed); }
+#[pyfunction]
+pub fn set_frame_audit(flag: bool) -> PyResult<()> { FRAME_AUDIT.store(flag, Ordering::Relaxed); Ok(()) }
+#[pyfunction]
+pub fn frame_audit_stats() -> Vec<u64> { FRAME_AUDIT_N.iter().map(|a| a.swap(0, Ordering::Relaxed)).collect() }
+/// The squares that bear on any square of `d` (Lean Ideas.FrameLemma.reachB: the square, a line through it, a
+/// knight's move from it): a change off this set cannot change what was read on `d`.
+fn bearing(d: Bitboard) -> Bitboard {
+    let mut out = Bitboard::EMPTY;
+    for t in d { out |= shakmaty::attacks::queen_attacks(t, Bitboard::EMPTY) | shakmaty::attacks::knight_attacks(t) | shakmaty::attacks::king_attacks(t); out.add(t); }
+    out
+}
 #[pyfunction]
 pub fn set_reuse_fails(flag: bool) -> PyResult<()> { REUSE_FAILS.store(flag, Ordering::Relaxed); Ok(()) }                                               // boards kept per question (the oldest dropped)
 
@@ -95,10 +121,20 @@ fn stored_proof(p: &Chess, seed: &str, focus: &[Square], goal: i64) -> Option<st
         .find(|e| e.board == board && e.extra == extra && e.holds).map(|e| e.hints.clone()))))
 }
 
+/// `prove_n`, and under the FRAME AUDIT the same question answered by the exact search, the two compared.
+fn prove_audited(p: &Chess, seed: &str, focus: &[Square], goal: i64, hints: Option<std::sync::Arc<Hints>>) -> (bool, Hints, u64, bool) {
+    let out = prove_n(p, seed, focus, goal, hints);
+    if FRAME_AUDIT.load(Ordering::Relaxed) && crate::frame_on() {
+        let (ok_x, _, _, _) = crate::with_frame_off(|| prove_n(p, seed, focus, goal, None));
+        FRAME_AUDIT_N[if out.0 == ok_x { 0 } else if out.0 { 1 } else { 2 }].fetch_add(1, Ordering::Relaxed);
+    }
+    out
+}
+
 /// A proof question through the memory (or straight to the search when no memory is installed): (holds, nodes searched).
 fn mprove(p: &Chess, seed: &str, focus: &[Square], goal: i64) -> (bool, u64) {
     let installed = MEMO.with(|m| m.borrow().is_some());
-    if !installed { let (ok, _, n, _) = prove_n(p, seed, focus, goal, None); return (ok, n); }
+    if !installed { let (ok, _, n, _) = prove_audited(p, seed, focus, goal, None); return (ok, n); }
     // the QUESTION alone is the key -- where it was asked does not matter, the board comparison decides (2026-10-09: keyed
     // by where it was asked, White's null-move analysis of Black's threat never served Black's own analysis a move later)
     let key = question_key(p, seed, focus, goal);
@@ -113,6 +149,11 @@ fn mprove(p: &Chess, seed: &str, focus: &[Square], goal: i64) -> (bool, u64) {
         if e.extra == extra {
             let diff: Bitboard = (0..64u32).filter(|i| e.board[*i as usize] != board[*i as usize]).map(Square::new).collect();
             if diff.is_empty() { tally(|s| s.reuse_exact += 1); return (e.holds, 0); }
+            if ZONE_REUSE.load(Ordering::Relaxed) && crate::frame_on() && !e.global && !e.spent && (diff & bearing(e.dep)).is_empty() {
+                if let Some(ix) = &e.idx {
+                    if ix.0 == rules::threats_arr(p, p.turn()) && ix.1 == rules::threats_arr(p, !p.turn()) { tally(|s| s.reuse_zone += 1); return (e.holds, 0); }
+                }
+            }
             // (OFF by default -- the audit of 2026-10-09: reusing a "fails" whose support no move touched missed two
             // immediate mates and misread their threat in several positions on 60 games: a refutation depends on more
             // than the squares it moved through, e.g. a piece guarding the landing square from afar)
@@ -125,7 +166,10 @@ fn mprove(p: &Chess, seed: &str, focus: &[Square], goal: i64) -> (bool, u64) {
     } else {
         tally(|s| s.fresh += 1);
     }
-    let (ok, rec, n, _) = prove_n(p, seed, focus, goal, hints);
+    let _ = crate::take_dep();
+    let (ok, rec, n, spent) = prove_audited(p, seed, focus, goal, hints);
+    let (dep, global) = crate::take_dep();
+    let idx = if crate::frame_on() { Some(Box::new((rules::threats_arr(p, p.turn()), rules::threats_arr(p, !p.turn())))) } else { None };
     let mut support = touched(&rec);
     for f in focus { support.add(*f); support |= shakmaty::attacks::king_attacks(*f); }
     if let Some(m) = seed.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(p).ok()) {
@@ -136,7 +180,7 @@ fn mprove(p: &Chess, seed: &str, focus: &[Square], goal: i64) -> (bool, u64) {
         m.stats.nodes += n;
         let v = m.entries.entry(key).or_default();
         v.retain(|e| e.board != board || e.extra != extra);
-        v.push(Entry { board, extra, holds: ok, hints: std::sync::Arc::new(rec), support });
+        v.push(Entry { board, extra, holds: ok, hints: std::sync::Arc::new(rec), support, dep, global, spent, idx });
         if v.len() > SNAPSHOTS { v.remove(0); }
     });
     (ok, n)
@@ -1480,7 +1524,7 @@ pub fn plan_trace(fen: String) -> PyResult<(Vec<String>, Option<(String, String,
 #[pyclass(unsendable)]
 pub struct PlanState { memo: Option<Memo> }
 
-type StatRow = (u32, u32, u32, u32, u32, u32, u32, u32, u32);
+type StatRow = (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32);
 
 #[pymethods]
 impl PlanState {
@@ -1488,7 +1532,7 @@ impl PlanState {
     fn new() -> Self { PlanState { memo: Some(Memo::default()) } }
 
     fn observe(&mut self, fen: String) -> PyResult<(Vec<String>, Option<(String, String, i64, String)>, u32, u64, f64, Option<(String, String, i64, String)>, StatRow)> {
-        let Some(pos) = parse(&fen) else { return Ok((vec![], None, 0, 0, 0.0, None, (0, 0, 0, 0, 0, 0, 0, 0, 0))) };
+        let Some(pos) = parse(&fen) else { return Ok((vec![], None, 0, 0, 0.0, None, (0, 0, 0, 0, 0, 0, 0, 0, 0, 0))) };
         let mut memo = self.memo.take().unwrap_or_default();
         memo.stats = Stats::default();
         for v in memo.history.values_mut() { *v *= 0.8; }                    // recent wins weigh more
@@ -1546,7 +1590,7 @@ impl PlanState {
         let s = memo.stats;
         self.memo = Some(memo);
         Ok((p.trace, p.best, p.proofs, s.nodes, ms, p.immediate,
-            (s.fresh, s.replay, s.reuse_exact, s.reuse_fail, s.reprove, s.lone, s.frozen, s.escape_skip, s.cut_by_history)))
+            (s.fresh, s.replay, s.reuse_exact, s.reuse_fail, s.reprove, s.lone, s.frozen, s.escape_skip, s.cut_by_history, s.reuse_zone)))
     }
 
     /// Entries in the memory.
