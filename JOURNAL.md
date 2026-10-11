@@ -28848,3 +28848,18 @@ only-move tactics 284 -> 298 (81%), with Stockfish's move 261 -> 274; frames 672
 1,496 decisions, 10.1% -> 10.2% losing 150+; walked games 7 / 4 / 1 -- the new ones are new defensive decisions where
 none was made (bxa4 vs b4, Kb8 vs the queen trade -- positional) and a forced loss the 200-expansion ladder understated
 (Qd6 "nets -3", Stockfish's line -6). Tests 49 passed.
+THE COMPOSED STANDING, THE STRICT STOP, THE CHECK'S TEMPO (2026-10-11 ~09:30 PDT; the loop, step 3: "a bigger win
+missed", 24 of 153). Read from the lines: (1) the forcing search's standing was optimistic -- Bb5+ c6 "won 9": our best
+capture counted, their capture after ours not: the standing is now the exchange law's composed tier (Lean
+exchangeLawComposed): material won + our best capture - the intermezzo price (their best capture elsewhere after our
+capture, computed exactly), charged only when the standing rests on our capture and not when that capture gives check;
+(2) the stop rule cut EQUAL targets -- "Bh5 wins 3 by force" hid cxd4, "Qg4 wins 3" hid Kxg2: it now stops only on a
+strict surplus; (3) a check is a tempo (Kaveh) -- Rd2+ "netted -6" for a capture of our queen Black could not make while
+in check: in check only captures that answer it count. variant_check.py (switches) on the 367 Stockfish-tactic
+positions: the crude price (their largest threat) cost 10 tactics (288 vs 298); the exact intermezzo 291; plus the
+check's tempo 292; plus "material already banked needs no capture" (seven plain captures had been charged a price with
+nothing to pay for) 292 / Stockfish's move 275 vs 298 / 276 without -- a bound. OBS (one run each): decisions losing 150+
+cp 10.2% -> 8.7% (126 of 1,444); frames' immediate tactics 670 -> 677 of 681; Stockfish only-move tactics 298 -> 292,
+with Stockfish's move 274 -> 275; endgame puzzles 44% -> 43%; walked games 7 / 3 / 0 (game 0: no only-move missed);
+census 343 s -> 528 s (the strict stop's extra targets). Tests 49 passed. And the LEMMA EXPLORER (lemma_explorer.py,
+published): 35 rules in 7 layers, 10 backed by a Lean theorem; how a move gets decided in seven steps.

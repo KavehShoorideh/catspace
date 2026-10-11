@@ -495,6 +495,9 @@ pub fn set_change_gate(flag: bool) -> PyResult<()> { CHANGE_GATE.store(flag, Ord
 const AVOID_TOP: usize = 5;
 #[pyfunction]
 pub fn set_see_threats(flag: bool) -> PyResult<()> { crate::rules::SEE_THREATS.store(flag, Ordering::Relaxed); Ok(()) }
+pub static STRICT_STOP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_strict_stop(flag: bool) -> PyResult<()> { STRICT_STOP.store(flag, Ordering::Relaxed); Ok(()) }
 pub static NUCLEUS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_nucleus(flag: bool) -> PyResult<()> { NUCLEUS.store(flag, Ordering::Relaxed); Ok(()) }
@@ -610,7 +613,10 @@ fn net_after(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs: &mut
             let us_c = !q.turn();
             // (and any piece of ours by the static exchange -- 2026-10-10, game 10000000 ply 10: Bxb8 looked like +1 because
             // Rxb8 was certified at 2 in its frame; the exchange says 3)
-            if let Some(pt) = threats(&q, q.turn()).into_iter().filter(|t| !t.mate && q.board().piece_at(t.target).map_or(false, |p| p.color == us_c)).max_by_key(|t| (t.value, t.target)) {
+            // (A CHECK IS A TEMPO -- Kaveh 2026-10-10: in check, only a capture that answers the check counts; 2026-10-11:
+            // Rd2+ "netted -6" for their capture of our f6 queen, which they cannot make while in check)
+            let legal_caps: Bitboard = if q.is_check() { q.legal_moves().iter().filter(|m| m.is_capture()).map(|m| m.to()).collect() } else { Bitboard::FULL };
+            if let Some(pt) = threats(&q, q.turn()).into_iter().filter(|t| !t.mate && legal_caps.contains(t.target) && q.board().piece_at(t.target).map_or(false, |p| p.color == us_c)).max_by_key(|t| (t.value, t.target)) {
                 if pt.value > v { v = pt.value; w = Some(format!("the {} on {} by exchange (worth {})", q.board().piece_at(pt.target).map(|p| format!("{:?}", p.role).to_lowercase()).unwrap_or_default(), pt.target, pt.value)); }
             }
             NET_CACHE.with(|c| c.borrow_mut().insert(key, (v, w.clone(), tp.proofs, tp.nodes)));
@@ -927,7 +933,10 @@ pub fn plan_inner(pos: &Chess, immediate_only: bool) -> Plan {
         // "r on g8 is worth 5, not more than the 5 already won" cut hxg8=Q+, which takes the rook and queens, 12)
         let promo = pos.legal_moves().iter().any(|m| m.to() == t && m.is_promotion());
         let v_bound = if promo { v + 8 } else { v };
-        if have >= v_bound.min(MATE_GOAL) && !NO_STOP.with(|c| c.get()) {
+        // (a STRICT surplus stops: an equal target may hold a plain capture -- 2026-10-11, "Bh5 wins 3 by force" cut the
+        // bishop target where cxd4 simply took it; Qg4 "wins 3" cut Kxg2)
+        let surplus = if STRICT_STOP.load(Ordering::Relaxed) { have > v_bound.min(MATE_GOAL) } else { have >= v_bound.min(MATE_GOAL) };
+        if surplus && !NO_STOP.with(|c| c.get()) {
             trace.push(format!("stop: {} on {t} is worth {}, not more than the {} already won", b.piece_at(t).unwrap().role.char(), v.min(MATE_GOAL), have));
             break;
         }

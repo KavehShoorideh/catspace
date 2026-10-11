@@ -222,16 +222,17 @@ pub fn forcing_stats(budget: Option<u64>) -> Vec<u64> {
 /// INCREMENTALLY (rules::threats_of_inc -- only the pieces a move can affect are recomputed; exact by the path lemma,
 /// audited equal on 175,502 move-side maps, 2026-10-11).
 #[derive(Clone)]
-pub struct FState { pos: Chess, thr: rules::ThrArr, edge: i64, last: Option<Move> }
+pub struct FState { pos: Chess, thr: rules::ThrArr, them: rules::ThrArr, edge: i64, last: Option<Move> }
 
 /// (the material edge carried too: it changes only on a capture or a promotion)
 fn child_state(s: &FState, m: &Move, by: Color) -> FState {
     let q = after(&s.pos, m);
     let thr = rules::threats_arr_inc(&s.thr, &q, m, by);
+    let them = rules::threats_arr_inc(&s.them, &q, m, !by);
     let mover_is_by = s.pos.turn() == by;
     let mut d = m.capture().map_or(0, kernel_value) + m.promotion().map_or(0, |r| kernel_value(r) - 1);
     if !mover_is_by { d = -d; }
-    FState { pos: q, thr, edge: s.edge + d, last: Some(m.clone()) }
+    FState { pos: q, thr, them, edge: s.edge + d, last: Some(m.clone()) }
 }
 
 /// The squares of `by`'s pieces that stand ALONE between one of `by`'s sliders and a square of `targets` (moving one
@@ -319,8 +320,30 @@ impl crate::pns::Problem for Forcing {
     type State = FState;
     fn judge(&self, s: &FState, or: bool, root: bool) -> Option<bool> {
         if or {
+            // THE COMPOSED STANDING (the exchange law's composed tier, Lean Ideas.ExchangeLaw.exchangeLawComposed: the
+            // intermezzo's price is their best capture elsewhere after ours): the material won plus our best capture
+            // minus their best capture -- a bound (2026-10-11: Bb5+ c6 "won 9", Nxd1 then cxb5 takes the bishop back)
+            if root { return None; }
+            // (material already banked needs no capture: our free move parries their threat -- the intermezzo is priced
+            // only when the standing rests on a capture of ours; 2026-10-11: Kxh3, Rxh2, Nxe2 ... seven plain captures
+            // lost to a price charged with nothing to pay for)
+            if s.edge - self.base >= self.need { return Some(true); }
             let best = s.thr.iter().copied().max().unwrap_or(0).max(0) as i64;
-            if !root && s.edge - self.base + best >= self.need { return Some(true); }
+            if s.edge - self.base + best < self.need { return None; }
+            if !COMPOSED.load(Ordering::Relaxed) { return Some(true); }
+            // the crude bound first (their largest threat now); when it does not settle it, the EXACT intermezzo price:
+            // play our best capture, then their best capture on any other square (exchange_law.intermezzo; 2026-10-11:
+            // the crude bound cost 10 of 367 Stockfish tactics)
+            let crude = s.them.iter().copied().max().unwrap_or(0).max(0) as i64;
+            if s.edge - self.base + best - crude >= self.need { return Some(true); }
+            let t = (0..64).max_by_key(|x| (s.thr[*x], *x)).map(|x| Square::new(x as u32)).unwrap();
+            let cap = s.pos.legal_moves().into_iter().filter(|m| m.to() == t).min_by_key(|m| kernel_value(m.role()));
+            let Some(cap) = cap else { return None };
+            let q2 = after(&s.pos, &cap);
+            // (a capture that gives CHECK leaves them no capture elsewhere but an answer to the check -- the tempo)
+            let legal_caps: Bitboard = if q2.is_check() { q2.legal_moves().iter().filter(|m| m.is_capture()).map(|m| m.to()).collect() } else { Bitboard::FULL };
+            let price = rules::threats_of(&q2, !self.by).iter().filter(|(x, _)| **x as u32 != t as u32 && legal_caps.contains(Square::new(**x as u32))).map(|(_, g)| *g).max().unwrap_or(0).max(0);
+            if s.edge - self.base + best - price >= self.need { return Some(true); }
             None
         } else if s.pos.legal_moves().is_empty() { Some(s.pos.is_check()) } else { None }
     }
@@ -340,15 +363,19 @@ impl crate::pns::Problem for Forcing {
 pub fn forcing_moves_audit(fen: String) -> (u32, u32, u32) {
     let Some(p) = parse(&fen) else { return (0, 0, 0) };
     let by = p.turn();
-    let s = FState { pos: p.clone(), thr: rules::threats_arr(&p, by), edge: material_edge(&p, by), last: None };
+    let s = FState { pos: p.clone(), thr: rules::threats_arr(&p, by), them: rules::threats_arr(&p, !by), edge: material_edge(&p, by), last: None };
     let a: std::collections::HashSet<String> = forcing_moves(&s, by).iter().map(|(m, _)| m.to_uci(CastlingMode::Standard).to_string()).collect();
     let r: std::collections::HashSet<String> = forcing_moves_ref(&s, by).iter().map(|(m, _)| m.to_uci(CastlingMode::Standard).to_string()).collect();
     (a.len() as u32, r.len() as u32, a.intersection(&r).count() as u32)
 }
 
+pub static COMPOSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_composed(flag: bool) { COMPOSED.store(flag, Ordering::Relaxed); }
+
 pub fn forcing_gain(p: &Chess, budget: u64) -> Option<bool> {
     let by = p.turn();
-    let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), edge: material_edge(p, by), last: None };
+    let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), them: rules::threats_arr(p, !by), edge: material_edge(p, by), last: None };
     crate::pns::search(&Forcing { by, base: material_edge(p, by), need: 1 }, root, budget)
 }
 
@@ -368,7 +395,7 @@ pub fn forcing_value_of(fen: String, budget: u64) -> (Option<(String, i64)>, Vec
 pub fn forcing_value(p: &Chess, budget: u64) -> Option<(Move, i64)> {
     let by = p.turn();
     let base = material_edge(p, by);
-    let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), edge: base, last: None };
+    let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), them: rules::threats_arr(p, !by), edge: base, last: None };
     let mut best: Option<(Move, i64)> = None;
     for need in [1i64, 2, 3, 5, 9] {
         match crate::pns::search_with_proof(&Forcing { by, base, need }, root.clone(), budget) {

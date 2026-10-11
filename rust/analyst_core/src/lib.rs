@@ -1278,6 +1278,8 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rules::set_inc_off, m)?)?;
     m.add_function(wrap_pyfunction!(threat::forcing_moves_audit, m)?)?;
     m.add_function(wrap_pyfunction!(threat::forcing_value_of, m)?)?;
+    m.add_function(wrap_pyfunction!(threat::set_composed, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_strict_stop, m)?)?;
     m.add_class::<plan::PlanState>()?;
     m.add_function(wrap_pyfunction!(plan::set_reuse_fails, m)?)?;
     m.add_function(wrap_pyfunction!(plan::line_pair_check, m)?)?;
