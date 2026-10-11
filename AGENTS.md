@@ -53,6 +53,11 @@ approach and never reaches into a component directly.
     do NOT write hard verdicts: journal the numbers as directional guides, never as facts to
     lean on later (Kaveh 2026-09-04). An `approaches.md` entry with no results says `—`.
 
+11. **Lean is the source of truth for every frame and lemma.** Before writing a rule, frame or lemma, search
+    `docs/LEAN_INDEX.md` (`python -m catspace.incubator.analyst.lean_index search <words>`) and the git history; use
+    what is proved (mirror it, with a test against it); prove a new one before relying on it; rebuild the index
+    (`... lean_index build`) after adding theorems (Kaveh 2026-10-10).
+
 ## Commands
 
 ```bash

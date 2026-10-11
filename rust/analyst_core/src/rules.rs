@@ -29,8 +29,10 @@ fn val(role: Role) -> i64 {
     match role { Role::Pawn => 1, Role::Knight => 3, Role::Bishop => 3, Role::Rook => 5, Role::Queen => 9, Role::King => 0 }
 }
 
-/// The static exchange is the Rust MIRROR of the verified exchange law (exchange_law.py `see_x`, the x-ray tier, checked
-/// against the Lean kernel 2026-10-08): equal to see_x on 3,028 of 3,028 attacked pieces (census sample, 2026-10-10).
+/// The static exchange is the Rust MIRROR of the verified exchange law -- Lean: Ideas.ExchangeLaw.seeXB (the x-ray tier,
+/// the capture game Ideas.Exchange.cheapestXF, nonnegative by Ideas.Exchange.cheapestXF_nonneg); its Python prototype
+/// exchange_law.py `see_x`: equal to see_x on 3,028 of 3,028 attacked pieces (census sample, 2026-10-10). See
+/// docs/LEAN_INDEX.md before writing another rule (Kaveh: Lean is the source of truth).
 pub static SEE_THREATS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
 /// THE STATIC EXCHANGE on `t` for `us` capturing first (2026-10-10, Kaveh: "if a piece is attacked twice and defended
