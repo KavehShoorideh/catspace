@@ -56,6 +56,24 @@ pub fn prove_t(p: &Chess, uci: &str, focus: &[Square], goal: i64, hints: Option<
     let Ok(u) = uci.parse::<shakmaty::uci::UciMove>() else { return (false, Hints::new(), 0, false, 0) };
     let Ok(m) = u.to_move(p) else { return (false, Hints::new(), 0, false, 0) };
     let n0 = PROVE_NODES.with(|c| c.get());
+    // THE LEMMA FIRST (Kaveh 2026-10-11, stopper form; lemma.rs): a one-target question the lemma decides needs no
+    // search -- it holds at the lemma's value with no stopper; it records the stoppers' squares as its dependency
+    if crate::lemma::LEMMA.load(Ordering::Relaxed) && focus.len() == 1 {
+        let v = crate::lemma::threat_lemma(p, &m, focus[0]);
+        match v.stopper {
+            None if v.value >= goal => {
+                crate::lemma::count(0);
+                crate::dep_part(0, v.dep); crate::dep_one_step(v.one_step);
+                if crate::lemma::LEMMA_AUDIT.load(Ordering::Relaxed) {
+                    let (r, _) = with_hints(None, || prove_pos(p, &m, focus, 2, 10_000, goal));
+                    crate::lemma::count(match r { Some(true) => 12, Some(false) => 13, None => 14 });
+                }
+                return (true, Hints::new(), 0, false, 3);
+            }
+            None => crate::lemma::count(11),
+            Some(why) => crate::lemma::count(1 + crate::lemma::STOPPERS.iter().position(|x| *x == why).unwrap_or(0)),
+        }
+    }
     let mut last = Hints::new();
     let mut spent = false;
     for (d, b) in [(2u32, 10_000u64), (PURSUIT_PLIES, 50_000u64)] {

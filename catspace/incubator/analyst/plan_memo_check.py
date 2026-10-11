@@ -23,15 +23,17 @@ def _game(args):
     # FRAME PROOFS and ZONE REUSE (2026-10-11): both runs read their frames; only the memory reuses by zone
     analyst_core.set_frame_proofs(os.environ.get("CATSPACE_FRAME") == "1")
     analyst_core.set_zone_reuse(os.environ.get("CATSPACE_ZONE") == "1")
+    analyst_core.set_lemma(os.environ.get("CATSPACE_LEMMA") == "1")
+    analyst_core.set_lemma_audit(os.environ.get("CATSPACE_LEMMA") == "1")
     st = analyst_core.PlanState()
     rows = []
     for fen in fens:
-        analyst_core.zone_stats()
+        analyst_core.zone_stats(); analyst_core.lemma_stats()
         r = st.observe(fen)
-        z = analyst_core.zone_stats()
+        z = analyst_core.zone_stats(); lm = analyst_core.lemma_stats()
         r0 = analyst_core.plan_trace(fen)
         rows.append(dict(fen=fen, dec=r[1], dec0=r0[1], imm=r[5], imm0=r0[5], proofs=r[2], proofs0=r0[2], nodes=r[3],
-                         nodes0=r0[3], ms=r[4], ms0=r0[4], stats=r[6], zone=z))
+                         nodes0=r0[3], ms=r[4], ms0=r0[4], stats=r[6], zone=z, lemma=lm))
     return gid, rows
 
 
@@ -56,6 +58,11 @@ def run(tag: str, games: int, workers: int) -> None:
     print(f"OBS   dependency of a proof: core {z[8] / max(z[11], 1):.1f}, changed exchanges {z[9] / max(z[11], 1):.1f}, leaf reads {z[10] / max(z[11], 1):.1f} squares ({z[11]} proofs)")
     print(f"OBS   memory a move: fresh {s[0] / n:.1f}, re-proofs {s[4] / n:.1f}; ZONE attempts {z[0] / n:.2f} -- failed on pieces {z[1]}, attacks onto D {z[2]}, the one-step set {z[3]}, attacks onto it {z[4]}, the index {z[5]}; "
           f"|D| mean {z[6] / max(z[0], 1):.1f}, one-step set mean {z[7] / max(z[0] - z[1] - z[2], 1):.1f}")
+    lm = [sum(r["lemma"][i] for r in rows) for i in range(15)]
+    names = ["noKing", "target", "noAttack", "exchange", "escape", "check", "pin", "promotion", "defence", "intermezzo", "value<goal"]
+    if sum(lm):
+        print(f"OBS   LEMMA: holds {lm[0]} ({100 * lm[0] / max(sum(lm[:12]), 1):.1f}% of one-target questions); undecided by stopper " + ", ".join(f"{nm} {lm[1 + i]}" for i, nm in enumerate(names)))
+        print(f"OBS   LEMMA audit vs the 2-ply search (where the lemma holds): agree {lm[12]}, FALSE CLAIMS {lm[13]}, search ran out {lm[14]}")
     print(f"OBS   gates fired a move: lone-attack {s[5] / n:.1f}, frozen (pin) {s[6] / n:.2f}, escape filter {s[7] / n:.2f}, cut by the history order {s[8] / n:.2f}")
     kinds = Counter(); ex = []
     for r in rows:
@@ -90,10 +97,12 @@ def main(argv=None):
     ap.add_argument("--games", type=int, default=60)
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     ap.add_argument("--frame", action="store_true", help="frame proofs in both runs")
-    ap.add_argument("--zone", action="store_true", help="zone reuse in the memory run (needs --frame)")
+    ap.add_argument("--zone", action="store_true", help="zone reuse in the memory run (needs --frame or --lemma)")
+    ap.add_argument("--lemma", action="store_true", help="the one-move threat lemma decides 2-ply questions first (audited against the search)")
     a = ap.parse_args(argv)
     os.environ["CATSPACE_FRAME"] = "1" if a.frame else "0"
     os.environ["CATSPACE_ZONE"] = "1" if a.zone else "0"
+    os.environ["CATSPACE_LEMMA"] = "1" if a.lemma else "0"
     run(a.tag, a.games, a.workers)
 
 

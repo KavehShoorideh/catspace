@@ -28934,3 +28934,29 @@ touches one; reuse of search proofs across moves is rare by nature, not by accou
 lemma form: a tactic stated with its STOPPERS (block, capture of the attacker, escape, check), the Lean proof
 establishing the list complete, the dependency = the stoppers' squares, a handful; the exchange law is the existing
 instance (its index is reused exactly every move). Tests 35 passed. Flags stay off.
+THE ONE-MOVE THREAT LEMMA IN STOPPER FORM, BUILT AND MEASURED (2026-10-11 12:35 PDT; Kaveh chose B: "start stating
+tactics in stopper form"). (A correction of the clock: the two entries above headed "~13:10" and "~14:30" were
+estimates; their commits are cbc662ef at 11:42 and 8ed81d59 at 12:03 PDT. Timestamps from `date` only.) Lean
+(Ideas/ThreatLemma.lean): `stopperB s k x` = x bears on the target s or on our king k; `threat_stoppers`: a reply
+touching no stopper square leaves the piece on s, the piece on k, every attack onto s and every attack onto k unchanged
+(from frame_unchanged); `king_attacked_unchanged`. 155 theorems, 0 open, 36 cited. Rust (lemma.rs, flag LEMMA off):
+threat_lemma(p, m, s) -- our move m attacks their piece on s; stoppers evaluated in turn, each naming the squares it
+reads: target / noAttack / exchange (seeXB <= 0), the ESCAPES priced in the fork form (each move of the piece on s
+valued by our best composed gain after it, lib.rs composed_from_index; an escape with check is a stopper), check (a
+checking reply exists), pin (our capture illegal were it our move), promotion (their seventh-rank pawns), defence (a
+reply adds an attacker of theirs onto s or removes one of ours), intermezzo (their best raw capture now, they move
+first); no stopper: HOLDS at min(see - raw, worst escape). Hooked before the 2-ply tier in waiting.rs prove_t (tier 3);
+the verdict's dependency = the stoppers' squares (dep 4, one-step set 35 on average), reusable through the inputs test
+(plan.rs: an explicit one-step set; a verdict is reusable only if it recorded what it read -- a bug of mine stored
+every search result as reusable with an EMPTY dependency and reused 11.2 a move on the index alone, 13 of 540 decisions
+changed; fixed, 539 of 540 identical again). LEMMA_AUDIT answers every lemma verdict by the 2-ply search too.
+OBS plan_memo_check --lemma --zone, 6 games / 540 positions, 23,123 one-target questions: the lemma HOLDS 2 (both agree
+with the search, 0 false claims); undecided: target 5,648, noAttack 695, exchange 8,484 (the piece is adequately
+defended -- the planner's win is a chase over several plies), escape 4,362 (a safe escape leaving no composed gain),
+check 2,806 (a check is available to them), pin 523, defence 549, value below the goal 11. ZONE reuses 0.1 a move.
+THE FINDING: the planner's 2-ply questions are not one-move threats -- they are chases and forks whose answer needs
+several plies, and where a checking reply exists almost always. Stopper-form lemmas give tight dependencies (4 squares)
+and almost no coverage; search proofs give coverage and ~38-square dependencies. The middle path, not built: a
+VALUE-MARGIN reuse -- store the verdict's slack above the goal (needs a value search, the proofs today are null-window
+at the goal) and reuse when the small core's pieces and attacks, the index and their available checks are unchanged
+and the slack covers their best creatable quiet threat (one scan per position). Tests 26 passed.

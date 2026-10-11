@@ -8,6 +8,7 @@ mod maia;
 mod waiting;
 mod paths;
 mod plan;
+pub mod lemma;
 mod threat;
 mod ledger;
 mod pns;
@@ -415,7 +416,7 @@ fn pursuit_check_pos(p: &Chess, m: &Move, k: i64, focus: &[Square], plies: u32) 
 
 /// The target's escape squares, read with bitboards (no rule run): a square e it can step to is UNSAFE when one of our
 /// pieces cheaper than it attacks e, or we attack e and none of theirs does (the target itself off the board).
-fn escape_set(q: &Chess, us: Color, t: Square) -> (shakmaty::Bitboard, shakmaty::Bitboard) {
+pub(crate) fn escape_set(q: &Chess, us: Color, t: Square) -> (shakmaty::Bitboard, shakmaty::Bitboard) {
     let b = q.board();
     let Some(tp) = b.piece_at(t) else { return (shakmaty::Bitboard::EMPTY, shakmaty::Bitboard::EMPTY) };
     let them = tp.color;
@@ -560,7 +561,11 @@ thread_local! {
     static GLOBAL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     // the breakdown of DEP: the frames' cores, the exchanges that changed, the leaves' reads (the review)
     static DEP_PARTS: std::cell::Cell<[shakmaty::Bitboard; 3]> = const { std::cell::Cell::new([shakmaty::Bitboard::EMPTY; 3]) };
+    // the squares whose one-step movers a lemma verdict read (its arrivals); empty: derive from the dependency
+    static DEP_ONE_STEP: std::cell::Cell<shakmaty::Bitboard> = const { std::cell::Cell::new(shakmaty::Bitboard::EMPTY) };
 }
+pub(crate) fn dep_one_step(b: shakmaty::Bitboard) { DEP_ONE_STEP.with(|d| d.set(d.get() | b)); }
+pub(crate) fn take_one_step() -> shakmaty::Bitboard { DEP_ONE_STEP.with(|d| d.replace(shakmaty::Bitboard::EMPTY)) }
 fn dep_part(i: usize, b: shakmaty::Bitboard) { DEP_PARTS.with(|d| { let mut v = d.get(); v[i] |= b; d.set(v); }); dep_add(b); }
 /// The breakdown of the last proof's dependency: [core, changed exchanges, leaf reads] as square counts.
 pub(crate) fn take_dep_parts() -> [u32; 3] { DEP_PARTS.with(|d| { let v = d.replace([shakmaty::Bitboard::EMPTY; 3]); [v[0].count() as u32, v[1].count() as u32, v[2].count() as u32] }) }
@@ -582,7 +587,7 @@ pub(crate) fn take_dep() -> (shakmaty::Bitboard, bool) {
 /// ours (`them`), as the forcing search carries them (threat.rs FState).
 #[derive(Clone, Copy)]
 pub(crate) struct Idx { us: rules::ThrArr, them: rules::ThrArr }
-fn idx_root(q: &Chess, side: Color) -> Idx { Idx { us: rules::threats_arr(q, side), them: rules::threats_arr(q, !side) } }
+pub(crate) fn idx_root(q: &Chess, side: Color) -> Idx { Idx { us: rules::threats_arr(q, side), them: rules::threats_arr(q, !side) } }
 /// The index after `m` (played from the position before `q2`), the recomputed squares recorded as read.
 fn idx_after(ix: &Idx, q2: &Chess, m: &Move, side: Color) -> Idx {
     let out = Idx { us: rules::threats_arr_inc(&ix.us, q2, m, side), them: rules::threats_arr_inc(&ix.them, q2, m, !side) };
@@ -654,7 +659,7 @@ fn promo_gain(q: &Chess, by: Color) -> (i64, Option<Move>) {
 /// promotion), less the intermezzo price -- their best capture or promotion elsewhere after it (crude: their best now;
 /// exact: played out, as threat.rs Forcing::judge does); never below standing pat. A lower bound on what a capture
 /// search would settle (Lean Ideas.ExchangeLaw.exchangeLawComposed).
-fn composed_from_index(q: &Chess, ix: &Idx, side: Color) -> i64 {
+pub(crate) fn composed_from_index(q: &Chess, ix: &Idx, side: Color) -> i64 {
     let cap_best = ix.us.iter().copied().max().unwrap_or(0).max(0) as i64;
     let (pro_best, pro_move) = promo_gain(q, side);
     let best = cap_best.max(pro_best);
@@ -1472,6 +1477,10 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plan::set_frame_audit, m)?)?;
     m.add_function(wrap_pyfunction!(plan::frame_audit_stats, m)?)?;
     m.add_function(wrap_pyfunction!(plan::zone_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(lemma::set_lemma, m)?)?;
+    m.add_function(wrap_pyfunction!(lemma::set_lemma_audit, m)?)?;
+    m.add_function(wrap_pyfunction!(lemma::lemma_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(lemma::threat_lemma_check, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::waiting_frames, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::arming_moves, m)?)?;
     m.add_class::<waiting::FramePool>()?;

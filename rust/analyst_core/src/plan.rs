@@ -35,7 +35,7 @@ use std::cell::RefCell;
 struct Entry { board: Vec<u8>, extra: String, holds: bool, hints: std::sync::Arc<Hints>, support: Bitboard,
                // a FRAME PROOF's dependency (lib.rs FRAME_PROOFS): the squares it read, whether it read the whole
                // board, whether its budget ran out (unknown, never reused), the index it read at the root
-               dep: Bitboard, global: bool, spent: bool, idx: Option<Box<(rules::ThrArr, rules::ThrArr)>> }
+               dep: Bitboard, one_step: Bitboard, global: bool, spent: bool, idx: Option<Box<(rules::ThrArr, rules::ThrArr)>> }
 
 #[derive(Default, Clone, Copy)]
 pub struct Stats { pub fresh: u32, pub replay: u32, pub reuse_exact: u32, pub reuse_fail: u32, pub reprove: u32,
@@ -95,7 +95,7 @@ static ZONE_N: [std::sync::atomic::AtomicU64; 12] = [const { std::sync::atomic::
 #[pyfunction]
 pub fn zone_stats() -> Vec<u64> { ZONE_N.iter().map(|a| a.swap(0, Ordering::Relaxed)).collect() }
 /// 0 when the inputs are equal, else which one differs (see ZONE_N).
-fn inputs_differ(old: &shakmaty::Board, new: &shakmaty::Board, d: Bitboard) -> usize {
+fn inputs_differ(old: &shakmaty::Board, new: &shakmaty::Board, d: Bitboard, one_step: Bitboard) -> usize {
     use shakmaty::attacks;
     let occ_o = old.occupied();
     let occ_n = new.occupied();
@@ -115,14 +115,16 @@ fn inputs_differ(old: &shakmaty::Board, new: &shakmaty::Board, d: Bitboard) -> u
         let sliders = first & (b.by_role(Role::Bishop) | b.by_role(Role::Rook) | b.by_role(Role::Queen));
         (first, b.attacks_to(t, c, occ ^ sliders) & !first)
     };
-    let mut ca_o = Bitboard::EMPTY;
-    let mut ca_n = Bitboard::EMPTY;
+    let mut ca_o = one_step;
+    let mut ca_n = one_step;
     for t in d {
         for c in [Color::White, Color::Black] {
             if att(old, t, c, occ_o) != att(new, t, c, occ_n) { return 2; }
         }
-        ca_o |= attacks::queen_attacks(t, occ_o) | attacks::knight_attacks(t) | attacks::king_attacks(t);
-        ca_n |= attacks::queen_attacks(t, occ_n) | attacks::knight_attacks(t) | attacks::king_attacks(t);
+        if one_step.is_empty() {                                           // no explicit one-step set: every square bearing on d
+            ca_o |= attacks::queen_attacks(t, occ_o) | attacks::knight_attacks(t) | attacks::king_attacks(t);
+            ca_n |= attacks::queen_attacks(t, occ_n) | attacks::knight_attacks(t) | attacks::king_attacks(t);
+        }
     }
     ZONE_N[7].fetch_add(ca_n.count() as u64, Ordering::Relaxed);
     if ca_o != ca_n { return 3; }
@@ -206,11 +208,11 @@ fn mprove(p: &Chess, seed: &str, focus: &[Square], goal: i64) -> (bool, u64) {
         if e.extra == extra {
             let diff: Bitboard = (0..64u32).filter(|i| e.board[*i as usize] != board[*i as usize]).map(Square::new).collect();
             if diff.is_empty() { tally(|s| s.reuse_exact += 1); return (e.holds, 0); }
-            if ZONE_REUSE.load(Ordering::Relaxed) && crate::frame_on() && !e.global && !e.spent {
+            if ZONE_REUSE.load(Ordering::Relaxed) && !e.global && !e.spent {
                 if let Some(ix) = &e.idx {
                     ZONE_N[0].fetch_add(1, Ordering::Relaxed);
                     ZONE_N[6].fetch_add(e.dep.count() as u64, Ordering::Relaxed);
-                    let why = inputs_differ(&board_of(&e.board), p.board(), e.dep);
+                    let why = inputs_differ(&board_of(&e.board), p.board(), e.dep, e.one_step);
                     if why == 0 && !(ix.0 == rules::threats_arr(p, p.turn()) && ix.1 == rules::threats_arr(p, !p.turn())) { ZONE_N[5].fetch_add(1, Ordering::Relaxed); }
                     else if why == 0 { tally(|s| s.reuse_zone += 1); return (e.holds, 0); }
                     else { ZONE_N[why].fetch_add(1, Ordering::Relaxed); }
@@ -231,8 +233,10 @@ fn mprove(p: &Chess, seed: &str, focus: &[Square], goal: i64) -> (bool, u64) {
     let _ = crate::take_dep();
     let (ok, rec, n, spent) = prove_audited(p, seed, focus, goal, hints);
     let (dep, global) = crate::take_dep();
+    let one_step = crate::take_one_step();
     { let parts = crate::take_dep_parts(); for i in 0..3 { ZONE_N[8 + i].fetch_add(parts[i] as u64, Ordering::Relaxed); } ZONE_N[11].fetch_add(1, Ordering::Relaxed); }
-    let idx = if crate::frame_on() { Some(Box::new((rules::threats_arr(p, p.turn()), rules::threats_arr(p, !p.turn())))) } else { None };
+    // the verdict is reusable by its inputs when it came from a frame proof or a lemma (both record what they read)
+    let idx = if crate::frame_on() || !dep.is_empty() { Some(Box::new((rules::threats_arr(p, p.turn()), rules::threats_arr(p, !p.turn())))) } else { None };
     let mut support = touched(&rec);
     for f in focus { support.add(*f); support |= shakmaty::attacks::king_attacks(*f); }
     if let Some(m) = seed.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(p).ok()) {
@@ -243,7 +247,7 @@ fn mprove(p: &Chess, seed: &str, focus: &[Square], goal: i64) -> (bool, u64) {
         m.stats.nodes += n;
         let v = m.entries.entry(key).or_default();
         v.retain(|e| e.board != board || e.extra != extra);
-        v.push(Entry { board, extra, holds: ok, hints: std::sync::Arc::new(rec), support, dep, global, spent, idx });
+        v.push(Entry { board, extra, holds: ok, hints: std::sync::Arc::new(rec), support, dep, one_step, global, spent, idx });
         if v.len() > SNAPSHOTS { v.remove(0); }
     });
     (ok, n)
