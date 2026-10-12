@@ -29380,3 +29380,17 @@ territory); mine emerged from failures (flood-fill region, front zones, tempo se
 tuned, hard to prove, and its "tempo moves" were artifacts of measuring the wrong thing. Proposed: the strategy in Rust
 (play-outs as the bug-finder), then Lean -- symmetry to the a1 corner, the squeeze, walk, mate and entry lemmas, glued by
 forced_by_measure with k = 1.
+KAVEH'S ROOK STRATEGY, AND THE REAL QUESTION (2026-10-12 11:00 PDT). Kaveh gave king-and-rook by reasoning: the rook can
+always slide to the far side of the board and still constrain the king to the same rows or columns (the king can attack
+the rook); so rows and columns, not a corner; in the 9-square king frame our king (in opposition) blocks the front three
+and the rook the middle three (a check along the king's line) -- the king must step back; never the other way, our king
+cannot cover the middle; rinse and repeat; on the back rank, where the king cannot step back, it is mate; a waiting move
+is a rook slide. Then: "the real question is, how can an algorithm come up with my reasoning using the lemmas we have,
+defining useful lemmas along the way?" Each of his steps as an operation: safety (exists: threats, the exchange law);
+INVARIANCE MINING per piece role (the rook's cut depends only on its line -> the slide, the safe far side, the PASS move);
+the supply shape crossed with safety (a quadrant puts the rook at the region's corner); GOAL RELAXATION (mate's demand with
+the back row left open = forced retreat) and ALLOCATION of the pieces' supply to it (king front -- opposition; rook middle
+-- check; the reverse impossible: a king covering the middle row would touch); INDUCTION over the relaxed family (rows
+left; mate the base case at the edge); search the gaps once (exists). Proposed: build this discoverer; the test is
+rediscovery -- from material alone, the rook method and Kaveh's queen squeeze; then K+B+N. The hand-coded rook frame was
+started and paused (no code changed).
