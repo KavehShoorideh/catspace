@@ -189,8 +189,10 @@ Do not edit by hand.
 - **theorem `Ideas.InsufficientMaterial.minor_attack`** (line 81): An attack by a minor piece of kind `r` standing on `m` is its geometry.
 - **def `Ideas.InsufficientMaterial.kmk`** (line 90): Exactly three pieces: the side to move has only its king, on `k`; the other side a king on `w` and one minor piece of kind `r` (a knight or a bishop) on `m`.
 - **theorem `Ideas.InsufficientMaterial.no_mate_king_minor`** (line 95): A KING AND ONE MINOR PIECE NEVER MATE a lone king (the kings apart, as they always are).
+  - used by: catspace/incubator/analyst/lemma_explorer.py
 - **theorem `Ideas.InsufficientMaterial.no_mate_by_lone_king`** (line 171): A LONE KING NEVER CHECKS: when the other side has nothing but a king on `w`, not next to ours on `k`, the side to move is not mated
 - **theorem `Ideas.InsufficientMaterial.insufficient_material`** (line 188): INSUFFICIENT MATERIAL, the static rule: two kings apart and at most one more piece, a knight or a bishop of either side -- no checkmate.
+  - used by: catspace/incubator/analyst/lemma_explorer.py, rust/analyst_core/src/game.rs
 
 ## lean/ideas/Ideas/Mate.lean
 
@@ -226,7 +228,9 @@ Do not edit by hand.
 ## lean/ideas/Ideas/MateDemand.lean
 
 - **theorem `Ideas.checkmate_attacked`** (line 24): In a checkmate the defender's king (alone of its kind on `k`) is attacked.
+  - used by: catspace/incubator/analyst/lemma_explorer.py
 - **theorem `Ideas.checkmate_flight`** (line 33): THE FLIGHTS OF A MATED KING: no square next to it is a flight.
+  - used by: catspace/incubator/analyst/lemma_explorer.py
 
 ## lean/ideas/Ideas/Passer.lean
 
@@ -363,6 +367,7 @@ Do not edit by hand.
 - **theorem `Ideas.QueenMate.queen_rect_v`** (line 42): THE QUEEN AGAINST A 2×3 RECTANGLE (two files, three ranks; its lower-left square (x, y)): no square of the queen has a line to all six.
 - **theorem `Ideas.QueenMate.queen_rect_h`** (line 54): The same, three files and two ranks.
 - **theorem `Ideas.QueenMate.no_queen_mate_in_open`** (line 67): NO MATE IN THE OPEN: with the kings apart (two or more files or ranks), our king and queen never cover the whole 3×3 box of the lone king on (ka, kb).
+  - used by: catspace/incubator/analyst/lemma_explorer.py
 
 ## lean/ideas/Ideas/QueenMateBoard.lean
 
@@ -372,6 +377,7 @@ Do not edit by hand.
 - **theorem `Ideas.QueenMate.attack_kq`** (line 40): AN ATTACK BY A KING AND A QUEEN: on a board where colour `c` has only a king on `w` and a queen on `q`, an attacked square is a king's step from `w` or on a line of `q`.
 - **def `Ideas.QueenMate.kqk`** (line 64): Exactly three pieces: the side to move has its king on `k` and nothing else; the other side a king on `w` and a queen on `q`.
 - **theorem `Ideas.QueenMate.kq_mate_on_edge`** (line 70): A KING AND A QUEEN MATE ONLY ON THE EDGE: in a checkmate with the lone king on `k` against a king on `w` (not next to it -- kings never touch) and a queen on `q`, the lone king stands on the edge of the board.
+  - used by: catspace/incubator/analyst/kq_playout.py, catspace/incubator/analyst/lemma_explorer.py, rust/analyst_core/src/mating.rs, rust/analyst_core/src/plan.rs
 
 ## lean/ideas/Ideas/Refutation.lean
 
