@@ -1635,6 +1635,8 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plan::set_kq_tactic, m)?)?;
     m.add_function(wrap_pyfunction!(mating::set_kq_every_reply, m)?)?;
     m.add_function(wrap_pyfunction!(mating::set_approach_zone, m)?)?;
+    m.add_function(wrap_pyfunction!(mating::set_approach_max, m)?)?;
+    m.add_function(wrap_pyfunction!(mating::set_kq_tempo, m)?)?;
     m.add_function(wrap_pyfunction!(threat::set_composed, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_strict_stop, m)?)?;
     m.add_class::<plan::PlanState>()?;

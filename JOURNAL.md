@@ -29347,3 +29347,20 @@ in it but not opposite -- no component moves) -- the missing rung shortens the r
 by our king); THE NET (71 + 16: a region of 1-2 squares, tempo moves for the opposition, some letting the region grow to
 avoid stalemate) -- the missing rung is "from the net, mate within a few moves against every defence" (search once, then
 a lemma). The Lean ranking proof waits on these two rungs.
+THE KING-AND-QUEEN LADDER: THE TWO RUNGS, THE TEMPO, AND THE METHOD THEOREM (2026-10-12 10:45 PDT; Kaveh: "yes" -- build
+the two missing rungs, then the Lean proof of the ladder). RUST (mating.rs): ALONG THE EDGE -- the approach is our king's
+distance to the FARTHEST front-zone target over the region's edge squares (the mate may come on any; shrinking the region
+can only lower it; with the nearest target, cutting the region along the edge pushed the target away); THE NET -- a region
+of at most two squares: a forced mate within three moves searched in full (its measure: the moves to mate); THE TEMPO --
+when no move lowers the measure against every reply, the first move after which every reply leaves us a move that does,
+within two moves, else three (Kaveh: "my tempo isn't right, so let me shuffle around keeping the king here"). OBS
+kq_playout 1,000 games: farthest target + net: 6.3 moves to mate (max 12; was 7.5 / 27), certified 98%; + tempo within two:
+99.9% (9 uncertified -- 5 positions: a king locked on one square, our king on the wrong side, the release needs three
+moves); within three: EVERY move certified (125 tempo moves, 0 uncertified), 0.7 ms a move. LEAN Ideas/ForcedByMeasure.lean
+-- THE METHOD, for any game and goal: Reach (forcing the goal or a target within n moves against every reply), Reach.mono,
+Reach.bind, forced_by_measure (a frame whose every position forces the goal or a lower measure within k moves forces the
+goal within k·(μ+1) moves). The king-and-queen frame checks its hypothesis on the board, move by move. NOT PROVED: that
+EVERY position of the frame has such a certificate -- the rung lemmas over patterns (box, edge, approach, tempo, net) by
+reasoning; for comparison the KRK strategy's formal proof in Isabelle (linear arithmetic over coordinates, as here with
+omega) was a paper-sized project. The flood-fill region is hard to reason about; the provable version likely measures the
+box (the rectangle the queen's lines cut) instead. Index 200 theorems; explorer 47 rules, 18 backed by Lean.

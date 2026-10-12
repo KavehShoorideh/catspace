@@ -9,14 +9,17 @@
 //!   NEVER  a stalemate (Lean `Ideas.StalemateLemmas`: the move must leave them a move unless it mates), a queen left to
 //!          the lone king, a claimable draw -- after our move or after any reply (the game context: a third occurrence,
 //!          the fifty-move clock)
-//!   FIRST  the lowest MEASURE (`KQ_MEASURE`, by rank: the region's squares off the edge; our king's distance to theirs,
-//!          which SUPERSEDES the region's size -- the region may grow while our king comes round; the region's size)
-//!          right after our move; then a position the game has not seen. Each move's CERTIFICATE: the measure against
-//!          every reply -- progress guaranteed, or not (the approach is not a ranking function: see KQ_EVERY_REPLY).
-//!          (Found by watching failures: the region alone left a king boxed on e7 / f8, one square off the edge; the
-//!          region before the approach never brought our king round to a king boxed on a7 / a8.)
-//! That this choice always mates is MEASURED (kq_playout.py), not proved -- the forced-mate proof by reasoning is the next
-//! step (Kaveh: the method that reaches every mate, for every combination of pieces).
+//!   FIRST  THE NET: a region of at most two squares -- a forced mate within three moves, searched in full (its measure:
+//!          the moves to mate); else the lowest MEASURE (`KQ_MEASURE`, by rank: the region's squares off the edge; our
+//!          king's distance to the FARTHEST front-zone target the proved shapes give -- Lean edge_shape / corner_shape --
+//!          which SUPERSEDES the region's size; the region's size) AGAINST EVERY REPLY; then the measure right after our
+//!          move; then a position the game has not seen.
+//!   ELSE   THE TEMPO MOVE: the first move after which every reply leaves us a move whose measure falls -- within two
+//!          moves, else three (KQ_TEMPO).
+//! Every move carries its CERTIFICATE: the hypothesis of the method theorem (Lean `Ideas.Forced.forced_by_measure`: a
+//! frame whose every position forces the goal or a lower measure within k moves forces the goal) checked on the board.
+//! OBS 1,000 play-outs: every move certified (125 tempo moves), 6.3 moves to mate, at most 12. That EVERY position of the
+//! frame has a certificate is checked, not proved -- the rung lemmas over patterns are the next proof.
 use super::*;
 use shakmaty::Bitboard;
 
@@ -96,14 +99,45 @@ pub fn front_zone(region: Bitboard) -> Bitboard {
 }
 
 /// OUR KING'S WAY TO THE FRONT ZONE of the lone king's region (before the region reaches the edge: 8 plus the kings'
-/// distance -- the edge component ranks above it then anyway).
+/// distance -- the edge component ranks above it then anyway). THE FARTHEST TARGET (APPROACH_MAX): the largest, over the
+/// region's edge squares, of our king's distance to that square's zone -- the mate may come on any of them, so our king
+/// must be near all; shrinking the region can only lower it (the nearest target moved away when the queen cut the region
+/// along the edge: 144 uncertified moves of 150 games, 2026-10-12).
 fn approach(q: &Chess, lone: Color) -> u32 {
     let b = q.board();
     let (Some(a), Some(k)) = (b.king_of(!lone), b.king_of(lone)) else { return 0 };
     if !APPROACH_ZONE.load(Ordering::Relaxed) { return kdist(a, k); }
-    let z = front_zone(region_bb(q, lone));
+    let r = region_bb(q, lone);
+    if APPROACH_MAX.load(Ordering::Relaxed) {
+        return (r & edge()).into_iter().map(|e| front_zone(Bitboard::from_square(e)).into_iter().map(|s| kdist(a, s)).min().unwrap_or(8))
+            .max().unwrap_or(8 + kdist(a, k));
+    }
+    let z = front_zone(r);
     z.into_iter().map(|s| kdist(a, s)).min().unwrap_or(8 + kdist(a, k))
 }
+pub static APPROACH_MAX: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_approach_max(flag: bool) -> PyResult<()> { APPROACH_MAX.store(flag, Ordering::Relaxed); Ok(()) }
+
+/// THE NET (the last rung): a forced mate in at most `n` moves of ours against every reply, every move of ours tried (a
+/// small full-width proof -- the lone king has at most eight replies). -> the first move and the number of moves.
+pub fn net_mate(pos: &Chess, n: u32) -> Option<(Move, u32)> {
+    fn mates(p: &Chess, n: u32) -> Option<Move> {
+        for m in p.legal_moves() {
+            let q = after(p, &m);
+            if q.is_checkmate() { return Some(m); }
+            if n <= 1 { continue; }
+            let rs = q.legal_moves();
+            if rs.is_empty() { continue; }                                             // stalemate
+            if crate::game::claimable_draw(&q).is_some() { continue; }
+            if rs.iter().all(|r| { let x = after(&q, r); crate::game::claimable_draw(&x).is_none() && mates(&x, n - 1).is_some() }) { return Some(m); }
+        }
+        None
+    }
+    (1..=n).find_map(|k| mates(pos, k).map(|m| (m, k)))
+}
+pub const NET_REGION: u32 = 2;
+pub const NET_MOVES: u32 = 3;
 
 /// The approach measured to the front zone (on) or to their king (off -- the first version: the defender undoes it).
 pub static APPROACH_ZONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
@@ -149,7 +183,11 @@ pub fn kq_move(pos: &Chess) -> Option<(Move, u32, String)> {
     if !is_kq_vs_k(pos) { return None; }
     let us = pos.turn();
     let before = measure(&KQ_MEASURE, pos, !us);
-    let mut best: Option<((Vec<u32>, Vec<u32>, bool), Move, u32)> = None;
+    // THE NET: a region of at most two squares -- the mate is forced within a few moves (its measure: the moves to mate)
+    if before[2] <= NET_REGION {
+        if let Some((m, k)) = net_mate(pos, NET_MOVES) { return Some((m, before[2], format!("the net: mate in {k} against every reply"))); }
+    }
+    let mut cands: Vec<((Vec<u32>, Vec<u32>, bool), Move, u32)> = Vec::new();
     for m in pos.legal_moves() {
         let q = after(pos, &m);
         if q.is_checkmate() { return Some((m, 0, "mate".to_string())); }
@@ -165,11 +203,56 @@ pub fn kq_move(pos: &Chess) -> Option<(Move, u32, String)> {
         let now = measure(&KQ_MEASURE, &q, !us);
         let key = if KQ_EVERY_REPLY.load(Ordering::Relaxed) { (worst_after(&KQ_MEASURE, &q, !us), now, crate::game::seen(&q) > 0) }
                   else { (now.clone(), now, crate::game::seen(&q) > 0) };
-        if best.as_ref().map_or(true, |(k, _, _)| key < *k) { best = Some((key, m, region(&q, !us))); }
+        cands.push((key, m, region(&q, !us)));
     }
-    // THE CERTIFICATE of the chosen move: its measure against every reply, explained (progress guaranteed or not)
-    best.map(|(_, m, r)| { let q = after(pos, &m); (m.clone(), r, explain(&KQ_MEASURE, &before, &worst_after(&KQ_MEASURE, &q, !us))) })
+    cands.sort_by(|a, b| a.0.cmp(&b.0));
+    let (_, m0, r0) = cands.first().cloned()?;
+    let q0 = after(pos, &m0);
+    let w0 = worst_after(&KQ_MEASURE, &q0, !us);
+    // THE CERTIFICATE: progress against every reply (one move) -- else THE TEMPO (Kaveh: "my tempo isn't right, so let me
+    // shuffle around keeping the king here"): the first move, by the order, after which EVERY reply leaves us a move whose
+    // measure is below where we started against every reply -- progress within two moves, found by search and named
+    if w0 < before || !KQ_TEMPO.load(Ordering::Relaxed) { return Some((m0, r0, explain(&KQ_MEASURE, &before, &w0))); }
+    for k in 2..=KQ_TEMPO_MOVES {
+        for (_, m, r) in &cands {
+            let q = after(pos, m);
+            if progress_within(&q, &before, us, k) {
+                return Some((m.clone(), *r, format!("a tempo move: progress within {k} moves against every reply ({})", explain(&KQ_MEASURE, &before, &worst_after(&KQ_MEASURE, &q, !us)))));
+            }
+        }
+    }
+    Some((m0, r0, explain(&KQ_MEASURE, &before, &w0)))
 }
+/// How far ahead a tempo move's progress may come (moves of ours, this one included).
+pub const KQ_TEMPO_MOVES: u32 = 3;
+
+/// A move of ours safe for the frame: no stalemate, no claimable draw now or after a reply, the queen not left to the king.
+fn safe_step(q: &Chess, us: Color) -> bool {
+    if q.is_checkmate() { return true; }
+    if q.legal_moves().is_empty() || crate::game::claimable_draw(q).is_some() { return false; }
+    if q.legal_moves().iter().any(|r| crate::game::claimable_draw(&after(q, r)).is_some()) { return false; }
+    let b = q.board();
+    let (Some(ours), Some(theirs), Some(qs)) = (b.king_of(us), b.king_of(!us), (b.queens() & b.by_color(us)).first()) else { return false };
+    !(shakmaty::attacks::king_attacks(theirs).contains(qs) && !shakmaty::attacks::king_attacks(ours).contains(qs))
+}
+
+/// After our move (`q`, they to move): for every reply, a safe move of ours after which the measure, against every reply,
+/// is below `before` (or a mate) -- within `k` moves of ours counting the one that led to `q`.
+fn progress_within(q: &Chess, before: &[u32], us: Color, k: u32) -> bool {
+    if k <= 1 { return q.is_checkmate() || worst_after(&KQ_MEASURE, q, !us).as_slice() < before; }
+    q.legal_moves().iter().all(|r| {
+        let x = after(q, r);
+        x.legal_moves().iter().any(|m2| {
+            let y = after(&x, m2);
+            y.is_checkmate() || (safe_step(&y, us) && progress_within(&y, before, us, k - 1))
+        })
+    })
+}
+
+/// The tempo rung on (a move whose progress comes within two moves), or off.
+pub static KQ_TEMPO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_kq_tempo(flag: bool) -> PyResult<()> { KQ_TEMPO.store(flag, Ordering::Relaxed); Ok(()) }
 
 /// CHOOSE by the measure over every reply (on), or right after our move (off, the default). Over every reply the approach
 /// is undone by the defender -- their king steps between two squares of its box, our king on the wrong side never gets

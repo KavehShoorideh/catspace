@@ -45,6 +45,8 @@ def _game(args):
     none = 0
     ms = 0.0
     sure = 0                                          # moves whose measure falls against every reply (the certificate)
+    tempo = 0                                         # of which within two moves (a tempo move)
+    unc = []                                          # the uncertified moves
     while True:
         if b.is_checkmate():
             out = "mate"; break
@@ -62,7 +64,13 @@ def _game(args):
             tr, dec, _, _, t, _, _ = st.observe(b.fen())
             ms += t
             cert = [l for l in tr if l.startswith("king and queen") and "against every reply:" in l]
-            sure += bool(cert) and not any(x in cert[0] for x in ("no progress", "no component moves"))
+            # (a mate by checks from the planner's pre-pass is a proof in itself: every reply searched)
+            proven_mate = any(l.startswith("mate:") and "proven" in l for l in tr)
+            ok = proven_mate or (bool(cert) and not any(x in cert[0] for x in ("no progress", "no component moves")) or (bool(cert) and "a tempo move" in cert[0]))
+            sure += ok
+            if not ok:
+                unc.append((b.fen(), dec[1] if dec else None, cert[0].split("against every reply: ")[-1] if cert else "-"))
+            tempo += bool(cert) and "a tempo move" in cert[0]
             mv = None if not dec else (dec[1] if dec[0] in ("", "defend", "cheapest") else dec[0])
             if mv is None:
                 none += 1; mv = next(iter(b.legal_moves)).uci()
@@ -71,7 +79,7 @@ def _game(args):
             st.record(b.fen())
             b.push(eng.play(b, chess.engine.Limit(depth=12)).move)
     eng.quit()
-    return dict(seed=seed, start=start, out=out, moves=moves, none=none, ms=ms / max(moves, 1), sure=sure)
+    return dict(seed=seed, start=start, out=out, moves=moves, none=none, ms=ms / max(moves, 1), sure=sure, tempo=tempo, unc=unc)
 
 
 def run(games: int, workers: int, flags: str = "") -> None:
@@ -84,7 +92,12 @@ def run(games: int, workers: int, flags: str = "") -> None:
     print(f"OBS kq_playout: {games} games ({time.time() - t0:.0f} s on {workers} processes): {dict(by)}; moves to mate "
           f"mean {sum(mates) / max(len(mates), 1):.1f}, max {max(mates, default=0)}; no decision {sum(r['none'] for r in res)} times; "
           f"{sum(r['ms'] for r in res) / len(res):.1f} ms a move; progress guaranteed against every reply on "
-          f"{100 * sum(r['sure'] for r in res) / max(sum(r['moves'] for r in res), 1):.0f}% of our moves")
+          f"{100 * sum(r['sure'] for r in res) / max(sum(r['moves'] for r in res), 1):.1f}% of our moves "
+          f"({sum(r["tempo"] for r in res)} of them tempo moves, progress within two or three); uncertified "
+          f"{sum(r['moves'] for r in res) - sum(r['sure'] for r in res)}")
+    for r in res:
+        for f, m, w in r.get("unc", []):
+            print(f"OBS   uncertified: {m} in {f} -- {w}")
     for r in res:
         if r["out"] != "mate":
             print(f"OBS   {r['out']} after {r['moves']} moves from {r['start']}")
