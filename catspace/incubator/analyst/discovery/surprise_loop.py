@@ -219,7 +219,7 @@ def compose(base: list, term: str, schema: str) -> list:
     return base[:-1] + [term]                               # replace
 
 
-def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: str = "", defender: str = "self") -> dict:
+def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: str = "", defender: str = "self", n_boards: int = 30) -> dict:
     """Each material's refuted frame claims -> a hole -> the pipeline -> the best term joins the material's frame."""
     from . import base_vocabulary as V
     from . import holes as H
@@ -246,7 +246,7 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
         print(f"OBS   {mat} rank {rank} ({'ground lost' if rank == 1 else 'no progress'}): {len(fens)} surprise boards -> hole {name} "
               f"(base {cur or 'none'}; {len(boards)} boards)")
         t0 = time.time()
-        out = run(name, budget, hole=hole, defender=defender)
+        out = run(name, budget, hole=hole, defender=defender, n_boards=n_boards)
         base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None
         if "ranks" in base:                      # a real defender: Kaveh's ranks, a margin at the first that differs
             from .defenders import better
@@ -288,6 +288,7 @@ def main(argv=None):
     ap.add_argument("--resume", action="store_true", help="continue the run --tag names from its last round's mining")
     ap.add_argument("--opponent", default="stockfish:10", help="who defends in the games: stockfish:D (with the tablebases), tablebase")
     ap.add_argument("--defender", default="self", help="the verifier's closed-loop opponent: self, tablebase, stockfish:D")
+    ap.add_argument("--boards", type=int, default=30, help="boards per hole the verifier plays against a real defender")
     a = ap.parse_args(argv)
     tag = a.tag if a.tag is not None else time.strftime("%m%d_%H%M")
     stem = f"surprise_loop_{a.material}" + (f"_{tag}" if tag else "")
@@ -313,7 +314,7 @@ def main(argv=None):
             json.dump(history, open(state, "w"), indent=1)
         if rnd == a.rounds:
             break
-        new = mine(res, frames, rnd, a.budget, tag=tag, defender=a.defender)
+        new = mine(res, frames, rnd, a.budget, tag=tag, defender=a.defender, n_boards=a.boards)
         if new == frames:
             print("OBS nothing new mined -- stopping"); break
         R.save_frames(new, f"{stem} round {rnd}")      # the learned frames, the next run's start

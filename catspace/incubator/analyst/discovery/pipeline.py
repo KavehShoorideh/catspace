@@ -122,7 +122,7 @@ def fresh_candidates(hole: dict, boards: list) -> dict:
 
 
 def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int = 40, hole: dict | None = None,
-        defender: str = "self") -> list:
+        defender: str = "self", n_boards: int = 30) -> list:
     """The pipeline on one hole: the learned proposers trained on the LABELED holes' verdicts (the store's feedback; the
     hole itself excluded), the enumerative one beside them, the filter, the verifier (each verdict to the store)."""
     import os
@@ -134,7 +134,7 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     lab = labels(hole_name) if os.path.exists(paths.derived(f"hole_{hole_name}_labels.json")) else fresh_candidates(h, boards)
     boards = lab["boards"]                       # a labeled hole's verdicts were made on its labels' boards
     if defender != "self":
-        boards = boards[:30]                     # a real defender plays whole games with the planner: 30 boards
+        boards = boards[:n_boards]               # a real defender plays whole games with the planner
     from . import proposers as P
     rankings = [Enumerative().rank(h, lab, cache)]
     for k in kinds:
