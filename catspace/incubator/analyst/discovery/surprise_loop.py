@@ -219,7 +219,8 @@ def compose(base: list, term: str, schema: str) -> list:
     return base[:-1] + [term]                               # replace
 
 
-def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: str = "", defender: str = "self", n_boards: int = 30) -> dict:
+def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: str = "", defender: str = "self", n_boards: int = 30,
+         register: bool = True) -> dict:
     """Each material's refuted frame claims -> a hole -> the pipeline -> the best term joins the material's frame."""
     from . import base_vocabulary as V
     from . import holes as H
@@ -266,9 +267,10 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
                 ev["verifier"] = (f"held {best['n'] - best['lost']}/{best['n']}, won {best['mated']}, claims kept {best['certified']}/{best['played']} "
                                   f"-- the frame before it held {base['n'] - base['lost']}/{base['n']}, won {base['mated']}, claims kept "
                                   f"{base['certified']}/{base['played']} (defender {defender})")
-            R.add_generated(f"{mat.lower()}_{tag or 'run'}_r{rnd}_{what}", best["term"], "measure", name, ev,
-                            used_by=f"the {mat} frame ({best['schema']}): {new[mat]}")
-            R.export()
+            if register:                          # (a --dry test run writes nothing to the generated track)
+                R.add_generated(f"{mat.lower()}_{tag or 'run'}_r{rnd}_{what}", best["term"], "measure", name, ev,
+                                used_by=f"the {mat} frame ({best['schema']}): {new[mat]}")
+                R.export()
             print(f"OBS   MINED for {mat} ({time.time() - t0:.0f} s): [{best['schema']}] {best['term']} = "
                   f"{V.gloss(V.parse(best['term']))} -- {best['score']:.3f} against {base['score']:.3f}; the frame now {new[mat]}")
         else:
@@ -284,6 +286,7 @@ def main(argv=None):
     ap.add_argument("--budget", type=int, default=60)
     ap.add_argument("--frames", default=None, help="a JSON of {material: [terms]} to start from (default: the generated track's)")
     ap.add_argument("--fresh", action="store_true", help="start with no frames for the new materials (not the generated track's)")
+    ap.add_argument("--dry", action="store_true", help="a test: write nothing to the generated track (its terms or its frames)")
     ap.add_argument("--tag", default=None, help="this run's name in its files (default: the start time); never overwritten")
     ap.add_argument("--resume", action="store_true", help="continue the run --tag names from its last round's mining")
     ap.add_argument("--opponent", default="stockfish:10", help="who defends in the games: stockfish:D (with the tablebases), tablebase")
@@ -314,10 +317,11 @@ def main(argv=None):
             json.dump(history, open(state, "w"), indent=1)
         if rnd == a.rounds:
             break
-        new = mine(res, frames, rnd, a.budget, tag=tag, defender=a.defender, n_boards=a.boards)
+        new = mine(res, frames, rnd, a.budget, tag=tag, defender=a.defender, n_boards=a.boards, register=not a.dry)
         if new == frames:
             print("OBS nothing new mined -- stopping"); break
-        R.save_frames(new, f"{stem} round {rnd}")      # the learned frames, the next run's start
+        if not a.dry:
+            R.save_frames(new, f"{stem} round {rnd}")  # the learned frames, the next run's start
         frames, res = new, None
 
 
