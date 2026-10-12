@@ -147,9 +147,14 @@ def judge(g: dict) -> None:
         win = rows[i + 1:i + 1 + c["k"]]
         ended = len(win) < c["k"]
         ahead = r["lead"] > 0
+        clock = ended and g["out"] == "draw" and g.get("ended") == "fifty moves"
         if (min([r["lead_after"]] + [x["lead_after"] for x in win]) < r["lead"] or (ended and g["out"] == "loss")
-                or (ahead and ended and g["out"] == "draw")):
+                or (ahead and ended and g["out"] == "draw" and not clock)):
             r["verdict"] = "lost ground"; continue
+        if ahead and clock:
+            # (a draw by the fifty-move clock is fifty moves of no progress, not a move that lost ground: rank 2 --
+            # 2026-10-12, the rank-1 holes were boards a median 2 moves from the clock's draw)
+            r["verdict"] = "no shrink"; continue
         if not ahead:
             r["verdict"] = "kept"; continue
         reached = lambda x: x["theirs"] < r["theirs"] and x["lead"] >= r["lead"]      # the goal: a capture we kept
@@ -238,7 +243,14 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
     for (mat, rank), fens in sorted(by.items(), key=lambda kv: (kv[0][1], -len(kv[1]))):
         if len(fens) < 10:
             print(f"OBS   {mat} rank {rank}: {len(fens)} surprise boards -- too few"); continue
-        boards = random.Random(rnd).sample(sorted(fens), min(cap, len(fens)))
+        # FRESH CLOCKS: the hole asks whether a frame makes progress FROM the position -- not whether it wins before a clock
+        # the game had already run down (2026-10-12: the rank-1 boards were a median 2 moves from the fifty-move draw)
+        def fresh(f):
+            import chess
+            b = chess.Board(f)
+            b.halfmove_clock = 0
+            return b.fen()
+        boards = [fresh(f) for f in random.Random(rnd).sample(sorted(fens), min(cap, len(fens)))]
         name = f"learn_{tag + '_' if tag else ''}{mat}_rank{rank}_r{rnd}"   # the run's tag: no run reads another's hole
         cur = new.get(mat, [])
         hole = dict(name=name, material=mat, piece="*", base=cur, k=H.K, stuck=boards, sampled=len(fens),
