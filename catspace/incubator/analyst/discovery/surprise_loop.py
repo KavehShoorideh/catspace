@@ -198,7 +198,7 @@ def compose(base: list, term: str, schema: str) -> list:
     return base[:-1] + [term]                               # replace
 
 
-def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100) -> dict:
+def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: str = "") -> dict:
     """Each material's refuted frame claims -> a hole -> the pipeline -> the best term joins the material's frame."""
     from . import base_vocabulary as V
     from . import holes as H
@@ -217,7 +217,7 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100) -> dict
         if len(fens) < 10:
             print(f"OBS   {mat} rank {rank}: {len(fens)} surprise boards -- too few"); continue
         boards = random.Random(rnd).sample(sorted(fens), min(cap, len(fens)))
-        name = f"learn_{mat}_rank{rank}_r{rnd}"
+        name = f"learn_{tag + '_' if tag else ''}{mat}_rank{rank}_r{rnd}"   # the run's tag: no run reads another's hole
         cur = new.get(mat, [])
         hole = dict(name=name, material=mat, piece="*", base=cur, k=H.K, stuck=boards, sampled=len(fens),
                     schemas=["prepend"] if rank == 1 and cur else None)
@@ -269,7 +269,7 @@ def main(argv=None):
             json.dump(history, open(state, "w"), indent=1)
         if rnd == a.rounds:
             break
-        new = mine(res, frames, rnd, a.budget)
+        new = mine(res, frames, rnd, a.budget, tag=tag)
         if new == frames:
             print("OBS nothing new mined -- stopping"); break
         frames, res = new, None

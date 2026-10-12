@@ -23,8 +23,14 @@ STORE = "discovery_experience.jsonl"
 LIMIT = 60                                          # moves per closed-loop game
 
 
-def _key(hole: str, term: str, schema: str, boards: str = "") -> str:
-    return f"{hole}|{schema}|{term}|{boards}"
+def _key(hole: str, term: str, schema: str, boards: str = "", spec: str = "") -> str:
+    return f"{hole}|{schema}|{term}|{boards}|{spec}"
+
+
+def spec_of(hole: dict) -> str:
+    """What a verdict was made against besides the term and the boards: the hole's base measure, the safety, the horizon
+    -- a hole of the same name and boards with another base (the next run's) must not reuse it (BUGS 2026-10-12)."""
+    return json.dumps([hole["base"], hole.get("piece") or hole["material"][1], hole["k"]])
 
 
 def board_hash(boards: list) -> str:
@@ -41,21 +47,22 @@ class Verifier:
         if os.path.exists(self.path):
             for line in open(self.path):
                 r = json.loads(line)
-                self.memo[_key(r["hole"], r["term"], r["schema"], r.get("boards", ""))] = r
+                self.memo[_key(r["hole"], r["term"], r["schema"], r.get("boards", ""), r.get("spec", ""))] = r
 
     def verify(self, hole: dict, term: str | None, schema: str, boards: list | None = None) -> dict:
         """Both stages on the hole's boards; remembered and stored."""
         import analyst_core as A
         boards = boards if boards is not None else hole["stuck"][:100]
         bh = board_hash(boards)
-        k = _key(hole["name"], term or "", schema, bh)
+        sp = spec_of(hole)
+        k = _key(hole["name"], term or "", schema, bh, sp)
         if k in self.memo:
             return self.memo[k]
         piece = hole.get("piece") or hole["material"][1]
         s1 = A.verify_count(boards, hole["base"], term, schema, hole["k"], piece)
         mated, moves, played, cert = A.verify_play(boards, hole["base"], term, schema, piece, LIMIT)
         n = len(boards)
-        r = dict(hole=hole["name"], term=term or "", schema=schema, boards=bh, n=n, stage1=s1, mated=mated, played=played, certified=cert,
+        r = dict(hole=hole["name"], term=term or "", schema=schema, boards=bh, spec=sp, n=n, stage1=s1, mated=mated, played=played, certified=cert,
                  score=(cert / max(played, 1)) * (mated / max(n, 1)), t=time.time())
         self.memo[k] = r
         with open(self.path, "a") as fh:
