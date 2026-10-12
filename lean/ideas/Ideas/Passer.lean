@@ -167,9 +167,12 @@ theorem kdist_king_step {a b : Square} (h : kingGeometryB a b = true) : kdist a 
   simp only [kdist]
   omega
 
-set_option maxRecDepth 100000 in
+/-- A king's step is symmetric (2026-10-12: reasoned on the coordinates; it was decided over all 4,096 pairs). -/
 theorem kingGeometryB_comm : ∀ a b : Square, kingGeometryB a b = kingGeometryB b a := by
-  decide
+  intro a b
+  rw [Bool.eq_iff_iff]
+  simp only [kingGeometryB, Bool.and_eq_true, bne_iff_ne, ne_eq, decide_eq_true_eq, Prod.ext_iff, Fin.ext_iff, absDiff]
+  split_ifs <;> omega
 
 /-- When the side to move has only its king, on `ek`, a legal move is a king step to a square free of
 its own pieces that leaves the king unattacked. -/

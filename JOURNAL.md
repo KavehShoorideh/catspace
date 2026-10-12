@@ -29250,3 +29250,22 @@ an instance; blockers ignored, which only adds to the queen) -- axioms propext /
 closed by omega on coordinates. Index 177 theorems, 0 open. NEXT: the bridge from the rules -- the library's checkmate
 implies the box demand (generic, any material) -- then the board corollary (mate only with the lone king on the edge),
 the two finishing shapes on the edge, and the stalemate twin; then the confining measure in Rust.
+FROM THE RULES TO THE DEMAND, AND INSUFFICIENT MATERIAL DERIVED (2026-10-12 09:30 PDT; Kaveh: "do it"; "derive an
+insufficient material rule from the laws you've proven"; "don't double-create a lemma"). Lean, all by reasoning (omega on
+coordinates, the library's definitions unfolded; axioms propext / choice / Quot.sound only):
+(1) Ideas/MateDemand.lean -- THE DEMAND, generic: checkmate_attacked (the mated king's square is attacked),
+checkmate_flight (every square next to it is no flight, in Ideas.Mate's own flightOkB) -- the NECESSARY direction;
+Ideas.Mate held only the sufficient one (king_step_in_check). Why: a step to a square that is no flight would be
+pseudo-legal and leave the king unattacked (the boards differ only on the king's two squares), so legal.
+(2) Ideas/QueenMateBoard.lean -- kq_mate_on_edge: in the library's checkmate with a lone king against king and queen
+(kings apart), the lone king stands on the edge; attack_kq (a king-and-queen attack is a king step or a queen line).
+(3) Ideas/InsufficientMaterial.lean -- from the colour laws already proved (GeoLemmas: bishop_keeps_colour,
+knight_flips_colour, orthAdj_other_colour): the checking minor piece covers only the mated king's colour, so the
+orthogonal neighbours (the other colour; two on the board for every square, two_orth) fall to our king alone, and a king
+guarding two orthogonal neighbours of a square stands next to it (king_guards_two_orth) -- no_mate_king_minor;
+no_mate_by_lone_king; insufficient_material (two kings apart and at most one knight or bishop of either side: no
+checkmate). The dynamic rule (no continuation ever mates: the library's deadPosition) needs the material to stay in that
+class move by move -- next. DUPLICATES: reused Ideas.Mate (flightOkB, withEmpty, kingSquare_of_only, pieceAttacksB_mono),
+GeoLemmas' colour laws, Fork's opposite_ne, Passer's kingGeometryB_comm (my two copies deleted); Passer's
+kingGeometryB_comm was proved by `decide` over all 4,096 square pairs -- now by reasoning. Pre-existing: absDiff_def is
+stated in both FrameLemma and GeoLemmas (left). Index rebuilt.

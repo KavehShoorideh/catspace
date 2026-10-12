@@ -17,3 +17,6 @@ import Ideas.Refutation
 import Ideas.GeoLemmas
 import Ideas.StalemateLemmas
 import Ideas.QueenMate
+import Ideas.MateDemand
+import Ideas.QueenMateBoard
+import Ideas.InsufficientMaterial
