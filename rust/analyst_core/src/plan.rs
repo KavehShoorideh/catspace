@@ -1165,15 +1165,18 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
                 return Plan { trace, best: d.clone(), proofs, nodes, target: b.king_of(them), immediate: d, wins: vec![(u, b.king_of(them).unwrap_or(m.to()), MATE_GOAL)] };
             }
         }
-        // THE KING-AND-QUEEN MATE BY ITS PROVED CONDITION (mating.rs; Lean Ideas.QueenMate.kq_mate_on_edge -- the lone king
-        // is mated only on the edge): drive it there by shrinking its region, never stalemating, never repeating
+        // THE MATING FRAMES (mating.rs): king and queen (by its proved edge condition and shapes), king and rook (as the
+        // discoverer derived it) -- the move whose ranked measure falls against every reply, never stalemating, never
+        // leaving the piece to the lone king, never repeating
         if !immediate_only && KQ_TACTIC.load(Ordering::Relaxed) {
-            if let Some((m, r, why)) = crate::mating::kq_move(pos) {
-                let u = m.to_uci(CastlingMode::Standard).to_string();
-                trace.push(format!("king and queen: {} leaves the lone king a region of {r} squares (a mate needs it on the edge -- proved); against every reply: {why}", san(pos, &u)));
-                let d = Some((String::new(), u.clone(), 0, format!("{} confines the king to {r} squares", san(pos, &u))));
-                mark("mate first");
-                return Plan { trace, best: d.clone(), proofs, nodes, target: b.king_of(them), immediate: None, wins: vec![] };
+            if let Some(f) = crate::mating::FRAMES.iter().find(|f| (f.applies)(pos)) {
+                if let Some((m, _, why)) = crate::mating::frame_move(f, pos) {
+                    let u = m.to_uci(CastlingMode::Standard).to_string();
+                    trace.push(format!("{}: {}; against every reply: {why}", f.name, san(pos, &u)));
+                    let d = Some((String::new(), u.clone(), 0, format!("{} ({})", san(pos, &u), f.name)));
+                    mark("mate first");
+                    return Plan { trace, best: d.clone(), proofs, nodes, target: b.king_of(them), immediate: None, wins: vec![] };
+                }
             }
         }
     }

@@ -14,13 +14,14 @@ import time
 from collections import Counter
 
 
-def _start(rng: random.Random):
+def _start(rng: random.Random, piece: str = "Q"):
     import chess
+    kind = {"Q": chess.QUEEN, "R": chess.ROOK}[piece]
     while True:
         sq = rng.sample(range(64), 3)
         b = chess.Board(None)
         b.set_piece_at(sq[0], chess.Piece(chess.KING, chess.WHITE))
-        b.set_piece_at(sq[1], chess.Piece(chess.QUEEN, chess.WHITE))
+        b.set_piece_at(sq[1], chess.Piece(kind, chess.WHITE))
         b.set_piece_at(sq[2], chess.Piece(chess.KING, chess.BLACK))
         b.turn = chess.WHITE
         if b.is_valid() and not b.is_game_over() and chess.square_distance(sq[0], sq[2]) > 1:
@@ -28,7 +29,7 @@ def _start(rng: random.Random):
 
 
 def _game(args):
-    seed, flags = args
+    seed, flags, piece = args
     os.environ.setdefault("RAYON_NUM_THREADS", "1")
     import chess
     import chess.engine
@@ -38,7 +39,7 @@ def _game(args):
         k, v = kv.split("=")
         getattr(analyst_core, f"set_{k}")(v == "1")
     eng = chess.engine.SimpleEngine.popen_uci("stockfish")
-    b = _start(random.Random(seed))
+    b = _start(random.Random(seed), piece)
     start = b.fen()
     st = analyst_core.PlanState()
     moves = 0
@@ -58,12 +59,12 @@ def _game(args):
             out = "threefold"; break
         if b.halfmove_clock >= 100:
             out = "fifty moves"; break
-        if moves >= 60:
+        if moves >= 80:
             out = "not finished"; break
         if b.turn == chess.WHITE:
             tr, dec, _, _, t, _, _ = st.observe(b.fen())
             ms += t
-            cert = [l for l in tr if l.startswith("king and queen") and "against every reply:" in l]
+            cert = [l for l in tr if l.startswith(("king and queen", "king and rook")) and "against every reply:" in l]
             # (a mate by checks from the planner's pre-pass is a proof in itself: every reply searched)
             proven_mate = any(l.startswith("mate:") and "proven" in l for l in tr)
             ok = proven_mate or (bool(cert) and not any(x in cert[0] for x in ("no progress", "no component moves")) or (bool(cert) and "a tempo move" in cert[0]))
@@ -82,14 +83,14 @@ def _game(args):
     return dict(seed=seed, start=start, out=out, moves=moves, none=none, ms=ms / max(moves, 1), sure=sure, tempo=tempo, unc=unc)
 
 
-def run(games: int, workers: int, flags: str = "") -> None:
+def run(games: int, workers: int, flags: str = "", piece: str = "Q") -> None:
     from multiprocessing import Pool
     t0 = time.time()
     with Pool(workers) as p:
-        res = list(p.imap_unordered(_game, [(g, flags) for g in range(games)], chunksize=1))
+        res = list(p.imap_unordered(_game, [(g, flags, piece) for g in range(games)], chunksize=1))
     by = Counter(r["out"] for r in res)
     mates = [r["moves"] for r in res if r["out"] == "mate"]
-    print(f"OBS kq_playout: {games} games ({time.time() - t0:.0f} s on {workers} processes): {dict(by)}; moves to mate "
+    print(f"OBS kq_playout (K+{piece} v K): {games} games ({time.time() - t0:.0f} s on {workers} processes): {dict(by)}; moves to mate "
           f"mean {sum(mates) / max(len(mates), 1):.1f}, max {max(mates, default=0)}; no decision {sum(r['none'] for r in res)} times; "
           f"{sum(r['ms'] for r in res) / len(res):.1f} ms a move; progress guaranteed against every reply on "
           f"{100 * sum(r['sure'] for r in res) / max(sum(r['moves'] for r in res), 1):.1f}% of our moves "
@@ -108,8 +109,9 @@ def main(argv=None):
     ap.add_argument("--games", type=int, default=40)
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--flags", default="", help="name=0|1,... (set_<name>), e.g. kq_every_reply=1")
+    ap.add_argument("--piece", default="Q", help="Q or R")
     a = ap.parse_args(argv)
-    run(a.games, a.workers, a.flags)
+    run(a.games, a.workers, a.flags, a.piece)
 
 
 if __name__ == "__main__":

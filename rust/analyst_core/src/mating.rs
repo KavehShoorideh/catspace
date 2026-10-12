@@ -176,75 +176,83 @@ pub fn explain(cs: &[Component], before: &[u32], worst: &[u32]) -> String {
     out
 }
 
-/// The confining move for king and queen against a king (the side to move has them): a mate if one is on the board, else
-/// the move whose measure is lowest AGAINST EVERY REPLY (then the lowest right after it, then a position not yet seen).
-/// -> (move, the region after it, the explanation).
-pub fn kq_move(pos: &Chess) -> Option<(Move, u32, String)> {
-    if !is_kq_vs_k(pos) { return None; }
+/// A FRAME of the mating method (Kaveh 2026-10-12): the material it applies to, its ranked measure, the piece that must
+/// never be left to the lone king, and when the net (a full mate search) takes over.
+pub struct Frame {
+    pub name: &'static str,
+    pub applies: fn(&Chess) -> bool,
+    pub measure: &'static [Component],
+    pub piece: Role,
+    pub net: fn(&[u32]) -> bool,
+}
+fn kq_net(m: &[u32]) -> bool { m[2] <= NET_REGION }
+pub static KQ_FRAME: Frame = Frame { name: "king and queen", applies: is_kq_vs_k, measure: &KQ_MEASURE, piece: Role::Queen, net: kq_net };
+
+/// The confining move for king and queen against a king (kept for the hooks).
+pub fn kq_move(pos: &Chess) -> Option<(Move, u32, String)> { frame_move(&KQ_FRAME, pos) }
+
+/// THE MOVE OF A FRAME (the side to move has the frame's material): a mate if one is on the board; the net when the
+/// frame says so; else the move whose measure is lowest AGAINST EVERY REPLY (then right after it, then a position not yet
+/// seen); else THE TEMPO. -> (move, the first measure component after it, the explanation).
+pub fn frame_move(f: &Frame, pos: &Chess) -> Option<(Move, u32, String)> {
+    if !(f.applies)(pos) { return None; }
     let us = pos.turn();
-    let before = measure(&KQ_MEASURE, pos, !us);
-    // THE NET: a region of at most two squares -- the mate is forced within a few moves (its measure: the moves to mate)
-    if before[2] <= NET_REGION {
-        if let Some((m, k)) = net_mate(pos, NET_MOVES) { return Some((m, before[2], format!("the net: mate in {k} against every reply"))); }
+    let before = measure(f.measure, pos, !us);
+    if (f.net)(&before) {
+        if let Some((m, k)) = net_mate(pos, NET_MOVES) { return Some((m, before[0], format!("the net: mate in {k} against every reply"))); }
     }
     let mut cands: Vec<((Vec<u32>, Vec<u32>, bool), Move, u32)> = Vec::new();
     for m in pos.legal_moves() {
         let q = after(pos, &m);
         if q.is_checkmate() { return Some((m, 0, "mate".to_string())); }
-        if q.legal_moves().is_empty() { continue; }                                   // stalemate
-        if crate::game::claimable_draw(&q).is_some() { continue; }                     // a draw they may claim
-        if q.legal_moves().iter().any(|r| crate::game::claimable_draw(&after(&q, r)).is_some()) { continue; }   // or reach
-        let b = q.board();
-        let (Some(ours), Some(theirs)) = (b.king_of(us), b.king_of(!us)) else { continue };
-        let Some(qs) = (b.queens() & b.by_color(us)).first() else { continue };
-        let hit = shakmaty::attacks::king_attacks(theirs).contains(qs);
-        let guarded = shakmaty::attacks::king_attacks(ours).contains(qs);
-        if hit && !guarded { continue; }                                               // the queen left to the king
-        let now = measure(&KQ_MEASURE, &q, !us);
-        let key = if KQ_EVERY_REPLY.load(Ordering::Relaxed) { (worst_after(&KQ_MEASURE, &q, !us), now, crate::game::seen(&q) > 0) }
-                  else { (now.clone(), now, crate::game::seen(&q) > 0) };
-        cands.push((key, m, region(&q, !us)));
+        if !safe_step(&q, us, f.piece) { continue; }
+        let now = measure(f.measure, &q, !us);
+        let key = if KQ_EVERY_REPLY.load(Ordering::Relaxed) { (worst_after(f.measure, &q, !us), now.clone(), crate::game::seen(&q) > 0) }
+                  else { (now.clone(), now.clone(), crate::game::seen(&q) > 0) };
+        cands.push((key, m, now[0]));
     }
     cands.sort_by(|a, b| a.0.cmp(&b.0));
     let (_, m0, r0) = cands.first().cloned()?;
     let q0 = after(pos, &m0);
-    let w0 = worst_after(&KQ_MEASURE, &q0, !us);
+    let w0 = worst_after(f.measure, &q0, !us);
     // THE CERTIFICATE: progress against every reply (one move) -- else THE TEMPO (Kaveh: "my tempo isn't right, so let me
     // shuffle around keeping the king here"): the first move, by the order, after which EVERY reply leaves us a move whose
-    // measure is below where we started against every reply -- progress within two moves, found by search and named
-    if w0 < before || !KQ_TEMPO.load(Ordering::Relaxed) { return Some((m0, r0, explain(&KQ_MEASURE, &before, &w0))); }
+    // measure is below where we started against every reply -- progress within two or three moves, found by search
+    if w0 < before || !KQ_TEMPO.load(Ordering::Relaxed) { return Some((m0, r0, explain(f.measure, &before, &w0))); }
     for k in 2..=KQ_TEMPO_MOVES {
         for (_, m, r) in &cands {
             let q = after(pos, m);
-            if progress_within(&q, &before, us, k) {
-                return Some((m.clone(), *r, format!("a tempo move: progress within {k} moves against every reply ({})", explain(&KQ_MEASURE, &before, &worst_after(&KQ_MEASURE, &q, !us)))));
+            if progress_within(f, &q, &before, us, k) {
+                return Some((m.clone(), *r, format!("a tempo move: progress within {k} moves against every reply ({})", explain(f.measure, &before, &worst_after(f.measure, &q, !us)))));
             }
         }
     }
-    Some((m0, r0, explain(&KQ_MEASURE, &before, &w0)))
+    Some((m0, r0, explain(f.measure, &before, &w0)))
 }
 /// How far ahead a tempo move's progress may come (moves of ours, this one included).
 pub const KQ_TEMPO_MOVES: u32 = 3;
 
-/// A move of ours safe for the frame: no stalemate, no claimable draw now or after a reply, the queen not left to the king.
-fn safe_step(q: &Chess, us: Color) -> bool {
+/// A move of ours safe for the frame: no stalemate, no claimable draw now or after a reply, the frame's piece not left to
+/// the lone king.
+fn safe_step(q: &Chess, us: Color, piece: Role) -> bool {
     if q.is_checkmate() { return true; }
     if q.legal_moves().is_empty() || crate::game::claimable_draw(q).is_some() { return false; }
     if q.legal_moves().iter().any(|r| crate::game::claimable_draw(&after(q, r)).is_some()) { return false; }
     let b = q.board();
-    let (Some(ours), Some(theirs), Some(qs)) = (b.king_of(us), b.king_of(!us), (b.queens() & b.by_color(us)).first()) else { return false };
-    !(shakmaty::attacks::king_attacks(theirs).contains(qs) && !shakmaty::attacks::king_attacks(ours).contains(qs))
+    let (Some(ours), Some(theirs)) = (b.king_of(us), b.king_of(!us)) else { return false };
+    let Some(ps) = (b.by_role(piece) & b.by_color(us)).first() else { return false };
+    !(shakmaty::attacks::king_attacks(theirs).contains(ps) && !shakmaty::attacks::king_attacks(ours).contains(ps))
 }
 
 /// After our move (`q`, they to move): for every reply, a safe move of ours after which the measure, against every reply,
 /// is below `before` (or a mate) -- within `k` moves of ours counting the one that led to `q`.
-fn progress_within(q: &Chess, before: &[u32], us: Color, k: u32) -> bool {
-    if k <= 1 { return q.is_checkmate() || worst_after(&KQ_MEASURE, q, !us).as_slice() < before; }
+fn progress_within(f: &Frame, q: &Chess, before: &[u32], us: Color, k: u32) -> bool {
+    if k <= 1 { return q.is_checkmate() || worst_after(f.measure, q, !us).as_slice() < before; }
     q.legal_moves().iter().all(|r| {
         let x = after(q, r);
         x.legal_moves().iter().any(|m2| {
             let y = after(&x, m2);
-            y.is_checkmate() || (safe_step(&y, us) && progress_within(&y, before, us, k - 1))
+            y.is_checkmate() || (safe_step(&y, us, f.piece) && progress_within(f, &y, before, us, k - 1))
         })
     })
 }
@@ -253,6 +261,82 @@ fn progress_within(q: &Chess, before: &[u32], us: Color, k: u32) -> bool {
 pub static KQ_TEMPO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_kq_tempo(flag: bool) -> PyResult<()> { KQ_TEMPO.store(flag, Ordering::Relaxed); Ok(()) }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// THE KING-AND-ROOK FRAME, as the discoverer derived it from the material alone (mate_discovery.py --plan, frame_KR.json,
+// 2026-10-12): the step is a RETREAT BY CHECK -- our king in opposition (0, -2) covers the front row, the rook on the
+// king's row two or more away gives the check and covers the middle row; regressed, the rook holds the front row alone
+// -- a WALL one row in front of the king; the lone king never crosses the wall (0 crossings in 3,000 sampled boards; the
+// Lean cut lemma to come); each step moves the wall up a row; at the edge the step is mate. Kaveh's rook method,
+// rediscovered.
+
+/// The side to move has exactly a king and a rook, the other side only its king.
+pub fn is_kr_vs_k(pos: &Chess) -> bool {
+    let b = pos.board();
+    let us = b.by_color(pos.turn());
+    b.by_color(!pos.turn()).count() == 1 && us.count() == 2 && (us & b.rooks()).count() == 1
+}
+
+/// The four ways a rook's line can be a wall: the lone king beyond it upward, downward, to the right, to the left --
+/// (across, along) coordinates with the king's side at the larger `across`.
+fn across(d: u8, s: Square) -> i32 {
+    match d { 0 => s.rank() as i32, 1 => 7 - s.rank() as i32, 2 => s.file() as i32, _ => 7 - s.file() as i32 }
+}
+fn along(d: u8, s: Square) -> i32 { if d < 2 { s.file() as i32 } else { s.rank() as i32 } }
+
+/// THE WALL: the rook's line with the lone king beyond it and our king off it (else a gap opens behind our king) --
+/// (direction, the wall's `across`, the rows beyond it); the one leaving the fewest rows.
+fn best_wall(q: &Chess, lone: Color) -> Option<(u8, i32, u32)> {
+    let b = q.board();
+    let (Some(k), Some(w), Some(r)) = (b.king_of(lone), b.king_of(!lone), (b.rooks() & b.by_color(!lone)).first()) else { return None };
+    (0..4u8).filter_map(|d| {
+        let c0 = across(d, r);
+        (across(d, k) > c0 && across(d, w) != c0).then_some((d, c0, (7 - c0) as u32))
+    }).min_by_key(|x| x.2)
+}
+
+fn wall_rows(q: &Chess, lone: Color) -> u32 { best_wall(q, lone).map_or(8, |x| x.2) }
+
+/// Our king's distance to the opposition square -- (0, -2) relative to the lone king across the wall (the discoverer's
+/// regressed subgoal); on or beyond the wall's line, eight more.
+fn kr_opposition(q: &Chess, lone: Color) -> u32 {
+    let b = q.board();
+    let (Some(k), Some(w)) = (b.king_of(lone), b.king_of(!lone)) else { return 0 };
+    let Some((d, c0, _)) = best_wall(q, lone) else { return 16 };
+    let (ta, tl) = (across(d, k) - 2, along(d, k));
+    let dist = (across(d, w) - ta).abs().max((along(d, w) - tl).abs()) as u32;
+    dist + if across(d, w) >= c0 { 8 } else { 0 }
+}
+
+/// THE SIDE ROOM (the gap the certificate pointed at, 2026-10-12: 1,047 of 3,790 moves uncertified, nearly all the CHASE
+/// -- the lone king on the last row stepping sideways, our king one file off the opposition): the files the lone king has
+/// left on the side away from our king -- each time it runs, the room shrinks; it cannot run back past our king (that
+/// walks into the opposition). Added by hand to test it; the discoverer's monotone operator should mine it from the gap.
+fn kr_side_room(q: &Chess, lone: Color) -> u32 {
+    let b = q.board();
+    let (Some(k), Some(w)) = (b.king_of(lone), b.king_of(!lone)) else { return 0 };
+    let Some((d, _, _)) = best_wall(q, lone) else { return 8 };
+    let (kl, wl) = (along(d, k), along(d, w));
+    // (level with our king it may run either way: the larger side -- counting 0 there made the measure jump whenever it
+    // stepped off our king's file)
+    (if kl > wl { 7 - kl } else if kl < wl { kl } else { kl.max(7 - kl) }) as u32
+}
+
+/// THE CHASE: the opposition distance plus the side room -- ranked apart they never fall together (a sideways step
+/// shrinks the room by one and moves the opposition square away by one, until our king follows); their sum falls within
+/// two moves against every reply (the waiting slide, then the follow): 85.1% of moves certified with the two apart, see
+/// the journal for the sum.
+fn kr_chase(q: &Chess, lone: Color) -> u32 { kr_opposition(q, lone) + kr_side_room(q, lone) }
+
+pub const KR_MEASURE: [Component; 2] = [
+    Component { id: "wall", name: "rows beyond the rook's wall", lean: None, supersedes: None, value: wall_rows },
+    Component { id: "chase", name: "our king's distance to the opposition square plus the lone king's room away from it", lean: None, supersedes: None, value: kr_chase },
+];
+fn kr_net(m: &[u32]) -> bool { m[0] <= 1 }
+pub static KR_FRAME: Frame = Frame { name: "king and rook", applies: is_kr_vs_k, measure: &KR_MEASURE, piece: Role::Rook, net: kr_net };
+
+/// The frames the planner plays (the first that applies).
+pub static FRAMES: [&Frame; 2] = [&KQ_FRAME, &KR_FRAME];
 
 /// CHOOSE by the measure over every reply (on), or right after our move (off, the default). Over every reply the approach
 /// is undone by the defender -- their king steps between two squares of its box, our king on the wrong side never gets

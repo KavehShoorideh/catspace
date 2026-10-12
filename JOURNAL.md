@@ -29431,3 +29431,23 @@ corner) -- derived from the TABLEBASE by minimax + argument-based ML with an exp
 proved. An extended search found no strategy derived purely from the rules by reasoning with machine-checked proofs
 (absence of evidence only). So: the calculus is the standard toolkit assembled; what is ours is the source (the rules and
 proved lemmas, no tablebase) and the check (Lean); the test target for K+B+N is Guid et al.'s goal hierarchy.
+TRYING THE OPERATORS: THE ROOK PLAN DERIVED, THEN PLAYED (2026-10-12 11:34 PDT; Kaveh: "try it out"). mate_discovery.py
+--plan: the operators explicit, each adding a record to a trace (the plan and its explanation): DEMAND -> ALLOCATE (mate
+impossible in the open) -> RELAX (retreat by check: 6 placements, independent roles; by zugzwang: impossible) ->
+ALLOCATE (the step: our king (0, -2) on the front row; the rook on the king's row, |x| >= 2, the check and the middle row)
+-> INVARIANCE (the rook's squares one class along its row: the PASS move; all two or more from the king: safe) -> REGRESS
+(before the step our king is not in place: its role -- the front row, read from the allocation -- must be held by the rook
+alone: row -1 -- a WALL; the step is the rook moving up its column onto the king's row) -> MONOTONE (the lone king never
+crosses the wall: 3,000 sampled boards, 0 crossings -- a suggestion, the Lean cut lemma to come) -> ASSEMBLE (rows beyond
+the wall; our king's distance to the regressed opposition square; pass = the rook along the wall; base case: one row
+left, the step is mate) -> data/derived/frame_KR.json. RUST (mating.rs): a generic Frame (material, ranked measure, the
+piece that must never hang, when the net takes over); king and queen moved onto it (OBS unchanged: 1,000 / 1,000, 6.3
+moves, 100% certified); KR_FRAME from the plan. OBS kq_playout --piece R, 300 games against Stockfish: 300 mated, 12.6
+moves (max 34), certified 72.4% -- the gap, nearly all one picture: the CHASE along the last row (their king stepping
+sideways, our king one file off the opposition). Added by hand: the lone king's SIDE ROOM away from our king -> 85.1%;
+ranked apart, room and opposition never fall together (a sideways step shrinks one and grows the other), their SUM falls
+within two moves (the waiting slide, then the follow) -> 91.5%, 12.3 moves; the room when level with our king is the
+larger side (0 made the measure jump) -> 95.6%, 11.4 moves (max 31), 0.5 ms a move; the 150 left are longer chases with our
+king far. THE LESSON for the loop: the three fixes are what the MONOTONE operator should do on the uncertified positions --
+search a library of candidate quantities (each side's room, distances, their sums) for the one that certifies; that
+automation is the next build.

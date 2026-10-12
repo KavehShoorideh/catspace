@@ -156,12 +156,138 @@ def discover(pieces: str, window: int) -> None:
           f"side squares -- the middle row is never its role (Kaveh: 'our king cannot cover the middle')")
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# THE OPERATORS MADE EXPLICIT (Kaveh 2026-10-12: "try it out" -- represent the reasoning so it is self-discovered): each
+# operator takes the frames so far and adds a record (what it derived, from what); the trace is the plan and its
+# explanation. Precedent (looked up): goal regression (REGRESS), difference reduction / rippling (MONOTONE), proof
+# critics (SUPERSEDE), explanation-based generalization (the patterns from solutions).
+
+def op_allocate(pieces, goal_name, window):
+    demand, check = GOALS[goal_name]
+    sols = solve(pieces, demand, check, window)
+    if not sols:
+        return None
+    proj = {k: sorted({pl[i] for pl, _ in sols}) for i, k in enumerate(pieces)}
+    indep = len(sols) == __import__("math").prod(len(v) for v in proj.values())
+    rl = roles(pieces, sols)
+    role = {k: rl[i].most_common(1)[0][0] for i, k in enumerate(pieces)}
+    return dict(goal=goal_name, check=check, solutions=len(sols), squares=proj, independent=indep, role=role)
+
+
+def line_of(points):
+    """A placement set lying on one row (or column): ('row', y, xs) / ('col', x, ys), else None."""
+    ys = {p[1] for p in points}; xs = {p[0] for p in points}
+    if len(ys) == 1 and len(points) > 1:
+        return ("row", next(iter(ys)), sorted(xs))
+    if len(xs) == 1 and len(points) > 1:
+        return ("col", next(iter(xs)), sorted(ys))
+    return None
+
+
+def op_hold(pieces, mover, rows, window):
+    """REGRESS the step: before it our king is not yet in place, so ITS ROLE in the step (the box rows it covers) must be
+    held by the moving piece alone -- allocate that demand to `mover` and find its squares (no check: the hold is
+    quiet)."""
+    front = {s for s in BOX if ROW[s[1]] in rows}
+    squares = [(x, y) for x in range(-window, window + 1) for y in range(-window, window + 1) if max(abs(x), abs(y)) >= 2]
+    out = []
+    for at in squares:
+        occ = set()
+        if all(attacks(mover, at, s, occ) for s in front) and not attacks(mover, at, (0, 0), occ):
+            out.append(at)
+    return out
+
+
+def op_monotone(pieces, wall_row_rel, samples=3000, seed=0):
+    """MONOTONE on real boards (a sampled suggestion): with the rook on a rank below the lone king and our king off that
+    rank, does any move of the lone king increase the ranks left beyond the rook (the king's side)?"""
+    import random
+    import chess
+    rng = random.Random(seed)
+    tested = broken = 0
+    for _ in range(samples * 5):
+        if tested >= samples:
+            break
+        rr, rf = rng.randrange(0, 7), rng.randrange(8)
+        kr, kf = rng.randrange(rr + 1, 8), rng.randrange(8)
+        wr, wf = rng.randrange(8), rng.randrange(8)
+        if wr == rr or len({(rr, rf), (kr, kf), (wr, wf)}) < 3 or max(abs(kr - wr), abs(kf - wf)) < 2:
+            continue
+        b = chess.Board(None)
+        b.set_piece_at(chess.square(rf, rr), chess.Piece(chess.ROOK, chess.WHITE))
+        b.set_piece_at(chess.square(wf, wr), chess.Piece(chess.KING, chess.WHITE))
+        b.set_piece_at(chess.square(kf, kr), chess.Piece(chess.KING, chess.BLACK))
+        b.turn = chess.BLACK
+        if not b.is_valid():
+            continue
+        tested += 1
+        before = 7 - rr
+        for m in b.legal_moves:
+            if m.to_square != chess.square(rf, rr) and chess.square_rank(m.to_square) <= rr:
+                broken += 1
+                break
+    return tested, broken
+
+
+def plan(pieces: str, window: int) -> dict:
+    """THE PLAN, derived by the operators from the material alone; returns the frame spec and prints the trace."""
+    trace = []
+    say = lambda op, txt: (trace.append((op, txt)), print(f"OBS   [{op}] {txt}"))
+    print(f"OBS the plan for {'+'.join(pieces)} against a lone king, derived by the operators (window {window})")
+    say("demand", "mate = every square of the king's 3x3 box covered, its own square by a check")
+    mate = op_allocate(pieces, "mate", window)
+    say("allocate", "mate in the open: " + ("possible" if mate else "impossible -- the goal needs the edge"))
+    push = None
+    for g in ("retreat by check (back row open)", "retreat by zugzwang (back row open)"):
+        a = op_allocate(pieces, g, window)
+        say("relax", f"{g}: " + (f"{a['solutions']} placements, independent roles {a['independent']}" if a else "impossible"))
+        if a and a["independent"] and push is None:
+            push = a
+    if not push:
+        say("fail", "no relaxation with independent roles -- the plan needs clustering by roles (not built)")
+        return dict(pieces=pieces, trace=trace, frame=None)
+    king = push["squares"]["K"]
+    others = [k for k in pieces if k != "K"]
+    mover = others[0]
+    line = line_of(push["squares"][mover])
+    say("allocate", f"the step ({push['goal']}): our king {king if len(king) > 1 else king[0]} covering {', '.join(push['role']['K'])}; "
+        f"the {mover} {('on ' + line[0] + ' ' + str(line[1]) + ' at ' + str(line[2])) if line else push['squares'][mover]} covering {', '.join(push['role'][mover])}")
+    say("invariance", f"the {mover}'s squares in the step form one class -- " + (f"its {line[0]} {line[1]}, any of {line[2]}: moving along it keeps "
+        f"the step (a PASS move); every square of it is two or more from the king (safe)" if line else "no single line"))
+    krows = [r for r in push["role"]["K"] if r != "check"]
+    hold = op_hold(pieces, mover, krows, window)
+    hline = line_of(hold)
+    say("regress", f"before the step our king is not yet in place: its role ({', '.join(krows)} row) must be held by the {mover} alone -- "
+        f"{('its ' + hline[0] + ' ' + str(hline[1]) + ' at ' + str(hline[2])) if hline else str(hold[:8])}: a WALL one row "
+        f"in front of the king; the step is the {mover} moving up its column from the wall onto the king's row")
+    t, br = op_monotone(pieces, -1)
+    say("monotone", f"with the {mover} as a wall (our king off its line), the lone king never crosses it: {t} sampled "
+        f"boards, {br} crossings -- rows beyond the wall never grow (a suggestion; the Lean cut lemma decides)")
+    opp = king[0] if len(king) == 1 else None
+    say("assemble", f"family: rows beyond the wall (each step moves the wall up one row); subgoal (regressed): our king "
+        f"on {opp} relative to the lone king; measure = (rows beyond the wall, our king's distance to that square); "
+        f"pass = the {mover} along the wall; base case: one row left -- the open side is off the board, the step is MATE")
+    frame = dict(pieces=pieces, wall_piece=mover, opposition=opp, step=push["goal"],
+                 measure=["rows beyond the wall", "our king's distance to the opposition square"],
+                 pass_move=f"{mover} along the wall", safe=f"{mover} two or more files from the king")
+    return dict(pieces=pieces, trace=trace, frame=frame)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pieces", default="KR", help="our pieces besides... our king K first: KR, KQ, KBN")
+    ap.add_argument("--pieces", default="KR", help="our pieces, our king K first: KR, KQ, KBN")
     ap.add_argument("--window", type=int, default=4)
+    ap.add_argument("--plan", action="store_true", help="derive the whole plan by the operators and write the frame spec")
     a = ap.parse_args(argv)
-    discover(a.pieces, a.window)
+    if a.plan:
+        import json
+        from catspace.io import paths
+        out = plan(a.pieces, a.window)
+        with open(paths.derived(f"frame_{a.pieces}.json"), "w") as fh:
+            json.dump(out, fh, indent=1)
+        print(f"OBS   frame spec -> {paths.derived(f'frame_{a.pieces}.json')}")
+    else:
+        discover(a.pieces, a.window)
 
 
 if __name__ == "__main__":
