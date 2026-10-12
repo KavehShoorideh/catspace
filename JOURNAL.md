@@ -29536,3 +29536,22 @@ refinements of "squares nearer their king than ours" 0.99. AGAIN: the same 300 g
 holes whose answer is this same term (kr_derived among them) and it is already in the generated track -- this run tests
 the plumbing (observe -> surprise -> hole -> proposers -> filter -> verifier -> play again), not discovery. Not promoted:
 the generated default (opposition + territory, the "sum") already has 0 surprises.
+K+R+R AGAINST K+R, NEVER SEEN (2026-10-12 13:10 PDT; Kaveh: "let's see how it performs ... trace its thinking";
+material_walk.py --games 100, 19 s). 100 random positions the tablebase says White wins; the planner plays White (when it
+has NO PLAN, Stockfish's move is played and marked fallback); Stockfish with the Syzygy tablebases defends; the tablebase
+referees every move of ours WITH the game's 50-move clock (its own verdict assumes a fresh clock -- the first count missed
+the 50-move draw). OBS: 97 mated (16.2 moves per mate), 3 drawn. By the material on the board: K+R+R v K+R 743 of our
+moves, the planner had a plan in 201 (27%) -- all tactical (arms 73, wins material 67, answers a threat 44, mate 16) --
+kept the win in 196 (the 5 others late in drawn games, the clock run down), the fallback 527 / 542; K+R v K 477, the frame
+all of them; K+R+R v K 473, a plan in only 203 (no frame for two rooks -- the rook frame needs exactly one); K+R v K+R
+18, all won material. THE THINKING (game 89, artifacts/experiments/material_walk_KRRvKR_game89.txt): every move it sets
+two targets -- their king (goal 500: "prove Rc7: fails" for each move on a path onto it) and their rook (goal 5: "one
+threat, and the rook steps away ... no proof (the single-threat lemma)") -- and lists escapes and preparing moves; when no
+proof holds it has nothing. Move 6 Kf2: "every escape leaves a threat of ours -- proved" (wins the rook); 7-9 Ra8+ Rh8+
+Raxc8. It has no notion of progress in this material, only proofs of tactics. KAVEH'S TWO OTHER SURPRISES (13:11; not
+the engine's score): (1) we expected to get closer to the goal and came back to where we were (the king we were cornering
+ran back to the centre); (2) following the plan, the game ended in a way we did not expect -- a draw, being mated, or even
+an unexpected win. Measured on the same 100 games (their king's territory, "squares nearer their king than ours", as the
+goal's proxy -- the planner states no expectation here, the proxy is mine): (2) 3 draws from won starts (game 10 the
+50-move rule, 42 and 53); (1) the territory fell by 6+ squares and climbed back to where it was 73 times in 50 games; game
+10 swung 22-52 over 50 moves; game 53 went 58 -> 16 and then cycled 16-22 into a repetition. Directional, one run.
