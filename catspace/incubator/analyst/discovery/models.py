@@ -20,7 +20,7 @@ from torch import nn
 from . import base_vocabulary as V
 
 NAMED = ["fn:wall", "fn:opposition", "fn:chase", "fn:kq_offedge", "fn:kq_approach", "fn:kq_region"]
-SCHEMAS = ["append", "sum", "replace"]
+SCHEMAS = ["append", "sum", "replace", "prepend"]
 
 
 def context_features(hole: dict, term: str, schema: str, boards: list, cache: dict) -> np.ndarray:
@@ -47,7 +47,7 @@ def context_features(hole: dict, term: str, schema: str, boards: list, cache: di
     return np.concatenate([cache[key], np.array(sch + mat + named + [len(hole["base"]) / 3], dtype=np.float32)])
 
 
-CTX = 10 + 3 + 2 + len(NAMED) + 1
+CTX = 10 + len(SCHEMAS) + 2 + len(NAMED) + 1
 
 
 class Head(nn.Module):

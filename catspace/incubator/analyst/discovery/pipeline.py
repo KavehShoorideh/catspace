@@ -32,7 +32,7 @@ def labels(name: str) -> dict:
 
 def candidates(lab: dict) -> list:
     """(term, schema) of the hole, in the enumeration order (smaller first, then the schema order)."""
-    order = {s: i for i, s in enumerate(H.SCHEMAS)}
+    order = {s: i for i, s in enumerate((*H.SCHEMAS, "prepend"))}
     return sorted([(r["term"], r["schema"]) for r in lab["rows"]], key=lambda x: (V.size(V.parse(x[0])), x[0], order[x[1]]))
 
 

@@ -22,7 +22,7 @@ an outcome, but a different outcome ended up happening").
            boards a hole on the frame so far (append / sum / replace); the pipeline (proposers -> filter -> verifier, whose
            closed loop fails on ground lost) proposes; the best joins the material's frame; play again
 
-  python -m catspace.incubator.analyst.discovery.surprise_loop --material KRRvKR --games 100 --rounds 3
+  python -m catspace.incubator.analyst.discovery.surprise_loop --material KRRvKR --games 100 --rounds 3 [--tag T [--resume]]
 """
 from __future__ import annotations
 
@@ -243,23 +243,36 @@ def main(argv=None):
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--budget", type=int, default=60)
     ap.add_argument("--frames", default=None, help="a JSON of {material: [terms]} to start from (default: none known)")
+    ap.add_argument("--tag", default=None, help="this run's name in its files (default: the start time); never overwritten")
+    ap.add_argument("--resume", action="store_true", help="continue the run --tag names from its last round's mining")
     a = ap.parse_args(argv)
+    tag = a.tag if a.tag is not None else time.strftime("%m%d_%H%M")
+    stem = f"surprise_loop_{a.material}" + (f"_{tag}" if tag else "")
+    state = paths.derived(f"{stem}.json")
     frames = json.load(open(a.frames)) if a.frames else {}
-    state = paths.derived(f"surprise_loop_{a.material}.json")
-    history = []
-    for rnd in range(a.rounds + 1):
-        t0 = time.time()
-        res = play(a.material, a.games, frames, seed0=1000 * rnd)
-        report(res, f"round {rnd} (frames {frames or 'none'}; {time.time() - t0:.0f} s)")
-        json.dump(res, open(paths.experiment(f"surprise_loop_{a.material}_r{rnd}.json"), "w"))
-        history.append(dict(round=rnd, frames=frames, outcomes=dict(Counter(g["out"] for g in res))))
-        json.dump(history, open(state, "w"), indent=1)
+    history, start, res = [], 0, None
+    if a.resume:                         # the last round played: its games are saved, its mining is redone
+        history = json.load(open(state))
+        last = history[-1]
+        start, frames = last["round"], last["frames"]
+        res = json.load(open(paths.experiment(f"{stem}_r{start}.json")))
+        print(f"OBS resuming {stem} at round {start}'s mining (frames {frames or 'none'})")
+    elif os.path.exists(state):
+        raise SystemExit(f"{state} exists -- a new --tag, or --resume")
+    for rnd in range(start, a.rounds + 1):
+        if res is None:
+            t0 = time.time()
+            res = play(a.material, a.games, frames, seed0=1000 * rnd)
+            report(res, f"round {rnd} (frames {frames or 'none'}; {time.time() - t0:.0f} s)")
+            json.dump(res, open(paths.experiment(f"{stem}_r{rnd}.json"), "w"))
+            history.append(dict(round=rnd, frames=frames, outcomes=dict(Counter(g["out"] for g in res))))
+            json.dump(history, open(state, "w"), indent=1)
         if rnd == a.rounds:
             break
         new = mine(res, frames, rnd, a.budget)
         if new == frames:
             print("OBS nothing new mined -- stopping"); break
-        frames = new
+        frames, res = new, None
 
 
 if __name__ == "__main__":

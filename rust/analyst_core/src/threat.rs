@@ -479,6 +479,9 @@ fn judge_conditions(f: &Forcing, s: &FState) -> Option<bool> {
         let t = Square::new(x as u32);
         let Some(cap) = legal.iter().filter(|m| m.to() == t).min_by_key(|m| kernel_value(m.role())).cloned() else { continue };
         let q2 = after(&s.pos, &cap);
+        // A CAPTURE THAT STALEMATES wins nothing (2026-10-12, the surprise loop, K+R+R v K+R: "Kf6 wins 5 by force",
+        // Re6+ and Kxe6 stalemates -- the settle read the capture as +5); a capture that mates settles it
+        if q2.legal_moves().is_empty() { if q2.is_check() { return Some(true); } continue; }
         if !checking_moves(&q2).is_empty() { return None; }            // their check: a tempo -- not settled
         let moves2 = q2.legal_moves();
         if moves2.iter().any(|m| m.is_promotion()) { return None; }      // their promotion -- not settled
@@ -626,6 +629,7 @@ impl crate::pns::Problem for Forcing {
             let cap = s.pos.legal_moves().into_iter().filter(|m| m.to() == t).min_by_key(|m| kernel_value(m.role()));
             let Some(cap) = cap else { return None };
             let q2 = after(&s.pos, &cap);
+            if q2.legal_moves().is_empty() && !q2.is_check() { return None; }   // a capture that stalemates wins nothing
             // (a capture that gives CHECK leaves them no capture elsewhere but an answer to the check -- the tempo)
             let legal_caps: Bitboard = if q2.is_check() { q2.legal_moves().iter().filter(|m| m.is_capture()).map(|m| m.to()).collect() } else { Bitboard::FULL };
             let price = rules::threats_of(&q2, !self.by).iter().filter(|(x, _)| **x as u32 != t as u32 && legal_caps.contains(Square::new(**x as u32))).map(|(_, g)| *g).max().unwrap_or(0).max(0);

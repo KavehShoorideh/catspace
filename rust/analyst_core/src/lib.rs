@@ -647,6 +647,38 @@ fn idx_after(ix: &Idx, q2: &Chess, m: &Move, side: Color) -> Idx {
 fn kings(q: &Chess) -> shakmaty::Bitboard { q.board().kings() }
 /// The line a stored proof of `m` plays: our answers and their refutations from the hints (the proof's path starts at
 /// the move: prove_pos), "pass" for the outside reply; up to 12 plies.
+/// prove_tree(fen, uci, target, goal) -> (holds, every line of the proof tree: our recorded answer at our nodes, every
+/// reply at theirs, to 8 plies) -- a debugging view of what a proof rests on.
+#[pyfunction]
+fn prove_tree(fen: String, uci: String, target: String, goal: i64) -> PyResult<(bool, Vec<String>)> {
+    let Some(p) = parse(&fen) else { return Ok((false, vec![])) };
+    let Ok(t) = target.parse::<Square>() else { return Ok((false, vec![])) };
+    let Some(m) = uci.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(&p).ok()) else { return Ok((false, vec![])) };
+    let (ok, hints, _, _, _) = crate::waiting::prove_t(&p, &uci, &[t], goal, None, true);
+    let mut out = Vec::new();
+    fn walk(q: &Chess, path: u64, line: &mut Vec<String>, hints: &Hints, ours: bool, depth: u32, out: &mut Vec<String>) {
+        if depth == 0 || q.legal_moves().is_empty() { out.push(format!("{}{}", line.join(" "), if q.is_checkmate() { " #" } else if q.legal_moves().is_empty() { " (stalemate)" } else { "" })); return; }
+        if ours {
+            match hints.get(&path).copied() {
+                Some(code) => match q.legal_moves().into_iter().find(|x| move_code(x) == code) {
+                    Some(mv) => { line.push(mv.to_uci(CastlingMode::Standard).to_string()); walk(&after(q, &mv), child_path(path, code), line, hints, false, depth - 1, out); line.pop(); }
+                    None => out.push(format!("{} (hint {code} not legal)", line.join(" "))),
+                },
+                None => out.push(format!("{} (leaf)", line.join(" "))),
+            }
+        } else {
+            for r in q.legal_moves() {
+                line.push(r.to_uci(CastlingMode::Standard).to_string());
+                walk(&after(q, &r), child_path(path, move_code(&r)), line, hints, true, depth - 1, out);
+                line.pop();
+            }
+        }
+    }
+    let mut line = vec![uci.clone()];
+    walk(&after(&p, &m), child_path(0, move_code(&m)), &mut line, &hints, false, 8, &mut out);
+    Ok((ok, out))
+}
+
 pub(crate) fn proof_line(p: &Chess, m: &Move, hints: &Hints) -> Vec<String> {
     let mut line = vec![m.to_uci(CastlingMode::Standard).to_string()];
     let mut q = after(p, m);
@@ -1659,6 +1691,8 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(vocab::set_material_frame, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::material_frames, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::material_safe_moves, m)?)?;
+    m.add_function(wrap_pyfunction!(prove_tree, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_play_out_gains, m)?)?;
     m.add_function(wrap_pyfunction!(threat::set_composed, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_strict_stop, m)?)?;
     m.add_class::<plan::PlanState>()?;

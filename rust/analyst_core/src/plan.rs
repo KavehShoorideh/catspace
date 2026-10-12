@@ -52,7 +52,13 @@ pub struct Memo { entries: HashMap<String, Vec<Entry>>, pub history: HashMap<Str
 /// of theirs was searched, our answer to each recorded, keyed by the path of moves), where we are in it, and the board
 /// after our last move from it.
 #[derive(Clone)]
-pub struct Solution { owner: Color, hints: std::sync::Arc<Hints>, path: u64, after_ours: Chess }
+pub struct Solution { owner: Color, hints: std::sync::Arc<Hints>, path: u64, after_ours: Chess, goal: i64 }
+/// PLAYING OUT A PROVEN GAIN like a proven mate (2026-10-12, the surprise loop, K+R+R v K+R game 3071: "Rh7 wins 5 against
+/// the rook, HOLDS" -- after Ka8 the proof's answer was the quiet Rc4!, threatening Rc8 mate, but the next move planned
+/// afresh, never generated Rc4 and shuffled; the claim was right, the play incoherent with it), or off.
+pub static PLAY_OUT_GAINS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_play_out_gains(flag: bool) -> PyResult<()> { PLAY_OUT_GAINS.store(flag, Ordering::Relaxed); Ok(()) }
 const SNAPSHOTS: usize = 8;
 pub static REUSE_FAILS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 // ZONE REUSE (Kaveh 2026-10-11: "we don't want to research anything"): a frame proof is reused, held or failed, when
@@ -2027,10 +2033,11 @@ impl PlanState {
                 match next {
                     Some((path, m)) => {
                         let u = m.to_uci(CastlingMode::Standard).to_string();
-                        let d = Some((String::new(), u.clone(), MATE_GOAL, format!("{} -- the proven mate, played out (no search)", san(&pos, &u))));
+                        let what = if sol.goal >= MATE_GOAL { "the proven mate".to_string() } else { format!("the proven gain of {}", sol.goal) };
+                        let d = Some((String::new(), u.clone(), sol.goal, format!("{} -- {what}, played out (no search)", san(&pos, &u))));
                         let q = after(&pos, &m);
-                        memo.solution = if q.is_checkmate() { None } else { Some(Solution { owner: sol.owner, hints: sol.hints.clone(), path: child_path(path, move_code(&m)), after_ours: q }) };
-                        played = Some(Plan { trace: vec![format!("mate: playing out the proven solution -- {} (stored answer to their reply)", san(&pos, &u))],
+                        memo.solution = if q.is_checkmate() { None } else { Some(Solution { owner: sol.owner, hints: sol.hints.clone(), path: child_path(path, move_code(&m)), after_ours: q, goal: sol.goal }) };
+                        played = Some(Plan { trace: vec![format!("{}: playing out the proven solution -- {} (stored answer to their reply)", if sol.goal >= MATE_GOAL { "mate" } else { "gain" }, san(&pos, &u))],
                                              best: d.clone(), proofs: 0, nodes: 0, target: pos.board().king_of(!pos.turn()), immediate: d, wins: vec![] });
                     }
                     None => { memo.solution = None; }
@@ -2052,10 +2059,12 @@ impl PlanState {
         // a NEW proven mate (through the memory's stored proof) becomes the solution to play out
         if p.proofs > 0 {
             if let Some((k, u, v, _)) = &p.best {
-                if k.is_empty() && *v >= MATE_GOAL {
-                    if let (Some(m), Some(ks)) = (u.parse::<shakmaty::uci::UciMove>().ok().and_then(|x| x.to_move(&pos).ok()), pos.board().king_of(!pos.turn())) {
-                        if let Some(h) = stored_proof(&pos, u, &[ks], MATE_GOAL) {
-                            let sol = Solution { owner: pos.turn(), hints: h, path: child_path(0, move_code(&m)), after_ours: after(&pos, &m) };
+                // (a proven mate -- and a proven gain, its target the plan's: PLAY_OUT_GAINS)
+                let focus = if *v >= MATE_GOAL { pos.board().king_of(!pos.turn()) } else if PLAY_OUT_GAINS.load(Ordering::Relaxed) && *v > 0 { p.target } else { None };
+                if k.is_empty() {
+                    if let (Some(m), Some(ks)) = (u.parse::<shakmaty::uci::UciMove>().ok().and_then(|x| x.to_move(&pos).ok()), focus) {
+                        if let Some(h) = stored_proof(&pos, u, &[ks], (*v).min(MATE_GOAL)) {
+                            let sol = Solution { owner: pos.turn(), hints: h, path: child_path(0, move_code(&m)), after_ours: after(&pos, &m), goal: (*v).min(MATE_GOAL) };
                             MEMO.with(|mm| if let Some(mm) = mm.borrow_mut().as_mut() { mm.solution = Some(sol); });
                         }
                     }
