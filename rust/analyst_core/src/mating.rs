@@ -227,6 +227,14 @@ pub fn frame_move(f: &Frame, pos: &Chess) -> Option<(Move, u32, String)> {
             }
         }
     }
+    // THE ENTRY (Kaveh: a lemma violated for a move needs a bigger lemma): the piece hangs, so the position is outside the
+    // frame; when no move certifies (by one move or the tempo), the move puts it beyond the lone king's reach (safe_step)
+    // and the frame's measure starts after it -- one move into the frame, then the frame's bound (Reach.bind with
+    // forced_by_measure)
+    if piece_hanging(pos, us, f.piece) {
+        return Some((m0, r0, format!("entry: the {:?} was attacked and undefended -- moved out of reach; the frame starts after it \
+(toward Ideas.ForcedByMeasure.Reach.bind; {})", f.piece, explain(f.measure, &before, &w0))));
+    }
     Some((m0, r0, explain(f.measure, &before, &w0)))
 }
 /// How far ahead a tempo move's progress may come (moves of ours, this one included).
@@ -242,6 +250,16 @@ pub(crate) fn safe_step(q: &Chess, us: Color, piece: Role) -> bool {
     let (Some(ours), Some(theirs)) = (b.king_of(us), b.king_of(!us)) else { return false };
     let Some(ps) = (b.by_role(piece) & b.by_color(us)).first() else { return false };
     !(shakmaty::attacks::king_attacks(theirs).contains(ps) && !shakmaty::attacks::king_attacks(ours).contains(ps))
+}
+
+/// The frame's piece is attacked by the lone king and not defended by ours (on the board as it stands): the position is
+/// OUTSIDE the frame -- its measure promises nothing there (the 2026-10-12 observation: both of the K+R games' uncertified
+/// moves were such boards, the rook attacked at the start).
+pub(crate) fn piece_hanging(q: &Chess, us: Color, piece: Role) -> bool {
+    let b = q.board();
+    let (Some(ours), Some(theirs)) = (b.king_of(us), b.king_of(!us)) else { return false };
+    let Some(ps) = (b.by_role(piece) & b.by_color(us)).first() else { return false };
+    shakmaty::attacks::king_attacks(theirs).contains(ps) && !shakmaty::attacks::king_attacks(ours).contains(ps)
 }
 
 /// After our move (`q`, they to move): for every reply, a safe move of ours after which the measure, against every reply,

@@ -108,22 +108,42 @@ def evaluate(kinds=("context", "gnn", "transformer"), epochs: int = 40) -> None:
             print(f"OBS   {k:24s} {int(np.median(c)):5d} / {np.mean(c):7.1f} / {max(c):5d}   within 10: {sum(x <= 10 for x in c)}, 30: {sum(x <= 30 for x in c)}, 100: {sum(x <= 100 for x in c)} of {len(c)}")
 
 
-def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int = 40) -> None:
-    """The pipeline on one hole: the learned proposers trained on the OTHER holes' verdicts, the enumerative one beside
-    them, the filter, the verifier (each verdict to the store)."""
+def fresh_candidates(hole: dict, boards: list) -> dict:
+    """A hole with no labels: its candidates are the enumeration, merged by observational equivalence on its boards."""
+    import analyst_core as A
+    seen, rows = set(), []
+    schemas = H.SCHEMAS if hole["base"] else ("append",)
+    for t in V.enumerate_numbers():
+        v = tuple(A.vocab_values(boards, V.sexpr(t)))
+        if len(set(v)) > 1 and v not in seen:
+            seen.add(v)
+            rows += [dict(term=V.sexpr(t), schema=s) for s in schemas]
+    return dict(hole=hole["name"], boards=boards, n=len(boards), rows=rows)
+
+
+def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int = 40, hole: dict | None = None) -> list:
+    """The pipeline on one hole: the learned proposers trained on the LABELED holes' verdicts (the store's feedback; the
+    hole itself excluded), the enumerative one beside them, the filter, the verifier (each verdict to the store)."""
+    import os
     from .verifier import Verifier
-    names = H.available()
+    trained = [n for n in H.available() if n != hole_name and os.path.exists(paths.derived(f"hole_{n}_labels.json"))]
     cache: dict = {}
-    h, lab = H.load(hole_name), labels(hole_name)
+    h = hole or H.load(hole_name)
+    boards = h["stuck"][:100]
+    lab = labels(hole_name) if os.path.exists(paths.derived(f"hole_{hole_name}_labels.json")) else fresh_candidates(h, boards)
     rankings = [Enumerative().rank(h, lab, cache)]
     for k in kinds:
-        rankings.append(Learned(k, train_on([n for n in names if n != hole_name], k, cache, epochs)).rank(h, lab, cache))
+        rankings.append(Learned(k, train_on(trained, k, cache, epochs)).rank(h, lab, cache))
     kept = filter_(rankings, budget)
     ver = Verifier()
-    res = sorted((ver.verify(h, t, s, lab["boards"]) for t, s in kept), key=lambda r: -r["score"])
-    print(f"OBS pipeline on {hole_name}: {len(rankings)} proposers, the filter kept {len(kept)}, verified; the best:")
+    base = ver.verify(h, None, "none", boards)
+    res = sorted((ver.verify(h, t, s, boards) for t, s in kept), key=lambda r: -r["score"])
+    print(f"OBS pipeline on {hole_name} ({len(boards)} boards; {len(lab['rows'])} candidates): {len(rankings)} proposers, the filter "
+          f"kept {len(kept)}, all verified; the hole's own measure scores {base['score']:.3f} (mated {base['mated']}, "
+          f"certified {base['certified']}/{base['played']}); the best:")
     for r in res[:5]:
         print(f"OBS   {r['score']:.3f} (mated {r['mated']}/{r['n']}, certified {r['certified']}/{r['played']}) [{r['schema']}] {r['term']} = {V.gloss(V.parse(r['term']))}")
+    return [base] + res
 
 
 def main(argv=None):

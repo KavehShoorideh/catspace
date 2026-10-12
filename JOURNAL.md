@@ -29507,3 +29507,32 @@ board evidence (a progress measure for the frame), not lemmas. The learned prior
 graph network over the term's syntax tree, a transformer over its symbols, a context-only ablation; context = schema,
 material, the hole's components, the term's values and who controls it -- term_dynamics) and the leave-one-hole-out
 evaluation running.
+THE LEARNED PRIORS, LEAVE ONE HOLE OUT (2026-10-12 12:44 PDT; pipeline.py --evaluate --epochs 30, 2 min 40 s). Each
+learned proposer is trained on the verdicts of five holes and ranks the sixth's candidates; the count is the verifier calls
+until a candidate within 5% of that hole's best (labels above). OBS (median / mean / worst over 6 holes): enumerative
+(smallest first) 55 / 44.8 / 60; context-only 2 / 3.3 / 11; graph network 1 / 1.5 / 3; transformer 1 / 1.8 / 3; the filter
+(graph network and transformer in turn) 1 / 2.0 / 5. Directional, and easy: the six holes share one concept (their king's
+territory), so transfer is cheap, and the context features (the term's controllability, its correlation with the hole's
+components) carry most of it -- the context-only ablation already reaches a median of 2. A hole whose answer is NOT the
+territory is the real test. THE ENTRY (12:58 PDT; Kaveh: "observe games ... whenever you are surprised, understand why").
+OBS 300 K+R and 300 K+Q games against Stockfish with the default frames: 300 / 300 mated each; K+Q 0 uncertified moves of
+1,864; K+R 2 uncertified of 3,498 (0.06%). Both were the same thing (--show): the rook attacked by their king and undefended
+at the start of the game (3R4/2k5/8/6K1/8/8/8/8, 8/8/8/8/8/6K1/1k6/2R5) -- the position is OUTSIDE the frame (its measure
+assumes the piece safe), so the rescue raises the measure (33 -> 37, 29 -> 41). Not a measure term: the frame's ENTRY --
+one move putting the piece beyond the lone king's reach, then the frame's bound (Lean Reach.bind with forced_by_measure).
+mating.rs piece_hanging + the entry rung, tried only after the one-move certificate and the tempo (placed first, it cut the
+tempo search and lengthened the games: 3,598 moves vs 3,498). OBS after: K+R 300 / 300, 3,498 moves, 0 uncertified; K+Q
+unchanged. The solved endgames no longer surprise; the loop needs material that does.
+THE SURPRISE LOOP, END TO END (2026-10-12 13:01 PDT, 1 min 14 s; observe.py --piece R --flags kr_generated=0,kr_chase=0).
+To exercise the loop where surprise exists, the rook frame exactly as the discoverer derived it (wall, opposition; the
+generated territory term and the handwritten chase switched off). OBSERVE: 300 games against Stockfish, 300 mated, 12.1
+moves per mate, 784 of 3,617 of our moves uncertified (21.68%; 745 "no component moves", 39 "no progress"). ADDRESS: the
+635 distinct surprise boards became a hole (base: wall, opposition); the pipeline (enumerative + graph network +
+transformer, trained on the labeled holes; the filter kept 30; both verifier stages on 100 boards): the frame's own
+measure scores 0.343 (77 mated, 285 / 639 certified); the best proposal "how many squares are not nearer our king than
+their king" in place of the opposition 0.999 (100 mated, 875 / 876), the same added to it 0.999 (869 / 870), then the
+refinements of "squares nearer their king than ours" 0.99. AGAIN: the same 300 games with the proposal in play: 300 mated,
+11.6 moves per mate, 4 of 3,473 moves uncertified (0.12%). Directional, and a REDISCOVERY: the proposers were trained on
+holes whose answer is this same term (kr_derived among them) and it is already in the generated track -- this run tests
+the plumbing (observe -> surprise -> hole -> proposers -> filter -> verifier -> play again), not discovery. Not promoted:
+the generated default (opposition + territory, the "sum") already has 0 surprises.

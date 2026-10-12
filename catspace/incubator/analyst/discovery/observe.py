@@ -10,6 +10,7 @@ address it and not be surprised anymore").
   AGAIN     observe again: did the surprise rate fall?
 
   python -m catspace.incubator.analyst.discovery.observe --piece R --games 300
+  python -m catspace.incubator.analyst.discovery.observe --piece R --flags kr_generated=0,kr_chase=0   the derived frame
 """
 from __future__ import annotations
 
@@ -24,14 +25,27 @@ from catspace.io import paths
 FRAME_SPECS = {"R": ["fn:wall", "fn:kr_generated"], "Q": ["fn:kq_offedge", "fn:kq_approach", "fn:kq_region"]}
 
 
+def frame_spec(piece: str, flags: str) -> tuple:
+    """(the hole's name suffix, the verifier spec) of the frame the switches select (mating.rs frame_for)."""
+    f = dict(kv.split("=") for kv in filter(None, flags.split(",")))
+    if piece == "R" and f.get("kr_generated") == "0":
+        return ("chase", ["fn:wall", "fn:chase"]) if f.get("kr_chase", "1") == "1" else ("derived", ["fn:wall", "fn:opposition"])
+    return ("", FRAME_SPECS[piece])
+
+
 def _game(args):
     import os
     os.environ.setdefault("RAYON_NUM_THREADS", "1")
-    seed, piece = args
+    seed, piece, flags, term = args
     import chess
     import chess.engine
     import catspace.incubator.analyst  # noqa: F401
     import analyst_core
+    for kv in filter(None, flags.split(",")):                  # any switch: name=0|1 (set_<name>)
+        k, v = kv.split("=")
+        getattr(analyst_core, f"set_{k}")(v == "1")
+    if term:                                                    # a proposal in play: (schema, sexpr) on the derived frame
+        analyst_core.set_kr_term(term[1], term[0])
     from catspace.incubator.analyst.kq_playout import _start
     eng = chess.engine.SimpleEngine.popen_uci("stockfish")
     b = _start(random.Random(seed), piece)
@@ -51,7 +65,7 @@ def _game(args):
             cert = [l for l in tr if "against every reply:" in l]
             proven = any(l.startswith("mate:") and "proven" in l for l in tr)
             why = cert[0].split("against every reply: ")[-1] if cert else ""
-            if not proven and (not cert or why.startswith(("no progress", "no component"))):
+            if not proven and (not cert or why.startswith(("no progress", "no component"))):  # an "entry:" move is certified by Reach.bind
                 surprises.append(dict(kind="uncertified", fen=b.fen(), move=dec[1], why=why or "no certificate line"))
             b.push_uci(dec[1]); moves += 1
         else:
@@ -63,14 +77,16 @@ def _game(args):
     return dict(seed=seed, out=out, moves=moves, surprises=surprises)
 
 
-def observe(piece: str, games: int, workers: int = 6) -> list:
+def observe(piece: str, games: int, workers: int = 6, flags: str = "", term: tuple | None = None) -> list:
     from multiprocessing import Pool
     with Pool(workers) as p:
-        res = list(p.imap_unordered(_game, [(g, piece) for g in range(games)], chunksize=1))
+        res = list(p.imap_unordered(_game, [(g, piece, flags, term) for g in range(games)], chunksize=1))
     sur = [s for r in res for s in r["surprises"]]
     kinds = Counter(s["kind"] for s in sur)
     moves = sum(r["moves"] for r in res)
-    print(f"OBS observed {games} K+{piece} v K games against Stockfish: {Counter(r['out'] for r in res)}; {moves} of our moves; "
+    mated = [r["moves"] for r in res if r["out"] == "mate"]
+    print(f"OBS observed {games} K+{piece} v K games against Stockfish ({flags or 'the default frame'}{f'; term {term}' if term else ''}): "
+          f"{Counter(r['out'] for r in res)}, {sum(mated) / max(len(mated), 1):.1f} moves per mate; {moves} of our moves; "
           f"surprises {dict(kinds)} ({100 * len(sur) / max(moves, 1):.2f}% of our moves)")
     whys = Counter(s["why"].split(" (")[0][:70] for s in sur)
     for w, n in whys.most_common(5):
@@ -78,17 +94,39 @@ def observe(piece: str, games: int, workers: int = 6) -> list:
     return sur
 
 
-def address(piece: str, surprises: list, budget: int) -> None:
+def show(surprises: list, lines: int = 30) -> None:
+    """UNDERSTAND the surprise: each board, the move played, and the planner's own trace (its certificate's account)."""
+    import chess
+    import analyst_core
+    for s in surprises:
+        print(f"OBS surprise ({s['kind']}): {s['fen']} played {s.get('move')} -- {s['why']}")
+        tr, dec, *_ = analyst_core.PlanState().observe(s["fen"])
+        for l in tr[:lines]:
+            print(f"      {l[:220]}")
+        print(chess.Board(s["fen"]))
+
+
+def address(piece: str, surprises: list, budget: int, flags: str = "") -> dict | None:
     """The surprise boards as a hole on the frame's current measure; the pipeline proposes; the verifier decides."""
     from . import holes as H
     boards = sorted({s["fen"] for s in surprises if s["kind"] == "uncertified"})
     if len(boards) < 5:
         print(f"OBS   {len(boards)} uncertified boards -- too few to address (no hole made)")
-        return
-    name = f"surprise_k{piece.lower()}"
-    hole = dict(name=name, material=f"K{piece}", base=FRAME_SPECS[piece], k=H.K, stuck=boards, sampled=len(boards))
+        return None
+    suffix, spec = frame_spec(piece, flags)
+    name = f"surprise_k{piece.lower()}" + (f"_{suffix}" if suffix else "")
+    hole = dict(name=name, material=f"K{piece}", base=spec, k=H.K, stuck=boards, sampled=len(boards))
     json.dump(hole, open(paths.derived(f"hole_{name}.json"), "w"))
     print(f"OBS   hole {name}: {len(boards)} surprise boards, base {hole['base']} -> the pipeline")
+    from .pipeline import run
+    res = run(name, budget, hole=hole)
+    base, best = res[0], max(res[1:], key=lambda r: r["score"]) if len(res) > 1 else None
+    if best and best["score"] > base["score"] + 0.05:
+        print(f"OBS   ADDRESSED on the surprise boards: {best['term']} [{best['schema']}] scores {best['score']:.3f} against the frame's own "
+              f"{base['score']:.3f} -- next, whole games with it in play")
+        return best
+    print(f"OBS   not addressed: no proposal beats the frame's own measure ({base['score']:.3f}) by 0.05 on these boards")
+    return None
 
 
 def main(argv=None):
@@ -96,9 +134,16 @@ def main(argv=None):
     ap.add_argument("--piece", default="R")
     ap.add_argument("--games", type=int, default=300)
     ap.add_argument("--budget", type=int, default=30)
+    ap.add_argument("--show", action="store_true", help="print each surprise board with the planner's trace")
+    ap.add_argument("--flags", default="", help="name=0|1,... (set_<name>): which frame plays, e.g. kr_generated=0,kr_chase=0")
     a = ap.parse_args(argv)
-    sur = observe(a.piece, a.games)
-    address(a.piece, sur, a.budget)
+    sur = observe(a.piece, a.games, flags=a.flags)
+    if a.show:
+        show(sur)
+    best = address(a.piece, sur, a.budget, a.flags)
+    if best and a.piece == "R" and "kr_generated=0" in a.flags and "kr_chase=0" in a.flags:
+        # AGAIN: the same games with the proposal in play (set_kr_term joins it to the derived frame by its schema)
+        observe(a.piece, a.games, flags=a.flags, term=(best["schema"], best["term"]))
 
 
 if __name__ == "__main__":
