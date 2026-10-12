@@ -29620,3 +29620,17 @@ refuted proof claims after the leaf fix). (3) AN INCOHERENCE: "Rh7 wins 5 agains
 proof's answer is the quiet Rc4!, threatening Rc8 mate) but the next move planned afresh and shuffled -- only proven
 mates were played out from their stored proofs; now proven gains are too (Rh7+ Ka8 Rc4 Kb8 Kxa6 Ka8 Rc8#). 49 planner
 tests pass. The loop restarted with the complete vocabulary (tag "vocab").
+THE LOOP WITH THE COMPLETE VOCABULARY (2026-10-12 14:05-14:14 PDT; tag vocab2; after a restart -- the verifier's memo
+had read a previous run's verdicts made against another base, BUGS). OBS (100 games a round, the same starting positions
+as the previous run's rounds; directional): round 0 57 / 40 / 3 (won / drawn / lost); round 1 69 / 30 / 1 (previous run
+61 / 39 / 0); round 2 58 / 41 / 1 (59 / 41 / 0); round 3 55 / 44 / 1 (55 / 45 / 0); a loss lasted 63-91 moves. Surprised
+K+R+R v K+R moves 92% -> 39% -> 41% -> 40%; K+R+R v K 68% -> 2% -> 4% -> 0%. Mined for K+R+R v K+R (ranked, final):
+"corners we attack" (rank 1, 0.488 vs 0.437), "the distance from our king to our rook" (rank 1, 0.384 vs 0.315 -- keep the
+king by the rook), "squares we do not attack + their king's territory off the line through our king and rook" (0.315, then
+0.779 vs 0.603); round 1 and 2 progress holes found nothing (0.791 vs 0.782; 0.705 vs 0.656). For K+R+R v K: "their
+king's territory off the edge" (0.955 vs 0.033). THE NEW WORDS WERE TRIED, NOT CHOSEN: 44-49 of the 61 terms verified per
+K+R+R v K+R hole used them (O, hit, unhit, ours, theirs); the best came within a hair ("how many squares they attack"
+0.791 vs the frame's 0.782). THE PLATEAU, SECOND DIAGNOSIS: the verifier's closed loop defends with the measure's
+adversary (material first, then the measure as high as it goes) -- it never harasses with checks the way Stockfish does,
+and the checks are what draw the real games; a term that copes with them earns nothing in the verifier. The rank-1 terms
+look arbitrary for the same reason ("corners we attack" against the previous run's "rook to the edge").
