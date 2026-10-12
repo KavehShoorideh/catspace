@@ -1686,6 +1686,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(vocab::verify_count, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::component_values, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::verify_play, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::frame_choose, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::term_dynamics, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::set_generic_frame, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::set_material_frame, m)?)?;

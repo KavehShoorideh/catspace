@@ -23,6 +23,8 @@ an outcome, but a different outcome ended up happening").
            closed loop fails on ground lost) proposes; the best joins the material's frame; play again
 
   python -m catspace.incubator.analyst.discovery.surprise_loop --material KRRvKR --games 100 --rounds 3 [--tag T [--resume]]
+      [--opponent stockfish:10|tablebase]   who defends in the games
+      [--defender self|tablebase|stockfish:D]   who defends in the verifier's closed loop (Kaveh: a switch)
 """
 from __future__ import annotations
 
@@ -70,7 +72,7 @@ def claim_of(trace: list, why: str, material: str, frames: dict, lead: int) -> d
 
 def _game(args):
     os.environ.setdefault("RAYON_NUM_THREADS", "1")
-    seed, material, frames = args
+    seed, material, frames, opponent = args
     import chess
     import chess.engine
     import chess.syzygy
@@ -115,7 +117,12 @@ def _game(args):
             rows[-1]["lead_after"] = lead_of(b)[0]           # the lead our move leaves (a trade is not a loss)
         else:
             st.record(b.fen())
-            b.push(eng.play(b, chess.engine.Limit(depth=10)).move)
+            if opponent.startswith("tablebase"):
+                from . import defenders as D
+                D._TB, D._ENG = tb, eng
+                b.push(D.reply(b, "tablebase"))
+            else:
+                b.push(eng.play(b, chess.engine.Limit(depth=int(opponent.partition(":")[2] or 10))).move)
     eng.quit()
     return dict(seed=seed, out=out, moves=len(rows), rows=rows)
 
@@ -165,10 +172,10 @@ def judge(g: dict) -> None:
         r["verdict"] = verdict
 
 
-def play(material: str, games: int, frames: dict, seed0: int, workers: int = 6) -> list:
+def play(material: str, games: int, frames: dict, seed0: int, workers: int = 6, opponent: str = "stockfish:10") -> list:
     from multiprocessing import Pool
     with Pool(workers) as p:
-        res = sorted(p.imap_unordered(_game, [(seed0 + g, material, frames) for g in range(games)], chunksize=1), key=lambda r: r["seed"])
+        res = sorted(p.imap_unordered(_game, [(seed0 + g, material, frames, opponent) for g in range(games)], chunksize=1), key=lambda r: r["seed"])
     for g in res:
         judge(g)
     return res
@@ -198,7 +205,7 @@ def compose(base: list, term: str, schema: str) -> list:
     return base[:-1] + [term]                               # replace
 
 
-def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: str = "") -> dict:
+def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: str = "", defender: str = "self") -> dict:
     """Each material's refuted frame claims -> a hole -> the pipeline -> the best term joins the material's frame."""
     from . import base_vocabulary as V
     from . import holes as H
@@ -225,7 +232,7 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
         print(f"OBS   {mat} rank {rank} ({'ground lost' if rank == 1 else 'no progress'}): {len(fens)} surprise boards -> hole {name} "
               f"(base {cur or 'none'}; {len(boards)} boards)")
         t0 = time.time()
-        out = run(name, budget, hole=hole)
+        out = run(name, budget, hole=hole, defender=defender)
         base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None
         if best and best["score"] > base["score"] + 0.05:
             new[mat] = compose(cur, best["term"], best["schema"])
@@ -245,6 +252,8 @@ def main(argv=None):
     ap.add_argument("--frames", default=None, help="a JSON of {material: [terms]} to start from (default: none known)")
     ap.add_argument("--tag", default=None, help="this run's name in its files (default: the start time); never overwritten")
     ap.add_argument("--resume", action="store_true", help="continue the run --tag names from its last round's mining")
+    ap.add_argument("--opponent", default="stockfish:10", help="who defends in the games: stockfish:D (with the tablebases), tablebase")
+    ap.add_argument("--defender", default="self", help="the verifier's closed-loop opponent: self, tablebase, stockfish:D")
     a = ap.parse_args(argv)
     tag = a.tag if a.tag is not None else time.strftime("%m%d_%H%M")
     stem = f"surprise_loop_{a.material}" + (f"_{tag}" if tag else "")
@@ -262,14 +271,14 @@ def main(argv=None):
     for rnd in range(start, a.rounds + 1):
         if res is None:
             t0 = time.time()
-            res = play(a.material, a.games, frames, seed0=1000 * rnd)
+            res = play(a.material, a.games, frames, seed0=1000 * rnd, opponent=a.opponent)
             report(res, f"round {rnd} (frames {frames or 'none'}; {time.time() - t0:.0f} s)")
             json.dump(res, open(paths.experiment(f"{stem}_r{rnd}.json"), "w"))
             history.append(dict(round=rnd, frames=frames, outcomes=dict(Counter(g["out"] for g in res))))
             json.dump(history, open(state, "w"), indent=1)
         if rnd == a.rounds:
             break
-        new = mine(res, frames, rnd, a.budget, tag=tag)
+        new = mine(res, frames, rnd, a.budget, tag=tag, defender=a.defender)
         if new == frames:
             print("OBS nothing new mined -- stopping"); break
         frames, res = new, None

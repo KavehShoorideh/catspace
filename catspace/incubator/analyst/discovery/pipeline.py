@@ -121,7 +121,8 @@ def fresh_candidates(hole: dict, boards: list) -> dict:
     return dict(hole=hole["name"], boards=boards, n=len(boards), rows=rows)
 
 
-def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int = 40, hole: dict | None = None) -> list:
+def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int = 40, hole: dict | None = None,
+        defender: str = "self") -> list:
     """The pipeline on one hole: the learned proposers trained on the LABELED holes' verdicts (the store's feedback; the
     hole itself excluded), the enumerative one beside them, the filter, the verifier (each verdict to the store)."""
     import os
@@ -136,10 +137,10 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     for k in kinds:
         rankings.append(Learned(k, train_on(trained, k, cache, epochs)).rank(h, lab, cache))
     kept = filter_(rankings, budget)
-    ver = Verifier()
+    ver = Verifier(defender=defender)
     base = ver.verify(h, None, "none", boards)
     res = sorted((ver.verify(h, t, s, boards) for t, s in kept), key=lambda r: -r["score"])
-    print(f"OBS pipeline on {hole_name} ({len(boards)} boards; {len(lab['rows'])} candidates): {len(rankings)} proposers, the filter "
+    print(f"OBS pipeline on {hole_name} ({len(boards)} boards; {len(lab['rows'])} candidates; defender {defender}): {len(rankings)} proposers, the filter "
           f"kept {len(kept)}, all verified; the hole's own measure scores {base['score']:.3f} (mated {base['mated']}, "
           f"certified {base['certified']}/{base['played']}); the best:")
     for r in res[:5]:

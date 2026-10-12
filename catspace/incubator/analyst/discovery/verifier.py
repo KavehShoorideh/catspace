@@ -3,8 +3,9 @@ give feedback back to the proposer? if they tried a lemma that didn't work, do y
 
   STAGE 1  certification on the hole's stuck boards (every reply, within two moves) -- cheap, but GAMEABLE: a measure
            we can lower ourselves ("how many squares we attack") certifies every stuck board
-  STAGE 2  the closed loop: the candidate measure plays from the hole's boards against the measure's adversary; scored
-           by the games mated and the moves certified along them -- a gameable measure mates almost none
+  STAGE 2  the closed loop: the candidate measure plays from the hole's boards against the DEFENDER (a switch,
+           defenders.py: self -- the measure's adversary; tablebase; stockfish:D); scored by the games won and the moves
+           certified along them -- a gameable measure wins almost none
   SCORE    certified fraction of the closed-loop moves x mated fraction (both must hold)
 
 Every verdict -- success or failure -- is appended to the EXPERIENCE STORE (data/derived/discovery_experience.jsonl): the
@@ -27,10 +28,11 @@ def _key(hole: str, term: str, schema: str, boards: str = "", spec: str = "") ->
     return f"{hole}|{schema}|{term}|{boards}|{spec}"
 
 
-def spec_of(hole: dict) -> str:
-    """What a verdict was made against besides the term and the boards: the hole's base measure, the safety, the horizon
-    -- a hole of the same name and boards with another base (the next run's) must not reuse it (BUGS 2026-10-12)."""
-    return json.dumps([hole["base"], hole.get("piece") or hole["material"][1], hole["k"]])
+def spec_of(hole: dict, defender: str = "self") -> str:
+    """What a verdict was made against besides the term and the boards: the hole's base measure, the safety, the horizon,
+    the closed loop's defender -- a hole of the same name and boards with another base (the next run's) must not reuse it
+    (BUGS 2026-10-12), nor a verdict against another opponent."""
+    return json.dumps([hole["base"], hole.get("piece") or hole["material"][1], hole["k"]] + ([] if defender == "self" else [defender]))
 
 
 def board_hash(boards: list) -> str:
@@ -41,7 +43,10 @@ def board_hash(boards: list) -> str:
 
 
 class Verifier:
-    def __init__(self, store: str = STORE):
+    def __init__(self, store: str = STORE, defender: str = "self"):
+        from .defenders import parse
+        parse(defender)
+        self.defender = defender                     # stage 2's opponent (defenders.py): self, tablebase, stockfish:D
         self.path = paths.derived(store)
         self.memo = {}
         if os.path.exists(self.path):
@@ -54,15 +59,16 @@ class Verifier:
         import analyst_core as A
         boards = boards if boards is not None else hole["stuck"][:100]
         bh = board_hash(boards)
-        sp = spec_of(hole)
+        sp = spec_of(hole, self.defender)
         k = _key(hole["name"], term or "", schema, bh, sp)
         if k in self.memo:
             return self.memo[k]
         piece = hole.get("piece") or hole["material"][1]
         s1 = A.verify_count(boards, hole["base"], term, schema, hole["k"], piece)
-        mated, moves, played, cert = A.verify_play(boards, hole["base"], term, schema, piece, LIMIT)
+        from .defenders import closed_loop
+        mated, moves, played, cert = closed_loop(boards, hole["base"], term, schema, piece, LIMIT, self.defender)
         n = len(boards)
-        r = dict(hole=hole["name"], term=term or "", schema=schema, boards=bh, spec=sp, n=n, stage1=s1, mated=mated, played=played, certified=cert,
+        r = dict(hole=hole["name"], term=term or "", schema=schema, boards=bh, spec=sp, defender=self.defender, n=n, stage1=s1, mated=mated, played=played, certified=cert,
                  score=(cert / max(played, 1)) * (mated / max(n, 1)), t=time.time())
         self.memo[k] = r
         with open(self.path, "a") as fh:

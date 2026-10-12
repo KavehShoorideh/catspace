@@ -361,6 +361,19 @@ impl Spec {
     }
 }
 
+/// frame_choose(fen, base, cand, schema, piece, history) -> the frame's move and whether it carries a certificate -- ONE
+/// move of the closed loop, for a defender outside Rust (verifier.py: the tablebase, Stockfish); `history` the game's
+/// positions so far (a position seen twice is not played into).
+#[pyfunction]
+#[pyo3(signature = (fen, base, cand, schema, piece, history))]
+pub fn frame_choose(fen: String, base: Vec<String>, cand: Option<String>, schema: String, piece: String, history: Vec<String>) -> PyResult<Option<(String, bool)>> {
+    let (Some(sp), Some(p)) = (spec(&base, &cand, &schema, &piece), parse(&fen)) else { return Ok(None) };
+    let mut seen: std::collections::HashMap<u64, u8> = std::collections::HashMap::new();
+    for f in &history { if let Some(q) = parse(f) { *seen.entry(crate::threat::zkey(&q)).or_insert(0) += 1; } }
+    Ok(sp.choose_cert(&p, &|q: &Chess| seen.get(&crate::threat::zkey(q)).copied().unwrap_or(0), &|_| true)
+        .map(|(m, c)| (m.to_uci(CastlingMode::Standard).to_string(), c)))
+}
+
 /// verify_play(fens, base, cand, schema, piece, limit) -> (games mated, total moves of the mated games, our moves played,
 /// our moves certified): stage 2 -- the closed loop.
 #[pyfunction]
