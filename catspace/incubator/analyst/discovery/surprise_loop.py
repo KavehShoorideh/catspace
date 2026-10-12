@@ -232,14 +232,33 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
     from .pipeline import run
     new = dict(frames)
     by = defaultdict(set)
+    contrast = defaultdict(lambda: {"win": [], "draw": []})
     for g in res:
+        # THE GAMES' CONTRAST, per material (the contrast proposer's evidence): positions of ours shortly before a win of
+        # that material's phase (a capture we kept, or mate), and the tails of the games drawn or lost in it
+        phases = defaultdict(list)
+        for i, r in enumerate(g["rows"]):
+            phases[r["material"]].append(i)
+        for mat, idx in phases.items():
+            if mat in MATING_SPECS:
+                continue
+            last = idx[-1]
+            left_won = last + 1 < len(g["rows"]) and g["rows"][last + 1]["theirs"] < g["rows"][last]["theirs"]
+            if left_won or (last == len(g["rows"]) - 1 and g["out"] == "win"):
+                contrast[mat]["win"] += [g["rows"][i]["fen"] for i in idx[-5:]]
+            elif last == len(g["rows"]) - 1 and g["out"] in ("draw", "loss"):
+                contrast[mat]["draw"] += [g["rows"][i]["fen"] for i in idx[-30:]]
+                # THE STALL POINT (where the verifier should look -- not the tail, after the damage): the position after
+                # the last frame claim the game kept in this phase, and the next two of ours
+                kept = [i for i in idx if g["rows"][i]["claim"]["kind"] == "frame" and g["rows"][i]["verdict"] == "kept"]
+                s0 = (kept[-1] + 1) if kept else idx[0]
+                for i in [j for j in idx if j >= s0][:3]:
+                    if g["rows"][i]["lead"] > 0:
+                        by[(mat, 2)].add(g["rows"][i]["fen"])
         for r in g["rows"]:
-            # ahead materials of the generic frame (the mating frames and the hold frame are earlier lemmas): rank 1 first
-            if r["claim"]["kind"] == "frame" and r["material"] not in MATING_SPECS and r["lead"] > 0:
-                if r["verdict"] == "lost ground":
-                    by[(r["material"], 1)].add(r["fen"])
-                elif r["verdict"] in ("no shrink", "other outcome"):
-                    by[(r["material"], 2)].add(r["fen"])
+            # ahead materials of the generic frame (the mating frames and the hold frame are earlier lemmas): rank 1
+            if r["claim"]["kind"] == "frame" and r["material"] not in MATING_SPECS and r["lead"] > 0 and r["verdict"] == "lost ground":
+                by[(r["material"], 1)].add(r["fen"])
     for (mat, rank), fens in sorted(by.items(), key=lambda kv: (kv[0][1], -len(kv[1]))):
         if len(fens) < 10:
             print(f"OBS   {mat} rank {rank}: {len(fens)} surprise boards -- too few"); continue
@@ -253,11 +272,13 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
         boards = [fresh(f) for f in random.Random(rnd).sample(sorted(fens), min(cap, len(fens)))]
         name = f"learn_{tag + '_' if tag else ''}{mat}_rank{rank}_r{rnd}"   # the run's tag: no run reads another's hole
         cur = new.get(mat, [])
+        rng = random.Random(rnd)
+        con = {k: rng.sample(v, min(150, len(v))) for k, v in contrast[mat].items()}
         hole = dict(name=name, material=mat, piece="*", base=cur, k=H.K, stuck=boards, sampled=len(fens),
-                    schemas=["prepend"] if rank == 1 and cur else None)
+                    schemas=["prepend"] if rank == 1 and cur else None, contrast=con if con["win"] and con["draw"] else None)
         json.dump(hole, open(paths.derived(f"hole_{name}.json"), "w"))
-        print(f"OBS   {mat} rank {rank} ({'ground lost' if rank == 1 else 'no progress'}): {len(fens)} surprise boards -> hole {name} "
-              f"(base {cur or 'none'}; {len(boards)} boards)")
+        print(f"OBS   {mat} rank {rank} ({'ground lost' if rank == 1 else 'no progress: the stall points'}): {len(fens)} surprise boards -> hole {name} "
+              f"(base {cur or 'none'}; {len(boards)} boards; the games' contrast: {len(con['win'])} before a win, {len(con['draw'])} in draws)")
         t0 = time.time()
         out = run(name, budget, hole=hole, defender=defender, n_boards=n_boards)
         base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None

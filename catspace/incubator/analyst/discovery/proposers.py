@@ -28,7 +28,8 @@ def _dir():
 
 
 def _ckpt(kind: str) -> str:
-    return os.path.join(_dir(), f"{kind}.pt")
+    from .models import CTX
+    return os.path.join(_dir(), f"{kind}_ctx{CTX}.pt")     # the context's width in the name: a new feature, a new model
 
 
 def _state_path() -> str:

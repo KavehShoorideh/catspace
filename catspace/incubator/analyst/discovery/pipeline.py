@@ -43,6 +43,19 @@ class Enumerative:
         return candidates(lab)
 
 
+class Contrast:
+    """THE GAMES' PROPOSER (no learning): the candidates in the order of how well they separate the round's positions
+    before a win from its draws (models.contrast) -- the terms the drawn games point to are verified, and their verdicts
+    teach the learned proposers the contrast's weight."""
+    name = "contrast"
+
+    def rank(self, hole, lab, cache):
+        cands = candidates(lab)
+        key = [M.contrast(hole, t, cache) for t, _ in cands]
+        order = sorted(range(len(cands)), key=lambda i: (-key[i][1], -key[i][0], i))
+        return [cands[i] for i in order]
+
+
 class Learned:
     def __init__(self, kind: str, model):
         self.kind, self.model, self.name = kind, model, kind
@@ -54,8 +67,12 @@ class Learned:
         return [cands[i] for i in np.argsort(-sc, kind="stable")]
 
 
-def filter_(rankings: list, budget: int, skip: set = frozenset()) -> list:
-    """The proposers' tops in turn, no repeats, the memo's verdicts not spending budget -- `budget` candidates."""
+FILTERED_BY: dict = {}                            # (term, schema) -> the proposer whose turn put it through the filter
+
+
+def filter_(rankings: list, budget: int, skip: set = frozenset(), names: list | None = None) -> list:
+    """The proposers' tops in turn, no repeats, the memo's verdicts not spending budget -- `budget` candidates. (Which
+    proposer put each one through is kept in FILTERED_BY: is each proposer doing its job?)"""
     out, seen = [], set(skip)
     ptr = [0] * len(rankings)
     while len(out) < budget and any(p < len(r) for p, r in zip(ptr, rankings)):
@@ -63,7 +80,10 @@ def filter_(rankings: list, budget: int, skip: set = frozenset()) -> list:
             while ptr[i] < len(r) and r[ptr[i]] in seen:
                 ptr[i] += 1
             if ptr[i] < len(r) and len(out) < budget:
-                seen.add(r[ptr[i]]); out.append(r[ptr[i]]); ptr[i] += 1
+                seen.add(r[ptr[i]]); out.append(r[ptr[i]])
+                if names:
+                    FILTERED_BY[r[ptr[i]]] = names[i]
+                ptr[i] += 1
     return out
 
 
@@ -136,10 +156,12 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     if defender != "self":
         boards = boards[:n_boards]               # a real defender plays whole games with the planner
     from . import proposers as P
-    rankings = [Enumerative().rank(h, lab, cache)]
+    rankings, names = [Enumerative().rank(h, lab, cache)], ["enumerative"]
     for k in kinds:
-        rankings.append(Learned(k, P.get(k)).rank(h, lab, cache))      # the newest checkpoint (no retraining)
-    kept = filter_(rankings, budget)
+        rankings.append(Learned(k, P.get(k)).rank(h, lab, cache)); names.append(k)   # the newest checkpoint
+    if h.get("contrast"):
+        rankings.append(Contrast().rank(h, lab, cache)); names.append("contrast")
+    kept = filter_(rankings, budget, names=names)
     ver = Verifier(defender=defender)
     base = ver.verify(h, None, "none", boards)
     res = sorted((ver.verify(h, t, s, boards) for t, s in kept), key=lambda r: -r["score"])
@@ -152,7 +174,10 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     print(f"OBS pipeline on {hole_name} ({len(boards)} boards; {len(lab['rows'])} candidates; defender {defender}): {len(rankings)} proposers, the filter "
           f"kept {len(kept)}, all verified; the hole's own measure scores {base['score']:.4f} ({show(base)}); the best:")
     for r in res[:5]:
-        print(f"OBS   {r['score']:.4f} ({show(r)}) [{r['schema']}] {r['term']} = {V.gloss(V.parse(r['term']))}")
+        print(f"OBS   {r['score']:.4f} ({show(r)}) [{r['schema']}] {r['term']} -- from {FILTERED_BY.get((r['term'], r['schema']), '?')} = {V.gloss(V.parse(r['term']))}")
+    from collections import Counter
+    top = [FILTERED_BY.get((r["term"], r["schema"]), "?") for r in res[:10]]
+    print(f"OBS   the verifier's top 10 by proposer: {dict(Counter(top))}")
     P.update_in_background()                    # this hole's verdicts fine-tune the proposers beside the next work
     return [base] + res
 

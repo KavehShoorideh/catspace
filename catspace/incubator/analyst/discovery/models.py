@@ -40,14 +40,36 @@ def context_features(hole: dict, term: str, schema: str, boards: list, cache: di
                 corr.append(0.0)
         ours, theirs = dyn[:, 0].mean(), dyn[:, 1].mean()
         cache[key] = np.array([vals.mean() / 64, vals.std() / 16, vals.min() / 64, vals.max() / 64, (vals == 0).mean(),
-                               *corr, ours / 8, theirs / 8, (theirs + 1e-3) / (ours + theirs + 2e-3)], dtype=np.float32)
+                               *corr, ours / 8, theirs / 8, (theirs + 1e-3) / (ours + theirs + 2e-3),
+                               *contrast(hole, term, cache)], dtype=np.float32)
     sch = [1.0 if schema == s else 0.0 for s in SCHEMAS]
     mat = [1.0 if hole["material"] == m else 0.0 for m in ("KR", "KQ")]
     named = [1.0 if n in hole["base"] else 0.0 for n in NAMED]
     return np.concatenate([cache[key], np.array(sch + mat + named + [len(hole["base"]) / 3], dtype=np.float32)])
 
 
-CTX = 10 + len(SCHEMAS) + 2 + len(NAMED) + 1
+CTX = 12 + len(SCHEMAS) + 2 + len(NAMED) + 1
+
+
+def contrast(hole: dict, term: str, cache: dict) -> tuple:
+    """WHAT THE GAMES SAY ABOUT A TERM (Kaveh 2026-10-12: "if our proposer is not proposing the things it's supposed to
+    propose, then the proposer needs to change"): the hole carries the round's positions shortly before a win and in the
+    draws' tails (surprise_loop.mine); a measure is minimised, so a term LOWER before wins than in the draws points the
+    way -> (the mean difference, scaled; the rank separation 2*P(before a win < in a draw) - 1, ties half). (0, 0)
+    without the games (the labeled holes)."""
+    c = hole.get("contrast")
+    if not c or not c.get("win") or not c.get("draw"):
+        return (0.0, 0.0)
+    key = ("contrast", hole["name"], term)
+    if key not in cache:
+        import analyst_core as A
+        w = np.array(A.vocab_values(c["win"], term), dtype=np.float32)
+        d = np.array(A.vocab_values(c["draw"], term), dtype=np.float32)
+        allv = np.concatenate([w, d])
+        sep = float((d.mean() - w.mean()) / (allv.std() + 1.0))
+        less = (w[:, None] < d[None, :]).mean() + 0.5 * (w[:, None] == d[None, :]).mean()
+        cache[key] = (sep, float(2 * less - 1))
+    return cache[key]
 
 
 class Head(nn.Module):
