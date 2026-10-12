@@ -29712,3 +29712,21 @@ promotion sees mostly ties. Checked and REFUTED: that the frame has no say in ch
 evasion -- Kc2 toward their rook under "(dist W O)"). Next, proposed to Kaveh: a GRADED reward from the tablebase (the
 distance to the win before the game's end) and MCTS over frames (the proposers as the prior, the verifier as the reward;
 the repo's puct_mcts), MCTS in play kept for later. The least-loss tie fixed (four stalemates, BUGS).
+THE LEMMA-STATE LOOP (2026-10-12 16:17-16:41 PDT). Kaveh (rejecting a graded score from the tablebase): "being able to stay
+or basically moving to a new place where new lemmas are applying is progress. Cycling back to a place where the same lemmas
+apply is a loop ... I don't want to rely on [the tablebase] as long as we can detect loops"; then "proceed and let's see
+how this goes". BUILT: the lemma-state (vocab.rs lemma_state) -- 24 base facts: each named square on the edge, in a
+corner, attacked by us, attacked by them; who stands next to whom; a piece of either side attacked -- memberships in base
+sets, nothing learned. The verifier's games stop at a LOOP: a lemma-state seen again without the frame's measure lower
+than at its last visit (staying and squeezing is progress, coming back is not); PROGRESS = the lemma-states reached before
+it, the rank after held and won (promotion on a tie: a fifth more and one more a board). OBS on 50 stuck boards: 4.0-4.8
+lemma-states a board before the loop for four frames (the empty frame 4.5) -- dense but narrow. THE RUN (tag states,
+fresh; directional): round 0 57 / 40 / 3; round 1 69 / 31 / 0 (the clean run 69 / 29 / 2); round 2 64 / 36 / 0 (64 / 36 / 0);
+round 3 61 / 39 / 0 (64 / 36 / 0) -- indistinguishable from the clean run at one run each, no losses after round 0. Two
+promotions came by progress alone ("squares nearer their king than their rook, not between their king and our rook";
+"squares nearer their king than our rook, off our rook's rank"); the progress holes promoted "how many squares they
+attack" (replacing the frame -- a removal), then "+ how many squares we attack" (2 / 100 vs 0). The K+R+R v K rank-1 holes
+shrank (24 -> 9 boards: the frame loses ground less); K+R+R v K "their king's territory off the edge" (held 74 / 100 vs 0
+under the stricter loop). READING: the loop signal is principled and engine-free but, from these stuck positions, every
+frame loops within ~5 lemma-states -- a single added or replaced term does not escape the perpetual checks; the ceiling
+stays ~61-69 wins. Next on Kaveh's list: the frame-level search over edits (joint lemmas, removals), then concepts.

@@ -37,3 +37,21 @@ pub const KRRVKR_CLEAN_R1_PROGRESS: &str = "(count (and (nearer L O) (not ours))
 
 /// krrvkr_clean_r2_progress: how many of the squares they attack (2026-10-12, hole learn_clean_KRRvKR_rank2_r2; verifier: held 2/50, won 2, claims kept 72/185 -- the frame before it held 1/50, won 1, claims kept 67/187 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvKR frame (sum): ['(count (and hit (nearer L W)))', '(sum (count (and (nearer L O) (not ours))) (count hit))'])
 pub const KRRVKR_CLEAN_R2_PROGRESS: &str = "(count hit)";
+
+/// krrvkr_states_r0_hold: how many of the squares nearer their king than their other piece that are also the squares outside the squares between their king and our other piece (2026-10-12, hole learn_states_KRRvKR_rank1_r0; verifier: held 0/24, won 0, claims kept 98/183 -- the frame before it held 0/24, won 0, claims kept 0/119 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvKR frame (append): ['(count (and (nearer L O) (not (between L P))))'])
+pub const KRRVKR_STATES_R0_HOLD: &str = "(count (and (nearer L O) (not (between L P))))";
+
+/// krrvkr_states_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the squares of our pieces (2026-10-12, hole learn_states_KRRvKR_rank2_r0; verifier: held 2/50, won 2, claims kept 154/238 -- the frame before it held 1/50, won 1, claims kept 110/215 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvKR frame (sum): ['(sum (count (and (nearer L O) (not (between L P)))) (count (and (nearer L W) (not ours))))'])
+pub const KRRVKR_STATES_R0_PROGRESS: &str = "(count (and (nearer L W) (not ours)))";
+
+/// krrvk_states_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the edge squares (2026-10-12, hole learn_states_KRRvK_rank2_r0; verifier: held 37/50, won 37, claims kept 120/122 -- the frame before it held 0/50, won 0, claims kept 0/109 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvK frame (append): ['(count (and (nearer L W) (not edge)))'])
+pub const KRRVK_STATES_R0_PROGRESS: &str = "(count (and (nearer L W) (not edge)))";
+
+/// krrvkr_states_r1_progress: how many of the squares they attack (2026-10-12, hole learn_states_KRRvKR_rank2_r1; verifier: held 2/50, won 2, claims kept 78/264 -- the frame before it held 0/50, won 0, claims kept 66/164 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvKR frame (replace): ['(count hit)'])
+pub const KRRVKR_STATES_R1_PROGRESS: &str = "(count hit)";
+
+/// krrvkr_states_r2_hold: how many of the squares nearer their king than our other piece that are also the squares outside the rank of our other piece (2026-10-12, hole learn_states_KRRvKR_rank1_r2; verifier: held 0/14, won 0, claims kept 23/62 -- the frame before it held 0/14, won 0, claims kept 2/48 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvKR frame (prepend): ['(count (and (nearer L P) (not (rank P))))', '(count hit)'])
+pub const KRRVKR_STATES_R2_HOLD: &str = "(count (and (nearer L P) (not (rank P))))";
+
+/// krrvkr_states_r2_progress: how many of the squares we attack (2026-10-12, hole learn_states_KRRvKR_rank2_r2; verifier: held 1/50, won 1, claims kept 250/347 -- the frame before it held 0/50, won 0, claims kept 171/304 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvKR frame (sum): ['(count (and (nearer L P) (not (rank P))))', '(sum (count hit) (count attacked))'])
+pub const KRRVKR_STATES_R2_PROGRESS: &str = "(count attacked)";
