@@ -29331,3 +29331,19 @@ king's distance to theirs is no ranking function -- the defender undoes it; the 
 shift (the square our king needs for a mating shape on the edge -- the shapes' theorem is the next proof). The lemma
 explorer: a "supersedes, when" link (validated; dashed in the graph; Supersedes / Superseded by on each rule): 44 rules,
 15 backed by Lean. Tests: the analyst suite 399 passed, 1 xfailed (before this step); the threat and index tests after it.
+THE KING-AND-QUEEN METHOD, FIRST TWO STEPS (2026-10-12 10:22 PDT; Kaveh: "do it as you recommend" -- the shapes, the
+target, the measure that falls against every reply). (1) THE BACKWARD STEP, Lean Ideas/QueenMateShapes.lean (by
+reasoning, omega on coordinates): edge_shape -- on an edge our king stands two ranks in front of the lone king within a
+file, the queen on the edge's rank or directly in front (our king to a side leaves a 2×2 block to the queen alone:
+queen_block; further away leaves the 2×3 rectangle: queen_rect_h; the edge row then needs the queen: queen_row3);
+corner_shape -- in a corner our king stands at distance exactly two. Index 196 theorems, 0 open. (2) THE TARGET in Rust
+(mating.rs front_zone, APPROACH_ZONE): the approach is our king's distance to the FRONT ZONE of the lone king's region (two
+lines in, within a line, from the region's edge squares) -- the defender moving inside its box does not move it. OBS
+kq_playout 1,000 games: approach to their king, chosen after our move: 9.2 moves, progress guaranteed against every reply
+on 53% of our moves; to the front zone: 7.7 moves, 66%; to the front zone chosen by the every-reply measure (now the
+default): 1,000 / 1,000 mated, 7.5 moves (max 27), 68%. (3) WHAT IS LEFT for the proof, read off the 32% (150 games,
+uncertified moves classified): ALONG THE EDGE (144: their king confined to the edge row, the zone a whole line, our king
+in it but not opposite -- no component moves) -- the missing rung shortens the region along the edge (a queen move guarded
+by our king); THE NET (71 + 16: a region of 1-2 squares, tempo moves for the opposition, some letting the region grow to
+avoid stalemate) -- the missing rung is "from the net, mate within a few moves against every defence" (search once, then
+a lemma). The Lean ranking proof waits on these two rungs.

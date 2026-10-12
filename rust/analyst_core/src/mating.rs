@@ -72,16 +72,49 @@ pub struct Component {
 }
 
 fn off_edge(q: &Chess, lone: Color) -> u32 { (region_bb(q, lone) & !edge()).count() as u32 }
+
+/// THE FRONT ZONE of a region (Lean `Ideas.QueenMate.edge_shape`, `corner_shape`: in every king-and-queen mate our king
+/// stands two squares from theirs, on the inside -- two lines in front within a line on an edge, at distance two in a
+/// corner): the squares our king must reach, read off the region's edge squares. The defender's king moving inside its
+/// box does not move the zone.
+pub fn front_zone(region: Bitboard) -> Bitboard {
+    let mut z = Bitboard::EMPTY;
+    for r in region & edge() {
+        let (f, k) = (r.file() as i32, r.rank() as i32);
+        for s in Bitboard::FULL {
+            let (sf, sk) = (s.file() as i32, s.rank() as i32);
+            let corner = (f == 0 || f == 7) && (k == 0 || k == 7);
+            let ok = if corner { r.distance(s) == 2 }
+                else if k == 0 { sk == 2 && (sf - f).abs() <= 1 }
+                else if k == 7 { sk == 5 && (sf - f).abs() <= 1 }
+                else if f == 0 { sf == 2 && (sk - k).abs() <= 1 }
+                else { sf == 5 && (sk - k).abs() <= 1 };
+            if ok { z.add(s); }
+        }
+    }
+    z
+}
+
+/// OUR KING'S WAY TO THE FRONT ZONE of the lone king's region (before the region reaches the edge: 8 plus the kings'
+/// distance -- the edge component ranks above it then anyway).
 fn approach(q: &Chess, lone: Color) -> u32 {
     let b = q.board();
-    match (b.king_of(!lone), b.king_of(lone)) { (Some(a), Some(k)) => kdist(a, k), _ => 0 }
+    let (Some(a), Some(k)) = (b.king_of(!lone), b.king_of(lone)) else { return 0 };
+    if !APPROACH_ZONE.load(Ordering::Relaxed) { return kdist(a, k); }
+    let z = front_zone(region_bb(q, lone));
+    z.into_iter().map(|s| kdist(a, s)).min().unwrap_or(8 + kdist(a, k))
 }
+
+/// The approach measured to the front zone (on) or to their king (off -- the first version: the defender undoes it).
+pub static APPROACH_ZONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_approach_zone(flag: bool) -> PyResult<()> { APPROACH_ZONE.store(flag, Ordering::Relaxed); Ok(()) }
 fn region_size(q: &Chess, lone: Color) -> u32 { region(q, lone) }
 
 /// THE KING-AND-QUEEN FRAME'S MEASURE, by rank.
 pub const KQ_MEASURE: [Component; 3] = [
     Component { id: "edge", name: "region squares off the edge", lean: Some("Ideas.QueenMate.kq_mate_on_edge"), supersedes: None, value: off_edge },
-    Component { id: "approach", name: "our king's distance to theirs", lean: None,
+    Component { id: "approach", name: "our king's distance to the front zone", lean: Some("Ideas.QueenMate.edge_shape"),
                 supersedes: Some(("region", "the region may grow while our king comes up -- the way round to the mating square")), value: approach },
     Component { id: "region", name: "the region's size", lean: None, supersedes: None, value: region_size },
 ];
@@ -142,6 +175,6 @@ pub fn kq_move(pos: &Chess) -> Option<(Move, u32, String)> {
 /// is undone by the defender -- their king steps between two squares of its box, our king on the wrong side never gets
 /// "nearer" (OBS 998 / 1,000 mated, 11.1 moves; after our move 1,000 / 1,000, 9.2, 2026-10-12): our king's distance to
 /// theirs is no ranking function. The every-reply measure is reported as each move's certificate instead.
-pub static KQ_EVERY_REPLY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static KQ_EVERY_REPLY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_kq_every_reply(flag: bool) -> PyResult<()> { KQ_EVERY_REPLY.store(flag, Ordering::Relaxed); Ok(()) }

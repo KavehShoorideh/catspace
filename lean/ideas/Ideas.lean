@@ -20,3 +20,4 @@ import Ideas.QueenMate
 import Ideas.MateDemand
 import Ideas.QueenMateBoard
 import Ideas.InsufficientMaterial
+import Ideas.QueenMateShapes
