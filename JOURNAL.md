@@ -29681,3 +29681,17 @@ end catches up any skipped verdicts. The GPU (MPS) measured SLOWER for these tin
 of 256 against 5.6 ms on the CPU; the transformer had a device bug, fixed) -- they stay on the CPU until they grow; the
 pools now use the cores minus two. A smoke round (6 games, budget 5) took 20 s, was ~2 min. (5) With mining cheap, the
 "wide" run: 100 boards per hole and a budget of 200 against the tablebase.
+THE CLOCK CONFOUND (2026-10-12 15:34-15:58 PDT). The "wide2" run (from the tablebase run's frames; 100 boards a hole, a
+budget of 200): round 0 65 / 34 / 1 (won / drawn / lost; the same frames' earlier round 0 exactly); mined "squares nearer
+their king than our rook that our king reaches over squares they do not attack" (rank 1, held 3 / 62 vs 2) and further
+terms, each by one board; round 1 62 / 37 / 1 (earlier runs 61-69 on these positions); "squares we attack off the edge"
+prepended (6 / 70 vs 4); round 2 54 / 45 / 1 -- the worst of all runs on these positions (58-64), forty fifty-move draws.
+WHY: the holes' boards kept the GAME's fifty-move clock -- the rank-1 holes a median 2 moves of ours from the clock's draw
+(59 of 70 under 10), the rank-2 holes a median 26: the verifier judged lemmas largely on boards the clock had already
+decided (held 0-6% for every candidate, "nothing mined" on 100 boards), and a fifty-move draw was charged as rank-1 ground
+lost to the last moves before it. EVERY earlier run had it: their K+R+R v K+R frames (and the generated-track entries from
+them) rest on clock-decided boards -- not to be trusted; the K+R+R v K lemma ("squares nearer their king than our rook",
+claims 105 / 105) was mined in a hole of mostly fresh positions and stands. FIXED: holes get a fresh clock (the question is
+progress FROM the position); a fifty-move draw is rank 2 (no progress), rank 1 is material, mate, stalemate, repetition.
+Restarted from nothing (tag clean, --fresh): the vocabulary complete, the tablebase defender, natural ends, fresh clocks,
+strict promotion, incremental proposers; 50 boards a hole, a budget of 100.
