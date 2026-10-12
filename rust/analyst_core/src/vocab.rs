@@ -165,3 +165,93 @@ pub fn vocab_certify(fens: Vec<String>, term: String, schema: String, k: u32) ->
     let Some(t) = parse_term(&term) else { return Ok(0) };
     Ok(fens.par_iter().filter(|f| parse(f).map_or(false, |p| certified(&p, &t, &schema, k))).count() as u32)
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// THE VERIFIER, GENERAL (Kaveh 2026-10-12: proposers -> a filter -> the verifier, which checks everything the filter
+// kept): a measure given as components -- a named procedure of a frame ("fn:wall", "fn:opposition", "fn:chase",
+// "fn:kq_offedge", "fn:kq_approach", "fn:kq_region") or a term over the base -- extended by a candidate term under a
+// schema, certified on boards against every reply within `k` moves, the frame's piece kept safe.
+
+enum Comp { F(fn(&Chess, Color) -> u32), T(Term) }
+
+fn comp(spec: &str) -> Option<Comp> {
+    Some(match spec {
+        "fn:wall" => Comp::F(crate::mating::wall_rows), "fn:opposition" => Comp::F(crate::mating::kr_opposition),
+        "fn:chase" => Comp::F(crate::mating::kr_chase), "fn:kq_offedge" => Comp::F(crate::mating::off_edge),
+        "fn:kq_approach" => Comp::F(crate::mating::approach), "fn:kq_region" => Comp::F(crate::mating::region_size),
+        _ => Comp::T(parse_term(spec)?),
+    })
+}
+fn cval(c: &Comp, q: &Chess, lone: Color) -> u32 { match c { Comp::F(f) => f(q, lone), Comp::T(t) => num(t, q, lone) } }
+
+struct Spec { base: Vec<Comp>, cand: Option<Term>, schema: String, piece: Role }
+
+impl Spec {
+    fn measure(&self, q: &Chess, lone: Color) -> Vec<u32> {
+        let mut v: Vec<u32> = self.base.iter().map(|c| cval(c, q, lone)).collect();
+        if let Some(t) = &self.cand {
+            let x = num(t, q, lone);
+            match self.schema.as_str() {
+                "sum" => { if let Some(l) = v.last_mut() { *l += x } else { v.push(x) } }
+                "replace" => { if let Some(l) = v.last_mut() { *l = x } else { v.push(x) } }
+                "append" => v.push(x),
+                _ => {}
+            }
+        }
+        v
+    }
+    fn worst(&self, q: &Chess, lone: Color) -> Vec<u32> {
+        q.legal_moves().iter().map(|r| self.measure(&after(q, r), lone)).max().unwrap_or_default()
+    }
+    fn within(&self, q: &Chess, before: &[u32], us: Color, k: u32) -> bool {
+        if q.is_checkmate() { return true; }
+        if k <= 1 { return self.worst(q, !us).as_slice() < before; }
+        q.legal_moves().iter().all(|r| {
+            let x = after(q, r);
+            x.legal_moves().iter().any(|m2| {
+                let y = after(&x, m2);
+                y.is_checkmate() || (crate::mating::safe_step(&y, us, self.piece) && self.within(&y, before, us, k - 1))
+            })
+        })
+    }
+    fn certified(&self, pos: &Chess, k: u32) -> bool {
+        let us = pos.turn();
+        let before = self.measure(pos, !us);
+        pos.legal_moves().iter().any(|m| {
+            let q = after(pos, m);
+            q.is_checkmate() || (crate::mating::safe_step(&q, us, self.piece) && self.within(&q, &before, us, k))
+        })
+    }
+}
+
+fn spec(base: &[String], cand: &Option<String>, schema: &str, piece: &str) -> Option<Spec> {
+    let base: Vec<Comp> = base.iter().map(|s| comp(s)).collect::<Option<_>>()?;
+    let cand = match cand { Some(c) => Some(parse_term(c)?), None => None };
+    let piece = match piece { "Q" | "q" => Role::Queen, _ => Role::Rook };
+    Some(Spec { base, cand, schema: schema.to_string(), piece })
+}
+
+/// verify_mask(fens, base, cand, schema, k, piece) -> for each board (the attacker to move): certified or not.
+#[pyfunction]
+#[pyo3(signature = (fens, base, cand, schema, k, piece))]
+pub fn verify_mask(fens: Vec<String>, base: Vec<String>, cand: Option<String>, schema: String, k: u32, piece: String) -> PyResult<Vec<bool>> {
+    use rayon::prelude::*;
+    let Some(sp) = spec(&base, &cand, &schema, &piece) else { return Ok(vec![]) };
+    Ok(fens.par_iter().map(|f| parse(f).map_or(false, |p| sp.certified(&p, k))).collect())
+}
+
+/// verify_count(...) -> how many boards are certified (the verifier's score).
+#[pyfunction]
+#[pyo3(signature = (fens, base, cand, schema, k, piece))]
+pub fn verify_count(fens: Vec<String>, base: Vec<String>, cand: Option<String>, schema: String, k: u32, piece: String) -> PyResult<u32> {
+    Ok(verify_mask(fens, base, cand, schema, k, piece)?.into_iter().filter(|x| *x).count() as u32)
+}
+
+/// component_values(fens, specs) -> each spec's value on each board (the lone king = the side not to move): the hole's
+/// own measure, read for the learned proposers' context.
+#[pyfunction]
+pub fn component_values(fens: Vec<String>, specs: Vec<String>) -> PyResult<Vec<Vec<u32>>> {
+    use rayon::prelude::*;
+    let comps: Vec<Comp> = specs.iter().filter_map(|s| comp(s)).collect();
+    Ok(fens.par_iter().map(|f| parse(f).map_or(vec![0; comps.len()], |p| { let lone = !p.turn(); comps.iter().map(|c| cval(c, &p, lone)).collect() })).collect())
+}

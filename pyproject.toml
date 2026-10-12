@@ -18,7 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 umap = ["umap-learn>=0.5"]
-nn = ["torch>=2.6"]
+nn = ["torch>=2.6", "torch_geometric>=2.6"]
 dev = ["pytest>=8", "pytest-timeout"]
 
 [project.scripts]

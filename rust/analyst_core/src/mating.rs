@@ -74,7 +74,7 @@ pub struct Component {
     pub value: fn(&Chess, Color) -> u32,
 }
 
-fn off_edge(q: &Chess, lone: Color) -> u32 { (region_bb(q, lone) & !edge()).count() as u32 }
+pub(crate) fn off_edge(q: &Chess, lone: Color) -> u32 { (region_bb(q, lone) & !edge()).count() as u32 }
 
 /// THE FRONT ZONE of a region (Lean `Ideas.QueenMate.edge_shape`, `corner_shape`: in every king-and-queen mate our king
 /// stands two squares from theirs, on the inside -- two lines in front within a line on an edge, at distance two in a
@@ -103,7 +103,7 @@ pub fn front_zone(region: Bitboard) -> Bitboard {
 /// region's edge squares, of our king's distance to that square's zone -- the mate may come on any of them, so our king
 /// must be near all; shrinking the region can only lower it (the nearest target moved away when the queen cut the region
 /// along the edge: 144 uncertified moves of 150 games, 2026-10-12).
-fn approach(q: &Chess, lone: Color) -> u32 {
+pub(crate) fn approach(q: &Chess, lone: Color) -> u32 {
     let b = q.board();
     let (Some(a), Some(k)) = (b.king_of(!lone), b.king_of(lone)) else { return 0 };
     if !APPROACH_ZONE.load(Ordering::Relaxed) { return kdist(a, k); }
@@ -143,7 +143,7 @@ pub const NET_MOVES: u32 = 3;
 pub static APPROACH_ZONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_approach_zone(flag: bool) -> PyResult<()> { APPROACH_ZONE.store(flag, Ordering::Relaxed); Ok(()) }
-fn region_size(q: &Chess, lone: Color) -> u32 { region(q, lone) }
+pub(crate) fn region_size(q: &Chess, lone: Color) -> u32 { region(q, lone) }
 
 /// THE KING-AND-QUEEN FRAME'S MEASURE, by rank.
 pub const KQ_MEASURE: [Component; 3] = [
@@ -326,7 +326,7 @@ fn kr_side_room(q: &Chess, lone: Color) -> u32 {
 /// shrinks the room by one and moves the opposition square away by one, until our king follows); their sum falls within
 /// two moves against every reply (the waiting slide, then the follow): 85.1% of moves certified with the two apart, see
 /// the journal for the sum.
-fn kr_chase(q: &Chess, lone: Color) -> u32 { kr_opposition(q, lone) + kr_side_room(q, lone) }
+pub(crate) fn kr_chase(q: &Chess, lone: Color) -> u32 { kr_opposition(q, lone) + kr_side_room(q, lone) }
 
 pub const KR_MEASURE: [Component; 2] = [
     Component { id: "wall", name: "rows beyond the rook's wall", lean: None, supersedes: None, value: wall_rows },
@@ -370,6 +370,23 @@ pub const KR_MEASURE_TERM3: [Component; 3] = [
 pub static KR_FRAME_TERM2: Frame = Frame { name: "king and rook", applies: is_kr_vs_k, measure: &KR_MEASURE_TERM2, piece: Role::Rook, net: kr_net };
 pub static KR_FRAME_TERM3: Frame = Frame { name: "king and rook", applies: is_kr_vs_k, measure: &KR_MEASURE_TERM3, piece: Role::Rook, net: kr_net };
 
+// THE DEFAULT, FROM THE GENERATED TRACK (Kaveh 2026-10-12: "make this planner default"): the rook frame's second component
+// is the opposition plus the territory term the proposer found (generated.rs KR_TERRITORY -- "how many squares are not
+// nearer our king than their king"); the hand-written chase (KR_CHASE) and the bare derived frame stay as switches.
+static KR_TERRITORY_TERM: std::sync::OnceLock<Option<crate::vocab::Term>> = std::sync::OnceLock::new();
+fn kr_generated(q: &Chess, lone: Color) -> u32 {
+    let t = KR_TERRITORY_TERM.get_or_init(|| crate::vocab::parse_term(crate::generated::KR_TERRITORY));
+    kr_opposition(q, lone) + t.as_ref().map_or(0, |t| crate::vocab::num(t, q, lone))
+}
+pub const KR_MEASURE_GENERATED: [Component; 2] = [
+    Component { id: "wall", name: "rows beyond the rook's wall", lean: None, supersedes: None, value: wall_rows },
+    Component { id: "opposition+territory", name: "our king's distance to the opposition square plus their king's territory (generated)", lean: Some("Ideas.Generated.kr_territory"), supersedes: None, value: kr_generated },
+];
+pub static KR_FRAME_GENERATED: Frame = Frame { name: "king and rook", applies: is_kr_vs_k, measure: &KR_MEASURE_GENERATED, piece: Role::Rook, net: kr_net };
+pub static KR_GENERATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_kr_generated(flag: bool) -> PyResult<()> { KR_GENERATED.store(flag, Ordering::Relaxed); Ok(()) }
+
 pub static KR_CHASE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_kr_chase(flag: bool) -> PyResult<()> { KR_CHASE.store(flag, Ordering::Relaxed); Ok(()) }
@@ -379,7 +396,8 @@ pub fn frame_for(pos: &Chess) -> Option<&'static Frame> {
     else if is_kr_vs_k(pos) {
         let sch = KR_TERM.read().unwrap().as_ref().map(|x| x.1.clone());
         Some(match sch.as_deref() { Some("append") => &KR_FRAME_TERM3, Some(_) => &KR_FRAME_TERM2,
-            None => if KR_CHASE.load(Ordering::Relaxed) { &KR_FRAME } else { &KR_FRAME_DERIVED } })
+            None => if KR_GENERATED.load(Ordering::Relaxed) { &KR_FRAME_GENERATED }
+                    else if KR_CHASE.load(Ordering::Relaxed) { &KR_FRAME } else { &KR_FRAME_DERIVED } })
     }
     else { None }
 }

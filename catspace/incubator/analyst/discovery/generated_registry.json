@@ -1,0 +1,18 @@
+[
+ {
+  "id": "kr_territory",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (not (nearer W L)))",
+  "gloss": "how many of the squares outside the squares nearer our king than their king",
+  "size": 5,
+  "lean": "(count (fun u => !((nearer W L) u)))",
+  "hole": "KR derived frame (wall, opposition): 868 stuck positions of 300 play-outs",
+  "evidence": {
+   "verifier": "866/868 stuck positions certified (2 moves, every reply)",
+   "play": "300/300 mated, 99.9% of moves certified, 12.1 moves"
+  },
+  "used_by": "the king-and-rook frame: added to the opposition (its default since 2026-10-12)",
+  "created": "2026-10-12"
+ }
+]

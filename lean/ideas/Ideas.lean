@@ -22,4 +22,5 @@ import Ideas.QueenMateBoard
 import Ideas.InsufficientMaterial
 import Ideas.QueenMateShapes
 import Ideas.ForcedByMeasure
-import Ideas.Vocabulary
+import Ideas.Base.Vocabulary
+import Ideas.Generated.Measures

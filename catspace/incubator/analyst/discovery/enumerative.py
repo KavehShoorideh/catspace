@@ -10,7 +10,7 @@ Ideas.Vocabulary, evaluated by rust/analyst_core/src/vocab.rs), never with a fin
     added to the frame's last component; in its place), against every reply
   4 READ the winners out in the base's own words -- the term IS the explanation
 
-  python -m catspace.incubator.analyst.proposer --stuck kr_stuck_derived.json
+  python -m catspace.incubator.analyst.discovery.enumerative --stuck kr_stuck_derived.json
 """
 from __future__ import annotations
 
