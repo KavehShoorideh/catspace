@@ -80,11 +80,15 @@ thread_local! {
     static THREATS_CACHE: std::cell::RefCell<std::collections::HashMap<(u64, bool), Vec<Threat>>> = std::cell::RefCell::new(std::collections::HashMap::new());
     static MATE_CACHE: std::cell::RefCell<std::collections::HashMap<(u64, u32), Option<Move>>> = std::cell::RefCell::new(std::collections::HashMap::new());
     static FORCING_CACHE: std::cell::RefCell<std::collections::HashMap<(u64, u64), Option<bool>>> = std::cell::RefCell::new(std::collections::HashMap::new());
+    static CORNER_CACHE: std::cell::RefCell<std::collections::HashMap<(u64, u64), Option<Move>>> = std::cell::RefCell::new(std::collections::HashMap::new());
+    static GAIN_CACHE: std::cell::RefCell<std::collections::HashMap<(u64, u32), Option<(Move, i64)>>> = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 pub fn clear_position_caches() {
     THREATS_CACHE.with(|c| c.borrow_mut().clear());
     MATE_CACHE.with(|c| c.borrow_mut().clear());
     FORCING_CACHE.with(|c| c.borrow_mut().clear());
+    CORNER_CACHE.with(|c| c.borrow_mut().clear());
+    GAIN_CACHE.with(|c| c.borrow_mut().clear());
 }
 pub(crate) fn zkey(p: &Chess) -> u64 {
     use shakmaty::zobrist::{Zobrist64, ZobristHash};
@@ -161,7 +165,15 @@ fn material_edge(p: &Chess, by: Color) -> i64 { kernel_material(p, by) }
 fn best_capture(p: &Chess, by: Color) -> i64 { rules::threats_of(p, by).values().copied().max().unwrap_or(0).max(0) }
 
 /// What the side to move wins by checks within `n` of its moves (beyond the material edge now): -> (first check, gain).
+/// Cached per position within one plan() (the forcing ladder's searches judge the same leaves again).
 pub fn gain_by_checks(p: &Chess, n: u32) -> Option<(Move, i64)> {
+    let key = (zkey(p), n);
+    if let Some(v) = GAIN_CACHE.with(|c| c.borrow().get(&key).cloned()) { return v; }
+    let v = crate::prof::timed("gain_by_checks", || gain_by_checks_inner(p, n));
+    GAIN_CACHE.with(|c| c.borrow_mut().insert(key, v.clone()));
+    v
+}
+fn gain_by_checks_inner(p: &Chess, n: u32) -> Option<(Move, i64)> {
     let by = p.turn();
     let base = material_edge(p, by);
     fn val(p: &Chess, by: Color, base: i64, n: u32) -> i64 {
@@ -305,11 +317,11 @@ pub fn king_flights(q: &Chess, c: Color) -> u32 {
     (shakmaty::attacks::king_attacks(k) & !b.by_color(c)).into_iter().filter(|sq| !b.attacks_to(*sq, !c, occ).any()).count() as u32
 }
 
-fn forcing_moves(s: &FState, by: Color, need_left: i64) -> Vec<(Move, FState)> {
+fn forcing_moves(s: &FState, by: Color, need_left: i64, corner: bool) -> Vec<(Move, FState)> {
     let q = &s.pos;
     let qt = QUIET_THREATS.load(Ordering::Relaxed);
-    // (the king's flights before, for the quiet moves that take one: CORNERING flag)
-    let flights0 = if CORNERING.load(Ordering::Relaxed) { king_flights(q, !by) } else { 0 };
+    // (the king's flights before, for the quiet moves that take one: CORNERING flag, or a mate search that asks for it)
+    let flights0 = if corner || CORNERING.load(Ordering::Relaxed) { king_flights(q, !by) } else { 0 };
     let b = q.board();
     let occ = b.occupied();
     let targets: Bitboard = b.by_color(!by) & !b.by_role(Role::Pawn) & !b.by_role(Role::King);
@@ -389,7 +401,7 @@ fn forcing_moves_ref(s: &FState, by: Color) -> Vec<(Move, FState)> {
 /// mate; disproven where our forcing ends, at a stalemate, at a repetition. A node of theirs starts with as many proof
 /// steps as it has replies (a check, with few, looks cheap first), weighted by `line_prior`. The budget is only a safety
 /// net: hitting it is UNKNOWN. -> Some(true), Some(false), None.
-struct Forcing { by: Color, base: i64, need: i64 }
+struct Forcing { by: Color, base: i64, need: i64, corner: bool }
 
 /// THE STANDING WITH THE EXCHANGE LAW'S CONDITIONS (Kaveh 2026-10-11, the dig of the surprise loop: 7 false "wins by force"
 /// -- their reply gave check, pinned our capturing queen, promoted, or our capture was counted while we were in check;
@@ -431,8 +443,28 @@ fn judge_conditions(f: &Forcing, s: &FState) -> Option<bool> {
     let banked = s.edge - f.base;
     let mut them: Vec<i64> = s.them.iter().map(|v| *v as i64).filter(|v| *v > 0).collect();
     them.sort_unstable_by(|a, b| b.cmp(a));
-    let parry_left = if in_check { them.first().copied().unwrap_or(0) } else { them.get(1).copied().unwrap_or(0) };
-    if banked - parry_left >= f.need { return Some(true); }
+    if BANKED_FORCING.load(Ordering::Relaxed) {
+        // (2026-10-12, the dig: "fxg5 wins 3 by force" stood on Qg7+ with the knight banked -- Ke8 Bb5+ ... Qxh8+ wins the
+        // rook; fxe6 "wins 2" with Qh5's mate threat beside Nxe6's fork) IN CHECK the move goes to the check and they move
+        // again: banked material stands only once the check is answered -- the node stays open, its few answers searched
+        // (a check removes the tempo, Kaveh 2026-10-11). NOT IN CHECK their FORCING threats join the static ones -- a mate
+        // by checks and material by checks: our one free move parries one threat, not a mate and a piece
+        if !in_check && banked - them.get(1).copied().unwrap_or(0) >= f.need {
+            // (lazily, the same verdict: with `margin` what the second threat may take, a forcing threat matters only as
+            // the SECOND one beyond the margin -- beside a static threat beyond it, one forcing threat beyond it suffices;
+            // otherwise two are needed, a mate and material by checks beyond it)
+            let margin = banked - f.need;
+            let open = BANKED_THREATS.load(Ordering::Relaxed) && pass(&s.pos).map_or(false, |p| {
+                let gain = || gain_by_checks(&p, GAIN_CHECKS).map_or(false, |(_, g)| g > margin);
+                let mate = || mate_by_checks(&p, MATE_CHECKS).is_some();
+                if them.first().copied().unwrap_or(0) > margin { gain() || mate() } else { gain() && mate() }
+            });
+            if !open { return Some(true); }
+        }
+    } else {
+        let parry_left = if in_check { them.first().copied().unwrap_or(0) } else { them.get(1).copied().unwrap_or(0) };
+        if banked - parry_left >= f.need { return Some(true); }
+    }
     // our captures, best first, the first LEGAL one
     let legal = s.pos.legal_moves();
     let mut sqs: Vec<(i16, usize)> = (0..64usize).filter(|x| s.thr[*x] > 0).map(|x| (s.thr[x], x)).collect();
@@ -454,6 +486,15 @@ fn judge_conditions(f: &Forcing, s: &FState) -> Option<bool> {
     None
 }
 pub static CONDITIONS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+pub static BANKED_FORCING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+pub static BANKED_THREATS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[pyfunction]
+pub fn set_banked_threats(flag: bool) -> PyResult<()> { BANKED_THREATS.store(flag, Ordering::Relaxed); Ok(()) }
+pub static EXACT_VALUE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_banked_forcing(flag: bool) -> PyResult<()> { BANKED_FORCING.store(flag, Ordering::Relaxed); Ok(()) }
+#[pyfunction]
+pub fn set_exact_value(flag: bool) -> PyResult<()> { EXACT_VALUE.store(flag, Ordering::Relaxed); Ok(()) }
 pub static QUIET_THREATS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_quiet_threats(flag: bool) -> PyResult<()> { QUIET_THREATS.store(flag, Ordering::Relaxed); Ok(()) }
@@ -587,7 +628,7 @@ impl crate::pns::Problem for Forcing {
         } else if s.pos.legal_moves().is_empty() { Some(s.pos.is_check()) } else { None }
     }
     fn expand(&self, s: &FState, or: bool) -> Vec<(FState, f64)> {
-        if or { forcing_moves(s, self.by, self.need - (s.edge - self.base)).into_iter().map(|(m, c)| { let w = line_prior(&s.pos, &m); (c, w) }).collect() }
+        if or { forcing_moves(s, self.by, self.need - (s.edge - self.base), self.corner).into_iter().map(|(m, c)| { let w = line_prior(&s.pos, &m); (c, w) }).collect() }
         else { s.pos.legal_moves().iter().map(|m| (child_state(s, m, self.by), 1.0)).collect() }
     }
     fn and_size(&self, s: &FState) -> f64 { s.pos.legal_moves().len().max(1) as f64 }
@@ -624,7 +665,7 @@ pub fn forcing_moves_audit(fen: String) -> (u32, u32, u32) {
     let Some(p) = parse(&fen) else { return (0, 0, 0) };
     let by = p.turn();
     let s = FState { pos: p.clone(), thr: rules::threats_arr(&p, by), them: rules::threats_arr(&p, !by), edge: material_edge(&p, by), last: None };
-    let a: std::collections::HashSet<String> = forcing_moves(&s, by, 3).iter().map(|(m, _)| m.to_uci(CastlingMode::Standard).to_string()).collect();
+    let a: std::collections::HashSet<String> = forcing_moves(&s, by, 3, false).iter().map(|(m, _)| m.to_uci(CastlingMode::Standard).to_string()).collect();
     let r: std::collections::HashSet<String> = forcing_moves_ref(&s, by).iter().map(|(m, _)| m.to_uci(CastlingMode::Standard).to_string()).collect();
     (a.len() as u32, r.len() as u32, a.intersection(&r).count() as u32)
 }
@@ -643,15 +684,26 @@ pub fn set_composed(flag: bool) { COMPOSED.store(flag, Ordering::Relaxed); }
 pub fn forcing_need(p: &Chess, need: i64, budget: u64) -> Option<bool> {
     let by = p.turn();
     let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), them: rules::threats_arr(p, !by), edge: material_edge(p, by), last: None };
-    crate::pns::search(&Forcing { by, base: material_edge(p, by), need }, root, budget)
+    crate::pns::search(&Forcing { by, base: material_edge(p, by), need, corner: false }, root, budget)
 }
 
 /// A MATE by the forcing search (need beyond any material: only a mate proves it); the first move of the proof.
-pub fn forcing_mate(p: &Chess, budget: u64) -> Option<Move> {
+pub fn forcing_mate(p: &Chess, budget: u64) -> Option<Move> { forcing_mate_with(p, budget, false) }
+/// THE CORNERING MATE: the forcing search for a mate with the king's flight squares as threats (a quiet move that takes
+/// one is forcing) whatever the CORNERING switch -- asked only where a mate is what matters (plan.rs: our side when only a
+/// mate moves the expected result; their mate against a candidate's net). Cached per position.
+pub fn forcing_mate_cornering(p: &Chess, budget: u64) -> Option<Move> {
+    let key = (zkey(p), budget ^ 0xC0_C0);
+    if let Some(v) = CORNER_CACHE.with(|c| c.borrow().get(&key).cloned()) { return v; }
+    let v = crate::prof::timed("forcing_mate (cornering)", || forcing_mate_with(p, budget, true));
+    CORNER_CACHE.with(|c| c.borrow_mut().insert(key, v.clone()));
+    v
+}
+fn forcing_mate_with(p: &Chess, budget: u64, corner: bool) -> Option<Move> {
     let by = p.turn();
     let base = material_edge(p, by);
     let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), them: rules::threats_arr(p, !by), edge: base, last: None };
-    match crate::pns::search_with_proof(&Forcing { by, base, need: 10_000 }, root, budget) {
+    match crate::pns::search_with_proof(&Forcing { by, base, need: 10_000, corner }, root, budget) {
         (Some(true), Some(c)) => c.last,
         _ => None,
     }
@@ -697,7 +749,28 @@ fn forcing_gain_inner(p: &Chess, budget: u64) -> Option<bool> {
 fn forcing_gain_plain(p: &Chess, budget: u64) -> Option<bool> {
     let by = p.turn();
     let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), them: rules::threats_arr(p, !by), edge: material_edge(p, by), last: None };
-    crate::pns::search(&Forcing { by, base: material_edge(p, by), need: 1 }, root, budget)
+    crate::pns::search(&Forcing { by, base: material_edge(p, by), need: 1, corner: false }, root, budget)
+}
+
+/// forcing_proof_of(fen, need, budget, max) -> (the verdict, the proof's lines in SAN, each ending with the leaf's standing:
+/// the material banked and their static threats there) -- for digging a "wins by force".
+#[pyfunction]
+pub fn forcing_proof_of(fen: String, need: i64, budget: u64, max: usize) -> (Option<bool>, Vec<String>) {
+    let Some(p) = parse(&fen) else { return (None, vec![]) };
+    let by = p.turn();
+    let base = material_edge(&p, by);
+    let root = FState { pos: p.clone(), thr: rules::threats_arr(&p, by), them: rules::threats_arr(&p, !by), edge: base, last: None };
+    let (r, lines) = crate::pns::search_proof_lines(&Forcing { by, base, need, corner: false }, root, budget, max);
+    let out = lines.into_iter().map(|l| {
+        let mut sans: Vec<String> = Vec::new();
+        for w in l.windows(2) { if let Some(m) = &w[1].last { sans.push(crate::plan::san(&w[0].pos, &m.to_uci(CastlingMode::Standard).to_string())); } }
+        let leaf = l.last().unwrap();
+        let mut them: Vec<i16> = leaf.them.iter().copied().filter(|v| *v > 0).collect();
+        them.sort_unstable_by(|a, b| b.cmp(a));
+        format!("{}  [banked {}, their threats {:?}, our best capture {}{}]", sans.join(" "), leaf.edge - base, them,
+            leaf.thr.iter().copied().max().unwrap_or(0), if leaf.pos.is_check() { ", in check" } else { "" })
+    }).collect();
+    (r, out)
 }
 
 /// forcing_value_of(fen, budget) -> the forcing value and its first move (uci) for the side to move, and the search
@@ -719,10 +792,23 @@ fn forcing_value_inner(p: &Chess, budget: u64) -> Option<(Move, i64)> {
     let base = material_edge(p, by);
     let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), them: rules::threats_arr(p, !by), edge: base, last: None };
     let mut best: Option<(Move, i64)> = None;
+    let mut fail: Option<i64> = None;
+    let prove = |need: i64| match crate::pns::search_with_proof(&Forcing { by, base, need, corner: false }, root.clone(), budget) {
+        (Some(true), Some(c)) => c.last,
+        _ => None,
+    };
     for need in [1i64, 2, 3, 5, 9] {
-        match crate::pns::search_with_proof(&Forcing { by, base, need }, root.clone(), budget) {
-            (Some(true), Some(c)) => { if let Some(m) = c.last { best = Some((m, need)); } }
-            _ => break,
+        match prove(need) { Some(m) => best = Some((m, need)), None => { fail = Some(need); break; } }
+    }
+    // THE EXACT VALUE between the rungs (2026-10-12, the dig [16]: their d1=Q read as 5 -- the ladder's last proven rung --
+    // where it wins 8): the gap to the first failing rung bisected (beyond 9: up to a queen and a rook)
+    if EXACT_VALUE.load(Ordering::Relaxed) {
+        if let Some((_, lo0)) = best.clone() {
+            let (mut lo, mut hi) = (lo0, fail.unwrap_or(15));
+            while hi - lo > 1 {
+                let mid = (lo + hi) / 2;
+                match prove(mid) { Some(m) => { best = Some((m, mid)); lo = mid; } None => hi = mid }
+            }
         }
     }
     best

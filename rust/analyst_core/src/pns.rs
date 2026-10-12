@@ -45,6 +45,29 @@ pub fn search<P: Problem>(p: &P, root: P::State, budget: u64) -> Option<bool> { 
 
 /// `search`, and when proven the root's proving child (the first move of the proof).
 pub fn search_with_proof<P: Problem>(p: &P, root: P::State, budget: u64) -> (Option<bool>, Option<P::State>) {
+    let (r, first, _) = run(p, root, budget);
+    (r, first)
+}
+
+/// THE PROOF AS LINES (for digging and for the explanation): the search, then the proof tree walked -- at a node of ours
+/// the first proven child, at a node of theirs every child -- each line as the states along it, at most `max` lines.
+pub fn search_proof_lines<P: Problem>(p: &P, root: P::State, budget: u64, max: usize) -> (Option<bool>, Vec<Vec<P::State>>) {
+    let (r, _, t) = run(p, root, budget);
+    let mut out: Vec<Vec<P::State>> = Vec::new();
+    if r != Some(true) { return (r, out); }
+    fn walk<S: Clone>(t: &[Node<S>], i: usize, path: &mut Vec<S>, out: &mut Vec<Vec<S>>, max: usize) {
+        if out.len() >= max { return; }
+        path.push(t[i].s.clone());
+        let kids: Vec<usize> = if t[i].or { t[i].kids.iter().copied().filter(|k| t[*k].pn == 0.0).take(1).collect() } else { t[i].kids.clone() };
+        if kids.is_empty() { out.push(path.clone()); } else { for k in kids { walk(t, k, path, out, max); } }
+        path.pop();
+    }
+    let mut path = Vec::new();
+    walk(&t, 0, &mut path, &mut out, max);
+    (r, out)
+}
+
+fn run<P: Problem>(p: &P, root: P::State, budget: u64) -> (Option<bool>, Option<P::State>, Vec<Node<P::State>>) {
     use std::sync::atomic::Ordering::Relaxed;
     let rk = p.key(&root);
     let logging = LOG.load(Relaxed);
@@ -58,7 +81,7 @@ pub fn search_with_proof<P: Problem>(p: &P, root: P::State, budget: u64) -> (Opt
     };
     let _ = HashMap::<u64, ()>::new();
     while t[0].pn > 0.0 && t[0].dn > 0.0 {
-        if expanded >= budget { if logging { log_tree(&mut t, false); } return (fin(None, expanded), None); }
+        if expanded >= budget { if logging { log_tree(&mut t, false); } return (fin(None, expanded), None, t); }
         let mut i = 0usize;
         while !t[i].open {
             let pick_pn = t[i].or;
@@ -120,7 +143,7 @@ pub fn search_with_proof<P: Problem>(p: &P, root: P::State, budget: u64) -> (Opt
     let r = Some(t[0].pn == 0.0);
     let first = if t[0].pn == 0.0 { t[0].kids.iter().find(|k| t[**k].pn == 0.0).map(|k| t[*k].s.clone()) } else { None };
     if logging { log_tree(&mut t, r == Some(true)); }
-    (fin(r, expanded), first)
+    (fin(r, expanded), first, t)
 }
 
 fn log_tree<S>(t: &mut [Node<S>], root_proven: bool) {

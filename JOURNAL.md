@@ -29198,3 +29198,42 @@ missing 79 (63%), policy off 32 (25%; soft: the policy would have stopped 2,479 
 forcing x10 7 (6%), proofs x5 5 (4%), all 3 (2%). The 79: 41 positional defences, 17 wrong wins where Stockfish's move is
 forcing, 6 where it is quiet, 9 counter-attacks, 6 catastrophic. Dig of all 79 running (missing_lemma_dig_seed7.md),
 including whether today's fixes or the floor caused any miss.
+THE SEED-7 DIG BUILT (2026-10-12 08:16 PDT; Kaveh: "keep going" -- the three candidates). Each piece a switch; graded on a
+FRESH sample (seed 8) besides the dug one (seed 7), by a DETERMINISTIC grader (regrade.py: each (position, move) once,
+a fresh Stockfish game per analysis, depth 12, cached) -- the review's own Stockfish carries its hash between analyses:
+the same move in the same position was graded 15 and 294 cp in two runs, so configurations a few decisions apart could
+not be told apart before. KEPT ON: (1) PROOF_FIRST -- the frame entries keyed by (move, target): a full proof of a move
+is no longer capped by a frame value of the same move against another target (dig [20], Bxh2+); (2) FLOOR_PROMO -- their
+floor counts a promotion (its target square is empty, the filter "a piece of ours" dropped it; dig [16], d1=Q);
+(3) COMPOSED_FLOOR -- their floor is their capture minus what our threat elsewhere then takes (dig [22]: exd4 loses the
+queen); (4) EXACT_VALUE -- the forcing value bisected between the ladder's rungs (their d1=Q: 5 -> 8); (5) PIN_COUNTER --
+a pinned piece's move making a counter-threat as big as the loss is proved, not refused (dig [55]); (6) BANKED_FORCING --
+in the forcing judge, banked material is never accepted while we are in check (a check takes the tempo; dig [43]:
+"fxg5 wins 3 by force" stood on Qg7+ with their checks to follow -- now not proven). OBS seed 8: before 1,340 decisions,
+150+ cp 134 (10.0%), blunders by winning chances 77 (5.7%); after 1,361, 116 (8.5%), 68 (5.0%); 97 moves changed: 19
+fixed, 3 broken (blunders 12 / 4). OBS seed 7 against this morning's store: 1,300, 119 (9.2%), 68 (5.2%) -> 1,322, 105
+(7.9%), 52 (3.9%); 120 changed: 28 fixed, 12 broken (blunders 20 / 4). Per switch (both samples, the switch alone
+off restores the old move): composed floor fixes 25 / breaks 11, exact value 9 / 2, proof first 6 / 1, banked rule 3 / 3.
+Time: review 46 -> 47 s; the profiled game 10000470 2.7 -> 2.9 s. KEPT OFF (switches): THE TIE-BREAK IN ORDER (in hand,
+then the cheapest capturer on the same square, then the threat balance, then activity) -- on the dug sample it took
+Stockfish's move in most of the 7 wrong-capturer cases, on the fresh one it only moved losses: OBS against the old
+tie-break, in hand alone 60 moves changed (4 fixed / 9 broken), + cheapest capturer 143 (7 / 13), + threat balance 214
+(24 / 23), all three + the tie against the geometry's defence 281 (26 / 25); dxe5 "the cheapest capturer" lost where
+Stockfish kept the structure -- equal nets are positional, as the threat count of 2026-10-10 found. THEIR MATE AND CHECKS
+AT A BANKED LEAF (BANKED_THREATS): fixes [15] but OBS seed 8 8.2% -> 8.1% at +32% time (lazy and cached: 46 -> 61 ms a
+position). THE QUIET-FIRST MATES (OUR_QUIET_MATE, THEIR_QUIET_MATE): the stop policy stops every line of a mate search at
+the root ([61], [47]: 1 expansion; [48] K+Q v K: 18); without it [48] mates (Qc5, 5,212 expansions) and [61] / [47] are
+unknown at 20,000 -- the quiet-first mate needs its own mechanism. THEIR CHECK VOIDS THE COMPOSED FLOOR (FLOOR_NO_CHECK,
+for the floor's breakages: Qf5 "answers exd6", Qxd7+ first): OBS seed 8 8.5% -> 8.9%, seed 7 blunders 3.9% -> 4.3% --
+too blunt. Bug search: net_bound read their floor without the outcome floor's filter net_after applies (the bound could
+fall under the net); fixed. New tools: dig_replay.py (a dig's cases decided again and graded), regrade.py, the forcing
+search's proof as lines (forcing_proof_of).
+THE ESCAPE TEST'S MAGNITUDE CORRECTED (2026-10-12 08:22 PDT; found by the test suite, 1 of 400 failing). Yesterday's
+ESCAPE_NEED asked whether, after the target's escape, we still force the target's WHOLE value (plus what the escape
+took): Rg7 against the pinned g3 queen -- Qxg7 Qxg7 wins 4 -- was refused outright at need 9 + 5, though the planner
+proves lower gains too. Now the claim is the outcome floor (the smallest gain that matters), net of what the escape took
+(ESCAPE_FLOOR, on). OBS seed 8: 8.5% / 5.0% -> 7.9% / 4.5% (150+ cp / blunders by winning chances), decisions 1,361 ->
+1,414; 35 moves changed: 10 fixed, 1 broken (blunders 8 / 0). OBS seed 7: 7.9% / 3.9% -> 7.7% / 3.8%, 1,322 -> 1,360;
+33 changed: 6 fixed, 0 broken (5 / 0). Cost: OBS held-out games 1-4 45.3 -> 61.4 ms a position (proofs 26.4 -> 29.6);
+review 47 -> 62 s; the profiled game 2.9 -> 3.9 s -- part of yesterday's -32% came from refusing moves that win. Today in
+all, seed 8 (fresh, deterministic grades): 10.0% / 5.7% -> 7.9% / 4.5%.

@@ -152,8 +152,10 @@ thread_local! {
     // their reasoning after a move, once per top-level plan (2026-10-10: the same move was valued up to four times --
     // the wins' ranking, the defences, the best net, the audit)
     static NET_CACHE: RefCell<HashMap<String, (i64, Option<String>, u32, u64)>> = RefCell::new(HashMap::new());
-    // the moves whose win came from the FRAME fallback ("certainly nets v in its frame"), not a full proof
-    static FRAMED: RefCell<std::collections::HashSet<String>> = RefCell::new(std::collections::HashSet::new());
+    // the WINS (move, target) that came from the FRAME fallback ("certainly nets v in its frame"), not a full proof -- keyed
+    // by the target too (2026-10-12, the dig [20]: Bxh2+ proved "wins 2 by force" and framed against the a7 rook; the
+    // frame's cap overrode the full proof)
+    static FRAMED: RefCell<std::collections::HashSet<(String, Square)>> = RefCell::new(std::collections::HashSet::new());
 }
 
 fn snapshot(p: &Chess) -> (Vec<u8>, String) {
@@ -294,7 +296,7 @@ pub struct Plan { pub trace: Vec<String>, pub best: Option<(String, String, i64,
 
 fn val(r: Role) -> i64 { if r == Role::King { 1000 } else { kernel_value(r) } }
 
-fn san(pos: &Chess, uci: &str) -> String {
+pub(crate) fn san(pos: &Chess, uci: &str) -> String {
     uci.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok())
         .map(|m| shakmaty::san::San::from_move(pos, &m).to_string()).unwrap_or_else(|| uci.to_string())
 }
@@ -690,7 +692,8 @@ fn tie_score(pos: &Chess, m: &Move) -> i64 {
     let q = after(pos, m);
     // material taken NOW first (2026-10-10, game 10000001 ply 70: Qh4 and Rxf6 both net 4; activity chose the quiet queen
     // move, Stockfish takes the rook) -- then the moved piece's activity
-    let taken = (kernel_material(&q, us) - kernel_material(pos, us)).max(0);
+    // (TIE_ORDER: the material taken is read by tie_better first -- as the part of the net in hand -- not here)
+    let taken = if TIE_ORDER.load(Ordering::Relaxed) { 0 } else { (kernel_material(&q, us) - kernel_material(pos, us)).max(0) };
     let qb = q.board();
     let s = m.to();
     let Some(p) = qb.piece_at(s) else { return 1000 * taken };
@@ -719,6 +722,42 @@ fn tie_score(pos: &Chess, m: &Move) -> i64 {
     1000 * taken + score
 }
 
+/// THE TIE-BREAK IN ORDER (2026-10-12, the seed-7 dig: 7 equal gains taken with the wrong piece, 2 equal-net trades chosen
+/// for the material they took -- the net already counts it -- and 10 equal-net defences where Stockfish's move also took
+/// their threats away): is `m` better than `cur`, both netting `net`?
+///   1 IN HAND      the part of the net realized now, min(material taken, net) -- a proved gain lies ahead, a capture is
+///                  banked (2026-10-10, game 10000001 ply 70: Rxf6 over the quiet Qh4, both 4)
+///   2 THE CHEAPEST CAPTURER on the same square -- the exchange law's order (Lean Ideas.Exchange.cheapestF captures with
+///                  the cheapest; its optimality is not proven there)
+///   3 THE THREAT BALANCE after the move: the worth of our static threats minus theirs (their threats left are tempi we
+///                  owe, ours tempi they owe)
+///   4 ACTIVITY of the moved piece (tie_score; Kaveh 2026-10-10: until a strategic layer steps in)
+/// (TIE_ORDER off: tie_score alone, its material-taken term first)
+fn tie_better(pos: &Chess, m: &Move, cur: &Move, net: i64) -> bool {
+    if !TIE_BREAK.load(Ordering::Relaxed) { return false; }
+    if !TIE_ORDER.load(Ordering::Relaxed) { return tie_score(pos, m) > tie_score(pos, cur); }
+    let us = pos.turn();
+    let (qm, qc) = (after(pos, m), after(pos, cur));
+    let hand = |q: &Chess| (kernel_material(q, us) - kernel_material(pos, us)).max(0).min(net.max(0));
+    let (hm, hc) = (hand(&qm), hand(&qc));
+    if hm != hc { return hm > hc; }
+    if TIE_CHEAP.load(Ordering::Relaxed) && m.is_capture() && cur.is_capture() && m.to() == cur.to() {
+        let (vm, vc) = (capture_order(m.role()), capture_order(cur.role()));
+        if vm != vc { return vm < vc; }
+    }
+    let balance = |q: &Chess| -> i64 {
+        let worth = |c: Color| rules::threats_of(q, c).values().copied().filter(|v| *v > 0).sum::<i64>();
+        worth(us) - worth(!us)
+    };
+    if TIE_BALANCE.load(Ordering::Relaxed) {
+        let (bm, bc) = (balance(&qm), balance(&qc));
+        if bm != bc { return bm > bc; }
+    }
+    tie_score(pos, m) > tie_score(pos, cur)
+}
+/// A capturer's place in the exchange law's order: by value, the king last.
+fn capture_order(r: Role) -> i64 { if r == Role::King { 100 } else { kernel_value(r) } }
+
 /// THE NET OF A MOVE (Kaveh 2026-10-10: "with a logic-based play there should be no blunders ... whatever the blunder
 /// guard is doing should be part of the main planner's job"): the one value every decision is chosen by --
 ///   a quiet move with a proved win: its proved gain (the proof searched every reply)
@@ -728,10 +767,45 @@ fn tie_score(pos: &Chess, m: &Move) -> i64 {
 /// THE FLOOR of their win after a move (they to move in `q`): their biggest static threat on a piece of ours -- by the
 /// exchange law, a promotion, a trapped piece; a mate threat is not material; in check only a capture answering the
 /// check counts (a check is a tempo). Their reasoning (`net_after`) never falls below it.
+/// (2026-10-12, the dig: a PROMOTION counts -- its target is the promotion square, empty, and the filter on "a piece of
+/// ours" dropped it: their d1=Q, worth 8, was read through the forcing ladder as 5 -- and THE COMPOSED FLOOR: their
+/// capture minus what OUR threat elsewhere then takes (the exchange law's composed tier from their side; [22]: after
+/// Nxd4, discovering Qd1 on their g4 queen, exd4 "wins 3" -- and loses the queen))
 fn their_floor(q: &Chess) -> Option<Threat> {
     let us_c = !q.turn();
-    let legal_caps: Bitboard = if q.is_check() { q.legal_moves().iter().filter(|m| m.is_capture()).map(|m| m.to()).collect() } else { Bitboard::FULL };
-    threats(q, q.turn()).into_iter().filter(|t| !t.mate && legal_caps.contains(t.target) && q.board().piece_at(t.target).map_or(false, |p| p.color == us_c)).max_by_key(|t| (t.value, t.target))
+    let legal = q.legal_moves();
+    let legal_caps: Bitboard = if q.is_check() { legal.iter().filter(|m| m.is_capture()).map(|m| m.to()).collect() } else { Bitboard::FULL };
+    let promo_of = |t: &Threat| -> Option<Move> {
+        if !FLOOR_PROMO.load(Ordering::Relaxed) { return None; }
+        let m = t.how.as_ref()?.parse::<shakmaty::uci::UciMove>().ok()?.to_move(q).ok()?;
+        (m.is_promotion() && legal.contains(&m)).then_some(m)
+    };
+    let mut cands: Vec<(Threat, Option<Move>)> = threats(q, q.turn()).into_iter().filter(|t| !t.mate).filter_map(|t| {
+        if let Some(m) = promo_of(&t) { return Some((t, Some(m))); }
+        (legal_caps.contains(t.target) && q.board().piece_at(t.target).map_or(false, |p| p.color == us_c)).then_some((t, None))
+    }).collect();
+    cands.sort_by(|a, b| b.0.value.cmp(&a.0.value).then(b.0.target.cmp(&a.0.target)));
+    if !COMPOSED_FLOOR.load(Ordering::Relaxed) || cands.is_empty() { return cands.into_iter().next().map(|c| c.0); }
+    // our counter-threat now (they to move): none -> the plain floor
+    let ours_now = rules::threats_of(q, us_c).values().copied().max().unwrap_or(0);
+    if ours_now <= 0 { return cands.into_iter().next().map(|c| c.0); }
+    // (THEIR CHECK takes the tempo back -- Kaveh 2026-10-11: "a check removes the possibility of gaining a tempo": they
+    // check, we answer, they take; 2026-10-12, the replay: Qf5 "answers exd6" because exd6 opens our queen onto theirs --
+    // Qxd7+ first, then exd6: the plain floor stands)
+    if FLOOR_NO_CHECK.load(Ordering::Relaxed) && !crate::threat::checking_moves(q).is_empty() { return cands.into_iter().next().map(|c| c.0); }
+    let mut best: Option<Threat> = None;
+    for (t, pm) in cands {
+        if best.as_ref().map_or(false, |b| t.value <= b.value) { break; }   // sorted: no later threat can beat it
+        let mv = pm.or_else(|| legal.iter().filter(|m| m.to() == t.target).min_by_key(|m| kernel_value(m.role())).cloned());
+        let Some(mv) = mv else { continue };
+        let q2 = after(q, &mv);
+        // (their capture with CHECK: our counter-threat waits -- the floor stands; our recapture on the same square is part
+        // of the exchange already)
+        let ours = if q2.is_check() { 0 } else { rules::threats_of(&q2, us_c).iter().filter(|(x, _)| **x as u32 != t.target as u32).map(|(_, v)| *v).max().unwrap_or(0).max(0) };
+        let v = t.value - ours;
+        if v > 0 && best.as_ref().map_or(true, |b| v > b.value) { best = Some(Threat { value: v, ..t }); }
+    }
+    best
 }
 
 /// AN UPPER BOUND on a candidate's net, from the floor alone (no reasoning): a move not proved a win nets at most what it
@@ -742,7 +816,9 @@ fn net_bound(pos: &Chess, m: &Move, wins: &[(String, Square, i64)]) -> i64 {
     let q = after(pos, m);
     if q.is_checkmate() { return MATE_GOAL; }
     let taken = kernel_material(&q, pos.turn()) - kernel_material(pos, pos.turn());
-    let floor = their_floor(&q).map_or(0, |t| t.value);
+    // (the floor exactly as net_after applies it -- only from their outcome floor up: 2026-10-12, the bug search: a floor
+    // net_after ignores, counted here, made the "upper bound" smaller than the net and could end the scan early)
+    let floor = their_floor(&q).filter(|t| t.value >= gain_floor(kernel_material(&q, q.turn()))).map_or(0, |t| t.value);
     let g = wins.iter().filter(|w| w.0 == u).map(|w| w.2).max();
     g.map_or(taken - floor, |g| g.max(taken - floor))
 }
@@ -771,6 +847,46 @@ pub fn gain_floor_of(bal: i64) -> i64 {
     MATE_GOAL
 }
 
+// THE SEED-7 DIG'S FIXES (2026-10-12; each a switch, all on): the tie-break by what is in hand, the cheapest capturer and
+// the threat balance; a full proof over a frame value; their floor with promotions and composed with our counter-threat;
+// the pin refusal waived for a counter-threat as big as the loss; the tie-break also against the geometry's defence
+pub static TIE_ORDER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static TIE_CHEAP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+pub static TIE_BALANCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_tie_cheap(flag: bool) -> PyResult<()> { TIE_CHEAP.store(flag, Ordering::Relaxed); Ok(()) }
+#[pyfunction]
+pub fn set_tie_balance(flag: bool) -> PyResult<()> { TIE_BALANCE.store(flag, Ordering::Relaxed); Ok(()) }
+pub static PROOF_FIRST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+pub static FLOOR_PROMO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+pub static COMPOSED_FLOOR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+pub static FLOOR_NO_CHECK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[pyfunction]
+pub fn set_floor_no_check(flag: bool) -> PyResult<()> { FLOOR_NO_CHECK.store(flag, Ordering::Relaxed); Ok(()) }
+pub static ESCAPE_FLOOR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_escape_floor(flag: bool) -> PyResult<()> { ESCAPE_FLOOR.store(flag, Ordering::Relaxed); Ok(()) }
+pub static PIN_COUNTER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+pub static TIE_DEFENCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static OUR_QUIET_MATE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static THEIR_QUIET_MATE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[pyfunction]
+pub fn set_tie_order(flag: bool) -> PyResult<()> { TIE_ORDER.store(flag, Ordering::Relaxed); Ok(()) }
+#[pyfunction]
+pub fn set_proof_first(flag: bool) -> PyResult<()> { PROOF_FIRST.store(flag, Ordering::Relaxed); Ok(()) }
+#[pyfunction]
+pub fn set_floor_promo(flag: bool) -> PyResult<()> { FLOOR_PROMO.store(flag, Ordering::Relaxed); Ok(()) }
+#[pyfunction]
+pub fn set_composed_floor(flag: bool) -> PyResult<()> { COMPOSED_FLOOR.store(flag, Ordering::Relaxed); Ok(()) }
+#[pyfunction]
+pub fn set_pin_counter(flag: bool) -> PyResult<()> { PIN_COUNTER.store(flag, Ordering::Relaxed); Ok(()) }
+#[pyfunction]
+pub fn set_tie_defence(flag: bool) -> PyResult<()> { TIE_DEFENCE.store(flag, Ordering::Relaxed); Ok(()) }
+#[pyfunction]
+pub fn set_our_quiet_mate(flag: bool) -> PyResult<()> { OUR_QUIET_MATE.store(flag, Ordering::Relaxed); Ok(()) }
+#[pyfunction]
+pub fn set_their_quiet_mate(flag: bool) -> PyResult<()> { THEIR_QUIET_MATE.store(flag, Ordering::Relaxed); Ok(()) }
+
 pub static DEFENCE_TRADES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_defence_trades(flag: bool) -> PyResult<()> { DEFENCE_TRADES.store(flag, Ordering::Relaxed); Ok(()) }
@@ -786,11 +902,16 @@ fn net_after_inner(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs
     let u = m.to_uci(CastlingMode::Standard).to_string();
     let q = after(pos, m);
     if q.is_checkmate() { return (MATE_GOAL, None); }
+    // (A FULL PROOF DOMINATES A FRAME VALUE for the same move -- PROOF_FIRST; off: any frame entry marks the move framed)
+    let is_framed = |w: &(String, Square, i64)| FRAMED.with(|f| f.borrow().contains(&(w.0.clone(), w.1)));
+    let full = wins.iter().filter(|w| w.0 == u && !is_framed(w)).map(|w| w.2).max();
     let proved = wins.iter().filter(|w| w.0 == u).map(|w| w.2).max();
+    let framed = if PROOF_FIRST.load(Ordering::Relaxed) { full.is_none() && proved.is_some() } else { wins.iter().any(|w| w.0 == u && is_framed(w)) };
+    let proved = if PROOF_FIRST.load(Ordering::Relaxed) && full.is_some() { full } else { proved };
     let taken = kernel_material(&q, pos.turn()) - kernel_material(pos, pos.turn());
     // (a quiet move with a FULL proof: its value stands -- the proof searched every reply; a FRAME value goes through the
     // board below: 2026-10-11, Qc2 "wins 2" against the b1 rook in its frame, Rc1 then traps the queen)
-    let framed_quiet = proved.is_some() && taken <= 0 && FRAMED.with(|f| f.borrow().contains(&u));
+    let framed_quiet = proved.is_some() && taken <= 0 && framed;
     if let Some(g) = proved { if (taken <= 0 && !framed_quiet) || g >= MATE_GOAL { return (g, None); } }
     // THE CHANGE FLAG (Kaveh 2026-10-10: "see how this change changes the state of another piece -- attacked twice and
     // defended twice, stable ... we remove a defender ... that change should flag the blunder"): their static threats
@@ -828,6 +949,13 @@ fn net_after_inner(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs
             // THEIR MATE THREAT (the cornering lemma for the king: checks, or the forcing search's net when CORNERING is on)
             // is their best win whatever else they have (2026-10-11, the surprise loop: dxc6 "nets 5" with Qb1+ mating)
             if v < MATE_GOAL { if let Some(mt) = threats(&q, q.turn()).into_iter().find(|t| t.mate) { v = MATE_GOAL; w = Some(format!("{} mates", mt.how.clone().unwrap_or_default())); } }
+            // (and THEIR MATE WITH A QUIET FIRST MOVE -- the forcing search with the king's flights as threats: 2026-10-12, the
+            // dig [61]: Qe8 "stops Nxe5", then Na5! ... Qxa7#; [47]: Rd7+ Kh6 Ree7 -- the checks-only search is blind to both)
+            if v < MATE_GOAL && THEIR_QUIET_MATE.load(Ordering::Relaxed) {
+                if let Some(m) = crate::threat::forcing_mate_cornering(&q, crate::threat::FBUDGET.load(Ordering::Relaxed)) {
+                    v = MATE_GOAL; w = Some(format!("{} mates by force", san(&q, &m.to_uci(CastlingMode::Standard).to_string())));
+                }
+            }
             let _ = us_c;
             NET_CACHE.with(|c| c.borrow_mut().insert(key, (v, w.clone(), tp.proofs, tp.nodes)));
             (v, w)
@@ -839,7 +967,6 @@ fn net_after_inner(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs
     // wins were lost when every capture was read by the board alone). The FRAME fallback's value ("certainly nets v in
     // its frame") is blind outside its frame -- fxe4 "nets 3", Qh7+ then wins outside it: the smaller of the two.
     let board = taken - theirs;
-    let framed = FRAMED.with(|f| f.borrow().contains(&u));
     // (a quiet frame value: what it wins in its frame minus their best win after the move -- their counterplay comes first)
     // (their MATE dominates any material proof of ours -- a proof's plies end before their net closes; the king is the
     // piece of infinite value: 2026-10-11, the surprise loop's catastrophic class)
@@ -898,7 +1025,7 @@ fn best_by_net_inner(pos: &Chess, wins: &[(String, Square, i64)], skip: &str, fl
             let u = m.to_uci(CastlingMode::Standard).to_string();
             let (net, why) = net_after(pos, &m, wins, pr, nd);
             let better = best.as_ref().map_or(true, |b| net > b.0 || (net == b.0 && b.1.parse::<shakmaty::uci::UciMove>().ok()
-                .and_then(|x| x.to_move(pos).ok()).map_or(true, |bm| tie_score(pos, &m) > tie_score(pos, &bm))));
+                .and_then(|x| x.to_move(pos).ok()).map_or(true, |bm| tie_better(pos, &m, &bm, net))));
             if better { best = Some((net, u, why)); }
         }
         return best;
@@ -911,7 +1038,7 @@ fn best_by_net_inner(pos: &Chess, wins: &[(String, Square, i64)], skip: &str, fl
         let u = m.to_uci(CastlingMode::Standard).to_string();
         let (net, why) = net_after(pos, &m, wins, pr, nd);
         let better = best.as_ref().map_or(true, |b| net > b.0 || (net == b.0 && b.1.parse::<shakmaty::uci::UciMove>().ok()
-            .and_then(|x| x.to_move(pos).ok()).map_or(true, |bm| tie_score(pos, &m) > tie_score(pos, &bm))));
+            .and_then(|x| x.to_move(pos).ok()).map_or(true, |bm| tie_better(pos, &m, &bm, net))));
         if better { best = Some((net, u, why)); }
     }
     best
@@ -996,6 +1123,18 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
             mark("mate first");
             return Plan { trace, best: d.clone(), proofs, nodes, target: b.king_of(them), immediate: d, wins: vec![(u, b.king_of(them).unwrap_or(m.to()), MATE_GOAL)] };
         }
+        // ONLY A MATE MATTERS (the outcome floor beyond the ladder -- Kaveh 2026-10-11: "a queen up, who cares about a pawn,
+        // I want to mate"): the mate whose first move is quiet -- the forcing search with the king's flights as threats
+        // (the cornering lemma); 2026-10-12, the dig [48]: K+Q vs K, Qb5! mates in 3, the checks-only search saw nothing
+        if !immediate_only && OUR_QUIET_MATE.load(Ordering::Relaxed) && floor_us >= MATE_GOAL {
+            if let Some(m) = crate::threat::forcing_mate_cornering(pos, crate::threat::FBUDGET.load(Ordering::Relaxed)) {
+                let u = m.to_uci(CastlingMode::Standard).to_string();
+                trace.push(format!("mate: {} mates by force (a quiet first move; proven: every reply searched) -- no further analysis", san(pos, &u)));
+                let d = Some((String::new(), u.clone(), MATE_GOAL, format!("{} mates by force", san(pos, &u))));
+                mark("mate first");
+                return Plan { trace, best: d.clone(), proofs, nodes, target: b.king_of(them), immediate: d, wins: vec![(u, b.king_of(them).unwrap_or(m.to()), MATE_GOAL)] };
+            }
+        }
     }
     mark("mate first");
     let threat = if immediate_only { 0 } else {
@@ -1064,6 +1203,9 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
         let on_line = b.piece_at(from).map_or(false, |x| x.role != Role::Knight)
             && shakmaty::attacks::between(*sl, *tgt).contains(m.to());
         if on_line { return None; }
+        // (a COUNTER-THREAT as big as the loss is a tempo of ours: the move is proved, not refused -- 2026-10-12, the dig
+        // [55]: Nxc6, "pinned, it would allow Bxg3 wins 9", attacks their queen)
+        if PIN_COUNTER.load(Ordering::Relaxed) && rules::threats_of(&after(pos, m), us).values().any(|v| *v >= *loss) { return None; }
         Some(format!("pinned: it would allow {why} (worth {loss})"))
     };
     if !immediate_only {
@@ -1283,8 +1425,12 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
                                 let qe = after(&q, e);
                                 if crate::threat::ESCAPE_NEED.load(Ordering::Relaxed) {
                                     // the magnitude: what the claim still needs after the escape (an escape that captures
-                                    // raises it by what it took)
-                                    let need = goal - (kernel_material(&qe, us) - kernel_material(pos, us));
+                                    // raises it by what it took) -- the claim being "wins something that matters", the
+                                    // outcome floor, not the target's whole value: the planner proves lower gains too
+                                    // (2026-10-12, the test suite: Rg7 against the pinned g3 queen, Qxg7 Qxg7 wins 4; at
+                                    // need 9 + 5 the lemma refused it outright -- ESCAPE_FLOOR)
+                                    let claim = if ESCAPE_FLOOR.load(Ordering::Relaxed) { floor_us.min(goal) } else { goal };
+                                    let need = claim - (kernel_material(&qe, us) - kernel_material(pos, us));
                                     crate::threat::any_threat_reaching(&qe, us, &before_t, need) == Some(false)
                                 } else { any_new_threat(&qe, us, &before_t) == Some(false) }
                             });   // certainly none: unknown proves
@@ -1330,7 +1476,7 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
                         if v >= 1 {
                             trace.push(format!("    {} certainly nets {v} (its value in the frame)", san(pos, s)));
                             ok = true; g = v.min(g);
-                            FRAMED.with(|f| f.borrow_mut().insert(s.clone()));
+                            FRAMED.with(|f| f.borrow_mut().insert((s.clone(), t)));
                         }
                     }
                 }
@@ -1456,7 +1602,7 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
             let Some(m) = u.parse::<shakmaty::uci::UciMove>().ok().and_then(|x| x.to_move(pos).ok()) else { continue };
             let (net, why) = net_after(pos, &m, &wins, &mut proofs, &mut nodes);
             let better = top.as_ref().map_or(true, |x| net > x.0 || (net == x.0 && x.1.parse::<shakmaty::uci::UciMove>().ok()
-                .and_then(|y| y.to_move(pos).ok()).map_or(true, |xm| tie_score(pos, &m) > tie_score(pos, &xm))));
+                .and_then(|y| y.to_move(pos).ok()).map_or(true, |xm| tie_better(pos, &m, &xm, net))));
             if better { top = Some((net, u, t, why)); }
         }
         match top {
@@ -1585,7 +1731,7 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
                         let better = match &best {
                             Some(x) if x.0 == "defend" => net > x.2 || (net == x.2 && {
                                 let cur = x.1.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(pos).ok());
-                                cur.map_or(true, |c| tie_score(pos, &m) > tie_score(pos, &c))
+                                cur.map_or(true, |c| tie_better(pos, &m, &c, net))
                             }),
                             _ => true,
                         };
@@ -1639,9 +1785,16 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
                 // (DEFENCE_TRADES: also when the answer only holds -- nets 0 -- a counter-attack elsewhere may net more: the
                 // dig, three never compared)
                 if cur_net < 0 || (DEFENCE_TRADES.load(Ordering::Relaxed) && cur_net <= 0) { if let Some((net, u, why)) = best_by_net(pos, &wins, &cur_mv, cur_net, 1, &mut proofs, &mut nodes) {
-                    if net > cur_net || best.is_none() {
-                        trace.push(format!("    the best net: {} nets {net}{} -- better than {} ({cur_net})", san(pos, &u),
-                            why.map(|w| format!(" (they then have {w})")).unwrap_or_default(), if cur_mv.is_empty() { "nothing".to_string() } else { san(pos, &cur_mv) }));
+                    // (TIE_DEFENCE: an equal net goes to the tie-break against the geometry's defence -- 2026-10-12, the dig:
+                    // equal-net defences where Stockfish's move also took their other threats away)
+                    let tie_wins = TIE_DEFENCE.load(Ordering::Relaxed) && net == cur_net && !cur_mv.is_empty() && {
+                        let um = u.parse::<shakmaty::uci::UciMove>().ok().and_then(|x| x.to_move(pos).ok());
+                        let cm = cur_mv.parse::<shakmaty::uci::UciMove>().ok().and_then(|x| x.to_move(pos).ok());
+                        match (um, cm) { (Some(um), Some(cm)) => tie_better(pos, &um, &cm, net), _ => false }
+                    };
+                    if net > cur_net || best.is_none() || tie_wins {
+                        trace.push(format!("    the best net: {} nets {net}{} -- {} {} ({cur_net})", san(pos, &u),
+                            why.map(|w| format!(" (they then have {w})")).unwrap_or_default(), if tie_wins { "the tie-break over" } else { "better than" }, if cur_mv.is_empty() { "nothing".to_string() } else { san(pos, &cur_mv) }));
                         best = Some(("defend".to_string(), u.clone(), net, format!("{} answers their {} (nets {net})", san(pos, &u), san(&p0, &tseed))));
                     }
                 } }

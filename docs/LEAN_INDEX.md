@@ -31,6 +31,7 @@ Do not edit by hand.
 
 - **def `Ideas.Exchange.valueF`** (line 27): The value of the capture game to the mover, with `fuel` at least the number of pieces: `onS` the value of the piece on the square, `mine` the mover's pieces able to capture there (values), `theirs` the opponent's
 - **def `Ideas.Exchange.cheapestF`** (line 36): The classical static exchange: both sides capture with their cheapest piece (the lists ascending).
+  - used by: rust/analyst_core/src/plan.rs
 - **theorem `Ideas.Exchange.valueF_nonneg`** (line 43)
   - used by: catspace/incubator/analyst/exchange_frame.py
 - **theorem `Ideas.Exchange.value_nonneg`** (line 51)
@@ -63,6 +64,7 @@ Do not edit by hand.
 - **def `Ideas.ExchangeLaw.hypotheses`** (line 145): The nine hypotheses, by name.
 - **def `Ideas.ExchangeLaw.intermezzoB`** (line 195): THE INTERMEZZO'S PRICE: the opponent's best static capture elsewhere after our first capture (0 when none pays).
 - **def `Ideas.ExchangeLaw.honestComposedB`** (line 211): THE COMPOSED TIER (measured 2026-10-08 before it was stated: on 452 frames the exact outcome is at least this in 97%): the honest frame with `noOtherCapture` dropped -- the opponent may have a capture elsewhere that pays
+  - used by: rust/analyst_core/src/threat.rs
 - **def `Ideas.ExchangeLaw.honestXrayB`** (line 218): THE X-RAY TIER (measured 2026-10-08 before it was stated: 230 of 236 frames): the frame with `noXray` dropped -- the hidden pieces play in the capture game with chains -- and `noOtherCapture` dropped, the intermezzo pric
 - **def `Ideas.ExchangeLaw.settledB`** (line 227): A settled position for `c` on `s` (Kaveh 2026-10-07: "no paying recapture anywhere that creates a greater threat"): the opponent to move and either mated, or `c`'s material at least `target`, no recapture on `s` that pay
 - **def `Ideas.ExchangeLaw.settledWithinAt`** (line 240): THE CLAIM: after `c`'s cheapest capture on `s`, a settled position within the frame's size in plies, whatever the opponent does
