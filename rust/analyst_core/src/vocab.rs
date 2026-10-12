@@ -3,16 +3,19 @@
 //! CERTIFIER: how many stuck positions a frame's measure, extended by a candidate term, certifies (progress against every
 //! reply). The proposer (catspace/incubator/analyst/proposer.py) builds the terms and reads the winners back in words.
 //!
-//! Terms are S-expressions. Squares: W (our king), L (the lone king), P (our other piece). Sets: edge, corner, attacked
-//! (the squares we attack, the lone king lifted), free (the rest), (box S), (rank S), (file S), (line S S), (between S S),
-//! (nearer S S), (and A B), (or A B), (not A), (reach S A). Numbers: (count A), (dist S S), (sum N N).
+//! Terms are S-expressions. Squares: W (our king), L (the lone king), P (our other piece), O (their other piece -- each
+//! the first in the board's square order, a1 b1 ... h8). Sets: edge, corner, attacked (the squares we attack, their king
+//! lifted), free (the rest), hit (the squares they attack, our king lifted), unhit (the rest), ours / theirs (the squares
+//! of each side's pieces other than the king), (box S), (rank S), (file S), (line S S), (between S S), (nearer S S),
+//! (and A B), (or A B), (not A), (reach S A). Numbers: (count A), (dist S S), (sum N N). (Kaveh 2026-10-12: "base vocab
+//! should be complete with words for their pieces" -- O, hit, unhit, ours, theirs.)
 use super::*;
 use shakmaty::Bitboard;
 
 #[derive(Clone, Debug)]
 pub enum Term {
-    W, L, P,
-    Edge, Corner, Attacked, Free,
+    W, L, P, O,
+    Edge, Corner, Attacked, Free, Hit, Unhit, Ours, Theirs,
     Box1(Box<Term>), Rank(Box<Term>), File(Box<Term>),
     Line(Box<Term>, Box<Term>), Between(Box<Term>, Box<Term>), Nearer(Box<Term>, Box<Term>),
     And(Box<Term>, Box<Term>), Or(Box<Term>, Box<Term>), Not(Box<Term>), Reach(Box<Term>, Box<Term>),
@@ -30,7 +33,8 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
     let tok = t.get(*i)?.clone();
     *i += 1;
     if tok != "(" {
-        return match tok.as_str() { "W" => Some(Term::W), "L" => Some(Term::L), "P" => Some(Term::P), "edge" => Some(Term::Edge),
+        return match tok.as_str() { "W" => Some(Term::W), "L" => Some(Term::L), "P" => Some(Term::P), "O" => Some(Term::O),
+            "hit" => Some(Term::Hit), "unhit" => Some(Term::Unhit), "ours" => Some(Term::Ours), "theirs" => Some(Term::Theirs), "edge" => Some(Term::Edge),
             "corner" => Some(Term::Corner), "attacked" => Some(Term::Attacked), "free" => Some(Term::Free), _ => None };
     }
     let head = t.get(*i)?.clone();
@@ -57,6 +61,7 @@ fn sq(t: &Term, q: &Chess, lone: Color) -> Option<Square> {
     match t {
         Term::W => b.king_of(!lone), Term::L => b.king_of(lone),
         Term::P => (b.by_color(!lone) & !b.kings()).first(),
+        Term::O => (b.by_color(lone) & !b.kings()).first(),
         _ => None,
     }
 }
@@ -74,6 +79,14 @@ pub fn set(t: &Term, q: &Chess, lone: Color) -> Bitboard {
             let at: Bitboard = Bitboard::FULL.into_iter().filter(|s| b.attacks_to(*s, !lone, occ).any()).collect();
             if matches!(t, Term::Attacked) { at } else { !at }
         }
+        Term::Hit | Term::Unhit => {
+            let Some(k) = b.king_of(!lone) else { return Bitboard::EMPTY };
+            let occ = b.occupied().without(k);
+            let at: Bitboard = Bitboard::FULL.into_iter().filter(|s| b.attacks_to(*s, lone, occ).any()).collect();
+            if matches!(t, Term::Hit) { at } else { !at }
+        }
+        Term::Ours => b.by_color(!lone) & !b.kings(),
+        Term::Theirs => b.by_color(lone) & !b.kings(),
         Term::Box1(a) => s1(a).map_or(Bitboard::EMPTY, |s| shakmaty::attacks::king_attacks(s).with(s)),
         Term::Rank(a) => s1(a).map_or(Bitboard::EMPTY, |s| Bitboard::from(s.rank())),
         Term::File(a) => s1(a).map_or(Bitboard::EMPTY, |s| Bitboard::from(s.file())),

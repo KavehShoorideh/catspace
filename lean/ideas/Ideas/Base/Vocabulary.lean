@@ -17,7 +17,8 @@ discovered concept explains itself by unfolding into these words. Three layers:
   `legalMoves`, `inCheckB`), used as they are.
 * PERCEPTION -- what a player sees at a glance (below): distance in king steps, the king's box, the edge and the corners,
   a rank and a file, the line through two squares and the squares between them, the squares nearer one square than
-  another, the squares a side attacks (a king lifted off the board), the colour of a square.
+  another, the squares a side attacks (a king lifted off the board), the squares of a side's pieces, the colour of a
+  square. Both sides have their words: our king W, their king L, our other piece P, their other piece O.
 * COMBINATORS -- count, the set where something holds, union / intersection / complement, sums, and REACH: the squares a
   king walks to by king steps over a set.
 
@@ -66,6 +67,14 @@ def nearer (s t : Square) : SquareSet := fun u => decide (dist u s < dist u t)
 /-- **attacked by**: the squares side `c` attacks with the king on `k` lifted off the board (it cannot hide behind
 itself). -/
 def attackedBy (p : Position) (c : Color) (k : Square) : SquareSet := fun u => isAttackedB (withEmpty p k) c u
+
+/-- **pieces of**: the squares holding a piece of side `c` other than its king (Kaveh 2026-10-12: "base vocab should be
+complete with words for their pieces" -- `ours` is `piecesOf p c`, `theirs` is `piecesOf p c.opposite`; the squares
+they attack, `hit`, is `attackedBy p c.opposite W`, our king lifted). -/
+def piecesOf (p : Position) (c : Color) : SquareSet := fun u =>
+  match p.board u with
+  | some pc => decide (pc.color = c) && decide (pc.kind ≠ PieceKind.king)
+  | none => false
 
 /-- **colour of a square**: light or dark. -/
 def squareColour (s : Square) : Nat := GeoLemmas.colour s

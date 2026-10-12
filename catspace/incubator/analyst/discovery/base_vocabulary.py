@@ -30,6 +30,13 @@ PRIMITIVES = {
     "count": (("set",), "num", "how many of {0}"),
     "dist": (("sq", "sq"), "num", "the king-step distance from {0} to {1}"),
     "sum": (("num", "num"), "num", "{0} plus {1}"),
+    # their side (Kaveh 2026-10-12: "base vocab should be complete with words for their pieces"); at the end, so the
+    # earlier symbols keep their indices
+    "O": ((), "sq", "their other piece"),
+    "hit": ((), "set", "the squares they attack"),
+    "unhit": ((), "set", "the squares they do not attack"),
+    "ours": ((), "set", "the squares of our pieces"),
+    "theirs": ((), "set", "the squares of their pieces"),
 }
 SYMBOLS = list(PRIMITIVES)
 
@@ -68,10 +75,12 @@ def size(t) -> int:
 
 
 def lean(t) -> str:
-    """The term as a Lean expression over Ideas.Vocabulary (parameters: the position `p`, our colour `c`, squares `W L P`)."""
+    """The term as a Lean expression over Ideas.Vocabulary (parameters: the position `p`, our colour `c`, squares `W L P O`)."""
     if isinstance(t, str):
-        return {"W": "W", "L": "L", "P": "P", "edge": "edge", "corner": "corner",
-                "attacked": "(attackedBy p c L)", "free": "(fun u => !(attackedBy p c L u))"}[t]
+        return {"W": "W", "L": "L", "P": "P", "O": "O", "edge": "edge", "corner": "corner",
+                "attacked": "(attackedBy p c L)", "free": "(fun u => !(attackedBy p c L u))",
+                "hit": "(attackedBy p (Color.opposite c) W)", "unhit": "(fun u => !(attackedBy p (Color.opposite c) W u))",
+                "ours": "(piecesOf p c)", "theirs": "(piecesOf p (Color.opposite c))"}[t]
     h, *a = t
     x = [lean(y) for y in a]
     return {
@@ -106,12 +115,12 @@ def tokens(t):
     return [SYMBOLS.index(t[0])] + [x for a in t[1:] for x in tokens(a)]
 
 
-def enumerate_numbers(sqs=("W", "L", "P"), max_and: int = 2):
+def enumerate_numbers(sqs=("W", "L", "P", "O"), max_and: int = 2):
     """Number terms smallest first: the count of a set built from at most two base sets (and, not), or a distance."""
-    base = ["edge", "corner", "attacked", "free"]
+    base = ["edge", "corner", "attacked", "free", "hit", "unhit", "ours", "theirs"]
     base += [(h, s) for h in ("box", "rank", "file") for s in sqs]
     base += [(h, a, b) for h in ("line", "between", "nearer") for a in sqs for b in sqs if a != b]
-    base += [("reach", s, "free") for s in sqs]
+    base += [("reach", s, w) for s in sqs for w in ("free", "unhit")]
     sets = list(base) + [("not", a) for a in base]
     if max_and >= 2:
         sets += [("and", a, b) for a, b in itertools.combinations(base, 2)]
