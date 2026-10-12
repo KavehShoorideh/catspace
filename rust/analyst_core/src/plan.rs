@@ -912,6 +912,12 @@ pub static NET_BOUND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicB
 #[pyfunction]
 pub fn set_net_bound(flag: bool) -> PyResult<()> { NET_BOUND.store(flag, Ordering::Relaxed); Ok(()) }
 
+/// The planner's audit of one move, for the generic frame (vocab.rs): its net -- what it takes, minus what their
+/// reasoning wins back (a draw is minus our lead) -- with no proofs of ours.
+pub(crate) fn audit_net(pos: &Chess, m: &Move) -> i64 {
+    let (mut p, mut n) = (0u32, 0u64);
+    net_after(pos, m, &[], &mut p, &mut n).0
+}
 fn net_after(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs: &mut u32, nodes: &mut u64) -> (i64, Option<String>) {
     crate::prof::timed("net_after (a candidate's net)", || net_after_inner(pos, m, wins, proofs, nodes))
 }
@@ -2033,7 +2039,15 @@ impl PlanState {
         }
         MEMO.with(|m| *m.borrow_mut() = Some(memo));
         let t = std::time::Instant::now();
-        let p = match played { Some(p) => p, None => plan(&pos) };
+        let mut p = match played { Some(p) => p, None => plan(&pos) };
+        // THE GENERIC FRAME (vocab.rs): nothing proved -- the material's measure (or the empty frame) chooses, with its claim
+        if p.best.is_none() && crate::vocab::GENERIC_FRAME.load(Ordering::Relaxed) {
+            if let Some((m, claim)) = crate::vocab::material_frame_move(&pos) {
+                let u = m.to_uci(CastlingMode::Standard).to_string();
+                p.trace.push(format!("frame: {}; {claim}", san(&pos, &u)));
+                p.best = Some((String::new(), u.clone(), 0, format!("{} ({})", san(&pos, &u), claim.split(':').next().unwrap_or(""))));
+            }
+        }
         let ms = t.elapsed().as_secs_f64() * 1000.0;
         // a NEW proven mate (through the memory's stored proof) becomes the solution to play out
         if p.proofs > 0 {

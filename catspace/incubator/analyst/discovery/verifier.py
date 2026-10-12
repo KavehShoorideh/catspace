@@ -23,8 +23,15 @@ STORE = "discovery_experience.jsonl"
 LIMIT = 60                                          # moves per closed-loop game
 
 
-def _key(hole: str, term: str, schema: str) -> str:
-    return f"{hole}|{schema}|{term}"
+def _key(hole: str, term: str, schema: str, boards: str = "") -> str:
+    return f"{hole}|{schema}|{term}|{boards}"
+
+
+def board_hash(boards: list) -> str:
+    """The verdict depends on the boards: a hole of the same name with other boards (a new round of surprises) must not
+    reuse it (BUGS 2026-10-12)."""
+    import hashlib
+    return hashlib.sha1("\n".join(boards).encode()).hexdigest()[:12]
 
 
 class Verifier:
@@ -34,20 +41,21 @@ class Verifier:
         if os.path.exists(self.path):
             for line in open(self.path):
                 r = json.loads(line)
-                self.memo[_key(r["hole"], r["term"], r["schema"])] = r
+                self.memo[_key(r["hole"], r["term"], r["schema"], r.get("boards", ""))] = r
 
     def verify(self, hole: dict, term: str | None, schema: str, boards: list | None = None) -> dict:
         """Both stages on the hole's boards; remembered and stored."""
         import analyst_core as A
-        k = _key(hole["name"], term or "", schema)
+        boards = boards if boards is not None else hole["stuck"][:100]
+        bh = board_hash(boards)
+        k = _key(hole["name"], term or "", schema, bh)
         if k in self.memo:
             return self.memo[k]
-        boards = boards if boards is not None else hole["stuck"][:100]
-        piece = hole["material"][1]
+        piece = hole.get("piece") or hole["material"][1]
         s1 = A.verify_count(boards, hole["base"], term, schema, hole["k"], piece)
         mated, moves, played, cert = A.verify_play(boards, hole["base"], term, schema, piece, LIMIT)
         n = len(boards)
-        r = dict(hole=hole["name"], term=term or "", schema=schema, n=n, stage1=s1, mated=mated, played=played, certified=cert,
+        r = dict(hole=hole["name"], term=term or "", schema=schema, boards=bh, n=n, stage1=s1, mated=mated, played=played, certified=cert,
                  score=(cert / max(played, 1)) * (mated / max(n, 1)), t=time.time())
         self.memo[k] = r
         with open(self.path, "a") as fh:

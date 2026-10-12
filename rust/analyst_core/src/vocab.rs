@@ -185,7 +185,12 @@ fn comp(spec: &str) -> Option<Comp> {
 }
 fn cval(c: &Comp, q: &Chess, lone: Color) -> u32 { match c { Comp::F(f) => f(q, lone), Comp::T(t) => num(t, q, lone) } }
 
-struct Spec { base: Vec<Comp>, cand: Option<Term>, schema: String, piece: Role }
+/// What the frame keeps safe: one piece from the lone king (the mating frames), or ALL our material from every piece of
+/// theirs (the generic frame below).
+#[derive(Clone, Copy)]
+enum Safety { Piece(Role), Material }
+
+struct Spec { base: Vec<Comp>, cand: Option<Term>, schema: String, safety: Safety }
 
 impl Spec {
     fn measure(&self, q: &Chess, lone: Color) -> Vec<u32> {
@@ -201,6 +206,17 @@ impl Spec {
         }
         v
     }
+    /// Our move `q` is safe for the frame (the full check: the move we play).
+    fn safe(&self, q: &Chess, us: Color) -> bool {
+        match self.safety { Safety::Piece(r) => crate::mating::safe_step(q, us, r), Safety::Material => material_safe(q, us) }
+    }
+    /// The same inside the certificate's search (cheaper for the material: nothing en prise now).
+    fn safe_quick(&self, q: &Chess, us: Color) -> bool {
+        match self.safety {
+            Safety::Piece(r) => crate::mating::safe_step(q, us, r),
+            Safety::Material => q.is_checkmate() || (!q.legal_moves().is_empty() && crate::game::claimable_draw(q).is_none() && static_safe(q.board(), us)),
+        }
+    }
     fn worst(&self, q: &Chess, lone: Color) -> Vec<u32> {
         q.legal_moves().iter().map(|r| self.measure(&after(q, r), lone)).max().unwrap_or_default()
     }
@@ -211,7 +227,7 @@ impl Spec {
             let x = after(q, r);
             x.legal_moves().iter().any(|m2| {
                 let y = after(&x, m2);
-                y.is_checkmate() || (crate::mating::safe_step(&y, us, self.piece) && self.within(&y, before, us, k - 1))
+                y.is_checkmate() || (self.safe_quick(&y, us) && self.within(&y, before, us, k - 1))
             })
         })
     }
@@ -220,7 +236,7 @@ impl Spec {
         let before = self.measure(pos, !us);
         pos.legal_moves().iter().any(|m| {
             let q = after(pos, m);
-            q.is_checkmate() || (crate::mating::safe_step(&q, us, self.piece) && self.within(&q, &before, us, k))
+            q.is_checkmate() || (self.safe(&q, us) && self.within(&q, &before, us, k))
         })
     }
 }
@@ -228,8 +244,8 @@ impl Spec {
 fn spec(base: &[String], cand: &Option<String>, schema: &str, piece: &str) -> Option<Spec> {
     let base: Vec<Comp> = base.iter().map(|s| comp(s)).collect::<Option<_>>()?;
     let cand = match cand { Some(c) => Some(parse_term(c)?), None => None };
-    let piece = match piece { "Q" | "q" => Role::Queen, _ => Role::Rook };
-    Some(Spec { base, cand, schema: schema.to_string(), piece })
+    let safety = match piece { "Q" | "q" => Safety::Piece(Role::Queen), "*" => Safety::Material, _ => Safety::Piece(Role::Rook) };
+    Some(Spec { base, cand, schema: schema.to_string(), safety })
 }
 
 /// verify_mask(fens, base, cand, schema, k, piece) -> for each board (the attacker to move): certified or not.
@@ -265,18 +281,19 @@ pub fn component_values(fens: Vec<String>, specs: Vec<String>) -> PyResult<Vec<V
 // time) or no mate within the limit is a failure. The defender here is the measure's adversary, no engine.
 
 impl Spec {
-    fn choose(&self, pos: &Chess, seen: &std::collections::HashMap<u64, u8>) -> Option<Move> { self.choose_cert(pos, seen).map(|x| x.0) }
-    /// -> (the move, whether it carries a certificate: the measure falls against every reply, at once or within two)
-    fn choose_cert(&self, pos: &Chess, seen: &std::collections::HashMap<u64, u8>) -> Option<(Move, bool)> {
+    /// -> (the move, whether it carries a certificate: the measure falls against every reply, at once or within two --
+    /// or, for the material, the goal: a safe capture); `seen` counts the positions of the game so far.
+    fn choose_cert(&self, pos: &Chess, seen: &dyn Fn(&Chess) -> u8, allow: &dyn Fn(&Move) -> bool) -> Option<(Move, bool)> {
         let us = pos.turn();
         let before = self.measure(pos, !us);
-        let fresh = |q: &Chess| seen.get(&crate::threat::zkey(q)).copied().unwrap_or(0) < 2;
         let mut cands: Vec<(Vec<u32>, Vec<u32>, bool, Move)> = Vec::new();
         for m in pos.legal_moves() {
             let q = after(pos, &m);
             if q.is_checkmate() { return Some((m, true)); }
-            if !crate::mating::safe_step(&q, us, self.piece) || !fresh(&q) { continue; }
-            cands.push((self.worst(&q, !us), self.measure(&q, !us), seen.contains_key(&crate::threat::zkey(&q)), m));
+            if !self.safe(&q, us) || seen(&q) >= 2 || !allow(&m) { continue; }
+            // THE GOAL of the material's frame: a capture we keep (it wins material, or trades into a smaller material)
+            if matches!(self.safety, Safety::Material) && m.is_capture() { return Some((m, true)); }
+            cands.push((self.worst(&q, !us), self.measure(&q, !us), seen(&q) > 0, m));
         }
         cands.sort_by(|a, b| (&a.0, &a.1, a.2).cmp(&(&b.0, &b.1, b.2)));
         let first = cands.first()?;
@@ -288,10 +305,12 @@ impl Spec {
     }
     fn defend(&self, q: &Chess) -> Option<Move> {
         let lone = q.turn();
+        // the measure's adversary: material first (what it takes from us), then the measure as high as it can make it,
+        // never into a mate in one
         q.legal_moves().into_iter().filter(|r| {
             let x = after(q, r);
             !x.legal_moves().iter().any(|m| after(&x, m).is_checkmate())
-        }).max_by_key(|r| (self.measure(&after(q, r), lone), crate::threat::zkey(&after(q, r))))
+        }).max_by_key(|r| { let x = after(q, r); (-material(x.board(), !lone), self.measure(&x, lone), crate::threat::zkey(&x)) })
             .or_else(|| q.legal_moves().into_iter().next())
     }
     /// -> (Some(moves to mate) or None -- no mate within the limit, a repetition, a stalemate, the piece lost; our moves
@@ -300,18 +319,24 @@ impl Spec {
         let mut p = start.clone();
         let mut seen: std::collections::HashMap<u64, u8> = std::collections::HashMap::new();
         let (mut played, mut cert) = (0u32, 0u32);
+        let us = start.turn();
+        let (theirs0, lead0) = (material(start.board(), !us), material(start.board(), us) - material(start.board(), !us));
         for n in 1..=limit {
             *seen.entry(crate::threat::zkey(&p)).or_insert(0) += 1;
-            let Some((m, c)) = self.choose_cert(&p, &seen) else { return (None, played, cert) };
+            let pick = { let s = &seen; self.choose_cert(&p, &|q: &Chess| s.get(&crate::threat::zkey(q)).copied().unwrap_or(0), &|_| true) };
+            let Some((m, c)) = pick else { return (None, played, cert) };
             played += 1; cert += c as u32;
             p = after(&p, &m);
             if p.is_checkmate() { return (Some(n), played, cert); }
+            // the material's goal: theirs smaller, our lead no smaller -- the next frame's material (Reach.bind)
+            if matches!(self.safety, Safety::Material) && material(p.board(), !us) < theirs0
+                && material(p.board(), us) - material(p.board(), !us) >= lead0 { return (Some(n), played, cert); }
             if p.legal_moves().is_empty() { return (None, played, cert); }
             *seen.entry(crate::threat::zkey(&p)).or_insert(0) += 1;
             if seen[&crate::threat::zkey(&p)] >= 3 { return (None, played, cert); }
             let Some(r) = self.defend(&p) else { return (None, played, cert) };
             p = after(&p, &r);
-            if (p.board().by_color(p.turn()) & !p.board().kings()).is_empty() { return (None, played, cert); }   // our piece taken
+            if matches!(self.safety, Safety::Piece(_)) && (p.board().by_color(p.turn()) & !p.board().kings()).is_empty() { return (None, played, cert); }   // our piece taken
             if seen.get(&crate::threat::zkey(&p)).copied().unwrap_or(0) >= 2 { return (None, played, cert); }
         }
         (None, played, cert)
@@ -346,3 +371,110 @@ pub fn term_dynamics(fens: Vec<String>, term: String) -> PyResult<Vec<(f32, f32)
         (mean(&ours), mean(&theirs))
     }).collect())
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// THE GENERIC FRAME, ANY MATERIAL (Kaveh 2026-10-12: "the KRR frame is the one that is new ... we can use the earlier
+// lemmas to our advantage"): a material's measure given at run time as terms over the base -- the lemma mined from the
+// games' surprises; its SAFETY the material's: nothing of ours lost to an exchange now (the static exchange, the mirror
+// of Lean Ideas.ExchangeLaw.seeXB) nor after any reply (the skewer, the double attack: we keep a move after which
+// nothing is en prise); its GOAL mate, or a capture we keep -- the material changes and the next frame takes over (a
+// trade into king and rook is a material we already win: Reach.bind). Played when the planner proves nothing.
+
+/// Our material (the kernel values, kings out).
+pub(crate) fn material(b: &shakmaty::Board, c: Color) -> i64 {
+    (b.by_color(c) & !b.kings()).into_iter().filter_map(|s| b.role_at(s)).map(crate::rules::val).sum()
+}
+
+/// The material from `us`'s side, "KRRvKR".
+pub fn material_key(b: &shakmaty::Board, us: Color) -> String {
+    let side = |c: Color| {
+        let mut s = String::from("K");
+        for r in [Role::Queen, Role::Rook, Role::Bishop, Role::Knight, Role::Pawn] {
+            for _ in 0..(b.by_role(r) & b.by_color(c)).count() { s.push(r.upper_char()); }
+        }
+        s
+    };
+    format!("{}v{}", side(us), side(!us))
+}
+
+/// They win nothing by capturing: the static exchange for them on every piece of ours is zero.
+fn static_safe(b: &shakmaty::Board, us: Color) -> bool {
+    (b.by_color(us) & !b.kings()).into_iter().all(|s| crate::rules::see(b, s, !us) == 0)
+}
+
+/// After our move `q` (they to move): no stalemate, no claimable draw; nothing of ours en prise; and against every reply
+/// (none mating us, none a claimable draw) we keep a move after which nothing of ours is en prise.
+pub(crate) fn material_safe(q: &Chess, us: Color) -> bool {
+    if q.is_checkmate() { return true; }
+    if q.legal_moves().is_empty() || crate::game::claimable_draw(q).is_some() || !static_safe(q.board(), us) { return false; }
+    q.legal_moves().iter().all(|r| {
+        let x = after(q, r);
+        if x.is_checkmate() || crate::game::claimable_draw(&x).is_some() { return false; }
+        // our answer keeps the material AND the game (2026-10-12, round 1 game 1001: after Kf2 Re2+ the only answer
+        // keeping everything was Rxe2 -- stalemate)
+        x.legal_moves().iter().any(|m| {
+            let y = after(&x, m);
+            static_safe(y.board(), us) && (y.is_checkmate() || (!y.legal_moves().is_empty() && crate::game::claimable_draw(&y).is_none()))
+        })
+    })
+}
+
+/// material_safe_moves(fen) -> the moves the generic frame counts safe (a debugging view).
+#[pyfunction]
+pub fn material_safe_moves(fen: String) -> PyResult<Vec<String>> {
+    let Some(p) = parse(&fen) else { return Ok(vec![]) };
+    let us = p.turn();
+    Ok(p.legal_moves().iter().filter(|m| material_safe(&after(&p, m), us)).map(|m| m.to_uci(CastlingMode::Standard).to_string()).collect())
+}
+
+pub static GENERIC_FRAME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static MATERIAL_FRAMES: std::sync::RwLock<Option<std::collections::HashMap<String, Vec<String>>>> = std::sync::RwLock::new(None);
+
+/// The generic frame on (the planner plays it when it proves nothing), or off.
+#[pyfunction]
+pub fn set_generic_frame(flag: bool) -> PyResult<()> { GENERIC_FRAME.store(flag, std::sync::atomic::Ordering::Relaxed); Ok(()) }
+
+/// set_material_frame(material, terms) -> whether every term parses: the material's measure (ranked); [] clears it.
+#[pyfunction]
+pub fn set_material_frame(material: String, terms: Vec<String>) -> PyResult<bool> {
+    if !terms.iter().all(|t| parse_term(t).is_some()) { return Ok(false); }
+    let mut g = MATERIAL_FRAMES.write().unwrap();
+    let map = g.get_or_insert_with(Default::default);
+    if terms.is_empty() { map.remove(&material); } else { map.insert(material, terms); }
+    Ok(true)
+}
+
+/// material_frames() -> {material: terms}.
+#[pyfunction]
+pub fn material_frames() -> PyResult<std::collections::HashMap<String, Vec<String>>> {
+    Ok(MATERIAL_FRAMES.read().unwrap().clone().unwrap_or_default())
+}
+
+/// The generic frame's move for the side to move (its material's terms; none known -- the empty frame, whose only claim
+/// is the goal) -> (the move, its trace line: the claim and whether it is certified).
+pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
+    let us = pos.turn();
+    let key = material_key(pos.board(), us);
+    let terms = MATERIAL_FRAMES.read().unwrap().as_ref().and_then(|m| m.get(&key).cloned()).unwrap_or_default();
+    let base: Vec<Comp> = terms.iter().filter_map(|t| parse_term(t).map(Comp::T)).collect();
+    let sp = Spec { base, cand: None, schema: "none".to_string(), safety: Safety::Material };
+    // in play, a move must also pass the planner's own audit (its reasoning for them: nothing of ours lost, no draw);
+    // none does -- the least loss, said so
+    let audited = |m: &Move| crate::plan::audit_net(pos, m) >= 0;
+    let Some((m, cert)) = sp.choose_cert(pos, &|q: &Chess| crate::game::seen(q), &audited) else {
+        let m = pos.legal_moves().into_iter().max_by_key(|m| crate::plan::audit_net(pos, m))?;
+        let net = crate::plan::audit_net(pos, &m);
+        return Some((m, format!("no safe move for the {key} frame: the least loss (net {net}) -- the claim is the goal within {FRAME_K} moves")));
+    };
+    let before = sp.measure(pos, !us);
+    let q = after(pos, &m);
+    let claim = if terms.is_empty() {
+        format!("the empty frame (no measure known for {key}): the claim is the goal within {} moves (mate, or a capture we keep)", crate::vocab::FRAME_K)
+    } else {
+        format!("the {key} frame {:?}: the measure {:?} falls within {} moves against every reply, or the goal (mate, or a capture we keep) -- {}",
+                terms, before, FRAME_K, if cert { format!("certified (worst after it {:?})", sp.worst(&q, !us)) } else { "NOT certified".to_string() })
+    };
+    Some((m, claim))
+}
+/// The horizon of a generic frame's claim (moves of ours).
+pub const FRAME_K: u32 = 2;

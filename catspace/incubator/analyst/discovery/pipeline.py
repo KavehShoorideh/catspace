@@ -131,6 +131,7 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     h = hole or H.load(hole_name)
     boards = h["stuck"][:100]
     lab = labels(hole_name) if os.path.exists(paths.derived(f"hole_{hole_name}_labels.json")) else fresh_candidates(h, boards)
+    boards = lab["boards"]                       # a labeled hole's verdicts were made on its labels' boards
     rankings = [Enumerative().rank(h, lab, cache)]
     for k in kinds:
         rankings.append(Learned(k, train_on(trained, k, cache, epochs)).rank(h, lab, cache))

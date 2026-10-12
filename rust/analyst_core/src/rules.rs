@@ -25,7 +25,7 @@ ascent! {
     best(t, g) <-- gain(t, _), agg g = max(x) in gain(t, x);
 }
 
-fn val(role: Role) -> i64 {
+pub(crate) fn val(role: Role) -> i64 {
     match role { Role::Pawn => 1, Role::Knight => 3, Role::Bishop => 3, Role::Rook => 5, Role::Queen => 9, Role::King => 0 }
 }
 

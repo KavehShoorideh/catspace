@@ -274,10 +274,15 @@ pub(crate) fn settle_d(pos: &Chess, mut alpha: i64, beta: i64, us: bool, depth: 
         }
         return best;
     }
+    // STALEMATE IS A DRAW, no standing pat (2026-10-12, the surprise loop, K+R+R v K+R game 4: after Kf2 Rf1+, Kxf1
+    // stalemates -- the leaf let the stalemated side stand pat and scored the capture +5, "Kf2 wins 5, HOLDS", three
+    // times in one game): no claim to win something survives it -- the conservative value, as for a spent budget
+    let all = pos.legal_moves();
+    if all.is_empty() { return if us { -1000 } else { 1000 }; }
     if 0 >= beta { return 0; }                                     // standing pat already refutes the window
     if 0 > alpha { alpha = 0; }
     if depth == 0 { return alpha; }
-    let mut caps: Vec<Move> = pos.legal_moves().into_iter()
+    let mut caps: Vec<Move> = all.into_iter()
         .filter(|m| m.is_capture() || m.promotion() == Some(Role::Queen)).collect();   // promotions count
     caps.sort_by_key(|m| -(m.capture().map(kernel_value).unwrap_or(0) + if m.is_promotion() { 8 } else { 0 }));
     for m in caps {
@@ -1650,6 +1655,10 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(vocab::component_values, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::verify_play, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::term_dynamics, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::set_generic_frame, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::set_material_frame, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::material_frames, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::material_safe_moves, m)?)?;
     m.add_function(wrap_pyfunction!(threat::set_composed, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_strict_stop, m)?)?;
     m.add_class::<plan::PlanState>()?;

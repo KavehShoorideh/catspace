@@ -1,0 +1,242 @@
+"""LEARNING A NEW MATERIAL FROM SURPRISE (Kaveh 2026-10-12: "start playing games and then look at our own trace. And
+whenever we are surprised ... look at all the cases that we were surprised and see what lemma can we create that will
+help us not be surprised and win this game"; "you can use the KQ and the KR frames ... the KRR frame is the one that is
+new"; surprise in the generic language: "when we expect it to shrink, but it doesn't shrink"; "when you were trying for
+an outcome, but a different outcome ended up happening").
+
+  PLAY     the planner plays the material from random tablebase wins (the earlier lemmas on: the king-and-queen and
+           king-and-rook frames, the tactics); where it proves nothing, the GENERIC FRAME of the material on the board
+           (vocab.rs: its measure as terms over the base; none known -- the empty frame); Stockfish with the Syzygy
+           tablebases defends
+  CLAIMS   every move of ours states one, in the frame language: a frame's -- its measure falls within k moves, or the
+           goal (mate, or a capture we keep: the material changes, the next frame takes over); a proof's -- its goal (mate,
+           material won) within its horizon (refuted: a prover bug -- the stalemate leaf, game 4 of the first smoke run);
+           an arming move's -- the same goal, expected not proved; a defence's -- our lead does not fall below what it said
+  SURPRISE the game refutes a claim: the horizon passed and the measure did not shrink (nor the goal came), or the game
+           ended in another outcome first (a draw, a loss)
+  MINE     the refuted frame claims of each material become a hole (base: the material's frame so far); the pipeline
+           (proposers -> filter -> verifier, the verifier's safety and goal the material's) proposes a term; the best joins
+           the material's frame by its schema; play again
+
+  python -m catspace.incubator.analyst.discovery.surprise_loop --material KRRvKR --games 100 --rounds 3
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import random
+import re
+import time
+from collections import Counter, defaultdict
+
+from catspace.io import paths
+
+FRAME_K = 2                    # vocab.rs FRAME_K: the generic frame's horizon
+MATING_K = 3                   # mating.rs KQ_TEMPO_MOVES: the mating frames' horizon
+ATTACK_K, MATE_K, DEFENCE_K = 5, 10, 2
+MATING_SPECS = {"KRvK": ["fn:wall", "fn:kr_generated"], "KQvK": ["fn:kq_offedge", "fn:kq_approach", "fn:kq_region"]}
+LIMIT = 120                    # moves of ours per game
+
+
+def lead_of(b) -> tuple:
+    """(our material minus theirs, theirs) -- White is us."""
+    import chess
+    v = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
+    ours = sum(v[p.piece_type] for p in b.piece_map().values() if p.color and p.piece_type in v)
+    theirs = sum(v[p.piece_type] for p in b.piece_map().values() if not p.color and p.piece_type in v)
+    return ours - theirs, theirs
+
+
+def claim_of(trace: list, why: str, material: str, frames: dict, lead: int) -> dict:
+    """The claim of a decision, read from its own trace and reason."""
+    if any(l.startswith("frame: ") for l in trace):
+        return dict(kind="frame", specs=frames.get(material, []), k=FRAME_K)
+    if why.endswith(("(king and rook)", "(king and queen)")):
+        return dict(kind="frame", specs=MATING_SPECS.get(material, []), k=MATING_K)
+    if any(w in why for w in ("stops their", "answers their", "avoids the blunder", "cheapest")):
+        net = re.search(r"nets (-?\d+)", why)
+        return dict(kind="defence", k=DEFENCE_K, floor=lead + min(0, int(net.group(1)) if net else 0))
+    if " arms " in why:                                   # a preparing move: its gain is expected, not proved
+        return dict(kind="arming", k=ATTACK_K)
+    if "mate" in why:                                     # a proof (every reply searched): refuted = a prover bug to find
+        return dict(kind="proof", k=MATE_K)
+    return dict(kind="proof", k=ATTACK_K)
+
+
+def _game(args):
+    os.environ.setdefault("RAYON_NUM_THREADS", "1")
+    seed, material, frames = args
+    import chess
+    import chess.engine
+    import chess.syzygy
+    import catspace.incubator.analyst  # noqa: F401
+    import analyst_core as A
+    from catspace.incubator.analyst.material_walk import _material, _start
+    A.set_generic_frame(True)
+    for m, terms in frames.items():
+        A.set_material_frame(m, terms)
+    tb = chess.syzygy.open_tablebase(str(paths.syzygy_dir()))
+    eng = chess.engine.SimpleEngine.popen_uci("stockfish")
+    eng.configure({"SyzygyPath": str(paths.syzygy_dir())})
+    b = _start(random.Random(seed), material, tb)
+    st = A.PlanState()
+    rows, out = [], None
+    while out is None:
+        if b.is_checkmate():
+            out = "win" if b.turn == chess.BLACK else "loss"; break
+        if b.is_stalemate() or b.is_insufficient_material() or b.halfmove_clock >= 100 or b.is_repetition(3):
+            out = "draw"; break
+        if b.turn == chess.WHITE:
+            if len(rows) >= LIMIT:
+                out = "not finished"; break
+            mat = _material(b)
+            lead, theirs = lead_of(b)
+            tr, dec, *_ = st.observe(b.fen())
+            m = None
+            if dec:
+                for u in (dec[0], dec[1]):
+                    try:
+                        mv = chess.Move.from_uci(u)
+                    except (ValueError, TypeError):
+                        continue
+                    if mv in b.legal_moves:
+                        m = mv; break
+            why = dec[3] if dec else "no move"
+            claim = claim_of(tr, why, mat, frames, lead) if m else dict(kind="none", k=1)
+            if m is None:                                     # no safe move at all: the first legal, said so
+                m = next(iter(b.legal_moves))
+            rows.append(dict(fen=b.fen(), material=mat, lead=lead, theirs=theirs, san=b.san(m), why=why, claim=claim, trace=tr))
+            b.push(m)
+        else:
+            st.record(b.fen())
+            b.push(eng.play(b, chess.engine.Limit(depth=10)).move)
+    eng.quit()
+    return dict(seed=seed, out=out, moves=len(rows), rows=rows)
+
+
+def judge(g: dict) -> None:
+    """Each claim against the game: 'kept', 'no shrink' (the horizon passed), 'other outcome' (the game ended first)."""
+    import catspace.incubator.analyst  # noqa: F401
+    import analyst_core as A
+    rows = g["rows"]
+    cache = {}
+    for i, r in enumerate(rows):
+        c = r["claim"]
+        if c["kind"] == "none":
+            r["verdict"] = "no move"; continue
+        win = rows[i + 1:i + 1 + c["k"]]
+        reached = lambda x: x["theirs"] < r["theirs"] and x["lead"] >= r["lead"]      # the goal: a capture we kept
+        verdict = None
+        if c["kind"] == "defence":
+            if any(x["lead"] < c["floor"] for x in win):
+                verdict = "no shrink"                       # the lead fell below what the defence said
+            elif len(win) < c["k"] and g["out"] not in ("win",):
+                verdict = "other outcome"
+            else:
+                verdict = "kept"
+        else:
+            if any(reached(x) for x in win) or (len(win) < c["k"] and g["out"] == "win"):
+                verdict = "kept"
+            elif c["kind"] == "frame" and c["specs"]:
+                key = tuple(c["specs"])
+                if key not in cache:
+                    vals = A.component_values([x["fen"] for x in rows], list(key))
+                    cache[key] = vals
+                vals = cache[key]
+                if any(rows[i + 1 + j]["material"] == r["material"] and vals[i + 1 + j] < vals[i] for j in range(len(win))):
+                    verdict = "kept"
+            if verdict is None:
+                verdict = "other outcome" if len(win) < c["k"] else "no shrink"
+        r["verdict"] = verdict
+
+
+def play(material: str, games: int, frames: dict, seed0: int, workers: int = 6) -> list:
+    from multiprocessing import Pool
+    with Pool(workers) as p:
+        res = sorted(p.imap_unordered(_game, [(seed0 + g, material, frames) for g in range(games)], chunksize=1), key=lambda r: r["seed"])
+    for g in res:
+        judge(g)
+    return res
+
+
+def report(res: list, label: str) -> None:
+    rows = [r for g in res for r in g["rows"]]
+    won = [g["moves"] for g in res if g["out"] == "win"]
+    print(f"OBS {label}: {len(res)} games {dict(Counter(g['out'] for g in res))}"
+          f"{f', {sum(won) / len(won):.1f} moves per win' if won else ''}; {len(rows)} moves of ours")
+    for mat in sorted({r["material"] for r in rows}, key=lambda m: -sum(r["material"] == m for r in rows)):
+        here = [r for r in rows if r["material"] == mat]
+        by = Counter((r["claim"]["kind"], r["verdict"]) for r in here)
+        sur = sum(v for (k, ver), v in by.items() if ver in ("no shrink", "other outcome"))
+        print(f"OBS   {mat} ({len(here)} moves): surprised {sur} ({100 * sur / len(here):.0f}%) -- " +
+              ", ".join(f"{k} {ver} {v}" for (k, ver), v in sorted(by.items())))
+
+
+def compose(base: list, term: str, schema: str) -> list:
+    if schema == "append" or not base:
+        return base + [term]
+    if schema == "sum":
+        return base[:-1] + [f"(sum {base[-1]} {term})"]
+    return base[:-1] + [term]                               # replace
+
+
+def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100) -> dict:
+    """Each material's refuted frame claims -> a hole -> the pipeline -> the best term joins the material's frame."""
+    from . import base_vocabulary as V
+    from . import holes as H
+    from .pipeline import run
+    new = dict(frames)
+    by = defaultdict(set)
+    for g in res:
+        for r in g["rows"]:
+            if r["claim"]["kind"] == "frame" and r["material"] not in MATING_SPECS and r["verdict"] in ("no shrink", "other outcome"):
+                by[r["material"]].add(r["fen"])
+    for mat, fens in sorted(by.items(), key=lambda kv: -len(kv[1])):
+        if len(fens) < 10:
+            print(f"OBS   {mat}: {len(fens)} surprise boards -- too few"); continue
+        boards = random.Random(rnd).sample(sorted(fens), min(cap, len(fens)))
+        name = f"learn_{mat}_r{rnd}"
+        hole = dict(name=name, material=mat, piece="*", base=frames.get(mat, []), k=H.K, stuck=boards, sampled=len(fens))
+        json.dump(hole, open(paths.derived(f"hole_{name}.json"), "w"))
+        print(f"OBS   {mat}: {len(fens)} surprise boards -> hole {name} (base {hole['base'] or 'none'}; {len(boards)} boards)")
+        t0 = time.time()
+        out = run(name, budget, hole=hole)
+        base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None
+        if best and best["score"] > base["score"] + 0.05:
+            new[mat] = compose(frames.get(mat, []), best["term"], best["schema"])
+            print(f"OBS   MINED for {mat} ({time.time() - t0:.0f} s): [{best['schema']}] {best['term']} = "
+                  f"{V.gloss(V.parse(best['term']))} -- {best['score']:.3f} against {base['score']:.3f}; the frame now {new[mat]}")
+        else:
+            print(f"OBS   nothing mined for {mat} ({time.time() - t0:.0f} s): the best {best and best['score']:.3f} against the frame's own {base['score']:.3f}")
+    return new
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--material", default="KRRvKR")
+    ap.add_argument("--games", type=int, default=100)
+    ap.add_argument("--rounds", type=int, default=3)
+    ap.add_argument("--budget", type=int, default=60)
+    ap.add_argument("--frames", default=None, help="a JSON of {material: [terms]} to start from (default: none known)")
+    a = ap.parse_args(argv)
+    frames = json.load(open(a.frames)) if a.frames else {}
+    state = paths.derived(f"surprise_loop_{a.material}.json")
+    history = []
+    for rnd in range(a.rounds + 1):
+        t0 = time.time()
+        res = play(a.material, a.games, frames, seed0=1000 * rnd)
+        report(res, f"round {rnd} (frames {frames or 'none'}; {time.time() - t0:.0f} s)")
+        json.dump(res, open(paths.experiment(f"surprise_loop_{a.material}_r{rnd}.json"), "w"))
+        history.append(dict(round=rnd, frames=frames, outcomes=dict(Counter(g["out"] for g in res))))
+        json.dump(history, open(state, "w"), indent=1)
+        if rnd == a.rounds:
+            break
+        new = mine(res, frames, rnd, a.budget)
+        if new == frames:
+            print("OBS nothing new mined -- stopping"); break
+        frames = new
+
+
+if __name__ == "__main__":
+    main()
