@@ -29394,3 +29394,22 @@ the back row left open = forced retreat) and ALLOCATION of the pieces' supply to
 left; mate the base case at the edge); search the gaps once (exists). Proposed: build this discoverer; the test is
 rediscovery -- from material alone, the rook method and Kaveh's queen squeeze; then K+B+N. The hand-coded rook frame was
 started and paused (no code changed).
+THE DISCOVERER, FIRST VERSION, AND THE LIBRARY OF REASONED SOLUTIONS (2026-10-12 11:05 PDT; Kaveh: "yes! great move
+stopping the hand coding in favor of the generic loop"; then: "some part of our loop should be able to search for
+similarly reasoned proofs for inspiration"). mate_discovery.py, from material alone, in the lone king's frame (relative
+coordinates, a bounded window -- a suggestion; the Lean proofs decide): the goal's demand; RELAXATIONS (retreat by check or
+by zugzwang with the back row open; corner-ward with a side open too); ALLOCATION of our pieces; GENERALIZATION of each
+piece's placements to a pattern; the roles. OBS K+R: mate impossible in the open; RETREAT BY CHECK -- 6 placements, our
+king fixed at (0, -2) (opposition) covering the front row, the rook on the king's own row at |x| >= 2 (the far side)
+giving the check and covering the middle row, independent roles -- Kaveh's push, rediscovered; retreat by zugzwang
+impossible; our king two away never gives check and covers at most one of the middle row's two side squares (Kaveh's "not
+the other way"). OBS K+Q: RETREAT BY ZUGZWANG -- the queen alone a knight's move from the king (6 squares) covers all but
+the back row, our king often covering nothing (its moves passes) -- Kaveh's squeeze, rediscovered; retreat by check:
+our king on y = -2 within a file, the queen on the king's row. OBS K+B+N (window 3, 12 s): retreat by check 70
+placements, by zugzwang 293, no independent roles -- per-piece patterns do not describe a three-piece interaction; next:
+cluster solutions by role assignment, the bishop's colour as a parameter. reasoned_library.py (precedent, not
+contradicted: proof by analogy and proof plans; LeanDojo's premise retrieval; Huberman 1968 per-endgame better/worse
+predicates; Bratko & Michie's advice tables -- holding goals = our invariants, better goals = our measure; the caveat,
+Melis: an analogy can cost more than it saves, so retrieval only proposes): entries (relaxation, allocation, invariants,
+measure, base case, source, status), retrieval by the pieces' supply shapes; the discoverer prints its inspiration first
+(for K+B+N: Huberman's, then the queen squeeze and the rook push).
