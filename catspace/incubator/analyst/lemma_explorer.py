@@ -149,6 +149,37 @@ CATALOG = [
          why="Kaveh 2026-10-10: 'with a logic-based play there should be no blunders ... whatever the blunder guard is doing should be part of the main planner's job.'",
          where="plan.rs net_after", lean=[], uses=["forcing_search", "exchange_law", "check_tempo", "two_proofs"], status="on",
          evidence="The blunder audit then found 2 'certain' blunders in 7,876 positions, neither confirmed by Stockfish (2026-10-10)."),
+    dict(id="mate_demand", layer="proofs", name="The demand of a mate",
+         plain="In a checkmate the mated king's square is attacked and every square next to it is covered -- attacked with the king lifted, or held by its own piece or the other king. Every 'where can a mate stand' argument starts here: the demand (the king's 3x3 box) against what each piece can supply.",
+         why="Kaveh 2026-10-12: 'how do we get from the rules of chess to a statement like: in order to mate, ...' -- reason, never enumerate.",
+         where="Lean only (used by the K+Q edge theorem and insufficient material)", lean=["Ideas.checkmate_attacked", "Ideas.checkmate_flight"], uses=["mate_by_checks"], status="on",
+         evidence="Proved from the library's own checkmate (legal moves); the converse of Ideas.Mate's sufficient conditions."),
+    dict(id="kq_edge", layer="decide", name="King and queen mate only on the edge",
+         plain="Our king never touches theirs, so it covers one side of the box; the rest is a 2x3 rectangle the queen cannot cover alone. So the lone king is mated only on the edge -- and the tactic drives it there: the region it can walk to, first its squares off the edge, then our king's approach, then its size; never a stalemate, a hanging queen, or a claimable draw.",
+         why="Kaveh 2026-10-12: 'it is impossible to mate with a king and a queen in the middle of the board' -- prove it, then use it to mate.",
+         where="mating.rs kq_move (flag KQ_TACTIC, on)", lean=["Ideas.QueenMate.no_queen_mate_in_open", "Ideas.QueenMate.kq_mate_on_edge"], uses=["mate_demand", "game_draws"], status="on",
+         evidence="Play-outs against Stockfish's lone king: 1,000 / 1,000 mated, 9.2 moves on average, at most 30 (2026-10-12) -- measured; the strategy itself is not yet proved."),
+    dict(id="kq_region", layer="decide", name="Shrink the lone king's region",
+         plain="Against a lone king, the squares it can walk to without stepping onto a square we attack: the fewer, the closer the mate. The king-and-queen frame's lowest-ranked progress measure.",
+         why="Kaveh 2026-10-12: 'we need a notion of progress in any frame of any lemma'.",
+         where="mating.rs KQ_MEASURE (region)", lean=[], uses=["kq_edge"], status="on",
+         evidence="Alone it left a king boxed on e7 / f8 (one square off the edge) in 9 of 40 play-outs (2026-10-12)."),
+    dict(id="kq_approach", layer="decide", name="Bring our king to theirs",
+         plain="Our king's distance to the lone king, ranked above the region: the region may grow while our king comes round to the mating square -- 'we don't let the king go' (the squares off the edge never rise), but the box may open by one.",
+         why="Kaveh 2026-10-12: 'where the king's distance is increased, it is in a very specific condition ... anti-progress on one lemma, progress on another'.",
+         where="mating.rs KQ_MEASURE (approach)", lean=[], uses=["kq_edge"], status="on",
+         supersedes=[dict(id="kq_region", when="the region may grow while our king comes up -- the way round to the mating square (a king boxed on a7 / a8 is mated from c7)")],
+         evidence="With the region ranked first, one of 200 play-outs ran into the fifty-move rule; with the approach first, 1,000 / 1,000 mated (2026-10-12)."),
+    dict(id="insufficient_material", layer="decide", name="A king and one minor piece never mate",
+         plain="The minor piece gives the check, so it attacks only the mated king's colour (a bishop keeps its colour, a knight flips it); the king's orthogonal neighbours are the other colour and fall to our king alone; every square has two of them on the board, and a king guarding two of them stands next to the king. So no checkmate exists -- a draw.",
+         why="Kaveh 2026-10-12: 'derive an insufficient material rule from the laws you've already proven'.",
+         where="game.rs insufficient (inside the game's draws)", lean=["Ideas.InsufficientMaterial.no_mate_king_minor", "Ideas.InsufficientMaterial.insufficient_material"], uses=["mate_demand"], status="on",
+         evidence="Static rule proved; that no continuation adds material (no pawn, no promotion) is not yet proved."),
+    dict(id="game_draws", layer="decide", name="The game's draws in every frame",
+         plain="Every search carries the game: the fifty-move clock (on every position) and the repetitions since the last capture or pawn move (on the game's object). A third occurrence or 100 plies ends a line as a draw; a move into a draw -- stalemate, a claimable draw, insufficient material -- nets minus our lead, and their drawing reply takes it.",
+         why="Kaveh 2026-10-12: 'without that information there is no way the frame could know that we can draw ... it is forced to be global ... a class that represents this instance of the game'.",
+         where="game.rs; plan.rs PlanState, net_after; threat.rs; lib.rs (flag GAME_DRAWS, on)", lean=[], uses=["net", "forcing_search", "prove", "mate_by_checks"], status="on",
+         evidence="Fixed the stalemating Kc2 of the seed-7 dig; the stateless review unchanged (0 of 1,413 decisions) (2026-10-12)."),
     dict(id="wins_ranking", layer="decide", name="Wins ranked by net, with siblings",
          plain="The immediate wins are ranked by their net; every other capture on the same square joins the ranking; a win whose net is not positive is no win.",
          why="2026-10-10: Raxa7 'won 1' while Nf4 forked the queen; the recapture Bxe5 was never generated.",
@@ -227,10 +258,15 @@ def build() -> Path:
         for u in c["uses"]:
             if u not in ids:
                 raise SystemExit(f"{c['id']}: uses unknown {u}")
+        # SUPERSEDING (Kaveh 2026-10-12): a rule that may make another worse, to reach a bigger goal, names it and when
+        for sup in c.setdefault("supersedes", []):
+            if sup["id"] not in ids:
+                raise SystemExit(f"{c['id']}: supersedes unknown {sup['id']}")
     used_by = {c["id"]: [d["id"] for d in CATALOG if c["id"] in d["uses"]] for c in CATALOG}
+    superseded_by = {c["id"]: [dict(id=d["id"], when=sup["when"]) for d in CATALOG for sup in d["supersedes"] if sup["id"] == c["id"]] for c in CATALOG}
     lean = [dict(name=d["full"], kind=d["kind"], file=d["file"].split("/")[-1], line=d["line"], doc=d["doc"][:300], used_by=d["used_by"])
             for d in idx.values() if d["kind"] in ("theorem", "lemma")]
-    data = dict(layers=LAYERS, catalog=CATALOG, used_by=used_by, explain=EXPLAIN, lean=lean, built=time.strftime("%Y-%m-%d %H:%M"))
+    data = dict(layers=LAYERS, catalog=CATALOG, used_by=used_by, superseded_by=superseded_by, explain=EXPLAIN, lean=lean, built=time.strftime("%Y-%m-%d %H:%M"))
     # the connections graph (mermaid): layers as subgraphs, "uses" as edges
     lines = ["flowchart LR"]
     for lid, lname, _ in LAYERS:
@@ -244,6 +280,8 @@ def build() -> Path:
     for c in CATALOG:
         for u in c["uses"]:
             lines.append(f"  {u} --> {c['id']}")
+        for sup in c["supersedes"]:
+            lines.append(f"  {c['id']} -. supersedes .-> {sup['id']}")
     data["mermaid"] = "\n".join(lines)
     html = (Path(__file__).with_name("lemma_explorer.html")).read_text().replace("/*__DATA__*/null", json.dumps(data))
     out = Path(paths.experiment("lemma_explorer.html"))

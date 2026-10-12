@@ -887,6 +887,23 @@ pub fn set_our_quiet_mate(flag: bool) -> PyResult<()> { OUR_QUIET_MATE.store(fla
 #[pyfunction]
 pub fn set_their_quiet_mate(flag: bool) -> PyResult<()> { THEIR_QUIET_MATE.store(flag, Ordering::Relaxed); Ok(()) }
 
+// THE GAME'S DRAWS (Kaveh 2026-10-12; game.rs): a claimable draw ends a line in every search; a move into a draw nets what
+// the draw is worth (minus our lead), and their drawing reply counts as a win of our lead -- GAME_DRAWS. The king-and-queen
+// mate by its proved condition (mating.rs) -- KQ_TACTIC.
+pub static GAME_DRAWS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+pub static KQ_TACTIC: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_game_draws(flag: bool) -> PyResult<()> { GAME_DRAWS.store(flag, Ordering::Relaxed); Ok(()) }
+#[pyfunction]
+pub fn set_kq_tactic(flag: bool) -> PyResult<()> { KQ_TACTIC.store(flag, Ordering::Relaxed); Ok(()) }
+/// kq_move_of(fen) -> the king-and-queen confining move (uci) and the lone king's region after it, if the side to move has
+/// king and queen against a king.
+#[pyfunction]
+pub fn kq_move_of(fen: String) -> Option<(String, u32)> {
+    let pos = parse(&fen)?;
+    crate::mating::kq_move(&pos).map(|(m, r, _)| (m.to_uci(CastlingMode::Standard).to_string(), r))
+}
+
 pub static DEFENCE_TRADES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_defence_trades(flag: bool) -> PyResult<()> { DEFENCE_TRADES.store(flag, Ordering::Relaxed); Ok(()) }
@@ -902,6 +919,11 @@ fn net_after_inner(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs
     let u = m.to_uci(CastlingMode::Standard).to_string();
     let q = after(pos, m);
     if q.is_checkmate() { return (MATE_GOAL, None); }
+    // A MOVE INTO A DRAW (game.rs: stalemate, a claimable draw, insufficient material) is worth what the draw is: minus our
+    // lead (2026-10-12: Kc2 stalemated a king and queen against a king, "arming Qb3")
+    if GAME_DRAWS.load(Ordering::Relaxed) {
+        if let Some(w) = crate::game::drawn(&q) { return (crate::game::draw_net(pos), Some(format!("a draw by {w}"))); }
+    }
     // (A FULL PROOF DOMINATES A FRAME VALUE for the same move -- PROOF_FIRST; off: any frame entry marks the move framed)
     let is_framed = |w: &(String, Square, i64)| FRAMED.with(|f| f.borrow().contains(&(w.0.clone(), w.1)));
     let full = wins.iter().filter(|w| w.0 == u && !is_framed(w)).map(|w| w.2).max();
@@ -951,6 +973,14 @@ fn net_after_inner(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs
             if v < MATE_GOAL { if let Some(mt) = threats(&q, q.turn()).into_iter().find(|t| t.mate) { v = MATE_GOAL; w = Some(format!("{} mates", mt.how.clone().unwrap_or_default())); } }
             // (and THEIR MATE WITH A QUIET FIRST MOVE -- the forcing search with the king's flights as threats: 2026-10-12, the
             // dig [61]: Qe8 "stops Nxe5", then Na5! ... Qxa7#; [47]: Rd7+ Kh6 Ree7 -- the checks-only search is blind to both)
+            // (THEIR DRAW: a reply into a claimable draw or insufficient material takes our lead -- the game context)
+            let lead = kernel_material(&q, !q.turn());
+            if GAME_DRAWS.load(Ordering::Relaxed) && lead > v && v < MATE_GOAL {
+                if let Some((r, why)) = q.legal_moves().into_iter().find_map(|r| { let x = after(&q, &r);
+                    crate::game::claimable_draw(&x).or_else(|| crate::game::insufficient(&x).then_some("insufficient material")).map(|w| (r, w)) }) {
+                    v = lead; w = Some(format!("{} draws by {why} (our lead {lead})", san(&q, &r.to_uci(CastlingMode::Standard).to_string())));
+                }
+            }
             if v < MATE_GOAL && THEIR_QUIET_MATE.load(Ordering::Relaxed) {
                 if let Some(m) = crate::threat::forcing_mate_cornering(&q, crate::threat::FBUDGET.load(Ordering::Relaxed)) {
                     v = MATE_GOAL; w = Some(format!("{} mates by force", san(&q, &m.to_uci(CastlingMode::Standard).to_string())));
@@ -1133,6 +1163,17 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
                 let d = Some((String::new(), u.clone(), MATE_GOAL, format!("{} mates by force", san(pos, &u))));
                 mark("mate first");
                 return Plan { trace, best: d.clone(), proofs, nodes, target: b.king_of(them), immediate: d, wins: vec![(u, b.king_of(them).unwrap_or(m.to()), MATE_GOAL)] };
+            }
+        }
+        // THE KING-AND-QUEEN MATE BY ITS PROVED CONDITION (mating.rs; Lean Ideas.QueenMate.kq_mate_on_edge -- the lone king
+        // is mated only on the edge): drive it there by shrinking its region, never stalemating, never repeating
+        if !immediate_only && KQ_TACTIC.load(Ordering::Relaxed) {
+            if let Some((m, r, why)) = crate::mating::kq_move(pos) {
+                let u = m.to_uci(CastlingMode::Standard).to_string();
+                trace.push(format!("king and queen: {} leaves the lone king a region of {r} squares (a mate needs it on the edge -- proved); against every reply: {why}", san(pos, &u)));
+                let d = Some((String::new(), u.clone(), 0, format!("{} confines the king to {r} squares", san(pos, &u))));
+                mark("mate first");
+                return Plan { trace, best: d.clone(), proofs, nodes, target: b.king_of(them), immediate: None, wins: vec![] };
             }
         }
     }
@@ -1918,17 +1959,39 @@ pub fn plan_trace(fen: String) -> PyResult<(Vec<String>, Option<(String, String,
 /// move's (fresh searches, replays, exact reuses, reused failures, re-proofs, lone-attack skips, frozen moves, escape
 /// skips, moves cut by the history order)).
 #[pyclass(unsendable)]
-pub struct PlanState { memo: Option<Memo> }
+pub struct PlanState { memo: Option<Memo>, seen: HashMap<u64, u8> }
 
 type StatRow = (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32, u32, u32);
+
+impl PlanState {
+    /// One more occurrence of `pos` in this game; an irreversible move (the half-move clock at 0) starts the count afresh.
+    fn count(&mut self, pos: &Chess) {
+        if pos.halfmoves() == 0 { self.seen.clear(); }
+        *self.seen.entry(crate::threat::zkey(pos)).or_insert(0) += 1;
+    }
+}
 
 #[pymethods]
 impl PlanState {
     #[new]
-    fn new() -> Self { PlanState { memo: Some(Memo::default()) } }
+    fn new() -> Self { PlanState { memo: Some(Memo::default()), seen: HashMap::new() } }
+
+    /// record(fen): a position of this game that is not planned (the opponent's turn, a skipped move) -- its repetition
+    /// count kept (after a capture or a pawn move, the half-move clock 0, nothing earlier can come back).
+    fn record(&mut self, fen: String) {
+        if let Some(pos) = parse(&fen) { self.count(&pos); }
+    }
+
+    /// repetitions(fen) -> how often this game has seen the position.
+    fn repetitions(&self, fen: String) -> u8 {
+        parse(&fen).map_or(0, |p| self.seen.get(&crate::threat::zkey(&p)).copied().unwrap_or(0))
+    }
 
     fn observe(&mut self, fen: String) -> PyResult<(Vec<String>, Option<(String, String, i64, String)>, u32, u64, f64, Option<(String, String, i64, String)>, StatRow)> {
         let Some(pos) = parse(&fen) else { return Ok((vec![], None, 0, 0, 0.0, None, (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))) };
+        // THE GAME CONTEXT (game.rs): this position counted, the counts installed for this planning call only
+        self.count(&pos);
+        crate::game::install(self.seen.clone());
         let mut memo = self.memo.take().unwrap_or_default();
         memo.stats = Stats::default();
         for v in memo.history.values_mut() { *v *= 0.8; }                    // recent wins weigh more
@@ -1983,6 +2046,7 @@ impl PlanState {
             }
         }
         mark_any("observe: ledger, pool, solution");
+        crate::game::clear();
         let memo = MEMO.with(|m| m.borrow_mut().take()).unwrap_or_default();
         let s = memo.stats;
         self.memo = Some(memo);

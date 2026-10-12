@@ -29269,3 +29269,65 @@ class move by move -- next. DUPLICATES: reused Ideas.Mate (flightOkB, withEmpty,
 GeoLemmas' colour laws, Fork's opposite_ne, Passer's kingGeometryB_comm (my two copies deleted); Passer's
 kingGeometryB_comm was proved by `decide` over all 4,096 square pairs -- now by reasoning. Pre-existing: absDiff_def is
 stated in both FrameLemma and GeoLemmas (left). Index rebuilt.
+THE GAME CONTEXT AND THE PROVED RULES IN RUST (2026-10-12 09:42 PDT; Kaveh: "build this game context ... the proved rules
+into Rust, insufficient material as the draw, the king and queen tactic ... round it out"). (1) THE GAME CONTEXT (game.rs;
+Kaveh: every frame must carry the fifty-move clock and the repetitions -- global to the game, on the game's object, not
+a singleton; puzzles have none): the clock rides on every shakmaty position (from the FEN through every move); the
+repetition counts since the last irreversible move are kept by PlanState (observe counts the planned position, record
+counts the others -- the opponent's) and installed read-only for one planning call; a stateless call sees none. A
+CLAIMABLE DRAW (the third occurrence, 100 plies) ends a line in every search: the forcing search (disproven), the proof
+search (the claim fails), the mate by checks (the defender's escape). (2) DRAWS IN A MOVE'S NET (GAME_DRAWS): a move into
+a draw -- stalemate, a claimable draw, insufficient material (the proved static rule, Lean insufficient_material) -- nets
+minus our lead; their reply into one takes our lead. Fixes the stalemating Kc2 of the dig ([48]). (3) THE KING-AND-QUEEN
+MATE (mating.rs, KQ_TACTIC), by the proved condition (Lean kq_mate_on_edge: mate only on the edge): the lone king's
+REGION (squares it reaches over squares we do not attack) measured by the theorem -- first its squares off the edge, then
+our king's distance, then its size, then freshness; never a stalemate, a queen left to the king, or a move after which a
+claimable draw is reachable. OBS kq_playout (the planner with a PlanState against Stockfish's lone king, random legal
+starts): region-only 31 / 40 mated (9 boxed on e7 / f8, one square off the edge); edge-first 34 / 40 (the other 6 were the
+harness counting OUR possible claims -- fixed: only the defender claims); 199 / 200 (one king boxed on a7 / a8 in the
+corner, our king never came round -- the region preferred over the approach); approach before size: 1,000 / 1,000 mated,
+moves to mate mean 9.2, max 30, 0.3 ms a move. A MEASUREMENT: that the choice always mates is not proved. OBS seed-8
+review (stateless: only stalemate, the clock, insufficient material can bite): 0 of 1,413 common decisions changed, 1,417
+decisions; 7.9% / 4.4%. OPEN: the dynamic insufficient-material rule (no continuation adds material: no pawn, no
+promotion) is not yet proved in Lean -- the Rust draw rests on the static rule plus that.
+NEXT UP (Kaveh 2026-10-12, verbatim intent): PROVE A FORCED MATE OF KING, KNIGHT AND BISHOP AGAINST A LONE KING BY
+REASONING -- not by brute force. "The interesting thing is not the answer, because we know the answer; the interesting
+thing is finding an algorithm that gets us to the answer -- that gets us to every answer, for every combination of
+pieces, using the Lean-based lemmas we have or any extra lemmas you want to write: you are allowed to write extra frames,
+extra lemmas, whatever you want, but we want to be able to reason our way to a mate." Starting point: the process of
+today (the demand: the mated king's box covered -- MateDemand; the supply of each piece by its geometry and colour --
+QueenMate, GeoLemmas, InsufficientMaterial; the most constrained piece claims first), which already says WHERE a mate can
+stand (K+Q: the edge; K+B+N: not in the open, by the colour count; on the edge possible). Still to find: the method that
+turns "where" into "how to force it" -- a measure that every move of ours can shrink against every defence (the region
+for K+Q; for B+N, the corner of the bishop's colour), proved in Lean as a strategy.
+SUPERSEDING LEMMAS (Kaveh 2026-10-12 09:46 PDT, an idea for the next-up work): "when you temporarily have to violate a
+lemma to get to a bigger goal, you need a bigger lemma that supersedes the smaller one -- the way to this goal is to
+temporarily step away. Search it once, find it, turn it into a lemma; acknowledge in it which lemma it violates and index
+on that, so whenever lemma X is supposed to apply you remember lemma Y says you can get there without X, and do a quick
+check whether Y applies." Today's instance: the king-and-queen region had to GROW (2 -> 3) for our king to come round to
+b6 -- fixed by reordering the measure, not yet as a named lemma "on the edge, the approach supersedes the region". Shape:
+Y = X's hypotheses plus a condition C, so the link is hypothesis inclusion (the 2026-09-22 lemma generator's subsumption
+step); the explorer's "uses" links gain "supersedes, under C". The K+B+N mate (the W-manoeuvre lets the king out) is the
+test case.
+PROGRESS IN EVERY FRAME (Kaveh 2026-10-12 09:48 PDT): "where the king's distance is increased, it is in a very specific
+condition -- we don't let the king go ... the opponent gets a tempo, but in that tempo it is constrained not to get us
+away from our goal ... anti-progress on one lemma, progress on another -- we need a notion of progress in any frame of any
+lemma." The king-and-queen tactic is already one ordered measure (squares of the region off the edge, our king's
+distance, the region's size, freshness): "don't let the king go" = the first never rises; the region grows only while
+the approach strictly improves. Missing for a proof: the measure is read after OUR move only -- a forced win needs it to
+fall over every (our move, any reply) pair (a ranking function, which also bounds the moves -- the fifty-move clock); and
+the order was found by watching failures, not proved. Frame shape: every lemma carries its measure; a superseding lemma is
+one whose measure ranks above the one it lets worsen, under its condition.
+PROGRESS MEASURES AND SUPERSEDING, BUILT (2026-10-12 09:56 PDT; Kaveh: "build whatever we've been talking about").
+mating.rs: a frame's MEASURE is named components by rank (Component: id, name, the Lean statement it serves, the
+component it SUPERSEDES and when, the value), compared lexicographically; each move's explanation names the component
+that made progress and the lower ones it worsened, with the superseding rule ("our king's distance 3 -> 2; the region 2 ->
+3 (superseded by approach: the region may grow while our king comes up)"). KQ_MEASURE = [region squares off the edge
+(toward Lean kq_mate_on_edge), our king's distance to theirs (supersedes the region's size), the region's size]. Each
+move's CERTIFICATE: the measure against every reply. OBS choosing by the every-reply measure: 998 / 1,000 mated, 11.1 moves
+on average (their king toggles g1 / h1, our king on the wrong side on e1 never gets "nearer"); choosing right after our
+move: 1,000 / 1,000, 9.2 moves, 0.3 ms a move -- progress guaranteed against every reply on 53% of our moves. FINDING: our
+king's distance to theirs is no ranking function -- the defender undoes it; the target must be one their moves cannot
+shift (the square our king needs for a mating shape on the edge -- the shapes' theorem is the next proof). The lemma
+explorer: a "supersedes, when" link (validated; dashed in the graph; Supersedes / Superseded by on each rule): 44 rules,
+15 backed by Lean. Tests: the analyst suite 399 passed, 1 xfailed (before this step); the threat and index tests after it.

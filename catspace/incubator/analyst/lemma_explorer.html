@@ -151,6 +151,8 @@ function renderDetail() {
       <dt>Proved in Lean</dt><dd><div class="chips">${c.lean.length ? c.lean.map(n => `<span class="chip lean">${esc(n)}</span>`).join("") : '<span class="lede">not yet -- a candidate for a theorem</span>'}</div></dd>
       <dt>Uses</dt><dd><div class="chips">${link(c.uses)}</div></dd>
       <dt>Used by</dt><dd><div class="chips">${link(DATA.used_by[c.id] || [])}</div></dd>
+      ${(c.supersedes || []).length ? `<dt>Supersedes</dt><dd>${c.supersedes.map(x => `<div class="chips">${link([x.id])}</div><p class="lede">${esc(x.when)}</p>`).join("")}</dd>` : ""}
+      ${(DATA.superseded_by[c.id] || []).length ? `<dt>Superseded by</dt><dd>${DATA.superseded_by[c.id].map(x => `<div class="chips">${link([x.id])}</div><p class="lede">${esc(x.when)}</p>`).join("")}</dd>` : ""}
     </dl>`;
 }
 function open(id) { selected = id; showTab("rules"); renderLayers(); renderDetail(); window.scrollTo({ top: 0, behavior: "smooth" }); }

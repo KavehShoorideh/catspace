@@ -13,6 +13,8 @@ pub mod prof;
 mod threat;
 mod ledger;
 mod pns;
+mod game;
+mod mating;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::collections::HashMap;
@@ -863,6 +865,8 @@ fn pursue_val_p(q: &Chess, side: Color, focus: &[Square], plies: u32, mut alpha:
     let b = BUDGET.load(Ordering::Relaxed);
     if b == 0 { return -1000; }
     if b != u64::MAX { BUDGET.store(b - 1, Ordering::Relaxed); }
+    // A CLAIMABLE DRAW on the way (the game context: a third occurrence, the fifty-move clock) -- no claim survives it
+    if crate::plan::GAME_DRAWS.load(Ordering::Relaxed) && crate::game::claimable_draw(q).is_some() { return -1000; }
     if q.turn() == side {
         // the protagonist stalemated: a draw, no gain (a stalemate is read off the whole board)
         if !q.is_check() && q.legal_moves().is_empty() { if ix.is_some() { dep_global(); } return -1000; }
@@ -1625,6 +1629,11 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(threat::forcing_moves_audit, m)?)?;
     m.add_function(wrap_pyfunction!(threat::forcing_value_of, m)?)?;
     m.add_function(wrap_pyfunction!(threat::forcing_proof_of, m)?)?;
+    m.add_function(wrap_pyfunction!(game::game_draw_check, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::kq_move_of, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_game_draws, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_kq_tactic, m)?)?;
+    m.add_function(wrap_pyfunction!(mating::set_kq_every_reply, m)?)?;
     m.add_function(wrap_pyfunction!(threat::set_composed, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_strict_stop, m)?)?;
     m.add_class::<plan::PlanState>()?;

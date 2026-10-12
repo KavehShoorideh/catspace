@@ -65,7 +65,11 @@ fn mate_by_checks_inner(p: &Chess, n: u32) -> Option<Move> {
     let checks = checking_moves(p);
     if let Some((m, _)) = checks.iter().find(|(_, q)| q.legal_moves().is_empty()) { return Some(m.clone()); }
     if n <= 1 { return None; }
-    checks.into_iter().find(|(_, q)| q.legal_moves().iter().all(|r| mate_by_checks(&after(q, r), n - 1).is_some())).map(|(m, _)| m)
+    // (a claimable draw on the way -- the game context -- is the defender's escape)
+    let draws = crate::plan::GAME_DRAWS.load(Ordering::Relaxed);
+    let open = |x: &Chess| !(draws && crate::game::claimable_draw(x).is_some());
+    checks.into_iter().filter(|(_, q)| open(q))
+        .find(|(_, q)| q.legal_moves().iter().all(|r| { let x = after(q, r); open(&x) && mate_by_checks(&x, n - 1).is_some() })).map(|(m, _)| m)
 }
 
 /// A mate in one for the side to move, if any.
@@ -594,6 +598,8 @@ pub fn policy_stats() -> Vec<u64> { crate::pns::POLICY_N.iter().map(|a| a.swap(0
 impl crate::pns::Problem for Forcing {
     type State = FState;
     fn judge(&self, s: &FState, or: bool, root: bool) -> Option<bool> {
+        // a claimable draw on the way (the game context) ends the line: no gain, no mate
+        if !root && crate::plan::GAME_DRAWS.load(Ordering::Relaxed) && crate::game::claimable_draw(&s.pos).is_some() { return Some(false); }
         if or {
             // (no move of ours: mated or stalemated -- no standing counts; 2026-10-11, the surprise loop: axb5 Qf7# was
             // "proven" at +3 because the standing read the material of a mated side)
