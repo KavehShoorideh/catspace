@@ -201,6 +201,7 @@ impl Spec {
                 "sum" => { if let Some(l) = v.last_mut() { *l += x } else { v.push(x) } }
                 "replace" => { if let Some(l) = v.last_mut() { *l = x } else { v.push(x) } }
                 "append" => v.push(x),
+                "prepend" => v.insert(0, x),                  // ranked above the frame (Kaveh: first don't lose)
                 _ => {}
             }
         }
@@ -328,9 +329,13 @@ impl Spec {
             played += 1; cert += c as u32;
             p = after(&p, &m);
             if p.is_checkmate() { return (Some(n), played, cert); }
-            // the material's goal: theirs smaller, our lead no smaller -- the next frame's material (Reach.bind)
-            if matches!(self.safety, Safety::Material) && material(p.board(), !us) < theirs0
-                && material(p.board(), us) - material(p.board(), !us) >= lead0 { return (Some(n), played, cert); }
+            if matches!(self.safety, Safety::Material) {
+                let lead = material(p.board(), us) - material(p.board(), !us);
+                // FIRST DON'T LOSE (Kaveh 2026-10-12): ground lost after our move is a failure, whatever follows
+                if lead < lead0 { return (None, played, cert); }
+                // then the goal: theirs smaller, our lead no smaller -- the next frame's material (Reach.bind)
+                if material(p.board(), !us) < theirs0 { return (Some(n), played, cert); }
+            }
             if p.legal_moves().is_empty() { return (None, played, cert); }
             *seen.entry(crate::threat::zkey(&p)).or_insert(0) += 1;
             if seen[&crate::threat::zkey(&p)] >= 3 { return (None, played, cert); }
@@ -450,11 +455,56 @@ pub fn material_frames() -> PyResult<std::collections::HashMap<String, Vec<Strin
     Ok(MATERIAL_FRAMES.read().unwrap().clone().unwrap_or_default())
 }
 
-/// The generic frame's move for the side to move (its material's terms; none known -- the empty frame, whose only claim
-/// is the goal) -> (the move, its trace line: the claim and whether it is certified).
+/// The frame a material is known by (the run's mined frames, else the mating frames' named measures).
+fn known_frame(key: &str) -> Vec<String> {
+    if let Some(t) = MATERIAL_FRAMES.read().unwrap().as_ref().and_then(|m| m.get(key).cloned()) { return t; }
+    match key {
+        "KRvK" => vec!["fn:wall".into(), "fn:kr_generated".into()],
+        "KQvK" => vec!["fn:kq_offedge".into(), "fn:kq_approach".into(), "fn:kq_region".into()],
+        _ => vec![],
+    }
+}
+
+/// THE HOLD FRAME (Kaveh 2026-10-12: "first, don't lose, and then try to win"; "when losing, drag the loss out as long
+/// as possible ... same thing with drawing"): not ahead, the frame's moves are the audited ones (nothing lost; a draw
+/// is worth our deficit), and among them the one keeping THEIR frame's measure highest against their best reply -- the
+/// mirror of the frame they would play (an earlier lemma, from their side); then a position not yet seen.
+fn hold_move(pos: &Chess, key: &str, net: &dyn Fn(&Move) -> i64) -> Option<(Move, String)> {
+    let us = pos.turn();
+    let mirror = material_key(pos.board(), !us);
+    let specs = known_frame(&mirror);
+    let comps: Vec<Comp> = specs.iter().filter_map(|s| comp(s)).collect();
+    let theirs = |q: &Chess| -> Vec<u32> { comps.iter().map(|c| cval(c, q, us)).collect() };
+    let mut cands: Vec<(Vec<u32>, bool, Move)> = Vec::new();
+    for m in pos.legal_moves() {
+        if net(&m) < 0 { continue; }
+        let q = after(pos, &m);
+        let held = q.legal_moves().iter().map(|r| theirs(&after(&q, r))).min().unwrap_or_default();
+        cands.push((held, crate::game::seen(&q) == 0, m));
+    }
+    cands.sort_by(|a, b| (&b.0, b.1).cmp(&(&a.0, a.1)));
+    let (held, _, m) = cands.into_iter().next()?;
+    let before = theirs(pos);
+    let claim = if specs.is_empty() {
+        format!("hold ({key}, not ahead): nothing lost within {FRAME_K} moves (no frame known for their side, {mirror})")
+    } else {
+        format!("hold ({key}, not ahead): nothing lost within {FRAME_K} moves; their frame's measure {specs:?} ({mirror}) kept high -- {before:?} now, {held:?} after their best reply")
+    };
+    Some((m, claim))
+}
+
+/// The generic frame's move for the side to move -> (the move, its trace line: the claim and whether it is certified).
+/// Ahead: the WIN frame (its material's terms; none known -- the empty frame, whose only claim is the goal). Not ahead:
+/// the HOLD frame.
 pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
     let us = pos.turn();
     let key = material_key(pos.board(), us);
+    if material(pos.board(), us) <= material(pos.board(), !us) {
+        let net = |m: &Move| crate::plan::audit_net(pos, m);
+        if let Some(x) = hold_move(pos, &key, &net) { return Some(x); }
+        let m = pos.legal_moves().into_iter().max_by_key(|m| net(m))?;
+        return Some((m.clone(), format!("hold ({key}, not ahead): no move keeps everything -- the least loss (net {})", net(&m))));
+    }
     let terms = MATERIAL_FRAMES.read().unwrap().as_ref().and_then(|m| m.get(&key).cloned()).unwrap_or_default();
     let base: Vec<Comp> = terms.iter().filter_map(|t| parse_term(t).map(Comp::T)).collect();
     let sp = Spec { base, cand: None, schema: "none".to_string(), safety: Safety::Material };

@@ -12,11 +12,15 @@ an outcome, but a different outcome ended up happening").
            goal (mate, or a capture we keep: the material changes, the next frame takes over); a proof's -- its goal (mate,
            material won) within its horizon (refuted: a prover bug -- the stalemate leaf, game 4 of the first smoke run);
            an arming move's -- the same goal, expected not proved; a defence's -- our lead does not fall below what it said
-  SURPRISE the game refutes a claim: the horizon passed and the measure did not shrink (nor the goal came), or the game
-           ended in another outcome first (a draw, a loss)
-  MINE     the refuted frame claims of each material become a hole (base: the material's frame so far); the pipeline
-           (proposers -> filter -> verifier, the verifier's safety and goal the material's) proposes a term; the best joins
-           the material's frame by its schema; play again
+  CLASSES  Kaveh: "first, don't lose, and then try to win"; "when losing, drag the loss out as long as possible ... same
+           thing with drawing" -- by the material lead: AHEAD, hold then win; LEVEL or BEHIND, hold (the hold frame keeps
+           their frame's measure high, the mirror of an earlier lemma) -- a draw there is what was claimed
+  SURPRISE the game refutes a claim -- RANK 1, ground lost: our lead after our move below the claim's, a loss, or (ahead) a
+           draw; RANK 2 (ahead): the horizon passed and the measure did not shrink (nor the goal came), or the game ended
+           in another outcome first
+  MINE     ahead materials only: the rank-1 boards a hole whose term goes FIRST (schema prepend: don't lose); the rank-2
+           boards a hole on the frame so far (append / sum / replace); the pipeline (proposers -> filter -> verifier, whose
+           closed loop fails on ground lost) proposes; the best joins the material's frame; play again
 
   python -m catspace.incubator.analyst.discovery.surprise_loop --material KRRvKR --games 100 --rounds 3
 """
@@ -34,7 +38,7 @@ from catspace.io import paths
 
 FRAME_K = 2                    # vocab.rs FRAME_K: the generic frame's horizon
 MATING_K = 3                   # mating.rs KQ_TEMPO_MOVES: the mating frames' horizon
-ATTACK_K, MATE_K, DEFENCE_K = 5, 10, 2
+ATTACK_K, MATE_K, DEFENCE_K = 10, 10, 2       # a proof's horizon: 10 (game 1064 collected "wins 4 by force" on move 6)
 MATING_SPECS = {"KRvK": ["fn:wall", "fn:kr_generated"], "KQvK": ["fn:kq_offedge", "fn:kq_approach", "fn:kq_region"]}
 LIMIT = 120                    # moves of ours per game
 
@@ -108,6 +112,7 @@ def _game(args):
                 m = next(iter(b.legal_moves))
             rows.append(dict(fen=b.fen(), material=mat, lead=lead, theirs=theirs, san=b.san(m), why=why, claim=claim, trace=tr))
             b.push(m)
+            rows[-1]["lead_after"] = lead_of(b)[0]           # the lead our move leaves (a trade is not a loss)
         else:
             st.record(b.fen())
             b.push(eng.play(b, chess.engine.Limit(depth=10)).move)
@@ -116,7 +121,9 @@ def _game(args):
 
 
 def judge(g: dict) -> None:
-    """Each claim against the game: 'kept', 'no shrink' (the horizon passed), 'other outcome' (the game ended first)."""
+    """Each claim against the game. RANK 1 'lost ground' (our lead after our move below the claim's, a loss, or -- ahead --
+    a draw within the horizon); then, ahead, RANK 2: 'kept', 'no shrink' (the horizon passed), 'other outcome' (the game
+    ended first); not ahead, holding was the claim -- 'kept'."""
     import catspace.incubator.analyst  # noqa: F401
     import analyst_core as A
     rows = g["rows"]
@@ -126,6 +133,13 @@ def judge(g: dict) -> None:
         if c["kind"] == "none":
             r["verdict"] = "no move"; continue
         win = rows[i + 1:i + 1 + c["k"]]
+        ended = len(win) < c["k"]
+        ahead = r["lead"] > 0
+        if (min([r["lead_after"]] + [x["lead_after"] for x in win]) < r["lead"] or (ended and g["out"] == "loss")
+                or (ahead and ended and g["out"] == "draw")):
+            r["verdict"] = "lost ground"; continue
+        if not ahead:
+            r["verdict"] = "kept"; continue
         reached = lambda x: x["theirs"] < r["theirs"] and x["lead"] >= r["lead"]      # the goal: a capture we kept
         verdict = None
         if c["kind"] == "defence":
@@ -163,17 +177,20 @@ def play(material: str, games: int, frames: dict, seed0: int, workers: int = 6) 
 def report(res: list, label: str) -> None:
     rows = [r for g in res for r in g["rows"]]
     won = [g["moves"] for g in res if g["out"] == "win"]
+    lost = [g["moves"] for g in res if g["out"] == "loss"]
     print(f"OBS {label}: {len(res)} games {dict(Counter(g['out'] for g in res))}"
-          f"{f', {sum(won) / len(won):.1f} moves per win' if won else ''}; {len(rows)} moves of ours")
+          f"{f', {sum(won) / len(won):.1f} moves per win' if won else ''}{f', a loss lasted {sum(lost) / len(lost):.1f} moves' if lost else ''}; {len(rows)} moves of ours")
     for mat in sorted({r["material"] for r in rows}, key=lambda m: -sum(r["material"] == m for r in rows)):
         here = [r for r in rows if r["material"] == mat]
         by = Counter((r["claim"]["kind"], r["verdict"]) for r in here)
-        sur = sum(v for (k, ver), v in by.items() if ver in ("no shrink", "other outcome"))
+        sur = sum(v for (k, ver), v in by.items() if ver in ("no shrink", "other outcome", "lost ground"))
         print(f"OBS   {mat} ({len(here)} moves): surprised {sur} ({100 * sur / len(here):.0f}%) -- " +
               ", ".join(f"{k} {ver} {v}" for (k, ver), v in sorted(by.items())))
 
 
 def compose(base: list, term: str, schema: str) -> list:
+    if schema == "prepend":
+        return [term] + base
     if schema == "append" or not base:
         return base + [term]
     if schema == "sum":
@@ -190,25 +207,32 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100) -> dict
     by = defaultdict(set)
     for g in res:
         for r in g["rows"]:
-            if r["claim"]["kind"] == "frame" and r["material"] not in MATING_SPECS and r["verdict"] in ("no shrink", "other outcome"):
-                by[r["material"]].add(r["fen"])
-    for mat, fens in sorted(by.items(), key=lambda kv: -len(kv[1])):
+            # ahead materials of the generic frame (the mating frames and the hold frame are earlier lemmas): rank 1 first
+            if r["claim"]["kind"] == "frame" and r["material"] not in MATING_SPECS and r["lead"] > 0:
+                if r["verdict"] == "lost ground":
+                    by[(r["material"], 1)].add(r["fen"])
+                elif r["verdict"] in ("no shrink", "other outcome"):
+                    by[(r["material"], 2)].add(r["fen"])
+    for (mat, rank), fens in sorted(by.items(), key=lambda kv: (kv[0][1], -len(kv[1]))):
         if len(fens) < 10:
-            print(f"OBS   {mat}: {len(fens)} surprise boards -- too few"); continue
+            print(f"OBS   {mat} rank {rank}: {len(fens)} surprise boards -- too few"); continue
         boards = random.Random(rnd).sample(sorted(fens), min(cap, len(fens)))
-        name = f"learn_{mat}_r{rnd}"
-        hole = dict(name=name, material=mat, piece="*", base=frames.get(mat, []), k=H.K, stuck=boards, sampled=len(fens))
+        name = f"learn_{mat}_rank{rank}_r{rnd}"
+        cur = new.get(mat, [])
+        hole = dict(name=name, material=mat, piece="*", base=cur, k=H.K, stuck=boards, sampled=len(fens),
+                    schemas=["prepend"] if rank == 1 and cur else None)
         json.dump(hole, open(paths.derived(f"hole_{name}.json"), "w"))
-        print(f"OBS   {mat}: {len(fens)} surprise boards -> hole {name} (base {hole['base'] or 'none'}; {len(boards)} boards)")
+        print(f"OBS   {mat} rank {rank} ({'ground lost' if rank == 1 else 'no progress'}): {len(fens)} surprise boards -> hole {name} "
+              f"(base {cur or 'none'}; {len(boards)} boards)")
         t0 = time.time()
         out = run(name, budget, hole=hole)
         base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None
         if best and best["score"] > base["score"] + 0.05:
-            new[mat] = compose(frames.get(mat, []), best["term"], best["schema"])
+            new[mat] = compose(cur, best["term"], best["schema"])
             print(f"OBS   MINED for {mat} ({time.time() - t0:.0f} s): [{best['schema']}] {best['term']} = "
                   f"{V.gloss(V.parse(best['term']))} -- {best['score']:.3f} against {base['score']:.3f}; the frame now {new[mat]}")
         else:
-            print(f"OBS   nothing mined for {mat} ({time.time() - t0:.0f} s): the best {best and best['score']:.3f} against the frame's own {base['score']:.3f}")
+            print(f"OBS   nothing mined for {mat} rank {rank} ({time.time() - t0:.0f} s): the best {best and best['score']:.3f} against the frame's own {base['score']:.3f}")
     return new
 
 

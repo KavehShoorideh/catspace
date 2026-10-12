@@ -112,7 +112,7 @@ def fresh_candidates(hole: dict, boards: list) -> dict:
     """A hole with no labels: its candidates are the enumeration, merged by observational equivalence on its boards."""
     import analyst_core as A
     seen, rows = set(), []
-    schemas = H.SCHEMAS if hole["base"] else ("append",)
+    schemas = tuple(hole.get("schemas") or (H.SCHEMAS if hole["base"] else ("append",)))
     for t in V.enumerate_numbers():
         v = tuple(A.vocab_values(boards, V.sexpr(t)))
         if len(set(v)) > 1 and v not in seen:
