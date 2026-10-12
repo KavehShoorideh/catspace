@@ -246,15 +246,16 @@ def score(r: dict) -> float:
     return h + 1e-2 * w + 1e-4 * c
 
 
-def better(a: dict, b: dict, claim_margin: float = 0.05) -> bool:
-    """a beats b by a margin at the first rank where they differ: a board more held, a win more, or the claims kept."""
+def better(a: dict, b: dict) -> bool:
+    """a beats b: a board more held, or (as many held) a win more. The claims kept ORDER the candidates but never promote
+    one alone -- a measure we lower ourselves keeps its claims by construction (2026-10-12, the "ends" run: "their king's
+    distance to our rook" and then a progress term were promoted on claims alone, holding 2 / 30 and 0 / 30 like the
+    frames before them; the frame then held nothing)."""
     n = max(a["n"], 1)
-    ha, wa, ca = ranked(a); hb, wb, cb = ranked(b)
+    ha, wa, _ = ranked(a); hb, wb, _ = ranked(b)
     if abs(ha - hb) * n >= 0.5:
         return ha > hb
-    if abs(wa - wb) * n >= 0.5:
-        return wa > wb
-    return ca > cb + claim_margin
+    return (wa - wb) * n >= 0.5
 
 
 def main(argv=None):
