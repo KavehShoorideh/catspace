@@ -29190,3 +29190,11 @@ chances 4.9%, mean 0.0518 (fixes with the old policy 9.2% / 4.8% / 0.0502; floor
 time 52 s (old policy 101 s, floor only 62 s). OBS the profiled game 10000470: 2.7 s (34 ms a move; this morning's
 baseline 10.0 s, after the phase-1 policy 5.2 s, before the fixes today 3.9 s); forcing searches hitting the safety net
 1%. Shipped (forcing_policy.json); the old weights kept as forcing_policy_prejudge.json.
+THE THIRD LOOP TURN, A NEW SAMPLE (2026-10-11 23:39 PDT; Kaveh: "new sample"). Everything on (the three dig fixes, the
+outcome floor, the retrained stop policy). OBS decision_review seed 7 (4,000 fresh positions, depth 12): 1,300
+decisions, 150+ cp 126 (9.7%), blunders by winning chances (>= 0.3) 66 (5.1%), mean 0.0597 (seed 6 with the same
+settings: 8.8% / 4.9% / 0.0518 -- sample to sample the rate moves about a point). OBS surprise_loop on the 126: lemma
+missing 79 (63%), policy off 32 (25%; soft: the policy would have stopped 2,479 of 244,881 proving lines, 1.0%),
+forcing x10 7 (6%), proofs x5 5 (4%), all 3 (2%). The 79: 41 positional defences, 17 wrong wins where Stockfish's move is
+forcing, 6 where it is quiet, 9 counter-attacks, 6 catastrophic. Dig of all 79 running (missing_lemma_dig_seed7.md),
+including whether today's fixes or the floor caused any miss.
