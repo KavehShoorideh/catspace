@@ -29451,3 +29451,13 @@ larger side (0 made the measure jump) -> 95.6%, 11.4 moves (max 31), 0.5 ms a mo
 king far. THE LESSON for the loop: the three fixes are what the MONOTONE operator should do on the uncertified positions --
 search a library of candidate quantities (each side's room, distances, their sums) for the one that certifies; that
 automation is the next build.
+THE BASE VOCABULARY (2026-10-12 11:46 PDT). Kaveh, on the symbolic proposer: "the important thing to give it is the
+vocabulary because that's what maps to human understanding in the end, enabling interpretability. You can build arbitrary
+lemmas on top of it, but the base has to be deterministic and interpretable." So: every base primitive is a deterministic
+Lean definition with a plain gloss and no learned parameters; a discovered lemma is a term over the base, and its
+explanation is that term read out in base words (faithful by construction); learned proposers only choose which terms to
+try, an LLM may only label. The base is a design decision about human understanding -- to be chosen with Kaveh. Draft
+offered, three layers: the rules (square, file, rank, piece, colour of a piece, move, legal move, check, side to move);
+perception (line between, diagonal, edge, corner, king-step distance, a king's 3×3 box, attacks, defends, safe by the
+exchange law, square colour); combinators (count, sum, min / max, the set where a predicate holds, reachable by king steps,
+for every reply, there is a move). Wall, opposition, box, front zone, side room stay out -- they must be built.
