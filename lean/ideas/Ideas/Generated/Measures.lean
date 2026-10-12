@@ -26,4 +26,13 @@ def krr_kr_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (coun
 /-- krr_k_territory: how many of the squares nearer their king than our other piece. (2026-10-12, hole learn_tb_KRRvK_rank2_r0; verifier (the planner with it, against the tablebase): held 30/30, won 30, claims kept 105/105 -- the frame before it held 25/30, won 25, claims kept 3/340; play: surprise loop tag tb (2026-10-12): round 3 with the frame, 62 won / 38 drawn / 0 lost of 100 (same positions: 55 / 44 / 1 and 55 / 45 / 0 in the earlier runs); directional, one run; status: a conjecture with evidence: its claim held on every board verified -- the first candidate for a proof by reasoning) -/
 def krr_k_territory (p : Position) (c : Color) (W L P O : Square) : Nat := (count (nearer L P))
 
+/-- krrvkr_wide2_r0_hold: how many of the squares nearer their king than our other piece that are also the squares our king can walk to over the squares they do not attack. (2026-10-12, hole learn_wide2_KRRvKR_rank1_r0; verifier: held 3/62, won 3, claims kept 67/150 -- the frame before it held 2/62, won 2, claims kept 29/104 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_wide2_r0_hold (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (reach W (fun u => !(attackedBy p (Color.opposite c) W u))) u))
+
+/-- krrvkr_wide2_r0_progress: how many of the squares nearer their king than our other piece that are also the squares outside the squares our other piece can walk to over the squares we do not attack. (2026-10-12, hole learn_wide2_KRRvKR_rank2_r0; verifier: held 3/100, won 3, claims kept 406/646 -- the frame before it held 2/100, won 2, claims kept 414/654 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_wide2_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (fun u => !((reach P (fun u => !(attackedBy p c L u))) u)) u))
+
+/-- krrvkr_wide2_r1_hold: how many of the squares we attack that are also the squares outside the edge squares. (2026-10-12, hole learn_wide2_KRRvKR_rank1_r1; verifier: held 6/70, won 6, claims kept 70/145 -- the frame before it held 4/70, won 4, claims kept 44/143 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_wide2_r1_hold (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (attackedBy p c L) u && (fun u => !(edge u)) u))
+
 end Ideas.Generated

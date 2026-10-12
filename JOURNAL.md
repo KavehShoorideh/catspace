@@ -29695,3 +29695,5 @@ claims 105 / 105) was mined in a hole of mostly fresh positions and stands. FIXE
 progress FROM the position); a fifty-move draw is rank 2 (no progress), rank 1 is material, mate, stalemate, repetition.
 Restarted from nothing (tag clean, --fresh): the vocabulary complete, the tablebase defender, natural ends, fresh clocks,
 strict promotion, incremental proposers; 50 boards a hole, a budget of 100.
+(OBS for the K+R+R v K hole's 30 verified boards: the clock a median 21 plies, a median 42 moves of ours left, 3 of 30
+under 10 -- mostly fresh; the claim above rests on this.)
