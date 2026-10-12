@@ -1,12 +1,9 @@
 {
  "KRRvK": [
-  "(count (nearer L P))"
+  "(count (and (nearer L W) (reach W unhit)))"
  ],
  "KRRvKR": [
-  "(count (and attacked (not edge)))",
-  "(count (and (nearer L P) (reach W unhit)))",
-  "(count (and (nearer L O) (not (line W P))))",
-  "(count (and (nearer L O) (not (nearer P L))))",
-  "(sum (count (and (nearer L O) (not (file W)))) (count (and (nearer L P) (not (reach P free)))))"
+  "(count (and hit (nearer L W)))",
+  "(sum (count (and (nearer L O) (not ours))) (count hit))"
  ]
 }

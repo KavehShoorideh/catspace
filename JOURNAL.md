@@ -29697,3 +29697,18 @@ Restarted from nothing (tag clean, --fresh): the vocabulary complete, the tableb
 strict promotion, incremental proposers; 50 boards a hole, a budget of 100.
 (OBS for the K+R+R v K hole's 30 verified boards: the clock a median 21 plies, a median 42 moves of ours left, 3 of 30
 under 10 -- mostly fresh; the claim above rests on this.)
+THE CLEAN RUN (2026-10-12 15:58-16:20 PDT; tag clean, --fresh: the complete vocabulary, the tablebase defender, natural
+ends, FRESH CLOCKS, strict promotion, incremental proposers; 50 boards a hole, a budget of 100). OBS (100 games a round, the
+same starting positions as every run's rounds; directional): round 0 57 / 40 / 3 (won / drawn / lost; the no-frame
+baseline); round 1 69 / 29 / 2 (earlier runs 61-69); round 2 64 / 36 / 0 (54-64); round 3 64 / 36 / 0 (55-62) -- level with
+or above every earlier run, from a small frame mined only on boards with fresh clocks. Mined, K+R+R v K+R (ranked): "the
+squares they attack among those nearer their king than ours" (rank 2 hole, held 4 / 100 vs 0), then "squares nearer their
+king than their rook, not ours" (8 vs 2) with "how many squares they attack" added to it (4 vs 2) -- every term in the
+words for their side; the rank-1 holes (24 boards each: material, stalemate, repetition) mined nothing (ties). K+R+R v K:
+"their king's territory our king reaches over squares they do not attack" (1.010 vs 0.263: every board won, fresh clocks).
+THE CEILING, MEASURED: on the K+R+R v K+R holes every verifier game ends in a cycle -- 2,421 of 2,424 over 101 candidates,
+1,007 under their checks (perpetual check); a single term added to the frame holds a few boards at most, so the strict
+promotion sees mostly ties. Checked and REFUTED: that the frame has no say in check (in check the frame chooses the
+evasion -- Kc2 toward their rook under "(dist W O)"). Next, proposed to Kaveh: a GRADED reward from the tablebase (the
+distance to the win before the game's end) and MCTS over frames (the proposers as the prior, the verifier as the reward;
+the repo's puct_mcts), MCTS in play kept for later. The least-loss tie fixed (four stalemates, BUGS).

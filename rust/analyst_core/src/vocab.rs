@@ -528,7 +528,7 @@ pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
     if material(pos.board(), us) <= material(pos.board(), !us) {
         let net = |m: &Move| crate::plan::audit_net(pos, m);
         if let Some(x) = hold_move(pos, &key, &net) { return Some(x); }
-        let m = pos.legal_moves().into_iter().max_by_key(|m| net(m))?;
+        let m = least_loss(pos, &net)?;
         return Some((m.clone(), format!("hold ({key}, not ahead): no move keeps everything -- the least loss (net {})", net(&m))));
     }
     let terms = MATERIAL_FRAMES.read().unwrap().as_ref().and_then(|m| m.get(&key).cloned()).unwrap_or_default();
@@ -538,7 +538,7 @@ pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
     // none does -- the least loss, said so
     let audited = |m: &Move| crate::plan::audit_net(pos, m) >= 0;
     let Some((m, cert)) = sp.choose_cert(pos, &|q: &Chess| crate::game::seen(q), &audited) else {
-        let m = pos.legal_moves().into_iter().max_by_key(|m| crate::plan::audit_net(pos, m))?;
+        let m = least_loss(pos, &|m: &Move| crate::plan::audit_net(pos, m))?;
         let net = crate::plan::audit_net(pos, &m);
         return Some((m, format!("no safe move for the {key} frame: the least loss (net {net}) -- the claim is the goal within {FRAME_K} moves")));
     };
@@ -551,6 +551,16 @@ pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
                 terms, before, FRAME_K, if cert { format!("certified (worst after it {:?})", sp.worst(&q, !us)) } else { "NOT certified".to_string() })
     };
     Some((m, claim))
+}
+/// THE LEAST LOSS when no move keeps everything: the best net, and among equal nets a move that does NOT end the game
+/// (Kaveh: "when losing, drag the loss out as long as possible ... same thing with drawing" -- 2026-10-12, the clean run:
+/// four games stalemated by the tie, Rxd7 stalemating where giving up the rook played on in K+R v K+R).
+fn least_loss(pos: &Chess, net: &dyn Fn(&Move) -> i64) -> Option<Move> {
+    pos.legal_moves().into_iter().max_by_key(|m| {
+        let q = after(pos, m);
+        let ends = !q.is_checkmate() && (q.legal_moves().is_empty() || crate::game::drawn(&q).is_some());
+        (net(m), !ends)
+    })
 }
 /// The horizon of a generic frame's claim (moves of ours).
 pub const FRAME_K: u32 = 2;
