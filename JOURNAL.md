@@ -29593,3 +29593,30 @@ answer as "keeping everything" (a rook lost); the verifier's memo ignored the bo
 directional): round 0 with no K+R+R frame -- 92% of the K+R+R v K+R moves surprised; mined for K+R+R v K+R "squares
 nearer their king than ours, outside the line through our king and our rook" (0.771 vs 0.276), for K+R+R v K "... outside
 their king's file" (0.976 vs 0.073); round 1 (new positions) -- 45%.
+FIRST DON'T LOSE, THE SECOND RUN, AND THREE OMISSIONS FIXED (2026-10-12 13:41-14:02 PDT). Kaveh: "the design should be
+first, don't lose, and then try to win"; "when losing, drag the loss out as long as possible ... same thing with drawing"
+-- the generic frame by the material lead: AHEAD the win frame; LEVEL or BEHIND the HOLD frame (audited moves only; the
+one keeping THEIR frame's measure highest against their best reply -- the mirror of an earlier lemma, e.g. our K+R frame
+when we are the lone king). Claims judged rank 1 (ground lost: our lead after our move below the claim's, a loss, or --
+ahead -- a draw) before rank 2 (progress); rank-1 boards mine a term ranked FIRST (schema prepend). OBS the loop (100
+games a round, new starting positions each round, Stockfish + Syzygy defending; directional, one run): round 0 (no
+K+R+R frames) 57 won / 40 drawn / 3 lost, a loss lasting 63 moves (the hold frame; in the first run's losses the lone-king
+phase lasted 31 moves of ours in all, now 72); round 1 61 / 39 / 0; round 2 59 / 41 / 0; round 3 55 / 45 / 0. Surprised
+K+R+R v K+R moves 92% -> 43% -> 40% -> 39%; K+R+R v K 68% -> 3% -> 0% -> 1%. Mined for K+R+R v K+R (ranked): "how many
+squares are in the box around our rook" (keep a rook at the edge; rank 1, 0.389 vs 0.307), "squares nearer their king
+than our king, not nearer our rook than their king" (rank 1, 0.382 vs 0.313), then a sum: "edge squares we do not attack"
++ "their king's territory off our rook's rank" + "squares nearer their king than our rook that it can walk to over squares
+we do not attack" (rank 2, 0.838 and 0.756); round 2's progress hole found nothing (0.709 vs 0.697). For K+R+R v K:
+"squares we do not attack, not nearer our king than theirs" (0.950 vs 0.040). Every term a territory variant. THE
+PLATEAU, DIAGNOSED: in the drawn games we were in check in a median 12 of our last 20 positions (their rook harassing;
+25 of 41 draws ran the fifty-move clock) -- and the base vocabulary had NO word for their pieces: no term could say
+anything about the rook holding the draw. Kaveh: "base vocab should be complete with words for their pieces"; "that's a
+big omission. With big omissions, we have to stop and fix before continuing." FIXED BEFORE GOING ON: (1) THE
+VOCABULARY: O (their other piece), hit / unhit (the squares they attack, our king lifted -- Lean attackedBy with the
+opposite colour), ours / theirs (each side's pieces -- Lean piecesOf, new); the enumeration 1,754 -> 6,182 number terms;
+tests (values on a known board; the Lean renderings type-check). (2) STALEMATE, a second search: the forcing search
+("wins N by force") settled a stalemating capture as a win -- "Kf6 wins 5 by force", Re6+ and Kxe6 stalemates (found as
+refuted proof claims after the leaf fix). (3) AN INCOHERENCE: "Rh7 wins 5 against the rook" was RIGHT (after Ka8 the
+proof's answer is the quiet Rc4!, threatening Rc8 mate) but the next move planned afresh and shuffled -- only proven
+mates were played out from their stored proofs; now proven gains are too (Rh7+ Ka8 Rc4 Kb8 Kxa6 Ka8 Rc8#). 49 planner
+tests pass. The loop restarted with the complete vocabulary (tag "vocab").
