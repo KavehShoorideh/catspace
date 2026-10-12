@@ -751,7 +751,7 @@ fn net_bound(pos: &Chess, m: &Move, wins: &[(String, Square, i64)]) -> i64 {
 // 22,861 positions: E(b) = 0.890 tanh(b / 3.60), mse 0.763 vs 0.942 for a constant). A gain is worth reasoning about when
 // it moves the expected result by OUTCOME_EPS or more; the smallest such gain on the ladder 1, 2, 3, 5, 9 is the FLOOR
 // (beyond the ladder: only a mate matters). Applied to our targets, our forcing gains, their threats and their wins.
-pub static OUTCOME_FLOOR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static OUTCOME_FLOOR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_outcome_floor(flag: bool) -> PyResult<()> { OUTCOME_FLOOR.store(flag, Ordering::Relaxed); Ok(()) }
 const OUTCOME_A: f64 = 0.890;
@@ -770,6 +770,10 @@ pub fn gain_floor_of(bal: i64) -> i64 {
     for g in [1i64, 2, 3, 5, 9] { if expected_result(bal + g) - expected_result(bal) >= OUTCOME_EPS { return g; } }
     MATE_GOAL
 }
+
+pub static DEFENCE_TRADES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_defence_trades(flag: bool) -> PyResult<()> { DEFENCE_TRADES.store(flag, Ordering::Relaxed); Ok(()) }
 
 pub static NET_BOUND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
@@ -1551,7 +1555,11 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
                     // as much (the vacated-square clause: the bishop leaving d6 opens the rook's line onto the d7 knight);
                     // an exposure is confirmed with one proof of their capture
                     let mut still = false;
+                    // (DEFENCE_TRADES: a counter-capture or a check is valued by its NET -- the whole trade -- not thrown out as
+                    // "exposes" or "does not stop it": 2026-10-11, the dig, four counter-attacks lost to the recapture's reading)
+                    let counter = DEFENCE_TRADES.load(Ordering::Relaxed) && (m.is_capture() || q.is_check());
                     for (x, g) in exposes(pos, &m) {
+                        if counter { break; }
                         if g < tg { continue; }
                         let cap = q.legal_moves().into_iter().find(|c| c.to() == x).map(|c| c.to_uci(CastlingMode::Standard).to_string());
                         if let Some(cap) = cap {
@@ -1562,7 +1570,7 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
                     let threats: Vec<(String, Square, i64)> = if their_wins.is_empty() { vec![(tseed.clone(), tt, tg)] }
                         else { their_wins.iter().filter(|w| w.2 >= tg).cloned().collect() };
                     for (ws, wt, wg) in &threats {
-                        if still { break; }
+                        if still || counter { break; }
                         let t2 = if m.from() == Some(*wt) { m.to() } else { *wt };
                         let legal = ws.parse::<shakmaty::uci::UciMove>().ok().and_then(|u| u.to_move(&q).ok()).is_some();
                         if !legal { continue; }
@@ -1628,7 +1636,9 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
                 // (the planner's own choice: any better net wins -- 2026-10-10, game 10000001 ply 37: Bh7 nets 0 against the
                 // frame search's -1, and the guard's margin of 2 kept the losing move)
                 mark("defence: frame fallback");
-                if cur_net < 0 { if let Some((net, u, why)) = best_by_net(pos, &wins, &cur_mv, cur_net, 1, &mut proofs, &mut nodes) {
+                // (DEFENCE_TRADES: also when the answer only holds -- nets 0 -- a counter-attack elsewhere may net more: the
+                // dig, three never compared)
+                if cur_net < 0 || (DEFENCE_TRADES.load(Ordering::Relaxed) && cur_net <= 0) { if let Some((net, u, why)) = best_by_net(pos, &wins, &cur_mv, cur_net, 1, &mut proofs, &mut nodes) {
                     if net > cur_net || best.is_none() {
                         trace.push(format!("    the best net: {} nets {net}{} -- better than {} ({cur_net})", san(pos, &u),
                             why.map(|w| format!(" (they then have {w})")).unwrap_or_default(), if cur_mv.is_empty() { "nothing".to_string() } else { san(pos, &cur_mv) }));

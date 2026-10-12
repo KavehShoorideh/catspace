@@ -112,6 +112,7 @@ def main(argv=None):
     ap.add_argument("--cert", action="store_true")
     ap.add_argument("--frame", action="store_true")
     ap.add_argument("--bound", action="store_true")
+    ap.add_argument("--flags", default="", help="name=0|1,... (set_<name>)")
     ap.add_argument("--policy", action="store_true", help="load data/derived/forcing_policy.json")
     a = ap.parse_args(argv)
     flags = {}
@@ -121,6 +122,8 @@ def main(argv=None):
         flags["frame_proofs"] = True
     if a.bound:
         flags["net_bound"] = True
+    for kv in filter(None, (a.flags or "").split(",")):
+        k, v = kv.split("="); flags[k] = v == "1"
     if a.policy:
         flags["policy"] = True
     run(a.tag, a.seed, a.game, a.sample, flags)

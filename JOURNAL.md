@@ -29160,3 +29160,25 @@ Lichess's winning chances (2/(1+exp(-0.00368208 cp)) - 1; a blunder loses >= 0.3
 (5.3%), >= 0.2 128 (9.1%), mean 0.0552. Directional (one run each; repeated baselines today ranged 8.6-9.5%): equal by
 the result-aware grade, slightly worse by centipawns -- the expected signature (pawns given up where the result does
 not move), at -9% time. Left OFF pending Kaveh.
+THE DIG'S THREE FIXES, BUILT; THE OUTCOME FLOOR ON (2026-10-11 23:20 PDT; Kaveh: "build everything you said, outcome floor
+on"). The dig of the 45 non-positional "missing lemma" cases (artifacts/experiments/missing_lemma_dig.md): wrong wins 27
+(7 false "wins by force", 3 a quiet reply building mate/double threat, 4 ties, 10 Stockfish's quiet threat or capture
+whose follow-up we do not count, 6 noise), counter-attacks 12 (4 thrown out as "exposes" -- the recapture read, not the
+trade; 3 never compared -- the scan ran only when the defence lost; 3 charged by the floor; 1 activity tie; 1 lost
+either way), catastrophic 5 (1 real: Black's quiet Rdd1 mate threat; 4 lost either way, depth-12 mate scores), the wrong
+recapturer 1 (Bxb5 vs axb5: activity scores a pawn move 0, blind to the opened a-file). FIX 1 (threat.rs
+judge_conditions, CONDITIONS): the forcing standing with the exchange law's conditions (Lean honestComposedB) -- banked
+material priced by their SECOND-best threat (their best when in check); a capture counts only if LEGAL (no pin; in check,
+an evasion), and after it they have no check, no promotion, no new attacker on our capturer (may_arrive: a bitboard
+superset of the law's noArrival); else the node stays open. On the dig's cases: [2] now Re5 (Stockfish's), [9] now
+defends the promotion, [4] and [42] no longer "by force". FIX 2 (forcing_moves, QUIET_THREATS): a quiet move making TWO
+new threats whose second reaches what is still needed (the fork law), or a MATE threat beside a material threat, is
+forcing; a pure mate threat only in a mate search (a parried mate threat wins nothing -- the magnitude rule; first
+version tested a mate-in-one 337k times a game, +46%; now +10%). FIX 3 (plan.rs DEFENCE_TRADES): a counter-capture or
+check in the defence block is valued by its net, not thrown out as "exposes"; every move is compared when the defence nets
+0. OBS held-out games 25-44 (on vs off, each alone): conditions +38% time, 94% identical; quiet threats +10%, 99.9%;
+defence trades +13%, 97.4%. OBS STOCKFISH (seed-6 sample; one run each): floor on, fixes off: 150+ cp 10.1%, blunders by
+winning chances (>= 0.3) 5.6%, mean 0.0564; ALL THREE: 9.2%, 4.8%, 0.0502; conditions alone 9.5% / 4.9% / 0.0525;
+defence trades alone 9.1% / 5.1% / 0.0529; quiet threats alone 9.9% / 5.8% / 0.0553 (neutral). Conditions decide in
+fewer positions (1,342 vs 1,409 decisions). ALL THREE ON, the floor ON. Cost: ~56 -> ~99 ms a held-out position; the
+stop policy was trained under the old judge (fewer nodes proven on sight now) -- retrained next.

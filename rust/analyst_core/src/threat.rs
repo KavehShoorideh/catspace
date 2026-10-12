@@ -305,8 +305,9 @@ pub fn king_flights(q: &Chess, c: Color) -> u32 {
     (shakmaty::attacks::king_attacks(k) & !b.by_color(c)).into_iter().filter(|sq| !b.attacks_to(*sq, !c, occ).any()).count() as u32
 }
 
-fn forcing_moves(s: &FState, by: Color) -> Vec<(Move, FState)> {
+fn forcing_moves(s: &FState, by: Color, need_left: i64) -> Vec<(Move, FState)> {
     let q = &s.pos;
+    let qt = QUIET_THREATS.load(Ordering::Relaxed);
     // (the king's flights before, for the quiet moves that take one: CORNERING flag)
     let flights0 = if CORNERING.load(Ordering::Relaxed) { king_flights(q, !by) } else { 0 };
     let b = q.board();
@@ -329,10 +330,30 @@ fn forcing_moves(s: &FState, by: Color) -> Vec<(Move, FState)> {
         // a quiet move that bears on the king's neighbourhood may take a flight square (the net is built before the check)
         let king_cand = flights0 > 0 && king.map_or(false, |k| (reach & shakmaty::attacks::king_attacks(k)).any() || from.map_or(false, |f| disc_k.contains(f)));
         let quiet_cand = special || (reach & targets).any() || from.map_or(false, |f| disc_t.contains(f));
-        if !forcing_now && !quiet_cand && !checks && !king_cand { continue; }
+        // (QUIET_THREATS: a quiet move bearing on their king's neighbourhood may threaten mate; any quiet move may fork)
+        let mate_cand = qt && king.map_or(false, |k| (reach & shakmaty::attacks::king_attacks(k)).any());
+        if !forcing_now && !quiet_cand && !checks && !king_cand && !mate_cand { continue; }
+        // (a move that is only a mate candidate: the mate threat is tested on the bare position first -- the threat maps are
+        // built only when it holds)
+        // (THE MAGNITUDE of a mate threat: a pure one that they can parry wins nothing, so in a search for material it
+        // counts only beside a second threat -- a fork with mate; a pure mate threat is searched only for a mate)
+        let only_mate = !forcing_now && !quiet_cand && !checks && !king_cand;
+        let for_mate = need_left >= crate::waiting::MATE_GOAL;
+        if only_mate && !for_mate { continue; }
+        let mate_test = |q0: &Chess| -> bool { let q1 = after(q0, &m); !q1.is_check() && pass(&q1).map_or(false, |p| mate_by_checks(&p, 1).is_some()) };
+        if only_mate && !mate_test(q) { continue; }
         let c = child_state(s, &m, by);
         let takes_flight = king_cand && !c.pos.is_check() && king_flights(&c.pos, !by) < flights0;
-        if forcing_now || c.pos.is_check() || takes_flight || (quiet_cand && (0..64).any(|x| c.thr[x] >= 3 && c.thr[x] > s.thr[x])) { out.push((m, c)); }
+        // THE QUIET THREATS (Kaveh 2026-10-11, the dig: their quiet Rdd1 built a mate threat no forcing search saw): a quiet
+        // move after which we threaten MATE IN ONE, or make TWO new threats whose second (what one reply cannot parry, the
+        // fork law) reaches what is still needed, is forcing like a check or a capture
+        let quiet_threat = qt && !forcing_now && !c.pos.is_check() && {
+            let mut new: Vec<i16> = (0..64).filter(|x| c.thr[*x] > 0 && c.thr[*x] > s.thr[*x]).map(|x| c.thr[x]).collect();
+            new.sort_unstable_by(|a, b| b.cmp(a));
+            let fork = new.get(1).map_or(false, |v| (*v as i64) >= need_left.clamp(1, 3));
+            fork || (mate_cand && (only_mate || !new.is_empty()) && mate_test(q))
+        };
+        if forcing_now || c.pos.is_check() || takes_flight || quiet_threat || (quiet_cand && (0..64).any(|x| c.thr[x] >= 3 && c.thr[x] > s.thr[x])) { out.push((m, c)); }
     }
     out
 }
@@ -369,6 +390,75 @@ fn forcing_moves_ref(s: &FState, by: Color) -> Vec<(Move, FState)> {
 /// steps as it has replies (a check, with few, looks cheap first), weighted by `line_prior`. The budget is only a safety
 /// net: hitting it is UNKNOWN. -> Some(true), Some(false), None.
 struct Forcing { by: Color, base: i64, need: i64 }
+
+/// THE STANDING WITH THE EXCHANGE LAW'S CONDITIONS (Kaveh 2026-10-11, the dig of the surprise loop: 7 false "wins by force"
+/// -- their reply gave check, pinned our capturing queen, promoted, or our capture was counted while we were in check;
+/// Lean Ideas.ExchangeLaw.honestComposedB states the conditions): an OR node (our move) is proven only when
+///   BANKED   the material won, less what they still threaten that our one free move cannot parry: their SECOND-best
+///            threat (their best when we are in check -- the move goes to the check), reaches the need; or
+///   CAPTURE  our best LEGAL capture (a pinned capturer is no capturer; in check only a capture that answers it) by the
+///            exchange law, less their best capture elsewhere after it (the intermezzo), reaches the need, AND after it they
+///            have no CHECK (a tempo), no PROMOTION, and no move that brings a NEW attacker onto our capturing piece (the
+///            pin that won the queen; the law's noArrival).
+/// Otherwise the node stays open: the search goes on (sound -- nothing is proven that the conditions do not cover).
+/// CAN A PIECE OF `them` BECOME A NEW ATTACKER OF `t` IN ONE MOVE (them to move in `q`)? Bitboards only, a SUPERSET of the
+/// exact answer (every move tried): a piece not attacking `t` now that can step (attack-reach, or a pawn's push) onto a
+/// square from which its kind attacks `t`, or a piece of theirs standing alone between their slider and `t` (a
+/// discovery). False means certainly no arrival (the noArrival hypothesis holds); true may be a false alarm (the node
+/// stays open -- sound).
+fn may_arrive(q: &Chess, t: Square, them: Color) -> bool {
+    let b = q.board();
+    let occ = b.occupied();
+    let att0 = b.attacks_to(t, them, occ);
+    for p_sq in b.by_color(them) & !att0 {
+        let Some(p) = b.piece_at(p_sq) else { continue };
+        let occ_wo = occ.without(p_sq);
+        let reach = if p.role == Role::Pawn {
+            let fwd = if them == Color::White { 8i32 } else { -8 };
+            let mut r = Bitboard::EMPTY;
+            if let Some(y) = p_sq.offset(fwd) { if !occ.contains(y) { r.add(y); let home = if them == Color::White { 1 } else { 6 }; if p_sq.rank() as u32 == home { if let Some(y2) = y.offset(fwd) { if !occ.contains(y2) { r.add(y2); } } } } }
+            r | (shakmaty::attacks::pawn_attacks(them, p_sq) & b.by_color(!them))
+        } else { shakmaty::attacks::attacks(p_sq, p, occ) & !b.by_color(them) };
+        // the squares from which this kind attacks t (a pawn's: the reverse of a pawn attack)
+        let from_t = if p.role == Role::Pawn { shakmaty::attacks::pawn_attacks(!them, t) } else { shakmaty::attacks::attacks(t, shakmaty::Piece { color: them, role: p.role }, occ_wo) };
+        if (reach & from_t).any() { return true; }
+    }
+    single_blockers(q, them, Bitboard::from_square(t)).any()
+}
+
+fn judge_conditions(f: &Forcing, s: &FState) -> Option<bool> {
+    let in_check = s.pos.is_check();
+    let banked = s.edge - f.base;
+    let mut them: Vec<i64> = s.them.iter().map(|v| *v as i64).filter(|v| *v > 0).collect();
+    them.sort_unstable_by(|a, b| b.cmp(a));
+    let parry_left = if in_check { them.first().copied().unwrap_or(0) } else { them.get(1).copied().unwrap_or(0) };
+    if banked - parry_left >= f.need { return Some(true); }
+    // our captures, best first, the first LEGAL one
+    let legal = s.pos.legal_moves();
+    let mut sqs: Vec<(i16, usize)> = (0..64usize).filter(|x| s.thr[*x] > 0).map(|x| (s.thr[x], x)).collect();
+    sqs.sort_unstable_by(|a, b| b.cmp(a));
+    for (g, x) in sqs {
+        let g = g as i64;
+        if banked + g < f.need { return None; }                       // no capture left can reach the need
+        let t = Square::new(x as u32);
+        let Some(cap) = legal.iter().filter(|m| m.to() == t).min_by_key(|m| kernel_value(m.role())).cloned() else { continue };
+        let q2 = after(&s.pos, &cap);
+        if !checking_moves(&q2).is_empty() { return None; }            // their check: a tempo -- not settled
+        let moves2 = q2.legal_moves();
+        if moves2.iter().any(|m| m.is_promotion()) { return None; }      // their promotion -- not settled
+        if may_arrive(&q2, t, !f.by) { return None; }                    // a new attacker on our capturer -- not settled
+        let legal_caps: Bitboard = if q2.is_check() { moves2.iter().filter(|m| m.is_capture()).map(|m| m.to()).collect() } else { Bitboard::FULL };
+        let price = rules::threats_of(&q2, !f.by).iter().filter(|(y, _)| **y as u32 != t as u32 && legal_caps.contains(Square::new(**y as u32))).map(|(_, v)| *v).max().unwrap_or(0).max(0);
+        return if banked + g - price >= f.need { Some(true) } else { None };
+    }
+    None
+}
+pub static CONDITIONS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+pub static QUIET_THREATS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_quiet_threats(flag: bool) -> PyResult<()> { QUIET_THREATS.store(flag, Ordering::Relaxed); Ok(()) }
+#[pyfunction]
+pub fn set_conditions(flag: bool) -> PyResult<()> { CONDITIONS.store(flag, Ordering::Relaxed); Ok(()) }
 
 pub const POLICY_FEATURES: usize = 14;
 fn policy_features(f: &Forcing, s: &FState, depth: u32) -> Vec<f32> {
@@ -475,6 +565,7 @@ impl crate::pns::Problem for Forcing {
             // (material already banked needs no capture: our free move parries their threat -- the intermezzo is priced
             // only when the standing rests on a capture of ours; 2026-10-11: Kxh3, Rxh2, Nxe2 ... seven plain captures
             // lost to a price charged with nothing to pay for)
+            if CONDITIONS.load(Ordering::Relaxed) { return judge_conditions(self, s); }
             if s.edge - self.base >= self.need { return Some(true); }
             let best = s.thr.iter().copied().max().unwrap_or(0).max(0) as i64;
             if s.edge - self.base + best < self.need { return None; }
@@ -496,7 +587,7 @@ impl crate::pns::Problem for Forcing {
         } else if s.pos.legal_moves().is_empty() { Some(s.pos.is_check()) } else { None }
     }
     fn expand(&self, s: &FState, or: bool) -> Vec<(FState, f64)> {
-        if or { forcing_moves(s, self.by).into_iter().map(|(m, c)| { let w = line_prior(&s.pos, &m); (c, w) }).collect() }
+        if or { forcing_moves(s, self.by, self.need - (s.edge - self.base)).into_iter().map(|(m, c)| { let w = line_prior(&s.pos, &m); (c, w) }).collect() }
         else { s.pos.legal_moves().iter().map(|m| (child_state(s, m, self.by), 1.0)).collect() }
     }
     fn and_size(&self, s: &FState) -> f64 { s.pos.legal_moves().len().max(1) as f64 }
@@ -533,7 +624,7 @@ pub fn forcing_moves_audit(fen: String) -> (u32, u32, u32) {
     let Some(p) = parse(&fen) else { return (0, 0, 0) };
     let by = p.turn();
     let s = FState { pos: p.clone(), thr: rules::threats_arr(&p, by), them: rules::threats_arr(&p, !by), edge: material_edge(&p, by), last: None };
-    let a: std::collections::HashSet<String> = forcing_moves(&s, by).iter().map(|(m, _)| m.to_uci(CastlingMode::Standard).to_string()).collect();
+    let a: std::collections::HashSet<String> = forcing_moves(&s, by, 3).iter().map(|(m, _)| m.to_uci(CastlingMode::Standard).to_string()).collect();
     let r: std::collections::HashSet<String> = forcing_moves_ref(&s, by).iter().map(|(m, _)| m.to_uci(CastlingMode::Standard).to_string()).collect();
     (a.len() as u32, r.len() as u32, a.intersection(&r).count() as u32)
 }
