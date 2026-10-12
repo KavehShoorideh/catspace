@@ -29364,3 +29364,19 @@ EVERY position of the frame has such a certificate -- the rung lemmas over patte
 reasoning; for comparison the KRK strategy's formal proof in Isabelle (linear arithmetic over coordinates, as here with
 omega) was a paper-sized project. The flood-fill region is hard to reason about; the provable version likely measures the
 box (the rectangle the queen's lines cut) instead. Index 200 theorems; explorer 47 rules, 18 backed by Lean.
+WHY KING AND QUEEN IS NOT HARD (2026-10-12 10:51 PDT; Kaveh: "dig into the closest comparable work. Why is the king and
+queen so hard? I can think of it easily"). THE COMPARABLE WORK: king and ROOK v king in Isabelle/HOL (Maric, Janicic,
+Malikovic, CADE 2015; LMCS 2019, n×n boards): Bratko's strategy, 7 prioritized moves (ImmediateMate, ReadyToMate, Squeeze,
+Approach, KeepRoom, RookHome, RookSafe); the measure "room" (the half-perimeter of the rectangle the rook confines the king
+to) and the distance to a critical square; central lemmas in linear integer arithmetic closed by Z3; a symmetry theorem to
+canonical positions; ~7,800 lines of Isabelle; a 100-line C retrograde check of all 175,168 positions (5 s) as the BUG-
+FINDER, not the proof; "corrections took the majority of our time"; computers "cannot provide intuition, deep insights, or
+proof ideas". THE ROOK is the hard part there: it cannot confine and stay safe alone (KeepRoom, RookHome, RookSafe). KAVEH'S
+QUEEN STRATEGY needs none of it: the queen a knight's move away squeezes the box each move (the lone king in zugzwang);
+stop at two edge squares (a1 / a2, queen b4 -- one would be stalemate); our king's moves are passes while it walks to c1-
+c3; Qb2 mates either way. The measure (box size, then our king's distance to c2) falls on EVERY move -- no tempo moves.
+LESSON: derive the measure from the human strategy's structure (the box is linear in the queen's coordinates -- omega
+territory); mine emerged from failures (flood-fill region, front zones, tempo searches), mated 1,000 / 1,000 but was
+tuned, hard to prove, and its "tempo moves" were artifacts of measuring the wrong thing. Proposed: the strategy in Rust
+(play-outs as the bug-finder), then Lean -- symmetry to the a1 corner, the squeeze, walk, mate and entry lemmas, glued by
+forced_by_measure with k = 1.
