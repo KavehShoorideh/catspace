@@ -179,6 +179,7 @@ fn comp(spec: &str) -> Option<Comp> {
         "fn:wall" => Comp::F(crate::mating::wall_rows), "fn:opposition" => Comp::F(crate::mating::kr_opposition),
         "fn:chase" => Comp::F(crate::mating::kr_chase), "fn:kq_offedge" => Comp::F(crate::mating::off_edge),
         "fn:kq_approach" => Comp::F(crate::mating::approach), "fn:kq_region" => Comp::F(crate::mating::region_size),
+        "fn:kr_generated" => Comp::F(crate::mating::kr_generated),
         _ => Comp::T(parse_term(spec)?),
     })
 }
@@ -254,4 +255,94 @@ pub fn component_values(fens: Vec<String>, specs: Vec<String>) -> PyResult<Vec<V
     use rayon::prelude::*;
     let comps: Vec<Comp> = specs.iter().filter_map(|s| comp(s)).collect();
     Ok(fens.par_iter().map(|f| parse(f).map_or(vec![0; comps.len()], |p| { let lone = !p.turn(); comps.iter().map(|c| cval(c, &p, lone)).collect() })).collect())
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// THE VERIFIER, STAGE 2 -- CLOSED LOOP (2026-10-12: stage 1 is gameable -- "how many squares we attack" certified 100% of
+// every hole's stuck boards: a measure we lower ourselves at will, whatever the defender does): the candidate measure
+// PLAYS from the hole's boards -- our move chosen by it (against every reply, then a tempo move within two), the
+// defender's reply the one that raises it most and never walks into mate in one; a repetition (a position the third
+// time) or no mate within the limit is a failure. The defender here is the measure's adversary, no engine.
+
+impl Spec {
+    fn choose(&self, pos: &Chess, seen: &std::collections::HashMap<u64, u8>) -> Option<Move> { self.choose_cert(pos, seen).map(|x| x.0) }
+    /// -> (the move, whether it carries a certificate: the measure falls against every reply, at once or within two)
+    fn choose_cert(&self, pos: &Chess, seen: &std::collections::HashMap<u64, u8>) -> Option<(Move, bool)> {
+        let us = pos.turn();
+        let before = self.measure(pos, !us);
+        let fresh = |q: &Chess| seen.get(&crate::threat::zkey(q)).copied().unwrap_or(0) < 2;
+        let mut cands: Vec<(Vec<u32>, Vec<u32>, bool, Move)> = Vec::new();
+        for m in pos.legal_moves() {
+            let q = after(pos, &m);
+            if q.is_checkmate() { return Some((m, true)); }
+            if !crate::mating::safe_step(&q, us, self.piece) || !fresh(&q) { continue; }
+            cands.push((self.worst(&q, !us), self.measure(&q, !us), seen.contains_key(&crate::threat::zkey(&q)), m));
+        }
+        cands.sort_by(|a, b| (&a.0, &a.1, a.2).cmp(&(&b.0, &b.1, b.2)));
+        let first = cands.first()?;
+        if first.0 < before { return Some((first.3.clone(), true)); }
+        for (_, _, _, m) in &cands {
+            if self.within(&after(pos, m), &before, us, 2) { return Some((m.clone(), true)); }
+        }
+        Some((first.3.clone(), false))
+    }
+    fn defend(&self, q: &Chess) -> Option<Move> {
+        let lone = q.turn();
+        q.legal_moves().into_iter().filter(|r| {
+            let x = after(q, r);
+            !x.legal_moves().iter().any(|m| after(&x, m).is_checkmate())
+        }).max_by_key(|r| (self.measure(&after(q, r), lone), crate::threat::zkey(&after(q, r))))
+            .or_else(|| q.legal_moves().into_iter().next())
+    }
+    /// -> (Some(moves to mate) or None -- no mate within the limit, a repetition, a stalemate, the piece lost; our moves
+    /// played; how many of them carried a certificate)
+    fn play(&self, start: &Chess, limit: u32) -> (Option<u32>, u32, u32) {
+        let mut p = start.clone();
+        let mut seen: std::collections::HashMap<u64, u8> = std::collections::HashMap::new();
+        let (mut played, mut cert) = (0u32, 0u32);
+        for n in 1..=limit {
+            *seen.entry(crate::threat::zkey(&p)).or_insert(0) += 1;
+            let Some((m, c)) = self.choose_cert(&p, &seen) else { return (None, played, cert) };
+            played += 1; cert += c as u32;
+            p = after(&p, &m);
+            if p.is_checkmate() { return (Some(n), played, cert); }
+            if p.legal_moves().is_empty() { return (None, played, cert); }
+            *seen.entry(crate::threat::zkey(&p)).or_insert(0) += 1;
+            if seen[&crate::threat::zkey(&p)] >= 3 { return (None, played, cert); }
+            let Some(r) = self.defend(&p) else { return (None, played, cert) };
+            p = after(&p, &r);
+            if (p.board().by_color(p.turn()) & !p.board().kings()).is_empty() { return (None, played, cert); }   // our piece taken
+            if seen.get(&crate::threat::zkey(&p)).copied().unwrap_or(0) >= 2 { return (None, played, cert); }
+        }
+        (None, played, cert)
+    }
+}
+
+/// verify_play(fens, base, cand, schema, piece, limit) -> (games mated, total moves of the mated games, our moves played,
+/// our moves certified): stage 2 -- the closed loop.
+#[pyfunction]
+#[pyo3(signature = (fens, base, cand, schema, piece, limit))]
+pub fn verify_play(fens: Vec<String>, base: Vec<String>, cand: Option<String>, schema: String, piece: String, limit: u32) -> PyResult<(u32, u32, u32, u32)> {
+    use rayon::prelude::*;
+    let Some(sp) = spec(&base, &cand, &schema, &piece) else { return Ok((0, 0, 0, 0)) };
+    let r: Vec<(Option<u32>, u32, u32)> = fens.par_iter().map(|f| parse(f).map_or((None, 0, 0), |p| sp.play(&p, limit))).collect();
+    Ok((r.iter().filter(|x| x.0.is_some()).count() as u32, r.iter().filter_map(|x| x.0).sum(),
+        r.iter().map(|x| x.1).sum(), r.iter().map(|x| x.2).sum()))
+}
+
+/// term_dynamics(fens, term) -> per board (mean |change| of the term over our moves, over their replies after a pass):
+/// WHO CONTROLS the quantity -- a measure only we move is gameable (stage 1 cannot tell), one both move is not.
+#[pyfunction]
+pub fn term_dynamics(fens: Vec<String>, term: String) -> PyResult<Vec<(f32, f32)>> {
+    use rayon::prelude::*;
+    let Some(t) = parse_term(&term) else { return Ok(vec![]) };
+    Ok(fens.par_iter().map(|f| {
+        let Some(p) = parse(f) else { return (0.0, 0.0) };
+        let lone = !p.turn();
+        let v0 = num(&t, &p, lone) as f32;
+        let ours: Vec<f32> = p.legal_moves().iter().map(|m| (num(&t, &after(&p, m), lone) as f32 - v0).abs()).collect();
+        let theirs: Vec<f32> = pass(&p).map(|q| q.legal_moves().iter().map(|r| (num(&t, &after(&q, r), lone) as f32 - v0).abs()).collect()).unwrap_or_default();
+        let mean = |v: &[f32]| if v.is_empty() { 0.0 } else { v.iter().sum::<f32>() / v.len() as f32 };
+        (mean(&ours), mean(&theirs))
+    }).collect())
 }

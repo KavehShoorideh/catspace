@@ -374,7 +374,7 @@ pub static KR_FRAME_TERM3: Frame = Frame { name: "king and rook", applies: is_kr
 // is the opposition plus the territory term the proposer found (generated.rs KR_TERRITORY -- "how many squares are not
 // nearer our king than their king"); the hand-written chase (KR_CHASE) and the bare derived frame stay as switches.
 static KR_TERRITORY_TERM: std::sync::OnceLock<Option<crate::vocab::Term>> = std::sync::OnceLock::new();
-fn kr_generated(q: &Chess, lone: Color) -> u32 {
+pub(crate) fn kr_generated(q: &Chess, lone: Color) -> u32 {
     let t = KR_TERRITORY_TERM.get_or_init(|| crate::vocab::parse_term(crate::generated::KR_TERRITORY));
     kr_opposition(q, lone) + t.as_ref().map_or(0, |t| crate::vocab::num(t, q, lone))
 }

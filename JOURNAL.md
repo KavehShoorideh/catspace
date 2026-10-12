@@ -29481,3 +29481,29 @@ uncertified), 0.2 ms a move -- better than my hand-made chase term (95.6%, 150 u
 stuck positions and break the others, so the whole-game check stays in the loop. The king-and-queen frame unchanged (300
 mated, 100% certified). Also: Lean Reach.dominate (dominance: what is forced from a position is forced from any position
 at least as good -- "prove the farthest point, the closer follow"), written at Kaveh's "use lemmas!". Index 201 theorems.
+THE PIPELINE: PROPOSERS -> FILTER -> VERIFIER, THE EXPERIENCE STORE, AND THE LABELS (2026-10-12 12:41 PDT; Kaveh: "build
+the learned prior ... modular ... multiple proposers, a filter, ... the verifier for everything we filtered"; "how do you
+give feedback back to the proposer?"; "don't invoke yourself (LLM) as proposer"; "make this planner default; keep the
+handwritten, the auto-generated and the base vocabulary separate"). THREE TRACKS: base (Lean Ideas.Base.Vocabulary,
+vocab.rs, discovery/base_vocabulary.py -- 19 primitives), handwritten (Lean outside Base/Generated -- 200 theorems; the
+measure components in mating.rs, listed in registry.py), generated (discovery/generated_registry.json -> Lean
+Ideas.Generated.Measures and Rust generated.rs, written by registry.py, never by hand). The rook frame's DEFAULT is now
+the generated territory term (OBS 300 / 300, 99.9% certified; the handwritten chase 95.6% stays as a switch). THE
+VERIFIER, two stages: STAGE 1 certification on the hole's boards -- GAMEABLE: "how many squares we attack" certified every
+stuck board (a measure we lower ourselves at will); STAGE 2 the closed loop (the candidate measure plays from the boards
+against the measure's adversary -- the reply raising it most, never into mate in one; a repetition is a failure), scored
+by certified moves along the games x games mated (OBS kr_derived: the base 100 mated / 73.9% certified; "squares we
+attack" 1 mated; the territory term 100 / 98.1%). THE EXPERIENCE STORE (discovery_experience.jsonl): every verdict,
+success or failure -- the filter's memo and the learned proposers' training data (the feedback). HOLES: random legal
+positions the frame's measure (a component removed) cannot certify -- kr_wall, kr_derived, kr_opposition, kq_offedge, and
+empty-base holes kr_none, kq_none (four queen holes had under 50 stuck boards of 2,000 and were dropped). LABELS (the
+enumerative proposer run to completion: ~850 terms x schemas per hole, both stages on 100 boards; 11,545 verdicts, ~23
+min): on EVERY hole the best by both stages is THEIR KING'S TERRITORY -- "how many squares are nearer their king than
+ours" -- or a refinement of it: kq_offedge (count (nearer L W)) 100 mated, 546 / 546 certified; kq_none minus our king's
+rank 100, 688 / 690; kr_none minus the squares between the kings 100, 877 / 891; kr_derived minus the line through our king
+and rook (added to the opposition) 100, 1,048 / 1,055; kr_wall, kr_opposition likewise. By stage 1 alone the best are the
+gameable terms ("squares we attack", "the box around our rook"), scoring ~0 by both stages. These are CONJECTURES with
+board evidence (a progress measure for the frame), not lemmas. The learned priors (models.py: a PyTorch Geometric GINE
+graph network over the term's syntax tree, a transformer over its symbols, a context-only ablation; context = schema,
+material, the hole's components, the term's values and who controls it -- term_dynamics) and the leave-one-hole-out
+evaluation running.

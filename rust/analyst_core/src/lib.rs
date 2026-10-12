@@ -1648,6 +1648,8 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(vocab::verify_mask, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::verify_count, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::component_values, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::verify_play, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::term_dynamics, m)?)?;
     m.add_function(wrap_pyfunction!(threat::set_composed, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_strict_stop, m)?)?;
     m.add_class::<plan::PlanState>()?;
