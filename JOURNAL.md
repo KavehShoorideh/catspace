@@ -29555,7 +29555,7 @@ an unexpected win. Measured on the same 100 games (their king's territory, "squa
 goal's proxy -- the planner states no expectation here, the proxy is mine): (2) 3 draws from won starts (game 10 the
 50-move rule, 42 and 53); (1) the territory fell by 6+ squares and climbed back to where it was 73 times in 50 games; game
 10 swung 22-52 over 50 moves; game 53 went 58 -> 16 and then cycled 16-22 into a repetition. Directional, one run.
-SURPRISE, IN THE GENERIC LANGUAGE (2026-10-12 13:14 PDT; Kaveh, correcting the entry above: "I didn't want you to write
+SURPRISE, IN THE GENERIC LANGUAGE (2026-10-12 13:13 PDT; Kaveh, correcting the entry above: "I didn't want you to write
 these two as very specific things ... in terms of the very generic language that we built ... when we expect it to
 shrink, but it doesn't shrink, then that's a surprise"). The two kinds above were written as special metrics (a territory
 proxy of mine; draws counted); they are ONE thing. Every decision carries a claim in the frame language -- the frame's
@@ -29566,3 +29566,6 @@ before the measure reached it (his "an unexpected ending"); the measure falling 
 kind. The observer's "uncertified" check is the same claim tested in advance on one move; the realized check is the
 missing half. Where the planner has no frame (K+R+R v K+R, K+R+R v K) there is no claim at all -- the empty-base hole
 (kr_none, kq_none), where the territory term was found.
+Kaveh, 13:14: "like when you were trying for an outcome, but a different outcome ended up happening" -- the claim's goal is
+itself an outcome in the language (a set: mate, the capture, the king on the edge); the surprise is a different outcome
+reached (a draw, a loss, another win), or the measure toward the claimed one not shrinking.
