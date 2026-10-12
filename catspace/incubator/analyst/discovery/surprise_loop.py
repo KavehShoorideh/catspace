@@ -256,6 +256,19 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
             wins = bool(best) and best["score"] > base["score"] + 0.05
         if wins:
             new[mat] = compose(cur, best["term"], best["schema"])
+            # INTO THE GENERATED TRACK, by the loop itself (Kaveh: "couldn't the proposer do it?"): the term, its hole, its
+            # verdict against the frame before it; the Lean definitions and Rust constants re-exported
+            from . import registry as R
+            what = "hold" if rank == 1 else "progress"
+            ev = {"verifier": f"{best['score']:.4f} against the frame's own {base['score']:.4f} (defender {defender})",
+                  "status": "a conjecture: its frame's claim is not proved"}
+            if "ranks" in best:
+                ev["verifier"] = (f"held {best['n'] - best['lost']}/{best['n']}, won {best['mated']}, claims kept {best['certified']}/{best['played']} "
+                                  f"-- the frame before it held {base['n'] - base['lost']}/{base['n']}, won {base['mated']}, claims kept "
+                                  f"{base['certified']}/{base['played']} (defender {defender})")
+            R.add_generated(f"{mat.lower()}_{tag or 'run'}_r{rnd}_{what}", best["term"], "measure", name, ev,
+                            used_by=f"the {mat} frame ({best['schema']}): {new[mat]}")
+            R.export()
             print(f"OBS   MINED for {mat} ({time.time() - t0:.0f} s): [{best['schema']}] {best['term']} = "
                   f"{V.gloss(V.parse(best['term']))} -- {best['score']:.3f} against {base['score']:.3f}; the frame now {new[mat]}")
         else:
@@ -269,7 +282,8 @@ def main(argv=None):
     ap.add_argument("--games", type=int, default=100)
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--budget", type=int, default=60)
-    ap.add_argument("--frames", default=None, help="a JSON of {material: [terms]} to start from (default: none known)")
+    ap.add_argument("--frames", default=None, help="a JSON of {material: [terms]} to start from (default: the generated track's)")
+    ap.add_argument("--fresh", action="store_true", help="start with no frames for the new materials (not the generated track's)")
     ap.add_argument("--tag", default=None, help="this run's name in its files (default: the start time); never overwritten")
     ap.add_argument("--resume", action="store_true", help="continue the run --tag names from its last round's mining")
     ap.add_argument("--opponent", default="stockfish:10", help="who defends in the games: stockfish:D (with the tablebases), tablebase")
@@ -278,7 +292,8 @@ def main(argv=None):
     tag = a.tag if a.tag is not None else time.strftime("%m%d_%H%M")
     stem = f"surprise_loop_{a.material}" + (f"_{tag}" if tag else "")
     state = paths.derived(f"{stem}.json")
-    frames = json.load(open(a.frames)) if a.frames else {}
+    from . import registry as R
+    frames = json.load(open(a.frames)) if a.frames else ({} if a.fresh else R.load_frames())
     history, start, res = [], 0, None
     if a.resume:                         # the last round played: its games are saved, its mining is redone
         history = json.load(open(state))
@@ -301,6 +316,7 @@ def main(argv=None):
         new = mine(res, frames, rnd, a.budget, tag=tag, defender=a.defender)
         if new == frames:
             print("OBS nothing new mined -- stopping"); break
+        R.save_frames(new, f"{stem} round {rnd}")      # the learned frames, the next run's start
         frames, res = new, None
 
 

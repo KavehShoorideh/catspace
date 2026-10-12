@@ -1,0 +1,10 @@
+{
+ "KRRvK": [
+  "(count (nearer L P))"
+ ],
+ "KRRvKR": [
+  "(count (and (nearer L O) (not (line W P))))",
+  "(count (and (nearer L O) (not (nearer P L))))",
+  "(count (and (nearer L O) (not (file W))))"
+ ]
+}

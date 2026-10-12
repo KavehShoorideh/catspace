@@ -35,6 +35,20 @@ HANDWRITTEN = [
 ]
 
 
+FRAMES = HERE / "generated_frames.json"
+
+
+def load_frames() -> dict:
+    """The generated track's frames: {material: [terms, ranked]} -- what the surprise loop has learned, its starting
+    point next time."""
+    return json.loads(FRAMES.read_text()) if FRAMES.exists() else {}
+
+
+def save_frames(frames: dict, source: str) -> None:
+    FRAMES.write_text(json.dumps(dict(sorted(frames.items())), indent=1) + "\n")
+    print(f"OBS   the generated track's frames <- {source}: {frames}")
+
+
 def load() -> list:
     return json.loads(REGISTRY.read_text()) if REGISTRY.exists() else []
 
