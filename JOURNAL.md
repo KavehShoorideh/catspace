@@ -29078,3 +29078,29 @@ VERDICT (directional, one run each): the three are indistinguishable by Stockfis
 gentlest with a real lambda knob; the cost head did not earn its complexity. Phase 1 stays deployed; both weight files
 shipped (forcing_policy.json, forcing_policy_phase2.json). What would move the front: a cost signal the features can
 see (the node's own proof/disproof numbers, the branching below), or Kaveh's trace transformer.
+THE SURPRISE LOOP, FIRST TURN (2026-10-11 18:19 PDT; Kaveh: "every time Stockfish disagrees with you, you get a signal:
+see if there was a lemma you could have considered -- lemma generation -- and the picking of lemmas and the depth you go
+in frames and proofs -- the RL itself"; "yes, please build the loop"). surprise_loop.py: the decision review's
+disagreements (loss >= 150 cp) replayed under variants -- the stop policy off; the forcing budget x10; the proof
+budgets x5 (waiting.rs PROOF_SCALE, set_proof_scale); all three -- each variant's move graded by Stockfish (depth 12);
+the first variant under the bar names the cause, none = a lemma is missing. Two outputs: the unfixed cases with
+Stockfish's line in SAN for reading (surprise_unfixed.json), and for the policy-caused cases the full search's proving
+lines the deployed policy would have STOPPED (hard positives, forcing_policy train --hard, weighted).
+OBS 132 disagreements (100 s on 6 processes): lemma missing 79 (60%), policy off 26 (20%), forcing x10 19 (14%),
+proofs x5 8 (6%); by variant: policy off fixes 26, forcing x10 37, proofs x5 31, all 36. The policy's share is soft: of
+24,443 proving lines in the policy-caused positions the deployed policy would have stopped 209 (0.9%) -- those cases are
+fixed by the EXTRA PROOFS the full search's unknowns trigger, not by a wrong stop. OBS retrain with the hard positives
+(all 24,443 at weight 10 -- too broad; the 209 alone is the right set, not tried): held-out AUC 0.977 (was 0.981), tau
+0.2 for recall 0.99 -- no gain; phase-1 weights kept. THE LEMMA MINING (read by me, categorized by the move kinds):
+36 defence where Stockfish prefers a QUIET move (positional: Re4, Be2, Qh6 -- the strategic layer, not a tactic);
+15 defence where Stockfish prefers a forcing move (Re7+, Rxb7, Nxh7 -- counter-attack over defence);
+12 CATASTROPHIC (>= 1,000 cp): a mating attack or a queen loss missed -- 9 begin with a QUIET move of theirs (Rf8, Ne5,
+Bc3: the mating net is built before the checks begin, outside MATE_CHECKS = 3 checks and outside the forcing search's
+"threat >= 3" quiet moves), 3 with a forcing line we did not see through (Bxe5+, Bg5+, Rxg7+);
+10 a wrong win where Stockfish's better move is quiet (Ng5 over Qc7+: a bigger forcing attack over a small take);
+6 a wrong win where it is forcing (Nxe5 over Bxe5: the recapturer; Rxa5+ over Rd6+).
+THE LEMMA CANDIDATES this names: (1) THE MATING NET -- their quiet move that builds an unstoppable mate threat (12 of 79,
+the whole catastrophic class): a "threat against our king" frame that runs their forcing search AFTER each quiet
+candidate of theirs, not only checks; (2) THE RECAPTURER -- which piece takes back decides the line (6); (3) counter-
+attack over defence (15). The 36 positional ones are the strategic layer (Kaveh 2026-10-10) and out of this loop's
+reach. Tools: surprise_loop.py, forcing_policy train --hard, set_proof_scale.

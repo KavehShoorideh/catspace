@@ -64,28 +64,35 @@ def collect(tag: str, games: int, budget: int, workers: int) -> None:
           f"proven {pos:,} ({100 * pos / max(len(rows), 1):.1f}%), roots proven {sum(r[3] for r in rows):,} -> {out}")
 
 
-def train(hidden: int, epochs: int, recall_target: float, seed: int) -> None:
+def train(hidden: int, epochs: int, recall_target: float, seed: int, hard: bool = False, hard_weight: float = 10.0) -> None:
     import numpy as np
     import torch
     d = np.load(paths.derived("forcing_policy_rows.npz"))
-    X, y, g = d["X"], d["y"].astype(np.float32), d["game"]
-    games = sorted(set(g.tolist()))
+    X, y, g = d["X"], d["y"].astype(np.float32), d["game"].astype(str)
+    w = np.ones(len(X), dtype=np.float32)
+    if hard:                                                             # THE SURPRISE LOOP's hard positives (surprise_loop.py), weighted
+        h = np.load(paths.derived("forcing_policy_hard.npz"))
+        X = np.concatenate([X, h["X"]]); y = np.concatenate([y, h["y"].astype(np.float32)])
+        g = np.concatenate([g, np.array(["surprise"] * len(h["X"]))]); w = np.concatenate([w, np.full(len(h["X"]), hard_weight, dtype=np.float32)])
+        print(f"OBS   hard positives folded in: {len(h['X']):,} lines at weight {hard_weight}")
+    games = sorted(set(g.tolist()) - {"surprise"})
     rng = np.random.default_rng(seed)
     held = set(rng.choice(games, size=max(1, len(games) // 4), replace=False).tolist())
-    tr = np.array([gg not in held for gg in g]); te = ~tr
+    tr = np.array([gg not in held for gg in g]); te = ~tr & (g != "surprise")
     mean, std = X[tr].mean(0), X[tr].std(0) + 1e-6
     Xn = (X - mean) / std
     torch.manual_seed(seed)
     net = torch.nn.Sequential(torch.nn.Linear(X.shape[1], hidden), torch.nn.ReLU(), torch.nn.Linear(hidden, 1))
     opt = torch.optim.Adam(net.parameters(), lr=3e-3)
-    xt, yt = torch.tensor(Xn[tr]), torch.tensor(y[tr])
+    xt, yt, wt = torch.tensor(Xn[tr]), torch.tensor(y[tr]), torch.tensor(w[tr])
     pos_w = torch.tensor((len(yt) - yt.sum()) / max(yt.sum(), 1.0))          # the proven lines are the minority: weighted
-    lossf = torch.nn.BCEWithLogitsLoss(pos_weight=pos_w)
+    bce = torch.nn.BCEWithLogitsLoss(pos_weight=pos_w, reduction="none")
+    lossf = lambda logit, target, ww: (bce(logit, target) * ww).mean()
     for ep in range(epochs):
         perm = torch.randperm(len(xt))
         for i in range(0, len(xt), 4096):
             idx = perm[i:i + 4096]
-            opt.zero_grad(); loss = lossf(net(xt[idx]).squeeze(1), yt[idx]); loss.backward(); opt.step()
+            opt.zero_grad(); loss = lossf(net(xt[idx]).squeeze(1), yt[idx], wt[idx]); loss.backward(); opt.step()
     with torch.no_grad():
         p_te = torch.sigmoid(net(torch.tensor(Xn[te])).squeeze(1)).numpy()
         p_tr = torch.sigmoid(net(xt).squeeze(1)).numpy()
@@ -256,6 +263,7 @@ def main(argv=None):
     c.add_argument("--budget", type=int, default=2000); c.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     t = sub.add_parser("train"); t.add_argument("--hidden", type=int, default=16); t.add_argument("--epochs", type=int, default=30)
     t.add_argument("--recall", type=float, default=0.99); t.add_argument("--seed", type=int, default=0)
+    t.add_argument("--hard", action="store_true"); t.add_argument("--hard-weight", type=float, default=10.0)
     rc = sub.add_parser("rl-collect"); rc.add_argument("--tag", default="c300"); rc.add_argument("--games", type=int, default=24)
     rc.add_argument("--skip", type=int, default=0); rc.add_argument("--workers", type=int, default=6)
     t2 = sub.add_parser("train2"); t2.add_argument("--hidden", type=int, default=16); t2.add_argument("--epochs", type=int, default=8)
@@ -266,7 +274,7 @@ def main(argv=None):
     if a.cmd == "collect":
         collect(a.tag, a.games, a.budget, a.workers)
     elif a.cmd == "train":
-        train(a.hidden, a.epochs, a.recall, a.seed)
+        train(a.hidden, a.epochs, a.recall, a.seed, a.hard, a.hard_weight)
     elif a.cmd == "train2":
         train2(a.hidden, a.epochs, a.lam, a.seed)
     elif a.cmd == "rl-collect":

@@ -52,6 +52,11 @@ pub fn prove_n(p: &Chess, uci: &str, focus: &[Square], goal: i64, hints: Option<
 
 /// `prove` with its cost: (holds, proof, nodes, the last tier ran out of budget, the tier that proved it: 1 = 2 plies,
 /// 2 = the frame's depth, 0 = none); `deep` off stops after the 2-ply tier.
+/// THE PROOF BUDGET SCALE (the surprise loop's "deeper" variant, 2026-10-11): the tiers' node budgets times this.
+pub static PROOF_SCALE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+#[pyfunction]
+pub fn set_proof_scale(k: u32) -> PyResult<()> { PROOF_SCALE.store(k.max(1), Ordering::Relaxed); Ok(()) }
+
 pub fn prove_t(p: &Chess, uci: &str, focus: &[Square], goal: i64, hints: Option<std::sync::Arc<Hints>>, deep: bool) -> (bool, Hints, u64, bool, u8) {
     let out = prove_t_inner(p, uci, focus, goal, hints, deep);
     // THE MINING (Kaveh 2026-10-11: "if you chased and never got anything in return, maybe you don't need to chase --
@@ -97,7 +102,8 @@ fn prove_t_inner(p: &Chess, uci: &str, focus: &[Square], goal: i64, hints: Optio
     }
     let mut last = Hints::new();
     let mut spent = false;
-    for (d, b) in [(2u32, 10_000u64), (PURSUIT_PLIES, 50_000u64)] {
+    let k = PROOF_SCALE.load(Ordering::Relaxed) as u64;
+    for (d, b) in [(2u32, 10_000u64 * k), (PURSUIT_PLIES, 50_000u64 * k)] {
         if d > 2 && !deep { break; }
         let (r, rec) = with_hints(hints.clone(), || prove_pos(p, &m, focus, d, b, goal));
         last = rec;
