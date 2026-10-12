@@ -29104,3 +29104,22 @@ the whole catastrophic class): a "threat against our king" frame that runs their
 candidate of theirs, not only checks; (2) THE RECAPTURER -- which piece takes back decides the line (6); (3) counter-
 attack over defence (15). The 36 positional ones are the strategic layer (Kaveh 2026-10-10) and out of this loop's
 reach. Tools: surprise_loop.py, forcing_policy train --hard, set_proof_scale.
+THE CORNERING LEMMA VERIFIED AND UNIFIED; FOUR BUGS FROM THE CATASTROPHIC CLASS (2026-10-11 19:19 PDT; Kaveh: "we already
+have a cornering lemma generically for any piece -- verify; unify if possible"). VERIFIED: cornering exists in three
+partial forms -- rules.rs cornered (static; the king included as "in check, no king move"), trapped_unattacked (static,
+not yet attacked; the king excluded), lib.rs corner (the pursuit certificate, generic over any target: candidates shrink
+its escape set or attack it; used for pieces) -- and the king's own pursuit is mate_by_checks, CHECKS ONLY: the gap the
+12 catastrophic cases fell through (a quiet move builds the net). Lean: localCheck_sound already unifies the certificate
+(every reply answered; their mate counts as won). UNIFIED (flag CORNERING, off): the king as the piece of infinite value
+inside the forcing search -- a quiet move that takes a FLIGHT SQUARE from the king is forcing as a quiet move making a
+material threat is (threat.rs king_flights); a mate by that search (forcing_mate: checks, captures, net-building quiet
+moves) is a mate threat beside the checks-only one. Replaying the 12: 0 of 12 fixed -- which exposed FOUR BUGS of mine
+(docs/BUGS.md): (1) the forcing search's judge read a MATED side's standing (axb5 Qf7# "proved +3"); (2) net_after took
+a full material proof as a lower bound over their MATE; (3) their immediate reasoning skipped the mate pre-pass; (4) the
+stop policy read a mate search's need (10,000) as a feature and stopped every line. OBS after the fixes: 4 of 12
+catastrophic cases under 150 cp (Rf8, Kg1, Bg6, Qc5 -- Stockfish's moves), cornering on or off alike; the other 8 are
+nets beyond the forcing budget. OBS STOCKFISH review (4,000 sampled, depth 12): decisions losing 150+ cp 132 (9.0%) ->
+126 (8.6%) with the fixes (one run each; directional). OBS cornering on vs off (held-out games 25-44): identical 99.30%,
+by the planner's values 0 higher / 6 lower, ms 85 -> 113 (+34%): its extra mate search finds nothing the fixes do not,
+at a third more time -- stays OFF; the fixes stay ON. The loop's accounting: the "lemma missing" class was 60% of the
+disagreements; its catastrophic third was bugs in how mate enters the planner's arithmetic, not a missing lemma.

@@ -1530,6 +1530,8 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(threat::set_forcing_policy_on, m)?)?;
     m.add_function(wrap_pyfunction!(threat::set_rl_sample, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::set_proof_scale, m)?)?;
+    m.add_function(wrap_pyfunction!(threat::set_cornering, m)?)?;
+    m.add_function(wrap_pyfunction!(threat::forcing_mate_of, m)?)?;
     m.add_function(wrap_pyfunction!(threat::rl_log, m)?)?;
     m.add_function(wrap_pyfunction!(threat::forcing_log, m)?)?;
     m.add_function(wrap_pyfunction!(threat::set_forcing_log, m)?)?;

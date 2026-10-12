@@ -796,6 +796,9 @@ fn net_after_inner(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs
             if let Some(pt) = their_floor(&q) {
                 if pt.value > v { v = pt.value; w = Some(format!("the {} on {} by exchange (worth {})", q.board().piece_at(pt.target).map(|p| format!("{:?}", p.role).to_lowercase()).unwrap_or_default(), pt.target, pt.value)); }
             }
+            // THEIR MATE THREAT (the cornering lemma for the king: checks, or the forcing search's net when CORNERING is on)
+            // is their best win whatever else they have (2026-10-11, the surprise loop: dxc6 "nets 5" with Qb1+ mating)
+            if v < MATE_GOAL { if let Some(mt) = threats(&q, q.turn()).into_iter().find(|t| t.mate) { v = MATE_GOAL; w = Some(format!("{} mates", mt.how.clone().unwrap_or_default())); } }
             let _ = us_c;
             NET_CACHE.with(|c| c.borrow_mut().insert(key, (v, w.clone(), tp.proofs, tp.nodes)));
             (v, w)
@@ -809,7 +812,9 @@ fn net_after_inner(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs
     let board = taken - theirs;
     let framed = FRAMED.with(|f| f.borrow().contains(&u));
     // (a quiet frame value: what it wins in its frame minus their best win after the move -- their counterplay comes first)
-    let net = match proved { Some(g) if g >= MATE_GOAL => g, Some(g) if framed_quiet => g - theirs, Some(g) if framed => g.min(board), Some(g) => g.max(board), None => board };
+    // (their MATE dominates any material proof of ours -- a proof's plies end before their net closes; the king is the
+    // piece of infinite value: 2026-10-11, the surprise loop's catastrophic class)
+    let net = match proved { Some(g) if g >= MATE_GOAL => g, Some(_) if theirs >= MATE_GOAL => board, Some(g) if framed_quiet => g - theirs, Some(g) if framed => g.min(board), Some(g) => g.max(board), None => board };
     (net, their_why)
 }
 
@@ -948,7 +953,9 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
     let mut their_wins: Vec<(String, Square, i64)> = Vec::new();
     // A MATE FIRST (Kaveh 2026-10-10: once a mate is found and proven, no more time is spent): a forced mate by checks --
     // every reply searched -- ends the analysis before their threat is even computed
-    if !immediate_only {
+    // (for THEIR immediate reasoning too -- 2026-10-11, the surprise loop: after axb5 their Qf7 was read as a threat to a
+    // pawn, not the mate in one it was; the mate search is cached per position)
+    {
         if let Some(m) = crate::threat::mate_by_checks(pos, crate::threat::MATE_CHECKS) {
             let u = m.to_uci(CastlingMode::Standard).to_string();
             trace.push(format!("mate: {} mates by checks (proven: every reply searched) -- no further analysis", san(pos, &u)));

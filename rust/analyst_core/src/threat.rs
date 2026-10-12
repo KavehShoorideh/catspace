@@ -126,6 +126,14 @@ fn threats_inner(pos: &Chess, by: Color) -> Vec<Threat> {
     if let Some(p) = p {
         if let (Some(m), Some(k)) = (mate_by_checks(&p, MATE_CHECKS), p.board().king_of(!by)) {
             v.push(Threat { target: k, value: MATE_GOAL, mate: true, how: Some(m.to_uci(CastlingMode::Standard).to_string()) });
+        } else if CORNERING.load(Ordering::Relaxed) {
+            // THE MATING NET (the cornering lemma for the king): a mate by the forcing search -- checks, captures and the
+            // quiet moves that take the king's flight squares -- the 12 catastrophic misses of the surprise loop's first turn
+            if let Some(k) = p.board().king_of(!by) {
+                if let Some(m) = forcing_mate(&p, FBUDGET.load(Ordering::Relaxed)) {
+                    v.push(Threat { target: k, value: MATE_GOAL, mate: true, how: Some(m.to_uci(CastlingMode::Standard).to_string()) });
+                }
+            }
         }
     }
     // (ties broken by square: threats_of is a HashMap, its order differs per process -- 2026-10-10: two identical runs
@@ -287,8 +295,20 @@ fn single_blockers(q: &Chess, by: Color, targets: Bitboard) -> Bitboard {
 /// 3+ -- the moved piece attacking a piece of theirs worth 3+ from its new square, or leaving a square where it alone
 /// blocked our slider from one (a discovery) -- each with its child node. Bitboard tests per move (2026-10-11, the
 /// profile: attack-path lists and move strings were the forcing search's largest costs).
+/// The king's FLIGHT SQUARES of `c` in `q`: next to it, not its own piece, not attacked by the other side -- the king's
+/// escape set, as escape_set is a piece's (THE CORNERING LEMMA unified, Kaveh 2026-10-11: the king is a piece of
+/// infinite value; taking a square from it is a threat as attacking a piece is).
+pub fn king_flights(q: &Chess, c: Color) -> u32 {
+    let b = q.board();
+    let Some(k) = b.king_of(c) else { return 0 };
+    let occ = b.occupied().without(k);
+    (shakmaty::attacks::king_attacks(k) & !b.by_color(c)).into_iter().filter(|sq| !b.attacks_to(*sq, !c, occ).any()).count() as u32
+}
+
 fn forcing_moves(s: &FState, by: Color) -> Vec<(Move, FState)> {
     let q = &s.pos;
+    // (the king's flights before, for the quiet moves that take one: CORNERING flag)
+    let flights0 = if CORNERING.load(Ordering::Relaxed) { king_flights(q, !by) } else { 0 };
     let b = q.board();
     let occ = b.occupied();
     let targets: Bitboard = b.by_color(!by) & !b.by_role(Role::Pawn) & !b.by_role(Role::King);
@@ -306,10 +326,13 @@ fn forcing_moves(s: &FState, by: Color) -> Vec<(Move, FState)> {
         let checks = special || king.map_or(false, |k| reach.contains(k)) || from.map_or(false, |f| disc_k.contains(f));
         // (castling and en passant move or remove a second piece: the child's threat map decides -- the audit's one miss
         // was O-O-O, the rook arriving on d1 against the d4 bishop)
+        // a quiet move that bears on the king's neighbourhood may take a flight square (the net is built before the check)
+        let king_cand = flights0 > 0 && king.map_or(false, |k| (reach & shakmaty::attacks::king_attacks(k)).any() || from.map_or(false, |f| disc_k.contains(f)));
         let quiet_cand = special || (reach & targets).any() || from.map_or(false, |f| disc_t.contains(f));
-        if !forcing_now && !quiet_cand && !checks { continue; }
+        if !forcing_now && !quiet_cand && !checks && !king_cand { continue; }
         let c = child_state(s, &m, by);
-        if forcing_now || c.pos.is_check() || (quiet_cand && (0..64).any(|x| c.thr[x] >= 3 && c.thr[x] > s.thr[x])) { out.push((m, c)); }
+        let takes_flight = king_cand && !c.pos.is_check() && king_flights(&c.pos, !by) < flights0;
+        if forcing_now || c.pos.is_check() || takes_flight || (quiet_cand && (0..64).any(|x| c.thr[x] >= 3 && c.thr[x] > s.thr[x])) { out.push((m, c)); }
     }
     out
 }
@@ -354,7 +377,10 @@ fn policy_features(f: &Forcing, s: &FState, depth: u32) -> Vec<f32> {
     let replies = s.pos.legal_moves();
     let flights = replies.iter().filter(|m| m.role() == Role::King).count() as f32;
     let (cap, pv, promo) = match &s.last { Some(m) => (m.capture().map(kernel_value).unwrap_or(0) as f32, kernel_value(m.role()) as f32, m.is_promotion() as u8 as f32), None => (0.0, 0.0, 0.0) };
-    vec![depth as f32, banked, (f.need as f32) - banked,
+    // (a mate question's need is a sentinel beyond any material: the policy learned material needs, so it reads the
+    // largest one -- 2026-10-11, the surprise loop: every line of every mate search was stopped at the root)
+    let need = f.need.min(9) as f32;
+    vec![depth as f32, banked, need - banked,
          s.thr.iter().copied().max().unwrap_or(0).max(0) as f32, s.them.iter().copied().max().unwrap_or(0).max(0) as f32,
          s.pos.is_check() as u8 as f32, replies.len() as f32, flights,
          (cap > 0.0) as u8 as f32, cap, pv, promo,
@@ -438,6 +464,10 @@ impl crate::pns::Problem for Forcing {
     type State = FState;
     fn judge(&self, s: &FState, or: bool, root: bool) -> Option<bool> {
         if or {
+            // (no move of ours: mated or stalemated -- no standing counts; 2026-10-11, the surprise loop: axb5 Qf7# was
+            // "proven" at +3 because the standing read the material of a mated side)
+            if s.pos.is_check() && s.pos.legal_moves().is_empty() { return Some(false); }
+            if !root && !s.pos.is_check() && s.pos.legal_moves().is_empty() { return Some(false); }
             // THE COMPOSED STANDING (the exchange law's composed tier, Lean Ideas.ExchangeLaw.exchangeLawComposed: the
             // intermezzo's price is their best capture elsewhere after ours): the material won plus our best capture
             // minus their best capture -- a bound (2026-10-11: Bb5+ c6 "won 9", Nxd1 then cxb5 takes the bishop back)
@@ -509,6 +539,11 @@ pub fn forcing_moves_audit(fen: String) -> (u32, u32, u32) {
 }
 
 pub static COMPOSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// THE CORNERING LEMMA unified (Kaveh 2026-10-11): quiet moves that take a flight square from the king are forcing, and a
+/// mate found by the forcing search (checks, captures, net-building quiet moves) is a threat beside the checks-only mate.
+pub static CORNERING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[pyfunction]
+pub fn set_cornering(flag: bool) -> PyResult<()> { CORNERING.store(flag, Ordering::Relaxed); Ok(()) }
 #[pyfunction]
 pub fn set_composed(flag: bool) { COMPOSED.store(flag, Ordering::Relaxed); }
 
@@ -518,6 +553,28 @@ pub fn forcing_need(p: &Chess, need: i64, budget: u64) -> Option<bool> {
     let by = p.turn();
     let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), them: rules::threats_arr(p, !by), edge: material_edge(p, by), last: None };
     crate::pns::search(&Forcing { by, base: material_edge(p, by), need }, root, budget)
+}
+
+/// A MATE by the forcing search (need beyond any material: only a mate proves it); the first move of the proof.
+pub fn forcing_mate(p: &Chess, budget: u64) -> Option<Move> {
+    let by = p.turn();
+    let base = material_edge(p, by);
+    let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), them: rules::threats_arr(p, !by), edge: base, last: None };
+    match crate::pns::search_with_proof(&Forcing { by, base, need: 10_000 }, root, budget) {
+        (Some(true), Some(c)) => c.last,
+        _ => None,
+    }
+}
+
+/// forcing_mate_of(fen, budget) -> (the mate's first move or None, [searches, proven, disproven, unknown, expansions]).
+#[pyfunction]
+pub fn forcing_mate_of(fen: String, budget: u64) -> (Option<String>, Vec<u64>) {
+    let Some(p) = parse(&fen) else { return (None, vec![]) };
+    crate::pns::STATS.iter().for_each(|a| { a.swap(0, Ordering::Relaxed); });
+    let was = CORNERING.swap(true, Ordering::Relaxed);
+    let m = forcing_mate(&p, budget).map(|m| m.to_uci(CastlingMode::Standard).to_string());
+    CORNERING.store(was, Ordering::Relaxed);
+    (m, crate::pns::STATS.iter().map(|a| a.swap(0, Ordering::Relaxed)).collect())
 }
 
 pub fn forcing_gain(p: &Chess, budget: u64) -> Option<bool> {
