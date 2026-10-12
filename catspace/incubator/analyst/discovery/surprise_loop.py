@@ -246,6 +246,12 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
             left_won = last + 1 < len(g["rows"]) and g["rows"][last + 1]["theirs"] < g["rows"][last]["theirs"]
             if left_won or (last == len(g["rows"]) - 1 and g["out"] == "win"):
                 contrast[mat]["win"] += [g["rows"][i]["fen"] for i in idx[-5:]]
+                # SLOW PROGRESS IN A WON PHASE is a surprise too (a frame claim that did not shrink): its boards join the
+                # progress hole (2026-10-12: with stall points alone, K+R+R v K -- rarely drawn -- learned no frame)
+                for i in idx:
+                    r = g["rows"][i]
+                    if r["claim"]["kind"] == "frame" and r["lead"] > 0 and r["verdict"] in ("no shrink", "other outcome"):
+                        by[(mat, 2)].add(r["fen"])
             elif last == len(g["rows"]) - 1 and g["out"] in ("draw", "loss"):
                 contrast[mat]["draw"] += [g["rows"][i]["fen"] for i in idx[-30:]]
                 # THE STALL POINT (where the verifier should look -- not the tail, after the damage): the position after
