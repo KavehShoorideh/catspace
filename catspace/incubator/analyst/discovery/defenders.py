@@ -83,10 +83,32 @@ def compose(base: list, term: str | None, schema: str) -> list:
     return base[:-1] + [term]
 
 
+def sym_key(b) -> str:
+    """The position up to the board's symmetries (Kaveh 2026-10-12: "play ... until you're confident you're back to the
+    same position or a mirror/rotation of it"): no pawns and no castling -- the 8 rotations and reflections; pawns -- the
+    left-right mirror only; castling rights -- none. The side to move kept."""
+    import chess
+    bb = chess.BaseBoard(b.board_fen())
+    if b.castling_rights:
+        group = [lambda x: x]
+    elif b.pawns:
+        group = [lambda x: x, chess.flip_horizontal]
+    else:
+        fv, fh, fd, fa = chess.flip_vertical, chess.flip_horizontal, chess.flip_diagonal, chess.flip_anti_diagonal
+        group = [lambda x: x, fv, fh, fd, fa, lambda x: fh(fv(x)), lambda x: fv(fd(x)), lambda x: fh(fd(x))]
+    return min(bb.transform(f).board_fen() for f in group) + (" w" if b.turn else " b")
+
+
+GUARD = 500                     # a safety cap only (logged when hit): every game ends at the goal, ground lost or a cycle
+
+
 def _play_one(args):
-    """One board -> dict: won / lost (ground lost: material after our move, mated, a draw while ahead) / neither (the
-    limit), our moves played, and the positions of ours where the FRAME moved (its claims), with every position of ours
-    (to judge them)."""
+    """One board, played to its NATURAL END (no move limit -- Kaveh: "principled, not numbered limits"): the goal (mate, or
+    a capture we keep), ground lost (material, mated, a draw while ahead -- STOP AND SAY WHY: Kaveh, "when we lose ground
+    we should stop and look at why"), or a CYCLE -- a position equivalent to an earlier one under the board's symmetries,
+    the same side to move: no progress, the defender can repeat it (a draw: ground lost when ahead). -> dict: won, lost,
+    why (the end's kind and its moves), our moves, the positions of ours where the FRAME moved (its claims) and every
+    position of ours (to judge them)."""
     import chess
     import catspace.incubator.analyst  # noqa: F401
     import analyst_core as A
@@ -94,16 +116,26 @@ def _play_one(args):
     b = chess.Board(fen)
     us = b.turn
     theirs0, lead0 = _material(b, not us), _material(b, us) - _material(b, not us)
-    history, ours, framed = [], [], []
-    out = dict(won=False, lost=False, moves=0)
+    history, ours, framed, seen = [], [], [], {sym_key(b)}
+    out = dict(won=False, lost=False, moves=0, why=None)
     st = None
     if player == "planner":                       # the whole player, the candidate as its material's frame
         A.set_generic_frame(True)
         A.set_material_frame(material, compose(base, cand, schema))
         st = A.PlanState()
-    for n in range(1, limit + 1):
+
+    def lose(kind, **kw):
+        out["lost"] = True
+        out["why"] = dict(kind=kind, **kw)
+
+    def drawn(kind, **kw):                         # a draw: ground lost when ahead
+        out["lost"] = lead0 > 0
+        out["why"] = dict(kind=kind, **kw)
+
+    for n in range(1, GUARD + 1):
         history.append(b.fen())
         ours.append((b.fen(), _material(b, not us), _material(b, us) - _material(b, not us)))
+        before = b.fen()
         if st is not None:
             tr, dec, *_ = st.observe(b.fen())
             mv = None
@@ -115,36 +147,53 @@ def _play_one(args):
                 if m in b.legal_moves:
                     mv = m; break
             if mv is None:
-                break
+                drawn("no move", fen=before); break
             if any(l.startswith("frame:") for l in tr):
                 framed.append(len(ours) - 1)
         else:
             pick = A.frame_choose(b.fen(), base, cand, schema, piece, history)
             if pick is None:
-                break
+                drawn("no move", fen=before); break
             mv = chess.Move.from_uci(pick[0])
             framed.append(len(ours) - 1)
+        ours_san = b.san(mv)
         b.push(mv)
         out["moves"] = n
         if b.is_checkmate():
             out["won"] = True; break
         if piece == "*":
             if _material(b, us) - _material(b, not us) < lead0:
-                out["lost"] = True; break                      # first don't lose
+                lose("material", fen=before, ours=ours_san); break       # (our move left material behind)
             if _material(b, not us) < theirs0:
-                out["won"] = True; break                       # the goal: the next frame's material
-        if not any(b.legal_moves) or b.is_repetition(3):
-            out["lost"] = lead0 > 0; break                     # a draw: ground lost when ahead
+                out["won"] = True; break                                 # the goal: the next frame's material
+        if b.is_stalemate():
+            drawn("stalemate", fen=before, ours=ours_san); break
+        k = sym_key(b)
+        if k in seen:
+            drawn("cycle", fen=before, ours=ours_san); break
+        seen.add(k)
         history.append(b.fen())
         if st is not None:
             st.record(b.fen())
-        b.push(reply(b, defender))
+        r = reply(b, defender)
+        theirs_san, check = b.san(r), b.gives_check(r)
+        b.push(r)
         if b.is_checkmate():
-            out["lost"] = True; break
+            lose("mated", fen=before, ours=ours_san, theirs=theirs_san); break
         if piece != "*" and not any(p.color == us and p.piece_type != chess.KING for p in b.piece_map().values()):
-            out["lost"] = True; break                          # our piece taken
-        if b.is_repetition(3) or b.halfmove_clock >= 100 or not any(b.legal_moves):
-            out["lost"] = lead0 > 0; break
+            lose("material", fen=before, ours=ours_san, theirs=theirs_san); break
+        if b.halfmove_clock >= 100:
+            drawn("fifty moves", fen=before, ours=ours_san, theirs=theirs_san); break
+        if b.is_stalemate():
+            drawn("stalemate", fen=before, ours=ours_san, theirs=theirs_san); break
+        k = sym_key(b)
+        if k in seen:
+            drawn("cycle (their checks)" if check else "cycle", fen=before, ours=ours_san, theirs=theirs_san); break
+        seen.add(k)
+    else:
+        out["why"] = dict(kind="guard hit", fen=b.fen())   # never expected: logged
+    if out["why"] and out["why"]["kind"] == "material":
+        out["why"]["after"] = b.fen()
     out.update(ours=ours, framed=framed, end_won=out["won"])
     return out
 
@@ -179,8 +228,11 @@ def closed_loop(boards: list, base: list, cand: str | None, schema: str, piece: 
     with Pool(workers, initializer=_init, initargs=(defender,)) as p:
         res = p.map(_play_one, [(f, base, cand, schema, piece, limit, defender, player, material) for f in boards], chunksize=2)
     kept, claims = claims_kept(res, compose(base, cand, schema))
+    from collections import Counter
+    whys = [r["why"] for r in res if r["lost"] and r["why"]]
     return dict(n=len(res), won=sum(r["won"] for r in res), lost=sum(r["lost"] for r in res),
-                moves=sum(r["moves"] for r in res if r["won"]), played=sum(len(r["ours"]) for r in res), kept=kept, claims=claims)
+                moves=sum(r["moves"] for r in res if r["won"]), played=sum(len(r["ours"]) for r in res), kept=kept, claims=claims,
+                why=dict(Counter(w["kind"] for w in whys)), examples=whys[:3])
 
 
 def ranked(r: dict) -> tuple:
@@ -231,6 +283,9 @@ def main(argv=None):
         else:
             print(f"OBS {a.hole} {a.term or ''} -- {pl} against {d}: held {r['n'] - r['lost']}/{r['n']}, won {r['won']}, "
                   f"claims kept {r['kept']}/{r['claims']} (ranks {tuple(round(x, 3) for x in ranked(r))}) -- {time.time() - t0:.1f} s")
+            print(f"OBS   ground lost, why: {r['why']}")
+            for e in r["examples"]:
+                print(f"OBS     {e}")
 
 
 if __name__ == "__main__":

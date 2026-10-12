@@ -87,12 +87,15 @@ def _game(args):
     eng.configure({"SyzygyPath": str(paths.syzygy_dir())})
     b = _start(random.Random(seed), material, tb)
     st = A.PlanState()
-    rows, out = [], None
+    rows, out, ended = [], None, None
     while out is None:
         if b.is_checkmate():
             out = "win" if b.turn == chess.BLACK else "loss"; break
         if b.is_stalemate() or b.is_insufficient_material() or b.halfmove_clock >= 100 or b.is_repetition(3):
-            out = "draw"; break
+            out = "draw"
+            ended = ("stalemate" if b.is_stalemate() else "insufficient material" if b.is_insufficient_material()
+                     else "fifty moves" if b.halfmove_clock >= 100 else "repetition")
+            break
         if b.turn == chess.WHITE:
             if len(rows) >= LIMIT:
                 out = "not finished"; break
@@ -124,7 +127,9 @@ def _game(args):
             else:
                 b.push(eng.play(b, chess.engine.Limit(depth=int(opponent.partition(":")[2] or 10))).move)
     eng.quit()
-    return dict(seed=seed, out=out, moves=len(rows), rows=rows)
+    if out in ("win", "loss") and ended is None:
+        ended = "mate"
+    return dict(seed=seed, out=out, ended=ended, moves=len(rows), rows=rows)
 
 
 def judge(g: dict) -> None:
@@ -187,6 +192,15 @@ def report(res: list, label: str) -> None:
     lost = [g["moves"] for g in res if g["out"] == "loss"]
     print(f"OBS {label}: {len(res)} games {dict(Counter(g['out'] for g in res))}"
           f"{f', {sum(won) / len(won):.1f} moves per win' if won else ''}{f', a loss lasted {sum(lost) / len(lost):.1f} moves' if lost else ''}; {len(rows)} moves of ours")
+    # WHY GROUND WAS LOST (Kaveh: "when we lose ground we should stop and look at why"): how the drawn and lost games
+    # ended, the material at the end, and how often we were in check in our last 20 positions (their rook harassing)
+    import chess
+    bad = [g for g in res if g["out"] in ("draw", "loss")]
+    if bad:
+        ends = Counter((g["out"], g.get("ended"), g["rows"][-1]["material"] if g["rows"] else "-") for g in bad)
+        checked = sorted(sum(chess.Board(x["fen"]).is_check() for x in g["rows"][-20:]) for g in bad)
+        print("OBS   ground lost, why: " + "; ".join(f"{o} by {e} in {m} {n}" for (o, e, m), n in ends.most_common(6)) +
+              f" -- in check in our last 20 positions: median {checked[len(checked) // 2]}")
     for mat in sorted({r["material"] for r in rows}, key=lambda m: -sum(r["material"] == m for r in rows)):
         here = [r for r in rows if r["material"] == mat]
         by = Counter((r["claim"]["kind"], r["verdict"]) for r in here)

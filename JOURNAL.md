@@ -29634,3 +29634,28 @@ K+R+R v K+R hole used them (O, hit, unhit, ours, theirs); the best came within a
 adversary (material first, then the measure as high as it goes) -- it never harasses with checks the way Stockfish does,
 and the checks are what draw the real games; a term that copes with them earns nothing in the verifier. The rank-1 terms
 look arbitrary for the same reason ("corners we attack" against the previous run's "rook to the edge").
+THE VERIFIER AGAINST THE REAL DEFENDER (2026-10-12 14:20-15:11 PDT). Kaveh: "are you saying up until now we've been playing
+against our own estimate of what is best? ... we should play against Stockfish, not our own best"; "we should have this as
+a thing that could be changed"; then "go with your recommendation" (the score by his ranks). The games were always against
+Stockfish + the tablebases; the VERIFIER's closed loop (which picks the lemma) defended with the measure's own adversary.
+Now a switch (defenders.py): self / tablebase / stockfish:D, and our side a switch too (the frame alone, or the whole
+planner with the candidate as its material's frame). OBS on 30 stuck boards ("squares we do not attack"): the frame alone
+won 28 against self, 0 against the tablebase or Stockfish; the planner 0-1 -- the old verdicts were badly optimistic.
+SCORED BY KAVEH'S RANKS: the boards held (no ground lost; a draw while ahead is ground lost), then won, then the frame's
+claims kept (its measure falls within k, or the goal); a margin at the first rank that differs. THE RUN (tag tb, the
+tablebase defender; 100 games a round, the same starting positions as the earlier runs' rounds; directional): round 0
+57 / 40 / 3 (won / drawn / lost); round 1 67 / 31 / 2 (earlier runs 61 and 69); round 2 64 / 36 / 0 (59 and 58); round 3
+62 / 38 / 0 (55 and 55) -- ahead two rounds running. K+R+R v K+R surprised 92% -> 43% -> 35% -> 40%. The lemmas now
+use the words for their pieces: K+R+R v K+R (ranked) "squares nearer their king than their rook, off the line through our
+king and our rook" (held 6 / 30 against the tablebase, the frame before 3), "... not nearer our rook than their king" (5
+vs 2), "... off our king's file" (4 vs 3); K+R+R v K "squares nearer their king than our rook" (held and won 30 / 30,
+claims kept 105 / 105; the frame before 25 / 30, 3 / 340). INTO LEAN (the generated track): the four as definitions
+(Ideas.Generated.Measures, built); none proved -- the K+R+R v K claim held on every board verified and is the first
+candidate for a proof by reasoning; the K+R+R v K+R ones keep ~40-60% of their claims (heuristics, false as stated).
+NATURAL ENDS (Kaveh: "why not play a cycle until you're confident you're back to the same position or a mirror/rotation
+of it"; "when we lose ground we should stop and look at why"): the verifier's games have no move limit -- they end at the
+goal, at ground lost (with WHY: material and the move that lost it, mated, a draw by rule), or at a CYCLE: a position
+equivalent to an earlier one under the board's symmetries (8 without pawns, the mirror with pawns), the same side to
+move. OBS (the latest frame's own measure, 30 stuck boards, the tablebase): 1.1 s (was 3.3); held 0 / 30 -- every one a
+cycle, 15 of them under THEIR CHECKS (7r/4K3/4R3/8/3k4/4R3/8/8 w: Kd6 Rd8+) -- the missing lemma is the king's shelter
+from their rook's checks. The games' report now says why too (how the drawn and lost games ended, the checks at the end).

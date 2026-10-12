@@ -77,7 +77,7 @@ class Verifier:
             o = D.closed_loop(boards, hole["base"], term, schema, piece, LIMIT, self.defender, player="planner", material=hole["material"])
             r = dict(hole=hole["name"], term=term or "", schema=schema, boards=bh, spec=sp, defender=self.defender, n=n, stage1=s1,
                      mated=o["won"], lost=o["lost"], played=o["claims"], certified=o["kept"], ranks=list(D.ranked(o)),
-                     score=D.score(o), t=time.time())
+                     why=o["why"], examples=o["examples"], score=D.score(o), t=time.time())
         self.memo[k] = r
         with open(self.path, "a") as fh:
             fh.write(json.dumps(r) + "\n")
