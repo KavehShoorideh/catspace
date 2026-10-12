@@ -1560,6 +1560,8 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(threat::set_cornering, m)?)?;
     m.add_function(wrap_pyfunction!(set_leaf_bound, m)?)?;
     m.add_function(wrap_pyfunction!(threat::set_escape_need, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_outcome_floor, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::gain_floor_of, m)?)?;
     m.add_function(wrap_pyfunction!(settle_audit, m)?)?;
     m.add_function(wrap_pyfunction!(threat::forcing_mate_of, m)?)?;
     m.add_function(wrap_pyfunction!(threat::rl_log, m)?)?;

@@ -746,6 +746,31 @@ fn net_bound(pos: &Chess, m: &Move, wins: &[(String, Square, i64)]) -> i64 {
     let g = wins.iter().filter(|w| w.0 == u).map(|w| w.2).max();
     g.map_or(taken - floor, |g| g.max(taken - floor))
 }
+// THE OUTCOME CURVE (Kaveh 2026-10-11: "a queen down, looking for a pawn -- who cares, I'm losing; a queen up, who cares
+// about a pawn, I want to mate"): the side to move's expected result by material balance, fitted on the census (c300,
+// 22,861 positions: E(b) = 0.890 tanh(b / 3.60), mse 0.763 vs 0.942 for a constant). A gain is worth reasoning about when
+// it moves the expected result by OUTCOME_EPS or more; the smallest such gain on the ladder 1, 2, 3, 5, 9 is the FLOOR
+// (beyond the ladder: only a mate matters). Applied to our targets, our forcing gains, their threats and their wins.
+pub static OUTCOME_FLOOR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[pyfunction]
+pub fn set_outcome_floor(flag: bool) -> PyResult<()> { OUTCOME_FLOOR.store(flag, Ordering::Relaxed); Ok(()) }
+const OUTCOME_A: f64 = 0.890;
+const OUTCOME_S: f64 = 3.60;
+const OUTCOME_EPS: f64 = 0.05;
+fn expected_result(b: i64) -> f64 { OUTCOME_A * (b as f64 / OUTCOME_S).tanh() }
+/// The smallest gain worth reasoning about for the side whose material balance is `bal` (1 with the floor off).
+pub fn gain_floor(bal: i64) -> i64 {
+    if !OUTCOME_FLOOR.load(Ordering::Relaxed) { return 1; }
+    for g in [1i64, 2, 3, 5, 9] { if expected_result(bal + g) - expected_result(bal) >= OUTCOME_EPS { return g; } }
+    MATE_GOAL
+}
+/// gain_floor_of(balance) -> the floor (the curve's reading, flag ignored) -- the review hook.
+#[pyfunction]
+pub fn gain_floor_of(bal: i64) -> i64 {
+    for g in [1i64, 2, 3, 5, 9] { if expected_result(bal + g) - expected_result(bal) >= OUTCOME_EPS { return g; } }
+    MATE_GOAL
+}
+
 pub static NET_BOUND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_net_bound(flag: bool) -> PyResult<()> { NET_BOUND.store(flag, Ordering::Relaxed); Ok(()) }
@@ -793,7 +818,7 @@ fn net_after_inner(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs
             // Rxb8 was certified at 2 in its frame; the exchange says 3)
             // (A CHECK IS A TEMPO -- Kaveh 2026-10-10: in check, only a capture that answers the check counts; 2026-10-11:
             // Rd2+ "netted -6" for their capture of our f6 queen, which they cannot make while in check)
-            if let Some(pt) = their_floor(&q) {
+            if let Some(pt) = their_floor(&q).filter(|pt| pt.value >= gain_floor(kernel_material(&q, q.turn()))) {
                 if pt.value > v { v = pt.value; w = Some(format!("the {} on {} by exchange (worth {})", q.board().piece_at(pt.target).map(|p| format!("{:?}", p.role).to_lowercase()).unwrap_or_default(), pt.target, pt.value)); }
             }
             // THEIR MATE THREAT (the cornering lemma for the king: checks, or the forcing search's net when CORNERING is on)
@@ -951,6 +976,10 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
     // White's captures, not White's mate)
     let mut their: Option<(String, Square, i64)> = None;
     let mut their_wins: Vec<(String, Square, i64)> = Vec::new();
+    // THE FLOORS: what gain matters to each side at this balance (the outcome curve)
+    let bal = kernel_material(pos, us);
+    let floor_us = gain_floor(bal);
+    let floor_them = gain_floor(-bal);
     // A MATE FIRST (Kaveh 2026-10-10: once a mate is found and proven, no more time is spent): a forced mate by checks --
     // every reply searched -- ends the analysis before their threat is even computed
     // (for THEIR immediate reasoning too -- 2026-10-11, the surprise loop: after axb5 their Qf7 was read as a threat to a
@@ -981,6 +1010,10 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
         }
         cap.max(their.as_ref().map_or(0, |x| x.2))
     };
+    let threat = if threat > 0 && threat < floor_them {
+        trace.push(format!("their threat ({threat}) is below what matters to them at this balance ({floor_them}): not answered"));
+        their = None; their_wins.clear(); 0
+    } else { threat };
     let tempo = threat <= 1;
     mark("1 their threat (null-move planner)");
     // PINNED TO WHAT (Kaveh 2026-10-09: "the knight on d7 is pinned because the queen can give a mate on d8 if the knight
@@ -1096,7 +1129,7 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
         // (the forcing search's value -- checks, captures and quiet threats to the end of the forcing, no count -- in place
         // of material by checks within 3)
         if let Some((m, g)) = crate::threat::forcing_value(pos, crate::threat::FBUDGET.load(Ordering::Relaxed)) {
-            if g >= 2 && g < MATE_GOAL {
+            if g >= 2 && g < MATE_GOAL && g >= floor_us {
                 let u = m.to_uci(CastlingMode::Standard).to_string();
                 // (the forcing search's proof is the certificate -- every reply searched, every leaf read by the exchange
                 // law; a second confirmation by the frame-limited value search ran out of budget on 7-ply lines and threw
@@ -1162,6 +1195,10 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
         let king = v == 1000;
         let goal = if king { MATE_GOAL } else { v };
         let name = format!("{:?} on {t}", b.piece_at(t).unwrap().role).to_lowercase();
+        if !king && v_bound < floor_us {
+            trace.push(format!("floor: the {name} (worth {v}) is below what matters at this balance ({floor_us}) -- not pursued"));
+            continue;
+        }
         // 3 SEEDS: our moves on a path onto the target
         let paths = attack_paths(pos, us, Bitboard::from_square(t));
         let mut seeds: Vec<String> = Vec::new();

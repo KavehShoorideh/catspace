@@ -29147,3 +29147,16 @@ wired; for Kaveh's call): census c300, the side to move's result (+1/0/-1) by ma
 -0.16, 0 +0.01, +1 +0.26, +2 +0.59, +3 +0.80, +4 +0.91, beyond +-4 flat (+5..+12: 0.84-1.00; -4..-12: -0.66..-0.98,
 noisy). A pawn moves the expected score by ~0.15-0.3 within +-3 and by under ~0.05 beyond +-4: his "queen down, who
 cares about a pawn" in numbers.
+THE OUTCOME CURVE, WIRED (2026-10-11 22:50 PDT; Kaveh: "let's wire the outcome curve in and see how that works out").
+plan.rs OUTCOME_FLOOR (off): E(b) = 0.890 tanh(b / 3.60) fitted on the census (22,861 positions; mse 0.763 vs 0.942 for a
+constant); the FLOOR at balance b = the smallest gain on the ladder 1,2,3,5,9 that moves E by 0.05 or more, else only a
+mate. OBS floors: -14 9, -12 9, -10 5, -8 3, -6 2, -4..+4 1, +6 5, +8 and beyond mate. Applied: targets below our floor
+not pursued; our forcing gains below it ignored; their threat below their floor not answered; their exchange floor in
+net_after below their floor ignored (their reasoning floors itself at its own balance). OBS flag_onoff (held-out games
+25-44, 1,433 positions): identical 95.12%, ms 61.5 -> 55.7 (-9%), proofs 24.6 -> 22.6; of 70 changed, by the planner's
+values 16 higher, 5 lower, 49 incomparable. OBS STOCKFISH (seed-6 sample, depth 12), graded two ways -- centipawns and
+Lichess's winning chances (2/(1+exp(-0.00368208 cp)) - 1; a blunder loses >= 0.3): OFF 1,462 decisions, 150+ cp 133
+(9.1%), blunders 78 (5.3%), >= 0.2 128 (8.8%), mean loss 0.0540; ON 1,409 decisions, 150+ cp 137 (9.7%), blunders 74
+(5.3%), >= 0.2 128 (9.1%), mean 0.0552. Directional (one run each; repeated baselines today ranged 8.6-9.5%): equal by
+the result-aware grade, slightly worse by centipawns -- the expected signature (pawns given up where the result does
+not move), at -9% time. Left OFF pending Kaveh.
