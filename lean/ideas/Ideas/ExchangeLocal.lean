@@ -161,4 +161,37 @@ theorem seeXB_unchanged_two_plies (p : Position) (m r : Move) (s : Square)
   rw [applyMove_board (applyMove p m) r, applyBoard_off (applyMove p m) r x hx2,
     applyMove_board p m, applyBoard_off p m x hx1]
 
+/-! ## The magnitude bound (Kaveh 2026-10-11: "I am chasing down a knight -- the most I can win is a knight")
+
+The exchange on a square never wins more than the piece standing on it: the capture game's continuation value is never
+negative (`cheapestXF_nonneg`: each side may stop), so the first capture's value minus it is at most the piece. The bound
+a chain of reasoning against one target carries -- and the planner's "stop when what is in hand exceeds the next
+target's value" rests on it. -/
+
+theorem pieceValue_nonneg (k : PieceKind) : 0 ≤ Ideas.pieceValue k := by
+  cases k <;> decide
+
+theorem valueAt_nonneg (p : Position) (q : Square) : 0 ≤ valueAt p q := by
+  unfold valueAt
+  split
+  · split
+    · decide
+    · exact pieceValue_nonneg _
+  · exact le_refl 0
+
+/-- THE MAGNITUDE BOUND: the exchange law's value on `s` (x-rays included) is at most the value of the piece on `s`. -/
+theorem seeXB_le_value (p : Position) (s : Square) : seeXB p s ≤ valueAt p s := by
+  unfold seeXB
+  dsimp only
+  cases raysOf p p.turn s with
+  | nil => exact valueAt_nonneg p s
+  | cons hd tl =>
+    obtain ⟨a, behind⟩ := hd
+    dsimp only
+    generalize Exchange.reveal (p.turn == Color.white) behind tl (raysOf p p.turn.opposite s) = r
+    obtain ⟨mine', theirs'⟩ := r
+    dsimp only
+    have h := Exchange.cheapestXF_nonneg 32 (!(p.turn == Color.white)) a theirs' mine'
+    omega
+
 end Ideas.ExchangeLocal

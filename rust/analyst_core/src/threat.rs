@@ -642,6 +642,28 @@ fn forcing_value_inner(p: &Chess, budget: u64) -> Option<(Move, i64)> {
 /// pays for everything, a refutation of it for the first fact that settles it.
 /// -> Some(true) a new threat, Some(false) certainly none, None unknown (the forcing search's safety net was hit).
 pub fn any_new_threat(pos: &Chess, by: Color, before: &[Threat]) -> Option<bool> { crate::prof::timed("any_new_threat", || any_new_threat_inner(pos, by, before)) }
+
+/// THE ESCAPE TEST WITH ITS MAGNITUDE (Kaveh 2026-10-11: "a decision whether to reason about something should depend on
+/// the gain in hand and the gain I am looking for ... the most this chain can win"): after the target's escape, can `by`
+/// still force a gain of at least `need` -- a NEW static threat worth `need` or more (material, promotion, trapped, mate),
+/// a fork worth it, or a forced line reaching it? A threat smaller than the need cannot carry the claim on its own; the
+/// forcing search answers for the combinations. Some(false): certainly not; None: unknown (the safe side proves).
+pub fn any_threat_reaching(pos: &Chess, by: Color, before: &[Threat], need: i64) -> Option<bool> {
+    crate::prof::timed("any_threat_reaching", || {
+        let need = need.max(1);
+        let is_new = |t: &Threat| before.iter().find(|b| b.target == t.target && b.mate == t.mate).map_or(true, |b| t.value > b.value);
+        for (x, g) in rules::threats_of(pos, by) {
+            if g >= need && is_new(&Threat { target: Square::new(x as u32), value: g, mate: false, how: None }) { return Some(true); }
+        }
+        let Some(p) = (if pos.turn() == by { Some(pos.clone()) } else { pass(pos) }) else { return None };
+        if threats(&p, by).iter().any(|t| t.value >= need && is_new(t)) { return Some(true); }
+        if let Some((m, g)) = fork_next(&p) { if g >= need && is_new(&Threat { target: m.to(), value: g, mate: false, how: None }) { return Some(true); } }
+        forcing_need(&p, need, FBUDGET.load(Ordering::Relaxed))
+    })
+}
+pub static ESCAPE_NEED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_escape_need(flag: bool) -> PyResult<()> { ESCAPE_NEED.store(flag, Ordering::Relaxed); Ok(()) }
 fn any_new_threat_inner(pos: &Chess, by: Color, before: &[Threat]) -> Option<bool> {
     let is_new = |t: &Threat| before.iter().find(|b| b.target == t.target && b.mate == t.mate).map_or(true, |b| t.value > b.value);
     for (x, g) in rules::threats_of(pos, by) {

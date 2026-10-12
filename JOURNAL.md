@@ -29123,3 +29123,27 @@ nets beyond the forcing budget. OBS STOCKFISH review (4,000 sampled, depth 12): 
 by the planner's values 0 higher / 6 lower, ms 85 -> 113 (+34%): its extra mate search finds nothing the fixes do not,
 at a third more time -- stays OFF; the fixes stay ON. The loop's accounting: the "lemma missing" class was 60% of the
 disagreements; its catastrophic third was bugs in how mate enters the planner's arithmetic, not a missing lemma.
+THE SECOND LOOP TURN, AND MAGNITUDE BOUNDS (2026-10-11 22:41 PDT; Kaveh: "do another bug search and then go over another
+set"; "a decision whether to reason about something should depend on the gain in hand and the gain I am looking for
+... chasing a knight, the most I can win is a knight ... if there is a proven way to say it, we want to"). Bug search
+of today's changes: 31 tests; a stalemated root has no forcing gain; axb5 nets -497 against Qf7#; our own mate still
+found. ANOTHER SET (decision_review CATSPACE_REVIEW_SEED=6, 4,000 fresh positions): OBS 141 of 1,490 decisions lose
+150+ cp (9.5%); surprise_loop attribution: lemma missing 85 (60%), policy off 37 (26%; soft -- the policy would have
+stopped 539 of 64,578 proving lines, 0.8%), forcing x10 13 (9%), proofs x5 3, all 3; the 85 unfixed: 40 positional
+defences, 15 wrong wins with a forcing better move, 12 with a quiet one, 12 counter-attacks, 5 catastrophic (12 on the
+first set, before today's mate fixes), 1 wrong recapturer.
+MAGNITUDE, PROVED AND BUILT: (1) Lean Ideas.ExchangeLocal.seeXB_le_value -- the exchange on a square wins at most the
+piece on it (from cheapestXF_nonneg; with pieceValue_nonneg, valueAt_nonneg); 0 open. (2) THE LEAF BOUND (lib.rs
+settle_d, LEAF_BOUND on): a capture without check wins at most its victim (the reply may stand pat), so a capture worth
+no more than what is in hand is not searched. OBS settle_audit: 17,241 positions (census sample + every child), values
+equal 100.000%, capture-search nodes 543,900 -> 383,286 (-29.5%). EXACT. (3) THE ESCAPE TEST WITH ITS MAGNITUDE
+(threat.rs any_threat_reaching, ESCAPE_NEED on): the single-threat lemma refused an attack only if the escape left no
+new threat of ANY size; it now asks whether a gain reaching the claim's need (the goal, plus whatever the escape took)
+can still be forced -- a smaller threat cannot carry the claim alone, the forcing search answers for combinations. OBS
+held-out games 25-44: ms 89.8 -> 61.5 (-32%), proofs 32.9 -> 24.6, decisions identical 98.53% (21 differ: 3 higher, 2
+lower, 16 incomparable by the planner's values). OBS STOCKFISH (fresh seed-6 sample): 150+ cp losses 137 of 1,462 (9.4%)
+on vs 138 of 1,491 (9.3%) off -- indistinguishable, review time 89 -> 64 s. SWITCHED ON. (4) THE OUTCOME CURVE (not
+wired; for Kaveh's call): census c300, the side to move's result (+1/0/-1) by material balance: -3 -0.45, -2 -0.43, -1
+-0.16, 0 +0.01, +1 +0.26, +2 +0.59, +3 +0.80, +4 +0.91, beyond +-4 flat (+5..+12: 0.84-1.00; -4..-12: -0.66..-0.98,
+noisy). A pawn moves the expected score by ~0.15-0.3 within +-3 and by under ~0.05 beyond +-4: his "queen down, who
+cares about a pawn" in numbers.

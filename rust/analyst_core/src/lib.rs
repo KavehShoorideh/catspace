@@ -279,6 +279,11 @@ pub(crate) fn settle_d(pos: &Chess, mut alpha: i64, beta: i64, us: bool, depth: 
     for m in caps {
         let g = m.capture().map(kernel_value).unwrap_or(0) + if m.is_promotion() { 8 } else { 0 };
         let q = after(pos, &m);
+        // THE MAGNITUDE BOUND AT THE LEAF (Kaveh 2026-10-11: "the most I can win is a knight"; Lean
+        // Ideas.ExchangeLocal.seeXB_le_value for the exchange): a capture that gives no check wins at most its victim --
+        // the reply may stand pat, so the child's value is never below 0 -- so a capture worth no more than what is
+        // already in hand (alpha) cannot raise it: no search. A capture with check is still searched (no stand pat).
+        if LEAF_BOUND.load(Ordering::Relaxed) && g <= alpha && !q.is_check() { continue; }
         let v = if q.is_checkmate() { 1000 } else { g - settle_d(&q, g - beta, g - alpha, !us, depth - 1) };
         if v > alpha {
             alpha = v;
@@ -289,6 +294,28 @@ pub(crate) fn settle_d(pos: &Chess, mut alpha: i64, beta: i64, us: bool, depth: 
 }
 
 pub(crate) const SETTLE_DEPTH: u32 = 12;
+pub static LEAF_BOUND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+fn set_leaf_bound(flag: bool) -> PyResult<()> { LEAF_BOUND.store(flag, Ordering::Relaxed); Ok(()) }
+/// settle_audit(fen) -> (positions compared, equal values, nodes without, nodes with): the capture settle of the position
+/// and of every child, with and without the leaf bound -- the bound must not change a single value.
+#[pyfunction]
+fn settle_audit(fen: String) -> (u32, u32, u64, u64) {
+    let Some(p) = parse(&fen) else { return (0, 0, 0, 0) };
+    let mut pos: Vec<Chess> = vec![p.clone()];
+    for m in p.legal_moves() { pos.push(after(&p, &m)); }
+    let (mut n, mut eq, mut n0, mut n1) = (0u32, 0u32, 0u64, 0u64);
+    let was = LEAF_BOUND.load(Ordering::Relaxed);
+    for q in pos {
+        LEAF_BOUND.store(false, Ordering::Relaxed); let a0 = NODES.swap(0, Ordering::Relaxed);
+        let v0 = settle_d(&q, -2000, 2000, true, SETTLE_DEPTH); n0 += NODES.swap(0, Ordering::Relaxed);
+        LEAF_BOUND.store(true, Ordering::Relaxed);
+        let v1 = settle_d(&q, -2000, 2000, true, SETTLE_DEPTH); n1 += NODES.swap(a0, Ordering::Relaxed);
+        n += 1; if v0 == v1 { eq += 1; }
+    }
+    LEAF_BOUND.store(was, Ordering::Relaxed);
+    (n, eq, n0, n1)
+}
 const PURSUIT_PLIES: u32 = 4;                                       // our answer, their reply, our answer, their reply
 
 fn holds_after_every_reply_settled(q: &Chess, side: Color, target: i64) -> bool {
@@ -1531,6 +1558,9 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(threat::set_rl_sample, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::set_proof_scale, m)?)?;
     m.add_function(wrap_pyfunction!(threat::set_cornering, m)?)?;
+    m.add_function(wrap_pyfunction!(set_leaf_bound, m)?)?;
+    m.add_function(wrap_pyfunction!(threat::set_escape_need, m)?)?;
+    m.add_function(wrap_pyfunction!(settle_audit, m)?)?;
     m.add_function(wrap_pyfunction!(threat::forcing_mate_of, m)?)?;
     m.add_function(wrap_pyfunction!(threat::rl_log, m)?)?;
     m.add_function(wrap_pyfunction!(threat::forcing_log, m)?)?;

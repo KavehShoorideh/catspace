@@ -25,6 +25,9 @@ def _one(fen):
     import analyst_core
     if os.environ.get("CATSPACE_HARASS") == "0":
         analyst_core.set_harass(False)
+    for kv in filter(None, os.environ.get("CATSPACE_FLAGS", "").split(",")):     # any switch: name=0|1 (set_<name>)
+        k, v = kv.split("=")
+        getattr(analyst_core, f"set_{k}")(v == "1")
     if os.environ.get("CATSPACE_POLICY"):                       # the forcing search's stop policy (2026-10-11)
         analyst_core.set_forcing_policy(open(os.environ["CATSPACE_POLICY"]).read())
     tr, dec, proofs, nodes, ms, imm = analyst_core.plan_trace(fen)
@@ -133,7 +136,7 @@ if __name__ == "__main__":
     if "--page-only" in sys.argv:
         rows = json.load(open(store))
     else:
-        rows = collect(4000)
+        rows = collect(4000, int(os.environ.get("CATSPACE_REVIEW_SEED", "5")))   # another set: another seed
         json.dump(rows, open(store, "w"))
     if os.environ.get("CATSPACE_PIECES"):
         print("page written to", page(review(rows)))

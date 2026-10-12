@@ -1238,7 +1238,15 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
                     if !capture && !sm.is_capture() && sm.promotion().is_none() && !q.is_check() {
                         let esc = escapes(&q, us, t);
                         let quiet = q.legal_moves().into_iter().filter(|e| e.from() == Some(t) && esc.contains(e.to()))
-                            .find(|e| any_new_threat(&after(&q, e), us, &before_t) == Some(false));   // certainly none: unknown proves
+                            .find(|e| {
+                                let qe = after(&q, e);
+                                if crate::threat::ESCAPE_NEED.load(Ordering::Relaxed) {
+                                    // the magnitude: what the claim still needs after the escape (an escape that captures
+                                    // raises it by what it took)
+                                    let need = goal - (kernel_material(&qe, us) - kernel_material(pos, us));
+                                    crate::threat::any_threat_reaching(&qe, us, &before_t, need) == Some(false)
+                                } else { any_new_threat(&qe, us, &before_t) == Some(false) }
+                            });   // certainly none: unknown proves
                         if let Some(e) = quiet {
                             trace.push(format!("    {}: one threat, and the {name} steps away to {} leaving no threat of ours, nothing forced -- no proof (the single-threat lemma)", san(pos, s), e.to()));
                             tally(|st| st.lone += 1);
