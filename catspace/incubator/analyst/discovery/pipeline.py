@@ -135,9 +135,10 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     boards = lab["boards"]                       # a labeled hole's verdicts were made on its labels' boards
     if defender != "self":
         boards = boards[:30]                     # a real defender plays whole games with the planner: 30 boards
+    from . import proposers as P
     rankings = [Enumerative().rank(h, lab, cache)]
     for k in kinds:
-        rankings.append(Learned(k, train_on(trained, k, cache, epochs)).rank(h, lab, cache))
+        rankings.append(Learned(k, P.get(k)).rank(h, lab, cache))      # the newest checkpoint (no retraining)
     kept = filter_(rankings, budget)
     ver = Verifier(defender=defender)
     base = ver.verify(h, None, "none", boards)
@@ -151,6 +152,7 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
           f"kept {len(kept)}, all verified; the hole's own measure scores {base['score']:.4f} ({show(base)}); the best:")
     for r in res[:5]:
         print(f"OBS   {r['score']:.4f} ({show(r)}) [{r['schema']}] {r['term']} = {V.gloss(V.parse(r['term']))}")
+    P.update_in_background()                    # this hole's verdicts fine-tune the proposers beside the next work
     return [base] + res
 
 

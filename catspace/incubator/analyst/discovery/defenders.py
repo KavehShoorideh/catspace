@@ -216,8 +216,11 @@ def claims_kept(res: list, terms: list, k: int = 2) -> tuple:
     return kept, claims
 
 
+WORKERS = max(1, (os.cpu_count() or 8) - 2)    # the cores, two left for the proposers' background training
+
+
 def closed_loop(boards: list, base: list, cand: str | None, schema: str, piece: str, limit: int, defender: str,
-                workers: int = 6, player: str = "frame", material: str = "") -> tuple:
+                workers: int = WORKERS, player: str = "frame", material: str = "") -> tuple:
     """-> (games won, total moves of the won games, our moves played, our moves certified), as Rust verify_play."""
     import analyst_core as A
     if parse(defender)[0] == "self":

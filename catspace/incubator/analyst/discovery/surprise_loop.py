@@ -177,7 +177,7 @@ def judge(g: dict) -> None:
         r["verdict"] = verdict
 
 
-def play(material: str, games: int, frames: dict, seed0: int, workers: int = 6, opponent: str = "stockfish:10") -> list:
+def play(material: str, games: int, frames: dict, seed0: int, workers: int = max(1, (os.cpu_count() or 8) - 2), opponent: str = "stockfish:10") -> list:
     from multiprocessing import Pool
     with Pool(workers) as p:
         res = sorted(p.imap_unordered(_game, [(seed0 + g, material, frames, opponent) for g in range(games)], chunksize=1), key=lambda r: r["seed"])
@@ -322,3 +322,5 @@ def main(argv=None):
 
 if __name__ == "__main__":
     main()
+    from . import proposers as _P
+    _P.wait()                                   # no training left orphaned

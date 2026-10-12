@@ -92,7 +92,7 @@ class TermTransformer(nn.Module):
 
     def forward(self, toks, ctx):
         pad = toks == len(V.SYMBOLS)
-        h = self.emb(toks) + self.pos(torch.arange(toks.shape[1]).unsqueeze(0))
+        h = self.emb(toks) + self.pos(torch.arange(toks.shape[1], device=toks.device).unsqueeze(0))
         h = self.enc(h, src_key_padding_mask=pad)
         h = (h * (~pad).unsqueeze(-1)).sum(1) / (~pad).sum(1, keepdim=True).clamp(min=1)
         return self.head(h, ctx)
@@ -134,10 +134,12 @@ def inputs(kind: str, terms):
     return graph_batch(terms) if kind == "gnn" else token_batch(terms) if kind == "transformer" else None
 
 
-def train(kind: str, rows: list, ctx: np.ndarray, epochs: int = 40, seed: int = 0, lr: float = 2e-3):
-    """Regress the verifier's score (both stages) on the experience rows; a listwise term per hole sharpens the ranking."""
+def train(kind: str, rows: list, ctx: np.ndarray, epochs: int = 40, seed: int = 0, lr: float = 2e-3, model=None):
+    """Regress the verifier's score (both stages) on the experience rows; a listwise term per hole sharpens the ranking.
+    `model`: continue training it (INCREMENTAL -- the new verdicts only, a few epochs) instead of a fresh one."""
     torch.manual_seed(seed)
-    m = make(kind)
+    m = model if model is not None else make(kind)
+    m.train()
     opt = torch.optim.Adam(m.parameters(), lr=lr)
     y = torch.tensor([r["score"] for r in rows], dtype=torch.float32)
     c = torch.tensor(ctx)
@@ -168,3 +170,18 @@ def score(m, kind: str, terms: list, ctx: np.ndarray) -> np.ndarray:
     for b in range(0, len(terms), 512):
         out.append(m(inputs(kind, terms[b:b + 512]), torch.tensor(ctx[b:b + 512])).numpy())
     return np.concatenate(out) if out else np.zeros(0)
+
+
+def save(m, path) -> None:
+    """Atomically (a reader never sees half a checkpoint)."""
+    import os
+    tmp = f"{path}.tmp"
+    torch.save(m.state_dict(), tmp)
+    os.replace(tmp, path)
+
+
+def load(kind: str, path):
+    m = make(kind)
+    m.load_state_dict(torch.load(path, map_location="cpu"))
+    m.eval()
+    return m
