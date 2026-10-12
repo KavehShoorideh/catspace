@@ -29237,3 +29237,16 @@ proves lower gains too. Now the claim is the outcome floor (the smallest gain th
 33 changed: 6 fixed, 0 broken (5 / 0). Cost: OBS held-out games 1-4 45.3 -> 61.4 ms a position (proofs 26.4 -> 29.6);
 review 47 -> 62 s; the profiled game 2.9 -> 3.9 s -- part of yesterday's -32% came from refusing moves that win. Today in
 all, seed 8 (fresh, deterministic grades): 10.0% / 5.7% -> 7.9% / 4.5%.
+WHERE A KING AND A QUEEN CAN MATE, BY REASONING IN LEAN (2026-10-12 08:45 PDT). Kaveh: "every proof needs to happen in
+Lean, not brute force -- then we use the proof in Rust"; "find a process that gets to the Lean result without the brute
+force search". (My first answer swept every K+Q v K placement in Python -- a conjecture at most, not a proof; retracted
+as evidence.) THE PROCESS: (1) the demand -- the definition unfolded: mate = every square of the king's 3×3 box covered
+(the queen's own square only if our king guards it); (2) each piece's supply by its geometry -- our king never touches
+theirs, so it covers one side of the box only; (3) the most constrained piece claims first -- the rest of the box, a 2×3
+rectangle holding the lone king, falls to the queen alone, and no queen square covers a 2×3 rectangle (outside, her lines
+meet it in at most four squares; inside, her own square stays uncovered). Lean Ideas/QueenMate.lean: king_one_side,
+queen_rect_v, queen_rect_h, no_queen_mate_in_open (the plane, no edge: every lone king with its whole box on the board is
+an instance; blockers ignored, which only adds to the queen) -- axioms propext / choice / Quot.sound only, each step
+closed by omega on coordinates. Index 177 theorems, 0 open. NEXT: the bridge from the rules -- the library's checkmate
+implies the box demand (generic, any material) -- then the board corollary (mate only with the lone king on the edge),
+the two finishing shapes on the edge, and the stalemate twin; then the confining measure in Rust.

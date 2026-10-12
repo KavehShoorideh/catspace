@@ -16,3 +16,4 @@ import Ideas.ExchangeLocal
 import Ideas.Refutation
 import Ideas.GeoLemmas
 import Ideas.StalemateLemmas
+import Ideas.QueenMate
