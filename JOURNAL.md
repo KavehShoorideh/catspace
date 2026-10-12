@@ -29569,3 +29569,27 @@ missing half. Where the planner has no frame (K+R+R v K+R, K+R+R v K) there is n
 Kaveh, 13:14: "like when you were trying for an outcome, but a different outcome ended up happening" -- the claim's goal is
 itself an outcome in the language (a set: mate, the capture, the king on the edge); the surprise is a different outcome
 reached (a draw, a loss, another win), or the measure toward the claimed one not shrinking.
+THE SURPRISE LOOP FOR A NEW MATERIAL (2026-10-12 13:33 PDT; Kaveh: "start playing games and then look at our own trace.
+And whenever we are surprised ... see what lemma can we create that will help us not be surprised and win this game ...
+mine the lemma based on the games"; "you can use the KQ and the KR frames ... the KRR frame is the one that is new ... I
+would start teaching you from just the K, and then K with every piece, and then K with two pieces"; "it's ok as long as
+the model learns and improves with better and better lemmas"; "don't hand code anything except machinery changes").
+MACHINERY ONLY: (1) THE GENERIC FRAME (vocab.rs): any material's measure as terms over the base, set at run time (the
+mined lemma; none -- the empty frame, whose only claim is the goal), played when the planner proves nothing; its SAFETY
+the material's -- the static exchange (the mirror of Lean ExchangeLaw.seeXB) on every piece of ours now and, against
+every reply, a move of ours keeping everything and the game going; in play the planner's own audit too (net_after: its
+reasoning for them; a draw costs our lead); no move passing -- the least loss, said so; its GOAL mate or a capture we keep
+(the material changes, the next frame takes over -- a trade into K+R v K is a material we already win: Reach.bind). (2)
+The verifier's piece "*" plays the same rules (stage 2: the adversary takes material first, then raises the measure;
+success = mate or the goal). (3) surprise_loop.py: every move's CLAIM read from its own trace -- a frame's (the measure
+falls within k, or the goal), a proof's (its gain or mate within its horizon), an arming move's (the same, expected), a
+defence's (our lead not below what it said) -- JUDGED against the game: refuted when the horizon passed with no shrink,
+or another outcome came first; each material's refuted frame boards become a hole (base: its frame so far) for the
+pipeline (enumerative + the priors trained on the K+R / K+Q holes -- the earlier experience); the best term joins the
+material's frame by its schema; the next round plays NEW starting positions. BUGS FOUND BY THE LOOP (docs/BUGS.md): the
+prover's leaf let a stalemated side stand pat -- "Kf2 wins 5, HOLDS" three times in one game, the defender answering
+Rf1+ (Kxf1 stalemates) -- found as a refuted PROOF claim, fixed (49 planner tests pass); my safety accepted a stalemating
+answer as "keeping everything" (a rook lost); the verifier's memo ignored the boards. SMOKE (6 games a round, budget 5;
+directional): round 0 with no K+R+R frame -- 92% of the K+R+R v K+R moves surprised; mined for K+R+R v K+R "squares
+nearer their king than ours, outside the line through our king and our rook" (0.771 vs 0.276), for K+R+R v K "... outside
+their king's file" (0.976 vs 0.073); round 1 (new positions) -- 45%.
