@@ -234,7 +234,13 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
         t0 = time.time()
         out = run(name, budget, hole=hole, defender=defender)
         base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None
-        if best and best["score"] > base["score"] + 0.05:
+        if "ranks" in base:                      # a real defender: Kaveh's ranks, a margin at the first that differs
+            from .defenders import better
+            as_o = lambda r: dict(n=r["n"], lost=r["lost"], won=r["mated"], kept=r["certified"], claims=r["played"])
+            wins = bool(best) and better(as_o(best), as_o(base))
+        else:
+            wins = bool(best) and best["score"] > base["score"] + 0.05
+        if wins:
             new[mat] = compose(cur, best["term"], best["schema"])
             print(f"OBS   MINED for {mat} ({time.time() - t0:.0f} s): [{best['schema']}] {best['term']} = "
                   f"{V.gloss(V.parse(best['term']))} -- {best['score']:.3f} against {base['score']:.3f}; the frame now {new[mat]}")

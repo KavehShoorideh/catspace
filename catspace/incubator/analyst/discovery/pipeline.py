@@ -133,6 +133,8 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     boards = h["stuck"][:100]
     lab = labels(hole_name) if os.path.exists(paths.derived(f"hole_{hole_name}_labels.json")) else fresh_candidates(h, boards)
     boards = lab["boards"]                       # a labeled hole's verdicts were made on its labels' boards
+    if defender != "self":
+        boards = boards[:30]                     # a real defender plays whole games with the planner: 30 boards
     rankings = [Enumerative().rank(h, lab, cache)]
     for k in kinds:
         rankings.append(Learned(k, train_on(trained, k, cache, epochs)).rank(h, lab, cache))
@@ -140,11 +142,14 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     ver = Verifier(defender=defender)
     base = ver.verify(h, None, "none", boards)
     res = sorted((ver.verify(h, t, s, boards) for t, s in kept), key=lambda r: -r["score"])
+    def show(r):
+        if "ranks" in r:
+            return f"held {r['n'] - r['lost']}/{r['n']}, won {r['mated']}, claims kept {r['certified']}/{r['played']}"
+        return f"mated {r['mated']}/{r['n']}, certified {r['certified']}/{r['played']}"
     print(f"OBS pipeline on {hole_name} ({len(boards)} boards; {len(lab['rows'])} candidates; defender {defender}): {len(rankings)} proposers, the filter "
-          f"kept {len(kept)}, all verified; the hole's own measure scores {base['score']:.3f} (mated {base['mated']}, "
-          f"certified {base['certified']}/{base['played']}); the best:")
+          f"kept {len(kept)}, all verified; the hole's own measure scores {base['score']:.4f} ({show(base)}); the best:")
     for r in res[:5]:
-        print(f"OBS   {r['score']:.3f} (mated {r['mated']}/{r['n']}, certified {r['certified']}/{r['played']}) [{r['schema']}] {r['term']} = {V.gloss(V.parse(r['term']))}")
+        print(f"OBS   {r['score']:.4f} ({show(r)}) [{r['schema']}] {r['term']} = {V.gloss(V.parse(r['term']))}")
     return [base] + res
 
 

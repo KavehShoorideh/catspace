@@ -65,11 +65,19 @@ class Verifier:
             return self.memo[k]
         piece = hole.get("piece") or hole["material"][1]
         s1 = A.verify_count(boards, hole["base"], term, schema, hole["k"], piece)
-        from .defenders import closed_loop
-        mated, moves, played, cert = closed_loop(boards, hole["base"], term, schema, piece, LIMIT, self.defender)
+        from . import defenders as D
         n = len(boards)
-        r = dict(hole=hole["name"], term=term or "", schema=schema, boards=bh, spec=sp, defender=self.defender, n=n, stage1=s1, mated=mated, played=played, certified=cert,
-                 score=(cert / max(played, 1)) * (mated / max(n, 1)), t=time.time())
+        if D.parse(self.defender)[0] == "self":
+            mated, moves, played, cert = D.closed_loop(boards, hole["base"], term, schema, piece, LIMIT, self.defender)
+            r = dict(hole=hole["name"], term=term or "", schema=schema, boards=bh, spec=sp, defender=self.defender, n=n, stage1=s1,
+                     mated=mated, played=played, certified=cert, score=(cert / max(played, 1)) * (mated / max(n, 1)), t=time.time())
+        else:
+            # a real defender: the whole player with the candidate as its material's frame, scored by Kaveh's ranks --
+            # held, then won, then the frame's claims kept
+            o = D.closed_loop(boards, hole["base"], term, schema, piece, LIMIT, self.defender, player="planner", material=hole["material"])
+            r = dict(hole=hole["name"], term=term or "", schema=schema, boards=bh, spec=sp, defender=self.defender, n=n, stage1=s1,
+                     mated=o["won"], lost=o["lost"], played=o["claims"], certified=o["kept"], ranks=list(D.ranked(o)),
+                     score=D.score(o), t=time.time())
         self.memo[k] = r
         with open(self.path, "a") as fh:
             fh.write(json.dumps(r) + "\n")

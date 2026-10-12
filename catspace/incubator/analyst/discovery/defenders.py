@@ -84,7 +84,9 @@ def compose(base: list, term: str | None, schema: str) -> list:
 
 
 def _play_one(args):
-    """One board: (Some(moves to the goal) or None, our moves played, how many carried a certificate)."""
+    """One board -> dict: won / lost (ground lost: material after our move, mated, a draw while ahead) / neither (the
+    limit), our moves played, and the positions of ours where the FRAME moved (its claims), with every position of ours
+    (to judge them)."""
     import chess
     import catspace.incubator.analyst  # noqa: F401
     import analyst_core as A
@@ -92,7 +94,8 @@ def _play_one(args):
     b = chess.Board(fen)
     us = b.turn
     theirs0, lead0 = _material(b, not us), _material(b, us) - _material(b, not us)
-    history, played, cert = [], 0, 0
+    history, ours, framed = [], [], []
+    out = dict(won=False, lost=False, moves=0)
     st = None
     if player == "planner":                       # the whole player, the candidate as its material's frame
         A.set_generic_frame(True)
@@ -100,6 +103,7 @@ def _play_one(args):
         st = A.PlanState()
     for n in range(1, limit + 1):
         history.append(b.fen())
+        ours.append((b.fen(), _material(b, not us), _material(b, us) - _material(b, not us)))
         if st is not None:
             tr, dec, *_ = st.observe(b.fen())
             mv = None
@@ -111,32 +115,56 @@ def _play_one(args):
                 if m in b.legal_moves:
                     mv = m; break
             if mv is None:
-                return None, played, cert
-            pick = (mv.uci(), any(l.startswith("frame:") and "certified" in l and "NOT certified" not in l for l in tr) or not any(l.startswith("frame:") for l in tr))
+                break
+            if any(l.startswith("frame:") for l in tr):
+                framed.append(len(ours) - 1)
         else:
             pick = A.frame_choose(b.fen(), base, cand, schema, piece, history)
-        if pick is None:
-            return None, played, cert
-        played += 1; cert += int(pick[1])
-        b.push(chess.Move.from_uci(pick[0]))
+            if pick is None:
+                break
+            mv = chess.Move.from_uci(pick[0])
+            framed.append(len(ours) - 1)
+        b.push(mv)
+        out["moves"] = n
         if b.is_checkmate():
-            return n, played, cert
+            out["won"] = True; break
         if piece == "*":
             if _material(b, us) - _material(b, not us) < lead0:
-                return None, played, cert                      # first don't lose
+                out["lost"] = True; break                      # first don't lose
             if _material(b, not us) < theirs0:
-                return n, played, cert                         # the goal: the next frame's material
+                out["won"] = True; break                       # the goal: the next frame's material
         if not any(b.legal_moves) or b.is_repetition(3):
-            return None, played, cert
+            out["lost"] = lead0 > 0; break                     # a draw: ground lost when ahead
         history.append(b.fen())
         if st is not None:
             st.record(b.fen())
         b.push(reply(b, defender))
+        if b.is_checkmate():
+            out["lost"] = True; break
         if piece != "*" and not any(p.color == us and p.piece_type != chess.KING for p in b.piece_map().values()):
-            return None, played, cert                          # our piece taken
-        if b.is_repetition(3) or b.halfmove_clock >= 100:
-            return None, played, cert
-    return None, played, cert
+            out["lost"] = True; break                          # our piece taken
+        if b.is_repetition(3) or b.halfmove_clock >= 100 or not any(b.legal_moves):
+            out["lost"] = lead0 > 0; break
+    out.update(ours=ours, framed=framed, end_won=out["won"])
+    return out
+
+
+def claims_kept(res: list, terms: list, k: int = 2) -> tuple:
+    """The frame's claims along the games -- its measure falls within k moves of ours, or the goal comes -- judged against
+    what the defender did: -> (kept, claims)."""
+    import analyst_core as A
+    kept = claims = 0
+    for r in res:
+        ours = r["ours"]
+        vals = A.component_values([o[0] for o in ours], terms) if terms else [[] for _ in ours]
+        for i in r["framed"]:
+            claims += 1
+            win = range(i + 1, min(i + 1 + k, len(ours)))
+            if any(ours[j][1] < ours[i][1] and ours[j][2] >= ours[i][2] for j in win) or (r["won"] and len(ours) - 1 - i < k):
+                kept += 1
+            elif terms and any(vals[j] < vals[i] for j in win):
+                kept += 1
+    return kept, claims
 
 
 def closed_loop(boards: list, base: list, cand: str | None, schema: str, piece: str, limit: int, defender: str,
@@ -150,8 +178,31 @@ def closed_loop(boards: list, base: list, cand: str | None, schema: str, piece: 
     from multiprocessing import Pool
     with Pool(workers, initializer=_init, initargs=(defender,)) as p:
         res = p.map(_play_one, [(f, base, cand, schema, piece, limit, defender, player, material) for f in boards], chunksize=2)
-    won = [r[0] for r in res if r[0] is not None]
-    return len(won), sum(won), sum(r[1] for r in res), sum(r[2] for r in res)
+    kept, claims = claims_kept(res, compose(base, cand, schema))
+    return dict(n=len(res), won=sum(r["won"] for r in res), lost=sum(r["lost"] for r in res),
+                moves=sum(r["moves"] for r in res if r["won"]), played=sum(len(r["ours"]) for r in res), kept=kept, claims=claims)
+
+
+def ranked(r: dict) -> tuple:
+    """Kaveh's ranks: first don't lose (the boards held), then win, then the claims kept."""
+    return (1 - r["lost"] / max(r["n"], 1), r["won"] / max(r["n"], 1), r["kept"] / max(r["claims"], 1))
+
+
+def score(r: dict) -> float:
+    """The ranks as one number that keeps their order (a board held outweighs every win, a win every claim)."""
+    h, w, c = ranked(r)
+    return h + 1e-2 * w + 1e-4 * c
+
+
+def better(a: dict, b: dict, claim_margin: float = 0.05) -> bool:
+    """a beats b by a margin at the first rank where they differ: a board more held, a win more, or the claims kept."""
+    n = max(a["n"], 1)
+    ha, wa, ca = ranked(a); hb, wb, cb = ranked(b)
+    if abs(ha - hb) * n >= 0.5:
+        return ha > hb
+    if abs(wa - wb) * n >= 0.5:
+        return wa > wb
+    return ca > cb + claim_margin
 
 
 def main(argv=None):
@@ -174,10 +225,12 @@ def main(argv=None):
         if pl == "planner" and d == "self":
             continue
         t0 = time.time()
-        won, moves, played, cert = closed_loop(boards, h["base"], a.term, a.schema, h.get("piece") or h["material"][1], 60, d,
-                                               player=pl, material=h["material"])
-        print(f"OBS {a.hole} base {h['base']} {a.term or ''} -- {pl} against {d}: won {won}/{len(boards)}, certified {cert}/{played} "
-              f"(score {cert / max(played, 1) * won / len(boards):.3f}) -- {time.time() - t0:.1f} s")
+        r = closed_loop(boards, h["base"], a.term, a.schema, h.get("piece") or h["material"][1], 60, d, player=pl, material=h["material"])
+        if isinstance(r, tuple):
+            print(f"OBS {a.hole} {a.term or ''} -- {pl} against {d}: won {r[0]}/{len(boards)}, certified {r[3]}/{r[2]} -- {time.time() - t0:.1f} s")
+        else:
+            print(f"OBS {a.hole} {a.term or ''} -- {pl} against {d}: held {r['n'] - r['lost']}/{r['n']}, won {r['won']}, "
+                  f"claims kept {r['kept']}/{r['claims']} (ranks {tuple(round(x, 3) for x in ranked(r))}) -- {time.time() - t0:.1f} s")
 
 
 if __name__ == "__main__":
