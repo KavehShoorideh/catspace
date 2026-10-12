@@ -263,7 +263,7 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
         base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None
         if "ranks" in base:                      # a real defender: Kaveh's ranks, a margin at the first that differs
             from .defenders import better
-            as_o = lambda r: dict(n=r["n"], lost=r["lost"], won=r["mated"], kept=r["certified"], claims=r["played"])
+            as_o = lambda r: dict(n=r["n"], lost=r["lost"], won=r["mated"], kept=r["certified"], claims=r["played"], states=r.get("states", 0))
             wins = bool(best) and better(as_o(best), as_o(base))
         else:
             wins = bool(best) and best["score"] > base["score"] + 0.05

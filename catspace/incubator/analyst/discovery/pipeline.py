@@ -146,7 +146,8 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     def show(r):
         if "ranks" in r:
             why = ", ".join(f"{k} {v}" for k, v in sorted(r.get("why", {}).items(), key=lambda kv: -kv[1]))
-            return f"held {r['n'] - r['lost']}/{r['n']}, won {r['mated']}, claims kept {r['certified']}/{r['played']}{f'; ground lost: {why}' if why else ''}"
+            return (f"held {r['n'] - r['lost']}/{r['n']}, won {r['mated']}, lemma-states {r.get('states', 0) / max(r['n'], 1):.1f} a board, "
+                    f"claims kept {r['certified']}/{r['played']}{f'; ground lost: {why}' if why else ''}")
         return f"mated {r['mated']}/{r['n']}, certified {r['certified']}/{r['played']}"
     print(f"OBS pipeline on {hole_name} ({len(boards)} boards; {len(lab['rows'])} candidates; defender {defender}): {len(rankings)} proposers, the filter "
           f"kept {len(kept)}, all verified; the hole's own measure scores {base['score']:.4f} ({show(base)}); the best:")

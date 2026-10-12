@@ -564,3 +564,49 @@ fn least_loss(pos: &Chess, net: &dyn Fn(&Move) -> i64) -> Option<Move> {
 }
 /// The horizon of a generic frame's claim (moves of ours).
 pub const FRAME_K: u32 = 2;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// THE LEMMA-STATE (Kaveh 2026-10-12: "moving to a new place where new lemmas are applying is progress. Cycling back to a
+// place where the same lemmas apply is a loop ... detect a loop and decide that we are looping"): which base facts hold
+// -- each named square (W our king, L theirs, P our other piece, O theirs) on the edge, in a corner, attacked by us,
+// attacked by them; who stands next to whom; a piece of ours attacked, a piece of theirs attacked. Each fact is a
+// membership in a base set (Lean Ideas.Base.Vocabulary: edge, corner, attackedBy, box, piecesOf) -- nothing learned,
+// nothing chess beyond the base. The side to move is "us" (the lone side is the other).
+
+const NAMED: [(&str, Term); 4] = [("our king", Term::W), ("their king", Term::L), ("our other piece", Term::P), ("their other piece", Term::O)];
+
+/// -> [(the fact in words, whether it holds)] on the board.
+pub fn lemma_facts(q: &Chess) -> Vec<(String, bool)> {
+    let lone = !q.turn();
+    let mut out = Vec::new();
+    let sets = [("on the edge", Term::Edge), ("in a corner", Term::Corner), ("attacked by us", Term::Attacked), ("attacked by them", Term::Hit)];
+    let sq_of = |t: &Term| sq(t, q, lone);
+    for (name, t) in NAMED.iter() {
+        let s = sq_of(t);
+        for (what, set_t) in sets.iter() {
+            out.push((format!("{name} {what}"), s.map_or(false, |x| set(set_t, q, lone).contains(x))));
+        }
+    }
+    for i in 0..NAMED.len() {
+        for j in i + 1..NAMED.len() {
+            let (a, b) = (sq_of(&NAMED[i].1), sq_of(&NAMED[j].1));
+            let near = match (a, b) { (Some(x), Some(y)) => x.distance(y) <= 1, _ => false };
+            out.push((format!("{} next to {}", NAMED[i].0, NAMED[j].0), near));
+        }
+    }
+    out.push(("a piece of ours attacked by them".to_string(), (set(&Term::Ours, q, lone) & set(&Term::Hit, q, lone)).any()));
+    out.push(("a piece of theirs attacked by us".to_string(), (set(&Term::Theirs, q, lone) & set(&Term::Attacked, q, lone)).any()));
+    out
+}
+
+/// lemma_state(fens) -> per board, the facts that hold as a bitmask (the order of lemma_facts).
+#[pyfunction]
+pub fn lemma_state(fens: Vec<String>) -> PyResult<Vec<u64>> {
+    Ok(fens.iter().map(|f| parse(f).map_or(0, |p| lemma_facts(&p).iter().enumerate().fold(0u64, |m, (i, (_, v))| if *v { m | (1 << i) } else { m }))).collect())
+}
+
+/// lemma_facts_of(fen) -> the facts in words with their values (for reading a state).
+#[pyfunction]
+pub fn lemma_facts_of(fen: String) -> PyResult<Vec<(String, bool)>> {
+    Ok(parse(&fen).map_or(vec![], |p| lemma_facts(&p)))
+}

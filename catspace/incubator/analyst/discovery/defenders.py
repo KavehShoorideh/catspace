@@ -117,7 +117,13 @@ def _play_one(args):
     us = b.turn
     theirs0, lead0 = _material(b, not us), _material(b, us) - _material(b, not us)
     history, ours, framed, seen = [], [], [], {sym_key(b)}
-    out = dict(won=False, lost=False, moves=0, why=None)
+    out = dict(won=False, lost=False, moves=0, why=None, states=0)
+    # THE LEMMA-STATE LOOP (Kaveh: "moving to a new place where new lemmas are applying is progress ... cycling back to a
+    # place where the same lemmas apply is a loop"): at our turn, the facts that hold (Rust lemma_state) with the
+    # material; a state never seen is progress, a state seen again with the frame's measure LOWER than at its last
+    # visit is progress (we stayed and squeezed), a state seen again without it is a LOOP -- no progress: the game stops
+    terms = compose(base, cand, schema)
+    best_at: dict = {}
     st = None
     if player == "planner":                       # the whole player, the candidate as its material's frame
         A.set_generic_frame(True)
@@ -136,6 +142,13 @@ def _play_one(args):
         history.append(b.fen())
         ours.append((b.fen(), _material(b, not us), _material(b, us) - _material(b, not us)))
         before = b.fen()
+        state = (A.lemma_state([before])[0], _material(b, us), _material(b, not us))
+        meas = A.component_values([before], terms)[0] if terms else []
+        if state in best_at and not meas < best_at[state]:
+            drawn("loop", fen=before, facts=[f for f, v in A.lemma_facts_of(before) if v]); break
+        if state not in best_at:
+            out["states"] += 1
+        best_at[state] = meas
         if st is not None:
             tr, dec, *_ = st.observe(b.fen())
             mv = None
@@ -235,18 +248,21 @@ def closed_loop(boards: list, base: list, cand: str | None, schema: str, piece: 
     whys = [r["why"] for r in res if r["lost"] and r["why"]]
     return dict(n=len(res), won=sum(r["won"] for r in res), lost=sum(r["lost"] for r in res),
                 moves=sum(r["moves"] for r in res if r["won"]), played=sum(len(r["ours"]) for r in res), kept=kept, claims=claims,
-                why=dict(Counter(w["kind"] for w in whys)), examples=whys[:3])
+                states=sum(r["states"] for r in res), why=dict(Counter(w["kind"] for w in whys)), examples=whys[:3])
 
 
 def ranked(r: dict) -> tuple:
-    """Kaveh's ranks: first don't lose (the boards held), then win, then the claims kept."""
-    return (1 - r["lost"] / max(r["n"], 1), r["won"] / max(r["n"], 1), r["kept"] / max(r["claims"], 1))
+    """Kaveh's ranks: first don't lose (the boards held), then win, then PROGRESS (the lemma-states reached before a loop
+    or the goal, a board's mean), then the claims kept."""
+    n = max(r["n"], 1)
+    return (1 - r["lost"] / n, r["won"] / n, r.get("states", 0) / n, r["kept"] / max(r["claims"], 1))
 
 
 def score(r: dict) -> float:
-    """The ranks as one number that keeps their order (a board held outweighs every win, a win every claim)."""
-    h, w, c = ranked(r)
-    return h + 1e-2 * w + 1e-4 * c
+    """The ranks as one number that keeps their order (a board held outweighs every win, a win all progress, progress
+    every claim)."""
+    h, w, p, c = ranked(r)
+    return h + 1e-2 * w + 1e-4 * min(p, 99) / 100 + 1e-7 * c
 
 
 def better(a: dict, b: dict) -> bool:
@@ -255,10 +271,14 @@ def better(a: dict, b: dict) -> bool:
     distance to our rook" and then a progress term were promoted on claims alone, holding 2 / 30 and 0 / 30 like the
     frames before them; the frame then held nothing)."""
     n = max(a["n"], 1)
-    ha, wa, _ = ranked(a); hb, wb, _ = ranked(b)
+    ha, wa, pa, _ = ranked(a); hb, wb, pb, _ = ranked(b)
     if abs(ha - hb) * n >= 0.5:
         return ha > hb
-    return (wa - wb) * n >= 0.5
+    if abs(wa - wb) * n >= 0.5:
+        return wa > wb
+    # then PROGRESS before the loop: a fifth more lemma-states reached, at least one more a board (the facts do not
+    # depend on the measure, so a measure we lower ourselves cannot fake new states -- it only delays its loop)
+    return pa >= 1.2 * pb and pa >= pb + 1
 
 
 def main(argv=None):
@@ -286,7 +306,8 @@ def main(argv=None):
             print(f"OBS {a.hole} {a.term or ''} -- {pl} against {d}: won {r[0]}/{len(boards)}, certified {r[3]}/{r[2]} -- {time.time() - t0:.1f} s")
         else:
             print(f"OBS {a.hole} {a.term or ''} -- {pl} against {d}: held {r['n'] - r['lost']}/{r['n']}, won {r['won']}, "
-                  f"claims kept {r['kept']}/{r['claims']} (ranks {tuple(round(x, 3) for x in ranked(r))}) -- {time.time() - t0:.1f} s")
+                  f"lemma-states before the loop {r['states'] / max(r['n'], 1):.1f} a board, claims kept {r['kept']}/{r['claims']} "
+                  f"(ranks {tuple(round(x, 3) for x in ranked(r))}) -- {time.time() - t0:.1f} s")
             print(f"OBS   ground lost, why: {r['why']}")
             for e in r["examples"]:
                 print(f"OBS     {e}")
