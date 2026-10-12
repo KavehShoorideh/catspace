@@ -29060,3 +29060,21 @@ several gains are the search FINISHING where it used to run out ("exf6 wins 3 by
 (decision_review, 4,000 sampled positions, depth 12; 276 of the 300 games unseen in training): decisions losing 150+
 cp OFF 130 of 1,444 (9.0%), ON 132 of 1,459 (9.0%) -- the same rate at 77 s vs 127 s. SWITCHED ON. Phase 2 (policy
 gradient with reward = outcome - lambda * expansions on the deployed loop) and Kaveh's trace transformer are next.
+THE STOP POLICY, PHASE 2 (2026-10-11 17:28 PDT; Kaveh: "phase 2"). (1) REINFORCE on episodes (threat.rs RL_SAMPLE: the
+policy acts stochastically, every decision logged with its episode, the truth from the full search at 1,000;
+forcing_policy.py rl-collect / rl-train, reward = correctness - lambda*expansions, baseline, from the phase-1 weights).
+OBS 24 games: 17,242 episodes, 1,099,308 decisions; verdict = truth 70.6% (the rest mostly a truth that ran out),
+false "no gain" 3.2%. The update COLLAPSED: p(continue) 0.006 -> 0.020 over 5 epochs, loss diverging -- in 97% of
+episodes the verdict is right whatever the policy does, so every stop in those episodes is reinforced; an episode
+reward cannot credit a single line. Closed. (2) THE PER-LINE DECISION (Kaveh's reward at the line): one trunk, two
+heads -- p(the line proves) and the log of its subtree's expansions (pns.rs log_tree now records each line's cost);
+the rule FOLLOW iff p >= lambda * cost (threat.rs Policy::follow; phase 1 = the flat tau without a cost head). OBS
+train2, held-out 947,439 lines: AUC 0.981; the cost head corr(log) 0.411, mean cost 2.5 expansions -- a line's cost is
+barely predictable from local features. Front (held-out): lambda 0.0003 recall 0.9998 stops 34% keeps 90% of the
+expansions; 0.001 / 0.9995 / 41% / 88%; 0.003 / 0.9992 / 48% / 85%; 0.01 / 0.9986 / 56% / 80%. OBS deployed at lambda
+0.01: the profiled game 6.5 s (off 10.0, phase 1 5.2); held-out games 25-44 ms 165 -> 115 (-31%; phase 1 -43%),
+decisions identical 98.05% (phase 1 96.65%); STOCKFISH 150+cp losses 130 of 1,459 (8.9%; off 9.0%, phase 1 9.0%).
+VERDICT (directional, one run each): the three are indistinguishable by Stockfish; phase 1 is the fastest, phase 2 the
+gentlest with a real lambda knob; the cost head did not earn its complexity. Phase 1 stays deployed; both weight files
+shipped (forcing_policy.json, forcing_policy_phase2.json). What would move the front: a cost signal the features can
+see (the node's own proof/disproof numbers, the branching below), or Kaveh's trace transformer.

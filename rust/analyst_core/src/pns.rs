@@ -29,8 +29,9 @@ pub trait Problem {
 
 /// THE POLICY LOG: every line of ours the search created, its features, whether it ended proven, whether the root did.
 pub static LOG: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-thread_local! { pub static LOGV: std::cell::RefCell<Vec<(Vec<f32>, bool, bool)>> = const { std::cell::RefCell::new(Vec::new()) }; }
-pub fn take_log() -> Vec<(Vec<f32>, bool, bool)> { LOGV.with(|v| std::mem::take(&mut *v.borrow_mut())) }
+/// (features, the line ended proven, the root was proven, the expansions spent in the line's subtree -- its cost)
+thread_local! { pub static LOGV: std::cell::RefCell<Vec<(Vec<f32>, bool, bool, u32)>> = const { std::cell::RefCell::new(Vec::new()) }; }
+pub fn take_log() -> Vec<(Vec<f32>, bool, bool, u32)> { LOGV.with(|v| std::mem::take(&mut *v.borrow_mut())) }
 /// [lines created, lines stopped by the policy] since the last read.
 pub static POLICY_N: [std::sync::atomic::AtomicU64; 2] = [const { std::sync::atomic::AtomicU64::new(0) }; 2];
 
@@ -123,5 +124,8 @@ pub fn search_with_proof<P: Problem>(p: &P, root: P::State, budget: u64) -> (Opt
 }
 
 fn log_tree<S>(t: &mut [Node<S>], root_proven: bool) {
-    LOGV.with(|v| { let mut v = v.borrow_mut(); for n in t.iter_mut() { if let Some(f) = n.feat.take() { v.push((f, n.pn == 0.0, root_proven)); } } });
+    // the cost of a line: the expanded nodes in its subtree (each expanded node adds one to every ancestor)
+    let mut cost = vec![0u32; t.len()];
+    for i in 0..t.len() { if !t[i].open { let mut a = t[i].parent; while let Some(j) = a { cost[j] += 1; a = t[j].parent; } } }
+    LOGV.with(|v| { let mut v = v.borrow_mut(); for (i, n) in t.iter_mut().enumerate() { if let Some(f) = n.feat.take() { v.push((f, n.pn == 0.0, root_proven, cost[i])); } } });
 }

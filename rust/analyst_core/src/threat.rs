@@ -364,20 +364,51 @@ fn policy_features(f: &Forcing, s: &FState, depth: u32) -> Vec<f32> {
 
 /// THE LEARNED STOP POLICY: a two-layer net on the features (trained in PyTorch, catspace/incubator/analyst/forcing_policy.py),
 /// p(this line ends in a proof); a line below `tau` is dropped. Loaded once from JSON (set_forcing_policy).
-pub struct Policy { w1: Vec<Vec<f32>>, b1: Vec<f32>, w2: Vec<f32>, b2: f32, mean: Vec<f32>, std: Vec<f32>, pub tau: f32 }
+pub struct Policy { w1: Vec<Vec<f32>>, b1: Vec<f32>, w2: Vec<f32>, b2: f32, mean: Vec<f32>, std: Vec<f32>, pub tau: f32,
+                    // PHASE 2: a cost head on the same trunk (log expansions of the line's subtree) and the price of an expansion
+                    wc: Vec<f32>, bc: f32, pub lam: f32 }
 impl Policy {
-    pub fn prob(&self, f: &[f32]) -> f32 {
+    /// (p(the line proves), its expected cost in expansions)
+    pub fn heads(&self, f: &[f32]) -> (f32, f32) {
         let x: Vec<f32> = f.iter().zip(self.mean.iter().zip(self.std.iter())).map(|(v, (m, s))| (v - m) / s.max(1e-6)).collect();
         let mut z = self.b2;
-        for (row, (bw, wo)) in self.w1.iter().zip(self.b1.iter().zip(self.w2.iter())) {
-            let h: f32 = row.iter().zip(x.iter()).map(|(a, b)| a * b).sum::<f32>() + bw;
-            z += wo * h.max(0.0);
+        let mut c = self.bc;
+        for (k, (row, bw)) in self.w1.iter().zip(self.b1.iter()).enumerate() {
+            let h = (row.iter().zip(x.iter()).map(|(a, b)| a * b).sum::<f32>() + bw).max(0.0);
+            z += self.w2[k] * h;
+            if let Some(wc) = self.wc.get(k) { c += wc * h; }
         }
-        1.0 / (1.0 + (-z).exp())
+        (1.0 / (1.0 + (-z).exp()), c.exp())
+    }
+    pub fn prob(&self, f: &[f32]) -> f32 { self.heads(f).0 }
+    /// THE DECISION (Kaveh's reward, per line): follow the line iff its chance of proving is worth its expected cost --
+    /// p >= lam * cost; without a cost head (phase 1) the flat threshold tau.
+    pub fn follow(&self, f: &[f32]) -> bool {
+        let (p, c) = self.heads(f);
+        if self.wc.is_empty() { p >= self.tau } else { p >= self.lam * c.max(1.0) }
     }
 }
 pub static POLICY: std::sync::OnceLock<Policy> = std::sync::OnceLock::new();
 pub static POLICY_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static RL_SAMPLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+thread_local! {
+    static RNG: std::cell::Cell<u64> = const { std::cell::Cell::new(0x9E37_79B9_7F4A_7C15) };
+    static EPISODE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    // (episode, features, continued?, p) per decision; (episode, verdict, truth, expansions) per search
+    static EP_LOG: std::cell::RefCell<Vec<(u64, Vec<f32>, bool, f32)>> = const { std::cell::RefCell::new(Vec::new()) };
+    static EP_OUT: std::cell::RefCell<Vec<(u64, i8, i8, u64)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+/// set_rl_sample(flag): the policy acts stochastically and logs its decisions; every forcing_gain also runs the full
+/// search at budget 1,000 for the truth (collection only -- slow).
+#[pyfunction]
+pub fn set_rl_sample(flag: bool) -> PyResult<()> { RL_SAMPLE.store(flag, Ordering::Relaxed); Ok(()) }
+/// rl_log() -> (decisions: (episode, features, continued, p), episodes: (episode, verdict, truth, expansions)); verdict/truth:
+/// 1 proven, 0 disproven, -1 unknown.
+#[pyfunction]
+pub fn rl_log() -> (Vec<(u64, Vec<f32>, bool, f32)>, Vec<(u64, i8, i8, u64)>) {
+    (EP_LOG.with(|l| std::mem::take(&mut *l.borrow_mut())), EP_OUT.with(|l| std::mem::take(&mut *l.borrow_mut())))
+}
+fn verdict_code(v: Option<bool>) -> i8 { match v { Some(true) => 1, Some(false) => 0, None => -1 } }
 /// set_forcing_policy_on(flag): the loaded stop policy decides (off: every line followed, the search as before).
 #[pyfunction]
 pub fn set_forcing_policy_on(flag: bool) -> PyResult<()> { POLICY_ON.store(flag, Ordering::Relaxed); Ok(()) }
@@ -387,14 +418,15 @@ pub fn set_forcing_policy(json: String) -> PyResult<bool> {
     let v: serde_json::Value = serde_json::from_str(&json).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
     let f32s = |k: &str| -> Vec<f32> { v[k].as_array().map(|a| a.iter().map(|x| x.as_f64().unwrap_or(0.0) as f32).collect()).unwrap_or_default() };
     let w1: Vec<Vec<f32>> = v["w1"].as_array().map(|rows| rows.iter().map(|r| r.as_array().map(|a| a.iter().map(|x| x.as_f64().unwrap_or(0.0) as f32).collect()).unwrap_or_default()).collect()).unwrap_or_default();
-    let pol = Policy { w1, b1: f32s("b1"), w2: f32s("w2"), b2: v["b2"].as_f64().unwrap_or(0.0) as f32, mean: f32s("mean"), std: f32s("std"), tau: v["tau"].as_f64().unwrap_or(0.0) as f32 };
+    let pol = Policy { w1, b1: f32s("b1"), w2: f32s("w2"), b2: v["b2"].as_f64().unwrap_or(0.0) as f32, mean: f32s("mean"), std: f32s("std"), tau: v["tau"].as_f64().unwrap_or(0.0) as f32,
+                       wc: f32s("wc"), bc: v["bc"].as_f64().unwrap_or(0.0) as f32, lam: v["lam"].as_f64().unwrap_or(0.001) as f32 };
     let ok = POLICY.set(pol).is_ok();
     POLICY_ON.store(true, Ordering::Relaxed);
     Ok(ok)
 }
 /// forcing_log() -> the policy log since the last call: (features, the line ended proven, the root was proven).
 #[pyfunction]
-pub fn forcing_log() -> Vec<(Vec<f32>, bool, bool)> { crate::pns::take_log() }
+pub fn forcing_log() -> Vec<(Vec<f32>, bool, bool, u32)> { crate::pns::take_log() }
 /// set_forcing_log(flag): record every line the forcing search creates.
 #[pyfunction]
 pub fn set_forcing_log(flag: bool) -> PyResult<()> { crate::pns::LOG.store(flag, Ordering::Relaxed); Ok(()) }
@@ -447,7 +479,17 @@ impl crate::pns::Problem for Forcing {
         if !POLICY_ON.load(Ordering::Relaxed) { return true; }
         let Some(pol) = POLICY.get() else { return true };
         let f = policy_features(self, s, depth);
-        pol.prob(&f) >= pol.tau
+        let p = pol.prob(&f);
+        // PHASE 2 (RL): the policy acts STOCHASTICALLY while collecting -- continue with probability p -- and every
+        // decision is logged with its episode (the search) for the policy-gradient update
+        if RL_SAMPLE.load(Ordering::Relaxed) {
+            let u = RNG.with(|r| { let mut x = r.get(); x ^= x << 13; x ^= x >> 7; x ^= x << 17; r.set(x); (x >> 11) as f32 / (1u64 << 53) as f32 });
+            let act = u < p;
+            EP_LOG.with(|l| l.borrow_mut().push((EPISODE.with(|e| e.get()), f, act, p)));
+            return act;
+        }
+        let _ = p;
+        pol.follow(&f)
     }
     fn key(&self, s: &FState) -> u64 {
         use shakmaty::zobrist::{Zobrist64, ZobristHash};
@@ -492,6 +534,19 @@ thread_local! { static UNKNOWNS: std::cell::RefCell<Vec<String>> = const { std::
 #[pyfunction]
 pub fn forcing_unknowns() -> Vec<String> { UNKNOWNS.with(|u| std::mem::take(&mut *u.borrow_mut())) }
 fn forcing_gain_inner(p: &Chess, budget: u64) -> Option<bool> {
+    if !RL_SAMPLE.load(Ordering::Relaxed) { return forcing_gain_plain(p, budget); }
+    // an RL EPISODE: the stochastic policy's search (logged), then the truth from the full search
+    EPISODE.with(|e| e.set(e.get() + 1));
+    let e0 = crate::pns::STATS[4].load(Ordering::Relaxed);
+    let v = forcing_gain_plain(p, budget);
+    let used = crate::pns::STATS[4].load(Ordering::Relaxed) - e0;
+    let was = POLICY_ON.swap(false, Ordering::Relaxed);
+    let truth = forcing_gain_plain(p, 1000);
+    POLICY_ON.store(was, Ordering::Relaxed);
+    EP_OUT.with(|l| l.borrow_mut().push((EPISODE.with(|e| e.get()), verdict_code(v), verdict_code(truth), used)));
+    v
+}
+fn forcing_gain_plain(p: &Chess, budget: u64) -> Option<bool> {
     let by = p.turn();
     let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), them: rules::threats_arr(p, !by), edge: material_edge(p, by), last: None };
     crate::pns::search(&Forcing { by, base: material_edge(p, by), need: 1 }, root, budget)
