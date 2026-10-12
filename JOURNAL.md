@@ -29182,3 +29182,11 @@ winning chances (>= 0.3) 5.6%, mean 0.0564; ALL THREE: 9.2%, 4.8%, 0.0502; condi
 defence trades alone 9.1% / 5.1% / 0.0529; quiet threats alone 9.9% / 5.8% / 0.0553 (neutral). Conditions decide in
 fewer positions (1,342 vs 1,409 decisions). ALL THREE ON, the floor ON. Cost: ~56 -> ~99 ms a held-out position; the
 stop policy was trained under the old judge (fewer nodes proven on sight now) -- retrained next.
+THE STOP POLICY RETRAINED UNDER THE NEW JUDGE (2026-10-11 23:27 PDT). The conditions leave more nodes open, so the forcing
+searches grew: OBS collect, 24 games at budget 1,000: 25,243,190 lines (was 4,005,093), proven 4.8%. OBS train on a 6M
+sample (all 1,202,058 proving lines kept): held-out AUC 0.990; tau 0.2 keeps 99.23% of proving lines. OBS STOCKFISH
+(seed-6 sample), all three fixes + the floor + the new policy: 1,340 decisions, 150+ cp 8.8%, blunders by winning
+chances 4.9%, mean 0.0518 (fixes with the old policy 9.2% / 4.8% / 0.0502; floor only 10.1% / 5.6% / 0.0564); review
+time 52 s (old policy 101 s, floor only 62 s). OBS the profiled game 10000470: 2.7 s (34 ms a move; this morning's
+baseline 10.0 s, after the phase-1 policy 5.2 s, before the fixes today 3.9 s); forcing searches hitting the safety net
+1%. Shipped (forcing_policy.json); the old weights kept as forcing_policy_prejudge.json.

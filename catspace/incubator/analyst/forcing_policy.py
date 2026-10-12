@@ -69,6 +69,12 @@ def train(hidden: int, epochs: int, recall_target: float, seed: int, hard: bool 
     import torch
     d = np.load(paths.derived("forcing_policy_rows.npz"))
     X, y, g = d["X"], d["y"].astype(np.float32), d["game"].astype(str)
+    cap = int(os.environ.get("CATSPACE_POLICY_MAX_ROWS", "6000000"))
+    if len(X) > cap:                                                     # all proving lines kept, the others sampled
+        rs = np.random.default_rng(seed); pos = np.where(y == 1)[0]; neg = np.where(y == 0)[0]
+        keep = np.sort(np.concatenate([pos, rs.choice(neg, size=max(0, cap - len(pos)), replace=False)]))
+        X, y, g = X[keep], y[keep], g[keep]
+        print(f"OBS   rows sampled to {len(X):,} (all {len(pos):,} proving lines kept)")
     w = np.ones(len(X), dtype=np.float32)
     if hard:                                                             # THE SURPRISE LOOP's hard positives (surprise_loop.py), weighted
         h = np.load(paths.derived("forcing_policy_hard.npz"))
