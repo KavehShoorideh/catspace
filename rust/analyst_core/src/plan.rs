@@ -1169,7 +1169,7 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
         // discoverer derived it) -- the move whose ranked measure falls against every reply, never stalemating, never
         // leaving the piece to the lone king, never repeating
         if !immediate_only && KQ_TACTIC.load(Ordering::Relaxed) {
-            if let Some(f) = crate::mating::FRAMES.iter().find(|f| (f.applies)(pos)) {
+            if let Some(f) = crate::mating::frame_for(pos) {
                 if let Some((m, _, why)) = crate::mating::frame_move(f, pos) {
                     let u = m.to_uci(CastlingMode::Standard).to_string();
                     trace.push(format!("{}: {}; against every reply: {why}", f.name, san(pos, &u)));

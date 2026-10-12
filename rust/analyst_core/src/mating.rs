@@ -234,7 +234,7 @@ pub const KQ_TEMPO_MOVES: u32 = 3;
 
 /// A move of ours safe for the frame: no stalemate, no claimable draw now or after a reply, the frame's piece not left to
 /// the lone king.
-fn safe_step(q: &Chess, us: Color, piece: Role) -> bool {
+pub(crate) fn safe_step(q: &Chess, us: Color, piece: Role) -> bool {
     if q.is_checkmate() { return true; }
     if q.legal_moves().is_empty() || crate::game::claimable_draw(q).is_some() { return false; }
     if q.legal_moves().iter().any(|r| crate::game::claimable_draw(&after(q, r)).is_some()) { return false; }
@@ -295,11 +295,11 @@ fn best_wall(q: &Chess, lone: Color) -> Option<(u8, i32, u32)> {
     }).min_by_key(|x| x.2)
 }
 
-fn wall_rows(q: &Chess, lone: Color) -> u32 { best_wall(q, lone).map_or(8, |x| x.2) }
+pub(crate) fn wall_rows(q: &Chess, lone: Color) -> u32 { best_wall(q, lone).map_or(8, |x| x.2) }
 
 /// Our king's distance to the opposition square -- (0, -2) relative to the lone king across the wall (the discoverer's
 /// regressed subgoal); on or beyond the wall's line, eight more.
-fn kr_opposition(q: &Chess, lone: Color) -> u32 {
+pub(crate) fn kr_opposition(q: &Chess, lone: Color) -> u32 {
     let b = q.board();
     let (Some(k), Some(w)) = (b.king_of(lone), b.king_of(!lone)) else { return 0 };
     let Some((d, c0, _)) = best_wall(q, lone) else { return 16 };
@@ -334,6 +334,55 @@ pub const KR_MEASURE: [Component; 2] = [
 ];
 fn kr_net(m: &[u32]) -> bool { m[0] <= 1 }
 pub static KR_FRAME: Frame = Frame { name: "king and rook", applies: is_kr_vs_k, measure: &KR_MEASURE, piece: Role::Rook, net: kr_net };
+/// The frame exactly as the discoverer derived it (wall, opposition) -- before the chase term was added by hand; the
+/// proposer's test bed (KR_CHASE off plays it).
+pub const KR_MEASURE_DERIVED: [Component; 2] = [
+    Component { id: "wall", name: "rows beyond the rook's wall", lean: None, supersedes: None, value: wall_rows },
+    Component { id: "opposition", name: "our king's distance to the opposition square", lean: None, supersedes: None, value: kr_opposition },
+];
+pub static KR_FRAME_DERIVED: Frame = Frame { name: "king and rook", applies: is_kr_vs_k, measure: &KR_MEASURE_DERIVED, piece: Role::Rook, net: kr_net };
+// THE PROPOSER'S TERM IN PLAY (proposer.py): a term over the base vocabulary set at run time, joined to the derived
+// measure by a schema -- "sum" (added to the opposition), "replace" (in its place), "append" (a third component)
+static KR_TERM: std::sync::RwLock<Option<(crate::vocab::Term, String)>> = std::sync::RwLock::new(None);
+#[pyfunction]
+pub fn set_kr_term(term: Option<String>, schema: String) -> PyResult<bool> {
+    let t = term.and_then(|x| crate::vocab::parse_term(&x));
+    let ok = t.is_some();
+    *KR_TERM.write().unwrap() = t.map(|t| (t, schema));
+    Ok(ok)
+}
+fn term_value(q: &Chess, lone: Color) -> u32 {
+    KR_TERM.read().unwrap().as_ref().map_or(0, |(t, _)| crate::vocab::num(t, q, lone))
+}
+fn kr_term_second(q: &Chess, lone: Color) -> u32 {
+    let sch = KR_TERM.read().unwrap().as_ref().map(|x| x.1.clone()).unwrap_or_default();
+    match sch.as_str() { "sum" => kr_opposition(q, lone) + term_value(q, lone), "replace" => term_value(q, lone), _ => kr_opposition(q, lone) }
+}
+pub const KR_MEASURE_TERM2: [Component; 2] = [
+    Component { id: "wall", name: "rows beyond the rook's wall", lean: None, supersedes: None, value: wall_rows },
+    Component { id: "term", name: "the proposer's term (with the opposition, by its schema)", lean: None, supersedes: None, value: kr_term_second },
+];
+pub const KR_MEASURE_TERM3: [Component; 3] = [
+    Component { id: "wall", name: "rows beyond the rook's wall", lean: None, supersedes: None, value: wall_rows },
+    Component { id: "opposition", name: "our king's distance to the opposition square", lean: None, supersedes: None, value: kr_opposition },
+    Component { id: "term", name: "the proposer's term", lean: None, supersedes: None, value: term_value },
+];
+pub static KR_FRAME_TERM2: Frame = Frame { name: "king and rook", applies: is_kr_vs_k, measure: &KR_MEASURE_TERM2, piece: Role::Rook, net: kr_net };
+pub static KR_FRAME_TERM3: Frame = Frame { name: "king and rook", applies: is_kr_vs_k, measure: &KR_MEASURE_TERM3, piece: Role::Rook, net: kr_net };
+
+pub static KR_CHASE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_kr_chase(flag: bool) -> PyResult<()> { KR_CHASE.store(flag, Ordering::Relaxed); Ok(()) }
+/// The frame the planner plays for the material.
+pub fn frame_for(pos: &Chess) -> Option<&'static Frame> {
+    if is_kq_vs_k(pos) { Some(&KQ_FRAME) }
+    else if is_kr_vs_k(pos) {
+        let sch = KR_TERM.read().unwrap().as_ref().map(|x| x.1.clone());
+        Some(match sch.as_deref() { Some("append") => &KR_FRAME_TERM3, Some(_) => &KR_FRAME_TERM2,
+            None => if KR_CHASE.load(Ordering::Relaxed) { &KR_FRAME } else { &KR_FRAME_DERIVED } })
+    }
+    else { None }
+}
 
 /// The frames the planner plays (the first that applies).
 pub static FRAMES: [&Frame; 2] = [&KQ_FRAME, &KR_FRAME];

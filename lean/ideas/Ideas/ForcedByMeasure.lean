@@ -92,4 +92,31 @@ theorem reach_false_goal {n : Nat} {p : α} (h : Reach ours theirs goal (fun _ =
       · exact Or.inl hg
       · exact Or.inr ⟨hex, fun r hr => ⟨n, by omega, hall r hr⟩⟩
 
+/-- DOMINANCE (Kaveh 2026-10-12: "put the king in the farthest point, prove that, and then the closer points will also be
+proven"): if `a` (us to move) is at least as good for us as `b` -- every move of ours from `b` is matched from `a`
+(`hours`), a matched position reaching the goal reaches it from `a` too (`hgoal`), every reply of theirs from `a` is
+matched by one from `b` (`htheirs`), and `a` is never left without a reply where `b` has one unless it is the goal
+(`hlive`) -- then whatever we force from `b` we force from `a`, within as many moves. Prove the farthest case; every
+position dominating it follows. -/
+theorem Reach.dominate {target : α → Prop} (R S : α → α → Prop)
+    (htarget : ∀ a b, R a b → target b → target a)
+    (hours : ∀ a b q, R a b → ours b q → ∃ q', ours a q' ∧ S q' q)
+    (hgoal : ∀ a b, S a b → goal b → goal a)
+    (htheirs : ∀ a b r', S a b → theirs a r' → ∃ r, theirs b r ∧ R r' r)
+    (hlive : ∀ a b, S a b → (∃ r, theirs b r) → (∃ r', theirs a r') ∨ goal a) :
+    ∀ {n : Nat} {a b : α}, R a b → Reach ours theirs goal target n b → Reach ours theirs goal target n a
+  | 0, a, b, hab, h => htarget a b hab h
+  | n + 1, a, b, hab, h => by
+    rcases h with h | ⟨q, hq, hg⟩
+    · exact Or.inl (htarget a b hab h)
+    · obtain ⟨q', hq', hs⟩ := hours a b q hab hq
+      refine Or.inr ⟨q', hq', ?_⟩
+      rcases hg with hg | ⟨hex, hall⟩
+      · exact Or.inl (hgoal q' q hs hg)
+      · rcases hlive q' q hs hex with hex' | hg'
+        · refine Or.inr ⟨hex', fun r' hr' => ?_⟩
+          obtain ⟨r, hr, hR⟩ := htheirs q' q r' hs hr'
+          exact Reach.dominate R S htarget hours hgoal htheirs hlive hR (hall r hr)
+        · exact Or.inl hg'
+
 end Ideas.Forced

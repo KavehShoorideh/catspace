@@ -29,7 +29,7 @@ def _start(rng: random.Random, piece: str = "Q"):
 
 
 def _game(args):
-    seed, flags, piece = args
+    seed, flags, piece, term = args
     os.environ.setdefault("RAYON_NUM_THREADS", "1")
     import chess
     import chess.engine
@@ -38,6 +38,9 @@ def _game(args):
     for kv in filter(None, flags.split(",")):                  # any switch: name=0|1 (set_<name>)
         k, v = kv.split("=")
         getattr(analyst_core, f"set_{k}")(v == "1")
+    if term:                                                    # a proposer's term: "schema:(sexpr)"
+        sch, _, t = term.partition(":")
+        analyst_core.set_kr_term(t, sch)
     eng = chess.engine.SimpleEngine.popen_uci("stockfish")
     b = _start(random.Random(seed), piece)
     start = b.fen()
@@ -83,11 +86,11 @@ def _game(args):
     return dict(seed=seed, start=start, out=out, moves=moves, none=none, ms=ms / max(moves, 1), sure=sure, tempo=tempo, unc=unc)
 
 
-def run(games: int, workers: int, flags: str = "", piece: str = "Q") -> None:
+def run(games: int, workers: int, flags: str = "", piece: str = "Q", dump: str | None = None, term: str = "") -> None:
     from multiprocessing import Pool
     t0 = time.time()
     with Pool(workers) as p:
-        res = list(p.imap_unordered(_game, [(g, flags, piece) for g in range(games)], chunksize=1))
+        res = list(p.imap_unordered(_game, [(g, flags, piece, term) for g in range(games)], chunksize=1))
     by = Counter(r["out"] for r in res)
     mates = [r["moves"] for r in res if r["out"] == "mate"]
     print(f"OBS kq_playout (K+{piece} v K): {games} games ({time.time() - t0:.0f} s on {workers} processes): {dict(by)}; moves to mate "
@@ -96,8 +99,15 @@ def run(games: int, workers: int, flags: str = "", piece: str = "Q") -> None:
           f"{100 * sum(r['sure'] for r in res) / max(sum(r['moves'] for r in res), 1):.1f}% of our moves "
           f"({sum(r["tempo"] for r in res)} of them tempo moves, progress within two or three); uncertified "
           f"{sum(r['moves'] for r in res) - sum(r['sure'] for r in res)}")
-    for r in res:
-        for f, m, w in r.get("unc", []):
+    if dump:
+        import json
+        from catspace.io import paths
+        fens = sorted({f for r in res for f, _, _ in r.get("unc", [])})
+        with open(paths.derived(dump), "w") as fh:
+            json.dump(fens, fh)
+        print(f"OBS   {len(fens)} distinct uncertified positions -> {paths.derived(dump)}")
+    for r in res[:3]:
+        for f, m, w in r.get("unc", [])[:3]:
             print(f"OBS   uncertified: {m} in {f} -- {w}")
     for r in res:
         if r["out"] != "mate":
@@ -110,8 +120,10 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--flags", default="", help="name=0|1,... (set_<name>), e.g. kq_every_reply=1")
     ap.add_argument("--piece", default="Q", help="Q or R")
+    ap.add_argument("--dump", default=None, help="write the distinct uncertified positions (JSON) under data/derived")
+    ap.add_argument("--term", default="", help="a proposer's term for the rook frame, 'schema:(sexpr)'")
     a = ap.parse_args(argv)
-    run(a.games, a.workers, a.flags, a.piece)
+    run(a.games, a.workers, a.flags, a.piece, a.dump, a.term)
 
 
 if __name__ == "__main__":

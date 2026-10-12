@@ -29461,3 +29461,23 @@ offered, three layers: the rules (square, file, rank, piece, colour of a piece, 
 perception (line between, diagonal, edge, corner, king-step distance, a king's 3×3 box, attacks, defends, safe by the
 exchange law, square colour); combinators (count, sum, min / max, the set where a predicate holds, reachable by king steps,
 for every reply, there is a move). Wall, opposition, box, front zone, side room stay out -- they must be built.
+THE BASE VOCABULARY AND THE SYMBOLIC PROPOSER, BUILT (2026-10-12 11:53 PDT; Kaveh: "ok build it"). (1) Lean
+Ideas/Vocabulary.lean: the base -- deterministic definitions with plain glosses: dist (king steps), box, edge, corner,
+rankOf, fileOf, lineThrough, between, nearer (squares nearer one square than another), attackedBy (a king lifted), square
+colour, count, reach (king steps over a set); the rules layer is the chess library's own definitions. No chess concept is
+in it. (2) rust/analyst_core/src/vocab.rs: terms over the base as S-expressions (squares W our king, L their king, P our
+piece; sets; numbers), the evaluator (the mirror of the Lean definitions), and THE CERTIFIER (how many stuck positions a
+frame's measure extended by a term certifies, against every reply, under a schema: append / sum / replace). (3)
+proposer.py: the MONOTONE hole -- enumerate number terms smallest first (1,754), merge those equal on probe boards
+(observational equivalence, QuickSpec's way: 811 distinct, no constants), score each by certification, read the winners
+out in base words. THE HONEST TEST: the rook frame exactly as the discoverer derived it (wall, opposition -- my hand-made
+chase term removed, KR_CHASE off) leaves 868 distinct stuck positions in 300 play-outs; the frame alone certifies 0 of
+them. OBS the proposer, 10 s: best on the stuck positions -- "how many squares are not nearer our king than their king"
+added to the opposition distance (their king's territory) 866 / 868; "the edge squares their king can walk to over
+squares we do not attack" in place of the opposition 865 / 868; "the squares nearer their king that it can walk to" 864 /
+868. IN PLAY (300 games against Stockfish): the territory term 300 mated, 12.1 moves (max 36), 99.9% of moves certified (2
+uncertified), 0.2 ms a move -- better than my hand-made chase term (95.6%, 150 uncertified); the reachable-territory term
+300 mated, 98.0%; the edge-reach term only 237 mated (46 fifty-move draws, 17 repetitions) -- a term can certify the
+stuck positions and break the others, so the whole-game check stays in the loop. The king-and-queen frame unchanged (300
+mated, 100% certified). Also: Lean Reach.dominate (dominance: what is forced from a position is forced from any position
+at least as good -- "prove the farthest point, the closer follow"), written at Kaveh's "use lemmas!". Index 201 theorems.
