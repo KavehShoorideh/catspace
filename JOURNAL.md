@@ -29659,3 +29659,25 @@ equivalent to an earlier one under the board's symmetries (8 without pawns, the 
 move. OBS (the latest frame's own measure, 30 stuck boards, the tablebase): 1.1 s (was 3.3); held 0 / 30 -- every one a
 cycle, 15 of them under THEIR CHECKS (7r/4K3/4R3/8/3k4/4R3/8/8 w: Kd6 Rd8+) -- the missing lemma is the king's shelter
 from their rook's checks. The games' report now says why too (how the drawn and lost games ended, the checks at the end).
+THE LOOP KEEPS ITS OWN LEMMAS, A GAMEABLE RANK CLOSED, INCREMENTAL PROPOSERS (2026-10-12 15:11-15:33 PDT). (1) Kaveh: "why did
+you have to add the lemmas? couldn't the proposer do it?" -- the proposer had found every term; the hand steps were
+bookkeeping (registering them in the generated track, carrying the frames into the next run). Now the loop does both: a
+promoted term goes into the generated track with its verdict (Lean definitions and Rust constants re-exported), each
+material's frame is saved to generated_frames.json every round, and a run starts from it unless --fresh. (2) THE
+"ends" RUN (natural ends; from the tablebase run's frames): round 0 65 / 34 / 1 (won / drawn / lost) on the very first
+positions (57 / 40 / 3 with no frames -- not held out: the first lemmas were mined from these games); the drawn games now
+end by the fifty-move rule (27 of 34) with our king in check in a median 6 of our last 20 positions (12 before) -- slow
+progress more than harassment. Its mining promoted "their king's distance to our rook" (ranked first) and a progress term
+on the CLAIMS KEPT alone -- held 2 / 30 and 0 / 30, equal to the frames before them: a measure we lower ourselves keeps its
+claims by construction (gameable, as "squares we attack" was in the old stage 1); the frame then held nothing. Stopped;
+promotion now needs a board more held or a win more, the claims kept only order the candidates (BUGS). (3) The "ends2" run
+(the same frames, the fixed rule) stopped at round 0: "nothing new mined" -- on these stuck boards every candidate held
+0-2 / 30 against perfect defence; the signal too sparse at 30 boards. (4) Kaveh: "is there some incremental training we
+could do?"; "keep both the CPU and GPU busy at the same time and not waste resources": proposers.py keeps the graph
+network and the transformer as checkpoints -- trained once on the labeled holes (45 s), then fine-tuned on the experience
+store's new verdicts after every hole in a background process (591 verdicts: 0.4 s) -- the loop's own feedback reaches
+the proposers at last (before, every hole retrained both from scratch, 25-35 s each, on the old labels only); the run's
+end catches up any skipped verdicts. The GPU (MPS) measured SLOWER for these tiny models (the graph network 20 ms a batch
+of 256 against 5.6 ms on the CPU; the transformer had a device bug, fixed) -- they stay on the CPU until they grow; the
+pools now use the cores minus two. A smoke round (6 games, budget 5) took 20 s, was ~2 min. (5) With mining cheap, the
+"wide" run: 100 boards per hole and a budget of 200 against the tablebase.
