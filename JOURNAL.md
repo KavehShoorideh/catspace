@@ -29413,3 +29413,21 @@ predicates; Bratko & Michie's advice tables -- holding goals = our invariants, b
 Melis: an analogy can cost more than it saves, so retrieval only proposes): entries (relaxation, allocation, invariants,
 measure, base case, source, status), retrieval by the pieces' supply shapes; the discoverer prints its inspiration first
 (for K+B+N: Huberman's, then the queen squeeze and the rook push).
+THE OPERATOR CALCULUS, LOOKED UP (2026-10-12 11:24 PDT; Kaveh: "can we represent the type of reasoning I apply in some
+logical form so it can be self-discovered -- backward reduction or forward progress?" -- then "look it up"). The proposed
+form: a FRAME (pattern, holding goal, measure, exits) and operators on frames -- backward: demand, relax, regress, fail;
+forward: invariance, monotone, compose; allocate; supersede; analogy. Precedent, now checked: REGRESS = goal regression
+(Waldinger 1977, "probably the first to discuss regression in AI"); forward progress = means-ends difference reduction
+(GPS, Newell & Simon) and rippling (Bundy et al., AIJ 1993: "significantly reduces the search for a proof of a wide
+variety of inductive theorems"); SUPERSEDE = proof critics patching failures (Ireland & Bundy 1996) -- proof planning
+trades completeness for less search; SEARCH ONCE -> LEMMA = explanation-based learning: Minton 1984, constraint-based
+generalization, "learning game-playing plans from single examples" (forced wins in tic-tac-toe, go-moku and chess, the
+rules as the domain theory) -- caveats: brittle generalizations (Flann & Dietterich 1989) and THE UTILITY PROBLEM (Minton
+1990: learned rules can slow the solver -- keep a rule when savings x frequency exceed its match cost); plans + a small
+confirming search: Wilkins's PARADISE (AIJ 1980, ~200 productions, combinations to 19 ply); learned patterns -> KRK play:
+Morales's PAL (ILP); deduction + proposer: AlphaGeometry (Nature 2024). CLOSEST to the goal: Guid, Mozina, Sadikov, Bratko
+(ACG 12, 2010): human-readable KBNK instructions -- a hierarchy of goals (mate; restrain the king; drive it to the right
+corner) -- derived from the TABLEBASE by minimax + argument-based ML with an expert in the loop; not from the rules, not
+proved. An extended search found no strategy derived purely from the rules by reasoning with machine-checked proofs
+(absence of evidence only). So: the calculus is the standard toolkit assembled; what is ours is the source (the rules and
+proved lemmas, no tablebase) and the check (Lean); the test target for K+B+N is Guid et al.'s goal hierarchy.
