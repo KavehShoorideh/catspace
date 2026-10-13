@@ -1463,5 +1463,37 @@
   },
   "used_by": "the stage KQvKR:if:(count (and unhit (not (reach P unhit))))>=2",
   "created": "2026-10-12"
+ },
+ {
+  "id": "kbnvk_kbn1_r1_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (nearer L W) (not (between L P))))",
+  "gloss": "how many of the squares nearer their king than our king that are also the squares outside the squares between their king and our other piece",
+  "size": 9,
+  "lean": "(count (fun u => (nearer L W) u && (fun u => !((between L P) u)) u))",
+  "hole": "learn_kbn1_KBNvK_rank2_r1",
+  "evidence": {
+   "verifier": "on 50 confirmation boards: held 1/50, won 1 -- the frame before it held 1/50, won 1; better on 21 boards, worse on 6 over 1 round(s), e-value 32.3 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KBNvK frame (append): ['(count (and (nearer L W) (not (between L P))))']",
+  "created": "2026-10-13"
+ },
+ {
+  "id": "kbnvk_kbn1_r2_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (nearer W L) (nearer W P)))",
+  "gloss": "how many of the squares nearer our king than their king that are also the squares nearer our king than our other piece",
+  "size": 8,
+  "lean": "(count (fun u => (nearer W L) u && (nearer W P) u))",
+  "hole": "learn_kbn1_KBNvK_rank2_r2",
+  "evidence": {
+   "verifier": "on 50 confirmation boards: held 18/50, won 18 -- the frame before it held 12/50, won 12; better on 14 boards, worse on 1 over 1 round(s), e-value 273 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KBNvK frame (sum): ['(sum (count (and (nearer L W) (not (between L P)))) (count (and (nearer W L) (nearer W P))))']",
+  "created": "2026-10-13"
  }
 ]

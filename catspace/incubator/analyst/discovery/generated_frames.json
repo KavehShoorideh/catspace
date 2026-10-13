@@ -1,4 +1,7 @@
 {
+ "KBNvK": [
+  "(sum (count (and (nearer L W) (not (between L P)))) (count (and (nearer W L) (nearer W P))))"
+ ],
  "KQvKR": [
   "(count (and (nearer L P) (not (rank W))))"
  ],
@@ -7,5 +10,14 @@
  ],
  "KQvKR:if:(count (and unhit (not (reach P unhit))))>=2": [
   "(count (not (nearer W L)))"
+ ],
+ "KRRvK": [
+  "(count (and (nearer L P) (not (knight1 W))))"
+ ],
+ "KRRvKR:check": [
+  "(count (segment W O))"
+ ],
+ "KRRvKR:if:(count (and (nearer L P) (not (box L))))>=30": [
+  "(count (and (reach W unhit) (not (nearer P L))))"
  ]
 }

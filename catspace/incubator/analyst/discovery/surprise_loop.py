@@ -609,7 +609,7 @@ def main(argv=None):
         if new == frames:
             print(f"OBS nothing new mined; evidence pending for {sorted(pending)} -- the next round's boards continue it")
         if not a.dry:
-            R.save_frames(new, f"{stem} round {rnd}")  # the learned frames, the next run's start
+            R.save_frames(new, f"{stem} round {rnd}", owned={k.split(":")[0] for k in new} | {a.material})  # the next run's start
         frames, res = new, None
 
 

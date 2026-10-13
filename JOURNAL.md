@@ -30114,3 +30114,20 @@ king and their rook on one edge line (the skewer; blind spot, 0.81 refuted insid
   round 4's starts, no frames 61 -- the final frames 65 (the run). The learned K+Q v K+R lemmas: +4 to +6 wins in 100.
   The draws' anatomy: ~20-25 a round fail to convert in fifty moves (some end in a capture at half-move 98 -- a
   queen for the rook, both draws); the stalemates (up to 7 a round) all from positions the tablebase already drew.
+
+K+B+N v K WITH THE CURRICULUM (tag kbn1; 2026-10-13 00:08-00:16 PDT; starts within 10 plies of the tablebase's distance
+to zeroing, the band to double after a round winning two thirds). Wins per 100, rounds 0-5: 9/6/60/58/54/60 (the band
+never widened). From starts with mate in five or fewer, the planner with no frame wanders (Nf1 from distance 10 to 17,
+then 41): it has no quiet-move mate search; its forcing searches cannot mate with K+B+N. Round 1's mining found, and the
+guard passed (16 better, 2 worse), "the squares nearer their king than ours outside those between their king and our
+minor piece"; round 2 added "the squares nearer our king than their king and than our minor piece" (guard 11:9):
+wins 6 -> 60, moves per win 19 -> 10. The challenger named where it fails -- their king confined to <= 4 squares (the
+final net; a mate existed from every board checked) and our minor piece on the kings' line -- but every stage for them
+was VETOED by the guard (0 better, 20 worse: they broke every win of the sample), and one frame candidate too ("the
+edge squares their king can reach", 6:9). The rest (40-46 a round) are fifty-move draws: the corner of the bishop's
+colour is the classic technique, and the vocabulary has no word for a square's colour (not added -- the vocabulary is
+Kaveh's).
+GENERIC FIXES: a carried stage the guard vetoes is dropped (kqr2 re-vetoed one each round); a region whose stages were
+vetoed twice is not answered again in the run (kbn1 re-mined one region three times, 0 to 20 each); the generated
+track's frames are saved per material (each fresh run had overwritten the file with its own -- the K+R+R and K+Q
+frames restored from their runs' commits).

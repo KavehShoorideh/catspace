@@ -285,4 +285,10 @@ def kqvkr_check_kqr2_r3_progress (p : Position) (c : Color) (W L P O : Square) :
 /-- stage_kqvkr_kqr2_r3_trap_carried: how many of the squares outside the squares nearer our king than their king. (2026-10-12, hole stage_kqr2_KQvKR_r3_trap_carried; verifier: 71 games better, 3 worse over 4 rounds, e-value 7.77e+15 (held-out games); region: (count (and unhit (not (reach P unhit)))) >= 2; status: a conjecture: the stage's claim is not proved) -/
 def stage_kqvkr_kqr2_r3_trap_carried (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => !((nearer W L) u)))
 
+/-- kbnvk_kbn1_r1_progress: how many of the squares nearer their king than our king that are also the squares outside the squares between their king and our other piece. (2026-10-13, hole learn_kbn1_KBNvK_rank2_r1; verifier: on 50 confirmation boards: held 1/50, won 1 -- the frame before it held 1/50, won 1; better on 21 boards, worse on 6 over 1 round(s), e-value 32.3 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def kbnvk_kbn1_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((between L P) u)) u))
+
+/-- kbnvk_kbn1_r2_progress: how many of the squares nearer our king than their king that are also the squares nearer our king than our other piece. (2026-10-13, hole learn_kbn1_KBNvK_rank2_r2; verifier: on 50 confirmation boards: held 18/50, won 18 -- the frame before it held 12/50, won 12; better on 14 boards, worse on 1 over 1 round(s), e-value 273 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def kbnvk_kbn1_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer W L) u && (nearer W P) u))
+
 end Ideas.Generated

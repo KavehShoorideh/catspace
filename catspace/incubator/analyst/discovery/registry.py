@@ -44,7 +44,12 @@ def load_frames() -> dict:
     return json.loads(FRAMES.read_text()) if FRAMES.exists() else {}
 
 
-def save_frames(frames: dict, source: str) -> None:
+def save_frames(frames: dict, source: str, owned: set | None = None) -> None:
+    """The run's frames into the generated track. With `owned` (the materials the run played and learned), only those
+    materials' keys are replaced -- every other material's frames kept (2026-10-13: each fresh run overwrote the file
+    with its own materials and wiped the others')."""
+    if owned is not None:
+        frames = {**{k: v for k, v in load_frames().items() if k.split(":")[0] not in owned}, **frames}
     FRAMES.write_text(json.dumps(dict(sorted(frames.items())), indent=1) + "\n")
     print(f"OBS   the generated track's frames <- {source}: {frames}")
 

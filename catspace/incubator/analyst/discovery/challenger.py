@@ -354,6 +354,9 @@ def carry_stages(res: list, played: dict, new: dict, pending: dict, run: str, rn
             print(f"OBS   the pending stage {fkey} dropped ({wv} to {lv})")
 
 
+VETOES: dict = {}                   # region (stage key) -> its stages vetoed by the guard in this run
+
+
 def vetoed(res: list, played: dict, fkey: str, term: str, material: str, opponent: str, band) -> bool:
     """A stage under THE GUARD ON WHOLE GAMES (surprise_loop.guard_games -- first, don't lose): the round's starts replayed
     with the stage added; True when it does worse in more games than better."""
@@ -361,6 +364,8 @@ def vetoed(res: list, played: dict, fkey: str, term: str, material: str, opponen
     g = guard_games(res, played, fkey, [term], material, opponent, band=band)
     print(f"OBS   the guard ({g['n']} of the round's starts replayed with the stage {fkey}): better in {g['w']} games, worse in {g['l']} -- "
           + ("VETOED: it breaks what the frames already do" if g["veto"] else "passed"))
+    if g["veto"]:
+        VETOES[fkey] = VETOES.get(fkey, 0) + 1
     return g["veto"]
 
 
@@ -384,6 +389,10 @@ def round_(res: list, played: dict, frames: dict, run: str, rnd: int, register: 
         for kind in ("trap", "blind"):
             c = cf.get(kind)
             if not c:
+                continue
+            key = f"{material}:if:{c['term']}>={c['theta']}"
+            if VETOES.get(key, 0) >= 2:      # (kbn1: one region's stages vetoed 0 to 20, three rounds running)
+                print(f"OBS   the region {key} not answered: its stages were vetoed {VETOES[key]} times in this run")
                 continue
             ans = answer(c, material, kind, run, rnd, new)
             entry["answers"].append(ans)
