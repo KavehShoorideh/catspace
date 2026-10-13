@@ -420,6 +420,7 @@ def main(argv=None):
     ap.add_argument("--opponent", default="stockfish:10", help="who defends in the games: stockfish:D (with the tablebases), tablebase")
     ap.add_argument("--defender", default="self", help="the verifier's closed-loop opponent: self, tablebase, stockfish:D")
     ap.add_argument("--boards", type=int, default=30, help="boards per hole the verifier plays against a real defender")
+    ap.add_argument("--challenger", action="store_true", help="after each round's mining: the challenger's traps and stages")
     a = ap.parse_args(argv)
     tag = a.tag if a.tag is not None else time.strftime("%m%d_%H%M")
     stem = f"surprise_loop_{a.material}" + (f"_{tag}" if tag else "")
@@ -447,6 +448,10 @@ def main(argv=None):
         if rnd == a.rounds:
             break
         new = mine(res, frames, rnd, a.budget, tag=tag, defender=a.defender, n_boards=a.boards, register=not a.dry)
+        if a.challenger:
+            # THE CHALLENGER (Kaveh: "reason both sides"): traps against the round's frames, answered by stages
+            from . import challenger as C
+            new = C.round_(res, new, tag or "run", rnd, register=not a.dry)
         if new == frames:
             print("OBS nothing new mined -- stopping"); break
         if not a.dry:

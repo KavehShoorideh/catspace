@@ -540,10 +540,34 @@ pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
     // A FRAME PER EPISODE KIND (Kaveh 2026-10-12): in check -- their threat on our king -- the material's CHECK frame
     // when one is known ("<material>:check"), its own measure of progress; else the material's frame
     let ckey = format!("{key}:check");
-    let terms = MATERIAL_FRAMES.read().unwrap().as_ref().and_then(|m| {
-        if pos.is_check() { m.get(&ckey).cloned().or_else(|| m.get(&key).cloned()) } else { m.get(&key).cloned() }
-    }).unwrap_or_default();
-    let key = if pos.is_check() && MATERIAL_FRAMES.read().unwrap().as_ref().map_or(false, |m| m.contains_key(&ckey)) { ckey } else { key };
+    // SITUATIONAL FRAMES (the challenger's answer, a stage -- Sadikov & Bratko): "<material>:if:<term>>=<theta>" is played
+    // while its condition holds (a trap the challenger found: its own measure, mined to LEAVE it); the check frame first
+    let situational = || -> Option<(String, Vec<String>)> {
+        let g = MATERIAL_FRAMES.read().unwrap();
+        let m = g.as_ref()?;
+        let prefix = format!("{key}:if:");
+        let mut ks: Vec<&String> = m.keys().filter(|k| k.starts_with(&prefix)).collect();
+        ks.sort();
+        for k in ks {
+            let cond = &k[prefix.len()..];
+            let (t, th) = cond.rsplit_once(">=")?;
+            let (Some(term), Ok(th)) = (parse_term(t), th.parse::<u32>()) else { continue };
+            if num(&term, pos, !us) >= th { return Some((k.clone(), m[k].clone())); }
+        }
+        None
+    };
+    let (key, terms) = {
+        let g = MATERIAL_FRAMES.read().unwrap();
+        let m = g.as_ref();
+        if pos.is_check() && m.map_or(false, |m| m.contains_key(&ckey)) { (ckey.clone(), m.unwrap()[&ckey].clone()) }
+        else {
+            drop(g);
+            match situational() {
+                Some(x) => x,
+                None => { let g = MATERIAL_FRAMES.read().unwrap(); (key.clone(), g.as_ref().and_then(|m| m.get(&key).cloned()).unwrap_or_default()) }
+            }
+        }
+    };
     let base: Vec<Comp> = terms.iter().filter_map(|t| parse_term(t).map(Comp::T)).collect();
     let sp = Spec { base, cand: None, schema: "none".to_string(), safety: Safety::Material };
     // in play, a move must also pass the planner's own audit (its reasoning for them: nothing of ours lost, no draw);

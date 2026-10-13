@@ -60,7 +60,7 @@ def best_threshold(v: np.ndarray, y: np.ndarray) -> tuple:
     return best
 
 
-def mine(res: list, frames: dict, material: str, top: int = 5, check_n: int = 60, seed: int = 0, margin: float = 0.15) -> dict:
+def mine(res: list, frames: dict, material: str, top: int = 5, check_n: int = 60, seed: int = 0, margin: float = 0.10) -> dict:
     import catspace.incubator.analyst  # noqa: F401
     import analyst_core as A
     from . import base_vocabulary as V
@@ -109,27 +109,29 @@ def mine(res: list, frames: dict, material: str, top: int = 5, check_n: int = 60
                 boards=best["boards"], candidates=[{k: v for k, v in c.items() if k != "boards"} for c in out])
 
 
-def answer(cf: dict, run: str, rnd: int, frames: dict, defender: str = "tablebase", n_boards: int = 50) -> dict:
-    """The attacker's lemma-incorporation: "leave R" (the trap's term) ranked first, verified on R's refuted boards."""
-    from .verifier import Verifier
+def answer(cf: dict, run: str, rnd: int, frames: dict, defender: str = "tablebase", n_boards: int = 50, budget: int = 60) -> dict:
+    """The attacker's lemma-incorporation as a STAGE (the red team: "a new frame whose goal is 'leave R'"): a situational
+    frame "<material>:if:<term>>=<theta>", active while R holds, its measure MINED by the pipeline like any other on R's
+    refuted boards; its verifier games succeed on leaving R (or the material goal) without losing ground."""
+    from .pipeline import run as pipeline_run
     from . import defenders as D
     import chess
     def fresh(f):
         b = chess.Board(f); b.halfmove_clock = 0
         return b.fen()
-    boards = [fresh(f) for f in cf["boards"]][:n_boards]
-    hole = dict(name=f"challenge_{run}_{cf['material']}_r{rnd}", material=cf["material"], frame_key=cf["material"], frames=frames,
-                piece="*", base=cf["frame"], k=2, stuck=boards, sampled=len(boards))
+    boards = [fresh(f) for f in cf["boards"]][:100]
+    fkey = f"{cf['material']}:if:{cf['term']}>={cf['theta']}"
+    hole = dict(name=f"stage_{run}_{cf['material']}_r{rnd}", material=cf["material"], frame_key=fkey, frames=frames, piece="*",
+                base=[], k=2, stuck=boards, sampled=len(boards), leave=[cf["term"], cf["theta"]])
     json.dump(hole, open(paths.derived(f"hole_{hole['name']}.json"), "w"))
-    ver = Verifier(defender=defender)
-    base = ver.verify(hole, None, "none", boards)
-    cand = ver.verify(hole, cf["term"], "prepend", boards)
+    out = pipeline_run(hole["name"], budget, hole=hole, defender=defender, n_boards=n_boards)
+    base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None
     as_o = lambda r: dict(n=r["n"], lost=r["lost"], won=r["mated"], kept=r["certified"], claims=r["played"], states=r.get("states", 0))
-    wins = D.better(as_o(cand), as_o(base)) if "ranks" in base else cand["score"] > base["score"] + 0.05
-    show = lambda r: f"held {r['n'] - r['lost']}/{r['n']}, won {r['mated']}"
-    print(f"OBS   the attacker's answer -- leave R first ({cf['term']} prepended): {show(cand)} against the frame's own {show(base)} -> "
-          f"{'PROMOTED' if wins else 'not better'}")
-    return dict(base=show(base), answer=show(cand), promoted=bool(wins))
+    wins = bool(best) and (D.better(as_o(best), as_o(base)) if "ranks" in base else best["score"] > base["score"] + 0.05)
+    show = lambda r: f"left R or won {r['mated']}/{r['n']}, lost ground {r['lost']}"
+    print(f"OBS   the attacker's answer -- a STAGE for R ({fkey}): the best mined measure {best and best['term']} -- {best and show(best)}; "
+          f"without the stage {show(base)} -> {'PROMOTED' if wins else 'not better'}")
+    return dict(frame_key=fkey, term=best and best["term"], schema=best and best["schema"], base=show(base), answer=best and show(best), promoted=bool(wins))
 
 
 def archive(entry: dict) -> None:
@@ -145,7 +147,7 @@ def main(argv=None):
     ap.add_argument("--round", type=int, required=True)
     ap.add_argument("--material", default="KRRvKR")
     ap.add_argument("--no-answer", action="store_true")
-    ap.add_argument("--margin", type=float, default=0.15, help="a trap must predict the refutations this much above their base rate")
+    ap.add_argument("--margin", type=float, default=0.10, help="a trap must predict the refutations this much above their base rate")
     a = ap.parse_args(argv)
     stem = f"surprise_loop_KRRvKR_{a.run}"
     history = json.load(open(paths.derived(f"{stem}.json")))
@@ -171,3 +173,32 @@ def main(argv=None):
 
 if __name__ == "__main__":
     main()
+
+
+def round_(res: list, frames: dict, run: str, rnd: int, register: bool = True) -> dict:
+    """The challenger inside the loop, after a round's mining: per material with a frame of ours, a trap mined and checked;
+    a counter-frame answered by a stage; a promoted stage joins the frames (the next round's games play it). -> frames."""
+    new = dict(frames)
+    for material in sorted({k for k in frames if ":" not in k}):
+        cf = mine(res, frames, material)
+        entry = dict(run=run, round=rnd, t=time.strftime("%Y-%m-%d %H:%M"), **{k: v for k, v in cf.items() if k not in ("gap_boards",)})
+        if cf["status"] == "counter-frame":
+            print(f"OBS COUNTER-FRAME for {material}: when {cf['gloss']} >= {cf['theta']}, the defender holds {cf['frame']} "
+                  f"(local trap check {cf['trap']:.2f} on {cf['checked']} boards; held-out precision {cf['precision']:.2f})")
+            ans = answer(cf, run, rnd, new)
+            entry["answer"] = ans
+            if ans["promoted"]:
+                new[ans["frame_key"]] = [ans["term"]]
+                entry["status"] = "answered by a stage"
+                if register:
+                    from . import registry as R
+                    R.add_generated(f"stage_{material.lower()}_{run}_r{rnd}", ans["term"], "measure", f"stage_{run}_{material}_r{rnd}",
+                                    {"verifier": f"{ans['answer']} against {ans['base']} without the stage", "trap": f"{cf['gloss']} >= {cf['theta']}",
+                                     "status": "a conjecture: the stage's claim is not proved"}, used_by=f"the stage {ans['frame_key']}")
+                    R.export()
+            else:
+                entry["status"] = "standing (no stage beat it)"
+        else:
+            print(f"OBS {cf['status'].upper()} for {material}")
+        archive(entry)
+    return new

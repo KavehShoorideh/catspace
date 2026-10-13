@@ -29857,3 +29857,16 @@ the corners >= 41", trap 0.95 on 60 boards); the naive answer -- its term minimi
 frame did: minimising the term defining R is not a plan to leave R. NEXT: the answer as a STAGED frame -- a situational
 frame active while R holds, its measure mined like any other, its success leaving R (or the material goal) without losing
 ground; the check frame is its special case (R = in check).
+THE REGRESSION RUN, AND THE STAGE (2026-10-12 19:13-19:44 PDT). THE RUN (tag level2b; the regression's second level in the
+real games, off in the verifier's): round 0 69 / 30 / 1 (won / drawn / lost; 61 with the forced entry alone, 57 with
+neither -- the regression alone +8); round 1 78 / 22 / 0 (earlier runs 61-76); round 2 75 / 25 / 0 (54-64); round 3 74 / 26
+/ 0 (55-73). Rounds 1-3: 227 wins against 204-208 in the three runs before -- the clearest gain, three rounds running
+(directional, one run). THE STAGE (the challenger's answer, built): a SITUATIONAL FRAME "<material>:if:<term>>=<theta>",
+played while its condition holds (vocab.rs; the check frame first), its measure mined by the pipeline on the trap's refuted
+boards, its verifier games succeeding on leaving R (or the material goal) without losing ground. OBS (the level2b run's
+round 3, margin base + 0.10): the counter-frame "squares they do not attack, off our rook's rank >= 39" (local trap check
+0.83 on 60 boards; held-out precision 0.68 against 0.52); the stage mined "squares they do not attack, outside the squares
+nearer their king than our rook" -- left R or won 39 / 50, ground lost 11, against 27 / 50 and 23 without the stage --
+PROMOTED (the transformer proposed 6 of the verifier's top 10). The challenger now runs inside the loop (--challenger):
+after each round's mining, a trap per material, a stage for each counter-frame, promoted stages into the next round's
+frames, everything archived.

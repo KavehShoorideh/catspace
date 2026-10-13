@@ -112,7 +112,7 @@ def _play_one(args):
     import chess
     import catspace.incubator.analyst  # noqa: F401
     import analyst_core as A
-    fen, base, cand, schema, piece, limit, defender, player, material, frames = args
+    fen, base, cand, schema, piece, limit, defender, player, material, frames, leave = args
     b = chess.Board(fen)
     us = b.turn
     theirs0, lead0 = _material(b, not us), _material(b, us) - _material(b, not us)
@@ -145,6 +145,9 @@ def _play_one(args):
         out["why"] = dict(kind=kind, **kw)
 
     for n in range(1, GUARD + 1):
+        # A STAGED FRAME's goal (the challenger's answer): out of its region R -- the stage is done
+        if leave and n > 1 and A.vocab_values([b.fen()], leave[0])[0] < leave[1]:
+            out["won"] = True; break
         history.append(b.fen())
         ours.append((b.fen(), _material(b, not us), _material(b, us) - _material(b, not us)))
         before = b.fen()
@@ -239,7 +242,8 @@ WORKERS = max(1, (os.cpu_count() or 8) - 2)    # the cores, two left for the pro
 
 
 def closed_loop(boards: list, base: list, cand: str | None, schema: str, piece: str, limit: int, defender: str,
-                workers: int = WORKERS, player: str = "frame", material: str = "", frames: dict | None = None) -> tuple:
+                workers: int = WORKERS, player: str = "frame", material: str = "", frames: dict | None = None,
+                leave: tuple | None = None) -> tuple:
     """-> (games won, total moves of the won games, our moves played, our moves certified), as Rust verify_play."""
     import analyst_core as A
     if parse(defender)[0] == "self":
@@ -248,7 +252,7 @@ def closed_loop(boards: list, base: list, cand: str | None, schema: str, piece: 
         return tuple(A.verify_play(boards, base, cand, schema, piece, limit))
     from multiprocessing import Pool
     with Pool(workers, initializer=_init, initargs=(defender,)) as p:
-        res = p.map(_play_one, [(f, base, cand, schema, piece, limit, defender, player, material, frames) for f in boards], chunksize=2)
+        res = p.map(_play_one, [(f, base, cand, schema, piece, limit, defender, player, material, frames, leave) for f in boards], chunksize=2)
     kept, claims = claims_kept(res, compose(base, cand, schema))
     from collections import Counter
     whys = [r["why"] for r in res if r["lost"] and r["why"]]

@@ -32,7 +32,8 @@ def spec_of(hole: dict, defender: str = "self") -> str:
     """What a verdict was made against besides the term and the boards: the hole's base measure, the safety, the horizon,
     the closed loop's defender -- a hole of the same name and boards with another base (the next run's) must not reuse it
     (BUGS 2026-10-12), nor a verdict against another opponent."""
-    return json.dumps([hole["base"], hole.get("piece") or hole["material"][1], hole["k"]] + ([] if defender == "self" else [defender]))
+    return json.dumps([hole["base"], hole.get("piece") or hole["material"][1], hole["k"]] + ([] if defender == "self" else [defender])
+                      + ([hole["frame_key"], hole.get("leave")] if hole.get("leave") else []))
 
 
 def board_hash(boards: list) -> str:
@@ -75,7 +76,8 @@ class Verifier:
             # a real defender: the whole player with the candidate as its material's frame, scored by Kaveh's ranks --
             # held, then won, then the frame's claims kept
             o = D.closed_loop(boards, hole["base"], term, schema, piece, LIMIT, self.defender, player="planner",
-                              material=hole.get("frame_key") or hole["material"], frames=hole.get("frames"))
+                              material=hole.get("frame_key") or hole["material"], frames=hole.get("frames"),
+                              leave=tuple(hole["leave"]) if hole.get("leave") else None)
             r = dict(hole=hole["name"], term=term or "", schema=schema, boards=bh, spec=sp, defender=self.defender, n=n, stage1=s1,
                      mated=o["won"], lost=o["lost"], played=o["claims"], certified=o["kept"], ranks=list(D.ranked(o)),
                      states=o["states"], why=o["why"], examples=o["examples"], score=D.score(o), t=time.time())

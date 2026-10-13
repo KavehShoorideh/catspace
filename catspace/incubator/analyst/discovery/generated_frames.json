@@ -1,12 +1,13 @@
 {
  "KRRvK": [
-  "(sum (count (and (nearer L W) (not (line W P)))) (count (and (nearer L W) (not (file W)))))",
-  "(count (and (nearer L W) (not (box P))))"
+  "(sum (count (and (nearer L P) (not (box P)))) (count (and (nearer L W) (not (line W P)))))",
+  "(count attacked)"
  ],
  "KRRvKR": [
-  "(count (and (nearer L W) (not (box O))))"
+  "(count (and hit (not (line P O))))",
+  "(count (not (reach P unhit)))"
  ],
  "KRRvKR:check": [
-  "(sum (count (and (nearer L P) (not (nearer W L)))) (count (and (nearer L W) (not (file L)))))"
+  "(sum (sum (count (and (nearer L P) (not (nearer W O)))) (count (and hit (not (nearer P L))))) (count hit))"
  ]
 }
