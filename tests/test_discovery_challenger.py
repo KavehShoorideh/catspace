@@ -85,3 +85,22 @@ def test_spread_takes_one_game_at_a_time():
     assert og == [0, 1, 2, 3] * 3
     choose, check, cg = split(out, 50, og, seed="t")
     assert len(choose) <= 6 and set(cg) and not {og[out.index(b)] for b in choose} & set(cg)
+
+
+def test_the_phase_claim_is_tested_by_game():
+    import numpy as np
+    # 20 held-out games of 10 positions: the drawn ones spend 8 of 10 positions inside R, the won ones 2
+    games = [g for g in range(20) for _ in range(10)]
+    y = np.array([g < 10 for g in games])                                        # games 0-9 drawn
+    inside = np.array([(i % 10) < (8 if g < 10 else 2) for i, g in enumerate(games)])
+    held = np.ones(len(games), bool)
+    assert C.by_game_p(inside, y, games, held) < 1e-3
+    assert C.by_game_p(np.array([(i % 10) < 5 for i in range(200)]), y, games, held) > 0.3   # no difference
+    assert C.by_game_p(inside, y, games, np.zeros(len(games), bool)) == 1.0                 # nothing held out
+
+
+def test_data_phase_labels_a_game_by_its_phase():
+    rows = lambda theirs_after: [dict(material="KRRvKR", lead=5, theirs=5, fen="a"), dict(material="KRRvKR", lead=5, theirs=5, fen="b"),
+                                 dict(material="KRRvK", lead=10, theirs=theirs_after, fen="c")]
+    res = [dict(seed=1, out="win", rows=rows(0)), dict(seed=2, out="draw", rows=[dict(material="KRRvKR", lead=5, theirs=5, fen="d")])]
+    assert C.data_phase(res, "KRRvKR") == [("a", False, 1), ("b", False, 1), ("d", True, 2)]

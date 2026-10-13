@@ -50,6 +50,38 @@ def data(res: list, material: str) -> tuple:
     return out
 
 
+def data_phase(res: list, material: str) -> list:
+    """With NO frame for the material (Kaveh 2026-10-12, "1": let the challenger attack the empty frame) the player's only
+    claim is the goal within two moves -- refuted almost always (bygame round 2: 1,711 of 1,727) and so no evidence. The
+    empty frame's claim is the PHASE's: we win material in it (their material falls, or mate) -- a drawn or lost phase
+    refutes it. -> (fen, refuted?, game) for every position of ours in the material while ahead."""
+    out = []
+    for g in res:
+        rows = g["rows"]
+        idx = [i for i, r in enumerate(rows) if r["material"] == material]
+        if not idx:
+            continue
+        last = idx[-1]
+        won = (last + 1 < len(rows) and rows[last + 1]["theirs"] < rows[last]["theirs"]) or (last == len(rows) - 1 and g["out"] == "win")
+        out += [(rows[i]["fen"], not won, g["seed"]) for i in idx if rows[i]["lead"] > 0]
+    return out
+
+
+def by_game_p(inside, y, games, held) -> float:
+    """The phase's claim is one label a GAME (every position of a game shares it): on the held-out games, does a refuted
+    (drawn) game spend more of its positions inside R than a game won? -- one-sided Mann-Whitney on the games' shares."""
+    from scipy.stats import mannwhitneyu
+    share, ref = {}, {}
+    for r, yy, g, h in zip(inside, y, games, held):
+        if h:
+            share.setdefault(g, []).append(bool(r)); ref[g] = bool(yy)
+    a = [np.mean(share[g]) for g in share if ref[g]]
+    b = [np.mean(share[g]) for g in share if not ref[g]]
+    if len(a) < 2 or len(b) < 2:
+        return 1.0
+    return float(mannwhitneyu(a, b, alternative="greater").pvalue)
+
+
 def best_threshold(v: np.ndarray, y: np.ndarray) -> tuple:
     """theta maximising (precision - base) * recall for R = {v >= theta} predicting y -> (theta, precision, recall, score)."""
     base = y.mean() if len(y) else 0.0
@@ -101,7 +133,8 @@ def mine(res: list, frames: dict, material: str, top: int = 5, check_n: int = 60
     import analyst_core as A
     from . import base_vocabulary as V
     t0 = time.time()
-    rows = data(res, material)
+    phase = not frames.get(material)                                  # no frame: the phase's claim (data_phase)
+    rows = data_phase(res, material) if phase else data(res, material)
     if len(rows) < 50:
         return dict(material=material, status="too little data", n=len(rows))
     fens = [r[0] for r in rows]
@@ -120,7 +153,9 @@ def mine(res: list, frames: dict, material: str, top: int = 5, check_n: int = 60
             cands.append((sc, t, th, v))
     cands.sort(key=lambda c: -c[0])
     base_rate = float(y[~train].mean())
-    print(f"OBS challenger, {material}: {len(rows)} frame claims ({100 * y.mean():.0f}% refuted), {len(seen)} distinct terms tried")
+    what = (f"no frame: {len(rows)} positions of {len({r[2] for r in rows})} games, the phase's claim 'we win material here' refuted in "
+            f"{len({r[2] for r in rows if r[1]})} games" if phase else f"{len(rows)} frame claims ({100 * y.mean():.0f}% refuted)")
+    print(f"OBS challenger, {material}: {what}, {len(seen)} distinct terms tried")
     out = []
     frame = frames.get(material, [])
     for sc, t, th, v in cands[:top]:
@@ -128,7 +163,7 @@ def mine(res: list, frames: dict, material: str, top: int = 5, check_n: int = 60
         prec = float(yt[rt].mean()) if rt.sum() else 0.0
         outside = float(yt[~rt].mean()) if (~rt).sum() else 0.0
         rec = float((yt & rt).sum() / max(yt.sum(), 1))
-        p = excess(yt, rt)
+        p = by_game_p(v >= th, y, [r[2] for r in rows], ~train) if phase else excess(yt, rt)
         inside = [f for f, ok in zip(fens, (v >= th) & ~train & y) if ok]  # refuted test boards inside R
         inside_games = [r[2] for r, ok in zip(rows, (v >= th) & ~train & y) if ok]
         sample = random.Random(seed).sample(inside, min(check_n, len(inside)))
@@ -137,7 +172,8 @@ def mine(res: list, frames: dict, material: str, top: int = 5, check_n: int = 60
         out.append(dict(term=t, theta=th, gloss=V.gloss(V.parse(t)), precision=prec, outside=outside, p=p, recall=rec,
                         lift=prec / max(base_rate, 1e-9), trap=trap, checked=len(chk), boards=inside, games=inside_games))
         print(f"OBS   R = {{ {V.gloss(V.parse(t))} >= {th} }}: held-out, refuted {prec:.2f} inside R against {outside:.2f} outside "
-              f"(base {base_rate:.2f}; one-sided Fisher p {p:.1e}), recall {rec:.2f}; the local trap check holds on {sum(chk)}/{len(chk)} of its refuted boards")
+              f"(base {base_rate:.2f}; one-sided {'Mann-Whitney over games' if phase else 'Fisher'} p {p:.1e}), recall {rec:.2f}; "
+              f"the local trap check holds on {sum(chk)}/{len(chk)} of its refuted boards")
     traps, blinds = split(out)
     print(f"OBS   ({time.time() - t0:.0f} s; kept at p < {ALPHA}/{len(out)}: {len(traps)} trap(s), {len(blinds)} blind spot(s))")
     strip = lambda c: {k: v for k, v in c.items() if k not in ("boards", "games")}
@@ -240,7 +276,9 @@ def round_(res: list, played: dict, frames: dict, run: str, rnd: int, register: 
     2026-10-12: checked against the newly mined one it reported gaps); each answered by a stage mined with the NEW frames
     (the next round's); a promoted stage joins them. -> frames."""
     new = dict(frames)
-    for material in sorted({k for k in played if ":" not in k and played[k]}):
+    from .surprise_loop import MATING_SPECS
+    ahead = {r["material"] for g in res for r in g["rows"] if r["lead"] > 0}
+    for material in sorted(({k for k in played if ":" not in k and played[k]} | ahead) - set(MATING_SPECS)):
         cf = mine(res, played, material)
         report(material, cf)
         entry = dict(run=run, round=rnd, t=time.strftime("%Y-%m-%d %H:%M"), **strip_boards(cf), answers=[])
