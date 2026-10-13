@@ -29788,3 +29788,18 @@ positions after it our own prover (the forced entry, budget 200,000) found a way
 divergence is strategic, not a missed tactic. (A bug of mine in the segmentation, fixed before these numbers: the phase's
 last episode did not see the capture on the way out.) Proposed: episodes as the surprise signal, mining from the
 divergence, and a frame per episode kind -- first "their checks", with its own desired outcome.
+EPISODES DRIVE THE LOOP (2026-10-12 18:21-18:55 PDT; Kaveh's go on the three: episodes as the surprise, mining from the
+divergence, a frame per episode kind). BUILT: the surprises are the failed episodes -- from the divergence on in a phase
+that did not progress, the first failed ones in a won phase (material lost -> rank 1, the rest -> progress); A FRAME PER
+EPISODE KIND: in check the planner plays the material's CHECK frame ("KRRvKR:check") when one is learned, mined from the
+failed check episodes and verified inside the whole player with the round's other frames; each round reports its
+episodes' outcomes. THE RUN (tag episodes, fresh; the same starting positions as every run; directional): round 0 61 / 37
+/ 2 (won / drawn / lost); round 1 71 / 29 / 0; round 2 63 / 37 / 0; round 3 72 / 28 / 0. Over rounds 1-3: 206 wins -- the
+runs before 208 (approach), 204 (known), 197 (clean), 194 (states): no measurable gain at one run each. K+R+R v K+R
+episodes ended well 2% -> 10% -> 14% by round (the ratchet is measured against each round's frame, so not comparable round
+to round). THE CHECK FRAME learned "squares nearer their king than our rook, not nearer our king than theirs" (0.121 vs
+0.040 of the in-check boards), then "+ their king's territory off their king's file" (0.061 vs 0); the main frame ended at
+"their king's territory, outside the box around their rook" (found in the contrast run too); K+R+R v K "their king's
+territory off the line through our king and rook" + "... off our king's file", then "... outside our rook's box" (0.808).
+STILL: the drawn games are fifty-move draws in K+R+R v K+R (22 in round 3) -- from the divergence our prover finds a
+forced way into the known at 2.7% of positions: a way in has to be CREATED, which no measure of the vocabulary has done.

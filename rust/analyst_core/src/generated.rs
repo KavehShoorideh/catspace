@@ -106,3 +106,27 @@ pub const KRRVKR_APPROACH_R2_HOLD: &str = "(count (not (nearer P L)))";
 
 /// krrvkr_approach_r2_progress: how many of the squares we do not attack (2026-10-12, hole learn_approach_KRRvKR_rank2_r2; verifier: held 4/50, won 4, claims kept 266/356 -- the frame before it held 3/50, won 3, claims kept 267/352 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvKR frame (append): ['(count (not (nearer P L)))', '(count (and (nearer L O) (not (reach O free))))', '(count (and (nearer L P) (not (rank W))))', '(count (nearer L W))', '(count free)'])
 pub const KRRVKR_APPROACH_R2_PROGRESS: &str = "(count free)";
+
+/// krrvk_episodes_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the line through our king and our other piece (2026-10-12, hole learn_episodes_KRRvK_rank2_r0; verifier: held 42/50, won 42, claims kept 93/93 -- the frame before it held 9/50, won 9, claims kept 0/79 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvK frame (append): ['(count (and (nearer L W) (not (line W P))))'])
+pub const KRRVK_EPISODES_R0_PROGRESS: &str = "(count (and (nearer L W) (not (line W P))))";
+
+/// krrvkr_episodes_r0_progress: how many of the squares they attack that are also the squares outside the file of their king (2026-10-12, hole learn_episodes_KRRvKR_rank2_r0; verifier: held 13/50, won 13, claims kept 62/209 -- the frame before it held 10/50, won 10, claims kept 0/177 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvKR frame (append): ['(count (and hit (not (file L))))'])
+pub const KRRVKR_EPISODES_R0_PROGRESS: &str = "(count (and hit (not (file L))))";
+
+/// krrvkr_check_episodes_r0_progress: how many of the squares nearer their king than our other piece that are also the squares outside the squares nearer our king than their king (2026-10-12, hole learn_episodes_KRRvKR_check_rank2_r0; verifier: held 6/50, won 6, claims kept 202/326 -- the frame before it held 2/50, won 2, claims kept 0/268 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvKR:check frame (append): ['(count (and (nearer L P) (not (nearer W L))))'])
+pub const KRRVKR_CHECK_EPISODES_R0_PROGRESS: &str = "(count (and (nearer L P) (not (nearer W L))))";
+
+/// krrvk_episodes_r1_progress: how many of the squares nearer their king than our king that are also the squares outside the file of our king (2026-10-12, hole learn_episodes_KRRvK_rank2_r1; verifier: held 38/50, won 38, claims kept 20/20 -- the frame before it held 34/50, won 34, claims kept 18/18 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvK frame (sum): ['(sum (count (and (nearer L W) (not (line W P)))) (count (and (nearer L W) (not (file W)))))'])
+pub const KRRVK_EPISODES_R1_PROGRESS: &str = "(count (and (nearer L W) (not (file W))))";
+
+/// krrvkr_episodes_r1_progress: how many of the squares nearer their king than our other piece that are also the squares outside the squares nearer their other piece than our king (2026-10-12, hole learn_episodes_KRRvKR_rank2_r1; verifier: held 10/50, won 10, claims kept 106/208 -- the frame before it held 9/50, won 9, claims kept 41/123 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvKR frame (replace): ['(count (and (nearer L P) (not (nearer O W))))'])
+pub const KRRVKR_EPISODES_R1_PROGRESS: &str = "(count (and (nearer L P) (not (nearer O W))))";
+
+/// krrvkr_check_episodes_r1_progress: how many of the squares nearer their king than our king that are also the squares outside the file of their king (2026-10-12, hole learn_episodes_KRRvKR_check_rank2_r1; verifier: held 3/50, won 3, claims kept 211/313 -- the frame before it held 0/50, won 0, claims kept 128/236 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvKR:check frame (sum): ['(sum (count (and (nearer L P) (not (nearer W L)))) (count (and (nearer L W) (not (file L)))))'])
+pub const KRRVKR_CHECK_EPISODES_R1_PROGRESS: &str = "(count (and (nearer L W) (not (file L))))";
+
+/// krrvkr_episodes_r2_progress: how many of the squares nearer their king than our king that are also the squares outside the box around their other piece (2026-10-12, hole learn_episodes_KRRvKR_rank2_r2; verifier: held 5/50, won 5, claims kept 173/262 -- the frame before it held 4/50, won 4, claims kept 99/205 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvKR frame (replace): ['(count (and (nearer L W) (not (box O))))'])
+pub const KRRVKR_EPISODES_R2_PROGRESS: &str = "(count (and (nearer L W) (not (box O))))";
+
+/// krrvk_episodes_r2_progress: how many of the squares nearer their king than our king that are also the squares outside the box around our other piece (2026-10-12, hole learn_episodes_KRRvK_rank2_r2; verifier: held 40/50, won 40, claims kept 15/15 -- the frame before it held 39/50, won 39, claims kept 14/14 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvK frame (append): ['(sum (count (and (nearer L W) (not (line W P)))) (count (and (nearer L W) (not (file W)))))', '(count (and (nearer L W) (not (box P))))'])
+pub const KRRVK_EPISODES_R2_PROGRESS: &str = "(count (and (nearer L W) (not (box P))))";

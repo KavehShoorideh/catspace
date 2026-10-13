@@ -562,5 +562,133 @@
   },
   "used_by": "the KRRvKR frame (append): ['(count (not (nearer P L)))', '(count (and (nearer L O) (not (reach O free))))', '(count (and (nearer L P) (not (rank W))))', '(count (nearer L W))', '(count free)']",
   "created": "2026-10-12"
+ },
+ {
+  "id": "krrvk_episodes_r0_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (nearer L W) (not (line W P))))",
+  "gloss": "how many of the squares nearer their king than our king that are also the squares outside the line through our king and our other piece",
+  "size": 9,
+  "lean": "(count (fun u => (nearer L W) u && (fun u => !((lineThrough W P) u)) u))",
+  "hole": "learn_episodes_KRRvK_rank2_r0",
+  "evidence": {
+   "verifier": "held 42/50, won 42, claims kept 93/93 -- the frame before it held 9/50, won 9, claims kept 0/79 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KRRvK frame (append): ['(count (and (nearer L W) (not (line W P))))']",
+  "created": "2026-10-12"
+ },
+ {
+  "id": "krrvkr_episodes_r0_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and hit (not (file L))))",
+  "gloss": "how many of the squares they attack that are also the squares outside the file of their king",
+  "size": 6,
+  "lean": "(count (fun u => (attackedBy p (Color.opposite c) W) u && (fun u => !((fileOf L) u)) u))",
+  "hole": "learn_episodes_KRRvKR_rank2_r0",
+  "evidence": {
+   "verifier": "held 13/50, won 13, claims kept 62/209 -- the frame before it held 10/50, won 10, claims kept 0/177 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KRRvKR frame (append): ['(count (and hit (not (file L))))']",
+  "created": "2026-10-12"
+ },
+ {
+  "id": "krrvkr_check_episodes_r0_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (nearer L P) (not (nearer W L))))",
+  "gloss": "how many of the squares nearer their king than our other piece that are also the squares outside the squares nearer our king than their king",
+  "size": 9,
+  "lean": "(count (fun u => (nearer L P) u && (fun u => !((nearer W L) u)) u))",
+  "hole": "learn_episodes_KRRvKR_check_rank2_r0",
+  "evidence": {
+   "verifier": "held 6/50, won 6, claims kept 202/326 -- the frame before it held 2/50, won 2, claims kept 0/268 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KRRvKR:check frame (append): ['(count (and (nearer L P) (not (nearer W L))))']",
+  "created": "2026-10-12"
+ },
+ {
+  "id": "krrvk_episodes_r1_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (nearer L W) (not (file W))))",
+  "gloss": "how many of the squares nearer their king than our king that are also the squares outside the file of our king",
+  "size": 8,
+  "lean": "(count (fun u => (nearer L W) u && (fun u => !((fileOf W) u)) u))",
+  "hole": "learn_episodes_KRRvK_rank2_r1",
+  "evidence": {
+   "verifier": "held 38/50, won 38, claims kept 20/20 -- the frame before it held 34/50, won 34, claims kept 18/18 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KRRvK frame (sum): ['(sum (count (and (nearer L W) (not (line W P)))) (count (and (nearer L W) (not (file W)))))']",
+  "created": "2026-10-12"
+ },
+ {
+  "id": "krrvkr_episodes_r1_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (nearer L P) (not (nearer O W))))",
+  "gloss": "how many of the squares nearer their king than our other piece that are also the squares outside the squares nearer their other piece than our king",
+  "size": 9,
+  "lean": "(count (fun u => (nearer L P) u && (fun u => !((nearer O W) u)) u))",
+  "hole": "learn_episodes_KRRvKR_rank2_r1",
+  "evidence": {
+   "verifier": "held 10/50, won 10, claims kept 106/208 -- the frame before it held 9/50, won 9, claims kept 41/123 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KRRvKR frame (replace): ['(count (and (nearer L P) (not (nearer O W))))']",
+  "created": "2026-10-12"
+ },
+ {
+  "id": "krrvkr_check_episodes_r1_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (nearer L W) (not (file L))))",
+  "gloss": "how many of the squares nearer their king than our king that are also the squares outside the file of their king",
+  "size": 8,
+  "lean": "(count (fun u => (nearer L W) u && (fun u => !((fileOf L) u)) u))",
+  "hole": "learn_episodes_KRRvKR_check_rank2_r1",
+  "evidence": {
+   "verifier": "held 3/50, won 3, claims kept 211/313 -- the frame before it held 0/50, won 0, claims kept 128/236 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KRRvKR:check frame (sum): ['(sum (count (and (nearer L P) (not (nearer W L)))) (count (and (nearer L W) (not (file L)))))']",
+  "created": "2026-10-12"
+ },
+ {
+  "id": "krrvkr_episodes_r2_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (nearer L W) (not (box O))))",
+  "gloss": "how many of the squares nearer their king than our king that are also the squares outside the box around their other piece",
+  "size": 8,
+  "lean": "(count (fun u => (nearer L W) u && (fun u => !((box O) u)) u))",
+  "hole": "learn_episodes_KRRvKR_rank2_r2",
+  "evidence": {
+   "verifier": "held 5/50, won 5, claims kept 173/262 -- the frame before it held 4/50, won 4, claims kept 99/205 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KRRvKR frame (replace): ['(count (and (nearer L W) (not (box O))))']",
+  "created": "2026-10-12"
+ },
+ {
+  "id": "krrvk_episodes_r2_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (nearer L W) (not (box P))))",
+  "gloss": "how many of the squares nearer their king than our king that are also the squares outside the box around our other piece",
+  "size": 8,
+  "lean": "(count (fun u => (nearer L W) u && (fun u => !((box P) u)) u))",
+  "hole": "learn_episodes_KRRvK_rank2_r2",
+  "evidence": {
+   "verifier": "held 40/50, won 40, claims kept 15/15 -- the frame before it held 39/50, won 39, claims kept 14/14 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KRRvK frame (append): ['(sum (count (and (nearer L W) (not (line W P)))) (count (and (nearer L W) (not (file W)))))', '(count (and (nearer L W) (not (box P))))']",
+  "created": "2026-10-12"
  }
 ]

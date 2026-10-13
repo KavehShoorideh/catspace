@@ -1,12 +1,12 @@
 {
  "KRRvK": [
-  "(count (not (nearer W L)))"
+  "(sum (count (and (nearer L W) (not (line W P)))) (count (and (nearer L W) (not (file W)))))",
+  "(count (and (nearer L W) (not (box P))))"
  ],
  "KRRvKR": [
-  "(count (not (nearer P L)))",
-  "(count (and (nearer L O) (not (reach O free))))",
-  "(count (and (nearer L P) (not (rank W))))",
-  "(count (nearer L W))",
-  "(count free)"
+  "(count (and (nearer L W) (not (box O))))"
+ ],
+ "KRRvKR:check": [
+  "(sum (count (and (nearer L P) (not (nearer W L)))) (count (and (nearer L W) (not (file L)))))"
  ]
 }
