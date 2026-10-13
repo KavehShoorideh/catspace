@@ -128,7 +128,25 @@ def pick(traps: list, blinds: list) -> tuple:
     return trap, max(blinds, key=lambda c: (c["lift"], c["recall"]), default=None)
 
 
-def mine(res: list, frames: dict, material: str, top: int = 5, check_n: int = 60, seed: int = 0) -> dict:
+TOP = 20                            # the regions tested on the held-out games (Bonferroni over them)
+
+
+def too_little(y, train, games, phase: bool, top: int = TOP) -> str | None:
+    """TOO LITTLE DATA, apart from a vocabulary gap (Kaveh 2026-10-12: "make the gap honest"): even a PERFECT predictor
+    -- R exactly the refuted held-out claims (or, by game, exactly the drawn games' positions) -- would not pass the
+    held-out test at ALPHA / top, or fewer than 10 refuted held-out boards are left for the local trap check. -> why, or
+    None (there is enough to look for a region)."""
+    held = ~train
+    n_ref = int((y & held).sum())
+    if n_ref < 10:
+        return f"{n_ref} refuted held-out boards (the trap check needs 10)"
+    p_min = by_game_p(y, y, games, held) if phase else excess(y[held], y[held])
+    if p_min >= ALPHA / top:
+        return f"even a perfect predictor reaches only p {p_min:.1e} on the held-out {'games' if phase else 'claims'} (the bar {ALPHA / top:.1e})"
+    return None
+
+
+def mine(res: list, frames: dict, material: str, top: int = TOP, check_n: int = 60, seed: int = 0) -> dict:
     import catspace.incubator.analyst  # noqa: F401
     import analyst_core as A
     from . import base_vocabulary as V
@@ -140,6 +158,10 @@ def mine(res: list, frames: dict, material: str, top: int = 5, check_n: int = 60
     fens = [r[0] for r in rows]
     y = np.array([r[1] for r in rows])
     train = np.array([r[2] % 2 == 0 for r in rows])                    # split by game: the even seeds learn, the odd test
+    why = too_little(y, train, [r[2] for r in rows], phase, top)
+    if why:
+        print(f"OBS challenger, {material}: TOO LITTLE DATA -- {why}")
+        return dict(material=material, status="too little data", n=len(rows), why=why)
     terms = [V.sexpr(t) for t in V.enumerate_numbers()]
     seen, cands = set(), []
     for t in terms:
@@ -171,11 +193,13 @@ def mine(res: list, frames: dict, material: str, top: int = 5, check_n: int = 60
         trap = sum(chk) / max(len(chk), 1)
         out.append(dict(term=t, theta=th, gloss=V.gloss(V.parse(t)), precision=prec, outside=outside, p=p, recall=rec,
                         lift=prec / max(base_rate, 1e-9), trap=trap, checked=len(chk), boards=inside, games=inside_games))
+        if len(out) > 5 and not (p < ALPHA / top and len(chk) >= 10):
+            continue                                                    # (the first five printed; past them, only those kept)
         print(f"OBS   R = {{ {V.gloss(V.parse(t))} >= {th} }}: held-out, refuted {prec:.2f} inside R against {outside:.2f} outside "
               f"(base {base_rate:.2f}; one-sided {'Mann-Whitney over games' if phase else 'Fisher'} p {p:.1e}), recall {rec:.2f}; "
               f"the local trap check holds on {sum(chk)}/{len(chk)} of its refuted boards")
     traps, blinds = split(out)
-    print(f"OBS   ({time.time() - t0:.0f} s; kept at p < {ALPHA}/{len(out)}: {len(traps)} trap(s), {len(blinds)} blind spot(s))")
+    print(f"OBS   ({time.time() - t0:.0f} s; {len(out)} regions tested, kept at p < {ALPHA}/{len(out)}: {len(traps)} trap(s), {len(blinds)} blind spot(s))")
     strip = lambda c: {k: v for k, v in c.items() if k not in ("boards", "games")}
     trap, blind = pick(traps, blinds)
     status = " + ".join(s for s, c in (("counter-frame", trap), ("blind spot", blind)) if c) or "vocabulary gap"

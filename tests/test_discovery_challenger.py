@@ -104,3 +104,17 @@ def test_data_phase_labels_a_game_by_its_phase():
                                  dict(material="KRRvK", lead=10, theirs=theirs_after, fen="c")]
     res = [dict(seed=1, out="win", rows=rows(0)), dict(seed=2, out="draw", rows=[dict(material="KRRvKR", lead=5, theirs=5, fen="d")])]
     assert C.data_phase(res, "KRRvKR") == [("a", False, 1), ("b", False, 1), ("d", True, 2)]
+
+
+def test_too_little_data_is_not_a_gap():
+    import numpy as np
+    games = list(range(100))
+    train = np.array([g % 2 == 0 for g in games])
+    few = np.array([g in (1, 3) for g in games])                                 # 2 refuted held-out claims
+    assert "refuted held-out boards" in C.too_little(few, train, games, phase=False)
+    many = np.array([g % 4 == 1 for g in games])                                 # 25 refuted of 50 held out
+    assert C.too_little(many, train, games, phase=False) is None
+    # by game: ONE drawn held-out game (10 positions) against 49 won -- a perfect predictor cannot pass
+    pos = [g for g in games for _ in range(10)]
+    y = np.array([g == 1 for g in pos]); tr = np.array([g % 2 == 0 for g in pos])
+    assert "perfect predictor" in (C.too_little(y, tr, pos, phase=True) or "")

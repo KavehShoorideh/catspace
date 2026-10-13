@@ -30053,3 +30053,12 @@ the run (the background trainer could read a half-written line; a confirmation r
   THE "VOCABULARY GAP" (Kaveh: "how does it decide"): logged when none of the TOP 5 regions (by fit on the even games)
   passes the held-out test and has 10 refuted boards to check -- so it also fires on too little data (K+R+R v K: 1-2
   refuted boards) and never tests the 6th region; its saved boards feed nothing yet.
+
+THE GAP MADE HONEST (2026-10-12 23:02-23:05 PDT; Kaveh: "Go"). The challenger now (a) reports TOO LITTLE DATA apart from
+a gap -- when even a perfect predictor (R exactly the refuted held-out claims, or by game exactly the drawn games'
+positions) could not pass the held-out test at 0.05 / 20, or fewer than 10 refuted held-out boards are left for the
+trap check -- skipping the vocabulary's search; (b) tests the TOP 20 regions on the held-out games (was 5), Bonferroni
+at 0.05 / 20. Replayed (mining only) on the challenge run's rounds 0-2: every K+R+R v K "gap" was too little data (round
+0: a perfect predictor reaches p 1.0; rounds 1-2: 2 refuted held-out boards); K+R+R v K+R round 1, logged as a gap with
+the top 5, now yields a counter-frame among the top 20 (their king's knight hops outside the squares nearer their rook
+than ours); rounds 0 and 2 find counter-frames as before. In six replays: no real vocabulary gap.
