@@ -16,7 +16,7 @@ import argparse
 
 import chess
 
-from .discovery import _verify
+from .discovered_check import _verify
 
 
 def _holds(b: chess.Board, d: int, t: int) -> bool:

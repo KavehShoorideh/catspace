@@ -19,7 +19,7 @@ import argparse
 
 import chess
 
-from .discovery import _verify
+from .discovered_check import _verify
 
 HEAVY = (chess.ROOK, chess.QUEEN)
 

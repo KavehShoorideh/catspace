@@ -61,7 +61,7 @@ def _lean_tokens(insts, family: str) -> list:
 
 def tokens(b: chess.Board) -> list:
     """The side to move's tactic tokens in `b`: [(family, k, barrier)]. Deterministic; the board is not changed."""
-    from . import discovery, pin, tactic_rules
+    from . import discovered_check as discovery, pin, tactic_rules
     from .fates import joint_threats, square_frame
     from .lean_ideas import detector
     out = []

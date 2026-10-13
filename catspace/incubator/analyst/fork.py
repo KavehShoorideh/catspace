@@ -15,7 +15,7 @@ import argparse
 
 import chess
 
-from .discovery import VAL, _verify
+from .discovered_check import VAL, _verify
 
 
 def _targets(b: chess.Board, m: chess.Move) -> list:

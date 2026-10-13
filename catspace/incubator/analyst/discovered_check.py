@@ -16,7 +16,7 @@ The lemma, in four stages:
 - LURE (the high-level goal while armed): a move of ours after which the natural recapture puts an enemy piece worth
   more than the cost ON the line -- 17.Nxd4: the knight takes on d4, the queen takes back on d4, and the trap is sprung.
 
-    python -m catspace.incubator.analyst.discovery --game          # replays Kaveh's game, move by move
+    python -m catspace.incubator.analyst.discovered_check --game          # replays Kaveh's game, move by move
 """
 from __future__ import annotations
 

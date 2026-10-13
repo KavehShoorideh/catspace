@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 import chess
 
-from .discovery import DIRS, VAL, _ray, _verify
+from .discovered_check import DIRS, VAL, _ray, _verify
 
 
 @dataclass

@@ -34,7 +34,7 @@ VAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUE
 
 def strike_moves(b: chess.Board, family: str) -> set:
     """The family's own strikes in `b` (UCI), by its detector."""
-    from . import discovery, pin
+    from . import discovered_check as discovery, pin
     from .lean_ideas import detector
     if family == "pin":
         return {m.uci() for m, _, _ in pin.strikes(b)}
