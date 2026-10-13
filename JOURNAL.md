@@ -29921,3 +29921,23 @@ fifty-move draws in K+R+R v K+R (round 1: 12; another round's positions).
   free: a mad rook. At 8/8/8/8/8/6R1/1r2KR2/7k w (in check) we played Ke1 (the tablebase: Kf3/Ke3/Kf1 win, Ke1/Kd1/Kd3
   draw); Re2+ Kf1 Re1+ and the only legal move Kxe1 stalemated. Not our stalemate code (the capture was forced) -- a
   frame-level surprise the last round's games found and nothing mined (the run ends after round 3's games).
+
+THE CHALLENGER'S TWO GATES REBUILT (2026-10-12 20:40-20:51 PDT; Kaveh: "Do both"). (A) A region R is kept when, on held-out
+games, the frame's claims fail MORE inside R than outside it -- a one-sided Fisher exact test at 0.05 over the candidates
+tested (Bonferroni) -- replacing "precision >= base + 0.10", whose bar rose with the frame's own failure rate. (B) A kept R
+failing the local trap check (< 0.8) is a BLIND SPOT -- we had a move, the frame chose wrong -- and gets a stage too, its
+verifier games scored on the game's own ends (held, won, progress) instead of leaving R; a blind spot whose refuted boards
+are mostly the chosen trap's is the same region and is not answered twice. Stages are judged under their own key (the
+verifier's memo). Replayed on the geometry run (one replay each -- directional):
+  round 1: "the kings' boxes overlap by 3+ squares" -- refuted 0.94 inside R against 0.33 outside (p 6e-29), the trap
+  check 9/60: a BLIND SPOT. Its stage, "the squares their king attacks outside the d1-class squares", won 1/50 (lost
+  ground 49) against 0/50 (50) without it -- promoted on ONE board.
+  round 2: "their rook far from its king" (with a knight-hop carve-out) -- refuted 0.79 inside against 0.61 outside (p
+  2e-8; the old bar had barred it), the trap check 55/60: a COUNTER-FRAME. Its stage, "the squares nearer their king
+  than our rook that our king can walk to over the squares we do not attack", LEFT R OR WON 26/50 (lost ground 24, 4.5
+  lemma-states a board) against 3/50 (47, 1.7) without it -- the first counter-frame answered with a clear margin. The
+  same region's twin (trap check 46/60) also came out as a blind spot; its stage won 0/50 either way and was promoted on
+  progress alone (6.1 lemma-states a board against 1.6) -- the dedupe now drops it.
+  All the stages' boards are tablebase wins (50/50 each; checked as a diagnostic only).
+  OPEN: the promotion rule (defenders.better) promotes on one board more held or won out of 50 -- not evidence; for
+  Kaveh.

@@ -7,15 +7,20 @@ playbook is partial).
   do, the defender has a reply keeping us in R with our measure no lower (Lean Ideas.Forced.hold_blocks).
 
   1 MINE    from the frame's REFUTED claims in a round's games (any falsifier made them: the tablebase, our own search, a
-            simulator): R = {term >= theta} for a term of the vocabulary, chosen as a PREDICTOR of the refutations --
-            precision and lift on held-out games (split by game)
+            simulator): R = {term >= theta} for a term of the vocabulary, chosen as a PREDICTOR of the refutations and
+            kept when, on held-out games (split by game), the claims fail MORE inside R than outside it (a one-sided
+            Fisher exact test, Bonferroni over the candidates tested -- 2026-10-12: a fixed "base + 0.10" rose with the
+            frame's own failure rate and barred a trap holding on 52/60 where the frame failed 73% everywhere)
   2 CHECK   the local trap check on boards of R (vocab.rs trap_check: one move against every reply, no replay of any
-            oracle); passing it, R is a COUNTER-FRAME; nothing expressible passing it -> a VOCABULARY GAP (logged with its
-            boards: where new predicates come from)
-  3 ANSWER  the attacker's lemma-incorporation -- "leave R" (the trap's term, minimised) ranked FIRST in the frame --
-            verified on R's refuted boards by the verifier; promoted by its rules
-  4 ARCHIVE every counter-frame and gap kept with its status (survived the local check on N boards / predictor only /
-            refuted by the attacker's answer) -- a never-forget archive
+            oracle). Passing it, R is a COUNTER-FRAME (the defender holds us there); failing it, R is a BLIND SPOT (we
+            had a move, the frame chose wrong -- 2026-10-12: "the kings close" predicted the refutations at 0.94 against
+            0.50 and held on 9/60); nothing kept at all -> a VOCABULARY GAP (logged with its boards: where new
+            predicates come from)
+  3 ANSWER  a STAGE for R, its measure mined by the pipeline on R's refuted boards and promoted by the verifier's rules:
+            for a counter-frame its goal is to LEAVE R; for a blind spot, to play well inside R (the game's own ends:
+            held, won, progress) -- each against the material's own frame inside R
+  4 ARCHIVE every counter-frame, blind spot and gap kept with its status (survived the local check on N boards / predictor
+            only / answered by a stage) -- a never-forget archive
 
   python -m catspace.incubator.analyst.discovery.challenger --run level2b --round 2
 """
@@ -60,7 +65,38 @@ def best_threshold(v: np.ndarray, y: np.ndarray) -> tuple:
     return best
 
 
-def mine(res: list, frames: dict, material: str, top: int = 5, check_n: int = 60, seed: int = 0, margin: float = 0.10) -> dict:
+ALPHA = 0.05                        # the family-wise level over the candidates tested (Bonferroni)
+
+
+def excess(y: np.ndarray, r: np.ndarray) -> float:
+    """One-sided Fisher exact p-value: do the claims (y: refuted?) fail MORE inside R (r) than outside it? -- the bar
+    does not rise with the frame's own failure rate."""
+    from scipy.stats import fisher_exact
+    a, b, c, d = int((y & r).sum()), int((~y & r).sum()), int((y & ~r).sum()), int((~y & ~r).sum())
+    if a + b == 0 or c + d == 0:
+        return 1.0
+    return float(fisher_exact([[a, b], [c, d]], alternative="greater")[1])
+
+
+def split(cands: list, alpha: float = ALPHA) -> tuple:
+    """The candidates kept (held-out excess significant at alpha / their number, >= 10 boards checked) -> (traps, blind
+    spots): a trap if the local check holds on >= 0.8 of its refuted boards, else a blind spot."""
+    kept = [c for c in cands if c["p"] < alpha / max(len(cands), 1) and c["checked"] >= 10]
+    return [c for c in kept if c["trap"] >= 0.8], [c for c in kept if c["trap"] < 0.8]
+
+
+def pick(traps: list, blinds: list) -> tuple:
+    """-> (the trap, the blind spot) answered: the trap holding most often (then the lift); the blind spot predicting
+    best among those NOT the trap's own region -- one whose refuted boards are mostly the trap's is the same phenomenon
+    on the other side of the 0.8 line (2026-10-12: "their rook far from its king" came out as a trap at 0.92 and as a
+    blind spot at 0.77)."""
+    trap = max(traps, key=lambda c: (c["trap"], c["lift"]), default=None)
+    own = set(trap["boards"]) if trap else set()
+    blinds = [c for c in blinds if len(own & set(c["boards"])) <= 0.5 * max(len(set(c["boards"])), 1)]
+    return trap, max(blinds, key=lambda c: (c["lift"], c["recall"]), default=None)
+
+
+def mine(res: list, frames: dict, material: str, top: int = 5, check_n: int = 60, seed: int = 0) -> dict:
     import catspace.incubator.analyst  # noqa: F401
     import analyst_core as A
     from . import base_vocabulary as V
@@ -88,31 +124,35 @@ def mine(res: list, frames: dict, material: str, top: int = 5, check_n: int = 60
     out = []
     frame = frames.get(material, [])
     for sc, t, th, v in cands[:top]:
-        r = (v >= th) & ~train
-        prec = float(y[r].mean()) if r.sum() else 0.0
-        rec = float((y & r & ~train).sum() / max((y & ~train).sum(), 1))
-        inside = [f for f, ok in zip(fens, r & y) if ok]                   # refuted test boards inside R
+        yt, rt = y[~train], (v >= th)[~train]
+        prec = float(yt[rt].mean()) if rt.sum() else 0.0
+        outside = float(yt[~rt].mean()) if (~rt).sum() else 0.0
+        rec = float((yt & rt).sum() / max(yt.sum(), 1))
+        p = excess(yt, rt)
+        inside = [f for f, ok in zip(fens, (v >= th) & ~train & y) if ok]  # refuted test boards inside R
         sample = random.Random(seed).sample(inside, min(check_n, len(inside)))
         chk = [c for c in A.trap_check(sample, frame, t, th) if c is not None]
         trap = sum(chk) / max(len(chk), 1)
-        out.append(dict(term=t, theta=th, gloss=V.gloss(V.parse(t)), precision=prec, recall=rec, lift=prec / max(base_rate, 1e-9),
-                        trap=trap, checked=len(chk), boards=inside))
-        print(f"OBS   R = {{ {V.gloss(V.parse(t))} >= {th} }}: held-out precision {prec:.2f} (base {base_rate:.2f}, lift {prec / max(base_rate, 1e-9):.2f}), "
-              f"recall {rec:.2f}; the local trap check holds on {sum(chk)}/{len(chk)} of its refuted boards")
-    accepted = [c for c in out if c["precision"] >= max(0.6, base_rate + margin) and c["trap"] >= 0.8 and c["checked"] >= 10]
-    print(f"OBS   ({time.time() - t0:.0f} s)")
-    if not accepted:
-        return dict(material=material, status="vocabulary gap", candidates=[{k: v for k, v in c.items() if k != "boards"} for c in out],
-                    gap_boards=[f for f, ok in zip(fens, y & ~train) if ok][:200], frame=frame)
-    best = max(accepted, key=lambda c: (c["trap"], c["lift"]))
-    return dict(material=material, status="counter-frame", frame=frame, **{k: v for k, v in best.items() if k != "boards"},
-                boards=best["boards"], candidates=[{k: v for k, v in c.items() if k != "boards"} for c in out])
+        out.append(dict(term=t, theta=th, gloss=V.gloss(V.parse(t)), precision=prec, outside=outside, p=p, recall=rec,
+                        lift=prec / max(base_rate, 1e-9), trap=trap, checked=len(chk), boards=inside))
+        print(f"OBS   R = {{ {V.gloss(V.parse(t))} >= {th} }}: held-out, refuted {prec:.2f} inside R against {outside:.2f} outside "
+              f"(base {base_rate:.2f}; one-sided Fisher p {p:.1e}), recall {rec:.2f}; the local trap check holds on {sum(chk)}/{len(chk)} of its refuted boards")
+    traps, blinds = split(out)
+    print(f"OBS   ({time.time() - t0:.0f} s; kept at p < {ALPHA}/{len(out)}: {len(traps)} trap(s), {len(blinds)} blind spot(s))")
+    strip = lambda c: {k: v for k, v in c.items() if k != "boards"}
+    trap, blind = pick(traps, blinds)
+    status = " + ".join(s for s, c in (("counter-frame", trap), ("blind spot", blind)) if c) or "vocabulary gap"
+    return dict(material=material, status=status, frame=frame, trap=trap, blind=blind, candidates=[strip(c) for c in out],
+                **({} if trap or blind else dict(gap_boards=[f for f, ok in zip(fens, y & ~train) if ok][:200])))
 
 
-def answer(cf: dict, run: str, rnd: int, frames: dict, defender: str = "tablebase", n_boards: int = 50, budget: int = 60) -> dict:
+def answer(cf: dict, material: str, kind: str, run: str, rnd: int, frames: dict, defender: str = "tablebase",
+           n_boards: int = 50, budget: int = 60) -> dict:
     """The attacker's lemma-incorporation as a STAGE (the red team: "a new frame whose goal is 'leave R'"): a situational
     frame "<material>:if:<term>>=<theta>", active while R holds, its measure MINED by the pipeline like any other on R's
-    refuted boards; its verifier games succeed on leaving R (or the material goal) without losing ground."""
+    refuted boards. kind "trap" (a counter-frame): its verifier games succeed on leaving R (or the material goal) without
+    losing ground; kind "blind" (a blind spot): on the game's own ends -- held, won, progress. Against the material's own
+    frame inside R (no stage)."""
     from .pipeline import run as pipeline_run
     from . import defenders as D
     import chess
@@ -120,18 +160,20 @@ def answer(cf: dict, run: str, rnd: int, frames: dict, defender: str = "tablebas
         b = chess.Board(f); b.halfmove_clock = 0
         return b.fen()
     boards = [fresh(f) for f in cf["boards"]][:100]
-    fkey = f"{cf['material']}:if:{cf['term']}>={cf['theta']}"
-    hole = dict(name=f"stage_{run}_{cf['material']}_r{rnd}", material=cf["material"], frame_key=fkey, frames=frames, piece="*",
-                base=[], k=2, stuck=boards, sampled=len(boards), leave=[cf["term"], cf["theta"]])
+    fkey = f"{material}:if:{cf['term']}>={cf['theta']}"
+    hole = dict(name=f"stage_{run}_{material}_r{rnd}_{kind}", material=material, frame_key=fkey, frames=frames, piece="*",
+                base=[], k=2, stuck=boards, sampled=len(boards), leave=[cf["term"], cf["theta"]] if kind == "trap" else None)
     json.dump(hole, open(paths.derived(f"hole_{hole['name']}.json"), "w"))
     out = pipeline_run(hole["name"], budget, hole=hole, defender=defender, n_boards=n_boards)
     base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None
     as_o = lambda r: dict(n=r["n"], lost=r["lost"], won=r["mated"], kept=r["certified"], claims=r["played"], states=r.get("states", 0))
     wins = bool(best) and (D.better(as_o(best), as_o(base)) if "ranks" in base else best["score"] > base["score"] + 0.05)
-    show = lambda r: f"left R or won {r['mated']}/{r['n']}, lost ground {r['lost']}"
-    print(f"OBS   the attacker's answer -- a STAGE for R ({fkey}): the best mined measure {best and best['term']} -- {best and show(best)}; "
-          f"without the stage {show(base)} -> {'PROMOTED' if wins else 'not better'}")
-    return dict(frame_key=fkey, term=best and best["term"], schema=best and best["schema"], base=show(base), answer=best and show(best), promoted=bool(wins))
+    goal = "left R or won" if kind == "trap" else "won"
+    show = lambda r: f"{goal} {r['mated']}/{r['n']}, lost ground {r['lost']}, lemma-states {r.get('states', 0) / max(r['n'], 1):.1f} a board"
+    print(f"OBS   the attacker's answer -- a STAGE for the {'counter-frame' if kind == 'trap' else 'blind spot'} R ({fkey}): the best mined "
+          f"measure {best and best['term']} -- {best and show(best)}; without the stage {show(base)} -> {'PROMOTED' if wins else 'not better'}")
+    return dict(kind=kind, frame_key=fkey, term=best and best["term"], schema=best and best["schema"], base=show(base),
+                answer=best and show(best), promoted=bool(wins))
 
 
 def archive(entry: dict) -> None:
@@ -141,13 +183,25 @@ def archive(entry: dict) -> None:
     json.dump(arc, open(p, "w"), indent=1)
 
 
+def report(material: str, cf: dict) -> None:
+    for kind, c in (("trap", cf.get("trap")), ("blind", cf.get("blind"))):
+        if c and kind == "trap":
+            print(f"OBS COUNTER-FRAME for {material}: when {c['gloss']} >= {c['theta']}, the defender holds {cf['frame']} (local trap "
+                  f"check {c['trap']:.2f} on {c['checked']} boards; held-out refuted {c['precision']:.2f} inside R, {c['outside']:.2f} outside)")
+        elif c:
+            print(f"OBS BLIND SPOT for {material}: when {c['gloss']} >= {c['theta']}, the frame {cf['frame']} chooses wrong (held-out "
+                  f"refuted {c['precision']:.2f} inside R, {c['outside']:.2f} outside; the local trap check only {c['trap']:.2f} -- we had a move)")
+    if not (cf.get("trap") or cf.get("blind")):
+        print(f"OBS {cf['status'].upper()} for {material}" + (f" -- {len(cf.get('gap_boards', []))} refuted boards kept for new predicates"
+                                                             if cf["status"] == "vocabulary gap" else ""))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True)
     ap.add_argument("--round", type=int, required=True)
     ap.add_argument("--material", default="KRRvKR")
     ap.add_argument("--no-answer", action="store_true")
-    ap.add_argument("--margin", type=float, default=0.10, help="a trap must predict the refutations this much above their base rate")
     a = ap.parse_args(argv)
     stem = f"surprise_loop_KRRvKR_{a.run}"
     history = json.load(open(paths.derived(f"{stem}.json")))
@@ -157,18 +211,17 @@ def main(argv=None):
     import analyst_core as A
     for k, v in frames.items():
         A.set_material_frame(k, v)
-    cf = mine(res, frames, a.material, margin=a.margin)
-    entry = dict(run=a.run, round=a.round, t=time.strftime("%Y-%m-%d %H:%M"), **cf)
-    if cf["status"] == "counter-frame":
-        print(f"OBS COUNTER-FRAME for {a.material}: when {cf['gloss']} >= {cf['theta']}, the defender holds the frame "
-              f"{cf['frame']} (local trap check {cf['trap']:.2f} on {cf['checked']} boards; held-out precision {cf['precision']:.2f})")
-        if not a.no_answer:
-            entry["answer"] = answer(cf, a.run, a.round, frames)
-            entry["status"] = "refuted by the attacker's answer" if entry["answer"]["promoted"] else "standing"
-    else:
-        print(f"OBS {cf['status'].upper()} for {a.material}: no trap of the vocabulary both predicts the refutations and passes the local check"
-              + (f" -- {len(cf.get('gap_boards', []))} refuted boards kept for new predicates" if cf["status"] == "vocabulary gap" else ""))
+    cf = mine(res, frames, a.material)
+    report(a.material, cf)
+    entry = dict(run=a.run, round=a.round, t=time.strftime("%Y-%m-%d %H:%M"), **strip_boards(cf))
+    if not a.no_answer:
+        entry["answers"] = [answer(cf[kind], a.material, kind, a.run, a.round, frames) for kind in ("trap", "blind") if cf.get(kind)]
     archive(entry)
+
+
+def strip_boards(cf: dict) -> dict:
+    return {k: ({kk: vv for kk, vv in v.items() if kk != "boards"} if isinstance(v, dict) else v)
+            for k, v in cf.items() if k != "gap_boards"}
 
 
 if __name__ == "__main__":
@@ -176,31 +229,29 @@ if __name__ == "__main__":
 
 
 def round_(res: list, played: dict, frames: dict, run: str, rnd: int, register: bool = True) -> dict:
-    """The challenger inside the loop, after a round's mining: per material with a frame of ours, a trap mined from the
-    claims of the frame the round was PLAYED with and checked against that frame (the data's own frame -- 2026-10-12:
-    checked against the newly mined one it reported gaps); a counter-frame answered by a stage mined with the NEW frames
+    """The challenger inside the loop, after a round's mining: per material with a frame of ours, a trap and a blind spot
+    mined from the claims of the frame the round was PLAYED with and checked against that frame (the data's own frame --
+    2026-10-12: checked against the newly mined one it reported gaps); each answered by a stage mined with the NEW frames
     (the next round's); a promoted stage joins them. -> frames."""
     new = dict(frames)
     for material in sorted({k for k in played if ":" not in k and played[k]}):
         cf = mine(res, played, material)
-        entry = dict(run=run, round=rnd, t=time.strftime("%Y-%m-%d %H:%M"), **{k: v for k, v in cf.items() if k not in ("gap_boards",)})
-        if cf["status"] == "counter-frame":
-            print(f"OBS COUNTER-FRAME for {material}: when {cf['gloss']} >= {cf['theta']}, the defender holds {cf['frame']} "
-                  f"(local trap check {cf['trap']:.2f} on {cf['checked']} boards; held-out precision {cf['precision']:.2f})")
-            ans = answer(cf, run, rnd, new)
-            entry["answer"] = ans
+        report(material, cf)
+        entry = dict(run=run, round=rnd, t=time.strftime("%Y-%m-%d %H:%M"), **strip_boards(cf), answers=[])
+        for kind in ("trap", "blind"):
+            c = cf.get(kind)
+            if not c:
+                continue
+            ans = answer(c, material, kind, run, rnd, new)
+            entry["answers"].append(ans)
             if ans["promoted"]:
                 new[ans["frame_key"]] = [ans["term"]]
-                entry["status"] = "answered by a stage"
                 if register:
                     from . import registry as R
-                    R.add_generated(f"stage_{material.lower()}_{run}_r{rnd}", ans["term"], "measure", f"stage_{run}_{material}_r{rnd}",
-                                    {"verifier": f"{ans['answer']} against {ans['base']} without the stage", "trap": f"{cf['gloss']} >= {cf['theta']}",
+                    R.add_generated(f"stage_{material.lower()}_{run}_r{rnd}_{kind}", ans["term"], "measure", f"stage_{run}_{material}_r{rnd}_{kind}",
+                                    {"verifier": f"{ans['answer']} against {ans['base']} without the stage",
+                                     ("trap" if kind == "trap" else "blind spot"): f"{c['gloss']} >= {c['theta']}",
                                      "status": "a conjecture: the stage's claim is not proved"}, used_by=f"the stage {ans['frame_key']}")
                     R.export()
-            else:
-                entry["status"] = "standing (no stage beat it)"
-        else:
-            print(f"OBS {cf['status'].upper()} for {material}")
         archive(entry)
     return new

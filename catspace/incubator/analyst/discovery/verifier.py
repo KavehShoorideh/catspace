@@ -32,8 +32,10 @@ def spec_of(hole: dict, defender: str = "self") -> str:
     """What a verdict was made against besides the term and the boards: the hole's base measure, the safety, the horizon,
     the closed loop's defender -- a hole of the same name and boards with another base (the next run's) must not reuse it
     (BUGS 2026-10-12), nor a verdict against another opponent."""
+    # a stage (a situational frame) is judged under its own key, with or without a region to leave
+    stage = hole.get("leave") or ":if:" in (hole.get("frame_key") or "")
     return json.dumps([hole["base"], hole.get("piece") or hole["material"][1], hole["k"]] + ([] if defender == "self" else [defender])
-                      + ([hole["frame_key"], hole.get("leave")] if hole.get("leave") else []))
+                      + ([hole["frame_key"], hole.get("leave")] if stage else []))
 
 
 def board_hash(boards: list) -> str:
