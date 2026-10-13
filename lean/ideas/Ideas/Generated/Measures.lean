@@ -330,4 +330,19 @@ def krvkn_krn1_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat :
 /-- stage_krvkn_krn1_r2_trap_carried: how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the edge squares. (2026-10-13, hole stage_krn1_KRvKN_r2_trap_carried; verifier: 12 games better, 2 worse over 3 rounds, e-value 23.9 (held-out games); region: (count (and (knight2 O) (not (nearer P L)))) >= 14; status: a conjecture: the stage's claim is not proved) -/
 def stage_krvkn_krn1_r2_trap_carried (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach L (fun u => !(attackedBy p c L u))) u && (fun u => !(edge u)) u))
 
+/-- stage_krrvkr_krr_more2_r2_blind_carried: how many of the squares nearer our other piece than our king. (2026-10-13, hole stage_krr_more2_KRRvKR_r2_blind_carried; verifier: 43 games better, 19 worse over 3 rounds, e-value 34.2 (held-out games); region: (count (and (knight1 P) (not (nearer O L)))) >= 5; status: a conjecture: the stage's claim is not proved) -/
+def stage_krrvkr_krr_more2_r2_blind_carried (p : Position) (c : Color) (W L P O : Square) : Nat := (count (nearer P W))
+
+/-- stage_krrvkr_krr_more2_r4_blind_carried: how many of the squares our other piece can walk to over the squares they do not attack that are also the squares outside the squares their other piece can walk to over the squares we do not attack. (2026-10-13, hole stage_krr_more2_KRRvKR_r4_blind_carried; verifier: 34 games better, 14 worse over 3 rounds, e-value 23.8 (held-out games); region: (count (and (nearer P L) (not (diagonals O)))) >= 26; status: a conjecture: the stage's claim is not proved) -/
+def stage_krrvkr_krr_more2_r4_blind_carried (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach P (fun u => !(attackedBy p (Color.opposite c) W u))) u && (fun u => !((reach O (fun u => !(attackedBy p c L u))) u)) u))
+
+/-- stage_krrvkr_krr_more2_r5_blind_carried: how many of the squares from our king to their other piece along their line. (2026-10-13, hole stage_krr_more2_KRRvKR_r5_blind_carried; verifier: 19 games better, 3 worse over 2 rounds, e-value 237 (held-out games); region: (count (and unhit (not (reach O unhit)))) >= 3; status: a conjecture: the stage's claim is not proved) -/
+def stage_krrvkr_krr_more2_r5_blind_carried (p : Position) (c : Color) (W L P O : Square) : Nat := (count (segment W O))
+
+/-- stage_kqvkr_kqr_more2_r4_blind_carried: how many of the squares they do not attack that are also the squares nearer their other piece than our other piece. (2026-10-13, hole stage_kqr_more2_KQvKR_r4_blind_carried; verifier: 22 games better, 0 worse over 2 rounds, e-value 3.65e+05 (held-out games); region: (count (and (line W O) (not (cls b2)))) >= 8; status: a conjecture: the stage's claim is not proved) -/
+def stage_kqvkr_kqr_more2_r4_blind_carried (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (fun u => !(attackedBy p (Color.opposite c) W u)) u && (nearer O P) u))
+
+/-- stage_kqvkr_kqr_more2_r5_blind_carried: how many of the squares nearer our king than their king that are also the squares nearer our king than our other piece. (2026-10-13, hole stage_kqr_more2_KQvKR_r5_blind_carried; verifier: 22 games better, 3 worse over 2 rounds, e-value 1.12e+03 (held-out games); region: (count (and (line W O) (reach W unhit))) >= 2; status: a conjecture: the stage's claim is not proved) -/
+def stage_kqvkr_kqr_more2_r5_blind_carried (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer W L) u && (nearer W P) u))
+
 end Ideas.Generated

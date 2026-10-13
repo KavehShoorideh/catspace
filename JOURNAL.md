@@ -30213,3 +30213,10 @@ printed by a run or a replay; each is one run -- directional.
   colour); (2) stages REPLACE the material's frame inside their region -- every K+B+N v K stage broke wins; prepend
   instead?; (3) progress-only promotions (no game won either way) -- now guarded; keep, or require held or won?;
   (4) quiet mate search in the planner (none today) against reasoned mates in Lean.
+
+THE LAST CHAIN (tags krr_more2, kqr_more2; 2026-10-13 02:06-03:07 PDT; from the generated track's frames, 6 rounds
+each). K+R+R v K+R rounds 0-6: 72/71/72/72/64/70/80 (no frames on the same starts: 69/72/64/68/60/61/65) -- three more
+stages, guarded (one reusing "the line from our king to their rook"); on round 6's starts 65 -> 75 (krr_more) -> 80.
+K+Q v K+R rounds 0-6: 76/76/82/74/64/75/64 (no frames: 75/71/-/68/61/73/62) -- two more stages for our king aligned with
+their rook (one reusing K+B+N v K's king-coordination term). The unseen K+Q v K+R starts gain little: +2 and +2.
+No errors in either run.

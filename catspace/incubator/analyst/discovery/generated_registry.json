@@ -1709,5 +1709,90 @@
   },
   "used_by": "the stage KRvKN:if:(count (and (knight2 O) (not (nearer P L))))>=14",
   "created": "2026-10-13"
+ },
+ {
+  "id": "stage_krrvkr_krr_more2_r2_blind_carried",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (nearer P W))",
+  "gloss": "how many of the squares nearer our other piece than our king",
+  "size": 4,
+  "lean": "(count (nearer P W))",
+  "hole": "stage_krr_more2_KRRvKR_r2_blind_carried",
+  "evidence": {
+   "verifier": "43 games better, 19 worse over 3 rounds, e-value 34.2 (held-out games)",
+   "region": "(count (and (knight1 P) (not (nearer O L)))) >= 5",
+   "status": "a conjecture: the stage's claim is not proved"
+  },
+  "used_by": "the stage KRRvKR:if:(count (and (knight1 P) (not (nearer O L))))>=5",
+  "created": "2026-10-13"
+ },
+ {
+  "id": "stage_krrvkr_krr_more2_r4_blind_carried",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (reach P unhit) (not (reach O free))))",
+  "gloss": "how many of the squares our other piece can walk to over the squares they do not attack that are also the squares outside the squares their other piece can walk to over the squares we do not attack",
+  "size": 9,
+  "lean": "(count (fun u => (reach P (fun u => !(attackedBy p (Color.opposite c) W u))) u && (fun u => !((reach O (fun u => !(attackedBy p c L u))) u)) u))",
+  "hole": "stage_krr_more2_KRRvKR_r4_blind_carried",
+  "evidence": {
+   "verifier": "34 games better, 14 worse over 3 rounds, e-value 23.8 (held-out games)",
+   "region": "(count (and (nearer P L) (not (diagonals O)))) >= 26",
+   "status": "a conjecture: the stage's claim is not proved"
+  },
+  "used_by": "the stage KRRvKR:if:(count (and (nearer P L) (not (diagonals O))))>=26",
+  "created": "2026-10-13"
+ },
+ {
+  "id": "stage_krrvkr_krr_more2_r5_blind_carried",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (segment W O))",
+  "gloss": "how many of the squares from our king to their other piece along their line",
+  "size": 4,
+  "lean": "(count (segment W O))",
+  "hole": "stage_krr_more2_KRRvKR_r5_blind_carried",
+  "evidence": {
+   "verifier": "19 games better, 3 worse over 2 rounds, e-value 237 (held-out games)",
+   "region": "(count (and unhit (not (reach O unhit)))) >= 3",
+   "status": "a conjecture: the stage's claim is not proved"
+  },
+  "used_by": "the stage KRRvKR:if:(count (and unhit (not (reach O unhit))))>=3",
+  "created": "2026-10-13"
+ },
+ {
+  "id": "stage_kqvkr_kqr_more2_r4_blind_carried",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and unhit (nearer O P)))",
+  "gloss": "how many of the squares they do not attack that are also the squares nearer their other piece than our other piece",
+  "size": 6,
+  "lean": "(count (fun u => (fun u => !(attackedBy p (Color.opposite c) W u)) u && (nearer O P) u))",
+  "hole": "stage_kqr_more2_KQvKR_r4_blind_carried",
+  "evidence": {
+   "verifier": "22 games better, 0 worse over 2 rounds, e-value 3.65e+05 (held-out games)",
+   "region": "(count (and (line W O) (not (cls b2)))) >= 8",
+   "status": "a conjecture: the stage's claim is not proved"
+  },
+  "used_by": "the stage KQvKR:if:(count (and (line W O) (not (cls b2))))>=8",
+  "created": "2026-10-13"
+ },
+ {
+  "id": "stage_kqvkr_kqr_more2_r5_blind_carried",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (nearer W L) (nearer W P)))",
+  "gloss": "how many of the squares nearer our king than their king that are also the squares nearer our king than our other piece",
+  "size": 8,
+  "lean": "(count (fun u => (nearer W L) u && (nearer W P) u))",
+  "hole": "stage_kqr_more2_KQvKR_r5_blind_carried",
+  "evidence": {
+   "verifier": "22 games better, 3 worse over 2 rounds, e-value 1.12e+03 (held-out games)",
+   "region": "(count (and (line W O) (reach W unhit))) >= 2",
+   "status": "a conjecture: the stage's claim is not proved"
+  },
+  "used_by": "the stage KQvKR:if:(count (and (line W O) (reach W unhit)))>=2",
+  "created": "2026-10-13"
  }
 ]
