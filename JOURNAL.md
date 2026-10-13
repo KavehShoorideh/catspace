@@ -29820,3 +29820,26 @@ counter-region), lemma-incorporation (a subgoal removing the counter-idea first 
 Counter-frames deduplicated by the positions they explain, not their syntax (R-Diverse 2026). Not borrowed: the LLM
 self-play challenger rewards (uncertainty, learnability) -- they exist for lack of a ground-truth opponent; we have one.
 Established: the synthesis, double oracle and PAIRED results; speculative: their transfer to chess frames.
+THE CHALLENGER, RED-TEAMED (2026-10-12 19:55 PDT; Kaveh: "do one more round of literature review, trying to verify and poke
+holes in your own synthesis, and then if you're satisfied, then let's build the Challenger"; "have in mind that we want to
+find a method that would generalize to ... robotics ... a table base ... ending playbook is reasonable to have, but it
+being perfect or complete is not"). The second round (verified at abstract level unless noted) found: Bratko AL1's "them"
+constraints PRUNE the defender's moves inside a forcing tree (an assumption, not a counter-strategy -- my misreading);
+Alur, Moarref & Topcu 2013 mine patterns from the counter-strategy and turn them into ENVIRONMENT ASSUMPTIONS that rule it
+out -- inverted for us (a tablebase defender cannot be assumed away; the sound analogue is a GUARD on our claim); three of
+my choices assumed a perfect or complete oracle -- soundness by replaying against Syzygy, regret over tablebase-won
+positions, the double oracle (overkill too: perfect-information games have pure winning strategies) -- and fail the
+robotics constraint; Luo & Liu 2022 could not be verified (dropped). THE FORMAL CORE INSTEAD: a frame is a RANKING
+certificate (an under-approximate attractor rank -- Jurdziński 2000 progress measures; ranking certificates sound and
+complete for the reachability player); a counter-frame is its dual, a k-bounded TRAP against the frame's sub-target (our
+hold_blocks), which exists exactly where the frame's claim is false and is checked LOCALLY (one move against every reply),
+never by replay. Any source of refutations -- the tablebase, our own search, a simulator, perturbations -- is a FALSIFIER,
+never the judge (S-TaLiRo; learned Lyapunov / barrier certificates with a falsifier: Chang et al. 2019, Robey et al. 2020;
+the scenario approach for statistical bounds). REVISED DESIGN: (1) the challenger mines a trap in our vocabulary from the
+frame's refuted claims (patterns over predicate subsets, Alur's way; importance-weighted, fated/free segments -- Jin, Ravi &
+Somenzi), scored first as a PREDICTOR (precision / recall on held-out failures); (2) the local trap check decides whether
+it is a counter-frame; none expressible -> a VOCABULARY GAP, a first-class outcome (where new predicates come from); (3)
+the attacker answers by exception-barring (the guard "not in R") or lemma-incorporation (a frame "leave R", a stage --
+Sadikov & Bratko 2006); (4) promotion = CEGIS with a never-forget archive and a falsifier ensemble; every claim carries a
+status (proved / survived N / refuted); (5) priority by learnability and witnessed regret. Risk (theirs): the K+R+R v K+R
+defender's resource is dynamic (rook checks) -- static traps may rarely be expressible; expect "unexplained" at first.
