@@ -27,6 +27,9 @@ pub enum Term {
     // a square's colour (Kaveh 2026-10-13: "go on both" -- the light and dark squares; the squares of a square's colour:
     // K+B+N v K's corner of the bishop's colour, which no word could say)
     Light, Dark, Colour(Box<Term>),
+    // every square by its name, from our side, and the square itself as a set (Kaveh 2026-10-13: "a mirroring lemma
+    // separately, and then ... the squares individually available")
+    Named(Square), At(Box<Term>),
 }
 
 /// The strongest piece of `c` other than its king -- by kind (queen, rook, bishop, knight, pawn), ties by the lower square.
@@ -50,7 +53,7 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
             "hit" => Some(Term::Hit), "unhit" => Some(Term::Unhit), "ours" => Some(Term::Ours), "theirs" => Some(Term::Theirs), "edge" => Some(Term::Edge),
             "corner" => Some(Term::Corner), "attacked" => Some(Term::Attacked), "free" => Some(Term::Free), "center" => Some(Term::Center),
             "light" => Some(Term::Light), "dark" => Some(Term::Dark),
-            _ => None };
+            _ => tok.parse::<Square>().ok().map(Term::Named) };
     }
     // (cls <square>): a literal square name, named from our side
     if t.get(*i).map(|h| h.as_str()) == Some("cls") {
@@ -73,7 +76,7 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
         ("dist", [a, c]) => Term::Dist(b(a), b(c)), ("sum", [a, c]) => Term::Sum(b(a), b(c)),
         ("lines", [a]) => Term::Lines(b(a)), ("diagonals", [a]) => Term::Diagonals(b(a)), ("segment", [a, c]) => Term::Segment(b(a), b(c)),
         ("knight1", [a]) => Term::Knight1(b(a)), ("knight2", [a]) => Term::Knight2(b(a)), ("attacks", [a]) => Term::Attacks(b(a)),
-        ("colour", [a]) => Term::Colour(b(a)),
+        ("colour", [a]) => Term::Colour(b(a)), ("at", [a]) => Term::At(b(a)),
         _ => return None,
     })
 }
@@ -90,6 +93,8 @@ fn sq(t: &Term, q: &Chess, lone: Color) -> Option<Square> {
         // colour of P" meant nothing half the time)
         Term::P => strongest(b, !lone),
         Term::O => strongest(b, lone),
+        // a named square, from our side: our first rank is rank 1 (the mirror of Lean `named`)
+        Term::Named(x) => Some(if !lone == Color::White { *x } else { x.flip_vertical() }),
         _ => None,
     }
 }
@@ -128,6 +133,7 @@ pub fn set(t: &Term, q: &Chess, lone: Color) -> Bitboard {
             .fold(Bitboard::EMPTY, |m, u| m | shakmaty::attacks::knight_attacks(u))),
         Term::Center => [Square::D4, Square::E4, Square::D5, Square::E5].into_iter().collect(),
         Term::Light => Bitboard::LIGHT_SQUARES, Term::Dark => Bitboard::DARK_SQUARES,
+        Term::At(a) => s1(a).map_or(Bitboard::EMPTY, Bitboard::from_square),
         Term::Colour(x) => match sq(x, q, lone) {
             Some(s) if Bitboard::LIGHT_SQUARES.contains(s) => Bitboard::LIGHT_SQUARES,
             Some(_) => Bitboard::DARK_SQUARES,

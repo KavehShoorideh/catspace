@@ -101,3 +101,33 @@ def test_colour_lean_renderings_typecheck(tmp_path):
     src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
     r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# EVERY SQUARE BY ITS NAME (Kaveh 2026-10-13): the 64 squares from our side, the square itself as a set; the class word unchanged
+
+def test_named_squares_from_our_side():
+    white = "8/8/8/4k3/8/2K5/P7/8 w - - 0 1"                  # our king c3, our pawn a2, their king e5
+    black = "8/p7/2k5/8/4K3/8/8/8 b - - 0 1"                  # the same from Black's side: our king c6, pawn a7
+    for fen in (white, black):
+        v = lambda t: A.vocab_values([fen], t)[0]
+        assert v("(dist W c3)") == 0 and v("(dist L e5)") == 0 and v("(dist P a2)") == 0
+        assert v("(count (and (file P) (rank a8)))") == 1          # the pawn's promotion square
+        assert v("(dist L a8)") == 4                               # their king to our promotion corner
+        assert v("(count (and ours (at a2)))") == 1 and v("(count (and ours (at a3)))") == 0
+        assert v("(count (cls a1))") == 2                          # a pawn: the class word keeps its mirror
+
+
+def test_the_enumeration_names_squares_without_constants():
+    terms = {V.sexpr(t) for t in V.enumerate_numbers()}
+    assert "(dist L a8)" in terms and "(count (and ours (at e4)))" in terms and "(count (and (file P) (rank a8)))" in terms
+    assert "(count (at e4))" not in terms and "(count (rank a8))" not in terms     # constants
+
+
+@pytest.mark.skipif(not Path("lean/ideas/.lake").exists(), reason="the Lean project is not built")
+def test_named_square_renderings_typecheck(tmp_path):
+    terms = ["(dist L a8)", "(count (and ours (at e4)))", "(count (and (file P) (rank a8)))", "(count (cls d1))"]
+    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
+    src = tmp_path / "VocabCheck.lean"
+    src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
+    r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
+    assert r.returncode == 0, r.stdout + r.stderr

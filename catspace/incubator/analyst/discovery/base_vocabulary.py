@@ -48,18 +48,27 @@ PRIMITIVES = {
     "knight2": (("sq",), "set", "the squares a knight on {0} reaches in two hops"),
     "center": ((), "set", "the four centre squares"),
     "attacks": (("sq",), "set", "the squares {0} attacks"),
-    "cls": (("lit",), "set", "the squares like {0} under the board's symmetries"),
-    # the square names (from our side), one per class of the board's eight symmetries
-    "a1": ((), "lit", "a1 (the corners)"), "b1": ((), "lit", "b1"), "c1": ((), "lit", "c1"), "d1": ((), "lit", "d1"),
-    "b2": ((), "lit", "b2"), "c2": ((), "lit", "c2"), "d2": ((), "lit", "d2"), "c3": ((), "lit", "c3"), "d3": ((), "lit", "d3"),
-    "d4": ((), "lit", "d4 (the centre)"),
+    "cls": (("sq",), "set", "the squares like {0} under the board's symmetries"),
+    # the square names (from our side), one per class of the board's eight symmetries -- since 2026-10-13 square words like
+    # the other 54 below (cls still takes them)
+    "a1": ((), "sq", "a1"), "b1": ((), "sq", "b1"), "c1": ((), "sq", "c1"), "d1": ((), "sq", "d1"),
+    "b2": ((), "sq", "b2"), "c2": ((), "sq", "c2"), "d2": ((), "sq", "d2"), "c3": ((), "sq", "c3"), "d3": ((), "sq", "d3"),
+    "d4": ((), "sq", "d4"),
     # a square's colour (Kaveh 2026-10-13: "go on both") -- at the end, the earlier symbols keep their indices
     "light": ((), "set", "the light squares"),
     "dark": ((), "set", "the dark squares"),
     "colour": (("sq",), "set", "the squares of {0}'s colour"),
+    # EVERY SQUARE BY ITS NAME (Kaveh 2026-10-13: "you want to have a mirroring lemma separately, and then you want to have
+    # the squares individually available"): the 64 squares named from our side (a8 is our promotion corner on the a-file),
+    # no symmetry in the words -- the board's symmetries are a lemma of their own; and the square itself as a set
+    "at": (("sq",), "set", "the square {0}"),
 }
+for _f in "abcdefgh":
+    for _r in "12345678":
+        PRIMITIVES.setdefault(_f + _r, ((), "sq", _f + _r))
 SYMBOLS = list(PRIMITIVES)
 SQUARE_CLASSES = ("a1", "b1", "c1", "d1", "b2", "c2", "d2", "c3", "d3", "d4")
+SQUARE_NAMES = tuple(f + r for f in "abcdefgh" for r in "12345678")
 
 
 def head(t):
@@ -98,8 +107,8 @@ def size(t) -> int:
 def lean(t) -> str:
     """The term as a Lean expression over Ideas.Vocabulary (parameters: the position `p`, our colour `c`, squares `W L P O`)."""
     if isinstance(t, str):
-        if t in SQUARE_CLASSES:                    # a square name -> its Lean value (file, rank)
-            return f"((({ord(t[0]) - 97} : Fin 8)), (({int(t[1]) - 1} : Fin 8)))"
+        if t in SQUARE_NAMES:                      # a square name -> the square so named from our side
+            return f"(named c ((({ord(t[0]) - 97} : Fin 8)), (({int(t[1]) - 1} : Fin 8))))"
         if t in ("center", "light", "dark"):
             return t
         return {"W": "W", "L": "L", "P": "P", "O": "O", "edge": "edge", "corner": "corner",
@@ -107,6 +116,8 @@ def lean(t) -> str:
                 "hit": "(attackedBy p (Color.opposite c) W)", "unhit": "(fun u => !(attackedBy p (Color.opposite c) W u))",
                 "ours": "(piecesOf p c)", "theirs": "(piecesOf p (Color.opposite c))"}[t]
     h, *a = t
+    if h == "cls":                                 # (the class word names its square itself, from side c)
+        return f"(cls p c ((({ord(a[0][0]) - 97} : Fin 8)), (({int(a[0][1]) - 1} : Fin 8))))"
     x = [lean(y) for y in a]
     return {
         "box": lambda: f"(box {x[0]})", "rank": lambda: f"(rankOf {x[0]})", "file": lambda: f"(fileOf {x[0]})",
@@ -116,7 +127,7 @@ def lean(t) -> str:
         "count": lambda: f"(count {x[0]})", "dist": lambda: f"(dist {x[0]} {x[1]})", "sum": lambda: f"({x[0]} + {x[1]})",
         "lines": lambda: f"(lines {x[0]})", "diagonals": lambda: f"(diagonals {x[0]})", "segment": lambda: f"(segment {x[0]} {x[1]})",
         "knight1": lambda: f"(knight1 {x[0]})", "knight2": lambda: f"(knight2 {x[0]})", "attacks": lambda: f"(attacksFrom p {x[0]})",
-        "cls": lambda: f"(cls p c {x[0]})", "colour": lambda: f"(colour {x[0]})",
+        "colour": lambda: f"(colour {x[0]})", "at": lambda: f"(atSq {x[0]})",
     }[h]()
 
 
@@ -155,6 +166,14 @@ def enumerate_numbers(sqs=("W", "L", "P", "O"), max_and: int = 2):
     if max_and >= 2:
         sets += [("and", a, b) for a, b in itertools.combinations(base, 2)]
         sets += [("and", a, ("not", b)) for a in base for b in base if a != b]
+    if max_and >= 2:
+        # THE NAMED SQUARES (2026-10-13), only where they say something: a square in a base set (membership), a named rank
+        # or file against a base set (with its complements); a piece's distance to a named square. The new sets alone are
+        # constants (one square, eight squares) and two of them meet in a constant -- left out
+        named = [("rank", f"a{r}") for r in "12345678"] + [("file", f"{f}1") for f in "abcdefgh"]
+        sets += [("and", a, ("at", x)) for a in base for x in SQUARE_NAMES]
+        sets += [y for a in base for r in named for y in (("and", a, r), ("and", a, ("not", r)), ("and", r, ("not", a)))]
     nums = [("count", s) for s in sets] + [("dist", a, b) for a, b in itertools.combinations(sqs, 2)]
+    nums += [("dist", a, x) for a in sqs for x in SQUARE_NAMES]
     nums.sort(key=size)
     return nums

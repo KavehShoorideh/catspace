@@ -24,3 +24,4 @@ import Ideas.QueenMateShapes
 import Ideas.ForcedByMeasure
 import Ideas.Base.Vocabulary
 import Ideas.Generated.Measures
+import Ideas.Mirror

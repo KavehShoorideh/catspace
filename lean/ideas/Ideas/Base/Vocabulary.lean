@@ -128,6 +128,14 @@ def cls (p : Position) (c : Color) (s : Square) : SquareSet := fun u =>
   let abs : Square := if c == Color.white then s else (s.1, Fin.rev s.2)
   if pawns then u == abs || u == (Fin.rev abs.1, abs.2) else (symmetries abs).contains u
 
+/-- **a named square**: the square `s` named from side `c`'s view -- its first rank is rank 1, so `a8` is its promotion
+corner on the a-file (Kaveh 2026-10-13: "the squares individually available"; the board's symmetries are a lemma of their
+own, not part of the words). -/
+def named (c : Color) (s : Square) : Square := if c == Color.white then s else (s.1, Fin.rev s.2)
+
+/-- **the square itself**, as a set. -/
+def atSq (s : Square) : SquareSet := fun u => u == s
+
 /-- **colour of a square**: light or dark. -/
 def squareColour (s : Square) : Nat := GeoLemmas.colour s
 

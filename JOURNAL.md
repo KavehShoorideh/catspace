@@ -30342,3 +30342,31 @@ do?"). One run each, directional.
     plies. The first capture: free 49, a trade 22, after our check 6; their king on an edge 54/93.
     Our planner (krr_more2 round 6, its 100 games): won 80 -- their rook won outright 55, traded 22, with their rook on 3;
     drawn 20 -- 17 with their rook never taken.
+
+EVERY SQUARE BY ITS NAME, AND THE MIRROR LEMMA (2026-10-13 16:05-16:35 PDT; Kaveh: "Go learn some lemmas about pawns";
+"you want to have a mirroring lemma separately, and then you want to have the squares individually available. So then
+basically later on you want to say, if I want to search this position, I don't need to because I can just search that
+position and then apply the symmetry").
+  THE GAP: with a pawn on the board the class word (cls) keeps only the left-right mirror, and only ten square names
+  existed (one per class of the eight symmetries) -- 22 classes, the whole second half of the board and the promotion
+  squares among them, could not be named.
+  THE WORDS (Python base_vocabulary, Rust vocab.rs, Lean Ideas.Base.Vocabulary `named`, `atSq`): the 64 squares named from
+  our side (a8 is our promotion corner on the a-file; from Black's side the ranks are read from Black's first rank) as
+  square words usable wherever a square goes -- (dist L a8), (rank a8), (file P) -- and (at X), the square itself as a set;
+  cls unchanged (the old frames keep their meaning). The enumeration adds a square inside each base set (membership), each
+  named rank and file against each base set (with complements), and each piece's distance to each named square; the new
+  sets alone are constants and are left out: 17,233 -> 29,473 number terms. The proposers' models are per vocabulary
+  size and retrained once (v100). Tests: values from both sides, the promotion square (and (file P) (rank a8)) holds one
+  square, the Lean renderings type-check.
+  THE MIRROR LEMMA (lean/ideas/Ideas/Mirror.lean, 46 theorems, 0 open, no decision procedures): the left-right
+  reflection sigma (a <-> h, ...) of squares, boards, moves and positions. Every geometry the rules read is invariant
+  (absDiff of reflected files, "between" read from the other end); attacks, the king lookup and check agree on the
+  reflected board when each colour has one king (UniqueKings -- kept by every move: uniqueKings_applyBoard); for a
+  position WITHOUT CASTLING RIGHTS (castling is the one rule that is not left-right symmetric):
+    legalMoveB_pos / legalMove_pos   a move is legal exactly when its reflection is legal in the reflected position
+    applyMove_pos                     playing the reflected move there gives the reflected result (every move but a castle)
+    forcedWithin_mirror               a side forces a goal the reflection keeps within n plies in the reflected position
+                                      exactly when it does in the position -- search one, know the other.
+  It holds WITH pawns (they keep their direction). The rank flip and the diagonal flip (pawnless positions) are not done.
+  Checked against python-chess (reflected legal moves, play commutes) and the tablebase (equal results), tests. The
+  search reuse itself is the later step.
