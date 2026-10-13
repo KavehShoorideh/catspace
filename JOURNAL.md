@@ -29772,3 +29772,19 @@ than their king", "squares nearer their king than their rook that their rook can
 (their rook's freedom, rank 1, 0.101 vs 0.000), "squares nearer their king than our rook, off our king's rank", "their
 king's territory" (the classic, 8 vs 2 of 100), "squares we do not attack". K+R+R v K: "squares not nearer our king than
 theirs" -- exactly the K+R lemma kr_territory found this morning, rediscovered for two rooks (0.932 vs 0.544).
+EPISODES, THE RATCHET, THE DIVERGENCE (2026-10-12 17:58-18:20 PDT; Kaveh: "how do we measure progress? Are we measuring
+progress properly? ... a frame where we have a desired outcome and ... a non-desired outcome ... episodic ... once we
+figured out that we're not progressing, go back and identify the point at which we started to diverge"). MEASURED FIRST
+(discovery/episodes.py on the "approach" run's games, each round under its own frame; directional): THE CURRENT CLAIM
+("the measure falls within 2 moves") is kept on 58-61% of the drawn games' last 30 moves against 67-84% in the won phases --
+a loop's dips count as progress. EPISODES (a phase cut into runs of one kind, from the planner's own decisions: in check,
+frame, proof, arming, defence, the forced entry; each ending in material won / a new best of the frame's measure over the
+whole phase -- THE RATCHET, a loop cannot make one -- or not): desired in 11% of the drawn tails' episodes (1,208) against
+42% of the won phases' (299; material won 21%, a new best 21%); the ratchet alone 11% vs 21%. The drawn tails are mostly
+THEIR CHECKS (500 of 1,208 episodes); all 67 arming episodes there were parried; the forced entry fired only in won phases
+(33). THE DIVERGENCE (the start of the first failed episode after the last desired one): a median 38 moves of ours before
+the end (quartiles 20-50) -- the draws are decided early, then ~40 moves of nothing. At the divergence and the five
+positions after it our own prover (the forced entry, budget 200,000) found a way into the known in 15 of 558 (2.7%): the
+divergence is strategic, not a missed tactic. (A bug of mine in the segmentation, fixed before these numbers: the phase's
+last episode did not see the capture on the way out.) Proposed: episodes as the surprise signal, mining from the
+divergence, and a frame per episode kind -- first "their checks", with its own desired outcome.
