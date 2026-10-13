@@ -312,4 +312,10 @@ def kbnvk_kbn2_r3_progress (p : Position) (c : Color) (W L P O : Square) : Nat :
 /-- kbnvk_kbn2_r4_progress: how many of the squares nearer their king than our king that are also the squares outside the squares between our king and their king. (2026-10-13, hole learn_kbn2_KBNvK_rank2_r4; verifier: on 50 confirmation boards: held 18/50, won 18 -- the frame before it held 17/50, won 17; better on 15 boards, worse on 0 over 1 round(s), e-value 4.1e+03 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
 def kbnvk_kbn2_r4_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((between W L) u)) u))
 
+/-- krrvkr_check_krr_more_r0_progress: how many of the squares a knight on their king reaches in one hop that are also the squares outside the squares our king attacks. (2026-10-13, hole learn_krr_more_KRRvKR_check_rank2_r0; verifier: on 27 confirmation boards: held 1/27, won 1 -- the frame before it held 1/27, won 1; better on 10 boards, worse on 1 over 1 round(s), e-value 30.9 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_check_krr_more_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (knight1 L) u && (fun u => !((attacksFrom p W) u)) u))
+
+/-- krrvkr_krr_more_r5_progress: how many of the squares their other piece can walk to over the squares they do not attack that are also the squares outside the squares nearer our other piece than their king. (2026-10-13, hole learn_krr_more_KRRvKR_rank2_r5; verifier: on 50 confirmation boards: held 1/50, won 1 -- the frame before it held 1/50, won 1; better on 9 boards, worse on 0 over 1 round(s), e-value 102 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_krr_more_r5_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach O (fun u => !(attackedBy p (Color.opposite c) W u))) u && (fun u => !((nearer P L) u)) u))
+
 end Ideas.Generated

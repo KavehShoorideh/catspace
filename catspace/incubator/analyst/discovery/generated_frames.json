@@ -14,8 +14,12 @@
  "KRRvK": [
   "(count (and (reach L free) (not corner)))"
  ],
+ "KRRvKR": [
+  "(count (and (reach O unhit) (not (nearer P L))))"
+ ],
  "KRRvKR:check": [
-  "(count (segment W O))"
+  "(count (segment W O))",
+  "(count (and (knight1 L) (not (attacks W))))"
  ],
  "KRRvKR:if:(count (and (nearer L P) (not (box L))))>=30": [
   "(count (and (nearer L P) (not (rank W))))"

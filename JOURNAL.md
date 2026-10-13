@@ -30171,3 +30171,11 @@ to 20); known lemmas now join a hole only when they vary on its boards (as every
   candidate and stage vetoed by the guard (0-2 better, 7-18 worse each). The wall: driving the king to the corner of
   the bishop's colour from afar is the textbook technique, and the vocabulary has no word for a square's colour; nor
   does the planner search quiet mates. Both are Kaveh's calls (the vocabulary; reasoned mates in Lean, not brute force).
+
+K+R+R v K+R, MORE MINING (tag krr_more; 2026-10-13 01:11-01:35 PDT; from the generated track's frames, 6 rounds). Wins
+per 100, rounds 0-6: 71/71/69/68/60/74/75 (fresh runs on the same starts: 69 / 72 / 64 / 68; no frames on round 4's
+and 5's starts 60 / 61). New: an in-check term "the squares a knight's hop from their king that our king does not
+attack" (round 0; on round 4's starts the set lost 4 against the krr_all set, on round 5's gained 1 -- neutral), and a
+K+R+R v K+R base frame (round 5) "the squares their rook walks to safely, outside our rook's zone" -- squeezing their
+ROOK (the machinery's version of "target the rook", now passing the guard). ROUND 6 -- starts no run had seen: the
+learned set 75, no frames 65 (+10; measured after the run, one replay).

@@ -1610,5 +1610,37 @@
   },
   "used_by": "the KBNvK frame (replace): ['(count (and (nearer L W) (not (between W L))))']",
   "created": "2026-10-13"
+ },
+ {
+  "id": "krrvkr_check_krr_more_r0_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (knight1 L) (not (attacks W))))",
+  "gloss": "how many of the squares a knight on their king reaches in one hop that are also the squares outside the squares our king attacks",
+  "size": 7,
+  "lean": "(count (fun u => (knight1 L) u && (fun u => !((attacksFrom p W) u)) u))",
+  "hole": "learn_krr_more_KRRvKR_check_rank2_r0",
+  "evidence": {
+   "verifier": "on 27 confirmation boards: held 1/27, won 1 -- the frame before it held 1/27, won 1; better on 10 boards, worse on 1 over 1 round(s), e-value 30.9 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KRRvKR:check frame (append): ['(count (segment W O))', '(count (and (knight1 L) (not (attacks W))))']",
+  "created": "2026-10-13"
+ },
+ {
+  "id": "krrvkr_krr_more_r5_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (reach O unhit) (not (nearer P L))))",
+  "gloss": "how many of the squares their other piece can walk to over the squares they do not attack that are also the squares outside the squares nearer our other piece than their king",
+  "size": 9,
+  "lean": "(count (fun u => (reach O (fun u => !(attackedBy p (Color.opposite c) W u))) u && (fun u => !((nearer P L) u)) u))",
+  "hole": "learn_krr_more_KRRvKR_rank2_r5",
+  "evidence": {
+   "verifier": "on 50 confirmation boards: held 1/50, won 1 -- the frame before it held 1/50, won 1; better on 9 boards, worse on 0 over 1 round(s), e-value 102 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KRRvKR frame (append): ['(count (and (reach O unhit) (not (nearer P L))))']",
+  "created": "2026-10-13"
  }
 ]
