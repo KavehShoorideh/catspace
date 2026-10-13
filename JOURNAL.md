@@ -30167,3 +30167,7 @@ to 20); known lemmas now join a hole only when they vary on its boards (as every
     transferred        44                76
     the newest         53                70
   From nothing: K+B+N v K went from 6-10% to 53-76% on the loop's own lemmas -- one of them carried over from K+R+R v K.
+  WITHIN 40 PLIES (tag kbn3; 01:06-01:10 PDT; the newest frame): 14/21/9/15 per 100, then nothing new -- every frame
+  candidate and stage vetoed by the guard (0-2 better, 7-18 worse each). The wall: driving the king to the corner of
+  the bishop's colour from afar is the textbook technique, and the vocabulary has no word for a square's colour; nor
+  does the planner search quiet mates. Both are Kaveh's calls (the vocabulary; reasoned mates in Lean, not brute force).
