@@ -54,6 +54,39 @@ def _start(rng: random.Random, material: str, tb, band: tuple | None = None):
                     return b
 
 
+def castled_start(rng: random.Random):
+    """K+R+R v K+R WITH PAWNS, THE KINGS CASTLED ON OPPOSITE WINGS (Kaveh 2026-10-13: "let's put each king on an oppositely
+    castled position in the king rook rook king rook situation, and have each side ... four pawns or five pawns ... let
+    them play it out"): our king short and theirs long, or the other way; each king's three wing pawns unmoved, one or two
+    pawns more on the other files; our two rooks on empty squares of ranks 1-3, theirs on ranks 6-8; legal, no one in
+    check, us (White) to move. No tablebase -- too many men."""
+    import chess
+    while True:
+        b = chess.Board(None)
+        short = rng.random() < 0.5
+        wk, bk = (chess.G1, chess.C8) if short else (chess.C1, chess.G8)
+        b.set_piece_at(wk, chess.Piece(chess.KING, chess.WHITE)); b.set_piece_at(bk, chess.Piece(chess.KING, chess.BLACK))
+        ours = ("f", "g", "h") if short else ("a", "b", "c")
+        theirs = ("a", "b", "c") if short else ("f", "g", "h")
+        for f in ours:
+            b.set_piece_at(chess.parse_square(f"{f}2"), chess.Piece(chess.PAWN, chess.WHITE))
+        for f in theirs:
+            b.set_piece_at(chess.parse_square(f"{f}7"), chess.Piece(chess.PAWN, chess.BLACK))
+        others = [f for f in "abcdefgh" if f not in ours + theirs]
+        for color, files, ranks in ((chess.WHITE, theirs + tuple(others), (2, 3)), (chess.BLACK, ours + tuple(others), (7, 6))):
+            for f in rng.sample(files, rng.choice((1, 2))):
+                sq = chess.parse_square(f"{f}{rng.choice(ranks)}")
+                if b.piece_at(sq) is None:
+                    b.set_piece_at(sq, chess.Piece(chess.PAWN, color))
+        empty = lambda ranks: [s for s in chess.SQUARES if chess.square_rank(s) in ranks and b.piece_at(s) is None]
+        for s in rng.sample(empty((0, 1, 2)), 2):
+            b.set_piece_at(s, chess.Piece(chess.ROOK, chess.WHITE))
+        b.set_piece_at(rng.choice(empty((5, 6, 7))), chess.Piece(chess.ROOK, chess.BLACK))
+        b.turn = chess.WHITE
+        if b.is_valid() and not b.is_check() and not b.was_into_check():
+            return b
+
+
 def _move_of(b, dec):
     """The planner's move: the preparing move when its first slot is one, else the seed."""
     import chess

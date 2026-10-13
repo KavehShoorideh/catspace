@@ -1030,3 +1030,15 @@ pub fn checks_audit(fen: String) -> PyResult<(Vec<String>, Vec<String>)> {
     a.sort(); b.sort();
     Ok((a, b))
 }
+
+
+/// threat_list(fen, side) -> (the generic threats of `side` ("w"/"b"): [(target, value, mate)], the static exchange on
+/// every piece of the other side: [(square, value)]) -- for digging.
+#[pyfunction]
+pub fn threat_list(fen: String, side: String) -> (Vec<(String, i64, bool)>, Vec<(String, i64)>) {
+    let Some(pos) = parse(&fen) else { return (vec![], vec![]) };
+    let by = if side == "w" { Color::White } else { Color::Black };
+    let t = threats(&pos, by).into_iter().map(|t| (t.target.to_string(), t.value, t.mate)).collect();
+    let e = pos.board().by_color(!by).into_iter().map(|s| (s.to_string(), rules::see(pos.board(), s, by))).collect();
+    (t, e)
+}

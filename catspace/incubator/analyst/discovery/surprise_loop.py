@@ -82,14 +82,14 @@ def _game(args):
     import chess.syzygy
     import catspace.incubator.analyst  # noqa: F401
     import analyst_core as A
-    from catspace.incubator.analyst.material_walk import _material, _start
+    from catspace.incubator.analyst.material_walk import _material, _start, castled_start
     A.set_generic_frame(True)
     for m, terms in frames.items():
         A.set_material_frame(m, terms)
     tb = chess.syzygy.open_tablebase(str(paths.syzygy_dir()))
     eng = chess.engine.SimpleEngine.popen_uci("stockfish")
     eng.configure({"SyzygyPath": str(paths.syzygy_dir())})
-    b = _start(random.Random(seed), material, tb, band)
+    b = castled_start(random.Random(seed)) if material == "castled" else _start(random.Random(seed), material, tb, band)
     st = A.PlanState()
     rows, out, ended = [], None, None
     while out is None:

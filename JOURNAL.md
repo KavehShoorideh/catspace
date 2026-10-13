@@ -30309,3 +30309,36 @@ default. A goal decision is judged as a proof within its own horizon (surprise_l
   its own longer mate on the next move); wins unchanged (73, 75).
   READING: at depth 3 the forced goals in these endings are the ones the existing proofs already find; what the field
   sees beyond them -- live (unknown) goals, deeper horizons -- is not used yet.
+
+CASTLED KINGS WITH PAWNS, AND HOW K+R+R v K+R IS WON (2026-10-13 14:45-15:13 PDT; Kaveh: "put each king on an oppositely
+castled position in the king rook rook king rook situation ... four pawns or five pawns ... let them play it out"; "what's
+the technique to trade the rook and then win with the king, rook? What's the table-based solution? What does Stockfish
+do?"). One run each, directional.
+  THE STARTS (material_walk.castled_start): our king on g1 and theirs on c8, or c1 and g8; each king's three wing pawns
+  unmoved, one or two pawns more; our two rooks on ranks 1-3, theirs on ranks 6-8; White (the planner) to move against
+  Stockfish (depth 10) -- surprise_loop._game's "castled" mode. No tablebase (too many men).
+  100 GAMES: 54 won, 37 lost, 9 drawn (19 s). Every loss had their pawns promoting. The first drop of 3+ in a loss came
+  after a "defence" decision in 32 of 36 (the re-run below).
+  A BUG, FIXED (generic): THEIR WIN-BACK WAS JUDGED AFTER OUR MOVE. Seed 6, 6k1/R4p1p/8/8/6p1/3P3R/PPP5/2K5 w: Rxh7 "stops
+  their gxh3 (nets 1)" and Kxh7 took the rook. Black was 11 down, where a rook matters to them (the outcome floor, 5);
+  Rxh7 took a pawn, 12 down, the floor rose to 9 and Kxh7 "did not matter" -- our own grab raised their bar. Now net_after
+  (and the scan's upper bound, and their reasoning after the move) reads their floor at the DECISION's balance, the one the
+  decision's threat check uses; the net cache is keyed by it. Rxh7 -> -3 ("Kxh7 wins 4"); the planner plays a rook move.
+  Replay: 54/37/9 -> 54/36/10 -- the bug was real but not what loses these games.
+  WHAT LOSES THEM: NO FRAME. Every pawn count is its own material (KRRPPPPvKRPPPP, KRRPPPPvKRPPPPP, ...), none has a
+  measure, so the empty frame plays the first move by name: a3, b3, c3, a4 -- our own king's shelter pawns -- while their
+  pawns walk down the other wing; the threat is answered only when the promotion is one move away (seed 15: Re1 a3 b3 c3 a4
+  Rb2, then "Rd1 stops their fxe1=Q", ..., "Kb1 is the cheapest way to lose").
+  THE GOAL FIELD ON (set_goal_field, off by default): 54/36/10 -> 64/29/7 on the same starts (73 s). Where no frame
+  exists the field is the only part that looks ahead at their pawn races (their goals as if we passed).
+  THE TECHNIQUE, K+R+R v K+R (100 tablebase-won starts, White to move; krr_technique.py, krr_trade_how.py in the session
+  scratchpad):
+    tablebase play (the winner: the fewest plies to the next capture or pawn move -- Syzygy has no distance to mate; the
+    loser: the longest resistance): rooks traded then K+R v K 66, their rook won outright 19, mate with their rook on 12;
+    mated 97/100, 23.3 plies a game. The first capture: "they take a rook of ours right after our check" 30 of 85 (a
+    check the king must answer by taking, leaving their rook loose), we take theirs free 28, we take it and they
+    recapture 22; their king on an edge then 59/85. (Distance-to-zeroing play prefers captures, so it leans to trades.)
+    Stockfish against itself (depth 10): their rook won outright 50, traded 46, mate with it on 4; mated 91/100, 35.5
+    plies. The first capture: free 49, a trade 22, after our check 6; their king on an edge 54/93.
+    Our planner (krr_more2 round 6, its 100 games): won 80 -- their rook won outright 55, traded 22, with their rook on 3;
+    drawn 20 -- 17 with their rook never taken.

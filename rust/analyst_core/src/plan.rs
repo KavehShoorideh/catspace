@@ -166,6 +166,8 @@ thread_local! {
     // by the target too (2026-10-12, the dig [20]: Bxh2+ proved "wins 2 by force" and framed against the a7 rook; the
     // frame's cap overrode the full proof)
     static FRAMED: RefCell<std::collections::HashSet<(String, Square)>> = RefCell::new(std::collections::HashSet::new());
+    // the floor their reasoning after our move meets: the DECISION's (net_after sets it; None: the position's own balance)
+    static ROOT_FLOOR: std::cell::Cell<Option<i64>> = const { std::cell::Cell::new(None) };
 }
 
 fn snapshot(p: &Chess) -> (Vec<u8>, String) {
@@ -842,7 +844,7 @@ fn net_bound(pos: &Chess, m: &Move, wins: &[(String, Square, i64)]) -> i64 {
     let taken = kernel_material(&q, pos.turn()) - kernel_material(pos, pos.turn());
     // (the floor exactly as net_after applies it -- only from their outcome floor up: 2026-10-12, the bug search: a floor
     // net_after ignores, counted here, made the "upper bound" smaller than the net and could end the scan early)
-    let floor = their_floor(&q).filter(|t| t.value >= gain_floor(kernel_material(&q, q.turn()))).map_or(0, |t| t.value);
+    let floor = their_floor(&q).filter(|t| t.value >= gain_floor(-kernel_material(pos, pos.turn()))).map_or(0, |t| t.value);
     let g = wins.iter().filter(|w| w.0 == u).map(|w| w.2).max();
     g.map_or(taken - floor, |g| g.max(taken - floor))
 }
@@ -1001,12 +1003,19 @@ fn net_after_inner(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs
         let left = after_t.iter().map(|t| t.value).max().unwrap_or(0);
         return ((taken - left).max(proved.unwrap_or(i64::MIN)), None);
     }
-    let key = shakmaty::fen::Fen::from_position(q.clone(), shakmaty::EnPassantMode::Legal).to_string();
+    // WHAT MATTERS TO THEM IS READ AT THE DECISION'S BALANCE, not after our move (2026-10-13, castled K+R+R v K+R with
+    // pawns, seed 6: Black 11 down, a rook matters to them (floor 5); Rxh7 took a pawn, 12 down, the floor rose to 9 and
+    // Kxh7 "did not matter" -- our own grab raised their bar; every candidate of one decision now meets the same floor,
+    // the one the decision's threat check uses)
+    let floor_them = gain_floor(-kernel_material(pos, pos.turn()));
+    let key = format!("{}|{floor_them}", shakmaty::fen::Fen::from_position(q.clone(), shakmaty::EnPassantMode::Legal));
     let cached = NET_CACHE.with(|c| c.borrow().get(&key).cloned());
     let (theirs, their_why) = match cached {
         Some((v, w, _, _)) => (v, w),
         None => {
+            ROOT_FLOOR.with(|f| f.set(Some(floor_them)));         // (taken at plan_inner's start: nested plans read their own)
             let tp = with_tag("net".to_string(), || plan_inner(&q, true));
+            ROOT_FLOOR.with(|f| f.set(None));
             *proofs += tp.proofs; *nodes += tp.nodes;
             let mut v = tp.best.as_ref().map_or(0, |b| b.2);
             let mut w = tp.best.map(|b| b.3);
@@ -1017,7 +1026,7 @@ fn net_after_inner(pos: &Chess, m: &Move, wins: &[(String, Square, i64)], proofs
             // Rxb8 was certified at 2 in its frame; the exchange says 3)
             // (A CHECK IS A TEMPO -- Kaveh 2026-10-10: in check, only a capture that answers the check counts; 2026-10-11:
             // Rd2+ "netted -6" for their capture of our f6 queen, which they cannot make while in check)
-            if let Some(pt) = their_floor(&q).filter(|pt| pt.value >= gain_floor(kernel_material(&q, q.turn()))) {
+            if let Some(pt) = their_floor(&q).filter(|pt| pt.value >= floor_them) {
                 if pt.value > v { v = pt.value; w = Some(format!("the {} on {} by exchange (worth {})", q.board().piece_at(pt.target).map(|p| format!("{:?}", p.role).to_lowercase()).unwrap_or_default(), pt.target, pt.value)); }
             }
             // THEIR MATE THREAT (the cornering lemma for the king: checks, or the forcing search's net when CORNERING is on)
@@ -1191,7 +1200,8 @@ fn plan_inner_body(pos: &Chess, immediate_only: bool) -> Plan {
     let mut their_wins: Vec<(String, Square, i64)> = Vec::new();
     // THE FLOORS: what gain matters to each side at this balance (the outcome curve)
     let bal = kernel_material(pos, us);
-    let floor_us = gain_floor(bal);
+    // (their reasoning after a candidate of ours: the decision's floor, not this position's -- see net_after)
+    let floor_us = ROOT_FLOOR.with(|f| f.take()).unwrap_or_else(|| gain_floor(bal));
     let floor_them = gain_floor(-bal);
     // A MATE FIRST (Kaveh 2026-10-10: once a mate is found and proven, no more time is spent): a forced mate by checks --
     // every reply searched -- ends the analysis before their threat is even computed
