@@ -300,6 +300,22 @@ def to_test(best: dict | None, olds: list, cur: list) -> list:
     return tested
 
 
+def futile(w: int, l: int, more: int, bar: float) -> bool:
+    """THE REVERSE E-VALUE (Kaveh 2026-10-12: "not every lemma deserves to be going on forever"; the literature check --
+    futility as an e-process): p1 is the least game win rate that would reach the bar over every game the candidate can
+    have in the run (decided so far and `more` to come); e = (1/2 / p1)^w (1/2 / (1 - p1))^l is the evidence that its rate
+    is below p1 (an e-value for "rate >= p1"); at the bar, the candidate is not worth the games. (Dropping never makes a
+    promotion invalid -- it only gives up power.)"""
+    from .defenders import sign_e
+    n = w + l + more
+    p1 = next((k / n for k in range(n // 2 + 1, n + 1) if sign_e(k, n - k) >= bar), None) if n else None
+    if p1 is None:
+        return True                                 # no rate reaches the bar in the games left
+    if p1 >= 1:
+        return l > 0                                # only winning every game would do, and one is lost
+    return (0.5 / p1) ** w * (0.5 / (1 - p1)) ** l >= bar
+
+
 def settle(tested: list, bar: float, more: int) -> tuple:
     """After the confirmation (each t with its pooled votes w, l and their e): -> (the promoted -- the most evidence at or
     over the bar -- or None, the ones kept pending): those still winning more games than they lose AND able to reach the
@@ -310,7 +326,8 @@ def settle(tested: list, bar: float, more: int) -> tuple:
     win = max((t for t in tested if t["e"] >= bar), key=lambda t: t["e"], default=None)
     if win:
         return win, []
-    return None, sorted((t for t in tested if t["w"] > t["l"] and sign_e(t["w"] + more, t["l"]) >= bar), key=lambda t: -t["e"])
+    return None, sorted((t for t in tested if t["w"] > t["l"] and sign_e(t["w"] + more, t["l"]) >= bar and not futile(t["w"], t["l"], more, bar)),
+                        key=lambda t: -t["e"])
 
 
 def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: str = "", defender: str = "self", n_boards: int = 30,
@@ -464,7 +481,8 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
                     else:
                         print(f"OBS   dropped for {fk} rank {rank}: {t['term']} -- {t['w']} to {t['l']}: "
                               + ("it loses as many games as it wins" if t["w"] <= t["l"] else
-                                 f"winning all {more} games still to come in the run could not reach the bar"))
+                                 f"winning all {more} games still to come in the run could not reach the bar" if sign_e(t["w"] + more, t["l"]) < bar else
+                                 "the reverse e-value says its game win rate is below what the games left need"))
         else:
             wins = bool(best) and best["score"] > base["score"] + 0.05
         if wins:

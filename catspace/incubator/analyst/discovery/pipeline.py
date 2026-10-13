@@ -224,6 +224,12 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
         if not kept:
             break
         got = race(ver, h, kept, boards) if defender != "self" else [ver.verify(h, t, s, boards) for t, s in kept]
+        if defender != "self":                          # the proposers' reward: each candidate against the frame before it
+            from .defenders import votes
+            from .verifier import advantage
+            for r in got:
+                w, l = votes(r["per_board"], base["per_board"][:r["n"]])
+                advantage(h["name"], r["term"], r["schema"], w, l, r["n"], "screening (choosing boards)")
         done |= set(kept)
         res += got
         top = best_of(got)

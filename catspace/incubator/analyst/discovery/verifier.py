@@ -21,6 +21,15 @@ import time
 from catspace.io import paths
 
 STORE = "discovery_experience.jsonl"
+ADVANTAGE = "discovery_advantage.jsonl"            # the proposers' reward: a candidate's advantage over the frame before it
+
+
+def advantage(hole: str, term: str, schema: str, w: int, l: int, n: int, source: str) -> None:
+    """THE PROPOSERS' REWARD (Kaveh 2026-10-12: "do we feed this back to the proposer?"; "Build"): a candidate's ADVANTAGE
+    over the frame before it -- (boards or games better - worse) / those played, in [-1, 1] -- from the screening's boards
+    (biased upward for the finalists: they were chosen on them) or, unbiased, from the confirmation's held-out games."""
+    with open(paths.derived(ADVANTAGE), "a") as fh:
+        fh.write(json.dumps(dict(hole=hole, term=term, schema=schema, adv=(w - l) / max(n, 1), w=w, l=l, n=n, source=source, t=time.time())) + "\n")
 LIMIT = 60                                          # moves per closed-loop game
 
 
@@ -164,4 +173,6 @@ def confirm(hole: dict, best: dict | None, boards: list, defender: str, games: l
     cand = ver.verify(hole, best["term"], best["schema"], boards)
     base = ver.verify(hole, None, "none", boards)
     w, l, e = D.paired_e(cand["per_board"], base["per_board"], games)
+    ng = len(set(games)) if games else len(boards)
+    advantage(hole["name"], best["term"], best["schema"], w, l, ng, "confirmation (held-out games)")
     return dict(promoted=e >= D.E_PROMOTE, w=w, l=l, e=e, n=len(boards), games=len(set(games or [])), cand=cand, base=base)

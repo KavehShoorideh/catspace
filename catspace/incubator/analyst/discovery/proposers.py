@@ -43,10 +43,17 @@ def _state() -> dict:
     return json.load(open(p)) if os.path.exists(p) else {"offset": 0}
 
 
+def _complete_lines(p: str) -> list:
+    """The file's COMPLETE lines: a line the loop is still appending (no newline yet) is left for the next read -- the
+    background update reads while the main process writes."""
+    if not os.path.exists(p):
+        return []
+    return open(p).read().split("\n")[:-1]
+
+
 def _store_lines() -> list:
     from .verifier import STORE
-    p = paths.derived(STORE)
-    return open(p).read().splitlines() if os.path.exists(p) else []
+    return _complete_lines(paths.derived(STORE))
 
 
 def get(kind: str):
@@ -74,7 +81,14 @@ def update(epochs: int = UPDATE_EPOCHS) -> int:
     from . import models as M
     lines = _store_lines()
     st = _state()
+    # THE REWARD (Kaveh 2026-10-12: "do we feed this back to the proposer?"): a real defender's candidates are learned by
+    # their ADVANTAGE over the frame before it (verifier.advantage: the screening's boards, the confirmation's held-out
+    # games) -- not their raw score, which mixes the hole's difficulty in and, on the boards that chose them, was mostly
+    # noise (2026-10-12: 8 of 50 held-out boards held, like the frame's own 8); the 'self' defender's verdicts as before
+    adv = _adv_lines()
     new = [json.loads(l) for l in lines[st.get("offset", 0):]]
+    new = [r for r in new if r.get("defender", "self") == "self"]
+    new += [dict(json.loads(l), score=json.loads(l)["adv"]) for l in adv[st.get("adv_offset", 0):]]
     rows, ctx, cache, holes = [], [], {}, {}
     for r in new:
         name = r["hole"]
@@ -84,16 +98,21 @@ def update(epochs: int = UPDATE_EPOCHS) -> int:
         h = holes[name]
         if h is None or not r["term"]:
             continue
-        boards = h["stuck"][:r.get("n", 100)]
+        boards = h["stuck"][:100] if "adv" in r else h["stuck"][:r.get("n", 100)]   # (an advantage's n may count games)
         rows.append(dict(term=r["term"], schema=r["schema"], score=r["score"], hole=name))
         ctx.append(M.context_features(h, r["term"], r["schema"], boards, cache))
     if rows:
         for kind in KINDS:
             m = get(kind)
             M.save(M.train(kind, rows, np.stack(ctx), epochs=epochs, lr=5e-4, model=m), _ckpt(kind))
-    st["offset"] = len(lines)
+    st["offset"], st["adv_offset"] = len(lines), len(adv)
     json.dump(st, open(_state_path(), "w"))
     return len(rows)
+
+
+def _adv_lines() -> list:
+    from .verifier import ADVANTAGE
+    return _complete_lines(paths.derived(ADVANTAGE))
 
 
 _BG = None
@@ -121,6 +140,6 @@ def wait() -> None:
     if _BG is not None:
         _BG.join()
     st = _state()
-    if st.get("offset", 0) < len(_store_lines()):
+    if st.get("offset", 0) < len(_store_lines()) or st.get("adv_offset", 0) < len(_adv_lines()):
         import catspace.incubator.analyst  # noqa: F401
         print(f"OBS   the proposers fine-tuned on {update()} verdicts left at the end")

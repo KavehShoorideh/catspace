@@ -41,3 +41,19 @@ def test_settle():
 def test_pooled_evidence_grows_with_a_steady_lean():
     from catspace.incubator.analyst.discovery.defenders import sign_e
     assert sign_e(19 * 4, 12 * 4) > sign_e(19, 12) and sign_e(19 * 8, 12 * 8) > 20
+
+
+def test_futility_by_the_reverse_e_value():
+    from catspace.incubator.analyst.discovery.surprise_loop import futile
+    assert futile(21, 21, 0, 20.0)                       # no games left: nothing can reach the bar
+    assert not futile(9, 5, 22, 20.0)                    # leaning, games left
+    assert futile(40, 38, 10, 20.0)                      # a coin over 78 games, 10 left: its rate is below what is needed
+    assert not futile(7, 1, 20, 20.0)
+
+
+def test_complete_lines_leaves_a_partial_line(tmp_path):
+    from catspace.incubator.analyst.discovery.proposers import _complete_lines
+    p = tmp_path / "x.jsonl"
+    p.write_text('{"a": 1}\n{"b": 2}\n{"c"')
+    assert _complete_lines(str(p)) == ['{"a": 1}', '{"b": 2}']
+    assert _complete_lines(str(tmp_path / "missing")) == []
