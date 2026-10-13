@@ -530,12 +530,13 @@ def main(argv=None):
     state = paths.derived(f"{stem}.json")
     from . import registry as R
     frames = json.load(open(a.frames)) if a.frames else ({} if a.fresh else R.load_frames())
-    history, start, res, pending = [], 0, None, {}
+    history, start, res, pending, pending_stages = [], 0, None, {}, {}
     if a.resume:                         # the last round played: its games are saved, its mining is redone
         history = json.load(open(state))
         last = history[-1]
         start, frames = last["round"], last["frames"]
         pending = dict(history[-2].get("pending", {})) if len(history) > 1 else {}    # the evidence open before that mining
+        pending_stages = dict(history[-2].get("pending_stages", {})) if len(history) > 1 else {}
         res = json.load(open(paths.experiment(f"{stem}_r{start}.json")))
         print(f"OBS resuming {stem} at round {start}'s mining (frames {frames or 'none'})")
     elif os.path.exists(state):
@@ -556,10 +557,10 @@ def main(argv=None):
         if a.challenger:
             # THE CHALLENGER (Kaveh: "reason both sides"): traps against the round's frames, answered by stages
             from . import challenger as C
-            new = C.round_(res, frames, new, tag or "run", rnd, register=not a.dry)
-        history[-1]["pending"] = dict(pending)
+            new = C.round_(res, frames, new, tag or "run", rnd, register=not a.dry, pending=pending_stages, rounds_left=a.rounds - 1 - rnd)
+        history[-1]["pending"], history[-1]["pending_stages"] = dict(pending), dict(pending_stages)
         json.dump(history, open(state, "w"), indent=1)
-        if new == frames and not pending:
+        if new == frames and not pending and not pending_stages:
             print("OBS nothing new mined and no evidence pending -- stopping"); break
         if new == frames:
             print(f"OBS nothing new mined; evidence pending for {sorted(pending)} -- the next round's boards continue it")

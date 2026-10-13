@@ -239,7 +239,7 @@ def answer(cf: dict, material: str, kind: str, run: str, rnd: int, frames: dict,
           f"{c['base'] and show(c['base'])}; better in {c['w']} of its {c['games']} games, worse in {c['l']} -- e-value {c['e']:.3g} -> "
           f"{'PROMOTED' if c['promoted'] else 'not promoted'} (at e >= 20)")
     return dict(kind=kind, frame_key=fkey, term=best and best["term"], schema=best and best["schema"], base=c["base"] and show(c["base"]),
-                answer=c["cand"] and show(c["cand"]), w=c["w"], l=c["l"], e=c["e"], promoted=bool(c["promoted"]))
+                answer=c["cand"] and show(c["cand"]), w=c["w"], l=c["l"], e=c["e"], games=c["games"], promoted=bool(c["promoted"]))
 
 
 def archive(entry: dict) -> None:
@@ -294,13 +294,75 @@ if __name__ == "__main__":
     main()
 
 
-def round_(res: list, played: dict, frames: dict, run: str, rnd: int, register: bool = True) -> dict:
+def carry_stages(res: list, played: dict, new: dict, pending: dict, run: str, rnd: int, rounds_left: int,
+                 defender: str = "tablebase", register: bool = True) -> None:
+    """THE STAGES' EVIDENCE CARRIED ACROSS ROUNDS (the night's autonomy, 2026-10-12: a stage left R or won 39/46 against
+    15/46 -- but its refuted boards came from 5 games, 4 better and 1 worse, e 1.9, and the stage was forgotten): a stage
+    not promoted that wins more games than it loses stays PENDING with its region R; each later round, this round's
+    refuted positions INSIDE R -- every game new to it: the stage was chosen on other games -- confirm it again (one vote
+    a game) and its votes are pooled; promoted at e >= 20, dropped as a frame's candidate is (verifier.confirm,
+    surprise_loop.futile), or when the frame of its material changes. `pending` and `new` updated in place."""
+    import chess
+    import catspace.incubator.analyst  # noqa: F401
+    import analyst_core as A
+    from .defenders import E_PROMOTE, sign_e
+    from .surprise_loop import futile
+    from .verifier import confirm, spread
+    for fkey, p in list(pending.items()):
+        mat = p["material"]
+        if (played.get(mat) or []) != p["base"]:
+            pending.pop(fkey)
+            print(f"OBS   the pending stage {fkey} dropped: the {mat} frame it was measured against changed"); continue
+        rows = data(res, mat) if played.get(mat) else data_phase(res, mat)
+        refuted = [(f, g) for f, y, g in rows if y]
+        vals = A.vocab_values([f for f, _ in refuted], p["region"]) if refuted else []
+        inside = [(f, g) for (f, g), x in zip(refuted, vals) if x >= p["theta"]]
+        if not inside:
+            continue                                      # nothing inside R this round: kept as it was
+        picked, games = spread([f for f, _ in inside], [g for _, g in inside], 100)
+        def fresh(f):
+            b = chess.Board(f); b.halfmove_clock = 0
+            return b.fen()
+        boards = [fresh(f) for f in picked]
+        hole = dict(name=f"stage_{run}_{mat}_r{rnd}_{p['kind']}_carried", material=mat, frame_key=fkey, frames=dict(new), piece="*",
+                    base=[], k=2, stuck=boards, sampled=len(boards), games=games, leave=[p["region"], p["theta"]] if p["kind"] == "trap" else None)
+        json.dump(hole, open(paths.derived(f"hole_{hole['name']}.json"), "w"))
+        cf = confirm(hole, dict(term=p["term"], schema=p["schema"]), boards, defender, games)
+        wv, lv = p["w"] + cf["w"], p["l"] + cf["l"]
+        e = sign_e(wv, lv)
+        more = len(set(games)) * rounds_left
+        print(f"OBS   the pending stage {fkey} [{p['term']}] on this round's {len(boards)} boards inside R from {cf['games']} games: better in "
+              f"{cf['w']}, worse in {cf['l']}; pooled over {p['rounds'] + 1} rounds {wv} to {lv}, e-value {e:.3g}")
+        if e >= E_PROMOTE:
+            pending.pop(fkey)
+            new[fkey] = [p["term"]]
+            print(f"OBS   STAGE PROMOTED on carried evidence: {fkey} -> {p['term']}")
+            if register:
+                from . import registry as R
+                R.add_generated(f"stage_{mat.lower()}_{run}_r{rnd}_{p['kind']}_carried", p["term"], "measure", hole["name"],
+                                {"verifier": f"{wv} games better, {lv} worse over {p['rounds'] + 1} rounds, e-value {e:.3g} (held-out games)",
+                                 "region": f"{p['region']} >= {p['theta']}", "status": "a conjecture: the stage's claim is not proved"},
+                                used_by=f"the stage {fkey}")
+                R.export()
+        elif wv > lv and sign_e(wv + more, lv) >= E_PROMOTE and not futile(wv, lv, more, E_PROMOTE):
+            pending[fkey] = dict(p, w=wv, l=lv, rounds=p["rounds"] + 1)
+        else:
+            pending.pop(fkey)
+            print(f"OBS   the pending stage {fkey} dropped ({wv} to {lv})")
+
+
+def round_(res: list, played: dict, frames: dict, run: str, rnd: int, register: bool = True, pending: dict | None = None,
+           rounds_left: int = 0) -> dict:
     """The challenger inside the loop, after a round's mining: per material with a frame of ours, a trap and a blind spot
     mined from the claims of the frame the round was PLAYED with and checked against that frame (the data's own frame --
     2026-10-12: checked against the newly mined one it reported gaps); each answered by a stage mined with the NEW frames
     (the next round's); a promoted stage joins them. -> frames."""
     new = dict(frames)
+    pending = {} if pending is None else pending
+    carry_stages(res, played, new, pending, run, rnd, rounds_left, register=register)
     from .surprise_loop import MATING_SPECS
+    from .defenders import E_PROMOTE, sign_e
+    from .surprise_loop import futile
     ahead = {r["material"] for g in res for r in g["rows"] if r["lead"] > 0}
     for material in sorted(({k for k in played if ":" not in k and played[k]} | ahead) - set(MATING_SPECS)):
         cf = mine(res, played, material)
@@ -312,6 +374,14 @@ def round_(res: list, played: dict, frames: dict, run: str, rnd: int, register: 
                 continue
             ans = answer(c, material, kind, run, rnd, new)
             entry["answers"].append(ans)
+            more = ans.get("games", 0) * rounds_left
+            if not ans["promoted"] and ans["term"] and ans["w"] > ans["l"] and sign_e(ans["w"] + more, ans["l"]) >= E_PROMOTE \
+                    and not futile(ans["w"], ans["l"], more, E_PROMOTE) and ans["frame_key"] not in new:
+                old = pending.get(ans["frame_key"])
+                if not old or sign_e(old["w"], old["l"]) < ans["e"]:
+                    pending[ans["frame_key"]] = dict(material=material, kind=kind, region=c["term"], theta=c["theta"], term=ans["term"],
+                                                     schema=ans["schema"], base=new.get(material, []), w=ans["w"], l=ans["l"], rounds=1)
+                    print(f"OBS   PENDING stage {ans['frame_key']}: {ans['term']} -- {ans['w']} to {ans['l']}, continued on the next round's games")
             if ans["promoted"]:
                 new[ans["frame_key"]] = [ans["term"]]
                 if register:
