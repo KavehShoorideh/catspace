@@ -32,8 +32,10 @@ def _pieces(material: str):
     return [kind[c] for c in ours[1:]], [kind[c] for c in theirs[1:]]
 
 
-def _start(rng: random.Random, material: str, tb):
-    """A random legal position of the material, White (us) to move, won for us by the tablebase."""
+def _start(rng: random.Random, material: str, tb, band: tuple | None = None):
+    """A random legal position of the material, White (us) to move, won for us by the tablebase -- within the band (lo, hi)
+    of the tablebase's distance to zeroing (plies) when given: THE CURRICULUM's knob (the tablebase picks where the
+    games start, never what counts as progress)."""
     import chess
     ours, theirs = _pieces(material)
     while True:
@@ -48,7 +50,8 @@ def _start(rng: random.Random, material: str, tb):
         else:
             b.turn = chess.WHITE
             if b.is_valid() and not b.is_game_over() and tb.probe_wdl(b) == 2:
-                return b
+                if band is None or band[0] <= abs(tb.probe_dtz(b)) <= band[1]:
+                    return b
 
 
 def _move_of(b, dec):

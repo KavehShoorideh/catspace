@@ -72,7 +72,8 @@ def claim_of(trace: list, why: str, material: str, frames: dict, lead: int) -> d
 
 def _game(args):
     os.environ.setdefault("RAYON_NUM_THREADS", "1")
-    seed, material, frames, opponent = args
+    seed, material, frames, opponent, *rest = args
+    band = rest[0] if rest else None             # the curriculum's band of the starts' distance (None: any won start)
     import chess
     import chess.engine
     import chess.syzygy
@@ -85,7 +86,7 @@ def _game(args):
     tb = chess.syzygy.open_tablebase(str(paths.syzygy_dir()))
     eng = chess.engine.SimpleEngine.popen_uci("stockfish")
     eng.configure({"SyzygyPath": str(paths.syzygy_dir())})
-    b = _start(random.Random(seed), material, tb)
+    b = _start(random.Random(seed), material, tb, band)
     st = A.PlanState()
     rows, out, ended = [], None, None
     while out is None:
@@ -222,10 +223,11 @@ def find_loops(g: dict, frames: dict) -> list:
     return out
 
 
-def play(material: str, games: int, frames: dict, seed0: int, workers: int = max(1, (os.cpu_count() or 8) - 2), opponent: str = "stockfish:10") -> list:
+def play(material: str, games: int, frames: dict, seed0: int, workers: int = max(1, (os.cpu_count() or 8) - 2), opponent: str = "stockfish:10",
+         band: tuple | None = None) -> list:
     from multiprocessing import Pool
     with Pool(workers) as p:
-        res = sorted(p.imap_unordered(_game, [(seed0 + g, material, frames, opponent) for g in range(games)], chunksize=1), key=lambda r: r["seed"])
+        res = sorted(p.imap_unordered(_game, [(seed0 + g, material, frames, opponent, band) for g in range(games)], chunksize=1), key=lambda r: r["seed"])
     for g in res:
         judge(g)
     return res
@@ -520,6 +522,8 @@ def main(argv=None):
     ap.add_argument("--dry", action="store_true", help="a test: write nothing to the generated track (its terms or its frames)")
     ap.add_argument("--tag", default=None, help="this run's name in its files (default: the start time); never overwritten")
     ap.add_argument("--resume", action="store_true", help="continue the run --tag names from its last round's mining")
+    ap.add_argument("--dtz", default=None, help="LO:HI -- start only where the tablebase's distance to zeroing (plies) lies in the band")
+    ap.add_argument("--ramp", action="store_true", help="THE CURRICULUM: after a round winning two thirds of its games, the band's top doubles")
     ap.add_argument("--opponent", default="stockfish:10", help="who defends in the games: stockfish:D (with the tablebases), tablebase")
     ap.add_argument("--defender", default="self", help="the verifier's closed-loop opponent: self, tablebase, stockfish:D")
     ap.add_argument("--boards", type=int, default=30, help="boards per hole the verifier plays against a real defender")
@@ -531,12 +535,14 @@ def main(argv=None):
     from . import registry as R
     frames = json.load(open(a.frames)) if a.frames else ({} if a.fresh else R.load_frames())
     history, start, res, pending, pending_stages = [], 0, None, {}, {}
+    band = tuple(int(x) for x in a.dtz.split(":")) if a.dtz else None
     if a.resume:                         # the last round played: its games are saved, its mining is redone
         history = json.load(open(state))
         last = history[-1]
         start, frames = last["round"], last["frames"]
         pending = dict(history[-2].get("pending", {})) if len(history) > 1 else {}    # the evidence open before that mining
         pending_stages = dict(history[-2].get("pending_stages", {})) if len(history) > 1 else {}
+        band = tuple(last["band"]) if last.get("band") else band
         res = json.load(open(paths.experiment(f"{stem}_r{start}.json")))
         print(f"OBS resuming {stem} at round {start}'s mining (frames {frames or 'none'})")
     elif os.path.exists(state):
@@ -544,14 +550,21 @@ def main(argv=None):
     for rnd in range(start, a.rounds + 1):
         if res is None:
             t0 = time.time()
-            res = play(a.material, a.games, frames, seed0=1000 * rnd, opponent=a.opponent)
+            res = play(a.material, a.games, frames, seed0=1000 * rnd, opponent=a.opponent, band=band)
             report(res, f"round {rnd} (frames {frames or 'none'}; {time.time() - t0:.0f} s)")
             episode_report(res, frames)
             json.dump(res, open(paths.experiment(f"{stem}_r{rnd}.json"), "w"))
-            history.append(dict(round=rnd, frames=frames, outcomes=dict(Counter(g["out"] for g in res))))
+            history.append(dict(round=rnd, frames=frames, outcomes=dict(Counter(g["out"] for g in res)), band=band))
             json.dump(history, open(state, "w"), indent=1)
         if rnd == a.rounds:
             break
+        # THE CURRICULUM (the night's autonomy, 2026-10-12: K+B+N v K drew 30 of 30 -- with no game won there is nothing to
+        # learn from but progress): starts within a band of the tablebase's distance; a round winning two thirds of its
+        # games widens it -- harder starts next round
+        widened = False
+        if a.ramp and band and sum(g["out"] == "win" for g in res) * 3 >= 2 * len(res):
+            band, widened = (band[0], band[1] * 2), True
+            print(f"OBS THE CURRICULUM: two thirds of the round won -- the starts' band widens to {band[0]}-{band[1]} plies")
         new = mine(res, frames, rnd, a.budget, tag=tag, defender=a.defender, n_boards=a.boards, register=not a.dry, pending=pending,
                    rounds_left=a.rounds - 1 - rnd)
         if a.challenger:
@@ -560,7 +573,7 @@ def main(argv=None):
             new = C.round_(res, frames, new, tag or "run", rnd, register=not a.dry, pending=pending_stages, rounds_left=a.rounds - 1 - rnd)
         history[-1]["pending"], history[-1]["pending_stages"] = dict(pending), dict(pending_stages)
         json.dump(history, open(state, "w"), indent=1)
-        if new == frames and not pending and not pending_stages:
+        if new == frames and not pending and not pending_stages and not widened:
             print("OBS nothing new mined and no evidence pending -- stopping"); break
         if new == frames:
             print(f"OBS nothing new mined; evidence pending for {sorted(pending)} -- the next round's boards continue it")
