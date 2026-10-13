@@ -30191,3 +30191,25 @@ K+R v K+N, A NEW ENDING (tag krn1; 2026-10-13 02:00-02:05 PDT; tablebase-won sta
 only; guard passed) and a stage for "their knight free" (squeeze their king off the edge; carried, guarded). THE
 MEASUREMENT: round 3's and 4's starts with NO frames: 85 and 82 -- exactly the run's (the frames add nothing here: the
 wins come from the planner's tactics, the draws are not reached by any measure we have). A null, honestly.
+
+THE NIGHT, SUMMARY (2026-10-12 23:10 - 2026-10-13 02:05 PDT; autonomous at Kaveh's word). Every number below was
+printed by a run or a replay; each is one run -- directional.
+  WHAT THE LOOP LEARNED, MEASURED ON THE SAME STARTS (wins per 100: no frames -> the learned lemmas):
+    K+R+R v K+R   60 -> 64, 61 -> 73, and on starts no run had seen 65 -> 75
+    K+Q v K+R     68 -> 74, 61 -> 65; later 75 -> 78, 71 -> 77
+    K+B+N v K     within 10 plies of mate 10 -> 76; within 20 plies 6 -> 53; within 40 plies ~15, no progress
+    K+R v K+N     85 -> 85, 82 -> 82 (no gain: the wins are the planner's tactics)
+  Lemmas carried between endings by the known-lemmas proposer: the in-check frame "the line from our king to their rook"
+  (K+R+R v K+R, K+Q v K+R); K+R+R v K's "the squares their king walks to safely, outside the corners" became K+B+N v K's
+  best frame close to mate; K+B+N v K's first frame became a K+Q v K+R stage.
+  GENERIC MACHINERY ADDED: known lemmas tried first (only those varying on the hole's boards); stages carried across
+  rounds; the curriculum (starts within a band of the tablebase's distance, widening); THE GUARD ON WHOLE GAMES (first,
+  don't lose: a sample of the round's starts replayed with the candidate; vetoed when worse in more games than better
+  -- it stopped a queen-passivity frame that cost queens to skewers, every K+B+N v K stage, and a constant frame); the
+  tie rules keep material at the draw's value (least-loss and the defence's tie -- two losses traced and fixed; the
+  defence rule narrowed after it cost wins when applied to every tie); fixes -- the frames file merged per material,
+  vetoed stages dropped and twice-vetoed regions skipped.
+  FOR KAVEH: (1) a word for a square's colour in the base vocabulary (K+B+N v K's wall: the corner of the bishop's
+  colour); (2) stages REPLACE the material's frame inside their region -- every K+B+N v K stage broke wins; prepend
+  instead?; (3) progress-only promotions (no game won either way) -- now guarded; keep, or require held or won?;
+  (4) quiet mate search in the planner (none today) against reasoned mates in Lean.
