@@ -130,16 +130,17 @@ def mine(res: list, frames: dict, material: str, top: int = 5, check_n: int = 60
         rec = float((yt & rt).sum() / max(yt.sum(), 1))
         p = excess(yt, rt)
         inside = [f for f, ok in zip(fens, (v >= th) & ~train & y) if ok]  # refuted test boards inside R
+        inside_games = [r[2] for r, ok in zip(rows, (v >= th) & ~train & y) if ok]
         sample = random.Random(seed).sample(inside, min(check_n, len(inside)))
         chk = [c for c in A.trap_check(sample, frame, t, th) if c is not None]
         trap = sum(chk) / max(len(chk), 1)
         out.append(dict(term=t, theta=th, gloss=V.gloss(V.parse(t)), precision=prec, outside=outside, p=p, recall=rec,
-                        lift=prec / max(base_rate, 1e-9), trap=trap, checked=len(chk), boards=inside))
+                        lift=prec / max(base_rate, 1e-9), trap=trap, checked=len(chk), boards=inside, games=inside_games))
         print(f"OBS   R = {{ {V.gloss(V.parse(t))} >= {th} }}: held-out, refuted {prec:.2f} inside R against {outside:.2f} outside "
               f"(base {base_rate:.2f}; one-sided Fisher p {p:.1e}), recall {rec:.2f}; the local trap check holds on {sum(chk)}/{len(chk)} of its refuted boards")
     traps, blinds = split(out)
     print(f"OBS   ({time.time() - t0:.0f} s; kept at p < {ALPHA}/{len(out)}: {len(traps)} trap(s), {len(blinds)} blind spot(s))")
-    strip = lambda c: {k: v for k, v in c.items() if k != "boards"}
+    strip = lambda c: {k: v for k, v in c.items() if k not in ("boards", "games")}
     trap, blind = pick(traps, blinds)
     status = " + ".join(s for s, c in (("counter-frame", trap), ("blind spot", blind)) if c) or "vocabulary gap"
     return dict(material=material, status=status, frame=frame, trap=trap, blind=blind, candidates=[strip(c) for c in out],
@@ -159,20 +160,20 @@ def answer(cf: dict, material: str, kind: str, run: str, rnd: int, frames: dict,
         b = chess.Board(f); b.halfmove_clock = 0
         return b.fen()
     from .verifier import split, confirm
-    boards = [fresh(f) for f in cf["boards"]][:100]
+    choose, check, check_games = split([fresh(f) for f in cf["boards"]][:100], n_boards, cf["games"][:100], seed=f"{run}|{material}|{rnd}|{kind}")
+    boards = choose + check                                     # choosing and confirming on different games, choosing first
     fkey = f"{material}:if:{cf['term']}>={cf['theta']}"
     hole = dict(name=f"stage_{run}_{material}_r{rnd}_{kind}", material=material, frame_key=fkey, frames=frames, piece="*",
                 base=[], k=2, stuck=boards, sampled=len(boards), leave=[cf["term"], cf["theta"]] if kind == "trap" else None)
     json.dump(hole, open(paths.derived(f"hole_{hole['name']}.json"), "w"))
-    choose, check = split(boards, n_boards)
     out = pipeline_run(hole["name"], budget, hole=hole, defender=defender, n_boards=len(choose))
     base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None
-    c = confirm(hole, best, check, defender)                  # on boards not used to choose it, board by board
+    c = confirm(hole, best, check, defender, check_games)     # on games not used to choose it, one vote a game
     goal = "left R or won" if kind == "trap" else "won"
     show = lambda r: f"{goal} {r['mated']}/{r['n']}, lost ground {r['lost']}, lemma-states {r.get('states', 0) / max(r['n'], 1):.1f} a board"
     print(f"OBS   the attacker's answer -- a STAGE for the {'counter-frame' if kind == 'trap' else 'blind spot'} R ({fkey}): the best mined "
           f"measure {best and best['term']}; on {c['n']} boards not used to choose it {c['cand'] and show(c['cand'])}, without the stage "
-          f"{c['base'] and show(c['base'])}; better on {c['w']} boards, worse on {c['l']} -- e-value {c['e']:.3g} -> "
+          f"{c['base'] and show(c['base'])}; better in {c['w']} of its {c['games']} games, worse in {c['l']} -- e-value {c['e']:.3g} -> "
           f"{'PROMOTED' if c['promoted'] else 'not promoted'} (at e >= 20)")
     return dict(kind=kind, frame_key=fkey, term=best and best["term"], schema=best and best["schema"], base=c["base"] and show(c["base"]),
                 answer=c["cand"] and show(c["cand"]), w=c["w"], l=c["l"], e=c["e"], promoted=bool(c["promoted"]))
@@ -222,7 +223,7 @@ def main(argv=None):
 
 
 def strip_boards(cf: dict) -> dict:
-    return {k: ({kk: vv for kk, vv in v.items() if kk != "boards"} if isinstance(v, dict) else v)
+    return {k: ({kk: vv for kk, vv in v.items() if kk not in ("boards", "games")} if isinstance(v, dict) else v)
             for k, v in cf.items() if k != "gap_boards"}
 
 

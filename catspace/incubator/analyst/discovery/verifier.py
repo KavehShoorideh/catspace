@@ -89,21 +89,36 @@ class Verifier:
         return r
 
 
-def split(boards: list, n_boards: int) -> tuple:
-    """A hole's boards -> (the boards the pipeline CHOOSES on, the boards the choice is CONFIRMED on): never the same
-    boards -- the best of ~60 candidates on the boards that chose it is biased upward."""
-    n = min(n_boards, len(boards) // 2)
-    return boards[:n], boards[n:][:n_boards]
+def split(boards: list, n_boards: int, games: list, seed: str = "") -> tuple:
+    """A hole's boards -> (the boards the pipeline CHOOSES on, the boards the choice is CONFIRMED on, their games): never
+    the same GAME on both sides (Kaveh: "split by identity, not by list" -- 2026-10-12: split by list, 27-36 of the 50
+    confirmation boards came from games also choosing; the best of ~60 on the boards that chose it is biased upward, and
+    the game's other boards share that bias). Whole games, in a fixed shuffled order: the choosing side up to half the
+    boards (n_boards at most), the rest confirming (n_boards at most)."""
+    import random
+    from collections import defaultdict
+    by = defaultdict(list)
+    for b, g in zip(boards, games):
+        by[g].append(b)
+    order = sorted(by, key=lambda g: random.Random(f"{seed}|{g}").random())
+    half = min(n_boards, len(boards) // 2)
+    choose, check, check_games = [], [], []
+    for g in order:
+        if len(choose) < half:
+            choose += by[g]
+        elif len(check) + len(by[g]) <= n_boards:
+            check += by[g]; check_games += [g] * len(by[g])
+    return choose, check, check_games
 
 
-def confirm(hole: dict, best: dict | None, boards: list, defender: str) -> dict:
+def confirm(hole: dict, best: dict | None, boards: list, defender: str, games: list | None = None) -> dict:
     """THE PROMOTION TEST: the candidate the pipeline chose and the frame before it (no candidate), both played on the
-    confirmation boards, compared board by board (defenders.paired_e); promoted at e >= 20."""
+    confirmation boards, compared board by board and voted ONE GAME ONE VOTE (defenders.paired_e)."""
     from . import defenders as D
     if not best or not boards:
-        return dict(promoted=False, w=0, l=0, e=1.0, n=len(boards), cand=None, base=None)
+        return dict(promoted=False, w=0, l=0, e=1.0, n=len(boards), games=len(set(games or [])), cand=None, base=None)
     ver = Verifier(defender=defender)
     cand = ver.verify(hole, best["term"], best["schema"], boards)
     base = ver.verify(hole, None, "none", boards)
-    w, l, e = D.paired_e(cand["per_board"], base["per_board"])
-    return dict(promoted=e >= D.E_PROMOTE, w=w, l=l, e=e, n=len(boards), cand=cand, base=base)
+    w, l, e = D.paired_e(cand["per_board"], base["per_board"], games)
+    return dict(promoted=e >= D.E_PROMOTE, w=w, l=l, e=e, n=len(boards), games=len(set(games or [])), cand=cand, base=base)

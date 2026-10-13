@@ -1,5 +1,8 @@
 {
  "KRRvK": [
-  "(count (and (nearer L P) (reach W unhit)))"
+  "(sum (count (and (knight2 L) (not (box P)))) (count (not (nearer W L))))"
+ ],
+ "KRRvKR:check": [
+  "(count (and hit (nearer L P)))"
  ]
 }

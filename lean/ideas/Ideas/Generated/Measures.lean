@@ -228,4 +228,16 @@ def krrvk_geometry_r2_progress (p : Position) (c : Color) (W L P O : Square) : N
 /-- krrvk_evidence_r0_progress: how many of the squares nearer their king than our other piece that are also the squares our king can walk to over the squares they do not attack. (2026-10-12, hole learn_evidence_KRRvK_rank2_r0; verifier: on 50 confirmation boards: held 37/50, won 37 -- the frame before it held 14/50, won 14; better on 31 boards, worse on 1, e-value 4.07e+06 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
 def krrvk_evidence_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (reach W (fun u => !(attackedBy p (Color.opposite c) W u))) u))
 
+/-- krrvk_carry_r0_progress: how many of the squares a knight on their king reaches in two hops that are also the squares outside the box around our other piece. (2026-10-12, hole learn_carry_KRRvK_rank2_r0; verifier: on 50 confirmation boards: held 41/50, won 41 -- the frame before it held 14/50, won 14; better on 31 boards, worse on 1 over 1 round(s), e-value 4.07e+06 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvk_carry_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (knight2 L) u && (fun u => !((box P) u)) u))
+
+/-- krrvk_carry2_r0_progress: how many of the squares a knight on their king reaches in two hops that are also the squares outside the box around our other piece. (2026-10-12, hole learn_carry2_KRRvK_rank2_r0; verifier: on 50 confirmation boards: held 41/50, won 41 -- the frame before it held 14/50, won 14; better on 31 boards, worse on 1 over 1 round(s), e-value 4.07e+06 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvk_carry2_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (knight2 L) u && (fun u => !((box P) u)) u))
+
+/-- krrvk_carry2_r2_progress: how many of the squares outside the squares nearer our king than their king. (2026-10-12, hole learn_carry2_KRRvK_rank2_r2; verifier: on 50 confirmation boards: held 42/50, won 42 -- the frame before it held 36/50, won 36; better on 17 boards, worse on 3 over 2 round(s), e-value 43.8 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvk_carry2_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => !((nearer W L) u)))
+
+/-- krrvkr_check_carry2_r2_progress: how many of the squares they attack that are also the squares nearer their king than our other piece. (2026-10-12, hole learn_carry2_KRRvKR_check_rank2_r2; verifier: on 35 confirmation boards: held 1/35, won 1 -- the frame before it held 1/35, won 1; better on 30 boards, worse on 5 over 3 round(s), e-value 2.94e+03 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_check_carry2_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (attackedBy p (Color.opposite c) W) u && (nearer L P) u))
+
 end Ideas.Generated

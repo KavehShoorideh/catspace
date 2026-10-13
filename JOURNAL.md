@@ -29965,3 +29965,46 @@ With no K+R+R v K+R frame the challenger had no claims there to attack (K+R+R v 
 OPEN: (1) the loop stops when a round promotes nothing, though the next round's games would bring new boards -- an
 inconclusive e-value (3.6) could continue on them; (2) whether held-out hole boards are the right confirmation set
 for a frame whose job is the games.
+
+EVIDENCE CARRIED ACROSS ROUNDS, AND WHAT IT TURNED UP (2026-10-12 21:10-21:59 PDT; Kaveh: "Yes" to carrying inconclusive
+evidence; "prioritize ... the biggest slope ... still under the threshold"; "check the literature ... and do the same
+thing here"; "you can use Stockfish to verify our auditor"; "commit the tiebreak patch once it works ... delay the loss
+as long as possible or get to the quickest win").
+  THE RUN (tag carry2; a first try, tag carry, stopped after 4 minutes: it kept a candidate pending only at e > 1, which
+  drops a modest lean -- 19 to 12 is e 0.48 -- and multiplied per-round e-values; carry2 pools the boards and keeps a
+  candidate while it wins more than it loses). K+R+R v K+R wins per 100, rounds 0-3: 69/72/64/68 (geometry 69/81/67/79,
+  level2b 69/78/75/74). Promoted: K+R+R v K "the squares a knight's two hops from their king outside the box around our
+  rook" (round 0, 31 to 1, e 4.1e6); K+R+R v K "the squares not nearer our king than theirs", added (pending from round
+  1, 17 to 3 pooled, e 44 at a bar of 40); the in-check frame "the squares they attack nearer their king than our rook"
+  (pending from round 0, 30 to 5 pooled, e 2.9e3). K+R+R v K+R: nothing (a candidate pending at 43 to 33 faded to 61 to
+  56). CAVEAT (below): these confirmations split boards by list, not by game -- the promoted e-values are inflated by an
+  unknown amount; the rejections stand.
+  TWO LOSSES (round 2) traced. Seed 2097: in check at 8/8/2k5/3R4/2r5/8/8/2KR4 w (clock 96; the tablebase: Kb1/Kb2 win),
+  the audit (new: audit_check, every move's net and reason) scored Kb1/Kb2 -5 ("Rb4 draws by threefold repetition (our
+  lead 5)" -- real: a third occurrence) and Kd2 -5 ("Kxd5 wins 5"); least_loss broke the tie by move order -> Kd2, the
+  rook went, K+R v K+R was lost. Fixed (committed): among equal nets the move handing over the least material, then one
+  not ending the game -- the clock-end rule generalised; Kaveh's question: why a material rule at all, when the objective
+  is the outcome then its distance -- answered: material is our estimate of the outcome where none is proved; ranking
+  moves by proved outcome bounds (worst case, best case, distance) would subsume it (discussed, not built). Seed 2031: a
+  skewer on the second rank -- every legal move lost the a2 rook; the position was already a tablebase draw.
+  THE LITERATURE (an agent's review, citations opened): the sampling rule cannot break e-process validity (Xu, Wang &
+  Ramdas, NeurIPS 2021); Kaveh's slope rule is close to e-PS (a Thompson draw on log-e growth; Lin et al., 2026 preprint);
+  a candidate's bar fixed for life (re-charging it per round adds nothing); deterministic futility loses no power;
+  successive halving in the screening would cut ~3000 games a hole to ~800. And a PITFALL in our own split: holes hold
+  several positions per failed episode and verifier.split cut the list -- measured on carry2's holes, 27-36 of the 50
+  confirmation boards came from games also choosing, up to 3-4 boards a game. Kaveh's "split by identity" rule broken.
+  FIXED (this commit): boards carry their game; choosing and confirming on different GAMES; one vote per game; the
+  one-sided mixture e-value (valid for "no better", ~2x the two-sided when leading: 10 to 5 -> 1.22 vs 0.68); the bar 20
+  per candidate for life; several pending per hole, each dropped when it loses as many games as it wins or when winning
+  every game still to come in the run could not reach the bar.
+  THE AUDITOR AGAINST REFERENCES (audit_oracle.py; Stockfish depth 12 with the tablebases, and the tablebase): 300
+  positions of ours while ahead (carry2 + geometry), 6,298 moves: material agrees 97.3%; outcome missed (the audit says
+  safe, the tablebase says the result is thrown away) 7 (0.1%); outcome false alarm (the audit says a piece goes, the
+  win is kept -- e.g. a rook given into a won K+R v K) 253 (4.0%); history-dependent 89 (1.4%); material false alarm 61
+  (1.0%), material missed 19 (0.3%) -- but Stockfish with the tablebases picks the OUTCOME, not material (it drops a
+  rook freely in a won line), so the material comparison is confounded; one suspected exchange bug (Rc7) was checked and
+  retracted (the audit was right: c7 was unguarded; the line regains it by a tactic the audit does not search).
+  ALSO: the discovery/ package (b9ae9613) had shadowed the old discovered-check module discovery.py -- pin, fork,
+  backrank, overload and the tactic census/coverage imports broke (4 tests, 1 collection error); renamed to
+  discovered_check.py (committed). Full suite: 728 passed, 4 failed (that import), 2 collection errors (that import; a
+  research tool's missing data file) -> after the rename those 17 tests pass.

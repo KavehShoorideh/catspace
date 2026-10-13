@@ -45,16 +45,33 @@ def test_a_blind_spot_on_the_traps_own_boards_is_not_answered_twice():
 def test_paired_e_value():
     from catspace.incubator.analyst.discovery.defenders import paired_e, E_PROMOTE
     held, lost = [1, 0, 3], [0, 0, 3]
-    assert abs(paired_e([held] + [lost] * 49, [lost] * 50)[2] - 1) < 1e-9       # one board of 50: e = 1, not evidence
+    assert paired_e([held] + [lost] * 49, [lost] * 50)[2] < 2                    # one board of 50: not evidence
     w, l, e = paired_e([held] * 26 + [lost] * 24, [held] * 3 + [lost] * 47)
-    assert (w, l) == (23, 0) and e > 1e5                                 # the round-2 trap stage's margin
+    assert (w, l) == (23, 0) and e > 1e5                                         # the round-2 trap stage's margin
     assert paired_e([[0, 0, 6]] * 40 + [[0, 0, 1]] * 10, [[0, 0, 2]] * 50)[:2] == (40, 10)   # ties on held/won: progress decides
-    assert paired_e([held] * 10 + [lost], [lost] * 10 + [held])[2] < E_PROMOTE    # 10 to 1: e 15.5
-    assert paired_e([held] * 11 + [lost], [lost] * 11 + [held])[2] >= E_PROMOTE   # 11 to 1: e 26
+    assert paired_e([held] * 7 + [lost], [lost] * 7 + [held])[2] < E_PROMOTE      # 7 to 1: e 7.0
+    assert paired_e([held] * 10 + [lost], [lost] * 10 + [held])[2] >= E_PROMOTE   # 10 to 1: e 30.9 (one-sided)
 
 
-def test_choose_and_confirm_on_different_boards():
+def test_one_vote_per_game():
+    from catspace.incubator.analyst.discovery.defenders import votes
+    a = [[1, 0, 0]] * 3 + [[0, 0, 0]] + [[1, 0, 0]]
+    b = [[0, 0, 0]] * 3 + [[1, 0, 0]] + [[0, 0, 0]]
+    assert votes(a, b) == (4, 1)                                                  # by board
+    assert votes(a, b, ["g1", "g1", "g1", "g2", "g3"]) == (2, 1)                  # by game: g1 counts once
+
+
+def test_the_one_sided_mixture():
+    from catspace.incubator.analyst.discovery.defenders import sign_e
+    assert sign_e(0, 0) == 1.0
+    assert 1.7 < sign_e(10, 5) / 0.683 < 1.9                                      # about twice the two-sided 0.68 at 10 to 5
+    assert sign_e(5, 10) < sign_e(10, 5)
+
+
+def test_choose_and_confirm_on_different_games():
     from catspace.incubator.analyst.discovery.verifier import split
-    assert split(list(range(100)), 50) == (list(range(50)), list(range(50, 100)))
-    a, b = split(list(range(30)), 50)
-    assert len(a) == len(b) == 15 and not set(a) & set(b)
+    boards = [f"b{i}" for i in range(100)]
+    games = [i // 3 for i in range(100)]                                          # three boards a game
+    choose, check, cg = split(boards, 50, games, seed="t")
+    gc = {games[boards.index(b)] for b in choose}
+    assert not gc & set(cg) and len(check) == len(cg) <= 50 and 50 <= len(choose) <= 52

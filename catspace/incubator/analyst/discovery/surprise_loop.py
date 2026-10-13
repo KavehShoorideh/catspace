@@ -283,14 +283,47 @@ def compose(base: list, term: str, schema: str) -> list:
     return base[:-1] + [term]                               # replace
 
 
+def to_test(best: dict | None, olds: list, cur: list) -> list:
+    """The candidates a hole's confirmation boards test this round: the round's best (no evidence yet) and those PENDING
+    from earlier rounds with their votes carried -- unless the frame they were measured against has changed since; the
+    same candidate twice is tested once, its votes carried."""
+    tested = [dict(term=best["term"], schema=best["schema"], w0=0, l0=0, rounds=0)] if best else []
+    for old in olds:
+        if old["base"] != cur:
+            continue
+        carried = dict(term=old["term"], schema=old["schema"], w0=old["w"], l0=old["l"], rounds=old["rounds"])
+        same = [t for t in tested if (t["term"], t["schema"]) == (old["term"], old["schema"])]
+        if same:
+            same[0].update(carried)
+        else:
+            tested.append(carried)
+    return tested
+
+
+def settle(tested: list, bar: float, more: int) -> tuple:
+    """After the confirmation (each t with its pooled votes w, l and their e): -> (the promoted -- the most evidence at or
+    over the bar -- or None, the ones kept pending): those still winning more games than they lose AND able to reach the
+    bar with the votes still to come in the run (`more`: winning every one of them) -- the rest dropped: the opportunity
+    cost (Kaveh 2026-10-12: "not every lemma deserves to be going on forever"; the deterministic futility rule loses no
+    power: a candidate that cannot reach the bar can never be promoted)."""
+    from .defenders import sign_e
+    win = max((t for t in tested if t["e"] >= bar), key=lambda t: t["e"], default=None)
+    if win:
+        return win, []
+    return None, sorted((t for t in tested if t["w"] > t["l"] and sign_e(t["w"] + more, t["l"]) >= bar), key=lambda t: -t["e"])
+
+
 def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: str = "", defender: str = "self", n_boards: int = 30,
-         register: bool = True) -> dict:
-    """Each material's refuted frame claims -> a hole -> the pipeline -> the best term joins the material's frame."""
+         register: bool = True, pending: dict | None = None, rounds_left: int = 0) -> dict:
+    """Each material's refuted frame claims -> a hole -> the pipeline -> the best term joins the material's frame.
+    `pending` ({"<frame key>|rank<n>": [candidates]}, updated in place): the candidates whose evidence is still open;
+    `rounds_left`: the confirmations still to come in the run (a pending candidate's budget)."""
+    pending = {} if pending is None else pending
     from . import base_vocabulary as V
     from . import holes as H
     from .pipeline import run
     new = dict(frames)
-    by = defaultdict(set)
+    by = defaultdict(dict)                     # (frame key, rank) -> {board: its game}
     contrast = defaultdict(lambda: {"win": [], "draw": []})
     diverged = Counter()
     trajs = defaultdict(list)
@@ -333,7 +366,7 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
                 k0 = idx.index(e["start"])
                 fens_e = [g["rows"][i]["fen"] for i in idx[k0:k0 + e["length"]] if g["rows"][i]["lead"] > 0]
                 fk = f"{mat}:check" if e["kind"] == "check" else mat
-                trajs[(fk, 1 if e["outcome"] == "material lost" else 2)].append(fens_e)
+                trajs[(fk, 1 if e["outcome"] == "material lost" else 2)].append((g["seed"], fens_e))
         for r in g["rows"]:
             # WHERE OUR OWN PROOF REACHES WHAT WE KNOW (the forced entry fired) is the "good" side of the contrast: the miner
             # learns to steer toward the positions our proofs can bank on -- labelled by our lemmas, no engine
@@ -343,12 +376,14 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
         print("OBS   phases that did not progress, mined from their divergence: " + ", ".join(f"{m} {n}" for m, n in diverged.items()))
     # THE FAILED EPISODES INTO BOARDS: each gives its positions (evenly spaced when long), every failing game counted
     for key, ts in trajs.items():
-        ts = [t for t in ts if t]
+        ts = [(s, t) for s, t in ts if t]
         per = max(3, cap // max(len(ts), 1))
-        for t in ts:
+        for s, t in ts:
             step = max(1, len(t) // per)
-            by[key].update(t[::step][-per:])
-        print(f"OBS   {key[0]} rank {key[1]}: {len(ts)} failed episodes, {sum(len(t) for t in ts)} positions -> {len(by[key])} boards")
+            for f in t[::step][-per:]:
+                by[key].setdefault(f, s)
+        print(f"OBS   {key[0]} rank {key[1]}: {len(ts)} failed episodes, {sum(len(t) for _, t in ts)} positions -> {len(by[key])} boards "
+              f"from {len(set(by[key].values()))} games")
     for (fk, rank), fens in sorted(by.items(), key=lambda kv: (kv[0][1], -len(kv[1]))):
         mat = fk.split(":")[0]                     # the material; fk the frame learned (the material's, or its check frame)
         if len(fens) < 10:
@@ -360,7 +395,13 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
             b = chess.Board(f)
             b.halfmove_clock = 0
             return b.fen()
-        boards = [fresh(f) for f in random.Random(rnd).sample(sorted(fens), min(cap, len(fens)))]
+        picked = random.Random(rnd).sample(sorted(fens), min(cap, len(fens)))
+        from .verifier import split, confirm
+        # choosing and confirming on DIFFERENT GAMES (verifier.split); the hole's boards ordered choosing first -- the
+        # pipeline chooses on the first len(choose)
+        choose, check, check_games = split([fresh(f) for f in picked], n_boards, [fens[f] for f in picked], seed=f"{tag}|{fk}|{rank}|{rnd}")
+        boards = choose + check
+        gid = {fresh(f): fens[f] for f in picked}
         name = f"learn_{tag + '_' if tag else ''}{fk.replace(':', '_')}_rank{rank}_r{rnd}"   # the run's tag: no run reads another's hole
         cur = new.get(fk, [])
         rng = random.Random(rnd)
@@ -370,21 +411,59 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
             pool = {k: [f for f in v if chess.Board(f).is_check()] for k, v in pool.items()}
         con = {k: rng.sample(v, min(150, len(v))) for k, v in pool.items()}
         hole = dict(name=name, material=mat, frame_key=fk, frames=dict(new), piece="*", base=cur, k=H.K, stuck=boards, sampled=len(fens),
+                    games=[gid[b] for b in boards],
                     schemas=["prepend"] if rank == 1 and cur else None, contrast=con if con["win"] and con["draw"] else None)
         json.dump(hole, open(paths.derived(f"hole_{name}.json"), "w"))
         print(f"OBS   {fk} rank {rank} ({'material lost' if rank == 1 else 'failed episodes'}: from the divergence): {len(fens)} surprise boards -> hole {name} "
               f"(base {cur or 'none'}; {len(boards)} boards; the games' contrast: {len(con['win'])} before a win, {len(con['draw'])} in draws)")
         t0 = time.time()
-        from .verifier import split, confirm
-        choose, check = split(boards, n_boards)
         out = run(name, budget, hole=hole, defender=defender, n_boards=len(choose))
         base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None
         cf = None
         if "ranks" in base:                      # a real defender: confirmed board by board on boards not used to choose
-            cf = confirm(hole, best, check, defender)
-            wins = cf["promoted"]
-            print(f"OBS   the confirmation ({cf['n']} boards not used to choose): {best and best['term']} beats the frame before it on {cf['w']}, "
-                  f"loses on {cf['l']} -- e-value {cf['e']:.3g} ({'promoted' if wins else 'not promoted'} at e >= 20)")
+            # THE EVIDENCE CARRIED ACROSS ROUNDS (Kaveh 2026-10-12, "Yes" -- an inconclusive e-value continues on the next
+            # round's boards instead of the loop stopping): the round's best and the candidates PENDING for this hole,
+            # each confirmed on this round's held-out GAMES (one vote a game); a pending candidate's votes are POOLED across
+            # rounds and the one-sided sign e-value taken on the pool (the mixture martingale: anytime valid -- the next
+            # round's games are new). Each candidate's bar is 20 FOR LIFE (Ville: its chance of ever being promoted while
+            # no better is at most 1/20 -- re-charging it per round adds nothing: the literature check, 2026-10-12). Not
+            # promoted, a candidate stays pending while it wins more games than it loses and can still reach the bar in
+            # the run's remaining rounds; else dropped (or when the frame it was measured against changes)
+            pkey = f"{fk}|rank{rank}"
+            olds = pending.pop(pkey, [])
+            olds = [olds] if isinstance(olds, dict) else olds          # (a run resumed from the one-pending format)
+            for o in olds:
+                if o["base"] != cur:
+                    print(f"OBS   the pending {o['term']} dropped: the {fk} frame it was measured against changed")
+            tested = to_test(best, olds, cur)
+            from .defenders import E_PROMOTE, sign_e
+            bar = E_PROMOTE
+            more = len(set(check_games)) * rounds_left
+            for t in tested:
+                c = confirm(hole, t, check, defender, check_games)
+                t.update(cf=c, w=t["w0"] + c["w"], l=t["l0"] + c["l"], rounds=t["rounds"] + 1)
+                t["e"] = sign_e(t["w"], t["l"])
+                who = "the round's best" if best and t is tested[0] else "pending"
+                if t["rounds"] > 1:
+                    who += f", tested since {t['rounds'] - 1} round(s) before"
+                print(f"OBS   the confirmation ({c['n']} boards of {c['games']} games not used to choose): {t['term']} ({who}) "
+                      f"beats the frame before it in {c['w']} games, loses in {c['l']} -- e-value {c['e']:.3g} this round, {t['e']:.3g} "
+                      f"pooled over its rounds ({t['w']} to {t['l']}; the bar {bar:.0f})")
+            win, keep = settle(tested, bar, more)
+            wins = bool(win)
+            if win:
+                cf = dict(win["cf"], e=win["e"], w=win["w"], l=win["l"], rounds=win["rounds"])
+                best, base = dict(term=win["term"], schema=win["schema"], score=cf["cand"]["score"]), cf["base"]
+            else:
+                if keep:
+                    pending[pkey] = [dict(term=k["term"], schema=k["schema"], base=cur, e=k["e"], w=k["w"], l=k["l"], rounds=k["rounds"]) for k in keep]
+                for t in tested:
+                    if t in keep:
+                        print(f"OBS   PENDING for {fk} rank {rank}: {t['term']} -- {t['w']} to {t['l']}, e-value {t['e']:.3g}; continued on the next round's games")
+                    else:
+                        print(f"OBS   dropped for {fk} rank {rank}: {t['term']} -- {t['w']} to {t['l']}: "
+                              + ("it loses as many games as it wins" if t["w"] <= t["l"] else
+                                 f"winning all {more} games still to come in the run could not reach the bar"))
         else:
             wins = bool(best) and best["score"] > base["score"] + 0.05
         if wins:
@@ -398,8 +477,8 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
             if cf:
                 c, b0 = cf["cand"], cf["base"]
                 ev["verifier"] = (f"on {cf['n']} confirmation boards: held {c['n'] - c['lost']}/{c['n']}, won {c['mated']} -- the frame before it "
-                                  f"held {b0['n'] - b0['lost']}/{b0['n']}, won {b0['mated']}; better on {cf['w']} boards, worse on {cf['l']}, "
-                                  f"e-value {cf['e']:.3g} (defender {defender})")
+                                  f"held {b0['n'] - b0['lost']}/{b0['n']}, won {b0['mated']}; better on {cf['w']} boards, worse on {cf['l']} over "
+                                  f"{cf['rounds']} round(s), e-value {cf['e']:.3g} (defender {defender})")
             if register:                          # (a --dry test run writes nothing to the generated track)
                 R.add_generated(f"{fk.lower().replace(':', '_')}_{tag or 'run'}_r{rnd}_{what}", best["term"], "measure", name, ev,
                                 used_by=f"the {fk} frame ({best['schema']}): {new[fk]}")
@@ -432,11 +511,12 @@ def main(argv=None):
     state = paths.derived(f"{stem}.json")
     from . import registry as R
     frames = json.load(open(a.frames)) if a.frames else ({} if a.fresh else R.load_frames())
-    history, start, res = [], 0, None
+    history, start, res, pending = [], 0, None, {}
     if a.resume:                         # the last round played: its games are saved, its mining is redone
         history = json.load(open(state))
         last = history[-1]
         start, frames = last["round"], last["frames"]
+        pending = dict(history[-2].get("pending", {})) if len(history) > 1 else {}    # the evidence open before that mining
         res = json.load(open(paths.experiment(f"{stem}_r{start}.json")))
         print(f"OBS resuming {stem} at round {start}'s mining (frames {frames or 'none'})")
     elif os.path.exists(state):
@@ -452,13 +532,18 @@ def main(argv=None):
             json.dump(history, open(state, "w"), indent=1)
         if rnd == a.rounds:
             break
-        new = mine(res, frames, rnd, a.budget, tag=tag, defender=a.defender, n_boards=a.boards, register=not a.dry)
+        new = mine(res, frames, rnd, a.budget, tag=tag, defender=a.defender, n_boards=a.boards, register=not a.dry, pending=pending,
+                   rounds_left=a.rounds - 1 - rnd)
         if a.challenger:
             # THE CHALLENGER (Kaveh: "reason both sides"): traps against the round's frames, answered by stages
             from . import challenger as C
             new = C.round_(res, frames, new, tag or "run", rnd, register=not a.dry)
+        history[-1]["pending"] = dict(pending)
+        json.dump(history, open(state, "w"), indent=1)
+        if new == frames and not pending:
+            print("OBS nothing new mined and no evidence pending -- stopping"); break
         if new == frames:
-            print("OBS nothing new mined -- stopping"); break
+            print(f"OBS nothing new mined; evidence pending for {sorted(pending)} -- the next round's boards continue it")
         if not a.dry:
             R.save_frames(new, f"{stem} round {rnd}")  # the learned frames, the next run's start
         frames, res = new, None

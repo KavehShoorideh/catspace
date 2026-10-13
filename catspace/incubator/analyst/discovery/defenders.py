@@ -279,20 +279,41 @@ def score(r: dict) -> float:
 E_PROMOTE = 20.0                # promote at e >= 1/alpha, alpha = 0.05
 
 
-def paired_e(a: list, b: list) -> tuple:
-    """THE EVIDENCE that a beats b (Kaveh 2026-10-12: "do we need e-values for the evidence?"), from their per-board
-    outcomes on the SAME boards: each board compared on Kaveh's ranks -- held, then won, then the lemma-states reached --
-    the boards a wins (w) against those b wins (l), ties dropped; under the null (a and b exchangeable on every board) each
-    decided board is a coin. The e-value is the uniform-mixture likelihood ratio against the fair coin,
-    e = 2^(w+l) B(w+1, l+1): its expectation under the null is 1, so it stays valid when more boards are added after
-    looking and multiplies across independent rounds (Ville). One board more held of 50 gives e = 1 -- not evidence
+def votes(a: list, b: list, games: list | None = None) -> tuple:
+    """(w, l): the boards a wins on Kaveh's ranks (held, then won, then the lemma-states) against those b wins, ties
+    dropped -- given each board's GAME, ONE VOTE PER GAME (the sum of its boards' signs): a hole holds up to four boards
+    of one game and correlated boards are not independent coins (2026-10-12, the literature check; Kaveh's "split by
+    identity, not by list")."""
+    s = [(tuple(x) > tuple(y)) - (tuple(x) < tuple(y)) for x, y in zip(a, b)]
+    if games is not None:
+        tot: dict = {}
+        for g, v in zip(games, s):
+            tot[g] = tot.get(g, 0) + v
+        s = list(tot.values())
+    return sum(v > 0 for v in s), sum(v < 0 for v in s)
+
+
+def paired_e(a: list, b: list, games: list | None = None) -> tuple:
+    """THE EVIDENCE that a beats b (Kaveh 2026-10-12: "do we need e-values for the evidence?") from their per-board
+    outcomes on the SAME boards, one vote per game (votes) -> (w, l, e). One board more held of 50 is not evidence
     (2026-10-12: a stage promoted on 1/50 against 0/50); the claims kept never count (a measure we lower ourselves keeps
-    its claims by construction -- the "ends" run). -> (w, l, e)."""
+    its claims by construction -- the "ends" run)."""
+    w, l = votes(a, b, games)
+    return w, l, sign_e(w, l)
+
+
+def sign_e(w: int, l: int) -> float:
+    """The sign test's ONE-SIDED mixture e-value for w votes won against l lost: the likelihood ratio against the fair
+    coin averaged over win rates q uniform on [1/2, 1], = 2^(w+l+1) B(w+1, l+1) P(Beta(w+1, l+1) > 1/2). Valid for the
+    composite null "a is no better" (rate <= 1/2: each q >= 1/2 bets fairly against every such rate); over votes pooled
+    from several rounds it is the mixture martingale itself -- anytime valid (Ville); about twice the two-sided mixture
+    when a leads (Ramdas & Wang 2025; Grunwald, de Heide & Koolen 2024)."""
     import math
-    w = sum(tuple(x) > tuple(y) for x, y in zip(a, b))
-    l = sum(tuple(x) < tuple(y) for x, y in zip(a, b))
+    from scipy.stats import beta
     n = w + l
-    return w, l, math.exp(n * math.log(2) + math.lgamma(w + 1) + math.lgamma(l + 1) - math.lgamma(n + 2))
+    if n == 0:
+        return 1.0
+    return math.exp((n + 1) * math.log(2) + math.lgamma(w + 1) + math.lgamma(l + 1) - math.lgamma(n + 2)) * float(beta.sf(0.5, w + 1, l + 1))
 
 
 def main(argv=None):
