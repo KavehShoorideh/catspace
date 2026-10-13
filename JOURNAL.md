@@ -30078,3 +30078,26 @@ GENERIC CHANGES during the run (committed or to commit after a smoke): a "known"
 the frames in play offered first in every hole (a stage's winning K+R+R v K+R measure was the next run's K+R+R v K frame
 while that run's stage race picked a loser); STAGES CARRIED across rounds like frames' candidates (re-confirmed each
 round on the new games' refuted positions inside their region, votes pooled).
+
+THE NIGHT, PART 1 (2026-10-12 23:10-23:40 PDT; Kaveh, to bed: "keep mining ... improving in a generic way ... expand the
+game area and keep trying harder and harder challenges"). Generic changes, each tested, each committed:
+  KNOWN LEMMAS FIRST -- the registry's measures and the frames in play offered as candidates in every hole. It
+  transferred at once: K+Q v K+R's in-check frame is K+R+R v K+R's "the squares on the line from our king to their rook"
+  (confirmed in both endings); a K+Q v K+R stage's measure was K+R+R v K+R's "the squares not nearer our king than theirs".
+  STAGES CARRIED across rounds (re-confirmed each round on new games inside their region, votes pooled). Real-data
+  check: honestgap's 5-game stage (4 to 1, "39/46 boards") on round 3's 30 games: 6 better, 8 worse -> 10 to 9.
+  In kqr1 a carried stage went 5:0 -> 20:7 (e 10.7); another was promoted on carried evidence.
+  THE CURRICULUM: --dtz LO:HI starts within a band of the tablebase's distance to zeroing; --ramp widens it after a round
+  winning two thirds (the tablebase picks starts only).
+  THE GUARD ON WHOLE GAMES (first, don't lose): before a frame or a stage is promoted, 40 of the round's starts (half
+  from its won games) are replayed with it added; vetoed when worse in more games than better on (the result, the
+  material kept). WHY: kqr1 promoted, on progress alone (failure boards: no game won either way), a K+Q v K+R frame
+  "the squares our queen attacks" -- minimised, it pushes the queen to the edge; 5 of round 2's games lost the queen to a
+  rook skewer (round 0: 1); replayed without it, 4 of those 5 kept the queen and one was won. The challenger itself
+  flagged it as a BLIND SPOT (the frame refuted 0.82 where the queen is passive, 0.25 elsewhere). Validation: the queen
+  frame on its own round's starts -> 4 better, 7 worse: VETOED; honestgap's K+R+R v K frame -> 5 better, 1 worse: passed.
+  (A first guard on positions of won phases saw nothing -- 0 to 0 on 50 -- and was removed.)
+  HARDER ENDINGS. K+B+N v K (dry smoke, 30 games x 3 rounds): drew 90 of 90 -- no won game, nothing but progress to learn
+  from; a frame promoted on progress did not win a game; likely needs the curriculum (and perhaps the bishop's colour,
+  which the vocabulary lacks -- not added: the vocabulary is Kaveh's). K+Q v K+R (smoke 21/24/23 of 30; full run kqr1
+  75/71/74/67 per 100, stopped after round 3 for the guard): restarted as kqr2 with every change.
