@@ -1694,6 +1694,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(vocab::material_safe_moves, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::lemma_state, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::lemma_facts_of, m)?)?;
+    m.add_function(wrap_pyfunction!(threat::known_entry_of, m)?)?;
     m.add_function(wrap_pyfunction!(prove_tree, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_play_out_gains, m)?)?;
     m.add_function(wrap_pyfunction!(threat::set_composed, m)?)?;

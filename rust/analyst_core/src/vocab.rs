@@ -481,6 +481,12 @@ pub fn material_frames() -> PyResult<std::collections::HashMap<String, Vec<Strin
     Ok(MATERIAL_FRAMES.read().unwrap().clone().unwrap_or_default())
 }
 
+/// A material we KNOW how to win (from the side to move's view): a mating frame's, or one with a frame of the run (a
+/// learned measure whose claims we rely on) -- the forced entry's goal (threat.rs known_entry).
+pub fn is_known(key: &str) -> bool {
+    matches!(key, "KQvK" | "KRvK") || MATERIAL_FRAMES.read().unwrap().as_ref().map_or(false, |m| m.contains_key(key))
+}
+
 /// The frame a material is known by (the run's mined frames, else the mating frames' named measures).
 fn known_frame(key: &str) -> Vec<String> {
     if let Some(t) = MATERIAL_FRAMES.read().unwrap().as_ref().and_then(|m| m.get(key).cloned()) { return t; }

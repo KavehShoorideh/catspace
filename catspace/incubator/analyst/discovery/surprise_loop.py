@@ -297,6 +297,10 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
             # ahead materials of the generic frame (the mating frames and the hold frame are earlier lemmas): rank 1
             if r["claim"]["kind"] == "frame" and r["material"] not in MATING_SPECS and r["lead"] > 0 and r["verdict"] == "lost ground":
                 by[(r["material"], 1)].add(r["fen"])
+            # WHERE OUR OWN PROOF REACHES WHAT WE KNOW (the forced entry fired) is the "good" side of the contrast: the miner
+            # learns to steer toward the positions our proofs can bank on -- labelled by our lemmas, no engine
+            if "forces entry into the known" in r["why"] and r["material"] not in MATING_SPECS:
+                contrast[r["material"]]["win"].append(r["fen"])
     if loops_seen:
         print("OBS   loops found in the failing phases (lemma-states revisited, the measure no lower): " + ", ".join(f"{m} {n}" for m, n in loops_seen.items()))
     for (mat, rank), fens in sorted(by.items(), key=lambda kv: (kv[0][1], -len(kv[1]))):

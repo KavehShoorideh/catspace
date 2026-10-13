@@ -2047,6 +2047,16 @@ impl PlanState {
         MEMO.with(|m| *m.borrow_mut() = Some(memo));
         let t = std::time::Instant::now();
         let mut p = match played { Some(p) => p, None => plan(&pos) };
+        // THE FORCED ENTRY INTO WHAT WE KNOW (threat.rs known_entry): nothing proved by the gain -- a forced trade or capture
+        // into a material we know how to win, proved against every reply, is relied on before any measure
+        if p.best.is_none() && crate::vocab::GENERIC_FRAME.load(Ordering::Relaxed)
+            && crate::vocab::material(pos.board(), pos.turn()) > crate::vocab::material(pos.board(), !pos.turn()) {
+            if let Some(m) = crate::threat::known_entry(&pos, crate::threat::FBUDGET.load(Ordering::Relaxed)) {
+                let u = m.to_uci(CastlingMode::Standard).to_string();
+                p.trace.push(format!("known: {} forces entry into a material we know (a trade or a capture, every reply searched)", san(&pos, &u)));
+                p.best = Some((String::new(), u.clone(), 5, format!("{} forces entry into the known", san(&pos, &u))));
+            }
+        }
         // THE GENERIC FRAME (vocab.rs): nothing proved -- the material's measure (or the empty frame) chooses, with its claim
         if p.best.is_none() && crate::vocab::GENERIC_FRAME.load(Ordering::Relaxed) {
             if let Some((m, claim)) = crate::vocab::material_frame_move(&pos) {

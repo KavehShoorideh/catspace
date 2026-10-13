@@ -142,7 +142,7 @@ def fresh_candidates(hole: dict, boards: list) -> dict:
 
 
 def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int = 40, hole: dict | None = None,
-        defender: str = "self", n_boards: int = 30) -> list:
+        defender: str = "self", n_boards: int = 30, batches: int = 1) -> list:
     """The pipeline on one hole: the learned proposers trained on the LABELED holes' verdicts (the store's feedback; the
     hole itself excluded), the enumerative one beside them, the filter, the verifier (each verdict to the store)."""
     import os
@@ -184,9 +184,8 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
         if defender != "self":
             P.update()                                  # this batch's verdicts, before the next batch is ranked
         print(f"OBS   batch {batch_no}: {len(kept)} verified, the batch's best {top['score']:.4f}, the hole's best {best['score']:.4f} (the frame's own {base['score']:.4f})")
-        if stale >= 2 or batch_no >= 10:
-            if batch_no >= 10:
-                print("OBS   (the guard of ten batches hit)")
+        # (Kaveh: not "keep proposing until it's broken" -- one batch unless asked; the loop is the rounds)
+        if batch_no >= batches or stale >= 2:
             break
     res = sorted(res, key=lambda r: -r["score"])
     def show(r):

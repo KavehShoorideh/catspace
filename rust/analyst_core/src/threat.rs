@@ -374,6 +374,63 @@ fn forcing_moves(s: &FState, by: Color, need_left: i64, corner: bool) -> Vec<(Mo
     out
 }
 
+// THE FORCED ENTRY INTO WHAT WE KNOW (Kaveh 2026-10-12: "the most likely trade is a rook for a rook ... can we prove that we
+// can force one trade? ... that's the only trade we can bank on ... we should try to prove our way to achieving that
+// goal"): our nodes branch on the forcing moves (checks, captures, threats on their pieces), theirs on every reply;
+// PROVEN at a node of ours whose material we KNOW how to win (a frame for it: vocab.rs is_known) with their material
+// smaller and our lead no lower than at the start -- a trade proves as a capture does: the known material is the goal,
+// not a gain -- or at their mate; disproven at a stalemate, a claimable draw, a repetition, the forcing's end. The proof
+// is the certificate on the board; Lean Ideas.Forced.toward_known composes it with the known material's own proof.
+struct KnownEntry { by: Color, lead0: i64, theirs0: i64 }
+
+fn known_here(q: &Chess, by: Color, lead0: i64, theirs0: i64) -> bool {
+    let b = q.board();
+    let (ours, theirs) = (crate::vocab::material(b, by), crate::vocab::material(b, !by));
+    theirs < theirs0 && ours - theirs >= lead0 && crate::vocab::is_known(&crate::vocab::material_key(b, by))
+}
+
+impl crate::pns::Problem for KnownEntry {
+    type State = FState;
+    fn judge(&self, s: &FState, or: bool, root: bool) -> Option<bool> {
+        if !root && crate::plan::GAME_DRAWS.load(Ordering::Relaxed) && crate::game::claimable_draw(&s.pos).is_some() { return Some(false); }
+        let none = s.pos.legal_moves().is_empty();
+        if or {
+            if none { return Some(false); }                                   // mated or stalemated
+            if !root && known_here(&s.pos, self.by, self.lead0, self.theirs0) { return Some(true); }
+            None
+        } else if none { Some(s.pos.is_check()) } else { None }               // their mate, or a stalemate
+    }
+    fn expand(&self, s: &FState, or: bool) -> Vec<(FState, f64)> {
+        if or { forcing_moves(s, self.by, 5, false).into_iter().map(|(m, c)| { let w = line_prior(&s.pos, &m); (c, w) }).collect() }
+        else { s.pos.legal_moves().iter().map(|m| (child_state(s, m, self.by), 1.0)).collect() }
+    }
+    fn and_size(&self, s: &FState) -> f64 { s.pos.legal_moves().len().max(1) as f64 }
+    fn key(&self, s: &FState) -> u64 {
+        use shakmaty::zobrist::{Zobrist64, ZobristHash};
+        s.pos.zobrist_hash::<Zobrist64>(shakmaty::EnPassantMode::Legal).0
+    }
+}
+
+/// The forced entry from `p` (the side to move): Some(the first move) when proven within the budget.
+pub fn known_entry(p: &Chess, budget: u64) -> Option<Move> {
+    let by = p.turn();
+    let b = p.board();
+    let (ours, theirs) = (crate::vocab::material(b, by), crate::vocab::material(b, !by));
+    if theirs == 0 { return None; }
+    let root = FState { pos: p.clone(), thr: rules::threats_arr(p, by), them: rules::threats_arr(p, !by), edge: ours - theirs, last: None };
+    match crate::pns::search_with_proof(&KnownEntry { by, lead0: ours - theirs, theirs0: theirs }, root, budget) {
+        (Some(true), Some(c)) => c.last,
+        _ => None,
+    }
+}
+
+/// known_entry_of(fen, budget) -> the first move of a forced entry into a material we know, if proven.
+#[pyfunction]
+pub fn known_entry_of(fen: String, budget: u64) -> Option<String> {
+    let p = crate::parse(&fen)?;
+    known_entry(&p, budget).map(|m| m.to_uci(CastlingMode::Standard).to_string())
+}
+
 /// The reference generator (attack-path lists), kept for the equivalence audit.
 fn forcing_moves_ref(s: &FState, by: Color) -> Vec<(Move, FState)> {
     let q = &s.pos;

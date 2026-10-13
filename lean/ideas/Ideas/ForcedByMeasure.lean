@@ -119,4 +119,32 @@ theorem Reach.dominate {target : α → Prop} (R S : α → α → Prop)
           exact Reach.dominate R S htarget hours hgoal htheirs hlive hR (hall r hr)
         · exact Or.inl hg'
 
+/-- THE DEFENDER'S HOLD (Kaveh 2026-10-12: "if we can prove the other way around, like what is the condition in which they
+can draw? ... what should we do for them to not be able to draw?"): a set `H` of positions (us to move) where no move of
+ours reaches the goal and every move of ours has a reply back into `H`. From a position of a hold nothing is forced, in any
+number of moves -- the dual of `forced_by_measure`. To win from inside a hold we must break one of its conditions (their
+rook removed, our king sheltered from the checks): those conditions are our subgoals. -/
+theorem hold_blocks (H : α → Prop)
+    (hstay : ∀ p, H p → ∀ q, ours p q → ¬ goal q ∧ ∃ r, theirs q r ∧ H r) :
+    ∀ n p, H p → ¬ Reach ours theirs goal (fun _ => False) n p := by
+  intro n
+  induction n with
+  | zero => intro p _ h; exact h
+  | succ n ih =>
+    intro p hp h
+    rcases h with h | ⟨q, hq, hg⟩
+    · exact h
+    · obtain ⟨hng, r, hr, hH⟩ := hstay p hp q hq
+      rcases hg with hg | ⟨_, hall⟩
+      · exact hng hg
+      · exact ih r hH (hall r hr)
+
+/-- NAVIGATING TOWARD WHAT WE KNOW (Kaveh 2026-10-12: "from a place where we don't know how to get it done, we go to a place
+where we do know how to get it done"): `K` the KNOWN region -- from each of its positions the goal is forced within `j`
+(a frame we have proved, e.g. a material we win). Reaching `K` within `n` (against every reply) forces the goal within
+`n + j`: the regression step, one level at a time (`Reach.bind` with the known region as the target). -/
+theorem toward_known {K : α → Prop} {j : Nat} (hK : ∀ r, K r → Reach ours theirs goal (fun _ => False) j r)
+    {n : Nat} {p : α} (h : Reach ours theirs goal K n p) : Reach ours theirs goal (fun _ => False) (n + j) p :=
+  Reach.bind hK h
+
 end Ideas.Forced
