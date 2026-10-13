@@ -451,7 +451,7 @@ def main(argv=None):
         if a.challenger:
             # THE CHALLENGER (Kaveh: "reason both sides"): traps against the round's frames, answered by stages
             from . import challenger as C
-            new = C.round_(res, new, tag or "run", rnd, register=not a.dry)
+            new = C.round_(res, frames, new, tag or "run", rnd, register=not a.dry)
         if new == frames:
             print("OBS nothing new mined -- stopping"); break
         if not a.dry:

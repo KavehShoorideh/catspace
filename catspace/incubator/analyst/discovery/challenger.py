@@ -175,12 +175,14 @@ if __name__ == "__main__":
     main()
 
 
-def round_(res: list, frames: dict, run: str, rnd: int, register: bool = True) -> dict:
-    """The challenger inside the loop, after a round's mining: per material with a frame of ours, a trap mined and checked;
-    a counter-frame answered by a stage; a promoted stage joins the frames (the next round's games play it). -> frames."""
+def round_(res: list, played: dict, frames: dict, run: str, rnd: int, register: bool = True) -> dict:
+    """The challenger inside the loop, after a round's mining: per material with a frame of ours, a trap mined from the
+    claims of the frame the round was PLAYED with and checked against that frame (the data's own frame -- 2026-10-12:
+    checked against the newly mined one it reported gaps); a counter-frame answered by a stage mined with the NEW frames
+    (the next round's); a promoted stage joins them. -> frames."""
     new = dict(frames)
-    for material in sorted({k for k in frames if ":" not in k}):
-        cf = mine(res, frames, material)
+    for material in sorted({k for k in played if ":" not in k and played[k]}):
+        cf = mine(res, played, material)
         entry = dict(run=run, round=rnd, t=time.strftime("%Y-%m-%d %H:%M"), **{k: v for k, v in cf.items() if k not in ("gap_boards",)})
         if cf["status"] == "counter-frame":
             print(f"OBS COUNTER-FRAME for {material}: when {cf['gloss']} >= {cf['theta']}, the defender holds {cf['frame']} "
