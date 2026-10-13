@@ -295,3 +295,9 @@ pub const STAGE_KRRVKR_KRR_ALL_R3_TRAP_CARRIED: &str = "(count (and (nearer L P)
 
 /// stage_krrvkr_krr_all_r4_trap_carried: the king-step distance from our king to our other piece (2026-10-13, hole stage_krr_all_KRRvKR_r4_trap_carried; verifier: 25 games better, 6 worse over 2 rounds, e-value 182 (held-out games); region: (count (and hit (not (diagonals O)))) >= 19; status: a conjecture: the stage's claim is not proved; used by the stage KRRvKR:if:(count (and hit (not (diagonals O))))>=19)
 pub const STAGE_KRRVKR_KRR_ALL_R4_TRAP_CARRIED: &str = "(dist W P)";
+
+/// kbnvk_kbn2_r3_progress: how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the corner squares (2026-10-13, hole learn_kbn2_KBNvK_rank2_r3; verifier: on 50 confirmation boards: held 12/50, won 12 -- the frame before it held 12/50, won 12; better on 13 boards, worse on 2 over 1 round(s), e-value 38.9 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KBNvK frame (replace): ['(count (and (reach L free) (not corner)))'])
+pub const KBNVK_KBN2_R3_PROGRESS: &str = "(count (and (reach L free) (not corner)))";
+
+/// kbnvk_kbn2_r4_progress: how many of the squares nearer their king than our king that are also the squares outside the squares between our king and their king (2026-10-13, hole learn_kbn2_KBNvK_rank2_r4; verifier: on 50 confirmation boards: held 18/50, won 18 -- the frame before it held 17/50, won 17; better on 15 boards, worse on 0 over 1 round(s), e-value 4.1e+03 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KBNvK frame (replace): ['(count (and (nearer L W) (not (between W L))))'])
+pub const KBNVK_KBN2_R4_PROGRESS: &str = "(count (and (nearer L W) (not (between W L))))";

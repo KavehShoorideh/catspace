@@ -30152,3 +30152,18 @@ for "their rook active" (our king near our rook) -- each guard-neutral (2:2, 2:0
   the final frames 64; round 5's starts, no frames 61 -- the final frames 73. The learned K+R+R lemmas: +4 and +12.
   (The run's own round-4 frames replayed with the old rule reproduce its 66 wins and the loss exactly: the games are
   deterministic.)
+
+K+B+N v K, FARTHER (tag kbn2; 2026-10-13 00:58-01:06 PDT; from kbn1's frame, starts within 20 plies, rounds 0-5).
+Wins per 100: 22/29/20/22/~39/53. Round 3's mining REPLACED the frame with K+R+R v K's "the squares their king walks to
+safely, outside the corners" (the known-lemmas proposer; guard 7:6); round 4's with "the squares nearer their king than
+ours outside those between the kings" (guard 9:9). Every stage was vetoed (0 better, 19-20 worse); one frame candidate
+vetoed 1:13. A BUG found: the known proposer offered K+R+R v K+R's "the line from our king to their rook" to K+B+N v K,
+where they have no rook -- a constant 0, a wandering frame that passed the evidence by progress (the guard vetoed it, 0
+to 20); known lemmas now join a hole only when they vary on its boards (as every enumerated candidate).
+  THE MEASUREMENT (the same 100 starts, seeds 5000-5099, one replay each -- directional):
+                 within 20 plies   within 10 plies
+    no frame            6                10
+    kbn1's frame       35                60
+    transferred        44                76
+    the newest         53                70
+  From nothing: K+B+N v K went from 6-10% to 53-76% on the loop's own lemmas -- one of them carried over from K+R+R v K.

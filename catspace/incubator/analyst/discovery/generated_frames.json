@@ -1,6 +1,6 @@
 {
  "KBNvK": [
-  "(sum (count (and (nearer L W) (not (between L P)))) (count (and (nearer W L) (nearer W P))))"
+  "(count (and (nearer L W) (not (between W L))))"
  ],
  "KQvKR": [
   "(count (and (nearer L P) (not (rank W))))"
