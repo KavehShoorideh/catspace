@@ -1697,6 +1697,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(threat::known_entry_of, m)?)?;
     m.add_function(wrap_pyfunction!(threat::known_level_of, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_known_level2, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::trap_check, m)?)?;
     m.add_function(wrap_pyfunction!(prove_tree, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_play_out_gains, m)?)?;
     m.add_function(wrap_pyfunction!(threat::set_composed, m)?)?;

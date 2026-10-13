@@ -630,3 +630,42 @@ pub fn lemma_state(fens: Vec<String>) -> PyResult<Vec<u64>> {
 pub fn lemma_facts_of(fen: String) -> PyResult<Vec<(String, bool)>> {
     Ok(parse(&fen).map_or(vec![], |p| lemma_facts(&p)))
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// THE CHALLENGER'S CHECK (Kaveh 2026-10-12: "you need your reasoner to reason both sides"; the literature, red-teamed: a
+// frame is a ranking certificate, a counter-frame its dual -- a TRAP, checked LOCALLY, never by replaying an oracle): R =
+// {term >= theta} is a one-step trap against the frame's measure at a position of R when EVERY safe move of ours (nothing
+// left to the static exchange) has a reply landing back in R with the measure no lower than here -- the attacker can
+// neither make progress nor leave; a mate or a capture of ours that the exchange keeps escapes it. (Lean hold_blocks is
+// the trap's theorem; this is its check on boards.)
+
+/// trap_check(fens, frame_terms, region_term, theta) -> per board: None (not in R), Some(the trap holds here).
+#[pyfunction]
+pub fn trap_check(fens: Vec<String>, frame_terms: Vec<String>, region_term: String, theta: u32) -> PyResult<Vec<Option<bool>>> {
+    use rayon::prelude::*;
+    let Some(rt) = parse_term(&region_term) else { return Ok(vec![]) };
+    let base: Vec<Comp> = frame_terms.iter().filter_map(|t| comp(t)).collect();
+    let meas = |q: &Chess, lone: Color| -> Vec<u32> { base.iter().map(|c| cval(c, q, lone)).collect() };
+    Ok(fens.par_iter().map(|f| {
+        let p = parse(f)?;
+        let us = p.turn();
+        if num(&rt, &p, !us) < theta { return None; }
+        let m0 = meas(&p, !us);
+        let theirs0 = material(p.board(), !us);
+        let safe: Vec<Move> = p.legal_moves().into_iter().filter(|m| {
+            let q = after(&p, m);
+            q.is_checkmate() || (!q.legal_moves().is_empty() && static_safe(q.board(), us))
+        }).collect();
+        for m in safe {
+            let q = after(&p, &m);
+            if q.is_checkmate() { return Some(false); }                       // the attacker escapes: mate
+            if material(q.board(), !us) < theirs0 { return Some(false); }      // a capture kept (static exchange): escapes
+            let held = q.legal_moves().iter().any(|r| {
+                let x = after(&q, r);
+                num(&rt, &x, !us) >= theta && !(meas(&x, !us) < m0)
+            });
+            if !held { return Some(false); }
+        }
+        Some(true)
+    }).collect())
+}

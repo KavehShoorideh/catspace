@@ -29843,3 +29843,17 @@ the attacker answers by exception-barring (the guard "not in R") or lemma-incorp
 Sadikov & Bratko 2006); (4) promotion = CEGIS with a never-forget archive and a falsifier ensemble; every claim carries a
 status (proved / survived N / refuted); (5) priority by learnability and witnessed regret. Risk (theirs): the K+R+R v K+R
 defender's resource is dynamic (rook checks) -- static traps may rarely be expressible; expect "unexplained" at first.
+THE CHALLENGER, FIRST BUILD (2026-10-12 19:40 PDT). vocab.rs trap_check (R = {term >= theta} a one-step TRAP against the
+frame's measure at a position: every safe move of ours has a reply back into R with the measure no lower; a mate or a kept
+capture escapes) and discovery/challenger.py (mine R from the frame's refuted claims as a predictor -- held-out games, split
+by seed -- then the local trap check; accepted -> a counter-frame; none -> a VOCABULARY GAP with its boards; the attacker's
+answer verified; everything archived in counter_frames.json with its status). OBS (the "level2b" run, round 2, K+R+R v
+K+R: 1,262 frame claims, 60% refuted; 3,271 distinct terms; 4 s): the best traps -- "squares they do not attack, off the
+corners >= 42", "our king's reach over squares they do not attack, off the corners >= 41", "squares they do not attack,
+outside their rook's box >= 42" -- hold the local trap check on 83-95% of their refuted boards but predict the refutations
+weakly (held-out precision 0.68-0.73 against a base 0.58, lift 1.2, recall ~0.5): at the default bar (base + 0.15) a
+VOCABULARY GAP, as the red team expected for a dynamic defence. At base + 0.10 a counter-frame ("our king's safe reach off
+the corners >= 41", trap 0.95 on 60 boards); the naive answer -- its term minimised, ranked first -- held 0 / 50 as the
+frame did: minimising the term defining R is not a plan to leave R. NEXT: the answer as a STAGED frame -- a situational
+frame active while R holds, its measure mined like any other, its success leaving R (or the material goal) without losing
+ground; the check frame is its special case (R = in check).
