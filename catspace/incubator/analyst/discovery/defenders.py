@@ -127,6 +127,9 @@ def _play_one(args):
     st = None
     if player == "planner":                       # the whole player, the candidate as its frame (the round's others beside it)
         A.set_generic_frame(True)
+        # (the regression's second level stays in the real games; in the verifier's games it cost ~0.2 s a move and
+        # stalled a hole for eleven minutes -- the verifier tests the frame's navigation and the forced entry)
+        A.set_known_level2(False)
         for k, v in (frames or {}).items():
             A.set_material_frame(k, v)
         A.set_material_frame(material, compose(base, cand, schema))
