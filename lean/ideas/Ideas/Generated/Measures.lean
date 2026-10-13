@@ -9,7 +9,8 @@ set_option linter.unusedVariables false
 
 namespace Ideas.Generated
 
-open Chess Ideas.Vocabulary
+open Chess hiding between   -- the chess library's `between` is a Prop; the vocabulary's is a set
+open Ideas.Vocabulary
 
 /-- kr_territory: how many of the squares outside the squares nearer our king than their king. (2026-10-12, hole KR derived frame (wall, opposition): 868 stuck positions of 300 play-outs; verifier: 866/868 stuck positions certified (2 moves, every reply); play: 300/300 mated, 99.9% of moves certified, 12.1 moves) -/
 def kr_territory (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => !((nearer W L) u)))
