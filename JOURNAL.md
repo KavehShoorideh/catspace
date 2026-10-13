@@ -30280,3 +30280,15 @@ move"; the plan reviewed and "go", depth 3 by default, 5 measured). rust goals.r
   (323 ms); their goal Bxb2. K+B+N v K seed 5006 move 36 (where the frame let the king out): a mate in 4 imagined, "Nf3
   Ne5 Nd7 ... Be4"; the start: a mate in 5. K+R+R v K+R: a mate in 3 imagined with their rook passing; K+Q v K+R: Kxf8.
   ALL IMAGINED against a natural opponent -- their best defence is the contest's question (stage 4), not yet asked.
+
+THE GOAL FIELD, STAGES 3-4 (2026-10-13 afternoon; Kaveh: "Yes"). THEIR GOALS: the same imagination as if we passed,
+worded from our side. THE CONTEST (goals.rs contest): an imagined goal against their BEST defence -- a proof search (the
+PNS) whose moves of ours stay in the goal's zone (purposeful moves, moves onto the path or the interceptors' squares, moves
+attacking an interceptor), every reply of theirs, within the goal's cost plus one move; forced -> its line; not found in
+the zone -> the same bound with EVERY move of ours: not found -> CERTIFIED STOPPED (the only verdict that prunes); out of
+budget (30,000) -> UNKNOWN, kept. The INTERCEPTORS (their pieces that can stand on or attack a square of our path within the
+goal's time) are its explanation. On the checkpoint positions: K+R+R v K+R's imagined mate in 3 (their rook passing) ->
+STOPPED, "their rook on d4 reaches the path in 1"; K+Q v K+R Kxf8 -> FORCED; K+P v K with their king on g2 and on c2 ->
+FORCED both (c2: the tablebase agrees -- outside the square; my expectation was wrong); K+B+N v K seed 5006 move 36's
+mate in 4 -> UNKNOWN; Kaveh's game move 17: the +7 queen trap -> UNKNOWN (Black need not take with the queen; the full-width
+proof of that at depth 4 runs out of budget), Bxh7+ Kxh7 Nxd4 +1 -> FORCED, their Bxb2 -> STOPPED. Tests.

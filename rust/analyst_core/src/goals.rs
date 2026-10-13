@@ -67,7 +67,7 @@ pub fn default_reply_of(fen: String) -> Option<String> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Goal { pub kind: &'static str, pub what: String, pub value: i64, pub cost: u32, pub line: Vec<String> }
+pub struct Goal { pub kind: &'static str, pub what: String, pub value: i64, pub cost: u32, pub line: Vec<String>, pub path: Vec<Square> }
 
 /// How many of its own moves the piece on `from` needs (the others standing still, through empty squares) before it
 /// attacks a square of `targets` -- 0 if it already does; None beyond `cap` (the piece_reach walk, 2026-09-29, in Rust).
@@ -133,7 +133,7 @@ impl Walk<'_> {
         let better = self.found.get(&k).map_or(true, |o| g.cost < o.cost || (g.cost == o.cost && g.value > o.value));
         if better { self.found.insert(k, g); }
     }
-    fn go(&mut self, pos: &Chess, left: u32, cost: u32, line: &mut Vec<String>, high: i64) {
+    fn go(&mut self, pos: &Chess, left: u32, cost: u32, line: &mut Vec<String>, path: &mut Vec<Square>, high: i64) {
         if left == 0 { return; }
         let them = !self.us;
         for m in pos.legal_moves() {
@@ -142,28 +142,29 @@ impl Walk<'_> {
             self.nodes += 1;
             let q = after(pos, &m);
             line.push(crate::plan::san(pos, &m.to_uci(CastlingMode::Standard).to_string()));
+            path.push(m.to());
             if q.is_checkmate() {
-                self.record(Goal { kind: "mate", what: "their king".into(), value: MATE_GOAL, cost: cost + 1, line: line.clone() });
-                line.pop(); continue;
+                self.record(Goal { kind: "mate", what: "their king".into(), value: MATE_GOAL, cost: cost + 1, line: line.clone(), path: path.clone() });
+                line.pop(); path.pop(); continue;
             }
             let (r, said) = match default_reply(&q) {
-                Reply::Over => { line.pop(); continue; }                       // a stalemate: no goal down this line
+                Reply::Over => { line.pop(); path.pop(); continue; }           // a stalemate: no goal down this line
                 Reply::Pass => (pass(&q).unwrap_or_else(|| q.clone()), "(pass)".to_string()),
                 Reply::Play(rm) => { let s = crate::plan::san(&q, &rm.to_uci(CastlingMode::Standard).to_string()); (after(&q, &rm), s) }
             };
             line.push(said);
-            if r.is_checkmate() { line.pop(); line.pop(); continue; }        // their natural reply mates us: a bad line
+            if r.is_checkmate() { line.pop(); line.pop(); path.pop(); continue; }   // their natural reply mates us: a bad line
             let bal = kernel_material(&r, self.us) - self.root_bal;
             // a NEW high of material won along the line (losing some of it later is not another goal)
             if bal > high.max(0) {
-                self.record(Goal { kind: "material", what: change(self.root, &r, self.us), value: bal, cost: cost + 1, line: line.clone() });
+                self.record(Goal { kind: "material", what: change(self.root, &r, self.us), value: bal, cost: cost + 1, line: line.clone(), path: path.clone() });
             }
             let key = crate::vocab::material_key(r.board(), self.us);
             if key != self.root_key && bal >= 0 && crate::vocab::is_known(&key) {
-                self.record(Goal { kind: "known", what: key, value: bal, cost: cost + 1, line: line.clone() });
+                self.record(Goal { kind: "known", what: key, value: bal, cost: cost + 1, line: line.clone(), path: path.clone() });
             }
-            if r.turn() == self.us { self.go(&r, left - 1, cost + 1, line, high.max(bal)); }
-            line.pop(); line.pop();
+            if r.turn() == self.us { self.go(&r, left - 1, cost + 1, line, path, high.max(bal)); }
+            line.pop(); line.pop(); path.pop();
         }
     }
 }
@@ -178,7 +179,7 @@ pub fn goals(pos: &Chess, depth: u32) -> (Vec<Goal>, u64) {
     // depth-first at once, depth 5 spent the cap deep and found none of the two goals depth 3 found)
     for d in 1..=depth {
         if w.nodes >= w.cap { break; }
-        w.go(pos, d, 0, &mut Vec::new(), 0);
+        w.go(pos, d, 0, &mut Vec::new(), &mut Vec::new(), 0);
     }
     let mut v: Vec<Goal> = w.found.into_values().collect();
     v.sort_by(|a, b| (-a.value, a.cost, &a.what).cmp(&(-b.value, b.cost, &b.what)));
@@ -198,3 +199,124 @@ pub fn goals_of(fen: String, depth: u32, side: String) -> (Vec<(String, String, 
 /// set_goal_depth(d): how many moves of ours the goal field imagines.
 #[pyfunction]
 pub fn set_goal_depth(d: u32) -> PyResult<()> { GOAL_DEPTH.store(d, Ordering::Relaxed); Ok(()) }
+
+
+// ---------------------------------------------------------------------------------------------------------------------
+// STAGE 4, THE CONTEST (the plan: "for each good future ... which of their pieces can reach a square of our trajectory in
+// time ... prune only on a certified interception, and search inside the zones of the rest"). An imagined goal against
+// their BEST defence: a proof search whose moves of ours stay in the goal's ZONE (purposeful moves, moves onto the path
+// or the interceptors' squares, moves attacking an interceptor) and whose replies are ALL of theirs, within the goal's
+// cost and one move more. Forced -> the goal holds, its line; not found in the zone -> the same bound with EVERY move of
+// ours: not found there either -> CERTIFIED STOPPED within the bound (the only verdict that prunes); out of budget ->
+// UNKNOWN (kept). The interceptors -- their pieces that can reach or attack a square of our path within the goal's time
+// -- are the explanation of a contest.
+
+/// The proof search's budget per question (expansions).
+pub static CONTEST_BUDGET: AtomicU64 = AtomicU64::new(30_000);
+
+#[derive(Clone)]
+pub struct CState { pos: Chess, mv: Option<Move>, ours: u32 }
+
+struct Contest { us: Color, kind: &'static str, value: i64, key: String, root_bal: i64, depth: u32, full: bool, zone: Bitboard }
+
+impl Contest {
+    /// The goal holds (our turn, after their reply).
+    fn reached(&self, pos: &Chess) -> bool {
+        let gain = kernel_material(pos, self.us) - self.root_bal;
+        match self.kind {
+            "material" => gain >= self.value,
+            "known" => gain >= self.value && crate::vocab::material_key(pos.board(), self.us) == self.key,
+            _ => false,
+        }
+    }
+    fn in_zone(&self, pos: &Chess, m: &Move) -> bool {
+        if self.zone.contains(m.to()) || purposeful(pos, m, !self.us) { return true; }
+        let q = after(pos, m);
+        q.board().piece_at(m.to()).map_or(false, |p| !(shakmaty::attacks::attacks(m.to(), p, q.board().occupied()) & self.zone).is_empty())
+    }
+}
+
+impl crate::pns::Problem for Contest {
+    type State = CState;
+    fn judge(&self, s: &CState, or: bool, root: bool) -> Option<bool> {
+        if !root && crate::game::claimable_draw(&s.pos).is_some() { return Some(false); }
+        if or {
+            if s.pos.legal_moves().is_empty() { return Some(false); }        // we are mated or stalemated
+            if !root && self.reached(&s.pos) { return Some(true); }
+            if s.ours >= self.depth { return Some(false); }
+            None
+        } else if s.pos.legal_moves().is_empty() { Some(s.pos.is_check()) } // they are mated (better than any goal) or stalemated
+        else { None }
+    }
+    fn expand(&self, s: &CState, or: bool) -> Vec<(CState, f64)> {
+        let us_next = if or { s.ours + 1 } else { s.ours };
+        s.pos.legal_moves().into_iter().filter(|m| !or || self.full || self.in_zone(&s.pos, m))
+            .map(|m| (CState { pos: after(&s.pos, &m), mv: Some(m), ours: us_next }, 1.0)).collect()
+    }
+    fn and_size(&self, s: &CState) -> f64 { s.pos.legal_moves().len().max(1) as f64 }
+    fn key(&self, s: &CState) -> u64 { crate::threat::zkey(&s.pos) }
+}
+
+#[derive(Clone, Debug)]
+pub struct Verdict { pub status: &'static str, pub line: Vec<String>, pub interceptors: Vec<String> }
+
+/// Their pieces that can stand on or attack a square of our path within `time` of their moves.
+fn interceptors(pos: &Chess, us: Color, path: Bitboard, time: u32) -> (Vec<String>, Bitboard) {
+    let b = pos.board();
+    let mut words = Vec::new();
+    let mut squares = Bitboard::EMPTY;
+    for s in b.by_color(!us) {
+        let Some(p) = b.piece_at(s) else { continue };
+        if let Some(n) = moves_to_attack(b, s, path, time) {
+            squares.add(s);
+            let name = match p.role { Role::Queen => "queen", Role::Rook => "rook", Role::Bishop => "bishop", Role::Knight => "knight", Role::Pawn => "pawn", Role::King => "king" };
+            words.push(format!("their {name} on {s} reaches the path in {n}"));
+        }
+    }
+    (words, squares)
+}
+
+pub fn contest(pos: &Chess, g: &Goal) -> Verdict {
+    let us = pos.turn();
+    let path: Bitboard = g.path.iter().copied().collect();
+    let (words, squares) = interceptors(pos, us, path, g.cost);
+    let mut zone = path | squares;
+    if let Some(tk) = pos.board().king_of(!us) { if g.kind == "mate" { zone |= shakmaty::attacks::king_attacks(tk); } }
+    let budget = CONTEST_BUDGET.load(Ordering::Relaxed);
+    let mk = |full: bool| Contest { us, kind: g.kind, value: g.value, key: g.what.clone(), root_bal: kernel_material(pos, us), depth: g.cost + 1, full, zone };
+    let root = CState { pos: pos.clone(), mv: None, ours: 0 };
+    let line_of = |l: &Vec<CState>| -> Vec<String> {
+        l.windows(2).filter_map(|w| w[1].mv.as_ref().map(|m| crate::plan::san(&w[0].pos, &m.to_uci(CastlingMode::Standard).to_string()))).collect()
+    };
+    let (r, lines) = crate::pns::search_proof_lines(&mk(false), root.clone(), budget, 1);
+    match r {
+        Some(true) => return Verdict { status: "forced", line: lines.first().map(line_of).unwrap_or_default(), interceptors: words },
+        None => return Verdict { status: "unknown", line: vec![], interceptors: words },
+        Some(false) => {}
+    }
+    let (r, lines) = crate::pns::search_proof_lines(&mk(true), root, budget, 1);
+    match r {
+        Some(true) => Verdict { status: "forced", line: lines.first().map(line_of).unwrap_or_default(), interceptors: words },
+        Some(false) => Verdict { status: "stopped", line: vec![], interceptors: words },
+        None => Verdict { status: "unknown", line: vec![], interceptors: words },
+    }
+}
+
+/// From the other side's words to ours ("their" <-> "our").
+fn flip(s: &str) -> String { s.replace("their ", "\u{0}").replace("our ", "their ").replace('\u{0}', "our ") }
+
+/// field_of(fen, depth) -> (our goals, their goals as if we passed), each [(kind, what, value, cost, imagined line,
+/// verdict, the line against their best defence, interceptors)] -- in our words, worst of theirs first.
+#[pyfunction]
+pub fn field_of(fen: String, depth: u32) -> (Vec<(String, String, i64, u32, String, String, String, Vec<String>)>, Vec<(String, String, i64, u32, String, String, String, Vec<String>)>) {
+    let Some(pos) = parse(&fen) else { return (vec![], vec![]) };
+    let row = |p: &Chess, g: Goal, theirs: bool| {
+        let v = contest(p, &g);
+        let w = |s: &str| if theirs { flip(s) } else { s.to_string() };
+        (g.kind.to_string(), w(&g.what), g.value, g.cost, g.line.join(" "), v.status.to_string(), v.line.join(" "),
+         v.interceptors.iter().map(|x| w(x)).collect())
+    };
+    let ours = goals(&pos, depth).0.into_iter().map(|g| row(&pos, g, false)).collect();
+    let theirs = match pass(&pos) { Some(p) => goals(&p, depth).0.into_iter().map(|g| row(&p, g, true)).collect(), None => vec![] };
+    (ours, theirs)
+}

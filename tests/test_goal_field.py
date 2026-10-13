@@ -25,3 +25,17 @@ def test_goals_imagined():
 def test_their_goals_as_if_we_passed():
     g, _ = A.goals_of("3r2k1/8/8/8/8/8/5PPP/6K1 w - - 0 1", 2, "them")                 # their back-rank mate
     assert g and g[0][:2] == ("mate", "their king")
+
+
+def _verdicts(fen, depth):
+    ours, theirs = A.field_of(fen, depth)
+    return {(x[0], x[1]): x[5] for x in ours}, theirs
+
+
+def test_the_contest():
+    v, _ = _verdicts("5rK1/3k4/8/6Q1/8/8/8/8 w - - 0 1", 3)                         # Kxf8: forced
+    assert v[("material", "their rook")] == "forced"
+    v, _ = _verdicts("5R2/3K4/5R2/6k1/3r4/8/8/8 w - - 0 1", 3)                      # a mate imagined with their rook passing
+    assert v[("mate", "their king")] == "stopped"                                     # their checks stop it: certified
+    v, _ = _verdicts("8/8/8/8/1P6/8/2k5/K7 w - - 0 1", 5)                           # outside the square (the tablebase: won)
+    assert v[("known", "KQvK")] == "forced"
