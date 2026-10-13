@@ -333,7 +333,10 @@ def carry_stages(res: list, played: dict, new: dict, pending: dict, run: str, rn
         more = len(set(games)) * rounds_left
         print(f"OBS   the pending stage {fkey} [{p['term']}] on this round's {len(boards)} boards inside R from {cf['games']} games: better in "
               f"{cf['w']}, worse in {cf['l']}; pooled over {p['rounds'] + 1} rounds {wv} to {lv}, e-value {e:.3g}")
-        if e >= E_PROMOTE and not vetoed(res, played, fkey, p["term"], mat, opponent, band):
+        if e >= E_PROMOTE and vetoed(res, played, fkey, p["term"], mat, opponent, band):
+            pending.pop(fkey)                         # (it breaks games: not tried again -- kqr2 re-vetoed one each round)
+            print(f"OBS   the pending stage {fkey} dropped: vetoed by the guard")
+        elif e >= E_PROMOTE:
             pending.pop(fkey)
             new[fkey] = [p["term"]]
             print(f"OBS   STAGE PROMOTED on carried evidence: {fkey} -> {p['term']}")
