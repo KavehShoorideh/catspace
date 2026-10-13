@@ -24,6 +24,15 @@ pub enum Term {
     // hops, the centre, a named square up to the board's symmetry -- and per piece: what the piece on a square attacks
     Lines(Box<Term>), Diagonals(Box<Term>), Segment(Box<Term>, Box<Term>), Knight1(Box<Term>), Knight2(Box<Term>), Center,
     Attacks(Box<Term>), Cls(Square),
+    // a square's colour (Kaveh 2026-10-13: "go on both" -- the light and dark squares; the squares of a square's colour:
+    // K+B+N v K's corner of the bishop's colour, which no word could say)
+    Light, Dark, Colour(Box<Term>),
+}
+
+/// The strongest piece of `c` other than its king -- by kind (queen, rook, bishop, knight, pawn), ties by the lower square.
+fn strongest(b: &shakmaty::Board, c: Color) -> Option<Square> {
+    let rank = |r: Role| match r { Role::Queen => 5, Role::Rook => 4, Role::Bishop => 3, Role::Knight => 2, Role::Pawn => 1, Role::King => 0 };
+    (b.by_color(c) & !b.kings()).into_iter().max_by_key(|s| (b.role_at(*s).map(rank).unwrap_or(0), std::cmp::Reverse(*s as u8)))
 }
 
 /// Parse an S-expression term.
@@ -40,6 +49,7 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
         return match tok.as_str() { "W" => Some(Term::W), "L" => Some(Term::L), "P" => Some(Term::P), "O" => Some(Term::O),
             "hit" => Some(Term::Hit), "unhit" => Some(Term::Unhit), "ours" => Some(Term::Ours), "theirs" => Some(Term::Theirs), "edge" => Some(Term::Edge),
             "corner" => Some(Term::Corner), "attacked" => Some(Term::Attacked), "free" => Some(Term::Free), "center" => Some(Term::Center),
+            "light" => Some(Term::Light), "dark" => Some(Term::Dark),
             _ => None };
     }
     // (cls <square>): a literal square name, named from our side
@@ -63,6 +73,7 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
         ("dist", [a, c]) => Term::Dist(b(a), b(c)), ("sum", [a, c]) => Term::Sum(b(a), b(c)),
         ("lines", [a]) => Term::Lines(b(a)), ("diagonals", [a]) => Term::Diagonals(b(a)), ("segment", [a, c]) => Term::Segment(b(a), b(c)),
         ("knight1", [a]) => Term::Knight1(b(a)), ("knight2", [a]) => Term::Knight2(b(a)), ("attacks", [a]) => Term::Attacks(b(a)),
+        ("colour", [a]) => Term::Colour(b(a)),
         _ => return None,
     })
 }
@@ -74,8 +85,11 @@ fn sq(t: &Term, q: &Chess, lone: Color) -> Option<Square> {
     let b = q.board();
     match t {
         Term::W => b.king_of(!lone), Term::L => b.king_of(lone),
-        Term::P => (b.by_color(!lone) & !b.kings()).first(),
-        Term::O => (b.by_color(lone) & !b.kings()).first(),
+        // "our / their other piece": the STRONGEST other piece by kind (queen, rook, bishop, knight, pawn), ties by square
+        // (2026-10-13: it was the first by square -- in K+B+N v K the bishop or the knight by where they stood, so "the
+        // colour of P" meant nothing half the time)
+        Term::P => strongest(b, !lone),
+        Term::O => strongest(b, lone),
         _ => None,
     }
 }
@@ -113,6 +127,12 @@ pub fn set(t: &Term, q: &Chess, lone: Color) -> Bitboard {
         Term::Knight2(a) => s1(a).map_or(Bitboard::EMPTY, |s| shakmaty::attacks::knight_attacks(s).into_iter()
             .fold(Bitboard::EMPTY, |m, u| m | shakmaty::attacks::knight_attacks(u))),
         Term::Center => [Square::D4, Square::E4, Square::D5, Square::E5].into_iter().collect(),
+        Term::Light => Bitboard::LIGHT_SQUARES, Term::Dark => Bitboard::DARK_SQUARES,
+        Term::Colour(x) => match sq(x, q, lone) {
+            Some(s) if Bitboard::LIGHT_SQUARES.contains(s) => Bitboard::LIGHT_SQUARES,
+            Some(_) => Bitboard::DARK_SQUARES,
+            None => Bitboard::EMPTY,
+        },
         Term::Attacks(a) => s1(a).and_then(|s| b.piece_at(s).map(|p| shakmaty::attacks::attacks(s, p, b.occupied()))).unwrap_or(Bitboard::EMPTY),
         Term::Cls(x) => {
             let us = !lone;

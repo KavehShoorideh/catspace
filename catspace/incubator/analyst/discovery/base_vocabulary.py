@@ -53,6 +53,10 @@ PRIMITIVES = {
     "a1": ((), "lit", "a1 (the corners)"), "b1": ((), "lit", "b1"), "c1": ((), "lit", "c1"), "d1": ((), "lit", "d1"),
     "b2": ((), "lit", "b2"), "c2": ((), "lit", "c2"), "d2": ((), "lit", "d2"), "c3": ((), "lit", "c3"), "d3": ((), "lit", "d3"),
     "d4": ((), "lit", "d4 (the centre)"),
+    # a square's colour (Kaveh 2026-10-13: "go on both") -- at the end, the earlier symbols keep their indices
+    "light": ((), "set", "the light squares"),
+    "dark": ((), "set", "the dark squares"),
+    "colour": (("sq",), "set", "the squares of {0}'s colour"),
 }
 SYMBOLS = list(PRIMITIVES)
 SQUARE_CLASSES = ("a1", "b1", "c1", "d1", "b2", "c2", "d2", "c3", "d3", "d4")
@@ -96,8 +100,8 @@ def lean(t) -> str:
     if isinstance(t, str):
         if t in SQUARE_CLASSES:                    # a square name -> its Lean value (file, rank)
             return f"((({ord(t[0]) - 97} : Fin 8)), (({int(t[1]) - 1} : Fin 8)))"
-        if t == "center":
-            return "center"
+        if t in ("center", "light", "dark"):
+            return t
         return {"W": "W", "L": "L", "P": "P", "O": "O", "edge": "edge", "corner": "corner",
                 "attacked": "(attackedBy p c L)", "free": "(fun u => !(attackedBy p c L u))",
                 "hit": "(attackedBy p (Color.opposite c) W)", "unhit": "(fun u => !(attackedBy p (Color.opposite c) W u))",
@@ -112,7 +116,7 @@ def lean(t) -> str:
         "count": lambda: f"(count {x[0]})", "dist": lambda: f"(dist {x[0]} {x[1]})", "sum": lambda: f"({x[0]} + {x[1]})",
         "lines": lambda: f"(lines {x[0]})", "diagonals": lambda: f"(diagonals {x[0]})", "segment": lambda: f"(segment {x[0]} {x[1]})",
         "knight1": lambda: f"(knight1 {x[0]})", "knight2": lambda: f"(knight2 {x[0]})", "attacks": lambda: f"(attacksFrom p {x[0]})",
-        "cls": lambda: f"(cls p c {x[0]})",
+        "cls": lambda: f"(cls p c {x[0]})", "colour": lambda: f"(colour {x[0]})",
     }[h]()
 
 
@@ -141,8 +145,8 @@ def tokens(t):
 
 def enumerate_numbers(sqs=("W", "L", "P", "O"), max_and: int = 2):
     """Number terms smallest first: the count of a set built from at most two base sets (and, not), or a distance."""
-    base = ["edge", "corner", "attacked", "free", "hit", "unhit", "ours", "theirs", "center"]
-    base += [(h, s) for h in ("box", "rank", "file", "lines", "diagonals", "knight1", "knight2", "attacks") for s in sqs]
+    base = ["edge", "corner", "attacked", "free", "hit", "unhit", "ours", "theirs", "center", "light", "dark"]
+    base += [(h, s) for h in ("box", "rank", "file", "lines", "diagonals", "knight1", "knight2", "attacks", "colour") for s in sqs]
     base += [("segment", a, b) for a, b in itertools.combinations(sqs, 2)]
     base += [("cls", x) for x in SQUARE_CLASSES]
     base += [(h, a, b) for h in ("line", "between", "nearer") for a in sqs for b in sqs if a != b]

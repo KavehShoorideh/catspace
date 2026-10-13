@@ -100,6 +100,14 @@ def knight2 (s : Square) : SquareSet := fun t => allSquares.any (fun u => knight
 /-- **the centre**: d4, e4, d5, e5. -/
 def center : SquareSet := fun t => (t.1.val == 3 || t.1.val == 4) && (t.2.val == 3 || t.2.val == 4)
 
+-- a square's colour (Kaveh 2026-10-13): a1 is dark -- file + rank even
+/-- the light squares -/
+def light : SquareSet := fun t => (t.1.val + t.2.val) % 2 == 1
+/-- the dark squares -/
+def dark : SquareSet := fun t => (t.1.val + t.2.val) % 2 == 0
+/-- the squares of `s`'s colour -/
+def colour (s : Square) : SquareSet := fun t => (t.1.val + t.2.val) % 2 == (s.1.val + s.2.val) % 2
+
 /-- **attacks from**: the squares the piece standing on `s` attacks, for its own colour, with the board's blockers (the chess
 library's `pieceAttacksB`); none when `s` is empty. -/
 def attacksFrom (p : Position) (s : Square) : SquareSet := fun t =>

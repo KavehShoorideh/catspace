@@ -79,3 +79,25 @@ def test_second_batch_lean_renderings_typecheck(tmp_path):
     src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
     r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_a_squares_colour_and_the_strongest_other_piece():
+    import catspace.incubator.analyst  # noqa: F401
+    import analyst_core as A
+    # K+B+N v K: the bishop on d2 (dark), the knight on a3 -- P is the bishop (the strongest), not the first by square
+    fen = "8/8/8/3k4/8/N7/3B4/4K3 w - - 0 1"
+    v = lambda t: A.vocab_values([fen], t)[0]
+    assert v("(count light)") == v("(count dark)") == 32
+    assert v("(count (colour P))") == 32 and v("(count (and (colour P) (diagonals P)))") == v("(count (diagonals P))")
+    assert v("(count (and (cls a1) (colour P)))") == 2                    # the corners of the bishop's colour: a1, h8
+    assert v("(count (and (cls a1) dark))") == 2 and v("(count (and (cls a1) light))") == 2
+
+
+@pytest.mark.skipif(not Path("lean/ideas/.lake").exists(), reason="the Lean project is not built")
+def test_colour_lean_renderings_typecheck(tmp_path):
+    terms = ["(count light)", "(count (and dark (box L)))", "(count (and (cls a1) (colour P)))", "(count (and (colour W) (not (nearer W L))))"]
+    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
+    src = tmp_path / "VocabCheck3.lean"
+    src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
+    r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
+    assert r.returncode == 0, r.stdout + r.stderr
