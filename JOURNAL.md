@@ -30239,3 +30239,25 @@ newest frame, the same 100 starts, seeds 5000-5099, one replay each): within 10 
   1, then 2, ... 5) -- the proof's continuation proves the next one shorter, every move closes in. The same starts:
   within 10 plies 94 -> 97 wins, moves per win 19.3 -> 5.5; within 20 plies 73 -> 75 (23.5 -> 11.4); within 40 plies
   29 -> 29 (25.1 -> 18.3).
+
+THE TWO HORIZONS MEASURED (2026-10-13 12:30-13:30 PDT; Kaveh: "why did we pick two, or why did we pick five? ... are we
+sure that increasing that is not going to help or hurt? ... the effect of deeper claim horizon"). Both were fixed
+numbers -- the claim's 2 from the first hole verifier (holes.py K = 2, carried into the frames as FRAME_K), the mate
+search's 5 chosen the night before; both made settable (set_claim_k, set_frame_mate_depth). The same 100 starts each,
+one replay -- directional:
+  THE MATE SEARCH'S DEPTH (K+B+N v K, the newest frame, claim 2): within 20 plies 5 -> 75 wins (74 s), 7 -> 82 (100 s),
+  9 -> 87 (108 s); within 40 plies 5 -> 29 (149 s), 7 -> 35 (241 s), 9 -> 36 (310 s). Deeper helps, flattening far out.
+  THE CLAIM'S HORIZON (mate depth 5): K+B+N v K within 20 plies: 1 -> 52, 2 -> 75, 3 -> 68; K+R+R v K+R (round 5's
+  starts, krr_all's frames): 1 -> 72, 2 -> 73, 3 -> 74. Not monotone: a longer horizon lets the frame "certify" a loose
+  move by a long line; 2 is the best measured for K+B+N v K, flat for K+R+R v K+R.
+  WHAT THEY DO, with the cases: the claim -- for each move, "whatever they reply, my measure below now within k of my
+  moves" (certified, preferred; none -> the best-looking move, NOT certified, and the judged claim is the surprise the
+  loop mines). Seed 5006 move 36 (their king b8, measure 3): Bf5 would keep it <= 2 against every reply, but the position
+  had occurred twice -- excluded from the frame's choice to avoid the repetition -- and no move forced it down within 2,
+  so Kc6, NOT certified; their king escaped (8, then 17). The mate search -- with their king alone, before the claim:
+  mate in 1, 2, ... up to the depth, our moves inside the frame, every reply, the shortest proof's first move played.
+  8/8/2B5/8/8/5KNk/8/8 (the tablebase: 12 plies): depth 5 none; depth 7 "Nf5 (1 flight square left) Kh2 Kf2 ... Nf1+
+  Kh1 Bf3#".
+  KAVEH'S DIRECTION (discussed, not built): a proven lemma knows its exit's distance (a proved mate in n is n) -- each
+  lemma's own horizon, not a global one; search until the plausible exits outnumber what can be explored (the proof
+  search's disproof numbers count unexplored replies; weighted by a Maia prior, "plausible exits") -- coherence later.

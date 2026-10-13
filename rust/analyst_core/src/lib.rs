@@ -1673,6 +1673,8 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plan::set_tie_risk, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::set_frame_mate, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::frame_mate_of, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::set_frame_mate_depth, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::set_claim_k, m)?)?;
     m.add_function(wrap_pyfunction!(plan::kq_move_of, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_game_draws, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_kq_tactic, m)?)?;

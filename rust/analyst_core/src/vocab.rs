@@ -370,7 +370,7 @@ impl Spec {
         let first = cands.first()?;
         if first.0 < before { return Some((first.3.clone(), true)); }
         for (_, _, _, m) in &cands {
-            if self.within(&after(pos, m), &before, us, 2) { return Some((m.clone(), true)); }
+            if self.within(&after(pos, m), &before, us, CLAIM_K.load(std::sync::atomic::Ordering::Relaxed)) { return Some((m.clone(), true)); }
         }
         Some((first.3.clone(), false))
     }
@@ -591,7 +591,9 @@ fn hold_move(pos: &Chess, key: &str, net: &dyn Fn(&Move) -> i64) -> Option<(Move
 // FRAME_MATE_DEPTH moves of ours. Proved, the line is played and explained move by move by their king's flight squares.
 // (2026-10-12/13: from K+B+N v K starts with mate in five or fewer the planner wandered -- it had no quiet mate search,
 // and the frames plateaued at 54-76% with the rest fifty-move draws in the final net.)
-pub const FRAME_MATE_DEPTH: u32 = 5;
+pub static FRAME_MATE_DEPTH: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(5);
+#[pyfunction]
+pub fn set_frame_mate_depth(d: u32) -> PyResult<()> { FRAME_MATE_DEPTH.store(d, std::sync::atomic::Ordering::Relaxed); Ok(()) }
 pub const FRAME_MATE_BUDGET: u64 = 30_000;
 pub static FRAME_MATE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 /// (for digging: false lifts the inside-the-frame filter -- every safe move or check of ours)
@@ -653,7 +655,7 @@ fn frame_mate(pos: &Chess, base: &[Comp]) -> Option<(Move, String)> {
     // shuttling a8-b8 with mate 3-4 moves away; the shortest proof's continuation proves the next one shorter: every
     // move closes in)
     let mut found = None;
-    for depth in 1..=FRAME_MATE_DEPTH {
+    for depth in 1..=FRAME_MATE_DEPTH.load(std::sync::atomic::Ordering::Relaxed) {
         let (r, lines) = crate::pns::search_proof_lines(&FrameMate { by, base, depth }, MState { pos: pos.clone(), mv: None, ours: 0 }, FRAME_MATE_BUDGET, 1);
         if r == Some(true) { found = lines.into_iter().next(); break; }
     }
@@ -770,6 +772,11 @@ fn least_loss(pos: &Chess, net: &dyn Fn(&Move) -> i64) -> Option<Move> {
 }
 /// The horizon of a generic frame's claim (moves of ours).
 pub const FRAME_K: u32 = 2;
+/// The horizon a move's claim is certified within in play (moves of ours; 2 = FRAME_K) -- settable, to measure it
+/// (Kaveh 2026-10-13: "why did we pick two ... the effect of a deeper claim horizon").
+pub static CLAIM_K: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(2);
+#[pyfunction]
+pub fn set_claim_k(k: u32) -> PyResult<()> { CLAIM_K.store(k, std::sync::atomic::Ordering::Relaxed); Ok(()) }
 
 // ---------------------------------------------------------------------------------------------------------------------
 // THE LEMMA-STATE (Kaveh 2026-10-12: "moving to a new place where new lemmas are applying is progress. Cycling back to a
