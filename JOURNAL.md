@@ -30261,3 +30261,22 @@ one replay -- directional:
   KAVEH'S DIRECTION (discussed, not built): a proven lemma knows its exit's distance (a proved mate in n is n) -- each
   lemma's own horizon, not a global one; search until the plausible exits outnumber what can be explored (the proof
   search's disproof numbers count unexplored replies; weighted by a Maia prior, "plausible exits") -- coherence later.
+
+THE GOAL FIELD, STAGES 1-2 (2026-10-13 afternoon; Kaveh: "what are the futures from here that I can imagine that are good
+for me? ... bad for me"; the opponent not passing but playing "the most natural move ... the highest value immediate
+move"; the plan reviewed and "go", depth 3 by default, 5 measured). rust goals.rs:
+  THE NATURAL OPPONENT (default_reply): a mate if they have one; else the move leaving them best off after our best
+  immediate capture, priced by exchange (it takes, recaptures, saves an attacked piece); else a pass when no move beats
+  passing. Tests: a back-rank mate taken, a recapture, an attacked rook saved, a quiet pass.
+  OUR GOALS (goals): our PURPOSEFUL moves only -- a check, a capture, a pawn move, or a move after which the moved piece
+  is fewer of its own moves from attacking a target (a piece of theirs, a square next to their king: the piece_reach walk
+  of 2026-09-29 in Rust) -- the natural reply after each, deepened step by step to the depth (a 20,000-move cap); each
+  goal (a mate, material won as a new high along the line, entry into a known material) at its cheapest, with its line.
+  Their goals: the same as if we passed. Two fixes from the first look: "newly attacks" alone imagined 3 moves in a
+  K+B+N v K position (the quiet approach is a mating net's way) -> "fewer moves from attacking"; depth-first at once,
+  depth 5 spent the cap and found fewer goals than depth 3 -> deepening step by step.
+  THE CHECKPOINT (real positions): Kaveh's game 6IDKdXUd move 17 -- "material: their queen, bishop, pawn for our bishop
+  and knight, +7 in 3: Nxd4 Qxd4 Bxh7+ Kxh7 Qxd4" (the discovered attack he played), 104 ms at depth 3, the cap at 5
+  (323 ms); their goal Bxb2. K+B+N v K seed 5006 move 36 (where the frame let the king out): a mate in 4 imagined, "Nf3
+  Ne5 Nd7 ... Be4"; the start: a mate in 5. K+R+R v K+R: a mate in 3 imagined with their rook passing; K+Q v K+R: Kxf8.
+  ALL IMAGINED against a natural opponent -- their best defence is the contest's question (stage 4), not yet asked.

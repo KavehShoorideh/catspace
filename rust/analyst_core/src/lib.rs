@@ -16,6 +16,7 @@ mod pns;
 mod game;
 mod mating;
 mod vocab;
+mod goals;
 mod generated;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -1675,6 +1676,9 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(vocab::frame_mate_of, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::set_frame_mate_depth, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::set_claim_k, m)?)?;
+    m.add_function(wrap_pyfunction!(goals::default_reply_of, m)?)?;
+    m.add_function(wrap_pyfunction!(goals::goals_of, m)?)?;
+    m.add_function(wrap_pyfunction!(goals::set_goal_depth, m)?)?;
     m.add_function(wrap_pyfunction!(plan::kq_move_of, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_game_draws, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_kq_tactic, m)?)?;
