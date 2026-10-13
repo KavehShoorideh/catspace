@@ -234,6 +234,11 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     lab = labels(hole_name) if os.path.exists(paths.derived(f"hole_{hole_name}_labels.json")) else fresh_candidates(h, boards)
     boards = lab["boards"]                       # a labeled hole's verdicts were made on its labels' boards
     known = known_terms(h)                       # the lemmas we already have join the hole's candidates (each schema)
+    # -- only those that VARY on the hole's boards, as every enumerated candidate (2026-10-13, kbn2: K+R+R v K+R's "the line
+    # from our king to their rook" offered to K+B+N v K, where they have no rook -- a constant 0, a frame that wanders;
+    # it passed the evidence on failure boards by progress and the guard vetoed it, 0 better, 20 worse)
+    import analyst_core as A
+    known = [t for t in known if len(set(A.vocab_values(boards, t))) > 1]
     schemas = sorted({r["schema"] for r in lab["rows"]}) or ["append"]
     have = {(r["term"], r["schema"]) for r in lab["rows"]}
     lab["rows"] += [dict(term=t, schema=sc) for t in known for sc in schemas if (t, sc) not in have]
