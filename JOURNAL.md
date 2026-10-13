@@ -30135,3 +30135,20 @@ frames restored from their runs' commits).
   share of the filter's 60, so ~20-25% is chance): bygame (before the advantage reward) gnn 32%, transformer 28%,
   enumerative 22%, contrast 18%; challenge and honestgap (after) transformer 50% / 43%, gnn 29% / 33%, enumerative 8% /
   8%; on the new endings the KNOWN lemmas supplied 28% (K+Q v K+R) and 23% (K+B+N v K) of the top 10.
+
+K+R+R v K+R WITH EVERYTHING (tag krr_all; 2026-10-13 00:16-00:58 PDT: known lemmas first, stages carried, the guard on
+whole games). Wins per 100, rounds 0-5: 69/72/64/67/66/73 (losses: round 2 the old skewer game, round 4 one). Confirmed
+and guarded: K+R+R v K "the squares their king walks to safely, outside the corners" (guard 25 better, 0 worse --
+the night's strongest); the in-check frame "the line from our king to their rook" (a third time, now across two
+endings); three K+R+R v K+R stages on carried evidence -- for "their king's free region" (the unattacked squares
+nearer their king than our rook), for "their king's region away from our rook" (squeeze outside our king's rank), and
+for "their rook active" (our king near our rook) -- each guard-neutral (2:2, 2:0, 2:2); one stage vetoed (2:5).
+  THE ROUND-4 LOSS (seed 4059): at half-move 98 every defence of the g1 rook netted -5 (a fifty-move draw is worth
+  minus our lead); the defence's tie-break (activity) chose Rf8+, handing the rook over; K+R v K+R then lost. The
+  least-loss rule (keep material on ties) did not reach the defence's tie. FIXED, then NARROWED: "the least material
+  handed over" breaks a defence tie only at the draw's value -- applied to every tie it cost wins (round-4 starts,
+  final frames 64 -> 59; no frames 60 -> 54) and saved no loss; narrowed: 64, and Rb1 keeps the rook (test).
+  THE MEASUREMENT (the narrowed planner, same starts, one replay each -- directional): round 4's starts, no frames 60 --
+  the final frames 64; round 5's starts, no frames 61 -- the final frames 73. The learned K+R+R lemmas: +4 and +12.
+  (The run's own round-4 frames replayed with the old rule reproduce its 66 wins and the loss exactly: the games are
+  deterministic.)

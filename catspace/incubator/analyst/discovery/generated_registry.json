@@ -1495,5 +1495,88 @@
   },
   "used_by": "the KBNvK frame (sum): ['(sum (count (and (nearer L W) (not (between L P)))) (count (and (nearer W L) (nearer W P))))']",
   "created": "2026-10-13"
+ },
+ {
+  "id": "krrvk_krr_all_r0_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (reach L free) (not corner)))",
+  "gloss": "how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the corner squares",
+  "size": 7,
+  "lean": "(count (fun u => (reach L (fun u => !(attackedBy p c L u))) u && (fun u => !(corner u)) u))",
+  "hole": "learn_krr_all_KRRvK_rank2_r0",
+  "evidence": {
+   "verifier": "on 50 confirmation boards: held 34/50, won 34 -- the frame before it held 10/50, won 10; better on 15 boards, worse on 1 over 1 round(s), e-value 482 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KRRvK frame (append): ['(count (and (reach L free) (not corner)))']",
+  "created": "2026-10-13"
+ },
+ {
+  "id": "stage_krrvkr_krr_all_r2_trap_carried",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and free (nearer L P)))",
+  "gloss": "how many of the squares we do not attack that are also the squares nearer their king than our other piece",
+  "size": 6,
+  "lean": "(count (fun u => (fun u => !(attackedBy p c L u)) u && (nearer L P) u))",
+  "hole": "stage_krr_all_KRRvKR_r2_trap_carried",
+  "evidence": {
+   "verifier": "26 games better, 8 worse over 2 rounds, e-value 54 (held-out games)",
+   "region": "(count (and free (not (nearer W L)))) >= 31",
+   "status": "a conjecture: the stage's claim is not proved"
+  },
+  "used_by": "the stage KRRvKR:if:(count (and free (not (nearer W L))))>=31",
+  "created": "2026-10-13"
+ },
+ {
+  "id": "krrvkr_check_krr_all_r3_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (segment W O))",
+  "gloss": "how many of the squares from our king to their other piece along their line",
+  "size": 4,
+  "lean": "(count (segment W O))",
+  "hole": "learn_krr_all_KRRvKR_check_rank2_r3",
+  "evidence": {
+   "verifier": "on 27 confirmation boards: held 2/27, won 2 -- the frame before it held 3/27, won 3; better on 31 boards, worse on 12 over 3 round(s), e-value 26 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KRRvKR:check frame (append): ['(count (segment W O))']",
+  "created": "2026-10-13"
+ },
+ {
+  "id": "stage_krrvkr_krr_all_r3_trap_carried",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (nearer L P) (not (rank W))))",
+  "gloss": "how many of the squares nearer their king than our other piece that are also the squares outside the rank of our king",
+  "size": 8,
+  "lean": "(count (fun u => (nearer L P) u && (fun u => !((rankOf W) u)) u))",
+  "hole": "stage_krr_all_KRRvKR_r3_trap_carried",
+  "evidence": {
+   "verifier": "25 games better, 6 worse over 2 rounds, e-value 182 (held-out games)",
+   "region": "(count (and (nearer L P) (not (box L)))) >= 30",
+   "status": "a conjecture: the stage's claim is not proved"
+  },
+  "used_by": "the stage KRRvKR:if:(count (and (nearer L P) (not (box L))))>=30",
+  "created": "2026-10-13"
+ },
+ {
+  "id": "stage_krrvkr_krr_all_r4_trap_carried",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(dist W P)",
+  "gloss": "the king-step distance from our king to our other piece",
+  "size": 3,
+  "lean": "(dist W P)",
+  "hole": "stage_krr_all_KRRvKR_r4_trap_carried",
+  "evidence": {
+   "verifier": "25 games better, 6 worse over 2 rounds, e-value 182 (held-out games)",
+   "region": "(count (and hit (not (diagonals O)))) >= 19",
+   "status": "a conjecture: the stage's claim is not proved"
+  },
+  "used_by": "the stage KRRvKR:if:(count (and hit (not (diagonals O))))>=19",
+  "created": "2026-10-13"
  }
 ]

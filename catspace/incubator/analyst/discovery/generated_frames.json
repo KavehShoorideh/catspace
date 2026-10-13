@@ -12,12 +12,18 @@
   "(count (not (nearer W L)))"
  ],
  "KRRvK": [
-  "(count (and (nearer L P) (not (knight1 W))))"
+  "(count (and (reach L free) (not corner)))"
  ],
  "KRRvKR:check": [
   "(count (segment W O))"
  ],
  "KRRvKR:if:(count (and (nearer L P) (not (box L))))>=30": [
-  "(count (and (reach W unhit) (not (nearer P L))))"
+  "(count (and (nearer L P) (not (rank W))))"
+ ],
+ "KRRvKR:if:(count (and free (not (nearer W L))))>=31": [
+  "(count (and free (nearer L P)))"
+ ],
+ "KRRvKR:if:(count (and hit (not (diagonals O))))>=19": [
+  "(dist W P)"
  ]
 }
