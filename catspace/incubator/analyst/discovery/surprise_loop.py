@@ -182,6 +182,39 @@ def judge(g: dict) -> None:
         r["verdict"] = verdict
 
 
+def find_loops(g: dict, frames: dict) -> list:
+    """THE LOOPS OF A GAME (Kaveh 2026-10-12: "once we go into a drawn tail, we recognize that we've gone into a drawn tail
+    ... and give signal back to the proposer that we're looping"): in each material we are ahead in, with the frame it
+    was played under, our positions as lemma-states (Rust lemma_state, with the material) and the frame's measure; the
+    first return to a state without the measure lower than at its last visit is THE LOOP -> [{material, the entry (the
+    position where that state was first reached), the revisit, the states of the cycle, whether the phase was won}]."""
+    import catspace.incubator.analyst  # noqa: F401
+    import analyst_core as A
+    rows, out = g["rows"], []
+    phases = defaultdict(list)
+    for i, r in enumerate(rows):
+        phases[r["material"]].append(i)
+    for mat, idx in phases.items():
+        if mat in MATING_SPECS or rows[idx[0]]["lead"] <= 0:
+            continue
+        terms = frames.get(mat, [])
+        fens = [rows[i]["fen"] for i in idx]
+        states = A.lemma_state(fens)
+        meas = A.component_values(fens, terms) if terms else [[] for _ in fens]
+        seen = {}
+        for j, i in enumerate(idx):
+            key = (states[j], rows[i]["lead"], rows[i]["theirs"])
+            if key in seen and not meas[j] < meas[seen[key][1]]:
+                first = seen[key][0]
+                last = idx[-1]
+                won = (last + 1 < len(rows) and rows[last + 1]["theirs"] < rows[last]["theirs"]) or (last == len(rows) - 1 and g["out"] == "win")
+                out.append(dict(material=mat, entry=first, revisit=i, entry_fen=rows[first]["fen"], won=won,
+                                cycle=len({states[idx.index(x)] for x in idx if first <= x <= i})))
+                break
+            seen[key] = (i, j)
+    return out
+
+
 def play(material: str, games: int, frames: dict, seed0: int, workers: int = max(1, (os.cpu_count() or 8) - 2), opponent: str = "stockfish:10") -> list:
     from multiprocessing import Pool
     with Pool(workers) as p:
@@ -233,6 +266,7 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
     new = dict(frames)
     by = defaultdict(set)
     contrast = defaultdict(lambda: {"win": [], "draw": []})
+    loops_seen = Counter()
     for g in res:
         # THE GAMES' CONTRAST, per material (the contrast proposer's evidence): positions of ours shortly before a win of
         # that material's phase (a capture we kept, or mate), and the tails of the games drawn or lost in it
@@ -254,17 +288,17 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
                         by[(mat, 2)].add(r["fen"])
             elif last == len(g["rows"]) - 1 and g["out"] in ("draw", "loss"):
                 contrast[mat]["draw"] += [g["rows"][i]["fen"] for i in idx[-30:]]
-                # THE STALL POINT (where the verifier should look -- not the tail, after the damage): the position after
-                # the last frame claim the game kept in this phase, and the next two of ours
-                kept = [i for i in idx if g["rows"][i]["claim"]["kind"] == "frame" and g["rows"][i]["verdict"] == "kept"]
-                s0 = (kept[-1] + 1) if kept else idx[0]
-                for i in [j for j in idx if j >= s0][:3]:
-                    if g["rows"][i]["lead"] > 0:
-                        by[(mat, 2)].add(g["rows"][i]["fen"])
+        # THE LOOP ENTRIES (where a failing phase started to loop -- the place to break it) are the progress hole's boards
+        for lp in find_loops(g, frames):
+            if not lp["won"]:
+                by[(lp["material"], 2)].add(lp["entry_fen"])
+                loops_seen[lp["material"]] += 1
         for r in g["rows"]:
             # ahead materials of the generic frame (the mating frames and the hold frame are earlier lemmas): rank 1
             if r["claim"]["kind"] == "frame" and r["material"] not in MATING_SPECS and r["lead"] > 0 and r["verdict"] == "lost ground":
                 by[(r["material"], 1)].add(r["fen"])
+    if loops_seen:
+        print("OBS   loops found in the failing phases (lemma-states revisited, the measure no lower): " + ", ".join(f"{m} {n}" for m, n in loops_seen.items()))
     for (mat, rank), fens in sorted(by.items(), key=lambda kv: (kv[0][1], -len(kv[1]))):
         if len(fens) < 10:
             print(f"OBS   {mat} rank {rank}: {len(fens)} surprise boards -- too few"); continue
@@ -283,7 +317,7 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
         hole = dict(name=name, material=mat, piece="*", base=cur, k=H.K, stuck=boards, sampled=len(fens),
                     schemas=["prepend"] if rank == 1 and cur else None, contrast=con if con["win"] and con["draw"] else None)
         json.dump(hole, open(paths.derived(f"hole_{name}.json"), "w"))
-        print(f"OBS   {mat} rank {rank} ({'ground lost' if rank == 1 else 'no progress: the stall points'}): {len(fens)} surprise boards -> hole {name} "
+        print(f"OBS   {mat} rank {rank} ({'ground lost' if rank == 1 else 'no progress: the loop entries and the slow wins'}): {len(fens)} surprise boards -> hole {name} "
               f"(base {cur or 'none'}; {len(boards)} boards; the games' contrast: {len(con['win'])} before a win, {len(con['draw'])} in draws)")
         t0 = time.time()
         out = run(name, budget, hole=hole, defender=defender, n_boards=n_boards)

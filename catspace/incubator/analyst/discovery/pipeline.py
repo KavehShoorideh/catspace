@@ -156,15 +156,39 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     if defender != "self":
         boards = boards[:n_boards]               # a real defender plays whole games with the planner
     from . import proposers as P
-    rankings, names = [Enumerative().rank(h, lab, cache)], ["enumerative"]
-    for k in kinds:
-        rankings.append(Learned(k, P.get(k)).rank(h, lab, cache)); names.append(k)   # the newest checkpoint
-    if h.get("contrast"):
-        rankings.append(Contrast().rank(h, lab, cache)); names.append("contrast")
-    kept = filter_(rankings, budget, names=names)
     ver = Verifier(defender=defender)
     base = ver.verify(h, None, "none", boards)
-    res = sorted((ver.verify(h, t, s, boards) for t, s in kept), key=lambda r: -r["score"])
+    # KEEP PROPOSING UNTIL IT IS BROKEN (Kaveh: "we should keep proposing until we don't fall into that loop again"): in
+    # batches of `budget`; after each, the proposers fine-tune on its verdicts and rank again (the failures steer the next
+    # proposals); a natural end -- two batches running with no better candidate (a guard of ten batches, said so)
+    res, done, stale, batch_no = [], set(), 0, 0
+    best = base
+    while True:
+        batch_no += 1
+        rankings, names = [Enumerative().rank(h, lab, cache)], ["enumerative"]
+        for k in kinds:
+            rankings.append(Learned(k, P.get(k)).rank(h, lab, cache)); names.append(k)   # the newest checkpoint
+        if h.get("contrast"):
+            rankings.append(Contrast().rank(h, lab, cache)); names.append("contrast")
+        kept = filter_(rankings, budget, skip=done, names=names)
+        if not kept:
+            break
+        got = [ver.verify(h, t, s, boards) for t, s in kept]
+        done |= set(kept)
+        res += got
+        top = max(got, key=lambda r: r["score"])
+        if top["score"] > best["score"]:
+            best, stale = top, 0
+        else:
+            stale += 1
+        if defender != "self":
+            P.update()                                  # this batch's verdicts, before the next batch is ranked
+        print(f"OBS   batch {batch_no}: {len(kept)} verified, the batch's best {top['score']:.4f}, the hole's best {best['score']:.4f} (the frame's own {base['score']:.4f})")
+        if stale >= 2 or batch_no >= 10:
+            if batch_no >= 10:
+                print("OBS   (the guard of ten batches hit)")
+            break
+    res = sorted(res, key=lambda r: -r["score"])
     def show(r):
         if "ranks" in r:
             why = ", ".join(f"{k} {v}" for k, v in sorted(r.get("why", {}).items(), key=lambda kv: -kv[1]))
@@ -172,13 +196,14 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
                     f"claims kept {r['certified']}/{r['played']}{f'; ground lost: {why}' if why else ''}")
         return f"mated {r['mated']}/{r['n']}, certified {r['certified']}/{r['played']}"
     print(f"OBS pipeline on {hole_name} ({len(boards)} boards; {len(lab['rows'])} candidates; defender {defender}): {len(rankings)} proposers, the filter "
-          f"kept {len(kept)}, all verified; the hole's own measure scores {base['score']:.4f} ({show(base)}); the best:")
+          f"kept {len(res)} over {batch_no} batches, all verified; the hole's own measure scores {base['score']:.4f} ({show(base)}); the best:")
     for r in res[:5]:
         print(f"OBS   {r['score']:.4f} ({show(r)}) [{r['schema']}] {r['term']} -- from {FILTERED_BY.get((r['term'], r['schema']), '?')} = {V.gloss(V.parse(r['term']))}")
     from collections import Counter
     top = [FILTERED_BY.get((r["term"], r["schema"]), "?") for r in res[:10]]
     print(f"OBS   the verifier's top 10 by proposer: {dict(Counter(top))}")
-    P.update_in_background()                    # this hole's verdicts fine-tune the proposers beside the next work
+    if defender == "self":
+        P.update_in_background()                # this hole's verdicts fine-tune the proposers beside the next work
     return [base] + res
 
 
