@@ -581,7 +581,7 @@ pub fn set_frame_mate(flag: bool) -> PyResult<()> { FRAME_MATE.store(flag, std::
 
 #[derive(Clone)]
 pub struct MState { pos: Chess, mv: Option<Move>, ours: u32 }
-struct FrameMate<'a> { by: Color, base: &'a [Comp] }
+struct FrameMate<'a> { by: Color, base: &'a [Comp], depth: u32 }
 impl FrameMate<'_> {
     fn meas(&self, q: &Chess) -> Vec<u32> { self.base.iter().map(|c| cval(c, q, !self.by)).collect() }
 }
@@ -592,7 +592,7 @@ impl crate::pns::Problem for FrameMate<'_> {
     fn judge(&self, s: &MState, or: bool, root: bool) -> Option<bool> {
         if !root && crate::game::claimable_draw(&s.pos).is_some() { return Some(false); }
         if or {
-            if s.pos.legal_moves().is_empty() || s.ours >= FRAME_MATE_DEPTH { return Some(false); }
+            if s.pos.legal_moves().is_empty() || s.ours >= self.depth { return Some(false); }
             None
         } else if s.pos.legal_moves().is_empty() { Some(s.pos.is_check()) } else { None }
     }
@@ -628,9 +628,16 @@ pub fn frame_mate_of(fen: String, terms: Vec<String>, inside: bool) -> Option<(S
 fn frame_mate(pos: &Chess, base: &[Comp]) -> Option<(Move, String)> {
     if !FRAME_MATE.load(std::sync::atomic::Ordering::Relaxed) { return None; }
     let by = pos.turn();
-    let (r, lines) = crate::pns::search_proof_lines(&FrameMate { by, base }, MState { pos: pos.clone(), mv: None, ours: 0 }, FRAME_MATE_BUDGET, 1);
-    if r != Some(true) { return None; }
-    let line = lines.into_iter().next()?;
+    // THE SHORTEST MATE FIRST -- mate in 1, then 2, ... (2026-10-13, the dig into seed 5006: proving "a mate within 5"
+    // and playing any proof's first move, it proved "mate in 5" again by another line for thirty moves, their king
+    // shuttling a8-b8 with mate 3-4 moves away; the shortest proof's continuation proves the next one shorter: every
+    // move closes in)
+    let mut found = None;
+    for depth in 1..=FRAME_MATE_DEPTH {
+        let (r, lines) = crate::pns::search_proof_lines(&FrameMate { by, base, depth }, MState { pos: pos.clone(), mv: None, ours: 0 }, FRAME_MATE_BUDGET, 1);
+        if r == Some(true) { found = lines.into_iter().next(); break; }
+    }
+    let line = found?;
     let first = line.get(1)?.mv.clone()?;
     let mut words = Vec::new();
     for w in line.windows(2) {

@@ -30231,3 +30231,11 @@ no move certified the frame's progress -- ran from 1 of 20 starts within 10 plie
 12 (with the inside-the-frame filter or without it: the filter is not what limits it). THE MEASUREMENT (K+B+N v K, the
 newest frame, the same 100 starts, seeds 5000-5099, one replay each): within 10 plies 70 -> 94 wins; within 20 plies
 53 -> 73; within 40 plies 21 -> 29 (a round 14 s -> 79 s). Tests: the mate in two with its words; no claim far from mate.
+  THE DIG (Kaveh: "What are the cases where we don't win? Let's dig into one"): the 27 draws within 20 plies are all
+  fifty-move draws -- 22 with their king on the edge, 18 of those near the corner NOT of the bishop's colour. Seed 5006:
+  their king shuttled a8-b8 for thirty moves with mate 3-4 moves away; each turn the search proved "mate in 5" by
+  another line and played its first move -- it accepted any proof within the bound, kept none, and never closed in;
+  then the frame let the king out (move 35) and the game drifted to fifty moves. FIXED: the shortest mate first (mate in
+  1, then 2, ... 5) -- the proof's continuation proves the next one shorter, every move closes in. The same starts:
+  within 10 plies 94 -> 97 wins, moves per win 19.3 -> 5.5; within 20 plies 73 -> 75 (23.5 -> 11.4); within 40 plies
+  29 -> 29 (25.1 -> 18.3).
