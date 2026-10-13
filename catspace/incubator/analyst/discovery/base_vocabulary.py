@@ -37,8 +37,25 @@ PRIMITIVES = {
     "unhit": ((), "set", "the squares they do not attack"),
     "ours": ((), "set", "the squares of our pieces"),
     "theirs": ((), "set", "the squares of their pieces"),
+    # the second batch (Kaveh 2026-10-12: "sets of squares ... along a diagonal or along a rank or a file from here to here
+    # ... reachable by a knight, one hop or two hops ... the four squares on the center ... any particular square should
+    # actually be able to be named, but ... the symmetry ... except for the last rank where there's promotion ... some per
+    # piece vocabulary"; a time vocabulary later) -- each the mirror of a Lean definition in Ideas.Base.Vocabulary
+    "lines": (("sq",), "set", "the rank and file through {0}"),
+    "diagonals": (("sq",), "set", "the diagonals through {0}"),
+    "segment": (("sq", "sq"), "set", "the squares from {0} to {1} along their line"),
+    "knight1": (("sq",), "set", "the squares a knight on {0} reaches in one hop"),
+    "knight2": (("sq",), "set", "the squares a knight on {0} reaches in two hops"),
+    "center": ((), "set", "the four centre squares"),
+    "attacks": (("sq",), "set", "the squares {0} attacks"),
+    "cls": (("lit",), "set", "the squares like {0} under the board's symmetries"),
+    # the square names (from our side), one per class of the board's eight symmetries
+    "a1": ((), "lit", "a1 (the corners)"), "b1": ((), "lit", "b1"), "c1": ((), "lit", "c1"), "d1": ((), "lit", "d1"),
+    "b2": ((), "lit", "b2"), "c2": ((), "lit", "c2"), "d2": ((), "lit", "d2"), "c3": ((), "lit", "c3"), "d3": ((), "lit", "d3"),
+    "d4": ((), "lit", "d4 (the centre)"),
 }
 SYMBOLS = list(PRIMITIVES)
+SQUARE_CLASSES = ("a1", "b1", "c1", "d1", "b2", "c2", "d2", "c3", "d3", "d4")
 
 
 def head(t):
@@ -77,6 +94,10 @@ def size(t) -> int:
 def lean(t) -> str:
     """The term as a Lean expression over Ideas.Vocabulary (parameters: the position `p`, our colour `c`, squares `W L P O`)."""
     if isinstance(t, str):
+        if t in SQUARE_CLASSES:                    # a square name -> its Lean value (file, rank)
+            return f"((({ord(t[0]) - 97} : Fin 8)), (({int(t[1]) - 1} : Fin 8)))"
+        if t == "center":
+            return "center"
         return {"W": "W", "L": "L", "P": "P", "O": "O", "edge": "edge", "corner": "corner",
                 "attacked": "(attackedBy p c L)", "free": "(fun u => !(attackedBy p c L u))",
                 "hit": "(attackedBy p (Color.opposite c) W)", "unhit": "(fun u => !(attackedBy p (Color.opposite c) W u))",
@@ -89,6 +110,9 @@ def lean(t) -> str:
         "nearer": lambda: f"(nearer {x[0]} {x[1]})", "reach": lambda: f"(reach {x[0]} {x[1]})",
         "and": lambda: f"(fun u => {x[0]} u && {x[1]} u)", "not": lambda: f"(fun u => !({x[0]} u))",
         "count": lambda: f"(count {x[0]})", "dist": lambda: f"(dist {x[0]} {x[1]})", "sum": lambda: f"({x[0]} + {x[1]})",
+        "lines": lambda: f"(lines {x[0]})", "diagonals": lambda: f"(diagonals {x[0]})", "segment": lambda: f"(segment {x[0]} {x[1]})",
+        "knight1": lambda: f"(knight1 {x[0]})", "knight2": lambda: f"(knight2 {x[0]})", "attacks": lambda: f"(attacksFrom p {x[0]})",
+        "cls": lambda: f"(cls p c {x[0]})",
     }[h]()
 
 
@@ -117,8 +141,10 @@ def tokens(t):
 
 def enumerate_numbers(sqs=("W", "L", "P", "O"), max_and: int = 2):
     """Number terms smallest first: the count of a set built from at most two base sets (and, not), or a distance."""
-    base = ["edge", "corner", "attacked", "free", "hit", "unhit", "ours", "theirs"]
-    base += [(h, s) for h in ("box", "rank", "file") for s in sqs]
+    base = ["edge", "corner", "attacked", "free", "hit", "unhit", "ours", "theirs", "center"]
+    base += [(h, s) for h in ("box", "rank", "file", "lines", "diagonals", "knight1", "knight2", "attacks") for s in sqs]
+    base += [("segment", a, b) for a, b in itertools.combinations(sqs, 2)]
+    base += [("cls", x) for x in SQUARE_CLASSES]
     base += [(h, a, b) for h in ("line", "between", "nearer") for a in sqs for b in sqs if a != b]
     base += [("reach", s, w) for s in sqs for w in ("free", "unhit")]
     sets = list(base) + [("not", a) for a in base]

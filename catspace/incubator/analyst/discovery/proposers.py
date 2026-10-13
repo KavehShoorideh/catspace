@@ -29,7 +29,9 @@ def _dir():
 
 def _ckpt(kind: str) -> str:
     from .models import CTX
-    return os.path.join(_dir(), f"{kind}_ctx{CTX}.pt")     # the context's width in the name: a new feature, a new model
+    from .base_vocabulary import SYMBOLS
+    # the context's width and the vocabulary's size in the name: a new feature or new words, a new model
+    return os.path.join(_dir(), f"{kind}_ctx{CTX}_v{len(SYMBOLS)}.pt")
 
 
 def _state_path() -> str:

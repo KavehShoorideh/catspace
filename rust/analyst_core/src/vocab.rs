@@ -20,6 +20,10 @@ pub enum Term {
     Line(Box<Term>, Box<Term>), Between(Box<Term>, Box<Term>), Nearer(Box<Term>, Box<Term>),
     And(Box<Term>, Box<Term>), Or(Box<Term>, Box<Term>), Not(Box<Term>), Reach(Box<Term>, Box<Term>),
     Count(Box<Term>), Dist(Box<Term>, Box<Term>), Sum(Box<Term>, Box<Term>),
+    // the second batch (Kaveh 2026-10-12): geometry -- a rook's and a bishop's lines, a segment, a knight's one and two
+    // hops, the centre, a named square up to the board's symmetry -- and per piece: what the piece on a square attacks
+    Lines(Box<Term>), Diagonals(Box<Term>), Segment(Box<Term>, Box<Term>), Knight1(Box<Term>), Knight2(Box<Term>), Center,
+    Attacks(Box<Term>), Cls(Square),
 }
 
 /// Parse an S-expression term.
@@ -35,7 +39,15 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
     if tok != "(" {
         return match tok.as_str() { "W" => Some(Term::W), "L" => Some(Term::L), "P" => Some(Term::P), "O" => Some(Term::O),
             "hit" => Some(Term::Hit), "unhit" => Some(Term::Unhit), "ours" => Some(Term::Ours), "theirs" => Some(Term::Theirs), "edge" => Some(Term::Edge),
-            "corner" => Some(Term::Corner), "attacked" => Some(Term::Attacked), "free" => Some(Term::Free), _ => None };
+            "corner" => Some(Term::Corner), "attacked" => Some(Term::Attacked), "free" => Some(Term::Free), "center" => Some(Term::Center),
+            _ => None };
+    }
+    // (cls <square>): a literal square name, named from our side
+    if t.get(*i).map(|h| h.as_str()) == Some("cls") {
+        let name = t.get(*i + 1)?.clone();
+        if t.get(*i + 2)? != ")" { return None; }
+        *i += 3;
+        return name.parse::<Square>().ok().map(Term::Cls);
     }
     let head = t.get(*i)?.clone();
     *i += 1;
@@ -49,6 +61,8 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
         ("nearer", [a, c]) => Term::Nearer(b(a), b(c)), ("and", [a, c]) => Term::And(b(a), b(c)), ("or", [a, c]) => Term::Or(b(a), b(c)),
         ("not", [a]) => Term::Not(b(a)), ("reach", [a, c]) => Term::Reach(b(a), b(c)), ("count", [a]) => Term::Count(b(a)),
         ("dist", [a, c]) => Term::Dist(b(a), b(c)), ("sum", [a, c]) => Term::Sum(b(a), b(c)),
+        ("lines", [a]) => Term::Lines(b(a)), ("diagonals", [a]) => Term::Diagonals(b(a)), ("segment", [a, c]) => Term::Segment(b(a), b(c)),
+        ("knight1", [a]) => Term::Knight1(b(a)), ("knight2", [a]) => Term::Knight2(b(a)), ("attacks", [a]) => Term::Attacks(b(a)),
         _ => return None,
     })
 }
@@ -87,6 +101,29 @@ pub fn set(t: &Term, q: &Chess, lone: Color) -> Bitboard {
         }
         Term::Ours => b.by_color(!lone) & !b.kings(),
         Term::Theirs => b.by_color(lone) & !b.kings(),
+        // the second batch (mirrors of Lean Ideas.Vocabulary lines / diagonals / segment / knight1 / knight2 / center /
+        // attacksFrom / cls)
+        Term::Lines(a) => s1(a).map_or(Bitboard::EMPTY, |s| (Bitboard::from(s.rank()) | Bitboard::from(s.file())).without(s)),
+        Term::Diagonals(a) => s1(a).map_or(Bitboard::EMPTY, |s| shakmaty::attacks::bishop_attacks(s, Bitboard::EMPTY)),
+        Term::Segment(a, c) => match (s1(a), s1(c)) {
+            (Some(x), Some(y)) if x != y && shakmaty::attacks::queen_attacks(x, Bitboard::EMPTY).contains(y) =>
+                shakmaty::attacks::between(x, y).with(x).with(y),
+            _ => Bitboard::EMPTY },
+        Term::Knight1(a) => s1(a).map_or(Bitboard::EMPTY, shakmaty::attacks::knight_attacks),
+        Term::Knight2(a) => s1(a).map_or(Bitboard::EMPTY, |s| shakmaty::attacks::knight_attacks(s).into_iter()
+            .fold(Bitboard::EMPTY, |m, u| m | shakmaty::attacks::knight_attacks(u))),
+        Term::Center => [Square::D4, Square::E4, Square::D5, Square::E5].into_iter().collect(),
+        Term::Attacks(a) => s1(a).and_then(|s| b.piece_at(s).map(|p| shakmaty::attacks::attacks(s, p, b.occupied()))).unwrap_or(Bitboard::EMPTY),
+        Term::Cls(x) => {
+            let us = !lone;
+            let abs = if us == Color::White { *x } else { x.flip_vertical() };
+            if b.pawns().any() { Bitboard::from_square(abs).with(abs.flip_horizontal()) }
+            else {
+                [abs, abs.flip_horizontal(), abs.flip_vertical(), abs.flip_horizontal().flip_vertical(),
+                 abs.flip_diagonal(), abs.flip_diagonal().flip_horizontal(), abs.flip_diagonal().flip_vertical(),
+                 abs.flip_diagonal().flip_horizontal().flip_vertical()].into_iter().collect()
+            }
+        }
         Term::Box1(a) => s1(a).map_or(Bitboard::EMPTY, |s| shakmaty::attacks::king_attacks(s).with(s)),
         Term::Rank(a) => s1(a).map_or(Bitboard::EMPTY, |s| Bitboard::from(s.rank())),
         Term::File(a) => s1(a).map_or(Bitboard::EMPTY, |s| Bitboard::from(s.file())),

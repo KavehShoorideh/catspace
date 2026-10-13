@@ -49,3 +49,33 @@ def test_lean_renderings_typecheck(tmp_path):
     src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
     r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# THE SECOND BATCH (Kaveh 2026-10-12): geometry -- lines, diagonals, segment, knight hops, the centre, square classes under the
+# board's symmetries (the mirror only with pawns) -- and per piece: what the piece on a square attacks
+
+def test_geometry_and_pieces():
+    assert val("(count (lines W))") == 14                     # c3: its rank and file
+    assert val("(count (diagonals W))") == 11
+    assert val("(count (segment W L))") == 3                  # c3, d4, e5
+    assert val("(count (knight1 W))") == 8
+    assert val("(count center)") == 4
+    assert val("(count (attacks O))") == 12                   # the g3 rook: its rank to our king, its file
+    assert val("(count (and (attacks O) (lines W)))") == 4    # d3 e3 f3 h3: its squares on our king's lines
+
+
+def test_square_classes_and_symmetry():
+    assert val("(count (cls a1))") == 4 and val("(count (cls b1))") == 8 and val("(count (cls d4))") == 4
+    assert sum(A.vocab_values([FEN], f"(count (cls {x}))")[0] for x in V.SQUARE_CLASSES) == 64   # the classes cover the board
+    assert A.vocab_values(["8/8/8/4k3/1R3R2/2K3r1/P7/8 w - - 0 1"], "(count (cls a1))")[0] == 2      # a pawn: the mirror only
+
+
+@pytest.mark.skipif(not Path("lean/ideas/.lake").exists(), reason="the Lean project is not built")
+def test_second_batch_lean_renderings_typecheck(tmp_path):
+    terms = ["(count (and (attacks O) (lines W)))", "(count (diagonals P))", "(count (segment W L))", "(count (knight2 O))",
+             "(count center)", "(count (and (cls a1) (not ours)))", "(count (cls d4))"]
+    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
+    src = tmp_path / "VocabCheck2.lean"
+    src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
+    r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
+    assert r.returncode == 0, r.stdout + r.stderr

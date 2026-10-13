@@ -76,6 +76,50 @@ def piecesOf (p : Position) (c : Color) : SquareSet := fun u =>
   | some pc => decide (pc.color = c) && decide (pc.kind ≠ PieceKind.king)
   | none => false
 
+-- GEOMETRY AND PIECES, a second batch (Kaveh 2026-10-12: "we want to be able to specify sets of squares ... along a
+-- diagonal or along a rank or a file from here to here ... reachable by a knight, one hop or two hops ... the four squares
+-- on the center ... any particular square should be able to be named, but ... the symmetry ... except for the last rank
+-- where there's promotion ... some per piece vocabulary"; a time vocabulary later)
+
+/-- **lines**: the squares on `s`'s rank or file (a rook's lines through `s`, blockers ignored). -/
+def lines (s : Square) : SquareSet := fun t => rookGeometryB s t
+
+/-- **diagonals**: the squares on the diagonals through `s` (a bishop's lines, blockers ignored). -/
+def diagonals (s : Square) : SquareSet := fun t => bishopGeometryB s t
+
+/-- **segment**: the squares from `s` to `t` along the rank, file or diagonal they share, both ends included (none when they
+share no line). -/
+def segment (s t : Square) : SquareSet := fun u => queenGeometryB s t && (u == s || u == t || betweenB s u t)
+
+/-- **one knight hop**: the squares a knight on `s` reaches. -/
+def knight1 (s : Square) : SquareSet := fun t => knightGeometryB s t
+
+/-- **two knight hops**: the squares a knight on `s` reaches in two hops. -/
+def knight2 (s : Square) : SquareSet := fun t => allSquares.any (fun u => knightGeometryB s u && knightGeometryB u t)
+
+/-- **the centre**: d4, e4, d5, e5. -/
+def center : SquareSet := fun t => (t.1.val == 3 || t.1.val == 4) && (t.2.val == 3 || t.2.val == 4)
+
+/-- **attacks from**: the squares the piece standing on `s` attacks, for its own colour, with the board's blockers (the chess
+library's `pieceAttacksB`); none when `s` is empty. -/
+def attacksFrom (p : Position) (s : Square) : SquareSet := fun t =>
+  match p.board s with
+  | some q => pieceAttacksB p q.color s t
+  | none => false
+
+/-- The board's eight symmetries of a square (rotations and reflections). -/
+def symmetries (s : Square) : List Square :=
+  let (f, r) := s
+  [(f, r), (Fin.rev f, r), (f, Fin.rev r), (Fin.rev f, Fin.rev r), (r, f), (Fin.rev r, f), (r, Fin.rev f), (Fin.rev r, Fin.rev f)]
+
+/-- **the class of a square**: the squares like `s` under the board's symmetries -- all eight when no pawn is on the board,
+only the left-right mirror when one is (the promotion direction breaks the rest); `s` is named from side `c`'s view (its
+first rank, rank 1). -/
+def cls (p : Position) (c : Color) (s : Square) : SquareSet := fun u =>
+  let pawns := allSquares.any (fun v => match p.board v with | some q => q.kind == .pawn | none => false)
+  let abs : Square := if c == Color.white then s else (s.1, Fin.rev s.2)
+  if pawns then u == abs || u == (Fin.rev abs.1, abs.2) else (symmetries abs).contains u
+
 /-- **colour of a square**: light or dark. -/
 def squareColour (s : Square) : Nat := GeoLemmas.colour s
 
