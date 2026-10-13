@@ -30131,3 +30131,7 @@ GENERIC FIXES: a carried stage the guard vetoes is dropped (kqr2 re-vetoed one e
 vetoed twice is not answered again in the run (kbn1 re-mined one region three times, 0 to 20 each); the generated
 track's frames are saved per material (each fresh run had overwritten the file with its own -- the K+R+R and K+Q
 frames restored from their runs' commits).
+  THE PROPOSERS (the verifier's top 10 per hole, by the proposer that put each through -- each proposer has an equal
+  share of the filter's 60, so ~20-25% is chance): bygame (before the advantage reward) gnn 32%, transformer 28%,
+  enumerative 22%, contrast 18%; challenge and honestgap (after) transformer 50% / 43%, gnn 29% / 33%, enumerative 8% /
+  8%; on the new endings the KNOWN lemmas supplied 28% (K+Q v K+R) and 23% (K+B+N v K) of the top 10.
