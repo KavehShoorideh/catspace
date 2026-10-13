@@ -40,3 +40,21 @@ def test_a_blind_spot_on_the_traps_own_boards_is_not_answered_twice():
     other = c(0.15, 1.2, ["e", "f", "g", "a"])     # 1 of 4
     assert C.pick([trap], [twin, other]) == (trap, other)
     assert C.pick([], [twin, other]) == (None, twin)
+
+
+def test_paired_e_value():
+    from catspace.incubator.analyst.discovery.defenders import paired_e, E_PROMOTE
+    held, lost = [1, 0, 3], [0, 0, 3]
+    assert abs(paired_e([held] + [lost] * 49, [lost] * 50)[2] - 1) < 1e-9       # one board of 50: e = 1, not evidence
+    w, l, e = paired_e([held] * 26 + [lost] * 24, [held] * 3 + [lost] * 47)
+    assert (w, l) == (23, 0) and e > 1e5                                 # the round-2 trap stage's margin
+    assert paired_e([[0, 0, 6]] * 40 + [[0, 0, 1]] * 10, [[0, 0, 2]] * 50)[:2] == (40, 10)   # ties on held/won: progress decides
+    assert paired_e([held] * 10 + [lost], [lost] * 10 + [held])[2] < E_PROMOTE    # 10 to 1: e 15.5
+    assert paired_e([held] * 11 + [lost], [lost] * 11 + [held])[2] >= E_PROMOTE   # 11 to 1: e 26
+
+
+def test_choose_and_confirm_on_different_boards():
+    from catspace.incubator.analyst.discovery.verifier import split
+    assert split(list(range(100)), 50) == (list(range(50)), list(range(50, 100)))
+    a, b = split(list(range(30)), 50)
+    assert len(a) == len(b) == 15 and not set(a) & set(b)

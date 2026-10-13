@@ -29941,3 +29941,27 @@ verifier's memo). Replayed on the geometry run (one replay each -- directional):
   All the stages' boards are tablebase wins (50/50 each; checked as a diagnostic only).
   OPEN: the promotion rule (defenders.better) promotes on one board more held or won out of 50 -- not evidence; for
   Kaveh.
+
+PROMOTION ON EVIDENCE (2026-10-12 20:52-21:08 PDT; Kaveh: "Yes add both changes. Do we need e values for the evidence?").
+The pipeline CHOOSES on half a hole's boards (up to 50) and the choice is CONFIRMED on the other half: the candidate and
+the frame before it played on the same held-out boards, compared board by board on Kaveh's ranks (held, then won, then
+lemma-states), the boards each side wins -> a sign-test E-VALUE, e = 2^(w+l) B(w+1, l+1) (the uniform mixture against
+the fair coin; valid when more boards are added after looking, and multiplying across independent rounds); promoted at
+e >= 20 (alpha 0.05). It replaces "one board more held or won" (defenders.better). The same test promotes the
+challenger's stages. Replay smoke on the geometry run (directional): round 1's blind-spot stage, promoted before on 1/50
+against 0/50, now better on 11 held-out boards and worse on 15, e 0.32 -- NOT promoted; round 2's counter-frame stage
+(its measure this time "a knight's two hops from their king, nearer their king than ours") left R or won 15/50 against
+1/50, better on 38, worse on 2, e 3.4e7 -- PROMOTED.
+THE LOOP WITH IT (tag evidence; the same seed positions). K+R+R v K+R wins per 100: round 0 69 (as every run), round 1 72
+(geometry 81, level2b 78); then "nothing new mined -- stopping". Confirmed: K+R+R v K "the squares nearer their king
+than our rook that our king can walk to over squares they do not attack" -- held 37/50 held-out boards against 14, 23
+held only by it, none only by the frame before (e 4.1e6). Not confirmed, every K+R+R v K+R hole: round 0 the best of 60
+on the choosing boards 0.242 against 0.162, on the held-out boards it held 8 against 8 (better on 20 boards, worse on
+15 -- the lemma-states deciding; e 0.29); round 1 0.202 against 0.162 -> held 6 against 5 (e 0.25); the check holes e
+3.6 (7 to 1 on 27 boards) and 0.44. So the frames earlier runs promoted for K+R+R v K+R did not hold more boards out of
+sample. Yet round 1 played WITHOUT one (72) against 78-81 with one in the earlier runs -- one run each, other frames
+differing; a lead only: the hole boards (from the divergence) may not be where a frame earns its wins in the games.
+With no K+R+R v K+R frame the challenger had no claims there to attack (K+R+R v K: 2 refuted held-out boards, a gap).
+OPEN: (1) the loop stops when a round promotes nothing, though the next round's games would bring new boards -- an
+inconclusive e-value (3.6) could continue on them; (2) whether held-out hole boards are the right confirmation set
+for a frame whose job is the games.

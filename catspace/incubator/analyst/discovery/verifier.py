@@ -64,7 +64,7 @@ class Verifier:
         bh = board_hash(boards)
         sp = spec_of(hole, self.defender)
         k = _key(hole["name"], term or "", schema, bh, sp)
-        if k in self.memo:
+        if k in self.memo and ("per_board" in self.memo[k] or self.defender == "self"):   # (older verdicts lack the boards' outcomes)
             return self.memo[k]
         piece = hole.get("piece") or hole["material"][1]
         s1 = A.verify_count(boards, hole["base"], term, schema, hole["k"], piece)
@@ -82,8 +82,28 @@ class Verifier:
                               leave=tuple(hole["leave"]) if hole.get("leave") else None)
             r = dict(hole=hole["name"], term=term or "", schema=schema, boards=bh, spec=sp, defender=self.defender, n=n, stage1=s1,
                      mated=o["won"], lost=o["lost"], played=o["claims"], certified=o["kept"], ranks=list(D.ranked(o)),
-                     states=o["states"], why=o["why"], examples=o["examples"], score=D.score(o), t=time.time())
+                     states=o["states"], why=o["why"], examples=o["examples"], per_board=o["per_board"], score=D.score(o), t=time.time())
         self.memo[k] = r
         with open(self.path, "a") as fh:
             fh.write(json.dumps(r) + "\n")
         return r
+
+
+def split(boards: list, n_boards: int) -> tuple:
+    """A hole's boards -> (the boards the pipeline CHOOSES on, the boards the choice is CONFIRMED on): never the same
+    boards -- the best of ~60 candidates on the boards that chose it is biased upward."""
+    n = min(n_boards, len(boards) // 2)
+    return boards[:n], boards[n:][:n_boards]
+
+
+def confirm(hole: dict, best: dict | None, boards: list, defender: str) -> dict:
+    """THE PROMOTION TEST: the candidate the pipeline chose and the frame before it (no candidate), both played on the
+    confirmation boards, compared board by board (defenders.paired_e); promoted at e >= 20."""
+    from . import defenders as D
+    if not best or not boards:
+        return dict(promoted=False, w=0, l=0, e=1.0, n=len(boards), cand=None, base=None)
+    ver = Verifier(defender=defender)
+    cand = ver.verify(hole, best["term"], best["schema"], boards)
+    base = ver.verify(hole, None, "none", boards)
+    w, l, e = D.paired_e(cand["per_board"], base["per_board"])
+    return dict(promoted=e >= D.E_PROMOTE, w=w, l=l, e=e, n=len(boards), cand=cand, base=base)

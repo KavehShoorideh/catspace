@@ -225,4 +225,7 @@ def krrvkr_geometry_r2_progress (p : Position) (c : Color) (W L P O : Square) : 
 /-- krrvk_geometry_r2_progress: how many of the squares we attack. (2026-10-12, hole learn_geometry_KRRvK_rank2_r2; verifier: held 43/50, won 43, claims kept 18/18 -- the frame before it held 42/50, won 42, claims kept 13/13 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
 def krrvk_geometry_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (attackedBy p c L))
 
+/-- krrvk_evidence_r0_progress: how many of the squares nearer their king than our other piece that are also the squares our king can walk to over the squares they do not attack. (2026-10-12, hole learn_evidence_KRRvK_rank2_r0; verifier: on 50 confirmation boards: held 37/50, won 37 -- the frame before it held 14/50, won 14; better on 31 boards, worse on 1, e-value 4.07e+06 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvk_evidence_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (reach W (fun u => !(attackedBy p (Color.opposite c) W u))) u))
+
 end Ideas.Generated

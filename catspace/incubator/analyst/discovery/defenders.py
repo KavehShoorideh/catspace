@@ -258,7 +258,8 @@ def closed_loop(boards: list, base: list, cand: str | None, schema: str, piece: 
     whys = [r["why"] for r in res if r["lost"] and r["why"]]
     return dict(n=len(res), won=sum(r["won"] for r in res), lost=sum(r["lost"] for r in res),
                 moves=sum(r["moves"] for r in res if r["won"]), played=sum(len(r["ours"]) for r in res), kept=kept, claims=claims,
-                states=sum(r["states"] for r in res), why=dict(Counter(w["kind"] for w in whys)), examples=whys[:3])
+                states=sum(r["states"] for r in res), why=dict(Counter(w["kind"] for w in whys)), examples=whys[:3],
+                per_board=[[int(not r["lost"]), int(r["won"]), r["states"]] for r in res])        # in the boards' order
 
 
 def ranked(r: dict) -> tuple:
@@ -275,20 +276,23 @@ def score(r: dict) -> float:
     return h + 1e-2 * w + 1e-4 * min(p, 99) / 100 + 1e-7 * c
 
 
-def better(a: dict, b: dict) -> bool:
-    """a beats b: a board more held, or (as many held) a win more. The claims kept ORDER the candidates but never promote
-    one alone -- a measure we lower ourselves keeps its claims by construction (2026-10-12, the "ends" run: "their king's
-    distance to our rook" and then a progress term were promoted on claims alone, holding 2 / 30 and 0 / 30 like the
-    frames before them; the frame then held nothing)."""
-    n = max(a["n"], 1)
-    ha, wa, pa, _ = ranked(a); hb, wb, pb, _ = ranked(b)
-    if abs(ha - hb) * n >= 0.5:
-        return ha > hb
-    if abs(wa - wb) * n >= 0.5:
-        return wa > wb
-    # then PROGRESS before the loop: a fifth more lemma-states reached, at least one more a board (the facts do not
-    # depend on the measure, so a measure we lower ourselves cannot fake new states -- it only delays its loop)
-    return pa >= 1.2 * pb and pa >= pb + 1
+E_PROMOTE = 20.0                # promote at e >= 1/alpha, alpha = 0.05
+
+
+def paired_e(a: list, b: list) -> tuple:
+    """THE EVIDENCE that a beats b (Kaveh 2026-10-12: "do we need e-values for the evidence?"), from their per-board
+    outcomes on the SAME boards: each board compared on Kaveh's ranks -- held, then won, then the lemma-states reached --
+    the boards a wins (w) against those b wins (l), ties dropped; under the null (a and b exchangeable on every board) each
+    decided board is a coin. The e-value is the uniform-mixture likelihood ratio against the fair coin,
+    e = 2^(w+l) B(w+1, l+1): its expectation under the null is 1, so it stays valid when more boards are added after
+    looking and multiplies across independent rounds (Ville). One board more held of 50 gives e = 1 -- not evidence
+    (2026-10-12: a stage promoted on 1/50 against 0/50); the claims kept never count (a measure we lower ourselves keeps
+    its claims by construction -- the "ends" run). -> (w, l, e)."""
+    import math
+    w = sum(tuple(x) > tuple(y) for x, y in zip(a, b))
+    l = sum(tuple(x) < tuple(y) for x, y in zip(a, b))
+    n = w + l
+    return w, l, math.exp(n * math.log(2) + math.lgamma(w + 1) + math.lgamma(l + 1) - math.lgamma(n + 2))
 
 
 def main(argv=None):

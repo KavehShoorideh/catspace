@@ -1138,5 +1138,21 @@
   },
   "used_by": "the KRRvK frame (sum): ['(sum (count (and (nearer L W) (not (rank L)))) (count attacked))']",
   "created": "2026-10-12"
+ },
+ {
+  "id": "krrvk_evidence_r0_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (nearer L P) (reach W unhit)))",
+  "gloss": "how many of the squares nearer their king than our other piece that are also the squares our king can walk to over the squares they do not attack",
+  "size": 8,
+  "lean": "(count (fun u => (nearer L P) u && (reach W (fun u => !(attackedBy p (Color.opposite c) W u))) u))",
+  "hole": "learn_evidence_KRRvK_rank2_r0",
+  "evidence": {
+   "verifier": "on 50 confirmation boards: held 37/50, won 37 -- the frame before it held 14/50, won 14; better on 31 boards, worse on 1, e-value 4.07e+06 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KRRvK frame (append): ['(count (and (nearer L P) (reach W unhit)))']",
+  "created": "2026-10-12"
  }
 ]

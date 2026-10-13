@@ -154,26 +154,28 @@ def answer(cf: dict, material: str, kind: str, run: str, rnd: int, frames: dict,
     losing ground; kind "blind" (a blind spot): on the game's own ends -- held, won, progress. Against the material's own
     frame inside R (no stage)."""
     from .pipeline import run as pipeline_run
-    from . import defenders as D
     import chess
     def fresh(f):
         b = chess.Board(f); b.halfmove_clock = 0
         return b.fen()
+    from .verifier import split, confirm
     boards = [fresh(f) for f in cf["boards"]][:100]
     fkey = f"{material}:if:{cf['term']}>={cf['theta']}"
     hole = dict(name=f"stage_{run}_{material}_r{rnd}_{kind}", material=material, frame_key=fkey, frames=frames, piece="*",
                 base=[], k=2, stuck=boards, sampled=len(boards), leave=[cf["term"], cf["theta"]] if kind == "trap" else None)
     json.dump(hole, open(paths.derived(f"hole_{hole['name']}.json"), "w"))
-    out = pipeline_run(hole["name"], budget, hole=hole, defender=defender, n_boards=n_boards)
+    choose, check = split(boards, n_boards)
+    out = pipeline_run(hole["name"], budget, hole=hole, defender=defender, n_boards=len(choose))
     base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None
-    as_o = lambda r: dict(n=r["n"], lost=r["lost"], won=r["mated"], kept=r["certified"], claims=r["played"], states=r.get("states", 0))
-    wins = bool(best) and (D.better(as_o(best), as_o(base)) if "ranks" in base else best["score"] > base["score"] + 0.05)
+    c = confirm(hole, best, check, defender)                  # on boards not used to choose it, board by board
     goal = "left R or won" if kind == "trap" else "won"
     show = lambda r: f"{goal} {r['mated']}/{r['n']}, lost ground {r['lost']}, lemma-states {r.get('states', 0) / max(r['n'], 1):.1f} a board"
     print(f"OBS   the attacker's answer -- a STAGE for the {'counter-frame' if kind == 'trap' else 'blind spot'} R ({fkey}): the best mined "
-          f"measure {best and best['term']} -- {best and show(best)}; without the stage {show(base)} -> {'PROMOTED' if wins else 'not better'}")
-    return dict(kind=kind, frame_key=fkey, term=best and best["term"], schema=best and best["schema"], base=show(base),
-                answer=best and show(best), promoted=bool(wins))
+          f"measure {best and best['term']}; on {c['n']} boards not used to choose it {c['cand'] and show(c['cand'])}, without the stage "
+          f"{c['base'] and show(c['base'])}; better on {c['w']} boards, worse on {c['l']} -- e-value {c['e']:.3g} -> "
+          f"{'PROMOTED' if c['promoted'] else 'not promoted'} (at e >= 20)")
+    return dict(kind=kind, frame_key=fkey, term=best and best["term"], schema=best and best["schema"], base=c["base"] and show(c["base"]),
+                answer=c["cand"] and show(c["cand"]), w=c["w"], l=c["l"], e=c["e"], promoted=bool(c["promoted"]))
 
 
 def archive(entry: dict) -> None:
@@ -249,7 +251,7 @@ def round_(res: list, played: dict, frames: dict, run: str, rnd: int, register: 
                 if register:
                     from . import registry as R
                     R.add_generated(f"stage_{material.lower()}_{run}_r{rnd}_{kind}", ans["term"], "measure", f"stage_{run}_{material}_r{rnd}_{kind}",
-                                    {"verifier": f"{ans['answer']} against {ans['base']} without the stage",
+                                    {"verifier": f"{ans['answer']} against {ans['base']} without the stage (confirmation boards; e-value {ans['e']:.3g})",
                                      ("trap" if kind == "trap" else "blind spot"): f"{c['gloss']} >= {c['theta']}",
                                      "status": "a conjecture: the stage's claim is not proved"}, used_by=f"the stage {ans['frame_key']}")
                     R.export()

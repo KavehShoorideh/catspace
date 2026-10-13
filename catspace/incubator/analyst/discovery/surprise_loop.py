@@ -375,12 +375,16 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
         print(f"OBS   {fk} rank {rank} ({'material lost' if rank == 1 else 'failed episodes'}: from the divergence): {len(fens)} surprise boards -> hole {name} "
               f"(base {cur or 'none'}; {len(boards)} boards; the games' contrast: {len(con['win'])} before a win, {len(con['draw'])} in draws)")
         t0 = time.time()
-        out = run(name, budget, hole=hole, defender=defender, n_boards=n_boards)
+        from .verifier import split, confirm
+        choose, check = split(boards, n_boards)
+        out = run(name, budget, hole=hole, defender=defender, n_boards=len(choose))
         base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None
-        if "ranks" in base:                      # a real defender: Kaveh's ranks, a margin at the first that differs
-            from .defenders import better
-            as_o = lambda r: dict(n=r["n"], lost=r["lost"], won=r["mated"], kept=r["certified"], claims=r["played"], states=r.get("states", 0))
-            wins = bool(best) and better(as_o(best), as_o(base))
+        cf = None
+        if "ranks" in base:                      # a real defender: confirmed board by board on boards not used to choose
+            cf = confirm(hole, best, check, defender)
+            wins = cf["promoted"]
+            print(f"OBS   the confirmation ({cf['n']} boards not used to choose): {best and best['term']} beats the frame before it on {cf['w']}, "
+                  f"loses on {cf['l']} -- e-value {cf['e']:.3g} ({'promoted' if wins else 'not promoted'} at e >= 20)")
         else:
             wins = bool(best) and best["score"] > base["score"] + 0.05
         if wins:
@@ -391,10 +395,11 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
             what = "hold" if rank == 1 else "progress"
             ev = {"verifier": f"{best['score']:.4f} against the frame's own {base['score']:.4f} (defender {defender})",
                   "status": "a conjecture: its frame's claim is not proved"}
-            if "ranks" in best:
-                ev["verifier"] = (f"held {best['n'] - best['lost']}/{best['n']}, won {best['mated']}, claims kept {best['certified']}/{best['played']} "
-                                  f"-- the frame before it held {base['n'] - base['lost']}/{base['n']}, won {base['mated']}, claims kept "
-                                  f"{base['certified']}/{base['played']} (defender {defender})")
+            if cf:
+                c, b0 = cf["cand"], cf["base"]
+                ev["verifier"] = (f"on {cf['n']} confirmation boards: held {c['n'] - c['lost']}/{c['n']}, won {c['mated']} -- the frame before it "
+                                  f"held {b0['n'] - b0['lost']}/{b0['n']}, won {b0['mated']}; better on {cf['w']} boards, worse on {cf['l']}, "
+                                  f"e-value {cf['e']:.3g} (defender {defender})")
             if register:                          # (a --dry test run writes nothing to the generated track)
                 R.add_generated(f"{fk.lower().replace(':', '_')}_{tag or 'run'}_r{rnd}_{what}", best["term"], "measure", name, ev,
                                 used_by=f"the {fk} frame ({best['schema']}): {new[fk]}")
