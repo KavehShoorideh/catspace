@@ -562,10 +562,18 @@ pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
 /// (Kaveh: "when losing, drag the loss out as long as possible ... same thing with drawing" -- 2026-10-12, the clean run:
 /// four games stalemated by the tie, Rxd7 stalemating where giving up the rook played on in K+R v K+R).
 fn least_loss(pos: &Chess, net: &dyn Fn(&Move) -> i64) -> Option<Move> {
+    // AT THE CLOCK'S END (the fifty-move draw a move away): a rook given up only to reset the clock is a draw kept by a
+    // loss -- among equal nets, the move keeping our material (accept the clock's draw; 2026-10-12, round 3 of the "known"
+    // run: five rooks thrown at half-move 98, reading as "ground lost" where the failure was fifty moves of no progress)
+    let clock_end = pos.halfmoves() >= 98;
+    let us = pos.turn();
     pos.legal_moves().into_iter().max_by_key(|m| {
         let q = after(pos, m);
         let ends = !q.is_checkmate() && (q.legal_moves().is_empty() || crate::game::drawn(&q).is_some());
-        (net(m), !ends)
+        let risk = if clock_end {
+            (q.board().by_color(us) & !q.board().kings()).into_iter().map(|s| crate::rules::see(q.board(), s, !us)).max().unwrap_or(0)
+        } else { 0 };
+        (net(m), -risk, !ends)
     })
 }
 /// The horizon of a generic frame's claim (moves of ours).

@@ -182,6 +182,13 @@ def judge(g: dict) -> None:
         r["verdict"] = verdict
 
 
+def approach(rows: list, idx: list, end: int) -> list:
+    """THE APPROACH TO A SURPRISE (Kaveh 2026-10-12: "if the surprise at one position wants to get us a lemma to solve that
+    position, we have to look at all the positions leading up to that because that's where the lemma would apply"): our
+    positions of the material's phase up to the surprise, ahead (where a frame of ours plays)."""
+    return [rows[i]["fen"] for i in idx if i <= end and rows[i]["lead"] > 0]
+
+
 def find_loops(g: dict, frames: dict) -> list:
     """THE LOOPS OF A GAME (Kaveh 2026-10-12: "once we go into a drawn tail, we recognize that we've gone into a drawn tail
     ... and give signal back to the proposer that we're looping"): in each material we are ahead in, with the frame it
@@ -267,6 +274,7 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
     by = defaultdict(set)
     contrast = defaultdict(lambda: {"win": [], "draw": []})
     loops_seen = Counter()
+    trajs = defaultdict(list)
     for g in res:
         # THE GAMES' CONTRAST, per material (the contrast proposer's evidence): positions of ours shortly before a win of
         # that material's phase (a capture we kept, or mate), and the tails of the games drawn or lost in it
@@ -282,27 +290,43 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
                 contrast[mat]["win"] += [g["rows"][i]["fen"] for i in idx[-5:]]
                 # SLOW PROGRESS IN A WON PHASE is a surprise too (a frame claim that did not shrink): its boards join the
                 # progress hole (2026-10-12: with stall points alone, K+R+R v K -- rarely drawn -- learned no frame)
-                for i in idx:
-                    r = g["rows"][i]
-                    if r["claim"]["kind"] == "frame" and r["lead"] > 0 and r["verdict"] in ("no shrink", "other outcome"):
-                        by[(mat, 2)].add(r["fen"])
+                slow = [i for i in idx if g["rows"][i]["claim"]["kind"] == "frame" and g["rows"][i]["lead"] > 0
+                        and g["rows"][i]["verdict"] in ("no shrink", "other outcome")]
+                if slow:
+                    trajs[(mat, 2)].append(approach(g["rows"], idx, slow[-1]))
             elif last == len(g["rows"]) - 1 and g["out"] in ("draw", "loss"):
                 contrast[mat]["draw"] += [g["rows"][i]["fen"] for i in idx[-30:]]
         # THE LOOP ENTRIES (where a failing phase started to loop -- the place to break it) are the progress hole's boards
         for lp in find_loops(g, frames):
             if not lp["won"]:
-                by[(lp["material"], 2)].add(lp["entry_fen"])
+                trajs[(lp["material"], 2)].append(approach(g["rows"], phases[lp["material"]], lp["revisit"]))
                 loops_seen[lp["material"]] += 1
-        for r in g["rows"]:
+        first_lost = {}
+        for i, r in enumerate(g["rows"]):
             # ahead materials of the generic frame (the mating frames and the hold frame are earlier lemmas): rank 1
-            if r["claim"]["kind"] == "frame" and r["material"] not in MATING_SPECS and r["lead"] > 0 and r["verdict"] == "lost ground":
-                by[(r["material"], 1)].add(r["fen"])
+            # (a position where no move kept everything -- the frame's least-loss fallback -- is where the loss was already
+            # decided: nothing there to fix; the moves before it that walked into it carry the "lost ground" verdict too)
+            if (r["claim"]["kind"] == "frame" and r["material"] not in MATING_SPECS and r["lead"] > 0 and r["verdict"] == "lost ground"
+                    and "no safe move" not in r["why"] and "least loss" not in r["why"] and r["material"] not in first_lost):
+                first_lost[r["material"]] = i
+        for mat, i in first_lost.items():
+            trajs[(mat, 1)].append(approach(g["rows"], phases[mat], i))
+        for r in g["rows"]:
             # WHERE OUR OWN PROOF REACHES WHAT WE KNOW (the forced entry fired) is the "good" side of the contrast: the miner
             # learns to steer toward the positions our proofs can bank on -- labelled by our lemmas, no engine
             if "forces entry into the known" in r["why"] and r["material"] not in MATING_SPECS:
                 contrast[r["material"]]["win"].append(r["fen"])
     if loops_seen:
         print("OBS   loops found in the failing phases (lemma-states revisited, the measure no lower): " + ", ".join(f"{m} {n}" for m, n in loops_seen.items()))
+    # THE APPROACHES INTO BOARDS (Kaveh: "we have to look at all the positions leading up to that because that's where the
+    # lemma would apply"): each surprise gives evenly spaced positions along its approach, so every failing game counts
+    for key, ts in trajs.items():
+        ts = [t for t in ts if t]
+        per = max(3, cap // max(len(ts), 1))
+        for t in ts:
+            step = max(1, len(t) // per)
+            by[key].update(t[::step][-per:])
+        print(f"OBS   {key[0]} rank {key[1]}: {len(ts)} surprises, their approaches {sum(len(t) for t in ts)} positions -> {len(by[key])} boards")
     for (mat, rank), fens in sorted(by.items(), key=lambda kv: (kv[0][1], -len(kv[1]))):
         if len(fens) < 10:
             print(f"OBS   {mat} rank {rank}: {len(fens)} surprise boards -- too few"); continue
@@ -321,7 +345,7 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
         hole = dict(name=name, material=mat, piece="*", base=cur, k=H.K, stuck=boards, sampled=len(fens),
                     schemas=["prepend"] if rank == 1 and cur else None, contrast=con if con["win"] and con["draw"] else None)
         json.dump(hole, open(paths.derived(f"hole_{name}.json"), "w"))
-        print(f"OBS   {mat} rank {rank} ({'ground lost' if rank == 1 else 'no progress: the loop entries and the slow wins'}): {len(fens)} surprise boards -> hole {name} "
+        print(f"OBS   {mat} rank {rank} ({'ground lost' if rank == 1 else 'no progress: loops and slow wins'}: the approaches): {len(fens)} surprise boards -> hole {name} "
               f"(base {cur or 'none'}; {len(boards)} boards; the games' contrast: {len(con['win'])} before a win, {len(con['draw'])} in draws)")
         t0 = time.time()
         out = run(name, budget, hole=hole, defender=defender, n_boards=n_boards)
