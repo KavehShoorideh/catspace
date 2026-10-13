@@ -285,6 +285,30 @@ def compose(base: list, term: str, schema: str) -> list:
     return base[:-1] + [term]                               # replace
 
 
+def guard_games(res: list, played: dict, key: str, terms: list, material: str, opponent: str = "stockfish:10", n: int = 40,
+                band: tuple | None = None) -> dict:
+    """FIRST, DON'T LOSE -- THE GUARD ON WHOLE GAMES (the night's autonomy, 2026-10-12: a K+Q v K+R frame promoted on
+    failure boards -- where nothing holds, progress alone decided -- lost the queen to a skewer in 5 of round 2's games;
+    replayed without it, 4 of those 5 kept the queen, one was won; a guard on positions of won phases saw nothing): a
+    sample of the round's own starts (half from its won games, half from the rest) replayed with the candidate added to
+    the frames the round was PLAYED with, each against the round's recorded game (played without it) on (the result,
+    then the material lead kept); vetoed when worse in more games than better. A veto, never evidence for promotion."""
+    from multiprocessing import Pool
+    import random
+    won = [g for g in res if g["out"] == "win"]
+    rest = [g for g in res if g["out"] != "win"]
+    rng = random.Random(f"{key}|{terms}")
+    sample = rng.sample(won, min(n // 2, len(won))) + rng.sample(rest, min(n - min(n // 2, len(won)), len(rest)))
+    frames_c = dict(played)
+    frames_c[key] = terms
+    with Pool(max(1, (os.cpu_count() or 8) - 2)) as p:
+        again = p.map(_game, [(g["seed"], material, frames_c, opponent, band) for g in sample])
+    val = lambda g: ({"win": 2, "draw": 1}.get(g["out"], 0), g["rows"][-1]["lead_after"] if g["rows"] else 0)
+    w = sum(val(b) > val(a) for a, b in zip(sample, again))
+    l = sum(val(b) < val(a) for a, b in zip(sample, again))
+    return dict(w=w, l=l, veto=l > w, n=len(sample))
+
+
 def to_test(best: dict | None, olds: list, cur: list) -> list:
     """The candidates a hole's confirmation boards test this round: the round's best (no evidence yet) and those PENDING
     from earlier rounds with their votes carried -- unless the frame they were measured against has changed since; the
@@ -333,7 +357,8 @@ def settle(tested: list, bar: float, more: int) -> tuple:
 
 
 def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: str = "", defender: str = "self", n_boards: int = 30,
-         register: bool = True, pending: dict | None = None, rounds_left: int = 0) -> dict:
+         register: bool = True, pending: dict | None = None, rounds_left: int = 0, opponent: str = "stockfish:10",
+         band: tuple | None = None) -> dict:
     """Each material's refuted frame claims -> a hole -> the pipeline -> the best term joins the material's frame.
     `pending` ({"<frame key>|rank<n>": [candidates]}, updated in place): the candidates whose evidence is still open;
     `rounds_left`: the confirmations still to come in the run (a pending candidate's budget)."""
@@ -470,6 +495,12 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
                       f"beats the frame before it in {c['w']} games, loses in {c['l']} -- e-value {c['e']:.3g} this round, {t['e']:.3g} "
                       f"pooled over its rounds ({t['w']} to {t['l']}; the bar {bar:.0f})")
             win, keep = settle(tested, bar, more)
+            if win:                                   # FIRST, DON'T LOSE: the guard on whole games (guard_games)
+                guard = guard_games(res, frames, fk, compose(cur, win["term"], win["schema"]), mat, opponent, band=band)
+                print(f"OBS   the guard ({guard['n']} of the round's starts replayed with {win['term']}): better in {guard['w']} games, worse in "
+                      f"{guard['l']} on (the result, the material kept) -- {'VETOED: it breaks what the frames already do' if guard['veto'] else 'passed'}")
+                if guard["veto"]:
+                    win = None
             wins = bool(win)
             if win:
                 cf = dict(win["cf"], e=win["e"], w=win["w"], l=win["l"], rounds=win["rounds"])
@@ -566,7 +597,7 @@ def main(argv=None):
             band, widened = (band[0], band[1] * 2), True
             print(f"OBS THE CURRICULUM: two thirds of the round won -- the starts' band widens to {band[0]}-{band[1]} plies")
         new = mine(res, frames, rnd, a.budget, tag=tag, defender=a.defender, n_boards=a.boards, register=not a.dry, pending=pending,
-                   rounds_left=a.rounds - 1 - rnd)
+                   rounds_left=a.rounds - 1 - rnd, opponent=a.opponent, band=band)
         if a.challenger:
             # THE CHALLENGER (Kaveh: "reason both sides"): traps against the round's frames, answered by stages
             from . import challenger as C

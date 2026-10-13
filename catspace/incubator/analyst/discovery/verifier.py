@@ -176,3 +176,4 @@ def confirm(hole: dict, best: dict | None, boards: list, defender: str, games: l
     ng = len(set(games)) if games else len(boards)
     advantage(hole["name"], best["term"], best["schema"], w, l, ng, "confirmation (held-out games)")
     return dict(promoted=e >= D.E_PROMOTE, w=w, l=l, e=e, n=len(boards), games=len(set(games or [])), cand=cand, base=base)
+
