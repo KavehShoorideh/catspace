@@ -1,11 +1,11 @@
 {
  "KRRvK": [
-  "(count (and (nearer L W) (not (rank W))))"
- ],
- "KRRvKR": [
-  "(count (not (nearer W L)))"
- ],
- "KRRvKR:if:(count (and hit (not (knight1 W))))>=17": [
   "(count (and (nearer L P) (not (knight1 W))))"
+ ],
+ "KRRvKR:check": [
+  "(count (segment W O))"
+ ],
+ "KRRvKR:if:(count (and (nearer L P) (not (box L))))>=30": [
+  "(count (and (reach W unhit) (not (nearer P L))))"
  ]
 }

@@ -30062,3 +30062,19 @@ at 0.05 / 20. Replayed (mining only) on the challenge run's rounds 0-2: every K+
 0: a perfect predictor reaches p 1.0; rounds 1-2: 2 refuted held-out boards); K+R+R v K+R round 1, logged as a gap with
 the top 5, now yields a counter-frame among the top 20 (their king's knight hops outside the squares nearer their rook
 than ours); rounds 0 and 2 find counter-frames as before. In six replays: no real vocabulary gap.
+
+THE HONEST-GAP RUN (tag honestgap; 2026-10-12 23:06-23:16 PDT; Kaveh: "Go", then to bed: "keep mining and keep iterating
+... improving in a generic way ... as many good lemmas as possible and expand the game area and keep trying harder and
+harder challenges"). K+R+R v K+R wins per 100, rounds 0-3: 69/72/64/68 (1 loss, round 2: the skewer game, seed 2031).
+Promoted on held-out games: K+R+R v K "the squares nearer their king than our rook outside our king's knight hops"
+(round 0, 15 games to 1, e 482 -- last run's winning stage measure); the in-check frame "the squares on the line from our
+king to their rook" (pending from round 1, 21 to 5 pooled, e 76 -- step off the checking line or close in); a K+R+R v K+R
+stage (round 2) for R = "their king's region away from our rook >= 30": "the squares our king walks to safely, not
+nearer our rook than their king" -- left R or won 44/50 against 7/50, 8 of 9 games better, 0 worse (e 57). Two other
+stages not promoted: one on 9 games (4 to 3), one on 5 games (4 to 1, e 1.9, boards 39/46 against 15/46 -- forgotten:
+stages were not carried). Round 3 won 68 in this run, in carry2 and in challenge alike -- with different lemmas in play
+-- the same 32 positions resist. Every K+R+R v K challenger verdict: too little data.
+GENERIC CHANGES during the run (committed or to commit after a smoke): a "known" proposer -- the registry's measures and
+the frames in play offered first in every hole (a stage's winning K+R+R v K+R measure was the next run's K+R+R v K frame
+while that run's stage race picked a loser); STAGES CARRIED across rounds like frames' candidates (re-confirmed each
+round on the new games' refuted positions inside their region, votes pooled).
