@@ -29754,3 +29754,21 @@ our king than their rook" (the loop entries, 10 vs 6 of 100); K+R+R v K "squares
 king's rank" (0.848 vs 0.000). The contrast proposer led two holes (6 and 5 of the top 10). Fifty-move draws in K+R+R v
 K+R 25 / 21 / 33 / 20 by round. NEXT (proposed): the second regression level -- a quiet move after which every reply leaves
 a provable entry -- by proof, its cost measured first.
+THE APPROACH, NOT THE END (2026-10-12 17:22-17:55 PDT). Kaveh: "fifty move draws after losing a rook?"; "why did the current
+machinery not look at those and propose a fix?"; "if the surprise at one position wants to get us a lemma to solve that
+position, we have to look at all the positions leading up to that because that's where the lemma would apply. Why are
+we only looking at the final position?" FOUND: round 3 of the "known" run drew 27 -- 20 by the fifty-move rule with both
+rooks on the board throughout (no progress), 7 after losing a rook; of those 7, five were thrown at half-move 98 by the
+least-loss tie (a rook given up to dodge the fifty-move draw -- the failure was the fifty moves before), and the fallback
+positions (no move keeps everything) had been mined as "don't lose" surprises where nothing could be fixed; and every hole
+held only the END of its surprise (the last claims, the loop's entry). FIXED: at the clock's end the tie keeps material;
+fallback positions stay out of the holes; each surprise brings its APPROACH -- our positions of the phase up to it, evenly
+spaced, every failing game counted (e.g. 8 ground-lost surprises -> 243 positions -> 96 boards). THE RUN (tag approach,
+fresh; the same starting positions as every run; directional): round 0 61 / 37 / 2 (won / drawn / lost; "known" 61 / 36 /
+3); round 1 76 / 24 / 0 (earlier runs 61-69); round 2 63 / 37 / 0 (62-64); round 3 69 / 30 / 1 ("known" 73, the others
+55-64). Wins over rounds 1-3: 208 (the "known" run 204, clean 197, states 194). The draws shifted: round 3 twelve by
+repetition, eleven by the fifty-move rule (twenty before). Mined, K+R+R v K+R (ranked, final): "squares not nearer our rook
+than their king", "squares nearer their king than their rook that their rook cannot reach over squares we do not attack"
+(their rook's freedom, rank 1, 0.101 vs 0.000), "squares nearer their king than our rook, off our king's rank", "their
+king's territory" (the classic, 8 vs 2 of 100), "squares we do not attack". K+R+R v K: "squares not nearer our king than
+theirs" -- exactly the K+R lemma kr_territory found this morning, rediscovered for two rooks (0.932 vs 0.544).

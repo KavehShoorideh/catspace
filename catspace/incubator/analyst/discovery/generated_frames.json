@@ -1,10 +1,12 @@
 {
  "KRRvK": [
-  "(count (and (nearer L P) (not (rank L))))"
+  "(count (not (nearer W L)))"
  ],
  "KRRvKR": [
-  "(count (and hit (not (between W L))))",
-  "(count (and (reach P unhit) (not (reach L free))))",
-  "(count (and (nearer L P) (not (nearer W O))))"
+  "(count (not (nearer P L)))",
+  "(count (and (nearer L O) (not (reach O free))))",
+  "(count (and (nearer L P) (not (rank W))))",
+  "(count (nearer L W))",
+  "(count free)"
  ]
 }
