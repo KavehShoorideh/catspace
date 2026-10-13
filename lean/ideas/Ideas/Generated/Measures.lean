@@ -170,4 +170,37 @@ def krrvkr_level2b_r2_progress (p : Position) (c : Color) (W L P O : Square) : N
 /-- krrvkr_check_level2b_r2_progress: how many of the squares they attack. (2026-10-12, hole learn_level2b_KRRvKR_check_rank2_r2; verifier: held 2/50, won 2, claims kept 173/272 -- the frame before it held 2/50, won 2, claims kept 137/232 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
 def krrvkr_check_level2b_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (attackedBy p (Color.opposite c) W))
 
+/-- krrvk_challenger_r0_progress: how many of the squares nearer their king than our other piece that are also the squares outside the file of our king. (2026-10-12, hole learn_challenger_KRRvK_rank2_r0; verifier: held 41/50, won 41, claims kept 79/85 -- the frame before it held 14/50, won 14, claims kept 0/61 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvk_challenger_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (fun u => !((fileOf W) u)) u))
+
+/-- krrvkr_challenger_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the squares between their king and their other piece. (2026-10-12, hole learn_challenger_KRRvKR_rank2_r0; verifier: held 12/50, won 12, claims kept 170/274 -- the frame before it held 8/50, won 8, claims kept 0/178 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_challenger_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((between L O) u)) u))
+
+/-- krrvk_challenger2_r0_progress: how many of the squares nearer their king than our other piece that are also the squares outside the file of our king. (2026-10-12, hole learn_challenger2_KRRvK_rank2_r0; verifier: held 41/50, won 41, claims kept 79/85 -- the frame before it held 14/50, won 14, claims kept 0/61 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvk_challenger2_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (fun u => !((fileOf W) u)) u))
+
+/-- krrvkr_challenger2_r0_progress: how many of the squares nearer their king than our other piece that are also the squares outside the squares nearer our king than their other piece. (2026-10-12, hole learn_challenger2_KRRvKR_rank2_r0; verifier: held 12/50, won 12, claims kept 135/228 -- the frame before it held 8/50, won 8, claims kept 0/178 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_challenger2_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (fun u => !((nearer W O) u)) u))
+
+/-- krrvkr_check_challenger2_r0_progress: how many of the squares nearer their king than our other piece that are also the squares outside the file of our king. (2026-10-12, hole learn_challenger2_KRRvKR_check_rank2_r0; verifier: held 7/50, won 7, claims kept 198/294 -- the frame before it held 5/50, won 5, claims kept 0/214 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_check_challenger2_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (fun u => !((fileOf W) u)) u))
+
+/-- krrvk_challenger2_r1_progress: how many of the squares nearer their king than our king that are also the squares outside the file of their king. (2026-10-12, hole learn_challenger2_KRRvK_rank2_r1; verifier: held 43/50, won 43, claims kept 26/29 -- the frame before it held 41/50, won 41, claims kept 29/30 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvk_challenger2_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((fileOf L) u)) u))
+
+/-- krrvkr_challenger2_r1_progress: how many of the squares they attack that are also the squares nearer our other piece than their other piece. (2026-10-12, hole learn_challenger2_KRRvKR_rank2_r1; verifier: held 14/50, won 14, claims kept 109/193 -- the frame before it held 12/50, won 12, claims kept 80/161 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_challenger2_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (attackedBy p (Color.opposite c) W) u && (nearer P O) u))
+
+/-- krrvkr_check_challenger2_r1_progress: how many of the squares we attack. (2026-10-12, hole learn_challenger2_KRRvKR_check_rank2_r1; verifier: held 2/50, won 2, claims kept 84/172 -- the frame before it held 1/50, won 1, claims kept 73/172 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_check_challenger2_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (attackedBy p c L))
+
+/-- krrvk_challenger2_r2_progress: how many of the squares nearer their king than our king that are also the squares outside the squares between their king and our other piece. (2026-10-12, hole learn_challenger2_KRRvK_rank2_r2; verifier: held 46/50, won 46, claims kept 28/30 -- the frame before it held 44/50, won 44, claims kept 19/24 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvk_challenger2_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((between L P) u)) u))
+
+/-- krrvkr_challenger2_r2_progress: how many of the box around their king. (2026-10-12, hole learn_challenger2_KRRvKR_rank2_r2; verifier: held 13/50, won 13, claims kept 5/181 -- the frame before it held 10/50, won 10, claims kept 99/184 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_challenger2_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (box L))
+
+/-- krrvkr_check_challenger2_r2_progress: how many of the squares they do not attack. (2026-10-12, hole learn_challenger2_KRRvKR_check_rank2_r2; verifier: held 3/50, won 3, claims kept 114/236 -- the frame before it held 2/50, won 2, claims kept 98/203 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_check_challenger2_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => !(attackedBy p (Color.opposite c) W u)))
+
 end Ideas.Generated

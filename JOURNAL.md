@@ -29870,3 +29870,16 @@ nearer their king than our rook" -- left R or won 39 / 50, ground lost 11, again
 PROMOTED (the transformer proposed 6 of the verifier's top 10). The challenger now runs inside the loop (--challenger):
 after each round's mining, a trap per material, a stage for each counter-frame, promoted stages into the next round's
 frames, everything archived.
+THE CHALLENGER IN THE LOOP (2026-10-12 19:49-20:04 PDT; tag challenger2; the challenger mining and checking traps against
+the frame each round was PLAYED with -- my first wiring checked against the newly mined frame, fixed and restarted). OBS
+(directional): round 0 69 / 30 / 1 (won / drawn / lost); round 1 81 / 18 / 1 (the best round 1 of all runs, before any
+challenger act); round 2 71 / 28 / 1; round 3 71 / 29 / 0. Rounds 1-3: 223 wins (the regression run without the challenger
+227). THE CHALLENGER: a VOCABULARY GAP every round for both materials. K+R+R v K: its frame's claims were refuted on 4% --
+nothing to explain. K+R+R v K+R: the same defender's idea twice -- "every square of their king's box is nearer our king
+than their rook" (THEIR ROOK FAR FROM ITS KING, the classic long-range checking stance): round 1 held-out precision 0.72
+against a base 0.46, the local trap check 47 / 60 (78%, the bar 80%); round 2 precision 0.50 against 0.43, trap 45 / 60;
+the other candidates 60-82% trapped, lift 1.1-1.6 -- near-traps the vocabulary cannot sharpen, as the red team expected
+for a dynamic defence (rook checks). The main frame ended at "the size of their king's box" (drive the king to the edge,
+0.263 vs 0.202) -- the textbook idea, found from the stall points. READING: the challenger names the defender's idea but
+cannot state it sharply in a vocabulary of static sets (what is attacked NOW); the resource is dynamic (where their rook
+can check FROM). The gap boards are archived (counter_frames.json) for new predicates.
