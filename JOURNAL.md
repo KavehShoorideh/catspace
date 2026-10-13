@@ -29897,3 +29897,27 @@ The enumeration 6,182 -> 15,358 number terms. Tests: values on a known board (ou
 the g3 rook attacks 12 squares, 4 on our king's lines -- the checking resource in one term), the classes cover the board,
 the pawn's mirror; the Lean renderings type-check. A latent exporter bug surfaced (the chess library's `between`, a Prop,
 made the generated terms ambiguous; fixed by `open Chess hiding between`). The run with it (tag geometry) started.
+
+THE RUN WITH THE SECOND VOCABULARY BATCH (tag geometry; 2026-10-12 20:21-20:37 PDT; the challenger in the loop; the same
+seed positions per round as every run since v2; one run each -- directional). K+R+R v K+R wins per 100, rounds 0/1/2/3:
+geometry 69/81/67/79 -- level2b 69/78/75/74, challenger2 69/81/71/71. No losses after round 0. Round 2's draws were 31
+fifty-move draws in K+R+R v K+R (round 1: 12; another round's positions).
+  WHAT IT MINED. Round 0: a knight-hop carve-out for K+R+R v K ("nearer their king than ours, outside the knight hops of
+  our other piece", 0.768 vs 0.283 -- a rook's knight hops mean nothing in chess: a shaping term) and a b2-class carve-out
+  for K+R+R v K+R (0.242 vs 0.162). Round 1 replaced both with old words: K+R+R v K "their king's region outside its rank"
+  (0.768 vs 0.727), K+R+R v K+R "the squares nearer THEIR ROOK than our king" (0.283 vs 0.202) -- the machinery's version
+  of Kaveh's "target the rook", in round 2's games the most fifty-move draws of any round. Round 2 dropped it for "the
+  squares not nearer our king than theirs" (0.081 vs 0.061) and added "the squares we attack" to the K+R+R v K frame (0.869
+  vs 0.848; minimised, it rewards attacking less -- possibly gameable). The new words entered frames only in round 0
+  and were replaced; none survived to round 3.
+  THE CHALLENGER (vocabulary gap every round, both materials). Round 1, K+R+R v K+R: "the kings' boxes overlap by 3+
+  squares" predicts the refuted claims at held-out precision 0.94 (base 0.50) -- but the local trap check holds on only
+  9/60: the frame is wrong there, the defender holds no trap (a stage answers only traps, so nothing answered it). Round
+  2, K+R+R v K+R: "their rook far from its king" (squares nearer their king than their rook >= 35) again -- the trap check
+  now holds on 52/60 (55/60 for a variant), but the held-out precision 0.81 misses the bar base+0.10 = 0.83: the frame's
+  claims were refuted 73% of the time, so no predictor clears the margin. K+R+R v K: 3-5% of claims refuted, too few
+  held-out refutations for any trap.
+  THE STALEMATE (round 3, seed 3011). Their king boxed on h1 with no squares (our Rg3 + Rf2, "Kf1 arms Rg1"), their rook
+  free: a mad rook. At 8/8/8/8/8/6R1/1r2KR2/7k w (in check) we played Ke1 (the tablebase: Kf3/Ke3/Kf1 win, Ke1/Kd1/Kd3
+  draw); Re2+ Kf1 Re1+ and the only legal move Kxe1 stalemated. Not our stalemate code (the capture was forced) -- a
+  frame-level surprise the last round's games found and nothing mined (the run ends after round 3's games).

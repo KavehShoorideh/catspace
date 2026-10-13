@@ -204,4 +204,25 @@ def krrvkr_challenger2_r2_progress (p : Position) (c : Color) (W L P O : Square)
 /-- krrvkr_check_challenger2_r2_progress: how many of the squares they do not attack. (2026-10-12, hole learn_challenger2_KRRvKR_check_rank2_r2; verifier: held 3/50, won 3, claims kept 114/236 -- the frame before it held 2/50, won 2, claims kept 98/203 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
 def krrvkr_check_challenger2_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => !(attackedBy p (Color.opposite c) W u)))
 
+/-- krrvk_geometry_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the squares a knight on our other piece reaches in one hop. (2026-10-12, hole learn_geometry_KRRvK_rank2_r0; verifier: held 38/50, won 38, claims kept 64/66 -- the frame before it held 14/50, won 14, claims kept 0/61 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvk_geometry_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((knight1 P) u)) u))
+
+/-- krrvkr_geometry_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the squares like b2 under the board's symmetries. (2026-10-12, hole learn_geometry_KRRvKR_rank2_r0; verifier: held 12/50, won 12, claims kept 172/274 -- the frame before it held 8/50, won 8, claims kept 0/178 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_geometry_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((cls p c (((1 : Fin 8)), ((1 : Fin 8)))) u)) u))
+
+/-- krrvk_geometry_r1_progress: how many of the squares nearer their king than our king that are also the squares outside the rank of their king. (2026-10-12, hole learn_geometry_KRRvK_rank2_r1; verifier: held 38/50, won 38, claims kept 15/16 -- the frame before it held 36/50, won 36, claims kept 14/14 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvk_geometry_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((rankOf L) u)) u))
+
+/-- krrvkr_geometry_r1_progress: how many of the squares nearer their other piece than our king. (2026-10-12, hole learn_geometry_KRRvKR_rank2_r1; verifier: held 14/50, won 14, claims kept 51/148 -- the frame before it held 10/50, won 10, claims kept 84/173 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_geometry_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (nearer O W))
+
+/-- krrvkr_check_geometry_r1_progress: how many of the squares nearer our other piece than their other piece that are also the squares outside the box around their other piece. (2026-10-12, hole learn_geometry_KRRvKR_check_rank2_r1; verifier: held 3/50, won 3, claims kept 71/194 -- the frame before it held 2/50, won 2, claims kept 0/177 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_check_geometry_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer P O) u && (fun u => !((box O) u)) u))
+
+/-- krrvkr_geometry_r2_progress: how many of the squares outside the squares nearer our king than their king. (2026-10-12, hole learn_geometry_KRRvKR_rank2_r2; verifier: held 4/50, won 4, claims kept 180/309 -- the frame before it held 3/50, won 3, claims kept 28/126 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_geometry_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => !((nearer W L) u)))
+
+/-- krrvk_geometry_r2_progress: how many of the squares we attack. (2026-10-12, hole learn_geometry_KRRvK_rank2_r2; verifier: held 43/50, won 43, claims kept 18/18 -- the frame before it held 42/50, won 42, claims kept 13/13 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvk_geometry_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (attackedBy p c L))
+
 end Ideas.Generated
