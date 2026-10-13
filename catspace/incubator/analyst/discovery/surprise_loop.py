@@ -231,6 +231,25 @@ def play(material: str, games: int, frames: dict, seed0: int, workers: int = max
     return res
 
 
+def episode_report(res: list, frames: dict) -> None:
+    """THE PROGRESS MEASURE (Kaveh: "are we measuring progress properly?"): the episodes of each phase we are ahead in --
+    the share that ended well (material won, or a new best of the frame's measure: the ratchet)."""
+    from . import episodes as E
+    tot = defaultdict(Counter)
+    for g in res:
+        phases = defaultdict(list)
+        for i, r in enumerate(g["rows"]):
+            phases[r["material"]].append(i)
+        for mat, idx in phases.items():
+            if mat in MATING_SPECS or len(idx) < 2 or g["rows"][idx[0]]["lead"] <= 0:
+                continue
+            for e in E.episodes(g["rows"], idx, frames.get(mat, [])):
+                tot[mat][e["outcome"]] += 1
+    for mat, c in tot.items():
+        n = sum(c.values())
+        print(f"OBS   {mat} episodes: {n}, ended well {100 * sum(c[o] for o in E.DESIRED) / max(n, 1):.0f}% ({dict(c.most_common())})")
+
+
 def report(res: list, label: str) -> None:
     rows = [r for g in res for r in g["rows"]]
     won = [g["moves"] for g in res if g["out"] == "win"]
@@ -273,8 +292,9 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
     new = dict(frames)
     by = defaultdict(set)
     contrast = defaultdict(lambda: {"win": [], "draw": []})
-    loops_seen = Counter()
+    diverged = Counter()
     trajs = defaultdict(list)
+    from . import episodes as E
     for g in res:
         # THE GAMES' CONTRAST, per material (the contrast proposer's evidence): positions of ours shortly before a win of
         # that material's phase (a capture we kept, or mate), and the tails of the games drawn or lost in it
@@ -288,48 +308,51 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
             left_won = last + 1 < len(g["rows"]) and g["rows"][last + 1]["theirs"] < g["rows"][last]["theirs"]
             if left_won or (last == len(g["rows"]) - 1 and g["out"] == "win"):
                 contrast[mat]["win"] += [g["rows"][i]["fen"] for i in idx[-5:]]
-                # SLOW PROGRESS IN A WON PHASE is a surprise too (a frame claim that did not shrink): its boards join the
-                # progress hole (2026-10-12: with stall points alone, K+R+R v K -- rarely drawn -- learned no frame)
-                slow = [i for i in idx if g["rows"][i]["claim"]["kind"] == "frame" and g["rows"][i]["lead"] > 0
-                        and g["rows"][i]["verdict"] in ("no shrink", "other outcome")]
-                if slow:
-                    trajs[(mat, 2)].append(approach(g["rows"], idx, slow[-1]))
             elif last == len(g["rows"]) - 1 and g["out"] in ("draw", "loss"):
                 contrast[mat]["draw"] += [g["rows"][i]["fen"] for i in idx[-30:]]
-        # THE LOOP ENTRIES (where a failing phase started to loop -- the place to break it) are the progress hole's boards
-        for lp in find_loops(g, frames):
-            if not lp["won"]:
-                trajs[(lp["material"], 2)].append(approach(g["rows"], phases[lp["material"]], lp["revisit"]))
-                loops_seen[lp["material"]] += 1
-        first_lost = {}
-        for i, r in enumerate(g["rows"]):
-            # ahead materials of the generic frame (the mating frames and the hold frame are earlier lemmas): rank 1
-            # (a position where no move kept everything -- the frame's least-loss fallback -- is where the loss was already
-            # decided: nothing there to fix; the moves before it that walked into it carry the "lost ground" verdict too)
-            if (r["claim"]["kind"] == "frame" and r["material"] not in MATING_SPECS and r["lead"] > 0 and r["verdict"] == "lost ground"
-                    and "no safe move" not in r["why"] and "least loss" not in r["why"] and r["material"] not in first_lost):
-                first_lost[r["material"]] = i
-        for mat, i in first_lost.items():
-            trajs[(mat, 1)].append(approach(g["rows"], phases[mat], i))
+        # THE EPISODES (Kaveh 2026-10-12: "a frame where we have a desired outcome and ... a non-desired outcome ...
+        # episodic"; "once we figured out that we're not progressing, go back and identify the point at which we started
+        # to diverge"): each phase we are ahead in, cut into episodes (episodes.py); the SURPRISES are the episodes that
+        # ended badly -- in a phase that did not progress, from THE DIVERGENCE on (the first failed episode after the last
+        # good one, and the two after it); in a won phase, its first failed episodes. Their KIND picks the frame to learn:
+        # in check -> the material's CHECK frame; material lost -> rank 1 (don't lose); the rest -> progress (rank 2)
+        for mat, idx in phases.items():
+            if mat in MATING_SPECS or len(idx) < 2 or g["rows"][idx[0]]["lead"] <= 0:
+                continue
+            eps = E.episodes(g["rows"], idx, frames.get(mat, []))
+            last = idx[-1]
+            won = (last + 1 < len(g["rows"]) and g["rows"][last + 1]["theirs"] < g["rows"][last]["theirs"]) or (last == len(g["rows"]) - 1 and g["out"] == "win")
+            if won:
+                region = [e for e in eps if e["outcome"] not in E.DESIRED][:3]
+            else:
+                lg = max((k for k, e in enumerate(eps) if e["outcome"] in E.DESIRED), default=-1)
+                region = [e for e in eps[lg + 1:lg + 4] if e["outcome"] not in E.DESIRED]
+                if region:
+                    diverged[mat] += 1
+            for e in region:
+                k0 = idx.index(e["start"])
+                fens_e = [g["rows"][i]["fen"] for i in idx[k0:k0 + e["length"]] if g["rows"][i]["lead"] > 0]
+                fk = f"{mat}:check" if e["kind"] == "check" else mat
+                trajs[(fk, 1 if e["outcome"] == "material lost" else 2)].append(fens_e)
         for r in g["rows"]:
             # WHERE OUR OWN PROOF REACHES WHAT WE KNOW (the forced entry fired) is the "good" side of the contrast: the miner
             # learns to steer toward the positions our proofs can bank on -- labelled by our lemmas, no engine
             if "forces entry into the known" in r["why"] and r["material"] not in MATING_SPECS:
                 contrast[r["material"]]["win"].append(r["fen"])
-    if loops_seen:
-        print("OBS   loops found in the failing phases (lemma-states revisited, the measure no lower): " + ", ".join(f"{m} {n}" for m, n in loops_seen.items()))
-    # THE APPROACHES INTO BOARDS (Kaveh: "we have to look at all the positions leading up to that because that's where the
-    # lemma would apply"): each surprise gives evenly spaced positions along its approach, so every failing game counts
+    if diverged:
+        print("OBS   phases that did not progress, mined from their divergence: " + ", ".join(f"{m} {n}" for m, n in diverged.items()))
+    # THE FAILED EPISODES INTO BOARDS: each gives its positions (evenly spaced when long), every failing game counted
     for key, ts in trajs.items():
         ts = [t for t in ts if t]
         per = max(3, cap // max(len(ts), 1))
         for t in ts:
             step = max(1, len(t) // per)
             by[key].update(t[::step][-per:])
-        print(f"OBS   {key[0]} rank {key[1]}: {len(ts)} surprises, their approaches {sum(len(t) for t in ts)} positions -> {len(by[key])} boards")
-    for (mat, rank), fens in sorted(by.items(), key=lambda kv: (kv[0][1], -len(kv[1]))):
+        print(f"OBS   {key[0]} rank {key[1]}: {len(ts)} failed episodes, {sum(len(t) for t in ts)} positions -> {len(by[key])} boards")
+    for (fk, rank), fens in sorted(by.items(), key=lambda kv: (kv[0][1], -len(kv[1]))):
+        mat = fk.split(":")[0]                     # the material; fk the frame learned (the material's, or its check frame)
         if len(fens) < 10:
-            print(f"OBS   {mat} rank {rank}: {len(fens)} surprise boards -- too few"); continue
+            print(f"OBS   {fk} rank {rank}: {len(fens)} surprise boards -- too few"); continue
         # FRESH CLOCKS: the hole asks whether a frame makes progress FROM the position -- not whether it wins before a clock
         # the game had already run down (2026-10-12: the rank-1 boards were a median 2 moves from the fifty-move draw)
         def fresh(f):
@@ -338,14 +361,18 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
             b.halfmove_clock = 0
             return b.fen()
         boards = [fresh(f) for f in random.Random(rnd).sample(sorted(fens), min(cap, len(fens)))]
-        name = f"learn_{tag + '_' if tag else ''}{mat}_rank{rank}_r{rnd}"   # the run's tag: no run reads another's hole
-        cur = new.get(mat, [])
+        name = f"learn_{tag + '_' if tag else ''}{fk.replace(':', '_')}_rank{rank}_r{rnd}"   # the run's tag: no run reads another's hole
+        cur = new.get(fk, [])
         rng = random.Random(rnd)
-        con = {k: rng.sample(v, min(150, len(v))) for k, v in contrast[mat].items()}
-        hole = dict(name=name, material=mat, piece="*", base=cur, k=H.K, stuck=boards, sampled=len(fens),
+        pool = contrast[mat]
+        if fk.endswith(":check"):                   # the check frame's evidence: the positions in check
+            import chess
+            pool = {k: [f for f in v if chess.Board(f).is_check()] for k, v in pool.items()}
+        con = {k: rng.sample(v, min(150, len(v))) for k, v in pool.items()}
+        hole = dict(name=name, material=mat, frame_key=fk, frames=dict(new), piece="*", base=cur, k=H.K, stuck=boards, sampled=len(fens),
                     schemas=["prepend"] if rank == 1 and cur else None, contrast=con if con["win"] and con["draw"] else None)
         json.dump(hole, open(paths.derived(f"hole_{name}.json"), "w"))
-        print(f"OBS   {mat} rank {rank} ({'ground lost' if rank == 1 else 'no progress: loops and slow wins'}: the approaches): {len(fens)} surprise boards -> hole {name} "
+        print(f"OBS   {fk} rank {rank} ({'material lost' if rank == 1 else 'failed episodes'}: from the divergence): {len(fens)} surprise boards -> hole {name} "
               f"(base {cur or 'none'}; {len(boards)} boards; the games' contrast: {len(con['win'])} before a win, {len(con['draw'])} in draws)")
         t0 = time.time()
         out = run(name, budget, hole=hole, defender=defender, n_boards=n_boards)
@@ -357,7 +384,7 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
         else:
             wins = bool(best) and best["score"] > base["score"] + 0.05
         if wins:
-            new[mat] = compose(cur, best["term"], best["schema"])
+            new[fk] = compose(cur, best["term"], best["schema"])
             # INTO THE GENERATED TRACK, by the loop itself (Kaveh: "couldn't the proposer do it?"): the term, its hole, its
             # verdict against the frame before it; the Lean definitions and Rust constants re-exported
             from . import registry as R
@@ -369,13 +396,13 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
                                   f"-- the frame before it held {base['n'] - base['lost']}/{base['n']}, won {base['mated']}, claims kept "
                                   f"{base['certified']}/{base['played']} (defender {defender})")
             if register:                          # (a --dry test run writes nothing to the generated track)
-                R.add_generated(f"{mat.lower()}_{tag or 'run'}_r{rnd}_{what}", best["term"], "measure", name, ev,
-                                used_by=f"the {mat} frame ({best['schema']}): {new[mat]}")
+                R.add_generated(f"{fk.lower().replace(':', '_')}_{tag or 'run'}_r{rnd}_{what}", best["term"], "measure", name, ev,
+                                used_by=f"the {fk} frame ({best['schema']}): {new[fk]}")
                 R.export()
-            print(f"OBS   MINED for {mat} ({time.time() - t0:.0f} s): [{best['schema']}] {best['term']} = "
-                  f"{V.gloss(V.parse(best['term']))} -- {best['score']:.3f} against {base['score']:.3f}; the frame now {new[mat]}")
+            print(f"OBS   MINED for {fk} ({time.time() - t0:.0f} s): [{best['schema']}] {best['term']} = "
+                  f"{V.gloss(V.parse(best['term']))} -- {best['score']:.3f} against {base['score']:.3f}; the frame now {new[fk]}")
         else:
-            print(f"OBS   nothing mined for {mat} rank {rank} ({time.time() - t0:.0f} s): the best {best and best['score']:.3f} against the frame's own {base['score']:.3f}")
+            print(f"OBS   nothing mined for {fk} rank {rank} ({time.time() - t0:.0f} s): the best {best and best['score']:.3f} against the frame's own {base['score']:.3f}")
     return new
 
 
@@ -413,6 +440,7 @@ def main(argv=None):
             t0 = time.time()
             res = play(a.material, a.games, frames, seed0=1000 * rnd, opponent=a.opponent)
             report(res, f"round {rnd} (frames {frames or 'none'}; {time.time() - t0:.0f} s)")
+            episode_report(res, frames)
             json.dump(res, open(paths.experiment(f"{stem}_r{rnd}.json"), "w"))
             history.append(dict(round=rnd, frames=frames, outcomes=dict(Counter(g["out"] for g in res))))
             json.dump(history, open(state, "w"), indent=1)

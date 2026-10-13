@@ -74,7 +74,8 @@ class Verifier:
         else:
             # a real defender: the whole player with the candidate as its material's frame, scored by Kaveh's ranks --
             # held, then won, then the frame's claims kept
-            o = D.closed_loop(boards, hole["base"], term, schema, piece, LIMIT, self.defender, player="planner", material=hole["material"])
+            o = D.closed_loop(boards, hole["base"], term, schema, piece, LIMIT, self.defender, player="planner",
+                              material=hole.get("frame_key") or hole["material"], frames=hole.get("frames"))
             r = dict(hole=hole["name"], term=term or "", schema=schema, boards=bh, spec=sp, defender=self.defender, n=n, stage1=s1,
                      mated=o["won"], lost=o["lost"], played=o["claims"], certified=o["kept"], ranks=list(D.ranked(o)),
                      states=o["states"], why=o["why"], examples=o["examples"], score=D.score(o), t=time.time())

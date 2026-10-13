@@ -537,7 +537,13 @@ pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
         let m = least_loss(pos, &net)?;
         return Some((m.clone(), format!("hold ({key}, not ahead): no move keeps everything -- the least loss (net {})", net(&m))));
     }
-    let terms = MATERIAL_FRAMES.read().unwrap().as_ref().and_then(|m| m.get(&key).cloned()).unwrap_or_default();
+    // A FRAME PER EPISODE KIND (Kaveh 2026-10-12): in check -- their threat on our king -- the material's CHECK frame
+    // when one is known ("<material>:check"), its own measure of progress; else the material's frame
+    let ckey = format!("{key}:check");
+    let terms = MATERIAL_FRAMES.read().unwrap().as_ref().and_then(|m| {
+        if pos.is_check() { m.get(&ckey).cloned().or_else(|| m.get(&key).cloned()) } else { m.get(&key).cloned() }
+    }).unwrap_or_default();
+    let key = if pos.is_check() && MATERIAL_FRAMES.read().unwrap().as_ref().map_or(false, |m| m.contains_key(&ckey)) { ckey } else { key };
     let base: Vec<Comp> = terms.iter().filter_map(|t| parse_term(t).map(Comp::T)).collect();
     let sp = Spec { base, cand: None, schema: "none".to_string(), safety: Safety::Material };
     // in play, a move must also pass the planner's own audit (its reasoning for them: nothing of ours lost, no draw);
