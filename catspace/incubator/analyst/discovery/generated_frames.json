@@ -8,6 +8,12 @@
  "KQvKR:check": [
   "(count (and unhit (nearer P L)))"
  ],
+ "KQvKR:if:(count (and hit (lines W)))>=5": [
+  "(count (and (reach P unhit) (not (reach O free))))"
+ ],
+ "KQvKR:if:(count (and theirs (file W)))>=1": [
+  "(count (and (nearer L W) (not (between L P))))"
+ ],
  "KQvKR:if:(count (and unhit (not (reach P unhit))))>=2": [
   "(count (not (nearer W L)))"
  ],

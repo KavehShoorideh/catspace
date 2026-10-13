@@ -30179,3 +30179,9 @@ attack" (round 0; on round 4's starts the set lost 4 against the krr_all set, on
 K+R+R v K+R base frame (round 5) "the squares their rook walks to safely, outside our rook's zone" -- squeezing their
 ROOK (the machinery's version of "target the rook", now passing the guard). ROUND 6 -- starts no run had seen: the
 learned set 75, no frames 65 (+10; measured after the run, one replay).
+
+K+Q v K+R, MORE MINING (tag kqr_more; 2026-10-13 01:36-02:00 PDT; from the generated track's frames). Wins per 100,
+rounds 0-4: 78/77/79/74/64 (no frames on the same starts: 75 / 71 / - / 68 / 61). Two stages promoted on carried
+evidence and guarded: for "a piece of theirs on our king's file" (the skewer's file) with K+B+N v K's first frame
+"the squares nearer their king than ours outside those between their king and our minor piece" (transferred), and for
+"their attacks on our king's rank and file >= 5"; a stage and a frame candidate vetoed (3:6, 2:3).

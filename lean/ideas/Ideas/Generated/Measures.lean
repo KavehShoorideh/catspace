@@ -318,4 +318,10 @@ def krrvkr_check_krr_more_r0_progress (p : Position) (c : Color) (W L P O : Squa
 /-- krrvkr_krr_more_r5_progress: how many of the squares their other piece can walk to over the squares they do not attack that are also the squares outside the squares nearer our other piece than their king. (2026-10-13, hole learn_krr_more_KRRvKR_rank2_r5; verifier: on 50 confirmation boards: held 1/50, won 1 -- the frame before it held 1/50, won 1; better on 9 boards, worse on 0 over 1 round(s), e-value 102 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
 def krrvkr_krr_more_r5_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach O (fun u => !(attackedBy p (Color.opposite c) W u))) u && (fun u => !((nearer P L) u)) u))
 
+/-- stage_kqvkr_kqr_more_r2_blind_carried: how many of the squares nearer their king than our king that are also the squares outside the squares between their king and our other piece. (2026-10-13, hole stage_kqr_more_KQvKR_r2_blind_carried; verifier: 11 games better, 0 worse over 2 rounds, e-value 341 (held-out games); region: (count (and theirs (file W))) >= 1; status: a conjecture: the stage's claim is not proved) -/
+def stage_kqvkr_kqr_more_r2_blind_carried (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((between L P) u)) u))
+
+/-- stage_kqvkr_kqr_more_r3_blind_carried: how many of the squares our other piece can walk to over the squares they do not attack that are also the squares outside the squares their other piece can walk to over the squares we do not attack. (2026-10-13, hole stage_kqr_more_KQvKR_r3_blind_carried; verifier: 15 games better, 2 worse over 2 rounds, e-value 107 (held-out games); region: (count (and hit (lines W))) >= 5; status: a conjecture: the stage's claim is not proved) -/
+def stage_kqvkr_kqr_more_r3_blind_carried (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach P (fun u => !(attackedBy p (Color.opposite c) W u))) u && (fun u => !((reach O (fun u => !(attackedBy p c L u))) u)) u))
+
 end Ideas.Generated
