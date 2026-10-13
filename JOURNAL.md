@@ -30029,3 +30029,27 @@ handful of games).
   OPEN (for Kaveh, asked earlier): the proposers still learn the choosing boards' score, not the confirmation's votes;
   the challenger needs a frame to attack, and K+R+R v K+R has none; the budget-only futility rule kept a 14:13
   candidate a round longer than worth it (the literature's reverse e-process would drop it sooner); holding K+R v K+R.
+
+THE CHALLENGER ON THE EMPTY FRAME, THE ADVANTAGE REWARD, THE REVERSE E-VALUE (tag challenge; 2026-10-12 22:40-23:00
+PDT; Kaveh: "1"; then "Build, bug check, then run" for 2 and 3). (1) With no frame the challenger tests the PHASE's
+claim -- we win material in it, refuted by a drawn phase -- by game (held-out drawn games spend more of their positions
+inside R than won games: one-sided Mann-Whitney); (2) the proposers learn each candidate's ADVANTAGE over the frame
+before it (screening boards; confirmation games) instead of the raw score; (3) the reverse e-value drops a pending
+candidate whose game win rate is shown below what the run's remaining games need. Bug check: two found and fixed before
+the run (the background trainer could read a half-written line; a confirmation row's context was cut to its game count);
+30 tests; a replay smoke (61 reward rows written, the update consumed them).
+  K+R+R v K+R wins per 100, rounds 0-3: 69/78/73/68, no loss (bygame 69/72/64, stopped; carry2 69/72/64/68; level2b
+  69/78/75/74). Round 1's fifty-move draws in K+R+R v K+R: 13 (25 in both earlier honest runs).
+  PROMOTED, all on held-out games: K+R+R v K "the squares nearer their king than ours outside our king's rank" (round 0,
+  12 games to 2, e 24); a STAGE for K+R+R v K+R from the challenger (round 0) -- R = "the squares they attack outside our
+  king's knight hops >= 17" (their rook active; trap check 60/60; drawn-game positions 91% inside R, 58% outside), its
+  measure "the squares nearer their king than our rook outside our king's knight hops", left R or won 20/47 against 6/47,
+  8 of 9 games better, 0 worse (e 57); a K+R+R v K+R FRAME (round 2, pooled over rounds 1-2) "the squares not nearer our
+  king than theirs", 21 games to 5 (e 76; another pending reached 27 to 9, e 39). Not promoted: a second stage (round 2:
+  2 better, 2 worse); the in-check candidates (best 18 to 8, e 3.1 -- out of rounds: unknown).
+  So round 1 (the stage alone) gained most; round 3 (stage + the new K+R+R v K+R frame) won 68 -- as carry2's round 3.
+  STALEMATES (round 2: 1, round 3: 2) checked: each from a position the tablebase already drew, every alternative a draw
+  too -- the tie-break now takes "a draw now" over "a draw handing over a rook"; no result lost.
+  THE "VOCABULARY GAP" (Kaveh: "how does it decide"): logged when none of the TOP 5 regions (by fit on the even games)
+  passes the held-out test and has 10 refuted boards to check -- so it also fires on too little data (K+R+R v K: 1-2
+  refuted boards) and never tests the 6th region; its saved boards feed nothing yet.

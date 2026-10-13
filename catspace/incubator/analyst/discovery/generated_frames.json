@@ -1,5 +1,11 @@
 {
  "KRRvK": [
-  "(count (nearer L P))"
+  "(count (and (nearer L W) (not (rank W))))"
+ ],
+ "KRRvKR": [
+  "(count (not (nearer W L)))"
+ ],
+ "KRRvKR:if:(count (and hit (not (knight1 W))))>=17": [
+  "(count (and (nearer L P) (not (knight1 W))))"
  ]
 }

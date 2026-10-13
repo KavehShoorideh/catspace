@@ -243,4 +243,13 @@ def krrvkr_check_carry2_r2_progress (p : Position) (c : Color) (W L P O : Square
 /-- krrvk_bygame_r0_progress: how many of the squares nearer their king than our other piece. (2026-10-12, hole learn_bygame_KRRvK_rank2_r0; verifier: on 50 confirmation boards: held 41/50, won 41 -- the frame before it held 19/50, won 19; better on 12 boards, worse on 1 over 1 round(s), e-value 89.9 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
 def krrvk_bygame_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (nearer L P))
 
+/-- krrvk_challenge_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the rank of our king. (2026-10-12, hole learn_challenge_KRRvK_rank2_r0; verifier: on 50 confirmation boards: held 35/50, won 35 -- the frame before it held 20/50, won 20; better on 12 boards, worse on 2 over 1 round(s), e-value 23.9 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvk_challenge_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((rankOf W) u)) u))
+
+/-- stage_krrvkr_challenge_r0_trap: how many of the squares nearer their king than our other piece that are also the squares outside the squares a knight on our king reaches in one hop. (2026-10-12, hole stage_challenge_KRRvKR_r0_trap; verifier: left R or won 20/47, lost ground 27, lemma-states 5.3 a board against left R or won 6/47, lost ground 41, lemma-states 5.1 a board without the stage (confirmation boards; e-value 56.8); trap: how many of the squares they attack that are also the squares outside the squares a knight on our king reaches in one hop >= 17; status: a conjecture: the stage's claim is not proved) -/
+def stage_krrvkr_challenge_r0_trap (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (fun u => !((knight1 W) u)) u))
+
+/-- krrvkr_challenge_r2_progress: how many of the squares outside the squares nearer our king than their king. (2026-10-12, hole learn_challenge_KRRvKR_rank2_r2; verifier: on 50 confirmation boards: held 3/50, won 3 -- the frame before it held 3/50, won 3; better on 21 boards, worse on 5 over 2 round(s), e-value 75.5 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_challenge_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => !((nearer W L) u)))
+
 end Ideas.Generated
