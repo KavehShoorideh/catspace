@@ -29803,3 +29803,20 @@ to round). THE CHECK FRAME learned "squares nearer their king than our rook, not
 territory off the line through our king and rook" + "... off our king's file", then "... outside our rook's box" (0.808).
 STILL: the drawn games are fifty-move draws in K+R+R v K+R (22 in round 3) -- from the divergence our prover finds a
 forced way into the known at 2.7% of positions: a way in has to be CREATED, which no measure of the vocabulary has done.
+THE CHALLENGER, LITERATURE (2026-10-12 19:40 PDT; Kaveh: "my idea of bringing a rook into this and interposing is a challenge
+that I bring up as a challenger, but you cannot bring it up against yourself ... two adversarial reasoners"; "please do a
+literature search"). The closest precedent is not LLM self-play but COUNTER-STRATEGY-GUIDED REFINEMENT in reactive
+synthesis: when synthesis fails, the environment's counter-strategy is extracted, simplified into an explanation, and
+turned into an assumption or guard that rules it out (Alur, Moarref & Topcu 2013; Cavezza & Alrajeh; Könighofer et al.
+2009; Brázdil et al. 2015 -- a counterexample strategy compressed into a small decision tree; Luo & Liu 2022 -- one
+invariant strategy across instances). Our tablebase already gives the optimal counter-strategy; the challenger's job is to
+COMPRESS the refutation into a lemma of our vocabulary (a counter-frame: a defender region + a defender move rule -- the
+"them" slot of Bratko's AL1 advice -- + the claim "the attacker's measure does not fall", our Lean hold instantiated).
+Around it: a DOUBLE ORACLE (McMahan, Gordon & Blum 2003; PSRO): a frame promoted only if it beats every kept counter-frame
+and the tablebase; a counter-frame kept only while it refutes a promoted frame. Scored by PAIRED REGRET (Dennis et al.
+2020): credit only on positions the tablebase says the attacker wins -- a challenger cannot farm drawn positions. The
+proposer answers with LAKATOS's operators (Pease 2007; Pease et al. 2017): exception-barring (a precondition excluding the
+counter-region), lemma-incorporation (a subgoal removing the counter-idea first -- the regression), monster-barring banned.
+Counter-frames deduplicated by the positions they explain, not their syntax (R-Diverse 2026). Not borrowed: the LLM
+self-play challenger rewards (uncertainty, learnability) -- they exist for lack of a ground-truth opponent; we have one.
+Established: the synthesis, double oracle and PAIRED results; speculative: their transfer to chess frames.
