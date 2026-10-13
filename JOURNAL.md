@@ -29730,3 +29730,27 @@ shrank (24 -> 9 boards: the frame loses ground less); K+R+R v K "their king's te
 under the stricter loop). READING: the loop signal is principled and engine-free but, from these stuck positions, every
 frame loops within ~5 lemma-states -- a single added or replaced term does not escape the perpetual checks; the ceiling
 stays ~61-69 wins. Next on Kaveh's list: the frame-level search over edits (joint lemmas, removals), then concepts.
+NAVIGATING TOWARD WHAT WE KNOW (2026-10-12 16:53-17:21 PDT). Kaveh: "going backwards from mating ... what is the condition in
+which they can draw? ... if they didn't have a rook, they couldn't draw ... from a place where we don't know how to get it
+done, we go to a place where we do ... how do we represent navigating towards what we know?"; "the most likely trade is a
+rook for a rook ... can we prove that we can force one trade? ... that's the only trade we can bank on ... we should try to
+prove our way to achieving that goal"; "I'm happy for the verifier to be a table base. What I don't want is a progress
+measure based on [it]"; "we should play against Stockfish, but we should not use Stockfish". BUILT: Lean hold_blocks (the
+defender's HOLD: no move of ours reaches the goal and every move has a reply back into it -- nothing is forced from inside
+it; the dual of forced_by_measure) and toward_known (reach the KNOWN region -- a material we win -- and the goal follows:
+Reach.bind), proved, no axioms. threat.rs KNOWN_ENTRY: a forcing proof (checks, captures, threats on their pieces; every
+reply) whose goal is a material we know how to win with our lead kept -- a rook-for-rook trade into K+R v K proves as a
+capture does (the gain prover saw a trade as zero); the planner relies on it before any measure. OBS (the states run's
+round 3): a forced entry provable in 79% of the positions just before a win, 2% of the drawn games' last 30 -- and those
+2% were trades or captures the old planner missed (game 3004: Rxg2 Kxc6 into K+R v K, it played Kh5 and drew). The
+contrast's good side includes the positions where the forced entry fired (our proofs label it, no engine); one batch of
+proposals (no proposing until broken). THE RUN (tag known, fresh; the same starting positions as every run; directional):
+round 0 61 / 36 / 3 (won / drawn / lost; 57 / 40 / 3 without the forced entry -- +4 from banking provable trades alone);
+round 1 69 / 31 / 0 (69 in the two runs before); round 2 62 / 38 / 0 (64); round 3 73 / 27 / 0 (55-64 in every earlier run
+-- the best on these positions by nine). Mined, K+R+R v K+R (ranked, final): "the squares they attack, outside the squares
+between the kings" (rank 1, 0.101 vs 0.000), "the squares our rook reaches over squares they do not attack, outside their
+king's reach over squares we do not attack" (rank 1, 0.168 vs 0.084), "squares nearer their king than our rook, not nearer
+our king than their rook" (the loop entries, 10 vs 6 of 100); K+R+R v K "squares nearer their king than our rook, off their
+king's rank" (0.848 vs 0.000). The contrast proposer led two holes (6 and 5 of the top 10). Fifty-move draws in K+R+R v
+K+R 25 / 21 / 33 / 20 by round. NEXT (proposed): the second regression level -- a quiet move after which every reply leaves
+a provable entry -- by proof, its cost measured first.

@@ -65,4 +65,34 @@ def krrvkr_states_r2_hold (p : Position) (c : Color) (W L P O : Square) : Nat :=
 /-- krrvkr_states_r2_progress: how many of the squares we attack. (2026-10-12, hole learn_states_KRRvKR_rank2_r2; verifier: held 1/50, won 1, claims kept 250/347 -- the frame before it held 0/50, won 0, claims kept 171/304 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
 def krrvkr_states_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (attackedBy p c L))
 
+/-- krrvkr_contrast_r0_hold: how many of the squares nearer their king than their other piece that are also the squares outside the line through their king and our other piece. (2026-10-12, hole learn_contrast_KRRvKR_rank1_r0; verifier: held 0/24, won 0, claims kept 98/184 -- the frame before it held 0/24, won 0, claims kept 0/119 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_contrast_r0_hold (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L O) u && (fun u => !((lineThrough L P) u)) u))
+
+/-- krrvkr_contrast_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the box around their other piece. (2026-10-12, hole learn_contrast_KRRvKR_rank2_r0; verifier: held 5/50, won 5, claims kept 202/310 -- the frame before it held 2/50, won 2, claims kept 134/271 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_contrast_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((box O) u)) u))
+
+/-- krrvkr_contrast2_r0_hold: how many of the squares nearer their king than their other piece that are also the squares outside the line through their king and our other piece. (2026-10-12, hole learn_contrast2_KRRvKR_rank1_r0; verifier: held 0/24, won 0, claims kept 98/184 -- the frame before it held 0/24, won 0, claims kept 0/119 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_contrast2_r0_hold (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L O) u && (fun u => !((lineThrough L P) u)) u))
+
+/-- krrvk_contrast2_r0_progress: how many of the squares nearer their king than our other piece that are also the squares outside the file of our other piece. (2026-10-12, hole learn_contrast2_KRRvK_rank2_r0; verifier: held 40/50, won 40, claims kept 141/144 -- the frame before it held 0/50, won 0, claims kept 0/104 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvk_contrast2_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (fun u => !((fileOf P) u)) u))
+
+/-- krrvkr_contrast2_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the squares of their pieces. (2026-10-12, hole learn_contrast2_KRRvKR_rank2_r0; verifier: held 4/50, won 4, claims kept 201/310 -- the frame before it held 4/50, won 4, claims kept 112/233 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_contrast2_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((piecesOf p (Color.opposite c)) u)) u))
+
+/-- krrvkr_known_r0_hold: how many of the squares nearer their king than their other piece that are also the squares outside the box around their king. (2026-10-12, hole learn_known_KRRvKR_rank1_r0; verifier: held 0/20, won 0, claims kept 72/136 -- the frame before it held 0/20, won 0, claims kept 0/101 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_known_r0_hold (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L O) u && (fun u => !((box L) u)) u))
+
+/-- krrvk_known_r0_progress: how many of the squares nearer their king than our other piece that are also the squares outside the rank of their king. (2026-10-12, hole learn_known_KRRvK_rank2_r0; verifier: held 42/50, won 42, claims kept 149/157 -- the frame before it held 0/50, won 0, claims kept 0/105 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvk_known_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (fun u => !((rankOf L) u)) u))
+
+/-- krrvkr_known_r0_progress: how many of the squares nearer their king than our other piece that are also the squares outside the squares nearer our king than their other piece. (2026-10-12, hole learn_known_KRRvKR_rank2_r0; verifier: held 5/50, won 5, claims kept 199/306 -- the frame before it held 3/50, won 3, claims kept 114/225 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_known_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (fun u => !((nearer W O) u)) u))
+
+/-- krrvkr_known_r1_hold: how many of the squares our other piece can walk to over the squares they do not attack that are also the squares outside the squares their king can walk to over the squares we do not attack. (2026-10-12, hole learn_known_KRRvKR_rank1_r1; verifier: held 2/12, won 2, claims kept 44/67 -- the frame before it held 1/12, won 1, claims kept 14/37 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_known_r1_hold (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach P (fun u => !(attackedBy p (Color.opposite c) W u))) u && (fun u => !((reach L (fun u => !(attackedBy p c L u))) u)) u))
+
+/-- krrvkr_known_r2_hold: how many of the squares they attack that are also the squares outside the squares between our king and their king. (2026-10-12, hole learn_known_KRRvKR_rank1_r2; verifier: held 1/10, won 1, claims kept 17/31 -- the frame before it held 0/10, won 0, claims kept 19/34 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krrvkr_known_r2_hold (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (attackedBy p (Color.opposite c) W) u && (fun u => !((between W L) u)) u))
+
 end Ideas.Generated
