@@ -295,7 +295,7 @@ if __name__ == "__main__":
 
 
 def carry_stages(res: list, played: dict, new: dict, pending: dict, run: str, rnd: int, rounds_left: int,
-                 defender: str = "tablebase", register: bool = True) -> None:
+                 defender: str = "tablebase", register: bool = True, opponent: str = "stockfish:10", band: tuple | None = None) -> None:
     """THE STAGES' EVIDENCE CARRIED ACROSS ROUNDS (the night's autonomy, 2026-10-12: a stage left R or won 39/46 against
     15/46 -- but its refuted boards came from 5 games, 4 better and 1 worse, e 1.9, and the stage was forgotten): a stage
     not promoted that wins more games than it loses stays PENDING with its region R; each later round, this round's
@@ -333,7 +333,7 @@ def carry_stages(res: list, played: dict, new: dict, pending: dict, run: str, rn
         more = len(set(games)) * rounds_left
         print(f"OBS   the pending stage {fkey} [{p['term']}] on this round's {len(boards)} boards inside R from {cf['games']} games: better in "
               f"{cf['w']}, worse in {cf['l']}; pooled over {p['rounds'] + 1} rounds {wv} to {lv}, e-value {e:.3g}")
-        if e >= E_PROMOTE:
+        if e >= E_PROMOTE and not vetoed(res, played, fkey, p["term"], mat, opponent, band):
             pending.pop(fkey)
             new[fkey] = [p["term"]]
             print(f"OBS   STAGE PROMOTED on carried evidence: {fkey} -> {p['term']}")
@@ -351,15 +351,25 @@ def carry_stages(res: list, played: dict, new: dict, pending: dict, run: str, rn
             print(f"OBS   the pending stage {fkey} dropped ({wv} to {lv})")
 
 
+def vetoed(res: list, played: dict, fkey: str, term: str, material: str, opponent: str, band) -> bool:
+    """A stage under THE GUARD ON WHOLE GAMES (surprise_loop.guard_games -- first, don't lose): the round's starts replayed
+    with the stage added; True when it does worse in more games than better."""
+    from .surprise_loop import guard_games
+    g = guard_games(res, played, fkey, [term], material, opponent, band=band)
+    print(f"OBS   the guard ({g['n']} of the round's starts replayed with the stage {fkey}): better in {g['w']} games, worse in {g['l']} -- "
+          + ("VETOED: it breaks what the frames already do" if g["veto"] else "passed"))
+    return g["veto"]
+
+
 def round_(res: list, played: dict, frames: dict, run: str, rnd: int, register: bool = True, pending: dict | None = None,
-           rounds_left: int = 0) -> dict:
+           rounds_left: int = 0, opponent: str = "stockfish:10", band: tuple | None = None) -> dict:
     """The challenger inside the loop, after a round's mining: per material with a frame of ours, a trap and a blind spot
     mined from the claims of the frame the round was PLAYED with and checked against that frame (the data's own frame --
     2026-10-12: checked against the newly mined one it reported gaps); each answered by a stage mined with the NEW frames
     (the next round's); a promoted stage joins them. -> frames."""
     new = dict(frames)
     pending = {} if pending is None else pending
-    carry_stages(res, played, new, pending, run, rnd, rounds_left, register=register)
+    carry_stages(res, played, new, pending, run, rnd, rounds_left, register=register, opponent=opponent, band=band)
     from .surprise_loop import MATING_SPECS
     from .defenders import E_PROMOTE, sign_e
     from .surprise_loop import futile
@@ -382,6 +392,8 @@ def round_(res: list, played: dict, frames: dict, run: str, rnd: int, register: 
                     pending[ans["frame_key"]] = dict(material=material, kind=kind, region=c["term"], theta=c["theta"], term=ans["term"],
                                                      schema=ans["schema"], base=new.get(material, []), w=ans["w"], l=ans["l"], rounds=1)
                     print(f"OBS   PENDING stage {ans['frame_key']}: {ans['term']} -- {ans['w']} to {ans['l']}, continued on the next round's games")
+            if ans["promoted"] and vetoed(res, played, ans["frame_key"], ans["term"], material, opponent, band):
+                ans["promoted"], ans["vetoed"] = False, True
             if ans["promoted"]:
                 new[ans["frame_key"]] = [ans["term"]]
                 if register:
