@@ -258,7 +258,7 @@ impl crate::pns::Problem for Contest {
 }
 
 #[derive(Clone, Debug)]
-pub struct Verdict { pub status: &'static str, pub line: Vec<String>, pub interceptors: Vec<String> }
+pub struct Verdict { pub status: &'static str, pub line: Vec<String>, pub interceptors: Vec<String>, pub first: Option<Move> }
 
 /// Their pieces that can stand on or attack a square of our path within `time` of their moves.
 fn interceptors(pos: &Chess, us: Color, path: Bitboard, time: u32) -> (Vec<String>, Bitboard) {
@@ -283,22 +283,27 @@ pub fn contest(pos: &Chess, g: &Goal) -> Verdict {
     let mut zone = path | squares;
     if let Some(tk) = pos.board().king_of(!us) { if g.kind == "mate" { zone |= shakmaty::attacks::king_attacks(tk); } }
     let budget = CONTEST_BUDGET.load(Ordering::Relaxed);
-    let mk = |full: bool| Contest { us, kind: g.kind, value: g.value, key: g.what.clone(), root_bal: kernel_material(pos, us), depth: g.cost + 1, full, zone };
+    let mk = |full: bool, depth: u32| Contest { us, kind: g.kind, value: g.value, key: g.what.clone(), root_bal: kernel_material(pos, us), depth, full, zone };
     let root = CState { pos: pos.clone(), mv: None, ours: 0 };
     let line_of = |l: &Vec<CState>| -> Vec<String> {
         l.windows(2).filter_map(|w| w[1].mv.as_ref().map(|m| crate::plan::san(&w[0].pos, &m.to_uci(CastlingMode::Standard).to_string()))).collect()
     };
-    let (r, lines) = crate::pns::search_proof_lines(&mk(false), root.clone(), budget, 1);
-    match r {
-        Some(true) => return Verdict { status: "forced", line: lines.first().map(line_of).unwrap_or_default(), interceptors: words },
-        None => return Verdict { status: "unknown", line: vec![], interceptors: words },
-        Some(false) => {}
+    let forced = |lines: &Vec<Vec<CState>>| Verdict { status: "forced", line: lines.first().map(line_of).unwrap_or_default(),
+                                                   first: lines.first().and_then(|l| l.get(1)).and_then(|s| s.mv.clone()), interceptors: words.clone() };
+    // THE SHORTEST FORCED LINE FIRST -- 1 move of ours, 2, ... the goal's cost plus one (2026-10-13, the field's first
+    // measurement: proving "within the cost plus one" and playing any proof's first move, it promised "mate in 3" and
+    // re-promised it two moves later, the bishop shuffling -- 3 of 64 promises kept on time in K+R+R v K+R)
+    let mut unknown = false;
+    for depth in 1..=g.cost + 1 {
+        let (r, lines) = crate::pns::search_proof_lines(&mk(false, depth), root.clone(), budget, 1);
+        match r { Some(true) => return forced(&lines), None => unknown = true, Some(false) => {} }
     }
-    let (r, lines) = crate::pns::search_proof_lines(&mk(true), root, budget, 1);
+    if unknown { return Verdict { status: "unknown", line: vec![], first: None, interceptors: words }; }
+    let (r, lines) = crate::pns::search_proof_lines(&mk(true, g.cost + 1), root, budget, 1);
     match r {
-        Some(true) => Verdict { status: "forced", line: lines.first().map(line_of).unwrap_or_default(), interceptors: words },
-        Some(false) => Verdict { status: "stopped", line: vec![], interceptors: words },
-        None => Verdict { status: "unknown", line: vec![], interceptors: words },
+        Some(true) => forced(&lines),
+        Some(false) => Verdict { status: "stopped", line: vec![], first: None, interceptors: words },
+        None => Verdict { status: "unknown", line: vec![], first: None, interceptors: words },
     }
 }
 
@@ -319,4 +324,36 @@ pub fn field_of(fen: String, depth: u32) -> (Vec<(String, String, i64, u32, Stri
     let ours = goals(&pos, depth).0.into_iter().map(|g| row(&pos, g, false)).collect();
     let theirs = match pass(&pos) { Some(p) => goals(&p, depth).0.into_iter().map(|g| row(&p, g, true)).collect(), None => vec![] };
     (ours, theirs)
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------------
+// STAGE 5, SERVE (the plan: "the planner pursues our best live goal or denies their worst, re-planning every move"). When
+// the planner's own search proved no gain: our best goal FORCED against every defence (up to four contested, the most
+// valuable first) -- its proof's first move, explained -- unless, as if we passed, they have a FORCED goal at least as
+// valuable and no slower: then the field steps aside and the planner's defence answers it (the threat machinery already
+// does denial; not duplicated). Nothing forced: the frames and the mate search decide, as before. Behind a switch (off
+// until measured).
+pub static GOAL_FIELD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[pyfunction]
+pub fn set_goal_field(flag: bool) -> PyResult<()> { GOAL_FIELD.store(flag, Ordering::Relaxed); Ok(()) }
+
+pub fn field_move(pos: &Chess) -> Option<(Move, i64, String)> {
+    let depth = GOAL_DEPTH.load(Ordering::Relaxed);
+    let (ours, _) = goals(pos, depth);
+    let mut best = None;
+    for g in ours.into_iter().filter(|g| g.value > 0).take(4) {
+        let v = contest(pos, &g);
+        if v.status == "forced" { best = Some((g, v)); break; }
+    }
+    let (g, v) = best?;
+    if let Some(p) = pass(pos) {
+        for t in goals(&p, depth).0.into_iter().filter(|t| t.value >= g.value && t.cost <= g.cost).take(3) {
+            if contest(&p, &t).status == "forced" { return None; }
+        }
+    }
+    let m = v.first.clone()?;
+    let what = if g.kind == "mate" { "mate".to_string() } else if g.kind == "known" { format!("entry into {}", g.what) } else { format!("winning {}", g.what) };
+    let n = (v.line.len() as u32 + 1) / 2;                                 // our moves in the proved line
+    Some((m, g.value.min(MATE_GOAL), format!("the goal field: {what} in {n} (+{}), forced against every defence: {}", g.value, v.line.join(" "))))
 }

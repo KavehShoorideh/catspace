@@ -30292,3 +30292,20 @@ STOPPED, "their rook on d4 reaches the path in 1"; K+Q v K+R Kxf8 -> FORCED; K+P
 FORCED both (c2: the tablebase agrees -- outside the square; my expectation was wrong); K+B+N v K seed 5006 move 36's
 mate in 4 -> UNKNOWN; Kaveh's game move 17: the +7 queen trap -> UNKNOWN (Black need not take with the queen; the full-width
 proof of that at depth 4 runs out of budget), Bxh7+ Kxh7 Nxd4 +1 -> FORCED, their Bxb2 -> STOPPED. Tests.
+
+THE GOAL FIELD, STAGE 5 -- SERVE (2026-10-13 14:20-14:44 PDT; Kaveh: "Go"). In the planner, after its own search proves no
+gain: our best goal FORCED against every defence (up to four contested, the most valuable first) -- its proof's first
+move, explained; unless, as if we passed, they have a forced goal as valuable and no slower (then the planner's defence,
+not duplicated); nothing forced: the frames and the mate search as before. Behind a switch (set_goal_field), OFF by
+default. A goal decision is judged as a proof within its own horizon (surprise_loop.claim_of).
+  THE MEASUREMENT (the same 100 starts, the generated track's frames, field off -> on, one replay each -- directional):
+  K+R+R v K+R (seeds 5000+) 72 -> 73 (field moves 64; 80 -> 100 s); K+Q v K+R (3000+) 73 -> 73 (3 field moves; 116 ->
+  138 s); K+B+N v K within 20 plies 75 -> 75 (46 field moves). A NULL. Bug-checked before reporting: the field acted
+  almost only where their king stood alone (all 64 K+R+R v K+R field moves were mates after the rooks came off) -- what
+  the frame mate search already does; and A BUG: it kept 3 of 64 "mate in n" promises on time in K+R+R v K+R, 13 of 46 in
+  K+B+N v K -- proving "within the cost plus one" and playing any proof's first move, it re-promised the same mate two
+  moves later (Bh3 ... Bh3, the bishop shuffling). FIXED: the shortest forced line first, the claim stating its proved
+  length -> promises kept 35 of 38 (K+B+N v K), 6 of 17 (K+R+R v K+R: the planner's own search, which runs first, takes
+  its own longer mate on the next move); wins unchanged (73, 75).
+  READING: at depth 3 the forced goals in these endings are the ones the existing proofs already find; what the field
+  sees beyond them -- live (unknown) goals, deeper horizons -- is not used yet.

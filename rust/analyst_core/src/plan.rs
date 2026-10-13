@@ -2087,6 +2087,15 @@ impl PlanState {
         MEMO.with(|m| *m.borrow_mut() = Some(memo));
         let t = std::time::Instant::now();
         let mut p = match played { Some(p) => p, None => plan(&pos) };
+        // THE GOAL FIELD (goals.rs, behind its switch): nothing proved by the gain -- our best goal forced against every
+        // defence, unless their worst (as if we passed) is as valuable and no slower
+        if p.best.is_none() && crate::goals::GOAL_FIELD.load(Ordering::Relaxed) {
+            if let Some((m, v, why)) = crate::goals::field_move(&pos) {
+                let u = m.to_uci(CastlingMode::Standard).to_string();
+                p.trace.push(format!("goal: {}; {why}", san(&pos, &u)));
+                p.best = Some((String::new(), u.clone(), v, format!("{} ({why})", san(&pos, &u))));
+            }
+        }
         // THE FORCED ENTRY INTO WHAT WE KNOW (threat.rs known_entry): nothing proved by the gain -- a forced trade or capture
         // into a material we know how to win, proved against every reply, is relied on before any measure
         if p.best.is_none() && crate::vocab::GENERIC_FRAME.load(Ordering::Relaxed)

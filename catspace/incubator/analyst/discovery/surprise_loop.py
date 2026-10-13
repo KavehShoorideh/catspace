@@ -58,6 +58,9 @@ def claim_of(trace: list, why: str, material: str, frames: dict, lead: int) -> d
     """The claim of a decision, read from its own trace and reason."""
     if any(l.startswith("frame: ") for l in trace):
         return dict(kind="frame", specs=frames.get(material, []), k=FRAME_K)
+    g = re.search(r"the goal field: .* in (\d+) \(\+", why)
+    if g:                                                 # a goal forced against every defence: a proof, its own horizon
+        return dict(kind="proof", k=int(g.group(1)))
     if why.endswith(("(king and rook)", "(king and queen)")):
         return dict(kind="frame", specs=MATING_SPECS.get(material, []), k=MATING_K)
     if any(w in why for w in ("stops their", "answers their", "avoids the blunder", "cheapest")):
