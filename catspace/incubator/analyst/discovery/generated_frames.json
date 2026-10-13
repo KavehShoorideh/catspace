@@ -35,5 +35,11 @@
  ],
  "KRRvKR:if:(count (and hit (not (diagonals O))))>=19": [
   "(dist W P)"
+ ],
+ "KRvKN": [
+  "(count (and (reach L free) (not (nearer P L))))"
+ ],
+ "KRvKN:if:(count (and (knight2 O) (not (nearer P L))))>=14": [
+  "(count (and (reach L free) (not edge)))"
  ]
 }

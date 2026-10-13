@@ -324,4 +324,10 @@ def stage_kqvkr_kqr_more_r2_blind_carried (p : Position) (c : Color) (W L P O : 
 /-- stage_kqvkr_kqr_more_r3_blind_carried: how many of the squares our other piece can walk to over the squares they do not attack that are also the squares outside the squares their other piece can walk to over the squares we do not attack. (2026-10-13, hole stage_kqr_more_KQvKR_r3_blind_carried; verifier: 15 games better, 2 worse over 2 rounds, e-value 107 (held-out games); region: (count (and hit (lines W))) >= 5; status: a conjecture: the stage's claim is not proved) -/
 def stage_kqvkr_kqr_more_r3_blind_carried (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach P (fun u => !(attackedBy p (Color.opposite c) W u))) u && (fun u => !((reach O (fun u => !(attackedBy p c L u))) u)) u))
 
+/-- krvkn_krn1_r0_progress: how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the squares nearer our other piece than their king. (2026-10-13, hole learn_krn1_KRvKN_rank2_r0; verifier: on 50 confirmation boards: held 0/50, won 0 -- the frame before it held 0/50, won 0; better on 10 boards, worse on 0 over 1 round(s), e-value 186 (defender tablebase); status: a conjecture: its frame's claim is not proved) -/
+def krvkn_krn1_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach L (fun u => !(attackedBy p c L u))) u && (fun u => !((nearer P L) u)) u))
+
+/-- stage_krvkn_krn1_r2_trap_carried: how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the edge squares. (2026-10-13, hole stage_krn1_KRvKN_r2_trap_carried; verifier: 12 games better, 2 worse over 3 rounds, e-value 23.9 (held-out games); region: (count (and (knight2 O) (not (nearer P L)))) >= 14; status: a conjecture: the stage's claim is not proved) -/
+def stage_krvkn_krn1_r2_trap_carried (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach L (fun u => !(attackedBy p c L u))) u && (fun u => !(edge u)) u))
+
 end Ideas.Generated

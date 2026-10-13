@@ -30185,3 +30185,9 @@ rounds 0-4: 78/77/79/74/64 (no frames on the same starts: 75 / 71 / - / 68 / 61)
 evidence and guarded: for "a piece of theirs on our king's file" (the skewer's file) with K+B+N v K's first frame
 "the squares nearer their king than ours outside those between their king and our minor piece" (transferred), and for
 "their attacks on our king's rank and file >= 5"; a stage and a frame candidate vetoed (3:6, 2:3).
+
+K+R v K+N, A NEW ENDING (tag krn1; 2026-10-13 02:00-02:05 PDT; tablebase-won starts). Wins per 100, rounds 0-4:
+78/86/81/85/82, then nothing new. Promoted: a frame "their king's safe squares outside our rook's zone" (progress
+only; guard passed) and a stage for "their knight free" (squeeze their king off the edge; carried, guarded). THE
+MEASUREMENT: round 3's and 4's starts with NO frames: 85 and 82 -- exactly the run's (the frames add nothing here: the
+wins come from the planner's tactics, the draws are not reached by any measure we have). A null, honestly.
