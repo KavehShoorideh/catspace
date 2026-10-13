@@ -424,6 +424,51 @@ pub fn known_entry(p: &Chess, budget: u64) -> Option<Move> {
     }
 }
 
+/// THE REGRESSION, one level at a time (Kaveh 2026-10-12: "I want the machinery to search for this" -- a way into what we
+/// know that has to be CREATED): level 1 is the forced entry; LEVEL n+1 is a move of ours -- quiet or not, nothing of ours
+/// left to the static exchange -- after which EVERY reply leaves a position of level n (or the known itself). Each level
+/// is a proof against every reply; Lean Ideas.Forced.toward_known composes them (the known region grows backward from
+/// what we can prove). -> the move, when proven within the budgets (each forced-entry question gets `budget`).
+pub fn known_level(p: &Chess, level: u32, budget: u64, cache: &mut std::collections::HashMap<u64, bool>) -> Option<Move> {
+    if level <= 1 { return known_entry(p, budget); }
+    let by = p.turn();
+    let b = p.board();
+    let (ours, theirs) = (crate::vocab::material(b, by), crate::vocab::material(b, !by));
+    if theirs == 0 { return None; }
+    let lead0 = ours - theirs;
+    // our moves: no piece of ours left en prise, no stalemate; captures and checks first
+    let mut moves: Vec<Move> = p.legal_moves().into_iter().filter(|m| {
+        let q = after(p, m);
+        !q.legal_moves().is_empty() && (q.board().by_color(by) & !q.board().kings()).into_iter().all(|s| rules::see(q.board(), s, !by) == 0)
+    }).collect();
+    moves.sort_by_key(|m| !(m.is_capture() || after(p, m).is_check()));
+    'mv: for m in moves {
+        let q = after(p, &m);
+        if q.is_checkmate() { return Some(m); }
+        // the replies most likely to refute first: checks and captures
+        let mut replies: Vec<Move> = q.legal_moves().into_iter().collect();
+        replies.sort_by_key(|r| !(r.is_capture() || after(&q, r).is_check()));
+        for r in replies {
+            let x = after(&q, &r);
+            if x.legal_moves().is_empty() { if x.is_checkmate() { continue 'mv; } else { continue 'mv; } }   // they mate us / stalemate
+            if known_here(&x, by, lead0, theirs) { continue; }
+            if crate::vocab::material(x.board(), by) - crate::vocab::material(x.board(), !by) < lead0 { continue 'mv; }
+            let key = crate::threat::zkey(&x).wrapping_add(level as u64);
+            let ok = match cache.get(&key) { Some(v) => *v, None => { let v = known_level(&x, level - 1, budget, cache).is_some(); cache.insert(key, v); v } };
+            if !ok { continue 'mv; }
+        }
+        return Some(m);
+    }
+    None
+}
+
+/// known_level_of(fen, level, budget) -> the first move of a proven way into what we know at that level, if any.
+#[pyfunction]
+pub fn known_level_of(fen: String, level: u32, budget: u64) -> Option<String> {
+    let p = crate::parse(&fen)?;
+    known_level(&p, level, budget, &mut std::collections::HashMap::new()).map(|m| m.to_uci(CastlingMode::Standard).to_string())
+}
+
 /// known_entry_of(fen, budget) -> the first move of a forced entry into a material we know, if proven.
 #[pyfunction]
 pub fn known_entry_of(fen: String, budget: u64) -> Option<String> {

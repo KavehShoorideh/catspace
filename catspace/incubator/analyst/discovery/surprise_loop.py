@@ -337,8 +337,8 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
         for r in g["rows"]:
             # WHERE OUR OWN PROOF REACHES WHAT WE KNOW (the forced entry fired) is the "good" side of the contrast: the miner
             # learns to steer toward the positions our proofs can bank on -- labelled by our lemmas, no engine
-            if "forces entry into the known" in r["why"] and r["material"] not in MATING_SPECS:
-                contrast[r["material"]]["win"].append(r["fen"])
+            if ("forces entry into the known" in r["why"] or "prepares a forced entry" in r["why"]) and r["material"] not in MATING_SPECS:
+                contrast[r["material"]]["win"].append(r["fen"])     # (regression levels 1 and 2: labelled by our proofs)
     if diverged:
         print("OBS   phases that did not progress, mined from their divergence: " + ", ".join(f"{m} {n}" for m, n in diverged.items()))
     # THE FAILED EPISODES INTO BOARDS: each gives its positions (evenly spaced when long), every failing game counted

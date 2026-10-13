@@ -57,6 +57,10 @@ pub struct Solution { owner: Color, hints: std::sync::Arc<Hints>, path: u64, aft
 /// the rook, HOLDS" -- after Ka8 the proof's answer was the quiet Rc4!, threatening Rc8 mate, but the next move planned
 /// afresh, never generated Rc4 and shuffled; the claim was right, the play incoherent with it), or off.
 pub static PLAY_OUT_GAINS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// The regression's second level in play (a move after which every reply leaves a forced entry into the known), or off.
+pub static KNOWN_LEVEL2: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_known_level2(flag: bool) -> PyResult<()> { KNOWN_LEVEL2.store(flag, Ordering::Relaxed); Ok(()) }
 #[pyfunction]
 pub fn set_play_out_gains(flag: bool) -> PyResult<()> { PLAY_OUT_GAINS.store(flag, Ordering::Relaxed); Ok(()) }
 const SNAPSHOTS: usize = 8;
@@ -2055,6 +2059,14 @@ impl PlanState {
                 let u = m.to_uci(CastlingMode::Standard).to_string();
                 p.trace.push(format!("known: {} forces entry into a material we know (a trade or a capture, every reply searched)", san(&pos, &u)));
                 p.best = Some((String::new(), u.clone(), 5, format!("{} forces entry into the known", san(&pos, &u))));
+            } else if KNOWN_LEVEL2.load(Ordering::Relaxed) {
+                // THE REGRESSION'S SECOND LEVEL (threat.rs known_level): a move -- quiet or not -- after which every reply
+                // leaves a forced entry: the way into the known CREATED, proved against every reply
+                if let Some(m) = crate::threat::known_level(&pos, 2, 20_000, &mut std::collections::HashMap::new()) {
+                    let u = m.to_uci(CastlingMode::Standard).to_string();
+                    p.trace.push(format!("known: {} prepares a forced entry into the known (every reply leaves one, proved)", san(&pos, &u)));
+                    p.best = Some((String::new(), u.clone(), 5, format!("{} prepares a forced entry into the known", san(&pos, &u))));
+                }
             }
         }
         // THE GENERIC FRAME (vocab.rs): nothing proved -- the material's measure (or the empty frame) chooses, with its claim

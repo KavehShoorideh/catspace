@@ -26,7 +26,7 @@ from catspace.io import paths
 def kind_of(row: dict, in_check: bool) -> str:
     if in_check:
         return "check"
-    if "forces entry into the known" in row["why"]:
+    if "forces entry into the known" in row["why"] or "prepares a forced entry" in row["why"]:
         return "known"
     return row["claim"]["kind"]
 
@@ -70,7 +70,7 @@ def episodes(rows: list, idx: list, terms: list) -> list:
 DESIRED = ("material won", "new best")
 
 
-def measure(run: str, material: str = "KRRvKR", budget: int = 200_000) -> None:
+def measure(run: str, material: str = "KRRvKR", budget: int = 200_000, levels: tuple = (1,), level_budget: int = 20_000) -> None:
     import chess
     import catspace.incubator.analyst  # noqa: F401
     import analyst_core as A
@@ -79,6 +79,8 @@ def measure(run: str, material: str = "KRRvKR", budget: int = 200_000) -> None:
     tails, wons = Counter(), Counter()
     tails_k, wons_k = Counter(), Counter()
     since, missed, asked = [], 0, 0
+    import time
+    by_level, t_level = Counter(), Counter()
     for h in history:
         rnd, frames = h["round"], h["frames"]
         for f in frames:
@@ -103,8 +105,14 @@ def measure(run: str, material: str = "KRRvKR", budget: int = 200_000) -> None:
                     since.append(sum(1 for i in idx if i >= d))
                     for i in [i for i in idx if i >= d][:6]:                       # around it: was a way in missed?
                         asked += 1
-                        if A.known_entry_of(rows[i]["fen"], budget):
+                        if 1 in levels and A.known_entry_of(rows[i]["fen"], budget):
                             missed += 1
+                        for lv in levels:
+                            if lv >= 2:
+                                t0 = time.time()
+                                if A.known_level_of(rows[i]["fen"], lv, level_budget):
+                                    by_level[lv] += 1
+                                t_level[lv] += time.time() - t0
             elif won_phase:
                 wons.update(e["outcome"] for e in eps); wons_k.update(e["kind"] for e in eps)
     pct = lambda c: f"{100 * sum(c[o] for o in DESIRED) / max(sum(c.values()), 1):.0f}% desired ({dict(c.most_common())})"
@@ -116,6 +124,9 @@ def measure(run: str, material: str = "KRRvKR", budget: int = 200_000) -> None:
         s = sorted(since)
         print(f"OBS   THE DIVERGENCE in {len(s)} drawn games: moves of ours from it to the end -- median {s[len(s) // 2]}, quartiles {s[len(s) // 4]}-{s[3 * len(s) // 4]}")
         print(f"OBS   our prover at the divergence and the five positions after it (the forced entry, budget {budget:,}): a way into the known in {missed} of {asked}")
+        for lv in sorted(t_level):
+            print(f"OBS   REGRESSION LEVEL {lv} there (each forced-entry question {level_budget:,}): a way in CREATED in {by_level[lv]} of {asked} "
+                  f"({100 * by_level[lv] / max(asked, 1):.1f}%) -- {1000 * t_level[lv] / max(asked, 1):.0f} ms a position")
 
 
 def main(argv=None):
@@ -123,8 +134,10 @@ def main(argv=None):
     ap.add_argument("--run", default="approach")
     ap.add_argument("--material", default="KRRvKR")
     ap.add_argument("--budget", type=int, default=200_000)
+    ap.add_argument("--levels", default="1", help="the regression levels to ask at the divergence, e.g. 1,2")
+    ap.add_argument("--level-budget", type=int, default=20_000)
     a = ap.parse_args(argv)
-    measure(a.run, a.material, a.budget)
+    measure(a.run, a.material, a.budget, tuple(int(x) for x in a.levels.split(",")), a.level_budget)
 
 
 if __name__ == "__main__":
