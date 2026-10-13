@@ -56,6 +56,36 @@ class Contrast:
         return [cands[i] for i in order]
 
 
+def known_terms(hole: dict) -> list:
+    """The measures we already have: the generated registry's -- those promoted on e-value evidence first, newest first
+    -- then the frames in play (the hole's `frames`); each once, each parsing."""
+    from . import registry as R
+    reg = [e for e in json.load(open(R.REGISTRY)) if e.get("kind") == "measure"] if R.REGISTRY.exists() else []
+    ordered = [e["expr"] for e in reversed(reg) if "e-value" in json.dumps(e.get("evidence", {}))]
+    ordered += [e["expr"] for e in reversed(reg)]
+    ordered += [t for ts in (hole.get("frames") or {}).values() for t in ts]
+    out = []
+    for t in ordered:
+        if t not in out and V.parse(t) is not None:
+            out.append(t)
+    return out
+
+
+class Known:
+    """THE LEMMAS WE ALREADY HAVE, TRIED FIRST (Kaveh 2026-10-12: "we can use the earlier lemmas to our advantage";
+    the night's autonomy -- 2026-10-12, a stage's winning measure for K+R+R v K+R was the very term the next run
+    confirmed for K+R+R v K, while that run's own stage race picked a measure that lost): the known measures among the
+    hole's candidates, in their order; the race and the held-out confirmation judge them like any other."""
+    name = "known"
+
+    def __init__(self, terms: list):
+        self.terms = terms
+
+    def rank(self, hole, lab, cache):
+        pos = {t: i for i, t in enumerate(self.terms)}
+        return sorted((c for c in candidates(lab) if c[0] in pos), key=lambda c: (pos[c[0]], c[1]))
+
+
 class Learned:
     def __init__(self, kind: str, model):
         self.kind, self.model, self.name = kind, model, kind
@@ -203,6 +233,10 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     boards = h["stuck"][:100]
     lab = labels(hole_name) if os.path.exists(paths.derived(f"hole_{hole_name}_labels.json")) else fresh_candidates(h, boards)
     boards = lab["boards"]                       # a labeled hole's verdicts were made on its labels' boards
+    known = known_terms(h)                       # the lemmas we already have join the hole's candidates (each schema)
+    schemas = sorted({r["schema"] for r in lab["rows"]}) or ["append"]
+    have = {(r["term"], r["schema"]) for r in lab["rows"]}
+    lab["rows"] += [dict(term=t, schema=sc) for t in known for sc in schemas if (t, sc) not in have]
     if defender != "self":
         boards = boards[:n_boards]               # a real defender plays whole games with the planner
     from . import proposers as P
@@ -215,7 +249,7 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     best = base
     while True:
         batch_no += 1
-        rankings, names = [Enumerative().rank(h, lab, cache)], ["enumerative"]
+        rankings, names = [Known(known).rank(h, lab, cache), Enumerative().rank(h, lab, cache)], ["known", "enumerative"]
         for k in kinds:
             rankings.append(Learned(k, P.get(k)).rank(h, lab, cache)); names.append(k)   # the newest checkpoint
         if h.get("contrast"):
