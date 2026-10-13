@@ -625,21 +625,25 @@ pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
     };
     Some((m, claim))
 }
-/// THE LEAST LOSS when no move keeps everything: the best net, and among equal nets a move that does NOT end the game
-/// (Kaveh: "when losing, drag the loss out as long as possible ... same thing with drawing" -- 2026-10-12, the clean run:
-/// four games stalemated by the tie, Rxd7 stalemating where giving up the rook played on in K+R v K+R).
+/// THE LEAST LOSS when no move keeps everything: the best net; among equal nets the move handing over the least material,
+/// then one that does NOT end the game (Kaveh: "when losing, drag the loss out as long as possible ... same thing with
+/// drawing" -- 2026-10-12, the clean run: four games stalemated by the tie, Rxd7 stalemating where giving up the rook
+/// played on in K+R v K+R; the carry2 run then showed playing on a rook down in K+R v K+R LOSES -- "first, don't lose"
+/// ranks before dragging it out, so a stalemate now beats a rook handed over at an equal net).
 fn least_loss(pos: &Chess, net: &dyn Fn(&Move) -> i64) -> Option<Move> {
-    // AT THE CLOCK'S END (the fifty-move draw a move away): a rook given up only to reset the clock is a draw kept by a
-    // loss -- among equal nets, the move keeping our material (accept the clock's draw; 2026-10-12, round 3 of the "known"
-    // run: five rooks thrown at half-move 98, reading as "ground lost" where the failure was fifty moves of no progress)
-    let clock_end = pos.halfmoves() >= 98;
+    // FIRST, DON'T LOSE (Kaveh 2026-10-12: "first, don't lose, and then try to win"; then "drag the loss out"): among
+    // equal nets, the move handing over the least material (their biggest static exchange on a piece of ours after it),
+    // then a move not ending the game. A draw they may claim keeps our pieces; a piece handed over plays on a piece down
+    // and can lose (2026-10-12, the carry2 run, seed 2097: Kd2 dropped the d5 rook rather than allow Rb4's threefold,
+    // both "net -5" -- K+R v K+R then lost; the same principle was applied before only at the fifty-move clock's end,
+    // where five rooks were thrown to reset it). A move ending the game hands over nothing.
     let us = pos.turn();
     pos.legal_moves().into_iter().max_by_key(|m| {
         let q = after(pos, m);
         let ends = !q.is_checkmate() && (q.legal_moves().is_empty() || crate::game::drawn(&q).is_some());
-        let risk = if clock_end {
+        let risk = if ends { 0 } else {
             (q.board().by_color(us) & !q.board().kings()).into_iter().map(|s| crate::rules::see(q.board(), s, !us)).max().unwrap_or(0)
-        } else { 0 };
+        };
         (net(m), -risk, !ends)
     })
 }

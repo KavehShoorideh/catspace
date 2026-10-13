@@ -924,6 +924,25 @@ pub fn set_net_bound(flag: bool) -> PyResult<()> { NET_BOUND.store(flag, Orderin
 
 /// The planner's audit of one move, for the generic frame (vocab.rs): its net -- what it takes, minus what their
 /// reasoning wins back (a draw is minus our lead) -- with no proofs of ours.
+/// audit_check(fen, history) -> for every legal move: (uci, the audit's net, their best answer's reason) with the given
+/// positions as the game's history -- the observation hook for the planner's move audit (follow the code paths).
+#[pyfunction]
+pub fn audit_check(fen: String, history: Vec<String>) -> Vec<(String, i64, String)> {
+    let Some(pos) = crate::parse(&fen) else { return vec![] };
+    let mut seen: std::collections::HashMap<u64, u8> = std::collections::HashMap::new();
+    for f in history.iter().chain(std::iter::once(&fen)) {
+        if let Some(q) = crate::parse(f) { *seen.entry(crate::threat::zkey(&q)).or_insert(0) += 1; }
+    }
+    crate::game::install(seen);
+    NET_CACHE.with(|c| c.borrow_mut().clear());              // (its entries are keyed by the position, not the history)
+    let out = pos.legal_moves().into_iter().map(|m| {
+        let (mut pr, mut nd) = (0u32, 0u64);
+        let (net, why) = net_after(&pos, &m, &[], &mut pr, &mut nd);
+        (m.to_uci(CastlingMode::Standard).to_string(), net, why.unwrap_or_default())
+    }).collect();
+    crate::game::clear();
+    out
+}
 pub(crate) fn audit_net(pos: &Chess, m: &Move) -> i64 {
     let (mut p, mut n) = (0u32, 0u64);
     net_after(pos, m, &[], &mut p, &mut n).0
