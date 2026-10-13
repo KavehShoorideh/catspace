@@ -30008,3 +30008,24 @@ as long as possible or get to the quickest win").
   backrank, overload and the tactic census/coverage imports broke (4 tests, 1 collection error); renamed to
   discovered_check.py (committed). Full suite: 728 passed, 4 failed (that import), 2 collection errors (that import; a
   research tool's missing data file) -> after the rename those 17 tests pass.
+
+THE LOOP ON HONEST EVIDENCE (tag bygame; 2026-10-12 22:33-22:41 PDT; Kaveh: "Yes" -- successive halving in the
+screening, then the loop). Confirmation by GAME (choosing and confirming on different games, one vote a game, the
+one-sided e-value, a bar of 20 per candidate for life, the futility drop), the screening as successive halving (60
+candidates on 7 of the 50 choosing boards, the better half on more, 8 finalists on all: ~980 games a hole against
+3000), the least-loss tie-break in play. A smoke first (the challenger replayed on geometry round 2): a stage's boards
+had come from a few long games (its confirmation from ONE game) -- now spread one game at a time; "their rook far from
+its king" there: 7 of 10 games better, 1 worse, e 7.0 -- promising, not shown (its earlier "26/50 against 3/50" was a
+handful of games).
+  K+R+R v K+R wins per 100: round 0 69 (no loss -- every earlier run lost one here; repetition draws 8, were 3), round
+  1 72, round 2 64 (1 loss: seed 2031, the second-rank skewer from a position the tablebase already drew, then a K+R v
+  K+R we did not hold; seed 2097 -- the tie-break case -- no longer loses). Then "nothing new mined and no evidence
+  pending -- stopping" (round 3 would replay round 2's frames). The whole run: 8 minutes (was ~20).
+  CONFIRMED (one lemma): K+R+R v K "the squares nearer their king than our rook" -- 12 of 21 held-out games better, 1
+  worse (e 90). Nothing else: K+R+R v K+R -- a candidate pending from round 0 went 9:5, then 14:13, then 21:21 pooled,
+  dropped; the in-check frame -- two pending ended 15:14 and 20:23; K+R+R v K's round-2 best 4:0 (e 6.2) ran out of
+  rounds (unknown, not rejected). Read with carry2's three "promotions": on correlated boards, coin flips looked like
+  lemmas; by game, K+R+R v K+R has no static measure of our vocabulary that beats the empty frame.
+  OPEN (for Kaveh, asked earlier): the proposers still learn the choosing boards' score, not the confirmation's votes;
+  the challenger needs a frame to attack, and K+R+R v K+R has none; the budget-only futility rule kept a 14:13
+  candidate a round longer than worth it (the literature's reverse e-process would drop it sooner); holding K+R v K+R.

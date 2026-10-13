@@ -1218,5 +1218,21 @@
   },
   "used_by": "the KRRvKR:check frame (append): ['(count (and hit (nearer L P)))']",
   "created": "2026-10-12"
+ },
+ {
+  "id": "krrvk_bygame_r0_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (nearer L P))",
+  "gloss": "how many of the squares nearer their king than our other piece",
+  "size": 4,
+  "lean": "(count (nearer L P))",
+  "hole": "learn_bygame_KRRvK_rank2_r0",
+  "evidence": {
+   "verifier": "on 50 confirmation boards: held 41/50, won 41 -- the frame before it held 19/50, won 19; better on 12 boards, worse on 1 over 1 round(s), e-value 89.9 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KRRvK frame (append): ['(count (nearer L P))']",
+  "created": "2026-10-12"
  }
 ]

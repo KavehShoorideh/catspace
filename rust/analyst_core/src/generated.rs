@@ -229,3 +229,6 @@ pub const KRRVK_CARRY2_R2_PROGRESS: &str = "(count (not (nearer W L)))";
 
 /// krrvkr_check_carry2_r2_progress: how many of the squares they attack that are also the squares nearer their king than our other piece (2026-10-12, hole learn_carry2_KRRvKR_check_rank2_r2; verifier: on 35 confirmation boards: held 1/35, won 1 -- the frame before it held 1/35, won 1; better on 30 boards, worse on 5 over 3 round(s), e-value 2.94e+03 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvKR:check frame (append): ['(count (and hit (nearer L P)))'])
 pub const KRRVKR_CHECK_CARRY2_R2_PROGRESS: &str = "(count (and hit (nearer L P)))";
+
+/// krrvk_bygame_r0_progress: how many of the squares nearer their king than our other piece (2026-10-12, hole learn_bygame_KRRvK_rank2_r0; verifier: on 50 confirmation boards: held 41/50, won 41 -- the frame before it held 19/50, won 19; better on 12 boards, worse on 1 over 1 round(s), e-value 89.9 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KRRvK frame (append): ['(count (nearer L P))'])
+pub const KRRVK_BYGAME_R0_PROGRESS: &str = "(count (nearer L P))";
