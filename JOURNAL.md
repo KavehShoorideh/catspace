@@ -30220,3 +30220,14 @@ stages, guarded (one reusing "the line from our king to their rook"); on round 6
 K+Q v K+R rounds 0-6: 76/76/82/74/64/75/64 (no frames: 75/71/-/68/61/73/62) -- two more stages for our king aligned with
 their rook (one reusing K+B+N v K's king-coordination term). The unseen K+Q v K+R starts gain little: +2 and +2.
 No errors in either run.
+
+THE FRAME'S MATE (2026-10-13 morning; Kaveh: "For the mate search, it has to be purposeful and guided by a need shown by
+the frames or lemmas so it's understandable"; "Search inside the frame is ok"). When the frame's goal is mate (their king
+alone), the frame asks its claim's second half -- "or the goal" -- first: a proof search (the PNS of threat.rs's
+searches) for a forced mate whose moves of ours stay INSIDE THE FRAME (a check, or a statically safe move not raising
+the frame's measure), every reply of theirs, at most 5 moves of ours, 30,000 expansions; proved, the line is played and
+explained by their king's flight squares ("Ng3 (1 flight square left, check) Kg1 Bb6#"). A first trigger -- only when
+no move certified the frame's progress -- ran from 1 of 20 starts within 10 plies, where the search proves a mate from
+12 (with the inside-the-frame filter or without it: the filter is not what limits it). THE MEASUREMENT (K+B+N v K, the
+newest frame, the same 100 starts, seeds 5000-5099, one replay each): within 10 plies 70 -> 94 wins; within 20 plies
+53 -> 73; within 40 plies 21 -> 29 (a round 14 s -> 79 s). Tests: the mate in two with its words; no claim far from mate.

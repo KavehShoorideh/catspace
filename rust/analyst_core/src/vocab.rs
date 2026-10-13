@@ -562,6 +562,92 @@ fn hold_move(pos: &Chess, key: &str, net: &dyn Fn(&Move) -> i64) -> Option<(Move
     Some((m, claim))
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// THE FRAME'S MATE (Kaveh 2026-10-13: "the mate search has to be purposeful and guided by a need shown by the frames or
+// lemmas so it's understandable"; "search inside the frame is ok"). Asked when the frame's goal is mate -- their king
+// stands alone; the frame's claim is "the measure falls, or the goal", and this asks the goal -- a proof search for a
+// forced mate whose moves of ours stay INSIDE THE FRAME:
+// a check, or a statically safe move that does not raise the frame's measure; every reply of theirs; at most
+// FRAME_MATE_DEPTH moves of ours. Proved, the line is played and explained move by move by their king's flight squares.
+// (2026-10-12/13: from K+B+N v K starts with mate in five or fewer the planner wandered -- it had no quiet mate search,
+// and the frames plateaued at 54-76% with the rest fifty-move draws in the final net.)
+pub const FRAME_MATE_DEPTH: u32 = 5;
+pub const FRAME_MATE_BUDGET: u64 = 30_000;
+pub static FRAME_MATE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// (for digging: false lifts the inside-the-frame filter -- every safe move or check of ours)
+pub static FRAME_MATE_INSIDE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_frame_mate(flag: bool) -> PyResult<()> { FRAME_MATE.store(flag, std::sync::atomic::Ordering::Relaxed); Ok(()) }
+
+#[derive(Clone)]
+pub struct MState { pos: Chess, mv: Option<Move>, ours: u32 }
+struct FrameMate<'a> { by: Color, base: &'a [Comp] }
+impl FrameMate<'_> {
+    fn meas(&self, q: &Chess) -> Vec<u32> { self.base.iter().map(|c| cval(c, q, !self.by)).collect() }
+}
+/// Their king's flight squares (their turn on `q`).
+fn flights(q: &Chess) -> usize { q.legal_moves().iter().filter(|m| m.role() == Role::King).count() }
+impl crate::pns::Problem for FrameMate<'_> {
+    type State = MState;
+    fn judge(&self, s: &MState, or: bool, root: bool) -> Option<bool> {
+        if !root && crate::game::claimable_draw(&s.pos).is_some() { return Some(false); }
+        if or {
+            if s.pos.legal_moves().is_empty() || s.ours >= FRAME_MATE_DEPTH { return Some(false); }
+            None
+        } else if s.pos.legal_moves().is_empty() { Some(s.pos.is_check()) } else { None }
+    }
+    fn expand(&self, s: &MState, or: bool) -> Vec<(MState, f64)> {
+        if or {
+            let m0 = self.meas(&s.pos);
+            s.pos.legal_moves().into_iter().filter_map(|m| {
+                let q = after(&s.pos, &m);
+                let inside = q.is_check() || (static_safe(q.board(), self.by)
+                    && (!FRAME_MATE_INSIDE.load(std::sync::atomic::Ordering::Relaxed) || self.meas(&q) <= m0));
+                inside.then(|| { let w = 1.0 + 0.5 * flights(&q) as f64; (MState { pos: q, mv: Some(m), ours: s.ours + 1 }, w) })
+            }).collect()
+        } else {
+            s.pos.legal_moves().into_iter().map(|m| (MState { pos: after(&s.pos, &m), mv: Some(m), ours: s.ours }, 1.0)).collect()
+        }
+    }
+    fn and_size(&self, s: &MState) -> f64 { s.pos.legal_moves().len().max(1) as f64 }
+    fn key(&self, s: &MState) -> u64 { crate::threat::zkey(&s.pos) }
+}
+
+/// frame_mate_of(fen, terms, inside) -> the frame's mate (the first move, the line) or None -- for digging.
+#[pyfunction]
+pub fn frame_mate_of(fen: String, terms: Vec<String>, inside: bool) -> Option<(String, String)> {
+    let pos = parse(&fen)?;
+    let base: Vec<Comp> = terms.iter().filter_map(|t| parse_term(t).map(Comp::T)).collect();
+    let was = FRAME_MATE_INSIDE.swap(inside, std::sync::atomic::Ordering::Relaxed);
+    let r = frame_mate(&pos, &base).map(|(m, w)| (m.to_uci(CastlingMode::Standard).to_string(), w));
+    FRAME_MATE_INSIDE.store(was, std::sync::atomic::Ordering::Relaxed);
+    r
+}
+
+/// The frame's mate from `pos` (us to move) with the frame `base`: the first move and the line in words, or None.
+fn frame_mate(pos: &Chess, base: &[Comp]) -> Option<(Move, String)> {
+    if !FRAME_MATE.load(std::sync::atomic::Ordering::Relaxed) { return None; }
+    let by = pos.turn();
+    let (r, lines) = crate::pns::search_proof_lines(&FrameMate { by, base }, MState { pos: pos.clone(), mv: None, ours: 0 }, FRAME_MATE_BUDGET, 1);
+    if r != Some(true) { return None; }
+    let line = lines.into_iter().next()?;
+    let first = line.get(1)?.mv.clone()?;
+    let mut words = Vec::new();
+    for w in line.windows(2) {
+        let (a, b) = (&w[0], &w[1]);
+        let Some(m) = &b.mv else { continue };
+        let mut t = crate::plan::san(&a.pos, &m.to_uci(CastlingMode::Standard).to_string());
+        if a.pos.turn() == by {
+            t += &if b.pos.is_checkmate() { "#".to_string() }
+                else { format!(" ({} flight square{} left{})", flights(&b.pos), if flights(&b.pos) == 1 { "" } else { "s" }, if b.pos.is_check() { ", check" } else { "" }) };
+        }
+        words.push(t);
+    }
+    let n = line.iter().filter(|s| s.pos.turn() != by).count();
+    Some((first, format!("the frame's mate in {n}, every move inside the frame (a check, or its measure not rising): {}", words.join(" "))))
+}
+
+
 /// The generic frame's move for the side to move -> (the move, its trace line: the claim and whether it is certified).
 /// Ahead: the WIN frame (its material's terms; none known -- the empty frame, whose only claim is the goal). Not ahead:
 /// the HOLD frame.
@@ -610,7 +696,15 @@ pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
     // in play, a move must also pass the planner's own audit (its reasoning for them: nothing of ours lost, no draw);
     // none does -- the least loss, said so
     let audited = |m: &Move| crate::plan::audit_net(pos, m) >= 0;
-    let Some((m, cert)) = sp.choose_cert(pos, &|q: &Chess| crate::game::seen(q), &audited) else {
+    let chosen = sp.choose_cert(pos, &|q: &Chess| crate::game::seen(q), &audited);
+    // THE NEED SHOWN BY THE FRAME: its claim is "the measure falls within FRAME_K moves, OR THE GOAL" -- with their king
+    // alone the goal is mate, and whether the goal is provable inside the frame is the claim's own second half; asked
+    // first (2026-10-13: asked only when no move certified progress, it ran from 1 of 20 starts within 10 plies of mate,
+    // where it proves the mate from 12 -- the frame "certifies" a falling measure long after a mate is there)
+    if (pos.board().by_color(!us) & !pos.board().kings()).is_empty() {
+        if let Some(x) = frame_mate(pos, &sp.base) { return Some(x); }
+    }
+    let Some((m, cert)) = chosen else {
         let m = least_loss(pos, &|m: &Move| crate::plan::audit_net(pos, m))?;
         let net = crate::plan::audit_net(pos, &m);
         return Some((m, format!("no safe move for the {key} frame: the least loss (net {net}) -- the claim is the goal within {FRAME_K} moves")));
