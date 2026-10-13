@@ -160,14 +160,17 @@ def answer(cf: dict, material: str, kind: str, run: str, rnd: int, frames: dict,
         b = chess.Board(f); b.halfmove_clock = 0
         return b.fen()
     from .verifier import split, confirm
-    choose, check, check_games = split([fresh(f) for f in cf["boards"]][:100], n_boards, cf["games"][:100], seed=f"{run}|{material}|{rnd}|{kind}")
+    from .verifier import spread
+    picked, pg = spread(cf["boards"], cf["games"], 100)
+    choose, check, check_games = split([fresh(f) for f in picked], n_boards, pg, seed=f"{run}|{material}|{rnd}|{kind}")
     boards = choose + check                                     # choosing and confirming on different games, choosing first
     fkey = f"{material}:if:{cf['term']}>={cf['theta']}"
     hole = dict(name=f"stage_{run}_{material}_r{rnd}_{kind}", material=material, frame_key=fkey, frames=frames, piece="*",
                 base=[], k=2, stuck=boards, sampled=len(boards), leave=[cf["term"], cf["theta"]] if kind == "trap" else None)
     json.dump(hole, open(paths.derived(f"hole_{hole['name']}.json"), "w"))
     out = pipeline_run(hole["name"], budget, hole=hole, defender=defender, n_boards=len(choose))
-    base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None
+    from .pipeline import best_of
+    base, best = out[0], best_of(out[1:])
     c = confirm(hole, best, check, defender, check_games)     # on games not used to choose it, one vote a game
     goal = "left R or won" if kind == "trap" else "won"
     show = lambda r: f"{goal} {r['mated']}/{r['n']}, lost ground {r['lost']}, lemma-states {r.get('states', 0) / max(r['n'], 1):.1f} a board"

@@ -141,6 +141,56 @@ def fresh_candidates(hole: dict, boards: list) -> dict:
     return dict(hole=hole["name"], boards=boards, n=len(boards), rows=rows)
 
 
+def merged(recs: list) -> dict:
+    """A candidate's verifier records on consecutive slices of the same boards -> one record on all of them."""
+    from collections import Counter
+    from . import defenders as D
+    o = dict(n=sum(r["n"] for r in recs), won=sum(r["mated"] for r in recs), lost=sum(r["lost"] for r in recs),
+             kept=sum(r["certified"] for r in recs), claims=sum(r["played"] for r in recs), states=sum(r.get("states", 0) for r in recs))
+    why = Counter()
+    for r in recs:
+        why.update(r.get("why") or {})
+    first = recs[0]
+    return dict(hole=first["hole"], term=first["term"], schema=first["schema"], defender=first["defender"], n=o["n"], mated=o["won"],
+                lost=o["lost"], played=o["claims"], certified=o["kept"], states=o["states"], why=dict(why),
+                examples=[e for r in recs for e in r.get("examples", [])][:3], per_board=[x for r in recs for x in r["per_board"]],
+                ranks=list(D.ranked(o)), score=D.score(o))
+
+
+def race(ver, hole: dict, cands: list, boards: list) -> list:
+    """THE SCREENING AS SUCCESSIVE HALVING (Karnin, Koren & Somekh 2013; Jamieson & Talwalkar 2016 -- the literature
+    check 2026-10-12): every candidate on the first eighth of the boards, the better half on the next eighth, the better
+    half of those on the next quarter, the last eighth of the field on the rest -- each stage costs about the same, all
+    candidates of a stage on the same boards (paired), every stage's survivors played every board so far. It only
+    CHOOSES: the choice is confirmed on other games, so any screening keeps the evidence valid. -> a record a candidate
+    on the boards it played (the finalists: all of them)."""
+    import math
+    stages = min(4, max(1, math.ceil(math.log2(max(len(cands), 2)))))
+    cuts = [math.ceil(len(boards) / 2 ** (stages - 1 - k)) for k in range(stages)]
+    recs = {c: [] for c in cands}
+    alive, done = list(cands), 0
+    for k, cut in enumerate(cuts):
+        if cut > done:
+            for c, r in zip(alive, ver.verify_many(hole, alive, boards[done:cut])):
+                recs[c].append(r)
+            done = cut
+        if k < stages - 1:
+            alive = sorted(alive, key=lambda c: -merged(recs[c])["score"])[:math.ceil(len(alive) / 2)]
+    games = sum(r["n"] for c in cands for r in recs[c])
+    print(f"OBS   the race: {len(cands)} candidates on {cuts[0]} boards, the better half on more ... {len(alive)} finalists on all {len(boards)} "
+          f"(~{games} games, against {len(cands) * len(boards)} for every candidate on every board)")
+    return [merged(recs[c]) for c in cands if recs[c]]
+
+
+def best_of(records: list) -> dict | None:
+    """The best candidate among those that played the most boards (a race's finalists): a lucky start on a few boards
+    never outranks a finalist."""
+    if not records:
+        return None
+    most = max(r["n"] for r in records)
+    return max((r for r in records if r["n"] == most), key=lambda r: r["score"])
+
+
 def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int = 40, hole: dict | None = None,
         defender: str = "self", n_boards: int = 30, batches: int = 1) -> list:
     """The pipeline on one hole: the learned proposers trained on the LABELED holes' verdicts (the store's feedback; the
@@ -173,10 +223,10 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
         kept = filter_(rankings, budget, skip=done, names=names)
         if not kept:
             break
-        got = [ver.verify(h, t, s, boards) for t, s in kept]
+        got = race(ver, h, kept, boards) if defender != "self" else [ver.verify(h, t, s, boards) for t, s in kept]
         done |= set(kept)
         res += got
-        top = max(got, key=lambda r: r["score"])
+        top = best_of(got)
         if top["score"] > best["score"]:
             best, stale = top, 0
         else:
@@ -187,7 +237,7 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
         # (Kaveh: not "keep proposing until it's broken" -- one batch unless asked; the loop is the rounds)
         if batch_no >= batches or stale >= 2:
             break
-    res = sorted(res, key=lambda r: -r["score"])
+    res = sorted(res, key=lambda r: (-r["n"], -r["score"]))                 # the finalists first
     def show(r):
         if "ranks" in r:
             why = ", ".join(f"{k} {v}" for k, v in sorted(r.get("why", {}).items(), key=lambda kv: -kv[1]))

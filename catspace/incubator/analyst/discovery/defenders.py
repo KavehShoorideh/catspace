@@ -250,16 +250,29 @@ def closed_loop(boards: list, base: list, cand: str | None, schema: str, piece: 
         if player != "frame":
             raise ValueError("the 'self' defender (the measure's adversary) lives in Rust and plays the frame alone")
         return tuple(A.verify_play(boards, base, cand, schema, piece, limit))
-    from multiprocessing import Pool
-    with Pool(workers, initializer=_init, initargs=(defender,)) as p:
-        res = p.map(_play_one, [(f, base, cand, schema, piece, limit, defender, player, material, frames, leave) for f in boards], chunksize=2)
-    kept, claims = claims_kept(res, compose(base, cand, schema))
+    return closed_loop_many(boards, base, [(cand, schema)], piece, limit, defender, workers, player, material, frames, leave)[0]
+
+
+def closed_loop_many(boards: list, base: list, cands: list, piece: str, limit: int, defender: str, workers: int = WORKERS,
+                     player: str = "frame", material: str = "", frames: dict | None = None, leave: tuple | None = None) -> list:
+    """closed_loop for several candidates [(term, schema)] on the same boards in ONE pool of workers (the screening's
+    race plays many candidates on a few boards a stage: a pool each would cost more than the games) -> a result a
+    candidate, in order."""
     from collections import Counter
-    whys = [r["why"] for r in res if r["lost"] and r["why"]]
-    return dict(n=len(res), won=sum(r["won"] for r in res), lost=sum(r["lost"] for r in res),
-                moves=sum(r["moves"] for r in res if r["won"]), played=sum(len(r["ours"]) for r in res), kept=kept, claims=claims,
-                states=sum(r["states"] for r in res), why=dict(Counter(w["kind"] for w in whys)), examples=whys[:3],
-                per_board=[[int(not r["lost"]), int(r["won"]), r["states"]] for r in res])        # in the boards' order
+    from multiprocessing import Pool
+    jobs = [(f, base, c, s, piece, limit, defender, player, material, frames, leave) for c, s in cands for f in boards]
+    with Pool(workers, initializer=_init, initargs=(defender,)) as p:
+        res = p.map(_play_one, jobs, chunksize=max(1, min(4, len(jobs) // (4 * workers))))
+    out = []
+    for i, (c, s) in enumerate(cands):
+        rs = res[i * len(boards):(i + 1) * len(boards)]
+        kept, claims = claims_kept(rs, compose(base, c, s))
+        whys = [r["why"] for r in rs if r["lost"] and r["why"]]
+        out.append(dict(n=len(rs), won=sum(r["won"] for r in rs), lost=sum(r["lost"] for r in rs),
+                        moves=sum(r["moves"] for r in rs if r["won"]), played=sum(len(r["ours"]) for r in rs), kept=kept, claims=claims,
+                        states=sum(r["states"] for r in rs), why=dict(Counter(w["kind"] for w in whys)), examples=whys[:3],
+                        per_board=[[int(not r["lost"]), int(r["won"]), r["states"]] for r in rs]))    # in the boards' order
+    return out
 
 
 def ranked(r: dict) -> tuple:

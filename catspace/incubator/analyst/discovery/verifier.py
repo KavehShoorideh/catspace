@@ -57,6 +57,31 @@ class Verifier:
                 r = json.loads(line)
                 self.memo[_key(r["hole"], r["term"], r["schema"], r.get("boards", ""), r.get("spec", ""))] = r
 
+    def verify_many(self, hole: dict, cands: list, boards: list) -> list:
+        """verify for several candidates [(term, schema)] on the same boards: those the store has not seen played in ONE
+        pool (a real defender only) -> a record a candidate, in order."""
+        from . import defenders as D
+        if D.parse(self.defender)[0] == "self":
+            return [self.verify(hole, t, s, boards) for t, s in cands]
+        bh, sp = board_hash(boards), spec_of(hole, self.defender)
+        key = lambda t, s: _key(hole["name"], t or "", s, bh, sp)
+        todo = [(t, s) for t, s in cands if not (key(t, s) in self.memo and "per_board" in self.memo[key(t, s)])]
+        if todo:
+            import analyst_core as A
+            piece = hole.get("piece") or hole["material"][1]
+            outs = D.closed_loop_many(boards, hole["base"], todo, piece, LIMIT, self.defender, player="planner",
+                                      material=hole.get("frame_key") or hole["material"], frames=hole.get("frames"),
+                                      leave=tuple(hole["leave"]) if hole.get("leave") else None)
+            with open(self.path, "a") as fh:
+                for (t, s), o in zip(todo, outs):
+                    r = dict(hole=hole["name"], term=t or "", schema=s, boards=bh, spec=sp, defender=self.defender, n=len(boards),
+                             stage1=A.verify_count(boards, hole["base"], t, s, hole["k"], piece),
+                             mated=o["won"], lost=o["lost"], played=o["claims"], certified=o["kept"], ranks=list(D.ranked(o)),
+                             states=o["states"], why=o["why"], examples=o["examples"], per_board=o["per_board"], score=D.score(o), t=time.time())
+                    self.memo[key(t, s)] = r
+                    fh.write(json.dumps(r) + "\n")
+        return [self.memo[key(t, s)] for t, s in cands]
+
     def verify(self, hole: dict, term: str | None, schema: str, boards: list | None = None) -> dict:
         """Both stages on the hole's boards; remembered and stored."""
         import analyst_core as A
@@ -103,12 +128,30 @@ def split(boards: list, n_boards: int, games: list, seed: str = "") -> tuple:
     order = sorted(by, key=lambda g: random.Random(f"{seed}|{g}").random())
     half = min(n_boards, len(boards) // 2)
     choose, check, check_games = [], [], []
-    for g in order:
-        if len(choose) < half:
+    for g in order:                                   # (a game joins a side only if it fits: no side overshoots)
+        if len(choose) + len(by[g]) <= half or not choose:
             choose += by[g]
         elif len(check) + len(by[g]) <= n_boards:
             check += by[g]; check_games += [g] * len(by[g])
     return choose, check, check_games
+
+
+def spread(boards: list, games: list, cap: int) -> tuple:
+    """Up to `cap` boards taken one game at a time, round robin (games in their first appearance's order) -> (boards,
+    games): as many games as the boards allow -- the evidence is one vote a game (2026-10-12: a stage's first 100
+    refuted boards came from a few long games, its confirmation from one)."""
+    from collections import defaultdict
+    by, order = defaultdict(list), []
+    for b, g in zip(boards, games):
+        if g not in by:
+            order.append(g)
+        by[g].append(b)
+    out, og = [], []
+    while len(out) < cap and any(by[g] for g in order):
+        for g in order:
+            if by[g] and len(out) < cap:
+                out.append(by[g].pop(0)); og.append(g)
+    return out, og
 
 
 def confirm(hole: dict, best: dict | None, boards: list, defender: str, games: list | None = None) -> dict:

@@ -418,7 +418,8 @@ def mine(res: list, frames: dict, rnd: int, budget: int, cap: int = 100, tag: st
               f"(base {cur or 'none'}; {len(boards)} boards; the games' contrast: {len(con['win'])} before a win, {len(con['draw'])} in draws)")
         t0 = time.time()
         out = run(name, budget, hole=hole, defender=defender, n_boards=len(choose))
-        base, best = out[0], max(out[1:], key=lambda r: r["score"]) if len(out) > 1 else None
+        from .pipeline import best_of
+        base, best = out[0], best_of(out[1:])
         cf = None
         if "ranks" in base:                      # a real defender: confirmed board by board on boards not used to choose
             # THE EVIDENCE CARRIED ACROSS ROUNDS (Kaveh 2026-10-12, "Yes" -- an inconclusive e-value continues on the next

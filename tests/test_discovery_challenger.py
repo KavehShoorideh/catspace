@@ -74,4 +74,14 @@ def test_choose_and_confirm_on_different_games():
     games = [i // 3 for i in range(100)]                                          # three boards a game
     choose, check, cg = split(boards, 50, games, seed="t")
     gc = {games[boards.index(b)] for b in choose}
-    assert not gc & set(cg) and len(check) == len(cg) <= 50 and 50 <= len(choose) <= 52
+    assert not gc & set(cg) and len(check) == len(cg) <= 50 and 47 <= len(choose) <= 50
+
+
+def test_spread_takes_one_game_at_a_time():
+    from catspace.incubator.analyst.discovery.verifier import spread, split
+    boards = [f"b{i}" for i in range(60)]
+    games = [0] * 40 + [1] * 10 + [2] * 5 + [3] * 5                              # one long game, three short
+    out, og = spread(boards, games, 12)
+    assert og == [0, 1, 2, 3] * 3
+    choose, check, cg = split(out, 50, og, seed="t")
+    assert len(choose) <= 6 and set(cg) and not {og[out.index(b)] for b in choose} & set(cg)
