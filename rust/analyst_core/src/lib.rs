@@ -1670,6 +1670,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(threat::forcing_proof_of, m)?)?;
     m.add_function(wrap_pyfunction!(game::game_draw_check, m)?)?;
     m.add_function(wrap_pyfunction!(plan::audit_check, m)?)?;
+    m.add_function(wrap_pyfunction!(plan::set_tie_risk, m)?)?;
     m.add_function(wrap_pyfunction!(plan::kq_move_of, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_game_draws, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_kq_tactic, m)?)?;

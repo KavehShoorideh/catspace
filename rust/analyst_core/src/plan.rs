@@ -745,9 +745,23 @@ fn tie_score(pos: &Chess, m: &Move) -> i64 {
 /// (TIE_ORDER off: tie_score alone, its material-taken term first)
 fn tie_better(pos: &Chess, m: &Move, cur: &Move, net: i64) -> bool {
     if !TIE_BREAK.load(Ordering::Relaxed) { return false; }
-    if !TIE_ORDER.load(Ordering::Relaxed) { return tie_score(pos, m) > tie_score(pos, cur); }
     let us = pos.turn();
     let (qm, qc) = (after(pos, m), after(pos, cur));
+    // FIRST, DON'T LOSE: the least material HANDED OVER -- their best static exchange on a piece of ours after the move
+    // (2026-10-13, the krr_all run, seed 4059: at half-move 98 Rf8+ "stops their Kxg1" handed the g1 rook over at the same
+    // net as keeping it -- a fifty-move draw is worth minus our lead -- and K+R v K+R was then lost; least_loss had the
+    // rule, the defence's tie did not)
+    // (first of all the criteria, whichever order follows: TIE_ORDER is off by default) -- ONLY AT THE DRAW'S VALUE: when
+    // the tied net is minus our lead, a draw (a claim of theirs) ties with a loss of material; elsewhere the activity
+    // order stands (applied to every tie it cost 5 wins in 100 on krr_all's round-4 starts, 64 -> 59, no loss saved)
+    if TIE_RISK.load(Ordering::Relaxed) && kernel_material(pos, us) > 0 && net == crate::game::draw_net(pos) {
+        let risk = |q: &Chess| if q.is_checkmate() || q.legal_moves().is_empty() { 0 } else {
+            (q.board().by_color(us) & !q.board().kings()).into_iter().map(|s| rules::see(q.board(), s, !us)).max().unwrap_or(0)
+        };
+        let (rm, rc) = (risk(&qm), risk(&qc));
+        if rm != rc { return rm < rc; }
+    }
+    if !TIE_ORDER.load(Ordering::Relaxed) { return tie_score(pos, m) > tie_score(pos, cur); }
     let hand = |q: &Chess| (kernel_material(q, us) - kernel_material(pos, us)).max(0).min(net.max(0));
     let (hm, hc) = (hand(&qm), hand(&qc));
     if hm != hc { return hm > hc; }
@@ -862,6 +876,9 @@ pub fn gain_floor_of(bal: i64) -> i64 {
 // the pin refusal waived for a counter-threat as big as the loss; the tie-break also against the geometry's defence
 pub static TIE_ORDER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 pub static TIE_CHEAP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+pub static TIE_RISK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+#[pyfunction]
+pub fn set_tie_risk(flag: bool) -> PyResult<()> { TIE_RISK.store(flag, Ordering::Relaxed); Ok(()) }
 pub static TIE_BALANCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 pub fn set_tie_cheap(flag: bool) -> PyResult<()> { TIE_CHEAP.store(flag, Ordering::Relaxed); Ok(()) }

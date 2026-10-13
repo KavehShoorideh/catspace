@@ -32,3 +32,16 @@ def _history():
         b = chess.Board(FEN); b.push_uci(k); b.push_san("Rb4+")
         out += [b.fen(), b.fen()]                       # each seen twice: Rb4+ would make the third
     return out
+
+
+def test_a_defence_tie_keeps_the_rook():
+    # krr_all seed 4059: at half-move 98 every defence of the g1 rook nets -5 (the fifty-move draw is worth minus our
+    # lead); Rf8+ handed the rook over and K+R v K+R was then lost -- among equal nets, the least material handed over
+    fen = "3R4/r7/4K3/8/8/8/5k2/6R1 w - - 98 50"
+    A.set_generic_frame(True)
+    st = A.PlanState()
+    tr, dec, *_ = st.observe(fen)
+    b = chess.Board(fen)
+    move = next(chess.Move.from_uci(u) for u in dec[:2] if u and len(u) in (4, 5) and chess.Move.from_uci(u) in b.legal_moves)
+    b.push(move)
+    assert not [s for s in b.pieces(chess.ROOK, chess.WHITE) if b.is_attacked_by(chess.BLACK, s) and not b.is_attacked_by(chess.WHITE, s)], (dec, tr)
