@@ -30101,3 +30101,16 @@ game area and keep trying harder and harder challenges"). Generic changes, each 
   from; a frame promoted on progress did not win a game; likely needs the curriculum (and perhaps the bishop's colour,
   which the vocabulary lacks -- not added: the vocabulary is Kaveh's). K+Q v K+R (smoke 21/24/23 of 30; full run kqr1
   75/71/74/67 per 100, stopped after round 3 for the guard): restarted as kqr2 with every change.
+
+K+Q v K+R WITH THE GUARD (tag kqr2; 2026-10-12 23:40 - 2026-10-13 00:08 PDT). Wins per 100, rounds 0-4: 75/71/75/69/65,
+then "nothing new and nothing pending". Confirmed and guarded: K+Q v K+R "the squares nearer their king than our queen
+outside our king's rank" (guard 11 better, 2 worse); the in-check frame "the unattacked squares nearer our queen than
+their king" (guard 4 to 1; it won verifier games, not progress alone); a stage for "our queen cannot reach unattacked
+squares >= 2" with K+R+R v K+R's "the squares not nearer our king than theirs" (carried; guard 4:7 then 6:10 -- vetoed
+twice -- then 5:4, passed: the running code still kept vetoed stages pending; fixed since). The challenger named the
+dangers itself: their king squeezed to a small region with their rook free (the mad-rook stalemates; trap 0.95), our
+king and their rook on one edge line (the skewer; blind spot, 0.81 refuted inside, 0.27 outside).
+  THE MEASUREMENT (same starts, one replay each -- directional): round 3's starts, no frames 68 -- the final frames 74;
+  round 4's starts, no frames 61 -- the final frames 65 (the run). The learned K+Q v K+R lemmas: +4 to +6 wins in 100.
+  The draws' anatomy: ~20-25 a round fail to convert in fifty moves (some end in a capture at half-move 98 -- a
+  queen for the rook, both draws); the stalemates (up to 7 a round) all from positions the tablebase already drew.

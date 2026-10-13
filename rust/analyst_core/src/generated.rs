@@ -250,3 +250,27 @@ pub const KRRVKR_CHECK_HONESTGAP_R2_PROGRESS: &str = "(count (segment W O))";
 
 /// stage_krrvkr_honestgap_r2_trap: how many of the squares our king can walk to over the squares they do not attack that are also the squares outside the squares nearer our other piece than their king (2026-10-12, hole stage_honestgap_KRRvKR_r2_trap; verifier: left R or won 44/50, lost ground 6, lemma-states 2.1 a board against left R or won 7/50, lost ground 43, lemma-states 5.4 a board without the stage (confirmation boards; e-value 56.8); trap: how many of the squares nearer their king than our other piece that are also the squares outside the box around their king >= 30; status: a conjecture: the stage's claim is not proved; used by the stage KRRvKR:if:(count (and (nearer L P) (not (box L))))>=30)
 pub const STAGE_KRRVKR_HONESTGAP_R2_TRAP: &str = "(count (and (reach W unhit) (not (nearer P L))))";
+
+/// kqvkr_kqr1_r1_progress: how many of the squares our other piece attacks (2026-10-12, hole learn_kqr1_KQvKR_rank2_r1; verifier: on 49 confirmation boards: held 0/49, won 0 -- the frame before it held 0/49, won 0; better on 20 boards, worse on 2 over 2 round(s), e-value 1.58e+03 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KQvKR frame (append): ['(count (attacks P))'])
+pub const KQVKR_KQR1_R1_PROGRESS: &str = "(count (attacks P))";
+
+/// kqvkr_check_kqr1_r1_progress: how many of the squares from our king to their other piece along their line (2026-10-12, hole learn_kqr1_KQvKR_check_rank2_r1; verifier: on 18 confirmation boards: held 0/18, won 0 -- the frame before it held 0/18, won 0; better on 12 boards, worse on 1 over 2 round(s), e-value 89.9 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KQvKR:check frame (append): ['(count (segment W O))'])
+pub const KQVKR_CHECK_KQR1_R1_PROGRESS: &str = "(count (segment W O))";
+
+/// kqvkr_check_kqr1_r2_progress: how many of the squares we do not attack that are also the squares nearer their king than our other piece (2026-10-12, hole learn_kqr1_KQvKR_check_rank2_r2; verifier: on 16 confirmation boards: held 0/16, won 0 -- the frame before it held 0/16, won 0; better on 7 boards, worse on 0 over 1 round(s), e-value 31.9 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KQvKR:check frame (sum): ['(sum (count (segment W O)) (count (and free (nearer L P))))'])
+pub const KQVKR_CHECK_KQR1_R2_PROGRESS: &str = "(count (and free (nearer L P)))";
+
+/// stage_kqvkr_kqr1_r2_trap_carried: how many of the squares outside the squares nearer our king than their king (2026-10-12, hole stage_kqr1_KQvKR_r2_trap_carried; verifier: 23 games better, 4 worse over 2 rounds, e-value 546 (held-out games); region: (count (and unhit (not (reach P unhit)))) >= 5; status: a conjecture: the stage's claim is not proved; used by the stage KQvKR:if:(count (and unhit (not (reach P unhit))))>=5)
+pub const STAGE_KQVKR_KQR1_R2_TRAP_CARRIED: &str = "(count (not (nearer W L)))";
+
+/// stage_kqvkr_kqr1_r2_blind: how many of the squares nearer their king than our king that are also the squares outside the rank of our king (2026-10-12, hole stage_kqr1_KQvKR_r2_blind; verifier: won 0/50, lost ground 50, lemma-states 9.5 a board against won 0/50, lost ground 50, lemma-states 6.2 a board without the stage (confirmation boards; e-value 102); blind spot: how many of the squares outside the squares our other piece attacks >= 49; status: a conjecture: the stage's claim is not proved; used by the stage KQvKR:if:(count (not (attacks P)))>=49)
+pub const STAGE_KQVKR_KQR1_R2_BLIND: &str = "(count (and (nearer L W) (not (rank W))))";
+
+/// kqvkr_kqr2_r0_progress: how many of the squares nearer their king than our other piece that are also the squares outside the rank of our king (2026-10-12, hole learn_kqr2_KQvKR_rank2_r0; verifier: on 50 confirmation boards: held 0/50, won 0 -- the frame before it held 0/50, won 0; better on 10 boards, worse on 0 over 1 round(s), e-value 186 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KQvKR frame (append): ['(count (and (nearer L P) (not (rank W))))'])
+pub const KQVKR_KQR2_R0_PROGRESS: &str = "(count (and (nearer L P) (not (rank W))))";
+
+/// kqvkr_check_kqr2_r3_progress: how many of the squares they do not attack that are also the squares nearer our other piece than their king (2026-10-12, hole learn_kqr2_KQvKR_check_rank2_r3; verifier: on 13 confirmation boards: held 1/13, won 1 -- the frame before it held 0/13, won 0; better on 9 boards, worse on 0 over 2 round(s), e-value 102 (defender tablebase); status: a conjecture: its frame's claim is not proved; used by the KQvKR:check frame (append): ['(count (and unhit (nearer P L)))'])
+pub const KQVKR_CHECK_KQR2_R3_PROGRESS: &str = "(count (and unhit (nearer P L)))";
+
+/// stage_kqvkr_kqr2_r3_trap_carried: how many of the squares outside the squares nearer our king than their king (2026-10-12, hole stage_kqr2_KQvKR_r3_trap_carried; verifier: 71 games better, 3 worse over 4 rounds, e-value 7.77e+15 (held-out games); region: (count (and unhit (not (reach P unhit)))) >= 2; status: a conjecture: the stage's claim is not proved; used by the stage KQvKR:if:(count (and unhit (not (reach P unhit))))>=2)
+pub const STAGE_KQVKR_KQR2_R3_TRAP_CARRIED: &str = "(count (not (nearer W L)))";

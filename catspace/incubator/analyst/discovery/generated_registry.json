@@ -1332,5 +1332,136 @@
   },
   "used_by": "the stage KRRvKR:if:(count (and (nearer L P) (not (box L))))>=30",
   "created": "2026-10-12"
+ },
+ {
+  "id": "kqvkr_kqr1_r1_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (attacks P))",
+  "gloss": "how many of the squares our other piece attacks",
+  "size": 3,
+  "lean": "(count (attacksFrom p P))",
+  "hole": "learn_kqr1_KQvKR_rank2_r1",
+  "evidence": {
+   "verifier": "on 49 confirmation boards: held 0/49, won 0 -- the frame before it held 0/49, won 0; better on 20 boards, worse on 2 over 2 round(s), e-value 1.58e+03 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KQvKR frame (append): ['(count (attacks P))']",
+  "created": "2026-10-12"
+ },
+ {
+  "id": "kqvkr_check_kqr1_r1_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (segment W O))",
+  "gloss": "how many of the squares from our king to their other piece along their line",
+  "size": 4,
+  "lean": "(count (segment W O))",
+  "hole": "learn_kqr1_KQvKR_check_rank2_r1",
+  "evidence": {
+   "verifier": "on 18 confirmation boards: held 0/18, won 0 -- the frame before it held 0/18, won 0; better on 12 boards, worse on 1 over 2 round(s), e-value 89.9 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KQvKR:check frame (append): ['(count (segment W O))']",
+  "created": "2026-10-12"
+ },
+ {
+  "id": "kqvkr_check_kqr1_r2_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and free (nearer L P)))",
+  "gloss": "how many of the squares we do not attack that are also the squares nearer their king than our other piece",
+  "size": 6,
+  "lean": "(count (fun u => (fun u => !(attackedBy p c L u)) u && (nearer L P) u))",
+  "hole": "learn_kqr1_KQvKR_check_rank2_r2",
+  "evidence": {
+   "verifier": "on 16 confirmation boards: held 0/16, won 0 -- the frame before it held 0/16, won 0; better on 7 boards, worse on 0 over 1 round(s), e-value 31.9 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KQvKR:check frame (sum): ['(sum (count (segment W O)) (count (and free (nearer L P))))']",
+  "created": "2026-10-12"
+ },
+ {
+  "id": "stage_kqvkr_kqr1_r2_trap_carried",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (not (nearer W L)))",
+  "gloss": "how many of the squares outside the squares nearer our king than their king",
+  "size": 5,
+  "lean": "(count (fun u => !((nearer W L) u)))",
+  "hole": "stage_kqr1_KQvKR_r2_trap_carried",
+  "evidence": {
+   "verifier": "23 games better, 4 worse over 2 rounds, e-value 546 (held-out games)",
+   "region": "(count (and unhit (not (reach P unhit)))) >= 5",
+   "status": "a conjecture: the stage's claim is not proved"
+  },
+  "used_by": "the stage KQvKR:if:(count (and unhit (not (reach P unhit))))>=5",
+  "created": "2026-10-12"
+ },
+ {
+  "id": "stage_kqvkr_kqr1_r2_blind",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (nearer L W) (not (rank W))))",
+  "gloss": "how many of the squares nearer their king than our king that are also the squares outside the rank of our king",
+  "size": 8,
+  "lean": "(count (fun u => (nearer L W) u && (fun u => !((rankOf W) u)) u))",
+  "hole": "stage_kqr1_KQvKR_r2_blind",
+  "evidence": {
+   "verifier": "won 0/50, lost ground 50, lemma-states 9.5 a board against won 0/50, lost ground 50, lemma-states 6.2 a board without the stage (confirmation boards; e-value 102)",
+   "blind spot": "how many of the squares outside the squares our other piece attacks >= 49",
+   "status": "a conjecture: the stage's claim is not proved"
+  },
+  "used_by": "the stage KQvKR:if:(count (not (attacks P)))>=49",
+  "created": "2026-10-12"
+ },
+ {
+  "id": "kqvkr_kqr2_r0_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and (nearer L P) (not (rank W))))",
+  "gloss": "how many of the squares nearer their king than our other piece that are also the squares outside the rank of our king",
+  "size": 8,
+  "lean": "(count (fun u => (nearer L P) u && (fun u => !((rankOf W) u)) u))",
+  "hole": "learn_kqr2_KQvKR_rank2_r0",
+  "evidence": {
+   "verifier": "on 50 confirmation boards: held 0/50, won 0 -- the frame before it held 0/50, won 0; better on 10 boards, worse on 0 over 1 round(s), e-value 186 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KQvKR frame (append): ['(count (and (nearer L P) (not (rank W))))']",
+  "created": "2026-10-12"
+ },
+ {
+  "id": "kqvkr_check_kqr2_r3_progress",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (and unhit (nearer P L)))",
+  "gloss": "how many of the squares they do not attack that are also the squares nearer our other piece than their king",
+  "size": 6,
+  "lean": "(count (fun u => (fun u => !(attackedBy p (Color.opposite c) W u)) u && (nearer P L) u))",
+  "hole": "learn_kqr2_KQvKR_check_rank2_r3",
+  "evidence": {
+   "verifier": "on 13 confirmation boards: held 1/13, won 1 -- the frame before it held 0/13, won 0; better on 9 boards, worse on 0 over 2 round(s), e-value 102 (defender tablebase)",
+   "status": "a conjecture: its frame's claim is not proved"
+  },
+  "used_by": "the KQvKR:check frame (append): ['(count (and unhit (nearer P L)))']",
+  "created": "2026-10-12"
+ },
+ {
+  "id": "stage_kqvkr_kqr2_r3_trap_carried",
+  "provenance": "generated",
+  "kind": "measure",
+  "expr": "(count (not (nearer W L)))",
+  "gloss": "how many of the squares outside the squares nearer our king than their king",
+  "size": 5,
+  "lean": "(count (fun u => !((nearer W L) u)))",
+  "hole": "stage_kqr2_KQvKR_r3_trap_carried",
+  "evidence": {
+   "verifier": "71 games better, 3 worse over 4 rounds, e-value 7.77e+15 (held-out games)",
+   "region": "(count (and unhit (not (reach P unhit)))) >= 2",
+   "status": "a conjecture: the stage's claim is not proved"
+  },
+  "used_by": "the stage KQvKR:if:(count (and unhit (not (reach P unhit))))>=2",
+  "created": "2026-10-12"
  }
 ]
