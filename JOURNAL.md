@@ -29883,3 +29883,17 @@ for a dynamic defence (rook checks). The main frame ended at "the size of their 
 0.263 vs 0.202) -- the textbook idea, found from the stall points. READING: the challenger names the defender's idea but
 cannot state it sharply in a vocabulary of static sets (what is attacked NOW); the resource is dynamic (where their rook
 can check FROM). The gap boards are archived (counter_frames.json) for new predicates.
+THE BASE VOCABULARY, A SECOND BATCH (2026-10-12 20:05-20:22 PDT; Kaveh: "let's just preemptively add a bunch of things to the
+vocabulary ... sets of squares ... along a diagonal or along a rank or a file from here to here ... reachable by a knight,
+one hop or two hops ... squares on the edge ..., at the corners ..., the four squares on the center ... any particular square
+should actually be able to be named, but ... the symmetry ... except for the last rank where there's promotion ... some per
+piece vocabulary ... later on ... room for a time vocabulary"). ADDED (each a Lean definition in Ideas.Base.Vocabulary, its
+Rust mirror, a plain gloss): lines S (the rank and file through S), diagonals S, segment S T (the squares from S to T along
+their line, both ends), knight1 S / knight2 S (a knight's one and two hops), center (d4 e4 d5 e5), attacks S (the squares
+the piece on S attacks, with the board's blockers -- the chess library's pieceAttacksB), cls X (the squares like X under the
+board's eight symmetries; with a pawn on the board only the left-right mirror, ranks from our side -- the promotion
+direction kept). The ten classes are named by their representative (a1 the corners, b1 c1 d1 b2 c2 d2 c3 d3, d4 the centre).
+The enumeration 6,182 -> 15,358 number terms. Tests: values on a known board (our king on c3: its lines 14, diagonals 11;
+the g3 rook attacks 12 squares, 4 on our king's lines -- the checking resource in one term), the classes cover the board,
+the pawn's mirror; the Lean renderings type-check. A latent exporter bug surfaced (the chess library's `between`, a Prop,
+made the generated terms ambiguous; fixed by `open Chess hiding between`). The run with it (tag geometry) started.
