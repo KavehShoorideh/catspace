@@ -136,6 +136,19 @@ def named (c : Color) (s : Square) : Square := if c == Color.white then s else (
 /-- **the square itself**, as a set. -/
 def atSq (s : Square) : SquareSet := fun u => u == s
 
+/-- **file number**: a square's file, a = 0 ... h = 7 (Kaveh 2026-10-13: the vocabulary complemented with relative geometry --
+whatever it took to see a cycle lemma, as words). -/
+def fileNum (s : Square) : Nat := s.1.val
+
+/-- **rank number**: a square's rank counted from side `c`'s first rank (0 ... 7). -/
+def rankNum (c : Color) (s : Square) : Nat := (named c s).2.val
+
+/-- **files from t to s**: how many files `s` stands toward the h-file from `t`, plus 7 (7: the same file). -/
+def dFile (s t : Square) : Nat := s.1.val + 7 - t.1.val
+
+/-- **ranks from t to s**: how many ranks `s` stands ahead of `t` toward the other side, plus 7 (7: the same rank). -/
+def dRank (c : Color) (s t : Square) : Nat := rankNum c s + 7 - rankNum c t
+
 /-- **colour of a square**: light or dark. -/
 def squareColour (s : Square) : Nat := GeoLemmas.colour s
 

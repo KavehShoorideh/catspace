@@ -60,3 +60,20 @@ def test_the_tactic_profile_reads_both_sides():
     ours, theirs = A.tactic_profile("5k2/8/3KP3/8/8/8/8/8 w - - 2 2", 3, 200_000)
     assert ours[0] == (1, 3, 1, 0)                                     # a pawn's worth or more: in 3, by one first move (Kd7)
     assert all(c == 0 for _, _, c, _ in theirs)                        # their lone king forces nothing
+
+
+def test_a_goal_in_words():
+    # K+R v K: their king onto our eighth rank is forced in 12 from here; onto rank 5+ within 6 is not
+    fen = "8/8/8/4k3/8/8/1R6/4K3 w - - 0 1"
+    st, n, line = A.forced_goal(fen, [("(rankof L)", 7, 7)], 12, 2_000_000)
+    assert st == "forced" and n <= 12 and line
+    assert A.forced_goal(fen, [("(rankof L)", 5, 7)], 6, 500_000)[0] == "stopped"
+
+
+def test_a_cycle_is_verified_at_every_placement():
+    from catspace.incubator.analyst.discovery import patterns as Pt
+    ex = "8/8/8/8/8/8/1R6/k1K5 w - - 0 1"                             # our K c1, R b2, their K a1
+    arr = Pt.arrangement(ex)
+    assert dict(arr)["(dfile W L)"] == 9 and dict(arr)["(drank P L)"] == 8
+    pl = Pt.placements(ex)
+    assert all(Pt.arrangement(f) == arr for f, _ in pl) and len(pl) > 10

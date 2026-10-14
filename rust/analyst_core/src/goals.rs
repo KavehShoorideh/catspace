@@ -317,13 +317,18 @@ pub fn contest(pos: &Chess, g: &Goal) -> Verdict {
 /// position (what is left to do falls at each of our moves), so a position's answer does not depend on the path to it.
 /// "forced" (the fewest moves, the line), "stopped" (proved: not within `depth`), "unknown" (`budget` nodes ran out).
 /// forced_moves(fen, value, depth, budget) -> [(uci, status, our moves, line)]
-struct Solver { us: Color, root_bal: i64, value: i64, budget: u64, nodes: u64, memo: HashMap<(u64, u32, bool), bool> }
+struct Solver { us: Color, root_bal: i64, value: i64, budget: u64, nodes: u64, memo: HashMap<(u64, u32, bool), bool>,
+                lits: Vec<(crate::vocab::Term, u32, u32)> }
 
 impl Solver {
     /// Held after their reply: our turn, the gain on the board -- and the game alive (2026-10-13, the soundness test
-    /// against the tablebase: d8=B "gained 2" into K+B v K, a dead draw)
+    /// against the tablebase: d8=B "gained 2" into K+B v K, a dead draw). With a GOAL IN WORDS (`lits`: terms of the base
+    /// vocabulary and their bounds), every one of them holding instead -- with our material kept.
     fn reached(&self, pos: &Chess) -> bool {
-        kernel_material(pos, self.us) - self.root_bal >= self.value && !crate::game::insufficient(pos)
+        if crate::game::insufficient(pos) { return false; }
+        if self.lits.is_empty() { return kernel_material(pos, self.us) - self.root_bal >= self.value; }
+        kernel_material(pos, self.us) - self.root_bal >= 0
+            && self.lits.iter().all(|(t, lo, hi)| { let v = crate::vocab::num(t, pos, !self.us); v >= *lo && v <= *hi })
     }
     /// Our turn, `d` moves of ours left: can we force it? (None: the budget ran out.)
     fn ours(&mut self, pos: &Chess, d: u32) -> Option<bool> {
@@ -382,7 +387,7 @@ impl Solver {
 #[pyfunction]
 pub fn forced_moves(fen: String, value: i64, depth: u32, budget: u64) -> Vec<(String, String, u32, Vec<String>)> {
     let Some(pos) = crate::parse(&fen) else { return vec![] };
-    let mut sv = Solver { us: pos.turn(), root_bal: kernel_material(&pos, pos.turn()), value, budget, nodes: 0, memo: HashMap::new() };
+    let mut sv = Solver { us: pos.turn(), root_bal: kernel_material(&pos, pos.turn()), value, budget, nodes: 0, memo: HashMap::new(), lits: vec![] };
     pos.legal_moves().into_iter().map(|m| {
         let u = m.to_uci(CastlingMode::Standard).to_string();
         let q = after(&pos, &m);
@@ -403,6 +408,34 @@ pub fn forced_moves(fen: String, value: i64, depth: u32, budget: u64) -> Vec<(St
     }).collect()
 }
 
+/// A GOAL IN WORDS (the pattern lemmas, Kaveh 2026-10-13: "lemmas that create cycles ... that language in the vocabulary"):
+/// can the side to move force, within `depth` moves against every defence, a position (its turn again) where every
+/// literal (term, lo, hi) of the base vocabulary holds and nothing of its own is lost -- or a mate? Exact, the solver above.
+/// forced_goal(fen, literals, depth, budget) -> (status, fewest moves, line)
+#[pyfunction]
+pub fn forced_goal(fen: String, literals: Vec<(String, u32, u32)>, depth: u32, budget: u64) -> (String, u32, Vec<String>) {
+    let Some(pos) = crate::parse(&fen) else { return ("unknown".to_string(), 0, vec![]) };
+    let Some(lits) = literals.iter().map(|(t, lo, hi)| crate::vocab::parse_term(t).map(|x| (x, *lo, *hi))).collect::<Option<Vec<_>>>()
+        else { return ("unknown".to_string(), 0, vec![]) };
+    let mut sv = Solver { us: pos.turn(), root_bal: kernel_material(&pos, pos.turn()), value: 0, budget, nodes: 0, memo: HashMap::new(), lits };
+    // (the root itself does not count: the goal is reached by moving)
+    let any = |sv: &mut Solver, d: u32| -> Option<bool> {
+        let mut unknown = false;
+        for m in pos.legal_moves() {
+            match sv.theirs(&after(&pos, &m), d - 1) { Some(true) => return Some(true), None => unknown = true, _ => {} }
+        }
+        if unknown { None } else { Some(false) }
+    };
+    match any(&mut sv, depth) {
+        Some(false) => ("stopped".to_string(), 0, vec![]),
+        None => ("unknown".to_string(), 0, vec![]),
+        Some(true) => {
+            let n = (1..=depth).find(|d| any(&mut sv, *d) == Some(true)).unwrap_or(depth);
+            ("forced".to_string(), n, sv.line(&pos, n))
+        }
+    }
+}
+
 /// THE TACTICAL PROFILE (Kaveh 2026-10-13: "the density of tactics is basically what we're predicting ... a lot of good
 /// tactics for us and ... no tactics for them ... we need to be able to label the tactical situations"): for the side to
 /// move and, as if it passed, for the other side -- at each value of the ladder (1 a pawn, 3 a piece, 5 a rook, 9 a
@@ -415,7 +448,7 @@ pub const LADDER: [i64; 5] = [1, 3, 5, 9, MATE_GOAL];
 fn profile(pos: &Chess, depth: u32, budget: u64) -> Vec<(i64, u32, u32, u32)> {
     let us = pos.turn();
     LADDER.iter().map(|&v| {
-        let mut sv = Solver { us, root_bal: kernel_material(pos, us), value: v, budget, nodes: 0, memo: HashMap::new() };
+        let mut sv = Solver { us, root_bal: kernel_material(pos, us), value: v, budget, nodes: 0, memo: HashMap::new(), lits: vec![] };
         let (mut fewest, mut count, mut unknown) = (0u32, 0u32, 0u32);
         for m in pos.legal_moves() {
             let q = after(pos, &m);
@@ -455,7 +488,7 @@ pub fn defence_moves(fen: String, value: i64, depth: u32, budget: u64) -> Vec<(S
         let u = m.to_uci(CastlingMode::Standard).to_string();
         let q = after(&pos, &m);
         if q.is_checkmate() { return (u, "stopped".to_string(), 0, vec![]); }
-        let mut sv = Solver { us: them, root_bal: kernel_material(&q, them), value, budget, nodes: 0, memo: HashMap::new() };
+        let mut sv = Solver { us: them, root_bal: kernel_material(&q, them), value, budget, nodes: 0, memo: HashMap::new(), lits: vec![] };
         match sv.ours(&q, depth) {
             Some(false) => (u, "stopped".to_string(), 0, vec![]),
             None => (u, "unknown".to_string(), 0, vec![]),

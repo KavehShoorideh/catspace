@@ -131,3 +131,34 @@ def test_named_square_renderings_typecheck(tmp_path):
     src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
     r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# RELATIVE GEOMETRY (Kaveh 2026-10-13: "the vocabulary needs to be complemented"): coordinates from our side, offsets
+# between pieces (plus 7: level) -- "ahead of", "the opposition", an arrangement and its shift as compositions
+
+def test_relative_geometry_from_both_sides():
+    white = "8/8/8/4k3/8/2K5/P7/8 w - - 0 1"                  # our king c3, our pawn a2, their king e5
+    black = "8/p7/2k5/8/4K3/8/8/8 b - - 0 1"                  # the same from Black's side
+    for fen in (white, black):
+        v = lambda t: A.vocab_values([fen], t)[0]
+        assert v("(fileof W)") == 2 and v("(rankof W)") == 2 and v("(rankof P)") == 1
+        assert v("(dfile L W)") == 7 + 2 and v("(drank L W)") == 7 + 2   # their king two files right, two ranks ahead
+        assert v("(drank W P)") == 8 and v("(dfile W P)") == 9           # our king one rank ahead of the pawn, two files right
+
+
+def test_the_opposition_is_a_composition():
+    # kings face each other on a file, one square between: same file (7), two ranks apart (9)
+    v = lambda fen, t: A.vocab_values([fen], t)[0]
+    fen = "8/8/4k3/8/4K3/4P3/8/8 w - - 0 1"
+    assert v(fen, "(dfile L W)") == 7 and v(fen, "(drank L W)") == 9
+    assert v(fen, "(drank W P)") == 8                                     # our king ahead of the pawn
+
+
+@pytest.mark.skipif(not Path("lean/ideas/.lake").exists(), reason="the Lean project is not built")
+def test_relative_geometry_lean_renderings_typecheck(tmp_path):
+    terms = ["(fileof W)", "(rankof P)", "(dfile L W)", "(drank W P)"]
+    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
+    src = tmp_path / "VocabCheck.lean"
+    src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
+    r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
+    assert r.returncode == 0, r.stdout + r.stderr

@@ -30467,3 +30467,29 @@ Built into discovery/explorer.py:
   squares, follow the squares they attack that we do not" -- learning: fixes 5 of 25, breaks 0 of 72; held out: fixes 0
   of 103, breaks 0 -> dropped. LEMMAS KEPT: 0. The guards now stop the coincidences; the K+P v K technique (the key
   squares in front of the pawn, the opposition) has no words yet ("ahead of X" asked).
+
+THE VOCABULARY COMPLEMENTED: RELATIVE GEOMETRY, GOALS IN WORDS, CYCLE LEMMAS; K+R+R+P v K+R+P (2026-10-13 18:52-19:02 PDT;
+Kaveh: "the idea was that some sort of a machinery would propose dilemmas, but here you are, an LLM proposing dilemmas ... I
+want us to basically build the capability to have lemmas that create cycles ... that language in the vocabulary";
+"whatever it took for you to find that these are the right lemmas to add, that needs to become machinery"; "king, rook,
+rook, pawn, king, rook, pawn. Let's see if we can solve that one").
+  THE WORDS (Python, Rust vocab.rs, Lean Ideas.Base.Vocabulary fileNum / rankNum / dFile / dRank): (fileof X), (rankof X)
+  from our side, (dfile X Y), (drank X Y) -- how far X stands from Y along each, plus 7 (7: level). "Ahead of the pawn",
+  "the opposition" (same file, two ranks apart), an arrangement and its shift are compositions (tests); +32 terms.
+  A GOAL IN WORDS (goals.rs forced_goal): the exact solver forcing any conjunction of vocabulary literals (term, lo, hi),
+  our material kept, the game alive. K+R v K, 8/8/8/4k3/8/8/1R6/4K3: "their king on our eighth rank" forced in 12 (line),
+  "rank 5 or more within 6" stopped.
+  THE CYCLE LEMMAS (discovery/patterns.py) -- the proposer reads games, no hand-written chess: an arrangement (every named
+  piece's dfile / drank from their king) seen again with their king moved by v, k moves later = a candidate; VERIFIED at
+  every placement of the arrangement on the board by forced_goal (the same arrangement, their king moved by v, within k);
+  the placements where it holds are the frame S, the distance to the edge along v the measure, k the period -- the
+  hypothesis of the proved Lean theorem Ideas.Forced.forced_by_measure, checked position by position; where the cycle
+  ends, the mate asked the same way. K+R v K from our games: 249 candidates (2 s); the 8 most frequent: forced at 2 of 24,
+  6 of 30, 2 of 18, 9 of 42, 1 of 35, 0 of 30, 0 of 15, 6 of 24 placements -- the arrangements cycle only near the edge;
+  where they end a mate is forced at 2/2, 2/5, 2/2, 5/7, 1/1, 2/4. Named pieces only (one other piece a side): a second
+  rook or a pawn beside a rook has no word yet.
+  K+R+R+P v K+R+P: 7 men -- our tablebases end at 5 (290 files); starts are random positions Stockfish rates >= +4
+  (material_walk.engine_start), the planner against Stockfish depth 10, 100 games (21 s): won 92, drawn 7, lost 1.
+  THE BENCHMARK (Kaveh: "how many moves does it take us ... versus Stockfish"): Stockfish both sides from the same starts:
+  won 99; where both won (91): our moves to mate 10.6 on average, Stockfish's 12.6 -- we were faster in 40, slower in 29,
+  equal in 22. The games Stockfish won and we did not: seeds 11 23 24 50 57 63 79 82 (the explorer's surprises).

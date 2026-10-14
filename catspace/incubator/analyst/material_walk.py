@@ -54,6 +54,31 @@ def _start(rng: random.Random, material: str, tb, band: tuple | None = None):
                     return b
 
 
+def engine_start(rng: random.Random, material: str, eng, min_cp: int = 400, depth: int = 12):
+    """A random legal position of a material BEYOND THE TABLEBASES (Kaveh 2026-10-13: "king, rook, rook, pawn, king, rook,
+    pawn ... let's see if we can solve that one" -- 7 men, our tablebases end at 5), White (us) to move, clearly won for
+    us by Stockfish (at least `min_cp` centipawns or a mate at `depth`) -- the engine picks where the games start, never what
+    counts as progress."""
+    import chess
+    import chess.engine
+    ours, theirs = _pieces(material)
+    while True:
+        sq = rng.sample(range(64), 2 + len(ours) + len(theirs))
+        b = chess.Board(None)
+        b.set_piece_at(sq[0], chess.Piece(chess.KING, chess.WHITE))
+        b.set_piece_at(sq[1], chess.Piece(chess.KING, chess.BLACK))
+        for i, (s, p) in enumerate(zip(sq[2:], ours + theirs)):
+            if p == chess.PAWN and chess.square_rank(s) in (0, 7):
+                break
+            b.set_piece_at(s, chess.Piece(p, chess.WHITE if i < len(ours) else chess.BLACK))
+        else:
+            b.turn = chess.WHITE
+            if b.is_valid() and not b.is_game_over():
+                sc = eng.analyse(b, chess.engine.Limit(depth=depth))["score"].white()
+                if sc.is_mate() and sc.mate() > 0 or (not sc.is_mate() and sc.score() >= min_cp):
+                    return b
+
+
 def castled_start(rng: random.Random):
     """K+R+R v K+R WITH PAWNS, THE KINGS CASTLED ON OPPOSITE WINGS (Kaveh 2026-10-13: "let's put each king on an oppositely
     castled position in the king rook rook king rook situation, and have each side ... four pawns or five pawns ... let

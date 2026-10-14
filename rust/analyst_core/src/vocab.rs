@@ -30,6 +30,11 @@ pub enum Term {
     // every square by its name, from our side, and the square itself as a set (Kaveh 2026-10-13: "a mirroring lemma
     // separately, and then ... the squares individually available")
     Named(Square), At(Box<Term>),
+    // RELATIVE GEOMETRY (Kaveh 2026-10-13: "whatever it took for you to find that these are the right lemmas ... needs to
+    // become machinery ... the vocabulary needs to be complemented"): a piece's file and rank counted from our side, and
+    // how many files / ranks one piece stands from another (plus 7, so 7 is level) -- an arrangement of the pieces, its
+    // shift across the board, "ahead of", "the opposition" become compositions
+    FileOf(Box<Term>), RankOf(Box<Term>), DFile(Box<Term>, Box<Term>), DRank(Box<Term>, Box<Term>),
 }
 
 /// The strongest piece of `c` other than its king -- by kind (queen, rook, bishop, knight, pawn), ties by the lower square.
@@ -77,6 +82,8 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
         ("lines", [a]) => Term::Lines(b(a)), ("diagonals", [a]) => Term::Diagonals(b(a)), ("segment", [a, c]) => Term::Segment(b(a), b(c)),
         ("knight1", [a]) => Term::Knight1(b(a)), ("knight2", [a]) => Term::Knight2(b(a)), ("attacks", [a]) => Term::Attacks(b(a)),
         ("colour", [a]) => Term::Colour(b(a)), ("at", [a]) => Term::At(b(a)),
+        ("fileof", [a]) => Term::FileOf(b(a)), ("rankof", [a]) => Term::RankOf(b(a)),
+        ("dfile", [a, c]) => Term::DFile(b(a), b(c)), ("drank", [a, c]) => Term::DRank(b(a), b(c)),
         _ => return None,
     })
 }
@@ -180,9 +187,18 @@ pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
         Term::Count(a) => set(a, q, lone).count() as u32,
         Term::Dist(a, c) => match (sq(a, q, lone), sq(c, q, lone)) { (Some(x), Some(y)) => kd(x, y), _ => 0 },
         Term::Sum(a, c) => num(a, q, lone) + num(c, q, lone),
+        // (from our side: our first rank is 0; the files as they stand -- the mirror of Lean `fileOf`, `rankOf`)
+        Term::FileOf(a) => sq(a, q, lone).map_or(0, |x| x.file() as u32),
+        Term::RankOf(a) => sq(a, q, lone).map_or(0, |x| our_rank(x, !lone)),
+        Term::DFile(a, c) => match (sq(a, q, lone), sq(c, q, lone)) { (Some(x), Some(y)) => (x.file() as i32 - y.file() as i32 + 7) as u32, _ => 0 },
+        Term::DRank(a, c) => match (sq(a, q, lone), sq(c, q, lone)) {
+            (Some(x), Some(y)) => (our_rank(x, !lone) as i32 - our_rank(y, !lone) as i32 + 7) as u32, _ => 0 },
         _ => 0,
     }
 }
+
+/// A square's rank counted from `us`'s first rank (0-7).
+fn our_rank(x: Square, us: Color) -> u32 { if us == Color::White { x.rank() as u32 } else { 7 - x.rank() as u32 } }
 
 /// THE CERTIFIER: the base measure of the frame (the rook's, as the discoverer derived it: wall, opposition) extended by
 /// `cand` under `schema` -- "append" (a third component), "sum" (added to the opposition), "replace" (in place of it);
@@ -223,7 +239,8 @@ pub fn certified(pos: &Chess, cand: &Term, schema: &str, k: u32) -> bool {
 pub fn vocab_eval(fen: String, term: String) -> PyResult<Option<u32>> {
     let (Some(p), Some(t)) = (parse(&fen), parse_term(&term)) else { return Ok(None) };
     let lone = !p.turn();
-    Ok(Some(match t { Term::Count(_) | Term::Dist(_, _) | Term::Sum(_, _) => num(&t, &p, lone), _ => set(&t, &p, lone).count() as u32 }))
+    Ok(Some(match t { Term::Count(_) | Term::Dist(_, _) | Term::Sum(_, _) | Term::FileOf(_) | Term::RankOf(_) | Term::DFile(_, _)
+                      | Term::DRank(_, _) => num(&t, &p, lone), _ => set(&t, &p, lone).count() as u32 }))
 }
 
 /// vocab_values(fens, term) -> the term's number on each board (the proposer's observational test).

@@ -62,6 +62,13 @@ PRIMITIVES = {
     # the squares individually available"): the 64 squares named from our side (a8 is our promotion corner on the a-file),
     # no symmetry in the words -- the board's symmetries are a lemma of their own; and the square itself as a set
     "at": (("sq",), "set", "the square {0}"),
+    # RELATIVE GEOMETRY (Kaveh 2026-10-13: "the vocabulary needs to be complemented" -- whatever it took to see the cycle
+    # lemmas, as words): a piece's file and rank from our side, and how far one piece stands from another along each
+    # (plus 7: 7 is level) -- arrangements, their shifts, "ahead of", "the opposition" as compositions
+    "fileof": (("sq",), "num", "the file of {0} (a = 0 ... h = 7)"),
+    "rankof": (("sq",), "num", "the rank of {0} counted from our first rank (0 ... 7)"),
+    "dfile": (("sq", "sq"), "num", "how many files {0} stands toward the h-file from {1}, plus 7 (7: the same file)"),
+    "drank": (("sq", "sq"), "num", "how many ranks {0} stands ahead of {1} toward their side, plus 7 (7: the same rank)"),
 }
 for _f in "abcdefgh":
     for _r in "12345678":
@@ -128,6 +135,8 @@ def lean(t) -> str:
         "lines": lambda: f"(lines {x[0]})", "diagonals": lambda: f"(diagonals {x[0]})", "segment": lambda: f"(segment {x[0]} {x[1]})",
         "knight1": lambda: f"(knight1 {x[0]})", "knight2": lambda: f"(knight2 {x[0]})", "attacks": lambda: f"(attacksFrom p {x[0]})",
         "colour": lambda: f"(colour {x[0]})", "at": lambda: f"(atSq {x[0]})",
+        "fileof": lambda: f"(fileNum {x[0]})", "rankof": lambda: f"(rankNum c {x[0]})",
+        "dfile": lambda: f"(dFile {x[0]} {x[1]})", "drank": lambda: f"(dRank c {x[0]} {x[1]})",
     }[h]()
 
 
@@ -175,5 +184,8 @@ def enumerate_numbers(sqs=("W", "L", "P", "O"), max_and: int = 2):
         sets += [y for a in base for r in named for y in (("and", a, r), ("and", a, ("not", r)), ("and", r, ("not", a)))]
     nums = [("count", s) for s in sets] + [("dist", a, b) for a, b in itertools.combinations(sqs, 2)]
     nums += [("dist", a, x) for a in sqs for x in SQUARE_NAMES]
+    # the relative geometry: every piece's coordinates, every ordered pair's offsets
+    nums += [(h, a) for h in ("fileof", "rankof") for a in sqs]
+    nums += [(h, a, b) for h in ("dfile", "drank") for a in sqs for b in sqs if a != b]
     nums.sort(key=size)
     return nums
