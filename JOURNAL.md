@@ -30419,7 +30419,7 @@ statistical) -- built in the loop's own words and claims:
   ITS WORTH on 200 fresh starts (seeds 9100-9299, the tablebase defending, paired): better in 3 games, worse in 3 --
   NET 0. Exact on its neighbourhood, it misfires beyond it; the 3 worse games are the next surprises to refine it.
 
-THE TACTICAL LABELS AND THE DEFENCE EXPLORER (2026-10-13 17:40-18:20 PDT; Kaveh: "Yes" -- the short window's exact
+THE TACTICAL LABELS AND THE DEFENCE EXPLORER (2026-10-13 17:40-18:18 PDT; Kaveh: "Yes" -- the short window's exact
 tactics labelled, then the explorer seeded by their imagined futures).
   tactic_profile (goals.rs): for the side to move and, as if it passed, for the other side -- at each value of the ladder
   (1, 3, 5, 9, mate) the fewest moves forcing a gain that big (held after the reply, the game alive) within the window,
