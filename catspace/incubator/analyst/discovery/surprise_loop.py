@@ -280,8 +280,8 @@ def benchmark(res: list) -> None:
     """THE BENCHMARK (Kaveh 2026-10-13: "how many moves does it take us to do it versus ..."): the tablebase's own play from
     the round's starts against ours, game by game, where both mated (5 men or fewer, no pawn)."""
     starts = [g["rows"][0]["fen"] for g in res if g["rows"]]
-    if not starts or any("p" in f.split(" ")[0].lower() for f in starts) or len(starts[0].split(" ")[0].replace("/", "").strip("12345678")) > 5:
-        return
+    if not starts or any("p" in f.split(" ")[0].lower() for f in starts) or sum(c.isalpha() for c in starts[0].split(" ")[0]) > 5:
+        return                                             # (counted by letter: 2026-10-13, strip() took only the ends' digits)
     from multiprocessing import Pool
     with Pool(max(1, (os.cpu_count() or 8) - 2)) as p:
         tb = p.map(_tb_play, starts)
@@ -621,6 +621,8 @@ def main(argv=None):
                     help="FROM SCRATCH (Kaveh 2026-10-13): no frames, no registry lemmas, the hand-derived mating frames off, no "
                          "proposer trained on past runs, its own experience store, nothing written to the generated track")
     ap.add_argument("--loops", action="store_true", help="after each round's mining: loop frames from the round's own games")
+    ap.add_argument("--watch", type=int, default=0, help="LEARNING BY WATCHING first: a teacher's games of the material "
+                    "(watch.py) read for loop frames and surprises before the first round is played")
     a = ap.parse_args(argv)
     tag = a.tag if a.tag is not None else time.strftime("%m%d_%H%M")
     if a.scratch:
@@ -647,6 +649,10 @@ def main(argv=None):
         print(f"OBS resuming {stem} at round {start}'s mining (frames {frames or 'none'})")
     elif os.path.exists(state):
         raise SystemExit(f"{state} exists -- a new --tag, or --resume")
+    if a.watch and not a.resume:
+        # WATCHING, THEN PLAYING (Kaveh 2026-10-13: "We have to start learning by watching, then by playing")
+        from . import watch as W
+        frames = W.watch(a.material, a.watch, band, frames, tag)
     for rnd in range(start, a.rounds + 1):
         if res is None:
             t0 = time.time()

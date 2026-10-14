@@ -117,6 +117,22 @@ def locate(game: dict) -> dict | None:
     return None
 
 
+def locate_watched(game: dict) -> dict | None:
+    """LEARNING BY WATCHING (Kaveh 2026-10-13: "We have to start learning by watching, then by playing"): in a teacher's
+    game, the first position where the teacher's move is proved good and our planner's own move there is proved bad -- the
+    surprise is ours, the teacher only shows that it exists (every label is our own exact search)."""
+    for i, r in enumerate(game["rows"]):
+        b = chess.Board(r["fen"])
+        lab = labels(r["fen"])
+        t = b.parse_san(r["san"]).uci()
+        if not good(lab.get(t, ("unknown",))[0]):
+            continue
+        u, why = planner_move(r["fen"])
+        if u and bad(lab.get(u, ("unknown",))[0]):
+            return dict(index=i, fen=r["fen"], played=u, why=f"{why} (the teacher played {r['san']})", labels=lab, teacher=t)
+    return None
+
+
 def neighbours(fen: str, radius: int = RADIUS, cap: int = CAP) -> list:
     """Positions one piece one square away (a king step for any piece; pawns never onto the first or last rank), the
     same material, the same side to move, legal and not over -- breadth first to `radius`, at most `cap`."""
@@ -439,7 +455,9 @@ HELD_OUT = 300
 
 
 def _case_path(key: str) -> str:
-    return paths.derived(f"explorer/cases/{key}_{MODE}.jsonl")
+    from . import scratch
+    root = f"scratch/{scratch()}/cases" if scratch() else "explorer/cases"     # (a from-scratch run: its own cornerstones)
+    return paths.derived(f"{root}/{key}_{MODE}.jsonl")
 
 
 def load_cases(key: str) -> list:
@@ -527,14 +545,14 @@ def check(key: str, L: dict, at: dict, pool, fens: list) -> tuple:
     return rows, t
 
 
-def explore(game: dict, frames: dict, workers: int = 10, seed: int = 0) -> dict:
-    """One surprise, end to end -- with the practices above."""
+def explore(game: dict, frames: dict, workers: int = 10, seed: int = 0, watched: bool = False) -> dict:
+    """One surprise, end to end -- with the practices above (`watched`: a teacher's game, the surprise our own move)."""
     import random
     from multiprocessing import get_context
     t0 = time.time()
     _install(frames)
     mode, depth = MODE, DEPTH
-    at = locate(game)
+    at = locate_watched(game) if watched else locate(game)
     if at is None:
         return dict(seed=game.get("seed"), found=False, why=("no decision let a gain of theirs through that a move of ours stops"
                     if MODE == "defence" else "no decision threw away a gain our search proves forced"))
@@ -666,32 +684,18 @@ def report(x: dict) -> None:
         print(f"OBS   -> {x['verdict']}")
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--games", required=True, help="a results JSON of games (surprise_loop._game rows)")
-    ap.add_argument("--material", default=None, help="only games starting in this material")
-    ap.add_argument("--n", type=int, default=1, help="how many surprises (in order)")
-    ap.add_argument("--out", default=None)
-    ap.add_argument("--mode", default="win", choices=("win", "defence"))
-    ap.add_argument("--depth", type=int, default=None, help="the horizon (moves of the attacker); default 12 win, 6 defence")
-    ap.add_argument("--outcome", default="nonwin", choices=("nonwin", "loss"), help="which games are surprises")
-    ap.add_argument("--utility", type=int, default=200, help="fresh starts for the utility check (0: none)")
-    ap.add_argument("--utility-seed", type=int, default=20000)
-    a = ap.parse_args(argv)
-    global MODE, DEPTH
-    MODE, DEPTH = a.mode, a.depth or (12 if a.mode == "win" else 6)
-    from . import registry as R
-    frames = R.load_frames()
-    games = [g for g in json.load(open(a.games)) if (g["out"] != "win" if a.outcome == "nonwin" else g["out"] == "loss")
-             and (a.material is None or g["rows"][0]["material"] == a.material)]
+def run_surprises(games: list, frames: dict, n: int, utility_n: int = 200, utility_seed: int = 20000, watched: bool = False,
+                  ledger_path: str | None = None, log=print) -> tuple:
+    """THE RIPPLE-DOWN LOOP over surprises: each meets the lemmas kept so far; a lemma that passes its held-out positions is
+    PENDING until a second surprise from a different game supports it, then kept only if fresh games say so (the utility
+    gate). -> (the frames with what was kept, the explored, the kept frame keys)"""
     from .defenders import E_PROMOTE
     found, kept, pending, decisions = [], [], [], []
-    store = paths.derived("explorer/lemmas.json")
+    store = ledger_path or paths.derived("explorer/lemmas.json")
     os.makedirs(os.path.dirname(store), exist_ok=True)
     ledger = json.load(open(store)) if os.path.exists(store) else []
-    for i, g in enumerate(games[: a.n]):
-        # RIPPLE-DOWN: each surprise meets the lemmas kept so far (its decision may already be handled)
-        x = explore(g, frames, seed=i)
+    for i, g in enumerate(games[:n]):
+        x = explore(g, frames, seed=i, watched=watched)
         d = x.get("decision")
         if d:
             decisions.append(dict(seed=x["seed"], key=x["material"], fen=d["fen"], labels=d.get("labels") or labels(d["fen"])))
@@ -703,13 +707,12 @@ def main(argv=None):
                 x["verdict"] = "pending (needs a second surprise)"
             else:
                 x["verdict"] = "dropped (held out)"
-        # SUPPORT FROM DIFFERENT GAMES (the brief: at least two surprises): each pending lemma tried on every decision so far
         _install(frames)
         for p in pending:
             p["support"] = sorted({dd["seed"] for dd in decisions if dd["key"] == p["key"] and fixes_decision(p["key"], p["lemma"], dd)})
         for p in [p for p in pending if len(p["support"]) >= 2]:
             pending.remove(p)
-            u = utility(p["key"], frames, p["lemma"], range(a.utility_seed + 1000 * i, a.utility_seed + 1000 * i + a.utility)) if a.utility else None
+            u = utility(p["key"], frames, p["lemma"], range(utility_seed + 1000 * i, utility_seed + 1000 * i + utility_n)) if utility_n else None
             p["x"]["utility"] = u
             if u and u["net"] > 0 and u["e"] >= E_PROMOTE:
                 frames = dict(frames); frames[p["lemma"]["frame"]] = [p["lemma"]["measure"]]
@@ -717,19 +720,45 @@ def main(argv=None):
             else:
                 p["x"]["verdict"] = f"dropped (utility e {u['e'] if u else '-'} < {E_PROMOTE} or net <= 0; support {p['support']})"
             ledger.append(dict(frame=p["lemma"]["frame"], measure=p["lemma"]["measure"], material=p["key"], seed=p["seed"],
-                               support=p["support"], utility=u, verdict=p["x"]["verdict"], time=time.strftime("%Y-%m-%d %H:%M")))
-            print(f"OBS   the lemma from seed {p['seed']} ({p['lemma']['frame']} -> [{p['lemma']['measure']}]): fixes the decisions of "
-                  f"games {p['support']}; UTILITY {u} -> {p['x']['verdict']}")
+                               support=p["support"], utility=u, verdict=p["x"]["verdict"], watched=watched, time=time.strftime("%Y-%m-%d %H:%M")))
+            log(f"OBS   the lemma from seed {p['seed']} ({p['lemma']['frame']} -> [{p['lemma']['measure']}]): fixes the decisions of "
+                f"games {p['support']}; UTILITY {u} -> {p['x']['verdict']}")
         report(x)
         found.append(x)
     for p in pending:
         ledger.append(dict(frame=p["lemma"]["frame"], measure=p["lemma"]["measure"], material=p["key"], seed=p["seed"],
-                           support=p.get("support"), verdict="pending at the end (one surprise only)", time=time.strftime("%Y-%m-%d %H:%M")))
+                           support=p.get("support"), verdict="pending at the end (one surprise only)", watched=watched,
+                           time=time.strftime("%Y-%m-%d %H:%M")))
     json.dump(ledger, open(store, "w"), indent=1)
+    log(f"OBS {len(kept)} lemma(s) kept of {sum(1 for x in found if x.get('lemma') and x['lemma'].get('measure'))} learned "
+        f"from {len(found)} surprises ({len(pending)} still pending on one surprise): {kept}")
+    return frames, found, kept
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--games", required=True, help="a results JSON of games (surprise_loop._game rows)")
+    ap.add_argument("--material", default=None, help="only games starting in this material")
+    ap.add_argument("--n", type=int, default=1, help="how many surprises (in order)")
+    ap.add_argument("--out", default=None)
+    ap.add_argument("--mode", default="win", choices=("win", "defence"))
+    ap.add_argument("--depth", type=int, default=None, help="the horizon (moves of the attacker); default 12 win, 6 defence")
+    ap.add_argument("--outcome", default="nonwin", choices=("nonwin", "loss", "any"), help="which games are surprises")
+    ap.add_argument("--watched", action="store_true", help="the games are a teacher's: the surprise is our own move")
+    ap.add_argument("--utility", type=int, default=200, help="fresh starts for the utility check (0: none)")
+    ap.add_argument("--utility-seed", type=int, default=20000)
+    a = ap.parse_args(argv)
+    global MODE, DEPTH
+    MODE, DEPTH = a.mode, a.depth or (12 if a.mode == "win" else 6)
+    from . import registry as R
+    frames = R.load_frames()
+    games = [g for g in json.load(open(a.games)) if (a.outcome == "any" or a.watched or
+             (g["out"] != "win" if a.outcome == "nonwin" else g["out"] == "loss"))
+             and (a.material is None or g["rows"][0]["material"] == a.material)]
+    _, found, _ = run_surprises(games, frames, a.n, a.utility, a.utility_seed, watched=a.watched)
     out = a.out or paths.derived(f"explorer/explored_{int(time.time())}.json")
     json.dump(found, open(out, "w"), indent=1, default=str)
-    print(f"OBS {len(kept)} lemma(s) kept of {sum(1 for x in found if x.get('lemma') and x['lemma'].get('measure'))} learned "
-          f"from {len(found)} surprises ({len(pending)} still pending on one surprise): {kept} -> {store}")
+    print(f"OBS -> {out}")
 
 
 if __name__ == "__main__":

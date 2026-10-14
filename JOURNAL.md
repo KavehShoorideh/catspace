@@ -30548,3 +30548,27 @@ frames, it could re-derive everything quickly ... and it could play a game ... r
   KAVEH'S CRITERION, recorded: from the vocabulary and the machinery alone -- no lemmas, no frames -- re-derive quickly and
   play; reasoning first. These loop frames were mined from games the tablebase and Stockfish played: by that criterion not
   yet the machinery's own (its sources must be its own play and its own exact search).
+
+FROM SCRATCH, AND WATCHING BEFORE PLAYING (2026-10-13 21:00-21:57 PDT; Kaveh: "Go" -- the from-scratch run; "We have to
+start learning by watching, then by playing").
+  surprise_loop --scratch: no frames, no registry lemmas, the hand-derived mating frames off in every process (the
+  environment), K+Q v K and K+R v K mined like any other material, no proposer trained on past runs (the enumeration,
+  smallest first), its own experience store and case base, nothing written to the generated track; --loops: loop frames
+  from each round's own games; the benchmark: the tablebase's own play from the same starts. Its own curriculum: --dtz 1:8
+  --ramp (starts near mate, the band doubled after two thirds of a round won). The ladder K+Q v K, K+R v K, K+R+R v K, 100
+  games a round, the tablebase defending.
+  K+Q v K FROM SCRATCH (21:31-21:47): rounds 0-5 at bands 1-8 .. 1-256 plies: mated 100, 69, 100, 100, 100, 100; moves to mate
+  3.8, 11.5, 7.2, 6.7, 8.8, 8.3 against the tablebase's 3.3, 5.3, 5.5, 5.4, 6.0, 5.7 from the same starts. Its own frame from
+  round 1: (sum (dist L a1) (count (and (nearer L W) (not (nearer P L))))) -- their king to the a1 corner, and the squares
+  nearer their king than ours outside those nearer our queen; loop frames 3-6 a round. Re-derived in about 15 minutes, ~45%
+  slower to mate than perfect play.
+  WATCHING (watch.py; --watch N): the teacher -- the tablebase's own play for five men or fewer, Stockfish beyond -- plays N
+  games from the curriculum's starts; the loop-frame proposer reads them; the explorer's watched surprises (explorer.
+  locate_watched: the teacher's move proved good, our planner's own proved bad) go through every guard. Smoke, K+R v K, 10
+  games, band 1-16: the teacher mated 10 in 6.2 moves; 3 loop frames kept (one checked 30/30 and held out 29/29); 1 surprise
+  of ours in 10 games (Ra1 where Rc1 forces mate in 12), no lemma survived; 18 minutes (labelling every teacher position 12
+  moves deep). Then 20 games: 5 mated. BUG-CHECKED: the 3 watched frames change nothing -- the same 20 starts with none, with
+  all three, with each alone: 5 mated every time, 0 better, 0 worse; 5/20 is the bare baseline at that band (the play-only
+  run, after its own round 0, mated 69/100 there). Watching ten games taught nothing usable yet.
+  A BUG on the way: the per-round benchmark counted the pieces with strip() (only the ends' digits) and printed nothing --
+  fixed; K+Q v K benchmarked afterwards from its saved rounds.
