@@ -932,3 +932,9 @@ Kaveh: "in a 10 man frame we can deconstruct into multiple partial overlapping o
   K+R+R v K+R with pawns, artifacts/experiments/castled_play_r1.json) how many positions some small floor lifts into,
   and which defences stop the lifts most often.
 Built after §38.3-38.4 are accepted.
+- THE RECURSION ON A NAMED PIECE (Kaveh: "who is the attacker? ... this bishop. What can we do about it? Who is the
+  defender? ... this knight"): the roles are generic words (`attackers`, `defenders`, `between`, `pinned`, `see`,
+  `xray`); the binding is the piece names (O2-O5, P2-P5); the answers are a fixed menu of goals in the same words --
+  capture it, deflect it (its `moves` off the line), pin it (`pinned_theirs`), overload it (two things to defend),
+  block it (`between`) -- each a `forced_goal` literal, so each is a new floor whose goal is "that defence is gone",
+  and the ladder recurses on it.
