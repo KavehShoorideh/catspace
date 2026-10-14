@@ -30523,3 +30523,28 @@ that in terms of simpler vocabulary so ... we can kind of have compositional voc
   THE CYCLES WITH EVERY PIECE NAMED (patterns.py, up to three pieces a side): in the K+R+R+P v K+R+P games none -- not a bug
   (K+R v K still gives its 249): those games are won by tactics in ~10 moves, every material phase lasting mostly <= 6 moves
   of ours; nothing manoeuvres, nothing recurs shifted.
+
+LOOPS ARE FRAMES; FRAME AND CONDITIONAL FRAME (2026-10-13 20:27-20:42 PDT; Kaveh: "frame and conditional frame"; "we should
+be able to have loops in the frames ... I guess it doesn't make sense to categorize it that way"; "remember, the point is to
+get the machinery to a point that if it were to start with just the vocabulary, just the machinery, no lemmas and no
+frames, it could re-derive everything quickly ... and it could play a game ... reasoning is the important thing").
+  THE WORDS: "stage" retired where it meant a frame with a condition (the challenger's logs, hole and registry names cframe_,
+  the loop's pending frames -- old histories still read --, the explorer's ledger, the glossary); "stage" stays for the
+  verifier's two checks and the race's rounds. The glossary (catspace/research/docs/GLOSSARY.md) says so.
+  A FRAME'S HORIZON: "horizon:k" among a frame's terms (vocab.rs Spec.horizon; the chooser's claim "falls within k"; old frames
+  keep CLAIM_K = 2); the loop reads the deciding frame's key and k from its own trace (claim_of -- it used the material's
+  frame even when a conditional frame decided).
+  LOOP FRAMES (patterns.py frames): arrangements in VIEWS -- every coordinate, ranks alone, files alone, with our king or
+  without; order-free (a kind at an offset from their king); a view seen again with their king shifted -> a conditional
+  frame: the view's words + their king where the shift stays on the board, the measure their king's distance to the edge
+  along the shift, the horizon the period; checked EXACTLY on 60 positions drawn inside the condition (forced_goal: the
+  arrangement again, their king shifted, within k); REFINED up to three times by a word keeping every failure out and the
+  most held ones in (no named square); kept when it holds on every drawn position and on held-out ones.
+  From the far-start games (our planner, Stockfish, the tablebase attacking; the tablebase defending): K+R+R v K 50
+  candidates -- the ladder found ("a rook on the file just past their king and one on the next, their king pushed a file a
+  move", seen 48x) but it holds at 29 of 60 drawn positions, refined to 11/16, not kept; 2 kept (one checked on 10
+  positions only); K+R v K 1,196 candidates, 8 kept (checked on 13 to 120 positions). The refining words are often odd
+  ("on_key_square L", "opposition") -- exact on what was drawn, conjectures beyond.
+  KAVEH'S CRITERION, recorded: from the vocabulary and the machinery alone -- no lemmas, no frames -- re-derive quickly and
+  play; reasoning first. These loop frames were mined from games the tablebase and Stockfish played: by that criterion not
+  yet the machinery's own (its sources must be its own play and its own exact search).

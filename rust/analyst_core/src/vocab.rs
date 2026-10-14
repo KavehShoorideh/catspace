@@ -478,7 +478,13 @@ fn cval(c: &Comp, q: &Chess, lone: Color) -> u32 { match c { Comp::F(f) => f(q, 
 #[derive(Clone, Copy)]
 enum Safety { Piece(Role), Material }
 
-struct Spec { base: Vec<Comp>, cand: Option<Term>, schema: String, safety: Safety }
+struct Spec { base: Vec<Comp>, cand: Option<Term>, schema: String, safety: Safety,
+              // THE FRAME'S HORIZON (Kaveh 2026-10-13: loops are not a kind of frame -- a frame whose measure falls once a
+              // cycle has a longer horizon): "horizon:k" among its terms; none -- CLAIM_K
+              horizon: Option<u32> }
+
+/// A frame's horizon, if its terms carry one ("horizon:k").
+fn horizon_of(terms: &[String]) -> Option<u32> { terms.iter().find_map(|t| t.strip_prefix("horizon:").and_then(|x| x.parse::<u32>().ok())) }
 
 impl Spec {
     fn measure(&self, q: &Chess, lone: Color) -> Vec<u32> {
@@ -531,10 +537,11 @@ impl Spec {
 }
 
 fn spec(base: &[String], cand: &Option<String>, schema: &str, piece: &str) -> Option<Spec> {
-    let base: Vec<Comp> = base.iter().map(|s| comp(s)).collect::<Option<_>>()?;
+    let horizon = horizon_of(base);
+    let base: Vec<Comp> = base.iter().filter(|s| !s.starts_with("horizon:")).map(|s| comp(s)).collect::<Option<_>>()?;
     let cand = match cand { Some(c) => Some(parse_term(c)?), None => None };
     let safety = match piece { "Q" | "q" => Safety::Piece(Role::Queen), "*" => Safety::Material, _ => Safety::Piece(Role::Rook) };
-    Some(Spec { base, cand, schema: schema.to_string(), safety })
+    Some(Spec { base, cand, schema: schema.to_string(), safety, horizon })
 }
 
 /// verify_mask(fens, base, cand, schema, k, piece) -> for each board (the attacker to move): certified or not.
@@ -588,7 +595,7 @@ impl Spec {
         let first = cands.first()?;
         if first.0 < before { return Some((first.3.clone(), true)); }
         for (_, _, _, m) in &cands {
-            if self.within(&after(pos, m), &before, us, CLAIM_K.load(std::sync::atomic::Ordering::Relaxed)) { return Some((m.clone(), true)); }
+            if self.within(&after(pos, m), &before, us, self.horizon.unwrap_or_else(|| CLAIM_K.load(std::sync::atomic::Ordering::Relaxed))) { return Some((m.clone(), true)); }
         }
         Some((first.3.clone(), false))
     }
@@ -743,7 +750,7 @@ pub fn set_generic_frame(flag: bool) -> PyResult<()> { GENERIC_FRAME.store(flag,
 /// set_material_frame(material, terms) -> whether every term parses: the material's measure (ranked); [] clears it.
 #[pyfunction]
 pub fn set_material_frame(material: String, terms: Vec<String>) -> PyResult<bool> {
-    if !terms.iter().all(|t| parse_term(t).is_some()) { return Ok(false); }
+    if !terms.iter().all(|t| t.starts_with("horizon:") || parse_term(t).is_some()) { return Ok(false); }
     let mut g = MATERIAL_FRAMES.write().unwrap();
     let map = g.get_or_insert_with(Default::default);
     if terms.is_empty() { map.remove(&material); } else { map.insert(material, terms); }
@@ -947,7 +954,9 @@ pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
         }
     };
     let base: Vec<Comp> = terms.iter().filter_map(|t| parse_term(t).map(Comp::T)).collect();
-    let sp = Spec { base, cand: None, schema: "none".to_string(), safety: Safety::Material };
+    let horizon = horizon_of(&terms);
+    let sp = Spec { base, cand: None, schema: "none".to_string(), safety: Safety::Material, horizon };
+    let k_claim = horizon.unwrap_or(FRAME_K);
     // in play, a move must also pass the planner's own audit (its reasoning for them: nothing of ours lost, no draw);
     // none does -- the least loss, said so
     let audited = |m: &Move| crate::plan::audit_net(pos, m) >= 0;
@@ -962,7 +971,7 @@ pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
     let Some((m, cert)) = chosen else {
         let m = least_loss(pos, &|m: &Move| crate::plan::audit_net(pos, m))?;
         let net = crate::plan::audit_net(pos, &m);
-        return Some((m, format!("no safe move for the {key} frame: the least loss (net {net}) -- the claim is the goal within {FRAME_K} moves")));
+        return Some((m, format!("no safe move for the {key} frame: the least loss (net {net}) -- the claim is the goal within {k_claim} moves")));
     };
     let before = sp.measure(pos, !us);
     let q = after(pos, &m);
@@ -970,7 +979,8 @@ pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
         format!("the empty frame (no measure known for {key}): the claim is the goal within {} moves (mate, or a capture we keep)", crate::vocab::FRAME_K)
     } else {
         format!("the {key} frame {:?}: the measure {:?} falls within {} moves against every reply, or the goal (mate, or a capture we keep) -- {}",
-                terms, before, FRAME_K, if cert { format!("certified (worst after it {:?})", sp.worst(&q, !us)) } else { "NOT certified".to_string() })
+                terms.iter().filter(|t| !t.starts_with("horizon:")).collect::<Vec<_>>(), before, k_claim,
+                if cert { format!("certified (worst after it {:?})", sp.worst(&q, !us)) } else { "NOT certified".to_string() })
     };
     Some((m, claim))
 }

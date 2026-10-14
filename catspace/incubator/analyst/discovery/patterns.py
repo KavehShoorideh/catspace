@@ -163,6 +163,187 @@ def words(arr: tuple, v: tuple) -> str:
     return f"while {lits}: the same again with their king {v[0]:+d} file(s), {v[1]:+d} rank(s)"
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# CYCLES AS FRAMES (Kaveh 2026-10-13: "we should be able to have loops in the frames ... several types of frames, loops or
+# cycles and other non-loop frames. I guess it doesn't make sense to categorize it that way"): a loop is a frame whose
+# measure falls once a cycle -- a horizon k; nothing else differs (Lean forced_by_measure covers every k). The proposer
+# reads games for an arrangement seen again with their king shifted, in VIEWS -- every coordinate, the ranks alone, the
+# files alone, with our king or without (the ladder of two rooks: their king wanders along the files, the rooks' ranks
+# step up) -- and emits a CONDITIONAL FRAME: the condition the view's words (their king kept where the shift stays on the
+# board), the measure their king's distance to the edge along the shift, the horizon the period. Checked EXACTLY on
+# positions drawn inside the condition (the solver: the same arrangement again, their king shifted, within k, against
+# every defence); kept when it holds on every one, and on held-out ones.
+# ---------------------------------------------------------------------------------------------------------------------
+VIEWS = ("full", "ranks", "files", "full-W", "ranks-W", "files-W")
+
+
+def view_literals(fen: str, view: str) -> tuple:
+    """The arrangement in one view, as literals (term, lo, hi) -- order-free, like pieces counted together."""
+    from collections import Counter
+    A = _a()
+    b = chess.Board(fen)
+    lk = b.king(not b.turn)
+    up = 1 if b.turn == chess.WHITE else -1
+    part, with_w = view.split("-")[0], not view.endswith("-W")
+    lits = []
+    if with_w:
+        if part in ("full", "files"):
+            lits.append(("(dfile W L)",) + (A.vocab_values([fen], "(dfile W L)")[0],) * 2)
+        if part in ("full", "ranks"):
+            lits.append(("(drank W L)",) + (A.vocab_values([fen], "(drank W L)")[0],) * 2)
+    cells = Counter()
+    for sq, p in b.piece_map().items():
+        if p.piece_type == chess.KING:
+            continue
+        df = chess.square_file(sq) - chess.square_file(lk)
+        dr = (chess.square_rank(sq) - chess.square_rank(lk)) * up
+        kind = ("our" if p.color == b.turn else "their") + _KINDS[p.piece_type]
+        cell = {"full": f"(at (offset L {df} {dr}))", "ranks": f"(rank (offset L 0 {dr}))", "files": f"(file (offset L {df} 0))"}[part]
+        cells[(kind, cell)] += 1
+    for (kind, cell), n in sorted(cells.items()):
+        lits.append((f"(count (and {kind} {cell}))", n, n))
+    return tuple(lits)
+
+
+def view_shift(v: tuple, view: str) -> tuple:
+    part = view.split("-")[0]
+    return (v[0] if part in ("full", "files") else 0, v[1] if part in ("full", "ranks") else 0)
+
+
+def view_recurrences(files: list, material: str) -> dict:
+    """{(view, literals, shift): dict(count, k, example)} -- an arrangement in a view seen again, their king moved along it."""
+    out = {}
+    for f in files:
+        for g in json.load(open(f)):
+            seen = defaultdict(list)
+            for i, r in enumerate(g["rows"]):
+                if r["material"] != material:
+                    continue
+                kl = king_at(r["fen"])
+                for view in VIEWS:
+                    lits = view_literals(r["fen"], view)
+                    for j, kl0, fen0 in seen[(view, lits)]:
+                        v = view_shift((kl[0] - kl0[0], kl[1] - kl0[1]), view)
+                        if v != (0, 0) and i - j <= 12:
+                            c = out.setdefault((view, lits, v), dict(count=0, k=10 ** 9, example=fen0))
+                            c["count"] += 1
+                            if i - j < c["k"]:
+                                c["k"], c["example"] = i - j, fen0
+                    seen[(view, lits)].append((i, kl, r["fen"]))
+    return out
+
+
+def frame_of(material: str, lits: tuple, v: tuple) -> tuple:
+    """The conditional frame: (key, the measure, the condition's literals with their king where the shift stays on the board)."""
+    bounds = []
+    if v[0]:
+        bounds.append(("(fileof L)", 0, 7 - v[0]) if v[0] > 0 else ("(fileof L)", -v[0], 7))
+    if v[1]:
+        bounds.append(("(rankof L)", 0, 7 - v[1]) if v[1] > 0 else ("(rankof L)", -v[1], 7))
+    cond = [tuple(x[:3]) for x in lits] + bounds
+    text = "&&".join(f"{t}>={lo}&&{t}<={hi}" if lo != hi else f"{t}>={lo}&&{t}<={hi}" for t, lo, hi in cond)
+    parts = []
+    if v[0]:
+        parts.append("(diff (fileof L) 7)" if v[0] > 0 else "(fileof L)")
+    if v[1]:
+        parts.append("(diff (rankof L) 7)" if v[1] > 0 else "(rankof L)")
+    measure = parts[0] if len(parts) == 1 else f"(sum {parts[0]} {parts[1]})"
+    return f"{material}:if:{text}", measure, cond
+
+
+def _check_cycle(args):
+    """At one position inside the condition: is the arrangement again, their king shifted by v, forced within k? (The
+    goal is the arrangement's own literals -- a refinement narrows where the frame applies, not where it must arrive.)"""
+    fen, lits, v, k, budget = args
+    lits = [x for x in lits if not (len(x) == 4 and x[3] == "refined")]
+    f, r = king_at(fen)
+    goal = [tuple(x) for x in lits]
+    if v[0]:
+        goal.append(("(fileof L)", f + v[0], f + v[0]))
+    if v[1]:
+        goal.append(("(rankof L)", r + v[1], r + v[1]))
+    return _a().forced_goal(fen, goal, k, budget)[0]
+
+
+def refine(good: list, bad: list) -> tuple | None:
+    """A word that keeps every position where the loop failed OUT and the most where it held IN (no named square) -- the
+    condition's next literal (term, lo, hi); None when no word does."""
+    import numpy as np
+    from . import explorer as E
+    M = E.matrix(good + bad)
+    g, b = M[: len(good)], M[len(good):]
+    allow = E.layer_mask(0, set())
+    best = None
+    for op in (">=", "<="):
+        th = (b.max(axis=0) + 1) if op == ">=" else (b.min(axis=0) - 1)
+        keep = ((g >= th) if op == ">=" else (g <= th)).sum(axis=0)
+        keep = np.where(allow, keep, -1)
+        j = int(keep.argmax())
+        if keep[j] > 0 and (best is None or keep[j] > best[0]):
+            best = (int(keep[j]), (E.terms()[j], int(th[j]), 99) if op == ">=" else (E.terms()[j], 0, int(th[j])))
+    return best[1] if best else None
+
+
+def check_frame(material: str, lits: tuple, v: tuple, k: int, pool, rng, n: int, budget: int = 500_000) -> dict:
+    """Positions drawn inside the condition, each checked exactly: forced / stopped / unknown."""
+    from .explorer import random_positions
+    key, measure, cond = frame_of(material, lits, v)
+    conds = [dict(term=t, op=op, theta=th) for t, lo, hi in cond for op, th in ((">=", lo), ("<=", hi))]
+    fens = random_positions(material, n, rng, conds, tries=4000)
+    res = pool.map(_check_cycle, [(f, lits, v, k, budget) for f in fens])
+    return dict(key=key, measure=measure, drawn=len(fens), forced=res.count("forced"), stopped=res.count("stopped"),
+                unknown=res.count("unknown"), failed=[f for f, x in zip(fens, res) if x != "forced"],
+                held=[f for f, x in zip(fens, res) if x == "forced"])
+
+
+def frames_main(argv=None):
+    """python -m catspace.incubator.analyst.discovery.patterns frames --games ... --material KRRvK"""
+    import random
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--games", required=True)
+    ap.add_argument("--material", required=True)
+    ap.add_argument("--top", type=int, default=20)
+    ap.add_argument("--draw", type=int, default=60, help="positions drawn inside a condition to check it")
+    ap.add_argument("--held-out", type=int, default=60)
+    ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 8) - 1))
+    a = ap.parse_args(argv)
+    t0 = time.time()
+    rec = view_recurrences(sorted(glob.glob(a.games)), a.material)
+    cands = sorted(rec.items(), key=lambda kv: (-kv[1]["count"], len(kv[0][1]), kv[1]["k"]))
+    print(f"OBS {len(rec)} candidate loops in {a.material} over the views {VIEWS} ({time.time() - t0:.0f} s); checking the "
+          f"{min(a.top, len(cands))} seen most often")
+    from multiprocessing import get_context
+    kept = []
+    with get_context("spawn").Pool(a.workers) as pool:
+        for (view, lits, v), c in cands[: a.top]:
+            r = check_frame(a.material, lits, v, c["k"], pool, random.Random(f"{view}{lits}{v}"), a.draw)
+            line = (f"OBS   {view}, seen {c['count']}x, period {c['k']}, their king {v}: drawn {r['drawn']} inside -- forced at "
+                    f"{r['forced']}, stopped {r['stopped']}, unknown {r['unknown']}")
+            # REFINED (Ripple-Down, CEGIS): a word that keeps every failure out and the most of the held ones in; drawn afresh
+            for rnd in range(3):
+                if not r["drawn"] or r["forced"] == r["drawn"] or not r["held"]:
+                    break
+                w = refine(r["held"], r["failed"])
+                if w is None:
+                    break
+                lits = tuple(lits) + ((w[0], w[1], w[2], "refined"),)
+                r = check_frame(a.material, lits, v, c["k"], pool, random.Random(f"r{rnd}{view}{lits}{v}"), a.draw)
+                line += f"; refined by {w[0]} in [{w[1]}, {w[2]}]: forced at {r['forced']}/{r['drawn']}"
+            if r["drawn"] and r["forced"] == r["drawn"]:
+                h = check_frame(a.material, lits, v, c["k"], pool, random.Random(f"held{view}{lits}{v}"), a.held_out)
+                line += f"; HELD OUT {h['forced']}/{h['drawn']}"
+                if h["drawn"] and h["forced"] == h["drawn"]:
+                    kept.append(dict(key=r["key"], terms=[r["measure"], f"horizon:{c['k']}"], view=view, v=v, k=c["k"], seen=c["count"],
+                                     checked=r["drawn"] + h["drawn"]))
+                    line += " -> KEPT"
+            print(line)
+            print(f"OBS     {r['key'][:220]} -> [{r['measure']}, horizon:{c['k']}]")
+    out = paths.derived(f"patterns/frames_{a.material}.json")
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    json.dump(kept, open(out, "w"), indent=1)
+    print(f"OBS {len(kept)} loop frame(s) kept -> {out} ({time.time() - t0:.0f} s)")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--games", required=True, help="a glob of results JSONs (surprise_loop._game rows)")
@@ -194,4 +375,8 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "frames":
+        frames_main(sys.argv[2:])
+    else:
+        main()

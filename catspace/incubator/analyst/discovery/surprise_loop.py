@@ -57,7 +57,13 @@ def lead_of(b) -> tuple:
 def claim_of(trace: list, why: str, material: str, frames: dict, lead: int) -> dict:
     """The claim of a decision, read from its own trace and reason."""
     if any(l.startswith("frame: ") for l in trace):
-        return dict(kind="frame", specs=frames.get(material, []), k=FRAME_K)
+        # the frame that decided (a conditional frame, a check frame, the material's) and its horizon, from its own claim
+        line = next(l for l in trace if l.startswith("frame: "))
+        key = re.search(r"the (\S+) frame \[", line)
+        k = re.search(r"falls within (\d+) moves", line)
+        fkey = key.group(1) if key and key.group(1) in frames else material
+        specs = [t for t in frames.get(fkey, []) if not t.startswith("horizon:")]
+        return dict(kind="frame", specs=specs, k=int(k.group(1)) if k else FRAME_K, frame=fkey)
     g = re.search(r"the goal field: .* in (\d+) \(\+", why)
     if g:                                                 # a goal forced against every defence: a proof, its own horizon
         return dict(kind="proof", k=int(g.group(1)))
