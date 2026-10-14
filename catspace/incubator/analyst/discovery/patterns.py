@@ -49,15 +49,27 @@ def all_named(b: chess.Board) -> bool:
     return all(len([p for p in b.piece_map().values() if p.color == c and p.piece_type != chess.KING]) <= 3 for c in (True, False))
 
 
+_KINDS = {chess.QUEEN: "queens", chess.ROOK: "rooks", chess.BISHOP: "bishops", chess.KNIGHT: "knights", chess.PAWN: "pawns"}
+
+
 def arrangement(fen: str) -> tuple:
-    """The arrangement in words: ((term, value), ...) for every named piece present -- where it stands from their king."""
+    """The arrangement in words, the same whichever of two like pieces stands where (2026-10-13: the two rooks of the ladder
+    swap ranks every step, and names ordered by square swapped with them -- no cycle was ever seen): our king's offset from
+    their king, and for every other piece "a <kind> of <side> stands <df> files, <dr> ranks from their king" -- literals
+    ((term, value), ...), sorted."""
     A = _a()
     b = chess.Board(fen)
-    n_us = sum(p.color == b.turn and p.piece_type != chess.KING for p in b.piece_map().values())
-    n_them = sum(p.color != b.turn and p.piece_type != chess.KING for p in b.piece_map().values())
-    present = {"W": True, "P": n_us >= 1, "P2": n_us >= 2, "P3": n_us >= 3, "O": n_them >= 1, "O2": n_them >= 2, "O3": n_them >= 3}
-    terms = [f"({h} {x} L)" for x in NAMED if present[x] for h in ("dfile", "drank")]
-    return tuple((t, A.vocab_values([fen], t)[0]) for t in terms)
+    lk = b.king(not b.turn)
+    lits = [(t, A.vocab_values([fen], t)[0]) for t in ("(dfile W L)", "(drank W L)")]
+    up = 1 if b.turn == chess.WHITE else -1
+    for sq, p in b.piece_map().items():
+        if p.piece_type == chess.KING:
+            continue
+        df = chess.square_file(sq) - chess.square_file(lk)
+        dr = (chess.square_rank(sq) - chess.square_rank(lk)) * up
+        side = "our" if p.color == b.turn else "their"
+        lits.append((f"(count (and {side}{_KINDS[p.piece_type]} (at (offset L {df} {dr}))))", 1))
+    return tuple(sorted(lits))
 
 
 def king_at(fen: str) -> tuple:

@@ -73,8 +73,8 @@ def known_terms(hole: dict) -> list:
 
 class Known:
     """THE LEMMAS WE ALREADY HAVE, TRIED FIRST (Kaveh 2026-10-12: "we can use the earlier lemmas to our advantage";
-    the night's autonomy -- 2026-10-12, a stage's winning measure for K+R+R v K+R was the very term the next run
-    confirmed for K+R+R v K, while that run's own stage race picked a measure that lost): the known measures among the
+    the night's autonomy -- 2026-10-12, a conditional frame's winning measure for K+R+R v K+R was the very term the next run
+    confirmed for K+R+R v K, while that run's own race for the conditional frame picked a measure that lost): the known measures among the
     hole's candidates, in their order; the race and the held-out confirmation judge them like any other."""
     name = "known"
 

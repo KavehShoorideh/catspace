@@ -47,7 +47,7 @@ def test_paired_e_value():
     held, lost = [1, 0, 3], [0, 0, 3]
     assert paired_e([held] + [lost] * 49, [lost] * 50)[2] < 2                    # one board of 50: not evidence
     w, l, e = paired_e([held] * 26 + [lost] * 24, [held] * 3 + [lost] * 47)
-    assert (w, l) == (23, 0) and e > 1e5                                         # the round-2 trap stage's margin
+    assert (w, l) == (23, 0) and e > 1e5                                         # the round-2 trap's conditional frame's margin
     assert paired_e([[0, 0, 6]] * 40 + [[0, 0, 1]] * 10, [[0, 0, 2]] * 50)[:2] == (40, 10)   # ties on held/won: progress decides
     assert paired_e([held] * 7 + [lost], [lost] * 7 + [held])[2] < E_PROMOTE      # 7 to 1: e 7.0
     assert paired_e([held] * 10 + [lost], [lost] * 10 + [held])[2] >= E_PROMOTE   # 10 to 1: e 30.9 (one-sided)

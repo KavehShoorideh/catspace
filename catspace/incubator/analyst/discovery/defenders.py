@@ -145,7 +145,7 @@ def _play_one(args):
         out["why"] = dict(kind=kind, **kw)
 
     for n in range(1, GUARD + 1):
-        # A STAGED FRAME's goal (the challenger's answer): out of its region R -- the stage is done
+        # A CONDITIONAL FRAME's goal (the challenger's answer): out of its region R -- the frame is done
         if leave and n > 1 and A.vocab_values([b.fen()], leave[0])[0] < leave[1]:
             out["won"] = True; break
         history.append(b.fen())
@@ -309,7 +309,7 @@ def votes(a: list, b: list, games: list | None = None) -> tuple:
 def paired_e(a: list, b: list, games: list | None = None) -> tuple:
     """THE EVIDENCE that a beats b (Kaveh 2026-10-12: "do we need e-values for the evidence?") from their per-board
     outcomes on the SAME boards, one vote per game (votes) -> (w, l, e). One board more held of 50 is not evidence
-    (2026-10-12: a stage promoted on 1/50 against 0/50); the claims kept never count (a measure we lower ourselves keeps
+    (2026-10-12: a conditional frame promoted on 1/50 against 0/50); the claims kept never count (a measure we lower ourselves keeps
     its claims by construction -- the "ends" run)."""
     w, l = votes(a, b, games)
     return w, l, sign_e(w, l)

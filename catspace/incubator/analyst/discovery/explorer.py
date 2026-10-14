@@ -14,7 +14,7 @@ One surprise -- a game of ours -- and no statistics:
             vocabulary's conditions "term >= theta" / "term <= theta" true on every WRONG position and on no RIGHT one --
             what was not looked at, with no error allowed on the explored space
   REPAIR    inside that condition, a measure under which the planner's move is forced on every explored position there:
-            the stage "<material>:if:<condition>" -> [measure]
+            the conditional frame "<material>:if:<condition>" -> [measure]
   STATE     the lemma and its evidence (positions explored, each checked; the line on the surprise) -- a conjecture,
             exact on the explored space; the next surprise tests it, Lean proves it later
 
@@ -312,23 +312,23 @@ ALWAYS = dict(term="(count edge)", op=">=", theta=0)        # a condition that a
 
 
 def _trial(args) -> dict | None:
-    """In a worker: the stage "<key>:if:<conds>" -> [measure] installed, the planner's move at the surprise and on every
+    """In a worker: the conditional frame "<key>:if:<conds>" -> [measure] installed, the planner's move at the surprise and on every
     explored position with a good move -- which it now gets right that it had wrong (FIXED), wrong that it had right
     (BROKE). None when the surprise is still played wrong."""
     import analyst_core as A
     key, conds, s, rows, at = args
     ok = lambda r, u: good(r["labels"].get(u, ("unknown",))[0])
     inside = [r for r, h in zip(rows, _holds([r["fen"] for r in rows], conds)) if h]
-    stage = f"{key}:if:{_cond_text(conds)}"
-    A.set_material_frame(stage, [s])
+    fkey = f"{key}:if:{_cond_text(conds)}"
+    A.set_material_frame(fkey, [s])
     try:
         if not good(at["labels"].get(planner_move(at["fen"])[0], ("unknown",))[0]):
             return None
         now = {r["fen"]: ok(r, planner_move(r["fen"])[0]) for r in inside}
     finally:
-        A.set_material_frame(stage, [])
+        A.set_material_frame(fkey, [])
     was = {r["fen"]: ok(r, r["move"][0]) for r in inside}
-    return dict(stage=stage, measure=s, conds=conds, inside=len(inside),
+    return dict(frame=fkey, measure=s, conds=conds, inside=len(inside),
                 broke=[f for f in was if was[f] and not now[f]], fixed=[f for f in was if now[f] and not was[f]],
                 wrong_before=sum(not x for x in was.values()), right_before=sum(was.values()))
 
@@ -364,15 +364,15 @@ def lemma(key: str, rows: list, at: dict, pool, mask=None, top: int = 40, refine
 
 
 def _moves_under(args) -> list:
-    """In a worker: the planner's moves on `fens` with the stage installed."""
+    """In a worker: the planner's moves on `fens` with the conditional frame installed."""
     import analyst_core as A
     key, conds, measure, fens = args
-    stage = f"{key}:if:{_cond_text(conds)}"
-    A.set_material_frame(stage, [measure])
+    fkey = f"{key}:if:{_cond_text(conds)}"
+    A.set_material_frame(fkey, [measure])
     try:
         return [planner_move(f)[0] for f in fens]
     finally:
-        A.set_material_frame(stage, [])
+        A.set_material_frame(fkey, [])
 
 
 def committee(key: str, cands: list, at: dict, pool, rng, rounds: int = 4, sample: int = 600) -> tuple:
@@ -411,12 +411,12 @@ def committee(key: str, cands: list, at: dict, pool, rng, rounds: int = 4, sampl
 def fixes_decision(key: str, L: dict, d: dict) -> bool:
     """With the lemma installed, does the planner play a good move at a surprise's decision (`d`: fen, labels)?"""
     import analyst_core as A
-    stage = f"{key}:if:{_cond_text(L['conds'])}"
-    A.set_material_frame(stage, [L["measure"]])
+    fkey = f"{key}:if:{_cond_text(L['conds'])}"
+    A.set_material_frame(fkey, [L["measure"]])
     try:
         return good(d["labels"].get(planner_move(d["fen"])[0], ("unknown",))[0])
     finally:
-        A.set_material_frame(stage, [])
+        A.set_material_frame(fkey, [])
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -601,7 +601,7 @@ def explore(game: dict, frames: dict, workers: int = 10, seed: int = 0) -> dict:
                         broke=len(t["broke"]) if t else 0, fixed=len(t["fixed"]) if t else 0)
             sought += hold_rows
         else:
-            L = dict(stage=key, measure=None, rejected="no candidate survived the committee and the counterexamples")
+            L = dict(frame=key, measure=None, rejected="no candidate survived the committee and the counterexamples")
         added = save_cases(key, rows + sought)
     return dict(seed=game.get("seed"), found=True, mode=mode, depth=depth, material=key,
                 decision=dict(fen=at["fen"], played=at["played"], why=at["why"],
@@ -617,7 +617,7 @@ def utility(key: str, frames: dict, L: dict, seeds: range, workers: int = 10) ->
     from multiprocessing import get_context
     from .surprise_loop import _game
     rank = {"loss": 0, "draw": 1, "not finished": 1, "win": 2}
-    with_ = dict(frames); with_[L["stage"]] = [L["measure"]]
+    with_ = dict(frames); with_[L["frame"]] = [L["measure"]]
     with get_context("spawn").Pool(workers) as p:
         a = {g["seed"]: g["out"] for g in p.map(_game, [(s, key, frames, "tablebase", None) for s in seeds])}
         b = {g["seed"]: g["out"] for g in p.map(_game, [(s, key, with_, "tablebase", None) for s in seeds])}
@@ -648,7 +648,7 @@ def report(x: dict) -> None:
     L = x["lemma"]
     if L and L.get("measure"):
         cond = " and ".join(f"{V.gloss(V.parse(c['term']))} {c['op']} {c['theta']}" for c in L["conds"] if c is not ALWAYS and c != ALWAYS) or "always"
-        print(f"OBS   LEMMA: {L['stage']} -> [{L['measure']}]")
+        print(f"OBS   LEMMA: {L['frame']} -> [{L['measure']}]")
         print(f"OBS     in words: while {cond}, follow {V.gloss(V.parse(L['measure']))}")
         print(f"OBS     learning cases: fixes {len(L['fixed'])} of the planner's {L['wrong_before']} wrong decisions inside, breaks "
               f"none of its {L['right_before']} right ones")
@@ -712,18 +712,18 @@ def main(argv=None):
             u = utility(p["key"], frames, p["lemma"], range(a.utility_seed + 1000 * i, a.utility_seed + 1000 * i + a.utility)) if a.utility else None
             p["x"]["utility"] = u
             if u and u["net"] > 0 and u["e"] >= E_PROMOTE:
-                frames = dict(frames); frames[p["lemma"]["stage"]] = [p["lemma"]["measure"]]
-                kept.append(p["lemma"]["stage"]); p["x"]["verdict"] = f"KEPT (support {p['support']})"
+                frames = dict(frames); frames[p["lemma"]["frame"]] = [p["lemma"]["measure"]]
+                kept.append(p["lemma"]["frame"]); p["x"]["verdict"] = f"KEPT (support {p['support']})"
             else:
                 p["x"]["verdict"] = f"dropped (utility e {u['e'] if u else '-'} < {E_PROMOTE} or net <= 0; support {p['support']})"
-            ledger.append(dict(stage=p["lemma"]["stage"], measure=p["lemma"]["measure"], material=p["key"], seed=p["seed"],
+            ledger.append(dict(frame=p["lemma"]["frame"], measure=p["lemma"]["measure"], material=p["key"], seed=p["seed"],
                                support=p["support"], utility=u, verdict=p["x"]["verdict"], time=time.strftime("%Y-%m-%d %H:%M")))
-            print(f"OBS   the lemma from seed {p['seed']} ({p['lemma']['stage']} -> [{p['lemma']['measure']}]): fixes the decisions of "
+            print(f"OBS   the lemma from seed {p['seed']} ({p['lemma']['frame']} -> [{p['lemma']['measure']}]): fixes the decisions of "
                   f"games {p['support']}; UTILITY {u} -> {p['x']['verdict']}")
         report(x)
         found.append(x)
     for p in pending:
-        ledger.append(dict(stage=p["lemma"]["stage"], measure=p["lemma"]["measure"], material=p["key"], seed=p["seed"],
+        ledger.append(dict(frame=p["lemma"]["frame"], measure=p["lemma"]["measure"], material=p["key"], seed=p["seed"],
                            support=p.get("support"), verdict="pending at the end (one surprise only)", time=time.strftime("%Y-%m-%d %H:%M")))
     json.dump(ledger, open(store, "w"), indent=1)
     out = a.out or paths.derived(f"explorer/explored_{int(time.time())}.json")

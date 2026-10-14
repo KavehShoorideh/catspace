@@ -41,10 +41,10 @@ def spec_of(hole: dict, defender: str = "self") -> str:
     """What a verdict was made against besides the term and the boards: the hole's base measure, the safety, the horizon,
     the closed loop's defender -- a hole of the same name and boards with another base (the next run's) must not reuse it
     (BUGS 2026-10-12), nor a verdict against another opponent."""
-    # a stage (a situational frame) is judged under its own key, with or without a region to leave
-    stage = hole.get("leave") or ":if:" in (hole.get("frame_key") or "")
+    # a conditional frame is judged under its own key, with or without a region to leave
+    conditional = hole.get("leave") or ":if:" in (hole.get("frame_key") or "")
     return json.dumps([hole["base"], hole.get("piece") or hole["material"][1], hole["k"]] + ([] if defender == "self" else [defender])
-                      + ([hole["frame_key"], hole.get("leave")] if stage else []))
+                      + ([hole["frame_key"], hole.get("leave")] if conditional else []))
 
 
 def board_hash(boards: list) -> str:
@@ -147,7 +147,7 @@ def split(boards: list, n_boards: int, games: list, seed: str = "") -> tuple:
 
 def spread(boards: list, games: list, cap: int) -> tuple:
     """Up to `cap` boards taken one game at a time, round robin (games in their first appearance's order) -> (boards,
-    games): as many games as the boards allow -- the evidence is one vote a game (2026-10-12: a stage's first 100
+    games): as many games as the boards allow -- the evidence is one vote a game (2026-10-12: a conditional frame's first 100
     refuted boards came from a few long games, its confirmation from one)."""
     from collections import defaultdict
     by, order = defaultdict(list), []

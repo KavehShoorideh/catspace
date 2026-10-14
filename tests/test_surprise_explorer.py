@@ -74,6 +74,6 @@ def test_a_cycle_is_verified_at_every_placement():
     from catspace.incubator.analyst.discovery import patterns as Pt
     ex = "8/8/8/8/8/8/1R6/k1K5 w - - 0 1"                             # our K c1, R b2, their K a1
     arr = Pt.arrangement(ex)
-    assert dict(arr)["(dfile W L)"] == 9 and dict(arr)["(drank P L)"] == 8
+    assert dict(arr)["(dfile W L)"] == 9 and dict(arr)["(count (and ourrooks (at (offset L 1 1))))"] == 1   # the rook b2 from a1
     pl = Pt.placements(ex)
     assert all(Pt.arrangement(f) == arr for f, _ in pl) and len(pl) > 10

@@ -107,15 +107,18 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   pushes (a ranked list of measures), and its CLAIM: on every move it chooses, the measure falls within k moves of ours
   against every reply, or the goal (a mate, a capture we keep). Stored by key in `generated_frames.json`; `<material>:check`
   is the frame used when in check.
-- **Stage** — a frame WITH a condition: key `<material>:if:<condition>` (the condition: terms with `>=` / `<=`, joined by
-  `&&`); while the condition holds its measure replaces the material's frame. The word came from the challenger (after
-  Sadikov & Bratko 2006, one evaluation per endgame stage); it is not a different object -- a stage is a conditional frame.
+- **Conditional frame** — a frame WITH a condition: key `<material>:if:<condition>` (the condition: terms with `>=` / `<=`,
+  joined by `&&`); while the condition holds its measure replaces the material's frame. Formerly called a "stage" (the
+  challenger's word, after Sadikov & Bratko 2006); retired 2026-10-13 (Kaveh: "frame and conditional frame") -- old logs and
+  the journal still say stage. ("Stage" elsewhere in the code means the verifier's two checks, or a round of the race.)
+- **Loops** — not a kind of frame: a frame whose measure falls once per cycle has a longer horizon k; `forced_by_measure`
+  covers every k.
 - **Condition = partial pattern** — the few words that say where a frame applies ("a rook one rank in front of their king");
   the pattern memory is the set of frames and their conditions.
 - **Measure** — a term the frame drives down; ranked lists compare lexicographically.
 - **Claim, horizon k** — "falls within k against every reply"; k = 2 for every frame today (`CLAIM_K`).
 - **Lemma** — a claim that is PROVED (a Lean theorem) or checked exactly on every position it covers; until then a
-  CONJECTURE. The loop also says "lemma" for a promoted frame or stage measure: that is a conjecture with evidence.
+  CONJECTURE. The loop also says "lemma" for a promoted frame measure: that is a conjecture with evidence.
 - **Earlier meanings of "frame"** — in September, `lemma_gen.py`'s frame was a pattern of piece slots and relations (a
   partial pattern of pieces); in `FrameLemma.lean` a frame is the set of squares bearing on a question; `mating.rs`'s frames
   (K+Q, K+R) are hand-derived measures with proved edge conditions -- the discovery frame descends from these.
@@ -125,7 +128,7 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
 - **Hole** — the boards of a surprise, for the pipeline's proposers (graph network, transformer, the known lemmas) to fill
   with a measure.
 - **Promotion, e-value** — a mined measure is kept when held-out games favour it: one-sided paired sign e-value >= 20.
-- **Challenger** — mines regions where a frame fails (traps, blind spots) and answers with a stage.
+- **Challenger** — mines regions where a frame fails (traps, blind spots) and answers with a conditional frame.
 - **Explorer** (`explorer.py`) — from ONE surprise, no statistics: LOCATE the decision that threw a forced gain away;
   EXPLORE the positions around it, each labelled exactly (forced / stopped / unknown); SEPARATE what the planner missed;
   REPAIR with a measure; then the guards: CORNERSTONES (every right decision ever labelled, the case base), a COMMITTEE of

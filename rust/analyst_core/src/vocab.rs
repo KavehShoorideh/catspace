@@ -910,7 +910,7 @@ pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
     // A FRAME PER EPISODE KIND (Kaveh 2026-10-12): in check -- their threat on our king -- the material's CHECK frame
     // when one is known ("<material>:check"), its own measure of progress; else the material's frame
     let ckey = format!("{key}:check");
-    // SITUATIONAL FRAMES (the challenger's answer, a stage -- Sadikov & Bratko): "<material>:if:<term>>=<theta>" is played
+    // CONDITIONAL FRAMES (the challenger's answer; formerly "stages", after Sadikov & Bratko): "<material>:if:<term>>=<theta>" is played
     // while its condition holds (a trap the challenger found: its own measure, mined to LEAVE it); the check frame first
     let situational = || -> Option<(String, Vec<String>)> {
         let g = MATERIAL_FRAMES.read().unwrap();

@@ -16,11 +16,11 @@ playbook is partial).
             had a move, the frame chose wrong -- 2026-10-12: "the kings close" predicted the refutations at 0.94 against
             0.50 and held on 9/60); nothing kept at all -> a VOCABULARY GAP (logged with its boards: where new
             predicates come from)
-  3 ANSWER  a STAGE for R, its measure mined by the pipeline on R's refuted boards and promoted by the verifier's rules:
+  3 ANSWER  a CONDITIONAL FRAME for R, its measure mined by the pipeline on R's refuted boards and promoted by the verifier's rules:
             for a counter-frame its goal is to LEAVE R; for a blind spot, to play well inside R (the game's own ends:
             held, won, progress) -- each against the material's own frame inside R
   4 ARCHIVE every counter-frame, blind spot and gap kept with its status (survived the local check on N boards / predictor
-            only / answered by a stage) -- a never-forget archive
+            only / answered by a conditional frame) -- a never-forget archive
 
   python -m catspace.incubator.analyst.discovery.challenger --run level2b --round 2
 """
@@ -209,11 +209,11 @@ def mine(res: list, frames: dict, material: str, top: int = TOP, check_n: int = 
 
 def answer(cf: dict, material: str, kind: str, run: str, rnd: int, frames: dict, defender: str = "tablebase",
            n_boards: int = 50, budget: int = 60) -> dict:
-    """The attacker's lemma-incorporation as a STAGE (the red team: "a new frame whose goal is 'leave R'"): a situational
+    """The attacker's lemma-incorporation as a CONDITIONAL FRAME (the red team: "a new frame whose goal is 'leave R'"): a situational
     frame "<material>:if:<term>>=<theta>", active while R holds, its measure MINED by the pipeline like any other on R's
     refuted boards. kind "trap" (a counter-frame): its verifier games succeed on leaving R (or the material goal) without
     losing ground; kind "blind" (a blind spot): on the game's own ends -- held, won, progress. Against the material's own
-    frame inside R (no stage)."""
+    frame inside R (no conditional frame)."""
     from .pipeline import run as pipeline_run
     import chess
     def fresh(f):
@@ -225,7 +225,7 @@ def answer(cf: dict, material: str, kind: str, run: str, rnd: int, frames: dict,
     choose, check, check_games = split([fresh(f) for f in picked], n_boards, pg, seed=f"{run}|{material}|{rnd}|{kind}")
     boards = choose + check                                     # choosing and confirming on different games, choosing first
     fkey = f"{material}:if:{cf['term']}>={cf['theta']}"
-    hole = dict(name=f"stage_{run}_{material}_r{rnd}_{kind}", material=material, frame_key=fkey, frames=frames, piece="*",
+    hole = dict(name=f"cframe_{run}_{material}_r{rnd}_{kind}", material=material, frame_key=fkey, frames=frames, piece="*",
                 base=[], k=2, stuck=boards, sampled=len(boards), leave=[cf["term"], cf["theta"]] if kind == "trap" else None)
     json.dump(hole, open(paths.derived(f"hole_{hole['name']}.json"), "w"))
     out = pipeline_run(hole["name"], budget, hole=hole, defender=defender, n_boards=len(choose))
@@ -234,8 +234,8 @@ def answer(cf: dict, material: str, kind: str, run: str, rnd: int, frames: dict,
     c = confirm(hole, best, check, defender, check_games)     # on games not used to choose it, one vote a game
     goal = "left R or won" if kind == "trap" else "won"
     show = lambda r: f"{goal} {r['mated']}/{r['n']}, lost ground {r['lost']}, lemma-states {r.get('states', 0) / max(r['n'], 1):.1f} a board"
-    print(f"OBS   the attacker's answer -- a STAGE for the {'counter-frame' if kind == 'trap' else 'blind spot'} R ({fkey}): the best mined "
-          f"measure {best and best['term']}; on {c['n']} boards not used to choose it {c['cand'] and show(c['cand'])}, without the stage "
+    print(f"OBS   the attacker's answer -- a CONDITIONAL FRAME for the {'counter-frame' if kind == 'trap' else 'blind spot'} R ({fkey}): the best mined "
+          f"measure {best and best['term']}; on {c['n']} boards not used to choose it {c['cand'] and show(c['cand'])}, without the conditional frame "
           f"{c['base'] and show(c['base'])}; better in {c['w']} of its {c['games']} games, worse in {c['l']} -- e-value {c['e']:.3g} -> "
           f"{'PROMOTED' if c['promoted'] else 'not promoted'} (at e >= 20)")
     return dict(kind=kind, frame_key=fkey, term=best and best["term"], schema=best and best["schema"], base=c["base"] and show(c["base"]),
@@ -294,12 +294,12 @@ if __name__ == "__main__":
     main()
 
 
-def carry_stages(res: list, played: dict, new: dict, pending: dict, run: str, rnd: int, rounds_left: int,
+def carry_frames(res: list, played: dict, new: dict, pending: dict, run: str, rnd: int, rounds_left: int,
                  defender: str = "tablebase", register: bool = True, opponent: str = "stockfish:10", band: tuple | None = None) -> None:
-    """THE STAGES' EVIDENCE CARRIED ACROSS ROUNDS (the night's autonomy, 2026-10-12: a stage left R or won 39/46 against
-    15/46 -- but its refuted boards came from 5 games, 4 better and 1 worse, e 1.9, and the stage was forgotten): a stage
+    """THE CONDITIONAL FRAMES' EVIDENCE CARRIED ACROSS ROUNDS (the night's autonomy, 2026-10-12: a conditional frame left R or won 39/46 against
+    15/46 -- but its refuted boards came from 5 games, 4 better and 1 worse, e 1.9, and it was forgotten): a conditional frame
     not promoted that wins more games than it loses stays PENDING with its region R; each later round, this round's
-    refuted positions INSIDE R -- every game new to it: the stage was chosen on other games -- confirm it again (one vote
+    refuted positions INSIDE R -- every game new to it: the frame was chosen on other games -- confirm it again (one vote
     a game) and its votes are pooled; promoted at e >= 20, dropped as a frame's candidate is (verifier.confirm,
     surprise_loop.futile), or when the frame of its material changes. `pending` and `new` updated in place."""
     import chess
@@ -312,7 +312,7 @@ def carry_stages(res: list, played: dict, new: dict, pending: dict, run: str, rn
         mat = p["material"]
         if (played.get(mat) or []) != p["base"]:
             pending.pop(fkey)
-            print(f"OBS   the pending stage {fkey} dropped: the {mat} frame it was measured against changed"); continue
+            print(f"OBS   the pending conditional frame {fkey} dropped: the {mat} frame it was measured against changed"); continue
         rows = data(res, mat) if played.get(mat) else data_phase(res, mat)
         refuted = [(f, g) for f, y, g in rows if y]
         vals = A.vocab_values([f for f, _ in refuted], p["region"]) if refuted else []
@@ -324,45 +324,45 @@ def carry_stages(res: list, played: dict, new: dict, pending: dict, run: str, rn
             b = chess.Board(f); b.halfmove_clock = 0
             return b.fen()
         boards = [fresh(f) for f in picked]
-        hole = dict(name=f"stage_{run}_{mat}_r{rnd}_{p['kind']}_carried", material=mat, frame_key=fkey, frames=dict(new), piece="*",
+        hole = dict(name=f"cframe_{run}_{mat}_r{rnd}_{p['kind']}_carried", material=mat, frame_key=fkey, frames=dict(new), piece="*",
                     base=[], k=2, stuck=boards, sampled=len(boards), games=games, leave=[p["region"], p["theta"]] if p["kind"] == "trap" else None)
         json.dump(hole, open(paths.derived(f"hole_{hole['name']}.json"), "w"))
         cf = confirm(hole, dict(term=p["term"], schema=p["schema"]), boards, defender, games)
         wv, lv = p["w"] + cf["w"], p["l"] + cf["l"]
         e = sign_e(wv, lv)
         more = len(set(games)) * rounds_left
-        print(f"OBS   the pending stage {fkey} [{p['term']}] on this round's {len(boards)} boards inside R from {cf['games']} games: better in "
+        print(f"OBS   the pending conditional frame {fkey} [{p['term']}] on this round's {len(boards)} boards inside R from {cf['games']} games: better in "
               f"{cf['w']}, worse in {cf['l']}; pooled over {p['rounds'] + 1} rounds {wv} to {lv}, e-value {e:.3g}")
         if e >= E_PROMOTE and vetoed(res, played, fkey, p["term"], mat, opponent, band):
             pending.pop(fkey)                         # (it breaks games: not tried again -- kqr2 re-vetoed one each round)
-            print(f"OBS   the pending stage {fkey} dropped: vetoed by the guard")
+            print(f"OBS   the pending conditional frame {fkey} dropped: vetoed by the guard")
         elif e >= E_PROMOTE:
             pending.pop(fkey)
             new[fkey] = [p["term"]]
-            print(f"OBS   STAGE PROMOTED on carried evidence: {fkey} -> {p['term']}")
+            print(f"OBS   CONDITIONAL FRAME PROMOTED on carried evidence: {fkey} -> {p['term']}")
             if register:
                 from . import registry as R
-                R.add_generated(f"stage_{mat.lower()}_{run}_r{rnd}_{p['kind']}_carried", p["term"], "measure", hole["name"],
+                R.add_generated(f"cframe_{mat.lower()}_{run}_r{rnd}_{p['kind']}_carried", p["term"], "measure", hole["name"],
                                 {"verifier": f"{wv} games better, {lv} worse over {p['rounds'] + 1} rounds, e-value {e:.3g} (held-out games)",
-                                 "region": f"{p['region']} >= {p['theta']}", "status": "a conjecture: the stage's claim is not proved"},
-                                used_by=f"the stage {fkey}")
+                                 "region": f"{p['region']} >= {p['theta']}", "status": "a conjecture: the conditional frame's claim is not proved"},
+                                used_by=f"the conditional frame {fkey}")
                 R.export()
         elif wv > lv and sign_e(wv + more, lv) >= E_PROMOTE and not futile(wv, lv, more, E_PROMOTE):
             pending[fkey] = dict(p, w=wv, l=lv, rounds=p["rounds"] + 1)
         else:
             pending.pop(fkey)
-            print(f"OBS   the pending stage {fkey} dropped ({wv} to {lv})")
+            print(f"OBS   the pending conditional frame {fkey} dropped ({wv} to {lv})")
 
 
-VETOES: dict = {}                   # region (stage key) -> its stages vetoed by the guard in this run
+VETOES: dict = {}                   # region (its frame key) -> its conditional frames vetoed by the guard in this run
 
 
 def vetoed(res: list, played: dict, fkey: str, term: str, material: str, opponent: str, band) -> bool:
-    """A stage under THE GUARD ON WHOLE GAMES (surprise_loop.guard_games -- first, don't lose): the round's starts replayed
-    with the stage added; True when it does worse in more games than better."""
+    """A conditional frame under THE GUARD ON WHOLE GAMES (surprise_loop.guard_games -- first, don't lose): the round's starts replayed
+    with the conditional frame added; True when it does worse in more games than better."""
     from .surprise_loop import guard_games
     g = guard_games(res, played, fkey, [term], material, opponent, band=band)
-    print(f"OBS   the guard ({g['n']} of the round's starts replayed with the stage {fkey}): better in {g['w']} games, worse in {g['l']} -- "
+    print(f"OBS   the guard ({g['n']} of the round's starts replayed with the conditional frame {fkey}): better in {g['w']} games, worse in {g['l']} -- "
           + ("VETOED: it breaks what the frames already do" if g["veto"] else "passed"))
     if g["veto"]:
         VETOES[fkey] = VETOES.get(fkey, 0) + 1
@@ -373,11 +373,11 @@ def round_(res: list, played: dict, frames: dict, run: str, rnd: int, register: 
            rounds_left: int = 0, opponent: str = "stockfish:10", band: tuple | None = None) -> dict:
     """The challenger inside the loop, after a round's mining: per material with a frame of ours, a trap and a blind spot
     mined from the claims of the frame the round was PLAYED with and checked against that frame (the data's own frame --
-    2026-10-12: checked against the newly mined one it reported gaps); each answered by a stage mined with the NEW frames
-    (the next round's); a promoted stage joins them. -> frames."""
+    2026-10-12: checked against the newly mined one it reported gaps); each answered by a conditional frame mined with the NEW frames
+    (the next round's); a promoted conditional frame joins them. -> frames."""
     new = dict(frames)
     pending = {} if pending is None else pending
-    carry_stages(res, played, new, pending, run, rnd, rounds_left, register=register, opponent=opponent, band=band)
+    carry_frames(res, played, new, pending, run, rnd, rounds_left, register=register, opponent=opponent, band=band)
     from .surprise_loop import MATING_SPECS
     from .defenders import E_PROMOTE, sign_e
     from .surprise_loop import futile
@@ -391,8 +391,8 @@ def round_(res: list, played: dict, frames: dict, run: str, rnd: int, register: 
             if not c:
                 continue
             key = f"{material}:if:{c['term']}>={c['theta']}"
-            if VETOES.get(key, 0) >= 2:      # (kbn1: one region's stages vetoed 0 to 20, three rounds running)
-                print(f"OBS   the region {key} not answered: its stages were vetoed {VETOES[key]} times in this run")
+            if VETOES.get(key, 0) >= 2:      # (kbn1: one region's conditional frames vetoed 0 to 20, three rounds running)
+                print(f"OBS   the region {key} not answered: its conditional frames were vetoed {VETOES[key]} times in this run")
                 continue
             ans = answer(c, material, kind, run, rnd, new)
             entry["answers"].append(ans)
@@ -403,17 +403,17 @@ def round_(res: list, played: dict, frames: dict, run: str, rnd: int, register: 
                 if not old or sign_e(old["w"], old["l"]) < ans["e"]:
                     pending[ans["frame_key"]] = dict(material=material, kind=kind, region=c["term"], theta=c["theta"], term=ans["term"],
                                                      schema=ans["schema"], base=new.get(material, []), w=ans["w"], l=ans["l"], rounds=1)
-                    print(f"OBS   PENDING stage {ans['frame_key']}: {ans['term']} -- {ans['w']} to {ans['l']}, continued on the next round's games")
+                    print(f"OBS   PENDING conditional frame {ans['frame_key']}: {ans['term']} -- {ans['w']} to {ans['l']}, continued on the next round's games")
             if ans["promoted"] and vetoed(res, played, ans["frame_key"], ans["term"], material, opponent, band):
                 ans["promoted"], ans["vetoed"] = False, True
             if ans["promoted"]:
                 new[ans["frame_key"]] = [ans["term"]]
                 if register:
                     from . import registry as R
-                    R.add_generated(f"stage_{material.lower()}_{run}_r{rnd}_{kind}", ans["term"], "measure", f"stage_{run}_{material}_r{rnd}_{kind}",
-                                    {"verifier": f"{ans['answer']} against {ans['base']} without the stage (confirmation boards; e-value {ans['e']:.3g})",
+                    R.add_generated(f"cframe_{material.lower()}_{run}_r{rnd}_{kind}", ans["term"], "measure", f"cframe_{run}_{material}_r{rnd}_{kind}",
+                                    {"verifier": f"{ans['answer']} against {ans['base']} without the conditional frame (confirmation boards; e-value {ans['e']:.3g})",
                                      ("trap" if kind == "trap" else "blind spot"): f"{c['gloss']} >= {c['theta']}",
-                                     "status": "a conjecture: the stage's claim is not proved"}, used_by=f"the stage {ans['frame_key']}")
+                                     "status": "a conjecture: the conditional frame's claim is not proved"}, used_by=f"the conditional frame {ans['frame_key']}")
                     R.export()
         archive(entry)
     return new

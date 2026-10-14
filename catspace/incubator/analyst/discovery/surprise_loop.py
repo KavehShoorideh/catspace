@@ -564,21 +564,21 @@ def main(argv=None):
     ap.add_argument("--opponent", default="stockfish:10", help="who defends in the games: stockfish:D (with the tablebases), tablebase")
     ap.add_argument("--defender", default="self", help="the verifier's closed-loop opponent: self, tablebase, stockfish:D")
     ap.add_argument("--boards", type=int, default=30, help="boards per hole the verifier plays against a real defender")
-    ap.add_argument("--challenger", action="store_true", help="after each round's mining: the challenger's traps and stages")
+    ap.add_argument("--challenger", action="store_true", help="after each round's mining: the challenger's traps and conditional frames")
     a = ap.parse_args(argv)
     tag = a.tag if a.tag is not None else time.strftime("%m%d_%H%M")
     stem = f"surprise_loop_{a.material}" + (f"_{tag}" if tag else "")
     state = paths.derived(f"{stem}.json")
     from . import registry as R
     frames = json.load(open(a.frames)) if a.frames else ({} if a.fresh else R.load_frames())
-    history, start, res, pending, pending_stages = [], 0, None, {}, {}
+    history, start, res, pending, pending_frames = [], 0, None, {}, {}
     band = tuple(int(x) for x in a.dtz.split(":")) if a.dtz else None
     if a.resume:                         # the last round played: its games are saved, its mining is redone
         history = json.load(open(state))
         last = history[-1]
         start, frames = last["round"], last["frames"]
         pending = dict(history[-2].get("pending", {})) if len(history) > 1 else {}    # the evidence open before that mining
-        pending_stages = dict(history[-2].get("pending_stages", {})) if len(history) > 1 else {}
+        pending_frames = dict(history[-2].get("pending_frames", history[-2].get("pending_stages", {}))) if len(history) > 1 else {}
         band = tuple(last["band"]) if last.get("band") else band
         res = json.load(open(paths.experiment(f"{stem}_r{start}.json")))
         print(f"OBS resuming {stem} at round {start}'s mining (frames {frames or 'none'})")
@@ -605,12 +605,12 @@ def main(argv=None):
         new = mine(res, frames, rnd, a.budget, tag=tag, defender=a.defender, n_boards=a.boards, register=not a.dry, pending=pending,
                    rounds_left=a.rounds - 1 - rnd, opponent=a.opponent, band=band)
         if a.challenger:
-            # THE CHALLENGER (Kaveh: "reason both sides"): traps against the round's frames, answered by stages
+            # THE CHALLENGER (Kaveh: "reason both sides"): traps against the round's frames, answered by conditional frames
             from . import challenger as C
-            new = C.round_(res, frames, new, tag or "run", rnd, register=not a.dry, pending=pending_stages, rounds_left=a.rounds - 1 - rnd)
-        history[-1]["pending"], history[-1]["pending_stages"] = dict(pending), dict(pending_stages)
+            new = C.round_(res, frames, new, tag or "run", rnd, register=not a.dry, pending=pending_frames, rounds_left=a.rounds - 1 - rnd)
+        history[-1]["pending"], history[-1]["pending_frames"] = dict(pending), dict(pending_frames)
         json.dump(history, open(state, "w"), indent=1)
-        if new == frames and not pending and not pending_stages and not widened:
+        if new == frames and not pending and not pending_frames and not widened:
             print("OBS nothing new mined and no evidence pending -- stopping"); break
         if new == frames:
             print(f"OBS nothing new mined; evidence pending for {sorted(pending)} -- the next round's boards continue it")
