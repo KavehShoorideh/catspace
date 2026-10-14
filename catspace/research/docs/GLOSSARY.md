@@ -83,3 +83,64 @@ vocabulary (FB field, sharpness sensors, two-horizon, …) lives in `docs/archiv
 - **eff_rank** — entropy-of-singular-values effective rank; the collapse gate.
 - **paired_nll_ci** — per-position paired lift with player-clustered bootstrap (resample
   players, never positions).
+
+## The lemma-discovery vocabulary (2026-10, the analyst's discovery loop)
+
+*Added 2026-10-13 (Kaveh: "you need some sort of a long-term project memory ... in terms of glossary"). The sections above
+are the July architecture; this one is the October code (`catspace/incubator/analyst/discovery/`, `rust/analyst_core/src/`
+`vocab.rs plan.rs goals.rs`, Lean `lean/ideas/Ideas/`). Where the code still uses an older word, it is named.*
+
+**The words**
+- **Base vocabulary** — the deterministic, interpretable primitives every concept is built from (Lean `Ideas.Base.Vocabulary`,
+  Rust `vocab.rs`, Python `base_vocabulary.py`): the pieces by name (W our king, L theirs; P, P2, P3 … ours and O, O2 … theirs,
+  strongest first, pawns the most advanced first), sets of squares (attacked, hit, box, file, line, between, ahead, passer,
+  beyond, xray, moves …), numbers (count, dist, fileof, rankof, dfile, drank, pushes, attackers, defenders, see, material …),
+  the 64 square names (from our side), time `(ago k T)`, combinators (and, or, not, sum, min, max, diff, eq).
+- **Term** — an expression over the base vocabulary, written as an S-expression: `(count (and (nearer L W) (not (lines P))))`.
+- **Chess term** — a named composition of base words, never a primitive: pinned, en prise, skewer, discovery, passed pawn,
+  outside the square, opposition, key square … (`CHESS_TERMS`; unfolded by the evaluator and in Lean).
+- **Layers** — the order the proposers search the terms in: layer 0 the original words, layer 1 the completed static words,
+  layer 2 the expensive ones (the short window's tactics, time).
+
+**What the planner follows**
+- **Frame** — in the discovery loop: WHERE it applies (a material, e.g. `KRRvKR`, and optionally a CONDITION), WHAT it
+  pushes (a ranked list of measures), and its CLAIM: on every move it chooses, the measure falls within k moves of ours
+  against every reply, or the goal (a mate, a capture we keep). Stored by key in `generated_frames.json`; `<material>:check`
+  is the frame used when in check.
+- **Stage** — a frame WITH a condition: key `<material>:if:<condition>` (the condition: terms with `>=` / `<=`, joined by
+  `&&`); while the condition holds its measure replaces the material's frame. The word came from the challenger (after
+  Sadikov & Bratko 2006, one evaluation per endgame stage); it is not a different object -- a stage is a conditional frame.
+- **Condition = partial pattern** — the few words that say where a frame applies ("a rook one rank in front of their king");
+  the pattern memory is the set of frames and their conditions.
+- **Measure** — a term the frame drives down; ranked lists compare lexicographically.
+- **Claim, horizon k** — "falls within k against every reply"; k = 2 for every frame today (`CLAIM_K`).
+- **Lemma** — a claim that is PROVED (a Lean theorem) or checked exactly on every position it covers; until then a
+  CONJECTURE. The loop also says "lemma" for a promoted frame or stage measure: that is a conjecture with evidence.
+- **Earlier meanings of "frame"** — in September, `lemma_gen.py`'s frame was a pattern of piece slots and relations (a
+  partial pattern of pieces); in `FrameLemma.lean` a frame is the set of squares bearing on a question; `mating.rs`'s frames
+  (K+Q, K+R) are hand-derived measures with proved edge conditions -- the discovery frame descends from these.
+
+**How frames are found and judged**
+- **Surprise** — a claim that did not hold (the measure did not fall), or a game that ended below what our own search proved.
+- **Hole** — the boards of a surprise, for the pipeline's proposers (graph network, transformer, the known lemmas) to fill
+  with a measure.
+- **Promotion, e-value** — a mined measure is kept when held-out games favour it: one-sided paired sign e-value >= 20.
+- **Challenger** — mines regions where a frame fails (traps, blind spots) and answers with a stage.
+- **Explorer** (`explorer.py`) — from ONE surprise, no statistics: LOCATE the decision that threw a forced gain away;
+  EXPLORE the positions around it, each labelled exactly (forced / stopped / unknown); SEPARATE what the planner missed;
+  REPAIR with a measure; then the guards: CORNERSTONES (every right decision ever labelled, the case base), a COMMITTEE of
+  candidates, COUNTEREXAMPLES, HELD-OUT positions, SUPPORT from two surprises, UTILITY on fresh games.
+- **Forced / stopped / unknown** — the exact solver's labels (`goals.rs forced_moves`, `forced_goal`): forced within n moves
+  against every defence (with its line), proved not within n, or out of budget.
+- **Cycle lemma** (`patterns.py`) — an arrangement of the pieces around their king that comes back shifted k moves later;
+  checked at every placement on the board; the hypothesis of the proved Lean theorem `forced_by_measure` -- a frame whose
+  condition is the arrangement, whose measure is their king's distance to the edge, whose horizon is the period.
+
+**Other machinery**
+- **Goal field** — goals imagined for both sides against a NATURAL OPPONENT (a mate, else the best immediate gain, else a
+  pass); each CONTESTED: forced, stopped (with the INTERCEPTORS that stop it) or unknown; serves a forced goal (off by default).
+- **Tactic profile / short window** — the fewest moves (1-3) in which each side forces a gain of 1, 3, 5, 9 or a mate.
+- **Outcome floor** — the smallest gain that matters at a material balance (the census's outcome curve); judged at the
+  decision's balance.
+- **Mirror lemma** — `lean/ideas/Ideas/Mirror.lean`: the left-right reflection keeps legality, play and forced wins
+  (no castling rights): search one position, know its mirror.
