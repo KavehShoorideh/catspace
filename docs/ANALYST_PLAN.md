@@ -1081,3 +1081,28 @@ canonical form of each query ... hash it and sort by it."
   lookup; retraction marks STALE with the ply, never deletes ("true at ply 20, refuted at 23" stays readable); a REFUTED
   premise can come back and its listeners still fire.
 - WHAT IS PRINTED: per decision, the counts by status, the conjectures left in the back pocket and their premises.
+
+### 39.7 Every finding is a goal generator (Kaveh 2026-10-14)
+
+Kaveh: "if something is or is not safe on the new square, can we reason about why it is or is not? So maybe we can make it
+safe ... I'm asking in general, this was just an example." Safety was the first instance; the rule is general:
+1. WHY: every finding (safe, guards, blocks, pinned, a mate pattern, a tower floor) rests on CONDITIONS -- facts in the
+   vocabulary about named pieces -- recorded as its evidence.
+2. WHY NOT: a failed claim records which of its conditions failed -- the smallest set of missing conditions (Kaveh's
+   "minimum barriers", memory `planner_tactic_tokens_2026_10_07`).
+3. WHERE TO ACT: the finding's READ SET (§39.5 item 4) is exactly the squares whose change could flip it -- generic, no
+   chess-specific repair table needed for the where.
+4. HOW: only the moves that touch those squares (arrive on, leave, capture on, interpose on) are tried; each becomes a
+   CONDITIONAL finding "the claim holds if move m" (§39.6) with its own cost asked by the same ledger -- a repair can break
+   something else (the repairing piece's own jobs), so the check recurses, bounded by stake and stopped by the B* bounds
+   (§39.2). The menus of §39.1 item 2 and §38.6 (capture, kick, pin, block, add a guard, relieve a job, break a pin, play
+   with tempo, sacrifice) are the common repairs, used for ORDER and for the explanation, not as the generator.
+5. BOTH SIDES: flipping their findings = our attacking plans; flipping ours = their threats; the same code.
+6. MEMORY: a repair too expensive now stays in the back pocket; its listener (§39.6) wakes it when the premise comes true
+   by any route.
+Literature (from memory): means-ends analysis (Newell & Simon, GPS: the difference picks the operator); proof critics
+(Ireland & Bundy 1996: the failure pattern suggests the patch). Reuse: the what-if edit kinds (add, guard, remove,
+relocate) of catspace/incubator/analyst/whatif_proposer.py (Kaveh 2026-09-28: the what-ifs are the search).
+WHEN: after phase 3's measurement -- its miss classification ("a candidate never generated", quiet preparatory moves)
+says how many misses this would fix; test: those misses re-run with goal generation on, the repair move generated and
+its chain printed.
