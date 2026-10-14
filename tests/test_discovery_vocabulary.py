@@ -216,3 +216,35 @@ def test_the_completed_vocabulary_renders_in_lean(tmp_path):
     src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
     r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=900)
     assert r.returncode == 0, r.stdout[:3000] + r.stderr[:2000]
+
+
+# WITHOUT (Kaveh 2026-10-14, "what each piece's job is"): his position, Black to move; mirrored so the mover is White
+KAVEH = "5k1r/1p1n1p2/p1qb1p1p/4p3/2rP2PP/2PQ1PB1/PP2NK2/1R5R b - - 0 1"
+
+
+def test_without_and_job_on_kavehs_position():
+    import chess
+    import analyst_core as A
+    V.install_terms()
+    fen = chess.Board(KAVEH).mirror().fen()                        # the queen on c3, the rook on c5, the bishop on d3, the pawn on e4
+    val = lambda t: A.vocab_values([fen], t)[0]
+    job_qr, job_pb = val("(job (at c3) c5)"), val("(job (at e4) d3)")
+    print(f"OBS without: see(c5) {val('(see c5)')}, see(c5) without the queen {val('(without (at c3) (see c5))')}, job(queen c3, rook c5) {job_qr}; "
+          f"see(d3) {val('(see d3)')}, job(pawn e4, bishop d3) {job_pb}")
+    assert job_qr > 0                                              # the queen is the rook's only guard against the queen
+    assert job_pb == 0                                             # plain see lets the queen recapture on the bishop: the gap the effective exchange closes
+    for t in ("(count ours)", "(see c5)", "(dist W P)", "(count (reach W free))"):
+        assert val(f"(without (and ours theirs) {t})") == val(t)    # nothing in the set: T unchanged
+    assert val("(without (at c3) (count ours))") == val("(count ours)") - 1
+    # kings are never removed; a blocker taken off may leave a king attacked (built relaxed, read as it stands)
+    assert val("(without (or ours theirs) (count (or (at W) (at L))))") == 2
+
+
+@pytest.mark.skipif(not Path("lean/ideas/.lake").exists(), reason="the Lean project is not built")
+def test_without_lean_rendering_typechecks(tmp_path):
+    terms = ["(without (at P2) (see O))", "(job (at P) O)", "(without ours (dist W P))", "(without theirrooks (count (reach W unhit)))"]
+    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) (hist : List Position) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
+    src = tmp_path / "VocabCheckWithout.lean"
+    src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
+    r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
+    assert r.returncode == 0, r.stdout + r.stderr

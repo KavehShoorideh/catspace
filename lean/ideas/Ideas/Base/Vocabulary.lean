@@ -338,6 +338,21 @@ the game's start). -/
 def agoIn (hist : List Position) (k : Nat) (f : Position → Nat) : Nat :=
   match hist.reverse[2 * k]? with | some q => f q | none => 0
 
+/-- **without**: the board with every non-king piece on the set's squares taken off (kings are never removed); the rest of the
+position as it is (the evaluator builds it relaxed -- a king left attacked is fine -- so there is no legality here either). -/
+def dropPieces (p : Position) (X : SquareSet) : Position :=
+  { p with board := fun u => match p.board u with
+      | some q => if X u && decide (q.kind ≠ PieceKind.king) then none else some q
+      | none => none }
+
+/-- A number read on the board with the set's pieces gone (the set is read on the board as it is; the number's names are those
+of the board that is left, the renderer rebinds them with `kingSq` and `nthPiece`). -/
+def withoutIn (p : Position) (X : SquareSet) (f : Position → Nat) : Nat := f (dropPieces p X)
+
+/-- Side `c`'s king, when there is one. -/
+def kingSq (p : Position) (c : Color) : OSq :=
+  (allSquares.filter (fun u => match p.board u with | some q => q.color == c && q.kind == PieceKind.king | none => false)).head?
+
 /-- **how far apart** two numbers are. -/
 def nDiff (a b : Nat) : Nat := if a ≤ b then b - a else a - b
 

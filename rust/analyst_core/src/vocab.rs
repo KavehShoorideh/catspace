@@ -51,6 +51,8 @@ pub enum Term {
     Forcing(bool, i64),
     // material and the game's context; time
     MaterialUs, MaterialThem, Halfmoves, Seen, Ago(u32, Box<Term>),
+    // a number read on the board with the non-king pieces on a set's squares taken off (Kaveh 2026-10-14: "what each piece's job is")
+    Without(Box<Term>, Box<Term>),
     // number combinators
     Min(Box<Term>, Box<Term>), Max(Box<Term>, Box<Term>), Diff(Box<Term>, Box<Term>), Eq(Box<Term>, Box<Term>),
 }
@@ -190,6 +192,7 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
         ("attackers", [a]) => Term::Attackers(b(a)), ("defenders", [a]) => Term::Defenders(b(a)), ("see", [a]) => Term::See(b(a)),
         ("moves", [a]) => Term::Moves(b(a)),
         ("ago", [Term::Int(k), a]) if *k > 0 => Term::Ago(*k as u32, b(a)),
+        ("without", [x, a]) => Term::Without(b(x), b(a)),
         ("min", [a, c]) => Term::Min(b(a), b(c)), ("max", [a, c]) => Term::Max(b(a), b(c)),
         ("diff", [a, c]) => Term::Diff(b(a), b(c)), ("eq", [a, c]) => Term::Eq(b(a), b(c)),
         _ => return None,
@@ -197,6 +200,23 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
 }
 
 fn kd(a: Square, b: Square) -> u32 { a.distance(b) }
+
+/// **without X T**: T read on the board with every NON-KING piece on X's squares taken off (kings are never removed); the side to
+/// move, `lone` (the us/lone reading) and the other settings unchanged. THE CHOICES: (1) the names in X (P2, O, theirrooks ...) are
+/// resolved on the ORIGINAL board, the names inside T (W, L, P, O, P2 ...) on the MODIFIED one, `ranked()` recomputed there -- "T if X
+/// were not on the board" speaks of the board that is left; (2) taking a blocker off can leave a king attacked by the side NOT to
+/// move, a position shakmaty's strict constructor refuses: it is built RELAXED (`ignore_impossible_check`, invalid castling rights
+/// and en passant dropped), the words read the board as it stands; a board that still cannot be built reads 0.
+fn without(x: &Term, a: &Term, q: &Chess, lone: Color) -> u32 {
+    let gone = set(x, q, lone) & !q.board().kings();
+    if gone.is_empty() { return num(a, q, lone); }
+    let mut setup = q.clone().into_setup(shakmaty::EnPassantMode::Legal);
+    for s in gone { setup.board.discard_piece_at(s); }
+    setup.ep_square = None;
+    setup.castling_rights = shakmaty::Bitboard::EMPTY;
+    match Chess::from_setup(setup, shakmaty::CastlingMode::Standard).or_else(|e| e.ignore_impossible_check()) {
+        Ok(p) => num(a, &p, lone), Err(_) => 0 }
+}
 
 /// A square term on the board (`lone` the lone king's colour).
 fn sq(t: &Term, q: &Chess, lone: Color) -> Option<Square> {
@@ -365,6 +385,7 @@ pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
         Term::Halfmoves => q.halfmoves(),
         Term::Seen => crate::game::seen(q) as u32,
         Term::Ago(k, a) => crate::game::back(2 * *k).map_or(0, |p| num(a, &p, !p.turn())),
+        Term::Without(x, a) => without(x, a, q, lone),
         Term::Min(a, c) => num(a, q, lone).min(num(c, q, lone)),
         Term::Max(a, c) => num(a, q, lone).max(num(c, q, lone)),
         Term::Diff(a, c) => num(a, q, lone).abs_diff(num(c, q, lone)),
@@ -378,7 +399,7 @@ pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
 pub fn is_num(t: &Term) -> bool {
     matches!(t, Term::Count(_) | Term::Dist(_, _) | Term::Sum(_, _) | Term::FileOf(_) | Term::RankOf(_) | Term::DFile(_, _) | Term::DRank(_, _)
         | Term::Pushes(_) | Term::Attackers(_) | Term::Defenders(_) | Term::See(_) | Term::Forcing(_, _) | Term::MaterialUs | Term::MaterialThem
-        | Term::Halfmoves | Term::Seen | Term::Ago(_, _) | Term::Min(_, _) | Term::Max(_, _) | Term::Diff(_, _) | Term::Eq(_, _) | Term::Int(_))
+        | Term::Halfmoves | Term::Seen | Term::Ago(_, _) | Term::Without(_, _) | Term::Min(_, _) | Term::Max(_, _) | Term::Diff(_, _) | Term::Eq(_, _) | Term::Int(_))
 }
 
 /// The squares past `y` on the ray from `x` through `y`, nearest first.

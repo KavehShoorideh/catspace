@@ -30667,3 +30667,15 @@ this from four squares away"). All numbers are OBS lines; one run each, directio
   any differently from no frames: it covers a few percent of the forced positions and the planner's own search mates the covered ones anyway.
   Against phase 1 (words, 3-4 literal conjunctions, mostly CONJECTURE): relations are exact (LEMMA) but cover little; words cover more and
   are not exact. Open: more words for the edge, which arrangement items to add (a ray / line item from the vocabulary's beyond, xray) is Kaveh's call.
+
+WITHOUT, A NEW BASE WORD (2026-10-14 14:01 PDT; Kaveh: "what each piece's job is"). (without X T): T on the board with the non-king pieces on X's squares
+  taken off. Rust (vocab.rs Term::Without, extension rebuilt with maturin develop --release), Python (base_vocabulary.py: the word, its gloss "T if X
+  were not on the board", the Lean renderer; not in the enumeration; the composition job (X, Y) = (diff (max (without X (see Y)) (see Y)) (see Y))
+  -- see is never below 0 and diff is |a-b|, so the rise alone is taken), Lean (Ideas/Base/Vocabulary.lean dropPieces, withoutIn, kingSq; the
+  renderer rebinds the names inside T). DECISIONS: the names in X resolve on the original board, the names in T on the modified one (ranked
+  recomputed; a name with no piece left reads 0); the modified board is built relaxed (ignore_impossible_check, castling rights and en passant
+  dropped) because taking a blocker off can leave a king attacked by the side not to move.
+  KAVEH'S POSITION (5k1r/1p1n1p2/p1qb1p1p/4p3/2rP2PP/2PQ1PB1/PP2NK2/1R5R b, mirrored so White moves: queen c3, rook c5, bishop d3, pawn e4):
+  see(c5) 0, see(c5) without the queen 5, job(queen c3, rook c5) 5; see(d3) 0, job(pawn e4, bishop d3) 0. The 0 is the honest gap: plain see
+  lets the queen recapture on the bishop and does not charge it for guarding the rook; an effective exchange (each recapturer charged its other
+  jobs) would close it -- not built.

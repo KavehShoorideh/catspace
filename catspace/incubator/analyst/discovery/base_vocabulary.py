@@ -109,6 +109,10 @@ PRIMITIVES.update({
     "halfmoves": ((), "num", "the moves since the last capture or pawn move (the fifty-move clock, in plies)"),
     "seen": ((), "num", "how many times this game has seen the position"),
     "ago": (("int", "num"), "num", "{1}, {0} moves of ours ago"),
+    # WITHOUT (Kaveh 2026-10-14, "what each piece's job is"): a number read with the non-king pieces on a set's squares taken off the
+    # board -- the names in the set resolve on the board as it is, the names in the number on the board that is left. Not enumerated
+    # (it multiplies the space): only inside compositions (job)
+    "without": (("set", "num"), "num", "{1} if {0} were not on the board"),
     # combinators
     "or": (("set", "set"), "set", "{0} or {1}"),
     "min": (("num", "num"), "num", "the smaller of {0} and {1}"),
@@ -147,6 +151,9 @@ CHESS_TERMS = {
     "rook_behind": (("X",), "(count (and ourrooks (and (file X) (not (ahead X)))))", "how many of our rooks stand behind {0} on its file"),
     "trapped_theirs": (("X",), "(eq (count (and (moves X) free)) 0)", "whether {0} has no square to go to that we do not attack (1 or 0)"),
     "flights": ((), "(count (moves L))", "how many squares their king can move to"),
+    # what X's job is on Y: how much more the other side wins on Y once X is gone (a guard, a blocker: > 0; see never goes below 0, and
+    # `diff` is |a-b|, so the rise alone is taken: max(without, see) - see)
+    "job": (("X", "Y"), "(diff (max (without X (see Y)) (see Y)) (see Y))", "how much worse the exchange on {1} gets without {0}"),
 }
 for _n, (_ps, _body, _g) in CHESS_TERMS.items():
     PRIMITIVES[_n] = (tuple("sq" for _ in _ps), "num", _g)
@@ -217,7 +224,11 @@ def _sqtype(t) -> bool:
     return (PRIMITIVES.get(head(t), ((), "", ""))[1] == "sq")
 
 
+_REBOUND = False
+
+
 def lean(t) -> str:
+    global _REBOUND
     """The term as a Lean expression over Ideas.Vocabulary (parameters: the position `p`, our colour `c`, squares `W L P O`,
     the game's line `hist`). A square word renders as an `OSq` (an optional square: a piece that is not there, a promotion
     square of nothing); the words over squares are lifted (`oset`, `onum`). Chess terms are unfolded into the base."""
@@ -226,6 +237,8 @@ def lean(t) -> str:
         if t in SQUARE_NAMES:                      # a square name -> the square so named from our side
             return f"(some (named c ((({ord(t[0]) - 97} : Fin 8)), (({int(t[1]) - 1} : Fin 8)))))"
         if t in ("W", "L", "P", "O"):
+            if _REBOUND:                           # inside `without`: the names of the board that is left
+                return {"W": "(kingSq p c)", "L": "(kingSq p (Color.opposite c))", "P": "(nthPiece p c 1)", "O": "(nthPiece p (Color.opposite c) 1)"}[t]
             return f"(some {t})"
         if t[0] in "PO" and t[1:].isdigit():
             return f"(nthPiece p {'c' if t[0] == 'P' else '(Color.opposite c)'} {t[1:]})"
@@ -252,6 +265,13 @@ def lean(t) -> str:
         return f"(agoIn hist {a[0]} (fun p => {lean(a[1])}))"
     if h == "offset":
         return f"(offsetOf c {lean(a[0])} ({a[1]} : Int) ({a[2]} : Int))"
+    if h == "without":                             # the set on the board as it is; the number on the board that is left (p and the names rebound)
+        outer, _REBOUND = _REBOUND, True
+        try:
+            body = lean(a[1])
+        finally:
+            _REBOUND = outer
+        return f"(withoutIn p {lean(a[0])} (fun p => {body}))"
     x = [lean(y) for y in a]
     return {
         "box": lambda: f"(oset box {x[0]})", "rank": lambda: f"(oset rankOf {x[0]})", "file": lambda: f"(oset fileOf {x[0]})",

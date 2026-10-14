@@ -99,6 +99,9 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
 - **Term** — an expression over the base vocabulary, written as an S-expression: `(count (and (nearer L W) (not (lines P))))`.
 - **Chess term** — a named composition of base words, never a primitive: pinned, en prise, skewer, discovery, passed pawn,
   outside the square, opposition, key square … (`CHESS_TERMS`; unfolded by the evaluator and in Lean).
+- **Without** (`(without X T)`, 2026-10-14) — T read on the board with every non-king piece on X's squares taken off; X is resolved on the
+  board as it is, the names inside T on the board that is left; built relaxed (a king left attacked is allowed). Not enumerated, only in
+  compositions: **job** `(job X Y)` = how much worse the exchange on Y gets without X (a guard or blocker gives > 0).
 - **Layers** — the order the proposers search the terms in: layer 0 the original words, layer 1 the completed static words,
   layer 2 the expensive ones (the short window's tactics, time).
 
