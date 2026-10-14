@@ -30442,3 +30442,28 @@ tactics labelled, then the explorer seeded by their imagined futures).
   K+P v K lemma (3 / 3). Three lemmas, each exact on its neighbourhood, none worth a game net beyond it: with 29,473
   terms against a few hundred positions two piece-steps from one surprise, many terms fit by coincidence (a named square
   e7; "fewer of our pieces defended" for "push the pawn").
+
+THE EXPLORER WITH THE FIELD'S PRACTICES (2026-10-13 18:20-18:51 PDT; Kaveh: "Yes, go. And also do all of the best
+practices from this kind of field and literature"). A literature brief (session scratchpad brief.md; citations checked
+by web search, four partly): the trouble with exact labels is choosing among too many hypotheses -- multiple comparisons
+(Jensen & Cohen 2000); a few hundred dependent positions are far from what ~29k terms x thresholds x 29k measures need.
+Built into discovery/explorer.py:
+  CORNERSTONES FROM EVERY CASE (Ripple-Down Rules; Kang, Compton & Preston 1995): every labelled position of the material
+  kept in data/derived/explorer/cases/<material>_<mode>.jsonl (K+P v K: ~2,800 now); a new exception must break none of
+  the planner's right decisions on any of them (the planner's move recomputed with the frames of the day).
+  THE SAME PATTERN ELSEWHERE: the surprise shifted whole across the board, explored and labelled too.
+  PROOF-GATED WORDS IN LAYERS (explanation-based learning, Mitchell/Keller/Kedar-Cabelli 1986, Minton 1984; oversearching,
+  Quinlan & Cameron-Jones 1995): layer 0, no named square; layer 1, only the named squares the surprise's proof touches.
+  A COMMITTEE (query by committee, Seung/Opper/Sompolinsky 1992; Mitchell's version space): every clean candidate kept;
+  fresh positions where they would play differently are labelled exactly; a candidate breaking a right decision is out.
+  COUNTEREXAMPLES (CEGIS, Solar-Lezama et al. 2006) inside each survivor's condition; MINIMUM COVERAGE (fixes >= 3);
+  HELD OUT (Webb 2007: search on exploratory data, test the chosen rule on held-out): fresh positions inside the
+  condition -- it must fix some and break none; SUPPORT FROM TWO SURPRISES OF DIFFERENT GAMES before any utility test;
+  UTILITY (Minton 1990): fresh starts paired, the one-sided sign e-value >= 20 and net > 0 to keep.
+  FIRST RUNS (K+P v K, one run): the old pipeline on 2 surprises -- seed 9008 "no lemma" once ~1,200 earlier cases
+  were cornerstones (its earlier coincidental rule no longer fits); seed 9010 a named-square rule ("head for d6"),
+  held out 0 / 0 -> dropped. The new pipeline on 2 surprises: seed 9008 -- 2 layer-0 candidates, both broken by
+  counterexamples (7 and 11 breaks); seed 9010 -- a layer-0 lemma (no named square): "while we attack the four centre
+  squares, follow the squares they attack that we do not" -- learning: fixes 5 of 25, breaks 0 of 72; held out: fixes 0
+  of 103, breaks 0 -> dropped. LEMMAS KEPT: 0. The guards now stop the coincidences; the K+P v K technique (the key
+  squares in front of the pawn, the opposition) has no words yet ("ahead of X" asked).
