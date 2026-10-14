@@ -83,3 +83,50 @@ def test_back_rank_mate_has_their_pawns_as_the_blockers_of_their_own_king(pool):
                        capture_output=True, text=True, timeout=120)
     if r.returncode == 0:
         assert "back" in r.stdout.lower()
+
+
+@pytest.fixture(scope="module")
+def kq_floor(pool):
+    f = T.floor_arr("KQvK", 2, [], pool, random.Random(0), n=4000)
+    assert f and f["frames"], "no arrangement floor"
+    return f
+
+
+def test_arrangement_floor_reads_as_a_relation_with_nothing_unforced_inside(kq_floor):
+    idx = T.index3("KQvK")
+    for fr in kq_floor["frames"]:
+        assert fr["kind"] == "arrangement" and "their king" in fr["relation"] and fr["covers"] >= T.MIN_COVER
+        arr = T.canon_arr(fr["view"], [tuple(i) for i in fr["items"]])
+        inside = idx[arr]
+        assert inside
+        assert all(A.forced_goal(x, T.MATE, 2, T.BUDGET)[0] == "forced" for x in inside)      # every placement: zero unforced
+        assert all(all(E._holds(inside, c)) for c in fr["variants"][:1]) or len(fr["variants"]) == 2   # the literals say the same
+    assert kq_floor["covered"] + kq_floor["remainder"] == kq_floor["forced"] or kq_floor["remainder"] >= 0
+
+
+def test_the_floor_number_measure_picks_a_floor_lowering_move(kq_floor):
+    term = T.floor_number_term([kq_floor])
+    assert term and "horizon" not in term
+    idx = T.index3("KQvK")
+    hand = []
+    for fr in kq_floor["frames"]:
+        arr = T.canon_arr(fr["view"], [tuple(i) for i in fr["items"]])
+        hand += idx[arr][:40]
+    # (a real step first: not a mate in one)
+    hand = sorted(hand, key=lambda x: A.forced_goal(x, T.MATE, 1, T.BUDGET)[0] == "forced")[:3]
+    assert len(hand) == 3
+    pairs = T._pairs([])
+    for x in hand:
+        assert A.vocab_values([x], term) == [1]                      # the position reads as floor 1
+        mv, certified = A.frame_choose(x, [term, "horizon:2"], None, "", "Q", [])
+        c = T._after(chess.Board(x), chess.Move.from_uci(mv))
+        assert certified and not T.refuters(c, pairs, 2, T.BUDGET)   # the mate stays forced against every reply
+
+
+def test_the_measure_is_the_lowest_floor_that_holds():
+    a = dict(term="(count (and (at L) corner))", op=">=", theta=1)
+    b = dict(term="(count (and (at L) edge))", op=">=", theta=1)
+    term = T.floor_number_term([dict(n=1, variants=[[a]]), dict(n=2, variants=[[b]])])
+    in_corner, on_edge, inside = "7k/8/7K/8/8/8/8/1Q6 w - - 0 1", "4k3/8/4K3/8/8/8/8/1Q6 w - - 0 1", "8/8/3k4/8/8/3K4/8/1Q6 w - - 0 1"
+    v = A.vocab_values([in_corner, on_edge, inside], term)
+    assert v[:2] == [1, 2] and v[2] > 2                               # the lowest floor that holds; in no floor: more than any

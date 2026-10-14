@@ -93,9 +93,17 @@ def lits_of(conds: list) -> list:
     return out
 
 
+def _gloss(t) -> str:
+    """V.gloss, with the numerals the base's table does not list (an offset of -3 files) read as themselves."""
+    from . import base_vocabulary as V
+    if isinstance(t, str):
+        return t if t not in V.PRIMITIVES and t.lstrip("-").isdigit() else V.gloss(t)
+    return V.PRIMITIVES[t[0]][2].format(*[_gloss(a) for a in t[1:]])
+
+
 def in_words(conds: list) -> str:
     from . import base_vocabulary as V
-    return " and ".join(f"{V.gloss(V.parse(c['term']))} {'at least' if c['op'] == '>=' else 'at most'} {c['theta']}" for c in conds) or "always"
+    return " and ".join(f"{_gloss(V.parse(c['term']))} {'at least' if c['op'] == '>=' else 'at most'} {c['theta']}" for c in conds) or "always"
 
 
 def men(key: str) -> int:
@@ -320,7 +328,7 @@ def _holds_all(fens: list, conds: list) -> list:
 # ------------------------------------------------------------------------------------------------------------- the floors
 
 def _goals(floors: list) -> list:
-    return [MATE] + [lits_of(f["conds"]) for f in floors]
+    return [MATE] + [lits_of(c) for f in floors for c in variants(f)]
 
 
 def floor(key: str, k: int, floors: list, pool, rng, n: int = 2000, max_draws: int | None = None, min_right: int = MIN_RIGHT) -> dict | None:
@@ -329,7 +337,7 @@ def floor(key: str, k: int, floors: list, pool, rng, n: int = 2000, max_draws: i
     None when no position of the material is forced (the tower ends)."""
     t0 = time.time()
     goals = _goals(floors)
-    lower = [f["conds"] for f in floors]
+    lower = [c for f in floors for c in variants(f)]
     seen = set()
     rows, drawn, max_draws = [], 0, max_draws or n * 25
     while drawn < max_draws:
@@ -413,7 +421,7 @@ def status(f: dict, floors: list, pool, rng, ladder_goal=None) -> dict:
     condition refined once); CONJECTURE: sampled inside the condition and held out. Sets f["status"]."""
     key, k = f["material"], f["k"]
     goals = _goals(floors)
-    lower = [x["conds"] for x in floors]
+    lower = [c for x in floors for c in variants(x)]
     t0 = time.time()
     if f.get("status") in ("VOCABULARY GAP", "NO FLOOR"):
         return f
@@ -463,7 +471,7 @@ def draw_inside(key: str, n: int, rng, conds: list, lower: list) -> list:
 
 def _pairs(floors: list) -> list:
     """The goals of the next floor, with their conditions: the mate (None), and every floor below."""
-    return [(MATE, None)] + [(lits_of(f["conds"]), f["conds"]) for f in floors]
+    return [(MATE, None)] + [(lits_of(c), c) for f in floors for c in variants(f)]
 
 
 def _forced_from(d: chess.Board, pairs: list, kk: int, budget: int) -> bool:
@@ -590,8 +598,8 @@ def defences(key: str, k: int, f: dict, floors: list, pool, rng, budget: int = 2
 
 # -------------------------------------------------------------------------------------------------------------- the tower
 
-def tower(key: str, k: int, pool, rng, n: int = 2000, floors: int = FLOORS, with_defences: bool = True) -> dict:
-    """The tower of one material at one horizon: floor 0 (the mate in words), the floors 1.. each with its condition, evidence
+def tower_words(key: str, k: int, pool, rng, n: int = 2000, floors: int = FLOORS, with_defences: bool = True) -> dict:
+    """(phase 1, words only) The tower of one material at one horizon: floor 0 (the mate in words), the floors 1.. each with its condition, evidence
     and status; the frames dict in the loop's format, the measure of a floor a word small on the floors below and larger
     on it (the floor number, as far as the vocabulary can say it)."""
     t0 = time.time()
@@ -645,12 +653,342 @@ def _clean(x):
 
 def save(key: str, towers: list) -> str:
     p = paths.derived(f"tower_{key}.json")
-    frames = {}
-    for t in towers:
-        frames.update(t["frames"])
     with open(p, "w") as fh:
-        json.dump(_clean(dict(material=key, frames=frames, towers=towers)), fh, indent=1)
+        json.dump(_clean(dict(material=key, towers=towers)), fh, indent=1)
     return p
+
+
+# -------------------------------------------------------------------------------------------------------- arrangements
+
+# PHASE 2 (Kaveh 2026-10-14, "the frames are not really absolute ... relational, like a sliding piece attacking this from four
+# squares away"): a floor is first read as RELATIONS -- a kind at an offset from their king, order-free, as patterns.py builds
+# them. Three views of an arrangement: FULL (each piece's file and rank offset from their king), RANKS (only the rank offset),
+# FILES (only the file offset); our king is one more item of the arrangement (with it or without it is a subset). The mirror
+# lemma (Ideas/Mirror.lean) makes an arrangement and its reflection one; offsets from their king are translation-free by
+# construction. A floor's frame is an arrangement none of whose positions is unforced.
+
+VIEWS = ("full", "ranks", "files")
+_KIND = {chess.QUEEN: "queens", chess.ROOK: "rooks", chess.BISHOP: "bishops", chess.KNIGHT: "knights", chess.PAWN: "pawns"}
+MIN_COVER = 10                  # forced positions an arrangement must cover
+MIN_NEW = 5                     # new forced positions a further arrangement must add
+MAX_FRAMES = 12
+MAX_CHECKS = 40
+
+
+def variants(f: dict) -> list:
+    """The conditions (lists of literals) a floor holds by: one, or several (an arrangement and its mirror, several arrangements)."""
+    return f["variants"] if "variants" in f else ([f["conds"]] if f.get("conds") else [])
+
+
+def pos_items(fen: str) -> list:
+    """Every piece but their king as (token, file offset, rank offset) from their king, the ranks toward their side: our king
+    "K", the others "<our|their><kind>"."""
+    b = chess.Board(fen)
+    L, W = b.king(not b.turn), b.king(b.turn)
+    up = 1 if b.turn == chess.WHITE else -1
+    out = []
+    for sq, p in b.piece_map().items():
+        if sq == L:
+            continue
+        tok = "K" if sq == W else ("our" if p.color == b.turn else "their") + _KIND[p.piece_type]
+        out.append((tok, chess.square_file(sq) - chess.square_file(L), (chess.square_rank(sq) - chess.square_rank(L)) * up))
+    # where their king stands on the board (the edge is not a relation between pieces, and a mate needs it): on an edge / in a corner
+    f, r = chess.square_file(L), chess.square_rank(L)
+    if f in (0, 7) or r in (0, 7):
+        out.append(("Ledge", 0, 0))
+        if f in (0, 7) and r in (0, 7):
+            out.append(("Lcorner", 0, 0))
+    return out
+
+
+def _view(item: tuple, v: str) -> tuple:
+    t, df, dr = item
+    return item if v == "full" else (t, dr) if v == "ranks" else (t, df)
+
+
+def _mirror(it: tuple, v: str) -> tuple:
+    return it if v == "ranks" else (it[0], -it[1], it[2]) if v == "full" else (it[0], -it[1])
+
+
+def canon_arr(v: str, items) -> tuple:
+    a = tuple(sorted(items))
+    m = tuple(sorted(_mirror(i, v) for i in items))
+    return (v, min(a, m))
+
+
+def keys_of(fen: str) -> set:
+    """Every arrangement the position contains, canonical (the mirror one with it): (view, sorted items)."""
+    its = pos_items(fen)
+    out = set()
+    for v in VIEWS:
+        vi = [_view(i, v) for i in its]
+        for r in range(1, len(vi) + 1):
+            for c in itertools.combinations(vi, r):
+                out.add(canon_arr(v, c))
+    return out
+
+
+def arr_conds(arr: tuple) -> list:
+    """The arrangement as conditions -- a list of variants (itself and its mirror when they differ), each a conjunction of
+    `(count (and <kind> <where>)) >= m` in the vocabulary's own literals."""
+    v, items = arr
+    outs = []
+    for its in dict.fromkeys([items, tuple(sorted(_mirror(i, v) for i in items))]):
+        conds = []
+        for it, m in sorted(__import__("collections").Counter(its).items()):
+            base = "(at W)" if it[0] == "K" else it[0]
+            if it[0] in ("Ledge", "Lcorner"):
+                conds.append(dict(term=f"(count (and (at L) {it[0][1:]}))", op=">=", theta=m))
+                continue
+            if v == "full":
+                where = f"(at (offset L {it[1]} {it[2]}))"
+            elif v == "ranks":
+                where = f"(rank (offset L 0 {it[1]}))"
+            else:
+                where = f"(file (offset L {it[1]} 0))"
+            conds.append(dict(term=f"(count (and {base} {where}))", op=">=", theta=m))
+        outs.append(conds)
+    return outs
+
+
+def relation(arr: tuple) -> str:
+    """The arrangement as a sentence (the literal's own gloss is in `words`; the mirror image is the same arrangement)."""
+    v, items = arr
+    parts = []
+    for it in items:
+        t = it[0]
+        if t in ("Ledge", "Lcorner"):
+            parts.append("their king " + ("in a corner" if t == "Lcorner" else "on an edge"))
+            continue
+        who = "our king" if t == "K" else ("our " if t.startswith("our") else "their ") + t.replace("our", "").replace("their", "").rstrip("s")
+        if v == "full":
+            parts.append(f"{who} {abs(it[1])} file(s) {'right' if it[1] > 0 else 'left'}, {abs(it[2])} rank(s) {'toward their side' if it[2] > 0 else 'toward ours'} of their king")
+        elif v == "ranks":
+            parts.append(f"{who} {abs(it[1])} rank(s) {'toward their side' if it[1] > 0 else 'toward ours'} of their king")
+        else:
+            parts.append(f"{who} {abs(it[1])} file(s) from their king ({'right' if it[1] > 0 else 'left'})")
+    return "; ".join(parts)
+
+
+def arr_size(arr: tuple) -> tuple:
+    """Smaller first: fewest items, then the partial view (ranks, files) before the full one."""
+    return (len(arr[1]), 0 if arr[0] != "full" else 1, arr[0])
+
+
+_INDEX = {}
+
+
+def index3(key: str) -> dict:
+    """Every legal placement of a material of <= 3 men (us to move), by the arrangements it contains: {arrangement: [fen]}."""
+    if key in _INDEX:
+        return _INDEX[key]
+    from catspace.incubator.analyst.material_walk import _pieces
+    ours, theirs = _pieces(key)
+    kinds = [(p, True) for p in ours] + [(p, False) for p in theirs]
+    idx = {}
+    for sq in itertools.permutations(range(64), 2 + len(kinds)):
+        b = chess.Board(None)
+        b.set_piece_at(sq[0], chess.Piece(chess.KING, True)); b.set_piece_at(sq[1], chess.Piece(chess.KING, False))
+        bad = False
+        for s_, (p, col) in zip(sq[2:], kinds):
+            if p == chess.PAWN and chess.square_rank(s_) in (0, 7):
+                bad = True; break
+            b.set_piece_at(s_, chess.Piece(p, col))
+        if bad or not b.is_valid() or b.is_game_over():
+            continue
+        f = b.fen()
+        for kk in keys_of(f):
+            idx.setdefault(kk, []).append(f)
+    _INDEX[key] = idx
+    return idx
+
+
+WANT_FORCED = 400                # forced positions an arrangement floor draws until (arrangements need many to repeat)
+MAX_DRAWS = 80_000
+
+
+def floor_arr(key: str, k: int, floors: list, pool, rng, n: int = 2000, max_draws: int | None = None, min_right: int = WANT_FORCED,
+              min_cover: int = MIN_COVER) -> dict | None:
+    """The next floor as relations. Draw and label as `floor` does; collect every arrangement present among the forced
+    positions; keep those with no unforced position inside (the sample first, then every placement at <= 3 men) covering
+    >= min_cover forced positions, greedily by what they add (the smallest first on a tie). The forced positions no
+    arrangement covers are the REMAINDER (printed); the word separator runs on the remainder only. None when nothing is forced."""
+    t0 = time.time()
+    goals = _goals(floors)
+    lower = [c for f in floors for c in variants(f)]
+    seen, rows, drawn = set(), [], 0
+    max_draws = max_draws or MAX_DRAWS
+    while drawn < max_draws:
+        fens = draw(key, n, rng, lower, pool, seen)
+        drawn += n
+        rows += list(zip(fens, label(pool, fens, goals, k)))
+        if sum(s == "forced" for _, (s, _) in rows) >= min_right:
+            break
+    right = [f for f, (s, _) in rows if s == "forced"]
+    wrong = [f for f, (s, _) in rows if s == "stopped"]
+    unknown = sum(s == "unknown" for _, (s, _) in rows)
+    nth = len(floors) + 1
+    obs(f"{key} k={k} floor {nth}: drew {drawn}, kept {len(rows)}: forced {len(right)}, stopped {len(wrong)}, unknown {unknown}")
+    out = dict(n=nth, k=k, material=key, drawn=drawn, forced=len(right), stopped=len(wrong), unknown=unknown, frames=[],
+               variants=[], _right=right[:400], _wrong=wrong[:500])
+    if len(right) < 3 or not wrong:
+        out.update(status="NO FLOOR", seconds=round(time.time() - t0, 1))
+        return None if not right else out
+    cover, bad = {}, set()
+    for i, f in enumerate(right):
+        for a in keys_of(f):
+            cover.setdefault(a, set()).add(i)
+    for f in wrong:
+        bad |= keys_of(f)
+    cands = {a: s for a, s in cover.items() if a not in bad and len(s) >= min_cover}
+    obs(f"{key} k={k} floor {nth}: {len(cover)} arrangements among the forced, {len(cands)} with no unforced position in the sample and >= {min_cover} covered")
+    by_cover = {}
+    for a, s in cands.items():                         # the smallest of those covering the same positions
+        c = frozenset(s)
+        if c not in by_cover or arr_size(a) < arr_size(by_cover[c]):
+            by_cover[c] = a
+    pool_c = {a: set(c) for c, a in by_cover.items()}
+    covered, checks, cache = set(), 0, {}
+    exact = men(key) <= ENUMERATE_MEN
+    idx = index3(key) if exact else None
+    while pool_c and len(out["frames"]) < MAX_FRAMES and checks < MAX_CHECKS:
+        a = max(pool_c, key=lambda x: (len(pool_c[x] - covered), -len(x[1]), x[0] != "full", x))
+        new = len(pool_c[a] - covered)
+        if new < (MIN_NEW if covered else min_cover):
+            break
+        del_a = pool_c.pop(a)
+        checks += 1
+        conds_v = arr_conds(a)
+        if exact:
+            inside = idx.get(a, [])
+            for c in lower:
+                if inside:
+                    inside = [f for f, h in zip(inside, _holds_all(inside, c)) if not h]
+            todo = [f for f in inside if f not in cache]
+            for f, st in zip(todo, label(pool, todo, goals, k)):
+                cache[f] = st
+            fail = [f for f in inside if cache[f][0] != "forced"]
+            info = dict(exhaustive=True, checked=len(inside), failures=len(fail), examples=fail[:3])
+        else:
+            info = dict(exhaustive=False, checked=len(del_a), failures=0, examples=[])
+        if info["failures"]:
+            obs(f"{key} k={k} floor {nth}: reject {in_words(conds_v[0])}: {info['failures']} of {info['checked']} placements not forced")
+            continue
+        covered |= del_a
+        fr = dict(kind="arrangement", view=a[0], items=[list(i) for i in a[1]], variants=conds_v, text=" | ".join(cond_text(c) for c in conds_v),
+                  words=in_words(conds_v[0]), relation=relation(a), covers=len(del_a), status="LEMMA" if exact else "CONJECTURE", check=info)
+        out["frames"].append(fr); out["variants"] += conds_v
+        obs(f"{key} k={k} floor {nth}: ARRANGEMENT ({a[0]}) {fr['relation']}  [{fr['words']}]  covers {len(del_a)} forced; {fr['status']}"
+            + (f" (every placement: {info['checked']} checked, {info['checked']} forced)" if exact else " (sampled)"))
+    rem = [f for i, f in enumerate(right) if i not in covered]
+    out["covered"], out["remainder"] = len(covered), len(rem)
+    obs(f"{key} k={k} floor {nth}: coverage: {len(covered)} of {len(right)} forced positions covered by {len(out['frames'])} arrangements, {len(rem)} by none")
+    if rem:
+        obs(f"FLOOR REMAINDER {key} k={k} floor {nth}: {len(rem)} forced positions no arrangement covers; ten:")
+        for f in rem[:10]:
+            obs("   ", f)
+        out["remainder_examples"] = rem[:10]
+        if len(rem) >= min_cover:
+            res = find_condition(rem[:400], wrong[:500], E_mask0(), 3)
+            leaks = [f for f, h in zip(wrong, _holds_all(wrong, res["conds"])) if h] if res["conds"] else wrong
+            if res["conds"] and not leaks:
+                inside = _holds_all(rem, res["conds"])
+                st = None
+                if exact:
+                    fens = enumerate_inside(key, res["conds"], lower, pool)
+                    lab = label(pool, fens, goals, k)
+                    nf = sum(s != "forced" for s, _ in lab)
+                    st = "LEMMA" if nf == 0 else None
+                    obs(f"{key} k={k} floor {nth}: remainder in words {cond_text(res['conds'])}: {len(fens)} placements, {nf} not forced")
+                if st or not exact:
+                    fr = dict(kind="words", variants=[res["conds"]], text=cond_text(res["conds"]), words=in_words(res["conds"]),
+                              covers=sum(inside), status=st or "CONJECTURE")
+                    out["frames"].append(fr); out["variants"].append(res["conds"])
+                    out["remainder"] -= sum(inside)
+            else:
+                obs(f"{key} k={k} floor {nth}: the remainder is left as it is (no 3-word condition keeps all {len(wrong)} unforced positions out)")
+    sts = [fr["status"] for fr in out["frames"]]
+    out["status"] = "NO FRAME" if not sts else "LEMMA" if all(s == "LEMMA" for s in sts) else "CONJECTURE"
+    out["seconds"] = round(time.time() - t0, 1)
+    obs(f"{key} k={k} floor {nth}: {out['status']}, {len(out['frames'])} frames, {out['seconds']} s")
+    return out
+
+
+def E_mask0():
+    from . import explorer as E
+    return E.layer_mask(0, set())
+
+
+# ---------------------------------------------------------------------------------------------------- the floor number
+
+def ind_term(conds: list) -> str:
+    """1 when every literal of the condition holds, else 0, over the existing combinators: `t >= m` is (eq (max t m) t), `t <= m`
+    is (eq (min t m) t), a conjunction the min."""
+    parts = [f"(eq (max {c['term']} {c['theta']}) {c['term']})" if c["op"] == ">=" else f"(eq (min {c['term']} {c['theta']}) {c['term']})" for c in conds]
+    t = parts[0]
+    for p in parts[1:]:
+        t = f"(min {t} {p})"
+    return t
+
+
+def _or_all(ts: list) -> str:
+    t = ts[0]
+    for p in ts[1:]:
+        t = f"(max {t} {p})"
+    return t
+
+
+def floor_number_term(floors: list, skip: int | None = None) -> str | None:
+    """THE MEASURE IS THE FLOOR NUMBER: the lowest floor whose condition holds, one term over the vocabulary's combinators.
+    Floor n alone is n when its indicator i is 1 and n+B when 0 (B a power of two above the floor count): (sum n B(diff 1 i)) by doubling (diff 1 i) --
+    there is no product or conditional in the vocabulary, but `diff` is |a-b|, `eq`/`min`/`max` make the indicator, and `sum`
+    doubles; the tower is the min over its floors. A position in no floor reads B + the lowest n."""
+    vs = []
+    big = 1
+    while big <= max([f["n"] for f in floors] + [1]):
+        big *= 2                                       # the penalty of a floor that does not hold: more than any floor number
+    for f in floors:
+        vs_f = variants(f)
+        if not vs_f or f["n"] == skip:
+            continue
+        d = f"(diff 1 {_or_all([ind_term(c) for c in vs_f])})"
+        for _ in range(big.bit_length() - 1):
+            d = f"(sum {d} {d})"
+        vs.append(f"(sum {f['n']} {d})")
+    if not vs:
+        return None
+    t = vs[-1]
+    for v in reversed(vs[:-1]):
+        t = f"(min {v} {t})"
+    return t
+
+
+def tower(key: str, k: int, pool, rng, n: int = 2000, floors: int = FLOORS, with_defences: bool = False) -> dict:
+    """The tower as relations: floor 0 (the mate in words), then floors of arrangements, one frame for the material whose
+    measure is the floor number."""
+    t0 = time.time()
+    z = floor_zero(key, pool, rng, n=max(n, 2000))
+    obs(f"{key} floor 0 (the mate): {z['text'] or 'none'}  [{z['words']}]; mated {z['mated']} (condition holds on {z['mated_held']}), "
+        f"not mated {z['not_mated']} (condition holds on {z['not_mated_held']})")
+    built = []
+    while len(built) < floors:
+        f = floor_arr(key, k, built, pool, rng, n)
+        if f is None:
+            break
+        built.append(f)
+        if not f.get("frames"):
+            break
+    term = floor_number_term(built)
+    frames = {key: [term, f"horizon:{k}"]} if term else {}
+    if term:
+        obs(f"{key} k={k}: the floor number as one measure term ({len(term)} characters): {term[:400]}{'...' if len(term) > 400 else ''}")
+    out = dict(material=key, k=k, floor0=z, floors=built, frames=frames, measure=term)
+    if with_defences:
+        out["defences"] = {str(f["n"]): defences(key, k, f, built, pool, rng) for f in built if f.get("frames")}
+    out["seconds"] = round(time.time() - t0, 1)
+    obs(f"{key} k={k}: {len([f for f in built if f.get('frames')])} floors, {sum(f.get('status') == 'LEMMA' for f in built)} LEMMA, "
+        f"{sum(f.get('status') == 'CONJECTURE' for f in built)} CONJECTURE, {out['seconds']} s")
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------------------- ladder
@@ -708,17 +1046,14 @@ def _outcome(g: dict) -> tuple:
     return (g["out"] == "win", g["moves"])
 
 
-def ablate(key: str, frames: dict, seeds=SEEDS, band=BAND, opponent: str = "tablebase", only: list | None = None) -> dict:
-    """The same starts (seeds, band), the tablebase defending, the hand-derived mating frames off (CATSPACE_SCRATCH): played with
-    no frames, with the tower, and with the tower minus each floor. -> per variant mated / moves to mate, and better / worse
-    than no frames paired by seed (better: mated where none did not, or in fewer moves; worse: the reverse)."""
+def ablate(key: str, variants_: dict, seeds=SEEDS, band=BAND, opponent: str = "tablebase") -> dict:
+    """The same starts (seeds, band), the tablebase defending, the hand-derived mating frames off (CATSPACE_SCRATCH): played
+    with each variant's frames dict ("none" first). -> per variant mated / moves to mate, and better / worse than none paired by
+    seed (better: mated where none did not, or in fewer moves; worse: the reverse)."""
     from . import surprise_loop as S
     os.environ.setdefault("CATSPACE_SCRATCH", "tower")
-    variants = {"none": {}, "tower": frames}
-    for name in (only or list(frames)):
-        variants[f"minus {name}"] = {k: v for k, v in frames.items() if k != name}
     res, out = {}, {}
-    for name, fr in variants.items():
+    for name, fr in variants_.items():
         t0 = time.time()
         games = S.play(key, len(seeds), fr, seeds[0], opponent=opponent, band=band)
         res[name] = {g["seed"]: g for g in games}
@@ -727,15 +1062,31 @@ def ablate(key: str, frames: dict, seeds=SEEDS, band=BAND, opponent: str = "tabl
                          seconds=round(time.time() - t0, 1))
         base = res["none"]
         better = worse = 0
-        for s, g in res[name].items():
-            a, b = _outcome(base[s]), _outcome(g)
-            if a == b:
+        for s_, g in res[name].items():
+            a_, b_ = _outcome(base[s_]), _outcome(g)
+            if a_ == b_:
                 continue
-            better += (b[0] and not a[0]) or (b[0] and a[0] and b[1] < a[1])
-            worse += (a[0] and not b[0]) or (b[0] and a[0] and b[1] > a[1])
+            better += (b_[0] and not a_[0]) or (b_[0] and a_[0] and b_[1] < a_[1])
+            worse += (a_[0] and not b_[0]) or (b_[0] and a_[0] and b_[1] > a_[1])
         out[name].update(better=int(better), worse=int(worse))
         obs(f"ABLATION {key} {name}: mated {out[name]['mated']}/{out[name]['games']}, moves to mate {out[name]['moves']}, "
             f"better {int(better)} worse {int(worse)} vs none ({out[name]['seconds']} s)")
+    return out
+
+
+def ablation_variants(key: str, t: dict, minus: bool = True, floors: int | None = None) -> dict:
+    """none, the tower (one frame, the floor number), and the tower minus each floor. `floors`: only the lowest n floors (the
+    term grows with every frame and the certificate evaluates it at every position it visits: 6 floors of K+R v K did not
+    finish a game set in 40 minutes)."""
+    if floors:
+        t = dict(t, floors=t["floors"][:floors])
+        t["frames"] = {key: [floor_number_term(t["floors"]), f"horizon:{t['k']}"]}
+    out = {"none": {}, "tower": t["frames"]}
+    if minus:
+        for f in t["floors"]:
+            term = floor_number_term(t["floors"], skip=f["n"])
+            if f.get("frames") and term:
+                out[f"minus floor {f['n']}"] = {key: [term, f"horizon:{t['k']}"]}
     return out
 
 
@@ -751,7 +1102,10 @@ def main(argv=None):
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--ablate", action="store_true", help="play the tower against none and against the tower minus each floor")
     ap.add_argument("--ablate-saved", action="store_true", help="the ablation on the frames already saved for --material (no new tower)")
-    ap.add_argument("--no-defences", action="store_true")
+    ap.add_argument("--frame-k", type=int, default=2, help="the horizon whose tower is played in the ablation")
+    ap.add_argument("--defences", action="store_true")
+    ap.add_argument("--ablate-floors", type=int, default=None, help="the ablation plays only the lowest N floors")
+    ap.add_argument("--no-minus", action="store_true", help="the ablation without the tower-minus-each-floor variants")
     ap.add_argument("--max-men", type=int, default=5)
     a = ap.parse_args(argv)
     os.environ.setdefault("CATSPACE_SCRATCH", "tower")        # (the from-scratch run: the hand-derived mating frames off, every worker)
@@ -766,21 +1120,20 @@ def main(argv=None):
         if a.material and a.ablate_saved:
             p = paths.derived(f"tower_{a.material}.json")
             d = json.load(open(p))
-            d["ablation"] = ablate(a.material, d["frames"])
+            t = next(t for t in d["towers"] if t["k"] == a.frame_k and t["frames"])
+            d["ablation"] = dict(k=t["k"], results=ablate(a.material, ablation_variants(a.material, t, not a.no_minus, a.ablate_floors)))
             json.dump(d, open(p, "w"), indent=1)
         elif a.material:
             rng = random.Random(a.seed)
-            towers = [tower(a.material, k, pool, rng, a.draws, a.floors, not a.no_defences) for k in ks]
+            towers = [tower(a.material, k, pool, rng, a.draws, a.floors, a.defences) for k in ks]
             p = save(a.material, towers)
             obs(f"{a.material}: {sum(len(t['floors']) for t in towers)} floors in {round(time.time() - t0, 1)} s -> {p}")
             if a.ablate:
-                frames = {}
-                for t in towers:
-                    frames.update(t["frames"])
-                ab = ablate(a.material, frames)
-                d = json.load(open(p))
-                d["ablation"] = ab
-                json.dump(d, open(p, "w"), indent=1)
+                t = max([t for t in towers if t["frames"]], key=lambda t: (t["k"] == a.frame_k, t["k"]), default=None)
+                if t:
+                    d = json.load(open(p))
+                    d["ablation"] = dict(k=t["k"], results=ablate(a.material, ablation_variants(a.material, t, not a.no_minus, a.ablate_floors)))
+                    json.dump(d, open(p, "w"), indent=1)
 
 
 if __name__ == "__main__":

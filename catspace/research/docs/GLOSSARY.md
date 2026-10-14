@@ -146,6 +146,11 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
 - **Tower** — the floors of one material at one horizon, numbered from 0; a frame dict in the loop's own format, so the chooser
   plays it unchanged. A floor is a LEMMA when its claim was checked exactly on every placement inside its condition (a finite
   check, not a Lean proof) and a CONJECTURE when sampled and held out.
+- **Arrangement** (`tower.py`, phase 2) — a floor read as relations: pieces by kind at an offset from their king, order-free, in three views
+  (full, ranks, files), with our king and their king's place (edge, corner) as further items; an arrangement and its mirror are one. A
+  floor's frame is an arrangement with no unforced position inside; the forced positions none covers are the REMAINDER.
+- **Floor number measure** — the lowest floor whose condition holds, as one term over the vocabulary's own combinators
+  (indicator `(eq (max t m) t)`, penalty by `diff` and doubling `sum`, `min` over floors): the tower is ONE frame per material.
 - **Sharp band** — a material and horizon where the goal (a mate) is forced from some drawn positions and not from others; the
   place where conditions live. The ladder finds it: none forced, bring our strongest piece in; all forced, bring one of theirs.
 

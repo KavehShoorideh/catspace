@@ -30637,3 +30637,33 @@ THE TOWER, BUILT AND RUN (2026-10-14 11:10 PDT; Kaveh 2026-10-14: "start from a 
     three 12 (6.75, better 3 worse 2, same as the tower). Both frames whose removal matters have a (knight1 L) word in the condition.
   Against play-only (91 mated of 100, 25.2 moves, earlier entry) and watching (89-95): the tower's few frames are far below, as
   expected for a tower of short floors; K+R v K is a loop, not a stack.
+
+THE TOWER, PHASE 2: FLOORS AS RELATIONS, THE MEASURE THE FLOOR NUMBER (2026-10-14 13:50 PDT; Kaveh: "relational, like a sliding piece attacking
+this from four squares away"). All numbers are OBS lines; one run each, directional.
+  ARRANGEMENTS (tower.py floor_arr): per forced position every sub-arrangement of (our king, the other pieces, their king on an
+  edge / in a corner) in three views (full offsets, rank offsets, file offsets) from their king, the mirror one with it; kept when no
+  position of the unforced sample contains it and >= 10 forced positions do (then every placement at 3 men, exhaustively: LEMMA),
+  greedily by what each adds. The edge/corner items are an addition of mine to patterns.py's views: without them NO arrangement
+  was pure (457 arrangements among 37 forced positions at k=1, 0 kept; a mate needs the edge, which is not a relation between
+  pieces). Positions drawn until 400 forced or 80,000 draws.
+  K+Q v K (35.7 s, 3 horizons): k=1 floor 1 -- 55 of 407 forced positions covered by 2 arrangements (their king in a corner, our king 2 files
+  to the left on its rank / 2 ranks toward their side), 352 by none; floor 2 -- 22 of 430 by 1, 408 by none; floor 3 none. k=2 floor 1 --
+  23 of 572 (2), floor 2 -- 10 of 565 (1), floor 3 none. k=3 floor 1 none (0 of 442). Every kept arrangement a LEMMA (188, 94, 82 ...
+  placements checked, all forced). K+R v K (47.2 s): k=2 floors 1-6 cover 10/415, 47/481, 58/476, 38/508, 18/435, 10/462 (1, 4, 5, 3, 1, 1
+  frames), all LEMMA; k=1 and k=3 floor 1 none. Directionally, a floor is NOT mostly relational: 4-13 percent of forced positions are
+  covered by an arrangement with nothing unforced inside, the rest is REMAINDER (printed with ten FENs; no 3-word condition kept all
+  ~10,000 unforced positions out, so the remainder is left as it is). Every frame found is "their king in a corner and our king at a
+  fixed offset" (the opposition-like corner patterns); no queen/rook offset arrangement was pure.
+  THE MEASURE IS THE FLOOR NUMBER: the vocabulary CAN say it. Indicator of "t >= m" is (eq (max t m) t), of "t <= m" (eq (min t m) t), a
+  conjunction the min, a disjunction the max; floor n alone is (sum n d) with d = (diff 1 indicator) doubled up to a power of two above the
+  floor count (no product in the vocabulary), the tower the min over floors: ONE frame per material, [term, "horizon:k"]. Evaluated, it
+  reads 1 and 2 on hand positions of floors 1 and 2 and more than any floor number outside; the engine's frame_choose with it picks a
+  certified move after which the mate stays forced against every reply (3 hand positions, tests/test_tower.py). No tower_choose needed.
+  Cost: the term grows with every frame (3,641 characters for K+Q v K k=2, 38,873 for K+R v K k=2 with 6 floors) and the certificate
+  evaluates it at every position it visits: K+R v K with 6 floors did not finish 100 games in 40 minutes, with 3 floors not in 29.
+  ABLATION, the same 100 starts (seeds 5000-5099, band 1-256, tablebase defending, from scratch): K+Q v K none 45 mated (8.49 moves) |
+  tower (floors 1-2, k=2) 45 (8.49), better 0 worse 0 (524 s against 199 s) | minus floor 1 45, minus floor 2 45 (same). K+R v K none 10 (4.4)
+  | tower, the lowest 2 floors (5 frames) 10 (4.4), better 0 worse 0 (1,451 s against 279 s). The tower, as relations, plays neither ending
+  any differently from no frames: it covers a few percent of the forced positions and the planner's own search mates the covered ones anyway.
+  Against phase 1 (words, 3-4 literal conjunctions, mostly CONJECTURE): relations are exact (LEMMA) but cover little; words cover more and
+  are not exact. Open: more words for the edge, which arrangement items to add (a ray / line item from the vocabulary's beyond, xray) is Kaveh's call.
