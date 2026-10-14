@@ -30494,7 +30494,7 @@ rook, pawn, king, rook, pawn. Let's see if we can solve that one").
   won 99; where both won (91): our moves to mate 10.6 on average, Stockfish's 12.6 -- we were faster in 40, slower in 29,
   equal in 22. The games Stockfish won and we did not: seeds 11 23 24 50 57 63 79 82 (the explorer's surprises).
 
-THE VOCABULARY COMPLETED, AND CHESS TERMS AS COMPOSITIONS (2026-10-13 19:05-19:30 PDT; Kaveh: "Yeah get a complete vocab.
+THE VOCABULARY COMPLETED, AND CHESS TERMS AS COMPOSITIONS (2026-10-13 19:05-19:26 PDT; Kaveh: "Yeah get a complete vocab.
 Make a list of terms you wanna add"; "Yes, please add all of these. And also ... regular chess terms like pin and things like
 that in terms of simpler vocabulary so ... we can kind of have compositional vocab").
   THE WORDS (Python base_vocabulary.py, Rust vocab.rs, Lean Ideas.Base.Vocabulary -- each Lean definition the mirror of the
