@@ -938,3 +938,82 @@ Built after §38.3-38.4 are accepted.
   capture it, deflect it (its `moves` off the line), pin it (`pinned_theirs`), overload it (two things to defend),
   block it (`between`) -- each a `forced_goal` literal, so each is a new floor whose goal is "that defence is gone",
   and the ladder recurses on it.
+
+## 39. The reasoning ledger: questions, findings, bounds (Kaveh 2026-10-14)
+
+**Status: DESIGN (2026-10-14 ~11:00 PDT), nothing built; to be handed to a builder on Kaveh's go.** Kaveh: "analyze the
+safety of each piece ... each question has to be answered and each question affects some decisions ... track evidence ...
+those proofs become new things upon which we reason ... the moment we get rid of the pin, immediately we should know that the
+pawn can move ... roll them forward in time ... sometimes we might need to backtrack ... keep asking these questions until we
+reach a point where the cost is known ... and we can prune based on that value ... if we don't know the cost, we can
+estimate it." The first example: 5k1r/1p1n1p2/p1qb1p1p/4p3/2rP2PP/2PQ1PB1/PP2NK2/1R5R b -- the e5 pawn is pinned because
+the only guard of the bishop behind it (the queen) is the only guard of the rook on c4, and from d6 it no longer sees c4.
+
+### 39.1 The objects
+
+1. FACTS -- exact, cheap, recomputed every move: the vocabulary's words on named pieces (attacks, lines, `between`,
+   guards, `see`, `without`, `job`). Never stored as findings.
+2. QUESTIONS -- typed, about named pieces, each from the CRITICAL-QUESTION MENU of the claim it challenges (Walton's
+   argument schemes; the menu comes from the ways the rules let a capture or a guard fail):
+   - "X is safe" (the entry point, asked of EVERY piece, ours and theirs: the threats to us, our threats): what does the
+     exchange on X give? for each recapturer: does it have another job? is it attacked after recapturing?
+   - "X guards Y": after X recaptures, is Y still on X's lines? can X legally move (pinned, in check)? does X have a job
+     worth more? can the line X->Y be blocked? is X safe on the new square?
+   - "X blocks A->Y": if X leaves, what does A hit -- Y, and what is behind Y (the king: a check)? can X leave with tempo
+     (a capture, a check, a threat)?
+   - "A attacks Y": is A pinned or attacked itself? does the capture come with check (no in-between moves for them)?
+   - "the reply is forced": what are all the replies (king moves, interpositions, captures)?
+   - "kick X" (a move that attacks X): what does the kicking piece leave undone (its own jobs)? where can X go?
+3. FINDINGS -- answered questions: (claim in words over named pieces; value interval [lo, hi] in material for the side to
+   move; status PROVEN -- an exact computation or the solver -- or ESTIMATED; depends-on: the squares read and the findings
+   cited). A finding is evidence for the findings that cite it.
+4. THE LEDGER -- the findings and their dependency graph (a truth-maintenance system: Doyle 1979, de Kleer 1986):
+   - ADD a finding when a question is answered;
+   - RETRACT a finding when a square it read changes or a finding it cites is retracted -- the cascade (the pin goes, so
+     "the pawn cannot move" goes, at once);
+   - ROLL FORWARD on every move: retract only the findings whose squares the move touched and put their questions back
+     on the agenda; the rest carry over;
+   - BACKTRACK: a defeated finding ("the queen cannot do both" -> it can) retracts only what was built on it
+     (dependency-directed backtracking: Stallman & Sussman 1977).
+5. THE AGENDA -- the open questions, ordered by STAKE: how much the answer could move a decision (the width of the interval
+   it could change, times whether that decision is still open); later the order is LEARNED (which questions flip
+   conclusions -- memory `whatif_search_learned_priority`).
+
+### 39.2 Values, estimates, decisions
+
+- Every candidate move of ours gets an interval from the findings it touches (what it wins, what it leaves undefended).
+- BOUNDS FROM THE RULES before any answer: a piece left en prise costs at most its value; a pawn kick costs at most a pawn
+  plus the kicking pawn's jobs; a check costs nothing unless the checker is lost.
+- STOP (Berliner's B*, 1979): when one move's lower bound >= every other move's upper bound, decide -- the remaining
+  questions cannot change the choice. A question whose answer cannot separate the bounds is not asked.
+- ESTIMATE when a question cannot be answered within its budget: the rule bound's midpoint first, later a learned
+  estimate (the long-window model, the tactic density). The finding is marked ESTIMATED and so is every decision resting on
+  it. When play later shows an estimate wrong, that is a SURPRISE -- the surprise loop's existing input: the estimate is
+  corrected, or a lemma is mined.
+- CONFIRM: when material is at stake, the chosen line is checked by the exact solver, a few moves deep -- the solver is the
+  checker, never the finder.
+
+### 39.3 Where the parts already are
+
+- Facts: vocab.rs words (`see` = the exchange law, proved in Lean: Ideas.ExchangeLaw; `without`, `job` from 2026-10-14).
+- The roll forward: PlanState already carries the game (its line) move by move -- the ledger lives beside it in Rust.
+- Lemmas: a PROVEN chain with its piece names generalized is a lemma (explanation-based learning: Minton 1984) -- the same
+  claim answered once for a whole class; the ledger answers a question by a lemma when one covers it. The tower (§38)
+  builds lemmas bottom-up from the rules; the ledger uses them top-down in a position.
+- The explanation shown to the user: the dependency path from the decision down to the facts -- the because-chain.
+
+### 39.4 Phases and tests (each a short run first; numbers only from OBS lines)
+
+1. THE LEDGER ON ONE POSITION: facts, the safety question for every piece, the menu, findings, the cascade. Test: on the
+   position above the ledger reaches "e5 is pinned: moving it costs >= bishop - pawn", every finding PROVEN, and the
+   solver confirms (…exd4 and …e4 both lose material by force); print the because-chain and the number of questions asked.
+2. ROLL FORWARD: through Stockfish's line 1…Qc7 2.Rbd1 Rc6 3.h5 exd4 -- the pin finding must retract when the rook
+   reaches c6 (a jobless guard of d6) and …exd4 then be found playable; print how many findings carried over vs were
+   re-asked at each move.
+3. BOUNDS AND DECISIONS: B* stop and rule bounds on a set of tactical positions with a known best move (the puzzles used
+   before); print per position: the move chosen, PROVEN or ESTIMATED, questions asked, and the solver's nodes for the same
+   decision (strength per node -- memory `north_star_strength_per_node`).
+4. LEARNED ESTIMATES AND QUESTION ORDER from the surprises; lemmas from proven chains (Kaveh's metric: lemmas found and
+   what each changed).
+Lean: the critical questions' answers are the vocabulary's words (already Lean-defined); new chess claims in a lemma are
+proved before they are relied on. The ledger's bookkeeping (retraction, the agenda) is not chess and needs no proof.
