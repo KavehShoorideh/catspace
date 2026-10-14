@@ -169,6 +169,11 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   Keyed by a canonical form (type, side that acts, the pieces as sorted kind+square, extra squares), hashed.
 - **Retraction, stale** — a move touching a square a finding read retracts it, and what cites it; it is marked STALE with the ply, never deleted.
 - **Listener / back pocket** — the index premise key -> the CONDITIONAL findings waiting on it ("e5 leaves"); the conjectures not yet true.
+- **Candidate, interval, B\* stop, stake** (phase 3) — the moves the findings suggest (captures, checks, promotions, moves of an attacked piece, blocks, kicks,
+  discoveries, pawns far advanced, jobless pieces; in check every legal reply) plus the unsuggested legal moves, each with an interval [lo, hi] in pawn units
+  (mate 1000): the rule bounds first, then the gain minus the opponent's value of the position after it, found by rolling the ledger forward along the FORCING lines
+  (checks, captures, promotions; every reply in check) with the stand-pat value where nothing is forcing. A question counts only on a candidate whose interval still
+  overlaps the best's lower bound (its stake); B*: decide when the best lower bound >= every other upper bound (PROVEN), else on the midpoints (ESTIMATED).
 - **Because-chain** — the dependency path from the decision (the pin) down to the facts.
 
 **Other machinery**

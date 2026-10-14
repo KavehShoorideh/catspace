@@ -317,6 +317,13 @@ pub fn contest(pos: &Chess, g: &Goal) -> Verdict {
 /// position (what is left to do falls at each of our moves), so a position's answer does not depend on the path to it.
 /// "forced" (the fewest moves, the line), "stopped" (proved: not within `depth`), "unknown" (`budget` nodes ran out).
 /// forced_moves(fen, value, depth, budget) -> [(uci, status, our moves, line)]
+/// every node any solver here has expanded since the last reset (the strength-per-node comparison of the reasoning ledger)
+pub static SOLVER_NODES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+#[pyo3::pyfunction]
+pub fn solver_nodes() -> u64 { SOLVER_NODES.load(std::sync::atomic::Ordering::Relaxed) }
+#[pyo3::pyfunction]
+pub fn solver_nodes_reset() { SOLVER_NODES.store(0, std::sync::atomic::Ordering::Relaxed); }
+
 struct Solver { us: Color, root_bal: i64, value: i64, budget: u64, nodes: u64, memo: HashMap<(u64, u32, bool), bool>,
                 lits: Vec<(crate::vocab::Term, u32, u32)> }
 
@@ -337,7 +344,7 @@ impl Solver {
         if crate::game::claimable_draw(pos).is_some() { return Some(false); }
         let k = (crate::threat::zkey(pos), d, true);
         if let Some(v) = self.memo.get(&k) { return Some(*v); }
-        self.nodes += 1;
+        self.nodes += 1; SOLVER_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if self.nodes > self.budget { return None; }
         let mut v = false;
         for m in pos.legal_moves() {
@@ -353,7 +360,7 @@ impl Solver {
         if crate::game::claimable_draw(q).is_some() { return Some(false); }
         let k = (crate::threat::zkey(q), d, false);
         if let Some(v) = self.memo.get(&k) { return Some(*v); }
-        self.nodes += 1;
+        self.nodes += 1; SOLVER_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if self.nodes > self.budget { return None; }
         let mut v = true;
         for r in replies {

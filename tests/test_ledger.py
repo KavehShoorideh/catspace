@@ -58,3 +58,20 @@ def test_phase_2_the_pin_retracts_when_the_rook_reaches_c6_and_exd4_is_playable(
     assert costs["e5d4"][1] <= 0                                                      # ...exd4 reads as playable (it wins the pawn it takes)
     for r in recs:
         print(f"OBS ledger test ply {r['ply']}: retracted {r['retracted']}, looked up {r['lookups']}, re-asked {r['re_asked']}")
+
+
+def test_phase_3_decisions_on_hand_positions():
+    import chess
+    assert A.Ledger("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3", 200).decide()["move"] is None      # mated: no move, no panic
+    b = chess.Board("rnbqkbnr/ppp2ppp/8/1B1pp3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 1 4")      # 3.Bb5+ : in check, several replies
+    assert b.is_check()
+    d = A.Ledger(b.fen(), 200).decide()
+    assert d["legal"] == b.legal_moves.count() and d["candidates"] == d["legal"]         # in check every legal reply is a candidate
+    # a mate in one is decided from the rules alone, PROVEN, with no question asked
+    d = A.Ledger("6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1", 200).decide()
+    assert d["move"] == "a1a8" and d["status"] == "PROVEN" and d["questions"] == 0 and d["interval"][0] >= 1000
+    # ...Qg5+ discovers the rook on the queen (the "discovery" reason fires) and the line through Rxe6 is valued: Black wins about the queen
+    d = A.Ledger("1r2r3/1kp1q2p/4Q3/p2P4/1P1P4/P1p2P2/2P3PP/2KR3R b - - 0 30", 200).decide()
+    assert d["move"] == "e7g5" and d["interval"][0] >= 4
+    assert any("discovery" in a[1] for a in d["all"] if a[0] == "e7g5")
+    assert d["nodes"] > 1000 and d["confirm"]["result"] == "CONFIRMED"

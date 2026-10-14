@@ -30708,3 +30708,34 @@ THE REASONING LEDGER, PHASES 1 AND 2 (2026-10-14 14:33 PDT; Kaveh: "keep asking 
   CIRCULAR) but no cycle arises in these menus; (4) the agenda is ordered by the value of the piece asked about, not yet by the width of a candidate interval; no B*
   stop, no ESTIMATED midpoints (phase 3); (5) the solver confirms the pin by defence_moves (their gain of the cost's lower bound stays forced), not by a
   forced_goal to the final material; (6) not mirrored.
+
+THE REASONING LEDGER, PHASE 3: THE DECISION LAYER (2026-10-14 16:07 PDT; Kaveh: "keep asking these questions until we reach a point where the cost is known"; ANALYST_PLAN 39.2).
+  Built in reasoning.rs (Ledger.decide), discovery/ledger_puzzles.py (-m entry point, spawn Pool, dev / fresh / test sets), the solver's node counter (A.solver_nodes).
+  FIRST CUT (one ply per candidate; SAFE of the attacked pieces; B* and the 200-question budget): dev 300 -- ledger 38% (44% taking the best lower bound
+  instead of the midpoint), PROVEN 29% (82% of them right), 212 of 300 decisions ESTIMATED (147 stopped with every overlapping candidate refined once, 65 on the
+  budget); solver alone 62% at 11.4M nodes a decision; the existing planner 76%. Misses read by hand: intermezzo (0Ag9s), a trade then a pin (07Z0P), a discovered
+  attack (0IGgR), a discovered check (04Qx2), in check with the king moves left out (0F2a2, 052Wm).
+  FIXES, in order: (1) in check every legal reply is a candidate; the unsuggested legal moves take part in B* with their rule bounds (a PROVEN choice among suggestions
+  only was proven by omission: 2q20h); (2) KEEP ASKING: a candidate's interval is its gain minus the opponent's value of the position after it, rolled forward along the
+  FORCING lines only (check, capture, promotion; every reply in check) with the stand-pat value (the side to move fixes its worst problem, the rest is lost) where
+  nothing is forcing, iterative deepening (each depth completes or is thrown away), a transposition table that never keeps a value cut short by the node cap,
+  500-20,000 nodes a candidate, 400,000 a decision; (3) THREAD FIRST: the first look at a candidate is cheap (the exchange law's see, no question), the SAFE questions
+  (effective exchange, overloaded guards) are spent only on candidates whose interval still overlaps the best's, and a JOB question only for a piece that is attacked;
+  (4) a candidate reason "discovery" (the moved piece blocked a line of ours to one of theirs).
+  DEV 300, after: ledger 63% (65% lowest-bound variant), PROVEN 48% (88% right), questions 87.4 a decision (first cut 86.5), 2.4 s, nodes ~160,000 facts; solver alone 62%
+  at 11.4M nodes; planner 76%. ESTIMATED 156: 127 on the 200 questions, 25 on the node cap, 4 overlap. Budget sweep (a sensitivity check, not the plan's setting): 1000
+  questions give 63% / 65%, PROVEN 50%, 416 questions -- the budget is no longer the lever. Claims confirmed by the solver 158 of 186 (28 refuted; in 11 the move was
+  right anyway). THE 18 PROVEN-WRONG, classified: 7 a confirmed material win where the puzzle's move wins more or mates (mateIn2/3 and 'advantage'); 7 quiet pawn endings
+  and zugzwangs where nothing is at stake in material (the interval is [0, 0] or [0, 1]); 4 in check, a lost position where the least bad reply is a defence beyond the
+  horizon. None is a wrong finding; they are the ledger's material-only objective.
+  0IGgR (...Qg5+): the "discovery" reason fires, the line Qg5+ Kb1 Rxe6 dxe6 Qxe6 is found, interval [5, 10], chosen -- after the iterative deepening and the cache fix
+  (before, a search cut short by the node cap was cached as exact and read -9).
+  FRESH 300 (rows i % 997 == 11, untouched) and TEST 300 (second run of the test: the first, at the first cut, was ledger 40% / 47% lowest-bound, PROVEN 30% (67% right),
+  planner 79%, solver 64%): fresh -- ledger 66%, lowest-bound 65%, PROVEN 49% (88%), questions 88.9, planner 84%, solver 68%; test -- ledger 64%, lowest-bound 65%, PROVEN 47%
+  (87%), questions 88.5, planner 79%, solver 64% at 10.8M nodes.
+  Strength per node (directional): the ledger asks ~88 questions and rolls ~250,000 positions forward a decision; the solver alone needs ~11M nodes to find its move
+  when it does (66-70% found within 6 moves). Themes that stay low: mateIn2 (the ledger has no mate search; 37-68%), quietMove 30-44%, skewer, attraction.
+  DEVIATIONS: (a) the budget counts new SAFE/JOB/RECAP/BLOCKS questions only; the forcing-line search is bounded by a node cap, printed; (b) the estimate rule is the
+  midpoint as specified, the lowest-bound variant is printed beside it (chosen on the dev set); (c) menus built this phase: "kick X" (escape squares), "the reply is
+  forced" (every reply in check; none = mate), "X is safe on its new square" (the stand-pat uses see after the move); (d) a candidate search replaces the per-candidate
+  ledger of the position after it: the same ledger (enter / leave, retraction by read set), rolled further.
