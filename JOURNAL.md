@@ -30572,3 +30572,38 @@ start learning by watching, then by playing").
   run, after its own round 0, mated 69/100 there). Watching ten games taught nothing usable yet.
   A BUG on the way: the per-round benchmark counted the pieces with strip() (only the ends' digits) and printed nothing --
   fixed; K+Q v K benchmarked afterwards from its saved rounds.
+
+K+R V K FROM SCRATCH, AND WATCHING FULL GAMES (2026-10-13 22:04-23:25 PDT, 2026-10-14 09:22-09:51 PDT; Kaveh: "let's see if
+we can get a king rook one out, just focusing on the king rook"; "rerun").
+  PLAY-ONLY, K+R v K (surprise_loop --scratch, 100 games a round, the tablebase defending): mated 97, 69, 91, 95, 92, 91 in
+  rounds 0-5; moves to mate 3.5, 9.3, 22.9, 25.6, 24.1, 25.2 against the tablebase's 2.5, 5.9, 9.8, 9.9, 10.5, 10.0 from the
+  same starts. Its frame: (count (and (knight2 L) (not (nearer W L)))), (count (and (diagonals L) (not (box W)))),
+  (diff (rankof L) 7) + 22 conditional frames. K+R+R v K: 100 every round, 3.4-3.8 moves against the tablebase's 8.1-9.5
+  (the tablebase's DTZ play is not mate-shortest).
+  WATCHING LICHESS (watch.py extract: the database on disk streamed once; games finished by mate that reach the ending, kept
+  from there, the winner the teacher, mirrored when Black won): 200,000 games read, 61,986 ended by mate, kept K+R v K 135,
+  K+Q v K 197, K+R+R v K 29, K+P v K 330, K+R+P v K+R 128, K+Q v K+R 4 (22 s). The full month not extracted (Kaveh: "our
+  approach might fail").
+  THE FIRST WATCHED FRAME (trajectory_frame, 135 games, 2,155 positions, 2,635 s): (count (and (file P) (nearer L W))),
+  horizon 4. On the same 100 starts (seeds 5000-5099, band 1-256, from scratch): no frames 10 mated; the watched frame 10
+  (better in 1 game, worse in 1); play-only's frames 91 (better in 81, worse in 0). BUG-CHECKED: the watched frame decided
+  every move of three sampled games (rook shuffles to the fifty-move draw). The cause: "ranks the teacher's choice lowest"
+  counted a TIE as a pass, so a word that barely changes ties every move and looks perfect.
+  THE FIX (watch.py): STRICT PAIRWISE RANKING -- each other move counts +1 when the word puts it strictly above the
+  teacher's choice, -1 when strictly below, 0 tied (an inert word scores 0); RANKED TERMS -- the next term scored only on
+  the moves the earlier terms tie (a frame compares its terms in order), kept while the check and the imitation improve,
+  up to three; the candidates judged in parallel on 600 sampled positions. THREE TEACHERS: the tablebase's own play (100
+  games, seeds 50000-50099, mated 100 in 9.7 moves), the 135 Lichess games, both.
+  Frames learned (no play): tablebase (88 s) -- (count (and (nearer L W) (not (between W L)))), (count (and unhit
+  (lines P))), (count (reach L free)) [their king's room], horizon 3, each term certified 0.99-1.00 on the watched positions,
+  our planner then choosing the teacher's move 0.62-0.63; Lichess (228 s) -- (count (nearer L W)), (count (and (colour W)
+  (not (nearer P L)))) [an odd word], horizon 4; both (253 s) -- the tablebase's first two terms, horizon 4. Probe:
+  play-only's first word places ~330th of 16,840 under this score (ranks the teacher's choice +0.17).
+  The same 100 starts, the tablebase defending (watch_rerun.py; artifacts/experiments/watch_rerun_krvk.json):
+    none 10 mated (4.4 moves) | play-only 91 (25.2)
+    tablebase 1 term 69 (24.0), 3 terms 89 (25.2) -- against play-only better 9, worse 11
+    Lichess 1 term 58 (27.2), 2 terms 95 (21.8) -- against play-only better 7, worse 3
+    both 1 term 58 (26.8), 2 terms 81 (24.0) -- against play-only better 7, worse 17
+  Directional (one run): watching alone, in 1.5-4 minutes and no game played, reaches what five rounds of play reached;
+  every frame still mates in ~22-27 moves against the tablebase's ~10. The drill and the play rounds after watching not
+  yet run.

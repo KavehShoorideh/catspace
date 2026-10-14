@@ -98,7 +98,8 @@ def _game(args):
     eng = chess.engine.SimpleEngine.popen_uci("stockfish")
     eng.configure({"SyzygyPath": str(paths.syzygy_dir())})
     men = len(material.replace("v", ""))
-    b = (castled_start(random.Random(seed)) if material == "castled"
+    b = (chess.Board(band["fen"]) if isinstance(band, dict)                  # (a drill: from a given position)
+         else castled_start(random.Random(seed)) if material == "castled"
          else engine_start(random.Random(seed), material, eng) if men > 5          # beyond our tablebases
          else _start(random.Random(seed), material, tb, band))
     st = A.PlanState()
@@ -289,6 +290,47 @@ def benchmark(res: list) -> None:
     if pairs:
         print(f"OBS   THE BENCHMARK: where both mated ({len(pairs)}): our moves to mate {sum(a for a, _ in pairs) / len(pairs):.1f}, "
               f"the tablebase's {sum(b for _, b in pairs) / len(pairs):.1f}; the tablebase mated {sum(t is not None for t in tb)} of {len(tb)}")
+
+
+def play_from(fens: list, frames: dict, opponent: str = "tablebase", workers: int = max(1, (os.cpu_count() or 8) - 2)) -> list:
+    """Games from given positions (a drill), each judged claim by claim."""
+    from multiprocessing import Pool
+    with Pool(workers) as p:
+        res = sorted(p.imap_unordered(_game, [(i, "?", frames, opponent, {"fen": f}) for i, f in enumerate(fens)], chunksize=1),
+                     key=lambda r: r["seed"])
+    for g in res:
+        judge(g)
+    return res
+
+
+def surprises(res: list) -> int:
+    """How many of our claims failed, and games not won, in a drill's play."""
+    bad = sum(1 for g in res for r in g["rows"] if r.get("verdict") in ("lost ground", "no shrink"))
+    return bad + sum(g["out"] != "win" for g in res)
+
+
+def drill(fens: list, frames: dict, material: str, tag: str, iterations: int = 4, budget: int = 60, log=print) -> dict:
+    """THE DRILL (Kaveh 2026-10-13: "we allow the student to play that position against itself to test out its lemma ... and
+    keep testing out that position until it's no longer surprised"): the surprise, the moves before it and their one-square
+    variations played out with the frames; whatever surprised -- a claim that failed, a game not won -- is mined; a mined
+    frame is kept only when the same positions replayed surprise less; until nothing surprises or no frame helps."""
+    res = play_from(fens, frames)
+    s0 = surprises(res)
+    log(f"OBS DRILL ({len(fens)} positions): {s0} surprises with the frames as they stand")
+    for it in range(iterations):
+        if s0 == 0:
+            log("OBS DRILL: no longer surprised"); break
+        new = mine(res, frames, 100 + it, budget, tag=f"{tag}_drill", register=False)
+        if new == frames:
+            log("OBS DRILL: nothing mined"); break
+        res2 = play_from(fens, new)
+        s1 = surprises(res2)
+        changed = {k: v for k, v in new.items() if frames.get(k) != v}
+        log(f"OBS DRILL {it + 1}: with {changed}: {s1} surprises (was {s0})")
+        if s1 >= s0:
+            log("OBS DRILL: the mined frame does not surprise less -- not kept"); break
+        frames, res, s0 = new, res2, s1
+    return frames
 
 
 def episode_report(res: list, frames: dict) -> None:
