@@ -403,6 +403,70 @@ pub fn forced_moves(fen: String, value: i64, depth: u32, budget: u64) -> Vec<(St
     }).collect()
 }
 
+/// THE TACTICAL PROFILE (Kaveh 2026-10-13: "the density of tactics is basically what we're predicting ... a lot of good
+/// tactics for us and ... no tactics for them ... we need to be able to label the tactical situations"): for the side to
+/// move and, as if it passed, for the other side -- at each value of the ladder (1 a pawn, 3 a piece, 5 a rook, 9 a
+/// queen, MATE), the fewest moves of the attacker forcing a gain of that much (held after the reply, the game alive) or a
+/// mate within `depth`, how many first moves force it, how many first moves the budget left unknown. Exact (the solver
+/// above); the short window of the planner's two windows.
+/// tactic_profile(fen, depth, budget) -> (ours, theirs or None when we are in check): [(value, fewest moves or 0, how
+/// many first moves force it, how many unknown)]
+pub const LADDER: [i64; 5] = [1, 3, 5, 9, MATE_GOAL];
+fn profile(pos: &Chess, depth: u32, budget: u64) -> Vec<(i64, u32, u32, u32)> {
+    let us = pos.turn();
+    LADDER.iter().map(|&v| {
+        let mut sv = Solver { us, root_bal: kernel_material(pos, us), value: v, budget, nodes: 0, memo: HashMap::new() };
+        let (mut fewest, mut count, mut unknown) = (0u32, 0u32, 0u32);
+        for m in pos.legal_moves() {
+            let q = after(pos, &m);
+            sv.nodes = 0;
+            match sv.theirs(&q, depth - 1) {
+                Some(true) => {
+                    count += 1;
+                    let n = (1..=depth).find(|d| sv.theirs(&q, d - 1) == Some(true)).unwrap_or(depth);
+                    if fewest == 0 || n < fewest { fewest = n; }
+                }
+                None => unknown += 1,
+                Some(false) => {}
+            }
+        }
+        (v, fewest, count, unknown)
+    }).collect()
+}
+
+#[pyfunction]
+pub fn tactic_profile(fen: String, depth: u32, budget: u64) -> Option<(Vec<(i64, u32, u32, u32)>, Option<Vec<(i64, u32, u32, u32)>>)> {
+    let pos = crate::parse(&fen)?;
+    let ours = profile(&pos, depth, budget);
+    let theirs = if pos.is_check() { None } else { pass(&pos).map(|p| profile(&p, depth, budget)) };
+    Some((ours, theirs))
+}
+
+/// THE DEFENCE LABELS (Kaveh 2026-10-13: "how do I stop these? ... play some moves and see what is it going to take to stop
+/// this ... the outcome was either avoided or not avoided"): for each move of ours, does their gain of `value` or more
+/// (or a mate) stay forced within `depth` of their moves after it? "stopped" (avoided, proved), "forced" (not avoided:
+/// their fewest moves and line), "unknown".
+/// defence_moves(fen, value, depth, budget) -> [(uci, status, their moves, their line)]
+#[pyfunction]
+pub fn defence_moves(fen: String, value: i64, depth: u32, budget: u64) -> Vec<(String, String, u32, Vec<String>)> {
+    let Some(pos) = crate::parse(&fen) else { return vec![] };
+    let them = !pos.turn();
+    pos.legal_moves().into_iter().map(|m| {
+        let u = m.to_uci(CastlingMode::Standard).to_string();
+        let q = after(&pos, &m);
+        if q.is_checkmate() { return (u, "stopped".to_string(), 0, vec![]); }
+        let mut sv = Solver { us: them, root_bal: kernel_material(&q, them), value, budget, nodes: 0, memo: HashMap::new() };
+        match sv.ours(&q, depth) {
+            Some(false) => (u, "stopped".to_string(), 0, vec![]),
+            None => (u, "unknown".to_string(), 0, vec![]),
+            Some(true) => {
+                let n = (1..=depth).find(|d| sv.ours(&q, *d) == Some(true)).unwrap_or(depth);
+                (u, "forced".to_string(), n, sv.line(&q, n))
+            }
+        }
+    }).collect()
+}
+
 /// From the other side's words to ours ("their" <-> "our").
 fn flip(s: &str) -> String { s.replace("their ", "\u{0}").replace("our ", "their ").replace('\u{0}', "our ") }
 

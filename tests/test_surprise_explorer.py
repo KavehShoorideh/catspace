@@ -48,3 +48,15 @@ def test_the_mirror_lemma_transfers_the_labels():
         lab = {u: (st, n) for u, st, n, _ in A.forced_moves(b.fen(), 1, 10, 2_000_000)}
         mir = {u: (st, n) for u, st, n, _ in A.forced_moves(E.mirror_fen(b.fen()), 1, 10, 2_000_000)}
         assert {u: x[:2] for u, x in E.mirror_labels({u: (st, n, []) for u, (st, n) in lab.items()}).items()} == mir
+
+
+def test_the_defence_labels_name_the_moves_that_stop_their_pawn():
+    # their a-pawn runs; our king must step into its square
+    lab = {u: st for u, st, n, _ in A.defence_moves("6k1/6P1/7P/p7/4K3/8/8/8 w - - 4 14", 1, 6, 2_000_000)}
+    assert lab["e4f4"] == "forced" and lab["e4d4"] == "stopped" and lab["e4d3"] == "stopped"
+
+
+def test_the_tactic_profile_reads_both_sides():
+    ours, theirs = A.tactic_profile("5k2/8/3KP3/8/8/8/8/8 w - - 2 2", 3, 200_000)
+    assert ours[0] == (1, 3, 1, 0)                                     # a pawn's worth or more: in 3, by one first move (Kd7)
+    assert all(c == 0 for _, _, c, _ in theirs)                        # their lone king forces nothing

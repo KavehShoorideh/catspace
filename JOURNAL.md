@@ -30418,3 +30418,27 @@ statistical) -- built in the loop's own words and claims:
   of 18 wrong decisions inside, breaks none of 38 (unrefined it broke 15). 99 s.
   ITS WORTH on 200 fresh starts (seeds 9100-9299, the tablebase defending, paired): better in 3 games, worse in 3 --
   NET 0. Exact on its neighbourhood, it misfires beyond it; the 3 worse games are the next surprises to refine it.
+
+THE TACTICAL LABELS AND THE DEFENCE EXPLORER (2026-10-13 17:40-18:20 PDT; Kaveh: "Yes" -- the short window's exact
+tactics labelled, then the explorer seeded by their imagined futures).
+  tactic_profile (goals.rs): for the side to move and, as if it passed, for the other side -- at each value of the ladder
+  (1, 3, 5, 9, mate) the fewest moves forcing a gain that big (held after the reply, the game alive) within the window,
+  how many first moves force it, how many the budget left unknown. tactics.py labels every position of the given games:
+  the castled games, 2,787 positions in 6 s (23 ms a position on one core, window 3 moves, no unknown); e.g.
+  KRRPPPPvKRPPPP 262 positions: a gain of ours forced in 62, of theirs as if we passed in 77 (a rook 24, a queen 8).
+  defence_moves: for each move of ours, does their gain that matters to them stay forced within their window (not
+  avoided) or not (stopped). The explorer's defence mode: the decision where the planner's move let it through while
+  another move stops it; the same exploration. The lemma search reordered MEASURE FIRST (pawn endings are nearly all
+  king moves -- "the same kind of decision" lumped different dilemmas): each measure that plays the surprise right is
+  tried everywhere explored; the condition then keeps the surprise in and every position it broke out. Two fixes on the
+  way: every term on every position in one call (component_values: 600 x 29,473 in 0.25 s, was ~30 s a scan); the
+  worker pool spawned, not forked (a fork inherits the Rust thread pool's state without its threads -- the workers hung).
+  TWO K+P+P v K+P LOSSES (their pawn ran), 6 s together:
+    seed 9042, 8/1k3p2/8/1P6/P7 w: Ke2 lets Kb6-a5xa4 through, a5 stops it -> KPPvKP:if:(count (and free (diagonals
+    P)))<=5 -> [(count (and attacked ours))]; inside: fixes 111 of 112 wrong, breaks 0 of 138
+    seed 9047, 6k1/6P1/7P/p7/4K3 w: Kf4 lets a4-a3-a2 through, Kd3 Ke3 Kd4 Kd5 Ke5 Kf5 stop it ->
+    KPPvKP:if:(count (and attacked (rank L)))>=2 -> [(dist W e7)]; inside: fixes 7 of 33, breaks 0 of 149
+  THEIR WORTH on 200 fresh starts each (seeds 9100-9299, paired): 4 better / 4 worse, and 4 / 4 -- NET 0, like the
+  K+P v K lemma (3 / 3). Three lemmas, each exact on its neighbourhood, none worth a game net beyond it: with 29,473
+  terms against a few hundred positions two piece-steps from one surprise, many terms fit by coincidence (a named square
+  e7; "fewer of our pieces defended" for "push the pawn").
