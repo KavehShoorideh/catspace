@@ -296,48 +296,53 @@ def check_frame(material: str, lits: tuple, v: tuple, k: int, pool, rng, n: int,
                 held=[f for f, x in zip(fens, res) if x == "forced"])
 
 
+def derive_loops(files: list, materials, top: int = 10, draw: int = 60, held_out: int = 60, workers: int | None = None,
+                 log=print) -> dict:
+    """THE LOOP FRAMES of the given games: {conditional frame key: [measure, "horizon:k"]} -- each a view seen again with
+    their king shifted, checked exactly on positions drawn inside its condition, refined, held out."""
+    import random
+    from multiprocessing import get_context
+    kept = {}
+    with get_context("spawn").Pool(workers or max(1, (os.cpu_count() or 8) - 1)) as pool:
+        for material in sorted(materials):
+            t0 = time.time()
+            rec = view_recurrences(files, material)
+            cands = sorted(rec.items(), key=lambda kv: (-kv[1]["count"], len(kv[0][1]), kv[1]["k"]))
+            log(f"OBS   {material}: {len(rec)} candidate loops ({time.time() - t0:.0f} s); checking the {min(top, len(cands))} seen most often")
+            for (view, lits, v), c in cands[:top]:
+                r = check_frame(material, lits, v, c["k"], pool, random.Random(f"{view}{lits}{v}"), draw)
+                line = (f"OBS     {view}, seen {c['count']}x, period {c['k']}, their king {v}: drawn {r['drawn']} -- forced at {r['forced']}"
+                        f", stopped {r['stopped']}, unknown {r['unknown']}")
+                for rnd in range(3):
+                    if not r["drawn"] or r["forced"] == r["drawn"] or not r["held"]:
+                        break
+                    w = refine(r["held"], r["failed"])
+                    if w is None:
+                        break
+                    lits = tuple(lits) + ((w[0], w[1], w[2], "refined"),)
+                    r = check_frame(material, lits, v, c["k"], pool, random.Random(f"r{rnd}{view}{lits}{v}"), draw)
+                    line += f"; refined by {w[0]} [{w[1]}, {w[2]}]: {r['forced']}/{r['drawn']}"
+                if r["drawn"] and r["forced"] == r["drawn"]:
+                    h = check_frame(material, lits, v, c["k"], pool, random.Random(f"held{view}{lits}{v}"), held_out)
+                    line += f"; HELD OUT {h['forced']}/{h['drawn']}"
+                    if h["drawn"] and h["forced"] == h["drawn"]:
+                        kept[r["key"]] = [r["measure"], f"horizon:{c['k']}"]
+                        line += " -> KEPT"
+                log(line)
+    return kept
+
+
 def frames_main(argv=None):
     """python -m catspace.incubator.analyst.discovery.patterns frames --games ... --material KRRvK"""
-    import random
     ap = argparse.ArgumentParser()
     ap.add_argument("--games", required=True)
     ap.add_argument("--material", required=True)
     ap.add_argument("--top", type=int, default=20)
     ap.add_argument("--draw", type=int, default=60, help="positions drawn inside a condition to check it")
     ap.add_argument("--held-out", type=int, default=60)
-    ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 8) - 1))
     a = ap.parse_args(argv)
     t0 = time.time()
-    rec = view_recurrences(sorted(glob.glob(a.games)), a.material)
-    cands = sorted(rec.items(), key=lambda kv: (-kv[1]["count"], len(kv[0][1]), kv[1]["k"]))
-    print(f"OBS {len(rec)} candidate loops in {a.material} over the views {VIEWS} ({time.time() - t0:.0f} s); checking the "
-          f"{min(a.top, len(cands))} seen most often")
-    from multiprocessing import get_context
-    kept = []
-    with get_context("spawn").Pool(a.workers) as pool:
-        for (view, lits, v), c in cands[: a.top]:
-            r = check_frame(a.material, lits, v, c["k"], pool, random.Random(f"{view}{lits}{v}"), a.draw)
-            line = (f"OBS   {view}, seen {c['count']}x, period {c['k']}, their king {v}: drawn {r['drawn']} inside -- forced at "
-                    f"{r['forced']}, stopped {r['stopped']}, unknown {r['unknown']}")
-            # REFINED (Ripple-Down, CEGIS): a word that keeps every failure out and the most of the held ones in; drawn afresh
-            for rnd in range(3):
-                if not r["drawn"] or r["forced"] == r["drawn"] or not r["held"]:
-                    break
-                w = refine(r["held"], r["failed"])
-                if w is None:
-                    break
-                lits = tuple(lits) + ((w[0], w[1], w[2], "refined"),)
-                r = check_frame(a.material, lits, v, c["k"], pool, random.Random(f"r{rnd}{view}{lits}{v}"), a.draw)
-                line += f"; refined by {w[0]} in [{w[1]}, {w[2]}]: forced at {r['forced']}/{r['drawn']}"
-            if r["drawn"] and r["forced"] == r["drawn"]:
-                h = check_frame(a.material, lits, v, c["k"], pool, random.Random(f"held{view}{lits}{v}"), a.held_out)
-                line += f"; HELD OUT {h['forced']}/{h['drawn']}"
-                if h["drawn"] and h["forced"] == h["drawn"]:
-                    kept.append(dict(key=r["key"], terms=[r["measure"], f"horizon:{c['k']}"], view=view, v=v, k=c["k"], seen=c["count"],
-                                     checked=r["drawn"] + h["drawn"]))
-                    line += " -> KEPT"
-            print(line)
-            print(f"OBS     {r['key'][:220]} -> [{r['measure']}, horizon:{c['k']}]")
+    kept = derive_loops(sorted(glob.glob(a.games)), [a.material], a.top, a.draw, a.held_out)
     out = paths.derived(f"patterns/frames_{a.material}.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     json.dump(kept, open(out, "w"), indent=1)

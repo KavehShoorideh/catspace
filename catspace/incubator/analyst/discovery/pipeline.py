@@ -60,7 +60,8 @@ def known_terms(hole: dict) -> list:
     """The measures we already have: the generated registry's -- those promoted on e-value evidence first, newest first
     -- then the frames in play (the hole's `frames`); each once, each parsing."""
     from . import registry as R
-    reg = [e for e in json.load(open(R.REGISTRY)) if e.get("kind") == "measure"] if R.REGISTRY.exists() else []
+    from . import scratch
+    reg = [e for e in json.load(open(R.REGISTRY)) if e.get("kind") == "measure"] if R.REGISTRY.exists() and not scratch() else []
     ordered = [e["expr"] for e in reversed(reg) if "e-value" in json.dumps(e.get("evidence", {}))]
     ordered += [e["expr"] for e in reversed(reg)]
     ordered += [t for ts in (hole.get("frames") or {}).values() for t in ts]
@@ -227,6 +228,9 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     hole itself excluded), the enumerative one beside them, the filter, the verifier (each verdict to the store)."""
     import os
     from .verifier import Verifier
+    from . import scratch
+    if scratch():                                # (from scratch: no proposer trained on past runs -- the enumeration, smallest first)
+        kinds = ()
     trained = [n for n in H.available() if n != hole_name and os.path.exists(paths.derived(f"hole_{n}_labels.json"))]
     cache: dict = {}
     h = hole or H.load(hole_name)
@@ -277,7 +281,8 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
         else:
             stale += 1
         if defender != "self":
-            P.update()                                  # this batch's verdicts, before the next batch is ranked
+            if kinds:
+                P.update()                              # this batch's verdicts, before the next batch is ranked
         print(f"OBS   batch {batch_no}: {len(kept)} verified, the batch's best {top['score']:.4f}, the hole's best {best['score']:.4f} (the frame's own {base['score']:.4f})")
         # (Kaveh: not "keep proposing until it's broken" -- one batch unless asked; the loop is the rounds)
         if batch_no >= batches or stale >= 2:
@@ -297,7 +302,8 @@ def run(hole_name: str, budget: int, kinds=("gnn", "transformer"), epochs: int =
     top = [FILTERED_BY.get((r["term"], r["schema"]), "?") for r in res[:10]]
     print(f"OBS   the verifier's top 10 by proposer: {dict(Counter(top))}")
     if defender == "self":
-        P.update_in_background()                # this hole's verdicts fine-tune the proposers beside the next work
+        if kinds:
+            P.update_in_background()            # this hole's verdicts fine-tune the proposers beside the next work
     return [base] + res
 
 

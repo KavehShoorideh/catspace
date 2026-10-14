@@ -15,11 +15,24 @@ then whole games). Learned proposers only order the search -- meaning comes from
 """
 
 
+def scratch() -> str | None:
+    """THE FROM-SCRATCH RUN (Kaveh 2026-10-13: "if it were to start with just the vocabulary, just the machinery, no lemmas
+    and no frames, it could re-derive everything quickly ... and it could play a game"): its tag, set by surprise_loop
+    --scratch in the environment so every worker sees it -- the hand-derived mating frames off, no registry lemmas, no
+    learned proposers trained on past runs, its own experience store."""
+    import os
+    return os.environ.get("CATSPACE_SCRATCH") or None
+
+
 def _install_terms():
-    """The chess terms (compositions of the base words) into the evaluator, once per process."""
+    """The chess terms (compositions of the base words) into the evaluator, once per process; in a from-scratch run the
+    hand-derived mating frames (mating.rs, KQ_TACTIC) off."""
     try:
         from .base_vocabulary import install_terms
         install_terms()
+        if scratch():
+            import analyst_core as A
+            A.set_kq_tactic(False)
     except ImportError:                                  # (the extension not built: nothing to install into)
         pass
 

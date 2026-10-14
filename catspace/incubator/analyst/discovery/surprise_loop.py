@@ -42,6 +42,8 @@ FRAME_K = 2                    # vocab.rs FRAME_K: the generic frame's horizon
 MATING_K = 3                   # mating.rs KQ_TEMPO_MOVES: the mating frames' horizon
 ATTACK_K, MATE_K, DEFENCE_K = 10, 10, 2       # a proof's horizon: 10 (game 1064 collected "wins 4 by force" on move 6)
 MATING_SPECS = {"KRvK": ["fn:wall", "fn:kr_generated"], "KQvK": ["fn:kq_offedge", "fn:kq_approach", "fn:kq_region"]}
+if os.environ.get("CATSPACE_SCRATCH"):        # (from scratch the hand-derived mating frames are off: those materials are mined too)
+    MATING_SPECS.clear()
 LIMIT = 120                    # moves of ours per game
 
 
@@ -243,6 +245,50 @@ def play(material: str, games: int, frames: dict, seed0: int, workers: int = max
     for g in res:
         judge(g)
     return res
+
+
+def _tb_play(fen: str) -> int | None:
+    """The tablebase's own play from a start (the winner: the fewest plies to zeroing -- in these endings the mate; the
+    loser: the longest) -> our moves to mate, None when not mated."""
+    import chess
+    import chess.syzygy
+    with chess.syzygy.open_tablebase(str(paths.syzygy_dir())) as tb:
+        b = chess.Board(fen)
+        n = 0
+        for _ in range(300):
+            if b.is_game_over(claim_draw=True):
+                break
+            best = None
+            for m in b.legal_moves:
+                x = b.copy(stack=False); x.push(m)
+                if x.is_checkmate() and b.turn == chess.WHITE:
+                    best = (-1, m); break
+                try:
+                    d = tb.probe_dtz(x)
+                except Exception:
+                    return None
+                key = (abs(d) if tb.probe_wdl(x) == -2 else 10 ** 6) if b.turn == chess.WHITE else -d
+                if best is None or key < best[0]:
+                    best = (key, m)
+            if b.turn == chess.WHITE:
+                n += 1
+            b.push(best[1])
+        return n if b.is_checkmate() else None
+
+
+def benchmark(res: list) -> None:
+    """THE BENCHMARK (Kaveh 2026-10-13: "how many moves does it take us to do it versus ..."): the tablebase's own play from
+    the round's starts against ours, game by game, where both mated (5 men or fewer, no pawn)."""
+    starts = [g["rows"][0]["fen"] for g in res if g["rows"]]
+    if not starts or any("p" in f.split(" ")[0].lower() for f in starts) or len(starts[0].split(" ")[0].replace("/", "").strip("12345678")) > 5:
+        return
+    from multiprocessing import Pool
+    with Pool(max(1, (os.cpu_count() or 8) - 2)) as p:
+        tb = p.map(_tb_play, starts)
+    pairs = [(g["moves"], t) for g, t in zip([g for g in res if g["rows"]], tb) if g["out"] == "win" and t]
+    if pairs:
+        print(f"OBS   THE BENCHMARK: where both mated ({len(pairs)}): our moves to mate {sum(a for a, _ in pairs) / len(pairs):.1f}, "
+              f"the tablebase's {sum(b for _, b in pairs) / len(pairs):.1f}; the tablebase mated {sum(t is not None for t in tb)} of {len(tb)}")
 
 
 def episode_report(res: list, frames: dict) -> None:
@@ -571,8 +617,19 @@ def main(argv=None):
     ap.add_argument("--defender", default="self", help="the verifier's closed-loop opponent: self, tablebase, stockfish:D")
     ap.add_argument("--boards", type=int, default=30, help="boards per hole the verifier plays against a real defender")
     ap.add_argument("--challenger", action="store_true", help="after each round's mining: the challenger's traps and conditional frames")
+    ap.add_argument("--scratch", action="store_true",
+                    help="FROM SCRATCH (Kaveh 2026-10-13): no frames, no registry lemmas, the hand-derived mating frames off, no "
+                         "proposer trained on past runs, its own experience store, nothing written to the generated track")
+    ap.add_argument("--loops", action="store_true", help="after each round's mining: loop frames from the round's own games")
     a = ap.parse_args(argv)
     tag = a.tag if a.tag is not None else time.strftime("%m%d_%H%M")
+    if a.scratch:
+        os.environ["CATSPACE_SCRATCH"] = tag                      # (every worker started from here on sees it)
+        os.makedirs(paths.derived(f"scratch/{tag}"), exist_ok=True)
+        MATING_SPECS.clear()
+        import analyst_core as A
+        A.set_kq_tactic(False)
+        a.dry, a.fresh, a.frames = True, True, None
     stem = f"surprise_loop_{a.material}" + (f"_{tag}" if tag else "")
     state = paths.derived(f"{stem}.json")
     from . import registry as R
@@ -595,6 +652,7 @@ def main(argv=None):
             t0 = time.time()
             res = play(a.material, a.games, frames, seed0=1000 * rnd, opponent=a.opponent, band=band)
             report(res, f"round {rnd} (frames {frames or 'none'}; {time.time() - t0:.0f} s)")
+            benchmark(res)
             episode_report(res, frames)
             json.dump(res, open(paths.experiment(f"{stem}_r{rnd}.json"), "w"))
             history.append(dict(round=rnd, frames=frames, outcomes=dict(Counter(g["out"] for g in res)), band=band))
@@ -614,6 +672,13 @@ def main(argv=None):
             # THE CHALLENGER (Kaveh: "reason both sides"): traps against the round's frames, answered by conditional frames
             from . import challenger as C
             new = C.round_(res, frames, new, tag or "run", rnd, register=not a.dry, pending=pending_frames, rounds_left=a.rounds - 1 - rnd)
+        if a.loops:
+            # LOOP FRAMES FROM THE ROUND'S OWN GAMES (Kaveh: "loops in the frames"): an arrangement seen again with their
+            # king shifted, checked exactly, refined, held out -- added as conditional frames with their horizons
+            from . import patterns as Pt
+            got = Pt.derive_loops([paths.experiment(f"{stem}_r{rnd}.json")], {g["rows"][0]["material"] for g in res if g["rows"]})
+            new = dict(new); new.update(got)
+            print(f"OBS LOOP FRAMES from round {rnd}'s own games: {len(got)} kept")
         history[-1]["pending"], history[-1]["pending_frames"] = dict(pending), dict(pending_frames)
         json.dump(history, open(state, "w"), indent=1)
         if new == frames and not pending and not pending_frames and not widened:

@@ -22,6 +22,9 @@ from catspace.io import paths
 
 STORE = "discovery_experience.jsonl"
 ADVANTAGE = "discovery_advantage.jsonl"            # the proposers' reward: a candidate's advantage over the frame before it
+if os.environ.get("CATSPACE_SCRATCH"):             # a from-scratch run keeps its own experience (never the main store's)
+    STORE = f"scratch/{os.environ['CATSPACE_SCRATCH']}/{STORE}"
+    ADVANTAGE = f"scratch/{os.environ['CATSPACE_SCRATCH']}/{ADVANTAGE}"
 
 
 def advantage(hole: str, term: str, schema: str, w: int, l: int, n: int, source: str) -> None:
