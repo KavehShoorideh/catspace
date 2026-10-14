@@ -30393,7 +30393,7 @@ mining (scored on their hole's boards), 1 promoted on held-out evidence (a K+P v
   queen against their pawn (K+Q v K+P) takes 0.8 s (median of 30), and those games spend 773 of their moves there; every
   other material 1-40 ms a decision. The ablation: ~15 min, mostly replaying all 100 games for lemmas met in 5-17 of them.
 
-THE SURPRISE EXPLORER (2026-10-13 17:12-17:35 PDT; Kaveh: "why are we mining statistically? Why are we not reasoning? ...
+THE SURPRISE EXPLORER (2026-10-13 17:12-17:33 PDT; Kaveh: "why are we mining statistically? Why are we not reasoning? ...
 when I see one surprise, I can ... explore the different lines, and then understand dilemmas"; "It should already exist.
 If it does not exist, then build it. Yes, go."). The search: nothing in the repo starts from one surprise (lemma_gen.py
 has exact labels and DNF guards but its own vocabulary and material labels; the challenger has the loop's words but is
