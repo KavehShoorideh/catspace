@@ -1018,7 +1018,7 @@ the only guard of the bishop behind it (the queen) is the only guard of the rook
 Lean: the critical questions' answers are the vocabulary's words (already Lean-defined); new chess claims in a lemma are
 proved before they are relied on. The ledger's bookkeeping (retraction, the agenda) is not chess and needs no proof.
 
-### 39.5 Stress test (2026-10-14 14:30 PDT): the holes found, and what was decided
+### 39.5 Stress test (2026-10-14 14:09 PDT): the holes found, and what was decided
 
 1. WHOSE MOVE. Every question is stamped with the side that acts. "Is our piece X safe" is asked as if we PASSED (the
    null-move threat -- their best capture sequence if they move now); "is their piece safe" as if we move. A candidate move
@@ -1057,3 +1057,8 @@ proved before they are relied on. The ledger's bookkeeping (retraction, the agen
 14. ONE VOCABULARY GAP: "after X recaptures on Y, does X still guard Z" and "if X leaves, what does A hit" need the board
     AFTER A MOVE of one piece: `(moved X s T)` -- T read on the board with the piece on X placed on s (whatever stood on s
     taken), the sibling of `without` (2026-10-14). NEEDS KAVEH'S WORD (the vocabulary is his).
+15. THE LANGUAGE OF CHANGE AND OF CONDITIONALS (Kaveh 2026-10-14, after the stress test): proposed base words --
+    `(if C A B)` (the floor-number term had to fake it with min/max/eq: 38,873 characters), `(after m T)` (T on the board
+    after move m; replaces `moved` in item 14), `(delta T)` (T now minus T a ply ago: increased / reduced),
+    `(gained S)` / `(lost S)` (squares in S now and not a ply ago, and the reverse: now does / no longer does). One
+    family with `ago` (back), `without` / `after` (sideways), `if` (branch). AWAITING KAVEH'S WORD.
