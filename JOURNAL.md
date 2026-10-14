@@ -30468,7 +30468,7 @@ Built into discovery/explorer.py:
   of 103, breaks 0 -> dropped. LEMMAS KEPT: 0. The guards now stop the coincidences; the K+P v K technique (the key
   squares in front of the pawn, the opposition) has no words yet ("ahead of X" asked).
 
-THE VOCABULARY COMPLEMENTED: RELATIVE GEOMETRY, GOALS IN WORDS, CYCLE LEMMAS; K+R+R+P v K+R+P (2026-10-13 18:52-19:02 PDT;
+THE VOCABULARY COMPLEMENTED: RELATIVE GEOMETRY, GOALS IN WORDS, CYCLE LEMMAS; K+R+R+P v K+R+P (2026-10-13 18:52-19:01 PDT;
 Kaveh: "the idea was that some sort of a machinery would propose dilemmas, but here you are, an LLM proposing dilemmas ... I
 want us to basically build the capability to have lemmas that create cycles ... that language in the vocabulary";
 "whatever it took for you to find that these are the right lemmas to add, that needs to become machinery"; "king, rook,
