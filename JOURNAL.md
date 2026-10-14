@@ -30392,3 +30392,29 @@ mining (scored on their hole's boards), 1 promoted on held-out evidence (a K+P v
   TIME: 100 games take 4-7 s (K+P v K), 17-18 s (K+P+P v K+P, K+R+P v K+R), ~100 s (K+P v K+P): one decision with our
   queen against their pawn (K+Q v K+P) takes 0.8 s (median of 30), and those games spend 773 of their moves there; every
   other material 1-40 ms a decision. The ablation: ~15 min, mostly replaying all 100 games for lemmas met in 5-17 of them.
+
+THE SURPRISE EXPLORER (2026-10-13 17:12-17:35 PDT; Kaveh: "why are we mining statistically? Why are we not reasoning? ...
+when I see one surprise, I can ... explore the different lines, and then understand dilemmas"; "It should already exist.
+If it does not exist, then build it. Yes, go."). The search: nothing in the repo starts from one surprise (lemma_gen.py
+has exact labels and DNF guards but its own vocabulary and material labels; the challenger has the loop's words but is
+statistical) -- built in the loop's own words and claims:
+  forced_moves (goals.rs): EVERY MOVE LABELLED EXACTLY -- forced within n moves of ours against every defence (a gain at
+  the outcome floor held after their reply, the game alive, or a mate), stopped (proved not within n), unknown (budget);
+  a depth-limited solver remembering (position, moves left) -- exact, the fewest-moves line never repeats a position.
+  K+P v K: 0.04 s a position. A bug found by the soundness test against the tablebase and fixed (also in the goal
+  field's contest): d8=B "gained 2" into K+B v K, a dead draw -- a gain counts only while the game is alive.
+  discovery/explorer.py: LOCATE the first decision of a game whose move threw away a gain our search proves forced;
+  EXPLORE every position one piece one square away, twice (246 around the first surprise), each labelled exactly, the
+  left-right mirror of each labelled by the mirror lemma, not searched (116 of 246); SEPARATE against the CORNERSTONES
+  (Ripple-Down Rules: the explored cases where the same kind of decision -- the same kind of piece moved -- was right):
+  the conditions true at the surprise and on no cornerstone; REPAIR: a measure under which the real planner, the stage
+  installed, plays a forced move at the surprise and breaks no decision it had right -- else REFINED by a second
+  condition false on every position it broke ("c1&&c2"; stage conditions now read <= and && in vocab.rs).
+  FIRST SURPRISE (seed 9008, K+P v K, 3k4/8/4K3/3P4 w: d6 pushed, the win gone; Kd6 forces the promotion in 5): 246
+  positions, the planner right on 140, wrong on 34; the pawn push right on 26, wrong on 16; separated by "the squares
+  we attack that they do not >= 8" (at the surprise and 12 of the 16, none of the 26). LEMMA (a conjecture, exact on
+  the 56 explored positions inside it): KPvK:if:(count (and attacked unhit))>=8&&(count (and free (not (diagonals
+  W))))<=47 -> [(count (and attacked unhit))] -- while our king is clear of theirs, close in rather than push; fixes 15
+  of 18 wrong decisions inside, breaks none of 38 (unrefined it broke 15). 99 s.
+  ITS WORTH on 200 fresh starts (seeds 9100-9299, the tablebase defending, paired): better in 3 games, worse in 3 --
+  NET 0. Exact on its neighbourhood, it misfires beyond it; the 3 worse games are the next surprises to refine it.

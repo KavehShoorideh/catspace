@@ -217,12 +217,14 @@ pub static CONTEST_BUDGET: AtomicU64 = AtomicU64::new(30_000);
 #[derive(Clone)]
 pub struct CState { pos: Chess, mv: Option<Move>, ours: u32 }
 
-struct Contest { us: Color, kind: &'static str, value: i64, key: String, root_bal: i64, depth: u32, full: bool, zone: Bitboard }
+struct Contest { us: Color, kind: &'static str, value: i64, key: String, root_bal: i64, depth: u32, full: bool, zone: Bitboard,
+                 first: Option<Move> }
 
 impl Contest {
     /// The goal holds (our turn, after their reply).
     fn reached(&self, pos: &Chess) -> bool {
         let gain = kernel_material(pos, self.us) - self.root_bal;
+        if crate::game::insufficient(pos) { return false; }      // a gain into a dead draw is no gain
         match self.kind {
             "material" => gain >= self.value,
             "known" => gain >= self.value && crate::vocab::material_key(pos.board(), self.us) == self.key,
@@ -251,6 +253,7 @@ impl crate::pns::Problem for Contest {
     fn expand(&self, s: &CState, or: bool) -> Vec<(CState, f64)> {
         let us_next = if or { s.ours + 1 } else { s.ours };
         s.pos.legal_moves().into_iter().filter(|m| !or || self.full || self.in_zone(&s.pos, m))
+            .filter(|m| !(or && s.mv.is_none()) || self.first.as_ref().map_or(true, |f| f == m))   // (the root: one first move)
             .map(|m| (CState { pos: after(&s.pos, &m), mv: Some(m), ours: us_next }, 1.0)).collect()
     }
     fn and_size(&self, s: &CState) -> f64 { s.pos.legal_moves().len().max(1) as f64 }
@@ -283,7 +286,7 @@ pub fn contest(pos: &Chess, g: &Goal) -> Verdict {
     let mut zone = path | squares;
     if let Some(tk) = pos.board().king_of(!us) { if g.kind == "mate" { zone |= shakmaty::attacks::king_attacks(tk); } }
     let budget = CONTEST_BUDGET.load(Ordering::Relaxed);
-    let mk = |full: bool, depth: u32| Contest { us, kind: g.kind, value: g.value, key: g.what.clone(), root_bal: kernel_material(pos, us), depth, full, zone };
+    let mk = |full: bool, depth: u32| Contest { us, kind: g.kind, value: g.value, key: g.what.clone(), root_bal: kernel_material(pos, us), depth, full, zone, first: None };
     let root = CState { pos: pos.clone(), mv: None, ours: 0 };
     let line_of = |l: &Vec<CState>| -> Vec<String> {
         l.windows(2).filter_map(|w| w[1].mv.as_ref().map(|m| crate::plan::san(&w[0].pos, &m.to_uci(CastlingMode::Standard).to_string()))).collect()
@@ -305,6 +308,99 @@ pub fn contest(pos: &Chess, g: &Goal) -> Verdict {
         Some(false) => Verdict { status: "stopped", line: vec![], first: None, interceptors: words },
         None => Verdict { status: "unknown", line: vec![], first: None, interceptors: words },
     }
+}
+
+/// THE EXACT LABEL OF EVERY MOVE (the surprise explorer, Kaveh 2026-10-13: "when I see one surprise, I can ... explore
+/// the different lines, and then understand"): for each legal move of the side to move, does it force a material gain of
+/// `value` or more (held after their reply) or a mate, within `depth` moves of ours, against every defence?
+/// A depth-limited solver that remembers each (position, moves left): exact -- the fewest-moves line never repeats a
+/// position (what is left to do falls at each of our moves), so a position's answer does not depend on the path to it.
+/// "forced" (the fewest moves, the line), "stopped" (proved: not within `depth`), "unknown" (`budget` nodes ran out).
+/// forced_moves(fen, value, depth, budget) -> [(uci, status, our moves, line)]
+struct Solver { us: Color, root_bal: i64, value: i64, budget: u64, nodes: u64, memo: HashMap<(u64, u32, bool), bool> }
+
+impl Solver {
+    /// Held after their reply: our turn, the gain on the board -- and the game alive (2026-10-13, the soundness test
+    /// against the tablebase: d8=B "gained 2" into K+B v K, a dead draw)
+    fn reached(&self, pos: &Chess) -> bool {
+        kernel_material(pos, self.us) - self.root_bal >= self.value && !crate::game::insufficient(pos)
+    }
+    /// Our turn, `d` moves of ours left: can we force it? (None: the budget ran out.)
+    fn ours(&mut self, pos: &Chess, d: u32) -> Option<bool> {
+        if self.reached(pos) { return Some(true); }
+        if d == 0 { return Some(false); }
+        if crate::game::claimable_draw(pos).is_some() { return Some(false); }
+        let k = (crate::threat::zkey(pos), d, true);
+        if let Some(v) = self.memo.get(&k) { return Some(*v); }
+        self.nodes += 1;
+        if self.nodes > self.budget { return None; }
+        let mut v = false;
+        for m in pos.legal_moves() {
+            if self.theirs(&after(pos, &m), d - 1)? { v = true; break; }
+        }
+        self.memo.insert(k, v);
+        Some(v)
+    }
+    /// Their turn after our move, `d` moves of ours left after it: does every reply leave it forced?
+    fn theirs(&mut self, q: &Chess, d: u32) -> Option<bool> {
+        let replies = q.legal_moves();
+        if replies.is_empty() { return Some(q.is_check()); }          // mated: better than any gain; stalemated: no
+        if crate::game::claimable_draw(q).is_some() { return Some(false); }
+        let k = (crate::threat::zkey(q), d, false);
+        if let Some(v) = self.memo.get(&k) { return Some(*v); }
+        self.nodes += 1;
+        if self.nodes > self.budget { return None; }
+        let mut v = true;
+        for r in replies {
+            if !self.ours(&after(q, &r), d)? { v = false; break; }
+        }
+        self.memo.insert(k, v);
+        Some(v)
+    }
+    /// A line that shows it (our move, their best -- the longest-resisting -- reply, ...).
+    fn line(&mut self, pos: &Chess, d: u32) -> Vec<String> {
+        let mut out = Vec::new();
+        let (mut p, mut d) = (pos.clone(), d);
+        while d > 0 && !self.reached(&p) {
+            // our move: the one with the fewest moves left to the goal
+            let Some(m) = p.legal_moves().into_iter().filter_map(|m| { let q = after(&p, &m);
+                (1..=d).find(|e| self.theirs(&q, e - 1) == Some(true)).map(|e| (e, m)) }).min_by_key(|x| x.0).map(|x| x.1) else { break };
+            let u = m.to_uci(CastlingMode::Standard).to_string();
+            out.push(crate::plan::san(&p, &u));
+            let q = after(&p, &m);
+            // their reply: the one still forced only with the most moves left
+            let replies = q.legal_moves();
+            let Some(r) = replies.into_iter().max_by_key(|r| { let x = after(&q, r); (0..d).find(|e| self.ours(&x, *e) == Some(true)).unwrap_or(d) }) else { break };
+            out.push(crate::plan::san(&q, &r.to_uci(CastlingMode::Standard).to_string()));
+            p = after(&q, &r);
+            d -= 1;
+        }
+        out
+    }
+}
+
+#[pyfunction]
+pub fn forced_moves(fen: String, value: i64, depth: u32, budget: u64) -> Vec<(String, String, u32, Vec<String>)> {
+    let Some(pos) = crate::parse(&fen) else { return vec![] };
+    let mut sv = Solver { us: pos.turn(), root_bal: kernel_material(&pos, pos.turn()), value, budget, nodes: 0, memo: HashMap::new() };
+    pos.legal_moves().into_iter().map(|m| {
+        let u = m.to_uci(CastlingMode::Standard).to_string();
+        let q = after(&pos, &m);
+        sv.nodes = 0;                                                     // (each first move its own budget; the memo is shared -- it is exact)
+        match sv.theirs(&q, depth - 1) {
+            Some(false) => (u, "stopped".to_string(), 0, vec![]),
+            None => (u, "unknown".to_string(), 0, vec![]),
+            Some(true) => {
+                let n = (1..=depth).find(|d| sv.theirs(&q, d - 1) == Some(true)).unwrap_or(depth);
+                let mut line = vec![crate::plan::san(&pos, &u)];
+                if let Some(r) = q.legal_moves().into_iter().max_by_key(|r| { let x = after(&q, r); (0..n).find(|e| sv.ours(&x, *e) == Some(true)).unwrap_or(n) }) {
+                    line.push(crate::plan::san(&q, &r.to_uci(CastlingMode::Standard).to_string()));
+                    line.extend(sv.line(&after(&q, &r), n - 1));
+                }
+                (u, "forced".to_string(), n, line)
+            }
+        }
+    }).collect()
 }
 
 /// From the other side's words to ours ("their" <-> "our").

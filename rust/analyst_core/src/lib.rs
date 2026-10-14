@@ -1680,6 +1680,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(goals::goals_of, m)?)?;
     m.add_function(wrap_pyfunction!(goals::set_goal_depth, m)?)?;
     m.add_function(wrap_pyfunction!(goals::field_of, m)?)?;
+    m.add_function(wrap_pyfunction!(goals::forced_moves, m)?)?;
     m.add_function(wrap_pyfunction!(goals::set_goal_field, m)?)?;
     m.add_function(wrap_pyfunction!(threat::threat_list, m)?)?;
     m.add_function(wrap_pyfunction!(plan::kq_move_of, m)?)?;

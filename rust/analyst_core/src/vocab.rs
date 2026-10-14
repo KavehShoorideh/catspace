@@ -708,9 +708,17 @@ pub fn material_frame_move(pos: &Chess) -> Option<(Move, String)> {
         ks.sort();
         for k in ks {
             let cond = &k[prefix.len()..];
-            let (t, th) = cond.rsplit_once(">=")?;
-            let (Some(term), Ok(th)) = (parse_term(t), th.parse::<u32>()) else { continue };
-            if num(&term, pos, !us) >= th { return Some((k.clone(), m[k].clone())); }
+            // ("term>=theta", or "term<=theta" -- the surprise explorer's conditions go either way -- and several joined
+            // by "&&": an exception refined, Ripple-Down style, by what tells it apart from the cases it broke)
+            let holds = |c: &str| -> Option<bool> {
+                let (t, th, at_most) = match c.rsplit_once(">=") { Some((t, th)) => (t, th, false),
+                    None => { let (t, th) = c.rsplit_once("<=")?; (t, th, true) } };
+                let (Some(term), Ok(th)) = (parse_term(t), th.parse::<u32>()) else { return None };
+                let v = num(&term, pos, !us);
+                Some(if at_most { v <= th } else { v >= th })
+            };
+            let all: Option<Vec<bool>> = cond.split("&&").map(holds).collect();
+            if all.map_or(false, |v| v.iter().all(|x| *x)) { return Some((k.clone(), m[k].clone())); }
         }
         None
     };
