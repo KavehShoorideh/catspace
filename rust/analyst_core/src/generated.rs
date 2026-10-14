@@ -334,3 +334,105 @@ pub const STAGE_KQVKR_KQR_MORE2_R4_BLIND_CARRIED: &str = "(count (and unhit (nea
 
 /// stage_kqvkr_kqr_more2_r5_blind_carried: how many of the squares nearer our king than their king that are also the squares nearer our king than our other piece (2026-10-13, hole stage_kqr_more2_KQvKR_r5_blind_carried; verifier: 22 games better, 3 worse over 2 rounds, e-value 1.12e+03 (held-out games); region: (count (and (line W O) (reach W unhit))) >= 2; status: a conjecture: the stage's claim is not proved; used by the stage KQvKR:if:(count (and (line W O) (reach W unhit)))>=2)
 pub const STAGE_KQVKR_KQR_MORE2_R5_BLIND_CARRIED: &str = "(count (and (nearer W L) (nearer W P)))";
+
+/// kpvk_pawns_KPvK_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the rank and file through our other piece (2026-10-13, hole learn_pawns_KPvK_KPvK_rank2_r0; verifier: 0.7075 against the frame's own 0.0010 (defender self); status: a conjecture: its frame's claim is not proved; used by the KPvK frame (append): ['(count (and (nearer L W) (not (lines P))))'])
+pub const KPVK_PAWNS_KPVK_R0_PROGRESS: &str = "(count (and (nearer L W) (not (lines P))))";
+
+/// kpvk_pawns_KPvK_r1_progress: how many of the squares nearer our other piece than our king (2026-10-13, hole learn_pawns_KPvK_KPvK_rank2_r1; verifier: 0.8881 against the frame's own 0.8279 (defender self); status: a conjecture: its frame's claim is not proved; used by the KPvK frame (append): ['(count (and (nearer L W) (not (lines P))))', '(count (nearer P W))'])
+pub const KPVK_PAWNS_KPVK_R1_PROGRESS: &str = "(count (nearer P W))";
+
+/// stage_kpvk_pawns_KPvK_r3_blind_carried: how many of the squares nearer their king than our other piece that are also the squares outside the squares like c3 under the board's symmetries (2026-10-13, hole stage_pawns_KPvK_KPvK_r3_blind_carried; verifier: 20 games better, 2 worse over 2 rounds, e-value 1.58e+03 (held-out games); region: (count (and (diagonals L) (not (nearer L W)))) >= 7; status: a conjecture: the stage's claim is not proved; used by the stage KPvK:if:(count (and (diagonals L) (not (nearer L W))))>=7)
+pub const STAGE_KPVK_PAWNS_KPVK_R3_BLIND_CARRIED: &str = "(count (and (nearer L P) (not (cls c3))))";
+
+/// kqvkp_pawns_KPvKP_r0_progress: how many of the squares nearer their king than our king that are also the squares our king can walk to over the squares they do not attack (2026-10-13, hole learn_pawns_KPvKP_KQvKP_rank2_r0; verifier: 0.9357 against the frame's own 0.1303 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQvKP frame (append): ['(count (and (nearer L W) (reach W unhit)))'])
+pub const KQVKP_PAWNS_KPVKP_R0_PROGRESS: &str = "(count (and (nearer L W) (reach W unhit)))";
+
+/// kqvkp_pawns_KPvKP_r1_progress: how many of the squares they do not attack that are also the squares nearer their other piece than our other piece (2026-10-13, hole learn_pawns_KPvKP_KQvKP_rank2_r1; verifier: 0.9545 against the frame's own 0.7556 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQvKP frame (sum): ['(sum (count (and (nearer L W) (reach W unhit))) (count (and unhit (nearer O P))))'])
+pub const KQVKP_PAWNS_KPVKP_R1_PROGRESS: &str = "(count (and unhit (nearer O P)))";
+
+/// kqvkp_pawns_KPvKP_r2_progress: how many of the squares they do not attack that are also the squares nearer their king than their other piece (2026-10-13, hole learn_pawns_KPvKP_KQvKP_rank2_r2; verifier: 0.9209 against the frame's own 0.8603 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQvKP frame (replace): ['(count (and unhit (nearer L O)))'])
+pub const KQVKP_PAWNS_KPVKP_R2_PROGRESS: &str = "(count (and unhit (nearer L O)))";
+
+/// kqvkp_pawns_KPvKP_r3_progress: how many of the squares nearer their king than our king that are also the squares outside the squares from our king to our other piece along their line (2026-10-13, hole learn_pawns_KPvKP_KQvKP_rank2_r3; verifier: 0.8407 against the frame's own 0.5266 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQvKP frame (replace): ['(count (and (nearer L W) (not (segment W P))))'])
+pub const KQVKP_PAWNS_KPVKP_R3_PROGRESS: &str = "(count (and (nearer L W) (not (segment W P))))";
+
+/// kqpvk_pawns_KPPvKP_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the squares between our king and their king (2026-10-13, hole learn_pawns_KPPvKP_KQPvK_rank2_r0; verifier: 0.9967 against the frame's own 0.4254 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQPvK frame (append): ['(count (and (nearer L W) (not (between W L))))'])
+pub const KQPVK_PAWNS_KPPVKP_R0_PROGRESS: &str = "(count (and (nearer L W) (not (between W L))))";
+
+/// kppvkp_pawns_KPPvKP_r0_progress: how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the edge squares (2026-10-13, hole learn_pawns_KPPvKP_KPPvKP_rank2_r0; verifier: 0.5441 against the frame's own 0.1382 (defender self); status: a conjecture: its frame's claim is not proved; used by the KPPvKP frame (append): ['(count (and (reach L free) (not edge)))'])
+pub const KPPVKP_PAWNS_KPPVKP_R0_PROGRESS: &str = "(count (and (reach L free) (not edge)))";
+
+/// kqpvkp_pawns_KPPvKP_r0_progress: how many of the squares they do not attack that are also the squares nearer their other piece than our other piece (2026-10-13, hole learn_pawns_KPPvKP_KQPvKP_rank2_r0; verifier: 0.9527 against the frame's own 0.3354 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQPvKP frame (append): ['(count (and unhit (nearer O P)))'])
+pub const KQPVKP_PAWNS_KPPVKP_R0_PROGRESS: &str = "(count (and unhit (nearer O P)))";
+
+/// kppvk_pawns_KPPvKP_r0_progress: how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the squares a knight on their king reaches in one hop (2026-10-13, hole learn_pawns_KPPvKP_KPPvK_rank2_r0; verifier: 0.4479 against the frame's own 0.1183 (defender self); status: a conjecture: its frame's claim is not proved; used by the KPPvK frame (append): ['(count (and (reach L free) (not (knight1 L))))'])
+pub const KPPVK_PAWNS_KPPVKP_R0_PROGRESS: &str = "(count (and (reach L free) (not (knight1 L))))";
+
+/// kqqvkp_pawns_KPPvKP_r0_progress: how many of the squares their other piece attacks that are also the squares nearer their other piece than our other piece (2026-10-13, hole learn_pawns_KPPvKP_KQQvKP_rank2_r0; verifier: 1.0000 against the frame's own 0.8955 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQQvKP frame (append): ['(count (and (attacks O) (nearer O P)))'])
+pub const KQQVKP_PAWNS_KPPVKP_R0_PROGRESS: &str = "(count (and (attacks O) (nearer O P)))";
+
+/// kqvkp_pawns_KPPvKP_r0_progress: how many of the squares they do not attack (2026-10-13, hole learn_pawns_KPPvKP_KQvKP_rank2_r0; verifier: 0.8534 against the frame's own 0.6667 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQvKP frame (sum): ['(sum (count (and (nearer L W) (not (segment W P)))) (count unhit))'])
+pub const KQVKP_PAWNS_KPPVKP_R0_PROGRESS: &str = "(count unhit)";
+
+/// kppvkp_pawns_KPPvKP_r1_progress: how many of the squares outside the squares nearer our king than their other piece (2026-10-13, hole learn_pawns_KPPvKP_KPPvKP_rank2_r1; verifier: 0.6863 against the frame's own 0.5297 (defender self); status: a conjecture: its frame's claim is not proved; used by the KPPvKP frame (sum): ['(sum (count (and (reach L free) (not edge))) (count (not (nearer W O))))'])
+pub const KPPVKP_PAWNS_KPPVKP_R1_PROGRESS: &str = "(count (not (nearer W O)))";
+
+/// kppvk_pawns_KPPvKP_r1_progress: how many of the squares nearer our king than their king that are also the file of a1 (2026-10-13, hole learn_pawns_KPPvKP_KPPvK_rank2_r1; verifier: 0.6360 against the frame's own 0.5022 (defender self); status: a conjecture: its frame's claim is not proved; used by the KPPvK frame (append): ['(count (and (reach L free) (not (knight1 L))))', '(count (and (nearer W L) (file a1)))'])
+pub const KPPVK_PAWNS_KPPVKP_R1_PROGRESS: &str = "(count (and (nearer W L) (file a1)))";
+
+/// kqpvkq_check_pawns_KPPvKP_r1_progress: how many of the squares nearer our king than our other piece that are also the squares outside the squares like c3 under the board's symmetries (2026-10-13, hole learn_pawns_KPPvKP_KQPvKQ_check_rank2_r1; verifier: 0.9091 against the frame's own 0.2475 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQPvKQ:check frame (append): ['(count (and (nearer W P) (not (cls c3))))'])
+pub const KQPVKQ_CHECK_PAWNS_KPPVKP_R1_PROGRESS: &str = "(count (and (nearer W P) (not (cls c3))))";
+
+/// kqvkp_pawns_KPPvKP_r1_progress: how many of the squares they do not attack that are also the squares nearer their other piece than our other piece (2026-10-13, hole learn_pawns_KPPvKP_KQvKP_rank2_r1; verifier: 0.8585 against the frame's own 0.5769 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQvKP frame (replace): ['(count (and unhit (nearer O P)))'])
+pub const KQVKP_PAWNS_KPPVKP_R1_PROGRESS: &str = "(count (and unhit (nearer O P)))";
+
+/// kppvk_pawns_KPPvKP_r2_progress: how many of the squares they attack (2026-10-13, hole learn_pawns_KPPvKP_KPPvK_rank2_r2; verifier: 0.6517 against the frame's own 0.4887 (defender self); status: a conjecture: its frame's claim is not proved; used by the KPPvK frame (replace): ['(count (and (reach L free) (not (knight1 L))))', '(count hit)'])
+pub const KPPVK_PAWNS_KPPVKP_R2_PROGRESS: &str = "(count hit)";
+
+/// kqpvkq_check_pawns_KPPvKP_r2_progress: how many of the squares they attack (2026-10-13, hole learn_pawns_KPPvKP_KQPvKQ_check_rank2_r2; verifier: 0.8333 against the frame's own 0.5600 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQPvKQ:check frame (sum): ['(sum (count (and (nearer W P) (not (cls c3)))) (count hit))'])
+pub const KQPVKQ_CHECK_PAWNS_KPPVKP_R2_PROGRESS: &str = "(count hit)";
+
+/// kppvkp_pawns_KPPvKP_r3_progress: how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the squares nearer their king than our king (2026-10-13, hole learn_pawns_KPPvKP_KPPvKP_rank2_r3; verifier: 0.8701 against the frame's own 0.7558 (defender self); status: a conjecture: its frame's claim is not proved; used by the KPPvKP frame (append): ['(sum (count (and (reach L free) (not edge))) (count (not (nearer W O))))', '(count (and (reach L free) (not (nearer L W))))'])
+pub const KPPVKP_PAWNS_KPPVKP_R3_PROGRESS: &str = "(count (and (reach L free) (not (nearer L W))))";
+
+/// kppvk_pawns_KPPvKP_r3_progress: how many of the squares our other piece can walk to over the squares we do not attack that are also the squares outside the squares their king can walk to over the squares they do not attack (2026-10-13, hole learn_pawns_KPPvKP_KPPvK_rank2_r3; verifier: 0.6026 against the frame's own 0.5507 (defender self); status: a conjecture: its frame's claim is not proved; used by the KPPvK frame (sum): ['(count (and (reach L free) (not (knight1 L))))', '(sum (count hit) (count (and (reach P free) (not (reach L unhit)))))'])
+pub const KPPVK_PAWNS_KPPVKP_R3_PROGRESS: &str = "(count (and (reach P free) (not (reach L unhit))))";
+
+/// kqpvkq_check_pawns_KPPvKP_r3_progress: how many of the squares we attack (2026-10-13, hole learn_pawns_KPPvKP_KQPvKQ_check_rank2_r3; verifier: 0.7800 against the frame's own 0.6572 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQPvKQ:check frame (replace): ['(count attacked)'])
+pub const KQPVKQ_CHECK_PAWNS_KPPVKP_R3_PROGRESS: &str = "(count attacked)";
+
+/// kqqvk_pawns_KPPvKP_r3_progress: how many of the squares nearer their king than our other piece that are also the squares outside the squares like c3 under the board's symmetries (2026-10-13, hole learn_pawns_KPPvKP_KQQvK_rank2_r3; verifier: 1.0000 against the frame's own 0.9318 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQQvK frame (append): ['(count (and (nearer L P) (not (cls c3))))'])
+pub const KQQVK_PAWNS_KPPVKP_R3_PROGRESS: &str = "(count (and (nearer L P) (not (cls c3))))";
+
+/// krpvkr_pawns_KRPvKR_r0_progress: how many of the squares nearer our other piece than our king (2026-10-13, hole learn_pawns_KRPvKR_KRPvKR_rank2_r0; verifier: 0.6286 against the frame's own 0.2157 (defender self); status: a conjecture: its frame's claim is not proved; used by the KRPvKR frame (append): ['(count (nearer P W))'])
+pub const KRPVKR_PAWNS_KRPVKR_R0_PROGRESS: &str = "(count (nearer P W))";
+
+/// krpvk_pawns_KRPvKR_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the squares like b2 under the board's symmetries (2026-10-13, hole learn_pawns_KRPvKR_KRPvK_rank2_r0; verifier: 0.9430 against the frame's own 0.1632 (defender self); status: a conjecture: its frame's claim is not proved; used by the KRPvK frame (append): ['(count (and (nearer L W) (not (cls b2))))'])
+pub const KRPVK_PAWNS_KRPVKR_R0_PROGRESS: &str = "(count (and (nearer L W) (not (cls b2))))";
+
+/// kqrvk_pawns_KRPvKR_r0_progress: how many of the squares nearer their king than our other piece that are also the squares outside the squares like c3 under the board's symmetries (2026-10-13, hole learn_pawns_KRPvKR_KQRvK_rank2_r0; verifier: 1.0000 against the frame's own 0.3105 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQRvK frame (append): ['(count (and (nearer L P) (not (cls c3))))'])
+pub const KQRVK_PAWNS_KRPVKR_R0_PROGRESS: &str = "(count (and (nearer L P) (not (cls c3))))";
+
+/// krpvkr_check_pawns_KRPvKR_r0_progress: how many of the squares from our king to their other piece along their line (2026-10-13, hole learn_pawns_KRPvKR_KRPvKR_check_rank2_r0; verifier: 0.9036 against the frame's own 0.1989 (defender self); status: a conjecture: its frame's claim is not proved; used by the KRPvKR:check frame (append): ['(count (segment W O))'])
+pub const KRPVKR_CHECK_PAWNS_KRPVKR_R0_PROGRESS: &str = "(count (segment W O))";
+
+/// kqrvkr_pawns_KRPvKR_r0_progress: how many of the squares their other piece can walk to over the squares they do not attack that are also the squares outside the squares nearer our other piece than their king (2026-10-13, hole learn_pawns_KRPvKR_KQRvKR_rank2_r0; verifier: 0.9821 against the frame's own 0.6829 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQRvKR frame (append): ['(count (and (reach O unhit) (not (nearer P L))))'])
+pub const KQRVKR_PAWNS_KRPVKR_R0_PROGRESS: &str = "(count (and (reach O unhit) (not (nearer P L))))";
+
+/// krpvkr_pawns_KRPvKR_r1_progress: how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the squares of their pieces (2026-10-13, hole learn_pawns_KRPvKR_KRPvKR_rank2_r1; verifier: 0.6888 against the frame's own 0.4659 (defender self); status: a conjecture: its frame's claim is not proved; used by the KRPvKR frame (append): ['(count (nearer P W))', '(count (and (reach L free) (not theirs)))'])
+pub const KRPVKR_PAWNS_KRPVKR_R1_PROGRESS: &str = "(count (and (reach L free) (not theirs)))";
+
+/// krpvkr_check_pawns_KRPvKR_r1_progress: how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the squares nearer our other piece than our king (2026-10-13, hole learn_pawns_KRPvKR_KRPvKR_check_rank2_r1; verifier: 0.7516 against the frame's own 0.6152 (defender self); status: a conjecture: its frame's claim is not proved; used by the KRPvKR:check frame (append): ['(count (segment W O))', '(count (and (reach L free) (not (nearer P W))))'])
+pub const KRPVKR_CHECK_PAWNS_KRPVKR_R1_PROGRESS: &str = "(count (and (reach L free) (not (nearer P W))))";
+
+/// krpvkr_pawns_KRPvKR_r2_progress: how many of the squares they attack (2026-10-13, hole learn_pawns_KRPvKR_KRPvKR_rank2_r2; verifier: 0.6926 against the frame's own 0.5942 (defender self); status: a conjecture: its frame's claim is not proved; used by the KRPvKR frame (append): ['(count (nearer P W))', '(count (and (reach L free) (not theirs)))', '(count hit)'])
+pub const KRPVKR_PAWNS_KRPVKR_R2_PROGRESS: &str = "(count hit)";
+
+/// krpvkr_check_pawns_KRPvKR_r2_progress: how many of the rank and file through our king that are also the squares outside the squares nearer their other piece than their king (2026-10-13, hole learn_pawns_KRPvKR_KRPvKR_check_rank2_r2; verifier: 0.7738 against the frame's own 0.4861 (defender self); status: a conjecture: its frame's claim is not proved; used by the KRPvKR:check frame (append): ['(count (segment W O))', '(count (and (reach L free) (not (nearer P W))))', '(count (and (lines W) (not (nearer O L))))'])
+pub const KRPVKR_CHECK_PAWNS_KRPVKR_R2_PROGRESS: &str = "(count (and (lines W) (not (nearer O L))))";
+
+/// krpvkr_pawns_KRPvKR_r3_progress: how many of the squares their other piece can walk to over the squares they do not attack that are also the squares outside the squares a knight on their other piece reaches in one hop (2026-10-13, hole learn_pawns_KRPvKR_KRPvKR_rank2_r3; verifier: 0.8147 against the frame's own 0.7558 (defender self); status: a conjecture: its frame's claim is not proved; used by the KRPvKR frame (append): ['(count (nearer P W))', '(count (and (reach L free) (not theirs)))', '(count hit)', '(count (and (reach O unhit) (not (knight1 O))))'])
+pub const KRPVKR_PAWNS_KRPVKR_R3_PROGRESS: &str = "(count (and (reach O unhit) (not (knight1 O))))";
+
+/// kqrvkr_pawns_KRPvKR_r3_progress: how many of the squares nearer their king than our other piece that are also the squares outside the squares like c3 under the board's symmetries (2026-10-13, hole learn_pawns_KRPvKR_KQRvKR_rank2_r3; verifier: 0.9899 against the frame's own 0.9375 (defender self); status: a conjecture: its frame's claim is not proved; used by the KQRvKR frame (replace): ['(count (and (nearer L P) (not (cls c3))))'])
+pub const KQRVKR_PAWNS_KRPVKR_R3_PROGRESS: &str = "(count (and (nearer L P) (not (cls c3))))";

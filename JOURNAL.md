@@ -30343,7 +30343,7 @@ do?"). One run each, directional.
     Our planner (krr_more2 round 6, its 100 games): won 80 -- their rook won outright 55, traded 22, with their rook on 3;
     drawn 20 -- 17 with their rook never taken.
 
-EVERY SQUARE BY ITS NAME, AND THE MIRROR LEMMA (2026-10-13 16:05-16:35 PDT; Kaveh: "Go learn some lemmas about pawns";
+EVERY SQUARE BY ITS NAME, AND THE MIRROR LEMMA (2026-10-13 16:11-16:31 PDT; Kaveh: "Go learn some lemmas about pawns";
 "you want to have a mirroring lemma separately, and then you want to have the squares individually available. So then
 basically later on you want to say, if I want to search this position, I don't need to because I can just search that
 position and then apply the symmetry").
@@ -30370,3 +30370,25 @@ position and then apply the symmetry").
   It holds WITH pawns (they keep their direction). The rank flip and the diagonal flip (pawnless positions) are not done.
   Checked against python-chess (reflected legal moves, play commutes) and the tablebase (equal results), tests. The
   search reuse itself is the later step.
+
+THE PAWN LADDER AND WHAT EACH LEMMA IS WORTH (2026-10-13 16:19-17:07 PDT; Kaveh: "how many lemmas did you find? And how
+much did that lemma improve performance?"). The loop on K+P v K, K+P v K+P, K+P+P v K+P, K+R+P v K+R in turn (100 games a
+round, rounds 0-4, the tablebase defending, the challenger on): 23 lemmas (measures) added to 15 frames -- 22 adopted by
+mining (scored on their hole's boards), 1 promoted on held-out evidence (a K+P v K stage, pooled 20 to 2, e 1.6e3).
+  ABLATION (lemma_ablation.py, session scratchpad): 100 fresh starts (seeds 9000+) of every pawn material whose games reach
+  the lemma's material, replayed with all lemmas and with that one removed; games deterministic (K+P v K replayed 100/100
+  the same), so the pairs differ by the lemma alone. Net = games better with it minus worse:
+    +3  K+P v K  (count (and (nearer L W) (not (lines P))))   -- 4 better, 1 worse
+    +1  K+P+P v K+P  (sum (count (and (reach L free) (not edge))) (count (not (nearer W O))))   -- 4 / 3
+    +1  K+R+P v K+R in check  (count (segment W O))   -- 2 / 1
+    +1  K+R+P v K+R  (count (and (reach L free) (not theirs)))   -- 1 / 0
+     0  K+P+P v K (1 / 1), K+R+P v K+R in check (2 / 2)
+    -1  K+R+P v K+R  (count (nearer P W))  (3 / 4); K+P v K (count (nearer P W)) in K+R+P v K+R games (0 / 1)
+     no game changed: the other 15, the evidence-promoted stage among them.
+  WHY THE K+P v K WINS ARE LOST: in round 4 all 12 thrown wins were frame moves -- opposition mistakes (e6 too early from
+  6k1/8/5K2/4P3, Ke5 for Kd7); no word says "ahead of a piece" (asked Kaveh). The races in K+P+P v K+P: frame moves of
+  the empty frame (e5, f6 -- their pawn queens first); the goal field (off) on the same fresh starts: K+P v K+P 82 -> 86,
+  K+P+P v K+P 86 -> 89 (losses 7 -> 4), K+R+P v K+R 71 -> 73, K+P v K 88 -> 88 (one run each).
+  TIME: 100 games take 4-7 s (K+P v K), 17-18 s (K+P+P v K+P, K+R+P v K+R), ~100 s (K+P v K+P): one decision with our
+  queen against their pawn (K+Q v K+P) takes 0.8 s (median of 30), and those games spend 773 of their moves there; every
+  other material 1-40 ms a decision. The ablation: ~15 min, mostly replaying all 100 games for lemmas met in 5-17 of them.

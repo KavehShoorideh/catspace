@@ -2,6 +2,45 @@
  "KBNvK": [
   "(count (and (nearer L W) (not (between W L))))"
  ],
+ "KPPvK": [
+  "(count (and (reach L free) (not (knight1 L))))",
+  "(sum (count hit) (count (and (reach P free) (not (reach L unhit)))))"
+ ],
+ "KPPvKP": [
+  "(sum (count (and (reach L free) (not edge))) (count (not (nearer W O))))",
+  "(count (and (reach L free) (not (nearer L W))))"
+ ],
+ "KPvK": [
+  "(count (and (nearer L W) (not (lines P))))",
+  "(count (nearer P W))"
+ ],
+ "KPvK:if:(count (and (diagonals L) (not (nearer L W))))>=7": [
+  "(count (and (nearer L P) (not (cls c3))))"
+ ],
+ "KQPvK": [
+  "(count (and (nearer L W) (not (between W L))))"
+ ],
+ "KQPvKP": [
+  "(count (and unhit (nearer O P)))"
+ ],
+ "KQPvKQ:check": [
+  "(count attacked)"
+ ],
+ "KQQvK": [
+  "(count (and (nearer L P) (not (cls c3))))"
+ ],
+ "KQQvKP": [
+  "(count (and (attacks O) (nearer O P)))"
+ ],
+ "KQRvK": [
+  "(count (and (nearer L P) (not (cls c3))))"
+ ],
+ "KQRvKR": [
+  "(count (and (nearer L P) (not (cls c3))))"
+ ],
+ "KQvKP": [
+  "(count (and unhit (nearer O P)))"
+ ],
  "KQvKR": [
   "(count (and (nearer L P) (not (rank W))))"
  ],
@@ -22,6 +61,20 @@
  ],
  "KQvKR:if:(count (and unhit (not (reach P unhit))))>=2": [
   "(count (not (nearer W L)))"
+ ],
+ "KRPvK": [
+  "(count (and (nearer L W) (not (cls b2))))"
+ ],
+ "KRPvKR": [
+  "(count (nearer P W))",
+  "(count (and (reach L free) (not theirs)))",
+  "(count hit)",
+  "(count (and (reach O unhit) (not (knight1 O))))"
+ ],
+ "KRPvKR:check": [
+  "(count (segment W O))",
+  "(count (and (reach L free) (not (nearer P W))))",
+  "(count (and (lines W) (not (nearer O L))))"
  ],
  "KRRvK": [
   "(count (and (reach L free) (not corner)))"

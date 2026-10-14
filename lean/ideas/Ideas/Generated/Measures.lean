@@ -345,4 +345,106 @@ def stage_kqvkr_kqr_more2_r4_blind_carried (p : Position) (c : Color) (W L P O :
 /-- stage_kqvkr_kqr_more2_r5_blind_carried: how many of the squares nearer our king than their king that are also the squares nearer our king than our other piece. (2026-10-13, hole stage_kqr_more2_KQvKR_r5_blind_carried; verifier: 22 games better, 3 worse over 2 rounds, e-value 1.12e+03 (held-out games); region: (count (and (line W O) (reach W unhit))) >= 2; status: a conjecture: the stage's claim is not proved) -/
 def stage_kqvkr_kqr_more2_r5_blind_carried (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer W L) u && (nearer W P) u))
 
+/-- kpvk_pawns_KPvK_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the rank and file through our other piece. (2026-10-13, hole learn_pawns_KPvK_KPvK_rank2_r0; verifier: 0.7075 against the frame's own 0.0010 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kpvk_pawns_KPvK_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((lines P) u)) u))
+
+/-- kpvk_pawns_KPvK_r1_progress: how many of the squares nearer our other piece than our king. (2026-10-13, hole learn_pawns_KPvK_KPvK_rank2_r1; verifier: 0.8881 against the frame's own 0.8279 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kpvk_pawns_KPvK_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (nearer P W))
+
+/-- stage_kpvk_pawns_KPvK_r3_blind_carried: how many of the squares nearer their king than our other piece that are also the squares outside the squares like c3 under the board's symmetries. (2026-10-13, hole stage_pawns_KPvK_KPvK_r3_blind_carried; verifier: 20 games better, 2 worse over 2 rounds, e-value 1.58e+03 (held-out games); region: (count (and (diagonals L) (not (nearer L W)))) >= 7; status: a conjecture: the stage's claim is not proved) -/
+def stage_kpvk_pawns_KPvK_r3_blind_carried (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (fun u => !((cls p c (((2 : Fin 8)), ((2 : Fin 8)))) u)) u))
+
+/-- kqvkp_pawns_KPvKP_r0_progress: how many of the squares nearer their king than our king that are also the squares our king can walk to over the squares they do not attack. (2026-10-13, hole learn_pawns_KPvKP_KQvKP_rank2_r0; verifier: 0.9357 against the frame's own 0.1303 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqvkp_pawns_KPvKP_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (reach W (fun u => !(attackedBy p (Color.opposite c) W u))) u))
+
+/-- kqvkp_pawns_KPvKP_r1_progress: how many of the squares they do not attack that are also the squares nearer their other piece than our other piece. (2026-10-13, hole learn_pawns_KPvKP_KQvKP_rank2_r1; verifier: 0.9545 against the frame's own 0.7556 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqvkp_pawns_KPvKP_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (fun u => !(attackedBy p (Color.opposite c) W u)) u && (nearer O P) u))
+
+/-- kqvkp_pawns_KPvKP_r2_progress: how many of the squares they do not attack that are also the squares nearer their king than their other piece. (2026-10-13, hole learn_pawns_KPvKP_KQvKP_rank2_r2; verifier: 0.9209 against the frame's own 0.8603 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqvkp_pawns_KPvKP_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (fun u => !(attackedBy p (Color.opposite c) W u)) u && (nearer L O) u))
+
+/-- kqvkp_pawns_KPvKP_r3_progress: how many of the squares nearer their king than our king that are also the squares outside the squares from our king to our other piece along their line. (2026-10-13, hole learn_pawns_KPvKP_KQvKP_rank2_r3; verifier: 0.8407 against the frame's own 0.5266 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqvkp_pawns_KPvKP_r3_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((segment W P) u)) u))
+
+/-- kqpvk_pawns_KPPvKP_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the squares between our king and their king. (2026-10-13, hole learn_pawns_KPPvKP_KQPvK_rank2_r0; verifier: 0.9967 against the frame's own 0.4254 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqpvk_pawns_KPPvKP_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((between W L) u)) u))
+
+/-- kppvkp_pawns_KPPvKP_r0_progress: how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the edge squares. (2026-10-13, hole learn_pawns_KPPvKP_KPPvKP_rank2_r0; verifier: 0.5441 against the frame's own 0.1382 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kppvkp_pawns_KPPvKP_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach L (fun u => !(attackedBy p c L u))) u && (fun u => !(edge u)) u))
+
+/-- kqpvkp_pawns_KPPvKP_r0_progress: how many of the squares they do not attack that are also the squares nearer their other piece than our other piece. (2026-10-13, hole learn_pawns_KPPvKP_KQPvKP_rank2_r0; verifier: 0.9527 against the frame's own 0.3354 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqpvkp_pawns_KPPvKP_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (fun u => !(attackedBy p (Color.opposite c) W u)) u && (nearer O P) u))
+
+/-- kppvk_pawns_KPPvKP_r0_progress: how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the squares a knight on their king reaches in one hop. (2026-10-13, hole learn_pawns_KPPvKP_KPPvK_rank2_r0; verifier: 0.4479 against the frame's own 0.1183 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kppvk_pawns_KPPvKP_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach L (fun u => !(attackedBy p c L u))) u && (fun u => !((knight1 L) u)) u))
+
+/-- kqqvkp_pawns_KPPvKP_r0_progress: how many of the squares their other piece attacks that are also the squares nearer their other piece than our other piece. (2026-10-13, hole learn_pawns_KPPvKP_KQQvKP_rank2_r0; verifier: 1.0000 against the frame's own 0.8955 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqqvkp_pawns_KPPvKP_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (attacksFrom p O) u && (nearer O P) u))
+
+/-- kqvkp_pawns_KPPvKP_r0_progress: how many of the squares they do not attack. (2026-10-13, hole learn_pawns_KPPvKP_KQvKP_rank2_r0; verifier: 0.8534 against the frame's own 0.6667 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqvkp_pawns_KPPvKP_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => !(attackedBy p (Color.opposite c) W u)))
+
+/-- kppvkp_pawns_KPPvKP_r1_progress: how many of the squares outside the squares nearer our king than their other piece. (2026-10-13, hole learn_pawns_KPPvKP_KPPvKP_rank2_r1; verifier: 0.6863 against the frame's own 0.5297 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kppvkp_pawns_KPPvKP_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => !((nearer W O) u)))
+
+/-- kppvk_pawns_KPPvKP_r1_progress: how many of the squares nearer our king than their king that are also the file of a1. (2026-10-13, hole learn_pawns_KPPvKP_KPPvK_rank2_r1; verifier: 0.6360 against the frame's own 0.5022 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kppvk_pawns_KPPvKP_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer W L) u && (fileOf (named c (((0 : Fin 8)), ((0 : Fin 8))))) u))
+
+/-- kqpvkq_check_pawns_KPPvKP_r1_progress: how many of the squares nearer our king than our other piece that are also the squares outside the squares like c3 under the board's symmetries. (2026-10-13, hole learn_pawns_KPPvKP_KQPvKQ_check_rank2_r1; verifier: 0.9091 against the frame's own 0.2475 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqpvkq_check_pawns_KPPvKP_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer W P) u && (fun u => !((cls p c (((2 : Fin 8)), ((2 : Fin 8)))) u)) u))
+
+/-- kqvkp_pawns_KPPvKP_r1_progress: how many of the squares they do not attack that are also the squares nearer their other piece than our other piece. (2026-10-13, hole learn_pawns_KPPvKP_KQvKP_rank2_r1; verifier: 0.8585 against the frame's own 0.5769 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqvkp_pawns_KPPvKP_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (fun u => !(attackedBy p (Color.opposite c) W u)) u && (nearer O P) u))
+
+/-- kppvk_pawns_KPPvKP_r2_progress: how many of the squares they attack. (2026-10-13, hole learn_pawns_KPPvKP_KPPvK_rank2_r2; verifier: 0.6517 against the frame's own 0.4887 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kppvk_pawns_KPPvKP_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (attackedBy p (Color.opposite c) W))
+
+/-- kqpvkq_check_pawns_KPPvKP_r2_progress: how many of the squares they attack. (2026-10-13, hole learn_pawns_KPPvKP_KQPvKQ_check_rank2_r2; verifier: 0.8333 against the frame's own 0.5600 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqpvkq_check_pawns_KPPvKP_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (attackedBy p (Color.opposite c) W))
+
+/-- kppvkp_pawns_KPPvKP_r3_progress: how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the squares nearer their king than our king. (2026-10-13, hole learn_pawns_KPPvKP_KPPvKP_rank2_r3; verifier: 0.8701 against the frame's own 0.7558 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kppvkp_pawns_KPPvKP_r3_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach L (fun u => !(attackedBy p c L u))) u && (fun u => !((nearer L W) u)) u))
+
+/-- kppvk_pawns_KPPvKP_r3_progress: how many of the squares our other piece can walk to over the squares we do not attack that are also the squares outside the squares their king can walk to over the squares they do not attack. (2026-10-13, hole learn_pawns_KPPvKP_KPPvK_rank2_r3; verifier: 0.6026 against the frame's own 0.5507 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kppvk_pawns_KPPvKP_r3_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach P (fun u => !(attackedBy p c L u))) u && (fun u => !((reach L (fun u => !(attackedBy p (Color.opposite c) W u))) u)) u))
+
+/-- kqpvkq_check_pawns_KPPvKP_r3_progress: how many of the squares we attack. (2026-10-13, hole learn_pawns_KPPvKP_KQPvKQ_check_rank2_r3; verifier: 0.7800 against the frame's own 0.6572 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqpvkq_check_pawns_KPPvKP_r3_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (attackedBy p c L))
+
+/-- kqqvk_pawns_KPPvKP_r3_progress: how many of the squares nearer their king than our other piece that are also the squares outside the squares like c3 under the board's symmetries. (2026-10-13, hole learn_pawns_KPPvKP_KQQvK_rank2_r3; verifier: 1.0000 against the frame's own 0.9318 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqqvk_pawns_KPPvKP_r3_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (fun u => !((cls p c (((2 : Fin 8)), ((2 : Fin 8)))) u)) u))
+
+/-- krpvkr_pawns_KRPvKR_r0_progress: how many of the squares nearer our other piece than our king. (2026-10-13, hole learn_pawns_KRPvKR_KRPvKR_rank2_r0; verifier: 0.6286 against the frame's own 0.2157 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def krpvkr_pawns_KRPvKR_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (nearer P W))
+
+/-- krpvk_pawns_KRPvKR_r0_progress: how many of the squares nearer their king than our king that are also the squares outside the squares like b2 under the board's symmetries. (2026-10-13, hole learn_pawns_KRPvKR_KRPvK_rank2_r0; verifier: 0.9430 against the frame's own 0.1632 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def krpvk_pawns_KRPvKR_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L W) u && (fun u => !((cls p c (((1 : Fin 8)), ((1 : Fin 8)))) u)) u))
+
+/-- kqrvk_pawns_KRPvKR_r0_progress: how many of the squares nearer their king than our other piece that are also the squares outside the squares like c3 under the board's symmetries. (2026-10-13, hole learn_pawns_KRPvKR_KQRvK_rank2_r0; verifier: 1.0000 against the frame's own 0.3105 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqrvk_pawns_KRPvKR_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (fun u => !((cls p c (((2 : Fin 8)), ((2 : Fin 8)))) u)) u))
+
+/-- krpvkr_check_pawns_KRPvKR_r0_progress: how many of the squares from our king to their other piece along their line. (2026-10-13, hole learn_pawns_KRPvKR_KRPvKR_check_rank2_r0; verifier: 0.9036 against the frame's own 0.1989 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def krpvkr_check_pawns_KRPvKR_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (segment W O))
+
+/-- kqrvkr_pawns_KRPvKR_r0_progress: how many of the squares their other piece can walk to over the squares they do not attack that are also the squares outside the squares nearer our other piece than their king. (2026-10-13, hole learn_pawns_KRPvKR_KQRvKR_rank2_r0; verifier: 0.9821 against the frame's own 0.6829 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqrvkr_pawns_KRPvKR_r0_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach O (fun u => !(attackedBy p (Color.opposite c) W u))) u && (fun u => !((nearer P L) u)) u))
+
+/-- krpvkr_pawns_KRPvKR_r1_progress: how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the squares of their pieces. (2026-10-13, hole learn_pawns_KRPvKR_KRPvKR_rank2_r1; verifier: 0.6888 against the frame's own 0.4659 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def krpvkr_pawns_KRPvKR_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach L (fun u => !(attackedBy p c L u))) u && (fun u => !((piecesOf p (Color.opposite c)) u)) u))
+
+/-- krpvkr_check_pawns_KRPvKR_r1_progress: how many of the squares their king can walk to over the squares we do not attack that are also the squares outside the squares nearer our other piece than our king. (2026-10-13, hole learn_pawns_KRPvKR_KRPvKR_check_rank2_r1; verifier: 0.7516 against the frame's own 0.6152 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def krpvkr_check_pawns_KRPvKR_r1_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach L (fun u => !(attackedBy p c L u))) u && (fun u => !((nearer P W) u)) u))
+
+/-- krpvkr_pawns_KRPvKR_r2_progress: how many of the squares they attack. (2026-10-13, hole learn_pawns_KRPvKR_KRPvKR_rank2_r2; verifier: 0.6926 against the frame's own 0.5942 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def krpvkr_pawns_KRPvKR_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (attackedBy p (Color.opposite c) W))
+
+/-- krpvkr_check_pawns_KRPvKR_r2_progress: how many of the rank and file through our king that are also the squares outside the squares nearer their other piece than their king. (2026-10-13, hole learn_pawns_KRPvKR_KRPvKR_check_rank2_r2; verifier: 0.7738 against the frame's own 0.4861 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def krpvkr_check_pawns_KRPvKR_r2_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (lines W) u && (fun u => !((nearer O L) u)) u))
+
+/-- krpvkr_pawns_KRPvKR_r3_progress: how many of the squares their other piece can walk to over the squares they do not attack that are also the squares outside the squares a knight on their other piece reaches in one hop. (2026-10-13, hole learn_pawns_KRPvKR_KRPvKR_rank2_r3; verifier: 0.8147 against the frame's own 0.7558 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def krpvkr_pawns_KRPvKR_r3_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (reach O (fun u => !(attackedBy p (Color.opposite c) W u))) u && (fun u => !((knight1 O) u)) u))
+
+/-- kqrvkr_pawns_KRPvKR_r3_progress: how many of the squares nearer their king than our other piece that are also the squares outside the squares like c3 under the board's symmetries. (2026-10-13, hole learn_pawns_KRPvKR_KQRvKR_rank2_r3; verifier: 0.9899 against the frame's own 0.9375 (defender self); status: a conjecture: its frame's claim is not proved) -/
+def kqrvkr_pawns_KRPvKR_r3_progress (p : Position) (c : Color) (W L P O : Square) : Nat := (count (fun u => (nearer L P) u && (fun u => !((cls p c (((2 : Fin 8)), ((2 : Fin 8)))) u)) u))
+
 end Ideas.Generated
