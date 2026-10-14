@@ -1062,3 +1062,22 @@ proved before they are relied on. The ledger's bookkeeping (retraction, the agen
     after move m; replaces `moved` in item 14), `(delta T)` (T now minus T a ply ago: increased / reduced),
     `(gained S)` / `(lost S)` (squares in S now and not a ply ago, and the reverse: now does / no longer does). One
     family with `ago` (back), `without` / `after` (sideways), `if` (branch). AWAITING KAVEH'S WORD.
+
+### 39.6 Conjectures, listeners, the canonical form (Kaveh 2026-10-14)
+
+Kaveh: "if this pony can be kicked, then we can win this piece. That's a conjecture ... keep it in your back pocket ... a
+listener design or indexing design to help you find these other lemmas that will activate when something happens ... a
+canonical form of each query ... hash it and sort by it."
+- CANONICAL FORM of a question / finding: (type, side that acts, the pieces as SORTED (kind, square) pairs, the extra
+  squares) -- pieces by kind and square, never by frame name, so two routes to the same question hash the same. Hashed;
+  the ledger's tables are keyed by it. Mirror / translation canonicalisation only for lemmas (across positions).
+- STATUS: PROVEN / REFUTED / CONDITIONAL (a premise open: "if the knight is kicked, +3") / UNKNOWN (over budget,
+  the skipped question kept). A CONDITIONAL finding keeps its value and its premise; it is the armed tactic
+  (memory `armed_tactics_parked`: the tactic + its blocking condition, watch for the blocker's removal).
+- LISTENERS: an index premise-key -> the conjectures waiting on it; when a finding is added, retracted or changes status,
+  its key wakes exactly its listeners (Rete-style indexing). The read-set index of §39.5 item 4 is the same index keyed
+  by squares: ONE dependency graph whose nodes are squares, findings and assumptions (an ATMS: de Kleer 1986).
+- MEMORY WITHIN THE GAME: every answer kept (key -> status, value, evidence, ply answered); a repeated question is a
+  lookup; retraction marks STALE with the ply, never deletes ("true at ply 20, refuted at 23" stays readable); a REFUTED
+  premise can come back and its listeners still fire.
+- WHAT IS PRINTED: per decision, the counts by status, the conjectures left in the back pocket and their premises.
