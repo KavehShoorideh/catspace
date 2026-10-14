@@ -30549,7 +30549,7 @@ frames, it could re-derive everything quickly ... and it could play a game ... r
   play; reasoning first. These loop frames were mined from games the tablebase and Stockfish played: by that criterion not
   yet the machinery's own (its sources must be its own play and its own exact search).
 
-FROM SCRATCH, AND WATCHING BEFORE PLAYING (2026-10-13 21:00-21:57 PDT; Kaveh: "Go" -- the from-scratch run; "We have to
+FROM SCRATCH, AND WATCHING BEFORE PLAYING (2026-10-13 21:00-22:03 PDT; Kaveh: "Go" -- the from-scratch run; "We have to
 start learning by watching, then by playing").
   surprise_loop --scratch: no frames, no registry lemmas, the hand-derived mating frames off in every process (the
   environment), K+Q v K and K+R v K mined like any other material, no proposer trained on past runs (the enumeration,
