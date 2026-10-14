@@ -1017,3 +1017,43 @@ the only guard of the bishop behind it (the queen) is the only guard of the rook
    what each changed).
 Lean: the critical questions' answers are the vocabulary's words (already Lean-defined); new chess claims in a lemma are
 proved before they are relied on. The ledger's bookkeeping (retraction, the agenda) is not chess and needs no proof.
+
+### 39.5 Stress test (2026-10-14 14:30 PDT): the holes found, and what was decided
+
+1. WHOSE MOVE. Every question is stamped with the side that acts. "Is our piece X safe" is asked as if we PASSED (the
+   null-move threat -- their best capture sequence if they move now); "is their piece safe" as if we move. A candidate move
+   of ours is valued by the ledger of the position after it, them to move. The ledger is symmetric: the same code reads
+   both sides.
+2. CYCLES ("is X guarded -> by Y -> does Y have another job -> guarding Z -> is Z guarded -> by X ..."). A question is asked
+   at most once per (type, pieces, position); a question whose answer would cite a finding still open on the stack is
+   closed as ESTIMATED with the rule bound ("assume the guard holds") and marked CIRCULAR, so a surprise can find it.
+   The dependency graph stays acyclic by construction.
+3. BLOW-UP. A budget of questions per decision (printed; start at 200); over budget -> ESTIMATED with the skipped question
+   recorded in the finding. The B* stop usually ends long before.
+4. WHAT A FINDING READS. The fact evaluator in Rust records its READ SET (every square it looked at: the pieces, and every
+   square of every ray it walked). "Qc6 guards c4" reads c6, c5, c4 and d3->c4's ray; a rook arriving on c6 later touches
+   the ray into d6 that "guards of d6" walked -- the cascade needs no chess knowledge, only the read sets.
+5. VALUES. Material in pawn units (the kernel values) for the side whose decision it is; a mate ±infinity. A candidate
+   move's interval: lo = immediate exchange gain − upper bounds of the jobs the moved piece leaves undone − upper bounds of
+   the new threats against us it allows; hi = the same with the lower bounds. Intervals combine by worst case for lo,
+   best case for hi. This is a bound, not an evaluation: the solver confirms the chosen line when material is at stake.
+6. THE KING. "Is the king safe" = no check sequence that wins material or mates; checks and captures of a bigger piece are
+   asked before quiet questions (they are the in-between moves). Mate patterns come from the tower's floors (§38) as
+   lemmas; phase 1 handles checks as forced replies and leaves mate search to the solver.
+7. CANDIDATES. Not every legal move: the moves the findings suggest (winning captures, defences of an unsafe piece, kicks,
+   blocks, moves of a piece with no job), plus every check and capture. All legal moves only inside the solver's confirm.
+8. DECISION = the root move choice only; sub-choices (whether to recapture) are inside the exchange law. The B* stop is
+   at the root.
+9. STAKE of a question = the value of the piece it is about, counted only if it sits on a candidate whose interval still
+   overlaps the best candidate's; zero otherwise (not asked).
+10. ESTIMATES. First the rule bound's midpoint; later a model trained on OUR OWN play's surprises (never Stockfish as the
+    teacher of the estimate; Stockfish and the tablebase only check). Every ESTIMATED finding keeps the question it did not
+    answer, so a surprise says which question to answer next time.
+11. ROLL FORWARD on every ply, theirs too. Findings live within a game; across games only lemmas persist.
+12. LEMMAS (phase 4): a PROVEN chain with its piece names replaced by variables and its facts kept as the conditions --
+    the tower's arrangement form; checked on fresh positions by the explorer's guards before it is kept.
+13. SCOPE OF PHASE 1: a standalone analysis of a position (`ledger(fen)` -> findings, the because-chain, questions
+    asked), not wired into the player; wiring is phase 3.
+14. ONE VOCABULARY GAP: "after X recaptures on Y, does X still guard Z" and "if X leaves, what does A hit" need the board
+    AFTER A MOVE of one piece: `(moved X s T)` -- T read on the board with the piece on X placed on s (whatever stood on s
+    taken), the sibling of `without` (2026-10-14). NEEDS KAVEH'S WORD (the vocabulary is his).
