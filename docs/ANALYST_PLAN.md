@@ -916,3 +916,19 @@ check, not a proof); import, don't reinvent (reuse explorer / patterns / goals.r
 from stdin (`-m` entry points, spawn); short runs before long ones; numbers only as printed; bug-check negatives;
 journal with `date` timestamps, directional; never rewrite dated docs; the vocabulary is Kaveh's -- gaps are reported.
 Later, not now: probability where the tower branches too wide (the tactic-density model), Lean proofs per floor.
+
+### 38.6 Deconstruction: a big frame as small frames, and the lift check (Kaveh 2026-10-14, phase 2)
+
+Kaveh: "in a 10 man frame we can deconstruct into multiple partial overlapping or sequential smaller frames."
+- SEQUENTIAL: a frame hands off to another at an event (a capture, a promotion, a floor reached) -- `Reach.bind`; a
+  game is a path through small towers.
+- OVERLAPPING: a position matches several small floors at once, each a partial pattern over a few pieces, the rest
+  of the board ignored (the conditional frame's condition names only the pieces it needs).
+- THE LIFT CHECK: a floor established for few men applies in a bigger position only if the other pieces supply no
+  defence within k -- no capture, interposition, counter-threat, stalemate, no changed flight. Not a theorem in
+  general (extra pieces block and defend), so an exact check in the full position: `forced_goal` with the floor's
+  literals; when it fails, `defence_moves` names the interfering piece -- that piece is the next SEQUENTIAL frame
+  (deal with it first). `lift(floor, fen)` -> holds / the named defence. Output: for the loop's own games (castled
+  K+R+R v K+R with pawns, artifacts/experiments/castled_play_r1.json) how many positions some small floor lifts into,
+  and which defences stop the lifts most often.
+Built after §38.3-38.4 are accepted.
