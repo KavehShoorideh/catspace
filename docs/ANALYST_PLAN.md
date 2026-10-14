@@ -821,3 +821,98 @@ RISKS AND THEIR GUARDS.
     result above is the warning).
   - The proposer drifting into chess knowledge: proposals are programs over the rules' vocabulary only, and the
     admission test is the decision, not plausibility.
+
+## 38. The tower: frames from the rules, one piece at a time (Kaveh 2026-10-14)
+
+**Status: PLAN (2026-10-14 10:05 PDT), to be built by a cheaper agent, side by side with the surprise loop -- not a
+replacement.** Kaveh: "start from a king, and then ask, how can I mate a king? ... if I'm unable, I bring my strongest
+piece in. If I'm successful, I bring their pieces in ... a binary search in the space to find the areas where it's edgy ...
+those are the sharp positions ... the frames are not really absolute ... relational, like a sliding piece attacking this
+from four squares away."
+
+### 38.1 The idea, assessed
+
+- The tower IS a frame. A floor is a set of positions described in the vocabulary (a condition); floor 0 is mate; floor
+  n+1 is the positions from which some floor <= n is FORCED within k of our moves against every reply. So the tower is
+  one conditional frame per floor (`<material>:if:<cond>`, `horizon:k`) whose measure is the floor number, and the
+  claim "the measure falls within k against every reply, or the goal" is exactly `Ideas.Forced.forced_by_measure`
+  (lean/ideas/Ideas/ForcedByMeasure.lean). Nothing new is needed to PLAY a tower: the chooser already plays frames.
+- The exact search already speaks the tower's language: `goals.rs forced_goal(fen, literals, depth, budget)` asks
+  "can we force, within `depth`, a position where these literals hold" -- a floor's literals ARE the goal of the next
+  floor. `defence_moves` names what stops it. Nothing new is needed to CHECK a floor.
+- What is new is the ORDER (Kaveh: the loop learns in whatever order surprise brings; here the easy frames come first
+  by construction) and the GENERATOR of positions: not games, but the material ladder -- our strongest piece in when we
+  cannot mate, their piece in when we always can -- and, within a material, the horizon k and the condition size.
+  The sharp band (forced from some positions of the material, not from others) is where the conditions live; the
+  separator that finds them exists (`explorer.separate`, `explorer.lemma`, the committee, CEGIS, held-out).
+- Their pieces enter twice: as DEFENDERS (capture, interpose, flee, counter-threat, stalemate -- `defence_moves`)
+  and as BLOCKERS of their own king (the back rank). "The queen alone cannot mate" holds only against a bare king.
+- Where the tower is strong and weak: strong for the short window (tactics: every floor is exact, carries its own
+  why, and a floor one defence short is an ARMED tactic with its blocker named -- memory `armed_tactics_parked`,
+  `planner_tactic_tokens_2026_10_07`); weak for the long manoeuvre (the 15-move K+R v K drive is a loop, not a stack):
+  regressing it position by position is the tablebase. The tower must regress over SETS described in words; where
+  no word describes the set, that is a vocabulary gap to REPORT (the vocabulary is Kaveh's), never to patch, and the
+  frames from play and watching fill the long window.
+- Literature (from memory, not re-checked): goal regression (Waldinger 1977); Pitrat 1977 and Wilkins's PARADISE
+  (1980) for chess combinations; Minton 1984 (forced wins learned from single examples; the utility problem, 1990);
+  Allis's threat-space search (1994); Fawcett & Utgoff's Zenith (1992) -- new features by regressing the goal, which
+  is how the vocabulary could propose its own words later. No prior work found deriving endgame strategy from the
+  rules alone with machine-checked proofs (docs/LITERATURE.md; memory `related_work_reasoned_discovery`).
+
+### 38.2 Definitions (extend catspace/research/docs/GLOSSARY.md, section "The lemma-discovery vocabulary", no new file)
+
+- FLOOR: a conditional frame `<material>:if:<cond>` with `horizon:k`; its number n is the measure; its claim: from
+  every position of the floor some floor < n (or mate) is forced within k of our moves against every reply.
+- TOWER: the floors of one material, numbered from 0 (mate); a frame dict in the loop's own format.
+- SHARP BAND: a material and horizon where the goal is forced from some drawn positions and not from others.
+- A floor is a LEMMA when its claim is proved in Lean or checked exactly on every position it covers (<= 4 men:
+  enumerate every placement inside the condition); otherwise a CONJECTURE (checked on a sample and held out).
+
+### 38.3 Implementation (new module `catspace/incubator/analyst/discovery/tower.py`; nothing in the loop changes)
+
+1. `ladder(start="KvK")`: the binary search over material. From a material M and horizon k, draw N positions of M
+   (us to move; `explorer.random_positions`), ask `forced_goal` for mate (floor 0) within k. All forced -> add
+   THEIR piece (weakest first: P, N, B, R, Q); none forced -> add OUR piece (strongest first: Q, R, B, N, P); mixed ->
+   M at k is sharp: build its floors. Horizons k = 1, 2, 3 (then 4) per material. Print the ladder as OBS lines.
+   Stay <= 5 men (our tablebases end there: the test oracle).
+2. `floor(M, k, n)`: the positions where floor <= n-1 is forced within k (right rows) vs not (wrong rows), both drawn
+   inside M; `explorer.separate` / `explorer.lemma` find the condition in words (layer 0 first: no named square;
+   relative words -- offset / beyond / next / xray / attackers / defenders / see / pinned / between / nearer -- are the
+   "sliding piece attacking from four squares away"); the condition must keep every wrong row out and the most right
+   rows in; refine as the explorer does; the committee and CEGIS as the explorer does; held out.
+   A floor's literals are then the goal of floor n+1 (`forced_goal` with those literals plus "nothing of ours lost").
+3. `canonical(fen)`: the mirror lemma (lean Ideas/Mirror.lean; `explorer.mirror_fen`) and translations
+   (`explorer.translations`) so one arrangement is counted once.
+4. `defences(M, k, floor)`: for the positions of a floor that stop being forced when THEIR piece is added, the
+   `defence_moves` labels -> which defence (capture / interpose / flee / counter-threat / stalemate) -- the floor's
+   blocker, named by a word (`pinned_theirs`, `attackers`, `see`, `xray`, `trapped_theirs` ...) when a word fits; when no
+   word separates, print `OBS VOCABULARY GAP` with ten example positions and stop that branch.
+5. `status(floor)`: <= 4 men -> enumerate every placement inside the condition (all cores, `exchange_law._workers`
+   pattern) and check each with `forced_goal`: all forced -> LEMMA; else the failures become new wrong rows (refine
+   once, then CONJECTURE). 5 men -> sample 600 + held out 300 -> CONJECTURE.
+6. Output: `data/derived/tower_<M>.json` (the frames dict + per-floor evidence: positions drawn, forced/not, the
+   defences, status, seconds) through `paths.derived`; `python -m catspace.incubator.analyst.discovery.tower --material
+   KQvK --horizons 1,2,3` runs one material; `--ladder` runs the search from K v K.
+7. The ablation (Kaveh's metric: lemmas found + what each changed): `surprise_loop._game` on the SAME 100 starts (seeds
+   5000-5099, band 1-256, the tablebase defending, CATSPACE_SCRATCH set, the mating frames off) with the tower's
+   frames, with none, with the tower minus each floor; print mated / moves to mate / better / worse paired by seed.
+8. Tests (root `tests/test_tower.py`): floor 0 of K+Q v K found as a condition that holds on mated positions only;
+   `canonical` identifies a position with its mirror; a floor's claim re-checked by `forced_goal` on fresh draws;
+   the back-rank mate (K+R v K+P+P+P, their pawns on f7 g7 h7, their king g8) reached by the tower with their pawns as
+   blockers -- compare with the proved lemma in docs/LEAN_INDEX.md (`lean_index search back rank`).
+
+### 38.4 Acceptance (directional, one run; numbers only from OBS lines)
+
+- K+Q v K: a tower of >= 3 floors at k <= 3, floor 1 a LEMMA (exhaustive), in < 10 minutes on all cores.
+- K+Q v K+P and K+Q v K+R: the ladder marks them sharp; the defences named for >= 1 floor each.
+- K+R v K: the tower's frames against none on the same 100 starts, better/worse printed (the watched and play-only
+  frames, 2026-10-14 JOURNAL, are the comparison: 89-95 mated of 100).
+- Every vocabulary gap printed, none patched.
+
+### 38.5 Rules for the builder
+
+No AI trailers in commits; Lean is the source of truth (prove, never a Python sweep as proof; the finite check is a
+check, not a proof); import, don't reinvent (reuse explorer / patterns / goals.rs; no new solver); all cores, no Pool
+from stdin (`-m` entry points, spawn); short runs before long ones; numbers only as printed; bug-check negatives;
+journal with `date` timestamps, directional; never rewrite dated docs; the vocabulary is Kaveh's -- gaps are reported.
+Later, not now: probability where the tower branches too wide (the tactic-density model), Lean proofs per floor.
