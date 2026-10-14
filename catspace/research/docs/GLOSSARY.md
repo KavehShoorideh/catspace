@@ -102,6 +102,11 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
 - **Without** (`(without X T)`, 2026-10-14) — T read on the board with every non-king piece on X's squares taken off; X is resolved on the
   board as it is, the names inside T on the board that is left; built relaxed (a king left attacked is allowed). Not enumerated, only in
   compositions: **job** `(job X Y)` = how much worse the exchange on Y gets without X (a guard or blocker gives > 0).
+- **If / after / delta / gained / lost** (2026-10-14; not enumerated) — the language of conditionals and change, one family with `ago` (back),
+  `without` / `after` (sideways), `if` (branch). `(if C A B)`: C a number term, nonzero holds (a comparison is written `(eq (max t m) t)` for
+  `t >= m`, `(eq (min t m) t)` for `t <= m`, `&&` the min); `(after F P T)`: T on the board after the piece on F goes to P (whatever stood
+  there taken; pawn to the last rank a queen; the other side to move; built relaxed; "us" unchanged); `(delta T)`: T now minus T a ply ago,
+  on an offset of 64 (64 unchanged; no earlier position: 64); `(gained S)` / `(lost S)`: squares in S now and not a ply ago, and the reverse.
 - **Layers** — the order the proposers search the terms in: layer 0 the original words, layer 1 the completed static words,
   layer 2 the expensive ones (the short window's tactics, time).
 

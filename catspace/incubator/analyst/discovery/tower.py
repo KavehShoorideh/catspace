@@ -939,27 +939,19 @@ def _or_all(ts: list) -> str:
 
 
 def floor_number_term(floors: list, skip: int | None = None) -> str | None:
-    """THE MEASURE IS THE FLOOR NUMBER: the lowest floor whose condition holds, one term over the vocabulary's combinators.
-    Floor n alone is n when its indicator i is 1 and n+B when 0 (B a power of two above the floor count): (sum n B(diff 1 i)) by doubling (diff 1 i) --
-    there is no product or conditional in the vocabulary, but `diff` is |a-b|, `eq`/`min`/`max` make the indicator, and `sum`
-    doubles; the tower is the min over its floors. A position in no floor reads B + the lowest n."""
-    vs = []
-    big = 1
-    while big <= max([f["n"] for f in floors] + [1]):
-        big *= 2                                       # the penalty of a floor that does not hold: more than any floor number
-    for f in floors:
-        vs_f = variants(f)
-        if not vs_f or f["n"] == skip:
-            continue
-        d = f"(diff 1 {_or_all([ind_term(c) for c in vs_f])})"
-        for _ in range(big.bit_length() - 1):
-            d = f"(sum {d} {d})"
-        vs.append(f"(sum {f['n']} {d})")
-    if not vs:
+    """THE MEASURE IS THE FLOOR NUMBER: the lowest floor whose condition holds, one term. With `(if C A B)` (2026-10-14) it is a chain
+    (if <floor 1 holds> 1 (if <floor 2 holds> 2 ... B)), B (more than any floor number) for a position in no floor: B = the lowest
+    floor's number + 2^m, as the first version, built from min / max / eq / diff / sum with no branch, read it (38,873 characters
+    for K+R v K, k=2)."""
+    fl = [f for f in floors if variants(f) and f["n"] != skip]
+    if not fl:
         return None
-    t = vs[-1]
-    for v in reversed(vs[:-1]):
-        t = f"(min {v} {t})"
+    big = 1
+    while big <= max([f["n"] for f in fl] + [1]):
+        big *= 2
+    t = str(fl[0]["n"] + big)
+    for f in reversed(fl):
+        t = f"(if {_or_all([ind_term(c) for c in variants(f)])} {f['n']} {t})"
     return t
 
 

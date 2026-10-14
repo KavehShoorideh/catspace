@@ -53,6 +53,8 @@ pub enum Term {
     MaterialUs, MaterialThem, Halfmoves, Seen, Ago(u32, Box<Term>),
     // a number read on the board with the non-king pieces on a set's squares taken off (Kaveh 2026-10-14: "what each piece's job is")
     Without(Box<Term>, Box<Term>),
+    // THE LANGUAGE OF CHANGE AND OF CONDITIONALS (Kaveh 2026-10-14): a branch, the board after a move, a change since the last ply
+    If(Box<Term>, Box<Term>, Box<Term>), After(Box<Term>, Box<Term>, Box<Term>), Delta(Box<Term>), Gained(Box<Term>), Lost(Box<Term>),
     // number combinators
     Min(Box<Term>, Box<Term>), Max(Box<Term>, Box<Term>), Diff(Box<Term>, Box<Term>), Eq(Box<Term>, Box<Term>),
 }
@@ -193,6 +195,9 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
         ("moves", [a]) => Term::Moves(b(a)),
         ("ago", [Term::Int(k), a]) if *k > 0 => Term::Ago(*k as u32, b(a)),
         ("without", [x, a]) => Term::Without(b(x), b(a)),
+        ("if", [c, a, d]) => Term::If(b(c), b(a), b(d)),
+        ("after", [f, t2, a]) => Term::After(b(f), b(t2), b(a)),
+        ("delta", [a]) => Term::Delta(b(a)), ("gained", [a]) => Term::Gained(b(a)), ("lost", [a]) => Term::Lost(b(a)),
         ("min", [a, c]) => Term::Min(b(a), b(c)), ("max", [a, c]) => Term::Max(b(a), b(c)),
         ("diff", [a, c]) => Term::Diff(b(a), b(c)), ("eq", [a, c]) => Term::Eq(b(a), b(c)),
         _ => return None,
@@ -212,10 +217,34 @@ fn without(x: &Term, a: &Term, q: &Chess, lone: Color) -> u32 {
     if gone.is_empty() { return num(a, q, lone); }
     let mut setup = q.clone().into_setup(shakmaty::EnPassantMode::Legal);
     for s in gone { setup.board.discard_piece_at(s); }
+    relaxed(setup).map_or(0, |p| num(a, &p, lone))
+}
+
+/// The position of a setup built RELAXED: en passant and castling rights dropped, a king left attacked by the side not to move allowed
+/// (a board with a king missing, or otherwise impossible, is None).
+pub(crate) fn relaxed(mut setup: shakmaty::Setup) -> Option<Chess> {
     setup.ep_square = None;
-    setup.castling_rights = shakmaty::Bitboard::EMPTY;
-    match Chess::from_setup(setup, shakmaty::CastlingMode::Standard).or_else(|e| e.ignore_impossible_check()) {
-        Ok(p) => num(a, &p, lone), Err(_) => 0 }
+    setup.castling_rights = Bitboard::EMPTY;
+    Chess::from_setup(setup, shakmaty::CastlingMode::Standard).or_else(|e| e.ignore_impossible_check()).ok()
+}
+
+/// **delta T**: signed, carried on an offset (numbers are unsigned): T now - T one ply ago + DELTA_ZERO; DELTA_ZERO when there is no
+/// earlier position in the game line.
+const DELTA_ZERO: u32 = 64;
+
+/// **after F T P**: T read on the board after the piece on square F moves to square P (whatever stood on P taken -- one's own piece
+/// too: "after the bishop is gone, the queen recaptures there"; a pawn reaching the last rank becomes a queen). The mover is whoever
+/// stands on F; the board is then THEIR opponent's turn; `lone` (who is "us") is unchanged. Legality is not asked: built relaxed.
+/// Names in F and P resolve on the board as it is, names in T on the board after the move.
+fn after_move(f: &Term, t2: &Term, a: &Term, q: &Chess, lone: Color) -> u32 {
+    let (Some(from), Some(to)) = (sq(f, q, lone), sq(t2, q, lone)) else { return 0 };
+    let Some(mut pc) = q.board().piece_at(from) else { return 0 };
+    let mut setup = q.clone().into_setup(shakmaty::EnPassantMode::Legal);
+    setup.board.discard_piece_at(from);
+    if pc.role == shakmaty::Role::Pawn && matches!(to.rank(), shakmaty::Rank::First | shakmaty::Rank::Eighth) { pc.role = shakmaty::Role::Queen; }
+    setup.board.set_piece_at(to, pc);
+    setup.turn = !pc.color;
+    relaxed(setup).map_or(0, |p| num(a, &p, lone))
 }
 
 /// A square term on the board (`lone` the lone king's colour).
@@ -358,6 +387,8 @@ pub fn set(t: &Term, q: &Chess, lone: Color) -> Bitboard {
             }
             seen
         }
+        Term::Gained(a) => crate::game::back(1).map_or(Bitboard::EMPTY, |p| set(a, q, lone) & !set(a, &p, lone)),
+        Term::Lost(a) => crate::game::back(1).map_or(Bitboard::EMPTY, |p| set(a, &p, lone) & !set(a, q, lone)),
         _ => Bitboard::EMPTY,
     }
 }
@@ -386,6 +417,9 @@ pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
         Term::Seen => crate::game::seen(q) as u32,
         Term::Ago(k, a) => crate::game::back(2 * *k).map_or(0, |p| num(a, &p, !p.turn())),
         Term::Without(x, a) => without(x, a, q, lone),
+        Term::If(c, a, d) => if num(c, q, lone) != 0 { num(a, q, lone) } else { num(d, q, lone) },
+        Term::After(f, t2, a) => after_move(f, t2, a, q, lone),
+        Term::Delta(a) => crate::game::back(1).map_or(DELTA_ZERO, |p| (num(a, q, lone) + DELTA_ZERO).saturating_sub(num(a, &p, lone))),
         Term::Min(a, c) => num(a, q, lone).min(num(c, q, lone)),
         Term::Max(a, c) => num(a, q, lone).max(num(c, q, lone)),
         Term::Diff(a, c) => num(a, q, lone).abs_diff(num(c, q, lone)),
@@ -399,7 +433,7 @@ pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
 pub fn is_num(t: &Term) -> bool {
     matches!(t, Term::Count(_) | Term::Dist(_, _) | Term::Sum(_, _) | Term::FileOf(_) | Term::RankOf(_) | Term::DFile(_, _) | Term::DRank(_, _)
         | Term::Pushes(_) | Term::Attackers(_) | Term::Defenders(_) | Term::See(_) | Term::Forcing(_, _) | Term::MaterialUs | Term::MaterialThem
-        | Term::Halfmoves | Term::Seen | Term::Ago(_, _) | Term::Without(_, _) | Term::Min(_, _) | Term::Max(_, _) | Term::Diff(_, _) | Term::Eq(_, _) | Term::Int(_))
+        | Term::Halfmoves | Term::Seen | Term::Ago(_, _) | Term::Without(_, _) | Term::If(_, _, _) | Term::After(_, _, _) | Term::Delta(_) | Term::Min(_, _) | Term::Max(_, _) | Term::Diff(_, _) | Term::Eq(_, _) | Term::Int(_))
 }
 
 /// The squares past `y` on the ray from `x` through `y`, nearest first.

@@ -248,3 +248,46 @@ def test_without_lean_rendering_typechecks(tmp_path):
     src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
     r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# THE LANGUAGE OF CHANGE AND OF CONDITIONALS (Kaveh 2026-10-14): if, after, delta, gained, lost
+def test_if_after_delta_gained_lost_on_kavehs_position():
+    import chess
+    V.install_terms()
+    fen = chess.Board(KAVEH).mirror().fen()            # queen c3, rook c5, bishop d3 (ours); the c-file: c3 sees c5 through c4
+    v = lambda t, f=fen: A.vocab_values([f], t)[0]
+    here = "(count (and (attacks c3) (at c5)))"
+    after = "(after c3 d3 (count (and (attacks d3) (at c5))))"       # the queen takes the bishop's square: from d3 it no longer sees the rook
+    print(f"OBS after: the queen sees the rook now {v(here)}, after it goes to the bishop's square {v(after)}")
+    assert v(here) == 1 and v(after) == 0
+    assert v("(after c3 d3 (count ours))") == v("(count ours)") - 1   # its own bishop taken off the square
+    # if: a hand condition (a comparison is written eq / max / min), both branches, laziness of the other
+    assert v("(if (eq (max (count ours) 11) (count ours)) 7 9)") == 7 and v("(if (eq (min (count ours) 3) (count ours)) 7 9)") == 9
+    assert v("(if (count (and ours (at c5))) 5 6)") == 5 and v("(if (count (and theirs (at c5))) 5 6)") == 6
+    # delta, gained, lost across one pushed move, through the installed game line
+    b = chess.Board(fen); before = b.fen(); b.push_uci("f1g1")       # the king steps f1 -> g1
+    now = b.fen()
+    A.set_vocab_line([before, now])
+    try:
+        # (after White's move it is Black's turn: "us" is Black, so the king that stepped is L; the line is read with the same "us")
+        assert v("(delta (count ours))", now) == 64                  # a king step changes no count
+        assert v("(delta (fileof L))", now) == 65                    # its file rose by one (f -> g): increased
+        assert v("(delta (rankof L))", now) == 64                    # its rank did not
+        g = A.vocab_values([now], "(count (gained (at L)))")[0]
+        l = A.vocab_values([now], "(count (lost (at L)))")[0]
+        assert (g, l) == (1, 1)                                        # the king's new square gained, its old square lost
+        print(f"OBS delta of the stepping king's file {v('(delta (fileof L))', now)} (64 unchanged), gained {g}, lost {l}")
+    finally:
+        A.set_vocab_line([])
+    assert v("(delta (count ours))") == 64                               # no earlier position: unchanged
+
+
+@pytest.mark.skipif(not Path("lean/ideas/.lake").exists(), reason="the Lean project is not built")
+def test_change_and_conditional_lean_renderings_typecheck(tmp_path):
+    terms = ["(if (eq (max (count ours) 3) (count ours)) (dist W O) 4)", "(after P O (count (and (attacks O) (at L))))",
+             "(delta (count hit))", "(count (gained (attacks P)))", "(count (lost (at W)))", "(after P O (dist W P))"]
+    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) (hist : List Position) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
+    src = tmp_path / "VocabCheckChange.lean"
+    src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
+    r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
+    assert r.returncode == 0, r.stdout + r.stderr

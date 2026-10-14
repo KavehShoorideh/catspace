@@ -113,6 +113,15 @@ PRIMITIVES.update({
     # board -- the names in the set resolve on the board as it is, the names in the number on the board that is left. Not enumerated
     # (it multiplies the space): only inside compositions (job)
     "without": (("set", "num"), "num", "{1} if {0} were not on the board"),
+    # THE LANGUAGE OF CHANGE AND OF CONDITIONALS (Kaveh 2026-10-14; ANALYST_PLAN 39.5 item 15). Not enumerated. One family with `ago`
+    # (back), `without` / `after` (sideways), `if` (branch). `if`'s condition is a NUMBER term meaning nonzero; a comparison is written as the
+    # frames' conditions are read: t >= m is (eq (max t m) t), t <= m is (eq (min t m) t), && is min, || is max. Numbers are unsigned, so
+    # `delta` rides on an offset: 64 means unchanged, above is increased, below reduced
+    "if": (("num", "num", "num"), "num", "{1} if {0} holds, else {2}"),
+    "after": (("sq", "sq", "num"), "num", "{2} after the piece on {0} moves to {1}"),
+    "delta": (("num",), "num", "{0} now minus {0} a ply ago, plus 64 (64: unchanged, above: increased, below: reduced)"),
+    "gained": (("set",), "set", "the squares of {0} now that were not a ply ago"),
+    "lost": (("set",), "set", "the squares of {0} a ply ago that are not now"),
     # combinators
     "or": (("set", "set"), "set", "{0} or {1}"),
     "min": (("num", "num"), "num", "the smaller of {0} and {1}"),
@@ -272,6 +281,17 @@ def lean(t) -> str:
         finally:
             _REBOUND = outer
         return f"(withoutIn p {lean(a[0])} (fun p => {body}))"
+    if h == "after":                               # the board after the move; p and the names rebound inside, as for `without`
+        outer, _REBOUND = _REBOUND, True
+        try:
+            body = lean(a[2])
+        finally:
+            _REBOUND = outer
+        return f"(afterMove p {lean(a[0])} {lean(a[1])} (fun p => {body}))"
+    if h in ("delta", "gained", "lost"):           # the term on the position a ply back (p rebound), as `ago`
+        return f"({h}In hist p (fun p => {lean(a[0])}))"
+    if h == "if":
+        return f"(if {lean(a[0])} ≠ 0 then {lean(a[1])} else {lean(a[2])})"
     x = [lean(y) for y in a]
     return {
         "box": lambda: f"(oset box {x[0]})", "rank": lambda: f"(oset rankOf {x[0]})", "file": lambda: f"(oset fileOf {x[0]})",

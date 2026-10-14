@@ -30679,3 +30679,12 @@ WITHOUT, A NEW BASE WORD (2026-10-14 14:01 PDT; Kaveh: "what each piece's job is
   see(c5) 0, see(c5) without the queen 5, job(queen c3, rook c5) 5; see(d3) 0, job(pawn e4, bishop d3) 0. The 0 is the honest gap: plain see
   lets the queen recapture on the bishop and does not charge it for guarding the rook; an effective exchange (each recapturer charged its other
   jobs) would close it -- not built.
+
+IF, AFTER, DELTA, GAINED, LOST (2026-10-14 14:23 PDT; Kaveh: the language of change and of conditionals, ANALYST_PLAN 39.5 item 15). Rust (vocab.rs), Python
+  (base_vocabulary.py: glosses, Lean renderers; not enumerated), Lean (afterMove, deltaIn, gainedIn, lostIn; type-checked by the test), Lean index
+  rebuilt. DECISIONS: the condition of `if` is a number term, nonzero holds (no new comparison word: written eq / max / min as the frames'
+  conditions are); `after` moves the piece physically (what stood on the target is taken, even one's own), the other side is to move, legality is
+  not asked (relaxed, as `without`), "us" unchanged; numbers are unsigned so `delta` carries an offset of 64; gained / lost use the position one ply back
+  of the installed game line (`ago 1` is two plies). RESULTS: on Kaveh's position (mirrored) the queen sees the rook now 1, after it goes to the
+  bishop's square 0; the stepping king's file delta 65 (64 unchanged), gained 1, lost 1. The floor-number term of the tower, rewritten as a chain of
+  `if`: K+R v K k=2 4,807 characters (was 38,873), the same reading on 300 random positions and on the test's hand positions.

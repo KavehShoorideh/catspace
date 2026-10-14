@@ -353,6 +353,31 @@ def withoutIn (p : Position) (X : SquareSet) (f : Position → Nat) : Nat := f (
 def kingSq (p : Position) (c : Color) : OSq :=
   (allSquares.filter (fun u => match p.board u with | some q => q.color == c && q.kind == PieceKind.king | none => false)).head?
 
+/-- **after**: a number read on the board after the piece on `a` moves to `b` (whatever stood on `b` taken, one's own piece too; a pawn
+reaching the last rank becomes a queen; the other side to move). Legality is not asked, as in the evaluator's relaxed board. -/
+def afterMove (p : Position) (a b : OSq) (f : Position → Nat) : Nat :=
+  match a, b with
+  | some x, some y =>
+    match p.board x with
+    | none => 0
+    | some q =>
+      let q' : Piece := if q.kind == PieceKind.pawn && (y.2.val == 0 || y.2.val == 7) then { q with kind := PieceKind.queen } else q
+      f { p with board := fun u => if u == y then some q' else if u == x then none else p.board u,
+                 turn := Color.opposite q.color, enPassant := none }
+  | _, _ => 0
+
+/-- **delta**: a number now minus the same a ply ago, on an offset of 64 (64 when unchanged or when the line has no earlier position). -/
+def deltaIn (hist : List Position) (p : Position) (f : Position → Nat) : Nat :=
+  match hist.reverse[1]? with | some q => f p + 64 - f q | none => 64
+
+/-- **gained**: the squares of a set now and not a ply ago. -/
+def gainedIn (hist : List Position) (p : Position) (f : Position → SquareSet) : SquareSet :=
+  match hist.reverse[1]? with | some q => fun u => f p u && !(f q u) | none => fun _ => false
+
+/-- **lost**: the squares of a set a ply ago and not now. -/
+def lostIn (hist : List Position) (p : Position) (f : Position → SquareSet) : SquareSet :=
+  match hist.reverse[1]? with | some q => fun u => f q u && !(f p u) | none => fun _ => false
+
 /-- **how far apart** two numbers are. -/
 def nDiff (a b : Nat) : Nat := if a ≤ b then b - a else a - b
 
