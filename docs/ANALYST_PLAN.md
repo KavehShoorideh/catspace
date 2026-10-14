@@ -941,7 +941,7 @@ Built after §38.3-38.4 are accepted.
 
 ## 39. The reasoning ledger: questions, findings, bounds (Kaveh 2026-10-14)
 
-**Status: DESIGN (2026-10-14 ~11:00 PDT), nothing built; to be handed to a builder on Kaveh's go.** Kaveh: "analyze the
+**Status: DESIGN (2026-10-14 14:06 PDT), nothing built; to be handed to a builder on Kaveh's go.** Kaveh: "analyze the
 safety of each piece ... each question has to be answered and each question affects some decisions ... track evidence ...
 those proofs become new things upon which we reason ... the moment we get rid of the pin, immediately we should know that the
 pawn can move ... roll them forward in time ... sometimes we might need to backtrack ... keep asking these questions until we
