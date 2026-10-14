@@ -213,11 +213,16 @@ fn kd(a: Square, b: Square) -> u32 { a.distance(b) }
 /// move, a position shakmaty's strict constructor refuses: it is built RELAXED (`ignore_impossible_check`, invalid castling rights
 /// and en passant dropped), the words read the board as it stands; a board that still cannot be built reads 0.
 fn without(x: &Term, a: &Term, q: &Chess, lone: Color) -> u32 {
+    match without_pos(x, q, lone) { Some(p) => num(a, &p, lone), None => 0 }
+}
+
+/// The board of `without X`: None when nothing is taken off (the board as it is is the same) -- or an unbuildable one, see `without_board`.
+pub(crate) fn without_pos(x: &Term, q: &Chess, lone: Color) -> Option<Chess> {
     let gone = set(x, q, lone) & !q.board().kings();
-    if gone.is_empty() { return num(a, q, lone); }
+    if gone.is_empty() { return Some(q.clone()); }
     let mut setup = q.clone().into_setup(shakmaty::EnPassantMode::Legal);
     for s in gone { setup.board.discard_piece_at(s); }
-    relaxed(setup).map_or(0, |p| num(a, &p, lone))
+    relaxed(setup)
 }
 
 /// The position of a setup built RELAXED: en passant and castling rights dropped, a king left attacked by the side not to move allowed
@@ -237,18 +242,22 @@ const DELTA_ZERO: u32 = 64;
 /// stands on F; the board is then THEIR opponent's turn; `lone` (who is "us") is unchanged. Legality is not asked: built relaxed.
 /// Names in F and P resolve on the board as it is, names in T on the board after the move.
 fn after_move(f: &Term, t2: &Term, a: &Term, q: &Chess, lone: Color) -> u32 {
-    let (Some(from), Some(to)) = (sq(f, q, lone), sq(t2, q, lone)) else { return 0 };
-    let Some(mut pc) = q.board().piece_at(from) else { return 0 };
+    match after_pos(f, t2, q, lone) { Some(p) => num(a, &p, lone), None => 0 }
+}
+
+pub(crate) fn after_pos(f: &Term, t2: &Term, q: &Chess, lone: Color) -> Option<Chess> {
+    let (from, to) = (sq(f, q, lone)?, sq(t2, q, lone)?);
+    let mut pc = q.board().piece_at(from)?;
     let mut setup = q.clone().into_setup(shakmaty::EnPassantMode::Legal);
     setup.board.discard_piece_at(from);
     if pc.role == shakmaty::Role::Pawn && matches!(to.rank(), shakmaty::Rank::First | shakmaty::Rank::Eighth) { pc.role = shakmaty::Role::Queen; }
     setup.board.set_piece_at(to, pc);
     setup.turn = !pc.color;
-    relaxed(setup).map_or(0, |p| num(a, &p, lone))
+    relaxed(setup)
 }
 
 /// A square term on the board (`lone` the lone king's colour).
-fn sq(t: &Term, q: &Chess, lone: Color) -> Option<Square> {
+pub(crate) fn sq(t: &Term, q: &Chess, lone: Color) -> Option<Square> {
     let b = q.board();
     match t {
         Term::W => b.king_of(!lone), Term::L => b.king_of(lone),
@@ -1152,4 +1161,63 @@ pub fn trap_check(fens: Vec<String>, frame_terms: Vec<String>, region_term: Stri
         }
         Some(true)
     }).collect())
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------------
+// THE READ SET (ANALYST_PLAN 39.5 item 4): every square a term's value can depend on. The reasoning ledger retracts a finding when a
+// move touches a square in its read set, with no chess knowledge. A conservative cover: a slider's attack reads its attack set (the
+// squares up to and including the first piece in each direction); an exchange on x reads the walk of every line from x through the
+// pieces that could join it (x-ray batteries), the knight squares and the king's neighbours; `without` / `after` read the board that
+// is left. A word not listed reads the whole board.
+
+/// The squares an exchange on `x` can look at.
+pub(crate) fn exchange_reads(b: &shakmaty::Board, x: Square) -> Bitboard {
+    let mut out = Bitboard::from(x) | shakmaty::attacks::knight_attacks(x) | shakmaty::attacks::king_attacks(x);
+    for (df, dr) in [(1i32, 0i32), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)] {
+        let diag = df != 0 && dr != 0;
+        let (mut f, mut r) = (x.file() as i32 + df, x.rank() as i32 + dr);
+        while (0..8).contains(&f) && (0..8).contains(&r) {
+            let s = Square::from_coords(shakmaty::File::new(f as u32), shakmaty::Rank::new(r as u32));
+            out |= Bitboard::from(s);
+            if let Some(p) = b.piece_at(s) {
+                let joins = match p.role { shakmaty::Role::Queen => true, shakmaty::Role::Rook => !diag, shakmaty::Role::Bishop | shakmaty::Role::Pawn => diag, _ => false };
+                if !joins { break; }
+            }
+            f += df; r += dr;
+        }
+    }
+    out
+}
+
+pub(crate) fn reads(t: &Term, q: &Chess, lone: Color) -> Bitboard {
+    let b = q.board();
+    let r = |x: &Term| reads(x, q, lone);
+    let at = |x: &Term| sq(x, q, lone).map_or(Bitboard::EMPTY, Bitboard::from);
+    match t {
+        Term::Named(_) | Term::Cls(_) => at(t),
+        Term::Int(_) | Term::Edge | Term::Corner | Term::Center | Term::Light | Term::Dark => Bitboard::EMPTY,
+        Term::At(a) => r(a) | at(a),
+        Term::Attacks(a) => r(a) | at(a) | sq(a, q, lone).map_or(Bitboard::EMPTY, |s| b.attacks_from(s)),
+        Term::Between(a, c) => r(a) | r(c) | at(a) | at(c) | match (sq(a, q, lone), sq(c, q, lone)) {
+            (Some(x), Some(y)) => shakmaty::attacks::between(x, y), _ => Bitboard::EMPTY },
+        Term::See(a) | Term::Attackers(a) | Term::Defenders(a) => r(a) | sq(a, q, lone).map_or(Bitboard::EMPTY, |s| exchange_reads(b, s)),
+        Term::Moves(a) => r(a) | sq(a, q, lone).map_or(Bitboard::EMPTY, |s| {
+            let own_king = b.piece_at(s).and_then(|p| b.king_of(p.color)).map_or(Bitboard::EMPTY, |k| exchange_reads(b, k));
+            exchange_reads(b, s) | own_king }),
+        Term::Without(x, a) => r(x) | set(x, q, lone) | without_pos(x, q, lone).map_or(Bitboard::FULL, |p| reads(a, &p, lone)),
+        Term::After(f, t2, a) => r(f) | r(t2) | at(f) | at(t2) | after_pos(f, t2, q, lone).map_or(Bitboard::FULL, |p| reads(a, &p, lone)),
+        Term::Count(a) | Term::Not(a) | Term::Delta(a) | Term::Gained(a) | Term::Lost(a) => r(a),
+        Term::And(a, c) | Term::Or(a, c) | Term::Sum(a, c) | Term::Min(a, c) | Term::Max(a, c) | Term::Diff(a, c) | Term::Eq(a, c) => r(a) | r(c),
+        Term::If(c, a, d) => r(c) | r(a) | r(d),
+        _ => Bitboard::FULL,
+    }
+}
+
+/// vocab_reads(fen, term) -> (the value, the squares read as a list of names, absolute) -- a fact with its read set
+#[pyfunction]
+pub fn vocab_reads(fen: String, term: String) -> PyResult<(u32, Vec<String>)> {
+    let (Some(p), Some(t)) = (parse(&fen), parse_term(&term)) else { return Err(pyo3::exceptions::PyValueError::new_err("bad fen or term")) };
+    let lone = !p.turn();
+    Ok((num(&t, &p, lone), reads(&t, &p, lone).into_iter().map(|s| s.to_string()).collect()))
 }

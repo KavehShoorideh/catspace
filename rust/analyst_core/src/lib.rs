@@ -12,6 +12,7 @@ pub mod lemma;
 pub mod prof;
 mod threat;
 mod ledger;
+mod reasoning;
 mod pns;
 mod game;
 mod mating;
@@ -1683,6 +1684,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(goals::forced_moves, m)?)?;
     m.add_function(wrap_pyfunction!(goals::tactic_profile, m)?)?;
     m.add_function(wrap_pyfunction!(goals::defence_moves, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::vocab_reads, m)?)?;
     m.add_function(wrap_pyfunction!(goals::forced_goal, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::set_macros, m)?)?;
     m.add_function(wrap_pyfunction!(game::set_vocab_line, m)?)?;
@@ -1722,6 +1724,8 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(threat::set_composed, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_strict_stop, m)?)?;
     m.add_class::<plan::PlanState>()?;
+    m.add_class::<reasoning::ReasoningLedger>()?;
+    m.add_function(wrap_pyfunction!(reasoning::ledger, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_reuse_fails, m)?)?;
     m.add_function(wrap_pyfunction!(plan::line_pair_check, m)?)?;
     m.add_function(wrap_pyfunction!(plan::overload_check, m)?)?;

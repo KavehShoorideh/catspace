@@ -30688,3 +30688,23 @@ IF, AFTER, DELTA, GAINED, LOST (2026-10-14 14:23 PDT; Kaveh: the language of cha
   of the installed game line (`ago 1` is two plies). RESULTS: on Kaveh's position (mirrored) the queen sees the rook now 1, after it goes to the
   bishop's square 0; the stepping king's file delta 65 (64 unchanged), gained 1, lost 1. The floor-number term of the tower, rewritten as a chain of
   `if`: K+R v K k=2 4,807 characters (was 38,873), the same reading on 300 random positions and on the test's hand positions.
+
+THE REASONING LEDGER, PHASES 1 AND 2 (2026-10-14 14:33 PDT; Kaveh: "keep asking these questions until we reach a point where the cost is known"; ANALYST_PLAN section 39).
+  Built rust/analyst_core/src/reasoning.rs (A.ledger(fen), A.Ledger with .run() / .push(uci)), discovery/ledger.py (CLI, because-chain, roll forward),
+  vocab::reads / A.vocab_reads (the read set of a fact), tests/test_ledger.py. The module is `reasoning` because ledger.rs is the 2026-10-10 job ledger.
+  PHASE 1, Kaveh's position (Black to move, not mirrored: the ledger reads either side): 59 questions of a budget of 200, 75 facts, 1.65 s; live findings
+  PROVEN 55, CONDITIONAL 4. The chain: [PROVEN] e5 is pinned to Bd6: moving it costs >= 2 (value [2, 4]) <- [CONDITIONAL] if e5 leaves, Bg3 hits Bd6 <-
+  [PROVEN] Bd6 (with e5 gone) is effectively unguarded: Bg3 takes; Qc6 can retake only by leaving a job (guards Rc4, worth 5) -> loses 3; the capture gives
+  check, no in-between move <- Qc6 has another job (5) + after Bg3 takes Bd6 and Qc6 recaptures, Qc6 no longer sees Rc4 (5). The solver (defence_moves, depth 3,
+  value 3) CONFIRMS: after e5d4 and after e5e4 their gain of >= 3 stays forced (Bxd6 Qxd6 Qxc4). One conjecture in the back pocket (premise "e5 leaves").
+  PHASE 2, 1...Qc7 2.Rbd1 Rc6 3.h5 exd4: retracted / looked up / re-asked per ply 43 / 19 / 34, 25 / 25 / 23, 38 / 15 / 33, 19 / 26 / 19, 39 / 7 / 43. The pin is
+  PROVEN >= 2 at plies 1 and 2, and at ply 3 (the rook on c6, touched c4 c6) it is retracted and re-asked as "e5 may move": e5d4 costs [-1, 0] -- exd4 reads as
+  playable. The old pin stays readable as STALE at ply 3.
+  DEVIATIONS from section 39 (directional): (1) the read set is a conservative cover (a slider reads its attack set, an exchange the walk of the lines through
+  the pieces that could join it), not an instrumented trace, so about 2/3 of the findings retract on a move near them; (2) the critical-question menus built:
+  SAFE (attackers that may legally capture, recapturers that may legally retake, each recapturer's other jobs, the capture with check, the in-between bound),
+  JOB, RECAP, BLOCKS (what A hits if X leaves, the moves of X with their gains and checks), PIN; NOT built: "kick X", "the reply is forced", "X blocks with
+  tempo" beyond the check flag, "X is safe on the new square" for the recapturer; (3) the cycle rule is implemented (a question on the stack closes as ESTIMATED,
+  CIRCULAR) but no cycle arises in these menus; (4) the agenda is ordered by the value of the piece asked about, not yet by the width of a candidate interval; no B*
+  stop, no ESTIMATED midpoints (phase 3); (5) the solver confirms the pin by defence_moves (their gain of the cost's lower bound stays forced), not by a
+  forced_goal to the final material; (6) not mirrored.

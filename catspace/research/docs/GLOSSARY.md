@@ -162,6 +162,15 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
 - **Sharp band** — a material and horizon where the goal (a mate) is forced from some drawn positions and not from others; the
   place where conditions live. The ladder finds it: none forced, bring our strongest piece in; all forced, bring one of theirs.
 
+**The reasoning ledger (2026-10-14, `reasoning.rs`, `discovery/ledger.py`, ANALYST_PLAN section 39)**
+- **Fact / question / finding** — a fact is a vocabulary word evaluated with its READ SET (`vocab_reads`: every square it can depend on); a question is
+  typed and about named pieces (SAFE, JOB, RECAP, BLOCKS, PIN); a finding is an answered question: a claim, a value interval in pawn units for the
+  piece's owner, a status (PROVEN, REFUTED, CONDITIONAL on a premise, UNKNOWN over budget, ESTIMATED for a closed cycle), the squares read, the findings cited.
+  Keyed by a canonical form (type, side that acts, the pieces as sorted kind+square, extra squares), hashed.
+- **Retraction, stale** — a move touching a square a finding read retracts it, and what cites it; it is marked STALE with the ply, never deleted.
+- **Listener / back pocket** — the index premise key -> the CONDITIONAL findings waiting on it ("e5 leaves"); the conjectures not yet true.
+- **Because-chain** — the dependency path from the decision (the pin) down to the facts.
+
 **Other machinery**
 - **Goal field** — goals imagined for both sides against a NATURAL OPPONENT (a mate, else the best immediate gain, else a
   pass); each CONTESTED: forced, stopped (with the INTERCEPTORS that stop it) or unknown; serves a forced goal (off by default).
