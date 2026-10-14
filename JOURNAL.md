@@ -30607,3 +30607,33 @@ we can get a king rook one out, just focusing on the king rook"; "rerun").
   Directional (one run): watching alone, in 1.5-4 minutes and no game played, reaches what five rounds of play reached;
   every frame still mates in ~22-27 moves against the tablebase's ~10. The drill and the play rounds after watching not
   yet run.
+
+THE TOWER, BUILT AND RUN (2026-10-14 11:10 PDT; Kaveh 2026-10-14: "start from a king, and then ask, how can I mate a king?"; ANALYST_PLAN section 38).
+  Built tower.py (ladder, floors, canonical, defences, status, ablation; tests/test_tower.py, 5 tests) beside the surprise loop,
+  nothing in the loop changed. All numbers below are OBS lines of the runs; one run each, directional.
+  FLOOR 0, THE MATE IN WORDS: read from the side that suffers it (the engine reads no position with the side not to move in
+  check) -- (count (and unhit (box W))) <= 0, "our king has no square the enemy does not hit". K+Q v K: true on 65 of 65 mated
+  positions and on 0 of 9,390 others (k=1 draw; 55 and 32 mated at k=2, 3, 0 others each).
+  THE LADDER (K v K, 200 draws, k=1,2,3): K v K has no live position (0 draws); K+Q v K forced 3, 10, 22 of 200 -> sharp at
+  every k; their pawn / knight / bishop / rook / queen in: sharp (K+Q v K+P 2, 5, 13 of 199; K+Q v K+R 3, 4, 7 of 200); K+Q v K+Q+R
+  and K+Q v K+Q+Q: none forced. 22 materials, 19 sharp, 1.4 s.
+  K+Q v K TOWER (2,000 draws a batch, k=1,2,3; 437.6 s on all cores): 16 floors in the JSON, frames 3 / 5 / 3 (k=1 / 2 / 3).
+  Floor 1 at k=2 a LEMMA (every placement inside the condition, 2,956 checked, 2,956 forced, after one refinement that took the
+  first condition's 8 failures out); at k=1 and k=3 floor 1 CONJECTURE (the refinement left failures). LEMMA floors per k: k=1 one,
+  k=2 two, k=3 one; the rest CONJECTURE. One VOCABULARY GAP (K+Q v K, k=1, floor 5: 2 of 1,808 unforced positions stay inside the
+  best condition; ten printed, in the JSON).
+  FIRST CUT, A BUG CAUGHT: the separator preferred a literal that left no wrong position in at any price, so refined floors
+  covered 0 of 35 of the forced sample (LEMMA of an empty region). Fixed: several costs of a wrong position tried, the most
+  right kept with no wrong left in. The conditions are now four literals long and mostly CONJECTURE: directionally, a floor is not
+  described by one or two words; it wants a conjunction of several.
+  DEFENCES (their piece brought in at each floor of K+Q v K): the pawn and the rook stop between 3 of 37 and 137 of 150 floor
+  positions depending on floor and k; the replies named are mostly "quiet" (a king step with no check, a piece move) and
+  "blocked" (the piece stands in the way of the move), "flee", "interpose", "capture", "counter-threat" less often. The
+  blockers in words are 2-4 literal conjunctions found with no held-out set: unvalidated, not read as findings.
+  K+R v K TOWER (k=2,3, 168.6 s): floor 0 (k=2) the same word, 16 mated of 16; frames 3 + 2; one VOCABULARY GAP (k=3 floor 4).
+  ABLATION, K+R v K, the same 100 starts (seeds 5000-5099, band 1-256, tablebase defending, from scratch), 283 s a variant:
+    none 10 mated (4.4 moves) | the tower's 5 frames 12 mated (6.75), better 3 worse 2 | minus the k=2 floor-3 frame 10 mated
+    (5.9, better 2 worse 5) | minus the k=3 floor-3 frame 10 mated (4.4, better 0 worse 0, same as none) | minus each of the other
+    three 12 (6.75, better 3 worse 2, same as the tower). Both frames whose removal matters have a (knight1 L) word in the condition.
+  Against play-only (91 mated of 100, 25.2 moves, earlier entry) and watching (89-95): the tower's few frames are far below, as
+  expected for a tower of short floors; K+R v K is a loop, not a stack.

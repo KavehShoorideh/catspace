@@ -139,6 +139,16 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   checked at every placement on the board; the hypothesis of the proved Lean theorem `forced_by_measure` -- a frame whose
   condition is the arrangement, whose measure is their king's distance to the edge, whose horizon is the period.
 
+**The tower (2026-10-14, `tower.py`, ANALYST_PLAN section 38)**
+- **Floor** — a conditional frame `<material>:if:<condition>` with `horizon:k`; its number n is the measure; its claim: from
+  every position of the floor some lower floor (or a mate) is forced within k of our moves against every reply. Floor 0 is
+  the mate, described from the side that suffers it ("our king has no square the enemy does not hit").
+- **Tower** — the floors of one material at one horizon, numbered from 0; a frame dict in the loop's own format, so the chooser
+  plays it unchanged. A floor is a LEMMA when its claim was checked exactly on every placement inside its condition (a finite
+  check, not a Lean proof) and a CONJECTURE when sampled and held out.
+- **Sharp band** — a material and horizon where the goal (a mate) is forced from some drawn positions and not from others; the
+  place where conditions live. The ladder finds it: none forced, bring our strongest piece in; all forced, bring one of theirs.
+
 **Other machinery**
 - **Goal field** — goals imagined for both sides against a NATURAL OPPONENT (a mate, else the best immediate gain, else a
   pass); each CONTESTED: forced, stopped (with the INTERCEPTORS that stop it) or unknown; serves a forced goal (off by default).
