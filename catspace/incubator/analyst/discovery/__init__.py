@@ -13,3 +13,15 @@ for a HOLE (a choice an operator must make: a measure component, a relaxation ..
 budget; the VERIFIER checks every candidate the filter kept (certification on the hole's boards against every reply,
 then whole games). Learned proposers only order the search -- meaning comes from the base, correctness from the verifier.
 """
+
+
+def _install_terms():
+    """The chess terms (compositions of the base words) into the evaluator, once per process."""
+    try:
+        from .base_vocabulary import install_terms
+        install_terms()
+    except ImportError:                                  # (the extension not built: nothing to install into)
+        pass
+
+
+_install_terms()

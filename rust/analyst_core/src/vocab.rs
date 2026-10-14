@@ -35,7 +35,82 @@ pub enum Term {
     // how many files / ranks one piece stands from another (plus 7, so 7 is level) -- an arrangement of the pieces, its
     // shift across the board, "ahead of", "the opposition" become compositions
     FileOf(Box<Term>), RankOf(Box<Term>), DFile(Box<Term>, Box<Term>), DRank(Box<Term>, Box<Term>),
+    // THE VOCABULARY COMPLETED (Kaveh 2026-10-13: "Yes, please add all of these ... compositional vocab"):
+    // every piece named (strongest first, pawns the most advanced first) and every kind as a set
+    Piece(bool, u8), Kind(bool, Role),
+    // a pawn's direction (its owner's): the squares ahead, the square in front, the promotion square, the ranks to go,
+    // the passed-pawn zone
+    Ahead(Box<Term>), Front(Box<Term>), Promo(Box<Term>), Pushes(Box<Term>), Passer(Box<Term>),
+    // a literal number; the square at an offset from a piece (from our side)
+    Int(i32), Offset(Box<Term>, i32, i32),
+    // lines through pieces: the squares past Y on the ray from X, the first piece there, what X attacks through one piece
+    Beyond(Box<Term>, Box<Term>), Next(Box<Term>, Box<Term>), Xray(Box<Term>),
+    // control and exchanges: how many of ours / theirs attack a square, the exchange on it, a piece's legal moves
+    Attackers(Box<Term>), Defenders(Box<Term>), See(Box<Term>), Moves(Box<Term>),
+    // the short window's tactics (exact): the fewest moves forcing a gain of v or more (ours; theirs as if we passed)
+    Forcing(bool, i64),
+    // material and the game's context; time
+    MaterialUs, MaterialThem, Halfmoves, Seen, Ago(u32, Box<Term>),
+    // number combinators
+    Min(Box<Term>, Box<Term>), Max(Box<Term>, Box<Term>), Diff(Box<Term>, Box<Term>), Eq(Box<Term>, Box<Term>),
 }
+
+/// THE PIECES OF A SIDE, RANKED -- the order the names P, P2, P3, ... (O, O2, ...) follow: the strongest kind first (queen,
+/// rook, bishop, knight, pawn), pawns the most advanced first, then the lower square.
+pub fn ranked(b: &shakmaty::Board, c: Color) -> Vec<Square> {
+    let kr = |r: Role| match r { Role::Queen => 5, Role::Rook => 4, Role::Bishop => 3, Role::Knight => 2, Role::Pawn => 1, Role::King => 0 };
+    let adv = |s: Square| if c == Color::White { s.rank() as u32 } else { 7 - s.rank() as u32 };
+    let mut v: Vec<Square> = (b.by_color(c) & !b.kings()).into_iter().collect();
+    v.sort_by_key(|s| { let r = b.role_at(*s).unwrap_or(Role::King);
+        (std::cmp::Reverse(kr(r)), std::cmp::Reverse(if r == Role::Pawn { adv(*s) } else { 0 }), *s as u8) });
+    v
+}
+
+/// THE COMPOSITIONS (Kaveh 2026-10-13: "regular chess terms like pin ... in terms of simpler vocabulary so that we can
+/// have compositional vocab"): name -> (parameters, body over the base words); a term naming one is expanded before
+/// it is read, so every chess term unfolds into the base (set from Python: discovery/base_vocabulary.py CHESS_TERMS).
+static MACROS: std::sync::RwLock<Option<std::collections::HashMap<String, (Vec<String>, String)>>> = std::sync::RwLock::new(None);
+#[pyfunction]
+pub fn set_macros(macros: Vec<(String, Vec<String>, String)>) -> PyResult<()> {
+    *MACROS.write().unwrap() = Some(macros.into_iter().map(|(n, ps, b)| (n, (ps, b))).collect());
+    Ok(())
+}
+#[derive(Clone, Debug)]
+enum Sx { A(String), L(Vec<Sx>) }
+fn sx_parse(t: &[String], i: &mut usize) -> Option<Sx> {
+    let tok = t.get(*i)?.clone(); *i += 1;
+    if tok != "(" { return Some(Sx::A(tok)); }
+    let mut v = Vec::new();
+    while t.get(*i)? != ")" { v.push(sx_parse(t, i)?); }
+    *i += 1;
+    Some(Sx::L(v))
+}
+fn sx_text(x: &Sx) -> String { match x { Sx::A(a) => a.clone(), Sx::L(v) => format!("({})", v.iter().map(sx_text).collect::<Vec<_>>().join(" ")) } }
+fn sx_subst(x: &Sx, env: &std::collections::HashMap<String, Sx>) -> Sx {
+    match x { Sx::A(a) => env.get(a).cloned().unwrap_or_else(|| x.clone()), Sx::L(v) => Sx::L(v.iter().map(|y| sx_subst(y, env)).collect()) }
+}
+fn sx_expand(x: &Sx, m: &std::collections::HashMap<String, (Vec<String>, String)>, depth: u32) -> Option<Sx> {
+    if depth > 16 { return None; }
+    match x {
+        Sx::A(a) => match m.get(a) {                                      // a composition without parameters
+            Some((ps, body)) if ps.is_empty() => { let t = toks(body); let mut i = 0; sx_expand(&sx_parse(&t, &mut i)?, m, depth + 1) }
+            _ => Some(x.clone()),
+        },
+        Sx::L(v) => {
+            let v: Vec<Sx> = v.iter().map(|y| sx_expand(y, m, depth)).collect::<Option<_>>()?;
+            if let Some(Sx::A(h)) = v.first() {
+                if let Some((ps, body)) = m.get(h) {
+                    if ps.len() + 1 != v.len() { return None; }
+                    let env: std::collections::HashMap<String, Sx> = ps.iter().cloned().zip(v[1..].iter().cloned()).collect();
+                    let t = toks(body); let mut i = 0;
+                    return sx_expand(&sx_subst(&sx_parse(&t, &mut i)?, &env), m, depth + 1);
+                }
+            }
+            Some(Sx::L(v))
+        }
+    }
+}
+fn toks(s: &str) -> Vec<String> { s.replace('(', " ( ").replace(')', " ) ").split_whitespace().map(|x| x.to_string()).collect() }
 
 /// The strongest piece of `c` other than its king -- by kind (queen, rook, bishop, knight, pawn), ties by the lower square.
 fn strongest(b: &shakmaty::Board, c: Color) -> Option<Square> {
@@ -45,7 +120,14 @@ fn strongest(b: &shakmaty::Board, c: Color) -> Option<Square> {
 
 /// Parse an S-expression term.
 pub fn parse_term(s: &str) -> Option<Term> {
-    let toks: Vec<String> = s.replace('(', " ( ").replace(')', " ) ").split_whitespace().map(|x| x.to_string()).collect();
+    let mut toks: Vec<String> = toks(s);
+    if let Some(m) = MACROS.read().unwrap().as_ref() {
+        if !m.is_empty() && toks.iter().any(|t| m.contains_key(t)) {
+            let mut i = 0;
+            let x = sx_expand(&sx_parse(&toks, &mut i)?, m, 0)?;
+            toks = self::toks(&sx_text(&x));
+        }
+    }
     let mut i = 0;
     let t = parse_at(&toks, &mut i)?;
     (i == toks.len()).then_some(t)
@@ -58,7 +140,24 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
             "hit" => Some(Term::Hit), "unhit" => Some(Term::Unhit), "ours" => Some(Term::Ours), "theirs" => Some(Term::Theirs), "edge" => Some(Term::Edge),
             "corner" => Some(Term::Corner), "attacked" => Some(Term::Attacked), "free" => Some(Term::Free), "center" => Some(Term::Center),
             "light" => Some(Term::Light), "dark" => Some(Term::Dark),
-            _ => tok.parse::<Square>().ok().map(Term::Named) };
+            "material_us" => Some(Term::MaterialUs), "material_them" => Some(Term::MaterialThem),
+            "halfmoves" => Some(Term::Halfmoves), "seen" => Some(Term::Seen),
+            _ => {
+                let kinds = [("queens", Role::Queen), ("rooks", Role::Rook), ("bishops", Role::Bishop), ("knights", Role::Knight), ("pawns", Role::Pawn)];
+                for (side, ours) in [("our", true), ("their", false)] {
+                    for (k, r) in kinds { if tok == format!("{side}{k}") { return Some(Term::Kind(ours, r)); } }
+                }
+                if let Some(rest) = tok.strip_prefix("forcing_") {
+                    let (side, v) = rest.split_once('_')?;
+                    let v = if v == "mate" { crate::waiting::MATE_GOAL } else { v.parse::<i64>().ok()? };
+                    return Some(Term::Forcing(side == "us", v));
+                }
+                if let (Some(c), Ok(n)) = (tok.chars().next(), tok[1..].parse::<u8>()) {
+                    if (c == 'P' || c == 'O') && (2..=7).contains(&n) { return Some(Term::Piece(c == 'P', n)); }
+                }
+                if let Ok(n) = tok.parse::<i32>() { return Some(Term::Int(n)); }
+                tok.parse::<Square>().ok().map(Term::Named)
+            } };
     }
     // (cls <square>): a literal square name, named from our side
     if t.get(*i).map(|h| h.as_str()) == Some("cls") {
@@ -84,6 +183,15 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
         ("colour", [a]) => Term::Colour(b(a)), ("at", [a]) => Term::At(b(a)),
         ("fileof", [a]) => Term::FileOf(b(a)), ("rankof", [a]) => Term::RankOf(b(a)),
         ("dfile", [a, c]) => Term::DFile(b(a), b(c)), ("drank", [a, c]) => Term::DRank(b(a), b(c)),
+        ("ahead", [a]) => Term::Ahead(b(a)), ("front", [a]) => Term::Front(b(a)), ("promo", [a]) => Term::Promo(b(a)),
+        ("pushes", [a]) => Term::Pushes(b(a)), ("passer", [a]) => Term::Passer(b(a)),
+        ("offset", [a, Term::Int(df), Term::Int(dr)]) => Term::Offset(b(a), *df, *dr),
+        ("beyond", [a, c]) => Term::Beyond(b(a), b(c)), ("next", [a, c]) => Term::Next(b(a), b(c)), ("xray", [a]) => Term::Xray(b(a)),
+        ("attackers", [a]) => Term::Attackers(b(a)), ("defenders", [a]) => Term::Defenders(b(a)), ("see", [a]) => Term::See(b(a)),
+        ("moves", [a]) => Term::Moves(b(a)),
+        ("ago", [Term::Int(k), a]) if *k > 0 => Term::Ago(*k as u32, b(a)),
+        ("min", [a, c]) => Term::Min(b(a), b(c)), ("max", [a, c]) => Term::Max(b(a), b(c)),
+        ("diff", [a, c]) => Term::Diff(b(a), b(c)), ("eq", [a, c]) => Term::Eq(b(a), b(c)),
         _ => return None,
     })
 }
@@ -98,8 +206,20 @@ fn sq(t: &Term, q: &Chess, lone: Color) -> Option<Square> {
         // "our / their other piece": the STRONGEST other piece by kind (queen, rook, bishop, knight, pawn), ties by square
         // (2026-10-13: it was the first by square -- in K+B+N v K the bishop or the knight by where they stood, so "the
         // colour of P" meant nothing half the time)
-        Term::P => strongest(b, !lone),
-        Term::O => strongest(b, lone),
+        Term::P => ranked(b, !lone).first().copied(),
+        Term::O => ranked(b, lone).first().copied(),
+        Term::Piece(ours, n) => ranked(b, if *ours { !lone } else { lone }).get(*n as usize - 1).copied(),
+        Term::Front(a) => { let x = sq(a, q, lone)?; let c = b.color_at(x)?;
+            let r = x.rank() as i32 + if c == Color::White { 1 } else { -1 };
+            (0..8).contains(&r).then(|| Square::from_coords(x.file(), shakmaty::Rank::new(r as u32))) }
+        Term::Promo(a) => { let x = sq(a, q, lone)?; let c = b.color_at(x)?;
+            Some(Square::from_coords(x.file(), if c == Color::White { shakmaty::Rank::Eighth } else { shakmaty::Rank::First })) }
+        Term::Offset(a, df, dr) => { let x = sq(a, q, lone)?;
+            let (f, r) = (x.file() as i32 + df, x.rank() as i32 + if !lone == Color::White { *dr } else { -dr });
+            ((0..8).contains(&f) && (0..8).contains(&r)).then(|| Square::from_coords(shakmaty::File::new(f as u32), shakmaty::Rank::new(r as u32))) }
+        Term::Next(a, c) => { let (x, y) = (sq(a, q, lone)?, sq(c, q, lone)?);
+            if x == y || !shakmaty::attacks::queen_attacks(x, Bitboard::EMPTY).contains(y) { return None; }
+            ray_past(x, y).into_iter().find(|s| b.occupied().contains(*s)) }
         // a named square, from our side: our first rank is rank 1 (the mirror of Lean `named`)
         Term::Named(x) => Some(if !lone == Color::White { *x } else { x.flip_vertical() }),
         _ => None,
@@ -141,6 +261,47 @@ pub fn set(t: &Term, q: &Chess, lone: Color) -> Bitboard {
         Term::Center => [Square::D4, Square::E4, Square::D5, Square::E5].into_iter().collect(),
         Term::Light => Bitboard::LIGHT_SQUARES, Term::Dark => Bitboard::DARK_SQUARES,
         Term::At(a) => s1(a).map_or(Bitboard::EMPTY, Bitboard::from_square),
+        Term::Kind(ours, r) => b.by_color(if *ours { !lone } else { lone }) & b.by_role(*r),
+        Term::Ahead(a) | Term::Passer(a) => {
+            let Some(x) = s1(a) else { return Bitboard::EMPTY };
+            let Some(c) = b.color_at(x) else { return Bitboard::EMPTY };
+            let wide = matches!(t, Term::Passer(_));
+            Bitboard::FULL.into_iter().filter(|s| {
+                let ahead = if c == Color::White { s.rank() > x.rank() } else { s.rank() < x.rank() };
+                let df = (s.file() as i32 - x.file() as i32).abs();
+                ahead && (df == 0 || (wide && df == 1))
+            }).collect()
+        }
+        Term::Beyond(a, c) => match (s1(a), s1(c)) {
+            (Some(x), Some(y)) if x != y && shakmaty::attacks::queen_attacks(x, Bitboard::EMPTY).contains(y) => ray_past(x, y).into_iter().collect(),
+            _ => Bitboard::EMPTY },
+        Term::Xray(a) => {
+            let Some(x) = s1(a) else { return Bitboard::EMPTY };
+            let Some(p) = b.piece_at(x) else { return Bitboard::EMPTY };
+            let dirs: &[(i32, i32)] = match p.role {
+                Role::Rook => &[(1, 0), (-1, 0), (0, 1), (0, -1)], Role::Bishop => &[(1, 1), (1, -1), (-1, 1), (-1, -1)],
+                Role::Queen => &[(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)],
+                _ => return shakmaty::attacks::attacks(x, p, b.occupied()),
+            };
+            let mut out = Bitboard::EMPTY;
+            for (df, dr) in dirs {
+                let mut seen_blocker = 0;
+                let (mut f, mut r) = (x.file() as i32 + df, x.rank() as i32 + dr);
+                while (0..8).contains(&f) && (0..8).contains(&r) {
+                    let s = Square::from_coords(shakmaty::File::new(f as u32), shakmaty::Rank::new(r as u32));
+                    out.add(s);
+                    if b.occupied().contains(s) { seen_blocker += 1; if seen_blocker == 2 { break; } }
+                    f += df; r += dr;
+                }
+            }
+            out
+        }
+        Term::Moves(a) => {
+            let Some(x) = s1(a) else { return Bitboard::EMPTY };
+            let Some(c) = b.color_at(x) else { return Bitboard::EMPTY };
+            let pos = if c == q.turn() { Some(q.clone()) } else if q.is_check() { None } else { q.clone().swap_turn().ok() };
+            pos.map_or(Bitboard::EMPTY, |p| p.legal_moves().into_iter().filter(|m| m.from() == Some(x)).map(|m| m.to()).collect())
+        }
         Term::Colour(x) => match sq(x, q, lone) {
             Some(s) if Bitboard::LIGHT_SQUARES.contains(s) => Bitboard::LIGHT_SQUARES,
             Some(_) => Bitboard::DARK_SQUARES,
@@ -193,8 +354,43 @@ pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
         Term::DFile(a, c) => match (sq(a, q, lone), sq(c, q, lone)) { (Some(x), Some(y)) => (x.file() as i32 - y.file() as i32 + 7) as u32, _ => 0 },
         Term::DRank(a, c) => match (sq(a, q, lone), sq(c, q, lone)) {
             (Some(x), Some(y)) => (our_rank(x, !lone) as i32 - our_rank(y, !lone) as i32 + 7) as u32, _ => 0 },
+        Term::Pushes(a) => sq(a, q, lone).and_then(|x| q.board().color_at(x).map(|c| 7 - our_rank(x, c))).unwrap_or(0),
+        Term::Attackers(a) | Term::Defenders(a) => sq(a, q, lone).map_or(0, |x| {
+            let side = if matches!(t, Term::Attackers(_)) { !lone } else { lone };
+            (q.board().attacks_to(x, side, q.board().occupied()) & q.board().by_color(side)).count() as u32 }),
+        Term::See(a) => sq(a, q, lone).and_then(|x| q.board().color_at(x).map(|c| crate::rules::see(q.board(), x, !c).max(0) as u32)).unwrap_or(0),
+        Term::Forcing(ours, v) => crate::goals::forcing(q, *ours, *v),
+        Term::MaterialUs => material(q.board(), !lone).max(0) as u32,
+        Term::MaterialThem => material(q.board(), lone).max(0) as u32,
+        Term::Halfmoves => q.halfmoves(),
+        Term::Seen => crate::game::seen(q) as u32,
+        Term::Ago(k, a) => crate::game::back(2 * *k).map_or(0, |p| num(a, &p, !p.turn())),
+        Term::Min(a, c) => num(a, q, lone).min(num(c, q, lone)),
+        Term::Max(a, c) => num(a, q, lone).max(num(c, q, lone)),
+        Term::Diff(a, c) => num(a, q, lone).abs_diff(num(c, q, lone)),
+        Term::Eq(a, c) => (num(a, q, lone) == num(c, q, lone)) as u32,
+        Term::Int(n) => (*n).max(0) as u32,
         _ => 0,
     }
+}
+
+/// Is this term a number (else a set, read as its count)?
+pub fn is_num(t: &Term) -> bool {
+    matches!(t, Term::Count(_) | Term::Dist(_, _) | Term::Sum(_, _) | Term::FileOf(_) | Term::RankOf(_) | Term::DFile(_, _) | Term::DRank(_, _)
+        | Term::Pushes(_) | Term::Attackers(_) | Term::Defenders(_) | Term::See(_) | Term::Forcing(_, _) | Term::MaterialUs | Term::MaterialThem
+        | Term::Halfmoves | Term::Seen | Term::Ago(_, _) | Term::Min(_, _) | Term::Max(_, _) | Term::Diff(_, _) | Term::Eq(_, _) | Term::Int(_))
+}
+
+/// The squares past `y` on the ray from `x` through `y`, nearest first.
+fn ray_past(x: Square, y: Square) -> Vec<Square> {
+    let (df, dr) = ((y.file() as i32 - x.file() as i32).signum(), (y.rank() as i32 - x.rank() as i32).signum());
+    let mut out = Vec::new();
+    let (mut f, mut r) = (y.file() as i32 + df, y.rank() as i32 + dr);
+    while (0..8).contains(&f) && (0..8).contains(&r) {
+        out.push(Square::from_coords(shakmaty::File::new(f as u32), shakmaty::Rank::new(r as u32)));
+        f += df; r += dr;
+    }
+    out
 }
 
 /// A square's rank counted from `us`'s first rank (0-7).
@@ -239,8 +435,7 @@ pub fn certified(pos: &Chess, cand: &Term, schema: &str, k: u32) -> bool {
 pub fn vocab_eval(fen: String, term: String) -> PyResult<Option<u32>> {
     let (Some(p), Some(t)) = (parse(&fen), parse_term(&term)) else { return Ok(None) };
     let lone = !p.turn();
-    Ok(Some(match t { Term::Count(_) | Term::Dist(_, _) | Term::Sum(_, _) | Term::FileOf(_) | Term::RankOf(_) | Term::DFile(_, _)
-                      | Term::DRank(_, _) => num(&t, &p, lone), _ => set(&t, &p, lone).count() as u32 }))
+    Ok(Some(if is_num(&t) { num(&t, &p, lone) } else { set(&t, &p, lone).count() as u32 }))
 }
 
 /// vocab_values(fens, term) -> the term's number on each board (the proposer's observational test).

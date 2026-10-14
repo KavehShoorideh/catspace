@@ -44,7 +44,7 @@ def test_glosses_and_enumeration():
 @pytest.mark.skipif(not Path("lean/ideas/.lake").exists(), reason="the Lean project is not built")
 def test_lean_renderings_typecheck(tmp_path):
     terms = ["(count (and ours hit))", "(count (and theirs (not unhit)))", "(dist W O)", "(count (reach W unhit))"]
-    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
+    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) (hist : List Position) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
     src = tmp_path / "VocabCheck.lean"
     src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
     r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
@@ -74,7 +74,7 @@ def test_square_classes_and_symmetry():
 def test_second_batch_lean_renderings_typecheck(tmp_path):
     terms = ["(count (and (attacks O) (lines W)))", "(count (diagonals P))", "(count (segment W L))", "(count (knight2 O))",
              "(count center)", "(count (and (cls a1) (not ours)))", "(count (cls d4))"]
-    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
+    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) (hist : List Position) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
     src = tmp_path / "VocabCheck2.lean"
     src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
     r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
@@ -96,7 +96,7 @@ def test_a_squares_colour_and_the_strongest_other_piece():
 @pytest.mark.skipif(not Path("lean/ideas/.lake").exists(), reason="the Lean project is not built")
 def test_colour_lean_renderings_typecheck(tmp_path):
     terms = ["(count light)", "(count (and dark (box L)))", "(count (and (cls a1) (colour P)))", "(count (and (colour W) (not (nearer W L))))"]
-    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
+    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) (hist : List Position) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
     src = tmp_path / "VocabCheck3.lean"
     src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
     r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
@@ -126,7 +126,7 @@ def test_the_enumeration_names_squares_without_constants():
 @pytest.mark.skipif(not Path("lean/ideas/.lake").exists(), reason="the Lean project is not built")
 def test_named_square_renderings_typecheck(tmp_path):
     terms = ["(dist L a8)", "(count (and ours (at e4)))", "(count (and (file P) (rank a8)))", "(count (cls d1))"]
-    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
+    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) (hist : List Position) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
     src = tmp_path / "VocabCheck.lean"
     src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
     r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
@@ -157,8 +157,62 @@ def test_the_opposition_is_a_composition():
 @pytest.mark.skipif(not Path("lean/ideas/.lake").exists(), reason="the Lean project is not built")
 def test_relative_geometry_lean_renderings_typecheck(tmp_path):
     terms = ["(fileof W)", "(rankof P)", "(dfile L W)", "(drank W P)"]
-    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
+    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) (hist : List Position) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
     src = tmp_path / "VocabCheck.lean"
     src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
     r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=600)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# THE VOCABULARY COMPLETED (Kaveh 2026-10-13: "add all of these ... and ... regular chess terms like pin ... in terms of
+# simpler vocabulary"): every piece named, pawn direction, offsets, lines through pieces, control and exchanges, material and
+# the game's context, time, combinators -- and the chess terms as compositions of them
+
+F1 = "6k1/5p2/8/8/1r6/8/3P4/R3R1K1 w - - 0 1"     # ours: K g1, R a1, R e1, P d2; theirs: K g8, R b4, P f7
+
+
+def test_every_piece_named_and_the_pawn_words():
+    v = lambda t: A.vocab_values([F1], t)[0]
+    assert (v("(fileof P)"), v("(fileof P2)"), v("(fileof P3)"), v("(fileof O)"), v("(fileof O2)")) == (0, 4, 3, 1, 5)
+    assert v("(count ourrooks)") == 2 and v("(count theirpawns)") == 1
+    assert v("(count (ahead P3))") == 6 and v("(rankof (front P3))") == 2 and v("(rankof (promo P3))") == 7
+    assert v("(pushes P3)") == 6 and v("(pushes O2)") == 6 and v("(count (passer P3))") == 18
+    assert (v("(fileof (offset W -1 2))"), v("(rankof (offset W -1 2))")) == (5, 2)
+
+
+def test_lines_control_and_context():
+    v = lambda t: A.vocab_values([F1], t)[0]
+    assert v("(count (beyond P2 W))") == 1 and v("(defenders (front O))") == 1 and v("(see O)") == 0
+    assert v("(count (moves L))") == 4 and v("material_us") == 11 and v("material_them") == 6
+    assert v("(diff (pushes P3) (rankof W))") == 6 and v("(eq (fileof W) 6)") == 1
+    pin = "4r1k1/8/8/8/8/8/4N3/4K3 w - - 0 1"
+    assert A.vocab_values([pin], "(rankof (next W P))")[0] == 7 and A.vocab_values([pin], "(count (and (xray O) (at e1)))")[0] == 1
+    A.set_vocab_line(["8/8/8/4k3/8/8/1R6/4K3 w - - 0 1", "8/8/8/4k3/8/8/1R6/4K3 b - - 1 1", "8/8/4k3/8/8/8/1R6/4K3 w - - 2 2"])
+    assert A.vocab_values(["8/8/4k3/8/8/8/1R6/4K3 w - - 2 2"], "(ago 1 (rankof L))")[0] == 4
+    A.set_vocab_line([])
+
+
+def test_the_chess_terms_unfold_into_the_base():
+    pin = "4r1k1/8/8/8/8/8/4N3/4K3 w - - 0 1"                 # our knight e2 pinned by the e8 rook
+    assert A.vocab_values([pin], "(pinned_ours P)")[0] == 1
+    assert A.vocab_values(["4r1k1/8/8/8/8/8/3N4/4K3 w - - 0 1"], "(pinned_ours P)")[0] == 0
+    assert A.vocab_values(["8/8/4k3/8/4K3/4P3/8/8 w - - 0 1"], "opposition")[0] == 1
+    assert A.vocab_values(["8/8/4k3/8/3K4/4P3/8/8 w - - 0 1"], "opposition")[0] == 0
+    assert A.vocab_values(["7k/8/8/8/P7/8/8/K7 w - - 0 1"], "(outside_square P)")[0] == 1      # h8 king, a4 pawn: 4 to go, 7 away
+    assert A.vocab_values(["8/8/8/2k5/P7/8/8/K7 w - - 0 1"], "(outside_square P)")[0] == 0
+    assert V.gloss(V.parse("(pinned_ours P)")) == "whether our other piece is pinned to our king (1 or 0)"
+
+
+@pytest.mark.skipif(not Path("lean/ideas/.lake").exists(), reason="the Lean project is not built")
+def test_the_completed_vocabulary_renders_in_lean(tmp_path):
+    terms = ["(fileof P2)", "(count ourrooks)", "(count (ahead P3))", "(rankof (front O2))", "(dist L (promo P3))", "(pushes O2)",
+             "(count (passer P))", "(dist W (offset P -1 2))", "(count (beyond P2 W))", "(rankof (next W P))", "(count (xray O))",
+             "(attackers P)", "(defenders (front P3))", "(see O)", "(count (moves L))", "material_us", "halfmoves", "seen",
+             "(ago 2 (rankof L))", "(min (pushes P3) (pushes O2))", "(diff (fileof W) (fileof L))", "(eq (fileof W) 6)",
+             "(count (or ours theirs))", "forcing_us_5", "forcing_them_mate"]
+    terms += [V.sexpr(t) for t in V.layer1() if isinstance(t, tuple) and t[0] in V.CHESS_TERMS][:40] + ["opposition", "flights"]
+    body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) (hist : List Position) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
+    src = tmp_path / "VocabCheck.lean"
+    src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
+    r = subprocess.run(["lake", "env", "lean", str(src)], cwd="lean/ideas", capture_output=True, text=True, timeout=900)
+    assert r.returncode == 0, r.stdout[:3000] + r.stderr[:2000]

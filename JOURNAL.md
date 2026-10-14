@@ -30493,3 +30493,33 @@ rook, pawn, king, rook, pawn. Let's see if we can solve that one").
   THE BENCHMARK (Kaveh: "how many moves does it take us ... versus Stockfish"): Stockfish both sides from the same starts:
   won 99; where both won (91): our moves to mate 10.6 on average, Stockfish's 12.6 -- we were faster in 40, slower in 29,
   equal in 22. The games Stockfish won and we did not: seeds 11 23 24 50 57 63 79 82 (the explorer's surprises).
+
+THE VOCABULARY COMPLETED, AND CHESS TERMS AS COMPOSITIONS (2026-10-13 19:05-19:30 PDT; Kaveh: "Yeah get a complete vocab.
+Make a list of terms you wanna add"; "Yes, please add all of these. And also ... regular chess terms like pin and things like
+that in terms of simpler vocabulary so ... we can kind of have compositional vocab").
+  THE WORDS (Python base_vocabulary.py, Rust vocab.rs, Lean Ideas.Base.Vocabulary -- each Lean definition the mirror of the
+  evaluator; a square word is an optional square in Lean, OSq, the old words lifted over it):
+    every piece named      P2..P5, O2..O5 (strongest first: queen, rook, bishop, knight, pawn; pawns the most advanced first,
+                           then the lower square -- P and O follow the same order, so among pawns P is now the most advanced);
+                           ourqueens ... theirpawns (a kind as a set)
+    pawn direction         (ahead X), (front X), (promo X), (pushes X), (passer X) -- the owner's direction
+    relative squares       (offset X df dr), df, dr from -2 to 2, from our side
+    lines through pieces   (beyond X Y), (next X Y) -- the first piece past Y, (xray X)
+    control, exchanges     (attackers X), (defenders X), (see X) -- the x-ray exchange of Ideas.ExchangeLaw, (moves X)
+    the short window       forcing_us_v, forcing_them_v (v 1 3 5 9 mate): the fewest moves (1-3) forcing that gain, exact,
+                           cached (Lean: Ideas.forcedWithinB)
+    context, time          material_us, material_them, halfmoves, seen, (ago k T) -- the game's line installed by the planner
+    combinators            or, min, max, diff, eq; small whole numbers
+  THE CHESS TERMS (base_vocabulary.CHESS_TERMS -- compositions, never new primitives; the evaluator unfolds them before
+  reading, vocab.rs set_macros; the Lean rendering unfolds them; their glosses keep the names): en_prise, pinned_ours,
+  pinned_theirs, targets_ours, targets_theirs, skewer, discovery, passed_ours, passed_theirs, outside_square, opposition,
+  king_ahead, on_key_square, rook_behind, trapped_theirs, flights.
+  THE ENUMERATION IN LAYERS (the literature's oversearching guard): layer 0 the old words (29,505); layer 1 the static new
+  words only where they say something -- each piece's control, exchange and pawn words, distances to its promotion square,
+  front square and offsets, the new sets alone and against ten base sets, the chess terms on every piece (+2,640; 32,145 in
+  all); layer 2 the words that search or remember (18), only when asked.
+  Tests: values on known boards (every name, the pawn words, offsets, the pin through a knight, the opposition, the square of
+  the pawn, time), and every new word and 42 chess-term instances rendered in Lean and type-checked; 54 discovery tests pass.
+  THE CYCLES WITH EVERY PIECE NAMED (patterns.py, up to three pieces a side): in the K+R+R+P v K+R+P games none -- not a bug
+  (K+R v K still gives its 249): those games are won by tactics in ~10 moves, every material phase lasting mostly <= 6 moves
+  of ours; nothing manoeuvres, nothing recurs shifted.

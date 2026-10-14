@@ -2024,7 +2024,7 @@ pub fn plan_trace(fen: String) -> PyResult<(Vec<String>, Option<(String, String,
 /// move's (fresh searches, replays, exact reuses, reused failures, re-proofs, lone-attack skips, frozen moves, escape
 /// skips, moves cut by the history order)).
 #[pyclass(unsendable)]
-pub struct PlanState { memo: Option<Memo>, seen: HashMap<u64, u8> }
+pub struct PlanState { memo: Option<Memo>, seen: HashMap<u64, u8>, line: Vec<Chess> }
 
 type StatRow = (u32, u32, u32, u32, u32, u32, u32, u32, u32, u32, u32, u32);
 
@@ -2033,13 +2033,14 @@ impl PlanState {
     fn count(&mut self, pos: &Chess) {
         if pos.halfmoves() == 0 { self.seen.clear(); }
         *self.seen.entry(crate::threat::zkey(pos)).or_insert(0) += 1;
+        self.line.push(pos.clone());                                         // (the game's line: the time word)
     }
 }
 
 #[pymethods]
 impl PlanState {
     #[new]
-    fn new() -> Self { PlanState { memo: Some(Memo::default()), seen: HashMap::new() } }
+    fn new() -> Self { PlanState { memo: Some(Memo::default()), seen: HashMap::new(), line: Vec::new() } }
 
     /// record(fen): a position of this game that is not planned (the opponent's turn, a skipped move) -- its repetition
     /// count kept (after a capture or a pawn move, the half-move clock 0, nothing earlier can come back).
@@ -2057,6 +2058,7 @@ impl PlanState {
         // THE GAME CONTEXT (game.rs): this position counted, the counts installed for this planning call only
         self.count(&pos);
         crate::game::install(self.seen.clone());
+        crate::game::install_line(self.line.clone());
         let mut memo = self.memo.take().unwrap_or_default();
         memo.stats = Stats::default();
         for v in memo.history.values_mut() { *v *= 0.8; }                    // recent wins weigh more

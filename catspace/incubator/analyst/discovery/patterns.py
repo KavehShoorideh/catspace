@@ -33,7 +33,7 @@ import chess
 
 from catspace.io import paths
 
-NAMED = ("W", "P", "O")       # our king, our other piece, their other piece -- placed relative to their king L
+NAMED = ("W", "P", "P2", "P3", "O", "O2", "O3")   # every piece named (the completed vocabulary) -- placed relative to their king L
 BUDGET = 2_000_000
 MATE = 100_000
 
@@ -45,16 +45,17 @@ def _a():
 
 
 def all_named(b: chess.Board) -> bool:
-    """Every piece has a word: a king and at most one other piece a side (P and O name only one each)."""
-    return all(len([p for p in b.piece_map().values() if p.color == c and p.piece_type != chess.KING]) <= 1 for c in (True, False))
+    """Every piece has a word: a king and at most three other pieces a side (P, P2, P3; O, O2, O3)."""
+    return all(len([p for p in b.piece_map().values() if p.color == c and p.piece_type != chess.KING]) <= 3 for c in (True, False))
 
 
 def arrangement(fen: str) -> tuple:
     """The arrangement in words: ((term, value), ...) for every named piece present -- where it stands from their king."""
     A = _a()
     b = chess.Board(fen)
-    present = {"W": True, "P": any(p.color == b.turn and p.piece_type != chess.KING for p in b.piece_map().values()),
-               "O": any(p.color != b.turn and p.piece_type != chess.KING for p in b.piece_map().values())}
+    n_us = sum(p.color == b.turn and p.piece_type != chess.KING for p in b.piece_map().values())
+    n_them = sum(p.color != b.turn and p.piece_type != chess.KING for p in b.piece_map().values())
+    present = {"W": True, "P": n_us >= 1, "P2": n_us >= 2, "P3": n_us >= 3, "O": n_them >= 1, "O2": n_them >= 2, "O3": n_them >= 3}
     terms = [f"({h} {x} L)" for x in NAMED if present[x] for h in ("dfile", "drank")]
     return tuple((t, A.vocab_values([fen], t)[0]) for t in terms)
 

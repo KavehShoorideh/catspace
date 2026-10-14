@@ -2,6 +2,7 @@ import Chess.Game
 import Ideas.Mate
 import Ideas.GeoLemmas
 import Ideas.Passer
+import Ideas.ExchangeLaw
 
 /-!
 # The base vocabulary (Kaveh 2026-10-12)
@@ -159,5 +160,185 @@ def count (A : SquareSet) : Nat := (allSquares.filter A).length
 def reach (s : Square) (A : SquareSet) : SquareSet :=
   let step (R : SquareSet) : SquareSet := fun u => R u || (A u && allSquares.any (fun v => R v && dist v u == 1))
   Nat.repeat step 64 (fun u => u == s)
+
+/-! ## The vocabulary completed (Kaveh 2026-10-13: "Yes, please add all of these ... and also ... regular chess terms like
+pin ... in terms of simpler vocabulary so that we can kind of have compositional vocab"). Each definition is the mirror of
+the Rust evaluator (rust/analyst_core/src/vocab.rs); the chess terms are compositions of these, unfolded where they are
+read (catspace/incubator/analyst/discovery/base_vocabulary.py CHESS_TERMS). -/
+
+/-- An optional square: a word naming a piece that may not be on the board, or a square past the edge. -/
+abbrev OSq := Option Square
+
+/-- A set word over an optional square: empty when there is no square. -/
+def oset (f : Square → SquareSet) : OSq → SquareSet
+  | some s => f s
+  | none => fun _ => false
+
+def oset2 (f : Square → Square → SquareSet) : OSq → OSq → SquareSet
+  | some s, some t => f s t
+  | _, _ => fun _ => false
+
+/-- A number word over an optional square: 0 when there is no square. -/
+def onum (f : Square → Nat) : OSq → Nat
+  | some s => f s
+  | none => 0
+
+def onum2 (f : Square → Square → Nat) : OSq → OSq → Nat
+  | some s, some t => f s t
+  | _, _ => 0
+
+/-- reach from an optional square -/
+def oreach (s : OSq) (A : SquareSet) : SquareSet := oset (fun x => reach x A) s
+
+/-- A square's index rank by rank from a1 (the evaluator's order). -/
+def sqIndex (s : Square) : Nat := s.2.val * 8 + s.1.val
+
+/-- The strength order of the kinds: queen, rook, bishop, knight, pawn. -/
+def kindRank : PieceKind → Nat
+  | .queen => 5 | .rook => 4 | .bishop => 3 | .knight => 2 | .pawn => 1 | .king => 0
+
+/-- `s` before `t` among side `c`'s pieces: the stronger kind, then (pawns) the more advanced, then the lower square. -/
+def ranksBefore (p : Position) (c : Color) (s t : Square) : Bool :=
+  let k : Square → Nat := fun u => match p.board u with | some q => kindRank q.kind | none => 0
+  let a : Square → Nat := fun u => match p.board u with | some q => (if q.kind == PieceKind.pawn then rankNum c u else 0) | none => 0
+  decide (k s > k t) || (k s == k t && (decide (a s > a t) || (a s == a t && decide (sqIndex s ≤ sqIndex t))))
+
+/-- **every piece named**: side `c`'s pieces other than its king, ranked (P, P2, P3, ...; O, O2, ...). -/
+def ranked (p : Position) (c : Color) : List Square :=
+  (allSquares.filter (fun u => match p.board u with | some q => q.color == c && q.kind != .king | none => false)).mergeSort (ranksBefore p c)
+
+/-- the `i`-th piece of side `c` (from 1) -/
+def nthPiece (p : Position) (c : Color) (i : Nat) : OSq := (ranked p c)[i - 1]?
+
+/-- **a kind as a set**: the squares of side `c`'s pieces of kind `k`. -/
+def kindSet (p : Position) (c : Color) (k : PieceKind) : SquareSet := fun u =>
+  match p.board u with | some q => q.color == c && q.kind == k | none => false
+
+/-- The colour of the piece on `s`. -/
+def ownerOf (p : Position) (s : Square) : Option Color := (p.board s).map (·.color)
+
+/-- **ahead**: the squares in front of the piece on `s` on its file, toward its owner's far side. -/
+def aheadOf (p : Position) (s : Square) : SquareSet := fun t =>
+  match ownerOf p s with
+  | some c => t.1 == s.1 && decide (rankNum c t > rankNum c s)
+  | none => false
+
+/-- **the passed-pawn zone**: in front of the piece on `s`, on its file and the two beside it. -/
+def passerOf (p : Position) (s : Square) : SquareSet := fun t =>
+  match ownerOf p s with
+  | some c => decide (absDiff t.1 s.1 ≤ 1) && decide (rankNum c t > rankNum c s)
+  | none => false
+
+/-- **front**: the square in front of the piece on `s` (its owner's direction). -/
+def frontOf (p : Position) : OSq → OSq
+  | some s => match ownerOf p s with | some c => Passer.ahead c s 1 | none => none
+  | none => none
+
+/-- **promotion square**: the piece's file on its owner's last rank. -/
+def promoOf (p : Position) : OSq → OSq
+  | some s => (ownerOf p s).map (fun c => (s.1, promotionRank c))
+  | none => none
+
+/-- **pushes**: the ranks the piece on `s` has still to go to its owner's last rank. -/
+def pushesOf (p : Position) (s : Square) : Nat := match ownerOf p s with | some c => Passer.pushes c s | none => 0
+
+/-- **offset**: the square `df` files and `dr` ranks from `s`, from side `c`'s view (ranks toward the other side). -/
+def offsetOf (c : Color) : OSq → Int → Int → OSq
+  | some s, df, dr =>
+    let f : Int := (s.1.val : Int) + df
+    let r : Int := (s.2.val : Int) + (if c == Color.white then dr else -dr)
+    if 0 ≤ f ∧ f < 8 ∧ 0 ≤ r ∧ r < 8 then some (⟨f.toNat % 8, Nat.mod_lt _ (by decide)⟩, ⟨r.toNat % 8, Nat.mod_lt _ (by decide)⟩)
+    else none
+  | none, _, _ => none
+
+/-- **beyond**: the squares past `t` on the ray from `s` through `t` (none when they share no line). -/
+def beyondOf (s t : Square) : SquareSet := fun u => queenGeometryB s t && betweenB s t u
+
+/-- **next**: the first piece past `t` on the ray from `s` through `t`. -/
+def nextOn (p : Position) : OSq → OSq → OSq
+  | some s, some t => ((allSquares.filter (fun u => beyondOf s t u && (p.board u).isSome)).mergeSort
+      (fun a b => decide (dist t a ≤ dist t b))).head?
+  | _, _ => none
+
+/-- **x-ray**: the squares the piece on `s` attacks through at most one piece in the way (a slider); else its attacks. -/
+def xrayFrom (p : Position) (s : Square) : SquareSet := fun t =>
+  match p.board s with
+  | none => false
+  | some q =>
+    let geo := match q.kind with
+      | .rook => rookGeometryB s t | .bishop => bishopGeometryB s t | .queen => queenGeometryB s t | _ => false
+    if q.kind == .rook || q.kind == .bishop || q.kind == .queen then
+      geo && decide ((allSquares.filter (fun u => betweenB s u t && (p.board u).isSome)).length ≤ 1)
+    else pieceAttacksB p q.color s t
+
+/-- **attackers**: how many of side `c`'s pieces attack `s`. -/
+def attackerCount (p : Position) (c : Color) (s : Square) : Nat := (allSquares.filter (fun u => pieceAttacksB p c u s)).length
+
+/-- **the exchange**: what the side not owning the piece on `s` wins by capturing there first (the x-ray static exchange of
+`Ideas.ExchangeLaw`, never below 0). -/
+def seeOf (p : Position) (s : Square) : Nat :=
+  match ownerOf p s with
+  | some c => (Ideas.ExchangeLaw.seeXB { p with turn := Color.opposite c } s).toNat
+  | none => 0
+
+/-- **moves**: the squares the piece on `s` can legally move to, its side to move (as if it were, when it is not and the side
+to move is not in check). -/
+def movesOf (p : Position) (s : Square) : SquareSet := fun t =>
+  match p.board s with
+  | none => false
+  | some q =>
+    let r : Option Position := if q.color == p.turn then some p
+      else if inCheckB p p.turn then none else some { p with turn := q.color, enPassant := none }
+    match r with
+    | some r => (legalMoves r).any (fun m => m.source == s && m.destination == t)
+    | none => false
+
+/-- **material**: side `c`'s pieces at queen 9, rook 5, bishop 3, knight 3, pawn 1. -/
+def materialOf (p : Position) (c : Color) : Nat :=
+  (allSquares.map (fun u => match p.board u with | some q => (if q.color == c then (pieceValue q.kind).toNat else 0) | none => 0)).sum
+
+/-- A dead draw: kings alone, or one knight or bishop beside them. -/
+def deadDraw (q : Position) : Bool :=
+  match allSquares.filter (fun u => match q.board u with | some x => x.kind != .king | none => false) with
+  | [] => true
+  | [u] => match q.board u with | some x => x.kind == .knight || x.kind == .bishop | none => false
+  | _ => false
+
+/-- A value no material reaches: only a mate counts. -/
+def mateGain : Int := 100000
+
+/-- The tactic's goal for side `c`: on its own turn, a gain of `v` over `base` held and the game alive -- or the other side
+mated. -/
+def gainGoal (c : Color) (base v : Int) (q : Position) : Bool :=
+  (q.turn == c && decide ((materialOf q c : Int) - materialOf q (Color.opposite c) ≥ base + v) && !(deadDraw q)) ||
+  (q.turn != c && (legalMoves q).isEmpty && inCheckB q q.turn)
+
+/-- **the short window's tactic**: the fewest moves (1 to 3) in which side `c` forces a gain of `v` or more, or a mate, against
+every defence (as if the other side passed when it is not `c`'s turn); 0 when none. The evaluator also stops at a claimable
+draw, which a position without its game cannot see. -/
+def forcingOf (p : Position) (c : Color) (v : Int) : Nat :=
+  let q : Option Position := if p.turn == c then some p
+    else if inCheckB p p.turn then none else some { p with turn := c, enPassant := none }
+  match q with
+  | none => 0
+  | some q =>
+    let base := (materialOf q c : Int) - materialOf q (Color.opposite c)
+    match [1, 2, 3].find? (fun n => Ideas.forcedWithinB c (gainGoal c base v) q (2 * n)) with
+    | some n => n
+    | none => 0
+
+/-- Two positions with the same board and the same side to move. -/
+def sameSpot (a b : Position) : Bool := a.turn == b.turn && allSquares.all (fun u => a.board u == b.board u)
+
+/-- **seen**: how many times the game's line holds this position. -/
+def seenIn (hist : List Position) (p : Position) : Nat := (hist.filter (sameSpot p)).length
+
+/-- **ago**: a number read on the game's position `k` moves of ours back (the line ends with the position now; 0 before
+the game's start). -/
+def agoIn (hist : List Position) (k : Nat) (f : Position → Nat) : Nat :=
+  match hist.reverse[2 * k]? with | some q => f q | none => 0
+
+/-- **how far apart** two numbers are. -/
+def nDiff (a b : Nat) : Nat := if a ≤ b then b - a else a - b
 
 end Ideas.Vocabulary

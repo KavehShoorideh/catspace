@@ -24,6 +24,19 @@ thread_local! {
     static SEEN: RefCell<HashMap<u64, u8>> = RefCell::new(HashMap::new());
 }
 
+thread_local! {
+    /// THE GAME'S LINE (the vocabulary's time word, (ago k T)): its positions in order, the one being planned last
+    static LINE: RefCell<Vec<shakmaty::Chess>> = RefCell::new(Vec::new());
+}
+pub fn install_line(line: Vec<shakmaty::Chess>) { LINE.with(|l| *l.borrow_mut() = line); }
+/// The game's position `plies` before the one being planned (None before the game's start or with no line installed).
+pub fn back(plies: u32) -> Option<shakmaty::Chess> {
+    LINE.with(|l| { let l = l.borrow(); l.len().checked_sub(1 + plies as usize).and_then(|i| l.get(i).cloned()) })
+}
+/// set_vocab_line(fens) -> the game's line for (ago k T) in analysis (the planner installs its own in play).
+#[pyo3::pyfunction]
+pub fn set_vocab_line(fens: Vec<String>) { install_line(fens.iter().filter_map(|f| crate::parse(f)).collect()); }
+
 pub fn install(seen: HashMap<u64, u8>) { SEEN.with(|s| *s.borrow_mut() = seen); }
 pub fn clear() { SEEN.with(|s| s.borrow_mut().clear()); }
 

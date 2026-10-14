@@ -436,6 +436,25 @@ pub fn forced_goal(fen: String, literals: Vec<(String, u32, u32)>, depth: u32, b
     }
 }
 
+/// THE SHORT WINDOW AS A WORD ((forcing us v), (forcing them v) in the vocabulary): the fewest moves (1 ... FORCING_WINDOW)
+/// in which the side forces a gain of `v` or more held after the reply (or a mate) -- ours with us to move, theirs as if we
+/// passed (none when we are in check); 0 when none within the window or the budget runs out. Cached per position.
+pub const FORCING_WINDOW: u32 = 3;
+thread_local! {
+    static FORCING_CACHE: std::cell::RefCell<HashMap<(u64, bool, i64), u32>> = std::cell::RefCell::new(HashMap::new());
+}
+pub fn forcing(pos: &Chess, ours: bool, v: i64) -> u32 {
+    let key = (crate::threat::zkey(pos), ours, v);
+    if let Some(x) = FORCING_CACHE.with(|c| c.borrow().get(&key).copied()) { return x; }
+    let p = if ours { Some(pos.clone()) } else if pos.is_check() { None } else { pass(pos) };
+    let x = p.map_or(0, |p| {
+        let mut sv = Solver { us: p.turn(), root_bal: kernel_material(&p, p.turn()), value: v, budget: 200_000, nodes: 0, memo: HashMap::new(), lits: vec![] };
+        (1..=FORCING_WINDOW).find(|d| p.legal_moves().into_iter().any(|m| { sv.nodes = 0; sv.theirs(&after(&p, &m), d - 1) == Some(true) })).unwrap_or(0)
+    });
+    FORCING_CACHE.with(|c| { let mut c = c.borrow_mut(); if c.len() > 200_000 { c.clear(); } c.insert(key, x); });
+    x
+}
+
 /// THE TACTICAL PROFILE (Kaveh 2026-10-13: "the density of tactics is basically what we're predicting ... a lot of good
 /// tactics for us and ... no tactics for them ... we need to be able to label the tactical situations"): for the side to
 /// move and, as if it passed, for the other side -- at each value of the ladder (1 a pawn, 3 a piece, 5 a rook, 9 a
