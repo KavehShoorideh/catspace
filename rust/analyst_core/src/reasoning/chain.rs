@@ -732,6 +732,8 @@ impl ReasoningLedger {
         for o in &opps { for u in &o.moves { *score.entry(u.clone()).or_insert(0) += o.stake; tags.entry(u.clone()).or_default().push("opportunity"); } }
         for rc in root_cands.iter().filter(|c| c.actor == ua) { score.entry(rc.uci.clone()).or_insert(0); tags.entry(rc.uci.clone()).or_default().push("poke"); }
         let all_sq: Vec<(Square, i64)> = cons.iter().flat_map(|c| c.squares.iter().map(move |s| (*s, c.stake))).collect();
+        // in check every legal move is an evasion (the rules of the game, not learned): each is a candidate, else the decision is empty
+        if root.is_check() { for m in &legal { let u = m.to_uci(CastlingMode::Standard).to_string(); *score.entry(u.clone()).or_insert(0) += 1; tags.entry(u).or_default().push("evasion"); } }
         for m in &legal {
             let u = m.to_uci(CastlingMode::Standard).to_string();
             let mut q = root.clone(); q.play_unchecked(m);

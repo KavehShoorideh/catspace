@@ -349,3 +349,11 @@ def test_the_priority_proposal_is_learned_by_the_strict_pairwise_ranking():
     p = P.propose_stakes(res, recs, log=lambda *_: None)
     assert p and p["ranking"][0][0] == "check" and p["tag_bonus"]["check"] > 0
     assert P.propose_stakes(res, [dict(id="X", answer="a1a2", klass="no surprise", surprise=False)], log=lambda *_: None) is None
+
+
+def test_in_check_every_evasion_is_a_candidate_and_the_chain_decides():
+    # Bo45Dh1y ply 74: White in check from Qg3; before the fix no candidate touched a constraint and the decision was empty (NONE)
+    d = LG.decide("5rk1/6p1/2Q1p3/p6p/4P3/3PK1q1/6P1/8 w - - 1 38")
+    assert d["move"] and d["status"] != "NONE"
+    assert all("evasion" in d["tags"][c["uci"]] for c in d["candidates"])
+    assert len(d["generated"]) == 3                                                               # Kd4, Kd2, Ke2: the legal moves

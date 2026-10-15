@@ -30969,3 +30969,12 @@ THE NIGHT'S SUMMARY, PLAN §40 PHASES 1-5 (2026-10-15 05:02 PDT, autonomy "go au
   0-8 (knights and bishops out). Scar of the night: a Pool launched from a `python -` heredoc by the builder lived 2 h 24 min respawning dying workers (load
   25 on 11 cores) and made every batch look straggler-bound; killed; rule restated: -m entry points only. KAVEH'S KNOBS: the trade cell (population vs the
   player's), the lemma promotion threshold and stake knob, the per-decision time cap (300 s; a decision read off a cut chain is ESTIMATED).
+
+### ADDENDUM, IN CHECK THE CHAIN DECIDED NOTHING (2026-10-15 07:46 PDT)
+
+Re-rendering the step-through page on the event loop (every ply of Bo45Dh1y decided by the chain, 82 decisions in 40 s on all cores) showed ply 74
+(White in check from Qg3) with NO decision: candidates came only from constraints, opportunities, pokes and checks, and a check on the king is none
+of those, so the list was empty. Fix (generic, a rule of the game): in check every legal move is an evasion and a candidate (tag `evasion`). Now Kd4.
+Test added (test_agenda: in check every evasion is a candidate). OBS on the game: 82 decisions, 32 equal to the move played, 26 equal to Stockfish d14's
+best (directional, one game). The page (Step Through the Game, v5) now shows per ply the chain's move, its constraints and opportunities with stakes,
+the candidates checked and the chain step by step, beside the old script's choice.
