@@ -1378,3 +1378,138 @@ goals.forced_moves as the concrete pre-check, the window's teacher labels.
 6. OBS lines: atoms, premises enumerated, kept after separation, kept after the solver, Lean typechecked, Lean proved, the top premises in words, the
    failure reasons. Tests in tests/test_selfmine.py: a hand-made two-branch window where a one-atom premise separates (e.g. the moved piece lands where
    `see` >= 5) and is solver-confirmed. Trace this one window; STOP and report (under 300 words). No batch. Plain commits, no trailers.
+
+## 42. THE ROOT AND ITS LAYERS: explanations from the simplest lemma up (Kaveh 2026-10-15 evening, GO; built by a cheaper agent)
+
+### 42.1 What Kaveh said, and why the loop changes
+The goal of the game is mate; mate needs pieces (a lone king cannot give check); so the implicit goals are to win material and to
+stop promotions. When a piece hangs you take it, because it is the most valuable thing you can do and nothing bigger threatens you. The
+SIMPLEST lemma is therefore the root: an undefended piece is worth its value to the side that can take it. Everything else is a layer
+on the root, each layer one named fact that changes the root's prediction: it is defended (the exchange), it is pinned, taking it loses
+more elsewhere. An explanation is always the simplest lemma that fits, plus the one deviation when it does not: "normally X, but because
+of Y". Lemmas are rewarded for REUSE (the windows they explain beyond their own) and for being SMALL; the atom-combination search of
+phase B (selfmine.propose over 4,906 terms) is the wrong source of lemmas -- it finds the shortest sound statement, not the simplest
+reusable one. The drill (42.6) stays as the thing that says WHERE a lemma's prediction fails; it no longer proposes.
+
+Values: pawn 1, knight 3, bishop 3, rook 5, queen 9 are declared (a convention), not derived. The one derived fact worth proving: a lone
+king cannot give check, so cannot mate (42.3 item 0).
+
+### 42.2 One new word: `worth`
+`(worth X)`: the declared value of the piece on X (pawn 1, knight 3, bishop 3, rook 5, queen 9; a king or an empty square 0), whoever
+owns it. Lean: `worthOf (p : Position) (s : Square) : Nat := match p.board s with | some q => (pieceValue q.kind).toNat | none => 0`
+in Ideas/Base/Vocabulary.lean (pieceValue is Ideas.pieceValue from Fork.lean -- check the import; if Vocabulary.lean cannot import it,
+define `worthOf` by a match on the kind with the same five numbers and prove `worthOf_eq` against pieceValue in Root.lean). Python:
+base_vocabulary table ("the declared value of the piece on {0}"), `lean()` renderer `(onum (worthOf p) <sq>)`, gloss. Rust vocab.rs:
+Term::Worth(Box<Term>) parsed from ("worth", [a]), evaluated from the piece at the square (0 when none or a king), in is_num and reads.
+Glossary entry (catspace/research/docs/GLOSSARY.md, the style of `balance`). `lean_index build`.
+
+### 42.3 Lean: Ideas/Root.lean (import Ideas.TreeStep)
+Every theorem is small; none is a search. Hypotheses are the WORDS as base_vocabulary.lean renders them (so the generator can discharge
+them from a mined statement); conclusions are over the kernel (`applyMove`, `legalMoves`, `materialOf`, `forcingOf`). Proof sketches
+given; the builder writes the proofs and keeps `sorry` with a comment where one fails, reporting which.
+
+0. `lone_king_no_check`: if side c has only its king on the board (every square holds none or a c-piece that is a king or a piece of
+   the other side), then `inCheckB p (Color.opposite c) = false`. Sketch: unfold inCheckB / isAttackedB to the attacker enumeration;
+   every attacker of c is a king; a king attacks only adjacent squares and the two kings cannot be adjacent in a legal position -- if the
+   kernel does not give adjacency-freeness for free, state the theorem with the hypothesis `¬ adjacent (kingSq c) (kingSq c')` and say
+   so. Corollary `lone_king_no_mate`: with no check there is no mate (mate = in check and no legal move, by the kernel's definition).
+1. Material after a move (the kernel facts the root needs). For `m ∈ legalMoves p`:
+   a. `material_mover_after`: `materialOf (applyMove p m) p.turn = materialOf p p.turn + promoGain m` where promoGain is 8 for a
+      promotion to a queen, 4 to a rook, 2 to a bishop or knight (queen 9 minus pawn 1 etc.), 0 otherwise. Sketch: applyBoard moves one
+      piece of the mover; the sum over allSquares changes only at source and destination (and the en-passant captured square, which
+      holds the OTHER side's pawn). Use allSquares_nodup and a sum-split lemma (List.sum over a Nodup list with one changed entry);
+      the pattern is in TreeStep.lean `sum_le_three_of_one`.
+   b. `material_other_after`: `materialOf (applyMove p m) (Color.opposite p.turn) = materialOf p (Color.opposite p.turn) - capturedWorth p m`
+      where capturedWorth is `worthOf p m.destination` for a normal move or promotion, 1 for en passant, 0 for castling. Same sketch.
+   If (a) and (b) resist, prove the inequalities that the root uses instead: the mover's material does not fall; the other side's
+   material falls by at most `worthOf p m.destination` (plus 1 for en passant) -- and say which form was proved.
+2. `capture_gains`: our legal move m from x to y onto their piece: `balanceOf (applyMove p m) c = balanceOf p c + worthOf p y` when m is
+   a normal move (no promotion; so x holds a non-pawn or a pawn not reaching the last rank). From 1a, 1b.
+3. `reply_bound`: for every legal reply r of theirs from position q (their turn), `balanceOf (applyMove q r) c ≥ balanceOf q c -
+   maxHit q c - promoThreat q` where `maxHit q c` = the largest `worthOf` over squares holding our pieces that they attack (in words: the
+   most `worth` over `(and ours hit)`), and `promoThreat q` = 8 if they have a pawn one step from promotion (a pawn of theirs on its
+   seventh rank) else 0. From 1a, 1b and "a capture lands on an attacked square": `m.destination` of a legal capture is attacked by the
+   mover -- prove from pseudoLegal (normalPieceGeometryB gives the attack geometry; if the kernel has `legal_capture_attacks` or similar,
+   use it; otherwise state it as the one hypothesis of the theorem and report).
+4. THE ROOT, `hanging`: p.turn = c; our non-pawn piece on x can legally go to y (the three legs of 41.9/TreeStep: ours, not a pawn,
+   `moves`); their piece on y; after the move, the most `worth` over our attacked pieces is w and no pawn of theirs stands one step from
+   promotion; then `forcingOf p c (worthOf p y - w) ≠ 0` whenever `worthOf p y - w ≥ 4`... stated as: with `k := worthOf p y - w`,
+   `(k : Int) ≥ v` and `k ≥ 4` imply `forcingOf p c v ≠ 0`. Proof: forcingOf_ne_zero with n = 1; step_after (TreeStep) for the move;
+   step_theirs over every reply r with the bound of 3; leaf by gainGoal_of_balance. The `k ≥ 4` is the dead-draw guard of
+   gainGoal_of_balance; state it and move on. In words the hypotheses are: `(count (and ours (at x))) ≥ 1`, `(count (and ourpawns (at x)))
+   ≤ 0`, `(count (and (moves x) (at y))) ≥ 1`, `(count (and theirs (at y))) ≥ 1`, `(worth y) ≥ k + w`, `(after x y (most-over-set ...))`
+   -- the "most worth over our attacked pieces" needs a set-maximum word; there is none. Use the composition the vocabulary already
+   allows: `(after x y (count (and ours hit)))` = 0 for the first layer (nothing of ours is attacked after the capture: w = 0), and for
+   w > 0 the bound per value class: `(after x y (count (and (and ours hit) <pieces worth more than w>)))` = 0 is not expressible either.
+   DECISION for this build: the root is proved for w = 0 (`(after x y (count (and ours hit))) ≤ 0`) and for w bounded by a declared
+   class via `attackers`/`worth` of each our piece is NOT attempted; the second layer (42.4) handles defended pieces. Report what the
+   words cannot say; Kaveh adds words by the standing rule.
+5. `root_explains`: the proved root applied to the solver's label on a position: a test, not a theorem (42.7).
+
+### 42.4 The first layer: the defended piece (the exchange, one step)
+`defended_once`: as the root, but y has exactly one defender of theirs and after they recapture on y our balance is `+worth(y) - worth(x)`;
+if that is ≥ v (we took something worth more than the capturer) the gain is forced in 2 moves (4 plies): our capture, their recapture
+(any other reply gives the root), our... no: after their recapture the balance is settled at `worth(y) - worth(x)` only if THEY cannot
+be recaptured again -- the exchange sequence. DECISION: this layer is stated and proved only for the two-ply case "they recapture and we
+do not continue": conclusion `forcingOf p c v ≠ 0` for `v ≤ worth(y) - worth(x)` requires the balance to hold after EVERY reply, and a
+recapture is one reply, so the root's statement with `k := worth(y) - worth(x) - w` where w bounds their best OTHER capture covers it: a
+recapture on y is a capture of a piece worth `worth(x)` on an attacked square, so `maxHit` already counts it. So the first layer is the
+root with w = worth(x) when y is defended; no new theorem, one new reading. Write that down in Root.lean's docstring; the full exchange
+sequence is the exchange law (ExchangeLaw.lean, unproved) and is NOT in this build.
+
+### 42.5 The proposer searches lemma space (selfmine.py, a new mode `--layers`)
+Replace the atom-combination search by a ladder:
+1. ROOT FIRST. For the window's example position (after the bad move, our turn) list every capture we can make: (x, y) with `moves x y`
+   and a piece of theirs on y. For each, read the root's hypotheses in the words (the legs, `worth y`, `(after x y (count (and ours
+   hit)))`), and the root's prediction `k = worth(y) - w` with w the most worth among our attacked pieces after the move (computed in
+   Python from the words `(after x y (count (and ours hit)))` per square: evaluate `(after x y (count (and (and ours hit) (at s))))` for
+   each our square s, take the max worth; that is a Python reading of the words, not a new word). The root's claim: forced gain ≥ k.
+2. CHECK against the solver (the labeller): does the solver confirm a forced gain ≥ k within 1 move (n_opp = 1)? If yes and k ≥ delta:
+   the window is EXPLAINED BY THE ROOT; emit the Lean statement as an instance of `hanging` (the generator writes `exact
+   Ideas.Root.hanging ...` with the hypotheses from the atoms) and STOP. If the solver confirms ≥ delta but the root's k is smaller, the
+   root under-predicts: record the deviation "gain larger than the hanging piece: w over-counted or a follow-up" and continue to 3. If
+   the root's k ≥ delta but the solver refutes: record "the root over-predicts" with the solver's refuting line -- this is the surprise
+   the next layer must explain -- and continue to 3.
+3. DEVIATION. Only now run the old proposer (41.9 atoms, the drill of 42.6 as the filter), but SEEDED: the premise must contain the
+   root's atoms for the chosen capture, plus at most TWO more atoms (the deviation); rank by size then coverage. Lean as before (the
+   generator extended: root atoms discharge by `hanging`'s steps where they can; otherwise the tree proof of 41.9 if the premise has that
+   shape; otherwise TACTIC).
+4. On the rook window of sHa6yUKv (the example after 17.Qg4, Black to move): the captures are Qxc3 (a pawn, defended by nothing? read it)
+   and nothing else; the root predicts +1 (a pawn) or less; the solver confirms +5 forced in 3 moves -- the root UNDER-predicts, deviation
+   = "after Qxc3+ the rook on a1 hangs and the king must move": the seeded search should find `(after f6 c3 (least (see a1))) ≥ 5` or the
+   check atom as the deviation, which Lean cannot yet prove (the exchange law) -- so the expected outcome here is: root instance NOT
+   proved as the explanation, a two-atom conjecture (root + deviation) recorded with its coverage, PLUS the already proved tree lemma
+   (41.9) kept as the sound fallback. Print all three clearly.
+5. A second window where the root DOES explain: find one. `python -m catspace.incubator.analyst.discovery.windows --pgn-index N --page`
+   on games with a shift of 3 or more (scan_shifts in the scratchpad did this; re-implement a tiny scan inside windows.py `--find-shift
+   K` listing (game index, ply, delta) over the first 60 downloaded games, no teacher) and pick a window whose example is a plain
+   hanging piece (a knight or bishop taken for free). Run `--layers` there: expected OBS "EXPLAINED BY THE ROOT", Lean proves the
+   instance.
+
+### 42.6 The drill's new place
+`drill()` stays. It is called in 42.5 step 3 only (the deviation search) and in a new report: for a proved lemma, the number of drilled
+variants where its premise holds (coverage) and -- the new line -- the number where its premise holds and the solver DISAGREES (must be 0
+for a proved lemma: a non-zero count is a bug in the evaluator or the solver; print it and stop).
+
+### 42.7 The score: reuse and size
+A table (data/derived/lemmas/score.json, written by `selfmine --layers`): per lemma name (root `hanging`, each mined lemma): size
+(atoms), windows explained (list), variants covered per window, and for conjectures the windows where they held. `reuse = windows
+explained beyond the window it came from`. Print `OBS score <lemma>: size S, reuse R, coverage C`. No ranking across lemmas is used for
+anything yet except the printout; the applier (later) will read it.
+
+### 42.8 Tests (tests/test_root.py, tests/test_selfmine.py additions)
+- `worth` on a FEN: queen 9, pawn 1, king 0, empty 0, from both sides' views (the lone-side mirror convention of vocab_eval).
+- A hand position where a knight hangs (nothing of ours attacked after the capture): the root's Python reading gives k = 3, the solver
+  confirms, the Lean instance proves (run `lake env lean` on the generated file in the test: mark the test slow but keep it).
+- A hand position where the "hanging" piece is defended once by a pawn and the capturer is a queen: the root's reading gives w = 9 >
+  worth, no claim; the solver refutes a gain -- the over-prediction path is not taken because k < delta; printed.
+- `material_other_after` on one concrete move by `decide`/`native_decide`-free evaluation: compare with python-chess material.
+
+### 42.9 Rules for the builder
+Read AGENTS.md. No AI trailers in commits. OBS lines for every number. Short runs first (one window, then the second). Builder commits
+per piece (word; Root.lean items 0-2; items 3-4; the ladder; the score; tests). Do not edit TreeStep.lean or the 41.9 proof generator's
+existing paths except to add the root's discharge. maturin: `cd rust/analyst_core && ../../.venv/bin/maturin develop --release`. Lean:
+`cd lean/ideas && lake build Ideas.Root` (add `import Ideas.Root` to lean/ideas/Ideas.lean) then `.venv/bin/python -m
+catspace.incubator.analyst.lean_index build`. Where a proof fails, keep the statement with `sorry` and the error in a comment, and say so
+in the report; do not weaken a statement silently -- say what was weakened and why. Report under 400 words: numbers from OBS lines only,
+what was proved, what was left `sorry`, which words were missing.
