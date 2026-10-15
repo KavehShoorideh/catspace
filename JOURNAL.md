@@ -31113,7 +31113,7 @@ end of the sequence their best capture <= gain - delta (the "if they don't" clau
 least/most of a number over every legal reply" (a one-ply quantifier; the vocabulary's forcing_* words are already three-ply searches, so
 this is in the same spirit), and a proposer that composes `after` along the window tree instead of at one board. Not built; reported.
 
-### THE WINDOW AS A TREE, THE LEAN SIDE (2026-10-15 15:10 PDT)
+### THE WINDOW AS A TREE, THE LEAN SIDE (2026-10-15 15:12 PDT)
 
 Kaveh: "Go" on the three pieces (the one-ply words, the tree proposer, the Lean theorems). The Lean side, mine; the mirror and the
 proposer, the builder (running). Commits f492a903, 3aba54b5. All printed by `lake build` (clean) and `lean_index build` (314 theorems).
