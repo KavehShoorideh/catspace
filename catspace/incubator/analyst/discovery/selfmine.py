@@ -116,7 +116,56 @@ def legal(f: str, t: str):
     return ("count", ("and", ("moves", f), ("at", t)))
 
 
-def make_terms(objs: list, pairs: list) -> list:
+def _wrap(prefix, body):
+    """`body` read after the moves of `prefix` (nested `after`s)."""
+    for f, t in reversed(prefix):
+        body = ("after", f, t, body)
+    return body
+
+
+def legs_of(t, prefix=()) -> list:
+    """The legality terms of every `after` a term reads, each read at its own depth: (after m1 (after r1 (count (and (moves f2) (at t2))))).
+    `least` / `most` ask the legal replies themselves, so they add none."""
+    if not isinstance(t, tuple):
+        return []
+    if t[0] == "after":
+        return [_wrap(prefix, legal(t[1], t[2]))] + legs_of(t[3], prefix + ((t[1], t[2]),))
+    out = []
+    for x in t[1:]:
+        out += legs_of(x, prefix)
+    return out
+
+
+def line_pairs_of(fen: str, line: list) -> list:
+    """The solver's line (SAN, from `fen`) as (from, to) pairs: our move, their reply, our move, ..."""
+    import chess
+    b, out = chess.Board(fen), []
+    for san in line:
+        m = b.parse_san(san)
+        out.append((chess.square_name(m.from_square), chess.square_name(m.to_square)))
+        b.push(m)
+    return out
+
+
+def make_tree_terms(objs: list, line_pairs: list) -> list:
+    """Premises read ALONG THE LINE as a small tree (Kaveh 2026-10-15): after our move m_j the least X over every reply (whatever they answer),
+    and after the whole line the most X (the best they can do at its end). `after` carries its legality at every depth (legs_of)."""
+    kings = ["W", "L"]
+    ours = line_pairs[0::2]
+    bodies_least = [(w, x) for x in objs + kings for w in ("see", "attackers", "defenders")] + ["material_us", "material_them", "forcing_them_1", "forcing_them_3", "forcing_them_5"]
+    bodies_most = [("see", x) for x in objs] + ["material_them", "material_us", "forcing_them_1", "forcing_them_3", "forcing_them_5"]
+    T = []
+    for j in range(len(ours)):
+        prefix = tuple(line_pairs[:2 * j + 1])             # m1 r1 ... m_{j+1}
+        for b in bodies_least:
+            T.append(_wrap(prefix, ("least", b)))
+        if j == len(ours) - 1:
+            for b in bodies_most:
+                T.append(_wrap(prefix, ("most", b)))
+    return T
+
+
+def make_terms(objs: list, pairs: list, line_pairs: list | None = None) -> list:
     T = []
     kings = ["W", "L"]                 # the kings by name, so a premise about a check survives the king standing elsewhere
     for x in objs:
@@ -128,6 +177,11 @@ def make_terms(objs: list, pairs: list) -> list:
         T += [legal(f, t), ("count", ("and", ("between", f, t), ("or", "ours", "theirs")))]
         for x in objs + kings:         # the board after the move, read at every object: the check, the piece newly attacked, the exchange there
             T += [("after", f, t, ("see", x)), ("after", f, t, ("attackers", x)), ("after", f, t, ("defenders", x))]
+    if line_pairs:
+        tree = make_tree_terms(objs, line_pairs)
+        T += tree
+        for t in tree:
+            T += legs_of(t)                                    # (read once: the atoms are gated by them)
     seen, out = set(), []
     for t in T:
         s = BV.sexpr(t)
@@ -166,7 +220,39 @@ class Atom:
         return (BV.sexpr(render(self.term, mover)), self.op, self.v)
 
 
-def propose(terms, vals, poss, ex, cx, max_atoms=3, mover="w", cap_atoms=200):
+def covers(kept, full, max_atoms, limit=200_000):
+    """Every minimal set of up to `max_atoms` atoms whose kills together cover all counter-examples: branch on the hardest uncovered
+    counter-example (the fewest atoms kill it), prune when the rest cannot be covered in the picks left. No cap on the atoms."""
+    n = full.bit_length()
+    killers = [[i for i, a in enumerate(kept) if a.kill >> j & 1] for j in range(n)]
+    kills = [a.kill for a in kept]
+    found, work = set(), [0]
+
+    def rec(chosen, k):
+        work[0] += 1
+        if work[0] > limit:
+            return
+        unc = full & ~k
+        if not unc:
+            found.add(frozenset(chosen))
+            return
+        r = max_atoms - len(chosen)
+        if r == 0:
+            return
+        marg = [(m & unc).bit_count() for m in kills]
+        if sum(sorted(marg, reverse=True)[:r]) < unc.bit_count():
+            return                                           # the best r atoms together cannot cover what is left
+        j = min((j for j in range(n) if unc >> j & 1), key=lambda j: len(killers[j]))
+        for i in sorted(killers[j], key=lambda i: -marg[i]):
+            if i not in chosen:
+                rec(chosen + [i], k | kills[i])
+
+    rec([], 0)
+    minimal = [c for c in found if not any(d < c for d in found)]
+    return [tuple(kept[i] for i in sorted(c)) for c in minimal], work[0]
+
+
+def propose(terms, vals, poss, ex, cx, max_atoms=3, mover="w", cap_atoms=200, exact=False):
     """Atoms true on every example and false on some counter-example; synonyms (the same truth on every window position) merged; premises
     = minimal conjunctions of up to `max_atoms` atoms that falsify every counter-example. -> (stats, premises)."""
     atoms, n_atoms_true = [], 0
@@ -174,16 +260,17 @@ def propose(terms, vals, poss, ex, cx, max_atoms=3, mover="w", cap_atoms=200):
         row = vals[BV.sexpr(t)]
         ev = [row[i] for i in ex]
         pair = (t[1], t[2]) if t[0] == "after" else None
-        if pair is not None and any(vals[BV.sexpr(legal(*pair))][i] < 1 for i in ex):
-            continue                                                    # the move is not even legal on an example
+        legs = [vals[BV.sexpr(g)] for g in dict.fromkeys(legs_of(t))]
+        if any(g[i] < 1 for g in legs for i in ex):
+            continue                                                    # a move it reads the board after is not even legal on an example
         for op, v in ((">=", min(ev)), ("<=", max(ev))):
             truth = [(x >= v) if op == ">=" else (x <= v) for x in row]
-            if pair is not None:
-                lg = vals[BV.sexpr(legal(*pair))]
+            for lg in legs:
                 truth = [a and lg[i] >= 1 for i, a in enumerate(truth)]
             n_atoms_true += 1
             a = Atom(t, op, v, truth)
             a.pair = pair
+            a.legs = tuple(dict.fromkeys(legs_of(t)))
             atoms.append(a)
     full = (1 << len(cx)) - 1
     kept, seen_sig = [], {}
@@ -204,7 +291,11 @@ def propose(terms, vals, poss, ex, cx, max_atoms=3, mover="w", cap_atoms=200):
     rest = sorted((a for a in kept if a.kill != full), key=lambda a: (-bin(a.kill).count("1"), a.size))[:cap_atoms]   # the strongest killers first
     enumerated += len(kept)
     prem += [(a,) for a in sep]
-    for n in range(2, max_atoms + 1):
+    if exact:                                  # all kept atoms, branching on the hardest counter-example (no cap, no combinations of the strongest)
+        more, work = covers(kept, full, max_atoms)
+        prem += [c for c in more if len(c) > 1]
+        enumerated += work
+    for n in range(2, 1 if exact else max_atoms + 1):
         for combo in itertools.combinations(rest, n):
             enumerated += 1
             k = 0
@@ -366,8 +457,8 @@ def used_names(t) -> set:
 
 def with_legality(prem) -> list:
     """The premise's atoms preceded by one legality atom per move it reads the board after. -> [(term, op, v)]"""
-    pairs = sorted({a.pair for a in prem if getattr(a, "pair", None)})
-    return [(legal(f, t), ">=", 1) for f, t in pairs] + [(a.term, a.op, a.v) for a in prem]
+    legs = sorted({g for a in prem for g in (a.legs if hasattr(a, "legs") else legs_of(a.term))}, key=BV.sexpr)
+    return [(g, ">=", 1) for g in legs] + [(a.term, a.op, a.v) for a in prem]
 
 
 def statement(name: str, prem, mover: str, delta: int, doc: str, proof: str) -> str:
@@ -453,7 +544,7 @@ def reason(it: dict) -> str:
             f"(forcingOf is a bounded search over all replies, no lemma unfolds it)")
 
 
-def mine(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool = True, out: Path | None = None, log=print, do_drill: bool = False) -> dict:
+def mine(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool = True, out: Path | None = None, log=print, do_drill: bool = False, tree: bool = True) -> dict:
     delta = int(win["observable"]["delta"])
     poss = positions(win)
     ks = sorted({p["k"] for p in poss})
@@ -484,18 +575,29 @@ def mine(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool =
         dx = [i for i in range(n0, len(poss)) if poss[i]["cls"] == "SAME"]
         cx += [i for i in range(n0, len(poss)) if poss[i]["cls"] == "AVOIDED"]
 
+    line_pairs = line_pairs_of(poss[ex[0]]["fen"], sol[ex[0]]["line"]) if (tree and solver_ok) else []
+    tree = tree and bool(line_pairs)
+    if tree:
+        log(f"OBS tree: the example's solver line as pairs {line_pairs}")
     tried, rounds, proved_any, final_items = set(), [], False, []
-    stages = [("atoms over the window's objects, up to 3 atoms", False, 3), ("widened: all pieces of the start position, up to 4 atoms", True, 4)]
+    stages = [("atoms over the window's objects, up to 3 atoms", False, 3, False),
+              ("the same atoms, exact cover by branching, up to 4 atoms", False, 4, True),
+              ("widened: all pieces of the start position, exact cover, up to 4 atoms", True, 4, True)]
+    memo = {}
     out = out or (LEAN_DIR / "Ideas" / "Mined" / f"{tag}.lean")
     out.parent.mkdir(parents=True, exist_ok=True)
     head = LEAN_HEAD.format(tag=tag, delta=delta, ns=tag)
     n_lean = 0
-    for si, (label, wide, max_atoms) in enumerate(stages):
+    for si, (label, wide, max_atoms, exact) in enumerate(stages):
         objs, pairs = objects(win, wide)
-        terms = make_terms(objs, pairs)
         t0 = time.time()
-        vals = evaluate(terms, poss)
-        stats, prem = propose(terms, vals, poss, ex, cx, max_atoms, mover)
+        if wide not in memo:                                   # (the terms of a stage are read once)
+            terms = make_terms(objs, pairs, line_pairs if tree else None)
+            memo[wide] = (terms, evaluate(terms, poss))
+        terms, vals = memo[wide]
+        if tree:
+            log(f"OBS stage {si + 1}: {len(terms)} terms, {sum('least' in BV.sexpr(t) or 'most' in BV.sexpr(t) for t in terms)} of them read along the line; evaluated on {len(poss)} positions in {round(time.time() - t0, 1)} s")
+        stats, prem = propose(terms, vals, poss, ex, cx, max_atoms, mover, exact=exact)
         covs = {id(pr): coverage(pr, poss, ks) for pr in prem}
         gen = {id(pr): sum(all(a.truth[i] for a in pr) for i in dx) for pr in prem}       # how many drilled forced variants the premise still covers
         prem.sort(key=lambda pr: (len(pr), -gen[id(pr)], -len(covs[id(pr)]), sum(a.size for a in pr), BV.sexpr(pr[0].term)))
@@ -509,8 +611,12 @@ def mine(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool =
             f"{stats['useful']} that falsify a counter-example after merging {stats['synonyms']} synonyms; premises enumerated {stats['enumerated']}; "
             f"kept after separation {len(uniq)} ({len(prem) - len(uniq)} merged as canonical duplicates); {round(time.time() - t0, 1)} s")
         kept_solver = uniq if solver_ok else []
-        if si == 0:
+        if si == 0 or not first_stage:
             first_stage = kept_solver
+        if tree:
+            n_tree = [pr for pr in kept_solver if any(re.search(r"\((least|most) ", BV.sexpr(a.term)) for a in pr)]
+            log(f"OBS stage {si + 1}: premises that exclude all {len(cx)} counter-examples: {len(kept_solver)} (up to {max_atoms} atoms); with an atom read along the line {len(n_tree)}"
+                + (f"; by size {dict(sorted({n: sum(len(p) == n for p in kept_solver) for n in {len(p) for p in kept_solver}}.items()))}" if kept_solver else ""))
         log(f"OBS stage {si + 1}: kept after the solver {len(kept_solver)} (the solver confirms a gain >= {delta} on {sum(sol[i]['status'] == 'forced' for i in ex)}/{len(ex)} examples)")
         for r, pr in enumerate(kept_solver[:top], 1):
             log(f"OBS top {r} (size {len(pr)}, covers plies k={covs[id(pr)]}" + (f", {gen[id(pr)]}/{len(dx)} drilled forced variants" if dx else "") + f"): {words(pr, mover)}   [{' & '.join(a.op + str(a.v) + ' ' + BV.sexpr(render(a.term, mover)) for a in pr)}; absolute squares: {' & '.join(a.op + str(a.v) + ' ' + BV.sexpr(a.term) for a in pr)}]")
@@ -532,7 +638,7 @@ def mine(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool =
                 log(f"OBS lean {it['name']}: {state}" + (f": {reason(it)}" if it["error"] else "") + f"   [{words(it['prem'], mover)}]")
             proved_any = any(it["proved"] for it in final_items)
             log(f"OBS lean round: {len(items)} statements in {round(time.time() - t0, 1)} s")
-        if proved_any or not do_lean:
+        if proved_any or (not do_lean and kept_solver):
             break
         if si == 0:
             log("OBS no premise proved within the cap: widening the atoms once")
@@ -553,11 +659,12 @@ def main():
     ap.add_argument("--top", type=int, default=10)
     ap.add_argument("--lean-cap", type=int, default=20, help="statements sent to Lean per stage")
     ap.add_argument("--no-lean", action="store_true")
+    ap.add_argument("--no-tree", action="store_true", help="skip the premises read along the line (least / most over the replies)")
     ap.add_argument("--drill", action="store_true", help="the perturbation drill: one-piece variants of the example, labelled by the solver, as counter-examples")
     a = ap.parse_args()
     win = load_window(a.game, a.window)
     t0 = time.time()
-    mine(win, f"{a.game}_{a.window}" + ("_drill" if a.drill else ""), a.top, a.lean_cap, not a.no_lean, do_drill=a.drill)
+    mine(win, f"{a.game}_{a.window}" + ("_drill" if a.drill else ""), a.top, a.lean_cap, not a.no_lean, do_drill=a.drill, tree=not a.no_tree)
     print(f"OBS total {round(time.time() - t0, 1)} s")
 
 

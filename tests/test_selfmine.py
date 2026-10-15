@@ -72,3 +72,26 @@ def test_the_drill_labels_with_the_solver_and_after_atoms_need_legality():
     assert "movesOf" in st                              # the legality conjunct is in the Lean statement
     i = next(i for i, p in enumerate(poss) if p["san"].endswith("pe6 to e7"))
     assert not prem[0][0].truth[i]                       # the pawn cannot take from e7: the after-atom is false there
+
+
+def test_tree_terms_carry_legality_at_every_depth_and_render_in_lean():
+    line = [("d5", "d4"), ("e6", "d5"), ("d4", "d3")]       # ours, theirs, ours
+    tree = SM.make_tree_terms(["d5"], line)
+    t = next(x for x in tree if x[0] == "after" and BV.sexpr(x).startswith("(after d5 d4 (after e6 d5 (after d4 d3 (most"))
+    legs = SM.legs_of(t)
+    print("OBS legs", [BV.sexpr(g) for g in legs])
+    assert [BV.sexpr(g) for g in legs] == [
+        BV.sexpr(SM.legal("d5", "d4")),
+        BV.sexpr(("after", "d5", "d4", SM.legal("e6", "d5"))),
+        BV.sexpr(("after", "d5", "d4", ("after", "e6", "d5", SM.legal("d4", "d3"))))]
+    least = next(x for x in tree if BV.sexpr(x) == "(after d5 d4 (least (see d5)))")
+    assert len(SM.legs_of(least)) == 1                       # least / most ask the legal replies themselves
+    atom = SM.Atom(t, ">=", 0, [True])
+    atom.legs = tuple(legs)
+    s = SM.statement("t", (atom,), "w", 5, "doc", "sorry")
+    print("OBS", s.splitlines()[1][:200])
+    assert "mostOver" in s and s.count("afterMove") >= 6
+
+
+def test_line_pairs_from_san():
+    assert SM.line_pairs_of("4k3/8/4p3/3Q4/8/8/8/4K3 b - - 1 1", ["exd5", "Kf1"]) == [("e6", "d5"), ("e1", "f1")]
