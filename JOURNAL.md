@@ -31007,3 +31007,7 @@ square). Not built: the decline branch needs a sound value and that is a design 
 
 Cost: a decision went from ~2 s to 8-25 s on these positions (the deeper solver and 16 turn-arounds). Tests: test_agenda 2 new (the value reaches past
 three moves and turns around; in check a trade wins nothing); 33 agenda+threat tests pass. The dev batch on the new value: below.
+OBS (2026-10-15 10:08 PDT, build 79c4bca9 + the shorter-proof-defers fix): dev 49 of 60 (the night's build 44), fresh 50 of 60 (50): no held-out change. Wrongly
+PROVEN misses: dev 2, fresh 4 (horizon claims that a longer line overturns; the same class as 0CUWR's Nc5 before the turn-around, one move further out).
+Seconds per decision (median / p90 / max): dev 12.8 / 61 / 241 against ~2 last night: the price of the deeper solver and sixteen turn-arounds. Directional, one run.
+A first fix of the dev set found a regression (0R3LM: the counter capped Nxe5 before the deeper check could run) and was corrected before the numbers above.
