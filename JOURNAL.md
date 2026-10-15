@@ -30779,3 +30779,17 @@ LEARNING WHAT A THREAT IS, BY WATCHING STOCKFISH (2026-10-14 20:18 PDT; Kaveh: "
   FRAME 3 (the size of a threat is max(0, S's net loss), pairs only with a bigger side >= 1; 78,517 pairs): the material balance once each side has taken its biggest
   exchange (we first; signed on 64 by if / diff), total safe squares over our pieces (lower), a spurious named-square word. 0.414 pairwise. Held: confirmed 30%, the frame's
   top move also sized >= 1 by the teacher 30%, top-1 26%, teacher's biggest within the top 3 56%, threat/no-threat 75%. Not yet wired into the ledger.
+
+THE THREAT DEFINED, THE DEFENCE LEARNED (2026-10-14 21:06 PDT; Kaveh: "Threats are material loss. Or mate." / "Define it. Let the machinery learn how to not lose material.").
+  A. THE THREAT IS DEFINED (GLOSSARY): a move of the other side after a pass that loses S material with its best defence, or mates. The ledger's reasoned sizer (reasoning.rs
+  size_kick, threat_report): a mate, an unstoppable mate in one, else S's stand-pat with the fixers / TRAPPED rule; every move sized at the root, deeper only those that take, check
+  or leave a piece newly attacked. FIXED on the way: (1) the stand-pat took "S may execute its own threat" as an option worth 0 even when S has none, hiding every problem; (2) a size
+  that straddles 1 (lo < 1 <= hi) is no longer read at the hopeful end: the line is played out (forcing lines, no questions), up to 6 per sizing, and counted as a threat of 1 when
+  still undecided; (3) every threat carries its reason (a plain capture: what it takes, who attacked and guarded it); (4) a LIVE THREAD (a standing SAFE / RECAP finding that a piece
+  can be won or a guard is overloaded) names the capture that cashes it in (THREAD carried from ply N); threat_report(all, against_last_mover) reads a ledger rolled forward
+  through a game. Held-out check (179 positions, Stockfish as the teacher, our exact solver as the checker): the teacher sees a threat in 135, the sizer in 111; top-1 46%,
+  the teacher's biggest within the sizer's top 3 56%, threat / no threat agreement 79%, the sizer's biggest confirmed by the solver 75%; 797 positions, 214 questions, 1.9 s a position.
+  B. THE DEFENCE IS LEARNED: labels (S's loss for every legal move, Stockfish depth 10) on the positions where the teacher sees a threat: train 553 positions / 19,000 moves, held 135 /
+  4,469; the words read on the board after S's move with the turn handed back to S. Frame: the total over S's pieces of what the other side wins by the exchange (lower), the material
+  balance once each side has taken its biggest exchange (higher). Held: some move loses nothing in 132 of 135; the frame's top move loses nothing in 62% of those, a zero-loss move is in
+  its top 3 in 85%; the solver confirms the top move (the other side cannot force a gain >= 1 within 4) in 47% of all and 70% of those the teacher calls free. Not yet wired (C).

@@ -24,6 +24,16 @@ def _a():
     return A
 
 
+def load_frame(L, path: str | None = None) -> list:
+    """Load the learned threat frame (watch.threat_frame -> data/derived/threat_frame.json) into a ledger."""
+    import json
+    from catspace.io import paths
+    fr = json.load(open(path or paths.derived("threat_frame.json")))
+    terms = [(h["term"], int(h["sign"]), h["family"] == "delta", h["gloss"]) for h in fr["terms"]]
+    L.set_frame(terms)
+    return terms
+
+
 def analyse(fen: str, budget: int = 200) -> dict:
     return _a().ledger(fen, budget)
 
@@ -123,16 +133,18 @@ def main(argv=None):
     ap.add_argument("--budget", type=int, default=200)
     ap.add_argument("--square", default="e5", help="the piece whose pin is followed along the line")
     ap.add_argument("--trace", action="store_true", help="print the reasoning on this position step by step, in plain chess words")
+    ap.add_argument("--threats", choices=("defined", "rules"), default="defined", help="what a threat is: the DEFINITION sized by the ledger (material lost with the best defence, or mate), or the older rules")
     ap.add_argument("--depth", type=int, default=4, help="plies of the line (trace)")
     ap.add_argument("--mirror", action="store_true", help="mirror the board first (the ledger reads either side; not needed)")
     a = ap.parse_args(argv)
     fen = chess.Board(a.fen).mirror().fen() if a.mirror else a.fen
     if a.trace:
         t0 = time.time()
-        r = new(fen, max(a.budget, 1000)).trace(a.depth)
+        L = new(fen, max(a.budget, 1000))
+        r = L.trace(a.depth, a.threats)
         for line in r["trace"]:
             print(line)
-        print(f"OBS trace: {r['positions']} positions examined, {r['questions']} questions, {r['facts']} facts, {round(time.time() - t0, 2)} s; line "
+        print(f"OBS trace ({'learned' if r['learned'] else 'rules'} threats): {r['positions']} positions examined by the ledger, {r['looks']} static looks by the threat frame, {r['questions']} questions, {r['facts']} facts, {round(time.time() - t0, 2)} s; line "
               + " ".join(x.replace('|', ' [') + ']' for x in r["line"]))
         return
     t0 = time.time()

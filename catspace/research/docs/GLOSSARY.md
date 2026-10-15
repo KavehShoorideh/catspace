@@ -174,6 +174,13 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   (mate 1000): the rule bounds first, then the gain minus the opponent's value of the position after it, found by rolling the ledger forward along the FORCING lines
   (checks, captures, promotions; every reply in check) with the stand-pat value where nothing is forcing. A question counts only on a candidate whose interval still
   overlaps the best's lower bound (its stake); B*: decide when the best lower bound >= every other upper bound (PROVEN), else on the midpoints (ESTIMATED).
+- **Threat** (Kaveh 2026-10-14: "Threats are material loss. Or mate.") — against side S in a position P (S to move, not in check): a move m of the other
+  side O that O could make if S PASSED (pass(P) = the same board, O to move) after which S loses material with its best defence, or is mated. Its size is the material
+  lost (pawn 1, minor 3, rook 5, queen 9; mate = all). Exact form, for checking: our solver, forcing_them_* / forced_moves on pass(P) (a gain of >= 1 forced within k).
+  The ledger's REASONED form (reasoning.rs size_kick): m mates -> mate; an unstoppable mate in one after m (every reply of S leaves one) -> mate; else S's stand-pat after m,
+  where S saves at most one problem and only with a move that is safe where it lands (a piece with no such move is TRAPPED); a threat when the size is >= 1. Which moves of O are
+  sized: every one at the root; deeper, those that take, give check, or leave a piece of ours newly attacked (a discovery included). The threat is DEFINED, not learned; what
+  is learned (by watching Stockfish) is how to avoid losing material (the defence frame).
 - **Because-chain** — the dependency path from the decision (the pin) down to the facts.
 
 **Other machinery**
