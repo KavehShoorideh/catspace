@@ -1313,3 +1313,23 @@ chess-specific below the adapter; -m entry points, never a Pool from stdin; chec
   CONSEQUENCES (this move leads to that outcome: forcing lines, the exchange law) are the lemmas, PROVED IN LEAN and composed into the explanation; the
   BRANCH PROBABILITIES (which band takes which branch, how often) are MEASURED from the watched games, never proved, and ride on the proved skeleton
   as its prior. Explanation of a surprise = a proved tree over reasonable alternatives with one leaf the observable, probabilities on its edges.
+
+### 41.7 Phase A build brief: observables and windows, with the window page (Kaveh GO 2026-10-15)
+
+Deliverables (all under catspace/incubator/analyst/discovery/, -m entry points, no new top-level package):
+1. `observables.py`: the Observable record (41.2) and `stream(games)`; kinds through a domain adapter (chess: capture, promotion, check, castle, mate,
+   resignation; a settled material change as ledger.material_events already computes it); `python -m ...observables --games N` prints OBS counts per kind.
+2. `windows.py`: for each material observable, the EXPLANATION TREE backward from it with the teacher (Stockfish, depth and multipv knobs): at each ply
+   back, the REASONABLE moves (within a margin of the teacher's best; the margin a knob per Elo band), each followed by the teacher's best play to see
+   whether the same observable (the victim's material loss >= delta, or mate) still happens -> branch outcome: SAME, AVOIDED, OTHER (another observable,
+   recorded). Going back stops when the tree stops being small (the knob: reasonable branches in all, default 8) or at move one. The inevitability
+   point = the furthest ply back at which every reasonable branch still loses; the cashed flag = the loss actually fell in the game; the band of the
+   game. Branch PROBABILITIES per band are not in phase A (they need a band-conditioned policy over many games; recorded as the next step). Windows
+   sharing a start position are MERGED: their leaves grouped as winning / losing / neutral for the side to move at the start.
+3. The WINDOW PAGE: one static HTML page per game (python-chess SVG boards, the step-through page's style): the window's start position, the tree of
+   branches ply by ply (the played move marked, each branch's outcome class and the teacher's number as a checker only), the leaves grouped by outcome,
+   click a branch to see its board; the inevitability point and the cashed flag shown. Generator: `python -m ...windows --page <id>`.
+4. Tests in tests/test_windows.py: the observable kinds on a known game; the tree on a hand-made position where one branch avoids the loss; the stop rule.
+5. Stage 1 = items 1-4 traced on 2-3 Lichess games (OBS lines: observables per kind, trees' sizes and depths, inevitability depths), the pages written,
+   then STOP and report. Stage 2 (after Kaveh's look) = 100 games on all cores with per-game checkpoints and a watchdog, the same OBS lines aggregated
+   per band. Rules: AGENTS.md; Lean for any new word (none expected); no Pool from stdin; numbers only from OBS lines; no commit trailers; short messages.
