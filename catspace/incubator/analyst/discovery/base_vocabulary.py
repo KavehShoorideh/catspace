@@ -128,6 +128,8 @@ PRIMITIVES.update({
     # squares are the evaluator's `reach_route`)
     "mobility": (("sq",), "set", "the squares {0} can legally move to and be safe on by the exchange"),
     "attackable": (("sq", "int"), "num", "whether the other side can attack {0} within {1} of its moves, every landing square safe by the exchange (1 or 0)"),
+    # DECLINED (Kaveh 2026-10-15, "if they don't"): the split of a sacrifice -- if they take, the solver's forced line; if they don't, their best capture elsewhere
+    "declined": (("sq",), "num", "what the side to move can win by the exchange on a square other than {0}: its best capture if it declines to take on {0}"),
     # combinators
     "or": (("set", "set"), "set", "{0} or {1}"),
     "min": (("num", "num"), "num", "the smaller of {0} and {1}"),
@@ -324,6 +326,7 @@ def lean(t) -> str:
         "defenders": lambda: f"(onum (attackerCount p (Color.opposite c)) {x[0]})",
         "see": lambda: f"(onum (seeOf p) {x[0]})", "moves": lambda: f"(oset (movesOf p) {x[0]})",
         "mobility": lambda: f"(oset (mobilityOf p) {x[0]})",
+        "declined": lambda: f"(onum (declinedOf p) {x[0]})",
         "min": lambda: f"(min {x[0]} {x[1]})", "max": lambda: f"(max {x[0]} {x[1]})",
         "diff": lambda: f"(nDiff {x[0]} {x[1]})", "eq": lambda: f"(if {x[0]} = {x[1]} then 1 else 0)",
     }[h]()

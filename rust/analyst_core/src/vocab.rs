@@ -59,7 +59,7 @@ pub enum Term {
     Min(Box<Term>, Box<Term>), Max(Box<Term>, Box<Term>), Diff(Box<Term>, Box<Term>), Eq(Box<Term>, Box<Term>),
     // MOBILITY and ATTACKABLE (Kaveh 2026-10-15, ANALYST_PLAN 40.2): the escape squares of a piece (legal, safe by the exchange); whether the other
     // side can attack a piece's square within k of its moves, every landing square safe by the exchange
-    Mobility(Box<Term>), Attackable(Box<Term>, u32),
+    Mobility(Box<Term>), Attackable(Box<Term>, u32), Declined(Box<Term>),
 }
 
 /// THE PIECES OF A SIDE, RANKED -- the order the names P, P2, P3, ... (O, O2, ...) follow: the strongest kind first (queen,
@@ -203,6 +203,7 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
         ("delta", [a]) => Term::Delta(b(a)), ("gained", [a]) => Term::Gained(b(a)), ("lost", [a]) => Term::Lost(b(a)),
         ("mobility", [a]) => Term::Mobility(b(a)),
         ("attackable", [a, Term::Int(k)]) if *k > 0 => Term::Attackable(b(a), *k as u32),
+        ("declined", [a]) => Term::Declined(b(a)),
         ("min", [a, c]) => Term::Min(b(a), b(c)), ("max", [a, c]) => Term::Max(b(a), b(c)),
         ("diff", [a, c]) => Term::Diff(b(a), b(c)), ("eq", [a, c]) => Term::Eq(b(a), b(c)),
         _ => return None,
@@ -446,6 +447,7 @@ pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
         Term::After(f, t2, a) => after_move(f, t2, a, q, lone),
         Term::Delta(a) => crate::game::back(1).map_or(DELTA_ZERO, |p| (num(a, q, lone) + DELTA_ZERO).saturating_sub(num(a, &p, lone))),
         Term::Attackable(a, k) => sq(a, q, lone).and_then(|x| q.board().color_at(x).map(|c| reach_route(q, !c, x, *k).is_ok() as u32)).unwrap_or(0),
+        Term::Declined(a) => sq(a, q, lone).map_or(0, |x| declined(q, x) as u32),
         Term::Min(a, c) => num(a, q, lone).min(num(c, q, lone)),
         Term::Max(a, c) => num(a, q, lone).max(num(c, q, lone)),
         Term::Diff(a, c) => num(a, q, lone).abs_diff(num(c, q, lone)),
@@ -478,6 +480,13 @@ pub(crate) fn mobility(q: &Chess, x: Square) -> Bitboard {
         if lands_safe(&a, m.to(), c) { out.add(m.to()); }
     }
     out
+}
+
+/// **declined X** (Kaveh 2026-10-15, "if they don't"): what the side to move can win by the exchange on a square OTHER than `x` -- its best capture if it
+/// declines to take on `x`. The split of a sacrifice: if they take, the exact solver's forced line; if they don't, this. Lean `declinedOf`.
+pub(crate) fn declined(q: &Chess, x: Square) -> i64 {
+    let b = q.board();
+    b.by_color(!q.turn()).into_iter().filter(|t| *t != x).map(|t| crate::rules::see(b, t, q.turn())).max().unwrap_or(0)
 }
 
 /// **attackable / REACH** (ANALYST_PLAN 40.2): can side `c` attack square `s` within `k` of its moves (the other side passes), every landing square safe by the
@@ -518,7 +527,7 @@ pub(crate) fn reach_route(q: &Chess, c: Color, s: Square, k: u32) -> Result<Vec<
 pub fn is_num(t: &Term) -> bool {
     matches!(t, Term::Count(_) | Term::Dist(_, _) | Term::Sum(_, _) | Term::FileOf(_) | Term::RankOf(_) | Term::DFile(_, _) | Term::DRank(_, _)
         | Term::Pushes(_) | Term::Attackers(_) | Term::Defenders(_) | Term::See(_) | Term::Forcing(_, _) | Term::MaterialUs | Term::MaterialThem
-        | Term::Halfmoves | Term::Seen | Term::Ago(_, _) | Term::Without(_, _) | Term::If(_, _, _) | Term::After(_, _, _) | Term::Delta(_) | Term::Attackable(_, _) | Term::Min(_, _) | Term::Max(_, _) | Term::Diff(_, _) | Term::Eq(_, _) | Term::Int(_))
+        | Term::Halfmoves | Term::Seen | Term::Ago(_, _) | Term::Without(_, _) | Term::If(_, _, _) | Term::After(_, _, _) | Term::Delta(_) | Term::Attackable(_, _) | Term::Declined(_) | Term::Min(_, _) | Term::Max(_, _) | Term::Diff(_, _) | Term::Eq(_, _) | Term::Int(_))
 }
 
 /// The squares past `y` on the ray from `x` through `y`, nearest first.
@@ -1293,7 +1302,8 @@ pub(crate) fn reads(t: &Term, q: &Chess, lone: Color) -> Bitboard {
             exchange_reads(b, s) | own_king }),
         Term::Without(x, a) => r(x) | set(x, q, lone) | without_pos(x, q, lone).map_or(Bitboard::FULL, |p| reads(a, &p, lone)),
         Term::After(f, t2, a) => r(f) | r(t2) | at(f) | at(t2) | after_pos(f, t2, q, lone).map_or(Bitboard::FULL, |p| reads(a, &p, lone)),
-        Term::Mobility(a) | Term::Attackable(a, _) => r(a) | at(a) | Bitboard::FULL,        // (the escape squares and the routes read most of the board)
+        Term::Mobility(a) | Term::Attackable(a, _) => r(a) | at(a) | Bitboard::FULL,
+        Term::Declined(a) => r(a) | Bitboard::FULL,                                                  // (every exchange but one)        // (the escape squares and the routes read most of the board)
         Term::Count(a) | Term::Not(a) | Term::Delta(a) | Term::Gained(a) | Term::Lost(a) => r(a),
         Term::And(a, c) | Term::Or(a, c) | Term::Sum(a, c) | Term::Min(a, c) | Term::Max(a, c) | Term::Diff(a, c) | Term::Eq(a, c) => r(a) | r(c),
         Term::If(c, a, d) => r(c) | r(a) | r(d),

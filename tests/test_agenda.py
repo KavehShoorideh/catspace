@@ -55,7 +55,7 @@ def test_new_words_have_glosses_and_lean_renderings():
 
 @pytest.mark.skipif(not Path("lean/ideas/.lake").exists(), reason="the Lean project is not built")
 def test_new_words_typecheck_in_lean(tmp_path):
-    terms = ["(count (mobility P))", "(attackable P 2)", "(count (and (mobility O) (not unhit)))"]
+    terms = ["(count (mobility P))", "(attackable P 2)", "(count (and (mobility O) (not unhit)))", "(declined P)"]
     body = "\n".join(f"def t{i} (p : Position) (c : Color) (W L P O : Square) (hist : List Position) : Nat := {V.lean(V.parse(t))}" for i, t in enumerate(terms))
     src = tmp_path / "VocabCheckMobility.lean"
     src.write_text(f"import Ideas.Base.Vocabulary\nset_option linter.unusedVariables false\nopen Chess Ideas.Vocabulary\n{body}\n")
@@ -369,3 +369,15 @@ def test_the_value_of_a_line_reaches_past_three_moves_and_turns_around():
     d = LG.decide("8/8/3Qp1k1/5qp1/8/7P/5PK1/8 b - - 14 94")
     q = next(c for c in d["candidates"] if c["uci"] == "f5d5")
     assert (q["lo"], q["hi"]) == (0, 0)
+
+
+def test_declined_is_the_best_capture_elsewhere_and_a_sacrifice_is_split():
+    # White to move (no mirror in vocab_eval): cxb4 is White's only capture, so declining h8 still allows it (1) and declining b4 leaves nothing (0)
+    fen = "k7/8/8/8/1p6/2P5/8/1N5K w - - 0 1"
+    assert (A.vocab_eval(fen, "(declined h8)"), A.vocab_eval(fen, "(declined b4)")) == (1, 0)
+    # 02XVK: the sacrifice Bxg6 -- if they take, fxg6 Qxg6+ Kh8 Ne4+ wins by force; if they don't, a pawn is kept: both branches positive, the chain plays it
+    d = LG.decide("r2q1rk1/4bp2/p5p1/1ppP3Q/2n5/2N1P3/P4PP1/BBR1K3 w - - 0 21")
+    row = next(c for c in d["candidates"] if c["uci"] == "b1g6")
+    print(f"OBS 02XVK Bxg6: worth {row['lo']}..{row['hi']}, split {row['split']}; decision {d['san']}")
+    assert row["split"] and row["split"][0] >= 1 and row["split"][1] >= 1 and row["lo"] >= 1
+    assert d["move"] == "b1g6"

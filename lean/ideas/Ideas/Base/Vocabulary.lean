@@ -403,6 +403,12 @@ def attackableOf (p : Position) (s : Square) (k : Nat) : Nat :=
   | some o => if attackableIn (Color.opposite o) s k p then 1 else 0
   | none => 0
 
+/-- **declined** (Kaveh 2026-10-15, "if they don't"): what the side to move can win by the exchange on a square OTHER than `s` --
+its best capture if it declines to take on `s`. The split of a sacrifice: if they take, the exact solver's forced line; if they
+don't, this. -/
+def declinedOf (p : Position) (s : Square) : Nat :=
+  (allSquares.filter (fun t => t != s && ownerOf p t == some (Color.opposite p.turn))).foldl (fun acc t => max acc (seeOf p t)) 0
+
 /-- **how far apart** two numbers are. -/
 def nDiff (a b : Nat) : Nat := if a ≤ b then b - a else a - b
 

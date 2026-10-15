@@ -111,6 +111,10 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   the piece on X can legally move to where it is safe by the exchange (the escape squares). `attackable`: 1 when the side that does not own the piece on X can attack
   its square within k of its moves (the other side passing), every landing square safe by the exchange (the plan's REACH; `reach` was taken by the king's walk); the route
   and the blocking squares are the evaluator's `reach_route`. Lean: `mobilityOf`, `attackableOf`.
+- **Declined** (`(declined X)`, 2026-10-15, Kaveh: "add the if-they-don't as a vocabulary piece") — what the side to move can win by the exchange on a
+  square OTHER than X: its best capture if it declines to take on X. The split of a sacrifice in the chain's value: if they take, the exact solver's forced
+  line after the recapture; if they don't, `declined` on the landing square (and the piece itself if it is trapped there). The move is worth the smaller.
+  Lean: `declinedOf`.
 - **Layers** — the order the proposers search the terms in: layer 0 the original words, layer 1 the completed static words,
   layer 2 the expensive ones (the short window's tactics, time).
 
