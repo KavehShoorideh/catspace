@@ -134,19 +134,24 @@ impl ReasoningLedger {
     }
     fn spend(&mut self) -> bool { self.used += 1; self.used <= self.budget }
 
-    /// Can the piece on `r` legally take on `y` after the piece on `a` has taken there (the board `b`, `owner` to move)?
-    fn legal_move(b: &Chess, owner: Color, from: Square, to: Square) -> bool {
-        let mut s = b.clone().into_setup(shakmaty::EnPassantMode::Legal);
-        s.turn = owner;
-        match crate::vocab::relaxed(s) { Some(p) => p.legal_moves().iter().any(|m| m.from() == Some(from) && m.to() == to), None => false }
+    /// Can the piece on `from` legally take on `to` (an enemy piece there) on this BOARD, `owner` to move: a pseudo-legal capture that leaves its own king
+    /// unattacked. Board only -- no Position is built, so a king left in check by the other side (a check just given) cannot make it vanish.
+    fn legal_capture(board: &shakmaty::Board, owner: Color, from: Square, to: Square) -> bool {
+        let Some(p) = board.piece_at(from) else { return false };
+        if p.color != owner || board.by_color(owner).contains(to) { return false; }
+        let reach = if p.role == Role::Pawn { shakmaty::attacks::pawn_attacks(owner, from) & board.by_color(!owner) } else { board.attacks_from(from) };
+        if !reach.contains(to) { return false; }
+        let mut b2 = board.clone();
+        b2.discard_piece_at(from);
+        b2.set_piece_at(to, p);
+        match b2.king_of(owner) { Some(k) => !(b2.attacks_to(k, !owner, b2.occupied()) & b2.by_color(!owner)).any(), None => true }
     }
-    fn board_after_capture(b: &Chess, a: Square, y: Square) -> Option<Chess> {
-        let mut s = b.clone().into_setup(shakmaty::EnPassantMode::Legal);
-        let pc = s.board.piece_at(a)?;
-        s.board.discard_piece_at(a);
-        s.board.set_piece_at(y, pc);
-        s.turn = !pc.color;
-        crate::vocab::relaxed(s)
+    fn board_after_capture(b: &Chess, a: Square, y: Square) -> Option<shakmaty::Board> {
+        let mut bd = b.board().clone();
+        let pc = bd.piece_at(a)?;
+        bd.discard_piece_at(a);
+        bd.set_piece_at(y, pc);
+        Some(bd)
     }
     fn pieces_on(b: &shakmaty::Board, c: Color) -> Vec<Pc> {
         b.by_color(c).into_iter().filter_map(|s| b.piece_at(s).filter(|p| p.role != Role::King).map(|p| (p.role, s))).collect()
@@ -213,7 +218,7 @@ impl ReasoningLedger {
         // the attackers that may legally capture
         let atk: Vec<Pc> = (b.board().attacks_to(y.1, !owner, occ) & b.board().by_color(!owner)).into_iter()
             .filter_map(|s| b.board().piece_at(s).map(|p| (p.role, s)))
-            .filter(|(_, s)| Self::legal_move(&b, !owner, *s, y.1)).collect();
+            .filter(|(_, s)| Self::legal_capture(b.board(), !owner, *s, y.1)).collect();
         if atk.is_empty() {
             f.claim = format!("{}{} is not attacked", pname(y), gl);
             self.stack.pop();
@@ -224,7 +229,7 @@ impl ReasoningLedger {
         let after_cap = Self::board_after_capture(&b, a.1, y.1);
         let defs: Vec<Pc> = (b.board().attacks_to(y.1, owner, occ) & b.board().by_color(owner)).into_iter()
             .filter_map(|s| b.board().piece_at(s).map(|p| (p.role, s)))
-            .filter(|(_, s)| after_cap.as_ref().map_or(false, |p| Self::legal_move(p, owner, *s, y.1))).collect();
+            .filter(|(_, s)| after_cap.as_ref().map_or(false, |p| Self::legal_capture(p, owner, *s, y.1))).collect();
         if let Some(k) = b.board().king_of(owner) { f.reads |= crate::vocab::exchange_reads(b.board(), k) | crate::vocab::exchange_reads(b.board(), a.1); }
         // the capture with check? (no in-between moves for them)
         let mut check = false;
@@ -549,10 +554,44 @@ impl ReasoningLedger {
             }
         }
         if !any { self.say(format!("LATENT THREATS to {who}: no piece shields another along a line.")); }
+        // LINES READ THE OTHER WAY: our slider, our shield, their piece -- moving the shield uncovers an attack
+        let mut opp = false;
+        for sl in self.pieces_of(t).into_iter().filter(|p| matches!(p.0, Role::Queen | Role::Rook | Role::Bishop)) {
+            for y in self.pieces_of(!t) {
+                let btw = shakmaty::attacks::between(sl.1, y.1);
+                let on_line = match sl.0 { Role::Rook => sl.1.file() == y.1.file() || sl.1.rank() == y.1.rank(),
+                    Role::Bishop => shakmaty::attacks::bishop_attacks(sl.1, Bitboard::EMPTY).contains(y.1),
+                    _ => shakmaty::attacks::queen_attacks(sl.1, Bitboard::EMPTY).contains(y.1) };
+                if !on_line || btw.is_empty() { continue; }
+                let between = btw & b.occupied();
+                if between.count() != 1 { continue; }
+                let xs = between.first().unwrap();
+                if b.color_at(xs) != Some(t) { continue; }
+                let Some(xp) = b.piece_at(xs) else { continue };
+                if xp.role == Role::King { continue; }
+                let (xn, yn) = (self.nm(xs), self.nm(y.1));
+                let (w, _) = self.fact(&format!("(without (at {xn}) (see {yn}))"));
+                let grd = b.attacks_to(y.1, !t, b.occupied()) & b.by_color(!t);
+                if !opp { self.say(format!("LATENT OPPORTUNITIES for {who} (our slider, our shield, their piece; the attack appears if the shield leaves):")); opp = true; }
+                self.say(format!("  - if {} leaves, {} hits {} (guarded by [{}]): uncovering it wins {} by the exchange{}", pname((xp.role, xs)), pname(sl), pname(y), self.names(grd), w,
+                    if w > 0 { "" } else { " (nothing yet)" }));
+            }
+        }
         let (iv, pv) = self.lean(depth);
-        let status = if self.sep_flag { "PROVEN" } else { "ESTIMATED" };
+        let mut status = if self.sep_flag { "SEPARATED (static bounds)".to_string() } else { "ESTIMATED".to_string() };
         let first = pv.first().map(|x| x.split('|').next().unwrap_or("").to_string()).unwrap_or_default();
         let san = if first.is_empty() { String::new() } else { crate::plan::san(&self.pos, &first) };
+        // PROVEN only when the exact solver confirms the claim (a win of material or a mate); the static bounds alone are not a proof
+        if iv.0 > 0 && !first.is_empty() {
+            let value = if iv.0 >= MATE / 2 { 100 } else { iv.0.min(20) };
+            let fen = shakmaty::fen::Fen::from_position(self.pos.clone(), shakmaty::EnPassantMode::Legal).to_string();
+            crate::goals::solver_nodes_reset();
+            let res = crate::goals::forced_moves(fen, value, 4, 1_000_000);
+            let ok = res.iter().any(|r| r.0 == first && r.1 == "forced");
+            self.say(format!("SOLVER (confirms, never finds): is {san} a forced gain of {value} within 4? {} -- {} solver nodes.", if ok { "yes" } else { "not proved" }, crate::goals::solver_nodes()));
+            if ok { status = "PROVEN (solver-confirmed)".to_string(); }
+            else if self.sep_flag { status = "SEPARATED (static bounds; the solver did not confirm)".to_string(); }
+        }
         self.say(format!("DECISION: {san} ({first}), worth {}..{} to {who}: {status}. Positions examined: {}; questions asked: {}.", iv.0, iv.1, self.pushes, self.used));
         if self.suppressed.get() > 0 { self.say(format!("({} deeper steps were taken but are not printed; the positions are counted above.)", self.suppressed.get())); }
         let lines = self.tr.borrow().clone();
@@ -586,7 +625,7 @@ const SEARCH_DEPTH: i32 = 8;               // plies of the forcing line, at most
 const NODE_CAP: u32 = 400000;
 const TRACE_SHOW: usize = 3;               // plies of the trace printed in full; deeper steps are counted, not shown
 const LEAN_CAP: u32 = 1500;                // positions one decision may roll forward into in the static-first mode
-const ANSWER_BREADTH: usize = 3;            // the answers to a threat tried, best (most gain, cheapest mover) first
+const ANSWER_BREADTH: usize = 4;            // the answers to a threat tried, best (most gain, cheapest mover) first
 const NODE_PER_CAND: u32 = 20000;            // nodes one candidate's forcing lines may use before the others get theirs                // nodes (positions rolled forward into) per decision
 
 struct Snap { pos: Chess, line_len: usize, ply: u32, fs_len: usize, live: HashMap<u64, usize>, staled: Vec<usize> }
@@ -703,6 +742,10 @@ impl ReasoningLedger {
         crate::vocab::relaxed(st)
     }
 
+    /// THE THREAT SOURCE, pluggable (Kaveh 2026-10-14: the threat is to be learned, not written): the ranked threats to the mover and by the mover. Today it
+    /// is `threat_list` (the attacked pieces by the effective exchange, the mate in one); a learned one replaces this function.
+    fn ranked_threats(&mut self) -> Vec<Threat> { self.threat_list() }
+
     /// Every piece the other side attacks, with what it wins by the effective exchange (the SAFE finding while questions remain, else the exchange
     /// law's see), and the mate threats (a mate in one for either side, as if the other passed): sorted by value, highest first.
     fn threat_list(&mut self) -> Vec<Threat> {
@@ -738,38 +781,90 @@ impl ReasoningLedger {
     /// The answers to the highest-value threat (39.7 repairs from the finding's read set): against the mover's piece -- move it, guard it, block the
     /// line, capture the attacker, or counter with a check / a capture at least as big; against the other side's piece -- execute it (take the
     /// target), or raise it (add an attacker, take a guard). A mate threat: the moves after which it is gone / the mating moves.
-    fn answers(&self, top: &Threat, legal: &[Move]) -> Vec<Move> {
+    /// The legal moves of `owner` in the position (the mover's, or -- the other side passed -- the other's).
+    fn moves_for(&self, owner: Color) -> Vec<Move> {
+        if self.pos.turn() == owner { return self.pos.legal_moves().into_iter().collect(); }
+        let mut st = self.pos.clone().into_setup(shakmaty::EnPassantMode::Legal);
+        st.turn = owner;
+        match crate::vocab::relaxed(st) { Some(p) if p.turn() == owner => p.legal_moves().into_iter().collect(), _ => vec![] }
+    }
+    /// What the exchange takes back from the piece that goes from `f` to `t`, there (`see` read on the board after the move): 0 = it is safe where it lands.
+    fn landing_loss(&mut self, f: Square, t: Square) -> i64 {
+        let (fnm, tnm) = (self.nm(f), self.nm(t));
+        self.fact(&format!("(after {fnm} {tnm} (see {tnm}))")).0
+    }
+    /// SAFE ON THE NEW SQUARE (39.7): the moves among `moves` that really fix the problem on piece `p` -- it moves to a square where it is safe, or the
+    /// attacker is taken, or the line is blocked, or a guard is added -- each only if the mover is itself safe where it lands (or the capture pays for the
+    /// loss) and the exchange on the piece's square (its new square if it moved) is then nothing. No fixer: the piece is TRAPPED, its problem is whole.
+    fn fixers(&mut self, p: Pc, moves: &[Move]) -> Vec<Move> {
+        let owner = self.pos.board().color_at(p.1).unwrap_or(Color::White);
+        let b = self.pos.board().clone();
+        let att = (b.attacks_to(p.1, !owner, b.occupied()) & b.by_color(!owner)).into_iter()
+            .filter_map(|s| b.piece_at(s).map(|q| (q.role, s))).min_by_key(|(r, s)| (val(*r), *s as u32)).map(|x| x.1);
+        let between = att.map(|a| shakmaty::attacks::between(a, p.1)).unwrap_or(Bitboard::EMPTY);
+        let mut out = vec![];
+        for m in moves {
+            let Some(f) = m.from() else { continue };
+            let t = m.to();
+            let mut relevant = f == p.1 || Some(t) == att || between.contains(t);
+            if !relevant && f != p.1 {
+                let mut q = self.pos.clone(); q.play_unchecked(m);
+                relevant = q.board().attacks_from(t).contains(p.1) && q.board().piece_at(t).map_or(false, |x| x.color == owner);
+            }
+            if !relevant { continue; }
+            let loss = self.landing_loss(f, t);
+            if loss > 0 && !m.capture().map_or(false, |r| val(r) >= loss) { continue; }      // it would only be lost there
+            let after = if f == p.1 { loss } else { let (fnm, tnm, pn) = (self.nm(f), self.nm(t), self.nm(p.1)); self.fact(&format!("(after {fnm} {tnm} (see {pn}))")).0 };
+            if after == 0 { out.push(m.clone()); }
+        }
+        out
+    }
+
+    fn answers(&mut self, top: &Threat, legal: &[Move]) -> Vec<Move> {
         let t = self.pos.turn();
         let mut out = vec![];
         if top.mate {
             for m in legal {
                 let mut q = self.pos.clone(); q.play_unchecked(m);
-                let keep = if top.victim == t { Self::mate_in_one(&q) == false || q.is_checkmate() || q.is_check() && false } else { q.is_checkmate() };
-                if top.victim == t { if !Self::mate_in_one(&q) { out.push(m.clone()); } } else if keep { out.push(m.clone()); }
+                if top.victim == t { if !Self::mate_in_one(&q) { out.push(m.clone()); } } else if q.is_checkmate() { out.push(m.clone()); }
             }
             return out;
         }
         let (target, att) = (top.target.1, top.attacker.1);
-        let between = shakmaty::attacks::between(att, target);
-        let b = self.pos.board();
+        let b = self.pos.board().clone();
         let guards_of_target: Bitboard = b.attacks_to(target, !top.victim, b.occupied()) & b.by_color(!top.victim);
+        if top.victim == t {
+            // against us: the safe fixes first (move the piece to a safe square, take the attacker, block, guard), then the counters with tempo
+            let fixes = self.fixers(top.target, legal);
+            let ukeys: HashSet<String> = fixes.iter().map(|m| m.to_uci(CastlingMode::Standard).to_string()).collect();
+            let mut counters = vec![];
+            for m in legal {
+                if ukeys.contains(&m.to_uci(CastlingMode::Standard).to_string()) { continue; }
+                let mut q = self.pos.clone(); q.play_unchecked(m);
+                if q.is_check() || m.capture().map_or(false, |r| val(r) >= top.value) { counters.push(m.clone()); }      // a counter with tempo
+            }
+            // safe fixes first, then the counters; inside each: those that ALSO threaten them first (a check, a capture, an attack on a piece), then by gain
+            let t0 = t;
+            let both = |this: &Self, m: &Move| { let mut q = this.pos.clone(); q.play_unchecked(m); let qb = q.board();
+                q.is_check() || m.is_capture() || qb.attacks_from(m.to()).into_iter().any(|x| qb.piece_at(x).map_or(false, |p| p.color != t0 && p.role != Role::King && val(p.role) > 0)) };
+            let mut fx = out; fx.extend(Vec::<Move>::new());
+            let mut fixes2: Vec<Move> = Vec::new();
+            for m in legal { if ukeys.contains(&m.to_uci(CastlingMode::Standard).to_string()) { fixes2.push(m.clone()); } }
+            fixes2.sort_by_key(|m| (std::cmp::Reverse(both(self, m)), std::cmp::Reverse(gain_of(m))));
+            counters.sort_by_key(|m| (std::cmp::Reverse(both(self, m)), std::cmp::Reverse(gain_of(m))));
+            fx.extend(fixes2); fx.extend(counters);
+            return fx;
+        }
         for m in legal {
             let mut q = self.pos.clone(); q.play_unchecked(m);
             let qb = q.board();
-            let adds_attack_or_guard = m.from() != Some(target) && m.capture().is_none() && qb.attacks_from(m.to()).contains(target) && qb.piece_at(m.to()).map_or(false, |p| p.color != Color::Black) | false;
-            let lands_on_line = m.capture().is_none() && between.contains(m.to());
-            let takes_attacker = m.to() == att;
-            let tempo = q.is_check() || m.capture().map_or(false, |r| val(r) >= top.value);
-            let keep = if top.victim == t {
-                m.from() == Some(target) || lands_on_line || takes_attacker || tempo || (qb.piece_at(m.to()).map_or(false, |p| p.color == t) && qb.attacks_from(m.to()).contains(target) && m.from() != Some(target))
-            } else {
-                m.to() == target || (qb.piece_at(m.to()).map_or(false, |p| p.color == t) && qb.attacks_from(m.to()).contains(target) && m.from() != Some(target)) || guards_of_target.contains(m.to()) || { let _ = adds_attack_or_guard; false }
-            };
+            // execute it (take the target), raise it (add an attacker), take a guard
+            let keep = m.to() == target || (qb.piece_at(m.to()).map_or(false, |p| p.color == t) && qb.attacks_from(m.to()).contains(target) && m.from() != Some(target)) || (guards_of_target.contains(m.to()) && m.capture().is_some());
+            let _ = att;
             if keep { out.push(m.clone()); }
         }
         out
     }
-
 
     /// BRANCH (b), no threat to us: create a threat to them, starting from the highest-value target -- their king (checks), then queen, rooks,
     /// minor pieces, pawns; for a target: execute (take it), add an attacker, take a guard, attack with tempo. The first target with any such
@@ -782,6 +877,18 @@ impl ReasoningLedger {
         targets.sort_by_key(|p| (std::cmp::Reverse(val(p.0)), p.1 as u32));
         if let Some(o) = only { targets = vec![o]; }
         let mut groups = vec![];
+        // LINES READ BOTH WAYS: one of our pieces shielding another of ours' line to one of theirs -- moving the shield off the line uncovers the attack
+        let mut shields: HashMap<Square, Vec<(Square, Square)>> = HashMap::new();          // shield square -> [(their piece, our slider)]
+        for sl in self.pieces_of(t).into_iter().filter(|p| matches!(p.0, Role::Queen | Role::Rook | Role::Bishop)) {
+            for y in self.pieces_of(!t).into_iter().map(|p| p.1).chain(b.king_of(!t)) {
+                let on_line = match sl.0 { Role::Rook => sl.1.file() == y.file() || sl.1.rank() == y.rank(),
+                    Role::Bishop => shakmaty::attacks::bishop_attacks(sl.1, Bitboard::EMPTY).contains(y),
+                    _ => shakmaty::attacks::queen_attacks(sl.1, Bitboard::EMPTY).contains(y) };
+                if !on_line { continue; }
+                let btw = shakmaty::attacks::between(sl.1, y) & b.occupied();
+                if btw.count() == 1 { let x = btw.first().unwrap(); if b.color_at(x) == Some(t) { shields.entry(x).or_default().push((y, sl.1)); } }
+            }
+        }
         for tg in targets {
             let guards: Bitboard = b.attacks_to(tg.1, !t, b.occupied()) & b.by_color(!t);
             let mut out = vec![];
@@ -794,7 +901,8 @@ impl ReasoningLedger {
                     || (m.capture().is_none() && qb.piece_at(m.to()).map_or(false, |p| p.color == t) && qb.attacks_from(m.to()).contains(tg.1))   // add an attacker
                     || (guards.contains(m.to()) && m.capture().is_some())       // remove a guard
                     || (check && qb.attacks_from(m.to()).contains(tg.1))        // attack it with tempo
-                };
+                    || m.from().map_or(false, |f| shields.get(&f).map_or(false, |v| v.iter().any(|(y, sl)| *y == tg.1 && !shakmaty::attacks::between(*sl, *y).contains(m.to()) && m.to() != *sl)))   // uncover an attack
+                } || (tg.0 == Role::King && m.from().map_or(false, |f| shields.get(&f).map_or(false, |v| v.iter().any(|(y, sl)| *y == tg.1 && !shakmaty::attacks::between(*sl, *y).contains(m.to())))));
                 if hit { out.push(m.clone()); }
             }
             groups.push((tg, out));
@@ -808,20 +916,32 @@ impl ReasoningLedger {
     fn stand_pat(&mut self) -> (i64, i64) {
         let t = self.pos.turn();
         let mine: Vec<Pc> = self.pieces_of(t).into_iter().filter(|(_, s)| attacked(self.pos.board(), *s, !t)).collect();
-        let mut costs: Vec<(i64, i64)> = vec![];
+        let mut costs: Vec<(i64, i64, bool)> = vec![];                // (lo, hi, fixable by a move that is safe where it lands)
+        let moves = if self.lean_mode && !mine.is_empty() { self.moves_for(t) } else { vec![] };
         for p in mine {
-            if self.deep && self.used < self.budget {
+            let (lo, hi) = if self.deep && self.used < self.budget {
                 let id = self.ask_safe(p, None);
-                costs.push((self.fs[id].lo, self.fs[id].hi));
+                (self.fs[id].lo, self.fs[id].hi)
             } else {
                 if self.deep { self.budget_hit = true; }
                 let (v, _) = self.fact(&format!("(see {})", self.nm(p.1)));
-                costs.push((v, val(p.0).max(v)));
-            }
+                (v, val(p.0).max(v))
+            };
+            let fixable = if self.lean_mode && hi > 0 { !self.fixers(p, &moves).is_empty() } else { true };
+            costs.push((lo, hi, fixable));
         }
-        costs.sort_by_key(|c| std::cmp::Reverse(c.0));
-        let max_hi = costs.iter().map(|c| c.1).max().unwrap_or(0);
-        let second_lo = if costs.len() >= 2 { costs[1].0 } else { 0 };
+        // the mover fixes ONE problem; the rest is lost. An unfixable (trapped) piece is lost in full.
+        let (pess, opt) = if self.lean_mode {
+            let big_hi = costs.iter().filter(|c| c.2).enumerate().max_by_key(|(_, c)| c.1).map(|(i, _)| i);
+            let big_lo = costs.iter().filter(|c| c.2).enumerate().max_by_key(|(_, c)| c.0).map(|(i, _)| i);
+            let fx: Vec<&(i64, i64, bool)> = costs.iter().filter(|c| c.2).collect();
+            let pess = costs.iter().filter(|c| !c.2).map(|c| c.1).chain(fx.iter().enumerate().filter(|(i, _)| Some(*i) != big_hi).map(|(_, c)| c.1)).max().unwrap_or(0);
+            let opt = costs.iter().filter(|c| !c.2).map(|c| c.0).chain(fx.iter().enumerate().filter(|(i, _)| Some(*i) != big_lo).map(|(_, c)| c.0)).max().unwrap_or(0);
+            (pess, opt)
+        } else {
+            costs.sort_by_key(|c| std::cmp::Reverse(c.0));
+            (costs.iter().map(|c| c.1).max().unwrap_or(0), if costs.len() >= 2 { costs[1].0 } else { 0 })
+        };
         if self.lean_mode {
             // the mover may instead EXECUTE an open threat of its own (the other side's piece it wins), then pay for its worst problem
             let theirs: Vec<Pc> = self.pieces_of(!t).into_iter().filter(|(_, s)| attacked(self.pos.board(), *s, t)).collect();
@@ -831,9 +951,9 @@ impl ReasoningLedger {
                     else { let (v, _) = self.fact(&format!("(see {})", self.nm(p.1))); (v, val(p.0).max(v)) };
                 v_lo = v_lo.max(lo_p); v_hi = v_hi.max(hi_p);
             }
-            return ((-max_hi).max(v_lo - max_hi), (-second_lo).max(v_hi));
+            return ((-pess).max(v_lo - pess), (-opt).max(v_hi));
         }
-        (-max_hi, -second_lo)
+        (-pess, -opt)
     }
 
     /// KEEP ASKING UNTIL THE COST IS KNOWN: the value for the side to move, along the FORCING lines only (a check, a capture, a promotion --
@@ -855,7 +975,7 @@ impl ReasoningLedger {
         }
         let mut label = String::from("reply to check");
         let mut cands: Vec<Move> = if in_check { legal } else if self.threats_mode {
-            let tl = self.threat_list();
+            let tl = self.ranked_threats();
             let t = self.pos.turn();
             if let Some(top) = tl.iter().find(|th| th.victim == t && th.value > 0).cloned() {
                 // (a) the highest-value threat to us: its answers, those that also threaten them first
@@ -912,13 +1032,12 @@ impl ReasoningLedger {
         if self.lean_mode {
             // the check takes the tempo: a threat against the side in check that no reply addresses (moves the piece, takes the attacker, blocks) is lost
             let t = self.pos.turn();
-            let tl = self.threat_list();
+            let tl = self.ranked_threats();
             let (mut t_max, mut t_unaddr) = (0i64, 0i64);
-            for th in tl.iter().filter(|th| th.victim == t && th.value > 0 && !th.mate) {
+            for th in tl.iter().filter(|th| th.victim == t && th.value > 0 && !th.mate).cloned().collect::<Vec<_>>() {
                 t_max = t_max.max(th.value);
-                let between = shakmaty::attacks::between(th.attacker.1, th.target.1);
-                let addressed = replies.iter().any(|r| r.from() == Some(th.target.1) || r.to() == th.attacker.1 || between.contains(r.to()));
-                if !addressed { t_unaddr = t_unaddr.max(th.value); }
+                // addressed only by a reply that is itself safe where it lands (the rook that "escapes" into a capture is not saved)
+                if self.fixers(th.target, &replies).is_empty() { t_unaddr = t_unaddr.max(th.value); }
             }
             lo -= t_max; hi -= t_unaddr;
         }
@@ -982,10 +1101,21 @@ impl ReasoningLedger {
             self.say(format!("{who} is in check: every legal reply is an answer."));
             groups.push(("reply to check".into(), legal));
         } else {
-            let tl = self.threat_list();
+            let tl = self.ranked_threats();
             let ours: Vec<&Threat> = tl.iter().filter(|th| th.victim == t && th.value > 0).collect();
             if ours.is_empty() { self.say(format!("THREATS TO {who}: none above the margin.")); }
-            else { self.say(format!("THREATS TO {who}, highest first:")); for th in &ours { self.say(format!("  - {}", self.describe_threat(th))); } }
+            else {
+                self.say(format!("THREATS TO {who}, highest first:"));
+                let ours_c: Vec<Threat> = ours.iter().map(|th| (*th).clone()).collect();
+                let mv = self.moves_for(t);
+                for th in &ours_c {
+                    let tail = if th.mate { String::new() } else {
+                        let fx = self.fixers(th.target, &mv);
+                        if fx.is_empty() { " -- TRAPPED: no move saves it (no safe square, no safe capture of the attacker, no safe block or guard)".to_string() }
+                        else { format!(" -- saved by: {}", fx.iter().take(4).map(|m| self.san_of(m)).collect::<Vec<_>>().join(", ")) } };
+                    self.say(format!("  - {}{}", self.describe_threat(th), tail));
+                }
+            }
             if let Some(top) = tl.iter().find(|th| th.victim == t && th.value > 0).cloned() {
                 label = format!("a: {}", if top.mate { "mate threat".to_string() } else { format!("threat {} on {}", top.value, pname(top.target)) });
                 self.say(format!("BRANCH (a): answer the biggest threat, {}.", if top.mate { "a mate".to_string() } else { format!("{} ({})", pname(top.target), top.value) }));
@@ -1004,14 +1134,19 @@ impl ReasoningLedger {
         if groups.iter().all(|g| g.1.is_empty()) { self.say("no answer / no attacking move found: the position is quiet; its static value stands.".into()); self.sep_flag = true; return (sp, vec![]); }
         struct C { m: Move, g: i64, iv: (i64, i64), pv: Vec<String>, open: bool, san: String, label: String }
         let mut cs: Vec<C> = vec![];
+        let mut valued: HashSet<String> = HashSet::new();
         let sp_lo = if in_check { i64::MIN / 4 } else { sp.0 };
         for (glabel, mut cands) in groups {
             if cands.is_empty() { self.say(format!("{glabel}: no way to execute, raise or create a threat against it -- abandoned, the next target.")); continue; }
-            cands.sort_by_key(|m| (std::cmp::Reverse(gain_of(m)), val(m.role())));
+            if top_us.is_none() { cands.sort_by_key(|m| (std::cmp::Reverse(gain_of(m)), val(m.role()))); }
+            // a move already valued (under another target) is not pushed again
+            cands.retain(|m| !valued.contains(&m.to_uci(CastlingMode::Standard).to_string()));
+            if cands.is_empty() { self.say(format!("{glabel}: its moves were already weighed under another target.")); continue; }
             if !in_check && cands.len() > ANSWER_BREADTH { cands.truncate(ANSWER_BREADTH); }
             self.say(format!("{} -- {} move(s) to weigh: {}", glabel, cands.len(), cands.iter().map(|m| self.san_of(m)).collect::<Vec<_>>().join(", ")));
             let mut group_best = i64::MIN;
             for m in cands {
+                valued.insert(m.to_uci(CastlingMode::Standard).to_string());
                 let g = gain_of(&m);
                 let san = self.san_of(&m);
                 let kind = top_us.as_ref().map(|th| self.answer_kind(th, &m)).unwrap_or("");

@@ -230,7 +230,17 @@ pub(crate) fn without_pos(x: &Term, q: &Chess, lone: Color) -> Option<Chess> {
 pub(crate) fn relaxed(mut setup: shakmaty::Setup) -> Option<Chess> {
     setup.ep_square = None;
     setup.castling_rights = Bitboard::EMPTY;
-    Chess::from_setup(setup, shakmaty::CastlingMode::Standard).or_else(|e| e.ignore_impossible_check()).ok()
+    let build = |st: shakmaty::Setup| Chess::from_setup(st, shakmaty::CastlingMode::Standard).or_else(|e| e.ignore_impossible_check());
+    match build(setup.clone()) {
+        Ok(p) => Some(p),
+        Err(e) if e.kinds().contains(shakmaty::PositionErrorKinds::OPPOSITE_CHECK) => {
+            // THE SIDE NOT TO MOVE IS IN CHECK (shakmaty cannot ignore this): the board is kept and the checked side is made the mover -- every
+            // board word (attacks, see, between ...) reads the same; only the words that ask whose turn it is (moves, forcing) read the other side
+            setup.turn = !setup.turn;
+            build(setup).ok()
+        }
+        Err(_) => None,
+    }
 }
 
 /// **delta T**: signed, carried on an offset (numbers are unsigned): T now - T one ply ago + DELTA_ZERO; DELTA_ZERO when there is no

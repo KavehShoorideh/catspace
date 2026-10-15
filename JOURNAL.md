@@ -30754,3 +30754,16 @@ THE REASONING LEDGER, PHASE 3b: THE THREAT-DRIVEN LINE AND THE TRACE (2026-10-14
   151 positions examined at budget 1000; the intermezzo -- no threat to White, an open threat of ours on Ra8 executed: Qxa8, PROVEN, 3 positions; the queen on e6 --
   ...Qg5+ with the discovered rook found, 58 positions, ESTIMATED -1..5. Not yet: the line stays shallow where the bounds separate (Qxa8 is not followed to cxb5);
   the first target with an attacking move is not always the useful one; budget exhaustion degrades the first look to the exchange law.
+
+THE LEDGER'S FAULTS FROM THE THREE TRACES, FIXED (2026-10-14 19:57 PDT; Kaveh: the threat is to be LEARNED, not written -- the hand-written threats-in-one generator dropped).
+  D2 (a class): shakmaty cannot build a position with the side NOT to move in check, and the relaxed board returned None, which became "not attacked" / 0 -- an
+  attacker vanished whenever a check had just been given (Rb5 after Qxa8+). Fixed twice: captures are read on the board (a pseudo-legal capture that leaves the
+  capturer's king safe), and vocab::relaxed makes the checked side the mover when the position would otherwise be refused (board words read the same; only the words
+  that ask whose turn it is, moves and forcing, read the other side). C2: a piece is saved only where it is safe (the mover safe where it lands, the exchange on its
+  square nothing afterwards); no such move = TRAPPED, its problem counts in full (stand-pat, check replies, the answers to a threat). C3: lines are read both ways
+  (our slider, our shield, their piece: listed as an opportunity and a candidate under the uncovered target). C4: the order only -- (a) answers to the biggest threat to
+  the mover, safe fixes first, then the counters with tempo, those that also threaten them first; (b) the threats we make; the source is one function
+  (ranked_threats, today's threat_list) so a learned one can replace it. C5: PROVEN only when the exact solver confirms; otherwise SEPARATED (static bounds) or ESTIMATED.
+  Traces rerun (data/derived/ledger_trace_{a,b,c}.txt; the earlier ones kept as *_v1.txt): (a) Ra4 SEPARATED, 31 positions, the b3 kick still unseen (a threat-in-one is
+  not a threat the current list knows); (b) Qxa8 worth 9..9 PROVEN (solver-confirmed), 4 positions; (c) Qg5 worth 3..3 PROVEN (solver-confirmed), 1 position, the
+  uncovered attack Re8 on Qe6 listed (wins 4).

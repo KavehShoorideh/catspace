@@ -81,7 +81,34 @@ def test_trace_reads_in_plain_chess_order():
     t = L.new("r5k1/2p1q2p/2Qp2p1/1rpPpp2/2P1P3/P4P2/6PP/4R1K1 w - - 0 27", 1000).trace(4)
     text = "\n".join(t["trace"])
     assert "THREATS TO White: none above the margin." in text and "BRANCH (b)" in text and "an open threat of ours on Ra8" in text
-    assert t["move"] == "c6a8" and t["status"] == "PROVEN" and t["positions"] <= 5 and "DECISION: Qxa8" in text
+    assert t["move"] == "c6a8" and t["status"] == "PROVEN (solver-confirmed)" and t["positions"] <= 6 and "DECISION: Qxa8" in text
     t = L.new(FEN, 1000).trace(4)                              # Kaveh's position: the latent threat comes first, the pin of the e-pawn in words
     assert "LATENT THREATS to Black" in t["trace"][1] and any("e5 is pinned to Bd6" in l for l in t["trace"][:8])
     assert t["positions"] <= 200 and any(l.startswith("DECISION") for l in t["trace"][-3:])
+
+
+def test_d2_the_attacker_is_seen_when_the_mover_is_in_check():
+    # Black to move IN CHECK (Qxa8+): the c4 pawn still attacks Rb5 -- the position with the other side to move is not one shakmaty will build,
+    # so the capture is read on the board (a pseudo-legal capture that leaves the capturer's king safe)
+    rep = A.Ledger("Q5k1/2p1q2p/3p2p1/1rpPpp2/2P1P3/P4P2/6PP/4R1K1 b - - 0 27", 200).run()
+    assert any(f["type"] == "SAFE" and f["claim"].startswith("Rb5 loses 5") and "c4 takes first" in f["claim"] for f in rep["findings"])
+    # the relaxed board survives the other side being in check (the checked side becomes the mover; board words read the same)
+    v, reads = A.vocab_reads("Q5k1/2p1q2p/3p2p1/1rpPpp2/2P1P3/P4P2/6PP/4R1K1 b - - 0 27", "(without (at b4) (count (and (attacks a1) (at g1))))")   # (squares named from the mover's side: Black)
+    assert v == 1
+
+
+def test_c2_a_piece_is_saved_only_where_it_is_safe_and_a_trapped_piece_counts_in_full():
+    # after b3 the rook on c4 has no safe square and nothing saves it
+    t = L.new("5k1r/1p1n1p2/p1qb1p1p/4p3/2rP2PP/1PPQ1PB1/P3NK2/1R5R b - - 0 1", 1000).trace(2)
+    text = "\n".join(t["trace"])
+    assert "Rc4 attacked by [b3, Qd3]" in text and "TRAPPED" in text
+    # a rook that can step to a safe square is "saved by" that step
+    t2 = L.new("4k3/8/8/8/3r4/8/2P5/4K3 b - - 0 1", 1000).trace(1)
+    assert "THREATS TO Black, highest first" not in "\n".join(t2["trace"]) or "TRAPPED" not in "\n".join(t2["trace"])
+
+
+def test_c3_lines_are_read_both_ways_the_discovered_attack_is_listed():
+    t = L.new("1r2r3/1kp1q2p/4Q3/p2P4/1P1P4/P1p2P2/2P3PP/2KR3R b - - 0 30", 1000).trace(2)
+    text = "\n".join(t["trace"])
+    assert "LATENT OPPORTUNITIES" in text and "if Qe7 leaves, Re8 hits Qe6" in text and "wins 4" in text    # our slider, our shield, their piece
+    assert t["move"] == "e7g5" and t["status"].startswith("PROVEN")
