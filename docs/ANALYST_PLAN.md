@@ -1106,3 +1106,123 @@ relocate) of catspace/incubator/analyst/whatif_proposer.py (Kaveh 2026-09-28: th
 WHEN: after phase 3's measurement -- its miss classification ("a candidate never generated", quiet preparatory moves)
 says how many misses this would fix; test: those misses re-run with goal generation on, the repair move generated and
 its chain printed.
+
+## 40. The event loop: events, conditions, actions; chains as data; the proposer against puzzles (Kaveh 2026-10-15)
+
+Kaveh, after the move-30 comparison (his reading beat the ledger's: trades when behind, the two-move deflection threat, the
+Qc4 discovery, the nearly trapped but unattackable rook): "how do we write the machinery so that the machinery gets this ...
+step one, can we get any reasoning going? step two, can we learn the reasoning itself?" Then: "an event condition action
+framework, where every move a bunch of events are sent out, conditions are matched, changes are made to some latent state
+... lemmas or tactics invalidated or made available ... conditions for things that make something possible or prevent
+something ... a whole vocabulary ... a proposer to pick the shape of the events and the conditions ... make the surprise go
+away ... puzzles are the way to go." And on 2026-10-14: "I don't want you to add a hardwired exception" -- a higher frame
+that needs a guard gone proposes the deflection; nothing is special-cased.
+Literature (searched 2026-10-15): the blackboard / Soar lineage, not plain ECA. Events trigger the precondition checks
+(polling every rule does not scale: NASA blackboard control); every derived fact carries its justification and retracts
+with its premises (a JTMS; our read-set retraction of §39.5 is this); the AGENDA is its own layer, explainable and
+learnable (BB1 meta-control; Soar-RL tunes numeric preferences on operators from reward); an IMPASSE opens a subgoal whose
+result is compiled into one rule (Soar chunking = explanation-based learning). Chess precedent: PARADISE (Wilkins 1979;
+200 productions post concepts, plans guide tens-to-hundreds of nodes, 19-ply combinations) -- its hand-written rules never
+covered quiet positions, so it could not play a game: the reason step two matters. Plain ECA fires everything that matches,
+no agenda, no stake: the noise of "f7 guards Qg6".
+
+### 40.1 The loop (replaces the fixed script LATENT -> THREATS -> BRANCH a/b -> pokes -> deflection groups -> B*)
+
+The ledger of §39 keeps its objects (facts with read sets, findings with cites and premises, canonical keys, listeners,
+STALE). What changes is CONTROL: one loop over an agenda, nothing else decides what is asked next.
+- EVENT: a change the loop reacts to. Kinds: `push(move)` (a move arrives: findings whose read set it touches go STALE, their
+  listeners wake); `found(finding)` (a finding settled or changed status: its listeners wake); `reason(finding, holder)` (an
+  answer that is HELD by something -- a guard, a blocker, a tempo, unreachability -- posts the holder as a thing to ask
+  about); `impasse(question)` (no lemma answers it: a chain is opened). Every event is a record: (kind, ply, subject, payload).
+- CONDITION: a question's trigger = a pattern over findings and the board in the vocabulary (the premise key of §39.6). A
+  question is OPENED only by an event that matches its condition; never by a sweep.
+- ACTION: asking the question (a fact read, a lemma lookup, or a chain -- see 40.2) and posting its answer as a finding; a
+  finding may post further events. Actions never choose moves; moves are read off the findings at the end (40.4).
+- AGENDA: the open questions ordered by STAKE = the value they could change, inherited down a chain ("can Re2 be deflected?"
+  is worth the 3 of Bb2 it would unlock). A question is opened only if its stake beats the best value already known for its
+  side (the alpha-beta: a settled stake closes the chain -- "the queen is lost, -6" ends the pin chain; "nothing can reach Rh4"
+  ends the trapped-rook chain and leaves the rook's mobility as a fact). Ties: the cheaper question (a lookup before a chain).
+- BUDGET: per chain, set by its stake (a stake of 1 gets a short chain); the decision's total as now (§39.2).
+- BOTH SIDES in one loop: a reason on THEIR finding opens OUR question (deflect their guard = our attack); on OURS, theirs
+  (= their threat). Same code, the actor named in the key.
+
+### 40.2 Chains as data (step two needs step one to produce something learnable)
+
+A CHAIN is a sequence of records (question, answer, reason, stake, cost) in the frame language, stored on the ledger and
+printed as the trace. Reasoning is data, never Rust control flow: the choice of the next question is a POLICY that reads the
+agenda and returns one question; the first policy is "highest stake, then cheapest" (fixed, 40.1); later policies are
+learned (40.5) and swap in without touching the kernel.
+- Question kinds (the existing menus, now reachable from any reason): SAFE (exchange on a square; reason = the guards or the
+  tempo), JOB / RECAP (a guard's other duties), BLOCKS / PIN (a line), FIXERS (the ways out), plus two NEW words, each with a
+  Lean def + gloss + Rust mirror (vocabulary rule: tell Kaveh in one line, then add): REACH (can a piece of side c attack
+  square s within k moves, each landing square safe by the exchange -- the answer names the route or "unreachable", reason =
+  the squares that block it) and MOBILITY (the escape squares of a piece that are safe by the exchange). Kaveh's "the rook is
+  almost trapped but cannot be attacked" = MOBILITY 1 and REACH unreachable, two lookups.
+- A reason is a first-class edge: finding -> holder (a piece, a square, a line, a tempo). The holder is a THING with a stake;
+  the event `reason` carries it. That is "every finding is a goal generator" (§39.7) made the only way a question opens.
+- Two-move threats fall out: SAFE(Bb2) held by Re2 -> REMOVE/DEFLECT(Re2) for Black, stake 3 -> FIXERS over Black's moves that
+  attack, capture, or pin Re2 -> ...Rfe8 -> re-ask SAFE(Bb2) after it -> 3 -> a CONDITIONAL threat "(if Rfe8) Qb1+ wins 3" with
+  its line, stake 3, posted to the agenda of the side to move as a constraint (40.4).
+- Nxc6 (the missed fork, 2026-10-14): size_kick's play-out replaced by the chain: SAFE(c6) nets 1, reason "nothing retakes";
+  the capture's landing posts `reason(Nc6 attacks Rb8, Qd8)` -> SAFE(Rb8) and SAFE(Qd8) with the knight present -> one of
+  them lost -> the chain's value 1 + 5, settled; nothing else of Black's answers both (FIXERS of two things at once = the
+  double-threat word already in threat.rs).
+
+### 40.3 Lemmas (chunking): a settled chain whose shape recurs becomes one lookup
+
+When a chain settles, its shape -- the question kinds and the relations among the pieces it touched (guard-of, attacks,
+on-line, kind, side), with the squares abstracted -- and its value are recorded as a CANDIDATE LEMMA (canonical form by the
+mirror / translation rule of §39.6, kept with its evidence: the positions it settled on). A candidate that settles the same
+way on every later chain of that shape (counted; threshold a Kaveh knob, default 20, never below 5) is promoted: thereafter
+the question is answered by the lemma in one step, and the chain is run only when the stake is large (the stake knob) or on
+the held-out check. A lemma whose answer is ever contradicted by a chain is demoted and the contradiction kept (a surprise).
+Lean: a promoted lemma is a conjecture until proved; status shown. This is Soar's chunk and Minton's EBL with the utility
+problem handled by the count and the stake knob.
+
+### 40.4 From findings to the move
+
+No branch (a) / (b). At the end of the loop (budget spent or agenda empty above the margin) the findings against US are
+CONSTRAINTS on our move (each with its stake: "Qg4 must leave or be traded, 9 as a stake, 0 as a loss at even material";
+"Re2 must not be deflectable, 3"; "the c-file must not open with the queen on it, 9"); the findings FOR us are OPPORTUNITIES
+(each a line with its stake). Candidates = moves that meet the most expensive constraints or cash the most expensive
+opportunity; each candidate is CHECKED by re-running the loop after it with the budget of its stake (the events of the push
+do the work: only touched findings are re-asked). Nothing threatened and nothing to win: the opening default (Kaveh
+2026-10-15: develop, take the centre, castle, then set up tactics) -- the existing `opening` tie-break rule (commit 1e2bc782)
+followed by the move whose push opens the most OPPORTUNITIES for us at the smallest stake against us (steering toward
+tactics). The value of a trade is not a rule: the transition table of §33 (trades cost the side far behind) is a stake
+source read from data/derived/transitions.json; passed pawns likewise from the pawn words -- stakes, never moves.
+
+### 40.5 The proposer: learning the shapes against puzzles (step two)
+
+The objective is SURPRISE AGAINST PUZZLES, not Stockfish parity (Kaveh: "we can't really expect to match Stockfish ...
+puzzles are the way to go"): a Lichess puzzle gives who wins what, how (the line) and when (its length); the loop is run on
+the puzzle position; a surprise is (a) the puzzle's move not among our candidates, (b) its value not among our findings, or
+(c) our chain longer than the puzzle's line by more than one link. Each surprise is classified by the loop's own records:
+which event was missing (no condition matched), which question was never opened (stake too low / budget), which answer was
+wrong (a lemma to demote, a word to check), which shape has no lemma (a chain run from scratch).
+The PROPOSER (ledger_puzzles.py gains `--propose`): from the surprises of a dev batch, propose (1) new CONDITIONS: a premise
+key pattern (from the vocabulary, compositions allowed as in watch.py's lift terms) that would have opened the missing
+question -- ranked by how many surprises it fixes against how many questions it would open on the non-surprises (the cost);
+(2) new LEMMA shapes: chains that recur across the solved puzzles (40.3 at a lower threshold on puzzles, each still checked);
+(3) STAKE / PRIORITY adjustments: a question kind whose opening would have fixed surprises gets a higher base stake
+(Soar-RL style numeric preference), learned by the same strict pairwise ranking as watch.py's frames over (opened, fixed)
+pairs. Every proposal is checked on the fresh sample before it is kept; what is kept is printed as a lemma count and its
+ablation (Kaveh's metric), never a solve rate alone.
+
+### 40.6 Phases (each a short run first; numbers only from OBS lines; no batch before 2-3 positions have readable chains)
+
+1. THE KERNEL (reasoning.rs, a new `agenda` module beside it; Python entry `python -m catspace.incubator.analyst.discovery.ledger
+   chain FEN`): events, conditions, the agenda by stake, chains as records, REACH and MOBILITY words (Lean def + gloss +
+   Rust), the trace printed as the chain. Acceptance: on move 30 (2r2rk1/5pp1/1p4qp/p1b5/6QR/6P1/1B2RP2/5K2 w - - 6 30) the chain
+   reads like Kaveh's paragraph: the queen trade (stake from the transition table), Bb2 held by Re2 -> Rfe8 deflects -> the
+   two-move threat, Rh4 MOBILITY 1 and unreachable, Qc4 rejected by the c-file reason; on the Nxc6 position
+   (1r1qk2r/p3bpp1/2p1p2p/2p1N1P1/4PPn1/2NPp3/PPP1Q1P1/1R3RK1 w k - 1 16, Black passed) the fork chain settles at 6; the three
+   trace positions and the 15.Ne5 test keep their answers. Old script behind --loop script for the comparison only.
+2. THE MOVE (40.4) and the puzzle harness on the new loop: ledger_puzzles --set dev --n 60 with --chains 5; the dev number
+   beside the old script's (phase 3 of §39: dev 63%) as a directional guide; the miss classes printed.
+3. LEMMAS (40.3) on the dev set: the candidates found, how many promoted, the chain length before / after (OBS).
+4. THE PROPOSER (40.5): one round on dev, checked on fresh; what it proposed, what survived, the ablation per kept item.
+5. Then the game walk (the step-through page) on the new loop, and the opening default.
+Rules for the builder: AGENTS.md; no new top-level package; Lean for every new word; every number from a printed OBS line;
+short messages; no commit trailers; a step-by-step chain on 2-3 positions before any batch; a vocabulary gap is reported to
+Kaveh in one line and then added; nothing chess-specific in the loop (the words carry the chess).
