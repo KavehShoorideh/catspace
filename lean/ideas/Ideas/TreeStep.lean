@@ -130,9 +130,10 @@ theorem least_pos_nonempty (p : Position) (f : Position → Nat) (h : leastOver 
 
 /-- When the side to move has a legal move from `x` to `y` (a promotion only to a queen), `after` reads its body on the position the
 kernel's `applyMove` produces for such a move: the mined premise's words after a legal move are words about the real game. -/
-theorem afterMove_legal (p : Position) (x y : Square) (f : Position → Nat) (m : Move) (hm : m ∈ legalMoves p)
+theorem afterMove_legal (p : Position) (x y : Square) (m : Move) (hm : m ∈ legalMoves p)
     (hx : m.source = x) (hy : m.destination = y) (hk : queenOnly m = true) :
-    ∃ m' ∈ legalMoves p, m'.source = x ∧ m'.destination = y ∧ afterMove p (some x) (some y) f = f (applyMove p m') := by
+    ∃ m' ∈ legalMoves p, m'.source = x ∧ m'.destination = y ∧
+      ∀ f : Position → Nat, afterMove p (some x) (some y) f = f (applyMove p m') := by
   have hpred : (fun m => m.source == x && m.destination == y && queenOnly m) m = true := by
     simp only [Bool.and_eq_true, beq_iff_eq]
     exact ⟨⟨hx, hy⟩, hk⟩
@@ -150,7 +151,7 @@ theorem afterMove_legal (p : Position) (x y : Square) (f : Position → Nat) (m 
     have hmem : m' ∈ legalMoves p := List.mem_of_find?_eq_some hres'
     have hp := List.find?_some hres'
     simp only [Bool.and_eq_true, beq_iff_eq] at hp
-    refine ⟨m', hmem, hp.1.1, hp.1.2, ?_⟩
+    refine ⟨m', hmem, hp.1.1, hp.1.2, fun f => ?_⟩
     simp only [afterMove, hres]
 
 /-- `moves` names exactly the legal moves of the side to move, by source and destination, when the piece is its own. -/
@@ -163,5 +164,97 @@ theorem movesOf_legal (p : Position) (x y : Square) (q : Piece) (hx : p.board x 
   simp only [List.any_eq_true, Bool.and_eq_true, beq_iff_eq] at h
   obtain ⟨m, hm, hs, hd⟩ := h
   exact ⟨m, hm, hs, hd⟩
+
+/-- A legal move of a piece that is not a pawn is never a promotion. -/
+theorem queenOnly_of_not_pawn (p : Position) (m : Move) (hm : m ∈ legalMoves p) (q : Piece) (hx : p.board m.source = some q)
+    (hq : q.kind ≠ PieceKind.pawn) : queenOnly m = true := by
+  have hl : legalMove p m := by
+    unfold legalMoves at hm
+    have h2 := (List.mem_filter.mp hm).2
+    exact @of_decide_eq_true _ (legalMoveDecidable p m) h2
+  cases m with
+  | promotion s t k =>
+    exfalso
+    have hps : pseudoLegalPromotionB p (.promotion s t k) = true := hl.1
+    simp only [Move.source] at hx
+    simp only [pseudoLegalPromotionB, hx, Bool.and_eq_true, beq_iff_eq] at hps
+    obtain ⟨⟨⟨_, hpawn⟩, _⟩, _⟩ := hps
+    exact hq hpawn
+  | normal s t => rfl
+  | enPassant s t => rfl
+  | whiteKingCastle => rfl
+  | whiteQueenCastle => rfl
+  | blackKingCastle => rfl
+  | blackQueenCastle => rfl
+
+/-- THE MOVE STEP IN WORDS: `moves` says the side to move's piece (not a pawn) can go from `x` to `y`; then there is a legal move the
+kernel plays, and `after` reads its body on the position the kernel produces. The composing tactic's entry for every `after` in a premise. -/
+theorem after_of_moves (p : Position) (x y : Square) (q : Piece) (hx : p.board x = some q)
+    (hc : q.color = p.turn) (hq : q.kind ≠ PieceKind.pawn) (h : movesOf p x y = true) :
+    ∃ m ∈ legalMoves p, m.source = x ∧ m.destination = y ∧
+      ∀ f : Position → Nat, afterMove p (some x) (some y) f = f (applyMove p m) := by
+  obtain ⟨m, hm, hs, hd⟩ := movesOf_legal p x y q hx hc h
+  have hk : queenOnly m = true := queenOnly_of_not_pawn p m hm q (by rw [hs]; exact hx) hq
+  exact afterMove_legal p x y m hm hs hd hk
+
+/-- A positive `most` has a witness: some legal move reads at least it. -/
+theorem most_witness (p : Position) (f : Position → Nat) (k : Nat) (hk : k ≥ 1) (h : mostOver p f ≥ k) :
+    ∃ m ∈ legalMoves p, f (applyMove p m) ≥ k := by
+  unfold mostOver at h
+  have key : ∀ (l : List Move) (a : Nat), (l.map (fun m => f (applyMove p m))).foldl max a ≥ k → a ≥ k ∨ ∃ m ∈ l, f (applyMove p m) ≥ k := by
+    intro l
+    induction l with
+    | nil => intro a h; exact Or.inl h
+    | cons m l ih =>
+      intro a h
+      simp only [List.map_cons, List.foldl_cons] at h
+      rcases ih _ h with h' | ⟨m', hm', h'⟩
+      · rcases le_max_iff.mp h' with h'' | h''
+        · exact Or.inl h''
+        · exact Or.inr ⟨m, List.mem_cons_self .., h''⟩
+      · exact Or.inr ⟨m', List.mem_cons_of_mem _ hm', h'⟩
+  rcases key (legalMoves p) 0 h with h0 | hw
+  · omega
+  · exact hw
+
+/-- The other side's turn after our move, and ours again after its reply. -/
+theorem turn_after_two (p : Position) (c : Color) (hc : p.turn = c) (m r : Move) : (applyMove (applyMove p m) r).turn = c := by
+  simp only [applyMove_turn, hc]
+  cases c <;> rfl
+
+theorem turn_after_one (p : Position) (c : Color) (hc : p.turn = c) (m : Move) : (applyMove p m).turn ≠ c := by
+  simp only [applyMove_turn, hc]
+  cases c <;> decide
+
+/-! ## THE VALIDATION: a two-ply tree lemma proved from the words alone
+
+The shape every mined tree premise has, at depth one: our legal move `x -> y` by one of our pieces (not a pawn); after it, over EVERY
+reply, our material at least `A`, theirs at most `B`, the game alive; and `A - B` clears the gain. Then `forcingOf` is nonzero. The
+proof is the composition of the step theorems, which is what the composing tactic must do for deeper trees. -/
+theorem two_ply (p : Position) (c : Color) (v : Int) (hc : p.turn = c) (x y : Square) (q : Piece) (hx : p.board x = some q)
+    (hqc : q.color = c) (hq : q.kind ≠ PieceKind.pawn) (A B : Nat)
+    (h1 : movesOf p x y = true)
+    (h2 : afterMove p (some x) (some y) (fun p => leastOver p (fun p => materialOf p c)) ≥ A)
+    (h3 : afterMove p (some x) (some y) (fun p => mostOver p (fun p => materialOf p (Color.opposite c))) ≤ B)
+    (h4 : afterMove p (some x) (some y) (fun p => leastOver p (fun p => if deadDraw p then 0 else 1)) ≥ 1)
+    (hAB : (A : Int) - B ≥ ((materialOf p c : Int) - materialOf p (Color.opposite c)) + v) :
+    forcingOf p c v ≠ 0 := by
+  obtain ⟨m, hm, -, -, hafter⟩ := after_of_moves p x y q hx (by rw [hqc, hc]) hq h1
+  rw [hafter] at h2 h3 h4
+  apply forcingOf_ne_zero p c v hc 1 (by simp)
+  apply step_ours c _ p 1 hc m hm
+  apply step_theirs c _ (applyMove p m) 0 (turn_after_one p c hc m) (least_pos_nonempty _ _ h4)
+  intro r hr
+  apply leaf
+  apply gainGoal_of_material c _ v _ (turn_after_two p c hc m r)
+  · have ha := least_floor _ _ A h2 r hr
+    have hb := le_trans (le_mostOver (applyMove p m) (fun p => materialOf p (Color.opposite c)) r hr) h3
+    beta_reduce at ha hb
+    omega
+  · have hd := least_floor _ _ 1 h4 r hr
+    beta_reduce at hd
+    by_contra hcon
+    simp only [Bool.not_eq_false] at hcon
+    simp [hcon] at hd
 
 end Ideas.TreeStep
