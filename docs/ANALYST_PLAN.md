@@ -1306,3 +1306,10 @@ chess-specific below the adapter; -m entry points, never a Pool from stdin; chec
   with counts and no Lean statement; the work is shape + outcome -> a Lean statement over the vocabulary's renderings -> an automatic proof attempt (the
   exchange-law theorems first). Unproved = conjecture = at most a prior on which questions to open, never a value. The window points, the store's outcome
   frequencies and the subgoal learner stay probabilistic by design: directionality through the prior, never a rule.
+- **A window is the span of a small explanation tree** (Kaveh, later again): going back from the observable, each ply offers a handful of REASONABLE
+  decisions (not blunders: the moves the teacher rates within a margin of its best, the margin a knob per band), each leading to a different outcome,
+  one of them the observable seen. The explanation is the tree "if this, then that, if this, then that ...". The window extends back only while the tree
+  stays small (a handful of branches, ~5-10 reasonable decisions in all): a principled end, not a ply count. Two things in the tree: the BRANCH
+  CONSEQUENCES (this move leads to that outcome: forcing lines, the exchange law) are the lemmas, PROVED IN LEAN and composed into the explanation; the
+  BRANCH PROBABILITIES (which band takes which branch, how often) are MEASURED from the watched games, never proved, and ride on the proved skeleton
+  as its prior. Explanation of a surprise = a proved tree over reasonable alternatives with one leaf the observable, probabilities on its edges.
