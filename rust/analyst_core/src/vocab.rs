@@ -50,7 +50,7 @@ pub enum Term {
     // the short window's tactics (exact): the fewest moves forcing a gain of v or more (ours; theirs as if we passed)
     Forcing(bool, i64),
     // material and the game's context; time
-    MaterialUs, MaterialThem, Halfmoves, Seen, Ago(u32, Box<Term>),
+    MaterialUs, MaterialThem, Balance, Halfmoves, Seen, Ago(u32, Box<Term>),
     // a number read on the board with the non-king pieces on a set's squares taken off (Kaveh 2026-10-14: "what each piece's job is")
     Without(Box<Term>, Box<Term>),
     // THE LANGUAGE OF CHANGE AND OF CONDITIONALS (Kaveh 2026-10-14): a branch, the board after a move, a change since the last ply
@@ -147,7 +147,7 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
             "hit" => Some(Term::Hit), "unhit" => Some(Term::Unhit), "ours" => Some(Term::Ours), "theirs" => Some(Term::Theirs), "edge" => Some(Term::Edge),
             "corner" => Some(Term::Corner), "attacked" => Some(Term::Attacked), "free" => Some(Term::Free), "center" => Some(Term::Center),
             "light" => Some(Term::Light), "dark" => Some(Term::Dark),
-            "material_us" => Some(Term::MaterialUs), "material_them" => Some(Term::MaterialThem),
+            "material_us" => Some(Term::MaterialUs), "material_them" => Some(Term::MaterialThem), "balance" => Some(Term::Balance),
             "halfmoves" => Some(Term::Halfmoves), "seen" => Some(Term::Seen),
             _ => {
                 let kinds = [("queens", Role::Queen), ("rooks", Role::Rook), ("bishops", Role::Bishop), ("knights", Role::Knight), ("pawns", Role::Pawn)];
@@ -452,6 +452,8 @@ pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
         Term::See(a) => sq(a, q, lone).and_then(|x| q.board().color_at(x).map(|c| crate::rules::see(q.board(), x, !c).max(0) as u32)).unwrap_or(0),
         Term::Forcing(ours, v) => crate::goals::forcing(q, *ours, *v),
         Term::MaterialUs => material(q.board(), !lone).max(0) as u32,
+        // the material balance on an offset of 64 (Kaveh 2026-10-15: THE observable; one number for a tree's leaf)
+        Term::Balance => (material(q.board(), !lone).max(0) as u32 + 64).saturating_sub(material(q.board(), lone).max(0) as u32),
         Term::MaterialThem => material(q.board(), lone).max(0) as u32,
         Term::Halfmoves => q.halfmoves(),
         Term::Seen => crate::game::seen(q) as u32,
@@ -543,7 +545,7 @@ pub(crate) fn reach_route(q: &Chess, c: Color, s: Square, k: u32) -> Result<Vec<
 /// Is this term a number (else a set, read as its count)?
 pub fn is_num(t: &Term) -> bool {
     matches!(t, Term::Count(_) | Term::Dist(_, _) | Term::Sum(_, _) | Term::FileOf(_) | Term::RankOf(_) | Term::DFile(_, _) | Term::DRank(_, _)
-        | Term::Pushes(_) | Term::Attackers(_) | Term::Defenders(_) | Term::See(_) | Term::Forcing(_, _) | Term::MaterialUs | Term::MaterialThem
+        | Term::Pushes(_) | Term::Attackers(_) | Term::Defenders(_) | Term::See(_) | Term::Forcing(_, _) | Term::MaterialUs | Term::MaterialThem | Term::Balance
         | Term::Halfmoves | Term::Seen | Term::Ago(_, _) | Term::Without(_, _) | Term::If(_, _, _) | Term::After(_, _, _) | Term::Least(_) | Term::Most(_) | Term::Delta(_) | Term::Attackable(_, _) | Term::Declined(_) | Term::Min(_, _) | Term::Max(_, _) | Term::Diff(_, _) | Term::Eq(_, _) | Term::Int(_))
 }
 

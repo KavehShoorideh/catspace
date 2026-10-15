@@ -119,6 +119,9 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   move: X read on the board after each reply (names and "us" as in the position they are written at), the minimum (`least`) or maximum (`most`) taken, 0 when there is
   no legal move. A one-ply quantifier, written inside `after` to read a line as a small tree ("whatever they answer, the exchange still wins"). Not enumerated
   (compositions only, like `after`). Lean: `leastOver`, `mostOver` (`leastOver_le`, `le_mostOver`).
+- **Balance** (`balance`, 2026-10-15, the observable itself) — our material minus theirs, plus 64 (64: level). One number for the leaf of a tree premise,
+  so that a single witness move (`most` at our turn) bounds the gain; two separate bounds (material_us, material_them) would come from two different
+  witnesses and prove nothing. Lean: `balanceOf`.
 - **Layers** — the order the proposers search the terms in: layer 0 the original words, layer 1 the completed static words,
   layer 2 the expensive ones (the short window's tactics, time).
 

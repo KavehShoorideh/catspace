@@ -297,6 +297,10 @@ def movesOf (p : Position) (s : Square) : SquareSet := fun t =>
 def materialOf (p : Position) (c : Color) : Nat :=
   (allSquares.map (fun u => match p.board u with | some q => (if q.color == c then (pieceValue q.kind).toNat else 0) | none => 0)).sum
 
+/-- **balance** (Kaveh 2026-10-15, the observable itself): our material minus theirs on an offset of 64 (64: level; above: ahead). One
+number for the leaf of a tree premise, so that one witness move bounds the gain. -/
+def balanceOf (p : Position) (c : Color) : Nat := materialOf p c + 64 - materialOf p (Color.opposite c)
+
 /-- A dead draw: kings alone, or one knight or bishop beside them. -/
 def deadDraw (q : Position) : Bool :=
   match allSquares.filter (fun u => match q.board u with | some x => x.kind != .king | none => false) with

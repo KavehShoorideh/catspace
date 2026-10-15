@@ -110,6 +110,32 @@ def objects(win: dict, wide: bool = False):
 
 # ---------------------------------------------------------------------------------------------------------------- propose
 
+def ours_at(f: str):
+    """A piece of ours (not the king) stands on f: what Lean's step_after reads to know whose move `after f t` is."""
+    return ("count", ("and", "ours", ("at", f)))
+
+
+def no_pawn_at(f: str):
+    """No pawn of ours on f (a pawn's move may promote; `after` promotes only to a queen): read as <= 0."""
+    return ("count", ("and", "ourpawns", ("at", f)))
+
+
+def _is_no_pawn(g) -> bool:
+    while isinstance(g, tuple) and g[0] in ("after", "least", "most"):
+        g = g[-1]
+    return isinstance(g, tuple) and g[0] == "count" and g[1][0] == "and" and g[1][1] == "ourpawns"
+
+
+def leg_cond(g):
+    """How a leg is read: the no-pawn leg as <= 0, every other as >= 1."""
+    return ("<=", 0) if _is_no_pawn(g) else (">=", 1)
+
+
+def leg_holds(g):
+    op, v = leg_cond(g)
+    return (lambda x: x <= v) if op == "<=" else (lambda x: x >= v)
+
+
 def legal(f: str, t: str):
     """The piece on f can legally move to t. `after` reads a relaxed board (Lean afterMove asks no legality), so every premise that reads
     the board after a move carries this conjunct for that move."""
@@ -123,16 +149,20 @@ def _wrap(prefix, body):
     return body
 
 
-def legs_of(t, prefix=()) -> list:
-    """The legality terms of every `after` a term reads, each read at its own depth: (after m1 (after r1 (count (and (moves f2) (at t2))))).
-    `least` / `most` ask the legal replies themselves, so they add none."""
+def legs_of(t, rebuild=lambda b: b) -> list:
+    """The legality terms of every `after` a term reads, each read at its own depth and under the same quantifiers:
+    (after m1 (least (count (and (moves f2) (at t2))))) -- after m1, whatever they reply, m2 is legal. `least` / `most` ask the legal
+    replies themselves, so they add none of their own."""
     if not isinstance(t, tuple):
         return []
     if t[0] == "after":
-        return [_wrap(prefix, legal(t[1], t[2]))] + legs_of(t[3], prefix + ((t[1], t[2]),))
+        f, tt, body = t[1], t[2], t[3]
+        return [rebuild(legal(f, tt)), rebuild(ours_at(f)), rebuild(no_pawn_at(f))] + legs_of(body, lambda x: rebuild(("after", f, tt, x)))
+    if t[0] in ("least", "most"):
+        return legs_of(t[1], lambda x: rebuild((t[0], x)))
     out = []
     for x in t[1:]:
-        out += legs_of(x, prefix)
+        out += legs_of(x, rebuild)
     return out
 
 
@@ -147,21 +177,33 @@ def line_pairs_of(fen: str, line: list) -> list:
     return out
 
 
+def wrap_tree(ours: list, body):
+    """`body` read after OUR moves of the line, every reply of theirs in between quantified: (after m1 (least (after m2 (least ... body)))).
+    A reply is never named: `forcedWithinB` quantifies over every reply, so a premise naming one could not be proved."""
+    for j, (f, t) in enumerate(reversed(ours)):
+        body = ("after", f, t, body) if j == 0 else ("after", f, t, ("least", body))
+    return body
+
+
 def make_tree_terms(objs: list, line_pairs: list) -> list:
-    """Premises read ALONG THE LINE as a small tree (Kaveh 2026-10-15): after our move m_j the least X over every reply (whatever they answer),
-    and after the whole line the most X (the best they can do at its end). `after` carries its legality at every depth (legs_of)."""
+    """Premises read ALONG THE LINE as a small tree (Kaveh 2026-10-15): after our j-th move of the solver's line, over every reply, the
+    least X (whatever they answer, X holds) and the most X (the best they can do); their replies quantified, ours named. The cheap words
+    at every depth; the three-ply forcing words at depth one only. THE MINIMAX TAIL: after our named moves, "some move of ours, then
+    whatever they reply" over the balance -- (most (least balance)) -- so a line whose next move depends on their reply (the recapture)
+    is still one statement, and the leaf is ONE number a single witness move bounds (the word `balance`)."""
     kings = ["W", "L"]
     ours = line_pairs[0::2]
-    bodies_least = [(w, x) for x in objs + kings for w in ("see", "attackers", "defenders")] + ["material_us", "material_them", "forcing_them_1", "forcing_them_3", "forcing_them_5"]
-    bodies_most = [("see", x) for x in objs] + ["material_them", "material_us", "forcing_them_1", "forcing_them_3", "forcing_them_5"]
+    bodies = [(w, x) for x in objs + kings for w in ("see", "attackers", "defenders")] + ["material_us", "material_them", "balance"]
     T = []
     for j in range(len(ours)):
-        prefix = tuple(line_pairs[:2 * j + 1])             # m1 r1 ... m_{j+1}
-        for b in bodies_least:
-            T.append(_wrap(prefix, ("least", b)))
-        if j == len(ours) - 1:
-            for b in bodies_most:
-                T.append(_wrap(prefix, ("most", b)))
+        bs = bodies + (["forcing_them_1", "forcing_them_3", "forcing_them_5"] if j == 0 else [])
+        if j >= 2:
+            bs = ["material_us", "material_them", "balance"] + [("see", x) for x in objs]     # depth three: 30^3 boards per position; the leaf words only
+        for b in bs:
+            T.append(wrap_tree(ours[:j + 1], ("least", b)))
+            T.append(wrap_tree(ours[:j + 1], ("most", b)))
+        for b in ("balance", "material_us"):                                                   # the minimax tail from this depth
+            T.append(wrap_tree(ours[:j + 1], ("least", ("most", ("least", b)))))
     return T
 
 
@@ -178,10 +220,9 @@ def make_terms(objs: list, pairs: list, line_pairs: list | None = None) -> list:
         for x in objs + kings:         # the board after the move, read at every object: the check, the piece newly attacked, the exchange there
             T += [("after", f, t, ("see", x)), ("after", f, t, ("attackers", x)), ("after", f, t, ("defenders", x))]
     if line_pairs:
-        tree = make_tree_terms(objs, line_pairs)
-        T += tree
-        for t in tree:
-            T += legs_of(t)                                    # (read once: the atoms are gated by them)
+        T += make_tree_terms(objs, line_pairs)
+    for t in list(T):
+        T += legs_of(t)                                        # every after's legs (legal, ours, no pawn), read once: the atoms are gated by them
     seen, out = set(), []
     for t in T:
         s = BV.sexpr(t)
@@ -260,13 +301,13 @@ def propose(terms, vals, poss, ex, cx, max_atoms=3, mover="w", cap_atoms=200, ex
         row = vals[BV.sexpr(t)]
         ev = [row[i] for i in ex]
         pair = (t[1], t[2]) if t[0] == "after" else None
-        legs = [vals[BV.sexpr(g)] for g in dict.fromkeys(legs_of(t))]
-        if any(g[i] < 1 for g in legs for i in ex):
-            continue                                                    # a move it reads the board after is not even legal on an example
+        legs = [(vals[BV.sexpr(g)], leg_holds(g)) for g in dict.fromkeys(legs_of(t))]
+        if any(not ok(g[i]) for g, ok in legs for i in ex):
+            continue                                                    # a move it reads the board after is not even legal (or not ours) on an example
         for op, v in ((">=", min(ev)), ("<=", max(ev))):
             truth = [(x >= v) if op == ">=" else (x <= v) for x in row]
-            for lg in legs:
-                truth = [a and lg[i] >= 1 for i, a in enumerate(truth)]
+            for lg, ok in legs:
+                truth = [a and ok(lg[i]) for i, a in enumerate(truth)]
             n_atoms_true += 1
             a = Atom(t, op, v, truth)
             a.pair = pair
@@ -458,7 +499,7 @@ def used_names(t) -> set:
 def with_legality(prem) -> list:
     """The premise's atoms preceded by one legality atom per move it reads the board after. -> [(term, op, v)]"""
     legs = sorted({g for a in prem for g in (a.legs if hasattr(a, "legs") else legs_of(a.term))}, key=BV.sexpr)
-    return [(g, ">=", 1) for g in legs] + [(a.term, a.op, a.v) for a in prem]
+    return [(g, *leg_cond(g)) for g in legs] + [(a.term, a.op, a.v) for a in prem]
 
 
 def statement(name: str, prem, mover: str, delta: int, doc: str, proof: str) -> str:

@@ -58,39 +58,52 @@ def test_perturb_gives_legal_distinct_variants_with_the_same_side_to_move():
 
 
 def test_the_drill_labels_with_the_solver_and_after_atoms_need_legality():
-    """The queen on d5 is lost (SAME); with the e6 pawn moved to e7 the queen is safe (AVOIDED); and an atom read after an illegal move is false."""
-    base = dict(k=0, cls="SAME", san="Qd5", uci="d1d5", fen="4k3/8/4p3/3Q4/8/8/8/4K3 b - - 1 1", mover="b", start=FEN, line=[])
+    """A knight takes the queen on d5 (SAME); with the knight moved away the queen is safe (AVOIDED); and an atom read after an
+    illegal move is false there. (A pawn's move is not named by a premise: `after` promotes only to a queen, so the legs ask a non-pawn.)"""
+    fen = "4k3/7p/8/3Q4/8/4n3/8/4K3 b - - 1 1"          # (a pawn too: king and knight alone would be a dead draw, no gain)
+    base = dict(k=0, cls="SAME", san="Qd5", uci="d1d5", fen=fen, mover="b", start=FEN, line=[])
     out = SM.drill(base, 9, 1, log=lambda *a: print(*a))
     by = {p["san"].split(" | ")[1]: p["cls"] for p in out}
-    assert by["remove pe6"] == "AVOIDED" and by["pe6 to e7"] == "AVOIDED" and by["Ke1 to e2"] == "SAME"
+    assert by["remove ne3"] == "AVOIDED" and by["ne3 to g1"] == "AVOIDED" and by["Ke1 to e2"] == "SAME"
     poss = [base] + out
-    terms = [SM.legal("e6", "d5"), ("after", "e6", "d5", ("see", "d5"))]
-    vals = SM.evaluate(terms, poss)
-    _, prem = SM.propose(terms, vals, poss, [0], [i for i, p in enumerate(poss) if p["cls"] == "AVOIDED"], 1, "b")
-    assert prem and all(a.pair == ("e6", "d5") for a in prem[0])
-    st = SM.statement("t", prem[0], "b", 9, "", "sorry")
-    assert "movesOf" in st                              # the legality conjunct is in the Lean statement
-    i = next(i for i, p in enumerate(poss) if p["san"].endswith("pe6 to e7"))
-    assert not prem[0][0].truth[i]                       # the pawn cannot take from e7: the after-atom is false there
+    t = ("after", "e3", "d5", ("see", "d5"))
+    legs = SM.legs_of(t)
+    vals = SM.evaluate([t] + legs, poss)
+    i = next(i for i, p in enumerate(poss) if p["san"].endswith("ne3 to g1"))
+    j = next(i for i, p in enumerate(poss) if p["san"].endswith("remove ne3"))
+    lg = vals[BV.sexpr(SM.legal("e3", "d5"))]
+    assert lg[0] >= 1 and lg[i] == 0 and lg[j] == 0            # the knight cannot take from g1, nor when it is gone
+    ow = vals[BV.sexpr(SM.ours_at("e3"))]
+    assert ow[0] == 1 and ow[j] == 0
+    assert vals[BV.sexpr(SM.no_pawn_at("e3"))][0] == 0
+    atom = SM.Atom(t, ">=", 0, [True] * len(poss))
+    atom.legs = tuple(legs)
+    st = SM.statement("t", (atom,), "b", 9, "", "sorry")
+    assert "movesOf" in st and "piecesOf" in st and "kindSet" in st     # the legs (legal, ours, no pawn) are in the Lean statement
+    assert "≤ 0" in st                                                   # the no-pawn leg is read as at most zero
 
 
 def test_tree_terms_carry_legality_at_every_depth_and_render_in_lean():
+    """Their replies are never named: after our second move the term reads (after m1 (least (after m2 (most X)))), and the legality of m2
+    is read under the same quantifier (for every reply, m2 is legal)."""
     line = [("d5", "d4"), ("e6", "d5"), ("d4", "d3")]       # ours, theirs, ours
     tree = SM.make_tree_terms(["d5"], line)
-    t = next(x for x in tree if x[0] == "after" and BV.sexpr(x).startswith("(after d5 d4 (after e6 d5 (after d4 d3 (most"))
+    t = next(x for x in tree if BV.sexpr(x) == "(after d5 d4 (least (after d4 d3 (most (see d5)))))")
     legs = SM.legs_of(t)
     print("OBS legs", [BV.sexpr(g) for g in legs])
     assert [BV.sexpr(g) for g in legs] == [
-        BV.sexpr(SM.legal("d5", "d4")),
-        BV.sexpr(("after", "d5", "d4", SM.legal("e6", "d5"))),
-        BV.sexpr(("after", "d5", "d4", ("after", "e6", "d5", SM.legal("d4", "d3"))))]
+        BV.sexpr(SM.legal("d5", "d4")), BV.sexpr(SM.ours_at("d5")), BV.sexpr(SM.no_pawn_at("d5")),
+        BV.sexpr(("after", "d5", "d4", ("least", SM.legal("d4", "d3")))),
+        BV.sexpr(("after", "d5", "d4", ("least", SM.ours_at("d4")))),
+        BV.sexpr(("after", "d5", "d4", ("least", SM.no_pawn_at("d4"))))]
+    assert not any("e6" in BV.sexpr(x) for x in tree)       # the reply is quantified, not named
     least = next(x for x in tree if BV.sexpr(x) == "(after d5 d4 (least (see d5)))")
-    assert len(SM.legs_of(least)) == 1                       # least / most ask the legal replies themselves
+    assert len(SM.legs_of(least)) == 3                       # least / most ask the legal replies themselves (legal, ours, no pawn of the one after)
     atom = SM.Atom(t, ">=", 0, [True])
     atom.legs = tuple(legs)
     s = SM.statement("t", (atom,), "w", 5, "doc", "sorry")
     print("OBS", s.splitlines()[1][:200])
-    assert "mostOver" in s and s.count("afterMove") >= 6
+    assert "mostOver" in s and "leastOver" in s and s.count("afterMove") == 5
 
 
 def test_line_pairs_from_san():

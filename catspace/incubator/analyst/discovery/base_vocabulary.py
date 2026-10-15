@@ -106,6 +106,8 @@ PRIMITIVES.update({
        for side in ("us", "them") for v in ("1", "3", "5", "9", "mate")},
     # material and the game's context; time
     "material_us": ((), "num", "our material"), "material_them": ((), "num", "their material"),
+    # BALANCE (Kaveh 2026-10-15, the observable itself): our material minus theirs on an offset of 64, so a tree premise bounds the leaf with ONE number
+    "balance": ((), "num", "our material minus theirs, plus 64 (64: level)"),
     "halfmoves": ((), "num", "the moves since the last capture or pawn move (the fifty-move clock, in plies)"),
     "seen": ((), "num", "how many times this game has seen the position"),
     "ago": (("int", "num"), "num", "{1}, {0} moves of ours ago"),
@@ -277,7 +279,7 @@ def lean(t) -> str:
                 "attacked": "(attackedBy p c L)", "free": "(fun u => !(attackedBy p c L u))",
                 "hit": "(attackedBy p (Color.opposite c) W)", "unhit": "(fun u => !(attackedBy p (Color.opposite c) W u))",
                 "ours": "(piecesOf p c)", "theirs": "(piecesOf p (Color.opposite c))",
-                "material_us": "(materialOf p c)", "material_them": "(materialOf p (Color.opposite c))",
+                "material_us": "(materialOf p c)", "material_them": "(materialOf p (Color.opposite c))", "balance": "(balanceOf p c)",
                 "halfmoves": "p.halfmove", "seen": "(seenIn hist p)"}[t]
     h, *a = t
     if h == "cls":                                 # (the class word names its square itself, from side c)
@@ -386,7 +388,7 @@ def layer1() -> list:
     out += [("dist", k, (w, x)) for k in ("W", "L") for w in ("front", "promo") for x in OTHERS]
     out += [("dist", k, ("offset", x, str(df), str(dr))) for k in ("W", "L") for x in OTHERS
             for df in range(-2, 3) for dr in range(-2, 3) if (df, dr) != (0, 0)]
-    out += ["material_us", "material_them", "halfmoves", "seen"]
+    out += ["material_us", "material_them", "balance", "halfmoves", "seen"]
     for n, (ps, _, _) in CHESS_TERMS.items():
         if not ps:
             out.append(n)
