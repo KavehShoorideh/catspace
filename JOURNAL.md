@@ -30954,3 +30954,18 @@ PHASE 5, the game walk (game 2979, lichess Bo45Dh1y) on the event loop: 6 of 7 c
 Rb8+, is a misdetected event in both). At A the chain's move avoids the loss in events 1, 3, 4 (Stockfish d14: the played move loses 1, the chain's 0), ties in 2, 6, 7, and loses the same 5 in event 5 (no better move found).
 Ply 10 (before 6.Bxc6+): the chain chose e5, 0..0 ESTIMATED, "it meets e4 attacked (1)"; ply 28 (before 15.Ne5): the chain chose gxh6, 0..0 ESTIMATED, "it meets g5 attacked (1)" (the script played 15.Ne5). The opening default fired on
 plies 0-8: Nc3, Nc6, Nc3, Nc6, Bc4, Nc6, Nf3, Nf6, Bc4 (the chain's choice at each position; the game's own moves e4 c5 Nc3 d6 f4 Nc6 Nf3 Nf6 Bb5). 71 s. Not done: the step-through page (no page work), a better value for wrong answers.
+
+THE NIGHT'S SUMMARY, PLAN §40 PHASES 1-5 (2026-10-15 05:02 PDT, autonomy "go auto till morning"). Commits 032b38d4 (kernel), 8d2ce96b (the move),
+  810dea47 (population trade cell), c48dcefb (lemmas), 51ac7f17 / e66f8bae (proposer, verdicts, walk). Full suite on the final build: 829 passed, 1 xfailed,
+  16 min 49 s. The event loop replaces the script as the default (--loop script keeps the old). What was learned, one run each, directional:
+  (1) the kernel produces readable chains (move 30: Bb2 held by Re2 -> deflect -> the two-move threat as a conditional, solver-unconfirmed on that board
+  because Qg4 guards e2; Rh4 mobility 4 and reachable only by a losing queen trade, one line; Nxc6: the fork, "no single move saves both", solver 5);
+  (2) the decision off the chain: dev 60 44 vs the script's 33 (both right on 30; event alone 14, script alone 3), fresh 60 50; 124 s vs 33 s per batch;
+  (3) lemmas by chunking work mechanically (355 promoted of 6,814 shapes; one-step answers, 7% contradicted on fresh) but cut ~2% of cost: they answer the
+  cheap leaf questions, the expense is in candidate re-runs and solver probes; (4) THE SURPRISE CLASSES: of the misses, "answer wrong" is 23 of 31 on dev and
+  19 of 26 on fresh; "event missing" 2 / 0, "question never opened" 2 / 1 -- the proposer's conditions, priorities and six solved-puzzle lemmas fixed no fresh
+  surprise (all DROPPED under the rule). The bottleneck is the VALUE given to a line, not the questions asked. (5) The game walk on the new loop: 6 of 7 as
+  before; at ply 28 (before 15.Ne5) the chain plays gxh6 "it meets g5 attacked (1)" where the script played the losing Ne5; the opening default fired on plies
+  0-8 (knights and bishops out). Scar of the night: a Pool launched from a `python -` heredoc by the builder lived 2 h 24 min respawning dying workers (load
+  25 on 11 cores) and made every batch look straggler-bound; killed; rule restated: -m entry points only. KAVEH'S KNOBS: the trade cell (population vs the
+  player's), the lemma promotion threshold and stake knob, the per-decision time cap (300 s; a decision read off a cut chain is ESTIMATED).
