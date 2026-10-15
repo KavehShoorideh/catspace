@@ -31112,3 +31112,27 @@ Reading: the drill does its job -- it rejects every one-board premise and names 
 end of the sequence their best capture <= gain - delta (the "if they don't" clause). Two things are missing for that: a word for "the
 least/most of a number over every legal reply" (a one-ply quantifier; the vocabulary's forcing_* words are already three-ply searches, so
 this is in the same spirit), and a proposer that composes `after` along the window tree instead of at one board. Not built; reported.
+
+### THE WINDOW AS A TREE, THE LEAN SIDE (2026-10-15 15:10 PDT)
+
+Kaveh: "Go" on the three pieces (the one-ply words, the tree proposer, the Lean theorems). The Lean side, mine; the mirror and the
+proposer, the builder (running). Commits f492a903, 3aba54b5. All printed by `lake build` (clean) and `lean_index build` (314 theorems).
+
+- Words `least` / `most`: `leastOver p f` = the least `f` reads after any legal move of the side to move (0 with no legal move),
+  `mostOver` the most; bridge theorems `leastOver_le`, `le_mostOver`. The one-ply quantifier; the forcing words are three-ply searches.
+- `after` REFINED: when the piece on `a` belongs to the side to move and `a -> b` is a legal move (a promotion only to a queen) `afterMove`
+  plays the kernel's move (`legalFromTo`, `applyMove`: castling rights, en passant, clocks as the rules say); otherwise the old relaxed
+  hand-built board. So the words after a legal move are words about the real game, and `least` inside them quantifies over the real
+  replies. The Rust evaluator mirrors this (builder).
+- Ideas/TreeStep.lean, the local theorems a tree premise composes into `forcingOf`: `leaf`, `step_ours`, `step_theirs`, `mono` (over
+  forcedWithinB); `gainGoal_of_material`, `gainGoal_of_mate`; `forcingOf_eq`, `forcingOf_ne_zero`; `least_floor`, `least_pos_nonempty`,
+  `most_witness`; `afterMove_legal`, `movesOf_legal`, `queenOnly_of_not_pawn`, `after_of_moves`; turn lemmas. No search anywhere: each is
+  one unfolding. (Two of them had to be written with rewrites instead of simp: simp unfolds the move generator and times out.)
+- THE VALIDATION `two_ply`: a depth-one tree premise stated in the words only -- `moves x y`, and after `x -> y`: `least material_us >= A`,
+  `most material_them <= B`, `least alive >= 1`, with `A - B` clearing the gain -- proves `forcingOf p c v != 0` by composing the steps.
+  That is the shape the composing tactic must repeat at depth two and three.
+
+What this does NOT give yet, stated plainly: a provable tree lemma today can only read MATERIAL at its leaves, because the exchange
+law (`see` -> material, ExchangeLaw.lean, "the work of part 2") is a per-position certificate, not a proved theorem. So the first
+provable tier is the bounded minimax restated in the words, with the drill picking the shortest sound one; the compressed statement
+("check, rook winnable, queen safe") stays a conjecture until the exchange law is proved. Decision for Kaveh.
