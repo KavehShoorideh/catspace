@@ -322,10 +322,10 @@ theorem step_after (c : Color) (g : Position → Bool) (p : Position) (n : Nat) 
 
 /-- THEIR STEP IN THE WORDS: on their turn, some `least` reads at least 1 (so they have a move), and after every reply the goal is
 forced within `n`. -/
-theorem step_least (c : Color) (g : Position → Bool) (p : Position) (n : Nat) (hc : p.turn ≠ c) (f : Position → Nat)
-    (hne : leastOver p f ≥ 1) (H : ∀ r ∈ legalMoves p, Ideas.forcedWithinB c g (applyMove p r) n = true) :
+theorem step_least (c : Color) (g : Position → Bool) (p : Position) (n : Nat) (hc : p.turn ≠ c) (f : Position → Nat) (k : Nat) (hk : k ≥ 1)
+    (hne : leastOver p f ≥ k) (H : ∀ r ∈ legalMoves p, Ideas.forcedWithinB c g (applyMove p r) n = true) :
     Ideas.forcedWithinB c g p (n + 1) = true :=
-  step_theirs c g p n hc (least_pos_nonempty p f hne) H
+  step_theirs c g p n hc (least_pos_nonempty p f (le_trans hk hne)) H
 
 /-! ## alive from material -/
 
@@ -454,7 +454,7 @@ theorem tail_two (c : Color) (base v : Int) (p : Position) (hc : p.turn = c) (k 
   apply step_most c _ p 1 hc _ (64 + k) (by omega) h
   intro m hm hF
   have hF' : leastOver (applyMove p m) (fun r => balanceOf r c) ≥ 64 + k := hF
-  apply step_least c _ (applyMove p m) 0 (turn_after_one p c hc m) _ (by omega : leastOver (applyMove p m) (fun r => balanceOf r c) ≥ 1)
+  apply step_least c _ (applyMove p m) 0 (turn_after_one p c hc m) _ (64 + k) (by omega) hF'
   intro r hr
   apply leaf
   have hb : balanceOf (applyMove (applyMove p m) r) c ≥ 64 + k := least_floor _ _ (64 + k) hF' r hr

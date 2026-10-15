@@ -149,17 +149,19 @@ def _wrap(prefix, body):
     return body
 
 
-def legs_of(t, rebuild=lambda b: b) -> list:
+def legs_of(t, rebuild=lambda b, pol: b) -> list:
     """The legality terms of every `after` a term reads, each read at its own depth and under the same quantifiers:
-    (after m1 (least (count (and (moves f2) (at t2))))) -- after m1, whatever they reply, m2 is legal. `least` / `most` ask the legal
-    replies themselves, so they add none of their own."""
+    (after m1 (least (count (and (moves f2) (at t2))))) -- after m1, whatever they reply, m2 is legal. A leg read as "at most" (no pawn
+    of ours on f) goes under `most` instead, so that it too holds for EVERY reply. `least` / `most` ask the legal replies themselves,
+    so they add none of their own."""
     if not isinstance(t, tuple):
         return []
     if t[0] == "after":
         f, tt, body = t[1], t[2], t[3]
-        return [rebuild(legal(f, tt)), rebuild(ours_at(f)), rebuild(no_pawn_at(f))] + legs_of(body, lambda x: rebuild(("after", f, tt, x)))
+        return ([rebuild(legal(f, tt), "ge"), rebuild(ours_at(f), "ge"), rebuild(no_pawn_at(f), "le")]
+                + legs_of(body, lambda x, pol: rebuild(("after", f, tt, x), pol)))
     if t[0] in ("least", "most"):
-        return legs_of(t[1], lambda x: rebuild((t[0], x)))
+        return legs_of(t[1], lambda x, pol: rebuild(("least" if pol == "ge" else "most", x), pol))
     out = []
     for x in t[1:]:
         out += legs_of(x, rebuild)
@@ -470,9 +472,116 @@ def drill(base: dict, need: int, n_opp: int, log=print) -> list:
     return out
 
 
+# ---------------------------------------------------------------------------------------------------------------- the proof generator
+
+def _split(t):
+    """A term as (path, body): the path of steps from the root -- ("after", f, t) our named move, ("least",) their turn, ("most",) a turn
+    quantified existentially -- and the body read at its end."""
+    path = []
+    while isinstance(t, tuple) and t[0] in ("after", "least", "most"):
+        if t[0] == "after":
+            path.append(("after", t[1], t[2]))
+            t = t[3]
+        else:
+            path.append((t[0],))
+            t = t[1]
+    return tuple(path), t
+
+
+def _same(pa, sp) -> bool:
+    """Two paths to the same node: equal step by step, a `least` and a `most` at the same depth being the same (their) turn."""
+    return len(pa) == len(sp) and all(x == y or (x[0] in ("least", "most") and y[0] in ("least", "most")) for x, y in zip(pa, sp))
+
+
+def tree_proof(atoms: list, delta: int) -> str | None:
+    """THE COMPOSING STEP: a Lean proof script for a premise whose atoms lie along one spine -- our named move, every reply, ..., then
+    `(most (least balance))` -- built from Ideas.TreeStep: step_after at our named moves (its legs are the ownership and legality
+    atoms read at that node), step_least at theirs (least_floor carries every `least` atom one reply down), tail_two at the end
+    (gainGoal_of_balance, with the root's `balance` atom bounding the base). None when the premise has no such spine. `atoms` are
+    (term, op, v) as the statement lists them, in order."""
+    spine, k_leaf = None, 0
+    for term, op, v in atoms:
+        path, body = _split(term)
+        if body == "balance" and op == ">=" and len(path) >= 2 and path[-2:] == (("most",), ("least",)):
+            spine, k_leaf = path, v - 64
+            break
+    if spine is None or k_leaf < 4:
+        return None
+    root_b = [v for term, op, v in atoms if term == "balance" and op == "<="]
+    if not root_b or k_leaf < min(root_b) - 64 + delta:    # base <= root balance - 64, so k_leaf >= base + delta needs this
+        return None
+    n_plies = len(spine)
+    if n_plies % 2 or n_plies > 6:
+        return None
+    hyps = {f"h{i}": (*_split(term), op, v) for i, (term, op, v) in enumerate(atoms)}   # name -> (path, body, op, v), at the node
+    lines = ["intro hall", f"obtain ⟨{', '.join(f'h{i}' for i in range(len(atoms)))}⟩ := hall",
+             f"refine Ideas.TreeStep.forcingOf_ne_zero p c {delta} hc {n_plies // 2} (by simp) ?_",
+             f"show Ideas.forcedWithinB c _ p {n_plies} = true"]
+    hb = next(n for n, (pa, b, op, v) in hyps.items() if b == "balance" and op == "<=" and pa == ())
+    lines.append(f"have hbase : ((materialOf p c : Int) - materialOf p (Color.opposite c)) ≤ {min(root_b) - 64} := by unfold balanceOf at {hb}; omega")
+    fresh = [0]
+
+    def nm(prefix):
+        fresh[0] += 1
+        return f"{prefix}{fresh[0]}"
+
+    def turn(d, P):
+        if d == 0:
+            return "hc"
+        return (f"(by simp only [applyMove_turn, hc] <;> (cases c <;> first | rfl | decide) : ({P}).turn = c)" if d % 2 == 0
+                else f"(by simp only [applyMove_turn, hc] <;> (cases c <;> first | rfl | decide) : ({P}).turn ≠ c)")
+
+    pos = "p"
+    for depth, step in enumerate(spine):
+        remaining = n_plies - depth
+        at_node = {n: h for n, h in hyps.items() if _same(h[0][:depth], spine[:depth])}      # read at this node or below it
+        if step[0] == "after":
+            f, t = step[1], step[2]
+
+            def find(body, op):
+                return next((n for n, (pa, b, o, v) in at_node.items() if _same(pa, spine[:depth]) and o == op and b == body), None)
+            hown = find(("count", ("and", "ours", ("at", f))), ">=")
+            hnp = find(("count", ("and", "ourpawns", ("at", f))), "<=")
+            hmv = find(("count", ("and", ("moves", f), ("at", t))), ">=")
+            if not (hown and hnp and hmv):
+                return None
+            m, hm, haf = nm("m"), nm("hm"), nm("haf")
+            lines.append(f"refine Ideas.TreeStep.step_after c _ ({pos}) {remaining - 1} {turn(depth, pos)} _ _ {hown} {hnp} {hmv} ?_")
+            lines.append(f"intro {m} {hm} {haf}")
+            nxt = {}
+            for n, (pa, b, o, v) in at_node.items():
+                if len(pa) > depth and pa[depth] == step:
+                    lines += [f"rw [{haf}] at {n}", f"beta_reduce at {n}"]
+                    nxt[n] = (pa, b, o, v)
+            hyps, pos = nxt, f"applyMove ({pos}) {m}"
+        elif step[0] == "least":
+            hne = next(((n, v) for n, (pa, b, o, v) in at_node.items() if len(pa) > depth and pa[depth] == ("least",) and o == ">=" and v >= 1), None)
+            if hne is None:
+                return None
+            r, hr = nm("r"), nm("hr")
+            lines.append(f"refine Ideas.TreeStep.step_least c _ ({pos}) {remaining - 1} {turn(depth, pos)} _ {hne[1]} (by omega) {hne[0]} ?_")
+            lines.append(f"intro {r} {hr}")
+            nxt = {}
+            for n, (pa, b, o, v) in at_node.items():
+                if len(pa) > depth and pa[depth] == ("least",) and o == ">=":
+                    lines += [f"have {n}' := Ideas.TreeStep.least_floor _ _ {v} {n} {r} {hr}", f"beta_reduce at {n}'"]
+                    nxt[n + "'"] = (pa, b, o, v)
+                elif len(pa) > depth and pa[depth] == ("most",) and o == "<=":
+                    lines += [f"have {n}' := le_trans (Ideas.Vocabulary.le_mostOver _ _ {r} {hr}) {n}", f"beta_reduce at {n}'"]
+                    nxt[n + "'"] = (pa, b, o, v)
+            hyps, pos = nxt, f"applyMove ({pos}) {r}"
+        elif step[0] == "most":
+            if spine[depth:] != (("most",), ("least",)):
+                return None
+            lines.append(f"exact Ideas.TreeStep.tail_two c _ {delta} ({pos}) {turn(depth, pos)} {k_leaf} (by omega) (by omega) (by omega)")
+            break
+    return "\n  ".join(lines)
+
+
 # ---------------------------------------------------------------------------------------------------------------- Lean
 
 LEAN_HEAD = """import Ideas.Base.Vocabulary
+import Ideas.TreeStep
 
 /-! MINED by catspace/incubator/analyst/discovery/selfmine.py ({tag}): each theorem is a conjectured PREMISE over the base vocabulary with the OUTCOME
 `forcingOf p c {delta} != 0` (Ideas.Vocabulary.forcingOf: side c, to move, forces a gain of {delta} or more in 1 to 3 moves against every defence).
@@ -520,7 +629,7 @@ def words(prem, mover) -> str:
     return " AND ".join(f"{BV.gloss(render(t, mover))} {'>=' if op == '>=' else '<='} {v}" for t, op, v in with_legality(prem))
 
 
-_ERR = re.compile(r"^(\S+?\.lean):(\d+):(\d+): (error|warning): (.*)$")
+_ERR = re.compile(r"^(\S+?\.lean):(\d+):(\d+): (error|warning)(?:\([^)]*\))?: (.*)$")
 
 
 def run_lean(path: Path) -> list:
@@ -542,7 +651,8 @@ def lean_round(path: Path, head: str, items: list, delta: int) -> list:
         live = [it for it in items if stage == "statement" or it["typechecks"]]
         text, spans = head, {}
         for it in live:
-            s = statement(it["name"], it["prem"], it["mover"], delta, it["doc"], "sorry" if stage == "statement" else TACTIC)
+            s = statement(it["name"], it["prem"], it["mover"], delta, it["doc"],
+                          "sorry" if stage == "statement" else (tree_proof(with_legality(it["prem"]), delta) or TACTIC))
             a = text.count("\n") + 1
             text += "\n" + s
             spans[it["name"]] = (a + 1, text.count("\n") + 1)
@@ -566,7 +676,7 @@ def write_final(path: Path, head: str, items: list, delta: int) -> None:
         if not it["typechecks"]:
             text += f"\n/- DOES NOT TYPECHECK: {it['error']}\n-/\n"
         elif it["proved"]:
-            text += "\n" + statement(it["name"], it["prem"], it["mover"], delta, it["doc"], TACTIC)
+            text += "\n" + statement(it["name"], it["prem"], it["mover"], delta, it["doc"], tree_proof(with_legality(it["prem"]), delta) or TACTIC)
         else:
             text += f"\n-- PROOF FAILED: {it['error']}\n" + statement(it["name"], it["prem"], it["mover"], delta, it["doc"], "sorry")
     path.write_text(text + f"\nend Ideas.Mined.{path.stem}\n")
@@ -642,7 +752,8 @@ def mine(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool =
         stats, prem = propose(terms, vals, poss, ex, cx, max_atoms, mover, exact=exact)
         covs = {id(pr): coverage(pr, poss, ks) for pr in prem}
         gen = {id(pr): sum(all(a.truth[i] for a in pr) for i in dx) for pr in prem}       # how many drilled forced variants the premise still covers
-        prem.sort(key=lambda pr: (len(pr), -gen[id(pr)], -len(covs[id(pr)]), sum(a.size for a in pr), BV.sexpr(pr[0].term)))
+        prem.sort(key=lambda pr: (len(pr), tree_proof(with_legality(pr), delta) is None, -gen[id(pr)], -len(covs[id(pr)]), sum(a.size for a in pr),
+                                  BV.sexpr(pr[0].term)))                      # a premise whose proof the generator can write goes to Lean first
         seen_c, uniq = set(), []
         for pr in prem:
             c = canon(pr, mover)

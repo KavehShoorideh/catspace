@@ -95,7 +95,7 @@ def test_tree_terms_carry_legality_at_every_depth_and_render_in_lean():
         BV.sexpr(SM.legal("d5", "d4")), BV.sexpr(SM.ours_at("d5")), BV.sexpr(SM.no_pawn_at("d5")),
         BV.sexpr(("after", "d5", "d4", ("least", SM.legal("d4", "d3")))),
         BV.sexpr(("after", "d5", "d4", ("least", SM.ours_at("d4")))),
-        BV.sexpr(("after", "d5", "d4", ("least", SM.no_pawn_at("d4"))))]
+        BV.sexpr(("after", "d5", "d4", ("most", SM.no_pawn_at("d4"))))]       # an at-most leg goes under `most`: for EVERY reply
     assert not any("e6" in BV.sexpr(x) for x in tree)       # the reply is quantified, not named
     least = next(x for x in tree if BV.sexpr(x) == "(after d5 d4 (least (see d5)))")
     assert len(SM.legs_of(least)) == 3                       # least / most ask the legal replies themselves (legal, ours, no pawn of the one after)
@@ -108,3 +108,21 @@ def test_tree_terms_carry_legality_at_every_depth_and_render_in_lean():
 
 def test_line_pairs_from_san():
     assert SM.line_pairs_of("4k3/8/4p3/3Q4/8/8/8/4K3 b - - 1 1", ["exd5", "Kf1"]) == [("e6", "d5"), ("e1", "f1")]
+
+
+def test_tree_proof_composes_the_steps_along_the_spine():
+    """The proof generator on the rook fork's two-atom premise (start balance <= 65; after f6-c3, whatever they reply, after c3-a1, whatever
+    they reply, some move of ours leaves the balance >= 71 under every reply): six plies, three of our steps, two of theirs, the tail."""
+    mm = ("after", "f6", "c3", ("least", ("after", "c3", "a1", ("least", ("most", ("least", "balance"))))))
+    class A:
+        def __init__(self, term, op, v):
+            self.term, self.op, self.v = term, op, v
+            self.legs = tuple(SM.legs_of(term))
+    prem = (A("balance", "<=", 65), A(mm, ">=", 71))
+    script = SM.tree_proof(SM.with_legality(prem), 5)
+    assert script is not None
+    print("OBS tree proof lines", len(script.splitlines()))
+    assert script.count("step_after") == 2 and script.count("step_least") == 2 and script.count("tail_two") == 1
+    assert "forcingOf_ne_zero p c 5 hc 3" in script
+    assert SM.tree_proof(SM.with_legality((A(mm, ">=", 71),)), 5) is None          # no root balance: the base is unbounded, no proof
+    assert SM.tree_proof(SM.with_legality((A("balance", "<=", 65), A(mm, ">=", 69))), 5) is None   # +5 over 64 does not clear base + 5 when base may be +1
