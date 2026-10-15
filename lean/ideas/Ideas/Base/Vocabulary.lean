@@ -353,17 +353,32 @@ def withoutIn (p : Position) (X : SquareSet) (f : Position → Nat) : Nat := f (
 def kingSq (p : Position) (c : Color) : OSq :=
   (allSquares.filter (fun u => match p.board u with | some q => q.color == c && q.kind == PieceKind.king | none => false)).head?
 
-/-- **after**: a number read on the board after the piece on `a` moves to `b` (whatever stood on `b` taken, one's own piece too; a pawn
-reaching the last rank becomes a queen; the other side to move). Legality is not asked, as in the evaluator's relaxed board. -/
+/-- A promotion only to a queen (any other move passes). -/
+def queenOnly : Move → Bool
+  | .promotion _ _ k => decide (k = PromotionKind.queen)
+  | _ => true
+
+/-- A legal move from `a` to `b` by the side to move, a promotion only to a queen: the move `after` plays. -/
+def legalFromTo (p : Position) (a b : Square) : Option Move :=
+  (legalMoves p).find? (fun m => m.source == a && m.destination == b && queenOnly m)
+
+/-- **after**: a number read on the board after the piece on `a` moves to `b`. When that is a legal move of the side to move it is the
+kernel's move (`applyMove`: castling rights, en passant, the clocks as the rules say; a promotion to a queen). Otherwise the board is
+built by hand, relaxed, as the evaluator does: whatever stood on `b` taken, one's own piece too, a pawn reaching the last rank a queen,
+the other side to move, no legality asked -- so a premise that reads the board after a move carries that move's legality
+(`movesOf`) as a conjunct (Kaveh 2026-10-15, the drill's finding). -/
 def afterMove (p : Position) (a b : OSq) (f : Position → Nat) : Nat :=
   match a, b with
   | some x, some y =>
-    match p.board x with
-    | none => 0
-    | some q =>
-      let q' : Piece := if q.kind == PieceKind.pawn && (y.2.val == 0 || y.2.val == 7) then { q with kind := PieceKind.queen } else q
-      f { p with board := fun u => if u == y then some q' else if u == x then none else p.board u,
-                 turn := Color.opposite q.color, enPassant := none }
+    match legalFromTo p x y with
+    | some m => f (applyMove p m)
+    | none =>
+      match p.board x with
+      | none => 0
+      | some q =>
+        let q' : Piece := if q.kind == PieceKind.pawn && (y.2.val == 0 || y.2.val == 7) then { q with kind := PieceKind.queen } else q
+        f { p with board := fun u => if u == y then some q' else if u == x then none else p.board u,
+                   turn := Color.opposite q.color, enPassant := none }
   | _, _ => 0
 
 /-- **delta**: a number now minus the same a ply ago, on an offset of 64 (64 when unchanged or when the line has no earlier position). -/
