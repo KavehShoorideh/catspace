@@ -30898,3 +30898,21 @@ confirm); the trade penalty outranked the interval's upper end; checks and mates
   product can show a player his own pattern vs the population's"). Printed: with the population cell move 30 decides Qxg6 (0..0, the table +0.009 =
   neutral at -4..-2), with the player's cell Qd7 (-0.094). KAVEH'S KNOB: which cell the ledger plays by. The test now holds fixed what is not the
   table's: Qc4 never chosen (the c-file discovery), the Re2 / e8 constraint named in the reason. test_agenda 16 passed.
+
+## 2026-10-15 01:33 PDT — the event loop, phase 3 (ANALYST_PLAN 40.3): lemmas by chunking
+
+Built (one run each, directional; numbers from the printed OBS lines of those runs). A question of a kind with a shape (SAFE, DEFLECT, POKE) gets a PREMISE before it is asked: a canonical graph of the
+pieces it touches -- node = the side relative to the actor + the piece kind, edge = the vocabulary's `attacks` (between pieces of one side that is guard-of) -- with squares abstracted, so a left-right
+mirror, a colour swap (actor and pieces together) or a translation gives the same string (tested). No new vocabulary word was needed. Its OUTCOME is the kinds of the chain below it in order and its
+value. chain_lemmas.py keeps the store (data/derived/chain_lemmas.json: candidates with counts and evidence fens, promoted ones flagged, contradictions kept); a premise that settled the same way every
+time, at least the threshold (default 20, never below 5, flag --promote), is PROMOTED; the Ledger loads the store (set_lemmas) and a promoted shape answers its question in one step, no chain below
+it, unless the stake is above the stake knob (default 3, --stake-knob) or the match is one of the held-out checks (every fifth), which is run and compared; a contradiction demotes the lemma and is kept as
+a surprise record. EVERY LEMMA IS A CONJECTURE: there is no Lean proof of any (AGENTS rule 11 would ask for one before relying on it; this phase only measures).
+Dev (60 puzzles, event loop, threshold lowered to 5 for the dev run, flag printed): before (lemmas off) 44 of 60 correct, 609.2 questions per decision (all candidate re-runs counted), 14.4 s per
+decision; learn: 6,814 candidates found from 26,426 observations (SAFE 2,531, POKE 3,584, DEFLECT 699), 370 promoted; after (lemmas on, the same 60, so trained on what it is tested on): 44 of 60 correct,
+595.3 questions, 13.98 s, 2,265 questions answered by a lemma, 1,221 held-out checks confirmed, 2 contradictions (2 demoted, 368 promoted left). FRESH (offset 11, 60 puzzles, lemmas on, once): 50 of 60 correct
+(lemmas off on the same 60 in an earlier run of the same code: 50), 524.0 questions per decision (off: 529.9), 18.1 s (off: 154 s batch vs 152.6 s), 664 lemma hits, 322 held-out checks confirmed, 26
+contradictions (28 recorded, 15 lemmas demoted). Reading: the lemmas transfer in the sense that 322 of 348 held-out checks on fresh positions confirm them, but 7% contradict, and the saving is small (about 2%
+of the questions): the questions a lemma answers are the cheap leaf ones; the expensive work (the candidate re-runs, the solver probes) sits above them, behind a stake above the knob. A knob of 9 on dev
+answered 2,673 questions by lemma (earlier run, same logic): 579.4 questions, 13.47 s, 44 of 60. Shapes with a clean outcome are mostly the empty ones (alone => 0..0); examples in the report.
+Not done: promotion that counts evidence positions rather than chains; a Lean statement for any lemma.

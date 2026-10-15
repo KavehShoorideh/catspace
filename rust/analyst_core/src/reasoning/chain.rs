@@ -111,7 +111,24 @@ impl ReasoningLedger {
             self.cur_q = Some(q.id);
             let (_, ctx) = Self::split_args(&q.args);
             self.cur_ctx = ctx;
-            let (text, answer, reason, value) = match q.kind.as_str() {
+            // THE LEMMAS (ANALYST_PLAN 40.3): a promoted shape answers its question in one step, the chain below it is not run -- unless the stake is above the knob or the
+            // question is a held-out check, which is run and compared at the end
+            let premise = if self.lem.on { self.premise_of(&q) } else { None };
+            let mut by_lemma: Option<(String, String, String, Option<(i64, i64)>)> = None;
+            if let Some(pk) = &premise {
+                if let Some(l) = self.lem.promoted(pk) {
+                    let ho = self.lem.heldout(pk);
+                    if q.stake <= self.lem.stake_knob && !ho {
+                        self.lem.hits += 1;
+                        if let (Some((lo, _)), "SAFE") = (l.value, q.kind.as_str()) { if lo >= 1 && self.cur_ctx.is_empty() { self.ag.raise(q.actor, lo); } }
+                        by_lemma = Some((format!("{} [by lemma]", Self::q_label(&q)), format!("by lemma {}: {} ({} positions)", l.id, l.outcome, l.count), String::new(), l.value));
+                    } else {
+                        self.lem.pending.insert(q.id, (pk.clone(), l.outcome.clone()));
+                    }
+                }
+                if by_lemma.is_none() { self.lem.premise_of_q.insert(q.id, pk.clone()); }
+            }
+            let (text, answer, reason, value) = if let Some(x) = by_lemma { x } else { match q.kind.as_str() {
                 "SURVEY" => self.q_survey(&q),
                 "SAFE" => self.q_safe(&q),
                 "POKES" => self.q_pokes(&q),
@@ -121,7 +138,7 @@ impl ReasoningLedger {
                 "UNCOVER" => self.q_uncover(&q),
                 "TRADE" => self.q_trade(&q),
                 k => (k.to_string(), "unknown question kind".into(), String::new(), None),
-            };
+            } };
             self.ag.settle(&q, text, answer, reason, cost_of(&q.kind), value);
             if let Some(p) = q.parent { if let Some(n) = self.pending.get_mut(&p) {
                 *n = n.saturating_sub(1);
@@ -131,6 +148,8 @@ impl ReasoningLedger {
         }
         self.ag_on = false;
         self.cur_ctx = vec![];
+        self.lem.q_total += self.ag.spent as u64;
+        self.lemma_observe();
         self.chain_lines()
     }
 
@@ -837,7 +856,176 @@ impl ReasoningLedger {
                                if b.meets.is_empty() { if default_mode { "the opening default".to_string() } else { "it meets no listed constraint and has the best interval".to_string() } } else { format!("it meets {}", b.meets.join(", ")) }));
         }
         for r in &results { rows.push(json!({"uci": r.uci, "san": r.san, "lo": r.lo, "hi": r.hi, "meets": r.meets, "against": r.against, "opened": r.opened})); }
-        json!({"move": mv, "san": san, "interval": [lo, hi], "status": status, "lines": lines, "generated": generated, "legal": legal.len(), "questions": self.ag.spent, "facts": self.facts_n, "candidates": rows, "default": default_mode, "quiet": quiet,
+        json!({"move": mv, "san": san, "interval": [lo, hi], "status": status, "lines": lines, "generated": generated, "legal": legal.len(), "questions": self.lem.q_total, "lemma": self.lem.report(), "facts": self.facts_n, "candidates": rows, "default": default_mode, "quiet": quiet,
                "constraints": cons.iter().map(|c| json!({"text": c.text, "stake": c.stake})).collect::<Vec<_>>(), "opportunities": opps.iter().map(|c| json!({"text": c.text, "stake": c.stake})).collect::<Vec<_>>()})
+    }
+}
+
+
+// =====================================================================================================================================
+// PHASE 3 (ANALYST_PLAN 40.3): LEMMAS BY CHUNKING. A settled chain's SHAPE -- the relations among the pieces its question touched (attacks, which between pieces of one side is
+// guard-of; the kind and the side of each piece, the side relative to the actor), squares abstracted, so a mirror or a translation of the position gives the same shape -- is the
+// PREMISE; the OUTCOME is the question kinds of the chain below it, in order, and its value. A premise that settled the same way on every chain of that shape, enough times (a knob,
+// never below 5), is PROMOTED: the question is answered by it in one step. A promoted lemma a chain contradicts is demoted and the contradiction kept (a surprise). The status of a
+// lemma is CONJECTURE: there is no Lean proof of any of them. The relations are the vocabulary's own (`attacks` and the piece kind and side; no new word).
+#[derive(Clone, Debug)]
+pub struct Promoted { pub id: String, pub outcome: String, pub count: i64, pub value: Option<(i64, i64)> }
+
+#[derive(Default)]
+pub struct LemmaState {
+    pub on: bool, pub learn: bool, pub stake_knob: i64, heldout_every: u32,
+    promoted: HashMap<String, Promoted>,
+    pub pending: HashMap<usize, (String, String)>,
+    pub premise_of_q: HashMap<usize, String>,
+    pub obs: HashMap<String, HashMap<String, (i64, Option<(i64, i64)>, Vec<String>)>>,
+    pub hits: i64, pub confirms: i64, pub contradictions: Vec<Value>, pub q_total: u64, seen: u64,
+}
+impl LemmaState {
+    pub fn load(&mut self, text: &str, stake_knob: i64, heldout_every: u32, learn: bool) -> Result<(), String> {
+        self.on = true; self.learn = learn; self.stake_knob = stake_knob; self.heldout_every = heldout_every.max(1);
+        self.promoted.clear();
+        if text.trim().is_empty() { return Ok(()); }
+        let v: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        if let Some(ls) = v.get("lemmas").and_then(|x| x.as_object()) {
+            for (k, l) in ls {
+                if l["promoted"].as_bool() != Some(true) || l["demoted"].as_bool() == Some(true) { continue; }
+                let o = l["outcome"].as_str().unwrap_or("").to_string();
+                let val = l["value"].as_array().and_then(|a| Some((a.get(0)?.as_i64()?, a.get(1)?.as_i64()?)));
+                self.promoted.insert(k.clone(), Promoted { id: l["id"].as_str().unwrap_or(k).to_string(), outcome: o, count: l["count"].as_i64().unwrap_or(0), value: val });
+            }
+        }
+        Ok(())
+    }
+    pub fn promoted(&self, k: &str) -> Option<Promoted> { self.promoted.get(k).cloned() }
+    pub fn heldout(&mut self, k: &str) -> bool { self.seen += 1; (hash_of(k).wrapping_add(self.seen)) % self.heldout_every as u64 == 0 }
+    pub fn report(&self) -> Value {
+        let obs: serde_json::Map<String, Value> = self.obs.iter().map(|(p, os)| (p.clone(), Value::Object(os.iter().map(|(o, (n, v, ev))| (o.clone(), json!({"count": n, "value": v, "evidence": ev}))).collect()))).collect();
+        json!({"observations": obs, "hits": self.hits, "confirms": self.confirms, "contradictions": self.contradictions, "questions": self.q_total, "promoted_loaded": self.promoted.len()})
+    }
+}
+
+impl ReasoningLedger {
+    fn q_label(q: &Question) -> String {
+        let (prim, _) = Self::split_args(&q.args);
+        format!("{} {}", q.kind, prim.join(","))
+    }
+    /// The premise of a question of a kind with a shape: a canonical graph of the pieces it touches (None for the kinds without one).
+    fn premise_of(&mut self, q: &Question) -> Option<String> {
+        if !matches!(q.kind.as_str(), "SAFE" | "DEFLECT" | "POKE") { return None; }
+        let (prim, ctx) = Self::split_args(&q.args);
+        self.premise_for(&q.kind, &if q.kind == "DEFLECT" { prim.join(",") } else { prim.first().cloned().unwrap_or_default() }, q.actor, &ctx)
+    }
+    pub(super) fn premise_for(&mut self, kind: &str, arg: &str, actor: u8, ctx: &[String]) -> Option<String> {
+        let a = colour(actor);
+        let kind = kind.to_string(); let arg = arg.to_string();
+        self.with_ctx(ctx, move |s| -> Option<String> {
+            let b = s.pos.board().clone();
+            let mut nodes: Vec<Square> = vec![];
+            let mut extra = String::new();
+            let add = |nodes: &mut Vec<Square>, x: Square| { if !nodes.contains(&x) && nodes.len() < 14 { nodes.push(x); } };
+            let around = |nodes: &mut Vec<Square>, b: &shakmaty::Board, y: Square| {
+                for c in [Color::White, Color::Black] {
+                    for x in (b.attacks_to(y, c, b.occupied()) & b.by_color(c)).into_iter() { if b.piece_at(x).map_or(false, |p| p.role != Role::King) || true { add(nodes, x); } }
+                }
+            };
+            match kind.as_str() {
+                "SAFE" => {
+                    let p = s.pc_at(&arg)?;
+                    add(&mut nodes, p.1);
+                    around(&mut nodes, &b, p.1);
+                    // the jobs: what each defender also guards that the enemy attacks
+                    let owner = b.color_at(p.1)?;
+                    let defs: Vec<Square> = (b.attacks_to(p.1, owner, b.occupied()) & b.by_color(owner)).into_iter().collect();
+                    for d in defs { for z in b.attacks_from(d) { if b.color_at(z) == Some(owner) && attacked(&b, z, !owner) && z != p.1 { add(&mut nodes, z); around(&mut nodes, &b, z); } } }
+                }
+                "DEFLECT" => {
+                    let mut it = arg.split(',');
+                    let h = s.pc_at(it.next()?)?; let t = it.next().and_then(|x| s.pc_at(x));
+                    add(&mut nodes, h.1); around(&mut nodes, &b, h.1);
+                    if let Some(t) = t { add(&mut nodes, t.1); around(&mut nodes, &b, t.1); }
+                    extra = format!("|held:{}", ctx.last().is_some() as u8);
+                }
+                "POKE" => {
+                    let pb = if s.pos.turn() == a { s.pos.clone() } else { Self::passed(&s.pos)? };
+                    let m = arg.parse::<shakmaty::uci::UciMove>().ok()?.to_move(&pb).ok()?;
+                    let was = pressure(pb.board(), !a);
+                    let mut r = pb.clone(); r.play_unchecked(&m);
+                    let rb = r.board().clone();
+                    add(&mut nodes, m.to());
+                    let now = pressure(&rb, !a);
+                    let mut ts: Vec<Square> = vec![];
+                    for (sq, (n, mv)) in &now { let (bn, bmv) = was.get(sq).copied().unwrap_or((0, 99)); if (*n > bn || *mv < bmv) && rb.piece_at(*sq).map_or(false, |p| p.role != Role::King) { ts.push(*sq); } }
+                    ts.sort_by_key(|x| (std::cmp::Reverse(rb.piece_at(*x).map_or(0, |p| val(p.role))), *x as u32));
+                    for x in ts.into_iter().take(3) { add(&mut nodes, x); around(&mut nodes, &rb, x); }
+                    extra = format!("|takes:{}|check:{}", m.capture().map_or('-', letter), r.is_check() as u8);
+                    return Some(format!("{kind}|{}{extra}", Self::graph(&rb, &nodes, a)));
+                }
+                _ => return None,
+            }
+            Some(format!("{kind}|{}{extra}", Self::graph(&b, &nodes, a)))
+        }).flatten()
+    }
+    /// The canonical graph of the pieces on `nodes`: node = side relative to the actor + piece kind, edge = "attacks" (guard-of between pieces of one side). Squares are not in
+    /// it, so a mirror or a translation of the position gives the same string; nodes are named by their label and their neighbours' labels, sorted.
+    fn graph(b: &shakmaty::Board, nodes: &[Square], a: Color) -> String {
+        let lab = |x: Square| b.piece_at(x).map_or("?".to_string(), |p| format!("{}{}", if p.color == a { 'o' } else { 't' }, letter(p.role)));
+        let n = nodes.len();
+        let att = |i: usize, j: usize| i != j && b.piece_at(nodes[i]).map_or(false, |_| b.attacks_from(nodes[i]).contains(nodes[j]));
+        let mut key: Vec<String> = (0..n).map(|i| {
+            let mut out: Vec<String> = (0..n).filter(|&j| att(i, j)).map(|j| lab(nodes[j])).collect();
+            let mut inn: Vec<String> = (0..n).filter(|&j| att(j, i)).map(|j| lab(nodes[j])).collect();
+            out.sort(); inn.sort();
+            format!("{}>[{}]<[{}]", lab(nodes[i]), out.join(","), inn.join(","))
+        }).collect();
+        // one refinement round: a node is also named by the keys of its neighbours
+        let k1 = key.clone();
+        for i in 0..n {
+            let mut nb: Vec<String> = (0..n).filter(|&j| att(i, j) || att(j, i)).map(|j| k1[j].clone()).collect();
+            nb.sort();
+            key[i] = format!("{}~{}", k1[i], hash_of(&nb.join(";")) % 100000);
+        }
+        let mut edges: Vec<String> = vec![];
+        for i in 0..n { for j in 0..n { if att(i, j) { edges.push(format!("{}->{}", key[i], key[j])); } } }
+        edges.sort();
+        let mut ks = key.clone(); ks.sort();
+        // readable: the pieces (side relative to the actor + kind) and who attacks whom, by label; the hash makes it canonical beyond the labels
+        let mut names: Vec<String> = (0..n).map(|i| lab(nodes[i])).collect();
+        names.sort();
+        let mut rel: Vec<String> = (0..n).flat_map(|i| (0..n).filter(move |&j| i != j).map(move |j| (i, j))).filter(|&(i, j)| att(i, j)).map(|(i, j)| format!("{}>{}", lab(nodes[i]), lab(nodes[j]))).collect();
+        rel.sort();
+        format!("[{}] [{}] #{}{}", names.join(" "), rel.join(" "), hash_of(&ks.join(";")) % 100000, hash_of(&edges.join(";")) % 100000)
+    }
+
+    /// At the end of a run: the outcome of every question that had a premise (the kinds of the chain below it, in order, and its value); the held-out checks compared.
+    fn lemma_observe(&mut self) {
+        if !self.lem.on { return; }
+        let premises: Vec<(usize, String)> = self.lem.premise_of_q.drain().collect();
+        let chains = self.ag.chains.clone();
+        let fen = shakmaty::fen::Fen::from_position(self.line.first().cloned().unwrap_or_else(|| self.pos.clone()), shakmaty::EnPassantMode::Legal).to_string();
+        for (qid, pk) in premises {
+            let Some(rec) = chains.iter().find(|r| r.q == qid) else { continue };
+            // the kinds below it, in the order they were asked
+            let mut below: Vec<usize> = vec![];
+            let mut frontier = vec![qid];
+            while let Some(x) = frontier.pop() { for r in chains.iter().filter(|r| r.parent == Some(x)) { below.push(r.q); frontier.push(r.q); } }
+            below.sort();
+            let kinds: Vec<&str> = below.iter().filter_map(|id| chains.iter().find(|r| r.q == *id)).map(|r| r.kind.as_str()).collect();
+            let v = rec.value.unwrap_or((0, 0));
+            let sig = format!("{} => {}..{}", if kinds.is_empty() { "alone".to_string() } else { kinds.join(">") }, v.0, v.1);
+            if let Some((_, expected)) = self.lem.pending.remove(&qid) {
+                if expected == sig { self.lem.confirms += 1; }
+                else {
+                    self.lem.promoted.remove(&pk);
+                    self.lem.contradictions.push(json!({"premise": pk, "expected": expected, "got": sig, "fen": fen}));
+                }
+            }
+            if self.lem.learn {
+                let e = self.lem.obs.entry(pk).or_default().entry(sig).or_insert((0, Some(v), vec![]));
+                e.0 += 1;
+                if e.2.len() < 3 && !e.2.contains(&fen) { e.2.push(fen.clone()); }
+            }
+        }
+        // held-out checks whose question was never settled (budget) are dropped
+        self.lem.pending.clear();
     }
 }

@@ -114,11 +114,15 @@ def _one(row: dict, budget: int) -> dict:
             t0 = time.perf_counter()
             L = LG.new(fen, 5000)
             LG.load_transitions(L)
+            mode = os.environ.get("LEDGER_LEMMAS", "off")
+            if mode in ("learn", "on"):
+                text = open(os.environ["LEDGER_LEMMA_FILE"]).read() if mode == "on" and os.path.exists(os.environ["LEDGER_LEMMA_FILE"]) else ""
+                L.set_lemmas(text, int(os.environ.get("LEDGER_STAKE_KNOB", "3")), 5, mode == "learn")
             d = L.decide_chain({}, 120, 20)
             out["ledger"] = dict(move=d["move"], status=d["status"].split(" ")[0], reason="the chain", interval=d["interval"], questions=d["questions"], nodes=d["questions"], facts=d["facts"],
                                  candidates=len(d["candidates"]), legal=d["legal"], refined=0, zero_stake=0, seconds=round(time.perf_counter() - t0, 3), confirm=None, why="",
                                  all=[[c["uci"], [], 0, [c["lo"], c["hi"]]] for c in d["candidates"]], generated=d["generated"], unanswered=[], chain=[], table=[], lines=d["lines"],
-                                 constraints=len(d["constraints"]), opportunities=len(d["opportunities"]))
+                                 constraints=len(d["constraints"]), opportunities=len(d["opportunities"]), lemma=d.get("lemma"))
             out["ledger"]["correct"] = _correct(fen, d["move"], answer, themes, A)
             out["ledger"]["alt_move"] = d["move"]; out["ledger"]["alt_correct"] = out["ledger"]["correct"]
         except BaseException as e:                           # noqa: BLE001
@@ -249,6 +253,10 @@ def main(argv=None):
     ap.add_argument("--forcing", choices=("quiescence", "threats"), default="threats", help="what drives the forcing line: every check / capture / promotion, or the highest-value threat")
     ap.add_argument("--chains", type=int, default=0, help="print the because-chain (the line and the findings at its end) for this many decisions of different themes")
     ap.add_argument("--loop", choices=("event", "script"), default="event", help="the ledger's decision: read off the event loop's chain (ANALYST_PLAN 40.4, the default) or the older fixed script + B* stop (comparison only)")
+    ap.add_argument("--lemmas", choices=("off", "learn", "on"), default="off", help="chain lemmas (ANALYST_PLAN 40.3): learn = record the shapes (no lemma used) and merge them into the store, on = promoted lemmas answer their questions")
+    ap.add_argument("--promote", type=int, default=20, help="the promotion threshold: the count a shape must settle the same way (never below 5)")
+    ap.add_argument("--stake-knob", type=int, default=3, help="a question with a stake above this is still run when a lemma matches")
+    ap.add_argument("--lemma-file", default=None)
     ap.add_argument("--no-baselines", action="store_true", help="skip the solver-alone and planner columns (they are the same on both loops)")
     ap.add_argument("--budget", type=int, default=200, help="questions per decision (the plan's 200; other values only as a sensitivity check)")
     a = ap.parse_args(argv)
@@ -257,6 +265,11 @@ def main(argv=None):
     os.environ["LEDGER_BUDGET"] = str(a.budget)
     os.environ["LEDGER_FORCING"] = a.forcing
     os.environ["LEDGER_LOOP"] = a.loop
+    from catspace.incubator.analyst.discovery import chain_lemmas as CL
+    lemma_file = a.lemma_file or CL.default_path()
+    os.environ["LEDGER_LEMMAS"] = a.lemmas; os.environ["LEDGER_LEMMA_FILE"] = lemma_file; os.environ["LEDGER_STAKE_KNOB"] = str(a.stake_knob)
+    if a.lemmas != "off":
+        print(f"OBS lemmas {a.lemmas}: promotion threshold {max(CL.MIN_THRESHOLD, a.promote)} (flag --promote {a.promote}), stake knob {a.stake_knob}, store {lemma_file}; every lemma is a {CL.STATUS}")
     os.environ["LEDGER_NO_BASELINES"] = "1" if a.no_baselines else "0"
     t0 = time.perf_counter()
     rows = dev_rows(a.n) if a.set == "dev" else dev_rows(a.n, 11) if a.set == "fresh" else dev_rows(a.n, 17) if a.set == "new17" else test_rows(a.n)
@@ -274,6 +287,18 @@ def main(argv=None):
                   f"cand={l['candidates']}/{l['legal']} {l['seconds']}s confirm={c['result'] if c else '-'} | solver {r['solver']['move']} d={r['solver']['depth']} "
                   f"nodes={r['solver']['nodes']} {'ok' if r['solver']['correct'] else 'MISS'} | planner {r['planner']['move']} {'ok' if r['planner']['correct'] else 'MISS'} (answer {r['answer']})")
     summ = summarize(res, f"{a.set} set, {len(res)} puzzles")
+    if a.lemmas != "off":
+        reps = [r["ledger"].get("lemma") for r in res if r["ledger"].get("lemma")]
+        qs = sum(r["ledger"]["questions"] for r in res) / len(res)
+        secs = sum(r["ledger"]["seconds"] for r in res) / len(res)
+        print(f"OBS lemmas {a.lemmas}: {sum(r['ledger']['correct'] for r in res)} of {len(res)} correct; mean questions per decision {qs:.1f}; mean seconds per decision {secs:.2f}")
+        if a.lemmas == "learn":
+            print("OBS lemmas learn: " + json.dumps(CL.merge(reps, lemma_file, a.promote)))
+        else:
+            hits = sum(x["hits"] for x in reps); conf = sum(x["confirms"] for x in reps); con = sum(len(x["contradictions"]) for x in reps)
+            print(f"OBS lemmas on: {hits} questions answered by a lemma, {conf} held-out checks confirmed, {con} contradictions (surprises, the lemma demoted); {sum(x['promoted_loaded'] for x in reps) // max(1, len(reps))} promoted lemmas loaded")
+            if con:
+                print("OBS lemmas on: store after the demotions: " + json.dumps(CL.merge(reps, lemma_file, a.promote)))
     cls = defaultdict(int)
     misses = [r for r in res if not r["ledger"]["correct"]]
     for r in misses:

@@ -219,3 +219,77 @@ def test_the_script_loop_is_still_there():
     LG.load_defence_frame(L)
     r = L.trace(4, "defined", "frame", False)
     assert r["move"] == "c6a8" and any(l.startswith("DECISION:") for l in r["trace"])
+
+
+# ---- PHASE 3: lemmas by chunking (ANALYST_PLAN 40.3) -------------------------------------------------------------------------------------
+
+def _learn(fen: str):
+    L = LG.new(fen, 5000)
+    LG.load_transitions(L)
+    L.set_lemmas("", 3, 5, True)
+    L.chain(120)
+    return L.lemma_report()
+
+
+def _store(tmp_path, reports, threshold=5):
+    from catspace.incubator.analyst.discovery import chain_lemmas as CL
+    p = str(tmp_path / "lemmas.json")
+    CL.merge(reports, p, threshold)
+    return p
+
+
+def test_a_shape_is_canonical_under_mirror_and_translation():
+    import chess
+    fen = MOVE30
+    base = LG.new(fen, 100).shape_for("SAFE", "Qg4", 1)
+    assert base and base.startswith("SAFE|")
+    flipped = chess.Board(fen).transform(chess.flip_horizontal)              # a left-right mirror
+    assert LG.new(flipped.fen(), 100).shape_for("SAFE", "Qb4", 1) == base
+    swapped = chess.Board(fen).mirror()                                      # the colours swapped: the actor and the pieces change sides together
+    assert LG.new(swapped.fen(), 100).shape_for("SAFE", "Qg5", 0) == base
+    # a translation of a position with nothing on the edge it moves away from: the same pieces, the same relations
+    b = chess.Board(None); b.set_piece_at(chess.D4, chess.Piece(chess.ROOK, chess.WHITE)); b.set_piece_at(chess.D6, chess.Piece(chess.QUEEN, chess.BLACK))
+    b.set_piece_at(chess.A1, chess.Piece(chess.KING, chess.WHITE)); b.set_piece_at(chess.H8, chess.Piece(chess.KING, chess.BLACK)); b.turn = chess.WHITE
+    c = chess.Board(None); c.set_piece_at(chess.E3, chess.Piece(chess.ROOK, chess.WHITE)); c.set_piece_at(chess.E5, chess.Piece(chess.QUEEN, chess.BLACK))
+    c.set_piece_at(chess.A1, chess.Piece(chess.KING, chess.WHITE)); c.set_piece_at(chess.H8, chess.Piece(chess.KING, chess.BLACK)); c.turn = chess.WHITE
+    assert LG.new(b.fen(), 100).shape_for("SAFE", "Rd4", 1) == LG.new(c.fen(), 100).shape_for("SAFE", "Re3", 1)
+
+
+def test_a_promoted_lemma_answers_in_one_step_and_the_chain_is_skipped(tmp_path):
+    rep = _learn(NXC6)
+    store = _store(tmp_path, [rep] * 5, 5)
+    import json
+    promoted = [e for e in json.load(open(store))["lemmas"].values() if e["promoted"]]
+    assert promoted and all(e["outcome"] and e["id"] for e in promoted)
+    L0 = LG.new(NXC6, 5000); LG.load_transitions(L0)
+    base = L0.chain(120)
+    L = LG.new(NXC6, 5000); LG.load_transitions(L)
+    L.set_lemmas(open(store).read(), 9, 1_000_000, False)
+    r = L.chain(120)
+    rep2 = L.lemma_report()
+    print(f"OBS the Nxc6 chain: {base['questions']} questions without lemmas, {r['questions']} with {rep2['hits']} answered by a lemma ({len(promoted)} promoted)")
+    assert rep2["hits"] > 0 and r["questions"] < base["questions"]
+    assert any("by lemma" in c["answer"] for c in r["agenda"]["chains"])
+    # a question answered by a lemma has no chain below it
+    for c in r["agenda"]["chains"]:
+        if "by lemma" in c["answer"]:
+            assert not any(k["parent"] == c["q"] for k in r["agenda"]["chains"])
+
+
+def test_a_contradiction_demotes_the_lemma_and_is_kept(tmp_path):
+    rep = _learn(NXC6)
+    # corrupt one SAFE premise: promote it with an outcome the chain will not give
+    pk = next(p for p in rep["observations"] if p.startswith("SAFE|"))
+    wrong = {"observations": {pk: {"alone => 7..7": {"count": 6, "value": [7, 7], "evidence": ["x"]}}}}
+    store = _store(tmp_path, [wrong], 5)
+    L = LG.new(NXC6, 5000); LG.load_transitions(L)
+    L.set_lemmas(open(store).read(), 9, 1, False)                            # every match is a held-out check: run and compared
+    L.chain(120)
+    rep2 = L.lemma_report()
+    assert rep2["contradictions"] and rep2["contradictions"][0]["premise"] == pk and rep2["contradictions"][0]["expected"] == "alone => 7..7"
+    from catspace.incubator.analyst.discovery import chain_lemmas as CL
+    CL.merge([rep2], store, 5)
+    e = CL.load(store)["lemmas"][pk]
+    assert e["demoted"] and not e["promoted"] and e["contradictions"]
+    L2 = LG.new(NXC6, 5000); L2.set_lemmas(open(store).read(), 9, 1, False)
+    assert L2.lemma_report()["promoted_loaded"] == 0

@@ -103,6 +103,7 @@ pub struct ReasoningLedger {
     trans: Option<Value>,
     cands: Vec<chain::Cand2>,
     qsq: HashMap<usize, Vec<Square>>,
+    lem: chain::LemmaState,
 }
 
 impl ReasoningLedger {
@@ -520,7 +521,7 @@ impl ReasoningLedger {
         let pos = crate::parse(&fen).ok_or_else(|| pyo3::exceptions::PyValueError::new_err("bad fen"))?;
         Ok(ReasoningLedger { line: vec![pos.clone()], pos, ply: 0, fs: vec![], live: HashMap::new(), listeners: HashMap::new(), fact_cache: HashMap::new(),
             budget, used: 0, carried: 0, reasked: 0, facts_n: 0, solver_calls: 0, stack: vec![], skipped: vec![], agenda: vec![], plies: vec![], confirmations: vec![], tt: HashMap::new(), nodes: 0, node_cap_hit: false, budget_hit: false, deep: false, cap_now: 0, cuts: 0, threats_mode: false, lean_mode: false, pushes: 0, tr: std::cell::RefCell::new(vec![]), tracing: false, root_ply: 0, sep_flag: false, suppressed: std::cell::Cell::new(0), lean_cap: LEAN_CAP, frame: vec![], threats_learned: false, looks: 0, slog: vec![], resolving: 0, resolved_n: 0, cashing: false, dframe: vec![], answers_hand: false, shallow_sizing: false, prefilter_root: true,
-            ag: crate::agenda::Agenda::new(vec![], 0), ag_on: false, cur_q: None, cur_ctx: vec![], pending: HashMap::new(), trans: None, cands: vec![], qsq: HashMap::new() })
+            ag: crate::agenda::Agenda::new(vec![], 0), ag_on: false, cur_q: None, cur_ctx: vec![], pending: HashMap::new(), trans: None, cands: vec![], qsq: HashMap::new(), lem: chain::LemmaState::default() })
     }
 
     /// Ask every question of the entry pass (SAFE of every piece, BLOCKS of every shielded piece with its PIN) and return the report.
@@ -753,6 +754,24 @@ impl ReasoningLedger {
         let j = py.import("json")?;
         Ok(j.call_method1("loads", (res.to_string(),))?.unbind())
     }
+
+    /// Load the chain lemmas (data/derived/chain_lemmas.json, ANALYST_PLAN 40.3) as JSON text. `learn`: record the shape of every settled chain (observations, exported by
+    /// `lemma_report`); a promoted lemma answers its question in one step unless the stake is above `stake_knob` or the question is one of the held-out checks (every
+    /// `heldout_every`-th match is run and compared).
+    #[pyo3(signature = (text, stake_knob=3, heldout_every=5, learn=true))]
+    fn set_lemmas(&mut self, text: &str, stake_knob: i64, heldout_every: u32, learn: bool) -> PyResult<()> {
+        self.lem.load(text, stake_knob, heldout_every, learn).map_err(pyo3::exceptions::PyValueError::new_err)
+    }
+
+    /// The lemma session so far: the observations (premise -> outcome -> count, evidence), hits, held-out checks confirmed, the contradictions, the questions asked in all chains.
+    fn lemma_report(&self, py: Python<'_>) -> PyResult<PyObject> {
+        let j = py.import("json")?;
+        Ok(j.call_method1("loads", (self.lem.report().to_string(),))?.unbind())
+    }
+
+    /// The premise shape of a question on the root position (squares abstracted; relative to the actor): for tests and for reading lemmas. kind: SAFE (arg a piece, e.g. "Qg4"),
+    /// DEFLECT (arg "holder,target", e.g. "Re2,Bb2"), POKE (arg a uci move).
+    fn shape_for(&mut self, kind: &str, arg: &str, actor: u8) -> Option<String> { self.premise_for(kind, arg, actor, &[]) }
 
     fn report_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
         let j = py.import("json")?;
