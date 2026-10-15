@@ -1352,3 +1352,29 @@ rules, the chunked store, the defence frame, learned priorities. Loop on one win
 not) -> propose small premises over the words that separate SAME from AVOIDED on every branch -> verify (solver on the concrete positions, then a Lean
 statement and a proof attempt composing local theorems) -> fail -> propose differently -> done when a proved lemma covers the window. The hard part:
 the composing tactic in Lean (a fork = two exchanges + a tempo); it does not exist. First target: the rook window of sHa6yUKv (17.Qg4? Qxc3+ fork).
+Kaveh GO (the same hour): start with the exchange law as the known material; once the machinery works, more of what we know can be added to accelerate
+it, and later the start can be moved to more basic things.
+
+### 41.9 Phase B build brief: the self-mining loop on one window (stage 1)
+
+`selfmine.py` under catspace/incubator/analyst/discovery/, -m entry `--game sHa6yUKv --window 3` (reads data/derived/windows/<id>.json). Not allowed
+inside: the chain's frames and rules (reasoning.rs decide/size_kick), the chunked store, the defence frame, learned priorities. Allowed: the words
+(base_vocabulary, vocab_eval / vocab_values in analyst_core; note their lone-side mirror convention), the Lean theorems in lean/ideas (ExchangeLaw),
+goals.forced_moves as the concrete pre-check, the window's teacher labels.
+1. THE TARGET from the window: at the start position the played move loses >= delta for the mover (SAME); each AVOIDED branch does not. Examples = the
+   SAME branches' positions after the move, counter-examples = the AVOIDED branches' positions after the move (and the OTHER ones set aside).
+2. PROPOSE: atoms = vocabulary terms over the OBJECTS of the window (the squares of the pieces that move, capture or are captured in the window's
+   lines, plus the kings), including `after`, `see`, `attackers`, `defenders`, `mobility`, `declined`, `attackable`, lines/between; premises = conjunctions
+   of 1-3 atoms, canonical under mirror / colour / translation (reuse chain_lemmas' canonical form if it is only a form, not its store). Keep a premise
+   when it holds on every example and fails on every counter-example; rank by size then by how many of the window's plies it covers. Print the top 10.
+3. VERIFY, concrete: for each kept premise, the solver confirms on each example that the mover loses >= delta within the window's plies (forced_moves
+   from the other side); a premise whose outcome the solver does not confirm on every example is dropped.
+4. VERIFY, Lean: render each surviving premise and its outcome as a Lean statement over the vocabulary's Lean definitions (base_vocabulary.lean() renders
+   terms; the outcome as a `seeOf`-based claim where it is one exchange, or as a forced-loss claim if a definition exists -- if none exists, say so, do
+   not invent one outside Lean), write it to lean/ideas/Ideas/Mined/<game>_<window>.lean, run `lake env lean` on it: report TYPECHECKS / PROVES (try
+   `decide`-free automation: simp with the ExchangeLaw lemmas, omega, aesop if present) / FAILS with the error. Expect most to fail: the output we want
+   is the list of statements and WHY each proof failed (what local theorem is missing).
+5. FAIL -> PROPOSE DIFFERENTLY: on a Lean failure, continue down the ranked premises; on exhaustion, widen the atoms (4 atoms, more objects) once.
+6. OBS lines: atoms, premises enumerated, kept after separation, kept after the solver, Lean typechecked, Lean proved, the top premises in words, the
+   failure reasons. Tests in tests/test_selfmine.py: a hand-made two-branch window where a one-atom premise separates (e.g. the moved piece lands where
+   `see` >= 5) and is solver-confirmed. Trace this one window; STOP and report (under 300 words). No batch. Plain commits, no trailers.
