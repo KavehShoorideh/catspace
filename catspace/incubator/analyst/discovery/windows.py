@@ -130,11 +130,21 @@ def run_game(index: int, teacher, domain=OB.DOMAIN, cap=8, rollout=6, log=print,
         lv = {c: sum(1 for p in w["plies"] for b in p["branches"] if b["cls"] == c) for c in ("SAME", "AVOIDED", "OTHER")}
         log(f"OBS window {gid} {o.kind} ply {o.ply + 1} {o.side} wins {abs(o.delta)}: tree {w['reasonable']} reasonable branches, depth {w['depth']} plies back, "
             f"inevitability {w['inevitability']} plies back (strict {w['inevitability_strict']}), stop {w['stop']}, leaves {lv}, cashed {w['cashed']}")
+    all_san = domain.san(fens[0], moves)
+    for w in wins:
+        start, end = w["plies"][-1]["ply"], w["observable"]["ply"]
+        while end + 1 < len(moves) and domain.is_capture(fens[end], moves[end]) and domain.is_capture(fens[end + 1], moves[end + 1]):
+            end += 1                                              # on to the settled end of the capture chain
+        w["start_ply"], w["played_san"], w["played_uci"] = start, all_san[start:end + 1], moves[start:end + 1]
+        best = max(teacher.reasonable(w["start_fen"], band), key=lambda r: r[1])[0]
+        tl = teacher.rollout(w["start_fen"], best, len(w["played_uci"]))[:len(w["played_uci"])]    # the teacher's best play from the start, as long as the played line (or as far as it reaches)
+        w["teacher_uci"], w["teacher_san"] = tl, domain.san(w["start_fen"], tl)
+        w["diverge"] = next((i for i in range(min(len(tl), len(w["played_uci"]))) if tl[i] != w["played_uci"][i]), None if tl == w["played_uci"][:len(tl)] else 0)
     groups = merge(wins, domain)
     elapsed = round(time.time() - t0, 1)
     log(f"OBS game {gid}: windows before the importance filter {before}, after {len(wins)}; {len(groups)} merged groups ({len(wins) - len(groups)} windows merged into an earlier one), band {band}; {elapsed} s")
     res = dict(game=gid, index=index, band=band, knobs=dict(knobs or {}, branches=cap, rollout=rollout), counts=counts,
-               observables=[o.asdict() for o in obs], windows=wins, merged=groups, seconds=elapsed, **domain.describe(game))
+               san=all_san, observables=[o.asdict() for o in obs], windows=wins, merged=groups, seconds=elapsed, **domain.describe(game))
     out = paths.derived(f"windows/{gid}.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     json.dump(res, open(out, "w"), indent=1)

@@ -79,6 +79,10 @@ class ChessDomain:
         moves, boards = self.moves_boards(game)
         return [m.uci() for m in moves], [b.fen() for b in boards]
 
+    def is_capture(self, fen: str, move: str) -> bool:
+        b = chess.Board(fen); m = chess.Move.from_uci(move)
+        return b.is_capture(m) or m.promotion is not None
+
     def side_to_move(self, fen: str) -> str:
         return chess.COLOR_NAMES[chess.Board(fen).turn]
 
