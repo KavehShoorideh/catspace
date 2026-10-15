@@ -768,6 +768,8 @@ impl ReasoningLedger {
         cand_ucis.truncate(max_cand);
         let tscore = self.trade_score();
         let mut rows: Vec<Value> = vec![];
+        let mut t_split = std::time::Duration::ZERO; let mut t_chain = std::time::Duration::ZERO; let (mut t_root, mut t_deep, mut t_turn) = (std::time::Duration::ZERO, std::time::Duration::ZERO, std::time::Duration::ZERO);
+        let t_all = std::time::Instant::now();
         struct Row { depth: u32, chain_q: u32, uci: String, san: String, lo: i64, hi: i64, tsc: i64, opened: i64, against: i64, risk: i64, meets: Vec<String>, proven: bool, trades: bool, proof_plies: u32, counter: i64, counter_plies: u32, gain: i64, hi0: i64, split: Option<(i64, i64, String)> }
         let mut results: Vec<Row> = vec![];
         let saved_cands = self.cands.clone();
@@ -779,6 +781,7 @@ impl ReasoningLedger {
             let g = gain_of(&m);
             let trades = m.capture() == Some(Role::Queen);
             let (from, to) = (m.from(), m.to());
+            let t_c = std::time::Instant::now();
             let snap = self.enter(&m);
             // the loop on the position after the move, with the budget of the stake
             let budget = (24 + 4 * cand_ucis.iter().find(|x| &x.0 == u).map_or(0, |x| x.1).min(9)).min(questions as i64) as u32;
@@ -806,6 +809,8 @@ impl ReasoningLedger {
             // THE SPLIT OF A SACRIFICE (Kaveh 2026-10-15, "add the if-they-don't as a vocabulary piece"): a piece left to be taken where it lands is worth the smaller of
             // two branches -- IF THEY TAKE: our exchange loss there, then what the exact solver proves we force after the recapture (02XVK: Bxg6 fxg6 Qxg6+ Kh8 Ne4+);
             // IF THEY DON'T: what we took, less their best capture elsewhere (the word `declined`), less the piece itself when it is trapped (no `mobility`)
+            t_chain += t_c.elapsed();
+            let t_s = std::time::Instant::now();
             let mut split: Option<(i64, i64, String)> = None;
             let mut proven_plies = 0u32;
             if !self.pos.is_checkmate() && !self.pos.is_check() && crate::rules::see(self.pos.board(), to, opp) >= 1 && self.deadline.map_or(true, |d| std::time::Instant::now() < d) {
@@ -813,19 +818,33 @@ impl ReasoningLedger {
                 let qpos = self.pos.clone();
                 let mut accept: Option<i64> = None;
                 let mut split_plies = 0u32;
-                for rm in qpos.legal_moves().into_iter().filter(|m| m.to() == to && m.is_capture()) {
+                let elsewhere = crate::vocab::declined(&qpos, to);
+                let trapped = if crate::vocab::mobility(&qpos, to).is_empty() { landed } else { 0 };
+                let decline = g - elsewhere.max(trapped);
+                let best_so_far = results.iter().map(|r| r.lo).max().unwrap_or(i64::MIN);
+                // (a sacrifice whose declined branch cannot reach the best known is not worth the solver)
+                for rm in qpos.legal_moves().into_iter().filter(|m| decline > lo && decline >= best_so_far && m.to() == to && m.is_capture()) {
                     let a = crate::after(&qpos, &rm);
                     let afen = shakmaty::fen::Fen::from_position(a.clone(), shakmaty::EnPassantMode::Legal).to_string();
-                    let (mut forced, mut v, mut n) = (0i64, 1i64, 0u32);
+                    // only the sizes that matter: at least what would raise the reading, at most what the declined branch allows (the smaller of the two is the value)
+                    let v_min = (lo.max(best_so_far) - (g - landed) + 1).max(1);
+                    let v_max = (decline - (g - landed)).min(20);
+                    let (mut forced, mut v, mut n) = (0i64, 1, 0u32);                               // three moves from size 1 (cheap: it gates the deeper check); four moves only from the sizes that matter
                     if a.legal_moves().is_empty() { forced = if a.is_check() { MATE } else { 0 }; }
-                    else { while v <= 20 { match crate::goals::forced_moves(afen.clone(), v, 4, 1_000_000).iter().filter(|x| x.1 == "forced").map(|x| x.2).min() { Some(k) => { forced = v; n = n.max(k); v += 1; } None => break } } self.solver_calls += 1; }
+                    else if v_min > v_max { }
+                    else {
+                        // three moves first; one deeper only while the shallower line already forces something (a forcing line that continues), under the deadline
+                        for (d, budget) in [(3u32, 300_000u64), (4, 1_000_000)] {
+                            if d == 4 { if forced == 0 { break; } v = v.max(v_min); }
+                            if self.deadline.map_or(false, |dl| std::time::Instant::now() > dl) { self.cut = true; break; }
+                            while v <= v_max { match crate::goals::forced_moves(afen.clone(), v, d, budget).iter().filter(|x| x.1 == "forced").map(|x| x.2).min() { Some(k) => { forced = v; n = n.max(k); v += 1; } None => break } }
+                            self.solver_calls += 1;
+                        }
+                    }
                     let line = g - landed + forced;
                     split_plies = split_plies.max(2 + 2 * n);                     // our move, their recapture, then the forced line
                     accept = Some(accept.map_or(line, |x: i64| x.min(line)));
                 }
-                let elsewhere = crate::vocab::declined(&qpos, to);
-                let trapped = if crate::vocab::mobility(&qpos, to).is_empty() { landed } else { 0 };
-                let decline = g - elsewhere.max(trapped);
                 if let Some(acc) = accept {
                     let both = acc.min(decline);
                     split = Some((acc, decline, format!("if they take {}, if they don't {}", acc, decline)));
@@ -835,6 +854,7 @@ impl ReasoningLedger {
             // the root chain's assessment of this very move (the exact solver confirmed a forced gain) is a sound lower bound
             let mut proven = false;
             if let Some(rc) = root_cands.iter().find(|c| &c.uci == u && c.actor == ua) { if rc.lo >= 1 && rc.lo > lo { lo = rc.lo; proven = true; hi = hi.max(rc.hi); } }
+            t_split += t_s.elapsed();
             // which constraints it meets
             let mut meets = vec![];
             for c in &cons {
@@ -857,6 +877,7 @@ impl ReasoningLedger {
         {
             let fen = shakmaty::fen::Fen::from_position(root.clone(), shakmaty::EnPassantMode::Legal).to_string();
             crate::goals::solver_nodes_reset();
+            let t_r = std::time::Instant::now();
             let mut v = 1;
             while v <= 20 {
                 let res = crate::goals::forced_moves(fen.clone(), v, 3, 300_000);
@@ -871,10 +892,14 @@ impl ReasoningLedger {
             let res = crate::goals::forced_moves(fen.clone(), 100, 3, 300_000);
             for r in results.iter_mut() { if res.iter().any(|x| x.0 == r.uci && x.1 == "forced") { r.lo = MATE; r.hi = MATE; r.proven = true; r.proof_plies = 99; } }
             self.solver_calls += 1;
+            t_root += t_r.elapsed();
+            let t_t = std::time::Instant::now();
             // THE TURN-AROUND: after each candidate, what the OTHER side can force within three moves is a sure loss for us, unless our own proof already reaches further
             // (a proof over more plies has seen their counter and what follows it; 0CUWR: Nc5 read 1..3 while Nxa3 forces 2 back over more plies than the proof)
+            let best_lo_now = results.iter().map(|r| r.lo).max().unwrap_or(0);
             for r in results.iter_mut() {
-                if r.lo >= MATE { continue; }
+                if r.lo >= MATE || r.hi.max(r.hi0) < best_lo_now { continue; }                        // (alpha-beta: a line that cannot beat the best is not refined)
+                if self.deadline.map_or(false, |dl| std::time::Instant::now() > dl) { self.cut = true; break; }
                 let Ok(um) = r.uci.parse::<shakmaty::uci::UciMove>() else { continue };
                 let Ok(m) = um.to_move(&root) else { continue };
                 let q = crate::after(&root, &m);
@@ -893,6 +918,8 @@ impl ReasoningLedger {
                     r.lo = r.lo.min(cap); r.hi = r.hi.min(cap.max(r.lo)); r.proven = false;
                 }
             }
+            t_turn += t_t.elapsed();
+            let t_d = std::time::Instant::now();
             // THE HORIZON IS NOT A NUMBER (Kaveh: "keep going until we see something bigger, then turn around"): the candidates still in the running (their hopeful end reaches the best
             // sure gain) are checked one move deeper, under the node budget; a budget hit leaves them as they were (0CUWR: Kxc2 is forced only at the fourth move)
             if !default_mode && self.deadline.map_or(true, |d| std::time::Instant::now() < d) {
@@ -912,7 +939,9 @@ impl ReasoningLedger {
                     }
                 }
             }
+            t_deep += t_d.elapsed();
         }
+        let timing = json!({"total": t_all.elapsed().as_secs_f64(), "chains": t_chain.as_secs_f64(), "split": t_split.as_secs_f64(), "root_solver": t_root.as_secs_f64(), "turn_around": t_turn.as_secs_f64(), "deepening": t_deep.as_secs_f64(), "solver_calls": self.solver_calls});
         // ranking: what it surely gets, then the hopeful end, then (equal) the table's reading of a queen trade, then the unconfirmed risk; in the default mode the opening principles first, then the
         // opportunities it opens at the smallest stake against us
         results.sort_by(|a, b| if default_mode {
@@ -941,7 +970,7 @@ impl ReasoningLedger {
                                if b.meets.is_empty() { if default_mode { "the opening default".to_string() } else { "it meets no listed constraint and has the best interval".to_string() } } else { format!("it meets {}", b.meets.join(", ")) }));
         }
         for r in &results { rows.push(json!({"uci": r.uci, "san": r.san, "lo": r.lo, "hi": r.hi, "meets": r.meets, "against": r.against, "opened": r.opened, "depth": r.depth, "chain_q": r.chain_q, "counter": r.counter, "proof_plies": r.proof_plies, "split": r.split.as_ref().map(|x| json!([x.0, x.1]))})); }
-        json!({"move": mv, "san": san, "interval": [lo, hi], "status": status, "lines": lines, "generated": generated, "cut": self.cut, "tags": tags.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<HashMap<_, _>>(), "legal": legal.len(), "questions": self.lem.q_total, "lemma": self.lem.report(), "facts": self.facts_n, "candidates": rows, "default": default_mode, "quiet": quiet,
+        json!({"move": mv, "san": san, "interval": [lo, hi], "status": status, "lines": lines, "timing": timing, "generated": generated, "cut": self.cut, "tags": tags.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<HashMap<_, _>>(), "legal": legal.len(), "questions": self.lem.q_total, "lemma": self.lem.report(), "facts": self.facts_n, "candidates": rows, "default": default_mode, "quiet": quiet,
                "constraints": cons.iter().map(|c| json!({"text": c.text, "stake": c.stake})).collect::<Vec<_>>(), "opportunities": opps.iter().map(|c| json!({"text": c.text, "stake": c.stake})).collect::<Vec<_>>()})
     }
 }

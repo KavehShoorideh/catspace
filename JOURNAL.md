@@ -31051,3 +31051,17 @@ gives directionality and subgoals; planning = two imagined futures; a surprise i
    surprise forever; in chess, weak opponents' randomness, so surprise must be measured against a strength-conditioned prediction. Pease 2007 (Lakatos
    operators implemented: monster-barring, exception-barring, lemma-incorporation) = the operator set for a mating surprise.
 Design against: PARADISE's no-full-game, the utility problem, noisy-TV surprise, Go-Explore cell brittleness, PAL's predicate blow-up.
+
+### THE SPLIT OF A SACRIFICE, AND ITS PRICE (2026-10-15 11:20 PDT)
+
+Kaveh: "add the if-they-don't as a vocabulary piece." The word `declined` (Lean declinedOf, gloss, glossary, Rust): what the side to move wins by the
+exchange on a square OTHER than s. In decide_by_chain a piece left to be taken where it lands is worth the smaller of two branches: IF THEY TAKE, the
+exchange loss then what the solver proves after the recapture (three moves, one deeper only while the shallower line forces something); IF THEY DON'T,
+what we took less `declined` on the landing square, less the piece itself if trapped (no `mobility`). The split carries its proof depth so a shorter
+counter does not cap it. 02XVK now plays Bxg6 "if they take 1, if they don't 1".
+The price, and three alpha-beta prunings: the first build took a decision to 7 minutes (the solver sized every sacrifice from 1 upward for every
+recapture). Fixed by (1) the turn-around only for candidates still in the running, (2) the split's solver only when the declined branch could reach the
+best known, (3) only the sizes between "would raise the reading" and "the declined branch allows". Per-phase timing is now in the decision's JSON.
+OBS (build after the prunings, tests 34 passed): dev 50 of 60 (49 before the split), fresh 50 of 60 (50); seconds per decision median / p90 / max:
+dev 9.4 / 43 / 106, fresh 4.0 / 72 / 202 (the max is one wide position whose chains alone cost 42 s, unchanged since the morning). Directional, one run.
+Kaveh, the same hour: rules are PROVEN IN LEAN, never re-checked against the windows (plan 41.6).
