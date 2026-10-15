@@ -122,6 +122,9 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
 - **Balance** (`balance`, 2026-10-15, the observable itself) — our material minus theirs, plus 64 (64: level). One number for the leaf of a tree premise,
   so that a single witness move (`most` at our turn) bounds the gain; two separate bounds (material_us, material_them) would come from two different
   witnesses and prove nothing. Lean: `balanceOf`.
+- **Worth** (`worth X`, 2026-10-15, plan 42) — the declared value of the piece on X (pawn 1, knight 3, bishop 3, rook 5, queen 9; a king or an empty square 0),
+  whoever owns it. A convention, declared, not derived. The root lemma (an undefended piece is worth its value to the side that can take it) is stated in it.
+  Lean: `worthOf`.
 - **Layers** — the order the proposers search the terms in: layer 0 the original words, layer 1 the completed static words,
   layer 2 the expensive ones (the short window's tactics, time).
 

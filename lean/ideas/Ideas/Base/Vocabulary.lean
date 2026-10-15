@@ -297,6 +297,11 @@ def movesOf (p : Position) (s : Square) : SquareSet := fun t =>
 def materialOf (p : Position) (c : Color) : Nat :=
   (allSquares.map (fun u => match p.board u with | some q => (if q.color == c then (pieceValue q.kind).toNat else 0) | none => 0)).sum
 
+/-- **worth** (Kaveh 2026-10-15, plan 42.2): the declared value of the piece on `s` (pawn 1, knight 3, bishop 3, rook 5, queen 9), whoever owns it;
+a king or an empty square 0. A convention, declared, not derived. -/
+def worthOf (p : Position) (s : Square) : Nat :=
+  match p.board s with | some q => (pieceValue q.kind).toNat | none => 0
+
 /-- **balance** (Kaveh 2026-10-15, the observable itself): our material minus theirs on an offset of 64 (64: level; above: ahead). One
 number for the leaf of a tree premise, so that one witness move bounds the gain. -/
 def balanceOf (p : Position) (c : Color) : Nat := materialOf p c + 64 - materialOf p (Color.opposite c)

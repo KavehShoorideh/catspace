@@ -99,6 +99,7 @@ PRIMITIVES.update({
     "attackers": (("sq",), "num", "how many of our pieces attack {0}"),
     "defenders": (("sq",), "num", "how many of their pieces attack {0}"),
     "see": (("sq",), "num", "what the other side wins by the exchange on {0}"),
+    "worth": (("sq",), "num", "the declared value of the piece on {0} (pawn 1, knight 3, bishop 3, rook 5, queen 9; a king or an empty square 0), whoever owns it"),
     "moves": (("sq",), "set", "the squares {0} can legally move to"),
     # the short window's tactics (exact; expensive -- layer 2)
     **{f"forcing_{side}_{v}": ((), "num", f"how few moves {'we need' if side == 'us' else 'they need, as if we passed,'} to force "
@@ -337,7 +338,7 @@ def lean(t) -> str:
         "xray": lambda: f"(oset (xrayFrom p) {x[0]})",
         "attackers": lambda: f"(onum (attackerCount p c) {x[0]})",
         "defenders": lambda: f"(onum (attackerCount p (Color.opposite c)) {x[0]})",
-        "see": lambda: f"(onum (seeOf p) {x[0]})", "moves": lambda: f"(oset (movesOf p) {x[0]})",
+        "see": lambda: f"(onum (seeOf p) {x[0]})", "worth": lambda: f"(onum (worthOf p) {x[0]})", "moves": lambda: f"(oset (movesOf p) {x[0]})",
         "mobility": lambda: f"(oset (mobilityOf p) {x[0]})",
         "declined": lambda: f"(onum (declinedOf p) {x[0]})",
         "min": lambda: f"(min {x[0]} {x[1]})", "max": lambda: f"(max {x[0]} {x[1]})",
