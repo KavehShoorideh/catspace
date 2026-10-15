@@ -51,7 +51,7 @@ button.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
 .win .t{font-weight:600}.win .m{font-size:.82rem;color:var(--muted)}
 .chip{display:inline-block;font-family:var(--mono);font-size:.7rem;padding:1px 6px;border-radius:999px;border:1px solid currentColor;margin-left:4px;vertical-align:middle}
 .SAME{color:var(--same)}.AVOIDED{color:var(--avoid)}.OTHER{color:var(--other)}.ENGINE{color:var(--eng)}.MANUAL{color:var(--muted)}.TEACHER{color:var(--eng)}
-.tree{font-family:var(--mono);font-size:.86rem;line-height:1.7;max-height:60vh;overflow:auto;min-width:0}
+.tree{font-family:var(--mono);font-size:.86rem;line-height:1.7;max-height:60vh;overflow:auto;min-width:0;position:relative}
 .mv{display:inline-block;padding:0 4px;border-radius:4px;cursor:pointer}
 .mv:hover{background:var(--soft)}.mv.cur{background:var(--accent);color:var(--bg)}
 .mv.main{font-weight:600}.mv.manual{font-style:italic}
@@ -148,7 +148,9 @@ function setBoard() {
 function goTo(n) {
   cur = n; setBoard();
   document.querySelectorAll('.mv.cur').forEach(e => e.classList.remove('cur'));
-  const el = document.getElementById(n.id); if (el) { el.classList.add('cur'); el.scrollIntoView({ block: 'nearest' }); }
+  const el = document.getElementById(n.id);
+  if (el) { el.classList.add('cur'); const t = $('#tree'); const top = el.offsetTop - t.offsetTop;       // scroll the move list only, never the page
+    if (top < t.scrollTop || top > t.scrollTop + t.clientHeight - 30) t.scrollTop = Math.max(0, top - t.clientHeight / 2); }
   const mv = n.ply ? `${Math.ceil(n.ply / 2)}${n.ply % 2 ? '.' : '…'} ${n.san}` : 'start';
   $('#pos').textContent = `${mv} · ${turnOf(n.fen)} to move`;
   renderAnn(); loadNote(); analyse();
