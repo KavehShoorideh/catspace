@@ -1337,3 +1337,7 @@ Amendment (Kaveh, the same hour): the TEACHER is pluggable like the domain adapt
 rollout of its best play) with Stockfish as one implementation; windows.py uses only the protocol, so another engine, a tablebase, a learned policy or a
 non-chess scorer slots in. NO big mining job, now or later: stage 2 (100 games) is dropped; the entry point takes a handful of games. Machinery first; then
 the CYCLE (41.1 L7) in small turns: mine a few windows, work on them, prove lemmas, mine again.
+Kaveh, after the first window page (2026-10-15): "the windows are too many. we need to focus on important windows leading to important observations." An
+IMPORTANT observation: at the end of your turn the material balance has shifted compared to the end of your last turn (kind `shift`, signed delta, through
+the adapter's `balance`). Even trades are no observation; a capture sequence counts once, by its net, at the turn where it settled. Only important
+observables (shift, mate) get windows.
