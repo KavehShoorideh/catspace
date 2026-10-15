@@ -1226,3 +1226,57 @@ ablation (Kaveh's metric), never a solve rate alone.
 Rules for the builder: AGENTS.md; no new top-level package; Lean for every new word; every number from a printed OBS line;
 short messages; no commit trailers; a step-by-step chain on 2-3 positions before any batch; a vocabulary gap is reported to
 Kaveh in one line and then added; nothing chess-specific in the loop (the words carry the chess).
+
+## 41. The learner in layers: observables, windows, the tactical layer, the store, the subgoal layer, the cycle (Kaveh 2026-10-15)
+
+Kaveh's design, recorded 2026-10-15 (memory learning_design_observables_2026_10_15; literature map in the JOURNAL the same day): learning anchored on
+OBSERVABLES; watching and playing interleaved; from each observable BACKWARD to the point of inevitability, located by the teacher (Stockfish, strength
+conditioned); the window inevitability -> observable explained exactly by the tactical layer and mined by the proposer; an indexed, periodically
+COMPRESSED store of winning observables giving directionality and SUBGOALS; planning as two imagined futures; a surprise is a new observable. "Make it
+modular ... the sub-goal layer and the tactical layer ... think out the components, then send out an agent to build it." This section is the modular
+map: what exists, what is new, how the layers stack, the build order. Nothing here is built yet.
+
+### 41.1 The layers (bottom up) and what each one owns
+
+| layer | owns | exists today | new |
+|---|---|---|---|
+| L0 Vocabulary | words with a Lean def, a gloss, a Rust mirror; frames and their canonical shapes | base_vocabulary.py, vocab.rs, Vocabulary.lean, chain_lemmas premise shapes | nothing (words are added as gaps appear, Kaveh's rule) |
+| L1 Observables | the event stream of a game: capture, promotion, check, castle, mate, resignation; and a SURPRISE (a prediction of ours that failed) as an observable of the same type | ledger.py material_events (captures and promotions, settled), the ledger's push events, watch.py's game stream | `observables.py`: one record type, a domain adapter listing the kinds (chess adapter), check/castle/mate/surprise kinds, a stream over watched and played games |
+| L2 Windows (the teacher) | for each observable the point of inevitability: the ply where the teacher's loss probability for the victim crossed the knob (default 1%), conditioned on strength (the Elo band of the players, Maia bins later); whether the opponent CASHED it; the window [inevitability, observable] | watch.py sf_move_loss / threat labels (one ply back only), the Lichess stream with Elo bands | `windows.py`: backward scan with the teacher's eval ladder, the knob, the strength band, the cashed flag; OBS: window lengths, cashed rate per band |
+| L3 Tactical layer | explains a window EXACTLY with our own machinery: from the inevitability position the chain (decide_by_chain, the solver, the exchange law, the split, the turn-around) must reach the observable; explained / not explained; the surprise classes of 40.5; quiescence = the forcing line's end (Beal: the bounds close) | the event loop (40), the solver, size_kick, the proposer's classes | `explain.py`: run the chain on the window's start, compare with the observable; a window not explained is a SURPRISE, posted back to L1 |
+| L4 Proposer | mines the WINDOWS (not whole puzzles): premise shape at the window's start -> the observable; verbs = the vocabulary's relations over the object graph (squares, lines, pieces); lemmas by chunking, promotion by count, demotion by contradiction; per-lemma utility measured (the EBL utility problem) | proposer.py, chain_lemmas.py (shapes, counts, promotion) | scoping to windows; the utility ledger per lemma (match cost vs savings), pruning |
+| L5 Store | the index of every observed position with a winning observable, keyed by canonical shape; a COMPRESSION pass merging entries by shape into counts and outcomes (P(win | shape), P(cashed | shape, band)), bounded size; the compressed table is the directionality | chain_lemmas.json (shapes with counts, no outcomes, no compression), data/derived/transitions.json (the trade cell: one directional table already) | `store.py`: the index, the compression pass, the eviction rule (merge, never LRU), the exemplar kept per shape |
+| L6 Subgoal layer | two imagined futures from the present position: the nearest winning shapes for us and for them in the store, each rolled forward by the chain to see if it is reachable / preventable; a subgoal = the shape to reach or deny, with a stake; subgoals enter the decision as a PRIOR on candidates (AGENTS.md rule 7: never the value) | the opening default and the trade stake are two hand-made subgoals; decide_by_chain's candidate tags and the proposer's tag bonus are the prior's slot | `subgoals.py`: retrieval by shape, the two futures, the stake, the prior; the tactical layer then serves it |
+| L7 The cycle | watch a batch (L1-L5), play a batch against a strength-banded opponent (the same L1-L5 on our own games), compress, learn lemmas, repeat; one agent state (the store + the lemmas + the words) improves across cycles | ledger walk (games), ledger_puzzles (puzzles), the night's cron | `cycle.py`: the alternation, checkpoints per batch, the watchdog, the report per cycle in Kaveh's metric (lemmas found, each one's ablation) |
+
+### 41.2 The interfaces (one record each; everything downstream reads these, nothing reaches across layers)
+
+- Observable {game, ply, kind, side, delta, fen_before, fen_after, source: watched | played | surprise}
+- Window {observable, ply_inevitable, teacher_curve[], band, cashed: bool, length}
+- Explanation {window, decision (the chain's record), explained: bool, surprise_class, lines[]}
+- Shape {canonical premise (mirror / colour / translation), words[]}; StoreEntry {shape, n, outcomes{win, draw, loss}, cashed_by_band{}, exemplar fen}
+- Subgoal {shape, for: us | them, stake, route (the chain's line) | None, status: reachable | deniable | open}
+- Lemma {premise shape, outcome, count, contradictions, utility {match_cost, savings}}
+
+### 41.3 Where the two layers meet
+
+The subgoal layer says WHERE to go (a shape with a stake); the tactical layer says WHETHER a move gets there or stops them, exactly, and what it costs.
+A subgoal never changes a candidate's value; it changes which candidates are opened first and breaks ties (the prior). A tactical result (a line that
+loses material) overrides any subgoal. The opening default (40.4) becomes the first subgoal the store yields when it has nothing better.
+
+### 41.4 The teacher's place
+
+Stockfish locates the windows (L2) and checks explanations (L3); it never scores a decision. The point of inevitability is a knob on the teacher's loss
+probability (default 1%, strength-banded); the machinery must then explain each window on its own, and an unexplained window is the surprise that drives
+L4. Nothing in L3-L6 reads the teacher.
+
+### 41.5 Build order (each phase: a step-by-step trace on 2-3 windows before any batch; no baselines; numbers only from OBS lines)
+
+A. L1 + L2 on 100 watched Lichess games: the observable stream and the windows; OBS: window lengths, cashed rate per band, the knob's effect.
+B. L3 on those windows: how many explained by the chain, the surprise classes; the misses are the fodder.
+C. L4 scoped to windows + the utility ledger: lemmas found, per-lemma ablation (Kaveh's metric).
+D. L5: the store and its compression pass; OBS: entries, shapes after compression, P(win | shape) on held-out games.
+E. L6: the two futures as a prior on candidates; OBS: decisions changed, puzzles and windows affected, per-subgoal ablation.
+F. L7: one full watch-play cycle; the report per cycle.
+Rules for the builder: AGENTS.md; no new top-level package (all under catspace/incubator/analyst/discovery/); Lean for every new word; nothing
+chess-specific below the adapter; -m entry points, never a Pool from stdin; checkpoints + a watchdog on long runs; short messages; no commit trailers.

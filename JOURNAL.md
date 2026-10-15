@@ -31011,3 +31011,43 @@ OBS (2026-10-15 10:08 PDT, build 79c4bca9 + the shorter-proof-defers fix): dev 4
 PROVEN misses: dev 2, fresh 4 (horizon claims that a longer line overturns; the same class as 0CUWR's Nc5 before the turn-around, one move further out).
 Seconds per decision (median / p90 / max): dev 12.8 / 61 / 241 against ~2 last night: the price of the deeper solver and sixteen turn-arounds. Directional, one run.
 A first fix of the dev set found a regression (0R3LM: the counter capped Nxe5 before the deeper check could run) and was corrected before the numbers above.
+
+### LITERATURE MAP FOR KAVEH'S OBSERVABLES DESIGN (2026-10-15 10:30 PDT)
+
+Kaveh recorded a design (memory: learning_design_observables_2026_10_15): observables anchor learning; watching and playing interleave; backward
+from an observable to the point of inevitability (a probability conditioned on strength, and whether the opponent cashed it); the proposer mines the
+inevitability window over an object graph with verbs; quiescence = observables stop; an indexed, periodically compressed store of winning observables
+gives directionality and subgoals; planning = two imagined futures; a surprise is a new observable. One literature agent searched each piece
+(identifiers checked by the agent by search/fetch; abstract-level readings, full texts not read):
+
+1. OBSERVABLES. Hindsight credit assignment (Harutyunyan et al. 2019, arXiv:1912.02503): credit flows backward from an observed outcome -- the
+   inevitability estimate in RL clothes. Bottleneck subgoals from successful trajectories (McGovern & Barto ICML 2001; Simsek & Barto ICML 2004).
+   PARADISE (Wilkins 1980, AIJ 14, doi:10.1016/0004-3702(80)90039-9): observables + patterns + a tiny tree solved tactics, could not play a full game.
+   GAP: nothing starts learning FROM the chess observables (Pitrat 1977 nearest, unverified).
+2. WATCH + PLAY. Expert Iteration (Anthony, Tian, Barber 2017, arXiv:1705.08439) -> AlphaZero (Silver et al. 2018, Science 362:1140): one apprentice state,
+   watching = imitate, playing = regenerate. DQfD (Hester et al. 2017, arXiv:1704.03732): keep the demonstrations in replay forever. Watching YouTube
+   (Aytar et al. 2018, arXiv:1805.11592): the watched phase can yield only a reward/landmark signal. Maia (2020, arXiv:2006.01855), Maia-2 (2024,
+   arXiv:2409.20553): human play per rating in one model.
+3. INEVITABILITY BY STRENGTH. Anderson, Kleinberg, Mullainathan 2016 (KDD, arXiv:1606.04956): tablebase-exact blunders vs skill, time, difficulty --
+   DIFFICULTY predicts error better than Elo. Maia's blunder head gives P(err | Elo) without new training. Barthelemy 2023 (arXiv:2304.11425) tipping
+   points, 2024 (arXiv:2410.02333) a graph fragility score (engine-free, fits the object graph) -- descriptive, not validated predictors.
+   GAP: no study estimates the ply a game became lost conditioned on Elo, nor conversion rates by rating: cheap to build from Lichess.
+4. PROPOSER OVER RELATIONS. PAL (Morales 1997, Machine Learning 26:227): first-order chess patterns by constrained lgg; collapsed when many background
+   predicates were needed -- keep the verb set small and typed. Bain & Muggleton 1994 (KRK, did not scale). Krishnan & Martens (arXiv:2610.07640):
+   PAL-style tactic libraries play at beginner strength -- patterns alone do not play. Chunks/templates (Gobet & Simon 1996, Cog Psych 31:1; CHREST):
+   location-specific chunks with slots = frames with free squares. Soar chunking (Laird, Rosenbloom, Newell 1986) and the EBL UTILITY PROBLEM (Minton
+   1990, AIJ 42:363; Etzioni 1990): a learned rule's match cost can exceed its savings -- measure per-lemma utility and prune (our ~2% is this).
+5. QUIESCENCE. Beal 1990 (AIJ 43:85, doi:10.1016/0004-3702(90)90072-8): quiet = the null-move bounds close, domain-independent (zugzwang breaks it).
+   Russell & Wefald 1991: computation as an action, stop when none pays -- our learned stop policy approximates it.
+6. STORE + COMPRESSION. Episodic control (Blundell 2016, arXiv:1606.04460; Pritzel 2017, arXiv:1703.01988): kNN tables, LRU eviction (not consolidation).
+   CLS replay (Kumaran, Hassabis, McClelland 2016, TiCS 20:512): fast store + slow structured store, goal-weighted interleaved replay -- the compression
+   pass. Go-Explore archives (Ecoffet 2021, Nature 590:580): cell = compressed frame, cell design is the whole game. Soar episodic memory (Nuxoll & Laird
+   2004; Derbinsky 2012): no consolidation at all. Schmidhuber 2010 (IEEE TAMD 2:230): compression progress as the signal.
+   GAP: no precedent derives subgoals from a probabilistic compression of a position store; the pieces exist separately.
+7. TWO FUTURES. I2A (Weber 2017, arXiv:1707.06203), MuZero (2020, Nature 588:604), DreamerV3 (arXiv:2301.04104): roll forward in a model (illegible).
+   DRON (He 2016, arXiv:1609.05559), Albrecht & Stone 2018 survey (AIJ 258:66): the opponent as a typed model; a WRONG opponent model is worse than
+   minimax. GAP: "my winning future / their winning future from memory" has no single precedent (Bratko AL1 them-constraints nearest).
+8. SURPRISE AS OBSERVABLE. ICM (Pathak 2017, arXiv:1705.05363), Burda 2019 (arXiv:1808.04355): the noisy-TV failure -- irreducible randomness attracts
+   surprise forever; in chess, weak opponents' randomness, so surprise must be measured against a strength-conditioned prediction. Pease 2007 (Lakatos
+   operators implemented: monster-barring, exception-barring, lemma-incorporation) = the operator set for a mating surprise.
+Design against: PARADISE's no-full-game, the utility problem, noisy-TV surprise, Go-Explore cell brittleness, PAL's predicate blow-up.
