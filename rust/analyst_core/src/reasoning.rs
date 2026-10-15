@@ -90,6 +90,7 @@ pub struct ReasoningLedger {
     dframe: Vec<(vocab::Term, i64, bool)>,       // the learned DEFENCE frame: (term, sign, is a change)
     answers_hand: bool,
     shallow_sizing: bool,
+    prefilter_root: bool,
 }
 
 impl ReasoningLedger {
@@ -487,7 +488,7 @@ impl ReasoningLedger {
     fn new(fen: String, budget: u32) -> PyResult<Self> {
         let pos = crate::parse(&fen).ok_or_else(|| pyo3::exceptions::PyValueError::new_err("bad fen"))?;
         Ok(ReasoningLedger { line: vec![pos.clone()], pos, ply: 0, fs: vec![], live: HashMap::new(), listeners: HashMap::new(), fact_cache: HashMap::new(),
-            budget, used: 0, carried: 0, reasked: 0, facts_n: 0, solver_calls: 0, stack: vec![], skipped: vec![], agenda: vec![], plies: vec![], confirmations: vec![], tt: HashMap::new(), nodes: 0, node_cap_hit: false, budget_hit: false, deep: false, cap_now: 0, cuts: 0, threats_mode: false, lean_mode: false, pushes: 0, tr: std::cell::RefCell::new(vec![]), tracing: false, root_ply: 0, sep_flag: false, suppressed: std::cell::Cell::new(0), lean_cap: LEAN_CAP, frame: vec![], threats_learned: false, looks: 0, slog: vec![], resolving: 0, resolved_n: 0, dframe: vec![], answers_hand: false, shallow_sizing: false })
+            budget, used: 0, carried: 0, reasked: 0, facts_n: 0, solver_calls: 0, stack: vec![], skipped: vec![], agenda: vec![], plies: vec![], confirmations: vec![], tt: HashMap::new(), nodes: 0, node_cap_hit: false, budget_hit: false, deep: false, cap_now: 0, cuts: 0, threats_mode: false, lean_mode: false, pushes: 0, tr: std::cell::RefCell::new(vec![]), tracing: false, root_ply: 0, sep_flag: false, suppressed: std::cell::Cell::new(0), lean_cap: LEAN_CAP, frame: vec![], threats_learned: false, looks: 0, slog: vec![], resolving: 0, resolved_n: 0, dframe: vec![], answers_hand: false, shallow_sizing: false, prefilter_root: true })
     }
 
     /// Ask every question of the entry pass (SAFE of every piece, BLOCKS of every shielded piece with its PIN) and return the report.
@@ -560,6 +561,9 @@ impl ReasoningLedger {
         let j = py.import("json")?;
         Ok(j.call_method1("loads", (json!(out).to_string(),))?.unbind())
     }
+
+    /// Size only the moves that take, check or newly attack, at the root too (a cheaper sizer; the check compares).
+    fn set_prefilter_root(&mut self, on: bool) { self.prefilter_root = on; }
 
     /// Load the learned DEFENCE frame: [(term, sign, is_change)].
     fn set_defence_frame(&mut self, terms: Vec<(String, i64, bool)>) -> PyResult<()> {
@@ -710,6 +714,22 @@ fn touched_of(m: &Move) -> Bitboard {
     if m.is_en_passant() { if let Some(f) = m.from() { t |= Bitboard::from(Square::from_coords(m.to().file(), f.rank())); } }
     if let Move::Castle { king, rook } = m { t |= Bitboard::from(*king) | Bitboard::from(*rook); }
     t
+}
+/// The pressure on each non-king piece of `victim`: (square, how many attackers, the cheapest attacker's value). A move raises the pressure when a piece is attacked that was
+/// not, or by more, or by a cheaper piece -- a pawn kick on a rook already attacked by the queen is a threat though nothing is newly attacked.
+fn pressure(b: &shakmaty::Board, victim: Color) -> HashMap<Square, (usize, i64)> {
+    let mut out = HashMap::new();
+    for s in b.by_color(victim) {
+        let Some(p) = b.piece_at(s) else { continue };
+        if p.role == Role::King { continue; }
+        let atk = b.attacks_to(s, !victim, b.occupied()) & b.by_color(!victim);
+        let mv = atk.into_iter().filter_map(|x| b.piece_at(x)).map(|x| val(x.role)).min().unwrap_or(99);
+        out.insert(s, (atk.count(), mv));
+    }
+    out
+}
+fn raises_pressure(before: &HashMap<Square, (usize, i64)>, after: &HashMap<Square, (usize, i64)>) -> bool {
+    after.iter().any(|(sq, (n, mv))| { let (bn, bmv) = before.get(sq).copied().unwrap_or((0, 99)); *n > bn || *mv < bmv })
 }
 fn attacked(b: &shakmaty::Board, s: Square, by: Color) -> bool { (b.attacks_to(s, by, b.occupied()) & b.by_color(by)).any() }
 
@@ -960,7 +980,7 @@ impl ReasoningLedger {
         if base.is_check() { return vec![]; }
         let Some(pb) = Self::passed(&base) else { return vec![] };
         self.resolved_n = if self.shallow_sizing { MAX_RESOLVE } else { 0 };
-        let root = self.ply == self.root_ply && !self.shallow_sizing;
+        let root = self.ply == self.root_ply && !self.shallow_sizing && !self.prefilter_root;
         let moves: Vec<Move> = if root {
             self.looks += pb.legal_moves().len() as u32;
             pb.legal_moves().into_iter().collect()
@@ -969,13 +989,12 @@ impl ReasoningLedger {
             // (a discovery included); every other move cannot cost S material by itself
             let o = pb.turn();
             let s_ = !o;
-            let was: Bitboard = base.board().by_color(s_).into_iter().filter(|q| attacked(base.board(), *q, o)).collect();
+            let was = pressure(base.board(), s_);
             let mut v = vec![];
             for m in pb.legal_moves() {
                 self.looks += 1;
                 let mut q = pb.clone(); q.play_unchecked(&m);
-                let now: Bitboard = q.board().by_color(s_).into_iter().filter(|x| attacked(q.board(), *x, o)).collect();
-                if m.is_capture() || q.is_check() || (now & !was).any() { v.push(m); }
+                if m.is_capture() || q.is_check() || raises_pressure(&was, &pressure(q.board(), s_)) { v.push(m); }
             }
             v
         };
@@ -1062,44 +1081,58 @@ impl ReasoningLedger {
     /// Branch (b) with the learned threat: our moves ordered by the biggest threat each CREATES -- the frame on pass(P+m) -- checks (a position the frame
     /// cannot read: the checked side may not pass) after those. -> (move, the follow-up it threatens)
     fn created_moves(&mut self, legal: &[Move]) -> Vec<(Move, String)> {
-        // our moves that CREATE a threat, by the same definition from our side: the move takes something, gives check, or newly attacks a piece of theirs
-        // (discoveries included). At the ROOT each is sized by the ledger (its biggest threat against them in P+m); deeper, ordered by the gain and the value attacked.
+        // Branch (b): our moves ordered by what each is WORTH -- the gain now plus the biggest threat it leaves them that they cannot answer: the static value the ledger
+        // computes after one push (gain - their stand-pat with the fixers; in check, their replies). Executing an open threat (a capture that wins material) is therefore
+        // ranked by what it wins, and Qxa8+ = 5 now + the rook on b5 still standing. The threat each CREATES (sized at the root) breaks ties. A capture that wins material
+        // by the definition is never dropped by the breadth cap.
         let t = self.pos.turn();
-        let was: Bitboard = self.pos.board().by_color(!t).into_iter().filter(|q| attacked(self.pos.board(), *q, t)).collect();
-        let mut cands: Vec<(i64, Move, String)> = vec![];
-        let mut checks: Vec<Move> = vec![];
+        let was = pressure(self.pos.board(), !t);
+        let mut cands: Vec<(i64, Move)> = vec![];
         for m in legal {
             let mut r = self.pos.clone(); r.play_unchecked(m);
             self.looks += 1;
-            if r.is_checkmate() { cands.push((i64::MAX, m.clone(), "mate".into())); continue; }
-            if r.is_check() { if m.is_capture() { cands.push((gain_of(m) * 100, m.clone(), "a capture with check".to_string())); } else { checks.push(m.clone()); } continue; }
-            let now: Bitboard = r.board().by_color(!t).into_iter().filter(|x| attacked(r.board(), *x, t)).collect();
-            let newly = now & !was;
-            let nv = newly.into_iter().filter_map(|q| r.board().piece_at(q)).map(|p| val(p.role)).max().unwrap_or(0);
-            if m.is_capture() || newly.any() { cands.push((gain_of(m) * 100 + nv, m.clone(), if newly.any() { format!("a newly attacked piece worth {nv}") } else { "a capture".into() })); }
+            if m.is_capture() || r.is_check() || raises_pressure(&was, &pressure(r.board(), !t)) { cands.push((gain_of(m) * 100, m.clone())); }
         }
         cands.sort_by(|a, b| b.0.cmp(&a.0));
-        let mut out: Vec<(Move, String)> = vec![];
-        if self.ply == self.root_ply {
-            let mut sized: Vec<(i64, i64, Move, String)> = vec![];
-            for (k, m, _) in cands.into_iter().take(6) {
-                let mut r = self.pos.clone(); r.play_unchecked(&m);
-                if r.is_check() || r.legal_moves().is_empty() { sized.push((0, k, m, "a capture with check".to_string())); continue; }
-                let saved = std::mem::replace(&mut self.pos, r);
-                self.fact_cache.clear();
-                self.shallow_sizing = true;
-                let ts = self.learned_threats_n(false);
-                self.shallow_sizing = false;
-                self.pos = saved; self.fact_cache.clear();
-                if let Some(th) = ts.first() { sized.push((th.value, k, m, format!("{} (worth {})", th.kick.as_ref().map(|x| x.3.clone()).unwrap_or_default(), th.value))); }
-            }
-            sized.sort_by(|a, b| (b.0 + b.1 / 100).cmp(&(a.0 + a.1 / 100)).then(b.1.cmp(&a.1)));
-            out = sized.into_iter().take(ANSWER_BREADTH).map(|x| (x.2, x.3)).collect();
-        } else {
-            out = cands.into_iter().take(ANSWER_BREADTH).map(|x| (x.1, x.2)).collect();
+        // the worth of each (one push each, at most 14)
+        let mut worth: Vec<(i64, i64, i64, Move, String)> = vec![];       // (lo, hi, tie, move, note)
+        for (k, m) in cands.into_iter().take(14) {
+            let g = gain_of(&m);
+            let snap = self.enter(&m);
+            let v = if self.pos.is_checkmate() { (-MATE, -MATE) } else if self.pos.legal_moves().is_empty() { (0, 0) } else if self.pos.is_check() { self.check_value() } else { self.stand_pat() };
+            self.leave(snap);
+            worth.push(((g - v.1).max(-MATE), (g - v.0).min(2 * MATE), k, m, format!("worth {}..{} now", (g - v.1).max(-MATE), g - v.0)));
         }
-        checks.sort_by_key(|m| std::cmp::Reverse(gain_of(m)));
-        out.extend(checks.into_iter().take(2).map(|m| (m, "a check".to_string())));
+        worth.sort_by(|a, b| (b.0 + b.1).cmp(&(a.0 + a.1)).then(b.0.cmp(&a.0)).then(b.2.cmp(&a.2)));
+        let mut out: Vec<(Move, String)> = vec![];
+        let top: Vec<(i64, i64, i64, Move, String)> = worth.iter().take(ANSWER_BREADTH).cloned().collect();
+        if self.ply == self.root_ply {
+            // ties at the top are broken by the threat each creates (sized, shallow)
+            let mut keyed: Vec<(i64, i64, Move, String)> = vec![];
+            for (lo, hi, _, m, note) in &top {
+                let mut r = self.pos.clone(); r.play_unchecked(m);
+                let mut created = 0;
+                let mut cnote = note.clone();
+                if !r.is_check() && !r.legal_moves().is_empty() {
+                    let saved = std::mem::replace(&mut self.pos, r);
+                    self.fact_cache.clear();
+                    self.shallow_sizing = true;
+                    let ts = self.learned_threats_n(false);
+                    self.shallow_sizing = false;
+                    self.pos = saved; self.fact_cache.clear();
+                    if let Some(th) = ts.first() { created = th.value; cnote = format!("{note}; leaves {} (worth {})", th.kick.as_ref().map(|x| x.3.clone()).unwrap_or_default(), th.value); }
+                }
+                keyed.push(((lo + hi) * 100 + created.min(99), *lo, m.clone(), cnote));
+            }
+            keyed.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
+            out = keyed.into_iter().map(|x| (x.2, x.3)).collect();
+        } else {
+            out = top.iter().map(|x| (x.3.clone(), x.4.clone())).collect();
+        }
+        // a capture that wins material by the definition is never dropped by the breadth cap
+        for (lo, _, _, m, note) in worth.iter().skip(ANSWER_BREADTH) {
+            if m.is_capture() && *lo >= 1 && !out.iter().any(|x| x.0.to_uci(CastlingMode::Standard) == m.to_uci(CastlingMode::Standard)) { out.push((m.clone(), note.clone())); }
+        }
         out
     }
 
@@ -1552,7 +1585,7 @@ impl ReasoningLedger {
             // a move already valued (under another target) is not pushed again
             cands.retain(|m| !valued.contains(&m.to_uci(CastlingMode::Standard).to_string()));
             if cands.is_empty() { self.say(format!("{glabel}: its moves were already weighed under another target.")); continue; }
-            if !in_check && cands.len() > ANSWER_BREADTH { cands.truncate(ANSWER_BREADTH); }
+            if !in_check && cands.len() > ANSWER_BREADTH && !glabel.starts_with("b: creates") { cands.truncate(ANSWER_BREADTH); }
             self.say(format!("{} -- {} move(s) to weigh: {}", glabel, cands.len(), cands.iter().map(|m| self.san_of(m)).collect::<Vec<_>>().join(", ")));
             let mut group_best = i64::MIN;
             for m in cands {

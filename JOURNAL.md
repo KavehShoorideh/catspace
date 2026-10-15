@@ -30806,3 +30806,12 @@ THE DEFENCE FRAME RELEARNED, STEP C, THE GAME WALK (2026-10-14 21:16 PDT).
   is found (Rc4 TRAPPED, 4), the answers e4 / exd4 / Ra4 / f5 are weighed and ...Ra4 chosen (Stockfish's choice), 1,314 positions examined, 553 questions, 126 static looks.
   4. ledger walk --pgn-index 2979 --events 7 (Lichess 2019-01, Rated, not Bullet, both >= 1600, decisive, >= 50 plies; #2979 = lichess.org/Bo45Dh1y): one ledger rolled forward with push, 7 settled
   material changes, the actual first capture predicted at B in 6 of 7 (the seventh, Rb8+, the "loss" is a capture Stockfish sizes at -8), 11.9 s with Stockfish depth 14 as the checker only.
+
+BRANCH (b) REPAIRED, THE ROOT PREFILTER (2026-10-14 21:24 PDT). (b) played cxb5 instead of Qxa8+: the moves were ordered by the threat each CREATES and ignored what a move wins NOW. Now: our moves are
+  ordered by their worth = the gain now plus the biggest threat left that cannot be answered (the static value after one push: gain - their stand-pat with the fixers, in check their
+  replies); the created threat (sized at the root) breaks ties; a capture that wins material by the definition is never dropped by the breadth cap. (b): Qxa8 worth 9..9, PROVEN
+  (solver-confirmed), 71 positions; (a) and (c) unchanged (...Ra4, ...Qg5). The prefilter of the sizer now reads PRESSURE (a piece attacked by more pieces or by a cheaper one: a pawn kick on a rook
+  the queen already attacked is a threat though nothing is newly attacked) and is used at the root too: held-out sizer, all moves vs the prefilter: top-1 47% / 50%, top-3 56% / 56%,
+  threat/no-threat 79% / 78%, solver-confirmed 77% / 81%, positions 797 / 731, questions 214 / 117 per position -- adopted (the flag sizes all moves again). Where the positions go: the sizing
+  itself is small (about 35 moves, 15-40 after the prefilter); in (a) 645 of 1,285 and in (c) 940 of 1,576 are the straddling sizes played out (up to 6 lines of up to 300 positions), and the
+  rest is the re-ask of the top six answers (each answer, then the threat, with its own sizing).

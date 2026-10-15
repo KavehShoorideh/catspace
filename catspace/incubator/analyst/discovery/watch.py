@@ -727,6 +727,8 @@ def _sizer_chunk(args):
     for rec in recs:
         t1 = time.time()
         L = A.Ledger(rec["fen"], 1000)
+        if os.environ.get("SIZE_ALL_ROOT"):
+            L.set_prefilter_root(False)
         rep = L.threat_report(True)
         th = [t for t in rep["threats"] if t["size"] >= 1]
         sizes = {m["uci"]: max(0, m["size"]) for m in rec["moves"]}
