@@ -122,9 +122,19 @@ def main(argv=None):
     ap.add_argument("--line", default=None, help='SAN moves from the position, e.g. "Qc7 Rbd1 Rc6 h5 exd4"')
     ap.add_argument("--budget", type=int, default=200)
     ap.add_argument("--square", default="e5", help="the piece whose pin is followed along the line")
+    ap.add_argument("--trace", action="store_true", help="print the reasoning on this position step by step, in plain chess words")
+    ap.add_argument("--depth", type=int, default=4, help="plies of the line (trace)")
     ap.add_argument("--mirror", action="store_true", help="mirror the board first (the ledger reads either side; not needed)")
     a = ap.parse_args(argv)
     fen = chess.Board(a.fen).mirror().fen() if a.mirror else a.fen
+    if a.trace:
+        t0 = time.time()
+        r = new(fen, max(a.budget, 1000)).trace(a.depth)
+        for line in r["trace"]:
+            print(line)
+        print(f"OBS trace: {r['positions']} positions examined, {r['questions']} questions, {r['facts']} facts, {round(time.time() - t0, 2)} s; line "
+              + " ".join(x.replace('|', ' [') + ']' for x in r["line"]))
+        return
     t0 = time.time()
     rep = analyse(fen, a.budget)
     print(f"OBS ledger on {fen}: {round(time.time() - t0, 2)} s")

@@ -33,6 +33,9 @@ struct Finding {
 
 type Pc = (Role, Square);
 
+#[derive(Clone)]
+struct Threat { value: i64, victim: Color, target: Pc, attacker: Pc, mate: bool, finding: Option<usize> }
+
 fn val(r: Role) -> i64 { if r == Role::King { 100 } else { crate::rules::val(r) } }
 fn letter(r: Role) -> char { match r { Role::Pawn => 'P', Role::Knight => 'N', Role::Bishop => 'B', Role::Rook => 'R', Role::Queen => 'Q', Role::King => 'K' } }
 fn pname(p: Pc) -> String { if p.0 == Role::Pawn { p.1.to_string() } else { format!("{}{}", letter(p.0), p.1) } }
@@ -66,6 +69,15 @@ pub struct ReasoningLedger {
     deep: bool,
     cap_now: u32,
     cuts: u32,
+    threats_mode: bool,
+    lean_mode: bool,
+    pushes: u32,
+    tr: std::cell::RefCell<Vec<String>>,
+    tracing: bool,
+    root_ply: u32,
+    sep_flag: bool,
+    suppressed: std::cell::Cell<u32>,
+    lean_cap: u32,
 }
 
 impl ReasoningLedger {
@@ -454,7 +466,7 @@ impl ReasoningLedger {
     fn new(fen: String, budget: u32) -> PyResult<Self> {
         let pos = crate::parse(&fen).ok_or_else(|| pyo3::exceptions::PyValueError::new_err("bad fen"))?;
         Ok(ReasoningLedger { line: vec![pos.clone()], pos, ply: 0, fs: vec![], live: HashMap::new(), listeners: HashMap::new(), fact_cache: HashMap::new(),
-            budget, used: 0, carried: 0, reasked: 0, facts_n: 0, solver_calls: 0, stack: vec![], skipped: vec![], agenda: vec![], plies: vec![], confirmations: vec![], tt: HashMap::new(), nodes: 0, node_cap_hit: false, budget_hit: false, deep: false, cap_now: 0, cuts: 0 })
+            budget, used: 0, carried: 0, reasked: 0, facts_n: 0, solver_calls: 0, stack: vec![], skipped: vec![], agenda: vec![], plies: vec![], confirmations: vec![], tt: HashMap::new(), nodes: 0, node_cap_hit: false, budget_hit: false, deep: false, cap_now: 0, cuts: 0, threats_mode: false, lean_mode: false, pushes: 0, tr: std::cell::RefCell::new(vec![]), tracing: false, root_ply: 0, sep_flag: false, suppressed: std::cell::Cell::new(0), lean_cap: LEAN_CAP })
     }
 
     /// Ask every question of the entry pass (SAFE of every piece, BLOCKS of every shielded piece with its PIN) and return the report.
@@ -496,7 +508,60 @@ impl ReasoningLedger {
     }
 
     /// Decide the move for the side to move (candidates, intervals, B*, budget, confirmation).
-    fn decide(&mut self, py: Python<'_>) -> PyResult<PyObject> { self.decide_impl(py) }
+    #[pyo3(signature = (forcing="quiescence"))]
+    fn decide(&mut self, py: Python<'_>, forcing: &str) -> PyResult<PyObject> { self.threats_mode = forcing == "threats" || forcing == "static"; self.lean_mode = forcing == "static"; self.decide_impl(py) }
+
+    /// THE TRACE (Kaveh 2026-10-14: "I want to see it working"): the reasoning on this one position, step by step, in plain chess words, in the order it
+    /// happens -- the threats to the side to move, the latent ones (a piece that shields another), the answers or the attack from the highest-value
+    /// target, every position played out with the question that needed it, the bounds, the decision. -> a dict with the lines and the result.
+    #[pyo3(signature = (depth=6))]
+    fn trace(&mut self, py: Python<'_>, depth: i32) -> PyResult<PyObject> {
+        self.tracing = true; self.lean_mode = true; self.threats_mode = true; self.deep = true; self.lean_cap = 150;
+        self.suppressed.set(0);
+        self.tr.borrow_mut().clear();
+        self.used = 0; self.pushes = 0; self.facts_n = 0; self.tt.clear(); self.root_ply = self.ply; self.budget_hit = false; self.skipped.clear();
+        let t = self.pos.turn();
+        let who = if t == Color::White { "White" } else { "Black" };
+        self.say(format!("POSITION {} -- {who} to move.", shakmaty::fen::Fen::from_position(self.pos.clone(), shakmaty::EnPassantMode::Legal)));
+        // LATENT THREATS: a piece of ours that shields another from a slider -- the premise "it leaves" is open (listeners)
+        let b = self.pos.board().clone();
+        let mut any = false;
+        for a in self.pieces_of(!t).into_iter().filter(|p| matches!(p.0, Role::Queen | Role::Rook | Role::Bishop)) {
+            for y in self.pieces_of(t) {
+                let btw = shakmaty::attacks::between(a.1, y.1);
+                let on_line = match a.0 { Role::Rook => a.1.file() == y.1.file() || a.1.rank() == y.1.rank(),
+                    Role::Bishop => shakmaty::attacks::bishop_attacks(a.1, Bitboard::EMPTY).contains(y.1),
+                    _ => shakmaty::attacks::queen_attacks(a.1, Bitboard::EMPTY).contains(y.1) };
+                if !on_line || btw.is_empty() { continue; }
+                let between = btw & b.occupied();
+                if between.count() != 1 { continue; }
+                let xs = between.first().unwrap();
+                if b.color_at(xs) != Some(t) { continue; }
+                let Some(xp) = b.piece_at(xs) else { continue };
+                if xp.role == Role::King { continue; }
+                let x = (xp.role, xs);
+                let bi = self.ask_blocks(x, a, y);
+                if self.fs[bi].st == St::Refuted { continue; }
+                let pi = self.ask_pin(x, a, y, bi);
+                if !any { self.say(format!("LATENT THREATS to {who} (a piece that shields another; the threat appears if it leaves):")); any = true; }
+                self.say(format!("  - {}", self.fs[bi].claim));
+                self.say(format!("    {}  [from the finding chain: BLOCKS#{} <- SAFE, JOB, RECAP]", self.fs[pi].claim, bi));
+            }
+        }
+        if !any { self.say(format!("LATENT THREATS to {who}: no piece shields another along a line.")); }
+        let (iv, pv) = self.lean(depth);
+        let status = if self.sep_flag { "PROVEN" } else { "ESTIMATED" };
+        let first = pv.first().map(|x| x.split('|').next().unwrap_or("").to_string()).unwrap_or_default();
+        let san = if first.is_empty() { String::new() } else { crate::plan::san(&self.pos, &first) };
+        self.say(format!("DECISION: {san} ({first}), worth {}..{} to {who}: {status}. Positions examined: {}; questions asked: {}.", iv.0, iv.1, self.pushes, self.used));
+        if self.suppressed.get() > 0 { self.say(format!("({} deeper steps were taken but are not printed; the positions are counted above.)", self.suppressed.get())); }
+        let lines = self.tr.borrow().clone();
+        self.tracing = false; self.lean_cap = LEAN_CAP;
+        let out = json!({"trace": lines, "move": first, "san": san, "interval": [iv.0, iv.1], "status": status, "positions": self.pushes, "questions": self.used,
+                         "facts": self.facts_n, "line": pv});
+        let j = py.import("json")?;
+        Ok(j.call_method1("loads", (out.to_string(),))?.unbind())
+    }
 
     fn report_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
         let j = py.import("json")?;
@@ -519,6 +584,9 @@ pub fn ledger(py: Python<'_>, fen: String, budget: u32) -> PyResult<PyObject> {
 const MATE: i64 = 1000;
 const SEARCH_DEPTH: i32 = 8;               // plies of the forcing line, at most (the node cap and the budget come first)
 const NODE_CAP: u32 = 400000;
+const TRACE_SHOW: usize = 3;               // plies of the trace printed in full; deeper steps are counted, not shown
+const LEAN_CAP: u32 = 1500;                // positions one decision may roll forward into in the static-first mode
+const ANSWER_BREADTH: usize = 3;            // the answers to a threat tried, best (most gain, cheapest mover) first
 const NODE_PER_CAND: u32 = 20000;            // nodes one candidate's forcing lines may use before the others get theirs                // nodes (positions rolled forward into) per decision
 
 struct Snap { pos: Chess, line_len: usize, ply: u32, fs_len: usize, live: HashMap<u64, usize>, staled: Vec<usize> }
@@ -540,6 +608,7 @@ impl ReasoningLedger {
     fn enter(&mut self, m: &Move) -> Snap {
         let mut snap = Snap { pos: self.pos.clone(), line_len: self.line.len(), ply: self.ply, fs_len: self.fs.len(), live: self.live.clone(), staled: vec![] };
         let t = touched_of(m);
+        self.pushes += 1;                                   // every position rolled forward into is counted
         self.pos.play_unchecked(m);
         self.line.push(self.pos.clone());
         self.ply += 1;
@@ -625,6 +694,114 @@ impl ReasoningLedger {
         (cap - cost_hi, cap + threat_hi)
     }
 
+
+    // ---- PHASE 3b: THE THREAT LIST DRIVES THE LINE (Kaveh 2026-10-14: "start with the highest-value threat") -------------------------------
+    fn mate_in_one(b: &Chess) -> bool { b.legal_moves().iter().any(|m| { let mut q = b.clone(); q.play_unchecked(m); q.is_checkmate() }) }
+    fn passed(b: &Chess) -> Option<Chess> {
+        let mut st = b.clone().into_setup(shakmaty::EnPassantMode::Legal);
+        st.turn = !b.turn();
+        crate::vocab::relaxed(st)
+    }
+
+    /// Every piece the other side attacks, with what it wins by the effective exchange (the SAFE finding while questions remain, else the exchange
+    /// law's see), and the mate threats (a mate in one for either side, as if the other passed): sorted by value, highest first.
+    fn threat_list(&mut self) -> Vec<Threat> {
+        let t = self.pos.turn();
+        let mut out: Vec<Threat> = vec![];
+        for color in [t, !t] {
+            let ps: Vec<Pc> = self.pieces_of(color).into_iter().filter(|(_, s)| attacked(self.pos.board(), *s, !color)).collect();
+            for p in ps {
+                let b = self.pos.board();
+                let att = (b.attacks_to(p.1, !color, b.occupied()) & b.by_color(!color)).into_iter()
+                    .filter_map(|s| b.piece_at(s).map(|q| (q.role, s))).min_by_key(|(r, s)| (val(*r), *s as u32));
+                let Some(att) = att else { continue };
+                let mut fid = None;
+                let value = if self.deep && self.used < self.budget {
+                    let id = self.ask_safe(p, None); fid = Some(id); self.fs[id].lo
+                } else {
+                    if self.deep { self.budget_hit = true; }
+                    let (v, _) = self.fact(&format!("(see {})", self.nm(p.1))); v
+                };
+                if value > 0 { out.push(Threat { value, victim: color, target: p, attacker: att, mate: false, finding: fid }); }
+            }
+        }
+        // mate threats count as infinite: ours (a mate in one for the mover) and theirs (a mate in one if the mover passed)
+        if Self::mate_in_one(&self.pos) { out.push(Threat { value: MATE, victim: !t, target: (Role::King, self.pos.board().king_of(!t).unwrap_or(Square::A1)), attacker: (Role::Queen, Square::A1), mate: true, finding: None }); }
+        if !self.pos.is_check() {
+            if let Some(q) = Self::passed(&self.pos) { if Self::mate_in_one(&q) {
+                out.push(Threat { value: MATE, victim: t, target: (Role::King, self.pos.board().king_of(t).unwrap_or(Square::A1)), attacker: (Role::Queen, Square::A1), mate: true, finding: None }); } }
+        }
+        out.sort_by_key(|th| (std::cmp::Reverse(th.value), th.victim == t));
+        out
+    }
+
+    /// The answers to the highest-value threat (39.7 repairs from the finding's read set): against the mover's piece -- move it, guard it, block the
+    /// line, capture the attacker, or counter with a check / a capture at least as big; against the other side's piece -- execute it (take the
+    /// target), or raise it (add an attacker, take a guard). A mate threat: the moves after which it is gone / the mating moves.
+    fn answers(&self, top: &Threat, legal: &[Move]) -> Vec<Move> {
+        let t = self.pos.turn();
+        let mut out = vec![];
+        if top.mate {
+            for m in legal {
+                let mut q = self.pos.clone(); q.play_unchecked(m);
+                let keep = if top.victim == t { Self::mate_in_one(&q) == false || q.is_checkmate() || q.is_check() && false } else { q.is_checkmate() };
+                if top.victim == t { if !Self::mate_in_one(&q) { out.push(m.clone()); } } else if keep { out.push(m.clone()); }
+            }
+            return out;
+        }
+        let (target, att) = (top.target.1, top.attacker.1);
+        let between = shakmaty::attacks::between(att, target);
+        let b = self.pos.board();
+        let guards_of_target: Bitboard = b.attacks_to(target, !top.victim, b.occupied()) & b.by_color(!top.victim);
+        for m in legal {
+            let mut q = self.pos.clone(); q.play_unchecked(m);
+            let qb = q.board();
+            let adds_attack_or_guard = m.from() != Some(target) && m.capture().is_none() && qb.attacks_from(m.to()).contains(target) && qb.piece_at(m.to()).map_or(false, |p| p.color != Color::Black) | false;
+            let lands_on_line = m.capture().is_none() && between.contains(m.to());
+            let takes_attacker = m.to() == att;
+            let tempo = q.is_check() || m.capture().map_or(false, |r| val(r) >= top.value);
+            let keep = if top.victim == t {
+                m.from() == Some(target) || lands_on_line || takes_attacker || tempo || (qb.piece_at(m.to()).map_or(false, |p| p.color == t) && qb.attacks_from(m.to()).contains(target) && m.from() != Some(target))
+            } else {
+                m.to() == target || (qb.piece_at(m.to()).map_or(false, |p| p.color == t) && qb.attacks_from(m.to()).contains(target) && m.from() != Some(target)) || guards_of_target.contains(m.to()) || { let _ = adds_attack_or_guard; false }
+            };
+            if keep { out.push(m.clone()); }
+        }
+        out
+    }
+
+
+    /// BRANCH (b), no threat to us: create a threat to them, starting from the highest-value target -- their king (checks), then queen, rooks,
+    /// minor pieces, pawns; for a target: execute (take it), add an attacker, take a guard, attack with tempo. The first target with any such
+    /// move supplies the candidates (the next is tried only when none is found). -> (the moves, "b: <target>")
+    fn attacks(&self, legal: &[Move], only: Option<Pc>) -> Vec<(Pc, Vec<Move>)> {
+        let t = self.pos.turn();
+        let b = self.pos.board();
+        let mut targets: Vec<Pc> = self.pieces_of(!t);
+        if let Some(k) = b.king_of(!t) { targets.push((Role::King, k)); }
+        targets.sort_by_key(|p| (std::cmp::Reverse(val(p.0)), p.1 as u32));
+        if let Some(o) = only { targets = vec![o]; }
+        let mut groups = vec![];
+        for tg in targets {
+            let guards: Bitboard = b.attacks_to(tg.1, !t, b.occupied()) & b.by_color(!t);
+            let mut out = vec![];
+            for m in legal {
+                let mut q = self.pos.clone(); q.play_unchecked(m);
+                let qb = q.board();
+                let check = q.is_check();
+                let hit = if tg.0 == Role::King { check } else {
+                    m.to() == tg.1                                              // execute: take it
+                    || (m.capture().is_none() && qb.piece_at(m.to()).map_or(false, |p| p.color == t) && qb.attacks_from(m.to()).contains(tg.1))   // add an attacker
+                    || (guards.contains(m.to()) && m.capture().is_some())       // remove a guard
+                    || (check && qb.attacks_from(m.to()).contains(tg.1))        // attack it with tempo
+                };
+                if hit { out.push(m.clone()); }
+            }
+            groups.push((tg, out));
+        }
+        groups
+    }
+
     /// THE STAND-PAT value for the side to move (not in check): it can fix its worst problem, the rest is lost. The problems are its pieces the
     /// other side attacks, each with the SAFE finding's cost interval (the effective exchange: overloaded guards, jobs) while questions remain,
     /// and the exchange law's `see` with the piece's value as the upper bound after (a valid bound, no question asked). -> (lo, hi) for the mover.
@@ -645,6 +822,17 @@ impl ReasoningLedger {
         costs.sort_by_key(|c| std::cmp::Reverse(c.0));
         let max_hi = costs.iter().map(|c| c.1).max().unwrap_or(0);
         let second_lo = if costs.len() >= 2 { costs[1].0 } else { 0 };
+        if self.lean_mode {
+            // the mover may instead EXECUTE an open threat of its own (the other side's piece it wins), then pay for its worst problem
+            let theirs: Vec<Pc> = self.pieces_of(!t).into_iter().filter(|(_, s)| attacked(self.pos.board(), *s, t)).collect();
+            let (mut v_lo, mut v_hi) = (0i64, 0i64);
+            for p in theirs {
+                let (lo_p, hi_p) = if self.deep && self.used < self.budget { let id = self.ask_safe(p, None); (self.fs[id].lo, self.fs[id].hi) }
+                    else { let (v, _) = self.fact(&format!("(see {})", self.nm(p.1))); (v, val(p.0).max(v)) };
+                v_lo = v_lo.max(lo_p); v_hi = v_hi.max(hi_p);
+            }
+            return ((-max_hi).max(v_lo - max_hi), (-second_lo).max(v_hi));
+        }
         (-max_hi, -second_lo)
     }
 
@@ -665,9 +853,29 @@ impl ReasoningLedger {
             let r = if in_check { (self.stand_pat_in_check(), vec![]) } else { (sp, vec![]) };
             return r;
         }
-        let mut cands: Vec<Move> = if in_check { legal } else {
+        let mut label = String::from("reply to check");
+        let mut cands: Vec<Move> = if in_check { legal } else if self.threats_mode {
+            let tl = self.threat_list();
+            let t = self.pos.turn();
+            if let Some(top) = tl.iter().find(|th| th.victim == t && th.value > 0).cloned() {
+                // (a) the highest-value threat to us: its answers, those that also threaten them first
+                label = format!("a: {} {}", if top.mate { "mate threat".to_string() } else { format!("threat {} on {}", top.value, pname(top.target)) }, "");
+                let mut ans = self.answers(&top, &legal);
+                ans.sort_by_key(|m| { let mut q = self.pos.clone(); q.play_unchecked(m); std::cmp::Reverse(q.is_check() || m.is_capture() || { let qb = q.board(); qb.attacks_from(m.to()).into_iter().any(|x| qb.piece_at(x).map_or(false, |p| p.color != t && val(p.role) > 0)) }) });
+                ans
+            } else {
+                // (b) none: create a threat to them, highest-value target first
+                // an existing threat of ours is executed or raised first (the highest-value one); else a threat is created, king first
+                let mine = tl.iter().find(|th| th.victim != t && th.value > 0 && !th.mate).map(|th| th.target);
+                let mut gs = match mine { Some(tg) => self.attacks(&legal, Some(tg)), None => vec![] };
+                if gs.is_empty() { gs = self.attacks(&legal, None); }
+                match gs.into_iter().find(|g| !g.1.is_empty()) { Some((tg, c)) => { label = format!("b: {}", pname(tg)); c } None => vec![] }
+            }
+        } else {
             legal.into_iter().filter(|m| m.is_capture() || m.promotion().is_some() || { let mut q = self.pos.clone(); q.play_unchecked(m); q.is_check() }).collect() };
-        cands.sort_by_key(|m| (std::cmp::Reverse(gain_of(m)), std::cmp::Reverse(val(m.role()) < 0)));
+        if !(self.threats_mode && !in_check) { cands.sort_by_key(|m| (std::cmp::Reverse(gain_of(m)), val(m.role()))); }
+        else { let keep_order = cands.clone(); let mut idx: Vec<usize> = (0..keep_order.len()).collect(); idx.sort_by_key(|&i| (std::cmp::Reverse(gain_of(&keep_order[i])), i)); cands = idx.into_iter().map(|i| keep_order[i].clone()).collect(); }
+        if self.threats_mode && !in_check && cands.len() > ANSWER_BREADTH { cands.truncate(ANSWER_BREADTH); }
         let (mut lo, mut hi) = sp;
         let mut best: (i64, Vec<String>) = (i64::MIN, vec![]);
         let cuts0 = self.cuts;
@@ -679,7 +887,7 @@ impl ReasoningLedger {
             self.leave(snap);
             let (vlo, vhi) = ((g - ch.1).max(-MATE).min(MATE * 2), (g - ch.0).min(MATE * 2));
             lo = lo.max(vlo); hi = hi.max(vhi);
-            if vlo + vhi > best.0 { best = (vlo + vhi, std::iter::once(uci).chain(cpv).collect()); }
+            if vlo + vhi > best.0 { best = (vlo + vhi, std::iter::once(format!("{uci}|{label}")).chain(cpv).collect()); }
         }
         let r = ((lo, hi.max(lo)), best.1);
         if self.cuts == cuts0 { self.tt.insert(key, r.clone()); }       // (a value cut short by the node cap is not remembered as exact)
@@ -688,8 +896,194 @@ impl ReasoningLedger {
     /// In check at the horizon: the replies are not explored; the mover is assumed to lose what a check costs at most (nothing).
     fn stand_pat_in_check(&self) -> (i64, i64) { (-2, 0) }
 
+    /// The value, for the side in check, of the position as it stands (no move played): its replies, statically -- what a reply takes, less what the
+    /// exchange on the square it lands on takes back (`see` after it). A reply that takes the checker is the usual one.
+    fn check_value(&mut self) -> (i64, i64) {
+        let replies: Vec<Move> = self.pos.legal_moves().into_iter().collect();
+        let (mut lo, mut hi) = (i64::MIN, i64::MIN);
+        for r in &replies {
+            let (tn, fnm) = (self.nm(r.to()), self.nm(r.from().unwrap()));
+            let (loss, _) = self.fact(&format!("(after {fnm} {tn} (see {tn}))"));
+            let cap = gain_of(r);
+            hi = hi.max(cap); lo = lo.max(cap - loss);
+        }
+        if replies.is_empty() { return (0, 0); }
+        let (mut lo, mut hi) = (lo.max(-MATE), hi.max(lo).max(0));
+        if self.lean_mode {
+            // the check takes the tempo: a threat against the side in check that no reply addresses (moves the piece, takes the attacker, blocks) is lost
+            let t = self.pos.turn();
+            let tl = self.threat_list();
+            let (mut t_max, mut t_unaddr) = (0i64, 0i64);
+            for th in tl.iter().filter(|th| th.victim == t && th.value > 0 && !th.mate) {
+                t_max = t_max.max(th.value);
+                let between = shakmaty::attacks::between(th.attacker.1, th.target.1);
+                let addressed = replies.iter().any(|r| r.from() == Some(th.target.1) || r.to() == th.attacker.1 || between.contains(r.to()));
+                if !addressed { t_unaddr = t_unaddr.max(th.value); }
+            }
+            lo -= t_max; hi -= t_unaddr;
+        }
+        (lo, hi.max(lo))
+    }
+
+
+    fn say(&self, s: String) {
+        if self.tracing {
+            let depth = self.ply.saturating_sub(self.root_ply) as usize;
+            if depth > TRACE_SHOW { self.suppressed.set(self.suppressed.get() + 1); return; }
+            self.tr.borrow_mut().push(format!("{}{s}", "  ".repeat(depth)));
+        }
+    }
+    fn san_of(&self, m: &Move) -> String { crate::plan::san(&self.pos, &m.to_uci(CastlingMode::Standard).to_string()) }
+    fn names(&self, bb: Bitboard) -> String {
+        let b = self.pos.board();
+        let v: Vec<String> = bb.into_iter().filter_map(|s| b.piece_at(s).map(|p| pname((p.role, s)))).collect();
+        if v.is_empty() { "nothing".into() } else { v.join(", ") }
+    }
+    /// A threat in plain words: the piece, who attacks it, who guards it, the effective exchange with the jobs charged -> what it loses.
+    fn describe_threat(&self, th: &Threat) -> String {
+        if th.mate { return if th.victim == self.pos.turn() { "a mate in one against us if we passed".into() } else { "a mate in one for us".into() }; }
+        let b = self.pos.board();
+        let atk = b.attacks_to(th.target.1, !th.victim, b.occupied()) & b.by_color(!th.victim);
+        let grd = b.attacks_to(th.target.1, th.victim, b.occupied()) & b.by_color(th.victim);
+        let how = th.finding.map(|i| self.fs[i].claim.clone()).unwrap_or_else(|| format!("the exchange law: loses {}", th.value));
+        format!("{} attacked by [{}], guarded by [{}]; effective exchange: {} -> {} {}", pname(th.target), self.names(atk), self.names(grd), how, if th.victim == self.pos.turn() { "we lose" } else { "they lose" }, th.value)
+    }
+    fn answer_kind(&self, top: &Threat, m: &Move) -> &'static str {
+        let mut q = self.pos.clone(); q.play_unchecked(m);
+        let between = shakmaty::attacks::between(top.attacker.1, top.target.1);
+        if top.mate { return if top.victim == self.pos.turn() { "removes the mate threat" } else { "mates" }; }
+        if top.victim == self.pos.turn() {
+            if m.from() == Some(top.target.1) { "moves the piece" } else if m.to() == top.attacker.1 { "takes the attacker" }
+            else if between.contains(m.to()) { "blocks the line" } else if q.is_check() { "counters with a check (tempo)" }
+            else if m.capture().map_or(false, |r| val(r) >= top.value) { "counters with a capture at least as big" } else { "guards it" }
+        } else if m.to() == top.target.1 { "executes the capture" } else { "raises the threat" }
+    }
+
+    /// STATIC FIRST, B* AT EVERY STEP (Kaveh 2026-10-14: "if it's taking so long, we're doing something wrong"). The value of the side to move: its
+    /// stand-pat is static (the threat list, the effective exchange -- no move played). The answers (branch a / b) are each valued by ONE position
+    /// (the move pushed, the static stand-pat of what follows, popped); then only the best is looked into further, and the second only while its
+    /// interval overlaps the best's lower bound -- a line stops as soon as the bounds separate.
+    fn lean(&mut self, d: i32) -> ((i64, i64), Vec<String>) {
+        let legal: Vec<Move> = self.pos.legal_moves().into_iter().collect();
+        let t = self.pos.turn();
+        let who = if t == Color::White { "White" } else { "Black" };
+        if legal.is_empty() { self.say(if self.pos.is_check() { format!("{who} is checkmated.") } else { format!("{who} has no move: stalemate.") }); return (if self.pos.is_check() { (-MATE, -MATE) } else { (0, 0) }, vec![]); }
+        if self.pos.is_insufficient_material() { return ((0, 0), vec![]); }
+        let key = (crate::threat::zkey(&self.pos), d + if self.deep { 1000 } else { 0 } + 5000);
+        if let Some(v) = self.tt.get(&key) { self.say("(this position was already examined)".into()); return v.clone(); }
+        let in_check = self.pos.is_check();
+        let sp = if in_check { (i64::MIN / 4, i64::MIN / 4) } else { self.stand_pat() };
+        if d <= 0 || self.pushes > self.lean_cap { self.say("depth limit.".into()); return (if in_check { self.stand_pat_in_check() } else { sp }, vec![]); }
+        let mut label = String::from("reply to check");
+        let mut top_us: Option<Threat> = None;
+        // the groups of moves to try, in order: (a) / in check one group; (b) one group per target, the next only if this one brings nothing
+        let mut groups: Vec<(String, Vec<Move>)> = vec![];
+        if in_check {
+            self.say(format!("{who} is in check: every legal reply is an answer."));
+            groups.push(("reply to check".into(), legal));
+        } else {
+            let tl = self.threat_list();
+            let ours: Vec<&Threat> = tl.iter().filter(|th| th.victim == t && th.value > 0).collect();
+            if ours.is_empty() { self.say(format!("THREATS TO {who}: none above the margin.")); }
+            else { self.say(format!("THREATS TO {who}, highest first:")); for th in &ours { self.say(format!("  - {}", self.describe_threat(th))); } }
+            if let Some(top) = tl.iter().find(|th| th.victim == t && th.value > 0).cloned() {
+                label = format!("a: {}", if top.mate { "mate threat".to_string() } else { format!("threat {} on {}", top.value, pname(top.target)) });
+                self.say(format!("BRANCH (a): answer the biggest threat, {}.", if top.mate { "a mate".to_string() } else { format!("{} ({})", pname(top.target), top.value) }));
+                top_us = Some(top.clone());
+                groups.push((label.clone(), self.answers(&top, &legal)));
+            } else {
+                let mine = tl.iter().find(|th| th.victim != t && th.value > 0 && !th.mate).map(|th| th.target);
+                if let Some(m) = &mine {
+                    self.say(format!("BRANCH (b): nothing threatens {who}; an open threat of ours on {} is executed or raised first.", pname(*m)));
+                    for (tg, mv) in self.attacks(&legal, Some(*m)) { groups.push((format!("b: {} (an open threat of ours)", pname(tg)), mv)); }
+                }
+                else { self.say(format!("BRANCH (b): nothing threatens {who}; attacking, from the highest-value target down.")); }
+                for (tg, mv) in self.attacks(&legal, None) { if !groups.iter().any(|g| g.0.starts_with(&format!("b: {}", pname(tg)))) { groups.push((format!("b: {}", pname(tg)), mv)); } }
+            }
+        }
+        if groups.iter().all(|g| g.1.is_empty()) { self.say("no answer / no attacking move found: the position is quiet; its static value stands.".into()); self.sep_flag = true; return (sp, vec![]); }
+        struct C { m: Move, g: i64, iv: (i64, i64), pv: Vec<String>, open: bool, san: String, label: String }
+        let mut cs: Vec<C> = vec![];
+        let sp_lo = if in_check { i64::MIN / 4 } else { sp.0 };
+        for (glabel, mut cands) in groups {
+            if cands.is_empty() { self.say(format!("{glabel}: no way to execute, raise or create a threat against it -- abandoned, the next target.")); continue; }
+            cands.sort_by_key(|m| (std::cmp::Reverse(gain_of(m)), val(m.role())));
+            if !in_check && cands.len() > ANSWER_BREADTH { cands.truncate(ANSWER_BREADTH); }
+            self.say(format!("{} -- {} move(s) to weigh: {}", glabel, cands.len(), cands.iter().map(|m| self.san_of(m)).collect::<Vec<_>>().join(", ")));
+            let mut group_best = i64::MIN;
+            for m in cands {
+                let g = gain_of(&m);
+                let san = self.san_of(&m);
+                let kind = top_us.as_ref().map(|th| self.answer_kind(th, &m)).unwrap_or("");
+                let snap = self.enter(&m);
+                self.say(format!("play {san}{} [question: what do they hold afterwards? -- position {} examined]", if kind.is_empty() { String::new() } else { format!(" ({kind})") }, self.pushes));
+                let ch = if self.pos.is_checkmate() { (-MATE, -MATE) } else if self.pos.legal_moves().len() == 0 { (0, 0) }
+                         else if self.pos.is_check() { self.check_value() } else { self.stand_pat() };
+                self.say(format!("   statically, the side to move there is worth {}..{}; so {san} is worth {}..{} to us (gain {g} now)", ch.0.max(-MATE), ch.1.min(MATE), (g - ch.1).max(-MATE), (g - ch.0).min(2 * MATE)));
+                self.leave(snap);
+                let mut c = C { iv: ((g - ch.1).max(-MATE), (g - ch.0).min(2 * MATE)), m, g, pv: vec![], open: true, san, label: glabel.clone() };
+                c.iv.1 = c.iv.1.max(c.iv.0);
+                group_best = group_best.max(c.iv.0);
+                cs.push(c);
+            }
+            if in_check || top_us.is_some() { break; }
+            if group_best > sp_lo { self.say(format!("{}: a threat that improves on standing pat ({} > {}) -- no need to look at lesser targets.", glabel, group_best, sp_lo)); break; }
+            self.say(format!("{}: nothing here beats standing pat ({} <= {}) -- abandoned, the next target.", glabel, group_best, sp_lo));
+        }
+        let label = cs.iter().max_by_key(|c| (c.iv.0, c.iv.1)).map(|c| c.label.clone()).unwrap_or(label);
+        let (mut lo, mut hi) = if in_check { (i64::MIN / 4, i64::MIN / 4) } else { sp };
+        let mut separated = false;
+        loop {
+            let bi = (0..cs.len()).max_by_key(|&i| (cs[i].iv.0, cs[i].iv.1)).unwrap();
+            let best_lo = cs[bi].iv.0.max(lo);
+            let others_hi = (0..cs.len()).filter(|&i| i != bi).map(|i| cs[i].iv.1).max().unwrap_or(i64::MIN).max(if in_check { i64::MIN } else { hi });
+            if best_lo >= others_hi { separated = true; self.say(format!("B*: {} worth {}..{} and nothing else can exceed {} -- the bounds separate, stop.", cs[bi].san, cs[bi].iv.0, cs[bi].iv.1, if others_hi == i64::MIN { "it".to_string() } else { others_hi.to_string() })); break; }
+            let target = (0..cs.len()).filter(|&i| cs[i].open && (i == bi || cs[i].iv.1 > best_lo)).max_by_key(|&i| (cs[i].iv.1 - cs[i].iv.0.max(best_lo), cs[i].iv.1));
+            let Some(ti) = target else { self.say("B*: nothing left to look into; the intervals overlap.".into()); break };
+            if self.pushes > self.lean_cap { self.say("position budget spent.".into()); break; }
+            cs[ti].open = false;
+            let m = cs[ti].m.clone();
+            self.say(format!("B*: {} {} -- looking further into {}.", if ti == bi { "the best answer is still open" } else { "its interval still overlaps the best's lower bound" }, format!("[{}..{}]", cs[ti].iv.0, cs[ti].iv.1), cs[ti].san));
+            let snap = self.enter(&m);
+            self.say(format!("play {} to see their answer [question: is the line stable? -- position {} examined]", cs[ti].san, self.pushes));
+            let (ch, pv) = self.lean(d - 1);
+            self.leave(snap);
+            let g = cs[ti].g;
+            cs[ti].iv = ((g - ch.1).max(-MATE), (g - ch.0).min(2 * MATE));
+            cs[ti].iv.1 = cs[ti].iv.1.max(cs[ti].iv.0);
+            cs[ti].pv = pv;
+            self.say(format!("{} now worth {}..{}.", cs[ti].san, cs[ti].iv.0, cs[ti].iv.1));
+        }
+        self.sep_flag = separated;
+        let mut best: (i64, Vec<String>) = (i64::MIN, vec![]);
+        for c in &cs {
+            lo = lo.max(c.iv.0); hi = hi.max(c.iv.1);
+            if c.iv.0 + c.iv.1 > best.0 { best = (c.iv.0 + c.iv.1, std::iter::once(format!("{}|{}", c.m.to_uci(CastlingMode::Standard), c.label)).chain(c.pv.clone()).collect()); }
+        }
+        let r = ((lo, hi.max(lo)), best.1);
+        let _ = &label;
+        self.say(format!("{who}: value {}..{}.", r.0 .0, r.0 .1));
+        self.tt.insert(key, r.clone());
+        r
+    }
+
     /// The interval of a candidate: its gain minus the opponent's value of the position after it, found by rolling the ledger forward.
     fn refine(&mut self, c: &mut Cand) {
+        if self.lean_mode {
+            let m = c.mv.clone();
+            let g = gain_of(&m);
+            self.deep = c.level >= 1;
+            let snap = self.enter(&m);
+            let (ch, pv) = if c.level == 0 {
+                (if self.pos.is_checkmate() { (-MATE, -MATE) } else if self.pos.is_check() { self.check_value() } else { self.stand_pat() }, vec![])
+            } else { self.lean(SEARCH_DEPTH - 1) };
+            self.leave(snap);
+            c.iv = ((g - ch.1).max(-MATE).min(MATE), (g - ch.0).min(MATE));
+            c.iv.1 = c.iv.1.max(c.iv.0);
+            c.refined = true; c.level += 1;
+            c.note = format!("line {}", std::iter::once(format!("{}|candidate", c.uci)).chain(pv.into_iter()).collect::<Vec<_>>().join("; "));
+            return;
+        }
         self.deep = c.level >= 1;
         self.cap_now = (self.nodes + NODE_PER_CAND).min(NODE_CAP);
         let m = c.mv.clone();
@@ -707,15 +1101,17 @@ impl ReasoningLedger {
         c.iv = ((g - ch.1).min(MATE), (g - ch.0).min(MATE));
         c.iv.1 = c.iv.1.max(c.iv.0);
         c.refined = true; c.level += 1;
-        c.note = format!("line {} {}", c.uci, pv.join(" "));
+        c.note = format!("line {}", std::iter::once(format!("{}|candidate", c.uci)).chain(pv.into_iter()).collect::<Vec<_>>().join("; "));
         c.cites = vec![];
     }
 
     fn explain(&mut self, c: &Cand) -> Vec<Value> {
         // the chain of the chosen candidate: replay its line, then read the SAFE findings of the position at its end (what is still hanging there)
         let saved = (self.used, self.carried, self.reasked, self.facts_n, self.nodes);
+        let saved_pushes = self.pushes;
         self.used = 0; self.deep = true;
-        let line: Vec<String> = c.note.strip_prefix("line ").unwrap_or("").split_whitespace().map(|x| x.to_string()).collect();
+        let line_full: Vec<String> = c.note.strip_prefix("line ").unwrap_or("").split("; ").map(|x| x.to_string()).filter(|x| !x.is_empty()).collect();
+        let line: Vec<String> = line_full.iter().map(|x| x.split('|').next().unwrap_or("").to_string()).collect();
         let mut snaps = vec![];
         for u in &line {
             let Ok(um) = u.parse::<shakmaty::uci::UciMove>() else { break };
@@ -728,7 +1124,7 @@ impl ReasoningLedger {
             let ps: Vec<Pc> = self.pieces_of(color).into_iter().filter(|(_, s)| attacked(self.pos.board(), *s, !color)).collect();
             for p in ps { ids.push(self.ask_safe(p, None)); }
         }
-        let mut out = vec![json!({"id": 0, "type": "LINE", "claim": format!("the line the ledger rolled forward: {}", line.join(" ")), "status": "PROVEN", "lo": 0, "hi": 0})];
+        let mut out = vec![json!({"id": 0, "type": "LINE", "claim": format!("the line the ledger rolled forward: {}", line_full.iter().map(|x| x.replace('|', " [") + "]").collect::<Vec<_>>().join("  ")), "status": "PROVEN", "lo": 0, "hi": 0})];
         let mut seen = HashSet::new();
         let mut stack = ids;
         while let Some(i) = stack.pop() {
@@ -738,6 +1134,7 @@ impl ReasoningLedger {
         }
         while let Some(sn) = snaps.pop() { self.leave(sn); }
         (self.used, self.carried, self.reasked, self.facts_n, self.nodes) = saved;
+        self.pushes = saved_pushes;
         out
     }
 }
@@ -747,7 +1144,7 @@ impl ReasoningLedger {
     fn decide_impl(&mut self, py: Python<'_>) -> PyResult<PyObject> {
         let t0 = std::time::Instant::now();
         self.used = 0; self.carried = 0; self.reasked = 0; self.facts_n = 0; self.skipped.clear(); self.confirmations.clear();
-        self.tt.clear(); self.nodes = 0; self.cap_now = 0; self.node_cap_hit = false; self.budget_hit = false;
+        self.tt.clear(); self.nodes = 0; self.pushes = 0; self.cap_now = 0; self.node_cap_hit = false; self.budget_hit = false;
         let legal: Vec<Move> = self.pos.legal_moves().into_iter().collect();
         if legal.is_empty() {
             let out = json!({"move": null, "status": "PROVEN", "reason": if self.pos.is_check() { "checkmate: no legal move" } else { "stalemate: no legal move" }, "interval": [0, 0], "why": [], "questions": 0, "budget": self.budget, "nodes": 0, "facts": 0, "candidates": 0, "legal": 0, "refined": 0, "zero_stake": 0, "unanswered": [], "confirm": null, "table": [], "all": [], "chain": [], "seconds": 0.0});
@@ -808,7 +1205,7 @@ impl ReasoningLedger {
         }
         let tab: Vec<Value> = { let mut v: Vec<&Cand> = cands.iter().collect(); v.sort_by_key(|c| std::cmp::Reverse((c.iv.0, c.iv.1)));
             v.into_iter().take(8).map(|c| json!({"move": c.uci, "why": c.why, "rule": [c.rule.0, c.rule.1], "interval": [c.iv.0, c.iv.1], "refined": c.refined, "note": c.note})).collect() };
-        let out = json!({"move": chosen.uci, "status": status, "reason": reason, "interval": [chosen.iv.0, chosen.iv.1], "why": chosen.why, "questions": questions, "budget": self.budget, "nodes": self.nodes, "budget_hit": self.budget_hit, "node_cap_hit": self.node_cap_hit,
+        let out = json!({"move": chosen.uci, "status": status, "reason": reason, "interval": [chosen.iv.0, chosen.iv.1], "why": chosen.why, "questions": questions, "budget": self.budget, "nodes": self.nodes, "positions": self.pushes, "budget_hit": self.budget_hit, "node_cap_hit": self.node_cap_hit,
                          "facts": facts, "candidates": n_cand, "legal": legal.len(), "refined": cands.iter().filter(|c| c.refined).count(), "zero_stake": zero_stake,
                          "unanswered": unanswered, "confirm": confirm, "table": tab, "all": cands.iter().map(|c| json!([c.uci, c.why, [c.rule.0, c.rule.1], [c.iv.0, c.iv.1], c.refined])).collect::<Vec<_>>(), "chain": chain, "seconds": t0.elapsed().as_secs_f64()});
         let j = py.import("json")?;

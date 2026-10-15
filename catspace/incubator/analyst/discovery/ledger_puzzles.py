@@ -110,8 +110,8 @@ def _one(row: dict, budget: int) -> dict:
     out = dict(id=row["PuzzleId"], fen=fen, answer=answer, themes=themes, legal=b.legal_moves.count())
     try:
         t0 = time.perf_counter()
-        d = A.Ledger(fen, budget).decide()
-        out["ledger"] = dict(move=d["move"], status=d["status"], reason=d["reason"], interval=d["interval"], questions=d["questions"], facts=d["facts"],
+        d = A.Ledger(fen, budget).decide(os.environ.get("LEDGER_FORCING", "threats"))
+        out["ledger"] = dict(move=d["move"], status=d["status"], reason=d["reason"], interval=d["interval"], questions=d["questions"], nodes=d["nodes"], facts=d["facts"],
                              candidates=d["candidates"], legal=d["legal"], refined=d["refined"], zero_stake=d["zero_stake"], seconds=round(time.perf_counter() - t0, 3),
                              confirm=d["confirm"], why=d["why"], all=d["all"], unanswered=d["unanswered"], chain=d["chain"], table=d["table"])
         out["ledger"]["correct"] = _correct(fen, d["move"], answer, themes, A)
@@ -123,7 +123,7 @@ def _one(row: dict, budget: int) -> dict:
         out["ledger"]["alt_move"] = alt
         out["ledger"]["alt_correct"] = _correct(fen, alt, answer, themes, A)
     except BaseException as e:                               # noqa: BLE001
-        out["ledger"] = dict(error=repr(e), correct=False, status="ERROR", questions=0, facts=0, candidates=0, legal=out["legal"], seconds=0)
+        out["ledger"] = dict(error=repr(e), correct=False, status="ERROR", questions=0, nodes=0, facts=0, candidates=0, legal=out["legal"], seconds=0)
     # the solver alone: every legal move at the puzzle's value, deeper until a move is found
     V = _value(b, sol, themes)
     out["value"] = V
@@ -155,7 +155,8 @@ def summarize(res: list, label: str) -> dict:
         cf = [l for l in led if l.get("confirm")]
         return dict(n=n, ledger_correct=sum(l["correct"] for l in led) / n, alt_correct=sum(l.get("alt_correct", False) for l in led) / n, proven=len(pr) / n,
                     proven_correct=(sum(l["correct"] for l in pr) / len(pr)) if pr else None,
-                    questions=sum(l["questions"] for l in led) / n, facts=sum(l["facts"] for l in led) / n,
+                    questions=sum(l["questions"] for l in led) / n, nodes_mean=sum(l.get("nodes", 0) for l in led) / n,
+                    nodes_med=sorted(l.get("nodes", 0) for l in led)[n // 2], nodes_p90=sorted(l.get("nodes", 0) for l in led)[min(n - 1, int(0.9 * n))], facts=sum(l["facts"] for l in led) / n,
                     candidates=sum(l["candidates"] for l in led) / n, legal=sum(l["legal"] for l in led) / n,
                     seconds=sum(l["seconds"] for l in led) / n, confirmed=sum(1 for l in cf if l["confirm"]["result"] == "CONFIRMED"), claims=len(cf),
                     solver_correct=sum(r["solver"]["correct"] for r in rs) / n, solver_nodes=sum(r["solver"]["nodes"] for r in rs) / n,
@@ -167,10 +168,10 @@ def summarize(res: list, label: str) -> dict:
     tot = block(res)
     themes = {t: block(rs) for t, rs in by.items() if len(rs) >= 3}
     fmt = lambda x: "-" if x is None else f"{100 * x:.0f}%"
-    hdr = f"{'theme':22s} {'n':>4s} {'ledger':>7s} {'lo-first':>8s} {'proven':>7s} {'prov.ok':>7s} {'quest':>6s} {'solver':>7s} {'sol.nodes':>10s} {'planner':>8s}"
+    hdr = f"{'theme':22s} {'n':>4s} {'ledger':>7s} {'lo-first':>8s} {'proven':>7s} {'prov.ok':>7s} {'quest':>6s} {'pos.med':>8s} {'pos.p90':>8s} {'solver':>7s} {'sol.nodes':>10s} {'planner':>8s}"
     print(f"OBS {label}\nOBS " + hdr)
     for name, x in [("ALL", tot)] + sorted(themes.items(), key=lambda kv: -kv[1]["n"]):
-        print(f"OBS {name:22s} {x['n']:4d} {fmt(x['ledger_correct']):>7s} {fmt(x['alt_correct']):>8s} {fmt(x['proven']):>7s} {fmt(x['proven_correct']):>7s} {x['questions']:6.1f} "
+        print(f"OBS {name:22s} {x['n']:4d} {fmt(x['ledger_correct']):>7s} {fmt(x['alt_correct']):>8s} {fmt(x['proven']):>7s} {fmt(x['proven_correct']):>7s} {x['questions']:6.1f} {x['nodes_med']:8d} {x['nodes_p90']:8d} "
               f"{fmt(x['solver_correct']):>7s} {x['solver_nodes']:10.0f} {fmt(x['planner_correct']):>8s}")
     print(f"OBS ledger: {tot['candidates']:.1f} candidates of {tot['legal']:.1f} legal moves per decision, {tot['facts']:.0f} facts, {tot['seconds']:.2f} s; "
           f"claims confirmed by the solver {tot['confirmed']} of {tot['claims']}; solver found a move at depth <= {CAP_DEPTH} in {fmt(tot['solver_found'])}")
@@ -198,17 +199,20 @@ def classify(r: dict) -> str:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--set", choices=("dev", "test", "fresh"), default="dev")
+    ap.add_argument("--set", choices=("dev", "test", "fresh", "new17"), default="dev")
     ap.add_argument("--n", type=int, default=20)
     ap.add_argument("--misses", type=int, default=0, help="print the because-chain and a classification for this many misses")
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--forcing", choices=("quiescence", "threats"), default="threats", help="what drives the forcing line: every check / capture / promotion, or the highest-value threat")
+    ap.add_argument("--chains", type=int, default=0, help="print the because-chain (the line and the findings at its end) for this many decisions of different themes")
     ap.add_argument("--budget", type=int, default=200, help="questions per decision (the plan's 200; other values only as a sensitivity check)")
     a = ap.parse_args(argv)
     global LEDGER_BUDGET
     LEDGER_BUDGET = a.budget
     os.environ["LEDGER_BUDGET"] = str(a.budget)
+    os.environ["LEDGER_FORCING"] = a.forcing
     t0 = time.perf_counter()
-    rows = dev_rows(a.n) if a.set == "dev" else dev_rows(a.n, 11) if a.set == "fresh" else test_rows(a.n)
+    rows = dev_rows(a.n) if a.set == "dev" else dev_rows(a.n, 11) if a.set == "fresh" else dev_rows(a.n, 17) if a.set == "new17" else test_rows(a.n)
     print(f"OBS {a.set}: {len(rows)} puzzles loaded in {time.perf_counter() - t0:.1f} s")
     ctx = multiprocessing.get_context("spawn")
     t0 = time.perf_counter()
@@ -236,7 +240,18 @@ def main(argv=None):
         print(f"OBS   the answer as a candidate: {ans}")
         for f in l.get("chain", [])[:6]:
             print(f"OBS   [{f['status']}] {f['claim'][:180]} [{f['lo']},{f['hi']}]")
-    p = paths.derived(f"ledger_puzzles_{a.set}_{len(res)}" + (f"_b{a.budget}" if a.budget != 200 else "") + ".json")
+    seen_t = set()
+    shown = 0
+    for r in res:
+        if shown >= a.chains: break
+        th = [t for t in r["themes"] if t in ("hangingPiece", "pin", "fork", "discoveredAttack", "deflection", "sacrifice", "mateIn2", "skewer", "attraction", "intermezzo", "defensiveMove", "quietMove")]
+        if not th or th[0] in seen_t or not r["ledger"].get("chain"): continue
+        seen_t.add(th[0]); shown += 1
+        l = r["ledger"]
+        print(f"OBS CHAIN {r['id']} [{th[0]}] {r['fen']} answer {r['answer']} ledger {l['move']} {'ok' if l['correct'] else 'MISS'} {l['status']} positions {l.get('nodes')}")
+        for f in l["chain"][:10]:
+            print(f"OBS    [{f['status']}] {f['claim'][:200]}")
+    p = paths.derived(f"ledger_puzzles_{a.set}_{len(res)}_{a.forcing}" + (f"_b{a.budget}" if a.budget != 200 else "") + ".json")
     json.dump(dict(summary=summ, results=[{k: v for k, v in r.items() if k != "ledger"} | {"ledger": {k: v for k, v in r["ledger"].items() if k != "chain"}} for r in res]), open(p, "w"))
     print(f"OBS saved {p}")
 

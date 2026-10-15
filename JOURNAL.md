@@ -30739,3 +30739,18 @@ THE REASONING LEDGER, PHASE 3: THE DECISION LAYER (2026-10-14 16:07 PDT; Kaveh: 
   midpoint as specified, the lowest-bound variant is printed beside it (chosen on the dev set); (c) menus built this phase: "kick X" (escape squares), "the reply is
   forced" (every reply in check; none = mate), "X is safe on its new square" (the stand-pat uses see after the move); (d) a candidate search replaces the per-candidate
   ledger of the position after it: the same ledger (enter / leave, retraction by read set), rolled further.
+
+THE REASONING LEDGER, PHASE 3b: THE THREAT-DRIVEN LINE AND THE TRACE (2026-10-14 17:22 PDT; Kaveh: "I want to see it working ... then start analyzing the threat to that position").
+  Built: forcing modes "quiescence" (phase 3), "threats" (the answers to the highest-value threat; the threat list from the safety findings) and "static"
+  (static first, B* at every node: each answer valued by ONE position -- the move pushed, the static stand-pat of what follows, popped -- the best looked into
+  further, a second only while its interval overlaps the best's lower bound); branch (a) the highest-value threat TO the mover (move the piece, guard, block, take the
+  attacker, counter with a check or a capture at least as big; the answers that also threaten them first), branch (b) none: an open threat of ours executed or
+  raised, else attack from the highest-value target down (king: checks; queen, rooks, minors, pawns: take it, add an attacker, take a guard, attack with tempo), the
+  next target only if this one brings nothing beyond standing pat. Positions examined = every push (A.Ledger.decide(...)["positions"]). The solver and planner
+  baselines are dropped from the discussion (Kaveh). TRACE: python -m ...discovery.ledger --fen F --trace prints the reasoning in plain chess words.
+  Dev-300 before the trace work (not the lean mode): quiescence 63% / positions median 54,018 / p90 326,779; threats 59% / 23,571 / 121,755 (the answers rule of 2026-10-14
+  as first stated: 52% / 16,817); new sample i%997==17: threats 63% (42% PROVEN), quiescence 70%. Static-first mode: three traces below, positions examined 3 / 151 / 58.
+  Traces: Kaveh's position -- the latent threats first (e5 pinned to Bd6: moving it costs >= 2), no threat to Black above the margin, branch (b) attacking from the king down,
+  151 positions examined at budget 1000; the intermezzo -- no threat to White, an open threat of ours on Ra8 executed: Qxa8, PROVEN, 3 positions; the queen on e6 --
+  ...Qg5+ with the discovered rook found, 58 positions, ESTIMATED -1..5. Not yet: the line stays shallow where the bounds separate (Qxa8 is not followed to cxb5);
+  the first target with an attacking move is not always the useful one; budget exhaustion degrades the first look to the exchange law.

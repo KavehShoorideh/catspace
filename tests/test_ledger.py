@@ -75,3 +75,13 @@ def test_phase_3_decisions_on_hand_positions():
     assert d["move"] == "e7g5" and d["interval"][0] >= 4
     assert any("discovery" in a[1] for a in d["all"] if a[0] == "e7g5")
     assert d["nodes"] > 1000 and d["confirm"]["result"] == "CONFIRMED"
+
+
+def test_trace_reads_in_plain_chess_order():
+    t = L.new("r5k1/2p1q2p/2Qp2p1/1rpPpp2/2P1P3/P4P2/6PP/4R1K1 w - - 0 27", 1000).trace(4)
+    text = "\n".join(t["trace"])
+    assert "THREATS TO White: none above the margin." in text and "BRANCH (b)" in text and "an open threat of ours on Ra8" in text
+    assert t["move"] == "c6a8" and t["status"] == "PROVEN" and t["positions"] <= 5 and "DECISION: Qxa8" in text
+    t = L.new(FEN, 1000).trace(4)                              # Kaveh's position: the latent threat comes first, the pin of the e-pawn in words
+    assert "LATENT THREATS to Black" in t["trace"][1] and any("e5 is pinned to Bd6" in l for l in t["trace"][:8])
+    assert t["positions"] <= 200 and any(l.startswith("DECISION") for l in t["trace"][-3:])
