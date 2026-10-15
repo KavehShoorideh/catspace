@@ -36,8 +36,9 @@ class Observable:
 class ChessDomain:
     """The chess DOMAIN ADAPTER: the observable kinds, positions as FEN strings and moves as UCI strings, the victim's loss, the settled end of a teacher line,
     the board picture. windows.py and any teacher see only this surface."""
-    kinds = ("capture", "promotion", "check", "castle", "mate", "resignation")
+    kinds = ("capture", "promotion", "check", "castle", "mate", "resignation", "shift")
     material_kinds = ("capture", "promotion", "mate")
+    important_kinds = ("shift", "mate")      # only these get windows (Kaveh 2026-10-15: the windows were too many)
 
     @staticmethod
     def material(board: chess.Board, color: bool) -> int:
@@ -111,7 +112,7 @@ class ChessDomain:
         if e.is_checkmate():
             mated = e.turn
         swing = self.material(e, victim) - self.material(b, victim)
-        same = (mated == victim) if obs.kind == "mate" else (mated == victim or swing <= -obs.delta)
+        same = (mated == victim) if obs.kind == "mate" else (mated == victim or swing <= -abs(obs.delta))
         other = None
         if same:
             cls = "SAME"
@@ -127,6 +128,28 @@ class ChessDomain:
         import chess.svg
         return chess.svg.board(chess.Board(fen), lastmove=chess.Move.from_uci(move) if move else None, size=360, coordinates=True)
 
+    def balance(self, fen: str, side: str) -> int:
+        """material balance in `side`'s view (own minus the other's), in pawns."""
+        return self.material(chess.Board(fen), chess.WHITE if side == "white" else chess.BLACK)
+
+    def shifts(self, moves, boards) -> list:
+        """(ply, side, gain) for every turn whose END balance, in its own view, differs from the end of its previous turn (the first turn compares with the start).
+        The end of a turn that captured is the SETTLED end: through the capture chain that follows it (a recapture belongs to the exchange), so an even trade
+        is no shift and a two-ply exchange is one. Only the gaining side emits (the loser sees the same event as a loss)."""
+        out = []
+        last = {c: self.material(boards[0], c) for c in (chess.WHITE, chess.BLACK)}
+        for i, m in enumerate(moves):
+            s = boards[i].turn
+            j = i + 1
+            if boards[i].is_capture(m) or m.promotion:
+                while j < len(moves) and (boards[j].is_capture(moves[j]) or moves[j].promotion):
+                    j += 1
+            bal = self.material(boards[j], s)
+            if bal > last[s]:
+                out.append((i, s, bal - last[s]))
+            last[s] = bal
+        return out
+
     def stream(self, game, source: str = "watched") -> list:
         gid = self.game_id(game)
         moves, boards, events = LG.material_events(game)
@@ -139,6 +162,8 @@ class ChessDomain:
             winner = not e["loser"]
             promo = any(moves[j].promotion and boards[j].turn == winner for j in range(e["c0"], e["c1"] + 1))
             out.append(mk(e["win_first"], "promotion" if promo else "capture", winner, e["loser"], e["delta"]))
+        for i, s, gain in self.shifts(moves, boards):
+            out.append(mk(i, "shift", s, not s, gain))
         for i, m in enumerate(moves):
             b, a = boards[i], boards[i + 1]
             if b.is_castling(m):

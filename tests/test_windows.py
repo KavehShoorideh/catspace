@@ -19,10 +19,36 @@ def test_observable_kinds_on_a_known_game():
     obs = OB.stream(game)
     counts = {k: sum(o.kind == k for o in obs) for k in OB.ADAPTER.kinds}
     print(f"OBS observable kinds, game 0: {counts}")
-    assert counts == dict(capture=4, promotion=0, check=3, castle=2, mate=0, resignation=1)
+    assert counts == dict(capture=4, promotion=0, check=3, castle=2, mate=0, resignation=1, shift=4)
     assert all(o.fen_before and o.fen_after and o.source == "watched" for o in obs)
     cap = next(o for o in obs if o.kind == "capture")
     assert cap.delta >= 1 and cap.victim in ("white", "black") and cap.side != cap.victim
+
+
+def _shifts(fen, ucis):
+    import chess
+    import chess.pgn
+    g = chess.pgn.Game(); g.setup(fen)
+    n = g
+    for u in ucis:
+        n = n.add_variation(chess.Move.from_uci(u))
+    out = [o for o in OB.stream(g) if o.kind == "shift"]
+    print(f"OBS shifts {ucis}: {[(o.ply, o.side, o.delta) for o in out]}")
+    return out
+
+
+def test_an_even_trade_is_no_shift():
+    assert _shifts("4k3/8/4p3/3n4/8/2N5/8/4K3 w - - 0 1", ["c3d5", "e6d5", "e1d1"]) == []
+
+
+def test_a_pawn_won_is_one_shift_where_it_settled():
+    o = _shifts("4k3/8/8/3p4/4P3/8/8/4K3 w - - 0 1", ["e4d5", "e8d7", "e1d1"])
+    assert [(x.ply, x.side, x.victim, x.delta) for x in o] == [(0, "white", "black", 1)]
+
+
+def test_a_two_ply_exchange_netting_a_piece_is_one_shift():
+    o = _shifts("4k3/8/4p3/3n4/4P3/8/8/4K3 w - - 0 1", ["e4d5", "e6d5", "e1d1"])
+    assert [(x.ply, x.side, x.delta) for x in o] == [(0, "white", 2)]
 
 
 @needs_sf

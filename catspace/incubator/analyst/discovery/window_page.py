@@ -28,7 +28,7 @@ function show(key,cap){$('#board').innerHTML=D.svgs[key];$('#cap').textContent=c
 function el(t,c,x){const e=document.createElement(t);if(c)e.className=c;if(x!==undefined)e.textContent=x;return e;}
 const R=$('#right');
 D.windows.forEach((w,n)=>{const o=w.observable,c=el('div','card');
- c.appendChild(el('h2','',`Window ${n+1}: ${o.side} ${o.kind==='mate'?'mates':'wins '+o.delta+' ('+o.kind+')'} at ply ${o.ply+1}`));
+ c.appendChild(el('h2','',`Window ${n+1}: ${o.side} ${o.kind==='mate'?'mates':'gains '+Math.abs(o.delta)+' ('+o.kind+')'} at ply ${o.ply+1}`));
  c.appendChild(el('div','mut',`inevitability: ${w.inevitability} ply(s) back (strict, all sides: ${w.inevitability_strict}) | depth ${w.depth} back | reasonable branches ${w.reasonable} | stop: ${w.stop} | cashed: ${w.cashed?'yes (the loss fell in the game)':'no'}`));
  const s=el('button','b','start position');s.className='b';s.dataset.key=w.start_key;s.onclick=()=>show(w.start_key,'start of the window (ply '+(w.plies[w.plies.length-1].ply+1)+')');c.appendChild(s);
  w.plies.slice().reverse().forEach(p=>{const r=el('div','row');r.appendChild(el('span','k',`${p.k} back`));r.appendChild(el('span','mut',`${p.mover} (ply ${p.ply+1})`));

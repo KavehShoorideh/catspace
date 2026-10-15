@@ -68,30 +68,47 @@ def build_tree(teacher, domain, fens: list, moves: list, obs, band: str, cap: in
 def finish_window(w: dict, domain, cashed=True) -> dict:
     """start position, the leaves valued for the side to move at the start, the cashed flag (the loss fell in the game)."""
     start = w["plies"][-1]
-    victim = w["observable"]["victim"]
-    base = domain.loss(start["fen"], victim)
-    sign = 1 if domain.side_to_move(start["fen"]) == victim else -1
     leaves = []
     for p in w["plies"]:
         for b in p["branches"]:
-            v = sign * (b["end_bal"] - base)
-            leaves.append(dict(k=p["k"], move=b["san"], cls=b["cls"], reasonable=b["reasonable"], played=b["played"], value=v, group="winning" if v >= 1 else "losing" if v <= -1 else "neutral"))
+            side0 = domain.side_to_move(start["fen"])
+            v = domain.balance(b["end_fen"], side0) - domain.balance(start["fen"], side0)
+            leaves.append(dict(k=p["k"], end_fen=b["end_fen"], move=b["san"], cls=b["cls"], reasonable=b["reasonable"], played=b["played"], value=v, group="winning" if v >= 1 else "losing" if v <= -1 else "neutral"))
     w["start_fen"], w["leaves"], w["cashed"] = start["fen"], leaves, cashed
     return w
 
 
-def merge(windows: list) -> list:
-    """windows sharing a start position -> one group, leaves grouped winning / losing / neutral for the side to move at the start."""
-    by = {}
+def merge(windows: list, domain=OB.DOMAIN) -> list:
+    """windows sharing a start position, or whose start lies inside an earlier window's span (the same forcing line), -> one group (the earliest start); its
+    leaves grouped winning / losing / neutral for the side to move at the group's start."""
+    groups = []
     for n, w in enumerate(windows):
-        g = by.setdefault(w["start_fen"], dict(start_fen=w["start_fen"], windows=[], leaves={"winning": [], "losing": [], "neutral": []}))
+        s, e = w["plies"][-1]["ply"], w["observable"]["ply"]
+        g = next((g for g in groups if g["span"][0] <= s <= g["span"][1]), None)
+        if g is None:
+            g = dict(start_fen=w["start_fen"], span=[s, e], windows=[])
+            groups.append(g)
         g["windows"].append(n)
-        for l in w["leaves"]:
-            g["leaves"][l["group"]].append(dict(l, window=n))
-    return list(by.values())
+        g["span"][1] = max(g["span"][1], e)
+        if s < g["span"][0]:
+            g["span"][0], g["start_fen"] = s, w["start_fen"]
+    for g in groups:
+        side = domain.side_to_move(g["start_fen"])
+        base = domain.balance(g["start_fen"], side)
+        g["leaves"] = {"winning": [], "losing": [], "neutral": []}
+        for n in g["windows"]:
+            for l in windows[n]["leaves"]:
+                v = domain.balance(l["end_fen"], side) - base
+                g["leaves"]["winning" if v >= 1 else "losing" if v <= -1 else "neutral"].append(dict(l, window=n, value=v))
+    return groups
+
+
+def important_observables(obs: list, domain=OB.DOMAIN) -> list:
+    return [o for o in obs if o.kind in domain.important_kinds]
 
 
 def material_observables(obs: list, domain=OB.DOMAIN) -> list:
+    """the earlier, unfiltered set (settled captures / promotions of delta >= 1, and mate): kept only to report how many windows the filter removes."""
     return [o for o in obs if o.kind in domain.material_kinds and (o.delta >= 1 or o.kind == "mate")]
 
 
@@ -106,15 +123,16 @@ def run_game(index: int, teacher, domain=OB.DOMAIN, cap=8, rollout=6, log=print,
     log(f"OBS observables {gid}: " + ", ".join(f"{k} {n}" for k, n in counts.items()))
     band = domain.band_of(game)
     wins = []
-    for o in material_observables(obs, domain):
+    before = len(material_observables(obs, domain))
+    for o in important_observables(obs, domain):
         w = finish_window(build_tree(teacher, domain, fens, moves, o, band, cap, rollout), domain)
         wins.append(w)
         lv = {c: sum(1 for p in w["plies"] for b in p["branches"] if b["cls"] == c) for c in ("SAME", "AVOIDED", "OTHER")}
-        log(f"OBS window {gid} {o.kind} ply {o.ply + 1} {o.side} wins {o.delta}: tree {w['reasonable']} reasonable branches, depth {w['depth']} plies back, "
+        log(f"OBS window {gid} {o.kind} ply {o.ply + 1} {o.side} wins {abs(o.delta)}: tree {w['reasonable']} reasonable branches, depth {w['depth']} plies back, "
             f"inevitability {w['inevitability']} plies back (strict {w['inevitability_strict']}), stop {w['stop']}, leaves {lv}, cashed {w['cashed']}")
-    groups = merge(wins)
+    groups = merge(wins, domain)
     elapsed = round(time.time() - t0, 1)
-    log(f"OBS game {gid}: {len(wins)} windows in {len(groups)} merged start positions, band {band}; {elapsed} s")
+    log(f"OBS game {gid}: windows before the importance filter {before}, after {len(wins)}; {len(groups)} merged groups ({len(wins) - len(groups)} windows merged into an earlier one), band {band}; {elapsed} s")
     res = dict(game=gid, index=index, band=band, knobs=dict(knobs or {}, branches=cap, rollout=rollout), counts=counts,
                observables=[o.asdict() for o in obs], windows=wins, merged=groups, seconds=elapsed, **domain.describe(game))
     out = paths.derived(f"windows/{gid}.json")
