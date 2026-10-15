@@ -31065,3 +31065,18 @@ best known, (3) only the sizes between "would raise the reading" and "the declin
 OBS (build after the prunings, tests 34 passed): dev 50 of 60 (49 before the split), fresh 50 of 60 (50); seconds per decision median / p90 / max:
 dev 9.4 / 43 / 106, fresh 4.0 / 72 / 202 (the max is one wide position whose chains alone cost 42 s, unchanged since the morning). Directional, one run.
 Kaveh, the same hour: rules are PROVEN IN LEAN, never re-checked against the windows (plan 41.6).
+
+### PHASE B STAGE 1, THE SELF-MINING LOOP ON THE ROOK WINDOW (2026-10-15 12:50 PDT)
+
+Kaveh: "I don't want it to use the lemmas we already know ... propose, verify, and if it doesn't work, propose something different until you can explain
+it and it's provable in Lean ... start with the exchange law." selfmine.py (builder): from window 2 of sHa6yUKv (17.Qg4? Qxc3+ Ke2 Qxa1; example Qg4
+SAME, counter-examples Qxf6 and Ne2 AVOIDED, e4 and Rc1 OTHER set aside) propose premises of 1-3 words over the window's pieces that hold on the example
+and fail on the counter-examples; the solver confirms the example loses 5 against the balance at the window's start (forced in 3 moves: Qxc3 Ke2 Qxa1
+Qxd7 Kxd7 Kf3); each survivor becomes a Lean theorem premise -> forcingOf p c 5 != 0 in lean/ideas/Ideas/Mined/sHa6yUKv_2.lean with a proof attempt.
+OBS: 416 terms, 832 atoms true on the example, 36 falsify a counter-example after merging 135 synonyms; 3312 premises enumerated, 2466 separate, 2466
+after the solver (the solver checks the example, not the premise); Lean attempted 40, typechecked 40, PROVED 0, all "unsolved goals": no theorem links
+any word (seeOf, attackerCount, afterMove, attackableOf, declinedOf) to forcingOf. Top premises are weak single atoms (their pieces attack d7; c3 has
+no defender; the rook on a1 attackable within one move; see c3 >= 1); none states the fork. Window 3 (51.Qxe2): the solver does not confirm the example
+within 3 moves; nothing attempted. READING: one example and two counter-examples cannot pin a premise (2466 survive); the separation needs many labelled
+positions per window; and the Lean side needs the local theorems that connect the words to a forced outcome (a fork = two exchanges + a tempo). Both are
+the next design decisions, not patches. tests/test_selfmine.py 4 passed.
