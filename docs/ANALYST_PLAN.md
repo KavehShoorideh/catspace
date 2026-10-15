@@ -1280,3 +1280,23 @@ E. L6: the two futures as a prior on candidates; OBS: decisions changed, puzzles
 F. L7: one full watch-play cycle; the report per cycle.
 Rules for the builder: AGENTS.md; no new top-level package (all under catspace/incubator/analyst/discovery/); Lean for every new word; nothing
 chess-specific below the adapter; -m entry points, never a Pool from stdin; checkpoints + a watchdog on long runs; short messages; no commit trailers.
+
+### 41.6 Kaveh's clarification of the layers (2026-10-15, later the same day)
+
+- **L1 is the base**: the observables AND the object graph (squares, lines, pieces, their relations: the vocabulary) together.
+- **L2 has two points per window, not one threshold.** The teacher's probability of THIS outcome falls as one goes back from the observable and as the
+  players' strength falls. The INEVITABILITY point is where the outcome is (near) certain under best play; the LIKELIHOOD point is where it is more
+  likely than not (> 50%) for the band the game was played in. Both are read off the same curve; the knobs are the two probabilities, not a ply count.
+- **L3 and L4 work together on the windows**: the tactical layer looks inside a window, the proposer proposes rules that match what was found there --
+  and a rule must match EVERY window seen to date, not only this one. (That global check is the hard part; today's held-out check with demotion on
+  contradiction is its first form; the store's compressed shapes are what make it affordable.)
+- **L5 the store holds everything seen to date**: positions, windows, lemmas, the vocabulary layers.
+- **L6 has a LEARNER of subgoals with more than one source**: (a) memory -- winning shapes remembered that are reachable from here; (b) tactic density
+  (the long-window / short-window idea of 2026-10-13); others later. Subgoals feed DOWN to the tactical layer.
+- **The tactical layer has an APPLIER**: given the subgoal and the board, it picks which lemma to apply where to get there. Pipeline: PROPOSER finds
+  lemmas -> VERIFIER verifies them (the exact solver, Lean) -> STORE keeps them -> APPLIER uses them on the board at hand. (The chain's one-step lemma
+  answers of 40.3 are the applier's embryo.)
+- **Two phases**: TRAINING (watch, windows, propose, verify, store, learn subgoals) and INFERENCE / play / analysis (set the subgoal, the applier plays it).
+- **The board state is carried forward incrementally from the start of the game**, always: a given position is reached by applying its moves one by one
+  from move one ("the dumb way, keep it simple for now"). The ledger's push (40.1) is this; decide_by_chain today starts fresh from a FEN and must be
+  switched to the pushed-forward ledger.
