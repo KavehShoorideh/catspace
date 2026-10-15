@@ -31080,3 +31080,35 @@ no defender; the rook on a1 attackable within one move; see c3 >= 1); none state
 within 3 moves; nothing attempted. READING: one example and two counter-examples cannot pin a premise (2466 survive); the separation needs many labelled
 positions per window; and the Lean side needs the local theorems that connect the words to a forced outcome (a fork = two exchanges + a tempo). Both are
 the next design decisions, not patches. tests/test_selfmine.py 4 passed.
+
+### THE PERTURBATION DRILL ON THE ROOK WINDOW (2026-10-15 14:04 PDT)
+
+Kaveh: "try the perturbation drill, let's see what happens." selfmine.py `--drill`: the example position (after 17.Qg4, Black to move)
+varied one piece at a time (each piece removed, or moved to each empty square; kings moved, not removed; legal boards only), every variant
+labelled by the exact solver with the window's own requirement (Black forces a gain >= 5 within the window's count of moves). Forced
+variants are the premise's coverage, non-forced ones are counter-examples it must exclude (a lemma is premise -> forced; a forced variant
+may be forced by another mechanism, so the premise need not cover it). No teacher. Printed (one run):
+
+- OBS drill: 875 variants, 0 unknown, 635 forced, 240 not; 2.2 s on 11 cores.
+- OBS stage 1 with the atoms as before (the landing square only): 832 atoms, 0 premises of up to 3 atoms separate 242 counter-examples.
+- The after-terms widened to read every object square (and the kings by NAME, W/L) after a move: 4338 terms, 2530 atoms with distinct
+  truth; still 0 separate.
+- The hand-stated fork (after f6-c3: their king attacked >= 1, see a1 >= 5, see c3 <= 0) leaves 119 counter-examples; with the king named
+  rather than e1 still 119; with legality 89. It covers 566/635 forced variants.
+- A SOUNDNESS HOLE found by the drill and fixed: `after` reads a relaxed board (Lean afterMove asks no legality, by design), so a premise
+  read after f6-c3 was "true" with a pawn on d4 blocking the diagonal. Every premise that reads the board after a move now carries the
+  conjunct (count (and (moves f) (at t))) >= 1 for that move, in the atoms' truth, in the words and in the Lean statement (tests).
+- Greedy best partial premise of 4 atoms leaves 18 counter-examples (coverage falls to 219/635): the one-board atoms are the wrong shape.
+
+What the remaining 89 counter-examples are (read off the list): three families, all saying the premise must be read ALONG THE LINE, not at
+one board. (1) The king's evasion defends the rook (Ke1 moved to c1: Qxc3+ Kb1). (2) A Black piece is loose at the END of the sequence, so
+White's last capture drops the net below 5 (the black king moved off d7's defence: Qxc3+ Ke2 Qxa1 Qxd7 with no recapture; a black bishop
+on h4; a rook on c7). The original line only works because Kxd7 recaptures the queen. (3) White has an in-between check or fork
+(Bf1 to h3: Bxd7+; Ng1 to e6/f7). Tested: nested `after` along the solver's own line evaluates (after f6c3 (after e1e2 (see a1))) and kills
+one more; the forcing words at the end of the line kill 17 more but halve the coverage.
+
+Reading: the drill does its job -- it rejects every one-board premise and names the shape the sound one must have: a small tree
+(Kaveh's "if this, then that"): after our move, FOR EVERY reply of theirs, the words at that node (the rook still winnable), and at the
+end of the sequence their best capture <= gain - delta (the "if they don't" clause). Two things are missing for that: a word for "the
+least/most of a number over every legal reply" (a one-ply quantifier; the vocabulary's forcing_* words are already three-ply searches, so
+this is in the same spirit), and a proposer that composes `after` along the window tree instead of at one board. Not built; reported.
