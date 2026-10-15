@@ -1333,3 +1333,7 @@ Deliverables (all under catspace/incubator/analyst/discovery/, -m entry points, 
 5. Stage 1 = items 1-4 traced on 2-3 Lichess games (OBS lines: observables per kind, trees' sizes and depths, inevitability depths), the pages written,
    then STOP and report. Stage 2 (after Kaveh's look) = 100 games on all cores with per-game checkpoints and a watchdog, the same OBS lines aggregated
    per band. Rules: AGENTS.md; Lean for any new word (none expected); no Pool from stdin; numbers only from OBS lines; no commit trailers; short messages.
+Amendment (Kaveh, the same hour): the TEACHER is pluggable like the domain adapter -- a protocol (score, reasonable moves within a band's margin, a
+rollout of its best play) with Stockfish as one implementation; windows.py uses only the protocol, so another engine, a tablebase, a learned policy or a
+non-chess scorer slots in. NO big mining job, now or later: stage 2 (100 games) is dropped; the entry point takes a handful of games. Machinery first; then
+the CYCLE (41.1 L7) in small turns: mine a few windows, work on them, prove lemmas, mine again.
