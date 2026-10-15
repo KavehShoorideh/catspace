@@ -108,6 +108,7 @@ impl ReasoningLedger {
             self.post_ev(EvKind::Push, format!("PUSH|{}|root", side(c)), String::new(), actor_of(c), 9, vec![]);
         }
         while let Some(q) = self.ag.take() {
+            if self.deadline.map_or(false, |d| std::time::Instant::now() > d) { self.cut = true; break; }
             self.cur_q = Some(q.id);
             let (_, ctx) = Self::split_args(&q.args);
             self.cur_ctx = ctx;
@@ -120,6 +121,7 @@ impl ReasoningLedger {
                     let ho = self.lem.heldout(pk);
                     if q.stake <= self.lem.stake_knob && !ho {
                         self.lem.hits += 1;
+                        *self.lem.hit_by.entry(l.id.clone()).or_insert(0) += 1;
                         if let (Some((lo, _)), "SAFE") = (l.value, q.kind.as_str()) { if lo >= 1 && self.cur_ctx.is_empty() { self.ag.raise(q.actor, lo); } }
                         by_lemma = Some((format!("{} [by lemma]", Self::q_label(&q)), format!("by lemma {}: {} ({} positions)", l.id, l.outcome, l.count), String::new(), l.value));
                     } else {
@@ -726,8 +728,9 @@ impl ReasoningLedger {
         // ---- candidates
         let legal: Vec<Move> = root.legal_moves().into_iter().collect();
         let mut score: HashMap<String, i64> = HashMap::new();
-        for o in &opps { for u in &o.moves { *score.entry(u.clone()).or_insert(0) += o.stake; } }
-        for rc in root_cands.iter().filter(|c| c.actor == ua) { score.entry(rc.uci.clone()).or_insert(0); }
+        let mut tags: HashMap<String, Vec<&'static str>> = HashMap::new();
+        for o in &opps { for u in &o.moves { *score.entry(u.clone()).or_insert(0) += o.stake; tags.entry(u.clone()).or_default().push("opportunity"); } }
+        for rc in root_cands.iter().filter(|c| c.actor == ua) { score.entry(rc.uci.clone()).or_insert(0); tags.entry(rc.uci.clone()).or_default().push("poke"); }
         let all_sq: Vec<(Square, i64)> = cons.iter().flat_map(|c| c.squares.iter().map(move |s| (*s, c.stake))).collect();
         for m in &legal {
             let u = m.to_uci(CastlingMode::Standard).to_string();
@@ -735,10 +738,17 @@ impl ReasoningLedger {
             let att = q.board().attacks_from(m.to());
             let mut w = 0;
             for (s, st) in &all_sq { if m.from() == Some(*s) || m.to() == *s || att.contains(*s) { w += st; } }
-            if q.is_check() { w += 5; }
-            if q.is_checkmate() { w += 1000; }              // a mate in one is a rule of the game, not learned                     // a check pokes the king
+            if w > 0 { tags.entry(u.clone()).or_default().push("touch"); }
+            if q.is_check() { w += 5; tags.entry(u.clone()).or_default().push("check"); }
+            if q.is_checkmate() { w += 1000; tags.entry(u.clone()).or_default().push("mate"); }              // a mate in one is a rule of the game, not learned
+            if m.is_capture() { tags.entry(u.clone()).or_default().push("capture"); }
             if w > 0 { *score.entry(u).or_insert(0) += w; }
         }
+        // THE PROPOSER'S ADJUSTMENTS (ANALYST_PLAN 40.5): a learned bonus per tag (the base priority of a source of candidates), and candidates a proposed condition adds
+        if !self.prop_bonus.is_empty() {
+            for (u, ts) in &tags { let b: i64 = ts.iter().map(|t| self.prop_bonus.get(*t).copied().unwrap_or(0)).sum(); if b != 0 { *score.entry(u.clone()).or_insert(0) += b; } }
+        }
+        for u in &self.prop_extra { if legal.iter().any(|m| m.to_uci(CastlingMode::Standard).to_string() == *u) { *score.entry(u.clone()).or_insert(0) += 100_000; tags.entry(u.clone()).or_default().push("proposed"); } }
         let quiet = cons.iter().all(|c| c.hi == 0 && c.lo == 0 && !c.deflect) && opps.is_empty() && best_root[ua as usize] <= 0;
         let nothing_threatened = cons.iter().all(|c| c.hi <= 0) ;
         let mut cand_ucis: Vec<(String, i64)> = score.into_iter().collect();
@@ -756,10 +766,11 @@ impl ReasoningLedger {
         cand_ucis.truncate(max_cand);
         let tscore = self.trade_score();
         let mut rows: Vec<Value> = vec![];
-        struct Row { uci: String, san: String, lo: i64, hi: i64, tsc: i64, opened: i64, against: i64, risk: i64, meets: Vec<String>, proven: bool, trades: bool }
+        struct Row { depth: u32, chain_q: u32, uci: String, san: String, lo: i64, hi: i64, tsc: i64, opened: i64, against: i64, risk: i64, meets: Vec<String>, proven: bool, trades: bool }
         let mut results: Vec<Row> = vec![];
         let saved_cands = self.cands.clone();
         for (u, _) in &cand_ucis {
+            if self.deadline.map_or(false, |d| std::time::Instant::now() > d) && !results.is_empty() { self.cut = true; break; }
             let Ok(um) = u.parse::<shakmaty::uci::UciMove>() else { continue };
             let Ok(m) = um.to_move(&root) else { continue };
             let san = crate::plan::san(&root, u);
@@ -807,7 +818,7 @@ impl ReasoningLedger {
             }
             self.leave(snap);
             let tsc = if trades { (tscore.unwrap_or(0.0) * 1000.0) as i64 } else { 0 };
-            results.push(Row { uci: u.clone(), san, lo, hi, tsc, opened, against: opp_maybe, risk, meets, proven, trades });
+            results.push(Row { depth: after.iter().map(|r| r.depth + 1).max().unwrap_or(0), chain_q: self.ag.spent, uci: u.clone(), san, lo, hi, tsc, opened, against: opp_maybe, risk, meets, proven, trades });
         }
         self.cands = saved_cands;
         self.ag_on = false;
@@ -850,13 +861,13 @@ impl ReasoningLedger {
                                if r.meets.is_empty() { String::new() } else { format!("; meets {}", r.meets.join(", ")) }));
         }
         let best = results.first();
-        let (mv, san, lo, hi, status) = match best { Some(b) => (b.uci.clone(), b.san.clone(), b.lo, b.hi, if b.proven { "PROVEN (solver-confirmed forced gain)" } else { "ESTIMATED" }), None => (String::new(), String::new(), 0, 0, "NONE") };
+        let (mv, san, lo, hi, status) = match best { Some(b) => (b.uci.clone(), b.san.clone(), b.lo, b.hi, if self.cut { "ESTIMATED (cut by the time limit)" } else if b.proven { "PROVEN (solver-confirmed forced gain)" } else { "ESTIMATED" }), None => (String::new(), String::new(), 0, 0, "NONE") };
         if let Some(b) = best {
             lines.push(format!("DECISION: {} worth {}..{} to {}: {}. Why: {}", b.san, b.lo, b.hi, who(us), status,
                                if b.meets.is_empty() { if default_mode { "the opening default".to_string() } else { "it meets no listed constraint and has the best interval".to_string() } } else { format!("it meets {}", b.meets.join(", ")) }));
         }
-        for r in &results { rows.push(json!({"uci": r.uci, "san": r.san, "lo": r.lo, "hi": r.hi, "meets": r.meets, "against": r.against, "opened": r.opened})); }
-        json!({"move": mv, "san": san, "interval": [lo, hi], "status": status, "lines": lines, "generated": generated, "legal": legal.len(), "questions": self.lem.q_total, "lemma": self.lem.report(), "facts": self.facts_n, "candidates": rows, "default": default_mode, "quiet": quiet,
+        for r in &results { rows.push(json!({"uci": r.uci, "san": r.san, "lo": r.lo, "hi": r.hi, "meets": r.meets, "against": r.against, "opened": r.opened, "depth": r.depth, "chain_q": r.chain_q})); }
+        json!({"move": mv, "san": san, "interval": [lo, hi], "status": status, "lines": lines, "generated": generated, "cut": self.cut, "tags": tags.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<HashMap<_, _>>(), "legal": legal.len(), "questions": self.lem.q_total, "lemma": self.lem.report(), "facts": self.facts_n, "candidates": rows, "default": default_mode, "quiet": quiet,
                "constraints": cons.iter().map(|c| json!({"text": c.text, "stake": c.stake})).collect::<Vec<_>>(), "opportunities": opps.iter().map(|c| json!({"text": c.text, "stake": c.stake})).collect::<Vec<_>>()})
     }
 }
@@ -878,7 +889,7 @@ pub struct LemmaState {
     pub pending: HashMap<usize, (String, String)>,
     pub premise_of_q: HashMap<usize, String>,
     pub obs: HashMap<String, HashMap<String, (i64, Option<(i64, i64)>, Vec<String>)>>,
-    pub hits: i64, pub confirms: i64, pub contradictions: Vec<Value>, pub q_total: u64, seen: u64,
+    pub hits: i64, pub hit_by: HashMap<String, i64>, pub confirms: i64, pub contradictions: Vec<Value>, pub q_total: u64, seen: u64,
 }
 impl LemmaState {
     pub fn load(&mut self, text: &str, stake_knob: i64, heldout_every: u32, learn: bool) -> Result<(), String> {
@@ -900,7 +911,7 @@ impl LemmaState {
     pub fn heldout(&mut self, k: &str) -> bool { self.seen += 1; (hash_of(k).wrapping_add(self.seen)) % self.heldout_every as u64 == 0 }
     pub fn report(&self) -> Value {
         let obs: serde_json::Map<String, Value> = self.obs.iter().map(|(p, os)| (p.clone(), Value::Object(os.iter().map(|(o, (n, v, ev))| (o.clone(), json!({"count": n, "value": v, "evidence": ev}))).collect()))).collect();
-        json!({"observations": obs, "hits": self.hits, "confirms": self.confirms, "contradictions": self.contradictions, "questions": self.q_total, "promoted_loaded": self.promoted.len()})
+        json!({"observations": obs, "hits": self.hits, "hit_by": self.hit_by, "confirms": self.confirms, "contradictions": self.contradictions, "questions": self.q_total, "promoted_loaded": self.promoted.len()})
     }
 }
 

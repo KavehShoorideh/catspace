@@ -30916,3 +30916,24 @@ contradictions (28 recorded, 15 lemmas demoted). Reading: the lemmas transfer in
 of the questions): the questions a lemma answers are the cheap leaf ones; the expensive work (the candidate re-runs, the solver probes) sits above them, behind a stake above the knob. A knob of 9 on dev
 answered 2,673 questions by lemma (earlier run, same logic): 579.4 questions, 13.47 s, 44 of 60. Shapes with a clean outcome are mostly the empty ones (alone => 0..0); examples in the report.
 Not done: promotion that counts evidence positions rather than chains; a Lean statement for any lemma.
+
+## 2026-10-15 04:15 PDT — the event loop, phase 4 (ANALYST_PLAN 40.5): surprises against puzzles and the proposer (INTERIM: the fresh check did not finish)
+
+Built: proposer.py (surprise records and their four classes; the proposer's three kinds of proposal; `ledger_puzzles --propose`), Rust set_proposal (a bonus per source tag of candidates, extra candidates), per-candidate
+chain depth and source tags, per-lemma hit counts, a per-decision time cap (set_time_limit; a decision read off a cut chain is ESTIMATED, never PROVEN; the batch prints how many were cut), 4 tests.
+SURPRISES (one run, dev 60, baseline 43 of 60 correct with the dev lemma store on; fresh 60: 49 of 60), printed: dev 32 of 60 puzzles are surprises: (a) the puzzle's move not a candidate 5, (b) its value not
+among our findings 24, (c) our chain more than one link longer than the line 15. Classes, dev: event missing 2, question never opened 3, ANSWER WRONG 23, no surprise 32 (of the surprises, 1 had no
+question answered by a lemma; in 22 of the 23 wrong answers a lemma answered some question of the decision). Fresh: event missing 0, never opened 2, answer wrong 19, no surprise 39; 7 surprises with no lemma
+answer, 14 wrong answers with a lemma involved. Wrong answers dominate: the loop finds the puzzle's move and values it too low (or the chosen move too high); what is missing is mostly not candidates. Saved in
+data/derived/surprises_dev.json. The three widest wrong-answer cases: 01vys (the chain chose Qe4 0..0; the puzzle's Qd5 was valued -9..0, the line gains 1), 02XVK (Qd1 0..0 chosen; the puzzle's Bxg6
+valued -1..-1, the line gains 1), 0CUWR (Nc5 1..3 PROVEN chosen; the puzzle's Kxc2 valued 0..0, the line gains 2).
+PROPOSALS: (i) conditions: 5,904 (word, direction) rules fix at least one dev surprise at a cost of at most 4 new candidates per puzzle; the best three, each fixing 4 dev surprises and opening 1.32 new
+candidates per non-surprise puzzle, are the same rule in three spellings: the squares we attack on their king's file rose / the squares we do not attack on it fell / the file squares outside our attack fell. The
+proposer does not merge equivalent words (a general fault to fix: rank by the decisions changed, not by the term). (iii) priorities: the strict pairwise ranking over 373 (move, other) pairs of 28 surprise
+puzzles picked check (203), capture (69), opportunity (24) -> bonuses 40, 20, 10. (ii) lemmas from the solved puzzles: not reached. ABLATIONS: the completed round-one check of the first condition (an earlier
+unbatched run: dev 44 with it vs 43 without, fixed 0EPDA, no new miss; fresh 50 vs 50, fixed nothing) -> DROPPED. The batched check ran dev and fresh once with all proposals on: dev 44 of 60 (43 without; 7 decisions
+changed, fixed 01IFU 06J6T 0EPDA, new misses 07Z0P 08pAF), fresh 50 of 60 (49 without; 1 decision changed, fixed 0CUtN); the leave-one-out attribution and the lemma check were still running when it was stopped:
+NOTHING IS KEPT YET and no proposal has a verdict. The cap: 1 decision of dev and 4 of fresh were cut by it (a cut decision is ESTIMATED).
+WHY THE CHECK DID NOT FINISH: the batches were slowed by a zombie, not by the proposer: PID 65701, a `python -` (stdin heredoc) process from my first debugging call, alive 2 h 24 min, respawning Pool workers that die at
+once (the known scar: no Pool from stdin); it kept the machine at load ~25 on 11 cores, so every batch took 7 to 10 minutes instead of 2.5 and the per-decision cap (wall clock) bit on the slow ones. The "straggler"
+reading I gave first was wrong; the stragglers were the contention. Rule kept: only -m entry points for anything with a Pool. Not done: the lemma proposals (ii), the leave-one-out result, equivalent-word merging.

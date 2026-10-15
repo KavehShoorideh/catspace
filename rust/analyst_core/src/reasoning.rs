@@ -104,6 +104,10 @@ pub struct ReasoningLedger {
     cands: Vec<chain::Cand2>,
     qsq: HashMap<usize, Vec<Square>>,
     lem: chain::LemmaState,
+    prop_bonus: HashMap<String, i64>,
+    prop_extra: Vec<String>,
+    deadline: Option<std::time::Instant>,
+    cut: bool,
 }
 
 impl ReasoningLedger {
@@ -521,7 +525,7 @@ impl ReasoningLedger {
         let pos = crate::parse(&fen).ok_or_else(|| pyo3::exceptions::PyValueError::new_err("bad fen"))?;
         Ok(ReasoningLedger { line: vec![pos.clone()], pos, ply: 0, fs: vec![], live: HashMap::new(), listeners: HashMap::new(), fact_cache: HashMap::new(),
             budget, used: 0, carried: 0, reasked: 0, facts_n: 0, solver_calls: 0, stack: vec![], skipped: vec![], agenda: vec![], plies: vec![], confirmations: vec![], tt: HashMap::new(), nodes: 0, node_cap_hit: false, budget_hit: false, deep: false, cap_now: 0, cuts: 0, threats_mode: false, lean_mode: false, pushes: 0, tr: std::cell::RefCell::new(vec![]), tracing: false, root_ply: 0, sep_flag: false, suppressed: std::cell::Cell::new(0), lean_cap: LEAN_CAP, frame: vec![], threats_learned: false, looks: 0, slog: vec![], resolving: 0, resolved_n: 0, cashing: false, dframe: vec![], answers_hand: false, shallow_sizing: false, prefilter_root: true,
-            ag: crate::agenda::Agenda::new(vec![], 0), ag_on: false, cur_q: None, cur_ctx: vec![], pending: HashMap::new(), trans: None, cands: vec![], qsq: HashMap::new(), lem: chain::LemmaState::default() })
+            ag: crate::agenda::Agenda::new(vec![], 0), ag_on: false, cur_q: None, cur_ctx: vec![], pending: HashMap::new(), trans: None, cands: vec![], qsq: HashMap::new(), lem: chain::LemmaState::default(), prop_bonus: HashMap::new(), prop_extra: vec![], deadline: None, cut: false })
     }
 
     /// Ask every question of the entry pass (SAFE of every piece, BLOCKS of every shielded piece with its PIN) and return the report.
@@ -772,6 +776,13 @@ impl ReasoningLedger {
     /// The premise shape of a question on the root position (squares abstracted; relative to the actor): for tests and for reading lemmas. kind: SAFE (arg a piece, e.g. "Qg4"),
     /// DEFLECT (arg "holder,target", e.g. "Re2,Bb2"), POKE (arg a uci move).
     fn shape_for(&mut self, kind: &str, arg: &str, actor: u8) -> Option<String> { self.premise_for(kind, arg, actor, &[]) }
+
+    /// The proposer's adjustments (ANALYST_PLAN 40.5): a bonus per candidate source tag (opportunity, poke, touch, check, capture ...) and moves a proposed condition adds as candidates.
+    #[pyo3(signature = (tag_bonus=None, extra=None))]
+    fn set_proposal(&mut self, tag_bonus: Option<HashMap<String, i64>>, extra: Option<Vec<String>>) { self.prop_bonus = tag_bonus.unwrap_or_default(); self.prop_extra = extra.unwrap_or_default(); }
+
+    /// A time limit for this ledger's decisions, in seconds: the loop stops asking and the decision is read off what was checked (None / 0: no limit).
+    fn set_time_limit(&mut self, seconds: f64) { self.deadline = if seconds > 0.0 { Some(std::time::Instant::now() + std::time::Duration::from_secs_f64(seconds)) } else { None }; }
 
     fn report_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
         let j = py.import("json")?;

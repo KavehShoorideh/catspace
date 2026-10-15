@@ -97,6 +97,9 @@ LEDGER_BUDGET = 200
 
 
 def one(row: dict) -> dict:
+    only = os.environ.get("LEDGER_ONLY_IDS")
+    if only and row["PuzzleId"] not in only.split(","):
+        return None
     return _one(row, int(os.environ.get("LEDGER_BUDGET", "200")))
 
 
@@ -118,11 +121,17 @@ def _one(row: dict, budget: int) -> dict:
             if mode in ("learn", "on"):
                 text = open(os.environ["LEDGER_LEMMA_FILE"]).read() if mode == "on" and os.path.exists(os.environ["LEDGER_LEMMA_FILE"]) else ""
                 L.set_lemmas(text, int(os.environ.get("LEDGER_STAKE_KNOB", "3")), 5, mode == "learn")
+            L.set_time_limit(float(os.environ.get("LEDGER_TIME_LIMIT", "300")))             # a decision is cut off after this many seconds (the check of a puzzle that would not end)
+            prop = json.loads(os.environ.get("LEDGER_PROPOSAL", "null") or "null")
+            if prop:
+                from catspace.incubator.analyst.discovery import proposer as PR
+                L.set_proposal(prop.get("tag_bonus") or {}, PR.rule_moves(fen, prop.get("rules") or []))
             d = L.decide_chain({}, 120, 20)
             out["ledger"] = dict(move=d["move"], status=d["status"].split(" ")[0], reason="the chain", interval=d["interval"], questions=d["questions"], nodes=d["questions"], facts=d["facts"],
                                  candidates=len(d["candidates"]), legal=d["legal"], refined=0, zero_stake=0, seconds=round(time.perf_counter() - t0, 3), confirm=None, why="",
                                  all=[[c["uci"], [], 0, [c["lo"], c["hi"]]] for c in d["candidates"]], generated=d["generated"], unanswered=[], chain=[], table=[], lines=d["lines"],
-                                 constraints=len(d["constraints"]), opportunities=len(d["opportunities"]), lemma=d.get("lemma"))
+                                 constraints=len(d["constraints"]), opportunities=len(d["opportunities"]), lemma=d.get("lemma"),
+                                 rows=d["candidates"], tags=d.get("tags", {}), plies=len(sol), cut=bool(d.get("cut")))
             out["ledger"]["correct"] = _correct(fen, d["move"], answer, themes, A)
             out["ledger"]["alt_move"] = d["move"]; out["ledger"]["alt_correct"] = out["ledger"]["correct"]
         except BaseException as e:                           # noqa: BLE001
@@ -257,9 +266,13 @@ def main(argv=None):
     ap.add_argument("--promote", type=int, default=20, help="the promotion threshold: the count a shape must settle the same way (never below 5)")
     ap.add_argument("--stake-knob", type=int, default=3, help="a question with a stake above this is still run when a lemma matches")
     ap.add_argument("--lemma-file", default=None)
+    ap.add_argument("--propose", action="store_true", help="one round of the proposer (ANALYST_PLAN 40.5): surprises on dev --n, proposals, each checked on the fresh sample of the same size; see proposer.py")
     ap.add_argument("--no-baselines", action="store_true", help="skip the solver-alone and planner columns (they are the same on both loops)")
     ap.add_argument("--budget", type=int, default=200, help="questions per decision (the plan's 200; other values only as a sensitivity check)")
     a = ap.parse_args(argv)
+    if a.propose:
+        from catspace.incubator.analyst.discovery import proposer
+        return proposer.main(a.n, a.promote)
     global LEDGER_BUDGET
     LEDGER_BUDGET = a.budget
     os.environ["LEDGER_BUDGET"] = str(a.budget)

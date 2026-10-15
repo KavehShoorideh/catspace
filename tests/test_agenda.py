@@ -293,3 +293,59 @@ def test_a_contradiction_demotes_the_lemma_and_is_kept(tmp_path):
     assert e["demoted"] and not e["promoted"] and e["contradictions"]
     L2 = LG.new(NXC6, 5000); L2.set_lemmas(open(store).read(), 9, 1, False)
     assert L2.lemma_report()["promoted_loaded"] == 0
+
+
+# ---- PHASE 4: the proposer against puzzle surprises (ANALYST_PLAN 40.5) ----------------------------------------------------------------
+
+def _puz(answer="a1a2", generated=("a1a2",), rows=None, correct=False, value=3, themes=("short",), hits=0, plies=2, move="b1b2"):
+    rows = [{"uci": u, "lo": lo, "hi": hi, "depth": d} for u, lo, hi, d in (rows or [])]
+    return dict(id="X", fen="", answer=answer, themes=list(themes), value=value,
+                ledger=dict(generated=list(generated), rows=rows, correct=correct, move=move, lemma={"hits": hits}, plies=plies, tags={}))
+
+
+def test_a_surprise_is_classified_into_one_of_the_four_classes():
+    from catspace.incubator.analyst.discovery import proposer as P
+    # the event was missing: no condition made the puzzle's move a candidate
+    r = P.classify(_puz(answer="a1a2", generated=("c1c2",), rows=[("c1c2", 0, 0, 1)]))
+    assert r["surprise"] and r["a"] and r["klass"] == "event missing"
+    # the question was never opened: generated, but the cap / the budget cut it
+    r = P.classify(_puz(answer="a1a2", generated=("a1a2", "c1c2"), rows=[("c1c2", 0, 0, 1)]))
+    assert r["surprise"] and r["klass"] == "question never opened"
+    # the answer was wrong: evaluated, its interval stops below the line's gain
+    r = P.classify(_puz(answer="a1a2", generated=("a1a2",), rows=[("a1a2", 0, 1, 1)], value=3, hits=2))
+    assert r["surprise"] and r["b"] and r["klass"] == "answer wrong" and r["lemma_involved"] and not r["no_lemma"]
+    # no surprise: evaluated, its value reaches the line's, a short chain, solved
+    r = P.classify(_puz(answer="a1a2", rows=[("a1a2", 3, 3, 1)], correct=True, value=3))
+    assert not r["surprise"] and r["klass"] == "no surprise" and r["no_lemma"]
+    # (c) alone: our chain for it is more than one link longer than the line's
+    r = P.classify(_puz(answer="a1a2", rows=[("a1a2", 3, 3, 6)], correct=True, value=3, plies=2))
+    assert r["surprise"] and r["c"] and not r["a"] and not r["b"]
+
+
+def test_a_proposed_condition_is_kept_only_if_it_survives_the_fresh_check():
+    from catspace.incubator.analyst.discovery import proposer as P
+    base = {"p1": False, "p2": True, "p3": False}
+    assert P.compare(base, {"p1": True, "p2": True, "p3": False})["kept"]                       # fixes a fresh surprise, no new miss
+    assert not P.compare(base, {"p1": True, "p2": False, "p3": False})["kept"]                  # fixes one but breaks another
+    assert not P.compare(base, {"p1": False, "p2": True, "p3": False})["kept"]                  # fixes nothing
+    c = P.compare(base, {"p1": True, "p2": False, "p3": False})
+    assert c["fixed"] == ["p1"] and c["new_misses"] == ["p2"] and (c["base"], c["new"]) == (1, 1)
+
+
+def test_a_rule_adds_the_moves_after_which_a_word_rose_or_fell():
+    from catspace.incubator.analyst.discovery import proposer as P
+    fen = "4k3/8/8/3q4/8/8/8/3QK3 w - - 0 1"
+    caps = P.rule_moves(fen, [{"term": "material_them", "sign": -1}])
+    assert "d1d5" in caps and len(caps) <= P.MAX_EXTRA                                         # their material fell: the capture
+    assert P.rule_moves(fen, [{"term": "material_them", "sign": 1}]) == []
+
+
+def test_the_priority_proposal_is_learned_by_the_strict_pairwise_ranking():
+    from catspace.incubator.analyst.discovery import proposer as P
+    res = [_puz(answer="a1a2", generated=("a1a2", "c1c2", "d1d2"), rows=[("c1c2", 0, 0, 1), ("d1d2", 0, 0, 1)])]
+    res[0]["ledger"]["tags"] = {"a1a2": ["check"], "c1c2": ["touch"], "d1d2": ["touch", "capture"]}
+    res[0]["id"] = "X"
+    recs = [dict(id="X", answer="a1a2", klass="question never opened", surprise=True)]
+    p = P.propose_stakes(res, recs, log=lambda *_: None)
+    assert p and p["ranking"][0][0] == "check" and p["tag_bonus"]["check"] > 0
+    assert P.propose_stakes(res, [dict(id="X", answer="a1a2", klass="no surprise", surprise=False)], log=lambda *_: None) is None
