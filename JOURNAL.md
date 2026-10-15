@@ -30767,3 +30767,15 @@ THE LEDGER'S FAULTS FROM THE THREE TRACES, FIXED (2026-10-14 19:57 PDT; Kaveh: t
   Traces rerun (data/derived/ledger_trace_{a,b,c}.txt; the earlier ones kept as *_v1.txt): (a) Ra4 SEPARATED, 31 positions, the b3 kick still unseen (a threat-in-one is
   not a threat the current list knows); (b) Qxa8 worth 9..9 PROVEN (solver-confirmed), 4 positions; (c) Qg5 worth 3..3 PROVEN (solver-confirmed), 1 position, the
   uncovered attack Re8 on Qe6 listed (wins 4).
+
+LEARNING WHAT A THREAT IS, BY WATCHING STOCKFISH (2026-10-14 20:18 PDT; Kaveh: "I want it to learn what a threat is"). watch.py: threat_labels (the pass test: every move of the
+  other side O on pass(P), Stockfish depth 10, the PV walked to the first quiet point, S's net loss; mate 100), threat_frame (strict pairwise ranking, both
+  orientations, a raw and a "change" family, up to 3 ranked terms, the next only where the earlier tie), check_frame (held out, our exact solver -- checked, not proved
+  in Lean). Labels: train rows i%997==17 (717 positions, 24,271 moves, a threat >= 1 in 77% of positions), held i%997==23 (179 positions, 5,796 moves).
+  FRAME 1 (32,201 words): "what the other side wins by the exchange on their other piece", "how many of their pieces we attack", the fifty-move clock (a leak: it only marks a
+  capture). Held: top move solver-confirmed 28%, top-1 20%, teacher's biggest in the top 3 27%, threat/no-threat agreement 72%.
+  FRAME 2 (history and forcing words out; a PIECE-QUANTIFIER LIFT, max and sum over our P..P5 and their O..O5 of every one-piece word, composed from existing words;
+  composed balance words): total exchange over their pieces (lower), total safe squares over our pieces (lower). 0.468 pairwise. Held: confirmed 31%, top-1 30%, top-3 45%, 74%.
+  FRAME 3 (the size of a threat is max(0, S's net loss), pairs only with a bigger side >= 1; 78,517 pairs): the material balance once each side has taken its biggest
+  exchange (we first; signed on 64 by if / diff), total safe squares over our pieces (lower), a spurious named-square word. 0.414 pairwise. Held: confirmed 30%, the frame's
+  top move also sized >= 1 by the teacher 30%, top-1 26%, teacher's biggest within the top 3 56%, threat/no-threat 75%. Not yet wired into the ledger.

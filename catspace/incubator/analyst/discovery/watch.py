@@ -334,14 +334,407 @@ def extract(targets: set, limit_games: int | None = None, workers: int = 10, log
     return out
 
 
+# ---------------------------------------------------------------------------------------------------------------------------------------------
+# WATCHING FOR THE THREAT (Kaveh 2026-10-14: "I want it to learn what a threat is" -- by watching Stockfish, not by a rule we write). The one given
+# notion is the PASS TEST: a threat against side S in position P (S to move, not in check) is a move m that the other side O could make if S
+# passed, sized by what S then loses with S's best defence. pass(P) = the same board with O to move. The teacher labels every O move on pass(P).
+
+VAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
+THREAT_DEPTH = 10
+WALK_PLIES = 8
+MATE_SIZE = 100
+
+
+def _bal(b: chess.Board, color: bool) -> int:
+    """Material balance from `color`'s side (P/N/B/R/Q = 1/3/3/5/9)."""
+    return sum(VAL.get(p.piece_type, 0) * (1 if p.color == color else -1) for p in b.piece_map().values())
+
+
+def pass_board(fen: str):
+    """pass(P): the same board, the other side to move; None when S is in check (no pass) or the board is then illegal."""
+    b = chess.Board(fen)
+    if b.is_check():
+        return None
+    q = b.copy(stack=False)
+    q.turn = not q.turn
+    q.ep_square = None
+    return q if q.is_valid() else None
+
+
+def walk_size(p0: chess.Board, m: chess.Move, pv: list, mate_for_o: bool, s: bool) -> int:
+    """S's net material loss from P (before m) to the first quiet point of the line m, pv...: stop when ply >= 2 and the next move of the line is
+    not a capture or promotion, or after WALK_PLIES; a mate against S on the line is MATE_SIZE."""
+    b = p0.copy(stack=False)
+    b.push(m)
+    base = _bal(p0, s)
+    if b.is_checkmate():
+        return MATE_SIZE
+    k = 0
+    while k < len(pv) and k < WALK_PLIES:
+        if k >= 2 and not (b.is_capture(pv[k]) or pv[k].promotion):
+            break
+        b.push(pv[k]); k += 1
+        if b.is_checkmate():
+            return MATE_SIZE if b.turn == s else base - _bal(b, s)
+    if mate_for_o and k >= len(pv):
+        return MATE_SIZE
+    return base - _bal(b, s)
+
+
+def threat_labels(fen: str, eng, depth: int = THREAT_DEPTH) -> dict | None:
+    """The teacher's labels for one position: for every legal O move m on pass(P), the size of the threat (S's net loss with Stockfish defending)
+    and the centipawn drop (a second field, for reporting only)."""
+    import chess.engine
+    pb = pass_board(fen)
+    if pb is None:
+        return None
+    s = chess.Board(fen).turn
+    lim = chess.engine.Limit(depth=depth)
+    cp0 = eng.analyse(chess.Board(fen), lim)["score"].pov(s).score(mate_score=10000)
+    out = []
+    for m in pb.legal_moves:
+        q = pb.copy(stack=False); q.push(m)
+        if q.is_game_over():
+            out.append(dict(uci=m.uci(), size=MATE_SIZE if q.is_checkmate() else 0, cp_drop=cp0 + 10000 if q.is_checkmate() else cp0))
+            continue
+        info = eng.analyse(q, lim)
+        sc = info["score"].pov(s)
+        size = walk_size(pb, m, info.get("pv", []), sc.is_mate() and sc.mate() < 0, s)
+        out.append(dict(uci=m.uci(), size=size, cp_drop=cp0 - sc.score(mate_score=10000)))
+    return dict(fen=fen, pass_fen=pb.fen(), cp=cp0, moves=out)
+
+
+def threat_rows(offset: int, n: int) -> list:
+    """Lichess puzzle rows i % 997 == offset, i % 200 != 0 (clear of dev 5, fresh 11, test stride 200, new sample 17 for held-out use)."""
+    import csv
+    import io
+    import zstandard
+    from .ledger_puzzles import _csv_path
+    out = []
+    with open(_csv_path(), "rb") as fh:
+        rd = csv.DictReader(io.TextIOWrapper(zstandard.ZstdDecompressor().stream_reader(fh), encoding="utf-8"))
+        for i, row in enumerate(rd):
+            if i % 997 == offset and i % 200 != 0:
+                out.append(row)
+                if len(out) >= n:
+                    break
+    return out
+
+
+TRACE_FENS = ["5k1r/1p1n1p2/p1qb1p1p/4p3/2rP2PP/2PQ1PB1/PP2NK2/1R5R b - - 0 1", "r5k1/2p1q2p/2Qp2p1/1rpPpp2/2P1P3/P4P2/6PP/4R1K1 w - - 0 27",
+              "1r2r3/1kp1q2p/4Q3/p2P4/1P1P4/P1p2P2/2P3PP/2KR3R b - - 0 30"]
+
+
+def _key4(fen: str) -> str:
+    return " ".join(fen.split()[:4])
+
+
+def threat_positions(rows: list) -> list:
+    """From each row two positions: the FEN as given (an ordinary game position) and the position after Moves[0]; S in check skipped."""
+    out = []
+    for r in rows:
+        b = chess.Board(r["FEN"])
+        mv = r["Moves"].split()
+        for src, fen in (("given", b.fen()),):
+            out.append((r["PuzzleId"], src, fen))
+        b.push_uci(mv[0])
+        out.append((r["PuzzleId"], "after", b.fen()))
+    keep = [x for x in out if pass_board(x[2]) is not None]
+    bad = {_key4(f) for f in TRACE_FENS} | {_key4(pass_board(f).fen()) for f in TRACE_FENS if pass_board(f)}
+    assert not any(_key4(x[2]) in bad for x in keep), "a trace position is in the training or held-out set"
+    return keep
+
+
+def _label_init():
+    global ENG
+    import chess.engine
+    ENG = chess.engine.SimpleEngine.popen_uci("stockfish")
+    ENG.configure({"Threads": 1})
+
+
+def _label_one(args):
+    pid, src, fen = args
+    r = threat_labels(fen, ENG)
+    if r is not None:
+        r.update(id=pid, source=src)
+    return r
+
+
+def label_set(name: str, offset: int, n: int, log=print) -> dict:
+    import multiprocessing
+    t0 = time.time()
+    pos = threat_positions(threat_rows(offset, n))
+    with multiprocessing.get_context("spawn").Pool(max(1, (os.cpu_count() or 2) - 1), initializer=_label_init) as pool:
+        recs = [r for r in pool.imap(_label_one, pos, chunksize=2) if r]
+    os.makedirs(paths.derived("watch"), exist_ok=True)
+    p = paths.derived(f"watch/threat_labels_{name}.json")
+    json.dump(recs, open(p, "w"))
+    sizes = [m["size"] for r in recs for m in r["moves"]]
+    withthr = sum(any(m["size"] >= 1 for m in r["moves"]) for r in recs)
+    hist = {}
+    for z in sizes:
+        k = "<=0" if z <= 0 else "1" if z == 1 else "2" if z == 2 else "3-4" if z <= 4 else "5-8" if z <= 8 else "9-99" if z < 100 else "mate"
+        hist[k] = hist.get(k, 0) + 1
+    log(f"OBS THREAT LABELS {name}: {len(recs)} positions (of {len(pos)} candidates), {len(sizes)} moves, positions with a threat >= 1: {withthr / max(1, len(recs)):.0%}, "
+        f"size histogram {hist}, {time.time() - t0:.0f} s -> {p}")
+    return dict(positions=len(recs), moves=len(sizes))
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------
+# LEARNING THE THREAT: the definition in our words. Rows = (P, m); every word of explorer.terms() is read on the board after m (S to move: the words
+# read from the side to move, so S -- the same side whose position P is) and on P itself (S to move, the "before"); the null move ("S passed and
+# nothing happened") is an alternative of size 0 read on P. Two families of words: the value after m ("raw") and its change from P ("delta"; 0 for the
+# null). Strict pairwise ranking within each position, pairs whose sizes differ by >= 1 (the null among them): a word scores +1 when it orders the pair
+# like the teacher, -1 reversed, 0 on a tie; both orientations (the sign is recorded). Ranked terms: the next term scored only where the earlier ones
+# tie (the frame compares vectors); up to three; stop when the training score stops improving.
+
+THREAT_TERMS = 3
+MIN_GAIN = 0.004                  # a further term must raise the strict pairwise score by this share of the pairs
+
+
+# THE THREAT LEARNER'S TERM SET (Kaveh 2026-10-14): a threat is a property of the BOARD. Words that read the game's history (the fifty-move clock, repetition,
+# time) are out -- the clock resets on every capture, so it only marks "the move was a capture" -- and so are the forcing words (they ARE the pass test by our
+# exact search: the checker, not a word to learn from). The base words each name ONE piece; "the most we lose on any piece" needs a PIECE-QUANTIFIER LIFT: for
+# every word with one piece slot f(X), the max and the sum of f over our named pieces (P, P2 .. P5) and over theirs (O, O2 .. O5), as plain nested max / sum
+# compositions of existing words (the evaluator and the Lean renderer unfold them unchanged).
+HISTORY = ("halfmoves", "seen", "(ago ", "forcing_", "(delta", "(gained", "(lost")
+OUR_PIECES = ("P", "P2", "P3", "P4", "P5")
+THEIR_PIECES = ("O", "O2", "O3", "O4", "O5")
+# (template with X, gloss of f(X), who it is for: "ours" / "theirs" / "both")
+LIFT_TEMPLATES = [
+    ("(see X)", "what the other side wins by the exchange on", "both"),
+    ("(attackers X)", "how many of their pieces attack", "both"),
+    ("(defenders X)", "how many of their pieces defend", "both"),
+    ("(min (see X) 1)", "whether the exchange on it can be won (1 or 0):", "both"),
+    ("(count (and (moves X) unhit))", "how many squares it can go to that the other side does not hit:", "both"),
+    ("(eq (count (and (moves X) unhit)) 0)", "whether it has no square to go to that the other side does not hit (1 or 0):", "both"),
+    ("(pinned_ours X)", "whether it is pinned to our king (1 or 0):", "ours"),
+    ("(pinned_theirs X)", "whether it is pinned to their king (1 or 0):", "theirs"),
+    ("(min (min (see X) 1) (eq (count (and (moves X) unhit)) 0))", "whether it can be won AND has no square to go to that the other side does not hit (1 or 0):", "both"),
+    ("(targets_ours X)", "how many of their pieces it attacks:", "ours"),
+    ("(targets_theirs X)", "how many of our pieces it attacks:", "theirs"),
+]
+_TT = None
+
+
+def _nest(op: str, items: list) -> str:
+    t = items[-1]
+    for x in reversed(items[:-1]):
+        t = f"({op} {x} {t})"
+    return t
+
+
+def lift_terms() -> tuple:
+    """-> (the lifted terms, {term: gloss})"""
+    out, gl = [], {}
+    for tpl, g, who in LIFT_TEMPLATES:
+        for side, names, word in (("ours", OUR_PIECES, "our"), ("theirs", THEIR_PIECES, "their")):
+            if who not in ("both", side):
+                continue
+            fs = [tpl.replace("X", n) for n in names]
+            for op, quant in (("max", "the most"), ("sum", "the total")):
+                t = _nest(op, fs)
+                out.append(t)
+                gl[t] = f"{quant} over {word} pieces of ({g} the piece)"
+    # THE BALANCE once each side has taken its biggest exchange, we first (signed, on an offset of 64: the vocabulary's numbers are unsigned, so the
+    # difference is built with `if` / `diff` -- no new word): our material + the most we win by an exchange, against their material + the most they win
+    for op, quant in (("max", "biggest"), ("sum", "all")):
+        a = f"(sum material_us {_nest(op, [f'(see {n})' for n in THEIR_PIECES])})"
+        b = f"(sum material_them {_nest(op, [f'(see {n})' for n in OUR_PIECES])})"
+        t = f"(if (eq (max {a} {b}) {a}) (sum 64 (diff {a} {b})) (diff 64 (diff {a} {b})))"
+        out.append(t)
+        gl[t] = f"the material balance for us (on 64) once each side has taken {quant} of its exchanges, we first"
+    return out, gl
+
+
+def threat_terms() -> tuple:
+    global _TT
+    if _TT is None:
+        from . import explorer as E
+        base = [t for t in E.terms() if not any(h in t for h in HISTORY)]
+        lifted, gl = lift_terms()
+        _TT = (base + lifted, gl)
+    return _TT
+
+
+def term_gloss(t: str) -> str:
+    from . import base_vocabulary as V
+    gl = threat_terms()[1]
+    return gl[t] if t in gl else V.gloss(V.parse(t))
+
+
+def _tmatrix(fens: list):
+    import numpy as np
+    import analyst_core as A
+    terms = threat_terms()[0]
+    return np.asarray(A.component_values(fens, terms), dtype=np.int64).reshape(len(fens), len(terms))
+
+
+def _after_fen(pass_fen: str, uci: str) -> str:
+    b = chess.Board(pass_fen)
+    b.push(chess.Move.from_uci(uci))
+    return b.fen()
+
+
+def _position_matrices(rec: dict):
+    """-> (sizes (n+1,), raw (n+1 x T), delta (n+1 x T)); the last row is the null move."""
+    import numpy as np
+    fens = [_after_fen(rec["pass_fen"], m["uci"]) for m in rec["moves"]] + [rec["fen"]]
+    M = _tmatrix(fens).astype(np.int32)
+    base = M[-1]
+    delta = M - base
+    delta[-1] = 0
+    # THE SIZE OF A THREAT IS max(0, S's net loss): in a puzzle position S often still has its own tactic, so most O moves have a negative net -- those are no
+    # threats, all alike (0), tied with each other and with the null; no pair among non-threats is ever ranked
+    sizes = np.maximum(0, np.array([m["size"] for m in rec["moves"]] + [0]))
+    return sizes, M, delta
+
+
+def _threat_chunk(args):
+    """In a worker: the scores of every word on the pairs still tied under the prefix; the pairs the prefix already orders (correct, wrong)."""
+    import numpy as np
+    recs, prefix = args
+    T = len(threat_terms()[0])
+    raw_s = np.zeros(T, np.int64); del_s = np.zeros(T, np.int64)
+    ok = bad = tied = 0
+    for rec in recs:
+        sizes, R, D = _position_matrices(rec)
+        I, J = np.nonzero(sizes[:, None] - sizes[None, :] >= 1)
+        if not len(I):
+            continue
+        undecided = np.ones(len(I), bool)
+        for (col, sign, fam) in prefix:
+            X = (R if fam == "raw" else D)[:, col] * sign
+            d = np.sign(X[I] - X[J])
+            ok += int(((d > 0) & undecided).sum()); bad += int(((d < 0) & undecided).sum())
+            undecided &= d == 0
+        tied += int(undecided.sum())
+        if undecided.any():
+            raw_s += np.sign(R[I[undecided]] - R[J[undecided]]).sum(axis=0)
+            del_s += np.sign(D[I[undecided]] - D[J[undecided]]).sum(axis=0)
+    return raw_s, del_s, ok, bad, tied
+
+
+def threat_frame(labels_path: str, workers: int | None = None, log=print) -> dict:
+    import multiprocessing
+    import numpy as np
+    from . import base_vocabulary as V
+    from . import explorer as E
+    t0 = time.time()
+    recs = json.load(open(labels_path))
+    terms = threat_terms()[0]
+    log(f"OBS THREAT TERM SET: {len(terms)} words ({len(lift_terms()[0])} piece-quantifier lifts; history and forcing words excluded)")
+    sizes_ = [V.size(V.parse(t)) for t in terms]
+    chunks = [recs[i::40] for i in range(40)]
+    prefix, hist = [], []
+    total_pairs = None
+    with multiprocessing.get_context("spawn").Pool(workers or max(1, (os.cpu_count() or 2) - 1)) as pool:
+        for rank in range(THREAT_TERMS):
+            res = pool.map(_threat_chunk, [(c, prefix) for c in chunks])
+            raw = sum(r[0] for r in res); dl = sum(r[1] for r in res)
+            ok = sum(r[2] for r in res); bad = sum(r[3] for r in res); tied = sum(r[4] for r in res)
+            if total_pairs is None:
+                total_pairs = ok + bad + tied
+            allsc = np.concatenate([raw, dl])
+            best = max(range(len(allsc)), key=lambda i: (abs(int(allsc[i])), -sizes_[i % len(terms)], -i))
+            sc = int(allsc[best]); col, fam = best % len(terms), "raw" if best < len(terms) else "delta"
+            sign = 1 if sc >= 0 else -1
+            before = (ok - bad) / total_pairs
+            after = (ok - bad + abs(sc)) / total_pairs
+            log(f"OBS THREAT FRAME term {rank + 1}: {fam} of {terms[col]} (sign {sign:+d}), tied pairs {tied} of {total_pairs}; strict pairwise score {before:.3f} -> {after:.3f}")
+            if rank > 0 and after - before < MIN_GAIN:
+                log("OBS THREAT FRAME: the training score stopped improving; no further term")
+                break
+            prefix.append((col, sign, fam))
+            hist.append(dict(term=terms[col], family=fam, sign=sign, gloss=term_gloss(terms[col]), score_after=after))
+    frame = dict(terms=hist, pairs=total_pairs, positions=len(recs), seconds=round(time.time() - t0, 1), labels=labels_path)
+    json.dump(frame, open(paths.derived("threat_frame.json"), "w"), indent=1)
+    for h in hist:
+        log(f"OBS THREAT WORD: {'the CHANGE in' if h['family'] == 'delta' else ''} {h['gloss']}  [{h['term']}], {'higher' if h['sign'] > 0 else 'lower'} = bigger threat")
+    log(f"OBS threat frame learned in {frame['seconds']} s -> {paths.derived('threat_frame.json')}")
+    return frame
+
+
+def frame_ranking(frame: dict, rec: dict):
+    """The frame's order of the O moves of a labelled position against the null: -> [(uci, tuple)] above the null, biggest first; and the null's tuple."""
+    import numpy as np
+    terms = threat_terms()[0]
+    cols = [terms.index(h["term"]) for h in frame["terms"]]
+    fens = [_after_fen(rec["pass_fen"], m["uci"]) for m in rec["moves"]] + [rec["fen"]]
+    M = _tmatrix(fens)[:, cols]
+    D = M - M[-1]
+    D[-1] = 0
+    def tup(i):
+        return tuple(int(h_sign * (M[i, k] if h["family"] == "raw" else D[i, k])) for k, (h, h_sign) in enumerate(zip(frame["terms"], [h["sign"] for h in frame["terms"]])))
+    null = tup(len(fens) - 1)
+    ranked = sorted(((tup(i), rec["moves"][i]["uci"]) for i in range(len(rec["moves"]))), reverse=True)
+    return [(u, t) for t, u in ranked if t > null], null
+
+
+def _check_chunk(args):
+    os.environ.setdefault("RAYON_NUM_THREADS", "1")
+    import analyst_core as A
+    frame, recs = args
+    out = []
+    for rec in recs:
+        above, null = frame_ranking(frame, rec)
+        top = above[0][0] if above else None
+        conf = None
+        if top:
+            res = A.forced_moves(rec["pass_fen"], 1, 4, 300_000)
+            conf = any(r[0] == top and r[1] == "forced" for r in res)
+        sizes = {m["uci"]: m["size"] for m in rec["moves"]}
+        mx = max(sizes.values()) if sizes else 0
+        best = {u for u, z in sizes.items() if z == mx and mx >= 1}
+        out.append(dict(top=top, confirmed=conf, teacher_max=mx, top1=bool(top and top in best), top3=any(u in best for u, _ in above[:3]),
+                        frame_has=bool(above), teacher_has=mx >= 1, top_size=sizes.get(top, None)))
+    return out
+
+
+def check_frame(frame_path: str, labels_path: str, log=print) -> dict:
+    """The learned definition checked on the HELD positions (once): our exact solver (not Lean) confirms the frame's top O move wins >= 1 by force
+    within 4; agreement with the teacher's biggest threat; agreement on 'no threat'."""
+    import multiprocessing
+    t0 = time.time()
+    frame = json.load(open(frame_path))
+    recs = json.load(open(labels_path))
+    chunks = [recs[i::20] for i in range(20)]
+    with multiprocessing.get_context("spawn").Pool(max(1, (os.cpu_count() or 2) - 1)) as pool:
+        rows = [r for part in pool.map(_check_chunk, [(frame, c) for c in chunks]) for r in part]
+    n = len(rows)
+    has = [r for r in rows if r["teacher_has"]]
+    tops = [r for r in rows if r["top"]]
+    out = dict(positions=n, teacher_with_threat=len(has), frame_with_threat=len(tops),
+               solver_confirmed=sum(bool(r["confirmed"]) for r in tops) / max(1, len(tops)),
+               top1=sum(r["top1"] for r in has) / max(1, len(has)), top3=sum(r["top3"] for r in has) / max(1, len(has)),
+               no_threat_agreement=sum(r["frame_has"] == r["teacher_has"] for r in rows) / n,
+               top_size_ge1=sum((r["top_size"] or 0) >= 1 for r in tops) / max(1, len(tops)), seconds=round(time.time() - t0, 1))
+    log(f"OBS THREAT FRAME CHECK (held, {n} positions; checked by our exact solver, not proved in Lean): teacher sees a threat in {len(has)}, the frame in {len(tops)}; "
+        f"the frame's top move confirmed by the solver as a forced gain >= 1 within 4 in {out['solver_confirmed']:.0%}; the teacher also sizes it >= 1 in {out['top_size_ge1']:.0%}; "
+        f"top-1 agreement with the teacher's biggest {out['top1']:.0%}; teacher's biggest within the frame's top 3 {out['top3']:.0%}; agreement on 'threat / no threat' {out['no_threat_agreement']:.0%}; {out['seconds']} s")
+    json.dump(out, open(paths.derived("threat_frame_check.json"), "w"), indent=1)
+    return out
+
+
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("extract", nargs="?")
+    ap.add_argument("extract", nargs="?", help="'extract' (Lichess games) or 'threats' (the teacher's threat labels)")
+    ap.add_argument("--set", choices=("train", "held"), default="train")
+    ap.add_argument("--n", type=int, default=None)
     ap.add_argument("--targets", default="KRvK,KQvK,KRRvK,KQvKR,KRPvKR,KPvK")
     ap.add_argument("--limit", type=int, default=None, help="games to read at most (default: the whole month)")
     ap.add_argument("--workers", type=int, default=10)
     a = ap.parse_args()
+    if a.extract == "learn-threats":
+        threat_frame(paths.derived("watch/threat_labels_train.json"))
+        raise SystemExit
+    if a.extract == "check-threats":
+        check_frame(paths.derived("threat_frame.json"), paths.derived("watch/threat_labels_held.json"))
+        raise SystemExit
+    if a.extract == "threats":
+        label_set(a.set, 17 if a.set == "train" else 23, a.n or (400 if a.set == "train" else 100))
+        raise SystemExit
     got = extract(set(a.targets.split(",")), a.limit, a.workers)
     os.makedirs(paths.derived("watch"), exist_ok=True)
     for t, gs in got.items():
