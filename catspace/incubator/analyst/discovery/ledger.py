@@ -55,6 +55,20 @@ def load_transitions(L, path: str | None = None) -> bool:
         return False
 
 
+def opening_bonus(fen: str) -> dict:
+    """{uci: score} of the opening tie-break principles (castle > develop > develop toward the centre > a centre pawn > a steady move; opening_rule.py), empty outside the opening."""
+    from .opening_rule import opening_claims
+    return {u: sc for u, (sc, _) in opening_claims(chess.Board(fen)).items()}
+
+
+def decide(fen: str, questions: int = 120, max_candidates: int = 16) -> dict:
+    """The decision read off the chain (ANALYST_PLAN 40.4): constraints, opportunities, candidates each checked by running the loop after it; the opening default when
+    nothing is threatened and nothing is to be won."""
+    L = new(fen, 5000)
+    load_transitions(L)
+    return L.decide_chain(opening_bonus(fen), questions, max_candidates)
+
+
 def analyse(fen: str, budget: int = 200) -> dict:
     return _a().ledger(fen, budget)
 
@@ -168,7 +182,7 @@ def main(argv=None):
             load_defence_frame(L)
         if a.loop == "event":
             load_transitions(L)
-        r = L.trace(a.depth, a.threats, a.answers, a.loop == "event")
+        r = L.trace(a.depth, a.threats, a.answers, a.loop == "event", opening_bonus(fen) if a.loop == "event" else None)
         for line in r["trace"]:
             print(line)
         print(f"OBS trace ({'learned' if r['learned'] else 'rules'} threats): {r['positions']} positions examined by the ledger, {r['looks']} static looks by the threat frame, {r['questions']} questions, {r['facts']} facts, {round(time.time() - t0, 2)} s; line "
@@ -371,5 +385,7 @@ if __name__ == "__main__":
         walk_main(sys.argv[2:])
     elif len(sys.argv) > 1 and sys.argv[1] == "chain":
         chain_main(sys.argv[2:])
+    elif len(sys.argv) > 1 and sys.argv[1] == "decide":                  # decide "<FEN>": the decision read off the chain (ANALYST_PLAN 40.4)
+        print("\n".join(decide(sys.argv[2])["lines"]))
     else:
         main()

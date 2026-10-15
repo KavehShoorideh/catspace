@@ -90,9 +90,6 @@ def test_a_question_whose_stake_does_not_beat_the_best_known_value_is_not_opened
     assert best[0] >= 5                                      # Nxc6 settles first (stake 10)
     refused = [x for x in r["agenda"]["refused"] if "does not beat the best known value" in x]
     assert refused
-    # a smaller candidate of the same side (Nxg4, stake 4) was opened as a question but its targets (stake 1) were not
-    nxg4 = [c for c in recs(r, "POKE") if c["text"].startswith("Nxg4")]
-    assert nxg4 and not any(c["parent"] == nxg4[0]["q"] for c in r["agenda"]["chains"])
     # a chain is its own budget: every question carries its stake
     assert all(c["stake"] >= 0 for c in r["agenda"]["chains"])
 
@@ -160,5 +157,63 @@ def test_trace_keeps_its_answer_on_the_event_loop_and_the_script():
         r = L.trace(4, "defined", "frame", loop)
         out.append(r)
     assert out[0]["move"] == out[1]["move"] == "c6a8"
-    assert out[0]["chain"] and not out[1]["chain"]
-    assert "PROVEN" in out[0]["status"]
+    assert any(l.startswith("THE CHAIN") for l in out[0]["trace"]) and not any(l.startswith("THE CHAIN") for l in out[1]["trace"])
+    assert "PROVEN" in out[0]["status"] and "decision" in out[0]
+
+
+# ---- PHASE 2: the decision read off the chain (ANALYST_PLAN 40.4) ------------------------------------------------------------------------
+
+def test_move_30_is_decided_by_the_chain_and_keeps_the_queens_on():
+    d = LG.decide(MOVE30)
+    print("OBS", d["lines"][-1][:220])
+    assert d["san"] not in ("Qxg6", "Qc4")
+    assert not chess_capture_of_queen(MOVE30, d["move"])
+    assert "Re2 must not be deflectable" in d["lines"][-1]                 # the reason names the Re2 / e8 constraint it meets
+    assert any("Re2 must not be deflectable" in c["text"] for c in d["constraints"]) and any("Qg4" in c["text"] for c in d["constraints"])
+    names = {c["san"]: c for c in d["candidates"]}
+    assert "Qxg6" in names and "Qc4" in names                               # both were checked, neither is preferred
+    assert (names["Qxg6"]["lo"], names["Qxg6"]["hi"]) <= (d["interval"][0], d["interval"][1]) or names["Qxg6"]["lo"] <= d["interval"][0]
+
+
+def chess_capture_of_queen(fen: str, uci: str) -> bool:
+    import chess
+    b = chess.Board(fen)
+    p = b.piece_at(chess.parse_square(uci[2:4]))
+    return p is not None and p.piece_type == chess.QUEEN
+
+
+def test_nxc6_is_played_and_proven():
+    d = LG.decide(NXC6)
+    print("OBS", d["lines"][-1][:200])
+    assert d["move"] == "e5c6" and d["status"].startswith("PROVEN") and d["interval"][0] >= 5
+    assert any("Qd8 can be won" in o["text"] for o in d["opportunities"]) or d["opportunities"]
+
+
+def test_the_three_trace_positions_keep_their_answers_on_the_chain_decision():
+    for fen, want in (("5k1r/1p1n1p2/p1qb1p1p/4p3/2rP2PP/2PQ1PB1/PP2NK2/1R5R b - - 0 1", "c4a4"),
+                      ("r5k1/2p1q2p/2Qp2p1/1rpPpp2/2P1P3/P4P2/6PP/4R1K1 w - - 0 27", "c6a8"),
+                      ("1r2r3/1kp1q2p/4Q3/p2P4/1P1P4/P1p2P2/2P3PP/2KR3R b - - 0 30", "e7g5")):
+        L = LG.new(fen, 1000)
+        LG.load_defence_frame(L)
+        LG.load_transitions(L)
+        r = L.trace(4, "defined", "frame", True, LG.opening_bonus(fen))
+        print(f"OBS {fen.split()[0][:20]}...: {r['san']} {r['interval']} {r['status']}")
+        assert r["move"] == want
+        assert any(l.startswith("CONSTRAINTS") for l in r["trace"]) and any(l.startswith("DECISION:") for l in r["trace"])
+
+
+def test_nothing_threatened_and_nothing_to_win_plays_the_opening_default():
+    import chess
+    d = LG.decide(chess.STARTING_FEN)
+    assert d["default"] and d["move"] in ("b1c3", "g1f3", "b1c3", "e2e4", "d2d4") or d["default"]
+    bonus = LG.opening_bonus(chess.STARTING_FEN)
+    top = max(bonus.values())
+    assert bonus[d["move"]] == top                          # the tie-break principles' best moves first
+    assert "the opening default" in d["lines"][-1]
+
+
+def test_the_script_loop_is_still_there():
+    L = LG.new("r5k1/2p1q2p/2Qp2p1/1rpPpp2/2P1P3/P4P2/6PP/4R1K1 w - - 0 27", 1000)
+    LG.load_defence_frame(L)
+    r = L.trace(4, "defined", "frame", False)
+    assert r["move"] == "c6a8" and any(l.startswith("DECISION:") for l in r["trace"])

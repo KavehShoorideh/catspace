@@ -108,6 +108,22 @@ def _one(row: dict, budget: int) -> dict:
     b, sol, themes = _setup(row)
     fen, answer = b.fen(), sol[0]
     out = dict(id=row["PuzzleId"], fen=fen, answer=answer, themes=themes, legal=b.legal_moves.count())
+    if os.environ.get("LEDGER_LOOP", "script") == "event":
+        try:
+            from catspace.incubator.analyst.discovery import ledger as LG
+            t0 = time.perf_counter()
+            L = LG.new(fen, 5000)
+            LG.load_transitions(L)
+            d = L.decide_chain({}, 120, 20)
+            out["ledger"] = dict(move=d["move"], status=d["status"].split(" ")[0], reason="the chain", interval=d["interval"], questions=d["questions"], nodes=d["questions"], facts=d["facts"],
+                                 candidates=len(d["candidates"]), legal=d["legal"], refined=0, zero_stake=0, seconds=round(time.perf_counter() - t0, 3), confirm=None, why="",
+                                 all=[[c["uci"], [], 0, [c["lo"], c["hi"]]] for c in d["candidates"]], generated=d["generated"], unanswered=[], chain=[], table=[], lines=d["lines"],
+                                 constraints=len(d["constraints"]), opportunities=len(d["opportunities"]))
+            out["ledger"]["correct"] = _correct(fen, d["move"], answer, themes, A)
+            out["ledger"]["alt_move"] = d["move"]; out["ledger"]["alt_correct"] = out["ledger"]["correct"]
+        except BaseException as e:                           # noqa: BLE001
+            out["ledger"] = dict(error=repr(e), correct=False, status="ERROR", questions=0, nodes=0, facts=0, candidates=0, legal=out["legal"], seconds=0)
+        return _baselines(out, row, b, sol, themes, fen, answer, A, explorer)
     try:
         t0 = time.perf_counter()
         d = A.Ledger(fen, budget).decide(os.environ.get("LEDGER_FORCING", "threats"))
@@ -124,6 +140,15 @@ def _one(row: dict, budget: int) -> dict:
         out["ledger"]["alt_correct"] = _correct(fen, alt, answer, themes, A)
     except BaseException as e:                               # noqa: BLE001
         out["ledger"] = dict(error=repr(e), correct=False, status="ERROR", questions=0, nodes=0, facts=0, candidates=0, legal=out["legal"], seconds=0)
+    return _baselines(out, row, b, sol, themes, fen, answer, A, explorer)
+
+
+def _baselines(out, row, b, sol, themes, fen, answer, A, explorer):
+    if os.environ.get("LEDGER_NO_BASELINES") == "1":
+        out["solver"] = dict(move=None, depth=None, nodes=0, seconds=0, correct=False)
+        out["planner"] = dict(move=None, correct=False)
+        out["value"] = _value(b, sol, themes)
+        return out
     # the solver alone: every legal move at the puzzle's value, deeper until a move is found
     V = _value(b, sol, themes)
     out["value"] = V
@@ -178,6 +203,24 @@ def summarize(res: list, label: str) -> dict:
     return dict(total=tot, themes=themes)
 
 
+def classify_event(r: dict) -> str:
+    """ANALYST_PLAN 40.5's four classes, from the loop's own records: which event was missing (no condition matched: the answer was never a candidate), which question
+    was never opened (the candidate cap / the budget cut it), which answer was wrong (it was evaluated and ranked below), which shape has no lemma (phase 3: every chain is run from scratch)."""
+    l = r["ledger"]
+    if l.get("status") == "ERROR":
+        return "ERROR"
+    n = _mate_n(r["themes"])
+    ev = {a[0] for a in l["all"]}
+    gen = set(l.get("generated", []))
+    if r["answer"] not in gen and not n:
+        return "event missing: no condition made the answer a candidate"
+    if r["answer"] not in ev and not n:
+        return "question never opened: the candidate cap cut it"
+    if n and n >= 2:
+        return "needs a mate search beyond three moves (no word for it)"
+    return "answer wrong: evaluated, ranked below the chosen move"
+
+
 def classify(r: dict) -> str:
     l = r["ledger"]
     if l.get("status") == "ERROR":
@@ -205,12 +248,16 @@ def main(argv=None):
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--forcing", choices=("quiescence", "threats"), default="threats", help="what drives the forcing line: every check / capture / promotion, or the highest-value threat")
     ap.add_argument("--chains", type=int, default=0, help="print the because-chain (the line and the findings at its end) for this many decisions of different themes")
+    ap.add_argument("--loop", choices=("event", "script"), default="event", help="the ledger's decision: read off the event loop's chain (ANALYST_PLAN 40.4, the default) or the older fixed script + B* stop (comparison only)")
+    ap.add_argument("--no-baselines", action="store_true", help="skip the solver-alone and planner columns (they are the same on both loops)")
     ap.add_argument("--budget", type=int, default=200, help="questions per decision (the plan's 200; other values only as a sensitivity check)")
     a = ap.parse_args(argv)
     global LEDGER_BUDGET
     LEDGER_BUDGET = a.budget
     os.environ["LEDGER_BUDGET"] = str(a.budget)
     os.environ["LEDGER_FORCING"] = a.forcing
+    os.environ["LEDGER_LOOP"] = a.loop
+    os.environ["LEDGER_NO_BASELINES"] = "1" if a.no_baselines else "0"
     t0 = time.perf_counter()
     rows = dev_rows(a.n) if a.set == "dev" else dev_rows(a.n, 11) if a.set == "fresh" else dev_rows(a.n, 17) if a.set == "new17" else test_rows(a.n)
     print(f"OBS {a.set}: {len(rows)} puzzles loaded in {time.perf_counter() - t0:.1f} s")
@@ -230,7 +277,7 @@ def main(argv=None):
     cls = defaultdict(int)
     misses = [r for r in res if not r["ledger"]["correct"]]
     for r in misses:
-        cls[classify(r)] += 1
+        cls[(classify_event if os.environ.get("LEDGER_LOOP") == "event" else classify)(r)] += 1
     print(f"OBS misses {len(misses)}: " + "; ".join(f"{k}: {v}" for k, v in sorted(cls.items(), key=lambda kv: -kv[1])))
     for r in misses[:a.misses]:
         l = r["ledger"]
@@ -244,14 +291,17 @@ def main(argv=None):
     shown = 0
     for r in res:
         if shown >= a.chains: break
+        if a.loop == "event" and not r["ledger"].get("lines"): continue
         th = [t for t in r["themes"] if t in ("hangingPiece", "pin", "fork", "discoveredAttack", "deflection", "sacrifice", "mateIn2", "skewer", "attraction", "intermezzo", "defensiveMove", "quietMove")]
-        if not th or th[0] in seen_t or not r["ledger"].get("chain"): continue
+        if not th or th[0] in seen_t or not (r["ledger"].get("chain") or r["ledger"].get("lines")): continue
         seen_t.add(th[0]); shown += 1
         l = r["ledger"]
         print(f"OBS CHAIN {r['id']} [{th[0]}] {r['fen']} answer {r['answer']} ledger {l['move']} {'ok' if l['correct'] else 'MISS'} {l['status']} positions {l.get('nodes')}")
         for f in l["chain"][:10]:
             print(f"OBS    [{f['status']}] {f['claim'][:200]}")
-    p = paths.derived(f"ledger_puzzles_{a.set}_{len(res)}_{a.forcing}" + (f"_b{a.budget}" if a.budget != 200 else "") + ".json")
+        for line in l.get("lines", []):
+            print(f"OBS    {line[:260]}")
+    p = paths.derived(f"ledger_puzzles_{a.set}_{len(res)}_{a.forcing}_{a.loop}" + (f"_b{a.budget}" if a.budget != 200 else "") + ".json")
     json.dump(dict(summary=summ, results=[{k: v for k, v in r.items() if k != "ledger"} | {"ledger": {k: v for k, v in r["ledger"].items() if k != "chain"}} for r in res]), open(p, "w"))
     print(f"OBS saved {p}")
 

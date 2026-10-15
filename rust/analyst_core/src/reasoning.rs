@@ -102,6 +102,7 @@ pub struct ReasoningLedger {
     pending: HashMap<usize, u32>,
     trans: Option<Value>,
     cands: Vec<chain::Cand2>,
+    qsq: HashMap<usize, Vec<Square>>,
 }
 
 impl ReasoningLedger {
@@ -519,7 +520,7 @@ impl ReasoningLedger {
         let pos = crate::parse(&fen).ok_or_else(|| pyo3::exceptions::PyValueError::new_err("bad fen"))?;
         Ok(ReasoningLedger { line: vec![pos.clone()], pos, ply: 0, fs: vec![], live: HashMap::new(), listeners: HashMap::new(), fact_cache: HashMap::new(),
             budget, used: 0, carried: 0, reasked: 0, facts_n: 0, solver_calls: 0, stack: vec![], skipped: vec![], agenda: vec![], plies: vec![], confirmations: vec![], tt: HashMap::new(), nodes: 0, node_cap_hit: false, budget_hit: false, deep: false, cap_now: 0, cuts: 0, threats_mode: false, lean_mode: false, pushes: 0, tr: std::cell::RefCell::new(vec![]), tracing: false, root_ply: 0, sep_flag: false, suppressed: std::cell::Cell::new(0), lean_cap: LEAN_CAP, frame: vec![], threats_learned: false, looks: 0, slog: vec![], resolving: 0, resolved_n: 0, cashing: false, dframe: vec![], answers_hand: false, shallow_sizing: false, prefilter_root: true,
-            ag: crate::agenda::Agenda::new(vec![], 0), ag_on: false, cur_q: None, cur_ctx: vec![], pending: HashMap::new(), trans: None, cands: vec![] })
+            ag: crate::agenda::Agenda::new(vec![], 0), ag_on: false, cur_q: None, cur_ctx: vec![], pending: HashMap::new(), trans: None, cands: vec![], qsq: HashMap::new() })
     }
 
     /// Ask every question of the entry pass (SAFE of every piece, BLOCKS of every shielded piece with its PIN) and return the report.
@@ -619,9 +620,22 @@ impl ReasoningLedger {
         Ok(())
     }
 
-    #[pyo3(signature = (depth=6, threats="defined", answers="frame", event_loop=false))]
-    fn trace(&mut self, py: Python<'_>, depth: i32, threats: &str, answers: &str, event_loop: bool) -> PyResult<PyObject> {
-        let chain_lines = if event_loop { self.run_chain(120) } else { vec![] };
+    #[pyo3(signature = (depth=6, threats="defined", answers="frame", event_loop=false, bonus=None))]
+    fn trace(&mut self, py: Python<'_>, depth: i32, threats: &str, answers: &str, event_loop: bool, bonus: Option<HashMap<String, f64>>) -> PyResult<PyObject> {
+        if event_loop {
+            // PHASE 2: the decision is read off the chain (the B* stop below is the older script, --loop script)
+            let chain_lines = self.run_chain(120);
+            let root_nodes = self.ag.spent;
+            let d = self.decide_by_chain(&bonus.unwrap_or_default(), 120, 16);
+            let mut lines = vec![format!("POSITION {} -- {} to move.", shakmaty::fen::Fen::from_position(self.pos.clone(), shakmaty::EnPassantMode::Legal), if self.pos.turn() == Color::White { "White" } else { "Black" })];
+            lines.extend(chain_lines);
+            lines.extend(d["lines"].as_array().unwrap().iter().map(|x| x.as_str().unwrap_or("").to_string()));
+            let out = json!({"trace": lines, "chain": [], "move": d["move"], "san": d["san"], "interval": d["interval"], "status": d["status"], "positions": root_nodes, "questions": self.facts_n,
+                             "facts": self.facts_n, "looks": 0, "learned": true, "line": [d["move"]], "decision": d});
+            let j = py.import("json")?;
+            return Ok(j.call_method1("loads", (out.to_string(),))?.unbind());
+        }
+        let chain_lines: Vec<String> = vec![];
         self.answers_hand = answers == "hand";
         self.threats_learned = threats == "defined";
         self.looks = 0;
@@ -727,6 +741,15 @@ impl ReasoningLedger {
         let lines = self.run_chain(questions);
         let res = json!({"lines": lines, "agenda": self.ag.to_json(), "questions": self.ag.spent, "facts": self.facts_n,
                          "candidates": self.cands.iter().map(|c| json!({"actor": c.actor, "uci": c.uci, "san": c.san, "lo": c.lo, "hi": c.hi, "constraint": c.constraint, "risk": c.risk, "why": c.why})).collect::<Vec<_>>()});
+        let j = py.import("json")?;
+        Ok(j.call_method1("loads", (res.to_string(),))?.unbind())
+    }
+
+    /// THE DECISION READ OFF THE CHAIN (ANALYST_PLAN 40.4): the constraints on the move, the opportunities, the candidates each checked by re-running the loop after it.
+    /// `bonus`: the opening principles' score per uci (the tie-break of commit 1e2bc782, computed in Python), used only when nothing is threatened and nothing is to be won.
+    #[pyo3(signature = (bonus=None, questions=120, max_candidates=16))]
+    fn decide_chain(&mut self, py: Python<'_>, bonus: Option<HashMap<String, f64>>, questions: u32, max_candidates: usize) -> PyResult<PyObject> {
+        let res = self.decide_by_chain(&bonus.unwrap_or_default(), questions, max_candidates);
         let j = py.import("json")?;
         Ok(j.call_method1("loads", (res.to_string(),))?.unbind())
     }

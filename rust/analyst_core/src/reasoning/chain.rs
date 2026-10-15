@@ -201,7 +201,8 @@ impl ReasoningLedger {
             Some((p, owner, f, holders, trade))
         }).flatten();
         let Some((p, owner, f, holders, trade)) = r else { return (format!("is {} safe", prim[0]), "the piece is not there".into(), String::new(), None) };
-        if f.lo >= 1 { self.ag.raise(q.actor, f.lo); self.post_ev(EvKind::Found, format!("WIN|{}|{}", side(owner), pname(p)), f.claim.clone(), q.actor, f.lo, vec![pname(p)]); }
+        self.qsq.insert(q.id, f.sq.clone());
+        if f.lo >= 1 { if ctx.is_empty() { self.ag.raise(q.actor, f.lo); } self.post_ev(EvKind::Found, format!("WIN|{}|{}", side(owner), pname(p)), f.claim.clone(), q.actor, f.lo, vec![pname(p)]); }
         let mut reason = String::new();
         for (h, job) in &holders {
             if *job > 0 {
@@ -228,26 +229,27 @@ impl ReasoningLedger {
             // TODO(Kaveh): without data/derived/transitions.json the stake of a trade is unknown; no rule is invented.
             return (text, "no transition table loaded (data/derived/transitions.json): the stake of the trade is unknown".into(), String::new(), None);
         };
-        // the mover = the side to move at the root; its material balance picks the cell; the Lichess bands are pooled by their counts (the level of the
-        // player is not known to the ledger -- a Kaveh knob)
-        let us = self.line.first().map_or(self.pos.turn(), |p| p.turn());
-        let b = self.line.first().map(|p| p.board().clone()).unwrap_or_else(|| self.pos.board().clone());
-        let bal: i64 = [Color::White, Color::Black].iter().map(|c| Role::ALL.iter().filter(|r| **r != Role::King).map(|r| ((b.by_color(*c) & b.by_role(*r)).count() as i64) * val(*r) * if *c == us { 1 } else { -1 }).sum::<i64>()).sum();
-        let bin = if bal <= -5 { "behind <= -5" } else if bal <= -2 { "behind -4..-2" } else if bal <= 1 { "even" } else if bal <= 4 { "ahead 2..4" } else { "ahead >= 5" };
+        let (us, bal, bin) = self.trade_cell();
         let (mut num, mut den, mut games) = (0.0f64, 0.0f64, 0i64);
-        if let Some(t) = tab.get("table").and_then(|t| t.as_object()) {
-            for (cell, v) in t {
-                if !cell.starts_with("lichess") || !cell.ends_with(&format!("| {bin}")) { continue; }
-                if let Some(e) = v.get("queens_on") {
-                    let n = e["n_fell"].as_i64().unwrap_or(0) + e["n_kept"].as_i64().unwrap_or(0);
-                    num += e["diff"].as_f64().unwrap_or(0.0) * n as f64; den += n as f64; games += n;
+        let mut source = "the player's own games (kaveh cells), pooled over the evaluation bands";
+        for pass in 0..2 {
+            let pre = if pass == 0 { "kaveh" } else { "lichess" };
+            if let Some(t) = tab.get("table").and_then(|t| t.as_object()) {
+                for (cell, v) in t {
+                    if !cell.starts_with(pre) || !cell.ends_with(&format!("| {bin}")) { continue; }
+                    if let Some(e) = v.get("queens_on") {
+                        let n = e["n_fell"].as_i64().unwrap_or(0) + e["n_kept"].as_i64().unwrap_or(0);
+                        num += e["diff"].as_f64().unwrap_or(0.0) * n as f64; den += n as f64; games += n;
+                    }
                 }
             }
+            if den > 0.0 { break; }
+            source = "the Lichess bands, pooled";
         }
         if den == 0.0 { return (text, format!("the table has no queens_on reading for the cell '{bin}'"), String::new(), None); }
         let d = num / den;
         let _ = q;
-        (text, format!("{} is {} in material ({bin}); in the table the mover's result changes by {:+.3} when the queens come off within 20 plies (Lichess bands pooled, {} rows); a score difference, not pawns (its conversion to the agenda's unit is Kaveh's call)", who(us), bal, d, games),
+        (text, format!("{} is {} in material ({bin}); in the table the mover's result changes by {:+.3} when the queens come off within 20 plies ({}, {} rows); a score difference, not pawns: no cp-to-pawn mapping for it exists in the code, so it is the stake in its own unit (TODO Kaveh)", who(us), bal, d, source, games),
          if d < 0.0 { format!("trading queens costs the side that is {bin}") } else { format!("trading queens does not cost the side that is {bin}") }, None)
     }
 
@@ -272,7 +274,7 @@ impl ReasoningLedger {
                     let (bn, bmv) = was.get(sq).copied().unwrap_or((0, 99));
                     if *n > bn || *mv < bmv { tgt = tgt.max(r.board().piece_at(*sq).map_or(0, |p| val(p.role))); }
                 }
-                let stake = g + tgt;
+                let stake = (g + tgt).max(if r.is_check() { 1 } else { 0 });
                 if stake < 1 { continue; }
                 let uci = m.to_uci(CastlingMode::Standard).to_string();
                 out.push((stake, crate::plan::san(&pb, &uci), uci, format!("gain {g}, newly attacks a {tgt}-point piece")));
@@ -546,6 +548,12 @@ impl ReasoningLedger {
             out.truncate(8);
             out
         }).unwrap_or_default();
+        {
+            let mut sqs = vec![h.1];
+            if let Some(x) = t { sqs.push(x.1); }
+            for (u, _) in &cands { for k in [0usize, 2] { if let Some(s) = u.get(k..k + 2).and_then(|x| x.parse::<Square>().ok()) { sqs.push(s); } } }
+            self.qsq.insert(q.id, sqs);
+        }
         let mut results: Vec<(i64, String, String, String)> = vec![];       // (net, san, uci, how)
         for (uci, san) in &cands {
             let mut full = ctx.clone();
@@ -616,5 +624,219 @@ impl ReasoningLedger {
         }
         let tried = results.iter().take(3).map(|r| format!("{} ({})", r.1, r.3)).collect::<Vec<_>>().join("; ");
         (text, format!("MOBILITY {mob_txt}; REACH: {}; no deflection pays{}", if route.is_empty() { "attacked already".to_string() } else { format!("route {}", route.join(" ")) }, if tried.is_empty() { String::new() } else { format!(" -- tried {tried}") }), String::new(), Some((0, 0)))
+    }
+}
+
+// =====================================================================================================================================
+// PHASE 2 (ANALYST_PLAN 40.4): the decision read off the chain. Findings against us are CONSTRAINTS on our move (each with its stake), findings for us are
+// OPPORTUNITIES; the candidates are the moves that cash an opportunity or touch a constraint; each candidate is CHECKED by pushing it and running the loop on
+// the position after it (only the touched findings are asked again); the value of a candidate is what it gains less what the other side can still do.
+struct Item { text: String, stake: i64, lo: i64, hi: i64, squares: Vec<Square>, target: Option<Square>, deflect: bool, moves: Vec<String> }
+
+impl ReasoningLedger {
+    /// (the side to move at the root, its material balance, the table's material bin)
+    fn trade_cell(&self) -> (Color, i64, &'static str) {
+        let root = self.line.first().cloned().unwrap_or_else(|| self.pos.clone());
+        let us = root.turn();
+        let b = root.board();
+        let bal: i64 = [Color::White, Color::Black].iter().map(|c| Role::ALL.iter().filter(|r| **r != Role::King).map(|r| ((b.by_color(*c) & b.by_role(*r)).count() as i64) * val(*r) * if *c == us { 1 } else { -1 }).sum::<i64>()).sum();
+        let bin = if bal <= -5 { "behind <= -5" } else if bal <= -2 { "behind -4..-2" } else if bal <= 1 { "even" } else if bal <= 4 { "ahead 2..4" } else { "ahead >= 5" };
+        (us, bal, bin)
+    }
+    /// The table's score difference for the mover when the queens come off: the player's own cells first, else the Lichess bands pooled (n-weighted). None without a table.
+    fn trade_score(&self) -> Option<f64> {
+        let tab = self.trans.as_ref()?;
+        let (_, _, bin) = self.trade_cell();
+        for pre in ["kaveh", "lichess"] {
+            let (mut num, mut den) = (0.0, 0.0);
+            for (cell, v) in tab.get("table")?.as_object()? {
+                if !cell.starts_with(pre) || !cell.ends_with(&format!("| {bin}")) { continue; }
+                if let Some(e) = v.get("queens_on") {
+                    let n = (e["n_fell"].as_i64().unwrap_or(0) + e["n_kept"].as_i64().unwrap_or(0)) as f64;
+                    num += e["diff"].as_f64().unwrap_or(0.0) * n; den += n;
+                }
+            }
+            if den > 0.0 { return Some(num / den); }
+        }
+        None
+    }
+
+    fn sq_of(name: &str) -> Option<Square> { name.get(name.len().saturating_sub(2)..)?.parse().ok() }
+
+    pub(super) fn decide_by_chain(&mut self, bonus: &HashMap<String, f64>, questions: u32, max_cand: usize) -> Value {
+        let root = self.pos.clone();
+        let us = root.turn();
+        let (ua, oa) = (actor_of(us), actor_of(!us));
+        let _ = self.run_chain(questions);
+        let recs = self.ag.chains.clone();
+        let root_cands = self.cands.clone();
+        let (pokes_n, best_root) = (recs.iter().filter(|r| r.kind == "POKE" && r.actor == ua).count(), self.ag.best);
+        let qsq = self.qsq.clone();
+        // ---- constraints (findings against us) and opportunities (findings for us)
+        let mut cons: Vec<Item> = vec![];
+        let mut opps: Vec<Item> = vec![];
+        for r in &recs {
+            let sq: Vec<Square> = qsq.get(&r.q).cloned().unwrap_or_default();
+            let (lo, hi) = r.value.unwrap_or((0, 0));
+            match (r.kind.as_str(), r.actor == oa) {
+                ("SAFE", true) if !r.args.iter().any(|a| a.starts_with('@')) => {
+                    let p = r.args.first().cloned().unwrap_or_default();
+                    let st = Self::sq_of(&p).and_then(|s| root.board().piece_at(s)).map_or(0, |x| val(x.role));
+                    cons.push(Item { text: format!("{p} is attacked: {}", r.answer), stake: if hi >= 1 { hi } else { st }, lo, hi, squares: sq, target: Self::sq_of(&p), deflect: false, moves: vec![] });
+                }
+                ("DEFLECT", true) if hi >= 1 => {
+                    let pr: Vec<&String> = r.args.iter().filter(|a| !a.starts_with('@')).collect();
+                    cons.push(Item { text: format!("{} must not be deflectable: {} falls ({}{})", pr[0], pr.get(1).map(|x| x.as_str()).unwrap_or("?"), hi, if lo >= hi { ", solver-confirmed" } else { ", estimated, not confirmed" }), stake: hi, lo, hi, squares: sq, target: pr.get(1).and_then(|x| Self::sq_of(x)), deflect: true, moves: vec![] });
+                }
+                ("ASSESS", false) if hi >= 1 => {
+                    let u = r.args.first().cloned().unwrap_or_default();
+                    opps.push(Item { text: format!("{}: {}", r.text.trim_start_matches("assess "), r.answer.split(" -> ").last().unwrap_or("")), stake: hi, lo, hi, squares: vec![], target: None, deflect: false, moves: vec![u] });
+                }
+                ("SAFE", false) if lo >= 1 && !r.args.iter().any(|a| a.starts_with('@')) => {
+                    let p = r.args.first().cloned().unwrap_or_default();
+                    let ms: Vec<String> = Self::sq_of(&p).map(|s| root.legal_moves().iter().filter(|m| m.to() == s && m.is_capture()).map(|m| m.to_uci(CastlingMode::Standard).to_string()).collect()).unwrap_or_default();
+                    opps.push(Item { text: format!("{p} can be won: {}", r.answer), stake: lo, lo, hi, squares: sq, target: Self::sq_of(&p), deflect: false, moves: ms });
+                }
+                _ => {}
+            }
+        }
+        cons.sort_by(|a, b| b.stake.cmp(&a.stake));
+        { let mut seen: Vec<(Option<Square>, bool)> = vec![]; cons.retain(|c| { let k = (c.target, c.deflect); if seen.contains(&k) { false } else { seen.push(k); true } }); }
+        opps.sort_by(|a, b| b.stake.cmp(&a.stake));
+        // ---- candidates
+        let legal: Vec<Move> = root.legal_moves().into_iter().collect();
+        let mut score: HashMap<String, i64> = HashMap::new();
+        for o in &opps { for u in &o.moves { *score.entry(u.clone()).or_insert(0) += o.stake; } }
+        for rc in root_cands.iter().filter(|c| c.actor == ua) { score.entry(rc.uci.clone()).or_insert(0); }
+        let all_sq: Vec<(Square, i64)> = cons.iter().flat_map(|c| c.squares.iter().map(move |s| (*s, c.stake))).collect();
+        for m in &legal {
+            let u = m.to_uci(CastlingMode::Standard).to_string();
+            let mut q = root.clone(); q.play_unchecked(m);
+            let att = q.board().attacks_from(m.to());
+            let mut w = 0;
+            for (s, st) in &all_sq { if m.from() == Some(*s) || m.to() == *s || att.contains(*s) { w += st; } }
+            if q.is_check() { w += 5; }
+            if q.is_checkmate() { w += 1000; }              // a mate in one is a rule of the game, not learned                     // a check pokes the king
+            if w > 0 { *score.entry(u).or_insert(0) += w; }
+        }
+        let quiet = cons.iter().all(|c| c.hi == 0 && c.lo == 0 && !c.deflect) && opps.is_empty() && best_root[ua as usize] <= 0;
+        let nothing_threatened = cons.iter().all(|c| c.hi <= 0) ;
+        let mut cand_ucis: Vec<(String, i64)> = score.into_iter().collect();
+        cand_ucis.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        let default_mode = nothing_threatened && opps.is_empty() && root_cands.iter().all(|c| c.actor != ua || c.lo <= 0);
+        if default_mode {
+            // the opening default: the tie-break rule's best moves first, else every legal move
+            let mut all: Vec<(String, i64)> = legal.iter().map(|m| { let u = m.to_uci(CastlingMode::Standard).to_string(); let b = bonus.get(&u).copied().unwrap_or(0.0); (u, (b * 10.0) as i64) }).collect();
+            let top = all.iter().map(|x| x.1).max().unwrap_or(0);
+            all.retain(|x| x.1 == top);
+            all.sort_by(|a, b| a.0.cmp(&b.0));
+            cand_ucis = all;
+        }
+        let generated: Vec<String> = cand_ucis.iter().map(|x| x.0.clone()).collect();
+        cand_ucis.truncate(max_cand);
+        let tscore = self.trade_score();
+        let mut rows: Vec<Value> = vec![];
+        struct Row { uci: String, san: String, lo: i64, hi: i64, tsc: i64, opened: i64, against: i64, risk: i64, meets: Vec<String>, proven: bool, trades: bool }
+        let mut results: Vec<Row> = vec![];
+        let saved_cands = self.cands.clone();
+        for (u, _) in &cand_ucis {
+            let Ok(um) = u.parse::<shakmaty::uci::UciMove>() else { continue };
+            let Ok(m) = um.to_move(&root) else { continue };
+            let san = crate::plan::san(&root, u);
+            let g = gain_of(&m);
+            let trades = m.capture() == Some(Role::Queen);
+            let (from, to) = (m.from(), m.to());
+            let snap = self.enter(&m);
+            // the loop on the position after the move, with the budget of the stake
+            let budget = (24 + 4 * cand_ucis.iter().find(|x| &x.0 == u).map_or(0, |x| x.1).min(9)).min(questions as i64) as u32;
+            let _ = self.run_chain(budget);
+            let after = self.ag.chains.clone();
+            let opp = !us;
+            let opp_sure = self.ag.best[oa as usize].max(0);
+            // what the other side can surely or statically get: SAFE at the root of the position, the assessed pokes, the CONFIRMED deflections and uncoverings; what the exact
+            // solver did not confirm (a deflection, a shield that moves) is the candidate's RISK, kept apart (a tie-break), never subtracted
+            let at_root = |r: &crate::agenda::ChainRec| !r.args.iter().any(|a| a.starts_with('@'));
+            let opp_maybe = after.iter().filter(|r| r.actor == oa).map(|r| match r.kind.as_str() {
+                "SAFE" if at_root(r) => r.value.map_or(0, |v| v.1),
+                "ASSESS" => r.value.map_or(0, |v| v.1),
+                "DEFLECT" | "UNCOVER" => r.value.map_or(0, |v| v.0),
+                _ => 0 }).max().unwrap_or(0).max(opp_sure);
+            let risk = after.iter().filter(|r| r.actor == oa && matches!(r.kind.as_str(), "DEFLECT" | "UNCOVER")).map(|r| r.value.map_or(0, |v| v.1)).max().unwrap_or(0);
+            let opened = after.iter().filter(|r| r.kind == "POKE" && r.actor == ua).count() as i64;
+            // the static stand-pat of the side that must answer: it fixes one problem, the rest is lost
+            self.lean_mode = true; self.deep = true;
+            let sp = if self.pos.is_checkmate() { (-MATE, -MATE) } else if self.pos.legal_moves().is_empty() { (0, 0) } else if self.pos.is_check() { self.check_value() } else { self.stand_pat() };
+            let mut lo = g - sp.1.max(opp_maybe);
+            let mut hi = g - sp.0.max(opp_sure);
+            if self.pos.is_checkmate() { lo = MATE; hi = MATE; }
+            hi = hi.max(lo);
+            // the root chain's assessment of this very move (the exact solver confirmed a forced gain) is a sound lower bound
+            let mut proven = false;
+            if let Some(rc) = root_cands.iter().find(|c| &c.uci == u && c.actor == ua) { if rc.lo >= 1 && rc.lo > lo { lo = rc.lo; proven = true; hi = hi.max(rc.hi); } }
+            // which constraints it meets
+            let mut meets = vec![];
+            for c in &cons {
+                if c.stake <= 0 { continue; }
+                let t2 = c.target.map(|t| if from == Some(t) { to } else { t });
+                let met = if c.deflect {
+                    !after.iter().any(|r| r.actor == oa && r.value.map_or(false, |v| v.1 >= 1) && matches!(r.kind.as_str(), "DEFLECT" | "ASSESS" | "UNCOVER") && t2.map_or(false, |t| r.text.contains(&t.to_string()) || r.answer.contains(&t.to_string())))
+                } else {
+                    t2.map_or(false, |t| from == Some(c.target.unwrap_or(t)) || !attacked(self.pos.board(), t, opp) || c.squares.get(1) == Some(&to))
+                };
+                if met { let name = c.text.split(':').next().unwrap_or(""); let name = name.split(" is attacked").next().unwrap_or(name); let nm = if c.deflect { name.to_string() } else { format!("{name} attacked") }; if !meets.iter().any(|x: &String| x.starts_with(&nm)) { meets.push(format!("{nm} ({})", c.stake)); } }
+            }
+            self.leave(snap);
+            let tsc = if trades { (tscore.unwrap_or(0.0) * 1000.0) as i64 } else { 0 };
+            results.push(Row { uci: u.clone(), san, lo, hi, tsc, opened, against: opp_maybe, risk, meets, proven, trades });
+        }
+        self.cands = saved_cands;
+        self.ag_on = false;
+        // THE EXACT SOLVER CONFIRMS (never finds) over the candidates at the root: the gain each forces within three moves, all at once (one call per size)
+        {
+            let fen = shakmaty::fen::Fen::from_position(root.clone(), shakmaty::EnPassantMode::Legal).to_string();
+            crate::goals::solver_nodes_reset();
+            let mut v = 1;
+            while v <= 20 {
+                let res = crate::goals::forced_moves(fen.clone(), v, 3, 300_000);
+                let mut any = false;
+                for r in results.iter_mut() {
+                    if res.iter().any(|x| x.0 == r.uci && x.1 == "forced") { any = true; if v > r.lo.max(0) || !r.proven { r.lo = r.lo.max(v); r.hi = r.hi.max(v); r.proven = true; } }
+                }
+                if !any { break; }
+                v += 1;
+            }
+            // a mate is a gain no material reaches
+            let res = crate::goals::forced_moves(fen.clone(), 100, 3, 300_000);
+            for r in results.iter_mut() { if res.iter().any(|x| x.0 == r.uci && x.1 == "forced") { r.lo = MATE; r.hi = MATE; r.proven = true; } }
+            self.solver_calls += 1;
+        }
+        // ranking: what it surely gets, then the hopeful end, then (equal) the table's reading of a queen trade, then the unconfirmed risk; in the default mode the opening principles first, then the
+        // opportunities it opens at the smallest stake against us
+        results.sort_by(|a, b| if default_mode {
+            let (ba, bb) = (bonus.get(&a.uci).copied().unwrap_or(0.0), bonus.get(&b.uci).copied().unwrap_or(0.0));
+            bb.partial_cmp(&ba).unwrap().then(b.lo.cmp(&a.lo)).then(b.opened.cmp(&a.opened)).then(a.against.cmp(&b.against)).then(a.uci.cmp(&b.uci))
+        } else {
+            b.lo.cmp(&a.lo).then(b.hi.cmp(&a.hi)).then(b.tsc.cmp(&a.tsc)).then(a.risk.cmp(&b.risk)).then(b.meets.len().cmp(&a.meets.len())).then(a.uci.cmp(&b.uci))
+        });
+        let mut lines: Vec<String> = vec![format!("DECISION BY THE CHAIN for {} (ANALYST_PLAN 40.4: constraints on the move, opportunities, candidates each checked by running the loop after it)", who(us))];
+        lines.push(format!("CONSTRAINTS on {}'s move ({}; the biggest stakes first):", who(us), cons.len()));
+        for c in cons.iter().take(8) { lines.push(format!("  [{}] {}", c.stake, c.text)); }
+        lines.push(format!("OPPORTUNITIES for {} ({}):", who(us), opps.len()));
+        for o in opps.iter().take(8) { lines.push(format!("  [{}] {}", o.stake, o.text)); }
+        if default_mode { lines.push(format!("Nothing is threatened and nothing is to be won: the opening default -- the tie-break principles' best moves, then the move that opens the most opportunities ({} pokes seen at the root) at the smallest stake against us.", pokes_n)); }
+        lines.push(format!("CANDIDATES ({} checked){}:", results.len(), tscore.map_or(String::new(), |t| format!("; a queen capture carries the table's {:+.3}", t))));
+        for r in &results {
+            lines.push(format!("  {}: worth {}..{}{} (what the other side can still get: up to {}; unconfirmed risk {}; opens {} pokes for us){}", r.san, r.lo, r.hi, if r.trades { " [trades queens]" } else { "" }, r.against, r.risk, r.opened,
+                               if r.meets.is_empty() { String::new() } else { format!("; meets {}", r.meets.join(", ")) }));
+        }
+        let best = results.first();
+        let (mv, san, lo, hi, status) = match best { Some(b) => (b.uci.clone(), b.san.clone(), b.lo, b.hi, if b.proven { "PROVEN (solver-confirmed forced gain)" } else { "ESTIMATED" }), None => (String::new(), String::new(), 0, 0, "NONE") };
+        if let Some(b) = best {
+            lines.push(format!("DECISION: {} worth {}..{} to {}: {}. Why: {}", b.san, b.lo, b.hi, who(us), status,
+                               if b.meets.is_empty() { if default_mode { "the opening default".to_string() } else { "it meets no listed constraint and has the best interval".to_string() } } else { format!("it meets {}", b.meets.join(", ")) }));
+        }
+        for r in &results { rows.push(json!({"uci": r.uci, "san": r.san, "lo": r.lo, "hi": r.hi, "meets": r.meets, "against": r.against, "opened": r.opened})); }
+        json!({"move": mv, "san": san, "interval": [lo, hi], "status": status, "lines": lines, "generated": generated, "legal": legal.len(), "questions": self.ag.spent, "facts": self.facts_n, "candidates": rows, "default": default_mode, "quiet": quiet,
+               "constraints": cons.iter().map(|c| json!({"text": c.text, "stake": c.stake})).collect::<Vec<_>>(), "opportunities": opps.iter().map(|c| json!({"text": c.text, "stake": c.stake})).collect::<Vec<_>>()})
     }
 }

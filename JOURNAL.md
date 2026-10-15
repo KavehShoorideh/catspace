@@ -30872,3 +30872,24 @@ solver forces 5 within 3 moves (1023681 nodes) -- above the static upper bound 4
 default loop (Ra4 0..0 966 positions; Qxa8 10..10 PROVEN 61; Qg5 3..3 PROVEN 651); the decision is still read off the B* stop (phase 2 moves it onto the chain). Tests: tests/test_agenda.py
 (11) and the five older ledger/threat files (37 passed). Not as the plan wrote it: REACH finds Qg5 for Rh4 (so "unreachable" does not print), Bb2 is not "then lost (3)" on move 30
 itself, and Qc4 is risky rather than rejected -- each is what the words answer on that board.
+
+## 2026-10-15 01:00 PDT — the event loop, phase 2 (ANALYST_PLAN 40.4): the decision read off the chain; the puzzle harness on the new loop
+
+Built (one run each, directional; numbers from printed OBS lines). The decision no longer comes from the B* stop: the chain's findings against the mover are CONSTRAINTS (each with its
+stake), those for it OPPORTUNITIES; the candidates are the moves that cash an opportunity, give check, or touch a constraint's squares (from, to, or attacked after the move); EACH candidate is pushed
+and the loop is run on the position after it (budget from its stake); its value is the gain less what the other side can still get -- the static stand-pat, the assessed pokes, the
+CONFIRMED deflections -- as an interval; the exact solver then confirms the gain each candidate forces within three moves (one call per size, all candidates at once, a mate as a gain no
+material reaches). Ranked by the sure gain, the hopeful end, then the transition table's reading of a queen capture, then the UNCONFIRMED risk (a deflection or a moving shield the solver did not
+confirm is listed and kept apart, never subtracted), then the constraints met. Nothing threatened and nothing to win: the opening default -- the `opening` tie-break principles (castle > develop
+> develop centrally > a centre pawn > steady; the module deleted in 770f5a62 was restored from 1e2bc782 as discovery/opening_rule.py), then the move that opens the most pokes for us at the
+smallest stake against us. The old B* path stays behind --loop script (trace and ledger_puzzles). `ledger decide "<FEN>"` prints the constraints, opportunities, candidates (what each meets) and the decision.
+THE TRADE'S STAKE: the table's score difference is not in pawns and no cp-to-pawn mapping for it exists anywhere in the code (grep), so it stays in its own unit (TODO Kaveh) and enters
+only as the third key. The cell read: the player's own games (kaveh cells, the material bin, pooled over the evaluation bands), else the Lichess bands pooled -- a choice of mine, a knob: on
+move 30 White is behind -4..-2 and the kaveh cells give -0.094, the Lichess bands pooled gave +0.009 in phase 1.
+Printed: move 30 -> Qd7 0..0 ESTIMATED, meets Qg4 attacked (9) and "Re2 must not be deflectable (3)" (estimated, not solver-confirmed); Qxg6 0..0 [trades queens] and Qc4 -5..0 were checked and lose to it
+(Qxg6 on the table's -0.094, Qc4 on the sure gain). Nxc6 -> 5..5 PROVEN (the pawn and a rook, forced within 3 moves). The three trace positions keep their answers (Ra4 0..0; Qxa8 9..9 PROVEN, was 10..10 by the
+B* stop; Qg5 4..4 PROVEN, was 3..3); the 15.Ne5 test and the five older files pass. Puzzles (dev, the first 60, one run): the event loop 44 of 60 (73%), the script 33 of 60 (55%) on the same 60;
+both right on 30, the loop only on 14, the script only on 3. Miss classes of the loop (16): answer evaluated and ranked below the chosen move 13; a mate beyond what three moves reach (no word) 1;
+no condition made the answer a candidate (event missing) 1; the candidate cap cut it (question never opened) 1; lemma class: none yet -- every chain is run from scratch (phase 3).
+Faults found in the first 20 chains and fixed (general): ctx SAFE findings raised the best known value; unconfirmed static deflections were subtracted from the value (13 for a rook move the solver does not
+confirm); the trade penalty outranked the interval's upper end; checks and mates in one were not candidates (a mate in one is a rule of the game).
