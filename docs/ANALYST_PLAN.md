@@ -1341,3 +1341,14 @@ Kaveh, after the first window page (2026-10-15): "the windows are too many. we n
 IMPORTANT observation: at the end of your turn the material balance has shifted compared to the end of your last turn (kind `shift`, signed delta, through
 the adapter's `balance`). Even trades are no observation; a capture sequence counts once, by its net, at the turn where it settled. Only important
 observables (shift, mate) get windows.
+
+### 41.8 The self-mining loop (Kaveh 2026-10-15, after the window board)
+
+"I don't want it to use the lemmas we already know and the language you already know to explain the position. I need it to learn: propose, verify,
+and if it doesn't work, propose something different until you can explain it and it's provable in Lean. We want it to mine itself." Phase B is this
+loop, not an explanation by the existing chain. Allowed at the start: the base vocabulary (words with Lean definitions), the Lean theorems already
+proved as proof material (the exchange law), the exact solver as a pre-check, the teacher to label branches. Not allowed: the hand-written frames and
+rules, the chunked store, the defence frame, learned priorities. Loop on one window: the target (the played move loses >= delta, the avoiding moves do
+not) -> propose small premises over the words that separate SAME from AVOIDED on every branch -> verify (solver on the concrete positions, then a Lean
+statement and a proof attempt composing local theorems) -> fail -> propose differently -> done when a proved lemma covers the window. The hard part:
+the composing tactic in Lean (a fork = two exchanges + a tempo); it does not exist. First target: the rook window of sHa6yUKv (17.Qg4? Qxc3+ fork).
