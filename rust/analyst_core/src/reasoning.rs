@@ -1688,7 +1688,8 @@ impl ReasoningLedger {
             let (tn, fnm) = (self.nm(r.to()), self.nm(r.from().unwrap()));
             let (loss, _) = self.fact(&format!("(after {fnm} {tn} (see {tn}))"));
             let cap = gain_of(r);
-            hi = hi.max(cap); lo = lo.max(cap - loss);
+            // the exchange is the law: a reply that takes the checker and is then taken back has won nothing (01vys: Qd5+ read as -9..0 when hi ignored the recapture)
+            hi = hi.max(cap - loss); lo = lo.max(cap - loss);
         }
         if replies.is_empty() { return (0, 0); }
         let (mut lo, mut hi) = (lo.max(-MATE), hi.max(lo).max(0));

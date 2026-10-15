@@ -768,7 +768,7 @@ impl ReasoningLedger {
         cand_ucis.truncate(max_cand);
         let tscore = self.trade_score();
         let mut rows: Vec<Value> = vec![];
-        struct Row { depth: u32, chain_q: u32, uci: String, san: String, lo: i64, hi: i64, tsc: i64, opened: i64, against: i64, risk: i64, meets: Vec<String>, proven: bool, trades: bool }
+        struct Row { depth: u32, chain_q: u32, uci: String, san: String, lo: i64, hi: i64, tsc: i64, opened: i64, against: i64, risk: i64, meets: Vec<String>, proven: bool, trades: bool, proof_plies: u32, counter: i64, counter_plies: u32, gain: i64, hi0: i64 }
         let mut results: Vec<Row> = vec![];
         let saved_cands = self.cands.clone();
         for (u, _) in &cand_ucis {
@@ -820,7 +820,7 @@ impl ReasoningLedger {
             }
             self.leave(snap);
             let tsc = if trades { (tscore.unwrap_or(0.0) * 1000.0) as i64 } else { 0 };
-            results.push(Row { depth: after.iter().map(|r| r.depth + 1).max().unwrap_or(0), chain_q: self.ag.spent, uci: u.clone(), san, lo, hi, tsc, opened, against: opp_maybe, risk, meets, proven, trades });
+            results.push(Row { depth: after.iter().map(|r| r.depth + 1).max().unwrap_or(0), chain_q: self.ag.spent, uci: u.clone(), san, lo, hi, tsc, opened, against: opp_maybe, risk, meets, proven, trades, proof_plies: 0, counter: 0, counter_plies: 0, gain: g, hi0: hi });
         }
         self.cands = saved_cands;
         self.ag_on = false;
@@ -833,15 +833,56 @@ impl ReasoningLedger {
                 let res = crate::goals::forced_moves(fen.clone(), v, 3, 300_000);
                 let mut any = false;
                 for r in results.iter_mut() {
-                    if res.iter().any(|x| x.0 == r.uci && x.1 == "forced") { any = true; if v > r.lo.max(0) || !r.proven { r.lo = r.lo.max(v); r.hi = r.hi.max(v); r.proven = true; } }
+                    if let Some(x) = res.iter().find(|x| x.0 == r.uci && x.1 == "forced") { any = true; if v > r.lo.max(0) || !r.proven { r.lo = r.lo.max(v); r.hi = r.hi.max(v); r.proven = true; r.proof_plies = 2 * x.2 - 1; } }
                 }
                 if !any { break; }
                 v += 1;
             }
             // a mate is a gain no material reaches
             let res = crate::goals::forced_moves(fen.clone(), 100, 3, 300_000);
-            for r in results.iter_mut() { if res.iter().any(|x| x.0 == r.uci && x.1 == "forced") { r.lo = MATE; r.hi = MATE; r.proven = true; } }
+            for r in results.iter_mut() { if res.iter().any(|x| x.0 == r.uci && x.1 == "forced") { r.lo = MATE; r.hi = MATE; r.proven = true; r.proof_plies = 99; } }
             self.solver_calls += 1;
+            // THE TURN-AROUND: after each candidate, what the OTHER side can force within three moves is a sure loss for us, unless our own proof already reaches further
+            // (a proof over more plies has seen their counter and what follows it; 0CUWR: Nc5 read 1..3 while Nxa3 forces 2 back over more plies than the proof)
+            for r in results.iter_mut() {
+                if r.lo >= MATE { continue; }
+                let Ok(um) = r.uci.parse::<shakmaty::uci::UciMove>() else { continue };
+                let Ok(m) = um.to_move(&root) else { continue };
+                let q = crate::after(&root, &m);
+                if q.legal_moves().is_empty() { continue; }
+                let qfen = shakmaty::fen::Fen::from_position(q.clone(), shakmaty::EnPassantMode::Legal).to_string();
+                let (mut counter, mut plies, mut v) = (0i64, 0u32, 1i64);
+                while v <= 20 {
+                    let res = crate::goals::forced_moves(qfen.clone(), v, 3, 300_000);
+                    self.solver_calls += 1;
+                    match res.iter().filter(|x| x.1 == "forced").map(|x| x.2).min() { Some(n) => { counter = v; plies = 2 * n; v += 1; } None => break }
+                }
+                if counter == 0 { if crate::goals::forced_moves(qfen.clone(), 100, 3, 300_000).iter().any(|x| x.1 == "forced") { counter = MATE; plies = 99; } }
+                if counter > 0 && plies > r.proof_plies {
+                    let cap = r.gain - counter;
+                    r.counter = counter; r.counter_plies = plies;
+                    r.lo = r.lo.min(cap); r.hi = r.hi.min(cap.max(r.lo)); r.proven = false;
+                }
+            }
+            // THE HORIZON IS NOT A NUMBER (Kaveh: "keep going until we see something bigger, then turn around"): the candidates still in the running (their hopeful end reaches the best
+            // sure gain) are checked one move deeper, under the node budget; a budget hit leaves them as they were (0CUWR: Kxc2 is forced only at the fourth move)
+            if !default_mode && self.deadline.map_or(true, |d| std::time::Instant::now() < d) {
+                let best_lo = results.iter().map(|r| r.lo).max().unwrap_or(0);
+                let live: Vec<String> = results.iter().filter(|r| r.hi.max(r.hi0) >= best_lo && r.lo < MATE).map(|r| r.uci.clone()).collect();   // the hopeful end BEFORE the counter: a counter is only as deep as three moves
+                if !live.is_empty() {
+                    let mut v = best_lo.max(1);                                       // a forced gain is monotone in the size: only sizes that reach the best known matter
+                    while v <= 20 {
+                        let res = crate::goals::forced_moves(fen.clone(), v, 4, 1_000_000);
+                        let mut any = false;
+                        for r in results.iter_mut().filter(|r| live.contains(&r.uci)) {
+                            if let Some(x) = res.iter().find(|x| x.0 == r.uci && x.1 == "forced") { any = true; let plies = 2 * x.2 - 1; if r.counter > 0 && plies < r.counter_plies { continue; }   /* a proof over fewer plies than their counter has not seen it */ if r.counter > 0 { r.counter = 0; r.hi = r.hi.max(r.gain); } if v > r.lo || !r.proven { r.lo = r.lo.max(v); r.hi = r.hi.max(v); r.proven = true; r.proof_plies = r.proof_plies.max(plies); } }
+                        }
+                        self.solver_calls += 1;
+                        if !any { break; }
+                        v += 1;
+                    }
+                }
+            }
         }
         // ranking: what it surely gets, then the hopeful end, then (equal) the table's reading of a queen trade, then the unconfirmed risk; in the default mode the opening principles first, then the
         // opportunities it opens at the smallest stake against us
@@ -859,8 +900,9 @@ impl ReasoningLedger {
         if default_mode { lines.push(format!("Nothing is threatened and nothing is to be won: the opening default -- the tie-break principles' best moves, then the move that opens the most opportunities ({} pokes seen at the root) at the smallest stake against us.", pokes_n)); }
         lines.push(format!("CANDIDATES ({} checked){}:", results.len(), tscore.map_or(String::new(), |t| format!("; a queen capture carries the table's {:+.3}", t))));
         for r in &results {
-            lines.push(format!("  {}: worth {}..{}{} (what the other side can still get: up to {}; unconfirmed risk {}; opens {} pokes for us){}", r.san, r.lo, r.hi, if r.trades { " [trades queens]" } else { "" }, r.against, r.risk, r.opened,
-                               if r.meets.is_empty() { String::new() } else { format!("; meets {}", r.meets.join(", ")) }));
+            lines.push(format!("  {}: worth {}..{}{} (what the other side can still get: up to {}; unconfirmed risk {}; opens {} pokes for us){}{}", r.san, r.lo, r.hi, if r.trades { " [trades queens]" } else { "" }, r.against, r.risk, r.opened,
+                               if r.meets.is_empty() { String::new() } else { format!("; meets {}", r.meets.join(", ")) },
+                               if r.counter > 0 { format!("; TURN-AROUND: the other side then forces {} back ({} plies, further than our proof's {})", if r.counter >= MATE { "mate".to_string() } else { r.counter.to_string() }, r.counter_plies, r.proof_plies) } else { String::new() }));
         }
         let best = results.first();
         let (mv, san, lo, hi, status) = match best { Some(b) => (b.uci.clone(), b.san.clone(), b.lo, b.hi, if self.cut { "ESTIMATED (cut by the time limit)" } else if b.proven { "PROVEN (solver-confirmed forced gain)" } else { "ESTIMATED" }), None => (String::new(), String::new(), 0, 0, "NONE") };
@@ -868,7 +910,7 @@ impl ReasoningLedger {
             lines.push(format!("DECISION: {} worth {}..{} to {}: {}. Why: {}", b.san, b.lo, b.hi, who(us), status,
                                if b.meets.is_empty() { if default_mode { "the opening default".to_string() } else { "it meets no listed constraint and has the best interval".to_string() } } else { format!("it meets {}", b.meets.join(", ")) }));
         }
-        for r in &results { rows.push(json!({"uci": r.uci, "san": r.san, "lo": r.lo, "hi": r.hi, "meets": r.meets, "against": r.against, "opened": r.opened, "depth": r.depth, "chain_q": r.chain_q})); }
+        for r in &results { rows.push(json!({"uci": r.uci, "san": r.san, "lo": r.lo, "hi": r.hi, "meets": r.meets, "against": r.against, "opened": r.opened, "depth": r.depth, "chain_q": r.chain_q, "counter": r.counter, "proof_plies": r.proof_plies})); }
         json!({"move": mv, "san": san, "interval": [lo, hi], "status": status, "lines": lines, "generated": generated, "cut": self.cut, "tags": tags.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<HashMap<_, _>>(), "legal": legal.len(), "questions": self.lem.q_total, "lemma": self.lem.report(), "facts": self.facts_n, "candidates": rows, "default": default_mode, "quiet": quiet,
                "constraints": cons.iter().map(|c| json!({"text": c.text, "stake": c.stake})).collect::<Vec<_>>(), "opportunities": opps.iter().map(|c| json!({"text": c.text, "stake": c.stake})).collect::<Vec<_>>()})
     }

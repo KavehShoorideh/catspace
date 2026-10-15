@@ -357,3 +357,15 @@ def test_in_check_every_evasion_is_a_candidate_and_the_chain_decides():
     assert d["move"] and d["status"] != "NONE"
     assert all("evasion" in d["tags"][c["uci"]] for c in d["candidates"])
     assert len(d["generated"]) == 3                                                               # Kd4, Kd2, Ke2: the legal moves
+
+
+def test_the_value_of_a_line_reaches_past_three_moves_and_turns_around():
+    # 0CUWR (Lichess): Kxc2 wins only at the fourth move (Rxb3 Bb4! traps the rook); Nc5 read 1..3 "proven" while Nxa3 forces 2 back over more plies than the proof
+    d = LG.decide("1r4k1/2pb1ppp/prp5/8/2P3PP/PN3P2/2nB4/2KR3R w - - 0 22")
+    rows = {c["uci"]: c for c in d["candidates"]}
+    assert d["move"] == "c1c2" and rows["c1c2"]["lo"] >= 2 and rows["c1c2"]["proof_plies"] >= 7
+    assert rows["b3c5"]["counter"] == 2 and rows["b3c5"]["hi"] <= 0
+    # 01vys: in check, a reply that takes the checker and is taken back has won nothing (Qd5+ read -9..0)
+    d = LG.decide("8/8/3Qp1k1/5qp1/8/7P/5PK1/8 b - - 14 94")
+    q = next(c for c in d["candidates"] if c["uci"] == "f5d5")
+    assert (q["lo"], q["hi"]) == (0, 0)

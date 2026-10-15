@@ -30978,3 +30978,32 @@ of those, so the list was empty. Fix (generic, a rule of the game): in check eve
 Test added (test_agenda: in check every evasion is a candidate). OBS on the game: 82 decisions, 32 equal to the move played, 26 equal to Stockfish d14's
 best (directional, one game). The page (Step Through the Game, v5) now shows per ply the chain's move, its constraints and opportunities with stakes,
 the candidates checked and the chain step by step, beside the old script's choice.
+
+### THE VALUE OF A LINE: THREE PUZZLES WALKED (2026-10-15 09:55 PDT)
+
+Kaveh, morning: "Are we reasoning in order yet? I feel like we keep circling the design." Answer given: the order (stake agenda, constraints then
+opportunities, open only above the best known) is in code; the night's misses say the VALUE of a line is wrong (23 of 31 "answer wrong"), so the design is
+frozen at plan 40 and the three "found the move, valued it wrong" puzzles were walked one by one. Stockfish d20 the checker only.
+
+01vys (8/8/3Qp1k1/5qp1/8/7P/5PK1/8 b): the puzzle is Qd5+, a queen trade into a won pawn ending. The chain read Qd5+ as -9..0: the value of a position in
+check took a reply's capture WITHOUT the recapture as its hopeful end (check_value: hi = cap, lo = cap - loss). The exchange is the law; fixed (hi = cap - loss).
+Now 0..0 and chosen on a tie. HONEST: the +5 (the pawn ending is won) is not in the vocabulary; no lemma says it. A trade that is "neutral" by the table is
+the right reading of what we know.
+
+0CUWR (1r4k1/2pb1ppp/prp5/8/2P3PP/PN3P2/2nB4/2KR3R w): the puzzle is Kxc2; after Rxb3 Bb4! traps the rook, the gain comes on the FOURTH move. The chain's
+solver stopped at three moves (a numbered limit) and chose Nc5 "1..3 PROVEN", where Nxa3 forces 2 back for Black; the solver was only ever run from OUR side.
+Two generic changes to the value of a candidate (chain.rs decide_by_chain):
+  THE TURN-AROUND (Kaveh: "keep going until we see something bigger, then turn around"): after each candidate the solver runs from the OTHER side (three
+  moves); a forced counter caps the candidate at gain - counter, unless our own proof reaches over more plies (it has seen the counter and what follows).
+  THE HORIZON IS NOT A NUMBER: the candidates still in the running (hopeful end >= the best sure gain) are checked one move deeper (four), from the best
+  known size up, under the node budget; a budget hit leaves them as they were. A deeper proof undoes a shorter counter.
+  OBS: Kxc2 now 2..3 PROVEN (proof over 7 plies) and chosen; Nc5 -2..-2 "the other side then forces 2 back (6 plies)". The fork position still Nxc6 5..5.
+
+02XVK (r2q1rk1/4bp2/p5p1/1ppP3Q/2n5/2N1P3/P4PP1/BBR1K3 w): the puzzle is Bxg6!, a sacrifice: fxg6 Qxg6+ Kh8 Ne4+ (discovered check from Ba1) wins at the
+FIFTH move. The chain reads Bxg6 as -1 (a bishop for two pawns by the exchange). The solver from the root at five moves hits the budget ("unknown", 14 s);
+from the position after fxg6 it proves Qxg6+ forces 3 within four moves in 0.3 s. STILL A MISS: what is needed is the line rolled forward through the
+opponent's forced reply (the recapture, or the only evasion) and the chain re-asked there, with the decline valued too (the piece's MOBILITY on its landing
+square). Not built: the decline branch needs a sound value and that is a design question for Kaveh, not a patch.
+
+Cost: a decision went from ~2 s to 8-25 s on these positions (the deeper solver and 16 turn-arounds). Tests: test_agenda 2 new (the value reaches past
+three moves and turns around; in check a trade wins nothing); 33 agenda+threat tests pass. The dev batch on the new value: below.
