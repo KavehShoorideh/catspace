@@ -215,6 +215,7 @@ def make_terms(objs: list, pairs: list, line_pairs: list | None = None) -> list:
               ("dist", "W", x), ("dist", "L", x)]
     for x in kings:
         T += [("attackers", x), ("defenders", x), ("count", ("mobility", x)), ("attackable", x, "1")]
+    T += ["balance", "material_us", "material_them"]       # the root's balance: a gain is read against it (the minimax tail reads the absolute balance)
     for f, t in pairs:
         T += [legal(f, t), ("count", ("and", ("between", f, t), ("or", "ours", "theirs")))]
         for x in objs + kings:         # the board after the move, read at every object: the check, the piece newly attacked, the exchange there

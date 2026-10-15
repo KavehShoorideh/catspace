@@ -426,4 +426,38 @@ theorem alive_of_material (q : Position) (c : Color) (h : materialOf q c ≥ 4) 
   have := material_le_of_deadDraw q c hcon
   omega
 
+/-! ## the leaf from `balance`, and our step through `most` -/
+
+/-- THE LEAF IN ONE NUMBER: on our turn, `balance` at least `64 + base + v` with `base + v ≥ 4` is the gain goal (the material clears the
+gain, and that much material is no dead draw). -/
+theorem gainGoal_of_balance (c : Color) (base v : Int) (q : Position) (hq : q.turn = c) (k : Nat) (hk : (k : Int) ≥ base + v) (h4 : k ≥ 4)
+    (hb : balanceOf q c ≥ 64 + k) : gainGoal c base v q = true := by
+  unfold balanceOf at hb
+  have hm : materialOf q c ≥ materialOf q (Color.opposite c) + k := by omega
+  apply gainGoal_of_material c base v q hq
+  · omega
+  · exact alive_of_material q c (by omega)
+
+/-- OUR STEP THROUGH `most`: on our turn, `most F` at least `k ≥ 1` gives a move after which `F` reads at least `k`; when every such move
+forces the goal within `n`, it is forced within `n + 1`. -/
+theorem step_most (c : Color) (g : Position → Bool) (p : Position) (n : Nat) (hc : p.turn = c) (F : Position → Nat) (k : Nat) (hk : k ≥ 1)
+    (h : mostOver p F ≥ k) (H : ∀ m ∈ legalMoves p, F (applyMove p m) ≥ k → Ideas.forcedWithinB c g (applyMove p m) n = true) :
+    Ideas.forcedWithinB c g p (n + 1) = true := by
+  obtain ⟨m, hm, hF⟩ := most_witness p F k hk h
+  exact step_ours c g p n hc m hm (H m hm hF)
+
+/-- THE MINIMAX TAIL, two plies: on our turn, `most (least balance)` at least `64 + base + v` (some move of ours, then whatever they
+reply, the balance clears the gain) forces the goal within two plies. -/
+theorem tail_two (c : Color) (base v : Int) (p : Position) (hc : p.turn = c) (k : Nat) (hk : (k : Int) ≥ base + v) (h4 : k ≥ 4)
+    (h : mostOver p (fun q => leastOver q (fun r => balanceOf r c)) ≥ 64 + k) :
+    Ideas.forcedWithinB c (gainGoal c base v) p 2 = true := by
+  apply step_most c _ p 1 hc _ (64 + k) (by omega) h
+  intro m hm hF
+  have hF' : leastOver (applyMove p m) (fun r => balanceOf r c) ≥ 64 + k := hF
+  apply step_least c _ (applyMove p m) 0 (turn_after_one p c hc m) _ (by omega : leastOver (applyMove p m) (fun r => balanceOf r c) ≥ 1)
+  intro r hr
+  apply leaf
+  have hb : balanceOf (applyMove (applyMove p m) r) c ≥ 64 + k := least_floor _ _ (64 + k) hF' r hr
+  exact gainGoal_of_balance c base v _ (turn_after_two p c hc m r) k hk h4 hb
+
 end Ideas.TreeStep
