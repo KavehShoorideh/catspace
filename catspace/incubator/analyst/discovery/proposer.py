@@ -29,6 +29,7 @@ import chess
 from catspace.io import paths
 
 CLASSES = ("event missing", "question never opened", "answer wrong", "no surprise")
+LIMIT_S = 45 * 60                  # the whole round stops here, whatever is left
 MAX_EXTRA = 4                      # the candidates a proposed condition may add to one decision
 
 
@@ -179,17 +180,22 @@ def propose_conditions(res: list, recs: list, top: int = 3, log=print) -> list:
             if fixed[t] >= 1 and cost[t] <= MAX_EXTRA:
                 scored.append((-int(fixed[t]), float(cost[t]), V.size(V.parse(terms[t])), sign, terms[t]))
     scored.sort()
+    # EQUIVALENT RULES ARE ONE PROPOSAL: rules that select the same (puzzle, move) pairs on the dev batch change the same decisions; the shortest word stands for the set
     out = []
-    seen = set()
+    sigs = {}
+    n_equiv = 0
     for nf, cost, size, sign, term in scored:
-        key = (term, sign)
-        if key in seen:
+        t = terms.index(term)
+        sig = frozenset((i, mv) for i, (moves, D) in mats.items() for mv, d in zip(moves, D[:, t]) if d * sign >= 1)
+        if sig in sigs:
+            n_equiv += 1
             continue
-        seen.add(key)
+        sigs[sig] = term
         out.append(dict(kind="condition", term=term, sign=sign, fixes_dev=-nf, cost=round(cost, 2), gloss=_gloss(term)))
         if len(out) >= top:
             break
-    log(f"OBS proposer (i) conditions: {len(scored)} (word, direction) rules fix at least one dev surprise at a cost <= {MAX_EXTRA} new candidates per puzzle; the best {len(out)} proposed")
+    scored = scored[:0] + scored
+    log(f"OBS proposer (i) conditions: {len(scored)} (word, direction) rules fix at least one dev surprise at a cost <= {MAX_EXTRA} new candidates per puzzle; equivalent rules merged ({n_equiv} dropped as the same selection of moves); the best {len(out)} distinct proposed")
     for p in out:
         log(f"OBS   propose: candidates are the moves after which '{p['gloss']}' {'rose' if p['sign'] > 0 else 'fell'}  [{p['term']}] -- fixes {p['fixes_dev']} dev surprise(s), opens {p['cost']} new candidates per non-surprise puzzle")
     return out
@@ -291,7 +297,7 @@ def main(n: int = 60, promote: int = 5, log=print):
     frecs = surprise_report(fresh, "fresh", log)
     dev_c, fresh_c = correct_map(dev), correct_map(fresh)
     log(f"OBS baseline: dev {sum(dev_c.values())} of {len(dev_c)}, fresh {sum(fresh_c.values())} of {len(fresh_c)}")
-    proposals = propose_conditions(dev, recs, 3, log)
+    proposals = propose_conditions(dev, recs, 10, log)
     pri = propose_stakes(dev, recs, log)
     if pri:
         proposals.append(pri)
@@ -311,16 +317,27 @@ def main(n: int = 60, promote: int = 5, log=print):
             for p in proposals:
                 p.setdefault("loo", {})[tag] = dict(changed=changed, effect=None)
             if changed:
+                fens = {r["id"]: r["fen"] for r in base_res}
                 for p in proposals:
+                    ids = changed if p["kind"] == "priority" else [i for i in changed if rule_moves(fens[i], [dict(term=p["term"], sign=p["sign"])])]
+                    if not ids:
+                        continue
+                    if time.time() - t0 > LIMIT_S:
+                        log(f"OBS proposer: the {LIMIT_S // 60}-minute wall-clock limit reached; the proposals not yet attributed have no verdict")
+                        break
                     rest = [q for q in proposals if q is not p]
-                    r2 = run_set(tag, n, "on", store, prop_of(rest), only_ids=changed, promote=promote)
+                    r2 = run_set(tag, n, "on", store, prop_of(rest), only_ids=ids, promote=promote)
                     cm = correct_map(r2)
                     allc = correct_map(all_res)
-                    fixed = sorted(i for i in changed if allc.get(i) and not cm.get(i))          # right with it, wrong without it
-                    broke = sorted(i for i in changed if cm.get(i) and not allc.get(i))
+                    fixed = sorted(i for i in ids if allc.get(i) and not cm.get(i))          # right with it, wrong without it
+                    broke = sorted(i for i in ids if cm.get(i) and not allc.get(i))
                     p["loo"][tag]["effect"] = dict(fixed=fixed, new_misses=broke)
         for p in proposals:
             ef = {t: (p["loo"][t]["effect"] or dict(fixed=[], new_misses=[])) for t in ("dev", "fresh")}
+            if not p["loo"]["fresh"]["changed"] or p["loo"]["fresh"]["effect"] is None:
+                log(f"OBS ablation [{p['kind']}] {p.get('gloss') or json.dumps(p.get('tag_bonus'))}: changed no fresh decision (or not attributed in time) -> no verdict, not kept")
+                p["kept"] = False
+                continue
             p["kept"] = bool(ef["fresh"]["fixed"]) and not ef["fresh"]["new_misses"]
             name = p.get("gloss") or json.dumps(p.get("tag_bonus"))
             log(f"OBS ablation [{p['kind']}] {name}: dev: fixes {ef['dev']['fixed']}, new misses {ef['dev']['new_misses']} (of {len(p['loo']['dev']['changed'])} changed decisions); "
@@ -347,22 +364,13 @@ def main(n: int = 60, promote: int = 5, log=print):
         f"new misses {cf['new_misses']}")
     store_j = CL.load(solved_store)
     lemma_items = []
-    for lid in [k for k, _ in sorted(by_id.items(), key=lambda kv: -kv[1])[:3]]:
+    for lid in [k for k, _ in sorted(by_id.items(), key=lambda kv: -kv[1])[:10]]:
         e = next(x for x in store_j["lemmas"].values() if x["id"] == lid)
         pk = next(k for k, x in store_j["lemmas"].items() if x["id"] == lid)
-        where = [i for i, x in rep.items() if x.get("hit_by", {}).get(lid)]
-        tmp = paths.derived("chain_lemmas_ablate.json")
-        j = json.loads(json.dumps(store_j))
-        j["lemmas"][pk]["promoted"] = False
-        json.dump(j, open(tmp, "w"))
-        r4 = run_set("fresh", n, "on", tmp, None, only_ids=where, promote=promote)
-        c4, c3 = correct_map(r4), correct_map(f3)
         con_i = sum(1 for x in rep.values() for c in x["contradictions"] if c["premise"] == pk)
-        fixed = sorted(i for i in where if c3.get(i) and not c4.get(i)); broke = sorted(i for i in where if c4.get(i) and not c3.get(i))
-        item = dict(kind="lemma", id=lid, describe=CL.describe(e), premise=pk, fresh_hits=by_id[lid], puzzles=len(where), contradictions=con_i, fixed=fixed, new_misses=broke,
-                    kept=(by_id[lid] >= 1 and con_i == 0 and not broke))
+        item = dict(kind="lemma", id=lid, describe=CL.describe(e), premise=pk, fresh_hits=by_id[lid], contradictions=con_i, kept=(by_id[lid] >= 1 and con_i == 0 and not cf["new_misses"]))
         lemma_items.append(item)
-        log(f"OBS ablation [lemma] {item['describe']}: {by_id[lid]} fresh hits in {len(where)} puzzles, {con_i} contradictions; with it right where without it wrong: {fixed}; the reverse: {broke} -> {'KEPT' if item['kept'] else 'DROPPED'}")
+        log(f"OBS ablation [lemma] {item['describe']}: {by_id[lid]} fresh hits, {con_i} contradictions; fresh correct with the solved-puzzle lemmas {cf['new']}, with the dev store {cf['base']}, new misses {cf['new_misses']} -> {'KEPT' if item['kept'] else 'DROPPED'}")
     out = dict(dev={"correct": sum(dev_c.values()), "n": len(dev_c)}, fresh={"correct": sum(fresh_c.values()), "n": len(fresh_c)}, proposals=proposals, lemmas=lemma_items, wrong_answers=cases,
                kept=[p.get("gloss") or p.get("tag_bonus") for p in kept] + [x["describe"] for x in lemma_items if x["kept"]])
     json.dump(out, open(paths.derived("proposals.json"), "w"), indent=1, default=str)

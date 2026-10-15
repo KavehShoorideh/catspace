@@ -305,6 +305,45 @@ def material_events(game) -> tuple:
     return moves, boards, events
 
 
+def _walk_event(a, game, moves, boards, events, eng, W, sid, t0):
+    """THE GAME WALKED ON THE EVENT LOOP (ANALYST_PLAN 40, phase 5). At A (before the loser's last move) the chain decides for the loser; at B (after it) the chain decides for the winner: the
+    consequence was SEEN when the winner's actual first capture is among the moves the chain checked there with a sure gain (lo >= 1). Stockfish (depth --depth) is the checker only."""
+    import json
+    from catspace.io import paths
+    print(f"OBS WALK (event loop) {game.headers.get('Site')}: {len(moves)} plies, {len(events)} settled material changes")
+    for k in [int(x) for x in a.plies.split(",") if x != ""]:
+        if k >= len(boards) - 1:
+            continue
+        d = decide(boards[k].fen())
+        last = d["lines"][-1]
+        print(f"OBS PLY {k} ({boards[k].fullmove_number}{'.' if boards[k].turn else '...'} {boards[k].san(moves[k])} was played): the chain chose {d['san']} ({d['interval'][0]}..{d['interval'][1]}, {d['status'].split(' ')[0]}); "
+              f"opening default {'FIRED' if d['default'] else 'did not fire'}; {last[:230]}")
+    seen = 0
+    out = []
+    for n, e in enumerate(events, 1):
+        i = e["q"]
+        who = chess.COLOR_NAMES[e["loser"]]
+        A_fen, B_fen = boards[i].fen(), boards[i + 1].fen()
+        dA = decide(A_fen)
+        played = boards[i].san(moves[i])
+        actual_first = moves[e["win_first"]].uci()
+        onB = boards[e["win_first"]]
+        dB = decide(onB.fen())                                   # the winner to move where the first capture is played
+        row = next((c for c in dB["candidates"] if c["uci"] == actual_first), None)
+        hit = bool(row and row["lo"] >= 1)
+        seen += hit
+        sfA = W.sf_move_loss(A_fen, moves[i].uci(), eng, a.depth)
+        sfC = W.sf_move_loss(A_fen, dA["move"], eng, a.depth) if dA["move"] and dA["move"] != moves[i].uci() else sfA
+        cons = "; ".join(c["text"][:90] for c in dA["constraints"][:2]) or "none"
+        print(f"OBS EVENT {n}: {who} loses {e['delta']} (moves {e['c0'] // 2 + 1}{'...' if e['c0'] % 2 else '.'} onward); the loser's last move {played} at ply {i + 1}")
+        print(f"   A ({who} to move, before {played}): the chain chose {dA['san']} ({dA['interval'][0]}..{dA['interval'][1]}); constraints: {cons}. Stockfish d{a.depth}: the move played loses {sfA}, the chain's {sfC}.")
+        print(f"   B (the winner to move): the actual first capture {onB.san(moves[e['win_first']])} was checked by the chain with {('worth ' + str(row['lo']) + '..' + str(row['hi'])) if row else 'NO value (not a candidate)'} -> SEEN: {'YES' if hit else 'NO'}; the chain chose {dB['san']}")
+        out.append(dict(event=n, played=played, chain_A=dA["san"], sf_played=sfA, sf_chain=sfC, seen=hit, actual=onB.san(moves[e["win_first"]]), chain_B=dB["san"]))
+    print(f"OBS WALK (event loop) done: {seen} of {len(events)} consequences seen at B; {round(time.time() - t0, 1)} s")
+    json.dump(dict(site=game.headers.get("Site"), events=out, seen=seen), open(paths.derived(f"walk_event_{sid}.json"), "w"), indent=1, default=str)
+    eng.quit()
+
+
 def walk_main(argv=None):
     import json
     import chess.engine
@@ -313,6 +352,8 @@ def walk_main(argv=None):
     ap.add_argument("--pgn-index", type=int, required=True)
     ap.add_argument("--events", type=int, default=None)
     ap.add_argument("--depth", type=int, default=14, help="Stockfish depth, the checker only")
+    ap.add_argument("--loop", choices=("event", "script"), default="script", help="event: A and B read off the event loop's chain (ANALYST_PLAN 40), the plies of the opening default and the two named plies printed; script: the older ledger walk")
+    ap.add_argument("--plies", default="0,1,2,3,4,5,6,7,8,10,28", help="event loop: the plies (positions before the move with that index) whose decision is printed")
     a = ap.parse_args(argv)
     t0 = time.time()
     game, site = find_game(a.pgn_index)
@@ -322,6 +363,8 @@ def walk_main(argv=None):
     eng = chess.engine.SimpleEngine.popen_uci("stockfish")
     eng.configure({"Threads": 4})
     from . import watch as W
+    if a.loop == "event":
+        return _walk_event(a, game, moves, boards, events, eng, W, sid, t0)
     out = dict(site=site, index=a.pgn_index, plies=len(moves), white=game.headers.get("White"), black=game.headers.get("Black"), events=[])
     print(f"OBS WALK {site}: {len(moves)} plies, {len(events)} settled material changes (white {game.headers.get('White')} {game.headers.get('WhiteElo')}, black {game.headers.get('Black')} {game.headers.get('BlackElo')})")
     L = new(boards[0].fen(), 1000)

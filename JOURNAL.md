@@ -30937,3 +30937,20 @@ NOTHING IS KEPT YET and no proposal has a verdict. The cap: 1 decision of dev an
 WHY THE CHECK DID NOT FINISH: the batches were slowed by a zombie, not by the proposer: PID 65701, a `python -` (stdin heredoc) process from my first debugging call, alive 2 h 24 min, respawning Pool workers that die at
 once (the known scar: no Pool from stdin); it kept the machine at load ~25 on 11 cores, so every batch took 7 to 10 minutes instead of 2.5 and the per-decision cap (wall clock) bit on the slow ones. The "straggler"
 reading I gave first was wrong; the stragglers were the contention. Rule kept: only -m entry points for anything with a Pool. Not done: the lemma proposals (ii), the leave-one-out result, equivalent-word merging.
+
+## 2026-10-15 04:43 PDT — the event loop, phase 4 finished (verdicts) and phase 5 (the game walk on the new loop)
+
+PHASE 4, the machine clear (load ~2-7; the earlier slowness was the stdin zombie), one run, directional. Baselines with no decision cut by the 300 s cap: dev 44 of 60, fresh 50 of 60. Surprise classes (clean run): dev event
+missing 2, question never opened 2, ANSWER WRONG 23, no surprise 33 (31 surprises of 60: (a) 4, (b) 23, (c) 15); fresh event missing 0, never opened 1, answer wrong 19, no surprise 40 (26 surprises). Proposals: 5,349 condition rules fix
+at least one dev surprise at a cost of at most 4 new candidates per puzzle; rules selecting the same moves are merged (9 dropped); the best 10 distinct plus the priority ranking (check, capture, opportunity -> 40, 20, 10).
+All 11 on, one batch each: dev 44 of 60 (44 without): 6 decisions changed, fixed 01IFU 0EPDA, new misses 07Z0P 08pAF; fresh 50 of 60 (50 without): 1 decision changed, fixed nothing, no new miss. Leave-one-out on the
+changed decisions where a proposal adds a candidate (6 dev, 1 fresh): every proposal shows fixes [] and new misses [] -- removing any one of them changes none of the outcomes, because the others cover it (the rules overlap); so the
+leave-one-out cannot attribute the two dev fixes and the two dev breaks to any single proposal, and on fresh nothing was fixed. VERDICT: no condition and no priority fixes a fresh surprise -> NOTHING KEPT (all DROPPED). (ii) lemma shapes
+from the 44 solved dev puzzles only: 5,540 candidates from 20,412 observations, 289 promoted; on fresh with them on: 50 of 60 (50 with the dev store), 601 questions answered by a lemma, 29 contradictions, no new miss. The ten
+most-used: 6 had hits and no contradiction (L963 SAFE 102 hits, L624 POKE 29, L2670 POKE 23, L843 POKE 22, L3572 SAFE 17, L750 POKE 16), 4 had 1-4 contradictions (L543, L1955, L943, L3278); the printed KEPT on those six means only
+"used, no contradiction, no new miss" (my looser rule): by the stated rule (fixes a fresh surprise) no lemma fixed one, so none is kept as a fix. Every lemma stays a CONJECTURE (no Lean proof). Result, plainly: the proposer found
+nothing that survives fresh; the dominant surprise is a WRONG ANSWER (23 of 31 on dev), which a new candidate or a new priority cannot fix -- it needs a better value (the intervals of the chosen move and of the puzzle's move).
+PHASE 5, the game walk (game 2979, lichess Bo45Dh1y) on the event loop: 6 of 7 consequences seen at B (the winner's actual first capture checked by the chain with a sure gain); the old script's walk: 6 of 7 (the seventh, Kxa5 after
+Rb8+, is a misdetected event in both). At A the chain's move avoids the loss in events 1, 3, 4 (Stockfish d14: the played move loses 1, the chain's 0), ties in 2, 6, 7, and loses the same 5 in event 5 (no better move found).
+Ply 10 (before 6.Bxc6+): the chain chose e5, 0..0 ESTIMATED, "it meets e4 attacked (1)"; ply 28 (before 15.Ne5): the chain chose gxh6, 0..0 ESTIMATED, "it meets g5 attacked (1)" (the script played 15.Ne5). The opening default fired on
+plies 0-8: Nc3, Nc6, Nc3, Nc6, Bc4, Nc6, Nf3, Nf6, Bc4 (the chain's choice at each position; the game's own moves e4 c5 Nc3 d6 f4 Nc6 Nf3 Nf6 Bb5). 71 s. Not done: the step-through page (no page work), a better value for wrong answers.
