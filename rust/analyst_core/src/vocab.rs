@@ -262,9 +262,22 @@ fn after_move(f: &Term, t2: &Term, a: &Term, q: &Chess, lone: Color) -> u32 {
     match after_pos(f, t2, q, lone) { Some(p) => num(a, &p, lone), None => 0 }
 }
 
+/// Where the moved piece lands: a castling move names the rook's square in shakmaty, the king lands two files over.
+fn move_dest(m: &shakmaty::Move) -> Square {
+    match m {
+        shakmaty::Move::Castle { king, rook } => Square::from_coords(if rook.file() > king.file() { shakmaty::File::G } else { shakmaty::File::C }, king.rank()),
+        _ => m.to(),
+    }
+}
+
 pub(crate) fn after_pos(f: &Term, t2: &Term, q: &Chess, lone: Color) -> Option<Chess> {
     let (from, to) = (sq(f, q, lone)?, sq(t2, q, lone)?);
     let mut pc = q.board().piece_at(from)?;
+    // as Lean afterMove: when the piece on `from` is the side to move's and from->to is legal, the kernel's move (rights, en passant, clocks as
+    // the rules say; a promotion only to a queen); else the relaxed hand-built board below
+    if let Some(m) = q.legal_moves().into_iter().find(|m| m.from() == Some(from) && move_dest(m) == to && m.promotion().map_or(true, |r| r == shakmaty::Role::Queen)) {
+        return Some(after(q, &m));
+    }
     let mut setup = q.clone().into_setup(shakmaty::EnPassantMode::Legal);
     setup.board.discard_piece_at(from);
     if pc.role == shakmaty::Role::Pawn && matches!(to.rank(), shakmaty::Rank::First | shakmaty::Rank::Eighth) { pc.role = shakmaty::Role::Queen; }
