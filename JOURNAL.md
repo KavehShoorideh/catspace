@@ -30815,3 +30815,37 @@ BRANCH (b) REPAIRED, THE ROOT PREFILTER (2026-10-14 21:24 PDT). (b) played cxb5 
   threat/no-threat 79% / 78%, solver-confirmed 77% / 81%, positions 797 / 731, questions 214 / 117 per position -- adopted (the flag sizes all moves again). Where the positions go: the sizing
   itself is small (about 35 moves, 15-40 after the prefilter); in (a) 645 of 1,285 and in (c) 940 of 1,576 are the straddling sizes played out (up to 6 lines of up to 300 positions), and the
   rest is the re-ask of the top six answers (each answer, then the threat, with its own sizing).
+
+THE EXCHANGE FIRST, WHAT-IFS KEPT IN THEIR WHAT-IF, SAFE POKES (2026-10-14 22:57 PDT). Kaveh stepping through lichess.org/Bo45Dh1y at ply 10 (6...Bg4, the pin on Nf3): "if the knight
+  moves, the queen dies. That's it. It should not go any deeper"; Nxe4 shown as a threat though "the pawn is protected ... that's not something they can immediately win"; "the cheapest move
+  is f3g1 ... why would you hop back?"; then "when there are no threats, we should seek to create threats ... what can we attack in a way that we cannot be attacked ourselves?" and
+  "pokes that simply get captured do not create a threat, but pokes that deflect some other piece from a different thing, they do have a purpose". Faults found and fixed (reasoning.rs):
+  1. A CAPTURE IS SIZED BY THE EXCHANGE ON ITS SQUARE FIRST (the exchange law, lean/ideas/Ideas/ExchangeLaw.lean: the tactics are its named exceptions; the law itself is still a stated Prop).
+  Before, a capture was sized from S's static value of the whole board (Nxe4: 0..4), a 300-position play-out did not settle it, and "unsettled" counted as a threat of 1 -- so trades
+  (Bxf3, Nxc3) and captures of guarded pawns (Nxe4, Nxa7) were threats, and most of a decision's positions went into playing them out. Now: what the capture nets with the recaptures, the
+  recapturers' other jobs charged; if that does not pay it is no threat and nothing is played out, unless a named exception holds after it: with the capturer taken back a piece of S still
+  loses more than before (a discovery, a removed defender), a check by another piece, a DEFLECTION (once S's cheapest taker has taken, a piece it guarded loses more), or a live
+  overload thread it cashes. The same gate for a move that does not capture but lands where its piece is simply taken (3.Nb5 "leaves Nc7+, worth 1": Qxc7).
+  2. A WHAT-IF STAYS IN ITS WHAT-IF: findings asked "with f3 gone" (SAFE / JOB / RECAP) are never live threads on the real board (the Nxe4 "thread" was "after Bg4 takes Qd1 and Nc3
+  recaptures, e4 is unguarded"). Inside a what-if, a piece that already loses by the exchange is lost: the recapturers' jobs are not asked (on the real board they always are -- f4
+  guarding both g5 and Ne5 is the 15.Ne5 threat). An overloaded guard is a thread only when the exchange it belongs to can be lost (h6 guarded by Ng4 AND g7: no thread).
+  3. AN IN-BETWEEN CAPTURE is worth what its own exchange wins, not the piece's face value (Bxc6+ in between, c6 guarded: a trade) -- the pin is now "Nf3 is pinned to Qd1: every move of it
+  costs >= 6 (Qd1 is then taken)", was ">= 3 (the cheapest move is f3g1)"; a tie names no move. A threatened piece that takes something worth at least what it loses where it lands is
+  saved (a trade; the fixers had counted only its loss).
+  4. BRANCH (b), NO THREATS: our moves ordered by what each wins for sure, then THE POKE (the highest-value piece it newly attacks, counted only when the poking piece is not simply taken
+  where it lands; a check pokes the king), then the hopeful end; at the root the threat it leaves breaks ties after the sure gain. Opportunities worth 0 are no longer printed.
+  5. THE STEP-THROUGH PAGE had used the hand-written answers (the walk script never loaded the learned defence frame, as the ledger's trace and walk commands do); fixed.
+  Printed: ply 10 -> 6.Bxc6, 78 positions (was 1,564), 0.5 s, no threat listed against White; (a) ...Ra4 0..0, 966 positions (1,285); (b) Qxa8 10..10 PROVEN (solver-confirmed), 71;
+  (c) ...Qg5 3..3 PROVEN, 651 (1,576); 15.Ne5 position B: ...Nxe5 found with the f4 thread (the test); the opening plies list no threats. The game walk: 82 plies, 48.8 s, 34,636
+  ledger positions over the 81 decisions, the first capture seen right after the losing move in 6 of 7 material changes (as before; the seventh is the misdetected Rb8+). NOT FIXED:
+  at position A (before 15.Ne5) the learned defence frame's top answers are Nh2, Ne5, Ne1, Nh4 (as in the builder's walk), and the ledger plays the game's 15.Ne5 (0..1) -- it does
+  not see ...Nxe5 fxe5 Bxg5 when it values Ne5. One run each: directional.
+  ADDENDUM, SAFE POKES AND THE DEFLECTION FRAME (2026-10-14, later the same evening). Kaveh: "I don't want you to add a hardwired exception ... if we need to deflect somebody or get rid
+  of some attacker, then we should consider moves that don't win but deflect them" -- once the lower frames are exhausted. So: (1) the deflection exception added to the exchange
+  gate above is REMOVED (the gate keeps the exchange law's own conditions: a discovery or removed defender, a discovered check, and a live overload thread -- a frame that names the
+  capture); (2) a poke whose piece is simply taken where it lands creates nothing (no poke, no threat left: 8...Bxf3 "pokes" Qd1 and is taken back; the ledger now plays 8...d5);
+  (3) THE HIGHER FRAME: a piece of theirs we attack that holds now, held by a guard with a JOB (without the guard it loses lo), proposes the moves that get the guard off its post --
+  take it, attack it, or offer it a capture after which the piece it held loses more; one group per frame (top 3 by lo), placed after the pokes, so B* reaches it only when nothing
+  above beats standing pat. Printed: 6...Bg4 -> "b: deflect b7 (it guards Nc6: without it Nc6 loses 3) -- Bxc6, Ba6", weighed and abandoned (0 <= 0); (a) ...Ra4, (b) Qxa8 10..10
+  PROVEN, (c) ...Qg5 3..3 PROVEN unchanged; the game walk: 46.9 s, 34,342 ledger positions, a deflection frame weighed at 7 of 81 decisions and never chosen, the first capture seen in
+  6 of 7 material changes. Full suite on the exchange-first build (before this addendum): 804 passed, 1 xfailed, 15 min 46 s; the five ledger/threat files after it: 36 passed.

@@ -76,3 +76,34 @@ def test_one_threat_per_thing_that_would_be_lost():
     assert len(targets) == len(set(targets)) and all(t["size"] >= 1 for t in th)        # no target listed twice
     g5 = [t for t in th if t["target"] == "g5"]
     assert not g5 or g5[0]["san"] == "hxg5"                              # shown with the move that cashes it in, not under a quiet move that leaves it standing
+
+
+def test_a_capture_that_does_not_pay_is_no_threat_and_a_what_if_stays_in_its_what_if():
+    import analyst_core as A
+    # 6...Bg4 (lichess.org/Bo45Dh1y, ply 10): Nxe4 is met by Nxe4 and Bxf3 is a trade -- no threat against White; the e4 "thread" from inside the pin's
+    # what-if (after ...Bxd1 Nxd1, e4 loses its guard) is not carried onto the real board; the pin reads the queen's loss, 6, and names no move on a tie
+    fen = "r2qkb1r/pp2pppp/2np1n2/1Bp5/4PPb1/2N2N2/PPPP2PP/R1BQK2R w KQkq - 5 6"
+    led = A.Ledger(fen, 1000)
+    assert led.threat_report(True)["threats"] == []
+    led.run()
+    pins = [f for f in led.report_dict()["findings"] if f["key"].startswith("PIN|") and f["stale"] is None]
+    assert pins and pins[0]["lo"] == 6 and "every move of it" in pins[0]["claim"]
+    # 3.Nb5: Nc7+ lands where the queen takes it -- no threat; Nxa7 is met by Rxa7
+    assert A.Ledger("rnbqkbnr/pp2pppp/3p4/1Np5/4P3/8/PPPP1PPP/R1BQKBNR b KQkq - 1 3", 1000).threat_report(True)["threats"] == []
+
+
+def test_a_poke_that_is_simply_taken_creates_nothing_and_a_guard_is_deflected_only_by_its_frame():
+    import analyst_core as A
+    from catspace.incubator.analyst.discovery import ledger as LG
+    # 8...Bxf3 "pokes" Qd1 and is taken back: no poke, no threat left; the ledger no longer plays it for that
+    led = A.Ledger("r2qkb1r/p3pppp/2pp1n2/2p5/4PPb1/2N2N2/PPPP2PP/R1BQ1RK1 b kq - 1 8", 1000)
+    LG.load_defence_frame(led); led.run()
+    tr = led.trace(4)
+    assert tr["san"] != "Bxf3" and not any("pokes a 9-point piece" in l for l in tr["trace"])
+    # 6...Bg4: once the pokes are exhausted, the frame "b7 guards Nc6" proposes the moves that deflect it (Ba6), weighed last
+    led = A.Ledger("r2qkb1r/pp2pppp/2np1n2/1Bp5/4PPb1/2N2N2/PPPP2PP/R1BQK2R w KQkq - 5 6", 1000)
+    LG.load_defence_frame(led); led.run()
+    lines = led.trace(4)["trace"]
+    k = [i for i, l in enumerate(lines) if l.startswith("b: deflect b7")]
+    c = [i for i, l in enumerate(lines) if l.startswith("b: creates a threat --")]
+    assert k and c and c[0] < k[0] and "Ba6" in lines[k[0]]

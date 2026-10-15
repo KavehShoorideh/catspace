@@ -87,6 +87,7 @@ pub struct ReasoningLedger {
     slog: Vec<String>,
     resolving: u32,
     resolved_n: u32,
+    cashing: bool,            // the move about to be sized cashes a live thread (an overloaded guard): a named exception to the exchange gate
     dframe: Vec<(vocab::Term, i64, bool)>,       // the learned DEFENCE frame: (term, sign, is a change)
     answers_hand: bool,
     shallow_sizing: bool,
@@ -255,16 +256,27 @@ impl ReasoningLedger {
             let (c, rc) = self.fact(&t);
             check = c > 0; f.reads |= rc; f.facts.push((t, c));
         }
+        // an IN-BETWEEN capture (made instead of retaking) is worth what ITS exchange wins, not the face value of the piece: a guarded piece taken in between is a trade
         let inb = if check { 0 } else {
-            let bb = b.board();
-            bb.by_color(!owner).into_iter().filter(|s| *s != a.1).filter_map(|s| bb.piece_at(s).map(|p| (p.role, s)))
-                .filter(|(r, s)| *r != Role::King && (bb.attacks_to(*s, owner, occ) & bb.by_color(owner)).any()).map(|(r, _)| val(r)).max().unwrap_or(0)
+            let cands: Vec<Square> = { let bb = b.board(); bb.by_color(!owner).into_iter().filter(|s| *s != a.1)
+                .filter(|s| bb.piece_at(*s).map_or(false, |p| p.role != Role::King) && (bb.attacks_to(*s, owner, occ) & bb.by_color(owner)).any()).collect() };
+            let mut m = 0;
+            for s in cands {
+                let t = self.w(gone, &format!("(see {})", self.nm(s)));
+                let (v, rv) = self.fact(&t);
+                f.reads |= rv; m = m.max(v);
+            }
+            m
         };
         let mut best_r: Option<(Pc, i64)> = None;
         let mut cites = vec![];
-        let mut cost = if defs.is_empty() { v0 } else { val(y.0) };
+        // INSIDE A WHAT-IF ("with X gone") the recapturers' other jobs are asked only when the plain exchange holds the piece (v0 <= 0): a piece that already loses
+        // by the exchange there is lost, the what-if is answered, stop (Kaveh on a pin: "if the knight moves, the queen dies ... It should not go any deeper"). On the
+        // real board they are always asked: an overloaded recapturer is a threat of its own (f4 guarding both g5 and Ne5)
+        let ask_jobs = v0 <= 0 || gone.is_none();
+        let mut cost = if defs.is_empty() || !ask_jobs { v0 } else { val(y.0) };
         let mut jobbed = vec![];
-        for r in &defs {
+        for r in defs.iter().filter(|_| ask_jobs) {
             let mut c_r = 0;
             for z in self.pieces_of(owner) {
                 if z == *r || z.1 == y.1 || Some(z.1) == gone { continue; }
@@ -350,6 +362,7 @@ impl ReasoningLedger {
         let (mut lo_all, mut hi_all) = (i64::MAX, i64::MIN);
         let mut best = String::new();
         let mut per = vec![];
+        let mut lows: Vec<i64> = vec![];
         for m in &moves {
             let to = m.to();
             let gain_hi = m.capture().map_or(0, val);
@@ -363,14 +376,18 @@ impl ReasoningLedger {
             let hi = bl.hi - gain_lo;
             if tempo { lo = lo.min(0); }
             per.push(json!({"move": m.to_uci(CastlingMode::Standard).to_string(), "gain": [gain_lo, gain_hi], "check": tempo, "cost": [lo, hi]}));
-            if lo < lo_all { lo_all = lo; best = m.to_uci(CastlingMode::Standard).to_string(); }
+            if lo < lo_all { lo_all = lo; best = crate::plan::san(&po, &m.to_uci(CastlingMode::Standard).to_string()); }
+            lows.push(lo);
             hi_all = hi_all.max(hi);
         }
+        let ties = lows.iter().filter(|l| **l == lo_all).count();
         f.lo = lo_all; f.hi = hi_all;
         f.st = if bl.st == St::Unknown { St::Unknown } else { St::Proven };
         f.note = serde_json::to_string(&per).unwrap_or_default();
         f.claim = if lo_all > 0 {
-            format!("{} is pinned to {}: moving it costs >= {} (the cheapest move is {})", pname(x), pname(y), lo_all, best)
+            // every move costs the same: the pin is the whole story, no move is named (a tie names nothing)
+            if ties > 1 { format!("{} is pinned to {}: every move of it costs >= {} ({} is then taken)", pname(x), pname(y), lo_all, pname(y)) }
+            else { format!("{} is pinned to {}: moving it costs >= {} (the cheapest move is {})", pname(x), pname(y), lo_all, best) }
         } else if hi_all <= 0 {
             format!("{} is free to move: no move of it costs anything (<= {})", pname(x), hi_all)
         } else {
@@ -488,7 +505,7 @@ impl ReasoningLedger {
     fn new(fen: String, budget: u32) -> PyResult<Self> {
         let pos = crate::parse(&fen).ok_or_else(|| pyo3::exceptions::PyValueError::new_err("bad fen"))?;
         Ok(ReasoningLedger { line: vec![pos.clone()], pos, ply: 0, fs: vec![], live: HashMap::new(), listeners: HashMap::new(), fact_cache: HashMap::new(),
-            budget, used: 0, carried: 0, reasked: 0, facts_n: 0, solver_calls: 0, stack: vec![], skipped: vec![], agenda: vec![], plies: vec![], confirmations: vec![], tt: HashMap::new(), nodes: 0, node_cap_hit: false, budget_hit: false, deep: false, cap_now: 0, cuts: 0, threats_mode: false, lean_mode: false, pushes: 0, tr: std::cell::RefCell::new(vec![]), tracing: false, root_ply: 0, sep_flag: false, suppressed: std::cell::Cell::new(0), lean_cap: LEAN_CAP, frame: vec![], threats_learned: false, looks: 0, slog: vec![], resolving: 0, resolved_n: 0, dframe: vec![], answers_hand: false, shallow_sizing: false, prefilter_root: true })
+            budget, used: 0, carried: 0, reasked: 0, facts_n: 0, solver_calls: 0, stack: vec![], skipped: vec![], agenda: vec![], plies: vec![], confirmations: vec![], tt: HashMap::new(), nodes: 0, node_cap_hit: false, budget_hit: false, deep: false, cap_now: 0, cuts: 0, threats_mode: false, lean_mode: false, pushes: 0, tr: std::cell::RefCell::new(vec![]), tracing: false, root_ply: 0, sep_flag: false, suppressed: std::cell::Cell::new(0), lean_cap: LEAN_CAP, frame: vec![], threats_learned: false, looks: 0, slog: vec![], resolving: 0, resolved_n: 0, cashing: false, dframe: vec![], answers_hand: false, shallow_sizing: false, prefilter_root: true })
     }
 
     /// Ask every question of the entry pass (SAFE of every piece, BLOCKS of every shielded piece with its PIN) and return the report.
@@ -622,7 +639,11 @@ impl ReasoningLedger {
                 let pi = self.ask_pin(x, a, y, bi);
                 if !any { self.say(format!("LATENT THREATS to {who} (a piece that shields another; the threat appears if it leaves):")); any = true; }
                 self.say(format!("  - {}", self.fs[bi].claim));
-                self.say(format!("    {}  [from the finding chain: BLOCKS#{} <- SAFE, JOB, RECAP]", self.fs[pi].claim, bi));
+                let mut kinds: Vec<&'static str> = vec![];
+                let mut stack = self.fs[bi].cites.clone();
+                while let Some(c) = stack.pop() { let k = self.fs[c].kind; if !kinds.contains(&k) { kinds.push(k); } stack.extend(self.fs[c].cites.iter().copied()); }
+                kinds.sort_by_key(|k| match *k { "SAFE" => 0, "JOB" => 1, "RECAP" => 2, _ => 3 });
+                self.say(format!("    {}  [from the finding chain: BLOCKS#{}{}]", self.fs[pi].claim, bi, if kinds.is_empty() { String::new() } else { format!(" <- {}", kinds.join(", ")) }));
             }
         }
         if !any { self.say(format!("LATENT THREATS to {who}: no piece shields another along a line.")); }
@@ -643,12 +664,13 @@ impl ReasoningLedger {
                 if xp.role == Role::King { continue; }
                 let (xn, yn) = (self.nm(xs), self.nm(y.1));
                 let (w, _) = self.fact(&format!("(without (at {xn}) (see {yn}))"));
+                if w <= 0 { continue; }                    // a line that uncovers nothing worth anything is not shown
                 let grd = b.attacks_to(y.1, !t, b.occupied()) & b.by_color(!t);
                 if !opp { self.say(format!("LATENT OPPORTUNITIES for {who} (our slider, our shield, their piece; the attack appears if the shield leaves):")); opp = true; }
-                self.say(format!("  - if {} leaves, {} hits {} (guarded by [{}]): uncovering it wins {} by the exchange{}", pname((xp.role, xs)), pname(sl), pname(y), self.names(grd), w,
-                    if w > 0 { "" } else { " (nothing yet)" }));
+                self.say(format!("  - if {} leaves, {} hits {} (guarded by [{}]): uncovering it wins {} by the exchange", pname((xp.role, xs)), pname(sl), pname(y), self.names(grd), w));
             }
         }
+        if !opp { self.say(format!("LATENT OPPORTUNITIES for {who}: no line uncovers anything worth winning.")); }
         let (iv, pv) = self.lean(depth);
         let mut status = if self.sep_flag { "SEPARATED (static bounds)".to_string() } else { "ESTIMATED".to_string() };
         let first = pv.first().map(|x| x.split('|').next().unwrap_or("").to_string()).unwrap_or_default();
@@ -707,6 +729,8 @@ struct Snap { pos: Chess, line_len: usize, ply: u32, fs_len: usize, live: HashMa
 #[derive(Clone)]
 struct Cand { uci: String, mv: Move, why: Vec<&'static str>, rule: (i64, i64), iv: (i64, i64), refined: bool, level: u8, cites: Vec<usize>, note: String }
 
+/// A finding asked under a what-if (its key carries the square taken off the board: SAFE, JOB, RECAP "with X gone").
+fn whatif(f: &Finding) -> bool { matches!(f.kind, "SAFE" | "JOB" | "RECAP") && f.key.rsplit('|').next().map_or(false, |g| !g.is_empty()) }
 fn gain_of(m: &Move) -> i64 { m.capture().map_or(0, val) + m.promotion().map_or(0, |r| val(r) - 1) }
 fn touched_of(m: &Move) -> Bitboard {
     let mut t = Bitboard::from(m.to());
@@ -893,6 +917,36 @@ impl ReasoningLedger {
             let atks = b.attacks_to(to, o, b.occupied()) & b.by_color(o);
             format!("takes {} on {}; attacked by [{}], guarded by [{}]", pname((r, to)), to, self.names(atks), self.names(guards))
         });
+        // A CAPTURE IS SIZED BY THE EXCHANGE ON ITS SQUARE FIRST (the exchange law; Kaveh: "the pawn is protected ... that's not something they can immediately
+        // win"): what it nets with the recaptures, the recapturers' other jobs charged (an overloaded guard). If that does not pay, it is no threat -- nothing is
+        // played out -- unless a named exception holds after it: with the capturer taken back, a piece of S still loses more than before (a discovery, a removed
+        // defender), a check by another piece (a discovered check), or a live overload thread it cashes (a frame that names this capture)
+        // The same for a move that does not capture but lands where its piece is simply taken (Nc7+ into the queen's guard): the attack it makes is
+        // answered by taking it, unless a named exception holds
+        let cashes = std::mem::take(&mut self.cashing);
+        let gated = !m.is_en_passant() && !m.is_promotion() && !m.is_castle() && m.role() != Role::King && !cashes;
+        let mut exch: Option<i64> = None;
+        let mut before: Vec<(Square, i64)> = vec![];
+        if gated {
+            let tn = self.nm(to);
+            let (loss, _) = self.fact(&format!("(after {} {tn} (see {tn}))", self.nm(from)));
+            exch = match m.capture() {
+                Some(cr) => {
+                    let plain = val(cr) - loss;
+                    let sid = self.ask_safe((cr, to), None);
+                    let charged = if self.fs[sid].sq.get(1) == Some(&from) { self.fs[sid].hi } else { i64::MIN };
+                    Some(plain.max(charged))
+                }
+                None if loss > 0 => Some(-loss),
+                None => None,
+            };
+            if exch.map_or(false, |e| e <= 0) {
+                for p in self.pieces_of(s).into_iter().filter(|p| p.0 != Role::King && p.1 != to) {
+                    let (v, _) = self.fact(&format!("(see {})", self.nm(p.1)));
+                    before.push((p.1, v));
+                }
+            }
+        }
         let snap = self.enter(m);
         let mate = self.pos.is_checkmate();
         // (2) after the move the other side has a mate in one whatever S replies (every reply read, one look each) -> MATE
@@ -907,6 +961,23 @@ impl ReasoningLedger {
                     if !Self::mate_in_one(&q) { all_mated = false; break; }
                 }
                 mating = all_mated;
+            }
+        }
+        if let Some(e) = exch {
+            if !mating && e <= 0 {
+                let tn = self.nm(to);
+                let disc_check = (self.pos.checkers() & !Bitboard::from(to)).any();
+                let mut newly = false;
+                for (sq, v0) in &before {
+                    let (v1, _) = self.fact(&format!("(without (at {tn}) (see {}))", self.nm(*sq)));
+                    if v1 > (*v0).max(0) { newly = true; break; }
+                }
+                if !disc_check && !newly {
+                    self.slog.push(if m.is_capture() { format!("{san}: the exchange on {to} nets {e} for them and nothing else falls -> not a threat") }
+                                   else { format!("{san}: the piece on {to} is simply taken (it loses {} by the exchange) and nothing else falls -> not a threat", -e) });
+                    self.leave(snap);
+                    return None;
+                }
             }
         }
         let mut sp = if mate { (-MATE, -MATE) } else if mating { (-MATE, -MATE) } else if self.pos.is_check() { self.check_value() } else { self.stand_pat() };
@@ -1002,7 +1073,11 @@ impl ReasoningLedger {
         // each in is sized first (and kept in the list even where the pre-filter would drop it)
         let o_ = pb.turn();
         let mut cash: HashMap<String, (u32, String)> = HashMap::new();
-        for f in self.fs.iter().filter(|f| f.stale.is_none() && f.lo >= 1) {
+        // a finding asked inside a what-if ("with f3 gone") stays inside it: it is never a live thread on the real board
+        // an overloaded guard (RECAP) is a thread only when the exchange it belongs to is lost by it -- no other piece can take back instead (h6 guarded by
+        // Ng4 AND g7: g7 retakes, Ng4 keeps its job)
+        let lost_by: HashSet<usize> = self.fs.iter().filter(|g| g.kind == "SAFE" && g.stale.is_none() && g.hi >= 1).flat_map(|g| g.cites.iter().copied()).collect();
+        for f in self.fs.iter().filter(|f| f.stale.is_none() && f.lo >= 1 && !whatif(f) && (f.kind != "RECAP" || lost_by.contains(&f.id))) {
             let hit: Option<(Square, Square)> = match f.kind {
                 "SAFE" if f.sq.len() == 2 && base.board().color_at(f.sq[0]) == Some(!o_) => Some((f.sq[1], f.sq[0])),
                 "RECAP" if f.sq.len() == 4 && base.board().color_at(f.sq[1]) == Some(!o_) => Some((f.sq[2], f.sq[1])),
@@ -1024,6 +1099,7 @@ impl ReasoningLedger {
         moves.sort_by_key(|m| !cash.contains_key(&m.to_uci(CastlingMode::Standard).to_string()));
         let mut out = vec![];
         for m in moves {
+            self.cashing = cash.contains_key(&m.to_uci(CastlingMode::Standard).to_string());
             if let Some(mut th) = self.size_kick_from(&pb, &m, String::new()) {
                 if let Some(c) = cash.get(&m.to_uci(CastlingMode::Standard).to_string()) { th.thread = Some(c.clone()); }
                 out.push(th);
@@ -1080,6 +1156,51 @@ impl ReasoningLedger {
     }
     /// Branch (b) with the learned threat: our moves ordered by the biggest threat each CREATES -- the frame on pass(P+m) -- checks (a position the frame
     /// cannot read: the checked side may not pass) after those. -> (move, the follow-up it threatens)
+    /// THE HIGHER FRAME THAT NEEDS A GUARD GONE (Kaveh 2026-10-14: "if we need to deflect somebody or get rid of some attacker, then we should consider moves
+    /// that don't win but deflect them" -- once the lower frames are exhausted). A piece of theirs that we attack and that holds now (its exchange loses
+    /// nothing) is held by a guard with a JOB: without the guard it would lose `lo`. That frame proposes the moves that get the guard off its post: take
+    /// the guard, attack it, or offer it a capture that pulls it off (after it takes there, the piece it held loses more). Each frame is one group, highest
+    /// value first; the moves are weighed like any others.
+    fn deflections(&mut self, legal: &[Move]) -> Vec<(String, Vec<Move>)> {
+        let us = self.pos.turn();
+        let b = self.pos.board().clone();
+        let mut frames: Vec<(i64, Pc, Pc)> = vec![];                         // (what the piece would lose without the guard, guard, piece)
+        for z in self.pieces_of(!us).into_iter().filter(|z| z.0 != Role::King && attacked(&b, z.1, us)) {
+            let (v0, _) = self.fact(&format!("(see {})", self.nm(z.1)));
+            if v0 > 0 { continue; }                                            // already lost: a lower frame (the capture) has it
+            let guards: Vec<Pc> = (b.attacks_to(z.1, !us, b.occupied()) & b.by_color(!us)).into_iter()
+                .filter_map(|q| b.piece_at(q).map(|p| (p.role, q))).filter(|g| g.0 != Role::King).collect();
+            for r in guards {
+                let j = self.ask_job(r, z, None);
+                if self.fs[j].lo > 0 { frames.push((self.fs[j].lo, r, z)); }
+            }
+        }
+        frames.sort_by(|a, b| b.0.cmp(&a.0));
+        let mut out = vec![];
+        for (lo, r, z) in frames.into_iter().take(3) {
+            let mut mv: Vec<(i64, Move)> = vec![];
+            for m in legal {
+                let to = m.to();
+                if to == z.1 { continue; }                                     // taking the held piece itself is the lower frame (its exchange), not a deflection
+                let takes = to == r.1 && m.is_capture();
+                let mut q = self.pos.clone(); q.play_unchecked(m);
+                let qb = q.board();
+                let pokes = !takes && qb.attacks_from(to).contains(r.1) && qb.piece_at(to).map_or(false, |p| p.color == us) && !b.attacks_from(to).contains(r.1)
+                    && !(b.attacks_to(r.1, us, b.occupied()) & b.by_color(us)).contains(m.from().unwrap_or(to));
+                let lures = !takes && Self::legal_capture(qb, !us, r.1, to) && {
+                    let snap = self.enter(m);
+                    let (v1, _) = self.fact(&format!("(after {} {} (see {}))", self.nm(r.1), self.nm(to), self.nm(z.1)));
+                    self.leave(snap);
+                    v1 > 0
+                };
+                if takes || pokes || lures { mv.push((if takes { 2 } else if lures { 1 } else { 0 }, m.clone())); }
+            }
+            if mv.is_empty() { continue; }
+            mv.sort_by(|a, b| b.0.cmp(&a.0).then(gain_of(&b.1).cmp(&gain_of(&a.1))));
+            out.push((format!("b: deflect {} (it guards {}: without it {} loses {})", pname(r), pname(z), pname(z), lo), mv.into_iter().map(|x| x.1).collect()));
+        }
+        out
+    }
     fn created_moves(&mut self, legal: &[Move]) -> Vec<(Move, String)> {
         // Branch (b): our moves ordered by what each is WORTH -- the gain now plus the biggest threat it leaves them that they cannot answer: the static value the ledger
         // computes after one push (gain - their stand-pat with the fixers; in check, their replies). Executing an open threat (a capture that wins material) is therefore
@@ -1094,26 +1215,48 @@ impl ReasoningLedger {
             if m.is_capture() || r.is_check() || raises_pressure(&was, &pressure(r.board(), !t)) { cands.push((gain_of(m) * 100, m.clone())); }
         }
         cands.sort_by(|a, b| b.0.cmp(&a.0));
-        // the worth of each (one push each, at most 14)
-        let mut worth: Vec<(i64, i64, i64, Move, String)> = vec![];       // (lo, hi, tie, move, note)
-        for (k, m) in cands.into_iter().take(14) {
+        // THE POKE (Kaveh: "the first step in creating a threat is poking something ... what can we attack in a way that we cannot be attacked ourselves?"):
+        // the highest-value piece of theirs a move newly attacks, counted only when the poking piece is not simply taken where it lands (a check pokes the king)
+        let mut poked: Vec<(i64, Move)> = vec![];
+        let mut taken: HashSet<String> = HashSet::new();          // pokes that are simply taken: they create nothing (no poke, no threat left)
+        for (_, m) in &cands {
+            let mut r = self.pos.clone(); r.play_unchecked(m);
+            let tn = self.nm(m.to());
+            let (loss, _) = self.fact(&format!("(after {} {tn} (see {tn}))", self.nm(m.from().unwrap_or(m.to()))));
+            let now = pressure(r.board(), !t);
+            let mut pk = if r.is_check() { val(Role::King) } else { 0 };
+            for (sq, (n, mv)) in &now {
+                let (bn, bmv) = was.get(sq).copied().unwrap_or((0, 99));
+                if *n > bn || *mv < bmv { pk = pk.max(r.board().piece_at(*sq).map_or(0, |p| val(p.role))); }
+            }
+            // a poke that is simply taken creates nothing (Bxf3 "pokes" Qd1 and is taken back). A move that does not win but deflects a guard is not a poke:
+            // it comes from the higher frame that needs the guard gone (deflections), weighed only once the pokes are exhausted
+            if loss > 0 { pk = 0; taken.insert(m.to_uci(CastlingMode::Standard).to_string()); }
+            poked.push((pk, m.clone()));
+        }
+        // the safest biggest pokes are valued first (the gain breaks ties)
+        poked.sort_by(|a, b| b.0.cmp(&a.0).then(gain_of(&b.1).cmp(&gain_of(&a.1))));
+        // the worth of each (one push each, at most 14): what it wins for sure (lo: they can take nothing back), then the poke, then the hopeful end
+        let mut worth: Vec<(i64, i64, i64, Move, String)> = vec![];       // (lo, hi, poke, move, note)
+        for (pk, m) in poked.into_iter().take(14) {
             let g = gain_of(&m);
             let snap = self.enter(&m);
             let v = if self.pos.is_checkmate() { (-MATE, -MATE) } else if self.pos.legal_moves().is_empty() { (0, 0) } else if self.pos.is_check() { self.check_value() } else { self.stand_pat() };
             self.leave(snap);
-            worth.push(((g - v.1).max(-MATE), (g - v.0).min(2 * MATE), k, m, format!("worth {}..{} now", (g - v.1).max(-MATE), g - v.0)));
+            let note = if pk > 0 && pk < val(Role::King) { format!("worth {}..{} now, pokes a {}-point piece", (g - v.1).max(-MATE), g - v.0, pk) } else { format!("worth {}..{} now", (g - v.1).max(-MATE), g - v.0) };
+            worth.push(((g - v.1).max(-MATE), (g - v.0).min(2 * MATE), pk, m, note));
         }
-        worth.sort_by(|a, b| (b.0 + b.1).cmp(&(a.0 + a.1)).then(b.0.cmp(&a.0)).then(b.2.cmp(&a.2)));
+        worth.sort_by(|a, b| b.0.cmp(&a.0).then(b.2.cmp(&a.2)).then(b.1.cmp(&a.1)));
         let mut out: Vec<(Move, String)> = vec![];
         let top: Vec<(i64, i64, i64, Move, String)> = worth.iter().take(ANSWER_BREADTH).cloned().collect();
         if self.ply == self.root_ply {
             // ties at the top are broken by the threat each creates (sized, shallow)
-            let mut keyed: Vec<(i64, i64, Move, String)> = vec![];
+            let mut keyed: Vec<(i64, i64, i64, Move, String)> = vec![];
             for (lo, hi, _, m, note) in &top {
                 let mut r = self.pos.clone(); r.play_unchecked(m);
                 let mut created = 0;
                 let mut cnote = note.clone();
-                if !r.is_check() && !r.legal_moves().is_empty() {
+                if !r.is_check() && !r.legal_moves().is_empty() && !taken.contains(&m.to_uci(CastlingMode::Standard).to_string()) {
                     let saved = std::mem::replace(&mut self.pos, r);
                     self.fact_cache.clear();
                     self.shallow_sizing = true;
@@ -1122,10 +1265,11 @@ impl ReasoningLedger {
                     self.pos = saved; self.fact_cache.clear();
                     if let Some(th) = ts.first() { created = th.value; cnote = format!("{note}; leaves {} (worth {})", th.kick.as_ref().map(|x| x.3.clone()).unwrap_or_default(), th.value); }
                 }
-                keyed.push(((lo + hi) * 100 + created.min(99), *lo, m.clone(), cnote));
+                keyed.push((*lo, created.min(99), *hi, m.clone(), cnote));
             }
-            keyed.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
-            out = keyed.into_iter().map(|x| (x.2, x.3)).collect();
+            // what it wins for sure first (nothing of ours can be taken), then the threat it leaves them, then the hopeful end
+            keyed.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)).then(b.2.cmp(&a.2)));
+            out = keyed.into_iter().map(|x| (x.3, x.4)).collect();
         } else {
             out = top.iter().map(|x| (x.3.clone(), x.4.clone())).collect();
         }
@@ -1204,7 +1348,8 @@ impl ReasoningLedger {
             if !relevant { continue; }
             let loss = self.landing_loss(f, t);
             if loss > 0 && !m.capture().map_or(false, |r| val(r) >= loss) { continue; }      // it would only be lost there
-            let after = if f == p.1 { loss } else { let (fnm, tnm, pn) = (self.nm(f), self.nm(t), self.nm(p.1)); self.fact(&format!("(after {fnm} {tnm} (see {pn}))")).0 };
+            // the piece itself moves: what it loses where it lands, net of what it takes there (a trade saves it: Rxd1+ Kxd1)
+            let after = if f == p.1 { (loss - m.capture().map_or(0, val)).max(0) } else { let (fnm, tnm, pn) = (self.nm(f), self.nm(t), self.nm(p.1)); self.fact(&format!("(after {fnm} {tnm} (see {pn}))")).0 };
             if after == 0 { out.push(m.clone()); }
         }
         out
@@ -1564,6 +1709,8 @@ impl ReasoningLedger {
                 let notes: Vec<String> = made.iter().map(|(m, f)| format!("{} threatens {}", self.san_of(m), f)).collect();
                 self.say(format!("  creates: {}", if notes.is_empty() { "no move creates a threat above the null".to_string() } else { notes.join("; ") }));
                 groups.push(("b: creates a threat".to_string(), made.into_iter().map(|x| x.0).collect()));
+                // the higher frames, reached only when nothing above beats standing pat: a guard to deflect
+                for g in self.deflections(&legal) { groups.push(g); }
             } else {
                 let mine = tl.iter().find(|th| th.victim != t && th.value > 0 && !th.mate).map(|th| th.target);
                 if let Some(m) = &mine {
