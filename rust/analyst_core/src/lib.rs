@@ -12,6 +12,7 @@ pub mod lemma;
 pub mod prof;
 mod threat;
 mod ledger;
+mod agenda;
 mod reasoning;
 mod pns;
 mod game;

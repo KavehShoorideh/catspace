@@ -57,6 +57,9 @@ pub enum Term {
     If(Box<Term>, Box<Term>, Box<Term>), After(Box<Term>, Box<Term>, Box<Term>), Delta(Box<Term>), Gained(Box<Term>), Lost(Box<Term>),
     // number combinators
     Min(Box<Term>, Box<Term>), Max(Box<Term>, Box<Term>), Diff(Box<Term>, Box<Term>), Eq(Box<Term>, Box<Term>),
+    // MOBILITY and ATTACKABLE (Kaveh 2026-10-15, ANALYST_PLAN 40.2): the escape squares of a piece (legal, safe by the exchange); whether the other
+    // side can attack a piece's square within k of its moves, every landing square safe by the exchange
+    Mobility(Box<Term>), Attackable(Box<Term>, u32),
 }
 
 /// THE PIECES OF A SIDE, RANKED -- the order the names P, P2, P3, ... (O, O2, ...) follow: the strongest kind first (queen,
@@ -198,6 +201,8 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
         ("if", [c, a, d]) => Term::If(b(c), b(a), b(d)),
         ("after", [f, t2, a]) => Term::After(b(f), b(t2), b(a)),
         ("delta", [a]) => Term::Delta(b(a)), ("gained", [a]) => Term::Gained(b(a)), ("lost", [a]) => Term::Lost(b(a)),
+        ("mobility", [a]) => Term::Mobility(b(a)),
+        ("attackable", [a, Term::Int(k)]) if *k > 0 => Term::Attackable(b(a), *k as u32),
         ("min", [a, c]) => Term::Min(b(a), b(c)), ("max", [a, c]) => Term::Max(b(a), b(c)),
         ("diff", [a, c]) => Term::Diff(b(a), b(c)), ("eq", [a, c]) => Term::Eq(b(a), b(c)),
         _ => return None,
@@ -393,6 +398,7 @@ pub fn set(t: &Term, q: &Chess, lone: Color) -> Bitboard {
         Term::Between(a, c) => match (s1(a), s1(c)) { (Some(x), Some(y)) => shakmaty::attacks::between(x, y), _ => Bitboard::EMPTY },
         Term::Nearer(a, c) => match (s1(a), s1(c)) {
             (Some(x), Some(y)) => Bitboard::FULL.into_iter().filter(|u| kd(*u, x) < kd(*u, y)).collect(), _ => Bitboard::EMPTY },
+        Term::Mobility(a) => { let Some(x) = s1(a) else { return Bitboard::EMPTY }; mobility(q, x) }
         Term::And(a, c) => set(a, q, lone) & set(c, q, lone),
         Term::Or(a, c) => set(a, q, lone) | set(c, q, lone),
         Term::Not(a) => !set(a, q, lone),
@@ -439,6 +445,7 @@ pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
         Term::If(c, a, d) => if num(c, q, lone) != 0 { num(a, q, lone) } else { num(d, q, lone) },
         Term::After(f, t2, a) => after_move(f, t2, a, q, lone),
         Term::Delta(a) => crate::game::back(1).map_or(DELTA_ZERO, |p| (num(a, q, lone) + DELTA_ZERO).saturating_sub(num(a, &p, lone))),
+        Term::Attackable(a, k) => sq(a, q, lone).and_then(|x| q.board().color_at(x).map(|c| reach_route(q, !c, x, *k).is_ok() as u32)).unwrap_or(0),
         Term::Min(a, c) => num(a, q, lone).min(num(c, q, lone)),
         Term::Max(a, c) => num(a, q, lone).max(num(c, q, lone)),
         Term::Diff(a, c) => num(a, q, lone).abs_diff(num(c, q, lone)),
@@ -448,11 +455,70 @@ pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
     }
 }
 
+/// The same board with `c` to move (built relaxed: the other side's king may stand attacked).
+fn with_turn(q: &Chess, c: Color) -> Option<Chess> {
+    if q.turn() == c { return Some(q.clone()); }
+    let mut st = q.clone().into_setup(shakmaty::EnPassantMode::Legal);
+    st.turn = c;
+    relaxed(st).filter(|p| p.turn() == c)
+}
+
+/// A move lands safely: after it the exchange on its destination wins nothing for the other side (`see` after the move, as the word `see`).
+fn lands_safe(after: &Chess, to: Square, mover: Color) -> bool { crate::rules::see(after.board(), to, !mover) == 0 }
+
+/// **mobility X**: the squares the piece on `x` can legally move to (its own side to move, as `moves`) where it is safe by the exchange. Castling is not a move
+/// of the piece in this word.
+pub(crate) fn mobility(q: &Chess, x: Square) -> Bitboard {
+    let Some(c) = q.board().color_at(x) else { return Bitboard::EMPTY };
+    let Some(p) = with_turn(q, c) else { return Bitboard::EMPTY };
+    let mut out = Bitboard::EMPTY;
+    for m in p.legal_moves() {
+        if m.from() != Some(x) || m.is_castle() { continue; }
+        let mut a = p.clone(); a.play_unchecked(&m);
+        if lands_safe(&a, m.to(), c) { out.add(m.to()); }
+    }
+    out
+}
+
+/// **attackable / REACH** (ANALYST_PLAN 40.2): can side `c` attack square `s` within `k` of its moves (the other side passes), every landing square safe by the
+/// exchange? -> Ok(the route: the moves (from, to) in order; empty when `s` is attacked already) or Err(the blocking squares: the landing squares from which a
+/// piece of `c` would attack `s` but where it is lost by the exchange). The shortest route (iterative deepening); a node cap bounds the search.
+pub(crate) fn reach_route(q: &Chess, c: Color, s: Square, k: u32) -> Result<Vec<(Square, Square)>, Bitboard> {
+    let attacked_now = |b: &shakmaty::Board| (b.attacks_to(s, c, b.occupied()) & b.by_color(c)).any();
+    if attacked_now(q.board()) { return Ok(vec![]); }
+    let mut blockers = Bitboard::EMPTY;
+    let Some(start) = with_turn(q, c) else { return Err(blockers) };
+    fn go(p: &Chess, c: Color, s: Square, d: u32, route: &mut Vec<(Square, Square)>, blockers: &mut Bitboard, nodes: &mut u32, seen: &mut std::collections::HashSet<(u64, u32)>) -> bool {
+        if !seen.insert((crate::threat::zkey(p), d)) { return false; }
+        for m in p.legal_moves() {
+            *nodes += 1;
+            if *nodes > 30000 { return false; }
+            if m.is_castle() { continue; }
+            let mut a = p.clone(); a.play_unchecked(&m);
+            let hits = (a.board().attacks_to(s, c, a.board().occupied()) & a.board().by_color(c)).any();
+            if !lands_safe(&a, m.to(), c) { if hits { blockers.add(m.to()); } continue; }
+            route.push((m.from().unwrap_or(m.to()), m.to()));
+            if hits && d == 1 { return true; }
+            if d > 1 && !hits {
+                if let Some(n) = with_turn(&a, c) { if go(&n, c, s, d - 1, route, blockers, nodes, seen) { return true; } }
+            }
+            if hits { return true; }
+            route.pop();
+        }
+        false
+    }
+    for d in 1..=k.max(1) {
+        let mut route = vec![]; let mut nodes = 0; let mut seen = std::collections::HashSet::new();
+        if go(&start, c, s, d, &mut route, &mut blockers, &mut nodes, &mut seen) { return Ok(route); }
+    }
+    Err(blockers)
+}
+
 /// Is this term a number (else a set, read as its count)?
 pub fn is_num(t: &Term) -> bool {
     matches!(t, Term::Count(_) | Term::Dist(_, _) | Term::Sum(_, _) | Term::FileOf(_) | Term::RankOf(_) | Term::DFile(_, _) | Term::DRank(_, _)
         | Term::Pushes(_) | Term::Attackers(_) | Term::Defenders(_) | Term::See(_) | Term::Forcing(_, _) | Term::MaterialUs | Term::MaterialThem
-        | Term::Halfmoves | Term::Seen | Term::Ago(_, _) | Term::Without(_, _) | Term::If(_, _, _) | Term::After(_, _, _) | Term::Delta(_) | Term::Min(_, _) | Term::Max(_, _) | Term::Diff(_, _) | Term::Eq(_, _) | Term::Int(_))
+        | Term::Halfmoves | Term::Seen | Term::Ago(_, _) | Term::Without(_, _) | Term::If(_, _, _) | Term::After(_, _, _) | Term::Delta(_) | Term::Attackable(_, _) | Term::Min(_, _) | Term::Max(_, _) | Term::Diff(_, _) | Term::Eq(_, _) | Term::Int(_))
 }
 
 /// The squares past `y` on the ray from `x` through `y`, nearest first.
@@ -1227,6 +1293,7 @@ pub(crate) fn reads(t: &Term, q: &Chess, lone: Color) -> Bitboard {
             exchange_reads(b, s) | own_king }),
         Term::Without(x, a) => r(x) | set(x, q, lone) | without_pos(x, q, lone).map_or(Bitboard::FULL, |p| reads(a, &p, lone)),
         Term::After(f, t2, a) => r(f) | r(t2) | at(f) | at(t2) | after_pos(f, t2, q, lone).map_or(Bitboard::FULL, |p| reads(a, &p, lone)),
+        Term::Mobility(a) | Term::Attackable(a, _) => r(a) | at(a) | Bitboard::FULL,        // (the escape squares and the routes read most of the board)
         Term::Count(a) | Term::Not(a) | Term::Delta(a) | Term::Gained(a) | Term::Lost(a) => r(a),
         Term::And(a, c) | Term::Or(a, c) | Term::Sum(a, c) | Term::Min(a, c) | Term::Max(a, c) | Term::Diff(a, c) | Term::Eq(a, c) => r(a) | r(c),
         Term::If(c, a, d) => r(c) | r(a) | r(d),

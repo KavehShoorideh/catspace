@@ -378,6 +378,31 @@ def gainedIn (hist : List Position) (p : Position) (f : Position → SquareSet) 
 def lostIn (hist : List Position) (p : Position) (f : Position → SquareSet) : SquareSet :=
   match hist.reverse[1]? with | some q => fun u => f q u && !(f p u) | none => fun _ => false
 
+/-- **mobility** (Kaveh 2026-10-15, ANALYST_PLAN 40.2): the squares the piece on `s` can legally move to where it is safe by the
+exchange -- after the move nothing is won by capturing on the square it lands on. "The escape squares of a piece." -/
+def mobilityOf (p : Position) (s : Square) : SquareSet := fun t =>
+  movesOf p s t && decide (afterMove p (some s) (some t) (fun q => seeOf q t) = 0)
+
+/-- A move lands safely: after it, the exchange on its destination wins nothing for the other side. -/
+def landsSafe (p : Position) (m : Move) : Bool := decide (seeOf (applyMove p m) m.destination = 0)
+
+/-- Side `c` can attack square `s` within `k` of its own moves (the other side passes), every landing square safe by the
+exchange; already attacked counts (0 moves). -/
+def attackableIn (c : Color) (s : Square) : Nat → Position → Bool
+  | 0, p => decide (0 < attackerCount p c s)
+  | k + 1, p => decide (0 < attackerCount p c s) ||
+      (legalMoves { p with turn := c, enPassant := none }).any (fun m =>
+        landsSafe { p with turn := c, enPassant := none } m &&
+        attackableIn c s k (applyMove { p with turn := c, enPassant := none } m))
+
+/-- **attackable** (the REACH of ANALYST_PLAN 40.2; the name `reach` was taken by the king's walk): 1 when the side that does not own
+the piece on `s` can attack `s` within `k` moves, every landing square safe by the exchange; else 0. The route and the blocking
+squares are the evaluator's answer (vocab.rs `reach_route`); this is the yes/no. -/
+def attackableOf (p : Position) (s : Square) (k : Nat) : Nat :=
+  match ownerOf p s with
+  | some o => if attackableIn (Color.opposite o) s k p then 1 else 0
+  | none => 0
+
 /-- **how far apart** two numbers are. -/
 def nDiff (a b : Nat) : Nat := if a ≤ b then b - a else a - b
 

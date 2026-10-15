@@ -44,6 +44,17 @@ def load_defence_frame(L, path: str | None = None) -> list:
     return terms
 
 
+def load_transitions(L, path: str | None = None) -> bool:
+    """Load the transition table (data/derived/transitions.json, ANALYST_PLAN 33) into a ledger: the stake of a trade is read from it. False when absent."""
+    from catspace.io import paths
+    p = path or paths.derived("transitions.json")
+    try:
+        L.set_transitions(open(p).read())
+        return True
+    except OSError:
+        return False
+
+
 def analyse(fen: str, budget: int = 200) -> dict:
     return _a().ledger(fen, budget)
 
@@ -146,6 +157,7 @@ def main(argv=None):
     ap.add_argument("--threats", choices=("defined", "rules"), default="defined", help="what a threat is: the DEFINITION sized by the ledger (material lost with the best defence, or mate), or the older rules")
     ap.add_argument("--answers", choices=("frame", "hand"), default="frame", help="the answers to a threat: S's moves ordered by the learned defence frame, or the hand-written ones (comparison only)")
     ap.add_argument("--depth", type=int, default=4, help="plies of the line (trace)")
+    ap.add_argument("--loop", choices=("event", "script"), default="event", help="trace: the event loop (ANALYST_PLAN 40, the default: the chain is printed first) or the older fixed script (comparison only)")
     ap.add_argument("--mirror", action="store_true", help="mirror the board first (the ledger reads either side; not needed)")
     a = ap.parse_args(argv)
     fen = chess.Board(a.fen).mirror().fen() if a.mirror else a.fen
@@ -154,7 +166,9 @@ def main(argv=None):
         L = new(fen, max(a.budget, 1000))
         if a.answers == "frame":
             load_defence_frame(L)
-        r = L.trace(a.depth, a.threats, a.answers)
+        if a.loop == "event":
+            load_transitions(L)
+        r = L.trace(a.depth, a.threats, a.answers, a.loop == "event")
         for line in r["trace"]:
             print(line)
         print(f"OBS trace ({'learned' if r['learned'] else 'rules'} threats): {r['positions']} positions examined by the ledger, {r['looks']} static looks by the threat frame, {r['questions']} questions, {r['facts']} facts, {round(time.time() - t0, 2)} s; line "
@@ -168,6 +182,29 @@ def main(argv=None):
         t0 = time.time()
         roll(fen, a.line.split(), a.budget, a.square)
         print(f"OBS roll forward: {round(time.time() - t0, 2)} s")
+
+
+def chain_main(argv=None):
+    """python -m catspace.incubator.analyst.discovery.ledger chain "<FEN>" [--tag name] -- the event loop's chain on a position (ANALYST_PLAN 40), printed and
+    saved to data/derived/chain_<tag>.txt."""
+    from catspace.io import paths
+    ap = argparse.ArgumentParser(prog="ledger chain")
+    ap.add_argument("fen")
+    ap.add_argument("--tag", default=None)
+    ap.add_argument("--questions", type=int, default=120, help="the decision's budget of questions")
+    a = ap.parse_args(argv)
+    t0 = time.time()
+    L = new(a.fen, 5000)
+    have = load_transitions(L)
+    r = L.chain(a.questions)
+    lines = [f"POSITION {a.fen}"] + ([] if have else ["(no transition table at data/derived/transitions.json: the stake of a trade is unknown)"]) + r["lines"]
+    lines.append(f"OBS chain: {r['questions']} questions asked, {r['facts']} facts evaluated, {len(r['agenda']['events'])} events, {round(time.time() - t0, 2)} s")
+    print("\n".join(lines))
+    tag = a.tag or "".join(ch if ch.isalnum() else "_" for ch in a.fen.split()[0])[:24]
+    out = paths.derived(f"chain_{tag}.txt")
+    open(out, "w").write("\n".join(lines) + "\n")
+    print(f"saved {out}")
+    return r
 
 
 # ---------------------------------------------------------------------------------------------------------------------------------------------
@@ -332,5 +369,7 @@ if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1 and sys.argv[1] == "walk":
         walk_main(sys.argv[2:])
+    elif len(sys.argv) > 1 and sys.argv[1] == "chain":
+        chain_main(sys.argv[2:])
     else:
         main()

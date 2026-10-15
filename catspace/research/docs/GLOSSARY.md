@@ -107,6 +107,10 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   `t >= m`, `(eq (min t m) t)` for `t <= m`, `&&` the min); `(after F P T)`: T on the board after the piece on F goes to P (whatever stood
   there taken; pawn to the last rank a queen; the other side to move; built relaxed; "us" unchanged); `(delta T)`: T now minus T a ply ago,
   on an offset of 64 (64 unchanged; no earlier position: 64); `(gained S)` / `(lost S)`: squares in S now and not a ply ago, and the reverse.
+- **Mobility / attackable** (`(mobility X)`, `(attackable X k)`, 2026-10-15; not enumerated) — the event loop's two words (ANALYST_PLAN 40.2). `mobility`: the squares
+  the piece on X can legally move to where it is safe by the exchange (the escape squares). `attackable`: 1 when the side that does not own the piece on X can attack
+  its square within k of its moves (the other side passing), every landing square safe by the exchange (the plan's REACH; `reach` was taken by the king's walk); the route
+  and the blocking squares are the evaluator's `reach_route`. Lean: `mobilityOf`, `attackableOf`.
 - **Layers** — the order the proposers search the terms in: layer 0 the original words, layer 1 the completed static words,
   layer 2 the expensive ones (the short window's tactics, time).
 

@@ -19,6 +19,7 @@ use crate::vocab;
 use shakmaty::Bitboard;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
+mod chain;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum St { Proven, Refuted, Conditional, Unknown, Estimated }
@@ -31,6 +32,7 @@ struct Finding {
     id: usize, key: String, hash: u64, kind: &'static str, claim: String, lo: i64, hi: i64, st: St, reads: Bitboard, cites: Vec<usize>,
     premise: Option<String>, ply: u32, stale: Option<u32>, circular: bool, note: String, facts: Vec<(String, i64)>,
     sq: Vec<Square>,          // the squares of the pieces the finding is about (SAFE: piece, attacker; RECAP: guard, captured, attacker, charge)
+    holders: Vec<Pc>,         // SAFE that holds: the legal recapturers that hold it (a reason event names each, ANALYST_PLAN 40.1)
 }
 
 type Pc = (Role, Square);
@@ -92,6 +94,14 @@ pub struct ReasoningLedger {
     answers_hand: bool,
     shallow_sizing: bool,
     prefilter_root: bool,
+    // THE EVENT LOOP (ANALYST_PLAN 40; agenda.rs for the bookkeeping, reasoning/chain.rs for the questions)
+    ag: crate::agenda::Agenda,
+    ag_on: bool,
+    cur_q: Option<usize>,
+    cur_ctx: Vec<String>,
+    pending: HashMap<usize, u32>,
+    trans: Option<Value>,
+    cands: Vec<chain::Cand2>,
 }
 
 impl ReasoningLedger {
@@ -132,7 +142,7 @@ impl ReasoningLedger {
     }
     fn skeleton(&self, kind: &'static str, key: String, claim: String) -> Finding {
         Finding { id: 0, hash: hash_of(&key), key, kind, claim, lo: 0, hi: 0, st: St::Proven, reads: Bitboard::EMPTY, cites: vec![], premise: None, ply: 0,
-                  stale: None, circular: false, note: String::new(), facts: vec![], sq: vec![] }
+                  stale: None, circular: false, note: String::new(), facts: vec![], sq: vec![], holders: vec![] }
     }
     fn ckey(kind: &str, actor: Color, pcs: &[Pc], extra: &[Square]) -> String {
         let mut v: Vec<Pc> = pcs.to_vec();
@@ -310,6 +320,7 @@ impl ReasoningLedger {
             format!("{}{} is safe: {} takes, {} retakes (trade)", pname(y), gl, pname(a), defs.iter().map(|d| pname(*d)).collect::<Vec<_>>().join("/"))
         };
         f.note = format!("attacker {} defenders [{}] check={} in-between<={}", pname(a), defs.iter().map(|d| pname(*d)).collect::<Vec<_>>().join(","), check, inb);
+        if hi == 0 { f.holders = defs.clone(); }
         self.stack.pop();
         self.add(f)
     }
@@ -338,6 +349,7 @@ impl ReasoningLedger {
         let id = self.add(f);
         let ph = hash_of(&format!("LEAVES|{}", x.1));
         self.listeners.entry(ph).or_default().push(self.fs[id].hash);
+        self.reason_blocker(id, x, a, y);
         id
     }
 
@@ -375,6 +387,7 @@ impl ReasoningLedger {
             let mut lo = bl.lo - gain_hi;
             let hi = bl.hi - gain_lo;
             if tempo { lo = lo.min(0); }
+            if tempo { self.reason_tempo(x, y, &m.to_uci(CastlingMode::Standard).to_string()); }
             per.push(json!({"move": m.to_uci(CastlingMode::Standard).to_string(), "gain": [gain_lo, gain_hi], "check": tempo, "cost": [lo, hi]}));
             if lo < lo_all { lo_all = lo; best = crate::plan::san(&po, &m.to_uci(CastlingMode::Standard).to_string()); }
             lows.push(lo);
@@ -505,7 +518,8 @@ impl ReasoningLedger {
     fn new(fen: String, budget: u32) -> PyResult<Self> {
         let pos = crate::parse(&fen).ok_or_else(|| pyo3::exceptions::PyValueError::new_err("bad fen"))?;
         Ok(ReasoningLedger { line: vec![pos.clone()], pos, ply: 0, fs: vec![], live: HashMap::new(), listeners: HashMap::new(), fact_cache: HashMap::new(),
-            budget, used: 0, carried: 0, reasked: 0, facts_n: 0, solver_calls: 0, stack: vec![], skipped: vec![], agenda: vec![], plies: vec![], confirmations: vec![], tt: HashMap::new(), nodes: 0, node_cap_hit: false, budget_hit: false, deep: false, cap_now: 0, cuts: 0, threats_mode: false, lean_mode: false, pushes: 0, tr: std::cell::RefCell::new(vec![]), tracing: false, root_ply: 0, sep_flag: false, suppressed: std::cell::Cell::new(0), lean_cap: LEAN_CAP, frame: vec![], threats_learned: false, looks: 0, slog: vec![], resolving: 0, resolved_n: 0, cashing: false, dframe: vec![], answers_hand: false, shallow_sizing: false, prefilter_root: true })
+            budget, used: 0, carried: 0, reasked: 0, facts_n: 0, solver_calls: 0, stack: vec![], skipped: vec![], agenda: vec![], plies: vec![], confirmations: vec![], tt: HashMap::new(), nodes: 0, node_cap_hit: false, budget_hit: false, deep: false, cap_now: 0, cuts: 0, threats_mode: false, lean_mode: false, pushes: 0, tr: std::cell::RefCell::new(vec![]), tracing: false, root_ply: 0, sep_flag: false, suppressed: std::cell::Cell::new(0), lean_cap: LEAN_CAP, frame: vec![], threats_learned: false, looks: 0, slog: vec![], resolving: 0, resolved_n: 0, cashing: false, dframe: vec![], answers_hand: false, shallow_sizing: false, prefilter_root: true,
+            ag: crate::agenda::Agenda::new(vec![], 0), ag_on: false, cur_q: None, cur_ctx: vec![], pending: HashMap::new(), trans: None, cands: vec![] })
     }
 
     /// Ask every question of the entry pass (SAFE of every piece, BLOCKS of every shielded piece with its PIN) and return the report.
@@ -605,8 +619,9 @@ impl ReasoningLedger {
         Ok(())
     }
 
-    #[pyo3(signature = (depth=6, threats="defined", answers="frame"))]
-    fn trace(&mut self, py: Python<'_>, depth: i32, threats: &str, answers: &str) -> PyResult<PyObject> {
+    #[pyo3(signature = (depth=6, threats="defined", answers="frame", event_loop=false))]
+    fn trace(&mut self, py: Python<'_>, depth: i32, threats: &str, answers: &str, event_loop: bool) -> PyResult<PyObject> {
+        let chain_lines = if event_loop { self.run_chain(120) } else { vec![] };
         self.answers_hand = answers == "hand";
         self.threats_learned = threats == "defined";
         self.looks = 0;
@@ -617,6 +632,10 @@ impl ReasoningLedger {
         let t = self.pos.turn();
         let who = if t == Color::White { "White" } else { "Black" };
         self.say(format!("POSITION {} -- {who} to move.", shakmaty::fen::Fen::from_position(self.pos.clone(), shakmaty::EnPassantMode::Legal)));
+        if event_loop {
+            for l in &chain_lines { self.say(l.clone()); }
+            self.say("THE DECISION below is still read off the B* stop over the same ledger (ANALYST_PLAN 40.4 moves it onto the chain in phase 2); the chain above is the event loop's own reasoning.".to_string());
+        }
         // LATENT THREATS: a piece of ours that shields another from a slider -- the premise "it leaves" is open (listeners)
         let b = self.pos.board().clone();
         let mut any = false;
@@ -690,10 +709,26 @@ impl ReasoningLedger {
         if self.suppressed.get() > 0 { self.say(format!("({} deeper steps were taken but are not printed; the positions are counted above.)", self.suppressed.get())); }
         let lines = self.tr.borrow().clone();
         self.tracing = false; self.lean_cap = LEAN_CAP;
-        let out = json!({"trace": lines, "move": first, "san": san, "interval": [iv.0, iv.1], "status": status, "positions": self.pushes, "questions": self.used,
+        let out = json!({"trace": lines, "chain": chain_lines, "move": first, "san": san, "interval": [iv.0, iv.1], "status": status, "positions": self.pushes, "questions": self.used,
                          "facts": self.facts_n, "looks": self.looks, "learned": self.threats_learned, "line": pv});
         let j = py.import("json")?;
         Ok(j.call_method1("loads", (out.to_string(),))?.unbind())
+    }
+
+    /// Load the transition table (data/derived/transitions.json, ANALYST_PLAN 33) as JSON text: the stake of a trade is read from it.
+    fn set_transitions(&mut self, text: &str) -> PyResult<()> {
+        self.trans = Some(serde_json::from_str(text).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?);
+        Ok(())
+    }
+
+    /// THE EVENT LOOP (ANALYST_PLAN 40): events -> conditions -> an agenda by stake -> chains. -> {"lines": the chain printed, "agenda": the events and chain records as data, ...}.
+    #[pyo3(signature = (questions=120))]
+    fn chain(&mut self, py: Python<'_>, questions: u32) -> PyResult<PyObject> {
+        let lines = self.run_chain(questions);
+        let res = json!({"lines": lines, "agenda": self.ag.to_json(), "questions": self.ag.spent, "facts": self.facts_n,
+                         "candidates": self.cands.iter().map(|c| json!({"actor": c.actor, "uci": c.uci, "san": c.san, "lo": c.lo, "hi": c.hi, "constraint": c.constraint, "risk": c.risk, "why": c.why})).collect::<Vec<_>>()});
+        let j = py.import("json")?;
+        Ok(j.call_method1("loads", (res.to_string(),))?.unbind())
     }
 
     fn report_dict(&self, py: Python<'_>) -> PyResult<PyObject> {

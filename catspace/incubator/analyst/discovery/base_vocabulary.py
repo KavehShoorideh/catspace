@@ -122,6 +122,12 @@ PRIMITIVES.update({
     "delta": (("num",), "num", "{0} now minus {0} a ply ago, plus 64 (64: unchanged, above: increased, below: reduced)"),
     "gained": (("set",), "set", "the squares of {0} now that were not a ply ago"),
     "lost": (("set",), "set", "the squares of {0} a ply ago that are not now"),
+    # MOBILITY and ATTACKABLE (Kaveh 2026-10-15, ANALYST_PLAN 40.2; the REACH of the event loop -- `reach` was taken by the king's walk). Not
+    # enumerated. mobility: the escape squares of a piece, those it can legally go to and be safe on by the exchange. attackable: whether the
+    # other side can attack a piece's square within k of its moves, every landing square safe by the exchange (the route and the blocking
+    # squares are the evaluator's `reach_route`)
+    "mobility": (("sq",), "set", "the squares {0} can legally move to and be safe on by the exchange"),
+    "attackable": (("sq", "int"), "num", "whether the other side can attack {0} within {1} of its moves, every landing square safe by the exchange (1 or 0)"),
     # combinators
     "or": (("set", "set"), "set", "{0} or {1}"),
     "min": (("num", "num"), "num", "the smaller of {0} and {1}"),
@@ -292,6 +298,8 @@ def lean(t) -> str:
         return f"({h}In hist p (fun p => {lean(a[0])}))"
     if h == "if":
         return f"(if {lean(a[0])} ≠ 0 then {lean(a[1])} else {lean(a[2])})"
+    if h == "attackable":                          # (the piece's square, the number of moves)
+        return f"(onum (fun s => attackableOf p s {a[1]}) {lean(a[0])})"
     x = [lean(y) for y in a]
     return {
         "box": lambda: f"(oset box {x[0]})", "rank": lambda: f"(oset rankOf {x[0]})", "file": lambda: f"(oset fileOf {x[0]})",
@@ -315,6 +323,7 @@ def lean(t) -> str:
         "attackers": lambda: f"(onum (attackerCount p c) {x[0]})",
         "defenders": lambda: f"(onum (attackerCount p (Color.opposite c)) {x[0]})",
         "see": lambda: f"(onum (seeOf p) {x[0]})", "moves": lambda: f"(oset (movesOf p) {x[0]})",
+        "mobility": lambda: f"(oset (mobilityOf p) {x[0]})",
         "min": lambda: f"(min {x[0]} {x[1]})", "max": lambda: f"(max {x[0]} {x[1]})",
         "diff": lambda: f"(nDiff {x[0]} {x[1]})", "eq": lambda: f"(if {x[0]} = {x[1]} then 1 else 0)",
     }[h]()

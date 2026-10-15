@@ -30849,3 +30849,26 @@ THE EXCHANGE FIRST, WHAT-IFS KEPT IN THEIR WHAT-IF, SAFE POKES (2026-10-14 22:57
   above beats standing pat. Printed: 6...Bg4 -> "b: deflect b7 (it guards Nc6: without it Nc6 loses 3) -- Bxc6, Ba6", weighed and abandoned (0 <= 0); (a) ...Ra4, (b) Qxa8 10..10
   PROVEN, (c) ...Qg5 3..3 PROVEN unchanged; the game walk: 46.9 s, 34,342 ledger positions, a deflection frame weighed at 7 of 81 decisions and never chosen, the first capture seen in
   6 of 7 material changes. Full suite on the exchange-first build (before this addendum): 804 passed, 1 xfailed, 15 min 46 s; the five ledger/threat files after it: 36 passed.
+
+## 2026-10-15 00:37 PDT — the event loop's kernel (ANALYST_PLAN 40, phase 1): events, conditions, an agenda by stake, chains as data; MOBILITY and ATTACKABLE
+
+Built (one run each, directional; every number below is from a printed OBS line of that run). rust/analyst_core/src/agenda.rs holds the bookkeeping and nothing chess-specific: events
+(push / found / reason / impasse), conditions (premise-key patterns that open a question kind; DATA), the agenda (open questions; the policy picks the highest stake, then the cheapest;
+a question opens only from a matching event, once per canonical key, only if its stake beats the best value known for its side, within a chain budget set by its stake and the
+decision's budget), chains as records (question, answer, reason, stake, cost). reasoning/chain.rs has the questions: SURVEY, SAFE, POKES, POKE, ASSESS, DEFLECT, UNCOVER, TRADE;
+every held SAFE posts a reason event naming each holder (a guard, with its job as the stake), and so do BLOCKS (the blocker), the tempo of a check, and unreachability, for both sides;
+a reason on one side's finding opens the other side's DEFLECT. python -m catspace.incubator.analyst.discovery.ledger chain "<FEN>" prints the chain and saves data/derived/chain_<tag>.txt;
+trace runs the event loop first by default (--loop script is the old fixed script, comparison only). The exact solver only confirms (a conditional threat, an assessed move's forced gain).
+Two words, each with a Lean def (Ideas.Base.Vocabulary: mobilityOf, attackableOf, type-checked), a gloss, and the Rust mirror (vocab.rs): MOBILITY (the escape squares safe by the exchange)
+and ATTACKABLE (the plan's REACH; the name reach was taken by the king's walk; within k moves, every landing safe by the exchange; the route and the blocking squares are reach_route).
+Printed: move 30 (2r2rk1/5pp1/1p4qp/p1b5/6QR/6P1/1B2RP2/5K2 w): 101 questions, 1686 facts, 100 events, 0.43 s. Qg4 attacked and safe by the trade, held by Rh4; the table's reading of the
+queen trade (the mover White, behind -4..-2): +0.009 over 7516 rows pooled across the Lichess bands -- a score difference, not pawns, so the trade's stake is NOT in the agenda's unit (a
+TODO for Kaveh: no conversion rule was invented). Black's deflect-Rh4 question closes in one line: MOBILITY Rh4 4 safe squares (h1,h2,h3,h5), REACH route Qg5 (a queen trade square),
+Qg5xh4 gxh4 nets -4 for Black. Bb2 held by Re2 under Qb1+ -> Black's deflect-Re2: static reading "if Rce8/Rfe8 then Qb1+ and Bb2 falls, 3", the exact solver does NOT confirm a gain of 3
+within 3 moves (40123 nodes): ESTIMATED, not counted -- the check must be answered first and Qg4 keeps e2. With the queen on h3 (not guarding e2) the same chain is SOLVER-CONFIRMED
+(126458 nodes): a conditional two-move threat of 3. Qc4: "the c-file opens Rc8 onto Qc4 when Bc5 moves (4)"; the shield's best move costs White up to 2, nothing sure: the candidate is
+RISKY, not rejected by the ledger's reading. Nxc6 (1r1qk2r/... w, 16.Nxc6): SAFE(Qd8) loses 6, SAFE(Rb8) loses 2, "no single move of Black saves both Qd8 and Rb8", static worth 0..4, the
+solver forces 5 within 3 moves (1023681 nodes) -- above the static upper bound 4, a surprise the chain records; 59 questions, 0.54 s. The three trace positions keep their answers on the
+default loop (Ra4 0..0 966 positions; Qxa8 10..10 PROVEN 61; Qg5 3..3 PROVEN 651); the decision is still read off the B* stop (phase 2 moves it onto the chain). Tests: tests/test_agenda.py
+(11) and the five older ledger/threat files (37 passed). Not as the plan wrote it: REACH finds Qg5 for Rh4 (so "unreachable" does not print), Bb2 is not "then lost (3)" on move 30
+itself, and Qc4 is risky rather than rejected -- each is what the words answer on that board.
