@@ -231,9 +231,10 @@ impl ReasoningLedger {
         };
         let (us, bal, bin) = self.trade_cell();
         let (mut num, mut den, mut games) = (0.0f64, 0.0f64, 0i64);
-        let mut source = "the player's own games (kaveh cells), pooled over the evaluation bands";
+        // THE POPULATION FIRST (the Lichess bands pooled): the machinery is generic; a player's own cells are a product reading, read only when the population has no row
+        let mut source = "the Lichess bands pooled";
         for pass in 0..2 {
-            let pre = if pass == 0 { "kaveh" } else { "lichess" };
+            let pre = if pass == 0 { "lichess" } else { "kaveh" };
             if let Some(t) = tab.get("table").and_then(|t| t.as_object()) {
                 for (cell, v) in t {
                     if !cell.starts_with(pre) || !cell.ends_with(&format!("| {bin}")) { continue; }
@@ -643,11 +644,11 @@ impl ReasoningLedger {
         let bin = if bal <= -5 { "behind <= -5" } else if bal <= -2 { "behind -4..-2" } else if bal <= 1 { "even" } else if bal <= 4 { "ahead 2..4" } else { "ahead >= 5" };
         (us, bal, bin)
     }
-    /// The table's score difference for the mover when the queens come off: the player's own cells first, else the Lichess bands pooled (n-weighted). None without a table.
+    /// The table's score difference for the mover when the queens come off: the Lichess bands pooled (n-weighted) first, the player's own cells only when the population has none. None without a table.
     fn trade_score(&self) -> Option<f64> {
         let tab = self.trans.as_ref()?;
         let (_, _, bin) = self.trade_cell();
-        for pre in ["kaveh", "lichess"] {
+        for pre in ["lichess", "kaveh"] {
             let (mut num, mut den) = (0.0, 0.0);
             for (cell, v) in tab.get("table")?.as_object()? {
                 if !cell.starts_with(pre) || !cell.ends_with(&format!("| {bin}")) { continue; }

@@ -163,11 +163,13 @@ def test_trace_keeps_its_answer_on_the_event_loop_and_the_script():
 
 # ---- PHASE 2: the decision read off the chain (ANALYST_PLAN 40.4) ------------------------------------------------------------------------
 
-def test_move_30_is_decided_by_the_chain_and_keeps_the_queens_on():
+def test_move_30_is_decided_by_the_chain_and_names_the_constraints():
+    # Whether the queens stay on is the TRANSITION TABLE's reading, not a rule: the population cell (Lichess bands pooled, behind -4..-2) says a
+    # queen trade changes the mover's result by about +0.01 (neutral), so the chain may trade; the player's own cell says -0.09 (keep them). Kaveh's
+    # knob (2026-10-15 night). What the test holds fixed: Qc4 is never chosen (the c-file discovery), and the reason names the Re2 / e8 constraint.
     d = LG.decide(MOVE30)
     print("OBS", d["lines"][-1][:220])
-    assert d["san"] not in ("Qxg6", "Qc4")
-    assert not chess_capture_of_queen(MOVE30, d["move"])
+    assert d["san"] != "Qc4"
     assert "Re2 must not be deflectable" in d["lines"][-1]                 # the reason names the Re2 / e8 constraint it meets
     assert any("Re2 must not be deflectable" in c["text"] for c in d["constraints"]) and any("Qg4" in c["text"] for c in d["constraints"])
     names = {c["san"]: c for c in d["candidates"]}

@@ -30893,3 +30893,8 @@ both right on 30, the loop only on 14, the script only on 3. Miss classes of the
 no condition made the answer a candidate (event missing) 1; the candidate cap cut it (question never opened) 1; lemma class: none yet -- every chain is run from scratch (phase 3).
 Faults found in the first 20 chains and fixed (general): ctx SAFE findings raised the best known value; unconfirmed static deflections were subtracted from the value (13 for a rook move the solver does not
 confirm); the trade penalty outranked the interval's upper end; checks and mates in one were not candidates (a mate in one is a rule of the game).
+  CORRECTION (2026-10-15 01:07 PDT, autonomy): the trade cell now reads the POPULATION first (the Lichess bands pooled), the player's own cells only
+  when the population has no row -- the machinery is generic; a player's cell is a product reading (memory threat_entropy_transitions_2026_09_15: "the
+  product can show a player his own pattern vs the population's"). Printed: with the population cell move 30 decides Qxg6 (0..0, the table +0.009 =
+  neutral at -4..-2), with the player's cell Qd7 (-0.094). KAVEH'S KNOB: which cell the ledger plays by. The test now holds fixed what is not the
+  table's: Qc4 never chosen (the c-file discovery), the Re2 / e8 constraint named in the reason. test_agenda 16 passed.
