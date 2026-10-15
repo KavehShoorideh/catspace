@@ -119,6 +119,10 @@ PRIMITIVES.update({
     # `delta` rides on an offset: 64 means unchanged, above is increased, below reduced
     "if": (("num", "num", "num"), "num", "{1} if {0} holds, else {2}"),
     "after": (("sq", "sq", "num"), "num", "{2} after the piece on {0} moves to {1}"),
+    # LEAST / MOST (Kaveh 2026-10-15, the window as a tree): the worst / best of a number over every legal reply; one-ply quantifier;
+    # not enumerated (compositions only, like `after`). Lean: leastOver / mostOver
+    "least": (("num",), "num", "the least {0} after any legal move of the side to move"),
+    "most": (("num",), "num", "the most {0} after any legal move of the side to move"),
     "delta": (("num",), "num", "{0} now minus {0} a ply ago, plus 64 (64: unchanged, above: increased, below: reduced)"),
     "gained": (("set",), "set", "the squares of {0} now that were not a ply ago"),
     "lost": (("set",), "set", "the squares of {0} a ply ago that are not now"),
@@ -296,6 +300,13 @@ def lean(t) -> str:
         finally:
             _REBOUND = outer
         return f"(afterMove p {lean(a[0])} {lean(a[1])} (fun p => {body}))"
+    if h in ("least", "most"):                     # the quantifier over the legal moves of the side to move; p rebound inside
+        outer, _REBOUND = _REBOUND, True
+        try:
+            body = lean(a[0])
+        finally:
+            _REBOUND = outer
+        return f"({h}Over p (fun p => {body}))"
     if h in ("delta", "gained", "lost"):           # the term on the position a ply back (p rebound), as `ago`
         return f"({h}In hist p (fun p => {lean(a[0])}))"
     if h == "if":

@@ -115,6 +115,10 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   square OTHER than X: its best capture if it declines to take on X. The split of a sacrifice in the chain's value: if they take, the exact solver's forced
   line after the recapture; if they don't, `declined` on the landing square (and the piece itself if it is trapped there). The move is worth the smaller.
   Lean: `declinedOf`.
+- **Least / Most** (`(least X)`, `(most X)`, 2026-10-15, Kaveh: the window as a tree) — the worst and the best of a number over every legal move of the side to
+  move: X read on the board after each reply (names and "us" as in the position they are written at), the minimum (`least`) or maximum (`most`) taken, 0 when there is
+  no legal move. A one-ply quantifier, written inside `after` to read a line as a small tree ("whatever they answer, the exchange still wins"). Not enumerated
+  (compositions only, like `after`). Lean: `leastOver`, `mostOver` (`leastOver_le`, `le_mostOver`).
 - **Layers** — the order the proposers search the terms in: layer 0 the original words, layer 1 the completed static words,
   layer 2 the expensive ones (the short window's tactics, time).
 

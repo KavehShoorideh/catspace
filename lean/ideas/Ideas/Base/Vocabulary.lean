@@ -412,4 +412,68 @@ def declinedOf (p : Position) (s : Square) : Nat :=
 /-- **how far apart** two numbers are. -/
 def nDiff (a b : Nat) : Nat := if a ≤ b then b - a else a - b
 
+/-- **least** (Kaveh 2026-10-15, the window as a tree): the least a number reads after ANY legal move of the side to move -- the
+worst case over every reply, one ply (the forcing words are three-ply searches; this is the one-ply quantifier they are built
+from). 0 when the side to move has no legal move (nothing is guaranteed then). `p` and the names are rebound inside, as for
+`after`. -/
+def leastOver (p : Position) (f : Position → Nat) : Nat :=
+  match (legalMoves p).map (fun m => f (applyMove p m)) with
+  | [] => 0
+  | x :: xs => xs.foldl min x
+
+/-- **most**: the most a number reads after any legal move of the side to move -- the best case over every reply; 0 when there
+is no legal move. -/
+def mostOver (p : Position) (f : Position → Nat) : Nat :=
+  ((legalMoves p).map (fun m => f (applyMove p m))).foldl max 0
+
+/-- The bridge from the word to the quantifier: whatever `least` reads, every reply reads at least that. -/
+theorem leastOver_le (p : Position) (f : Position → Nat) (m : Move) (hm : m ∈ legalMoves p) :
+    leastOver p f ≤ f (applyMove p m) := by
+  unfold leastOver
+  have hmem : f (applyMove p m) ∈ (legalMoves p).map (fun m => f (applyMove p m)) := List.mem_map_of_mem hm
+  generalize (legalMoves p).map (fun m => f (applyMove p m)) = l at hmem
+  match l, hmem with
+  | x :: xs, hmem =>
+    simp only
+    have key : ∀ (ys : List Nat) (a : Nat), ys.foldl min a ≤ a ∧ ∀ y ∈ ys, ys.foldl min a ≤ y := by
+      intro ys
+      induction ys with
+      | nil => intro a; simp
+      | cons y ys ih =>
+        intro a
+        simp only [List.foldl_cons]
+        obtain ⟨h1, h2⟩ := ih (min a y)
+        refine ⟨le_trans h1 (Nat.min_le_left _ _), ?_⟩
+        intro z hz
+        simp only [List.mem_cons] at hz
+        rcases hz with rfl | hz
+        · exact le_trans h1 (Nat.min_le_right _ _)
+        · exact h2 z hz
+    simp only [List.mem_cons] at hmem
+    rcases hmem with h | h
+    · rw [h]; exact (key xs x).1
+    · exact (key xs x).2 _ h
+
+/-- Every reply reads at most what `most` reads. -/
+theorem le_mostOver (p : Position) (f : Position → Nat) (m : Move) (hm : m ∈ legalMoves p) :
+    f (applyMove p m) ≤ mostOver p f := by
+  unfold mostOver
+  have hmem : f (applyMove p m) ∈ (legalMoves p).map (fun m => f (applyMove p m)) := List.mem_map_of_mem hm
+  generalize (legalMoves p).map (fun m => f (applyMove p m)) = l at hmem
+  have key : ∀ (ys : List Nat) (a : Nat), a ≤ ys.foldl max a ∧ ∀ y ∈ ys, y ≤ ys.foldl max a := by
+    intro ys
+    induction ys with
+    | nil => intro a; simp
+    | cons y ys ih =>
+      intro a
+      simp only [List.foldl_cons]
+      obtain ⟨h1, h2⟩ := ih (max a y)
+      refine ⟨le_trans (Nat.le_max_left _ _) h1, ?_⟩
+      intro z hz
+      simp only [List.mem_cons] at hz
+      rcases hz with rfl | hz
+      · exact le_trans (Nat.le_max_right _ _) h1
+      · exact h2 z hz
+  exact (key l 0).2 _ hmem
+
 end Ideas.Vocabulary
