@@ -31136,3 +31136,41 @@ What this does NOT give yet, stated plainly: a provable tree lemma today can onl
 law (`see` -> material, ExchangeLaw.lean, "the work of part 2") is a per-position certificate, not a proved theorem. So the first
 provable tier is the bounded minimax restated in the words, with the drill picking the shortest sound one; the compressed statement
 ("check, rook winnable, queen safe") stays a conjecture until the exchange law is proved. Decision for Kaveh.
+
+### THE FIRST LEMMA THE MACHINERY PROVED: THE ROOK FORK AS A TREE (2026-10-15 15:55 PDT)
+
+Kaveh: "Go" on the three pieces; then the pieces turned out to need two corrections and one more word before anything could prove.
+Commits 7fae07d0 (balance; the quantified grammar), 257b2fc9 (the proof generator), this one (the mined file). Printed (one run,
+`selfmine --game sHa6yUKv --window 2 --drill --lean-cap 10`):
+
+- OBS drill: 875 variants, 635 forced, 240 not. Stage 1: 4906 terms (522 along the line), evaluated on 886 positions in 72 s;
+  397 premises of up to 3 atoms exclude all 242 counter-examples (2 of size 2).
+- OBS lean: attempted 16, typechecked 16, PROVED 1; final check clean; 134 s in all.
+
+The proved lemma (lean/ideas/Ideas/Mined/sHa6yUKv_2_drill.lean, premise_11), in the words: the balance at the start is at most 65
+(we are at most one pawn up); our non-pawn piece on f6 can go to c3; after it, whatever they reply, our non-pawn piece on c3 can go to
+a1; after that, whatever they reply, some move of ours leaves the balance at 71 or more under every reply. Conclusion: forcingOf != 0
+-- a gain of 5 is forced within three moves. Its proof is the generator's script: forcingOf_ne_zero, step_after, step_least,
+step_after, step_least, tail_two, with the root balance bounding the base (71 - 64 = 7 >= 1 + 5).
+
+What had to change to get there (the builder's first grammar named the replies, as my brief told it to; that was my error):
+1. THEIR REPLIES ARE NEVER NAMED. forcedWithinB quantifies over every reply, so a premise "after Ke2" cannot be proved. The grammar now
+   puts `least` (or `most`) at every one of their turns; with that, no premise of up to 4 atoms survived the drill (the builder's 22750
+   fixed-reply premises had all been unsound as lemmas).
+2. THE MINIMAX TAIL. The fork's third move depends on their second reply (Kxd7 only after Qxd7), so a fixed third move fails its own
+   legality. "Some move of ours, then whatever they reply" is `(most (least X))` at our turn -- expressible with the one-ply words.
+3. ONE NUMBER AT THE LEAF: the word `balance` (our material minus theirs on an offset of 64). Two bounds (material_us, material_them)
+   under `most` would come from two different witness moves and prove nothing. Lean `balanceOf`, Rust, gloss, glossary.
+4. The root's balance as an atom: the tail reads the ABSOLUTE balance, the gain is relative to the start. Without it the sound size-2
+   premise was not even proposed; with it, the diagnostic showed `balance <= 65 and tail >= 71` excludes all 242 counter-examples
+   (coverage 179/635) -- and the generator proves exactly that.
+5. Legs under a quantifier keep their polarity: an at-most leg (no pawn of ours on f) goes under `most`, not `least`.
+6. The generator (selfmine.tree_proof) walks the spine and emits the script; proof-shaped premises go to Lean first (a cheap proof is
+   tried before an unknown one; Lean stays the judge). Mined files import Ideas.TreeStep; the error regex reads Lean's new
+   `error(kind):` form (it had been swallowing "unknown identifier").
+
+What this is and is not. It IS the loop closed once: from the words, the solver as a labeller, the drill as the filter, Lean as the
+judge, no frame or lemma of ours used, one proved lemma that explains the window. It is NOT yet a compressed explanation: the leaf
+is material, so the lemma is the bounded minimax in words with two named moves; "check, rook winnable, queen safe" (the premise a
+player states) covers 566/635 variants and stays a conjecture until the exchange law is proved in Lean. The 15 unproved statements in
+the file are exactly those: (see a1), (attackers L), forcing words at their leaves.
