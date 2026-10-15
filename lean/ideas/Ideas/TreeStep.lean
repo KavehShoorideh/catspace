@@ -257,4 +257,173 @@ theorem two_ply (p : Position) (c : Color) (v : Int) (hc : p.turn = c) (x y : Sq
     simp only [Bool.not_eq_false] at hcon
     simp [hcon] at hd
 
+/-! ## the words at a node, read for the proof generator
+
+A mined premise names our move `x -> y` with three words: the piece on `x` is ours (`count (and ours (at x)) >= 1`), it is not a pawn
+(`count (and ourpawns (at x)) <= 0`), and the move is legal (`count (and (moves x) (at y)) >= 1`). These lemmas read them. -/
+
+theorem count_pos_mem (A : SquareSet) (h : count A ≥ 1) : ∃ u, A u = true := by
+  unfold count at h
+  obtain ⟨u, hu⟩ := List.exists_mem_of_length_pos (by omega : 0 < (allSquares.filter A).length)
+  exact ⟨u, (List.mem_filter.mp hu).2⟩
+
+theorem count_zero_not (A : SquareSet) (h : count A ≤ 0) (u : Square) : A u = false := by
+  by_contra hcon
+  simp only [Bool.not_eq_false] at hcon
+  have hmem : u ∈ allSquares.filter A := List.mem_filter.mpr ⟨mem_allSquares u, hcon⟩
+  have := List.length_pos_of_mem hmem
+  unfold count at h
+  omega
+
+/-- `ours at x`: a piece of ours, not the king, stands on `x`. -/
+theorem ours_at (p : Position) (c : Color) (x : Square) (h : count (fun u => piecesOf p c u && oset atSq (some x) u) ≥ 1) :
+    ∃ q : Piece, p.board x = some q ∧ q.color = c ∧ q.kind ≠ PieceKind.king := by
+  obtain ⟨u, hu⟩ := count_pos_mem _ h
+  simp only [Bool.and_eq_true, oset, atSq, beq_iff_eq] at hu
+  obtain ⟨hp, rfl⟩ := hu
+  unfold piecesOf at hp
+  revert hp
+  cases hb : p.board u with
+  | none => intro h; simp at h
+  | some q =>
+    intro h
+    simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+    exact ⟨q, rfl, h.1, h.2⟩
+
+/-- `no pawn of ours at x`: the piece there, if ours, is not a pawn. -/
+theorem not_pawn_at (p : Position) (c : Color) (x : Square) (h : count (fun u => kindSet p c PieceKind.pawn u && oset atSq (some x) u) ≤ 0)
+    (q : Piece) (hx : p.board x = some q) (hc : q.color = c) : q.kind ≠ PieceKind.pawn := by
+  intro hk
+  have := count_zero_not _ h x
+  simp only [kindSet, hx, oset, atSq, beq_self_eq_true, Bool.and_true, hc, hk, Bool.and_self] at this
+  exact absurd this (by simp)
+
+/-- `x can go to y`: the `moves` word, read as a Bool. -/
+theorem moves_of_count (p : Position) (x y : Square) (h : count (fun u => oset (movesOf p) (some x) u && oset atSq (some y) u) ≥ 1) :
+    movesOf p x y = true := by
+  obtain ⟨u, hu⟩ := count_pos_mem _ h
+  simp only [Bool.and_eq_true, oset, atSq, beq_iff_eq] at hu
+  obtain ⟨hm, rfl⟩ := hu
+  exact hm
+
+/-- OUR STEP IN THE WORDS: our non-pawn piece on `x` can legally go to `y`, and after the kernel's move the goal is forced within `n`;
+the words after the move are read on that very position. -/
+theorem step_after (c : Color) (g : Position → Bool) (p : Position) (n : Nat) (hc : p.turn = c) (x y : Square)
+    (hown : count (fun u => piecesOf p c u && oset atSq (some x) u) ≥ 1)
+    (hnp : count (fun u => kindSet p c PieceKind.pawn u && oset atSq (some x) u) ≤ 0)
+    (hmv : count (fun u => oset (movesOf p) (some x) u && oset atSq (some y) u) ≥ 1)
+    (H : ∀ m ∈ legalMoves p, (∀ f : Position → Nat, afterMove p (some x) (some y) f = f (applyMove p m)) →
+      Ideas.forcedWithinB c g (applyMove p m) n = true) :
+    Ideas.forcedWithinB c g p (n + 1) = true := by
+  obtain ⟨q, hx, hqc, -⟩ := ours_at p c x hown
+  have hq := not_pawn_at p c x hnp q hx hqc
+  obtain ⟨m, hm, -, -, hafter⟩ := after_of_moves p x y q hx (by rw [hqc, hc]) hq (moves_of_count p x y hmv)
+  exact step_ours c g p n hc m hm (H m hm hafter)
+
+/-- THEIR STEP IN THE WORDS: on their turn, some `least` reads at least 1 (so they have a move), and after every reply the goal is
+forced within `n`. -/
+theorem step_least (c : Color) (g : Position → Bool) (p : Position) (n : Nat) (hc : p.turn ≠ c) (f : Position → Nat)
+    (hne : leastOver p f ≥ 1) (H : ∀ r ∈ legalMoves p, Ideas.forcedWithinB c g (applyMove p r) n = true) :
+    Ideas.forcedWithinB c g p (n + 1) = true :=
+  step_theirs c g p n hc (least_pos_nonempty p f hne) H
+
+/-! ## alive from material -/
+
+/-- The squares holding a non-king piece. -/
+def nonKing (q : Position) : List Square :=
+  allSquares.filter (fun u => match q.board u with | some x => x.kind != PieceKind.king | none => false)
+
+/-- What a square contributes to `materialOf q c`. -/
+def contrib (q : Position) (c : Color) (u : Square) : Nat :=
+  match q.board u with | some x => (if x.color == c then (pieceValue x.kind).toNat else 0) | none => 0
+
+theorem materialOf_eq_sum (q : Position) (c : Color) : materialOf q c = (allSquares.map (contrib q c)).sum := rfl
+
+theorem contrib_zero_of_not_nonKing (q : Position) (c : Color) (u : Square) (hu : u ∉ nonKing q) : contrib q c u = 0 := by
+  unfold nonKing at hu
+  unfold contrib
+  cases hb : q.board u with
+  | none => rfl
+  | some x =>
+    have : (x.kind != PieceKind.king) = false := by
+      by_contra hcon
+      simp only [Bool.not_eq_false] at hcon
+      exact hu (List.mem_filter.mpr ⟨mem_allSquares u, by rw [hb]; exact hcon⟩)
+    simp only [bne_eq_false_iff_eq] at this
+    simp [this, pieceValue]
+
+theorem contrib_le_three (q : Position) (c : Color) (u : Square) (x : Piece) (hb : q.board u = some x)
+    (hk : (x.kind == PieceKind.knight || x.kind == PieceKind.bishop) = true) : contrib q c u ≤ 3 := by
+  unfold contrib
+  rw [hb]
+  show (if x.color == c then (pieceValue x.kind).toNat else 0) ≤ 3
+  simp only [Bool.or_eq_true, beq_iff_eq] at hk
+  rcases hk with hk | hk <;> rw [hk] <;> simp [pieceValue] <;> try (split <;> omega)
+
+/-- A dead draw: the non-king squares are none, or one holding a knight or a bishop. -/
+theorem deadDraw_shape (q : Position) (h : deadDraw q = true) :
+    nonKing q = [] ∨ ∃ u x, nonKing q = [u] ∧ q.board u = some x ∧ (x.kind == PieceKind.knight || x.kind == PieceKind.bishop) = true := by
+  unfold deadDraw at h
+  change (match nonKing q with
+    | [] => true
+    | [u] => match q.board u with | some x => x.kind == PieceKind.knight || x.kind == PieceKind.bishop | none => false
+    | _ => false) = true at h
+  generalize hL : nonKing q = L at h
+  match L, h with
+  | [], _ => exact Or.inl rfl
+  | [u], h =>
+    right
+    refine ⟨u, ?_⟩
+    have h2 : (match q.board u with
+      | some x => x.kind == PieceKind.knight || x.kind == PieceKind.bishop
+      | none => false) = true := h
+    revert h2
+    cases hb : q.board u with
+    | none => intro h2; simp at h2
+    | some x => intro h2; exact ⟨x, rfl, rfl, h2⟩
+  | _ :: _ :: _, h => simp at h
+
+theorem sum_le_three_of_one (q : Position) (c : Color) (u : Square) (hu : nonKing q = [u]) (h3 : contrib q c u ≤ 3) :
+    ∀ (l : List Square), l.Nodup → (l.map (contrib q c)).sum ≤ 3 := by
+  intro l hnd
+  induction l with
+  | nil => simp
+  | cons v l ih =>
+    simp only [List.map_cons, List.sum_cons]
+    by_cases hv : v = u
+    · subst hv
+      have hrest : (l.map (contrib q c)).sum = 0 := by
+        apply List.sum_eq_zero
+        intro y hy
+        obtain ⟨w, hw, rfl⟩ := List.mem_map.mp hy
+        apply contrib_zero_of_not_nonKing
+        rw [hu]
+        simp only [List.mem_singleton]
+        intro hwv
+        exact (List.nodup_cons.mp hnd).1 (hwv ▸ hw)
+      omega
+    · have h0 : contrib q c v = 0 := by
+        apply contrib_zero_of_not_nonKing
+        rw [hu]; simp [hv]
+      rw [h0]
+      simpa using ih (List.nodup_cons.mp hnd).2
+
+/-- In a dead draw neither side has more than a minor piece. -/
+theorem material_le_of_deadDraw (q : Position) (c : Color) (h : deadDraw q = true) : materialOf q c ≤ 3 := by
+  rw [materialOf_eq_sum]
+  rcases deadDraw_shape q h with hnone | ⟨u, x, hu, hb, hk⟩
+  · have : (allSquares.map (contrib q c)).sum = 0 := by
+      apply List.sum_eq_zero
+      intro y hy
+      obtain ⟨w, _, rfl⟩ := List.mem_map.mp hy
+      exact contrib_zero_of_not_nonKing q c w (by rw [hnone]; simp)
+    omega
+  · exact sum_le_three_of_one q c u hu (contrib_le_three q c u x hb hk) allSquares allSquares_nodup
+
+theorem alive_of_material (q : Position) (c : Color) (h : materialOf q c ≥ 4) : deadDraw q = false := by
+  by_contra hcon
+  simp only [Bool.not_eq_false] at hcon
+  have := material_le_of_deadDraw q c hcon
+  omega
+
 end Ideas.TreeStep
