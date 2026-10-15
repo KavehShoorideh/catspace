@@ -1300,3 +1300,9 @@ chess-specific below the adapter; -m entry points, never a Pool from stdin; chec
 - **The board state is carried forward incrementally from the start of the game**, always: a given position is reached by applying its moves one by one
   from move one ("the dumb way, keep it simple for now"). The ledger's push (40.1) is this; decide_by_chain today starts fresh from a FEN and must be
   switched to the pushed-forward ledger.
+- **Rules are PROVEN IN LEAN, never re-checked against the windows** (Kaveh, later the same day: "the only way to guarantee it ... is that if the rules are
+  mathematically sound and proven in Lean ... I don't want you to go back and check everything"). The windows are the source of conjectures; Lean is the
+  verifier; a proved lemma holds in every position satisfying its premise, so no window is revisited. The gap today: the chunked lemmas (40.3) are shapes
+  with counts and no Lean statement; the work is shape + outcome -> a Lean statement over the vocabulary's renderings -> an automatic proof attempt (the
+  exchange-law theorems first). Unproved = conjecture = at most a prior on which questions to open, never a value. The window points, the store's outcome
+  frequencies and the subgoal learner stay probabilistic by design: directionality through the prior, never a rule.
