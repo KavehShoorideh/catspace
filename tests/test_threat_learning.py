@@ -57,3 +57,22 @@ def test_the_sizer_finds_the_threat_and_gives_every_threat_its_reason():
     led = A.Ledger(a, 1000); led.run(); led.push("f3e5")
     t = led.threat_report(True, True)["threats"]
     assert t and t[0]["san"] == "Nxe5" and t[0]["thread"] and "no longer sees Ne5" in t[0]["thread"]
+
+
+def test_a_checking_move_is_read_on_the_true_board_not_as_zeros():
+    fen = "4k3/8/8/8/8/8/R7/4K3 w - - 0 1"
+    after = W._true_after(fen, "a2a8")                                  # Ra8+: the other side is in check, to move -- a legal board
+    terms = W.threat_terms()[0]
+    j = terms.index("material_us")
+    assert W._tmatrix([after], True)[0][j] == 5                         # read with us = White, the checked side to move
+    assert not W._tmatrix([W._flip_after(fen, "a2a8")], True)[0].any()  # the old reading (the turn handed back) is a board the evaluator refuses: all zeros, a free pass for checks
+
+
+def test_one_threat_per_thing_that_would_be_lost():
+    import analyst_core as A
+    fen = "1r1qk2r/p3bpp1/2p1p2p/2p1N1P1/4PPn1/2NPp3/PPP1Q1P1/1R3RK1 w k - 1 15"
+    th = A.Ledger(fen, 1000).threat_report(True)["threats"]
+    targets = [t["target"] for t in th]
+    assert len(targets) == len(set(targets)) and all(t["size"] >= 1 for t in th)        # no target listed twice
+    g5 = [t for t in th if t["target"] == "g5"]
+    assert not g5 or g5[0]["san"] == "hxg5"                              # shown with the move that cashes it in, not under a quiet move that leaves it standing

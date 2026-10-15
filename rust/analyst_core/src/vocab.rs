@@ -643,6 +643,16 @@ pub fn component_values(fens: Vec<String>, specs: Vec<String>) -> PyResult<Vec<V
     Ok(fens.par_iter().map(|f| parse(f).map_or(vec![0; comps.len()], |p| { let lone = !p.turn(); comps.iter().map(|c| cval(c, &p, lone)).collect() })).collect())
 }
 
+/// component_values_us(fens, specs, us_white) -> the same, but "us" is NAMED: the evaluator's lone king is the other colour whatever the side to move is.
+/// For a board read from one side's point of view with the OTHER side to move (the true board after S's move: us = S, O to move).
+#[pyfunction]
+pub fn component_values_us(fens: Vec<String>, specs: Vec<String>, us_white: bool) -> PyResult<Vec<Vec<u32>>> {
+    use rayon::prelude::*;
+    let comps: Vec<Comp> = specs.iter().filter_map(|s| comp(s)).collect();
+    let lone = if us_white { Color::Black } else { Color::White };
+    Ok(fens.par_iter().map(|f| parse(f).map_or(vec![0; comps.len()], |p| comps.iter().map(|c| cval(c, &p, lone)).collect())).collect())
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // THE VERIFIER, STAGE 2 -- CLOSED LOOP (2026-10-12: stage 1 is gameable -- "how many squares we attack" certified 100% of
 // every hole's stuck boards: a measure we lower ourselves at will, whatever the defender does): the candidate measure

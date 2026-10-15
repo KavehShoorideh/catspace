@@ -30793,3 +30793,16 @@ THE THREAT DEFINED, THE DEFENCE LEARNED (2026-10-14 21:06 PDT; Kaveh: "Threats a
   4,469; the words read on the board after S's move with the turn handed back to S. Frame: the total over S's pieces of what the other side wins by the exchange (lower), the material
   balance once each side has taken its biggest exchange (higher). Held: some move loses nothing in 132 of 135; the frame's top move loses nothing in 62% of those, a zero-loss move is in
   its top 3 in 85%; the solver confirms the top move (the other side cannot force a gain >= 1 within 4) in 47% of all and 70% of those the teacher calls free. Not yet wired (C).
+
+THE DEFENCE FRAME RELEARNED, STEP C, THE GAME WALK (2026-10-14 21:16 PDT).
+  1. CHECK ROWS (a bug, a class): the defence words were read after S's move with the turn handed back to S; a move that gives check made a board the evaluator refuses, all zeros,
+  and "lower is better" gave checks a free pass (the frame's top move was a check in 11 of 135 held positions, checks being 5.8% of moves). Now the TRUE board (the other side to move)
+  is read with "us" named (component_values_us). Relearned, SAME labels; the held set was RERUN AFTER A BUG FIX (the second look at it): pairwise 0.449; some move loses nothing in 132 of
+  135; the top move loses nothing in 63% of those (before 62%), a zero-loss move in its top 3 in 87% (85%), mean loss of the top move 2.97 (3.04), solver-confirmed 45% (47%) of all and 67%
+  (70%) of those the teacher calls free; the top move is a check in 7 of 135 (5.2%, all 7 lose nothing). The old frame and check kept as defence_frame_v1 / _check_v1.
+  2. ONE THREAT PER THING THAT WOULD BE LOST, shown with the move that cashes it in (the g5 threat of the 15.Ne5 game: under hxg5, no longer under a6 or g6).
+  3. STEP C: branch (a) answers = the defence frame's order of S's moves (ties: the move that also threatens first), the top six sized by the definition (re-ask the threat after each: does the
+  loss go away?), B* picks; the hand-written answers behind --answers hand. The "threat we create" ordering at the root now sizes at most 6 candidates shallowly. Position (a): the b3 threat
+  is found (Rc4 TRAPPED, 4), the answers e4 / exd4 / Ra4 / f5 are weighed and ...Ra4 chosen (Stockfish's choice), 1,314 positions examined, 553 questions, 126 static looks.
+  4. ledger walk --pgn-index 2979 --events 7 (Lichess 2019-01, Rated, not Bullet, both >= 1600, decisive, >= 50 plies; #2979 = lichess.org/Bo45Dh1y): one ledger rolled forward with push, 7 settled
+  material changes, the actual first capture predicted at B in 6 of 7 (the seventh, Rb8+, the "loss" is a capture Stockfish sizes at -8), 11.9 s with Stockfish depth 14 as the checker only.

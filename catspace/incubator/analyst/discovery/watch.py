@@ -563,11 +563,13 @@ def term_gloss(t: str) -> str:
     return gl[t] if t in gl else V.gloss(V.parse(t))
 
 
-def _tmatrix(fens: list):
+def _tmatrix(fens: list, us_white: bool | None = None):
+    """Every word on every board; `us_white`: "us" is NAMED (a true board read from one side's point of view while the other side is to move)."""
     import numpy as np
     import analyst_core as A
     terms = threat_terms()[0]
-    return np.asarray(A.component_values(fens, terms), dtype=np.int64).reshape(len(fens), len(terms))
+    vals = A.component_values(fens, terms) if us_white is None else A.component_values_us(fens, terms, us_white)
+    return np.asarray(vals, dtype=np.int64).reshape(len(fens), len(terms))
 
 
 def _after_fen(pass_fen: str, uci: str) -> str:
@@ -836,6 +838,43 @@ def label_defence(name: str, log=print) -> dict:
     return dict(positions=len(out))
 
 
+def _true_after(fen: str, uci: str) -> str:
+    """The TRUE board after S's move (the other side to move) -- read with us = S, so a move that gives check is read like any other (the first version handed the turn
+    back to S, which made every checking move a position the evaluator refused: all zeros, and "lower is better" gave checks a free pass)."""
+    b = chess.Board(fen)
+    b.push(chess.Move.from_uci(uci))
+    return b.fen()
+
+
+def sf_move_loss(fen: str, uci: str, eng, depth: int = 14) -> int:
+    """The teacher's loss for S's move a at P (S to move): S's net material loss with Stockfish defending, the PV walked to the first quiet point; mate against S = 100."""
+    import chess.engine
+    b = chess.Board(fen)
+    a = chess.Move.from_uci(uci)
+    s = b.turn
+    q = b.copy(stack=False); q.push(a)
+    if q.is_game_over():
+        return 0
+    info = eng.analyse(q, chess.engine.Limit(depth=depth))
+    sc = info["score"].pov(s)
+    return max(0, walk_size(b, a, info.get("pv", []), sc.is_mate() and sc.mate() < 0, s))
+
+
+def sf_capture_size(fen: str, uci: str, loser: bool, eng, depth: int = 14) -> int:
+    """The teacher's size of a move m of the winner at B (the winner to move): the loser's net loss with Stockfish defending."""
+    import chess.engine
+    b = chess.Board(fen)
+    m = chess.Move.from_uci(uci)
+    q = b.copy(stack=False); q.push(m)
+    if q.is_checkmate():
+        return MATE_SIZE
+    if q.is_game_over():
+        return 0
+    info = eng.analyse(q, chess.engine.Limit(depth=depth))
+    sc = info["score"].pov(loser)
+    return walk_size(b, m, info.get("pv", []), sc.is_mate() and sc.mate() < 0, loser)
+
+
 def _flip_after(fen: str, uci: str) -> str:
     """The board after S's move a with the turn handed back to S (a static reading: the words read from S's side)."""
     b = chess.Board(fen)
@@ -847,8 +886,8 @@ def _flip_after(fen: str, uci: str) -> str:
 
 def _defence_matrices(rec: dict):
     import numpy as np
-    fens = [_flip_after(rec["fen"], m["uci"]) for m in rec["moves"]] + [rec["fen"]]
-    M = _tmatrix(fens).astype(np.int32)
+    fens = [_true_after(rec["fen"], m["uci"]) for m in rec["moves"]] + [rec["fen"]]
+    M = _tmatrix(fens, chess.Board(rec["fen"]).turn).astype(np.int32)
     base = M[-1]
     D = M[:-1] - base
     sizes = -np.minimum(np.array([m["loss"] for m in rec["moves"]]), DEFENCE_CAP)       # larger = better = less loss
@@ -914,7 +953,7 @@ def defence_frame(labels_path: str, log=print) -> dict:
                 break
             prefix.append((col, sign, fam))
             hist.append(dict(term=terms[col], family=fam, sign=sign, gloss=term_gloss(terms[col]), score_after=after))
-    frame = dict(terms=hist, pairs=total, positions=len(recs), seconds=round(time.time() - t0, 1), labels=labels_path, reads="the board after S's move, the turn handed back to S")
+    frame = dict(terms=hist, pairs=total, positions=len(recs), seconds=round(time.time() - t0, 1), labels=labels_path, reads="the TRUE board after S's move (the other side to move), us = S")
     json.dump(frame, open(paths.derived("defence_frame.json"), "w"), indent=1)
     for h in hist:
         log(f"OBS DEFENCE WORD: {'the CHANGE in ' if h['family'] == 'delta' else ''}{h['gloss']}  [{h['term'][:200]}], {'higher' if h['sign'] > 0 else 'lower'} = a better defence")
@@ -927,8 +966,8 @@ def defence_ranking(frame: dict, rec: dict) -> list:
     import numpy as np
     terms = threat_terms()[0]
     cols = [terms.index(h["term"]) for h in frame["terms"]]
-    fens = [_flip_after(rec["fen"], m["uci"]) for m in rec["moves"]] + [rec["fen"]]
-    M = _tmatrix(fens)[:, cols]
+    fens = [_true_after(rec["fen"], m["uci"]) for m in rec["moves"]] + [rec["fen"]]
+    M = _tmatrix(fens, chess.Board(rec["fen"]).turn)[:, cols]
     D = M[:-1] - M[-1]
     tups = [tuple(int(h["sign"] * (M[i, k] if h["family"] == "raw" else D[i, k])) for k, h in enumerate(frame["terms"])) for i in range(len(rec["moves"]))]
     return sorted(((t, rec["moves"][i]["uci"]) for i, t in enumerate(tups)), reverse=True)

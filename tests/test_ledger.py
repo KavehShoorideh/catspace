@@ -97,10 +97,10 @@ def test_d2_the_attacker_is_seen_when_the_mover_is_in_check():
 
 
 def test_c2_a_piece_is_saved_only_where_it_is_safe_and_a_trapped_piece_counts_in_full():
-    # after b3 the rook on c4 has no safe square and nothing saves it
-    t = L.new("5k1r/1p1n1p2/p1qb1p1p/4p3/2rP2PP/1PPQ1PB1/P3NK2/1R5R b - - 0 1", 1000).trace(2)
+    # if Black passed, b3 wins the rook on c4: it has no safe square and nothing saves it
+    t = L.new("5k1r/1p1n1p2/p1qb1p1p/4p3/2rP2PP/2PQ1PB1/PP2NK2/1R5R b - - 0 1", 1000).trace(2)
     text = "\n".join(t["trace"])
-    assert "Rc4 attacked by [b3, Qd3]" in text and "TRAPPED" in text
+    assert "next move b3" in text and "Rc4 attacked by [b3, Qd3]" in text and "TRAPPED" in text
     # a rook that can step to a safe square is "saved by" that step
     t2 = L.new("4k3/8/8/8/3r4/8/2P5/4K3 b - - 0 1", 1000).trace(1)
     assert "THREATS TO Black, highest first" not in "\n".join(t2["trace"]) or "TRAPPED" not in "\n".join(t2["trace"])

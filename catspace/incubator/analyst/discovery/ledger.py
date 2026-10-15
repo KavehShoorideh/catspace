@@ -34,6 +34,16 @@ def load_frame(L, path: str | None = None) -> list:
     return terms
 
 
+def load_defence_frame(L, path: str | None = None) -> list:
+    """Load the learned DEFENCE frame (watch.defence_frame -> data/derived/defence_frame.json) into a ledger: S's moves ordered by it answer a threat."""
+    import json
+    from catspace.io import paths
+    fr = json.load(open(path or paths.derived("defence_frame.json")))
+    terms = [(h["term"], int(h["sign"]), h["family"] == "delta") for h in fr["terms"]]
+    L.set_defence_frame(terms)
+    return terms
+
+
 def analyse(fen: str, budget: int = 200) -> dict:
     return _a().ledger(fen, budget)
 
@@ -134,6 +144,7 @@ def main(argv=None):
     ap.add_argument("--square", default="e5", help="the piece whose pin is followed along the line")
     ap.add_argument("--trace", action="store_true", help="print the reasoning on this position step by step, in plain chess words")
     ap.add_argument("--threats", choices=("defined", "rules"), default="defined", help="what a threat is: the DEFINITION sized by the ledger (material lost with the best defence, or mate), or the older rules")
+    ap.add_argument("--answers", choices=("frame", "hand"), default="frame", help="the answers to a threat: S's moves ordered by the learned defence frame, or the hand-written ones (comparison only)")
     ap.add_argument("--depth", type=int, default=4, help="plies of the line (trace)")
     ap.add_argument("--mirror", action="store_true", help="mirror the board first (the ledger reads either side; not needed)")
     a = ap.parse_args(argv)
@@ -141,7 +152,9 @@ def main(argv=None):
     if a.trace:
         t0 = time.time()
         L = new(fen, max(a.budget, 1000))
-        r = L.trace(a.depth, a.threats)
+        if a.answers == "frame":
+            load_defence_frame(L)
+        r = L.trace(a.depth, a.threats, a.answers)
         for line in r["trace"]:
             print(line)
         print(f"OBS trace ({'learned' if r['learned'] else 'rules'} threats): {r['positions']} positions examined by the ledger, {r['looks']} static looks by the threat frame, {r['questions']} questions, {r['facts']} facts, {round(time.time() - t0, 2)} s; line "
@@ -157,5 +170,167 @@ def main(argv=None):
         print(f"OBS roll forward: {round(time.time() - t0, 2)} s")
 
 
+# ---------------------------------------------------------------------------------------------------------------------------------------------
+# A GAME WALKED THROUGH (Kaveh 2026-10-14: "why do we lose track of a thread after we've seen it? We should keep it going forward."): ONE ledger rolled forward with push
+# through a real game. At each settled material change -- a position whose next move is not a capture or promotion, compared with the settled position before the capture
+# chain -- A is the position before the loser's last move before the chain and B the position after it.
+#   A  the threats against the loser if it had passed, the threads carried, the defence frame's choice there and whether it would have avoided the loss (sized by the
+#      definition on a fresh ledger), and Stockfish (depth 14, the checker only) on the move played and on the frame's.
+#   B  what the other side can win (the sizer against the side that just moved), the threads, whether the actual first capture was PREDICTED and at what size.
+#   python -m catspace.incubator.analyst.discovery.ledger walk --pgn-index 2979 --events 7
+
+LICHESS_PGN = "assets/corpora/raw/lichess_db_standard_rated_2019-01.pgn.zst"
+PVAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
+
+
+def find_game(index: int, path: str = LICHESS_PGN):
+    """The index-th game (0-based) of the file that passes the filter: Rated, not Bullet, both players >= 1600, decisive, >= 50 plies."""
+    import io
+    import re
+    import subprocess
+    import chess.pgn
+    p = subprocess.Popen(["zstd", "-dc", path], stdout=subprocess.PIPE, text=True, bufsize=1 << 20)
+    n, buf = 0, []
+
+    def games():
+        nonlocal buf
+        for line in p.stdout:
+            if line.startswith("[Event ") and buf:
+                yield "".join(buf); buf = []
+            buf.append(line)
+        if buf:
+            yield "".join(buf)
+    try:
+        for text in games():
+            h = dict(re.findall(r'\[(\w+) "([^"]*)"\]', text))
+            ev = h.get("Event", "")
+            if "Rated" not in ev or "Bullet" in ev or h.get("Result") not in ("1-0", "0-1"):
+                continue
+            try:
+                if int(h.get("WhiteElo", 0)) < 1600 or int(h.get("BlackElo", 0)) < 1600:
+                    continue
+            except ValueError:
+                continue
+            g = chess.pgn.read_game(io.StringIO(text))
+            if sum(1 for _ in g.mainline_moves()) < 50:
+                continue
+            if n == index:
+                return g, h.get("Site", "")
+            n += 1
+    finally:
+        p.kill()
+    raise SystemExit(f"no game #{index}")
+
+
+def _bal(b: chess.Board) -> int:
+    return sum(PVAL.get(p.piece_type, 0) * (1 if p.color == chess.WHITE else -1) for p in b.piece_map().values())
+
+
+def material_events(game) -> tuple:
+    """-> (the moves, the boards before each move, the events): a settled material change, the capture chain, the loser and the index of its last move before the chain."""
+    b = game.board()
+    moves, boards = [], []
+    for m in game.mainline_moves():
+        boards.append(b.copy(stack=False)); moves.append(m); b.push(m)
+    boards.append(b.copy(stack=False))
+    cap = [boards[i].is_capture(m) or m.promotion is not None for i, m in enumerate(moves)]
+    events, i = [], 0
+    while i < len(moves):
+        if not cap[i]:
+            i += 1; continue
+        c0 = i
+        while i < len(moves) and cap[i]:
+            i += 1
+        c1 = i - 1                                           # the chain is moves c0 .. c1; the settled positions are c0 - 1 and c1 + 1
+        before, after = _bal(boards[c0]), _bal(boards[c1 + 1])
+        if after == before:
+            continue
+        loser = chess.BLACK if after > before else chess.WHITE
+        q = next((j for j in range(c0 - 1, -1, -1) if boards[j].turn == loser), None)
+        win_first = next((j for j in range(c0, c1 + 1) if boards[j].turn != loser), None)
+        if q is None or win_first is None:
+            continue
+        events.append(dict(c0=c0, c1=c1, loser=loser, q=q, win_first=win_first, delta=abs(after - before)))
+    return moves, boards, events
+
+
+def walk_main(argv=None):
+    import json
+    import chess.engine
+    from catspace.io import paths
+    ap = argparse.ArgumentParser(prog="ledger walk")
+    ap.add_argument("--pgn-index", type=int, required=True)
+    ap.add_argument("--events", type=int, default=None)
+    ap.add_argument("--depth", type=int, default=14, help="Stockfish depth, the checker only")
+    a = ap.parse_args(argv)
+    t0 = time.time()
+    game, site = find_game(a.pgn_index)
+    sid = site.rstrip("/").split("/")[-1]
+    moves, boards, events = material_events(game)
+    events = events[:a.events] if a.events else events
+    eng = chess.engine.SimpleEngine.popen_uci("stockfish")
+    eng.configure({"Threads": 4})
+    from . import watch as W
+    out = dict(site=site, index=a.pgn_index, plies=len(moves), white=game.headers.get("White"), black=game.headers.get("Black"), events=[])
+    print(f"OBS WALK {site}: {len(moves)} plies, {len(events)} settled material changes (white {game.headers.get('White')} {game.headers.get('WhiteElo')}, black {game.headers.get('Black')} {game.headers.get('BlackElo')})")
+    L = new(boards[0].fen(), 1000)
+    load_defence_frame(L)
+    L.run()
+    by_q = {e["q"]: e for e in events}
+    for i, m in enumerate(moves):
+        e = by_q.get(i)
+        if e:
+            A_fen = boards[i].fen()
+            who = chess.COLOR_NAMES[e["loser"]]
+            actual = boards[i].san(m)
+            repA = L.threat_report(True)
+            ch = L.defence_choice()
+            frame_uci = ch[0]["uci"] if ch else None
+            frame_san = ch[0]["san"] if ch else None
+            e["A"] = dict(fen=A_fen, played=actual, threats=[(t["san"], t["size"], t["detail"][:140], t["thread"]) for t in repA["threats"][:3]], frame=frame_san, frame_top5=[c["san"] for c in ch[:5]],
+                          positions=repA["positions"], questions=repA["questions"])
+            if frame_uci:
+                if frame_uci == m.uci():
+                    e["A"]["frame_size_after"] = "the move played"
+                else:
+                    fb = boards[i].copy(stack=False); fb.push_uci(frame_uci)
+                    L2 = new(fb.fen(), 1000)
+                    r2 = L2.threat_report(True, True)
+                    e["A"]["frame_size_after"] = r2["threats"][0]["size"] if r2["threats"] else 0
+            e["A"]["sf_played_loss"] = W.sf_move_loss(A_fen, m.uci(), eng, a.depth)
+            e["A"]["sf_frame_loss"] = W.sf_move_loss(A_fen, frame_uci, eng, a.depth) if frame_uci and frame_uci != m.uci() else e["A"]["sf_played_loss"]
+        L.push(m.uci())
+        if e:
+            repB = L.threat_report(True, True)
+            actual_first = moves[e["win_first"]].uci()
+            hit = next((t for t in repB["threats"] if t["uci"] == actual_first and t["size"] >= 1), None)
+            tops = [(t["san"], t["size"], t["detail"][:140], t["thread"]) for t in repB["threats"][:3]]
+            bB = boards[i + 1]
+            sf = W.sf_capture_size(bB.fen(), actual_first, e["loser"], eng, a.depth) if boards[e["win_first"]].turn != e["loser"] and e["win_first"] == i + 1 else None
+            # (when the winner's first capture is not the next move, the teacher is asked on the position where it is played)
+            if sf is None:
+                sf = W.sf_capture_size(boards[e["win_first"]].fen(), actual_first, e["loser"], eng, a.depth)
+            e["B"] = dict(fen=bB.fen(), actual=boards[e["win_first"]].san(moves[e["win_first"]]), actual_loss=e["delta"], predicted=bool(hit), predicted_size=hit["size"] if hit else 0,
+                          threats=tops, sf_size=sf, positions=repB["positions"], questions=repB["questions"])
+            out["events"].append({k: v for k, v in e.items()})
+    eng.quit()
+    for n, e in enumerate(out["events"], 1):
+        who = chess.COLOR_NAMES[e["loser"]]
+        A, B = e["A"], e["B"]
+        print(f"OBS EVENT {n}: {who} loses {e['delta']} (moves {e['c0'] // 2 + 1}{'...' if e['c0'] % 2 else '.'} onward); the loser's last move {A['played']} at ply {e['q'] + 1}")
+        print(f"   A (before {A['played']}), {who} to move: threats if it passed: " + ("; ".join(f"{s} ({z}) [{d}]" + (f" THREAD {th}" if th else "") for s, z, d, th in A["threats"]) or "none")
+              + f". The defence frame's choice: {A['frame']} (top five {A['frame_top5']}); after it the biggest threat against {who}: {A['frame_size_after']}. Stockfish d{a.depth}: the move played loses {A['sf_played_loss']}, the frame's {A['sf_frame_loss']}.")
+        print(f"   B (after {A['played']}): what the other side can win: " + ("; ".join(f"{s} ({z}) [{d}]" + (f" THREAD {th}" if th else "") for s, z, d, th in B["threats"]) or "nothing")
+              + f". Actual: {B['actual']} for {B['actual_loss']} (Stockfish sizes it {B['sf_size']}) -> PREDICTED: {'YES at size ' + str(B['predicted_size']) if B['predicted'] else 'NO'}")
+    n_yes = sum(e["B"]["predicted"] for e in out["events"])
+    print(f"OBS WALK done: {n_yes} of {len(out['events'])} events predicted at B; {round(time.time() - t0, 1)} s")
+    out["predicted"] = n_yes
+    json.dump(out, open(paths.derived(f"walk_{sid}.json"), "w"), indent=1, default=str)
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "walk":
+        walk_main(sys.argv[2:])
+    else:
+        main()

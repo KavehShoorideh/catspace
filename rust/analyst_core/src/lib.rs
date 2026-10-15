@@ -1685,6 +1685,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(goals::tactic_profile, m)?)?;
     m.add_function(wrap_pyfunction!(goals::defence_moves, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::vocab_reads, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::component_values_us, m)?)?;
     m.add_function(wrap_pyfunction!(goals::solver_nodes, m)?)?;
     m.add_function(wrap_pyfunction!(goals::solver_nodes_reset, m)?)?;
     m.add_function(wrap_pyfunction!(goals::forced_goal, m)?)?;
