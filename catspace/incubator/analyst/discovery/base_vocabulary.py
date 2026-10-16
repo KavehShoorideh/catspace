@@ -276,9 +276,13 @@ def lean(t) -> str:
             for kind, k in (("queens", "queen"), ("rooks", "rook"), ("bishops", "bishop"), ("knights", "knight"), ("pawns", "pawn")):
                 if t == f"{side}{kind}":
                     return f"(kindSet p {col} .{k})"
+        # `hit` lifts OUR king off the board; inside `after` / `least` / `most` / `without` it is the king of the board that is read there
+        # (what the Rust evaluator does: vocab.rs Term::Hit reads b.king_of of the board it is given), not the square the king stood on
+        # at the root -- the two differ as soon as a king move is among the moves read (ANALYST_PLAN 44)
+        hitk = "(kingSqD p c)" if _REBOUND else "W"
         return {"center": "center", "light": "light", "dark": "dark", "edge": "edge", "corner": "corner",
                 "attacked": "(attackedBy p c L)", "free": "(fun u => !(attackedBy p c L u))",
-                "hit": "(attackedBy p (Color.opposite c) W)", "unhit": "(fun u => !(attackedBy p (Color.opposite c) W u))",
+                "hit": f"(attackedBy p (Color.opposite c) {hitk})", "unhit": f"(fun u => !(attackedBy p (Color.opposite c) {hitk} u))",
                 "ours": "(piecesOf p c)", "theirs": "(piecesOf p (Color.opposite c))",
                 "material_us": "(materialOf p c)", "material_them": "(materialOf p (Color.opposite c))", "balance": "(balanceOf p c)",
                 "halfmoves": "p.halfmove", "seen": "(seenIn hist p)"}[t]

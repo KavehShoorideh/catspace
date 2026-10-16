@@ -206,14 +206,13 @@ theorem color_of_ne_opposite (a c : Color) (h : a ≠ Color.opposite c) : a = c 
 /-- ITEM 3 for w = 0: a reply of theirs that is neither a promotion nor (with no en-passant square) an en passant, from a position where
 nothing of ours (not the king) is attacked, loses us no material and gains them none. (The general bound with the largest attacked
 worth `w` and a pawn about to promote is the same argument with the capture's worth in place of 0.) -/
-theorem reply_no_loss (q : Position) (c : Color) (hq : q.turn = Color.opposite c) (hep : q.enPassant = none)
-    (hsafe : ∀ t r, q.board t = some r → r.color = c → r.kind ≠ PieceKind.king → isAttackedB q (Color.opposite c) t = false)
-    (m : Move) (hm : m ∈ legalMoves q) (hnp : ∀ s t k, m ≠ Move.promotion s t k) :
+theorem reply_no_loss_gen (q : Position) (c : Color) (hq : q.turn = Color.opposite c) (hsafe : ∀ t r, q.board t = some r → r.color = c → r.kind ≠ PieceKind.king → isAttackedB q (Color.opposite c) t = false)
+    (m : Move) (hm : m ∈ legalMoves q) (hnep : ∀ s t, m ≠ Move.enPassant s t) (hnp : ∀ s t k, m ≠ Move.promotion s t k) :
     materialOf q c ≤ materialOf (applyMove q m) c ∧ materialOf (applyMove q m) (Color.opposite c) ≤ materialOf q (Color.opposite c) := by
   have hps := legal_pseudo q m hm
   cases m with
   | promotion s t k => exact absurd rfl (hnp s t k)
-  | enPassant s t => simp [pseudoLegalB, pseudoLegalEnPassantB, hep] at hps
+  | enPassant s t => exact absurd rfl (hnep s t)
   | whiteKingCastle | whiteQueenCastle | blackKingCastle | blackQueenCastle =>
     all_goals
       have h := castle_material q _ (by unfold pseudoLegalB at hps; exact hps)
@@ -250,6 +249,17 @@ theorem reply_no_loss (q : Position) (c : Color) (hq : q.turn = Color.opposite c
           rw [this] at hatt
           exact absurd hatt (by simp)
       omega
+
+/-- The same with the en-passant square gone (the case `hanging` has after a move that is not a pawn's). -/
+theorem reply_no_loss (q : Position) (c : Color) (hq : q.turn = Color.opposite c) (hep : q.enPassant = none)
+    (hsafe : ∀ t r, q.board t = some r → r.color = c → r.kind ≠ PieceKind.king → isAttackedB q (Color.opposite c) t = false)
+    (m : Move) (hm : m ∈ legalMoves q) (hnp : ∀ s t k, m ≠ Move.promotion s t k) :
+    materialOf q c ≤ materialOf (applyMove q m) c ∧ materialOf (applyMove q m) (Color.opposite c) ≤ materialOf q (Color.opposite c) := by
+  refine reply_no_loss_gen q c hq hsafe m hm ?_ hnp
+  intro s t hmk
+  subst hmk
+  have hps := legal_pseudo q _ hm
+  simp [pseudoLegalB, pseudoLegalEnPassantB, hep] at hps
 
 /-! ## item 4: THE ROOT -/
 
@@ -360,6 +370,92 @@ theorem newEnPassant_nonpawn (p : Position) (x y : Square) (q0 : Piece) (hx : p.
     simp [Move.source, hx, hq]
   simp [this]
 
+/-- A board that holds side `c`'s king somewhere has a king square. -/
+theorem kingSq_exists (q : Position) (c : Color) (W : Square) (h : q.board W = some ⟨c, PieceKind.king⟩) : ∃ K, kingSq q c = some K := by
+  unfold kingSq
+  have hm : W ∈ allSquares.filter (fun u => match q.board u with | some q => q.color == c && q.kind == PieceKind.king | none => false) := by
+    rw [List.mem_filter]
+    refine ⟨mem_allSquares W, ?_⟩
+    rw [h]; simp
+  generalize allSquares.filter (fun u => match q.board u with | some q => q.color == c && q.kind == PieceKind.king | none => false) = L at hm
+  cases L with
+  | nil => simp at hm
+  | cons a l => exact ⟨a, rfl⟩
+
+/-- A position in which side `c` is not in check has a king of `c`: with none the kernel reads "in check". -/
+theorem kingSq_exists_of_not_inCheck (q : Position) (c : Color) (h : inCheckB q c = false) : ∃ K, kingSq q c = some K := by
+  unfold inCheckB at h
+  cases hk : kingSquare q.board c with
+  | none => rw [hk] at h; simp at h
+  | some s => exact kingSq_exists q c s (kingSquare_some hk).2
+
+/-- WHAT `hit` = 0 GIVES: with our king (the board's own) lifted, none of our pieces is attacked; then none is attacked on the board
+as it is, since lifting a king only adds attacks. -/
+theorem safe_of_hit (q : Position) (c : Color) (K : Square) (hK : kingSq q c = some K)
+    (h : count (fun u => piecesOf q c u && attackedBy q (Color.opposite c) K u) ≤ 0) :
+    ∀ t r, q.board t = some r → r.color = c → r.kind ≠ PieceKind.king → isAttackedB q (Color.opposite c) t = false := by
+  intro t r' ht hrc' hk
+  have h0 := count_zero_not _ h t
+  have hp : piecesOf q c t = true := by
+    unfold piecesOf; rw [ht]; simp [hrc', hk]
+  rw [hp, Bool.true_and] at h0
+  by_contra hcon
+  simp only [Bool.not_eq_false] at hcon
+  have hKb := kingSq_board q c K hK
+  have := attacked_withEmpty q (Color.opposite c) K t (by
+    intro pc hpc; rw [hKb] at hpc; have := Option.some.inj hpc; subst this; cases c <;> simp [Color.opposite]) hcon
+  unfold attackedBy at h0
+  rw [this] at h0
+  exact absurd h0 (by simp)
+
+/-- No en passant for them when they have no pawn on our fourth rank (named from `c`'s side): the pawn that takes en passant stands on its
+fifth rank, which is our fourth. -/
+theorem no_enpassant (q : Position) (c : Color) (hq : q.turn = Color.opposite c)
+    (h : count (fun u => kindSet q (Color.opposite c) PieceKind.pawn u && oset rankOf (some (named c ((0 : Fin 8), (3 : Fin 8)))) u) ≤ 0)
+    (m : Move) (hm : m ∈ legalMoves q) : ∀ s t, m ≠ Move.enPassant s t := by
+  intro s t hmk
+  subst hmk
+  have hps := legal_pseudo q _ hm
+  have h0 := count_zero_not _ h s
+  simp only [pseudoLegalB, pseudoLegalEnPassantB] at hps
+  cases hep : q.enPassant with
+  | none => simp [hep] at hps
+  | some e =>
+    cases hb : q.board s with
+    | none => simp [hep, hb] at hps
+    | some q0 =>
+      simp only [hep, hb, Bool.and_eq_true, beq_iff_eq] at hps
+      obtain ⟨-, ⟨⟨⟨hcol, hpawn⟩, hgeo⟩, -⟩, hmatch⟩ := hps
+      simp only [kindSet, hb, oset, rankOf, hcol, hpawn, hq, beq_self_eq_true, Bool.true_and, Bool.and_eq_false_iff,
+        decide_eq_false_iff_not] at h0
+      cases c
+      · have hq' : q.turn = Color.black := hq
+        rw [hq'] at hgeo hmatch
+        have ht2 : t.2.val = 2 := by
+          unfold epCapturedSquare at hmatch
+          split_ifs at hmatch with h1 h2 <;> simp_all
+        simp only [pawnAttackGeometryB, Bool.and_eq_true, beq_iff_eq] at hgeo
+        apply h0
+        have hn : (named Color.white ((0 : Fin 8), (3 : Fin 8))).2 = (3 : Fin 8) := rfl
+        rw [hn]
+        apply Fin.ext
+        simp at hgeo
+        simp
+        omega
+      · have hq' : q.turn = Color.white := hq
+        rw [hq'] at hgeo hmatch
+        have ht2 : t.2.val = 5 := by
+          unfold epCapturedSquare at hmatch
+          split_ifs at hmatch with h1 h2 <;> simp_all
+        simp only [pawnAttackGeometryB, Bool.and_eq_true, beq_iff_eq] at hgeo
+        apply h0
+        have hn : (named Color.black ((0 : Fin 8), (3 : Fin 8))).2 = (4 : Fin 8) := rfl
+        rw [hn]
+        apply Fin.ext
+        simp at hgeo
+        simp
+        omega
+
 /-- THE ROOT (plan 42, w = 0). A piece of theirs stands on `y` and our non-pawn piece on `x` can legally take it; after the capture
 nothing of ours (but the king) is attacked, they have no pawn on the rank before promotion, they have a legal reply, and we have material 4 or more (so the game is no dead draw after any reply: our material does not fall).
 Then `forcingOf p c v` is nonzero for every `v` up to the worth of what was taken: the gain is forced in one move of ours and their reply.
@@ -370,7 +466,7 @@ theorem hanging (p : Position) (c : Color) (v : Int) (W : Square) (hc : p.turn =
     (hmv : count (fun u => oset (movesOf p) (some x) u && oset atSq (some y) u) ≥ 1)
     (hth : count (fun u => piecesOf p (Color.opposite c) u && oset atSq (some y) u) ≥ 1)
     (hv : (worthOf p y : Int) ≥ v)
-    (hhit : afterMove p (some x) (some y) (fun q => count (fun u => piecesOf q c u && attackedBy q (Color.opposite c) W u)) ≤ 0)
+    (hhit : afterMove p (some x) (some y) (fun q => count (fun u => piecesOf q c u && attackedBy q (Color.opposite c) (kingSqD q c) u)) ≤ 0)
     (hpr : afterMove p (some x) (some y) (fun q =>
       count (fun u => kindSet q (Color.opposite c) PieceKind.pawn u && oset rankOf (some (named c ((0 : Fin 8), (1 : Fin 8)))) u)) ≤ 0)
     (hmat : materialOf p c ≥ 4)
@@ -415,19 +511,10 @@ theorem hanging (p : Position) (c : Color) (v : Int) (W : Square) (hc : p.turn =
   have hqb : q.board = boardMove p.board x y := by rw [← hqdef]; rfl
   have hqW : q.board W = some ⟨c, PieceKind.king⟩ := by
     rw [hqb]; simp [boardMove, boardUpdate, Function.update_apply, hWx, hWy, hWb]
-  have hsafe : ∀ t r', q.board t = some r' → r'.color = c → r'.kind ≠ PieceKind.king → isAttackedB q (Color.opposite c) t = false := by
-    intro t r' ht hrc' hk
-    have h0 := count_zero_not _ hhit t
-    have hp : piecesOf q c t = true := by
-      unfold piecesOf; rw [ht]; simp [hrc', hk]
-    rw [hp, Bool.true_and] at h0
-    by_contra hcon
-    simp only [Bool.not_eq_false] at hcon
-    have := attacked_withEmpty q (Color.opposite c) W t (by
-      intro pc hpc; rw [hqW] at hpc; have := Option.some.inj hpc; subst this; cases c <;> simp [Color.opposite]) hcon
-    unfold attackedBy at h0
-    rw [this] at h0
-    exact absurd h0 (by simp)
+  obtain ⟨K, hK⟩ := kingSq_exists q c W hqW
+  have hKD : kingSqD q c = K := by simp [kingSqD, hK]
+  rw [hKD] at hhit
+  have hsafe := safe_of_hit q c K hK hhit
   apply forcingOf_ne_zero p c v hc 1 (by simp)
   apply step_ours c _ p 1 hc _ hm
   rw [hqdef]
@@ -440,5 +527,72 @@ theorem hanging (p : Position) (c : Color) (v : Int) (W : Square) (hc : p.turn =
   · have hv' : (worthOf p y : Int) ≥ v := hv
     omega
   · exact alive_of_material _ c (by omega)
+
+/-! ## ANALYST_PLAN 44: the tail of a delayed root -/
+
+/-- THE TAIL OF A DELAYED ROOT (plan 44.2). On our turn at `q`, some move of ours leaves a position in which nothing of ours is attacked (the
+board's own king lifted), they have no pawn on our second rank (no promotion) nor on our fourth (no en passant), they have a legal reply,
+and the balance is at least `64 + k` with `k ≥ base + v` and `k ≥ 4`: then the gain goal is forced within two plies -- our move, whatever
+they reply (no reply loses us anything: `reply_no_loss_gen`; then `gainGoal_of_balance`). The hypothesis is the premise's word, rendered
+as `base_vocabulary.lean` renders `(most (if G balance 0))` for the guard
+`G = (eq (sum (sum (sum (count (and ours hit)) (count (and theirpawns (rank <our second>)))) (count (and theirpawns (rank <our fourth>)))) (eq (least 1) 0)) 0)`. -/
+theorem root_tail (c : Color) (base v : Int) (q : Position) (hq : q.turn = c) (k : Nat) (hk : (k : Int) ≥ base + v) (h4 : k ≥ 4)
+    (h : mostOver q (fun p => (if (if ((((count (fun u => (piecesOf p c) u && (attackedBy p (Color.opposite c) (kingSqD p c)) u)) +
+        (count (fun u => (kindSet p (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((1 : Fin 8)))))) u))) +
+        (count (fun u => (kindSet p (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((3 : Fin 8)))))) u))) +
+        (if (leastOver p (fun p => (1))) = (0) then 1 else 0)) = (0) then 1 else 0) ≠ 0 then (balanceOf p c) else (0))) ≥ 64 + k) :
+    Ideas.forcedWithinB c (gainGoal c base v) q 2 = true := by
+  obtain ⟨m, hm, hF⟩ := most_witness q _ (64 + k) (by omega) h
+  beta_reduce at hF
+  obtain ⟨q1, hq1⟩ : ∃ q1, applyMove q m = q1 := ⟨_, rfl⟩
+  rw [hq1] at hF
+  -- the guard held at q1 (else the body reads 0)
+  have hG : ((((count (fun u => (piecesOf q1 c) u && (attackedBy q1 (Color.opposite c) (kingSqD q1 c)) u)) +
+        (count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((1 : Fin 8)))))) u))) +
+        (count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((3 : Fin 8)))))) u))) +
+        (if (leastOver q1 (fun p => (1))) = (0) then 1 else 0)) = 0 := by
+    by_contra hne
+    have : (if ((((count (fun u => (piecesOf q1 c) u && (attackedBy q1 (Color.opposite c) (kingSqD q1 c)) u)) +
+        (count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((1 : Fin 8)))))) u))) +
+        (count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((3 : Fin 8)))))) u))) +
+        (if (leastOver q1 (fun p => (1))) = (0) then 1 else 0)) = (0) then 1 else 0) = 0 := if_neg hne
+    rw [this] at hF
+    simp at hF
+  have hbal : balanceOf q1 c ≥ 64 + k := by
+    rw [if_pos (by rw [if_pos hG]; simp)] at hF
+    exact hF
+  have hA : count (fun u => piecesOf q1 c u && attackedBy q1 (Color.opposite c) (kingSqD q1 c) u) ≤ 0 := by omega
+  have hB : count (fun u => kindSet q1 (Color.opposite c) PieceKind.pawn u && oset rankOf (some (named c ((0 : Fin 8), (1 : Fin 8)))) u) ≤ 0 := by omega
+  have hC : count (fun u => kindSet q1 (Color.opposite c) PieceKind.pawn u && oset rankOf (some (named c ((0 : Fin 8), (3 : Fin 8)))) u) ≤ 0 := by omega
+  have hD : leastOver q1 (fun p => 1) ≥ 1 := by
+    by_contra hlt
+    have h0 : leastOver q1 (fun p => 1) = 0 := by omega
+    have : (if (leastOver q1 (fun p => (1))) = (0) then 1 else 0) = 1 := by simp [h0]
+    omega
+  -- the position q1
+  have hturn : q1.turn = Color.opposite c := by rw [← hq1, applyMove_turn, hq]
+  have hkin : ∃ K, kingSq q1 c = some K := by
+    apply kingSq_exists_of_not_inCheck
+    have hl : legalMove q m := by
+      unfold legalMoves at hm
+      have h2 := (List.mem_filter.mp hm).2
+      exact @of_decide_eq_true _ (legalMoveDecidable q m) h2
+    have := legalMove_kingSafe hl
+    unfold inCheck at this
+    rw [hq, hq1] at this
+    simpa using this
+  obtain ⟨K, hK⟩ := hkin
+  have hKD : kingSqD q1 c = K := by simp [kingSqD, hK]
+  rw [hKD] at hA
+  have hsafe := safe_of_hit q1 c K hK hA
+  apply step_ours c _ q 1 hq m hm
+  rw [hq1]
+  apply step_theirs c _ q1 0 (by rw [hturn]; cases c <;> simp [Color.opposite]) (least_pos_nonempty _ _ hD)
+  intro r hr
+  apply leaf
+  have hnl := reply_no_loss_gen q1 c hturn hsafe r hr (no_enpassant q1 c hturn hC r hr) (no_promotion q1 c hturn hB r hr)
+  apply gainGoal_of_balance c base v _ (by rw [← hq1]; exact turn_after_two q c hq m r) k hk h4
+  unfold balanceOf at hbal ⊢
+  omega
 
 end Ideas.Root

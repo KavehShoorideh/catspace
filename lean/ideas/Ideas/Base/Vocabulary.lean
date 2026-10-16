@@ -362,6 +362,10 @@ def withoutIn (p : Position) (X : SquareSet) (f : Position → Nat) : Nat := f (
 def kingSq (p : Position) (c : Color) : OSq :=
   (allSquares.filter (fun u => match p.board u with | some q => q.color == c && q.kind == PieceKind.king | none => false)).head?
 
+/-- Side `c`'s king square as a plain square (the corner `a1` when there is no king): what `hit` lifts off the board when it is read
+on a board other than the root's (inside `after`, `least`, `most`) -- the king of THAT board, as the Rust evaluator reads it. -/
+def kingSqD (p : Position) (c : Color) : Square := (kingSq p c).getD ((0 : Fin 8), (0 : Fin 8))
+
 /-- A promotion only to a queen (any other move passes). -/
 def queenOnly : Move → Bool
   | .promotion _ _ k => decide (k = PromotionKind.queen)
