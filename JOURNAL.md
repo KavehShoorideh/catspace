@@ -31205,3 +31205,24 @@ fork window it says, in one line, how it fails (under-predicts: the capture look
 the next layer must name: the recapture is a king move forced by check, after which the rook falls. The next layer is therefore the
 check-and-fork reading of the exchange, which needs the first `see` theorem (the exchange law's one-step case). The score table exists
 and reads reuse 0 until a second window is explained by the same lemma.
+
+### WINDOW BOUNDARIES BY QUIESCENCE, BUILT (2026-10-15 18:25 PDT)
+
+Kaveh: a check is the middle of a tactic; the window ends at the quiescence point and begins where the trap is laid (plan 43). Built by
+the Sonnet builder; verified: 24 tests pass (windows, selfmine, root), both new Mined files typecheck clean. Commits 5a289ecf 7c8f38a7
+2ec77f94 4d0fc0a1 8bee1746 4f9b558c, plus the mined files. Numbers from the builder's OBS lines (one run each).
+
+- The chess adapter has `quiet` (not in check, no capture winning by the exchange; a python SEE that agrees with vocab_eval on 482/482
+  capturable pieces of four games; `--quiet forcing` knob for the forcing-word test, untried) and `settle` (walk the game forward to
+  the first quiet position). A shift is a change of the SETTLED balance; the Observable records settle_ply / settle_fen; windows run to
+  the quiescence ply; branches are judged by their settled balance against the game's (SAME = the victim ends at or below the game's
+  settled balance -- exact equality made the played Qg4 OTHER because the teacher's line wins 7 against the game's 6).
+- MTq15Poj: shifts before B2@24 B2@42 W3@45 W1@49 B1@56,58,60,62 B4@68 W9@71; after B2@24 W1@41 W1@49 B1@56,58,60,62 W5@67. The split
+  exchange (Bxe5 / Rg1+ / dxe5) is gone: it was an even trade; the shift that remains is the pawn gxh6 took (W1), settled right after it
+  because Bxe5 wins nothing by the exchange (the knight is defended by d4).
+- sHa6yUKv: the two shifts at 33 and 35 merge into B6@34 with quiescence ply 36 (the game ends at Qxa1; the six plies through Kxd7 are the
+  solver's line, not the game's). The ladder: 30 attempted, 30 typechecked, 1 PROVED (premise_21, the tree lemma), 0 drill
+  disagreements. The window's index moved from 2 to 1; the old window-2 files stay as history and no longer match the regenerated windows.
+- 4pfUO5Kb: the window now starts at the Qb5+ fork (plies 14-19); the hanging bishop falls inside it; the root is tried at the victim's
+  later moves inside the window (`later_root`) and still EXPLAINS it, `hanging` proved, drill 385/633 covered, 0 disagreements.
+- Board republished: https://claude.ai/artifact/94UcaR4MxNMrWgp6L6TzWP (v3).
