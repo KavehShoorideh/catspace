@@ -1317,17 +1317,19 @@ CLAUSE = {"hth": "there is no piece of theirs on {y} to take", "hv": "what stand
 
 
 def repair(diag: dict) -> list:
-    """REPAIR OPERATORS by the failing hypothesis (44.2): hv / hth / hnp -> DELAY (the gain is not now: it is one move later under every reply); hhit / hpr ->
+    """REPAIR OPERATORS by the failing hypothesis (44.2): hv / hth -> DELAY (the gain is not now: it is one move later under every reply); hhit / hpr ->
     RECAPTURE (the capturing piece is attacked after: the same schema, the diagnosis names the deviation); hmat / hmov -> EXCLUDE (an extra atom). EXCLUDE also
     follows a DELAY that does not prove. -> [(operator, failing names that call it)], in the order they are tried."""
     f = failing(diag)
     ops = []
-    d = [n for n in f if n in ("hv", "hth", "hnp")]
+    d = [n for n in f if n in ("hv", "hth")]
     r = [n for n in f if n in ("hhit", "hpr")]
     if d:
         ops.append(("DELAY", d + r))
     elif r:
         ops.append(("RECAPTURE", r))
+    elif "hnp" in f:                       # (the root is proved for a piece that is not a pawn: nothing else fails, the delayed root takes a pawn too)
+        ops.append(("DELAY", ["hnp"]))
     ex = [n for n in f if n in ("hmat", "hmov")]
     ops.append(("EXCLUDE", ex or ["a failed delay"]))
     return ops
@@ -1382,6 +1384,21 @@ def schema_sentence(depth: int) -> str:
     return (f"SCHEMA {schema_name(depth)}(x1 y1{' x2 y2' if depth == 2 else ''}, B, T, v): {first}; our balance now is at most B; after {moves}, whatever they reply, "
             f"we have a move after which nothing of ours is attacked (the board's own king lifted), they have no pawn on our second or fourth rank, they have a legal reply, "
             f"and our balance is at least T; with T >= B + v and T >= 68 we force a gain of v within {depth + 1} moves of ours against every defence")
+
+
+def played_next(win: dict, fen: str):
+    """The game's own next move from the example position, when the window's played line passes through it: (san, x, y), absolute squares; else None."""
+    import chess
+    if not win.get("played_uci") or not win.get("start_fen"):
+        return None
+    b = chess.Board(win["start_fen"])
+    key = " ".join(fen.split()[:2])
+    for j, u in enumerate(win["played_uci"]):
+        if " ".join(b.fen().split()[:2]) == key:
+            m = chess.Move.from_uci(u)
+            return b.san(m), chess.square_name(m.from_square), chess.square_name(m.to_square)
+        b.push_uci(u)
+    return None
 
 
 def later_root(win: dict, base: dict, mover: str, delta: int, ref: str, n_opp: int, log=print):
@@ -1518,6 +1535,15 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
         log(f"OBS root does not explain the window (solver {lab['status']}, best k {best['k'] if best else 0}); the deviation is searched next")
     # 44. THE SCHEMAS: diagnose the root at the solver's first move, bind the proved schemas, else repair by an operator and prove the new schema once
     schema_line = sol["line"] if sol["status"] == "forced" else (lab["line"] if lab["status"] == "forced" else None)
+    if not schema_line:                                       # the solver did not decide: say where the root fails at the game's own move (no schema claims without the solver)
+        pn = played_next(win, fen)
+        if pn:
+            need_ = max(1, delta + balance(ref, mover == "w") - balance(fen, mover == "w"))
+            d_ = diagnose(fen, mover, need_, pn[1], pn[2])
+            f_ = failing(d_)
+            log(f"OBS diagnose {tag}: (the solver did not decide: {sol['status']}) root at the game's own move {pn[0]} ({pn[1]}->{pn[2]}) fails {{{', '.join(f_)}}}"
+                + (" (" + "; ".join(CLAUSE[n].format(x=pn[1], y=pn[2], need=need_) for n in f_) + ")" if f_ else "; the root applies")
+                + f"; operators called: {[op for op, _ in repair(d_)]}")
     if schema_line:
         n_ours = sol["moves"] if sol["status"] == "forced" else lab["moves"]
         need = max(1, delta + balance(ref, mover == "w") - balance(fen, mover == "w"))
