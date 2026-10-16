@@ -31206,7 +31206,7 @@ the next layer must name: the recapture is a king move forced by check, after wh
 check-and-fork reading of the exchange, which needs the first `see` theorem (the exchange law's one-step case). The score table exists
 and reads reuse 0 until a second window is explained by the same lemma.
 
-### WINDOW BOUNDARIES BY QUIESCENCE, BUILT (2026-10-15 18:25 PDT)
+### WINDOW BOUNDARIES BY QUIESCENCE, BUILT (2026-10-15 18:22 PDT)
 
 Kaveh: a check is the middle of a tactic; the window ends at the quiescence point and begins where the trap is laid (plan 43). Built by
 the Sonnet builder; verified: 24 tests pass (windows, selfmine, root), both new Mined files typecheck clean. Commits 5a289ecf 7c8f38a7
