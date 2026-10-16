@@ -342,6 +342,65 @@ theorem attacked_withEmpty (q : Position) (d : Color) (W t : Square) (hW : ∀ p
     cases h1 : clearBetweenB q.board s t <;> cases h2 : clearBetweenB (withEmpty q W).board s t <;> simp_all
     all_goals tauto
 
+/-- **A REPLY LOSES AT MOST THE MOST VALUABLE PIECE ATTACKED** (plan 44): from a position `q` with them to move, any legal reply that is neither a
+promotion nor an en passant leaves their material no higher, and ours lower by at most `maxWorthOf` of our attacked pieces (the king of
+ours, `K`, lifted, as `hit` reads it). A castle changes no material; a normal move changes our material only by what stood on its destination
+(`material_boardMove`); a normal move onto a piece of ours is a capture of an attacked piece (`normal_capture_attacked`, then
+`attacked_withEmpty` for the lifted king), and that piece is worth at most the maximum (`worthOf_le_maxWorthOf`). -/
+theorem reply_loses_at_most (q : Position) (c : Color) (hq : q.turn = Color.opposite c) (K : Square) (hK : kingSq q c = some K)
+    (m : Move) (hm : m ∈ legalMoves q) (hnep : ∀ s t, m ≠ Move.enPassant s t) (hnp : ∀ s t k, m ≠ Move.promotion s t k) :
+    materialOf q c ≤ materialOf (applyMove q m) c + maxWorthOf q (fun u => piecesOf q c u && attackedBy q (Color.opposite c) K u) ∧
+    materialOf (applyMove q m) (Color.opposite c) ≤ materialOf q (Color.opposite c) := by
+  have hps := legal_pseudo q m hm
+  cases m with
+  | promotion s t k => exact absurd rfl (hnp s t k)
+  | enPassant s t => exact absurd rfl (hnep s t)
+  | whiteKingCastle | whiteQueenCastle | blackKingCastle | blackQueenCastle =>
+    all_goals
+      have h := castle_material q _ (by unfold pseudoLegalB at hps; exact hps)
+      rw [h c, h (Color.opposite c)]
+      exact ⟨Nat.le_add_right _ _, le_refl _⟩
+  | normal s t =>
+    simp only [pseudoLegalB, normalPseudoLegalB] at hps
+    cases hs : q.board s with
+    | none => simp [hs] at hps
+    | some q0 =>
+      rw [hs] at hps
+      simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq] at hps
+      obtain ⟨⟨⟨hcol, hdest⟩, _⟩, hgeo⟩ := hps
+      have hst : s ≠ t := by
+        rintro rfl
+        unfold destinationFriendlyB at hdest
+        rw [hs] at hdest
+        simp [hcol] at hdest
+      have hb : (applyMove q (Move.normal s t)).board = boardMove q.board s t := rfl
+      have e1 := material_boardMove q _ s t hst q0 hs hb c
+      have e2 := material_boardMove q _ s t hst q0 hs hb (Color.opposite c)
+      refine ⟨?_, by omega⟩
+      have h0 : contrib q c t ≤ maxWorthOf q (fun u => piecesOf q c u && attackedBy q (Color.opposite c) K u) := by
+        cases ht : q.board t with
+        | none => rw [contrib_none q c t ht]; exact Nat.zero_le _
+        | some r =>
+          unfold destinationFriendlyB at hdest
+          rw [ht] at hdest
+          simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hdest
+          have hr : r.color = c := color_of_ne_opposite _ _ (by rw [← hq]; exact hdest.1)
+          have hcw : contrib q c t = worthOf q t := by
+            rw [contrib_own q c t r ht hr, worthOf_eq q t r ht]
+          rw [hcw]
+          have hatt := normal_capture_attacked q s t q0 r hs ht hcol hgeo
+          rw [hq] at hatt
+          have hKb := kingSq_board q c K hK
+          have hlift := attacked_withEmpty q (Color.opposite c) K t (by
+            intro pc hpc; rw [hKb] at hpc; have := Option.some.inj hpc; subst this; cases c <;> simp [Color.opposite]) hatt
+          apply worthOf_le_maxWorthOf
+          have hp : piecesOf q c t = true := by
+            unfold piecesOf; rw [ht]; simp [hr, hdest.2]
+          rw [hp, Bool.true_and]
+          unfold attackedBy
+          exact hlift
+      omega
+
 /-- No pawn of theirs on the rank before promotion (our second rank, named from our side): they have no promotion. -/
 theorem no_promotion (q : Position) (c : Color) (hq : q.turn = Color.opposite c)
     (h : count (fun u => kindSet q (Color.opposite c) PieceKind.pawn u && oset rankOf (some (named c ((0 : Fin 8), (1 : Fin 8)))) u) ≤ 0)
@@ -591,6 +650,96 @@ theorem root_tail (c : Color) (base v : Int) (q : Position) (hq : q.turn = c) (k
   intro r hr
   apply leaf
   have hnl := reply_no_loss_gen q1 c hturn hsafe r hr (no_enpassant q1 c hturn hC r hr) (no_promotion q1 c hturn hB r hr)
+  apply gainGoal_of_balance c base v _ (by rw [← hq1]; exact turn_after_two q c hq m r) k hk h4
+  unfold balanceOf at hbal ⊢
+  omega
+
+/-! ## ANALYST_PLAN 44: the tail of a delayed root, the balance less the most valuable attacked piece -/
+
+theorem worthOf_le_nine (p : Position) (u : Square) : worthOf p u ≤ 9 := by
+  unfold worthOf
+  cases p.board u with
+  | none => exact Nat.zero_le _
+  | some q =>
+    show (pieceValue q.kind).toNat ≤ 9
+    generalize q.kind = kd
+    cases kd <;> decide
+
+theorem foldl_worth_le (p : Position) (S : SquareSet) (l : List Square) (a : Nat) (ha : a ≤ 9) :
+    l.foldl (fun m u => if S u then Nat.max m (worthOf p u) else m) a ≤ 9 := by
+  induction l generalizing a with
+  | nil => exact ha
+  | cons v l ih =>
+    simp only [List.foldl_cons]
+    apply ih
+    by_cases h : S v = true
+    · rw [if_pos h]; exact Nat.max_le.mpr ⟨ha, worthOf_le_nine p v⟩
+    · rw [if_neg h]; exact ha
+
+/-- No piece is worth more than a queen: `maxWorthOf` is at most 9. -/
+theorem maxWorthOf_le_nine (p : Position) (S : SquareSet) : maxWorthOf p S ≤ 9 :=
+  foldl_worth_le p S allSquares 0 (by omega)
+
+/-- THE TAIL OF A DELAYED ROOT, WEAKENED (plan 44): as `root_tail`, but nothing of ours need be unattacked. On our turn at `q`, some move of
+ours leaves a position in which they have no pawn on our second rank (no promotion) nor on our fourth (no en passant), they have a legal
+reply, and the balance less the worth of the most valuable piece of ours that is attacked (the board's own king lifted) is at least `64 + k`,
+with `k ≥ base + v` and `k ≥ 4`: then the gain goal is forced within two plies. Whatever they reply, they take at most one piece
+(`reply_loses_at_most`: our material falls by at most the maximum worth of the attacked pieces, theirs does not rise), so the balance after
+the reply is at least the balance less that maximum (`gainGoal_of_balance`). The `diff` word is the absolute difference; the maximum is at most 9
+(`maxWorthOf_le_nine`) and the balance is at least 68, so it is the plain difference. -/
+theorem root_tail_max (c : Color) (base v : Int) (q : Position) (hq : q.turn = c) (k : Nat) (hk : (k : Int) ≥ base + v) (h4 : k ≥ 4)
+    (h : mostOver q (fun p => (if (if (((count (fun u => (kindSet p (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((1 : Fin 8)))))) u)) +
+        (count (fun u => (kindSet p (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((3 : Fin 8)))))) u))) +
+        (if (leastOver p (fun p => (1))) = (0) then 1 else 0)) = (0) then 1 else 0) ≠ 0 then
+        (nDiff (balanceOf p c) (maxWorthOf p (fun u => (piecesOf p c) u && (attackedBy p (Color.opposite c) (kingSqD p c)) u))) else (0))) ≥ 64 + k) :
+    Ideas.forcedWithinB c (gainGoal c base v) q 2 = true := by
+  obtain ⟨m, hm, hF⟩ := most_witness q _ (64 + k) (by omega) h
+  beta_reduce at hF
+  obtain ⟨q1, hq1⟩ : ∃ q1, applyMove q m = q1 := ⟨_, rfl⟩
+  rw [hq1] at hF
+  have hG : (((count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((1 : Fin 8)))))) u)) +
+        (count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((3 : Fin 8)))))) u))) +
+        (if (leastOver q1 (fun p => (1))) = (0) then 1 else 0)) = 0 := by
+    by_contra hne
+    have : (if (((count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((1 : Fin 8)))))) u)) +
+        (count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((3 : Fin 8)))))) u))) +
+        (if (leastOver q1 (fun p => (1))) = (0) then 1 else 0)) = (0) then 1 else 0) = 0 := if_neg hne
+    rw [this] at hF
+    simp at hF
+  have hnd : nDiff (balanceOf q1 c) (maxWorthOf q1 (fun u => (piecesOf q1 c) u && (attackedBy q1 (Color.opposite c) (kingSqD q1 c)) u)) ≥ 64 + k := by
+    rw [if_pos (by rw [if_pos hG]; simp)] at hF
+    exact hF
+  have hB : count (fun u => kindSet q1 (Color.opposite c) PieceKind.pawn u && oset rankOf (some (named c ((0 : Fin 8), (1 : Fin 8)))) u) ≤ 0 := by omega
+  have hC : count (fun u => kindSet q1 (Color.opposite c) PieceKind.pawn u && oset rankOf (some (named c ((0 : Fin 8), (3 : Fin 8)))) u) ≤ 0 := by omega
+  have hD : leastOver q1 (fun p => 1) ≥ 1 := by
+    by_contra hlt
+    have h0 : leastOver q1 (fun p => 1) = 0 := by omega
+    have : (if (leastOver q1 (fun p => (1))) = (0) then 1 else 0) = 1 := by simp [h0]
+    omega
+  have hturn : q1.turn = Color.opposite c := by rw [← hq1, applyMove_turn, hq]
+  have hkin : ∃ K, kingSq q1 c = some K := by
+    apply kingSq_exists_of_not_inCheck
+    have hl : legalMove q m := by
+      unfold legalMoves at hm
+      have h2 := (List.mem_filter.mp hm).2
+      exact @of_decide_eq_true _ (legalMoveDecidable q m) h2
+    have := legalMove_kingSafe hl
+    unfold inCheck at this
+    rw [hq, hq1] at this
+    simpa using this
+  obtain ⟨K, hK⟩ := hkin
+  have hKD : kingSqD q1 c = K := by simp [kingSqD, hK]
+  rw [hKD] at hnd
+  have h9 := maxWorthOf_le_nine q1 (fun u => (piecesOf q1 c) u && (attackedBy q1 (Color.opposite c) K) u)
+  have hbal : balanceOf q1 c ≥ 64 + k + maxWorthOf q1 (fun u => (piecesOf q1 c) u && (attackedBy q1 (Color.opposite c) K) u) := by
+    unfold nDiff at hnd
+    split_ifs at hnd <;> omega
+  apply step_ours c _ q 1 hq m hm
+  rw [hq1]
+  apply step_theirs c _ q1 0 (by rw [hturn]; cases c <;> simp [Color.opposite]) (least_pos_nonempty _ _ hD)
+  intro r hr
+  apply leaf
+  have hnl := reply_loses_at_most q1 c hturn K hK r hr (no_enpassant q1 c hturn hC r hr) (no_promotion q1 c hturn hB r hr)
   apply gainGoal_of_balance c base v _ (by rw [← hq1]; exact turn_after_two q c hq m r) k hk h4
   unfold balanceOf at hbal ⊢
   omega
