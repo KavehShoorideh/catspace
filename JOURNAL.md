@@ -31288,3 +31288,30 @@ balance 71 by minimax but balance - maxworth = 69, because the most valuable att
 profitably take. The one-ply bound "they take at most one piece" is conservative by exactly the recapture; the next reasoned layer is
 the take-back, i.e. the exchange law's one step, which keeps coming up as the missing theorem. Until then the minimax schema is the
 general, less explanatory lemma and the ladder ranks it last.
+
+### DEAD-END ATTACKS: A VERDICT PER ATTACK, PROVED ONCE (2026-10-16 08:28 PDT)
+
+Kaveh (early morning): "there's always some piece of us under attack, but those attacks lead to losses for my opponent ... attacks that
+are dead ends versus attacks that lose material now but gain something later [a sacrifice] ... you have to prove them once, and then
+that's it." Plan 45, built by the Sonnet builder (f630843c 30c97275 b7a8e83e 96cea474 5c92d6bb); verified here: 79 tests pass, no
+sorry, the fork window rerun by hand (10 s) gives the builder's lines. Numbers from OBS lines, one run each.
+
+- The schema `dead_end(s, t, z)`, proved once in Schemas.lean (5.2 s), read from the capturer's side: a piece on s worth at least W
+  takes a piece on t worth at most W, after which a piece on z can go to t; then whatever follows, the capturer's balance is at most what
+  it was. The one-step exchange law, from their side, as a schema. Lean: least_of_each, after_capture_normal, dead_end_core (capture_gains
+  twice, leastOver_le with z as the witness).
+- Verdicts at the leaves of a delayed schema: each reply of theirs is a dead end (bound to the schema, the recapturer named), costs k, or
+  affordable (not a dead end by the one-step exchange: the next layer's target), or quiet. Rust cross-reads every dead-end binding.
+- sHa6yUKv window 1, the explanation now ends: "attacks on us after Qxc3 Ke2 Qxa1: pawn c4 by g4 (Qxc4): dead end (we take back with
+  b5); knight d7 by g4 (Qxd7+): affordable (not a dead end by the one-step exchange); pawn g6 by g4 (Qxg6+): dead end (we take back with
+  h7); pawn h7 by h1 (Rxh7): dead end (we take back with h8)" -- attacks 4, dead ends 3, affordable 1, quiet 31; after Qxd7 Kxd7: 1 attack,
+  1 dead end. Drill 179/400, 0 disagreements. Cache: 5 verdicts, 1 hit.
+- 46LzXjoz window 1: after Qxf1 the attack on our f5 pawn (Rxf5) is a dead end (we take back with c8); 316/423, 0 disagreements.
+  4pfUO5Kb window 0: unchanged (the root).
+- The sacrifice flag did not fire on Qxc3+: the pawn on c3 is UNDEFENDED in the real position (no b2 pawn), so the capture is no sacrifice
+  by the exchange -- my plan said "defended by a pawn"; the loop was right and the plan wrong. A hand-made sacrifice fires it (tested).
+
+Reading. The guard Kaveh described now exists as explanation: the proof of a window is still the minimax schema, but every attack on us
+at its leaves carries a reason, a one-line lemma instance proved once. The one "affordable" verdict (Qxd7+, a queen takes a knight
+defended by the king: the exchange is in our favour but the one-step lemma does not see the king as the recapturer because the king's
+worth is 0) is the exact next deviation to name: the recapturer's worth does not matter when the capturer is lost.
