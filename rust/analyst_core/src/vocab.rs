@@ -333,8 +333,8 @@ pub fn set(t: &Term, q: &Chess, lone: Color) -> Bitboard {
             let at: Bitboard = Bitboard::FULL.into_iter().filter(|s| b.attacks_to(*s, lone, occ).any()).collect();
             if matches!(t, Term::Hit) { at } else { !at }
         }
-        Term::Ours => b.by_color(!lone) & !b.kings(),
-        Term::Theirs => b.by_color(lone) & !b.kings(),
+        Term::Ours => b.by_color(!lone),
+        Term::Theirs => b.by_color(lone),
         // the second batch (mirrors of Lean Ideas.Vocabulary lines / diagonals / segment / knight1 / knight2 / center /
         // attacksFrom / cls)
         Term::Lines(a) => s1(a).map_or(Bitboard::EMPTY, |s| (Bitboard::from(s.rank()) | Bitboard::from(s.file())).without(s)),

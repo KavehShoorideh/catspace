@@ -1,0 +1,2 @@
+(String, String, String, std::vec::Vec<String>, i64, bool, u64, f64, Option<f32>, String, usize, std::vec::Vec<String>, u64, f64)
+std::vec::Vec<(String, String, String, std::vec::Vec<String>, i64, bool, u64, f64, Option<f32>, String, usize, std::vec::Vec<String>, u64, f64)>

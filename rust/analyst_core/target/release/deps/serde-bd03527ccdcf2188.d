@@ -1,0 +1,14 @@
+/Users/kav/code/remote/github/catspace/rust/analyst_core/target/release/deps/serde-bd03527ccdcf2188.d: /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs /Users/kav/code/remote/github/catspace/rust/analyst_core/target/release/build/serde-4ed5e9cc07590729/out/private.rs
+
+/Users/kav/code/remote/github/catspace/rust/analyst_core/target/release/deps/libserde-bd03527ccdcf2188.rlib: /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs /Users/kav/code/remote/github/catspace/rust/analyst_core/target/release/build/serde-4ed5e9cc07590729/out/private.rs
+
+/Users/kav/code/remote/github/catspace/rust/analyst_core/target/release/deps/libserde-bd03527ccdcf2188.rmeta: /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs /Users/kav/code/remote/github/catspace/rust/analyst_core/target/release/build/serde-4ed5e9cc07590729/out/private.rs
+
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs:
+/Users/kav/code/remote/github/catspace/rust/analyst_core/target/release/build/serde-4ed5e9cc07590729/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/kav/code/remote/github/catspace/rust/analyst_core/target/release/build/serde-4ed5e9cc07590729/out

@@ -111,7 +111,7 @@ def objects(win: dict, wide: bool = False):
 # ---------------------------------------------------------------------------------------------------------------- propose
 
 def ours_at(f: str):
-    """A piece of ours (not the king) stands on f: what Lean's step_after reads to know whose move `after f t` is."""
+    """A piece of ours (the king included) stands on f: what Lean's step_after reads to know whose move `after f t` is."""
     return ("count", ("and", "ours", ("at", f)))
 
 
@@ -919,13 +919,13 @@ def dead_end_proof() -> str:
     """By reasoning, from the step theorems: the capture is the kernel's normal move (`after_capture_normal`), the recapture is a witness for `least` and
     `dead_end_core` adds the two captures (`capture_gains` twice) and `leastOver_le`."""
     return "\n  ".join([
-        "obtain ⟨q0, hs, hq0c, -⟩ := Ideas.TreeStep.ours_at p c s hown",
-        "obtain ⟨r, ht, hrc, -⟩ := Ideas.TreeStep.ours_at p (Color.opposite c) t hth",
+        "obtain ⟨q0, hs, hq0c⟩ := Ideas.TreeStep.ours_at p c s hown",
+        "obtain ⟨r, ht, hrc⟩ := Ideas.TreeStep.ours_at p (Color.opposite c) t hth",
         "have hnp' := Ideas.TreeStep.not_promoting_at p c s hc hnp q0 hs hq0c",
         "obtain ⟨hm, haf⟩ := Ideas.Root.after_capture_normal p s t q0 r hs (by rw [hq0c, hc]) hnp' ht (Ideas.TreeStep.moves_of_count p s t hmv)",
         "rw [haf] at hzm hzo hznp ⊢",
         "beta_reduce at hzm hzo hznp ⊢",
-        "obtain ⟨q1, hz, hc1, -⟩ := Ideas.TreeStep.ours_at _ (Color.opposite c) z hzo",
+        "obtain ⟨q1, hz, hc1⟩ := Ideas.TreeStep.ours_at _ (Color.opposite c) z hzo",
         "have hnp1 := Ideas.Root.not_promoting_at_opp _ c z (by rw [applyMove_turn, hc]) hznp q1 hz hc1",
         "exact Ideas.Root.dead_end_core p c hc s t z q0 r hs hq0c ht hrc W hw1 hw2 q1 hz hc1 hnp1 (Ideas.TreeStep.moves_of_count _ z t hzm)"])
 
@@ -1464,7 +1464,7 @@ def explanation(diag: dict, op: str, depth: int, pairs: list, need: int, family:
 
 def bind(depth: int, fen: str, mover: str, need: int, candidates: list | None = None, family: str = "delayed_root") -> list:
     """BIND the delayed-root schema of this depth to a position: for each candidate (our named moves [(x1, y1), ...], absolute squares; by default every legal
-    move of a piece of ours that is not a king nor a pawn about to promote, for depth one) substitute the squares, evaluate the premise in Rust (the legs,
+    move of a piece of ours (the king included) that is not a pawn about to promote, for depth one) substitute the squares, evaluate the premise in Rust (the legs,
     `balance <= B`, the tail `>= T` with B the balance now and T = max(B + need, 68)), keep the bindings where every atom holds.
     -> [dict(depth, pairs, B, T, prem, atoms)]."""
     import chess
@@ -1687,7 +1687,7 @@ DEAD_END_SENTENCE = ("SCHEMA dead_end(s, t, z, W): the side to move has a piece 
 
 def schema_sentence(depth: int, family: str = "delayed_root") -> str:
     """The schema of this family and depth as a sentence over its square variables x1 y1 [x2 y2]."""
-    legs = [f"{'after x1->y1, whatever they reply, ' if i else ''}x{i + 1} holds a piece of ours that is not a king and not a pawn about to promote and can legally go to y{i + 1}"
+    legs = [f"{'after x1->y1, whatever they reply, ' if i else ''}x{i + 1} holds a piece of ours (the king included) that is not a pawn about to promote and can legally go to y{i + 1}"
             for i in range(depth)]
     first = "; ".join(legs)
     moves = " then ".join(f"x{i + 1}->y{i + 1}" for i in range(depth))

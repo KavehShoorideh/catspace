@@ -228,13 +228,13 @@ theorem dead_end (p : Position) (c : Color) (hc : p.turn = c) (s t z : Square) (
     (hzo : (afterMove p (some s) (some t) (fun p => (count (fun u => (piecesOf p (Color.opposite c)) u && (oset atSq (some z)) u)))) ≥ 1)
     (hznp : (afterMove p (some s) (some t) (fun p => (count (fun u => (kindSet p (Color.opposite c) .pawn) u && (fun u => (oset atSq (some z)) u && (oset rankOf (some (named c (((0 : Fin 8)), ((1 : Fin 8)))))) u) u)))) ≤ 0) :
     (afterMove p (some s) (some t) (fun p => (leastOver p (fun p => (balanceOf p c))))) ≤ (balanceOf p c) := by
-  obtain ⟨q0, hs, hq0c, -⟩ := Ideas.TreeStep.ours_at p c s hown
-  obtain ⟨r, ht, hrc, -⟩ := Ideas.TreeStep.ours_at p (Color.opposite c) t hth
+  obtain ⟨q0, hs, hq0c⟩ := Ideas.TreeStep.ours_at p c s hown
+  obtain ⟨r, ht, hrc⟩ := Ideas.TreeStep.ours_at p (Color.opposite c) t hth
   have hnp' := Ideas.TreeStep.not_promoting_at p c s hc hnp q0 hs hq0c
   obtain ⟨hm, haf⟩ := Ideas.Root.after_capture_normal p s t q0 r hs (by rw [hq0c, hc]) hnp' ht (Ideas.TreeStep.moves_of_count p s t hmv)
   rw [haf] at hzm hzo hznp ⊢
   beta_reduce at hzm hzo hznp ⊢
-  obtain ⟨q1, hz, hc1, -⟩ := Ideas.TreeStep.ours_at _ (Color.opposite c) z hzo
+  obtain ⟨q1, hz, hc1⟩ := Ideas.TreeStep.ours_at _ (Color.opposite c) z hzo
   have hnp1 := Ideas.Root.not_promoting_at_opp _ c z (by rw [applyMove_turn, hc]) hznp q1 hz hc1
   exact Ideas.Root.dead_end_core p c hc s t z q0 r hs hq0c ht hrc W hw1 hw2 q1 hz hc1 hnp1 (Ideas.TreeStep.moves_of_count _ z t hzm)
 

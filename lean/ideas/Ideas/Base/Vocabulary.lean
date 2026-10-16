@@ -69,12 +69,12 @@ def nearer (s t : Square) : SquareSet := fun u => decide (dist u s < dist u t)
 itself). -/
 def attackedBy (p : Position) (c : Color) (k : Square) : SquareSet := fun u => isAttackedB (withEmpty p k) c u
 
-/-- **pieces of**: the squares holding a piece of side `c` other than its king (Kaveh 2026-10-12: "base vocab should be
+/-- **pieces of**: the squares holding a piece of side `c`, THE KING INCLUDED as of 2026-10-16 (Kaveh: "King is a piece!"; it was left out before, so a king recapture had no name) (Kaveh 2026-10-12: "base vocab should be
 complete with words for their pieces" -- `ours` is `piecesOf p c`, `theirs` is `piecesOf p c.opposite`; the squares
 they attack, `hit`, is `attackedBy p c.opposite W`, our king lifted). -/
 def piecesOf (p : Position) (c : Color) : SquareSet := fun u =>
   match p.board u with
-  | some pc => decide (pc.color = c) && decide (pc.kind ≠ PieceKind.king)
+  | some pc => decide (pc.color = c)
   | none => false
 
 -- GEOMETRY AND PIECES, a second batch (Kaveh 2026-10-12: "we want to be able to specify sets of squares ... along a

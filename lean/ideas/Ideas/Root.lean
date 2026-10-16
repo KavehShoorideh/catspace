@@ -531,9 +531,9 @@ theorem hanging (p : Position) (c : Color) (v : Int) (W : Square) (hc : p.turn =
     (hmat : materialOf p c ≥ 4)
     (hmov : afterMove p (some x) (some y) (fun q => leastOver q (fun r => 1)) ≥ 1) :
     forcingOf p c v ≠ 0 := by
-  obtain ⟨q0, hx, hqc, hqk⟩ := ours_at p c x hown
+  obtain ⟨q0, hx, hqc⟩ := ours_at p c x hown
   have hqp := not_pawn_at p c x hnp q0 hx hqc
-  obtain ⟨r, hy, hrc, -⟩ := ours_at p (Color.opposite c) y hth
+  obtain ⟨r, hy, hrc⟩ := ours_at p (Color.opposite c) y hth
   obtain ⟨m, hm, hms, hmd, hafter⟩ := after_of_moves p x y q0 hx (by rw [hqc, hc]) hqp (moves_of_count p x y hmv)
   have hmn : m = Move.normal x y := by
     have := move_is_normal p m hm q0 r (by rw [hms]; exact hx) hqp (by rw [hmd]; exact hy)
@@ -555,10 +555,6 @@ theorem hanging (p : Position) (c : Color) (v : Int) (W : Square) (hc : p.turn =
   have hturn : (applyMove p (Move.normal x y)).turn = Color.opposite c := by rw [applyMove_turn, hc]
   have hep := newEnPassant_nonpawn p x y q0 hx hqp
   have hWb := kingSq_board p c W hW
-  have hWx : W ≠ x := by
-    intro h
-    rw [h, hx] at hWb
-    exact hqk (by rw [Option.some.inj hWb])
   have hWy : W ≠ y := by
     intro h
     rw [h, hy] at hWb
@@ -568,9 +564,23 @@ theorem hanging (p : Position) (c : Color) (v : Int) (W : Square) (hc : p.turn =
   obtain ⟨q, hqdef⟩ : ∃ q, applyMove p (Move.normal x y) = q := ⟨_, rfl⟩
   rw [hqdef] at hm1 hm2 hturn hep hhit hmov hpr
   have hqb : q.board = boardMove p.board x y := by rw [← hqdef]; rfl
-  have hqW : q.board W = some ⟨c, PieceKind.king⟩ := by
-    rw [hqb]; simp [boardMove, boardUpdate, Function.update_apply, hWx, hWy, hWb]
-  obtain ⟨K, hK⟩ := kingSq_exists q c W hqW
+  -- the king of ours stands somewhere after the capture: on y when the king took, else where it stood
+  have hexK : ∃ K, kingSq q c = some K := by
+    by_cases hqk : q0.kind = PieceKind.king
+    · have hq0 : q0 = ⟨c, PieceKind.king⟩ := by
+        cases q0 with
+        | mk col k => simp only at hqc hqk; rw [hqc, hqk]
+      have hqy : q.board y = some ⟨c, PieceKind.king⟩ := by
+        rw [hqb]; simp [boardMove, boardUpdate, Function.update_apply, hx, hq0]
+      exact kingSq_exists q c y hqy
+    · have hWx : W ≠ x := by
+        intro h
+        rw [h, hx] at hWb
+        exact hqk (by rw [Option.some.inj hWb])
+      have hqW : q.board W = some ⟨c, PieceKind.king⟩ := by
+        rw [hqb]; simp [boardMove, boardUpdate, Function.update_apply, hWx, hWy, hWb]
+      exact kingSq_exists q c W hqW
+  obtain ⟨K, hK⟩ := hexK
   have hKD : kingSqD q c = K := by simp [kingSqD, hK]
   rw [hKD] at hhit
   have hsafe := safe_of_hit q c K hK hhit

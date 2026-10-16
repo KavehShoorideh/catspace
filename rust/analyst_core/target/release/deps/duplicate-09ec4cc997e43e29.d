@@ -1,0 +1,11 @@
+/Users/kav/code/remote/github/catspace/rust/analyst_core/target/release/deps/duplicate-09ec4cc997e43e29.d: /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/lib.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/crate_readme_test.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/error.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/parse.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/pretty_errors.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/substitute.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/token_iter.rs
+
+/Users/kav/code/remote/github/catspace/rust/analyst_core/target/release/deps/libduplicate-09ec4cc997e43e29.dylib: /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/lib.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/crate_readme_test.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/error.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/parse.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/pretty_errors.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/substitute.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/token_iter.rs
+
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/lib.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/crate_readme_test.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/error.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/parse.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/pretty_errors.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/substitute.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/duplicate-2.0.1/src/token_iter.rs:

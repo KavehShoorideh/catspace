@@ -293,9 +293,9 @@ theorem count_zero_not (A : SquareSet) (h : count A ≤ 0) (u : Square) : A u = 
   unfold count at h
   omega
 
-/-- `ours at x`: a piece of ours, not the king, stands on `x`. -/
+/-- `ours at x`: a piece of ours (the king included, as of 2026-10-16) stands on `x`. -/
 theorem ours_at (p : Position) (c : Color) (x : Square) (h : count (fun u => piecesOf p c u && oset atSq (some x) u) ≥ 1) :
-    ∃ q : Piece, p.board x = some q ∧ q.color = c ∧ q.kind ≠ PieceKind.king := by
+    ∃ q : Piece, p.board x = some q ∧ q.color = c := by
   obtain ⟨u, hu⟩ := count_pos_mem _ h
   simp only [Bool.and_eq_true, oset, atSq, beq_iff_eq] at hu
   obtain ⟨hp, rfl⟩ := hu
@@ -306,7 +306,7 @@ theorem ours_at (p : Position) (c : Color) (x : Square) (h : count (fun u => pie
   | some q =>
     intro h
     simp only [Bool.and_eq_true, decide_eq_true_eq] at h
-    exact ⟨q, rfl, h.1, h.2⟩
+    exact ⟨q, rfl, h⟩
 
 /-- `no pawn of ours at x`: the piece there, if ours, is not a pawn. -/
 theorem not_pawn_at (p : Position) (c : Color) (x : Square) (h : count (fun u => kindSet p c PieceKind.pawn u && oset atSq (some x) u) ≤ 0)
@@ -333,7 +333,7 @@ theorem step_after (c : Color) (g : Position → Bool) (p : Position) (n : Nat) 
     (H : ∀ m ∈ legalMoves p, (∀ f : Position → Nat, afterMove p (some x) (some y) f = f (applyMove p m)) →
       Ideas.forcedWithinB c g (applyMove p m) n = true) :
     Ideas.forcedWithinB c g p (n + 1) = true := by
-  obtain ⟨q, hx, hqc, -⟩ := ours_at p c x hown
+  obtain ⟨q, hx, hqc⟩ := ours_at p c x hown
   have hq := not_pawn_at p c x hnp q hx hqc
   obtain ⟨m, hm, -, -, hafter⟩ := after_of_moves p x y q hx (by rw [hqc, hc]) hq (moves_of_count p x y hmv)
   exact step_ours c g p n hc m hm (H m hm hafter)
@@ -561,7 +561,7 @@ theorem step_after_np (c : Color) (g : Position → Bool) (p : Position) (n : Na
     (H : ∀ m ∈ legalMoves p, (∀ f : Position → Nat, afterMove p (some x) (some y) f = f (applyMove p m)) →
       Ideas.forcedWithinB c g (applyMove p m) n = true) :
     Ideas.forcedWithinB c g p (n + 1) = true := by
-  obtain ⟨q, hx, hqc, -⟩ := ours_at p c x hown
+  obtain ⟨q, hx, hqc⟩ := ours_at p c x hown
   have hq := not_promoting_at p c x hc hnp q hx hqc
   obtain ⟨m, hm, -, -, hafter⟩ := after_of_moves_np p x y q hx (by rw [hqc, hc]) hq (moves_of_count p x y hmv)
   exact step_ours c g p n hc m hm (H m hm hafter)

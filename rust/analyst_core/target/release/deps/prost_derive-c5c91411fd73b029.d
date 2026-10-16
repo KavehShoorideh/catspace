@@ -1,0 +1,11 @@
+/Users/kav/code/remote/github/catspace/rust/analyst_core/target/release/deps/prost_derive-c5c91411fd73b029.d: /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/lib.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/mod.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/group.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/map.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/message.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/oneof.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/scalar.rs
+
+/Users/kav/code/remote/github/catspace/rust/analyst_core/target/release/deps/libprost_derive-c5c91411fd73b029.dylib: /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/lib.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/mod.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/group.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/map.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/message.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/oneof.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/scalar.rs
+
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/lib.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/mod.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/group.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/map.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/message.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/oneof.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/prost-derive-0.14.4/src/field/scalar.rs:

@@ -35,7 +35,7 @@ PRIMITIVES = {
     "O": ((), "sq", "their other piece"),
     "hit": ((), "set", "the squares they attack"),
     "unhit": ((), "set", "the squares they do not attack"),
-    "ours": ((), "set", "the squares of our pieces"),
+    "ours": ((), "set", "the squares of our pieces"),       # the king is included as of 2026-10-16 (Kaveh: "King is a piece!"); before, it was left out
     "theirs": ((), "set", "the squares of their pieces"),
     # the second batch (Kaveh 2026-10-12: "sets of squares ... along a diagonal or along a rank or a file from here to here
     # ... reachable by a knight, one hop or two hops ... the four squares on the center ... any particular square should
