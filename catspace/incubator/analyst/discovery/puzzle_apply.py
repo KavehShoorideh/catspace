@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import time
 
 import chess
@@ -67,6 +68,7 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
     b = chess.Board(fen)
     us = "w" if b.turn else "b"
     t0 = time.time()
+    emit, log = log, _numbered(log)                  # one running number per EVENT; the stage is a word (Kaveh 2026-10-16: "why is EV 2 there 3 times?")
     log(f"EV 1 position {p['id']}: {fen}  {'white' if us == 'w' else 'black'} to move; the puzzle's window: gain {need}" + (" (mate)" if need >= 100 else "")
         + f"; themes {p.get('themes')}")
     for line in state_lines(fen, us):
@@ -81,7 +83,7 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
         v = SM.verdicts(passed(fen), us, log=lambda *a: None)
     atk = [it for it in v["items"] if it["kind"] != "quiet"]
     atk.sort(key=lambda it: -SM.PIECE_WORTH[b.piece_at(chess.parse_square(it["t"])).symbol().lower()])
-    if not atk:
+    if not atk and not v.get("check"):
         log("EV 2 threats to us: none (if we passed, no capture of theirs)")
     for it in atk:
         w = SM.PIECE_WORTH[b.piece_at(chess.parse_square(it["t"])).symbol().lower()]
@@ -156,6 +158,25 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
         for line in RU.format_trace(r["trace"], 40):
             log("   " + line)
     return dict(id=p["id"], decision=ours, answer=ans, match=ours == ans, by=found[0][0] if found else None)
+
+
+STAGES = {"1": "position", "2": "threat", "3": "root", "4": "bind", "5": "decision", "6": "check", "7": "search"}
+
+
+def _numbered(log):
+    """Each line the stream emits is ONE EVENT with its own running number; the old stage prefix `EV k` becomes the stage's word."""
+    n = [0]
+
+    def emit(s):
+        s = str(s)
+        m = re.match(r"EV (\d+) (.*)", s, re.S)
+        if m:
+            n[0] += 1
+            rest = m.group(2)
+            stage = STAGES.get(m.group(1), m.group(1))
+            s = f"#{n[0]:<3} {stage:<9} {rest}"
+        log(s)
+    return emit
 
 
 def state_lines(fen: str, us: str) -> list:
