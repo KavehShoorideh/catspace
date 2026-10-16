@@ -683,67 +683,93 @@ class using_mover:
         set_mover(self.old)
 
 
-def tail_guard(mover: str):
-    """THE GUARD of a delayed root (44.2, with the two soundness conjuncts): nothing of ours is attacked (the board's own king lifted), they have no pawn
-    on our second rank (no promotion) nor on our fourth (no en passant), and they have a legal reply. Zero when all hold."""
+FAMILIES = ("delayed_root", "delayed_root_max", "delayed_balance")      # the ladder's order: the smallest first, the most general (and least explanatory) last
+
+
+def tail_guard(mover: str, hit: bool = True):
+    """THE GUARD of a delayed root (44.2, with the two soundness conjuncts): nothing of ours is attacked (the board's own king lifted; left out when `hit` is
+    False, the weakened family), they have no pawn on our second rank (no promotion) nor on our fourth (no en passant), and they have a legal reply.
+    Zero when all hold."""
     ours_hit = ("count", ("and", "ours", "hit"))
     promo = ("count", ("and", "theirpawns", ("rank", view(PROMO_SQ, mover))))
     ep = ("count", ("and", "theirpawns", ("rank", view("a4", mover))))
     no_reply = ("eq", ("least", "1"), "0")
-    return ("eq", ("sum", ("sum", ("sum", ours_hit, promo), ep), no_reply), "0")
+    rest = ("sum", promo, ep)
+    return ("eq", ("sum", ("sum", ("sum", ours_hit, promo), ep), no_reply), "0") if hit else ("eq", ("sum", rest, no_reply), "0")
 
 
-def tail_body(mover: str):
-    """After the last named move and every reply of theirs: some move of ours, after which the guard holds and the balance is read, else 0."""
+MAX_ATTACKED = ("maxworth", ("and", "ours", "hit"))
+
+
+def tail_body(mover: str, family: str = "delayed_root"):
+    """After the last named move and every reply of theirs: some move of ours, after which the guard holds and the balance is read, else 0 (delayed_root);
+    the same without the 'nothing attacked' conjunct and with the balance less the most valuable attacked piece (delayed_root_max: they take back at most one
+    piece); or just the minimax tail `(most (least balance))` (delayed_balance: the 41.9 tree lemma with its squares made variables)."""
+    if family == "delayed_balance":
+        return ("least", ("most", ("least", "balance")))
+    if family == "delayed_root_max":
+        return ("least", ("most", ("if", tail_guard(mover, hit=False), ("diff", "balance", MAX_ATTACKED), "0")))
     return ("least", ("most", ("if", tail_guard(mover), "balance", "0")))
 
 
-def delayed_tail(pairs: list, mover: str):
-    return wrap_tree(pairs, tail_body(mover))
+def delayed_tail(pairs: list, mover: str, family: str = "delayed_root"):
+    return wrap_tree(pairs, tail_body(mover, family))
 
 
-def schema_name(depth: int) -> str:
-    return f"delayed_root_d{depth}"
+def schema_name(depth: int, family: str = "delayed_root") -> str:
+    return f"{family}_d{depth}"
 
 
-def schema_hyps(depth: int, squares: list, B, T, mover: str) -> list:
+def schema_hyps(depth: int, squares: list, B, T, mover: str, family: str = "delayed_root") -> list:
     """The hypotheses of the delayed-root schema of this depth bound to `squares` (absolute, x1 y1 [x2 y2]) and the numbers B (the balance now is at most
     it) and T (the tail reads at least it): [(name, term, op, v)] in the order of with_legality (legs, then the balance, then the tail)."""
     pairs = [(squares[2 * i], squares[2 * i + 1]) for i in range(depth)]
     with using_mover(mover):
-        prem = [atom_of("balance", "<=", B), atom_of(delayed_tail(pairs, mover), ">=", T)]
+        prem = [atom_of("balance", "<=", B), atom_of(delayed_tail(pairs, mover, family), ">=", T)]
         atoms = with_legality(prem)
     return [(f"h{i}", t, op, v) for i, (t, op, v) in enumerate(atoms)]
 
 
-def _is_tail(term) -> bool:
+def tail_family(term):
+    """Which family's tail this atom's term is (None when none): `... (most (if G balance 0))` delayed_root, `... (most (if G (diff balance (maxworth ..)) 0))`
+    delayed_root_max, `... (most (least balance))` delayed_balance."""
     path, body = _split(term)
-    return bool(path) and path[-1] == ("most",) and isinstance(body, tuple) and body[0] == "if"
+    if not path:
+        return None
+    if path[-1] == ("most",) and isinstance(body, tuple) and body[0] == "if":
+        return "delayed_root_max" if isinstance(body[2], tuple) and body[2][0] == "diff" else "delayed_root"
+    if path[-2:] == (("most",), ("least",)) and body == "balance":
+        return "delayed_balance"
+    return None
+
+
+def _is_tail(term, family: str = "delayed_root") -> bool:
+    return tail_family(term) == family
 
 
 def _hyps_dict(hl: list) -> dict:
     return {n: (*_split(t), op, v) for n, t, op, v in hl}
 
 
-def schema_proof(depth: int) -> str | None:
+def schema_proof(depth: int, family: str = "delayed_root") -> str | None:
     """The proof of the delayed-root schema of this depth: forcingOf_ne_zero at horizon depth + 1, step_after_np at each named move, step_least at each
     reply, and at the end `Ideas.Root.root_tail` (the one hand-written step; the tail of a delayed root). One `root_tail` per schema."""
     sq = [DUMMY[v] for v in SCHEMA_VARS[:2 * depth]]
-    hl = schema_hyps(depth, sq, "B", "T", "w")
+    hl = schema_hyps(depth, sq, "B", "T", "w", family)
     hyps = _hyps_dict(hl)
-    tail = next(n for n, t, op, v in hl if _is_tail(t))
+    tail = next(n for n, t, op, v in hl if _is_tail(t, family))
     hb = next(n for n, t, op, v in hl if t == "balance")
     spine = hyps[tail][0]
     n_plies = 2 * (depth + 1)
+    last = {"delayed_root": "Ideas.Root.root_tail", "delayed_root_max": "Ideas.Root.root_tail_max", "delayed_balance": "Ideas.TreeStep.tail_two"}[family]
     lines = [f"refine Ideas.TreeStep.forcingOf_ne_zero p c v hc {depth + 1} (by simp) ?_",
              f"show Ideas.forcedWithinB c _ p {n_plies} = true",
              f"have hbase : ((materialOf p c : Int) - materialOf p (Color.opposite c)) ≤ (B : Int) - 64 := by unfold balanceOf at {hb}; omega"]
 
     def finish(d, pos, turn_proof, at_node):
-        if spine[d:] != (("most",),):
+        if spine[d:] != ((("most",), ("least",)) if family == "delayed_balance" else (("most",),)):
             return None
-        h = next(n for n, (pa, b, o, v) in at_node.items() if o == ">=" and isinstance(b, tuple) and b[0] == "if" and n.startswith(tail))
-        return [f"exact Ideas.Root.root_tail c _ v ({pos}) {turn_proof} (T - 64) (by omega) (by omega) (by omega)"]
+        return [f"exact {last} c _ v ({pos}) {turn_proof} (T - 64) (by omega) (by omega) (by omega)"]
     with using_mover("w"):                      # (the legs the walk looks for name the rank before promotion from white's side, as the schema was built)
         body = _walk(hyps, spine, n_plies, finish)
     return None if body is None else "\n  ".join(lines + body)
@@ -756,18 +782,27 @@ def _var_squares(text: str) -> str:
     return text
 
 
-def schema_theorem(depth: int, proof: str | None = None) -> str:
+FAMILY_DOC = {
+    "delayed_root": ("THE DELAYED ROOT", "some move of ours leaves a position in which nothing of ours is attacked, they have no pawn about to promote or to take "
+                     "en passant, they have a reply, and the balance is at least T"),
+    "delayed_root_max": ("THE DELAYED ROOT, WEAKENED (they take back at most one piece)", "some move of ours leaves a position in which they have no pawn about to "
+                         "promote or to take en passant, they have a reply, and the balance less the worth of the most valuable piece of ours that is attacked is at least T"),
+    "delayed_balance": ("THE DELAYED BALANCE (the minimax tail)", "some move of ours, then whatever they reply, leaves the balance at least T"),
+}
+
+
+def schema_theorem(depth: int, proof: str | None = None, family: str = "delayed_root") -> str:
     sq = [DUMMY[v] for v in SCHEMA_VARS[:2 * depth]]
-    hl = schema_hyps(depth, sq, "B", "T", "w")
+    hl = schema_hyps(depth, sq, "B", "T", "w", family)
     vs = " ".join(SCHEMA_VARS[:2 * depth])
     hy = "".join(f"\n    ({n} : {_var_squares(BV.lean(render(t, 'w')))} {'≥' if op == '>=' else '≤'} {v})" for n, t, op, v in hl)
-    doc = (f"THE DELAYED ROOT, depth {depth} (plan 44.2, the operators DELAY / RECAPTURE). Our moves {' and '.join(f'x{i + 1} -> y{i + 1}' for i in range(depth))} are "
-           f"named (legal, a piece of ours that is not about to promote); whatever they reply to the last, some move of ours leaves a position in which nothing "
-           f"of ours is attacked, they have no pawn about to promote or to take en passant, they have a reply, and the balance is at least T; the balance now is at "
+    title, tail_words = FAMILY_DOC[family]
+    doc = (f"{title}, depth {depth} (plan 44.2, the operators DELAY / RECAPTURE). Our moves {' and '.join(f'x{i + 1} -> y{i + 1}' for i in range(depth))} are "
+           f"named (legal, a piece of ours that is not about to promote); whatever they reply to the last, {tail_words}; the balance now is at "
            f"most B, and T is at least B + v and at least 68: then the gain v is forced. The squares are variables: bind them to any position.")
-    return (f"/-- {doc} -/\ntheorem {schema_name(depth)} (p : Position) (c : Color) (W : Square) (hc : p.turn = c) (hW : kingSq p c = some W)\n"
+    return (f"/-- {doc} -/\ntheorem {schema_name(depth, family)} (p : Position) (c : Color){'' if family == 'delayed_balance' else ' (W : Square)'} (hc : p.turn = c){'' if family == 'delayed_balance' else ' (hW : kingSq p c = some W)'}\n"
             f"    ({vs} : Square) (B T : Nat) (v : Int) (hTB : (T : Int) ≥ (B : Int) + v) (hT : T ≥ 68){hy} :\n    forcingOf p c v ≠ 0 := by\n  "
-            f"{proof if proof is not None else schema_proof(depth)}\n")
+            f"{proof if proof is not None else schema_proof(depth, family)}\n")
 
 
 SCHEMA_HEAD = """import Ideas.Base.Vocabulary
@@ -796,17 +831,17 @@ def schemas_text() -> str:
 
 def proved_schemas() -> list:
     """The names of the schemas in Schemas.lean (a schema is appended only when proved)."""
-    return re.findall(r"^theorem (delayed_root_d\d+)", schemas_text(), flags=re.M)
+    return re.findall(r"^theorem (delayed_[a-z_]+_d\d+)", schemas_text(), flags=re.M)
 
 
-def ensure_schema(depth: int, log=print, do_lean: bool = True) -> dict:
-    """The schema of this depth is in Schemas.lean (proved), or is generated, checked by Lean and appended on success. -> dict(proved, new, error)."""
-    name = schema_name(depth)
+def ensure_schema(depth: int, log=print, do_lean: bool = True, family: str = "delayed_root") -> dict:
+    """The schema of this family and depth is in Schemas.lean (proved), or is generated, checked by Lean and appended on success. -> dict(proved, new, error)."""
+    name = schema_name(depth, family)
     if name in proved_schemas():
         return dict(proved=True, new=False, error=None)
     if not do_lean:
         return dict(proved=False, new=False, error="--no-lean")
-    thm = schema_theorem(depth)
+    thm = schema_theorem(depth, None, family)
     old = schemas_text()
     body = old[: old.rindex("end Ideas.Mined.Schemas")].rstrip("\n") + "\n\n" + thm + SCHEMA_TAIL
     trial = SCHEMAS_FILE.parent / "_SchemaTrial.lean"
@@ -838,16 +873,17 @@ def schema_instance_proof(atoms: list, delta: int, mover: str = "w") -> str | No
     `exact Ideas.Mined.Schemas.delayed_root_d<n> p c W hc hW <squares> B T v ...`. Extra atoms are unused hypotheses. None when the atoms are not those."""
     tail = None
     for term, op, v in atoms:
-        path, body = _split(term)
-        if op == ">=" and path and path[-1] == ("most",) and isinstance(body, tuple) and body[0] == "if":
-            tail = (term, v, path)
+        fam = tail_family(term)
+        if op == ">=" and fam is not None:
+            tail = (term, v, _split(term)[0], fam)
             break
     if tail is None:
         return None
-    term, T, path = tail
+    term, T, path, family = tail
     afters = [st for st in path if st[0] == "after"]
     depth = len(afters)
-    if depth not in (1, 2) or len(path) != 2 * depth + 1 or [st[0] for st in path] != ["after", "least"] * depth + ["most"]:
+    shape = ["after", "least"] * depth + (["most", "least"] if family == "delayed_balance" else ["most"])
+    if depth not in (1, 2) or [st[0] for st in path] != shape or schema_name(depth, family) not in proved_schemas():
         return None
     bals = [v for t, op, v in atoms if t == "balance" and op == "<="]
     if not bals:
@@ -856,7 +892,7 @@ def schema_instance_proof(atoms: list, delta: int, mover: str = "w") -> str | No
     if T < 68 or T < B + delta:
         return None
     squares = [x for st in afters for x in st[1:3]]
-    hl = schema_hyps(depth, squares, B, T, mover)
+    hl = schema_hyps(depth, squares, B, T, mover, family)
     key = {(BV.sexpr(t), op, v): i for i, (t, op, v) in enumerate(atoms)}
     args = []
     for n, t, op, v in hl:
@@ -866,12 +902,12 @@ def schema_instance_proof(atoms: list, delta: int, mover: str = "w") -> str | No
         args.append(f"h{i}")
     sq = " ".join(_lean_sq(x, mover) for x in squares)
     return "\n  ".join(["intro hall", f"obtain ⟨{', '.join(f'h{i}' for i in range(len(atoms)))}⟩ := hall",
-                       f"exact Ideas.Mined.Schemas.{schema_name(depth)} p c W hc hW {sq} {B} {T} {delta} (by omega) (by omega) {' '.join(args)}"])
+                       f"exact Ideas.Mined.Schemas.{schema_name(depth, family)} p c {'' if family == 'delayed_balance' else 'W hc hW'}{' hc' if family == 'delayed_balance' else ''} {sq} {B} {T} {delta} (by omega) (by omega) {' '.join(args)}"])
 
 
 def prove(atoms: list, delta: int, mover: str = "w") -> str:
-    """The proof script for a statement: the tree composition, else an instance of a delayed-root schema, else the root's instance, else the plain tactic."""
-    return tree_proof(atoms, delta) or schema_instance_proof(atoms, delta, mover) or root_proof(atoms, delta, mover) or TACTIC
+    """The proof script for a statement: an instance of a PROVED schema (the reuse), else the tree composition, else the root's instance, else the plain tactic."""
+    return schema_instance_proof(atoms, delta, mover) or tree_proof(atoms, delta) or root_proof(atoms, delta, mover) or TACTIC
 
 
 # ---------------------------------------------------------------------------------------------------------------- Lean
@@ -1336,17 +1372,26 @@ def repair(diag: dict) -> list:
     return ops
 
 
-def explanation(diag: dict, op: str, depth: int, pairs: list, need: int) -> str:
+def explanation(diag: dict, op: str, depth: int, pairs: list, need: int, family: str = "delayed_root") -> str:
     """The explanation line from the diagnosis: "normally ..., but because ...". `pairs` are the schema's named moves (absolute squares)."""
     (x, y) = pairs[0]
     because = " and ".join(CLAUSE[n].format(x=x, y=y, need=need) for n in failing(diag)) or "nothing of the root fails"
     moves = " then ".join(f"{a}->{b}" for a, b in pairs)
+    if family == "delayed_root_max":
+        return (f"normally nothing of ours may be attacked after the move, but because they can take back at most one piece, the balance minus the most valuable "
+                f"attacked piece is what must clear {need}: the root fails at {x}->{y} on {{{', '.join(failing(diag))}}} ({because}); after {moves}, whatever they reply, "
+                f"we have a move after which no pawn of theirs can promote or take en passant, they have a reply, and our balance less the worth of our most "
+                f"valuable attacked piece has risen by {need}, so the gain comes {depth + 1} moves of ours later ({op})")
+    if family == "delayed_balance":
+        return (f"normally the hanging piece is taken now, but because {because}, no named piece or square explains the gain beyond the balance itself: after {moves}, "
+                f"whatever they reply, we have a move and then whatever they reply the balance has risen by {need} (the minimax tail, {depth + 1} moves of ours; "
+                f"the most general and the least explanatory schema)")
     return (f"normally the hanging piece is taken now (a piece of theirs on {y} worth the gain, nothing of ours attacked after), but because {because}, "
             f"the gain comes {depth + 1} moves of ours later ({op}): after {moves}, whatever they reply, we have a move after which nothing of ours is "
             f"attacked, no pawn of theirs can promote or take en passant, they have a reply, and our material is up by {need}")
 
 
-def bind(depth: int, fen: str, mover: str, need: int, candidates: list | None = None) -> list:
+def bind(depth: int, fen: str, mover: str, need: int, candidates: list | None = None, family: str = "delayed_root") -> list:
     """BIND the delayed-root schema of this depth to a position: for each candidate (our named moves [(x1, y1), ...], absolute squares; by default every legal
     move of a piece of ours that is not a king nor a pawn about to promote, for depth one) substitute the squares, evaluate the premise in Rust (the legs,
     `balance <= B`, the tail `>= T` with B the balance now and T = max(B + need, 68)), keep the bindings where every atom holds.
@@ -1370,21 +1415,25 @@ def bind(depth: int, fen: str, mover: str, need: int, candidates: list | None = 
         if len(pairs) != depth:
             continue
         with using_mover(mover):
-            prem = [atom_of("balance", "<=", B), atom_of(delayed_tail(pairs, mover), ">=", T)]
+            prem = [atom_of("balance", "<=", B), atom_of(delayed_tail(pairs, mover, family), ">=", T)]
         if premise_truth(prem, [dict(fen=fen, mover=mover)])[0]:
-            out.append(dict(depth=depth, pairs=pairs, B=B, T=T, prem=prem, atoms=with_legality(prem)))
+            out.append(dict(depth=depth, pairs=pairs, B=B, T=T, prem=prem, atoms=with_legality(prem), family=family))
     return out
 
 
-def schema_sentence(depth: int) -> str:
-    """The delayed-root schema of this depth as a sentence over its square variables x1 y1 [x2 y2]."""
+def schema_sentence(depth: int, family: str = "delayed_root") -> str:
+    """The schema of this family and depth as a sentence over its square variables x1 y1 [x2 y2]."""
     legs = [f"{'after x1->y1, whatever they reply, ' if i else ''}x{i + 1} holds a piece of ours that is not a king and not a pawn about to promote and can legally go to y{i + 1}"
             for i in range(depth)]
     first = "; ".join(legs)
     moves = " then ".join(f"x{i + 1}->y{i + 1}" for i in range(depth))
-    return (f"SCHEMA {schema_name(depth)}(x1 y1{' x2 y2' if depth == 2 else ''}, B, T, v): {first}; our balance now is at most B; after {moves}, whatever they reply, "
-            f"we have a move after which nothing of ours is attacked (the board's own king lifted), they have no pawn on our second or fourth rank, they have a legal reply, "
-            f"and our balance is at least T; with T >= B + v and T >= 68 we force a gain of v within {depth + 1} moves of ours against every defence")
+    tails = {"delayed_root": "we have a move after which nothing of ours is attacked (the board's own king lifted), they have no pawn on our second or fourth rank, "
+                             "they have a legal reply, and our balance is at least T",
+             "delayed_root_max": "we have a move after which they have no pawn on our second or fourth rank, they have a legal reply, and our balance less the worth "
+                                 "of our most valuable attacked piece (the board's own king lifted) is at least T",
+             "delayed_balance": "we have a move and then, whatever they reply, our balance is at least T"}
+    return (f"SCHEMA {schema_name(depth, family)}(x1 y1{' x2 y2' if depth == 2 else ''}, B, T, v): {first}; our balance now is at most B; after {moves}, whatever they reply, "
+            f"{tails[family]}; with T >= B + v and T >= 68 we force a gain of v within {depth + 1} moves of ours against every defence")
 
 
 def played_next(win: dict, fen: str):
@@ -1557,16 +1606,16 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
         maxd = max(1, min(2, n_ours - 1))
         known = proved_schemas()
 
-        def try_schema(depth: int, how: str):
-            """bind the schema of this depth; if an instance holds: drill, prove the schema (once), prove the instance by `exact`. -> True when it explains."""
+        def try_schema(depth: int, how: str, family: str = "delayed_root"):
+            """bind the schema of this family and depth; if an instance holds: drill, prove the schema (once), prove the instance by `exact`. -> True when it explains."""
             cands = [ours[:depth]] if depth >= 2 else None
             if depth >= 2 and len(ours) < depth:
                 return False
             t0 = time.time()
-            insts = bind(depth, fen, mover, need, cands)
+            insts = bind(depth, fen, mover, need, cands, family)
             insts.sort(key=lambda i: (i["pairs"][0] != ours[0], i["pairs"]))
-            name = schema_name(depth)
-            log(f"OBS bind {name} ({how}): {len(insts)} binding(s) of {schema_sentence(depth).split(':')[0]} hold at the example"
+            name = schema_name(depth, family)
+            log(f"OBS bind {name} ({how}): {len(insts)} binding(s) of {schema_sentence(depth, family).split(':')[0]} hold at the example"
                 + (f", first {dict(zip(SCHEMA_VARS, [q for pr in insts[0]['pairs'] for q in pr]))} with B={insts[0]['B']}, T={insts[0]['T']}" if insts else "") + f" ({round(time.time() - t0, 1)} s)")
             if not insts:
                 return False
@@ -1576,8 +1625,8 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
                 if dr["disagreements"]:
                     log(f"OBS {name}: the drill disagrees with the instance on {dr['disagreements']} variant(s): the operator EXCLUDE would add an atom; not explained by this schema")
                     return False
-            es = ensure_schema(depth, log, do_lean)
-            log(f"OBS schema {name} in words: {schema_sentence(depth)}")
+            es = ensure_schema(depth, log, do_lean, family)
+            log(f"OBS schema {name} in words: {schema_sentence(depth, family)}")
             if not es["proved"]:
                 return False
             item = dict(name=f"{name}_instance", prem=inst["prem"], mover=mover,
@@ -1592,23 +1641,25 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
                 return False
             op = repair(diag)[0][0]
             log(f"OBS EXPLAINED BY SCHEMA {name} bound to " + ", ".join(f"{v}={q}" for v, q in zip(SCHEMA_VARS, [q for pr in inst["pairs"] for q in pr]))
-                + f": {explanation(diag, op, depth, inst['pairs'], need)}; the instance is proved in Lean by `exact` of the schema theorem; the solver confirms a forced gain >= {need}")
+                + f": {explanation(diag, op, depth, inst['pairs'], need, family)}; the instance is proved in Lean by `exact` of the schema theorem; the solver confirms a forced gain >= {need}")
             lm = dict(name=name, size=len(inst["atoms"]), proved=True, explained=True)
             if dx:
                 lm.update(drill_report(name, inst["prem"], poss, dx, cx, True, log))
             result.update(explained=True, schema=name, items=[item], lemmas=[lm])
             update_score(tag, result["lemmas"], log)
             return True
-        for depth in range(1, maxd + 1):                      # (1) the schemas already proved, by size
-            if schema_name(depth) in known and try_schema(depth, "proved in Schemas.lean"):
-                return result
+        for family in FAMILIES:                               # (1) the schemas already proved, the smallest family first, the most general last
+            for depth in range(1, maxd + 1):
+                if schema_name(depth, family) in known and try_schema(depth, "proved in Schemas.lean", family):
+                    return result
         for op, why in repair(diag):                          # (2) repair by the operator the diagnosis calls, prove the schema once
             if op == "EXCLUDE":
                 break
             log(f"OBS repair {op} (for {{{', '.join(why)}}}): the gain is one move later under every reply; depths 1..{maxd} (the solver needs {n_ours} moves of ours)")
-            for depth in range(1, maxd + 1):
-                if schema_name(depth) not in known and try_schema(depth, op):
-                    return result
+            for family in FAMILIES:
+                for depth in range(1, maxd + 1):
+                    if schema_name(depth, family) not in known and try_schema(depth, op, family):
+                        return result
         log("OBS no delayed-root schema explains the window; the operator EXCLUDE (an extra atom on the root's seed) is tried next")
     # 3. EXCLUDE (44.2), the root's atoms for the solver's first move when it captures, else for the best capture, plus one more atom: SEEDED by the root's atoms for the solver's first move when it captures, else for the best capture
     first = sol["line"][0] if sol["status"] == "forced" else None
@@ -1673,6 +1724,7 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
         for it in fb["items"]:
             if not it["proved"]:
                 continue
+            log(f"OBS EXPLAINED BY TREE LEMMA {it['name']} (squares named, so no reuse; proved in Lean): {words(it['prem'], mover)}")
             lm = dict(name=f"{tag}:fb_{it['name']}", size=len(it["prem"]), proved=True, explained=True)
             if dx:
                 lm.update(drill_report(lm["name"], it["prem"], poss, dx, cx, True, log))

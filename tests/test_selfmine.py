@@ -232,3 +232,38 @@ def test_the_ladder_explains_the_fork_and_the_pawn_capture_by_the_schema_in_lean
             os.path.exists(score) and os.unlink(score)
         else:
             open(score, "w").write(old)
+
+
+# ---------------------------------------------------------------------------------------------------------------- the weakened and the balance families
+
+FORK2 = "1r3k2/8/5q2/2N5/2R5/8/4K3/R2R4 w - - 0 1"       # the fork again with a second rook: after Nd7+ the knight stays attacked, so 'nothing attacked' fails
+
+
+def test_the_schema_families_are_proved_and_the_instance_is_exact():
+    tails = {"delayed_root": "Ideas.Root.root_tail", "delayed_root_max": "Ideas.Root.root_tail_max", "delayed_balance": "Ideas.TreeStep.tail_two"}
+    for fam in SM.FAMILIES:
+        for depth in (1, 2):
+            pf = SM.schema_proof(depth, fam)
+            print(f"OBS schema_proof {fam} depth {depth}: {len(pf.splitlines())} lines")
+            assert pf.count(f"exact {tails[fam]} ") == 1 and pf.count("step_after_np") == depth and pf.count("step_least") == depth
+            assert SM.schema_theorem(depth, None, fam) in SM.schemas_text()           # proved, in Schemas.lean
+            assert SM.schema_name(depth, fam) in SM.proved_schemas()
+    assert "maxWorthOf" in SM.schema_theorem(1, None, "delayed_root_max") and "attackedBy" not in SM.schema_theorem(1, None, "delayed_balance")
+
+
+def test_the_weakened_family_binds_where_the_root_family_does_not_and_the_instance_is_exact():
+    root = SM.bind(1, FORK2, "w", 5, None, "delayed_root")
+    mx = SM.bind(1, FORK2, "w", 5, None, "delayed_root_max")
+    bal = SM.bind(1, FORK2, "w", 5, None, "delayed_balance")
+    print("OBS bind on the fork with a second rook: root", [i["pairs"] for i in root], "max", [(i["pairs"], i["B"], i["T"]) for i in mx], "balance", [i["pairs"] for i in bal])
+    assert root == [] and [i["pairs"] for i in mx] == [[("c5", "d7")]] and [i["pairs"] for i in bal] == [[("c5", "d7")]]
+    assert SM._label((FORK2, 5, 2))["status"] == "forced"
+    pf = SM.schema_instance_proof(SM.with_legality(mx[0]["prem"]), 5, "w")
+    assert pf.count("exact Ideas.Mined.Schemas.delayed_root_max_d1") == 1 and "root_tail" not in pf
+    pb = SM.schema_instance_proof(SM.with_legality(bal[0]["prem"]), 5, "w")
+    assert pb.count("exact Ideas.Mined.Schemas.delayed_balance_d1") == 1 and "tail_two" not in pb
+    assert SM.tail_family(mx[0]["prem"][1].term) == "delayed_root_max" and SM.tail_family(bal[0]["prem"][1].term) == "delayed_balance"
+    d = SM.diagnose(FORK2, "w", 5, "c5", "d7")
+    ex = SM.explanation(d, "DELAY", 1, [("c5", "d7")], 5, "delayed_root_max")
+    print("OBS", ex)
+    assert ex.startswith("normally nothing of ours may be attacked after the move, but because they can take back at most one piece")
