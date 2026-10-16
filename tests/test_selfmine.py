@@ -267,3 +267,58 @@ def test_the_weakened_family_binds_where_the_root_family_does_not_and_the_instan
     ex = SM.explanation(d, "DELAY", 1, [("c5", "d7")], 5, "delayed_root_max")
     print("OBS", ex)
     assert ex.startswith("normally nothing of ours may be attacked after the move, but because they can take back at most one piece")
+
+
+# ---------------------------------------------------------------------------------------------------------------- ANALYST_PLAN 45: dead-end attacks
+
+ATTACKED = "4k3/8/8/r3p3/3Q4/8/P7/R3K3 b - - 0 1"     # black to move: Rxa2 takes a pawn our rook guards (a dead end), exd4 takes our queen for nothing (costs 9)
+
+
+def test_the_dead_end_schema_is_proved_in_lean_with_no_sorry():
+    es = SM.ensure_dead_end(log=print)
+    text = SM.schemas_text()
+    thm = text[text.index("theorem dead_end"):]
+    print(f"OBS dead_end: proved {es['proved']}, composes dead_end_core {('dead_end_core' in thm)}, sorry {('sorry' in thm)}")
+    assert es["proved"] and "dead_end" in SM.proved_schemas()
+    assert "Ideas.Root.dead_end_core" in thm and "sorry" not in thm
+    assert "least_of_each" in (SM.LEAN_DIR / "Ideas" / "TreeStep.lean").read_text()
+
+
+def test_verdicts_on_a_hand_made_position_dead_end_costs_and_quiet():
+    res = SM.verdicts(ATTACKED, "w", log=print)
+    by = {(v["s"], v["t"]): v for v in res["items"]}
+    assert by[("a5", "a2")]["kind"] == "dead end" and by[("a5", "a2")]["z"] == "a1"       # the rook takes a guarded pawn: we take back with the rook
+    assert by[("e5", "d4")]["kind"] == "costs" and by[("e5", "d4")]["k"] == 9               # the pawn takes our queen: nothing takes back
+    assert by[("e8", "f8")]["kind"] == "quiet" and by[("e8", "f8")]["witness"]
+    c = res["counts"]
+    assert (c["attacks"], c["dead_ends"], c["costs"], c["max_drop"], c["affordable"]) == (2, 1, 1, 9, 0)
+
+
+def test_the_dead_end_conclusion_is_read_in_rust_and_agrees_with_the_schema():
+    got = SM.bind_dead_end(ATTACKED, "b", "a5", "a2", "a1")
+    assert got and got["least"] <= got["balance"]
+    assert SM.bind_dead_end(ATTACKED, "b", "e5", "d4", "a1") is None            # a pawn is worth less than a queen: the worth atom fails
+
+
+def test_the_report_names_the_dead_end_and_the_cost():
+    fen = "4k3/8/8/r3p3/3Q4/8/P7/R3K3 w - - 0 1"
+    text = SM.verdict_report(fen, "w", ["Qd3"], 1, log=lambda *a: None)
+    print(text)
+    assert "dead end (we take back with a1)" in text and "pawn a2 by a5" in text
+
+
+def test_the_cache_counts_hits_on_a_repeated_leaf_and_rebinds_each_time():
+    cache = SM.VerdictCache()
+    SM.verdicts(ATTACKED, "w", log=lambda *a: None, cache=cache)
+    first = (cache.verdicts, cache.hits)
+    SM.verdicts(ATTACKED, "w", log=lambda *a: None, cache=cache)
+    print(f"OBS {cache.line()} (after the first leaf: {first})")
+    assert first[1] == 0 and cache.hits == 1 and cache.verdicts == 4
+
+
+def test_the_sacrifice_flag_fires_on_a_capture_the_exchange_calls_a_dead_end():
+    fen = "4k3/8/8/1r6/8/1p6/8/1Q2K3 w - - 0 1"                                # Qxb3 Rxb3: the exchange loses the queen for a pawn
+    logs = []
+    assert SM.sacrifice_flag(fen, "w", ["Qxb3"], "t", 6, log=logs.append)
+    assert "sacrifice candidate t: Qxb3 is a dead end by the exchange" in logs[0] and "forces 6" in logs[0]
+    assert not SM.sacrifice_flag("4k3/8/8/8/8/1p6/8/1Q2K3 w - - 0 1", "w", ["Qxb3"], "t", 6, log=logs.append)       # nothing takes back: not flagged
