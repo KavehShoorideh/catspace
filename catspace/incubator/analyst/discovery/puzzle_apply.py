@@ -7,6 +7,7 @@ applies what it has learnt, in Kaveh's order, and prints the EVENT STREAM as it 
   EV 4 bind               the proved schemas bound at this position, in the ladder's order (root, delayed_root, delayed_root_max, delayed_balance; depth 1, 2)
   EV 5 decision           the first binding in that order, or none
   EV 6 check              the exact solver on the decision, and the puzzle's own answer
+  EV 7 ruler              plain alpha-beta with Stockfish's ordering: the depth and nodes it needs, its trace, Stockfish's depth and nodes (plan 46)
 
 Run: .venv/bin/python -m catspace.incubator.analyst.discovery.puzzle_apply --set dev_20 --index 0
 """
@@ -20,6 +21,7 @@ import chess
 
 from catspace.io import paths
 from catspace.incubator.analyst.discovery import base_vocabulary as BV
+from catspace.incubator.analyst.discovery import ruler as RU
 from catspace.incubator.analyst.discovery import selfmine as SM
 
 ORDER = ("delayed_root", "delayed_root_max", "delayed_balance")
@@ -59,7 +61,7 @@ def depth2_candidates(fen: str) -> list:
     return out
 
 
-def apply(p: dict, log=print, deep: bool = True) -> dict:
+def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
     BV.install_terms()
     fen, need = p["fen"], int(p["value"])
     b = chess.Board(fen)
@@ -144,6 +146,15 @@ def apply(p: dict, log=print, deep: bool = True) -> dict:
     ours = found[0][1].split()[0] if found else None
     log(f"EV 6 check: the puzzle's answer is {ans}; our decision {ours or 'none'}: {'MATCH' if ours == ans else 'MISS'}; "
         f"the solver on a gain >= {need}: {lab['status']}" + (f", line {' '.join(lab['line'])}" if lab.get("status") == "forced" else "") + f"  [{round(time.time() - t0, 1)} s]")
+    if ruler:
+        t7 = time.time()
+        r = RU.solve(fen, need, max_depth=6, trace=40, answer_uci=p["answer"])
+        sf = r["stockfish"]
+        log(f"EV 7 ruler: {r['status']} at depth {r['depth']}, nodes {r['nodes_main']} main + {r['nodes_q']} quiescence, line {' '.join(r['line']) or '-'}; "
+            + (f"Stockfish: depth {sf['depth']} nodes {sf['nodes']}" if sf else "Stockfish: none")
+            + f"  [{round(time.time() - t7, 1)} s]")
+        for line in RU.format_trace(r["trace"], 40):
+            log("   " + line)
     return dict(id=p["id"], decision=ours, answer=ans, match=ours == ans, by=found[0][0] if found else None)
 
 
@@ -234,10 +245,11 @@ def main():
     ap.add_argument("--index", type=int, default=0)
     ap.add_argument("--id")
     ap.add_argument("--shallow", action="store_true", help="depth-1 schemas only")
+    ap.add_argument("--no-ruler", action="store_true", help="skip EV 7 (the alpha-beta ruler)")
     a = ap.parse_args()
     ps = load_set(a.set)
     p = next(x for x in ps if x["id"] == a.id) if a.id else ps[a.index]
-    apply(p, deep=not a.shallow)
+    apply(p, deep=not a.shallow, ruler=not a.no_ruler)
 
 
 if __name__ == "__main__":
