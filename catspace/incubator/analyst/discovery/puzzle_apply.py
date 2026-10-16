@@ -72,7 +72,7 @@ def apply(p: dict, log=print, deep: bool = True) -> dict:
         checkers = [chess.square_name(s) for s in b.checkers()]
         log(f"EV 2 threats to us: we are IN CHECK from {', '.join(checkers)}: the biggest threat is the king itself; passing is not a position, so the threat "
             f"reading is the check and every move must answer it ({b.legal_moves.count()} legal moves)")
-        v = dict(items=[])
+        v = dict(items=[], check=True)
     else:
         v = SM.verdicts(passed(fen), us, log=lambda *a: None)
     atk = [it for it in v["items"] if it["kind"] != "quiet"]
@@ -84,6 +84,8 @@ def apply(p: dict, log=print, deep: bool = True) -> dict:
         log(f"EV 2 threat {it['san']} takes our {b.piece_at(chess.parse_square(it['t'])).symbol()} on {it['t']} (worth {w}): {it['kind']}"
             + (f" (we take back with {it['z']})" if it["kind"] == "dead end" else (f" {it.get('k', '')}" if it["kind"] == "costs" else "")))
     biggest = next((it for it in atk if it["kind"] == "costs"), None)
+    if v.get("check"):
+        biggest = dict(san="the check", k="the king")                      # in check the threat is the king: the decision is the parry that keeps the most
     if biggest:
         log(f"EV 2 biggest threat to us: {biggest['san']} costs {biggest.get('k')}; a move must answer it or outweigh it")
     # 3. the root
@@ -97,7 +99,7 @@ def apply(p: dict, log=print, deep: bool = True) -> dict:
     # 4. bind: each proved schema read ONCE per candidate (its tail is a number; the target only sets the floor), the largest guaranteed gain wins,
     #    ties in the ladder's order; no floor on the balance: the tail reads our material too (the game is alive when it is 4 or more), so a gain from
     #    a deficit or a level position is an instance as well
-    found = []
+    found, kept = [], []
     c2 = depth2_candidates(fen) if deep else []
     for r in reads:
         if r["applies"]:
@@ -114,16 +116,24 @@ def apply(p: dict, log=print, deep: bool = True) -> dict:
                 log(f"EV 4 bind {name}: no candidate's legs hold [{round(time.time() - t1, 1)} s]")
                 continue
             san, B, T, n = best
+            kept.append((name, san, B, T))
             if T > B:
                 found.append((name, san, f"B={B} tail={T}", T - B))
                 log(f"EV 4 bind {name}: best of {n} candidates {san}: the tail reads {T} against {B} now, guaranteed gain {T - B} [{round(time.time() - t1, 1)} s]")
             else:
                 log(f"EV 4 bind {name}: best of {n} candidates {san} reads {T} against {B} now: no gain [{round(time.time() - t1, 1)} s]")
     found.sort(key=lambda f: -f[3])
-    # 5. decision
+    # 5. decision, in Kaveh's order: a guaranteed gain first; else, when the biggest threat to us costs something, the move whose tail keeps the most
+    #    (the parry: the lemma says "after it, whatever they do, we keep at least this"); else none
     if found:
         name, san, why, k = found[0]
-        log(f"EV 5 decision: {san.split()[0]} by {name}, guaranteed gain {k} ({why})" + (f"; the puzzle's window asks {need}: {'reached' if k >= need else 'NOT reached'}"))
+        log(f"EV 5 decision: {san.split()[0]} by {name}, guaranteed gain {k} ({why}); the puzzle's window asks {need}: {'reached' if k >= need else 'NOT reached'}")
+    elif biggest and kept:
+        name, san, B, T = max(kept, key=lambda x: x[3])
+        loss = B - T
+        found.append((name, san, f"parry: keeps {T} against {B} now", -loss))
+        log(f"EV 5 decision: {san.split()[0]} by {name} as the PARRY of {biggest['san']} (costs {biggest.get('k')}): after it, whatever they do, we keep "
+            + ("the balance" if loss <= 0 else f"all but {loss}"))
     else:
         log("EV 5 decision: none -- no proved lemma binds here at any gain" + (" (mate: no lemma reads mate yet)" if need >= 100 else ""))
     # 6. check
@@ -144,7 +154,7 @@ def best_bind(depth: int, fen: str, mover: str, candidates: list | None, family:
         b = chess.Board(fen)
         candidates = []
         for m in b.legal_moves:
-            if b.piece_at(m.from_square).piece_type == chess.KING or m.promotion:
+            if m.promotion or b.is_castling(m):          # the king is a piece: its moves are candidates; promotions and castling are the schema's legs' exclusions
                 continue
             candidates.append([(chess.square_name(m.from_square), chess.square_name(m.to_square))])
     best, n = None, 0
