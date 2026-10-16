@@ -831,17 +831,11 @@ def schemas_text() -> str:
 
 def proved_schemas() -> list:
     """The names of the schemas in Schemas.lean (a schema is appended only when proved)."""
-    return re.findall(r"^theorem (delayed_[a-z_]+_d\d+)", schemas_text(), flags=re.M)
+    return re.findall(r"^theorem (delayed_[a-z_]+_d\d+|dead_end)", schemas_text(), flags=re.M)
 
 
-def ensure_schema(depth: int, log=print, do_lean: bool = True, family: str = "delayed_root") -> dict:
-    """The schema of this family and depth is in Schemas.lean (proved), or is generated, checked by Lean and appended on success. -> dict(proved, new, error)."""
-    name = schema_name(depth, family)
-    if name in proved_schemas():
-        return dict(proved=True, new=False, error=None)
-    if not do_lean:
-        return dict(proved=False, new=False, error="--no-lean")
-    thm = schema_theorem(depth, None, family)
+def _append_theorem(name: str, thm: str, log=print) -> dict:
+    """Append a generated theorem to Schemas.lean when Lean proves the whole file with it, else leave the file as it was. -> dict(proved, new, error)."""
     old = schemas_text()
     body = old[: old.rindex("end Ideas.Mined.Schemas")].rstrip("\n") + "\n\n" + thm + SCHEMA_TAIL
     trial = SCHEMAS_FILE.parent / "_SchemaTrial.lean"
@@ -860,12 +854,89 @@ def ensure_schema(depth: int, log=print, do_lean: bool = True, family: str = "de
     return dict(proved=True, new=True, error=None)
 
 
+def ensure_schema(depth: int, log=print, do_lean: bool = True, family: str = "delayed_root") -> dict:
+    """The schema of this family and depth is in Schemas.lean (proved), or is generated, checked by Lean and appended on success. -> dict(proved, new, error)."""
+    name = schema_name(depth, family)
+    if name in proved_schemas():
+        return dict(proved=True, new=False, error=None)
+    if not do_lean:
+        return dict(proved=False, new=False, error="--no-lean")
+    return _append_theorem(name, schema_theorem(depth, None, family), log)
+
+
 def build_schemas() -> None:
     """Compile Ideas.Mined.Schemas so that window files can import it."""
     if not SCHEMAS_FILE.exists():
         SCHEMAS_FILE.parent.mkdir(parents=True, exist_ok=True)
         SCHEMAS_FILE.write_text(SCHEMA_HEAD + SCHEMA_TAIL)
     subprocess.run(["lake", "build", "Ideas.Mined.Schemas"], cwd=LEAN_DIR, capture_output=True, text=True, timeout=1800)
+
+
+# ---------------------------------------------------------------------------------------------------------------- dead ends (ANALYST_PLAN 45)
+
+DEAD_VARS = {"s": "b1", "t": "c1", "z": "d1"}        # the dead-end schema's square variables, as squares
+
+
+def dead_end_atoms(s: str, t: str, z: str, W, mover: str = "w") -> list:
+    """THE ONE-STEP EXCHANGE as a premise, read from the CAPTURER's side (the side to move at the leaf; the words' `ours` is the capturer, as the Rust
+    evaluator reads a position from its mover): the capturer's piece on s takes the piece of theirs on t, worth at least what it takes (W between the two worths),
+    and after s -> t a piece of theirs on z, not about to promote, can go to t. Squares absolute. -> [(name, term, op, v)], the legs of s -> t first."""
+    pr = view(PROMO_SQ, mover)
+    leg = [("hmv", legal(s, t), ">=", 1), ("hown", ours_at(s), ">=", 1), ("hnp", no_pawn_at(s), "<=", 0)]
+    return leg + [("hth", ("count", ("and", "theirs", ("at", t))), ">=", 1), ("hw1", ("worth", s), ">=", W), ("hw2", ("worth", t), "<=", W),
+                  ("hzm", ("after", s, t, ("count", ("and", ("moves", z), ("at", t)))), ">=", 1),
+                  ("hzo", ("after", s, t, ("count", ("and", "theirs", ("at", z)))), ">=", 1),
+                  ("hznp", ("after", s, t, ("count", ("and", "theirpawns", ("and", ("at", z), ("rank", pr))))), "<=", 0)]
+
+
+def dead_end_conclusion(s: str, t: str):
+    """The claim: after the capture s -> t the capturer's balance, whatever they answer, is at most what it is now (the capture gains nothing)."""
+    return ("after", s, t, ("least", "balance")), "<=", "balance"
+
+
+def dead_end_theorem(proof: str | None = None) -> str:
+    sq = [DEAD_VARS[v] for v in "stz"]
+    with using_mover("w"):
+        atoms = dead_end_atoms(*sq, "W")
+        lhs, _, rhs = dead_end_conclusion(sq[0], sq[1])
+    hy = "".join(f"\n    ({n} : {_dead_squares(BV.lean(render(t, 'w')))} {'≥' if op == '>=' else '≤'} {v})" for n, t, op, v in atoms)
+    concl = f"{_dead_squares(BV.lean(render(lhs, 'w')))} ≤ {BV.lean(rhs)}"
+    doc = ("THE DEAD END, the one-step exchange from the capturer's side (plan 45.2). The side to move (c) has a piece on s, not about to promote, that "
+           "can take a piece of theirs on t, and the piece on s is worth at least W while what stands on t is worth at most W; after that capture a piece of "
+           "theirs on z, not about to promote, can take back on t. Then whatever they reply after the capture, the capturer's balance is at most what it is now: "
+           "the capture gains nothing, an attack that is a dead end for the attacker. The squares are variables: bind them to any position.")
+    return (f"/-- {doc} -/\ntheorem dead_end (p : Position) (c : Color) (hc : p.turn = c) (s t z : Square) (W : Nat){hy} :\n    {concl} := by\n  "
+            f"{proof if proof is not None else dead_end_proof()}\n")
+
+
+def _dead_squares(text: str) -> str:
+    for var, sq in DEAD_VARS.items():
+        text = text.replace(f"(some (named c ((({ord(sq[0]) - 97} : Fin 8)), (({int(sq[1]) - 1} : Fin 8)))))", f"(some {var})")
+    return text
+
+
+def dead_end_proof() -> str:
+    """By reasoning, from the step theorems: the capture is the kernel's normal move (`after_capture_normal`), the recapture is a witness for `least` and
+    `dead_end_core` adds the two captures (`capture_gains` twice) and `leastOver_le`."""
+    return "\n  ".join([
+        "obtain ⟨q0, hs, hq0c, -⟩ := Ideas.TreeStep.ours_at p c s hown",
+        "obtain ⟨r, ht, hrc, -⟩ := Ideas.TreeStep.ours_at p (Color.opposite c) t hth",
+        "have hnp' := Ideas.TreeStep.not_promoting_at p c s hc hnp q0 hs hq0c",
+        "obtain ⟨hm, haf⟩ := Ideas.Root.after_capture_normal p s t q0 r hs (by rw [hq0c, hc]) hnp' ht (Ideas.TreeStep.moves_of_count p s t hmv)",
+        "rw [haf] at hzm hzo hznp ⊢",
+        "beta_reduce at hzm hzo hznp ⊢",
+        "obtain ⟨q1, hz, hc1, -⟩ := Ideas.TreeStep.ours_at _ (Color.opposite c) z hzo",
+        "have hnp1 := Ideas.Root.not_promoting_at_opp _ c z (by rw [applyMove_turn, hc]) hznp q1 hz hc1",
+        "exact Ideas.Root.dead_end_core p c hc s t z q0 r hs hq0c ht hrc W hw1 hw2 q1 hz hc1 hnp1 (Ideas.TreeStep.moves_of_count _ z t hzm)"])
+
+
+def ensure_dead_end(log=print, do_lean: bool = True) -> dict:
+    """The dead-end schema is in Schemas.lean (proved), or is generated, checked by Lean and appended on success."""
+    if "dead_end" in proved_schemas():
+        return dict(proved=True, new=False, error=None)
+    if not do_lean:
+        return dict(proved=False, new=False, error="--no-lean")
+    return _append_theorem("dead_end", dead_end_theorem(), log)
 
 
 def schema_instance_proof(atoms: list, delta: int, mover: str = "w") -> str | None:

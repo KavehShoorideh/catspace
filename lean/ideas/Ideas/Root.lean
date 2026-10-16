@@ -744,4 +744,112 @@ theorem root_tail_max (c : Color) (base v : Int) (q : Position) (hq : q.turn = c
   unfold balanceOf at hbal ⊢
   omega
 
+
+/-! ## ANALYST_PLAN 45: dead-end attacks, the one-step exchange from the capturer's side -/
+
+/-- A legal move of a piece that is not about to promote, onto a piece, is a normal move (a promotion starts on the seventh rank; an en passant
+lands on an empty square; castling too). -/
+theorem move_is_normal_np (p : Position) (m : Move) (hm : m ∈ legalMoves p) (q0 r : Piece) (hs : p.board m.source = some q0)
+    (hnp : q0.kind = PieceKind.pawn → ¬ ((p.turn = Color.white ∧ m.source.2.val = 6) ∨ (p.turn = Color.black ∧ m.source.2.val = 1)))
+    (ht : p.board m.destination = some r) : m = Move.normal m.source m.destination := by
+  have hps := legal_pseudo p m hm
+  cases m with
+  | normal s t => rfl
+  | promotion s t k =>
+    exfalso
+    obtain ⟨q', hq', -, hqk, hr⟩ := promotion_from_seventh p s t k hm
+    simp only [Move.source] at hs hnp
+    rw [hs] at hq'
+    have := Option.some.inj hq'
+    subst this
+    exact hnp hqk hr
+  | enPassant s t =>
+    exfalso
+    simp only [Move.destination] at ht
+    simp only [pseudoLegalB, pseudoLegalEnPassantB] at hps
+    cases hep : p.enPassant with
+    | none => simp [hep] at hps
+    | some e =>
+      simp only [Move.source] at hs
+      simp_all
+  | _ =>
+    exfalso
+    all_goals
+      simp only [Move.destination] at ht
+      simp only [pseudoLegalB, pseudoLegalCastleB, castleColorOf, castleRightOf, castleRookSource, castleClearB, castleEmptySquares, Bool.and_eq_true,
+        beq_iff_eq, decide_eq_true_eq, List.all_cons, List.all_nil, Bool.and_true, if_true, ite_true, ↓reduceIte] at hps
+      simp_all
+
+/-- `after` plays the kernel's capture: the side to move's piece on `s` (not about to promote) takes the piece on `t`. -/
+theorem after_capture_normal (p : Position) (s t : Square) (q0 r : Piece) (hs : p.board s = some q0) (hq0c : q0.color = p.turn)
+    (hnp : q0.kind = PieceKind.pawn → ¬ ((p.turn = Color.white ∧ s.2.val = 6) ∨ (p.turn = Color.black ∧ s.2.val = 1)))
+    (ht : p.board t = some r) (hmv : movesOf p s t = true) :
+    Move.normal s t ∈ legalMoves p ∧ ∀ f : Position → Nat, afterMove p (some s) (some t) f = f (applyMove p (Move.normal s t)) := by
+  obtain ⟨m, hm, hms, hmd, hafter⟩ := after_of_moves_np p s t q0 hs hq0c hnp hmv
+  have hmn : m = Move.normal s t := by
+    have := move_is_normal_np p m hm q0 r (by rw [hms]; exact hs) (by rw [hms]; exact hnp) (by rw [hmd]; exact ht)
+    rw [hms, hmd] at this; exact this
+  subst hmn
+  exact ⟨hm, hafter⟩
+
+/-- THEIR PAWN LEG in words: `no pawn of theirs on z on the rank before promotion for them` (our second rank, `named c (0, 1)`) says a piece of
+theirs on `z`, if it is a pawn, is not about to promote. -/
+theorem not_promoting_at_opp (q : Position) (c : Color) (z : Square) (hq : q.turn = Color.opposite c)
+    (h : count (fun u => kindSet q (Color.opposite c) PieceKind.pawn u && (oset atSq (some z) u && oset rankOf (some (named c ((0 : Fin 8), (1 : Fin 8)))) u)) ≤ 0)
+    (q1 : Piece) (hz : q.board z = some q1) (hc1 : q1.color = Color.opposite c) :
+    q1.kind = PieceKind.pawn → ¬ ((q.turn = Color.white ∧ z.2.val = 6) ∨ (q.turn = Color.black ∧ z.2.val = 1)) := by
+  intro hk hr
+  have h0 := count_zero_not _ h z
+  simp only [kindSet, hz, oset, atSq, rankOf, hc1, hk, beq_self_eq_true, Bool.and_self, Bool.true_and, Bool.and_eq_false_iff,
+    decide_eq_false_iff_not] at h0
+  cases c <;> simp only [Color.opposite] at hq <;> rw [hq] at hr <;> simp [named, Fin.ext_iff, Fin.rev] at h0 <;> simp at hr <;> omega
+
+/-- THE ONE-STEP EXCHANGE, from the capturer's side (ANALYST_PLAN 45.2). The side to move (`c`) takes with the piece on `s` the piece on `t`;
+the other side takes back on `t` with the piece on `z`; the capturer's piece is worth at least what it took. Then whatever the other side
+replies, the capturer's balance is no higher than it is now: the capture gains nothing (a dead end for the capturer). -/
+theorem dead_end_core (p : Position) (c : Color) (hc : p.turn = c) (s t z : Square) (q0 r : Piece)
+    (hs : p.board s = some q0) (hq0c : q0.color = c) (ht : p.board t = some r) (hrc : r.color = Color.opposite c)
+    (W : Nat) (hW1 : W ≤ worthOf p s) (hW2 : worthOf p t ≤ W)
+    (q1 : Piece) (hz : (applyMove p (Move.normal s t)).board z = some q1) (hc1 : q1.color = Color.opposite c)
+    (hnp1 : q1.kind = PieceKind.pawn → ¬ (((applyMove p (Move.normal s t)).turn = Color.white ∧ z.2.val = 6) ∨
+      ((applyMove p (Move.normal s t)).turn = Color.black ∧ z.2.val = 1)))
+    (hmv : movesOf (applyMove p (Move.normal s t)) z t = true) :
+    leastOver (applyMove p (Move.normal s t)) (fun r => balanceOf r c) ≤ balanceOf p c := by
+  have hxy : s ≠ t := by
+    rintro rfl
+    rw [hs] at ht
+    have := Option.some.inj ht
+    subst this
+    rw [hq0c] at hrc
+    cases c <;> simp [Color.opposite] at hrc
+  have hrq : r.color ≠ q0.color := by rw [hrc, hq0c]; cases c <;> simp [Color.opposite]
+  obtain ⟨hm1, hm2⟩ := capture_gains p s t hxy q0 r hs ht hrq
+  rw [hq0c] at hm1
+  rw [hrc] at hm2
+  obtain ⟨q, hqdef⟩ : ∃ q, applyMove p (Move.normal s t) = q := ⟨_, rfl⟩
+  rw [hqdef] at hz hnp1 hmv hm1 hm2 ⊢
+  have hqb : q.board = boardMove p.board s t := by rw [← hqdef]; rfl
+  have hqt : q.board t = some q0 := by rw [hqb]; simp [boardMove, boardUpdate, hs]
+  have hturn : q.turn = Color.opposite c := by rw [← hqdef, applyMove_turn, hc]
+  have hzt : z ≠ t := by
+    rintro rfl
+    rw [hqt] at hz
+    have := Option.some.inj hz
+    subst this
+    rw [hq0c] at hc1
+    cases c <;> simp [Color.opposite] at hc1
+  obtain ⟨hm, hafter⟩ := after_capture_normal q z t q1 q0 hz (by rw [hc1, hturn]) hnp1 hqt hmv
+  have hq1q0 : q0.color ≠ q1.color := by rw [hq0c, hc1]; cases c <;> simp [Color.opposite]
+  obtain ⟨hm3, hm4⟩ := capture_gains q z t hzt q1 q0 hz hqt hq1q0
+  rw [hc1] at hm3
+  rw [hq0c] at hm4
+  have hwq : worthOf q t = worthOf p s := by
+    rw [worthOf_eq q t q0 hqt, worthOf_eq p s q0 hs]
+  have hle := leastOver_le q (fun r => balanceOf r c) _ hm
+  refine le_trans hle ?_
+  show balanceOf (applyMove q (Move.normal z t)) c ≤ balanceOf p c
+  unfold balanceOf
+  rw [hwq] at hm4
+  omega
+
 end Ideas.Root

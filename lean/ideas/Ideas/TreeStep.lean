@@ -126,6 +126,24 @@ theorem least_pos_nonempty (p : Position) (f : Position → Nat) (h : leastOver 
   intro hno
   simp [leastOver, hno] at h
 
+/-- Every legal reply reads at least `T`, and there is one: `least` reads at least `T`. -/
+theorem least_of_each (p : Position) (F : Position → Nat) (T : Nat) (hne : legalMoves p ≠ [])
+    (h : ∀ m ∈ legalMoves p, F (applyMove p m) ≥ T) : leastOver p F ≥ T := by
+  unfold leastOver
+  have key : ∀ (l : List Move) (a : Nat), a ≥ T → (∀ m ∈ l, F (applyMove p m) ≥ T) → (l.map (fun m => F (applyMove p m))).foldl min a ≥ T := by
+    intro l
+    induction l with
+    | nil => intro a ha _; exact ha
+    | cons m l ih =>
+      intro a ha hl
+      simp only [List.map_cons, List.foldl_cons]
+      exact ih _ (le_min ha (hl m (List.mem_cons_self ..))) (fun m' hm' => hl m' (List.mem_cons_of_mem _ hm'))
+  cases hl : legalMoves p with
+  | nil => exact absurd hl hne
+  | cons m l =>
+    simp only [List.map_cons]
+    refine key l _ (h m (by rw [hl]; exact List.mem_cons_self ..)) (fun m' hm' => h m' (by rw [hl]; exact List.mem_cons_of_mem _ hm'))
+
 /-! ## the bridge from `after` to the kernel's move -/
 
 /-- When the side to move has a legal move from `x` to `y` (a promotion only to a queen), `after` reads its body on the position the

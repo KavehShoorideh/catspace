@@ -216,4 +216,26 @@ theorem delayed_balance_d2 (p : Position) (c : Color) (hc : p.turn = c)
   beta_reduce at h7''
   exact Ideas.TreeStep.tail_two c _ v (applyMove (applyMove (applyMove (applyMove (p) m1) r4) m6) r9) (by simp only [applyMove_turn, hc] <;> (cases c <;> first | rfl | decide) : (applyMove (applyMove (applyMove (applyMove (p) m1) r4) m6) r9).turn = c) (T - 64) (by omega) (by omega) (by omega)
 
+/-- THE DEAD END, the one-step exchange from the capturer's side (plan 45.2). The side to move (c) has a piece on s, not about to promote, that can take a piece of theirs on t, and the piece on s is worth at least W while what stands on t is worth at most W; after that capture a piece of theirs on z, not about to promote, can take back on t. Then whatever they reply after the capture, the capturer's balance is at most what it is now: the capture gains nothing, an attack that is a dead end for the attacker. The squares are variables: bind them to any position. -/
+theorem dead_end (p : Position) (c : Color) (hc : p.turn = c) (s t z : Square) (W : Nat)
+    (hmv : (count (fun u => (oset (movesOf p) (some s)) u && (oset atSq (some t)) u)) ≥ 1)
+    (hown : (count (fun u => (piecesOf p c) u && (oset atSq (some s)) u)) ≥ 1)
+    (hnp : (count (fun u => (kindSet p c .pawn) u && (fun u => (oset atSq (some s)) u && (oset rankOf (some (named c (((0 : Fin 8)), ((6 : Fin 8)))))) u) u)) ≤ 0)
+    (hth : (count (fun u => (piecesOf p (Color.opposite c)) u && (oset atSq (some t)) u)) ≥ 1)
+    (hw1 : (onum (worthOf p) (some s)) ≥ W)
+    (hw2 : (onum (worthOf p) (some t)) ≤ W)
+    (hzm : (afterMove p (some s) (some t) (fun p => (count (fun u => (oset (movesOf p) (some z)) u && (oset atSq (some t)) u)))) ≥ 1)
+    (hzo : (afterMove p (some s) (some t) (fun p => (count (fun u => (piecesOf p (Color.opposite c)) u && (oset atSq (some z)) u)))) ≥ 1)
+    (hznp : (afterMove p (some s) (some t) (fun p => (count (fun u => (kindSet p (Color.opposite c) .pawn) u && (fun u => (oset atSq (some z)) u && (oset rankOf (some (named c (((0 : Fin 8)), ((1 : Fin 8)))))) u) u)))) ≤ 0) :
+    (afterMove p (some s) (some t) (fun p => (leastOver p (fun p => (balanceOf p c))))) ≤ (balanceOf p c) := by
+  obtain ⟨q0, hs, hq0c, -⟩ := Ideas.TreeStep.ours_at p c s hown
+  obtain ⟨r, ht, hrc, -⟩ := Ideas.TreeStep.ours_at p (Color.opposite c) t hth
+  have hnp' := Ideas.TreeStep.not_promoting_at p c s hc hnp q0 hs hq0c
+  obtain ⟨hm, haf⟩ := Ideas.Root.after_capture_normal p s t q0 r hs (by rw [hq0c, hc]) hnp' ht (Ideas.TreeStep.moves_of_count p s t hmv)
+  rw [haf] at hzm hzo hznp ⊢
+  beta_reduce at hzm hzo hznp ⊢
+  obtain ⟨q1, hz, hc1, -⟩ := Ideas.TreeStep.ours_at _ (Color.opposite c) z hzo
+  have hnp1 := Ideas.Root.not_promoting_at_opp _ c z (by rw [applyMove_turn, hc]) hznp q1 hz hc1
+  exact Ideas.Root.dead_end_core p c hc s t z q0 r hs hq0c ht hrc W hw1 hw2 q1 hz hc1 hnp1 (Ideas.TreeStep.moves_of_count _ z t hzm)
+
 end Ideas.Mined.Schemas
