@@ -322,3 +322,26 @@ def test_the_sacrifice_flag_fires_on_a_capture_the_exchange_calls_a_dead_end():
     assert SM.sacrifice_flag(fen, "w", ["Qxb3"], "t", 6, log=logs.append)
     assert "sacrifice candidate t: Qxb3 is a dead end by the exchange" in logs[0] and "forces 6" in logs[0]
     assert not SM.sacrifice_flag("4k3/8/8/8/8/1p6/8/1Q2K3 w - - 0 1", "w", ["Qxb3"], "t", 6, log=logs.append)       # nothing takes back: not flagged
+
+
+KING_TAKES = "4k3/8/8/r7/8/8/P7/1K6 b - - 0 1"     # black to move: Rxa2 takes a pawn that only our KING guards (Kxa2 takes the rook back): a dead end by `dead_end_king`
+
+
+def test_the_dead_end_king_schema_is_proved_in_lean_with_no_sorry():
+    es = SM.ensure_dead_end_king(log=print)
+    text = SM.schemas_text()
+    thm = text[text.index("theorem dead_end_king"):]
+    print(f"OBS dead_end_king: proved {es['proved']}, composes dead_end_core {('dead_end_core' in thm)}, sorry {('sorry' in thm)}")
+    assert es["proved"] and "dead_end_king" in SM.proved_schemas() and "dead_end" in SM.proved_schemas()
+    assert "Ideas.Root.dead_end_core" in thm and "sorry" not in thm
+
+
+def test_only_the_king_can_take_back_so_dead_end_misses_and_dead_end_king_binds():
+    assert SM.recapturers(__import__("chess").Board(KING_TAKES), __import__("chess").Move.from_uci("a5a2")) == ["king"]
+    assert SM.bind_dead_end(KING_TAKES, "b", "a5", "a2", "b1") is None                  # the king is no piece of `theirs`: the ownership leg fails
+    got = SM.bind_dead_end_king(KING_TAKES, "b", "a5", "a2")
+    assert got and got["least"] <= got["balance"]
+    res = SM.verdicts(KING_TAKES, "w", log=print)
+    by = {(v["s"], v["t"]): v for v in res["items"]}
+    assert by[("a5", "a2")]["kind"] == "dead end" and by[("a5", "a2")]["z"] == "king" and "with the king" in by[("a5", "a2")]["why"]
+    assert res["counts"]["affordable"] == 0
