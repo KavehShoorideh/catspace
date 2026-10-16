@@ -28,6 +28,7 @@ class Observable:
     fen_before: str
     fen_after: str
     source: str = "watched"  # watched | played | surprise
+    settle_ply: int | None = None   # shifts only: the index of the quiet position (boards[j]) the shift settles at; the sequence runs from `ply` to move settle_ply - 1
 
     def asdict(self) -> dict:
         return asdict(self)
@@ -108,7 +109,7 @@ class ChessDomain:
         e = b.copy(stack=False)
         mvs = [chess.Move.from_uci(u) for u in line]
         n = 0
-        while n < len(mvs) and (n < plies or e.is_capture(mvs[n])):          # the first `plies`, then on through captures to a quiet end
+        while n < len(mvs) and (n < plies or not self.quiet(e)):             # the first `plies`, then on along the teacher's line to a QUIET position (43.2)
             e.push(mvs[n]); n += 1
         mated = None
         if abs(score) >= self.MATE_SCORE:
@@ -116,11 +117,12 @@ class ChessDomain:
         if e.is_checkmate():
             mated = e.turn
         swing = self.material(e, victim) - self.material(b, victim)
-        same = (mated == victim) if obs.kind == "mate" else (mated == victim or swing <= -abs(obs.delta))
+        # SAME = the game's settled gain, no more and no less (a mate, or a larger gain, is another kind of event); AVOIDED = a smaller gain for the winner
+        same = (mated == victim) if obs.kind == "mate" else (mated is None and swing == -abs(obs.delta))
         other = None
         if same:
             cls = "SAME"
-        elif mated is not None or swing != 0:
+        elif mated is not None or swing < -abs(obs.delta) or swing > 0:
             cls = "OTHER"
             other = "mate against " + chess.COLOR_NAMES[mated] if mated is not None else ("victim loses" if swing < 0 else "victim gains") + f" {abs(swing)}"
         else:
@@ -136,18 +138,73 @@ class ChessDomain:
         """material balance in `side`'s view (own minus the other's), in pawns."""
         return self.material(chess.Board(fen), chess.WHITE if side == "white" else chess.BLACK)
 
+    # ---- quiescence (ANALYST_PLAN 43.2) ----
+    QUIET_MODE = "exchange"        # "exchange" (default) | "forcing" (the stronger test: no forcing word on either side)
+
+    @staticmethod
+    def see(board: chess.Board, sq: int) -> int:
+        """the exchange value, in pawns, of the side to move capturing on `sq` (0 when it cannot or when capturing loses): the swap algorithm, least valuable
+        attacker first, x-rays by removing each capturer, either side may stop. Mirrors the vocabulary's (see X); tests/test_windows.py checks it against vocab_eval."""
+        victim = board.piece_at(sq)
+        if victim is None or victim.color == board.turn or not board.attackers(board.turn, sq):
+            return 0
+        b = board.copy(stack=False)
+        val = lambda pt: 100 if pt == chess.KING else PVAL.get(pt, 0)
+        d = [val(victim.piece_type)]
+        color = board.turn
+        while True:
+            att = b.attackers(color, sq)
+            if not att:
+                break
+            frm = min(att, key=lambda s: val(b.piece_type_at(s)))
+            pt = b.piece_type_at(frm)
+            b.remove_piece_at(frm)
+            b.set_piece_at(sq, chess.Piece(pt, color))
+            if pt == chess.KING and b.attackers(not color, sq):
+                break                                           # a king cannot capture into an attacked square
+            d.append(val(pt) - d[-1])
+            color = not color
+        if len(d) == 1:
+            return 0                                            # only a king attacks it, and the square is defended
+        d.pop()                                                 # the last entry is the speculation that nobody recaptures
+        for k in range(len(d) - 1, 0, -1):
+            d[k - 1] = -max(-d[k - 1], d[k])
+        return max(0, d[0])
+
+    def quiet(self, board) -> bool:
+        """no check on the side to move, and no capture that wins by the exchange (every capture's `see` <= 0); mode "forcing" also needs both forcing words 0."""
+        b = chess.Board(board) if isinstance(board, str) else board
+        if b.is_check():
+            return False
+        if b.is_game_over():
+            return True
+        for m in b.legal_moves:
+            if b.is_capture(m) and self.see(b, m.to_square) > 0:
+                return False
+        if self.QUIET_MODE == "forcing":
+            import analyst_core as A
+            from . import base_vocabulary as BV
+            BV.install_terms()
+            return all(A.vocab_eval(b.fen(), w) == 0 for w in ("forcing_us_1", "forcing_them_1"))
+        return True
+
+    def settle(self, boards, i: int) -> int:
+        """from the position after move i (boards[i + 1]) walk forward ALONG THE GAME while the position is not quiet; -> the first quiet board index j >= i + 1
+        (the last board when the game ends first)."""
+        j = i + 1
+        while j < len(boards) - 1 and not self.quiet(boards[j]):
+            j += 1
+        return j
+
     def shifts(self, moves, boards) -> list:
-        """(ply, side, gain) for every turn whose END balance, in its own view, differs from the end of its previous turn (the first turn compares with the start).
-        The end of a turn that captured is the SETTLED end: through the capture chain that follows it (a recapture belongs to the exchange), so an even trade
-        is no shift and a two-ply exchange is one. Only the gaining side emits (the loser sees the same event as a loss)."""
+        """(ply, side, gain) for every turn whose SETTLED balance, in its own view, differs from the previous turn's settled balance (the first turn compares with
+        the start). The settled end of a turn is `settle`: on along the game to the first quiet position, through recaptures and checks alike, so an even trade is
+        no shift and an exchange with an interposed check is one. Only the gaining side emits (the loser sees the same event as a loss)."""
         out = []
         last = {c: self.material(boards[0], c) for c in (chess.WHITE, chess.BLACK)}
         for i, m in enumerate(moves):
             s = boards[i].turn
-            j = i + 1
-            if boards[i].is_capture(m) or m.promotion:
-                while j < len(moves) and (boards[j].is_capture(moves[j]) or moves[j].promotion):
-                    j += 1
+            j = self.settle(boards, i)
             bal = self.material(boards[j], s)
             if bal > last[s]:
                 out.append((i, s, bal - last[s]))
@@ -167,7 +224,9 @@ class ChessDomain:
             promo = any(moves[j].promotion and boards[j].turn == winner for j in range(e["c0"], e["c1"] + 1))
             out.append(mk(e["win_first"], "promotion" if promo else "capture", winner, e["loser"], e["delta"]))
         for i, s, gain in self.shifts(moves, boards):
-            out.append(mk(i, "shift", s, not s, gain))
+            o = mk(i, "shift", s, not s, gain)
+            o.settle_ply = self.settle(boards, i)
+            out.append(o)
         for i, m in enumerate(moves):
             b, a = boards[i], boards[i + 1]
             if b.is_castling(m):
