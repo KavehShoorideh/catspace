@@ -493,6 +493,17 @@ def _same(pa, sp) -> bool:
     return len(pa) == len(sp) and all(x == y or (x[0] in ("least", "most") and y[0] in ("least", "most")) for x, y in zip(pa, sp))
 
 
+def n_replies(win: dict, poss: list, ks: list, tk: int, mover: str) -> int:
+    """how many of the winner's moves the solver may need from the example: the opponent's plies back in the tree (the old count) or, when the window
+    records its quiescence ply (43.2), the winner's moves of the game line from the example to it, whichever is more."""
+    n = max(1, len({k for k in ks if k < tk and any(p["k"] == k and p["mover"] != mover for p in poss)}))
+    q = win.get("quiescence_ply")
+    ply = next((p["ply"] for p in win["plies"] if p["k"] == tk), None)
+    if q is not None and ply is not None and q - 1 >= ply + 1:
+        n = max(n, (q - 1 - (ply + 1)) // 2 + 1)
+    return n
+
+
 def tree_proof(atoms: list, delta: int) -> str | None:
     """THE COMPOSING STEP: a Lean proof script for a premise whose atoms lie along one spine -- our named move, every reply, ..., then
     `(most (least balance))` -- built from Ideas.TreeStep: step_after at our named moves (its legs are the ownership and legality
@@ -753,7 +764,7 @@ def mine(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool =
     cx = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "AVOIDED"]
     ox = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "OTHER"]
     mover = poss[ex[0]]["mover"]
-    n_opp = max(1, len({k for k in ks if k < tk and any(p["k"] == k and p["mover"] != mover for p in poss)}))
+    n_opp = n_replies(win, poss, ks, tk, mover)
     log(f"OBS target {tag}: start ply k={tk}, delta {delta}; examples (SAME) {[poss[i]['san'] for i in ex]}, counter-examples (AVOIDED) "
         f"{[poss[i]['san'] for i in cx]}, set aside (OTHER) {[poss[i]['san'] for i in ox]}; the side to move after the move is {'white' if mover == 'w' else 'black'}")
     # solver on the examples (and, as a check only, on the counter-examples)
@@ -1023,6 +1034,36 @@ def update_score(tag: str, lemmas: list, log=print) -> dict:
     return table
 
 
+def later_root(win: dict, base: dict, mover: str, delta: int, ref: str, n_opp: int, log=print):
+    """43.2: the victim's later moves of the played line inside the window (after the example, up to the quiescence ply): the first position where the root's
+    capture applies, takes at least what is still to be won, and the solver confirms it in one move of ours. -> (reading, base-like dict, need, label) or None."""
+    import chess
+    q = win.get("quiescence_ply")
+    if q is None or not win.get("played_uci"):
+        return None
+    start = win["start_ply"]
+    b = chess.Board(win["start_fen"])
+    for j, u in enumerate(win["played_uci"]):
+        ply = start + j
+        san = b.san(chess.Move.from_uci(u))
+        b.push_uci(u)
+        if ply <= base_ply(win, base) or ply >= q - 1 or ("w" if b.turn else "b") != mover:
+            continue
+        fen2 = b.fen()
+        need = max(1, delta + balance(ref, mover == "w") - balance(fen2, mover == "w"))
+        reads = root_readings(fen2, mover, need)
+        cands = [r for r in reads if r["applies"] and r["worth"] >= need]
+        lab = _label((fen2, need, 1))
+        log(f"OBS root at the played move {san} (game ply {ply + 1}, inside the window): needs {need}, {len(cands)} capture(s) the theorem covers, solver {lab['status']} in one move")
+        if cands and lab["status"] == "forced":
+            return cands[0], dict(k=base["k"], cls="SAME", played=True, san=san, uci=u, fen=fen2, mover=mover, start=base["start"], line=lab["line"]), need, lab
+    return None
+
+
+def base_ply(win: dict, base: dict) -> int:
+    return next(p["ply"] for p in win["plies"] if p["k"] == base["k"])
+
+
 def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool = True, do_drill: bool = False, log=print,
            out: Path | None = None, fallback: bool = True) -> dict:
     """THE LADDER (plan 42.5): the root first, then the deviation seeded by the root, then (when nothing is proved) the 41.9 tree lemma as the fallback."""
@@ -1044,12 +1085,14 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
     cx = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "AVOIDED"]
     ex.sort(key=lambda i: not poss[i]["played"])                  # the move that was played first: the example is the game's own position
     mover = poss[ex[0]]["mover"]
-    n_opp = max(1, len({k for k in ks if k < tk and any(p["k"] == k and p["mover"] != mover for p in poss)}))
+    n_opp = n_replies(win, poss, ks, tk, mover)
     base = poss[ex[0]]
     fen = base["fen"]
     log(f"OBS layers {tag}: example {base['san']} (position after the move, {'white' if mover == 'w' else 'black'} to move), delta {delta}, "
         f"{len(ex)} examples, {len(cx)} counter-examples, {n_opp} reply/replies in the window")
-    sol = solver_check(fen, delta, n_opp, base["start"])
+    # the balance the gain is counted from: the position the sequence starts at when the window has a quiescence point (43.2), else the start of the window
+    ref = win["observable"]["fen_before"] if win["observable"].get("settle_ply") is not None else base["start"]
+    sol = solver_check(fen, delta, n_opp, ref)
     log(f"OBS solver example {base['san']}: {sol['status']}" + (f" in {sol['moves']} moves, line {' '.join(sol['line'])}" if sol["status"] == "forced" else ""))
     # 1. ROOT FIRST
     reads = root_readings(fen, mover, delta)
@@ -1066,7 +1109,7 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
     dx = []
     solver_ok = sol["status"] == "forced"
     if do_drill and (solver_ok or lab["status"] == "forced"):
-        need = max(1, delta + balance(base["start"], mover == "w") - balance(fen, mover == "w"))
+        need = max(1, delta + balance(ref, mover == "w") - balance(fen, mover == "w"))
         drilled = drill(base, need, n_opp, log)
         n0 = len(poss)
         poss += drilled
@@ -1089,6 +1132,25 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
             lm = dict(name="hanging", size=len(prem), proved=bool(do_lean and item["proved"]), explained=True)
             if dx:
                 lm.update(drill_report("hanging", prem, poss, dx, cx, lm["proved"], log))
+            result["lemmas"] = [lm]
+            update_score(tag, result["lemmas"], log)
+            return result
+    # the root at the victim's LATER moves inside the window (43.2: the sequence may begin before the hanging piece does -- a check that forks, then the piece is left)
+    later = later_root(win, base, mover, delta, ref, n_opp, log) if (not result["explained"]) else None
+    if later:
+        r, base2, need2, lab2 = later
+        item = lean_root_instance(r, mover, need2, out, LAYERS_HEAD.format(tag=lean_tag, delta=need2, ns=lean_tag), do_lean, log)
+        if (not do_lean) or item["proved"]:
+            log(f"OBS EXPLAINED BY THE ROOT: {tag}: at the played move {base2['san']} (inside the window, after the example) the capture {r['san']} takes {r['worth']} (>= {need2}), "
+                f"nothing of ours is attacked after it, no pawn of theirs promotes, and the solver confirms; the instance of `hanging` is " + ("proved in Lean" if do_lean else "not run (--no-lean)"))
+            result.update(explained=True, capture=r["san"], items=[item])
+            lm = dict(name="hanging", size=len(item["prem"]), proved=bool(do_lean and item["proved"]), explained=True)
+            if do_drill:
+                dr = drill(base2, need2, n_opp, log)
+                poss2 = [base2] + dr
+                dx2 = [i for i in range(1, len(poss2)) if poss2[i]["cls"] == "SAME"]
+                cx2 = [i for i in range(1, len(poss2)) if poss2[i]["cls"] == "AVOIDED"]
+                lm.update(drill_report("hanging", item["prem"], poss2, dx2, cx2, lm["proved"], log))
             result["lemmas"] = [lm]
             update_score(tag, result["lemmas"], log)
             return result

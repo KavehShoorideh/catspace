@@ -29,6 +29,7 @@ class Observable:
     fen_after: str
     source: str = "watched"  # watched | played | surprise
     settle_ply: int | None = None   # shifts only: the index of the quiet position (boards[j]) the shift settles at; the sequence runs from `ply` to move settle_ply - 1
+    settle_fen: str | None = None   # shifts only: that quiet position as FEN (branches are judged against the balance there)
 
     def asdict(self) -> dict:
         return asdict(self)
@@ -117,12 +118,16 @@ class ChessDomain:
         if e.is_checkmate():
             mated = e.turn
         swing = self.material(e, victim) - self.material(b, victim)
-        # SAME = the game's settled gain, no more and no less (a mate, or a larger gain, is another kind of event); AVOIDED = a smaller gain for the winner
-        same = (mated == victim) if obs.kind == "mate" else (mated is None and swing == -abs(obs.delta))
+        # SAME = the victim loses AT LEAST the game's settled gain, or is mated (the teacher's line may win more than the game did: a stronger line is the same
+        # trap, and 43.2's "exact gain" made the played move of sHa6yUKv OTHER); AVOIDED = a smaller loss; OTHER = a different event (the victim gains)
+        # judged against the balance at the game's settled position when the observable has one (moves between the branch and the sequence change material too)
+        end_bal = self.material(e, victim)
+        reach = (end_bal <= self.material(chess.Board(obs.settle_fen), victim)) if obs.settle_fen else (swing <= -abs(obs.delta))
+        same = (mated == victim) if obs.kind == "mate" else (mated == victim or reach)
         other = None
         if same:
             cls = "SAME"
-        elif mated is not None or swing < -abs(obs.delta) or swing > 0:
+        elif mated is not None or swing != 0:
             cls = "OTHER"
             other = "mate against " + chess.COLOR_NAMES[mated] if mated is not None else ("victim loses" if swing < 0 else "victim gains") + f" {abs(swing)}"
         else:
@@ -226,6 +231,7 @@ class ChessDomain:
         for i, s, gain in self.shifts(moves, boards):
             o = mk(i, "shift", s, not s, gain)
             o.settle_ply = self.settle(boards, i)
+            o.settle_fen = boards[o.settle_ply].fen()
             out.append(o)
         for i, m in enumerate(moves):
             b, a = boards[i], boards[i + 1]
