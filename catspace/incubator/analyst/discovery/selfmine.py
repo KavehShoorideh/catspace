@@ -1575,37 +1575,6 @@ def bind_dead_end(fen: str, mover: str, s: str, t: str, z: str) -> dict | None:
     return dict(atoms=atoms, W=W, least=least, balance=now)
 
 
-def bind_dead_end_king(fen: str, mover: str, s: str, t: str) -> dict | None:
-    """BIND `dead_end_king` to the capture s -> t of the side to move: their king (the object word L) is the recapturer. Same reading as `bind_dead_end`."""
-    W = val_at(fen, ("worth", t), mover)
-    atoms = dead_end_king_atoms(s, t, W, mover)
-    for _, term, op, v in atoms:
-        got = val_at(fen, term, mover)
-        if not ((got >= v) if op == ">=" else (got <= v)):
-            return None
-    lhs, _, rhs = dead_end_conclusion(s, t)
-    least, now = val_at(fen, lhs, mover), val_at(fen, rhs, mover)
-    if least > now:
-        raise SystemExit(f"OBS BUG: the dead_end_king premise holds at {s}->{t} on {fen} but the conclusion fails ({least} > {now}): an evaluator bug; stopping")
-    return dict(atoms=atoms, W=W, least=least, balance=now)
-
-
-def bind_any_dead_end(fen: str, mover: str, s: str, t: str, z: str):
-    """Bind the recapturer z: a square of a piece of theirs (`dead_end`) or the word "king" (`dead_end_king`)."""
-    return bind_dead_end_king(fen, mover, s, t) if z == "king" else bind_dead_end(fen, mover, s, t, z)
-
-
-def recapturers(b, m) -> list:
-    """After the capture m on the board b (b untouched): the squares of the pieces of the side not moving that can take back on m's square, cheapest first,
-    their king last as "king"."""
-    import chess
-    b.push(m)
-    zs = {chess.square_name(r.from_square): b.piece_at(r.from_square) for r in b.legal_moves if r.to_square == m.to_square}
-    b.pop()
-    plain = sorted((q for q, pc in zs.items() if pc.piece_type != chess.KING), key=lambda q: (PIECE_WORTH[zs[q].symbol().lower()], q))
-    return plain + (["king"] if any(pc.piece_type == chess.KING for pc in zs.values()) else [])
-
-
 def our_witness(fen: str, s: str, t: str, white: bool):
     """EXPLANATION, not proof: after their quiet move s -> t, the move of ours with the best material balance for us (python-chess argmax; ties in move order)
     and that balance less the balance now. -> (san, change) or None when we have no move."""
@@ -1655,19 +1624,22 @@ def verdicts(fen: str, us: str, log=print, cache: VerdictCache | None = None) ->
                        PIECE_WORTH[victim.symbol().lower()])
                 tried = []
                 if cache is not None and key in cache.z:                      # a hit: the recapturer that bound before, re-bound by the atoms
-                    got = bind_any_dead_end(fen, mover, s, t, cache.z[key])
+                    got = bind_dead_end(fen, mover, s, t, cache.z[key])
                     if got:
                         cache.hits += 1
-                        dead = dict(kind="dead end", s=s, t=t, z=cache.z[key], san=san, why=f"taking {t} loses: we take back with {'the king' if cache.z[key] == 'king' else cache.z[key]}", W=got["W"], hit=True)
+                        dead = dict(kind="dead end", s=s, t=t, z=cache.z[key], san=san, why=f"taking {t} loses: we take back with {cache.z[key]}", W=got["W"], hit=True)
                     tried.append(cache.z[key])
                 if dead is None:
-                    zs = recapturers(b, m)
+                    b.push(m)
+                    zs = sorted({chess.square_name(r.from_square) for r in b.legal_moves if r.to_square == m.to_square},
+                                key=lambda q: (PIECE_WORTH[b.piece_at(chess.parse_square(q)).symbol().lower()], q))
+                    b.pop()
                     for z in zs:
                         if z in tried:
                             continue
-                        got = bind_any_dead_end(fen, mover, s, t, z)
+                        got = bind_dead_end(fen, mover, s, t, z)
                         if got:
-                            dead = dict(kind="dead end", s=s, t=t, z=z, san=san, why=f"taking {t} loses: we take back with {'the king' if z == 'king' else z}", W=got["W"])
+                            dead = dict(kind="dead end", s=s, t=t, z=z, san=san, why=f"taking {t} loses: we take back with {z}", W=got["W"])
                             if cache is not None:
                                 cache.z[key] = z
                             break
@@ -1702,9 +1674,13 @@ def sacrifice_flag(fen: str, mover: str, line: list, tag: str, delta: int, log=p
     if victim is None or victim.color == b.turn or b.is_en_passant(m):
         return False
     s, t = chess.square_name(m.from_square), chess.square_name(m.to_square)
-    for z in recapturers(b, m):
-        if bind_any_dead_end(fen, mover, s, t, z):
-            log(f"OBS sacrifice candidate {tag}: {line[0]} is a dead end by the exchange (they take back with {'the king' if z == 'king' else z}) yet the solver forces {delta}")
+    b.push(m)
+    zs = sorted({chess.square_name(r.from_square) for r in b.legal_moves if r.to_square == m.to_square},
+                key=lambda q: (PIECE_WORTH[b.piece_at(chess.parse_square(q)).symbol().lower()], q))
+    b.pop()
+    for z in zs:
+        if bind_dead_end(fen, mover, s, t, z):
+            log(f"OBS sacrifice candidate {tag}: {line[0]} is a dead end by the exchange (they take back with {z}) yet the solver forces {delta}")
             return True
     return False
 
@@ -1718,7 +1694,7 @@ def verdict_sentence(v: dict, fen: str) -> str:
     name = chess.piece_name(target.piece_type) if target else "pawn"
     head = f"{name} {v['t']} by {v['s']} ({v['san']})"
     if v["kind"] == "dead end":
-        return f"{head}: dead end (we take back with {'the king' if v['z'] == 'king' else v['z']})"
+        return f"{head}: dead end (we take back with {v['z']})"
     if v["kind"] == "costs":
         return f"{head}: costs {v['k']}"
     return f"{head}: affordable (not a dead end by the one-step exchange)"
@@ -1754,8 +1730,7 @@ def verdict_report(fen: str, us: str, line: list, depth: int, log=print, cache: 
 
 DEAD_END_SENTENCE = ("SCHEMA dead_end(s, t, z, W): the side to move has a piece on s, not about to promote, that can take a piece of theirs on t, worth at least W "
                      "while what stands on t is worth at most W; after that capture a piece of theirs on z, not about to promote, can go to t; then whatever they reply, "
-                     "the capturer's balance is at most what it is now (the capture gains nothing); the sibling SCHEMA dead_end_king(s, t, W) says the same when their KING (the object word L) "
-                     "is the one that can go to t after s -> t (the king is the king by construction: no ownership leg, no pawn leg)")
+                     "the capturer's balance is at most what it is now (the capture gains nothing)")
 
 
 def schema_sentence(depth: int, family: str = "delayed_root") -> str:
@@ -1989,7 +1964,6 @@ def _layers(win: dict, tag: str, top: int, lean_cap: int, do_lean: bool, do_dril
                 return False
             op = repair(diag)[0][0]
             ensure_dead_end(log, do_lean)
-            ensure_dead_end_king(log, do_lean)
             log(f"OBS schema dead_end in words: {DEAD_END_SENTENCE}")
             log(f"OBS EXPLAINED BY SCHEMA {name} bound to " + ", ".join(f"{v}={q}" for v, q in zip(SCHEMA_VARS, [q for pr in inst["pairs"] for q in pr]))
                 + f": {explanation(diag, op, depth, inst['pairs'], need, family)}; the instance is proved in Lean by `exact` of the schema theorem; the solver confirms a forced gain >= {need}"
