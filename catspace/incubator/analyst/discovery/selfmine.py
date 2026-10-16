@@ -1029,8 +1029,17 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
     delta = int(win["observable"]["delta"])
     poss = positions(win)
     ks = sorted({p["k"] for p in poss})
-    both = [k for k in ks if {"SAME", "AVOIDED"} <= {p["cls"] for p in poss if p["k"] == k}]
-    tk = max(both) if both else min(k for k in ks if k >= 1 and any(p["k"] == k and p["cls"] == "SAME" for p in poss))   # no avoidance anywhere: the loser's last move
+    # the EXAMPLE is the window's START (43.2): the deepest ply where the victim to move has a SAME branch, i.e. where the trap was laid, not the last ply with both classes
+    victim = win["observable"]["victim"]
+    side = {"white": "w", "black": "b"}[victim] if victim else None
+    starts = [k for k in ks if k >= 1 and any(p["k"] == k and p["cls"] == "SAME" and p["mover"] != side and side for p in poss)]    # a victim's move leaves the winner to move
+    if starts:
+        tk = max(starts)
+    else:                                                                       # no such ply: the old choice
+        both = [k for k in ks if {"SAME", "AVOIDED"} <= {p["cls"] for p in poss if p["k"] == k}]
+        tk = max(both) if both else min(k for k in ks if k >= 1 and any(p["k"] == k and p["cls"] == "SAME" for p in poss))
+    log(f"OBS target {tag}: the example is the window's start, ply k={tk} of {max(ks)} (game ply {next(p for p in win['plies'] if p['k'] == tk)['ply'] + 1}), "
+        f"{'a victim move' if starts else 'no victim ply with a SAME branch: the last ply with both classes'}")
     ex = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "SAME"]
     cx = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "AVOIDED"]
     ex.sort(key=lambda i: not poss[i]["played"])                  # the move that was played first: the example is the game's own position
