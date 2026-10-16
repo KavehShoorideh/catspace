@@ -804,6 +804,18 @@ theorem not_promoting_at_opp (q : Position) (c : Color) (z : Square) (hq : q.tur
     decide_eq_false_iff_not] at h0
   cases c <;> simp only [Color.opposite] at hq <;> rw [hq] at hr <;> simp [named, Fin.ext_iff, Fin.rev] at h0 <;> simp at hr <;> omega
 
+/-- THEIR KING AS THE RECAPTURER: a count of `the king of side c can go to t` (the object word L) is a square holding that king that can legally go to t. -/
+theorem king_moves_of_count (q : Position) (c : Color) (t : Square)
+    (h : count (fun u => oset (movesOf q) (kingSq q c) u && oset atSq (some t) u) ≥ 1) :
+    ∃ K, q.board K = some ⟨c, PieceKind.king⟩ ∧ movesOf q K t = true := by
+  obtain ⟨u, hu⟩ := count_pos_mem _ h
+  simp only [Bool.and_eq_true, oset, atSq, beq_iff_eq] at hu
+  obtain ⟨hm, rfl⟩ := hu
+  revert hm
+  cases hk : kingSq q c with
+  | none => intro hm; simp at hm
+  | some K => intro hm; exact ⟨K, kingSq_board q c K hk, hm⟩
+
 /-- THE ONE-STEP EXCHANGE, from the capturer's side (ANALYST_PLAN 45.2). The side to move (`c`) takes with the piece on `s` the piece on `t`;
 the other side takes back on `t` with the piece on `z`; the capturer's piece is worth at least what it took. Then whatever the other side
 replies, the capturer's balance is no higher than it is now: the capture gains nothing (a dead end for the capturer). -/

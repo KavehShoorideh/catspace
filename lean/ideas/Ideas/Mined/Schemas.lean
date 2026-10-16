@@ -238,4 +238,23 @@ theorem dead_end (p : Position) (c : Color) (hc : p.turn = c) (s t z : Square) (
   have hnp1 := Ideas.Root.not_promoting_at_opp _ c z (by rw [applyMove_turn, hc]) hznp q1 hz hc1
   exact Ideas.Root.dead_end_core p c hc s t z q0 r hs hq0c ht hrc W hw1 hw2 q1 hz hc1 hnp1 (Ideas.TreeStep.moves_of_count _ z t hzm)
 
+/-- THE DEAD END WITH THEIR KING TAKING BACK, the one-step exchange from the capturer's side (plan 45, the sibling of `dead_end`: the words `theirs`/`ours` leave the king out, so a king recapture is named by the object word L, their king's square). The side to move (c) has a piece on s, not about to promote, that can take a piece of theirs on t, worth at least W while what stands on t is worth at most W; after that capture their king L can go to t. Then whatever they reply after the capture, the capturer's balance is at most what it is now. The king is the king by construction (`kingSq`), so there is no ownership leg and no pawn leg for it. The squares are variables: bind them to any position. -/
+theorem dead_end_king (p : Position) (c : Color) (hc : p.turn = c) (s t : Square) (W : Nat)
+    (hmv : (count (fun u => (oset (movesOf p) (some s)) u && (oset atSq (some t)) u)) ≥ 1)
+    (hown : (count (fun u => (piecesOf p c) u && (oset atSq (some s)) u)) ≥ 1)
+    (hnp : (count (fun u => (kindSet p c .pawn) u && (fun u => (oset atSq (some s)) u && (oset rankOf (some (named c (((0 : Fin 8)), ((6 : Fin 8)))))) u) u)) ≤ 0)
+    (hth : (count (fun u => (piecesOf p (Color.opposite c)) u && (oset atSq (some t)) u)) ≥ 1)
+    (hw1 : (onum (worthOf p) (some s)) ≥ W)
+    (hw2 : (onum (worthOf p) (some t)) ≤ W)
+    (hzm : (afterMove p (some s) (some t) (fun p => (count (fun u => (oset (movesOf p) (kingSq p (Color.opposite c))) u && (oset atSq (some t)) u)))) ≥ 1) :
+    (afterMove p (some s) (some t) (fun p => (leastOver p (fun p => (balanceOf p c))))) ≤ (balanceOf p c) := by
+  obtain ⟨q0, hs, hq0c, -⟩ := Ideas.TreeStep.ours_at p c s hown
+  obtain ⟨r, ht, hrc, hrk⟩ := Ideas.TreeStep.ours_at p (Color.opposite c) t hth
+  have hnp' := Ideas.TreeStep.not_promoting_at p c s hc hnp q0 hs hq0c
+  obtain ⟨hm, haf⟩ := Ideas.Root.after_capture_normal p s t q0 r hs (by rw [hq0c, hc]) hnp' ht (Ideas.TreeStep.moves_of_count p s t hmv)
+  rw [haf] at hzm ⊢
+  beta_reduce at hzm ⊢
+  obtain ⟨K, hK, hmK⟩ := Ideas.Root.king_moves_of_count _ (Color.opposite c) t hzm
+  exact Ideas.Root.dead_end_core p c hc s t K q0 r hs hq0c ht hrc W hw1 hw2 ⟨Color.opposite c, PieceKind.king⟩ hK rfl (by intro hk; cases hk) hmK
+
 end Ideas.Mined.Schemas
