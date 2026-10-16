@@ -460,4 +460,92 @@ theorem tail_two (c : Color) (base v : Int) (p : Position) (hc : p.turn = c) (k 
   have hb : balanceOf (applyMove (applyMove p m) r) c ≥ 64 + k := least_floor _ _ (64 + k) hF' r hr
   exact gainGoal_of_balance c base v _ (turn_after_two p c hc m r) k hk h4 hb
 
+/-! ## item 0 of ANALYST_PLAN 44: a pawn may be the piece that moves, as long as it is not about to promote
+
+`queenOnly_of_not_pawn` kept every pawn out of a named move, because `after` promotes only to a queen. A pawn that does not stand on
+the rank before promotion has no promotion among its moves, so its move `x -> y` is as good as any other (a capture, a push, an en
+passant: `after` plays the kernel's own move). The leg is read "no pawn of ours on `x` that stands on our seventh rank". -/
+
+/-- A legal promotion starts from a pawn of the side to move on the rank before promotion (the seventh, from its side). -/
+theorem promotion_from_seventh (p : Position) (s t : Square) (k : PromotionKind) (hm : Move.promotion s t k ∈ legalMoves p) :
+    ∃ q : Piece, p.board s = some q ∧ q.color = p.turn ∧ q.kind = PieceKind.pawn ∧
+      ((p.turn = Color.white ∧ s.2.val = 6) ∨ (p.turn = Color.black ∧ s.2.val = 1)) := by
+  have hl : legalMove p (Move.promotion s t k) := by
+    unfold legalMoves at hm
+    have h2 := (List.mem_filter.mp hm).2
+    exact @of_decide_eq_true _ (legalMoveDecidable p _) h2
+  have hps : pseudoLegalPromotionB p (.promotion s t k) = true := hl.1
+  simp only [pseudoLegalPromotionB] at hps
+  cases hb : p.board s with
+  | none => simp [hb] at hps
+  | some q0 =>
+    simp only [hb, Bool.and_eq_true, beq_iff_eq, Bool.or_eq_true] at hps
+    obtain ⟨⟨⟨hcol, hpawn⟩, htr⟩, hgeo⟩ := hps
+    refine ⟨q0, rfl, hcol, hpawn, ?_⟩
+    cases ht : p.turn <;> rw [ht] at htr hgeo <;>
+      simp only [promotionRank, Fin.ext_iff, pawnMoveGeometryB, pawnAttackGeometryB, Bool.and_eq_true, beq_iff_eq] at htr hgeo
+    · left
+      refine ⟨rfl, ?_⟩
+      rcases hgeo with ⟨⟨_, h1⟩, _⟩ | ⟨⟨_, h1⟩, _⟩ <;> (simp at h1; omega)
+    · right
+      refine ⟨rfl, ?_⟩
+      rcases hgeo with ⟨⟨_, h1⟩, _⟩ | ⟨⟨_, h1⟩, _⟩ <;> (simp at h1; omega)
+
+/-- A legal move of a piece that is not about to promote is never a promotion to anything but a queen (it is no promotion at all). -/
+theorem queenOnly_of_not_promoting (p : Position) (m : Move) (hm : m ∈ legalMoves p) (q : Piece) (hx : p.board m.source = some q)
+    (hnp : q.kind = PieceKind.pawn → ¬ ((p.turn = Color.white ∧ m.source.2.val = 6) ∨ (p.turn = Color.black ∧ m.source.2.val = 1))) :
+    queenOnly m = true := by
+  cases m with
+  | promotion s t k =>
+    exfalso
+    obtain ⟨q', hq', -, hqk, hr⟩ := promotion_from_seventh p s t k hm
+    simp only [Move.source] at hx hnp
+    rw [hx] at hq'
+    have := Option.some.inj hq'
+    subst this
+    exact hnp hqk hr
+  | normal s t => rfl
+  | enPassant s t => rfl
+  | whiteKingCastle => rfl
+  | whiteQueenCastle => rfl
+  | blackKingCastle => rfl
+  | blackQueenCastle => rfl
+
+/-- THE LEG IN WORDS: `no pawn of ours at x on our seventh rank` (the word `(count (and ourpawns (and (at x) (rank <seventh>))))` at most 0)
+says the piece on `x`, if it is a pawn, is not about to promote. -/
+theorem not_promoting_at (p : Position) (c : Color) (x : Square) (hc : p.turn = c)
+    (h : count (fun u => kindSet p c PieceKind.pawn u && (oset atSq (some x) u && oset rankOf (some (named c ((0 : Fin 8), (6 : Fin 8)))) u)) ≤ 0)
+    (q : Piece) (hx : p.board x = some q) (hqc : q.color = c) :
+    q.kind = PieceKind.pawn → ¬ ((p.turn = Color.white ∧ x.2.val = 6) ∨ (p.turn = Color.black ∧ x.2.val = 1)) := by
+  intro hk hr
+  have h0 := count_zero_not _ h x
+  simp only [kindSet, hx, oset, atSq, rankOf, hqc, hk, beq_self_eq_true, Bool.and_self, Bool.true_and, Bool.and_eq_false_iff,
+    decide_eq_false_iff_not] at h0
+  subst hc
+  rcases hr with ⟨h1, h2⟩ | ⟨h1, h2⟩ <;> rw [h1] at h0 <;> simp [named, Fin.ext_iff, Fin.rev] at h0 <;> omega
+
+/-- `after_of_moves` for a piece that is not about to promote (a pawn may be the mover). -/
+theorem after_of_moves_np (p : Position) (x y : Square) (q : Piece) (hx : p.board x = some q)
+    (hc : q.color = p.turn)
+    (hnp : q.kind = PieceKind.pawn → ¬ ((p.turn = Color.white ∧ x.2.val = 6) ∨ (p.turn = Color.black ∧ x.2.val = 1)))
+    (h : movesOf p x y = true) :
+    ∃ m ∈ legalMoves p, m.source = x ∧ m.destination = y ∧
+      ∀ f : Position → Nat, afterMove p (some x) (some y) f = f (applyMove p m) := by
+  obtain ⟨m, hm, hs, hd⟩ := movesOf_legal p x y q hx hc h
+  have hk : queenOnly m = true := queenOnly_of_not_promoting p m hm q (by rw [hs]; exact hx) (by rw [hs]; exact hnp)
+  exact afterMove_legal p x y m hm hs hd hk
+
+/-- OUR STEP IN THE WORDS, the pawn-safe leg: `step_after` with "no pawn of ours at x on our seventh rank" for "no pawn of ours at x". -/
+theorem step_after_np (c : Color) (g : Position → Bool) (p : Position) (n : Nat) (hc : p.turn = c) (x y : Square)
+    (hown : count (fun u => piecesOf p c u && oset atSq (some x) u) ≥ 1)
+    (hnp : count (fun u => kindSet p c PieceKind.pawn u && (oset atSq (some x) u && oset rankOf (some (named c ((0 : Fin 8), (6 : Fin 8)))) u)) ≤ 0)
+    (hmv : count (fun u => oset (movesOf p) (some x) u && oset atSq (some y) u) ≥ 1)
+    (H : ∀ m ∈ legalMoves p, (∀ f : Position → Nat, afterMove p (some x) (some y) f = f (applyMove p m)) →
+      Ideas.forcedWithinB c g (applyMove p m) n = true) :
+    Ideas.forcedWithinB c g p (n + 1) = true := by
+  obtain ⟨q, hx, hqc, -⟩ := ours_at p c x hown
+  have hq := not_promoting_at p c x hc hnp q hx hqc
+  obtain ⟨m, hm, -, -, hafter⟩ := after_of_moves_np p x y q hx (by rw [hqc, hc]) hq (moves_of_count p x y hmv)
+  exact step_ours c g p n hc m hm (H m hm hafter)
+
 end Ideas.TreeStep

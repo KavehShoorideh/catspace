@@ -115,8 +115,28 @@ def ours_at(f: str):
     return ("count", ("and", "ours", ("at", f)))
 
 
+_CTX = {"mover": "w"}
+
+
+def set_mover(mover: str) -> None:
+    """The side whose premise is being built (the side to move at the example). The legs name the rank before promotion from ITS side, so they
+    need it; the default is white (hand-made tests)."""
+    _CTX["mover"] = mover
+
+
+def promo_from(mover: str | None = None) -> str:
+    """The absolute square (file a) on the rank from which OUR pawn promotes: our seventh rank, read from the mover's side."""
+    return view("a7", mover or _CTX["mover"])
+
+
 def no_pawn_at(f: str):
-    """No pawn of ours on f (a pawn's move may promote; `after` promotes only to a queen): read as <= 0."""
+    """No pawn of ours on f that is about to promote, read as <= 0 (ANALYST_PLAN 44 item 0). `after` promotes only to a queen, so a pawn on the
+    rank before promotion cannot be the piece of a named move; any other pawn may (its capture, its push, an en passant: the kernel's own move)."""
+    return ("count", ("and", "ourpawns", ("and", ("at", f), ("rank", promo_from()))))
+
+
+def no_pawn_here(f: str):
+    """No pawn of ours on f at all (the root `hanging` is proved for a piece that is not a pawn): read as <= 0."""
     return ("count", ("and", "ourpawns", ("at", f)))
 
 
@@ -552,12 +572,12 @@ def tree_proof(atoms: list, delta: int) -> str | None:
             def find(body, op):
                 return next((n for n, (pa, b, o, v) in at_node.items() if _same(pa, spine[:depth]) and o == op and b == body), None)
             hown = find(("count", ("and", "ours", ("at", f))), ">=")
-            hnp = find(("count", ("and", "ourpawns", ("at", f))), "<=")
+            hnp = find(no_pawn_at(f), "<=")
             hmv = find(("count", ("and", ("moves", f), ("at", t))), ">=")
             if not (hown and hnp and hmv):
                 return None
             m, hm, haf = nm("m"), nm("hm"), nm("haf")
-            lines.append(f"refine Ideas.TreeStep.step_after c _ ({pos}) {remaining - 1} {turn(depth, pos)} _ _ {hown} {hnp} {hmv} ?_")
+            lines.append(f"refine Ideas.TreeStep.step_after_np c _ ({pos}) {remaining - 1} {turn(depth, pos)} _ _ {hown} {hnp} {hmv} ?_")
             lines.append(f"intro {m} {hm} {haf}")
             nxt = {}
             for n, (pa, b, o, v) in at_node.items():
@@ -764,6 +784,7 @@ def mine(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool =
     cx = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "AVOIDED"]
     ox = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "OTHER"]
     mover = poss[ex[0]]["mover"]
+    set_mover(mover)
     n_opp = n_replies(win, poss, ks, tk, mover)
     log(f"OBS target {tag}: start ply k={tk}, delta {delta}; examples (SAME) {[poss[i]['san'] for i in ex]}, counter-examples (AVOIDED) "
         f"{[poss[i]['san'] for i in cx]}, set aside (OTHER) {[poss[i]['san'] for i in ox]}; the side to move after the move is {'white' if mover == 'w' else 'black'}")
@@ -878,9 +899,10 @@ def val_at(fen: str, term, mover: str) -> int:
 
 
 def root_atoms(x: str, y: str, mover: str, delta: int) -> list:
-    """The root's atoms for the capture x -> y, (term, op, v), absolute squares; the legs of x are added by with_legality."""
+    """The root's atoms for the capture x -> y, (term, op, v), absolute squares; the other legs of x are added by with_legality (the root asks the
+    stronger "no pawn of ours on x at all": `hanging` is proved for a piece that is not a pawn)."""
     pr = view(PROMO_SQ, mover)
-    return [(("count", ("and", "theirs", ("at", y))), ">=", 1), (("worth", y), ">=", delta),
+    return [(("count", ("and", "theirs", ("at", y))), ">=", 1), (("worth", y), ">=", delta), (no_pawn_here(x), "<=", 0),
             (("after", x, y, ("count", ("and", "ours", "hit"))), "<=", 0),
             (("after", x, y, ("count", ("and", "theirpawns", ("rank", pr)))), "<=", 0),
             ("material_us", ">=", 4), (("after", x, y, ("least", "1")), ">=", 1)]
@@ -1085,6 +1107,7 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
     cx = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "AVOIDED"]
     ex.sort(key=lambda i: not poss[i]["played"])                  # the move that was played first: the example is the game's own position
     mover = poss[ex[0]]["mover"]
+    set_mover(mover)
     n_opp = n_replies(win, poss, ks, tk, mover)
     base = poss[ex[0]]
     fen = base["fen"]
