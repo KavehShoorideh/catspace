@@ -31315,3 +31315,19 @@ Reading. The guard Kaveh described now exists as explanation: the proof of a win
 at its leaves carries a reason, a one-line lemma instance proved once. The one "affordable" verdict (Qxd7+, a queen takes a knight
 defended by the king: the exchange is in our favour but the one-step lemma does not see the king as the recapturer because the king's
 worth is 0) is the exact next deviation to name: the recapturer's worth does not matter when the capturer is lost.
+
+### THE KING IS A PIECE (2026-10-16 08:45 PDT)
+
+Verifying plan 45, the one "affordable" attack in the fork window (Qxd7+) turned out to be a vocabulary quirk: `ours` / `theirs`
+excluded the king in both Lean (piecesOf) and Rust (Term::Ours/Theirs), so the dead-end schema could not name Kxd7 as the take-back. I
+first had the builder add a king-only sibling schema; Kaveh: "King is a piece!" -- the right fix is the meaning of the word, not a second
+lemma. Builder commits 6adbf3bf d9f10466 (the sibling), 425dfaf7 2a52555d (its reverts), 8125074e (the king joins ours/theirs: Lean,
+Rust, the generator's sentences, index), 91c745af (test). Verified here: 80 tests pass, no sorry, lake build clean, all 12 Mined files
+still check, the fork window rerun: attacks 4, dead ends by schema 4, affordable 0; the explanation names "knight d7 by g4 (Qxd7+): dead
+end (we take back with e8)". 4pfUO5Kb still the root, 46LzXjoz still delayed_balance_d1.
+
+Two meanings moved, both stricter, soundness untouched: `(count (and ours hit))` now also counts our king in check (so "nothing of ours
+attacked" includes "not in check"); and the OLD registry export Ideas/Generated/Measures.lean (the September/October endgame lemmas over
+ours/theirs counts, krrvkr / krpvkr) now counts the king square too -- those lemmas were promoted on evidence under the old meaning and
+have not been re-evaluated. Open item for Kaveh: re-run the registry's evidence under the new meaning, or export those measures over a
+named non-king set.
