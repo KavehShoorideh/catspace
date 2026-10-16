@@ -322,3 +322,15 @@ def test_the_sacrifice_flag_fires_on_a_capture_the_exchange_calls_a_dead_end():
     assert SM.sacrifice_flag(fen, "w", ["Qxb3"], "t", 6, log=logs.append)
     assert "sacrifice candidate t: Qxb3 is a dead end by the exchange" in logs[0] and "forces 6" in logs[0]
     assert not SM.sacrifice_flag("4k3/8/8/8/8/1p6/8/1Q2K3 w - - 0 1", "w", ["Qxb3"], "t", 6, log=logs.append)       # nothing takes back: not flagged
+
+
+KING_TAKES = "4k3/8/8/r7/8/8/P7/1K6 b - - 0 1"     # black to move: Rxa2 takes a pawn that only our KING guards; the king is a piece (2026-10-16), so `dead_end` binds z = b1
+
+
+def test_the_king_is_a_recapturer_in_dead_end():
+    got = SM.bind_dead_end(KING_TAKES, "b", "a5", "a2", "b1")
+    assert got and got["least"] <= got["balance"]
+    res = SM.verdicts(KING_TAKES, "w", log=print)
+    by = {(v["s"], v["t"]): v for v in res["items"]}
+    assert by[("a5", "a2")]["kind"] == "dead end" and by[("a5", "a2")]["z"] == "b1"
+    assert res["counts"]["affordable"] == 0
