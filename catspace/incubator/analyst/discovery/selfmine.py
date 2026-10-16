@@ -744,7 +744,8 @@ def schema_proof(depth: int) -> str | None:
             return None
         h = next(n for n, (pa, b, o, v) in at_node.items() if o == ">=" and isinstance(b, tuple) and b[0] == "if" and n.startswith(tail))
         return [f"exact Ideas.Root.root_tail c _ v ({pos}) {turn_proof} (T - 64) (by omega) (by omega) (by omega)"]
-    body = _walk(hyps, spine, n_plies, finish)
+    with using_mover("w"):                      # (the legs the walk looks for name the rank before promotion from white's side, as the schema was built)
+        body = _walk(hyps, spine, n_plies, finish)
     return None if body is None else "\n  ".join(lines + body)
 
 
