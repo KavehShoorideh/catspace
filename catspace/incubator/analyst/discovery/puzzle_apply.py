@@ -172,7 +172,17 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
 STAGES = {"1": "position", "2": "threat", "3": "root", "4": "bind", "5": "decision", "6": "check", "7": "search", "8": "opponent"}
 
 
+_SHAPES = {}
+
+
 def shape(fen: str, pairs: list, us: str) -> dict:
+    key = (fen, tuple(map(tuple, pairs)), us)
+    if key not in _SHAPES:
+        _SHAPES[key] = _shape(fen, pairs, us)
+    return _SHAPES[key]
+
+
+def _shape(fen: str, pairs: list, us: str) -> dict:
     """THE SHAPE of the position after our move (Kaveh 2026-10-16: the tiebreaker is "where most of our pieces are not hanging, then the most synergy
     -- my pieces protecting each other -- then how many of theirs I poke"; and "think from the opponent's view: what ways do they have to threaten
     my king? a check that also attacks a loose piece wins it"). Read in the words after the move: `hanging` = our pieces (not the king) whose
@@ -201,17 +211,33 @@ def shape(fen: str, pairs: list, us: str) -> dict:
             cf = c.fen()
             forks = [chess.square_name(s) for s in ours if c.piece_at(s) and c.piece_at(s).color == side and SM.val_at(cf, ("see", chess.square_name(s)), us) > 0]
             checks.append((csan, forks))
+    # THEIR THREATS TO THEIR END (Kaveh 2026-10-16: "not a fixed ply number: as far as they have forcing moves; a threat two moves away that is
+    # inevitable must be run through"): the goal finder names what they can win and how (against the natural reply), biggest first; the exact
+    # labeller then asks "can it be stopped?" over EVERY defence of ours, within the goal's cost or one more (their desperado replies)
+    threats = []
+    if not b.is_game_over():
+        import analyst_core as A
+        goals, _ = A.goals_of(after, 3, "us")
+        for kind, what, val, cost, gline in goals[:3]:
+            threats.append(dict(kind=kind, what=what, value=int(val), cost=int(cost), line=gline))
+    inevitable = None                                    # "can it be stopped?": the largest of the threats' values (or 1) they can force against every defence
+    if threats:
+        for v in sorted({t["value"] for t in threats} | {1}, reverse=True):
+            lab = SM._label((after, v, max(t["cost"] for t in threats)))
+            if lab.get("status") == "forced":
+                inevitable = (v, lab["line"])
+                break
     theirs = [(SM.PIECE_WORTH[b.piece_at(s).symbol().lower()], s) for s in chess.SQUARES if b.piece_at(s) and b.piece_at(s).color != side]
     big = max(theirs)[1] if theirs else None
     kingdist = SM.val_at(fen, ("after", x, y, ("dist", "W", chess.square_name(big))), us) if big is not None and b.king(side) is not None else None
-    return dict(san=san, mate=b.is_checkmate(), hanging=hanging, guarded=guarded, poking=poking, checks=checks, kingdist=kingdist, big=chess.square_name(big) if big is not None else None)
+    return dict(san=san, mate=b.is_checkmate(), threats=threats, inevitable=inevitable, loss=inevitable[0] if inevitable else 0, hanging=hanging, guarded=guarded, poking=poking, checks=checks, kingdist=kingdist, big=chess.square_name(big) if big is not None else None)
 
 
 def shape_key(sh: dict) -> tuple:
     """Better first: fewer hanging, then fewer checks that fork a loose piece, then more guarded, then more poked (defence, then attack)."""
     if sh.get("mate"):
         return (-1,)
-    return (len(sh["hanging"]), sum(1 for _, f in sh["checks"] if f), -sh["guarded"], -sh["poking"])
+    return (sh["loss"], len(sh["hanging"]), sum(1 for _, f in sh["checks"] if f), -sh["guarded"], -sh["poking"])
 
 
 def shape_line(sh: dict) -> str:
@@ -219,7 +245,12 @@ def shape_line(sh: dict) -> str:
         return f"after {sh['san']}: MATE"
     forks = [f"{c} (attacks {', '.join(f)})" for c, f in sh["checks"] if f]
     plain = [c for c, f in sh["checks"] if not f]
-    return (f"after {sh['san']}: hanging {sh['hanging'] or 'none'}; guarded {sh['guarded']}, poking {sh['poking']}; their checks: "
+    th = []
+    for t in sh["threats"]:
+        th.append(f"{t['what']} ({t['value']}, {t['line']})")
+    inev = sh["inevitable"]
+    return (f"after {sh['san']}: their threats: " + ("; ".join(th) if th else "none")
+            + (f" -- INEVITABLE, we lose at least {inev[0]}: {' '.join(inev[1])}" if inev else ("; all stoppable" if th else "")) + f"; hanging {sh['hanging'] or 'none'}; guarded {sh['guarded']}, poking {sh['poking']}; their checks: "
             + (", ".join(forks + plain) if sh["checks"] else "none")
             + (f"; our king {sh['kingdist']} from their {sh['big']}" if sh["kingdist"] is not None else ""))
 
