@@ -524,32 +524,12 @@ def n_replies(win: dict, poss: list, ks: list, tk: int, mover: str) -> int:
     return n
 
 
-def tree_proof(atoms: list, delta: int) -> str | None:
-    """THE COMPOSING STEP: a Lean proof script for a premise whose atoms lie along one spine -- our named move, every reply, ..., then
-    `(most (least balance))` -- built from Ideas.TreeStep: step_after at our named moves (its legs are the ownership and legality
-    atoms read at that node), step_least at theirs (least_floor carries every `least` atom one reply down), tail_two at the end
-    (gainGoal_of_balance, with the root's `balance` atom bounding the base). None when the premise has no such spine. `atoms` are
-    (term, op, v) as the statement lists them, in order."""
-    spine, k_leaf = None, 0
-    for term, op, v in atoms:
-        path, body = _split(term)
-        if body == "balance" and op == ">=" and len(path) >= 2 and path[-2:] == (("most",), ("least",)):
-            spine, k_leaf = path, v - 64
-            break
-    if spine is None or k_leaf < 4:
-        return None
-    root_b = [v for term, op, v in atoms if term == "balance" and op == "<="]
-    if not root_b or k_leaf < min(root_b) - 64 + delta:    # base <= root balance - 64, so k_leaf >= base + delta needs this
-        return None
-    n_plies = len(spine)
-    if n_plies % 2 or n_plies > 6:
-        return None
-    hyps = {f"h{i}": (*_split(term), op, v) for i, (term, op, v) in enumerate(atoms)}   # name -> (path, body, op, v), at the node
-    lines = ["intro hall", f"obtain ⟨{', '.join(f'h{i}' for i in range(len(atoms)))}⟩ := hall",
-             f"refine Ideas.TreeStep.forcingOf_ne_zero p c {delta} hc {n_plies // 2} (by simp) ?_",
-             f"show Ideas.forcedWithinB c _ p {n_plies} = true"]
-    hb = next(n for n, (pa, b, op, v) in hyps.items() if b == "balance" and op == "<=" and pa == ())
-    lines.append(f"have hbase : ((materialOf p c : Int) - materialOf p (Color.opposite c)) ≤ {min(root_b) - 64} := by unfold balanceOf at {hb}; omega")
+def _walk(hyps: dict, spine: tuple, n_plies: int, finish) -> list | None:
+    """The steps of a proof along a spine of `after` / `least` / `most` nodes, from the hypotheses `hyps` (name -> (path, body, op, v)): step_after_np at
+    our named moves (its legs are the ownership, legality and not-about-to-promote atoms read at that node), step_least at theirs (least_floor carries
+    every `least` atom one reply down, le_mostOver every `most` one), and at a `most` node `finish(depth, position, turn_proof, hyps_at_node)` closes
+    the proof. None when a hypothesis the steps need is missing."""
+    lines = []
     fresh = [0]
 
     def nm(prefix):
@@ -561,6 +541,9 @@ def tree_proof(atoms: list, delta: int) -> str | None:
             return "hc"
         return (f"(by simp only [applyMove_turn, hc] <;> (cases c <;> first | rfl | decide) : ({P}).turn = c)" if d % 2 == 0
                 else f"(by simp only [applyMove_turn, hc] <;> (cases c <;> first | rfl | decide) : ({P}).turn ≠ c)")
+
+    def pos_ok(v):
+        return v >= 1 if not isinstance(v, str) else True          # (a symbolic threshold is at least 1 by the schema's own side condition)
 
     pos = "p"
     for depth, step in enumerate(spine):
@@ -586,7 +569,7 @@ def tree_proof(atoms: list, delta: int) -> str | None:
                     nxt[n] = (pa, b, o, v)
             hyps, pos = nxt, f"applyMove ({pos}) {m}"
         elif step[0] == "least":
-            hne = next(((n, v) for n, (pa, b, o, v) in at_node.items() if len(pa) > depth and pa[depth] == ("least",) and o == ">=" and v >= 1), None)
+            hne = next(((n, v) for n, (pa, b, o, v) in at_node.items() if len(pa) > depth and pa[depth] == ("least",) and o == ">=" and pos_ok(v)), None)
             if hne is None:
                 return None
             r, hr = nm("r"), nm("hr")
@@ -602,11 +585,47 @@ def tree_proof(atoms: list, delta: int) -> str | None:
                     nxt[n + "'"] = (pa, b, o, v)
             hyps, pos = nxt, f"applyMove ({pos}) {r}"
         elif step[0] == "most":
-            if spine[depth:] != (("most",), ("least",)):
+            tail = finish(depth, pos, turn(depth, pos), {n: h for n, h in hyps.items() if _same(h[0][:depth], spine[:depth])})
+            if tail is None:
                 return None
-            lines.append(f"exact Ideas.TreeStep.tail_two c _ {delta} ({pos}) {turn(depth, pos)} {k_leaf} (by omega) (by omega) (by omega)")
+            lines += tail
             break
-    return "\n  ".join(lines)
+    return lines
+
+
+def tree_proof(atoms: list, delta: int) -> str | None:
+    """THE COMPOSING STEP: a Lean proof script for a premise whose atoms lie along one spine -- our named move, every reply, ..., then
+    `(most (least balance))` -- built from Ideas.TreeStep: step_after_np at our named moves (its legs are the ownership and legality
+    atoms read at that node), step_least at theirs (least_floor carries every `least` atom one reply down), tail_two at the end
+    (gainGoal_of_balance, with the root's `balance` atom bounding the base). None when the premise has no such spine. `atoms` are
+    (term, op, v) as the statement lists them, in order."""
+    spine, k_leaf = None, 0
+    for term, op, v in atoms:
+        path, body = _split(term)
+        if body == "balance" and op == ">=" and len(path) >= 2 and path[-2:] == (("most",), ("least",)):
+            spine, k_leaf = path, v - 64
+            break
+    if spine is None or k_leaf < 4:
+        return None
+    root_b = [v for term, op, v in atoms if term == "balance" and op == "<="]
+    if not root_b or k_leaf < min(root_b) - 64 + delta:    # base <= root balance - 64, so k_leaf >= base + delta needs this
+        return None
+    n_plies = len(spine)
+    if n_plies % 2 or n_plies > 6:
+        return None
+    hyps = {f"h{i}": (*_split(term), op, v) for i, (term, op, v) in enumerate(atoms)}   # name -> (path, body, op, v), at the node
+    lines = ["intro hall", f"obtain ⟨{', '.join(f'h{i}' for i in range(len(atoms)))}⟩ := hall",
+             f"refine Ideas.TreeStep.forcingOf_ne_zero p c {delta} hc {n_plies // 2} (by simp) ?_",
+             f"show Ideas.forcedWithinB c _ p {n_plies} = true"]
+    hb = next(n for n, (pa, b, op, v) in hyps.items() if b == "balance" and op == "<=" and pa == ())
+    lines.append(f"have hbase : ((materialOf p c : Int) - materialOf p (Color.opposite c)) ≤ {min(root_b) - 64} := by unfold balanceOf at {hb}; omega")
+
+    def finish(depth, pos, turn_proof, at_node):
+        if spine[depth:] != (("most",), ("least",)):
+            return None
+        return [f"exact Ideas.TreeStep.tail_two c _ {delta} ({pos}) {turn_proof} {k_leaf} (by omega) (by omega) (by omega)"]
+    body = _walk(hyps, spine, n_plies, finish)
+    return None if body is None else "\n  ".join(lines + body)
 
 
 def _lean_sq(sq: str, mover: str) -> str:
@@ -644,9 +663,214 @@ def root_proof(atoms: list, delta: int, mover: str = "w") -> str | None:
                        f"(by simp only [onum] at {w}; omega) {hit} {pr} (by omega) {mov}"])
 
 
+# ---------------------------------------------------------------------------------------------------------------- schemas (ANALYST_PLAN 44)
+
+SCHEMAS_FILE = LEAN_DIR / "Ideas" / "Mined" / "Schemas.lean"
+DUMMY = {"x1": "b1", "y1": "c1", "x2": "d1", "y2": "e1"}          # the schema's square variables, as squares (file a is the promotion / en-passant rank's)
+SCHEMA_VARS = ("x1", "y1", "x2", "y2")
+
+
+class using_mover:
+    """`with using_mover("w"):` -- the legs and the guard are built for that side, and the previous side comes back after."""
+    def __init__(self, mover):
+        self.mover = mover
+
+    def __enter__(self):
+        self.old = _CTX["mover"]
+        set_mover(self.mover)
+
+    def __exit__(self, *a):
+        set_mover(self.old)
+
+
+def tail_guard(mover: str):
+    """THE GUARD of a delayed root (44.2, with the two soundness conjuncts): nothing of ours is attacked (the board's own king lifted), they have no pawn
+    on our second rank (no promotion) nor on our fourth (no en passant), and they have a legal reply. Zero when all hold."""
+    ours_hit = ("count", ("and", "ours", "hit"))
+    promo = ("count", ("and", "theirpawns", ("rank", view(PROMO_SQ, mover))))
+    ep = ("count", ("and", "theirpawns", ("rank", view("a4", mover))))
+    no_reply = ("eq", ("least", "1"), "0")
+    return ("eq", ("sum", ("sum", ("sum", ours_hit, promo), ep), no_reply), "0")
+
+
+def tail_body(mover: str):
+    """After the last named move and every reply of theirs: some move of ours, after which the guard holds and the balance is read, else 0."""
+    return ("least", ("most", ("if", tail_guard(mover), "balance", "0")))
+
+
+def delayed_tail(pairs: list, mover: str):
+    return wrap_tree(pairs, tail_body(mover))
+
+
+def schema_name(depth: int) -> str:
+    return f"delayed_root_d{depth}"
+
+
+def schema_hyps(depth: int, squares: list, B, T, mover: str) -> list:
+    """The hypotheses of the delayed-root schema of this depth bound to `squares` (absolute, x1 y1 [x2 y2]) and the numbers B (the balance now is at most
+    it) and T (the tail reads at least it): [(name, term, op, v)] in the order of with_legality (legs, then the balance, then the tail)."""
+    pairs = [(squares[2 * i], squares[2 * i + 1]) for i in range(depth)]
+    with using_mover(mover):
+        prem = [atom_of("balance", "<=", B), atom_of(delayed_tail(pairs, mover), ">=", T)]
+        atoms = with_legality(prem)
+    return [(f"h{i}", t, op, v) for i, (t, op, v) in enumerate(atoms)]
+
+
+def _is_tail(term) -> bool:
+    path, body = _split(term)
+    return bool(path) and path[-1] == ("most",) and isinstance(body, tuple) and body[0] == "if"
+
+
+def _hyps_dict(hl: list) -> dict:
+    return {n: (*_split(t), op, v) for n, t, op, v in hl}
+
+
+def schema_proof(depth: int) -> str | None:
+    """The proof of the delayed-root schema of this depth: forcingOf_ne_zero at horizon depth + 1, step_after_np at each named move, step_least at each
+    reply, and at the end `Ideas.Root.root_tail` (the one hand-written step; the tail of a delayed root). One `root_tail` per schema."""
+    sq = [DUMMY[v] for v in SCHEMA_VARS[:2 * depth]]
+    hl = schema_hyps(depth, sq, "B", "T", "w")
+    hyps = _hyps_dict(hl)
+    tail = next(n for n, t, op, v in hl if _is_tail(t))
+    hb = next(n for n, t, op, v in hl if t == "balance")
+    spine = hyps[tail][0]
+    n_plies = 2 * (depth + 1)
+    lines = [f"refine Ideas.TreeStep.forcingOf_ne_zero p c v hc {depth + 1} (by simp) ?_",
+             f"show Ideas.forcedWithinB c _ p {n_plies} = true",
+             f"have hbase : ((materialOf p c : Int) - materialOf p (Color.opposite c)) ≤ (B : Int) - 64 := by unfold balanceOf at {hb}; omega"]
+
+    def finish(d, pos, turn_proof, at_node):
+        if spine[d:] != (("most",),):
+            return None
+        h = next(n for n, (pa, b, o, v) in at_node.items() if o == ">=" and isinstance(b, tuple) and b[0] == "if" and n.startswith(tail))
+        return [f"exact Ideas.Root.root_tail c _ v ({pos}) {turn_proof} (T - 64) (by omega) (by omega) (by omega)"]
+    body = _walk(hyps, spine, n_plies, finish)
+    return None if body is None else "\n  ".join(lines + body)
+
+
+def _var_squares(text: str) -> str:
+    """The dummy squares of a rendered schema, as Lean variables."""
+    for var, sq in DUMMY.items():
+        text = text.replace(f"(some (named c ((({ord(sq[0]) - 97} : Fin 8)), (({int(sq[1]) - 1} : Fin 8)))))", f"(some {var})")
+    return text
+
+
+def schema_theorem(depth: int, proof: str | None = None) -> str:
+    sq = [DUMMY[v] for v in SCHEMA_VARS[:2 * depth]]
+    hl = schema_hyps(depth, sq, "B", "T", "w")
+    vs = " ".join(SCHEMA_VARS[:2 * depth])
+    hy = "".join(f"\n    ({n} : {_var_squares(BV.lean(render(t, 'w')))} {'≥' if op == '>=' else '≤'} {v})" for n, t, op, v in hl)
+    doc = (f"THE DELAYED ROOT, depth {depth} (plan 44.2, the operators DELAY / RECAPTURE). Our moves {' and '.join(f'x{i + 1} -> y{i + 1}' for i in range(depth))} are "
+           f"named (legal, a piece of ours that is not about to promote); whatever they reply to the last, some move of ours leaves a position in which nothing "
+           f"of ours is attacked, they have no pawn about to promote or to take en passant, they have a reply, and the balance is at least T; the balance now is at "
+           f"most B, and T is at least B + v and at least 68: then the gain v is forced. The squares are variables: bind them to any position.")
+    return (f"/-- {doc} -/\ntheorem {schema_name(depth)} (p : Position) (c : Color) (W : Square) (hc : p.turn = c) (hW : kingSq p c = some W)\n"
+            f"    ({vs} : Square) (B T : Nat) (v : Int) (hTB : (T : Int) ≥ (B : Int) + v) (hT : T ≥ 68){hy} :\n    forcingOf p c v ≠ 0 := by\n  "
+            f"{proof if proof is not None else schema_proof(depth)}\n")
+
+
+SCHEMA_HEAD = """import Ideas.Base.Vocabulary
+import Ideas.TreeStep
+import Ideas.Root
+
+/-! SCHEMAS found by the loop (ANALYST_PLAN 44), written by catspace/incubator/analyst/discovery/selfmine.py (`ensure_schema`): each theorem is a premise
+over square VARIABLES, proved once from the step theorems (`step_after_np`, `step_least`) and the one hand-written tail `Ideas.Root.root_tail`. A mined window
+instance is `exact` of one of them with its squares and numbers. A schema is appended only when Lean proves it. -/
+
+set_option linter.unusedVariables false
+set_option linter.unusedSimpArgs false
+set_option maxHeartbeats 400000
+
+namespace Ideas.Mined.Schemas
+
+open Chess hiding between
+open Ideas.Vocabulary
+"""
+SCHEMA_TAIL = "\nend Ideas.Mined.Schemas\n"
+
+
+def schemas_text() -> str:
+    return SCHEMAS_FILE.read_text() if SCHEMAS_FILE.exists() else SCHEMA_HEAD + SCHEMA_TAIL
+
+
+def proved_schemas() -> list:
+    """The names of the schemas in Schemas.lean (a schema is appended only when proved)."""
+    return re.findall(r"^theorem (delayed_root_d\d+)", schemas_text(), flags=re.M)
+
+
+def ensure_schema(depth: int, log=print, do_lean: bool = True) -> dict:
+    """The schema of this depth is in Schemas.lean (proved), or is generated, checked by Lean and appended on success. -> dict(proved, new, error)."""
+    name = schema_name(depth)
+    if name in proved_schemas():
+        return dict(proved=True, new=False, error=None)
+    if not do_lean:
+        return dict(proved=False, new=False, error="--no-lean")
+    thm = schema_theorem(depth)
+    old = schemas_text()
+    body = old[: old.rindex("end Ideas.Mined.Schemas")].rstrip("\n") + "\n\n" + thm + SCHEMA_TAIL
+    trial = SCHEMAS_FILE.parent / "_SchemaTrial.lean"
+    t0 = time.time()
+    try:
+        trial.write_text(body)
+        errs = run_lean(trial)
+    finally:
+        trial.unlink(missing_ok=True)
+    if errs:
+        log(f"OBS lean schema {name}: FAILS: {errs[0]['msg'][:200]} (line {errs[0]['line']})")
+        return dict(proved=False, new=True, error=errs[0]["msg"])
+    SCHEMAS_FILE.write_text(body)
+    build_schemas()
+    log(f"OBS lean schema {name}: PROVES ({round(time.time() - t0, 1)} s); appended to {SCHEMAS_FILE.relative_to(LEAN_DIR.parent.parent)}")
+    return dict(proved=True, new=True, error=None)
+
+
+def build_schemas() -> None:
+    """Compile Ideas.Mined.Schemas so that window files can import it."""
+    if not SCHEMAS_FILE.exists():
+        SCHEMAS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SCHEMAS_FILE.write_text(SCHEMA_HEAD + SCHEMA_TAIL)
+    subprocess.run(["lake", "build", "Ideas.Mined.Schemas"], cwd=LEAN_DIR, capture_output=True, text=True, timeout=1800)
+
+
+def schema_instance_proof(atoms: list, delta: int, mover: str = "w") -> str | None:
+    """A premise that holds a delayed-root schema's atoms (its legs, `balance <= B`, the tail `>= T`) for named squares is an instance of the schema theorem:
+    `exact Ideas.Mined.Schemas.delayed_root_d<n> p c W hc hW <squares> B T v ...`. Extra atoms are unused hypotheses. None when the atoms are not those."""
+    tail = None
+    for term, op, v in atoms:
+        path, body = _split(term)
+        if op == ">=" and path and path[-1] == ("most",) and isinstance(body, tuple) and body[0] == "if":
+            tail = (term, v, path)
+            break
+    if tail is None:
+        return None
+    term, T, path = tail
+    afters = [st for st in path if st[0] == "after"]
+    depth = len(afters)
+    if depth not in (1, 2) or len(path) != 2 * depth + 1 or [st[0] for st in path] != ["after", "least"] * depth + ["most"]:
+        return None
+    bals = [v for t, op, v in atoms if t == "balance" and op == "<="]
+    if not bals:
+        return None
+    B = min(bals)
+    if T < 68 or T < B + delta:
+        return None
+    squares = [x for st in afters for x in st[1:3]]
+    hl = schema_hyps(depth, squares, B, T, mover)
+    key = {(BV.sexpr(t), op, v): i for i, (t, op, v) in enumerate(atoms)}
+    args = []
+    for n, t, op, v in hl:
+        i = key.get((BV.sexpr(t), op, v))
+        if i is None:
+            return None
+        args.append(f"h{i}")
+    sq = " ".join(_lean_sq(x, mover) for x in squares)
+    return "\n  ".join(["intro hall", f"obtain ⟨{', '.join(f'h{i}' for i in range(len(atoms)))}⟩ := hall",
+                       f"exact Ideas.Mined.Schemas.{schema_name(depth)} p c W hc hW {sq} {B} {T} {delta} (by omega) (by omega) {' '.join(args)}"])
+
+
 def prove(atoms: list, delta: int, mover: str = "w") -> str:
-    """The proof script for a statement: the tree composition, else the root's instance, else the plain tactic."""
-    return tree_proof(atoms, delta) or root_proof(atoms, delta, mover) or TACTIC
+    """The proof script for a statement: the tree composition, else an instance of a delayed-root schema, else the root's instance, else the plain tactic."""
+    return tree_proof(atoms, delta) or schema_instance_proof(atoms, delta, mover) or root_proof(atoms, delta, mover) or TACTIC
 
 
 # ---------------------------------------------------------------------------------------------------------------- Lean
