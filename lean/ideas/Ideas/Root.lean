@@ -755,6 +755,136 @@ theorem root_tail_max (c : Color) (base v : Int) (q : Position) (hq : q.turn = c
   omega
 
 
+/-! ## the tails with the game's life read from OUR material (no floor on the balance)
+
+As `root_tail` / `root_tail_max`, but the leaf is `min LEAF (material + C)` with `C + 4 = T` (`C + 13 = T` for the weakened tail, whose reply may take a
+piece of up to 9): the min at least `T` is LEAF at least `T` and our material at least 4 (13), so the game is alive after their reply
+(`gainGoal_of_balance_alive`) and `T` is any number, a gain from a deficit included. -/
+
+/-- `root_tail` with `alive` read from our material: the min-body, no `k ≥ 4`. -/
+theorem root_tail_alive (c : Color) (base v : Int) (q : Position) (hq : q.turn = c) (T C : Nat) (hk : (T : Int) ≥ 64 + base + v) (hCT : C + 4 = T)
+    (h : mostOver q (fun p => (min (if (if ((((count (fun u => (piecesOf p c) u && (attackedBy p (Color.opposite c) (kingSqD p c)) u)) +
+        (count (fun u => (kindSet p (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((1 : Fin 8)))))) u))) +
+        (count (fun u => (kindSet p (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((3 : Fin 8)))))) u))) +
+        (if (leastOver p (fun p => (1))) = (0) then 1 else 0)) = (0) then 1 else 0) ≠ 0 then (balanceOf p c) else (0)) ((materialOf p c) + C))) ≥ T) :
+    Ideas.forcedWithinB c (gainGoal c base v) q 2 = true := by
+  obtain ⟨m, hm, hF⟩ := most_witness q _ T (by omega) h
+  beta_reduce at hF
+  obtain ⟨q1, hq1⟩ : ∃ q1, applyMove q m = q1 := ⟨_, rfl⟩
+  rw [hq1] at hF
+  have hF2 : materialOf q1 c + C ≥ T := le_trans hF (Nat.min_le_right _ _)
+  have hF := le_trans hF (Nat.min_le_left _ _)
+  -- the guard held at q1 (else the body reads 0)
+  have hG : ((((count (fun u => (piecesOf q1 c) u && (attackedBy q1 (Color.opposite c) (kingSqD q1 c)) u)) +
+        (count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((1 : Fin 8)))))) u))) +
+        (count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((3 : Fin 8)))))) u))) +
+        (if (leastOver q1 (fun p => (1))) = (0) then 1 else 0)) = 0 := by
+    by_contra hne
+    have : (if ((((count (fun u => (piecesOf q1 c) u && (attackedBy q1 (Color.opposite c) (kingSqD q1 c)) u)) +
+        (count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((1 : Fin 8)))))) u))) +
+        (count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((3 : Fin 8)))))) u))) +
+        (if (leastOver q1 (fun p => (1))) = (0) then 1 else 0)) = (0) then 1 else 0) = 0 := if_neg hne
+    rw [this] at hF
+    simp at hF <;> omega
+  have hbal : balanceOf q1 c ≥ T := by
+    rw [if_pos (by rw [if_pos hG]; simp)] at hF
+    exact hF
+  have hA : count (fun u => piecesOf q1 c u && attackedBy q1 (Color.opposite c) (kingSqD q1 c) u) ≤ 0 := by omega
+  have hB : count (fun u => kindSet q1 (Color.opposite c) PieceKind.pawn u && oset rankOf (some (named c ((0 : Fin 8), (1 : Fin 8)))) u) ≤ 0 := by omega
+  have hC : count (fun u => kindSet q1 (Color.opposite c) PieceKind.pawn u && oset rankOf (some (named c ((0 : Fin 8), (3 : Fin 8)))) u) ≤ 0 := by omega
+  have hD : leastOver q1 (fun p => 1) ≥ 1 := by
+    by_contra hlt
+    have h0 : leastOver q1 (fun p => 1) = 0 := by omega
+    have : (if (leastOver q1 (fun p => (1))) = (0) then 1 else 0) = 1 := by simp [h0]
+    omega
+  -- the position q1
+  have hturn : q1.turn = Color.opposite c := by rw [← hq1, applyMove_turn, hq]
+  have hkin : ∃ K, kingSq q1 c = some K := by
+    apply kingSq_exists_of_not_inCheck
+    have hl : legalMove q m := by
+      unfold legalMoves at hm
+      have h2 := (List.mem_filter.mp hm).2
+      exact @of_decide_eq_true _ (legalMoveDecidable q m) h2
+    have := legalMove_kingSafe hl
+    unfold inCheck at this
+    rw [hq, hq1] at this
+    simpa using this
+  obtain ⟨K, hK⟩ := hkin
+  have hKD : kingSqD q1 c = K := by simp [kingSqD, hK]
+  rw [hKD] at hA
+  have hsafe := safe_of_hit q1 c K hK hA
+  apply step_ours c _ q 1 hq m hm
+  rw [hq1]
+  apply step_theirs c _ q1 0 (by rw [hturn]; cases c <;> simp [Color.opposite]) (least_pos_nonempty _ _ hD)
+  intro r hr
+  apply leaf
+  have hnl := reply_no_loss_gen q1 c hturn hsafe r hr (no_enpassant q1 c hturn hC r hr) (no_promotion q1 c hturn hB r hr)
+  refine gainGoal_of_balance_alive c base v _ (by rw [← hq1]; exact turn_after_two q c hq m r) T hk (by omega) ?_ ?_
+  · unfold balanceOf at hbal ⊢
+    omega
+  · omega
+
+/-- `root_tail_max` with `alive` read from our material: the min-body (our material at least 13: they take at most one piece, worth at most 9), no `k ≥ 4`. -/
+theorem root_tail_max_alive (c : Color) (base v : Int) (q : Position) (hq : q.turn = c) (T C : Nat) (hk : (T : Int) ≥ 64 + base + v) (hCT : C + 13 = T)
+    (h : mostOver q (fun p => (min (if (if (((count (fun u => (kindSet p (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((1 : Fin 8)))))) u)) +
+        (count (fun u => (kindSet p (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((3 : Fin 8)))))) u))) +
+        (if (leastOver p (fun p => (1))) = (0) then 1 else 0)) = (0) then 1 else 0) ≠ 0 then
+        (nDiff (balanceOf p c) (maxWorthOf p (fun u => (piecesOf p c) u && (attackedBy p (Color.opposite c) (kingSqD p c)) u))) else (0)) ((materialOf p c) + C))) ≥ T) :
+    Ideas.forcedWithinB c (gainGoal c base v) q 2 = true := by
+  obtain ⟨m, hm, hF⟩ := most_witness q _ T (by omega) h
+  beta_reduce at hF
+  obtain ⟨q1, hq1⟩ : ∃ q1, applyMove q m = q1 := ⟨_, rfl⟩
+  rw [hq1] at hF
+  have hF2 : materialOf q1 c + C ≥ T := le_trans hF (Nat.min_le_right _ _)
+  have hF := le_trans hF (Nat.min_le_left _ _)
+  have hG : (((count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((1 : Fin 8)))))) u)) +
+        (count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((3 : Fin 8)))))) u))) +
+        (if (leastOver q1 (fun p => (1))) = (0) then 1 else 0)) = 0 := by
+    by_contra hne
+    have : (if (((count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((1 : Fin 8)))))) u)) +
+        (count (fun u => (kindSet q1 (Color.opposite c) .pawn) u && (oset rankOf (some (named c (((0 : Fin 8)), ((3 : Fin 8)))))) u))) +
+        (if (leastOver q1 (fun p => (1))) = (0) then 1 else 0)) = (0) then 1 else 0) = 0 := if_neg hne
+    rw [this] at hF
+    simp at hF <;> omega
+  have hnd : nDiff (balanceOf q1 c) (maxWorthOf q1 (fun u => (piecesOf q1 c) u && (attackedBy q1 (Color.opposite c) (kingSqD q1 c)) u)) ≥ T := by
+    rw [if_pos (by rw [if_pos hG]; simp)] at hF
+    exact hF
+  have hB : count (fun u => kindSet q1 (Color.opposite c) PieceKind.pawn u && oset rankOf (some (named c ((0 : Fin 8), (1 : Fin 8)))) u) ≤ 0 := by omega
+  have hC : count (fun u => kindSet q1 (Color.opposite c) PieceKind.pawn u && oset rankOf (some (named c ((0 : Fin 8), (3 : Fin 8)))) u) ≤ 0 := by omega
+  have hD : leastOver q1 (fun p => 1) ≥ 1 := by
+    by_contra hlt
+    have h0 : leastOver q1 (fun p => 1) = 0 := by omega
+    have : (if (leastOver q1 (fun p => (1))) = (0) then 1 else 0) = 1 := by simp [h0]
+    omega
+  have hturn : q1.turn = Color.opposite c := by rw [← hq1, applyMove_turn, hq]
+  have hkin : ∃ K, kingSq q1 c = some K := by
+    apply kingSq_exists_of_not_inCheck
+    have hl : legalMove q m := by
+      unfold legalMoves at hm
+      have h2 := (List.mem_filter.mp hm).2
+      exact @of_decide_eq_true _ (legalMoveDecidable q m) h2
+    have := legalMove_kingSafe hl
+    unfold inCheck at this
+    rw [hq, hq1] at this
+    simpa using this
+  obtain ⟨K, hK⟩ := hkin
+  have hKD : kingSqD q1 c = K := by simp [kingSqD, hK]
+  rw [hKD] at hnd
+  have h9 := maxWorthOf_le_nine q1 (fun u => (piecesOf q1 c) u && (attackedBy q1 (Color.opposite c) K) u)
+  have hbal : balanceOf q1 c ≥ T + maxWorthOf q1 (fun u => (piecesOf q1 c) u && (attackedBy q1 (Color.opposite c) K) u) := by
+    unfold nDiff at hnd
+    split_ifs at hnd <;> omega
+  apply step_ours c _ q 1 hq m hm
+  rw [hq1]
+  apply step_theirs c _ q1 0 (by rw [hturn]; cases c <;> simp [Color.opposite]) (least_pos_nonempty _ _ hD)
+  intro r hr
+  apply leaf
+  have hnl := reply_loses_at_most q1 c hturn K hK r hr (no_enpassant q1 c hturn hC r hr) (no_promotion q1 c hturn hB r hr)
+  refine gainGoal_of_balance_alive c base v _ (by rw [← hq1]; exact turn_after_two q c hq m r) T hk (by omega) ?_ ?_
+  · unfold balanceOf at hbal ⊢
+    omega
+  · omega
+
 /-! ## ANALYST_PLAN 45: dead-end attacks, the one-step exchange from the capturer's side -/
 
 /-- A legal move of a piece that is not about to promote, onto a piece, is a normal move (a promotion starts on the seventh rank; an en passant

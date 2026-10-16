@@ -478,6 +478,35 @@ theorem tail_two (c : Color) (base v : Int) (p : Position) (hc : p.turn = c) (k 
   have hb : balanceOf (applyMove (applyMove p m) r) c ≥ 64 + k := least_floor _ _ (64 + k) hF' r hr
   exact gainGoal_of_balance c base v _ (turn_after_two p c hc m r) k hk h4 hb
 
+/-! ## the same with the game's life read from OUR material at the leaf (no floor on the balance)
+
+`gainGoal_of_balance` reads "alive" from the balance (`k ≥ 4`: balance at least 68), so a gain from a deficit or a level position could never be
+an instance. Here the leaf is the balance at least `T` AND our material at least 4; `T` is any number (`64 + base + v` below it), and the
+min-body `min (balance) (material + C)` with `C + 4 = T` reads both at once. -/
+
+/-- THE LEAF, alive from material: on our turn, `balance` at least `T` (with `T ≥ 64 + base + v`) and our material at least 4 is the gain goal. -/
+theorem gainGoal_of_balance_alive (c : Color) (base v : Int) (q : Position) (hq : q.turn = c) (T : Nat) (hk : (T : Int) ≥ 64 + base + v) (hT1 : T ≥ 1)
+    (hb : balanceOf q c ≥ T) (hm : materialOf q c ≥ 4) : gainGoal c base v q = true := by
+  unfold balanceOf at hb
+  apply gainGoal_of_material c base v q hq
+  · omega
+  · exact alive_of_material q c hm
+
+/-- THE MINIMAX TAIL, two plies, alive from material: `most (least (min balance (material + C)))` at least `T = C + 4` forces the goal within two plies. -/
+theorem tail_two_alive (c : Color) (base v : Int) (p : Position) (hc : p.turn = c) (T C : Nat) (hk : (T : Int) ≥ 64 + base + v) (hCT : C + 4 = T)
+    (h : mostOver p (fun q => leastOver q (fun r => min (balanceOf r c) (materialOf r c + C))) ≥ T) :
+    Ideas.forcedWithinB c (gainGoal c base v) p 2 = true := by
+  apply step_most c _ p 1 hc _ T (by omega) h
+  intro m hm hF
+  have hF' : leastOver (applyMove p m) (fun r => min (balanceOf r c) (materialOf r c + C)) ≥ T := hF
+  apply step_least c _ (applyMove p m) 0 (turn_after_one p c hc m) _ T (by omega) hF'
+  intro r hr
+  apply leaf
+  have hb : min (balanceOf (applyMove (applyMove p m) r) c) (materialOf (applyMove (applyMove p m) r) c + C) ≥ T := least_floor _ _ T hF' r hr
+  have h1 : balanceOf (applyMove (applyMove p m) r) c ≥ T := le_trans hb (Nat.min_le_left _ _)
+  have h2 : materialOf (applyMove (applyMove p m) r) c + C ≥ T := le_trans hb (Nat.min_le_right _ _)
+  exact gainGoal_of_balance_alive c base v _ (turn_after_two p c hc m r) T hk (by omega) h1 (by omega)
+
 /-! ## item 0 of ANALYST_PLAN 44: a pawn may be the piece that moves, as long as it is not about to promote
 
 `queenOnly_of_not_pawn` kept every pawn out of a named move, because `after` promotes only to a queen. A pawn that does not stand on
