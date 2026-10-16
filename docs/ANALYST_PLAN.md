@@ -1553,3 +1553,76 @@ they fall in (or avoid it) is the inevitability point. The split of one exchange
 Tests (tests/test_windows.py additions): quiet() on three hand positions (quiet; a hanging piece = not quiet; in check = not quiet);
 settle() on a hand-made 5-ply sequence with a check in the middle returns the index after the recapture; a shift list on that sequence
 has one entry. Numbers only from OBS lines. No AI trailers in commits; one commit per piece (adapter; windows; ladder example; tests).
+
+## 44. LAYERS FOUND BY THE LOOP: diagnose the root, repair it by a generic operator, prove the SCHEMA once, bind it everywhere (Kaveh 2026-10-15 night; written for a cheaper agent, NOT yet a go)
+
+### 44.1 What Kaveh said
+"I want the machinery's loop to do this automagically ... so that we get a generic fork lemma." The layers of 42 (defended piece, two
+threats) must NOT be written by us: the loop finds them from the words, proves them in Lean and reuses them. What stays hand-written: the
+words, the root's hypotheses (they are the diagnostic vocabulary), the Lean step theorems, and a few GENERIC repair operators. What the loop
+produces: a SCHEMA = a premise over square variables, proved once as a theorem with the squares universally quantified, then bound to the
+squares of any window. Today's tree lemmas name squares (f6-c3, c3-a1) and can never fire again; a schema can, and its REUSE count is the score.
+
+### 44.2 Definitions
+- SCHEMA: a premise whose squares are variables X, Y, ... (our move X -> Y, further squares as needed) and whose numbers are variables
+  (B0 the balance now, v the gain), with the usual legs. `bind(schema, fen)` enumerates our legal non-pawn-promoting moves X -> Y and
+  evaluates the premise in Rust (`vocab_eval`) with the squares substituted; an instance is a binding where every atom holds.
+- THE ROOT AS SCHEMA 0: `hanging(X, Y, v)` = the atoms of `root_atoms` with x, y replaced by X, Y. Its Lean theorem is already universal
+  (`Ideas.Root.hanging` quantifies x y v): nothing to prove, only to bind. Keep the current code path (root_readings) as its binder.
+- DIAGNOSE (new, in `layers`): at the example, for the solver's first move x -> y (the line that forces the gain), evaluate every hypothesis
+  of the root with that binding and print which hold and which fail, by NAME (hth: a piece of theirs on y; hv: worth >= v; hhit: nothing of
+  ours attacked after; hpr: no promotion threat; hmov: a reply exists; hmat: material >= 4; legs). The failing names are the deviation.
+  OBS line: `OBS diagnose <tag>: root at <san> fails {hv, hth}` etc. On sHa6yUKv the expected failures are hth/hv (Qxc3+ takes a pawn, 1 < 6;
+  the rook falls a move later); on the gxh6 window of MTq15Poj the expected failure is hhit (the pawn is retaken: our piece is attacked after).
+- REPAIR OPERATORS (generic, the hand-written part; apply by failing hypothesis; each produces ONE schema = root + one named deviation):
+  * DELAY (for hv/hth: the gain is not now): the root's conclusion holds one move later under every reply. Schema `delayed_root(X, Y, B0, v)`:
+      `balance <= B0`,  legs of X -> Y,
+      `(after X Y (least (most (if (and (le (count (and ours hit)) 0) (le (count (and theirpawns (rank 7th))) 0)) balance 0)))) >= B0 + v`
+    read: after our move X -> Y, whatever they reply, we have a move after which nothing of ours is attacked, no pawn of theirs is about to
+    promote, and the balance is up by v. (The `if`, `and`, `le` words exist; check that `le` renders as a Bool for `if`; if the vocabulary has no
+    boolean `and`/`le` for the `if` guard, tell Kaveh in one line and add them per the vocabulary rule: Lean def + gloss + Rust mirror + glossary
+    + `lean_index build`.) The deviation's name in the explanation: "normally the hanging piece is taken now, but because it hangs only after
+    X -> Y (whatever they do), it is taken next move." THIS is the generic fork lemma when the move X -> Y attacks two pieces: no square of the
+    targets is named, the `least ... most` says a target survives every reply.
+  * DELAY applied to its own result gives depth 2 (the gain after two of our moves). The loop tries depth 1, then 2, bounded by the solver's
+    move count for the window. Never deeper than the solver's count.
+  * RECAPTURE (for hhit: our capturing piece is attacked after): the same DELAY schema (capture X -> Y, their recapture = `least`, our move
+    `most` after which nothing is attacked and the balance is up v). So one operator covers both the fork and the defended piece; the
+    diagnosis differs, the schema is the same. Record the diagnosis in the lemma's doc so the explanation names the right deviation.
+  * EXCLUDE (for hmat / hmov failing, or for a drill disagreement): add one atom from the words that is false on every counter-example and
+    true on the examples (the existing `seeded_premises` with extra=1). Only when DELAY fails to prove. The result is still a schema if the
+    added atom names only X, Y or no square; otherwise it is an instance (recorded as such, lowest score).
+- SCHEMA PROOF (generator, `schema_proof`): the Lean theorem quantifies `(x y : Square) (B0 v : Int)` and takes the atoms as hypotheses; the
+  proof is the existing composition: `forcingOf_ne_zero`, hbase from `balanceOf`, `step_after` (x y), `step_least`, then a NEW step theorem
+  `root_tail` (Ideas/TreeStep.lean or Ideas/Root.lean, hand-written by the builder):
+      from `mostOver q (fun q' => if (hit-count q' = 0 ∧ promo-count q' = 0) then balanceOf q' c else 0) ≥ 64 + k`, `q.turn = c`, k ≥ 4,
+      conclude `forcedWithinB c (gainGoal c base v) q 2 = true` for k ≥ base + v;
+    proved by `most_witness` (a move m with the body ≥ 64+k, so the `if` took its then-branch: hit = 0, promo = 0, balance ≥ 64+k), then every
+    reply r of theirs: `reply_no_loss` (nothing of ours attacked, no en passant -- state the enPassant hypothesis as in Root.lean or discharge it
+    as hanging does) gives materialOf unchanged for us and not raised for them, so balance stays ≥ 64+k, then `gainGoal_of_balance`. The
+    promotion count excludes the promotion reply exactly as `hanging` does (reuse its argument; cite the theorems by name, do not re-prove).
+    Depth 2 = `step_after`, `step_least` twice then `root_tail`. One schema theorem per (operator, depth) lives in Ideas/Mined/Schemas.lean
+    (generated, committed); instances are `exact delayed_root x y B0 v ...` with the window's squares -- the instance file proves in seconds.
+- THE LADDER (new order in `layers`): (1) bind every PROVED schema from Schemas.lean, root first, then by size (fewest atoms), at the example;
+  the first instance the solver confirms explains the window: print `OBS EXPLAINED BY SCHEMA <name> bound to X=.., Y=..` and count the
+  reuse; (2) else diagnose, repair by the operators, drill the instance (disagreements must be 0), send the SCHEMA to Lean, on proof
+  append it to Schemas.lean and explain the window by it; (3) else the EXCLUDE operator; (4) else the 41.9 tree search as the fallback
+  (unchanged). Reuse in score.json = the number of distinct windows a schema explained; coverage = drilled forced variants the instance holds on.
+- Item 0 (pawn captures): the no-pawn leg exists only because `afterMove` promotes to a queen. Replace it by "no pawn of ours on X that
+  stands on the rank before promotion" (`(count (and ourpawns (and (at X) (rank 7th)))) <= 0`, 7th read from the mover's side), with a Lean
+  sibling of `queenOnly_of_not_pawn` for a pawn not on that rank (`queenOnly_of_not_promoting`), so gxh6 can be the X -> Y of a schema. En
+  passant stays excluded (its own leg, or read it as `after` does today -- say which).
+
+### 44.3 Acceptance (OBS lines, one run each; no tuning between them)
+1. sHa6yUKv window 1 (`selfmine --game sHa6yUKv --window 1 --drill --layers`): the diagnosis names the failing hypotheses of the root at
+   Qxc3+; DELAY depth 1 or 2 produces a schema whose instance the drill accepts with 0 disagreements and the solver confirms; the SCHEMA
+   theorem proves in Lean (print its statement in words and the theorem name); the window is EXPLAINED BY SCHEMA. The explanation line reads
+   "normally ..., but because ..." from the diagnosis.
+2. MTq15Poj, the gxh6 window (W1@41): the root fails on hhit (after item 0 it is a candidate at all); DELAY explains it; the SAME schema
+   theorem is reused (reuse = 2 in score.json), no new Lean proof beyond the instance.
+3. 4pfUO5Kb window 0: still EXPLAINED BY THE ROOT (schema 0 bound first); the delayed schema is not needed.
+4. A fourth game of Kaveh's choice (or the next one in the index): run the ladder and report explained / not, which schema, reuse counts.
+Tests: tests/test_selfmine.py additions -- `bind` finds the instance on a hand-made fork (a knight move attacking a queen and a rook); diagnose
+names hv on it and hhit on a hand-made defended pawn; `schema_proof` output contains `root_tail` once per depth; the instance proof is `exact`
+of the schema. Lean: `root_tail` proved with no sorry; `lean_index build` after. Numbers only from OBS lines; no AI trailers in commits; one
+commit per piece (item 0; diagnose + operators; root_tail + schema generator; ladder order + score; tests).
