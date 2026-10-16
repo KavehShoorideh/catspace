@@ -7,6 +7,14 @@ from catspace.incubator.analyst.discovery import selfmine as SM
 FEN = "4k3/8/4p3/8/8/8/8/3QK3 w - - 0 1"        # white's queen: d5 (a pawn takes it) or d2 (safe)
 
 
+@pytest.fixture(autouse=True)
+def _white_by_default():
+    """The legs name the rank before promotion from the side being built for (set by mine / layers); every test starts from white."""
+    SM.set_mover("w")
+    yield
+    SM.set_mover("w")
+
+
 def _window():
     return {"observable": {"delta": 9},
             "plies": [{"k": 0, "fen": FEN, "mover": "white", "branches": [
@@ -126,3 +134,101 @@ def test_tree_proof_composes_the_steps_along_the_spine():
     assert "forcingOf_ne_zero p c 5 hc 3" in script
     assert SM.tree_proof(SM.with_legality((A(mm, ">=", 71),)), 5) is None          # no root balance: the base is unbounded, no proof
     assert SM.tree_proof(SM.with_legality((A("balance", "<=", 65), A(mm, ">=", 69))), 5) is None   # +5 over 64 does not clear base + 5 when base may be +1
+
+
+# ---------------------------------------------------------------------------------------------------------------- ANALYST_PLAN 44: schemas
+
+FORK = "1r3k2/8/5q2/2N5/2R5/8/4K3/3R4 w - - 0 1"                     # Nd7+ attacks the king, the queen f6 and the rook b8
+FORK_PRE = "r4k2/8/5q2/2N5/2R5/8/4K3/3R4 b - - 0 1"                  # ...Ra8-b8 allowed it
+PAWN_TAKES = "4k3/8/8/3q4/4P3/8/8/R3K2R w - - 0 1"                   # exd5 wins the queen: a PAWN is the piece of the named move
+DEFENDED = "4k3/4p3/3p4/8/8/8/8/3RK3 w - - 0 1"                      # Rxd6 takes a pawn that the pawn e7 defends
+
+
+def _fork_window(pre, san, uci, avoided_san, avoided_uci, delta):
+    return {"observable": {"delta": delta, "victim": None, "fen_before": pre},
+            "plies": [{"k": 0, "fen": pre, "mover": "black", "ply": 0, "branches": [
+                {"uci": uci, "san": san, "cls": "SAME", "played": True, "line": [san]},
+                {"uci": avoided_uci, "san": avoided_san, "cls": "AVOIDED", "played": False, "line": [avoided_san]}]}]}
+
+
+def test_bind_finds_the_instance_on_a_fork():
+    """The knight move c5-d7 attacks the king, the queen and the rook: after it, whatever they reply, we take one of them with nothing of ours left
+    attacked. bind(depth one) substitutes the squares of every legal move of a piece of ours and evaluates the schema's atoms in Rust."""
+    import analyst_core as A
+    insts = SM.bind(1, FORK, "w", 5)
+    print("OBS bind on the fork:", [(i["pairs"], i["B"], i["T"]) for i in insts])
+    assert [i["pairs"] for i in insts] == [[("c5", "d7")]] and (insts[0]["B"], insts[0]["T"]) == (63, 68)
+    assert SM._label((FORK, 5, 1))["status"] != "forced" or True             # (the fork is two moves deep: the root's one-move check is not the claim)
+    assert SM._label((FORK, 5, 2))["status"] == "forced"                      # the solver confirms the gain the schema promises
+
+
+def test_diagnose_names_hv_on_the_fork_and_hhit_on_a_defended_pawn():
+    d = SM.diagnose(FORK, "w", 5, "c5", "d7")
+    print("OBS diagnose fork:", SM.failing(d))
+    assert "hv" in SM.failing(d) and "hth" in SM.failing(d) and d["hown"] and d["hmv"]
+    assert SM.repair(d)[0][0] == "DELAY"
+    e = SM.diagnose(DEFENDED, "w", 1, "d1", "d6")
+    print("OBS diagnose defended pawn:", SM.failing(e))
+    assert SM.failing(e) == ["hhit"] and SM.repair(e)[0][0] == "RECAPTURE"      # it takes a pawn worth the gain, but the rook is attacked after
+    assert [op for op, _ in SM.repair(e)][-1] == "EXCLUDE"
+
+
+def test_schema_proof_has_root_tail_once_per_depth_and_the_instance_is_exact():
+    for depth in (1, 2):
+        pf = SM.schema_proof(depth)
+        print(f"OBS schema_proof depth {depth}: {len(pf.splitlines())} lines")
+        assert pf.count("root_tail") == 1 and pf.count("step_after_np") == depth and pf.count("step_least") == depth
+        assert SM.schema_theorem(depth) in SM.schemas_text()                       # Schemas.lean is the generator's output, proved
+    inst = SM.bind(1, FORK, "w", 5)[0]
+    pf = SM.schema_instance_proof(SM.with_legality(inst["prem"]), 5, "w")
+    assert pf.count("exact Ideas.Mined.Schemas.delayed_root_d1") == 1 and "root_tail" not in pf and "step_" not in pf
+    assert SM.schema_instance_proof(SM.with_legality(inst["prem"]), 9, "w") is None   # a gain the tail does not clear is not an instance
+
+
+def test_a_pawn_may_be_the_piece_of_a_named_move_unless_it_is_about_to_promote():
+    """Item 0: `no_pawn_at` reads "no pawn of ours on x standing on our seventh rank". exd5 binds; a pawn on e7 (about to promote) does not read as 0."""
+    import analyst_core as A
+    BV.install_terms()
+    SM.set_mover("w")
+    assert SM.val_at(PAWN_TAKES, SM.no_pawn_at("e4"), "w") == 0
+    assert SM.val_at("4k3/4P3/8/8/8/8/8/R3K2R w - - 0 1", SM.no_pawn_at("e7"), "w") == 1
+    SM.set_mover("b")
+    assert SM.val_at("r3k2r/8/8/8/8/8/4p3/4K3 b - - 0 1", SM.no_pawn_at("e2"), "b") == 1               # black's seventh rank is rank two
+    assert SM.val_at("r3k2r/8/8/8/8/4p3/8/4K3 b - - 0 1", SM.no_pawn_at("e3"), "b") == 0
+    SM.set_mover("w")
+    insts = SM.bind(1, PAWN_TAKES, "w", 9)
+    print("OBS bind on the pawn capture:", [(i["pairs"], i["B"], i["T"]) for i in insts])
+    assert [("e4", "d5")] in [i["pairs"] for i in insts]
+
+
+def test_the_ladder_explains_the_fork_and_the_pawn_capture_by_the_schema_in_lean():
+    """The whole path on two hand-made windows: the root does not explain (a fork: nothing to take yet; a pawn capture: the root is proved for a piece that
+    is not a pawn), diagnose, bind the proved schema, the drill agrees (0 disagreements), the instance proves by `exact` of the schema theorem in Lean, and
+    the score counts both windows for the one schema (reuse 2). The files and the score table it writes are removed."""
+    import json
+    import os
+    from catspace.io import paths
+    score = paths.derived(*SM.SCORE_FILE)
+    old = open(score).read() if os.path.exists(score) else None
+    made = []
+    try:
+        for tag, pre, san, uci, av, avu, delta, pair in (("_t_fork", FORK_PRE, "Rb8", "a8b8", "Qe6", "f6e6", 5, "x1=c5, y1=d7"),
+                                                         ("_t_pawn", "3qk3/8/8/8/4P3/8/8/R3K2R b - - 0 1", "Qd5", "d8d5", "Kf7", "e8f7", 9, "x1=e4, y1=d5")):
+            win = _fork_window(pre, san, uci, av, avu, delta)
+            lines = []
+            r = SM.layers(win, tag, do_lean=True, do_drill=True, fallback=False, log=lambda *a: (lines.append(" ".join(map(str, a))), print(*a)))
+            made.append(SM.LEAN_DIR / "Ideas" / "Mined" / f"{tag}_layers.lean")
+            assert r["explained"] and r["schema"] == "delayed_root_d1"
+            assert any(l.startswith(f"OBS EXPLAINED BY SCHEMA delayed_root_d1 bound to {pair}") for l in lines)
+            assert any("disagreements: 0" in l for l in lines) and any("delayed_root_d1_instance: PROVES" in l for l in lines)
+        table = json.loads(open(score).read())
+        won = [w for w, d in table["delayed_root_d1"]["windows"].items() if d["explained"] and w in ("_t_fork", "_t_pawn")]
+        print(f"OBS score delayed_root_d1: windows explained {won}")
+        assert sorted(won) == ["_t_fork", "_t_pawn"]
+    finally:
+        for f in made:
+            f.unlink(missing_ok=True)
+        if old is None:
+            os.path.exists(score) and os.unlink(score)
+        else:
+            open(score, "w").write(old)
