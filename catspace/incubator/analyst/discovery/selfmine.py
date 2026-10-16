@@ -1041,9 +1041,10 @@ def mine(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool =
               ("the same atoms, exact cover by branching, up to 4 atoms", False, 4, True),
               ("widened: all pieces of the start position, exact cover, up to 4 atoms", True, 4, True)]
     memo = {}
-    out = out or (LEAN_DIR / "Ideas" / "Mined" / f"{tag}.lean")
+    ns = "g_" + tag if tag[0].isdigit() else tag                     # (a Lean namespace cannot start with a digit)
+    out = out or (LEAN_DIR / "Ideas" / "Mined" / f"{ns}.lean")
     out.parent.mkdir(parents=True, exist_ok=True)
-    head = LEAN_HEAD.format(tag=tag, delta=delta, ns=tag)
+    head = LEAN_HEAD.format(tag=tag, delta=delta, ns=ns)
     n_lean = 0
     for si, (label, wide, max_atoms, exact) in enumerate(stages):
         objs, pairs = objects(win, wide)
