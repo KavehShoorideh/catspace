@@ -976,15 +976,60 @@ def seeded_premises(terms, vals, poss, ex, cx, seed, extra=2, cap_atoms=300):
     return prem
 
 
+SCORE_FILE = ("lemmas", "score.json")
+
+
+def premise_truth(prem, poss: list) -> list:
+    """For each position, does the whole premise (its atoms and their legs) hold? Read in the words, from each position's mover."""
+    atoms = with_legality(prem)
+    terms = list({BV.sexpr(t): t for t, _, _ in atoms}.values())
+    vals = evaluate(terms, poss)
+    return [all((vals[BV.sexpr(t)][i] >= v) if op == ">=" else (vals[BV.sexpr(t)][i] <= v) for t, op, v in atoms) for i in range(len(poss))]
+
+
+def drill_report(name: str, prem, poss: list, dx: list, cx: list, proved: bool, log=print) -> dict:
+    """42.6: over the drilled variants, where the premise holds and the solver DISAGREES (a variant it labels not forced). Must be 0 for a proved lemma:
+    a non-zero count is a bug in the evaluator or the solver, and the run stops."""
+    truth = premise_truth(prem, poss)
+    cov = sum(truth[i] for i in dx)
+    dis = [i for i in cx if truth[i] and poss[i].get("drill")]
+    log(f"OBS drill {name}: the premise holds on {cov}/{len(dx)} drilled variants the solver forces and on {len(dis)} of the {sum(1 for i in cx if poss[i].get('drill'))} it does not "
+        f"(disagreements: {len(dis)}{'' if not dis else ', ' + ', '.join(poss[i]['san'] for i in dis[:5])})")
+    if proved and dis:
+        raise SystemExit(f"OBS BUG: the proved lemma {name} holds on {len(dis)} drilled variants the solver does not force: an evaluator or solver bug; stopping")
+    return dict(covered=cov, variants=len(dx), disagreements=len(dis))
+
+
+def update_score(tag: str, lemmas: list, log=print) -> dict:
+    """42.7: data/derived/lemmas/score.json -- per lemma: size (atoms), the windows it explains, the drilled variants covered per window; reuse = the windows
+    explained beyond the one it came from (the first)."""
+    path = Path(paths.derived(*SCORE_FILE))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    table = json.loads(path.read_text()) if path.exists() else {}
+    for lm in lemmas:
+        e = table.setdefault(lm["name"], dict(size=lm["size"], windows={}))
+        e["size"] = lm["size"]
+        e["windows"][tag] = dict(explained=bool(lm["explained"]), variants=lm.get("covered", 0), of=lm.get("variants", 0), proved=bool(lm.get("proved")))
+    path.write_text(json.dumps(table, indent=1, sort_keys=True))
+    for name, e in sorted(table.items()):
+        won = [w for w, d in e["windows"].items() if d["explained"]]
+        reuse = max(0, len(won) - 1)
+        cov = sum(d["variants"] for d in e["windows"].values())
+        log(f"OBS score {name}: size {e['size']}, reuse {reuse}, coverage {cov} (explains {won or 'no window'}; per window {({w: str(d['variants']) + '/' + str(d['of']) for w, d in e['windows'].items()})})")
+    return table
+
+
 def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool = True, do_drill: bool = False, log=print,
            out: Path | None = None, fallback: bool = True) -> dict:
     """THE LADDER (plan 42.5): the root first, then the deviation seeded by the root, then (when nothing is proved) the 41.9 tree lemma as the fallback."""
     delta = int(win["observable"]["delta"])
     poss = positions(win)
     ks = sorted({p["k"] for p in poss})
-    tk = max(k for k in ks if {"SAME", "AVOIDED"} <= {p["cls"] for p in poss if p["k"] == k})
+    both = [k for k in ks if {"SAME", "AVOIDED"} <= {p["cls"] for p in poss if p["k"] == k}]
+    tk = max(both) if both else min(k for k in ks if k >= 1 and any(p["k"] == k and p["cls"] == "SAME" for p in poss))   # no avoidance anywhere: the loser's last move
     ex = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "SAME"]
     cx = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "AVOIDED"]
+    ex.sort(key=lambda i: not poss[i]["played"])                  # the move that was played first: the example is the game's own position
     mover = poss[ex[0]]["mover"]
     n_opp = max(1, len({k for k in ks if k < tk and any(p["k"] == k and p["mover"] != mover for p in poss)}))
     base = poss[ex[0]]
@@ -1005,10 +1050,20 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
     lab = _label((fen, delta, 1))
     log(f"OBS root check: the solver {'confirms' if lab['status'] == 'forced' else 'does not confirm (' + lab['status'] + ')'} a forced gain >= {delta} within 1 move of ours and 1 reply"
         + (f", line {' '.join(lab['line'])}" if lab["status"] == "forced" else ""))
+    dx = []
+    solver_ok = sol["status"] == "forced"
+    if do_drill and (solver_ok or lab["status"] == "forced"):
+        need = max(1, delta + balance(base["start"], mover == "w") - balance(fen, mover == "w"))
+        drilled = drill(base, need, n_opp, log)
+        n0 = len(poss)
+        poss += drilled
+        dx = [i for i in range(n0, len(poss)) if poss[i]["cls"] == "SAME"]
+        cx += [i for i in range(n0, len(poss)) if poss[i]["cls"] == "AVOIDED"]
     cands = [r for r in reads if r["applies"] and r["worth"] >= delta]
-    out = out or (LEAN_DIR / "Ideas" / "Mined" / f"{tag}_layers.lean")
+    lean_tag = ("g_" + tag if tag[0].isdigit() else tag) + "_layers"          # (a Lean namespace cannot start with a digit)
+    out = out or (LEAN_DIR / "Ideas" / "Mined" / f"{lean_tag}.lean")
     out.parent.mkdir(parents=True, exist_ok=True)
-    head = LAYERS_HEAD.format(tag=tag + "_layers", delta=delta, ns=tag + "_layers")
+    head = LAYERS_HEAD.format(tag=lean_tag, delta=delta, ns=lean_tag)
     result = dict(tag=tag, delta=delta, explained=False, lemmas=[], items=[])
     if cands and lab["status"] == "forced":
         r = cands[0]
@@ -1018,7 +1073,11 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
             log(f"OBS EXPLAINED BY THE ROOT: {tag}: the capture {r['san']} takes {r['worth']} (>= {delta}), nothing of ours is attacked after it, no pawn of theirs promotes, "
                 f"and the solver confirms; the instance of `hanging` is " + ("proved in Lean" if do_lean else "not run (--no-lean)"))
             result.update(explained=True, capture=r["san"], items=[item])
-            result["lemmas"] = [dict(name="hanging", size=len(prem), proved=bool(do_lean and item["proved"]))]
+            lm = dict(name="hanging", size=len(prem), proved=bool(do_lean and item["proved"]), explained=True)
+            if dx:
+                lm.update(drill_report("hanging", prem, poss, dx, cx, lm["proved"], log))
+            result["lemmas"] = [lm]
+            update_score(tag, result["lemmas"], log)
             return result
     # root does not explain
     best = max(reads, key=lambda r: r["k"]) if reads else None
@@ -1038,15 +1097,6 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
     chosen = chosen or best
     if chosen is None:
         log("OBS deviation: no capture to seed the search; falling back")
-    dx = []
-    solver_ok = sol["status"] == "forced"
-    if do_drill and solver_ok:
-        need = max(1, delta + balance(base["start"], mover == "w") - balance(fen, mover == "w"))
-        drilled = drill(base, need, n_opp, log)
-        n0 = len(poss)
-        poss += drilled
-        dx = [i for i in range(n0, len(poss)) if poss[i]["cls"] == "SAME"]
-        cx += [i for i in range(n0, len(poss)) if poss[i]["cls"] == "AVOIDED"]
     items = []
     if chosen is not None and solver_ok:
         x, y = chosen["x"], chosen["y"]
@@ -1087,14 +1137,25 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
                 state = "PROVES" if it["proved"] else ("TYPECHECKS (proof fails)" if it["typechecks"] else "FAILS to typecheck")
                 log(f"OBS lean {it['name']}: {state}" + (f": {reason(it)}" if it["error"] else ""))
             log(f"OBS lean round: {len(items)} statements in {round(time.time() - t0, 1)} s")
-        result["lemmas"] += [dict(name=it["name"], size=len(it["prem"]), proved=bool(it.get("proved"))) for it in items]
+        for it in items:
+            lm = dict(name=f"{tag}:{it['name']}", size=len(it["prem"]), proved=bool(it.get("proved")), explained=False)
+            if dx:
+                lm.update(drill_report(lm["name"], it["prem"], poss, dx, cx, lm["proved"], log))
+            result["lemmas"].append(lm)
         result["items"] = items
     # the sound fallback: the 41.9 tree lemma
     if fallback and do_lean and not any(it.get("proved") for it in items):
         log("OBS fallback: no root+deviation conjecture is proved; the 41.9 tree search (premises read along the solver's line) runs for the sound statement")
         fb = mine(win, tag + "_fb", top, lean_cap, True, do_drill=do_drill, tree=True, log=log)
         result["fallback"] = dict(proved=fb["proved"], typechecked=fb["typechecked"])
-        result["lemmas"] += [dict(name=it["name"], size=len(it["prem"]), proved=bool(it["proved"])) for it in fb["items"]]
+        for it in fb["items"]:
+            if not it["proved"]:
+                continue
+            lm = dict(name=f"{tag}:fb_{it['name']}", size=len(it["prem"]), proved=True, explained=True)
+            if dx:
+                lm.update(drill_report(lm["name"], it["prem"], poss, dx, cx, True, log))
+            result["lemmas"].append(lm)
+    update_score(tag, result["lemmas"], log)
     return result
 
 
