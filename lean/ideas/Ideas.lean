@@ -26,3 +26,4 @@ import Ideas.Base.Vocabulary
 import Ideas.Generated.Measures
 import Ideas.Mirror
 import Ideas.TreeStep
+import Ideas.Root
