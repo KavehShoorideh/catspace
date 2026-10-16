@@ -701,23 +701,35 @@ def tail_guard(mover: str, hit: bool = True):
 MAX_ATTACKED = ("maxworth", ("and", "ours", "hit"))
 
 
-def tail_body(mover: str, family: str = "delayed_root"):
+ALIVE_NEED = {"delayed_root": 4, "delayed_root_max": 13, "delayed_balance": 4}      # our material at the leaf (13: the weakened tail's reply may take a piece worth up to 9)
+C_VAR = "9999"                                                                       # the schema's constant C = T - ALIVE_NEED, as a placeholder numeral (rendered as the Lean variable C)
+
+
+def alive_const(T, family: str) -> str:
+    """The constant C of the min-body: T - ALIVE_NEED[family] for a number T, the placeholder for the schema's symbolic T."""
+    return str(T - ALIVE_NEED[family]) if isinstance(T, int) else C_VAR
+
+
+def tail_body(mover: str, family: str = "delayed_root", C: str = C_VAR):
     """After the last named move and every reply of theirs: some move of ours, after which the guard holds and the balance is read, else 0 (delayed_root);
     the same without the 'nothing attacked' conjunct and with the balance less the most valuable attacked piece (delayed_root_max: they take back at most one
-    piece); or just the minimax tail `(most (least balance))` (delayed_balance: the 41.9 tree lemma with its squares made variables)."""
+    piece); or just the minimax tail `(most (least balance))` (delayed_balance: the 41.9 tree lemma with its squares made variables).
+    THE GAME'S LIFE IS READ FROM OUR MATERIAL (the structural fix): the leaf number is `(min LEAF (sum material_us C))`, C = T - 4 (13 for the weakened family),
+    so the tail at least T is LEAF at least T and our material at least 4 (13): no floor on the balance, a gain from a deficit can be an instance."""
+    alive = ("sum", "material_us", C)
     if family == "delayed_balance":
-        return ("least", ("most", ("least", "balance")))
+        return ("least", ("most", ("least", ("min", "balance", alive))))
     if family == "delayed_root_max":
-        return ("least", ("most", ("if", tail_guard(mover, hit=False), ("diff", "balance", MAX_ATTACKED), "0")))
-    return ("least", ("most", ("if", tail_guard(mover), "balance", "0")))
+        return ("least", ("most", ("min", ("if", tail_guard(mover, hit=False), ("diff", "balance", MAX_ATTACKED), "0"), alive)))
+    return ("least", ("most", ("min", ("if", tail_guard(mover), "balance", "0"), alive)))
 
 
-def delayed_tail(pairs: list, mover: str, family: str = "delayed_root"):
-    return wrap_tree(pairs, tail_body(mover, family))
+def delayed_tail(pairs: list, mover: str, family: str = "delayed_root", C: str = C_VAR):
+    return wrap_tree(pairs, tail_body(mover, family, C))
 
 
 def schema_name(depth: int, family: str = "delayed_root") -> str:
-    return f"{family}_d{depth}"
+    return f"{family}_alive_d{depth}"
 
 
 def schema_hyps(depth: int, squares: list, B, T, mover: str, family: str = "delayed_root") -> list:
@@ -725,20 +737,23 @@ def schema_hyps(depth: int, squares: list, B, T, mover: str, family: str = "dela
     it) and T (the tail reads at least it): [(name, term, op, v)] in the order of with_legality (legs, then the balance, then the tail)."""
     pairs = [(squares[2 * i], squares[2 * i + 1]) for i in range(depth)]
     with using_mover(mover):
-        prem = [atom_of("balance", "<=", B), atom_of(delayed_tail(pairs, mover, family), ">=", T)]
+        prem = [atom_of("balance", "<=", B), atom_of(delayed_tail(pairs, mover, family, alive_const(T, family)), ">=", T)]
         atoms = with_legality(prem)
     return [(f"h{i}", t, op, v) for i, (t, op, v) in enumerate(atoms)]
 
 
 def tail_family(term):
-    """Which family's tail this atom's term is (None when none): `... (most (if G balance 0))` delayed_root, `... (most (if G (diff balance (maxworth ..)) 0))`
-    delayed_root_max, `... (most (least balance))` delayed_balance."""
+    """Which family's tail this atom's term is (None when none): `... (most (min (if G balance 0) (sum material_us C)))` delayed_root,
+    `... (most (min (if G (diff balance (maxworth ..)) 0) (sum material_us C)))` delayed_root_max, `... (most (least (min balance (sum material_us C))))` delayed_balance."""
     path, body = _split(term)
     if not path:
         return None
-    if path[-1] == ("most",) and isinstance(body, tuple) and body[0] == "if":
-        return "delayed_root_max" if isinstance(body[2], tuple) and body[2][0] == "diff" else "delayed_root"
-    if path[-2:] == (("most",), ("least",)) and body == "balance":
+    if not (isinstance(body, tuple) and body[0] == "min" and isinstance(body[2], tuple) and body[2][:2] == ("sum", "material_us")):
+        return None
+    inner = body[1]
+    if path[-1] == ("most",) and isinstance(inner, tuple) and inner[0] == "if":
+        return "delayed_root_max" if isinstance(inner[2], tuple) and inner[2][0] == "diff" else "delayed_root"
+    if path[-2:] == (("most",), ("least",)) and inner == "balance":
         return "delayed_balance"
     return None
 
@@ -761,7 +776,7 @@ def schema_proof(depth: int, family: str = "delayed_root") -> str | None:
     hb = next(n for n, t, op, v in hl if t == "balance")
     spine = hyps[tail][0]
     n_plies = 2 * (depth + 1)
-    last = {"delayed_root": "Ideas.Root.root_tail", "delayed_root_max": "Ideas.Root.root_tail_max", "delayed_balance": "Ideas.TreeStep.tail_two"}[family]
+    last = {"delayed_root": "Ideas.Root.root_tail_alive", "delayed_root_max": "Ideas.Root.root_tail_max_alive", "delayed_balance": "Ideas.TreeStep.tail_two_alive"}[family]
     lines = [f"refine Ideas.TreeStep.forcingOf_ne_zero p c v hc {depth + 1} (by simp) ?_",
              f"show Ideas.forcedWithinB c _ p {n_plies} = true",
              f"have hbase : ((materialOf p c : Int) - materialOf p (Color.opposite c)) ≤ (B : Int) - 64 := by unfold balanceOf at {hb}; omega"]
@@ -769,7 +784,7 @@ def schema_proof(depth: int, family: str = "delayed_root") -> str | None:
     def finish(d, pos, turn_proof, at_node):
         if spine[d:] != ((("most",), ("least",)) if family == "delayed_balance" else (("most",),)):
             return None
-        return [f"exact {last} c _ v ({pos}) {turn_proof} (T - 64) (by omega) (by omega) (by omega)"]
+        return [f"exact {last} c _ v ({pos}) {turn_proof} T C (by omega) (by omega) (by omega)"]
     with using_mover("w"):                      # (the legs the walk looks for name the rank before promotion from white's side, as the schema was built)
         body = _walk(hyps, spine, n_plies, finish)
     return None if body is None else "\n  ".join(lines + body)
@@ -795,13 +810,13 @@ def schema_theorem(depth: int, proof: str | None = None, family: str = "delayed_
     sq = [DUMMY[v] for v in SCHEMA_VARS[:2 * depth]]
     hl = schema_hyps(depth, sq, "B", "T", "w", family)
     vs = " ".join(SCHEMA_VARS[:2 * depth])
-    hy = "".join(f"\n    ({n} : {_var_squares(BV.lean(render(t, 'w')))} {'≥' if op == '>=' else '≤'} {v})" for n, t, op, v in hl)
+    hy = "".join(f"\n    ({n} : {_var_squares(BV.lean(render(t, 'w'))).replace(f'({C_VAR})', 'C')} {'≥' if op == '>=' else '≤'} {v})" for n, t, op, v in hl)
     title, tail_words = FAMILY_DOC[family]
     doc = (f"{title}, depth {depth} (plan 44.2, the operators DELAY / RECAPTURE). Our moves {' and '.join(f'x{i + 1} -> y{i + 1}' for i in range(depth))} are "
            f"named (legal, a piece of ours that is not about to promote); whatever they reply to the last, {tail_words}; the balance now is at "
-           f"most B, and T is at least B + v and at least 68: then the gain v is forced. The squares are variables: bind them to any position.")
+           f"most B, and T is at least B + v, with C = T - {ALIVE_NEED[family]} (the tail reads the balance AND our material, at least {ALIVE_NEED[family]}, so the game is alive; no floor on the balance): then the gain v is forced. The squares are variables: bind them to any position.")
     return (f"/-- {doc} -/\ntheorem {schema_name(depth, family)} (p : Position) (c : Color){'' if family == 'delayed_balance' else ' (W : Square)'} (hc : p.turn = c){'' if family == 'delayed_balance' else ' (hW : kingSq p c = some W)'}\n"
-            f"    ({vs} : Square) (B T : Nat) (v : Int) (hTB : (T : Int) ≥ (B : Int) + v) (hT : T ≥ 68){hy} :\n    forcingOf p c v ≠ 0 := by\n  "
+            f"    ({vs} : Square) (B T C : Nat) (v : Int) (hTB : (T : Int) ≥ (B : Int) + v) (hCT : C + {ALIVE_NEED[family]} = T){hy} :\n    forcingOf p c v ≠ 0 := by\n  "
             f"{proof if proof is not None else schema_proof(depth, family)}\n")
 
 
@@ -960,7 +975,7 @@ def schema_instance_proof(atoms: list, delta: int, mover: str = "w") -> str | No
     if not bals:
         return None
     B = min(bals)
-    if T < 68 or T < B + delta:
+    if T < ALIVE_NEED[family] or T < B + delta:          # (the alive material: C = T - ALIVE_NEED is a Nat; no floor on the balance)
         return None
     squares = [x for st in afters for x in st[1:3]]
     hl = schema_hyps(depth, squares, B, T, mover, family)
@@ -973,7 +988,7 @@ def schema_instance_proof(atoms: list, delta: int, mover: str = "w") -> str | No
         args.append(f"h{i}")
     sq = " ".join(_lean_sq(x, mover) for x in squares)
     return "\n  ".join(["intro hall", f"obtain ⟨{', '.join(f'h{i}' for i in range(len(atoms)))}⟩ := hall",
-                       f"exact Ideas.Mined.Schemas.{schema_name(depth, family)} p c {'' if family == 'delayed_balance' else 'W hc hW'}{' hc' if family == 'delayed_balance' else ''} {sq} {B} {T} {delta} (by omega) (by omega) {' '.join(args)}"])
+                       f"exact Ideas.Mined.Schemas.{schema_name(depth, family)} p c {'' if family == 'delayed_balance' else 'W hc hW'}{' hc' if family == 'delayed_balance' else ''} {sq} {B} {T} {T - ALIVE_NEED[family]} {delta} (by omega) (by omega) {' '.join(args)}"])
 
 
 def prove(atoms: list, delta: int, mover: str = "w") -> str:
@@ -1465,11 +1480,16 @@ def explanation(diag: dict, op: str, depth: int, pairs: list, need: int, family:
 def bind(depth: int, fen: str, mover: str, need: int, candidates: list | None = None, family: str = "delayed_root") -> list:
     """BIND the delayed-root schema of this depth to a position: for each candidate (our named moves [(x1, y1), ...], absolute squares; by default every legal
     move of a piece of ours (the king included) that is not a pawn about to promote, for depth one) substitute the squares, evaluate the premise in Rust (the legs,
-    `balance <= B`, the tail `>= T` with B the balance now and T = max(B + need, 68)), keep the bindings where every atom holds.
+    `balance <= B`, the tail `>= T` with B the balance now and T = B + need: no floor, the game's life is read from our material in the tail), keep the
+    bindings where every atom holds. When T is below the alive material (4; 13 for the weakened family) the schema cannot apply: printed, nothing returned.
     -> [dict(depth, pairs, B, T, prem, atoms)]."""
     import chess
+    assert need >= 1, "a gain of at least 1"
     B = val_at(fen, "balance", mover)
-    T = max(B + need, 68)
+    T = B + need
+    if T < ALIVE_NEED[family]:
+        print(f"OBS bind {schema_name(depth, family)}: B + need = {T} is below the alive material {ALIVE_NEED[family]}: the schema cannot apply")
+        return []
     if candidates is None:
         bd = chess.Board(fen)
         seen, candidates = set(), []
@@ -1486,7 +1506,7 @@ def bind(depth: int, fen: str, mover: str, need: int, candidates: list | None = 
         if len(pairs) != depth:
             continue
         with using_mover(mover):
-            prem = [atom_of("balance", "<=", B), atom_of(delayed_tail(pairs, mover, family), ">=", T)]
+            prem = [atom_of("balance", "<=", B), atom_of(delayed_tail(pairs, mover, family, alive_const(T, family)), ">=", T)]
         if premise_truth(prem, [dict(fen=fen, mover=mover)])[0]:
             out.append(dict(depth=depth, pairs=pairs, B=B, T=T, prem=prem, atoms=with_legality(prem), family=family))
     return out
@@ -1697,7 +1717,7 @@ def schema_sentence(depth: int, family: str = "delayed_root") -> str:
                                  "of our most valuable attacked piece (the board's own king lifted) is at least T",
              "delayed_balance": "we have a move and then, whatever they reply, our balance is at least T"}
     return (f"SCHEMA {schema_name(depth, family)}(x1 y1{' x2 y2' if depth == 2 else ''}, B, T, v): {first}; our balance now is at most B; after {moves}, whatever they reply, "
-            f"{tails[family]}; with T >= B + v and T >= 68 we force a gain of v within {depth + 1} moves of ours against every defence")
+            f"{tails[family]}; with T >= B + v (the tail reads our material too, no floor) we force a gain of v within {depth + 1} moves of ours against every defence")
 
 
 def played_next(win: dict, fen: str):

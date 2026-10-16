@@ -267,7 +267,7 @@ def lean(t) -> str:
             return f"(some {t})"
         if t[0] in "PO" and t[1:].isdigit():
             return f"(nthPiece p {'c' if t[0] == 'P' else '(Color.opposite c)'} {t[1:]})"
-        if PRIMITIVES.get(t, ((), "", ""))[1] == "int":
+        if PRIMITIVES.get(t, ((), "", ""))[1] == "int" or t.isdigit():
             return f"({t})"                         # (a numeral: Nat in number words; offsets cast it to Int)
         if t.startswith("forcing_"):
             _, side, v = t.split("_")

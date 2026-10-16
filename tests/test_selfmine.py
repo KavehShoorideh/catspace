@@ -181,7 +181,7 @@ def test_schema_proof_has_root_tail_once_per_depth_and_the_instance_is_exact():
         assert SM.schema_theorem(depth) in SM.schemas_text()                       # Schemas.lean is the generator's output, proved
     inst = SM.bind(1, FORK, "w", 5)[0]
     pf = SM.schema_instance_proof(SM.with_legality(inst["prem"]), 5, "w")
-    assert pf.count("exact Ideas.Mined.Schemas.delayed_root_d1") == 1 and "root_tail" not in pf and "step_" not in pf
+    assert pf.count("exact Ideas.Mined.Schemas.delayed_root_alive_d1") == 1 and "root_tail" not in pf and "step_" not in pf
     assert SM.schema_instance_proof(SM.with_legality(inst["prem"]), 9, "w") is None   # a gain the tail does not clear is not an instance
 
 
@@ -218,12 +218,12 @@ def test_the_ladder_explains_the_fork_and_the_pawn_capture_by_the_schema_in_lean
             lines = []
             r = SM.layers(win, tag, do_lean=True, do_drill=True, fallback=False, log=lambda *a: (lines.append(" ".join(map(str, a))), print(*a)))
             made.append(SM.LEAN_DIR / "Ideas" / "Mined" / f"{tag}_layers.lean")
-            assert r["explained"] and r["schema"] == "delayed_root_d1"
-            assert any(l.startswith(f"OBS EXPLAINED BY SCHEMA delayed_root_d1 bound to {pair}") for l in lines)
-            assert any("disagreements: 0" in l for l in lines) and any("delayed_root_d1_instance: PROVES" in l for l in lines)
+            assert r["explained"] and r["schema"] == "delayed_root_alive_d1"
+            assert any(l.startswith(f"OBS EXPLAINED BY SCHEMA delayed_root_alive_d1 bound to {pair}") for l in lines)
+            assert any("disagreements: 0" in l for l in lines) and any("delayed_root_alive_d1_instance: PROVES" in l for l in lines)
         table = json.loads(open(score).read())
-        won = [w for w, d in table["delayed_root_d1"]["windows"].items() if d["explained"] and w in ("_t_fork", "_t_pawn")]
-        print(f"OBS score delayed_root_d1: windows explained {won}")
+        won = [w for w, d in table["delayed_root_alive_d1"]["windows"].items() if d["explained"] and w in ("_t_fork", "_t_pawn")]
+        print(f"OBS score delayed_root_alive_d1: windows explained {won}")
         assert sorted(won) == ["_t_fork", "_t_pawn"]
     finally:
         for f in made:
@@ -240,7 +240,7 @@ FORK2 = "1r3k2/8/5q2/2N5/2R5/8/4K3/R2R4 w - - 0 1"       # the fork again with a
 
 
 def test_the_schema_families_are_proved_and_the_instance_is_exact():
-    tails = {"delayed_root": "Ideas.Root.root_tail", "delayed_root_max": "Ideas.Root.root_tail_max", "delayed_balance": "Ideas.TreeStep.tail_two"}
+    tails = {"delayed_root": "Ideas.Root.root_tail_alive", "delayed_root_max": "Ideas.Root.root_tail_max_alive", "delayed_balance": "Ideas.TreeStep.tail_two_alive"}
     for fam in SM.FAMILIES:
         for depth in (1, 2):
             pf = SM.schema_proof(depth, fam)
@@ -259,9 +259,9 @@ def test_the_weakened_family_binds_where_the_root_family_does_not_and_the_instan
     assert root == [] and [i["pairs"] for i in mx] == [[("c5", "d7")]] and [i["pairs"] for i in bal] == [[("c5", "d7")]]
     assert SM._label((FORK2, 5, 2))["status"] == "forced"
     pf = SM.schema_instance_proof(SM.with_legality(mx[0]["prem"]), 5, "w")
-    assert pf.count("exact Ideas.Mined.Schemas.delayed_root_max_d1") == 1 and "root_tail" not in pf
+    assert pf.count("exact Ideas.Mined.Schemas.delayed_root_max_alive_d1") == 1 and "root_tail" not in pf
     pb = SM.schema_instance_proof(SM.with_legality(bal[0]["prem"]), 5, "w")
-    assert pb.count("exact Ideas.Mined.Schemas.delayed_balance_d1") == 1 and "tail_two" not in pb
+    assert pb.count("exact Ideas.Mined.Schemas.delayed_balance_alive_d1") == 1 and "tail_two" not in pb
     assert SM.tail_family(mx[0]["prem"][1].term) == "delayed_root_max" and SM.tail_family(bal[0]["prem"][1].term) == "delayed_balance"
     d = SM.diagnose(FORK2, "w", 5, "c5", "d7")
     ex = SM.explanation(d, "DELAY", 1, [("c5", "d7")], 5, "delayed_root_max")
