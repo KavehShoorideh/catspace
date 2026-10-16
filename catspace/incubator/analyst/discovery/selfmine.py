@@ -498,7 +498,7 @@ def n_replies(win: dict, poss: list, ks: list, tk: int, mover: str) -> int:
     records its quiescence ply (43.2), the winner's moves of the game line from the example to it, whichever is more."""
     n = max(1, len({k for k in ks if k < tk and any(p["k"] == k and p["mover"] != mover for p in poss)}))
     q = win.get("quiescence_ply")
-    ply = next((p["ply"] for p in win["plies"] if p["k"] == tk), None)
+    ply = next((p.get("ply") for p in win["plies"] if p["k"] == tk), None)
     if q is not None and ply is not None and q - 1 >= ply + 1:
         n = max(n, (q - 1 - (ply + 1)) // 2 + 1)
     return n
