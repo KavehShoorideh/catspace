@@ -1682,3 +1682,39 @@ attacked" (never true on a real board, 44) and the max-worth bound (charges us f
 Tests: tests/test_selfmine.py additions (the hand-made positions of item 1; the explanation string contains "dead end"; the cache counts
 hits on a repeated leaf). Lean: `least_of_each` and the schema proved, no sorry; `lean_index build`. Numbers only from OBS lines; no AI
 trailers; one commit per piece (Lean; verdicts + explanation; cache + sacrifice flag; tests + acceptance mined files).
+
+## 46. THE SEARCH RULER: an alpha-beta solver with Stockfish's ordering, its trace beside the stream (Kaveh 2026-10-16 afternoon, GO; built by a cheaper agent)
+
+### 46.1 What Kaveh said
+"Minimax with alpha-beta ... bake in the heuristics that Stockfish has (checks and captures first; go check what they do) ... measure how
+many nodes we visit that we shouldn't ... I don't think we'll ever beat Stockfish; that's not the goal. The good interpretability goal is
+the right one: say the logic behind it. I want move numbers on the same order as Stockfish: for every puzzle we solve, see the trace,
+which nodes it visited first and how it went by. Our search should visit fewer nodes but go deeper." The solver is the RULER, never the
+player (the criterion: progress is never measured by Stockfish; it may label and verify). The tactical-frame search (ours from the frame,
+all their replies, to quiescence, every cut with its reason) comes AFTER this ruler exists (plan 47).
+
+### 46.2 Definitions
+- `catspace/incubator/analyst/discovery/ruler.py`: `solve(fen, need, max_depth, trace) -> dict(status, line, nodes, depth, trace)`:
+  iterative deepening, negamax alpha-beta over ALL legal moves of both sides, a quiescence search over captures (and checks at the
+  first quiescence ply) with stand-pat, the leaf = material balance in PIECE_WORTH (mate = +100/-100, stalemate/repetition/50-move = 0,
+  the window's `need` is the target: "forced" when the root score ≥ need against every defence). Ordering, Stockfish's own in order:
+  the hash move (previous iteration's best), captures by MVV-LVA (most valuable victim, least valuable attacker) with SEE-negative
+  captures after the quiet moves, promotions, checks, two killer moves per ply, history heuristic. Read Stockfish's movepick.cpp first
+  (`git log` / web); name in the docstring what is taken and what is left out (no null-move pruning, no LMR, no futility: Kaveh wants a
+  FULL search with ordering, so every node visited is one a plain search needs).
+- TRACE: a list of (ply, san path, kind in {main, quiescence}, reason in {cut: beta, cut: stand-pat, leaf, mate, repeat}) in VISIT
+  ORDER, capped by `trace` entries (the first N visited); `nodes` is the total count (main + quiescence, reported separately).
+- REFERENCE: real Stockfish (`/opt/homebrew/bin/stockfish`, python-chess UCI) on the same position: the lowest depth whose pv's first
+  move is the puzzle's answer and its `nodes` at that depth (iterate depth 1..20, `info` lines). Printed as `OBS stockfish depth d nodes n`.
+- The puzzle page / stream gets EV 7: `EV 7 ruler: forced at depth d, nodes M main + Q quiescence, line ...; Stockfish: depth d' nodes n'`
+  followed by the first 40 trace lines ("1. Kxc2 .. Qc4+ .. Kd2 .. Qxe4 leaf 62" style) -- the order the search looked.
+- Entry point: `python -m catspace.incubator.analyst.discovery.ruler --set dev_20 --index 0 [--trace 200]`; `puzzle_apply` calls
+  `ruler.solve` in EV 7 (import, don't duplicate).
+
+### 46.3 Acceptance
+1. dev_20 puzzles 000Sa (Bxc2, gain 5) and 00cZ4 (Qh2#) and 0Ag9s (Qxa8+): status forced, the line's first move = the answer; OBS lines with
+   nodes and Stockfish's nodes. One run each, numbers directional.
+2. The trace of 000Sa shows the check Qc4+ visited before quiet replies after Kxc2 (the ordering works).
+3. tests/test_ruler.py: mate in one found at depth 1; a hanging piece found at depth 1; the ordering puts a capture before a quiet move;
+   the trace's first entry is the root's first child; a position with no gain returns "stopped".
+No Pool; no AI trailers; one commit for the solver + tests, one for the EV 7 hook; the Rust solver `forced_moves` stays the exact labeller.
