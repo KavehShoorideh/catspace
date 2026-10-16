@@ -744,7 +744,11 @@ def mine(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool =
     delta = int(win["observable"]["delta"])
     poss = positions(win)
     ks = sorted({p["k"] for p in poss})
-    tk = max(k for k in ks if {"SAME", "AVOIDED"} <= {p["cls"] for p in poss if p["k"] == k})
+    both = [k for k in ks if {"SAME", "AVOIDED"} <= {p["cls"] for p in poss if p["k"] == k}]
+    if not both:
+        log(f"OBS target {tag}: no ply of the window has both a SAME and an AVOIDED branch (nothing to separate); the tree search is skipped")
+        return dict(items=[], typechecked=0, proved=0, solver_ok=False, premises=[], solver={})
+    tk = max(both)
     ex = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "SAME"]
     cx = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "AVOIDED"]
     ox = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "OTHER"]
