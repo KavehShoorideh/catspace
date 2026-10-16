@@ -1626,3 +1626,59 @@ Tests: tests/test_selfmine.py additions -- `bind` finds the instance on a hand-m
 names hv on it and hhit on a hand-made defended pawn; `schema_proof` output contains `root_tail` once per depth; the instance proof is `exact`
 of the schema. Lean: `root_tail` proved with no sorry; `lean_index build` after. Numbers only from OBS lines; no AI trailers in commits; one
 commit per piece (item 0; diagnose + operators; root_tail + schema generator; ladder order + score; tests).
+
+## 45. DEAD-END ATTACKS: every attack on us gets a verdict, proved once (Kaveh 2026-10-16 early morning, GO; built by a cheaper agent)
+
+### 45.1 What Kaveh said
+"There's always some piece of us under attack, but those attacks lead to losses for my opponent, so I don't expect them to take ... what
+we're looking for is attacks that are dead ends versus attacks that lose material now but gain something later [a sacrifice] ... these
+attack lines have been proven to lose material. You have to prove them once, and then that's it." So the root's guard "nothing of ours is
+attacked" (never true on a real board, 44) and the max-worth bound (charges us for defended pawns) are replaced by a VERDICT per attack.
+
+### 45.2 Definitions
+- At a leaf of a delayed schema it is THEIR turn (after our witness move). Their replies split into CAPTURES of our pieces (the attacks)
+  and quiet moves. The sound tail stays `(least (most balance)) ≥ T` (delayed_balance, proved); what 45 adds is its DECOMPOSITION into one
+  verdict per reply, each a small lemma, and the EXPLANATION built from them. Lean: `least_of_each` -- if every legal reply m has
+  F (applyMove q m) ≥ T then leastOver q F ≥ T (prove it from the definition of leastOver; check TreeStep for an existing form first).
+- DEAD END (the one-step exchange, from their side): their piece on s takes our piece on t, and a piece of ours on z takes back on t;
+  when worth(s) ≥ worth(t) they gain nothing. Schema `dead_end(s, t, z)`, premise over the words (read with THEM to move):
+  their piece on s (count theirs at s ≥ 1), our piece on t (count ours at t ≥ 1), `(worth s) ≥ (worth t)` (worth is the value of what stands
+  there, whichever colour), the legs of s -> t for the side to move (legal, theirs, not promoting), and after s -> t the legs of z -> t for us
+  (`(after s t (count (and (moves z) (at t))))` ≥ 1, ours at z, not promoting) -- conclusion `(after s t (most balance)) ≥ balance` i.e.
+  afterMove p s t (fun q => mostOver q (balanceOf · c)) ≥ balanceOf p c with c = US (the side NOT to move at p). Lean proof: after_of_moves
+  for their move (the kernel plays the legal move for whichever side moves; check the hypotheses of after_of_moves / step_after_np and
+  write the "their side" variant if it assumes p.turn = c), capture_gains twice (their capture lowers our material by worth t, our
+  recapture lowers theirs by worth s), le_mostOver with the witness z -> t. Generated into Ideas/Mined/Schemas.lean by schema_proof as
+  the family `dead_end` (depth 1 only), proved once, instances by `exact`.
+- VERDICTS (`verdicts(fen, us)` in selfmine.py, fen with THEM to move): for each legal reply s -> t of theirs: if it captures a piece of ours,
+  bind `dead_end(s, t, z)` over our pieces z that can recapture (Rust evaluation); on a binding the verdict is
+  ("dead end", s, t, z, "taking t loses: we take back with z"); otherwise read `(after s t (most balance))` (Rust) and label it
+  ("costs", k) when it is below the balance now (k = the drop) else ("affordable", 0) -- these two are the NEXT LAYER's targets (an attack
+  that is not a dead end by the one-step exchange: an escape, a bigger exchange, a pin). A quiet reply gets ("quiet", witness) where witness
+  is a move of ours after which balance ≥ balance now (read `(after s t (most balance))` and name the argmax move -- add a cheap
+  python-chess argmax, it is explanation, not proof). Print per leaf one OBS line: `OBS verdicts <fen>: attacks N, dead ends by schema D,
+  costs C (max drop k), affordable A, quiet Q`.
+- THE EXPLANATION of a delayed_balance instance (the EXPLAINED BY SCHEMA line) now ends with the verdict list at the leaf of the solver's
+  line (the position after our last witness move along `sol['line']`): "attacks on us after <line>: <t> by <s>: dead end (we take back
+  with <z>); <t'> by <s'>: costs 1; ...". For windows explained by the root nothing changes.
+- THE CACHE ("prove once, then that's it"): a verdict depends only on (s, t, z, the kinds and colours on them, worth s, worth t, legality
+  of the two moves); keep a per-run dict keyed by that tuple -> verdict; across the leaves of one window (several replies at depth 2, the
+  drill's variants if cheap) count hits: `OBS verdict cache: M verdicts, H hits`. Reuse by re-binding, never by trusting a stale verdict:
+  on a hit the atoms are re-evaluated (Rust, microseconds) and the proof is the schema's; what is saved is the search for z.
+- SACRIFICE FLAG (detection only, no learning yet): when a window's winning line (the solver's first move, from the WINNER's side) is a
+  capture that `dead_end` labels a dead end for the winner (i.e. bound from the VICTIM's view, the winner's capture looks like it loses by the
+  one-step exchange) print `OBS sacrifice candidate <tag>: <san> is a dead end by the exchange yet the solver forces <delta>`. The fork
+  Qxc3+ (a queen takes a pawn defended by a pawn) should be flagged; this is the deviation "normally taking here loses, but because of Y
+  they gain more later" for a later plan.
+
+### 45.3 Acceptance (OBS lines, one run each; no tuning)
+1. `dead_end` schema PROVES in Schemas.lean (print the statement in words). A hand-made test: a rook attacks a defended pawn (dead end),
+   a pawn attacks a queen (costs 8 or an escape: "affordable" if the queen can step away keeping the balance), a quiet reply.
+2. sHa6yUKv window 1: still EXPLAINED BY SCHEMA delayed_balance_d2; the explanation lists the attacks at the leaf after Qxc3+ Ke2 Qxa1
+   <reply>; report the verdict counts and which attacks are dead ends by the schema; the sacrifice flag on Qxc3+.
+3. 46LzXjoz window 1: the attack on our pawn after Qxf1 gets its verdict; counts.
+4. 4pfUO5Kb window 0: unchanged (root).
+5. The verdict cache line on each run.
+Tests: tests/test_selfmine.py additions (the hand-made positions of item 1; the explanation string contains "dead end"; the cache counts
+hits on a repeated leaf). Lean: `least_of_each` and the schema proved, no sorry; `lean_index build`. Numbers only from OBS lines; no AI
+trailers; one commit per piece (Lean; verdicts + explanation; cache + sacrifice flag; tests + acceptance mined files).
