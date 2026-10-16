@@ -31226,3 +31226,37 @@ the Sonnet builder; verified: 24 tests pass (windows, selfmine, root), both new 
 - 4pfUO5Kb: the window now starts at the Qb5+ fork (plies 14-19); the hanging bishop falls inside it; the root is tried at the victim's
   later moves inside the window (`later_root`) and still EXPLAINS it, `hanging` proved, drill 385/633 covered, 0 disagreements.
 - Board republished: https://claude.ai/artifact/94UcaR4MxNMrWgp6L6TzWP (v3).
+
+### LAYERS FOUND BY THE LOOP, FIRST HALF: THE GENERIC SCHEMA PROVES, THE ROOT'S GUARD FAILS ON REAL BOARDS (2026-10-15 23:50 PDT)
+
+Kaveh: "I want the machinery's loop to do this automagically ... so that we get a generic fork lemma", then "Go autonomously until
+tomorrow". Plan 44: the loop DIAGNOSES which hypothesis of the root fails at the solver's first move, REPAIRS it by a generic operator
+(DELAY: the root's conclusion holds one move later under every reply; the same operator reads as RECAPTURE when the failing hypothesis is
+"our piece is attacked after the move"), proves the result ONCE as a SCHEMA over square variables, and BINDS proved schemas on every later
+window before any search. Built by the Sonnet builder (commits 85d85be2 .. 883a9dfb); verified here: 37 tests pass (selfmine, root,
+windows, vocab), no sorry in Schemas.lean / Root.lean / TreeStep.lean. Numbers are the builder's OBS lines, one run each.
+
+- Item 0: a pawn may be the piece of a named move unless it stands on our seventh rank (Lean: promotion_from_seventh,
+  queenOnly_of_not_promoting, step_after_np). `hit` under after/least/most now lifts the king of the board read there (kingSqD), as the
+  Rust evaluator always did; `hanging` restated on it.
+- `root_tail` proved: from "some move of ours after which nothing of ours is attacked, no pawn of theirs promotes or takes en passant,
+  and they have a reply, with the balance at least 64+k" the gain is forced in two plies (reply_no_loss_gen). Two extra guard summands
+  over the plan: the en-passant pawn and "they have a reply" (a stalemate witness would otherwise slip through). Both are soundness
+  holes in my brief that the builder caught.
+- Schemas.lean (generated): delayed_root_d1 and delayed_root_d2 PROVE (4.7 s, 4.8 s), squares universally quantified; instances prove by
+  `exact`. On a hand-made fork (Nd7+ against king, queen and rook) and a hand-made pawn capture the whole ladder runs in Lean:
+  EXPLAINED BY SCHEMA delayed_root_d1, 0 drill disagreements.
+- Real windows: sHa6yUKv window 1: diagnose names {hv, hhit} at Qxc3+ (a pawn is worth less than 6; something of ours is attacked after);
+  0 bindings of either schema; EXCLUDE finds nothing (477 counter-examples); the tree fallback proves premise_21 again (179/400, 0
+  disagreements). 46LzXjoz window 1 (delta 9): diagnose {hhit} at Qxf1, k = 8 < 9 because one pawn of ours is attacked after; 0
+  bindings; fallback premise_21 (316/423, 0 disagreements). 4pfUO5Kb window 0: still EXPLAINED BY THE ROOT (385/633, 0 disagreements;
+  reuse now counts distinct windows, so `hanging` reads 1). MTq15Poj window 1: the solver STOPS at the example (Ne4), so no schema is
+  claimed; diagnose at the game's own move gxh6 names {hhit, hnp}.
+
+Reading. The machinery of plan 44 works end to end, but the root's guard "nothing of ours is attacked after the move" is a one-board
+reading that no real middlegame satisfies (a pawn is always attacked somewhere); the builder's why_guard script found 0 of 35 white
+moves with a true guard at the end of the fork line (the h7 pawn). The reasoned weakening is the root's own argument one step further:
+a reply captures at most ONE piece, so after our move we lose at most the most valuable attacked piece of ours. That needs the
+set-maximum word I had flagged (`maxworth`, added tonight under the vocabulary rule) and one theorem (reply_loses_at_most). The
+fully general schema family, the proved tree lemma with its squares made variables (`(most (least balance))` tail), is added beside it
+as the last resort. Second half in progress.
