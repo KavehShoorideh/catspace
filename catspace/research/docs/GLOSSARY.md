@@ -125,6 +125,9 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
 - **Worth** (`worth X`, 2026-10-15, plan 42) — the declared value of the piece on X (pawn 1, knight 3, bishop 3, rook 5, queen 9; a king or an empty square 0),
   whoever owns it. A convention, declared, not derived. The root lemma (an undefended piece is worth its value to the side that can take it) is stated in it.
   Lean: `worthOf`.
+- **Max worth** (`maxworth S`, 2026-10-15, plan 44) — the largest `worth` among the squares of the set S (0 when S is empty or holds only kings). What the other
+  side can win at most by taking one piece of S; the balance minus `maxworth` of the attacked pieces is the least a single recapture leaves us.
+  Lean: `maxWorthOf` (`worthOf_le_maxWorthOf`: every square of S is worth at most it).
 - **Layers** — the order the proposers search the terms in: layer 0 the original words, layer 1 the completed static words,
   layer 2 the expensive ones (the short window's tactics, time).
 

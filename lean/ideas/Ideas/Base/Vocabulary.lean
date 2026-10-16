@@ -302,6 +302,39 @@ a king or an empty square 0. A convention, declared, not derived. -/
 def worthOf (p : Position) (s : Square) : Nat :=
   match p.board s with | some q => (pieceValue q.kind).toNat | none => 0
 
+/-- **maxworth** (Kaveh 2026-10-15, plan 44): the largest `worthOf` among the squares of `S` (0 when `S` is empty or holds only kings and empty
+squares). A fold over the board's squares with `Nat.max`. -/
+def maxWorthOf (p : Position) (S : SquareSet) : Nat :=
+  allSquares.foldl (fun m u => if S u then Nat.max m (worthOf p u) else m) 0
+
+theorem maxWorthOf_foldl_ge (p : Position) (S : SquareSet) (l : List Square) (a : Nat) :
+    a ≤ l.foldl (fun m u => if S u then Nat.max m (worthOf p u) else m) a := by
+  induction l generalizing a with
+  | nil => exact le_refl _
+  | cons v l ih =>
+    simp only [List.foldl_cons]
+    refine le_trans ?_ (ih _)
+    by_cases h : S v = true
+    · rw [if_pos h]; exact Nat.le_max_left _ _
+    · rw [if_neg h]
+
+theorem maxWorthOf_foldl_le (p : Position) (S : SquareSet) (u : Square) (hu : S u = true) :
+    ∀ (l : List Square) (a : Nat), u ∈ l → worthOf p u ≤ l.foldl (fun m w => if S w then Nat.max m (worthOf p w) else m) a := by
+  intro l
+  induction l with
+  | nil => intro a h; exact absurd h (by simp)
+  | cons v l ih =>
+    intro a h
+    simp only [List.foldl_cons]
+    rcases List.mem_cons.mp h with rfl | h'
+    · refine le_trans ?_ (maxWorthOf_foldl_ge p S l _)
+      rw [if_pos hu]; exact Nat.le_max_right _ _
+    · exact ih _ h'
+
+/-- **maxworth bounds every worth in the set**: a square of `S` is worth at most `maxWorthOf p S`. -/
+theorem worthOf_le_maxWorthOf (p : Position) (S : SquareSet) (u : Square) (hu : S u = true) : worthOf p u ≤ maxWorthOf p S :=
+  maxWorthOf_foldl_le p S u hu allSquares 0 (mem_allSquares u)
+
 /-- **balance** (Kaveh 2026-10-15, the observable itself): our material minus theirs on an offset of 64 (64: level; above: ahead). One
 number for the leaf of a tree premise, so that one witness move bounds the gain. -/
 def balanceOf (p : Position) (c : Color) : Nat := materialOf p c + 64 - materialOf p (Color.opposite c)

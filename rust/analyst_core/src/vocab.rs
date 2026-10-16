@@ -46,7 +46,7 @@ pub enum Term {
     // lines through pieces: the squares past Y on the ray from X, the first piece there, what X attacks through one piece
     Beyond(Box<Term>, Box<Term>), Next(Box<Term>, Box<Term>), Xray(Box<Term>),
     // control and exchanges: how many of ours / theirs attack a square, the exchange on it, a piece's legal moves
-    Attackers(Box<Term>), Defenders(Box<Term>), See(Box<Term>), Moves(Box<Term>), Worth(Box<Term>),
+    Attackers(Box<Term>), Defenders(Box<Term>), See(Box<Term>), Moves(Box<Term>), Worth(Box<Term>), MaxWorth(Box<Term>),
     // the short window's tactics (exact): the fewest moves forcing a gain of v or more (ours; theirs as if we passed)
     Forcing(bool, i64),
     // material and the game's context; time
@@ -194,7 +194,7 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
         ("pushes", [a]) => Term::Pushes(b(a)), ("passer", [a]) => Term::Passer(b(a)),
         ("offset", [a, Term::Int(df), Term::Int(dr)]) => Term::Offset(b(a), *df, *dr),
         ("beyond", [a, c]) => Term::Beyond(b(a), b(c)), ("next", [a, c]) => Term::Next(b(a), b(c)), ("xray", [a]) => Term::Xray(b(a)),
-        ("attackers", [a]) => Term::Attackers(b(a)), ("defenders", [a]) => Term::Defenders(b(a)), ("see", [a]) => Term::See(b(a)), ("worth", [a]) => Term::Worth(b(a)),
+        ("attackers", [a]) => Term::Attackers(b(a)), ("defenders", [a]) => Term::Defenders(b(a)), ("see", [a]) => Term::See(b(a)), ("worth", [a]) => Term::Worth(b(a)), ("maxworth", [a]) => Term::MaxWorth(b(a)),
         ("moves", [a]) => Term::Moves(b(a)),
         ("ago", [Term::Int(k), a]) if *k > 0 => Term::Ago(*k as u32, b(a)),
         ("without", [x, a]) => Term::Without(b(x), b(a)),
@@ -452,6 +452,9 @@ pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
         Term::See(a) => sq(a, q, lone).and_then(|x| q.board().color_at(x).map(|c| crate::rules::see(q.board(), x, !c).max(0) as u32)).unwrap_or(0),
         // the declared value of the piece on a square, whoever owns it (pawn 1, minor 3, rook 5, queen 9; a king or nothing 0)
         Term::Worth(a) => sq(a, q, lone).and_then(|x| q.board().role_at(x)).map_or(0, |r| if r == Role::King { 0 } else { crate::rules::val(r).max(0) as u32 }),
+        // the largest declared value among the pieces on a set of squares (0 for an empty set or kings only)
+        Term::MaxWorth(a) => set(a, q, lone).into_iter().filter_map(|x| q.board().role_at(x))
+            .map(|r| if r == Role::King { 0 } else { crate::rules::val(r).max(0) as u32 }).max().unwrap_or(0),
         Term::Forcing(ours, v) => crate::goals::forcing(q, *ours, *v),
         Term::MaterialUs => material(q.board(), !lone).max(0) as u32,
         // the material balance on an offset of 64 (Kaveh 2026-10-15: THE observable; one number for a tree's leaf)
@@ -547,7 +550,7 @@ pub(crate) fn reach_route(q: &Chess, c: Color, s: Square, k: u32) -> Result<Vec<
 /// Is this term a number (else a set, read as its count)?
 pub fn is_num(t: &Term) -> bool {
     matches!(t, Term::Count(_) | Term::Dist(_, _) | Term::Sum(_, _) | Term::FileOf(_) | Term::RankOf(_) | Term::DFile(_, _) | Term::DRank(_, _)
-        | Term::Pushes(_) | Term::Attackers(_) | Term::Defenders(_) | Term::See(_) | Term::Worth(_) | Term::Forcing(_, _) | Term::MaterialUs | Term::MaterialThem | Term::Balance
+        | Term::Pushes(_) | Term::Attackers(_) | Term::Defenders(_) | Term::See(_) | Term::Worth(_) | Term::MaxWorth(_) | Term::Forcing(_, _) | Term::MaterialUs | Term::MaterialThem | Term::Balance
         | Term::Halfmoves | Term::Seen | Term::Ago(_, _) | Term::Without(_, _) | Term::If(_, _, _) | Term::After(_, _, _) | Term::Least(_) | Term::Most(_) | Term::Delta(_) | Term::Attackable(_, _) | Term::Declined(_) | Term::Min(_, _) | Term::Max(_, _) | Term::Diff(_, _) | Term::Eq(_, _) | Term::Int(_))
 }
 
@@ -1327,6 +1330,7 @@ pub(crate) fn reads(t: &Term, q: &Chess, lone: Color) -> Bitboard {
         Term::Mobility(a) | Term::Attackable(a, _) => r(a) | at(a) | Bitboard::FULL,
         Term::Declined(a) => r(a) | Bitboard::FULL,                                                  // (every exchange but one)        // (the escape squares and the routes read most of the board)
         Term::Worth(a) => r(a) | at(a),
+        Term::MaxWorth(a) => r(a) | Bitboard::FULL,                                                 // (every piece of the set is read)
         Term::Count(a) | Term::Not(a) | Term::Delta(a) | Term::Gained(a) | Term::Lost(a) => r(a),
         Term::And(a, c) | Term::Or(a, c) | Term::Sum(a, c) | Term::Min(a, c) | Term::Max(a, c) | Term::Diff(a, c) | Term::Eq(a, c) => r(a) | r(c),
         Term::If(c, a, d) => r(c) | r(a) | r(d),
