@@ -31331,3 +31331,28 @@ attacked" includes "not in check"); and the OLD registry export Ideas/Generated/
 ours/theirs counts, krrvkr / krpvkr) now counts the king square too -- those lemmas were promoted on evidence under the old meaning and
 have not been re-evaluated. Open item for Kaveh: re-run the registry's evidence under the new meaning, or export those measures over a
 named non-king set.
+
+### PUZZLES AS AN EVENT STREAM: APPLY ONLY (2026-10-16 10:02 PDT)
+
+Kaveh: "how do we test the machinery next? Let's do some puzzles ... narrate the analysis in order as it comes from the machinery. It should be
+an event stream" and "in puzzles the window is defined by the puzzle, so there's no mining, we just apply what we've learnt". Driver
+catspace/incubator/analyst/discovery/puzzle_apply.py: EV 1 the position and the puzzle's window; EV 2 the threats to us if we passed, each
+with its dead-end verdict (a check is the biggest threat); EV 3 the root on every capture; EV 4 every proved schema read once per candidate
+move (the tail is a number; the king's moves are candidates); EV 5 the decision = the biggest guaranteed gain, else the PARRY of the
+biggest threat (the move whose tail keeps the most); EV 6 the solver and the puzzle's answer. Nothing is mined or sent to Lean. Set:
+data/derived/ledger_puzzles_dev_20.json (20 lichess puzzles of the ledger era). Depth 1 only (depth 2 enumerates ~600 pairs and runs 1-3
+minutes per family: search in disguise, left off).
+
+What the first runs exposed (and the fixes, all general): (1) every schema theorem carried `T >= 68` (my "alive" floor from the balance), so
+no gain from a deficit or a level position could ever be an instance -- 0Ag9s read Qxa8+ at 64 against 59, a real +5, and threw it away;
+builder a301b4a4 76424223 b4a55974 c6cfbc24: alive is read from OUR material at the leaf (`(min LEAF (sum material_us C))`, C = T - 4;
+gainGoal_of_balance_alive, tail_two_alive, root_tail_alive, root_tail_max_alive; six _alive schemas proved; the three windows still explained,
+80 tests pass). (2) king moves were never candidates (052Wm has only king moves). (3) the decision fired only on a gain; in Kaveh's order a
+move that parries the biggest threat is the decision when nothing gains.
+
+Depth-1 results on the 14 non-mate puzzles (one run; the 6 mates all read "no lemma reads mate yet"): MATCH 7 -- 000Sa Bxc2 (+2 guaranteed;
+the label's 5 counts the rook before black's Qa1+ counterplay), 0Ag9s Qxa8+ (+5), 0A2fe Qg2+ (+2), 0BuCC Rxf2+ (+2), and three PARRIES:
+08A6a Bxe5 (against Nxf7 costing 6), 02XVK Bxg6 (against gxh5 costing 8, keeps all but 1), 052Wm Kf8 (in check). MISS 7 -- 01vys (zugzwang),
+04Qx2 (discovered check), 06J6T (sacrifice), 07Z0P (pin), 08pAF (long attack), 09QQs (advanced pawn), 0BHbB (Qb8+ then a skewer): all
+deeper than four plies or not material at all. The threat readings in every puzzle read like Kaveh's analysis order (biggest threat to us
+first, dead ends named with the recapturer).
