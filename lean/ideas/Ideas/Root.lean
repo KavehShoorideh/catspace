@@ -361,7 +361,7 @@ theorem newEnPassant_nonpawn (p : Position) (x y : Square) (q0 : Piece) (hx : p.
   simp [this]
 
 /-- THE ROOT (plan 42, w = 0). A piece of theirs stands on `y` and our non-pawn piece on `x` can legally take it; after the capture
-nothing of ours (but the king) is attacked, they have no pawn on the rank before promotion, and whatever they reply the game is alive.
+nothing of ours (but the king) is attacked, they have no pawn on the rank before promotion, they have a legal reply, and we have material 4 or more (so the game is no dead draw after any reply: our material does not fall).
 Then `forcingOf p c v` is nonzero for every `v` up to the worth of what was taken: the gain is forced in one move of ours and their reply.
 Hypotheses are the words as `base_vocabulary.lean` renders them (`W` is our king, as for every mined statement that names it). -/
 theorem hanging (p : Position) (c : Color) (v : Int) (W : Square) (hc : p.turn = c) (hW : kingSq p c = some W) (x y : Square)
@@ -373,7 +373,8 @@ theorem hanging (p : Position) (c : Color) (v : Int) (W : Square) (hc : p.turn =
     (hhit : afterMove p (some x) (some y) (fun q => count (fun u => piecesOf q c u && attackedBy q (Color.opposite c) W u)) ≤ 0)
     (hpr : afterMove p (some x) (some y) (fun q =>
       count (fun u => kindSet q (Color.opposite c) PieceKind.pawn u && oset rankOf (some (named c ((0 : Fin 8), (1 : Fin 8)))) u)) ≤ 0)
-    (halive : afterMove p (some x) (some y) (fun q => leastOver q (fun r => if deadDraw r then 0 else 1)) ≥ 1) :
+    (hmat : materialOf p c ≥ 4)
+    (hmov : afterMove p (some x) (some y) (fun q => leastOver q (fun r => 1)) ≥ 1) :
     forcingOf p c v ≠ 0 := by
   obtain ⟨q0, hx, hqc, hqk⟩ := ours_at p c x hown
   have hqp := not_pawn_at p c x hnp q0 hx hqc
@@ -383,8 +384,8 @@ theorem hanging (p : Position) (c : Color) (v : Int) (W : Square) (hc : p.turn =
     have := move_is_normal p m hm q0 r (by rw [hms]; exact hx) hqp (by rw [hmd]; exact hy)
     rw [hms, hmd] at this; exact this
   subst hmn
-  rw [hafter] at hhit hpr halive
-  beta_reduce at hhit hpr halive
+  rw [hafter] at hhit hpr hmov
+  beta_reduce at hhit hpr hmov
   have hxy : x ≠ y := by
     rintro rfl
     rw [hx] at hy
@@ -410,7 +411,7 @@ theorem hanging (p : Position) (c : Color) (v : Int) (W : Square) (hc : p.turn =
     rw [hrc] at this
     revert this; cases c <;> simp [Color.opposite]
   obtain ⟨q, hqdef⟩ : ∃ q, applyMove p (Move.normal x y) = q := ⟨_, rfl⟩
-  rw [hqdef] at hm1 hm2 hturn hep hhit halive hpr
+  rw [hqdef] at hm1 hm2 hturn hep hhit hmov hpr
   have hqb : q.board = boardMove p.board x y := by rw [← hqdef]; rfl
   have hqW : q.board W = some ⟨c, PieceKind.king⟩ := by
     rw [hqb]; simp [boardMove, boardUpdate, Function.update_apply, hWx, hWy, hWb]
@@ -431,17 +432,13 @@ theorem hanging (p : Position) (c : Color) (v : Int) (W : Square) (hc : p.turn =
   apply step_ours c _ p 1 hc _ hm
   rw [hqdef]
   have hturn' : q.turn ≠ c := by rw [hturn]; cases c <;> simp [Color.opposite]
-  apply step_theirs c _ q 0 hturn' (least_pos_nonempty _ _ halive)
+  apply step_theirs c _ q 0 hturn' (least_pos_nonempty _ _ hmov)
   intro rr hrr
   apply leaf
   have hnl := reply_no_loss q c hturn hep hsafe rr hrr (no_promotion q c hturn hpr rr hrr)
   apply gainGoal_of_material c _ v _ (by rw [← hqdef]; exact turn_after_two p c hc _ rr)
   · have hv' : (worthOf p y : Int) ≥ v := hv
     omega
-  · have hd := least_floor _ _ 1 halive rr hrr
-    beta_reduce at hd
-    by_contra hcon
-    simp only [Bool.not_eq_false] at hcon
-    simp [hcon] at hd
+  · exact alive_of_material _ c (by omega)
 
 end Ideas.Root

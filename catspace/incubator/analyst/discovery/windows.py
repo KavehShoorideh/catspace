@@ -154,6 +154,52 @@ def run_game(index: int, teacher, domain=OB.DOMAIN, cap=8, rollout=6, log=print,
     return res
 
 
+def find_shift(k: int, n_games: int = 60, log=print) -> list:
+    """No teacher: list (game index, ply, side, delta) of every material shift of delta >= k in the first `n_games` games that pass the filter
+    (the --pgn-index numbering), to pick a window for --layers. -> [(index, ply, side, delta)]."""
+    import io
+    import subprocess
+    import chess.pgn
+    from . import ledger as LG
+    p = subprocess.Popen(["zstd", "-dc", LG.LICHESS_PGN], stdout=subprocess.PIPE, text=True, bufsize=1 << 20)
+    buf, n, found, t0 = [], 0, [], time.time()
+
+    def games():
+        nonlocal buf
+        for line in p.stdout:
+            if line.startswith("[Event ") and buf:
+                yield "".join(buf)
+                buf = []
+            buf.append(line)
+        if buf:
+            yield "".join(buf)
+    try:
+        for text in games():
+            g = chess.pgn.read_game(io.StringIO(text))
+            if g is None:
+                continue
+            h = g.headers
+            try:
+                if "Rated" not in h.get("Event", "") or "Bullet" in h.get("Event", "") or int(h.get("WhiteElo", 0)) < 1600 \
+                        or int(h.get("BlackElo", 0)) < 1600 or h.get("Result") not in ("1-0", "0-1"):
+                    continue
+            except ValueError:
+                continue
+            if sum(1 for _ in g.mainline_moves()) < 50:
+                continue
+            for o in OB.stream(g):
+                if o.kind == "shift" and abs(o.delta) >= k:
+                    found.append((n, o.ply + 1, o.side, abs(o.delta)))
+                    log(f"OBS shift game index {n} ({h.get('Site', '').rsplit('/', 1)[-1]}) ply {o.ply + 1}: {o.side} wins {abs(o.delta)}")
+            n += 1
+            if n >= n_games:
+                break
+    finally:
+        p.kill()
+    log(f"OBS scanned {n} games in {round(time.time() - t0)} s: {len(found)} shifts of {k} or more")
+    return found
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="A handful of games only (the machinery is the deliverable; no mining job).")
     ap.add_argument("--pgn-index", type=int, action="append", help="repeatable")
@@ -164,7 +210,12 @@ def main(argv=None):
     ap.add_argument("--branches", type=int, default=8, help="stop going back when the reasonable branches in all exceed this")
     ap.add_argument("--rollout", type=int, default=6, help="plies of the teacher's line followed after a branch (then through captures)")
     ap.add_argument("--page", action="store_true")
+    ap.add_argument("--find-shift", type=int, default=0, metavar="K", help="no teacher: list the material shifts of K or more in the first --scan games, then stop")
+    ap.add_argument("--scan", type=int, default=60)
     a = ap.parse_args(argv)
+    if a.find_shift:
+        find_shift(a.find_shift, a.scan)
+        return
     idx = a.pgn_index or list(range(min(a.games, 10)))
     teacher = TE.StockfishTeacher(a.depth, a.multipv, {"default": a.margin})
     try:

@@ -578,6 +578,46 @@ def tree_proof(atoms: list, delta: int) -> str | None:
     return "\n  ".join(lines)
 
 
+def _lean_sq(sq: str, mover: str) -> str:
+    """An absolute square as Lean's `named c (file, rank)` from the mover's side."""
+    r = view(sq, mover)
+    return f"(named c (({ord(r[0]) - 97} : Fin 8), ({int(r[1]) - 1} : Fin 8)))"
+
+
+def root_proof(atoms: list, delta: int, mover: str = "w") -> str | None:
+    """THE ROOT'S DISCHARGE (plan 42.3 item 4, 42.5): a premise holding the root's atoms for one capture x -> y -- a piece of theirs on y, its worth
+    at least delta, nothing of ours attacked after the capture, no pawn of theirs on the rank before promotion, a legal reply, material 4 or more,
+    and the ownership / no-pawn / legality legs of x -- is an instance of `Ideas.Root.hanging`. None when the atoms are not those. `atoms` are
+    (term, op, v) in the statement's order; the mover only names the squares for Lean (the same absolute squares the statement renders)."""
+    names = {f"h{i}": a for i, a in enumerate(atoms)}
+
+    def find(pred):
+        return next((n for n, (t, op, v) in names.items() if pred(t, op, v)), None)
+    hit = find(lambda t, op, v: isinstance(t, tuple) and t[0] == "after" and t[3] == ("count", ("and", "ours", "hit")) and op == "<=" and v == 0)
+    if hit is None:
+        return None
+    x, y = names[hit][0][1], names[hit][0][2]
+    th = find(lambda t, op, v: t == ("count", ("and", "theirs", ("at", y))) and op == ">=" and v >= 1)
+    w = find(lambda t, op, v: t == ("worth", y) and op == ">=" and v >= delta)
+    own = find(lambda t, op, v: t == ("count", ("and", "ours", ("at", x))) and op == ">=" and v >= 1)
+    npw = find(lambda t, op, v: t == ("count", ("and", "ourpawns", ("at", x))) and op == "<=" and v <= 0)
+    mv = find(lambda t, op, v: t == ("count", ("and", ("moves", x), ("at", y))) and op == ">=" and v >= 1)
+    pr = find(lambda t, op, v: isinstance(t, tuple) and t[0] == "after" and t[1:3] == (x, y) and isinstance(t[3], tuple) and t[3][0] == "count"
+              and t[3][1][:2] == ("and", "theirpawns") and t[3][1][2][0] == "rank" and op == "<=" and v == 0)
+    mat = find(lambda t, op, v: t == "material_us" and op == ">=" and v >= 4)
+    mov = find(lambda t, op, v: t == ("after", x, y, ("least", "1")) and op == ">=" and v >= 1)
+    if None in (th, w, own, npw, mv, pr, mat, mov):
+        return None
+    return "\n  ".join(["intro hall", f"obtain ⟨{', '.join(names)}⟩ := hall",
+                       f"exact Ideas.Root.hanging p c _ W hc hW {_lean_sq(x, mover)} {_lean_sq(y, mover)} {own} {npw} {mv} {th} "
+                       f"(by simp only [onum] at {w}; omega) {hit} {pr} (by omega) {mov}"])
+
+
+def prove(atoms: list, delta: int, mover: str = "w") -> str:
+    """The proof script for a statement: the tree composition, else the root's instance, else the plain tactic."""
+    return tree_proof(atoms, delta) or root_proof(atoms, delta, mover) or TACTIC
+
+
 # ---------------------------------------------------------------------------------------------------------------- Lean
 
 LEAN_HEAD = """import Ideas.Base.Vocabulary
@@ -603,7 +643,11 @@ TACTIC = ("intro h\n  first\n    | omega\n    | (simp_all; done)\n"
 
 def used_names(t) -> set:
     s = BV.sexpr(t)
-    return {n for n in ("W", "L") if re.search(rf"(?<![A-Za-z0-9_]){n}(?![A-Za-z0-9_])", s)}
+    out = {n for n in ("W", "L") if re.search(rf"(?<![A-Za-z0-9_]){n}(?![A-Za-z0-9_])", s)}
+    for word, n in (("hit", "W"), ("unhit", "W"), ("attacked", "L"), ("free", "L")):     # the sets whose Lean form names a king
+        if re.search(rf"(?<![A-Za-z0-9_]){word}(?![A-Za-z0-9_])", s):
+            out.add(n)
+    return out
 
 
 def with_legality(prem) -> list:
@@ -652,7 +696,7 @@ def lean_round(path: Path, head: str, items: list, delta: int) -> list:
         text, spans = head, {}
         for it in live:
             s = statement(it["name"], it["prem"], it["mover"], delta, it["doc"],
-                          "sorry" if stage == "statement" else (tree_proof(with_legality(it["prem"]), delta) or TACTIC))
+                          "sorry" if stage == "statement" else prove(with_legality(it["prem"]), delta, it["mover"]))
             a = text.count("\n") + 1
             text += "\n" + s
             spans[it["name"]] = (a + 1, text.count("\n") + 1)
@@ -676,7 +720,7 @@ def write_final(path: Path, head: str, items: list, delta: int) -> None:
         if not it["typechecks"]:
             text += f"\n/- DOES NOT TYPECHECK: {it['error']}\n-/\n"
         elif it["proved"]:
-            text += "\n" + statement(it["name"], it["prem"], it["mover"], delta, it["doc"], tree_proof(with_legality(it["prem"]), delta) or TACTIC)
+            text += "\n" + statement(it["name"], it["prem"], it["mover"], delta, it["doc"], prove(with_legality(it["prem"]), delta, it["mover"]))
         else:
             text += f"\n-- PROOF FAILED: {it['error']}\n" + statement(it["name"], it["prem"], it["mover"], delta, it["doc"], "sorry")
     path.write_text(text + f"\nend Ideas.Mined.{path.stem}\n")
@@ -805,6 +849,255 @@ def mine(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool =
     return dict(items=final_items, typechecked=tc, proved=pv, solver_ok=solver_ok, premises=first_stage, solver=sol)
 
 
+# ---------------------------------------------------------------------------------------------------------------- the ladder (plan 42.5)
+
+LAYERS_HEAD = LEAN_HEAD.replace("import Ideas.TreeStep", "import Ideas.TreeStep\nimport Ideas.Root")
+PROMO_SQ = "a2"          # their pawn on the rank before promotion, named from the mover's side
+
+
+def val_at(fen: str, term, mover: str) -> int:
+    """A word read on `fen` (squares absolute, named from the mover's side as the evaluator reads them)."""
+    import analyst_core as A
+    BV.install_terms()
+    return A.vocab_eval(fen, BV.sexpr(render(term, mover)))
+
+
+def root_atoms(x: str, y: str, mover: str, delta: int) -> list:
+    """The root's atoms for the capture x -> y, (term, op, v), absolute squares; the legs of x are added by with_legality."""
+    pr = view(PROMO_SQ, mover)
+    return [(("count", ("and", "theirs", ("at", y))), ">=", 1), (("worth", y), ">=", delta),
+            (("after", x, y, ("count", ("and", "ours", "hit"))), "<=", 0),
+            (("after", x, y, ("count", ("and", "theirpawns", ("rank", pr)))), "<=", 0),
+            ("material_us", ">=", 4), (("after", x, y, ("least", "1")), ">=", 1)]
+
+
+def atom_of(term, op, v):
+    a = Atom(term, op, v, None)
+    a.legs = tuple(dict.fromkeys(legs_of(term)))
+    return a
+
+
+def root_readings(fen: str, mover: str, delta: int) -> list:
+    """STEP 1 OF THE LADDER: every capture the side to move can make, read in the root's words. Per capture: the worth taken, the pieces of ours
+    attacked after it (and the most worth among them, w), a pawn of theirs about to promote, a legal reply, our material; the root's claim
+    k = worth - w (- 8 for a promotion threat), and whether the proved theorem `hanging` applies (w = 0, no promotion, a reply, material 4+)."""
+    import chess
+    bd = chess.Board(fen)
+    out = []
+    for m in bd.legal_moves:
+        if not bd.is_capture(m) or bd.is_en_passant(m):
+            continue
+        x, y = chess.square_name(m.from_square), chess.square_name(m.to_square)
+        pc = bd.piece_at(m.from_square)
+        wy = val_at(fen, ("worth", y), mover)
+        hitn = val_at(fen, ("after", x, y, ("count", ("and", "ours", "hit"))), mover)
+        w = 0
+        if hitn:
+            for sq in SQUARES:
+                if val_at(fen, ("after", x, y, ("count", ("and", ("and", "ours", "hit"), ("at", sq)))), mover):
+                    w = max(w, val_at(fen, ("after", x, y, ("worth", sq)), mover))
+        promo = val_at(fen, ("after", x, y, ("count", ("and", "theirpawns", ("rank", view(PROMO_SQ, mover))))), mover)
+        mov = val_at(fen, ("after", x, y, ("least", "1")), mover)
+        mat = val_at(fen, "material_us", mover)
+        k = wy - w - (8 if promo else 0)
+        pawn = pc.piece_type == chess.PAWN
+        out.append(dict(san=bd.san(m), x=x, y=y, worth=wy, attacked_after=hitn, w=w, promo=promo, reply=mov, material=mat, k=k, pawn=pawn,
+                        applies=(not pawn and hitn == 0 and promo == 0 and mov >= 1 and mat >= 4)))
+    return out
+
+
+def lean_root_instance(r: dict, mover: str, delta: int, out: Path, head: str, do_lean: bool = True, log=print) -> dict:
+    """The root's atoms for the capture `r` as a Lean statement, proved by `Ideas.Root.hanging` (root_proof). -> the item (proved / typechecks / error)."""
+    prem = [atom_of(t, op, v) for t, op, v in root_atoms(r["x"], r["y"], mover, delta)]
+    item = dict(name="hanging_instance", prem=prem, mover=mover, doc=f"THE ROOT on {r['san']}: {words(prem, mover)}")
+    if do_lean:
+        lean_round(out, head, [item], delta)
+        write_final(out, head, [item], delta)
+        rep = run_lean(out)
+        state = "PROVES" if item["proved"] else ("TYPECHECKS (proof fails)" if item["typechecks"] else "FAILS to typecheck")
+        log(f"OBS lean hanging_instance: {state}" + (f": {item['error']}" if item["error"] else "") + f"   [{words(prem, mover)}]")
+        log(f"OBS lean file {out.relative_to(LEAN_DIR.parent.parent)}: 1 theorem, final check {'clean' if not rep else str(len(rep)) + ' errors'}")
+    return item
+
+
+def seeded_premises(terms, vals, poss, ex, cx, seed, extra=2, cap_atoms=300):
+    """STEP 3: the deviation. A premise = the root's seed atoms [(term, op)] plus at most `extra` more atoms that, together with the seed, falsify
+    every counter-example (and hold on every example). -> [tuple of Atom], the fewest extra atoms first."""
+    def build(t, ops):
+        row = vals[BV.sexpr(t)]
+        ev = [row[i] for i in ex]
+        legs = [(vals[BV.sexpr(g)], leg_holds(g)) for g in dict.fromkeys(legs_of(t))]
+        if any(not ok(g[i]) for g, ok in legs for i in ex):
+            return []
+        res = []
+        for op, v in ((">=", min(ev)), ("<=", max(ev))):
+            if ops is not None and op not in ops:
+                continue
+            truth = [(x >= v) if op == ">=" else (x <= v) for x in row]
+            for lg, ok in legs:
+                truth = [a and ok(lg[i]) for i, a in enumerate(truth)]
+            a = Atom(t, op, v, truth)
+            a.legs = tuple(dict.fromkeys(legs_of(t)))
+            res.append(a)
+        return res
+    full = (1 << len(cx)) - 1
+    seed_atoms = [a for t, ops in seed for a in build(t, ops)]
+    for a in seed_atoms:
+        a.kill = sum(1 << j for j, i in enumerate(cx) if not a.truth[i])
+    k0 = 0
+    for a in seed_atoms:
+        k0 |= a.kill
+    seed_keys = {BV.sexpr(t) for t, _ in seed}
+    cand, seen = [], set()
+    for t in terms:
+        if BV.sexpr(t) in seed_keys:
+            continue
+        for a in build(t, None):
+            a.kill = sum(1 << j for j, i in enumerate(cx) if not a.truth[i]) & ~k0
+            if not a.kill or tuple(a.truth) in seen:
+                continue
+            seen.add(tuple(a.truth))
+            cand.append(a)
+    cand.sort(key=lambda a: (-a.kill.bit_count(), a.size, BV.sexpr(a.term)))
+    cand = cand[:cap_atoms]
+    unc = full & ~k0
+    prem = []
+    if not unc:
+        prem.append(tuple(seed_atoms))
+    for n in range(1, extra + 1):
+        for combo in itertools.combinations(cand, n):
+            k = 0
+            for a in combo:
+                k |= a.kill
+            if k & unc == unc:
+                prem.append(tuple(seed_atoms) + combo)
+        if prem:
+            break
+    return prem
+
+
+def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool = True, do_drill: bool = False, log=print,
+           out: Path | None = None, fallback: bool = True) -> dict:
+    """THE LADDER (plan 42.5): the root first, then the deviation seeded by the root, then (when nothing is proved) the 41.9 tree lemma as the fallback."""
+    delta = int(win["observable"]["delta"])
+    poss = positions(win)
+    ks = sorted({p["k"] for p in poss})
+    tk = max(k for k in ks if {"SAME", "AVOIDED"} <= {p["cls"] for p in poss if p["k"] == k})
+    ex = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "SAME"]
+    cx = [i for i, p in enumerate(poss) if p["k"] == tk and p["cls"] == "AVOIDED"]
+    mover = poss[ex[0]]["mover"]
+    n_opp = max(1, len({k for k in ks if k < tk and any(p["k"] == k and p["mover"] != mover for p in poss)}))
+    base = poss[ex[0]]
+    fen = base["fen"]
+    log(f"OBS layers {tag}: example {base['san']} (position after the move, {'white' if mover == 'w' else 'black'} to move), delta {delta}, "
+        f"{len(ex)} examples, {len(cx)} counter-examples, {n_opp} reply/replies in the window")
+    sol = solver_check(fen, delta, n_opp, base["start"])
+    log(f"OBS solver example {base['san']}: {sol['status']}" + (f" in {sol['moves']} moves, line {' '.join(sol['line'])}" if sol["status"] == "forced" else ""))
+    # 1. ROOT FIRST
+    reads = root_readings(fen, mover, delta)
+    for r in reads:
+        log(f"OBS root capture {r['san']} ({r['x']}->{r['y']}): worth taken {r['worth']}, our pieces attacked after {r['attacked_after']} (most worth {r['w']}), "
+            f"pawn about to promote {r['promo']}, replies {r['reply']}, material {r['material']}; root claims k = {r['k']}; "
+            + ("the theorem `hanging` applies" if r["applies"] else "pawn move: the root theorem does not apply" if r["pawn"] else "the theorem `hanging` does not apply (w > 0, a promotion, no reply or material < 4)"))
+    if not reads:
+        log("OBS root: no capture available; the root claims nothing")
+    # 2. CHECK against the solver, one move of ours and one reply
+    lab = _label((fen, delta, 1))
+    log(f"OBS root check: the solver {'confirms' if lab['status'] == 'forced' else 'does not confirm (' + lab['status'] + ')'} a forced gain >= {delta} within 1 move of ours and 1 reply"
+        + (f", line {' '.join(lab['line'])}" if lab["status"] == "forced" else ""))
+    cands = [r for r in reads if r["applies"] and r["worth"] >= delta]
+    out = out or (LEAN_DIR / "Ideas" / "Mined" / f"{tag}_layers.lean")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    head = LAYERS_HEAD.format(tag=tag + "_layers", delta=delta, ns=tag + "_layers")
+    result = dict(tag=tag, delta=delta, explained=False, lemmas=[], items=[])
+    if cands and lab["status"] == "forced":
+        r = cands[0]
+        item = lean_root_instance(r, mover, delta, out, head, do_lean, log)
+        prem = item["prem"]
+        if (not do_lean) or item["proved"]:
+            log(f"OBS EXPLAINED BY THE ROOT: {tag}: the capture {r['san']} takes {r['worth']} (>= {delta}), nothing of ours is attacked after it, no pawn of theirs promotes, "
+                f"and the solver confirms; the instance of `hanging` is " + ("proved in Lean" if do_lean else "not run (--no-lean)"))
+            result.update(explained=True, capture=r["san"], items=[item])
+            result["lemmas"] = [dict(name="hanging", size=len(prem), proved=bool(do_lean and item["proved"]))]
+            return result
+    # root does not explain
+    best = max(reads, key=lambda r: r["k"]) if reads else None
+    if (lab["status"] == "forced" or sol["status"] == "forced") and (best is None or best["k"] < delta):
+        log(f"OBS root UNDER-PREDICTS: the solver forces a gain >= {delta} (in {lab['moves'] if lab['status'] == 'forced' else sol['moves']} moves) but the best capture reads k = {best['k'] if best else 0} < {delta}"
+            + (f" ({best['san']})" if best else "") + ": a follow-up or a larger gain than the hanging piece; the deviation is searched next")
+    elif lab["status"] != "forced" and best is not None and best["k"] >= delta:
+        log(f"OBS root OVER-PREDICTS: capture {best['san']} reads k = {best['k']} >= {delta} but the solver does not confirm ({lab['status']}); the deviation is searched next")
+    else:
+        log(f"OBS root does not explain the window (solver {lab['status']}, best k {best['k'] if best else 0}); the deviation is searched next")
+    # 3. DEVIATION, seeded by the root's atoms for the solver's first move when it captures, else for the best capture
+    first = sol["line"][0] if sol["status"] == "forced" else None
+    chosen = None
+    if first and sol["status"] == "forced":
+        fx, fy = line_pairs_of(fen, sol["line"])[0]
+        chosen = next((r for r in reads if (r["x"], r["y"]) == (fx, fy)), None)
+    chosen = chosen or best
+    if chosen is None:
+        log("OBS deviation: no capture to seed the search; falling back")
+    dx = []
+    solver_ok = sol["status"] == "forced"
+    if do_drill and solver_ok:
+        need = max(1, delta + balance(base["start"], mover == "w") - balance(fen, mover == "w"))
+        drilled = drill(base, need, n_opp, log)
+        n0 = len(poss)
+        poss += drilled
+        dx = [i for i in range(n0, len(poss)) if poss[i]["cls"] == "SAME"]
+        cx += [i for i in range(n0, len(poss)) if poss[i]["cls"] == "AVOIDED"]
+    items = []
+    if chosen is not None and solver_ok:
+        x, y = chosen["x"], chosen["y"]
+        line_pairs = line_pairs_of(fen, sol["line"])
+        objs, pairs = objects(win, False)
+        seed = [(("count", ("and", "theirs", ("at", y))), {">="}), (("worth", y), {">="}), (("after", x, y, ("count", ("and", "ours", "hit"))), {"<="})]
+        terms = make_terms(objs, pairs, line_pairs)
+        have = {BV.sexpr(t) for t in terms}
+        terms += [t for t, _ in seed if BV.sexpr(t) not in have]
+        for t in list(terms):
+            for g in legs_of(t):
+                if BV.sexpr(g) not in have and BV.sexpr(g) not in {BV.sexpr(u) for u in terms}:
+                    terms.append(g)
+        t0 = time.time()
+        vals = evaluate(terms, poss)
+        prem = seeded_premises(terms, vals, poss, ex, cx, seed)
+        covs = {id(pr): coverage(pr, poss, ks) for pr in prem}
+        gen = {id(pr): sum(all(a.truth[i] for a in pr) for i in dx) for pr in prem}
+        prem.sort(key=lambda pr: (len(pr), -gen[id(pr)], -len(covs[id(pr)]), sum(a.size for a in pr), BV.sexpr(pr[-1].term)))
+        seen_c, uniq = set(), []
+        for pr in prem:
+            c = canon(pr, mover)
+            if c not in seen_c:
+                seen_c.add(c)
+                uniq.append(pr)
+        log(f"OBS deviation: seed = the root's atoms for {chosen['san']} ({x}->{y}: a piece of theirs there, its worth, nothing of ours attacked after); {len(terms)} terms on "
+            f"{len(poss)} positions in {round(time.time() - t0, 1)} s; {len(uniq)} premises = seed + at most 2 more atoms exclude all {len(cx)} counter-examples")
+        for r_, pr in enumerate(uniq[:top], 1):
+            log(f"OBS deviation top {r_} (size {len(pr)}, {len(pr) - 3} beyond the seed, covers plies k={covs[id(pr)]}" + (f", {gen[id(pr)]}/{len(dx)} drilled forced variants" if dx else "")
+                + f"): {words(pr, mover)}")
+        for r_, pr in enumerate(uniq[:min(top, lean_cap)], 1):
+            items.append(dict(name=f"conjecture_{r_:02d}", prem=pr, mover=mover, doc=f"root + deviation: {words(pr, mover)} (covers plies k={covs[id(pr)]})"))
+        if do_lean and items:
+            t0 = time.time()
+            lean_round(out, head, items, delta)
+            write_final(out, head, items, delta)
+            for it in items:
+                state = "PROVES" if it["proved"] else ("TYPECHECKS (proof fails)" if it["typechecks"] else "FAILS to typecheck")
+                log(f"OBS lean {it['name']}: {state}" + (f": {reason(it)}" if it["error"] else ""))
+            log(f"OBS lean round: {len(items)} statements in {round(time.time() - t0, 1)} s")
+        result["lemmas"] += [dict(name=it["name"], size=len(it["prem"]), proved=bool(it.get("proved"))) for it in items]
+        result["items"] = items
+    # the sound fallback: the 41.9 tree lemma
+    if fallback and do_lean and not any(it.get("proved") for it in items):
+        log("OBS fallback: no root+deviation conjecture is proved; the 41.9 tree search (premises read along the solver's line) runs for the sound statement")
+        fb = mine(win, tag + "_fb", top, lean_cap, True, do_drill=do_drill, tree=True, log=log)
+        result["fallback"] = dict(proved=fb["proved"], typechecked=fb["typechecked"])
+        result["lemmas"] += [dict(name=it["name"], size=len(it["prem"]), proved=bool(it["proved"])) for it in fb["items"]]
+    return result
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", default="sHa6yUKv")
@@ -813,11 +1106,15 @@ def main():
     ap.add_argument("--lean-cap", type=int, default=20, help="statements sent to Lean per stage")
     ap.add_argument("--no-lean", action="store_true")
     ap.add_argument("--no-tree", action="store_true", help="skip the premises read along the line (least / most over the replies)")
+    ap.add_argument("--layers", action="store_true", help="the ladder (plan 42.5): the root first, then the deviation seeded by the root, then the tree fallback")
     ap.add_argument("--drill", action="store_true", help="the perturbation drill: one-piece variants of the example, labelled by the solver, as counter-examples")
     a = ap.parse_args()
     win = load_window(a.game, a.window)
     t0 = time.time()
-    mine(win, f"{a.game}_{a.window}" + ("_drill" if a.drill else ""), a.top, a.lean_cap, not a.no_lean, do_drill=a.drill, tree=not a.no_tree)
+    if a.layers:
+        layers(win, f"{a.game}_{a.window}" + ("_drill" if a.drill else ""), a.top, a.lean_cap, not a.no_lean, do_drill=a.drill)
+    else:
+        mine(win, f"{a.game}_{a.window}" + ("_drill" if a.drill else ""), a.top, a.lean_cap, not a.no_lean, do_drill=a.drill, tree=not a.no_tree)
     print(f"OBS total {round(time.time() - t0, 1)} s")
 
 
