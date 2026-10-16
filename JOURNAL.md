@@ -31175,7 +31175,7 @@ is material, so the lemma is the bounded minimax in words with two named moves; 
 player states) covers 566/635 variants and stays a conjecture until the exchange law is proved in Lean. The 15 unproved statements in
 the file are exactly those: (see a1), (attackers L), forcing words at their leaves.
 
-### THE ROOT: THE HANGING PIECE, PROVED AND APPLIED (2026-10-15 17:55 PDT)
+### THE ROOT: THE HANGING PIECE, PROVED AND APPLIED (2026-10-15 17:27 PDT)
 
 Kaveh: explanations from the simplest lemma up (plan 42), built by the Sonnet builder from the written plan; I verified: `lake build`
 clean, Root.lean has no `sorry`, 22 tests pass (test_root, test_selfmine, test_vocab_worth, test_vocab_least). Commits eea11a5a,
