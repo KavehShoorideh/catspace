@@ -133,8 +133,10 @@ def run_game(index: int, teacher, domain=OB.DOMAIN, cap=8, rollout=6, log=print,
     all_san = domain.san(fens[0], moves)
     for w in wins:
         start, end = w["plies"][-1]["ply"], w["observable"]["ply"]
-        while end + 1 < len(moves) and domain.is_capture(fens[end], moves[end]) and domain.is_capture(fens[end + 1], moves[end + 1]):
-            end += 1                                              # on to the settled end of the capture chain
+        q = w["observable"].get("settle_ply")
+        if q is not None:
+            end = max(end, q - 1)                                 # on to the quiescence point: the position the shift settles at (43.2)
+        w["quiescence_ply"] = end + 1
         w["start_ply"], w["played_san"], w["played_uci"] = start, all_san[start:end + 1], moves[start:end + 1]
         best = max(teacher.reasonable(w["start_fen"], band), key=lambda r: r[1])[0]
         tl = teacher.rollout(w["start_fen"], best, len(w["played_uci"]))[:len(w["played_uci"])]    # the teacher's best play from the start, as long as the played line (or as far as it reaches)
