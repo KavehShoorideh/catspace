@@ -1111,7 +1111,7 @@ def mine(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool =
 
 # ---------------------------------------------------------------------------------------------------------------- the ladder (plan 42.5)
 
-LAYERS_HEAD = LEAN_HEAD.replace("import Ideas.TreeStep", "import Ideas.TreeStep\nimport Ideas.Root")
+LAYERS_HEAD = LEAN_HEAD.replace("import Ideas.TreeStep", "import Ideas.TreeStep\nimport Ideas.Root\nimport Ideas.Mined.Schemas")
 PROMO_SQ = "a2"          # their pawn on the rank before promotion, named from the mover's side
 
 
@@ -1274,7 +1274,7 @@ def update_score(tag: str, lemmas: list, log=print) -> dict:
     path.write_text(json.dumps(table, indent=1, sort_keys=True))
     for name, e in sorted(table.items()):
         won = [w for w, d in e["windows"].items() if d["explained"]]
-        reuse = max(0, len(won) - 1)
+        reuse = len(won)                      # 44.2: the number of distinct windows a schema (or the root) explained
         cov = sum(d["variants"] for d in e["windows"].values())
         log(f"OBS score {name}: size {e['size']}, reuse {reuse}, coverage {cov} (explains {won or 'no window'}; per window {({w: str(d['variants']) + '/' + str(d['of']) for w, d in e['windows'].items()})})")
     return table
@@ -1470,6 +1470,8 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
     out = out or (LEAN_DIR / "Ideas" / "Mined" / f"{lean_tag}.lean")
     out.parent.mkdir(parents=True, exist_ok=True)
     head = LAYERS_HEAD.format(tag=lean_tag, delta=delta, ns=lean_tag)
+    if do_lean:
+        build_schemas()
     result = dict(tag=tag, delta=delta, explained=False, lemmas=[], items=[])
     if cands and lab["status"] == "forced":
         r = cands[0]
@@ -1513,7 +1515,74 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
         log(f"OBS root OVER-PREDICTS: capture {best['san']} reads k = {best['k']} >= {delta} but the solver does not confirm ({lab['status']}); the deviation is searched next")
     else:
         log(f"OBS root does not explain the window (solver {lab['status']}, best k {best['k'] if best else 0}); the deviation is searched next")
-    # 3. DEVIATION, seeded by the root's atoms for the solver's first move when it captures, else for the best capture
+    # 44. THE SCHEMAS: diagnose the root at the solver's first move, bind the proved schemas, else repair by an operator and prove the new schema once
+    schema_line = sol["line"] if sol["status"] == "forced" else (lab["line"] if lab["status"] == "forced" else None)
+    if schema_line:
+        n_ours = sol["moves"] if sol["status"] == "forced" else lab["moves"]
+        need = max(1, delta + balance(ref, mover == "w") - balance(fen, mover == "w"))
+        ours = line_pairs_of(fen, schema_line)[0::2]
+        x0, y0 = ours[0]
+        diag = diagnose(fen, mover, need, x0, y0)
+        fails = failing(diag)
+        log(f"OBS diagnose {tag}: root at {schema_line[0]} ({x0}->{y0}) fails {{{', '.join(fails)}}}"
+            + (" (" + "; ".join(CLAUSE[n].format(x=x0, y=y0, need=need) for n in fails) + ")" if fails else "; the root applies"))
+        maxd = max(1, min(2, n_ours - 1))
+        known = proved_schemas()
+
+        def try_schema(depth: int, how: str):
+            """bind the schema of this depth; if an instance holds: drill, prove the schema (once), prove the instance by `exact`. -> True when it explains."""
+            cands = [ours[:depth]] if depth >= 2 else None
+            if depth >= 2 and len(ours) < depth:
+                return False
+            t0 = time.time()
+            insts = bind(depth, fen, mover, need, cands)
+            insts.sort(key=lambda i: (i["pairs"][0] != ours[0], i["pairs"]))
+            name = schema_name(depth)
+            log(f"OBS bind {name} ({how}): {len(insts)} binding(s) of {schema_sentence(depth).split(':')[0]} hold at the example"
+                + (f", first {dict(zip(SCHEMA_VARS, [q for pr in insts[0]['pairs'] for q in pr]))} with B={insts[0]['B']}, T={insts[0]['T']}" if insts else "") + f" ({round(time.time() - t0, 1)} s)")
+            if not insts:
+                return False
+            inst = insts[0]
+            if dx:
+                dr = drill_report(name, inst["prem"], poss, dx, cx, False, log)
+                if dr["disagreements"]:
+                    log(f"OBS {name}: the drill disagrees with the instance on {dr['disagreements']} variant(s): the operator EXCLUDE would add an atom; not explained by this schema")
+                    return False
+            es = ensure_schema(depth, log, do_lean)
+            log(f"OBS schema {name} in words: {schema_sentence(depth)}")
+            if not es["proved"]:
+                return False
+            item = dict(name=f"{name}_instance", prem=inst["prem"], mover=mover,
+                        doc=f"INSTANCE of {name} {dict(zip(SCHEMA_VARS, [q for pr in inst['pairs'] for q in pr]))}, B={inst['B']}, T={inst['T']}, v={need}")
+            lean_round(out, head, [item], need)
+            write_final(out, head, [item], need)
+            rep = run_lean(out)
+            state = "PROVES" if item["proved"] else ("TYPECHECKS (proof fails)" if item["typechecks"] else "FAILS to typecheck")
+            log(f"OBS lean {item['name']}: {state}" + (f": {item['error']}" if item["error"] else "") + f" (by `exact Ideas.Mined.Schemas.{name}`)")
+            log(f"OBS lean file {out.relative_to(LEAN_DIR.parent.parent)}: 1 theorem, final check {'clean' if not rep else str(len(rep)) + ' errors'}")
+            if not item["proved"]:
+                return False
+            op = repair(diag)[0][0]
+            log(f"OBS EXPLAINED BY SCHEMA {name} bound to " + ", ".join(f"{v}={q}" for v, q in zip(SCHEMA_VARS, [q for pr in inst["pairs"] for q in pr]))
+                + f": {explanation(diag, op, depth, inst['pairs'], need)}; the instance is proved in Lean by `exact` of the schema theorem; the solver confirms a forced gain >= {need}")
+            lm = dict(name=name, size=len(inst["atoms"]), proved=True, explained=True)
+            if dx:
+                lm.update(drill_report(name, inst["prem"], poss, dx, cx, True, log))
+            result.update(explained=True, schema=name, items=[item], lemmas=[lm])
+            update_score(tag, result["lemmas"], log)
+            return True
+        for depth in range(1, maxd + 1):                      # (1) the schemas already proved, by size
+            if schema_name(depth) in known and try_schema(depth, "proved in Schemas.lean"):
+                return result
+        for op, why in repair(diag):                          # (2) repair by the operator the diagnosis calls, prove the schema once
+            if op == "EXCLUDE":
+                break
+            log(f"OBS repair {op} (for {{{', '.join(why)}}}): the gain is one move later under every reply; depths 1..{maxd} (the solver needs {n_ours} moves of ours)")
+            for depth in range(1, maxd + 1):
+                if schema_name(depth) not in known and try_schema(depth, op):
+                    return result
+        log("OBS no delayed-root schema explains the window; the operator EXCLUDE (an extra atom on the root's seed) is tried next")
+    # 3. EXCLUDE (44.2), the root's atoms for the solver's first move when it captures, else for the best capture, plus one more atom: SEEDED by the root's atoms for the solver's first move when it captures, else for the best capture
     first = sol["line"][0] if sol["status"] == "forced" else None
     chosen = None
     if first and sol["status"] == "forced":
@@ -1537,7 +1606,7 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
                     terms.append(g)
         t0 = time.time()
         vals = evaluate(terms, poss)
-        prem = seeded_premises(terms, vals, poss, ex, cx, seed)
+        prem = seeded_premises(terms, vals, poss, ex, cx, seed, extra=1)
         covs = {id(pr): coverage(pr, poss, ks) for pr in prem}
         gen = {id(pr): sum(all(a.truth[i] for a in pr) for i in dx) for pr in prem}
         prem.sort(key=lambda pr: (len(pr), -gen[id(pr)], -len(covs[id(pr)]), sum(a.size for a in pr), BV.sexpr(pr[-1].term)))
@@ -1548,7 +1617,7 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
                 seen_c.add(c)
                 uniq.append(pr)
         log(f"OBS deviation: seed = the root's atoms for {chosen['san']} ({x}->{y}: a piece of theirs there, its worth, nothing of ours attacked after); {len(terms)} terms on "
-            f"{len(poss)} positions in {round(time.time() - t0, 1)} s; {len(uniq)} premises = seed + at most 2 more atoms exclude all {len(cx)} counter-examples")
+            f"{len(poss)} positions in {round(time.time() - t0, 1)} s; {len(uniq)} premises = seed + at most 1 more atom exclude all {len(cx)} counter-examples")
         for r_, pr in enumerate(uniq[:top], 1):
             log(f"OBS deviation top {r_} (size {len(pr)}, {len(pr) - 3} beyond the seed, covers plies k={covs[id(pr)]}" + (f", {gen[id(pr)]}/{len(dx)} drilled forced variants" if dx else "")
                 + f"): {words(pr, mover)}")
