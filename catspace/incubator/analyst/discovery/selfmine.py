@@ -1262,8 +1262,8 @@ def drill_report(name: str, prem, poss: list, dx: list, cx: list, proved: bool, 
 
 
 def update_score(tag: str, lemmas: list, log=print) -> dict:
-    """42.7: data/derived/lemmas/score.json -- per lemma: size (atoms), the windows it explains, the drilled variants covered per window; reuse = the windows
-    explained beyond the one it came from (the first)."""
+    """42.7: data/derived/lemmas/score.json -- per lemma: size (atoms), the windows it explains, the drilled variants covered per window; reuse = the number of
+    distinct windows it explained (44.2; 42.7 counted those beyond the first)."""
     path = Path(paths.derived(*SCORE_FILE))
     path.parent.mkdir(parents=True, exist_ok=True)
     table = json.loads(path.read_text()) if path.exists() else {}
@@ -1278,6 +1278,109 @@ def update_score(tag: str, lemmas: list, log=print) -> dict:
         cov = sum(d["variants"] for d in e["windows"].values())
         log(f"OBS score {name}: size {e['size']}, reuse {reuse}, coverage {cov} (explains {won or 'no window'}; per window {({w: str(d['variants']) + '/' + str(d['of']) for w, d in e['windows'].items()})})")
     return table
+
+
+# ---------------------------------------------------------------------------------------------------------------- diagnose, repair, bind (ANALYST_PLAN 44)
+
+ROOT_HYPS = ("hth", "hv", "hhit", "hpr", "hmov", "hmat", "hown", "hnp", "hmv")
+
+
+def diagnose(fen: str, mover: str, need: int, x: str, y: str) -> dict:
+    """DIAGNOSE: every hypothesis of the root `Ideas.Root.hanging` read at the move x -> y (a bool per name, True: holds). hth: a piece of theirs on y;
+    hv: its worth is at least the gain; hhit: nothing of ours is attacked after; hpr: no pawn of theirs about to promote; hmov: they have a reply;
+    hmat: our material is 4 or more; hown / hnp / hmv: the piece on x is ours, not a pawn, and can go to y. Squares absolute."""
+    pr = view(PROMO_SQ, mover)
+    tests = {"hth": (("count", ("and", "theirs", ("at", y))), ">=", 1),
+             "hv": (("worth", y), ">=", need),
+             "hhit": (("after", x, y, ("count", ("and", "ours", "hit"))), "<=", 0),
+             "hpr": (("after", x, y, ("count", ("and", "theirpawns", ("rank", pr)))), "<=", 0),
+             "hmov": (("after", x, y, ("least", "1")), ">=", 1),
+             "hmat": ("material_us", ">=", 4),
+             "hown": (ours_at(x), ">=", 1), "hnp": (no_pawn_here(x), "<=", 0), "hmv": (legal(x, y), ">=", 1)}
+    out = {}
+    for name in ROOT_HYPS:
+        t, op, v = tests[name]
+        got = val_at(fen, t, mover)
+        out[name] = (got >= v) if op == ">=" else (got <= v)
+    return out
+
+
+def failing(diag: dict) -> list:
+    return [n for n in ROOT_HYPS if not diag[n]]
+
+
+CLAUSE = {"hth": "there is no piece of theirs on {y} to take", "hv": "what stands on {y} is worth less than the {need} to gain",
+          "hhit": "something of ours would be attacked after the move", "hpr": "they would have a pawn about to promote",
+          "hmov": "they would have no legal reply", "hmat": "we have less than 4 of material", "hown": "{x} holds no piece of ours",
+          "hnp": "the piece on {x} is a pawn", "hmv": "{x} cannot legally go to {y}"}
+
+
+def repair(diag: dict) -> list:
+    """REPAIR OPERATORS by the failing hypothesis (44.2): hv / hth / hnp -> DELAY (the gain is not now: it is one move later under every reply); hhit / hpr ->
+    RECAPTURE (the capturing piece is attacked after: the same schema, the diagnosis names the deviation); hmat / hmov -> EXCLUDE (an extra atom). EXCLUDE also
+    follows a DELAY that does not prove. -> [(operator, failing names that call it)], in the order they are tried."""
+    f = failing(diag)
+    ops = []
+    d = [n for n in f if n in ("hv", "hth", "hnp")]
+    r = [n for n in f if n in ("hhit", "hpr")]
+    if d:
+        ops.append(("DELAY", d + r))
+    elif r:
+        ops.append(("RECAPTURE", r))
+    ex = [n for n in f if n in ("hmat", "hmov")]
+    ops.append(("EXCLUDE", ex or ["a failed delay"]))
+    return ops
+
+
+def explanation(diag: dict, op: str, depth: int, pairs: list, need: int) -> str:
+    """The explanation line from the diagnosis: "normally ..., but because ...". `pairs` are the schema's named moves (absolute squares)."""
+    (x, y) = pairs[0]
+    because = " and ".join(CLAUSE[n].format(x=x, y=y, need=need) for n in failing(diag)) or "nothing of the root fails"
+    moves = " then ".join(f"{a}->{b}" for a, b in pairs)
+    return (f"normally the hanging piece is taken now (a piece of theirs on {y} worth the gain, nothing of ours attacked after), but because {because}, "
+            f"the gain comes {depth + 1} moves of ours later ({op}): after {moves}, whatever they reply, we have a move after which nothing of ours is "
+            f"attacked, no pawn of theirs can promote or take en passant, they have a reply, and our material is up by {need}")
+
+
+def bind(depth: int, fen: str, mover: str, need: int, candidates: list | None = None) -> list:
+    """BIND the delayed-root schema of this depth to a position: for each candidate (our named moves [(x1, y1), ...], absolute squares; by default every legal
+    move of a piece of ours that is not a king nor a pawn about to promote, for depth one) substitute the squares, evaluate the premise in Rust (the legs,
+    `balance <= B`, the tail `>= T` with B the balance now and T = max(B + need, 68)), keep the bindings where every atom holds.
+    -> [dict(depth, pairs, B, T, prem, atoms)]."""
+    import chess
+    B = val_at(fen, "balance", mover)
+    T = max(B + need, 68)
+    if candidates is None:
+        bd = chess.Board(fen)
+        seen, candidates = set(), []
+        for m in bd.legal_moves:
+            pc = bd.piece_at(m.from_square)
+            if pc.piece_type == chess.KING or m.promotion:
+                continue
+            pr = (chess.square_name(m.from_square), chess.square_name(m.to_square))
+            if pr not in seen:
+                seen.add(pr)
+                candidates.append([pr])
+    out = []
+    for pairs in candidates:
+        if len(pairs) != depth:
+            continue
+        with using_mover(mover):
+            prem = [atom_of("balance", "<=", B), atom_of(delayed_tail(pairs, mover), ">=", T)]
+        if premise_truth(prem, [dict(fen=fen, mover=mover)])[0]:
+            out.append(dict(depth=depth, pairs=pairs, B=B, T=T, prem=prem, atoms=with_legality(prem)))
+    return out
+
+
+def schema_sentence(depth: int) -> str:
+    """The delayed-root schema of this depth as a sentence over its square variables x1 y1 [x2 y2]."""
+    legs = [f"{'after x1->y1, whatever they reply, ' if i else ''}x{i + 1} holds a piece of ours that is not a king and not a pawn about to promote and can legally go to y{i + 1}"
+            for i in range(depth)]
+    first = "; ".join(legs)
+    moves = " then ".join(f"x{i + 1}->y{i + 1}" for i in range(depth))
+    return (f"SCHEMA {schema_name(depth)}(x1 y1{' x2 y2' if depth == 2 else ''}, B, T, v): {first}; our balance now is at most B; after {moves}, whatever they reply, "
+            f"we have a move after which nothing of ours is attacked (the board's own king lifted), they have no pawn on our second or fourth rank, they have a legal reply, "
+            f"and our balance is at least T; with T >= B + v and T >= 68 we force a gain of v within {depth + 1} moves of ours against every defence")
 
 
 def later_root(win: dict, base: dict, mover: str, delta: int, ref: str, n_opp: int, log=print):
