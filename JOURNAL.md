@@ -31174,3 +31174,34 @@ judge, no frame or lemma of ours used, one proved lemma that explains the window
 is material, so the lemma is the bounded minimax in words with two named moves; "check, rook winnable, queen safe" (the premise a
 player states) covers 566/635 variants and stays a conjecture until the exchange law is proved in Lean. The 15 unproved statements in
 the file are exactly those: (see a1), (attackers L), forcing words at their leaves.
+
+### THE ROOT: THE HANGING PIECE, PROVED AND APPLIED (2026-10-15 17:55 PDT)
+
+Kaveh: explanations from the simplest lemma up (plan 42), built by the Sonnet builder from the written plan; I verified: `lake build`
+clean, Root.lean has no `sorry`, 22 tests pass (test_root, test_selfmine, test_vocab_worth, test_vocab_least). Commits eea11a5a,
+b4ec421d, 8415689c, 86430d45, 444bb111. Numbers from the builder's OBS lines (one run each).
+
+- The word `worth` (the declared value of the piece on a square; Lean worthOf, Rust, gloss, glossary).
+- Ideas/Root.lean, all proved: material after a move as EQUATIONS (material_boardMove, capture_gains: the mover's material unchanged, the
+  other side's falls by exactly worth(y); castle_material), reply_no_loss (with nothing of ours attacked, no reply of theirs changes the
+  balance), no_promotion, attacked_withEmpty, move_is_normal, and THE ROOT `hanging`: our non-pawn piece on x can legally take their
+  piece on y; after the capture nothing of ours is attacked and no pawn of theirs stands on our second rank; our material is at least 4
+  and they have a legal reply; then a gain of worth(y) is forced (forcingOf != 0). Item 0 (a lone king cannot mate) was already proved
+  (InsufficientMaterial.no_mate_by_lone_king); the builder cited it after I caught my own duplication.
+- Deviation from the plan, recorded: the "alive" clause is `materialOf p c >= 4` plus "a legal reply exists" in place of a dead-draw word
+  (the vocabulary has none); the root covers w = 0 only (a set-maximum word for "the most valuable attacked piece of ours" does not exist).
+- `selfmine --layers`: the ladder. Root first (every capture read in the words: worth, hit after the move, promotion threat), the solver
+  as the check, the root's atoms discharged through `root_proof` into Ideas.Root.hanging; a deviation search seeded by the root's atoms;
+  the 41.9 tree lemma as the fallback. `windows --find-shift K` lists shifts without the teacher (83 shifts of 3+ in 60 games).
+- Run 1, the rook window (sHa6yUKv 2): OBS root UNDER-PREDICTS -- the best capture reads k = -2 (Qxc3+ loses the queen to a recapture
+  by the root's reading, since w = 0 is the only case it knows), the solver forces 5 in 3 moves. The 10 seeded conjectures (root + one
+  deviation) typecheck, none proves, each holds on 128-143 of 635 forced variants, 0 disagreements. Fallback: the tree lemma proves
+  (1 of 30; 179/635; 0 disagreements). 186 s.
+- Run 2, a plain hanging piece (4pfUO5Kb window 0, Qxb4 wins 3): OBS EXPLAINED BY THE ROOT; `hanging_instance` PROVES, file clean;
+  drill 385/598 forced variants covered, 0 of 306 disagreements. 6.5 s. OBS score hanging: size 6, reuse 0 (one window so far).
+
+Reading. The ladder does what Kaveh described: the simplest lemma is tried first and explains the plain window with a proof; on the
+fork window it says, in one line, how it fails (under-predicts: the capture looks losing to a recapture) -- that line IS the deviation
+the next layer must name: the recapture is a king move forced by check, after which the rook falls. The next layer is therefore the
+check-and-fork reading of the exchange, which needs the first `see` theorem (the exchange law's one-step case). The score table exists
+and reads reuse 0 until a second window is explained by the same lemma.
