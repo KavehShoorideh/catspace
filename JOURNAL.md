@@ -31260,3 +31260,31 @@ a reply captures at most ONE piece, so after our move we lose at most the most v
 set-maximum word I had flagged (`maxworth`, added tonight under the vocabulary rule) and one theorem (reply_loses_at_most). The
 fully general schema family, the proved tree lemma with its squares made variables (`(most (least balance))` tail), is added beside it
 as the last resort. Second half in progress.
+
+### LAYERS FOUND BY THE LOOP, SECOND HALF: THE GENERIC FORK LEMMA, BOUND ON TWO WINDOWS (2026-10-16 00:17 PDT)
+
+Second builder pass (commits 0c75df7f 9ea25f97 e651a8a7 f0d3f25a). Verified here: 73 tests pass (selfmine, root, windows, vocab, lean
+ideas), no sorry in Schemas.lean / Root.lean, the glossary entry and the Lean index rebuilt; the fork window rerun by hand (10 s), same
+lines as the builder's. Numbers from OBS lines, one run each.
+
+- Vocabulary: `maxworth S` (the largest worth among the squares of S; Lean maxWorthOf, worthOf_le_maxWorthOf; Rust; gloss; glossary).
+- Lean: reply_loses_at_most -- a legal reply that is not a promotion or en passant leaves their material no higher and ours lower by at
+  most the most valuable piece of ours they attack (normal_capture_attacked ties the kernel's attack predicate to the move generator, so
+  no bridge lemma was needed); root_tail_max on it. Six schema theorems now in Schemas.lean, all proved, squares universally quantified:
+  delayed_root_d1/d2 (nothing of ours attacked after), delayed_root_max_d1/d2 (balance less the largest attacked worth), delayed_balance_d1/d2
+  (the minimax tail `(most (least balance))`: the 41.9 tree lemma with its squares made variables, by tail_two).
+- sHa6yUKv window 1: diagnose {hv, hhit} at Qxc3+; delayed_root and delayed_root_max bind 0 at both depths; delayed_balance_d2 binds
+  once: x1=f6 y1=c3 x2=c3 y2=a1, B=65, T=71; drill 179/400 forced variants, 0 of 475 non-forced (0 disagreements); the instance PROVES by
+  `exact Ideas.Mined.Schemas.delayed_balance_d2`; OBS EXPLAINED BY SCHEMA delayed_balance_d2. This is the generic fork lemma Kaveh asked
+  for in its weak form: two named moves of ours, every reply quantified, a witness move at the end.
+- 46LzXjoz window 1 (delta 9): diagnose {hhit} at Qxf1 (one pawn of ours attacked after; the max form reads 8 < 9); delayed_balance_d1
+  binds (x1=c4 y1=f1, B=67, T=76); drill 316/423, 0 of 219 (0 disagreements); instance PROVES; EXPLAINED BY SCHEMA delayed_balance_d1.
+- 4pfUO5Kb window 0: still EXPLAINED BY THE ROOT (385/633, 0 disagreements). MTq15Poj window 1: the solver STOPS at the example with 2
+  moves and forces at 3; the ladder makes no claim without the solver; unexplained.
+- Score (distinct windows explained): hanging 1, delayed_balance_d1 1, delayed_balance_d2 1 -- the delayed_balance family 2.
+
+Why the reasoned max form did not bind (my check, why_max.py): after Qxc3+ Ke2 Qxa1 and e.g. the reply a6, our best move leaves
+balance 71 by minimax but balance - maxworth = 69, because the most valuable attacked piece of ours is a defended pawn white cannot
+profitably take. The one-ply bound "they take at most one piece" is conservative by exactly the recapture; the next reasoned layer is
+the take-back, i.e. the exchange law's one step, which keeps coming up as the missing theorem. Until then the minimax schema is the
+general, less explanatory lemma and the ladder ranks it last.
