@@ -1513,3 +1513,43 @@ existing paths except to add the root's discharge. maturin: `cd rust/analyst_cor
 catspace.incubator.analyst.lean_index build`. Where a proof fails, keep the statement with `sorry` and the error in a comment, and say so
 in the report; do not weaken a statement silently -- say what was weakened and why. Report under 400 words: numbers from OBS lines only,
 what was proved, what was left `sorry`, which words were missing.
+
+## 43. WINDOW BOUNDARIES BY QUIESCENCE (Kaveh 2026-10-15 evening, GO; built by a cheaper agent)
+
+### 43.1 What Kaveh said
+A check is usually the middle of a tactical sequence; it should not end a window and usually does not begin one. The END of a window is
+the quiescence point. The BEGINNING is where the tactic is set up so that some players fall into it and some do not; the point where
+they fall in (or avoid it) is the inevitability point. The split of one exchange into two shifts by an interposed check (MTq15Poj,
+20.gxh6 Bxe5 21.Rg1+ Kh8 22.dxe5 became "Black wins 2" + "White wins 3") is the defect this fixes.
+
+### 43.2 Definitions (chess adapter; the protocol stays generic: `quiet(board) -> bool`, `settle(boards, i) -> j`)
+- QUIET: the side to move is not in check AND has no capture that wins material by the exchange (for every capture, the exchange value on
+  the landing square, read as the vocabulary's `see` from the capturer's side, is <= 0 -- use analyst_core `vocab_eval(fen, "(see X)")`
+  per candidate landing square, or the Rust `declined`-style helper if one is exposed; a pure python-chess SEE is acceptable if it is
+  tested against `vocab_eval` on 20 positions). A knob `--quiet forcing` switches to the stronger test `forcing_us_1 = 0 and
+  forcing_them_1 = 0` (both words exist); default is the exchange test.
+- SETTLE(i): from the position after move i, walk FORWARD ALONG THE GAME while the position is not quiet; return the first quiet index j
+  (bounded by the game's end). The settled balance of a turn is the material balance at SETTLE.
+- SHIFT (observables.ChessDomain.shifts): a turn whose settled balance differs from the previous settled balance of the same side; gain =
+  the difference; only the gaining side emits. A sequence 40..44 with a check inside is ONE shift at the first move of the sequence
+  whose settled end is the same quiet position; record `settle_ply` on the Observable (new field, default None for other kinds).
+- WINDOW (windows.py): the branch rollout follows the teacher's line and then continues until QUIET (not merely through captures); a
+  branch's outcome is its settled balance for the window's winner; classes: SAME = the same gain as the game's settled gain (within 0),
+  AVOIDED = a smaller gain for the winner, OTHER = a larger gain or a different kind of event (mate). The back-walk is unchanged
+  (stop at the branch cap); the inevitability point is the deepest ply back at which every reasonable branch is SAME. Record
+  `quiescence_ply` (the game's settle index) on the window. The window's `plies` run from the start to the quiescence ply so the window
+  board (window_board.py) shows the whole sequence; the board's cards need no change beyond reading the new field if present.
+- The ladder (selfmine --layers) takes the EXAMPLE at the window's start ply (the position where the trap was laid, our turn), not at the
+  last ply with both classes; the tree search (41.9) keeps its own choice. Print which position is the example (OBS target ... ply k).
+
+### 43.3 Acceptance (OBS lines, one run each)
+1. MTq15Poj: the two shifts at plies 41 and 44 become ONE shift (White, gain 1, settle at the position after 22.dxe5 or the next quiet
+   one); print the game's shift list before/after.
+2. sHa6yUKv window 2: the quiescence ply is after Kxd7 (or the next quiet position); the window's plies run through it; the proved tree
+   lemma's six plies lie inside the window. Run `selfmine --game sHa6yUKv --window <idx> --drill --layers` once; the proved lemma
+   still proves (the Mined file is regenerated; report attempted/typechecked/proved).
+3. 4pfUO5Kb: the hanging-piece window still EXPLAINED BY THE ROOT.
+4. The window pages for sHa6yUKv regenerated (`windows --pgn-index <idx> --page` and `window_board`) -- just report the paths.
+Tests (tests/test_windows.py additions): quiet() on three hand positions (quiet; a hanging piece = not quiet; in check = not quiet);
+settle() on a hand-made 5-ply sequence with a check in the middle returns the index after the recapture; a shift list on that sequence
+has one entry. Numbers only from OBS lines. No AI trailers in commits; one commit per piece (adapter; windows; ladder example; tests).
