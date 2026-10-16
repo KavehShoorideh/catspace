@@ -1497,6 +1497,19 @@ def bind(depth: int, fen: str, mover: str, need: int, candidates: list | None = 
 PIECE_WORTH = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 0}
 
 
+class VerdictCache:
+    """THE VERDICT CACHE (45.2, "prove once, then that's it"): a dead end depends only on (s, t, the pieces and colours on s and t, worth s, worth t, the
+    legality of the two moves); the key maps to the recapturer z that bound last time. A hit never trusts the stale verdict: the atoms are re-evaluated
+    (Rust, microseconds) with that z and the proof is the schema's -- what is saved is the search for z (the pieces that can take back, tried cheapest first).
+    A miss, or a hit that no longer binds, searches."""
+
+    def __init__(self):
+        self.z, self.verdicts, self.hits = {}, 0, 0
+
+    def line(self) -> str:
+        return f"OBS verdict cache: {self.verdicts} verdicts, {self.hits} hits"
+
+
 def bind_dead_end(fen: str, mover: str, s: str, t: str, z: str) -> dict | None:
     """BIND the dead-end schema to the capture s -> t of the side to move (`mover`, the capturer) with the recapturer z: substitute the squares, take W = the
     worth on t, evaluate every atom in Rust; keep the binding when all hold. The conclusion `(after s t (least balance)) <= balance` is read in Rust as well
@@ -1536,7 +1549,7 @@ def _after_fen(b, m) -> str:
     return f
 
 
-def verdicts(fen: str, us: str, log=print, cache: dict | None = None) -> dict:
+def verdicts(fen: str, us: str, log=print, cache: VerdictCache | None = None) -> dict:
     """VERDICT PER REPLY (45.2). `fen` has THEM to move (`us` = 'w' or 'b', the side that is attacked); the words are read from the side to move, the capturer.
     Per legal reply s -> t of theirs: a capture of a piece of ours binds `dead_end(s, t, z)` over the pieces z of ours that can take back (cheapest first);
     on a binding ("dead end", s, t, z); else Rust reads `(after s t (least balance))` against `balance`: above it, taking t gains k for them ("costs", k),
@@ -1556,16 +1569,32 @@ def verdicts(fen: str, us: str, log=print, cache: dict | None = None) -> dict:
         san = b.san(m)
         if b.is_en_passant(m) or (victim is not None and victim.color != b.turn):
             dead = None
+            if cache is not None:
+                cache.verdicts += 1
             if victim is not None and not b.is_en_passant(m):
-                b.push(m)
-                zs = sorted({chess.square_name(r.from_square) for r in b.legal_moves if r.to_square == m.to_square},
-                            key=lambda q: (PIECE_WORTH[b.piece_at(chess.parse_square(q)).symbol().lower()], q))
-                b.pop()
-                for z in zs:
-                    got = _cached_bind(cache, fen, mover, s, t, z)
+                key = (mover, b.piece_at(m.from_square).symbol(), victim.symbol(), s, t, PIECE_WORTH[b.piece_at(m.from_square).symbol().lower()],
+                       PIECE_WORTH[victim.symbol().lower()])
+                tried = []
+                if cache is not None and key in cache.z:                      # a hit: the recapturer that bound before, re-bound by the atoms
+                    got = bind_dead_end(fen, mover, s, t, cache.z[key])
                     if got:
-                        dead = dict(kind="dead end", s=s, t=t, z=z, san=san, why=f"taking {t} loses: we take back with {z}", W=got["W"])
-                        break
+                        cache.hits += 1
+                        dead = dict(kind="dead end", s=s, t=t, z=cache.z[key], san=san, why=f"taking {t} loses: we take back with {cache.z[key]}", W=got["W"], hit=True)
+                    tried.append(cache.z[key])
+                if dead is None:
+                    b.push(m)
+                    zs = sorted({chess.square_name(r.from_square) for r in b.legal_moves if r.to_square == m.to_square},
+                                key=lambda q: (PIECE_WORTH[b.piece_at(chess.parse_square(q)).symbol().lower()], q))
+                    b.pop()
+                    for z in zs:
+                        if z in tried:
+                            continue
+                        got = bind_dead_end(fen, mover, s, t, z)
+                        if got:
+                            dead = dict(kind="dead end", s=s, t=t, z=z, san=san, why=f"taking {t} loses: we take back with {z}", W=got["W"])
+                            if cache is not None:
+                                cache.z[key] = z
+                            break
             if dead:
                 out.append(dead)
                 continue
@@ -1587,8 +1616,25 @@ def verdicts(fen: str, us: str, log=print, cache: dict | None = None) -> dict:
     return dict(items=out, counts=counts)
 
 
-def _cached_bind(cache: dict | None, fen: str, mover: str, s: str, t: str, z: str):
-    return bind_dead_end(fen, mover, s, t, z)
+def sacrifice_flag(fen: str, mover: str, line: list, tag: str, delta: int, log=print) -> bool:
+    """SACRIFICE FLAG (45.2, detection only): the solver's first move is a capture, and `dead_end` bound at the example, from the winner's side, calls it a dead end
+    (a piece of theirs takes back and the one-step exchange gains nothing), yet the solver forces `delta`. -> True when flagged."""
+    import chess
+    b = chess.Board(fen)
+    m = b.parse_san(line[0])
+    victim = b.piece_at(m.to_square)
+    if victim is None or victim.color == b.turn or b.is_en_passant(m):
+        return False
+    s, t = chess.square_name(m.from_square), chess.square_name(m.to_square)
+    b.push(m)
+    zs = sorted({chess.square_name(r.from_square) for r in b.legal_moves if r.to_square == m.to_square},
+                key=lambda q: (PIECE_WORTH[b.piece_at(chess.parse_square(q)).symbol().lower()], q))
+    b.pop()
+    for z in zs:
+        if bind_dead_end(fen, mover, s, t, z):
+            log(f"OBS sacrifice candidate {tag}: {line[0]} is a dead end by the exchange (they take back with {z}) yet the solver forces {delta}")
+            return True
+    return False
 
 
 def verdict_sentence(v: dict, fen: str) -> str:
@@ -1606,26 +1652,32 @@ def verdict_sentence(v: dict, fen: str) -> str:
     return f"{head}: affordable (not a dead end by the one-step exchange)"
 
 
-def leaf_after_line(fen: str, line: list, depth: int):
-    """The position after OUR last witness move of the solver's line (the move after the `depth` named ones and their reply: index 2 * depth), or after
-    the last move of ours the line has. -> (leaf fen, the SAN of the line up to it)."""
+def leaf_after_line(fen: str, line: list, depth: int, witness: bool = True):
+    """The leaf of the delayed schema on the solver's line, where it is THEIR turn: after the `depth` named moves of ours (witness False), or after our witness
+    move that follows their reply (index 2 * depth; or the last move of ours the line has) -> (leaf fen, the SAN of the line up to it)."""
     import chess
     b = chess.Board(fen)
-    stop = min(2 * depth, (len(line) - 1) // 2 * 2)
+    stop = min(2 * depth, (len(line) - 1) // 2 * 2) if witness else 2 * (depth - 1)
     for san in line[:stop + 1]:
         b.push(b.parse_san(san))
     return b.fen(), line[:stop + 1]
 
 
-def verdict_report(fen: str, us: str, line: list, depth: int, log=print, cache: dict | None = None) -> str:
-    """The verdicts at the leaf of the solver's line, as the sentence the EXPLAINED line ends with."""
-    leaf, sans = leaf_after_line(fen, line, depth)
+def verdict_report(fen: str, us: str, line: list, depth: int, log=print, cache: VerdictCache | None = None) -> str:
+    """The verdicts at the two leaves of the solver's line (after the named moves, and after our witness move), as the sentence the EXPLAINED line ends with."""
     import chess
-    who = "w" if chess.Board(leaf).turn == chess.BLACK else "b"
-    res = verdicts(leaf, who, log, cache)
-    atk = [verdict_sentence(v, leaf) for v in res["items"] if v["kind"] != "quiet"]
-    return (f"attacks on us after {' '.join(sans)}: " + ("; ".join(atk) if atk else "none (every reply of theirs is quiet)")
-            + f" [{res['counts']['dead_ends']} dead end(s) by the schema `dead_end`, {res['counts']['costs']} cost(s), {res['counts']['affordable']} affordable, {res['counts']['quiet']} quiet]")
+    parts, seen = [], set()
+    for witness in (False, True):
+        leaf, sans = leaf_after_line(fen, line, depth, witness)
+        if leaf in seen:
+            continue
+        seen.add(leaf)
+        who = "w" if chess.Board(leaf).turn == chess.BLACK else "b"
+        res = verdicts(leaf, who, log, cache)
+        atk = [verdict_sentence(v, leaf) for v in res["items"] if v["kind"] != "quiet"]
+        parts.append(f"attacks on us after {' '.join(sans)}: " + ("; ".join(atk) if atk else "none (every reply of theirs is quiet)")
+                     + f" [{res['counts']['dead_ends']} dead end(s) by the schema `dead_end`, {res['counts']['costs']} cost(s), {res['counts']['affordable']} affordable, {res['counts']['quiet']} quiet]")
+    return "; ".join(parts)
 
 
 DEAD_END_SENTENCE = ("SCHEMA dead_end(s, t, z, W): the side to move has a piece on s, not about to promote, that can take a piece of theirs on t, worth at least W "
@@ -1695,6 +1747,15 @@ def base_ply(win: dict, base: dict) -> int:
 
 def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool = True, do_drill: bool = False, log=print,
            out: Path | None = None, fallback: bool = True) -> dict:
+    """The ladder, then the verdict cache line of the run (45.2)."""
+    vcache = VerdictCache()
+    try:
+        return _layers(win, tag, top, lean_cap, do_lean, do_drill, log, out, fallback, vcache)
+    finally:
+        log(vcache.line())
+
+
+def _layers(win: dict, tag: str, top: int, lean_cap: int, do_lean: bool, do_drill: bool, log, out, fallback: bool, vcache: VerdictCache) -> dict:
     """THE LADDER (plan 42.5): the root first, then the deviation seeded by the root, then (when nothing is proved) the 41.9 tree lemma as the fallback."""
     delta = int(win["observable"]["delta"])
     poss = positions(win)
@@ -1738,6 +1799,8 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
         + (f", line {' '.join(lab['line'])}" if lab["status"] == "forced" else ""))
     dx = []
     solver_ok = sol["status"] == "forced"
+    if solver_ok or lab["status"] == "forced":
+        sacrifice_flag(fen, mover, sol["line"] if solver_ok else lab["line"], tag, delta, log)
     if do_drill and (solver_ok or lab["status"] == "forced"):
         need = max(1, delta + balance(ref, mover == "w") - balance(fen, mover == "w"))
         drilled = drill(base, need, n_opp, log)
@@ -1753,7 +1816,6 @@ def layers(win: dict, tag: str, top: int = 10, lean_cap: int = 20, do_lean: bool
     if do_lean:
         build_schemas()
     result = dict(tag=tag, delta=delta, explained=False, lemmas=[], items=[])
-    vcache: dict = {}                                         # the verdict cache of this window (45.2)
     if cands and lab["status"] == "forced":
         r = cands[0]
         item = lean_root_instance(r, mover, delta, out, head, do_lean, log)
