@@ -121,21 +121,30 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
             if best is None:
                 log(f"EV 4 bind {name}: no candidate's legs hold [{round(time.time() - t1, 1)} s]")
                 continue
-            san, B, T, n = best
-            kept.append((name, san, B, T))
+            san, B, T, n, pairs, ties = best
+            kept.append((name, san, B, T, pairs, ties))
             if T > B:
                 found.append((name, san, f"B={B} tail={T}", T - B))
                 log(f"EV 4 bind {name}: best of {n} candidates {san}: the tail reads {T} against {B} now, guaranteed gain {T - B} [{round(time.time() - t1, 1)} s]")
             else:
                 log(f"EV 4 bind {name}: best of {n} candidates {san} reads {T} against {B} now: no gain [{round(time.time() - t1, 1)} s]")
     found.sort(key=lambda f: -f[3])
+    # 8. the opponent's view of each kept candidate: the shape after it (what hangs, what guards, what we poke, their checks and what they fork)
+    if kept:                                            # the family that reads the most; its tied candidates in shape order, the best 8 shown
+        name, san, B, T, pairs, ties = max(kept, key=lambda x: x[3])
+        ranked = sorted(ties, key=lambda q: shape_key(shape(fen, q, us)))
+        for q in ranked[:8]:
+            sh = shape(fen, q, us)
+            log("EV 8 " + ("CHOSEN " if q == pairs else "       ") + shape_line(sh) + (f" (tied at {T} with {len(ties) - 1} other)" if len(ties) > 1 and q == pairs else ""))
+        if len(ranked) > 8:
+            log(f"EV 8        ... and {len(ranked) - 8} more tied candidates with a worse shape")
     # 5. decision, in Kaveh's order: a guaranteed gain first; else, when the biggest threat to us costs something, the move whose tail keeps the most
     #    (the parry: the lemma says "after it, whatever they do, we keep at least this"); else none
     if found:
         name, san, why, k = found[0]
         log(f"EV 5 decision: {san.split()[0]} by {name}, guaranteed gain {k} ({why}); the puzzle's window asks {need}: {'reached' if k >= need else 'NOT reached'}")
     elif biggest and kept:
-        name, san, B, T = max(kept, key=lambda x: x[3])
+        name, san, B, T, _, _ = max(kept, key=lambda x: x[3])
         loss = B - T
         found.append((name, san, f"parry: keeps {T} against {B} now", -loss))
         log(f"EV 5 decision: {san.split()[0]} by {name} as the PARRY of {biggest['san']} (costs {biggest.get('k')}): after it, whatever they do, we keep "
@@ -160,7 +169,59 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
     return dict(id=p["id"], decision=ours, answer=ans, match=ours == ans, by=found[0][0] if found else None)
 
 
-STAGES = {"1": "position", "2": "threat", "3": "root", "4": "bind", "5": "decision", "6": "check", "7": "search"}
+STAGES = {"1": "position", "2": "threat", "3": "root", "4": "bind", "5": "decision", "6": "check", "7": "search", "8": "opponent"}
+
+
+def shape(fen: str, pairs: list, us: str) -> dict:
+    """THE SHAPE of the position after our move (Kaveh 2026-10-16: the tiebreaker is "where most of our pieces are not hanging, then the most synergy
+    -- my pieces protecting each other -- then how many of theirs I poke"; and "think from the opponent's view: what ways do they have to threaten
+    my king? a check that also attacks a loose piece wins it"). Read in the words after the move: `hanging` = our pieces (not the king) whose
+    exchange pays them (`see` > 0), `guarded` = (count (and ours attacked)), `poking` = (count (and theirs attacked)); their CHECKS from the
+    board after the move, each with the loose pieces of ours it attacks as well (`see` > 0 after the check: the fork); `kingdist` = the
+    king-step distance from our king to their biggest piece (king weakness)."""
+    x, y = pairs[0]
+    b = chess.Board(fen)
+    m = chess.Move.from_uci(x + y)
+    san = b.san(m)
+    b.push(m)
+    after = b.fen()
+    side = not b.turn                                   # our colour (they are to move now)
+    ours = [s for s in chess.SQUARES if b.piece_at(s) and b.piece_at(s).color == side and b.piece_at(s).piece_type != chess.KING]
+    hanging = [chess.square_name(s) for s in ours if SM.val_at(fen, ("after", x, y, ("see", chess.square_name(s))), us) > 0]
+    guarded = SM.val_at(fen, ("after", x, y, ("count", ("and", "ours", "attacked"))), us)
+    poking = SM.val_at(fen, ("after", x, y, ("count", ("and", "theirs", "attacked"))), us)
+    checks = []
+    if not b.is_game_over():
+        for cm in b.legal_moves:
+            if not b.gives_check(cm):
+                continue
+            c = b.copy()
+            csan = c.san(cm)
+            c.push(cm)
+            cf = c.fen()
+            forks = [chess.square_name(s) for s in ours if c.piece_at(s) and c.piece_at(s).color == side and SM.val_at(cf, ("see", chess.square_name(s)), us) > 0]
+            checks.append((csan, forks))
+    theirs = [(SM.PIECE_WORTH[b.piece_at(s).symbol().lower()], s) for s in chess.SQUARES if b.piece_at(s) and b.piece_at(s).color != side]
+    big = max(theirs)[1] if theirs else None
+    kingdist = SM.val_at(fen, ("after", x, y, ("dist", "W", chess.square_name(big))), us) if big is not None and b.king(side) is not None else None
+    return dict(san=san, mate=b.is_checkmate(), hanging=hanging, guarded=guarded, poking=poking, checks=checks, kingdist=kingdist, big=chess.square_name(big) if big is not None else None)
+
+
+def shape_key(sh: dict) -> tuple:
+    """Better first: fewer hanging, then fewer checks that fork a loose piece, then more guarded, then more poked (defence, then attack)."""
+    if sh.get("mate"):
+        return (-1,)
+    return (len(sh["hanging"]), sum(1 for _, f in sh["checks"] if f), -sh["guarded"], -sh["poking"])
+
+
+def shape_line(sh: dict) -> str:
+    if sh.get("mate"):
+        return f"after {sh['san']}: MATE"
+    forks = [f"{c} (attacks {', '.join(f)})" for c, f in sh["checks"] if f]
+    plain = [c for c, f in sh["checks"] if not f]
+    return (f"after {sh['san']}: hanging {sh['hanging'] or 'none'}; guarded {sh['guarded']}, poking {sh['poking']}; their checks: "
+            + (", ".join(forks + plain) if sh["checks"] else "none")
+            + (f"; our king {sh['kingdist']} from their {sh['big']}" if sh["kingdist"] is not None else ""))
 
 
 def _numbered(log):
@@ -222,7 +283,7 @@ def best_bind(depth: int, fen: str, mover: str, candidates: list | None, family:
             if m.promotion or b.is_castling(m):          # the king is a piece: its moves are candidates; promotions and castling are the schema's legs' exclusions
                 continue
             candidates.append([(chess.square_name(m.from_square), chess.square_name(m.to_square))])
-    best, n = None, 0
+    best, n, ties = None, 0, []
     for pairs in candidates:
         if len(pairs) != depth:
             continue
@@ -244,8 +305,12 @@ def best_bind(depth: int, fen: str, mover: str, candidates: list | None, family:
                 print(f"OBS bind {family}_d{depth}: {' '.join(_san_pairs(fen, pairs))} reads {T} but our material is below {need} at a leaf: the schema cannot apply")
                 continue
         if best is None or T > best[2]:
-            best = (" ".join(_san_pairs(fen, pairs)), B, T, 0)
-    return None if best is None else (best[0], best[1], best[2], n)
+            best, ties = (" ".join(_san_pairs(fen, pairs)), B, T, 0, pairs), [pairs]
+        elif T == best[2]:
+            ties.append(pairs)
+            if shape_key(shape(fen, pairs, mover)) < shape_key(shape(fen, best[4], mover)):
+                best = (" ".join(_san_pairs(fen, pairs)), B, T, 0, pairs)      # a tie goes to the better SHAPE (fewer hanging, fewer forking checks ...)
+    return None if best is None else (best[0], best[1], best[2], n, best[4], ties)
 
 
 def _san_pairs(fen: str, pairs: list) -> list:
