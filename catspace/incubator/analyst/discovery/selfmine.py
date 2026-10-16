@@ -831,7 +831,7 @@ def schemas_text() -> str:
 
 def proved_schemas() -> list:
     """The names of the schemas in Schemas.lean (a schema is appended only when proved)."""
-    return re.findall(r"^theorem (delayed_[a-z_]+_d\d+|dead_end_king|dead_end)", schemas_text(), flags=re.M)
+    return re.findall(r"^theorem (delayed_[a-z_]+_d\d+|dead_end)", schemas_text(), flags=re.M)
 
 
 def _append_theorem(name: str, thm: str, log=print) -> dict:
@@ -937,54 +937,6 @@ def ensure_dead_end(log=print, do_lean: bool = True) -> dict:
     if not do_lean:
         return dict(proved=False, new=False, error="--no-lean")
     return _append_theorem("dead_end", dead_end_theorem(), log)
-
-
-def dead_end_king_atoms(s: str, t: str, W, mover: str = "w") -> list:
-    """THE ONE-STEP EXCHANGE WITH THEIR KING taking back, from the capturer's side: the same legs for s -> t as `dead_end_atoms`; the recapturer is their king,
-    named by the object word `L` (it is the king by construction, so no ownership leg and no pawn leg), and after s -> t it can go to t.
-    -> [(name, term, op, v)]."""
-    leg = [("hmv", legal(s, t), ">=", 1), ("hown", ours_at(s), ">=", 1), ("hnp", no_pawn_at(s), "<=", 0)]
-    return leg + [("hth", ("count", ("and", "theirs", ("at", t))), ">=", 1), ("hw1", ("worth", s), ">=", W), ("hw2", ("worth", t), "<=", W),
-                  ("hzm", ("after", s, t, ("count", ("and", ("moves", "L"), ("at", t)))), ">=", 1)]
-
-
-def dead_end_king_theorem(proof: str | None = None) -> str:
-    sq = [DEAD_VARS[v] for v in "st"]
-    with using_mover("w"):
-        atoms = dead_end_king_atoms(*sq, "W")
-        lhs, _, rhs = dead_end_conclusion(sq[0], sq[1])
-    hy = "".join(f"\n    ({n} : {_dead_squares(BV.lean(render(t, 'w')))} {'≥' if op == '>=' else '≤'} {v})" for n, t, op, v in atoms)
-    concl = f"{_dead_squares(BV.lean(render(lhs, 'w')))} ≤ {BV.lean(rhs)}"
-    doc = ("THE DEAD END WITH THEIR KING TAKING BACK, the one-step exchange from the capturer's side (plan 45, the sibling of `dead_end`: the words `theirs`/`ours` "
-           "leave the king out, so a king recapture is named by the object word L, their king's square). The side to move (c) has a piece on s, not about to "
-           "promote, that can take a piece of theirs on t, worth at least W while what stands on t is worth at most W; after that capture their king L can go "
-           "to t. Then whatever they reply after the capture, the capturer's balance is at most what it is now. The king is the king by construction (`kingSq`), so "
-           "there is no ownership leg and no pawn leg for it. The squares are variables: bind them to any position.")
-    return (f"/-- {doc} -/\ntheorem dead_end_king (p : Position) (c : Color) (hc : p.turn = c) (s t : Square) (W : Nat){hy} :\n    {concl} := by\n  "
-            f"{proof if proof is not None else dead_end_king_proof()}\n")
-
-
-def dead_end_king_proof() -> str:
-    """By reasoning: as `dead_end_proof`, the capture is the kernel's normal move; the square of their king on the board after the capture is the recapturer
-    (`king_moves_of_count`), a king is no pawn, and `dead_end_core` takes its move to t as the witness."""
-    return "\n  ".join([
-        "obtain ⟨q0, hs, hq0c, -⟩ := Ideas.TreeStep.ours_at p c s hown",
-        "obtain ⟨r, ht, hrc, hrk⟩ := Ideas.TreeStep.ours_at p (Color.opposite c) t hth",
-        "have hnp' := Ideas.TreeStep.not_promoting_at p c s hc hnp q0 hs hq0c",
-        "obtain ⟨hm, haf⟩ := Ideas.Root.after_capture_normal p s t q0 r hs (by rw [hq0c, hc]) hnp' ht (Ideas.TreeStep.moves_of_count p s t hmv)",
-        "rw [haf] at hzm ⊢",
-        "beta_reduce at hzm ⊢",
-        "obtain ⟨K, hK, hmK⟩ := Ideas.Root.king_moves_of_count _ (Color.opposite c) t hzm",
-        "exact Ideas.Root.dead_end_core p c hc s t K q0 r hs hq0c ht hrc W hw1 hw2 ⟨Color.opposite c, PieceKind.king⟩ hK rfl (by intro hk; cases hk) hmK"])
-
-
-def ensure_dead_end_king(log=print, do_lean: bool = True) -> dict:
-    """The king sibling of the dead-end schema is in Schemas.lean (proved), or is generated, checked by Lean and appended on success."""
-    if "dead_end_king" in proved_schemas():
-        return dict(proved=True, new=False, error=None)
-    if not do_lean:
-        return dict(proved=False, new=False, error="--no-lean")
-    return _append_theorem("dead_end_king", dead_end_king_theorem(), log)
 
 
 def schema_instance_proof(atoms: list, delta: int, mover: str = "w") -> str | None:
