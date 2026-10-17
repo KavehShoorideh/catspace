@@ -25,7 +25,8 @@ from catspace.incubator.analyst.discovery import base_vocabulary as BV
 from catspace.incubator.analyst.discovery import ruler as RU
 from catspace.incubator.analyst.discovery import selfmine as SM
 
-ORDER = ("delayed_root", "delayed_root_max", "delayed_balance", "delayed_balance_deep")
+ORDER = ("delayed_root", "delayed_root_max", "delayed_balance")   # delayed_balance_deep is proved (plan 48) but a full-width material tail is horizon-bound
+                                                                 # (000Sa: both captures read 65 at 6 plies) and ~8 s a candidate: not in the ladder
 
 
 def load_set(name: str) -> list:
@@ -139,10 +140,23 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
     found.sort(key=lambda f: -f[3])
     # 8. the opponent's view of each kept candidate: the shape after it (what hangs, what guards, what we poke, their checks and what they fork)
     if kept and not mates:                              # (a mate in one needs no opponent's view of another candidate) the family that reads the most; its tied candidates in shape order, the best 8 shown
-        name, san, B, T, pairs, ties = max(kept, key=lambda x: x[3])
-        ranked = sorted(ties, key=lambda q: shape_key(shape(fen, q, us)))
+        i = max(range(len(kept)), key=lambda j: kept[j][3])
+        name, san, B, T, pairs, ties = kept[i]
+        cheap = sorted(ties, key=lambda q: shape_key(shape(fen, q, us, threats=False)))
+        asked = []                                        # their threats are asked in the cheap order; the first candidate that loses nothing wins (no other can beat it)
+        for q in cheap:
+            asked.append(q)
+            if shape(fen, q, us)["loss"] == 0:
+                break
+        ranked = sorted(asked, key=lambda q: shape_key(shape(fen, q, us))) + [q for q in cheap if q not in asked]
+        if ranked and ranked[0] != pairs:                 # the tie goes to the better shape: the decision reads this candidate
+            pairs = ranked[0]
+            new_san = " ".join(_san_pairs(fen, pairs))
+            found = [(n, new_san if (n == name and sn == san) else sn, w, k) for n, sn, w, k in found]
+            kept[i] = (name, new_san, B, T, pairs, ties)
+            san = new_san
         for q in ranked[:8]:
-            sh = shape(fen, q, us)
+            sh = shape(fen, q, us, threats=q in asked)
             log("EV 8 " + ("CHOSEN " if q == pairs else "       ") + shape_line(sh) + (f" (tied at {T} with {len(ties) - 1} other)" if len(ties) > 1 and q == pairs else ""))
         if len(ranked) > 8:
             log(f"EV 8        ... and {len(ranked) - 8} more tied candidates with a worse shape")
@@ -180,14 +194,42 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
 STAGES = {"1": "position", "2": "threat", "3": "root", "4": "bind", "5": "decision", "6": "check", "7": "search", "8": "opponent"}
 
 
-_SHAPES = {}
+_SHAPES, _THREATS = {}, {}
 
 
-def shape(fen: str, pairs: list, us: str) -> dict:
+def shape(fen: str, pairs: list, us: str, threats: bool = True) -> dict:
+    """The cheap board reading (memoized); with `threats`, their threats run to their end are added (memoized separately: the goal finder and
+    the exact labeller are the cost, so the opponent stage asks them in the cheap shape's order and stops at the first candidate that loses nothing)."""
     key = (fen, tuple(map(tuple, pairs)), us)
     if key not in _SHAPES:
         _SHAPES[key] = _shape(fen, pairs, us)
-    return _SHAPES[key]
+    sh = dict(_SHAPES[key])
+    if threats:
+        if key not in _THREATS:
+            _THREATS[key] = _threats(sh["after"])
+        sh.update(_THREATS[key])
+    return sh
+
+
+def _threats(after: str) -> dict:
+    """THEIR THREATS TO THEIR END (Kaveh 2026-10-16: "not a fixed ply number: as far as they have forcing moves; a threat two moves away that is
+    inevitable must be run through"): the goal finder names what they can win and how (against the natural reply), biggest first; the exact
+    labeller then asks "can it be stopped?" over EVERY defence of ours, within the goal's cost or one more (their desperado replies)."""
+    b = chess.Board(after)
+    threats = []
+    if not b.is_game_over():
+        import analyst_core as A
+        goals, _ = A.goals_of(after, 3, "us")
+        for kind, what, val, cost, gline in goals[:3]:
+            threats.append(dict(kind=kind, what=what, value=int(val), cost=int(cost), line=gline))
+    inevitable = None                                    # "can it be stopped?": the largest of the threats' values (or 1) they can force against every defence
+    if threats:
+        for v in sorted({t["value"] for t in threats} | {1}, reverse=True):
+            lab = SM._label((after, v, max(t["cost"] for t in threats)))
+            if lab.get("status") == "forced":
+                inevitable = (v, lab["line"])
+                break
+    return dict(threats=threats, inevitable=inevitable, loss=inevitable[0] if inevitable else 0)
 
 
 def _shape(fen: str, pairs: list, us: str) -> dict:
@@ -219,33 +261,17 @@ def _shape(fen: str, pairs: list, us: str) -> dict:
             cf = c.fen()
             forks = [chess.square_name(s) for s in ours if c.piece_at(s) and c.piece_at(s).color == side and SM.val_at(cf, ("see", chess.square_name(s)), us) > 0]
             checks.append((csan, forks))
-    # THEIR THREATS TO THEIR END (Kaveh 2026-10-16: "not a fixed ply number: as far as they have forcing moves; a threat two moves away that is
-    # inevitable must be run through"): the goal finder names what they can win and how (against the natural reply), biggest first; the exact
-    # labeller then asks "can it be stopped?" over EVERY defence of ours, within the goal's cost or one more (their desperado replies)
-    threats = []
-    if not b.is_game_over():
-        import analyst_core as A
-        goals, _ = A.goals_of(after, 3, "us")
-        for kind, what, val, cost, gline in goals[:3]:
-            threats.append(dict(kind=kind, what=what, value=int(val), cost=int(cost), line=gline))
-    inevitable = None                                    # "can it be stopped?": the largest of the threats' values (or 1) they can force against every defence
-    if threats:
-        for v in sorted({t["value"] for t in threats} | {1}, reverse=True):
-            lab = SM._label((after, v, max(t["cost"] for t in threats)))
-            if lab.get("status") == "forced":
-                inevitable = (v, lab["line"])
-                break
     theirs = [(SM.PIECE_WORTH[b.piece_at(s).symbol().lower()], s) for s in chess.SQUARES if b.piece_at(s) and b.piece_at(s).color != side]
     big = max(theirs)[1] if theirs else None
     kingdist = SM.val_at(fen, ("after", x, y, ("dist", "W", chess.square_name(big))), us) if big is not None and b.king(side) is not None else None
-    return dict(san=san, mate=b.is_checkmate(), threats=threats, inevitable=inevitable, loss=inevitable[0] if inevitable else 0, hanging=hanging, guarded=guarded, poking=poking, checks=checks, kingdist=kingdist, big=chess.square_name(big) if big is not None else None)
+    return dict(san=san, after=after, mate=b.is_checkmate(), hanging=hanging, guarded=guarded, poking=poking, checks=checks, kingdist=kingdist, big=chess.square_name(big) if big is not None else None)
 
 
 def shape_key(sh: dict) -> tuple:
     """Better first: fewer hanging, then fewer checks that fork a loose piece, then more guarded, then more poked (defence, then attack)."""
     if sh.get("mate"):
         return (-1,)
-    return (sh["loss"], len(sh["hanging"]), sum(1 for _, f in sh["checks"] if f), -sh["guarded"], -sh["poking"])
+    return (sh.get("loss", 0), len(sh["hanging"]), sum(1 for _, f in sh["checks"] if f), -sh["guarded"], -sh["poking"])
 
 
 def shape_line(sh: dict) -> str:
@@ -254,6 +280,9 @@ def shape_line(sh: dict) -> str:
     forks = [f"{c} (attacks {', '.join(f)})" for c, f in sh["checks"] if f]
     plain = [c for c, f in sh["checks"] if not f]
     th = []
+    if "threats" not in sh:
+        return (f"after {sh['san']}: (threats not asked) hanging {sh['hanging'] or 'none'}; guarded {sh['guarded']}, poking {sh['poking']}; their checks: "
+                + (", ".join([f"{c} (attacks {', '.join(f)})" for c, f in sh["checks"] if f] + [c for c, f in sh["checks"] if not f]) if sh["checks"] else "none"))
     for t in sh["threats"]:
         th.append(f"{t['what']} ({t['value']}, {t['line']})")
     inev = sh["inevitable"]
@@ -346,9 +375,7 @@ def best_bind(depth: int, fen: str, mover: str, candidates: list | None, family:
         if best is None or T > best[2]:
             best, ties = (" ".join(_san_pairs(fen, pairs)), B, T, 0, pairs), [pairs]
         elif T == best[2]:
-            ties.append(pairs)
-            if shape_key(shape(fen, pairs, mover)) < shape_key(shape(fen, best[4], mover)):
-                best = (" ".join(_san_pairs(fen, pairs)), B, T, 0, pairs)      # a tie goes to the better SHAPE (fewer hanging, fewer forking checks ...)
+            ties.append(pairs)                 # ties are ranked by SHAPE later, once, for the family the decision reads (not here: 46 shapes cost 690 s on 06J6T)
     return None if best is None else (best[0], best[1], best[2], n, best[4], ties)
 
 
