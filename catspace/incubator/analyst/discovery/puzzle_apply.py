@@ -4,7 +4,7 @@ applies what it has learnt, in Kaveh's order, and prints the EVENT STREAM as it 
   EV 1 position           the puzzle, our side, the target (the puzzle's value is the window's delta; 100 = mate)
   EV 2 threats to us      what they would take if we passed, each attack with its dead-end verdict (the proved schema `dead_end`, bound)
   EV 3 root               every capture of ours read in the root's words (worth taken, our pieces hit after, k, whether `hanging` applies)
-  EV 4 bind               the proved schemas bound at this position, in the ladder's order (mate_in_one first, root, delayed_root, delayed_root_max, delayed_balance; depth 1, 2)
+  EV 4 bind               the proved schemas bound at this position, in the ladder's order (mate_in_one first, root, delayed_root, delayed_root_max, delayed_balance, delayed_balance_deep; depth 1, 2)
   EV 5 decision           the first binding in that order, or none
   EV 6 check              the exact solver on the decision, and the puzzle's own answer
   EV 7 ruler              plain alpha-beta with Stockfish's ordering: the depth and nodes it needs, its trace, Stockfish's depth and nodes (plan 46)
@@ -25,7 +25,7 @@ from catspace.incubator.analyst.discovery import base_vocabulary as BV
 from catspace.incubator.analyst.discovery import ruler as RU
 from catspace.incubator.analyst.discovery import selfmine as SM
 
-ORDER = ("delayed_root", "delayed_root_max", "delayed_balance")
+ORDER = ("delayed_root", "delayed_root_max", "delayed_balance", "delayed_balance_deep")
 
 
 def load_set(name: str) -> list:
@@ -121,7 +121,7 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
         log("EV 4 bind mate: no move leaves them without a legal move and in check")
     for fam in ORDER:
         for depth in (1, 2):
-            if depth == 2 and not deep:
+            if depth == 2 and (not deep or fam == "delayed_balance_deep"):      # (the deep tail is one named move: eight plies of minimax at depth two is not asked for)
                 continue
             t1 = time.time()
             best = best_bind(depth, fen, us, c2 if depth == 2 else None, fam)

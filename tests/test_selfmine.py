@@ -241,9 +241,10 @@ FORK2 = "1r3k2/8/5q2/2N5/2R5/8/4K3/R2R4 w - - 0 1"       # the fork again with a
 
 
 def test_the_schema_families_are_proved_and_the_instance_is_exact():
-    tails = {"delayed_root": "Ideas.Root.root_tail_alive", "delayed_root_max": "Ideas.Root.root_tail_max_alive", "delayed_balance": "Ideas.TreeStep.tail_two_alive"}
+    tails = {"delayed_root": "Ideas.Root.root_tail_alive", "delayed_root_max": "Ideas.Root.root_tail_max_alive", "delayed_balance": "Ideas.TreeStep.tail_two_alive",
+             "delayed_balance_deep": "Ideas.TreeStep.tail_four_alive"}
     for fam in SM.DELAYED_FAMILIES:
-        for depth in (1, 2):
+        for depth in ((1,) if fam == "delayed_balance_deep" else (1, 2)):      # (the deep tail is one named move)
             pf = SM.schema_proof(depth, fam)
             print(f"OBS schema_proof {fam} depth {depth}: {len(pf.splitlines())} lines")
             assert pf.count(f"exact {tails[fam]} ") == 1 and pf.count("step_after_np") == depth and pf.count("step_least") == depth
@@ -355,3 +356,26 @@ def test_mate_family_binds_only_on_mate_in_one():
     print("OBS bind mate after a quiet move:", [i["pairs"] for i in after])
     assert after == []
     assert SM.ensure_schema(1, family=SM.MATE)["proved"]                          # (never regenerated)
+
+
+# ---------------------------------------------------------------------------------------------------------------- the deep tail (plan 48)
+
+F000SA = "2Q2bk1/5p1p/p5p1/2p3P1/4B3/7P/qPr2P2/2K4R w - - 0 33"       # white in check: Kxc2 and Bxc2 both take the rook
+
+
+def test_deep_tail_on_the_king_and_bishop_capture():
+    """OBSERVED, not the plan's hope: at six plies (one named move, then three replies and two moves of ours) both captures read 65, the same as at four
+    plies; the bishop is only lost to Qxe4 at the eighth ply (Kxc2 reads 64 there, Bxc2 65, 210 s in Rust: out of reach without a cap). Both are
+    printed; the test pins the equality so a change in the evaluator or the tail shows."""
+    tails = {}
+    for pr in ([("c1", "c2")], [("e4", "c2")]):
+        for fam in ("delayed_balance", "delayed_balance_deep"):
+            tails[pr[0], fam] = SM.val_at(F000SA, SM.delayed_tail(pr, "w", fam, "1000"), "w")
+            print(f"OBS deep tail {pr} {fam}: {tails[pr[0], fam]}")
+    assert set(tails.values()) == {65}
+    assert SM.tail_family(SM.delayed_tail([("e4", "c2")], "w", "delayed_balance_deep")) == "delayed_balance_deep"
+    assert SM.tail_family(SM.delayed_tail([("e4", "c2")], "w", "delayed_balance")) == "delayed_balance"
+    assert SM.schema_name(1, "delayed_balance_deep") in SM.proved_schemas()
+    inst = SM.bind(1, F000SA, "w", 2, [[("e4", "c2")]], "delayed_balance_deep")
+    assert len(inst) == 1 and (inst[0]["B"], inst[0]["T"]) == (63, 65)
+    assert SM.schema_instance_proof(SM.with_legality(inst[0]["prem"]), 2, "w").count("exact Ideas.Mined.Schemas.delayed_balance_deep_alive_d1") == 1
