@@ -685,7 +685,8 @@ class using_mover:
 
 DELAYED_FAMILIES = ("delayed_root", "delayed_root_max", "delayed_balance", "delayed_balance_deep")      # the ladder's order: the smallest first, the most general (and least explanatory) last
 MATE = "mate"                                                                    # the mate in one (plan 47): no tail, no B / T, one hand-written theorem
-FAMILIES = DELAYED_FAMILIES + (MATE,)
+MATE2 = "mate2"                                                                  # the mate in two (plan 49): no B / T, one hand-written theorem
+FAMILIES = DELAYED_FAMILIES + (MATE, MATE2)
 BALANCE_FAMILIES = ("delayed_balance", "delayed_balance_deep")                  # the minimax tails: no king square W, no root_tail; the deep one nests the tail one level more (plan 48)
 TAIL_PLIES = {"delayed_root": 2, "delayed_root_max": 2, "delayed_balance": 2, "delayed_balance_deep": 4}      # plies of the horizon beyond 2 per named move (the proof's forcedWithinB bound)
 
@@ -737,6 +738,8 @@ def delayed_tail(pairs: list, mover: str, family: str = "delayed_root", C: str =
 def schema_name(depth: int, family: str = "delayed_root") -> str:
     if family == MATE:
         return "mate_in_one"
+    if family == MATE2:
+        return "mate_in_two"
     return f"{family}_alive_d{depth}"
 
 
@@ -859,7 +862,7 @@ def schemas_text() -> str:
 
 def proved_schemas() -> list:
     """The names of the schemas in Schemas.lean (a schema is appended only when proved)."""
-    return re.findall(r"^theorem (delayed_[a-z_]+_d\d+|dead_end|mate_in_one)", schemas_text(), flags=re.M)
+    return re.findall(r"^theorem (delayed_[a-z_]+_d\d+|dead_end|mate_in_one|mate_in_two)", schemas_text(), flags=re.M)
 
 
 def _append_theorem(name: str, thm: str, log=print) -> dict:
@@ -887,8 +890,8 @@ def ensure_schema(depth: int, log=print, do_lean: bool = True, family: str = "de
     name = schema_name(depth, family)
     if name in proved_schemas():
         return dict(proved=True, new=False, error=None)
-    if family == MATE:                                       # hand-written (plan 47): never generated
-        return dict(proved=False, new=False, error="mate_in_one is written by hand in Schemas.lean")
+    if family in (MATE, MATE2):                              # hand-written (plans 47, 49): never generated
+        return dict(proved=False, new=False, error=f"{name} is written by hand in Schemas.lean")
     if not do_lean:
         return dict(proved=False, new=False, error="--no-lean")
     return _append_theorem(name, schema_theorem(depth, None, family), log)
@@ -976,6 +979,9 @@ def schema_instance_proof(atoms: list, delta: int, mover: str = "w") -> str | No
     mate = mate_instance_proof(atoms, delta, mover)
     if mate is not None:
         return mate
+    mate2 = mate2_instance_proof(atoms, delta, mover)
+    if mate2 is not None:
+        return mate2
     tail = None
     for term, op, v in atoms:
         fam = tail_family(term)
@@ -1081,6 +1087,81 @@ def write_mate_instance(tag: str, fen: str, mover: str, x: str, y: str, log=prin
     lean_round(path, head, [item], 100000)
     write_final(path, head, [item], 100000)
     log(f"OBS lean mate_in_one instance {tag}: {'PROVES' if item['proved'] else 'FAILS: ' + str(item['error'])[:200]} ({path.relative_to(LEAN_DIR.parent.parent)})")
+    return dict(proved=bool(item["proved"]), path=path, error=item["error"])
+
+
+# ---------------------------------------------------------------------------------------------------------------- the mate in two (ANALYST_PLAN 49)
+
+def mate2_tail(x: str, y: str):
+    """After our move x -> y, over EVERY reply, some move of ours leaves (min check (eq movecount 0)) at least 1: a mate. (The plan's `diff check movecount` is
+    |check - movecount| in the words: a non-mate with replies reads 1 too, so the conjunction is said with min / eq, which the theorem states the same way.)"""
+    return ("after", x, y, ("least", ("most", ("min", "check", ("eq", "movecount", "0")))))
+
+
+def mate2_atoms(x: str, y: str, mover: str) -> list:
+    with using_mover(mover):
+        return with_legality([atom_of(mate2_tail(x, y), ">=", 1)])
+
+
+def mate2_instance_proof(atoms: list, delta: int, mover: str = "w") -> str | None:
+    """A premise that is the mate-in-two atoms of some move x -> y (legs included) is `exact` of `mate_in_two`. None when it is not."""
+    for term, op, v in atoms:
+        if op == ">=" and v == 1 and isinstance(term, tuple) and term[0] == "after" and isinstance(term[3], tuple) and term[3][0] == "least":
+            x, y = term[1], term[2]
+            break
+    else:
+        return None
+    want = mate2_atoms(x, y, mover)
+    key = {(BV.sexpr(t), op, v): i for i, (t, op, v) in enumerate(atoms)}
+    idx = [key.get((BV.sexpr(t), op, v)) for t, op, v in want]
+    if len(want) != 4 or any(i is None for i in idx):
+        return None
+    legs = {"moves": 0, "ourpawns": 1, "ours": 2}
+    names = [None] * 4
+    for (t, op, v), i in zip(want, idx):
+        sx = BV.sexpr(t)
+        k = 3 if "least" in sx else legs[sx.split()[2].lstrip("(")]
+        names[k] = f"h{i}"
+    return "\n  ".join(["intro hall", f"obtain ⟨{', '.join(f'h{i}' for i in range(len(atoms)))}⟩ := hall",
+                       f"exact Ideas.Mined.Schemas.mate_in_two p c hc {_lean_sq(x, mover)} {_lean_sq(y, mover)} {delta} {' '.join(names)}"])
+
+
+def bind_mate2(fen: str, mover: str, candidates: list | None = None) -> list:
+    """BIND `mate_in_two` to a position: the candidates in order (every legal move but castling and promotions), each tail read in Rust (`premise_truth`);
+    STOPS AT THE FIRST that reads (no mate in two beats another). -> [dict(depth=1, pairs, B=None, T=None, prem, atoms, family='mate2')] (zero or one)."""
+    import chess
+    if candidates is None:
+        bd = chess.Board(fen)
+        seen, candidates = set(), []
+        for m in bd.legal_moves:
+            if m.promotion or bd.is_castling(m):
+                continue
+            pr = (chess.square_name(m.from_square), chess.square_name(m.to_square))
+            if pr not in seen:
+                seen.add(pr)
+                candidates.append([pr])
+    for pairs in candidates:
+        if len(pairs) != 1:
+            continue
+        (x, y), = pairs
+        with using_mover(mover):
+            prem = [atom_of(mate2_tail(x, y), ">=", 1)]
+        if premise_truth(prem, [dict(fen=fen, mover=mover)])[0]:
+            return [dict(depth=1, pairs=pairs, B=None, T=None, prem=prem, atoms=with_legality(prem), family=MATE2)]
+    return []
+
+
+def write_mate2_instance(tag: str, fen: str, mover: str, x: str, y: str, log=print) -> dict:
+    """The mined instance of `mate_in_two` for one position, in Ideas/Mined/<tag>.lean, checked by Lean (no sorry). -> dict(proved, path, error)."""
+    ns = re.sub(r"\W", "_", tag)
+    path = LEAN_DIR / "Ideas" / "Mined" / f"{ns}.lean"
+    head = LAYERS_HEAD.format(tag=tag, delta=100000, ns=ns)
+    with using_mover(mover):
+        prem = [atom_of(mate2_tail(x, y), ">=", 1)]
+    item = dict(name="mate_in_two_instance", prem=prem, mover=mover, doc=f"INSTANCE of mate_in_two at {fen} ({mover} to move): {x}->{y}, then over every reply a mate")
+    lean_round(path, head, [item], 100000)
+    write_final(path, head, [item], 100000)
+    log(f"OBS lean mate_in_two instance {tag}: {'PROVES' if item['proved'] else 'FAILS: ' + str(item['error'])[:200]} ({path.relative_to(LEAN_DIR.parent.parent)})")
     return dict(proved=bool(item["proved"]), path=path, error=item["error"])
 
 
@@ -1598,6 +1679,8 @@ def bind(depth: int, fen: str, mover: str, need: int, candidates: list | None = 
     import chess
     if family == MATE:
         return bind_mate(fen, mover, candidates)
+    if family == MATE2:
+        return bind_mate2(fen, mover, candidates)
     assert need >= 1, "a gain of at least 1"
     B = val_at(fen, "balance", mover)
     T = B + need
