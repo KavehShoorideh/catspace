@@ -22,6 +22,7 @@ import chess
 
 from catspace.io import paths
 from catspace.incubator.analyst.discovery import base_vocabulary as BV
+from catspace.incubator.analyst.discovery import remember as RM
 from catspace.incubator.analyst.discovery import ruler as RU
 from catspace.incubator.analyst.discovery import selfmine as SM
 
@@ -63,7 +64,7 @@ def depth2_candidates(fen: str) -> list:
     return out
 
 
-def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
+def apply(p: dict, log=print, deep: bool = True, ruler: bool = True, memory: bool = True, store: bool = False, set_name: str | None = None) -> dict:
     BV.install_terms()
     fen, need = p["fen"], int(p["value"])
     b = chess.Board(fen)
@@ -103,54 +104,96 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
     for r in reads:
         log(f"EV 3 root {r['san']}: takes {r['worth']}, ours hit after {r['attacked_after']} (most worth {r['w']}), k = {r['k']}; "
             + ("`hanging` applies" if r["applies"] else "the theorem does not apply"))
+    # 3b. recall (plan 50): the remembered states most like this one (relations only); the lemma that decided there is asked first
+    tb0 = time.time()
+    props = []
+    thr = RM.threat_token(fen, us, items=v["items"], check=bool(v.get("check")))
+    if memory:
+        sig = RM.signature(RM.piece_tokens(fen, us), (), thr)
+        for sim, r in RM.recall(sig, 3, exclude_id=p["id"]):
+            log(f"EV 9 recall   {RM.recall_line(sim, r, fen)}")
+            kv = {t.split("=")[0]: t.split("=")[1] for t in r["roles"] if not t.startswith("move=")}
+            props.append((RM.ladder_name(r["family"]), kv.get("mover"), "+".join(t.split("=")[1] for t in r["roles"] if t.startswith("move=")), sim, r["id"]))
+        if not props:
+            log("EV 9 recall   nothing stored resembles this position")
     # 4. bind: each proved schema read ONCE per candidate (its tail is a number; the target only sets the floor), the largest guaranteed gain wins,
-    #    ties in the ladder's order; no floor on the balance: the tail reads our material too (the game is alive when it is 4 or more), so a gain from
-    #    a deficit or a level position is an instance as well
+    #    ties in the ladder's order (the recalled families first); no floor on the balance: the tail reads our material too (the game is alive when it is 4 or more),
+    #    so a gain from a deficit or a level position is an instance as well
     found, kept = [], []
+    asked_n, asked_f = 0, 0
     c2 = depth2_candidates(fen) if deep else []
     for r in reads:
         if r["applies"]:
             found.append(("hanging", r["san"], f"{r['x']}->{r['y']} takes {r['worth']}, nothing of ours is hit after", r["worth"]))
             log(f"EV 4 bind hanging: {r['san']} guarantees {r['worth']} ({found[-1][2]})")
-    mates = SM.bind(1, fen, us, need, None, SM.MATE)                          # the mate in one first (plan 47): the biggest gain, any material gain loses to it
-    for inst in mates:
-        (mx, my), = inst["pairs"]
-        msan = b.san(chess.Move.from_uci(mx + my))
-        found.append(("mate_in_one", msan, "their mobility 0, their king attacked: mate in one", 100))
-        log(f"EV 4 bind mate: {msan} -- their mobility 0, their king attacked: mate in one")
-    if not mates:
-        log("EV 4 bind mate: no move leaves them without a legal move and in check")
-    mates2 = []
-    if not mates:                                                              # the mate in two (plan 49) only when no mate in one: the first move whose every reply is met by a mate
-        t2 = time.time()
-        mates2 = SM.bind(1, fen, us, need, None, SM.MATE2)
-        nleg = sum(1 for m in b.legal_moves if not m.promotion and not b.is_castling(m))
-        print(f"OBS bind mate2 {p['id']}: {round(time.time() - t2, 2)} s over {'up to ' + str(nleg)} candidates")
-        for inst in mates2:
-            (mx, my), = inst["pairs"]
-            msan = b.san(chess.Move.from_uci(mx + my))
-            found.append(("mate_in_two", msan, "every reply, then a mate (check 1, movecount 0)", 100))
-            log(f"EV 4 bind mate_in_two: {msan} -- every reply, then a mate (check 1, movecount 0)")
-        if not mates2:
-            log("EV 4 bind mate_in_two: no move is met after every reply by a mate")
+    default = ["mate", "mate2"] + list(ORDER)
+    first = []
+    for q in props:
+        if q[0] in default and q[0] not in first:
+            first.append(q[0])
+    seq = first + [f for f in default if f not in first]
+    mates, mates2, asked_mate2, memory_hit = [], [], False, None
+    legal = legal_candidates(fen)
+    for fam in seq:
+        if memory_hit:
+            break
+        recalled = fam in first
+        pr = next((q for q in props if q[0] == fam), None)
+        cands = RM.order_candidates(fen, legal, pr[1], pr[2]) if recalled else legal
+        if fam == "mate":
+            asked_f += 1
+            mates, n = ask_mate(fen, us, SM.MATE, cands, stop=recalled)             # (the ladder reads every mate; a recalled mate family stops at the first)
+            asked_n += n
+            for inst in mates:
+                (mx, my), = inst["pairs"]
+                msan = b.san(chess.Move.from_uci(mx + my))
+                found.append(("mate_in_one", msan, "their mobility 0, their king attacked: mate in one", 100))
+                log(f"EV 4 bind mate: {msan} -- their mobility 0, their king attacked: mate in one")
+            if not mates:
+                log("EV 4 bind mate: no move leaves them without a legal move and in check")
+            elif recalled:
+                memory_hit = fam
+        elif fam == "mate2":
+            if mates or asked_mate2:                                           # the mate in two (plan 49) only when no mate in one
+                continue
+            asked_mate2 = True
+            asked_f += 1
+            t2 = time.time()
+            mates2, n = ask_mate(fen, us, SM.MATE2, cands, stop=True)           # the first move whose every reply is met by a mate
+            asked_n += n
+            print(f"OBS bind mate2 {p['id']}: {round(time.time() - t2, 2)} s over {n} of up to {len(legal)} candidates")
+            for inst in mates2:
+                (mx, my), = inst["pairs"]
+                msan = b.san(chess.Move.from_uci(mx + my))
+                found.append(("mate_in_two", msan, "every reply, then a mate (check 1, movecount 0)", 100))
+                log(f"EV 4 bind mate_in_two: {msan} -- every reply, then a mate (check 1, movecount 0)")
+            if not mates2:
+                log("EV 4 bind mate_in_two: no move is met after every reply by a mate")
+            elif recalled:
+                memory_hit = fam
+        else:
+            for depth in (1, 2):
+                if depth == 2 and (not deep or fam == "delayed_balance_deep"):      # (the deep tail is one named move: eight plies of minimax at depth two is not asked for)
+                    continue
+                t1 = time.time()
+                best = best_bind(depth, fen, us, c2 if depth == 2 else None, fam)
+                name = f"{fam}_d{depth}"
+                asked_f += 1
+                if best is None:
+                    log(f"EV 4 bind {name}: no candidate's legs hold [{round(time.time() - t1, 1)} s]")
+                    continue
+                san, B, T, n, pairs, ties = best
+                asked_n += n
+                kept.append((name, san, B, T, pairs, ties))
+                if T > B:
+                    found.append((name, san, f"B={B} tail={T}", T - B))
+                    log(f"EV 4 bind {name}: best of {n} candidates {san}: the tail reads {T} against {B} now, guaranteed gain {T - B} [{round(time.time() - t1, 1)} s]")
+                else:
+                    log(f"EV 4 bind {name}: best of {n} candidates {san} reads {T} against {B} now: no gain [{round(time.time() - t1, 1)} s]")
+    if memory_hit:
+        log(f"EV 4 bind: the recalled family {memory_hit} decides; the rest of the ladder is not asked")
     mates = mates or mates2
-    for fam in ORDER:
-        for depth in (1, 2):
-            if depth == 2 and (not deep or fam == "delayed_balance_deep"):      # (the deep tail is one named move: eight plies of minimax at depth two is not asked for)
-                continue
-            t1 = time.time()
-            best = best_bind(depth, fen, us, c2 if depth == 2 else None, fam)
-            name = f"{fam}_d{depth}"
-            if best is None:
-                log(f"EV 4 bind {name}: no candidate's legs hold [{round(time.time() - t1, 1)} s]")
-                continue
-            san, B, T, n, pairs, ties = best
-            kept.append((name, san, B, T, pairs, ties))
-            if T > B:
-                found.append((name, san, f"B={B} tail={T}", T - B))
-                log(f"EV 4 bind {name}: best of {n} candidates {san}: the tail reads {T} against {B} now, guaranteed gain {T - B} [{round(time.time() - t1, 1)} s]")
-            else:
-                log(f"EV 4 bind {name}: best of {n} candidates {san} reads {T} against {B} now: no gain [{round(time.time() - t1, 1)} s]")
+    bind_secs = round(time.time() - tb0, 2)
     found.sort(key=lambda f: -f[3])
     # 8. the opponent's view of each kept candidate: the shape after it (what hangs, what guards, what we poke, their checks and what they fork)
     if kept and not mates:                              # (a mate in one needs no opponent's view of another candidate) the family that reads the most; its tied candidates in shape order, the best 8 shown
@@ -178,7 +221,9 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
     #    (the parry: the lemma says "after it, whatever they do, we keep at least this"); else none
     if found:
         name, san, why, k = found[0]
-        log(f"EV 5 decision: {san.split()[0]} by {name}, guaranteed gain {k} ({why}); the puzzle's window asks {need}: {'reached' if k >= need or name in ('mate_in_one', 'mate_in_two') else 'NOT reached'}")
+        mem = next((q[4] for q in props if q[0] == first_ladder(name)), None) if first_ladder(name) in default else None
+        log(f"EV 5 decision: {san.split()[0]} by {name}, guaranteed gain {k} ({why}); the puzzle's window asks {need}: {'reached' if k >= need or name in ('mate_in_one', 'mate_in_two') else 'NOT reached'}"
+            + (f" by memory of {mem}" if mem else ""))
     elif biggest and kept:
         name, san, B, T, _, _ = max(kept, key=lambda x: x[3])
         loss = B - T
@@ -202,10 +247,49 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
             + f"  [{round(time.time() - t7, 1)} s]")
         for line in RU.format_trace(r["trace"], 40):
             log("   " + line)
-    return dict(id=p["id"], decision=ours, answer=ans, match=ours == ans, by=found[0][0] if found else None)
+    by = found[0][0] if found else None
+    mem_id = next((q[4] for q in props if q[0] == first_ladder(by)), None) if by and first_ladder(by) in default else None
+    top1 = props[0][0] if props else None
+    if store and found and ours:
+        rec = RM.make_record(p, set_name or "", fen, us, b.parse_san(ours).uci(), by, found[0][3], ours == ans, thr)
+        if RM.store(rec):
+            log(f"stored {p['id']} ({by})")
+    return dict(id=p["id"], decision=ours, answer=ans, match=ours == ans, by=by, asked=asked_n, families=asked_f, bind_secs=bind_secs,
+                by_memory=mem_id, top1=top1, top1_right=bool(top1 and by and top1 == first_ladder(by)))
 
 
-STAGES = {"1": "position", "2": "threat", "3": "root", "4": "bind", "5": "decision", "6": "check", "7": "search", "8": "opponent"}
+def first_ladder(name: str | None) -> str | None:
+    """A decision's family name ('delayed_root_d1', 'mate_in_two') -> the ladder name the bind stage asks ('delayed_root', 'mate2')."""
+    return RM.ladder_name(name) if name else None
+
+
+def legal_candidates(fen: str) -> list:
+    """Every legal move of the side to move but castling and promotions (the schemas' leg exclusions), one pair each, in the board's order."""
+    bd = chess.Board(fen)
+    seen, out = set(), []
+    for m in bd.legal_moves:
+        if m.promotion or bd.is_castling(m):
+            continue
+        pr = (chess.square_name(m.from_square), chess.square_name(m.to_square))
+        if pr not in seen:
+            seen.add(pr)
+            out.append([pr])
+    return out
+
+
+def ask_mate(fen: str, us: str, family: str, cands: list, stop: bool) -> tuple:
+    """The mate family's binding, one candidate at a time in the given order: -> (instances, candidates asked). `stop`: the first hit ends the asking."""
+    out, n = [], 0
+    for c in cands:
+        n += 1
+        got = SM.bind(1, fen, us, 100, [c], family)
+        out += got
+        if got and stop:
+            break
+    return out, n
+
+
+STAGES = {"1": "position", "2": "threat", "3": "root", "4": "bind", "5": "decision", "6": "check", "7": "search", "8": "opponent", "9": "recall"}
 
 
 _SHAPES, _THREATS = {}, {}
@@ -413,11 +497,13 @@ def main():
     ap.add_argument("--index", type=int, default=0)
     ap.add_argument("--id")
     ap.add_argument("--shallow", action="store_true", help="depth-1 schemas only")
+    ap.add_argument("--no-memory", action="store_true", help="do not recall the remembered states (plan 50): the ladder runs in its own order")
+    ap.add_argument("--store", action="store_true", help="store the solve in the remembered states (plan 50)")
     ap.add_argument("--no-ruler", action="store_true", help="skip EV 7 (the alpha-beta ruler)")
     a = ap.parse_args()
     ps = load_set(a.set)
     p = next(x for x in ps if x["id"] == a.id) if a.id else ps[a.index]
-    apply(p, deep=not a.shallow, ruler=not a.no_ruler)
+    apply(p, deep=not a.shallow, ruler=not a.no_ruler, memory=not a.no_memory, store=a.store, set_name=a.set)
 
 
 if __name__ == "__main__":
