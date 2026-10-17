@@ -31356,3 +31356,32 @@ the label's 5 counts the rook before black's Qa1+ counterplay), 0Ag9s Qxa8+ (+5)
 04Qx2 (discovered check), 06J6T (sacrifice), 07Z0P (pin), 08pAF (long attack), 09QQs (advanced pawn), 0BHbB (Qb8+ then a skewer): all
 deeper than four plies or not material at all. The threat readings in every puzzle read like Kaveh's analysis order (biggest threat to us
 first, dead ends named with the recapturer).
+
+## 2026-10-16 (Fri) 23:58 PDT -- THE STREAM GROWS A STATE, AN OPPONENT'S VIEW AND A RULER (Kaveh live all afternoon)
+
+Kaveh watched puzzles 1 and 2 of dev_20 as an event stream with the board and corrected the stream piece by piece. What changed, in the
+order he asked (all in catspace/incubator/analyst/discovery/puzzle_apply.py unless said; commits d411a095, f645d5d9, 0decb3d9, 5e0cd491,
+3cbfe3a2 and the renumbering):
+
+- **The level-one state first** ("start with our highest value piece and see what the threat is"): every piece of ours, biggest first,
+  attacked how many times, guarded how many times, what the exchange gives (the words `worth`, `attackers`, `defenders`, `see`); then theirs.
+- **One number per event**, the stage as a word ("why is EV 2 there 3 times?"); the duplicate "threats: none" line when in check is gone.
+- **The search ruler (plan 46, builder)**: catspace/incubator/analyst/discovery/ruler.py, alpha-beta with Stockfish's move ordering (hash
+  move, MVV-LVA with SEE-negative captures last, promotions, checks, killers, history; no null-move/LMR/futility), its visit trace and node
+  count as the last event beside real Stockfish's depth and nodes. Kaveh: "I don't think I'll ever beat Stockfish; the interpretability goal
+  is the right one" -- the ruler is the guideline for node counts, never the goal. 000Sa: ruler 1 main + 18 quiescence nodes, Stockfish 3
+  nodes at depth 1; 00cZ4: ruler 2 nodes, Stockfish 27 (one run each).
+- **The opponent's view + the shape tiebreaker**: for every candidate tied at the best tail, the shape after it -- what hangs, guards, pokes,
+  their checks and the loose piece each check forks, our king's distance from their biggest piece; ties go to the better shape (defence
+  first, attack second). Then, "not a fixed ply number": their THREATS RUN TO THEIR END -- the Rust goal finder names them, the exact
+  labeller asks "can it be stopped?" over every defence of ours; an inevitable loss outranks the one-ply shape. Memoized; the stop question
+  asked once per candidate (00cZ4 fell from 499 s to 4 s).
+
+OBS 000Sa (white in check): Kxc2 and Bxc2 tie at 65; after Kxc2 "their bishop -- INEVITABLE, we lose at least 3: Qa4 Kd3 Qd4 Ke2 Qxe4";
+after Bxc2 no threats; Bxc2 chosen, MATCH (before the opponent's view the tie went to the king and MISSED). OBS 00cZ4 (mate in one): no
+word for mate, no decision; the ruler finds Qh2# in 2 nodes.
+
+Design recorded (memory solver_plus_relational_memory_2026_10_16, no build yet): alpha-beta in the frame with every cut recorded with its
+reason; remember each solved state as relational tokens, index by relationships and bound lemmas, retrieve, then a job-preserving search;
+predict future tactical states and name them; the frame cannot ignore the rest of the board, the tactic is what is carried forward.
+Kaveh 23:55: "Go auto till morning."
