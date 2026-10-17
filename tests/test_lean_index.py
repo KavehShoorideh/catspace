@@ -7,7 +7,10 @@ def test_index_finds_known_theorems():
     names = {d["full"] for d in decls}
     for n in ("Ideas.StalemateLemmas.check_not_stalemate", "Ideas.backRankMate_sound"):
         assert n in names
-    assert not [d for d in decls if d["kind"] in ("theorem", "lemma") and d["open"]], "a proof still holds sorry"
+    # the self-mining loop's files keep a failed premise / conjecture as `sorry` with the error above it (the statement is the finding); every
+    # other proof is closed
+    assert not [d for d in decls if d["kind"] in ("theorem", "lemma") and d["open"] and not d["name"].startswith(("premise_", "conjecture_"))], \
+        "a proof still holds sorry"
 
 
 def test_search_by_concept():

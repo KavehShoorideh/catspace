@@ -19,12 +19,12 @@ def val(term: str) -> int:
 
 
 def test_their_piece_and_the_piece_sets():
-    assert val("(count ours)") == 2
-    assert val("(count theirs)") == 1
+    assert val("(count ours)") == 3                     # two rooks and the king: the king is a piece (Kaveh 2026-10-16)
+    assert val("(count theirs)") == 2
     assert val("(dist W O)") == 4                      # c3 to g3
     assert val("(dist L O)") == 2                      # e5 to g3
     assert val("(count (and theirs attacked))") == 0   # g3: neither rook nor the king reaches it
-    assert val("(count (and ours hit))") == 1          # f4: the black king on e5 touches it
+    assert val("(count (and ours hit))") == 2          # f4: the black king on e5 touches it; and our king on c3, checked by the rook on g3 (the king is a piece)
 
 
 def test_hit_lifts_our_king():
