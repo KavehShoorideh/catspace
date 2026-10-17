@@ -310,32 +310,34 @@ def _numbered(log):
 
 def state_lines(fen: str, us: str) -> list:
     """THE LEVEL-ONE STATE (Kaveh 2026-10-16: "start with our highest value piece and see what the threat is ... then their highest value piece,
-    what threats can we create; what's under attack, how many times"): every piece of ours, biggest first, read in the words `worth`,
-    `defenders` (how many of THEIR pieces attack it), `attackers` (how many of ours guard it), `see` (what they win by the exchange on it);
-    then every piece of theirs the same way from our side. Counts only: no search, no tree."""
+    what threats can we create; what's under attack, how many times"), in ONE list in his order of attention (2026-10-16 evening): the kings
+    first, then both sides' pieces by value, ours before theirs at each value, the pawns last -- a threat to our king outranks a threat to
+    their queen. Each piece read in the words `worth`, `defenders` (how many of THEIR pieces attack it), `attackers` (how many of ours),
+    `see` (what the other side wins by the exchange on it). Counts only: no search, no tree."""
     b = chess.Board(fen)
-    out = []
-    for side, label, who in ((b.turn, "ours", "they"), (not b.turn, "theirs", "we")):
-        sqs = [s for s in chess.SQUARES if b.piece_at(s) and b.piece_at(s).color == side]
-        rows = []
-        for s in sqs:
-            n = chess.square_name(s)
-            w = SM.PIECE_WORTH[b.piece_at(s).symbol().lower()]
-            rows.append((w, n, b.piece_at(s).symbol(), SM.val_at(fen, ("attackers", n), us), SM.val_at(fen, ("defenders", n), us), SM.val_at(fen, ("see", n), us)))
-        rows.sort(key=lambda r: (-r[0], r[1]))
-        out.append(f"EV 1 state {label} ({len(rows)} pieces, biggest first):")
-        for w, n, sym, a, d, see in rows:
-            if label == "ours":
-                hit, guard = d, a
-            else:
-                hit, guard = a, d
-            if hit == 0:
-                verdict = "not attacked"
-            elif see > 0:
-                verdict = f"{who} win {see} by the exchange"
-            else:
-                verdict = "attacked but the exchange gives nothing"
-            out.append(f"EV 1 state   {sym} on {n} worth {w}: attacked {hit}x, guarded {guard}x -- {verdict}")
+    rows = []
+    for s in chess.SQUARES:
+        pc = b.piece_at(s)
+        if pc is None:
+            continue
+        n = chess.square_name(s)
+        ours = pc.color == b.turn
+        w = SM.PIECE_WORTH[pc.symbol().lower()]
+        a, d, see = SM.val_at(fen, ("attackers", n), us), SM.val_at(fen, ("defenders", n), us), SM.val_at(fen, ("see", n), us)
+        hit, guard = (d, a) if ours else (a, d)
+        rank = 100 if pc.piece_type == chess.KING else w
+        rows.append((-rank, 0 if ours else 1, n, pc.symbol(), w, hit, guard, see, ours))
+    rows.sort()
+    out = [f"EV 1 state ({len(rows)} pieces, in the order of attention: kings, then by value, ours before theirs):"]
+    for _, _, n, sym, w, hit, guard, see, ours in rows:
+        who = "they" if ours else "we"
+        if hit == 0:
+            verdict = "not attacked"
+        elif see > 0:
+            verdict = f"{who} win {see} by the exchange"
+        else:
+            verdict = "attacked but the exchange gives nothing"
+        out.append(f"EV 1 state   {'our' if ours else 'their'} {sym} on {n} worth {w}: attacked {hit}x, guarded {guard}x -- {verdict}")
     return out
 
 
