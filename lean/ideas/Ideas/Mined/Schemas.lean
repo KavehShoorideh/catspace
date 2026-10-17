@@ -439,4 +439,36 @@ theorem delayed_balance_alive_d2 (p : Position) (c : Color) (hc : p.turn = c)
   beta_reduce at h7''
   exact Ideas.TreeStep.tail_two_alive c _ v (applyMove (applyMove (applyMove (applyMove (p) m1) r4) m6) r9) (by simp only [applyMove_turn, hc] <;> (cases c <;> first | rfl | decide) : (applyMove (applyMove (applyMove (applyMove (p) m1) r4) m6) r9).turn = c) T C (by omega) (by omega) (by omega)
 
+/-- THE MATE IN ONE (plan 47, written by hand: the schema generator does not regenerate it). Our piece on x can legally go to y (and is not a pawn about to promote); after that move, the side to move (theirs) has no legal move (`movecount` 0) and is in check (`check` at least 1): then a gain of any v is forced, because the goal counts a mate. The squares are variables: bind them to any position. -/
+theorem mate_in_one (p : Position) (c : Color) (hc : p.turn = c) (x y : Square) (v : Int)
+    (h0 : (count (fun u => (oset (movesOf p) (some x)) u && (oset atSq (some y)) u)) ≥ 1)
+    (h1 : (count (fun u => (kindSet p c .pawn) u && (fun u => (oset atSq (some x)) u && (oset rankOf (some (named c (((0 : Fin 8)), ((6 : Fin 8)))))) u) u)) ≤ 0)
+    (h2 : (count (fun u => (piecesOf p c) u && (oset atSq (some x)) u)) ≥ 1)
+    (h3 : (afterMove p (some x) (some y) (fun p => (moveCountOf p))) ≤ 0)
+    (h4 : (afterMove p (some x) (some y) (fun p => (checkOf p))) ≥ 1) :
+    forcingOf p c v ≠ 0 := by
+  refine Ideas.TreeStep.forcingOf_ne_zero p c v hc 1 (by simp) ?_
+  show Ideas.forcedWithinB c _ p 2 = true
+  refine Ideas.TreeStep.step_after_np c _ p 1 hc x y h2 h1 h0 ?_
+  intro m hm haf
+  rw [haf] at h3 h4
+  beta_reduce at h3 h4
+  have hturn : (applyMove p m).turn = Color.opposite c := by rw [applyMove_turn, hc]
+  have hne : ((applyMove p m).turn != c) = true := by
+    rw [hturn]; cases c <;> decide
+  have hempty : (legalMoves (applyMove p m)).isEmpty = true := by
+    have h3' : (legalMoves (applyMove p m)).length = 0 := by unfold moveCountOf at h3; omega
+    exact List.isEmpty_iff_length_eq_zero.mpr h3'
+  have hchk : inCheckB (applyMove p m) (applyMove p m).turn = true := by
+    unfold checkOf at h4
+    by_contra hn
+    rw [if_neg hn] at h4
+    omega
+  show Ideas.forcedWithinB c _ (applyMove p m) (0 + 1) = true
+  simp only [Ideas.forcedWithinB, gainGoal, Bool.or_eq_true]
+  left
+  right
+  simp only [Bool.and_eq_true]
+  exact ⟨⟨hne, hempty⟩, hchk⟩
+
 end Ideas.Mined.Schemas
