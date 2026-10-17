@@ -4,7 +4,7 @@ applies what it has learnt, in Kaveh's order, and prints the EVENT STREAM as it 
   EV 1 position           the puzzle, our side, the target (the puzzle's value is the window's delta; 100 = mate)
   EV 2 threats to us      what they would take if we passed, each attack with its dead-end verdict (the proved schema `dead_end`, bound)
   EV 3 root               every capture of ours read in the root's words (worth taken, our pieces hit after, k, whether `hanging` applies)
-  EV 4 bind               the proved schemas bound at this position, in the ladder's order (mate_in_one first, root, delayed_root, delayed_root_max, delayed_balance, delayed_balance_deep; depth 1, 2)
+  EV 4 bind               the proved schemas bound at this position, in the ladder's order (mate_in_one, then mate_in_two, first; root, delayed_root, delayed_root_max, delayed_balance, delayed_balance_deep; depth 1, 2)
   EV 5 decision           the first binding in that order, or none
   EV 6 check              the exact solver on the decision, and the puzzle's own answer
   EV 7 ruler              plain alpha-beta with Stockfish's ordering: the depth and nodes it needs, its trace, Stockfish's depth and nodes (plan 46)
@@ -120,6 +120,20 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
         log(f"EV 4 bind mate: {msan} -- their mobility 0, their king attacked: mate in one")
     if not mates:
         log("EV 4 bind mate: no move leaves them without a legal move and in check")
+    mates2 = []
+    if not mates:                                                              # the mate in two (plan 49) only when no mate in one: the first move whose every reply is met by a mate
+        t2 = time.time()
+        mates2 = SM.bind(1, fen, us, need, None, SM.MATE2)
+        nleg = sum(1 for m in b.legal_moves if not m.promotion and not b.is_castling(m))
+        print(f"OBS bind mate2 {p['id']}: {round(time.time() - t2, 2)} s over {'up to ' + str(nleg)} candidates")
+        for inst in mates2:
+            (mx, my), = inst["pairs"]
+            msan = b.san(chess.Move.from_uci(mx + my))
+            found.append(("mate_in_two", msan, "every reply, then a mate (check 1, movecount 0)", 100))
+            log(f"EV 4 bind mate_in_two: {msan} -- every reply, then a mate (check 1, movecount 0)")
+        if not mates2:
+            log("EV 4 bind mate_in_two: no move is met after every reply by a mate")
+    mates = mates or mates2
     for fam in ORDER:
         for depth in (1, 2):
             if depth == 2 and (not deep or fam == "delayed_balance_deep"):      # (the deep tail is one named move: eight plies of minimax at depth two is not asked for)
@@ -164,7 +178,7 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
     #    (the parry: the lemma says "after it, whatever they do, we keep at least this"); else none
     if found:
         name, san, why, k = found[0]
-        log(f"EV 5 decision: {san.split()[0]} by {name}, guaranteed gain {k} ({why}); the puzzle's window asks {need}: {'reached' if k >= need or name == 'mate_in_one' else 'NOT reached'}")
+        log(f"EV 5 decision: {san.split()[0]} by {name}, guaranteed gain {k} ({why}); the puzzle's window asks {need}: {'reached' if k >= need or name in ('mate_in_one', 'mate_in_two') else 'NOT reached'}")
     elif biggest and kept:
         name, san, B, T, _, _ = max(kept, key=lambda x: x[3])
         loss = B - T
@@ -172,7 +186,7 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True) -> dict:
         log(f"EV 5 decision: {san.split()[0]} by {name} as the PARRY of {biggest['san']} (costs {biggest.get('k')}): after it, whatever they do, we keep "
             + ("the balance" if loss <= 0 else f"all but {loss}"))
     else:
-        log("EV 5 decision: none -- no proved lemma binds here at any gain" + (" (mate: no lemma reads mate in two yet)" if need >= 100 else ""))
+        log("EV 5 decision: none -- no proved lemma binds here at any gain" + (" (mate: no lemma reads this mate)" if need >= 100 else ""))
     # 6. check
     ans = b.san(chess.Move.from_uci(p["answer"]))
     lab = SM._label((fen, need, 1)) if need < 100 else dict(status="skipped (mate)")

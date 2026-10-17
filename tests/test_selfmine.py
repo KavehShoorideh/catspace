@@ -358,6 +358,28 @@ def test_mate_family_binds_only_on_mate_in_one():
     assert SM.ensure_schema(1, family=SM.MATE)["proved"]                          # (never regenerated)
 
 
+# ---------------------------------------------------------------------------------------------------------------- the mate in two (plan 49)
+
+F01IFU = "r1b2rk1/pp3pp1/3b3p/3Bn3/P4q2/2P4P/1P2NPP1/RN1Q1RK1 b - - 2 17"          # black mates in two: Nf3+
+STALE = "7k/8/6K1/8/8/8/8/1Q6 w - - 0 1"                                           # Qb3 and Kf7 stalemate (a leaf with no reply reads 0 under `least`)
+
+
+def test_mate2_binds_only_the_mate_in_two():
+    assert SM.MATE2 in SM.FAMILIES and SM.schema_name(1, SM.MATE2) == "mate_in_two" and "mate_in_two" in SM.proved_schemas()
+    got = SM.bind(1, F01IFU, "b", 100, None, SM.MATE2)
+    print("OBS bind mate2 on 01IFU:", [i["pairs"] for i in got])
+    assert [i["pairs"] for i in got] == [[("e5", "f3")]] and len(got[0]["atoms"]) == 4
+    assert SM.bind(1, F01IFU, "b", 100, None, SM.MATE) == []                       # not a mate in one
+    pf = SM.schema_instance_proof(got[0]["atoms"], 100000, "b")
+    assert pf.count("exact Ideas.Mined.Schemas.mate_in_two p c hc") == 1
+    none = SM.bind(1, F000SA, "w", 100, None, SM.MATE2)
+    print("OBS bind mate2 on 000Sa:", [i["pairs"] for i in none])
+    assert none == []
+    stale = SM.bind(1, STALE, "w", 100, [[("b1", "b3")], [("g6", "f7")]], SM.MATE2)  # the stalemating moves are not mates in two
+    print("OBS bind mate2 on the stalemating moves:", [i["pairs"] for i in stale])
+    assert stale == []
+
+
 # ---------------------------------------------------------------------------------------------------------------- the deep tail (plan 48)
 
 F000SA = "2Q2bk1/5p1p/p5p1/2p3P1/4B3/7P/qPr2P2/2K4R w - - 0 33"       # white in check: Kxc2 and Bxc2 both take the rook
