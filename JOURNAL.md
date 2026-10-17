@@ -31403,7 +31403,7 @@ Ruler beside them: the plain search finds every answer it was given a window for
 BUG found by the pass: 06J6T took 693 s -- the shape tiebreaker (goal finder + labeller) ran over 46 candidates tied at a NO-GAIN reading of
 delayed_root; the shape should rank ties only where it decides something (the family read for the decision). Fix after plan 48 lands.
 
-## 2026-10-17 (Sat) 01:25 PDT -- NIGHT: THE DEEP TAIL DOES NOT SPLIT 000Sa; THE TIEBREAKER'S COST
+## 2026-10-17 (Sat) 01:04 PDT -- NIGHT: THE DEEP TAIL DOES NOT SPLIT 000Sa; THE TIEBREAKER'S COST
 
 Plan 48 built by the builder (a009f20b `tail_four_alive`, ee9f6a55 the family `delayed_balance_deep` + its schema proved + a mined 000Sa
 instance, 6c00041a stream + tests): sound and proved, but the premise of the plan was WRONG. A full-width minimax tail with a plain material
