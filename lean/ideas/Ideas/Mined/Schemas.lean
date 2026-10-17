@@ -471,4 +471,26 @@ theorem mate_in_one (p : Position) (c : Color) (hc : p.turn = c) (x y : Square) 
   simp only [Bool.and_eq_true]
   exact ⟨⟨hne, hempty⟩, hchk⟩
 
+/-- THE DEEP DELAYED BALANCE (the minimax tail, one level deeper; plan 48), depth 1 (plan 44.2, the operators DELAY / RECAPTURE). Our moves x1 -> y1 are named (legal, a piece of ours that is not about to promote); whatever they reply to the last, some move of ours, whatever they reply, some move of ours, then whatever they reply, leaves the balance at least T; the balance now is at most B, and T is at least B + v, with C = T - 4 (the tail reads the balance AND our material, at least 4, so the game is alive; no floor on the balance): then the gain v is forced. The squares are variables: bind them to any position. -/
+theorem delayed_balance_deep_alive_d1 (p : Position) (c : Color) (hc : p.turn = c)
+    (x1 y1 : Square) (B T C : Nat) (v : Int) (hTB : (T : Int) ≥ (B : Int) + v) (hCT : C + 4 = T)
+    (h0 : (count (fun u => (oset (movesOf p) (some x1)) u && (oset atSq (some y1)) u)) ≥ 1)
+    (h1 : (count (fun u => (kindSet p c .pawn) u && (fun u => (oset atSq (some x1)) u && (oset rankOf (some (named c (((0 : Fin 8)), ((6 : Fin 8)))))) u) u)) ≤ 0)
+    (h2 : (count (fun u => (piecesOf p c) u && (oset atSq (some x1)) u)) ≥ 1)
+    (h3 : (balanceOf p c) ≤ B)
+    (h4 : (afterMove p (some x1) (some y1) (fun p => (leastOver p (fun p => (mostOver p (fun p => (leastOver p (fun p => (mostOver p (fun p => (leastOver p (fun p => (min (balanceOf p c) ((materialOf p c) + C)))))))))))))) ≥ T) :
+    forcingOf p c v ≠ 0 := by
+  refine Ideas.TreeStep.forcingOf_ne_zero p c v hc 3 (by simp) ?_
+  show Ideas.forcedWithinB c _ p 6 = true
+  have hbase : ((materialOf p c : Int) - materialOf p (Color.opposite c)) ≤ (B : Int) - 64 := by unfold balanceOf at h3; omega
+  refine Ideas.TreeStep.step_after_np c _ (p) 5 hc _ _ h2 h1 h0 ?_
+  intro m1 hm2 haf3
+  rw [haf3] at h4
+  beta_reduce at h4
+  refine Ideas.TreeStep.step_least c _ (applyMove (p) m1) 4 (by simp only [applyMove_turn, hc] <;> (cases c <;> first | rfl | decide) : (applyMove (p) m1).turn ≠ c) _ T (by omega) h4 ?_
+  intro r4 hr5
+  have h4' := Ideas.TreeStep.least_floor _ _ T h4 r4 hr5
+  beta_reduce at h4'
+  exact Ideas.TreeStep.tail_four_alive c _ v (applyMove (applyMove (p) m1) r4) (by simp only [applyMove_turn, hc] <;> (cases c <;> first | rfl | decide) : (applyMove (applyMove (p) m1) r4).turn = c) T C (by omega) (by omega) (by omega)
+
 end Ideas.Mined.Schemas
