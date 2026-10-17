@@ -1718,3 +1718,43 @@ all their replies, to quiescence, every cut with its reason) comes AFTER this ru
 3. tests/test_ruler.py: mate in one found at depth 1; a hanging piece found at depth 1; the ordering puts a capture before a quiet move;
    the trace's first entry is the root's first child; a position with no gain returns "stopped".
 No Pool; no AI trailers; one commit for the solver + tests, one for the EV 7 hook; the Rust solver `forced_moves` stays the exact labeller.
+
+## 47. THE MATE WORD AND THE MATE-IN-ONE SCHEMA (autonomy night 2026-10-16/17; built by a cheaper agent)
+
+### 47.1 Why
+Six of the twenty dev puzzles are mates and the stream says "no lemma reads mate yet" on every one; the goal in Lean already counts a mate
+(`gainGoal`'s second disjunct: their turn, no legal move, in check) and `forcedWithinB` checks the goal right after our move, so a mate in one
+is a one-step theorem away. One vocabulary gap: there is no word for "how many legal moves the side to move has" (`flights` counts the
+KING's squares only). Vocabulary rule (Kaveh 2026-10-14): add it -- Lean def + gloss + Rust mirror + glossary + `lean_index build`.
+
+### 47.2 Definitions
+- WORD `mobility` ((), num, "how many legal moves the side to move has"): Lean `def mobilityOf (p : Position) : Nat := (legalMoves p).length`
+  in Ideas/Base/Vocabulary.lean next to `maxWorthOf`; Rust `Term::Mobility` in rust/analyst_core/src/vocab.rs (parse "mobility", eval =
+  the legal move count of the side to move in q, the dependency mask FULL like MaxWorth); Python PRIMITIVES entry + Lean render lambda
+  `"mobility": lambda: "(mobilityOf p)"` in base_vocabulary.py; GLOSSARY.md entry (catspace/research/docs/GLOSSARY.md, the `maxworth` style);
+  tests/test_vocab_mobility.py in the shape of test_vocab_maxworth.py (python-chess `legal_moves.count()` on three positions; a mated
+  position reads 0). Under `after x y` the word reads the board after our move: THEIR mobility. Rebuild the Rust module the way the repo does
+  (look at how `maxworth` was added: `git log -S MaxWorth`), then `lean_index build`.
+- THEOREM `mate_in_one` in Ideas/Mined/Schemas.lean (or Ideas/TreeStep.lean if the step belongs there): for p with p.turn = c and a legal
+  normal move m of ours from x to y (the same legs the delayed schemas use: `with_legality` renders them), if after it the side to move has
+  no legal move (`mobilityOf (applyMove p m) = 0`) and is in check (render as the existing words: `(after x y (count (and (at L) attacked)))
+  ≥ 1`, L their king on the board after -- check how `hit`/`kingSqD` are rendered under `after` and use the same for `attacked`; if the
+  check cannot be said in the existing words, add the word `check` ((), num, "1 when the side to move is in check") the same way as
+  `mobility` and say so in the report), then `forcingOf p c v ≠ 0` for every v. Proof: unfold forcingOf (q = p since p.turn = c), n = 1,
+  `forcedWithinB c goal p 2 = goal p || any ...`; pick m; `forcedWithinB ... (applyMove p m) 1 = goal (applyMove p m) || ...`; the goal's
+  second disjunct: the turn flipped (find the existing lemma on applyMove's turn; TreeStep/Root proofs use one), legalMoves empty from
+  mobility 0 (`List.length_eq_zero`), inCheckB from the check atom. Search the index for the applyMove-turn lemma and inCheckB facts first
+  (`python -m catspace.incubator.analyst.lean_index search applyMove turn`, `... inCheckB attacked king`).
+- FAMILY `mate` in selfmine.py's ladder (FAMILIES += "mate"; `schema_name(1, "mate") = "mate_in_one"`): `bind(1, fen, mover, need, candidates,
+  "mate")` returns the candidates whose two atoms hold (read with `premise_truth`), with prem = the two atoms; no tail, no B/T. The instance
+  proof is an application of `mate_in_one` with the squares (mirror `schema_instance_proof`). `ensure_schema` must not try to regenerate it.
+- STREAM: puzzle_apply reads the `mate` family first in the bind stage for every puzzle (it is the biggest gain): `bind mate: Qh2# -- their
+  mobility 0, their king attacked: mate in one` and the decision takes it over any material gain (k = 100). A puzzle whose window is a mate
+  in two keeps "no lemma reads mate in two yet".
+
+### 47.3 Acceptance
+1. 00cZ4 (black, Qh2#): bind mate fires on Qh2# and the decision is Qh2#, MATCH. 01IFU (Nf3+, mate in two): bind mate does not fire.
+2. Lean: `mate_in_one` and one mined instance (00cZ4, written with the mined-file machinery into Ideas/Mined/) build with no sorry.
+3. tests: test_vocab_mobility.py; tests/test_selfmine.py gets `test_mate_family_binds_only_on_mate_in_one` (00cZ4 fen binds Qh2# only; the
+   00cZ4 position after a quiet move binds nothing).
+No AI trailers; one commit per piece (word; theorem; family + stream; tests); numbers only from OBS lines.
