@@ -31424,3 +31424,22 @@ same decisions as the second pass, the whole set in about 3 minutes against ~25 
 000Sa Bxc2, 00cZ4 Qh2# (mate_in_one), 02XVK Bxg6, 03mjK Qxh2# (mate_in_one), 052Wm Kf8, 05gLw Ne8+, 08A6a Bxe5, 0A2fe Qg2+, 0Ag9s Qxa8+,
 0BuCC Rxf2+. Misses: three mates in two (01IFU, 03B3o, 06xEN), and 01vys, 04Qx2, 06J6T, 07Z0P, 08pAF, 09QQs, 0BHbB (material, deeper than
 the proved schemas; the ruler finds all but 01vys, 04Qx2, 08pAF, 09QQs within depth 6).
+
+## 2026-10-17 13:15 PDT — THE MATE IN TWO: A SCHEMA WHOSE LEAF IS A SCHEMA (plan 49)
+
+Kaveh's morning restatement of the goal (reason instead of searching moves; remember reasoned states; the route search is logic, not
+probability) opened a few autonomous rounds. Round one: the three mates in two the night left unmatched.
+
+The reasoning is one sentence and every word existed: after our move, whatever they reply, some move of ours mates. Tail
+`(after x y (least (most (min check (eq movecount 0)))))` ≥ 1; theorem `mate_in_two` (Ideas/Mined/Schemas.lean) by the step theorems
+at n = 2, closed by `gainGoal_of_mate` -- the mate-in-one premise sits at every leaf. `least` over no replies reads 0, so a stalemate or an
+immediate mate does not satisfy it.
+
+My plan said `(diff check movecount)` ≥ 1, thinking Nat subtraction. The builder checked the evaluator: `diff` is |a−b|, so the tail would
+have fired on every non-mate with replies. It said the leaf with `min`/`eq` instead. A premise is checked against the evaluator before it is
+believed; the plan was wrong, the loop right.
+
+OBS (one run): `OBS tally: 13 MATCH of 20; 6 mates; misses ['01vys', '04Qx2', '06J6T', '07Z0P', '08pAF', '09QQs', '0BHbB']` (was 10 of 20).
+01IFU, 03B3o, 06xEN and 05gLw (which was a mate in two read as material before) decide by `mate_in_two`; the longest mate2 read in the batch
+was `0.02 s over 46 candidates`. Mined instance puzzle_01IFU_mate2.lean proves; lake build clean; 30 tests pass. Commits e120819c, 66ad8fac,
+aeb3abab. Seven material misses remain, unchanged.
