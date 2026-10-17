@@ -31386,7 +31386,7 @@ reason; remember each solved state as relational tokens, index by relationships 
 predict future tactical states and name them; the frame cannot ignore the rest of the board, the tactic is what is carried forward.
 Kaveh 23:55: "Go auto till morning."
 
-## 2026-10-17 (Sat) 01:40 PDT -- NIGHT: THE MATE WORD, THE SECOND PASS OVER dev_20
+## 2026-10-17 (Sat) 00:44 PDT -- NIGHT: THE MATE WORD, THE SECOND PASS OVER dev_20
 
 Plan 47 built by the builder (commits 730d1c35, aba2d702, 933cd68b, ab7f1371), verified: two words added under the vocabulary rule --
 `movecount` (how many legal moves the side to move has; `mobility` was taken by a piece's escape squares) and `check` (1 when the side to
