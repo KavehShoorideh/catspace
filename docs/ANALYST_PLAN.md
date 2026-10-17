@@ -1830,3 +1830,51 @@ new word.
 4. Rerun the dev_20 batch (the scratchpad's puzzle_batch.py, ~3 min) and report the OBS tally line.
 No AI trailers (no Co-Authored-By / Claude-Session lines); one commit per piece (theorem; family + instance; stream + tests); numbers only from
 OBS lines; timestamps from `date`.
+
+## 50. THE REMEMBERED STATE: every solve is stored as relations, retrieved by relations, and asked first (Kaveh 2026-10-17, GO for autonomous rounds; built by a cheaper agent after 49)
+
+### 50.1 What Kaveh said (2026-10-17)
+"Remember these reasoned states so that next time when you see something similar, you can remember: aha, there is the opportunity for me to
+invoke or create this type of scenario which I've seen before, which I know results in this type of thing." Index by RELATIONSHIPS and the
+lemma that applied, never by where the pieces stand (2026-10-16). The remembered state is a PRIOR for which lemma to ask first; the lemma's
+Lean proof is still what decides (never a value, never a proof).
+
+### 50.2 Definitions
+- RECORD (one JSON line per solved puzzle, appended to `paths.derived("reasoned_states.jsonl")`; per-item checkpoint, a rerun skips stored
+  ids): `id`, `set`, `fen`, `us`, `decision` (san + uci), `family` (the schema that decided: mate_in_one / mate_in_two / delayed_*), `gain`,
+  `instance` (the mined Lean file if one was written), and the RELATIONS:
+  - `pieces`: the level-one state's rows (`state_lines` computes them) as tokens WITHOUT squares: `their Q attacked1 guarded0 hanging`,
+    `our R attacked1 guarded1`, `our K attacked0`, ... (kind, side, attacked count, guarded count, `hanging` when see > 0, `check` when in check);
+  - `roles`: who did what in the decision, by kind not square: `mover=N`, `victim=K|Q|R|...|none` (the occupant of the target square),
+    `move=check|capture|quiet` (any subset), `recapturer=<kind>|none` (the biggest defender of the target, from `defenders`);
+  - `threat`: the threat stage's biggest threat to us as `threat=<kind of ours attacked> value=<v>` or `threat=none`;
+  - `after`: the chosen move's shape (hanging count, guarded, poking, number of their checks), from `shape`.
+  A record is written for every puzzle whose decision came from a bound schema (MATCH or not: the decision is what the lemma said; `correct`
+  stores the MATCH/MISS so that a wrong memory can be audited later).
+- SIGNATURE: the set of `pieces` + `roles` + `threat` tokens. SIMILARITY: Jaccard over the two signatures (generic, no weights; print it).
+- RETRIEVAL (`remember.py`, the store's module: `store(record)`, `recall(signature, k=3) -> [(sim, record)]`, `propose(fen, us) -> list of
+  (family, mover_kind, victim_kind, move_kind, sim, id)`): before the bind stage, puzzle_apply computes the new puzzle's signature from the same
+  functions, recalls the k most similar records of OTHER puzzles (never itself: by id), and logs one `recall` event per hit:
+  `#n recall   seen 01IFU (sim 0.62): N gives check, mate_in_two decided -- ask mate2 on knight checks first`.
+- THE ORDER OF ASKING: the bind stage asks the recalled families first (in sim order, de-duplicated), each on the candidates that match the
+  recalled roles first (same mover kind and move kind), then its other candidates; if a recalled family decides, the stream says so in the
+  decision line (`by memory of 01IFU`); otherwise the usual ladder runs unchanged (mate, mate2, ORDER). Soundness is untouched: a family binds
+  only by its proved schema.
+- MEASURE (OBS lines, one run each, directional): per puzzle `candidates asked`, `families asked`, `seconds`, `decided_by_memory yes/no`,
+  `recall_top1_family == deciding family yes/no`; the batch tally prints: matches, how many decided by memory, how many recalls were right, the
+  summed candidates asked with memory vs the same batch with `--no-memory`.
+- WHERE THE RECORDS COME FROM: store from dev_20 first (the solved ones; it is the short run), then the recall run on `fresh_60_threats_event`
+  (60 puzzles, no overlap with dev_*; load it like dev_20). If that run is clean (no crash, tally printed), store from dev_300 in the background
+  (per-item checkpoint; check every 5 min; it is ~10 s a puzzle, one labeller outlier ~100 s) and recall again on fresh_60 with the bigger store.
+- The record format must also take a WINDOW from a game (plan 41-43: fen at the inevitability point, the window's decision, the lemma), so the
+  store serves games later; one field `source=puzzle|window`; do not build the window writer now.
+
+### 50.3 Acceptance
+1. `remember.py` + tests/test_remember.py: a record round-trips; a signature has no square names; `recall` never returns the puzzle's own id;
+   Jaccard of identical signatures is 1.0, of disjoint 0.0; `propose` on 03B3o after storing 01IFU names mate_in_two with mover Q (whatever
+   it is; print and assert the printed value).
+2. puzzle_apply: `--no-memory` flag; `recall` events in the stream; the decision line says `by memory of <id>` when it was.
+3. OBS: the dev_20 store count; the fresh_60 recall run's tally (matches, decided by memory, recalls right, candidates asked with vs without).
+4. puzzle pages: the scratchpad's puzzle_page.py shows the recall events like any event (no change needed if it prints the stream).
+No AI trailers; one commit per piece (store + tests; stream + flag; the runs' OBS in the commit message of a journal-free commit, I journal);
+numbers only from OBS lines; timestamps from `date`; use `paths.derived`, never a relative path.
