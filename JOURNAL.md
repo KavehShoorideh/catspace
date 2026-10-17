@@ -31402,3 +31402,17 @@ Ruler beside them: the plain search finds every answer it was given a window for
 08pAF, 09QQs); nodes from 1 to ~200k main; Stockfish 3 to ~60 nodes at depth 1-4.
 BUG found by the pass: 06J6T took 693 s -- the shape tiebreaker (goal finder + labeller) ran over 46 candidates tied at a NO-GAIN reading of
 delayed_root; the shape should rank ties only where it decides something (the family read for the decision). Fix after plan 48 lands.
+
+## 2026-10-17 (Sat) 01:25 PDT -- NIGHT: THE DEEP TAIL DOES NOT SPLIT 000Sa; THE TIEBREAKER'S COST
+
+Plan 48 built by the builder (a009f20b `tail_four_alive`, ee9f6a55 the family `delayed_balance_deep` + its schema proved + a mined 000Sa
+instance, 6c00041a stream + tests): sound and proved, but the premise of the plan was WRONG. A full-width minimax tail with a plain material
+leaf reads 65 for BOTH Kxc2 and Bxc2 at 1-5 plies after the move (checked by hand with python-chess and by the Rust evaluator): the bishop
+falls only at the eighth ply and a fixed-ply material leaf is horizon-bound (the rook just taken masks the bishop about to fall). The
+quiescence-based ruler and the "held after their reply" labeller do not have this problem. So: the family stays proved in Lean and leaves the
+stream's ladder; what splits the two captures is the opponent's view (their threat run to its end, then "can it be stopped?").
+Cost: ~8 s a candidate on a 40-move board (04Qx2: 312 s) -- another reason it is out.
+
+The tiebreaker's cost fixed (commit above): the shape ranks ties once, for the family the decision reads; their threats (goal finder + exact
+labeller) are asked in the CHEAP shape's order and stop at the first candidate that loses nothing, which no unasked candidate can beat.
+OBS 06J6T 693 s -> 99 s (46 candidates; two threat asks). The remaining time is the exact labeller running to its budget ("stopped").
