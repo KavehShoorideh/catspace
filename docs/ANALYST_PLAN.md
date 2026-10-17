@@ -1788,3 +1788,45 @@ they do, keeps the balance. Generic: the depth-1 schema with the minimax tail ne
 Time: report the per-candidate seconds on 000Sa and on 04Qx2 (36 legal moves) -- if a candidate takes more than ~10 s, say so (the Rust
 evaluator's minimax may need a node cap: budget hit = unknown, never a wrong number).
 No AI trailers; one commit per piece (Lean step theorem; family + schema; stream + tests).
+
+## 49. THE MATE IN TWO: a schema whose leaf is a schema (autonomy 2026-10-17; built by a cheaper agent)
+
+### 49.1 Why
+Three of the twenty dev puzzles (01IFU Nf3+, 03B3o Qd8+, 06xEN Rh1+) are mates in two and the stream reads "no lemma reads mate in two yet".
+Kaveh's goal (2026-10-17): reason instead of searching moves. The reasoning is one sentence: after our move, WHATEVER they reply, some move of
+ours mates (the mate-in-one premise of plan 47 at every leaf). Every word exists: `after`, `least`, `most`, `diff`, `check`, `movecount`. No
+new word.
+
+### 49.2 Definitions
+- TAIL `(after x y (least (most (diff check movecount))))` ≥ 1. Read: after our move x->y, for every reply, the best of our moves reads
+  `check - movecount` ≥ 1, which in Nat holds exactly when check = 1 and movecount = 0 (a mate). `least` over no replies reads 0, so a
+  stalemate or an immediate mate after x->y does NOT satisfy it (the mate in one is plan 47's job); that is the soundness we want.
+- THEOREM `mate_in_two` in Ideas/Mined/Schemas.lean beside `mate_in_one` (written by hand, the generator does not regenerate it): the same
+  legs h0 h1 h2 as `mate_in_one`, and
+  `(afterMove p (some x) (some y) (fun q => leastOver q (fun r => mostOver r (fun s => checkOf s - moveCountOf s)))) ≥ 1`
+  concluding `forcingOf p c v ≠ 0` for every v. Proof: `forcingOf_ne_zero` with n = 2 (`forcedWithinB c _ p 4`), `step_after_np` for our move,
+  `step_least` (k = 1) over every reply, `step_most` (k = 1) for our witness move, then the leaf: from `checkOf s - moveCountOf s ≥ 1` get
+  `checkOf s = 1` and `moveCountOf s = 0` (omega after unfolding), and close `gainGoal`'s second disjunct exactly as `mate_in_one` does (turn
+  flipped: `turn_after_one`-style lemma for the third ply, compose `applyMove_turn` three times). Check how `tail_body`'s `diff` renders to Lean
+  (delayed_root_max uses it) and use the same rendering, so the Rust reading and the Lean statement are the same term.
+- FAMILY `mate2` in selfmine.py: FAMILIES += "mate2" (after "mate"); `schema_name(1, "mate2") = "mate_in_two"`; `bind_mate2(fen, mover,
+  candidates)` evaluates the tail (Rust `eval` of the term under `after`, the way `best_bind` reads tails) for each candidate in the stream's
+  candidate order and STOPS AT THE FIRST that reads ≥ 1 (no mate in two beats another; principled stop); returns [(san, pairs, prem)]. The
+  instance proof is `exact Ideas.Mined.Schemas.mate_in_two p c hc x y v <legs> <tail>` (mirror `mate_instance_proof`); `write_mate2_instance`
+  writes Ideas/Mined/<tag>_mate2.lean and checks it with Lean (the premise_truth of the tail is a `decide`/`native_decide`? -- NO: use whatever
+  the mined instances use for `after` tails today (look at puzzle_000Sa_deep.lean and the delayed instances); the instance's hypotheses are
+  proved the same way).
+- STREAM: puzzle_apply's bind stage reads `mate` then `mate2` before the material ladder; a hit logs
+  `bind mate_in_two: Nf3+ -- every reply, then a mate (check 1, movecount 0)` and the decision takes it (k = 100, as a mate). Print the seconds
+  per candidate as an OBS line on 01IFU and on 04Qx2 (36 legal moves, no mate): if a candidate costs more than ~10 s say so in the report and
+  stop; do not add caps.
+
+### 49.3 Acceptance
+1. 01IFU, 03B3o, 06xEN: `bind mate_in_two` fires on the answer and the decision MATCHes. 00cZ4 (mate in one): `mate` fires first, `mate2` is
+   not asked. 000Sa: `mate2` binds nothing.
+2. Lean: `mate_in_two` and one mined instance (01IFU) build with no sorry; `lean_index build`.
+3. tests/test_selfmine.py: `test_mate2_binds_only_the_mate_in_two` (01IFU fen binds Nf3+; the 000Sa fen binds nothing; a stalemate-in-one
+   position binds nothing).
+4. Rerun the dev_20 batch (the scratchpad's puzzle_batch.py, ~3 min) and report the OBS tally line.
+No AI trailers (no Co-Authored-By / Claude-Session lines); one commit per piece (theorem; family + instance; stream + tests); numbers only from
+OBS lines; timestamps from `date`.
