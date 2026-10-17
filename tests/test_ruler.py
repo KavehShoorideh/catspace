@@ -77,3 +77,12 @@ def test_counts_main_and_quiescence_apart():
 def test_stockfish_reference():
     r = R.solve("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1", 100, answer_uci="a1a8")
     assert r["stockfish"]["depth"] >= 1 and r["stockfish"]["nodes"] > 0
+
+
+def test_ours_none_changes_nothing_and_a_restriction_records_cuts():
+    fen = "4k3/8/8/3q4/8/8/8/3RK3 w - - 0 1"
+    base = R.solve(fen, 9, max_depth=3)
+    same = R.solve(fen, 9, max_depth=3, ours=lambda b: None)
+    assert (same["nodes"], same["line"], same["cuts"]) == (base["nodes"], base["line"], [])
+    only = R.solve(fen, 9, max_depth=3, ours=lambda b: ([m for m in b.legal_moves if b.is_capture(m)], "captures only"))
+    assert only["line"][0] == "Rxd5" and only["cuts"] and only["cuts"][0][3] == "captures only" and only["cuts"][0][2] > 0

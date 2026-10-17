@@ -75,8 +75,10 @@ def see(board: chess.Board, move: chess.Move) -> int:
 
 
 class Ruler:
-    def __init__(self, board: chess.Board, need: int, trace: int):
+    def __init__(self, board: chess.Board, need: int, trace: int, ours=None):
         self.b = board
+        self.ours = ours                                  # plan 51: ours(board) -> list[Move] | (list, reason) | None at nodes where the ROOT's side moves
+        self.cuts: list = []
         self.root = board.turn
         self.base = material(board, self.root) - material(board, not self.root)
         self.need = need
@@ -125,6 +127,23 @@ class Ruler:
                 keyed.append(((5, -self.history.get((b.turn, m.from_square, m.to_square), 0)), m))
         keyed.sort(key=lambda x: x[0])
         return [m for _, m in keyed]
+
+    def candidates(self, ply: int):
+        """The moves to search at a main node: None = all legal moves. Only at nodes where the root's side is to move (their replies are ALWAYS all:
+        a restricted max is at most the full max, so a line found is a real forced line); each restriction records a cut (ply, description, moves cut, reason)."""
+        if self.ours is None or self.b.turn != self.root:
+            return None
+        got = self.ours(self.b)
+        if got is None:
+            return None
+        moves, reason = got if isinstance(got, tuple) else (got, "ours")
+        total = self.b.legal_moves.count()
+        legal = set(self.b.legal_moves)
+        moves = [m for m in moves if m in legal]
+        if not moves:
+            return None
+        self.cuts.append((ply, f"{len(moves)} of {total} moves kept", total - len(moves), reason))
+        return moves
 
     # ---------------------------------------------------------------- bookkeeping
     def enter(self, move, kind: str) -> int:
@@ -184,7 +203,7 @@ class Ruler:
         key = b._transposition_key()
         best, bestline, bestm = -10 ** 6, [], None
         reason = "searched"
-        for m in self.order(ply, self.hashmove.get(key)):
+        for m in self.order(ply, self.hashmove.get(key), self.candidates(ply)):
             quiet = not b.is_capture(m)
             turn = b.turn
             sc, line = self.child(m, depth - 1, alpha, beta, ply, "main")
@@ -263,16 +282,19 @@ def stockfish_reference(fen: str, answer_uci: str, max_depth: int = 20):
         eng.quit()
 
 
-def solve(fen: str, need: int, max_depth: int = 6, trace: int = 200, answer_uci: str | None = None) -> dict:
+def solve(fen: str, need: int, max_depth: int = 6, trace: int = 200, answer_uci: str | None = None, ours=None) -> dict:
+    """`ours` (plan 51): ours(board) -> list[Move] | (list[Move], reason) | None, called at every main node where the root's side is to move; a list restricts
+    the moves searched there (in the ruler's own order), None = all. Quiescence and their replies are unchanged. The result gains `cuts` of the finishing iteration."""
     board = chess.Board(fen)
-    r = Ruler(board, need, trace)
+    r = Ruler(board, need, trace, ours)
     status, line, depth = "stopped", [], 0
     final_trace: list = []
+    final_cuts: list = []
     best_line: list = []
     for d in range(1, max_depth + 1):
-        r.trace, r.sans = [], []
+        r.trace, r.sans, r.cuts = [], [], []
         key = board._transposition_key()
-        moves = r.order(0, r.hashmove.get(key))
+        moves = r.order(0, r.hashmove.get(key), r.candidates(0))
         if not moves:
             break
         bestsc, bestm, bestl = -10 ** 6, None, []
@@ -287,6 +309,7 @@ def solve(fen: str, need: int, max_depth: int = 6, trace: int = 200, answer_uci:
         r.hashmove[key] = bestm
         depth = d
         final_trace = r.trace
+        final_cuts = r.cuts
         best_line = bestl
         if found:
             status = "forced"
@@ -297,7 +320,7 @@ def solve(fen: str, need: int, max_depth: int = 6, trace: int = 200, answer_uci:
         tmp.push(m)
     ref = stockfish_reference(fen, answer_uci) if answer_uci else None
     return dict(status=status, line=san_line, nodes_main=r.nm, nodes_q=r.nq, nodes=r.nm + r.nq, depth=depth,
-                trace=[tuple(x) for x in final_trace], stockfish=ref)
+                trace=[tuple(x) for x in final_trace], stockfish=ref, cuts=final_cuts)
 
 
 def format_trace(trace: list, n: int = 40) -> list:
