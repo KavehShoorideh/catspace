@@ -471,6 +471,48 @@ theorem mate_in_one (p : Position) (c : Color) (hc : p.turn = c) (x y : Square) 
   simp only [Bool.and_eq_true]
   exact ⟨⟨hne, hempty⟩, hchk⟩
 
+/-- THE MATE IN TWO (plan 49, written by hand: the schema generator does not regenerate it). Our piece on x can legally go to y (and is not a pawn about to promote); after that move, whatever they reply, some move of ours leaves `(min check (eq movecount 0))` at least 1 (check 1 and movecount 0, a mate; the plan's `diff check movecount` is |check - movecount| in the words, which a non-mate with replies also satisfies, so it is not used): then a gain of any v is forced, because the goal counts a mate. A stalemate or an immediate mate after x -> y reads 0 (`least` over no replies), so it does not satisfy the tail. The squares are variables: bind them to any position. -/
+theorem mate_in_two (p : Position) (c : Color) (hc : p.turn = c) (x y : Square) (v : Int)
+    (h0 : (count (fun u => (oset (movesOf p) (some x)) u && (oset atSq (some y)) u)) ≥ 1)
+    (h1 : (count (fun u => (kindSet p c .pawn) u && (fun u => (oset atSq (some x)) u && (oset rankOf (some (named c (((0 : Fin 8)), ((6 : Fin 8)))))) u) u)) ≤ 0)
+    (h2 : (count (fun u => (piecesOf p c) u && (oset atSq (some x)) u)) ≥ 1)
+    (h3 : (afterMove p (some x) (some y) (fun p => (leastOver p (fun p => (mostOver p (fun p => (min (checkOf p) (if (moveCountOf p) = 0 then 1 else 0)))))))) ≥ 1) :
+    forcingOf p c v ≠ 0 := by
+  refine Ideas.TreeStep.forcingOf_ne_zero p c v hc 2 (by simp) ?_
+  show Ideas.forcedWithinB c _ p 4 = true
+  refine Ideas.TreeStep.step_after_np c _ p 3 hc x y h2 h1 h0 ?_
+  intro m1 hm1 haf
+  rw [haf] at h3
+  beta_reduce at h3
+  have ht1 : (applyMove p m1).turn ≠ c := Ideas.TreeStep.turn_after_one p c hc m1
+  refine Ideas.TreeStep.step_least c _ (applyMove p m1) 2 ht1 _ 1 (by omega) h3 ?_
+  intro r hr
+  have h3' := Ideas.TreeStep.least_floor _ _ 1 h3 r hr
+  beta_reduce at h3'
+  have ht2 : (applyMove (applyMove p m1) r).turn = c := Ideas.TreeStep.turn_after_two p c hc m1 r
+  refine Ideas.TreeStep.step_most c _ (applyMove (applyMove p m1) r) 1 ht2 _ 1 (by omega) h3' ?_
+  intro m3 hm3 h3''
+  beta_reduce at h3''
+  have hturn : (applyMove (applyMove (applyMove p m1) r) m3).turn ≠ c :=
+    Ideas.TreeStep.turn_after_one _ c ht2 m3
+  have hchk1 : checkOf (applyMove (applyMove (applyMove p m1) r) m3) = 1 := by
+    have hle : checkOf (applyMove (applyMove (applyMove p m1) r) m3) ≤ 1 := by unfold checkOf; split <;> omega
+    have hge : checkOf (applyMove (applyMove (applyMove p m1) r) m3) ≥ 1 := by omega
+    omega
+  have hmc : moveCountOf (applyMove (applyMove (applyMove p m1) r) m3) = 0 := by
+    by_contra hn
+    rw [if_neg hn] at h3''
+    omega
+  have hno : legalMoves (applyMove (applyMove (applyMove p m1) r) m3) = [] := by
+    unfold moveCountOf at hmc
+    exact List.length_eq_zero_iff.mp hmc
+  have hchk : inCheckB (applyMove (applyMove (applyMove p m1) r) m3) (applyMove (applyMove (applyMove p m1) r) m3).turn = true := by
+    unfold checkOf at hchk1
+    by_contra hn
+    rw [if_neg hn] at hchk1
+    omega
+  exact Ideas.TreeStep.leaf c _ _ 1 (Ideas.TreeStep.gainGoal_of_mate c _ v _ hturn hno hchk)
+
 /-- THE DEEP DELAYED BALANCE (the minimax tail, one level deeper; plan 48), depth 1 (plan 44.2, the operators DELAY / RECAPTURE). Our moves x1 -> y1 are named (legal, a piece of ours that is not about to promote); whatever they reply to the last, some move of ours, whatever they reply, some move of ours, then whatever they reply, leaves the balance at least T; the balance now is at most B, and T is at least B + v, with C = T - 4 (the tail reads the balance AND our material, at least 4, so the game is alive; no floor on the balance): then the gain v is forced. The squares are variables: bind them to any position. -/
 theorem delayed_balance_deep_alive_d1 (p : Position) (c : Color) (hc : p.turn = c)
     (x1 y1 : Square) (B T C : Nat) (v : Int) (hTB : (T : Int) ≥ (B : Int) + v) (hCT : C + 4 = T)
