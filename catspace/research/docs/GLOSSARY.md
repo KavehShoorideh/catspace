@@ -128,6 +128,10 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
 - **Max worth** (`maxworth S`, 2026-10-15, plan 44) — the largest `worth` among the squares of the set S (0 when S is empty or holds only kings). What the other
   side can win at most by taking one piece of S; the balance minus `maxworth` of the attacked pieces is the least a single recapture leaves us.
   Lean: `maxWorthOf` (`worthOf_le_maxWorthOf`: every square of S is worth at most it).
+- **Move count / check** (`movecount`, `check`, 2026-10-17, plan 47; read, not enumerated) — `movecount`: how many legal moves the side to move has (`mobility X` is one
+  piece's safe squares; this is the whole side's count; 0 in a mate or a stalemate). `check`: 1 when the side to move is in check. Under `after x y` both read THEIR side
+  after our move, so `(after x y movecount) = 0` with `(after x y check) >= 1` is a mate by x->y. Lean: `moveCountOf`, `checkOf`. (The plan called the first word `mobility`;
+  that name was taken by the escape squares, hence `movecount`.)
 - **Layers** — the order the proposers search the terms in: layer 0 the original words, layer 1 the completed static words,
   layer 2 the expensive ones (the short window's tactics, time).
 

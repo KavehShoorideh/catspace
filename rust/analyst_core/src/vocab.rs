@@ -50,7 +50,7 @@ pub enum Term {
     // the short window's tactics (exact): the fewest moves forcing a gain of v or more (ours; theirs as if we passed)
     Forcing(bool, i64),
     // material and the game's context; time
-    MaterialUs, MaterialThem, Balance, Halfmoves, Seen, Ago(u32, Box<Term>),
+    MaterialUs, MaterialThem, Balance, Halfmoves, Seen, MoveCount, Check, Ago(u32, Box<Term>),
     // a number read on the board with the non-king pieces on a set's squares taken off (Kaveh 2026-10-14: "what each piece's job is")
     Without(Box<Term>, Box<Term>),
     // THE LANGUAGE OF CHANGE AND OF CONDITIONALS (Kaveh 2026-10-14): a branch, the board after a move, a change since the last ply
@@ -149,6 +149,7 @@ fn parse_at(t: &[String], i: &mut usize) -> Option<Term> {
             "light" => Some(Term::Light), "dark" => Some(Term::Dark),
             "material_us" => Some(Term::MaterialUs), "material_them" => Some(Term::MaterialThem), "balance" => Some(Term::Balance),
             "halfmoves" => Some(Term::Halfmoves), "seen" => Some(Term::Seen),
+            "movecount" => Some(Term::MoveCount), "check" => Some(Term::Check),
             _ => {
                 let kinds = [("queens", Role::Queen), ("rooks", Role::Rook), ("bishops", Role::Bishop), ("knights", Role::Knight), ("pawns", Role::Pawn)];
                 for (side, ours) in [("our", true), ("their", false)] {
@@ -461,6 +462,9 @@ pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
         Term::Balance => (material(q.board(), !lone).max(0) as u32 + 64).saturating_sub(material(q.board(), lone).max(0) as u32),
         Term::MaterialThem => material(q.board(), lone).max(0) as u32,
         Term::Halfmoves => q.halfmoves(),
+        // how many legal moves the side to move has (plan 47: a mate is no legal move in check); 1 when the side to move is in check
+        Term::MoveCount => q.legal_moves().len() as u32,
+        Term::Check => q.is_check() as u32,
         Term::Seen => crate::game::seen(q) as u32,
         Term::Ago(k, a) => crate::game::back(2 * *k).map_or(0, |p| num(a, &p, !p.turn())),
         Term::Without(x, a) => without(x, a, q, lone),
@@ -551,7 +555,7 @@ pub(crate) fn reach_route(q: &Chess, c: Color, s: Square, k: u32) -> Result<Vec<
 pub fn is_num(t: &Term) -> bool {
     matches!(t, Term::Count(_) | Term::Dist(_, _) | Term::Sum(_, _) | Term::FileOf(_) | Term::RankOf(_) | Term::DFile(_, _) | Term::DRank(_, _)
         | Term::Pushes(_) | Term::Attackers(_) | Term::Defenders(_) | Term::See(_) | Term::Worth(_) | Term::MaxWorth(_) | Term::Forcing(_, _) | Term::MaterialUs | Term::MaterialThem | Term::Balance
-        | Term::Halfmoves | Term::Seen | Term::Ago(_, _) | Term::Without(_, _) | Term::If(_, _, _) | Term::After(_, _, _) | Term::Least(_) | Term::Most(_) | Term::Delta(_) | Term::Attackable(_, _) | Term::Declined(_) | Term::Min(_, _) | Term::Max(_, _) | Term::Diff(_, _) | Term::Eq(_, _) | Term::Int(_))
+        | Term::Halfmoves | Term::Seen | Term::MoveCount | Term::Check | Term::Ago(_, _) | Term::Without(_, _) | Term::If(_, _, _) | Term::After(_, _, _) | Term::Least(_) | Term::Most(_) | Term::Delta(_) | Term::Attackable(_, _) | Term::Declined(_) | Term::Min(_, _) | Term::Max(_, _) | Term::Diff(_, _) | Term::Eq(_, _) | Term::Int(_))
 }
 
 /// The squares past `y` on the ray from `x` through `y`, nearest first.

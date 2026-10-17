@@ -110,6 +110,8 @@ PRIMITIVES.update({
     "material_us": ((), "num", "our material"), "material_them": ((), "num", "their material"),
     # BALANCE (Kaveh 2026-10-15, the observable itself): our material minus theirs on an offset of 64, so a tree premise bounds the leaf with ONE number
     "balance": ((), "num", "our material minus theirs, plus 64 (64: level)"),
+    "movecount": ((), "num", "how many legal moves the side to move has (0 in a mate or a stalemate; under `after` it is theirs)"),
+    "check": ((), "num", "1 when the side to move is in check, else 0 (under `after` it is theirs: our move gives check)"),
     "halfmoves": ((), "num", "the moves since the last capture or pawn move (the fifty-move clock, in plies)"),
     "seen": ((), "num", "how many times this game has seen the position"),
     "ago": (("int", "num"), "num", "{1}, {0} moves of ours ago"),
@@ -286,6 +288,7 @@ def lean(t) -> str:
                 "hit": f"(attackedBy p (Color.opposite c) {hitk})", "unhit": f"(fun u => !(attackedBy p (Color.opposite c) {hitk} u))",
                 "ours": "(piecesOf p c)", "theirs": "(piecesOf p (Color.opposite c))",
                 "material_us": "(materialOf p c)", "material_them": "(materialOf p (Color.opposite c))", "balance": "(balanceOf p c)",
+                "movecount": "(moveCountOf p)", "check": "(checkOf p)",
                 "halfmoves": "p.halfmove", "seen": "(seenIn hist p)"}[t]
     h, *a = t
     if h == "cls":                                 # (the class word names its square itself, from side c)
@@ -394,7 +397,7 @@ def layer1() -> list:
     out += [("dist", k, (w, x)) for k in ("W", "L") for w in ("front", "promo") for x in OTHERS]
     out += [("dist", k, ("offset", x, str(df), str(dr))) for k in ("W", "L") for x in OTHERS
             for df in range(-2, 3) for dr in range(-2, 3) if (df, dr) != (0, 0)]
-    out += ["material_us", "material_them", "balance", "halfmoves", "seen"]
+    out += ["material_us", "material_them", "balance", "halfmoves", "seen"]       # (movecount and check are read, not enumerated: plan 47)
     for n, (ps, _, _) in CHESS_TERMS.items():
         if not ps:
             out.append(n)

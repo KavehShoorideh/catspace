@@ -335,6 +335,13 @@ theorem maxWorthOf_foldl_le (p : Position) (S : SquareSet) (u : Square) (hu : S 
 theorem worthOf_le_maxWorthOf (p : Position) (S : SquareSet) (u : Square) (hu : S u = true) : worthOf p u ≤ maxWorthOf p S :=
   maxWorthOf_foldl_le p S u hu allSquares 0 (mem_allSquares u)
 
+/-- **movecount** (plan 47): how many legal moves the side to move has (`mobility X` is a piece's safe squares; this is the whole side's count). Zero in a
+mate or a stalemate. Read under `after x y` it is THEIR count. -/
+def moveCountOf (p : Position) : Nat := (legalMoves p).length
+
+/-- **check** (plan 47): 1 when the side to move is in check, else 0. With `movecount` = 0 it is a mate. -/
+def checkOf (p : Position) : Nat := if inCheckB p p.turn then 1 else 0
+
 /-- **balance** (Kaveh 2026-10-15, the observable itself): our material minus theirs on an offset of 64 (64: level; above: ahead). One
 number for the leaf of a tree premise, so that one witness move bounds the gain. -/
 def balanceOf (p : Position) (c : Color) : Nat := materialOf p c + 64 - materialOf p (Color.opposite c)
