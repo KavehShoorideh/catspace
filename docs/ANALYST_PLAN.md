@@ -1758,3 +1758,33 @@ KING's squares only). Vocabulary rule (Kaveh 2026-10-14): add it -- Lean def + g
 3. tests: test_vocab_mobility.py; tests/test_selfmine.py gets `test_mate_family_binds_only_on_mate_in_one` (00cZ4 fen binds Qh2# only; the
    00cZ4 position after a quiet move binds nothing).
 No AI trailers; one commit per piece (word; theorem; family + stream; tests); numbers only from OBS lines.
+
+## 48. THE DEEP TAIL: one named move, the rest quantified (autonomy night 2026-10-16/17; built by a cheaper agent after 47)
+
+### 48.1 Why
+000Sa: Kxc2 and Bxc2 both read 65 at depth 1 because a one-reply tail cannot see Qc4+ then Qxe4. The depth-2 schemas name BOTH our moves, and
+a second named move is almost never legal under every reply (every check of theirs makes it illegal), so "no candidate's legs hold" on real
+boards. The reading a puzzle needs is one named move and a DEEPER QUANTIFIED tail: after Bxc2, whatever they do, some move of ours, whatever
+they do, keeps the balance. Generic: the depth-1 schema with the minimax tail nested one level more (6 plies = forcingOf's n = 3).
+
+### 48.2 Definitions
+- FAMILY `delayed_balance_deep` (FAMILIES += it; ALIVE_NEED like delayed_balance; `tail_family` recognises the path (most, least, most, least)):
+  `tail_body` = `(least (most (least (most (least (min balance (sum material_us C)))))))`; `delayed_tail([(x, y)], ...)` wraps it in one `after`.
+- THEOREM `tail_four_alive` in Ideas/TreeStep.lean beside `tail_two_alive`: the same hypotheses with the tail nested twice
+  (`mostOver p (fun q => leastOver q (fun r => mostOver r (fun s => leastOver s (fun t => min (balanceOf t c) (materialOf t c + C)))))) ≥ T`)
+  concluding `forcedWithinB c (gainGoal c base v) p 4 = true`; proof = step_most, step_least, step_most, step_least, leaf, exactly as
+  tail_two_alive does once (needs the turn lemmas for four plies: `turn_after_one/two` exist; add `turn_after_three/four` the same way or
+  reuse by composing). Then the schema `delayed_balance_deep_alive_d1` is generated and proved by the schema generator the way
+  `delayed_balance_alive_d1` is (root_tail_alive-style composition with one `after` leg: look at how `schema_proof` composes the d1 case and
+  add the family's case; the window n becomes 3).
+- STREAM: puzzle_apply's ORDER gets the family after delayed_balance; `best_bind` works unchanged (one named move per candidate).
+
+### 48.3 Acceptance
+1. 000Sa: `bind delayed_balance_deep_d1` reads Bxc2 at 65 and Kxc2 below it (the bishop lost) -- print both candidates' tails (one OBS line
+   each) -- so the family alone decides Bxc2 without the shape tiebreaker.
+2. The schema theorem and one mined instance (000Sa) prove in Lean, no sorry; `lean_index build`.
+3. tests/test_selfmine.py: `test_deep_tail_splits_the_king_and_bishop_capture` (000Sa fen: tail of Bxc2 > tail of Kxc2) and the family's
+   `tail_family` recognition.
+Time: report the per-candidate seconds on 000Sa and on 04Qx2 (36 legal moves) -- if a candidate takes more than ~10 s, say so (the Rust
+evaluator's minimax may need a node cap: budget hit = unknown, never a wrong number).
+No AI trailers; one commit per piece (Lean step theorem; family + schema; stream + tests).
