@@ -31416,3 +31416,11 @@ Cost: ~8 s a candidate on a 40-move board (04Qx2: 312 s) -- another reason it is
 The tiebreaker's cost fixed (commit above): the shape ranks ties once, for the family the decision reads; their threats (goal finder + exact
 labeller) are asked in the CHEAP shape's order and stop at the first candidate that loses nothing, which no unasked candidate can beat.
 OBS 06J6T 693 s -> 99 s (46 candidates; two threat asks). The remaining time is the exact labeller running to its budget ("stopped").
+
+## 2026-10-17 (Sat) 01:08 PDT -- NIGHT'S CLOSE: THE THIRD PASS
+
+OBS dev_20, third pass (depth-1 schemas, the mate family, the opponent's view with the cheap-order threat asks; one run): 10 MATCH of 20, the
+same decisions as the second pass, the whole set in about 3 minutes against ~25 before (06J6T 100 s, everything else under 40 s). Matches:
+000Sa Bxc2, 00cZ4 Qh2# (mate_in_one), 02XVK Bxg6, 03mjK Qxh2# (mate_in_one), 052Wm Kf8, 05gLw Ne8+, 08A6a Bxe5, 0A2fe Qg2+, 0Ag9s Qxa8+,
+0BuCC Rxf2+. Misses: three mates in two (01IFU, 03B3o, 06xEN), and 01vys, 04Qx2, 06J6T, 07Z0P, 08pAF, 09QQs, 0BHbB (material, deeper than
+the proved schemas; the ruler finds all but 01vys, 04Qx2, 08pAF, 09QQs within depth 6).
