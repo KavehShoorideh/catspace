@@ -31459,3 +31459,20 @@ Reading (bug-checked, directional): a prior over an EXHAUSTIVE and CHEAP ladder 
 candidate whatever the order, and a mate is found in milliseconds. Memory can only pay where there is a SEARCH to steer. That is the next
 round: the ruler's alpha-beta restricted at OUR nodes to the moves reasoning recommends (their replies all), nodes counted against the full
 ruler (plan 51). The store and the recall events stay: the records are the state the search will consult.
+
+## 2026-10-17 13:43 PDT — THE REASONED SEARCH: OUR MOVES FROM THE REASONING, THEIR REPLIES ALL (plan 51)
+
+Round three. The ruler's alpha-beta with an `ours` hook (95575fcb): where we move, only the moves the reasoning recommends (reasoned.py,
+b3028c15: a mate at the node; in check; a hanging piece -> parries, checks, captures of its worth; else captures/checks/promotions and moves that
+make a piece of theirs hang; memory only orders at the root), every cut recorded with its reason; where they move, every reply. Stream line
+`search reasoned:` beside the ruler's (1cfd7100). Traced on three positions first (000Sa: in check, nothing cut; 01IFU: the mate schema cuts
+46 of 47 at the root; 06J6T: `nodes 5383` against the ruler's `17703`, `cuts 1722 moves at 65 of our nodes`).
+
+OBS (one run each): `OBS search dev_20: ruler found 15/20 nodes 1178059; reasoned found 14/20 nodes 82018; cut moves 11996`;
+`OBS search fresh_60_threats_event: ruler found 46/60 nodes 1115901; reasoned found 46/60 nodes 141733; cut moves 23479`. The one loss is
+07Z0P: after Qxd5+ Nxd5 our bishop hangs and the threat rule keeps only parries, so Bb3 and Rd2 (quiet moves that pin and attack the knight)
+are cut. The missing reason is the counter-threat: a quiet move that creates a bigger threat than the one it ignores. That is the next lemma,
+not a cap. Builder's bug found and fixed before the traces: the word `see` reads 0 for the side not to move, so `after x y (see sq)` cannot
+read their pieces; read on the position after the move and a pass.
+
+Kaveh then called a stop to take stock of the layers (stock-take in chat; his redraw begins with a board encoder as a graph). No new rounds.
