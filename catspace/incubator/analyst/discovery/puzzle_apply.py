@@ -111,11 +111,11 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True, memory: boo
     if memory:
         sig = RM.signature(RM.piece_tokens(fen, us), (), thr)
         for sim, r in RM.recall(sig, 3, exclude_id=p["id"]):
-            log(f"EV 9 recall   {RM.recall_line(sim, r, fen)}")
+            log(f"EV 9 {RM.recall_line(sim, r, fen)}")
             kv = {t.split("=")[0]: t.split("=")[1] for t in r["roles"] if not t.startswith("move=")}
             props.append((RM.ladder_name(r["family"]), kv.get("mover"), "+".join(t.split("=")[1] for t in r["roles"] if t.startswith("move=")), sim, r["id"]))
         if not props:
-            log("EV 9 recall   nothing stored resembles this position")
+            log("EV 9 nothing stored resembles this position")
     # 4. bind: each proved schema read ONCE per candidate (its tail is a number; the target only sets the floor), the largest guaranteed gain wins,
     #    ties in the ladder's order (the recalled families first); no floor on the balance: the tail reads our material too (the game is alive when it is 4 or more),
     #    so a gain from a deficit or a level position is an instance as well
