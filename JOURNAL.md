@@ -31385,3 +31385,20 @@ Design recorded (memory solver_plus_relational_memory_2026_10_16, no build yet):
 reason; remember each solved state as relational tokens, index by relationships and bound lemmas, retrieve, then a job-preserving search;
 predict future tactical states and name them; the frame cannot ignore the rest of the board, the tactic is what is carried forward.
 Kaveh 23:55: "Go auto till morning."
+
+## 2026-10-17 (Sat) 01:40 PDT -- NIGHT: THE MATE WORD, THE SECOND PASS OVER dev_20
+
+Plan 47 built by the builder (commits 730d1c35, aba2d702, 933cd68b, ab7f1371), verified: two words added under the vocabulary rule --
+`movecount` (how many legal moves the side to move has; `mobility` was taken by a piece's escape squares) and `check` (1 when the side to
+move is in check) -- Lean `moveCountOf`/`checkOf`, Rust, gloss, glossary, index; the theorem `mate_in_one` (our legal move leaves them
+with movecount 0 and in check -> any gain is forced; by the step theorems and `applyMove_turn`); the `mate` family read first in the
+stream's bind stage; the mined instance for 00cZ4 proves. Two stale tests aligned (the king counts in `(count ours)`; the index test
+tolerates the mined `premise_*`/`conjecture_*` files that keep `sorry` by design).
+
+OBS dev_20, depth-1 schemas + the mate family + the opponent's view (one run, directional): 10 MATCH of 20 (8 before the mate family).
+Mates: 00cZ4 Qh2# and 03mjK Qxh2# by `mate_in_one`; 05gLw Ne8+ by a material reading; 01IFU, 03B3o, 06xEN are mates in TWO: no lemma.
+Material misses unchanged: 01vys (zugzwang), 04Qx2 (discovered check), 06J6T (sacrifice), 07Z0P (pin), 08pAF, 09QQs, 0BHbB.
+Ruler beside them: the plain search finds every answer it was given a window for except the four it stopped on at depth 6 (01vys, 04Qx2,
+08pAF, 09QQs); nodes from 1 to ~200k main; Stockfish 3 to ~60 nodes at depth 1-4.
+BUG found by the pass: 06J6T took 693 s -- the shape tiebreaker (goal finder + labeller) ran over 46 candidates tied at a NO-GAIN reading of
+delayed_root; the shape should rank ties only where it decides something (the family read for the decision). Fix after plan 48 lands.
