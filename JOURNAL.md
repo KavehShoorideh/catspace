@@ -31443,3 +31443,19 @@ OBS (one run): `OBS tally: 13 MATCH of 20; 6 mates; misses ['01vys', '04Qx2', '0
 01IFU, 03B3o, 06xEN and 05gLw (which was a mate in two read as material before) decide by `mate_in_two`; the longest mate2 read in the batch
 was `0.02 s over 46 candidates`. Mined instance puzzle_01IFU_mate2.lean proves; lake build clean; 30 tests pass. Commits e120819c, 66ad8fac,
 aeb3abab. Seven material misses remain, unchanged.
+
+## 2026-10-17 13:30 PDT — THE REMEMBERED STATE DOES NOT PAY ON A CHEAP LADDER (plan 50)
+
+Round two: every solve is stored as relations without squares (pieces by kind with attacked/guarded counts, the decision's roles by kind,
+the threat), recalled by Jaccard over tokens, and the recalled family is asked first on the candidates that match the recalled roles
+(remember.py, commits 0d5c0e0a, eab6430d, 5b275462). Store: `OBS store: 13 records` from dev_20. Recall run on fresh_60 (no overlap):
+
+- `OBS tally fresh_60_threats_event mem: 36 MATCH of 60` and `nomem: 36 MATCH of 60`, the same 24 misses. Memory changed no decision.
+- The builder's first run read 6615 candidates asked with memory against 8085 without; it flagged the confound itself: a recalled mate stopped
+  the ladder while the baseline kept reading. Made the stop unconditional (a mate decides, memory or not; 6b495db2) and reran:
+  `mem: candidates asked 6271; seconds 21.3` against `nomem: candidates asked 5975; seconds 15.3`. The saving was the stop. Memory costs a little.
+
+Reading (bug-checked, directional): a prior over an EXHAUSTIVE and CHEAP ladder cannot save anything -- the delayed families read every
+candidate whatever the order, and a mate is found in milliseconds. Memory can only pay where there is a SEARCH to steer. That is the next
+round: the ruler's alpha-beta restricted at OUR nodes to the moves reasoning recommends (their replies all), nodes counted against the full
+ruler (plan 51). The store and the recall events stay: the records are the state the search will consult.

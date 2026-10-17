@@ -1878,3 +1878,43 @@ Lean proof is still what decides (never a value, never a proof).
 4. puzzle pages: the scratchpad's puzzle_page.py shows the recall events like any event (no change needed if it prints the stream).
 No AI trailers; one commit per piece (store + tests; stream + flag; the runs' OBS in the commit message of a journal-free commit, I journal);
 numbers only from OBS lines; timestamps from `date`; use `paths.derived`, never a relative path.
+
+## 51. THE REASONED SEARCH: our moves from the reasoning, their replies all, nodes counted against the ruler (autonomy 2026-10-17; built by a cheaper agent after 50)
+
+### 51.1 Why
+Plan 50 showed memory cannot save anything on the ladder: the ladder is exhaustive and cheap. Kaveh's goal: "avoid a search of moves as much
+as possible by reasoning, and search alongside the moves the reasoning recommends". The ruler (plan 46) is a full alpha-beta with Stockfish's
+ordering. The reasoned search is the same alpha-beta where, at a node where WE move, only the moves the reasoning recommends are searched,
+every cut recorded with its reason; where THEY move, every legal reply is searched (soundness: a line found is a real forced line; the reasoned
+search can miss, never lie). The measure is nodes: the full ruler's against the reasoned search's, puzzle by puzzle, and whether each finds the
+answer.
+
+### 51.2 Definitions
+- `ruler.solve(..., ours=None)`: an optional `ours(board) -> list[Move] | None` called at every node where the side to move is us (the root's
+  side); when it returns a list, only those moves are searched at that node (in the ruler's own order); None = all. Quiescence is unchanged.
+  The result gains `cuts` = a list of (ply, fen-free description, n_moves_cut, reason) and `nodes` as before.
+- `reasoned.py` (catspace/incubator/analyst/discovery/): `recommend(board, us, memory=True) -> (moves, reasons)`, pure functions of the board
+  and the vocabulary (Rust `analyst_core` words where puzzle_apply already uses them), in this order, each a REASON string that goes into cuts:
+  1. `mate`: if `bind_mate` / `bind_mate2` fires at the node, return just that move (reason "mate in one/two at this node: nothing beats it").
+  2. `in check`: only the king-saving moves (reason "in check: nothing else is legal" -- this is already so; record it anyway as a reason of 0 cuts).
+  3. `threat`: when a piece of ours is attacked with see > 0 (the level-one state's `hanging`), the recommended moves are: captures of the
+     attacker, moves of the attacked piece, moves that add a defender or interpose (the `defenders` count of the attacked square rises after the
+     move), checks, and captures of value ≥ the hanging piece's worth (reason "piece worth v hangs: parry it, or check, or take as much").
+  4. `observables`: otherwise the frame's moves: captures, checks, promotions, and moves that create a hanging piece of theirs (after the move
+     some piece of theirs has see > 0 under `attackers`/`defenders`), reason "quiet moves that threaten nothing are not searched".
+  5. `memory`: `remember.propose` at the ROOT only orders the list (recalled mover kind + move kind first); never adds or removes a move.
+  If a rule yields no move, fall to the next; if all yield nothing, return None (search everything, reason "no reasoning applies").
+- STREAM: puzzle_apply's search stage logs two lines: the ruler's as today and `search reasoned: <status>, depth d, nodes N (ruler M), cuts K
+  moves at our nodes -- reasons: mate 0, threat 12, observables 31 ...`; the line found, when found. Flag `--no-reasoned`.
+- BATCH: the scratchpad's puzzle_batch.py tally prints `OBS search <set>: ruler found a/n nodes S1; reasoned found b/n nodes S2; cut moves C`.
+
+### 51.3 Acceptance
+1. Trace on three positions first (000Sa, 01IFU, 06J6T), one OBS line each: ruler nodes, reasoned nodes, cuts with reasons, found or not.
+   Say what the reasoned search misses and why BEFORE the batch (Kaveh's rule: mechanisms traced on 2-3 positions before any batch).
+2. dev_20 and fresh_60_threats_event batches with the ruler on (dev_20 ~3 min; fresh_60 longer with the ruler: check at 1 min then every 5 min).
+3. tests/test_reasoned.py: in check -> only king moves; a hanging queen -> every recommended move parries, checks or takes ≥ 9; a quiet
+   position -> captures/checks/promotions only; `ours` restricts the ruler's node count on 000Sa (assert reasoned nodes ≤ ruler nodes) and the
+   ruler without `ours` is unchanged (test_ruler.py still passes).
+No AI trailers; one commit per piece (ruler hook; reasoned.py + tests; stream + batch); numbers only from OBS lines; timestamps from `date`.
+A reasoned search that finds FEWER answers than the ruler is expected: report which and the reason that cut the answer -- that is the
+finding (the missing reason is the next lemma), not a failure to hide.
