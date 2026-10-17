@@ -8,6 +8,7 @@ applies what it has learnt, in Kaveh's order, and prints the EVENT STREAM as it 
   EV 5 decision           the first binding in that order, or none
   EV 6 check              the exact solver on the decision, and the puzzle's own answer
   EV 7 ruler              plain alpha-beta with Stockfish's ordering: the depth and nodes it needs, its trace, Stockfish's depth and nodes (plan 46)
+  EV 7 reasoned           the same search where only the moves the reasoning recommends are searched at our nodes, their replies all (plan 51)
 
 Run: .venv/bin/python -m catspace.incubator.analyst.discovery.puzzle_apply --set dev_20 --index 0
 """
@@ -23,6 +24,7 @@ import chess
 from catspace.io import paths
 from catspace.incubator.analyst.discovery import base_vocabulary as BV
 from catspace.incubator.analyst.discovery import remember as RM
+from catspace.incubator.analyst.discovery import reasoned as RS
 from catspace.incubator.analyst.discovery import ruler as RU
 from catspace.incubator.analyst.discovery import selfmine as SM
 
@@ -64,7 +66,7 @@ def depth2_candidates(fen: str) -> list:
     return out
 
 
-def apply(p: dict, log=print, deep: bool = True, ruler: bool = True, memory: bool = True, store: bool = False, set_name: str | None = None) -> dict:
+def apply(p: dict, log=print, deep: bool = True, ruler: bool = True, reasoned: bool = True, memory: bool = True, store: bool = False, set_name: str | None = None) -> dict:
     BV.install_terms()
     fen, need = p["fen"], int(p["value"])
     b = chess.Board(fen)
@@ -240,6 +242,7 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True, memory: boo
     ours = found[0][1].split()[0] if found else None
     log(f"EV 6 check: the puzzle's answer is {ans}; our decision {ours or 'none'}: {'MATCH' if ours == ans else 'MISS'}; "
         f"the solver on a gain >= {need}: {lab['status']}" + (f", line {' '.join(lab['line'])}" if lab.get("status") == "forced" else "") + f"  [{round(time.time() - t0, 1)} s]")
+    search = {}
     if ruler:
         t7 = time.time()
         r = RU.solve(fen, need, max_depth=6, trace=40, answer_uci=p["answer"])
@@ -249,6 +252,16 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True, memory: boo
             + f"  [{round(time.time() - t7, 1)} s]")
         for line in RU.format_trace(r["trace"], 40):
             log("   " + line)
+        sfound = lambda x: x["status"] == "forced" and bool(x["line"]) and x["line"][0] == ans
+        search = dict(ruler_found=sfound(r), ruler_nodes=r["nodes"])
+        if reasoned:                                    # plan 51: our moves from the reasoning, their replies all
+            t8 = time.time()
+            rr = RS.solve(fen, need, max_depth=6, trace=0, memory=memory, exclude_id=p["id"])
+            why = ", ".join(f"{k} {v}" for k, v in sorted(rr["by_reason"].items())) or "none"
+            log(f"EV 7 reasoned: {rr['status']}, depth {rr['depth']}, nodes {rr['nodes']} (ruler {r['nodes']}), cuts {rr['cut_moves']} moves at our nodes -- reasons: {why}"
+                + (f"; line {' '.join(rr['line'])}" if rr["status"] == "forced" else "") + f"  [{round(time.time() - t8, 1)} s]")
+            search.update(reasoned_found=sfound(rr), reasoned_nodes=rr["nodes"], cut_moves=rr["cut_moves"], reasoned_status=rr["status"],
+                          reasoned_line=" ".join(rr["line"]), cut_reasons=rr["by_reason"])
     by = found[0][0] if found else None
     mem_id = next((q[4] for q in props if q[0] == first_ladder(by)), None) if by and first_ladder(by) in default else None
     top1 = props[0][0] if props else None
@@ -257,7 +270,7 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True, memory: boo
         if RM.store(rec):
             log(f"stored {p['id']} ({by})")
     return dict(id=p["id"], decision=ours, answer=ans, match=ours == ans, by=by, asked=asked_n, families=asked_f, bind_secs=bind_secs,
-                by_memory=mem_id, top1=top1, top1_right=bool(top1 and by and top1 == first_ladder(by)))
+                by_memory=mem_id, top1=top1, top1_right=bool(top1 and by and top1 == first_ladder(by)), search=search)
 
 
 def first_ladder(name: str | None) -> str | None:
@@ -502,10 +515,11 @@ def main():
     ap.add_argument("--no-memory", action="store_true", help="do not recall the remembered states (plan 50): the ladder runs in its own order")
     ap.add_argument("--store", action="store_true", help="store the solve in the remembered states (plan 50)")
     ap.add_argument("--no-ruler", action="store_true", help="skip EV 7 (the alpha-beta ruler)")
+    ap.add_argument("--no-reasoned", action="store_true", help="skip the reasoned search beside the ruler (plan 51)")
     a = ap.parse_args()
     ps = load_set(a.set)
     p = next(x for x in ps if x["id"] == a.id) if a.id else ps[a.index]
-    apply(p, deep=not a.shallow, ruler=not a.no_ruler, memory=not a.no_memory, store=a.store, set_name=a.set)
+    apply(p, deep=not a.shallow, ruler=not a.no_ruler, reasoned=not a.no_reasoned, memory=not a.no_memory, store=a.store, set_name=a.set)
 
 
 if __name__ == "__main__":
