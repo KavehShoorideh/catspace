@@ -1,4 +1,5 @@
 """Phase B of ANALYST_PLAN 41.9: the self-mining loop on a hand-made window. Numbers printed as OBS lines."""
+import chess
 import pytest
 
 from catspace.incubator.analyst.discovery import base_vocabulary as BV
@@ -241,7 +242,7 @@ FORK2 = "1r3k2/8/5q2/2N5/2R5/8/4K3/R2R4 w - - 0 1"       # the fork again with a
 
 def test_the_schema_families_are_proved_and_the_instance_is_exact():
     tails = {"delayed_root": "Ideas.Root.root_tail_alive", "delayed_root_max": "Ideas.Root.root_tail_max_alive", "delayed_balance": "Ideas.TreeStep.tail_two_alive"}
-    for fam in SM.FAMILIES:
+    for fam in SM.DELAYED_FAMILIES:
         for depth in (1, 2):
             pf = SM.schema_proof(depth, fam)
             print(f"OBS schema_proof {fam} depth {depth}: {len(pf.splitlines())} lines")
@@ -334,3 +335,23 @@ def test_the_king_is_a_recapturer_in_dead_end():
     by = {(v["s"], v["t"]): v for v in res["items"]}
     assert by[("a5", "a2")]["kind"] == "dead end" and by[("a5", "a2")]["z"] == "b1"
     assert res["counts"]["affordable"] == 0
+
+
+# ---------------------------------------------------------------------------------------------------------------- the mate family (plan 47)
+
+MATE00CZ4 = "8/2R5/6pk/p3p2p/4Nq2/5n1P/P4RP1/7K b - - 1 41"                      # black mates by Qf4-h2
+
+
+def test_mate_family_binds_only_on_mate_in_one():
+    assert SM.MATE in SM.FAMILIES and SM.schema_name(1, SM.MATE) == "mate_in_one" and "mate_in_one" in SM.proved_schemas()
+    got = SM.bind(1, MATE00CZ4, "b", 100, None, SM.MATE)
+    print("OBS bind mate on 00cZ4:", [i["pairs"] for i in got])
+    assert [i["pairs"] for i in got] == [[("f4", "h2")]] and len(got[0]["atoms"]) == 5
+    pf = SM.schema_instance_proof(got[0]["atoms"], 100000, "b")
+    assert pf.count("exact Ideas.Mined.Schemas.mate_in_one p c hc") == 1
+    quiet = chess.Board(MATE00CZ4)
+    quiet.push(chess.Move.from_uci("h6h7"))                                       # a quiet move; then it is white's turn: no mate in one for white
+    after = SM.bind(1, quiet.fen(), "w", 100, None, SM.MATE)
+    print("OBS bind mate after a quiet move:", [i["pairs"] for i in after])
+    assert after == []
+    assert SM.ensure_schema(1, family=SM.MATE)["proved"]                          # (never regenerated)
