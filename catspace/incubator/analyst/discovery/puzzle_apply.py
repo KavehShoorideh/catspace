@@ -135,14 +135,14 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True, memory: boo
     mates, mates2, asked_mate2, memory_hit = [], [], False, None
     legal = legal_candidates(fen)
     for fam in seq:
-        if memory_hit:
+        if memory_hit or mates or mates2:                                       # a mate decides: no gain beats it, memory or not (the stop is principled, not a prior)
             break
         recalled = fam in first
         pr = next((q for q in props if q[0] == fam), None)
         cands = RM.order_candidates(fen, legal, pr[1], pr[2]) if recalled else legal
         if fam == "mate":
             asked_f += 1
-            mates, n = ask_mate(fen, us, SM.MATE, cands, stop=recalled)             # (the ladder reads every mate; a recalled mate family stops at the first)
+            mates, n = ask_mate(fen, us, SM.MATE, cands, stop=True)                 # the first mate in one: no mate beats another
             asked_n += n
             for inst in mates:
                 (mx, my), = inst["pairs"]
@@ -192,6 +192,8 @@ def apply(p: dict, log=print, deep: bool = True, ruler: bool = True, memory: boo
                     log(f"EV 4 bind {name}: best of {n} candidates {san} reads {T} against {B} now: no gain [{round(time.time() - t1, 1)} s]")
     if memory_hit:
         log(f"EV 4 bind: the recalled family {memory_hit} decides; the rest of the ladder is not asked")
+    elif mates or mates2:
+        log("EV 4 bind: a mate decides; the rest of the ladder is not asked")
     mates = mates or mates2
     bind_secs = round(time.time() - tb0, 2)
     found.sort(key=lambda f: -f[3])
