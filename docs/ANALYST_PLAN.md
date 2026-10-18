@@ -2046,3 +2046,26 @@ ask: who can stop this?" A root for EACH side's agenda:
 Acceptance: (1) the two traces verbatim; (2) tests: unstoppable fires + claim; stopped kills with the distance reason; a blocked pawn names the
 blocker; (3) dev_20 and fresh_60 OBS lines (previous dev_20 after 52.5 -- take the builder's number). No AI trailers; commits per piece; no Lean
 changes (a failing hypothesis is reported as the gap, not patched).
+
+### 52.7 The interposition that only delays (autonomy night 2026-10-17; after 52.6)
+06xEN (Rh1+ Rh2 Rxh2#): the mate question dies at `defect interposition (a piece can step between on h2)` with no fix. The interposition is a
+defect of the one-move pattern but it costs THEM the interposer: our checker takes it, with check again, and the pattern may now be a mate. Generic
+fix for an `interposition` defect: the sub-question `take the interposer on <sq> with check`, whose future is the counterfactual (the interposer
+placed on sq, then our checker captures it) read by `mate_defects` again; it is a forcing fix (a check). The same for a `checker takeable` defect
+by a NON-king piece: the sub-question `recapture on <sq>` (our piece takes back) when the recapture is itself a check. VERIFIER: the route is the
+root's own move; `verify` already tries `mate_in_two` on it -- the agenda must try the route's verification when every remaining defect has a
+forcing fix (it already does for `guard`/`remove` fixes; extend to these). If the counterfactual after the capture still has defects, the question
+dies as today with the reason. Also the save-king root in check: when no capture of the checker exists, the evasions are routes already.
+Acceptance: 06xEN trace reads `defect interposition on h2 -> take the interposer on h2 with check: Rxh2 -- the future is a mate -> verify Rh1+:
+binds mate_in_two (1 reply: Rh2)`, decision Rh1+ MATCH; tests; dev_20 OBS (expect decided 10).
+
+### 52.8 Deciding when nothing gains: the parry by the smallest loss (autonomy night 2026-10-17; after 52.7)
+Today a `save` root whose parries bind no gain ends as a GAP and the puzzle is undecided (052Wm Kf8; 06J6T Q3). Kaveh's flow (2026-10-16): in
+check or under a threat, read each candidate FROM THE OPPONENT'S VIEW and take the one after which they have the least. We now have their agenda:
+a route's `net` = our bound value (0 when nothing binds) less their best claim on the future. So: when a `save` root has routes and none binds a
+gain, the agenda DECIDES the route with the best net (the smallest loss of theirs claims), ties broken by the shape key puzzle_apply already uses
+(fewest hanging, most guarded, most poking); the claim is `save <san> (net −k)` with `lemma none: the opponent's best claim is k` and it ranks
+BELOW any gain claim. Only for `save` roots (a threat or a check is a reason to move); never for `win` roots (no gain = no decision). Print the
+reason: `decision Kf8: their best claim after it is 0 (after Kd8: Qxd5 wins 1 ...)`.
+Acceptance: 052Wm decided Kf8 by the smallest loss (print the trace); 000Sa unchanged; dev_20 OBS; fresh_60 OBS; tests. No AI trailers; commits
+per piece.
