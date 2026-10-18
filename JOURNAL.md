@@ -31496,3 +31496,25 @@ OBS (one run): `OBS agenda dev_20: 20 puzzles, decided 9 ... MATCH 9, not decide
 reasons {'tempo': 98, 'verify': 36}, seconds 16.2`. Nine decided, none wrong; the ladder stream decides 13. The agenda is narrower because it
 only claims what a schema guarantees: no parry-that-keeps-the-balance decision, no fix for an interposition (06xEN's mate in two dies there),
 no sacrifice reasoning. Builder's correction of my plan: d defects need d forcing moves, not d−1 (my own 01IFU reading says so).
+
+## 2026-10-17 22:32 PDT — THEIR SIDE OF THE REGRESSION, AND WHY IT COST 528 SECONDS (plan 52.4 + the speed fixes)
+
+Kaveh: "we have to do the regression from their side." Built (a3018bc5 .. 6350aba0): the same Agenda run for the opponent (a) on the current
+board with us passing, its claims = threats against us = `save` roots with the threat's value as stake; (b) on the board after each of our
+routes, its claims = defects of that future; a route's value = our bound value less their best claim. 000Sa now reads
+`verify Kxc2: binds delayed_balance_d1, value 2; their view: their Qc4+ wins 3 ... -> net -1` and `Kxc2 demoted ... against Bxc2 net 2`:
+the demotion by a bound claim of theirs, not by the fork heuristic. On 07Z0P their pass-board agenda produces `save our Q on f3: their threat
+Qxf3 wins 2` for a queen that does not hang now. A first-slice bug surfaced: after a checking move the board cannot be turned back to us, so
+`see` read 0 and Qc4+ was invisible as a route; fixed.
+
+The builder could only bind Qc4+ with the DEEP tail (plan 48, withdrawn Thursday): the shallow one-reply tail is blind to the recapture. Cost:
+`OBS agenda dev_20: ... seconds 528.6` (was 15.0), 06J6T 209.6 s. Profiled: 18 deep-tail reads = 190.7 of 198 s; each tail read TWICE
+(a vacuous `tail >= 0` premise atom, then val_at), and the Rust `least`/`most` were full-width maps. Fixes (48149054, 8f85d49a): read once;
+exact alpha-beta through least/most (captures first). `OBS tails equal: 128 of 128`; `OBS deep tail seconds: before 674.9, after 0.7`;
+dev_20 `seconds 22.6`, decisions unchanged (9 decided, 9 MATCH); traces identical but for seconds.
+
+Kaveh's point stands over the speed-up: the deep tail is a search of moves inside a premise. Qc4+ is "check and attack the loose bishop; no
+king reply saves it" = the DELAY operator twice = the proved depth-two delayed schema, whose legs hold after a check because the reply set is
+the king's moves. Plan 52.5 (GO): the d2 schemas into the binder on checking routes, the deep tail out. Also from him today: promotions and
+castling as mate roots, the cheaper piece first among equal defects (e3b47d92); "a check toward what?" -- forcing is a route toward a goal
+with no free tempo, which the agenda already defines. Then: "continue auto on this line until tomorrow."
