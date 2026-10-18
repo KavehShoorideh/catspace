@@ -47,6 +47,7 @@ class Binding:
     san: str
     replies: list = field(default_factory=list)       # SAN of every reply of theirs the tail quantifies over
     tried: list = field(default_factory=list)         # (schema name, value or None, note) for every schema asked, smallest first
+    note: str = ""                                    # 52.12: "a fork: they must answer the check" (the trace line carries it; the SAN stays the move's)
 
 
 def _mate1_atoms(x, y, mover):
@@ -216,9 +217,9 @@ def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: boo
                 san += " then " + PA._san_pairs(fen, [pair, sec])[1].rstrip("+#")      # the check mark depends on the reply
                 if not board.gives_check(route) and trap is not None:
                     san += f" (the {PIECE_NAME[board.piece_at(trap).piece_type]} has no safe square)"
-                elif fork is not None and board.gives_check(route):
-                    san += " (a fork: they must answer the check)"
             best = Binding(s.name, asg, val, s.theorem, san, [c.san(r) for r in c.legal_moves])
+            if sec is not None and fork is not None and board.gives_check(route):
+                best.note = "a fork: they must answer the check"
         if s.kind == "mate":
             break
     if best is not None:

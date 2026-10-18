@@ -21,6 +21,14 @@ def worth(piece: chess.Piece | None) -> int:
     return 0 if piece is None else WORTH[piece.symbol().lower()]
 
 
+def balance(board: chess.Board, owner: bool) -> int:
+    """The vocabulary word `balance` (owner's material less the other's, plus 64) in python-chess, for the chase, which reads it on every reply of every route
+    (the Rust call costs a FEN each; tested equal to `word(board, "balance", owner)` in test_regress)."""
+    own = sum(WORTH[chess.piece_symbol(pt)] * chess.popcount(board.pieces_mask(pt, owner)) for pt in chess.PIECE_TYPES if pt != chess.KING)
+    oth = sum(WORTH[chess.piece_symbol(pt)] * chess.popcount(board.pieces_mask(pt, not owner)) for pt in chess.PIECE_TYPES if pt != chess.KING)
+    return own - oth + 64
+
+
 def name(sq: int) -> str:
     return chess.square_name(sq)
 

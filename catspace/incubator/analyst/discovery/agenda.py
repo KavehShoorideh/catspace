@@ -13,6 +13,13 @@ a `save` root of ours with the claim's value as stake; (b) DEFECTS OF OUR FUTURE
 best claim is subtracted from the route's bound value, and a route whose future gives them a claim at least our stake (and nets nothing) is killed with the reason.
 A claim of theirs is only what a proved schema binds from THEIR side. `opponent_defects` (regress.py) is kept only as a fallback label / tie-break when no
 claim of theirs binds.
+
+THE CHASE (52.12). The fix often exists only AFTER THEIR FORCED REPLY, so a question that is killed (no forcing fix, or no route binds) is asked once more as a CHASE:
+our forcing moves on the board are the routes; for every reply of theirs the WHOLE agenda is asked again on the position (an inner Agenda, same side, memoised by
+FEN across the run); the route's value is the least over the replies of (balance after the route and the reply less the balance now) + the inner best claim; a
+reply with no inner claim and no material gain kills the route at once; a route claims at value >= 1 (inner mates: 100). The budget (the root's question budget)
+is shared with the inner agendas; when it is hit the open chase becomes a GAP, never a kill. The guarantee is step_after (our named move) + step_least (every reply)
+over the inner claims, each a bound schema (the composed statement is a TODO in Schemas.lean). Their agendas never chase.
 """
 from __future__ import annotations
 
@@ -32,9 +39,26 @@ from catspace.incubator.analyst.discovery import selfmine as SM
 from catspace.incubator.analyst.discovery.state import Claim, State
 
 
+class ChaseCtx:
+    """The state shared by the root agenda and its inner agendas (52.12): the FEN memo, the route memo, the shared question budget and the counters."""
+    def __init__(self):
+        self.memo: dict = {}                      # fen -> {value, claim, asked}: the inner agenda's best claim, asked once for the whole run
+        self.routes: dict = {}                    # (fen, uci) -> the evaluated route (memoised: the same position is chased by many questions)
+        self.active: set = set()                  # the FENs being asked (a cycle ends here)
+        self.left = 0                             # the shared question budget of the root question being chased
+        self.agendas = 0                          # inner agendas run
+        self.asked = 0                            # questions they asked
+        self.budget_hits = 0
+        self.inherited = 0                        # 52.12 (3): questions of the outer agenda inherited, not asked again
+        self.reopened = 0                         # ... and the ones that met the diff and were asked
+
+
 class Agenda:
-    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False):
+    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0):
         R.reset_ids()
+        self.min_stake = min_stake                              # 52.12: an inner agenda asks only the roots whose stake can still rescue the route (a root below it is not pushed)
+        self.chase_depth = chase_depth                          # 52.12: 0 for the root agenda, +1 per inner agenda of a chase
+        self.ctx = ctx if ctx is not None else (ChaseCtx() if side_depth else None)       # their agendas (side_depth 0, no ctx) never chase
         self.memory = memory or []                              # 52.9: [(sim, record)] recalled for this state; it only REORDERS equal stakes, never adds or removes
         self.asked_at_claim = 0                                 # questions asked when the deciding claim was set
         self.side_depth = side_depth                            # 1: run THEIR agenda (see `their_view`); 0: do not (this is their agenda)
@@ -53,6 +77,8 @@ class Agenda:
         self.budget = sum(1 for s in chess.SQUARES if self.board.piece_at(s) and self.board.piece_at(s).color == self.me) * 8 \
             + sum(1 for m in self.board.legal_moves if self.board.is_capture(m))
         self.notes: list = []
+        if ctx is None and self.ctx is not None:
+            self.ctx.left = self.budget                         # the root agenda's question budget, shared by every chase of every question and the inner agendas
         self._threats_done = not side_depth
         self._hang: list = []
         self.threat_views: list = []                            # (claim, their agenda) for every threat root
@@ -74,6 +100,8 @@ class Agenda:
     # ------------------------------------------------------------------------------------------------------------ roots
 
     def _push(self, q: R.Question) -> R.Question:
+        if q.stake < self.min_stake:
+            return q
         self.all.append(q)
         self._seq += 1
         heapq.heappush(self.heap, (-q.stake, -self._recall_score(q)[0], q.depth, self._seq, q))
@@ -286,6 +314,8 @@ class Agenda:
             for f in q.fixes:
                 self._trace_fix(f, 1)
             if not R.tempo_ok(q):
+                if self._chase(q):
+                    return
                 self._kill(q, q.reason, tempo=True)
                 return
             self.lines.append(f"  tempo: {len(q.defects)} defect(s), each has a forcing fix")
@@ -335,6 +365,8 @@ class Agenda:
     def _verify(self, q: R.Question, routes: list, mates_only: bool) -> None:
         b, us = self.board, self.us
         if not routes:
+            if self._chase(q):
+                return
             self._kill(q, "no route: the fixes supply no move", tempo=False)
             return
         hits, why = [], []
@@ -371,6 +403,8 @@ class Agenda:
                 continue
             hits.append((bind, opp, r, net, theirs))
         if not hits:
+            if self._chase(q):
+                return
             self._kill(q, f"verify: no route binds ({', '.join(r.san for r in routes[:6])}{' ...' if len(routes) > 6 else ''})"
                        + ("; " + "; ".join(w for w in why if w and "no mate in one" in w)[:300] if mates_only else "")
                        + ("; " + "; ".join(w for w in why if "the future loses it" in w)[:300]), tempo=False)
@@ -560,7 +594,7 @@ class Agenda:
 
     def _line_of(self, bind: BD.Binding) -> str:
         if bind.schema != "mate_in_two":
-            return f"{bind.san} (every reply: {len(bind.replies)} replies)"
+            return f"{bind.san} (every reply: {len(bind.replies)} replies)" + (f" ({bind.note})" if bind.note else "")
         b = self.board.copy(stack=False)
         b.push(chess.Move.from_uci(bind.assignment["x"] + bind.assignment["y"]))
         parts = []
@@ -595,6 +629,133 @@ class Agenda:
                 continue
             esc.append(b.san(rep))
         return f"{r.san} fails" + (f" ({'; '.join(notes)})" if notes else "") + (f", no mate in one after {', '.join(esc[:4])}" if esc and 0 < len(esc) <= 40 else "")
+
+    # ------------------------------------------------------------------------------------------------------------ the chase (52.12)
+
+    def _inner(self, fen: str, need: int) -> "dict | None":
+        """The WHOLE agenda asked again on `fen` (our move), only the roots of stake >= `need` (a smaller claim cannot rescue the route): -> {value, claim, asked, need};
+        None when the shared budget is spent. Memoised by FEN (an answer asked with a smaller `need` serves a larger one); a FEN being asked (a cycle) answers no claim."""
+        ctx = self.ctx
+        hit = ctx.memo.get(fen)
+        if hit is not None and hit["need"] <= need:
+            return hit
+        if fen in ctx.active:
+            return dict(value=0, claim=None, asked=0, need=need)
+        if ctx.left <= 0:
+            return None
+        ctx.active.add(fen)
+        ctx.left -= 1                                           # paid on entry: a chain of checks must meet the budget before it returns
+        saved = R._ids[0]
+        ag = Agenda(State(fen=fen, us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=need)
+        ag.ask()
+        R._ids[0] = saved
+        ctx.active.discard(fen)
+        ctx.agendas += 1
+        ctx.asked += ag.asked
+        ctx.left -= ag.asked
+        best = ag.best[2] if ag.best and ag.best[0] > 0 else None
+        out = dict(value=ag.best[0] if best else 0, claim=best, asked=ag.asked, need=need)
+        ctx.memo[fen] = out
+        return out
+
+    def _chase_route(self, m: chess.Move) -> dict:
+        """One forcing route of the chase: every reply of theirs, the whole agenda on each resulting position. -> {value, killed, gap, parts, lemmas}."""
+        b, ctx = self.board, self.ctx
+        key = (b.fen(), m.uci())
+        if key in ctx.routes:
+            return ctx.routes[key]
+        san = b.san(m)
+        c = b.copy(stack=False)
+        c.push(m)
+        res = dict(value=0, killed=None, gap=None, parts=[], lemmas=[])
+        replies = list(c.legal_moves)
+        if not replies:
+            if c.is_checkmate():
+                res.update(value=BD.MATE_VALUE, parts=[f"{san} mates"])
+            else:
+                res["killed"] = "stalemate"
+            ctx.routes[key] = res
+            return res
+        bal0 = G.balance(b, self.me)
+        rows = []
+        for r in replies:
+            d = c.copy(stack=False)
+            d.push(r)
+            rows.append((G.balance(d, self.me) - bal0, r, d))
+        rows.sort(key=lambda t: (t[0], t[1].uci()))                  # the worst reply first: a route that fails dies at its first
+        gains = []
+        for dbal, rep, d in rows:
+            san_r = c.san(rep)
+            if not any(True for _ in d.legal_moves):
+                res["killed"] = f"after {san_r} " + ("they mate us" if d.is_check() else "stalemate")
+                break
+            need = 1 - dbal if dbal <= 0 else BD.MATE_VALUE          # a reply that already gains is read for a mate only (its value is then a lower bound)
+            inn = self._inner(d.fen(), need)
+            if inn is None:
+                res["gap"] = f"chase budget: {san} not followed past {san_r}"
+                ctx.budget_hits += 1
+                break
+            if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE:
+                res["killed"] = f"after {san_r}: " + (f"our best claim {inn['claim'].what} wins {inn['value']}, the reply took {-dbal}" if inn["claim"] else "no claim of ours and no material gain") + f" ({dbal:+d})"
+                break
+            cl = inn["claim"] if inn["value"] >= need else None
+            gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else dbal + (inn["value"] if cl else 0))
+            res["parts"].append(f"after {san_r}: " + (f"{cl.what} ({cl.line}; value {cl.value})" if cl else f"material {dbal:+d}") + (f" -> {gains[-1]}" if cl else ""))
+            if cl:
+                res["lemmas"].append(cl.lemma)
+        if res["killed"] is None and res["gap"] is None:
+            res["value"] = min(gains) if gains else 0
+        if res["gap"] is None:
+            ctx.routes[key] = res
+        return res
+
+    def _chase(self, q: R.Question) -> bool:
+        """52.12: the chase of a question that would be killed. -> True when a route CLAIMS (the question is verified)."""
+        if self.ctx is None or q.goal not in ("mate", "win"):
+            return False
+        b = self.board
+        routes = []
+        for m in R._moves(b, self.us):
+            why = R.forcing_why(b, m, q.stake, self.us)
+            if why:
+                routes.append(R.Route(m, b.san(m), why))
+        if not routes:
+            self.lines.append("  chase: no forcing move on this board")
+            return False
+        if self.chase_depth == 0:
+            self.ctx.left = self.budget                         # the root question's budget, shared by this chase and every inner agenda under it
+        self.lines.append(f"  chase: make them move -- {len(routes)} forcing route(s): " + ", ".join(f"{r.san} ({r.why})" for r in routes[:12]) + (" ..." if len(routes) > 12 else ""))
+        done = []
+        for r in routes:
+            res = self._chase_route(r.move)
+            if res["gap"]:
+                self.lines.append(f"    {r.san}: GAP, {res['gap']}")
+                self.state.gaps.append(f"Q{q.id} {q.text}: {res['gap']}")
+            elif res["killed"]:
+                self.lines.append(f"    {r.san}: killed -- {res['killed']}")
+            elif res["value"] >= 1:
+                self.lines.append(f"    {r.san}: " + " / ".join(res["parts"][:6]) + (f" / ... {len(res['parts'])} replies" if len(res["parts"]) > 6 else "") + f" => value {res['value']}")
+                done.append((res["value"], r, res))
+            else:
+                self.lines.append(f"    {r.san}: value {res['value']} (no gain on the worst reply)")
+        self.lines.append(f"    (chase: {self.ctx.agendas} inner agendas, {self.ctx.asked} inner questions, {self.ctx.budget_hits} budget hit(s), budget left {self.ctx.left})")
+        if not done:
+            return False
+        done.sort(key=lambda t: (-t[0], t[1].move.uci()))
+        value, r, res = done[0]
+        kind = "mate" if value >= BD.MATE_VALUE else "win"
+        parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")
+        lemma = "chase: step_after+step_least over " + ", ".join(sorted(set(res["lemmas"]))[:3]) if res["lemmas"] else "chase: step_after+step_least"
+        claim = Claim(kind, r.san, value, lemma, f"{r.san}; {parts}", move=r.move.uci())
+        self._stamp(claim, q)
+        claim.fixes = claim.fixes + ("chase",)
+        self.state.claims.append(claim)
+        q.status = "verified"
+        self.lines.append(f"  -> CLAIM {kind} {r.san} (value {value}), lemma {lemma}, line {claim.line}")
+        if self.best is None or (value, 0) > self.best[:2]:
+            self.best = (value, 0, claim)
+            self.asked_at_claim = self.asked
+        return True
 
     # ------------------------------------------------------------------------------------------------------------ kills, saves
 
