@@ -8,6 +8,7 @@ No chess concept lives here; a term is a composition of these primitives and not
 from __future__ import annotations
 
 import itertools
+from functools import lru_cache
 
 # symbol -> (argument types, result type, gloss template)
 PRIMITIVES = {
@@ -218,6 +219,7 @@ def head(t):
     return t if isinstance(t, str) else t[0]
 
 
+@lru_cache(maxsize=None)
 def sexpr(t) -> str:
     return t if isinstance(t, str) else "(" + " ".join(sexpr(x) for x in t) + ")"
 
