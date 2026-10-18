@@ -127,14 +127,14 @@ def similarity(query: set, stored: set) -> float:
 # ------------------------------------------------------------------------------------------------------------------------------ the record
 
 def make_record(p: dict, set_name: str, fen: str, us: str, decision_uci: str, family: str, gain, correct: bool, threat: str,
-                instance: str | None = None, source: str = "puzzle") -> dict:
+                instance: str | None = None, source: str = "puzzle", goal: str | None = None, fixes=(), lemma: str | None = None) -> dict:
     from catspace.incubator.analyst.discovery import puzzle_apply as PA
     x, y = decision_uci[:2], decision_uci[2:4]
     b = chess.Board(fen)
     sh = PA.shape(fen, [(x, y)], us, threats=False)
     return dict(id=p["id"], set=set_name, source=source, fen=fen, us=us,
                 decision=dict(san=b.san(chess.Move.from_uci(decision_uci)), uci=decision_uci),
-                family=family, gain=gain, correct=bool(correct), instance=instance,
+                family=family, gain=gain, correct=bool(correct), instance=instance, goal=goal, fixes=list(fixes), lemma=lemma,
                 pieces=piece_tokens(fen, us), roles=roles_of(fen, x, y), threat=threat,
                 after=dict(hanging=len(sh["hanging"]), guarded=sh["guarded"], poking=sh["poking"], checks=len(sh["checks"])))
 

@@ -11,13 +11,18 @@ from collections import Counter
 
 import chess
 
+from catspace.io import paths
 from catspace.incubator.analyst.discovery import base_vocabulary as BV
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
+from catspace.incubator.analyst.discovery import remember as RM
 from catspace.incubator.analyst.discovery.agenda import Agenda
 from catspace.incubator.analyst.discovery.state import state_of
 
 
-def analyse(p: dict, quiet: bool = False, log=print) -> dict:
+AGENDA_STORE = "agenda_states.jsonl"       # 52.9: the agenda's own store (plan 50's reasoned_states.jsonl keeps its record of the exhaustive ladder)
+
+
+def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store: bool = False, set_name: str = "", k: int = 3) -> dict:
     BV.install_terms()
     t0 = time.time()
     fen = p["fen"]
@@ -28,7 +33,11 @@ def analyse(p: dict, quiet: bool = False, log=print) -> dict:
         log(f"position {p['id']}: {fen}  {'white' if b.turn else 'black'} to move; the puzzle's window: gain {p['value']}")
         for line in st.lines():
             log(line)
-    ag = Agenda(st)
+    recalled = RM.recall(st.tokens(), k, exclude_id=p["id"], path=paths.derived(AGENDA_STORE)) if memory else []
+    if not quiet:
+        for sim, r in recalled:
+            log(f"recall: seen {r['id']} (sim {sim}): {r.get('goal')} by {r.get('lemma')}, fixes {r.get('fixes')}")
+    ag = Agenda(st, memory=recalled)
     ag.ask()
     ans = b.san(chess.Move.from_uci(p["answer"]))
     d = ag.decision()
@@ -46,13 +55,17 @@ def analyse(p: dict, quiet: bool = False, log=print) -> dict:
         log("GAPS")
         for g in st.gaps or ["none"]:
             log("  " + g)
+    if store and d is not None:
+        rec = RM.make_record(p, set_name, fen, us, d.move, d.lemma, d.value, d.move[:4] == p["answer"][:4], RM.threat_token(fen, us, check=b.is_check()),
+                             goal=d.goal, fixes=d.fixes, lemma=d.lemma)
+        RM.store(rec, paths.derived(AGENDA_STORE))
     decided = d.what if d else "none"
     # a depth-two decision reads "Nxf6+ then Bxh7": it MATCHES the puzzle when its FIRST move is the answer (the second move is the plan's, not the puzzle's)
     verdict = "MATCH" if d and d.move[:4] == p["answer"][:4] and (len(d.move) < 5 or len(p["answer"]) < 5 or d.move[4] == p["answer"][4]) else "MISS"
     log(f"OBS agenda {p['id']}: questions asked {ag.asked}, killed by tempo {ag.killed_tempo}, claims {len(st.claims)}, decision {decided} by "
         f"{d.lemma if d else '-'}, answer {ans} {verdict}, their agendas {ag.their_runs}, seconds {secs}")
     return dict(id=p["id"], asked=ag.asked, tempo=ag.killed_tempo, claims=len(st.claims), decision=decided, match=verdict == "MATCH",
-                decided=d is not None, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs, theirs=ag.their_runs)
+                decided=d is not None, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs, theirs=ag.their_runs, until=ag.asked_at_claim, move=d.move if d else None)
 
 
 def main():
@@ -60,12 +73,22 @@ def main():
     ap.add_argument("--set", default="dev_20")
     ap.add_argument("--id")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--store", action="store_true", help="write a record per decided puzzle (per-item checkpoint: stored ids are skipped)")
+    ap.add_argument("--no-memory", action="store_true", help="do not recall: the stake-only order")
     a = ap.parse_args()
     ps = PA.load_set(a.set)
+    if a.store:
+        done = RM.stored_ids(paths.derived(AGENDA_STORE))
+        ps = [p for p in ps if p["id"] not in done] if not a.id else ps
     if a.id:
-        analyse(next(x for x in ps if x["id"] == a.id))
+        analyse(next(x for x in ps if x["id"] == a.id), memory=not a.no_memory, store=a.store, set_name=a.set)
         return
-    res = [analyse(p, quiet=True) for p in ps]
+    res = [analyse(p, quiet=True, memory=not a.no_memory, store=a.store, set_name=a.set) for p in ps]
+    if a.store:
+        print(f"OBS agenda store: {len(RM.load(paths.derived(AGENDA_STORE)))} records")
+    for r in res:
+        print(f"OBS questions asked until the deciding claim {r['id']}: {r['until']} (of {r['asked']} asked), decision {r['decision']} {r['move']}")
+    print(f"OBS questions asked until the deciding claim, total: {sum(r['until'] for r in res)} (of {sum(r['asked'] for r in res)} asked)")
     kills = Counter(k for r in res for k in r["kills"])
     dec = [r["id"] for r in res if r["decided"]]
     gap = [r["id"] for r in res if not r["decided"]]

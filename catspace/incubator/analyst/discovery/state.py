@@ -20,6 +20,8 @@ class Claim:
     lemma: str         # the proved theorem whose binding backs it (selfmine.schema_name)
     line: str          # the verified route and the replies it is quantified over
     move: str = ""     # the first move of the bound route, UCI (the binding's x and y)
+    goal: str = ""     # 52.9: the root question's goal kind (mate | win | save | promote)
+    fixes: tuple = ()  # 52.9: the kinds of the fix sub-questions on the claim's path
 
 
 @dataclass

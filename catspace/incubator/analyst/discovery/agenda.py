@@ -32,8 +32,10 @@ from catspace.incubator.analyst.discovery.state import Claim, State
 
 
 class Agenda:
-    def __init__(self, state: State, side_depth: int = 1):
+    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None):
         R.reset_ids()
+        self.memory = memory or []                              # 52.9: [(sim, record)] recalled for this state; it only REORDERS equal stakes, never adds or removes
+        self.asked_at_claim = 0                                 # questions asked when the deciding claim was set
         self.side_depth = side_depth                            # 1: run THEIR agenda (see `their_view`); 0: do not (this is their agenda)
         self.their_runs = 0                                     # how many of their agendas this one ran (all levels)
         self.state = state
@@ -69,8 +71,30 @@ class Agenda:
     def _push(self, q: R.Question) -> R.Question:
         self.all.append(q)
         self._seq += 1
-        heapq.heappush(self.heap, (-q.stake, q.depth, self._seq, q))
+        heapq.heappush(self.heap, (-q.stake, -self._recall_score(q)[0], q.depth, self._seq, q))
         return q
+
+    def _recall_score(self, q: R.Question) -> tuple:
+        """52.9: (summed similarity of the recalled records whose goal kind is this question's goal kind, the best such record or None)."""
+        hit = [(sim, r) for sim, r in self.memory if r.get("goal") == q.goal]
+        return (round(sum(s for s, _ in hit), 3), max(hit, key=lambda t: t[0])[1] if hit else None)
+
+    def _fix_kinds(self, q: R.Question, move: str) -> tuple:
+        """The kinds of the fix sub-questions on the path of the claim's first move."""
+        out = []
+
+        def walk(f):
+            for g in f.fixes:
+                if any(r.move.uci() == move for r in R.all_routes(g)):
+                    out.append(g.goal)
+                    walk(g)
+        walk(q)
+        return tuple(out)
+
+    def _stamp(self, claim: Claim, q: R.Question) -> Claim:
+        claim.goal = q.goal
+        claim.fixes = self._fix_kinds(q, claim.move)
+        return claim
 
     def _roots(self) -> None:
         b, me = self.board, self.me
@@ -199,21 +223,25 @@ class Agenda:
 
     def ask(self) -> None:
         while True:
-            if not self._threats_done and not (self.best and self.best[0] >= R.STAKE_MATE) and (not self.heap or self.heap[0][3].stake < R.STAKE_MATE):
+            if not self._threats_done and not (self.best and self.best[0] >= R.STAKE_MATE) and (not self.heap or self.heap[0][4].stake < R.STAKE_MATE):
                 self._threats_done = True                        # a mate of ours ends the game, so their threats are asked only once no mate root is left to ask
                 self._threat_roots(self._hang)
             if not self.heap:
                 break
-            nstake = self.heap[0][3].stake
+            nstake = self.heap[0][4].stake
             if self.best and self.best[0] >= nstake:
                 self.lines.append(f"STOP (a): the best claim ({self.best[2].what}, {self.best[0]}) is at least the stake of every open question (next: {nstake})")
                 return
             if self.asked >= self.budget:
-                left = [t[3] for t in self.heap]
+                left = [t[4] for t in self.heap]
                 self.lines.append(f"STOP (c): budget {self.budget} questions asked; {len(left)} open questions become gaps")
                 self.state.gaps += [f"budget: {q.text} (stake {q.stake}) not asked" for q in left]
                 return
-            _, _, _, q = heapq.heappop(self.heap)
+            plain = min(self.heap, key=lambda t: (t[0], t[2], t[3]))                # the stake-only order
+            _, _, _, _, q = heapq.heappop(self.heap)
+            if plain[4] is not q:
+                sc, rec = self._recall_score(q)
+                self.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
             self._ask(q)
         self.lines.append("STOP (b): every question is closed")
 
@@ -334,6 +362,7 @@ class Agenda:
                 self.lines.append(f"  {orr.san} demoted: bound value {other.value} less their {otheirs.what} ({otheirs.value}, lemma {otheirs.lemma}) = net {onet}, against {r.san} net {net}")
         kind = "mate" if bind.value >= BD.MATE_VALUE else ("save" if q.goal == "save" else "win")
         claim = Claim(kind, bind.san, bind.value, bind.theorem, self._line_of(bind), move=bind.assignment["x"] + bind.assignment["y"])
+        self._stamp(claim, q)
         self.state.claims.append(claim)
         q.status = "verified"
         window = " [a gain WITHIN THE WINDOW: the leaf is not read to quiescence -- 0UqOv's queen was trapped two plies beyond it]" if "balance" in str(claim.lemma) else ""
@@ -341,6 +370,7 @@ class Agenda:
         key = (net, -len(opp))
         if self.best is None or key > self.best[:2]:
             self.best = (net, -len(opp), claim)
+            self.asked_at_claim = self.asked
 
     def _decide_by_smallest_loss(self, q: R.Question) -> bool:
         """52.8: a `save` root whose parries bind no gain DECIDES the parry after which they have the least: net = our bound value (0 when nothing binds) less
@@ -387,11 +417,13 @@ class Agenda:
             why += f"; tied at net {net} with {', '.join(t[2].san for t in tied[:5])}: the shape key (fewest hanging, most guarded, most poking) prefers {r.san}"
         self.lines.append(f"  decision {r.san}: {why}")
         claim = Claim("save", r.san, net, "none", f"{r.san}: the opponent's best claim is {-net + gain}" if theirs is not None else f"{r.san}: no claim of theirs binds", move=r.move.uci())
+        self._stamp(claim, q)
         self.state.claims.append(claim)
         q.status = "verified"
         self.lines.append(f"  -> CLAIM save {r.san} (net {net}), lemma none: the opponent's best claim is {-net + gain}")
         if self.best is None or (net, 0) > self.best[:2]:
             self.best = (net, 0, claim)
+            self.asked_at_claim = self.asked
         return True
 
     @staticmethod
@@ -540,11 +572,13 @@ class Agenda:
             rest = [G.name(t) for t in facts["path"][1:-1]]
             line = f"{san}, then {', '.join(rest)}{', ' if rest else ''}{G.name(promo)}=Q within {ps[sq]} plies whatever they do ({n} pushes)" if n > 1 else f"{san} within {ps[sq]} ply"
             claim = Claim("promote", san, R.STAKE_PROMOTE, "unstoppablePasser2_sound", line, move=push.uci())
+            self._stamp(claim, q)
             self.state.claims.append(claim)
             q.status = "verified"
             self.lines.append(f"  -> CLAIM promote {san} (value {claim.value}), lemma {claim.lemma}, line {claim.line}")
             if self.best is None or (claim.value, 0) > self.best[:2]:
                 self.best = (claim.value, 0, claim)
+                self.asked_at_claim = self.asked
             return
         h = PV.passer_v2(b, sq)
         bad = [k for k in PV.HYPS if not h[k]]
