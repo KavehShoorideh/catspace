@@ -2069,3 +2069,13 @@ BELOW any gain claim. Only for `save` roots (a threat or a check is a reason to 
 reason: `decision Kf8: their best claim after it is 0 (after Kd8: Qxd5 wins 1 ...)`.
 Acceptance: 052Wm decided Kf8 by the smallest loss (print the trace); 000Sa unchanged; dev_20 OBS; fresh_60 OBS; tests. No AI trailers; commits
 per piece.
+
+### 52.9 Memory orders the agenda among equal stakes (autonomy night 2026-10-17; after 52.8)
+The store of states (remember.py, plan 50) found nothing to save on the exhaustive ladder. The agenda is where order matters: among roots of EQUAL
+stake and among a question's fixes, ask first what memory says paid off in similar states. Build: (1) every decided puzzle writes a record (the
+existing make_record + the agenda's claim: goal kind, the fix kinds along the claim's path, the lemma); (2) `recall` on the new puzzle's state
+tokens returns the top-k records; (3) the Agenda's ordering key becomes (−stake, −recall_score, depth) where recall_score = the summed similarity
+of recalled records whose goal kind / fix kind matches the question; stakes and stop rules unchanged; memory never adds or removes a question or
+a route. Measure (one run each, store from dev_20, recall on fresh_60 with `--no-memory` as the control): questions asked until the deciding claim,
+with vs without; decisions must be identical (print `OBS memory agenda: decisions identical yes/no`). Acceptance: the OBS line; a trace where a
+recalled record moved a question up, printed. No AI trailers.
