@@ -2079,3 +2079,20 @@ of recalled records whose goal kind / fix kind matches the question; stakes and 
 a route. Measure (one run each, store from dev_20, recall on fresh_60 with `--no-memory` as the control): questions asked until the deciding claim,
 with vs without; decisions must be identical (print `OBS memory agenda: decisions identical yes/no`). Acceptance: the OBS line; a trace where a
 recalled record moved a question up, printed. No AI trailers.
+
+### 52.10 The trapped piece, and the leaf read by their agenda (autonomy night 2026-10-17; after 52.9)
+0UqOv: `delayed_balance_alive_d1` claimed Qd5 "wins 1"; the queen takes a8 and is trapped two plies beyond the window (fxe6 Qxa8 Qc7). A
+one-leaf guard cannot separate it from 000Sa's Bxc2 (both leave a piece attacked; one is defended). Two generic pieces, no new Lean:
+- THE TRAPPED PIECE is the depth-two delayed schema on a QUIET first move: our move attacks a piece whose `mobility` (its safe squares, a word) is
+  0 after it, so the second named move (the capture) is legal under every reply unless they defend or interpose, which the exchange leaf reads.
+  binder: try the d2 schemas also on routes after which the target has `(count (mobility T))` = 0 (not only on checks); the binding line reads
+  `Nb6 then Nxa8 (the queen has no safe square)`. regress: a `win` question's defect `can run away` (the piece has safe squares) gets the fix
+  `take its squares` (sub-question) besides `attack with tempo`.
+- THE LEAF READ BY THEIR AGENDA: for every balance claim of ours, follow the claim's principal line (their reply that minimised, our move that
+  maximised -- best_bind can return them: extend its result with the line, or recompute with the words `least`/`most` argmin/argmax in Python over
+  python-chess legal moves calling the same tail) to the leaf position; run THEIR agenda there (side_depth 0); if their best claim at the leaf
+  is ≥ our claimed gain, the claim is REFUTED WITHIN ONE VIEW: downgrade it to a gap `refuted at the leaf: their <claim> (lemma ...)` and do not
+  decide by it. This is not a guarantee (one leaf, one view) but a refutation check: evidence tags together (Kaveh 2026-10-17). Print the count
+  of claims downgraded and, for each, Stockfish's view of the old decision vs the answer as `OBS leaf <id>: ...` (as in the transient audit).
+Acceptance: 0UqOv no longer decides Qd5 (trace printed); 000Sa still Bxc2; dev_20 and fresh_60 OBS before/after with every changed decision
+classified wrong/right by Stockfish; tests. No AI trailers; commits per piece.
