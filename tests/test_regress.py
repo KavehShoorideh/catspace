@@ -6,7 +6,7 @@ from catspace.incubator.analyst.discovery import agenda as AG
 from catspace.incubator.analyst.discovery import binder as BD
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import regress as R
-from catspace.incubator.analyst.discovery.state import state_of
+from catspace.incubator.analyst.discovery.state import State, state_of
 
 IFU = "r1b2rk1/pp3pp1/3b3p/3Bn3/P4q2/2P4P/1P2NPP1/RN1Q1RK1 b - - 2 17"
 SA = "2Q2bk1/5p1p/p5p1/2p3P1/4B3/7P/qPr2P2/2K4R w - - 0 33"
@@ -75,4 +75,38 @@ def test_agenda_000sa_takes_with_the_bishop_not_the_king():
     ag = AG.Agenda(state_of(SA, "w"))
     ag.ask()
     d = ag.decision()
-    assert d.what == "Bxc2" and "Kxc2" in ag.trace() and "forks Be4" in ag.trace()
+    t = ag.trace()
+    assert d.what == "Bxc2" and "Kxc2" in t
+    assert "Kxc2 demoted: bound value 2 less their Qc4+ (3, lemma delayed_balance_deep_alive_d1) = net -1, against Bxc2 net 2" in t
+    assert "forks Be4" not in t                                       # the fork heuristic is only a fallback label now
+
+
+def _theirs(fen):
+    ag = AG.Agenda(State(fen=fen, us="b", pieces=[]), side_depth=0)
+    ag.ask()
+    return ag
+
+
+def test_their_agenda_after_kxc2_claims_the_bishop_and_after_bxc2_nothing():
+    b = chess.Board(SA)
+    b.push_uci("c1c2")
+    got = _theirs(b.fen()).state.claims
+    assert any(c.value == 3 and c.lemma == "delayed_balance_deep_alive_d1" and c.move in ("a2c4", "a2a4") for c in got)
+    c = chess.Board(SA)
+    c.push_uci("e4c2")
+    assert _theirs(c.fen()).state.claims == []
+
+
+def test_the_pass_threat_of_a_quiet_two_move_fork_is_a_save_root():
+    fen = "4k3/3p4/8/8/1n6/8/P7/R3K3 w - - 0 1"                      # the Ra1 does not hang; Nc2+ forks Ke1 and Ra1
+    ag = AG.Agenda(state_of(fen, "w"))
+    ag.ask()
+    roots = [q for q in ag.all if "threat" in q.pattern]
+    assert len(roots) == 1 and roots[0].goal == "save" and roots[0].stake == 5
+    assert roots[0].text.startswith("save our R on a1: their threat Nc2+ wins 5") and ag.their_runs >= 1
+
+
+def test_no_pass_threat_when_we_are_in_check():
+    ag = AG.Agenda(state_of(SA, "w"))
+    ag.ask()
+    assert not [q for q in ag.all if "threat" in q.pattern]
