@@ -2123,3 +2123,50 @@ Acceptance: 00ct0 trace shows Q1 `cover the flight g1: no fix at all` (no Bh3) a
 before/after printed; dev_20 and fresh_60 (`fresh_60_threats_event`) rerun with `python -m ...analyse --set <set> --quiet`, every changed decision
 listed; tests: one for `_still` rejecting a move that blocks our own check / does not attack the flight, one for the escape note by the rules
 equal to the old reading on dev_20. Commits per item, no AI trailers.
+
+### 52.12 The chase, the fork, the reach, and the read set (Kaveh 2026-10-18 midday; GO)
+Fifteen fresh_60 puzzles were read by hand after 52.11. The agenda made no false claim; the misses share one gap: THE FIX EXISTS ONLY AFTER THEIR FORCED
+REPLY, and the agenda never asks again after a forcing move. Lines (Stockfish d20, OBS SF lines in the journal): 0Wih8 Ng5+ Kh8 Nxf7+ Kh7 Qg6# (and
+hxg5 Qh3+ Nh5 Qxh5#); 08pSj Rf1+ Kh2 Bf4+ (the king is driven onto the bishop's line: check + attack on the queen); 01w7J Bxh2+ Kf2 Qxf6+ (the king is
+forced to block its own rook's defence of f6); 0RhU6 Qxf2+ Kh1 Qf1+ Rxf1 Rxf1# (the second check deflects the guard); 0VSUT Qxe5 Rxe5 Rxb1 (Rxb1 Rd8+
+Re8 Rxe8#: the recapture pulls the back-rank rook away; the bishop's guard is overloaded); 0DoFB Qd5 (threatens Qxg2#: the b7 bishop covers g2 once
+the queen leaves d5 -- the battery; "mate on g2" is never a root because roots are placed ONE move away). A second, systematic proxy bug: 52.10's
+"take its squares" read `mobility` with their king IN CHECK, so every check "trapped" every piece (02XyH, 01w7J, 08pSj, 0RhU6, 0DoFB traces).
+Kaveh's reframing (chat, 2026-10-18): mate IS the trap of the king; one TRAP question for every piece; the CHASE does not stop at the first check;
+after every forced reply ask the WHOLE agenda again (the king's forced path may open a skewer, a fork, a block); CACHE answers by the base
+relations a question read ("nothing changed for the rook"); a check that also attacks a piece is NOT a trap but a FORK ("two threats, one move").
+Build, in this order, one commit each (builder: deviate minimally where the code disagrees with this text and REPORT the deviation):
+1. **Trap vs fork (vocabulary rule).** `regress` 'take its squares' keeps only QUIET routes (the piece has no safe square, read with no check on the
+   board: `G.mobility_of` on the board after our move is their move and not in check -- assert it); a CHECK that attacks a piece of theirs becomes the
+   fix "fork: check and attack, one reply", verified by the existing depth-two schemas (check, every reply, the capture), binding line
+   "Ng5+ then Nxf7 (a fork: they must answer the check)". Vocabulary: Lean `def fork` in lean/ideas/Ideas/Base/Vocabulary.lean with the gloss
+   "**fork**: after our move that gives check, a piece of theirs other than the king is attacked by the moved piece: two threats, one reply" (a def,
+   no theorem), the same word in Rust vocab.rs if the vocabulary words live there (else say so), one line in catspace/research/docs/GLOSSARY.md for
+   `fork` and `trap` ("trap: a piece whose every square is unsafe, read with no check on the board"), `python -m catspace.incubator.analyst.lean_index
+   build`. The trace must never again say a check "traps".
+2. **The chase.** New fix kind in agenda.py, "chase: make them move", generated for a question whose defects have no forcing fix of ours or whose
+   routes all failed to bind: our FORCING moves on the current board (`forcing_why`: check, capture >= stake, threat >= stake) are the routes; for each
+   route take EVERY reply; on each reply position run the WHOLE agenda again (an inner `Agenda`, same side, `chase_depth + 1`, memoised by FEN across
+   the whole run); the route's value = min over replies of (balance after the route and the reply minus balance now, read by the vocabulary word
+   `balance`, plus the inner agenda's best claim value); a reply with no inner claim and no material gain kills the route at once (print which reply);
+   the route CLAIMS when its value >= 1 (or the inner claims are mates: value 100). Line = the tree: "Rf1+; after Kh2: win the Q on d6 -> attack d6
+   with tempo: Bf4+ binds (value 9)". Natural end: a level with no forcing move, or a failing reply, ends the chase; cycles end by the FEN memo.
+   BUDGET = GAP (plan 52 stop rule c): the chase's budget is the root's question budget shared with the inner agendas; when it is hit the open chase
+   becomes a GAP line "chase budget: <route> not followed past <reply>", never a kill, and the count is printed. Guarantee: step_after (our named
+   move) + step_least (every reply) over the inner claims, each a bound schema; no new Lean theorem in this slice (note the composed statement to
+   prove as a TODO in Schemas.lean).
+3. **Read sets.** Every Question records `reads`: the squares whose occupancy or attack it read (target, attackers, guards, flight squares, path and
+   line squares, the pattern's placement squares). After a move (the chase's route + reply) the inner agenda receives the DIFF of the state (squares
+   whose piece or attacker/guard counts changed, from `State.pieces` rows before/after); a question of the outer agenda whose `reads` does not meet
+   the diff is INHERITED (same status, claim or kill, one line "inherited: nothing changed for the R on b8"); only questions meeting the diff are asked.
+   OBS per puzzle: inner agendas, questions inherited, questions reopened.
+4. **The reach.** Mate roots at any distance: for each piece of ours and each square from which it would check their king, if the piece needs more
+   than one move to get there (`graph` distance, blocked squares counted as the rules say) the root has the defect "reach: the Q needs 2 moves (via
+   d5)" whose fix routes are the first steps of the shortest paths; such a step is FORCING when, after it, the mate pattern has no defect but the
+   last step (a mate threat: their every reply must meet it) -- extend `forcing_why` with "threat of mate" read by `mate_defects` on the counterfactual
+   after the step (only the reach defect left). The chase then regresses through their replies (0DoFB: Qd5; Qh3 or any parry; Qxg5 wins 3).
+   Keep the roots bounded by the rules: distance <= 2 only when the stake is a mate (one prep move), say so in the trace.
+Acceptance (traces in chat): 0Wih8 Ng5+, 08pSj Rf1+, 01w7J Bxh2+, 0RhU6 Qxf2+, 0VSUT Qxe5, 0DoFB Qd5 decided (each by the chase or the reach, every
+inner line printed); 02XyH no "traps" on a check; 000Sa still Bxc2, 01IFU still Nf3+, 052Wm still Kf8; dev_20 and fresh_60_threats_event OBS
+before/after, every changed decision listed and classified right/wrong by Stockfish d18 (OBS SF lines); seconds per set; tests for 1 (a check is not a
+trap; a fork binds on 02XyH), 2 (0RhU6 three-check chase), 3 (an inherited question on a constructed position), 4 (0DoFB root). No AI trailers.
