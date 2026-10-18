@@ -371,10 +371,10 @@ def promote_defects(board: chess.Board, sq: int) -> tuple:
             by = [x for x in G.attackers_of(board, t, not own)]
             out.append(Defect(kind, t, by, f"{G.name(t)} is attacked by them {a}x and guarded by us {d}x"))
     ek = facts["king_sq"]
-    if ek is not None:
+    if ek is not None:                                  # a king standing on the path is the blocker (already a defect), not a stopper
         kd = G.word(board, ("dist", "L", ("promo", G.name(sq))), own)
         facts["king_dist"] = kd
-        if kd <= n:
+        if kd <= n and ek not in path:
             out.append(Defect("stopper", promo, [ek], f"their K on {G.name(ek)} reaches {G.name(promo)} in {kd}, the pawn needs {n}"))
     for s in chess.SQUARES:
         x = board.piece_at(s)

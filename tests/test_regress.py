@@ -120,3 +120,55 @@ def test_qa4_check_does_not_bind_at_depth_two_but_qc4_does():
     assert good.schema == "delayed_balance_d2" and good.san == "Qc4+ then Qxe4" and good.value == 3
     bad, tried = BD.verify_tried(chess.Move.from_uci("a2a4"), b, "b")                      # after Kd3 the king guards e4
     assert bad is None and any(n == "delayed_balance_d2" and "no gain" in note for n, _, note in tried)
+
+
+# ---------------------------------------------------------------------------------------------------------------- 52.6: the promotion goal
+
+RACE = "8/8/4PK2/8/8/2k5/8/8 w - - 0 1"            # white Kf6 Pe6 v black Kc3, white to move
+RACE_STOPPED = "8/2k5/4PK2/8/8/8/8/8 w - - 0 1"    # the black king on c7 reaches e8 in 2, the pawn needs 2
+RACE_BLOCKED = "8/4n3/4PK2/8/8/8/2k5/8 w - - 0 1"
+RACE_GAP = "8/8/4PK2/8/8/8/1B6/7k w - - 0 1"       # our bishop: the bare-king form excludes it
+THEIR_PASSER = "8/8/8/8/8/4p3/1K6/6k1 w - - 0 1"   # black e3 pawn, our king 3 from e1: forced
+THEIR_PASSER_FAR = "8/8/8/8/8/K3p3/8/6k1 w - - 0 1"
+
+
+def _ag(fen, side_depth=1):
+    ag = AG.Agenda(state_of(fen, "w" if chess.Board(fen).turn else "b"), side_depth=side_depth)
+    ag.ask()
+    return ag
+
+
+def test_unstoppable_pawn_fires_the_lemma_and_claims_eight():
+    ag = _ag(RACE)
+    d = ag.decision()
+    assert d.kind == "promote" and d.what == "e7" and d.value == 8 and d.lemma == "unstoppablePasser2_sound"
+    assert "no defect -- unstoppable by the tempo arithmetic (their K needs 5 to e8, the pawn 2)" in ag.trace()
+    assert R.promote_defects(chess.Board(RACE), chess.E6)[0] == []
+
+
+def test_stopped_pawn_is_killed_with_the_distance_reason():
+    ag = _ag(RACE_STOPPED)
+    assert ag.decision() is None
+    assert "stopped: their K on c7 reaches e8 in 2, the pawn needs 2" in ag.trace()
+
+
+def test_blocked_pawn_names_the_blocker():
+    ds, facts = R.promote_defects(chess.Board(RACE_BLOCKED), chess.E6)
+    assert [d.kind for d in ds][0] == "blocked" and ds[0].sq == chess.E7 and "their N" in ds[0].why
+    assert "defect blocked (their N stands on e7)" in _ag(RACE_BLOCKED).trace()
+
+
+def test_defects_say_unstoppable_but_the_lemma_does_not_fire_is_a_gap_naming_the_hypothesis():
+    ag = _ag(RACE_GAP)
+    assert ag.decision() is None
+    assert any("noSliders: our B on b2" in g for g in ag.state.gaps)
+
+
+def test_their_passer_is_our_stop_save_root_with_stake_eight_and_forced_note():
+    ag = _ag(THEIR_PASSER)
+    roots = [q for q in ag.all if "promoter" in q.pattern]
+    assert len(roots) == 1 and roots[0].goal == "save" and roots[0].stake == 8
+    assert roots[0].text.startswith("stop their P on e3 (promotes on e1)")
+    assert "forced: every move of ours is spent stopping the pawn" in ag.trace()
+    far = _ag(THEIR_PASSER_FAR)
+    assert "no stopper in time" in far.trace() and any("no stopper in time" in g for g in far.state.gaps)
