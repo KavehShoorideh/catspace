@@ -191,10 +191,32 @@ def threat_value(board_after: chess.Board, us: str | bool) -> int:
     return best
 
 
-def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool) -> str | None:
-    """A move is FORCING when it is a check, or a capture / threat worth at least the stake of the question (a mate stakes 100: only a check is). -> why or None."""
+def mate_threat(board: chess.Board, m: chess.Move, us: str | bool) -> bool:
+    """52.12: after our (quiet) move m and a pass, we have a mate in one -- the rules' fact (every legal move of ours, one pushed): their every reply must meet it."""
+    me = G.colour_of(us)
+    c = board.copy(stack=False)
+    c.push(m)
+    if c.is_check():
+        return False
+    d = G.with_turn(c, me)
+    for mv in list(d.legal_moves):
+        if not d.gives_check(mv):                         # only a check can mate
+            continue
+        d.push(mv)
+        mated = d.is_checkmate()
+        d.pop()
+        if mated:
+            return True
+    return False
+
+
+def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool, mate_threats: bool = False) -> str | None:
+    """A move is FORCING when it is a check, a threat of mate (52.12: after it, a pass leaves us a mate in one), or a capture / threat worth at least the stake of the
+    question (a mate stakes 100: only a check or a mate threat is). -> why or None."""
     if board.gives_check(m):
         return "check"
+    if mate_threats and mate_threat(board, m, us):          # (asked by the chase and the reach roots only: the other fixes keep their old forcing)
+        return "threat of mate"
     if stake >= STAKE_MATE:
         return None
     if board.is_capture(m):
@@ -418,6 +440,30 @@ def trap_fix(q: Question, defect: Defect, board: chess.Board, us: str | bool) ->
                          text=f"fork: check and attack the {pc.symbol().upper()} on {G.name(target)}, one reply")
         f.routes = forks
         out.append(f)
+    return out
+
+
+# ---------------------------------------------------------------------------------------------------------------- the reach (52.12)
+
+def reach_steps(board: chess.Board, us: str | bool, frm: int, target: int) -> list:
+    """52.12: the first steps of the shortest (2-move) paths of the piece on `frm` to `target`: its legal moves to a square t from which it attacks `target`, read on
+    the board with the piece lifted from `frm` (blocked squares as the rules say). [] when `target` is a one-move square or out of two moves."""
+    pc = board.piece_at(frm)
+    if pc is None or pc.piece_type in (chess.KING, chess.PAWN):
+        return []
+    own = G.with_turn(board, G.colour_of(us))
+    ones = {m.to_square for m in own.legal_moves if m.from_square == frm}
+    if target in ones:
+        return []
+    out = []
+    for m in own.legal_moves:
+        if m.from_square != frm or m.promotion or own.is_castling(m):
+            continue
+        t = m.to_square
+        c = G.with_piece(board, pc, t, frm)
+        o = board.piece_at(target)
+        if target in c.attacks(t) and (o is None or o.color != pc.color):
+            out.append(m)
     return out
 
 

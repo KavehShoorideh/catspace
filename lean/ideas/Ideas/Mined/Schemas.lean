@@ -535,4 +535,8 @@ theorem delayed_balance_deep_alive_d1 (p : Position) (c : Color) (hc : p.turn = 
   beta_reduce at h4'
   exact Ideas.TreeStep.tail_four_alive c _ v (applyMove (applyMove (p) m1) r4) (by simp only [applyMove_turn, hc] <;> (cases c <;> first | rfl | decide) : (applyMove (applyMove (p) m1) r4).turn = c) T C (by omega) (by omega) (by omega)
 
+-- TODO (plan 52.12, the chase): prove the COMPOSED statement the agenda's chase claims. For our named first move x -> y: whatever they reply (`step_least`), the inner claim at the
+-- position after the reply is one of the schemas above (its instance is the receipt), and the balance after the reply plus the inner gain is at least 1. The chain is
+-- `step_after` (our named move) + `step_least` (every reply) over the inner claims; no new theorem in that slice. Until it is proved a chase claim is evidence, tagged `chase: ...`.
+
 end Ideas.Mined.Schemas

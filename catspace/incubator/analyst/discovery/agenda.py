@@ -19,7 +19,9 @@ our forcing moves on the board are the routes; for every reply of theirs the WHO
 FEN across the run); the route's value is the least over the replies of (balance after the route and the reply less the balance now) + the inner best claim; a
 reply with no inner claim and no material gain kills the route at once; a route claims at value >= 1 (inner mates: 100). The budget (the root's question budget)
 is shared with the inner agendas; when it is hit the open chase becomes a GAP, never a kill. The guarantee is step_after (our named move) + step_least (every reply)
-over the inner claims, each a bound schema (the composed statement is a TODO in Schemas.lean). Their agendas never chase.
+over the inner claims, each a bound schema (the composed statement is a TODO in Schemas.lean). Their agendas never chase. A gain that stands only as a static
+balance with us to move is checked on the chosen route by THEIR agenda (a claim of theirs at least the gain refutes it; 0AgL8's Nxg2). The reach (52.12 (4)): a mate
+root at distance two (one prep move) whose fixes are the first steps; a step is forcing when it checks or leaves a mate in one (a mate threat).
 """
 from __future__ import annotations
 
@@ -166,6 +168,7 @@ class Agenda:
             scored.append((len(q.defects), G.worth(placed), q.id, q))                 # fewest defects, then the CHEAPER piece (the heavy one stays back as a guard)
         for _, _, _, q in sorted(scored, key=lambda t: t[:3]):
             self._push(q)
+        self._reach_roots(ksq)
         hang = RS.hanging_of_ours(b, self.us)
         if hang:
             big = max(hang, key=lambda s: (G.worth(b.piece_at(s)), -s))
@@ -176,6 +179,34 @@ class Agenda:
         for s in sorted(theirs, key=lambda s: (-G.worth(b.piece_at(s)), s)):
             self._push(R.new_question("win", G.worth(b.piece_at(s)), dict(target=s),
                                       text=f"win their {b.piece_at(s).symbol().upper()} on {G.name(s)} (worth {G.worth(b.piece_at(s))})"))
+
+    def _reach_roots(self, ksq: int | None) -> None:
+        """52.12 (4): the mate roots at distance two, only when a mate is the stake (one prep move): a piece of ours that would check their king from a square it needs
+        two moves to reach, the pattern being a MATE otherwise (no other defect). The defect `reach` names the first steps; the fix routes are those steps."""
+        b = self.board
+        if ksq is None:
+            return
+        for frm in sorted(chess.SquareSet(b.occupied_co[self.me] & ~b.kings & ~b.pawns)):
+            pc = b.piece_at(frm)
+            for s in chess.SQUARES:
+                o = b.piece_at(s)
+                if s == frm or (o is not None and o.color == self.me):
+                    continue
+                cf = G.with_piece(b, pc, s, frm)
+                if ksq not in cf.attacks(s):
+                    continue
+                steps = R.reach_steps(b, self.us, frm, s)
+                if not steps:
+                    continue
+                q = R.new_question("mate", R.STAKE_MATE, dict(sym=pc.symbol(), at=s, frm=frm, king=ksq, more=[], move=None, reach=[m.uci() for m in steps]))
+                if R.mate_defects(b, self.us, R.placement_of(q)):
+                    continue                                     # another defect as well: two prep moves, the tempo arithmetic kills it before it is asked
+                via = ", ".join(sorted({G.name(m.to_square) for m in steps}))
+                q.defects = [R.Defect("reach", s, [frm], f"the {pc.symbol().upper()} needs 2 moves (via {via})")]
+                q.text = f"mate on {G.name(s)} ({pc.symbol().upper()} {G.name(frm)}->{G.name(s)} in 2 moves via {via}, their king on {G.name(ksq)})"
+                self._push(q)
+        if any(q.pattern.get("reach") for q in self.all):
+            self.notes.append("reach roots (mate at distance 2) only when a mate is the stake: one prep move, the pattern otherwise a mate")
 
     def _promote_roots(self) -> None:
         """52.6: `promote our P on <sq>` (stake 8) for every pawn of the mover with `pushes` <= 3 (farther pawns: the mate / material stakes dominate)."""
@@ -331,6 +362,9 @@ class Agenda:
             return
         if q.goal == "promote":
             self._ask_promote(q, head)
+            return
+        if q.goal == "mate" and q.pattern.get("reach"):
+            self._ask_reach(q, head)
             return
         if q.goal == "save" and "promoter" in q.pattern:
             self._ask_stop_pawn(q, head)
@@ -671,6 +705,30 @@ class Agenda:
             esc.append(b.san(rep))
         return f"{r.san} fails" + (f" ({'; '.join(notes)})" if notes else "") + (f", no mate in one after {', '.join(esc[:4])}" if esc and 0 < len(esc) <= 40 else "")
 
+    def _ask_reach(self, q: R.Question, head: str) -> None:
+        """52.12 (4): the root whose only defect is the reach. The fix routes are the first steps; a step is FORCING when it is a check or after it a pass leaves us a
+        mate in one (a mate threat: their every reply must meet it). The binder reads each over every reply; when none binds the chase regresses through their replies."""
+        b, us = self.board, self.us
+        d = q.defects[0]
+        self.lines.append(head + f": defect reach ({d.why})")
+        steps = [chess.Move.from_uci(u) for u in q.pattern["reach"]]
+        f = R.new_question("cover", q.stake, dict(q.pattern), q, defect_key=d.key(), text=f"step toward {G.name(q.pattern['at'])} with tempo")
+        forcing, quiet = [], []
+        for m in steps:
+            why = R.forcing_why(b, m, q.stake, us, mate_threats=True)
+            (forcing if why else quiet).append(R.Route(m, b.san(m), why) if why else b.san(m))
+        f.routes, f.unforced = forcing, quiet
+        q.fixes.append(f)
+        self.asked += 1
+        self.lines.append(f"  -> Q{f.id} {f.text}: " + (", ".join(f"{r.san} ({r.why})" for r in forcing) if forcing else "no forcing step" + (f" (quiet steps: {', '.join(quiet[:4])})" if quiet else "")))
+        q.reads = R.reads_of(q, b)
+        if not forcing:
+            if self._chase(q):
+                return
+            self._kill(q, "tempo: reach: only quiet steps, the opponent gets a free reply" if quiet else "tempo: reach: no step", tempo=True)
+            return
+        self._verify(q, forcing, mates_only=True)
+
     # ------------------------------------------------------------------------------------------------------------ the chase (52.12)
 
     def _inner(self, fen: str, need: int, after: chess.Board | None = None) -> "dict | None":
@@ -709,7 +767,7 @@ class Agenda:
         san = b.san(m)
         c = b.copy(stack=False)
         c.push(m)
-        res = dict(value=0, killed=None, gap=None, parts=[], lemmas=[])
+        res = dict(value=0, killed=None, gap=None, parts=[], lemmas=[], static=[])
         replies = list(c.legal_moves)
         if not replies:
             if c.is_checkmate():
@@ -731,12 +789,14 @@ class Agenda:
             if not any(True for _ in d.legal_moves):
                 res["killed"] = f"after {san_r} " + ("they mate us" if d.is_check() else "stalemate")
                 break
-            need = 1 - dbal if dbal <= 0 else BD.MATE_VALUE          # a reply that already gains is read for a mate only (its value is then a lower bound)
+            need = 1 - dbal if dbal <= 0 else BD.MATE_VALUE          # a reply that already gains is read for a mate only; else its static gain must survive their threats (below)
             inn = self._inner(d.fen(), need, d)
             if inn is None:
                 res["gap"] = f"chase budget: {san} not followed past {san_r}"
                 ctx.budget_hits += 1
                 break
+            if dbal >= 1 and inn["value"] < BD.MATE_VALUE:         # a gain that stands only as a static balance with us to move: kept or not is read by THEIR agenda on the chosen route (see _chase)
+                res["static"].append((san_r, d.fen(), dbal))
             if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and inn.get("cut"):
                 res["gap"] = f"chase budget: {san} not followed past {san_r} (the inner agenda was cut by the budget)"
                 ctx.budget_hits += 1
@@ -755,6 +815,19 @@ class Agenda:
             ctx.routes[key] = res
         return res
 
+    def _static_refuted(self, r: R.Route, res: dict) -> str | None:
+        """For each reply after which the route's gain is only the static balance (us to move), their agenda with the move passed to them: a claim of theirs at least the
+        gain means the gain is not kept (we cannot show a parry) -> the reason, else None."""
+        for san_r, fen, dbal in res["static"]:
+            d = chess.Board(fen)
+            if d.is_check():
+                continue
+            ag = self._their_agenda(G.with_turn(d, not self.me))
+            theirs = max(ag.state.claims, key=lambda cl: cl.value) if ag.state.claims else None
+            if theirs is not None and theirs.value >= dbal:
+                return f"after {san_r} the gain {dbal:+d} stands only as a balance and their {theirs.what} wins {theirs.value} (lemma {theirs.lemma}) if we pass"
+        return None
+
     def _chase(self, q: R.Question) -> bool:
         """52.12: the chase of a question that would be killed. -> True when a route CLAIMS (the question is verified)."""
         if self.ctx is None or q.goal not in ("mate", "win") or self.min_stake >= BD.MATE_VALUE or (self.chase_depth >= 2 and q.goal != "mate"):      # (below the first inner level only the mate questions chase) # a mate-only read (the reply already gained, or lost too much for anything but a mate) does not chase on
@@ -762,15 +835,17 @@ class Agenda:
         b = self.board
         routes = []
         for m in R._moves(b, self.us):
-            why = R.forcing_why(b, m, q.stake, self.us)
+            why = R.forcing_why(b, m, q.stake, self.us, mate_threats=True)
             if why:
                 routes.append(R.Route(m, b.san(m), why))
+        if self.chase_depth:                                    # inner levels follow the most forcing moves only: a check, a capture, a mate threat (the quiet "threat n" moves are the root's)
+            routes = [r for r in routes if r.why == "check" or r.why.startswith("capture") or r.why == "threat of mate"]
         routes.sort(key=lambda r: (0 if r.why == "check" else 1 if r.why.startswith("capture") else 2))      # the most forcing first: a check, a capture, a threat (stable inside)
         if not routes:
             self.lines.append("  chase: no forcing move on this board")
             return False
         if self.chase_depth == 0:
-            self.ctx.left = self.budget                         # the root question's budget, shared by this chase and every inner agenda under it
+            self.ctx.left = self.budget                         # the root question's budget, shared by this chase and every inner agenda under it, spent route by route
         self.lines.append(f"  chase: make them move -- {len(routes)} forcing route(s): " + ", ".join(f"{r.san} ({r.why})" for r in routes[:12]) + (" ..." if len(routes) > 12 else ""))
         done = []
         for r in routes:
@@ -789,7 +864,16 @@ class Agenda:
         if not done:
             return False
         done.sort(key=lambda t: (-t[0], t[1].move.uci()))
-        value, r, res = done[0]
+        value, r, res = None, None, None
+        for value_, r_, res_ in done:                           # the chosen route is checked by THEIR agenda on every reply that gains only as a static balance (0AgL8's Nxg2: a mating attack)
+            bad = self._static_refuted(r_, res_) if self.side_depth else None
+            if bad is None:
+                value, r, res = value_, r_, res_
+                break
+            self.lines.append(f"  {r_.san} KILLED as a chase route: {bad}")
+        if r is None:
+            return False
+        net = value
         kind = "mate" if value >= BD.MATE_VALUE else "win"
         parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")
         lemma = "chase: step_after+step_least over " + ", ".join(sorted(set(res["lemmas"]))[:3]) if res["lemmas"] else "chase: step_after+step_least"
@@ -799,8 +883,8 @@ class Agenda:
         self.state.claims.append(claim)
         q.status = "verified"
         self.lines.append(f"  -> CLAIM {kind} {r.san} (value {value}), lemma {lemma}, line {claim.line}")
-        if self.best is None or (value, 0) > self.best[:2]:
-            self.best = (value, 0, claim)
+        if self.best is None or (net, 0) > self.best[:2]:
+            self.best = (net, 0, claim)
             self.asked_at_claim = self.asked
         return True
 
