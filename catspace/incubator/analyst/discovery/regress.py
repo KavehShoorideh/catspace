@@ -42,6 +42,7 @@ class Route:
     san: str
     why: str                                  # 'check', 'capture 5', 'threat 9' ...
     trap: int | None = None                   # 52.10: the square of the piece this move leaves with no safe square (the binder's second move is the capture of it)
+    fork: int | None = None                   # 52.12: the square of the piece of theirs this CHECK attacks with the moved piece (a fork: two threats, one reply)
 
 
 @dataclass
@@ -353,50 +354,70 @@ def fixes_of(defect: Defect, q: Question, board: chess.Board, us: str | bool) ->
                 r = new_question("remove", q.stake, dict(q.pattern, blocker=d), q, defect_key=defect.key(), text=f"remove the defender on {G.name(d)} with tempo")
                 r.routes = routes_of(r, board, us, root)
                 out.append(r)
-        t = trap_fix(q, defect, board, us)
-        if t is not None:
-            out.append(t)
+        out += trap_fix(q, defect, board, us)
     for f in out:
         q.fixes.append(f)
     return out
 
 
 def trap_routes(board: chess.Board, us: str | bool, target: int) -> list:
-    """52.10: our moves after which the piece of theirs on `target` has no safe square (`(count (mobility T))` = 0 on the board after the move, read with the
-    piece's owner as the mover), forcing or not; the capture of the piece itself is not a trap. Each carries `trap` = target."""
+    """52.10 / 52.12: our QUIET moves after which the piece of theirs on `target` has no safe square (`(count (mobility T))` = 0 on the board after the move, read
+    with the piece's owner as the mover and NO CHECK on the board); the capture of the piece itself is not a trap. A check is never a trap (with their king in
+    check every reply is forced, so every check would "trap" every piece: 02XyH, 01w7J, 08pSj, 0RhU6, 0DoFB): see `fork_routes`. Each carries `trap` = target."""
     me = G.colour_of(us)
     out = []
     for m in _moves(board, us):
-        if m.to_square == target:
+        if m.to_square == target or board.gives_check(m):
             continue
         c = board.copy(stack=False)
         c.push(m)
+        assert not c.is_check()                   # mobility is read with no check on the board
         if c.piece_at(target) is None or c.piece_at(target).color == me or G.mobility_of(c, target) != 0:
             continue
-        how = "a check" if c.is_check() else ("also attacked" if c.is_attacked_by(me, target) else "quiet")
+        how = "also attacked" if c.is_attacked_by(me, target) else "quiet"
         out.append(Route(m, board.san(m), f"traps the {c.piece_at(target).symbol().upper()} on {G.name(target)}: no safe square, {how}", trap=target))
     return out
 
 
-def trap_fix(q: Question, defect: Defect, board: chess.Board, us: str | bool) -> "Question | None":
-    """52.10: a piece that can run (it has safe squares now) has the fix `take its squares`: the moves after which it has none. None when it cannot run or no move
-    takes its squares. A quiet trap costs a tempo (they get a free reply) unless the piece is also attacked; the binder reads it over every reply."""
+def fork_routes(board: chess.Board, us: str | bool, target: int) -> list:
+    """52.12: our CHECKS after which the moved piece also attacks the piece of theirs on `target` (Lean `forkOf`): two threats, one reply. Each carries `fork` = target."""
+    out = []
+    for m in _moves(board, us):
+        if m.to_square == target or not board.gives_check(m):
+            continue
+        c = board.copy(stack=False)
+        c.push(m)
+        pc = c.piece_at(target)
+        if pc is None or pc.color == c.piece_at(m.to_square).color or target not in c.attacks(m.to_square):
+            continue
+        out.append(Route(m, board.san(m), f"fork: check and attack the {pc.symbol().upper()} on {G.name(target)}", fork=target))
+    return out
+
+
+def trap_fix(q: Question, defect: Defect, board: chess.Board, us: str | bool) -> list:
+    """52.10 / 52.12: the fixes `take its squares` (a piece that can run has safe squares now; the QUIET moves after which it has none) and `fork` (a check that
+    also attacks it). A quiet trap costs a tempo (they get a free reply) unless the piece is also attacked; the binder reads both over every reply."""
     target = q.pattern["target"]
     pc = board.piece_at(target)
     if pc is None or pc.piece_type == chess.KING:
-        return None
+        return []
+    out = []
     n = G.mobility_of(G.with_turn(board, pc.color), target)
-    if n == 0:
-        return None
-    routes = trap_routes(board, us, target)
-    if not routes:
-        return None
-    t = new_question("cover", q.stake, dict(q.pattern), q, defect_key=defect.key(),
-                     text=f"take its squares: the {pc.symbol().upper()} on {G.name(target)} can run (safe squares: {n}), the moves after which it has none")
-    t.routes = routes
-    if any(r.why.endswith("quiet") for r in routes):
-        t.why.append("a quiet trap costs a tempo (they get a free reply) unless the piece is also attacked; the depth-two schema reads it over every reply")
-    return t
+    routes = trap_routes(board, us, target) if n else []
+    if routes:
+        t = new_question("cover", q.stake, dict(q.pattern), q, defect_key=defect.key(),
+                         text=f"take its squares: the {pc.symbol().upper()} on {G.name(target)} can run (safe squares: {n}), the quiet moves after which it has none")
+        t.routes = routes
+        if any(r.why.endswith("quiet") for r in routes):
+            t.why.append("a quiet trap costs a tempo (they get a free reply) unless the piece is also attacked; the depth-two schema reads it over every reply")
+        out.append(t)
+    forks = fork_routes(board, us, target)
+    if forks:
+        f = new_question("cover", q.stake, dict(q.pattern), q, defect_key=defect.key(),
+                         text=f"fork: check and attack the {pc.symbol().upper()} on {G.name(target)}, one reply")
+        f.routes = forks
+        out.append(f)
+    return out
 
 
 def all_routes(q: Question) -> list:

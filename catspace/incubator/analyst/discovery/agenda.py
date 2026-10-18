@@ -301,8 +301,11 @@ class Agenda:
                 if r.move not in by:
                     by[r.move] = r
                     routes.append(r)
-                elif r.trap is not None and by[r.move].trap is None:
-                    by[r.move].trap = r.trap
+                else:
+                    if r.trap is not None and by[r.move].trap is None:
+                        by[r.move].trap = r.trap
+                    if r.fork is not None and by[r.move].fork is None:
+                        by[r.move].fork = r.fork
         return routes
 
     def _trace_fix(self, f: R.Question, lvl: int) -> None:
@@ -312,7 +315,7 @@ class Agenda:
             self.state.gaps.append(f"Q{f.id} {f.text}: {f.reason}")
         else:
             rs = ", ".join(f"{r.san} ({r.why})" for r in f.routes)
-            tail = f"{'routes' if f.text.startswith('take its squares') else 'forcing'}: {rs}" if rs else "no forcing move" + (f" (quiet fixes: {', '.join(f.unforced[:4])})" if f.unforced else "")
+            tail = f"{'routes' if f.text.startswith(('take its squares', 'fork')) else 'forcing'}: {rs}" if rs else "no forcing move" + (f" (quiet fixes: {', '.join(f.unforced[:4])})" if f.unforced else "")
             self.lines.append(f"{pad}-> Q{f.id} {f.text}" + ("" if f.fixes and not f.routes else f": {tail}"))
         for w in f.why:
             self.lines.append(f"{pad}     {w}")
@@ -336,7 +339,7 @@ class Agenda:
             return
         hits, why = [], []
         for r in routes:
-            bind, tried = BD.verify_tried(r.move, b, us, mates_only, trap=r.trap)
+            bind, tried = BD.verify_tried(r.move, b, us, mates_only, trap=r.trap, fork=r.fork)
             asked = self._asked(tried)
             if bind is None:
                 self.lines.append(f"  verify {r.san}: nothing binds ({asked})")

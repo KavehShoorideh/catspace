@@ -186,7 +186,7 @@ def bind(s: Schema, board: chess.Board, us: str, candidates: list | None = None)
     return out
 
 
-def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False, schemas: list | None = None, trap: int | None = None) -> tuple:
+def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False, schemas: list | None = None, trap: int | None = None, fork: int | None = None) -> tuple:
     """Try the schemas from the smallest up on ONE route and stop at a mate; otherwise the delayed family reading the largest guaranteed gain wins (ties in the
     ladder's order, as the stream decides; the depth-two schemas come last and only on a check, or on a quiet route that traps the piece on `trap`, 52.10). -> (Binding | None, tried) with tried = [(schema name, value or
     None, note)] for every schema asked."""
@@ -216,6 +216,8 @@ def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: boo
                 san += " then " + PA._san_pairs(fen, [pair, sec])[1].rstrip("+#")      # the check mark depends on the reply
                 if not board.gives_check(route) and trap is not None:
                     san += f" (the {PIECE_NAME[board.piece_at(trap).piece_type]} has no safe square)"
+                elif fork is not None and board.gives_check(route):
+                    san += " (a fork: they must answer the check)"
             best = Binding(s.name, asg, val, s.theorem, san, [c.san(r) for r in c.legal_moves])
         if s.kind == "mate":
             break

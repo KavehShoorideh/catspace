@@ -406,6 +406,12 @@ def kingSq (p : Position) (c : Color) : OSq :=
 on a board other than the root's (inside `after`, `least`, `most`) -- the king of THAT board, as the Rust evaluator reads it. -/
 def kingSqD (p : Position) (c : Color) : Square := (kingSq p c).getD ((0 : Fin 8), (0 : Fin 8))
 
+/-- **fork** (ANALYST_PLAN 52.12, Kaveh 2026-10-18): the piece on `s` has just moved (the side to move is in check) and, besides the king, attacks a piece of
+the side to move: two threats, one reply. A definition, no theorem; the depth-two schemas verify what a fork wins. -/
+def forkOf (p : Position) (s : Square) : Bool :=
+  inCheckB p p.turn && attacksFrom p s (kingSqD p p.turn) &&
+    allSquares.any (fun t => attacksFrom p s t && (match p.board t with | some q => q.color == p.turn && q.kind != PieceKind.king | none => false))
+
 /-- A promotion only to a queen (any other move passes). -/
 def queenOnly : Move → Bool
   | .promotion _ _ k => decide (k = PromotionKind.queen)

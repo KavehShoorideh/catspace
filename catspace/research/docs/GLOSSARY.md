@@ -132,6 +132,9 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   piece's safe squares; this is the whole side's count; 0 in a mate or a stalemate). `check`: 1 when the side to move is in check. Under `after x y` both read THEIR side
   after our move, so `(after x y movecount) = 0` with `(after x y check) >= 1` is a mate by x->y. Lean: `moveCountOf`, `checkOf`. (The plan called the first word `mobility`;
   that name was taken by the escape squares, hence `movecount`.)
+- **Fork / trap** (2026-10-18, plan 52.12; Lean `forkOf` is a def, no theorem; not in the Rust vocabulary, the agenda reads it in python-chess) — `fork`: after our move that
+  gives check, a piece of theirs other than the king is attacked by the moved piece: two threats, one reply. `trap`: a piece whose every square is unsafe (`(count (mobility X))`
+  = 0), read with no check on the board (with their king in check every reply is forced, so every check would "trap" every piece).
 - **Layers** — the order the proposers search the terms in: layer 0 the original words, layer 1 the completed static words,
   layer 2 the expensive ones (the short window's tactics, time).
 
