@@ -31572,3 +31572,13 @@ attacked by the queen but defended by the king, and root_max subtracts attacked 
 separates the two. The hole needs a lemma: the TRAPPED PIECE (a piece with no safe square -- `mobility` is the word -- that can be attacked next
 move is lost), read by their agenda at the leaf. Until then every `delayed_balance_*` claim is labelled in the trace as a gain WITHIN THE WINDOW
 (5a26b810). Patch kept in the scratchpad (transient_guard.diff), not applied.
+
+## 2026-10-17 23:18 PDT — MEMORY ORDERS THE AGENDA: IDENTICAL DECISIONS, MORE QUESTIONS (plan 52.9)
+
+Built (47e123da, 1299a38f): claims carry goal and fix kinds; every decided puzzle writes a record (agenda_states.jsonl, `OBS agenda store: 11
+records` from dev_20); recall on the new state's tokens; the agenda's heap key (−stake, −recall score, depth) -- memory reorders equal stakes only,
+never adds or removes a question or a route. fresh_60, one run each: `decisions identical yes 60`; questions asked until the deciding claim 390
+with memory against 363 without; five puzzles differ, every one against memory (0GyJS 40 against 28: three recalled `win` records pushed five
+stake-1 pawn questions ahead of the decisive save root). Eleven records are noise, and a goal-kind match is too coarse a key. Memory ordering
+is OFF by default (8b79c072, `--memory` to recall); the store keeps growing for when the key is relations + claims, as Kaveh asked, and the set
+is hundreds, not eleven. Next (52.10): the trapped piece as the d2 schema on quiet moves, and the leaf of each balance claim read by their agenda.
