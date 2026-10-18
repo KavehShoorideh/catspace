@@ -47,7 +47,8 @@ def analyse(p: dict, quiet: bool = False, log=print) -> dict:
         for g in st.gaps or ["none"]:
             log("  " + g)
     decided = d.what if d else "none"
-    verdict = "MATCH" if d and d.what == ans else "MISS"
+    # a depth-two decision reads "Nxf6+ then Bxh7": it MATCHES the puzzle when its FIRST move is the answer (the second move is the plan's, not the puzzle's)
+    verdict = "MATCH" if d and d.move[:4] == p["answer"][:4] and (len(d.move) < 5 or len(p["answer"]) < 5 or d.move[4] == p["answer"][4]) else "MISS"
     log(f"OBS agenda {p['id']}: questions asked {ag.asked}, killed by tempo {ag.killed_tempo}, claims {len(st.claims)}, decision {decided} by "
         f"{d.lemma if d else '-'}, answer {ans} {verdict}, their agendas {ag.their_runs}, seconds {secs}")
     return dict(id=p["id"], asked=ag.asked, tempo=ag.killed_tempo, claims=len(st.claims), decision=decided, match=verdict == "MATCH",
