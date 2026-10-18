@@ -279,7 +279,12 @@ class Agenda:
                 self.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
             if self._inherit(q):
                 continue
+            if self.chase_depth:                                 # an inner agenda pays the shared budget as it asks (a chain of checks meets it on the way down)
+                self.ctx.left -= 1
+                before = self.asked
             self._ask(q)
+            if self.chase_depth:
+                self.ctx.left -= max(self.asked - before - 1, 0)
         self.lines.append("STOP (b): every question is closed")
 
     def _inherit(self, q: R.Question) -> bool:
@@ -680,7 +685,7 @@ class Agenda:
         if ctx.left <= 0:
             return None
         ctx.active.add(fen)
-        ctx.left -= 1                                           # paid on entry: a chain of checks must meet the budget before it returns
+        hits0 = ctx.budget_hits
         saved = R._ids[0]
         inherit = self._inherit_for(R.diff_squares(self.board, after)) if after is not None and any(q.status == "killed" for q in self.all) else None
         ag = Agenda(State(fen=fen, us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=need, inherit=inherit)
@@ -689,10 +694,10 @@ class Agenda:
         ctx.active.discard(fen)
         ctx.agendas += 1
         ctx.asked += ag.asked
-        ctx.left -= ag.asked
         best = ag.best[2] if ag.best and ag.best[0] > 0 else None
-        out = dict(value=ag.best[0] if best else 0, claim=best, asked=ag.asked, need=need)
-        ctx.memo[fen] = out
+        out = dict(value=ag.best[0] if best else 0, claim=best, asked=ag.asked, need=need, cut=ctx.budget_hits > hits0)
+        if not out["cut"]:                                      # an answer the budget cut short is not memoised and is never read as "no claim"
+            ctx.memo[fen] = out
         return out
 
     def _chase_route(self, m: chess.Move) -> dict:
@@ -732,6 +737,10 @@ class Agenda:
                 res["gap"] = f"chase budget: {san} not followed past {san_r}"
                 ctx.budget_hits += 1
                 break
+            if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and inn.get("cut"):
+                res["gap"] = f"chase budget: {san} not followed past {san_r} (the inner agenda was cut by the budget)"
+                ctx.budget_hits += 1
+                break
             if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE:
                 res["killed"] = f"after {san_r}: " + (f"our best claim {inn['claim'].what} wins {inn['value']}, the reply took {-dbal}" if inn["claim"] else "no claim of ours and no material gain") + f" ({dbal:+d})"
                 break
@@ -748,7 +757,7 @@ class Agenda:
 
     def _chase(self, q: R.Question) -> bool:
         """52.12: the chase of a question that would be killed. -> True when a route CLAIMS (the question is verified)."""
-        if self.ctx is None or q.goal not in ("mate", "win"):
+        if self.ctx is None or q.goal not in ("mate", "win") or self.min_stake >= BD.MATE_VALUE or (self.chase_depth >= 2 and q.goal != "mate"):      # (below the first inner level only the mate questions chase) # a mate-only read (the reply already gained, or lost too much for anything but a mate) does not chase on
             return False
         b = self.board
         routes = []
@@ -756,6 +765,7 @@ class Agenda:
             why = R.forcing_why(b, m, q.stake, self.us)
             if why:
                 routes.append(R.Route(m, b.san(m), why))
+        routes.sort(key=lambda r: (0 if r.why == "check" else 1 if r.why.startswith("capture") else 2))      # the most forcing first: a check, a capture, a threat (stable inside)
         if not routes:
             self.lines.append("  chase: no forcing move on this board")
             return False
