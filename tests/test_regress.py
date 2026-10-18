@@ -204,3 +204,29 @@ def test_non_king_taker_recaptured_with_a_mating_check_is_a_forcing_fix_but_the_
     assert [r.san for r in fixes[0].routes] == ["Rd8+"] and "Qxd8#" in " ".join(fixes[0].why)
     assert fixes[1].routes == [] and any("still" in w for w in fixes[1].why)      # the future after Nf8 Rxf8+ Kxf8 still has defects: dies with the reason
     assert not R.tempo_ok(q) and "interposition f8" in q.reason
+
+
+# ---- 52.8: deciding by the smallest loss when nothing gains
+WM = "2r1k3/pp3p2/1b1Np1p1/8/4P1pq/8/PP2QP2/3R1RK1 b - - 0 20"
+
+
+def test_052wm_in_check_nothing_gains_so_the_smallest_loss_decides_kf8():
+    ag = AG.Agenda(state_of(WM, "b"))
+    ag.ask()
+    d = ag.decision()
+    t = ag.trace()
+    assert d.what == "Kf8" and d.kind == "save" and d.lemma == "none" and d.value < 0
+    assert "deciding by the smallest loss" in t and "decision Kf8: their best claim after it is" in t
+
+
+def test_smallest_loss_never_in_their_agenda_and_never_for_a_win_root():
+    ag = AG.Agenda(State(fen=WM, us="b", pieces=[]), side_depth=0)
+    ag.ask()
+    assert ag.decision() is None and "smallest loss" not in ag.trace()
+
+
+def test_a_gain_claim_still_outranks_000sa_unchanged():
+    ag = AG.Agenda(state_of(SA, "w"))
+    ag.ask()
+    d = ag.decision()
+    assert d.what == "Bxc2" and d.lemma != "none" and d.value > 0 and "smallest loss" not in ag.trace()

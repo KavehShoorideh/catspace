@@ -24,6 +24,7 @@ import chess
 from catspace.incubator.analyst import lean_passer_v2_proto as PV
 from catspace.incubator.analyst.discovery import binder as BD
 from catspace.incubator.analyst.discovery import graph as G
+from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import regress as R
 from catspace.incubator.analyst.discovery import reasoned as RS
 from catspace.incubator.analyst.discovery import selfmine as SM
@@ -53,6 +54,7 @@ class Agenda:
         self._hang: list = []
         self.threat_views: list = []                            # (claim, their agenda) for every threat root
         self._seq = 0
+        self._tv: dict = {}                                     # their view of a route, asked once (the verify and the smallest-loss decision share it)
         self._roots()
         for i, q in enumerate(self.all, 1):                      # numbered in the order they are asked
             q.id = i
@@ -142,13 +144,17 @@ class Agenda:
 
     def their_view(self, route: chess.Move) -> tuple:
         """Their agenda on the board after our route: -> (their best claim or None, the agenda or None). None, None when they have no move (mate / stalemate)."""
+        if route in self._tv:
+            return self._tv[route]
         c = self.board.copy(stack=False)
         c.push(route)
         if not any(True for _ in c.legal_moves):
-            return None, None
+            self._tv[route] = (None, None)
+            return self._tv[route]
         ag = self._their_agenda(c)
         best = max(ag.state.claims, key=lambda x: x.value) if ag.state.claims else None
-        return best, ag
+        self._tv[route] = (best, ag)
+        return self._tv[route]
 
     def _threat_roots(self, hang: list) -> None:
         """(a) Their agenda on the current board as if we passed: every claim of theirs is a threat and a save root of ours (stake = its value). Not when we
@@ -335,6 +341,55 @@ class Agenda:
         if self.best is None or key > self.best[:2]:
             self.best = (net, -len(opp), claim)
 
+    def _decide_by_smallest_loss(self, q: R.Question) -> bool:
+        """52.8: a `save` root whose parries bind no gain DECIDES the parry after which they have the least: net = our bound value (0 when nothing binds) less
+        their best claim on the future (their agenda, `their_view`); ties by puzzle_apply's shape key (fewest hanging, most guarded, most poking). The claim is
+        `save <san>` with value = net (<= 0 here), lemma none, and it ranks BELOW any gain claim (the best-key compares the net). Never for a win root; never in
+        their agenda (side_depth 0: no view of the view)."""
+        if not self.side_depth or q.goal != "save":
+            return False
+        b, us = self.board, self.us
+        seen, routes = set(), []
+        for f in q.fixes:
+            for r in f.routes:
+                if r.move not in seen:
+                    seen.add(r.move)
+                    routes.append(r)
+        if not routes:
+            return False
+        rows = []
+        for r in routes:
+            bind, _ = BD.verify_tried(r.move, b, us, False)
+            gain = bind.value if bind is not None else 0
+            theirs, _ag = self.their_view(r.move)
+            tv = theirs.value if theirs is not None else 0
+            sh = PA.shape(b.fen(), [(chess.square_name(r.move.from_square), chess.square_name(r.move.to_square))], us, threats=False)
+            rows.append((gain - tv, PA.shape_key(sh), r, theirs, gain))
+        rows.sort(key=lambda t: (-t[0], t[1], t[2].move.uci()))
+        net, key, r, theirs, gain = rows[0]
+        tied = [t for t in rows[1:] if t[0] == net]
+        worse = [t for t in rows[1:] if t[0] < net]
+        self.lines.append(f"  nothing gains: deciding by the smallest loss, each parry read from the opponent's view ({len(rows)} parries)")
+        for n_, k_, rr, th_, g_ in rows[:8]:
+            self.lines.append(f"    {rr.san}: " + (f"their {th_.what} wins {th_.value} (lemma {th_.lemma})" if th_ is not None else "no claim of theirs binds")
+                              + (f", our bound gain {g_}" if g_ else "") + f" -> net {n_}")
+        if len(rows) > 8:
+            self.lines.append(f"    ... and {len(rows) - 8} more")
+        why = (f"their best claim after it is {-net + gain}" if theirs is not None else "no claim of theirs binds after it")
+        if worse:
+            wt = worse[0]
+            why += f" (after {wt[2].san}: " + (f"their {wt[3].what} wins {wt[3].value}" if wt[3] is not None else "net " + str(wt[0])) + ")"
+        if tied:
+            why += f"; tied at net {net} with {', '.join(t[2].san for t in tied[:5])}: the shape key (fewest hanging, most guarded, most poking) prefers {r.san}"
+        self.lines.append(f"  decision {r.san}: {why}")
+        claim = Claim("save", r.san, net, "none", f"{r.san}: the opponent's best claim is {-net + gain}" if theirs is not None else f"{r.san}: no claim of theirs binds", move=r.move.uci())
+        self.state.claims.append(claim)
+        q.status = "verified"
+        self.lines.append(f"  -> CLAIM save {r.san} (net {net}), lemma none: the opponent's best claim is {-net + gain}")
+        if self.best is None or (net, 0) > self.best[:2]:
+            self.best = (net, 0, claim)
+        return True
+
     @staticmethod
     def _asked(tried: list) -> str:
         """The schemas asked, smallest first, each with what it read: '-' (premise false), 'T/B' (the tail read T against the balance B now), or its value."""
@@ -401,6 +456,8 @@ class Agenda:
             self.lines.append(f"  -> Q{f2.id} {f2.text}: " + ", ".join(r.san for r in others))
             q.fixes.append(f2)
             self._verify(q, others, mates_only=False)
+        if len(self.state.claims) == before:
+            self._decide_by_smallest_loss(q)
 
     def _ask_save_piece(self, q: R.Question, head: str) -> None:
         b = self.board
@@ -415,8 +472,8 @@ class Agenda:
         q.fixes.append(f)
         before = len(self.state.claims)
         self._verify(q, f.routes, mates_only=False)
-        if len(self.state.claims) == before:
-            self.state.gaps.append(f"Q{q.id} {q.text}: no parry binds a guaranteed gain (deciding by a parry that merely keeps the balance is not in this slice)")
+        if len(self.state.claims) == before and not self._decide_by_smallest_loss(q):
+            self.state.gaps.append(f"Q{q.id} {q.text}: no parry binds a guaranteed gain and none could be read from their view")
 
     def _ask_save_threat(self, q: R.Question, head: str) -> None:
         """A root from THEIR agenda on the pass board: parries are our moves of the threatened pieces, checks, captures of the threatening piece, and moves that add
@@ -443,8 +500,8 @@ class Agenda:
         q.fixes.append(f)
         before = len(self.state.claims)
         self._verify(q, f.routes, mates_only=False)
-        if len(self.state.claims) == before:
-            self.state.gaps.append(f"Q{q.id} {q.text}: no parry binds a guaranteed gain without a worse claim of theirs (deciding by a parry that merely keeps the balance is not in this slice)")
+        if len(self.state.claims) == before and not self._decide_by_smallest_loss(q):
+            self.state.gaps.append(f"Q{q.id} {q.text}: no parry binds a guaranteed gain and none could be read from their view")
 
     # ------------------------------------------------------------------------------------------------------------ promotion (52.6)
 
