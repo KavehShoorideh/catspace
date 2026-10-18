@@ -19,6 +19,7 @@ class Claim:
     value: int         # the guaranteed gain (100 for a mate)
     lemma: str         # the proved theorem whose binding backs it (selfmine.schema_name)
     line: str          # the verified route and the replies it is quantified over
+    move: str = ""     # the first move of the bound route, UCI (the binding's x and y)
 
 
 @dataclass

@@ -166,6 +166,8 @@ def _still(q: Question, board: chess.Board, us: str | bool, m: chess.Move, root:
     if root.goal == "mate":
         return q.defect_key[:2] in {d.key()[:2] for d in mate_defects(c, me, placement_of(root))}
     if root.goal == "win":
+        if c.is_check():                       # our move checks: the board cannot be turned back to us (their king would be in check on our move), so the defect
+            return not G.attackers_of(c, root.pattern["target"], me)       # is read as 'attacked or not'; the binder alone decides what the route is worth
         return bool(material_defects(G.with_turn(c, me), me, root.pattern["target"]))
     return True
 
