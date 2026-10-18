@@ -31542,3 +31542,23 @@ ours is spent stopping the pawn (distance 3 = pushes 2 + 1)`. Builder's correcti
 distance ≤ pushes + 1 (the lemma's own `kingOutside`), not = pushes. Traces on constructed races verbatim in the builder's report; on the
 puzzle sets no `promote` claim fires (the bare-king form), decisions unchanged: dev_20 `decided 9, MATCH 9`; fresh_60 `decided 37 ... MATCH 31`
 -- six decisions that do not match the answer, to be bug-checked first thing (a wrong decision from a proved schema would be the gravest finding).
+
+## 2026-10-17 23:06 PDT — THE AUDIT: A FALSE CLAIM FROM A TRUE THEOREM, AND A RULE THAT WAS WRONG TEN TIMES IN ELEVEN (plans 52.7, 52.8)
+
+The fresh_60 agenda run read `decided 37, MATCH 31`. Bug-checked every mismatch (Kaveh's standing rule) with Stockfish at depth 18:
+- three were format misses (a depth-two decision "Nxf6+ then Bxh7" compared as a whole string; now the first move is compared, c11d090b);
+- two were weaker wins (0BuQP a pawn where the answer traps a knight; 0RhU6 a knight where the answer is mate in two -- that mate root died on tempo);
+- ONE WAS WRONG: 0UqOv Qd5 claimed "wins 1" by `delayed_balance_alive_d1` (T 63 against B 62); Stockfish −101, the answer +356. The refutation
+  fxe6 Qxa8 Qc7 traps the queen beyond the window. The theorem is true for what it states -- a transient material gain inside the window --
+  but the leaf is not quiescent: the queen has just captured and stands attacked. This is exactly the quiescence rule of 2026-10-16 ("read the
+  frame to quiescence"), and the ladder's guarded family (`delayed_root_max`: the balance less the worth of our attacked pieces) reads no gain on
+  the same pair. Fix in progress: a balance claim stands only if the guarded reading also gains; otherwise "transient", a gap, not a claim.
+
+Plan 52.7 (affdbc56): an interposition is fixed by taking the interposer with check; 06xEN reads `defect interposition on h2 -> take the
+interposer on h2 with check: Rh1+ ... R b2->h2, Rxh2#: the future is a mate -> verify Rh1+: binds mate_in_two (1 replies: Rh2)`. dev_20 decided 10.
+
+Plan 52.8 (69442f0a) was MY plan and it was wrong: deciding a `save` root by the smallest proved loss when nothing gains chose a materially
+worse move in 10 of its 11 new decisions (06J6T Bf3 −457 against Rxe5 +723; 07Z0P a4 −500 against Qxd5+ +304; 0DoFB c5 −733 ...). Cause: it read
+"no claim of theirs binds" as a loss of 0; their agenda's silence is UNKNOWN, not zero (the principled-limits rule). Only the in-check case
+(052Wm Kf8, the forced evasion) was right. Restricted to in-check roots (216f7aa8). After: dev_20 `decided 11, MATCH 11`; fresh_60 `decided 42,
+MATCH 38` (the four: the two weaker wins, 0UqOv pending the guard, 0PBkh an in-check tie broken by shape toward Kd3 where Kxf5 wins).
