@@ -6,6 +6,8 @@ opponent answers each, so every prep move must be FORCING (a check; for material
 is useless; a question whose defects cannot all be fixed by forcing moves dies WITH THAT REASON. A ROUTE is our move that supplies a fix and is forcing; the
 guarantee of a route is never read here: binder.py verifies it over every reply.
 
+52.11: a fix is a move that does what the fix names and introduces no new defect; the disappearance of a defect for another reason is not a fix.
+
 Deviation from 52.2 (tempo): a state with d defects needs d prep moves and the opponent gets d replies, one after each (not d-1: the reply after the last prep
 move is the one that can undo the pattern before our final move), so each of the d prep moves must be forcing. One move may serve two defects.
 Deviation from 52.2 (signatures): fixes_of / routes_of also take the question and the board (a fix is read against the board it is asked on).
@@ -208,13 +210,34 @@ def _moves(board: chess.Board, us: str | bool, skip_from: int | None = None) -> 
     return [m for m in b.legal_moves if m.from_square != skip_from and not b.is_castling(m)]
 
 
+def _goal_done(q: Question, cf: chess.Board, me: bool) -> bool:
+    """52.11 (a): the POSITIVE condition of the fix's goal on the counterfactual `cf` (placements made, their move, after our prep move)."""
+    p = q.pattern
+    if q.goal == "cover":
+        return cf.is_attacked_by(me, p["target"])
+    if q.goal == "guard":                      # the checker's square is attacked by another piece of ours
+        return any(a != p.get("frm") and a != p["target"] for a in cf.attackers(me, p["target"]))
+    if q.goal == "remove" and p.get("blocker") is not None:     # the named blocker is gone from its square (it stepped away)
+        pc = cf.piece_at(p["blocker"])
+        return pc is None or pc.color != me
+    return True
+
+
 def _still(q: Question, board: chess.Board, us: str | bool, m: chess.Move, root: Question) -> bool:
-    """Is the defect this fix question names still there after m?"""
+    """Is the fix `q` NOT done by m? A fix is a move that does what the fix names and introduces no new defect; the disappearance of a defect for another
+    reason is not a fix (52.11). For a mate root, on the counterfactual after m: (a) the goal's positive condition holds (cover: a piece of ours attacks the
+    flight square; guard: the checker's square is attacked by another piece of ours; remove: the blocker has left) and (b) every defect after m was a defect
+    before m, less the fixed one; 'no check' is never allowed."""
     c = board.copy(stack=False)
     c.push(m)
     me = G.colour_of(us)
     if root.goal == "mate":
-        return q.defect_key[:2] in {d.key()[:2] for d in mate_defects(c, me, placement_of(root))}
+        pl = placement_of(root)
+        after = {d.key()[:2] for d in mate_defects(c, me, pl)}
+        before = {d.key()[:2] for d in mate_defects(board, me, pl)} - {q.defect_key[:2]}
+        if q.defect_key[:2] in after or any(k[0] == "no check" for k in after) or not after <= before:
+            return True
+        return not _goal_done(q, future_board(c, pl, not me), me)
     if root.goal == "win":
         if c.is_check():                       # our move checks: the board cannot be turned back to us (their king would be in check on our move), so the defect
             return not G.attackers_of(c, root.pattern["target"], me)       # is read as 'attacked or not'; the binder alone decides what the route is worth
