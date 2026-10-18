@@ -2019,3 +2019,30 @@ Acceptance: (1) 000Sa: `verify Kxc2 ... their view: their Qc4+ then Qxe4 wins 3 
 (Kd3 guards e4) -- print its note. (2) tests: Black's agenda after Kxc2 claims the bishop by a d2 lemma; after Bxc2 claims nothing; Qa4+ fails.
 (3) dev_20 OBS line (previous: decided 9, MATCH 9, their agendas 22, seconds 22.6). No AI trailers; commits per piece; Lean untouched unless a d2
 schema is missing (then say so and stop).
+
+### 52.6 The promotion goal, both sides (autonomy night 2026-10-17; built by a cheaper agent after 52.5)
+Kaveh: "if they are two moves from promoting and my king is two moves away, that's forcing: I have to run back. A quick look sees it. We need to
+ask: who can stop this?" A root for EACH side's agenda:
+- ROOT `promote our P on <sq>` (stake 8 = queen less pawn) for every pawn of the mover with `pushes` ≤ 3 (a principled bound: the mate/material
+  stakes dominate farther pawns; say so in the trace). Its DEFECTS, read from the rules on the pawn's path (`ahead`) and promotion square (`promo`):
+  `blocked` (a piece on the path), `path attacked` (a square of the path attacked by them more than we defend it: `attackers`/`defenders`),
+  `stopper` (a piece of theirs that reaches the promotion square or the path within the pawn's `pushes`: their king by king distance `dist`,
+  a slider/knight by `reach` within k -- use the words, not python-chess paths), `promo square attacked`.
+- FIXES: `blocked` -> capture/deflect the blocker (sub-question); `stopper` -> cut the stopper's route (interpose / attack it with tempo) or
+  push with tempo (a push that checks or attacks); `path attacked` -> add a guard / push past. TEMPO ARITHMETIC as everywhere: the pawn needs
+  `pushes` moves; each stopper's distance ≤ pushes is a defect that costs them nothing (they move for free while we push) -- a stopper in time
+  kills the question with the reason `their K reaches <promo> in 2, the pawn needs 2: stopped`; no stopper in time = `unstoppable`.
+- VERIFIER: the proved lemma. `catspace.incubator.analyst.lean_passer_v2_proto.proved_passers(board) -> [(sq, plies)]` is the Python mirror of
+  `Ideas.Passer2.unstoppablePasser2_sound` (bare-king form; read its hypotheses in lean/ideas/Ideas/Passer2.lean and the proto); a claim
+  `promote` is made ONLY when it fires (lemma name `unstoppablePasser2_sound`, value 8, line = the pushes). When the defects say `unstoppable`
+  but the lemma does not fire (pieces on the board the bare-king form excludes), the question ends as a GAP naming the hypothesis that fails --
+  that gap is the next lemma to prove, print it.
+- THEIR SIDE: the same root in their agenda; their `unstoppable` claim becomes our `save` root `stop their P on <sq>` with stake 8, whose routes are
+  the stoppers' moves (the king runs back) and captures of the pawn; verified by the binder as any save root; if nothing binds, the trace still
+  says `forced: every move of ours is spent stopping the pawn` when the tempo arithmetic is exact (distance = pushes).
+- TRACE first on two positions: a bare-king race the lemma fires on (make one: white Kf6 Pe6 v black Kc3, white to move -> `unstoppable`), and
+  the same with the black king on d4 (`stopped: their K reaches e8 in ... `); then any dev_20 / fresh_60 puzzle whose themes include
+  `advancedPawn` or `promotion` (grep the sets' `themes`); print the traces.
+Acceptance: (1) the two traces verbatim; (2) tests: unstoppable fires + claim; stopped kills with the distance reason; a blocked pawn names the
+blocker; (3) dev_20 and fresh_60 OBS lines (previous dev_20 after 52.5 -- take the builder's number). No AI trailers; commits per piece; no Lean
+changes (a failing hypothesis is reported as the gap, not patched).
