@@ -84,7 +84,11 @@ def mate_defects(board: chess.Board, us: str | bool, placement: list) -> list:
     """What stands between the pattern and a mate, read from the rules on the counterfactual (placements made, their move). [] = they have no legal move and are
     in check: the pattern IS a mate. Order: the checker takeable, flights, interpositions."""
     me = G.colour_of(us)
-    cf = future_board(board, placement, not me)
+    return mate_defects_on(future_board(board, placement, not me), me)
+
+
+def mate_defects_on(cf: chess.Board, me: bool) -> list:
+    """The defects of an already-built future `cf` (their move): [] = they are mated."""
     ksq = cf.king(not me)
     if ksq is None:
         return [Defect("no check", None, [], "their king is not on the board")]
@@ -111,6 +115,49 @@ def mate_defects(board: chess.Board, us: str | bool, placement: list) -> list:
         for sq, frm in sorted(by_sq.items()):
             out.append(Defect("interposition", sq, frm, f"a piece can step between on {G.name(sq)}"))
     return out
+
+
+def _interposers_mated(cf: chess.Board, placement: list, defect: Defect, me: bool) -> tuple:
+    """52.7: for EVERY piece that can step between on defect.sq, our checker (the root's placed piece) takes it there: is the result a mate (no defects)? -> (all
+    mated, the notes for the trace)."""
+    at = placement[0][1]
+    notes, ok = [], True
+    for frm in defect.by:
+        c = cf.copy(stack=False)
+        pc = c.piece_at(frm)
+        step = chess.Move(frm, defect.sq)
+        take = chess.Move(at, defect.sq)
+        if step not in c.legal_moves:
+            ok = False
+            continue
+        c.push(step)
+        if take not in c.legal_moves:
+            notes.append(f"{pc.symbol().upper()} {G.name(frm)}->{G.name(defect.sq)}: our {placement[0][0].symbol().upper()} cannot take it")
+            ok = False
+            continue
+        san = c.san(take)
+        c.push(take)
+        left = mate_defects_on(c, me)
+        notes.append(f"{pc.symbol().upper()} {G.name(frm)}->{G.name(defect.sq)}, {san}: " + ("the future is a mate" if not left else "still " + ", ".join(d.kind for d in left)))
+        ok = ok and not left
+    return ok, notes
+
+
+def _recapture_mates(cf: chess.Board, placement: list, taker: int, sq: int, me: bool) -> str:
+    """52.7: their NON-king piece on `taker` takes the checker on `sq`; is there a recapture of ours on `sq` after which they are mated? -> its SAN or ''."""
+    c = cf.copy(stack=False)
+    m = chess.Move(taker, sq)
+    if m not in c.legal_moves:
+        return ""
+    c.push(m)
+    for r in list(c.legal_moves):
+        if r.to_square == sq:
+            san = c.san(r)
+            d = c.copy(stack=False)
+            d.push(r)
+            if not mate_defects_on(d, me):
+                return san
+    return ""
 
 
 def material_defects(board: chess.Board, us: str | bool, target_sq: int) -> list:
@@ -247,14 +294,27 @@ def fixes_of(defect: Defect, q: Question, board: chess.Board, us: str | bool) ->
                                      text=f"take or pin the {cf.piece_at(taker).symbol().upper()} on {G.name(taker)} that can take the checker")
                     t.routes = [Route(m, board.san(m), "capture") for m in _moves(board, us, root.pattern.get("frm"))
                                 if m.to_square == taker and board.gives_check(m)]
+                    rc = _recapture_mates(cf, placement_of(q), taker, defect.sq, me)
+                    if rc and q.pattern.get("move"):             # 52.7: the taker takes the checker and our recapture is the mate: the root's own move is the route
+                        mv = chess.Move.from_uci(q.pattern["move"])
+                        t.routes.append(Route(mv, board.san(mv), f"recapture on {G.name(defect.sq)} with check"))
+                        t.why.append(f"the {cf.piece_at(taker).symbol().upper()} on {G.name(taker)} takes the checker on {G.name(defect.sq)} and we recapture with check: {rc} -- the future is a mate")
                     out.append(t)
         elif defect.kind == "flight":
             c = new_question("cover", q.stake, dict(q.pattern, target=defect.sq), q, defect_key=defect.key(), text=f"cover the flight {G.name(defect.sq)}")
             c.routes = routes_of(c, board, us, root)
             out.append(c)
         elif defect.kind == "interposition":
-            out.append(new_question("gap", q.stake, dict(q.pattern), q, defect_key=defect.key(), status="gap",
-                                    reason=f"no fix for an interposition on {G.name(defect.sq)} in this slice", text=f"stop the interposition on {G.name(defect.sq)}"))
+            # 52.7: the interposer costs THEM the interposer: our checker takes it, with check again, and the future may be a mate. Forcing (a check); the
+            # route is the root's own move, verified by the binder over every reply.
+            t = new_question("remove", q.stake, dict(q.pattern, target=defect.sq), q, defect_key=defect.key(),
+                             text=f"take the interposer on {G.name(defect.sq)} with check")
+            ok, notes = _interposers_mated(cf, placement_of(q), defect, me)
+            t.why += notes
+            if ok and q.pattern.get("move"):
+                mv = chess.Move.from_uci(q.pattern["move"])
+                t.routes = [Route(mv, board.san(mv), f"takes the interposer on {G.name(defect.sq)} with check: the future is a mate")]
+            out.append(t)
         else:
             out.append(new_question("gap", q.stake, dict(q.pattern), q, defect_key=defect.key(), status="gap",
                                     reason=f"no fix for '{defect.kind}' in this slice", text=defect.kind))

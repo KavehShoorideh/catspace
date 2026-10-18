@@ -172,3 +172,35 @@ def test_their_passer_is_our_stop_save_root_with_stake_eight_and_forced_note():
     assert "forced: every move of ours is spent stopping the pawn" in ag.trace()
     far = _ag(THEIR_PASSER_FAR)
     assert "no stopper in time" in far.trace() and any("no stopper in time" in g for g in far.state.gaps)
+
+
+# ---- 52.7: the interposition that only delays; the non-king taker recaptured with check
+XEN = "8/1p6/2p5/2P2K1k/8/8/pr6/R7 w - - 0 44"
+
+
+def _mate_root(fen, uci, us):
+    ag = AG.Agenda(state_of(fen, us))
+    q = next(q for q in ag.all if q.goal == "mate" and q.pattern.get("move") == uci)
+    return ag, q
+
+
+def test_interposition_is_fixed_by_taking_the_interposer_with_check_and_the_agenda_decides_rh1():
+    ag, q = _mate_root(XEN, "a1h1", "w")
+    q.defects = R.mate_defects(chess.Board(XEN), "w", R.placement_of(q))
+    assert kinds(q.defects) == ["interposition"]
+    f = R.fixes_of(q.defects[0], q, chess.Board(XEN), "w")[0]
+    assert f.goal == "remove" and [r.san for r in f.routes] == ["Rh1+"] and any("the future is a mate" in w for w in f.why)
+    ag.ask()
+    d = ag.decision()
+    assert d.what == "Rh1+" and d.lemma == "mate_in_two" and "Rh2" in d.line
+
+
+def test_non_king_taker_recaptured_with_a_mating_check_is_a_forcing_fix_but_the_other_defect_still_kills():
+    fen = "6k1/5ppp/4n3/Q7/8/8/5PPP/3R2K1 w - - 0 1"      # Rd8+ Nxd8 Qxd8#, but Nf8 interposes: a second defect with no fix
+    ag, q = _mate_root(fen, "d1d8", "w")
+    q.defects = R.mate_defects(chess.Board(fen), "w", R.placement_of(q))
+    assert kinds(q.defects) == ["checker takeable", "interposition"]
+    fixes = [R.fixes_of(d, q, chess.Board(fen), "w")[0] for d in q.defects]
+    assert [r.san for r in fixes[0].routes] == ["Rd8+"] and "Qxd8#" in " ".join(fixes[0].why)
+    assert fixes[1].routes == [] and any("still" in w for w in fixes[1].why)      # the future after Nf8 Rxf8+ Kxf8 still has defects: dies with the reason
+    assert not R.tempo_ok(q) and "interposition f8" in q.reason
