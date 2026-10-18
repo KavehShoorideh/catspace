@@ -69,7 +69,11 @@ SCHEMAS = [
            SM.schema_name(1, SM.MATE2), "mate", SM.MATE2),
 ] + [Schema(f"{fam}_d1", ("x", "y"), LEGS, _delayed_atoms(fam), "(after x y <" + fam + " tail>) >= balance + 1", 1,
             SM.schema_name(1, fam), "gain", fam) for fam in PA.ORDER]
-BY_NAME = {s.name: s for s in SCHEMAS}
+# The deep balance (plan 48, proved: one more ply of minimax; its tail sees the recapture) is asked only when the caller says so (`deep=True`): it is the dearest
+# reading (seconds on a route that does not bind) and the agenda asks it for THEIR claims (52.4), where a shallow balance tail is blind to Qxf8+ Kxf8.
+DEEP = Schema("delayed_balance_deep_d1", ("x", "y"), LEGS, _delayed_atoms("delayed_balance_deep"), "(after x y <delayed_balance_deep tail>) >= balance + 1", 1,
+              SM.schema_name(1, "delayed_balance_deep"), "gain", "delayed_balance_deep")
+BY_NAME = {s.name: s for s in SCHEMAS + [DEEP]}
 
 
 def schema(name: str) -> Schema:
@@ -125,13 +129,13 @@ def bind(s: Schema, board: chess.Board, us: str, candidates: list | None = None)
     return out
 
 
-def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False) -> tuple:
+def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False, deep: bool = False) -> tuple:
     """Try the schemas from the smallest up on ONE route and stop at a mate; otherwise the delayed family reading the largest guaranteed gain wins (ties in the
     ladder's order, as the stream decides). -> (Binding | None, tried) with tried = [(schema name, value or None, note)] for every schema asked."""
     pair = (chess.square_name(route.from_square), chess.square_name(route.to_square))
     fen = board.fen()
     tried, best = [], None
-    for s in SCHEMAS:
+    for s in SCHEMAS + ([DEEP] if deep else []):
         if mates_only and s.kind != "mate":
             continue
         val, note = _read(s, fen, us, pair)
@@ -149,5 +153,5 @@ def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: boo
     return best, tried
 
 
-def verify(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False) -> Binding | None:
-    return verify_tried(route, board, us, mates_only)[0]
+def verify(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False, deep: bool = False) -> Binding | None:
+    return verify_tried(route, board, us, mates_only, deep)[0]
