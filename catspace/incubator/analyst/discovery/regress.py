@@ -65,7 +65,7 @@ def placement_of(q: Question) -> list:
     p = q.pattern
     if "sym" not in p:
         return []
-    return [(chess.Piece.from_symbol(p["sym"]), p["at"], p.get("frm"))]
+    return [(chess.Piece.from_symbol(p["sym"]), p["at"], p.get("frm"))] + [(chess.Piece.from_symbol(sym), at, frm) for sym, at, frm in p.get("more", [])]
 
 
 def future_board(board: chess.Board, placement: list, them: bool) -> chess.Board:

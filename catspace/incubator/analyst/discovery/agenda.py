@@ -68,17 +68,28 @@ class Agenda:
         marks = []
         for m in b.legal_moves:
             pc = b.piece_at(m.from_square)
-            if m.promotion or b.is_castling(m) or pc.piece_type == chess.KING or ksq is None:
+            if ksq is None or (pc.piece_type == chess.KING and not b.is_castling(m)):
                 continue
-            cf = G.with_piece(b, pc, m.to_square, m.from_square)
-            if ksq in cf.attacks(m.to_square):
-                marks.append((m, pc))
+            placed = chess.Piece(m.promotion, pc.color) if m.promotion else pc        # a promotion places the NEW piece (Kaveh 2026-10-17)
+            more = []
+            if b.is_castling(m):                                                       # castling places the king AND the rook; the rook is the checker
+                rf, rt = (chess.H1 if m.to_square > m.from_square else chess.A1), (chess.F1 if m.to_square > m.from_square else chess.D1)
+                if pc.color == chess.BLACK:
+                    rf, rt = rf + 56, rt + 56
+                more = [(b.piece_at(rf).symbol(), rt, rf)]
+            cf = G.with_piece(b, placed, m.to_square, m.from_square)
+            for sym, at, frm in more:
+                cf = G.with_piece(cf, chess.Piece.from_symbol(sym), at, frm)
+            checker = more[0][1] if more else m.to_square
+            if ksq in cf.attacks(checker):
+                marks.append((m, pc, placed, more, checker))
         scored = []
-        for m, pc in marks:
-            q = R.new_question("mate", R.STAKE_MATE, dict(sym=pc.symbol(), at=m.to_square, frm=m.from_square, king=ksq))
+        for m, pc, placed, more, checker in marks:
+            q = R.new_question("mate", R.STAKE_MATE, dict(sym=placed.symbol(), at=m.to_square, frm=m.from_square, king=ksq, more=more, move=m.uci()))
             q.defects = R.mate_defects(b, self.us, R.placement_of(q))
-            q.text = f"mate on {G.name(m.to_square)} ({pc.symbol().upper()} {G.name(m.from_square)}->{G.name(m.to_square)}, their king on {G.name(ksq)})"
-            scored.append((len(q.defects), -G.worth(pc), q.id, q))
+            how = b.san(m) if (m.promotion or more) else f"{pc.symbol().upper()} {G.name(m.from_square)}->{G.name(m.to_square)}"
+            q.text = f"mate on {G.name(checker)} ({how}, their king on {G.name(ksq)})"
+            scored.append((len(q.defects), G.worth(placed), q.id, q))                 # fewest defects, then the CHEAPER piece (the heavy one stays back as a guard)
         for _, _, _, q in sorted(scored, key=lambda t: t[:3]):
             self._push(q)
         hang = RS.hanging_of_ours(b, self.us)
@@ -162,7 +173,7 @@ class Agenda:
     def _direct_routes(self, q: R.Question) -> list:
         b = self.board
         if q.goal == "mate":
-            m = chess.Move(q.pattern["frm"], q.pattern["at"])
+            m = chess.Move.from_uci(q.pattern["move"]) if q.pattern.get("move") else chess.Move(q.pattern["frm"], q.pattern["at"])
             return [R.Route(m, b.san(m), "the placement move")]
         t = q.pattern["target"]
         return [R.Route(m, b.san(m), f"capture {G.worth(b.piece_at(t))}") for m in b.legal_moves if m.to_square == t and not m.promotion]
