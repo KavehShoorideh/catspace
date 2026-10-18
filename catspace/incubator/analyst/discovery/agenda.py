@@ -579,18 +579,18 @@ class Agenda:
 
     def _escape_note(self, r: R.Route, tried: list) -> str:
         """Why a mate route did not bind: the replies after which we have no mate in one."""
+        notes = [f"{n}: {note}" for n, v, note in tried if note and v is None]
+        if not self.side_depth:                                          # their agenda and the leaf read never print the note: no reply walk there
+            return f"{r.san} fails" + (f" ({'; '.join(notes)})" if notes else "")
         b = self.board.copy(stack=False)
         b.push(r.move)
         esc = []
         for rep in list(b.legal_moves):
             c = b.copy(stack=False)
             c.push(rep)
-            if any(self._mates(c, mv) for mv in c.legal_moves):         # 52.11: mate in one is a rules fact
-                continue
-            if self.side_depth and SM.bind_mate(c.fen(), self.us):      # confirm a hit by the binder only in our agenda (their agenda / the leaf read never print the note)
+            if any(self._mates(c, mv) for mv in c.legal_moves):         # 52.11: mate in one is a rules fact (the binder's mirror of it is tested in test_regress)
                 continue
             esc.append(b.san(rep))
-        notes = [f"{n}: {note}" for n, v, note in tried if note and v is None]
         return f"{r.san} fails" + (f" ({'; '.join(notes)})" if notes else "") + (f", no mate in one after {', '.join(esc[:4])}" if esc and 0 < len(esc) <= 40 else "")
 
     # ------------------------------------------------------------------------------------------------------------ kills, saves
