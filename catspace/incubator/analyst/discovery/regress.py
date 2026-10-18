@@ -19,6 +19,8 @@ import chess
 from catspace.incubator.analyst.discovery import graph as G
 
 STAKE_MATE = 100
+STAKE_PROMOTE = 8                             # a queen less the pawn
+PROMOTE_MAX_PUSHES = 3                        # farther pawns: the mate / material stakes dominate (52.6)
 
 
 @dataclass
@@ -330,3 +332,75 @@ def opponent_defects(board: chess.Board, route: chess.Move, us: str | bool) -> l
         if hit:
             out.append(f"{c.san(r)} forks {' '.join(hit)}")
     return out
+
+
+# ---------------------------------------------------------------------------------------------------------------- the promotion goal (52.6)
+
+def pawn_path(board: chess.Board, sq: int, pushes: int) -> list:
+    """The squares in front of the pawn on `sq`, nearest first, the promotion square last (`ahead`, named)."""
+    fwd = 1 if board.piece_at(sq).color == chess.WHITE else -1
+    f, r = chess.square_file(sq), chess.square_rank(sq)
+    return [chess.square(f, r + fwd * i) for i in range(1, pushes + 1)]
+
+
+def promote_defects(board: chess.Board, sq: int) -> tuple:
+    """What stands between the pawn on `sq` (any colour) and a queen, read with the Rust words (`pushes`, `ahead`, `promo`, `attackers`, `defenders`, `dist`)
+    from its owner's side: [Defect] and the facts {pushes, path, promo, king_dist, king_sq}. Kinds: 'blocked' (a piece on the path), 'path attacked' (a path
+    square attacked by them more than we guard it), 'promo square attacked' (the same on the promotion square), 'stopper' (a piece of theirs that reaches the
+    promotion square or the path within the pawn's pushes: the king by `dist`, a slider / knight by its static-board `reach`). No defect = unstoppable by the
+    tempo arithmetic (the owner moves first; the other side's pieces move for free while the pawn runs)."""
+    pc = board.piece_at(sq)
+    own = pc.color
+    n = G.word(board, ("pushes", G.name(sq)), own)
+    path = pawn_path(board, sq, n)
+    promo = path[-1]
+    facts = dict(pushes=n, path=path, promo=promo, king_dist=None, king_sq=board.king(not own))
+    out = []
+    ahead_ours = G.word(board, ("count", ("and", ("ahead", G.name(sq)), "ours")), own)
+    ahead_theirs = G.word(board, ("count", ("and", ("ahead", G.name(sq)), "theirs")), own)
+    if ahead_ours + ahead_theirs:
+        for t in path:
+            b_ = board.piece_at(t)
+            if b_ is not None:
+                out.append(Defect("blocked", t, [t], f"{'our' if b_.color == own else 'their'} {b_.symbol().upper()} stands on {G.name(t)}"))
+    for t in path:
+        a = G.word(board, ("defenders", G.name(t)), own)            # theirs attacking t
+        d = G.word(board, ("attackers", G.name(t)), own)            # ours attacking t
+        if a > d:
+            kind = "promo square attacked" if t == promo else "path attacked"
+            by = [x for x in G.attackers_of(board, t, not own)]
+            out.append(Defect(kind, t, by, f"{G.name(t)} is attacked by them {a}x and guarded by us {d}x"))
+    ek = facts["king_sq"]
+    if ek is not None:
+        kd = G.word(board, ("dist", "L", ("promo", G.name(sq))), own)
+        facts["king_dist"] = kd
+        if kd <= n:
+            out.append(Defect("stopper", promo, [ek], f"their K on {G.name(ek)} reaches {G.name(promo)} in {kd}, the pawn needs {n}"))
+    for s in chess.SQUARES:
+        x = board.piece_at(s)
+        if x is None or x.color == own or x.piece_type in (chess.KING, chess.PAWN):
+            continue
+        k = G.piece_moves_to(board, s, set(path), n)
+        if k is not None:
+            out.append(Defect("stopper", promo, [s], f"their {x.symbol().upper()} on {G.name(s)} reaches the path in {k} (static board), the pawn needs {n}"))
+    return out, facts
+
+
+def promote_fixes(board: chess.Board, sq: int, defect: Defect, q: "Question") -> "Question":
+    """The sub-question a promotion defect generates, with its forcing routes (moves of the pawn's owner only; `board` has the owner on move)."""
+    own = board.piece_at(sq).color
+    push = chess.Move(sq, pawn_path(board, sq, 1)[0])
+    if defect.kind == "blocked":
+        f = new_question("remove", q.stake, dict(q.pattern, blocker=defect.sq), q, defect_key=defect.key(), text=f"capture or deflect the blocker on {G.name(defect.sq)}")
+        f.routes = [Route(m, board.san(m), f"capture {G.worth(board.piece_at(defect.sq))}") for m in board.legal_moves if m.to_square == defect.sq]
+    elif defect.kind in ("path attacked", "promo square attacked"):
+        f = new_question("guard", q.stake, dict(q.pattern, target=defect.sq), q, defect_key=defect.key(), text=f"guard {G.name(defect.sq)} or take its attacker (or push past)")
+        f.routes = [Route(m, board.san(m), f"capture {G.worth(board.piece_at(m.to_square))}") for m in board.legal_moves if m.to_square in defect.by]
+    else:
+        f = new_question("cover", q.stake, dict(q.pattern, target=defect.by[0]),
+                         q, defect_key=defect.key(), text=f"cut the stopper on {G.name(defect.by[0])} (take it) or push with a check")
+        f.routes = [Route(m, board.san(m), f"capture {G.worth(board.piece_at(m.to_square))}") for m in board.legal_moves if m.to_square == defect.by[0]]
+        if push in board.legal_moves and board.gives_check(push):
+            f.routes.append(Route(push, board.san(push), "push with check"))
+    q.fixes.append(f)
+    return f

@@ -21,6 +21,7 @@ import re
 
 import chess
 
+from catspace.incubator.analyst import lean_passer_v2_proto as PV
 from catspace.incubator.analyst.discovery import binder as BD
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import regress as R
@@ -109,10 +110,24 @@ class Agenda:
             big = max(hang, key=lambda s: (G.worth(b.piece_at(s)), -s))
             self._push(R.new_question("save", G.worth(b.piece_at(big)), dict(target=big), text=f"save our {b.piece_at(big).symbol().upper()} on {G.name(big)} (it hangs)"))
         self._hang = hang                                        # the threat roots (52.4a) are asked for lazily: see ask()
+        self._promote_roots()
         theirs = [s for s in chess.SQUARES if b.piece_at(s) and b.piece_at(s).color != me and b.piece_at(s).piece_type != chess.KING]
         for s in sorted(theirs, key=lambda s: (-G.worth(b.piece_at(s)), s)):
             self._push(R.new_question("win", G.worth(b.piece_at(s)), dict(target=s),
                                       text=f"win their {b.piece_at(s).symbol().upper()} on {G.name(s)} (worth {G.worth(b.piece_at(s))})"))
+
+    def _promote_roots(self) -> None:
+        """52.6: `promote our P on <sq>` (stake 8) for every pawn of the mover with `pushes` <= 3 (farther pawns: the mate / material stakes dominate)."""
+        b = self.board
+        near = []
+        for s in sorted(chess.SquareSet(b.pawns & b.occupied_co[self.me])):
+            n = G.word(b, ("pushes", G.name(s)), self.me)
+            if 0 < n <= R.PROMOTE_MAX_PUSHES:
+                near.append((n, s))
+        for n, s in sorted(near):
+            self._push(R.new_question("promote", R.STAKE_PROMOTE, dict(pawn=s, pushes=n), text=f"promote our P on {G.name(s)} ({n} push{'es' if n > 1 else ''} to {G.name(R.pawn_path(b, s, n)[-1])})"))
+        if near:
+            self.notes.append(f"promote roots only for pawns with pushes <= {R.PROMOTE_MAX_PUSHES} (the mate / material stakes dominate farther pawns)")
 
     # ------------------------------------------------------------------------------------------------------------ their side (52.4)
 
@@ -148,6 +163,14 @@ class Agenda:
             if m is None or cl.move in seen or (m.to_square in hang and b.piece_at(m.to_square)):
                 continue
             seen.add(cl.move)
+            if cl.kind == "promote":
+                pw = m.from_square
+                pb = ag.board
+                dest = R.pawn_path(pb, pw, G.word(pb, ("pushes", G.name(pw)), not self.me))[-1]
+                self._push(R.new_question("save", cl.value, dict(promoter=pw, push=cl.move, value=cl.value, lemma=cl.lemma, line=cl.line, what=cl.what),
+                                          text=f"stop their P on {G.name(pw)} (promotes on {G.name(dest)}): their claim {cl.what} wins {cl.value} (lemma {cl.lemma})"))
+                self.threat_views.append((cl, ag))
+                continue
             tgt = self._targets_of(m, cl)
             what = "our king" if cl.value >= BD.MATE_VALUE else (" and ".join(f"our {b.piece_at(t).symbol().upper()} on {G.name(t)}" for t in tgt) or "something of ours")
             self._push(R.new_question("save", cl.value, dict(threat=cl.move, targets=tgt, value=cl.value, lemma=cl.lemma, line=cl.line, what=cl.what),
@@ -197,6 +220,12 @@ class Agenda:
         head = f"Q{q.id} {q.text} (stake {q.stake})"
         if q.goal == "save" and "checkers" in q.pattern:
             self._ask_save_king(q, head)
+            return
+        if q.goal == "promote":
+            self._ask_promote(q, head)
+            return
+        if q.goal == "save" and "promoter" in q.pattern:
+            self._ask_stop_pawn(q, head)
             return
         if q.goal == "save" and "threat" in q.pattern:
             self._ask_save_threat(q, head)
@@ -416,6 +445,107 @@ class Agenda:
         self._verify(q, f.routes, mates_only=False)
         if len(self.state.claims) == before:
             self.state.gaps.append(f"Q{q.id} {q.text}: no parry binds a guaranteed gain without a worse claim of theirs (deciding by a parry that merely keeps the balance is not in this slice)")
+
+    # ------------------------------------------------------------------------------------------------------------ promotion (52.6)
+
+    def _ask_promote(self, q: R.Question, head: str) -> None:
+        """The defects of the pawn's path are read with the words; a stopper in time kills the question WITH THE DISTANCE REASON; no defect = unstoppable by the
+        tempo arithmetic, and then the claim is made ONLY when the proved passer (Ideas.Passer2.unstoppablePasser2_sound, via proved_passers) fires; if it does
+        not, the question ends as a GAP naming the hypothesis that fails."""
+        b = self.board
+        sq = q.pattern["pawn"]
+        q.defects, facts = R.promote_defects(b, sq)
+        n, promo = facts["pushes"], facts["promo"]
+        kd = facts["king_dist"]
+        self.lines.append(head + (": " + "; ".join(f"defect {d.kind} ({d.why})" for d in q.defects) if q.defects else
+                                  ": no defect -- unstoppable by the tempo arithmetic" + (f" (their K needs {kd} to {G.name(promo)}, the pawn {n})" if kd is not None else "")))
+        if q.defects:
+            for d in q.defects:
+                f = R.promote_fixes(b, sq, d, q)
+                rs = ", ".join(f"{r.san} ({r.why})" for r in f.routes)
+                self.lines.append(f"  -> Q{f.id} {f.text}: " + (f"forcing: {rs}" if rs else "no forcing move"))
+            self.asked += len(q.fixes)
+            stop = [d for d in q.defects if d.kind == "stopper"]
+            if stop:
+                reason = "stopped: " + "; ".join(d.why for d in stop)
+            else:
+                reason = "tempo: " + "; ".join(f"{d.kind} {G.name(d.sq)}: {d.why}" for d in q.defects)
+            self._kill(q, reason, tempo=True)
+            return
+        ps = dict(PV.proved_passers(b))
+        if sq in ps:
+            push = chess.Move(sq, facts["path"][0], promotion=chess.QUEEN if n == 1 else None)
+            san = b.san(push)
+            rest = [G.name(t) for t in facts["path"][1:-1]]
+            line = f"{san}, then {', '.join(rest)}{', ' if rest else ''}{G.name(promo)}=Q within {ps[sq]} plies whatever they do ({n} pushes)" if n > 1 else f"{san} within {ps[sq]} ply"
+            claim = Claim("promote", san, R.STAKE_PROMOTE, "unstoppablePasser2_sound", line, move=push.uci())
+            self.state.claims.append(claim)
+            q.status = "verified"
+            self.lines.append(f"  -> CLAIM promote {san} (value {claim.value}), lemma {claim.lemma}, line {claim.line}")
+            if self.best is None or (claim.value, 0) > self.best[:2]:
+                self.best = (claim.value, 0, claim)
+            return
+        h = PV.passer_v2(b, sq)
+        bad = [k for k in PV.HYPS if not h[k]]
+        why = []
+        for k in bad:
+            if k == "enemyKingPawns":
+                why.append("enemyKingPawns: " + ", ".join(f"their {b.piece_at(s).symbol().upper()} on {G.name(s)}" for s in chess.SquareSet((b.rooks | b.bishops | b.queens | b.knights) & b.occupied_co[not self.me])))
+            elif k == "noSliders":
+                why.append("noSliders: " + ", ".join(f"our {b.piece_at(s).symbol().upper()} on {G.name(s)}" for s in chess.SquareSet((b.rooks | b.bishops | b.queens) & b.occupied_co[self.me])))
+            else:
+                why.append(k)
+        msg = (f"Q{q.id} {q.text}: the defects say unstoppable but the lemma unstoppablePasser2_sound does not fire -- failing hypothesis "
+               + ("; ".join(why) if why else "none in the Python mirror (the Lean detector declined)") + " (the next lemma to prove)")
+        q.status = "gap"
+        q.reason = msg
+        self.state.gaps.append(msg)
+        self.lines.append(f"  -> GAP: {msg}")
+
+    def _ask_stop_pawn(self, q: R.Question, head: str) -> None:
+        """THEIR passer, a claim of their agenda, as OUR save root: the routes are the stoppers' moves (our king runs toward the promotion square, a capture of
+        the pawn); the binder verifies them as any save root; the tempo arithmetic says `forced` when our king's distance equals the pawn's pushes."""
+        b = self.board
+        p = q.pattern
+        pw = p["promoter"]
+        them = not self.me
+        n = G.word(b, ("pushes", G.name(pw)), them)
+        promo = R.pawn_path(b, pw, n)[-1]
+        kd = G.word(b, ("dist", "L", ("promo", G.name(pw))), them)               # their pawn's words, read from its owner's side: L = our king
+        q.defects = [R.Defect("promotes", promo, [pw], f"their {p['what']} promotes on {G.name(promo)} in {n} ({p['value']}, lemma {p['lemma']})")]
+        self.lines.append(head + f": defect promotes (their view: {p['what']}, {p['line']})")
+        arith = f"our K reaches {G.name(promo)} in {kd}, the pawn needs {n}"
+        ksq = b.king(self.me)
+        runs = []
+        for m in b.legal_moves:
+            if m.to_square == pw:
+                runs.append(R.Route(m, b.san(m), f"capture {G.worth(b.piece_at(pw))}"))
+            elif m.from_square == ksq:
+                c = b.copy(stack=False)
+                c.push(m)
+                if G.word(c, ("dist", "L", ("promo", G.name(pw))), them) < kd:
+                    runs.append(R.Route(m, b.san(m), "K runs back"))
+        f = R.new_question("remove", q.stake, dict(q.pattern), q, defect_key=q.defects[0].key(), text="stop it: our king runs toward the promotion square, or takes the pawn")
+        f.routes = runs
+        self.asked += 1
+        self.lines.append(f"  -> Q{f.id} {f.text}: {arith}; " + (", ".join(f"{r.san} ({r.why})" for r in runs) or "no such move"))
+        q.fixes.append(f)
+        # WE move first on the real board and the pawn is promoted by its nth push, so we make n moves before it; the king stops it when it is next to the
+        # promotion square then (it takes the new queen), i.e. distance <= n + 1 (the same inequality as the lemma's kingOutside, n < dist, for the defender
+        # with n - 1 moves). Distance = n + 1 is exact: every move of ours is spent.
+        if kd == n + 1:
+            self.lines.append(f"     forced: every move of ours is spent stopping the pawn (distance {kd} = pushes {n} + 1: next to {G.name(promo)} after our {n} moves)")
+        elif kd > n + 1:
+            self.lines.append(f"     no stopper in time: distance {kd} > pushes {n} + 1")
+        else:
+            self.lines.append(f"     slack: distance {kd} <= pushes {n}: {n - kd + 1} spare move(s)")
+        before = len(self.state.claims)
+        if runs:
+            self._verify(q, runs, mates_only=False)
+        if len(self.state.claims) == before:
+            self.lines.append(f"  no route binds a guaranteed gain against the passer (the binder has no promotion tail); {arith}")
+            if kd > n + 1:
+                self.state.gaps.append(f"Q{q.id} {q.text}: no stopper in time ({arith}) and no capture binds")
 
     # ------------------------------------------------------------------------------------------------------------ outputs
 

@@ -128,3 +128,35 @@ def see(board: chess.Board, sq: int) -> int:
 def see_for(board: chess.Board, sq: int, capturer: bool) -> int:
     """What `capturer` wins by the exchange on the piece on `sq` (a piece of the other side): `see` read with `capturer` on move."""
     return see(with_turn(board, capturer), sq)
+
+
+# ---------------------------------------------------------------------------------------------------------------- the Rust words (promotion, 52.6)
+
+def word(board: chess.Board, term, owner: bool) -> int:
+    """A word of the Rust vocabulary read on `board` with `owner` as the mover. The evaluator reads from the mover's side, and reads 0 / mirrored squares when
+    the mover is not the side to move, so the board is first given to `owner` (`with_turn`); a pawn word (`pushes`, `ahead`, `promo`) is read with its owner."""
+    BV.install_terms()
+    return SM.val_at(with_turn(board, owner).fen(), term, "w" if owner else "b")
+
+
+def piece_moves_to(board: chess.Board, frm: int, targets: set, limit: int) -> int | None:
+    """Fewest moves the non-pawn piece on `frm` needs to stand on one of `targets` (static board: the other pieces do not move, own-colour squares are not
+    entered, a piece of the other colour may be taken; no pins, no checks), or None beyond `limit`. The `reach` of a slider / knight."""
+    pc = board.piece_at(frm)
+    seen, frontier = {frm}, [frm]
+    for k in range(1, limit + 1):
+        nxt = []
+        for s in frontier:
+            c = board.copy(stack=False)
+            c.remove_piece_at(frm)
+            c.set_piece_at(s, pc)
+            for t in c.attacks(s):
+                o = board.piece_at(t)
+                if t in seen or (o is not None and o.color == pc.color and t != frm):
+                    continue
+                if t in targets:
+                    return k
+                seen.add(t)
+                nxt.append(t)
+        frontier = nxt
+    return None
