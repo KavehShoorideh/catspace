@@ -125,13 +125,15 @@ def bind(s: Schema, board: chess.Board, us: str, candidates: list | None = None)
     return out
 
 
-def verify_tried(route: chess.Move, board: chess.Board, us: str) -> tuple:
+def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False) -> tuple:
     """Try the schemas from the smallest up on ONE route and stop at a mate; otherwise the delayed family reading the largest guaranteed gain wins (ties in the
     ladder's order, as the stream decides). -> (Binding | None, tried) with tried = [(schema name, value or None, note)] for every schema asked."""
     pair = (chess.square_name(route.from_square), chess.square_name(route.to_square))
     fen = board.fen()
     tried, best = [], None
     for s in SCHEMAS:
+        if mates_only and s.kind != "mate":
+            continue
         val, note = _read(s, fen, us, pair)
         tried.append((s.name, val, note))
         if val is None or val < s.need:
@@ -147,5 +149,5 @@ def verify_tried(route: chess.Move, board: chess.Board, us: str) -> tuple:
     return best, tried
 
 
-def verify(route: chess.Move, board: chess.Board, us: str) -> Binding | None:
-    return verify_tried(route, board, us)[0]
+def verify(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False) -> Binding | None:
+    return verify_tried(route, board, us, mates_only)[0]
