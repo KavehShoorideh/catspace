@@ -328,3 +328,72 @@ def test_52_11_escape_note_by_the_rules_equals_the_binder_reading():
                 d = c.copy(stack=False); d.push(rep)
                 rules = any(AG.Agenda._mates(d, mv) for mv in d.legal_moves)
                 assert rules == bool(SM.bind_mate(d.fen(), us))
+
+
+# ---- 52.12: trap vs fork, the chase, read sets, the reach ----------------------------------------------------------------------------------------
+XY = "r4rk1/pp2bppp/2b1pn2/4N3/3qN3/3B4/PP3PPP/R2QR1K1 w - - 0 14"
+RH = "k7/1pp4p/pq3rp1/N7/4Q3/8/PP3PPP/4R1K1 b - - 1 26"
+DOFB = "1r2k3/1bp2p2/p3p2Q/q5B1/3b4/P7/5PPP/2RR2K1 b - - 4 29"
+
+
+def test_52_12_a_check_is_never_a_trap_and_a_fork_binds_on_02xyh():
+    b = chess.Board(XY)
+    for t in chess.SQUARES:
+        pc = b.piece_at(t)
+        if pc is not None and not pc.color and pc.piece_type != chess.KING:
+            assert not any(b.gives_check(r.move) for r in R.trap_routes(b, "w", t)), "a check was read as a trap"      # mobility with their king in check proves nothing
+    forks = R.fork_routes(b, "w", chess.H7)
+    assert [r.san for r in forks] == ["Nxf6+"] and forks[0].fork == chess.H7
+    got, _ = BD.verify_tried(forks[0].move, b, "w", fork=chess.H7)
+    assert got is not None and got.san == "Nxf6+ then Bxh7" and got.note == "a fork: they must answer the check"
+    ag = AG.Agenda(state_of(XY, "w"))
+    ag.ask()
+    assert "traps" not in ag.trace().split("AGENDA")[-1] or all("a check" not in ln for ln in ag.trace().splitlines() if "traps" in ln)
+
+
+def test_52_12_the_balance_in_python_is_the_vocabulary_word():
+    for fen in (XY, RH, DOFB, SA, IFU):
+        b = chess.Board(fen)
+        for owner in (True, False):
+            w = G.word(b, "balance", owner)
+            if w is not None:                                # (the word reads nothing when the other side's king would be left in check)
+                assert G.balance(b, owner) == w
+
+
+def test_52_12_the_chase_decides_0rhu6_through_the_forced_reply_and_the_inner_mate():
+    ag = AG.Agenda(state_of(RH, "b"))
+    ag.ask()
+    d = ag.decision()
+    t = ag.trace()
+    assert d.what == "Qxf2+" and d.value >= 100 and d.lemma.startswith("chase") and "chase: make them move" in t
+    assert "after Kh1: Qf1+" in d.line and "Rxf1 Rxf1#" in d.line
+
+
+def test_52_12_a_question_whose_reads_the_move_and_reply_did_not_touch_is_inherited():
+    b0 = chess.Board(XY)
+    outer = AG.Agenda(state_of(XY, "w"), side_depth=0, ctx=AG.ChaseCtx())
+    outer.ask()
+    killed = [q for q in outer.all if q.status == "killed" and q.reads is not None]
+    assert killed
+    b1 = b0.copy()
+    b1.push_uci("a2a3")
+    b1.push_uci("a7a6")                                    # the far wing: nothing the killed questions read
+    diff = R.diff_squares(b0, b1)
+    assert diff and all(chess.square_file(s) < 2 for s in diff)
+    inner = AG.Agenda(State(b1.fen(), "w", []), side_depth=0, chase_depth=1, ctx=AG.ChaseCtx(), inherit=outer._inherit_for(diff))
+    inner.ask()
+    assert inner.inherited > 0 and any(": inherited: nothing changed for the" in ln for ln in inner.lines)
+    near = outer._inherit_for(frozenset(chess.SQUARES))      # the whole board changed: nothing is inherited
+    again = AG.Agenda(State(b1.fen(), "w", []), side_depth=0, chase_depth=1, ctx=AG.ChaseCtx(), inherit=near)
+    again.ask()
+    assert again.inherited == 0
+
+
+def test_52_12_0dofb_has_the_reach_root_via_d5_and_qd5_is_a_threat_of_mate():
+    b = chess.Board(DOFB)
+    ag = AG.Agenda(state_of(DOFB, "b"))
+    roots = [q for q in ag.all if q.pattern.get("reach")]
+    assert any(chess.square_name(q.pattern["at"]) == "g2" and q.defects[0].kind == "reach" and "d5" in q.defects[0].why for q in roots)
+    assert R.forcing_why(b, chess.Move.from_uci("a5d5"), R.STAKE_MATE, "b", mate_threats=True) == "threat of mate"
+    assert R.forcing_why(b, chess.Move.from_uci("a5d5"), R.STAKE_MATE, "b") is None      # the old forcing does not know it
+    assert chess.Move.from_uci("a5d5") in R.reach_steps(b, "b", chess.A5, chess.G2)
