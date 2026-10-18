@@ -2096,3 +2096,30 @@ one-leaf guard cannot separate it from 000Sa's Bxc2 (both leave a piece attacked
   of claims downgraded and, for each, Stockfish's view of the old decision vs the answer as `OBS leaf <id>: ...` (as in the transient audit).
 Acceptance: 0UqOv no longer decides Qd5 (trace printed); 000Sa still Bxc2; dev_20 and fresh_60 OBS before/after with every changed decision
 classified wrong/right by Stockfish; tests. No AI trailers; commits per piece.
+
+### 52.11 A fix must do what it says; the escape note by the rules (Kaveh 2026-10-18 morning, puzzle 00ct0)
+Found on a random fresh_60 puzzle (00ct0, Black to move): Q1 "mate on h5" listed `cover the flight g1: quiet fixes (Bh3)`. Bh3 does not cover g1
+(the e6 bishop is light-squared, g1 is dark) and it BLOCKS our own check from h5. It passed because `regress._still` tests only "is the named
+defect's key absent after the move": after Bh3 the counterfactual's defects collapse to `no check`, so `flight g1` is absent. A proxy, not the fix.
+Second finding (profile of the same run, 28.6 s profiled / 10.6 s plain): 24 s is `agenda._escape_note` -- "no mate in one after ..." for every
+failed mate route, by `selfmine.bind_mate` over all our moves after every reply (5,030 bind_mate, 197k premise_truth calls), 16 s of it Python
+rendering the premise text (`base_vocabulary.sexpr`) before each Rust call; Rust reads 2.4 s. Most calls are inside their agenda and the leaf read,
+where the note is never printed.
+Build (regress.py, agenda.py):
+1. `_still(q, board, us, m, root)` for a mate root becomes TWO conditions, both read on the counterfactual after m (placements made, their move):
+   (a) the POSITIVE condition of the fix's goal holds -- `cover`: a piece of ours attacks the flight square `q.pattern["target"]` (rules:
+   `cf.is_attacked_by(me, target)`); `guard` (checker takeable): the checker's square is attacked by another piece of ours or the taker is gone;
+   `remove` (interposition / blocker): the named piece on `q.pattern["blocker"]` (or the interposer squares in the defect's `by`) is gone or can no
+   longer step there; `take the interposer`/`take the checker` keep their existing reads; (b) NO NEW DEFECT: every defect key after m (kind, sq) is
+   in the set before m, less the fixed one (`no check` is never allowed: the pattern must still check). A move failing (a) or (b) is not a fix.
+   For a `win` root keep the current read but add (b) with `material_defects`. One doc line in the module docstring: "a fix is a move that does
+   what the fix names and introduces no new defect; the disappearance of a defect for another reason is not a fix".
+2. `_escape_note`: mate in one after a reply is a rules fact -- `any(c2.is_checkmate() after each of our legal moves)` on a copy; keep `bind_mate`
+   only to confirm the hit on the ONE line printed (our agenda, `side_depth 0`), never inside their agenda or the leaf read (`_their_agenda`,
+   `_leaf_read` pass a flag or the note is skipped when `self.side_depth > 0`). No change of any decision is expected from 2.
+3. Cache the rendered premise text: memoize `base_vocabulary.sexpr` on the term's identity/tuple (an `lru_cache` or a dict keyed by the term)
+   if the term is hashable; otherwise skip this item and say so.
+Acceptance: 00ct0 trace shows Q1 `cover the flight g1: no fix at all` (no Bh3) and the decision is unchanged (Rxf4); `OBS agenda 00ct0 ... seconds`
+before/after printed; dev_20 and fresh_60 (`fresh_60_threats_event`) rerun with `python -m ...analyse --set <set> --quiet`, every changed decision
+listed; tests: one for `_still` rejecting a move that blocks our own check / does not attack the flight, one for the escape note by the rules
+equal to the old reading on dev_20. Commits per item, no AI trailers.
