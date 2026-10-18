@@ -259,3 +259,46 @@ def test_the_win_question_for_a_piece_that_can_run_gets_the_take_its_squares_fix
     assert len(t) == 1 and "Bb5" in [r.san for r in t[0].routes]
     r = next(r for r in t[0].routes if r.san == "Bb5")
     assert r.trap == chess.C6 and r.why.endswith("also attacked")
+
+
+# ---- 52.10 piece 2: the leaf read by their agenda --------------------------------------------------------------------------------------------------
+UQ = "r1bqkbnr/3p1ppp/p3P3/1pp5/2n1P3/2N5/PPP1NPPP/R1BQK2R w KQkq - 0 8"
+
+
+def test_the_leaf_read_keeps_000sa_bxc2_and_reads_the_word_the_way_the_word_reads_it():
+    ag = AG.Agenda(state_of(SA, "w"))
+    ag.ask()
+    assert ag.decision().what == "Bxc2" and ag.decision().lemma == "delayed_balance_alive_d1"
+    assert ag.leaf_stats["read"] >= 1 and ag.leaf_stats["down"] == 0 and ag.leaf_stats["untrusted"] == 0
+    assert any(o.startswith("our Bxc2 claimed 2; at the leaf Bxc2 ") and o.endswith("-> kept") for o in ag.leaf_obs)
+
+
+def test_a_claim_of_theirs_at_the_leaf_at_least_our_gain_there_downgrades_the_claim_to_a_gap():
+    from catspace.incubator.analyst.discovery.state import Claim
+
+    class Fake:
+        def __init__(self):
+            self.state = State(fen="", us="b", pieces=[], claims=[Claim("win", "Qxe4", 99, "delayed_balance_alive_d1", "line")])
+            self.their_runs = 0
+    ag = AG.Agenda(state_of(SA, "w"))
+    real = ag._their_agenda
+    leaf_fens = []
+
+    def fake(board):
+        leaf_fens.append(board.fen())
+        return Fake()
+    ag._their_agenda = fake
+    ag.ask()
+    assert leaf_fens and ag.leaf_stats["down"] >= 1
+    assert any("refuted at the leaf: their Qxe4 wins 99 (lemma delayed_balance_alive_d1)" in g for g in ag.state.gaps)
+    assert any(o.endswith("-> downgraded") for o in ag.leaf_obs)
+    assert not any(c.lemma == "delayed_balance_alive_d1" for c in ag.state.claims)       # nothing is decided by a downgraded claim
+
+
+@pytest.mark.xfail(strict=True, reason="52.10 acceptance NOT met: Qd5 'wins 1' is true in the window and their agenda finds no material claim at the leaf of the minimising line "
+                                       "(Rb8 exf7+) nor after fxe6 Qxa8 (the trapped queen has legal, unsafe moves: no named capture binds); Stockfish d18 scores Qd5 -57 against exf7+ +350")
+def test_0uqov_qd5_is_not_decided():
+    ag = AG.Agenda(state_of(UQ, "w"))
+    ag.ask()
+    d = ag.decision()
+    assert d is None or d.what != "Qd5"

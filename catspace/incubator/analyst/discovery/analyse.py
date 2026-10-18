@@ -22,7 +22,7 @@ from catspace.incubator.analyst.discovery.state import state_of
 AGENDA_STORE = "agenda_states.jsonl"       # 52.9: the agenda's own store (plan 50's reasoned_states.jsonl keeps its record of the exhaustive ladder)
 
 
-def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store: bool = False, set_name: str = "", k: int = 3) -> dict:
+def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store: bool = False, set_name: str = "", k: int = 3, leaf_all: bool = False) -> dict:
     BV.install_terms()
     t0 = time.time()
     fen = p["fen"]
@@ -37,7 +37,7 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
     if not quiet:
         for sim, r in recalled:
             log(f"recall: seen {r['id']} (sim {sim}): {r.get('goal')} by {r.get('lemma')}, fixes {r.get('fixes')}")
-    ag = Agenda(st, memory=recalled)
+    ag = Agenda(st, memory=recalled, leaf_all=leaf_all)
     ag.ask()
     ans = b.san(chess.Move.from_uci(p["answer"]))
     d = ag.decision()
@@ -59,13 +59,15 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
         rec = RM.make_record(p, set_name, fen, us, d.move, d.lemma, d.value, d.move[:4] == p["answer"][:4], RM.threat_token(fen, us, check=b.is_check()),
                              goal=d.goal, fixes=d.fixes, lemma=d.lemma)
         RM.store(rec, paths.derived(AGENDA_STORE))
+    for line in ag.leaf_obs:
+        log(f"OBS leaf {p['id']}: {line}")
     decided = d.what if d else "none"
     # a depth-two decision reads "Nxf6+ then Bxh7": it MATCHES the puzzle when its FIRST move is the answer (the second move is the plan's, not the puzzle's)
     verdict = "MATCH" if d and d.move[:4] == p["answer"][:4] and (len(d.move) < 5 or len(p["answer"]) < 5 or d.move[4] == p["answer"][4]) else "MISS"
     log(f"OBS agenda {p['id']}: questions asked {ag.asked}, killed by tempo {ag.killed_tempo}, claims {len(st.claims)}, decision {decided} by "
         f"{d.lemma if d else '-'}, answer {ans} {verdict}, their agendas {ag.their_runs}, seconds {secs}")
     return dict(id=p["id"], asked=ag.asked, tempo=ag.killed_tempo, claims=len(st.claims), decision=decided, match=verdict == "MATCH",
-                decided=d is not None, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs, theirs=ag.their_runs, until=ag.asked_at_claim, move=d.move if d else None)
+                decided=d is not None, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs, theirs=ag.their_runs, until=ag.asked_at_claim, move=d.move if d else None, leaf=ag.leaf_stats)
 
 
 def main():
@@ -75,6 +77,7 @@ def main():
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--store", action="store_true", help="write a record per decided puzzle (per-item checkpoint: stored ids are skipped)")
     ap.add_argument("--memory", action="store_true", help="recall stored states to order equal stakes (OFF by default: with 11 records it asked MORE questions on 5 of 60 fresh puzzles, 2026-10-17)")
+    ap.add_argument("--leaf-all", action="store_true", help="52.10: read the leaf of every reply of theirs, not only the minimising ones (slower)")
     ap.add_argument("--no-memory", action="store_true", help="(kept for the batch scripts) the stake-only order, the default")
     a = ap.parse_args()
     ps = PA.load_set(a.set)
@@ -82,9 +85,9 @@ def main():
         done = RM.stored_ids(paths.derived(AGENDA_STORE))
         ps = [p for p in ps if p["id"] not in done] if not a.id else ps
     if a.id:
-        analyse(next(x for x in ps if x["id"] == a.id), memory=a.memory and not a.no_memory, store=a.store, set_name=a.set)
+        analyse(next(x for x in ps if x["id"] == a.id), memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all)
         return
-    res = [analyse(p, quiet=True, memory=a.memory and not a.no_memory, store=a.store, set_name=a.set) for p in ps]
+    res = [analyse(p, quiet=True, memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all) for p in ps]
     if a.store:
         print(f"OBS agenda store: {len(RM.load(paths.derived(AGENDA_STORE)))} records")
     for r in res:
@@ -93,6 +96,8 @@ def main():
     kills = Counter(k for r in res for k in r["kills"])
     dec = [r["id"] for r in res if r["decided"]]
     gap = [r["id"] for r in res if not r["decided"]]
+    print(f"OBS leaf {a.set}: claims read at the leaf {sum(r['leaf']['read'] for r in res)}, downgraded {sum(r['leaf']['down'] for r in res)}, "
+          f"not trusted {sum(r['leaf']['untrusted'] for r in res)}")
     print(f"OBS agenda {a.set}: {len(res)} puzzles, decided {len(dec)} ({' '.join(dec)}), MATCH {sum(r['match'] for r in res)}, "
           f"not decided {len(gap)} ({' '.join(gap)}), questions asked {sum(r['asked'] for r in res)}, killed by tempo {sum(r['tempo'] for r in res)}, "
           f"killing reasons {dict(kills.most_common())}, their agendas {sum(r['theirs'] for r in res)}, seconds {round(sum(r['secs'] for r in res), 1)}")

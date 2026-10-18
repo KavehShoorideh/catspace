@@ -22,6 +22,7 @@ import re
 import chess
 
 from catspace.incubator.analyst import lean_passer_v2_proto as PV
+from catspace.incubator.analyst.discovery import base_vocabulary as BV
 from catspace.incubator.analyst.discovery import binder as BD
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
@@ -32,7 +33,7 @@ from catspace.incubator.analyst.discovery.state import Claim, State
 
 
 class Agenda:
-    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None):
+    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False):
         R.reset_ids()
         self.memory = memory or []                              # 52.9: [(sim, record)] recalled for this state; it only REORDERS equal stakes, never adds or removes
         self.asked_at_claim = 0                                 # questions asked when the deciding claim was set
@@ -56,6 +57,10 @@ class Agenda:
         self._hang: list = []
         self.threat_views: list = []                            # (claim, their agenda) for every threat root
         self._seq = 0
+        self.leaf_obs: list = []                                # 52.10: (our san, claimed, leaf line, their claim or None, w, verdict) per leaf read, for the OBS lines
+        self._leaf: dict = {}
+        self.leaf_all = leaf_all                                # 52.10: read the leaf of EVERY reply of theirs (4x the seconds on dev_20 / fresh_60, no claim downgraded more), not only the minimising ones
+        self.leaf_stats = dict(read=0, down=0, untrusted=0)       # claims read at the leaf / downgraded / not trusted (the decomposition missed the word)
         self._tv: dict = {}                                     # their view of a route, asked once (the verify and the smallest-loss decision share it)
         self._roots()
         for i, q in enumerate(self.all, 1):                      # numbered in the order they are asked
@@ -349,6 +354,14 @@ class Agenda:
                 else:
                     opp = R.opponent_defects(b, r.move, us)
                     self.lines.append(head + "; their view: no claim of theirs binds" + (f" (fallback label: {'; '.join(opp)})" if opp else ""))
+            if self.side_depth and bind.schema.startswith("delayed_balance") and bind.schema.endswith("_d1"):
+                ref = self._leaf_read(bind, r)
+                if ref is not None:
+                    gap = f"{r.san}: refuted at the leaf: their {ref['claim'].what} wins {ref['claim'].value} (lemma {ref['claim'].lemma}) after {ref['line']}"
+                    self.state.gaps.append(f"Q{q.id} {q.text}: {gap}")
+                    self.lines.append(f"  {r.san} DOWNGRADED to a gap: {gap}; our claimed gain {bind.value} is not decided by")
+                    why.append(f"{r.san}: {gap}")
+                    continue
             if theirs is not None and theirs.value >= q.stake and net <= 0:
                 why.append(f"{r.san}: their {theirs.what} wins {theirs.value} (lemma {theirs.lemma}) -- the future loses it")
                 self.lines.append(f"  {r.san} KILLED as a route: their {theirs.what} wins {theirs.value} (lemma {theirs.lemma}) -- the future gives them a claim of at least our stake {q.stake} and nets {net}")
@@ -379,6 +392,105 @@ class Agenda:
         if self.best is None or key > self.best[:2]:
             self.best = (net, -len(opp), claim)
             self.asked_at_claim = self.asked
+
+    def _leaf_read(self, bind: BD.Binding, r: R.Route) -> dict | None:
+        """52.10: THE LEAF READ BY THEIR AGENDA. A balance claim of ours (d1: our move x->y; the least over their replies of the most over our moves of the
+        least over their replies of the balance) is followed to its leaves, the argmin / argmax recomputed over python-chess legal moves by reading the SAME tail
+        terms of the vocabulary on each child (`SM.tail_body`; `least` over theirs, `most` over ours, as the word is defined), and THEIR agenda (side_depth 0)
+        is run at the leaf (their turn). A leaf is REFUTED when their best claim there, w, is at least the gain we have AT the leaf before their move (the balance there less B, the
+        balance now): their claim is measured from the leaf, while the word's number V already holds their best one-move reply, so comparing w with the claimed
+        gain V - B would count their recapture twice (it killed 000Sa's Bxc2 at the queen trade: reported). The claim is refuted WITHIN ONE VIEW when
+        a reply leaves every maximising move of ours refuted -> {claim, line} (evidence of a refutation, not a guarantee). Else None.
+        The replies read are the MINIMISING ones (the spec); with `leaf_all` every reply, the minimising first (a claim "whatever they reply" is false if it fails
+        after any reply; 0UqOv's trapped queen, fxe6 Qxa8 Qc7, is not on the minimising line -- but their agenda finds nothing there either). Ties:
+        our `most` is an existence (one maximising move whose leaf they do not refute keeps the reply). Memoised per route."""
+        key = r.move
+        if key in self._leaf:
+            return self._leaf[key]
+        self._leaf[key] = None
+        self.leaf_stats['read'] += 1
+        fam = BD.schema(bind.schema).family
+        if fam != "delayed_balance":
+            return None
+        b, us, x, y = self.board, self.us, bind.assignment["x"], bind.assignment["y"]
+        mv = chess.Move.from_uci(x + y)
+        body = SM.tail_body(us, fam, "1000")                              # (least (most (least (min balance alive)))): the first least is over their replies
+        inner1, inner2 = body[1], body[1][1]                              # (most (least ..)) after their reply; (least (min ..)) after our move
+        t_root = SM.val_at(b.fen(), SM.delayed_tail([(x, y)], us, fam, "1000"), us)
+        c1 = b.copy(stack=False)
+        c1.push(mv)
+        reps = list(c1.legal_moves)
+        if not reps:
+            return None
+        fens = []
+        for rep in reps:
+            d = c1.copy(stack=False)
+            d.push(rep)
+            fens.append(d.fen())
+        v1 = SM.evaluate([inner1], [dict(fen=f, mover=us) for f in fens])[BV.sexpr(inner1)]
+        lo = min(v1)
+        if lo != t_root:                                                   # the decomposition must read what the word reads, else the leaf is not trusted
+            self.lines.append(f"  leaf read of {r.san}: the argmin decomposition reads {lo}, the word reads {t_root}: not trusted, claim kept")
+            self.leaf_stats['untrusted'] += 1
+            return None
+        base = lo - bind.value                                             # B: the balance now, in the word's units
+        san_x = b.san(mv)
+        order = sorted((i for i in range(len(reps)) if self.leaf_all or v1[i] == lo), key=lambda i: (v1[i], i))
+        refuted, shown = None, None
+        for i in order:
+            rep, v = reps[i], v1[i]
+            d = c1.copy(stack=False)
+            san_r = c1.san(rep)
+            d.push(rep)
+            # the word reads from the side to move at the position it is given (balance = the mover's material less the other's), so a position after OUR move
+            # is read from the position before it, with `after x y`, exactly as the tail is built (castling and promotions have no `after`: left out, and a top
+            # that then misses the word's is reported, never trusted)
+            leaves = []
+            for m in list(d.legal_moves):
+                if m.promotion or d.is_castling(m):
+                    continue
+                e = d.copy(stack=False)
+                e.push(m)
+                leaves.append((m, e))
+            terms = [("after", chess.square_name(m.from_square), chess.square_name(m.to_square), inner2) for m, _ in leaves]
+            vals = SM.evaluate(terms, [dict(fen=d.fen(), mover=us)]) if terms else {}
+            v2 = [vals[BV.sexpr(t)][0] for t in terms]
+            top = max(v2) if v2 else None
+            if top != v:
+                self.lines.append(f"  leaf read of {r.san}: after {san_r} the argmax decomposition reads {top}, the word reads {v}: not trusted, claim kept")
+                self.leaf_stats['untrusted'] += 1
+                return None
+            tied = [(m, e) for (m, e), w in zip(leaves, v2) if w == top]
+            tied.sort(key=lambda t: (not d.is_capture(t[0]), not d.gives_check(t[0]), t[0].uci()))          # the natural moves first; the order never changes the verdict
+            bterms = [("after", chess.square_name(m.from_square), chess.square_name(m.to_square), "balance") for m, _ in tied]
+            bvals = SM.evaluate(bterms, [dict(fen=d.fen(), mover=us)]) if bterms else {}
+            gains = [bvals[BV.sexpr(t)][0] - base for t in bterms]         # our gain AT the leaf, before their move: their claim is measured from here
+            first_ref, held = None, None
+            for (m, e), gain_here in zip(tied, gains):
+                line = f"{san_x} {san_r} {d.san(m)}"
+                theirs = None
+                if any(True for _ in e.legal_moves):
+                    ag = self._their_agenda(e)
+                    theirs = max(ag.state.claims, key=lambda cl: cl.value) if ag.state.claims else None
+                if theirs is not None and theirs.value >= gain_here:
+                    first_ref = first_ref or dict(claim=theirs, line=line, w=theirs.value, gain=gain_here)
+                    continue
+                held = (line, theirs)
+                break
+            if held is None and first_ref is not None:
+                refuted = first_ref                                        # every maximising move of ours is refuted after THIS reply
+                break
+            if shown is None:
+                shown = held
+        if refuted is not None:
+            c = refuted["claim"]
+            self.leaf_obs.append(f"our {san_x} claimed {bind.value}; at the leaf {refuted['line']} (our gain there {refuted['gain']}) their {c.what} {c.value} (lemma {c.lemma}) -> downgraded")
+        elif shown is not None:
+            line, theirs = shown
+            self.leaf_obs.append(f"our {san_x} claimed {bind.value}; at the leaf {line} (the minimising reply) " + (f"their {theirs.what} {theirs.value} (lemma {theirs.lemma})" if theirs else "no claim of theirs") + " -> kept")
+        self.leaf_stats['down'] += 1 if refuted is not None else 0
+        self._leaf[key] = refuted
+        return refuted
 
     def _decide_by_smallest_loss(self, q: R.Question) -> bool:
         """52.8: a `save` root whose parries bind no gain DECIDES the parry after which they have the least: net = our bound value (0 when nothing binds) less
