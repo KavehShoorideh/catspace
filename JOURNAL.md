@@ -31518,3 +31518,14 @@ king reply saves it" = the DELAY operator twice = the proved depth-two delayed s
 the king's moves. Plan 52.5 (GO): the d2 schemas into the binder on checking routes, the deep tail out. Also from him today: promotions and
 castling as mate roots, the cheaper piece first among equal defects (e3b47d92); "a check toward what?" -- forcing is a route toward a goal
 with no free tempo, which the agenda already defines. Then: "continue auto on this line until tomorrow."
+
+## 2026-10-17 22:34 PDT — QC4+ BY THE LEMMA THAT EXPLAINS IT (plan 52.5)
+
+Kaveh: "Qc4+ -- why does it need a lemma? it's simple reasoning." Because the simple reasoning has conditions (no king reply guards the piece:
+Qa4+ fails to Kd3; the piece cannot interpose out of the attack; no counter-check; the exchange after is sound), and the lemma is that reasoning
+with its conditions written and proved once -- the DELAY operator applied twice, the depth-two delayed schema found by the loop on Thursday.
+Its legs (a second named move legal under every reply) hold after a CHECK because the reply set is the king's moves. Built (6805a352): the d2
+schemas in the binder on checking routes, second move = a capture legal after every reply; the deep tail out of the binder (theorem kept).
+000Sa now: `their view: their Qc4+ then Qxe4 wins 3 (their claim, lemma delayed_balance_alive_d2; ... every reply: 3 replies) -> net -1`;
+Qa4+ at d2 `reads 53 against 60 now: no gain` (Kd3 guards e4) -- the Thursday correction, now read by the schema. dev_20 `decided 9, MATCH 9,
+their agendas 22, seconds 24.4`; 13 tests. Next (plan 52.6, autonomous): the promotion goal for both sides.
