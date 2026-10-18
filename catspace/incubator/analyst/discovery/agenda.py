@@ -569,6 +569,14 @@ class Agenda:
             parts.append(f"{b.san(r)} {mv}")
         return f"{bind.san} " + " / ".join(parts)
 
+    @staticmethod
+    def _mates(c: chess.Board, mv: chess.Move) -> bool:
+        c.push(mv)
+        try:
+            return c.is_checkmate()
+        finally:
+            c.pop()
+
     def _escape_note(self, r: R.Route, tried: list) -> str:
         """Why a mate route did not bind: the replies after which we have no mate in one."""
         b = self.board.copy(stack=False)
@@ -577,8 +585,11 @@ class Agenda:
         for rep in list(b.legal_moves):
             c = b.copy(stack=False)
             c.push(rep)
-            if not SM.bind_mate(c.fen(), self.us):
-                esc.append(b.san(rep))
+            if any(self._mates(c, mv) for mv in c.legal_moves):         # 52.11: mate in one is a rules fact
+                continue
+            if self.side_depth and SM.bind_mate(c.fen(), self.us):      # confirm a hit by the binder only in our agenda (their agenda / the leaf read never print the note)
+                continue
+            esc.append(b.san(rep))
         notes = [f"{n}: {note}" for n, v, note in tried if note and v is None]
         return f"{r.san} fails" + (f" ({'; '.join(notes)})" if notes else "") + (f", no mate in one after {', '.join(esc[:4])}" if esc and 0 < len(esc) <= 40 else "")
 
