@@ -348,6 +348,9 @@ class Agenda:
         their agenda (side_depth 0: no view of the view)."""
         if not self.side_depth or q.goal != "save":
             return False
+        if not self.board.is_check():                      # ONLY in check (2026-10-17 audit): elsewhere "no claim of theirs binds" means UNKNOWN, not 0 -- 10 of 11
+            self.lines.append("    nothing gains and we are not in check: no decision by the smallest loss (their silence is unknown, not zero)")
+            return False                                   # such decisions were materially wrong by Stockfish (06J6T Bf3, 07Z0P a4, 0DoFB c5 ...); in check we must move
         b, us = self.board, self.us
         seen, routes = set(), []
         for f in q.fixes:
