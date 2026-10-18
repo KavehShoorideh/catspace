@@ -31600,3 +31600,35 @@ wrote: the balance family claims a gain the position does not sustain, which the
 
 Night's tally (one run each): the stream (puzzle_apply) 13 of 20 on dev_20 and 36 of 60 on fresh_60; the agenda 11 decided / 11 MATCH on dev_20
 and 42 decided / 38 MATCH on fresh_60, with every decision carrying its question tree, its lemma and the opponent's view.
+
+## 2026-10-18 11:27 PDT -- A FIX MUST DO WHAT IT SAYS; THE SECONDS WERE A DIAGNOSTIC STRING (plan 52.11)
+
+Kaveh drew a random fresh_60 puzzle (00ct0, Black to move, answer Rxf4) and read the trace. Two findings, both his:
+
+1. Q1 "mate on h5" listed `cover the flight g1: quiet fixes (Bh3)`. The e6 bishop is light-squared and g1 is dark: Bh3 can never cover g1, and it
+   blocks our own check from h5. `regress._still` tested only "is the named defect's key absent after the move" -- a proxy: after Bh3 the
+   counterfactual's defects collapse to `no check`, so `flight g1` is absent. Fixed (87359f13): a fix is a move that does what the fix names
+   (cover: a piece of ours attacks the flight square; guard: another piece attacks the checker's square; remove: the blocker has left) AND
+   introduces no new defect (every defect after is a defect before, less the fixed one; `no check` never allowed). 00ct0 now reads
+   `flight g1: no fix at all`. Decisions on dev_20 and fresh_60 unchanged (the builder diffed every per-puzzle OBS line).
+2. "Why 17 seconds? all of this should be in Rust." Profiled: 24 of 28.6 profiled seconds were `agenda._escape_note`, the trace note "no mate in
+   one after ..." for every failed mate route, asked by binding the full mate schema after every reply (5,030 bind_mate, 197k premise_truth
+   calls), 16 s of it Python rendering the premise text before each Rust call; Rust itself 2.4 s; most calls inside their agenda and the leaf
+   read, where the note is never printed. Fixed: mate in one by the rules (8d92f987), the premise text memoized (93bacdd3), the reply walk only in
+   our agenda and no binder confirmation (the mirror is a test) (this commit).
+
+OBS (one run each, this machine, nothing else running):
+  OBS agenda 00ct0: ... decision Rxf4 by delayed_balance_alive_d1, answer Rxf4 MATCH, their agendas 6, seconds 10.6  -> seconds 0.4
+  OBS agenda dev_20: decided 11, MATCH 11, ... seconds 38.7 -> 2.9
+  OBS agenda fresh_60_threats_event: decided 42, MATCH 38, ... seconds 86.6 (beside another run) -> 5.9
+Counter shifts without a decision change: killed by tempo 55 -> 56 on dev_20; 0NGdn asks 17 questions before its claim instead of 14 and one of
+its leaf claims (Qa1+) is downgraded by their Nh8+. Tests 81 passed, 1 xfailed (the suite grew with the builder's two tests for `_still` and for the
+rules-vs-binder reading of mate in one).
+
+The honest part of the 00ct0 trace, also on Kaveh's page: Rxf4 and Qxf4 both bind at value 2; Stockfish d18 reads Rxf4 +410 and Qxf4 -30 for
+Black (OBS SF lines). We chose Rxf4 because the cheaper taker is verified first, not by a reason. The missing question is the battery one: after the
+capture, what does the queen still aim at (h2), and does the rook join (Rh4+).
+
+Kaveh's idea in the same hour (not a go): a PROPOSER of counterfactuals (place / remove / attack, layer 1 verbs) ordered by a prior learned from which
+counterfactuals led to claims; the rules check each exactly. Log outcomes first, learn later (memory ordering at 11 records was noise). Plan 53 to
+be written for review.
