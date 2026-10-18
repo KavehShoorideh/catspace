@@ -2004,3 +2004,18 @@ Acceptance: (1) 000Sa: Kxc2 is demoted by THEIR CLAIM (bound schema), not by the
 piece of ours is NOT hanging now but falls to a forcing sequence gets a save-root from their agenda (find one; print it). (3) tests: their agenda
 on the 000Sa position after Kxc2 claims the bishop; on the position after Bxc2 claims nothing; the pass-threat on a quiet position with a
 two-move threat finds it. (4) dev_20 batch OBS line; report decided/MATCH and seconds against the previous 9 / 15 s. No AI trailers; commits per piece.
+
+### 52.5 Their claims by the lemma that explains them: the depth-two delayed schema in the binder, the deep tail out (Kaveh 2026-10-17, GO)
+Qc4+ on 000Sa is "check and attack the loose bishop; no king reply saves it" = the DELAY operator applied twice (plan 44): our named first move,
+every reply quantified, our named second move (the capture), the exchange reading -- the proved depth-2 delayed schemas (`delayed_root_d2`,
+`delayed_root_max_d2`, `delayed_balance_d2`, whichever exist in Schemas.lean; check `proved_schemas()`). Their weakness (a second named move is
+illegal under many replies) vanishes after a CHECK: the reply set is the king's moves. So:
+- binder.py: add the depth-2 delayed schemas to SCHEMAS, asked only on routes that are CHECKS (legs can hold) with the second move = each capture
+  / threat execution available after the check (use puzzle_apply.depth2_candidates's shape or generate: first move the route, second move every
+  capture of ours that is legal after EVERY reply); value = T − B as for d1; the binding names both moves in its line (`Qc4+ then Qxe4`).
+- Their agenda (side_depth = 0) tries: mate, mate2, d1 families, d2 families on checks. The deep tail is REMOVED from the binder (keep the theorem).
+- Our agenda gets the same d2 schemas on checking routes (it is the same binder); report if any dev_20 decision changes.
+Acceptance: (1) 000Sa: `verify Kxc2 ... their view: their Qc4+ then Qxe4 wins 3 (lemma delayed_*_d2)`, printed verbatim; Qa4+ does NOT bind at d2
+(Kd3 guards e4) -- print its note. (2) tests: Black's agenda after Kxc2 claims the bishop by a d2 lemma; after Bxc2 claims nothing; Qa4+ fails.
+(3) dev_20 OBS line (previous: decided 9, MATCH 9, their agendas 22, seconds 22.6). No AI trailers; commits per piece; Lean untouched unless a d2
+schema is missing (then say so and stop).
