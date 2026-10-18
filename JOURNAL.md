@@ -31632,3 +31632,28 @@ capture, what does the queen still aim at (h2), and does the rook join (Rh4+).
 Kaveh's idea in the same hour (not a go): a PROPOSER of counterfactuals (place / remove / attack, layer 1 verbs) ordered by a prior learned from which
 counterfactuals led to claims; the rules check each exactly. Log outcomes first, learn later (memory ordering at 11 records was noise). Plan 53 to
 be written for review.
+
+## 2026-10-18 13:53 PDT -- THE CHASE: THE WHOLE AGENDA AFTER EVERY FORCED REPLY (plan 52.12)
+
+Fifteen fresh_60 puzzles read by hand this morning (after 52.11): no false claim; the misses shared one gap -- the fix exists only after THEIR forced
+reply (Rf1+ Kh2 Bf4+; Bxh2+ Kf2 Qxf6+; Qxf2+ Kh1 Qf1+ Rxf1 Rxf1#; Qxe5 Rxe5 Rxb1). Kaveh's reframing: mate is the trap of the king; one trap
+question for every piece; the CHASE does not stop at the first check; after every forced reply ask the WHOLE agenda again (the king's forced path
+may open a skewer); cache answers by the relations a question read; a check that also attacks a piece is a FORK ("two threats, one move"), not a trap.
+Built by the builder (1c8ad7aa trap vs fork + Lean `forkOf` + glossary, 9ebef4f6 chase, cdedbeca read sets, 1759005a budget, b8caa5e0 reach,
+b5566831 tests); verified here: no trailers, 86 passed 1 xfailed, traces rerun.
+
+OBS (one run each, this machine):
+  OBS agenda dev_20: decided 11, MATCH 11 (same eleven), seconds 2.9 -> 27.2
+  OBS agenda fresh_60_threats_event: decided 42 MATCH 38 -> decided 47 MATCH 44, not decided 13, seconds 5.9 -> 65.0
+  New decisions, all right by Stockfish d18 (OBS SF lines in the builder's sf_fresh.txt): 01w7J Bxh2+ (+423), 08pSj Rf1+ (+558), 0QROX Nxg6+ (mate),
+  0Wih8 Ng5+ (mate), 0VSUT Qxe5 (+424); 0RhU6 Qxf2+ (mate) replaces the wrong Qxa5. A false claim appeared and was removed during the build
+  (0AgL8 Nxg2, SF mate in 4 against us): a reply's gain that stood only as a static balance is now checked by their agenda; that check also dropped
+  a right decision (0A2th Rxe5+).
+  The trace reads as the analysis: "Q1 mate on f2: flight h1, no forcing fix; chase: Qxf2+; after Kh1: Qf1+ (Qf1+ Rxf1 Rxf1#) -> 100".
+  0DoFB (Qd5, the battery threat Qxg2#) is NOT decided: the reach root "mate on g2 in 2 via d5" exists and Qd5 reads as a threat of mate, but
+  the inner agendas hit the budget (OBS: budget hits 894) -- a GAP line, not a kill.
+Open after this slice: (1) the budget is now the binding constraint (08pSj: budget left -87; quiet "threat 9" routes Rc6/Rd5/Rd2 are followed
+although the queen simply takes the rook -- `forcing_why` should not call a hanging piece a threat); (2) time 10x; (3) inheritance covers kills
+only (claims re-read their tails); (4) the composed chase theorem (step_after + step_least over inner claims) is a TODO in Schemas.lean.
+Kaveh's thinking in the same session, not built: a lemma should leave CLAIMS, never a move; a TECHNIQUE is a lemma whose claim names a measure and
+its bound after the move (the king's box), applied repeatedly -- the KRR progress measure in Generated/Measures.lean has that shape, unproved.
