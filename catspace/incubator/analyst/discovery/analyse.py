@@ -49,9 +49,9 @@ def analyse(p: dict, quiet: bool = False, log=print) -> dict:
     decided = d.what if d else "none"
     verdict = "MATCH" if d and d.what == ans else "MISS"
     log(f"OBS agenda {p['id']}: questions asked {ag.asked}, killed by tempo {ag.killed_tempo}, claims {len(st.claims)}, decision {decided} by "
-        f"{d.lemma if d else '-'}, answer {ans} {verdict}, seconds {secs}")
+        f"{d.lemma if d else '-'}, answer {ans} {verdict}, their agendas {ag.their_runs}, seconds {secs}")
     return dict(id=p["id"], asked=ag.asked, tempo=ag.killed_tempo, claims=len(st.claims), decision=decided, match=verdict == "MATCH",
-                decided=d is not None, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs)
+                decided=d is not None, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs, theirs=ag.their_runs)
 
 
 def main():
@@ -70,7 +70,7 @@ def main():
     gap = [r["id"] for r in res if not r["decided"]]
     print(f"OBS agenda {a.set}: {len(res)} puzzles, decided {len(dec)} ({' '.join(dec)}), MATCH {sum(r['match'] for r in res)}, "
           f"not decided {len(gap)} ({' '.join(gap)}), questions asked {sum(r['asked'] for r in res)}, killed by tempo {sum(r['tempo'] for r in res)}, "
-          f"killing reasons {dict(kills.most_common())}, seconds {round(sum(r['secs'] for r in res), 1)}")
+          f"killing reasons {dict(kills.most_common())}, their agendas {sum(r['theirs'] for r in res)}, seconds {round(sum(r['secs'] for r in res), 1)}")
 
 
 if __name__ == "__main__":

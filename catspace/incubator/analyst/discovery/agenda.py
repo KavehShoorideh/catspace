@@ -6,6 +6,13 @@ by the generic binder over every reply (binder.py) and, if it binds, becomes a C
 STOP (principled, no cap): (a) the best claim's value is at least the stake of every open question (a mate ends it); (b) every question is closed; (c) the
 budget (questions asked <= our pieces x 8 squares around their king + our captures) is hit: the open questions become GAPS, never a guess.
 Among equal values the OPPONENT'S VIEW breaks the tie (a safe check of theirs that forks something of ours is a defect of that future). Memory is not used here.
+
+THE REGRESSION FROM THEIR SIDE (52.4). The same Agenda, run for the opponent (side_depth 0: it never runs ours on its routes), in two places:
+(a) THREATS: their agenda on the current board as if we passed (turn flipped, en passant cleared; not when we are in check): each claim they get is a THREAT and
+a `save` root of ours with the claim's value as stake; (b) DEFECTS OF OUR FUTURES: their agenda on the board after each of our routes (their turn, no pass): their
+best claim is subtracted from the route's bound value, and a route whose future gives them a claim at least our stake (and nets nothing) is killed with the reason.
+A claim of theirs is only what a proved schema binds from THEIR side. `opponent_defects` (regress.py) is kept only as a fallback label / tie-break when no
+claim of theirs binds.
 """
 from __future__ import annotations
 
@@ -23,8 +30,10 @@ from catspace.incubator.analyst.discovery.state import Claim, State
 
 
 class Agenda:
-    def __init__(self, state: State):
+    def __init__(self, state: State, side_depth: int = 1):
         R.reset_ids()
+        self.side_depth = side_depth                            # 1: run THEIR agenda (see `their_view`); 0: do not (this is their agenda)
+        self.their_runs = 0                                     # how many of their agendas this one ran (all levels)
         self.state = state
         self.board = chess.Board(state.fen)
         self.me = self.board.turn
@@ -39,6 +48,9 @@ class Agenda:
         self.budget = sum(1 for s in chess.SQUARES if self.board.piece_at(s) and self.board.piece_at(s).color == self.me) * 8 \
             + sum(1 for m in self.board.legal_moves if self.board.is_capture(m))
         self.notes: list = []
+        self._threats_done = not side_depth
+        self._hang: list = []
+        self.threat_views: list = []                            # (claim, their agenda) for every threat root
         self._seq = 0
         self._roots()
         for i, q in enumerate(self.all, 1):                      # numbered in the order they are asked
@@ -96,15 +108,73 @@ class Agenda:
         if hang:
             big = max(hang, key=lambda s: (G.worth(b.piece_at(s)), -s))
             self._push(R.new_question("save", G.worth(b.piece_at(big)), dict(target=big), text=f"save our {b.piece_at(big).symbol().upper()} on {G.name(big)} (it hangs)"))
+        self._hang = hang                                        # the threat roots (52.4a) are asked for lazily: see ask()
         theirs = [s for s in chess.SQUARES if b.piece_at(s) and b.piece_at(s).color != me and b.piece_at(s).piece_type != chess.KING]
         for s in sorted(theirs, key=lambda s: (-G.worth(b.piece_at(s)), s)):
             self._push(R.new_question("win", G.worth(b.piece_at(s)), dict(target=s),
                                       text=f"win their {b.piece_at(s).symbol().upper()} on {G.name(s)} (worth {G.worth(b.piece_at(s))})"))
 
+    # ------------------------------------------------------------------------------------------------------------ their side (52.4)
+
+    def _their_agenda(self, board: chess.Board) -> "Agenda":
+        """Their agenda on `board` (their turn, as given), side_depth 0, asked to its end."""
+        saved = R._ids[0]
+        ag = Agenda(State(fen=board.fen(), us="w" if board.turn else "b", pieces=[]), side_depth=0)
+        ag.ask()
+        R._ids[0] = saved
+        self.their_runs += 1 + ag.their_runs
+        return ag
+
+    def their_view(self, route: chess.Move) -> tuple:
+        """Their agenda on the board after our route: -> (their best claim or None, the agenda or None). None, None when they have no move (mate / stalemate)."""
+        c = self.board.copy(stack=False)
+        c.push(route)
+        if not any(True for _ in c.legal_moves):
+            return None, None
+        ag = self._their_agenda(c)
+        best = max(ag.state.claims, key=lambda x: x.value) if ag.state.claims else None
+        return best, ag
+
+    def _threat_roots(self, hang: list) -> None:
+        """(a) Their agenda on the current board as if we passed: every claim of theirs is a threat and a save root of ours (stake = its value). Not when we
+        are in check (then there is nothing to pass). A claim that is just the capture of a piece that hangs now is the one-move case `hang` already roots."""
+        b = self.board
+        if b.is_check():
+            return
+        ag = self._their_agenda(G.with_turn(b, not self.me))
+        seen = set()
+        for cl in ag.state.claims:
+            m = chess.Move.from_uci(cl.move) if cl.move else None
+            if m is None or cl.move in seen or (m.to_square in hang and b.piece_at(m.to_square)):
+                continue
+            seen.add(cl.move)
+            tgt = self._targets_of(m, cl)
+            what = "our king" if cl.value >= BD.MATE_VALUE else (" and ".join(f"our {b.piece_at(t).symbol().upper()} on {G.name(t)}" for t in tgt) or "something of ours")
+            self._push(R.new_question("save", cl.value, dict(threat=cl.move, targets=tgt, value=cl.value, lemma=cl.lemma, line=cl.line, what=cl.what),
+                                      text=f"save {what}: their threat {cl.what} wins {cl.value} (their claim, lemma {cl.lemma})"))
+            self.threat_views.append((cl, ag))
+
+    def _targets_of(self, m: chess.Move, cl: Claim) -> list:
+        """Our pieces (not the king) that their threatening move newly attacks (the ones it would win); [] for a mate."""
+        if cl.value >= BD.MATE_VALUE:
+            return []
+        b = G.with_turn(self.board, not self.me)
+        if b.is_capture(m):                                      # a capture threatens the piece it takes
+            return [m.to_square]
+        before = set(b.attacks(m.from_square))
+        b.push(m)
+        out = [t for t in b.attacks(m.to_square) if t not in before and b.piece_at(t) and b.piece_at(t).color == self.me and b.piece_at(t).piece_type != chess.KING]
+        return sorted(out, key=lambda t: (-G.worth(b.piece_at(t)), t))
+
     # ------------------------------------------------------------------------------------------------------------ the loop
 
     def ask(self) -> None:
-        while self.heap:
+        while True:
+            if not self._threats_done and not (self.best and self.best[0] >= R.STAKE_MATE) and (not self.heap or self.heap[0][3].stake < R.STAKE_MATE):
+                self._threats_done = True                        # a mate of ours ends the game, so their threats are asked only once no mate root is left to ask
+                self._threat_roots(self._hang)
+            if not self.heap:
+                break
             nstake = self.heap[0][3].stake
             if self.best and self.best[0] >= nstake:
                 self.lines.append(f"STOP (a): the best claim ({self.best[2].what}, {self.best[0]}) is at least the stake of every open question (next: {nstake})")
@@ -127,6 +197,9 @@ class Agenda:
         head = f"Q{q.id} {q.text} (stake {q.stake})"
         if q.goal == "save" and "checkers" in q.pattern:
             self._ask_save_king(q, head)
+            return
+        if q.goal == "save" and "threat" in q.pattern:
+            self._ask_save_threat(q, head)
             return
         if q.goal == "save":
             self._ask_save_piece(q, head)
@@ -187,33 +260,51 @@ class Agenda:
             return
         hits, why = [], []
         for r in routes:
-            bind, tried = BD.verify_tried(r.move, b, us, mates_only)
+            bind, tried = BD.verify_tried(r.move, b, us, mates_only, deep=not self.side_depth)
             asked = self._asked(tried)
             if bind is None:
                 self.lines.append(f"  verify {r.san}: nothing binds ({asked})")
                 why.append(self._escape_note(r, tried))
                 continue
-            opp = R.opponent_defects(b, r.move, us)
-            self.lines.append(f"  verify {r.san}: binds {bind.schema} ({len(bind.replies)} replies{': ' + ' / '.join(bind.replies[:4]) if len(bind.replies) <= 4 else ''}),"
-                              f" value {bind.value}" + (f"; their view: {'; '.join(opp)}" if opp else "; their view: no safe fork"))
-            hits.append((bind, opp, r))
+            head = f"  verify {r.san}: binds {bind.schema} ({len(bind.replies)} replies{': ' + ' / '.join(bind.replies[:4]) if len(bind.replies) <= 4 else ''}), value {bind.value}"
+            opp, theirs, net = [], None, bind.value
+            if bind.value >= BD.MATE_VALUE or not self.side_depth:
+                self.lines.append(head + ("" if bind.value >= BD.MATE_VALUE else "; their view: not asked (this is their agenda)"))
+            else:
+                theirs, _ = self.their_view(r.move)
+                if theirs is not None:
+                    net = bind.value - theirs.value
+                    self.lines.append(head + f"; their view: their {theirs.what} wins {theirs.value} (their claim, lemma {theirs.lemma}; {theirs.line}) -> net {net}")
+                else:
+                    opp = R.opponent_defects(b, r.move, us)
+                    self.lines.append(head + "; their view: no claim of theirs binds" + (f" (fallback label: {'; '.join(opp)})" if opp else ""))
+            if theirs is not None and theirs.value >= q.stake and net <= 0:
+                why.append(f"{r.san}: their {theirs.what} wins {theirs.value} (lemma {theirs.lemma}) -- the future loses it")
+                self.lines.append(f"  {r.san} KILLED as a route: their {theirs.what} wins {theirs.value} (lemma {theirs.lemma}) -- the future gives them a claim of at least our stake {q.stake} and nets {net}")
+                continue
+            hits.append((bind, opp, r, net, theirs))
         if not hits:
             self._kill(q, f"verify: no route binds ({', '.join(r.san for r in routes[:6])}{' ...' if len(routes) > 6 else ''})"
-                       + ("; " + "; ".join(w for w in why if w and "no mate in one" in w)[:300] if mates_only else ""), tempo=False)
+                       + ("; " + "; ".join(w for w in why if w and "no mate in one" in w)[:300] if mates_only else "")
+                       + ("; " + "; ".join(w for w in why if "the future loses it" in w)[:300]), tempo=False)
             return
-        hits.sort(key=lambda h: (-h[0].value, len(h[1])))
-        bind, opp, r = hits[0]
-        for other, oopp, orr in hits[1:]:
-            if other.value == bind.value and len(oopp) > len(opp):
-                self.lines.append(f"  {orr.san} ties at {other.value} but its future has a defect of theirs ({'; '.join(oopp)}): {r.san} is preferred")
+        hits.sort(key=lambda h: (-h[3], len(h[1])))               # net value first; the heuristic label only breaks a tie where no claim of theirs bound
+        bind, opp, r, net, theirs = hits[0]
+        for other, oopp, orr, onet, otheirs in hits[1:]:
+            if onet == net:
+                if oopp or opp:
+                    if len(oopp) > len(opp):
+                        self.lines.append(f"  {orr.san} ties at net {onet} but no claim of theirs binds and its future has a defect of theirs (fallback label: {'; '.join(oopp)}): {r.san} is preferred")
+            elif otheirs is not None and net > onet:
+                self.lines.append(f"  {orr.san} demoted: bound value {other.value} less their {otheirs.what} ({otheirs.value}, lemma {otheirs.lemma}) = net {onet}, against {r.san} net {net}")
         kind = "mate" if bind.value >= BD.MATE_VALUE else ("save" if q.goal == "save" else "win")
-        claim = Claim(kind, bind.san, bind.value, bind.theorem, self._line_of(bind))
+        claim = Claim(kind, bind.san, bind.value, bind.theorem, self._line_of(bind), move=bind.assignment["x"] + bind.assignment["y"])
         self.state.claims.append(claim)
         q.status = "verified"
-        self.lines.append(f"  -> CLAIM {kind} {claim.what} (value {claim.value}), lemma {claim.lemma}, line {claim.line}")
-        key = (claim.value, -len(opp))
+        self.lines.append(f"  -> CLAIM {kind} {claim.what} (value {claim.value}{'' if net == claim.value else f', net {net} of their best claim'}), lemma {claim.lemma}, line {claim.line}")
+        key = (net, -len(opp))
         if self.best is None or key > self.best[:2]:
-            self.best = (claim.value, -len(opp), claim)
+            self.best = (net, -len(opp), claim)
 
     @staticmethod
     def _asked(tried: list) -> str:
@@ -297,6 +388,34 @@ class Agenda:
         self._verify(q, f.routes, mates_only=False)
         if len(self.state.claims) == before:
             self.state.gaps.append(f"Q{q.id} {q.text}: no parry binds a guaranteed gain (deciding by a parry that merely keeps the balance is not in this slice)")
+
+    def _ask_save_threat(self, q: R.Question, head: str) -> None:
+        """A root from THEIR agenda on the pass board: parries are our moves of the threatened pieces, checks, captures of the threatening piece, and moves that add
+        an attacker of a threatened piece (all legal moves for a mate threat); each is verified by the binder and viewed by their agenda on the board after it."""
+        b = self.board
+        p = q.pattern
+        m = chess.Move.from_uci(p["threat"])
+        q.defects = [R.Defect("threatened", m.to_square, [m.from_square], f"their {p['what']} wins {p['value']} if we pass")]
+        self.lines.append(head + f": defect threatened (their view: {p['what']} wins {p['value']}, lemma {p['lemma']}, {p['line']})")
+        tg = p["targets"]
+        parries = []
+        for mv in b.legal_moves:
+            if p["value"] >= BD.MATE_VALUE or mv.from_square in tg or b.gives_check(mv) or (b.is_capture(mv) and mv.to_square == m.from_square):
+                parries.append(mv)
+                continue
+            c = b.copy(stack=False)
+            c.push(mv)
+            if any(len(c.attackers(self.me, t)) > len(b.attackers(self.me, t)) for t in tg):
+                parries.append(mv)
+        f = R.new_question("remove", q.stake, dict(q.pattern), q, defect_key=q.defects[0].key(), text="parry the threat (move the target, check, take the threatener, add a guard)")
+        f.routes = [R.Route(mv, b.san(mv), "parry") for mv in parries]
+        self.asked += 1
+        self.lines.append(f"  -> Q{f.id} {f.text}: {len(f.routes)} moves")
+        q.fixes.append(f)
+        before = len(self.state.claims)
+        self._verify(q, f.routes, mates_only=False)
+        if len(self.state.claims) == before:
+            self.state.gaps.append(f"Q{q.id} {q.text}: no parry binds a guaranteed gain without a worse claim of theirs (deciding by a parry that merely keeps the balance is not in this slice)")
 
     # ------------------------------------------------------------------------------------------------------------ outputs
 
