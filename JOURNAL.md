@@ -31582,3 +31582,21 @@ with memory against 363 without; five puzzles differ, every one against memory (
 stake-1 pawn questions ahead of the decisive save root). Eleven records are noise, and a goal-kind match is too coarse a key. Memory ordering
 is OFF by default (8b79c072, `--memory` to recall); the store keeps growing for when the key is relations + claims, as Kaveh asked, and the set
 is hundreds, not eleven. Next (52.10): the trapped piece as the d2 schema on quiet moves, and the leaf of each balance claim read by their agenda.
+
+## 2026-10-17 23:58 PDT — THE TRAPPED PIECE AND THE LEAF READ (plan 52.10); NIGHT'S CLOSE
+
+Built (21fae4b7, 62ed2b19): a `win` question for a piece that can run gets the fix `take its squares` (our moves after which its `mobility` is 0),
+and the depth-two schemas are tried on such quiet routes (binding `Bb5 then Bxc6 (the knight has no safe square)` on a constructed position);
+every balance claim of ours is followed to its leaf (argmin over their replies, argmax over ours, recomputed by reading the same tail terms;
+checked against the word's number: 0 mismatches) and their agenda runs there; a claim of theirs at least our gain at the leaf downgrades ours to
+a gap. OBS: dev_20 `claims read at the leaf 6, downgraded 0`; fresh_60 `10, downgraded 0`; decisions identical before and after on both sets
+(dev_20 `decided 11, MATCH 11`; fresh_60 `decided 42, MATCH 38`); seconds 24 -> 39 and 60 -> 88.
+
+0UqOv is NOT closed, and the builder's Stockfish read corrects my journal entry of earlier tonight: Qd5 is −57 cp (answer exf7+ +350), and
+after fxe6 it is −85 cp -- the queen's trap does not lose material at depth 18; the claim "wins 1 within the window" is unverified rather than
+refuted by a material loss, and no lemma-based leaf read refutes it (the trapped queen keeps legal but unsafe moves, so the named capture is not
+legal under every reply and d2 cannot bind). Marked xfail(strict) with that reason. The gravest finding of the night is therefore softer than I
+wrote: the balance family claims a gain the position does not sustain, which the "within the window" label now says on every such claim.
+
+Night's tally (one run each): the stream (puzzle_apply) 13 of 20 on dev_20 and 36 of 60 on fresh_60; the agenda 11 decided / 11 MATCH on dev_20
+and 42 decided / 38 MATCH on fresh_60, with every decision carrying its question tree, its lemma and the opponent's view.
