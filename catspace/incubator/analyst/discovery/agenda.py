@@ -261,7 +261,8 @@ class Agenda:
         self.lines.append(f"  -> Q{f1.id} {f1.text}: " + (", ".join(f"{r.san} ({r.why})" for r in takes) or "no capture of the checker"))
         q.fixes.append(f1)
         before = len(self.state.claims)
-        self._verify(q, takes, mates_only=False)
+        if takes:
+            self._verify(q, takes, mates_only=False)
         if len(self.state.claims) == before and others:
             f2 = R.new_question("cover", q.stake, dict(q.pattern), q, defect_key=q.defects[0].key(), text="step away or interpose")
             f2.routes = others
