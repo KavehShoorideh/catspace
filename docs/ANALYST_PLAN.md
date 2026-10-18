@@ -1984,3 +1984,23 @@ Budget: one principled budget only (questions asked ≤ the number of our pieces
    most common killing reason.
 No AI trailers (no Co-Authored-By / Claude-Session lines); one commit per module; numbers only from OBS lines; timestamps from `date`; never a
 relative data path; python-chess for counterfactual boards is fine (the rules), the GUARANTEE always comes from a proved schema's binding.
+
+### 52.4 The regression from THEIR side (Kaveh 2026-10-17, GO; second slice)
+"We have to do the regression from their side." The same Agenda, run for the opponent, in two places:
+- THREATS AGAINST US = their agenda on the CURRENT board as if we passed (turn flipped, en passant cleared; not when we are in check): each
+  claim they get (a mate; a material gain bound by a schema from their side) is a THREAT with the claim's value, and each becomes a root of OUR
+  agenda: `save our B on e4: their threat Qc4+ then Qxe4 wins 3 (their claim, lemma delayed_balance_d1)` with stake = the threat's value (mate
+  threats stake 100). The `hanging_of_ours` save-root stays as the degenerate one-move case. The stream prints their agenda's claims as
+  `their view:` lines under the root.
+- DEFECTS OF OUR FUTURES = their agenda on the board after each of our ROUTES (their turn, no pass): their claims are defects of that future;
+  a route's VALUE = our bound value minus their best claim's value; a route whose future gives them a claim ≥ our stake is killed with the
+  reason (`Kxc2: their Qc4+ then Qxe4 wins 3 (lemma delayed_balance_d1) -- the future loses the bishop`). This REPLACES the `opponent_defects`
+  heuristic: ties and preferences are now read from bound schemas. Keep `opponent_defects` only as a fallback label when their agenda finds
+  nothing (say "no claim of theirs binds").
+- DEPTH: their agenda runs with `side_depth = 0` (it does not run our agenda on its routes); one level of the opponent's view, principled by the
+  tempo arithmetic, not a count. Mate roots + win roots + their save root; the same budget rule (hit = gap, printed).
+- COST: print per puzzle the seconds and the number of their agendas run; if a puzzle exceeds ~60 s say so (no caps; the plan decides later).
+Acceptance: (1) 000Sa: Kxc2 is demoted by THEIR CLAIM (bound schema), not by the fork heuristic; trace printed. (2) a puzzle in dev_20 where a
+piece of ours is NOT hanging now but falls to a forcing sequence gets a save-root from their agenda (find one; print it). (3) tests: their agenda
+on the 000Sa position after Kxc2 claims the bishop; on the position after Bxc2 claims nothing; the pass-threat on a quiet position with a
+two-move threat finds it. (4) dev_20 batch OBS line; report decided/MATCH and seconds against the previous 9 / 15 s. No AI trailers; commits per piece.
