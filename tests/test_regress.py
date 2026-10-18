@@ -302,3 +302,29 @@ def test_0uqov_qd5_is_not_decided():
     ag.ask()
     d = ag.decision()
     assert d is None or d.what != "Qd5"
+
+
+CT0 = "4rrk1/pp4pp/2p1b3/4q3/4BB2/1PPQ4/P4PP1/R4R1K b - - 0 22"
+
+
+def test_52_11_a_move_that_blocks_our_own_check_or_does_not_cover_is_not_a_fix():
+    b = chess.Board(CT0)
+    root = R.new_question("mate", 100, dict(sym="q", at=chess.H5, frm=chess.E5, move="e5h5"))
+    flight = [d for d in R.mate_defects(b, "b", R.placement_of(root)) if d.kind == "flight"][0]
+    assert flight.sq == chess.G1
+    c = R.new_question("cover", 100, dict(root.pattern, target=chess.G1), root, defect_key=flight.key())
+    bh3 = chess.Move.from_uci("e6h3")
+    assert R._still(c, b, "b", bh3, root)                         # the flight key vanishes (no check), but nothing covers g1: not a fix
+    assert not R.routes_of(c, b, "b", root) and "Bh3" not in [s for s in c.unforced]
+
+
+def test_52_11_escape_note_by_the_rules_equals_the_binder_reading():
+    from catspace.incubator.analyst.discovery import selfmine as SM
+    for fen, us in ((CT0, "b"), (IFU, "b")):
+        b = chess.Board(fen)
+        for m in list(b.legal_moves)[:12]:
+            c = b.copy(stack=False); c.push(m)
+            for rep in list(c.legal_moves)[:12]:
+                d = c.copy(stack=False); d.push(rep)
+                rules = any(AG.Agenda._mates(d, mv) for mv in d.legal_moves)
+                assert rules == bool(SM.bind_mate(d.fen(), us))
