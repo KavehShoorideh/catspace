@@ -31562,3 +31562,13 @@ worse move in 10 of its 11 new decisions (06J6T Bf3 −457 against Rxe5 +723; 07
 "no claim of theirs binds" as a loss of 0; their agenda's silence is UNKNOWN, not zero (the principled-limits rule). Only the in-check case
 (052Wm Kf8, the forced evasion) was right. Restricted to in-check roots (216f7aa8). After: dev_20 `decided 11, MATCH 11`; fresh_60 `decided 42,
 MATCH 38` (the four: the two weaker wins, 0UqOv pending the guard, 0PBkh an in-check tie broken by shape toward Kd3 where Kxf5 wins).
+
+## 2026-10-17 23:10 PDT — THE ONE-LEAF GUARD CANNOT CLOSE THE HOLE
+
+Tried the obvious remedy for 0UqOv: a balance claim stands only if the guarded family (`delayed_root_max`, the balance less the worth of our
+attacked pieces at the leaf) also reads a gain. The builder stopped as instructed: on 000Sa the guard kills Bxc2 too -- the bishop on c2 is
+attacked by the queen but defended by the king, and root_max subtracts attacked pieces whether defended or not (`reads 60 against 63`). And
+0UqOv's refutation (the queen trapped after Qxa8 Qc7) lies two plies beyond even an exchange read at the leaf. No one-leaf discriminator
+separates the two. The hole needs a lemma: the TRAPPED PIECE (a piece with no safe square -- `mobility` is the word -- that can be attacked next
+move is lost), read by their agenda at the leaf. Until then every `delayed_balance_*` claim is labelled in the trace as a gain WITHIN THE WINDOW
+(5a26b810). Patch kept in the scratchpad (transient_guard.diff), not applied.
