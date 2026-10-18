@@ -62,6 +62,7 @@ class Question:
     defect_key: tuple | None = None
     depth: int = 0
     text: str = ""
+    reads: frozenset | None = None            # 52.12: the squares whose occupancy or attack counts this question read (None: not recorded, never inherited)
 
 
 # ---------------------------------------------------------------------------------------------------------------- the placement (the pattern as a counterfactual)
@@ -418,6 +419,57 @@ def trap_fix(q: Question, defect: Defect, board: chess.Board, us: str | bool) ->
         f.routes = forks
         out.append(f)
     return out
+
+
+# ---------------------------------------------------------------------------------------------------------------- read sets (52.12)
+
+def reads_of(q: Question, board: chess.Board) -> frozenset:
+    """The squares whose occupancy or attack counts the question read on `board`: the placement squares, the target and its attackers / guards, the king and its
+    flight squares, the squares of the defects and of the pieces involved, the line between the checker and the king, the squares of the fixes' routes."""
+    p, out = q.pattern, set()
+    for _piece, at, frm in placement_of(q):
+        out.add(at)
+        if frm is not None:
+            out.add(frm)
+    for key in ("king", "target", "blocker", "xray", "pawn", "frm", "at"):
+        if p.get(key) is not None:
+            out.add(p[key])
+    for d in q.defects:
+        if d.sq is not None:
+            out.add(d.sq)
+        out.update(d.by)
+    if q.goal == "mate" and p.get("king") is not None:
+        k = p["king"]
+        out.update(chess.SquareSet(chess.BB_KING_ATTACKS[k]))
+        if p.get("at") is not None:
+            out.update(chess.SquareSet(chess.between(p["at"], k)))
+    if q.goal == "win" and p.get("target") is not None:
+        out.update(board.attackers(chess.WHITE, p["target"]))
+        out.update(board.attackers(chess.BLACK, p["target"]))
+    for r in all_routes(q):
+        out.add(r.move.from_square)
+        out.add(r.move.to_square)
+    return frozenset(out)
+
+
+def diff_squares(before: chess.Board, after: chess.Board) -> frozenset:
+    """The squares whose piece or whose attacker counts (either colour) differ between two boards: what a move and its reply changed."""
+    out = set()
+    for s in chess.SQUARES:
+        if (before.piece_at(s) != after.piece_at(s) or len(before.attackers(chess.WHITE, s)) != len(after.attackers(chess.WHITE, s))
+                or len(before.attackers(chess.BLACK, s)) != len(after.attackers(chess.BLACK, s))):
+            out.add(s)
+    return frozenset(out)
+
+
+def question_key(q: Question) -> tuple | None:
+    """What identifies a root question across positions (the same goal asked about the same squares)."""
+    p = q.pattern
+    if q.goal == "mate":
+        return ("mate", p.get("sym"), p.get("at"), p.get("frm"), p.get("king"), p.get("move"))
+    if q.goal == "win":
+        return ("win", p.get("target"))
+    return None
 
 
 def all_routes(q: Question) -> list:

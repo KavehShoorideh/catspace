@@ -54,8 +54,10 @@ class ChaseCtx:
 
 
 class Agenda:
-    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0):
+    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None):
         R.reset_ids()
+        self.inherit = inherit or {}                            # 52.12 (3): key -> (reads, diff, text) for the outer agenda's KILLED questions whose reads the move + reply did not touch
+        self.inherited = 0
         self.min_stake = min_stake                              # 52.12: an inner agenda asks only the roots whose stake can still rescue the route (a root below it is not pushed)
         self.chase_depth = chase_depth                          # 52.12: 0 for the root agenda, +1 per inner agenda of a chase
         self.ctx = ctx if ctx is not None else (ChaseCtx() if side_depth else None)       # their agendas (side_depth 0, no ctx) never chase
@@ -275,8 +277,42 @@ class Agenda:
             if plain[4] is not q:
                 sc, rec = self._recall_score(q)
                 self.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
+            if self._inherit(q):
+                continue
             self._ask(q)
         self.lines.append("STOP (b): every question is closed")
+
+    def _inherit(self, q: R.Question) -> bool:
+        """52.12 (3): the outer agenda's KILL of the same question stands when nothing the question read changed (the diff of the route and the reply does not meet its
+        reads): same status, one line, not asked again. A claim is never inherited (its tail reads more than the question did)."""
+        key = R.question_key(q)
+        hit = self.inherit.get(key) if key is not None else None
+        if hit is None:
+            if key is not None and self.inherit:
+                self.ctx.reopened += 1
+            return False
+        reads, diff, why = hit
+        if reads & diff:
+            self.ctx.reopened += 1
+            return False
+        b = self.board
+        sq = q.pattern.get("at") if q.goal == "mate" else q.pattern.get("target")
+        pc = b.piece_at(sq) if sq is not None else None
+        q.status, q.reason = "killed", "inherited: " + why
+        self.kills.append((q.id, q.reason))
+        self.inherited += 1
+        self.ctx.inherited += 1
+        self.lines.append(f"Q{q.id} {q.text}: inherited: nothing changed for the {pc.symbol().upper() if pc else 'piece'} on {G.name(sq) if sq is not None else '?'} ({why})")
+        return True
+
+    def _inherit_for(self, diff: frozenset) -> dict:
+        """What an inner agenda inherits from this one: the killed questions' keys with their reads and the diff."""
+        out = {}
+        for q in self.all:
+            key = R.question_key(q)
+            if key is not None and q.status == "killed" and q.reads is not None and not q.reason.startswith("inherited"):
+                out[key] = (q.reads, diff, q.reason.split(";")[0][:80])
+        return out
 
     def _count(self, q: R.Question) -> int:
         return 1 + sum(self._count(f) for f in q.fixes)
@@ -632,7 +668,7 @@ class Agenda:
 
     # ------------------------------------------------------------------------------------------------------------ the chase (52.12)
 
-    def _inner(self, fen: str, need: int) -> "dict | None":
+    def _inner(self, fen: str, need: int, after: chess.Board | None = None) -> "dict | None":
         """The WHOLE agenda asked again on `fen` (our move), only the roots of stake >= `need` (a smaller claim cannot rescue the route): -> {value, claim, asked, need};
         None when the shared budget is spent. Memoised by FEN (an answer asked with a smaller `need` serves a larger one); a FEN being asked (a cycle) answers no claim."""
         ctx = self.ctx
@@ -646,7 +682,8 @@ class Agenda:
         ctx.active.add(fen)
         ctx.left -= 1                                           # paid on entry: a chain of checks must meet the budget before it returns
         saved = R._ids[0]
-        ag = Agenda(State(fen=fen, us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=need)
+        inherit = self._inherit_for(R.diff_squares(self.board, after)) if after is not None and any(q.status == "killed" for q in self.all) else None
+        ag = Agenda(State(fen=fen, us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=need, inherit=inherit)
         ag.ask()
         R._ids[0] = saved
         ctx.active.discard(fen)
@@ -690,7 +727,7 @@ class Agenda:
                 res["killed"] = f"after {san_r} " + ("they mate us" if d.is_check() else "stalemate")
                 break
             need = 1 - dbal if dbal <= 0 else BD.MATE_VALUE          # a reply that already gains is read for a mate only (its value is then a lower bound)
-            inn = self._inner(d.fen(), need)
+            inn = self._inner(d.fen(), need, d)
             if inn is None:
                 res["gap"] = f"chase budget: {san} not followed past {san_r}"
                 ctx.budget_hits += 1
@@ -761,6 +798,8 @@ class Agenda:
 
     def _kill(self, q: R.Question, reason: str, tempo: bool) -> None:
         q.status, q.reason = "killed", reason
+        if q.reads is None and q.goal in ("mate", "win"):
+            q.reads = R.reads_of(q, self.board)
         self.killed_tempo += 1 if tempo else 0
         self.kills.append((q.id, reason))
         self.lines.append(f"  -> KILLED Q{q.id}: {reason}")
