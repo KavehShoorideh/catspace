@@ -31529,3 +31529,16 @@ schemas in the binder on checking routes, second move = a capture legal after ev
 000Sa now: `their view: their Qc4+ then Qxe4 wins 3 (their claim, lemma delayed_balance_alive_d2; ... every reply: 3 replies) -> net -1`;
 Qa4+ at d2 `reads 53 against 60 now: no gain` (Kd3 guards e4) -- the Thursday correction, now read by the schema. dev_20 `decided 9, MATCH 9,
 their agendas 22, seconds 24.4`; 13 tests. Next (plan 52.6, autonomous): the promotion goal for both sides.
+
+## 2026-10-17 22:44 PDT — THE PROMOTION GOAL: "WHO CAN STOP THIS?" (plan 52.6)
+
+Kaveh: a pawn two from promoting and my king two away is forcing -- a quick look sees it; the question is who can stop this. Built (e4120b9d,
+18a29a04): a `promote` root for each side's pawns with pushes ≤ 3; defects read with the words (`pushes`, `ahead`, `attackers`, `defenders`,
+`dist L (promo p)`): blocked, path attacked, promo square attacked, stopper in time; fixes as sub-questions; tempo arithmetic `stopped: their K
+on c7 reaches e8 in 2, the pawn needs 2`; the CLAIM only when the proved passer fires (`unstoppablePasser2_sound` through its Python mirror,
+value 8); when the defects say unstoppable and the lemma does not fire the question ends as a GAP naming the failing hypothesis
+(`noSliders: our B on b2 -- the next lemma to prove`). Their passer becomes our `stop their P` save root, with the note `forced: every move of
+ours is spent stopping the pawn (distance 3 = pushes 2 + 1)`. Builder's correction of my plan: we move first, so the king stops a pawn at
+distance ≤ pushes + 1 (the lemma's own `kingOutside`), not = pushes. Traces on constructed races verbatim in the builder's report; on the
+puzzle sets no `promote` claim fires (the bare-king form), decisions unchanged: dev_20 `decided 9, MATCH 9`; fresh_60 `decided 37 ... MATCH 31`
+-- six decisions that do not match the answer, to be bug-checked first thing (a wrong decision from a proved schema would be the gravest finding).
