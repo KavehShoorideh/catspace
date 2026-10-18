@@ -473,8 +473,14 @@ def best_bind(depth: int, fen: str, mover: str, candidates: list | None, family:
         with SM.using_mover(mover):
             tail = SM.delayed_tail(pairs, mover, family, "1000")
             prem = [SM.atom_of("balance", "<=", B), SM.atom_of(tail, ">=", 0)]
-        if not SM.premise_truth(prem, [dict(fen=fen, mover=mover)])[0]:
-            continue
+        # only the legality legs of the tail are checked here: `balance <= B` (B read on this very board) and `tail >= 0` (a Nat) are vacuous, and the second
+        # costs a full tail evaluation -- the tail is read once, below
+        legs = SM.with_legality(prem)[:-len(prem)]
+        if legs:
+            lterms = list({BV.sexpr(t): t for t, _, _ in legs}.values())
+            lvals = SM.evaluate(lterms, [dict(fen=fen, mover=mover)])
+            if not all((lvals[BV.sexpr(t)][0] >= v) if op == ">=" else (lvals[BV.sexpr(t)][0] <= v) for t, op, v in legs):
+                continue
         T = SM.val_at(fen, tail, mover)
         n += 1
         if T > B:                              # a gain: the schema's tail (C = T - 4, 13 for the weakened family) must read T as well -- our material alive at every leaf
