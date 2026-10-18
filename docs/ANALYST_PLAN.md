@@ -1918,3 +1918,69 @@ answer.
 No AI trailers; one commit per piece (ruler hook; reasoned.py + tests; stream + batch); numbers only from OBS lines; timestamps from `date`.
 A reasoned search that finds FEWER answers than the ruler is expected: report which and the reason that cut the answer -- that is the
 finding (the missing reason is the next lemma), not a failure to hide.
+
+## 52. THE CORE AND THE AGENDA: state, goal regression on questions, the generic binder as the verifier (Kaveh 2026-10-17, GO; built by a cheaper agent)
+
+### 52.1 The design (Kaveh's redraw, 2026-10-17 afternoon; restated and agreed in chat)
+- CORE. Layer 1 = rules + vocabulary + the board as a graph that answers attack / reach / COUNTERFACTUAL questions (place or remove a piece,
+  re-read). Layer 2 = the STATE: all of our reasoning about one position = relations in the order of attention (kings, then by value, ours
+  before theirs, pawns last), CLAIMS each backed by a proved lemma, and admitted GAPS. MEMORY = the store of states indexed by relations +
+  claims (remember.py is its seed). Two tracks on the core: INFERENCE and TRAINING.
+- INFERENCE = GOAL REGRESSION on an AGENDA of QUESTIONS, never a search of moves. Root questions are the goals in order of STAKE: mate their king
+  (stake 100), win their queen 9 / rook 5 / minor 3 / pawn 1, save ours (the biggest of ours that hangs). A question is a FUTURE STATE as a
+  partial pattern ("our queen on h2, their king on g1"), asked as a counterfactual of layer 1; its answer is a DEFECT LIST read from the rules
+  (for mate: checker can be taken / a flight exists / an interposition exists / no check; for material: defended k times, see ≤ 0). Each defect
+  GENERATES sub-questions (guard the square: who x-rays it, what blocks the x-ray; remove the blocker; cover or block the flight; lure the king).
+  TEMPO ARITHMETIC prunes: a future state with d defects needs d moves of ours; the opponent gets d−1 free replies unless each of our moves is
+  FORCING (a check, or a bigger threat); a question whose fixes cannot be made forcing dies WITH THAT REASON. A ROUTE = our move that supplies a
+  fix with a forcing constraint; it is VERIFIED by the quantified tail over every reply (the generic binder below). STOP: (a) the best answer's
+  stake beats every open question (a mate ends it); (b) tempo arithmetic leaves nothing open; (c) budget hit = a GAP, never a guess. Among equal
+  stakes memory orders (NOT in this slice).
+- THE GENERIC BINDER = the verifier. A schema is DATA: variables typed by legs, a premise over words, a tail, the Lean theorem's name. Binding:
+  legs GENERATE assignments (x over our piece squares, y over x's legal targets ...), atoms prune under one `after`, the tail is read last; a
+  surviving assignment is a binding whose guarantee is the theorem's conclusion; the Lean instance is the receipt. Memory never adds or removes
+  a binding.
+- TRAINING (not in this slice): a surprise = an observation contradicting a claim, or the evaluation moving where no claim was made; the record
+  = state+claims, window to the observable, actual line, failed claim or gap; propose, prove, append, rerun inference on the same state.
+
+### 52.2 The first slice (what to build now; nothing else)
+New modules in catspace/incubator/analyst/discovery/ (the old strata are NOT refactored; puzzle_apply/selfmine stay as they are):
+- `state.py`: `State` (dataclass: fen, us, pieces (the level-one rows as in puzzle_apply.state_lines, reuse that code by import), claims
+  (list of Claim(kind, what, value, lemma, line)), gaps (list of str)); `state_of(fen, us) -> State`; `State.tokens()` = remember.py's
+  signature tokens so one object serves the stream and the store.
+- `graph.py` (layer 1 questions over python-chess + the Rust words where they exist: `attackers`, `defenders`, `see`, `xray`, `without`,
+  `mobility`): `attackers_of(board, sq, colour)`, `flights(board, king_sq)`, `xrays_to(board, sq, colour) -> [(piece_sq, blockers)]`,
+  `with_piece(board, piece, at, removed_from=None) -> board` (the counterfactual placement), `without(board, sq) -> board`. Pure functions.
+- `regress.py`: `Question` (goal, stake, pattern (dict of placements), defects, fixes, parent, status, reason), `mate_defects(board, us,
+  placement) -> list[Defect]` read from the rules (check? takeable? flights? interpositions?), `material_defects(board, us, target_sq)`
+  (defenders, see), `fixes_of(defect) -> list[Question]` (guard / remove blocker / cover flight / lure, each as a sub-question), `tempo_ok(q)`
+  (d defects vs forcing fixes), `routes_of(q, board) -> list[Move]` (our moves supplying a fix with a forcing constraint: a check, or a capture
+  / threat worth ≥ the stake of the thing it leaves). Every Question carries `why` strings for the trace.
+- `binder.py`: `Schema(name, vars, legs, atoms, tail, need, theorem)`; `SCHEMAS` built from the existing proved families (mate_in_one,
+  mate_in_two, delayed_root_d1, delayed_root_max_d1, delayed_balance_d1 -- read their premises from selfmine's existing renderers rather than
+  retyping them); `bind(schema, board, us, candidates=None) -> list[Binding(assignment, value, theorem)]` with legs as generators, atoms
+  pruning, tail last (evaluated with the Rust `vocab_eval` the way best_bind does today); `verify(route, board, us) -> Binding | None` = try
+  the schemas from the smallest up, stop at a mate.
+- `agenda.py`: `Agenda(state)`: `questions` ordered by (−stake, depth), `ask()` loop: pop, compute defects, if none -> candidate routes ->
+  verify -> a Claim on the state (value, lemma, line) ; else generate sub-questions if tempo_ok else kill with reason; stop rules (a)(b)(c);
+  `trace()` = the agenda printed top to bottom: `Q3 mate on h2 (stake 100): defect checker takeable -> Q4 guard h2: Bd6 x-rays through e5 (our N)
+  -> Q5 remove e5 with tempo: Nf3+ (check) -> verify mate_in_two binds (3 replies) -> CLAIM mate, lemma mate_in_two, line Nf3+ ...`.
+- `analyse.py` CLI: `python -m catspace.incubator.analyst.discovery.analyse --set dev_20 --id 01IFU` prints the state (order of attention), the
+  agenda trace, the claims, the gaps, and one OBS line: `OBS agenda <id>: questions asked n, killed by tempo k, claims c, decision <san> by
+  <lemma>, answer <san> MATCH|MISS, seconds s`.
+Budget: one principled budget only (questions asked ≤ the number of our pieces × 8 squares around their king + our captures), hit = gap.
+
+### 52.3 Acceptance (in this order; Kaveh's rule: trace on 2-3 positions BEFORE any batch)
+1. 01IFU: the trace reads the battery analysis Kaveh gave in chat: mate on h2 asked (queen placement), ONE defect (checker takeable), the x-ray
+   from d6 through our own knight on e5 found, the tempo constraint (a knight CHECK), Nf3+ the one route, mate_in_two binds over Kh1 / Bxf3 /
+   gxf3, decision Nf3+ MATCH. Print the trace verbatim in the report.
+2. 000Sa (in check; answer Bxc2): the save-ours goal first (king in check), the two captures as routes, the material schema binds Bxc2, the
+   agenda says why Kxc2 is not chosen (their Qc4+ then Qxe4: the opponent's view as a defect of the Kxc2 future) -- if the slice cannot say
+   this yet, say so exactly.
+3. 06J6T (answer Rxe5): report what the agenda does, found or not, and the reason that stopped it.
+4. tests/test_regress.py: mate_defects on the 01IFU queen-on-h2 counterfactual returns exactly [checker takeable]; after `without e5` it returns
+   []; flights of the g1 king are [] ; tempo_ok false for a 2-defect pattern with no forcing fix; bind(mate_in_two) on 01IFU returns e5->f3 only.
+5. Then the dev_20 batch (one OBS line per puzzle + tally), ~minutes; report which puzzles the agenda decides, which it leaves as gaps, and the
+   most common killing reason.
+No AI trailers (no Co-Authored-By / Claude-Session lines); one commit per module; numbers only from OBS lines; timestamps from `date`; never a
+relative data path; python-chess for counterfactual boards is fine (the rules), the GUARANTEE always comes from a proved schema's binding.
