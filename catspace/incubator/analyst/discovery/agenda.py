@@ -284,13 +284,21 @@ class Agenda:
                 self._kill(q, q.reason, tempo=True)
                 return
             self.lines.append(f"  tempo: {len(q.defects)} defect(s), each has a forcing fix")
-            seen, routes = set(), []
-            for f in q.fixes:
-                for r in R.all_routes(f):
-                    if r.move not in seen:
-                        seen.add(r.move)
-                        routes.append(r)
+            routes = self._merge_routes(q)
         self._verify(q, routes, mates_only=q.goal == "mate")
+
+    @staticmethod
+    def _merge_routes(q: R.Question) -> list:
+        """The routes of a question's fixes, one per move; a move that is also a trap keeps the trap square (52.10: the binder may then read it at depth two)."""
+        by, routes = {}, []
+        for f in q.fixes:
+            for r in R.all_routes(f):
+                if r.move not in by:
+                    by[r.move] = r
+                    routes.append(r)
+                elif r.trap is not None and by[r.move].trap is None:
+                    by[r.move].trap = r.trap
+        return routes
 
     def _trace_fix(self, f: R.Question, lvl: int) -> None:
         pad = "  " * lvl
@@ -299,7 +307,7 @@ class Agenda:
             self.state.gaps.append(f"Q{f.id} {f.text}: {f.reason}")
         else:
             rs = ", ".join(f"{r.san} ({r.why})" for r in f.routes)
-            tail = f"forcing: {rs}" if rs else "no forcing move" + (f" (quiet fixes: {', '.join(f.unforced[:4])})" if f.unforced else "")
+            tail = f"{'routes' if f.text.startswith('take its squares') else 'forcing'}: {rs}" if rs else "no forcing move" + (f" (quiet fixes: {', '.join(f.unforced[:4])})" if f.unforced else "")
             self.lines.append(f"{pad}-> Q{f.id} {f.text}" + ("" if f.fixes and not f.routes else f": {tail}"))
         for w in f.why:
             self.lines.append(f"{pad}     {w}")
@@ -323,7 +331,7 @@ class Agenda:
             return
         hits, why = [], []
         for r in routes:
-            bind, tried = BD.verify_tried(r.move, b, us, mates_only)
+            bind, tried = BD.verify_tried(r.move, b, us, mates_only, trap=r.trap)
             asked = self._asked(tried)
             if bind is None:
                 self.lines.append(f"  verify {r.san}: nothing binds ({asked})")

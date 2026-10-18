@@ -230,3 +230,32 @@ def test_a_gain_claim_still_outranks_000sa_unchanged():
     ag.ask()
     d = ag.decision()
     assert d.what == "Bxc2" and d.lemma != "none" and d.value > 0 and "smallest loss" not in ag.trace()
+
+
+# ---- 52.10 piece 1: the trapped piece -------------------------------------------------------------------------------------------------------------
+TRAP = "4k3/8/2n5/8/8/8/8/3R1BK1 w - - 0 1"        # Bb5 pins the c6 knight (the king cannot guard it: d7 is covered): no safe square, nothing to capture the bishop
+
+
+def test_a_quiet_trap_binds_the_depth_two_schema_with_the_trap_named_and_not_without_it():
+    b = chess.Board(TRAP)
+    mv = chess.Move.from_uci("f1b5")
+    assert not b.gives_check(mv)
+    s2 = BD.schema("delayed_balance_d2")
+    got, _ = BD.verify_tried(mv, b, "w", schemas=[s2], trap=chess.C6)
+    assert got is not None and got.value == 3 and got.san == "Bb5 then Bxc6 (the knight has no safe square)"
+    assert (got.assignment["x2"], got.assignment["y2"]) == ("b5", "c6")
+    none, tried = BD.verify_tried(mv, b, "w", schemas=[s2])           # no trap named, not a check: the depth-two schemas are not asked
+    assert none is None and "not a check" in tried[0][2]
+
+
+def test_the_win_question_for_a_piece_that_can_run_gets_the_take_its_squares_fix():
+    b = chess.Board(TRAP)
+    R.reset_ids()
+    q = R.new_question("win", 3, dict(target=chess.C6))
+    q.defects = R.material_defects(b, "w", chess.C6)
+    assert G.mobility_of(G.with_turn(b, False), chess.C6) > 0
+    fx = R.fixes_of(q.defects[0], q, b, "w")
+    t = [f for f in fx if f.text.startswith("take its squares")]
+    assert len(t) == 1 and "Bb5" in [r.san for r in t[0].routes]
+    r = next(r for r in t[0].routes if r.san == "Bb5")
+    assert r.trap == chess.C6 and r.why.endswith("also attacked")

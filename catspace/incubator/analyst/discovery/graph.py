@@ -118,6 +118,12 @@ def mobility(board: chess.Board, colour: bool) -> int:
     return with_turn(board, colour).legal_moves.count()
 
 
+def mobility_of(board: chess.Board, sq: int) -> int:
+    """The Rust word `(count (mobility sq))`: the squares the piece on `sq` can legally go to and be safe on by the exchange. Read with the piece's OWNER as the
+    mover (`with_turn`: the evaluator reads from the side to move, and a piece of the side not to move reads wrong -- the trap `see` has too)."""
+    return word(board, ("count", ("mobility", name(sq))), board.piece_at(sq).color)
+
+
 def see(board: chess.Board, sq: int) -> int:
     """The Rust word `see` on `sq`, read with the mover = the side to move at `board`: what the SIDE TO MOVE wins by the exchange started by a capture on `sq`
     (it reads 0 for the side not to move, and nothing for a piece of the mover's own side). `see_for` puts the capturer on move first."""

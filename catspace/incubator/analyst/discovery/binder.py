@@ -16,10 +16,12 @@ from typing import Callable
 import chess
 
 from catspace.incubator.analyst.discovery import base_vocabulary as BV
+from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import selfmine as SM
 
 MATE_VALUE = 100
+PIECE_NAME = {chess.PAWN: 'pawn', chess.KNIGHT: 'knight', chess.BISHOP: 'bishop', chess.ROOK: 'rook', chess.QUEEN: 'queen', chess.KING: 'king'}
 
 
 @dataclass
@@ -101,11 +103,19 @@ def generate(board: chess.Board) -> list:
     return out
 
 
-def second_moves(board: chess.Board, route: chess.Move) -> list:
+def second_moves(board: chess.Board, route: chess.Move, trap: int | None = None) -> list:
     """The second moves of the depth-two schemas after a CHECK `route`: our captures legal after EVERY reply (intersected by from/to). [] when the route is not a
-    check or has no reply. A capture illegal under some reply is left out; the legs would fail on it anyway (best_bind says so)."""
-    if not board.gives_check(route):
-        return []
+    check or has no reply. A capture illegal under some reply is left out; the legs would fail on it anyway (best_bind says so).
+    52.10: a QUIET route that leaves the piece of theirs on `trap` with no safe square (the regress question `take its squares` names it) has the same legs, the
+    second move being our capture of that piece; [] when the piece has a safe square after all (the word `mobility`, read here again)."""
+    quiet = not board.gives_check(route)
+    if quiet:
+        if trap is None:
+            return []
+        after = board.copy(stack=False)
+        after.push(route)
+        if after.piece_at(trap) is None or G.mobility_of(after, trap) != 0:
+            return []
     c = board.copy(stack=False)
     c.push(route)
     common = None
@@ -113,7 +123,7 @@ def second_moves(board: chess.Board, route: chess.Move) -> list:
         d = c.copy(stack=False)
         d.push(r)
         mine = {(chess.square_name(m.from_square), chess.square_name(m.to_square)) for m in d.legal_moves
-                if d.is_capture(m) and not m.promotion and not d.is_castling(m)}
+                if d.is_capture(m) and not m.promotion and not d.is_castling(m) and (not quiet or m.to_square == trap)}
         common = mine if common is None else common & mine
         if not common:
             return []
@@ -123,7 +133,7 @@ def second_moves(board: chess.Board, route: chess.Move) -> list:
 def _read2(s: Schema, fen: str, us: str, pair: tuple, seconds: list) -> tuple:
     """-> (value or None, note, the second move or None) for the depth-two schema on the route `pair`."""
     if not seconds:
-        return None, "not a check, or no capture of ours is legal after every reply", None
+        return None, "not a check (or a trap), or no capture of ours is legal after every reply", None
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         best = PA.best_bind(2, fen, us, [[pair, sec] for sec in seconds], s.family)
@@ -176,9 +186,9 @@ def bind(s: Schema, board: chess.Board, us: str, candidates: list | None = None)
     return out
 
 
-def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False, schemas: list | None = None) -> tuple:
+def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False, schemas: list | None = None, trap: int | None = None) -> tuple:
     """Try the schemas from the smallest up on ONE route and stop at a mate; otherwise the delayed family reading the largest guaranteed gain wins (ties in the
-    ladder's order, as the stream decides; the depth-two schemas come last and only on a check). -> (Binding | None, tried) with tried = [(schema name, value or
+    ladder's order, as the stream decides; the depth-two schemas come last and only on a check, or on a quiet route that traps the piece on `trap`, 52.10). -> (Binding | None, tried) with tried = [(schema name, value or
     None, note)] for every schema asked."""
     pair = (chess.square_name(route.from_square), chess.square_name(route.to_square))
     fen = board.fen()
@@ -190,7 +200,7 @@ def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: boo
         sec = None
         if s.depth == 2:
             if seconds is None:
-                seconds = second_moves(board, route)
+                seconds = second_moves(board, route, trap)
             val, note, sec = _read2(s, fen, us, pair, seconds)
         else:
             val, note = _read(s, fen, us, pair)
@@ -204,6 +214,8 @@ def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: boo
             if sec is not None:
                 asg.update(x2=sec[0], y2=sec[1])
                 san += " then " + PA._san_pairs(fen, [pair, sec])[1].rstrip("+#")      # the check mark depends on the reply
+                if not board.gives_check(route) and trap is not None:
+                    san += f" (the {PIECE_NAME[board.piece_at(trap).piece_type]} has no safe square)"
             best = Binding(s.name, asg, val, s.theorem, san, [c.san(r) for r in c.legal_moves])
         if s.kind == "mate":
             break
