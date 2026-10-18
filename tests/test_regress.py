@@ -77,7 +77,7 @@ def test_agenda_000sa_takes_with_the_bishop_not_the_king():
     d = ag.decision()
     t = ag.trace()
     assert d.what == "Bxc2" and "Kxc2" in t
-    assert "Kxc2 demoted: bound value 2 less their Qc4+ (3, lemma delayed_balance_deep_alive_d1) = net -1, against Bxc2 net 2" in t
+    assert "Kxc2 demoted: bound value 2 less their Qc4+ then Qxe4 (3, lemma delayed_balance_alive_d2) = net -1, against Bxc2 net 2" in t
     assert "forks Be4" not in t                                       # the fork heuristic is only a fallback label now
 
 
@@ -91,7 +91,8 @@ def test_their_agenda_after_kxc2_claims_the_bishop_and_after_bxc2_nothing():
     b = chess.Board(SA)
     b.push_uci("c1c2")
     got = _theirs(b.fen()).state.claims
-    assert any(c.value == 3 and c.lemma == "delayed_balance_deep_alive_d1" and c.move in ("a2c4", "a2a4") for c in got)
+    assert any(c.value == 3 and c.lemma == "delayed_balance_alive_d2" and c.what == "Qc4+ then Qxe4" and c.move == "a2c4" for c in got)
+    assert not any(c.move == "a2a4" for c in got)
     c = chess.Board(SA)
     c.push_uci("e4c2")
     assert _theirs(c.fen()).state.claims == []
@@ -110,3 +111,12 @@ def test_no_pass_threat_when_we_are_in_check():
     ag = AG.Agenda(state_of(SA, "w"))
     ag.ask()
     assert not [q for q in ag.all if "threat" in q.pattern]
+
+
+def test_qa4_check_does_not_bind_at_depth_two_but_qc4_does():
+    b = chess.Board(SA)
+    b.push_uci("c1c2")
+    good, _ = BD.verify_tried(chess.Move.from_uci("a2c4"), b, "b")
+    assert good.schema == "delayed_balance_d2" and good.san == "Qc4+ then Qxe4" and good.value == 3
+    bad, tried = BD.verify_tried(chess.Move.from_uci("a2a4"), b, "b")                      # after Kd3 the king guards e4
+    assert bad is None and any(n == "delayed_balance_d2" and "no gain" in note for n, _, note in tried)

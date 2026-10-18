@@ -260,7 +260,7 @@ class Agenda:
             return
         hits, why = [], []
         for r in routes:
-            bind, tried = BD.verify_tried(r.move, b, us, mates_only, deep=not self.side_depth)
+            bind, tried = BD.verify_tried(r.move, b, us, mates_only)
             asked = self._asked(tried)
             if bind is None:
                 self.lines.append(f"  verify {r.san}: nothing binds ({asked})")

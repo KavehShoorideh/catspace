@@ -33,6 +33,7 @@ class Schema:
     theorem: str                      # the Lean theorem the binding instantiates
     kind: str                         # 'mate' (premise_truth decides, value 100) | 'gain' (best_bind's two readings, value = T - B)
     family: str                       # selfmine's family name
+    depth: int = 1                    # 1: one named move of ours; 2: a check, every reply, then a named capture (52.5)
 
 
 @dataclass
@@ -61,6 +62,12 @@ def _delayed_atoms(family):
     return atoms
 
 
+def _delayed_atoms2(family):
+    def atoms(x, y, mover):
+        raise NotImplementedError("the depth-two schemas read their pair of moves through puzzle_apply.best_bind")
+    return atoms
+
+
 LEGS = ("our piece squares", "legal targets of x")
 SCHEMAS = [
     Schema("mate_in_one", ("x", "y"), LEGS, _mate1_atoms, "(after x y movecount) <= 0 and (after x y check) >= 1", MATE_VALUE,
@@ -69,11 +76,12 @@ SCHEMAS = [
            SM.schema_name(1, SM.MATE2), "mate", SM.MATE2),
 ] + [Schema(f"{fam}_d1", ("x", "y"), LEGS, _delayed_atoms(fam), "(after x y <" + fam + " tail>) >= balance + 1", 1,
             SM.schema_name(1, fam), "gain", fam) for fam in PA.ORDER]
-# The deep balance (plan 48, proved: one more ply of minimax; its tail sees the recapture) is asked only when the caller says so (`deep=True`): it is the dearest
-# reading (seconds on a route that does not bind) and the agenda asks it for THEIR claims (52.4), where a shallow balance tail is blind to Qxf8+ Kxf8.
-DEEP = Schema("delayed_balance_deep_d1", ("x", "y"), LEGS, _delayed_atoms("delayed_balance_deep"), "(after x y <delayed_balance_deep tail>) >= balance + 1", 1,
-              SM.schema_name(1, "delayed_balance_deep"), "gain", "delayed_balance_deep")
-BY_NAME = {s.name: s for s in SCHEMAS + [DEEP]}
+# The depth-two delayed schemas (52.5, proved in Schemas.lean) are asked only on routes that are CHECKS: our named first move, every reply quantified, our named
+# second move (a capture legal after every reply), the exchange reading. They replace the deep tail (the Lean theorem delayed_balance_deep stays).
+LEGS2 = ("our piece squares", "legal targets of x that check", "our captures legal after every reply", "their square")
+SCHEMAS2 = [Schema(f"{fam}_d2", ("x", "y", "x2", "y2"), LEGS2, _delayed_atoms2(fam), "(after x y <" + fam + " tail over the reply> x2 y2) >= balance + 1", 1,
+                   SM.schema_name(2, fam), "gain", fam, 2) for fam in PA.ORDER]
+BY_NAME = {s.name: s for s in SCHEMAS + SCHEMAS2}
 
 
 def schema(name: str) -> Schema:
@@ -91,6 +99,39 @@ def generate(board: chess.Board) -> list:
             seen.add(pr)
             out.append(pr)
     return out
+
+
+def second_moves(board: chess.Board, route: chess.Move) -> list:
+    """The second moves of the depth-two schemas after a CHECK `route`: our captures legal after EVERY reply (intersected by from/to). [] when the route is not a
+    check or has no reply. A capture illegal under some reply is left out; the legs would fail on it anyway (best_bind says so)."""
+    if not board.gives_check(route):
+        return []
+    c = board.copy(stack=False)
+    c.push(route)
+    common = None
+    for r in list(c.legal_moves):
+        d = c.copy(stack=False)
+        d.push(r)
+        mine = {(chess.square_name(m.from_square), chess.square_name(m.to_square)) for m in d.legal_moves
+                if d.is_capture(m) and not m.promotion and not d.is_castling(m)}
+        common = mine if common is None else common & mine
+        if not common:
+            return []
+    return sorted(common or [])
+
+
+def _read2(s: Schema, fen: str, us: str, pair: tuple, seconds: list) -> tuple:
+    """-> (value or None, note, the second move or None) for the depth-two schema on the route `pair`."""
+    if not seconds:
+        return None, "not a check, or no capture of ours is legal after every reply", None
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        best = PA.best_bind(2, fen, us, [[pair, sec] for sec in seconds], s.family)
+    note = " ".join(buf.getvalue().replace("OBS ", "").split())
+    if best is None:
+        return None, note or f"the legs do not hold for any of {len(seconds)} capture(s) after {pair[0]}{pair[1]}", None
+    B, T, sec = best[1], best[2], best[4][1]
+    return ((T - B, "", sec) if T > B else (None, f"reads {T} against {B} now: no gain", sec))
 
 
 def _read(s: Schema, fen: str, us: str, pair: tuple) -> tuple:
@@ -117,6 +158,12 @@ def bind(s: Schema, board: chess.Board, us: str, candidates: list | None = None)
     mate_in_two family STOPS at its first binding, as selfmine.bind_mate2 does (no mate in two beats another)."""
     fen = board.fen()
     out = []
+    if s.depth == 2:
+        for pair in (generate(board) if candidates is None else candidates):
+            b2 = verify_tried(chess.Move.from_uci(pair[0] + pair[1]), board, us, schemas=[s])[0]
+            if b2 is not None:
+                out.append(b2)
+        return out
     for pair in (generate(board) if candidates is None else candidates):
         val, _note = _read(s, fen, us, pair)
         if val is not None and val >= s.need:
@@ -129,23 +176,35 @@ def bind(s: Schema, board: chess.Board, us: str, candidates: list | None = None)
     return out
 
 
-def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False, deep: bool = False) -> tuple:
+def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False, schemas: list | None = None) -> tuple:
     """Try the schemas from the smallest up on ONE route and stop at a mate; otherwise the delayed family reading the largest guaranteed gain wins (ties in the
-    ladder's order, as the stream decides). -> (Binding | None, tried) with tried = [(schema name, value or None, note)] for every schema asked."""
+    ladder's order, as the stream decides; the depth-two schemas come last and only on a check). -> (Binding | None, tried) with tried = [(schema name, value or
+    None, note)] for every schema asked."""
     pair = (chess.square_name(route.from_square), chess.square_name(route.to_square))
     fen = board.fen()
     tried, best = [], None
-    for s in SCHEMAS + ([DEEP] if deep else []):
+    seconds = None
+    for s in (SCHEMAS + SCHEMAS2 if schemas is None else schemas):
         if mates_only and s.kind != "mate":
             continue
-        val, note = _read(s, fen, us, pair)
+        sec = None
+        if s.depth == 2:
+            if seconds is None:
+                seconds = second_moves(board, route)
+            val, note, sec = _read2(s, fen, us, pair, seconds)
+        else:
+            val, note = _read(s, fen, us, pair)
         tried.append((s.name, val, note))
         if val is None or val < s.need:
             continue
         if best is None or val > best.value:
             c = board.copy(stack=False)
             c.push(route)
-            best = Binding(s.name, dict(x=pair[0], y=pair[1]), val, s.theorem, board.san(route), [c.san(r) for r in c.legal_moves])
+            asg, san = dict(x=pair[0], y=pair[1]), board.san(route)
+            if sec is not None:
+                asg.update(x2=sec[0], y2=sec[1])
+                san += " then " + PA._san_pairs(fen, [pair, sec])[1].rstrip("+#")      # the check mark depends on the reply
+            best = Binding(s.name, asg, val, s.theorem, san, [c.san(r) for r in c.legal_moves])
         if s.kind == "mate":
             break
     if best is not None:
@@ -153,5 +212,5 @@ def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: boo
     return best, tried
 
 
-def verify(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False, deep: bool = False) -> Binding | None:
-    return verify_tried(route, board, us, mates_only, deep)[0]
+def verify(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False) -> Binding | None:
+    return verify_tried(route, board, us, mates_only)[0]
