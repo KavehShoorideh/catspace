@@ -434,6 +434,35 @@ pub fn set(t: &Term, q: &Chess, lone: Color) -> Bitboard {
     }
 }
 
+/// `num` with an alpha-beta window: exact whenever the true value lies inside (alpha, beta); outside it the result is only a bound on the right side. Only
+/// `Least` / `Most` pass the window down (a pure min / max over integers, so the pruning is exact); every other term is evaluated plainly. At the top
+/// (0, u32::MAX) the value is exact. No legal moves: 0, as the unpruned fold.
+fn num_ab(t: &Term, q: &Chess, lone: Color, mut alpha: u32, mut beta: u32) -> u32 {
+    match t {
+        Term::Least(a) | Term::Most(a) => {
+            let least = matches!(t, Term::Least(_));
+            let mut ms: Vec<_> = q.legal_moves().into_iter().collect();
+            if ms.is_empty() { return 0; }
+            ms.sort_by_key(|m| !m.is_capture());
+            let mut best = if least { u32::MAX } else { 0 };
+            for m in &ms {
+                let v = num_ab(a, &after(q, m), lone, alpha, beta);
+                if least {
+                    best = best.min(v);
+                    beta = beta.min(best);
+                    if best <= alpha { break; }
+                } else {
+                    best = best.max(v);
+                    alpha = alpha.max(best);
+                    if best >= beta { break; }
+                }
+            }
+            best
+        }
+        _ => num(t, q, lone),
+    }
+}
+
 /// A number term on the board.
 pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
     match t {
@@ -471,8 +500,7 @@ pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
         Term::If(c, a, d) => if num(c, q, lone) != 0 { num(a, q, lone) } else { num(d, q, lone) },
         Term::After(f, t2, a) => after_move(f, t2, a, q, lone),
         // least / most (Lean leastOver / mostOver): the body on the board after each legal move of the side to move, `lone` unchanged
-        Term::Least(a) => q.legal_moves().iter().map(|m| num(a, &after(q, m), lone)).min().unwrap_or(0),
-        Term::Most(a) => q.legal_moves().iter().map(|m| num(a, &after(q, m), lone)).max().unwrap_or(0),
+        Term::Least(_) | Term::Most(_) => num_ab(t, q, lone, 0, u32::MAX),
         Term::Delta(a) => crate::game::back(1).map_or(DELTA_ZERO, |p| (num(a, q, lone) + DELTA_ZERO).saturating_sub(num(a, &p, lone))),
         Term::Attackable(a, k) => sq(a, q, lone).and_then(|x| q.board().color_at(x).map(|c| reach_route(q, !c, x, *k).is_ok() as u32)).unwrap_or(0),
         Term::Declined(a) => sq(a, q, lone).map_or(0, |x| declined(q, x) as u32),
