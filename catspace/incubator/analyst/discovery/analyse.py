@@ -74,16 +74,17 @@ def main():
     ap.add_argument("--id")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--store", action="store_true", help="write a record per decided puzzle (per-item checkpoint: stored ids are skipped)")
-    ap.add_argument("--no-memory", action="store_true", help="do not recall: the stake-only order")
+    ap.add_argument("--memory", action="store_true", help="recall stored states to order equal stakes (OFF by default: with 11 records it asked MORE questions on 5 of 60 fresh puzzles, 2026-10-17)")
+    ap.add_argument("--no-memory", action="store_true", help="(kept for the batch scripts) the stake-only order, the default")
     a = ap.parse_args()
     ps = PA.load_set(a.set)
     if a.store:
         done = RM.stored_ids(paths.derived(AGENDA_STORE))
         ps = [p for p in ps if p["id"] not in done] if not a.id else ps
     if a.id:
-        analyse(next(x for x in ps if x["id"] == a.id), memory=not a.no_memory, store=a.store, set_name=a.set)
+        analyse(next(x for x in ps if x["id"] == a.id), memory=a.memory and not a.no_memory, store=a.store, set_name=a.set)
         return
-    res = [analyse(p, quiet=True, memory=not a.no_memory, store=a.store, set_name=a.set) for p in ps]
+    res = [analyse(p, quiet=True, memory=a.memory and not a.no_memory, store=a.store, set_name=a.set) for p in ps]
     if a.store:
         print(f"OBS agenda store: {len(RM.load(paths.derived(AGENDA_STORE)))} records")
     for r in res:
