@@ -979,3 +979,57 @@ def test_52_18_a_mate_root_defect_list_is_served_from_the_table_when_nothing_it_
     ag.ask()
     assert ag.ctx.landing_served > 0 and "landing table:" in ag.trace() and "served from the table" in ag.trace() and "known about the Q on g3" in ag.trace()
     assert ag.decision().what == "Qb8+"
+
+
+# ---- 52.18 (2): the battery and the discovery -------------------------------------------------------------------------------------------------------
+
+BATT = "4q3/8/8/8/4N3/1pK1R3/8/1k6 w - - 0 1"        # Re3 behind Ne4 aimed at the queen on e8; Nd2+ discovers it (SF d18: only Nd2+ wins; mate score)
+
+
+def test_52_18_the_battery_lemmas_are_proved_in_lean_with_the_statements_the_python_mirrors():
+    for name in ("almostBattery_blocked", "discovered_attack", "battery_persists"):
+        _lean(name, "Battery")
+    assert "almostBatteryB p c s1 s2 t = true" in _lean("discovered_attack", "Battery")["statement"] and "p'.board s1 = none" in _lean("discovered_attack", "Battery")["statement"]
+    _lean("batteryB", "Battery")
+    _lean("almostBatteryB", "Battery")
+
+
+def test_52_18_an_almost_battery_does_not_attack_and_its_front_piece_leaving_makes_the_rear_attack_on_random_positions():
+    import random
+    rng = random.Random(7)
+    seen = 0
+    for _ in range(120):
+        b = chess.Board()
+        for _ply in range(rng.randrange(8, 60)):
+            ms = list(b.legal_moves)
+            if not ms:
+                break
+            b.push(rng.choice(ms))
+        for col in (chess.WHITE, chess.BLACK):
+            for t in chess.SQUARES:
+                for s1, s2, rest, almost in G.discoverers(b, col, t):
+                    if not almost:
+                        continue
+                    seen += 1
+                    assert G.almost_battery(b, col, s1, s2, t) and s2 not in b.attackers(col, t)               # Lean almostBattery_blocked
+                    c = b.copy(stack=False)
+                    c.remove_piece_at(s1)                                                                       # Lean discovered_attack: the front piece off the line
+                    assert s2 in c.attackers(col, t)
+    assert seen > 20
+
+
+def test_52_18_the_discovery_position_names_the_discovery_and_the_x_ray_fix_is_offered_on_a_win_defect():
+    ag = AG.Agenda(State(DISCOVERY, "w", []))
+    ag.ask()
+    t = ag.trace()
+    assert ag.decision().what in ("Nf6", "Nd6")
+    assert "discover an attack on a8" in t and "discovery: the N leaves e4, the B on g2 joins the attack on a8 (battery with the Q on b7)" in t
+    b = chess.Board(BATT)
+    q = AG.Agenda(State(BATT, "w", [])).all[0]
+    ag2 = AG.Agenda(State(BATT, "w", []))
+    win = [x for x in ag2.all if x.goal == "win" and x.pattern["target"] == chess.E8][0]
+    win.defects = R.material_defects(b, "w", chess.E8)
+    fixes = R.fixes_of(win.defects[0], win, b, "w")
+    disc = [f for f in fixes if f.text.startswith("discover an attack on e8")]
+    nd2 = [r for r in disc[0].routes if r.san == "Nd2+"] if disc else []
+    assert nd2 and "the N leaves e4, the R on e3 joins the attack on e8" in nd2[0].why and nd2[0].why.startswith("check;")

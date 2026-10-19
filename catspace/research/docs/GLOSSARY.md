@@ -245,3 +245,7 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   landing answers keyed by (side, piece, from, to) and valid while the 52.13 diff misses the answer's read set (Lean `land_agree`).
 - **Inverted read index** (`LandingTable.known_about(sq)`) — square -> every landing whose read set contains it: "what is known about their queen on d6". Printed in the trace for the piece of the
   deciding move.
+- **Battery / almost a battery / discovery** (Lean `Ideas.Battery.batteryB`, `almostBatteryB`, `discovered_attack`; python `graph.batteries_to`, `discoverers`) — a BATTERY is a slider of ours aimed at a square
+  `t` with only pieces of ours (at least one) between; ALMOST A BATTERY has exactly one piece between, one move from the direct attack (`almostBattery_blocked`: it does not attack now). The DISCOVERY is
+  a move of the piece that cannot ride the line off it (`discovered_attack`: the rear slider then attacks `t`; `battery_persists`: the remaining sliders still ride in front, the x-ray of the exchange
+  law). As a fix it is offered on win and promote defects when the move is forcing: "discovery: the N leaves e4, the B on g2 joins the attack on a8 (battery with the Q on b7)".

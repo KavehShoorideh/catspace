@@ -174,3 +174,55 @@ def piece_moves_to(board: chess.Board, frm: int, targets: set, limit: int) -> in
                 nxt.append(t)
         frontier = nxt
     return None
+
+
+# ---------------------------------------------------------------------------------------------------------------- the battery and the discovery (52.18 (2); Lean Ideas.Battery)
+
+def _aligned(piece: chess.Piece, s: int, t: int) -> bool:
+    """A slider of this kind can move along the line s-t (queen: any line; rook: a file or rank; bishop: a diagonal)."""
+    if piece.piece_type == chess.QUEEN:
+        return chess.BB_RAYS[s][t] != 0
+    if piece.piece_type == chess.ROOK:
+        return chess.square_file(s) == chess.square_file(t) or chess.square_rank(s) == chess.square_rank(t)
+    if piece.piece_type == chess.BISHOP:
+        return chess.BB_RAYS[s][t] != 0 and chess.square_file(s) != chess.square_file(t) and chess.square_rank(s) != chess.square_rank(t)
+    return False
+
+
+def batteries_to(board: chess.Board, colour: bool, t: int) -> list:
+    """Lean `batteryB`: [(s2, [s1 ...])] -- a slider of `colour` on s2 aims along a line at t (geometry, blockers aside) and the squares strictly between hold only pieces of `colour`
+    (at least one, listed from the rear slider outward) or nothing."""
+    out = []
+    for s2 in chess.SQUARES:
+        pc = board.piece_at(s2)
+        if s2 == t or pc is None or pc.color != colour or pc.piece_type not in SLIDING or not _aligned(pc, s2, t):
+            continue
+        between = sorted(chess.SquareSet(chess.between(s2, t)), key=lambda u: chess.square_distance(u, s2))
+        held = [u for u in between if board.piece_at(u) is not None]
+        if held and all(board.piece_at(u).color == colour for u in held):
+            out.append((s2, held))
+    return out
+
+
+def almost_battery(board: chess.Board, colour: bool, s1: int, s2: int, t: int) -> bool:
+    """Lean `almostBatteryB`: a battery whose only piece between is the one on s1."""
+    return any(r == s2 and held == [s1] for r, held in batteries_to(board, colour, t))
+
+
+def discoverers(board: chess.Board, colour: bool, t: int) -> list:
+    """The DISCOVERY candidates aimed at t: [(s1, s2, rest, almost)] -- the piece on s1 (the only blocker that cannot ride the line: a knight, a king, a pawn, a slider of the wrong
+    kind) stands in front of the rear slider on s2; when it leaves, the rear attacks t directly (almost = it was the only piece between: Lean `discovered_attack`) or joins the
+    exchange behind the aligned sliders `rest` that remain (the x-ray of the exchange law, Lean `battery_persists`)."""
+    out = []
+    for s2, held in batteries_to(board, colour, t):
+        bad = [u for u in held if not _aligned(board.piece_at(u), u, t)]
+        if len(bad) == 1:
+            out.append((bad[0], s2, [u for u in held if u != bad[0]], len(held) == 1))
+    return out
+
+
+def discovery_text(board: chess.Board, s1: int, s2: int, rest: list, t: int) -> str:
+    """'the N leaves e4, the B on g2 joins the attack on a8 (battery with the Q on b7)'."""
+    nm = lambda s: board.piece_at(s).symbol().upper()
+    with_ = ("battery with " + ", ".join(f"the {nm(u)} on {name(u)}" for u in rest)) if rest else "almost a battery: nothing else between"
+    return f"the {nm(s1)} leaves {name(s1)}, the {nm(s2)} on {name(s2)} joins the attack on {name(t)} ({with_})"

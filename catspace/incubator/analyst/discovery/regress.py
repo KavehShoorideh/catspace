@@ -443,9 +443,40 @@ def fixes_of(defect: Defect, q: Question, board: chess.Board, us: str | bool) ->
                 r.routes = routes_of(r, board, us, root)
                 out.append(r)
         out += trap_fix(q, defect, board, us)
+        out += discovery_fix(q, defect, board, us)
     for f in out:
         q.fixes.append(f)
     return out
+
+
+def discovery_routes(board: chess.Board, us: str | bool, t: int, stake: int) -> list:
+    """52.18 (2): THE DISCOVERY AS A NAMED FIX. For the square t: every blocker of ours that stands in front of a rear slider of ours aimed at t (`G.discoverers`) and leaves the line with
+    tempo (`forcing_why`: a check, a capture, or a threat that survives the capture of the moved piece) -- the vacated line raises the attacker count on t by one. Each route says so."""
+    me = G.colour_of(us)
+    b = G.with_turn(board, me)
+    out = []
+    for s1, s2, rest, almost in G.discoverers(b, me, t):
+        line = set(chess.SquareSet(chess.between(s2, t))) | {t, s2}
+        for m in b.legal_moves:
+            if m.from_square != s1 or m.to_square in line or b.is_castling(m):
+                continue
+            why = forcing_why(b, m, stake, us)
+            if why:
+                out.append(Route(m, b.san(m), f"{why}; discovery: {G.discovery_text(b, s1, s2, rest, t)}"))
+    return out
+
+
+def discovery_fix(q: Question, defect: Defect, board: chess.Board, us: str | bool) -> list:
+    """52.18 (2): the sub-question `discover an attack on t` of a win defect ('not attacked', 'defended') -- offered when a battery of ours is aimed at the target."""
+    t = q.pattern.get("target")
+    if t is None:
+        return []
+    routes = discovery_routes(board, us, t, q.stake)
+    if not routes:
+        return []
+    f = new_question("cover", q.stake, dict(q.pattern), q, defect_key=defect.key(), text=f"discover an attack on {G.name(t)}: a battery of ours aims there, its front piece leaves with tempo")
+    f.routes = routes
+    return [f]
 
 
 def trap_routes(board: chess.Board, us: str | bool, target: int) -> list:
@@ -730,6 +761,12 @@ def promote_fixes(board: chess.Board, sq: int, defect: Defect, q: "Question") ->
         f.routes = [Route(m, board.san(m), f"capture {G.worth(board.piece_at(m.to_square))}") for m in board.legal_moves if m.to_square == defect.by[0]]
         if push in board.legal_moves and board.gives_check(push):
             f.routes.append(Route(push, board.san(push), "push with check"))
+    if defect.kind in ("path attacked", "promo square attacked"):             # 52.18 (2): a discovery that guards the square (a battery of ours aimed at it, its front piece leaving with tempo)
+        have = {r.move for r in f.routes}
+        extra = [r for r in discovery_routes(board, own, defect.sq, q.stake) if r.move not in have]
+        f.routes += extra
+        if extra:
+            f.text += f" -- or discover a guard of {G.name(defect.sq)}"
     ek = board.king(not own)
     if ek is not None and ((defect.kind == "blocked" and defect.sq == ek) or (defect.kind in ("path attacked", "promo square attacked", "stopper") and ek in defect.by)):
         have = {r.move for r in f.routes}
