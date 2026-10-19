@@ -2439,3 +2439,51 @@ read sets as the leaf premises. Items, in build order (one commit each; no AI tr
 Acceptance: every 52.13-52.18 acceptance puzzle unchanged; dev_20 and fresh_60_threats_event OBS before/after (decisions, inner questions,
 served-from-store counts, seconds), every changed decision SF-classified; tests per item; the justification graph of the deciding claim printed in
 the trace for one puzzle (the chain with each fact's read set and stake).
+
+## 54. THE PLAY SERVER: play against the agenda, watch it think (Kaveh 2026-10-19 GO "let's get a game server up ... show me its thinking"; built beside 52.17-52.19)
+(53 stays reserved for the ordering prior / measure claims.) Kaveh: "have us play against it and have it show me its thinking; I want to see inside
+of its brain as it plays against me. Take the lichess UI; one corner of the screen for the trace; auto-scroll inside that element but don't move my
+position in the page; colour-coded so we can read the trace; as I hover over parts of the trace, an arrow on the board showing what it's thinking --
+if there's a move, I want to see the arrow." Later, NOT now: a vendor-agnostic hosting adapter (Hetzner / Google Cloud / a cheap VM) so people can
+play it; first locally.
+Inventory (2026-10-19): nothing plays a full game from the agenda (`discovery/agenda.py`; only analyse.py and tests call it). `catspace-server`
+(deployment/server/assistant_server.py, :8777) plays MAIA against the human and our old engine only co-analyses; its PAGE paths point at a directory
+that no longer exists since the 2026-08-03 restructure. The analyst local app (incubator/analyst/web.py, :8765, web_page.html) has chessground +
+chess.js vendored (research/tools/viz/viz/assets/chessground), the "Something is not right" flag button -> feedback/flags.jsonl, and the job +
+polling pattern (`/api/job/<id>` with partial results). The agenda's trace is `"\n".join(self.lines)` after `ask()`; `R.reset_ids()` is a module
+global (one agenda at a time: a lock); `chase_log` must stay unset in a server. No player has game context (50-move clock, repetition) in the agenda.
+Build in `catspace/incubator/analyst/discovery/play_server.py` + the page, one commit per item, no AI trailers, no edits to agenda.py / regress.py
+(another builder is editing them; everything here hooks from outside):
+1. **The mover.** `AgendaPlayer.move(board) -> (move, trace_lines, source)`: `Agenda(state_of(board.fen(), us), memory=...)`, `ask()`, `decision()`;
+   the claim's `move` (UCI of the first move; `what` may be "X then Y") checked legal. When the agenda has NO decision (most quiet positions), a
+   FALLBACK that is named in the trace and in the UI: default = the rules-based one-ply `frame_player.choose` (pure Python, no search); flag
+   `--fallback stockfish` for a playable opponent, `--fallback random` for the honest baseline; the trace's first line says which played ("no
+   decision: fallback one_ply chose Nf3"). Game context: the server owns a python-chess board with the full move stack (50-move clock, threefold
+   via `is_repetition`, `is_game_over(claim_draw=True)`); the agenda sees the FEN only (a known gap, [[game_context_in_frames]]; say so in the trace
+   when the clock is under 30 or a repetition is available). One lock around every `ask()`.
+2. **The live trace.** No edit to agenda.py: right after constructing the Agenda, replace `ag.lines` with a list subclass whose `append` also calls
+   a callback (the agenda only ever appends). Each line is emitted as a record {n, text, kind, indent, moves, squares}: `kind` from the line's
+   shape (question "Q<n>", claim "-> CLAIM", kill "KILLED" / "killed", gap "GAP", chase "chase:", route "    <san>:", their "their" / "parry",
+   stop "STOP", fuse "fuse", note "note:", state "EV"), `indent` = leading spaces, `moves` = every SAN token in the line parsed against the board
+   the line is about (the root board; a line under "after <san>:" is parsed after pushing that move -- best effort, never a crash), `squares` =
+   every square name in the line. The record goes to a per-game ring buffer; GET `/api/play/trace?since=n` returns the records after n (polling at
+   ~300 ms, the existing job pattern); the engine's move runs on a worker thread so the lines stream while it thinks.
+3. **The server.** Extend web.py (same port 8765, same assets): POST `/api/play/new {colour, fallback}`, POST `/api/play/move {uci}` (the human's
+   move, then the engine's reply starts on the worker), GET `/api/play/state` (fen, legal dests, last move, game over + reason, whose turn,
+   thinking: bool, clock/repetition notes), GET `/api/play/trace?since=`, POST `/api/play/flag` reusing `append_flag` with the trace line numbers
+   in the context. PGN of the game appended per move to artifacts/experiments/play_games.pgn (paths.experiment) with the trace as comments on the
+   engine's moves.
+4. **The page.** A "Play" view in web_page.html (lichess look: the vendored chessground with its default board + piece set, the lichess-like
+   layout: board left, panel right): new game as white / black, the board movable only on the human's turn, last move highlighted, game-over
+   banner. The TRACE PANEL in one corner (right column, fixed height, `overflow-y: auto`): colour-coded by `kind` (question / claim green / kill
+   red / gap amber / chase blue / their purple / stop / note grey), indent preserved, monospace; it auto-scrolls to its own bottom ONLY by setting
+   `el.scrollTop` and ONLY while the user is already at the bottom (a scroll-up pins it; a "follow" toggle); NEVER `scrollIntoView` or anything
+   that moves the page. HOVER a line: chessground `setShapes` draws an arrow per move in the line (first move strong colour, the rest lighter) and
+   a circle per square; leaving clears; CLICK pins the shapes until the next click. The engine's chosen move stays drawn as its arrow until the
+   human moves. The flag button and dialog kept (per-line flag: the line's n). Phone-width works (panel below the board).
+5. **Run and prove it.** `.venv/bin/python -m catspace.incubator.analyst.web --play` (or the existing entry) starts it; a smoke test plays 6 plies
+   against itself through the HTTP API (pytest, no browser) and asserts the trace records stream, moves are legal, the fallback is named; one
+   game played by the builder through the API against `--fallback random` to the end, OBS: plies, agenda decisions vs fallbacks, seconds per
+   engine move (mean/max). Report the URL and the exact command in the hand-back.
+Not now (recorded): the hosting adapter (an `infra/providers/<name>` interface: create VM, open port, deploy the compose; Hetzner and GCP first),
+auth / multiple players, the agenda's own game context (52.19 (4) carries facts across moves).
