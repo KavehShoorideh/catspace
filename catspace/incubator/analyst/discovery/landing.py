@@ -153,3 +153,55 @@ class LandingTable:
     def known_about(self, sq: int) -> list:
         """THE INVERTED READ INDEX: every landing of the table whose read set contains `sq`, targets first."""
         return sorted((l for l, _b in self.memo.values() if sq in l.reads), key=lambda l: (l.kind != "target", -l.value, l.key()))
+
+
+# ---------------------------------------------------------------------------------------------------------------- the fork square (52.18 (4); Lean Ideas.ForkSquare, Ideas.GeoLemmas)
+
+def fork_candidates(board: chess.Board, side: bool) -> list:
+    """The FORK LANDINGS of `side`: a legal move of a piece (not the king) to a square s where the piece is SAFE (the exchange on s wins nothing for the other side: Lean `landsSafe`) and
+    attacks at least two pieces it WINS by the exchange if they pass (or the king -- a check -- and one such piece). -> [{move, piece, targets [(sq, value)], bound, check}]; bound = the
+    smaller of the two values (both cannot be saved in one move unless the single move answers both: a capture of the forker, a move of one that guards the other, a check -- the
+    defects, read by the rules reply by reply; Lean `one_move_touches_one` is why a move of theirs touches only one of the two squares otherwise)."""
+    mover = G.with_turn(board, side)
+    out = []
+    for m in mover.legal_moves:
+        pc = mover.piece_at(m.from_square)
+        if pc.piece_type == chess.KING or mover.is_castling(m) or m.promotion:
+            continue
+        c = mover.copy(stack=False)
+        c.push(m)
+        if c.is_checkmate():
+            continue                                                  # a mate root's business
+        s = m.to_square
+        if G.see_for(c, s, not side) > 0:
+            continue
+        after = G.with_turn(c, side)
+        ksq = c.king(not side)
+        check = ksq is not None and ksq in c.attacks(s)
+        tg = []
+        for t in c.attacks(s):
+            q = c.piece_at(t)
+            if q is not None and q.color != side and q.piece_type != chess.KING:
+                w = G.see(after, t)
+                if w >= 1:
+                    tg.append((t, w))
+        if len(tg) < (1 if check else 2):
+            continue
+        vals = sorted((w for _t, w in tg), reverse=True)
+        out.append(dict(move=m, san=mover.san(m), piece=pc, targets=sorted(tg), bound=vals[0] if check else vals[1], check=check))
+    return out
+
+
+def knight_fork_kills(board: chess.Board, side: bool, limit: int = 3) -> list:
+    """Fork roots a knight of ours cannot have: two valuable pieces of theirs on squares of OPPOSITE colours (Lean `Ideas.GeoLemmas.knight_fork_same_colour`: a knight attacks only squares of
+    one colour from any square). -> [(a, b, reads)] for the most valuable such pairs; empty without a knight of ours."""
+    if not any(board.pieces(chess.KNIGHT, side)):
+        return []
+    theirs = sorted((s for s in chess.SQUARES if board.piece_at(s) is not None and board.piece_at(s).color != side and board.piece_at(s).piece_type not in (chess.KING, chess.PAWN)),
+                    key=lambda s: -G.worth(board.piece_at(s)))
+    out = []
+    for i, a in enumerate(theirs):
+        for b in theirs[i + 1:]:
+            if (chess.square_file(a) + chess.square_rank(a)) % 2 != (chess.square_file(b) + chess.square_rank(b)) % 2:
+                out.append((a, b, frozenset({a, b, *board.pieces(chess.KNIGHT, side)})))
+    return out[:limit]

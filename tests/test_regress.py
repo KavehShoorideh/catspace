@@ -1051,3 +1051,37 @@ def test_52_18_a_move_is_forcing_when_a_pass_lets_the_passer_lemma_bind_and_the_
     ag = AG.Agenda(State(p["fen"], "w", []))
     ag.ask()
     assert ag.decision().what == "b6"
+
+
+# ---- 52.18 (4): the fork square as a root -------------------------------------------------------------------------------------------------------------
+
+FORK2 = "8/8/8/8/K1R5/P6k/6r1/3N1r2 w - - 0 1"          # Ne3 forks the rooks on f1 and g2 (SF d18: the only move, +260 against -7)
+FORK_DEFECT = "8/8/3N3r/4b3/2R5/5P2/4K1k1/8 w - - 0 1"  # Nf7 forks Rh6 and Be5 but Rh5 moves one and guards the other
+
+
+def test_52_18_the_fork_lemmas_are_proved_in_lean():
+    _lean("one_move_touches_one", "ForkSquare")
+    assert "(a b : Square) (hab : a ≠ b)" in _lean("one_move_touches_one", "ForkSquare")["statement"]
+    _lean("knight_fork_same_colour", "GeoLemmas")
+
+
+def test_52_18_a_fork_root_is_asked_for_a_landing_that_is_safe_and_attacks_two_pieces_it_wins():
+    ag = AG.Agenda(State(FORK2, "w", []))
+    forks = [q for q in ag.all if q.goal == "fork"]
+    assert [q.pattern["san"] for q in forks] == ["Ne3"] and forks[0].stake == 2 and "attacks the R on f1 (wins 5), the R on g2 (wins 2)" in forks[0].text
+    ag._ask(forks[0])
+    assert forks[0].status == "verified" and ag.best[2].what == "Ne3" and ag.best[0] == 2
+    assert "least over their replies of balance + exchange is 2" in ag.best[2].line and "ForkSquare.one_move_touches_one" in ag.best[2].lemma
+    full = AG.Agenda(State(FORK2, "w", []))
+    full.ask()
+    assert full.decision().what == "Ne3"                                                                       # the same decision whichever root finds it first
+
+
+def test_52_18_a_reply_that_answers_both_threats_kills_the_fork_with_the_defect_named_and_a_knight_cannot_fork_two_colours():
+    ag = AG.Agenda(State(FORK_DEFECT, "w", []))
+    q = [x for x in ag.all if x.goal == "fork" and x.pattern["san"] == "Nf7"][0]
+    ag._ask(q)
+    assert q.status == "killed" and "Rh5 (a move of one attacked piece that answers the other)" in q.reason
+    ag2 = AG.Agenda(State(DISCOVERY, "w", []))
+    notes = "\n".join(ag2.notes)
+    assert "by a knight: killed by reasoning -- a knight attacks only squares of one colour (Ideas.GeoLemmas.knight_fork_same_colour)" in notes and "reads {" in notes

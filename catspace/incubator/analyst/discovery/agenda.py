@@ -251,6 +251,22 @@ class Agenda:
         for s in sorted(theirs, key=lambda s: (-G.worth(b.piece_at(s)), s)):
             self._push(R.new_question("win", G.worth(b.piece_at(s)), dict(target=s),
                                       text=f"win their {b.piece_at(s).symbol().upper()} on {G.name(s)} (worth {G.worth(b.piece_at(s))})"))
+        self._fork_roots()
+
+    def _fork_roots(self) -> None:
+        """52.18 (4): THE FORK SQUARE AS A ROOT -- `fork on s with our <piece>` (stake = the smaller of the two values it attacks; the king and one piece for a check), for the root
+        agenda only (an inner agenda reads the forks its own chase finds). The knight-fork colour lemma kills the pairs a knight cannot fork, with the read set."""
+        b = self.board
+        if self.chase_depth or self.ctx is None or b.is_check() or self.min_stake:
+            return
+        for a, c2, reads in LD.knight_fork_kills(b, self.me):
+            self.notes.append(f"fork of the {b.piece_at(a).symbol().upper()} on {G.name(a)} and the {b.piece_at(c2).symbol().upper()} on {G.name(c2)} by a knight: killed by reasoning -- "
+                              f"a knight attacks only squares of one colour (Ideas.GeoLemmas.knight_fork_same_colour), these are of two; reads {{{', '.join(G.name(x) for x in sorted(reads))}}}")
+        for f in LD.fork_candidates(b, self.me):
+            m = f["move"]
+            names = ", ".join(f"the {b.piece_at(t).symbol().upper()} on {G.name(t)} (wins {w})" for t, w in f["targets"])
+            self._push(R.new_question("fork", f["bound"], dict(move=m.uci(), san=f["san"], frm=m.from_square, at=m.to_square, targets=f["targets"], check=f["check"]),
+                                      text=f"fork on {G.name(m.to_square)} with our {f['piece'].symbol().upper()} ({f['san']}): " + ("check and " if f["check"] else "") + f"attacks {names}"))
 
     def _reach_roots(self, ksq: int | None) -> None:
         """52.12 (4): the mate roots at distance two, only when a mate is the stake (one prep move): a piece of ours that would check their king from a square it needs
@@ -496,6 +512,9 @@ class Agenda:
         if q.goal == "promote":
             self._ask_promote(q, head)
             return
+        if q.goal == "fork":
+            self._ask_fork(q, head)
+            return
         if q.goal == "mate" and self._reasoned_kill(q, head):
             return
         if q.goal == "mate" and q.pattern.get("reach"):
@@ -558,6 +577,61 @@ class Agenda:
         lnd = LD.evaluate(b, self.me, frm, p["at"])
         tbl.put(b, lnd)
         return list(lnd.defect_objs)
+
+    def _ask_fork(self, q: R.Question, head: str) -> None:
+        """52.18 (4): the fork root is VERIFIED by the rules reply by reply: after the landing, for every legal reply of theirs the balance we then hold plus the best static exchange of ours
+        (the Rust `Pos.exchange`, the mirror of Lean `Ideas.ExchangeLaw`) is read; the claim is the least of them, when at least 1. A reply that saves both is a DEFECT of the fork and is named:
+        the capture of the forking piece, a move of one attacked piece that guards or takes the other, a check of theirs. Lean `Ideas.ForkSquare.one_move_touches_one`: any other single
+        move touches at most one of the two squares."""
+        b, p = self.board, q.pattern
+        m = chess.Move.from_uci(p["move"])
+        self.lines.append(head)
+        P0 = AC.Pos(b.fen())
+        P1 = P0.push(p["move"])
+        shift = P1.balance(self.me) - P0.balance(self.me)
+        worst = None
+        c = b.copy(stack=False)
+        c.push(m)
+        for uci, dbal, chk, cap, rec, mate1 in P1.replies():
+            P2 = P1.push(uci)
+            if P2.legal_count() == 0:
+                net = -R.STAKE_MATE if P2.is_check() else 0
+            elif mate1 or P2.mate_in_one():
+                net = R.STAKE_MATE
+            else:
+                net = shift + dbal + (0 if P2.is_check() else P2.exchange())
+            if worst is None or net < worst[0]:
+                worst = (net, uci)
+        reads = {m.from_square, m.to_square, *(t for t, _w in p["targets"])}
+        for t, _w in p["targets"]:
+            reads.update(LD.exchange_reads(c, t))
+        q.reads = frozenset(reads)
+        if worst is None or worst[0] < 1:
+            r = chess.Move.from_uci(worst[1]) if worst is not None else None
+            how = ""
+            if r is not None:
+                if r.to_square == m.to_square:
+                    how = "captures the forking piece"
+                elif c.gives_check(r):
+                    how = "a check of theirs"
+                elif r.from_square in [t for t, _w in p["targets"]]:
+                    how = "a move of one attacked piece that answers the other"
+                else:
+                    how = "a reply that keeps what it has"
+            self._kill(q, f"after {c.san(r) if r is not None else '?'} ({how}) we win {worst[0] if worst else 0}, less than 1: one move answers both threats", tempo=False)
+            return
+        what = f"{p['san']}"
+        claim = Claim("win", what, worst[0], "fork: two threats, one move (Ideas.ForkSquare.one_move_touches_one); every reply read by the exchange rule (Ideas.ExchangeLaw)",
+                      f"{what}: " + ("check and " if p["check"] else "") + "attacks " + " and ".join(f"{b.piece_at(t).symbol().upper() if b.piece_at(t) else '?'}{G.name(t)}" for t, _w in p["targets"])
+                      + f"; the least over their replies of balance + exchange is {worst[0]} (worst reply {c.san(chess.Move.from_uci(worst[1]))})", move=p["move"])
+        self._stamp(claim, q)
+        self.state.claims.append(claim)
+        q.status = "verified"
+        q.claimed = (worst[0], claim, q.reads)
+        self.lines.append(f"  -> CLAIM win {what} (value {worst[0]}), lemma {claim.lemma}, line {claim.line}")
+        if self.best is None or (worst[0], 0) > self.best[:2]:
+            self.best = (worst[0], 0, claim)
+            self.asked_at_claim = self.asked
 
     def _their_passer(self, rook: int) -> "tuple | None":
         """52.17 (1): THEIR passer if we pass: a pawn of theirs that promotes in `n` pushes unless the rook is spent on it -- its promote defects (the Rust words, from its owner's

@@ -251,3 +251,7 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   law). As a fix it is offered on win and promote defects when the move is forcing: "discovery: the N leaves e4, the B on g2 joins the attack on a8 (battery with the Q on b7)".
 - **Threat-of-X forcing** (`regress.pass_claim`) — a move is forcing when, after it, a PASS by them lets a claim of ours bind with no defect left that did not bind before the move: today the passer lemma
   (`unstoppablePasser2_sound`) for a pawn ("b6 (threat: b7 then b8=Q binds after a pass)"); the fork claim of a landing is the same word (52.18 (4)). The reason names the claim.
+- **Fork root** (`landing.fork_candidates`, agenda `_ask_fork`; Lean `Ideas.ForkSquare.one_move_touches_one`, `Ideas.GeoLemmas.knight_fork_same_colour`) — a root `fork on s with our <piece>`: a legal move to a SAFE square
+  (the exchange there wins nothing for them) from which the piece attacks two pieces it wins by the exchange if they pass (or the king and one piece), stake = the smaller value. Verified by the rules
+  reply by reply (the least of balance + the best static exchange); a reply that answers both (the capture of the forker, a move of one attacked piece that guards the other, a check) is the defect
+  and kills it by name. Two pieces on squares of opposite colour cannot be forked by a knight (the colour lemma kills the pair, with its read set).

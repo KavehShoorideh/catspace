@@ -22,6 +22,7 @@ import Ideas.QueenMateBoard
 import Ideas.InsufficientMaterial
 import Ideas.QueenMateShapes
 import Ideas.Region
+import Ideas.ForkSquare
 import Ideas.Battery
 import Ideas.Landing
 import Ideas.ForcedByMeasure
