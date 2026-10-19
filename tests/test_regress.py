@@ -864,3 +864,41 @@ def test_52_17_the_dev_20_decisions_that_needed_a_discovery_or_a_resumed_gap_are
         ag = AG.Agenda(State(p["fen"], "w", []))
         ag.ask()
         assert ag.decision() is not None and ag.decision().what == san and ag.ctx.unaddressed > 0, pid
+
+
+# ---- 52.17 (3): the king driven off a square, and the promotion that is an exchange -----------------------------------------------------------------
+
+def test_52_17_rh8_does_not_drive_the_king_off_c8_but_rd8_after_kd7_does():
+    b = chess.Board(LRTF)
+    assert not R.drives_off(b, chess.Move.from_uci("h7h8"), chess.C8, chess.C8)                 # Kd7 still touches c8
+    c = chess.Board(LRTF)
+    c.push_san("Rh8+")
+    c.push_san("Kd7")
+    assert R.drives_off(c, chess.Move.from_uci("h8d8"), chess.C8, chess.D7)                     # Ke6, Ke7; Kxd8 is illegal (c7 guards d8)
+    assert [r.san for r in R.drive_off_routes(c, "w", chess.C8, chess.D7)] == ["Rd8+"]
+    q = R.new_question("promote", R.STAKE_PROMOTE, dict(pawn=chess.C7))
+    f = R.promote_fixes(c, chess.C7, R.Defect("stopper", chess.C8, [chess.D7], "their K reaches c8"), q)
+    assert [r.san for r in f.routes] == ["Rd8+"] and "drive their king off c8" in f.text
+
+
+def test_52_17_0lrtf_is_decided_rh8_by_the_drive_off_step_and_the_exchange_on_the_promotion_square():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0LRTF"][0]
+    ag = AG.Agenda(State(p["fen"], "w", []))
+    ag.ask()
+    d = ag.decision()
+    t = ag.trace()
+    assert d is not None and d.what == "Rh8+" and d.value == 4
+    assert "after Kd7: Rd8+ (Rd8+; after Ke6: c8=Q+ (c8=Q+; Rxc8 wins 4: Rxc8 Rxc8: the promotion is worth 8, less the 4 they win on the new queen = 4" in t
+    assert ag.ctx.budget_hits == 0 and ag.ctx.asked < 100                                         # before: 254 inner questions and 27 fuse hits, no decision
+
+
+def test_52_17_the_promotion_exchange_is_read_on_the_board_after_the_push_and_not_claimed_when_the_queen_stands():
+    ag = AG.Agenda(State("R7/2P5/8/7k/8/8/p6K/2r5 w - - 0 1", "w", []), side_depth=0, chase_depth=2, ctx=AG.ChaseCtx())
+    q = [x for x in ag.all if x.goal == "promote" and x.pattern["pawn"] == chess.C7][0]
+    facts = dict(pushes=1, promo=chess.C8)
+    cl = ag._promotion_exchange(q, chess.C7, facts)
+    assert cl is not None and cl.kind == "win" and cl.value == 8 - G.see_for(chess.Board("R1Q5/8/8/7k/8/8/p6K/2r5 b - - 0 1"), chess.C8, False)
+    free = AG.Agenda(State("8/2P5/8/7k/8/8/p6K/8 w - - 0 1", "w", []), side_depth=0, chase_depth=2, ctx=AG.ChaseCtx())
+    q2 = [x for x in free.all if x.goal == "promote"][0]
+    assert free._promotion_exchange(q2, chess.C7, dict(pushes=1, promo=chess.C8)) is None          # nothing of theirs takes on c8: the passer's business, no exchange claim

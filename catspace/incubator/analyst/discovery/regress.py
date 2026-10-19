@@ -697,6 +697,23 @@ def promote_defects(board: chess.Board, sq: int) -> tuple:
     return out, facts
 
 
+def drives_off(board: chess.Board, m: chess.Move, x: int, ksq: int) -> bool:
+    """52.17 (3): THE KING DRIVEN OFF A SQUARE. `m` is a check after which EVERY legal reply is a move of their king (the one on `ksq`) to a square that does not touch `x`
+    (not on it, not next to it): the square is left unattacked by the king whatever it does. 0LRTF: after Rh8+ Kd7, Rd8+ drives the king off c8 (Ke6, Ke7; Kxd8 is
+    illegal, c7 guards d8); Rh8+ itself does not (Kd7 touches c8)."""
+    if not board.gives_check(m):
+        return False
+    c = board.copy(stack=False)
+    c.push(m)
+    reps = list(c.legal_moves)
+    return bool(reps) and all(r.from_square == ksq and chess.square_distance(r.to_square, x) >= 2 for r in reps)
+
+
+def drive_off_routes(board: chess.Board, us: str | bool, x: int, ksq: int) -> list:
+    """52.17 (3): our checks that drive their king off `x` (see `drives_off`); read set: their king's squares after the check, the checker's safety."""
+    return [Route(m, board.san(m), f"drives the king off {G.name(x)}: every king reply leaves it unattacked by the king") for m in _moves(board, us) if drives_off(board, m, x, ksq)]
+
+
 def promote_fixes(board: chess.Board, sq: int, defect: Defect, q: "Question") -> "Question":
     """The sub-question a promotion defect generates, with its forcing routes (moves of the pawn's owner only; `board` has the owner on move)."""
     own = board.piece_at(sq).color
@@ -713,5 +730,12 @@ def promote_fixes(board: chess.Board, sq: int, defect: Defect, q: "Question") ->
         f.routes = [Route(m, board.san(m), f"capture {G.worth(board.piece_at(m.to_square))}") for m in board.legal_moves if m.to_square == defect.by[0]]
         if push in board.legal_moves and board.gives_check(push):
             f.routes.append(Route(push, board.san(push), "push with check"))
+    ek = board.king(not own)
+    if ek is not None and ((defect.kind == "blocked" and defect.sq == ek) or (defect.kind in ("path attacked", "promo square attacked", "stopper") and ek in defect.by)):
+        have = {r.move for r in f.routes}
+        extra = [r for r in drive_off_routes(board, own, defect.sq, ek) if r.move not in have]
+        f.routes += extra
+        if extra:
+            f.text += f" -- or drive their king off {G.name(defect.sq)} with a check"
     q.fixes.append(f)
     return f

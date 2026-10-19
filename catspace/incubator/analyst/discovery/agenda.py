@@ -1210,15 +1210,41 @@ class Agenda:
                 return True, ""
             if q.goal == "win" and q.pattern.get("target") in c.attacks(m.to_square) and d.kind in ("not attacked", "defended"):
                 return True, ""
-            if q.goal == "promote" and self._fixes_promote_defect(q, d, m, c):
-                return True, ""
+            if q.goal == "promote":
+                why_fix = self._fixes_promote_defect(q, d, m, c)
+                if why_fix:
+                    return True, f"{san}: a route of {goal}: {why_fix}"
             left.append(d)
         stays = "; ".join(f"{d.sq and G.name(d.sq) + ' ' or ''}{ {'flight': 'stays a flight', 'checker takeable': 'stays takeable', 'interposition': 'stays open', 'not attacked': 'stays unattacked', 'defended': 'stays defended', 'blocked': 'stays blocked', 'stopper': 'stays a stopper', 'reach': 'stays out of reach'}.get(d.kind, 'stands') }" for d in left[:3]) or "no defect"
         return False, f"{san}: not a route of {goal} (a check that fixes no defect: {stays})"
 
-    def _fixes_promote_defect(self, q: R.Question, d: R.Defect, m: chess.Move, c: chess.Board) -> bool:
-        """52.17 (2), (3): a check that fixes a defect of the promotion: takes the blocker / stopper it names."""
-        return m.to_square in d.by
+    def _fixes_promote_defect(self, q: R.Question, d: R.Defect, m: chess.Move, c: chess.Board) -> "str | None":
+        """52.17 (2), (3): a check that fixes a defect of the promotion: takes the blocker / stopper / attacker it names, DRIVES THEIR KING OFF the square the defect is about (a check
+        after which every king reply leaves it unattacked by the king), or is a STEP of that fix: whatever the king replies, a check that drives it off exists there (Rh8+ Kd7, then
+        Rd8+). -> the reason, or None."""
+        b, me = self.board, self.me
+        if m.to_square in d.by:
+            return f"it takes the {b.piece_at(m.to_square).symbol().upper()} on {G.name(m.to_square)}"
+        ek = b.king(not me)
+        if ek is None or not ((d.kind == "blocked" and d.sq == ek) or (d.kind in ("path attacked", "promo square attacked", "stopper") and ek in d.by)):
+            return None
+        x = d.sq
+        if R.drives_off(b, m, x, ek):
+            return f"it drives their king off {G.name(x)}"
+        reps = list(c.legal_moves)
+        if not reps:
+            return None
+        steps = []
+        for r in reps:
+            c2 = c.copy(stack=False)
+            san_r = c2.san(r)
+            c2.push(r)
+            k2 = c2.king(not me)
+            nxt = [m2 for m2 in R._moves(c2, self.us) if k2 is not None and R.drives_off(c2, m2, x, k2)]
+            if not nxt:
+                return None
+            steps.append(f"after {san_r}, {c2.san(nxt[0])}")
+        return f"a step of driving their king off {G.name(x)} ({'; '.join(steps[:3])} drives it off)"
 
     def _chase(self, q: R.Question) -> bool:
         """52.12: the chase of a question that would be killed. -> True when a route CLAIMS (the question is verified)."""
@@ -1235,6 +1261,8 @@ class Agenda:
                 ok, note = self._addresses(q, m, why)
                 if ok:
                     routes.append(R.Route(m, b.san(m), why))
+                    if note:
+                        notes.append(note)
                 else:
                     self.ctx.unaddressed += 1
                     notes.append(note)
@@ -1496,6 +1524,9 @@ class Agenda:
                 self.best = (claim.value, 0, claim)
                 self.asked_at_claim = self.asked
             return
+        ex = self._promotion_exchange(q, sq, facts)
+        if ex is not None:
+            return
         h = PV.passer_v2(b, sq)
         bad = [k for k in PV.HYPS if not h[k]]
         why = []
@@ -1514,6 +1545,41 @@ class Agenda:
         q.reason = msg
         self.state.gaps.append(msg)
         self.lines.append(f"  -> GAP: {msg}")
+
+    def _promotion_exchange(self, q: R.Question, sq: int, facts: dict) -> "Claim | None":
+        """52.17 (3): THE PROMOTION THAT IS AN EXCHANGE. No static defect, the push promotes now (one push), and the passer lemma does not fire because a rook or a queen of
+        theirs stands behind the pawn on its file (it attacks the promotion square once the pawn has left the line: an X-RAY through the pawn). The push is played (a queen) and
+        the exchange on the promotion square is READ with their move (the x-ray static exchange of `Ideas.ExchangeLaw`, the mirror `G.see`; only when some LEGAL reply of theirs
+        captures there): the promotion is worth the queen less the pawn, less what they win on the new queen -- 0LRTF: c8=Q+ Rxc8 Rxc8, 8 - (9 - 5) = 4, a rook for a pawn. A claim
+        of kind `win` with that value (a promotion nets less than the passer lemma's 8 there); the composed statement (push, then the exchange) is a TODO in Schemas.lean like the
+        chase claims. -> the claim, or None."""
+        b, me = self.board, self.me
+        if facts["pushes"] != 1:
+            return None
+        push = chess.Move(sq, facts["promo"], promotion=chess.QUEEN)
+        if push not in b.legal_moves:
+            return None
+        san = b.san(push)
+        c = b.copy(stack=False)
+        c.push(push)
+        if c.is_checkmate() or not any(m.to_square == facts["promo"] for m in c.legal_moves):
+            return None
+        lost = G.see_for(c, facts["promo"], not me)
+        net = R.STAKE_PROMOTE - lost
+        if lost <= 0 or net < 1:
+            return None
+        read = R.exchange_read(G.with_turn(c, not me))
+        claim = Claim("win", san, net, "promotion_exchange: the push, then the x-ray exchange on the promotion square (Ideas.ExchangeLaw seeXB, mirrored by the Rust see)",
+                      f"{san}; {read}: the promotion is worth {R.STAKE_PROMOTE}, less the {lost} they win on the new queen = {net}", move=push.uci())
+        self._stamp(claim, q)
+        self.state.claims.append(claim)
+        q.status = "verified"
+        q.claimed = (net, claim, frozenset(q.reads or ()) | {sq, facts["promo"]})
+        self.lines.append(f"  -> CLAIM win {san} (value {net}), lemma {claim.lemma}, line {claim.line}")
+        if self.best is None or (net, 0) > self.best[:2]:
+            self.best = (net, 0, claim)
+            self.asked_at_claim = self.asked
+        return claim
 
     def _ask_stop_pawn(self, q: R.Question, head: str) -> None:
         """THEIR passer, a claim of their agenda, as OUR save root: the routes are the stoppers' moves (our king runs toward the promotion square, a capture of
