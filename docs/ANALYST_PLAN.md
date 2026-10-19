@@ -2409,6 +2409,9 @@ is by rule with a read set (52.13). Items, in build order (one commit each; Lean
 5. **The region's influence (decide, then build if small).** Whether a region carries the squares the piece attacks from inside it (its influence),
    for zones that are lines (the mating line of a rook): if the goal zones of 52.17 need it, add `influence(region)` as the union of attacks from the
    region's squares with the same read set; otherwise record why not in the plan and skip.
+   DECIDED (builder, 2026-10-19): NOT built. None of the zones the 52.17 kills use is a line the piece attacks from inside its region: the wall kill's zone is the squares from which OUR KING covers a
+   flight (a king's cover is its adjacency, not a region property), and the held-measure kill reads their king's room and the rules, not a rook's line. A rook-line zone would need the influence
+   `attacks from the region's squares` with the same read set; the first goal that asks for it (a mating line for a rook behind a wall) is where it gets built, with its Lean statement.
 Acceptance for 52.18: dev_20 and fresh_60_threats_event OBS before/after, every changed decision classified by Stockfish d18; every 52.13-52.17
 acceptance puzzle unchanged; glossary + LEAN_INDEX rebuilt; tests per item; `known_about` printed in the trace for the deciding move's piece.
 
