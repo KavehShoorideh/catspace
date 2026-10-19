@@ -192,6 +192,45 @@ def threat_value(board_after: chess.Board, us: str | bool) -> int:
     return best
 
 
+def exchange_read(board: chess.Board) -> str:
+    """52.16 (3): the best static exchange of the side to move on `board`, READ: where it is, what it wins, the captures in order (the cheapest attacker first, each
+    side going on while it has an attacker) and any attacker that stands BEHIND a piece of its own side on the line (an x-ray: the bishop that comes through the vacated
+    square behind the queen). "Qxa8 wins 5: Qxa8 Qxa8 Bxa8, the Bxa8 behind the Q"."""
+    me = board.turn
+    best = (0, None)
+    for s in chess.SQUARES:
+        p = board.piece_at(s)
+        if p is None or p.color == me or p.piece_type == chess.KING or not board.is_attacked_by(me, s):
+            continue
+        v = G.see(board, s)
+        if v > best[0]:
+            best = (v, s)
+    v, sq = best
+    if sq is None:
+        return "no exchange"
+    direct = set(board.attackers(me, sq)) | set(board.attackers(not me, sq))
+    c = board.copy(stack=False)
+    seq, behind = [], []
+    while len(seq) < 8:
+        atts = list(c.attackers(c.turn, sq))
+        if not atts:
+            break
+        a = min(atts, key=lambda x: (G.worth(c.piece_at(x)) if c.piece_at(x).piece_type != chess.KING else 99, x))
+        pc = c.piece_at(a)
+        if pc.piece_type == chess.KING and any(True for _ in c.attackers(not c.turn, sq)):
+            break
+        letter = chess.FILE_NAMES[chess.square_file(a)] if pc.piece_type == chess.PAWN else pc.symbol().upper()
+        txt = f"{letter}x{G.name(sq)}"
+        seq.append(txt)
+        if a not in direct:
+            blockers = [x for x in chess.SquareSet(chess.between(a, sq)) if board.piece_at(x) is not None]
+            if blockers:
+                front = min(blockers, key=lambda x: chess.square_distance(x, sq))
+                behind.append(f"the {txt} behind the {board.piece_at(front).symbol().upper()}")
+        c.push(chess.Move(a, sq, promotion=chess.QUEEN if pc.piece_type == chess.PAWN and chess.square_rank(sq) in (0, 7) else None))
+    return f"{seq[0]} wins {v}: {' '.join(seq)}" + (", " + ", ".join(behind) if behind else "")
+
+
 def mate_threat(board: chess.Board, m: chess.Move, us: str | bool) -> bool:
     """52.12: after our (quiet) move m and a pass, we have a mate in one -- the rules' fact (every legal move of ours, one pushed): their every reply must meet it."""
     me = G.colour_of(us)
@@ -232,10 +271,25 @@ def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool, m
     if t < stake:
         return None
     me = G.colour_of(us)
-    if G.see_for(c, m.to_square, not me) > 0:                # landsSafe fails: the exchange on the destination wins for them
+    lost = G.see_for(c, m.to_square, not me)
+    if lost > 0:                                              # landsSafe fails: the exchange on the destination wins for them
+        # 52.16 (3): a SACRIFICE THAT STILL THREATENS is forcing: the threat SURVIVES the capture of the moved piece -- after every capture of it by them, the most we would win by the
+        # exchange on a piece of theirs, us to move, is still at least the stake (the discovery position's Nf6: Bxf6, then Qxa8 Qxa8 Bxa8 through the vacated e4). The worst capture for us decides.
+        pc = c.piece_at(m.to_square)
+        worst = None
+        for cap in list(c.legal_moves):
+            if cap.to_square != m.to_square:
+                continue
+            d = c.copy(stack=False)
+            d.push(cap)
+            t2 = 0 if d.is_check() else threat_value(d, us)           # in check we must answer it: no standing threat to read
+            if worst is None or t2 < worst[0]:
+                worst = (t2, c.san(cap))
+        if worst is not None and worst[0] >= stake:
+            return f"threat {worst[0]} survives {worst[1]} (the {pc.symbol().upper()} hangs, {lost})"
         if notes is not None:
-            pc = c.piece_at(m.to_square)
-            notes.append(f"{board.san(m)}: not a threat: the {pc.symbol().upper()} on {G.name(m.to_square)} hangs (they win {G.see_for(c, m.to_square, not me)} by the exchange there)")
+            notes.append(f"{board.san(m)}: not a threat: the {pc.symbol().upper()} on {G.name(m.to_square)} hangs (they win {lost} by the exchange there)"
+                         + (f" and the threat does not survive {worst[1]} ({worst[0]})" if worst is not None else ""))
         return None
     return f"threat {t}"
 

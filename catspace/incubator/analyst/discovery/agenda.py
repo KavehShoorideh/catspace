@@ -1052,7 +1052,7 @@ class Agenda:
         t, _cl = self._their_pass(P2.fen())
         if t:
             return None
-        return dbal + best, f"exchange +{best}, nothing of theirs"
+        return dbal + best, f"exchange +{best} ({R.exchange_read(chess.Board(P2.fen()))}), nothing of theirs"
 
     def _log(self, key: tuple, rep: str, outcome: str, dbal: int, inner: int | None, reads, reason: str | None) -> None:
         """52.13 (4): one row per reply read, for the plan 53 ordering prior (the prior itself is not built). Buffered; written by the root agenda when it ends."""

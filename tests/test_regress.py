@@ -679,3 +679,32 @@ def test_52_16_a_position_asked_again_under_other_move_counters_is_a_cycle():
     ag.ctx.active.add(AG._pos_key(a))
     r = ag._inner("2k5/2P4R/1K6/8/8/p7/8/2r5 w - - 14 66", 1)                                 # the same board two moves later
     assert r["claim"] is None and r["asked"] == 0 and r["value"] == 0
+
+
+# ---- 52.16 (3): a sacrifice that still threatens is forcing -------------------------------------------------------------------------------------------
+
+DISCOVERY = "r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w - - 0 1"        # Kaveh's discovery position (SF d20: Nf6 +385, Nd6 +320)
+
+
+def test_52_16_the_knight_sacrifice_that_still_threatens_is_forcing_and_the_hanging_rook_is_not():
+    b = chess.Board(DISCOVERY)
+    notes = []
+    assert R.forcing_why(b, chess.Move.from_uci("e4f6"), 5, "w", notes=notes) == "threat 5 survives Bxf6 (the N hangs, 3)"          # the battery through the vacated e4 stands after the capture
+    assert R.forcing_why(b, chess.Move.from_uci("e4d6"), 5, "w") == "threat 5 survives Bxd6 (the N hangs, 3)"
+    # 08pSj: Rc6 hangs to the queen and nothing survives its capture
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "08pSj"][0]
+    b2 = chess.Board(p["fen"])
+    notes = []
+    rc6 = next(m for m in b2.legal_moves if b2.san(m) == "Rc6")
+    assert R.forcing_why(b2, rc6, 5, "w", notes=notes) is None
+    assert any("Rc6: not a threat: the R on c6 hangs" in n and "does not survive Qxc6" in n for n in notes)
+
+
+def test_52_16_the_discovery_position_decides_nf6_with_the_exchange_read():
+    ag = AG.Agenda(State(fen=DISCOVERY, us="w", pieces=[]))
+    ag.ask()
+    d = ag.decision()
+    assert d is not None and d.what == "Nf6"                                                    # SF d18: Nf6 is the best move (Nd6 loses 35 cp)
+    assert "after Bxf6: closed by rule: exchange +5 (Qxa8 wins 5: Qxa8 Qxa8 Bxa8, the Bxa8 behind the Q), nothing of theirs" in d.line
+    assert R.exchange_read(chess.Board("r3q2k/pQ1nb1pp/5Bn1/5bP1/3P4/2N1P3/PPP3B1/R1B3K1 w - - 0 2")) .startswith("Qxa8 wins 5: Qxa8 Qxa8 Bxa8")
