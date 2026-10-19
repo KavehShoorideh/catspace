@@ -31695,3 +31695,25 @@ though we have a move to parry), so a false static claim at an inner level is no
 agenda (a parry keeps the gain), not a subtraction; (b) inherited claims are few (0 / 3) because at chase time most outer questions are still
 unasked; (c) fuse hits are not zero (01vys, 04Qx2, 0DoFB's Bxf2+ chain), each a GAP never a kill; (d) the Agenda itself is still Python -- the port is
 the separate plan Kaveh asked for ("everything in Rust"); (e) the ordering prior is not built; the log has 3,901 rows.
+
+## 2026-10-19 09:30 PDT -- THE STATIC LEAF AT EVERY DEPTH: THEIR THREAT AS A SAVE ROOT (plan 52.14); THE ELEVEN UNDECIDED, READ
+
+Plan 52.14 (Kaveh "do it"), built by the builder (34cd2cbb; tests/test_regress.py 42 passed), verified by rerun. A static leaf of the chase (a reply
+after which our gain is only the balance, us to move) is now read from their side at every chase depth, and their claim is not subtracted but asked
+as a SAVE root of our inner agenda; a verified parry keeps the gain. 0VSUT's inner leaf, unread before: "Rxb1 after Reb5: +3 stands as a balance;
+their Rxb1 wins 4 if we pass; parry: Rxb5 keeps +3". 0AgL8's Nxg2 now dies by "no parry" for their Qa7+.
+Builder deviation to weigh: the binder's gain schemas need a balance <= 0, so a parry could not be verified by a schema; the builder reads it as
+keep + what the parry wins - max(their claim after the parry, the exchange there) >= 1, labelled "their_view", NOT a Lean lemma. A mate threat is
+parried only by taking the threatening piece or by mating.
+OBS (one run each, directional): dev_20 decided 12 MATCH 12 unchanged, seconds 14.8 -> 24.6; fresh_60 decided 49 MATCH 48 unchanged, static leaves
+read 329, parried 98, unparried 14, seconds 41.0 -> 76.3. No decision changed. 0A2th (the motivating case) is still undecided: after Rxe5+ Kd6 the
+parry Bf4 leaves the c6 bishop to Kxc6, so "no parry" is the right reading at this depth (SF wins it back by Rc1 and Rexc5, two moves deeper).
+
+The eleven undecided fresh_60 puzzles, read by hand (scratch u_<id>.txt): (1) IN CHECK THE AGENDA HAS NO WIN QUESTION -- 0SJz3, 0Zsoa: Rxd6 is
+met by a recapture with check and our king takes back (a rook in 0SJz3); our agenda on 0Zsoa after Rxd6 exd6+ roots only "save our king", claim
+Kd7 at 0, Kxd6 "no route binds". (2) PROMOTE QUESTIONS NEVER CHASE -- 0Nv29 b6 deflects the a5 bishop from the c-pawn (the stopper is named, "no
+forcing move"), 0LRTF (a check chase into c8=Q), 0GJec (Rb1 works because the pawn promotes behind the recapture); `_chase` allows mate and win only.
+(3) 0A2th: the 52.14 case, one move deeper than the parry read. (4) ENDGAME JUDGMENT with no material in the window -- 0IGqk, 0KoEc, 0b9Qz, 0Tats,
+0UDsf (breakthroughs, an outside passer, a rook trade into a won king ending, a queen chase, a quiet queen move): the claims about a measure of
+plan 53, not one-question gaps; 0UDsf and 0LRTF also trip the fuse. Proposed next slice (not started): the checker as a win target in check, and
+the chase for promote roots -- five of the eleven sit behind them.
