@@ -42,13 +42,19 @@ from catspace.incubator.analyst.discovery import selfmine as SM
 from catspace.incubator.analyst.discovery.state import Claim, State
 
 
+DEPTH_FUSE = 30                                                 # 52.13 (2b): ... and a chase this many inner levels deep is cut the same way (python's stack: ~9 frames per level; the 10x fuse alone reached the recursion limit)
+FUSE = 10                                                       # 52.13 (2b): the chase's budget is a fuse at this multiple of the old question count
+
+
 class ChaseCtx:
     """The state shared by the root agenda and its inner agendas (52.12): the FEN memo, the route memo, the shared question budget and the counters."""
     def __init__(self):
         self.memo: dict = {}                      # fen -> {value, claim, asked}: the inner agenda's best claim, asked once for the whole run
         self.routes: dict = {}                    # (fen, uci) -> the evaluated route (memoised: the same position is chased by many questions)
         self.active: set = set()                  # the FENs being asked (a cycle ends here)
-        self.left = 0                             # the shared question budget of the root question being chased
+        self.left = 0                             # 52.13 (2b): the FUSE of the root agenda: 10x its question budget, set once, spent by every chase and inner agenda under it
+        self.depth_cuts = 0                       # ... of the fuse hits, the ones from the depth cap (the stack), not the question count
+        self.gap_reused = 0                       # 52.13 (2a): GAP routes seen again with no more fuse than when they were cut, not re-run
         self.agendas = 0                          # inner agendas run
         self.asked = 0                            # questions they asked
         self.budget_hits = 0
@@ -85,7 +91,7 @@ class Agenda:
             + sum(1 for m in self.board.legal_moves if self.board.is_capture(m))
         self.notes: list = []
         if ctx is None and self.ctx is not None:
-            self.ctx.left = self.budget                         # the root agenda's question budget, shared by every chase of every question and the inner agendas
+            self.ctx.left = self.budget * FUSE                  # the root agenda's FUSE (10x the question budget), set ONCE: every chase of every question and the inner agendas spend it
         self._threats_done = not side_depth
         self._hang: list = []
         self.threat_views: list = []                            # (claim, their agenda) for every threat root
@@ -774,7 +780,9 @@ class Agenda:
             return hit
         if fen in ctx.active:
             return dict(value=0, claim=None, asked=0, need=need)
-        if ctx.left <= 0:
+        if ctx.left <= 0 or self.chase_depth >= DEPTH_FUSE:
+            if ctx.left > 0:
+                ctx.depth_cuts += 1
             return None
         ctx.active.add(fen)
         hits0 = ctx.budget_hits
@@ -797,7 +805,12 @@ class Agenda:
         b, ctx = self.board, self.ctx
         key = (b.fen(), m.uci())
         if key in ctx.routes:
-            return ctx.routes[key]
+            hit = ctx.routes[key]
+            if hit["gap"] is None:
+                return hit
+            if ctx.left <= hit["cut_left"]:                      # 52.13 (2a): a GAP stays a GAP while the fuse left is no more than when it was cut
+                ctx.gap_reused += 1
+                return dict(hit, reused=True)
         san = b.san(m)
         c = b.copy(stack=False)
         c.push(m)
@@ -826,13 +839,13 @@ class Agenda:
             need = 1 - dbal if dbal <= 0 else BD.MATE_VALUE          # a reply that already gains is read for a mate only; else its static gain must survive their threats (below)
             inn = self._inner(d.fen(), need, d)
             if inn is None:
-                res["gap"] = f"chase budget: {san} not followed past {san_r}"
+                res["gap"] = f"chase fuse: {san} not followed past {san_r}"
                 ctx.budget_hits += 1
                 break
             if dbal >= 1 and inn["value"] < BD.MATE_VALUE:         # a gain that stands only as a static balance with us to move: kept or not is read by THEIR agenda on the chosen route (see _chase)
                 res["static"].append((san_r, d.fen(), dbal))
             if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and inn.get("cut"):
-                res["gap"] = f"chase budget: {san} not followed past {san_r} (the inner agenda was cut by the budget)"
+                res["gap"] = f"chase fuse: {san} not followed past {san_r} (the inner agenda was cut by the fuse)"
                 ctx.budget_hits += 1
                 break
             if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE:
@@ -845,8 +858,9 @@ class Agenda:
                 res["lemmas"].append(cl.lemma)
         if res["killed"] is None and res["gap"] is None:
             res["value"] = min(gains) if gains else 0
-        if res["gap"] is None:
-            ctx.routes[key] = res
+        if res["gap"] is not None:
+            res["cut_left"] = ctx.left
+        ctx.routes[key] = res
         return res
 
     def _static_refuted(self, r: R.Route, res: dict) -> str | None:
@@ -866,10 +880,13 @@ class Agenda:
         """52.12: the chase of a question that would be killed. -> True when a route CLAIMS (the question is verified)."""
         if self.ctx is None or q.goal not in ("mate", "win") or self.min_stake >= BD.MATE_VALUE or (self.chase_depth >= 2 and q.goal != "mate"):      # (below the first inner level only the mate questions chase) # a mate-only read (the reply already gained, or lost too much for anything but a mate) does not chase on
             return False
+        if self.best is not None and self.best[0] >= q.stake:      # 52.13 (2c): a question is chased only when its stake exceeds the best claim so far (stop (a) would end the agenda anyway)
+            self.lines.append(f"  chase: not asked, the best claim ({self.best[2].what}, {self.best[0]}) is at least the stake {q.stake}")
+            return False
         b = self.board
-        routes = []
+        routes, notes = [], []
         for m in R._moves(b, self.us):
-            why = R.forcing_why(b, m, q.stake, self.us, mate_threats=True)
+            why = R.forcing_why(b, m, q.stake, self.us, mate_threats=True, notes=notes)
             if why:
                 routes.append(R.Route(m, b.san(m), why))
         if self.chase_depth:                                    # inner levels follow the most forcing moves only: a check, a capture, a mate threat (the quiet "threat n" moves are the root's)
@@ -878,14 +895,15 @@ class Agenda:
         if not routes:
             self.lines.append("  chase: no forcing move on this board")
             return False
-        if self.chase_depth == 0:
-            self.ctx.left = self.budget                         # the root question's budget, shared by this chase and every inner agenda under it, spent route by route
+        for n in notes[:6]:
+            self.lines.append("  chase: " + n)
         self.lines.append(f"  chase: make them move -- {len(routes)} forcing route(s): " + ", ".join(f"{r.san} ({r.why})" for r in routes[:12]) + (" ..." if len(routes) > 12 else ""))
-        done = []
+        done, cut = [], False
         for r in routes:
             res = self._chase_route(r.move)
             if res["gap"]:
-                self.lines.append(f"    {r.san}: GAP, {res['gap']}")
+                cut = True
+                self.lines.append(f"    {r.san}: GAP, {res['gap']}" + (" (seen before with no more fuse: not re-run)" if res.get("reused") else ""))
                 self.state.gaps.append(f"Q{q.id} {q.text}: {res['gap']}")
             elif res["killed"]:
                 self.lines.append(f"    {r.san}: killed -- {res['killed']}")
@@ -894,7 +912,8 @@ class Agenda:
                 done.append((res["value"], r, res))
             else:
                 self.lines.append(f"    {r.san}: value {res['value']} (no gain on the worst reply)")
-        self.lines.append(f"    (chase: {self.ctx.agendas} inner agendas, {self.ctx.asked} inner questions, {self.ctx.budget_hits} budget hit(s), budget left {self.ctx.left})")
+        self.lines.append(f"    (chase: {self.ctx.agendas} inner agendas, {self.ctx.asked} inner questions, {self.ctx.budget_hits} fuse hit(s), {self.ctx.gap_reused} gap route(s) reused, fuse left {self.ctx.left})")
+        self.lines.append("    chase ended: " + ("the FUSE was hit on at least one route (a GAP, never a kill)" if cut else "every route closed (claim on every reply or a refuting reply)"))
         if not done:
             return False
         done.sort(key=lambda t: (-t[0], t[1].move.uci()))

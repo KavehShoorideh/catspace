@@ -419,3 +419,18 @@ def test_52_13_a_claim_is_inherited_when_the_diff_misses_its_reads_and_reopened_
     meet = AG.Agenda(State(b1.fen(), "b", []), side_depth=0, chase_depth=1, ctx=AG.ChaseCtx(), inherit=outer._inherit_for(frozenset(chess.SQUARES)))
     meet.ask()
     assert meet.ctx.inherited_claims == 0
+
+
+PSJ = "8/7k/3Q4/p1r3p1/8/2P1bB1P/PP3rP1/7K b - - 1 48"
+
+
+def test_52_13_a_quiet_threat_by_a_piece_the_exchange_wins_is_not_a_threat():
+    b = chess.Board(PSJ)
+    m = chess.Move.from_uci("c5c6")
+    c = b.copy()
+    c.push(m)
+    assert R.threat_value(c, "b") == 9                       # the old reading: the rook on c6 attacks the queen
+    assert G.see_for(c, chess.C6, True) > 0                  # ... and the queen takes it (landsSafe fails)
+    notes = []
+    assert R.forcing_why(b, m, 9, "b", notes=notes) is None
+    assert notes and "not a threat: the R on c6 hangs" in notes[0]

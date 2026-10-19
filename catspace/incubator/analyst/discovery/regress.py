@@ -211,9 +211,11 @@ def mate_threat(board: chess.Board, m: chess.Move, us: str | bool) -> bool:
     return False
 
 
-def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool, mate_threats: bool = False) -> str | None:
+def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool, mate_threats: bool = False, notes: list | None = None) -> str | None:
     """A move is FORCING when it is a check, a threat of mate (52.12: after it, a pass leaves us a mate in one), or a capture / threat worth at least the stake of the
-    question (a mate stakes 100: only a check or a mate threat is). -> why or None."""
+    question (a mate stakes 100: only a check or a mate threat is). 52.13 (2d): a QUIET move threatens only if the moved piece is not lost by the exchange on its own
+    square (Lean `Ideas.Vocabulary.landsSafe`: after the move the exchange on its destination wins nothing for the other side; the Rust `see`, them on move): the
+    threatening rook the queen takes is not a threat (08pSj's Rc6) -- the reason is appended to `notes`. -> why or None."""
     if board.gives_check(m):
         return "check"
     if mate_threats and mate_threat(board, m, us):          # (asked by the chase and the reach roots only: the other fixes keep their old forcing)
@@ -227,7 +229,15 @@ def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool, m
     c = board.copy(stack=False)
     c.push(m)
     t = threat_value(c, us)
-    return f"threat {t}" if t >= stake else None
+    if t < stake:
+        return None
+    me = G.colour_of(us)
+    if G.see_for(c, m.to_square, not me) > 0:                # landsSafe fails: the exchange on the destination wins for them
+        if notes is not None:
+            pc = c.piece_at(m.to_square)
+            notes.append(f"{board.san(m)}: not a threat: the {pc.symbol().upper()} on {G.name(m.to_square)} hangs (they win {G.see_for(c, m.to_square, not me)} by the exchange there)")
+        return None
+    return f"threat {t}"
 
 
 def _moves(board: chess.Board, us: str | bool, skip_from: int | None = None) -> list:
