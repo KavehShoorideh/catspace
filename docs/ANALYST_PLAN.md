@@ -2239,3 +2239,27 @@ ours with the claim's value as stake; the save is verified by the binder (a parr
    0AgL8 Nxg2 still never claimed at 4x the fuse (now by "no parry"); a constructed position where a threat is parried and the gain kept.
 Acceptance: dev_20 and fresh_60_threats_event OBS before/after, every changed decision classified by Stockfish d18 (OBS SF lines), seconds; the
 acceptance puzzles of 52.13 unchanged (0DoFB Qd5, 0AgL8 Qxg2+, 08pSj Rf1+, 0RhU6 Qxf2+, 0Wih8 Ng5+, 01w7J Bxh2+, 0VSUT Qxe5, 0BuQP Kf2, 0UqOv exf7+).
+
+### 52.15 The checker as a win target, the chase for promotion goals, the parry as a bound schema (Kaveh 2026-10-19 "do the next thing"; GO)
+The eleven undecided fresh_60 puzzles were read by hand (journal 2026-10-19 09:30): two sit behind a missing question in check, three behind
+promotion goals that never chase; and 52.14's parry is the first claim path without a proved schema. Build, in this order, one commit each (builder:
+deviate minimally and REPORT every deviation; no AI trailers; OBS lines for every number):
+1. **In check, the checker is a win target.** The agenda in check roots only "save our king" (0Zsoa after Rxd6 exd6+: the save claim is Kd7 at 0 and
+   Kxd6, a free pawn, "no route binds"; 0SJz3 after Rxd6 Rxd6+: the king takes back a rook). Add, when in check and the checker can be taken, the root
+   "win their <checker> on <sq> (it gives check)" with the checker's worth as stake, routes = every legal capture of the checker (the king's included),
+   verified by the existing schemas exactly as a win root is; the save root stays. In the chase this makes "after exd6+: no claim of ours" into
+   "after exd6+: win the P on d6: Kxd6 (lemma ...) -> +1". Test: 0Zsoa Rxd6 and 0SJz3 Rxd6 decided (classified by Stockfish d18).
+2. **Promote roots chase.** `_chase` allows the goals mate and win; add promote. Routes for a promote question: `forcing_why` as now (check, capture,
+   threat of mate) PLUS a move that attacks a named STOPPER of the question (the defect's piece: 0Nv29 "b6" attacks the B on a5), read as
+   "threat on the stopper"; the inner agenda on each reply asks the promote root again (its reads: the path squares, the stoppers, the promotion
+   square). A route claims when the inner promote claim binds on every reply or the reply loses material >= the stake. Test: 0Nv29 b6 decided
+   (every inner line printed); 0LRTF and 0GJec traces reported either way with the reason.
+3. **The parry as a bound schema.** The Lean theorem `delayed_balance_d1` (Schemas.lean:153) is already general in the balance bound B; the BINDER
+   hard-codes `balance <= 0` (`_delayed_atoms`, binder.py:64). Add a binder family `keep` whose atoms are `balance <= B` with B = the balance now and
+   the tail `>= B + v` with v = 0 (the parry keeps what we have), bound by the same theorem if its floor `hT : T >= 68` admits it, else prove
+   `delayed_balance_keep_d1` in Schemas.lean (the same proof with the floor the parry needs; say what 68 is in the gloss) and rebuild the index
+   (`python -m catspace.incubator.analyst.lean_index build`). 52.14's `_parry_keeps` then binds its parry with that family and the claim's lemma is the
+   theorem's name; the "their_view" label disappears from every trace (grep). A mate threat is still parried only by taking the threatening piece or
+   by mating. Test: the 52.14 parry tests pass with a Lean lemma name in the claim.
+Acceptance: dev_20 and fresh_60_threats_event OBS before/after, every changed decision classified by Stockfish d18 (OBS SF lines), seconds; the
+52.13/52.14 acceptance puzzles unchanged; the Lean build green (`cd lean/ideas && lake build`) if Lean is touched.
