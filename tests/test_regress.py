@@ -642,3 +642,40 @@ def test_52_15_the_parry_claim_carries_the_lean_theorem_and_no_their_view_label_
     ag = AG.Agenda(State(p["fen"], "w", []))
     ag.ask()
     assert any("parry: Rxb5 (lemma delayed_balance_alive_d1) keeps +3" in x for x in ag.ctx.static_lines) and "their_view" not in ag.trace()
+
+
+# ---- 52.16 (2): the fuse order ----------------------------------------------------------------------------------------------------------------------
+
+def test_52_16_the_fuse_is_charged_by_stake_order_and_a_later_root_is_not_starved_0lrtf_0gjec():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0LRTF"][0]
+    ag = AG.Agenda(State(p["fen"], "w", []))
+    ag.ask()
+    t = ag.trace()
+    assert "fuse: this root is charged 120 of the pool 240" in t                              # the highest stake is charged half, never all
+    assert "fuse left -" not in t and ag.ctx.left >= 0                                         # before: -14 (239 questions on a route share of 120)
+    assert "Rd7: killed -- after Kxd7" in t                                                    # the second route had a share of 1 before; now it is read to its kill
+    assert any("Rh8+ not followed past Kd7" in g for g in ag.state.gaps)                       # the remaining gap, named: the walk of the king under our rook checks (no fuse closes it)
+    p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0GJec"][0]
+    ag = AG.Agenda(State(p["fen"], "b", []))
+    ag.ask()
+    t = ag.trace()
+    assert "Rxd4: killed -- after Rxd4" in t and "fuse left -" not in t                       # Q4's own routes were all GAPs with nothing left (fuse left -678); now one is read to its kill
+    assert any("Rb1 not followed past Rxb1" in g for g in ag.state.gaps)                       # the remaining gap: the queen-check chain after Rb1 Rxb1
+
+
+def test_52_16_a_route_is_charged_at_most_its_share_and_the_later_route_keeps_its_own():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "08pSj"][0]
+    ag = AG.Agenda(State(p["fen"], "w", []))
+    ag.ask()
+    assert ag.decision().what == "Rf1+"                                                        # the frames open at the fuse still finish: 08pSj stays decided
+
+
+def test_52_16_a_position_asked_again_under_other_move_counters_is_a_cycle():
+    a = "2k5/2P4R/1K6/8/8/p7/8/2r5 w - - 10 64"
+    ag = AG.Agenda(State(a, "w", []))
+    ag.ctx.left = 1000
+    ag.ctx.active.add(AG._pos_key(a))
+    r = ag._inner("2k5/2P4R/1K6/8/8/p7/8/2r5 w - - 14 66", 1)                                 # the same board two moves later
+    assert r["claim"] is None and r["asked"] == 0 and r["value"] == 0

@@ -1107,14 +1107,18 @@ class Agenda:
             self.lines.append("  chase: " + n)
         self.lines.append(f"  chase: make them move -- {len(routes)} forcing route(s): " + ", ".join(f"{r.san} ({r.why})" for r in routes[:12]) + (" ..." if len(routes) > 12 else ""))
         done, cut = [], False
+        pool = self.ctx.left
         for i, r in enumerate(routes):
             saved = self.ctx.left
+            share = max(saved // (len(routes) - i), 1) if saved > 0 else 0
             if self.chase_depth == 0 and saved > 0:             # the root's fuse is shared FAIRLY by the routes of this chase: each gets an equal share of what is left (a chain of checks must not spend what Qd5 needs: 0DoFB)
-                self.ctx.left = max(saved // (len(routes) - i), 1)
+                self.ctx.left = share
             before = self.ctx.left
             res = self._chase_route(r.move, promote=q.goal == "promote")
             if self.chase_depth == 0:
-                self.ctx.left = saved - max(before - self.ctx.left, 0)
+                # 52.16 (2): a route is CHARGED at most its share. The frames open when the fuse runs out finish their questions (that is how 08pSj's Rf1+ and 0VSUT's Qxe5 are decided),
+                # but that finishing is free: charged in full it took the share of every later route (0LRTF: 239 questions on a share of 120, then Rd7 got 1).
+                self.ctx.left = saved - min(max(before - self.ctx.left, 0), share) if saved > 0 else self.ctx.left
             if res["gap"]:
                 cut = True
                 self.lines.append(f"    {r.san}: GAP, {res['gap']}" + (" (seen before with no more fuse: not re-run)" if res.get("reused") else ""))
@@ -1126,6 +1130,12 @@ class Agenda:
                 done.append((res["value"], r, res))
             else:
                 self.lines.append(f"    {r.san}: value {res['value']} (no gain on the worst reply)")
+        if self.chase_depth == 0 and pool > 1 and any(t[4].goal in ("mate", "win", "promote") and (self.best is None or self.best[0] < t[4].stake) for t in self.heap):
+            # ... and a ROOT question is charged at most half of the pool it started with, while another root that can still beat the best claim is open: by stake order the
+            # question that matters most gets the larger share, never all of it (0GJec: the promotion's chase took 618 of 570 and every later root was read with nothing)
+            charged = pool - max(self.ctx.left, pool - pool // 2)
+            self.ctx.left = max(self.ctx.left, pool - pool // 2)
+            self.lines.append(f"    fuse: this root is charged {charged} of the pool {pool} (routes at most their shares, the root at most half while another root can beat the best claim)")
         self.lines.append(f"    (chase: {self.ctx.agendas} inner agendas, {self.ctx.asked} inner questions, {self.ctx.budget_hits} fuse hit(s), {self.ctx.gap_reused} gap route(s) reused, fuse left {self.ctx.left})")
         self.lines.append("    chase ended: " + ("the FUSE was hit on at least one route (a GAP, never a kill)" if cut else "every route closed (claim on every reply or a refuting reply)"))
         if not done:
