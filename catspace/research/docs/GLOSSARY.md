@@ -223,3 +223,19 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   decision's balance.
 - **Mirror lemma** — `lean/ideas/Ideas/Mirror.lean`: the left-right reflection keeps legality, play and forced wins
   (no castling rights): search one position, know its mirror.
+
+**The region, the wall and the landing table (2026-10-19, ANALYST_PLAN 52.17-52.18, `discovery/region.py`, Lean `Ideas.Region`)**
+- **Region** (Lean `Ideas.Region.Region`; python `region(board, sq)`) — for a piece on `s`, the connected component of `s` in the graph whose vertices are the squares where
+  the piece may STAND (a king: not held by a piece of theirs, their king being no wall since it moves; any other piece: empty or holding a piece of theirs, and not lost
+  there by the exchange word) and whose edges are the piece's single moves over empty squares. A set of squares with a distance (moves from `s`) and a READ SET (the pieces
+  that hold or block its boundary).
+- **Wall** (Lean `king_region_wall_file`, `rook_wall_file`) — a line every square of which they hold (a rook alone on its file, itself guarded): a king never stands on it, so
+  the region of a king on one side stays there. A pawn on the file that shields squares from the rook breaks the wall (0LRTF's c7 pawn: c8 is not held).
+- **Zone** — the squares a goal needs a piece on (for a mate short of a cover: the squares from which our king covers a flight, at distance two from their king). A goal is
+  KILLED by region when the region meets no zone square (they need only keep the wall standing); the claim direction (we do reach it) is a race and stays with the passer form.
+- **Room / the measure they hold** (Lean `evasion_step`, `no_rook_mate_in_open`) — a king at distance two or more from ours with a free square away keeps the distance after any
+  one king move of ours (a king never gains on a king with room); a king and a rook never mate a king in the open. A mate attempt of a king and one rook is KILLED by the held
+  measure when every first move is answered by a step into the open (or the capture of the rook) after which no mate follows within the pushes of their passer, our rook being
+  the only stopper of that passer. Plausible, not proven as a whole: the lemmas prove the pieces, the rules read the rest.
+- **Bound piece** (`bound_pieces`) — a piece of ours that guards a piece of ours which would fall without it (attacked n times, guarded n times, one guard less once it moves):
+  the reverse lemma of "it can go there".

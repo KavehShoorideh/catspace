@@ -38,6 +38,7 @@ from catspace.incubator.analyst.discovery import base_vocabulary as BV
 from catspace.incubator.analyst.discovery import binder as BD
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
+from catspace.incubator.analyst.discovery import region as RG
 from catspace.incubator.analyst.discovery import regress as R
 from catspace.incubator.analyst.discovery import reasoned as RS
 from catspace.incubator.analyst.discovery import selfmine as SM
@@ -83,6 +84,7 @@ class ChaseCtx:
         self.inherited_claims = 0                 # 52.13 (1): ... of which claims (the rest are kills)
         self.reopened = 0                         # ... and the ones that met the diff and were asked
         self.fresh = 0                            # 52.13 (1): questions NEW on the inner board (a key the outer agenda did not have, or did not settle), asked
+        self.reasoned = 0                         # 52.17 (1): mate questions killed by reasoning (the wall, the measure they hold), no chase
 
 
 class Agenda:
@@ -442,6 +444,8 @@ class Agenda:
         if q.goal == "promote":
             self._ask_promote(q, head)
             return
+        if q.goal == "mate" and self._reasoned_kill(q, head):
+            return
         if q.goal == "mate" and q.pattern.get("reach"):
             self._ask_reach(q, head)
             return
@@ -479,6 +483,62 @@ class Agenda:
             self.lines.append(f"  tempo: {len(q.defects)} defect(s), each has a forcing fix")
             routes = self._merge_routes(q)
         self._verify(q, routes, mates_only=q.goal == "mate")
+
+    def _their_passer(self, rook: int) -> "tuple | None":
+        """52.17 (1): THEIR passer if we pass: a pawn of theirs that promotes in `n` pushes unless the rook is spent on it -- its promote defects (the Rust words, from its owner's
+        side) are none, or stoppers whose only piece is our rook (the king and every other piece of ours cannot reach in time). -> (n, pawn square, the stopper text) of the
+        quickest such pawn, or None."""
+        b, best = self.board, None
+        for pw in chess.SquareSet(b.pawns & b.occupied_co[not self.me]):
+            n = G.word(b, ("pushes", G.name(pw)), not self.me)
+            if n < 1:
+                continue
+            defects, _facts = R.promote_defects(b, pw)
+            if any(d.kind != "stopper" or set(d.by) - {rook} for d in defects):
+                continue
+            if best is None or n < best[0]:
+                best = (n, pw, "; ".join(d.why for d in defects) or "no stopper of ours in time")
+        return best
+
+    def _reasoned_kill(self, q: R.Question, head: str) -> bool:
+        """52.17 (1): a mate goal DIES BY REASONING, before any chase: (a) THE WALL (region_kill: the covers it still needs are out of reach of our king's region -- a held
+        line is a wall for a king -- and no pawn or other piece can supply them); (b) THE MEASURE THEY HOLD (held_measure: a king and one rook against a king with room, every
+        first move answered by a step into the open that keeps the distance or by the capture of the rook, our rook also the only stopper of their passer). Both print as
+        "killed by reasoning -- ..." with the read set; a chase of the goal is warranted only when neither fires. -> True when the question was killed."""
+        if self.ctx is None:
+            return False
+        b, us = self.board, self.us
+        ksq = b.king(not self.me)
+        if ksq is None:
+            return False
+        defects = q.defects or R.mate_defects(b, us, R.placement_of(q))
+        flights = [d.sq for d in defects if d.kind == "flight"]
+        frm = q.pattern.get("frm")
+        why, reads, which = None, None, None
+        if flights and frm is not None:
+            k = RG.region_kill(b, self.me, frm, flights)
+            if k is not None:
+                why, reads, which = k["why"], k["reads"], "the wall"
+        if why is None:
+            heavy = [s for s in chess.SQUARES if b.piece_at(s) is not None and b.piece_at(s).color == self.me and b.piece_at(s).piece_type not in (chess.KING, chess.PAWN)]
+            if len(heavy) == 1 and b.piece_at(heavy[0]).piece_type == chess.ROOK and not b.is_check():
+                steps = [chess.Move.from_uci(u) for u in q.pattern["reach"]] if q.pattern.get("reach") else ([chess.Move.from_uci(q.pattern["move"])] if q.pattern.get("move") else [])
+                steps = [m for m in steps if R.forcing_why(b, m, q.stake, us, mate_threats=True)]
+                passer = self._their_passer(heavy[0]) if steps else None
+                if passer is not None:
+                    k = RG.held_measure(b, self.me, steps, passer[0])
+                    if k is not None:
+                        pw = passer[1]
+                        bound = [f"our {b.piece_at(g).symbol().upper()} on {G.name(g)} is bound to the {b.piece_at(y).symbol().upper()} on {G.name(y)}" for g, y in RG.bound_pieces(b, self.me) if b.piece_at(g).piece_type == chess.KING][:2]
+                        why = k["why"] + f" (their pawn on {G.name(pw)} promotes in {passer[0]}: {passer[2]})" + ("; " + "; ".join(bound) if bound else "")
+                        reads, which = k["reads"] | {pw}, "the measure they hold"
+        if why is None:
+            return False
+        q.reads = R.reads_of(q, b) | frozenset(reads)
+        self.ctx.reasoned += 1
+        self.lines.append(head + f": killed by reasoning ({which}) -- {why}")
+        self._kill(q, f"reasoned: {which}", tempo=False)
+        return True
 
     @staticmethod
     def _merge_routes(q: R.Question) -> list:

@@ -2400,3 +2400,42 @@ is by rule with a read set (52.13). Items, in build order (one commit each; Lean
    region's squares with the same read set; otherwise record why not in the plan and skip.
 Acceptance for 52.18: dev_20 and fresh_60_threats_event OBS before/after, every changed decision classified by Stockfish d18; every 52.13-52.17
 acceptance puzzle unchanged; glossary + LEAN_INDEX rebuilt; tests per item; `known_about` printed in the trace for the deciding move's piece.
+
+### 52.19 The fact store with justifications: stale flags, a stake-ordered queue, two tiers of thinking (Kaveh 2026-10-19 GO "go ahead and build it"; after 52.18)
+Kaveh's design (2026-10-19 afternoon): "anytime a decision is rendered we need a listener that listens for changes in the premises it used; that
+way anytime the premises change the listener can figure out what needs to recalculate -- memoize more effectively"; "I will get the signal that
+something changed and record it, but I don't need to process that change at that moment -- a queue for future processing between turns; two
+tiers of thinking, immediate and in the background, by the order of stake"; "the highest stake of the entire chain is the stake of that chain".
+What exists: read sets on every kill and claim and inheritance by the move's diff (52.13, pull form, parent to child only); the inverted read
+index of 52.18 (1) (square -> facts that read it; the listener registry, push form). Missing: derivation links (a fact knows its squares, not
+the facts it was built from), a store that outlives one agenda (siblings in the chase and later root agendas re-derive), lazy recomputation.
+Related work to name in the code: Doyle 1979 (justification-based truth maintenance), de Kleer 1986 (ATMS); ours is justification-based with
+read sets as the leaf premises. Items, in build order (one commit each; no AI trailers; OBS lines; principled, not numbered):
+1. **The fact store.** `FactStore` holds every claim and kill ever derived in a run: id, kind (claim / kill / gap), the question key, the value,
+   the read set (squares + the pieces on them at derivation time), the JUSTIFICATIONS (ids of the facts it was derived from: a chase claim from
+   its per-reply facts, a kill from the fact that killed it, a parry from the claim it parries, an inherited fact from its parent), the stake of
+   the question that asked it, and a STALE flag. The store is keyed by position-independent premises, not by FEN: a fact is valid in ANY position
+   whose read-set squares hold the same pieces (that is what the read set means); the FEN memo of 52.13 stays as a fast path. The chase and the
+   root agendas consult the store before asking: a fresh fact whose read set matches is served ("served from the store (fact #n, derived under
+   Q3 at depth 2)"); the store replaces `_inherit_for`'s parent-only walk with a lookup, so siblings and transpositions share facts. OBS: facts
+   derived vs served per set; inner questions before/after.
+2. **Stale flags propagate eagerly, up the chain.** On every move (in the chase and between the agenda's root questions) the diff's squares look
+   up the inverted read index; every fact that read a changed square is marked stale, and staleness propagates through the justification links to
+   every fact derived from it (cheap flag flips, no recomputation). The CHAIN STAKE of a fact = the max stake over every fact that depends on it
+   (Kaveh: "the highest stake of the entire chain is the stake of that chain"); keep it on the fact, updated when a dependant is added. Test: a
+   kill that read c1 goes stale when the rook leaves c1, and the claim built on it goes stale with it; a fact that read nothing on the changed
+   squares stays fresh (0LRTF: "the rook alone cannot mate while our king is walled" survives every check of the walk).
+3. **Lazy recomputation, two tiers.** A stale fact is NOT recomputed on invalidation. It goes into a queue ordered by chain stake. FOREGROUND: the
+   agenda's heap (already stake-ordered, stop rule (a) when the best claim beats every remaining stake) reads a fact on demand; stale + needed =
+   recompute now, and only facts in the live question's justification chain are recomputed (the mate's chain may include a pawn fact: recompute it;
+   a stale "wins a pawn" fact outside the chain stays queued). BACKGROUND: `FactStore.drain(budget)` recomputes from the top of the queue; the
+   event loop (plan 40 / catspace event loop, the "between turns" slot: find where the loop idles after a decision and call drain there, the
+   opponent's clock as the budget if the loop has one, else a call the analyse CLI makes after each puzzle with `--ponder`) so the store is warm
+   for the next question. The trace prints both tiers: "foreground: recomputed 3 stale facts of the mate chain; background queue: 41 (top stake 5)".
+   OBS: foreground recomputations per set, queue length at decision, seconds before/after.
+4. **Across puzzles (the remember goal).** With `--memory` the store persists between puzzles of a set (the sets are unrelated positions, so expect
+   few hits -- say so) and, in the frame-player / event-loop path, between the moves of one game: a fact derived on move 30 whose read set is
+   untouched is served on move 31. Test: a two-ply sequence where the second position serves facts from the first; OBS hit counts.
+Acceptance: every 52.13-52.18 acceptance puzzle unchanged; dev_20 and fresh_60_threats_event OBS before/after (decisions, inner questions,
+served-from-store counts, seconds), every changed decision SF-classified; tests per item; the justification graph of the deciding claim printed in
+the trace for one puzzle (the chain with each fact's read set and stake).

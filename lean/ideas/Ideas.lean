@@ -21,6 +21,7 @@ import Ideas.MateDemand
 import Ideas.QueenMateBoard
 import Ideas.InsufficientMaterial
 import Ideas.QueenMateShapes
+import Ideas.Region
 import Ideas.ForcedByMeasure
 import Ideas.Base.Vocabulary
 import Ideas.Generated.Measures

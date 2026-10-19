@@ -731,3 +731,102 @@ def test_52_16_a_stand_check_does_not_end_the_pawns_own_push_0nv29():
     ag = AG.Agenda(State(p["fen"], "w", []))
     ag.ask()
     assert ag.decision().what == "b6" and ag.ctx.promote_stands == 0                           # b6 is the pawn's own push: the question changes, the stand check does not apply
+
+
+# ---- 52.17 (1): the region, the wall, the measure they hold ---------------------------------------------------------------------------------------
+
+LRTF = "2k5/2P4R/1K6/8/8/p7/8/2r5 w - - 6 62"
+WALL = "8/6k1/4p3/3r4/8/8/8/K6R w - - 0 1"             # their rook on d5 (guarded by the e6 pawn) holds the whole d-file: our king on a1 is cut off from the king's side
+
+
+_LEAN_INDEX: list = []
+
+
+def _lean(name, module="Region"):
+    if not _LEAN_INDEX:                                                  # the index build reads every Lean file (about 2 minutes): once per run
+        from catspace.incubator.analyst import lean_index
+        _LEAN_INDEX.extend(lean_index.build())
+    d = [x for x in _LEAN_INDEX if x["full"] == f"Ideas.{module}." + name]
+    assert d and not d[0]["open"], name
+    return d[0]
+
+
+def test_52_17_the_region_lemmas_are_proved_in_lean_with_the_statements_the_python_mirrors():
+    assert "(hwall : ∀ y, ¬ stand c y) (ha : a < c)" in _lean("king_region_wall_file")["statement"]
+    assert "rookOnFile" in _lean("rook_wall_file")["statement"] and "(hself : ¬ stand c r)" in _lean("rook_wall_file")["statement"]
+    assert "kingHits wa wb (ka + i) (kb + j) ∨ rookLine ra rb (ka + i) (kb + j)" in _lean("no_rook_mate_in_open")["statement"]
+    assert "¬ chebLe 1 wa wb ka kb" in _lean("evasion_step")["statement"]
+    _lean("rookLine_queenLine")
+
+
+def test_52_17_no_rook_mate_in_the_open_agrees_with_the_rules_on_every_placement():
+    # the Lean statement `no_rook_mate_in_open`, instance by instance: kings apart, the lone king's box on the board -> the king and one rook never cover its whole box
+    from catspace.incubator.analyst.discovery import region as RG
+    for k in chess.SQUARES:
+        if not RG.open_box(k):
+            continue
+        box = [s for s in chess.SquareSet(chess.BB_KING_ATTACKS[k])] + [k]
+        for w in chess.SQUARES:
+            if RG.cheb(w, k) < 2:
+                continue
+            kcov = set(chess.SquareSet(chess.BB_KING_ATTACKS[w]))
+            for r in chess.SQUARES:
+                if r in (w, k):
+                    continue
+                rcov = {s for s in box if s != r and (chess.square_file(s) == chess.square_file(r) or chess.square_rank(s) == chess.square_rank(r))}
+                full = all(s in kcov or s in rcov for s in box)
+                assert not full, (chess.square_name(k), chess.square_name(w), chess.square_name(r))
+
+
+def test_52_17_the_evasion_step_holds_the_distance_on_every_king_move():
+    from catspace.incubator.analyst.discovery import region as RG
+    steps = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+    for w in chess.SQUARES:
+        for k in chess.SQUARES:
+            if RG.cheb(w, k) < 2:
+                continue
+            for w2 in chess.SquareSet(chess.BB_KING_ATTACKS[w]):
+                d0 = RG.cheb(w, k)
+                ok = any(max(abs(chess.square_file(w2) - chess.square_file(k) - dx), abs(chess.square_rank(w2) - chess.square_rank(k) - dy)) >= d0 for dx, dy in steps)
+                assert ok, (chess.square_name(w), chess.square_name(k), chess.square_name(w2))
+
+
+def test_52_17_a_rook_that_holds_a_file_end_to_end_is_a_wall_for_a_king_region():
+    from catspace.incubator.analyst.discovery import region as RG
+    b = chess.Board(WALL)
+    reg = RG.region(b, chess.A1)
+    assert max(chess.square_file(s) for s in reg.squares()) < 3 and chess.D5 in reg.reads and chess.E6 in reg.reads        # a-c files: the wall is the rook and the pawn that guards it
+    assert reg.dist[chess.A1] == 0 and reg.dist[chess.B2] == 1 and reg.dist[chess.C4] == 3
+    for fen in ("8/6k1/8/3r4/8/8/8/K6R w - - 0 1", "8/6k1/4p3/8/8/3r4/8/K6R w - - 0 1"):       # unguarded rook: the king takes it and crosses (d5 / d3 on the way)
+        assert max(chess.square_file(s) for s in RG.region(chess.Board(fen), chess.A1).squares()) >= 3
+
+
+def test_52_17_the_region_of_0lrtf_connects_through_c8_so_the_region_kill_does_not_fire():
+    from catspace.incubator.analyst.discovery import region as RG
+    b = chess.Board(LRTF)
+    reg = RG.region(b, chess.B6)
+    assert chess.C8 in reg.squares() and chess.D7 in reg.squares() and chess.C6 not in reg.squares()        # the c7 pawn shields c8 from the rook; c2..c6 are the wall
+    assert RG.region_kill(b, True, chess.H7, [chess.D7]) is None
+    assert (chess.B6, chess.C7) in RG.bound_pieces(b, True) and (chess.H7, chess.C7) in RG.bound_pieces(b, True)
+
+
+def test_52_17_0lrtf_mate_roots_die_by_the_measure_they_hold_before_any_chase():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0LRTF"][0]
+    ag = AG.Agenda(State(p["fen"], "w", []))
+    ag.ask()
+    t = ag.trace()
+    q1, q2 = t.index("Q1 mate on h8"), t.index("Q2 mate on d8")
+    q3 = t.index("Q3 promote")
+    assert "killed by reasoning (the measure they hold)" in t[q1:q2] and "killed by reasoning (the measure they hold)" in t[q2:q3]
+    assert "chase:" not in t[q1:q3] and "Rh8+ Kd7 (the box of d7 is on the board, distance 2 held)" in t[q1:q2]       # no inner agenda under either
+    assert "Ideas.Region.no_rook_mate_in_open" in t[q1:q2] and "our K on b6 is bound to the P on c7" in t[q1:q2] and "promotes in 2" in t[q1:q2]
+    assert ag.ctx.reasoned >= 2
+
+
+def test_52_17_the_wall_kills_the_mate_roots_when_our_king_is_cut_off():
+    ag = AG.Agenda(State(WALL, "w", []))
+    ag.ask()
+    t = ag.trace()
+    assert t.count("killed by reasoning (the wall)") == 2 and "the wall is their r on d5, their p on e6" in t
+    assert "chase:" not in t[:t.index("Q3 win")]
