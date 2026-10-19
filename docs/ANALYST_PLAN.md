@@ -2217,3 +2217,25 @@ decision classified by Stockfish d18; 08pSj no "threat 9" route by a hanging roo
 dev_20 and fresh_60_threats_event OBS before/after (decisions, MATCH, seconds, inner questions per inner agenda, fuse hits -- expected ~0, inherited
 claims), every changed decision listed and classified by Stockfish d18 (OBS SF lines); the chase_log row count. Tests for 1 (an inherited claim), 2(d) (a
 hanging rook is not a threat), 3 (0AgL8 at 4x), 4 (a reply closed by rule), 5 (Pos equals python-chess). No AI trailers.
+
+### 52.14 Their threat is a save root of the inner agenda (Kaveh 2026-10-19; GO "do it")
+52.13 (3) reads a static leaf (a reply after which our gain stands only as the balance, us to move) with THEIR agenda, the move passed to them, and
+subtracts their best claim. The subtraction is wrong when we have a parry: at inner levels it refuted 0VSUT's true line ("their Rxb1 wins 4 if we
+pass" -- but we are to move), so the builder restricted it to the root chase, and an inner-level static leaf is not read from their side at all.
+The root agenda already has the right form (52.4a `_threat_roots`): a claim of theirs with the move passed is a THREAT and becomes a SAVE root of
+ours with the claim's value as stake; the save is verified by the binder (a parry, a counter, taking the attacker) or killed. Build, one commit
+(builder: deviate minimally and REPORT every deviation; no AI trailers; OBS lines for every number):
+1. In `_chase_route`, at EVERY chase depth: a static leaf (dbal >= 1, inner value < mate, not in check) is read by `_their_pass` (memoised as now). If
+   their best claim t satisfies dbal - t < 1, the reply is NOT killed: the inner agenda on that position is asked once more WITH their claims as save
+   roots (`_inner(fen, need, diff, threats=<their claims>)`: the inner Agenda pushes the save roots exactly as `_threat_roots` does for the root agenda,
+   stake = the claim's value, asked regardless of `min_stake`; the inner agenda stays side_depth 0 otherwise). The reply's value = dbal - (the sum of
+   the threats whose save root is killed or a gap) + the inner best claim as now. A verified save prints "after Reb5: their Rxb1 wins 4 if we pass;
+   parry: Rb8 (lemma ...) keeps +3"; a killed save prints "after Bc6+: +1 stands only as a balance, their Qa4+ wins 100, no parry" and the route dies at
+   that reply when the value is below 1. Note `_inner` memoises by position: an answer asked WITH threats serves a later ask without them, not the
+   reverse (key the memo by (position, with_threats)).
+2. The `closed by rule` exchange closure (52.13 (4)) keeps its "their pass finds nothing" condition (it closes without an inner agenda only when there
+   is nothing to parry).
+3. OBS per set: static leaves read, parried, unparried (route killed). Test: 0VSUT Qxe5 decided with the inner static leaf read (the parry line printed);
+   0AgL8 Nxg2 still never claimed at 4x the fuse (now by "no parry"); a constructed position where a threat is parried and the gain kept.
+Acceptance: dev_20 and fresh_60_threats_event OBS before/after, every changed decision classified by Stockfish d18 (OBS SF lines), seconds; the
+acceptance puzzles of 52.13 unchanged (0DoFB Qd5, 0AgL8 Qxg2+, 08pSj Rf1+, 0RhU6 Qxf2+, 0Wih8 Ng5+, 01w7J Bxh2+, 0VSUT Qxe5, 0BuQP Kf2, 0UqOv exf7+).
