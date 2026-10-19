@@ -29,6 +29,7 @@ from __future__ import annotations
 import dataclasses
 import heapq
 import re
+import time
 
 import analyst_core as AC
 import chess
@@ -86,11 +87,27 @@ class ChaseCtx:
         self.reopened = 0                         # ... and the ones that met the diff and were asked
         self.fresh = 0                            # 52.13 (1): questions NEW on the inner board (a key the outer agenda did not have, or did not settle), asked
         self.reasoned = 0                         # 52.17 (1): mate questions killed by reasoning (the wall, the measure they hold), no chase
+        self.deadline = None                      # 52.17 (5): THE BUDGET IS TIME. time.monotonic() value past which no inner agenda is opened (the current slice of the final deadline)
+        self.final = None                         # ... the final deadline of the root agenda (seconds given); None: today's behaviour
+        self.t0 = None
+        self.seconds = None
+        self.time_outs = 0                        # ... root agendas that met their deadline
+        self.hit = False
         self.unaddressed = 0                      # 52.17 (2): forcing moves NOT followed by a chase because they fix no defect of the goal and make no claim of their own
 
 
+    def out_of_time(self) -> bool:
+        """52.17 (5): the deadline (or the slice of it this route may use) has passed. Never true when no seconds were given."""
+        if self.deadline is None:
+            return False
+        if time.monotonic() >= self.deadline:
+            self.hit = True
+            return True
+        return False
+
+
 class Agenda:
-    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None, chase_log: str | None = None, their: "Agenda | None" = None, keep: int = 0):
+    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None, chase_log: str | None = None, their: "Agenda | None" = None, keep: int = 0, seconds: "float | None" = None):
         R.reset_ids()
         self.their = their                                      # 52.14: THEIR agenda on this board with the move passed to them: its claims are asked as save roots (an inner agenda on a static leaf)
         self.keep = keep                                        # 52.14: the gain (a balance, us to move) the static leaf stands on: a parry of a threat is verified when it keeps at least 1 of it
@@ -123,6 +140,10 @@ class Agenda:
         self.notes: list = []
         if ctx is None and self.ctx is not None:
             self.ctx.left = self.budget * FUSE                  # the root agenda's FUSE (10x the question budget), set ONCE: every chase of every question and the inner agendas spend it
+            if seconds is not None:                             # 52.17 (5): THE BUDGET IS TIME; the question-count fuse stays only as a safety (20x larger)
+                self.ctx.left = self.budget * FUSE * 20
+                self.ctx.seconds, self.ctx.t0 = seconds, time.monotonic()
+                self.ctx.deadline = self.ctx.final = self.ctx.t0 + seconds
         self._threats_done = not side_depth and their is None
         self._hang: list = []
         self.threat_views: list = []                            # (claim, their agenda) for every threat root
@@ -338,6 +359,10 @@ class Agenda:
 
     def ask(self) -> None:
         self._ask_loop()
+        if self.ctx is not None and self.chase_depth == 0 and self.ctx.final is not None:       # 52.17 (5)
+            used = time.monotonic() - self.ctx.t0
+            self.ctx.time_outs += 1 if self.ctx.hit else 0
+            self.lines.append(f"budget: {self.ctx.seconds:g} s, used {used:.2f} s, {self.asked + self.ctx.asked} questions" + (" -- OUT OF TIME: the open routes are GAPs, the best bound claim decides" if self.ctx.hit else ""))
         if self.ctx is not None and self.chase_depth == 0 and self.ctx.static_lines:       # 52.14: the static leaves read from their side, and the parries
             self.lines.append(f"static leaves read from their side, threats asked as save roots ({len(self.ctx.static_lines)}):")
             self.lines += ["  " + x for x in self.ctx.static_lines]
@@ -365,6 +390,10 @@ class Agenda:
                 left = [t[4] for t in self.heap]
                 self.lines.append(f"STOP (c): budget {self.budget} questions asked; {len(left)} open questions become gaps")
                 self.state.gaps += [f"budget: {q.text} (stake {q.stake}) not asked" for q in left]
+                return
+            if self.chase_depth and self.ctx.out_of_time():       # 52.17 (5): an inner agenda that meets the deadline stops where it is (its answer is cut, never memoised, never read as "no claim")
+                self.ctx.budget_hits += 1
+                self.lines.append("STOP (t): out of time")
                 return
             plain = min(self.heap, key=lambda t: (t[0], t[2], t[3]))                # the stake-only order
             _, _, _, _, q = heapq.heappop(self.heap)
@@ -902,7 +931,7 @@ class Agenda:
             return hit
         if pk in ctx.active:
             return dict(value=0, claim=None, asked=0, need=need, threats=[(cl, None) for cl in their.state.claims] if wt else [])     # a cycle parries nothing
-        if ctx.left <= 0 or self.chase_depth >= DEPTH_FUSE:
+        if ctx.left <= 0 or self.chase_depth >= DEPTH_FUSE or ctx.out_of_time():
             if ctx.left > 0:
                 ctx.depth_cuts += 1
             return None
@@ -1016,7 +1045,7 @@ class Agenda:
             need = min(R.STAKE_PROMOTE, 1 - dbal) if promote and dbal <= 0 else R.STAKE_PROMOTE if promote else 1 - dbal if dbal <= 0 else BD.MATE_VALUE          # a reply that already gains is read for a mate only; else its static gain must survive their threats (below)
             inn = self._inner(P2.fen(), need, frozenset(P0.diff(P2)))
             if inn is None:
-                res["gap"] = f"chase fuse: {san} not followed past {san_r}"
+                res["gap"] = self._cut(san, san_r)
                 ctx.budget_hits += 1
                 self._log(key, uci, "gap", dbal, None, None, res["gap"])
                 break
@@ -1034,7 +1063,7 @@ class Agenda:
                     g, part = dbal + inn["value"], f"{inn['claim'].what} ({inn['claim'].line}; value {inn['claim'].value}) wins the material back: {dbal:+d} + {inn['value']}"
                     res["material"] = True
                 elif inn.get("cut"):
-                    res["gap"] = f"chase fuse: {san} not followed past {san_r} (the inner agenda was cut by the fuse)"
+                    res["gap"] = self._cut(san, san_r, True)
                     ctx.budget_hits += 1
                     self._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
                     break
@@ -1059,7 +1088,7 @@ class Agenda:
                     # killed only by the threats no parry of ours is verified for
                     inn2 = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), their=ctx.their_ags.get(_pos_key(G.with_turn(chess.Board(P2.fen()), not self.me).fen())), keep=dbal)
                     if inn2 is None:
-                        res["gap"] = f"chase fuse: {san} not followed past {san_r}"
+                        res["gap"] = self._cut(san, san_r)
                         ctx.budget_hits += 1
                         self._log(key, uci, "gap", dbal, None, None, res["gap"])
                         break
@@ -1082,7 +1111,7 @@ class Agenda:
                 else:
                     unparried = t_their
             if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and inn.get("cut"):
-                res["gap"] = f"chase fuse: {san} not followed past {san_r} (the inner agenda was cut by the fuse)"
+                res["gap"] = self._cut(san, san_r, True)
                 ctx.budget_hits += 1
                 self._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
                 break
@@ -1107,6 +1136,12 @@ class Agenda:
             res["cut_left"] = ctx.left
         ctx.routes[key] = res
         return res
+
+    def _cut(self, san: str, san_r: str, inner: bool = False) -> str:
+        """The GAP text of a route cut at a reply: the TIME when the deadline passed (52.17 (5)), else the fuse."""
+        if self.ctx.out_of_time():
+            return f"out of time: {san} not followed past {san_r}"
+        return f"chase fuse: {san} not followed past {san_r}" + (" (the inner agenda was cut by the fuse)" if inner else "")
 
     def _promote_stands(self, m: chess.Move, P2: "AC.Pos") -> str | None:
         """52.16 (4): a promote route ends AT ONCE at a reply that leaves the question's stopper defect standing and brings no new fix: the same stopper (or blocker) of the
@@ -1270,6 +1305,10 @@ class Agenda:
         if self.best is not None and self.best[0] >= q.stake:      # 52.13 (2c): a question is chased only when its stake exceeds the best claim so far (stop (a) would end the agenda anyway)
             self.lines.append(f"  chase: not asked, the best claim ({self.best[2].what}, {self.best[0]}) is at least the stake {q.stake}")
             return False
+        if self.ctx.out_of_time():                                 # 52.17 (5): past the deadline a question is asked only for what closes at the static leaf: no chase
+            self.lines.append("  chase: out of time -- not started (a GAP, never a kill)")
+            self.state.gaps.append(f"Q{q.id} {q.text}: out of time: chase not started")
+            return False
         b = self.board
         routes, notes = [], []
         for m in R._moves(b, self.us):
@@ -1320,7 +1359,18 @@ class Agenda:
             if self.chase_depth == 0 and saved > 0 and i not in cheap_res:             # the root's fuse is shared FAIRLY by the routes of this chase: each gets an equal share of what is left (a chain of checks must not spend what Qd5 needs: 0DoFB)
                 self.ctx.left = share
             before = self.ctx.left
-            res = cheap_res[i] if i in cheap_res else self._chase_route(r.move, promote=q.goal == "promote")
+            if i in cheap_res:
+                res = cheap_res[i]
+            elif self.ctx.out_of_time():                           # 52.17 (5): the open routes end as GAPs
+                res = dict(value=0, killed=None, gap=f"out of time: {r.san} not started", parts=[], lemmas=[])
+                self.ctx.budget_hits += 1
+            else:
+                if self.chase_depth == 0 and self.ctx.final is not None:       # ... and the time is shared FAIRLY like the fuse: each open route gets an equal slice of what is left
+                    now = time.monotonic()
+                    self.ctx.deadline = now + max(self.ctx.final - now, 0) / max(open_left, 1)
+                res = self._chase_route(r.move, promote=q.goal == "promote")
+                if self.chase_depth == 0 and self.ctx.final is not None:
+                    self.ctx.deadline = self.ctx.final
             if self.chase_depth == 0 and i not in cheap_res:
                 # 52.16 (2): a route is CHARGED at most its share. The frames open when the fuse runs out finish their questions (that is how 08pSj's Rf1+ and 0VSUT's Qxe5 are decided),
                 # but that finishing is free: charged in full it took the share of every later route (0LRTF: 239 questions on a share of 120, then Rd7 got 1).

@@ -92,6 +92,8 @@ def classify(text: str) -> str:
         return "gap"
     if t.startswith("STOP"):
         return "stop"
+    if t.startswith("budget:") or "out of time" in t:
+        return "fuse"
     if "fuse" in t:
         return "fuse"
     if t.startswith("chase:") or "chase:" in t:
@@ -199,9 +201,10 @@ class AgendaPlayer:
                 pass
             self._sf = None
 
-    def move(self, board: chess.Board, emit=None):
+    def move(self, board: chess.Board, emit=None, seconds: "float | None" = None):
         """-> (move, trace_lines, source). source is 'agenda' or 'fallback:<name>'. `emit(text)` is called for every trace line AS IT IS
-        APPENDED (item 2), so a UI can stream while the agenda thinks; trace_lines is the full list in order."""
+        APPENDED (item 2), so a UI can stream while the agenda thinks; trace_lines is the full list in order. `seconds` (52.17 (5)): the time budget of
+        the agenda (None: the question-count fuse as before); the fallback runs after the agenda returns, so a move can take a little longer."""
         out: list[str] = []
 
         def say(t: str):
@@ -213,7 +216,7 @@ class AgendaPlayer:
         fen = board.fen()
         us = "w" if board.turn else "b"
         with AGENDA_LOCK:
-            ag = Agenda(state_of(fen, us))                    # chase_log stays unset in a server
+            ag = Agenda(state_of(fen, us), seconds=seconds)                    # chase_log stays unset in a server
             ag.lines = TraceLines(say)                        # the agenda only ever appends (verified: append / += in agenda.py); no edit to agenda.py
             ag.ask()
             decision = ag.decision()
@@ -247,8 +250,9 @@ def pgn_path() -> str:
 class Game:
     """One game against the engine. The server owns the board (full move stack); the engine's reply runs on a worker thread so the trace streams."""
 
-    def __init__(self, human_white: bool, player: AgendaPlayer, gid: str, path: str | None = None):
+    def __init__(self, human_white: bool, player: AgendaPlayer, gid: str, path: str | None = None, seconds: "float | None" = None):
         self.id, self.player, self.human_white = gid, player, human_white
+        self.seconds = seconds                          # 52.17 (5): the agenda's time budget per move (None: the fuse); changeable between moves
         self.board = chess.Board()
         self.trace = TraceBuffer()
         self.lock = threading.RLock()
@@ -285,7 +289,7 @@ class Game:
                         dests=dests, last_move=[chess.square_name(last.from_square), chess.square_name(last.to_square)] if last else None,
                         ply=len(b.move_stack), thinking=self.thinking, fallback=self.player.fallback,
                         over=o is not None, result=o.result() if o else None, reason=o.termination.name.lower().replace("_", " ") if o else None,
-                        in_check=b.is_check(), notes=context_notes(b) if o is None else [], engine_move=self.engine_move,
+                        seconds=self.seconds, in_check=b.is_check(), notes=context_notes(b) if o is None else [], engine_move=self.engine_move,
                         san=[h["san"] for h in self.history], error=self.error, trace_n=self.trace.n)
 
     # ---- moves
@@ -326,7 +330,7 @@ class Game:
                 root = self.board.copy()
                 ply = len(root.move_stack) + 1
             first = self.trace.n + 1
-            mv, lines, source = self.player.move(root, emit=lambda t: self.trace.add(t, root, ply) if self.live else None)
+            mv, lines, source = self.player.move(root, emit=lambda t: self.trace.add(t, root, ply) if self.live else None, seconds=self.seconds)
             secs = time.time() - t0
             with self.lock:
                 if not self.live:
@@ -389,13 +393,36 @@ class Game:
 class PlayManager:
     """The single current game of this local server."""
 
-    def __init__(self, fallback: str = "one_ply", seed: int = 0, pgn: str | None = None):
+    def __init__(self, fallback: str = "one_ply", seed: int = 0, pgn: str | None = None, seconds: "float | None" = None):
         self.fallback, self.seed, self.pgn = fallback, seed, pgn
+        self.seconds = seconds
         self.game: Game | None = None
         self.count = 0
         self.lock = threading.Lock()
 
-    def new(self, colour: str = "white", fallback: str | None = None) -> Game:
+    def settings(self, seconds=None, set_seconds: bool = False) -> "Game | None":
+        """52.17 (5): change the time budget (seconds > 0, or None for the fuse) for the next engine move of the current game and for new games."""
+        sec = self.check_seconds(seconds)
+        with self.lock:
+            self.seconds = sec
+            if self.game is not None:
+                self.game.seconds = sec
+            return self.game
+
+    @staticmethod
+    def check_seconds(seconds) -> "float | None":
+        if seconds in (None, "", 0):
+            return None
+        try:
+            v = float(seconds)
+        except (TypeError, ValueError):
+            raise ValueError(f"seconds must be a number, got {seconds!r}")
+        if not v > 0:
+            raise ValueError("seconds must be positive")
+        return v
+
+    def new(self, colour: str = "white", fallback: str | None = None, seconds=None) -> Game:
+        sec = self.check_seconds(seconds) if seconds not in (None, "") else self.seconds
         with self.lock:
             if self.game is not None:
                 self.game.live = False
@@ -403,5 +430,6 @@ class PlayManager:
             self.count += 1
             player = AgendaPlayer(fallback or self.fallback, seed=self.seed + self.count)
             gid = time.strftime("%Y%m%d-%H%M%S") + f"-{self.count}"
-            self.game = Game(colour != "black", player, gid, self.pgn)
+            self.seconds = sec
+            self.game = Game(colour != "black", player, gid, self.pgn, sec)
             return self.game

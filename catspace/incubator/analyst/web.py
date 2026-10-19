@@ -378,7 +378,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "play server not enabled (start with --play)"}, 404)
         g = pm.game
         if path == "/api/play/state":
-            return self._json(g.state() if g else {"game": None, "fallback": pm.fallback})
+            return self._json(g.state() if g else {"game": None, "fallback": pm.fallback, "seconds": pm.seconds})
         if path == "/api/play/trace":
             if g is None:
                 return self._json({"game": None, "records": [], "n": 0})
@@ -396,10 +396,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/play/new":
             fb = body.get("fallback") or None
             try:
-                g = pm.new(body.get("colour", "white"), fb)
+                g = pm.new(body.get("colour", "white"), fb, body.get("seconds"))
             except ValueError as e:
                 return self._json({"error": str(e)}, 400)
             return self._json(g.state())
+        if path == "/api/play/settings":                 # 52.17 (5): the time budget per move, changeable between moves
+            try:
+                g = pm.settings(body.get("seconds"))
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+            return self._json(g.state() if g else {"game": None, "seconds": pm.seconds})
         g = pm.game
         if g is None:
             return self._json({"error": "no game: POST /api/play/new first"}, 400)
@@ -467,12 +473,13 @@ def main(argv=None):
     ap.add_argument("--workers", type=int, default=4, help="review workers for a user's games")
     ap.add_argument("--max-games", type=int, default=30, help="how many recent games to fetch for a user")
     ap.add_argument("--play", action="store_true", help="plan 54: enable the play server (#play): play against the agenda and watch its trace")
+    ap.add_argument("--seconds", type=float, default=None, help="52.17 (5): the agenda's time budget per move in seconds (default: none, the question-count fuse); also settable on the Play page")
     ap.add_argument("--fallback", default="one_ply", choices=["one_ply", "stockfish", "random"], help="who plays when the agenda has no decision (named in the trace)")
     a = ap.parse_args(argv)
     play = None
     if a.play:
         from .discovery.play_server import PlayManager
-        play = PlayManager(a.fallback)
+        play = PlayManager(a.fallback, seconds=PlayManager.check_seconds(a.seconds))
     serve(a.port, a.depth, a.threads, a.workers, a.max_games, a.host, play=play)
 
 

@@ -97,3 +97,17 @@ def test_classify_and_parse_moves():
     assert PS.classify("  -> KILLED Q1: tempo") == "kill" and PS.classify("STOP (a): done") == "stop"
     assert PS.make_record(2, "Q1 win their P on a7 (worth 1)", b)["moves"] == []     # a square is not a pawn push
     assert PS.make_record(3, "garbage ((( Zz9 O-O-O", b)["moves"] == []             # never a crash
+
+
+def test_the_time_budget_is_set_on_new_and_changed_between_moves(server):
+    port, tmp = server
+    st = call(port, "/api/play/new", {"colour": "white", "seconds": 0.3})
+    assert st["seconds"] == 0.3
+    st = call(port, "/api/play/settings", {"seconds": 1.5})
+    assert st["seconds"] == 1.5 and call(port, "/api/play/state")["seconds"] == 1.5
+    assert call(port, "/api/play/settings", {"seconds": -1}).get("http") == 400
+    assert call(port, "/api/play/settings", {"seconds": None})["seconds"] is None
+    st = call(port, "/api/play/new", {"colour": "black", "seconds": 0.2})                    # the engine moves first: its trace names the budget
+    st = wait_idle(port)
+    lines = [r["text"] for r in call(port, "/api/play/trace?since=0")["records"]]
+    assert any(t.startswith("budget: 0.2 s, used ") for t in lines)

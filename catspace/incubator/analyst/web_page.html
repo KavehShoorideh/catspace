@@ -385,7 +385,8 @@ async function openPlay(){S.view="play";cg=null;P.since=0;P.gid=null;P.recs={};P
   $("#main").innerHTML=`<div class="pv">
   <div class="bcol">
     <div class="row" style="margin-top:0"><button class="on" id="pWhite">New game as White</button><button id="pBlack">New game as Black</button>
-      <select id="pFb" title="who plays when the agenda has no decision" style="background:#242832;color:var(--tx);border:1px solid var(--bd);border-radius:5px;padding:4px"><option value="">fallback: server default</option><option>one_ply</option><option>stockfish</option><option>random</option></select></div>
+      <select id="pFb" title="who plays when the agenda has no decision" style="background:#242832;color:var(--tx);border:1px solid var(--bd);border-radius:5px;padding:4px"><option value="">fallback: server default</option><option>one_ply</option><option>stockfish</option><option>random</option></select>
+      <label title="the agenda's time budget per move in seconds (empty: the question-count fuse)" style="color:var(--mut,#8a90a0)">s/move <input id="pSec" type="number" min="0.05" step="0.5" placeholder="fuse" style="width:64px;background:#242832;color:var(--tx);border:1px solid var(--bd);border-radius:5px;padding:4px"></label></div>
     <div id="pboard"></div>
     <div class="pnav"><span class="pill" id="pstatus">—</span><span style="flex:1"></span><button id="pFlip">Flip</button></div>
     <div id="banner"></div>
@@ -401,7 +402,7 @@ async function openPlay(){S.view="play";cg=null;P.since=0;P.gid=null;P.recs={};P
   cg=Chessground($("#pboard"),{fen:START.split(" ")[0],coordinates:true,animation:{enabled:true,duration:150},draggable:{showGhost:true},
     movable:{free:false,color:undefined,dests:new Map(),showDests:true,events:{after:onPlayMove}},highlight:{lastMove:true,check:true}});
   const ro=new ResizeObserver(()=>{try{cg.redrawAll();}catch(e){}});ro.observe($("#pboard"));
-  $("#pWhite").onclick=()=>newPlay("white");$("#pBlack").onclick=()=>newPlay("black");
+  $("#pSec").onchange=setSeconds;$("#pWhite").onclick=()=>newPlay("white");$("#pBlack").onclick=()=>newPlay("black");
   $("#pFlip").onclick=()=>{P.orient=P.orient==="white"?"black":"white";cg.set({orientation:P.orient});};
   $("#pFollow").onclick=()=>{P.follow=!P.follow;$("#pFollow").classList.toggle("on",P.follow);if(P.follow){const t=$("#trace");t.scrollTop=t.scrollHeight;}};
   const tr=$("#trace");
@@ -414,8 +415,9 @@ async function openPlay(){S.view="play";cg=null;P.since=0;P.gid=null;P.recs={};P
   await playTick(true);
   poll=setInterval(()=>playTick(false),300);
 }
-async function newPlay(colour){const fb=$("#pFb").value;P.since=0;P.gid=null;P.recs={};P.pin=null;P.hover=null;P.lastPly=null;$("#trace").innerHTML="";
-  try{const st=await api("/api/play/new",{colour,fallback:fb||undefined});P.orient=colour;cg.set({orientation:colour});applyPlayState(st);}catch(e){toast(e.message);}}
+async function setSeconds(){const v=$("#pSec").value;try{const st=await api("/api/play/settings",{seconds:v===""?null:parseFloat(v)});if(st&&st.game)applyPlayState(st);}catch(e){toast(e.message);}}
+async function newPlay(colour){const fb=$("#pFb").value;const sec=$("#pSec").value;P.since=0;P.gid=null;P.recs={};P.pin=null;P.hover=null;P.lastPly=null;$("#trace").innerHTML="";
+  try{const st=await api("/api/play/new",{colour,fallback:fb||undefined,seconds:sec===""?undefined:parseFloat(sec)});P.orient=colour;cg.set({orientation:colour});applyPlayState(st);}catch(e){toast(e.message);}}
 async function playTick(first){if(P.busy)return;P.busy=true;
   try{const st=await api("/api/play/state");
     if(!st.game){if(first)$("#pstatus").textContent="press New game to start";return;}
@@ -424,7 +426,7 @@ async function playTick(first){if(P.busy)return;P.busy=true;
     const t=await api("/api/play/trace?since="+P.since);if(t.game===P.gid&&t.records.length)appendTrace(t.records);
   }catch(e){}finally{P.busy=false;}}
 function lastOf(st){return st.last_move||undefined;}
-function applyPlayState(st){P.st=st;
+function applyPlayState(st){P.st=st;const sf=$("#pSec");if(sf&&document.activeElement!==sf)sf.value=st.seconds==null?"":st.seconds;
   const mine=st.turn===st.human&&!st.over&&!st.thinking;
   const dests=new Map(Object.entries(st.dests||{}));
   cg.set({fen:st.fen.split(" ")[0],turnColor:st.turn,lastMove:lastOf(st),check:st.in_check,

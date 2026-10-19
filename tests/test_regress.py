@@ -923,3 +923,21 @@ def test_52_17_the_cheap_pass_closes_what_the_rules_close_and_leaves_the_rest_pe
 
 def ctx_routes(ag):
     return ag.ctx.routes
+
+
+# ---- 52.17 (5): the budget is time ----------------------------------------------------------------------------------------------------------------
+
+def test_52_17_a_time_budget_cuts_the_chase_to_gaps_names_the_time_and_no_seconds_changes_nothing():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("dev_20") if x["id"] == "04Qx2"][0]
+    timed = AG.Agenda(State(p["fen"], "w", []), seconds=0.05)
+    timed.ask()
+    t = timed.trace()
+    assert "out of time" in t and any("out of time" in g for g in timed.state.gaps) and timed.ctx.time_outs == 1 and timed.ctx.hit
+    assert "budget: 0.05 s, used " in t and "OUT OF TIME" in t and "questions" in t.split("budget: ")[1]
+    assert timed.ctx.agendas <= 5                                                              # past the deadline no inner agenda is opened
+    assert timed.decision() is None or timed.decision().value >= 1                             # the best bound claim so far decides, never a guess
+    plain = AG.Agenda(State(p["fen"], "w", []))
+    plain.ask()
+    assert plain.ctx.time_outs == 0 and "budget:" not in plain.trace() and "out of time" not in plain.trace()
+    assert plain.decision().what == "Be8+"                                                      # seconds=None: today's behaviour (the same decision as the set run)
