@@ -1,4 +1,5 @@
 """ANALYST_PLAN 52: layer-1 questions, goal regression defects, tempo arithmetic, the generic binder, the agenda on 01IFU / 000Sa."""
+import analyst_core as AC
 import chess
 import pytest
 
@@ -458,8 +459,36 @@ def test_52_13_0agl8_is_not_decided_nxg2_at_four_times_the_fuse(monkeypatch):
 def test_52_13_a_reply_that_leaves_us_a_mate_in_one_or_an_unanswered_exchange_is_closed_by_rule():
     fen = "6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1"
     ag = AG.Agenda(state_of(fen, "w"))
-    assert ag._closed_by_rule(chess.Board(fen), 0) == (BD.MATE_VALUE, "mate in one")
+    assert ag._closed_by_rule(AC.Pos(fen), 0) == (BD.MATE_VALUE, "mate in one")
     ag = AG.Agenda(state_of(AGL8, "b"))
     res = ag._chase_route(chess.Move.from_uci("g5g2"))        # Qxg2+ Qxg2: the knight takes the queen, nothing of theirs
     assert res["value"] == 1 and any("closed by rule: exchange +9, nothing of theirs" in p for p in res["parts"])
     assert ag.ctx.closed >= 1
+
+
+def test_52_13_pos_replies_diff_and_exchange_equal_python_chess_on_dev_20():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    n = 0
+    for p in PA.load_set("dev_20"):
+        b = chess.Board(p["fen"])
+        P = AC.Pos(b.fen())
+        assert P.balance(b.turn) == G.balance(b, b.turn) and P.fen() == b.fen()
+        m = next(iter(b.legal_moves))                         # the first legal move; every reply of it
+        c = b.copy()
+        c.push(m)
+        P1 = P.push(m.uci())
+        assert P1.fen() == c.fen()
+        rows = {r[0]: r for r in P1.replies()}
+        assert set(rows) == {r.uci() for r in c.legal_moves}
+        for r in c.legal_moves:
+            d = c.copy()
+            d.push(r)
+            _u, dbal, chk, cap, rec, mate1 = rows[r.uci()]
+            mates = any(d.gives_check(x) and AG.Agenda._mates(d, x) for x in list(d.legal_moves))
+            assert (dbal, chk, cap, rec, mate1) == (G.balance(d, b.turn) - G.balance(c, b.turn), d.is_check(), c.is_capture(r), c.is_capture(r) and r.to_square == m.to_square, mates)
+            P2 = P1.push(r.uci())
+            assert set(P.diff(P2)) == set(R.diff_squares(b, d)) and P2.mate_in_one() == mates and P2.legal_count() == d.legal_moves.count()
+            ex = max([G.see(d, s) for s in chess.SQUARES if d.piece_at(s) and d.piece_at(s).color != d.turn and d.piece_at(s).piece_type != chess.KING and d.is_attacked_by(d.turn, s)] or [0])
+            assert P2.exchange() == ex
+            n += 1
+    assert n > 300
