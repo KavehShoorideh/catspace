@@ -397,3 +397,25 @@ def test_52_12_0dofb_has_the_reach_root_via_d5_and_qd5_is_a_threat_of_mate():
     assert R.forcing_why(b, chess.Move.from_uci("a5d5"), R.STAKE_MATE, "b", mate_threats=True) == "threat of mate"
     assert R.forcing_why(b, chess.Move.from_uci("a5d5"), R.STAKE_MATE, "b") is None      # the old forcing does not know it
     assert chess.Move.from_uci("a5d5") in R.reach_steps(b, "b", chess.A5, chess.G2)
+
+
+def test_52_13_a_claim_is_inherited_when_the_diff_misses_its_reads_and_reopened_when_it_meets_them():
+    b0 = chess.Board(IFU)
+    outer = AG.Agenda(state_of(IFU, "b"), side_depth=0, ctx=AG.ChaseCtx())
+    outer.ask()
+    won = [q for q in outer.all if q.status == "verified" and q.claimed is not None]
+    assert won and outer.decision().what == "Nf3+"
+    b1 = b0.copy()
+    b1.push_uci("a7a6")
+    b1.push_uci("b2b3")                                   # the queen-side pawns: nothing the mate on h2 read
+    diff = R.diff_squares(b0, b1)
+    assert not (diff & won[0].claimed[2])
+    inh = outer._inherit_for(diff)
+    assert any(v["kind"] == "claim" for v in inh.values())
+    inner = AG.Agenda(State(b1.fen(), "b", []), side_depth=0, chase_depth=1, ctx=AG.ChaseCtx(), inherit=inh)
+    inner.ask()
+    assert inner.ctx.inherited_claims > 0 and inner.decision().what == "Nf3+"
+    assert inner.decision().line.startswith("inherited: nothing changed for the") and inner.asked < outer.asked
+    meet = AG.Agenda(State(b1.fen(), "b", []), side_depth=0, chase_depth=1, ctx=AG.ChaseCtx(), inherit=outer._inherit_for(frozenset(chess.SQUARES)))
+    meet.ask()
+    assert meet.ctx.inherited_claims == 0

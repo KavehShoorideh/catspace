@@ -63,6 +63,7 @@ class Question:
     depth: int = 0
     text: str = ""
     reads: frozenset | None = None            # 52.12: the squares whose occupancy or attack counts this question read (None: not recorded, never inherited)
+    claimed: tuple | None = None              # 52.13 (1): (net value, the Claim, its reads) once a claim verified this question; the reads = the question's plus the squares of the bound atoms
 
 
 # ---------------------------------------------------------------------------------------------------------------- the placement (the pattern as a counterfactual)

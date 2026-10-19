@@ -25,6 +25,7 @@ root at distance two (one prep move) whose fixes are the first steps; a step is 
 """
 from __future__ import annotations
 
+import dataclasses
 import heapq
 import re
 
@@ -52,13 +53,15 @@ class ChaseCtx:
         self.asked = 0                            # questions they asked
         self.budget_hits = 0
         self.inherited = 0                        # 52.12 (3): questions of the outer agenda inherited, not asked again
+        self.inherited_claims = 0                 # 52.13 (1): ... of which claims (the rest are kills)
         self.reopened = 0                         # ... and the ones that met the diff and were asked
+        self.fresh = 0                            # 52.13 (1): questions NEW on the inner board (a key the outer agenda did not have, or did not settle), asked
 
 
 class Agenda:
     def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None):
         R.reset_ids()
-        self.inherit = inherit or {}                            # 52.12 (3): key -> (reads, diff, text) for the outer agenda's KILLED questions whose reads the move + reply did not touch
+        self.inherit = inherit or {}                            # 52.12 (3), 52.13 (1): key -> {kind: kill | claim, reads, diff, ...} for the outer agenda's SETTLED questions (a kill, or a claim with its reads)
         self.inherited = 0
         self.min_stake = min_stake                              # 52.12: an inner agenda asks only the roots whose stake can still rescue the route (a root below it is not pushed)
         self.chase_depth = chase_depth                          # 52.12: 0 for the root agenda, +1 per inner agenda of a chase
@@ -319,35 +322,56 @@ class Agenda:
         self.lines.append("STOP (b): every question is closed")
 
     def _inherit(self, q: R.Question) -> bool:
-        """52.12 (3): the outer agenda's KILL of the same question stands when nothing the question read changed (the diff of the route and the reply does not meet its
-        reads): same status, one line, not asked again. A claim is never inherited (its tail reads more than the question did)."""
+        """52.12 (3), 52.13 (1): THE DIFF DECIDES WHAT IS ASKED. An inner agenda asks (a) the question that sent it there (it is not settled in the outer agenda, so it is
+        not in `inherit`), (b) every outer question whose reads meet the diff of the route and the reply, (c) every question NEW on this board. The rest is INHERITED
+        with its status: a kill as it was, a claim re-stamped on this board (the move is legal here) with the line 'inherited: nothing changed for ...'."""
         key = R.question_key(q)
         hit = self.inherit.get(key) if key is not None else None
         if hit is None:
             if key is not None and self.inherit:
-                self.ctx.reopened += 1
+                self.ctx.fresh += 1
             return False
-        reads, diff, why = hit
-        if reads & diff:
+        if hit["reads"] & hit["diff"]:
             self.ctx.reopened += 1
             return False
         b = self.board
         sq = q.pattern.get("at") if q.goal == "mate" else q.pattern.get("target")
         pc = b.piece_at(sq) if sq is not None else None
-        q.status, q.reason = "killed", "inherited: " + why
-        self.kills.append((q.id, q.reason))
+        what = f"the {pc.symbol().upper() if pc else 'piece'} on {G.name(sq) if sq is not None else '?'}"
+        if hit["kind"] == "claim":
+            old = hit["claim"]
+            mv = chess.Move.from_uci(old.move)
+            if mv not in b.legal_moves:
+                self.ctx.reopened += 1
+                return False
+            cl = dataclasses.replace(old, what=b.san(mv), line=f"inherited: nothing changed for {what} ({old.line})")
+            self.state.claims.append(cl)
+            q.status, q.claimed, q.reads = "verified", (hit["net"], cl, hit["reads"]), hit["reads"]
+            self.ctx.inherited_claims += 1
+            self.lines.append(f"Q{q.id} {q.text}: inherited: nothing changed for {what}: CLAIM {cl.kind} {cl.what} (value {cl.value}, net {hit['net']}), lemma {cl.lemma}")
+            if self.best is None or (hit["net"], 0) > self.best[:2]:
+                self.best = (hit["net"], 0, cl)
+                self.asked_at_claim = self.asked
+        else:
+            q.status, q.reason, q.reads = "killed", "inherited: " + hit["why"], hit["reads"]
+            self.kills.append((q.id, q.reason))
+            self.lines.append(f"Q{q.id} {q.text}: inherited: nothing changed for {what} ({hit['why']})")
         self.inherited += 1
         self.ctx.inherited += 1
-        self.lines.append(f"Q{q.id} {q.text}: inherited: nothing changed for the {pc.symbol().upper() if pc else 'piece'} on {G.name(sq) if sq is not None else '?'} ({why})")
         return True
 
     def _inherit_for(self, diff: frozenset) -> dict:
-        """What an inner agenda inherits from this one: the killed questions' keys with their reads and the diff."""
+        """What an inner agenda inherits from this one: the settled questions (killed, or claimed with their reads) by key, with the diff. A chase claim is not
+        inherited (its tail reads every reply of the board it was made on), and neither is a question this agenda has not settled (the one being asked is among them)."""
         out = {}
         for q in self.all:
             key = R.question_key(q)
-            if key is not None and q.status == "killed" and q.reads is not None and not q.reason.startswith("inherited"):
-                out[key] = (q.reads, diff, q.reason.split(";")[0][:80])
+            if key is None:
+                continue
+            if q.status == "killed" and q.reads is not None:
+                out[key] = dict(kind="kill", reads=q.reads, diff=diff, why=q.reason.removeprefix("inherited: ").split(";")[0][:80])
+            elif q.status == "verified" and q.claimed is not None and not q.claimed[1].lemma.startswith("chase"):
+                out[key] = dict(kind="claim", reads=q.claimed[2], diff=diff, net=q.claimed[0], claim=q.claimed[1])
         return out
 
     def _count(self, q: R.Question) -> int:
@@ -498,12 +522,22 @@ class Agenda:
         self._stamp(claim, q)
         self.state.claims.append(claim)
         q.status = "verified"
+        self._record_claim(q, net, claim, bind)
         window = " [a gain WITHIN THE WINDOW: the leaf is not read to quiescence -- 0UqOv's queen was trapped two plies beyond it]" if "balance" in str(claim.lemma) else ""
         self.lines.append(f"  -> CLAIM {kind} {claim.what} (value {claim.value}{'' if net == claim.value else f', net {net} of their best claim'}), lemma {claim.lemma}, line {claim.line}{window}")
         key = (net, -len(opp))
         if self.best is None or key > self.best[:2]:
             self.best = (net, -len(opp), claim)
             self.asked_at_claim = self.asked
+
+    def _record_claim(self, q: R.Question, net: int, claim: Claim, bind: "BD.Binding | None") -> None:
+        """52.13 (1): a claim's reads = the question's reads plus the squares named in the atoms of its bound schema (our named moves x y x2 y2)."""
+        reads = set(q.reads if q.reads is not None else R.reads_of(q, self.board))
+        if bind is not None:
+            for k in ("x", "y", "x2", "y2"):
+                if bind.assignment.get(k):
+                    reads.add(chess.parse_square(bind.assignment[k]))
+        q.claimed = (net, claim, frozenset(reads))
 
     def _leaf_read(self, bind: BD.Binding, r: R.Route) -> dict | None:
         """52.10: THE LEAF READ BY THEIR AGENDA. A balance claim of ours (d1: our move x->y; the least over their replies of the most over our moves of the
@@ -745,7 +779,7 @@ class Agenda:
         ctx.active.add(fen)
         hits0 = ctx.budget_hits
         saved = R._ids[0]
-        inherit = self._inherit_for(R.diff_squares(self.board, after)) if after is not None and any(q.status == "killed" for q in self.all) else None
+        inherit = self._inherit_for(R.diff_squares(self.board, after)) if after is not None and any(q.status in ("killed", "verified") for q in self.all) else None
         ag = Agenda(State(fen=fen, us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=need, inherit=inherit)
         ag.ask()
         R._ids[0] = saved
