@@ -133,6 +133,7 @@ class Agenda:
         self.leaf_all = leaf_all                                # 52.10: read the leaf of EVERY reply of theirs (4x the seconds on dev_20 / fresh_60, no claim downgraded more), not only the minimising ones
         self.leaf_stats = dict(read=0, down=0, untrusted=0)       # claims read at the leaf / downgraded / not trusted (the decomposition missed the word)
         self._tv: dict = {}                                     # their view of a route, asked once (the verify and the smallest-loss decision share it)
+        self._pre: dict = {}                                    # 52.17 (4): route key -> the replies the cheap pass closed by rule
         self._roots()
         for i, q in enumerate(self.all, 1):                      # numbered in the order they are asked
             q.id = i
@@ -924,12 +925,15 @@ class Agenda:
             ctx.memo[(pk, wt, keep if wt else 0)] = out
         return out
 
-    def _chase_route(self, m: chess.Move, promote: bool = False) -> dict:
+    def _chase_route(self, m: chess.Move, promote: bool = False, cheap: bool = False) -> dict:
         """One forcing route of the chase: every reply of theirs, the whole agenda on each resulting position. -> {value, killed, gap, parts, lemmas}.
+        52.17 (4) `cheap`: CHEAPEST REPLY FIRST -- only what the rules close is read (standing kills, a reply that mates or stalemates us, a mate in one, the exchange with nothing of
+        theirs, a promotion that stands); a reply that needs an inner agenda leaves the route PENDING (not memoised) and the closed replies are kept for the second pass.
         52.15 (2) `promote`: the question is a promotion; a reply is answered when the inner agenda claims the promotion (or a mate), or the reply itself gave up at least the
         stake in material; the roots asked there are those of stake >= the promote stake, and the route's value is the promote stake (a mate: 100)."""
         b, ctx = self.board, self.ctx
         key = (_pos_key(b.fen()), m.uci() + (":promote" if promote else ""))
+        pre = self._pre.pop(key, None) if not cheap else None      # the replies the cheap pass closed by rule (value, why)
         if key in ctx.routes:
             hit = ctx.routes[key]
             if hit["gap"] is None:
@@ -977,9 +981,15 @@ class Agenda:
             return res
         rows.sort(key=lambda t: (0 if t[4] else 1 if t[2] else 2 if t[3] else 3, t[0], t[1]))
         gains = []
+        closed_now = {}
         for dbal, uci, chk, cap, rec, mate1 in rows:
             P2 = P2_of(uci)
             san_r = san_of(uci)
+            if pre is not None and uci in pre:                   # closed by rule in the cheap pass: counted and logged there
+                val, why = pre[uci]
+                gains.append(val)
+                res["parts"].append(f"after {san_r}: closed by rule: {why} -> {val}")
+                continue
             if P2.legal_count() == 0:
                 res["killed"] = f"after {san_r} " + ("they mate us" if P2.is_check() else "stalemate")
                 self._log(key, uci, "killed", dbal, None, None, res["killed"])
@@ -990,6 +1000,7 @@ class Agenda:
                 gains.append(val)
                 res["parts"].append(f"after {san_r}: closed by rule: {why} -> {val}")
                 ctx.closed += 1
+                closed_now[uci] = closed
                 self._log(key, uci, "closed", dbal, val, None, why)
                 continue
             if promote and dbal < self.promote_stake:
@@ -999,6 +1010,9 @@ class Agenda:
                     ctx.promote_stands += 1
                     self._log(key, uci, "killed", dbal, None, None, res["killed"])
                     break
+            if cheap:                                            # the reply needs an inner agenda: the route stays open for the second pass
+                res["pending"] = True
+                break                                            # (the replies after it stay for the second pass: reading them all by rule cost 20x their agendas)
             need = min(R.STAKE_PROMOTE, 1 - dbal) if promote and dbal <= 0 else R.STAKE_PROMOTE if promote else 1 - dbal if dbal <= 0 else BD.MATE_VALUE          # a reply that already gains is read for a mate only; else its static gain must survive their threats (below)
             inn = self._inner(P2.fen(), need, frozenset(P0.diff(P2)))
             if inn is None:
@@ -1084,6 +1098,9 @@ class Agenda:
             self._log(key, uci, "claim" if cl else "material", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
             if cl:
                 res["lemmas"].append(cl.lemma)
+        if cheap and res.get("pending") and res["killed"] is None:
+            self._pre[key] = closed_now                          # not memoised: the second pass finishes it
+            return res
         if res["killed"] is None and res["gap"] is None:
             res["value"] = min(gains) if gains else 0
         if res["gap"] is not None:
@@ -1288,14 +1305,23 @@ class Agenda:
         done, cut = [], False
         pool = self.ctx.left
         self._chasing = q if q.goal == "promote" else None
+        # 52.17 (4): CHEAPEST REPLY FIRST. Before any route opens an inner agenda, every route's replies are read at the static leaf and what the rules close is closed (a standing
+        # kill, a mate or stalemate against us, a mate in one, the exchange with nothing of theirs): a route killed there never draws a share of the fuse, and the routes still open
+        # share it in order.
+        cheap_res = {}
+        for i, r in enumerate(routes):
+            got = self._chase_route(r.move, promote=q.goal == "promote", cheap=True)
+            if not got.get("pending"):
+                cheap_res[i] = got
         for i, r in enumerate(routes):
             saved = self.ctx.left
-            share = max(saved // (len(routes) - i), 1) if saved > 0 else 0
-            if self.chase_depth == 0 and saved > 0:             # the root's fuse is shared FAIRLY by the routes of this chase: each gets an equal share of what is left (a chain of checks must not spend what Qd5 needs: 0DoFB)
+            open_left = sum(1 for j in range(i, len(routes)) if j not in cheap_res)
+            share = max(saved // max(open_left, 1), 1) if saved > 0 else 0
+            if self.chase_depth == 0 and saved > 0 and i not in cheap_res:             # the root's fuse is shared FAIRLY by the routes of this chase: each gets an equal share of what is left (a chain of checks must not spend what Qd5 needs: 0DoFB)
                 self.ctx.left = share
             before = self.ctx.left
-            res = self._chase_route(r.move, promote=q.goal == "promote")
-            if self.chase_depth == 0:
+            res = cheap_res[i] if i in cheap_res else self._chase_route(r.move, promote=q.goal == "promote")
+            if self.chase_depth == 0 and i not in cheap_res:
                 # 52.16 (2): a route is CHARGED at most its share. The frames open when the fuse runs out finish their questions (that is how 08pSj's Rf1+ and 0VSUT's Qxe5 are decided),
                 # but that finishing is free: charged in full it took the share of every later route (0LRTF: 239 questions on a share of 120, then Rd7 got 1).
                 self.ctx.left = saved - min(max(before - self.ctx.left, 0), share) if saved > 0 else self.ctx.left

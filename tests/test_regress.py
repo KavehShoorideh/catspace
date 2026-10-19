@@ -902,3 +902,24 @@ def test_52_17_the_promotion_exchange_is_read_on_the_board_after_the_push_and_no
     free = AG.Agenda(State("8/2P5/8/7k/8/8/p6K/8 w - - 0 1", "w", []), side_depth=0, chase_depth=2, ctx=AG.ChaseCtx())
     q2 = [x for x in free.all if x.goal == "promote"][0]
     assert free._promotion_exchange(q2, chess.C7, dict(pushes=1, promo=chess.C8)) is None          # nothing of theirs takes on c8: the passer's business, no exchange claim
+
+
+# ---- 52.17 (4): cheapest reply first ----------------------------------------------------------------------------------------------------------------
+
+def test_52_17_the_cheap_pass_closes_what_the_rules_close_and_leaves_the_rest_pending_without_an_inner_agenda():
+    ag = AG.Agenda(State(LRTF, "w", []))
+    m = chess.Move.from_uci("h7h8")
+    key = (AG._pos_key(ag.board.fen()), "h7h8")
+    res = ag._chase_route(m, cheap=True)
+    assert res.get("pending") and key not in ctx_routes(ag) and ag.ctx.agendas == 0              # Kd7 needs an inner agenda: pending, none opened, nothing memoised
+    full = ag._chase_route(m)
+    assert not full.get("pending") and key in ctx_routes(ag) and ag.ctx.agendas > 0
+    ag.ask()                                                                                       # a route an earlier reply already killed is killed by the cheap pass alone
+    before = ag.ctx.agendas
+    ag.ctx.routes.pop((AG._pos_key(ag.board.fen()), "h7d7"), None)
+    killed = ag._chase_route(chess.Move.from_uci("h7d7"), cheap=True)
+    assert killed["killed"] and "standing kill" in killed["killed"] and ag.ctx.agendas == before
+
+
+def ctx_routes(ag):
+    return ag.ctx.routes
