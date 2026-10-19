@@ -63,6 +63,12 @@ class ChaseCtx:
         self.left = 0                             # 52.13 (2b): the FUSE of the root agenda: 10x its question budget, set once, spent by every chase and inner agenda under it
         self.depth_cuts = 0                       # ... of the fuse hits, the ones from the depth cap (the stack), not the question count
         self.theirs: dict = {}                    # 52.13 (3): fen (their move) -> (value, claim) of THEIR agenda there, asked once for the whole run
+        self.their_ags: dict = {}                 # 52.14: ... and that agenda itself (its claims are the save roots of the inner agenda on the static leaf)
+        self.static_read = 0                      # 52.14: static leaves (a reply after which the gain stands only as a balance) read from their side
+        self.static_parried = 0                   # ... of which every threat of theirs had a verified parry (the gain kept) / ...
+        self.static_unparried = 0                 # ... at least one threat had no parry (killed, or a gap)
+        self.their_moved: dict = {}               # 52.14: pos key (their move, as given) -> (value, claim) of THEIR agenda there, asked once for the whole run (the board after one parry of ours)
+        self.static_lines: list = []              # 52.14: one line per static leaf whose threats were asked as save roots (chase depth, reply, verdict); the root agenda prints them
         self.standing = 0                         # 52.13 (4): routes ended by a standing kill (no inner agenda)
         self.closed = 0                           # ... replies closed by a rule (mate in one / exchange, nothing of theirs)
         self.reply_kills: dict = {}               # reply uci -> [(position left, dbal, reads of the inner agenda, route san)] of the routes it killed with no claim of ours
@@ -80,8 +86,11 @@ class ChaseCtx:
 
 
 class Agenda:
-    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None, chase_log: str | None = None):
+    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None, chase_log: str | None = None, their: "Agenda | None" = None, keep: int = 0):
         R.reset_ids()
+        self.their = their                                      # 52.14: THEIR agenda on this board with the move passed to them: its claims are asked as save roots (an inner agenda on a static leaf)
+        self.keep = keep                                        # 52.14: the gain (a balance, us to move) the static leaf stands on: a parry of a threat is verified when it keeps at least 1 of it
+        self.threat_qs: list = []                               # 52.14: (question, their claim) of every threat root pushed from `their`
         self.inherit = inherit or {}                            # 52.12 (3), 52.13 (1): key -> {kind: kill | claim, reads, diff, ...} for the outer agenda's SETTLED questions (a kill, or a claim with its reads)
         self.inherited = 0
         self.min_stake = min_stake                              # 52.12: an inner agenda asks only the roots whose stake can still rescue the route (a root below it is not pushed)
@@ -109,7 +118,7 @@ class Agenda:
         self.notes: list = []
         if ctx is None and self.ctx is not None:
             self.ctx.left = self.budget * FUSE                  # the root agenda's FUSE (10x the question budget), set ONCE: every chase of every question and the inner agendas spend it
-        self._threats_done = not side_depth
+        self._threats_done = not side_depth and their is None
         self._hang: list = []
         self.threat_views: list = []                            # (claim, their agenda) for every threat root
         self._seq = 0
@@ -129,8 +138,8 @@ class Agenda:
 
     # ------------------------------------------------------------------------------------------------------------ roots
 
-    def _push(self, q: R.Question) -> R.Question:
-        if q.stake < self.min_stake:
+    def _push(self, q: R.Question, force: bool = False) -> R.Question:
+        if q.stake < self.min_stake and not force:
             return q
         self.all.append(q)
         self._seq += 1
@@ -278,25 +287,28 @@ class Agenda:
         b = self.board
         if b.is_check():
             return
-        ag = self._their_agenda(G.with_turn(b, not self.me))
+        given = self.their is not None                           # 52.14: an inner agenda on a static leaf is handed their agenda; its threat roots are asked whatever `min_stake` says
+        ag = self.their if given else self._their_agenda(G.with_turn(b, not self.me))
         seen = set()
         for cl in ag.state.claims:
             m = chess.Move.from_uci(cl.move) if cl.move else None
-            if m is None or cl.move in seen or (m.to_square in hang and b.piece_at(m.to_square)):
+            if m is None or cl.move in seen or (not given and m.to_square in hang and b.piece_at(m.to_square)):       # (given: the hang root is below `min_stake` here, so the capture of a piece that hangs is a threat root too)
                 continue
             seen.add(cl.move)
             if cl.kind == "promote":
                 pw = m.from_square
                 pb = ag.board
                 dest = R.pawn_path(pb, pw, G.word(pb, ("pushes", G.name(pw)), not self.me))[-1]
-                self._push(R.new_question("save", cl.value, dict(promoter=pw, push=cl.move, value=cl.value, lemma=cl.lemma, line=cl.line, what=cl.what),
-                                          text=f"stop their P on {G.name(pw)} (promotes on {G.name(dest)}): their claim {cl.what} wins {cl.value} (lemma {cl.lemma})"))
+                q = self._push(R.new_question("save", cl.value, dict(promoter=pw, push=cl.move, value=cl.value, lemma=cl.lemma, line=cl.line, what=cl.what, inner_threat=given),
+                                             text=f"stop their P on {G.name(pw)} (promotes on {G.name(dest)}): their claim {cl.what} wins {cl.value} (lemma {cl.lemma})"), force=given)
+                self.threat_qs.append((q, cl))
                 self.threat_views.append((cl, ag))
                 continue
             tgt = self._targets_of(m, cl)
             what = "our king" if cl.value >= BD.MATE_VALUE else (" and ".join(f"our {b.piece_at(t).symbol().upper()} on {G.name(t)}" for t in tgt) or "something of ours")
-            self._push(R.new_question("save", cl.value, dict(threat=cl.move, targets=tgt, value=cl.value, lemma=cl.lemma, line=cl.line, what=cl.what),
-                                      text=f"save {what}: their threat {cl.what} wins {cl.value} (their claim, lemma {cl.lemma})"))
+            q = self._push(R.new_question("save", cl.value, dict(threat=cl.move, targets=tgt, value=cl.value, lemma=cl.lemma, line=cl.line, what=cl.what, inner_threat=given),
+                                          text=f"save {what}: their threat {cl.what} wins {cl.value} (their claim, lemma {cl.lemma})"), force=given)
+            self.threat_qs.append((q, cl))
             self.threat_views.append((cl, ag))
 
     def _targets_of(self, m: chess.Move, cl: Claim) -> list:
@@ -315,6 +327,9 @@ class Agenda:
 
     def ask(self) -> None:
         self._ask_loop()
+        if self.ctx is not None and self.chase_depth == 0 and self.ctx.static_lines:       # 52.14: the static leaves read from their side, and the parries
+            self.lines.append(f"static leaves read from their side, threats asked as save roots ({len(self.ctx.static_lines)}):")
+            self.lines += ["  " + x for x in self.ctx.static_lines]
         if self.ctx is not None and self.chase_depth == 0 and self.ctx.rows:       # 52.13 (4): the chase log of this root, appended once (per item)
             import json
             from catspace.io import paths
@@ -560,6 +575,8 @@ class Agenda:
         window = " [a gain WITHIN THE WINDOW: the leaf is not read to quiescence -- 0UqOv's queen was trapped two plies beyond it]" if "balance" in str(claim.lemma) else ""
         self.lines.append(f"  -> CLAIM {kind} {claim.what} (value {claim.value}{'' if net == claim.value else f', net {net} of their best claim'}), lemma {claim.lemma}, line {claim.line}{window}")
         key = (net, -len(opp))
+        if q.pattern.get("inner_threat"):                        # 52.14: the parry of a threat on a static leaf keeps the gain; it is not a gain of its own (the reply's value stays dbal)
+            return
         if self.best is None or key > self.best[:2]:
             self.best = (net, -len(opp), claim)
             self.asked_at_claim = self.asked
@@ -799,16 +816,19 @@ class Agenda:
 
     # ------------------------------------------------------------------------------------------------------------ the chase (52.12)
 
-    def _inner(self, fen: str, need: int, diff: "frozenset | None" = None) -> "dict | None":
+    def _inner(self, fen: str, need: int, diff: "frozenset | None" = None, their: "Agenda | None" = None, keep: int = 0) -> "dict | None":
         """The WHOLE agenda asked again on `fen` (our move), only the roots of stake >= `need` (a smaller claim cannot rescue the route): -> {value, claim, asked, need};
-        None when the shared budget is spent. Memoised by FEN (an answer asked with a smaller `need` serves a larger one); a FEN being asked (a cycle) answers no claim."""
+        None when the shared budget is spent. Memoised by FEN (an answer asked with a smaller `need` serves a larger one); a FEN being asked (a cycle) answers no claim.
+        52.14: with `their` (their agenda there, the move passed to them) their claims are also asked as SAVE roots; the answer lists them (`threats`: (their claim, our parry claim or None)).
+        The memo is keyed by (position, with threats): an answer asked WITH threats serves a later ask without them, not the reverse."""
         ctx = self.ctx
         pk = _pos_key(fen)
-        hit = ctx.memo.get(pk)
+        wt = their is not None
+        hit = ctx.memo.get((pk, True, keep)) if wt else (ctx.memo.get((pk, False, 0)) or next((h for (k, w, _kp), h in ctx.memo.items() if k == pk and w), None))     # (position, with threats, the gain kept): an answer WITH threats serves an ask without, not the reverse
         if hit is not None and hit["need"] <= need:
             return hit
         if pk in ctx.active:
-            return dict(value=0, claim=None, asked=0, need=need)
+            return dict(value=0, claim=None, asked=0, need=need, threats=[(cl, None) for cl in their.state.claims] if wt else [])     # a cycle parries nothing
         if ctx.left <= 0 or self.chase_depth >= DEPTH_FUSE:
             if ctx.left > 0:
                 ctx.depth_cuts += 1
@@ -817,7 +837,7 @@ class Agenda:
         hits0 = ctx.budget_hits
         saved = R._ids[0]
         inherit = self._inherit_for(diff) if diff is not None and any(q.status in ("killed", "verified") for q in self.all) else None
-        ag = Agenda(State(fen=fen, us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=need, inherit=inherit)
+        ag = Agenda(State(fen=fen, us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=need, inherit=inherit, their=their, keep=keep)
         ag.ask()
         R._ids[0] = saved
         ctx.active.discard(pk)
@@ -825,9 +845,10 @@ class Agenda:
         ctx.asked += ag.asked
         best = ag.best[2] if ag.best and ag.best[0] > 0 else None
         reads = None if any(q.reads is None for q in ag.all) else frozenset().union(*(q.reads for q in ag.all))     # 52.13 (4): everything this agenda read (None: some question did not record it)
-        out = dict(value=ag.best[0] if best else 0, claim=best, asked=ag.asked, need=need, cut=ctx.budget_hits > hits0, reads=reads)
+        threats = [(cl, q.claimed[1] if q.status == "verified" and q.claimed is not None else None) for q, cl in ag.threat_qs]
+        out = dict(value=ag.best[0] if best else 0, claim=best, asked=ag.asked, need=need, cut=ctx.budget_hits > hits0, reads=reads, threats=threats)
         if not out["cut"]:                                      # an answer the budget cut short is not memoised and is never read as "no claim"
-            ctx.memo[pk] = out
+            ctx.memo[(pk, wt, keep if wt else 0)] = out
         return out
 
     def _chase_route(self, m: chess.Move) -> dict:
@@ -904,13 +925,38 @@ class Agenda:
                 self._log(key, uci, "gap", dbal, None, None, res["gap"])
                 break
             static = dbal >= 1 and inn["value"] < BD.MATE_VALUE
-            t_their, claim_their = 0, None
-            if static and not P2.is_check() and not self.chase_depth:                         # 52.13 (3): a gain that stands only as a static balance (us to move) is a result only once THEIR agenda has read it, with the move passed to them
+            t_their, claim_their, unparried, parry_note = 0, None, 0, None
+            if static and not P2.is_check():                    # 52.13 (3), 52.14: a gain that stands only as a static balance (us to move) is a result only once THEIR agenda has read it, with the move passed to them, at every chase depth
                 t_their, claim_their = self._their_pass(P2.fen())
-                if dbal - t_their < 1:
-                    res["killed"] = f"after {san_r}: {dbal:+d} stands only as a balance and their {claim_their.what} wins {t_their} (lemma {claim_their.lemma}) if we pass"
-                    self._log(key, uci, "killed", dbal, inn["value"], None, res["killed"])
-                    break
+                if claim_their is not None:
+                    ctx.static_read += 1
+                if claim_their is not None and dbal - t_their < 1:
+                    # 52.14: their claim is a THREAT and a SAVE root of the inner agenda on this position (we are to move: a parry, a counter, taking the attacker); the reply is
+                    # killed only by the threats no parry of ours is verified for
+                    inn2 = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), their=ctx.their_ags.get(_pos_key(G.with_turn(chess.Board(P2.fen()), not self.me).fen())), keep=dbal)
+                    if inn2 is None:
+                        res["gap"] = f"chase fuse: {san} not followed past {san_r}"
+                        ctx.budget_hits += 1
+                        self._log(key, uci, "gap", dbal, None, None, res["gap"])
+                        break
+                    inn = dict(inn, cut=inn.get("cut") or inn2.get("cut"))
+                    held = [(cl, pc) for cl, pc in inn2["threats"] if pc is not None]
+                    lost = [cl for cl, pc in inn2["threats"] if pc is None]
+                    unparried = sum(cl.value for cl in lost)
+                    parry_note = "; ".join(f"their {cl.what} wins {cl.value} if we pass; parry: {pc.what} (lemma {pc.lemma}) keeps {pc.value:+d}" for cl, pc in held)
+                    if lost:
+                        ctx.static_unparried += 1
+                    else:
+                        ctx.static_parried += 1
+                    self._static_line(san, san_r, dbal, claim_their, parry_note, lost)
+                    if dbal - unparried < 1:
+                        worst = max(lost, key=lambda cl: cl.value) if lost else claim_their
+                        res["killed"] = f"after {san_r}: {dbal:+d} stands only as a balance, their {worst.what} wins {worst.value} (lemma {worst.lemma}), no parry"
+                        self._log(key, uci, "killed", dbal, inn["value"], None, res["killed"])
+                        break
+                    claim_their = None
+                else:
+                    unparried = t_their
             if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and inn.get("cut"):
                 res["gap"] = f"chase fuse: {san} not followed past {san_r} (the inner agenda was cut by the fuse)"
                 ctx.budget_hits += 1
@@ -923,8 +969,8 @@ class Agenda:
                 self._log(key, uci, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
                 break
             cl = inn["claim"] if inn["value"] >= need else None
-            gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else dbal - t_their if static else dbal + (inn["value"] if cl else 0))
-            res["parts"].append(f"after {san_r}: " + (f"{cl.what} ({cl.line}; value {cl.value})" if cl else f"material {dbal:+d}" + (f", their {claim_their.what} wins {t_their} if we pass" if claim_their else "")) + (f" -> {gains[-1]}" if cl or claim_their else ""))
+            gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else dbal - unparried if static else dbal + (inn["value"] if cl else 0))
+            res["parts"].append(f"after {san_r}: " + (f"{cl.what} ({cl.line}; value {cl.value})" if cl else f"material {dbal:+d}" + (f", their {claim_their.what} wins {t_their} if we pass" if claim_their else "") + (f", {parry_note}" if parry_note else "")) + (f" -> {gains[-1]}" if cl or claim_their or parry_note else ""))
             self._log(key, uci, "claim" if cl else "material", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
             if cl:
                 res["lemmas"].append(cl.lemma)
@@ -934,6 +980,12 @@ class Agenda:
             res["cut_left"] = ctx.left
         ctx.routes[key] = res
         return res
+
+    def _static_line(self, san: str, san_r: str, dbal: int, claim_their: Claim, parry_note: str, lost: list) -> None:
+        """52.14: the trace line of a static leaf whose threats were asked as save roots of the inner agenda (printed by the root agenda)."""
+        line = f"depth {self.chase_depth}: {san} after {san_r}: {dbal:+d} stands as a balance; " + ("; ".join(x for x in (parry_note, "no parry for " + ", ".join(f"their {cl.what} wins {cl.value}" for cl in lost) if lost else "") if x))
+        if line not in self.ctx.static_lines:
+            self.ctx.static_lines.append(line)
 
     def _standing_kill(self, uci: str, P2: "AC.Pos", dbal: int) -> tuple | None:
         """52.13 (4): a reply of theirs killed an earlier route of this root with no claim of ours; the kill stands for this route when the position this reply leaves
@@ -979,6 +1031,8 @@ class Agenda:
             ag = self._their_agenda(c) if any(True for _ in c.legal_moves) else None
             cl = max(ag.state.claims, key=lambda x: x.value) if ag is not None and ag.state.claims else None
             hit = self.ctx.theirs[key] = (cl.value if cl else 0, cl)
+            if ag is not None:
+                self.ctx.their_ags[key] = ag
         return hit
 
     def _chase(self, q: R.Question) -> bool:
@@ -1118,10 +1172,66 @@ class Agenda:
         self.asked += 1
         self.lines.append(f"  -> Q{f.id} {f.text}: {len(f.routes)} moves")
         q.fixes.append(f)
+        if self.their is not None:                               # 52.14: a threat on a static leaf is parried by KEEPING the gain (the binder reads a gain of at least 1 from a balance <= 0, and we are ahead here)
+            self._parry_keeps(q, f.routes)
+            return
         before = len(self.state.claims)
         self._verify(q, f.routes, mates_only=False)
         if len(self.state.claims) == before and not self._decide_by_smallest_loss(q):
             self.state.gaps.append(f"Q{q.id} {q.text}: no parry binds a guaranteed gain and none could be read from their view")
+
+    def _their_moved(self, c: chess.Board) -> tuple:
+        """THEIR agenda on `c` (their move, as given), memoised by position across the run: -> (value of their best claim, the claim) or (0, None)."""
+        key = _pos_key(c.fen())
+        hit = self.ctx.their_moved.get(key)
+        if hit is None:
+            ag = self._their_agenda(c) if any(True for _ in c.legal_moves) else None
+            cl = max(ag.state.claims, key=lambda x: x.value) if ag is not None and ag.state.claims else None
+            hit = self.ctx.their_moved[key] = (cl.value if cl else 0, cl)
+        return hit
+
+    def _parry_keeps(self, q: R.Question, routes: list) -> None:
+        """52.14 (deviation from the plan text, which verifies the parry by the binder): a parry of a threat on a static leaf is VERIFIED when it keeps the gain the
+        leaf stands on, `keep` (a balance, us to move): the material it wins now less THEIR best claim on the board after it (their agenda, the move theirs) leaves at
+        least 1 of `keep`. The binder cannot say it: its gain schemas read a gain of >= 1 from a balance <= 0 and the leaf's balance is above that."""
+        b = self.board
+        P0 = AC.Pos(b.fen())
+        base = P0.balance(self.me)
+        best = None
+        if q.pattern.get("value", 0) >= BD.MATE_VALUE and q.pattern.get("threat"):
+            # a MATE threat is not parried by their agenda's silence afterwards (it reads no deep mate: 0AgL8's Kc8 against Qa7+, then Bc6+ mates in 4): only taking the
+            # threatening piece, or mating first, is a parry here
+            src = chess.Move.from_uci(q.pattern["threat"]).from_square
+            keep_routes = []
+            for r in routes:
+                c = b.copy(stack=False)
+                c.push(r.move)
+                if r.move.to_square == src or c.is_checkmate():
+                    keep_routes.append(r)
+            routes = keep_routes
+        for r in routes:
+            P1 = P0.push(r.move.uci())
+            gain = P1.balance(self.me) - base
+            c = b.copy(stack=False)
+            c.push(r.move)
+            t, cl = self._their_moved(c) if not c.is_checkmate() else (0, None)
+            x = 0 if c.is_checkmate() else P1.exchange()          # their agenda is silent about a plain recapture (its claims are guaranteed gains): the exchange on the board after the parry is read too
+            if x > t:
+                t, cl = x, None
+            net = gain - t
+            if best is None or net > best[0]:
+                best = (net, r, cl, t, gain)
+        if best is not None and self.keep + best[0] >= 1:
+            net, r, cl, t, gain = best
+            theirs = f"their {cl.what} wins {cl.value}" if cl else (f"their exchange wins {t}" if t else "nothing of theirs")
+            claim = Claim("save", r.san, self.keep + net, "their_view: material after the parry less their best claim", f"{r.san} ({theirs} after it)", move=r.move.uci())
+            self._stamp(claim, q)
+            self.state.claims.append(claim)
+            q.status = "verified"
+            q.claimed = (net, claim, frozenset())
+            self.lines.append(f"  -> PARRY {r.san} keeps {self.keep + net:+d} of {self.keep:+d} (wins {gain:+d} now, {theirs})")
+        else:
+            self._kill(q, f"no parry keeps the gain (the best of {len(routes)} leaves {self.keep + best[0]:+d} of {self.keep:+d})" if best else "no parry move", tempo=False)
 
     # ------------------------------------------------------------------------------------------------------------ promotion (52.6)
 
@@ -1219,6 +1329,9 @@ class Agenda:
         else:
             self.lines.append(f"     slack: distance {kd} <= pushes {n}: {n - kd + 1} spare move(s)")
         before = len(self.state.claims)
+        if self.their is not None:                               # 52.14: on a static leaf the stopper keeps the gain or not
+            self._parry_keeps(q, runs)
+            return
         if runs:
             self._verify(q, runs, mates_only=False)
         if len(self.state.claims) == before:

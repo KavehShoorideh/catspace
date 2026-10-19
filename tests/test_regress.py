@@ -450,7 +450,7 @@ def test_52_13_0agl8_is_not_decided_nxg2_at_four_times_the_fuse(monkeypatch):
     monkeypatch.setattr(AG.Agenda, "__init__", init)
     ag = AG.Agenda(state_of(AGL8, "b"))
     res = ag._chase_route(chess.Move.from_uci("f4g2"))        # Nxg2 itself, followed to its end
-    assert res["killed"] and "stands only as a balance and their Qa7+ wins 100" in res["killed"] and res["value"] == 0
+    assert res["killed"] and "stands only as a balance, their Qa7+ wins 100" in res["killed"] and res["killed"].endswith("no parry") and res["value"] == 0
     ag.ask()
     assert all(c.what != "Nxg2" for c in ag.state.claims) and ag.decision().what != "Nxg2"
     assert not hasattr(AG.Agenda, "_static_refuted")
@@ -492,3 +492,36 @@ def test_52_13_pos_replies_diff_and_exchange_equal_python_chess_on_dev_20():
             assert P2.exchange() == ex
             n += 1
     assert n > 300
+
+
+# ---- 52.14: their threat is a save root of the inner agenda on a static leaf ----------------------------------------------------------------------
+
+VSUT_LEAF = "1r5k/5ppp/3R4/1r6/8/P7/6PP/1R4NK w - - 1 31"          # 0VSUT after Qxe5 Rxe5 Rxb1 Reb5: we are +3 (balance, us to move) and their Rxb5xb1 threatens our rook
+
+
+def test_52_14_0vsut_qxe5_is_decided_with_the_inner_static_leaf_read_and_the_parry_printed():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0VSUT"][0]
+    ag = AG.Agenda(State(p["fen"], "w", []))
+    ag.ask()
+    assert ag.decision().what == "Qxe5"
+    t = ag.trace()
+    assert "static leaves read from their side" in t
+    assert any("Rxb1 after Reb5" in x and "their Rxb1 wins 4 if we pass; parry: Rxb5" in x and "keeps +3" in x for x in ag.ctx.static_lines)
+    assert ag.ctx.static_read > 0 and ag.ctx.static_parried > 0
+
+
+def test_52_14_a_threat_is_parried_and_the_gain_kept_on_a_constructed_static_leaf():
+    b = chess.Board(VSUT_LEAF)
+    outer = AG.Agenda(State(b.fen(), "w", []), side_depth=1)
+    t, cl = outer._their_pass(b.fen())
+    assert t == 4 and cl.what == "Rxb1"
+    their = outer.ctx.their_ags[AG._pos_key(G.with_turn(b, False).fen())]
+    inner = AG.Agenda(State(b.fen(), "w", []), side_depth=0, chase_depth=1, ctx=outer.ctx, min_stake=BD.MATE_VALUE, their=their, keep=3)
+    inner.ask()
+    (q, cl), = inner.threat_qs
+    assert q.status == "verified" and q.claimed[1].what == "Rxb5" and q.claimed[1].value == 3       # the rook takes the attacker, they retake: the +3 stands
+    assert inner.best is None                                                                       # the parry keeps the gain, it is not a gain of its own
+    gone = AG.Agenda(State(b.fen(), "w", []), side_depth=0, chase_depth=1, ctx=outer.ctx, min_stake=BD.MATE_VALUE, their=their, keep=0)
+    gone.ask()
+    assert gone.threat_qs[0][0].status == "killed" and "no parry keeps the gain" in gone.threat_qs[0][0].reason      # a gain of 0 is not kept by any parry (net 0 < 1)
