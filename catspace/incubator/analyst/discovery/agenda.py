@@ -91,6 +91,7 @@ class ChaseCtx:
         self.final = None                         # ... the final deadline of the root agenda (seconds given); None: today's behaviour
         self.t0 = None
         self.seconds = None
+        self.resume: list = []                    # 52.17 (5): the resume points of every "out of time" GAP: {question key, text, position, route, reply, mark, cut_left}; nothing cut by the clock is dropped
         self.time_outs = 0                        # ... root agendas that met their deadline
         self.hit = False
         self.unaddressed = 0                      # 52.17 (2): forcing moves NOT followed by a chase because they fix no defect of the goal and make no claim of their own
@@ -1046,6 +1047,7 @@ class Agenda:
             inn = self._inner(P2.fen(), need, frozenset(P0.diff(P2)))
             if inn is None:
                 res["gap"] = self._cut(san, san_r)
+                res["reply"] = uci
                 ctx.budget_hits += 1
                 self._log(key, uci, "gap", dbal, None, None, res["gap"])
                 break
@@ -1064,6 +1066,7 @@ class Agenda:
                     res["material"] = True
                 elif inn.get("cut"):
                     res["gap"] = self._cut(san, san_r, True)
+                    res["reply"] = uci
                     ctx.budget_hits += 1
                     self._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
                     break
@@ -1089,6 +1092,7 @@ class Agenda:
                     inn2 = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), their=ctx.their_ags.get(_pos_key(G.with_turn(chess.Board(P2.fen()), not self.me).fen())), keep=dbal)
                     if inn2 is None:
                         res["gap"] = self._cut(san, san_r)
+                        res["reply"] = uci
                         ctx.budget_hits += 1
                         self._log(key, uci, "gap", dbal, None, None, res["gap"])
                         break
@@ -1112,6 +1116,7 @@ class Agenda:
                     unparried = t_their
             if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and inn.get("cut"):
                 res["gap"] = self._cut(san, san_r, True)
+                res["reply"] = uci
                 ctx.budget_hits += 1
                 self._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
                 break
@@ -1134,8 +1139,16 @@ class Agenda:
             res["value"] = min(gains) if gains else 0
         if res["gap"] is not None:
             res["cut_left"] = ctx.left
+            if res["gap"].startswith("out of time"):                # 52.17 (5): the deadline mark on the GAP memo entry beside cut_left: the background tier resumes exactly here
+                res["timed"], res["mark"] = True, round(time.monotonic() - ctx.t0, 3) if ctx.t0 is not None else None
         ctx.routes[key] = res
         return res
+
+    def _note_resume(self, q: R.Question, r: "R.Route | None", res: dict) -> None:
+        """52.17 (5): record where the clock cut: the question key, the position, the route and the reply it stopped at, the time mark and the fuse left (the 52.13 GAP memo keeps cut_left too)."""
+        self.ctx.resume.append(dict(question=R.question_key(q), text=q.text, fen=_pos_key(self.board.fen()), route=r.move.uci() if r is not None else None,
+                                    san=r.san if r is not None else None, reply=res.get("reply"), mark=round(time.monotonic() - self.ctx.t0, 3) if self.ctx.t0 is not None else None,
+                                    cut_left=self.ctx.left, depth=self.chase_depth))
 
     def _cut(self, san: str, san_r: str, inner: bool = False) -> str:
         """The GAP text of a route cut at a reply: the TIME when the deadline passed (52.17 (5)), else the fuse."""
@@ -1307,6 +1320,7 @@ class Agenda:
             return False
         if self.ctx.out_of_time():                                 # 52.17 (5): past the deadline a question is asked only for what closes at the static leaf: no chase
             self.lines.append("  chase: out of time -- not started (a GAP, never a kill)")
+            self._note_resume(q, None, dict(gap="chase not started"))
             self.state.gaps.append(f"Q{q.id} {q.text}: out of time: chase not started")
             return False
         b = self.board
@@ -1375,6 +1389,8 @@ class Agenda:
                 # 52.16 (2): a route is CHARGED at most its share. The frames open when the fuse runs out finish their questions (that is how 08pSj's Rf1+ and 0VSUT's Qxe5 are decided),
                 # but that finishing is free: charged in full it took the share of every later route (0LRTF: 239 questions on a share of 120, then Rd7 got 1).
                 self.ctx.left = saved - min(max(before - self.ctx.left, 0), share) if saved > 0 else self.ctx.left
+            if res["gap"] and res["gap"].startswith("out of time"):
+                self._note_resume(q, r, res)
             if res["gap"]:
                 cut = True
                 self.lines.append(f"    {r.san}: GAP, {res['gap']}" + (" (seen before with no more fuse: not re-run)" if res.get("reused") else ""))
