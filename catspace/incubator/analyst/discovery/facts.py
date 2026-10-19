@@ -156,6 +156,51 @@ class FactStore:
                 self.stale.discard(best.id)
         return best, True, stale_miss and best is None
 
+    # ------------------------------------------------------------------------------------------------------------ the listener
+    def invalidate(self, diff, permanent: bool = False) -> list:
+        """The squares `diff` changed: every live fact that read one is flagged stale, and so is every fact derived from it. -> the ids newly flagged (a frame, to restore)."""
+        new, todo = [], []
+        for s in diff:
+            for fid in self.index.get(s, ()):
+                if fid not in self.stale:
+                    todo.append(fid)
+                    self.stale.add(fid)
+                    new.append(fid)
+        while todo:
+            f = self.facts[todo.pop()]
+            for d in f.dependants:
+                g = self.facts[d]
+                if d not in self.stale and not g.superseded:
+                    self.stale.add(d)
+                    new.append(d)
+                    todo.append(d)
+        self.flagged += len(new)
+        if permanent:
+            for fid in new:
+                self.facts[fid].payload["perm"] = True
+        return new
+
+    def restore(self, ids) -> None:
+        for fid in ids:
+            self.stale.discard(fid)
+
+    def advance(self, board: chess.Board) -> list:
+        """Between the moves of a game (or the puzzles of a run): the diff between the last position and this one flags what its moves changed, for good. -> the ids flagged."""
+        from catspace.incubator.analyst.discovery import regress as R
+        new = []
+        if self.board is not None:
+            new = self.invalidate(R.diff_squares(self.board, board), permanent=True)
+        self.board = board.copy(stack=False)
+        return new
+
+    def touched_stake(self, diff) -> int:
+        """The largest chain stake of any live fact that reads a square of `diff`: how much a move that changes those squares disturbs (the order of the ponder queue)."""
+        best = 0
+        for s in diff:
+            for fid in self.index.get(s, ()):
+                best = max(best, self.facts[fid].chain_stake)
+        return best
+
     def snapshot(self) -> dict:
         return dict(derived=self.derived, served=self.served, revalidated=self.revalidated, recomputed=self.recomputed, flagged=self.flagged)
 

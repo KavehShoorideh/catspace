@@ -170,6 +170,7 @@ class Agenda:
         self._cur: "R.Question | None" = None                   # the question being asked (the stake of the facts derived under it)
         self._qdeps: list = []                                  # the premises of the fact the current question will derive (a chase fills them)
         self._rf: "list | None" = None                          # the facts the route being chased read (inner answers, their agendas)
+        self._frame: list = []                                  # the facts the listener flagged for the reply being read (restored when the reply is done)
         self._cell = FS.board_cell(self.board)
         self._fs0 = self.ctx.facts.snapshot() if self.ctx is not None else None      # the store's counters when this agenda began (the deltas are its own)
         self._pre: dict = {}                                    # 52.17 (4): route key -> the replies the cheap pass closed by rule
@@ -1189,14 +1190,21 @@ class Agenda:
     def _chase_route(self, m: chess.Move, promote: bool = False, cheap: bool = False) -> dict:
         """52.19: the route of `_chase_route_body`, with the facts it read (inner answers, their agendas) kept on the result (`facts`) for the claim or kill that stands on it, and the listener's
         frame for the reply being read restored on the way out."""
-        saved_rf = self._rf
-        self._rf = []
+        saved_rf, saved_frame = self._rf, self._frame
+        self._rf, self._frame = [], []
         try:
             res = self._chase_route_body(m, promote, cheap)
             res["facts"] = list(dict.fromkeys(res.get("facts", []) + self._rf))
             return res
         finally:
-            self._rf = saved_rf
+            self.ctx.facts.restore(self._frame)
+            self._rf, self._frame = saved_rf, saved_frame
+
+    def _enter_reply(self, diff) -> None:
+        """52.19 (2): THE LISTENER. A reply is about to be read: the squares its route and itself changed flag every fact that read them (and, through the justifications, every fact built on them);
+        nothing is recomputed. The flags of the previous reply of this route are restored first (the chase is a tree: a sibling does not inherit them)."""
+        self.ctx.facts.restore(self._frame)
+        self._frame = self.ctx.facts.invalidate(diff)
 
     def _chase_route_body(self, m: chess.Move, promote: bool = False, cheap: bool = False) -> dict:
         """One forcing route of the chase: every reply of theirs, the whole agenda on each resulting position. -> {value, killed, gap, parts, lemmas}.
@@ -1287,6 +1295,7 @@ class Agenda:
                 res["pending"] = True
                 break                                            # (the replies after it stay for the second pass: reading them all by rule cost 20x their agendas)
             need = min(R.STAKE_PROMOTE, 1 - dbal) if promote and dbal <= 0 else R.STAKE_PROMOTE if promote else 1 - dbal if dbal <= 0 else BD.MATE_VALUE          # a reply that already gains is read for a mate only; else its static gain must survive their threats (below)
+            self._enter_reply(frozenset(P0.diff(P2)))
             inn = self._inner(P2.fen(), need, frozenset(P0.diff(P2)))
             if inn is None:
                 res["gap"] = self._cut(san, san_r)
