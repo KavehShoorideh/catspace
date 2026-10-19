@@ -2170,3 +2170,50 @@ Acceptance (traces in chat): 0Wih8 Ng5+, 08pSj Rf1+, 01w7J Bxh2+, 0RhU6 Qxf2+, 0
 inner line printed); 02XyH no "traps" on a check; 000Sa still Bxc2, 01IFU still Nf3+, 052Wm still Kf8; dev_20 and fresh_60_threats_event OBS
 before/after, every changed decision listed and classified right/wrong by Stockfish d18 (OBS SF lines); seconds per set; tests for 1 (a check is not a
 trap; a fork binds on 02XyH), 2 (0RhU6 three-check chase), 3 (an inherited question on a constructed position), 4 (0DoFB root). No AI trailers.
+
+### 52.13 Fewer questions, exact caching, their agenda on every static leaf, the hot loop in Rust (Kaveh 2026-10-18 evening; GO "do it all")
+Three findings on the 52.12 build, each reproduced (scratch traces tr3_0AgL8*.txt, tr3_0DoFB.txt): (1) the FALSE CLAIM 0AgL8 Nxg2: 35 replies did not
+recapture, each was credited "material +1" (balance with us to move) and the inner agenda, told to read for a mate only, asked nothing from THEIR side;
+Bc6+ then mates in 4. Caught only on the chosen route by `_static_refuted`. (2) "Rust 28x slower" was false: OBS the Rust evaluator 0.4 us, the Python
+balance 2.2 us, the Python glue that copies the board and renders a FEN 15.4 us per call. (3) THE BUDGET (our pieces x 8 + captures: 85 on 0AgL8, 76 on
+0DoFB) is spent by ONE inner agenda: it re-asks the whole board (20-25 questions) on one reply position; 0DoFB's first route Bxf2+ Kxf2 eats it and the
+answer Qd5 (fourth route) is never followed; GAP routes are not memoised and every root question re-chases them with a fresh budget (894 hits).
+Kaveh's two ways out: everything in Rust; a shortlist of their replies, obviously bad ones excluded by a reason that stands while nothing about them
+changed, the rest ORDERED by a live ranking, "memoize and cache as much as possible". Correction agreed: exclusion by a probability threshold is out
+(absolute logic only); EXCLUSION IS A KILL WITH A READ SET, a learned prior may only ORDER. Build, in this order, one commit each (builder: deviate
+minimally where the code disagrees with this text and REPORT every deviation; no AI trailers; OBS lines for every number):
+1. **The diff decides what is asked.** An inner agenda (chase_depth >= 1) asks only: (a) the question that sent it there (same `question_key`), (b) every
+   outer question whose `reads` meets the diff of the route and the reply, (c) every question that is NEW on this board (a key the outer agenda did not
+   have). Everything else is inherited with its status: a KILL as now; a CLAIM too -- a claim records `reads` = the question's reads plus the squares named
+   in the bound atoms of its schema (the binder knows them: route from/to, the squares of the terms it evaluated); the inherited claim is re-stamped on the
+   inner state with the line "inherited: nothing changed for ...". A question left unasked by the outer agenda (stop (a) ended it) is asked in the inner
+   agenda only if its stake >= `need`. OBS per puzzle: inner questions per inner agenda (mean), inherited claims / kills, reopened.
+2. **Memoise failures; one budget per root agenda; a route must fit its stake.** (a) A GAP route is memoised in `ctx.routes` with the budget left when it was
+   cut; seen again with no more budget it stays a GAP without being re-run (one line). (b) `ctx.left` is set ONCE per root agenda (the chase of a second root
+   question continues the same count); the budget is now a FUSE at 10x the old count, printed as "fuse" when hit, and the natural end is printed otherwise:
+   "chase ended: every route closed (claim on every reply or a refuting reply)". (c) A question is chased only when its stake > the best claim so far
+   (stop (a) would end the agenda anyway). (d) `forcing_why`: a quiet move threatens only if the moved piece is not lost by the exchange on its own square
+   (the exchange word, same as `hangs`): "Rc6 threat 9" where the queen takes the rook is NOT forcing (08pSj); the trace says "not a threat: the R on c6
+   hangs". The hanging-piece rule is a vocabulary rule: cite the Lean def used (LEAN_INDEX search `exchange`, `hangs`); if none fits, add the def + gloss +
+   glossary line + lean_index build.
+3. **Their agenda on every static leaf.** In `_chase_route`, a reply after which the gain stands only as a balance (dbal >= 1, inner value < mate) is read
+   AT ONCE by their agenda with the move passed to them (memoised by FEN in `ctx`): a claim of theirs of value t makes that reply's value dbal - t (and
+   if < 1 the route dies at that reply: "after Bc6+: +1 stands only as a balance and their Qa4+ wins 100 if we pass"). `_static_refuted` is removed (it was
+   the chosen-route-only form). The false-claim class is closed: no static balance is a result until their agenda has read it. Test: 0AgL8 never claims
+   Nxg2 with the budget at 4x (the scratch reproduction repro_0AgL8.py shows the old claim).
+4. **The shortlist of their replies.** Replies are read in the order: the reply with a standing kill from an earlier reply position (same key, reads disjoint
+   from the diff: inherited, not read) is skipped and counted; then recaptures on the route's square, checks, captures, the rest; inside a class worst balance
+   first (as now). "Obviously bad" = a reply after which the RULES give us a mate in one (is_checkmate over our moves) or a capture whose exchange wins >=
+   `need` AND their agenda with the move passed finds no claim (memoised) -- such a reply is closed by that one rule, printed "closed by rule: mate in one /
+   exchange +5, nothing of theirs", no inner agenda. Every (route, reply, outcome, reads, reason) is LOGGED to `paths.experiment("chase_log.jsonl")` (one
+   row per reply read, appended, per-item) for the plan 53 ordering prior; the prior itself is NOT built in this slice.
+5. **The hot loop in Rust.** A `#[pyclass] Pos` in analyst_core (from a FEN once): `push(uci) -> Pos`, `balance(owner)`, `replies() -> [(uci, dbal, check,
+   capture, recapture_on_sq, mate_in_one_for_mover_after)]`, `diff(other) -> [squares]` (piece or attacker counts changed), `fen()`. `_chase_route` and
+   `diff_squares` read through it (no FEN per reply); `G.balance` stays as the test mirror. Test: Pos.replies and Pos.diff equal python-chess on every
+   dev_20 position and every reply of its first legal move. Timing OBS: seconds per set before/after. The Agenda itself stays Python in this slice; the port
+   of the agenda is a separate plan (Kaveh's "everything in Rust") and is NOT started here -- say so in the report.
+Acceptance (traces in chat): 0DoFB Qd5 decided by the reach (every inner line printed); 0AgL8 no claim of Nxg2 at 4x budget (reproduction script) and its
+decision classified by Stockfish d18; 08pSj no "threat 9" route by a hanging rook; 0RhU6 Qxf2+, 0Wih8 Ng5+, 01w7J Bxh2+, 0VSUT Qxe5 still decided;
+dev_20 and fresh_60_threats_event OBS before/after (decisions, MATCH, seconds, inner questions per inner agenda, fuse hits -- expected ~0, inherited
+claims), every changed decision listed and classified by Stockfish d18 (OBS SF lines); the chase_log row count. Tests for 1 (an inherited claim), 2(d) (a
+hanging rook is not a threat), 3 (0AgL8 at 4x), 4 (a reply closed by rule), 5 (Pos equals python-chess). No AI trailers.
