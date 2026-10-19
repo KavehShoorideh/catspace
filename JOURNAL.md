@@ -31777,3 +31777,39 @@ move stays a green arrow. Builder's full game, random human vs --fallback random
 fallback. Known: no time cap on a move (the agenda cannot be interrupted), one game at a time, bare pawn moves like "d5" in a line get no arrow
 (read as squares), the page was checked by the builder only with node --check (no browser here): Kaveh to open it. Later (recorded, no go): the
 vendor-agnostic hosting adapter; the agenda's own game context (52.19 (4)).
+
+## 2026-10-19 15:54 PDT -- THE GOAL THAT DIES BY REASONING, THE TIME BUDGET, PAST POSITIONS, THE LANDING TABLE, BATTERY / DISCOVERY / FORK WORDS (plans 52.17, 54 (6), 52.18)
+
+Built by one builder (52.17: 74c2bdfc+e7f67d5c, 3e4b7287, af0e2480, 6faaffbb, 5324b3b1+f8a48ef1; 54 (6): ff95395a; 52.18: 9fe233ea, dab29c44,
+b1fc1b48+92f40fb6, 0f3cd78a, edfd44ce), verified: 148 tests pass (regress 80, lean ideas 36, play server 6, agenda 26), lake build green (6096 jobs),
+the five new theorems (Region.no_rook_mate_in_open, Region.evasion_step, Battery.discovered_attack, ForkSquare.one_move_touches_one,
+Landing.land_agree) on standard axioms only; my rerun of both sets matches the builder's tallies. Note: my commit 74c2bdfc ("plan 52.19 written")
+swept the builder's staged 52.17 (1) files (region.py, Region.lean, agenda.py); the content is the builder's and tested. Lesson: commit by path
+while a builder runs.
+52.17: (1) Lean Ideas/Region.lean (region, king walls by a rook's file/rank, no_rook_mate_in_open from the queen lemma, evasion_step); Python
+region.py (region, wall kill, held-measure kill, bound_pieces). 0LRTF's two mate roots now die before any chase: "killed by reasoning (the measure
+they hold) -- their K keeps its room ... a rook and a king never mate a king in the open (Ideas.Region.no_rook_mate_in_open) ... their passer
+promotes in 2 ... our K on b6 is bound to the P on c7". GRADED PLAUSIBLE, not proven: the Lean lemmas prove the pieces; "no mate within 2" and
+"their passer promotes in 2" are read from the rules; the kill fires only when their passer needs <= 2 pushes. The region (wall) kill is narrow
+(our king + pawns the only covers) and shown on a constructed position. (2) A chase route must address a defect of its goal -- RELAXED: applied
+everywhere it lost 04Qx2 and 0BHbB, so it applies below the root's chase only (depth 1 for win/promote, 2 for mate), accepts discovered checks and
+resumed routes. (3) "Drive the king off a square" as a named fix + the promotion exchange read: 0LRTF DECIDED Rh8+ (SF d18 loss 18, right), 43 inner
+questions and 0 fuse hits against 254 and 27 before. (4) Cheapest reply first: no decision changed; costs seconds (reads only the prefix of replies
+up to the first that needs an inner agenda; reading all was 4x slower). (5) The budget is time: Agenda(seconds=), "out of time" GAPs with resume
+points (ctx.resume), --seconds on the CLI and the play server, a field on the Play page + /api/play/settings; seconds=None identical. Overshoot:
+static work past the deadline (0.64 s used on 0.3 s).
+54 (6): every trace record kept with ply + FEN; move list, arrow keys, Live button, past board not movable, hover arrows on the record's own FEN,
+GET /api/play/trace?ply=k; checked with node --check only (no browser here).
+52.18: (1) landing table (Ideas/Landing.lean land, land_agree, Target; landing.py LandingTable keyed by side/piece/from/to, valid while the diff
+misses the read set; known_about) -- serves MATE roots only (win/promote/reach not through it yet); Nf6 in the discovery position is a target with
+reads e4,f6,a8,b7,g2,e8. (2) Ideas/Battery.lean (batteryB, almostBatteryB, discovered_attack, battery_persists); the x-ray fix "discover an attack
+on t" on win/promote defects; the discovery position names "discovery: the N leaves e4, the B on g2 joins the attack on a8 (battery with the Q on
+b7)" -- shown, not required: the chase finds it too. (3) Threat-of-X forcing for promotion only ("b7 then b8=Q binds after a pass"); trap not
+built. (4) The fork square as a root (Ideas/ForkSquare.lean one_move_touches_one; fork_candidates, _ask_fork); no set puzzle is decided by it
+(39 fork roots met, all open or killed with a named defect); shown on a constructed position (SF: Ne3 only winning move). (5) Region influence:
+not built, reason recorded.
+OBS (one run each, directional), my rerun: dev_20 decided 14 MATCH 14 (unchanged), inner questions 16500 -> 17253, fuse hits 869 -> 809, seconds
+56.9 -> 57.8; fresh_60 decided 51 -> 52 MATCH 52 (+0LRTF), fuse hits 1303 -> 1075, inner questions 33253 -> 34661, seconds 104.9 -> ~123 (builder's
+after18 122.7). New tally fields (dev_20 / fresh_60): killed by reasoning 79 / 149, routes not addressing a defect 1340 / 2169, time outs 0 / 0,
+landings served from the table 425 / 787, forcing by a claim after a pass 0 / 12. Open: 0GJec (cxb1=Q/R/B/N promote chases each cut by the fuse:
+underpromotions not pruned), the held-measure kill's missing Lean pieces, the landing table over win/promote roots, 52.19 (the fact store) next.
