@@ -31734,3 +31734,32 @@ pawn (Kxa6 levels the material; SF d18 +480 is the king ending: group 4, judgmen
 OBS (one run each, directional): dev_20 decided 12 MATCH 12 unchanged, seconds 24.6 -> 29.2; fresh_60 decided 49/48 -> 50/50 (+0SJz3, 0PBkh fixed),
 inner questions 16408 -> 18251, fuse hits 325 -> 452, seconds 76.5 -> 58.4 (concurrent runs, noisy). Promote chases are costly where they fail:
 02XVK 0.4 -> 5.2 s. Open: the passer lemma with a bishop (0Nv29); the fuse order (mate chases starve the promote chase: 0LRTF, 0GJec).
+
+## 2026-10-19 12:06 PDT -- THE PASSER LEMMA WITH THEIR BISHOPS, THE FUSE ORDER, A SACRIFICE THAT STILL THREATENS, FAILED PROMOTE CHASES CUT (plan 52.16)
+
+Built by the builder (b11e9633, e77dac89, c2813a16, 95fe1916; tests/test_regress.py 56 + test_analyst_lean_ideas.py 36 = 92 passed; lake build green,
+6088 jobs; `unstoppablePasser2_sound` on propext/Classical.choice/Quot.sound only; LEAN_INDEX and GLOSSARY rebuilt), verified by my own rerun of
+both sets (tallies identical to the builder's, question for question).
+(1) Lean: Ideas.Passer2 now admits their bishops. Hypotheses: `enemyPieces` (king, pawns off their back rank, bishops) replaces enemyKingPawns;
+`bishopsFar` (every enemy bishop on the other colour from our king and, by the board-free bishop distance `bdist`, more than n-1 moves from every
+square the pawn still crosses; `bfarB_step`: one bishop move gains at most one); `kingRoom` counts bishops as blockers. Invariant proof by geometry,
+not enumeration. The general per-piece lemma is NOT proved (reach with blockers is not monotone when their other piece captures a blocker); knights,
+rooks, queens stay excluded and the trace says so. Bridge test: 3000 random bishop positions, every PROVED claim matches the exhaustive race.
+0Nv29 decided b6: "after Bb4: b7 ... value 8, lemma unstoppablePasser2_sound"; SF d18 loss -38 of 521 cp, right.
+(2) Fuse order: a chase route is charged at most its share, a root question at most half the pool while another root can still beat the best claim
+(the fuse left is never negative; a later route is read instead of starved). A hard cut inside the inner agendas was tried and dropped: it lost 08pSj,
+0VSUT, 0BHbB. dev_20 gained 04Qx2 Be8+ (SF loss -9) and 08A6a Bxe5 (loss -23). 0LRTF and 0GJec are NOT fuse gaps: with a 10x fuse Rh8+ still walks
+the king in rook checks with no repeat (named "Rh8+ not followed past Kd7"), 0GJec's Rb1 Rxb1 enters a 25-ply queen-check chain. A walk of checks
+needs a reason to stop (a perpetual / repetition claim), not a bigger fuse.
+(3) `forcing_why`: a hanging moved piece is forcing when, after every capture of it, the threat is still at least the stake ("Nf6 (threat 5 survives
+Bxf6 (the N hangs, 3))"). The discovery position r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w decides Nf6 (value 2), the battery printed by the
+new `exchange_read`: "Qxa8 wins 5: Qxa8 Qxa8 Bxa8, the Bxa8 behind the Q". SF d18: Nf6 loss -17 right, Nd6 loss 35 wrong (the test accepts either,
+ties break by uci). 08pSj Rc6 stays "not a threat: ... does not survive Qxc6 (1)" and Rf1+ is decided.
+(4) A promote route ends at the reply that leaves the question's stopper defect standing with no new fix (a reason, not a count); the promote
+question carries reads and a key. 02XVK 4.6 -> 3.0 s, inner questions 1310 -> 342, still undecided (Bxg6 is a GAP of the mate chase). Chasing
+promotion only at the root was tried and rejected: it turned 0GJec's Rb1 from a GAP into a wrong kill.
+OBS (one run each, directional): dev_20 decided 12 -> 14, MATCH 14 (+04Qx2, +08A6a), seconds 27.2 -> 56.9; fresh_60 decided 50 -> 51, MATCH 51
+(+0Nv29), seconds 56.0 -> 104.9. No decision lost, every other decision identical, the three new ones SF-right. The cost: fuse hits 276 -> 869 and
+452 -> 1303 and inner questions 7754 -> 16500, 18251 -> 33253, because the pool now stays positive and more routes are read. Builder's measured
+alternative (route charge only, no root cap): 35.5 s / 64.6 s but 04Qx2 and 08A6a undecided. Open: the time, an ordering prior over chase_log rows
+(9,671 new rows this run), the walk-of-checks stop (0LRTF, 0GJec), plan 52.17 (landing table, battery/discovery words, fork square root).
