@@ -2345,6 +2345,15 @@ reasoning; deviations reported; no AI trailers):
    close what closes by rule (mate in one, the exchange with nothing of theirs, a standing kill). Only then open inner agendas, in the order of the
    routes still open. A question answered on the board is answered before a question that needs a sub-question. OBS: 0LRTF decided Rh8+ with items
    1-3 off (this item alone), and with all four; dev_20 / fresh_60 seconds and fuse hits before/after.
+5. **The budget is time (Kaveh 2026-10-19 GO, during the play server).** `Agenda(..., seconds: float | None)`: a deadline (`time.monotonic()
+   + seconds`) kept on the ChaseCtx; every place that tests the fuse (`ctx.left <= 0`) also tests the deadline; past it, the open routes end as
+   GAP "out of time: <san> not followed past <san>" (a GAP, never a kill), inner agendas are not opened, and the root agenda's remaining questions
+   are asked only for what closes at the static leaf (no chase) so the best bound claim so far decides. The question-count fuse stays as a safety
+   when seconds is None (the puzzle sets: unchanged behaviour, OBS identical). The trace prints "budget: 2.5 s, used 2.51 s, N questions"; the
+   tally line gets "time outs". The setting is applied from outside: the analyse CLI gets `--seconds`, and the play server (plan 54,
+   play_server.py / web.py / web_page.html) gets `--seconds` plus a float field on the Play page sent with `/api/play/new` and changeable between
+   moves (`/api/play/settings`); the fallback runs after the agenda returns. Test: a chase that is cut by a 0.05 s budget ends with GAPs and a
+   trace line naming the time; the same puzzle with no seconds is unchanged.
 Acceptance: 0LRTF decided Rh8+ (SF d18 OBS); 0GJec's gap re-read under rule 2 and named; the 52.13-52.16 acceptance puzzles unchanged (list in 52.16,
 plus 0Nv29 b6, 04Qx2 Be8+, 08A6a Bxe5, the discovery position Nf6); tests per item; both sets OBS before/after, every changed decision SF-classified.
 Deferred to 52.18 (not written): the landing table (target = (piece, square) whose landing binds a claim with no defect, threat = the same from
