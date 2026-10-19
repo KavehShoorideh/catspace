@@ -434,3 +434,23 @@ def test_52_13_a_quiet_threat_by_a_piece_the_exchange_wins_is_not_a_threat():
     notes = []
     assert R.forcing_why(b, m, 9, "b", notes=notes) is None
     assert notes and "not a threat: the R on c6 hangs" in notes[0]
+
+
+AGL8 = "8/1kp2p2/R2p1nr1/1B1Pp1q1/4Pn1p/2P2P2/1PQ3PN/7K b - - 0 33"
+
+
+def test_52_13_0agl8_is_not_decided_nxg2_at_four_times_the_fuse(monkeypatch):
+    orig = AG.Agenda.__init__
+
+    def init(self, *a, **k):                              # the scratch reproduction: 4x the question budget, so that Nxg2 IS followed to its end
+        orig(self, *a, **k)
+        self.budget *= 4
+        if self.ctx is not None and k.get("ctx") is None and self.chase_depth == 0:
+            self.ctx.left = self.budget * AG.FUSE
+    monkeypatch.setattr(AG.Agenda, "__init__", init)
+    ag = AG.Agenda(state_of(AGL8, "b"))
+    ag.ask()
+    t = ag.trace()
+    assert all(c.what != "Nxg2" for c in ag.state.claims)
+    assert "Nxg2: killed -- after Qf2: +1 stands only as a balance and their Qa7+ wins 100" in t
+    assert not hasattr(AG.Agenda, "_static_refuted")

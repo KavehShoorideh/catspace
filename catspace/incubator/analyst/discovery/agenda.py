@@ -20,7 +20,8 @@ FEN across the run); the route's value is the least over the replies of (balance
 reply with no inner claim and no material gain kills the route at once; a route claims at value >= 1 (inner mates: 100). The budget (the root's question budget)
 is shared with the inner agendas; when it is hit the open chase becomes a GAP, never a kill. The guarantee is step_after (our named move) + step_least (every reply)
 over the inner claims, each a bound schema (the composed statement is a TODO in Schemas.lean). Their agendas never chase. A gain that stands only as a static
-balance with us to move is checked on the chosen route by THEIR agenda (a claim of theirs at least the gain refutes it; 0AgL8's Nxg2). The reach (52.12 (4)): a mate
+balance with us to move is a result only once THEIR agenda has read it with the move passed to them (52.13 (3): a claim of theirs of t makes the reply worth the gain less t;
+0AgL8's Nxg2 died on this; read on the ROOT agenda's chase only -- at the inner levels "if we pass" refuted 0VSUT's true Qxe5 line, where we have a move to parry). The reach (52.12 (4)): a mate
 root at distance two (one prep move) whose fixes are the first steps; a step is forcing when it checks or leaves a mate in one (a mate threat).
 """
 from __future__ import annotations
@@ -54,6 +55,7 @@ class ChaseCtx:
         self.active: set = set()                  # the FENs being asked (a cycle ends here)
         self.left = 0                             # 52.13 (2b): the FUSE of the root agenda: 10x its question budget, set once, spent by every chase and inner agenda under it
         self.depth_cuts = 0                       # ... of the fuse hits, the ones from the depth cap (the stack), not the question count
+        self.theirs: dict = {}                    # 52.13 (3): fen (their move) -> (value, claim) of THEIR agenda there, asked once for the whole run
         self.gap_reused = 0                       # 52.13 (2a): GAP routes seen again with no more fuse than when they were cut, not re-run
         self.agendas = 0                          # inner agendas run
         self.asked = 0                            # questions they asked
@@ -814,7 +816,7 @@ class Agenda:
         san = b.san(m)
         c = b.copy(stack=False)
         c.push(m)
-        res = dict(value=0, killed=None, gap=None, parts=[], lemmas=[], static=[])
+        res = dict(value=0, killed=None, gap=None, parts=[], lemmas=[])
         replies = list(c.legal_moves)
         if not replies:
             if c.is_checkmate():
@@ -842,8 +844,13 @@ class Agenda:
                 res["gap"] = f"chase fuse: {san} not followed past {san_r}"
                 ctx.budget_hits += 1
                 break
-            if dbal >= 1 and inn["value"] < BD.MATE_VALUE:         # a gain that stands only as a static balance with us to move: kept or not is read by THEIR agenda on the chosen route (see _chase)
-                res["static"].append((san_r, d.fen(), dbal))
+            static = dbal >= 1 and inn["value"] < BD.MATE_VALUE
+            t_their, claim_their = 0, None
+            if static and not d.is_check() and not self.chase_depth:                         # 52.13 (3): a gain that stands only as a static balance (us to move) is a result only once THEIR agenda has read it, with the move passed to them
+                t_their, claim_their = self._their_pass(d)
+                if dbal - t_their < 1:
+                    res["killed"] = f"after {san_r}: {dbal:+d} stands only as a balance and their {claim_their.what} wins {t_their} (lemma {claim_their.lemma}) if we pass"
+                    break
             if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and inn.get("cut"):
                 res["gap"] = f"chase fuse: {san} not followed past {san_r} (the inner agenda was cut by the fuse)"
                 ctx.budget_hits += 1
@@ -852,8 +859,8 @@ class Agenda:
                 res["killed"] = f"after {san_r}: " + (f"our best claim {inn['claim'].what} wins {inn['value']}, the reply took {-dbal}" if inn["claim"] else "no claim of ours and no material gain") + f" ({dbal:+d})"
                 break
             cl = inn["claim"] if inn["value"] >= need else None
-            gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else dbal + (inn["value"] if cl else 0))
-            res["parts"].append(f"after {san_r}: " + (f"{cl.what} ({cl.line}; value {cl.value})" if cl else f"material {dbal:+d}") + (f" -> {gains[-1]}" if cl else ""))
+            gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else dbal - t_their if static else dbal + (inn["value"] if cl else 0))
+            res["parts"].append(f"after {san_r}: " + (f"{cl.what} ({cl.line}; value {cl.value})" if cl else f"material {dbal:+d}" + (f", their {claim_their.what} wins {t_their} if we pass" if claim_their else "")) + (f" -> {gains[-1]}" if cl or claim_their else ""))
             if cl:
                 res["lemmas"].append(cl.lemma)
         if res["killed"] is None and res["gap"] is None:
@@ -863,18 +870,16 @@ class Agenda:
         ctx.routes[key] = res
         return res
 
-    def _static_refuted(self, r: R.Route, res: dict) -> str | None:
-        """For each reply after which the route's gain is only the static balance (us to move), their agenda with the move passed to them: a claim of theirs at least the
-        gain means the gain is not kept (we cannot show a parry) -> the reason, else None."""
-        for san_r, fen, dbal in res["static"]:
-            d = chess.Board(fen)
-            if d.is_check():
-                continue
-            ag = self._their_agenda(G.with_turn(d, not self.me))
-            theirs = max(ag.state.claims, key=lambda cl: cl.value) if ag.state.claims else None
-            if theirs is not None and theirs.value >= dbal:
-                return f"after {san_r} the gain {dbal:+d} stands only as a balance and their {theirs.what} wins {theirs.value} (lemma {theirs.lemma}) if we pass"
-        return None
+    def _their_pass(self, d: chess.Board) -> tuple:
+        """52.13 (3): THEIR agenda on `d` (our move) with the move passed to them, memoised by FEN across the run: -> (the value of their best claim, the claim) or (0, None)."""
+        c = G.with_turn(d, not self.me)
+        key = c.fen()
+        hit = self.ctx.theirs.get(key)
+        if hit is None:
+            ag = self._their_agenda(c) if any(True for _ in c.legal_moves) else None
+            cl = max(ag.state.claims, key=lambda x: x.value) if ag is not None and ag.state.claims else None
+            hit = self.ctx.theirs[key] = (cl.value if cl else 0, cl)
+        return hit
 
     def _chase(self, q: R.Question) -> bool:
         """52.12: the chase of a question that would be killed. -> True when a route CLAIMS (the question is verified)."""
@@ -917,15 +922,7 @@ class Agenda:
         if not done:
             return False
         done.sort(key=lambda t: (-t[0], t[1].move.uci()))
-        value, r, res = None, None, None
-        for value_, r_, res_ in done:                           # the chosen route is checked by THEIR agenda on every reply that gains only as a static balance (0AgL8's Nxg2: a mating attack)
-            bad = self._static_refuted(r_, res_) if self.side_depth else None
-            if bad is None:
-                value, r, res = value_, r_, res_
-                break
-            self.lines.append(f"  {r_.san} KILLED as a chase route: {bad}")
-        if r is None:
-            return False
+        value, r, res = done[0]
         net = value
         kind = "mate" if value >= BD.MATE_VALUE else "win"
         parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")
