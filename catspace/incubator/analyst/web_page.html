@@ -73,12 +73,32 @@
   .chip{display:inline-block;padding:3px 9px;border:1px solid var(--bd);border-radius:12px;margin:3px 4px 0 0;cursor:pointer;background:#242832}
   a{color:var(--blue)}
   .summary{white-space:pre-wrap;font:12px/1.45 ui-monospace,monospace;background:#0d0f13;border:1px solid var(--bd);border-radius:6px;padding:10px;max-height:40vh;overflow:auto}
+
+  /* plan 54: the play view -- board left, trace panel right; one column (panel below the board) on a phone */
+  .pv{display:grid;grid-template-columns:1fr;gap:10px;padding:10px;max-width:1280px}
+  @media (min-width:900px){.pv{grid-template-columns:minmax(380px,640px) minmax(320px,1fr);padding:14px;gap:14px;align-items:start}}
+  .pv .bcol,.pv .tcol{min-width:0}
+  #pboard{width:100%;aspect-ratio:1;max-width:100%;touch-action:none}
+  #trace{height:min(70vh,640px);overflow-y:auto;overscroll-behavior:contain;background:#0d0f13;border:1px solid var(--bd);border-radius:6px;padding:6px 8px;
+         font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}
+  @media (max-width:899px){#trace{height:42vh}}
+  .tl{white-space:pre-wrap;word-break:break-word;padding:1px 4px;border-left:3px solid transparent;border-radius:2px;cursor:default}
+  .tl:hover{background:#1d2128} .tl.pin{background:#232a38;border-left-color:var(--blue)}
+  .tl .fl{float:right;opacity:0;cursor:pointer;color:var(--pink);padding-left:8px} .tl:hover .fl{opacity:1}
+  .tl.k-question{color:#cfd3da} .tl.k-claim{color:var(--grn);font-weight:600} .tl.k-kill{color:#ff6b6b} .tl.k-gap{color:var(--org)}
+  .tl.k-chase{color:var(--blue)} .tl.k-their{color:#c792ea} .tl.k-route{color:#9fb4d8} .tl.k-stop{color:#e6e6e6;font-weight:600}
+  .tl.k-fuse{color:#e0a96d} .tl.k-note,.tl.k-other,.tl.k-state{color:#8a90a0} .tl.k-decision{color:#0b0d10;background:var(--grn);font-weight:700}
+  .tl.k-fallback{color:#0b0d10;background:var(--org);font-weight:700} .tl.k-context{color:var(--org);font-style:italic}
+  .tsep{color:var(--mut);text-align:center;margin:6px 0 2px;font-size:11px;border-top:1px solid var(--bd);padding-top:3px}
+  #banner{display:none;margin:8px 0;padding:8px 12px;border-radius:6px;background:#1d3a2a;border:1px solid var(--grn);color:#d7ffe6;font-weight:600}
+  .legend span{margin-right:8px;font-size:11px}
+  .pnav{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0 0}
 </style>
 </head>
 <body>
 <h1><span id="home" style="cursor:pointer">catspace · analyst</span>
   <form id="form"><input id="q" placeholder="Lichess game link, game id, or user name" autocomplete="off" spellcheck="false"><button class="on" type="submit">Analyse</button></form>
-  <small id="hstatus"></small></h1>
+  <a href="#play" id="playlink">Play</a><small id="hstatus"></small></h1>
 <div id="main"></div>
 <button id="flagbtn" class="flag" title="log what you are looking at for review">⚑ Something is not right</button>
 <dialog id="flagdlg">
@@ -126,6 +146,7 @@ $("#form").addEventListener("submit",async e=>{e.preventDefault();const q=$("#q"
 function route(){stopPoll();const h=location.hash.slice(1);
   if(h.startsWith("game/")){const [gid,p]=h.slice(5).split("@");openGame(gid,p==null?null:+p);}
   else if(h.startsWith("user/"))openUser(decodeURIComponent(h.slice(5)));
+  else if(h==="play")openPlay();
   else home();}
 
 /* ---------- home ---------- */
@@ -357,13 +378,95 @@ function showUser(u){remember("user",u.user,u.user);
   $("#flagsum").onclick=()=>openFlag({kind:"user",user:u.user,summary:u.summary.slice(0,12),url:location.href});
 }
 
+/* ---------- plan 54: play against the agenda, watch its trace ---------- */
+const P={st:null,since:0,gid:null,recs:{},follow:true,pin:null,hover:null,pg:null,lastPly:null,busy:false,orient:"white",sentMove:false};
+const KIND_LEGEND=[["question","#cfd3da"],["claim","#66d9a6"],["kill","#ff6b6b"],["gap","#ffb86b"],["chase","#7aa2ff"],["their","#c792ea"],["stop","#e6e6e6"],["fuse","#e0a96d"],["note","#8a90a0"]];
+async function openPlay(){S.view="play";cg=null;P.since=0;P.gid=null;P.recs={};P.pin=null;P.hover=null;P.lastPly=null;
+  $("#main").innerHTML=`<div class="pv">
+  <div class="bcol">
+    <div class="row" style="margin-top:0"><button class="on" id="pWhite">New game as White</button><button id="pBlack">New game as Black</button>
+      <select id="pFb" title="who plays when the agenda has no decision" style="background:#242832;color:var(--tx);border:1px solid var(--bd);border-radius:5px;padding:4px"><option value="">fallback: server default</option><option>one_ply</option><option>stockfish</option><option>random</option></select></div>
+    <div id="pboard"></div>
+    <div class="pnav"><span class="pill" id="pstatus">—</span><span style="flex:1"></span><button id="pFlip">Flip</button></div>
+    <div id="banner"></div>
+    <div class="moves" id="pmoves"></div>
+  </div>
+  <div class="tcol">
+    <div class="row" style="margin-top:0"><b>The agenda's trace</b><span class="pill" id="pwho"></span><span style="flex:1"></span>
+      <button id="pFollow" class="on" title="auto-scroll the trace to its bottom while you are at the bottom">follow</button></div>
+    <div id="trace"></div>
+    <div class="legend pill" style="margin-top:6px">${KIND_LEGEND.map(([k,c])=>`<span style="color:${c}">&#9632; ${k}</span>`).join("")}</div>
+    <div class="pill" style="margin-top:4px">hover a line to draw its moves and squares on the board; click pins it; its engine move stays as the green arrow until you move.</div>
+  </div></div>`;
+  cg=Chessground($("#pboard"),{fen:START.split(" ")[0],coordinates:true,animation:{enabled:true,duration:150},draggable:{showGhost:true},
+    movable:{free:false,color:undefined,dests:new Map(),showDests:true,events:{after:onPlayMove}},highlight:{lastMove:true,check:true}});
+  const ro=new ResizeObserver(()=>{try{cg.redrawAll();}catch(e){}});ro.observe($("#pboard"));
+  $("#pWhite").onclick=()=>newPlay("white");$("#pBlack").onclick=()=>newPlay("black");
+  $("#pFlip").onclick=()=>{P.orient=P.orient==="white"?"black":"white";cg.set({orientation:P.orient});};
+  $("#pFollow").onclick=()=>{P.follow=!P.follow;$("#pFollow").classList.toggle("on",P.follow);if(P.follow){const t=$("#trace");t.scrollTop=t.scrollHeight;}};
+  const tr=$("#trace");
+  tr.addEventListener("mouseover",e=>{const d=e.target.closest(".tl");if(!d)return;P.hover=+d.dataset.n;drawPlayShapes();});
+  tr.addEventListener("mouseleave",()=>{P.hover=null;drawPlayShapes();});
+  tr.addEventListener("click",e=>{const f=e.target.closest(".fl");
+    if(f){const d=f.closest(".tl");openFlag({kind:"play",lines:[+d.dataset.n]});return;}
+    const d=e.target.closest(".tl");if(!d)return;const n=+d.dataset.n;P.pin=P.pin===n?null:n;
+    tr.querySelectorAll(".tl.pin").forEach(x=>x.classList.remove("pin"));if(P.pin!=null)d.classList.add("pin");drawPlayShapes();});
+  await playTick(true);
+  poll=setInterval(()=>playTick(false),300);
+}
+async function newPlay(colour){const fb=$("#pFb").value;P.since=0;P.gid=null;P.recs={};P.pin=null;P.hover=null;P.lastPly=null;$("#trace").innerHTML="";
+  try{const st=await api("/api/play/new",{colour,fallback:fb||undefined});P.orient=colour;cg.set({orientation:colour});applyPlayState(st);}catch(e){toast(e.message);}}
+async function playTick(first){if(P.busy)return;P.busy=true;
+  try{const st=await api("/api/play/state");
+    if(!st.game){if(first)$("#pstatus").textContent="press New game to start";return;}
+    if(P.gid!==st.game){P.gid=st.game;P.since=0;P.recs={};$("#trace").innerHTML="";P.lastPly=null;if(first){P.orient=st.human;cg.set({orientation:st.human});}}
+    applyPlayState(st);
+    const t=await api("/api/play/trace?since="+P.since);if(t.game===P.gid&&t.records.length)appendTrace(t.records);
+  }catch(e){}finally{P.busy=false;}}
+function lastOf(st){return st.last_move||undefined;}
+function applyPlayState(st){P.st=st;
+  const mine=st.turn===st.human&&!st.over&&!st.thinking;
+  const dests=new Map(Object.entries(st.dests||{}));
+  cg.set({fen:st.fen.split(" ")[0],turnColor:st.turn,lastMove:lastOf(st),check:st.in_check,
+    movable:{free:false,color:mine?st.human:undefined,dests:mine?dests:new Map(),showDests:true,events:{after:onPlayMove}}});
+  $("#pwho").textContent=st.engine_move?`last: ${st.engine_move.san} by ${st.engine_move.source} in ${st.engine_move.secs}s`:(st.thinking?"thinking…":"");
+  let s=st.over?"game over":st.thinking?"the agenda is thinking…":mine?"your move":"…";
+  if(st.notes&&st.notes.length)s+=" · "+st.notes.join("; ");
+  $("#pstatus").textContent=s+` · fallback ${st.fallback}`;
+  const bn=$("#banner");if(st.over){bn.style.display="block";bn.textContent=`${st.result}  (${st.reason})`;}else bn.style.display="none";
+  if(st.error){$("#pstatus").textContent="engine error: "+st.error.split("\n")[0];}
+  const m=$("#pmoves");let h="";st.san.forEach((x,i)=>{if(i%2===0)h+=`${i/2+1}. `;h+=`<b>${esc(x)}</b> `;});m.innerHTML=h;m.scrollTop=m.scrollHeight;
+  drawPlayShapes();}
+async function onPlayMove(orig,dest){
+  let uci=orig+dest;try{const g=new Chess(P.st.fen);const m=g.moves({verbose:true}).find(x=>x.from===orig&&x.to===dest);if(m&&m.promotion)uci+="q";}catch(e){}
+  try{const st=await api("/api/play/move",{uci});applyPlayState(st);}catch(e){toast(e.message);try{applyPlayState(await api("/api/play/state"));}catch(_){}}}
+function appendTrace(recs){const el=$("#trace");
+  const atBottom=el.scrollHeight-el.scrollTop-el.clientHeight<28;           // decided BEFORE the nodes are added
+  const frag=document.createDocumentFragment();
+  for(const r of recs){P.recs[r.n]=r;P.since=Math.max(P.since,r.n);
+    if(r.ply!==P.lastPly){P.lastPly=r.ply;const sp=document.createElement("div");sp.className="tsep";sp.textContent=`ply ${r.ply}`;frag.appendChild(sp);}
+    const d=document.createElement("div");d.className="tl k-"+r.kind+(P.pin===r.n?" pin":"");d.dataset.n=r.n;d.style.paddingLeft=(4+r.indent*0.6)+"ch";
+    const fl=document.createElement("span");fl.className="fl";fl.textContent="⚑";fl.title="flag this line";d.appendChild(fl);
+    d.appendChild(document.createTextNode(r.text.replace(/^ +/,"")));frag.appendChild(d);}
+  el.appendChild(frag);
+  if(P.follow&&atBottom)el.scrollTop=el.scrollHeight;}                      // only el.scrollTop: never scrollIntoView, the page does not move
+function drawPlayShapes(){if(!cg||!P.st)return;const st=P.st,sh=[];
+  if(st.engine_move)sh.push({orig:st.engine_move.from,dest:st.engine_move.to,brush:"green"});
+  const n=P.hover!=null?P.hover:P.pin,r=n!=null?P.recs[n]:null;
+  const ply=st.thinking?st.ply+1:(st.engine_move?st.engine_move.ply:null);
+  if(r&&r.ply===ply){                                                       // a line of an earlier position would draw on the wrong board
+    r.moves.forEach((m,i)=>sh.push({orig:m.from,dest:m.to,brush:i===0?"blue":"paleBlue"}));
+    r.squares.forEach(q=>sh.push({orig:q,brush:"yellow"}));}
+  cg.setAutoShapes(sh);}
+
 /* ---------- flags: the queue the coder reads ---------- */
 let flagCtx=null;
 function openFlag(ctx){flagCtx=ctx;$("#ctx").textContent=JSON.stringify(ctx,null,1).slice(0,1500);$("#note").value="";$("#flagdlg").showModal();$("#note").focus();}
-$("#flagbtn").onclick=()=>openFlag(S.view==="game"?flagContext():{kind:S.view,user:S.userName,url:location.href});
+$("#flagbtn").onclick=()=>openFlag(S.view==="play"?{kind:"play",lines:P.pin!=null?[P.pin]:[],fen:P.st&&P.st.fen}:S.view==="game"?flagContext():{kind:S.view,user:S.userName,url:location.href});
 $("#cancel").onclick=()=>$("#flagdlg").close();
 $("#flagform").addEventListener("submit",async e=>{e.preventDefault();
-  try{const r=await api("/api/flag",{note:$("#note").value,context:flagCtx});$("#flagdlg").close();toast(`logged as #${r.id} in ${r.file}`,true);}
+  try{const play=flagCtx&&flagCtx.kind==="play";
+    const r=play?await api("/api/play/flag",{note:$("#note").value,lines:flagCtx.lines&&flagCtx.lines.length?flagCtx.lines:(P.pin!=null?[P.pin]:[]),context:{url:location.href}}):await api("/api/flag",{note:$("#note").value,context:flagCtx});$("#flagdlg").close();toast(`logged as #${r.id} in ${r.file}`,true);}
   catch(err){toast(err.message);}});
 
 route();
