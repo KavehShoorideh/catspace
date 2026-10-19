@@ -31763,3 +31763,17 @@ OBS (one run each, directional): dev_20 decided 12 -> 14, MATCH 14 (+04Qx2, +08A
 452 -> 1303 and inner questions 7754 -> 16500, 18251 -> 33253, because the pool now stays positive and more routes are read. Builder's measured
 alternative (route charge only, no root cap): 35.5 s / 64.6 s but 04Qx2 and 08A6a undecided. Open: the time, an ordering prior over chase_log rows
 (9,671 new rows this run), the walk-of-checks stop (0LRTF, 0GJec), plan 52.17 (landing table, battery/discovery words, fork square root).
+
+## 2026-10-19 14:17 PDT -- THE PLAY SERVER: play against the agenda and watch it think (plan 54)
+
+Built by a builder beside the 52.17 build (f641b5b4, 3e775487, 505e700b, 633d46c9, 7dd8203d; tests/test_play_server.py 3 passed; agenda.py untouched:
+the trace is hooked by replacing `ag.lines` with a reporting list), verified by starting it and playing through the API. Start:
+`.venv/bin/python -m catspace.incubator.analyst.web --play --fallback one_ply` (one_ply | stockfish | random), open http://127.0.0.1:8765/#play.
+The mover: the agenda's decision when it has one, else the named fallback (the trace's last line says "no decision: fallback one_ply chose h6").
+The trace streams as records {n, ply, text, kind, indent, moves, squares}, polled by the page; the panel is colour-coded by kind, auto-scrolls by
+scrollTop only while at the bottom (follow toggle), hover draws arrows for the moves in a line and circles for its squares, click pins, the engine's
+move stays a green arrow. Builder's full game, random human vs --fallback random (OBS, one game): plies 28, result 0-1 by checkmate; engine moves
+14, from the agenda 7, from the fallback 7; seconds per engine move mean 7.38, max 51.46, total 103.8. My smoke: 1. e4 -> 118 records, h6 by
+fallback. Known: no time cap on a move (the agenda cannot be interrupted), one game at a time, bare pawn moves like "d5" in a line get no arrow
+(read as squares), the page was checked by the builder only with node --check (no browser here): Kaveh to open it. Later (recorded, no go): the
+vendor-agnostic hosting adapter; the agenda's own game context (52.19 (4)).
