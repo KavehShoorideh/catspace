@@ -39,6 +39,7 @@ from catspace.incubator.analyst.discovery import base_vocabulary as BV
 from catspace.incubator.analyst.discovery import binder as BD
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
+from catspace.incubator.analyst.discovery import landing as LD
 from catspace.incubator.analyst.discovery import region as RG
 from catspace.incubator.analyst.discovery import regress as R
 from catspace.incubator.analyst.discovery import reasoned as RS
@@ -92,6 +93,9 @@ class ChaseCtx:
         self.t0 = None
         self.seconds = None
         self.resume: list = []                    # 52.17 (5): the resume points of every "out of time" GAP: {question key, text, position, route, reply, mark, cut_left}; nothing cut by the clock is dropped
+        self.landings = LD.LandingTable()         # 52.18 (1): the memo of landing answers with the inverted read index, shared by the root agenda and its inner agendas
+        self.landing_lines: list = []             # the first served-from-the-table lines of the inner agendas, printed by the root
+        self.landing_served = 0                   # ... mate roots whose defect list was served from the table (nothing its reads touch had changed)
         self.time_outs = 0                        # ... root agendas that met their deadline
         self.hit = False
         self.unaddressed = 0                      # 52.17 (2): forcing moves NOT followed by a chase because they fix no defect of the goal and make no claim of their own
@@ -360,6 +364,21 @@ class Agenda:
 
     def ask(self) -> None:
         self._ask_loop()
+        if self.ctx is not None and self.chase_depth == 0 and self.ctx.landings.asked:        # 52.18 (1): the landing table and what it knows about the deciding piece
+            tb = self.ctx.landings
+            self.lines.append(f"landing table: {tb.asked} landings asked, {tb.served} served from the table" + ("; e.g." if self.ctx.landing_lines else ""))
+            self.lines += ["  " + x for x in self.ctx.landing_lines]
+        if self.ctx is not None and self.chase_depth == 0 and self.best is not None and self.best[2].move:
+            mv = chess.Move.from_uci(self.best[2].move)
+            pc = self.board.piece_at(mv.from_square)
+            if pc is not None:
+                known = [l for l in self.ctx.landings.known_about(mv.from_square) + self.ctx.landings.known_about(mv.to_square) if l.frm == mv.from_square or (l.to == mv.to_square and l.sym == pc.symbol().lower())]
+                seen = []
+                for l in known:
+                    if l.key() not in seen:
+                        seen.append(l.key())
+                        if len(seen) <= 5:
+                            self.lines.append(f"known about the {pc.symbol().upper()} on {G.name(mv.from_square)}: {l.text()}")
         if self.ctx is not None and self.chase_depth == 0 and self.ctx.final is not None:       # 52.17 (5)
             used = time.monotonic() - self.ctx.t0
             self.ctx.time_outs += 1 if self.ctx.hit else 0
@@ -496,7 +515,7 @@ class Agenda:
             self._verify(q, self._direct_routes(q), mates_only=False)
             return
         if q.goal == "mate":
-            q.defects = R.mate_defects(b, us, R.placement_of(q))
+            q.defects = self._landing_defects(q)
         else:
             q.defects = R.material_defects(b, us, q.pattern["target"])
         self.lines.append(head + (": " + "; ".join(f"defect {d.kind} ({d.why})" for d in q.defects) if q.defects else ": no defect -- the pattern already stands"))
@@ -516,6 +535,29 @@ class Agenda:
             self.lines.append(f"  tempo: {len(q.defects)} defect(s), each has a forcing fix")
             routes = self._merge_routes(q)
         self._verify(q, routes, mates_only=q.goal == "mate")
+
+    def _landing_defects(self, q: R.Question) -> list:
+        """52.18 (1): a mate root is a LANDING that binds (or lacks a claim by its defects). The defect list is the landing's answer, served from the table when nothing its read set
+        touches has changed since it was asked (an inner board, the same landing), else computed and entered. Castling and promotion roots are read directly."""
+        p, b = q.pattern, self.board
+        frm = p.get("frm")
+        if self.ctx is None or p.get("more") or frm is None or b.piece_at(frm) is None or b.piece_at(frm).symbol() != p.get("sym"):
+            return R.mate_defects(b, self.us, R.placement_of(q))
+        tbl = self.ctx.landings
+        key = (self.me, p["sym"].lower(), frm, p["at"])
+        hit = tbl.lookup(b, key)
+        tbl.asked += 1
+        if hit is not None:
+            tbl.served += 1
+            self.ctx.landing_served += 1
+            line = f"landing Q{q.id} on {G.name(p['at'])} (depth {self.chase_depth}): {hit.text().split(': ', 1)[1]}, served from the table"
+            self.lines.append(line)
+            if len(self.ctx.landing_lines) < 3:
+                self.ctx.landing_lines.append(line)
+            return list(hit.defect_objs)
+        lnd = LD.evaluate(b, self.me, frm, p["at"])
+        tbl.put(b, lnd)
+        return list(lnd.defect_objs)
 
     def _their_passer(self, rook: int) -> "tuple | None":
         """52.17 (1): THEIR passer if we pass: a pawn of theirs that promotes in `n` pushes unless the rook is spent on it -- its promote defects (the Rust words, from its owner's

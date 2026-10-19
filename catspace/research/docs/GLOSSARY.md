@@ -239,3 +239,9 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   the only stopper of that passer. Plausible, not proven as a whole: the lemmas prove the pieces, the rules read the rest.
 - **Bound piece** (`bound_pieces`) — a piece of ours that guards a piece of ours which would fall without it (attacked n times, guarded n times, one guard less once it moves):
   the reverse lemma of "it can go there".
+- **Landing / target / threat** (Lean `Ideas.Landing.land`, `Target`; python `landing.py`) — a LANDING is (side, piece, from, to): the piece lifted from `from` and put on `to`, the OTHER side to
+  move (the counterfactual the roots already use). It is a TARGET of the side when a claim of that side binds in it with no defect left (a mate in one; the exchange winning, the move being
+  forcing by the 52.16 rule; a fork); the same word read from the other side is a THREAT ("if the piece lands here, I win / I am lost", Kaveh 2026-10-19). Not maintained: the table is the memo of
+  landing answers keyed by (side, piece, from, to) and valid while the 52.13 diff misses the answer's read set (Lean `land_agree`).
+- **Inverted read index** (`LandingTable.known_about(sq)`) — square -> every landing whose read set contains it: "what is known about their queen on d6". Printed in the trace for the piece of the
+  deciding move.

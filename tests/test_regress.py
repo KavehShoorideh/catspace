@@ -946,3 +946,36 @@ def test_52_17_a_time_budget_cuts_the_chase_to_gaps_names_the_time_and_no_second
     plain.ask()
     assert plain.ctx.time_outs == 0 and "budget:" not in plain.trace() and "out of time" not in plain.trace()
     assert plain.decision().what == "Be8+"                                                      # seconds=None: today's behaviour (the same decision as the set run)
+
+
+# ---- 52.18 (1): the landing table ----------------------------------------------------------------------------------------------------------------
+
+def test_52_18_the_landing_lemmas_are_proved_and_the_table_is_keyed_by_what_the_answer_read():
+    for name in ("land_board_other", "land_agree", "target_of_checkmate", "land_board_to"):
+        _lean(name, "Landing")
+    assert "(h : ∀ s, S s → p.board s = p'.board s)" in _lean("land_agree", "Landing")["statement"]
+
+
+def test_52_18_the_discovery_positions_nf6_landing_is_a_target_with_the_discovery_line_in_its_reads():
+    from catspace.incubator.analyst.discovery import landing as LD
+    b = chess.Board(DISCOVERY)
+    t = LD.LandingTable()
+    lnd, served = t.ask(b, True, chess.E4, chess.F6)
+    assert not served and lnd.kind == "target" and lnd.claim == "exchange" and lnd.value == 5 and "threat 5 survives Bxf6" in lnd.via
+    assert {chess.E4, chess.F6, chess.A8, chess.B7, chess.G2, chess.E8} <= lnd.reads                        # the knight, its square, the rook, the queen and the bishop behind it on the line, the queen it also hits
+    again, served = t.ask(b, True, chess.E4, chess.F6)
+    assert served and again is lnd
+    assert t.known_about(chess.G2)[0] is lnd                                                                # "what is known about the bishop on g2": the landing that reads g2
+    moved = b.copy()
+    moved.push_san("Bf3")                                                                                   # the bishop moves: g2 is in the diff, the answer is asked again
+    _l2, served = t.ask(G.with_turn(moved, True), True, chess.E4, chess.F6)
+    assert not served
+
+
+def test_52_18_a_mate_root_defect_list_is_served_from_the_table_when_nothing_it_read_changed():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("dev_20") if x["id"] == "0BHbB"][0]
+    ag = AG.Agenda(State(p["fen"], "w", []))
+    ag.ask()
+    assert ag.ctx.landing_served > 0 and "landing table:" in ag.trace() and "served from the table" in ag.trace() and "known about the Q on g3" in ag.trace()
+    assert ag.decision().what == "Qb8+"
