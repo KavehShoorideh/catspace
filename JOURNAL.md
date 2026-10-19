@@ -31717,3 +31717,20 @@ forcing move"), 0LRTF (a check chase into c8=Q), 0GJec (Rb1 works because the pa
 0UDsf (breakthroughs, an outside passer, a rook trade into a won king ending, a queen chase, a quiet queen move): the claims about a measure of
 plan 53, not one-question gaps; 0UDsf and 0LRTF also trip the fuse. Proposed next slice (not started): the checker as a win target in check, and
 the chase for promote roots -- five of the eleven sit behind them.
+
+## 2026-10-19 10:05 PDT -- THE CHECKER AS A WIN TARGET, PROMOTE ROOTS CHASE, THE PARRY BOUND BY THE SCHEMA (plan 52.15)
+
+Built by the builder (6bff83fb, 0d7deab8, 4839b7eb; tests/test_regress.py 49 passed; lake build green, Lean untouched), verified by rerun.
+(1) In check the agenda now roots "win their <checker> (it gives check)" beside the save; its routes are every capture of the checker, the king's
+included. 0SJz3 decided: "Rxd6: after Rxd6+: Kxd6 (... value 5) -> 1" (SF d18 right); 0PBkh's WRONG Kd3 replaced by Kxf5 (SF: Kd3 loses 2064 cp).
+(2) Promote roots chase: routes = the forcing moves, the defects' fixes, a move that attacks a stopper, the pawn's own push offered to a stopper the
+exchange loses; the inner agenda re-asks the promote root on every reply. 0Nv29: b6 is the one route, followed to every reply, killed by Bb4 because
+the passer lemma `unstoppablePasser2_sound` has the hypothesis enemyKingPawns (their bishop is not allowed): a Lean gap, named. 0LRTF and 0GJec end
+as fuse GAPs (the mate chases spend the fuse first). (3) The parry is bound by `delayed_balance_alive_d1` with B = the balance now and v = 0 (the
+theorem is general in B; the floor 68 belongs to the non-alive form the binder does not use): no new Lean needed, the "their_view" label is gone from
+every trace; 0VSUT: "parry: Rxb5 (lemma delayed_balance_alive_d1) keeps +3".
+Two of my hand readings were wrong, the builder caught both: a pawn on b6 does not attack a5 (the plan's example), and 0Zsoa's Kxd6 is not a free
+pawn (Kxa6 levels the material; SF d18 +480 is the king ending: group 4, judgment, not a missing question).
+OBS (one run each, directional): dev_20 decided 12 MATCH 12 unchanged, seconds 24.6 -> 29.2; fresh_60 decided 49/48 -> 50/50 (+0SJz3, 0PBkh fixed),
+inner questions 16408 -> 18251, fuse hits 325 -> 452, seconds 76.5 -> 58.4 (concurrent runs, noisy). Promote chases are costly where they fail:
+02XVK 0.4 -> 5.2 s. Open: the passer lemma with a bishop (0Nv29); the fuse order (mate chases starve the promote chase: 0LRTF, 0GJec).
