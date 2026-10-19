@@ -31657,3 +31657,41 @@ although the queen simply takes the rook -- `forcing_why` should not call a hang
 only (claims re-read their tails); (4) the composed chase theorem (step_after + step_least over inner claims) is a TODO in Schemas.lean.
 Kaveh's thinking in the same session, not built: a lemma should leave CLAIMS, never a move; a TECHNIQUE is a lemma whose claim names a measure and
 its bound after the move (the king's box), applied repeatedly -- the KRR progress measure in Generated/Measures.lean has that shape, unproved.
+
+## 2026-10-18 20:56 PDT -- FEWER QUESTIONS, EXACT CACHING, THEIR AGENDA ON THE STATIC LEAF, THE HOT LOOP IN RUST (plan 52.13)
+
+Three findings on the 52.12 chase, each reproduced before the build (scratch traces). (1) The false claim 0AgL8 Nxg2: thirty-five replies did not
+recapture, each was credited the balance "+1 with us to move", and the inner agenda, told to read for a mate only, never asked what THEY do next
+(Bc6+ mates in four). (2) "The Rust call was 28x slower" was false: OBS the Rust evaluator 0.4 us, the python-chess balance 2.2 us, the Python glue
+that copies the board and renders a FEN 15.4 us per call. (3) The budget (our pieces x 8 + captures: 85 on 0AgL8, 76 on 0DoFB) was spent by ONE
+inner agenda re-asking the whole board; GAP routes were not memoised and every root question re-chased them (894 budget hits on 0DoFB).
+Kaveh's direction (chat): everything in Rust; a shortlist of their replies, obviously bad ones excluded while nothing about them changed, the rest
+ranked live; "memoize and cache as much as possible". Agreed correction: no probability threshold -- exclusion is a KILL with a read set, a learned
+prior may only ORDER. "Do it all." Built by the builder (commits 18c2dcc6, d4cae901, fd9ef998, aeca74f3, f04c902d; tests/test_regress.py 40 passed),
+verified by rerunning the sets and the traces.
+
+Built: (1) the diff decides what an inner agenda asks (the chasing question, the questions whose reads meet the diff, the new ones; kills AND claims
+inherited, a claim's reads = the question's plus the bound atoms' squares); (2) GAP routes memoised, one count per root agenda as a FUSE (10x) with
+the natural end printed, chase only above the best claim, a quiet threat by a piece the exchange wins is not forcing (Lean `landsSafe`; 08pSj's
+"Rc6 threat 9" gone); (3) their agenda on every static leaf of the root chase, the move passed to them, `_static_refuted` removed; (4) the reply
+shortlist: standing kills skipped, recaptures / checks / captures / rest, a reply closed by one rule (mate in one; an exchange nothing of theirs
+answers), every reply read logged to artifacts/experiments/chase_log.jsonl for the plan 53 ordering prior; (5) a Rust `Pos` handle (push, balance,
+replies, diff, exchange, mate in one) read by the chase instead of a board copy and a FEN per reply: OBS pos timing 16.7 us -> 0.63 us per reply.
+Builder fixes on the way: the chase memo keyed by the full FEN never saw a check chain returning to a board as a cycle (1033 inner questions on
+0DoFB); the fuse is shared fairly among a chase's routes (Qe1+'s check chain no longer starves Qd5); a depth fuse of 30 inner levels against the
+recursion limit.
+
+OBS (one run each, directional):
+  dev_20 before: decided 11 MATCH 11, budget hits 5773, seconds 26.4 | after: decided 12 MATCH 12 (+0BHbB Qb8+), inner questions 5122 (mean 10.2
+  per inner agenda), fuse hits 153, gap routes reused 687, replies closed by rule 128, seconds 14.6
+  fresh_60 before: decided 47 MATCH 44, budget hits 12608, seconds 61.8 | after: decided 49 MATCH 48 (+0AgL8 Qxg2+, +0DoFB Qd5; 0BuQP Nxf7 -> Kf2,
+  0UqOv Qd5 -> exf7+, both wrong before and right now by Stockfish d18), inner questions 15665 (mean 10.2), fuse hits 322, gap routes reused 1390,
+  replies closed by rule 897, inherited claims 3, seconds 41.7. No decision got worse.
+  0DoFB trace: "Qd5: after Qxe6+: fxe6 ... -> 5 / after Qf8+: Kxf8 ... -> 6 / after Rxd4: closed by rule: mate in one -> 100 / ... 37 replies =>
+  value 1" -- decided by the chase on the reach root as a win, not as a mate.
+
+Open, honestly: (a) the static-leaf rule runs at the root chase only -- at inner levels it refuted 0VSUT's true line ("their Rxb1 wins 4 if we pass"
+though we have a move to parry), so a false static claim at an inner level is not closed; the right form is their threat as a SAVE root of our inner
+agenda (a parry keeps the gain), not a subtraction; (b) inherited claims are few (0 / 3) because at chase time most outer questions are still
+unasked; (c) fuse hits are not zero (01vys, 04Qx2, 0DoFB's Bxf2+ chain), each a GAP never a kill; (d) the Agenda itself is still Python -- the port is
+the separate plan Kaveh asked for ("everything in Rust"); (e) the ordering prior is not built; the log has 3,901 rows.
