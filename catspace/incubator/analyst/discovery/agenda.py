@@ -56,6 +56,12 @@ class ChaseCtx:
         self.left = 0                             # 52.13 (2b): the FUSE of the root agenda: 10x its question budget, set once, spent by every chase and inner agenda under it
         self.depth_cuts = 0                       # ... of the fuse hits, the ones from the depth cap (the stack), not the question count
         self.theirs: dict = {}                    # 52.13 (3): fen (their move) -> (value, claim) of THEIR agenda there, asked once for the whole run
+        self.standing = 0                         # 52.13 (4): routes ended by a standing kill (no inner agenda)
+        self.closed = 0                           # ... replies closed by a rule (mate in one / exchange, nothing of theirs)
+        self.reply_kills: dict = {}               # reply uci -> [(position left, dbal, reads of the inner agenda, route san)] of the routes it killed with no claim of ours
+        self.logged = 0                           # rows written to the chase log by the root agenda
+        self.tag = None                           # the id the chase log rows carry (None: no log)
+        self.rows: list = []                      # the chase log rows, written once by the root agenda
         self.gap_reused = 0                       # 52.13 (2a): GAP routes seen again with no more fuse than when they were cut, not re-run
         self.agendas = 0                          # inner agendas run
         self.asked = 0                            # questions they asked
@@ -67,13 +73,15 @@ class ChaseCtx:
 
 
 class Agenda:
-    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None):
+    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None, chase_log: str | None = None):
         R.reset_ids()
         self.inherit = inherit or {}                            # 52.12 (3), 52.13 (1): key -> {kind: kill | claim, reads, diff, ...} for the outer agenda's SETTLED questions (a kill, or a claim with its reads)
         self.inherited = 0
         self.min_stake = min_stake                              # 52.12: an inner agenda asks only the roots whose stake can still rescue the route (a root below it is not pushed)
         self.chase_depth = chase_depth                          # 52.12: 0 for the root agenda, +1 per inner agenda of a chase
         self.ctx = ctx if ctx is not None else (ChaseCtx() if side_depth else None)       # their agendas (side_depth 0, no ctx) never chase
+        if self.ctx is not None and chase_log is not None:
+            self.ctx.tag = chase_log                            # 52.13 (4): the id the chase log rows carry
         self.memory = memory or []                              # 52.9: [(sim, record)] recalled for this state; it only REORDERS equal stakes, never adds or removes
         self.asked_at_claim = 0                                 # questions asked when the deciding claim was set
         self.side_depth = side_depth                            # 1: run THEIR agenda (see `their_view`); 0: do not (this is their agenda)
@@ -299,6 +307,17 @@ class Agenda:
     # ------------------------------------------------------------------------------------------------------------ the loop
 
     def ask(self) -> None:
+        self._ask_loop()
+        if self.ctx is not None and self.chase_depth == 0 and self.ctx.rows:       # 52.13 (4): the chase log of this root, appended once (per item)
+            import json
+            from catspace.io import paths
+            with open(paths.experiment("chase_log.jsonl"), "a") as f:
+                for row in self.ctx.rows:
+                    f.write(json.dumps(row) + "\n")
+            self.ctx.logged = len(self.ctx.rows)
+            self.ctx.rows = []
+
+    def _ask_loop(self) -> None:
         while True:
             if not self._threats_done and not (self.best and self.best[0] >= R.STAKE_MATE) and (not self.heap or self.heap[0][4].stake < R.STAKE_MATE):
                 self._threats_done = True                        # a mate of ours ends the game, so their threats are asked only once no mate root is left to ask
@@ -797,7 +816,8 @@ class Agenda:
         ctx.agendas += 1
         ctx.asked += ag.asked
         best = ag.best[2] if ag.best and ag.best[0] > 0 else None
-        out = dict(value=ag.best[0] if best else 0, claim=best, asked=ag.asked, need=need, cut=ctx.budget_hits > hits0)
+        reads = None if any(q.reads is None for q in ag.all) else frozenset().union(*(q.reads for q in ag.all))     # 52.13 (4): everything this agenda read (None: some question did not record it)
+        out = dict(value=ag.best[0] if best else 0, claim=best, asked=ag.asked, need=need, cut=ctx.budget_hits > hits0, reads=reads)
         if not out["cut"]:                                      # an answer the budget cut short is not memoised and is never read as "no claim"
             ctx.memo[fen] = out
         return out
@@ -831,18 +851,40 @@ class Agenda:
             d = c.copy(stack=False)
             d.push(r)
             rows.append((G.balance(d, self.me) - bal0, r, d))
-        rows.sort(key=lambda t: (t[0], t[1].uci()))                  # the worst reply first: a route that fails dies at its first
+        # 52.13 (4): the SHORTLIST. A standing kill (an earlier route's reply, the same reply move, nothing its reads touch has changed in the position it leaves) ends the
+        # route at once and is counted; otherwise the replies are read recaptures on the route's square, then checks, then captures, then the rest, the worst balance first inside a class.
+        for dbal, rep, d in rows:
+            sk = self._standing_kill(rep, d, dbal)
+            if sk is not None:
+                res["killed"] = f"after {c.san(rep)}: {sk[0]} (standing kill: nothing the inner agenda read after {sk[1]} {c.san(rep)} has changed)"
+                ctx.standing += 1
+                self._log(key, rep, "standing", dbal, None, sk[2], res["killed"])
+                break
+        if res["killed"] is not None:
+            ctx.routes[key] = res
+            return res
+        rows.sort(key=lambda t: (0 if c.is_capture(t[1]) and t[1].to_square == m.to_square else 1 if c.gives_check(t[1]) else 2 if c.is_capture(t[1]) else 3, t[0], t[1].uci()))
         gains = []
         for dbal, rep, d in rows:
             san_r = c.san(rep)
             if not any(True for _ in d.legal_moves):
                 res["killed"] = f"after {san_r} " + ("they mate us" if d.is_check() else "stalemate")
+                self._log(key, rep, "killed", dbal, None, None, res["killed"])
                 break
+            closed = self._closed_by_rule(d, dbal)
+            if closed is not None:
+                val, why = closed
+                gains.append(val)
+                res["parts"].append(f"after {san_r}: closed by rule: {why} -> {val}")
+                ctx.closed += 1
+                self._log(key, rep, "closed", dbal, val, None, why)
+                continue
             need = 1 - dbal if dbal <= 0 else BD.MATE_VALUE          # a reply that already gains is read for a mate only; else its static gain must survive their threats (below)
             inn = self._inner(d.fen(), need, d)
             if inn is None:
                 res["gap"] = f"chase fuse: {san} not followed past {san_r}"
                 ctx.budget_hits += 1
+                self._log(key, rep, "gap", dbal, None, None, res["gap"])
                 break
             static = dbal >= 1 and inn["value"] < BD.MATE_VALUE
             t_their, claim_their = 0, None
@@ -850,17 +892,23 @@ class Agenda:
                 t_their, claim_their = self._their_pass(d)
                 if dbal - t_their < 1:
                     res["killed"] = f"after {san_r}: {dbal:+d} stands only as a balance and their {claim_their.what} wins {t_their} (lemma {claim_their.lemma}) if we pass"
+                    self._log(key, rep, "killed", dbal, inn["value"], None, res["killed"])
                     break
             if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and inn.get("cut"):
                 res["gap"] = f"chase fuse: {san} not followed past {san_r} (the inner agenda was cut by the fuse)"
                 ctx.budget_hits += 1
+                self._log(key, rep, "gap", dbal, inn["value"], None, res["gap"])
                 break
             if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE:
                 res["killed"] = f"after {san_r}: " + (f"our best claim {inn['claim'].what} wins {inn['value']}, the reply took {-dbal}" if inn["claim"] else "no claim of ours and no material gain") + f" ({dbal:+d})"
+                if inn["claim"] is None and not inn.get("cut"):          # a standing kill: the later routes' same reply is skipped while the reads stay untouched
+                    ctx.reply_kills.setdefault(rep.uci(), []).append((d, dbal, inn.get("reads"), san))
+                self._log(key, rep, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
                 break
             cl = inn["claim"] if inn["value"] >= need else None
             gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else dbal - t_their if static else dbal + (inn["value"] if cl else 0))
             res["parts"].append(f"after {san_r}: " + (f"{cl.what} ({cl.line}; value {cl.value})" if cl else f"material {dbal:+d}" + (f", their {claim_their.what} wins {t_their} if we pass" if claim_their else "")) + (f" -> {gains[-1]}" if cl or claim_their else ""))
+            self._log(key, rep, "claim" if cl else "material", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
             if cl:
                 res["lemmas"].append(cl.lemma)
         if res["killed"] is None and res["gap"] is None:
@@ -869,6 +917,44 @@ class Agenda:
             res["cut_left"] = ctx.left
         ctx.routes[key] = res
         return res
+
+    def _standing_kill(self, rep: chess.Move, d: chess.Board, dbal: int) -> tuple | None:
+        """52.13 (4): a reply of theirs killed an earlier route of this root with no claim of ours; the kill stands for this route when the reply's position differs
+        from that one only where the inner agenda's reads were not (the reads are recorded; unknown reads never transfer) and the reply took no less. -> (why, route san, reads)."""
+        for d0, dbal0, reads, san0 in self.ctx.reply_kills.get(rep.uci(), ()):
+            if reads is None or dbal >= 1 or dbal0 < dbal:                 # the inner agenda read the roots of stake >= 1 - dbal0: enough for any reply that took at least as much
+                continue
+            if not (reads & R.diff_squares(d0, d)):
+                return ("no claim of ours and no material gain", san0, sorted(reads))
+        return None
+
+    def _closed_by_rule(self, d: chess.Board, dbal: int) -> tuple | None:
+        """52.13 (4): a reply that the RULES close, no inner agenda: (a) we have a mate in one (is_checkmate over our moves); (b) a capture of ours wins by the exchange at least
+        what the route still needs (`need` = 1 - dbal) and THEIR agenda with the move passed to them finds no claim. -> (route value for this reply, why) or None."""
+        for mv in list(d.legal_moves):
+            if d.gives_check(mv) and self._mates(d, mv):
+                return BD.MATE_VALUE, "mate in one"
+        if dbal >= 1 or d.is_check():
+            return None
+        need = 1 - dbal
+        best = 0
+        for sq in chess.SQUARES:
+            pc = d.piece_at(sq)
+            if pc and pc.color != self.me and pc.piece_type != chess.KING and d.is_attacked_by(self.me, sq):
+                best = max(best, G.see(d, sq))
+        if best < need:
+            return None
+        t, _cl = self._their_pass(d)
+        if t:
+            return None
+        return dbal + best, f"exchange +{best}, nothing of theirs"
+
+    def _log(self, key: tuple, rep: chess.Move, outcome: str, dbal: int, inner: int | None, reads, reason: str | None) -> None:
+        """52.13 (4): one row per reply read, for the plan 53 ordering prior (the prior itself is not built). Buffered; written by the root agenda when it ends."""
+        if self.ctx.tag is None:
+            return
+        self.ctx.rows.append(dict(id=self.ctx.tag, depth=self.chase_depth, fen=key[0], route=key[1], reply=rep.uci(), outcome=outcome, dbal=dbal, inner=inner,
+                                  reads=sorted(reads) if reads is not None else None, reason=reason))
 
     def _their_pass(self, d: chess.Board) -> tuple:
         """52.13 (3): THEIR agenda on `d` (our move) with the move passed to them, memoised by FEN across the run: -> (the value of their best claim, the claim) or (0, None)."""

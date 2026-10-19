@@ -295,8 +295,7 @@ def test_a_claim_of_theirs_at_the_leaf_at_least_our_gain_there_downgrades_the_cl
     assert not any(c.lemma == "delayed_balance_alive_d1" for c in ag.state.claims)       # nothing is decided by a downgraded claim
 
 
-@pytest.mark.xfail(strict=True, reason="52.10 acceptance NOT met: Qd5 'wins 1' is true in the window and their agenda finds no material claim at the leaf of the minimising line "
-                                       "(Rb8 exf7+) nor after fxe6 Qxa8 (the trapped queen has legal, unsafe moves: no named capture binds); Stockfish d18 scores Qd5 -57 against exf7+ +350")
+# (was xfail strict until 52.13 (4): the shortlist reads their replies in an order that finds exf7+ , the puzzle's answer, and Qd5 is no longer decided)
 def test_0uqov_qd5_is_not_decided():
     ag = AG.Agenda(state_of(UQ, "w"))
     ag.ask()
@@ -449,8 +448,18 @@ def test_52_13_0agl8_is_not_decided_nxg2_at_four_times_the_fuse(monkeypatch):
             self.ctx.left = self.budget * AG.FUSE
     monkeypatch.setattr(AG.Agenda, "__init__", init)
     ag = AG.Agenda(state_of(AGL8, "b"))
+    res = ag._chase_route(chess.Move.from_uci("f4g2"))        # Nxg2 itself, followed to its end
+    assert res["killed"] and "stands only as a balance and their Qa7+ wins 100" in res["killed"] and res["value"] == 0
     ag.ask()
-    t = ag.trace()
-    assert all(c.what != "Nxg2" for c in ag.state.claims)
-    assert "Nxg2: killed -- after Qf2: +1 stands only as a balance and their Qa7+ wins 100" in t
+    assert all(c.what != "Nxg2" for c in ag.state.claims) and ag.decision().what != "Nxg2"
     assert not hasattr(AG.Agenda, "_static_refuted")
+
+
+def test_52_13_a_reply_that_leaves_us_a_mate_in_one_or_an_unanswered_exchange_is_closed_by_rule():
+    fen = "6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1"
+    ag = AG.Agenda(state_of(fen, "w"))
+    assert ag._closed_by_rule(chess.Board(fen), 0) == (BD.MATE_VALUE, "mate in one")
+    ag = AG.Agenda(state_of(AGL8, "b"))
+    res = ag._chase_route(chess.Move.from_uci("g5g2"))        # Qxg2+ Qxg2: the knight takes the queen, nothing of theirs
+    assert res["value"] == 1 and any("closed by rule: exchange +9, nothing of theirs" in p for p in res["parts"])
+    assert ag.ctx.closed >= 1
