@@ -233,3 +233,175 @@ class AgendaPlayer:
         move = self._fallback_move(board)
         say(f"no decision: fallback {self.fallback} chose {board.san(move)}" if decision is None else f"fallback {self.fallback} chose {board.san(move)}")
         return move, out, f"fallback:{self.fallback}"
+
+
+# ---------------------------------------------------------------- the game (item 3)
+PGN_KEY_KINDS = ("context", "claim", "decision", "fallback", "stop")
+
+
+def pgn_path() -> str:
+    from catspace.io import paths
+    return paths.experiment("play_games.pgn")
+
+
+class Game:
+    """One game against the engine. The server owns the board (full move stack); the engine's reply runs on a worker thread so the trace streams."""
+
+    def __init__(self, human_white: bool, player: AgendaPlayer, gid: str, path: str | None = None):
+        self.id, self.player, self.human_white = gid, player, human_white
+        self.board = chess.Board()
+        self.trace = TraceBuffer()
+        self.lock = threading.RLock()
+        self.thinking = False
+        self.engine_move: dict | None = None            # {uci, san, source, ply, secs, trace_from, trace_to} of the last engine move
+        self.history: list[dict] = []                   # one row per played ply
+        self.secs: list[float] = []
+        self.error: str | None = None
+        self.path = path
+        self.started = time.strftime("%Y.%m.%d")
+        self.worker: threading.Thread | None = None
+        self.live = True
+        if not self.human_turn():
+            self._start_engine()
+
+    # ---- state
+    def human_turn(self) -> bool:
+        return self.board.turn == self.human_white
+
+    def over(self):
+        o = self.board.outcome(claim_draw=True)
+        return o
+
+    def state(self) -> dict:
+        with self.lock:
+            b = self.board
+            o = self.over()
+            dests: dict[str, list[str]] = {}
+            if o is None and self.human_turn() and not self.thinking:
+                for mv in b.legal_moves:
+                    dests.setdefault(chess.square_name(mv.from_square), []).append(chess.square_name(mv.to_square))
+            last = b.peek() if b.move_stack else None
+            return dict(game=self.id, fen=b.fen(), turn="white" if b.turn else "black", human="white" if self.human_white else "black",
+                        dests=dests, last_move=[chess.square_name(last.from_square), chess.square_name(last.to_square)] if last else None,
+                        ply=len(b.move_stack), thinking=self.thinking, fallback=self.player.fallback,
+                        over=o is not None, result=o.result() if o else None, reason=o.termination.name.lower().replace("_", " ") if o else None,
+                        in_check=b.is_check(), notes=context_notes(b) if o is None else [], engine_move=self.engine_move,
+                        san=[h["san"] for h in self.history], error=self.error, trace_n=self.trace.n)
+
+    # ---- moves
+    def human_move(self, uci: str) -> dict:
+        with self.lock:
+            if self.over() is not None:
+                raise ValueError("the game is over")
+            if not self.human_turn() or self.thinking:
+                raise ValueError("not your turn")
+            try:
+                mv = chess.Move.from_uci(uci)
+            except ValueError:
+                raise ValueError(f"bad move {uci!r}")
+            if mv not in self.board.legal_moves:
+                promo = chess.Move(mv.from_square, mv.to_square, promotion=chess.QUEEN)
+                if promo in self.board.legal_moves:
+                    mv = promo
+                else:
+                    raise ValueError(f"illegal move {uci}")
+            san = self.board.san(mv)
+            self.board.push(mv)
+            self.history.append(dict(ply=len(self.board.move_stack), san=san, uci=mv.uci(), who="human", comment=""))
+            self.engine_move = None                      # the engine's arrow stays until the human moves
+            self._save()
+            if self.over() is None:
+                self._start_engine()
+            return self.state()
+
+    def _start_engine(self):
+        self.thinking = True
+        self.worker = threading.Thread(target=self._engine, daemon=True)
+        self.worker.start()
+
+    def _engine(self):
+        t0 = time.time()
+        try:
+            with self.lock:
+                root = self.board.copy()
+                ply = len(root.move_stack) + 1
+            first = self.trace.n + 1
+            mv, lines, source = self.player.move(root, emit=lambda t: self.trace.add(t, root, ply) if self.live else None)
+            secs = time.time() - t0
+            with self.lock:
+                if not self.live:
+                    return
+                san = self.board.san(mv)
+                self.board.push(mv)
+                recs = [r for r in self.trace.since(first - 1)]
+                comment = " | ".join(r["text"].strip() for r in recs if r["kind"] in PGN_KEY_KINDS)[:1500].replace("{", "(").replace("}", ")")
+                self.engine_move = dict(uci=mv.uci(), san=san, source=source, ply=ply, secs=round(secs, 2), trace_from=first, trace_to=self.trace.n,
+                                        **{"from": chess.square_name(mv.from_square), "to": chess.square_name(mv.to_square)})
+                self.history.append(dict(ply=ply, san=san, uci=mv.uci(), who="engine", source=source, secs=round(secs, 2), comment=f"[{source}] {comment}"))
+                self.secs.append(secs)
+                self._save()
+        except Exception as e:                           # a failed engine move must be visible, not a hung page
+            import traceback
+            self.error = f"{e}\n{traceback.format_exc()[-1200:]}"
+        finally:
+            self.thinking = False
+
+    # ---- the PGN (rewritten per move, keyed by the GameId header: one entry per game)
+    def pgn(self) -> str:
+        import chess.pgn
+        g = chess.pgn.Game()
+        g.headers.update({"Event": "catspace play server", "Date": self.started, "GameId": self.id,
+                          "White": "human" if self.human_white else "catspace agenda", "Black": "catspace agenda" if self.human_white else "human",
+                          "Fallback": self.player.fallback, "Result": (self.over().result() if self.over() else "*")})
+        node = g
+        b = chess.Board()
+        for h in self.history:
+            node = node.add_variation(b.parse_san(h["san"]))
+            b.push(node.move)
+            if h.get("comment"):
+                node.comment = h["comment"]
+        return str(g)
+
+    def _save(self):
+        import chess.pgn
+        import io
+        path = self.path or pgn_path()
+        try:
+            existing = []
+            try:
+                with open(path) as f:
+                    while True:
+                        g = chess.pgn.read_game(f)
+                        if g is None:
+                            break
+                        existing.append(g)
+            except FileNotFoundError:
+                pass
+            mine = chess.pgn.read_game(io.StringIO(self.pgn()))
+            existing = [g for g in existing if g.headers.get("GameId") != self.id] + [mine]
+            with open(path, "w") as f:
+                for g in existing:
+                    f.write(str(g) + "\n\n")
+        except Exception as e:                           # the record must never stop the game
+            self.error = f"pgn: {e}"
+
+
+class PlayManager:
+    """The single current game of this local server."""
+
+    def __init__(self, fallback: str = "one_ply", seed: int = 0, pgn: str | None = None):
+        self.fallback, self.seed, self.pgn = fallback, seed, pgn
+        self.game: Game | None = None
+        self.count = 0
+        self.lock = threading.Lock()
+
+    def new(self, colour: str = "white", fallback: str | None = None) -> Game:
+        with self.lock:
+            if self.game is not None:
+                self.game.live = False
+                self.game.player.close()
+            self.count += 1
+            player = AgendaPlayer(fallback or self.fallback, seed=self.seed + self.count)
+            gid = time.strftime("%Y%m%d-%H%M%S") + f"-{self.count}"
+            self.game = Game(colour != "black", player, gid, self.pgn)
+            return self.game

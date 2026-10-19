@@ -318,6 +318,7 @@ def append_flag(payload: dict) -> dict:
 # ---------------------------------------------------------------- HTTP
 class Handler(BaseHTTPRequestHandler):
     jobs: Jobs = None   # set by serve()
+    play = None         # plan 54: a discovery.play_server.PlayManager (None: the play routes answer 404)
 
     def log_message(self, fmt, *args):            # quiet
         pass
@@ -334,6 +335,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         from urllib.parse import unquote
         path = unquote(self.path.split("?")[0])
+        if path.startswith("/api/play/"):
+            return self._play_get(path, self.path.partition("?")[2])
         if path in ("/", "/index.html"):
             data = PAGE.read_bytes()
             self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(data)))
@@ -367,8 +370,57 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(rows[-50:])
         self._json({"error": "not found"}, 404)
 
+    # ---- plan 54: the play server (state, trace, new, move, flag)
+    def _play_get(self, path, query):
+        from urllib.parse import parse_qs
+        pm = self.play
+        if pm is None:
+            return self._json({"error": "play server not enabled (start with --play)"}, 404)
+        g = pm.game
+        if path == "/api/play/state":
+            return self._json(g.state() if g else {"game": None, "fallback": pm.fallback})
+        if path == "/api/play/trace":
+            if g is None:
+                return self._json({"game": None, "records": [], "n": 0})
+            since = int((parse_qs(query).get("since") or ["0"])[0] or 0)
+            return self._json({"game": g.id, "records": g.trace.since(since), "n": g.trace.n, "thinking": g.thinking})
+        if path == "/api/play/pgn":
+            return self._json({"pgn": g.pgn() if g else ""})
+        self._json({"error": "not found"}, 404)
+
+    def _play_post(self, path):
+        pm = self.play
+        if pm is None:
+            return self._json({"error": "play server not enabled (start with --play)"}, 404)
+        body = self._body()
+        if path == "/api/play/new":
+            fb = body.get("fallback") or None
+            try:
+                g = pm.new(body.get("colour", "white"), fb)
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+            return self._json(g.state())
+        g = pm.game
+        if g is None:
+            return self._json({"error": "no game: POST /api/play/new first"}, 400)
+        if path == "/api/play/move":
+            try:
+                return self._json(g.human_move(body.get("uci", "")))
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+        if path == "/api/play/flag":
+            ns = [int(x) for x in body.get("lines") or []]
+            recs = {r["n"]: r["text"] for r in g.trace.since(0)}
+            ctx = {"kind": "play", "game": g.id, "fen": g.board.fen(), "san": [h["san"] for h in g.history], "fallback": g.player.fallback,
+                   "engine_move": g.engine_move, "trace_lines": {n: recs.get(n) for n in ns}, **(body.get("context") or {})}
+            rec = append_flag({"note": (body.get("note") or "")[:2000], "context": ctx})
+            return self._json({"id": rec["id"], "file": str(FLAGS.relative_to(ROOT)), "line": rec["id"]})
+        self._json({"error": "not found"}, 404)
+
     def do_POST(self):
         path = self.path.split("?")[0]
+        if path.startswith("/api/play/"):
+            return self._play_post(path)
         if path == "/api/resolve":
             body = self._body()
             kind = parse_input(body.get("input", ""))
@@ -393,9 +445,12 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, 404)
 
 
-def serve(port: int, depth: int, threads: int, workers: int, max_games: int, host: str = "127.0.0.1"):
+def serve(port: int, depth: int, threads: int, workers: int, max_games: int, host: str = "127.0.0.1", play=None, ready=None):
     Handler.jobs = Jobs(depth, threads, workers, max_games)
+    Handler.play = play
     srv = ThreadingHTTPServer((host, port), Handler)
+    if ready is not None:
+        ready(srv)
     print(f"analyst web: http://{host}:{port}  (depth {depth}, {threads} engine threads; flags -> {FLAGS.relative_to(ROOT)})", flush=True)
     try:
         srv.serve_forever()
@@ -411,8 +466,14 @@ def main(argv=None):
     ap.add_argument("--threads", type=int, default=6)
     ap.add_argument("--workers", type=int, default=4, help="review workers for a user's games")
     ap.add_argument("--max-games", type=int, default=30, help="how many recent games to fetch for a user")
+    ap.add_argument("--play", action="store_true", help="plan 54: enable the play server (#play): play against the agenda and watch its trace")
+    ap.add_argument("--fallback", default="one_ply", choices=["one_ply", "stockfish", "random"], help="who plays when the agenda has no decision (named in the trace)")
     a = ap.parse_args(argv)
-    serve(a.port, a.depth, a.threads, a.workers, a.max_games, a.host)
+    play = None
+    if a.play:
+        from .discovery.play_server import PlayManager
+        play = PlayManager(a.fallback)
+    serve(a.port, a.depth, a.threads, a.workers, a.max_games, a.host, play=play)
 
 
 if __name__ == "__main__":
