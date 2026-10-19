@@ -22,6 +22,24 @@ hypotheses replace `bareKing` and `kingHasMove`:
 Prototyped in Python first (`lean_passer_v2_proto.py`): 816 PROVED claims, all confirmed by an exhaustive
 race search. Conclusion as before: our queen on the promotion square within `2n - 1` plies whatever the
 opponent does.
+
+Plan 52.16 (2026-10-19): the enemy may also have BISHOPS (the bounded form of "their other pieces cannot reach
+the path in time": bishops only; knights, rooks and queens are still excluded by `enemyPieces`). Two hypotheses
+govern them, and `kingRoom` counts them:
+
+* `bishopsFar` -- every enemy bishop stands on the other colour from our king (it never checks it, never pins
+                  the passer against it) and, for each square the pawn still has to cross (the promotion square
+                  included), needs more than `n - 1` moves to land on it, the board IGNORED (`bdist`: 0 on its
+                  own square, 1 along a diagonal, 2 on its colour, never off it; ignoring the board can only
+                  shorten the distance, so the bound holds whatever is captured or blocked). A bishop that cannot
+                  land on a path square can neither take the pawn nor block it. One bishop move brings it at most
+                  one move nearer any square (`bfarB_step`), so the hypothesis is kept by the race;
+* `kingRoom`   -- its count of the enemy's blockers of a free neighbour now adds the bishops (a bishop may stand on
+                  any of them).
+
+The general per-piece statement (any piece, reach read with blockers) is NOT proved: a piece's reach with the
+board counted is not monotone under captures by another piece of theirs, and the moves of knights, rooks and
+queens would each need their own step lemma. What is proved is the bishop case, by the geometry alone.
 -/
 
 namespace Ideas
@@ -61,6 +79,114 @@ def farB (e : Color) (s t : Square) (k : Nat) : Bool :=
   match pdist e s t with
   | none => true
   | some d => decide (k < d)
+
+/-- The colour of a square (the parity of file + rank): a bishop never leaves its colour. -/
+def sqPar (s : Square) : Nat := (s.1.val + s.2.val) % 2
+
+/-- A lower bound on the moves a bishop on `s` needs to land on `t`, the board ignored (so blockers and captures
+can only make it longer): `0` on its own square, `1` along a diagonal, `2` on its colour, none off it. -/
+def bdist (s t : Square) : Option Nat :=
+  if s = t then some 0 else if bishopGeometryB s t = true then some 1
+  else if sqPar s = sqPar t then some 2 else none
+
+/-- A bishop on `s` needs more than `k` moves to land on `t` (or never can). -/
+def bfarB (s t : Square) (k : Nat) : Bool :=
+  match bdist s t with
+  | none => true
+  | some d => decide (k < d)
+
+theorem diag_par {s t : Square} (h : bishopGeometryB s t = true) : sqPar s = sqPar t := by
+  simp only [bishopGeometryB, sameDiagonalB, Bool.and_eq_true, bne_iff_ne, ne_eq, beq_iff_eq] at h
+  obtain ⟨_, h2⟩ := h
+  simp only [sqPar, absDiff] at h2 ⊢
+  split_ifs at h2 <;> omega
+
+theorem diag_ne {s t : Square} (h : bishopGeometryB s t = true) : s ≠ t := by
+  simp only [bishopGeometryB, sameDiagonalB, Bool.and_eq_true, bne_iff_ne, ne_eq, beq_iff_eq] at h
+  exact h.1
+
+/-- One bishop move brings a bishop at most one move nearer any square. -/
+theorem bfarB_step {s s' t : Square} (hmv : bishopGeometryB s s' = true) {k : Nat}
+    (hfar : bfarB s t (k + 1) = true) : bfarB s' t k = true := by
+  have hp := diag_par hmv
+  have hne := diag_ne hmv
+  have hD1 : bishopGeometryB s' t = true → sqPar s' = sqPar t := diag_par
+  have hD2 : bishopGeometryB s t = true → sqPar s = sqPar t := diag_par
+  unfold bfarB bdist at hfar ⊢
+  split_ifs at hfar ⊢ <;> simp_all <;> omega
+
+theorem bfarB_mono {s t : Square} {k k' : Nat} (hk : k' ≤ k) (h : bfarB s t k = true) : bfarB s t k' = true := by
+  unfold bfarB at h ⊢
+  revert h
+  cases bdist s t with
+  | none => intro; rfl
+  | some d => intro h; simp only [decide_eq_true_eq] at h ⊢; omega
+
+theorem bishop_noattack {q : Position} {e : Color} {s t : Square} (hs : q.board s = some ⟨e, .bishop⟩)
+    (hp : sqPar s ≠ sqPar t) : pieceAttacksB q e s t = false := by
+  have hg : bishopGeometryB s t = false := by
+    by_contra h
+    exact hp (diag_par (by simpa using h))
+  unfold pieceAttacksB
+  rw [hs]
+  simp [hg]
+
+/-- Attacks by a side whose only sliders are bishops that never reach the square `t` (their colour is not `t`'s)
+do not depend on the rest of the board. -/
+theorem attack_nobishop {q q' : Position} {e : Color} {t : Square}
+    (hns : ∀ s pc, q.board s = some pc → pc.color = e →
+      pc.kind = .king ∨ pc.kind = .pawn ∨ pc.kind = .knight ∨ (pc.kind = .bishop ∧ sqPar s ≠ sqPar t))
+    (hsame : ∀ s pc, pc.color = e → (q.board s = some pc ↔ q'.board s = some pc)) :
+    isAttackedB q e t = isAttackedB q' e t := by
+  apply Bool.eq_iff_iff.mpr
+  simp only [isAttackedB, List.any_eq_true]
+  have key : ∀ s, pieceAttacksB q e s t = true ↔ pieceAttacksB q' e s t = true := by
+    intro s
+    constructor
+    · intro hs
+      unfold pieceAttacksB at hs ⊢
+      split at hs
+      · rename_i pc hpc
+        simp only [Bool.and_eq_true, beq_iff_eq] at hs
+        have hcol := hs.1
+        rw [(hsame s pc hcol).1 hpc]
+        rcases hns s pc hpc hcol with hk | hk | hk | ⟨hk, hpar⟩
+        · simp_all
+        · simp_all
+        · simp_all
+        · exfalso
+          have hpc2 : pc = ⟨e, .bishop⟩ := by
+            obtain ⟨col, kind⟩ := pc; simp only at hcol hk; rw [hcol, hk]
+          subst hpc2
+          have := bishop_noattack hpc hpar
+          unfold pieceAttacksB at this
+          rw [hpc] at this
+          simp_all
+      · simp at hs
+    · intro hs
+      unfold pieceAttacksB at hs ⊢
+      split at hs
+      · rename_i pc hpc
+        simp only [Bool.and_eq_true, beq_iff_eq] at hs
+        have hcol := hs.1
+        have hq := (hsame s pc hcol).2 hpc
+        rw [hq]
+        rcases hns s pc hq hcol with hk | hk | hk | ⟨hk, hpar⟩
+        · simp_all
+        · simp_all
+        · simp_all
+        · exfalso
+          have hpc2 : pc = ⟨e, .bishop⟩ := by
+            obtain ⟨col, kind⟩ := pc; simp only at hcol hk; rw [hcol, hk]
+          subst hpc2
+          have := bishop_noattack hpc hpar
+          unfold pieceAttacksB at this
+          rw [hpc] at this
+          simp_all
+      · simp at hs
+  constructor
+  · rintro ⟨s, hs, h⟩; exact ⟨s, hs, (key s).1 h⟩
+  · rintro ⟨s, hs, h⟩; exact ⟨s, hs, (key s).2 h⟩
 
 /-- The squares an enemy pawn must not reach during the race: the path, the squares from which it would
 check our king on `ok`, and its promotion rank (our pawn's own square is not needed: we push first). -/
@@ -105,16 +231,34 @@ def enemyPawnCount (p : Position) : Nat :=
 
 /-! ## Hypotheses -/
 
-/-- Every enemy piece is its king or a pawn (no pawn on its own back rank), and there is exactly one king. -/
-def enemyKingPawnsB (p : Position) (_ : PasserParams) : Bool :=
+/-- Every enemy piece is its king, a bishop or a pawn (no pawn on its own back rank), and there is exactly one
+king (2026-10-19: bishops added, plan 52.16). -/
+def enemyPiecesB (p : Position) (_ : PasserParams) : Bool :=
   let e := Color.opposite p.turn
   allSquares.all (fun s => match p.board s with
-    | some pc => (pc.color == p.turn) || (pc.kind == .king) ||
+    | some pc => (pc.color == p.turn) || (pc.kind == .king) || (pc.kind == .bishop) ||
         ((pc.kind == .pawn) && (s.2.val != backRank e))
     | none => true) &&
   match kingSquare p.board e with
   | some k => allSquares.all fun s => (p.board s == some ⟨e, .king⟩) == decide (s = k)
   | none => false
+
+/-- How many bishops the colour `e` has. -/
+def bishopCount (p : Position) (e : Color) : Nat :=
+  (allSquares.filter (fun s => p.board s == some ⟨e, .bishop⟩)).length
+
+/-- Every enemy bishop is on the other colour from our king (it never checks it, never pins the passer against
+it) and, for each square the pawn still has to cross (the promotion square included), needs more than `n - 1`
+moves to land on it, the board ignored (a bishop that cannot land on a path square can neither take the pawn
+nor block it). -/
+def bishopsFarB (p : Position) (ps : PasserParams) : Bool :=
+  match kingSquare p.board p.turn with
+  | none => false
+  | some ok =>
+    let n := pushes p.turn ps.sq
+    allSquares.all fun s =>
+      (p.board s != some ⟨Color.opposite p.turn, .bishop⟩) ||
+        (decide (sqPar s ≠ sqPar ok) && (path p.turn ps.sq).all fun t => bfarB s t (n - 1))
 
 /-- One enemy pawn on `s` is harmless for `n - 1` enemy moves: it is more than `n - 1` moves from every bad
 square, or the square is off the pawn's file and the pawn cannot leave its file in time -- it is more than
@@ -146,7 +290,7 @@ def kingRoomB (p : Position) (ps : PasserParams) : Bool :=
     let F := forbiddenB p ps.sq
     allSquares.all fun x' =>
       decide (n - 1 < kdist x' ek) || neverKingB p.turn ps.sq ok x' ||
-        decide (nearPawnsB p p.turn F (n - 1) x' < roomB F x')
+        decide (nearPawnsB p p.turn F (n - 1) x' + bishopCount p (Color.opposite p.turn) < roomB F x')
   | _, _ => false
 
 end Passer2
@@ -155,9 +299,9 @@ open Passer2 in
 def unstoppablePasser2 : Idea PasserParams where
   id := "unstoppablePasser2"
   hyps :=
-    [ ⟨"ownPawn", ownPawnB⟩, ⟨"pathClear", pathClearB⟩, ⟨"enemyKingPawns", enemyKingPawnsB⟩,
+    [ ⟨"ownPawn", ownPawnB⟩, ⟨"pathClear", pathClearB⟩, ⟨"enemyPieces", enemyPiecesB⟩,
       ⟨"noSliders", noSlidersB⟩, ⟨"notInCheck", notInCheckB⟩, ⟨"kingOutside", kingOutsideB⟩,
-      ⟨"pawnsFar", pawnsFarB⟩, ⟨"kingRoom", kingRoomB⟩ ]
+      ⟨"pawnsFar", pawnsFarB⟩, ⟨"bishopsFar", bishopsFarB⟩, ⟨"kingRoom", kingRoomB⟩ ]
   protagonist := fun ps => ps.sq
   tier := .unconditional
   horizon := 13
@@ -174,10 +318,17 @@ def Passer2.targets (p : Position) (ps : PasserParams) (hyp : String) : List Squ
       let e := Color.opposite p.turn
       let n := pushes p.turn ps.sq
       allSquares.filter fun s => (p.board s == some ⟨e, .pawn⟩) && !pawnFarB p p.turn ps.sq ok s n
-  else if hyp = "enemyKingPawns" then
+  else if hyp = "enemyPieces" then
     allSquares.filter (fun s => match p.board s with
-      | some pc => pc.color != p.turn && pc.kind != .king && pc.kind != .pawn
+      | some pc => pc.color != p.turn && pc.kind != .king && pc.kind != .pawn && pc.kind != .bishop
       | none => false)
+  else if hyp = "bishopsFar" then
+    match kingSquare p.board p.turn with
+    | none => []
+    | some ok =>
+      let n := pushes p.turn ps.sq
+      allSquares.filter fun s => (p.board s == some ⟨Color.opposite p.turn, .bishop⟩) &&
+        !(decide (sqPar s ≠ sqPar ok) && (path p.turn ps.sq).all fun t => bfarB s t (n - 1))
   else []
 
 /-! ## The invariant of the race, second form -/
@@ -194,9 +345,9 @@ structure Inv2 (c : Color) (p : Position) (x : Square) (r : Nat) (ek ok : Square
   pushesEq : pushes c x = r
   pos : 1 ≤ r
   clear : ∀ t ∈ path c x, p.board t = none
-  /-- every enemy piece is the king on `ek` or a pawn -/
+  /-- every enemy piece is the king on `ek`, a pawn or a bishop -/
   enemy : ∀ s pc, p.board s = some pc → pc.color = Color.opposite c →
-    (s = ek ∧ pc.kind = .king) ∨ pc.kind = .pawn
+    (s = ek ∧ pc.kind = .king) ∨ pc.kind = .pawn ∨ pc.kind = .bishop
   eking : p.board ek = some ⟨Color.opposite c, .king⟩
   /-- no enemy pawn on its own back rank (there its double step would shorten the distance by two) -/
   pawnsOffBack : ∀ s, p.board s = some ⟨Color.opposite c, .pawn⟩ → s.2.val ≠ backRank (Color.opposite c)
@@ -221,7 +372,12 @@ structure Inv2 (c : Color) (p : Position) (x : Square) (r : Nat) (ek ok : Square
   count : (allSquares.filter (fun s => p.board s == some ⟨Color.opposite c, .pawn⟩)).length = np
   /-- every square the enemy king can still reach and stand on has more free neighbours than the enemy has pawns
       that can reach one of them in time (the pawns standing on them are among those) -/
-  room : ∀ x', kdist x' ek ≤ r - 1 → neverKingB c x ok x' = true ∨ nearPawnsB p c F (r - 1) x' < roomB F x'
+  room : ∀ x', kdist x' ek ≤ r - 1 → neverKingB c x ok x' = true ∨
+    nearPawnsB p c F (r - 1) x' + bishopCount p (Color.opposite c) < roomB F x'
+  /-- every enemy bishop stands on the other colour from our king and needs more than `r - 1` moves to land on
+      any square the pawn still has to cross -/
+  bishops : ∀ s, p.board s = some ⟨Color.opposite c, .bishop⟩ →
+    sqPar s ≠ sqPar ok ∧ ∀ t ∈ path c x, bfarB s t (r - 1) = true
 
 /-! ### Facts about the bad squares and the distance -/
 
@@ -259,15 +415,20 @@ theorem enemy_pawn_not_on_bad {c : Color} {p : Position} {x : Square} {r : Nat} 
   · rw [farB_self] at hh; cases hh
   · exact hh rfl
 
-/-- The enemy's pieces attack by geometry alone (king and pawns). -/
-theorem enemy_noslider {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Square}
+/-- The enemy's pieces attack our king by geometry alone: king, pawns, and bishops on the other colour. -/
+theorem enemy_attackers {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Square}
     {F : Square → Bool} {np : Nat} (h : Inv2 c p x r ek ok F np) :
     ∀ s pc, p.board s = some pc → pc.color = Color.opposite c →
-      pc.kind = .king ∨ pc.kind = .pawn ∨ pc.kind = .knight := by
+      pc.kind = .king ∨ pc.kind = .pawn ∨ pc.kind = .knight ∨ (pc.kind = .bishop ∧ sqPar s ≠ sqPar ok) := by
   intro s pc hs hcol
-  rcases h.enemy s pc hs hcol with ⟨_, hk⟩ | hk
+  rcases h.enemy s pc hs hcol with ⟨_, hk⟩ | hk | hk
   · exact Or.inl hk
   · exact Or.inr (Or.inl hk)
+  · refine Or.inr (Or.inr (Or.inr ⟨hk, (h.bishops s ?_).1⟩))
+    obtain ⟨col, kind⟩ := pc
+    simp only at hcol hk
+    rw [hcol, hk] at hs
+    exact hs
 
 theorem enemy_kings_only {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Square}
     {F : Square → Bool} {np : Nat} (h : Inv2 c p x r ek ok F np) :
@@ -275,8 +436,9 @@ theorem enemy_kings_only {c : Color} {p : Position} {x : Square} {r : Nat} {ek o
   intro s
   constructor
   · intro hs
-    rcases h.enemy s _ hs rfl with ⟨he, _⟩ | hk
+    rcases h.enemy s _ hs rfl with ⟨he, _⟩ | hk | hk
     · exact he
+    · cases hk
     · cases hk
   · rintro rfl; exact h.eking
 
@@ -351,7 +513,7 @@ theorem push_legal2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : S
     rw [← kingSquare_congr (kings_same v hvk)]
     rw [h.ourKing] at hus ⊢
     simp only [Bool.not_eq_true] at hus ⊢
-    rw [← noslider_attack (enemy_noslider h) (enemy_same v hv)]
+    rw [← attack_nobishop (enemy_attackers h) (enemy_same v hv)]
     exact hus
   refine ⟨_, push_eq hy, ?_⟩
   rw [legalMove_iff_legalMoveB]
@@ -454,6 +616,34 @@ theorem exists_not_pawn {p : Position} {e : Color} {G : Square → Bool}
   rw [this] at hL
   exact lt_irrefl _ hL
 
+/-- The squares of `G` holding an enemy pawn or bishop do not fill `G`: one is free of both. -/
+theorem exists_free {p : Position} {e : Color} {G : Square → Bool}
+    (hL : (allSquares.filter (fun s => (p.board s == some ⟨e, .pawn⟩ || p.board s == some ⟨e, .bishop⟩) && G s)).length <
+      (allSquares.filter G).length) :
+    ∃ d, G d = true ∧ p.board d ≠ some ⟨e, .pawn⟩ ∧ p.board d ≠ some ⟨e, .bishop⟩ := by
+  by_contra hall
+  push_neg at hall
+  have : allSquares.filter (fun s => (p.board s == some ⟨e, .pawn⟩ || p.board s == some ⟨e, .bishop⟩) && G s) =
+      allSquares.filter G := by
+    apply List.filter_congr
+    intro u _
+    cases hG : G u
+    · simp
+    · have := hall u hG
+      by_cases h1 : p.board u = some ⟨e, .pawn⟩
+      · simp [h1]
+      · simp [this h1]
+  rw [this] at hL
+  exact lt_irrefl _ hL
+
+/-- Counting by an "or". -/
+theorem filter_or_length_le (l : List Square) (P Q : Square → Bool) :
+    (l.filter (fun s => P s || Q s)).length ≤ (l.filter P).length + (l.filter Q).length := by
+  induction l with
+  | nil => simp
+  | cons a l ih =>
+    by_cases ha : P a = true <;> by_cases hb : Q a = true <;> simp [List.filter_cons, ha, hb] <;> omega
+
 theorem enemy_has_move2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Square}
     {F : Square → Bool} {np : Nat} (h : Inv2 c p x (r + 2) ek ok F np) {m : Move}
     (hm : push c x = some m) : (legalMoves (applyMove p m)) ≠ [] := by
@@ -487,14 +677,33 @@ theorem enemy_has_move2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok
   rw [hnever] at hroom
   simp only [Bool.false_eq_true, false_or] at hroom
   -- the pawns standing on the king's free neighbours are among the pawns that can reach one in time
-  have hle : (allSquares.filter (fun s => p.board s == some ⟨Color.opposite c, .pawn⟩ &&
+  have hle1 : (allSquares.filter (fun s => p.board s == some ⟨Color.opposite c, .pawn⟩ &&
       (kingGeometryB ek s && !F s))).length ≤ nearPawnsB p c F (r + 2 - 1) ek := by
     unfold nearPawnsB
     apply filter_length_mono
     intro u hu
     simp only [Bool.and_eq_true, List.any_eq_true, List.mem_filter, mem_allSquares, true_and] at hu ⊢
     exact ⟨hu.1, u, hu.2, by rw [farB_self]; rfl⟩
-  obtain ⟨d, hGd, hnotpawn⟩ := exists_not_pawn (G := fun d => kingGeometryB ek d && !F d) (lt_of_le_of_lt hle hroom)
+  have hle2 : (allSquares.filter (fun s => p.board s == some ⟨Color.opposite c, .bishop⟩ &&
+      (kingGeometryB ek s && !F s))).length ≤ bishopCount p (Color.opposite c) := by
+    unfold bishopCount
+    apply filter_length_mono
+    intro u hu
+    simp only [Bool.and_eq_true] at hu
+    exact hu.1
+  have hle : (allSquares.filter (fun s => (p.board s == some ⟨Color.opposite c, .pawn⟩ ||
+      p.board s == some ⟨Color.opposite c, .bishop⟩) && (kingGeometryB ek s && !F s))).length ≤
+      nearPawnsB p c F (r + 2 - 1) ek + bishopCount p (Color.opposite c) := by
+    have hcongr : allSquares.filter (fun s => (p.board s == some ⟨Color.opposite c, .pawn⟩ ||
+        p.board s == some ⟨Color.opposite c, .bishop⟩) && (kingGeometryB ek s && !F s)) =
+        allSquares.filter (fun s => (p.board s == some ⟨Color.opposite c, .pawn⟩ && (kingGeometryB ek s && !F s)) ||
+          (p.board s == some ⟨Color.opposite c, .bishop⟩ && (kingGeometryB ek s && !F s))) := by
+      apply List.filter_congr
+      intro u _
+      cases p.board u == some ⟨Color.opposite c, .pawn⟩ <;> cases p.board u == some ⟨Color.opposite c, .bishop⟩ <;> simp
+    rw [hcongr]
+    exact le_trans (filter_or_length_le _ _ _) (Nat.add_le_add hle1 hle2)
+  obtain ⟨d, hGd, hnotpawn, hnotbishop⟩ := exists_free (G := fun d => kingGeometryB ek d && !F d) (lt_of_le_of_lt hle hroom)
   simp only [Bool.and_eq_true, Bool.not_eq_true'] at hGd
   obtain ⟨hgeo, hFd⟩ := hGd
   have hdek : d ≠ ek := by intro e; rw [e] at hgeo; simp [kingGeometryB] at hgeo
@@ -516,9 +725,14 @@ theorem enemy_has_move2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok
         have hdy : d ≠ y := by intro e; rw [e, hqy] at hqd; cases hqd; exact hcol rfl
         have hdx : d ≠ x := by intro e; rw [e, hqx] at hqd; cases hqd
         rw [hqother d hdy hdx] at hqd
-        rcases h.enemy d pc hqd hcol' with ⟨hde, _⟩ | hk
+        rcases h.enemy d pc hqd hcol' with ⟨hde, _⟩ | hk | hk
         · exact hdek hde
         · apply hnotpawn
+          rw [hqd]
+          obtain ⟨col, kind⟩ := pc
+          simp only at hcol' hk
+          rw [hcol', hk]
+        · apply hnotbishop
           rw [hqd]
           obtain ⟨col, kind⟩ := pc
           simp only at hcol' hk
@@ -696,10 +910,10 @@ theorem captureSquares_mono {c : Color} {p q q' : Position} {x y : Square} (hy :
 
 /-! ### The enemy's moves -/
 
-/-- In a position where the side to move has only its king on `ek` and pawns, none of them one step
-from promotion, with no en-passant square, a legal move is a king step or a pawn's normal move. -/
+/-- In a position where the side to move has only its king on `ek`, pawns and bishops, none of them one step
+from promotion, with no en-passant square, a legal move is a king step, a pawn's normal move or a bishop's move. -/
 theorem enemy_move2 {q : Position} {m : Move} {ek : Square}
-    (henemy : ∀ s pc, q.board s = some pc → pc.color = q.turn → (s = ek ∧ pc.kind = .king) ∨ pc.kind = .pawn)
+    (henemy : ∀ s pc, q.board s = some pc → pc.color = q.turn → (s = ek ∧ pc.kind = .king) ∨ pc.kind = .pawn ∨ pc.kind = .bishop)
     (hek : q.board ek = some ⟨q.turn, .king⟩)
     (hep : q.enPassant = none)
     (hnopromo : ∀ s, q.board s = some ⟨q.turn, .pawn⟩ → ∀ t, t.2 = promotionRank q.turn →
@@ -713,7 +927,9 @@ theorem enemy_move2 {q : Position} {m : Move} {ek : Square}
           (pawnAttackGeometryB q.turn s t = true ∧ ∃ pc, q.board t = some pc ∧ pc.color = Color.opposite q.turn) ∨
           pawnDoubleGeometryB q.turn s t = true) ∧
         t.2 ≠ promotionRank q.turn ∧ destinationFriendlyB q q.turn t = true ∧
-        ¬ inCheck (applyMove q m) q.turn) := by
+        ¬ inCheck (applyMove q m) q.turn) ∨
+    (∃ s t, m = .normal s t ∧ q.board s = some ⟨q.turn, .bishop⟩ ∧ bishopGeometryB s t = true ∧
+        destinationFriendlyB q q.turn t = true ∧ ¬ inCheck (applyMove q m) q.turn) := by
   obtain ⟨hps, hnc, _⟩ := hl
   cases m with
   | normal s t =>
@@ -725,13 +941,13 @@ theorem enemy_move2 {q : Position} {m : Move} {ek : Square}
           rw [hs] at hps
           simp only [Bool.and_eq_true, beq_iff_eq] at hps
           obtain ⟨⟨⟨hcol, hfr⟩, hpr⟩, hgeo⟩ := hps
-          rcases henemy s pc hs hcol with ⟨rfl, hkind⟩ | hkind
+          rcases henemy s pc hs hcol with ⟨rfl, hkind⟩ | hkind | hkind
           · left
             refine ⟨t, rfl, ?_, hfr, hnc⟩
             unfold normalPieceGeometryB at hgeo
             simp only [hkind] at hgeo
             exact hgeo
-          · right
+          · right; left
             have hpc : pc = ⟨q.turn, .pawn⟩ := by
               obtain ⟨col, kind⟩ := pc; simp only at hcol hkind; rw [hcol, hkind]
             subst hpc
@@ -747,6 +963,14 @@ theorem enemy_move2 {q : Position} {m : Move} {ek : Square}
                 | some pc' => intro h2; exact ⟨pc', rfl, by simpa using h2⟩
               · exact Or.inr (Or.inr h1)
             · simpa using hpr
+          · right; right
+            have hpc : pc = ⟨q.turn, .bishop⟩ := by
+              obtain ⟨col, kind⟩ := pc; simp only at hcol hkind; rw [hcol, hkind]
+            subst hpc
+            refine ⟨s, t, rfl, hs, ?_, hfr, hnc⟩
+            unfold normalPieceGeometryB at hgeo
+            simp only [Bool.and_eq_true] at hgeo
+            exact hgeo.1
   | promotion s t k =>
       exfalso
       simp only [pseudoLegal, pseudoLegalB] at hps
@@ -785,7 +1009,7 @@ theorem enemy_move2 {q : Position} {m : Move} {ek : Square}
       simp only [pseudoLegal, pseudoLegalB, pseudoLegalCastleB, castleColorOf, castleRightOf,
         castleRookSource, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hps
       obtain ⟨⟨⟨⟨hturn, _⟩, _⟩, hrook⟩, _⟩ := hps
-      rcases henemy _ _ hrook (by rw [hturn]) with ⟨_, hk⟩ | hk <;> cases hk
+      rcases henemy _ _ hrook (by rw [hturn]) with ⟨_, hk⟩ | hk | hk <;> cases hk
 
 -- chess-lean proves this by `native_decide` (an extra axiom); the kernel's own `decide` does it too.
 set_option maxRecDepth 100000 in
@@ -876,7 +1100,7 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
   have hymem : y ∈ path c x := ahead_mem_path hy
   -- the enemy's pieces in q
   have hq_enemy : ∀ s pc, q.board s = some pc → pc.color = q.turn →
-      (s = ek ∧ pc.kind = .king) ∨ pc.kind = .pawn := by
+      (s = ek ∧ pc.kind = .king) ∨ pc.kind = .pawn ∨ pc.kind = .bishop := by
     rw [hqturn]; intro s pc hs hcol
     by_cases hsy : s = y
     · rw [hsy, hqy] at hs; cases hs; exact absurd hcol (hne c)
@@ -896,6 +1120,22 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
         · intro hh; cases hh
         · intro hh; exact absurd hh (hcol_ne _ _)
       · rw [hqother s hsy hsx]
+  have hq_bishop_eq : ∀ s, q.board s = some ⟨Color.opposite c, .bishop⟩ ↔ p.board s = some ⟨Color.opposite c, .bishop⟩ := by
+    intro s
+    by_cases hsy : s = y
+    · rw [hsy, hqy, hy_empty]
+      constructor
+      · intro hh; exact absurd hh (hcol_ne _ _)
+      · intro hh; cases hh
+    · by_cases hsx : s = x
+      · rw [hsx, hqx, hpawn]
+        constructor
+        · intro hh; cases hh
+        · intro hh; exact absurd hh (hcol_ne _ _)
+      · rw [hqother s hsy hsx]
+  have hq_bcount : bishopCount q (Color.opposite c) = bishopCount p (Color.opposite c) := by
+    unfold bishopCount; apply filter_length_congr; intro u
+    apply Bool.eq_iff_iff.mpr; simp only [beq_iff_eq]; exact hq_bishop_eq u
   have hq_ep : q.enPassant = none := push_enPassant_none h.turn hy
   -- an enemy pawn's move never ends on a bad square: straight, it was more than one move away; capturing,
   -- it lands on a capture square it was more than one move away from
@@ -1003,7 +1243,7 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
     exact enemy_pawn_not_on_bad h (mem_badSquares.mpr (Or.inr (Or.inl hg))) hs
   -- THE ENEMY'S MOVE
   rcases enemy_move2 hq_enemy (by rw [hqturn]; exact hek_q) hq_ep hq_nopromo he with
-    ⟨d, rfl, hgeo, hfr, hnc⟩ | ⟨s, t, rfl, hs, hmv, hnpr, hfr, hnc⟩
+    ⟨d, rfl, hgeo, hfr, hnc⟩ | ⟨s, t, rfl, hs, hmv, hnpr, hfr, hnc⟩ | ⟨s, t, rfl, hs, hgeo, hfr, hnc⟩
   · -- ===== a king step ek -> d =====
     set q' := applyMove q (.normal ek d) with hq'
     have hboard' : q'.board = boardMove q.board ek d := rfl
@@ -1052,20 +1292,34 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
           · intro hh; cases hh
           · intro hh; exact absurd hh (hcol_ne' _ _)
         · rw [hq'other s hsd hse, hq_kings]
-    have hbare' : ∀ s pc, q'.board s = some pc → pc.color = Color.opposite c → (s = d ∧ pc.kind = .king) ∨ pc.kind = .pawn := by
+    have hq'_bishop_eq : ∀ s, q'.board s = some ⟨Color.opposite c, .bishop⟩ ↔ q.board s = some ⟨Color.opposite c, .bishop⟩ := by
+      intro s
+      by_cases hsd : s = d
+      · rw [hsd, hq'd]
+        constructor
+        · intro hh; cases hh
+        · intro hh; simp [destinationFriendlyB, hh, hqturn] at hfr
+      · by_cases hse : s = ek
+        · rw [hse, hq'ek, hek_q]; constructor <;> intro hh <;> cases hh
+        · rw [hq'other s hsd hse]
+    have hq'_bcount : bishopCount q' (Color.opposite c) = bishopCount p (Color.opposite c) := by
+      rw [← hq_bcount]; unfold bishopCount; apply filter_length_congr; intro u
+      apply Bool.eq_iff_iff.mpr; simp only [beq_iff_eq]; exact hq'_bishop_eq u
+    have hbare' : ∀ s pc, q'.board s = some pc → pc.color = Color.opposite c → (s = d ∧ pc.kind = .king) ∨ pc.kind = .pawn ∨ pc.kind = .bishop := by
       intro s pc hs hcol
       by_cases hsd : s = d
       · rw [hsd, hq'd] at hs; cases hs; exact Or.inl ⟨hsd, rfl⟩
       · by_cases hse : s = ek
         · rw [hse, hq'ek] at hs; cases hs
         · rw [hq'other s hsd hse] at hs
-          rcases hq_enemy s pc hs (by rw [hqturn]; exact hcol) with ⟨hse', _⟩ | hk
+          rcases hq_enemy s pc hs (by rw [hqturn]; exact hcol) with ⟨hse', _⟩ | hk | hk
           · exact absurd hse' hse
-          · exact Or.inr hk
+          · exact Or.inr (Or.inl hk)
+          · exact Or.inr (Or.inr hk)
     have honly : ∀ s, q'.board s = some ⟨Color.opposite c, .king⟩ ↔ s = d := by
       intro s
       constructor
-      · intro hs; rcases hbare' s _ hs rfl with ⟨hd, _⟩ | hk; exact hd; cases hk
+      · intro hs; rcases hbare' s _ hs rfl with ⟨hd, _⟩ | hk | hk; exact hd; cases hk; cases hk
       · rintro rfl; exact hq'd
     -- the enemy king on d is not next to our king (its move was legal)
     have hd_ok : kingGeometryB d ok = false := by
@@ -1107,7 +1361,7 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
           simp only [isAttackedB, List.any_eq_true] at hin
           obtain ⟨s, -, hs⟩ := hin
           obtain ⟨pc, hpc, hcol⟩ := pieceAttacksB_source hs
-          rcases hbare' s pc hpc hcol with ⟨hsd, hkd⟩ | hkp
+          rcases hbare' s pc hpc hcol with ⟨hsd, hkd⟩ | hkp | hkb
           · rw [hsd] at hs
             rw [king_attack hq'd, hd_ok] at hs; cases hs
           · have hpc' : q'.board s = some ⟨Color.opposite c, .pawn⟩ := by
@@ -1115,6 +1369,10 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
             rw [pawn_attack hpc'] at hs
             have hp_s := (hq_pawn_eq s).1 ((hq'_pawn_eq s).1 hpc')
             rw [hno_check_pawn s hp_s] at hs; cases hs
+          · have hpc' : q'.board s = some ⟨Color.opposite c, .bishop⟩ := by
+              obtain ⟨col, kind⟩ := pc; simp only at hcol hkb; rw [hcol, hkb] at hpc; exact hpc
+            have hp_s := (hq_bishop_eq s).1 ((hq'_bishop_eq s).1 hpc')
+            rw [bishop_noattack hpc' (h.bishops s hp_s).1] at hs; cases hs
         themSafe := by rw [← hqturn]; exact hnc
         pawnsFar := by
           intro s hs t ht
@@ -1141,6 +1399,11 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
         count := by
           rw [← hq_count]; apply filter_length_congr; intro u
           apply Bool.eq_iff_iff.mpr; simp only [beq_iff_eq]; exact hq'_pawn_eq u
+        bishops := by
+          intro s hs
+          have hp_s := (hq_bishop_eq s).1 ((hq'_bishop_eq s).1 hs)
+          obtain ⟨hpar, hfar⟩ := h.bishops s hp_s
+          exact ⟨hpar, fun t ht => bfarB_mono (by omega) (hfar t (path_of_ahead hy ht).1)⟩
         room := by
           intro x' hx'
           have hr := h.room x' (by have := kdist_triangle x' d ek; rw [kdist_comm d ek] at this; omega)
@@ -1148,7 +1411,8 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
           rcases hr with hr | hr
           · exact Or.inl hr
           · right
-            refine lt_of_le_of_lt ?_ hr
+            rw [hq'_bcount]
+            refine lt_of_le_of_lt (Nat.add_le_add_right ?_ _) hr
             unfold nearPawnsB
             apply filter_length_mono
             intro u hu
@@ -1216,14 +1480,27 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
           · intro hh; cases hh
           · intro hh; rw [hqturn] at hs; rw [hs] at hh; exact absurd hh (hcol_ne' _ _)
         · rw [hq'other u hut hus, hq_kings]
-    have hbare' : ∀ u pc, q'.board u = some pc → pc.color = Color.opposite c → (u = ek ∧ pc.kind = .king) ∨ pc.kind = .pawn := by
+    have hbare' : ∀ u pc, q'.board u = some pc → pc.color = Color.opposite c → (u = ek ∧ pc.kind = .king) ∨ pc.kind = .pawn ∨ pc.kind = .bishop := by
       intro u pc hu hcol
       by_cases hut : u = t
-      · rw [hut, hq't] at hu; cases hu; exact Or.inr rfl
+      · rw [hut, hq't] at hu; cases hu; exact Or.inr (Or.inl rfl)
       · by_cases hus : u = s
         · rw [hus, hq's] at hu; cases hu
         · rw [hq'other u hut hus] at hu
           exact hq_enemy u pc hu (by rw [hqturn]; exact hcol)
+    have hq'_bishop_eq : ∀ u, q'.board u = some ⟨Color.opposite c, .bishop⟩ ↔ q.board u = some ⟨Color.opposite c, .bishop⟩ := by
+      intro u
+      by_cases hut : u = t
+      · rw [hut, hq't]
+        constructor
+        · intro hh; cases hh
+        · intro hh; simp [destinationFriendlyB, hh, hqturn] at hfr
+      · by_cases hus : u = s
+        · rw [hus, hq's, show q.board s = some ⟨Color.opposite c, .pawn⟩ by rw [← hqturn]; exact hs]; constructor <;> intro hh <;> cases hh
+        · rw [hq'other u hut hus]
+    have hq'_bcount : bishopCount q' (Color.opposite c) = bishopCount p (Color.opposite c) := by
+      rw [← hq_bcount]; unfold bishopCount; apply filter_length_congr; intro u
+      apply Bool.eq_iff_iff.mpr; simp only [beq_iff_eq]; exact hq'_bishop_eq u
     have hq'_pawn : ∀ u, q'.board u = some ⟨Color.opposite c, .pawn⟩ ↔ (u = t ∨ (p.board u = some ⟨Color.opposite c, .pawn⟩ ∧ u ≠ s)) := by
       intro u
       by_cases hut : u = t
@@ -1272,7 +1549,7 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
           simp only [isAttackedB, List.any_eq_true] at hin
           obtain ⟨u, -, hu⟩ := hin
           obtain ⟨pc, hpc, hcol⟩ := pieceAttacksB_source hu
-          rcases hbare' u pc hpc hcol with ⟨hue, hkd⟩ | hkp
+          rcases hbare' u pc hpc hcol with ⟨hue, hkd⟩ | hkp | hkb
           · rw [hue] at hu; rw [king_attack hq'ek, hkings_apart] at hu; cases hu
           · have hpc' : q'.board u = some ⟨Color.opposite c, .pawn⟩ := by
               obtain ⟨col, kind⟩ := pc; simp only at hcol hkp; rw [hcol, hkp] at hpc; exact hpc
@@ -1280,6 +1557,10 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
             rcases (hq'_pawn u).1 hpc' with rfl | ⟨hp_u, _⟩
             · exact ht_not_bad u (mem_badSquares.mpr (Or.inr (Or.inl hu))) rfl
             · rw [hno_check_pawn u hp_u] at hu; cases hu
+          · have hpc' : q'.board u = some ⟨Color.opposite c, .bishop⟩ := by
+              obtain ⟨col, kind⟩ := pc; simp only at hcol hkb; rw [hcol, hkb] at hpc; exact hpc
+            have hp_u := (hq_bishop_eq u).1 ((hq'_bishop_eq u).1 hpc')
+            rw [bishop_noattack hpc' (h.bishops u hp_u).1] at hu; cases hu
         themSafe := by rw [← hqturn]; exact hnc
         pawnsFar := by
           intro u hu t' ht'
@@ -1331,6 +1612,11 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
             simp only [beq_iff_eq] at hh
             simp [destinationFriendlyB, hh, hqturn] at hfr
           · intro u; simp only [beq_iff_eq]; rw [hq'_pawn u, hq_pawn_eq]
+        bishops := by
+          intro u hu
+          have hp_u := (hq_bishop_eq u).1 ((hq'_bishop_eq u).1 hu)
+          obtain ⟨hpar, hfar⟩ := h.bishops u hp_u
+          exact ⟨hpar, fun z hz => bfarB_mono (by omega) (hfar z (path_of_ahead hy hz).1)⟩
         room := by
           intro x' hx'
           have hr := h.room x' (by omega)
@@ -1338,7 +1624,8 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
           rcases hr with hr | hr
           · exact Or.inl hr
           · right
-            refine lt_of_le_of_lt ?_ hr
+            rw [hq'_bcount]
+            refine lt_of_le_of_lt (Nat.add_le_add_right ?_ _) hr
             unfold nearPawnsB
             apply filter_length_le_swap (s := s) (t := t)
             · -- a pawn near at r + 1 - 1 moves was near at r + 2 - 1: unmoved, by monotonicity; the moved one is t
@@ -1362,6 +1649,187 @@ theorem inv_step2 {c : Color} {p : Position} {x : Square} {r : Nat} {ek ok : Squ
               · have h2 : farB (Color.opposite c) t dd (r + 1 - 1) = true :=
                   pdist_step (h.pawnsOffBack s hp_s) hmv' (k := r) (by simpa using hf)
                 rw [h2] at hfar; cases hfar }
+  · -- ===== a bishop move s -> t =====
+    set q' := applyMove q (.normal s t) with hq'
+    have hboard' : q'.board = boardMove q.board s t := rfl
+    have hp_s : p.board s = some ⟨Color.opposite c, .bishop⟩ := (hq_bishop_eq s).1 (by rw [← hqturn]; exact hs)
+    have hst : s ≠ t := diag_ne hgeo
+    have hpar_st : sqPar s = sqPar t := diag_par hgeo
+    obtain ⟨hpar_s, hfar_s⟩ := h.bishops s hp_s
+    -- the bishop cannot land on a square the pawn still has to cross: it needs more than one move to
+    have ht_not_path : ∀ z ∈ path c x, t ≠ z := by
+      intro z hz htz
+      have hf := hfar_s z hz
+      rw [← htz] at hf
+      unfold bfarB bdist at hf
+      simp only [hst, hgeo, if_false, if_true, decide_eq_true_eq] at hf
+      omega
+    have hty : t ≠ y := ht_not_path y hymem
+    have hsy : s ≠ y := by intro e; rw [e, hqy, hqturn] at hs; exact hcol_ne _ _ hs
+    have hsx : s ≠ x := by intro e; rw [e, hqx] at hs; cases hs
+    have hsek : s ≠ ek := by intro e; rw [e, hek_q] at hs; simp at hs
+    have htek : t ≠ ek := by intro e; rw [e] at hfr; simp [destinationFriendlyB, hek_q, hqturn] at hfr
+    have hq'other : ∀ u, u ≠ t → u ≠ s → q'.board u = q.board u := by
+      intro u hut hus; rw [hboard']; simp [boardMove, boardUpdate, Function.update_apply, hut, hus]
+    have hq't : q'.board t = some ⟨Color.opposite c, .bishop⟩ := by
+      rw [hboard']; simp only [boardMove, boardUpdate, Function.update_apply, if_true]; rw [← hqturn]; exact hs
+    have hq's : q'.board s = none := by
+      rw [hboard']; simp [boardMove, boardUpdate, Function.update_apply, hst]
+    have hq'y : q'.board y = some ⟨c, .pawn⟩ := by rw [hq'other y hty.symm hsy.symm]; exact hqy
+    have hq'ek : q'.board ek = some ⟨Color.opposite c, .king⟩ := by rw [hq'other ek htek.symm hsek.symm]; exact hek_q
+    have ht_not_our_king : q.board t ≠ some ⟨c, .king⟩ := by
+      intro hqt; simp [destinationFriendlyB, hqt, hqturn] at hfr
+    have hq'_ours : ∀ u pc, q'.board u = some pc → pc.color = c → q.board u = some pc := by
+      intro u pc hu hcol
+      by_cases hut : u = t
+      · rw [hut, hq't] at hu; cases hu; exact absurd hcol.symm (hne c)
+      · by_cases hus : u = s
+        · rw [hus, hq's] at hu; cases hu
+        · rw [← hq'other u hut hus]; exact hu
+    have hk : ∀ u, q'.board u = some ⟨c, .king⟩ ↔ p.board u = some ⟨c, .king⟩ := by
+      intro u
+      by_cases hut : u = t
+      · rw [hut, hq't, ← hq_kings]
+        constructor
+        · intro hh; exact absurd hh (hcol_ne' _ _)
+        · intro hh; exact absurd hh ht_not_our_king
+      · by_cases hus : u = s
+        · rw [hus, hq's, ← hq_kings]
+          constructor
+          · intro hh; cases hh
+          · intro hh; rw [hqturn] at hs; rw [hs] at hh; exact absurd hh (hcol_ne' _ _)
+        · rw [hq'other u hut hus, hq_kings]
+    have hbare' : ∀ u pc, q'.board u = some pc → pc.color = Color.opposite c → (u = ek ∧ pc.kind = .king) ∨ pc.kind = .pawn ∨ pc.kind = .bishop := by
+      intro u pc hu hcol
+      by_cases hut : u = t
+      · rw [hut, hq't] at hu; cases hu; exact Or.inr (Or.inr rfl)
+      · by_cases hus : u = s
+        · rw [hus, hq's] at hu; cases hu
+        · rw [hq'other u hut hus] at hu
+          exact hq_enemy u pc hu (by rw [hqturn]; exact hcol)
+    have hq'_pawn_eq : ∀ u, q'.board u = some ⟨Color.opposite c, .pawn⟩ ↔ q.board u = some ⟨Color.opposite c, .pawn⟩ := by
+      intro u
+      by_cases hut : u = t
+      · rw [hut, hq't]
+        constructor
+        · intro hh; cases hh
+        · intro hh; simp [destinationFriendlyB, hh, hqturn] at hfr
+      · by_cases hus : u = s
+        · rw [hus, hq's, show q.board s = some ⟨Color.opposite c, .bishop⟩ by rw [← hqturn]; exact hs]; constructor <;> intro hh <;> cases hh
+        · rw [hq'other u hut hus]
+    have hq'_bishop : ∀ u, q'.board u = some ⟨Color.opposite c, .bishop⟩ ↔
+        (u = t ∨ (q.board u = some ⟨Color.opposite c, .bishop⟩ ∧ u ≠ s)) := by
+      intro u
+      by_cases hut : u = t
+      · rw [hut, hq't]; simp
+      · by_cases hus : u = s
+        · rw [hus, hq's]; simp [hst, hs, hqturn]
+        · rw [hq'other u hut hus]; simp [hut, hus]
+    refine ⟨y, ek, hy, ?_⟩
+    exact
+      { turn := by rw [hq', applyMove_turn, hqturn, Color.opposite_opposite]
+        pawn := hq'y
+        notFirst := ahead_notFirst hy
+        pushesEq := hpush_y
+        pos := by omega
+        clear := by
+          intro t' ht'
+          obtain ⟨htx, hty'⟩ := path_of_ahead hy ht'
+          have htt' : t ≠ t' := ht_not_path t' htx
+          have hst' : s ≠ t' := by
+            intro e; rw [e] at hp_s; rw [h.clear t' htx] at hp_s; cases hp_s
+          have htxne : t' ≠ x := by intro e; rw [e] at htx; exact self_not_mem_path htx
+          rw [hq'other t' htt'.symm hst'.symm, hqother t' hty' htxne]
+          exact h.clear t' htx
+        enemy := hbare'
+        eking := hq'ek
+        pawnsOffBack := fun u hu => h.pawnsOffBack u ((hq_pawn_eq u).1 ((hq'_pawn_eq u).1 hu))
+        outside := by rw [hpromo_y]; omega
+        noSliders := fun u pc hu hcol => hq_noSliders u pc (hq'_ours u pc hu hcol) hcol
+        ourKing := by rw [kingSquare_congr hk]; exact h.ourKing
+        usSafe := by
+          intro hin
+          unfold inCheck inCheckB at hin
+          rw [kingSquare_congr hk, h.ourKing] at hin
+          change isAttackedB q' (Color.opposite c) ok = true at hin
+          simp only [isAttackedB, List.any_eq_true] at hin
+          obtain ⟨u, -, hu⟩ := hin
+          obtain ⟨pc, hpc, hcol⟩ := pieceAttacksB_source hu
+          rcases hbare' u pc hpc hcol with ⟨hue, hkd⟩ | hkp | hkb
+          · rw [hue] at hu; rw [king_attack hq'ek, hkings_apart] at hu; cases hu
+          · have hpc' : q'.board u = some ⟨Color.opposite c, .pawn⟩ := by
+              obtain ⟨col, kind⟩ := pc; simp only at hcol hkp; rw [hcol, hkp] at hpc; exact hpc
+            rw [pawn_attack hpc'] at hu
+            have hp_u := (hq_pawn_eq u).1 ((hq'_pawn_eq u).1 hpc')
+            rw [hno_check_pawn u hp_u] at hu; cases hu
+          · have hpc' : q'.board u = some ⟨Color.opposite c, .bishop⟩ := by
+              obtain ⟨col, kind⟩ := pc; simp only at hcol hkb; rw [hcol, hkb] at hpc; exact hpc
+            rcases (hq'_bishop u).1 hpc' with rfl | ⟨hq_u, _⟩
+            · rw [bishop_noattack hpc' (by rw [← hpar_st]; exact hpar_s)] at hu; cases hu
+            · have hp_u := (hq_bishop_eq u).1 hq_u
+              rw [bishop_noattack hpc' (h.bishops u hp_u).1] at hu; cases hu
+        themSafe := by rw [← hqturn]; exact hnc
+        pawnsFar := by
+          intro u hu t' ht'
+          have hp_u := (hq_pawn_eq u).1 ((hq'_pawn_eq u).1 hu)
+          have hmono : ∀ d, captureSquaresB q' c y d = true → captureSquaresB p c x d = true :=
+            fun d hd => captureSquares_mono hy hqx hqother hq'_ours hd
+          rcases h.pawnsFar u hp_u t' (bad_mono hy ht') with hfar | ⟨hfile, hcone⟩
+          · exact Or.inl (farB_mono (by omega) hfar)
+          · exact Or.inr ⟨hfile, fun d hd hadj => farB_mono (by omega) (hcone d (hmono d hd) hadj)⟩
+        oursInF := fun u pc hu hcol => hq_oursF u pc (hq'_ours u pc hu hcol) hcol
+        attacksInF := by
+          intro d' hatt
+          apply hq_attacksF d'
+          simp only [isAttackedB, List.any_eq_true] at hatt ⊢
+          obtain ⟨u, hu_mem, hu⟩ := hatt
+          obtain ⟨pc, hpc, hcol⟩ := pieceAttacksB_source hu
+          have hq_u := hq'_ours u pc hpc hcol
+          refine ⟨u, hu_mem, ?_⟩
+          rw [noslider_pieceAttacks (hq_noSliders u pc hq_u hcol) hq_u hpc]
+          exact hu
+        futureInF := fun d' hd' => h.futureInF d' (future_mono hy hd')
+        pathInF := fun t' ht' => h.pathInF t' (path_of_ahead hy ht').1
+        count := by
+          rw [← hq_count]; apply filter_length_congr; intro u
+          apply Bool.eq_iff_iff.mpr; simp only [beq_iff_eq]; exact hq'_pawn_eq u
+        bishops := by
+          intro u hu
+          rcases (hq'_bishop u).1 hu with rfl | ⟨hq_u, _⟩
+          · refine ⟨by rw [← hpar_st]; exact hpar_s, fun z hz => ?_⟩
+            have hf := hfar_s z (path_of_ahead hy hz).1
+            have e1 : r + 2 - 1 = r + 1 := by omega
+            rw [e1] at hf
+            simpa using bfarB_step hgeo hf
+          · obtain ⟨hpar, hfar⟩ := h.bishops u ((hq_bishop_eq u).1 hq_u)
+            exact ⟨hpar, fun z hz => bfarB_mono (by omega) (hfar z (path_of_ahead hy hz).1)⟩
+        room := by
+          intro x' hx'
+          have hr := h.room x' (by omega)
+          simp only [neverKingB, hpromo_y] at hr ⊢
+          rcases hr with hr | hr
+          · exact Or.inl hr
+          · right
+            have hbc : bishopCount q' (Color.opposite c) = bishopCount p (Color.opposite c) := by
+              rw [← hq_bcount]; unfold bishopCount
+              apply filter_length_swap (s := s) (t := t) hst
+              · simp only [beq_iff_eq]; rw [← hqturn]; exact hs
+              · apply Bool.eq_false_iff.mpr; intro hh
+                simp only [beq_iff_eq] at hh
+                simp [destinationFriendlyB, hh, hqturn] at hfr
+              · intro u; simp only [beq_iff_eq]; exact hq'_bishop u
+            rw [hbc]
+            refine lt_of_le_of_lt (Nat.add_le_add_right ?_ _) hr
+            unfold nearPawnsB
+            apply filter_length_mono
+            intro u hu
+            simp only [Bool.and_eq_true, beq_iff_eq, List.any_eq_true, Bool.not_eq_true'] at hu ⊢
+            obtain ⟨hpu, dd, hdd, hfar⟩ := hu
+            refine ⟨(hq_pawn_eq u).1 ((hq'_pawn_eq u).1 hpu), dd, hdd, ?_⟩
+            cases hf : farB (Color.opposite c) u dd (r + 2 - 1)
+            · rfl
+            · have h2 : farB (Color.opposite c) u dd (r + 1 - 1) = true := farB_mono (by omega) hf
+              rw [h2] at hfar; cases hfar }
 
 /-- The race, second form. -/
 theorem race2 (c : Color) (f : Fin 8) (ok : Square) (F : Square → Bool) (np : Nat) :
@@ -1397,20 +1865,22 @@ theorem race2 (c : Color) (f : Fin 8) (ok : Square) (F : Square → Bool) (np : 
 
 /-! ## From the Idea's hypotheses to the invariant -/
 
-/-- **Soundness of the unstoppable passer, second form.** When every hypothesis holds, our pawn stands on
-the promotion square as a queen within `2n - 1` plies whatever the opponent does. -/
+/-- **Soundness of the unstoppable passer, second form.** When every hypothesis holds -- the enemy has a king, pawns
+and bishops (`enemyPieces`), the bishops are on the other colour from our king and need more than `n - 1` moves to
+land on any square the pawn still has to cross (`bishopsFar`), and the king and pawn hypotheses as before -- our
+pawn stands on the promotion square as a queen within `2n - 1` plies whatever the opponent does. -/
 theorem unstoppablePasser2_sound (p : Position) (ps : PasserParams)
     (h : unstoppablePasser2.holds p ps = true) :
     forcedWithinB p.turn (promoted p.turn ps.sq.1) p (2 * pushes p.turn ps.sq - 1) = true := by
   simp only [Idea.holds, unstoppablePasser2, List.all_cons, List.all_nil, Bool.and_true,
     Bool.and_eq_true] at h
-  obtain ⟨hpawn, hclear, henemy, hns, hnc, hout, hfar, hroom⟩ := h
+  obtain ⟨hpawn, hclear, henemy, hns, hnc, hout, hfar, hbish, hroom⟩ := h
   have hne : ∀ d : Color, d ≠ Color.opposite d := by intro d; cases d <;> decide
   -- the pawn
   simp only [ownPawnB, Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq] at hpawn
   obtain ⟨⟨hpawn, hnotpromo⟩, hnotfirst⟩ := hpawn
   -- the enemy king and pawns
-  simp only [enemyKingPawnsB, Bool.and_eq_true, List.all_eq_true] at henemy
+  simp only [enemyPiecesB, Bool.and_eq_true, List.all_eq_true] at henemy
   obtain ⟨hall, hone⟩ := henemy
   cases hek : kingSquare p.board (Color.opposite p.turn) with
   | none => rw [hek] at hone; simp at hone
@@ -1419,19 +1889,20 @@ theorem unstoppablePasser2_sound (p : Position) (ps : PasserParams)
     simp only [List.all_eq_true] at hone
     have hek_board : p.board ek = some ⟨Color.opposite p.turn, .king⟩ := (kingSquare_some hek).2
     have hpiece : ∀ s pc, p.board s = some pc → pc.color = Color.opposite p.turn →
-        pc.kind = .king ∨ (pc.kind = .pawn ∧ s.2.val ≠ backRank (Color.opposite p.turn)) := by
+        pc.kind = .king ∨ pc.kind = .bishop ∨ (pc.kind = .pawn ∧ s.2.val ≠ backRank (Color.opposite p.turn)) := by
       intro s pc hs hcol
       have h1 := hall s (mem_allSquares s)
       rw [hs] at h1
       simp only [Bool.or_eq_true, beq_iff_eq, Bool.and_eq_true, bne_iff_ne, ne_eq] at h1
-      rcases h1 with (h1 | h1) | h1
+      rcases h1 with ((h1 | h1) | h1) | h1
       · rw [hcol] at h1; exact absurd h1.symm (hne _)
       · exact Or.inl h1
-      · exact Or.inr h1
+      · exact Or.inr (Or.inl h1)
+      · exact Or.inr (Or.inr h1)
     have henemy' : ∀ s pc, p.board s = some pc → pc.color = Color.opposite p.turn →
-        (s = ek ∧ pc.kind = .king) ∨ pc.kind = .pawn := by
+        (s = ek ∧ pc.kind = .king) ∨ pc.kind = .pawn ∨ pc.kind = .bishop := by
       intro s pc hs hcol
-      rcases hpiece s pc hs hcol with hk | ⟨hk, _⟩
+      rcases hpiece s pc hs hcol with hk | hk | ⟨hk, _⟩
       · left
         refine ⟨?_, hk⟩
         have h2 := hone s (mem_allSquares s)
@@ -1440,11 +1911,13 @@ theorem unstoppablePasser2_sound (p : Position) (ps : PasserParams)
         rw [hs, hpc] at h2
         simp only [beq_self_eq_true, beq_iff_eq] at h2
         exact of_decide_eq_true h2.symm
-      · exact Or.inr hk
+      · exact Or.inr (Or.inr hk)
+      · exact Or.inr (Or.inl hk)
     have hoffback : ∀ s, p.board s = some ⟨Color.opposite p.turn, .pawn⟩ →
         s.2.val ≠ backRank (Color.opposite p.turn) := by
       intro s hs
-      rcases hpiece s _ hs rfl with hk | ⟨_, hb⟩
+      rcases hpiece s _ hs rfl with hk | hk | ⟨_, hb⟩
+      · cases hk
       · cases hk
       · exact hb
     -- not in check, our king
@@ -1456,6 +1929,8 @@ theorem unstoppablePasser2_sound (p : Position) (ps : PasserParams)
       simp only [kingOutsideB, hek, decide_eq_true_eq] at hout
       simp only [pawnsFarB, pawnFarB, hok, List.all_eq_true, Bool.or_eq_true, bne_iff_ne, ne_eq] at hfar
       simp only [kingRoomB, hek, hok, List.all_eq_true, Bool.or_eq_true, decide_eq_true_eq] at hroom
+      simp only [bishopsFarB, hok, List.all_eq_true, Bool.or_eq_true, Bool.and_eq_true, bne_iff_ne, ne_eq,
+        decide_eq_true_eq] at hbish
       have hpos : 1 ≤ pushes p.turn ps.sq := pushes_pos_of_not_promo hnotpromo
       apply race2 p.turn ps.sq.1 ok (forbiddenB p ps.sq) (enemyPawnCount p) (pushes p.turn ps.sq) p ps.sq ek rfl
       exact
@@ -1517,6 +1992,11 @@ theorem unstoppablePasser2_sound (p : Position) (ps : PasserParams)
             simp only [forbiddenB, Bool.or_eq_true]
             exact Or.inl (Or.inr (List.contains_iff_mem.mpr ht))
           count := rfl
+          bishops := by
+            intro s hs
+            rcases hbish s (mem_allSquares s) with hh | hh
+            · exact absurd hs hh
+            · exact ⟨hh.1, fun t ht => hh.2 t ht⟩
           room := by
             intro x' hx'
             rcases hroom x' (mem_allSquares x') with (hh | hh) | hh

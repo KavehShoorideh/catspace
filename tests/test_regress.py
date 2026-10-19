@@ -560,10 +560,13 @@ def test_52_15_a_stopped_promotion_is_chased_through_the_pawn_offered_to_the_sto
     t = ag.trace()
     assert "b6 (offers the pawn to the stopper: the B on a5 takes" in t                       # the route the stopper rule adds; no forcing_why route exists here
     assert ag.ctx.agendas > 0                                                                  # every reply of theirs was followed by the whole agenda
-    assert "b6: killed -- after Bb4: the promotion is not claimed" in t                       # the reason it is not decided: Bb4 leaves a pawn the Lean passer lemma (kings and pawns only) cannot claim
+    # 52.16 (1): after Bb4 the bishop is a stopper that does not stop (the other colour from Kd3, two moves from b8): the passer lemma with bishops claims b7-b8
+    assert "after Bb4: b7 (b7, then b8=Q within 3 plies whatever they do (2 pushes); value 8, lemma unstoppablePasser2_sound)" in t
+    assert ag.decision().what == "b6" and "unstoppablePasser2_sound" in ag.decision().lemma
+    assert "enemyKingPawns" not in t
     inner = AG.Agenda(State("8/8/1P6/2P1k3/1b2P3/3K4/8/8 w - - 1 56", "w", []), side_depth=0, chase_depth=1, ctx=ag.ctx, min_stake=R.STAKE_PROMOTE)
     inner.ask()
-    assert any("enemyKingPawns: their B on b4" in g for g in inner.state.gaps)
+    assert inner.best is not None and inner.best[2].kind == "promote" and inner.best[2].lemma == "unstoppablePasser2_sound"
 
 
 def test_52_15_a_promote_route_is_claimed_when_the_pawn_cannot_be_stopped_on_every_reply():

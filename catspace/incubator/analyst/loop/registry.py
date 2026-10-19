@@ -20,7 +20,7 @@ REGISTERED = [
          sentence="the pawn on {sq} cannot be stopped: the king is outside its square and has nothing else to stop it with (proved: Ideas.Passer.unstoppablePasser_sound')."),
     dict(id="lean:unstoppablePasser2", theorem="Ideas.Passer2.unstoppablePasser2_sound", tier="unconditional", detector="passer2",
          claim=dict(kind="promotion", horizon=13, value=8.0, text="our pawn promotes to a queen within 2n-1 plies whatever the opponent does"),
-         hypotheses=["ownPawn", "pathClear", "enemyKingPawns", "noSliders", "notInCheck", "kingOutside", "pawnsFar", "kingRoom"],
+         hypotheses=["ownPawn", "pathClear", "enemyPieces", "noSliders", "notInCheck", "kingOutside", "pawnsFar", "bishopsFar", "kingRoom"],
          protagonist="our pawn", footprint="the pawn, its path, the enemy king's reachable squares, the enemy pawns' bad squares (Lean detector `passer2`)",
          bridges=["passer2_random", "passer2_heldout"],
          uses=[("closure", "TacticalSpec.proved_passer + frame_player.PASSER: the queen counted at the horizon, the push a candidate")],

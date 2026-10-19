@@ -1317,7 +1317,7 @@ class Agenda:
                 return
             self._kill(q, reason, tempo=True)
             return
-        ps = dict(PV.proved_passers(b))
+        ps = dict(PV.proved_passers(b, bishops=True))
         if sq in ps:
             push = chess.Move(sq, facts["path"][0], promotion=chess.QUEEN if n == 1 else None)
             san = b.san(push)
@@ -1336,8 +1336,10 @@ class Agenda:
         bad = [k for k in PV.HYPS if not h[k]]
         why = []
         for k in bad:
-            if k == "enemyKingPawns":
-                why.append("enemyKingPawns: " + ", ".join(f"their {b.piece_at(s).symbol().upper()} on {G.name(s)}" for s in chess.SquareSet((b.rooks | b.bishops | b.queens | b.knights) & b.occupied_co[not self.me])))
+            if k == "enemyPieces":
+                why.append("enemyPieces: " + ", ".join(f"their {b.piece_at(s).symbol().upper()} on {G.name(s)}" for s in chess.SquareSet((b.rooks | b.queens | b.knights) & b.occupied_co[not self.me])))
+            elif k == "bishopsFar":
+                why.append("bishopsFar: " + ", ".join(f"their B on {G.name(s)}" for s in chess.SquareSet(b.bishops & b.occupied_co[not self.me])))
             elif k == "noSliders":
                 why.append("noSliders: " + ", ".join(f"our {b.piece_at(s).symbol().upper()} on {G.name(s)}" for s in chess.SquareSet((b.rooks | b.bishops | b.queens) & b.occupied_co[self.me])))
             else:

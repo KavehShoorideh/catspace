@@ -7,16 +7,19 @@ means the hypothesis set is unsound and must change before a proof is attempted.
 
 Hypotheses (us = side to move, pawn on `sq`, `n` pushes to promotion, the enemy gets `n - 1` moves before it):
   ownPawn, pathClear, noSliders (ours), notInCheck, kingOutside     -- as in the first form
-  enemyKingPawns   -- the enemy has only its king and pawns
+  enemyPieces      -- the enemy has only its king, pawns and bishops (plan 52.16; before, only king and pawns)
   pawnsFar         -- every enemy pawn needs more than n - 1 moves (a lower bound: max(|file diff|, rank diff minus
                       one for a possible double step)) to reach any BAD square: the path and our pawn's square, the
                       squares from which it would check our king, and its promotion rank -- or (the cone form,
                       2026-10-06) the bad square is off the pawn's file and the pawn cannot leave its file in time:
                       it is more than n - 1 moves from every square it could capture on beside it (our pieces, the
                       path; nothing else of ours moves during the race)
+  bishopsFar       -- every enemy bishop is on the other colour from our king and needs more than n - 1 moves to land
+                      on any square the pawn still has to cross, the board ignored (Lean `bdist`: 0 on its own square,
+                      1 along a diagonal, 2 on its colour, never off it)
   kingRoom         -- for every square the enemy king can reach in n - 1 moves, the number of its neighbours that
                       hold no piece of ours, are attacked by none of our pieces (our pawn's whole future attack set
-                      counted), and are not on the path exceeds the number of enemy pawns: the enemy can never run
+                      counted), and are not on the path exceeds the number of enemy pawns (and bishops): the enemy can never run
                       out of king moves (no self-stalemate)
 
     python -m catspace.incubator.analyst.lean_passer_v2_proto --theme pawnEndgame --n 500 --offset 17
@@ -55,7 +58,7 @@ def passer_v2(b: chess.Board, sq: int) -> dict:
     h["ownPawn"] = pc is not None and pc.color == us and pc.piece_type == chess.PAWN and r not in (0, 7)
     h["pathClear"] = all(b.piece_at(t) is None for t in path)
     h["noSliders"] = not ((b.rooks | b.bishops | b.queens) & b.occupied_co[us])
-    h["enemyKingPawns"] = not ((b.rooks | b.bishops | b.queens | b.knights) & b.occupied_co[them])
+    h["enemyPieces"] = not ((b.rooks | b.queens | b.knights) & b.occupied_co[them])
     ok = b.king(us)
     ek = b.king(them)
     h["notInCheck"] = ok is not None and ek is not None and not b.is_check() and not b.attackers_mask(us, ek)
@@ -115,32 +118,48 @@ def passer_v2(b: chess.Board, sq: int) -> dict:
                 # only the enemy pawns that can reach one of x's free neighbours in n - 1 moves count (the Lean
                 # `nearPawnsB`, 2026-10-06; before, every enemy pawn counted)
                 near = sum(1 for e in chess.SquareSet(b.pawns & b.occupied_co[them]) if any(pawn_dist(e, d) <= n - 1 for d in free))
+                near += len(chess.SquareSet(b.bishops & b.occupied_co[them]))             # a bishop may stand on any free neighbour (Lean `bishopCount`)
                 if len(free) <= near:
                     room = False
                     break
     h["kingRoom"] = room
+    # the bishops (Lean `bishopsFarB`): the colour of our king is never theirs, and the moves to land on a path square (the board ignored)
+    def bdist(a: int, t: int):
+        if a == t:
+            return 0
+        if abs(chess.square_file(a) - chess.square_file(t)) == abs(chess.square_rank(a) - chess.square_rank(t)):
+            return 1
+        if (chess.square_file(a) + chess.square_rank(a)) % 2 == (chess.square_file(t) + chess.square_rank(t)) % 2:
+            return 2
+        return None
+
+    h["bishopsFar"] = ok is not None and all(
+        (chess.square_file(a) + chess.square_rank(a)) % 2 != (chess.square_file(ok) + chess.square_rank(ok)) % 2
+        and all(bdist(a, t) is None or bdist(a, t) > n - 1 for t in path)
+        for a in chess.SquareSet(b.bishops & b.occupied_co[them]))
     return h
 
 
-HYPS = ("ownPawn", "pathClear", "noSliders", "enemyKingPawns", "notInCheck", "kingOutside", "pawnsFar", "kingRoom")
+HYPS = ("ownPawn", "pathClear", "noSliders", "enemyPieces", "notInCheck", "kingOutside", "pawnsFar", "bishopsFar", "kingRoom")
 
 QUEEN_GAIN = 8.0        # a queen for a pawn, the value the zone search already uses for a promotion
 
 
-def passer_gate(b: chess.Board) -> bool:
-    """Where the second form can fire at all: we have pawns and no sliders, the enemy has only king and pawns."""
+def passer_gate(b: chess.Board, bishops: bool = False) -> bool:
+    """Where the second form can fire at all: we have pawns and no sliders, the enemy has only king and pawns (and, with `bishops`, bishops: plan 52.16;
+    the callers that credit a passer by their own arithmetic -- the zone search, the frame player -- keep the king-and-pawns gate)."""
     us = b.turn
     return bool(b.pawns & b.occupied_co[us]) and not ((b.rooks | b.bishops | b.queens) & b.occupied_co[us]) \
-        and not ((b.rooks | b.bishops | b.queens | b.knights) & b.occupied_co[not us])
+        and not ((b.rooks | b.queens | b.knights | (0 if bishops else b.bishops)) & b.occupied_co[not us])
 
 
 USE_LEAN = True         # the Lean detector (the proved definitions); False: this Python prototype of them
 
 
-def proved_passers(b: chess.Board) -> list[tuple[int, int]]:
+def proved_passers(b: chess.Board, bishops: bool = False) -> list[tuple[int, int]]:
     """Our pawns whose promotion the second form proves: [(square, plies)]. By the Lean detector (`passer2`,
-    theorem unstoppablePasser2_sound) unless USE_LEAN is off."""
-    if not passer_gate(b):
+    theorem unstoppablePasser2_sound) unless USE_LEAN is off. `bishops`: their bishops are allowed (the lemma's `enemyPieces` and `bishopsFar`)."""
+    if not passer_gate(b, bishops):
         return []
     if USE_LEAN:
         from .lean_ideas import detector

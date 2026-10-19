@@ -101,7 +101,12 @@ PASSER2_CASES = [
     ("1K6/8/4P2k/2p5/3P4/8/8/8 w - - 0 1", "d4", "ONEAWAY", "kingOutside", None),    # the king is in the square
     ("8/8/3Pp1P1/2K1p2k/8/8/8/8 w - - 0 1", "g6", "PROVED", None, 3),               # its pawns cannot reach the king's corner in time (2026-10-06)
     ("7k/4N1pp/P7/8/8/8/8/1K6 w - - 0 1", "a6", "ONEAWAY", "kingRoom", None),        # the king's own pawns on its last free squares
-    ("8/8/8/4b3/8/4P3/8/K6k w - - 0 1", "e3", "FAIL", None, None),                   # an enemy bishop: two hypotheses fail
+    ("8/8/8/4b3/8/4P3/8/K6k w - - 0 1", "e3", "FAIL", None, None),                   # an enemy bishop on our king's colour, on the path's diagonal: two hypotheses fail
+    # plan 52.16: the bishop as a stopper that does not stop (Ideas.Passer2.bishopsFarB, bdist); 0Nv29 after b6 Bb4
+    ("8/8/1P6/2P1k3/1b2P3/3K4/8/8 w - - 1 56", "b6", "PROVED", None, 3),             # the B on b4 (the other colour from Kd3) needs 2 moves to land on b8, the pawn 2 pushes
+    ("8/8/1P6/2P1k3/8/3K4/8/b7 w - - 1 56", "b6", "PROVED", None, 3),                # the B on a1 is two moves from b8
+    ("8/1P6/8/3b4/8/3K4/8/7k w - - 0 1", "b7", "ONEAWAY", "bishopsFar", None),       # the B on d5 stands on our king's colour: it could check or pin
+    ("8/8/1P6/8/8/3K4/2b5/7k w - - 0 1", "b6", "FAIL", None, None),                  # the B on c2 is on the path's diagonal to b3? no: it stands on our king's colour and is one move from b1-h7/a4-e8 lines
 ]
 
 
@@ -209,3 +214,40 @@ def test_the_kernel_capture_game_with_chains_counts_the_gun():
     assert seex == 1 == see_x(gun, chess.D5)[0] and xv == 1 and xh
     assert li.exchange(gun, chess.D5)[1] == -2                         # the plain count
     # the x-ray certificate's horizon on the gun is six plies full-width: beyond the certificate (timeouts), not asserted
+
+
+def test_passer2_with_enemy_bishops_agrees_with_the_race_search():
+    """Plan 52.16 bridge (not the proof -- the proof is Ideas.Passer2.unstoppablePasser2_sound): on random positions with one or two enemy bishops, every
+    position the Lean detector PROVES is confirmed by the exhaustive race search. A single disagreement means the statement and the search differ."""
+    import random
+    from catspace.incubator.analyst.lean_ideas import detector
+    from catspace.incubator.analyst.lean_passer_check import promotes_within
+    rng = random.Random(7)
+    li = detector()
+    proved = tried = 0
+    while tried < 3000:
+        b = chess.Board(None)
+        k, ek, pw, eb1, eb2, ep1, ep2 = rng.sample(range(64), 7)
+        if chess.square_rank(pw) not in (4, 5, 6):
+            pw = chess.square(chess.square_file(pw), rng.choice((4, 5, 6)))
+        if pw in (k, ek):
+            continue
+        b.set_piece_at(k, chess.Piece(chess.KING, chess.WHITE)); b.set_piece_at(ek, chess.Piece(chess.KING, chess.BLACK))
+        b.set_piece_at(pw, chess.Piece(chess.PAWN, chess.WHITE))
+        used = {k, ek, pw}
+        ok = True
+        for s in (eb1, eb2)[:rng.randint(1, 2)]:
+            ok = ok and s not in used
+            used.add(s); b.set_piece_at(s, chess.Piece(chess.BISHOP, chess.BLACK))
+        for s in (ep1, ep2)[:rng.randint(0, 2)]:
+            ok = ok and s not in used and chess.square_rank(s) not in (0, 7)
+            used.add(s); b.set_piece_at(s, chess.Piece(chess.PAWN, rng.choice((chess.WHITE, chess.BLACK))))
+        b.turn = chess.WHITE
+        if not ok or not b.is_valid() or b.is_check() or b.attackers_mask(chess.WHITE, ek):
+            continue
+        tried += 1
+        for i in li.passer2(b):
+            if i.status == "PROVED":
+                proved += 1
+                assert promotes_within(b, chess.square_file(i.square), i.plies), (b.fen(), chess.square_name(i.square))
+    assert proved > 100                                                  # the bridge is not vacuous

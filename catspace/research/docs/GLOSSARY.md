@@ -135,6 +135,10 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
 - **Fork / trap** (2026-10-18, plan 52.12; Lean `forkOf` is a def, no theorem; not in the Rust vocabulary, the agenda reads it in python-chess) — `fork`: after our move that
   gives check, a piece of theirs other than the king is attacked by the moved piece: two threats, one reply. `trap`: a piece whose every square is unsafe (`(count (mobility X))`
   = 0), read with no check on the board (with their king in check every reply is forced, so every check would "trap" every piece).
+- **Bishop as a stopper** (2026-10-19, plan 52.16; Lean `Passer2.bdist`, `bfarB`, `bishopsFarB`, `bfarB_step`, theorem `unstoppablePasser2_sound`) — a bishop of theirs does not stop our passer when it
+  stands on the other colour from our king and needs more than `n - 1` moves to land on any square the pawn still has to cross (`n` = the pawn's pushes); the distance is read with the board
+  ignored (0 on its own square, 1 along a diagonal, 2 on its colour, never off it), which can only shorten it. The agenda's `stopper` defect reads the same piece with the board counted
+  (`piece_moves_to`); a defect-free pawn then needs this lemma's `bishopsFar`, not only the tempo arithmetic.
 - **Layers** — the order the proposers search the terms in: layer 0 the original words, layer 1 the completed static words,
   layer 2 the expensive ones (the short window's tactics, time).
 
