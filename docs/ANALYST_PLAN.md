@@ -2321,7 +2321,17 @@ reasoning; deviations reported; no AI trailers):
    `InsufficientMaterial.no_mate_king_minor` with `king_guards_two_orth`. Gloss, glossary lines ("region", "zone", "wall"), `lean_index build`.
    Python: `region(board, sq)` mirrors the def with a test against the Lean statement; the trace prints the kill as "mate: killed by reasoning -- a
    rook alone never mates with the kings apart (lemma ...), and our K's region {a1..b8 minus ...} never meets the zone (the wall: their r on c1, our K
-   bound to c7)". Acceptance: 0LRTF's Q1/Q2 killed before any chase (no inner agenda under them), the kill printed with its read set.
+   bound to c7)". CORRECTION (Kaveh, same day): on 0LRTF our pawn on c7 shields c8 from the rook, so c8 is NOT held and our king's region (b6, b7,
+   c8, then the board) DOES meet their king's region: the region kill does not fire there. The second kill, A MEASURE THEY CAN HOLD: the zone is
+   reachable but their reply restores the measure every time -- for a mating king, the distance from our king to the zone next to theirs is held
+   while their king has ROOM (its region is not boxed): a king never gains on a king with room (Lean: the evasion step -- a king at Chebyshev distance
+   >= 2 from ours with a free square farther from ours keeps the distance after any one king move of ours; the negative of `Forced.toward_known`).
+   Shrinking the room is the rook's work (K+R v K), and on 0LRTF the rook is also the only piece that stops their a-pawn (promotes in 2 moves: their
+   agenda on the leaf), so the mate's tempo count is unbounded against their 2. Read set of the held-measure kill: their king's room, our king's
+   distance, the pieces that could shrink the room. Both kills print as "killed by reasoning -- ..." and both are "do not chase" lemmas; a chase of
+   the goal is warranted only when neither fires (a forcing move crosses the wall or shrinks the room). Acceptance: 0LRTF's Q1/Q2 killed before any
+   chase (no inner agenda under them) by the held-measure kill, printed with its read set; a region kill shown on a puzzle where a wall stands
+   (find one in the sets or construct it, SF-checked).
 2. **A chase route must address a defect of its own goal.** The chase of a goal follows a forcing move only if the move is a fix of one of the goal's
    defects (covers the flight, drives the king off the square, removes or deflects the attacker, steps the piece toward the zone) or creates a new
    claim of its own (52.16 (3) forcing). A check that fixes nothing of the goal is not a route of that goal (the walk of checks). Name the reason in
