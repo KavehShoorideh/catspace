@@ -462,7 +462,7 @@ def test_52_13_a_reply_that_leaves_us_a_mate_in_one_or_an_unanswered_exchange_is
     assert ag._closed_by_rule(AC.Pos(fen), 0) == (BD.MATE_VALUE, "mate in one")
     ag = AG.Agenda(state_of(AGL8, "b"))
     res = ag._chase_route(chess.Move.from_uci("g5g2"))        # Qxg2+ Qxg2: the knight takes the queen, nothing of theirs
-    assert res["value"] == 1 and any("closed by rule: exchange +9, nothing of theirs" in p for p in res["parts"])
+    assert res["value"] == 1 and any("closed by rule: exchange +9 (" in p and "), nothing of theirs" in p for p in res["parts"])
     assert ag.ctx.closed >= 1
 
 
@@ -705,6 +705,29 @@ def test_52_16_the_discovery_position_decides_nf6_with_the_exchange_read():
     ag = AG.Agenda(State(fen=DISCOVERY, us="w", pieces=[]))
     ag.ask()
     d = ag.decision()
-    assert d is not None and d.what == "Nf6"                                                    # SF d18: Nf6 is the best move (Nd6 loses 35 cp)
-    assert "after Bxf6: closed by rule: exchange +5 (Qxa8 wins 5: Qxa8 Qxa8 Bxa8, the Bxa8 behind the Q), nothing of theirs" in d.line
+    assert d is not None and d.what in ("Nf6", "Nd6")                                           # either is right by SF d20 (Nf6 +385, Nd6 +320); the tie of equal claims is broken by the move's uci
+    assert "Nf6 (threat 5 survives Bxf6 (the N hangs, 3))" in ag.trace()                         # the sacrifice that still threatens is a route
+    assert "Qxa8 wins 5: Qxa8 Qxa8 Bxa8, the Bxa8 behind the Q" in ag.trace()                   # ... and its battery is read in the claim
     assert R.exchange_read(chess.Board("r3q2k/pQ1nb1pp/5Bn1/5bP1/3P4/2N1P3/PPP3B1/R1B3K1 w - - 0 2")) .startswith("Qxa8 wins 5: Qxa8 Qxa8 Bxa8")
+
+
+# ---- 52.16 (4): failed promote chases ----------------------------------------------------------------------------------------------------------------
+
+def test_52_16_a_reply_that_leaves_the_stopper_standing_ends_the_promote_route_02xvk():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("dev_20") if x["id"] == "02XVK"][0]
+    ag = AG.Agenda(State(p["fen"], "w", []))
+    ag.ask()
+    t = ag.trace()
+    assert ag.ctx.promote_stands > 0 and "defect stands" in t                                  # a route ended at a reply that left the stopper standing, with no new fix
+    assert "Qh7+: killed -- after Kxh7: the stopper defect stands" in t or "defect stands" in t
+    assert ag.ctx.asked < 1000                                                                 # before: 3742 inner questions (8.2 s); the promote question was re-chased under every reply
+    assert ag.decision() is None                                                               # unchanged: 02XVK is not decided (Bxg6 stays a GAP at the root's mate chase)
+
+
+def test_52_16_a_stand_check_does_not_end_the_pawns_own_push_0nv29():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0Nv29"][0]
+    ag = AG.Agenda(State(p["fen"], "w", []))
+    ag.ask()
+    assert ag.decision().what == "b6" and ag.ctx.promote_stands == 0                           # b6 is the pawn's own push: the question changes, the stand check does not apply

@@ -68,6 +68,7 @@ class ChaseCtx:
         self.static_parried = 0                   # ... of which every threat of theirs had a verified parry (the gain kept) / ...
         self.static_unparried = 0                 # ... at least one threat had no parry (killed, or a gap)
         self.static_lines: list = []              # 52.14: one line per static leaf whose threats were asked as save roots (chase depth, reply, verdict); the root agenda prints them
+        self.promote_stands = 0                   # 52.16 (4): promote routes ended at a reply that leaves the question's stopper defect standing with no new fix
         self.standing = 0                         # 52.13 (4): routes ended by a standing kill (no inner agenda)
         self.closed = 0                           # ... replies closed by a rule (mate in one / exchange, nothing of theirs)
         self.reply_kills: dict = {}               # reply uci -> [(position left, dbal, reads of the inner agenda, route san)] of the routes it killed with no claim of ours
@@ -89,6 +90,7 @@ class Agenda:
         R.reset_ids()
         self.their = their                                      # 52.14: THEIR agenda on this board with the move passed to them: its claims are asked as save roots (an inner agenda on a static leaf)
         self.keep = keep                                        # 52.14: the gain (a balance, us to move) the static leaf stands on: a parry of a threat is verified when it keeps at least 1 of it
+        self._chasing = None                                    # 52.16 (4): the promote question being chased (the inner agendas inherit it as a kill where nothing it read has changed)
         self.threat_qs: list = []                               # 52.14: (question, their claim) of every threat root pushed from `their`
         self.inherit = inherit or {}                            # 52.12 (3), 52.13 (1): key -> {kind: kill | claim, reads, diff, ...} for the outer agenda's SETTLED questions (a kill, or a claim with its reads)
         self.inherited = 0
@@ -844,7 +846,7 @@ class Agenda:
         ctx.active.add(pk)
         hits0 = ctx.budget_hits
         saved = R._ids[0]
-        inherit = self._inherit_for(diff) if diff is not None and any(q.status in ("killed", "verified") for q in self.all) else None
+        inherit = self._inherit_for(diff) if diff is not None and (any(q.status in ("killed", "verified") for q in self.all)) else None
         ag = Agenda(State(fen=fen, us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=need, inherit=inherit, their=their, keep=keep)
         ag.ask()
         R._ids[0] = saved
@@ -928,6 +930,13 @@ class Agenda:
                 ctx.closed += 1
                 self._log(key, uci, "closed", dbal, val, None, why)
                 continue
+            if promote and dbal < self.promote_stake:
+                why = self._promote_stands(m, P2)
+                if why is not None:
+                    res["killed"] = f"after {san_r}: {why}"
+                    ctx.promote_stands += 1
+                    self._log(key, uci, "killed", dbal, None, None, res["killed"])
+                    break
             need = min(R.STAKE_PROMOTE, 1 - dbal) if promote and dbal <= 0 else R.STAKE_PROMOTE if promote else 1 - dbal if dbal <= 0 else BD.MATE_VALUE          # a reply that already gains is read for a mate only; else its static gain must survive their threats (below)
             inn = self._inner(P2.fen(), need, frozenset(P0.diff(P2)))
             if inn is None:
@@ -1020,6 +1029,36 @@ class Agenda:
         ctx.routes[key] = res
         return res
 
+    def _promote_stands(self, m: chess.Move, P2: "AC.Pos") -> str | None:
+        """52.16 (4): a promote route ends AT ONCE at a reply that leaves the question's stopper defect standing and brings no new fix: the same stopper (or blocker) of the
+        promotion chased, on the same square, still reaches, and no forcing fix of its defects exists there that the question did not already have. The pawn is still on its
+        square (the route is not its own push). Cut by the defects and the fixes, not by a count; the inner agenda (every root again) is not run. -> why or None."""
+        q = self._chasing
+        pawn = q.pattern.get("pawn") if q is not None else None
+        if pawn is None or m.from_square == pawn:
+            return None
+        b2 = chess.Board(P2.fen())
+        pc = b2.piece_at(pawn)
+        if pc is None or pc.piece_type != chess.PAWN or pc.color != self.me:
+            return None
+        defects, _facts = R.promote_defects(b2, pawn)
+        old = {d.key() for d in q.defects if d.kind in ("stopper", "blocked")}
+        standing = [d for d in defects if d.key() in old]
+        if not standing:
+            return None
+        saved = R._ids[0]
+        dummy = R.new_question("promote", q.stake, dict(q.pattern))
+        have = {r.move.uci() for f in q.fixes for r in R.all_routes(f)}
+        new = set()
+        for d in defects:
+            f = R.promote_fixes(b2, pawn, d, dummy)
+            new |= {r.move.uci() for r in R.all_routes(f)} - have
+        R._ids[0] = saved
+        if new:
+            return None
+        d0 = standing[0]
+        return f"the {d0.kind} defect stands ({d0.why}) and no fix is new there"
+
     def _static_line(self, san: str, san_r: str, dbal: int, claim_their: Claim, parry_note: str, lost: list) -> None:
         """52.14: the trace line of a static leaf whose threats were asked as save roots of the inner agenda (printed by the root agenda)."""
         line = f"depth {self.chase_depth}: {san} after {san_r}: {dbal:+d} stands as a balance; " + ("; ".join(x for x in (parry_note, "no parry for " + ", ".join(f"their {cl.what} wins {cl.value}" for cl in lost) if lost else "") if x))
@@ -1108,6 +1147,7 @@ class Agenda:
         self.lines.append(f"  chase: make them move -- {len(routes)} forcing route(s): " + ", ".join(f"{r.san} ({r.why})" for r in routes[:12]) + (" ..." if len(routes) > 12 else ""))
         done, cut = [], False
         pool = self.ctx.left
+        self._chasing = q if q.goal == "promote" else None
         for i, r in enumerate(routes):
             saved = self.ctx.left
             share = max(saved // (len(routes) - i), 1) if saved > 0 else 0
@@ -1130,6 +1170,7 @@ class Agenda:
                 done.append((res["value"], r, res))
             else:
                 self.lines.append(f"    {r.san}: value {res['value']} (no gain on the worst reply)")
+        self._chasing = None
         if self.chase_depth == 0 and pool > 1 and any(t[4].goal in ("mate", "win", "promote") and (self.best is None or self.best[0] < t[4].stake) for t in self.heap):
             # ... and a ROOT question is charged at most half of the pool it started with, while another root that can still beat the best claim is open: by stake order the
             # question that matters most gets the larger share, never all of it (0GJec: the promotion's chase took 618 of 570 and every later root was read with nothing)
@@ -1309,6 +1350,7 @@ class Agenda:
         sq = q.pattern["pawn"]
         q.defects, facts = R.promote_defects(b, sq)
         n, promo = facts["pushes"], facts["promo"]
+        q.reads = R.reads_of(q, b) | frozenset(facts["path"]) | {sq}            # 52.16 (4): the pawn, its path (the promotion square included), the defects' squares and their pieces: what the question read
         kd = facts["king_dist"]
         self.lines.append(head + (": " + "; ".join(f"defect {d.kind} ({d.why})" for d in q.defects) if q.defects else
                                   ": no defect -- unstoppable by the tempo arithmetic" + (f" (their K needs {kd} to {G.name(promo)}, the pawn {n})" if kd is not None else "")))

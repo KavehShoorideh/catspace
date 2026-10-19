@@ -580,6 +580,8 @@ def question_key(q: Question) -> tuple | None:
         return ("mate", p.get("sym"), p.get("at"), p.get("frm"), p.get("king"), p.get("move"))
     if q.goal == "win":
         return ("win", p.get("target"))
+    if q.goal == "promote":                                     # 52.16 (4): the promotion of the pawn on that square
+        return ("promote", p.get("pawn"))
     return None
 
 
