@@ -558,7 +558,7 @@ def test_52_15_a_stopped_promotion_is_chased_through_the_pawn_offered_to_the_sto
     ag = AG.Agenda(State(p["fen"], "w", []))
     ag.ask()
     t = ag.trace()
-    assert "b6 (offers the pawn to the stopper: the B on a5 takes" in t                       # the route the stopper rule adds; no forcing_why route exists here
+    assert "b6 (threat: b7 then b8=Q binds after a pass" in t or "b6 (offers the pawn to the stopper: the B on a5 takes" in t      # 52.18 (3): b6 is now forcing by the claim a pass lets bind; before it was the stopper rule's route
     assert ag.ctx.agendas > 0                                                                  # every reply of theirs was followed by the whole agenda
     # 52.16 (1): after Bb4 the bishop is a stopper that does not stop (the other colour from Kd3, two moves from b8): the passer lemma with bishops claims b7-b8
     assert "after Bb4: b7 (b7, then b8=Q within 3 plies whatever they do (2 pushes); value 8, lemma unstoppablePasser2_sound)" in t
