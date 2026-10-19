@@ -2352,3 +2352,51 @@ their side, the inverted read index), the battery / discovery words in Lean, the
 threat-of-X forcing. Open question Kaveh raised: the region of a knight or a bishop -- answered above as the same closure under each piece's own step;
 whether a region should also carry the squares the piece ATTACKS from inside it (its influence, for zones that are lines) is to be decided when 52.18
 is written.
+
+### 52.18 The landing table: targets and threats, the battery and the discovery, the fork square as a root, threat-of-X forcing (Kaveh 2026-10-19 GO "build 52.17 and also 52.18"; after 52.17)
+Kaveh's definition (2026-10-19, after the discovery position r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w): "the target is a square where if my
+piece lands, I win -- mate, a place from which mate is inevitable, a double attack, capturing a piece directly; we need the notion of a threat: if
+the piece lands here, I'm lost; if the piece lands here, I win." And: a move creates a new threat from three sources -- the moved piece (fork), the
+vacated line (discovery; a battery: the attacker count on a square the move never touches rises), or a broken defence (deflection, overload, pin).
+"Keep every threat found and, when evaluating a piece, bring up everything known that involves it." Learned parts only ORDER; every claim and kill
+is by rule with a read set (52.13). Items, in build order (one commit each; Lean by reasoning; deviations reported; no AI trailers; OBS lines):
+1. **The landing table.** A LANDING is (side, piece, square). A landing is a TARGET of ours when, with the piece placed there and THEM to move (the
+   counterfactual placement the roots already use: placement_of / future_board), a claim of ours binds with no defect left (mate in one / two, the
+   exchange winning, promotion by the passer lemma, the fork claim of item 4, the trap). A landing is a THREAT of theirs when the same holds from
+   their side. The table is not maintained: it is the memo of landing answers (claim or defect list, with the read set of the squares and pieces
+   read), keyed by (side, piece, square) + the read set's pieces, filled when a question asks and invalidated by the 52.13 diff. The INVERTED READ
+   INDEX: square -> the landings and kills whose read set contains it, so "what is known about their queen on d6" prints every landing that reads
+   d6. API: `landing(board, side, piece_sq, to_sq) -> Landing(claim | defects, reads)`; `known_about(sq)`. The agenda's roots become landings
+   (the mate roots, win roots, promote roots and the reach roots are each "a landing that binds"); say in the trace when a root is served from
+   the table ("landing N on f6: target (win 5 by the exchange on a8 after the discovery), served from the table, reads {e4,f6,a8,b7,g2,e8}").
+   No per-square control table (Kaveh: ask when needed; the exchange word orders attackers by value on the fly; key = (piece, square)).
+   Test: the landing of the discovery position (N e4 -> f6) is a target with the discovery read; the 52.13-52.17 acceptance puzzles unchanged.
+2. **The battery and the discovery, generally.** Today `xray` = squares attacked through one piece, `discovery` is king-only (base_vocabulary.py
+   line ~168), `G.xrays_to` finds slider + blocker. Define in Lean with gloss + glossary: BATTERY (two pieces of one side on one line, the front one
+   blocking the rear one's attack on a square beyond: `battery s1 s2 t`), DISCOVERY (a move of the front piece of a battery -- OUR piece as the
+   blocker, as in Kaveh's position where the knight on e4 blocks Bg2 -> a8 -- that raises the attacker count on t by one: `discovered_attack`),
+   ALMOST-A-BATTERY (a line from a slider of ours to a target with exactly one piece of ours on it, i.e. one move away from a battery). Prove: after
+   the blocker's move (any move off the line), the rear piece attacks t (`pieceAttacksB_mono` / `empty_geom_reaches` in Ideas.Mate are the tools).
+   Python mirrors with tests against the Lean statements; the trace names "discovery: the N leaves e4, the B on g2 joins the Q on a8 (battery)".
+   Then the X-RAY FIX, which exists only for the mate defect "checker takeable by the king" (regress.py ~322-352), is offered on WIN and PROMOTE
+   defects "defended" / "not attacked enough": the fix = move the blocker with tempo (a check, a capture, or a threat that survives the capture of the
+   moved piece, 52.16 (3)). Acceptance: the discovery position decides Nf6 / Nd6 with the fix NAMED as a discovery (not only found by the forcing
+   rule), OBS SF unchanged; a second position found in the sets or constructed where the discovery is the only way (SF-checked).
+3. **Threat-of-X forcing.** `forcing_why`: a move is forcing when, after it, a PASS by them lets a claim of ours bind with no defect (today only the
+   threat of mate and the material threat value): threat of promotion (the passer lemma binds after a pass), threat of a trap, threat of a fork
+   (item 4). The reason names the claim: "Rd8+ (check)", "b6 (threat: b7 then b8=Q binds after a pass)". The pass is the null move on the Rust Pos
+   (add `Pos.pass` if missing; the position after a pass is never a cycle key of the chase). Their side symmetric: their threats on the static leaf
+   (52.14) use the same word. OBS: forcing routes per set before/after; decisions changed, SF-classified.
+4. **The fork square as a root.** A root question "fork on s with our <piece>": the landing on s attacks two pieces of theirs of value >= the stake
+   (or the king and one piece) and the landing is safe (exchange word); claim = the smaller of the two values (both cannot be saved in one move
+   unless one move saves both: a capture of the forking piece, a move of one attacked piece that defends the other, a check -- these are the
+   defects, each with a fix as usual); today a fork is only a fix of a win question. Lean: search the index (`knight_fork_same_colour`,
+   `Fork.lean`, `localCheck_sound`) and bind the claim to what is proved; prove the two-threats-one-move lemma if missing (after our landing, one
+   move of theirs changes at most one of {the attacked piece on a, the attacked piece on b} unless it is a capture of the forking piece, a check,
+   or a move that guards the other -- by reasoning over the move's from/to squares). Acceptance: a puzzle in the sets decided by a fork root (find
+   one: grep the traces for "fork" fixes), OBS SF; the knight-fork colour lemma kills fork roots on opposite-colour pieces with its read set.
+5. **The region's influence (decide, then build if small).** Whether a region carries the squares the piece attacks from inside it (its influence),
+   for zones that are lines (the mating line of a rook): if the goal zones of 52.17 need it, add `influence(region)` as the union of attacks from the
+   region's squares with the same read set; otherwise record why not in the plan and skip.
+Acceptance for 52.18: dev_20 and fresh_60_threats_event OBS before/after, every changed decision classified by Stockfish d18; every 52.13-52.17
+acceptance puzzle unchanged; glossary + LEAN_INDEX rebuilt; tests per item; `known_about` printed in the trace for the deciding move's piece.
