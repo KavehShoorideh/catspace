@@ -2500,5 +2500,14 @@ Build in `catspace/incubator/analyst/discovery/play_server.py` + the page, one c
    against itself through the HTTP API (pytest, no browser) and asserts the trace records stream, moves are legal, the fallback is named; one
    game played by the builder through the API against `--fallback random` to the end, OBS: plies, agenda decisions vs fallbacks, seconds per
    engine move (mean/max). Report the URL and the exact command in the hand-back.
+6. **Past positions (Kaveh 2026-10-19 GO "I should be able to go to a past position and see its analysis").** The game keeps EVERY trace
+   record of every ply (no ring-buffer loss; the per-game store is the whole game), each record carrying its ply and the FEN it was parsed against.
+   The page gets a move list under the board (SAN by move number, the current one highlighted, arrow keys and click to navigate, "live" button to
+   return). Selecting a ply shows that position on the board (not movable), its last move highlighted, and the trace panel shows the records of
+   that ply (the engine's thinking before its move there; for a human ply, the background records if any), with hover arrows drawn on THAT board
+   (the records already carry from/to, so the current-ply-only restriction goes), click pins as before. GET `/api/play/trace?ply=k` returns one
+   ply's records; `/api/play/state` carries the move list. The live game continues underneath; a new engine move does not yank the view back
+   (the panel for the viewed ply stays; a small "engine moved" note appears). Test: after 4 plies via the API, `?ply=2` returns only ply 2's
+   records and the state's move list has 4 SANs.
 Not now (recorded): the hosting adapter (an `infra/providers/<name>` interface: create VM, open port, deploy the compose; Hetzner and GCP first),
 auth / multiple players, the agenda's own game context (52.19 (4) carries facts across moves).
