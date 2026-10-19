@@ -2353,7 +2353,9 @@ reasoning; deviations reported; no AI trailers):
    tally line gets "time outs". The setting is applied from outside: the analyse CLI gets `--seconds`, and the play server (plan 54,
    play_server.py / web.py / web_page.html) gets `--seconds` plus a float field on the Play page sent with `/api/play/new` and changeable between
    moves (`/api/play/settings`); the fallback runs after the agenda returns. Test: a chase that is cut by a 0.05 s budget ends with GAPs and a
-   trace line naming the time; the same puzzle with no seconds is unchanged.
+   trace line naming the time; the same puzzle with no seconds is unchanged. Kaveh: the seconds bound the LIVE move only; what the clock cut is
+   kept, not dropped: every "out of time" GAP is recorded with the question key, the route and the reply it stopped at (the 52.13 GAP memo already
+   keeps cut_left; add the deadline mark), so the background tier of 52.19 (3) can resume exactly there on their clock.
 Acceptance: 0LRTF decided Rh8+ (SF d18 OBS); 0GJec's gap re-read under rule 2 and named; the 52.13-52.16 acceptance puzzles unchanged (list in 52.16,
 plus 0Nv29 b6, 04Qx2 Be8+, 08A6a Bxe5, the discovery position Nf6); tests per item; both sets OBS before/after, every changed decision SF-classified.
 Deferred to 52.18 (not written): the landing table (target = (piece, square) whose landing binds a claim with no defect, threat = the same from
@@ -2440,7 +2442,11 @@ read sets as the leaf premises. Items, in build order (one commit each; no AI tr
    a stale "wins a pawn" fact outside the chain stays queued). BACKGROUND: `FactStore.drain(budget)` recomputes from the top of the queue; the
    event loop (plan 40 / catspace event loop, the "between turns" slot: find where the loop idles after a decision and call drain there, the
    opponent's clock as the budget if the loop has one, else a call the analyse CLI makes after each puzzle with `--ponder`) so the store is warm
-   for the next question. The trace prints both tiers: "foreground: recomputed 3 stale facts of the mate chain; background queue: 41 (top stake 5)".
+   for the next question. Kaveh (2026-10-19, with the time budget 52.17 (5)): "after our move was made, we can continue analysing whatever was
+   left behind" -- the out-of-time GAPs of the live move enter the background queue first (by their chain stake), and the play server keeps
+   thinking on the opponent's clock (ponder by lemma: the worker drains the queue until the human moves, its lines streamed to the trace panel
+   marked "background"); facts found there are fresh when our next move is asked. The trace prints both tiers: "foreground: recomputed 3 stale
+   facts of the mate chain; background queue: 41 (top stake 5)".
    OBS: foreground recomputations per set, queue length at decision, seconds before/after.
 4. **Across puzzles (the remember goal).** With `--memory` the store persists between puzzles of a set (the sets are unrelated positions, so expect
    few hits -- say so) and, in the frame-player / event-loop path, between the moves of one game: a fact derived on move 30 whose read set is
