@@ -147,14 +147,15 @@ def parse_moves(text: str, root: chess.Board) -> list[dict]:
 
 
 def make_record(n: int, text: str, root: chess.Board, ply: int = 0) -> dict:
-    return dict(n=n, ply=ply, text=text, kind=classify(text), indent=len(text) - len(text.lstrip(" ")),
+    return dict(n=n, ply=ply, fen=root.fen(), text=text, kind=classify(text), indent=len(text) - len(text.lstrip(" ")),
                 moves=parse_moves(text, root), squares=sorted(set(SQUARE_RE.findall(text))))
 
 
 class TraceBuffer:
-    """A per-game ring buffer of trace records; n counts from 1 and never repeats; records(since) returns those with n > since."""
+    """The per-game store of trace records (plan 54 (6): EVERY record of every ply is kept, each with its ply and the FEN it was parsed against -- the store is the whole
+    game); n counts from 1 and never repeats; since(n) returns those with n > since, at_ply(k) those of one ply."""
 
-    def __init__(self, cap: int = 6000):
+    def __init__(self, cap: "int | None" = None):
         self.cap, self.n, self.items, self.lock = cap, 0, [], threading.Lock()
 
     def add(self, text: str, root: chess.Board, ply: int = 0) -> dict:
@@ -162,13 +163,17 @@ class TraceBuffer:
             self.n += 1
             rec = make_record(self.n, text, root, ply)
             self.items.append(rec)
-            if len(self.items) > self.cap:
+            if self.cap is not None and len(self.items) > self.cap:
                 del self.items[: len(self.items) - self.cap]
             return rec
 
     def since(self, n: int) -> list[dict]:
         with self.lock:
             return [r for r in self.items if r["n"] > n]
+
+    def at_ply(self, k: int) -> list[dict]:
+        with self.lock:
+            return [r for r in self.items if r["ply"] == k]
 
 
 class AgendaPlayer:
@@ -290,7 +295,8 @@ class Game:
                         ply=len(b.move_stack), thinking=self.thinking, fallback=self.player.fallback,
                         over=o is not None, result=o.result() if o else None, reason=o.termination.name.lower().replace("_", " ") if o else None,
                         seconds=self.seconds, in_check=b.is_check(), notes=context_notes(b) if o is None else [], engine_move=self.engine_move,
-                        san=[h["san"] for h in self.history], error=self.error, trace_n=self.trace.n)
+                        san=[h["san"] for h in self.history],
+                        moves=[dict(ply=h["ply"], san=h["san"], uci=h["uci"], who=h["who"], fen=h["fen"], source=h.get("source")) for h in self.history], error=self.error, trace_n=self.trace.n)
 
     # ---- moves
     def human_move(self, uci: str) -> dict:
@@ -311,7 +317,7 @@ class Game:
                     raise ValueError(f"illegal move {uci}")
             san = self.board.san(mv)
             self.board.push(mv)
-            self.history.append(dict(ply=len(self.board.move_stack), san=san, uci=mv.uci(), who="human", comment=""))
+            self.history.append(dict(ply=len(self.board.move_stack), san=san, uci=mv.uci(), who="human", comment="", fen=self.board.fen()))
             self.engine_move = None                      # the engine's arrow stays until the human moves
             self._save()
             if self.over() is None:
@@ -341,7 +347,7 @@ class Game:
                 comment = " | ".join(r["text"].strip() for r in recs if r["kind"] in PGN_KEY_KINDS)[:1500].replace("{", "(").replace("}", ")")
                 self.engine_move = dict(uci=mv.uci(), san=san, source=source, ply=ply, secs=round(secs, 2), trace_from=first, trace_to=self.trace.n,
                                         **{"from": chess.square_name(mv.from_square), "to": chess.square_name(mv.to_square)})
-                self.history.append(dict(ply=ply, san=san, uci=mv.uci(), who="engine", source=source, secs=round(secs, 2), comment=f"[{source}] {comment}"))
+                self.history.append(dict(ply=ply, san=san, uci=mv.uci(), who="engine", source=source, secs=round(secs, 2), comment=f"[{source}] {comment}", fen=self.board.fen()))
                 self.secs.append(secs)
                 self._save()
         except Exception as e:                           # a failed engine move must be visible, not a hung page

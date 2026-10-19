@@ -111,3 +111,31 @@ def test_the_time_budget_is_set_on_new_and_changed_between_moves(server):
     st = wait_idle(port)
     lines = [r["text"] for r in call(port, "/api/play/trace?since=0")["records"]]
     assert any(t.startswith("budget: 0.2 s, used ") for t in lines)
+
+
+def test_past_positions_the_whole_game_is_kept_per_ply_and_a_ply_can_be_asked_for(server):
+    port, tmp = server
+    st = call(port, "/api/play/new", {"colour": "white"})
+    board = chess.Board()
+    for _ in range(2):
+        mv = chess.Move.from_uci(sorted(f + t for f, ts in st["dests"].items() for t in ts)[0])
+        board.push(mv)
+        call(port, "/api/play/move", {"uci": mv.uci()})
+        st = wait_idle(port)
+        board.push_san(st["san"][-1])
+    assert len(st["san"]) == 4 and [m["san"] for m in st["moves"]] == st["san"] and [m["ply"] for m in st["moves"]] == [1, 2, 3, 4]
+    assert all(m["fen"] for m in st["moves"]) and st["moves"][-1]["fen"] == board.fen()                        # the position after every ply, for the page's move list
+    t2 = call(port, "/api/play/trace?ply=2")
+    assert t2["ply"] == 2 and t2["records"] and all(r["ply"] == 2 for r in t2["records"])                      # only the engine's thinking before its move at ply 2
+    assert all(r["fen"] == st["moves"][0]["fen"] for r in t2["records"])                                       # ... each parsed against the position before that move
+    allr = call(port, "/api/play/trace?since=0")["records"]
+    assert {r["ply"] for r in allr} == {2, 4} and len(allr) >= len(t2["records"]) + len(call(port, "/api/play/trace?ply=4")["records"])
+    assert call(port, "/api/play/trace?ply=1")["records"] == []                                                # a human ply has no engine trace
+
+
+def test_the_trace_store_keeps_every_record_with_no_ring_buffer_loss():
+    tb = PS.TraceBuffer()
+    b = chess.Board()
+    for i in range(7000):
+        tb.add(f"line {i}", b, 1 + i % 3)
+    assert len(tb.since(0)) == 7000 and len(tb.at_ply(2)) in (2333, 2334)

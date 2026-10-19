@@ -382,7 +382,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/play/trace":
             if g is None:
                 return self._json({"game": None, "records": [], "n": 0})
-            since = int((parse_qs(query).get("since") or ["0"])[0] or 0)
+            q = parse_qs(query)
+            if q.get("ply"):                                 # plan 54 (6): one ply's records (the engine's thinking before its move there)
+                return self._json({"game": g.id, "ply": int(q["ply"][0]), "records": g.trace.at_ply(int(q["ply"][0])), "n": g.trace.n, "thinking": g.thinking})
+            since = int((q.get("since") or ["0"])[0] or 0)
             return self._json({"game": g.id, "records": g.trace.since(since), "n": g.trace.n, "thinking": g.thinking})
         if path == "/api/play/pgn":
             return self._json({"pgn": g.pgn() if g else ""})
