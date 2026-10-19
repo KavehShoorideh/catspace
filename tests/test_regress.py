@@ -525,3 +525,26 @@ def test_52_14_a_threat_is_parried_and_the_gain_kept_on_a_constructed_static_lea
     gone = AG.Agenda(State(b.fen(), "w", []), side_depth=0, chase_depth=1, ctx=outer.ctx, min_stake=BD.MATE_VALUE, their=their, keep=0)
     gone.ask()
     assert gone.threat_qs[0][0].status == "killed" and "no parry keeps the gain" in gone.threat_qs[0][0].reason      # a gain of 0 is not kept by any parry (net 0 < 1)
+
+
+# ---- 52.15 (1): in check, the checker is a win target -----------------------------------------------------------------------------------------------
+
+def test_52_15_in_check_the_checker_is_a_win_root_beside_the_save_root():
+    b = chess.Board("8/4k3/p2Pppp1/Kp5p/5P2/P5P1/1P5P/8 b - - 0 39")          # 0Zsoa after Rxd6 exd6+: the P on d6 gives check
+    ag = _ag(b.fen(), side_depth=0)
+    goals = [(q.goal, q.text) for q in ag.questions]
+    assert ("win", "win their P on d6 (it gives check)") in goals and any(g == "save" and "in check" in t for g, t in goals)
+    wq = [q for q in ag.all if q.pattern.get("checker")][0]
+    assert wq.stake == 1 and [r.san for r in ag._direct_routes(wq)] == ["Kxd6"]       # the routes are the legal captures of the checker, the king's included
+    assert "Q2 win their P on d6 (it gives check) (stake 1): the checker is taken by a legal capture" in ag.trace()
+
+
+def test_52_15_0sjz3_rxd6_is_decided_through_the_checker_after_rxd6_rxd6():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0SJz3"][0]
+    ag = AG.Agenda(State(p["fen"], "b", []))
+    ag.ask()
+    assert ag.decision().what == "Rxd6"
+    inner = AG.Agenda(State("8/p2k4/1p1R4/6p1/1PP5/8/P7/3K4 b - - 0 36", "b", []), side_depth=0, chase_depth=1, ctx=ag.ctx, min_stake=1)
+    inner.ask()
+    assert inner.best is not None and inner.best[2].what == "Kxd6" and inner.best[2].value == 5

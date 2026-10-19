@@ -174,7 +174,11 @@ class Agenda:
         if b.is_check():
             ck = list(b.checkers())
             self._push(R.new_question("save", R.STAKE_MATE, dict(checkers=ck), text="save our king (in check)"))
-            self.notes.append("in check: every legal move answers it, so the save-king question is the only root (mate and material goals are read on its routes)")
+            for c in ck:                                         # 52.15 (1): the checker is a win target when some legal move takes it (the king's included); the routes are those captures
+                if any(m.to_square == c for m in b.legal_moves):
+                    pc = b.piece_at(c)
+                    self._push(R.new_question("win", G.worth(pc), dict(target=c, checker=True), text=f"win their {pc.symbol().upper()} on {G.name(c)} (it gives check)"))
+            self.notes.append("in check: every legal move answers it; the roots are the save-king question and the win of the checker (mate and material goals are read on their routes)")
             return
         marks = []
         for m in b.legal_moves:
@@ -447,6 +451,10 @@ class Agenda:
             return
         if q.goal == "save":
             self._ask_save_piece(q, head)
+            return
+        if q.pattern.get("checker"):                             # 52.15 (1): the checker taken by any legal capture, read by the schemas as a win root's routes are
+            self.lines.append(head + ": the checker is taken by a legal capture (no defect to fix)")
+            self._verify(q, self._direct_routes(q), mates_only=False)
             return
         if q.goal == "mate":
             q.defects = R.mate_defects(b, us, R.placement_of(q))
