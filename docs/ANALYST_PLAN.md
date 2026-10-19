@@ -2293,3 +2293,52 @@ minimally and REPORT every deviation; no AI trailers; OBS lines for every number
 Acceptance: dev_20 and fresh_60_threats_event OBS before/after, every changed decision classified by Stockfish d18 (OBS SF lines); the 52.13-52.15
 acceptance puzzles unchanged (0DoFB Qd5, 0AgL8 Qxg2+, 08pSj Rf1+, 0RhU6 Qxf2+, 0Wih8 Ng5+, 01w7J Bxh2+, 0VSUT Qxe5, 0BuQP Kf2, 0UqOv exf7+,
 0SJz3 Rxd6, 0PBkh Kxf5); tests for each item.
+
+### 52.17 The region of a piece, the goal that dies by reasoning, cheapest reply first (Kaveh 2026-10-19 on 0LRTF; written on "put this definition there"; NOT a build go)
+From the walk through 0LRTF (2k5/2P4R/1K6/8/8/p7/8/2r5 w; SF: Rh8+ Kd7 Rd8+ Ke6 c8=Q Rxc8 Rxc8, a rook up) after 52.16. The agenda misses it
+because the mate root's chase follows the first check downward (Re8+ Kd5 Rd8+ Ke4 ...) and spends the fuse before c8=Q+ at depth 2 is read, where
+the exchange rule closes it in one reply; every root repeats the walk on a smaller share. Kaveh's reading: the mate goal dies in one look, by
+reasoning -- a rook alone cannot mate a king in the open, our king would have to stand next to theirs, and our king cannot get there: it guards c7
+and the rook on c1 holds the whole c-file. "The opponent's king can put more distance between us than I can follow"; "I cannot mate with a rook alone,
+so there is no point chasing the king"; "it's not that my king is literally stuck -- it has no moves in the direction I need". The promotion then
+reasons defect by defect: their king attacks c8 (fix: a check whose every king reply leaves c8 unattacked -- Rh8+ fails it, Kd7 still touches c8;
+Rd8+ passes it), their rook controls c8 (fix: the exchange c8=Q Rxc8 Rxc8, the queen guarding d8 so the king cannot take the rook first), then
+"do I have time to stop his pawn" (their agenda on the leaf: yes), then STOP, an out is found. Items, in build order (one commit each; Lean by
+reasoning; deviations reported; no AI trailers):
+1. **The region of a piece (the definition).** For a piece on square s, its REGION is the connected component of s in the graph whose vertices are
+   the squares where the piece may STAND (empty, or holding a piece of theirs it may take, and the piece is not lost there by the exchange word --
+   for a king: not held by any piece of theirs) and whose edges are the piece's single moves over empty squares. It is a set of squares with a
+   distance (moves from s). The piece's move rule makes the walls differ: a king cannot enter a held square, so a rook's line is a wall for it
+   (0LRTF: the c1 rook holds c2..c6, our king's region is the a and b files); a slider is stopped by occupied squares; a knight by nothing but
+   unsafe landing squares; a bishop's region lives on its colour. The READ SET of a region is the pieces that hold or block its boundary. A goal's
+   ZONE is the set of squares the goal needs the piece on: adjacency on the far side of their king for a mating king, the promotion square for a pawn,
+   the mating line for a rook, the fork square for a knight. RULE: a goal is KILLED by "region meets no zone square" with the region's read set --
+   sound as a kill because they need only keep the wall standing (one defence suffices for them). The CLAIM direction (we do reach the zone) is a
+   race and stays with the Passer2 form (our moves against their tempo); never claim reach from the region alone. Lean: def `region` (the closure
+   under the piece's step over standable squares), theorem: a rook (or queen) on a line it keeps, every square of which it attacks, is not crossed by
+   a king (the king never enters an attacked square); the rook-alone mate: with the kings apart a rook and king never cover the box -- derive from
+   `QueenMate.no_queen_mate_in_open` (a rook attacks a subset of what a queen attacks from the same square) or prove beside
+   `InsufficientMaterial.no_mate_king_minor` with `king_guards_two_orth`. Gloss, glossary lines ("region", "zone", "wall"), `lean_index build`.
+   Python: `region(board, sq)` mirrors the def with a test against the Lean statement; the trace prints the kill as "mate: killed by reasoning -- a
+   rook alone never mates with the kings apart (lemma ...), and our K's region {a1..b8 minus ...} never meets the zone (the wall: their r on c1, our K
+   bound to c7)". Acceptance: 0LRTF's Q1/Q2 killed before any chase (no inner agenda under them), the kill printed with its read set.
+2. **A chase route must address a defect of its own goal.** The chase of a goal follows a forcing move only if the move is a fix of one of the goal's
+   defects (covers the flight, drives the king off the square, removes or deflects the attacker, steps the piece toward the zone) or creates a new
+   claim of its own (52.16 (3) forcing). A check that fixes nothing of the goal is not a route of that goal (the walk of checks). Name the reason in
+   the trace: "Rh8+: not a route of mate h8 (fixes no defect: d7 stays a flight)". Expect fuse hits per set to fall; OBS before/after. The bound
+   piece as a kill with a read set (our K must guard c7: "bound") is the reverse lemma Kaveh asked for; print it where it kills.
+3. **"Drive the king off a square" as a named fix.** Defect "square X attacked by their king" gets the fix: a check after which every legal king
+   reply leaves X unattacked by the king (read set: the king's squares after the check, the checker's safety). 0LRTF: Rh8+ fails (Kd7), Rd8+ after
+   Rh8+ Kd7 passes (Ke6, Ke7; Kxd8 illegal, c7 guards d8). With 1-3 the promote root of 0LRTF resolves in two questions and no chase: Rh8+ is then a
+   step of the promote goal (it does not fix the defect alone but makes Rd8+ legal: a two-step fix, the chase's business, bounded by rule 2).
+4. **Cheapest reply first.** At every level of a chase, before any route opens an inner agenda, read every route's replies at the static leaf and
+   close what closes by rule (mate in one, the exchange with nothing of theirs, a standing kill). Only then open inner agendas, in the order of the
+   routes still open. A question answered on the board is answered before a question that needs a sub-question. OBS: 0LRTF decided Rh8+ with items
+   1-3 off (this item alone), and with all four; dev_20 / fresh_60 seconds and fuse hits before/after.
+Acceptance: 0LRTF decided Rh8+ (SF d18 OBS); 0GJec's gap re-read under rule 2 and named; the 52.13-52.16 acceptance puzzles unchanged (list in 52.16,
+plus 0Nv29 b6, 04Qx2 Be8+, 08A6a Bxe5, the discovery position Nf6); tests per item; both sets OBS before/after, every changed decision SF-classified.
+Deferred to 52.18 (not written): the landing table (target = (piece, square) whose landing binds a claim with no defect, threat = the same from
+their side, the inverted read index), the battery / discovery words in Lean, the x-ray fix on win/promote defects, the fork square as a root,
+threat-of-X forcing. Open question Kaveh raised: the region of a knight or a bishop -- answered above as the same closure under each piece's own step;
+whether a region should also carry the squares the piece ATTACKS from inside it (its influence, for zones that are lines) is to be decided when 52.18
+is written.
