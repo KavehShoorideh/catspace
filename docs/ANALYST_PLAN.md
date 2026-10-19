@@ -2263,3 +2263,33 @@ deviate minimally and REPORT every deviation; no AI trailers; OBS lines for ever
    by mating. Test: the 52.14 parry tests pass with a Lean lemma name in the claim.
 Acceptance: dev_20 and fresh_60_threats_event OBS before/after, every changed decision classified by Stockfish d18 (OBS SF lines), seconds; the
 52.13/52.14 acceptance puzzles unchanged; the Lean build green (`cd lean/ideas && lake build`) if Lean is touched.
+
+### 52.16 The bishop as a stopper, the fuse order, the sacrifice that still threatens (Kaveh 2026-10-19 GO: "the bishop stopping the pawn and whatever else was left")
+Left from 52.15 (journal 10:05): 0Nv29's b6 dies on Bb4 because `unstoppablePasser2_sound` has the hypothesis enemyKingPawns (their bishop is not
+allowed); 0LRTF and 0GJec end as fuse GAPs because the mate chases spend the fuse before the promote chase runs; failed promote chases are costly
+(02XVK 0.4 -> 5.2 s). From the discovery position Kaveh showed (r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w, SF d20: Nf6 +385, Nd6 +320):
+the 52.13 (2d) rule "a hanging piece threatens nothing" reads every sacrifice as no threat ("Nf6: not a threat: the N on f6 hangs"), while the exchange
+word already sees the battery (Ng3 / Nf2 / Nd2 are "threat 5": Qxa8 Qxa8 Bxa8 through the vacated e4). Build, one commit each (builder: deviate
+minimally and REPORT every deviation; no AI trailers; OBS lines for every number; Lean by reasoning, never a brute-force enumeration of positions):
+1. **The passer lemma with their pieces on the board.** Read `unstoppablePasser2_sound` and its hypotheses; prove in Lean a form whose stopper
+   condition is per piece: the pawn needs n pushes; their king is outside the square (as now); every other piece of theirs cannot attack any square
+   of the remaining path (the squares the pawn still has to cross, the promotion square included) within n - 1 of its moves -- state it with the
+   vocabulary's reach / attack words (search LEAN_INDEX for `reach`, `attacks`, `pawnPath`, `passer`); if a bounded form is all that closes (n <= 3, their
+   piece's reach read on the static board as the Python defect "stopper ... reaches the path in k" already does), prove that and say so. Gloss, glossary
+   line, `lean_index build`, `lake build` green. The binder reads the new lemma where it read the old; the trace names it. Acceptance: 0Nv29 b6 decided
+   (Stockfish d18 OBS), "enemyKingPawns" no longer the reason of any promote GAP in dev_20 / fresh_60 (grep the full traces).
+2. **The fuse order.** Diagnose 0LRTF and 0GJec: which chase spends the fuse and on what. Fix the CAUSE with a reason, not a bigger number: e.g. a root
+   question's chase gets a share of the fuse by stake order so a later root is never starved (say the rule in the trace line), or the check-chain inner
+   levels that burn it are closed by a rule (a check chain that returns to a position is a cycle: verify the 52.13 cycle key catches it). Acceptance:
+   0LRTF and 0GJec decided or their remaining gap named precisely; OBS fuse hits per set before/after.
+3. **A sacrifice that still threatens is forcing.** `forcing_why` (2d): a quiet move by a piece that hangs is a threat when the threat SURVIVES the
+   capture of that piece: after the move and their best capture of the moved piece (the exchange's capturer), `threat_value` with us to move is still
+   >= the stake. Trace: "Nf6: threat 5 survives Bxf6 (the N hangs, 3)". 08pSj's Rc6 stays "not a threat" (after Qxc6 nothing survives). Test: the
+   discovery position decides Nf6 or Nd6 (either is right by SF), printed with the discovery read ("after Nf6 Bxf6: Qxa8 wins 5: Bxa8 behind the Q"),
+   and 08pSj still Rf1+.
+4. **Failed promote chases.** Diagnose 02XVK (0.4 -> 5.2 s after 52.15 (2)): what the promote chase asks and why it cannot close early. Cut by a reason
+   (e.g. a promote route whose reply leaves the stopper defect standing and no new fix is a kill at once; the inner promote root inherits the stopper
+   kill by its read set), never by a count. OBS seconds per set before/after, and 02XVK's.
+Acceptance: dev_20 and fresh_60_threats_event OBS before/after, every changed decision classified by Stockfish d18 (OBS SF lines); the 52.13-52.15
+acceptance puzzles unchanged (0DoFB Qd5, 0AgL8 Qxg2+, 08pSj Rf1+, 0RhU6 Qxf2+, 0Wih8 Ng5+, 01w7J Bxh2+, 0VSUT Qxe5, 0BuQP Kf2, 0UqOv exf7+,
+0SJz3 Rxd6, 0PBkh Kxf5); tests for each item.
