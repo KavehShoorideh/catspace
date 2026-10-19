@@ -122,6 +122,7 @@ class Agenda:
         self._hang: list = []
         self.threat_views: list = []                            # (claim, their agenda) for every threat root
         self._seq = 0
+        self.promote_stake = R.STAKE_PROMOTE                                  # 52.15 (2): the stake of the promote question being chased (a reply that gave up that much needs no claim)
         self.leaf_obs: list = []                                # 52.10: (our san, claimed, leaf line, their claim or None, w, verdict) per leaf read, for the OBS lines
         self._leaf: dict = {}
         self.leaf_all = leaf_all                                # 52.10: read the leaf of EVERY reply of theirs (4x the seconds on dev_20 / fresh_60, no claim downgraded more), not only the minimising ones
@@ -854,15 +855,18 @@ class Agenda:
         best = ag.best[2] if ag.best and ag.best[0] > 0 else None
         reads = None if any(q.reads is None for q in ag.all) else frozenset().union(*(q.reads for q in ag.all))     # 52.13 (4): everything this agenda read (None: some question did not record it)
         threats = [(cl, q.claimed[1] if q.status == "verified" and q.claimed is not None else None) for q, cl in ag.threat_qs]
-        out = dict(value=ag.best[0] if best else 0, claim=best, asked=ag.asked, need=need, cut=ctx.budget_hits > hits0, reads=reads, threats=threats)
+        out = dict(value=ag.best[0] if best else 0, claim=best, asked=ag.asked, need=need, cut=ctx.budget_hits > hits0, reads=reads, threats=threats,
+                   promote=next((c for c in ag.state.claims if c.kind == "promote"), None))      # 52.15 (2): the promote claim of this position, whether or not it is the best claim
         if not out["cut"]:                                      # an answer the budget cut short is not memoised and is never read as "no claim"
             ctx.memo[(pk, wt, keep if wt else 0)] = out
         return out
 
-    def _chase_route(self, m: chess.Move) -> dict:
-        """One forcing route of the chase: every reply of theirs, the whole agenda on each resulting position. -> {value, killed, gap, parts, lemmas}."""
+    def _chase_route(self, m: chess.Move, promote: bool = False) -> dict:
+        """One forcing route of the chase: every reply of theirs, the whole agenda on each resulting position. -> {value, killed, gap, parts, lemmas}.
+        52.15 (2) `promote`: the question is a promotion; a reply is answered when the inner agenda claims the promotion (or a mate), or the reply itself gave up at least the
+        stake in material; the roots asked there are those of stake >= the promote stake, and the route's value is the promote stake (a mate: 100)."""
         b, ctx = self.board, self.ctx
-        key = (_pos_key(b.fen()), m.uci())
+        key = (_pos_key(b.fen()), m.uci() + (":promote" if promote else ""))
         if key in ctx.routes:
             hit = ctx.routes[key]
             if hit["gap"] is None:
@@ -899,7 +903,7 @@ class Agenda:
         # 52.13 (4): the SHORTLIST. A standing kill (an earlier route's reply, the same reply move, nothing its reads touch has changed in the position it leaves) ends the
         # route at once and is counted; otherwise the replies are read recaptures on the route's square, then checks, then captures, then the rest, the worst balance first inside a class.
         for dbal, uci, chk, cap, rec, mate1 in rows:
-            sk = self._standing_kill(uci, P2_of(uci), dbal)
+            sk = None if promote else self._standing_kill(uci, P2_of(uci), dbal)
             if sk is not None:
                 res["killed"] = f"after {san_of(uci)}: {sk[0]} (standing kill: nothing the inner agenda read after {sk[1]} {san_of(uci)} has changed)"
                 ctx.standing += 1
@@ -917,7 +921,7 @@ class Agenda:
                 res["killed"] = f"after {san_r} " + ("they mate us" if P2.is_check() else "stalemate")
                 self._log(key, uci, "killed", dbal, None, None, res["killed"])
                 break
-            closed = self._closed_by_rule(P2, dbal, mate1)
+            closed = ((BD.MATE_VALUE, "mate in one") if (P2.mate_in_one() if mate1 is None else mate1) else None) if promote else self._closed_by_rule(P2, dbal, mate1)
             if closed is not None:
                 val, why = closed
                 gains.append(val)
@@ -925,13 +929,41 @@ class Agenda:
                 ctx.closed += 1
                 self._log(key, uci, "closed", dbal, val, None, why)
                 continue
-            need = 1 - dbal if dbal <= 0 else BD.MATE_VALUE          # a reply that already gains is read for a mate only; else its static gain must survive their threats (below)
+            need = min(R.STAKE_PROMOTE, 1 - dbal) if promote and dbal <= 0 else R.STAKE_PROMOTE if promote else 1 - dbal if dbal <= 0 else BD.MATE_VALUE          # a reply that already gains is read for a mate only; else its static gain must survive their threats (below)
             inn = self._inner(P2.fen(), need, frozenset(P0.diff(P2)))
             if inn is None:
                 res["gap"] = f"chase fuse: {san} not followed past {san_r}"
                 ctx.budget_hits += 1
                 self._log(key, uci, "gap", dbal, None, None, res["gap"])
                 break
+            if promote:                                          # 52.15 (2): the inner agenda asked the promote root (and the mates) again on this reply
+                pc = inn.get("promote")
+                if inn["value"] >= BD.MATE_VALUE:
+                    g, part = BD.MATE_VALUE, f"{inn['claim'].what} ({inn['claim'].line}; value {inn['claim'].value})"
+                elif pc is not None:
+                    g, part = R.STAKE_PROMOTE, f"{pc.what} ({pc.line}; value {pc.value}, lemma {pc.lemma})"
+                elif inn["claim"] is not None and inn["value"] >= self.promote_stake:     # a claim of at least the stake (the agenda stops at it: the promote root itself is then not asked)
+                    g, part = R.STAKE_PROMOTE, f"{inn['claim'].what} ({inn['claim'].line}; value {inn['claim'].value}, at least the stake {self.promote_stake})"
+                elif dbal >= self.promote_stake:
+                    g, part = dbal, f"material {dbal:+d} (the reply gave up at least the stake {self.promote_stake})"
+                elif dbal <= 0 and inn["claim"] is not None and inn["value"] >= 1 - dbal:       # no promotion, but the material the reply cost is won back and more (the ordinary chase's reading)
+                    g, part = dbal + inn["value"], f"{inn['claim'].what} ({inn['claim'].line}; value {inn['claim'].value}) wins the material back: {dbal:+d} + {inn['value']}"
+                    res["material"] = True
+                elif inn.get("cut"):
+                    res["gap"] = f"chase fuse: {san} not followed past {san_r} (the inner agenda was cut by the fuse)"
+                    ctx.budget_hits += 1
+                    self._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
+                    break
+                else:
+                    res["killed"] = f"after {san_r}: the promotion is not claimed (no promote claim of ours; the reply took {-dbal})" if dbal <= 0 else f"after {san_r}: the promotion is not claimed ({dbal:+d}, below the stake)"
+                    self._log(key, uci, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
+                    break
+                gains.append(g)
+                res["parts"].append(f"after {san_r}: {part} -> {g}")
+                self._log(key, uci, "claim", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
+                if pc is not None:
+                    res["lemmas"].append(pc.lemma)
+                continue
             static = dbal >= 1 and inn["value"] < BD.MATE_VALUE
             t_their, claim_their, unparried, parry_note = 0, None, 0, None
             if static and not P2.is_check():                    # 52.13 (3), 52.14: a gain that stands only as a static balance (us to move) is a result only once THEIR agenda has read it, with the move passed to them, at every chase depth
@@ -1045,7 +1077,7 @@ class Agenda:
 
     def _chase(self, q: R.Question) -> bool:
         """52.12: the chase of a question that would be killed. -> True when a route CLAIMS (the question is verified)."""
-        if self.ctx is None or q.goal not in ("mate", "win") or self.min_stake >= BD.MATE_VALUE or (self.chase_depth >= 2 and q.goal != "mate"):      # (below the first inner level only the mate questions chase) # a mate-only read (the reply already gained, or lost too much for anything but a mate) does not chase on
+        if self.ctx is None or q.goal not in ("mate", "win", "promote") or self.min_stake >= BD.MATE_VALUE or (self.chase_depth >= 2 and q.goal != "mate"):      # (below the first inner level only the mate questions chase) # a mate-only read (the reply already gained, or lost too much for anything but a mate) does not chase on
             return False
         if self.best is not None and self.best[0] >= q.stake:      # 52.13 (2c): a question is chased only when its stake exceeds the best claim so far (stop (a) would end the agenda anyway)
             self.lines.append(f"  chase: not asked, the best claim ({self.best[2].what}, {self.best[0]}) is at least the stake {q.stake}")
@@ -1056,9 +1088,19 @@ class Agenda:
             why = R.forcing_why(b, m, q.stake, self.us, mate_threats=True, notes=notes)
             if why:
                 routes.append(R.Route(m, b.san(m), why))
+        if q.goal == "promote":                                  # 52.15 (2): the fix routes of the defects (take the stopper or the blocker, push with check) are routes too, at every depth
+            seen = {r.move for r in routes}
+            for f in q.fixes:
+                for r in R.all_routes(f):
+                    if r.move not in seen:
+                        seen.add(r.move)
+                        routes.append(R.Route(r.move, r.san, f"fix: {r.why}"))
+        if q.goal == "promote" and not self.chase_depth:        # 52.15 (2): plus a move that attacks a named STOPPER of the question ("threat on the stopper"), or offers the pawn to it
+            routes += self._stopper_routes(q, [r.move for r in routes], notes)
         if self.chase_depth:                                    # inner levels follow the most forcing moves only: a check, a capture, a mate threat (the quiet "threat n" moves are the root's)
-            routes = [r for r in routes if r.why == "check" or r.why.startswith("capture") or r.why == "threat of mate"]
-        routes.sort(key=lambda r: (0 if r.why == "check" else 1 if r.why.startswith("capture") else 2))      # the most forcing first: a check, a capture, a threat (stable inside)
+            routes = [r for r in routes if r.why.removeprefix("fix: ") in ("check", "threat of mate") or r.why.removeprefix("fix: ").startswith("capture")]
+        routes.sort(key=lambda r: (0 if r.why.removeprefix("fix: ") == "check" else 1 if r.why.removeprefix("fix: ").startswith("capture") else 2))      # the most forcing first: a check, a capture, a threat (stable inside)
+        self.promote_stake = q.stake if q.goal == "promote" else 0
         if not routes:
             self.lines.append("  chase: no forcing move on this board")
             return False
@@ -1071,7 +1113,7 @@ class Agenda:
             if self.chase_depth == 0 and saved > 0:             # the root's fuse is shared FAIRLY by the routes of this chase: each gets an equal share of what is left (a chain of checks must not spend what Qd5 needs: 0DoFB)
                 self.ctx.left = max(saved // (len(routes) - i), 1)
             before = self.ctx.left
-            res = self._chase_route(r.move)
+            res = self._chase_route(r.move, promote=q.goal == "promote")
             if self.chase_depth == 0:
                 self.ctx.left = saved - max(before - self.ctx.left, 0)
             if res["gap"]:
@@ -1092,7 +1134,7 @@ class Agenda:
         done.sort(key=lambda t: (-t[0], t[1].move.uci()))
         value, r, res = done[0]
         net = value
-        kind = "mate" if value >= BD.MATE_VALUE else "win"
+        kind = "mate" if value >= BD.MATE_VALUE else ("promote" if q.goal == "promote" and not res.get("material") else "win")
         parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")
         lemma = "chase: step_after+step_least over " + ", ".join(sorted(set(res["lemmas"]))[:3]) if res["lemmas"] else "chase: step_after+step_least"
         claim = Claim(kind, r.san, value, lemma, f"{r.san}; {parts}", move=r.move.uci())
@@ -1107,6 +1149,30 @@ class Agenda:
         return True
 
     # ------------------------------------------------------------------------------------------------------------ kills, saves
+
+    def _stopper_routes(self, q: R.Question, have: list, notes: list) -> list:
+        """52.15 (2): the extra routes of a promote question: a quiet move after which the moved piece attacks a STOPPER of the question (the defect's piece, a blocker of theirs too, not the king: a
+        check is already a route) and is not lost by the exchange on its own square (the 52.13 (2d) rule) -- "threat on the stopper"; and the push of the promoting pawn
+        itself onto a square a stopper (not the king) attacks, the pawn guarded so that the exchange there loses them the stopper -- "offers the pawn to the stopper"."""
+        b, me = self.board, self.me
+        stoppers = sorted({s for d in q.defects if d.kind in ("stopper", "blocked") for s in d.by if s != b.king(not me) and b.piece_at(s) is not None and b.piece_at(s).color != me})      # (the blocker of theirs is a stopper too)
+        out = []
+        for m in R._moves(b, self.us):
+            if m in have or b.is_castling(m):
+                continue
+            c = b.copy(stack=False)
+            c.push(m)
+            hit = [s for s in stoppers if c.piece_at(s) is not None and c.is_attacked_by(me, s) and m.to_square in chess.SquareSet(c.attackers(me, s))]
+            if hit and G.see_for(c, m.to_square, not me) <= 0:
+                pc = c.piece_at(hit[0])
+                out.append(R.Route(m, b.san(m), f"threat on the stopper: the {pc.symbol().upper()} on {G.name(hit[0])}"))
+                continue
+            if m.from_square == q.pattern["pawn"]:
+                by = [s for s in stoppers if c.piece_at(s) is not None and s in c.attackers(not me, m.to_square)]
+                if by and G.see_for(c, m.to_square, not me) <= 0:
+                    pc = c.piece_at(by[0])
+                    out.append(R.Route(m, b.san(m), f"offers the pawn to the stopper: the {pc.symbol().upper()} on {G.name(by[0])} takes, and the exchange there loses it"))
+        return out
 
     def _kill(self, q: R.Question, reason: str, tempo: bool) -> None:
         q.status, q.reason = "killed", reason
@@ -1265,6 +1331,8 @@ class Agenda:
                 reason = "stopped: " + "; ".join(d.why for d in stop)
             else:
                 reason = "tempo: " + "; ".join(f"{d.kind} {G.name(d.sq)}: {d.why}" for d in q.defects)
+            if self._chase(q):                                   # 52.15 (2): a promotion that the defects stop is chased: make them move, ask the promote root again on each reply
+                return
             self._kill(q, reason, tempo=True)
             return
         ps = dict(PV.proved_passers(b))

@@ -548,3 +548,35 @@ def test_52_15_0sjz3_rxd6_is_decided_through_the_checker_after_rxd6_rxd6():
     inner = AG.Agenda(State("8/p2k4/1p1R4/6p1/1PP5/8/P7/3K4 b - - 0 36", "b", []), side_depth=0, chase_depth=1, ctx=ag.ctx, min_stake=1)
     inner.ask()
     assert inner.best is not None and inner.best[2].what == "Kxd6" and inner.best[2].value == 5
+
+
+# ---- 52.15 (2): promote roots chase ----------------------------------------------------------------------------------------------------------------
+
+def test_52_15_a_stopped_promotion_is_chased_through_the_pawn_offered_to_the_stopper_0nv29():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0Nv29"][0]
+    ag = AG.Agenda(State(p["fen"], "w", []))
+    ag.ask()
+    t = ag.trace()
+    assert "b6 (offers the pawn to the stopper: the B on a5 takes" in t                       # the route the stopper rule adds; no forcing_why route exists here
+    assert ag.ctx.agendas > 0                                                                  # every reply of theirs was followed by the whole agenda
+    assert "b6: killed -- after Bb4: the promotion is not claimed" in t                       # the reason it is not decided: Bb4 leaves a pawn the Lean passer lemma (kings and pawns only) cannot claim
+    inner = AG.Agenda(State("8/8/1P6/2P1k3/1b2P3/3K4/8/8 w - - 1 56", "w", []), side_depth=0, chase_depth=1, ctx=ag.ctx, min_stake=R.STAKE_PROMOTE)
+    inner.ask()
+    assert any("enemyKingPawns: their B on b4" in g for g in inner.state.gaps)
+
+
+def test_52_15_a_promote_route_is_claimed_when_the_pawn_cannot_be_stopped_on_every_reply():
+    ag = AG.Agenda(State("7r/P4N2/8/8/8/4k3/8/2K5 w - - 0 1", "w", []))          # the R on h8 stops a7-a8; Nxh8 takes the stopper
+    ag.ctx.left = 100000
+    res = ag._chase_route(chess.Move.from_uci("f7h8"), promote=True)
+    assert res["killed"] is None and res["gap"] is None and res["value"] == R.STAKE_PROMOTE
+    assert len(res["parts"]) == 7 and all("-> 8" in x for x in res["parts"]) and "unstoppablePasser2_sound" in res["lemmas"]       # every reply of the lone king is answered by a promote claim
+
+
+def test_52_15_the_blocker_of_theirs_is_a_stopper_of_the_promote_question_0gjec():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0GJec"][0]
+    ag = AG.Agenda(State(p["fen"], "b", []))
+    ag.ask()
+    assert "Rb1 (threat on the stopper: the R on c1)" in ag.trace()                           # the chase asks the promote question through the attack on the blocker
