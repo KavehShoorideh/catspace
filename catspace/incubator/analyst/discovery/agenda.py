@@ -46,6 +46,7 @@ from catspace.incubator.analyst.discovery.state import Claim, State
 
 
 DEPTH_FUSE = 30                                                 # 52.13 (2b): ... and a chase this many inner levels deep is cut the same way (python's stack: ~9 frames per level; the 10x fuse alone reached the recursion limit)
+RULE2_FROM = {"mate": 2, "win": 1, "promote": 1}              # 52.17 (2): the chase depth from which a check must address a defect of its goal (the root's chase, depth 0, keeps every forcing move; a mate goal's checks are the first level of an inner agenda, its walk begins one level below)
 FUSE = 10                                                       # 52.13 (2b): the chase's budget is a fuse at this multiple of the old question count
 
 
@@ -85,6 +86,7 @@ class ChaseCtx:
         self.reopened = 0                         # ... and the ones that met the diff and were asked
         self.fresh = 0                            # 52.13 (1): questions NEW on the inner board (a key the outer agenda did not have, or did not settle), asked
         self.reasoned = 0                         # 52.17 (1): mate questions killed by reasoning (the wall, the measure they hold), no chase
+        self.unaddressed = 0                      # 52.17 (2): forcing moves NOT followed by a chase because they fix no defect of the goal and make no claim of their own
 
 
 class Agenda:
@@ -1173,6 +1175,51 @@ class Agenda:
                 self.ctx.their_ags[key] = ag
         return hit
 
+    def _addresses(self, q: R.Question, m: chess.Move, why: str) -> tuple:
+        """52.17 (2): A CHASE ROUTE MUST ADDRESS A DEFECT OF ITS OWN GOAL. A forcing move is followed only when it is (a) forcing by a CLAIM of its own (a threat of mate, a capture or
+        a threat worth the stake: 52.16 (3)), (b) the goal's own move or a step of its reach, or (c) a CHECK that fixes a defect of the goal: covers the flight, takes the piece that
+        takes the checker, attacks the target (a fork), deflects the defender (every reply is the defender's), takes the stopper / blocker, or drives the king off (item 3).
+        A check that fixes nothing of the goal is the walk of checks, not a route. -> (accepted, the note naming the reason).
+        The note is the trace line: "Rh8+: not a route of mate h8 (fixes no defect: d7 stays a flight)"."""
+        b, me = self.board, self.me
+        san = b.san(m)
+        if self.chase_depth < RULE2_FROM.get(q.goal, 99):      # the ROOT's own chase keeps every forcing move (its routes are the first level, 52.12); the WALK of checks is below it
+            return True, ""
+        if why.startswith("fix:") or why != "check":
+            return True, ""
+        goal = {"mate": f"mate {G.name(q.pattern['at'])}" if q.pattern.get("at") is not None else "mate", "win": f"win {G.name(q.pattern['target'])}" if q.pattern.get("target") is not None else "win", "promote": f"promote {G.name(q.pattern['pawn'])}" if q.pattern.get("pawn") is not None else "promote"}.get(q.goal, q.goal)
+        if q.goal == "mate" and (q.pattern.get("move") == m.uci() or m.uci() in (q.pattern.get("reach") or ())):
+            return True, ""
+        hit = self.ctx.routes.get((_pos_key(b.fen()), m.uci()))
+        if hit is not None and hit["gap"] is not None:             # a GAP is never a kill: the route the fuse cut under an earlier goal stays open for the later goals (0BHbB's Qb8+, 04Qx2's Be8+)
+            return True, ""
+        c = b.copy(stack=False)
+        c.push(m)
+        if any(ch != m.to_square for ch in c.checkers()):          # a DISCOVERED check (or a double check): the move opens a line of another piece onto the king -- a new threat from the vacated line (Kaveh's source 2; the word comes in 52.18 (2))
+            return True, ""
+        replies = list(c.legal_moves)
+        left = []
+        for d in q.defects:
+            if d.kind == "flight" and d.sq is not None and c.is_attacked_by(me, d.sq):
+                return True, ""
+            if d.kind == "checker takeable" and m.to_square in d.by:
+                return True, ""
+            if d.kind in ("defended", "checker takeable") and replies and all(r.from_square in d.by for r in replies):
+                return True, ""
+            if d.kind == "not attacked" and m.to_square in c.attackers(me, d.sq):
+                return True, ""
+            if q.goal == "win" and q.pattern.get("target") in c.attacks(m.to_square) and d.kind in ("not attacked", "defended"):
+                return True, ""
+            if q.goal == "promote" and self._fixes_promote_defect(q, d, m, c):
+                return True, ""
+            left.append(d)
+        stays = "; ".join(f"{d.sq and G.name(d.sq) + ' ' or ''}{ {'flight': 'stays a flight', 'checker takeable': 'stays takeable', 'interposition': 'stays open', 'not attacked': 'stays unattacked', 'defended': 'stays defended', 'blocked': 'stays blocked', 'stopper': 'stays a stopper', 'reach': 'stays out of reach'}.get(d.kind, 'stands') }" for d in left[:3]) or "no defect"
+        return False, f"{san}: not a route of {goal} (a check that fixes no defect: {stays})"
+
+    def _fixes_promote_defect(self, q: R.Question, d: R.Defect, m: chess.Move, c: chess.Board) -> bool:
+        """52.17 (2), (3): a check that fixes a defect of the promotion: takes the blocker / stopper it names."""
+        return m.to_square in d.by
+
     def _chase(self, q: R.Question) -> bool:
         """52.12: the chase of a question that would be killed. -> True when a route CLAIMS (the question is verified)."""
         if self.ctx is None or q.goal not in ("mate", "win", "promote") or self.min_stake >= BD.MATE_VALUE or (self.chase_depth >= 2 and q.goal != "mate"):      # (below the first inner level only the mate questions chase) # a mate-only read (the reply already gained, or lost too much for anything but a mate) does not chase on
@@ -1185,7 +1232,12 @@ class Agenda:
         for m in R._moves(b, self.us):
             why = R.forcing_why(b, m, q.stake, self.us, mate_threats=True, notes=notes)
             if why:
-                routes.append(R.Route(m, b.san(m), why))
+                ok, note = self._addresses(q, m, why)
+                if ok:
+                    routes.append(R.Route(m, b.san(m), why))
+                else:
+                    self.ctx.unaddressed += 1
+                    notes.append(note)
         if q.goal == "promote":                                  # 52.15 (2): the fix routes of the defects (take the stopper or the blocker, push with check) are routes too, at every depth
             seen = {r.move for r in routes}
             for f in q.fixes:

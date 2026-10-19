@@ -828,3 +828,39 @@ def test_52_17_the_wall_kills_the_mate_roots_when_our_king_is_cut_off():
     t = ag.trace()
     assert t.count("killed by reasoning (the wall)") == 2 and "the wall is their r on d5, their p on e6" in t
     assert "chase:" not in t[:t.index("Q3 win")]
+
+
+# ---- 52.17 (2): a chase route must address a defect of its own goal ---------------------------------------------------------------------------------
+
+def _inner_agenda(fen, depth=2):
+    return AG.Agenda(State(fen, "w", []), side_depth=0, chase_depth=depth, ctx=AG.ChaseCtx())
+
+
+def _win_q(ag, sq):
+    q = [x for x in ag.all if x.goal == "win" and x.pattern["target"] == sq][0]
+    q.defects = R.material_defects(ag.board, "w", sq)
+    return q
+
+
+def test_52_17_a_check_that_fixes_no_defect_of_the_goal_is_not_a_route_of_it_and_the_fork_the_discovery_and_the_root_are():
+    a = _inner_agenda("6k1/p6p/8/8/8/8/8/4R1K1 w - - 0 1")
+    ok, note = a._addresses(_win_q(a, chess.A7), chess.Move.from_uci("e1e8"), "check")
+    assert not ok and note == "Re8+: not a route of win a7 (a check that fixes no defect: a7 stays unattacked)"            # the walk of checks
+    b = _inner_agenda("2b3k1/p6p/8/8/8/8/8/4R1K1 w - - 0 1")
+    assert b._addresses(_win_q(b, chess.C8), chess.Move.from_uci("e1e8"), "check")[0]                                    # the check also attacks the target: a fork
+    c = _inner_agenda("6k1/p6p/8/8/6B1/8/8/4K1Q1 w - - 0 1")
+    assert c._addresses(_win_q(c, chess.A7), chess.Move.from_uci("g4h3"), "check")[0]                                    # a DISCOVERED check: the queen's line opens (a new threat from the vacated line)
+    assert a._addresses(_win_q(a, chess.A7), chess.Move.from_uci("e1e8"), "threat of mate")[0]                            # forcing by a claim of its own
+    root = _inner_agenda("6k1/p6p/8/8/8/8/8/4R1K1 w - - 0 1", depth=0)
+    assert root._addresses(_win_q(root, chess.A7), chess.Move.from_uci("e1e8"), "check")[0]                               # the root's own chase keeps every forcing move
+    a.ctx.routes[(AG._pos_key(a.board.fen()), "e1e8")] = dict(gap="chase fuse")
+    assert a._addresses(_win_q(a, chess.A7), chess.Move.from_uci("e1e8"), "check")[0]                                    # a GAP is never a kill: a route the fuse cut stays open for later goals
+
+
+def test_52_17_the_dev_20_decisions_that_needed_a_discovery_or_a_resumed_gap_are_kept_04qx2_0bhbb():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    for pid, san in (("04Qx2", "Be8+"), ("0BHbB", "Qb8+")):
+        p = [x for x in PA.load_set("dev_20") if x["id"] == pid][0]
+        ag = AG.Agenda(State(p["fen"], "w", []))
+        ag.ask()
+        assert ag.decision() is not None and ag.decision().what == san and ag.ctx.unaddressed > 0, pid
