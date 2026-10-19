@@ -88,7 +88,7 @@
   .tl.k-question{color:#cfd3da} .tl.k-claim{color:var(--grn);font-weight:600} .tl.k-kill{color:#ff6b6b} .tl.k-gap{color:var(--org)}
   .tl.k-chase{color:var(--blue)} .tl.k-their{color:#c792ea} .tl.k-route{color:#9fb4d8} .tl.k-stop{color:#e6e6e6;font-weight:600}
   .tl.k-fuse{color:#e0a96d} .tl.k-note,.tl.k-other,.tl.k-state{color:#8a90a0} .tl.k-decision{color:#0b0d10;background:var(--grn);font-weight:700}
-  .tl.k-fallback{color:#0b0d10;background:var(--org);font-weight:700} .tl.k-context{color:var(--org);font-style:italic}
+  .tl.k-background{color:#7f8aa3;font-style:italic;border-left:2px dotted #4a5266} .tl.k-fallback{color:#0b0d10;background:var(--org);font-weight:700} .tl.k-context{color:var(--org);font-style:italic}
   .tsep{color:var(--mut);text-align:center;margin:6px 0 2px;font-size:11px;border-top:1px solid var(--bd);padding-top:3px}
   #banner{display:none;margin:8px 0;padding:8px 12px;border-radius:6px;background:#1d3a2a;border:1px solid var(--grn);color:#d7ffe6;font-weight:600}
   .legend span{margin-right:8px;font-size:11px}
@@ -380,7 +380,7 @@ function showUser(u){remember("user",u.user,u.user);
 
 /* ---------- plan 54: play against the agenda, watch its trace ---------- */
 const P={view:null,byPly:{},note:"",st:null,since:0,gid:null,recs:{},follow:true,pin:null,hover:null,pg:null,lastPly:null,busy:false,orient:"white",sentMove:false};
-const KIND_LEGEND=[["question","#cfd3da"],["claim","#66d9a6"],["kill","#ff6b6b"],["gap","#ffb86b"],["chase","#7aa2ff"],["their","#c792ea"],["stop","#e6e6e6"],["fuse","#e0a96d"],["note","#8a90a0"]];
+const KIND_LEGEND=[["question","#cfd3da"],["claim","#66d9a6"],["kill","#ff6b6b"],["gap","#ffb86b"],["chase","#7aa2ff"],["their","#c792ea"],["stop","#e6e6e6"],["fuse","#e0a96d"],["note","#8a90a0"],["background","#7f8aa3"]];
 async function openPlay(){S.view="play";cg=null;P.since=0;P.gid=null;P.recs={};P.pin=null;P.hover=null;P.lastPly=null;
   $("#main").innerHTML=`<div class="pv">
   <div class="bcol">

@@ -529,6 +529,8 @@ class Agenda:
             if mv not in b.legal_moves:
                 f, stale_miss = None, False
         if f is None:
+            if stale_miss:
+                fs.recomputed += 1                               # a stale fact of this very question no longer matches and the live question needs it: recomputed NOW (foreground), the rest stays queued
             if self.chase_depth:
                 if cand:
                     self.ctx.reopened += 1
@@ -1195,10 +1197,30 @@ class Agenda:
         try:
             res = self._chase_route_body(m, promote, cheap)
             res["facts"] = list(dict.fromkeys(res.get("facts", []) + self._rf))
+            if not cheap:
+                self._gap_fact(m, promote, res)
             return res
         finally:
             self.ctx.facts.restore(self._frame)
             self._rf, self._frame = saved_rf, saved_frame
+
+    def _gap_fact(self, m: chess.Move, promote: bool, res: dict) -> None:
+        """52.19 (3): a route the fuse or the clock cut is a GAP FACT, kept with where to resume (the position, the route, the reply it stopped at, the time mark) and the stake of the question
+        that chased it; it waits in the background queue by chain stake and is resolved when the route is later followed to its end."""
+        ctx, fs = self.ctx, self.ctx.facts
+        key = (self.pk, m.uci() + (":promote" if promote else ""))
+        if res.get("gap") is None or res.get("reused"):
+            fid = ctx.gap_facts.pop(key, None) if res.get("gap") is None else None
+            if fid is not None:
+                fs.facts[fid].resolved = True
+            return
+        q = self._cur
+        if key in ctx.gap_facts:
+            fs.facts[ctx.gap_facts[key]].superseded = True        # the route was cut again: the new gap replaces the old
+        f = fs.add("gap", ("route",) + key, self.me, f"{self.board.san(m)}: {res['gap']}", value=0, stake=q.stake if q is not None else 0, depth=self.chase_depth,
+                   under=f"Q{q.id} at depth {self.chase_depth}" if q is not None else f"depth {self.chase_depth}", pk=self.pk, portable=False, just=res["facts"],
+                   resume=dict(fen=self.board.fen(), uci=m.uci(), promote=promote, reply=res.get("reply"), timed=bool(res.get("timed")), mark=res.get("mark"), question=q.text if q is not None else ""))
+        ctx.gap_facts[key] = f.id
 
     def _enter_reply(self, diff) -> None:
         """52.19 (2): THE LISTENER. A reply is about to be read: the squares its route and itself changed flag every fact that read them (and, through the justifications, every fact built on them);
@@ -1989,12 +2011,15 @@ class Agenda:
         fs = self.ctx.facts
         now = fs.snapshot()
         out = {k: now[k] - self._fs0[k] for k in now}
+        q = fs.queue()
+        out["queue"], out["top"] = len(q), q[0].chain_stake if q else 0
         return out
 
     def facts_lines(self) -> list:
         """The trace of the two tiers and the justification graph of the deciding claim (52.19 (3)): both tiers' counts, then the chain of facts the decision stands on."""
         d = self.facts_delta()
-        out = [f"facts: derived {d['derived']}, served from the store {d['served']} (flagged stale and revalidated {d['revalidated']})"]
+        out = [f"facts: derived {d['derived']}, served from the store {d['served']} (flagged stale and revalidated {d['revalidated']}); foreground: recomputed {d['recomputed']} stale fact(s) of the live questions; "
+               f"background queue: {d['queue']} (top stake {d['top']})"]
         fid = self.claim_fid.get(id(self.best[2])) if self.best is not None else None
         if fid is not None:
             out.append(f"justification graph of the decision ({self.best[2].what}):")

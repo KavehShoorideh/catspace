@@ -201,6 +201,13 @@ class FactStore:
                 best = max(best, self.facts[fid].chain_stake)
         return best
 
+    # ------------------------------------------------------------------------------------------------------------ the queue
+    def queue(self) -> list:
+        """The BACKGROUND queue: stale live facts and the open gaps (routes the fuse or the clock cut), by chain stake, highest first."""
+        out = [f for f in self.facts.values() if not f.superseded and ((f.id in self.stale and f.kind != "gap") or (f.kind == "gap" and not f.resolved and f.resume is not None))]
+        out.sort(key=lambda f: (-f.chain_stake, f.id))
+        return out
+
     def snapshot(self) -> dict:
         return dict(derived=self.derived, served=self.served, revalidated=self.revalidated, recomputed=self.recomputed, flagged=self.flagged)
 

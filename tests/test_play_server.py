@@ -129,7 +129,7 @@ def test_past_positions_the_whole_game_is_kept_per_ply_and_a_ply_can_be_asked_fo
     assert t2["ply"] == 2 and t2["records"] and all(r["ply"] == 2 for r in t2["records"])                      # only the engine's thinking before its move at ply 2
     assert all(r["fen"] == st["moves"][0]["fen"] for r in t2["records"])                                       # ... each parsed against the position before that move
     allr = call(port, "/api/play/trace?since=0")["records"]
-    assert {r["ply"] for r in allr} == {2, 4} and len(allr) >= len(t2["records"]) + len(call(port, "/api/play/trace?ply=4")["records"])
+    assert {r["ply"] for r in allr if r["kind"] != "background"} == {2, 4} and len(allr) >= len(t2["records"]) + len(call(port, "/api/play/trace?ply=4")["records"])
     assert call(port, "/api/play/trace?ply=1")["records"] == []                                                # a human ply has no engine trace
 
 
@@ -139,3 +139,23 @@ def test_the_trace_store_keeps_every_record_with_no_ring_buffer_loss():
     for i in range(7000):
         tb.add(f"line {i}", b, 1 + i % 3)
     assert len(tb.since(0)) == 7000 and len(tb.at_ply(2)) in (2333, 2334)
+
+
+def test_52_19_3_the_server_thinks_on_the_humans_clock_and_the_lines_are_marked_background(server):
+    port, tmp = server
+    st = call(port, "/api/play/new", {"colour": "white"})
+    call(port, "/api/play/move", {"uci": "e2e4"})
+    st = wait_idle(port)
+    t0, bg = time.time(), []
+    while time.time() - t0 < 60 and not bg:                       # he has not moved: the worker is thinking, its lines stream to the trace
+        bg = [r for r in call(port, "/api/play/trace?since=0")["records"] if r["kind"] == "background"]
+        time.sleep(0.3)
+    assert bg and all(r["text"].startswith("background:") for r in bg)
+    assert all(r["ply"] == st["ply"] + 1 for r in bg)             # the ply the human is to play
+    st = call(port, "/api/play/state")
+    assert not st["thinking"] and st["dests"]                     # thinking in the background is not the engine's move: he can move at once
+    mv = sorted(f + t for f, ts in st["dests"].items() for t in ts)[0]
+    t1 = time.time()
+    call(port, "/api/play/move", {"uci": mv})
+    st = wait_idle(port, 60)
+    assert st["ply"] == 4 and time.time() - t1 < 40               # his move stopped the worker, and the engine answered

@@ -73,11 +73,13 @@ class TraceLines(list):
 _SAN = r"(?:O-O-O|O-O|[KQRBN][a-h]?[1-8]?x?[a-h][1-8]|[a-h]x[a-h][1-8](?:=[QRBN])?|[a-h][1-8](?:=[QRBN])?)[+#]?"
 SAN_RE = re.compile(r"(?<![A-Za-z0-9])" + _SAN + r"(?![A-Za-z0-9])")
 SQUARE_RE = re.compile(r"(?<![A-Za-z0-9])[a-h][1-8](?![A-Za-z0-9])")
-KINDS = ("claim", "kill", "gap", "stop", "fuse", "chase", "note", "question", "route", "their", "decision", "fallback", "context", "state", "other")
+KINDS = ("claim", "kill", "gap", "stop", "fuse", "chase", "note", "question", "route", "their", "decision", "fallback", "context", "state", "background", "other")
 
 
 def classify(text: str) -> str:
     t = text.strip()
+    if t.startswith("background:"):                      # 52.19 (3): thinking on the opponent's clock
+        return "background"
     if t.startswith("decision:"):
         return "decision"
     if t.startswith("no decision:") or t.startswith("fallback "):
@@ -184,6 +186,8 @@ class AgendaPlayer:
         self.rng = random.Random(seed)
         self.sf_movetime = stockfish_movetime
         self._sf = None
+        self.carry = None                                # 52.19 (4): the chase context of the last move (fact store, memos) -- the facts of move 30 serve move 31
+        self.ponderer = None
         BV.install_terms()
 
     # ---- the fallbacks (each returns a legal Move)
@@ -197,6 +201,26 @@ class AgendaPlayer:
         from catspace.incubator.analyst.frame_player import choose
         best = choose(board.copy())["best"]
         return chess.Move.from_uci(self.rng.choice(best))
+
+    def ponder(self, board: chess.Board, emit=None, seconds: "float | None" = None) -> None:
+        """52.19 (3): the BACKGROUND tier. `board`: the position after our move, the human to move. Think on his clock: resume what the live move left behind (the out-of-time GAPs first, by chain stake),
+        then ask our agenda on the position after each of his legal replies in the order of what it disturbs; lines go to the trace as "background: ...". Stops when `cancel_ponder` is called."""
+        from catspace.incubator.analyst.discovery.ponder import Ponderer
+        if self.carry is None:
+            return
+        with AGENDA_LOCK:
+            pd = self.ponderer = Ponderer(self.carry)
+            if getattr(self, "_cancelled", False):
+                pd.cancel()
+            try:
+                pd.run(board, seconds, emit)
+            finally:
+                self.carry.deadline = None                     # the next real move sets its own clock
+
+    def cancel_ponder(self) -> None:
+        self._cancelled = True
+        if self.ponderer is not None:
+            self.ponderer.cancel()
 
     def close(self):
         if self._sf is not None:
@@ -221,10 +245,11 @@ class AgendaPlayer:
         fen = board.fen()
         us = "w" if board.turn else "b"
         with AGENDA_LOCK:
-            ag = Agenda(state_of(fen, us), seconds=seconds)                    # chase_log stays unset in a server
+            ag = Agenda(state_of(fen, us), seconds=seconds)  # chase_log stays unset in a server
             ag.lines = TraceLines(say)                        # the agenda only ever appends (verified: append / += in agenda.py); no edit to agenda.py
             ag.ask()
             decision = ag.decision()
+            self.carry = ag.ctx                                # kept to think on the human's clock; the next move starts from nothing (item 4 carries it)
         move = None
         if decision is not None and decision.move:
             try:
@@ -255,8 +280,10 @@ def pgn_path() -> str:
 class Game:
     """One game against the engine. The server owns the board (full move stack); the engine's reply runs on a worker thread so the trace streams."""
 
-    def __init__(self, human_white: bool, player: AgendaPlayer, gid: str, path: str | None = None, seconds: "float | None" = None):
+    def __init__(self, human_white: bool, player: AgendaPlayer, gid: str, path: str | None = None, seconds: "float | None" = None, background: bool = True):
         self.id, self.player, self.human_white = gid, player, human_white
+        self.background = background                    # 52.19 (3): think on the human's clock (the only budget: his move, or background_seconds)
+        self.background_seconds = None
         self.seconds = seconds                          # 52.17 (5): the agenda's time budget per move (None: the fuse); changeable between moves
         self.board = chess.Board()
         self.trace = TraceBuffer()
@@ -269,6 +296,7 @@ class Game:
         self.path = path
         self.started = time.strftime("%Y.%m.%d")
         self.worker: threading.Thread | None = None
+        self.bg: threading.Thread | None = None          # 52.19 (3): the background thinker (the human's clock)
         self.live = True
         if not self.human_turn():
             self._start_engine()
@@ -319,10 +347,25 @@ class Game:
             self.board.push(mv)
             self.history.append(dict(ply=len(self.board.move_stack), san=san, uci=mv.uci(), who="human", comment="", fen=self.board.fen()))
             self.engine_move = None                      # the engine's arrow stays until the human moves
+            self._stop_background()
             self._save()
             if self.over() is None:
                 self._start_engine()
             return self.state()
+
+    def _stop_background(self):
+        """The human moved: the background thinker stops (its agendas test the deadline) and lets the lock go before the engine's move asks for it."""
+        self.player.cancel_ponder()
+        if self.bg is not None and self.bg is not threading.current_thread():
+            self.bg.join(5)
+        self.bg = None
+
+    def _background(self, root: chess.Board, ply: int):
+        try:
+            self.player.ponder(root, emit=lambda t: self.trace.add(t, root, ply) if self.live else None, seconds=self.background_seconds)
+        except Exception as e:
+            import traceback
+            self.error = f"background: {e}\n{traceback.format_exc()[-800:]}"
 
     def _start_engine(self):
         self.thinking = True
@@ -350,6 +393,10 @@ class Game:
                 self.history.append(dict(ply=ply, san=san, uci=mv.uci(), who="engine", source=source, secs=round(secs, 2), comment=f"[{source}] {comment}", fen=self.board.fen()))
                 self.secs.append(secs)
                 self._save()
+                if self.over() is None and self.background and self.live:       # 52.19 (3): the human is to move: think on his clock
+                    self.player._cancelled = False
+                    self.bg = threading.Thread(target=self._background, args=(self.board.copy(), len(self.board.move_stack) + 1), daemon=True)
+                    self.bg.start()
         except Exception as e:                           # a failed engine move must be visible, not a hung page
             import traceback
             self.error = f"{e}\n{traceback.format_exc()[-1200:]}"
@@ -399,8 +446,9 @@ class Game:
 class PlayManager:
     """The single current game of this local server."""
 
-    def __init__(self, fallback: str = "one_ply", seed: int = 0, pgn: str | None = None, seconds: "float | None" = None):
+    def __init__(self, fallback: str = "one_ply", seed: int = 0, pgn: str | None = None, seconds: "float | None" = None, background: bool = True):
         self.fallback, self.seed, self.pgn = fallback, seed, pgn
+        self.background = background
         self.seconds = seconds
         self.game: Game | None = None
         self.count = 0
@@ -437,5 +485,5 @@ class PlayManager:
             player = AgendaPlayer(fallback or self.fallback, seed=self.seed + self.count)
             gid = time.strftime("%Y%m%d-%H%M%S") + f"-{self.count}"
             self.seconds = sec
-            self.game = Game(colour != "black", player, gid, self.pgn, sec)
+            self.game = Game(colour != "black", player, gid, self.pgn, sec, self.background)
             return self.game

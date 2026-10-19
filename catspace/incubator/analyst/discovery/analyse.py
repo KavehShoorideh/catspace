@@ -23,7 +23,7 @@ from catspace.incubator.analyst.discovery.state import state_of
 AGENDA_STORE = "agenda_states.jsonl"       # 52.9: the agenda's own store (plan 50's reasoned_states.jsonl keeps its record of the exhaustive ladder)
 
 
-def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store: bool = False, set_name: str = "", k: int = 3, leaf_all: bool = False, seconds: "float | None" = None) -> dict:
+def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store: bool = False, set_name: str = "", k: int = 3, leaf_all: bool = False, seconds: "float | None" = None, ponder: "float | None" = None) -> dict:
     BV.install_terms()
     t0 = time.time()
     fen = p["fen"]
@@ -71,7 +71,11 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
     log(f"OBS agenda {p['id']}: questions asked {ag.asked}, killed by tempo {ag.killed_tempo}, claims {len(st.claims)}, decision {decided} by "
         f"{d.lemma if d else '-'}, answer {ans} {verdict}, their agendas {ag.their_runs}, chase: inner agendas {cx.agendas}, inner questions {cx.asked}, inherited {cx.inherited} (claims {cx.inherited_claims}), reopened {cx.reopened}, new {cx.fresh}, "
         f"fuse hits {cx.budget_hits} (depth {cx.depth_cuts}), gap routes reused {cx.gap_reused}, replies closed by rule {cx.closed}, standing kills {cx.standing}, chase log rows {cx.logged}, static leaves read {cx.static_read}, parried {cx.static_parried}, unparried {cx.static_unparried}, killed by reasoning {cx.reasoned}, routes not addressing a defect {cx.unaddressed}, time outs {cx.time_outs}, landings served from the table {cx.landing_served}, forcing by a claim after a pass {R.PASS_CLAIMS[0] - pc0}, "
-        f"facts derived {fx['derived']}, served from the store {fx['served']}, seconds {secs}")
+        f"facts derived {fx['derived']}, served from the store {fx['served']}, foreground recomputations {fx['recomputed']}, background queue {fx['queue']} (top stake {fx['top']}), seconds {secs}")
+    if ponder:                                                   # 52.19 (3): the background tier after the puzzle: the queue drained for `ponder` seconds
+        from catspace.incubator.analyst.discovery import ponder as PD
+        pr = PD.drain(ag.ctx, ag.us, ponder, log=lambda t: log(f"OBS ponder {p['id']}: {t}"))
+        log(f"OBS ponder {p['id']}: drained {pr['done']} of {pr['queue']} queued items in {pr['secs']} s; queue after {pr['left']}")
     return dict(id=p["id"], asked=ag.asked, tempo=ag.killed_tempo, claims=len(st.claims), decision=decided, match=verdict == "MATCH",
                 decided=d is not None, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs, theirs=ag.their_runs, fx=fx, chase=(cx.agendas, cx.inherited, cx.reopened, cx.budget_hits, cx.asked, cx.inherited_claims, cx.fresh, cx.closed, cx.standing, cx.logged, cx.gap_reused, cx.depth_cuts, cx.static_read, cx.static_parried, cx.static_unparried, cx.reasoned, cx.unaddressed, cx.time_outs, cx.landing_served, R.PASS_CLAIMS[0] - pc0), until=ag.asked_at_claim, move=d.move if d else None, leaf=ag.leaf_stats)
 
@@ -85,6 +89,7 @@ def main():
     ap.add_argument("--memory", action="store_true", help="recall stored states to order equal stakes (OFF by default: with 11 records it asked MORE questions on 5 of 60 fresh puzzles, 2026-10-17)")
     ap.add_argument("--leaf-all", action="store_true", help="52.10: read the leaf of every reply of theirs, not only the minimising ones (slower)")
     ap.add_argument("--seconds", type=float, default=None, help="52.17 (5): the budget is TIME: seconds per puzzle (default: none, the question-count fuse as before)")
+    ap.add_argument("--ponder", type=float, default=None, help="52.19 (3): after each puzzle drain the background queue (gap routes by chain stake) for this many seconds")
     ap.add_argument("--no-memory", action="store_true", help="(kept for the batch scripts) the stake-only order, the default")
     a = ap.parse_args()
     ps = PA.load_set(a.set)
@@ -92,9 +97,9 @@ def main():
         done = RM.stored_ids(paths.derived(AGENDA_STORE))
         ps = [p for p in ps if p["id"] not in done] if not a.id else ps
     if a.id:
-        analyse(next(x for x in ps if x["id"] == a.id), memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds)
+        analyse(next(x for x in ps if x["id"] == a.id), memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds, ponder=a.ponder)
         return
-    res = [analyse(p, quiet=True, memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds) for p in ps]
+    res = [analyse(p, quiet=True, memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds, ponder=a.ponder) for p in ps]
     if a.store:
         print(f"OBS agenda store: {len(RM.load(paths.derived(AGENDA_STORE)))} records")
     for r in res:
@@ -110,7 +115,7 @@ def main():
           f"killing reasons {dict(kills.most_common())}, their agendas {sum(r['theirs'] for r in res)}, chase: inner agendas {sum(r['chase'][0] for r in res)}, "
           f"inner questions {sum(r['chase'][4] for r in res)} (mean {sum(r['chase'][4] for r in res) / max(sum(r['chase'][0] for r in res), 1):.1f} per inner agenda), "
           f"inherited {sum(r['chase'][1] for r in res)} (claims {sum(r['chase'][5] for r in res)}), reopened {sum(r['chase'][2] for r in res)}, new {sum(r['chase'][6] for r in res)}, fuse hits {sum(r['chase'][3] for r in res)} (depth {sum(r['chase'][11] for r in res)}), gap routes reused {sum(r['chase'][10] for r in res)}, replies closed by rule {sum(r['chase'][7] for r in res)}, standing kills {sum(r['chase'][8] for r in res)}, chase log rows {sum(r['chase'][9] for r in res)}, static leaves read {sum(r['chase'][12] for r in res)}, parried {sum(r['chase'][13] for r in res)}, unparried {sum(r['chase'][14] for r in res)}, killed by reasoning {sum(r['chase'][15] for r in res)}, routes not addressing a defect {sum(r['chase'][16] for r in res)}, time outs {sum(r['chase'][17] for r in res)}, landings served from the table {sum(r['chase'][18] for r in res)}, forcing by a claim after a pass {sum(r['chase'][19] for r in res)}, "
-          f"facts derived {sum(r['fx']['derived'] for r in res)}, served from the store {sum(r['fx']['served'] for r in res)}, seconds {round(sum(r['secs'] for r in res), 1)}")
+          f"facts derived {sum(r['fx']['derived'] for r in res)}, served from the store {sum(r['fx']['served'] for r in res)}, foreground recomputations {sum(r['fx']['recomputed'] for r in res)}, background queue at decision {sum(r['fx']['queue'] for r in res)} (top stake {max(r['fx']['top'] for r in res)}), seconds {round(sum(r['secs'] for r in res), 1)}")
 
 
 if __name__ == "__main__":

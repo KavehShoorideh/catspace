@@ -138,3 +138,85 @@ def test_52_19_2_advance_flags_for_good_between_the_moves_of_a_game():
     b4 = chess.Board("3R4/2Pk4/1K6/8/8/p7/8/3r4 w - - 0 1")        # their rook left c1
     assert fs.advance(b4) == [f.id] and f.id in fs.stale           # permanent: no frame restores it
     assert f.payload["perm"]
+
+
+# ---------------------------------------------------------------------------------------------------------------- item 3: lazy recomputation, two tiers
+
+def test_52_19_3_the_queue_is_ordered_by_chain_stake():
+    fs = FS.FactStore()
+    low = fs.add("kill", ("win", 1), True, "wins a pawn", reads={chess.A1}, sig=((0, "", 0, 0),), stake=1)
+    high = fs.add("kill", ("win", 2), True, "wins a rook", reads={chess.A1}, sig=((0, "", 0, 0),), stake=5)
+    pawn = fs.add("kill", ("win", 3), True, "pawn fact under a mate", reads={chess.A1}, sig=((0, "", 0, 0),), stake=1)
+    fs.add("claim", ("mate", 4), True, "mate", reads={chess.H1}, sig=((7, "", 0, 0),), just=[pawn.id], stake=100)
+    fs.invalidate({chess.A1}, permanent=True)
+    q = fs.queue()
+    assert [f.chain_stake for f in q] == [100, 100, 5, 1]          # the pawn fact leads with the mate that stands on it
+    assert q[0].id == pawn.id and q[-1].id == low.id and high.id in [f.id for f in q]
+
+
+def test_52_19_3_a_stale_fact_is_recomputed_only_when_a_live_question_needs_it_and_the_rest_stays_queued():
+    ag1 = AG.Agenda(state_of(OPEN, "w"))
+    ag1.ask()
+    fs = ag1.ctx.facts
+    b = chess.Board(OPEN)
+    fs.advance(b)
+    b2 = b.copy()
+    b2.push_san("Nxe5")
+    b2.push_san("Nxe5")
+    flagged = fs.advance(b2)
+    assert flagged and len(fs.queue()) >= len(flagged) // 2            # the listener only flags; the queue holds them, nothing was recomputed
+    base = fs.snapshot()
+    ag2 = AG.Agenda(state_of(b2.fen(), "w"), facts=ag1.ctx.facts)
+    ag2.ask()
+    d = ag2.facts_delta()
+    assert d["recomputed"] > 0 and d["served"] > 0                      # the questions the live agenda asked were served or recomputed
+    left = fs.queue()
+    assert left and left[0].chain_stake >= left[-1].chain_stake         # what no live question needed stays queued, highest chain stake first
+    line = next(ln for ln in ag2.lines if ln.startswith("facts:"))
+    assert f"recomputed {d['recomputed']} stale fact(s)" in line and f"background queue: {len(left)} (top stake {left[0].chain_stake})" in line
+    print(f"OBS 52.19 (3): flagged {len(flagged)}; the live agenda served {d['served']}, recomputed {d['recomputed']} in the foreground; background queue {len(left)} (top stake {left[0].chain_stake})")
+
+
+def test_52_19_3_the_out_of_time_gaps_of_the_live_move_enter_the_queue_and_the_drain_resumes_them_exactly_there():
+    from catspace.incubator.analyst.discovery import ponder as PD
+    ag = AG.Agenda(state_of(OPEN, "w"), seconds=0.05)
+    ag.ask()
+    fs = ag.ctx.facts
+    gaps = [f for f in fs.queue() if f.kind == "gap"]
+    assert gaps and all(g.resume["timed"] and g.resume["mark"] is not None and g.resume["reply"] for g in gaps)      # the route, the reply it stopped at and the time mark
+    assert [g.chain_stake for g in gaps] == sorted((g.chain_stake for g in gaps), reverse=True)
+    r = PD.drain(ag.ctx, "w", 30)
+    assert r["done"] == len(gaps) and r["left"] == 0                    # every cut route was followed to its end on the other clock
+    assert all(g.resolved or g.superseded for g in gaps)
+    print(f"OBS 52.19 (3): drained {r['done']} of {r['queue']} queued gap routes in {r['secs']} s")
+
+
+def test_52_19_3_the_background_tier_ponders_by_lemma_the_human_replies_and_stops_when_he_moves():
+    from catspace.incubator.analyst.discovery import ponder as PD
+    ag = AG.Agenda(state_of(OPEN, "w"), seconds=0.2)
+    ag.ask()
+    b = chess.Board(OPEN)
+    b.push_san("d3")                                                   # our move; the human (Black) is to move
+    lines = []
+    pd = PD.Ponderer(ag.ctx)
+    r = pd.run(b, 4.0, emit=lines.append)
+    assert r["replies"] >= 1 and any(ln.startswith("background: if ") for ln in lines)
+    assert all(ln.startswith("background:") for ln in lines)
+    # he moves: cancel stops the worker promptly
+    done = {}
+    pd2 = PD.Ponderer(ag.ctx)
+    th = threading.Thread(target=lambda: done.update(pd2.run(b, None)), daemon=True)
+    th.start()
+    time.sleep(0.5)
+    t0 = time.monotonic()
+    pd2.cancel()
+    th.join(10)
+    assert not th.is_alive() and time.monotonic() - t0 < 5
+
+
+def test_52_19_3_the_trace_prints_both_tiers_and_the_deciding_claims_graph():
+    ag = AG.Agenda(state_of(LRTF, "w"))
+    ag.ask()
+    t = ag.trace()
+    assert "foreground: recomputed" in t and "background queue:" in t and "justification graph of the decision (Rh8+)" in t
+    print("\n".join(ln for ln in ag.lines if ln.startswith("facts:") or "graph" in ln))
