@@ -652,10 +652,8 @@ def test_52_16_the_fuse_is_charged_by_stake_order_and_a_later_root_is_not_starve
     ag = AG.Agenda(State(p["fen"], "w", []))
     ag.ask()
     t = ag.trace()
-    assert "fuse: this root is charged 120 of the pool 240" in t                              # the highest stake is charged half, never all
-    assert "fuse left -" not in t and ag.ctx.left >= 0                                         # before: -14 (239 questions on a route share of 120)
-    assert "Rd7: killed -- after Kxd7" in t                                                    # the second route had a share of 1 before; now it is read to its kill
-    assert any("Rh8+ not followed past Kd7" in g for g in ag.state.gaps)                       # the remaining gap, named: the walk of the king under our rook checks (no fuse closes it)
+    assert "fuse left -" not in t and ag.ctx.left >= 0                                         # before 52.16: -14 (239 questions on a route share of 120)
+    assert "killed by reasoning (the measure they hold)" in t and not ag.state.gaps            # 52.17 (1): the mate roots no longer chase (their gaps, the fuse hits under the king's walk, are gone)
     p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0GJec"][0]
     ag = AG.Agenda(State(p["fen"], "b", []))
     ag.ask()

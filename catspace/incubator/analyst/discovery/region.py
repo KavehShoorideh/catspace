@@ -8,8 +8,8 @@ piece would take it: a different position). The region has a distance (moves fro
 ZONE. The squares a goal needs the piece on. KILL by region: the region meets no zone square -- sound as a kill because they need only keep the wall standing (one
 defence suffices). The claim direction (we do reach the zone) is a race and stays with the Passer2 form: NEVER claim reach from the region alone.
 
-ROOM. Their king's retreats (Lean `evasion_step`): the orthogonal steps of the lone king that keep the distance from ours no smaller than it was after any one king
-move of ours -- the measure they hold while the room is not taken away.
+ROOM. Their king's retreats (Lean `evasion_step`): a step of the lone king that keeps the distance from ours no smaller than it was after any one king move of
+ours -- the measure they hold while the room is not taken away (`held_measure`).
 """
 from __future__ import annotations
 
@@ -164,25 +164,6 @@ def region_kill(board: chess.Board, me: bool, checker_from: int, flights: list, 
     return dict(why=f"our K's region {show(reg.squares())} meets no square from which it covers a flight ({show(flights)}; zone {show(zone)}): the wall is "
                     + ", ".join(f"their {KIND_NAME[board.piece_at(h).piece_type].lower()} on {G.name(h)}" for h in holders),
                 reads=frozenset(reg.reads) | frozenset(flights))
-
-
-def retreats(board: chess.Board, me: bool) -> list:
-    """THEIR king's room (Lean `evasion_step`): for the position with the move passed to them, the orthogonal steps of their king to a legal square after which the
-    king is no nearer to ours than it is now -- under every one-step move of our king (and no move of it). The steps that hold the distance against all our king moves."""
-    ksq, wsq = board.king(not me), board.king(me)
-    if ksq is None or wsq is None:
-        return []
-    d0 = cheb(wsq, ksq)
-    c = G.with_turn(board, not me)
-    legal = {m.to_square for m in c.legal_moves if m.from_square == ksq}
-    out = []
-    steps = [wsq] + [t for t in chess.SquareSet(chess.BB_KING_ATTACKS[wsq]) if board.piece_at(t) is None or board.piece_at(t).color != me]
-    for t in sorted(legal):
-        if chess.square_file(t) != chess.square_file(ksq) and chess.square_rank(t) != chess.square_rank(ksq):
-            continue                                              # the orthogonal steps of the lemma
-        if all(cheb(w2, t) >= d0 for w2 in steps):
-            out.append(t)
-    return out
 
 
 def open_box(sq: int) -> bool:
