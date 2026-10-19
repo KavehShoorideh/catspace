@@ -21,6 +21,7 @@ import chess
 from catspace.incubator.analyst.discovery import graph as G
 
 STAKE_MATE = 100
+PASS_CLAIMS = [0]                             # 52.18 (3): forcing_why answers that were a claim bound after a pass (the OBS counter)
 STAKE_PROMOTE = 8                             # a queen less the pawn
 PROMOTE_MAX_PUSHES = 3                        # farther pawns: the mate / material stakes dominate (52.6)
 
@@ -269,7 +270,7 @@ def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool, m
     c.push(m)
     t = threat_value(c, us)
     if t < stake:
-        return None
+        return pass_claim(board, c, m, us, stake)
     me = G.colour_of(us)
     lost = G.see_for(c, m.to_square, not me)
     if lost > 0:                                              # landsSafe fails: the exchange on the destination wins for them
@@ -292,6 +293,31 @@ def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool, m
                          + (f" and the threat does not survive {worst[1]} ({worst[0]})" if worst is not None else ""))
         return None
     return f"threat {t}"
+
+
+def pass_claim(board: chess.Board, after: chess.Board, m: chess.Move, us: str | bool, stake: int) -> str | None:
+    """52.18 (3): THREAT-OF-X FORCING. A move is forcing when, after it, a PASS by them lets a claim of ours bind with no defect left -- the claim the move CREATES (it did not bind
+    before the move). Here: a promotion by the passer lemma (`unstoppablePasser2_sound` binds for a pawn after the pass: 0Nv29's b6, "b7 then b8=Q"); the fork claim of a landing is
+    item 4's. (A trap is not read here: it costs a free reply by its definition, 52.10.) -> the reason naming the claim, or None. The pass is the null move (`G.with_turn`)."""
+    if stake > STAKE_PROMOTE or after.is_check():
+        return None
+    me = G.colour_of(us)
+    if not any(board.pieces(chess.PAWN, me)):
+        return None
+    from catspace.incubator.analyst import lean_passer_v2_proto as PV
+    passed = G.with_turn(after, me)
+    now = dict(PV.proved_passers(passed, bishops=True))
+    if not now:
+        return None
+    before = dict(PV.proved_passers(G.with_turn(board, me), bishops=True))
+    new = [sq for sq in now if not (sq in before or (sq == m.to_square and m.from_square in before))]
+    if not new:
+        return None
+    sq = min(new)
+    n = G.word(passed, ("pushes", G.name(sq)), me)
+    path = [G.name(x) for x in pawn_path(passed, sq, n)]
+    PASS_CLAIMS[0] += 1
+    return f"threat: {', '.join(path[:-1]) + (' then ' if len(path) > 1 else '')}{path[-1]}=Q binds after a pass (unstoppablePasser2_sound, within {now[sq]} plies)"
 
 
 def _moves(board: chess.Board, us: str | bool, skip_from: int | None = None) -> list:

@@ -14,6 +14,7 @@ import chess
 from catspace.io import paths
 from catspace.incubator.analyst.discovery import base_vocabulary as BV
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
+from catspace.incubator.analyst.discovery import regress as R
 from catspace.incubator.analyst.discovery import remember as RM
 from catspace.incubator.analyst.discovery.agenda import Agenda
 from catspace.incubator.analyst.discovery.state import state_of
@@ -37,6 +38,7 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
     if not quiet:
         for sim, r in recalled:
             log(f"recall: seen {r['id']} (sim {sim}): {r.get('goal')} by {r.get('lemma')}, fixes {r.get('fixes')}")
+    pc0 = R.PASS_CLAIMS[0]
     ag = Agenda(st, memory=recalled, leaf_all=leaf_all, chase_log=p["id"], seconds=seconds)
     ag.ask()
     ans = b.san(chess.Move.from_uci(p["answer"]))
@@ -67,9 +69,9 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
     verdict = "MATCH" if d and d.move[:4] == p["answer"][:4] and (len(d.move) < 5 or len(p["answer"]) < 5 or d.move[4] == p["answer"][4]) else "MISS"
     log(f"OBS agenda {p['id']}: questions asked {ag.asked}, killed by tempo {ag.killed_tempo}, claims {len(st.claims)}, decision {decided} by "
         f"{d.lemma if d else '-'}, answer {ans} {verdict}, their agendas {ag.their_runs}, chase: inner agendas {cx.agendas}, inner questions {cx.asked}, inherited {cx.inherited} (claims {cx.inherited_claims}), reopened {cx.reopened}, new {cx.fresh}, "
-        f"fuse hits {cx.budget_hits} (depth {cx.depth_cuts}), gap routes reused {cx.gap_reused}, replies closed by rule {cx.closed}, standing kills {cx.standing}, chase log rows {cx.logged}, static leaves read {cx.static_read}, parried {cx.static_parried}, unparried {cx.static_unparried}, killed by reasoning {cx.reasoned}, routes not addressing a defect {cx.unaddressed}, time outs {cx.time_outs}, landings served from the table {cx.landing_served}, seconds {secs}")
+        f"fuse hits {cx.budget_hits} (depth {cx.depth_cuts}), gap routes reused {cx.gap_reused}, replies closed by rule {cx.closed}, standing kills {cx.standing}, chase log rows {cx.logged}, static leaves read {cx.static_read}, parried {cx.static_parried}, unparried {cx.static_unparried}, killed by reasoning {cx.reasoned}, routes not addressing a defect {cx.unaddressed}, time outs {cx.time_outs}, landings served from the table {cx.landing_served}, forcing by a claim after a pass {R.PASS_CLAIMS[0] - pc0}, seconds {secs}")
     return dict(id=p["id"], asked=ag.asked, tempo=ag.killed_tempo, claims=len(st.claims), decision=decided, match=verdict == "MATCH",
-                decided=d is not None, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs, theirs=ag.their_runs, chase=(cx.agendas, cx.inherited, cx.reopened, cx.budget_hits, cx.asked, cx.inherited_claims, cx.fresh, cx.closed, cx.standing, cx.logged, cx.gap_reused, cx.depth_cuts, cx.static_read, cx.static_parried, cx.static_unparried, cx.reasoned, cx.unaddressed, cx.time_outs, cx.landing_served), until=ag.asked_at_claim, move=d.move if d else None, leaf=ag.leaf_stats)
+                decided=d is not None, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs, theirs=ag.their_runs, chase=(cx.agendas, cx.inherited, cx.reopened, cx.budget_hits, cx.asked, cx.inherited_claims, cx.fresh, cx.closed, cx.standing, cx.logged, cx.gap_reused, cx.depth_cuts, cx.static_read, cx.static_parried, cx.static_unparried, cx.reasoned, cx.unaddressed, cx.time_outs, cx.landing_served, R.PASS_CLAIMS[0] - pc0), until=ag.asked_at_claim, move=d.move if d else None, leaf=ag.leaf_stats)
 
 
 def main():
@@ -105,7 +107,7 @@ def main():
           f"not decided {len(gap)} ({' '.join(gap)}), questions asked {sum(r['asked'] for r in res)}, killed by tempo {sum(r['tempo'] for r in res)}, "
           f"killing reasons {dict(kills.most_common())}, their agendas {sum(r['theirs'] for r in res)}, chase: inner agendas {sum(r['chase'][0] for r in res)}, "
           f"inner questions {sum(r['chase'][4] for r in res)} (mean {sum(r['chase'][4] for r in res) / max(sum(r['chase'][0] for r in res), 1):.1f} per inner agenda), "
-          f"inherited {sum(r['chase'][1] for r in res)} (claims {sum(r['chase'][5] for r in res)}), reopened {sum(r['chase'][2] for r in res)}, new {sum(r['chase'][6] for r in res)}, fuse hits {sum(r['chase'][3] for r in res)} (depth {sum(r['chase'][11] for r in res)}), gap routes reused {sum(r['chase'][10] for r in res)}, replies closed by rule {sum(r['chase'][7] for r in res)}, standing kills {sum(r['chase'][8] for r in res)}, chase log rows {sum(r['chase'][9] for r in res)}, static leaves read {sum(r['chase'][12] for r in res)}, parried {sum(r['chase'][13] for r in res)}, unparried {sum(r['chase'][14] for r in res)}, killed by reasoning {sum(r['chase'][15] for r in res)}, routes not addressing a defect {sum(r['chase'][16] for r in res)}, time outs {sum(r['chase'][17] for r in res)}, landings served from the table {sum(r['chase'][18] for r in res)}, seconds {round(sum(r['secs'] for r in res), 1)}")
+          f"inherited {sum(r['chase'][1] for r in res)} (claims {sum(r['chase'][5] for r in res)}), reopened {sum(r['chase'][2] for r in res)}, new {sum(r['chase'][6] for r in res)}, fuse hits {sum(r['chase'][3] for r in res)} (depth {sum(r['chase'][11] for r in res)}), gap routes reused {sum(r['chase'][10] for r in res)}, replies closed by rule {sum(r['chase'][7] for r in res)}, standing kills {sum(r['chase'][8] for r in res)}, chase log rows {sum(r['chase'][9] for r in res)}, static leaves read {sum(r['chase'][12] for r in res)}, parried {sum(r['chase'][13] for r in res)}, unparried {sum(r['chase'][14] for r in res)}, killed by reasoning {sum(r['chase'][15] for r in res)}, routes not addressing a defect {sum(r['chase'][16] for r in res)}, time outs {sum(r['chase'][17] for r in res)}, landings served from the table {sum(r['chase'][18] for r in res)}, forcing by a claim after a pass {sum(r['chase'][19] for r in res)}, seconds {round(sum(r['secs'] for r in res), 1)}")
 
 
 if __name__ == "__main__":

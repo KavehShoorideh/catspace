@@ -249,3 +249,5 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   `t` with only pieces of ours (at least one) between; ALMOST A BATTERY has exactly one piece between, one move from the direct attack (`almostBattery_blocked`: it does not attack now). The DISCOVERY is
   a move of the piece that cannot ride the line off it (`discovered_attack`: the rear slider then attacks `t`; `battery_persists`: the remaining sliders still ride in front, the x-ray of the exchange
   law). As a fix it is offered on win and promote defects when the move is forcing: "discovery: the N leaves e4, the B on g2 joins the attack on a8 (battery with the Q on b7)".
+- **Threat-of-X forcing** (`regress.pass_claim`) — a move is forcing when, after it, a PASS by them lets a claim of ours bind with no defect left that did not bind before the move: today the passer lemma
+  (`unstoppablePasser2_sound`) for a pawn ("b6 (threat: b7 then b8=Q binds after a pass)"); the fork claim of a landing is the same word (52.18 (4)). The reason names the claim.

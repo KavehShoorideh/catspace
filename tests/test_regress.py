@@ -1033,3 +1033,21 @@ def test_52_18_the_discovery_position_names_the_discovery_and_the_x_ray_fix_is_o
     disc = [f for f in fixes if f.text.startswith("discover an attack on e8")]
     nd2 = [r for r in disc[0].routes if r.san == "Nd2+"] if disc else []
     assert nd2 and "the N leaves e4, the R on e3 joins the attack on e8" in nd2[0].why and nd2[0].why.startswith("check;")
+
+
+# ---- 52.18 (3): threat-of-X forcing ------------------------------------------------------------------------------------------------------------------
+
+def test_52_18_a_move_is_forcing_when_a_pass_lets_the_passer_lemma_bind_and_the_reason_names_the_claim_0nv29():
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0Nv29"][0]
+    b = chess.Board(p["fen"])
+    why = R.forcing_why(b, chess.Move.from_uci("b5b6"), 8, "w")
+    assert why.startswith("threat: b7 then b8=Q binds after a pass (unstoppablePasser2_sound, within 3 plies)")
+    assert R.forcing_why(b, chess.Move.from_uci("c5c6"), 8, "w") is None and R.forcing_why(b, chess.Move.from_uci("b5b6"), 9, "w") is None      # a claim worth 8 does not rescue a stake of 9
+    assert R.forcing_why(b, chess.Move.from_uci("d3c4"), 8, "w") is None                                                                    # a king move that changes nothing binds nothing new
+    n0 = R.PASS_CLAIMS[0]
+    R.forcing_why(b, chess.Move.from_uci("b5b6"), 1, "w")
+    assert R.PASS_CLAIMS[0] == n0 + 1
+    ag = AG.Agenda(State(p["fen"], "w", []))
+    ag.ask()
+    assert ag.decision().what == "b6"
