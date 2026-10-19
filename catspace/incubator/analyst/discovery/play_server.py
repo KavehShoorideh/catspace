@@ -10,6 +10,7 @@ board with its move stack (50-move clock, repetition); the agenda sees the FEN o
 from __future__ import annotations
 
 import random
+import re
 import threading
 import time
 
@@ -42,6 +43,132 @@ def context_notes(board: chess.Board) -> list[str]:
     return notes
 
 
+class TraceLines(list):
+    """Drop-in for Agenda.lines: every line appended (append, extend, +=, insert) also calls `cb(text)`; a text with newlines is one call per line."""
+
+    def __init__(self, cb):
+        super().__init__()
+        self.cb = cb
+
+    def _emit(self, x):
+        for part in str(x).split("\n"):
+            self.cb(part)
+
+    def append(self, x):
+        super().append(x); self._emit(x)
+
+    def extend(self, xs):
+        for x in xs:
+            self.append(x)
+
+    def __iadd__(self, xs):
+        self.extend(xs)
+        return self
+
+    def insert(self, i, x):
+        super().insert(i, x); self._emit(x)
+
+
+# ---------------------------------------------------------------- trace records (item 2)
+_SAN = r"(?:O-O-O|O-O|[KQRBN][a-h]?[1-8]?x?[a-h][1-8]|[a-h]x[a-h][1-8](?:=[QRBN])?|[a-h][1-8](?:=[QRBN])?)[+#]?"
+SAN_RE = re.compile(r"(?<![A-Za-z0-9])" + _SAN + r"(?![A-Za-z0-9])")
+SQUARE_RE = re.compile(r"(?<![A-Za-z0-9])[a-h][1-8](?![A-Za-z0-9])")
+KINDS = ("claim", "kill", "gap", "stop", "fuse", "chase", "note", "question", "route", "their", "decision", "fallback", "context", "state", "other")
+
+
+def classify(text: str) -> str:
+    t = text.strip()
+    if t.startswith("decision:"):
+        return "decision"
+    if t.startswith("no decision:") or t.startswith("fallback "):
+        return "fallback"
+    if t.startswith("game context"):
+        return "context"
+    if "CLAIM" in t:
+        return "claim"
+    if "KILLED" in t or "killed" in t:
+        return "kill"
+    if "GAP" in t:
+        return "gap"
+    if t.startswith("STOP"):
+        return "stop"
+    if "fuse" in t:
+        return "fuse"
+    if t.startswith("chase:") or "chase:" in t:
+        return "chase"
+    if t.startswith(("note:", "memory:", "recall:")):
+        return "note"
+    if re.match(r"^(->\s*)?Q\d+", t):
+        return "question"
+    if t.startswith("EV"):
+        return "state"
+    if re.match(r"^\s+\S+:", text):
+        return "route"
+    if "their" in t or "parry" in t or "parried" in t:
+        return "their"
+    return "other"
+
+
+def parse_moves(text: str, root: chess.Board) -> list[dict]:
+    """Every SAN token of the line, parsed against the board the line is about: the root board, advanced by each move it parses (so "X then Y"
+    reads Y after X); a token that does not parse there is tried on the root; a bare square token (a pawn push like 'a7') counts as a move only when
+    it opens the line or follows 'then' / 'after' / 'verify' (else 'their P on a7' would draw an arrow). Best effort: never raises."""
+    out: list[dict] = []
+    try:
+        b = root.copy(stack=False)
+        for m in SAN_RE.finditer(text):
+            tok = m.group(0)
+            bare = re.fullmatch(r"[a-h][1-8]", tok) is not None
+            if bare:
+                before = text[:m.start()].rstrip().split()
+                if before and before[-1] not in ("then", "after", "verify", "->") and not (text[:m.start()].strip() == ""):
+                    continue
+            mv = None
+            for board in (b, root):
+                try:
+                    mv = board.parse_san(tok)
+                except ValueError:
+                    continue
+                if board is root and b is not root:
+                    b = root.copy(stack=False)
+                break
+            if mv is None:
+                continue
+            rec = dict(san=tok, **{"from": chess.square_name(mv.from_square), "to": chess.square_name(mv.to_square)})
+            if not any(o["from"] == rec["from"] and o["to"] == rec["to"] for o in out):
+                out.append(rec)
+            if mv in b.legal_moves:
+                b.push(mv)
+    except Exception:
+        pass
+    return out
+
+
+def make_record(n: int, text: str, root: chess.Board, ply: int = 0) -> dict:
+    return dict(n=n, ply=ply, text=text, kind=classify(text), indent=len(text) - len(text.lstrip(" ")),
+                moves=parse_moves(text, root), squares=sorted(set(SQUARE_RE.findall(text))))
+
+
+class TraceBuffer:
+    """A per-game ring buffer of trace records; n counts from 1 and never repeats; records(since) returns those with n > since."""
+
+    def __init__(self, cap: int = 6000):
+        self.cap, self.n, self.items, self.lock = cap, 0, [], threading.Lock()
+
+    def add(self, text: str, root: chess.Board, ply: int = 0) -> dict:
+        with self.lock:
+            self.n += 1
+            rec = make_record(self.n, text, root, ply)
+            self.items.append(rec)
+            if len(self.items) > self.cap:
+                del self.items[: len(self.items) - self.cap]
+            return rec
+
+    def since(self, n: int) -> list[dict]:
+        with self.lock:
+            return [r for r in self.items if r["n"] > n]
+
+
 class AgendaPlayer:
     def __init__(self, fallback: str = "one_ply", seed: int = 0, stockfish_movetime: float = 0.1):
         if fallback not in FALLBACKS:
@@ -72,22 +199,24 @@ class AgendaPlayer:
                 pass
             self._sf = None
 
-    def move(self, board: chess.Board, lines=None, wrap_lines=None):
-        """-> (move, trace_lines, source). source is 'agenda' or 'fallback:<name>'. `wrap_lines(ag)` may replace ag.lines (item 2)."""
+    def move(self, board: chess.Board, emit=None):
+        """-> (move, trace_lines, source). source is 'agenda' or 'fallback:<name>'. `emit(text)` is called for every trace line AS IT IS
+        APPENDED (item 2), so a UI can stream while the agenda thinks; trace_lines is the full list in order."""
         out: list[str] = []
+
+        def say(t: str):
+            out.append(t)
+            if emit:
+                emit(t)
         for n in context_notes(board):
-            out.append(n)
+            say(n)
         fen = board.fen()
         us = "w" if board.turn else "b"
-        decision = None
-        ag = None
         with AGENDA_LOCK:
             ag = Agenda(state_of(fen, us))                    # chase_log stays unset in a server
-            if wrap_lines is not None:
-                wrap_lines(ag)
+            ag.lines = TraceLines(say)                        # the agenda only ever appends (verified: append / += in agenda.py); no edit to agenda.py
             ag.ask()
             decision = ag.decision()
-            agenda_lines = list(ag.lines)
         move = None
         if decision is not None and decision.move:
             try:
@@ -97,10 +226,10 @@ class AgendaPlayer:
             except ValueError:
                 move = None
             if move is None:
-                out.append(f"agenda decision {decision.what} carries move {decision.move!r} which is not legal here; falling back")
+                say(f"agenda decision {decision.what} carries move {decision.move!r} which is not legal here; falling back")
         if move is not None:
-            out.append(f"decision: agenda chose {board.san(move)} ({decision.kind} {decision.what}, value {decision.value}, lemma {decision.lemma})")
-            return move, out + agenda_lines, "agenda"
+            say(f"decision: agenda chose {board.san(move)} ({decision.kind} {decision.what}, value {decision.value}, lemma {decision.lemma})")
+            return move, out, "agenda"
         move = self._fallback_move(board)
-        head = f"no decision: fallback {self.fallback} chose {board.san(move)}" if decision is None else f"fallback {self.fallback} chose {board.san(move)}"
-        return move, out + [head], f"fallback:{self.fallback}"
+        say(f"no decision: fallback {self.fallback} chose {board.san(move)}" if decision is None else f"fallback {self.fallback} chose {board.san(move)}")
+        return move, out, f"fallback:{self.fallback}"
