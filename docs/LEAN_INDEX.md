@@ -124,6 +124,7 @@ Do not edit by hand.
 - **def `Ideas.Vocabulary.mobilityOf`** (line 457): **mobility** (Kaveh 2026-10-15, ANALYST_PLAN 40.2): the squares the piece on `s` can legally move to where it is safe by the exchange -- after the move nothing is won by capturing on the square it lands on
   - used by: catspace/incubator/analyst/discovery/base_vocabulary.py, catspace/incubator/analyst/discovery/selfmine.py
 - **def `Ideas.Vocabulary.landsSafe`** (line 461): A move lands safely: after it, the exchange on its destination wins nothing for the other side.
+  - used by: catspace/incubator/analyst/discovery/regress.py
 - **def `Ideas.Vocabulary.attackableIn`** (line 465): Side `c` can attack square `s` within `k` of its own moves (the other side passes), every landing square safe by the exchange; already attacked counts (0 moves).
 - **def `Ideas.Vocabulary.attackableOf`** (line 475): **attackable** (the REACH of ANALYST_PLAN 40.2; the name `reach` was taken by the king's walk): 1 when the side that does not own the piece on `s` can attack `s` within `k` moves, every landing square safe by the exchang
   - used by: catspace/incubator/analyst/discovery/base_vocabulary.py, catspace/incubator/analyst/discovery/selfmine.py
@@ -169,7 +170,7 @@ Do not edit by hand.
 - **def `Ideas.ExchangeLaw.chainBehind`** (line 104): What stands behind `q` on its line from `s`, nearest first, as long as each is a slider with geometry to `s` (the pieces the exchange would reveal in sequence, either colour), tagged White/Black.
 - **def `Ideas.ExchangeLaw.raysOf`** (line 115): `c`'s rays on `s`: its attackers with what stands behind each, cheapest first.
 - **def `Ideas.ExchangeLaw.seeXB`** (line 120): The static exchange WITH X-RAYS for the side to move capturing on `s` with its cheapest piece (the capture's own value; `seeB` with what stands behind every participant).
-  - used by: catspace/incubator/analyst/lemma_explorer.py, rust/analyst_core/src/rules.rs, rust/analyst_core/src/vocab.rs
+  - used by: catspace/incubator/analyst/lemma_explorer.py, rust/analyst_core/src/pos.rs, rust/analyst_core/src/rules.rs, rust/analyst_core/src/vocab.rs
 - **def `Ideas.ExchangeLaw.hiddenB`** (line 133): The slider on `q` is HIDDEN behind the exchange on `s` (Kaveh 2026-10-08: "recursively check if the piece will participate in sequence, for all pieces" -- Alekhine's gun, pawn-bishop-queen): every piece between `q` and `
 - **def `Ideas.ExchangeLaw.hypotheses`** (line 145): The nine hypotheses, by name.
 - **def `Ideas.ExchangeLaw.intermezzoB`** (line 195): THE INTERMEZZO'S PRICE: the opponent's best static capture elsewhere after our first capture (0 when none pays).
@@ -659,6 +660,7 @@ Do not edit by hand.
 - **theorem `Ideas.Mined.Schemas.delayed_root_max_d1`** (line 86): THE DELAYED ROOT, WEAKENED (they take back at most one piece), depth 1 (plan 44.2, the operators DELAY / RECAPTURE)
 - **theorem `Ideas.Mined.Schemas.delayed_root_max_d2`** (line 108): THE DELAYED ROOT, WEAKENED (they take back at most one piece), depth 2 (plan 44.2, the operators DELAY / RECAPTURE)
 - **theorem `Ideas.Mined.Schemas.delayed_balance_d1`** (line 153): THE DELAYED BALANCE (the minimax tail), depth 1 (plan 44.2, the operators DELAY / RECAPTURE)
+  - used by: catspace/incubator/analyst/discovery/binder.py
 - **theorem `Ideas.Mined.Schemas.delayed_balance_d2`** (line 175): THE DELAYED BALANCE (the minimax tail), depth 2 (plan 44.2, the operators DELAY / RECAPTURE)
 - **theorem `Ideas.Mined.Schemas.dead_end`** (line 220): THE DEAD END, the one-step exchange from the capturer's side (plan 45.2)
 - **theorem `Ideas.Mined.Schemas.delayed_root_alive_d1`** (line 242): THE DELAYED ROOT, depth 1 (plan 44.2, the operators DELAY / RECAPTURE)
@@ -666,9 +668,10 @@ Do not edit by hand.
 - **theorem `Ideas.Mined.Schemas.delayed_root_max_alive_d1`** (line 309): THE DELAYED ROOT, WEAKENED (they take back at most one piece), depth 1 (plan 44.2, the operators DELAY / RECAPTURE)
 - **theorem `Ideas.Mined.Schemas.delayed_root_max_alive_d2`** (line 331): THE DELAYED ROOT, WEAKENED (they take back at most one piece), depth 2 (plan 44.2, the operators DELAY / RECAPTURE)
 - **theorem `Ideas.Mined.Schemas.delayed_balance_alive_d1`** (line 376): THE DELAYED BALANCE (the minimax tail), depth 1 (plan 44.2, the operators DELAY / RECAPTURE)
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/binder.py
 - **theorem `Ideas.Mined.Schemas.delayed_balance_alive_d2`** (line 398): THE DELAYED BALANCE (the minimax tail), depth 2 (plan 44.2, the operators DELAY / RECAPTURE)
 - **theorem `Ideas.Mined.Schemas.mate_in_one`** (line 443): THE MATE IN ONE (plan 47, written by hand: the schema generator does not regenerate it)
-  - used by: catspace/incubator/analyst/contrast.py, catspace/incubator/analyst/discovery/binder.py, catspace/incubator/analyst/discovery/puzzle_apply.py, catspace/incubator/analyst/discovery/remember.py, catspace/incubator/analyst/discovery/selfmine.py, catspace/incubator/analyst/graph.py ...
+  - used by: catspace/incubator/analyst/contrast.py, catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/binder.py, catspace/incubator/analyst/discovery/puzzle_apply.py, catspace/incubator/analyst/discovery/remember.py, catspace/incubator/analyst/discovery/selfmine.py ...
 - **theorem `Ideas.Mined.Schemas.mate_in_two`** (line 475): THE MATE IN TWO (plan 49, written by hand: the schema generator does not regenerate it)
   - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/binder.py, catspace/incubator/analyst/discovery/puzzle_apply.py, catspace/incubator/analyst/discovery/remember.py, catspace/incubator/analyst/discovery/selfmine.py
 - **theorem `Ideas.Mined.Schemas.delayed_balance_deep_alive_d1`** (line 517): THE DEEP DELAYED BALANCE (the minimax tail, one level deeper; plan 48), depth 1 (plan 44.2, the operators DELAY / RECAPTURE)
@@ -1225,9 +1228,9 @@ Do not edit by hand.
 - **theorem `Ideas.TreeStep.moves_of_count`** (line 320): `x can go to y`: the `moves` word, read as a Bool.
   - used by: catspace/incubator/analyst/discovery/selfmine.py
 - **theorem `Ideas.TreeStep.step_after`** (line 329): OUR STEP IN THE WORDS: our non-pawn piece on `x` can legally go to `y`, and after the kernel's move the goal is forced within `n`; the words after the move are read on that very position.
-  - used by: catspace/incubator/analyst/discovery/selfmine.py
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/selfmine.py
 - **theorem `Ideas.TreeStep.step_least`** (line 343): THEIR STEP IN THE WORDS: on their turn, some `least` reads at least 1 (so they have a move), and after every reply the goal is forced within `n`.
-  - used by: catspace/incubator/analyst/discovery/selfmine.py
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/selfmine.py
 - **def `Ideas.TreeStep.nonKing`** (line 351): The squares holding a non-king piece.
 - **def `Ideas.TreeStep.contrib`** (line 355): What a square contributes to `materialOf q c`.
 - **theorem `Ideas.TreeStep.materialOf_eq_sum`** (line 358)

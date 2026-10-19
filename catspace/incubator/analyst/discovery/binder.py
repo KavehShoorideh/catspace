@@ -84,7 +84,13 @@ SCHEMAS = [
 LEGS2 = ("our piece squares", "legal targets of x that check", "our captures legal after every reply", "their square")
 SCHEMAS2 = [Schema(f"{fam}_d2", ("x", "y", "x2", "y2"), LEGS2, _delayed_atoms2(fam), "(after x y <" + fam + " tail over the reply> x2 y2) >= balance + 1", 1,
                    SM.schema_name(2, fam), "gain", fam, 2) for fam in PA.ORDER]
-BY_NAME = {s.name: s for s in SCHEMAS + SCHEMAS2}
+# 52.15 (3): THE KEEP FAMILY. The same Lean theorem as the gain family (`delayed_balance_alive_d1`, general in the bound B and the gain v: hTB : T >= B + v, hCT : C + 4 = T,
+# no floor on the balance -- the floor 68 = 64 + 4 is the non-alive `delayed_balance_d1`'s, which the binder does not use) read with B = the balance now and v = 0:
+# the atoms are `balance <= B` and the tail >= B (C = B - 4, our material alive at every leaf): after the named move and every reply the balance can be held. It is not tried by
+# `verify_tried` (a gain schema asks for >= 1); `verify_keep` asks it of ONE parry.
+KEEP_FAMILY = "delayed_balance"
+KEEP = Schema("keep_d1", ("x", "y"), LEGS, lambda x, y, mover: None, "(after x y <" + KEEP_FAMILY + " tail>) >= balance + 0", 0, SM.schema_name(1, KEEP_FAMILY), "keep", KEEP_FAMILY)
+BY_NAME = {s.name: s for s in SCHEMAS + SCHEMAS2 + [KEEP]}
 
 
 def schema(name: str) -> Schema:
@@ -229,3 +235,31 @@ def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: boo
 
 def verify(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False) -> Binding | None:
     return verify_tried(route, board, us, mates_only)[0]
+
+
+def verify_keep(route: chess.Move, board: chess.Board, us: str, v: int = 0) -> tuple:
+    """52.15 (3): does the named move HOLD what we have? The keep family (see KEEP): B = the balance now, T = B + v (v = 0), C = T - 4; the legality legs, `balance <= B`
+    and the tail >= T are read in Rust exactly as `puzzle_apply.best_bind` reads a gain. -> (Binding | None, note). The binding's value is v, its theorem the Lean name."""
+    s = KEEP
+    if route.promotion or board.is_castling(route):                       # the schema's leg exclusions
+        return None, "a promotion or castling is not a leg of the schema"
+    pair = (chess.square_name(route.from_square), chess.square_name(route.to_square))
+    fen = board.fen()
+    B = SM.val_at(fen, "balance", us)
+    T = B + v
+    need = SM.ALIVE_NEED[s.family]
+    if T < need:
+        return None, f"B + v = {T} is below the alive material {need}: the schema cannot apply"
+    with SM.using_mover(us):
+        prem = [SM.atom_of("balance", "<=", B), SM.atom_of(SM.delayed_tail([pair], us, s.family, SM.alive_const(T, s.family)), ">=", T)]
+    legs = SM.with_legality(prem)[:-len(prem)]
+    if legs:
+        lterms = list({BV.sexpr(t): t for t, _, _ in legs}.values())
+        lvals = SM.evaluate(lterms, [dict(fen=fen, mover=us)])
+        if not all((lvals[BV.sexpr(t)][0] >= x) if op == ">=" else (lvals[BV.sexpr(t)][0] <= x) for t, op, x in legs):
+            return None, "the legs do not hold"
+    if not SM.premise_truth(prem, [dict(fen=fen, mover=us)])[0]:
+        return None, f"the balance {B} is not held (the tail reads below {T})"
+    c = board.copy(stack=False)
+    c.push(route)
+    return Binding(s.name, dict(x=pair[0], y=pair[1]), v, s.theorem, board.san(route), [c.san(r) for r in c.legal_moves]), ""

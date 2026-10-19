@@ -67,7 +67,6 @@ class ChaseCtx:
         self.static_read = 0                      # 52.14: static leaves (a reply after which the gain stands only as a balance) read from their side
         self.static_parried = 0                   # ... of which every threat of theirs had a verified parry (the gain kept) / ...
         self.static_unparried = 0                 # ... at least one threat had no parry (killed, or a gap)
-        self.their_moved: dict = {}               # 52.14: pos key (their move, as given) -> (value, claim) of THEIR agenda there, asked once for the whole run (the board after one parry of ours)
         self.static_lines: list = []              # 52.14: one line per static leaf whose threats were asked as save roots (chase depth, reply, verdict); the root agenda prints them
         self.standing = 0                         # 52.13 (4): routes ended by a standing kill (no inner agenda)
         self.closed = 0                           # ... replies closed by a rule (mate in one / exchange, nothing of theirs)
@@ -1254,27 +1253,16 @@ class Agenda:
         if len(self.state.claims) == before and not self._decide_by_smallest_loss(q):
             self.state.gaps.append(f"Q{q.id} {q.text}: no parry binds a guaranteed gain and none could be read from their view")
 
-    def _their_moved(self, c: chess.Board) -> tuple:
-        """THEIR agenda on `c` (their move, as given), memoised by position across the run: -> (value of their best claim, the claim) or (0, None)."""
-        key = _pos_key(c.fen())
-        hit = self.ctx.their_moved.get(key)
-        if hit is None:
-            ag = self._their_agenda(c) if any(True for _ in c.legal_moves) else None
-            cl = max(ag.state.claims, key=lambda x: x.value) if ag is not None and ag.state.claims else None
-            hit = self.ctx.their_moved[key] = (cl.value if cl else 0, cl)
-        return hit
-
     def _parry_keeps(self, q: R.Question, routes: list) -> None:
-        """52.14 (deviation from the plan text, which verifies the parry by the binder): a parry of a threat on a static leaf is VERIFIED when it keeps the gain the
-        leaf stands on, `keep` (a balance, us to move): the material it wins now less THEIR best claim on the board after it (their agenda, the move theirs) leaves at
-        least 1 of `keep`. The binder cannot say it: its gain schemas read a gain of >= 1 from a balance <= 0 and the leaf's balance is above that."""
+        """52.15 (3): a parry of a threat on a static leaf is VERIFIED by the binder's KEEP family (binder.verify_keep): the Lean theorem `delayed_balance_alive_d1` with the
+        balance bound B = the balance now and the gain v = 0 -- after the named move and every reply of theirs, some move of ours and every reply, the balance is still at
+        least B and our material alive. The claim's lemma is that theorem's name; the gain it keeps is `keep`, a balance (us to move) of at least 1. (52.14 verified the parry by
+        material after it less THEIR best claim; that label, `their_view`, is gone.) A MATE threat is parried only by taking the threatening piece or by mating."""
         b = self.board
         P0 = AC.Pos(b.fen())
-        base = P0.balance(self.me)
-        best = None
         if q.pattern.get("value", 0) >= BD.MATE_VALUE and q.pattern.get("threat"):
-            # a MATE threat is not parried by their agenda's silence afterwards (it reads no deep mate: 0AgL8's Kc8 against Qa7+, then Bc6+ mates in 4): only taking the
-            # threatening piece, or mating first, is a parry here
+            # a MATE threat is not parried by a held balance (the tail does not see a deep mate: 0AgL8's Kc8 against Qa7+, then Bc6+ mates in 4): only taking the threatening
+            # piece, or mating first, is a parry here
             src = chess.Move.from_uci(q.pattern["threat"]).from_square
             keep_routes = []
             for r in routes:
@@ -1283,29 +1271,23 @@ class Agenda:
                 if r.move.to_square == src or c.is_checkmate():
                     keep_routes.append(r)
             routes = keep_routes
-        for r in routes:
-            P1 = P0.push(r.move.uci())
-            gain = P1.balance(self.me) - base
-            c = b.copy(stack=False)
-            c.push(r.move)
-            t, cl = self._their_moved(c) if not c.is_checkmate() else (0, None)
-            x = 0 if c.is_checkmate() else P1.exchange()          # their agenda is silent about a plain recapture (its claims are guaranteed gains): the exchange on the board after the parry is read too
-            if x > t:
-                t, cl = x, None
-            net = gain - t
-            if best is None or net > best[0]:
-                best = (net, r, cl, t, gain)
-        if best is not None and self.keep + best[0] >= 1:
-            net, r, cl, t, gain = best
-            theirs = f"their {cl.what} wins {cl.value}" if cl else (f"their exchange wins {t}" if t else "nothing of theirs")
-            claim = Claim("save", r.san, self.keep + net, "their_view: material after the parry less their best claim", f"{r.san} ({theirs} after it)", move=r.move.uci())
-            self._stamp(claim, q)
-            self.state.claims.append(claim)
-            q.status = "verified"
-            q.claimed = (net, claim, frozenset())
-            self.lines.append(f"  -> PARRY {r.san} keeps {self.keep + net:+d} of {self.keep:+d} (wins {gain:+d} now, {theirs})")
-        else:
-            self._kill(q, f"no parry keeps the gain (the best of {len(routes)} leaves {self.keep + best[0]:+d} of {self.keep:+d})" if best else "no parry move", tempo=False)
+        base = P0.balance(self.me)
+        order = sorted(routes, key=lambda r: (-(P0.push(r.move.uci()).balance(self.me) - base), r.move.uci()))      # the parry that wins most now first; the first that binds is the claim
+        notes = []
+        if self.keep >= 1:
+            for r in order:
+                bind, note = BD.verify_keep(r.move, b, self.us)
+                if bind is None:
+                    notes.append(f"{r.san}: {note}")
+                    continue
+                claim = Claim("save", r.san, self.keep, bind.theorem, f"{r.san} (every reply: {len(bind.replies)} replies; the balance is held)", move=r.move.uci())
+                self._stamp(claim, q)
+                self.state.claims.append(claim)
+                q.status = "verified"
+                q.claimed = (0, claim, frozenset())
+                self.lines.append(f"  -> PARRY {r.san} keeps {self.keep:+d} (binds {bind.schema}, {len(bind.replies)} replies), lemma {bind.theorem}")
+                return
+        self._kill(q, f"no parry keeps the gain ({len(order)} parr{'y' if len(order) == 1 else 'ies'} tried by the keep family" + (f": {'; '.join(notes[:3])}" if notes else "") + f"; the gain to keep is {self.keep:+d})" if order else "no parry move", tempo=False)
 
     # ------------------------------------------------------------------------------------------------------------ promotion (52.6)
 

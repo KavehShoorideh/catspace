@@ -580,3 +580,62 @@ def test_52_15_the_blocker_of_theirs_is_a_stopper_of_the_promote_question_0gjec(
     ag = AG.Agenda(State(p["fen"], "b", []))
     ag.ask()
     assert "Rb1 (threat on the stopper: the R on c1)" in ag.trace()                           # the chase asks the promote question through the attack on the blocker
+
+
+# ---- 52.15 (3): the parry as a bound schema (the keep family) -----------------------------------------------------------------------------------------
+
+def test_52_15_the_keep_family_reads_the_delayed_balance_theorem_with_v_zero_and_agrees_with_a_brute_force_tail():
+    from catspace.incubator.analyst import lean_index
+    from catspace.incubator.analyst.discovery import selfmine as SM
+    d = [x for x in lean_index.build() if x["full"] == "Ideas.Mined.Schemas." + BD.KEEP.theorem][0]
+    assert BD.KEEP.theorem == "delayed_balance_alive_d1" and not d["open"]
+    assert "(hTB : (T : Int) ≥ (B : Int) + v)" in d["statement"] and "(hCT : C + 4 = T)" in d["statement"] and "T ≥ 68" not in d["statement"]      # general in the bound B and the gain v, no floor on the balance
+
+    def material(c, own):
+        return sum(G.worth(c.piece_at(s)) for s in chess.SQUARES if c.piece_at(s) and c.piece_at(s).color == own and c.piece_at(s).piece_type != chess.KING)
+
+    def tail(b, m, own, C):                                    # least (most (least (min balance (material + C)))) after the named move, by the rules
+        c = b.copy()
+        c.push(m)
+        out = []
+        for r in c.legal_moves:
+            d1 = c.copy()
+            d1.push(r)
+            best = None
+            for m2 in d1.legal_moves:
+                e = d1.copy()
+                e.push(m2)
+                worst = None
+                for r2 in e.legal_moves:
+                    f = e.copy()
+                    f.push(r2)
+                    v = min(G.balance(f, own), material(f, own) + C)
+                    worst = v if worst is None else min(worst, v)
+                assert worst is not None
+                best = worst if best is None else max(best, worst)
+            assert best is not None
+            out.append(best)
+        return min(out)
+    b = chess.Board("4k3/8/8/3b4/8/2N5/P7/4K3 w - - 0 1")
+    B = SM.val_at(b.fen(), "balance", "w")
+    kept = [b.san(m) for m in b.legal_moves if BD.verify_keep(m, b, "w")[0] is not None]
+    brute = [b.san(m) for m in b.legal_moves if not m.promotion and tail(b, m, True, B - 4) >= B]
+    assert kept == brute and 0 < len(kept) < len(list(b.legal_moves))                      # some moves hold the balance, some do not, and the schema says the same as the rules
+    bind, _ = BD.verify_keep(next(m for m in b.legal_moves if b.san(m) == kept[0]), b, "w")
+    assert bind.value == 0 and bind.theorem == "delayed_balance_alive_d1" and bind.schema == "keep_d1"
+
+
+def test_52_15_the_parry_claim_carries_the_lean_theorem_and_no_their_view_label_remains():
+    b = chess.Board(VSUT_LEAF)
+    outer = AG.Agenda(State(b.fen(), "w", []), side_depth=1)
+    outer._their_pass(b.fen())
+    their = outer.ctx.their_ags[AG._pos_key(G.with_turn(b, False).fen())]
+    inner = AG.Agenda(State(b.fen(), "w", []), side_depth=0, chase_depth=1, ctx=outer.ctx, min_stake=BD.MATE_VALUE, their=their, keep=3)
+    inner.ask()
+    (q, cl), = inner.threat_qs
+    assert q.claimed[1].what == "Rxb5" and q.claimed[1].lemma == "delayed_balance_alive_d1" and "their_view" not in inner.trace() + q.claimed[1].lemma
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0VSUT"][0]
+    ag = AG.Agenda(State(p["fen"], "w", []))
+    ag.ask()
+    assert any("parry: Rxb5 (lemma delayed_balance_alive_d1) keeps +3" in x for x in ag.ctx.static_lines) and "their_view" not in ag.trace()
