@@ -37,6 +37,7 @@ import chess
 from catspace.incubator.analyst import lean_passer_v2_proto as PV
 from catspace.incubator.analyst.discovery import base_vocabulary as BV
 from catspace.incubator.analyst.discovery import binder as BD
+from catspace.incubator.analyst.discovery import facts as FS
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import landing as LD
@@ -60,7 +61,10 @@ def _pos_key(fen: str) -> str:
 
 class ChaseCtx:
     """The state shared by the root agenda and its inner agendas (52.12): the FEN memo, the route memo, the shared question budget and the counters."""
-    def __init__(self):
+    def __init__(self, facts: "FS.FactStore | None" = None):
+        self.facts = facts if facts is not None else FS.FactStore()     # 52.19 (1): every claim and kill derived in the run, with its justifications; shared by the root agenda and every inner agenda
+        self.their_facts: dict = {}               # 52.19: key of their agenda's position -> the fact id of its answer
+        self.gap_facts: dict = {}                 # 52.19 (3): route key -> the id of the open gap fact (resolved when the route is followed to its end)
         self.memo: dict = {}                      # fen -> {value, claim, asked}: the inner agenda's best claim, asked once for the whole run
         self.routes: dict = {}                    # (fen, uci) -> the evaluated route (memoised: the same position is chased by many questions)
         self.active: set = set()                  # the FENs being asked (a cycle ends here)
@@ -112,7 +116,7 @@ class ChaseCtx:
 
 
 class Agenda:
-    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None, chase_log: str | None = None, their: "Agenda | None" = None, keep: int = 0, seconds: "float | None" = None):
+    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None, chase_log: str | None = None, their: "Agenda | None" = None, keep: int = 0, seconds: "float | None" = None, facts: "FS.FactStore | None" = None):
         R.reset_ids()
         self.their = their                                      # 52.14: THEIR agenda on this board with the move passed to them: its claims are asked as save roots (an inner agenda on a static leaf)
         self.keep = keep                                        # 52.14: the gain (a balance, us to move) the static leaf stands on: a parry of a threat is verified when it keeps at least 1 of it
@@ -122,7 +126,7 @@ class Agenda:
         self.inherited = 0
         self.min_stake = min_stake                              # 52.12: an inner agenda asks only the roots whose stake can still rescue the route (a root below it is not pushed)
         self.chase_depth = chase_depth                          # 52.12: 0 for the root agenda, +1 per inner agenda of a chase
-        self.ctx = ctx if ctx is not None else (ChaseCtx() if side_depth else None)       # their agendas (side_depth 0, no ctx) never chase
+        self.ctx = ctx if ctx is not None else (ChaseCtx(facts) if side_depth else None)       # their agendas (side_depth 0, no ctx) never chase
         if self.ctx is not None and chase_log is not None:
             self.ctx.tag = chase_log                            # 52.13 (4): the id the chase log rows carry
         self.memory = memory or []                              # 52.9: [(sim, record)] recalled for this state; it only REORDERS equal stakes, never adds or removes
@@ -159,6 +163,15 @@ class Agenda:
         self.leaf_all = leaf_all                                # 52.10: read the leaf of EVERY reply of theirs (4x the seconds on dev_20 / fresh_60, no claim downgraded more), not only the minimising ones
         self.leaf_stats = dict(read=0, down=0, untrusted=0)       # claims read at the leaf / downgraded / not trusted (the decomposition missed the word)
         self._tv: dict = {}                                     # their view of a route, asked once (the verify and the smallest-loss decision share it)
+        self.pk = _pos_key(state.fen)
+        self.fact_of: dict = {}                                 # 52.19: question id -> the id of the fact it derived or was served
+        self.claim_fid: dict = {}                               # id(claim) -> the fact id that holds it
+        self.premises: list = []                                # ... the ids of every fact this agenda derived or was served (an inner answer stands on them)
+        self._cur: "R.Question | None" = None                   # the question being asked (the stake of the facts derived under it)
+        self._qdeps: list = []                                  # the premises of the fact the current question will derive (a chase fills them)
+        self._rf: "list | None" = None                          # the facts the route being chased read (inner answers, their agendas)
+        self._cell = FS.board_cell(self.board)
+        self._fs0 = self.ctx.facts.snapshot() if self.ctx is not None else None      # the store's counters when this agenda began (the deltas are its own)
         self._pre: dict = {}                                    # 52.17 (4): route key -> the replies the cheap pass closed by rule
         self._roots()
         for i, q in enumerate(self.all, 1):                      # numbered in the order they are asked
@@ -395,6 +408,8 @@ class Agenda:
                         seen.append(l.key())
                         if len(seen) <= 5:
                             self.lines.append(f"known about the {pc.symbol().upper()} on {G.name(mv.from_square)}: {l.text()}")
+        if self.ctx is not None and self.chase_depth == 0:
+            self.lines += self.facts_lines()
         if self.ctx is not None and self.chase_depth == 0 and self.ctx.final is not None:       # 52.17 (5)
             used = time.monotonic() - self.ctx.t0
             self.ctx.time_outs += 1 if self.ctx.hit else 0
@@ -441,7 +456,10 @@ class Agenda:
             if self.chase_depth:                                 # an inner agenda pays the shared budget as it asks (a chain of checks meets it on the way down)
                 self.ctx.left -= 1
                 before = self.asked
+            self._cur, self._qdeps, n0 = q, [], len(self.state.claims)
             self._ask(q)
+            if self.ctx is not None:
+                self._file(q, self.state.claims[n0:])
             if self.chase_depth:
                 self.ctx.left -= max(self.asked - before - 1, 0)
         self.lines.append("STOP (b): every question is closed")
@@ -451,6 +469,8 @@ class Agenda:
         not in `inherit`), (b) every outer question whose reads meet the diff of the route and the reply, (c) every question NEW on this board. The rest is INHERITED
         with its status: a kill as it was, a claim re-stamped on this board (the move is legal here) with the line 'inherited: nothing changed for ...'."""
         key = R.question_key(q)
+        if not self.inherit and self.ctx is not None and key is not None:
+            return self._serve(q, key)                           # 52.19 (1): the fact store replaces the parent-only walk (the dict form below is what the tests of 52.12 / 52.13 pass in)
         hit = self.inherit.get(key) if key is not None else None
         if hit is None:
             if key is not None and self.inherit:
@@ -484,6 +504,89 @@ class Agenda:
         self.inherited += 1
         self.ctx.inherited += 1
         return True
+
+    def _can_chase(self, q: R.Question) -> bool:
+        """Whether this agenda would chase the question if it came to be killed (the static guards of `_chase`)."""
+        return self.ctx is not None and q.goal in ("mate", "win", "promote") and self.min_stake < BD.MATE_VALUE and not (self.chase_depth >= 2 and q.goal != "mate")
+
+    def _power(self, q: R.Question) -> int:
+        """How hard this agenda chases the question if it comes to be killed: 0 not at all, 1 as an inner agenda (checks, captures, mate threats), 2 as the root (every forcing move, the stopper routes). A kill served to
+        an agenda must have been chased at least as hard as this one would chase."""
+        return 0 if not self._can_chase(q) else (2 if self.chase_depth == 0 else 1)
+
+    def _fkey(self, q: R.Question):
+        key = R.question_key(q)
+        return None if key is None else (key, self.board.is_check())
+
+    def _serve(self, q: R.Question, key) -> bool:
+        """52.19 (1): THE STORE IS CONSULTED BEFORE A QUESTION IS ASKED. A fresh fact of the same question whose read cells on this board are what they were (a signature, not a FEN) is served:
+        a kill as it was, a claim re-stamped on this board (its move is legal here). Siblings, transpositions and later root agendas share facts; the parent-only walk is a special case."""
+        fs, b = self.ctx.facts, self.board
+        f, cand, stale_miss = fs.lookup(self._fkey(q), self.me, self._cell, power=self._power(q))
+        if f is not None and f.kind == "claim":
+            mv = chess.Move.from_uci(f.payload["claim"].move)
+            if mv not in b.legal_moves:
+                f, stale_miss = None, False
+        if f is None:
+            if self.chase_depth:
+                if cand:
+                    self.ctx.reopened += 1
+                else:
+                    self.ctx.fresh += 1
+            return False
+        sq = q.pattern.get("at") if q.goal == "mate" else q.pattern.get("target")
+        pc = b.piece_at(sq) if sq is not None else None
+        what = f"the {pc.symbol().upper() if pc else 'piece'} on {G.name(sq) if sq is not None else '?'}"
+        src = f"served from the store (fact #{f.id}, derived under {f.under})"
+        if f.kind == "claim":
+            old = f.payload["claim"]
+            cl = dataclasses.replace(old, what=b.san(chess.Move.from_uci(old.move)), line=f"inherited: nothing changed for {what} ({old.line})")
+            self.state.claims.append(cl)
+            self.claim_fid[id(cl)] = f.id
+            q.status, q.claimed, q.reads = "verified", (f.payload["net"], cl, f.reads), f.reads
+            self.ctx.inherited_claims += 1
+            self.lines.append(f"Q{q.id} {q.text}: inherited: nothing changed for {what}: CLAIM {cl.kind} {cl.what} (value {cl.value}, net {f.payload['net']}), lemma {cl.lemma} -- {src}")
+            if self.best is None or (f.payload["net"], 0) > self.best[:2]:
+                self.best = (f.payload["net"], 0, cl)
+                self.asked_at_claim = self.asked
+        else:
+            q.status, q.reason, q.reads = "killed", "inherited: " + f.payload.get("why", ""), f.reads
+            self.kills.append((q.id, q.reason))
+            self.lines.append(f"Q{q.id} {q.text}: inherited: nothing changed for {what} ({f.payload.get('why', '')}) -- {src}")
+        self.fact_of[q.id] = f.id
+        self.premises.append(f.id)
+        self.inherited += 1
+        self.ctx.inherited += 1
+        return True
+
+    def _file(self, q: R.Question, new_claims: list) -> None:
+        """52.19 (1): what the question just derived is FILED as a fact: its read set and signature on this board, the facts it was derived from (the route that decided a chase claim, every route
+        for a chase kill, the inner answers), the stake and the position it was asked on."""
+        if q.status not in ("killed", "verified", "gap"):
+            return
+        key = self._fkey(q)
+        fs, kind = self.ctx.facts, {"killed": "kill", "verified": "claim", "gap": "gap"}[q.status]
+        reads, value, payload, portable = q.reads, 0, {}, key is not None
+        claim = None
+        if kind == "claim":
+            if q.claimed is not None:
+                value, claim, reads = q.claimed[0], q.claimed[1], q.claimed[2]
+                payload = dict(claim=claim, net=q.claimed[0])
+                portable = portable and not claim.lemma.startswith("chase")      # a chase claim reads every reply of the board it was made on: it is not transferable (as in 52.13)
+            else:
+                claim = new_claims[-1] if new_claims else None
+                value = claim.value if claim is not None else 0
+                portable = False
+        elif kind == "kill":
+            payload = dict(why=q.reason.removeprefix("inherited: ").split(";")[0][:80])
+        text = f"{claim.kind} {claim.what}: {q.text}" if claim is not None else q.text
+        sig = FS.signature(self._cell, reads) if reads is not None else ()
+        f = fs.add(kind, key if key is not None else ("q", q.goal, q.text, self.pk), self.me, text, value=value, reads=reads, sig=sig, just=self._qdeps, stake=q.stake, depth=self.chase_depth,
+                   under=f"Q{q.id} at depth {self.chase_depth}", pk=self.pk, portable=portable, power=(2 if getattr(q, "_reasoned", False) else self._power(q) if getattr(q, "_chased", False) else 0), payload=payload)
+        self.fact_of[q.id] = f.id
+        self.premises.append(f.id)
+        if claim is not None:
+            self.claim_fid[id(claim)] = f.id
 
     def _inherit_for(self, diff: frozenset) -> dict:
         """What an inner agenda inherits from this one: the settled questions (killed, or claimed with their reads) by key, with the diff. A chase claim is not
@@ -685,6 +788,7 @@ class Agenda:
             return False
         q.reads = R.reads_of(q, b) | frozenset(reads)
         self.ctx.reasoned += 1
+        q._reasoned = True                                       # a "do not chase" lemma: the kill holds for every asker
         self.lines.append(head + f": killed by reasoning ({which}) -- {why}")
         self._kill(q, f"reasoned: {which}", tempo=False)
         return True
@@ -1045,6 +1149,7 @@ class Agenda:
         wt = their is not None
         hit = ctx.memo.get((pk, True, keep)) if wt else (ctx.memo.get((pk, False, 0)) or next((h for (k, w, _kp), h in ctx.memo.items() if k == pk and w), None))     # (position, with threats, the gain kept): an answer WITH threats serves an ask without, not the reverse
         if hit is not None and hit["need"] <= need:
+            self._touch(hit.get("fact"))
             return hit
         if pk in ctx.active:
             return dict(value=0, claim=None, asked=0, need=need, threats=[(cl, None) for cl in their.state.claims] if wt else [])     # a cycle parries nothing
@@ -1055,8 +1160,7 @@ class Agenda:
         ctx.active.add(pk)
         hits0 = ctx.budget_hits
         saved = R._ids[0]
-        inherit = self._inherit_for(diff) if diff is not None and (any(q.status in ("killed", "verified") for q in self.all)) else None
-        ag = Agenda(State(fen=fen, us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=need, inherit=inherit, their=their, keep=keep)
+        ag = Agenda(State(fen=fen, us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=need, their=their, keep=keep)      # (52.19: what it inherits comes from the fact store, not from this agenda alone)
         ag.ask()
         R._ids[0] = saved
         ctx.active.discard(pk)
@@ -1067,11 +1171,34 @@ class Agenda:
         threats = [(cl, q.claimed[1] if q.status == "verified" and q.claimed is not None else None) for q, cl in ag.threat_qs]
         out = dict(value=ag.best[0] if best else 0, claim=best, asked=ag.asked, need=need, cut=ctx.budget_hits > hits0, reads=reads, threats=threats,
                    promote=next((c for c in ag.state.claims if c.kind == "promote"), None))      # 52.15 (2): the promote claim of this position, whether or not it is the best claim
+        cfid = ag.claim_fid.get(id(best)) if best is not None else None
+        f = ctx.facts.add("gap" if out["cut"] else ("claim" if best is not None else "kill"), ("inner", pk, wt, keep), self.me, f"the agenda on {pk.split()[0]}" + (f": {best.what}" if best is not None else ": no claim"),
+                          value=out["value"], reads=reads, just=[cfid] if cfid is not None else ag.premises, stake=self._cur.stake if self._cur is not None else need, depth=self.chase_depth + 1,
+                          under=f"Q{self._cur.id} at depth {self.chase_depth}" if self._cur is not None else f"depth {self.chase_depth}", pk=pk, portable=False)
+        out["fact"] = f.id
+        self._touch(f.id)
         if not out["cut"]:                                      # an answer the budget cut short is not memoised and is never read as "no claim"
             ctx.memo[(pk, wt, keep if wt else 0)] = out
         return out
 
+    def _touch(self, fid) -> None:
+        """52.19: the route being chased read this fact (an inner answer, their agenda): the claim or kill of the route stands on it."""
+        if fid is not None and self._rf is not None and fid not in self._rf:
+            self._rf.append(fid)
+
     def _chase_route(self, m: chess.Move, promote: bool = False, cheap: bool = False) -> dict:
+        """52.19: the route of `_chase_route_body`, with the facts it read (inner answers, their agendas) kept on the result (`facts`) for the claim or kill that stands on it, and the listener's
+        frame for the reply being read restored on the way out."""
+        saved_rf = self._rf
+        self._rf = []
+        try:
+            res = self._chase_route_body(m, promote, cheap)
+            res["facts"] = list(dict.fromkeys(res.get("facts", []) + self._rf))
+            return res
+        finally:
+            self._rf = saved_rf
+
+    def _chase_route_body(self, m: chess.Move, promote: bool = False, cheap: bool = False) -> dict:
         """One forcing route of the chase: every reply of theirs, the whole agenda on each resulting position. -> {value, killed, gap, parts, lemmas}.
         52.17 (4) `cheap`: CHEAPEST REPLY FIRST -- only what the rules close is read (standing kills, a reply that mates or stalemates us, a mate in one, the exchange with nothing of
         theirs, a promotion that stands); a reply that needs an inner agenda leaves the route PENDING (not memoised) and the closed replies are kept for the second pass.
@@ -1354,6 +1481,10 @@ class Agenda:
             hit = self.ctx.theirs[key] = (cl.value if cl else 0, cl)
             if ag is not None:
                 self.ctx.their_ags[key] = ag
+            f = self.ctx.facts.add("claim" if cl else "kill", ("theirs", key), not self.me, f"their agenda with the move passed: " + (f"{cl.what} wins {cl.value}" if cl else "no claim"), value=hit[0], reads=None,
+                                   stake=self._cur.stake if self._cur is not None else 0, depth=self.chase_depth, under=f"Q{self._cur.id} at depth {self.chase_depth}" if self._cur is not None else f"depth {self.chase_depth}", pk=key, portable=False)
+            self.ctx.their_facts[key] = f.id
+        self._touch(self.ctx.their_facts.get(key))
         return hit
 
     def _addresses(self, q: R.Question, m: chess.Move, why: str) -> tuple:
@@ -1467,11 +1598,12 @@ class Agenda:
         self.promote_stake = q.stake if q.goal == "promote" else 0
         if not routes:
             self.lines.append("  chase: no forcing move on this board")
+            q._chased = True                                     # nothing to follow: the chase ran to its end
             return False
         for n in notes[:6]:
             self.lines.append("  chase: " + n)
         self.lines.append(f"  chase: make them move -- {len(routes)} forcing route(s): " + ", ".join(f"{r.san} ({r.why})" for r in routes[:12]) + (" ..." if len(routes) > 12 else ""))
-        done, cut = [], False
+        done, cut, route_facts = [], False, []
         pool = self.ctx.left
         self._chasing = q if q.goal == "promote" else None
         # 52.17 (4): CHEAPEST REPLY FIRST. Before any route opens an inner agenda, every route's replies are read at the static leaf and what the rules close is closed (a standing
@@ -1505,6 +1637,7 @@ class Agenda:
                 # 52.16 (2): a route is CHARGED at most its share. The frames open when the fuse runs out finish their questions (that is how 08pSj's Rf1+ and 0VSUT's Qxe5 are decided),
                 # but that finishing is free: charged in full it took the share of every later route (0LRTF: 239 questions on a share of 120, then Rd7 got 1).
                 self.ctx.left = saved - min(max(before - self.ctx.left, 0), share) if saved > 0 else self.ctx.left
+            route_facts += res.get("facts", [])
             if res["gap"] and res["gap"].startswith("out of time"):
                 self._note_resume(q, r, res)
             if res["gap"]:
@@ -1519,6 +1652,8 @@ class Agenda:
             else:
                 self.lines.append(f"    {r.san}: value {res['value']} (no gain on the worst reply)")
         self._chasing = None
+        q._chased = not cut                                      # 52.19: a kill is "chased" only when no route was cut (a GAP); a cut chase is as weak as no chase
+        self._qdeps = list(dict.fromkeys(route_facts))           # a kill stands on every route's facts ...
         if self.chase_depth == 0 and pool > 1 and any(t[4].goal in ("mate", "win", "promote") and (self.best is None or self.best[0] < t[4].stake) for t in self.heap):
             # ... and a ROOT question is charged at most half of the pool it started with, while another root that can still beat the best claim is open: by stake order the
             # question that matters most gets the larger share, never all of it (0GJec: the promotion's chase took 618 of 570 and every later root was read with nothing)
@@ -1531,6 +1666,7 @@ class Agenda:
             return False
         done.sort(key=lambda t: (-t[0], t[1].move.uci()))
         value, r, res = done[0]
+        self._qdeps = list(res.get("facts", []))                 # ... a claim only on the facts of the route that decided it
         net = value
         kind = "mate" if value >= BD.MATE_VALUE else ("promote" if q.goal == "promote" and not res.get("material") else "win")
         parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")
@@ -1838,6 +1974,23 @@ class Agenda:
                 self.state.gaps.append(f"Q{q.id} {q.text}: no stopper in time ({arith}) and no capture binds")
 
     # ------------------------------------------------------------------------------------------------------------ outputs
+
+    def facts_delta(self) -> dict:
+        """52.19: this agenda's own counters of the store (derived, served, revalidated, foreground recomputations) and the background queue as it stands."""
+        fs = self.ctx.facts
+        now = fs.snapshot()
+        out = {k: now[k] - self._fs0[k] for k in now}
+        return out
+
+    def facts_lines(self) -> list:
+        """The trace of the two tiers and the justification graph of the deciding claim (52.19 (3)): both tiers' counts, then the chain of facts the decision stands on."""
+        d = self.facts_delta()
+        out = [f"facts: derived {d['derived']}, served from the store {d['served']} (flagged stale and revalidated {d['revalidated']})"]
+        fid = self.claim_fid.get(id(self.best[2])) if self.best is not None else None
+        if fid is not None:
+            out.append(f"justification graph of the decision ({self.best[2].what}):")
+            out += ["  " + x for x in self.ctx.facts.graph_lines(fid)]
+        return out
 
     def trace(self) -> str:
         return "\n".join(self.lines)
