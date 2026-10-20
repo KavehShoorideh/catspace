@@ -613,7 +613,7 @@ class Agenda:
                 if plain[4] is not q:
                     sc, rec = self._recall_score(q)
                     self.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
-            self.order.append((q, QP.features(q, self.board, self.us, self.chase_depth)))      # plan 53 (1): the order asked, with what was known of the question before it was asked
+            self.order.append(q)                                   # plan 53 (1): the order asked (the features are read at log time: the root board does not change while its agenda runs)
             if self._inherit(q):
                 continue
             if self.chase_depth:                                 # an inner agenda pays the shared budget as it asks (a chain of checks meets it on the way down)

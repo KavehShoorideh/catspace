@@ -97,7 +97,9 @@ def _write_qlog(p: dict, set_name: str, fen: str, ag, d, sfv) -> None:
     ans = p["answer"]
     match = bool(d and d.move[:4] == ans[:4])
     with open(paths.experiment("question_log.jsonl"), "a") as fh:
-        for i, (q, f) in enumerate(ag.order):
+        from catspace.incubator.analyst.discovery import question_prior as QP
+        for i, q in enumerate(ag.order):
+            f = QP.features(q, ag.board, ag.us, 0)
             word = next((c.lemma for c in ag.state.claims if c.qid == q.id), None) if q.status == "verified" else None
             word = word or (q.claimed[1].lemma if q.claimed is not None else (q.reason.split(":")[0] if q.reason else q.status))
             t = q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn")))
