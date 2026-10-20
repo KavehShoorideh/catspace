@@ -2,7 +2,7 @@
 process (the memo caches must not leak between the two), diffing every decision AND every `tried` tuple list that `binder.verify_tried` produced.
 
   .venv/bin/python scripts/compare_binder.py                       # 07Z0P, 0LRTF, rand1_10, rand2_10, rand3_10
-  .venv/bin/python scripts/compare_binder.py --targets rand1_10
+  .venv/bin/python scripts/compare_binder.py --targets rand1_10 --old rust --new rust,second,cache      # switches: rust | second | cache (python = all off)
 """
 from __future__ import annotations
 
@@ -31,10 +31,13 @@ def puzzles(target: str) -> list:
     return PA.load_set(target)
 
 
-def worker(target: str, rust: bool, out: str) -> None:
+def worker(target: str, mode: str, out: str) -> None:
     from catspace.incubator.analyst.discovery import analyse as AN
     from catspace.incubator.analyst.discovery import binder as B
-    B.BINDER_RUST = rust
+    flags = set(mode.split(","))
+    B.BINDER_RUST = "rust" in flags
+    B.SECOND_RUST = "second" in flags
+    B.VERIFY_CACHE = "cache" in flags
     B.TRIED_LOG = []
     t0 = time.time()
     res = [AN.analyse(p, quiet=True, memory=False, log=lambda *a, **k: None) for p in puzzles(target)]
@@ -44,24 +47,26 @@ def worker(target: str, rust: bool, out: str) -> None:
     pickle.dump(dict(results=res, tried=B.TRIED_LOG, seconds=secs), open(out, "wb"))
 
 
-def run(target: str, rust: bool) -> dict:
+def run(target: str, mode: str) -> dict:
     with tempfile.TemporaryDirectory() as d:
         out = str(Path(d) / "r.pkl")
-        subprocess.run([sys.executable, __file__, "--worker", target, "rust" if rust else "python", out], check=True)
+        subprocess.run([sys.executable, __file__, "--worker", target, mode, out], check=True)
         return pickle.load(open(out, "rb"))
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--targets", nargs="*", default=["07Z0P", "0LRTF", "rand1_10", "rand2_10", "rand3_10"])
+    ap.add_argument("--old", default="python", help="comma list of switches ON for the old side: rust (BINDER_RUST), second (SECOND_RUST), cache (VERIFY_CACHE); python = none")
+    ap.add_argument("--new", default="rust,second,cache", help="the same for the new side")
     ap.add_argument("--worker", nargs=3, metavar=("TARGET", "MODE", "OUT"))
     a = ap.parse_args()
     if a.worker:
-        worker(a.worker[0], a.worker[1] == "rust", a.worker[2])
+        worker(a.worker[0], a.worker[1], a.worker[2])
         return
     total = 0
     for t in a.targets:
-        old, new = run(t, False), run(t, True)
+        old, new = run(t, a.old), run(t, a.new)
         dec_diff = [(o["id"], o, n) for o, n in zip(old["results"], new["results"]) if o != n]
         dec_diff += [("length", len(old["results"]), len(new["results"]))] if len(old["results"]) != len(new["results"]) else []
         # the tuples, in the order verify_tried was called (the agenda is deterministic); a different count is a difference too

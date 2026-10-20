@@ -11,7 +11,7 @@ from __future__ import annotations
 import contextlib
 import io
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable
 
 import chess
@@ -23,6 +23,9 @@ from catspace.incubator.analyst.discovery import selfmine as SM
 
 MATE_VALUE = 100
 BINDER_RUST = True        # plan 54 (A): the schema reads go to `analyst_core.verify_route`, one call per route; False = the Python path (`_read` / `_read2`), kept for the comparison harness
+SECOND_RUST = True        # plan 54 (B4): `second_moves` read by `analyst_core.second_moves` (the Python path stays)
+VERIFY_CACHE = True       # plan 54 (B4): verify_tried answers the same (fen, route, us, mates_only, trap, fork) once per root agenda (cleared by graph.clear_caches at every fresh root)
+_VERIFIED: dict = {}
 TRIED_LOG: list | None = None      # the harness sets a list: every verify_tried appends (fen, route uci, schema names asked, mates_only, tried)
 _SAN_TOKEN = re.compile("\x01([a-h1-8,]+)\x02")
 PIECE_NAME = {chess.PAWN: 'pawn', chess.KNIGHT: 'knight', chess.BISHOP: 'bishop', chess.ROOK: 'rook', chess.QUEEN: 'queen', chess.KING: 'king'}
@@ -119,6 +122,12 @@ def second_moves(board: chess.Board, route: chess.Move, trap: int | None = None)
     check or has no reply. A capture illegal under some reply is left out; the legs would fail on it anyway (best_bind says so).
     52.10: a QUIET route that leaves the piece of theirs on `trap` with no safe square (the regress question `take its squares` names it) has the same legs, the
     second move being our capture of that piece; [] when the piece has a safe square after all (the word `mobility`, read here again)."""
+    if SECOND_RUST and board.color_at(route.from_square) == board.turn:
+        try:
+            import analyst_core as A
+            return sorted(A.second_moves(G.fen_of(board), route.uci(), trap))
+        except ValueError:
+            pass
     quiet = not board.gives_check(route)
     if quiet:
         if trap is None:
@@ -239,7 +248,33 @@ def _reads(board: chess.Board, route: chess.Move, fen: str, us: str, pair: tuple
         i = j
 
 
+def _copy_result(best, tried):
+    """A cached answer handed out afresh (callers may keep or edit the Binding)."""
+    b = None
+    if best is not None:
+        b = replace(best, assignment=dict(best.assignment), replies=list(best.replies), tried=list(best.tried))
+    return b, list(tried)
+
+
 def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False, schemas: list | None = None, trap: int | None = None, fork: int | None = None) -> tuple:
+    """54 (B4): `_verify_tried` with a per-root-agenda cache (the same fen, route, side, mates_only, trap and fork are asked again within one root question)."""
+    if not VERIFY_CACHE or schemas is not None:
+        return _verify_tried(route, board, us, mates_only, schemas, trap, fork)
+    key = (board.fen(), route.uci(), us, bool(mates_only), trap, fork)
+    hit = _VERIFIED.get(key)
+    if hit is None:
+        best, tried = _verify_tried(route, board, us, mates_only, schemas, trap, fork)
+        _VERIFIED[key] = (best, tuple(tried))
+        return _copy_result(best, tried)
+    if TRIED_LOG is not None:
+        TRIED_LOG.append((key[0], key[1], us, bool(mates_only), trap, tuple(hit[1])))
+    return _copy_result(*hit)
+
+
+G.CLEAR_HOOKS.append(_VERIFIED.clear)
+
+
+def _verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False, schemas: list | None = None, trap: int | None = None, fork: int | None = None) -> tuple:
     """Try the schemas from the smallest up on ONE route and stop at a mate; otherwise the delayed family reading the largest guaranteed gain wins (ties in the
     ladder's order, as the stream decides; the depth-two schemas come last and only on a check, or on a quiet route that traps the piece on `trap`, 52.10). -> (Binding | None, tried) with tried = [(schema name, value or
     None, note)] for every schema asked."""

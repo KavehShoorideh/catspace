@@ -1719,6 +1719,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(regress::trap_fix_routes, m)?)?;
     m.add_function(wrap_pyfunction!(regress::skewer_routes, m)?)?;
     m.add_function(wrap_pyfunction!(regress::drive_onto_routes, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::second_moves, m)?)?;
     m.add_function(wrap_pyfunction!(regress::set_caches, m)?)?;
     m.add_function(wrap_pyfunction!(regress::clear_caches, m)?)?;
     m.add_function(wrap_pyfunction!(regress::cache_size, m)?)?;

@@ -478,3 +478,33 @@ pub fn drive_onto_routes(fen: &str, us_white: bool, target: u8, stake: i64) -> P
     Ok(out)
 }
 
+/// second_moves(fen, route_uci, trap) -> [(from, to)]: binder.second_moves. `fen` = the board with us to move; `trap` = the square of the piece a QUIET route traps.
+#[pyfunction]
+#[pyo3(signature = (fen, route, trap=None))]
+pub fn second_moves(fen: &str, route: &str, trap: Option<u8>) -> PyResult<Vec<(String, String)>> {
+    let p = parse_fen(fen)?;
+    let m = shakmaty::uci::UciMove::from_ascii(route.as_bytes()).ok().and_then(|x| x.to_move(&p).ok()).ok_or_else(|| err("illegal route"))?;
+    let mut c = p.clone();
+    c.play_unchecked(&m);
+    let quiet = !c.is_check();
+    let trap = trap.map(|t| Square::new(t as u32));
+    if quiet {
+        let Some(t) = trap else { return Ok(vec![]) };
+        if c.board().piece_at(t).is_none() || mob_count(&c, t)? != 0 { return Ok(vec![]); }
+    }
+    let mut common: Option<std::collections::BTreeSet<(String, String)>> = None;
+    for r in c.legal_moves() {
+        let mut d = c.clone();
+        d.play_unchecked(&r);
+        let mut mine = std::collections::BTreeSet::new();
+        for x in d.legal_moves() {
+            if x.is_capture() && x.promotion().is_none() && !x.is_castle() && (!quiet || Some(x.to()) == trap) {
+                mine.insert((nm(x.from().unwrap()), nm(x.to())));
+            }
+        }
+        let next = match common { None => mine, Some(cm) => cm.intersection(&mine).cloned().collect() };
+        if next.is_empty() { return Ok(vec![]); }
+        common = Some(next);
+    }
+    Ok(common.map(|s| s.into_iter().collect()).unwrap_or_default())
+}

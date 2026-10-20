@@ -46,6 +46,8 @@ def with_turn(board: chess.Board, colour: bool) -> chess.Board:
     return c
 
 
+CLEAR_HOOKS: list = []     # 54 (B4): per-root caches elsewhere (binder's verify_tried) register their `clear` here; graph.clear_caches calls them
+
 _FENS: dict = {}           # 52.20 (1): transposition key (bitboards, turn, castling, e.p.) -> FEN; a board's FEN is built once per root question
 
 
@@ -63,6 +65,8 @@ def clear_caches() -> None:
     _FENS.clear()
     SM.clear_word_cache()
     _A.clear_caches()                          # 54 (B3): the core's parsed positions
+    for hook in CLEAR_HOOKS:
+        hook()
 
 
 # ---------------------------------------------------------------------------------------------------------------- attack questions
