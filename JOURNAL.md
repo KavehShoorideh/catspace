@@ -31849,3 +31849,19 @@ OBS (one run each, directional), both sets: every decision, MATCH and tally (inn
 seconds 57.0 -> 41.8; fresh_60 seconds 140.8 -> 96.5; the tail: 07Z0P 19.0 -> 13.2, 0KCeb 18.3 -> 11.8, 0YcEF 17.6 -> 11.3, 06JIF 17.4 -> 11.0,
 04Qx2 16.5 -> 13.0. Remaining time is the chase itself; the next cut would be structural (serving chase claims across positions, or the hot
 loop in Rust as 52.13 named), not a cache. Play server restarted on this code.
+
+## 2026-10-19 21:27 PDT -- THE STORE SERVES ROOT LISTS; CHASE CLAIMS RARELY PORTABLE; THE DEADLINE FINISHES THE ROUTE IN HAND (plan 52.21)
+Built by the Sonnet builder from docs/ANALYST_PLAN.md 52.21, one commit per item: c81ecb40 (reach root lists as facts, per piece, occupant-only
+read cells + the squares that could attack the question's squares -- a stray-piece test found a bishop behind the lifted knight changed the answer;
+a two-move ReachTable), ee83ef57 (a chase claim filed portable when everything it stands on has a read set; the union plus both sides' piece
+geometry, stricter than the plan's bare union; positional justifications keep it local), dfc95dac (Kaveh's rule: past the deadline no new question
+or route at any depth, the route in hand runs to its claim or refutation; a slice of the root's share still cuts where it is, else the first route ate
+the budget). Verified here: 220 tests; no trailers.
+OBS (one run each, directional), my rerun vs the 52.20 run: every decision identical (dev_20 14/14, fresh_60 52/52); inner agendas unchanged
+1467 / 3617 (the plan expected a fall: a served root list saves a rescan, not an agenda); root lists served 1537 / 3029; chase claims served 0 / 4
+(most chase claims stand on their agenda after a pass, a positional fact: 20 of 316 portable on dev_20); seconds 41.8 -> 41.4, 96.5 -> 96.0
+(noise). Item 3 at --seconds 1.0 on dev_20: decided 12 MATCH 12, time outs 9, routes finished after the deadline 5, worst used 1.9 s (08A6a),
+then 1.3 (07Z0P); builder's before/after: mean overshoot 0.12 -> 0.27 s at 1 s, 0.10 -> 0.11 at 0.3 s on dev_20; fresh_60 max 0.32 -> 1.92 at 1 s.
+The overshoot ROSE by design (finishing the route costs their agenda on each remaining reply); decisions at timed budgets unchanged.
+Lesson: caching is no longer the lever; the unit of cost is their agenda after a pass, positional by construction. Open: the chase-claim read set is
+not provably complete (evidence = identical decisions only); bound the route in hand to its current reply if the overshoot matters in play.
