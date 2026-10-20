@@ -2552,3 +2552,28 @@ ones until we make our move; then it's the opponent's turn and we can continue t
 Acceptance: both sets identical in decisions and MATCH (tallies of inner agendas / questions should FALL; print them); 0KCeb inner agendas well below
 353, with root lists served and chase claims served printed; the seconds per set; tests for the sound read set of a root list and for a served chase
 claim on a transposition; 52.19's fact-store tests still pass.
+
+### 52.22 A reply closes by rule only when the goal is met; the attacker added with tempo; the refuter fix (Kaveh 2026-10-19 on 07Z0P: "build them both"; "check if there's a better way, otherwise build")
+07Z0P (2r2rk1/1p4bp/6p1/pP1qpp2/6PP/P1n1BQ2/2B2R2/5RK1 w; Qxd5+ Nxd5 Bb3 wins the pinned knight) is a MISS. Kaveh's walk: down 2; our king
+checkable only on the light diagonal and their Q stands on it; Bb3 skewers but Qxb3; so trade the queens: Nxd5 is forced and the piece on d5 is
+now a knight, which cannot take the pinner; Bb3 pins; no pawn defends d5; they can add one rook (c5 covered by Be3, d8 holds one) and we add two;
+two against one wins it. The trace: standalone after Qxd5+ Nxd5 the agenda finds Bb3 (attack with tempo AND trap) but values it 1: after ...Rfd8 the
+reply is "closed by rule: exchange +1 (gxf5 ...)", because `_closed_by_rule` closes when the exchange reaches `need = 1 - dbal` (one pawn ahead),
+not what the goal asks; so the root's chase of Qxd5+ under "win the N" (stake 3) gets 1 back and kills the route. Nothing names the trade.
+1. **A reply closes by rule only when the chased goal is met.** In `_closed_by_rule` the exchange must reach the question's stake (the goal's
+   value), not the route's `need` of 1; below that, if the goal's piece is still on the board and `fixes_of` finds a forcing fix of its defect on
+   P2, the reply is NOT closed: the inner agenda is asked (the normal path). Replies with no forcing fix left still close as before (speed kept).
+   Print "not closed by rule: the goal (win the N on d5, stake 3) is not met by the exchange (+1); a forcing fix remains (Rd2)".
+2. **"Add an attacker with tempo"** as a fix of the `defended` defect, the twin of "remove the defender with tempo": our moves that add an attacker
+   of the target and are forcing (a threat: the exchange on the target then wins). Kaveh's count (the defenders they can add vs the attackers we can
+   add; c5 covered, d8 one rook) is then read by the chase, not by a special count. Acceptance: after Qxd5+ Nxd5 the agenda claims Bb3 worth 3
+   (the ...Rfd8 reply followed by Rd2 and read to its end); then check whether 07Z0P decides Qxd5+ by the existing chase alone (report it).
+3. **The refuter fix.** Every killed route names the reply that refuted it (Bb3: "after Qxb3"). The fix: remove or replace the REFUTING piece with
+   tempo, the same fix the agenda applies to defenders and blockers, applied to the refuter: a capture of it with a forced recapture (one legal
+   recapture, or every recapture puts a piece that cannot make the refuting move) is a route; the original route is then re-asked on the board after
+   the exchange, and the claim is filed with the refuter's square in its read set. Trace: "Bb3 fails to Qxb3; exchange the Q on d5 first (Qxd5+ Nxd5
+   forced): the N cannot take b3; Bb3 pins the N". Even if 07Z0P decides by (1)+(2), build (3): it names the reason and routes the search (the
+   trade is asked because it fixes a refuted route, not because a chase stumbled on it). Lean: a short word `refuter` (the piece whose move killed a
+   route) + gloss + glossary + lean_index build; no new theorem needed unless the builder finds the recapture condition needs one.
+Acceptance: 07Z0P decided Qxd5+ (SF: +301 d20) with the refuter line printed; both sets rerun one at a time, every other decision unchanged, any
+change checked with Stockfish at depth 18 and reported; tallies (inner questions, replies closed by rule, seconds) before/after as OBS.
