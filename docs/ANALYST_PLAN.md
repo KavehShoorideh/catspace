@@ -2687,3 +2687,13 @@ cProfile, 13k calls) and make its inner loop cheap (shakmaty legal moves once pe
 (2) a `Position` handle so the binder passes a parsed position instead of a FEN and takes SAN strings only for the winning schema;
 (3) the python-chess spread: `reasoned._threat_moves`, `regress._moves` (the candidate list), `graph.with_piece`, `facts.piece`, `agenda._mates`,
 each measured, ported or cached where it pays. Acceptance as before (both harnesses 0 differences, tests green, seconds as OBS).
+
+### 55 The question map: an NNUE-style prior on the board alone (Kaveh 2026-10-20, discussed, NOT a go yet; standing rule: the parts that affect the decision are completely interpretable, the parts that affect only how fast we reach it need not be)
+Input: the board only (12 piece types x 64 squares + side to move = 769 binary inputs); nothing of the agenda. Output: a QUESTION MAP, four planes of 64
+logits (win the piece on s, mate with a landing on s, promote the pawn on s, save our piece on s) -- the goal kind and the square ARE the index, as a policy
+head indexes moves; a later small table of fix kind x square may order the fixes (rule order until then). Run time: the agenda reads each open question's
+cell and asks the highest; the stake rule is the fallback; the stops stay by stakes and claims; under a budget the trace NAMES the prior's hand ("the
+prior put Q6 before Q1; the budget ended before Q1"). Training: listwise -- a softmax over the open cells of each agenda with the deciding cell (a right
+decision by the grader) as the target; the log already carries goal, square and verdict. Data: log the INNER agendas too (hundreds per puzzle, each with
+its own pool and deciding question) and run the loop for hours. Size: 769 -> 256 -> 256 (about 200k parameters), tens of microseconds per call in torch /
+numpy, asked a few hundred times per puzzle (not the bottleneck); the NNUE accumulator trick only if it ever is. Keep the loop's invariant and metrics (53 (3)).
