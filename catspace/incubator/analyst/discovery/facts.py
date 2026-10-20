@@ -169,7 +169,7 @@ class FactStore:
             if f is None:
                 stale_miss = stale_miss or any(o.id in self.stale for o in sg.values())
                 continue
-            if f.kind == "kill" and f.power < power:
+            if (f.kind == "kill" or f.payload.get("chase")) and f.power < power:       # a chase claim found by a weaker chase (an inner agenda's) is not served to the root, which would follow more routes
                 continue
             if f.kind == "gap":
                 continue

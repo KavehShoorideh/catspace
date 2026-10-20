@@ -311,3 +311,49 @@ def test_52_21_1_root_lists_are_filed_per_piece_not_as_belief_and_never_enter_th
     assert not any(f.kind == "roots" for f in ctx.facts.queue())                                      # a pure function of its cells: no stale flag, no recomputation queue
     again = inner_agenda(BACKRANK, ctx)
     assert any("roots served from the store (fact #" in ln for ln in again.lines) and _reach_texts(again) == _reach_texts(ag)
+
+
+# ---------------------------------------------------------------------------------------------------------------- 52.21 (2): chase claims portable
+
+KNIGHT_CHECK = "8/p1NR2bp/4pkp1/2p2p2/4n3/P3B1P1/7r/2K5 w - - 4 39"                  # dev_20 05gLw: Ne8+ is a chase claim whose route stands on facts with read sets
+
+
+def test_52_21_2_a_chase_claim_with_a_read_set_is_served_on_a_transposition_and_not_where_a_cell_it_read_changed():
+    ag1 = AG.Agenda(state_of(KNIGHT_CHECK, "w"))
+    ag1.ask()
+    d1 = ag1.decision()
+    port = [f for f in ag1.ctx.facts.facts.values() if f.payload.get("chase")]
+    assert d1 is not None and d1.lemma.startswith("chase") and port and all(f.portable and f.reads for f in port)       # the claim is filed portable, with the union of what its route stood on
+    fid = ag1.claim_fid[id(d1)]
+    assert ag1.ctx.facts.facts[fid].payload["chase"]
+    trans = " ".join(KNIGHT_CHECK.split()[:4]) + " 17 44"                                # the same placement reached by another move order: other clocks
+    ag2 = AG.Agenda(state_of(trans, "w"), carry=ag1.ctx)
+    ag2.ask()
+    d2 = ag2.decision()
+    assert d2 is not None and d2.move == d1.move and ag2.ctx.chase_served >= 1 and ag2.asked < ag1.asked
+    assert any("-- served from the store (fact #" in ln and "chase" in ln for ln in ag2.lines)
+    reads = ag1.ctx.facts.facts[fid].reads
+    changed = 0
+    for sq in sorted(reads):                                                              # a cell the claim read, changed: never served
+        b = chess.Board(KNIGHT_CHECK)
+        if b.piece_at(sq) is not None:
+            continue
+        b.set_piece_at(sq, chess.Piece.from_symbol("p"))
+        if not b.is_valid():
+            continue
+        ag3 = AG.Agenda(state_of(b.fen(), "w"), carry=ag1.ctx)
+        ag3.ask()
+        assert not any(ln.startswith("Q") and " -- served from the store (fact #%d," % fid in ln for ln in ag3.lines), chess.square_name(sq)
+        changed += 1
+    assert changed
+    print(f"OBS 52.21 (2): the chase claim {d1.what} ({len(reads)} squares read, {len(port)} chase claims filed portable) was served on a transposition (asked {ag2.asked} against {ag1.asked}); "
+          f"not served on any of {changed} boards with a stray pawn on a cell it read")
+
+
+def test_52_21_2_a_chase_claim_that_stands_on_a_positional_fact_stays_non_portable_and_the_trace_says_so():
+    ag = AG.Agenda(state_of(LRTF, "w"))
+    ag.ask()
+    assert any("chase claim filed for this position only: it stands on fact #" in ln and "read its whole position" in ln for ln in ag.lines)
+    d = ag.decision()
+    f = ag.ctx.facts.facts[ag.claim_fid[id(d)]]
+    assert d.lemma.startswith("chase") and not f.portable and not f.payload.get("chase")

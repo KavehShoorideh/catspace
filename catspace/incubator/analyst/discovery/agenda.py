@@ -115,6 +115,7 @@ class ChaseCtx:
         self.time_outs = 0                        # ... root agendas that met their deadline
         self.hit = False
         self.roots_served = 0                     # 52.21 (1): root lists (the reach roots) served from the fact store, not rescanned
+        self.chase_served = 0                     # 52.21 (2): chase claims served from the store on a board whose cells matched the claim's read set
         self.unaddressed = 0                      # 52.17 (2): forcing moves NOT followed by a chase because they fix no defect of the goal and make no claim of their own
 
 
@@ -613,6 +614,7 @@ class Agenda:
         src = f"served from the store (fact #{f.id}, derived under {f.under})"
         if f.kind == "claim":
             old = f.payload["claim"]
+            self.ctx.chase_served += 1 if f.payload.get("chase") else 0
             cl = dataclasses.replace(old, what=b.san(chess.Move.from_uci(old.move)), line=f"inherited: nothing changed for {what} ({old.line})")
             self.state.claims.append(cl)
             self.claim_fid[id(cl)] = f.id
@@ -645,11 +647,18 @@ class Agenda:
             if q.claimed is not None:
                 value, claim, reads = q.claimed[0], q.claimed[1], q.claimed[2]
                 payload = dict(claim=claim, net=q.claimed[0])
-                portable = portable and not claim.lemma.startswith("chase")      # a chase claim reads every reply of the board it was made on: it is not transferable (as in 52.13)
+                portable = portable and not claim.lemma.startswith("chase")      # a chase claim reads every reply of the board it was made on: it is not transferable (as in 52.13) -- unless `_chase_reads` below finds it a read set (52.21 (2))
             else:
                 claim = new_claims[-1] if new_claims else None
                 value = claim.value if claim is not None else 0
                 portable = False
+            if claim is not None and claim.lemma.startswith("chase") and key is not None:      # 52.21 (2): a chase claim is portable when the facts it stands on have read sets
+                creads, why = self._chase_reads(q, claim)
+                if creads is None:
+                    self.lines.append(f"  (chase claim filed for this position only: {why})")
+                    portable = False
+                else:
+                    reads, portable, payload = creads, True, dict(claim=claim, net=value, chase=True)
         elif kind == "kill":
             payload = dict(why=q.reason.removeprefix("inherited: ").split(";")[0][:80])
         text = f"{claim.kind} {claim.what}: {q.text}" if claim is not None else q.text
@@ -660,6 +669,32 @@ class Agenda:
         self.premises.append(f.id)
         if claim is not None:
             self.claim_fid[id(claim)] = f.id
+
+    def _chase_reads(self, q: R.Question, claim: Claim) -> tuple:
+        """52.21 (2): THE READ SET OF A CHASE CLAIM, from its justifications. The claim stands on the facts of the route that decided it (the inner answers of its replies, their agendas): the union of what
+        they read, the question's own reads, the route's squares, and what the replies themselves depend on -- the pieces of both sides after the route move and what they attack (that decides which
+        replies exist, which the rules close, and what a mate in one needs), with the lines from both kings (pins). A fact that read its whole position (an agenda there, their agenda with the move
+        passed) makes the claim positional: -> (None, why). -> (the squares, None) otherwise."""
+        fs, b = self.ctx.facts, self.board
+        reads = set(R.reads_of(q, b))
+        for j in self._qdeps:
+            f = fs.facts[j]
+            fr = f.reads or f.payload.get("reads")
+            if not fr:
+                return None, f"it stands on fact #{j} ({f.text}), which read its whole position"
+            reads |= fr
+        m = chess.Move.from_uci(claim.move)
+        reads |= {m.from_square, m.to_square}
+        c = b.copy(stack=False)
+        c.push(m)
+        for sq in chess.SquareSet(c.occupied):
+            reads.add(sq)
+            reads.update(chess.SquareSet(c.attacks_mask(sq)))
+        for colour in (chess.WHITE, chess.BLACK):
+            k = c.king(colour)
+            if k is not None:
+                reads.update(R.slide_region(k, c.occupied))
+        return frozenset(reads), None
 
     def _inherit_for(self, diff: frozenset) -> dict:
         """What an inner agenda inherits from this one: the settled questions (killed, or claimed with their reads) by key, with the diff. A chase claim is not
@@ -1583,7 +1618,8 @@ class Agenda:
             if ag is not None:
                 self.ctx.their_ags[key] = ag
             f = self.ctx.facts.add("claim" if cl else "kill", ("theirs", key), not self.me, f"their agenda with the move passed: " + (f"{cl.what} wins {cl.value}" if cl else "no claim"), value=hit[0], reads=None,
-                                   stake=self._cur.stake if self._cur is not None else 0, depth=self.chase_depth, under=f"Q{self._cur.id} at depth {self.chase_depth}" if self._cur is not None else f"depth {self.chase_depth}", pk=key, portable=False)
+                                   stake=self._cur.stake if self._cur is not None else 0, depth=self.chase_depth, under=f"Q{self._cur.id} at depth {self.chase_depth}" if self._cur is not None else f"depth {self.chase_depth}", pk=key, portable=False,
+                                   payload=dict(reads=None if ag is None or not getattr(ag, "all", None) or any(q.reads is None for q in ag.all) else frozenset().union(*(q.reads for q in ag.all))))      # 52.21 (2): what their agenda read, kept apart from `reads` (the listener's index) for the claims that stand on it
             self.ctx.their_facts[key] = f.id
         self._touch(self.ctx.their_facts.get(key))
         return hit
