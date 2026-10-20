@@ -2596,3 +2596,20 @@ rated 2240+ (9wgF7 2486 Nc5, dOC36 2779 Nf6+ [we chose Rd2: SF -87 vs +436], zBo
    a defect (52.17 (2)) and its routes at inner levels are checks, captures and mate threats only, as before. Promote questions keep the gate.
 Acceptance: zBouR decided Rhxf2 with the skewer line printed; three random samples of 10 rerun one at a time with a time budget, every decision diffed against the
 fuse runs, any change checked with Stockfish; the cost (inner agendas, seconds) as OBS, directional; then the next samples.
+Outcome 2026-10-20 (the build, by me, not a builder): (1), (4) built and kept; (2), (3), (5) built but OFF by default (`NEED_AWARE_CLOSE`, `EVASION_CHASE`,
+`DEEP_WIN_CHASE`), with three more chain items built the same day and also off: (6) THE GOAL-PROGRESS JUDGE (Kaveh: "mating the king is like mating the bishop"):
+tempo arithmetic ends a chain -- a mate or win pattern with d defects allows d prep moves (a two-move fix such as "drive the king onto the skewer line, then skewer"
+says `steps` 2), a bigger goal found on the chain starts its own distance, an exchange (a recapture on our route's square) spends no level, a win goal's allowance
+starts again after a capture that is not bad for us (`GOAL_JUDGE`); (7) THE NEED PROPAGATES to the inner agendas (what the route must reach, not 1), a gaining reply
+carries the inner claim, a chain of two (this question's capture plus the largest other stake when the target can be taken now) meets a need no single stake does, a
+bound below the need chases first (`NEED_PROPAGATION`); (8) THE CHASE CLOCK (Kaveh: a capture that is not bad for us is one-way progress; N of our moves without one
+end the chase; a hyperparameter, `CHASE_CLOCK`, 4 was his starting value, 99 = off); (9) a kill by the chain's state (the allowance, the clock, a second intermezzo
+check) is never filed as a fact of the position and is memoised for that chain state only. ON together they take zBouR from 20 minutes to 8 seconds and read the whole
+line (Rhxf2 cxb7+ Kb8 Rxf2 Qh1+ ... Qxc2) but still do not decide it (the last defence read, Qb1, is answered by a mate in three the threat-save inner path does not
+find though the root does), and they cost 07Z0P its decision under the count fuse (Bb3's share no longer finished) -- the evasion chase ran through `_verify`
+whatever its switch said (fixed). Two soundness fixes kept ON: (10) a SCHEMA claim's read set includes its move's squares and their king (2VDtX: "Ng5+ then Nxe6"
+derived after Rf8+ Kxf8 was served at the root, where Ng5 is no check and Bxg5 takes it, SF -697; the store had served it since 52.19); (11) the time regime: a
+root's chase gets at most half the time left while another root can beat the best claim (the fuse's rule), and a route cut by time re-runs on a longer slice.
+Directional numbers (OBS, one run each, the chain items off): rand1_10 9/10 (9wgF7 2486 none); rand2_10 7/10 under 60 s (BEKFf none: the mate roots re-run the same
+four routes on shrinking slices and the win root never gets its turn; under the count fuse 8/10 with dOC36 wrong); rand3_10 8/10 (2VDtX right again). The count fuse
+stays the default budget for sets and tests; the time regime wastes the inner work a cut throws away and needs the prior (plan 53) to ask the deciding question first.
