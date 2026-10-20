@@ -27,6 +27,7 @@ STAKE_PROMOTE = 8                             # a queen less the pawn
 DEFECTS_RUST = True                           # 54 (B1): mate_defects / material_defects read by analyst_core (the Python path below stays; ValueError = a position shakmaty cannot hold -> Python)
 ROUTES_RUST = True                            # 54 (B2): routes_of's `_still` filter and `forcing_why` for the whole candidate list in two Rust calls (the Python path stays)
 TRAP_RUST = True                              # 54 (B4): trap_fix's three reads (safe squares, quiet trap routes, fork routes) in one Rust call (the Python path stays)
+SKEWER_RUST = True                            # 54 (B4): skewer_routes / drive_onto_routes read by analyst_core (the Python path stays)
 REGRESS_LOG = None                            # 54 (B): a list -> every fixes_of / routes_of / forcing_why call appends what it answered (scripts/compare_regress.py diffs these)
 PROMOTE_MAX_PUSHES = 3                        # farther pawns: the mate / material stakes dominate (52.6)
 
@@ -609,9 +610,28 @@ def _fixes_of(defect: Defect, q: Question, board: chess.Board, us: str | bool) -
 SKEWER_FIX = True                                               # 52.23 (4) switch (bisect)
 
 
+def _rust_routes(fn, board: chess.Board, us: str | bool, *args):
+    """54 (B4): -> [Route] from an analyst_core route reader `fn(fen, us_white, *args)`, or None (the Python path answers: a position shakmaty cannot hold, or the wrong side to move)."""
+    me = G.colour_of(us)
+    if board.turn != me:
+        return None
+    try:
+        got = fn(G.fen_of(board), me, *args)
+    except ValueError:
+        return None
+    out = []
+    for u, why in got:
+        m = chess.Move.from_uci(u)
+        out.append(Route(m, board.san(m), why))
+    return out
+
+
 def skewer_routes(board: chess.Board, us: str | bool, t: int) -> list:
     """52.23 (4): THE SKEWER AS A NAMED FIX of a win defect: a check by a slider of ours whose line runs through their king to the target `t`; the king must answer the check,
     and when it steps off the line the slider attacks `t` (Lean `Ideas.Skewer.skewer_attack`; the capture of the checker and the interposition are read by the chase as replies)."""
+    got = _rust_routes(_A.skewer_routes, board, us, t) if SKEWER_RUST else None
+    if got is not None:
+        return got
     me = G.colour_of(us)
     b = G.with_turn(board, me)
     out = []
@@ -632,6 +652,9 @@ def skewer_routes(board: chess.Board, us: str | bool, t: int) -> list:
 def drive_onto_routes(board: chess.Board, us: str | bool, t: int, stake: int) -> list:
     """52.23 (4b): DRIVE THEIR KING ONTO THE SKEWER LINE -- a check after which EVERY king reply stands on a line a slider of ours can then check along, through the king
     to `t` (a skewer route exists on the board after each king reply); the other replies (take the checker, interpose) are read by the chase. Two moves: the fix says `steps` 2."""
+    got = _rust_routes(_A.drive_onto_routes, board, us, t, stake) if SKEWER_RUST else None
+    if got is not None:
+        return got
     me = G.colour_of(us)
     b = G.with_turn(board, me)
     out = []
@@ -664,11 +687,15 @@ def skewer_fix(q: Question, defect: Defect, board: chess.Board, us: str | bool) 
     t = defect.sq
     out = []
     rs = skewer_routes(board, us, t)
+    rs2 = None
+    if REGRESS_LOG is not None:
+        rs2 = drive_onto_routes(board, us, t, q.stake)
+        REGRESS_LOG.append(("skewer", t, [(r.move.uci(), r.san, r.why) for r in rs], [(r.move.uci(), r.san, r.why) for r in rs2]))
     if rs:
         f = new_question("cover", q.stake, dict(q.pattern), q, defect_key=defect.key(), text=f"skewer {G.name(t)}: a check through their king, the line runs on to it")
         f.routes = rs
         out.append(f)
-    rs = drive_onto_routes(board, us, t, q.stake)
+    rs = rs2 if rs2 is not None else drive_onto_routes(board, us, t, q.stake)
     if rs:
         f = new_question("cover", q.stake, dict(q.pattern, steps=2), q, defect_key=defect.key(), text=f"drive their king onto a skewer line to {G.name(t)} (two moves: the check, then the skewer)")
         f.routes = rs

@@ -402,3 +402,79 @@ pub fn trap_fix_routes(fen: &str, us_white: bool, target: u8) -> PyResult<(usize
     Ok((n, traps, fork_routes_pos(&w, t)))
 }
 
+/// `G.skewer_after`: on the board after our move (their turn) a slider of ours that gives check and whose line runs through their king to `t`, every other square
+/// between empty -> the slider's square (the first in square order that qualifies).
+fn skewer_after(c: &Chess, me: Color, t: Square) -> Option<Square> {
+    let b = c.board();
+    let k = b.king_of(!me)?;
+    let pt = b.piece_at(t)?;
+    if pt.color == me { return None; }
+    let checkers = b.attacks_to(k, me, b.occupied()) & b.by_color(me);       // c.checkers(): attackers of the king of the side to move
+    for s2 in sorted(checkers) {
+        let pc = b.piece_at(s2)?;
+        if !matches!(pc.role, Role::Rook | Role::Bishop | Role::Queen) { continue; }
+        let line = attacks::between(s2, t);
+        if !line.contains(k) { continue; }
+        let straight = s2.file() == t.file() || s2.rank() == t.rank();
+        if (pc.role == Role::Rook && !straight) || (pc.role == Role::Bishop && straight) { continue; }
+        if (line & b.occupied()).without(k).is_empty() { return Some(s2); }
+    }
+    None
+}
+
+fn skewer_routes_pos(w: &Chess, me: Color, t: Square, first_only: bool) -> Vec<(String, String)> {
+    let mut out = vec![];
+    for m in moves_of(w) {
+        if m.to() == t { continue; }
+        let mut c = w.clone();
+        c.play_unchecked(&m);
+        if !c.is_check() { continue; }
+        if skewer_after(&c, me, t) == Some(m.to()) {
+            let pc = w.board().piece_at(t).unwrap();
+            out.push((m.to_uci(CastlingMode::Standard).to_string(),
+                      format!("check; skewer: through their K on {} to the {} on {} (Ideas.Skewer.skewer_attack)", nm(c.board().king_of(!me).unwrap()), letter(pc), nm(t))));
+            if first_only { return out; }
+        }
+    }
+    out
+}
+
+/// skewer_routes(fen, us_white, target) -> [(uci, why)]: checks by a slider of ours whose line runs through their king to `target` (52.23 (4)).
+#[pyfunction]
+pub fn skewer_routes(fen: &str, us_white: bool, target: u8) -> PyResult<Vec<(String, String)>> {
+    let me = col(us_white);
+    let w = with_turn_pos(&parse_fen(fen)?, me)?;
+    Ok(skewer_routes_pos(&w, me, Square::new(target as u32), false))
+}
+
+/// drive_onto_routes(fen, us_white, target, stake) -> [(uci, why)]: checks after which EVERY king reply allows a skewer route to `target` (52.23 (4b)).
+#[pyfunction]
+pub fn drive_onto_routes(fen: &str, us_white: bool, target: u8, stake: i64) -> PyResult<Vec<(String, String)>> {
+    let _ = stake;
+    let (me, t) = (col(us_white), Square::new(target as u32));
+    let w = with_turn_pos(&parse_fen(fen)?, me)?;
+    let mut out = vec![];
+    for m in moves_of(&w) {
+        if m.to() == t { continue; }
+        let mut c = w.clone();
+        c.play_unchecked(&m);
+        if !c.is_check() || skewer_after(&c, me, t) == Some(m.to()) { continue; }
+        let ksq = c.board().king_of(!me).unwrap();
+        let kings: Vec<Move> = c.legal_moves().into_iter().filter(|r| r.from() == Some(ksq)).collect();
+        if kings.is_empty() { continue; }
+        let mut ok = true;
+        for r in &kings {
+            let mut d = c.clone();
+            d.play_unchecked(r);
+            let good = matches!(d.board().piece_at(t), Some(pc) if pc.color != me);
+            // skewer_routes(d, us, t) reads d with `us` to move and no en passant square
+            if !good || skewer_routes_pos(&with_turn_pos(&d, me)?, me, t, true).is_empty() { ok = false; break; }
+        }
+        if ok {
+            out.push((m.to_uci(CastlingMode::Standard).to_string(),
+                      format!("check; drives their king onto a skewer line to {} (every king reply, then a check through it: Ideas.Skewer.skewer_attack)", nm(t))));
+        }
+    }
+    Ok(out)
+}
+

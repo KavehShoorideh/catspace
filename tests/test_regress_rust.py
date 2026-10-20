@@ -217,3 +217,53 @@ def test_a_trapped_queen_is_found_by_the_core():
     ra = [(r.move.uci(), r.why) for r in R.trap_routes(b, True, chess.D2)]
     assert ra and "queen" not in ra[0][1] and "Q on d2" in ra[0][1]
     assert [(u, w) for u, w in A.trap_routes(b.fen(), True, chess.D2, 3)] == ra
+
+
+def play(fen, sans):
+    b = chess.Board(fen)
+    for s in sans.split():
+        b.push_san(s)
+    return b
+
+
+def skewer_shape(rs):
+    return [(r.move.uci(), r.san, r.why) for r in rs]
+
+
+def both_skewer(fn, *args):
+    old = R.SKEWER_RUST
+    try:
+        R.SKEWER_RUST = False
+        a = fn(*args)
+        R.SKEWER_RUST = True
+        b = fn(*args)
+    finally:
+        R.SKEWER_RUST = old
+    return skewer_shape(a), skewer_shape(b)
+
+
+@pytest.mark.parametrize("fen", FENS2)
+def test_skewer_and_drive_onto_rust_equal_python_on_every_target(fen):
+    board = chess.Board(fen)
+    us = board.turn
+    for t in chess.SQUARES:
+        pc = board.piece_at(t)
+        if pc is None or pc.color == us:
+            continue
+        a, b = both_skewer(R.skewer_routes, board, us, t)
+        assert a == b, (fen, t)
+        a, b = both_skewer(R.drive_onto_routes, board, us, t, 3)
+        assert a == b, (fen, t)
+
+
+def test_the_skewer_and_the_drive_onto_routes_on_zbour_come_from_the_core():
+    import analyst_core as A
+    b = play(ZBOUR, "Rhxf2 cxb7+ Kb8 Rxf2 Qh1+ Ke2")
+    assert [r.san for r in R.skewer_routes(b, b.turn, chess.C2)] == ["Rxf2+"] or "Rxf2+" in [r.san for r in R.skewer_routes(b, b.turn, chess.C2)]
+    assert skewer_shape(R.skewer_routes(b, b.turn, chess.C2)) == [(u, chess.Board(b.fen()).san(chess.Move.from_uci(u)), w) for u, w in A.skewer_routes(b.fen(), b.turn, chess.C2)]
+    c = play(ZBOUR, "Rhxf2 cxb7+ Kb8 Rxf2 Qh1+ Ke2 Rxf2+ Kxf2")
+    assert sorted(r.san for r in R.skewer_routes(c, c.turn, chess.C2)) == ["Qg2+", "Qh2+"]
+    a, bb = both_skewer(R.skewer_routes, c, c.turn, chess.C2)
+    assert a == bb
+    a, bb = both_skewer(R.drive_onto_routes, b, b.turn, chess.C2, 3)
+    assert a == bb
