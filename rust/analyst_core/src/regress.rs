@@ -138,7 +138,37 @@ fn material_defects_pos(p: &Chess, me: bool, target: u8) -> Vec<Def> {
     vec![("defended".into(), Some(target), d.clone(), format!("attacked, guarded {}x, the exchange gives nothing", d.len()))]
 }
 
-fn parse_fen(fen: &str) -> PyResult<Chess> { parse(fen).ok_or_else(|| err("illegal or unparsable fen")) }
+// ------------------------------------------------------------------------------------------------------------------ the per-position cache (54 B3)
+// The agenda asks the same board again and again (still_routes, forcing_whys, material_defects and mate_defects each parse the board of one routes_of): the parsed
+// position of a FEN is kept for the whole root question; `clear_caches()` is called wherever graph.clear_caches() is (every fresh root).
+static CACHE_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+const CACHE_MAX: usize = 100_000;
+fn cache() -> &'static Mutex<HashMap<String, Chess>> { static C: OnceLock<Mutex<HashMap<String, Chess>>> = OnceLock::new(); C.get_or_init(|| Mutex::new(HashMap::new())) }
+
+/// Switch the per-position cache (on by default); returns the previous setting. Off: every call parses its FEN afresh (what the comparison harness measures against).
+#[pyfunction]
+pub fn set_caches(on: bool) -> bool { let old = CACHE_ON.swap(on, std::sync::atomic::Ordering::Relaxed); if !on { cache().lock().unwrap().clear(); } old }
+
+/// Forget every cached position (a fresh root question).
+#[pyfunction]
+pub fn clear_caches() { cache().lock().unwrap().clear(); }
+
+/// How many positions are cached.
+#[pyfunction]
+pub fn cache_size() -> usize { cache().lock().unwrap().len() }
+
+fn parse_fen(fen: &str) -> PyResult<Chess> {
+    if CACHE_ON.load(std::sync::atomic::Ordering::Relaxed) {
+        if let Some(e) = cache().lock().unwrap().get(fen) { return Ok(e.clone()); }
+    }
+    let p = parse(fen).ok_or_else(|| err("illegal or unparsable fen"))?;
+    if CACHE_ON.load(std::sync::atomic::Ordering::Relaxed) {
+        let mut c = cache().lock().unwrap();
+        if c.len() >= CACHE_MAX { c.clear(); }
+        c.insert(fen.to_string(), p.clone());
+    }
+    Ok(p)
+}
 
 /// mate_defects(fen, me_white, placements) -> [(kind, sq or None, by, why)]: what stands between the pattern (placements made, THEIR move) and a mate.
 #[pyfunction]

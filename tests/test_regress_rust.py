@@ -157,3 +157,21 @@ def test_routes_of_and_fixes_of_rust_equal_python(fen):
         assert a == b, (fen, goal, pat)
         n += sum(len(x[2]) for x in a)
     assert n > 0
+
+
+def test_the_core_cache_changes_nothing_and_clear_caches_empties_it():
+    import analyst_core as A
+    fen = FENS[1]
+    ucis = [m.uci() for m in list(chess.Board(fen).legal_moves)[:6]]
+    was = A.set_caches(True)
+    try:
+        A.clear_caches()
+        a = A.forcing_whys(fen, ucis, 5, True, False)
+        assert A.cache_size() == 1
+        assert A.forcing_whys(fen, ucis, 5, True, False) == a
+        G.clear_caches()                                  # a fresh root forgets the positions
+        assert A.cache_size() == 0
+        A.set_caches(False)
+        assert A.forcing_whys(fen, ucis, 5, True, False) == a and A.cache_size() == 0
+    finally:
+        A.set_caches(was)

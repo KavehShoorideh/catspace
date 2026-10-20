@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import chess
 
+import analyst_core as _A
 from catspace.incubator.analyst.discovery import base_vocabulary as BV
 from catspace.incubator.analyst.discovery import selfmine as SM
 
@@ -61,6 +62,7 @@ def clear_caches() -> None:
     """Called at every fresh root question: the root is the unit of attention; knowledge across moves lives in the fact store, not here."""
     _FENS.clear()
     SM.clear_word_cache()
+    _A.clear_caches()                          # 54 (B3): the core's parsed positions
 
 
 # ---------------------------------------------------------------------------------------------------------------- attack questions

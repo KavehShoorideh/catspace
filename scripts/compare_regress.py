@@ -41,9 +41,8 @@ def worker(target: str, flags: list, out: str) -> None:
     for k, attr in FLAGS.items():
         setattr(R, attr, k in flags)
     R.REGRESS_LOG = []
-    if "cache" in flags:
-        import analyst_core
-        analyst_core.set_caches(True) if hasattr(analyst_core, "set_caches") else None
+    import analyst_core
+    analyst_core.set_caches("cache" in flags)
     t0 = time.time()
     res = [AN.analyse(p, quiet=True, memory=False, log=lambda *a, **k: None) for p in puzzles(target)]
     secs = time.time() - t0
