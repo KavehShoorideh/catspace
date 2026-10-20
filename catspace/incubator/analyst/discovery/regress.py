@@ -18,11 +18,15 @@ from dataclasses import dataclass, field
 
 import chess
 
+import analyst_core as _A
 from catspace.incubator.analyst.discovery import graph as G
 
 STAKE_MATE = 100
 PASS_CLAIMS = [0]                             # 52.18 (3): forcing_why answers that were a claim bound after a pass (the OBS counter)
 STAKE_PROMOTE = 8                             # a queen less the pawn
+DEFECTS_RUST = True                           # 54 (B1): mate_defects / material_defects read by analyst_core (the Python path below stays; ValueError = a position shakmaty cannot hold -> Python)
+ROUTES_RUST = False                           # 54 (B2): routes_of's `_still` filter and `forcing_why` for the whole candidate list in two Rust calls (the Python path stays)
+REGRESS_LOG = None                            # 54 (B): a list -> every fixes_of / routes_of / forcing_why call appends what it answered (scripts/compare_regress.py diffs these)
 PROMOTE_MAX_PUSHES = 3                        # farther pawns: the mate / material stakes dominate (52.6)
 
 
@@ -88,9 +92,22 @@ def future_board(board: chess.Board, placement: list, them: bool) -> chess.Board
 # ---------------------------------------------------------------------------------------------------------------- defects read from the rules
 
 def mate_defects(board: chess.Board, us: str | bool, placement: list) -> list:
+    """What stands between the pattern and a mate (`_mate_defects`); the call is logged when REGRESS_LOG is set."""
+    out = _mate_defects(board, us, placement)
+    if REGRESS_LOG is not None:
+        REGRESS_LOG.append(("mate_defects", board.epd(), G.colour_of(us), [(p.symbol(), at, frm) for p, at, frm in placement], [(d.kind, d.sq, tuple(d.by), d.why) for d in out]))
+    return out
+
+
+def _mate_defects(board: chess.Board, us: str | bool, placement: list) -> list:
     """What stands between the pattern and a mate, read from the rules on the counterfactual (placements made, their move). [] = they have no legal move and are
     in check: the pattern IS a mate. Order: the checker takeable, flights, interpositions."""
     me = G.colour_of(us)
+    if DEFECTS_RUST:
+        try:
+            return [Defect(k, sq, list(by), why) for k, sq, by, why in _A.mate_defects(G.fen_of(board), me, [(p.symbol(), at, frm) for p, at, frm in placement])]
+        except ValueError:
+            pass                                  # a counterfactual shakmaty cannot hold: the Python rules read it
     return mate_defects_on(future_board(board, placement, not me), me)
 
 
@@ -168,9 +185,22 @@ def _recapture_mates(cf: chess.Board, placement: list, taker: int, sq: int, me: 
 
 
 def material_defects(board: chess.Board, us: str | bool, target_sq: int) -> list:
+    """Why we do not win the piece on `target_sq` now (`_material_defects`); the call is logged when REGRESS_LOG is set."""
+    out = _material_defects(board, us, target_sq)
+    if REGRESS_LOG is not None:
+        REGRESS_LOG.append(("material_defects", board.epd(), G.colour_of(us), target_sq, [(d.kind, d.sq, tuple(d.by), d.why) for d in out]))
+    return out
+
+
+def _material_defects(board: chess.Board, us: str | bool, target_sq: int) -> list:
     """Why we do not win the piece on `target_sq` now: [] when the exchange on it already wins for us (`see` from our side > 0); otherwise 'not attacked' (no
     piece of ours attacks it) or 'defended' (attacked, but it is guarded and the exchange gives nothing)."""
     me = G.colour_of(us)
+    if DEFECTS_RUST:
+        try:
+            return [Defect(k, sq, list(by), why) for k, sq, by, why in _A.material_defects(G.fen_of(board), me, target_sq)]
+        except ValueError:
+            pass
     if G.see_for(board, target_sq, me) > 0:
         return []
     if not G.attackers_of(board, target_sq, me):
@@ -252,6 +282,48 @@ def mate_threat(board: chess.Board, m: chess.Move, us: str | bool) -> bool:
 
 
 def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool, mate_threats: bool = False, notes: list | None = None) -> str | None:
+    """The reason `m` is forcing (see `_forcing_why_py`), or None. 54 (B2): read by analyst_core when ROUTES_RUST (the same answer, the same notes)."""
+    got = _forcing_batch(board, [m], stake, us, mate_threats, notes) if ROUTES_RUST else None
+    why = got[0] if got is not None else _forcing_why_py(board, m, stake, us, mate_threats, notes)
+    if REGRESS_LOG is not None:
+        REGRESS_LOG.append(("forcing", board.epd(), m.uci(), stake, mate_threats, why, tuple(notes) if notes is not None else None))
+    return why
+
+
+def _forcing_batch(board: chess.Board, moves: list, stake: int, us: str | bool, mate_threats: bool = False, notes: list | None = None) -> list | None:
+    """54 (B2): `_forcing_why_py` for several moves of the side to move in one Rust call -> [why or None] (None overall: the Python path reads it)."""
+    me = G.colour_of(us)
+    if board.turn != me or not moves:
+        return None
+    try:
+        res = _A.forcing_whys(G.fen_of(board), [m.uci() for m in moves], stake, me, mate_threats)
+    except ValueError:
+        return None
+    out = []
+    for m, (st, text, n1, n2, cap) in zip(moves, res):
+        if st == "why":
+            out.append(text)
+        elif st == "pass":
+            c = board.copy(stack=False)
+            c.push(m)
+            out.append(pass_claim(board, c, m, us, stake))
+        elif st == "survives":
+            c = board.copy(stack=False)
+            c.push(m)
+            out.append(f"threat {n1} survives {c.san(chess.Move.from_uci(cap))} (the {text} hangs, {n2})")
+        elif st == "hangs":
+            if notes is not None:
+                c = board.copy(stack=False)
+                c.push(m)
+                notes.append(f"{board.san(m)}: not a threat: the {text} on {G.name(m.to_square)} hangs (they win {n1} by the exchange there)"
+                             + (f" and the threat does not survive {c.san(chess.Move.from_uci(cap))} ({n2})" if cap else ""))
+            out.append(None)
+        else:
+            out.append(None)
+    return out
+
+
+def _forcing_why_py(board: chess.Board, m: chess.Move, stake: int, us: str | bool, mate_threats: bool = False, notes: list | None = None) -> str | None:
     """A move is FORCING when it is a check, a threat of mate (52.12: after it, a pass leaves us a mate in one), or a capture / threat worth at least the stake of the
     question (a mate stakes 100: only a check or a mate threat is). 52.13 (2d): a QUIET move threatens only if the moved piece is not lost by the exchange on its own
     square (Lean `Ideas.Vocabulary.landsSafe`: after the move the exchange on its destination wins nothing for the other side; the Rust `see`, them on move): the
@@ -349,7 +421,7 @@ def _still(q: Question, board: chess.Board, us: str | bool, m: chess.Move, root:
     me = G.colour_of(us)
     if root.goal == "mate":
         pl = placement_of(root)
-        after = {d.key()[:2] for d in mate_defects(c, me, pl)}
+        after = {d.key()[:2] for d in _mate_defects(c, me, pl)}
         if before is None:
             before = _defects_before(q, board, me, root)
         if q.defect_key[:2] in after or any(k[0] == "no check" for k in after) or not after <= before:
@@ -358,7 +430,7 @@ def _still(q: Question, board: chess.Board, us: str | bool, m: chess.Move, root:
     if root.goal == "win":
         if c.is_check():                       # our move checks: the board cannot be turned back to us (their king would be in check on our move), so the defect
             return not G.attackers_of(c, root.pattern["target"], me)       # is read as 'attacked or not'; the binder alone decides what the route is worth
-        return bool(material_defects(G.with_turn(c, me), me, root.pattern["target"]))
+        return bool(_material_defects(G.with_turn(c, me), me, root.pattern["target"]))
     return True
 
 
@@ -372,23 +444,61 @@ def routes_of(q: Question, board: chess.Board, us: str | bool, root: Question | 
     any move but the pattern piece's own and the blockers'; 'remove': the blocker's own moves. Moves that fix without forcing go to q.unforced."""
     root = root or q
     skip = root.pattern.get("frm")
-    out, unforced = [], []
-    before = _defects_before(q, board, G.colour_of(us), root) if root.goal == "mate" else None       # 52.20 (2): once per route list
+    me = G.colour_of(us)
+    before = _defects_before(q, board, me, root) if root.goal == "mate" else None       # 52.20 (2): once per route list
+    cands = []
     for m in _moves(board, us, skip):
         is_blocker_move = m.from_square == q.pattern.get("blocker")
         if q.goal == "remove" and not is_blocker_move:
             continue
         if q.goal in ("guard", "cover") and m.from_square in root.pattern.get("blockers", ()):
             continue
-        if _still(q, board, us, m, root, before):
-            continue
-        why = forcing_why(board, m, q.stake, us)
+        cands.append(m)
+    got = _routes_rust(q, board, us, root, cands, before) if ROUTES_RUST else None
+    if got is None:
+        out, unforced = [], []
+        for m in cands:
+            if _still(q, board, us, m, root, before):
+                continue
+            why = _forcing_why_py(board, m, q.stake, us)
+            if why:
+                out.append(Route(m, board.san(m), why))
+            else:
+                unforced.append(board.san(m))
+    else:
+        out, unforced = got
+    q.unforced = unforced
+    if REGRESS_LOG is not None:
+        REGRESS_LOG.append(("routes", q.text, [(r.san, r.why) for r in out], list(unforced)))
+    return out
+
+
+def _routes_rust(q: Question, board: chess.Board, us: str | bool, root: Question, cands: list, before: set | None):
+    """54 (B2): the `_still` filter and the forcing reasons of the whole candidate list in two Rust calls -> (routes, unforced SAN) or None (the Python loop answers)."""
+    me = G.colour_of(us)
+    if board.turn != me or root.goal not in ("mate", "win") or not cands:
+        return None
+    if root.goal == "mate" and q.defect_key is None:
+        return None
+    p = q.pattern
+    dk = tuple(q.defect_key[:2]) if root.goal == "mate" else ("", None)
+    spec = (root.goal, q.goal, dk, [(pc.symbol(), at, frm) for pc, at, frm in placement_of(root)] if root.goal == "mate" else [],
+            sorted(before, key=repr) if before is not None else [], p.get("target"), p.get("frm"), p.get("blocker"), root.pattern.get("target"))
+    try:
+        stills = _A.still_routes(G.fen_of(board), me, [m.uci() for m in cands], spec)
+    except ValueError:
+        return None
+    keep = [m for m, (_, still) in zip(cands, stills) if not still]
+    whys = _forcing_batch(board, keep, q.stake, us) if keep else []
+    if whys is None:
+        return None
+    out, unforced = [], []
+    for m, why in zip(keep, whys):
         if why:
             out.append(Route(m, board.san(m), why))
         else:
             unforced.append(board.san(m))
-    q.unforced = unforced
-    return out
+    return out, unforced
 
 
 # ---------------------------------------------------------------------------------------------------------------- fixes (sub-questions)
@@ -407,6 +517,13 @@ def reset_ids() -> None:
 
 def fixes_of(defect: Defect, q: Question, board: chess.Board, us: str | bool) -> list:
     """The sub-questions a defect generates, with their routes read against `board` (the real position, us to move)."""
+    out = _fixes_of(defect, q, board, us)
+    if REGRESS_LOG is not None:
+        REGRESS_LOG.append(("fixes", defect.kind, defect.sq, [(f.goal, f.text, f.status, [(r.san, r.why) for r in f.routes], list(f.unforced), list(f.why)) for f in out]))
+    return out
+
+
+def _fixes_of(defect: Defect, q: Question, board: chess.Board, us: str | bool) -> list:
     me = G.colour_of(us)
     root = q
     out = []

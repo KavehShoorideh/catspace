@@ -19,6 +19,7 @@ mod game;
 mod mating;
 mod vocab;
 mod route;
+mod regress;
 mod goals;
 mod generated;
 mod pos;
@@ -1709,6 +1710,10 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(mating::set_kr_generated, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::vocab_eval, m)?)?;
     m.add_function(wrap_pyfunction!(route::verify_route, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::mate_defects, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::material_defects, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::still_routes, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::forcing_whys, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::vocab_values, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::vocab_certify, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::verify_mask, m)?)?;
