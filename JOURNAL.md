@@ -31915,3 +31915,21 @@ threat-save path to find our counter-mate; the Lean skewer is sound but its chas
 arithmetic; material is monotone) but their composition with the fuse is unmeasured beyond these three samples.
 NEXT (plan 53, Kaveh): the QUESTION LOG (each agenda: the questions in the order asked, which one decided, which word answered it, the Stockfish verdict),
 then the prior that orders the pool; negative only for the question not asked, never for a right question wrongly answered (that is a bug or a missing lemma).
+
+## 2026-10-20 13:21 PDT -- THE QUESTION LOG AND THE PRIOR THAT ORDERS THE QUESTIONS (plan 53): IT RANKS THE DECIDING QUESTION FIRST 9/13 HELD OUT, CHANGES NO DECISION, COSTS TIME
+Kaveh: "wire in the prior that orders the questions ... training data: did the deciding line agree with Stockfish and did we go down it; a negative only
+for the question not asked; never penalise the right question wrongly answered". Built: `analyse --qlog` writes one row per root-agenda question in the
+order asked (generic features known before asking: goal, stake, the target's piece and counts, the check state, the depth; the WORD that answered it; which
+question decided, via `Claim.qid`); `question_prior grade` adds the Stockfish verdict in its own pass (RIGHT within 50 cp at depth 14; the engine beside an
+agenda stalled the set runs: its thread, never again); `question_prior build` fits a logistic regression (labels: the question that decided a right
+decision 1, those asked before it 0; a wrong or no decision labels the question naming the answer's target); `analyse --prior` asks the root agenda's
+highest-scored open question next (it never decides: the stops stay by stakes and claims).
+OBS (one run each, directional): 60 puzzles (seeds 1-6) logged in 2.5 min, 313 rows; graded RIGHT 43 / WRONG 3 / none 14; 95 labelled rows, 51 positives;
+largest weights target=pawn +0.80, goal=win +0.76, target_ours -0.74, target=queen +0.72, goal=mate -0.61; 5-fold held out by puzzle the deciding question
+ranks first 9/13 under the prior vs 0/13 under the stake order (by construction). Held-out seeds 7-8 (20 puzzles), count fuse and 10 s/puzzle, with vs
+without: decisions IDENTICAL (8/10 and 5/10 both ways), questions asked up (18->34, 32->53, 22->48), seconds 22->36 and 23->52: a small claim found first
+does not stop the agenda. Honest grading: the prior does what was asked (orders; never decides) and the log is the cheap, labelled data Kaveh wanted; its
+benefit needs a budget that cuts before the deciding question, which these samples never hit; off by default. Also today, answered for Kaveh: how a
+question finds its candidate moves (defects -> named fixes -> a filter over ALL legal moves by the "still" test and the forcing test; ~140 legal-move
+generations per question) and where the time goes (python-chess ~60% of own time, FEN round trips ~14%, the Rust word evaluator 9%: ~2.8 ms per inner
+question; plan 54 = one board per node, per-position caches, the hot words in the Rust core).

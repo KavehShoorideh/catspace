@@ -124,11 +124,8 @@ def main():
     if a.prior:
         from catspace.incubator.analyst.discovery import agenda as AGM
         AGM.PRIOR = True
-    if a.sf:                                                     # plan 53 (1): the engine is opened BEFORE the first agenda (opened after one, python-chess's engine thread never answers; 2026-10-20)
-        from catspace.incubator.analyst.discovery import verdict as VD
-        import atexit
-        VD._get()
-        atexit.register(VD.close)                                # (its thread is not a daemon: unclosed, the process never exits)
+    if a.sf:                                                     # plan 53 (1): the engine beside an agenda stalled the set runs (its thread; 2026-10-20): grade the log in its own pass instead
+        raise SystemExit("--sf is retired: run `question_prior grade` on the log after `analyse --qlog` (the grader never runs beside an agenda)")
     from catspace.incubator.analyst.discovery.agenda import ChaseCtx
     carry = ChaseCtx() if a.memory else None                     # 52.19 (4): --memory also keeps the fact store (and the exact memos) between the puzzles
     ps = PA.load_set(a.set)

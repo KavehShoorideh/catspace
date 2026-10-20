@@ -151,15 +151,38 @@ def evaluate(log_path, folds=5) -> None:
           f"under the prior {hit_prior}/{n}, under the stake order {hit_stake}/{n}")
 
 
+def grade(log_path, depth: int = 14) -> None:
+    """plan 53 (1): the STOCKFISH VERDICT written into the log's rows (a separate pass in its own process: the engine never runs beside an agenda -- its thread
+    stalled the set runs; and the grader is never a premise). One engine call per (position, decision), cached."""
+    from catspace.incubator.analyst.discovery import verdict as VD
+    rows = _rows(log_path)
+    cache, n = {}, 0
+    for r in rows:
+        key = (r["fen"], r.get("decision"))
+        if key not in cache:
+            cache[key] = VD.verdict(r["fen"], r.get("decision"), depth)
+            n += 1
+        r["sf"], r["sf_loss"], r["sf_best"] = cache[key]
+    VD.close()
+    with open(log_path, "w") as fh:
+        for r in rows:
+            fh.write(json.dumps(r) + "\n")
+    agendas = {(r["id"], r.get("set")): r["sf"] for r in rows}
+    from collections import Counter
+    print(f"OBS prior grade: {n} decisions graded by Stockfish (depth {depth}) over {len(agendas)} agendas: " + ", ".join(f"{k} {v}" for k, v in sorted(Counter(agendas.values()).items(), key=lambda t: str(t[0]))))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("mode", choices=("build", "eval"))
+    ap.add_argument("mode", choices=("build", "eval", "grade"))
     ap.add_argument("--log", default=None)
     ap.add_argument("--out", default=None)
     a = ap.parse_args(argv)
     log = a.log or paths.experiment(LOG)
     if a.mode == "build":
         build(log, a.out or paths.derived(MODEL))
+    elif a.mode == "grade":
+        grade(log)
     else:
         evaluate(log)
 

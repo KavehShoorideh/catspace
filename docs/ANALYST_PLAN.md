@@ -2630,3 +2630,13 @@ stays the default budget for sets and tests; the time regime wastes the inner wo
 Acceptance: the log written and labelled, the model built with its largest weights printed, the eval OBS, then two held-out samples run with and without
 the prior: decisions diffed (the prior must not change a decision, only the order and the questions asked before the deciding one), the count of
 questions asked before the deciding one before/after as OBS.
+Outcome 2026-10-20: built and committed (the log, the grader as its own pass -- the engine beside an agenda stalled the set runs --, the prior, tests,
+glossary). OBS: 60 puzzles (seeds 1-6) logged in 2.5 min, 313 question rows; Stockfish grade RIGHT 43, WRONG 3, none 14; the model from 95 labelled rows
+(51 positives, 51 agendas); largest weights target=pawn +0.80, goal=win +0.76, target_ours -0.74, target=queen +0.72, goal=mate -0.61; 5-fold held out
+by puzzle: the deciding question ranks first under the prior 9/13, under the stake order 0/13 (by construction). Held-out seeds 7-8 (20 puzzles), with
+and without the prior, under the count fuse and under 10 s per puzzle: every decision IDENTICAL (the prior orders, never decides -- as required), but
+questions asked rose (18 -> 34, 32 -> 53, 22 -> 48 ...) and time 22 -> 36 s, 23 -> 52 s: a small claim asked first does not stop the agenda (stop (a) is by
+stakes), so the higher stakes are still asked after it. The ordering pays only when a budget cuts before the deciding question; on these samples none did.
+`--prior` stays OFF by default. Next for it: more data (the log is cheap: 60 puzzles in 2.5 min), the question's defects in the features once asked
+(two-stage: a cheap feature pass before the fixes), and a stop rule that reads the prior's confidence -- a decision for Kaveh, since the stops are the
+reasoning's and the prior must not become a decider.
