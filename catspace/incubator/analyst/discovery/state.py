@@ -22,6 +22,7 @@ class Claim:
     move: str = ""     # the first move of the bound route, UCI (the binding's x and y)
     goal: str = ""     # 52.9: the root question's goal kind (mate | win | save | promote)
     fixes: tuple = ()  # 52.9: the kinds of the fix sub-questions on the claim's path
+    qid: int = -1      # plan 53: the id of the question this claim answered (the question log says which question decided)
 
 
 @dataclass

@@ -43,6 +43,7 @@ from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import landing as LD
 from catspace.incubator.analyst.discovery import region as RG
 from catspace.incubator.analyst.discovery import regress as R
+from catspace.incubator.analyst.discovery import question_prior as QP
 from catspace.incubator.analyst.discovery import reasoned as RS
 from catspace.incubator.analyst.discovery import selfmine as SM
 from catspace.incubator.analyst.discovery.state import Claim, State
@@ -58,6 +59,7 @@ GOAL_JUDGE = False                                              # 52.23 (6): OFF
 CHASE_CLOCK = 99                                                # 52.23 (8): 99 = off by default; 4 was Kaveh's starting value (same reason)
                                                 # 52.23 (8): our moves on a chain without a capture that is not bad for us (Kaveh 2026-10-20: "four or five ... a hyperparameter, tune it later")
 DEEP_WIN_CHASE = False                                           # 52.23 (5) switch (bisect)
+PRIOR = False                                                   # plan 53 (2): the learned prior orders the root agenda's questions (analyse --prior); it never decides
 NO_FUSE = 1 << 40                                               # 52.23 (1): the fuse when the budget is time: never reached (the deadline is the only limit)
 
 
@@ -204,6 +206,8 @@ class Agenda:
         self.kills: list = []                                   # (question id, reason) for every kill
         self.all: list = []
         self.heap: list = []
+        self.order: list = []                                   # plan 53 (1): (question, its features) in the order asked
+        self.prior_moves = 0                                    # plan 53 (2): questions the prior asked ahead of the stake order
         self.best: tuple | None = None                          # (value, -opp defects, claim)
         self.budget = sum(1 for s in chess.SQUARES if self.board.piece_at(s) and self.board.piece_at(s).color == self.me) * 8 \
             + sum(1 for m in self.board.legal_moves if self.board.is_capture(m))
@@ -280,6 +284,7 @@ class Agenda:
     def _stamp(self, claim: Claim, q: R.Question) -> Claim:
         claim.goal = q.goal
         claim.fixes = self._fix_kinds(q, claim.move)
+        claim.qid = q.id                                        # plan 53: the question log says which question decided
         return claim
 
     def _roots(self) -> None:
@@ -576,10 +581,21 @@ class Agenda:
                 self.lines.append("STOP (t): out of time")
                 return
             plain = min(self.heap, key=lambda t: (t[0], t[2], t[3]))                # the stake-only order
-            _, _, _, _, q = heapq.heappop(self.heap)
-            if plain[4] is not q:
-                sc, rec = self._recall_score(q)
-                self.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
+            if PRIOR and not self.chase_depth and QP.load() is not None:          # plan 53 (2): THE PRIOR ORDERS the root agenda's pool: the open question with the highest score is asked next
+                scored = [(QP.score(QP.features(t[4], self.board, self.us, self.chase_depth)), -t[0], -t[3], t) for t in self.heap]        # (it orders, it never decides: the stops stay by stakes and claims)
+                best = max(scored)[3]
+                self.heap.remove(best)
+                heapq.heapify(self.heap)
+                q = best[4]
+                if plain[4] is not q:
+                    self.lines.append(f"prior: Q{q.id} asked first (score {max(scored)[0]:+.2f}; the stake order would ask Q{plain[4].id})")
+                    self.prior_moves += 1
+            else:
+                _, _, _, _, q = heapq.heappop(self.heap)
+                if plain[4] is not q:
+                    sc, rec = self._recall_score(q)
+                    self.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
+            self.order.append((q, QP.features(q, self.board, self.us, self.chase_depth)))      # plan 53 (1): the order asked, with what was known of the question before it was asked
             if self._inherit(q):
                 continue
             if self.chase_depth:                                 # an inner agenda pays the shared budget as it asks (a chain of checks meets it on the way down)

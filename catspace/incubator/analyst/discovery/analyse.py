@@ -23,7 +23,7 @@ from catspace.incubator.analyst.discovery.state import state_of
 AGENDA_STORE = "agenda_states.jsonl"       # 52.9: the agenda's own store (plan 50's reasoned_states.jsonl keeps its record of the exhaustive ladder)
 
 
-def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store: bool = False, set_name: str = "", k: int = 3, leaf_all: bool = False, seconds: "float | None" = None, carry=None, ponder: "float | None" = None) -> dict:
+def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store: bool = False, set_name: str = "", k: int = 3, leaf_all: bool = False, seconds: "float | None" = None, carry=None, ponder: "float | None" = None, qlog: bool = False, sf: bool = False) -> dict:
     BV.install_terms()
     t0 = time.time()
     fen = p["fen"]
@@ -67,6 +67,13 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
     for line in ag.leaf_obs:
         log(f"OBS leaf {p['id']}: {line}")
     decided = d.what if d else "none"
+    sfv = (None, None, None)
+    if sf:                                                       # plan 53 (1): Stockfish grades the decision (the grader, never a premise)
+        from catspace.incubator.analyst.discovery import verdict as VD
+        sfv = VD.verdict(fen, d.move if d else None)
+        log(f"OBS verdict {p['id']}: {decided} {sfv[0]}" + (f" (loss {sfv[1]} cp vs {chess.Board(fen).san(chess.Move.from_uci(sfv[2]))})" if sfv[2] else ""))
+    if qlog:
+        _write_qlog(p, set_name, fen, ag, d, sfv)
     cx = ag.ctx
     # a depth-two decision reads "Nxf6+ then Bxh7": it MATCHES the puzzle when its FIRST move is the answer (the second move is the plan's, not the puzzle's)
     verdict = "MATCH" if d and d.move[:4] == p["answer"][:4] and (len(d.move) < 5 or len(p["answer"]) < 5 or d.move[4] == p["answer"][4]) else "MISS"
@@ -83,6 +90,22 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
                 decided=d is not None, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs, theirs=ag.their_runs, fx=fx, chase=(cx.agendas, cx.inherited, cx.reopened, cx.budget_hits, cx.asked, cx.inherited_claims, cx.fresh, cx.closed, cx.standing, cx.logged, cx.gap_reused, cx.depth_cuts, cx.static_read, cx.static_parried, cx.static_unparried, cx.reasoned, cx.unaddressed, cx.time_outs, cx.landing_served, R.PASS_CLAIMS[0] - pc0, cx.roots_served, cx.chase_served, cx.finished, cx.unmet, cx.refuter_fixes), until=ag.asked_at_claim, move=d.move if d else None, leaf=ag.leaf_stats)
 
 
+def _write_qlog(p: dict, set_name: str, fen: str, ag, d, sfv) -> None:
+    """plan 53 (1): one row per question of the ROOT agenda in the order asked: what was known before it was asked (features), its outcome (status, the word that answered
+    it: the claim's lemma or the kill's reason), whether it decided, the decision, the puzzle's answer and the Stockfish verdict. The prior trains on this."""
+    import json
+    ans = p["answer"]
+    match = bool(d and d.move[:4] == ans[:4])
+    with open(paths.experiment("question_log.jsonl"), "a") as fh:
+        for i, (q, f) in enumerate(ag.order):
+            word = next((c.lemma for c in ag.state.claims if c.qid == q.id), None) if q.status == "verified" else None
+            word = word or (q.claimed[1].lemma if q.claimed is not None else (q.reason.split(":")[0] if q.reason else q.status))
+            t = q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn")))
+            fh.write(json.dumps(dict(id=p["id"], set=set_name, fen=fen, order=i, qid=q.id, goal=q.goal, stake=q.stake, text=q.text, status=q.status, word=word,
+                                     decided=bool(d and d.qid == q.id), decision=d.move if d else None, answer=ans, match=match, sf=sfv[0], sf_loss=sfv[1], sf_best=sfv[2],
+                                     target_sq=t, move=q.pattern.get("move"), features=f)) + "\n")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--set", default="dev_20")
@@ -94,7 +117,18 @@ def main():
     ap.add_argument("--seconds", type=float, default=None, help="52.17 (5): the budget is TIME: seconds per puzzle (default: none, the question-count fuse as before)")
     ap.add_argument("--ponder", type=float, default=None, help="52.19 (3): after each puzzle drain the background queue (gap routes by chain stake) for this many seconds")
     ap.add_argument("--no-memory", action="store_true", help="(kept for the batch scripts) the stake-only order, the default")
+    ap.add_argument("--qlog", action="store_true", help="plan 53 (1): append the QUESTION LOG (the root agenda's questions in the order asked, which one decided, which word answered it) to experiments/question_log.jsonl")
+    ap.add_argument("--sf", action="store_true", help="plan 53 (1): grade each decision with Stockfish (RIGHT within 50 cp of the best move, else WRONG); the log's label")
+    ap.add_argument("--prior", action="store_true", help="plan 53 (2): the learned prior (data/derived/question_prior.json) orders the root agenda's questions")
     a = ap.parse_args()
+    if a.prior:
+        from catspace.incubator.analyst.discovery import agenda as AGM
+        AGM.PRIOR = True
+    if a.sf:                                                     # plan 53 (1): the engine is opened BEFORE the first agenda (opened after one, python-chess's engine thread never answers; 2026-10-20)
+        from catspace.incubator.analyst.discovery import verdict as VD
+        import atexit
+        VD._get()
+        atexit.register(VD.close)                                # (its thread is not a daemon: unclosed, the process never exits)
     from catspace.incubator.analyst.discovery.agenda import ChaseCtx
     carry = ChaseCtx() if a.memory else None                     # 52.19 (4): --memory also keeps the fact store (and the exact memos) between the puzzles
     ps = PA.load_set(a.set)
@@ -102,9 +136,9 @@ def main():
         done = RM.stored_ids(paths.derived(AGENDA_STORE))
         ps = [p for p in ps if p["id"] not in done] if not a.id else ps
     if a.id:
-        analyse(next(x for x in ps if x["id"] == a.id), memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds, carry=carry, ponder=a.ponder)
+        analyse(next(x for x in ps if x["id"] == a.id), memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds, carry=carry, ponder=a.ponder, qlog=a.qlog, sf=a.sf)
         return
-    res = [analyse(p, quiet=True, memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds, carry=carry, ponder=a.ponder) for p in ps]
+    res = [analyse(p, quiet=True, memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds, carry=carry, ponder=a.ponder, qlog=a.qlog, sf=a.sf) for p in ps]
     if a.store:
         print(f"OBS agenda store: {len(RM.load(paths.derived(AGENDA_STORE)))} records")
     for r in res:

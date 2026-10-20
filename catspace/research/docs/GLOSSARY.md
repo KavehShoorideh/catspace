@@ -255,6 +255,13 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   (the exchange there wins nothing for them) from which the piece attacks two pieces it wins by the exchange if they pass (or the king and one piece), stake = the smaller value. Verified by the rules
   reply by reply (the least of balance + the best static exchange); a reply that answers both (the capture of the forker, a move of one attacked piece that guards the other, a check) is the defect
   and kills it by name. Two pieces on squares of opposite colour cannot be forked by a knight (the colour lemma kills the pair, with its read set).
+- **Question log / question prior** (python `analyse --qlog --sf`, `question_prior.features/score/build/evaluate`, `verdict.verdict`; plan 53) — the LOG is one row
+  per question of the root agenda in the order asked: what was known of it before it was asked (generic features: goal, stake, the target's piece and the counts on
+  its square, the check state, the depth), the word that answered it, whether it decided, the decision, the puzzle's answer and the Stockfish VERDICT (the grader,
+  never a premise: RIGHT within 50 cp of the best move). The PRIOR is a logistic regression over those features that ORDERS the open questions of the root agenda
+  (the highest score is asked next); it never decides: the stops stay by stakes and claims. Labels: the question that decided a right decision is 1, the ones asked
+  before it 0; when the decision was wrong or none, the question naming the answer's target is 1. A right question wrongly answered is never a negative (a bug or a
+  missing lemma, told apart by the word that answered it).
 - **Skewer** (Lean `Ideas.Skewer.skewerB`, `skewer_blocked`, `skewer_attack`; python `graph.skewer_after`, `regress.skewer_routes`, `skewer_fix`) — a CHECK by a slider of ours
   whose line runs on THROUGH their king to a piece of theirs behind it; before the king moves the slider does not attack that piece (the king is in the way), and when the king
   steps off the line it does. The chase reads the other answers to the check (take the checker, interpose) as replies. A named fix of the win defects 'not attacked' / 'defended',
