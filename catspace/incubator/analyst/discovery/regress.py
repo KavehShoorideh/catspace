@@ -25,7 +25,7 @@ STAKE_MATE = 100
 PASS_CLAIMS = [0]                             # 52.18 (3): forcing_why answers that were a claim bound after a pass (the OBS counter)
 STAKE_PROMOTE = 8                             # a queen less the pawn
 DEFECTS_RUST = True                           # 54 (B1): mate_defects / material_defects read by analyst_core (the Python path below stays; ValueError = a position shakmaty cannot hold -> Python)
-ROUTES_RUST = False                           # 54 (B2): routes_of's `_still` filter and `forcing_why` for the whole candidate list in two Rust calls (the Python path stays)
+ROUTES_RUST = True                            # 54 (B2): routes_of's `_still` filter and `forcing_why` for the whole candidate list in two Rust calls (the Python path stays)
 REGRESS_LOG = None                            # 54 (B): a list -> every fixes_of / routes_of / forcing_why call appends what it answered (scripts/compare_regress.py diffs these)
 PROMOTE_MAX_PUSHES = 3                        # farther pawns: the mate / material stakes dominate (52.6)
 
