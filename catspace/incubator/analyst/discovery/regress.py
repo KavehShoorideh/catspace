@@ -338,18 +338,20 @@ def _goal_done(q: Question, cf: chess.Board, me: bool) -> bool:
     return True
 
 
-def _still(q: Question, board: chess.Board, us: str | bool, m: chess.Move, root: Question) -> bool:
+def _still(q: Question, board: chess.Board, us: str | bool, m: chess.Move, root: Question, before: set | None = None) -> bool:
     """Is the fix `q` NOT done by m? A fix is a move that does what the fix names and introduces no new defect; the disappearance of a defect for another
     reason is not a fix (52.11). For a mate root, on the counterfactual after m: (a) the goal's positive condition holds (cover: a piece of ours attacks the
     flight square; guard: the checker's square is attacked by another piece of ours; remove: the blocker has left) and (b) every defect after m was a defect
-    before m, less the fixed one; 'no check' is never allowed."""
+    before m, less the fixed one; 'no check' is never allowed. `before` = the defects of `board` less the fixed one, computed once by the caller
+    (52.20 (2): they were rescanned for every candidate move)."""
     c = board.copy(stack=False)
     c.push(m)
     me = G.colour_of(us)
     if root.goal == "mate":
         pl = placement_of(root)
         after = {d.key()[:2] for d in mate_defects(c, me, pl)}
-        before = {d.key()[:2] for d in mate_defects(board, me, pl)} - {q.defect_key[:2]}
+        if before is None:
+            before = _defects_before(q, board, me, root)
         if q.defect_key[:2] in after or any(k[0] == "no check" for k in after) or not after <= before:
             return True
         return not _goal_done(q, future_board(c, pl, not me), me)
@@ -360,19 +362,25 @@ def _still(q: Question, board: chess.Board, us: str | bool, m: chess.Move, root:
     return True
 
 
+def _defects_before(q: Question, board: chess.Board, me: bool, root: Question) -> set:
+    """The mate root's defects on `board`, less the one `q` fixes: what `_still` compares the counterfactual after a candidate move against."""
+    return {d.key()[:2] for d in mate_defects(board, me, placement_of(root))} - {q.defect_key[:2]}
+
+
 def routes_of(q: Question, board: chess.Board, us: str | bool, root: Question | None = None) -> list:
     """Our moves that supply the fix `q` names AND are forcing, each re-read on the counterfactual after the move (the defect gone). 'guard' / 'cover' / 'attack':
     any move but the pattern piece's own and the blockers'; 'remove': the blocker's own moves. Moves that fix without forcing go to q.unforced."""
     root = root or q
     skip = root.pattern.get("frm")
     out, unforced = [], []
+    before = _defects_before(q, board, G.colour_of(us), root) if root.goal == "mate" else None       # 52.20 (2): once per route list
     for m in _moves(board, us, skip):
         is_blocker_move = m.from_square == q.pattern.get("blocker")
         if q.goal == "remove" and not is_blocker_move:
             continue
         if q.goal in ("guard", "cover") and m.from_square in root.pattern.get("blockers", ()):
             continue
-        if _still(q, board, us, m, root):
+        if _still(q, board, us, m, root, before):
             continue
         why = forcing_why(board, m, q.stake, us)
         if why:
@@ -574,12 +582,12 @@ def reach_steps(board: chess.Board, us: str | bool, frm: int, target: int) -> li
     if pc is None or pc.piece_type in (chess.KING, chess.PAWN):
         return []
     own = G.with_turn(board, G.colour_of(us))
-    ones = {m.to_square for m in own.legal_moves if m.from_square == frm}
-    if target in ones:
+    mine = [m for m in own.legal_moves if m.from_square == frm]          # 52.20 (3): the legal moves listed once
+    if any(m.to_square == target for m in mine):
         return []
     out = []
-    for m in own.legal_moves:
-        if m.from_square != frm or m.promotion or own.is_castling(m):
+    for m in mine:
+        if m.promotion or own.is_castling(m):
             continue
         t = m.to_square
         c = G.with_piece(board, pc, t, frm)
