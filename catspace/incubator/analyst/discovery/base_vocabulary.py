@@ -190,11 +190,18 @@ SQUARE_CLASSES = ("a1", "b1", "c1", "d1", "b2", "c2", "d2", "c3", "d3", "d4")
 SQUARE_NAMES = tuple(f + r for f in "abcdefgh" for r in "12345678")
 
 
-def install_terms() -> None:
-    """The chess terms into the evaluator (vocab.rs set_macros): a term naming one is unfolded before it is read."""
+_installed = [False]
+
+
+def install_terms(force: bool = False) -> None:
+    """The chess terms into the evaluator (vocab.rs set_macros): a term naming one is unfolded before it is read. Done once per process (52.20 (1): it was
+    re-run on every word read); `force` re-installs (after a change of CHESS_TERMS)."""
+    if _installed[0] and not force:
+        return
     import catspace.incubator.analyst  # noqa: F401
     import analyst_core as A
     A.set_macros([(n, list(ps), body) for n, (ps, body, _) in CHESS_TERMS.items()])
+    _installed[0] = True
 
 
 def expand(t):

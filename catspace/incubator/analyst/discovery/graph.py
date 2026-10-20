@@ -38,11 +38,29 @@ def colour_of(us: str | bool) -> bool:
 
 
 def with_turn(board: chess.Board, colour: bool) -> chess.Board:
-    """A copy with `colour` to move (en passant square and the move stack dropped: a counterfactual board has no history)."""
+    """A copy with `colour` to move (en passant square and the move stack dropped: a counterfactual board has no history). Always a copy: callers push on it."""
     c = board.copy(stack=False)
     c.turn = colour
     c.ep_square = None
     return c
+
+
+_FENS: dict = {}           # 52.20 (1): transposition key (bitboards, turn, castling, e.p.) -> FEN; a board's FEN is built once per root question
+
+
+def fen_of(board: chess.Board) -> str:
+    """The FEN of `board` for the Rust evaluator, from the per-board cache (149k FEN strings were built for 19k distinct boards on 0KCeb)."""
+    k = board._transposition_key()
+    f = _FENS.get(k)
+    if f is None:
+        f = _FENS[k] = board.fen()
+    return f
+
+
+def clear_caches() -> None:
+    """Called at every fresh root question: the root is the unit of attention; knowledge across moves lives in the fact store, not here."""
+    _FENS.clear()
+    SM.clear_word_cache()
 
 
 # ---------------------------------------------------------------------------------------------------------------- attack questions
@@ -136,7 +154,7 @@ def see(board: chess.Board, sq: int) -> int:
     """The Rust word `see` on `sq`, read with the mover = the side to move at `board`: what the SIDE TO MOVE wins by the exchange started by a capture on `sq`
     (it reads 0 for the side not to move, and nothing for a piece of the mover's own side). `see_for` puts the capturer on move first."""
     BV.install_terms()
-    return SM.val_at(board.fen(), ("see", name(sq)), "w" if board.turn else "b") or 0
+    return SM.val_at(fen_of(board), ("see", name(sq)), "w" if board.turn else "b") or 0
 
 
 def see_for(board: chess.Board, sq: int, capturer: bool) -> int:
@@ -150,7 +168,8 @@ def word(board: chess.Board, term, owner: bool) -> int:
     """A word of the Rust vocabulary read on `board` with `owner` as the mover. The evaluator reads from the mover's side, and reads 0 / mirrored squares when
     the mover is not the side to move, so the board is first given to `owner` (`with_turn`); a pawn word (`pushes`, `ahead`, `promo`) is read with its owner."""
     BV.install_terms()
-    return SM.val_at(with_turn(board, owner).fen(), term, "w" if owner else "b")
+    b = board if (board.turn == owner and board.ep_square is None) else with_turn(board, owner)      # 52.20 (1): no copy when the board already reads so
+    return SM.val_at(fen_of(b), term, "w" if owner else "b")
 
 
 def piece_moves_to(board: chess.Board, frm: int, targets: set, limit: int) -> int | None:

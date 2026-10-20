@@ -126,6 +126,8 @@ class ChaseCtx:
 class Agenda:
     def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None, chase_log: str | None = None, their: "Agenda | None" = None, keep: int = 0, seconds: "float | None" = None, facts: "FS.FactStore | None" = None, carry: "ChaseCtx | None" = None):
         R.reset_ids()
+        if chase_depth == 0 and ctx is None and carry is None:
+            G.clear_caches()                                    # 52.20 (1): the word / FEN caches live for one root question
         self.their = their                                      # 52.14: THEIR agenda on this board with the move passed to them: its claims are asked as save roots (an inner agenda on a static leaf)
         self.keep = keep                                        # 52.14: the gain (a balance, us to move) the static leaf stands on: a parry of a threat is verified when it keeps at least 1 of it
         self._chasing = None                                    # 52.16 (4): the promote question being chased (the inner agendas inherit it as a kill where nothing it read has changed)

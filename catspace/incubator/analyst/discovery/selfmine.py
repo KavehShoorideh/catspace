@@ -1428,11 +1428,23 @@ LAYERS_HEAD = LEAN_HEAD.replace("import Ideas.TreeStep", "import Ideas.TreeStep\
 PROMO_SQ = "a2"          # their pawn on the rank before promotion, named from the mover's side
 
 
+_WORDS: dict = {}          # 52.20 (1): (fen, term, mover) -> value; cleared at every fresh root question (clear_word_cache)
+
+
 def val_at(fen: str, term, mover: str) -> int:
-    """A word read on `fen` (squares absolute, named from the mover's side as the evaluator reads them)."""
-    import analyst_core as A
-    BV.install_terms()
-    return A.vocab_eval(fen, BV.sexpr(render(term, mover)))
+    """A word read on `fen` (squares absolute, named from the mover's side as the evaluator reads them). Memoised: the same word on the same board is read
+    once (52.20 (1): 39% of the reads were exact repeats)."""
+    k = (fen, term, mover)
+    v = _WORDS.get(k)
+    if v is None:
+        import analyst_core as A
+        BV.install_terms()
+        v = _WORDS[k] = A.vocab_eval(fen, BV.sexpr(render(term, mover)))
+    return v
+
+
+def clear_word_cache() -> None:
+    _WORDS.clear()
 
 
 def root_atoms(x: str, y: str, mover: str, delta: int) -> list:
