@@ -476,6 +476,10 @@ def fixes_of(defect: Defect, q: Question, board: chess.Board, us: str | bool) ->
                 r = new_question("remove", q.stake, dict(q.pattern, blocker=d), q, defect_key=defect.key(), text=f"remove the defender on {G.name(d)} with tempo")
                 r.routes = routes_of(r, board, us, root)
                 out.append(r)
+            # 52.22 (2): the twin of "remove the defender with tempo": ADD AN ATTACKER of the target with tempo -- a move after which the exchange on the target wins (a threat)
+            a = new_question("cover", q.stake, dict(q.pattern), q, defect_key=defect.key(), text=f"add an attacker of {G.name(defect.sq)} with tempo")
+            a.routes = routes_of(a, board, us, root)
+            out.append(a)
         out += trap_fix(q, defect, board, us)
         out += discovery_fix(q, defect, board, us)
     for f in out:

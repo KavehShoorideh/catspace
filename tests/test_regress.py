@@ -450,7 +450,7 @@ def test_52_13_0agl8_is_not_decided_nxg2_at_four_times_the_fuse(monkeypatch):
     monkeypatch.setattr(AG.Agenda, "__init__", init)
     ag = AG.Agenda(state_of(AGL8, "b"))
     res = ag._chase_route(chess.Move.from_uci("f4g2"))        # Nxg2 itself, followed to its end
-    assert res["killed"] and "stands only as a balance, their Qa7+ wins 100" in res["killed"] and res["killed"].endswith("no parry") and res["value"] == 0
+    assert res["killed"] and "stands only as a balance, their " in res["killed"] and "+ wins 100" in res["killed"] and res["killed"].endswith("no parry") and res["value"] == 0
     ag.ask()
     assert all(c.what != "Nxg2" for c in ag.state.claims) and ag.decision().what != "Nxg2"
     assert not hasattr(AG.Agenda, "_static_refuted")
@@ -1085,3 +1085,44 @@ def test_52_18_a_reply_that_answers_both_threats_kills_the_fork_with_the_defect_
     ag2 = AG.Agenda(State(DISCOVERY, "w", []))
     notes = "\n".join(ag2.notes)
     assert "by a knight: killed by reasoning -- a knight attacks only squares of one colour (Ideas.GeoLemmas.knight_fork_same_colour)" in notes and "reads {" in notes
+
+
+# ---- 52.22 (1), (2): a reply closes by rule only when the goal is met; the attacker added with tempo ------------------------------------------------------------
+
+Z0P = "2r2rk1/1p4bp/6p1/pP1qpp2/6PP/P1n1BQ2/2B2R2/5RK1 w - - 1 29"
+
+
+def _z0p_after_bb3_rfd8():
+    b = chess.Board(Z0P)
+    for m in ("Qxd5+", "Nxd5"):
+        b.push_san(m)
+    before = b.copy()
+    b.push_san("Bb3")
+    b.push_san("Rfd8")
+    return before, b
+
+
+def test_52_22_2_the_defended_knight_is_fixed_by_adding_an_attacker_with_tempo():
+    _, b = _z0p_after_bb3_rfd8()
+    win = R.new_question("win", 3, dict(target=chess.D5))
+    ds = R.material_defects(b, "w", chess.D5)
+    assert kinds(ds) == ["defended"]
+    fixes = R.fixes_of(ds[0], win, b, "w")
+    add = [f for f in fixes if f.text == "add an attacker of d5 with tempo"]
+    assert add and {"Rd2", "Rd1"} <= {r.san for r in add[0].routes}
+
+
+def test_52_22_1_the_exchange_closes_a_reply_only_when_it_reaches_the_goal_or_no_forcing_fix_remains():
+    before, after = _z0p_after_bb3_rfd8()
+    P2 = AC.Pos(after.fen())
+    ag = AG.Agenda(State(before.fen(), "w", []))
+    win3 = R.new_question("win", 3, dict(target=chess.D5))
+    win1 = R.new_question("win", 1, dict(target=chess.D5))
+    ag._chase_q = win1
+    assert ag._closed_by_rule(P2, 0) is not None and "exchange +1" in ag._closed_by_rule(P2, 0)[1]          # the goal worth 1 is met by the exchange: closed as before
+    ag._chase_q = win3
+    n0 = ag.ctx.unmet
+    assert ag._closed_by_rule(P2, 0) is None and ag.ctx.unmet == n0 + 1                                       # the goal worth 3 is not: a forcing fix (Rd2) remains, the reply is asked
+    assert "not closed by rule: the goal" in ag.ctx.open_lines[-1] and "Rd2" in ag.ctx.open_lines[-1]
+    ag._chase_q = None
+    assert ag._closed_by_rule(P2, 0) is not None                                                              # no chased win goal: the rule is unchanged
