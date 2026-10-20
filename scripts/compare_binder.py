@@ -2,7 +2,7 @@
 process (the memo caches must not leak between the two), diffing every decision AND every `tried` tuple list that `binder.verify_tried` produced.
 
   .venv/bin/python scripts/compare_binder.py                       # 07Z0P, 0LRTF, rand1_10, rand2_10, rand3_10
-  .venv/bin/python scripts/compare_binder.py --targets rand1_10 --old rust --new rust,second,cache      # switches: rust | second | cache (python = all off)
+  .venv/bin/python scripts/compare_binder.py --targets rand1_10 --old rust --new rust,second,cache      # switches: rust | second | cache | fen (python = all off)
 """
 from __future__ import annotations
 
@@ -38,6 +38,7 @@ def worker(target: str, mode: str, out: str) -> None:
     B.BINDER_RUST = "rust" in flags
     B.SECOND_RUST = "second" in flags
     B.VERIFY_CACHE = "cache" in flags
+    B.FEN_CACHE = "fen" in flags
     B.TRIED_LOG = []
     t0 = time.time()
     res = [AN.analyse(p, quiet=True, memory=False, log=lambda *a, **k: None) for p in puzzles(target)]
@@ -57,8 +58,8 @@ def run(target: str, mode: str) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--targets", nargs="*", default=["07Z0P", "0LRTF", "rand1_10", "rand2_10", "rand3_10"])
-    ap.add_argument("--old", default="python", help="comma list of switches ON for the old side: rust (BINDER_RUST), second (SECOND_RUST), cache (VERIFY_CACHE); python = none")
-    ap.add_argument("--new", default="rust,second,cache", help="the same for the new side")
+    ap.add_argument("--old", default="python", help="comma list of switches ON for the old side: rust (BINDER_RUST), second (SECOND_RUST), cache (VERIFY_CACHE), fen (FEN_CACHE); python = none")
+    ap.add_argument("--new", default="rust,second,cache,fen", help="the same for the new side")
     ap.add_argument("--worker", nargs=3, metavar=("TARGET", "MODE", "OUT"))
     a = ap.parse_args()
     if a.worker:

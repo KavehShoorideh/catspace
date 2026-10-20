@@ -110,3 +110,44 @@ def test_verify_cache_answers_the_same_and_is_cleared_at_a_fresh_root():
         assert not B._VERIFIED
     finally:
         B.VERIFY_CACHE = True
+
+
+# ------------------------------------------------------------------------------------------------------------------ 54 (B5.2): the exact FEN cache and the winner-only Binding
+
+def test_exact_fen_is_board_fen_through_mutations():
+    from catspace.incubator.analyst.discovery import graph as G
+    G.clear_caches()
+    b = chess.Board("r3k2r/1P4P1/8/3pP3/8/8/1p4p1/R3K2R w KQkq d6 0 7")
+    seen = []
+    for m in list(b.legal_moves)[:12]:
+        b.push(m)
+        assert G.exact_fen(b) == b.fen()
+        c = b.copy(stack=False)
+        c.halfmove_clock += 3                                   # the same pieces with other clocks: another key, its own FEN
+        assert G.exact_fen(c) == c.fen() != G.exact_fen(b)
+        c.set_piece_at(chess.A4, chess.Piece(chess.PAWN, chess.WHITE))
+        assert G.exact_fen(c) == c.fen()
+        seen.append(G.exact_fen(b))
+        b.pop()
+        assert G.exact_fen(b) == b.fen()
+    assert len(set(seen)) == len(seen)
+
+
+@pytest.mark.parametrize("fen", FENS + [QUEEN_TRAP])
+def test_fen_cache_changes_no_answer(fen):
+    board = chess.Board(fen)
+    us = "w" if board.turn else "b"
+    out = {}
+    try:
+        for flag in (False, True):
+            B.FEN_CACHE = flag
+            B._VERIFIED.clear()
+            res = []
+            for m in board.legal_moves:
+                bind, tried = B.verify_tried(m, board, us, fork=1)
+                res.append((m.uci(), tried, None if bind is None else (bind.schema, bind.value, bind.san, bind.assignment, bind.note, bind.replies, bind.tried)))
+            out[flag] = res
+    finally:
+        B.FEN_CACHE = True
+        B._VERIFIED.clear()
+    assert out[False] == out[True]

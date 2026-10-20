@@ -60,9 +60,25 @@ def fen_of(board: chess.Board) -> str:
     return f
 
 
+_XFENS: dict = {}          # 54 (B5.2): the exact key (every field the FEN prints) -> FEN, per root question
+
+
+def exact_fen(board: chess.Board) -> str:
+    """`board.fen()` from a cache keyed by every field the FEN prints (the bitboards, the side to move, the castling field, the e.p. square, BOTH clocks), so it is the
+    same string `board.fen()` gives for any board that shares them -- unlike `fen_of`, whose key leaves the clocks out. A board changed by a push, a pop or a set_piece_at
+    changes the key; nothing is stored on the board, so no mutation can leave a stale entry."""
+    k = (board.pawns, board.knights, board.bishops, board.rooks, board.queens, board.kings, board.occupied_co[True], board.occupied_co[False],
+         board.turn, board.castling_rights, board.ep_square, board.halfmove_clock, board.fullmove_number)
+    f = _XFENS.get(k)
+    if f is None:
+        f = _XFENS[k] = board.fen()
+    return f
+
+
 def clear_caches() -> None:
     """Called at every fresh root question: the root is the unit of attention; knowledge across moves lives in the fact store, not here."""
     _FENS.clear()
+    _XFENS.clear()
     SM.clear_word_cache()
     _A.clear_caches()                          # 54 (B3): the core's parsed positions
     for hook in CLEAR_HOOKS:

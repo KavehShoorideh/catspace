@@ -25,6 +25,7 @@ MATE_VALUE = 100
 BINDER_RUST = True        # plan 54 (A): the schema reads go to `analyst_core.verify_route`, one call per route; False = the Python path (`_read` / `_read2`), kept for the comparison harness
 SECOND_RUST = True        # plan 54 (B4): `second_moves` read by `analyst_core.second_moves` (the Python path stays)
 VERIFY_CACHE = True       # plan 54 (B4): verify_tried answers the same (fen, route, us, mates_only, trap, fork) once per root agenda (cleared by graph.clear_caches at every fresh root)
+FEN_CACHE = True          # plan 54 (B5.2): the binder's FEN of a board comes from `graph.exact_fen` (a cache keyed by every field the FEN prints) and a Binding's SAN / replies are written once, for the winner only
 _VERIFIED: dict = {}
 TRIED_LOG: list | None = None      # the harness sets a list: every verify_tried appends (fen, route uci, schema names asked, mates_only, tried)
 _SAN_TOKEN = re.compile("\x01([a-h1-8,]+)\x02")
@@ -98,6 +99,10 @@ SCHEMAS2 = [Schema(f"{fam}_d2", ("x", "y", "x2", "y2"), LEGS2, _delayed_atoms2(f
 KEEP_FAMILY = "delayed_balance"
 KEEP = Schema("keep_d1", ("x", "y"), LEGS, lambda x, y, mover: None, "(after x y <" + KEEP_FAMILY + " tail>) >= balance + 0", 0, SM.schema_name(1, KEEP_FAMILY), "keep", KEEP_FAMILY)
 BY_NAME = {s.name: s for s in SCHEMAS + SCHEMAS2 + [KEEP]}
+
+
+def _fen(board: chess.Board) -> str:
+    return G.exact_fen(board) if FEN_CACHE else board.fen()
 
 
 def schema(name: str) -> Schema:
@@ -260,7 +265,7 @@ def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: boo
     """54 (B4): `_verify_tried` with a per-root-agenda cache (the same fen, route, side, mates_only, trap and fork are asked again within one root question)."""
     if not VERIFY_CACHE or schemas is not None:
         return _verify_tried(route, board, us, mates_only, schemas, trap, fork)
-    key = (board.fen(), route.uci(), us, bool(mates_only), trap, fork)
+    key = (_fen(board), route.uci(), us, bool(mates_only), trap, fork)
     hit = _VERIFIED.get(key)
     if hit is None:
         best, tried = _verify_tried(route, board, us, mates_only, schemas, trap, fork)
@@ -279,32 +284,42 @@ def _verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: bo
     ladder's order, as the stream decides; the depth-two schemas come last and only on a check, or on a quiet route that traps the piece on `trap`, 52.10). -> (Binding | None, tried) with tried = [(schema name, value or
     None, note)] for every schema asked."""
     pair = (chess.square_name(route.from_square), chess.square_name(route.to_square))
-    fen = board.fen()
+    fen = _fen(board)
     tried, best = [], None
     asked = [s for s in (SCHEMAS + SCHEMAS2 if schemas is None else schemas) if not (mates_only and s.kind != "mate")]
+    win = None                                            # (schema, value, second move) of the best so far
     for s, val, note, sec in _reads(board, route, fen, us, pair, asked, trap):
         tried.append((s.name, val, note))
         if val is None or val < s.need:
             continue
-        if best is None or val > best.value:
-            c = board.copy(stack=False)
-            c.push(route)
-            asg, san = dict(x=pair[0], y=pair[1]), board.san(route)
-            if sec is not None:
-                asg.update(x2=sec[0], y2=sec[1])
-                san += " then " + PA._san_pairs(fen, [pair, sec])[1].rstrip("+#")      # the check mark depends on the reply
-                if not board.gives_check(route) and trap is not None:
-                    san += f" (the {PIECE_NAME[board.piece_at(trap).piece_type]} has no safe square)"
-            best = Binding(s.name, asg, val, s.theorem, san, [c.san(r) for r in c.legal_moves])
-            if sec is not None and fork is not None and board.gives_check(route):
-                best.note = "a fork: they must answer the check"
+        if win is None or val > win[1]:
+            win = (s, val, sec)
+            if not FEN_CACHE:                             # the old way: the Binding (SAN, every reply's SAN) is written at each improvement
+                best = _binding(board, route, pair, fen, trap, fork, *win)
         if s.kind == "mate":
             break
+    if FEN_CACHE and win is not None:
+        best = _binding(board, route, pair, fen, trap, fork, *win)      # ... here: once, for the winner
     if best is not None:
         best.tried = tried
     if TRIED_LOG is not None:
         TRIED_LOG.append((fen, route.uci(), us, bool(mates_only), trap, tuple(tried)))
     return best, tried
+
+
+def _binding(board: chess.Board, route: chess.Move, pair: tuple, fen: str, trap: int | None, fork: int | None, s: Schema, val: int, sec) -> Binding:
+    c = board.copy(stack=False)
+    c.push(route)
+    asg, san = dict(x=pair[0], y=pair[1]), board.san(route)
+    if sec is not None:
+        asg.update(x2=sec[0], y2=sec[1])
+        san += " then " + PA._san_pairs(fen, [pair, sec])[1].rstrip("+#")      # the check mark depends on the reply
+        if not board.gives_check(route) and trap is not None:
+            san += f" (the {PIECE_NAME[board.piece_at(trap).piece_type]} has no safe square)"
+    best = Binding(s.name, asg, val, s.theorem, san, [c.san(r) for r in c.legal_moves])
+    if sec is not None and fork is not None and board.gives_check(route):
+        best.note = "a fork: they must answer the check"
+    return best
 
 
 def verify(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False) -> Binding | None:
