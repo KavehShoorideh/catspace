@@ -575,26 +575,101 @@ def trap_fix(q: Question, defect: Defect, board: chess.Board, us: str | bool) ->
 
 # ---------------------------------------------------------------------------------------------------------------- the reach (52.12)
 
+def slide_region(sq: int, occupied: int) -> chess.SquareSet:
+    """52.21 (1): the squares a queen on `sq` scans on a board with this occupancy: every ray up to and including its first blocker (a rook, a bishop or a queen on `sq` reads a part of it). What
+    an attack, a pin or a check on `sq` can depend on: a square outside it cannot change what a piece on `sq` attacks or is pinned by."""
+    return chess.SquareSet(chess.BB_DIAG_ATTACKS[sq][chess.BB_DIAG_MASKS[sq] & occupied] | chess.BB_RANK_ATTACKS[sq][chess.BB_RANK_MASKS[sq] & occupied]
+                           | chess.BB_FILE_ATTACKS[sq][chess.BB_FILE_MASKS[sq] & occupied])
+
+
 def reach_steps(board: chess.Board, us: str | bool, frm: int, target: int) -> list:
     """52.12: the first steps of the shortest (2-move) paths of the piece on `frm` to `target`: its legal moves to a square t from which it attacks `target`, read on
     the board with the piece lifted from `frm` (blocked squares as the rules say). [] when `target` is a one-move square or out of two moves."""
-    pc = board.piece_at(frm)
-    if pc is None or pc.piece_type in (chess.KING, chess.PAWN):
-        return []
-    own = G.with_turn(board, G.colour_of(us))
-    mine = [m for m in own.legal_moves if m.from_square == frm]          # 52.20 (3): the legal moves listed once
-    if any(m.to_square == target for m in mine):
-        return []
-    out = []
-    for m in mine:
-        if m.promotion or own.is_castling(m):
-            continue
-        t = m.to_square
-        c = G.with_piece(board, pc, t, frm)
-        o = board.piece_at(target)
-        if target in c.attacks(t) and (o is None or o.color != pc.color):
-            out.append(m)
-    return out
+    return reach_steps_read(board, us, frm, target)[0]
+
+
+def attack_lines(board: chess.Board, squares) -> frozenset:
+    """52.21 (1): every square that could hold an attacker of one of `squares` on `board`, read for its occupant: the rays from each square up to and including the first blocker (a slider, a pawn or
+    the king next to it) and the knight squares. What the attackers of a square, and so a defect read on a counterfactual `board`, depend on besides the square itself."""
+    out = set()
+    for x in squares:
+        out.update(slide_region(x, board.occupied))
+        out.update(chess.SquareSet(chess.BB_KNIGHT_ATTACKS[x]))
+    return frozenset(out)
+
+
+class ReachTable:
+    """52.21 (1): the two-move reach of ONE piece, listed once: its legal moves, and for each landing square t the squares it attacks there on the board with the piece moved. The steps to any
+    target are then a lookup (the scan asked the same legal moves and the same counterfactuals again for every target). `reads` = the squares the answers depended on, for their occupant only:
+    the piece and what it attacks from `frm` (up to and including the first blocker: its moves), our king and, when the piece stands on a line through it, that line out to the first blocker
+    beyond the piece (a pin: the move may not leave our king in check; our king is not in check on the board, so no other line matters), each landing square, and for every target asked, the
+    squares between a landing square and the target when they are on a line for this piece type (the attack could be blocked there)."""
+
+    def __init__(self, board: chess.Board, us: str | bool, frm: int):
+        self.board, self.frm = board, frm
+        self.pc = pc = board.piece_at(frm)
+        reads = {frm}
+        self.landings: list = []                                         # [(move, the squares attacked from its landing square)]
+        self.one_move: set = set()                                       # the squares the piece reaches in one move
+        if pc is not None and pc.piece_type not in (chess.KING, chess.PAWN):
+            colour = G.colour_of(us)
+            own = G.with_turn(board, colour)
+            reads.update(chess.SquareSet(board.attacks_mask(frm)))
+            ksq = board.king(colour)
+            if ksq is not None:
+                reads.add(ksq)
+                line = chess.BB_RAYS[ksq][frm]
+                if line:                                                 # the piece stands on a line through our king: what stands behind it on that line decides whether it is pinned
+                    reads.update(chess.SquareSet(slide_region(ksq, board.occupied & ~chess.BB_SQUARES[frm]) & line))
+            mine = [m for m in own.legal_moves if m.from_square == frm]          # 52.20 (3): the legal moves listed once
+            self.one_move = {m.to_square for m in mine}
+            for m in mine:
+                if m.promotion or own.is_castling(m):
+                    continue
+                c = G.with_piece(board, pc, m.to_square, frm)
+                reads.add(m.to_square)
+                self.landings.append((m, c.attacks_mask(m.to_square)))
+        self._reads = reads
+
+    @property
+    def reads(self) -> frozenset:
+        return frozenset(self._reads)
+
+    def steps(self, target: int) -> list:
+        """The legal first steps from which the piece attacks `target` ([] when `target` is a one-move square or out of two moves, or holds a piece of the piece's own colour)."""
+        pc = self.pc
+        if pc is None or pc.piece_type in (chess.KING, chess.PAWN) or target in self.one_move:
+            return []
+        self._reads.add(target)
+        o = self.board.piece_at(target)
+        if o is not None and o.color == pc.color:
+            return []
+        out = []
+        for m, at in self.landings:
+            if self._line(m.to_square, target):
+                self._reads.update(chess.SquareSet(chess.between(m.to_square, target)))
+            if at & chess.BB_SQUARES[target]:
+                out.append(m)
+        return out
+
+    def _line(self, t: int, target: int) -> bool:
+        """Whether the piece type on `t` would attack `target` on an empty board (then the squares between decide)."""
+        pt = self.pc.piece_type
+        if pt == chess.KNIGHT:
+            return False                                                 # nothing between: a knight attacks or not by geometry
+        hit = 0
+        if pt in (chess.BISHOP, chess.QUEEN):
+            hit |= chess.BB_DIAG_ATTACKS[t][0]
+        if pt in (chess.ROOK, chess.QUEEN):
+            hit |= chess.BB_RANK_ATTACKS[t][0] | chess.BB_FILE_ATTACKS[t][0]
+        return bool(hit & chess.BB_SQUARES[target])
+
+
+def reach_steps_read(board: chess.Board, us: str | bool, frm: int, target: int) -> tuple:
+    """`reach_steps` and the squares it read (an occupancy-only read set, see `ReachTable`). -> (the steps, the squares read)."""
+    t = ReachTable(board, us, frm)
+    steps = t.steps(target)
+    return steps, t.reads
 
 
 # ---------------------------------------------------------------------------------------------------------------- read sets (52.12)

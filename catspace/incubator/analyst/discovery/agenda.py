@@ -53,6 +53,18 @@ RULE2_FROM = {"mate": 2, "win": 1, "promote": 1}              # 52.17 (2): the c
 FUSE = 10                                                       # 52.13 (2b): the chase's budget is a fuse at this multiple of the old question count
 
 
+def _aligned(piece_type: int, sq: int, ksq: int) -> bool:
+    """Whether a piece of this type on `sq` would attack `ksq` on an EMPTY board (every attack on a real board is one of these)."""
+    if piece_type == chess.KNIGHT:
+        return bool(chess.BB_KNIGHT_ATTACKS[sq] & chess.BB_SQUARES[ksq])
+    hit = 0
+    if piece_type in (chess.BISHOP, chess.QUEEN):
+        hit |= chess.BB_DIAG_ATTACKS[sq][0]
+    if piece_type in (chess.ROOK, chess.QUEEN):
+        hit |= chess.BB_RANK_ATTACKS[sq][0] | chess.BB_FILE_ATTACKS[sq][0]
+    return bool(hit & chess.BB_SQUARES[ksq])
+
+
 def _pos_key(fen: str) -> str:
     """The position without its move counters (board, turn, castling, en passant): the chase's memo key. A check chain that comes back to a position only the move number
     apart is a CYCLE (0DoFB: the same board at moves 32, 34, 36 ... each re-asked, 1033 inner questions)."""
@@ -102,6 +114,7 @@ class ChaseCtx:
         self.landing_served = 0                   # ... mate roots whose defect list was served from the table (nothing its reads touch had changed)
         self.time_outs = 0                        # ... root agendas that met their deadline
         self.hit = False
+        self.roots_served = 0                     # 52.21 (1): root lists (the reach roots) served from the fact store, not rescanned
         self.unaddressed = 0                      # 52.17 (2): forcing moves NOT followed by a chase because they fix no defect of the goal and make no claim of their own
 
 
@@ -182,6 +195,7 @@ class Agenda:
         self._rf: "list | None" = None                          # the facts the route being chased read (inner answers, their agendas)
         self._frame: list = []                                  # the facts the listener flagged for the reply being read (restored when the reply is done)
         self._cell = FS.board_cell(self.board)
+        self._piece = FS.board_piece(self.board)
         self._fs0 = self.ctx.facts.snapshot() if self.ctx is not None else None      # the store's counters when this agenda began (the deltas are its own)
         self._pre: dict = {}                                    # 52.17 (4): route key -> the replies the cheap pass closed by rule
         self._roots()
@@ -294,31 +308,77 @@ class Agenda:
 
     def _reach_roots(self, ksq: int | None) -> None:
         """52.12 (4): the mate roots at distance two, only when a mate is the stake (one prep move): a piece of ours that would check their king from a square it needs
-        two moves to reach, the pattern being a MATE otherwise (no other defect). The defect `reach` names the first steps; the fix routes are those steps."""
+        two moves to reach, the pattern being a MATE otherwise (no other defect). The defect `reach` names the first steps; the fix routes are those steps.
+        52.21 (1): THE ROOT LIST IS A FACT. The roots of one piece are a pure function of the cells its scan read (`_scan_reach` records them); filed in the store under (their king, the piece, our king),
+        they are served to every agenda whose board has those cells as they were -- a sibling, a transposition, the next reply -- without rescanning. A knight reads a few squares and is served
+        often; a queen reads the lines of their king and seldom is."""
         b = self.board
         if ksq is None:
             return
+        fs = self.ctx.facts if self.ctx is not None else None            # their agendas (no ctx) scan as before
         for frm in sorted(chess.SquareSet(b.occupied_co[self.me] & ~b.kings & ~b.pawns)):
             pc = b.piece_at(frm)
-            for s in chess.SQUARES:
-                o = b.piece_at(s)
-                if s == frm or (o is not None and o.color == self.me):
-                    continue
-                cf = G.with_piece(b, pc, s, frm)
-                if ksq not in cf.attacks(s):
-                    continue
-                steps = R.reach_steps(b, self.us, frm, s)
-                if not steps:
-                    continue
-                q = R.new_question("mate", R.STAKE_MATE, dict(sym=pc.symbol(), at=s, frm=frm, king=ksq, more=[], move=None, reach=[m.uci() for m in steps]))
-                if R.mate_defects(b, self.us, R.placement_of(q)):
-                    continue                                     # another defect as well: two prep moves, the tempo arithmetic kills it before it is asked
-                via = ", ".join(sorted({G.name(m.to_square) for m in steps}))
-                q.defects = [R.Defect("reach", s, [frm], f"the {pc.symbol().upper()} needs 2 moves (via {via})")]
-                q.text = f"mate on {G.name(s)} ({pc.symbol().upper()} {G.name(frm)}->{G.name(s)} in 2 moves via {via}, their king on {G.name(ksq)})"
+            key = ("roots:reach", ksq, pc.symbol(), frm, b.king(self.me))
+            f = fs.lookup(key, self.me, self._cell, piece=self._piece)[0] if fs is not None else None
+            if f is not None:
+                specs = f.payload["specs"]
+                self.ctx.roots_served += 1
+                self.lines.append(f"roots served from the store (fact #{f.id}, the reach roots of the {pc.symbol().upper()} on {G.name(frm)}, derived under {f.under})")
+            else:
+                specs, reads, occ = self._scan_reach(frm, ksq)
+                if fs is not None:
+                    occ = occ - reads
+                    fs.add("roots", key, self.me, f"reach roots of the {pc.symbol().upper()} on {G.name(frm)}, their king on {G.name(ksq)}", reads=reads, occ=occ,
+                           sig=FS.signature(self._cell, reads) + FS.occ_signature(self._piece, occ), stake=R.STAKE_MATE, depth=self.chase_depth, under=f"depth {self.chase_depth}", pk=self.pk, payload=dict(specs=specs))
+            for sym, frm_, s, steps in specs:
+                q = R.new_question("mate", R.STAKE_MATE, dict(sym=sym, at=s, frm=frm_, king=ksq, more=[], move=None, reach=list(steps)))
+                via = ", ".join(sorted({G.name(chess.Move.from_uci(u).to_square) for u in steps}))
+                q.defects = [R.Defect("reach", s, [frm_], f"the {pc.symbol().upper()} needs 2 moves (via {via})")]
+                q.text = f"mate on {G.name(s)} ({pc.symbol().upper()} {G.name(frm_)}->{G.name(s)} in 2 moves via {via}, their king on {G.name(ksq)})"
                 self._push(q)
         if any(q.pattern.get("reach") for q in self.all):
             self.notes.append("reach roots (mate at distance 2) only when a mate is the stake: one prep move, the pattern otherwise a mate")
+
+    def _scan_reach(self, frm: int, ksq: int) -> tuple:
+        """The reach roots of the piece of ours on `frm` by scanning, with the cells the scan READ (52.21 (1)). -> ([(piece symbol, from, target, the first steps as UCI)], the squares read with
+        their attackers (the question's own reads: the mate defects), the squares read for their occupant only (rays, lines, legal moves)). A square is read when a change on it could add or remove a
+        root: their king, our king and the lines a pin comes along, the piece's square and, for every square from which this piece type would attack their king on an empty board, that square and
+        the squares between it and the king (the check can be blocked); for a landing square that passed, what `reach_steps` read and what the mate defects read (the question's read set)."""
+        b, me = self.board, self.me
+        reads, occ = set(), {ksq, frm}
+        if b.king(me) is not None:
+            occ.add(b.king(me))
+        specs = []
+        pc = b.piece_at(frm)
+        table = None
+        for s in chess.SQUARES:
+            if s == frm or not _aligned(pc.piece_type, s, ksq):
+                continue
+            occ.add(s)
+            occ.update(chess.SquareSet(chess.between(s, ksq)))
+            o = b.piece_at(s)
+            if o is not None and o.color == me:
+                continue
+            cf = G.with_piece(b, pc, s, frm)
+            if ksq not in cf.attacks(s):
+                continue
+            if table is None:
+                table = R.ReachTable(b, self.us, frm)
+            occ.add(s)
+            steps = table.steps(s)
+            if not steps:
+                continue
+            q = R.new_question("mate", R.STAKE_MATE, dict(sym=pc.symbol(), at=s, frm=frm, king=ksq, more=[], move=None, reach=[m.uci() for m in steps]))
+            q.defects = R.mate_defects(b, self.us, R.placement_of(q))
+            qreads = R.reads_of(q, b)
+            reads |= qreads
+            occ |= R.attack_lines(R.future_board(b, R.placement_of(q), not me), qreads)      # the defects are read on the counterfactual (the piece moved): what could attack these squares THERE
+            if q.defects:
+                continue                                         # another defect as well: two prep moves, the tempo arithmetic kills it before it is asked
+            specs.append((pc.symbol(), frm, s, tuple(m.uci() for m in steps)))
+        if table is not None:
+            occ |= table.reads
+        return specs, frozenset(reads), frozenset(occ)
 
     def _promote_roots(self) -> None:
         """52.6: `promote our P on <sq>` (stake 8) for every pawn of the mover with `pushes` <= 3 (farther pawns: the mate / material stakes dominate)."""

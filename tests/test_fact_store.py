@@ -38,7 +38,7 @@ def test_52_19_1_a_fact_is_served_on_another_board_whose_read_cells_are_the_same
     assert derived and not a.inherited or True
     b = inner_agenda(FAR, ctx)
     b.ask()
-    served = [ln for ln in b.lines if "served from the store (fact #" in ln]
+    served = [ln for ln in b.lines if " -- served from the store (fact #" in ln]
     assert served and b.inherited == len(served)                       # siblings and transpositions share facts, not only parent to child
     assert b.asked < a.asked                                           # what the facts answered was not asked again
     assert all("derived under Q" in ln for ln in served)
@@ -116,12 +116,12 @@ def test_52_19_2_the_listener_flags_exactly_the_facts_whose_reads_the_move_touch
         n.push_san(san)
         diff = R.diff_squares(b, n)
         new = set(fs.invalidate(diff))
-        hit = {f.id for f in fs.facts.values() if f.reads & diff and not f.superseded}
+        hit = {f.id for f in fs.facts.values() if f.reads & diff and not f.superseded and f.kind != "roots"}       # (a root list is a pure function of its cells, not a belief: never flagged)
         assert hit <= new                                          # everything that read a changed square is flagged
         for fid in new - hit:                                      # ... and the rest only because something it stands on was
             assert any(j in new for j in fs.facts[fid].just)
         flagged_any |= bool(new)
-        fresh_any |= any(f.id not in new for f in fs.facts.values())
+        fresh_any |= any(f.id not in new for f in fs.facts.values() if f.kind != "roots")
         fs.restore(new)
         b = n
     assert flagged_any and fresh_any
@@ -236,7 +236,7 @@ def test_52_19_4_a_fact_derived_on_one_move_whose_reads_are_untouched_is_served_
     ag2 = AG.Agenda(state_of(b2.fen(), "w"), carry=ag1.ctx)
     ag2.ask()
     d = ag2.facts_delta()
-    served = [ln for ln in ag2.lines if "served from the store (fact #" in ln]
+    served = [ln for ln in ag2.lines if " -- served from the store (fact #" in ln]
     assert d["served"] > 0 and served and ag2.asked < ag1.asked
     assert ag2.ctx.memo is ag1.ctx.memo and ag2.ctx.facts is ag1.ctx.facts      # the exact memos and the store outlive the agenda
     print(f"OBS 52.19 (4): move 2 served {d['served']} facts from move 1 (asked {ag2.asked} against {ag1.asked}); {len(served)} root questions served")
@@ -255,3 +255,59 @@ def test_52_19_4_unrelated_puzzles_share_few_facts_and_say_so():
     cross = sum(f.served - before[f.id] for f in ctx.facts.facts.values() if f.id in before)
     print(f"OBS 52.19 (4): facts of the first puzzle served in the second (an unrelated position): {cross} -- expect few")
     assert cross <= 10
+
+
+# ---------------------------------------------------------------------------------------------------------------- 52.21 (1): root lists as facts
+
+BACKRANK = "6k1/5ppp/8/8/8/8/R7/K7 w - - 0 1"                                          # the rook reaches b8..e8 in two moves, each a mate
+SMOTHER = "6rk/6pp/8/8/2N5/8/8/K7 w - - 0 1"                                           # the knight reaches f7 in two moves (smothered mate): it reads a few squares
+
+
+def _reach_texts(ag):
+    return [q.text for q in ag.all if q.pattern.get("reach")]
+
+
+def _strays(fen, piece_name):
+    """A stray piece on every empty square of `fen`, each sibling asked with the seeded store and with an empty one: -> (squares where `piece_name`'s root list was served, where it was rescanned)."""
+    seed_ctx = fresh_ctx()
+    base = _reach_texts(inner_agenda(fen, seed_ctx))
+    assert base and seed_ctx.roots_served == 0 and seed_ctx.facts.roots_derived >= 1
+    served_on, rescanned_on = [], []
+    for colour_piece in ("p", "P", "n", "N", "b"):
+        for sq in chess.SQUARES:
+            b = chess.Board(fen)
+            if b.piece_at(sq) is not None or (colour_piece in "pP" and chess.square_rank(sq) in (0, 7)):
+                continue
+            b.set_piece_at(sq, chess.Piece.from_symbol(colour_piece))
+            if not b.is_valid():
+                continue
+            fresh = inner_agenda(b.fen(), fresh_ctx())                                     # the rescan: a store with nothing in it
+            ctx = AG.ChaseCtx(seed_ctx.facts)                                              # the seeded store
+            ctx.left = 10 ** 6
+            hit = inner_agenda(b.fen(), ctx)
+            assert _reach_texts(hit) == _reach_texts(fresh), (colour_piece, chess.square_name(sq))      # served or scanned, the list is the rescan's
+            (served_on if any("roots served from the store" in ln and piece_name in ln for ln in hit.lines) else rescanned_on).append((colour_piece, sq))
+    return served_on, rescanned_on
+
+
+def test_52_21_1_a_root_list_is_served_only_where_every_cell_it_read_is_as_it_was_and_then_agrees_with_a_rescan():
+    served_on, rescanned_on = _strays(SMOTHER, "the N on c4")
+    assert served_on and rescanned_on                                                      # not vacuous: some siblings are served, some are not
+    far = set(served_on)
+    assert ("N", chess.D1) in far                                                          # a piece on a square nothing read (no ray of the squares the mate depends on reaches it): served
+    assert all((c, s) not in far for c in "pPnNb" for s in (chess.E5, chess.D6, chess.F7, chess.G7))      # a stray piece on the knight's route or on the squares of the mate: never served
+    ra, rb = _strays(BACKRANK, "the R on a2")                                              # the rook reads the lines of its landing squares: few siblings are served, every one agrees with a rescan
+    print(f"OBS 52.21 (1): knight position: {len(served_on)} siblings with a stray piece served the root list from the store, {len(rescanned_on)} read a cell it had read and were rescanned; "
+          f"rook position: {len(ra)} served, {len(rb)} rescanned; every one agrees with a rescan")
+
+
+def test_52_21_1_root_lists_are_filed_per_piece_not_as_belief_and_never_enter_the_queue():
+    ctx = fresh_ctx()
+    ag = inner_agenda(BACKRANK, ctx)
+    roots = [f for f in ctx.facts.facts.values() if f.kind == "roots"]
+    assert roots and all(f.key[0] == "roots:reach" and f.portable for f in roots)
+    assert ctx.facts.derived == len([f for f in ctx.facts.facts.values() if f.kind != "roots"])        # counted apart from the claims and kills
+    ctx.facts.invalidate(frozenset(range(64)))
+    assert not any(f.kind == "roots" for f in ctx.facts.queue())                                      # a pure function of its cells: no stale flag, no recomputation queue
+    again = inner_agenda(BACKRANK, ctx)
+    assert any("roots served from the store (fact #" in ln for ln in again.lines) and _reach_texts(again) == _reach_texts(ag)

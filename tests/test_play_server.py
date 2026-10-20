@@ -170,6 +170,6 @@ def test_52_19_4_the_player_carries_the_fact_store_between_its_moves():
     b.push_san("a6")                                               # the far wing
     mv2, second, _ = pl.move(b)
     assert pl.carry.facts is store                                 # the same store: move 2 is asked against what move 1 derived
-    served = [ln for ln in second if "served from the store (fact #" in ln]
+    served = [ln for ln in second if " -- served from the store (fact #" in ln]
     assert served, "a fact derived on the first move whose reads are untouched must serve the second"
     print(f"OBS 52.19 (4): the player's second move was served {len(served)} root questions from the first move's facts")

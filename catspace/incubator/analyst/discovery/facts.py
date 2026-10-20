@@ -23,12 +23,13 @@ import chess
 @dataclass
 class Fact:
     id: int
-    kind: str                                 # 'claim' | 'kill' | 'gap'
+    kind: str                                 # 'claim' | 'kill' | 'gap' | 'roots' (52.21: a root list of the agenda, a pure function of the cells it read; not a belief, so never flagged stale and never queued)
     key: object                               # the question key (position independent) or a positional key ("inner", pk, ...)
     turn: bool                                # the side the question was asked for
     text: str
     value: int = 0
     reads: frozenset = frozenset()
+    occ: frozenset = frozenset()              # 52.21 (1): squares read for their OCCUPANT only (a ray, a line, a legal move); `reads` also compares the attackers of each colour
     sig: tuple = ()
     just: tuple = ()                          # ids of the facts this one was derived from
     stake: int = 0
@@ -53,6 +54,19 @@ class Fact:
 def signature(cell, reads) -> tuple:
     """What a read set read: for every square (sorted) its piece and the number of attackers of each colour (exactly what `regress.diff_squares` compares). `cell(sq)` -> the tuple for one square."""
     return tuple(cell(s) for s in sorted(reads))
+
+
+def occ_signature(piece, occ) -> tuple:
+    """What an occupancy-only read set read: the piece on each square (sorted by square). `piece(sq)` -> the symbol or ''."""
+    return tuple(piece(s) for s in sorted(occ))
+
+
+def board_piece(board: chess.Board):
+    """`piece` for `occ_signature`: the occupant's symbol of a square."""
+    def piece(s: int) -> str:
+        p = board.piece_at(s)
+        return p.symbol() if p is not None else ""
+    return piece
 
 
 def board_cell(board: chess.Board):
@@ -81,24 +95,29 @@ class FactStore:
         self.revalidated = 0                                   # served although flagged stale (the cells matched: the flag was conservative)
         self.recomputed = 0                                    # foreground: asked afresh because the stale fact it would have been served from no longer matched
         self.flagged = 0                                       # flag flips by the listener
+        self.roots_derived = 0                                 # 52.21 (1): root lists scanned and filed / served (counted apart from the claims and kills)
+        self.roots_served = 0
 
     # ------------------------------------------------------------------------------------------------------------ add / lookup
     def add(self, kind: str, key, turn: bool, text: str, *, value: int = 0, reads=None, sig: tuple = (), just=(), stake: int = 0, depth: int = 0, under: str = "", pk: str = "",
-            portable: bool = True, power: int = 2, payload: dict | None = None, resume: dict | None = None) -> Fact:
+            portable: bool = True, power: int = 2, payload: dict | None = None, resume: dict | None = None, occ=None) -> Fact:
         just = tuple(dict.fromkeys(j for j in just if j in self.facts))
-        f = Fact(self.next_id, kind, key, turn, text, value, frozenset(reads) if reads is not None else frozenset(), sig, just, stake, stake, depth, under, pk,
+        f = Fact(self.next_id, kind, key, turn, text, value, frozenset(reads) if reads is not None else frozenset(), frozenset(occ) if occ is not None else frozenset(), sig, just, stake, stake, depth, under, pk,
                  portable and reads is not None, power, payload or {}, resume=resume)
         self.next_id += 1
         self.facts[f.id] = f
-        self.derived += 1
+        if kind == "roots":
+            self.roots_derived += 1
+        else:
+            self.derived += 1
         for j in just:                                         # a dependant: the premise learns who stands on it, and its chain stake rises
             p = self.facts[j]
             p.dependants.append(f.id)
             self._raise(p, f.stake)
-        for s in f.reads:                                      # the inverted read index holds every fact that read a square (a positional one too: the listener flags it, and what stands on it)
+        for s in f.reads if kind != "roots" else ():           # the inverted read index holds every fact that read a square (a positional one too: the listener flags it, and what stands on it); a root list is checked by its signature alone
             self.index[s].add(f.id)
         if f.portable:
-            g = self.groups[(key, turn)].setdefault(f.reads, {})
+            g = self.groups[(key, turn)].setdefault((f.reads, f.occ), {})
             old = g.get(sig)
             if old is not None:
                 self._retire(old)                              # the same premises, derived again: the newer replaces the older
@@ -121,23 +140,31 @@ class FactStore:
     def _retire(self, f: Fact) -> None:
         f.superseded = True
         self.stale.discard(f.id)
-        g = self.groups.get((f.key, f.turn), {}).get(f.reads)
+        g = self.groups.get((f.key, f.turn), {}).get((f.reads, f.occ))
         if g is not None and g.get(f.sig) is f:
             del g[f.sig]
             if not g:
-                del self.groups[(f.key, f.turn)][f.reads]
+                del self.groups[(f.key, f.turn)][(f.reads, f.occ)]
         for s in f.reads:
             self.index[s].discard(f.id)
 
-    def lookup(self, key, turn: bool, cell, power: int = 0) -> tuple:
+    def lookup(self, key, turn: bool, cell, power: int = 0, piece=None) -> tuple:
         """-> (fact or None, candidates, stale_miss). A fact is SERVED when its read cells on this board equal its signature (position independent); a kill whose chase was not run to its end is not
         served to an asker whose chase is stronger (`power`). `candidates`: facts of this question existed (the asker reopens it); `stale_miss`: one of them was flagged stale and no longer matches (a foreground recomputation)."""
         gs = self.groups.get((key, turn))
         if not gs:
             return None, False, False
         best, stale_miss = None, False
-        for reads, sg in gs.items():
-            sig = signature(cell, reads)
+        osigs: dict = {}                                       # the occupant signature of an occupancy read set, computed once per lookup
+        for (reads, occ), sg in gs.items():
+            osig = ()
+            if occ:                                            # cheap first: the occupants; the attacker counts of `reads` are counted only for a group whose occupants matched
+                osig = osigs.get(occ)
+                if osig is None:
+                    osig = osigs[occ] = occ_signature(piece, occ)
+                if not any(k[len(k) - len(osig):] == osig for k in sg):
+                    continue
+            sig = signature(cell, reads) + osig
             f = sg.get(sig)
             if f is None:
                 stale_miss = stale_miss or any(o.id in self.stale for o in sg.values())
@@ -148,6 +175,10 @@ class FactStore:
                 continue
             if best is None or f.id > best.id:
                 best = f
+        if best is not None and best.kind == "roots":
+            best.served += 1
+            self.roots_served += 1
+            return best, True, False
         if best is not None:
             best.served += 1
             self.served += 1
@@ -209,7 +240,7 @@ class FactStore:
         return out
 
     def snapshot(self) -> dict:
-        return dict(derived=self.derived, served=self.served, revalidated=self.revalidated, recomputed=self.recomputed, flagged=self.flagged)
+        return dict(derived=self.derived, served=self.served, revalidated=self.revalidated, recomputed=self.recomputed, flagged=self.flagged, roots_derived=self.roots_derived, roots_served=self.roots_served)
 
     # ------------------------------------------------------------------------------------------------------------ the graph
     def graph_lines(self, fid: int, limit: int = 60) -> list:
