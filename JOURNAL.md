@@ -31987,3 +31987,18 @@ B4 (10.5 s under cProfile): python-chess 46% (spread: reasoned._threat_moves, th
 facts.piece, _mates), the Rust core 33% of which verify_route is 3.4 s (13k calls: the schema tails over every reply), the agenda's Python 10%.
 Next (B5): the evaluator inside verify_route (its own Rust profile; the tail over replies is the hot loop), the position handle so the binder stops
 building FENs and SANs around every call, and the python-chess spread; then Stage C.
+
+## 2026-10-20 16:16 PDT -- THE EVALUATOR'S INNER LOOP, THE FEN CACHE, THE SPREAD (plan 54 B5): IDENTICAL; 07Z0P 11.1 -> 3.3 s TODAY, rand2_10 61 -> 14.6 s
+Builder (4f8316aa the evaluator: a least/most over a material-only body reads each move's capture without building a board, a constant body returns,
+the sum's zero test reads the cheapest summand first, the per-node sort gone -- 243 -> 131 us per verify_route call on 07Z0P's 13k logged calls, diffed
+against a pickled pre-change build since the harness runs the evaluator on both sides; ac734422 `graph.exact_fen` keyed by every FEN field and SAN
+only for the winning schema; 59589654 the spread, each flagged: the candidate-list cache, `facts.board_piece` once per square, `see_after` in the
+core for `reasoned._threat_moves`, `G.mates` pushing only moves that can check, `with_piece` through bitboards). My reruns: `compare_regress`
+with every switch 0 differences of 24k / 31k / 199k / 38k calls, 8.8 -> 3.8, 8.7 -> 3.4, 50.1 -> 17.5, 10.7 -> 4.4 s; rand1-3 decisions identical to
+this afternoon's runs, 6.7 -> 3.2, 28.6 -> 14.6, 7.9 -> 3.9 s; 252 tests. My own fix after: the prior's features were read for every question popped
+even with the log off -- now read at log time (07Z0P 3.5 -> 3.3 s, 0UqOv 1.6 s). THE DAY (one run each, directional): 07Z0P 11.1 -> 3.3 s, rand1_10
+9.8 -> 3.2, rand2_10 61 -> 14.6, rand3_10 11.9 -> 3.9; every stage harness-identical. The profile now (07Z0P, 6.4 s under cProfile): python-chess 43%
+spread thin (copies in with_piece, the Binding's SAN, Question construction, roots), the Rust core 29% (verify_route 1.7 s: the schema tails over every
+reply of three families that walk the same two plies -- a shared transposition memo is the next Rust gain), the agenda's Python 20%. Open from the
+builder: `Term::Ours` in vocab.rs counts the king though its doc says "other than the king" -- the Lean mirror must be checked before either is changed.
+Stage C (the chase loop in Rust) is now a REWRITE of the agenda, not a port of a word: the inner and their agendas are the agenda; raised with Kaveh.
