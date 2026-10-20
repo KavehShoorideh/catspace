@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import re
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -21,6 +22,9 @@ from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import selfmine as SM
 
 MATE_VALUE = 100
+BINDER_RUST = True        # plan 54 (A): the schema reads go to `analyst_core.verify_route`, one call per route; False = the Python path (`_read` / `_read2`), kept for the comparison harness
+TRIED_LOG: list | None = None      # the harness sets a list: every verify_tried appends (fen, route uci, schema names asked, mates_only, tried)
+_SAN_TOKEN = re.compile("\x01([a-h1-8,]+)\x02")
 PIECE_NAME = {chess.PAWN: 'pawn', chess.KNIGHT: 'knight', chess.BISHOP: 'bishop', chess.ROOK: 'rook', chess.QUEEN: 'queen', chess.KING: 'king'}
 
 
@@ -193,6 +197,48 @@ def bind(s: Schema, board: chess.Board, us: str, candidates: list | None = None)
     return out
 
 
+def _rust_reads(fen: str, us: str, pair: tuple, group: list, seconds: list):
+    """The schemas of `group` (all depth one, or all depth two) read in Rust, one call: -> [(schema, value, note, second move)] in the group's order, stopping after a
+    mate that holds. A note naming a move carries the SAN token the core cannot write (python-chess's SAN on the null-move board): filled in here."""
+    import analyst_core as A
+    BV.install_terms()
+    out = []
+    for s, (_name, val, note, sec) in zip(group, A.verify_route(fen, pair[0], pair[1], us, [g.name for g in group], seconds)):
+        if "\x01" in note:
+            note = _SAN_TOKEN.sub(lambda m: " ".join(PA._san_pairs(fen, [(t[:2], t[2:]) for t in m.group(1).split(",")])), note)
+        out.append((s, val, note, sec))
+    return out
+
+
+def _reads(board: chess.Board, route: chess.Move, fen: str, us: str, pair: tuple, schemas: list, trap: int | None):
+    """-> (schema, value or None, note, second move or None) for each schema asked, lazily (the depth-two second moves are computed at the first depth-two schema)."""
+    seconds = None
+    if not BINDER_RUST:
+        for s in schemas:
+            sec = None
+            if s.depth == 2:
+                if seconds is None:
+                    seconds = second_moves(board, route, trap)
+                val, note, sec = _read2(s, fen, us, pair, seconds)
+            else:
+                val, note = _read(s, fen, us, pair)
+            yield s, val, note, sec
+        return
+    i = 0
+    while i < len(schemas):
+        j = i
+        while j < len(schemas) and (schemas[j].depth == 2) == (schemas[i].depth == 2):
+            j += 1
+        group = schemas[i:j]
+        if group[0].depth == 2 and seconds is None:
+            seconds = second_moves(board, route, trap)
+        for r in _rust_reads(fen, us, pair, group, seconds if group[0].depth == 2 else []):
+            yield r
+            if r[0].kind == "mate" and r[1] is not None:
+                return
+        i = j
+
+
 def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: bool = False, schemas: list | None = None, trap: int | None = None, fork: int | None = None) -> tuple:
     """Try the schemas from the smallest up on ONE route and stop at a mate; otherwise the delayed family reading the largest guaranteed gain wins (ties in the
     ladder's order, as the stream decides; the depth-two schemas come last and only on a check, or on a quiet route that traps the piece on `trap`, 52.10). -> (Binding | None, tried) with tried = [(schema name, value or
@@ -200,17 +246,8 @@ def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: boo
     pair = (chess.square_name(route.from_square), chess.square_name(route.to_square))
     fen = board.fen()
     tried, best = [], None
-    seconds = None
-    for s in (SCHEMAS + SCHEMAS2 if schemas is None else schemas):
-        if mates_only and s.kind != "mate":
-            continue
-        sec = None
-        if s.depth == 2:
-            if seconds is None:
-                seconds = second_moves(board, route, trap)
-            val, note, sec = _read2(s, fen, us, pair, seconds)
-        else:
-            val, note = _read(s, fen, us, pair)
+    asked = [s for s in (SCHEMAS + SCHEMAS2 if schemas is None else schemas) if not (mates_only and s.kind != "mate")]
+    for s, val, note, sec in _reads(board, route, fen, us, pair, asked, trap):
         tried.append((s.name, val, note))
         if val is None or val < s.need:
             continue
@@ -230,6 +267,8 @@ def verify_tried(route: chess.Move, board: chess.Board, us: str, mates_only: boo
             break
     if best is not None:
         best.tried = tried
+    if TRIED_LOG is not None:
+        TRIED_LOG.append((fen, route.uci(), us, bool(mates_only), trap, tuple(tried)))
     return best, tried
 
 

@@ -18,6 +18,7 @@ mod pns;
 mod game;
 mod mating;
 mod vocab;
+mod route;
 mod goals;
 mod generated;
 mod pos;
@@ -1707,6 +1708,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(mating::set_kr_term, m)?)?;
     m.add_function(wrap_pyfunction!(mating::set_kr_generated, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::vocab_eval, m)?)?;
+    m.add_function(wrap_pyfunction!(route::verify_route, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::vocab_values, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::vocab_certify, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::verify_mask, m)?)?;
