@@ -31886,3 +31886,32 @@ Honest grading: the DECISION is right and named, but the claim's VALUE is 1, not
 fuse inside the re-ask), so Kaveh's two-against-one count is still not read to its end; the refuter fix fired on no other set puzzle; it applies to
 win goals only; the route memo is goal-aware only for win goals. Builder's test edit: 0agl8's exact kill text loosened to "their <move>+ wins 100"
 (the question order changed). Play server restarted on this code.
+
+## 2026-10-20 12:38 PDT -- RANDOM SAMPLES, THE SKEWER, THE CHAIN'S END: 25 OF 30 RIGHT, EVERY MISS RATED 2240+; CHAIN ITEMS BUILT AND PARKED (plan 52.23)
+Kaveh: "keep fixing ... leave it unlimited time ... once we get to 5 puzzles correct, reduce time waste"; "randomly sample puzzles from the set, don't stick to
+the same puzzles"; then the designs: a PROGRESS MEASURE for chases (a capture that is not bad for us is one-way progress; a clock of N of our moves without one,
+a hyperparameter) and a GOAL JUDGE ("mating the king is like mating the bishop": one tempo-arithmetic judge for mates and pieces); then: wire in the PRIOR that
+orders the questions (plan 53), trained on whether the deciding line agreed with Stockfish and whether we asked the question that led to it.
+Built: `sample_puzzles` (uniform reservoir draw from the whole lichess file by seed); three samples of 10 (seeds 1-3): OBS 25 MATCH, 4 undecided, 1 wrong
+(dOC36 2779: Rd2, SF -87 vs Nf6+ +436); every miss rated 2240+ (9wgF7 2486 Nc5 quiet knight decoy; zBouR 2432 Rhxf2, 11 plies; pogsJ 2434 Qxa4; 4efZ2
+2240 Ra5 -- the rook ending's passer, the pure-pawn passer lemma honestly declines). The day went into zBouR: the skewer in Lean (`Ideas/Skewer.lean`,
+`skewer_blocked`, `skewer_attack`, standard axioms) + the named fixes "skewer" and "drive their king onto the skewer line" (two moves); the in-check
+intermezzo chase; the need propagated to inner agendas; the goal judge (tempo arithmetic: a pattern with d defects allows d prep moves; a bigger goal is a new
+goal; an exchange costs no level; a capture that is not bad for us restarts a win goal's allowance); the chase clock; chain-state memo. Together they take zBouR
+from 20 min (depth fuse walks) to 8 s and read the whole line (Rhxf2 cxb7+ Kb8 Rxf2 Qh1+ Ke2 Rxf2+ Kxf2 Qh2+ Ke1 Qxc2) but still do not decide it: the last
+defence read, Qb1, is answered by a mate in three (Rxe2+ Kxe2 Qg2+ Ke1 Rxe3#) that the root finds and the threat-save inner path does not. ON together they
+also cost 07Z0P its decision under the count fuse (the evasion chase ran through `_verify` whatever its switch said; fixed) -- so the chain items are built
+and OFF by default (`NEED_AWARE_CLOSE`, `EVASION_CHASE`, `DEEP_WIN_CHASE`, `GOAL_JUDGE`, `NEED_PROPAGATION`, `CHASE_CLOCK` 99), to come back with the prior.
+Kept ON: no count fuse under a time budget; the skewer word; two SOUNDNESS fixes found by the samples: (a) the fact store served a SCHEMA claim across
+positions by the target's signature alone (2VDtX: "Ng5+ then Nxe6" derived after Rf8+ Kxf8 served at the root where Ng5 is no check and Bxg5 takes it, SF
+-697, a WRONG DECISION since 52.19): a schema claim's read set now includes its move's squares and their king; (b) the time regime had no root cap: a root's
+chase now gets at most half the time left while another root can beat the best claim, and a time-cut gap re-runs on a longer slice (BEKFf still undecided
+under 60 s: the mate roots re-run the same four routes on shrinking slices and the win root never gets its turn; decided in 25 s under the count fuse).
+OBS (one run each, directional, chain items off): rand1_10 9/10 (seconds 109 under 60 s/puzzle), rand2_10 7/10 under 60 s (BEKFf none, dOC36 wrong; 8/10
+under the count fuse), rand3_10 8/10 (2VDtX right again; 82 s). dev_20 / fresh_60 not rerun today (Kaveh: no more re-running the same puzzles). Tests: 190
+passed + the evasion test fixed (its switch); lake build green (6100 jobs); play server restarted. Honest grading: the count fuse stays the budget for sets
+and tests; the time regime throws away the inner work a cut leaves and needs the prior to ask the deciding question first; zBouR's decision needs the
+threat-save path to find our counter-mate; the Lean skewer is sound but its chase use is in Python; the judge and the clock are principled (regress.py's tempo
+arithmetic; material is monotone) but their composition with the fuse is unmeasured beyond these three samples.
+NEXT (plan 53, Kaveh): the QUESTION LOG (each agenda: the questions in the order asked, which one decided, which word answered it, the Stockfish verdict),
+then the prior that orders the pool; negative only for the question not asked, never for a right question wrongly answered (that is a bug or a missing lemma).
