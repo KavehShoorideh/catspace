@@ -508,3 +508,19 @@ pub fn second_moves(fen: &str, route: &str, trap: Option<u8>) -> PyResult<Vec<(S
     }
     Ok(common.map(|s| s.into_iter().collect()).unwrap_or_default())
 }
+
+/// see_after(fen, ucis, square) -> for each move (legal at `fen`), the word `(see square)` on the board after it: the static exchange the side to move there wins on that
+/// square's piece (0 when it stands empty) -- `reasoned._see(c.fen(), sq)` on the board after the move, without the FEN round trip. 54 (B5.3).
+#[pyfunction]
+pub fn see_after(fen: &str, ucis: Vec<String>, square: u8) -> PyResult<Vec<i64>> {
+    let p = parse_fen(fen)?;
+    let sq = Square::new(square as u32);
+    let mut out = Vec::with_capacity(ucis.len());
+    for u in ucis {
+        let m = shakmaty::uci::UciMove::from_ascii(u.as_bytes()).ok().and_then(|x| x.to_move(&p).ok()).ok_or_else(|| err("illegal move"))?;
+        let mut c = p.clone();
+        c.play_unchecked(&m);
+        out.push(c.board().color_at(sq).map_or(0, |col| crate::rules::see(c.board(), sq, !col).max(0)));
+    }
+    Ok(out)
+}

@@ -394,9 +394,25 @@ def pass_claim(board: chess.Board, after: chess.Board, m: chess.Move, us: str | 
     return f"threat: {', '.join(path[:-1]) + (' then ' if len(path) > 1 else '')}{path[-1]}=Q binds after a pass (unstoppablePasser2_sound, within {now[sq]} plies)"
 
 
+MOVES_CACHE = True        # plan 54 (B5.3): `_moves` answers the same (pieces, castling rights, side, skip) once per root question (graph.clear_caches clears it)
+_MOVES: dict = {}
+
+
 def _moves(board: chess.Board, us: str | bool, skip_from: int | None = None) -> list:
+    if MOVES_CACHE:
+        # the counterfactual board has no history and no e.p. square (graph.with_turn), so its legal moves are a function of these fields alone
+        key = (board.pawns, board.knights, board.bishops, board.rooks, board.queens, board.kings, board.occupied_co[True], board.occupied_co[False],
+               board.castling_rights, G.colour_of(us), skip_from)
+        hit = _MOVES.get(key)
+        if hit is None:
+            b = G.with_turn(board, G.colour_of(us))
+            hit = _MOVES[key] = tuple(m for m in b.legal_moves if m.from_square != skip_from and not b.is_castling(m))
+        return list(hit)
     b = G.with_turn(board, G.colour_of(us))
     return [m for m in b.legal_moves if m.from_square != skip_from and not b.is_castling(m)]
+
+
+G.CLEAR_HOOKS.append(_MOVES.clear)
 
 
 def _goal_done(q: Question, cf: chess.Board, me: bool) -> bool:

@@ -152,13 +152,53 @@ def without(board: chess.Board, sq: int) -> chess.Board:
     return c
 
 
+FAST_PIECE = True         # plan 54 (B5.3): `with_piece` lifts and sets through python-chess's bitboard methods (no Piece objects built, no colour looked up)
+
+
 def with_piece(board: chess.Board, piece: chess.Piece, at: int, removed_from: int | None = None) -> chess.Board:
     """The counterfactual placement: `piece` on `at` (whatever stood there is gone), lifted from `removed_from` when given."""
     c = board.copy(stack=False)
+    if FAST_PIECE:
+        if removed_from is not None:
+            c._remove_piece_at(removed_from)
+        c._set_piece_at(at, piece.piece_type, piece.color)
+        return c
     if removed_from is not None:
         c.remove_piece_at(removed_from)
     c.set_piece_at(at, piece)
     return c
+
+
+MATES_FAST = True         # plan 54 (B5.3): `mates` pushes the move only when it could give check
+
+
+def mates(c: chess.Board, mv: chess.Move) -> bool:
+    """Does `mv` (legal on `c`) checkmate? `c` is left as it was. A move that cannot give check cannot mate: a direct check needs the moved piece on `mv.to_square` to reach the
+    king over the board after the move, a discovered one needs `mv.from_square` on a line through the king; castling, e.p. and promotions are pushed as before."""
+    if MATES_FAST and not mv.promotion:
+        ksq = c.king(not c.turn)
+        frm, to = mv.from_square, mv.to_square
+        if ksq is not None and frm != ksq and not c.is_castling(mv) and not c.is_en_passant(mv):
+            kb = chess.BB_SQUARES[ksq]
+            pt = c.piece_type_at(frm)
+            direct = False
+            if pt == chess.KNIGHT:
+                direct = bool(chess.BB_KNIGHT_ATTACKS[to] & kb)
+            elif pt == chess.PAWN:
+                direct = bool(chess.BB_PAWN_ATTACKS[c.turn][to] & kb)
+            elif pt in (chess.BISHOP, chess.ROOK, chess.QUEEN):
+                if chess.BB_RAYS[to][ksq] and not chess.between(to, ksq) & ((c.occupied ^ chess.BB_SQUARES[frm]) | chess.BB_SQUARES[to]):
+                    straight = bool((chess.BB_RANKS[to >> 3] | chess.BB_FILES[to & 7]) & kb)
+                    direct = pt == chess.QUEEN or (pt == chess.ROOK) == straight
+            else:
+                direct = False                                   # a king never checks directly
+            if not direct and not chess.BB_RAYS[ksq][frm]:
+                return False
+    c.push(mv)
+    try:
+        return c.is_checkmate()
+    finally:
+        c.pop()
 
 
 def mobility(board: chess.Board, colour: bool) -> int:

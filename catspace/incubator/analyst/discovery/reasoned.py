@@ -25,6 +25,7 @@ from catspace.incubator.analyst.discovery import ruler as RU
 from catspace.incubator.analyst.discovery import selfmine as SM
 
 _CACHE: dict = {}
+THREAT_RUST = True         # plan 54 (B5.3): `_threat_moves` reads the exchange after every quiet candidate in one `analyst_core.see_after` call (no copy, push and FEN per move)
 
 
 def _key(board: chess.Board) -> str:
@@ -63,7 +64,7 @@ def _threat_moves(board: chess.Board, us: str, hang: list) -> list:
     attackers = set()
     for s in hang:
         attackers |= set(board.attackers(not board.turn, s))
-    out = []
+    out, rest = [], []                              # rest = (index in out, move) of the candidates the exchange must decide
     for m in board.legal_moves:
         if board.gives_check(m) or m.from_square in hang or (board.is_capture(m) and m.to_square in attackers):
             out.append(m)
@@ -73,11 +74,26 @@ def _threat_moves(board: chess.Board, us: str, hang: list) -> list:
             if victim >= v:
                 out.append(m)
                 continue
-        c = board.copy()
-        c.push(m)
-        if _see(c.fen(), big, us) <= 0:                                      # an added defender or an interposition: the biggest hanging piece no longer wins for them
-            out.append(m)
-    return out
+        out.append(None)
+        rest.append((len(out) - 1, m))
+    if rest:
+        seen = None
+        if THREAT_RUST:
+            try:
+                import analyst_core as A
+                seen = A.see_after(board.fen(), [m.uci() for _, m in rest], big)
+            except ValueError:
+                seen = None
+        for j, (i, m) in enumerate(rest):
+            if seen is not None:
+                low = seen[j] <= 0
+            else:
+                c = board.copy()
+                c.push(m)
+                low = _see(c.fen(), big, us) <= 0
+            if low:                                  # an added defender or an interposition: the biggest hanging piece no longer wins for them
+                out[i] = m
+    return [m for m in out if m is not None]
 
 
 def _creates_hanging(board: chess.Board, m: chess.Move, us: str) -> bool:

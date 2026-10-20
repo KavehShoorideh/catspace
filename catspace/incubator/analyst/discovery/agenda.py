@@ -1294,11 +1294,7 @@ class Agenda:
 
     @staticmethod
     def _mates(c: chess.Board, mv: chess.Move) -> bool:
-        c.push(mv)
-        try:
-            return c.is_checkmate()
-        finally:
-            c.pop()
+        return G.mates(c, mv)
 
     def _escape_note(self, r: R.Route, tried: list) -> str:
         """Why a mate route did not bind: the replies after which we have no mate in one."""

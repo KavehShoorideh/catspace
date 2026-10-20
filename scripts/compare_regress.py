@@ -3,7 +3,7 @@ each in a fresh process (the memo caches must not leak between the two), diffing
 `forcing_why` answered (regress.REGRESS_LOG).
 
   .venv/bin/python scripts/compare_regress.py                       # 07Z0P, 0LRTF, rand1_10, rand2_10, rand3_10
-  .venv/bin/python scripts/compare_regress.py --targets rand1_10 --flags defects routes     # defects | routes | cache | trap | skewer (the new side's switches)
+  .venv/bin/python scripts/compare_regress.py --targets rand1_10 --flags defects routes     # defects | routes | cache | trap | skewer | moves | threat | piece | pieces | mates (the new side's switches)
 """
 from __future__ import annotations
 
@@ -32,15 +32,20 @@ def puzzles(target: str) -> list:
     return PA.load_set(target)
 
 
-FLAGS = {"defects": "DEFECTS_RUST", "routes": "ROUTES_RUST", "trap": "TRAP_RUST", "skewer": "SKEWER_RUST"}
+# switch name -> (module of catspace.incubator.analyst.discovery, attribute); the 54 (B5.3) spread: moves (regress._moves cache), threat (reasoned._threat_moves in Rust),
+# piece (graph.with_piece), pieces (facts.board_piece memo), mates (graph.mates)
+FLAGS = {"defects": ("regress", "DEFECTS_RUST"), "routes": ("regress", "ROUTES_RUST"), "trap": ("regress", "TRAP_RUST"), "skewer": ("regress", "SKEWER_RUST"),
+         "moves": ("regress", "MOVES_CACHE"), "threat": ("reasoned", "THREAT_RUST"), "piece": ("graph", "FAST_PIECE"), "pieces": ("facts", "PIECE_MEMO"), "mates": ("graph", "MATES_FAST")}
 
 
 def worker(target: str, flags: list, out: str) -> None:
     from catspace.incubator.analyst.discovery import analyse as AN
     from catspace.incubator.analyst.discovery import regress as R
-    for k, attr in FLAGS.items():
-        if hasattr(R, attr):
-            setattr(R, attr, k in flags)
+    import importlib
+    for k, (mod, attr) in FLAGS.items():
+        m = importlib.import_module(f"catspace.incubator.analyst.discovery.{mod}")
+        if hasattr(m, attr):
+            setattr(m, attr, k in flags)
     R.REGRESS_LOG = []
     import analyst_core
     analyst_core.set_caches("cache" in flags)
@@ -63,6 +68,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--targets", nargs="*", default=["07Z0P", "0LRTF", "rand1_10", "rand2_10", "rand3_10"])
     ap.add_argument("--flags", nargs="*", default=["defects", "routes"])
+    ap.add_argument("--old", nargs="*", default=[], help="the old side's switches (default none: the Python path)")
     ap.add_argument("--worker", nargs=3, metavar=("TARGET", "FLAGS", "OUT"))
     a = ap.parse_args()
     if a.worker:
@@ -70,7 +76,7 @@ def main() -> None:
         return
     total = 0
     for t in a.targets:
-        old, new = run(t, []), run(t, a.flags)
+        old, new = run(t, a.old), run(t, a.flags)
         dec_diff = [(o["id"], o, n) for o, n in zip(old["results"], new["results"]) if o != n]
         dec_diff += [("length", len(old["results"]), len(new["results"]))] if len(old["results"]) != len(new["results"]) else []
         lo, ln = old["log"], new["log"]

@@ -61,8 +61,22 @@ def occ_signature(piece, occ) -> tuple:
     return tuple(piece(s) for s in sorted(occ))
 
 
+PIECE_MEMO = True         # plan 54 (B5.3): `board_piece` reads each square once (the agenda's board is never changed after its closure is made, as `board_cell` already assumes)
+
+
 def board_piece(board: chess.Board):
     """`piece` for `occ_signature`: the occupant's symbol of a square."""
+    if PIECE_MEMO:
+        memo: list = [None] * 64
+
+        def piece(s: int) -> str:
+            c = memo[s]
+            if c is None:
+                p = board.piece_at(s)
+                c = memo[s] = p.symbol() if p is not None else ""
+            return c
+        return piece
+
     def piece(s: int) -> str:
         p = board.piece_at(s)
         return p.symbol() if p is not None else ""
