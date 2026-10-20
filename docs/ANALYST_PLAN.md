@@ -2681,3 +2681,9 @@ Stage B -- THE FIX FILTER IN RUST: `mate_defects`, `material_defects`, `promote_
 Stage C -- THE CHASE LOOP IN RUST (the 52.13 item): the reply loop, the closes by rule, their pass's static reads, the inner agenda's roots; Python keeps the
   agenda's orchestration, the trace, the fact store, the prior and the RL loop. Acceptance: identical decisions on the random samples, the trace unchanged.
 Order: A, B, C; each stage its own commits by a builder from this section, verified (diffs, tests, OBS) before the next.
+Stage B4 (done 2026-10-20, identical): trap / skewer / drive-onto routes, `second_moves` and a per-root `verify_tried` cache in the core; 07Z0P 10.8 -> 6.1 s,
+rand2_10 55 -> 23 s. Stage B5 -- THE EVALUATOR AND THE SPREAD: (1) profile `verify_route` in Rust (the tail over every reply: 3.4 s of 07Z0P's 10.5 under
+cProfile, 13k calls) and make its inner loop cheap (shakmaty legal moves once per position, no string building, memo per (position, term) inside a root);
+(2) a `Position` handle so the binder passes a parsed position instead of a FEN and takes SAN strings only for the winning schema;
+(3) the python-chess spread: `reasoned._threat_moves`, `regress._moves` (the candidate list), `graph.with_piece`, `facts.piece`, `agenda._mates`,
+each measured, ported or cached where it pays. Acceptance as before (both harnesses 0 differences, tests green, seconds as OBS).
