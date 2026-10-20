@@ -175,3 +175,45 @@ def test_the_core_cache_changes_nothing_and_clear_caches_empties_it():
         assert A.forcing_whys(fen, ucis, 5, True, False) == a and A.cache_size() == 0
     finally:
         A.set_caches(was)
+
+
+# ------------------------------------------------------------------------------------------------------------------ 54 (B4): trap, fork, skewer, drive-onto, second moves
+
+ZBOUR = "2k5/1p6/p1P1p1p1/2P5/P2Pp1p1/4PrPq/2Q1RP1r/3RK3 b - - 0 34"
+QUEEN_TRAP = "rnb1kb2/1p2pprp/2p2n2/pB4p1/2p2P1P/PP2P1PN/3qQK2/RNB4R w q - 2 13"      # their queen on d2 can run; one quiet move traps it
+FENS2 = FENS + [ZBOUR, QUEEN_TRAP, "6k1/5ppp/8/8/2q5/8/5PPP/1R2R1K1 w - - 0 1",
+                "4k3/8/8/8/8/5q2/PP6/RN2K3 w - - 0 1"]       # a queen with few squares
+
+
+def trap_shape(board, t, us):
+    pc = board.piece_at(t)
+    n = G.mobility_of(G.with_turn(board, pc.color), t) or 0
+    return (n, [(r.move.uci(), r.san, r.why, r.trap) for r in R.trap_routes(board, us, t)] if n else [],
+            [(r.move.uci(), r.san, r.why, r.fork) for r in R.fork_routes(board, us, t)])
+
+
+@pytest.mark.parametrize("fen", FENS2)
+def test_trap_fix_rust_equals_python_on_every_piece_of_theirs(fen):
+    board = chess.Board(fen)
+    us = board.turn
+    seen = 0
+    for t in chess.SQUARES:
+        pc = board.piece_at(t)
+        if pc is None or pc.piece_type == chess.KING or pc.color == us:
+            continue
+        got = R._trap_rust(board, us, t)
+        if got is None:
+            continue
+        n, traps, forks = got
+        assert (n, [(r.move.uci(), r.san, r.why, r.trap) for r in traps] if n else [], [(r.move.uci(), r.san, r.why, r.fork) for r in forks]) == trap_shape(board, t, us), (fen, t)
+        seen += len(traps) + len(forks)
+    if fen == QUEEN_TRAP:
+        assert seen > 0                                 # the queen on d2 has a trap route
+
+
+def test_a_trapped_queen_is_found_by_the_core():
+    import analyst_core as A
+    b = chess.Board(QUEEN_TRAP)
+    ra = [(r.move.uci(), r.why) for r in R.trap_routes(b, True, chess.D2)]
+    assert ra and "queen" not in ra[0][1] and "Q on d2" in ra[0][1]
+    assert [(u, w) for u, w in A.trap_routes(b.fen(), True, chess.D2, 3)] == ra

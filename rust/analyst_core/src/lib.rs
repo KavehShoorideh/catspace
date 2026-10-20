@@ -1714,6 +1714,9 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(regress::material_defects, m)?)?;
     m.add_function(wrap_pyfunction!(regress::still_routes, m)?)?;
     m.add_function(wrap_pyfunction!(regress::forcing_whys, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::trap_routes, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::fork_routes, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::trap_fix_routes, m)?)?;
     m.add_function(wrap_pyfunction!(regress::set_caches, m)?)?;
     m.add_function(wrap_pyfunction!(regress::clear_caches, m)?)?;
     m.add_function(wrap_pyfunction!(regress::cache_size, m)?)?;

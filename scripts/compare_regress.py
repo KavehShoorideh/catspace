@@ -3,7 +3,7 @@ each in a fresh process (the memo caches must not leak between the two), diffing
 `forcing_why` answered (regress.REGRESS_LOG).
 
   .venv/bin/python scripts/compare_regress.py                       # 07Z0P, 0LRTF, rand1_10, rand2_10, rand3_10
-  .venv/bin/python scripts/compare_regress.py --targets rand1_10 --flags defects routes     # defects | routes | cache (the new side's switches)
+  .venv/bin/python scripts/compare_regress.py --targets rand1_10 --flags defects routes     # defects | routes | cache | trap | skewer (the new side's switches)
 """
 from __future__ import annotations
 
@@ -32,14 +32,15 @@ def puzzles(target: str) -> list:
     return PA.load_set(target)
 
 
-FLAGS = {"defects": "DEFECTS_RUST", "routes": "ROUTES_RUST"}
+FLAGS = {"defects": "DEFECTS_RUST", "routes": "ROUTES_RUST", "trap": "TRAP_RUST", "skewer": "SKEWER_RUST"}
 
 
 def worker(target: str, flags: list, out: str) -> None:
     from catspace.incubator.analyst.discovery import analyse as AN
     from catspace.incubator.analyst.discovery import regress as R
     for k, attr in FLAGS.items():
-        setattr(R, attr, k in flags)
+        if hasattr(R, attr):
+            setattr(R, attr, k in flags)
     R.REGRESS_LOG = []
     import analyst_core
     analyst_core.set_caches("cache" in flags)

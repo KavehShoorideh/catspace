@@ -317,3 +317,88 @@ pub fn forcing_whys(fen: &str, ucis: Vec<String>, stake: i64, us_white: bool, ma
     }
     Ok(out)
 }
+
+// ------------------------------------------------------------------------------------------------------------------ 54 (B4): trap, fork, skewer, drive-onto, second moves
+// Ports of regress.trap_routes / fork_routes / skewer_routes / drive_onto_routes and binder.second_moves with python-chess's candidate order (`legal_sorted`).
+// The Python wrappers write the SAN (shakmaty's SAN is not python-chess's) and keep the old path behind regress.TRAP_RUST / SKEWER_RUST and binder.SECOND_RUST.
+
+/// `G.with_turn(board, colour)`: the same position with `turn` to move and no en passant square (a copy is cloned only when something must change).
+fn with_turn_pos(p: &Chess, turn: Color) -> PyResult<Chess> {
+    if p.turn() == turn && p.maybe_ep_square().is_none() { return Ok(p.clone()); }
+    flip(p, turn).ok_or_else(|| err("with_turn is not a position"))
+}
+
+/// The moves of `w` (us to move, no en passant square) in python-chess's order, castling dropped (`regress._moves`).
+fn moves_of(w: &Chess) -> Vec<Move> {
+    let mut v = legal_sorted(w, w.is_check());
+    v.retain(|m| !m.is_castle());
+    v
+}
+
+/// The squares the piece on `x` can go to safely (the word `mobility`, read with its owner to move, no en passant square: `G.mobility_of`).
+fn mob_count(c: &Chess, x: Square) -> PyResult<usize> {
+    if c.maybe_ep_square().is_some() {
+        let c0 = crate::vocab::relaxed(c.clone().into_setup(EnPassantMode::Always)).ok_or_else(|| err("mobility: not a position"))?;
+        return Ok(crate::vocab::mobility(&c0, x).count());
+    }
+    Ok(crate::vocab::mobility(c, x).count())
+}
+
+/// Our quiet moves after which the piece of theirs on `t` has no safe square: [(uci, why)]; `stake` is not read (the Python twin does not read it either).
+fn trap_routes_pos(w: &Chess, me: Color, t: Square) -> PyResult<Vec<(String, String)>> {
+    let mut out = vec![];
+    for m in moves_of(w) {
+        if m.to() == t { continue; }
+        let mut c = w.clone();
+        c.play_unchecked(&m);
+        if c.is_check() { continue; }
+        let Some(pc) = c.board().piece_at(t) else { continue };
+        if pc.color == me { continue; }
+        if mob_count(&c, t)? != 0 { continue; }
+        let how = if (c.board().attacks_to(t, me, c.board().occupied()) & c.board().by_color(me)).any() { "also attacked" } else { "quiet" };
+        out.push((m.to_uci(CastlingMode::Standard).to_string(), format!("traps the {} on {}: no safe square, {}", letter(pc), nm(t), how)));
+    }
+    Ok(out)
+}
+
+fn fork_routes_pos(w: &Chess, t: Square) -> Vec<(String, String)> {
+    let mut out = vec![];
+    for m in moves_of(w) {
+        if m.to() == t { continue; }
+        let mut c = w.clone();
+        c.play_unchecked(&m);
+        if !c.is_check() { continue; }
+        let (Some(pc), Some(mv)) = (c.board().piece_at(t), c.board().piece_at(m.to())) else { continue };
+        if pc.color == mv.color || !c.board().attacks_from(m.to()).contains(t) { continue; }
+        out.push((m.to_uci(CastlingMode::Standard).to_string(), format!("fork: check and attack the {} on {}", letter(pc), nm(t))));
+    }
+    out
+}
+
+#[pyfunction]
+pub fn trap_routes(fen: &str, us_white: bool, target: u8, stake: i64) -> PyResult<Vec<(String, String)>> {
+    let _ = stake;
+    let w = with_turn_pos(&parse_fen(fen)?, col(us_white))?;
+    trap_routes_pos(&w, col(us_white), Square::new(target as u32))
+}
+
+#[pyfunction]
+pub fn fork_routes(fen: &str, us_white: bool, target: u8) -> PyResult<Vec<(String, String)>> {
+    let w = with_turn_pos(&parse_fen(fen)?, col(us_white))?;
+    Ok(fork_routes_pos(&w, Square::new(target as u32)))
+}
+
+/// `trap_fix`'s three reads in one call: (n, trap routes, fork routes), n = the safe squares of the piece on `target` now (read with its owner to move); the trap
+/// routes are listed only when n > 0, as the Python twin does. Err(ValueError) when there is no piece of theirs to read (the caller has checked).
+#[pyfunction]
+pub fn trap_fix_routes(fen: &str, us_white: bool, target: u8) -> PyResult<(usize, Vec<(String, String)>, Vec<(String, String)>)> {
+    let p = parse_fen(fen)?;
+    let (me, t) = (col(us_white), Square::new(target as u32));
+    let owner = p.board().color_at(t).ok_or_else(|| err("no piece on the target"))?;
+    let _ = owner;
+    let n = mob_count(&p, t)?;
+    let w = with_turn_pos(&p, me)?;
+    let traps = if n > 0 { trap_routes_pos(&w, me, t)? } else { vec![] };
+    Ok((n, traps, fork_routes_pos(&w, t)))
+}
+

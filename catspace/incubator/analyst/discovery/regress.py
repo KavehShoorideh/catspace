@@ -26,6 +26,7 @@ PASS_CLAIMS = [0]                             # 52.18 (3): forcing_why answers t
 STAKE_PROMOTE = 8                             # a queen less the pawn
 DEFECTS_RUST = True                           # 54 (B1): mate_defects / material_defects read by analyst_core (the Python path below stays; ValueError = a position shakmaty cannot hold -> Python)
 ROUTES_RUST = True                            # 54 (B2): routes_of's `_still` filter and `forcing_why` for the whole candidate list in two Rust calls (the Python path stays)
+TRAP_RUST = True                              # 54 (B4): trap_fix's three reads (safe squares, quiet trap routes, fork routes) in one Rust call (the Python path stays)
 REGRESS_LOG = None                            # 54 (B): a list -> every fixes_of / routes_of / forcing_why call appends what it answered (scripts/compare_regress.py diffs these)
 PROMOTE_MAX_PUSHES = 3                        # farther pawns: the mate / material stakes dominate (52.6)
 
@@ -739,6 +740,20 @@ def fork_routes(board: chess.Board, us: str | bool, target: int) -> list:
     return out
 
 
+def _trap_rust(board: chess.Board, us: str | bool, target: int):
+    """54 (B4): -> (n, trap routes, fork routes) from `analyst_core.trap_fix_routes`, or None (the Python path answers: a position shakmaty cannot hold, or the wrong side to move)."""
+    me = G.colour_of(us)
+    if board.turn != me:
+        return None
+    try:
+        n, traps, forks = _A.trap_fix_routes(G.fen_of(board), me, target)
+    except ValueError:
+        return None
+    t_routes = [Route(m, board.san(m), why, trap=target) for m, why in ((chess.Move.from_uci(u), w) for u, w in traps)]
+    f_routes = [Route(m, board.san(m), why, fork=target) for m, why in ((chess.Move.from_uci(u), w) for u, w in forks)]
+    return n, t_routes, f_routes
+
+
 def trap_fix(q: Question, defect: Defect, board: chess.Board, us: str | bool) -> list:
     """52.10 / 52.12: the fixes `take its squares` (a piece that can run has safe squares now; the QUIET moves after which it has none) and `fork` (a check that
     also attacks it). A quiet trap costs a tempo (they get a free reply) unless the piece is also attacked; the binder reads both over every reply."""
@@ -746,9 +761,16 @@ def trap_fix(q: Question, defect: Defect, board: chess.Board, us: str | bool) ->
     pc = board.piece_at(target)
     if pc is None or pc.piece_type == chess.KING:
         return []
+    got = _trap_rust(board, us, target) if TRAP_RUST else None
+    if got is None:
+        n = G.mobility_of(G.with_turn(board, pc.color), target)
+        routes = trap_routes(board, us, target) if n else []
+        forks = fork_routes(board, us, target)
+    else:
+        n, routes, forks = got
+    if REGRESS_LOG is not None:
+        REGRESS_LOG.append(("trap", target, n or 0, [(r.san, r.why, r.trap, r.fork) for r in routes], [(r.san, r.why, r.trap, r.fork) for r in forks]))
     out = []
-    n = G.mobility_of(G.with_turn(board, pc.color), target)
-    routes = trap_routes(board, us, target) if n else []
     if routes:
         t = new_question("cover", q.stake, dict(q.pattern), q, defect_key=defect.key(),
                          text=f"take its squares: the {pc.symbol().upper()} on {G.name(target)} can run (safe squares: {n}), the quiet moves after which it has none")
@@ -756,7 +778,6 @@ def trap_fix(q: Question, defect: Defect, board: chess.Board, us: str | bool) ->
         if any(r.why.endswith("quiet") for r in routes):
             t.why.append("a quiet trap costs a tempo (they get a free reply) unless the piece is also attacked; the depth-two schema reads it over every reply")
         out.append(t)
-    forks = fork_routes(board, us, target)
     if forks:
         f = new_question("cover", q.stake, dict(q.pattern), q, defect_key=defect.key(),
                          text=f"fork: check and attack the {pc.symbol().upper()} on {G.name(target)}, one reply")
