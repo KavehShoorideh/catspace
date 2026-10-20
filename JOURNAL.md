@@ -31954,3 +31954,16 @@ harness: decisions and all tried tuples identical on 07Z0P (6822 calls), 0LRTF, 
 70.5 -> 61.7, 15.2 -> 13.3 (noisy, one run). Why small: the tail evaluation was already Rust; the binder's remaining cost is the evaluation itself
 (3.5 s of 07Z0P's 22 s under cProfile) and `second_moves` in python-chess. Stage B (the fix filter: `_still`, `routes_of`, the defect readers,
 `forcing_why`, a per-position cache) is with a builder now, same harness discipline.
+
+## 2026-10-20 14:40 PDT -- THE FIX FILTER IN RUST (plan 54 B): IDENTICAL ON 266K CALLS, rand2_10 64 -> 33 s
+Builder (ef067b18 B1 the defect readers, 0280ee23 B2 the still filter and forcing_why for a whole candidate list in one call, 563ac445 B3 the core's
+per-position cache), verified by my rerun of `scripts/compare_regress.py --flags defects routes cache`: decisions identical and route lists
+identical on 07Z0P (18168 calls), 0LRTF, rand1_10 (25k), rand2_10 (188k), rand3_10 (35k); OBS seconds old -> new: 11.3 -> 8.7, 0.1, 10.7 -> 8.2,
+63.6 -> 33.1, 13.5 -> 9.0 (one run each). `rust/analyst_core/src/regress.rs`: `mate_defects`, `material_defects`, `still_routes`,
+`forcing_whys` (the same why strings and notes); `regress.DEFECTS_RUST` / `ROUTES_RUST` on, the Python path kept; shakmaty refuses a few
+counterfactuals (a pawn on the back rank, a missing king: 409 of 15k defect reads, 162 of 6.9k still reads) and Python answers those -- identical.
+Honest: the B3 cache measured nothing (the Rust calls are 0.07 s of 8.3 s on 07Z0P: the cost was Python's board copies, not the parsing); the
+builder's profile after B2 says the rest of python-chess is in trap / skewer / drive-onto routes (5 s of 22 under cProfile), `_moves` and the
+binder's `second_moves`, and 25% of `verify_tried` calls repeat -- Stage B4 with a builder now. Tests: 48 (the two Rust comparison files) + 60
+(the rest of the discovery files) green. The harness discipline (both paths in separate processes, every answer diffed) is what makes these ports
+safe; it found one artifact (a stale halfmove clock in the cached FEN) and no bug in the old path.
