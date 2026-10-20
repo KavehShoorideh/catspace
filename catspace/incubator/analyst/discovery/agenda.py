@@ -122,6 +122,7 @@ class ChaseCtx:
         self.roots_served = 0                     # 52.21 (1): root lists (the reach roots) served from the fact store, not rescanned
         self.finished = 0                         # 52.21 (3): routes that were in hand when the deadline passed and were run to their end
         self.chase_served = 0                     # 52.21 (2): chase claims served from the store on a board whose cells matched the claim's read set
+        self.refuter_fixes = 0                    # 52.22 (3): killed routes saved by the refuter fix (the refuting piece exchanged with tempo, the route asked again after it)
         self.unmet = 0                            # 52.22 (1): replies NOT closed by the exchange because the chased goal (win the piece) is not met by it and a forcing fix of its defect remains
         self.open_lines: list = []                # ... and the trace line of each (printed by the root)
         self.unaddressed = 0                      # 52.17 (2): forcing moves NOT followed by a chase because they fix no defect of the goal and make no claim of their own
@@ -162,6 +163,7 @@ class Agenda:
             G.clear_caches()                                    # 52.20 (1): the word / FEN caches live for one root question
         self.their = their                                      # 52.14: THEIR agenda on this board with the move passed to them: its claims are asked as save roots (an inner agenda on a static leaf)
         self.keep = keep                                        # 52.14: the gain (a balance, us to move) the static leaf stands on: a parry of a threat is verified when it keeps at least 1 of it
+        self._extra_reads: frozenset = frozenset()               # 52.22 (3): squares the deciding route read beyond its facts (the refuter's)
         self._chase_q = None                                    # 52.22 (1): the question being chased (a win question's stake is what the exchange must reach to close a reply by rule)
         self._chasing = None                                    # 52.16 (4): the promote question being chased (the inner agendas inherit it as a kill where nothing it read has changed)
         self.threat_qs: list = []                               # 52.14: (question, their claim) of every threat root pushed from `their`
@@ -715,6 +717,7 @@ class Agenda:
             reads |= fr
         m = chess.Move.from_uci(claim.move)
         reads |= {m.from_square, m.to_square}
+        reads |= self._extra_reads
         c = b.copy(stack=False)
         c.push(m)
         for sq in chess.SquareSet(c.occupied):
@@ -1324,7 +1327,7 @@ class Agenda:
         if fid is not None and self._rf is not None and fid not in self._rf:
             self._rf.append(fid)
 
-    def _chase_route(self, m: chess.Move, promote: bool = False, cheap: bool = False) -> dict:
+    def _chase_route(self, m: chess.Move, promote: bool = False, cheap: bool = False, override: "dict | None" = None) -> dict:
         """52.19: the route of `_chase_route_body`, with the facts it read (inner answers, their agendas) kept on the result (`facts`) for the claim or kill that stands on it, and the listener's
         frame for the reply being read restored on the way out."""
         saved_rf, saved_frame = self._rf, self._frame
@@ -1333,7 +1336,7 @@ class Agenda:
         ctx.route_depth += 1
         ctx.route_names.append(self.board.san(m))
         try:
-            res = self._chase_route_body(m, promote, cheap)
+            res = self._chase_route_body(m, promote, cheap, override)
             res["facts"] = list(dict.fromkeys(res.get("facts", []) + self._rf))
             if not cheap:
                 self._gap_fact(m, promote, res)
@@ -1370,14 +1373,14 @@ class Agenda:
         self.ctx.facts.restore(self._frame)
         self._frame = self.ctx.facts.invalidate(diff)
 
-    def _chase_route_body(self, m: chess.Move, promote: bool = False, cheap: bool = False) -> dict:
+    def _chase_route_body(self, m: chess.Move, promote: bool = False, cheap: bool = False, override: "dict | None" = None) -> dict:
         """One forcing route of the chase: every reply of theirs, the whole agenda on each resulting position. -> {value, killed, gap, parts, lemmas}.
         52.17 (4) `cheap`: CHEAPEST REPLY FIRST -- only what the rules close is read (standing kills, a reply that mates or stalemates us, a mate in one, the exchange with nothing of
         theirs, a promotion that stands); a reply that needs an inner agenda leaves the route PENDING (not memoised) and the closed replies are kept for the second pass.
         52.15 (2) `promote`: the question is a promotion; a reply is answered when the inner agenda claims the promotion (or a mate), or the reply itself gave up at least the
         stake in material; the roots asked there are those of stake >= the promote stake, and the route's value is the promote stake (a mate: 100)."""
         b, ctx = self.board, self.ctx
-        key = (_pos_key(b.fen()), m.uci() + (":promote" if promote else ""))
+        key = (_pos_key(b.fen()), m.uci() + (":promote" if promote else "") + (":refuter" if override else ""))      # 52.22 (3) `override`: reply uci -> (value, part, facts) read by the refuter fix, not by an inner agenda
         pre = self._pre.pop(key, None) if not cheap else None      # the replies the cheap pass closed by rule (value, why)
         cq = self._chase_q
         gstake = cq.stake if cq is not None and cq.goal == "win" and cq.pattern.get("target") is not None else 0        # 52.22 (1): what the exchange must reach to close a reply by rule
@@ -1417,14 +1420,17 @@ class Agenda:
             return c.san(chess.Move.from_uci(uci))
         # 52.13 (4): the SHORTLIST. A standing kill (an earlier route's reply, the same reply move, nothing its reads touch has changed in the position it leaves) ends the
         # route at once and is counted; otherwise the replies are read recaptures on the route's square, then checks, then captures, then the rest, the worst balance first inside a class.
+        kill_uci = None                                          # 52.22 (3): the reply that killed the route: its piece is the REFUTER (Ideas.Refuter.Refutes)
         for dbal, uci, chk, cap, rec, mate1 in rows:
-            sk = None if promote else self._standing_kill(uci, P2_of(uci), dbal)
+            sk = None if promote or (override and uci in override) else self._standing_kill(uci, P2_of(uci), dbal)
             if sk is not None:
+                kill_uci = uci
                 res["killed"] = f"after {san_of(uci)}: {sk[0]} (standing kill: nothing the inner agenda read after {sk[1]} {san_of(uci)} has changed)"
                 ctx.standing += 1
                 self._log(key, uci, "standing", dbal, None, sk[2], res["killed"])
                 break
         if res["killed"] is not None:
+            res["refuter"] = kill_uci
             ctx.routes[key] = res
             return res
         rows.sort(key=lambda t: (0 if t[4] else 1 if t[2] else 2 if t[3] else 3, t[0], t[1]))
@@ -1434,6 +1440,13 @@ class Agenda:
         for dbal, uci, chk, cap, rec, mate1 in rows:
             P2 = P2_of(uci)
             san_r = san_of(uci)
+            kill_uci = uci
+            if override and uci in override:                     # 52.22 (3): the reply the refuter fix answered
+                val, part, ofacts = override[uci]
+                gains.append(val)
+                res["parts"].append(part)
+                self._rf.extend(f for f in ofacts if f not in self._rf)
+                continue
             if pre is not None and uci in pre:                   # closed by rule in the cheap pass: counted and logged there
                 val, why = pre[uci]
                 if val < BD.MATE_VALUE:
@@ -1560,6 +1573,8 @@ class Agenda:
             self._pre[key] = closed_now                          # not memoised: the second pass finishes it
             return res
         res["closed_min"], res["stake_checked"] = closed_min, gstake
+        if res["killed"] is not None and kill_uci is not None:
+            res["refuter"] = kill_uci
         if res["killed"] is None and res["gap"] is None:
             res["value"] = min(gains) if gains else 0
         if res["gap"] is not None:
@@ -1568,6 +1583,85 @@ class Agenda:
                 res["timed"], res["mark"] = True, round(time.monotonic() - ctx.t0, 3) if ctx.t0 is not None else None
         ctx.routes[key] = res
         return res
+
+    def _refuter_fixes(self, q: R.Question, routes: list, results: dict, done: list, pool: int) -> None:
+        """52.22 (3): THE REFUTER FIX (Lean `Ideas.Refuter.Refutes`). A route killed by a reply names the piece that made it, the REFUTER ("Bb3 fails to Qxb3"). The fix is the one the agenda applies to a
+        defender or a blocker: take the refuter with tempo -- a route of this chase that captures it where it stands and is itself killed only by the RECAPTURE, by a piece that cannot make the
+        refuting move -- and ask the killed route again on the board after the exchange (a new agenda, one level in; the goal there is the piece now on the target square). The capturing route is
+        then read again with that one reply answered by the re-asked route (every other reply is read as before); a route the exchange saves is a claim of its own, filed with the refuter's squares in
+        its read set."""
+        b, ctx = self.board, self.ctx
+        P0 = AC.Pos(b.fen())
+        share = max(pool // max(len(routes), 1), 1)                # the fix is the continuation of a route: charged at most an equal share of the fuse the chase started with
+        for i, r_k in enumerate(routes):
+            res_k = results.get(i)
+            if res_k is None or res_k["killed"] is None or not res_k.get("refuter") or res_k.get("gap"):
+                continue
+            ref = chess.Move.from_uci(res_k["refuter"])
+            for j, r2 in enumerate(routes):
+                res2 = results.get(j)
+                if j == i or res2 is None or res2["killed"] is None or res2.get("gap") or res2.get("fixed_by") or not res2.get("refuter") or not b.is_capture(r2.move) \
+                        or r2.move.to_square != ref.from_square or r_k.move.to_square == ref.from_square:
+                    continue
+                saved = ctx.left
+                if saved < pool:
+                    ctx.left = pool                              # (read on the whole pool the chase started with, charged at most its share: the finishing of a route is free, as in 52.16 (2))
+                before = ctx.left
+                try:
+                    got = self._refuter_fix(q, r_k, ref, r2, res2["refuter"], P0)
+                    new = self._chase_route(r2.move, override={res2["refuter"]: (got["value"], got["part"], got["facts"])}) if got is not None else None
+                finally:
+                    ctx.left = saved - min(max(before - ctx.left, 0), share) if saved > 0 else saved
+                if new is None:
+                    continue
+                if new["killed"] is not None or new["gap"] is not None or new["value"] < 1:
+                    continue
+                new.update(extra_reads=got["reads"], fixed_by=r_k.san)
+                results[j] = new
+                self.lines.append(f"    {r2.san}: refuter fix -- {got['text']} => value {new['value']}")
+                ctx.refuter_fixes += 1
+                done.append((new["value"], r2, new))
+
+    def _refuter_fix(self, q: R.Question, r_k: R.Route, ref: chess.Move, r2: R.Route, rep_uci: str, P0: "AC.Pos") -> "dict | None":
+        """52.22 (3): the exchange `r2`, `rep_uci` (the recapture that killed r2), then `r_k` asked again: -> {value (the exchange's balance + the route's), part, facts, reads, text} or None
+        (the reply is not a recapture on the square, the recapturing piece can make the refuting move, the route is no longer legal, or it is not worth a gain there)."""
+        b, me, ctx = self.board, self.me, self.ctx
+        c = b.copy(stack=False)
+        pc_ref = c.piece_at(ref.from_square)
+        c.push(r2.move)
+        x = chess.Move.from_uci(rep_uci)
+        if x not in c.legal_moves or not c.is_capture(x) or x.to_square != r2.move.to_square:
+            return None
+        san_x = c.san(x)
+        san_ref_c = b.copy(stack=False)
+        san_ref_c.push(r_k.move)
+        san_ref = san_ref_c.san(ref)
+        c2 = c.copy(stack=False)
+        c2.push(x)
+        if r_k.move not in c2.legal_moves:
+            return None
+        c3 = c2.copy(stack=False)
+        c3.push(r_k.move)
+        if any(mv.from_square == x.to_square and mv.to_square == ref.to_square for mv in c3.legal_moves):
+            return None                                          # the piece that recaptures can make the refuting move
+        hits = [s for s in chess.SquareSet(c3.attacks_mask(r_k.move.to_square)) if c3.piece_at(s) is not None and c3.piece_at(s).color != me and c3.piece_at(s).piece_type != chess.KING]
+        tgt = max(hits, key=lambda s: (G.worth(c3.piece_at(s)), -s)) if hits else None         # the goal asked again: the best piece the route's piece attacks once the refuter is gone
+        pc_t = c2.piece_at(tgt) if tgt is not None else None
+        dbal = AC.Pos(b.fen()).push(r2.move.uci()).push(x.uci()).balance(me) - P0.balance(me)
+        saved = R._ids[0]
+        q2 = R.new_question("win", G.worth(pc_t), dict(target=tgt), text=f"win their {pc_t.symbol().upper()} on {G.name(tgt)}") if pc_t is not None else None
+        R._ids[0] = saved
+        ag2 = Agenda(State(fen=c2.fen(), us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=1)
+        ag2._chase_q = q2
+        res3 = ag2._chase_route(r_k.move)
+        if res3["gap"] is not None or res3["killed"] is not None or res3["value"] < 1 - dbal:
+            return None
+        v = dbal + res3["value"]
+        reads = frozenset({ref.from_square, ref.to_square, r2.move.to_square, r_k.move.from_square, r_k.move.to_square})
+        part = f"after {san_x}: {r_k.san} asked again on the board after the exchange ({'; '.join(res3['parts'][:2])}) -> {v}"
+        text = (f"{r_k.san} fails to {san_ref} (the refuter: the {pc_ref.symbol().upper()} on {G.name(ref.from_square)}); exchange it first -- {r2.san} {san_x}: the "
+                f"{c2.piece_at(x.to_square).symbol().upper()} on {G.name(x.to_square)} cannot make that move; {r_k.san} is asked again after it")
+        return dict(value=v, part=part, facts=list(res3.get("facts", [])), reads=reads, text=text)
 
     def _note_resume(self, q: R.Question, r: "R.Route | None", res: dict) -> None:
         """52.17 (5): record where the clock cut: the question key, the position, the route and the reply it stopped at, the time mark and the fuse left (the 52.13 GAP memo keeps cut_left too)."""
@@ -1818,6 +1912,7 @@ class Agenda:
             self.lines.append("  chase: " + n)
         self.lines.append(f"  chase: make them move -- {len(routes)} forcing route(s): " + ", ".join(f"{r.san} ({r.why})" for r in routes[:12]) + (" ..." if len(routes) > 12 else ""))
         done, cut, route_facts = [], False, []
+        results: dict = {}
         pool = self.ctx.left
         self._chasing = q if q.goal == "promote" else None
         self._chase_q = q
@@ -1855,6 +1950,7 @@ class Agenda:
                 # but that finishing is free: charged in full it took the share of every later route (0LRTF: 239 questions on a share of 120, then Rd7 got 1).
                 self.ctx.left = saved - min(max(before - self.ctx.left, 0), share) if saved > 0 else self.ctx.left
             route_facts += res.get("facts", [])
+            results[i] = res
             if res["gap"] and res["gap"].startswith("out of time"):
                 self._note_resume(q, r, res)
             if res["gap"]:
@@ -1868,6 +1964,8 @@ class Agenda:
                 done.append((res["value"], r, res))
             else:
                 self.lines.append(f"    {r.san}: value {res['value']} (no gain on the worst reply)")
+        if q.goal == "win" and not self.ctx.out_of_time():
+            self._refuter_fixes(q, routes, results, done, pool)
         self._chasing = None
         self._chase_q = None
         q._chased = not cut                                      # 52.19: a kill is "chased" only when no route was cut (a GAP); a cut chase is as weak as no chase
@@ -1885,6 +1983,7 @@ class Agenda:
         done.sort(key=lambda t: (-t[0], t[1].move.uci()))
         value, r, res = done[0]
         self._qdeps = list(res.get("facts", []))                 # ... a claim only on the facts of the route that decided it
+        self._extra_reads = frozenset(res.get("extra_reads", ()))     # 52.22 (3): and on the squares of the refuter it exchanged
         net = value
         kind = "mate" if value >= BD.MATE_VALUE else ("promote" if q.goal == "promote" and not res.get("material") else "win")
         parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")

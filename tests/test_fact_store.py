@@ -379,7 +379,7 @@ def test_52_21_3_in_a_real_chase_the_clock_running_out_in_a_nested_route_opens_n
     orig = AG.Agenda._chase_route_body
     seen = {"trigger": None, "after": []}
 
-    def wrapped(self, m, promote=False, cheap=False):
+    def wrapped(self, m, promote=False, cheap=False, override=None):
         ctx = self.ctx
         if not cheap:
             if seen["trigger"] is None and ctx.route_depth == 2:
@@ -387,7 +387,7 @@ def test_52_21_3_in_a_real_chase_the_clock_running_out_in_a_nested_route_opens_n
                 ctx.deadline = ctx.final = time.monotonic() - 1                       # the clock runs out inside the second route
             elif seen["trigger"] is not None:
                 seen["after"].append((self.board.san(m), ctx.route_depth))             # a route opened after the deadline
-        return orig(self, m, promote, cheap)
+        return orig(self, m, promote, cheap, override)
     AG.Agenda._chase_route_body = wrapped
     try:
         ag = AG.Agenda(state_of(LRTF, "w"), seconds=1e6)

@@ -1126,3 +1126,19 @@ def test_52_22_1_the_exchange_closes_a_reply_only_when_it_reaches_the_goal_or_no
     assert "not closed by rule: the goal" in ag.ctx.open_lines[-1] and "Rd2" in ag.ctx.open_lines[-1]
     ag._chase_q = None
     assert ag._closed_by_rule(P2, 0) is not None                                                              # no chased win goal: the rule is unchanged
+
+
+# ---- 52.22 (3): the refuter fix -----------------------------------------------------------------------------------------------------------------------
+
+def test_52_22_3_the_refuter_is_a_word_proved_in_lean():
+    st = _lean("refuter_unforces", "Refuter")["statement"]
+    assert "Refutes" in st and "forcedAtLeaves" in st
+
+
+def test_52_22_3_07z0p_is_decided_qxd5_by_the_refuter_fix_with_the_line_printed():
+    ag = AG.Agenda(state_of(Z0P, "w"))
+    ag.ask()
+    t = ag.trace()
+    assert ag.decision().what == "Qxd5+"
+    assert "Qxd5+: refuter fix -- Bb3 fails to Qxb3 (the refuter: the Q on d5); exchange it first -- Qxd5+ Nxd5: the N on d5 cannot make that move; Bb3 is asked again after it" in t
+    assert ag.ctx.refuter_fixes >= 1

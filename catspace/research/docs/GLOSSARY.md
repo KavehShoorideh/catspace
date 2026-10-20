@@ -255,3 +255,7 @@ are the July architecture; this one is the October code (`catspace/incubator/ana
   (the exchange there wins nothing for them) from which the piece attacks two pieces it wins by the exchange if they pass (or the king and one piece), stake = the smaller value. Verified by the rules
   reply by reply (the least of balance + the best static exchange); a reply that answers both (the capture of the forker, a move of one attacked piece that guards the other, a check) is the defect
   and kills it by name. Two pieces on squares of opposite colour cannot be forked by a knight (the colour lemma kills the pair, with its read set).
+- **Refuter / refuter fix** (Lean `Ideas.Refuter.Refutes`, `refuter_unforces`; python `Agenda._refuter_fixes`) — the REFUTER of a route is the piece of theirs whose reply killed it ("Bb3 fails to Qxb3": the queen on d5);
+  one such reply suffices to kill the route. The REFUTER FIX is the one the agenda applies to a defender or a blocker: take the refuter with tempo (a route of the same chase that captures it where it stands
+  and is killed only by the recapture) when the recapturing piece cannot make the refuting move, and ask the killed route again on the board after the exchange; the claim is filed with the refuter's squares
+  in its read set (07Z0P: Qxd5+ Nxd5, then Bb3 pins the knight). Plan 52.22 (3).
