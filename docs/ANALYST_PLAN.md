@@ -2613,3 +2613,20 @@ root's chase gets at most half the time left while another root can beat the bes
 Directional numbers (OBS, one run each, the chain items off): rand1_10 9/10 (9wgF7 2486 none); rand2_10 7/10 under 60 s (BEKFf none: the mate roots re-run the same
 four routes on shrinking slices and the win root never gets its turn; under the count fuse 8/10 with dOC36 wrong); rand3_10 8/10 (2VDtX right again). The count fuse
 stays the default budget for sets and tests; the time regime wastes the inner work a cut throws away and needs the prior (plan 53) to ask the deciding question first.
+
+### 53 The prior that orders the questions (Kaveh 2026-10-20: "it's time to wire in the prior that orders the questions to be asked ... training data: did the deciding line agree with Stockfish and did we go down it; if we neglected to ask the right question, a negative; never penalise the right question wrongly answered -- that is a bug, it should have been a proven lemma")
+1. THE QUESTION LOG (`analyse --qlog [--sf]`): one row per question of the ROOT agenda in the order asked -- what was known of it before it was asked
+   (`question_prior.features`: goal, stake, the target's piece and the counts on its square, the check state, the depth; generic words, no square names),
+   its outcome (status; the WORD that answered it: the claim's lemma or the kill's reason, so a wrong answer to a right question is seen as a bug or a
+   missing lemma, never as the prior's fault), whether it decided (`Claim.qid`), the decision, the puzzle's answer, the STOCKFISH VERDICT
+   (`verdict.py`: RIGHT within 50 cp of the best move at depth 14; the grader, never a premise). Written to experiments/question_log.jsonl.
+2. THE PRIOR (`question_prior build` -> data/derived/question_prior.json; `analyse --prior`): logistic regression over the feature dict (sklearn at build
+   time; JSON weights at run time). Labels: the question that decided a RIGHT decision is 1, every question asked before it 0; when the decision was wrong
+   or none, the question whose target is the answer's square is the one that should have been asked (1), those before it 0. At run time the ROOT agenda
+   asks the open question with the highest score next (the stops stay by stakes and claims: the prior ORDERS, it never decides; the line "prior: Q7 asked
+   first (score +1.3; the stake order would ask Q1)" says so). `question_prior eval`: held out by puzzle, how often the deciding question ranks first
+   under the prior vs the stake order (OBS, directional).
+3. Data from fresh random samples only (seeds 1-6 for the log, 7-8 held out), under the count fuse; the chain items stay off.
+Acceptance: the log written and labelled, the model built with its largest weights printed, the eval OBS, then two held-out samples run with and without
+the prior: decisions diffed (the prior must not change a decision, only the order and the questions asked before the deciding one), the count of
+questions asked before the deciding one before/after as OBS.
