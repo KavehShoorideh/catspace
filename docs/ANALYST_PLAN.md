@@ -2577,3 +2577,22 @@ not what the goal asks; so the root's chase of Qxd5+ under "win the N" (stake 3)
    route) + gloss + glossary + lean_index build; no new theorem needed unless the builder finds the recapture condition needs one.
 Acceptance: 07Z0P decided Qxd5+ (SF: +301 d20) with the refuter line printed; both sets rerun one at a time, every other decision unchanged, any
 change checked with Stockfish at depth 18 and reported; tallies (inner questions, replies closed by rule, seconds) before/after as OBS.
+
+### 52.23 Unlimited time until a batch is right: random samples, the fuse gone under a time budget, the need-aware close, the in-check chase, the skewer (Kaveh 2026-10-20: "keep fixing and going forward ... leave it unlimited time ... once we get to 5 puzzles correct, then reduce time waste"; "randomly sample puzzles from the set, don't stick to the same puzzles")
+The sets dev_20 / fresh_60 were fixed strided draws; `sample_puzzles --seed S --n N` now draws N rows uniformly from the whole lichess file (reservoir
+sampling) into `ledger_puzzles_randS_N.json`. Three samples of 10 (seeds 1-3, run with the question fuse): 25 MATCH, 4 undecided, 1 wrong move; every miss
+rated 2240+ (9wgF7 2486 Nc5, dOC36 2779 Nf6+ [we chose Rd2: SF -87 vs +436], zBouR 2432 Rhxf2, pogsJ 2434 Qxa4, 4efZ2 2240 Ra5). Items, each on a miss:
+1. NO QUESTION-COUNT FUSE UNDER A TIME BUDGET (`--seconds`): `ctx.left = NO_FUSE`; the routes share the TIME fairly (52.17 (5)), never the count (the 20x safety
+   fuse still cut zBouR's routes: 28 fuse hits in 9.5 s).
+2. THE NEED-AWARE CLOSE: `_closed_by_rule` closes a reply only at a value that can still rescue the route this agenda serves (`dbal + best >= min_stake`); a lower
+   bound below the need decides nothing, so the reply is asked. zBouR: Qh1+ Kd2 closed at the rook (5) when 6 was needed; Rxf2+ Kc1 Rxc2+ wins the queen.
+3. THE IN-CHECK CHASE: an inner agenda in check (their intermezzo check inside our forcing line) chases the save-king question with every legal move as a route
+   (each is forced: the check must be answered); claim kind `save`. ONE intermezzo is followed: an agenda opened by an evasion route does not chase a second
+   check of theirs (their chain, not our line). Before: the inner agenda in check verified its evasions by the schemas only and died (zBouR: Rhxf2 cxb7+ "no claim").
+4. THE SKEWER (Lean `Ideas/Skewer.lean`: `skewerB`, `skewer_blocked`, `skewer_attack`, the almost-battery with their king as the one piece between; both theorems on
+   the standard axioms): a named fix of the win defects 'not attacked' / 'defended' (`regress.skewer_fix`, routes `skewer_routes`), and a check that ADDRESSES them
+   (`_addresses`); `_unmet_fix` sees it, so a reply is not closed by rule while the skewer remains. Gloss, glossary, lean index.
+5. A WIN QUESTION CHASES AT EVERY DEPTH: the depth-two gate ("below the first inner level only the mate questions chase") was a numbered limit; its checks must address
+   a defect (52.17 (2)) and its routes at inner levels are checks, captures and mate threats only, as before. Promote questions keep the gate.
+Acceptance: zBouR decided Rhxf2 with the skewer line printed; three random samples of 10 rerun one at a time with a time budget, every decision diffed against the
+fuse runs, any change checked with Stockfish; the cost (inner agendas, seconds) as OBS, directional; then the next samples.
