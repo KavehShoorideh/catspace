@@ -101,7 +101,8 @@ def _write_qlog(p: dict, set_name: str, fen: str, ag, d, sfv) -> None:
             word = next((c.lemma for c in ag.state.claims if c.qid == q.id), None) if q.status == "verified" else None
             word = word or (q.claimed[1].lemma if q.claimed is not None else (q.reason.split(":")[0] if q.reason else q.status))
             t = q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn")))
-            fh.write(json.dumps(dict(id=p["id"], set=set_name, fen=fen, order=i, qid=q.id, goal=q.goal, stake=q.stake, text=q.text, status=q.status, word=word,
+            from catspace.incubator.analyst.discovery import agenda as AGM
+            fh.write(json.dumps(dict(id=p["id"], set=set_name, prior=bool(AGM.PRIOR), fen=fen, order=i, qid=q.id, goal=q.goal, stake=q.stake, text=q.text, status=q.status, word=word,
                                      decided=bool(d and d.qid == q.id), decision=d.move if d else None, answer=ans, match=match, sf=sfv[0], sf_loss=sfv[1], sf_best=sfv[2],
                                      target_sq=t, move=q.pattern.get("move"), features=f)) + "\n")
 

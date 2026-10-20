@@ -46,3 +46,15 @@ def test_reward_counts_right_wrong_none_and_the_questions_before_the_deciding_on
     assert (rw["agendas"], rw["right"], rw["wrong"], rw["none"]) == (4, 2, 1, 1)
     assert rw["mean_before"] == 1.0                              # (2 + 0) / 2, right decisions only
     assert QP.reward([])["mean_before"] is None
+
+
+def test_loop_metrics_check_the_invariant_and_pair_the_reward_on_the_same_puzzles():
+    def ag(i, prior, decision, sf, decided_at, n=3):
+        return [dict(id=i, set="s", prior=prior, order=k, decided=(k == decided_at), decision=decision, sf=sf, match=False) for k in range(n)]
+    rows = ag("a", False, "e2e4", "RIGHT", 2) + ag("a", True, "e2e4", "RIGHT", 0) \
+         + ag("b", False, "d2d4", "RIGHT", 1) + ag("b", True, "g1f3", "WRONG", 0)          # the prior CHANGED b's decision: the invariant must count it
+    m = QP.loop_metrics(rows, {"weights": {"stake": 1.0}, "bias": 0.0}, {"weights": {"stake": 1.0, "goal=win": 2.0}, "bias": 0.0})
+    assert (m["compared"], m["identical"]) == (2, 1)
+    assert m["mean_before_prior"] == 0.0 and m["mean_before_base"] == 1.5           # a: 0 vs 2, b: right only in the base run (1): base mean (2+1)/2
+    assert m["weight_drift"] == 2.0
+    assert (m["right"], m["wrong"], m["none"]) == (1, 1, 0)                          # the prior run's decisions
