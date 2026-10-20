@@ -31977,3 +31977,13 @@ won: equal values now break the tie by the question's stake, then the shape key 
 by the order; and STOP (a) stops only strictly above the next stake (a mate ends everything), so an equal-stake question is still asked. After: both
 puzzles decide the same with and without the prior (r3oph Rxd1+, SF WRONG -- an honest tie between two value-1 claims one of which is false, a claim
 bug not an order bug; OF8nj bxc3+ RIGHT). 233 tests; rand1-3 under the count fuse 9/10, 8/10 (BEKFf decided), 8/10 at 6.7 / 28.6 / 7.9 s (Stage B).
+
+## 2026-10-20 15:23 PDT -- TRAP, SKEWER, DRIVE-ONTO, SECOND MOVES IN RUST + THE VERIFICATION CACHE (plan 54 B4): IDENTICAL, 07Z0P 10.8 -> 6.1 s, rand2_10 55 -> 23 s
+Builder (6939b7d7, b0752164, 134ebd47), verified by my reruns: `compare_regress` 0 differences of 24k / 31k / 199k / 38k calls, seconds 10.8 -> 6.1,
+9.8 -> 4.7, 54.8 -> 22.8, 11.9 -> 6.0; `compare_binder` 0 differences of 42k verify calls, 9.1 -> 6.0, 6.3 -> 4.4, 28.9 -> 20.1, 8.1 -> 5.6. The
+harness caught the builder's first cache key (the cached FEN's stale clocks: 16 differences on rand2_10) before the commit -- the discipline works.
+Where the day's speed stands (07Z0P, one run each, directional): 11.1 s this morning (plan 52.22) -> 6.0 s now; rand2_10 61 -> 23 s. The profile after
+B4 (10.5 s under cProfile): python-chess 46% (spread: reasoned._threat_moves, the binder's fen/san/copy around the Rust call, _moves, with_piece,
+facts.piece, _mates), the Rust core 33% of which verify_route is 3.4 s (13k calls: the schema tails over every reply), the agenda's Python 10%.
+Next (B5): the evaluator inside verify_route (its own Rust profile; the tail over replies is the hot loop), the position handle so the binder stops
+building FENs and SANs around every call, and the python-chess spread; then Stage C.
