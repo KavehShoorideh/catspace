@@ -2527,3 +2527,28 @@ agenda after every forced reply); these three items are repeated work inside it,
    the unchanged starting board each time (84k scans for 3k route lists). Computed once per `routes_of` and passed in.
 3. **`reach_steps` lists the legal moves once** (it walked the generator twice per call; 1.2M generator steps). Small.
 Acceptance: both sets rerun, every decision and every tally but seconds unchanged; OBS seconds per set before/after; the three slowest puzzles' seconds.
+
+### 52.21 The fact store serves more: root lists, chase claims across positions; the deadline finishes the route in hand (Kaveh 2026-10-19 GO; after 52.20)
+After 52.20 the profile of the slow puzzles is flat and the time is the design: on 0KCeb 353 inner agendas each rebuild their root lists (the
+reach roots ~15% of the time) and chase claims are re-derived on siblings because they are filed non-portable. Kaveh: the fact store "could" serve
+these; and on the budget: "when time runs out, if we're in the middle of creating a claim, we should finish that one up and then not start any new
+ones until we make our move; then it's the opponent's turn and we can continue thinking."
+1. **Root lists as facts.** `_roots` / `_reach_roots` read the board's pieces, their attacks and the king's neighbourhood. Record the squares each
+   root list read (the piece squares scanned, the squares attacked / attacking that decided a root in or out, the king's box) and file the list as a
+   fact (kind `roots`, positional key = the side to move and the goal family; portable) with that read set; an inner agenda whose board matches the
+   cells is served the list and pushes it without rescanning. Trace: "roots served from the store (fact #n)"; tally `root lists served`.
+   The read set must be sound: a square whose change could add or remove a root is in it (test: a sibling where a piece moved onto such a square is
+   NOT served; one where an unread piece moved IS served and its roots agree with a rescan).
+2. **Chase claims portable.** A chase claim today is filed `portable=False` because it read every reply. Its read set is the union of the read sets
+   of the facts it stands on (its routes' claims and kills, their replies' agendas), which the justification links already hold: compute it, file the
+   claim portable with that union, and let `lookup` serve it on a sibling whose cells match. Where a justification is a positional fact (an inner
+   agenda's whole position) the union is the whole board and the claim stays non-portable (say so in the trace). Tally `chase claims served`.
+3. **The deadline finishes the route in hand.** 52.17 (5) cuts wherever `out_of_time()` is next read, mid-route, leaving a resume point. New rule:
+   past the deadline NO new question is pushed and NO new route is opened (at any depth), but the route currently being chased (the innermost unit
+   that yields a claim or a refuting reply) runs to its end; then the best bound claim decides and the open routes are GAPs as before. The play
+   server's background tier (52.19 (3)) resumes them on the human's clock, out-of-time GAPs first (already so). Trace: "out of time: finishing
+   <route>, no new routes". Bound the overshoot by the route, not the root: an inner agenda started before the deadline finishes its CURRENT question
+   only. OBS: used seconds vs budget on the sets at --seconds 0.3 and 1.0, before and after; overshoot should fall to the length of one route.
+Acceptance: both sets identical in decisions and MATCH (tallies of inner agendas / questions should FALL; print them); 0KCeb inner agendas well below
+353, with root lists served and chase claims served printed; the seconds per set; tests for the sound read set of a root list and for a served chase
+claim on a transposition; 52.19's fact-store tests still pass.
