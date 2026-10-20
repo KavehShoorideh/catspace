@@ -240,7 +240,7 @@ def loop(seeds: str, rounds: int, per_round: int = 1, n: int = 10) -> None:
             fh.write(json.dumps(m) + "\n")
         mb = lambda v: "n/a" if v is None else f"{v:.2f}"
         print(f"OBS prior loop round {rd} (seed {','.join(map(str, used))}): agendas {m['agendas']}, decisions (prior run) right {m['right']} wrong {m['wrong']} none {m['none']}; "
-              f"INVARIANT decisions identical with and without the prior {m['identical']}/{m['compared']}; questions before the deciding one, same puzzles: prior {mb(m['mean_before_prior'])} vs stake order {mb(m['mean_before_base'])}; "
+              f"INVARIANT decisions identical with and without the prior {m['identical']}/{m['compared']} (differ by the budget's cut {m['differ_budget']}, differ otherwise = BUG {m['differ_bug']}); questions before the deciding one, same puzzles: prior {mb(m['mean_before_prior'])} vs stake order {mb(m['mean_before_base'])}; "
               f"model rows {model['rows']} positives {model['positives']} negatives {model['rows'] - model['positives']} (built from {m['model_age_rows']} rows before this round), weight drift {mb(m['weight_drift'])}")
         evaluate(log)
 
@@ -260,11 +260,16 @@ def loop_metrics(rows: list, prev_model: dict | None, model: dict) -> dict:
     for k, rs in by.items():
         rs.sort(key=lambda r: r["order"])
         dec[k] = rs[0]
-    compared = identical = 0
+    compared = identical = differ_budget = differ_bug = 0
     for (pid, st, pr), r in dec.items():
         if pr and (pid, st, False) in dec:
             compared += 1
-            identical += int(dec[(pid, st, False)].get("decision") == r.get("decision"))
+            if dec[(pid, st, False)].get("decision") == r.get("decision"):
+                identical += 1
+            elif any(x.get("status") == "gap" or "fuse" in (x.get("reason") or "") or "budget" in (x.get("word") or "") for x in by[(pid, st, False)] + by[(pid, st, True)]):
+                differ_budget += 1                       # the budget cut one run's chase: the ORDER decided what got asked in time (GYWyJ: the stake order's fuse went to the mates, the prior asked the knight first and decided Nd5, SF RIGHT)
+            else:
+                differ_bug += 1                          # the same questions, the same budget, a different decision: a BUG (the prior must never decide)
     def before(flag):
         out = []
         for (pid, st, pr), rs in by.items():
@@ -281,7 +286,7 @@ def loop_metrics(rows: list, prev_model: dict | None, model: dict) -> dict:
     if prev_model is not None:
         keys = set(prev_model["weights"]) | set(model["weights"])
         drift = math.sqrt(sum((prev_model["weights"].get(k, 0.0) - model["weights"].get(k, 0.0)) ** 2 for k in keys) + (prev_model["bias"] - model["bias"]) ** 2)
-    return dict(agendas=rw["agendas"], right=rw["right"], wrong=rw["wrong"], none=rw["none"], compared=compared, identical=identical,
+    return dict(agendas=rw["agendas"], right=rw["right"], wrong=rw["wrong"], none=rw["none"], compared=compared, identical=identical, differ_budget=differ_budget, differ_bug=differ_bug,
                 mean_before_prior=before(True), mean_before_base=before(False), weight_drift=drift)
 
 
