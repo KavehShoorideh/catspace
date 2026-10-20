@@ -14,6 +14,7 @@ The prior ORDERS, it never decides (the all-weapons rule): the agenda still stop
                                      feature dict (sklearn at build time only); the model is a JSON of weights the agenda reads without sklearn.
 
 Run:  .venv/bin/python -m catspace.incubator.analyst.discovery.question_prior build [--log question_log.jsonl] [--out question_prior.json]
+      .venv/bin/python -m catspace.incubator.analyst.discovery.question_prior loop --seeds 9-12 --rounds 2 [--per-round N]   (plan 53 (3): sample, run, grade, retrain, eval)
       .venv/bin/python -m catspace.incubator.analyst.discovery.question_prior eval  (held-out by puzzle id: how often the deciding question ranks first)
 """
 from __future__ import annotations
@@ -21,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 
 import chess
 
@@ -158,6 +160,8 @@ def grade(log_path, depth: int = 14) -> None:
     rows = _rows(log_path)
     cache, n = {}, 0
     for r in rows:
+        if r.get("sf") is not None:                      # already graded (the loop regrades nothing)
+            continue
         key = (r["fen"], r.get("decision"))
         if key not in cache:
             cache[key] = VD.verdict(r["fen"], r.get("decision"), depth)
@@ -172,14 +176,77 @@ def grade(log_path, depth: int = 14) -> None:
     print(f"OBS prior grade: {n} decisions graded by Stockfish (depth {depth}) over {len(agendas)} agendas: " + ", ".join(f"{k} {v}" for k, v in sorted(Counter(agendas.values()).items(), key=lambda t: str(t[0]))))
 
 
+def reward(rows: list) -> dict:
+    """plan 53 (3): the loop's reward over a set of log rows (pure). Per agenda (id, set): right = Stockfish RIGHT (or the puzzle's answer when ungraded), wrong = a decision
+    that is not right, none = no decision. The reward is the mean number of questions asked BEFORE the deciding one (its `order`), over right decisions only; lower is better."""
+    by = {}
+    for r in rows:
+        by.setdefault((r["id"], r.get("set")), []).append(r)
+    right = wrong = none = 0
+    before = []
+    for rs in by.values():
+        rs = sorted(rs, key=lambda r: r["order"])
+        if not rs[0].get("decision"):
+            none += 1
+            continue
+        ok = rs[0]["sf"] == "RIGHT" if rs[0].get("sf") else bool(rs[0].get("match"))
+        if not ok:
+            wrong += 1
+            continue
+        right += 1
+        d = next((r for r in rs if r.get("decided")), None)
+        if d is not None:
+            before.append(d["order"])
+    return dict(agendas=len(by), right=right, wrong=wrong, none=none, mean_before=(sum(before) / len(before)) if before else None)
+
+
+def loop(seeds: str, rounds: int, per_round: int = 1, n: int = 10) -> None:
+    """plan 53 (3): draw fresh samples, run them (a subprocess per set: the agenda's process-level caches, and the grader never beside an agenda) with the current prior,
+    grade the new rows, retrain on all rows so far, evaluate. One OBS line per round."""
+    import subprocess
+    import sys
+    from catspace.incubator.analyst.discovery import sample_puzzles as SP
+    a, _, b = seeds.partition("-")
+    pool = list(range(int(a), int(b or a) + 1))
+    log, model_path = paths.experiment(LOG), paths.derived(MODEL)
+    for rd in range(1, rounds + 1):
+        used, pool = pool[:per_round], pool[per_round:]
+        if not used:
+            print(f"OBS prior loop: seed range {seeds} exhausted after {rd - 1} rounds")
+            return
+        names = []
+        for seed in used:
+            name = f"rand{seed}_{n}"
+            json.dump([SP.record(r) for r in SP.rows(n, seed)], open(paths.derived(f"ledger_puzzles_{name}.json"), "w"), indent=1)
+            names.append(name)
+        for name in names:
+            cmd = [sys.executable, "-m", "catspace.incubator.analyst.discovery.analyse", "--set", name, "--quiet", "--qlog"]
+            if os.path.exists(model_path):
+                cmd.append("--prior")
+            subprocess.run(cmd, check=True)
+        grade(log)
+        model = build(log, model_path, verbose=False)
+        mine = [r for r in _rows(log) if r.get("set") in names]
+        rw = reward(mine)
+        mb = "n/a" if rw["mean_before"] is None else f"{rw['mean_before']:.2f}"
+        print(f"OBS prior loop round {rd} (seed {','.join(map(str, used))}): agendas {rw['agendas']}, decisions right {rw['right']} wrong {rw['wrong']} none {rw['none']}, "
+              f"mean questions asked before the deciding one {mb} (right decisions only), model rows {model['rows']} positives {model['positives']}")
+        evaluate(log)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("mode", choices=("build", "eval", "grade"))
+    ap.add_argument("mode", choices=("build", "eval", "grade", "loop"))
+    ap.add_argument("--seeds", default="9-10")
+    ap.add_argument("--rounds", type=int, default=1)
+    ap.add_argument("--per-round", type=int, default=1)
     ap.add_argument("--log", default=None)
     ap.add_argument("--out", default=None)
     a = ap.parse_args(argv)
     log = a.log or paths.experiment(LOG)
-    if a.mode == "build":
+    if a.mode == "loop":
+        loop(a.seeds, a.rounds, a.per_round)
+    elif a.mode == "build":
         build(log, a.out or paths.derived(MODEL))
     elif a.mode == "grade":
         grade(log)

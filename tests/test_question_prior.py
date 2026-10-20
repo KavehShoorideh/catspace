@@ -36,3 +36,13 @@ def test_a_wrong_decision_labels_the_question_naming_the_answer_target():
     assert [l for _, l in QP._label(rows)] == [0, 1]
     rows[1]["target_sq"] = chess.H8
     assert QP._label(rows) == []                                 # no question named the answer: nothing to learn from this agenda
+
+
+def test_reward_counts_right_wrong_none_and_the_questions_before_the_deciding_one():
+    def ag(i, decision, sf, decided_at, n=4):
+        return [dict(id=i, set="s", order=k, decided=(k == decided_at), decision=decision, sf=sf, match=False) for k in range(n)]
+    rows = ag("a", "e2e4", "RIGHT", 2) + ag("b", "d2d4", "RIGHT", 0) + ag("c", "g1f3", "WRONG", 1) + ag("d", None, None, -1)
+    rw = QP.reward(rows)
+    assert (rw["agendas"], rw["right"], rw["wrong"], rw["none"]) == (4, 2, 1, 1)
+    assert rw["mean_before"] == 1.0                              # (2 + 0) / 2, right decisions only
+    assert QP.reward([])["mean_before"] is None
