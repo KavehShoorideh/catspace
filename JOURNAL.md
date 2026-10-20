@@ -31933,3 +31933,24 @@ benefit needs a budget that cuts before the deciding question, which these sampl
 question finds its candidate moves (defects -> named fixes -> a filter over ALL legal moves by the "still" test and the forcing test; ~140 legal-move
 generations per question) and where the time goes (python-chess ~60% of own time, FEN round trips ~14%, the Rust word evaluator 9%: ~2.8 ms per inner
 question; plan 54 = one board per node, per-position caches, the hot words in the Rust core).
+
+## 2026-10-20 13:54 PDT -- THE RL LOOP FOR THE PRIOR WITH ITS INVARIANT AND PAIRED METRICS (plan 53 (3)); THE SCHEMA VERIFICATION IN RUST, IDENTICAL, +10% (plan 54 A)
+Kaveh: "RL loop to improve the prior?" then "Go on all of it ... time-sensitive stuff in Rust, RL loops in Python"; then "check the RL loop for bugs, keep
+track of some metrics to ensure it's behaving as planned". The loop (builder, 26e1b09a; my metrics f5c0c2e7, 2982ed9e, e6c181b0): per round a fresh
+sample of 10, each set run TWICE in subprocesses (the stake order and the prior), graded by Stockfish in its own pass, the model refit on all rows, and
+a metrics row per round (experiments/prior_loop_metrics.jsonl): (a) THE INVARIANT -- the prior orders, never decides: decisions identical with and
+without it, a difference allowed only where the budget cut a run (the rows carry the agenda's fuse hits), any other difference = BUG; (b) the PAIRED
+reward: questions asked before the deciding one on the SAME puzzles, prior vs stake order, right decisions only; (c) weight drift between rounds; (d)
+negatives per round. Bug-check found one real thing: the first invariant run showed 9/10 identical -- GYWyJ: the stake order's fuse went to the mate
+questions and the knight question's route Nd5 was a GAP; the prior asked it first and decided Nd5 (SF RIGHT). The ORDER decides what is asked in time
+under a budget: that is the prior's whole value, and the metric now tells it from a bug. OBS, five rounds (seeds 11-15, one run each, directional):
+invariant 10/10, 9/10 (budget), 9/10 (budget), 10/10, 10/10, BUG 0 throughout; paired questions-before-deciding prior vs stake order 0.43/0.43,
+0.86/0.83, 0.14/0.43, 2.00/2.62, 0.38/0.38; held-out rank-first prior vs stake 9/25 -> 13/40 -> 20/51 -> 26/56 vs 4/25 -> 6/56 as the log grew from
+148 to 343 rows (negatives 84 -> 181); drift 0.72, 1.39, 0.40, 0.81, 0.97. Honest: the paired gain is small (fractions of a question) because the stake
+order already asks the deciding question first most of the time; no round shows a trend over rounds yet; the features see nothing of the defects.
+Plan 54 Stage A (builder, 19b441cf, 03d9316b; verified): `analyst_core.verify_route` builds the schema terms in Rust and reads the legs, the tail and the
+alive test with no Python per candidate and no stdout capture; `binder.verify_tried` calls it (`BINDER_RUST`, the old path kept). My rerun of the
+harness: decisions and all tried tuples identical on 07Z0P (6822 calls), 0LRTF, rand1-3 (31k calls), 0 differences; seconds 12.7 -> 11.1, 11.8 -> 11.0,
+70.5 -> 61.7, 15.2 -> 13.3 (noisy, one run). Why small: the tail evaluation was already Rust; the binder's remaining cost is the evaluation itself
+(3.5 s of 07Z0P's 22 s under cProfile) and `second_moves` in python-chess. Stage B (the fix filter: `_still`, `routes_of`, the defect readers,
+`forcing_why`, a per-position cache) is with a builder now, same harness discipline.
