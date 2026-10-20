@@ -226,7 +226,8 @@ class FactStore:
                 return
             seen.add(i)
             names = ", ".join(chess.square_name(s) for s in sorted(f.reads))
-            out.append(f"{pad}#{i} {f.kind} {f.text} [value {f.value}, stake {f.stake}, chain stake {f.chain_stake}, {f.under}" + (", stale" if i in self.stale else "") + f"] reads {{{names}}}")
+            out.append(f"{pad}#{i} {f.kind} {f.text} [value {f.value}, stake {f.stake}, chain stake {f.chain_stake}, {f.under}" + (", stale" if i in self.stale else "") + "] "
+                       + (f"reads {{{names}}}" if f.reads else "reads: this whole position (a positional fact: the agenda there)"))
             for j in f.just:
                 walk(j, pad + "  ")
         walk(fid, "")

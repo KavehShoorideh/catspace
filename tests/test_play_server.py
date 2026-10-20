@@ -159,3 +159,17 @@ def test_52_19_3_the_server_thinks_on_the_humans_clock_and_the_lines_are_marked_
     call(port, "/api/play/move", {"uci": mv})
     st = wait_idle(port, 60)
     assert st["ply"] == 4 and time.time() - t1 < 40               # his move stopped the worker, and the engine answered
+
+
+def test_52_19_4_the_player_carries_the_fact_store_between_its_moves():
+    pl = PS.AgendaPlayer("random", seed=3)
+    b = chess.Board("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4")
+    mv, first, _ = pl.move(b)
+    store = pl.carry.facts
+    b.push(mv)
+    b.push_san("a6")                                               # the far wing
+    mv2, second, _ = pl.move(b)
+    assert pl.carry.facts is store                                 # the same store: move 2 is asked against what move 1 derived
+    served = [ln for ln in second if "served from the store (fact #" in ln]
+    assert served, "a fact derived on the first move whose reads are untouched must serve the second"
+    print(f"OBS 52.19 (4): the player's second move was served {len(served)} root questions from the first move's facts")

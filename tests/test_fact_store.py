@@ -220,3 +220,38 @@ def test_52_19_3_the_trace_prints_both_tiers_and_the_deciding_claims_graph():
     t = ag.trace()
     assert "foreground: recomputed" in t and "background queue:" in t and "justification graph of the decision (Rh8+)" in t
     print("\n".join(ln for ln in ag.lines if ln.startswith("facts:") or "graph" in ln))
+
+
+# ---------------------------------------------------------------------------------------------------------------- item 4: across moves and puzzles
+
+def test_52_19_4_a_fact_derived_on_one_move_whose_reads_are_untouched_is_served_on_the_next():
+    ag1 = AG.Agenda(state_of(OPEN, "w"))
+    ag1.ask()
+    b = chess.Board(OPEN)
+    ag1.ctx.facts.advance(b)
+    b2 = b.copy()
+    b2.push_san("a3")
+    b2.push_san("a6")                                                  # the far wing: our move and theirs, the reads mostly untouched
+    ag1.ctx.facts.advance(b2)
+    ag2 = AG.Agenda(state_of(b2.fen(), "w"), carry=ag1.ctx)
+    ag2.ask()
+    d = ag2.facts_delta()
+    served = [ln for ln in ag2.lines if "served from the store (fact #" in ln]
+    assert d["served"] > 0 and served and ag2.asked < ag1.asked
+    assert ag2.ctx.memo is ag1.ctx.memo and ag2.ctx.facts is ag1.ctx.facts      # the exact memos and the store outlive the agenda
+    print(f"OBS 52.19 (4): move 2 served {d['served']} facts from move 1 (asked {ag2.asked} against {ag1.asked}); {len(served)} root questions served")
+
+
+def test_52_19_4_unrelated_puzzles_share_few_facts_and_say_so():
+    ctx, before, cross = None, {}, 0
+    for fen, us in (("2k5/2P4R/1K6/8/8/p7/8/2r5 w - - 0 1", "w"), ("r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w - - 0 1", "w")):
+        b = chess.Board(fen)
+        if ctx is not None:
+            ctx.facts.advance(b)
+            before = {f.id: f.served for f in ctx.facts.facts.values()}
+        ag = AG.Agenda(state_of(fen, us), carry=ctx)
+        ag.ask()
+        ctx = ag.ctx
+    cross = sum(f.served - before[f.id] for f in ctx.facts.facts.values() if f.id in before)
+    print(f"OBS 52.19 (4): facts of the first puzzle served in the second (an unrelated position): {cross} -- expect few")
+    assert cross <= 10

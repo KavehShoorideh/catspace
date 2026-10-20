@@ -105,6 +105,14 @@ class ChaseCtx:
         self.unaddressed = 0                      # 52.17 (2): forcing moves NOT followed by a chase because they fix no defect of the goal and make no claim of their own
 
 
+    def carry(self) -> "ChaseCtx":
+        """52.19 (4): a fresh context for the next root agenda that keeps what outlives one agenda -- the fact store, the FEN memos, the route memo, the landing table (all exact or
+        read-set valid) -- with the counters, the fuse and the deadline new."""
+        c = ChaseCtx(self.facts)
+        c.memo, c.routes, c.theirs, c.their_ags, c.landings = self.memo, self.routes, self.theirs, self.their_ags, self.landings
+        c.their_facts, c.gap_facts = self.their_facts, self.gap_facts
+        return c
+
     def out_of_time(self) -> bool:
         """52.17 (5): the deadline (or the slice of it this route may use) has passed. Never true when no seconds were given."""
         if self.deadline is None:
@@ -116,7 +124,7 @@ class ChaseCtx:
 
 
 class Agenda:
-    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None, chase_log: str | None = None, their: "Agenda | None" = None, keep: int = 0, seconds: "float | None" = None, facts: "FS.FactStore | None" = None):
+    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None, chase_log: str | None = None, their: "Agenda | None" = None, keep: int = 0, seconds: "float | None" = None, facts: "FS.FactStore | None" = None, carry: "ChaseCtx | None" = None):
         R.reset_ids()
         self.their = their                                      # 52.14: THEIR agenda on this board with the move passed to them: its claims are asked as save roots (an inner agenda on a static leaf)
         self.keep = keep                                        # 52.14: the gain (a balance, us to move) the static leaf stands on: a parry of a threat is verified when it keeps at least 1 of it
@@ -126,7 +134,7 @@ class Agenda:
         self.inherited = 0
         self.min_stake = min_stake                              # 52.12: an inner agenda asks only the roots whose stake can still rescue the route (a root below it is not pushed)
         self.chase_depth = chase_depth                          # 52.12: 0 for the root agenda, +1 per inner agenda of a chase
-        self.ctx = ctx if ctx is not None else (ChaseCtx(facts) if side_depth else None)       # their agendas (side_depth 0, no ctx) never chase
+        self.ctx = ctx if ctx is not None else ((carry.carry() if carry is not None else ChaseCtx(facts)) if side_depth else None)       # their agendas (side_depth 0, no ctx) never chase
         if self.ctx is not None and chase_log is not None:
             self.ctx.tag = chase_log                            # 52.13 (4): the id the chase log rows carry
         self.memory = memory or []                              # 52.9: [(sim, record)] recalled for this state; it only REORDERS equal stakes, never adds or removes

@@ -245,11 +245,17 @@ class AgendaPlayer:
         fen = board.fen()
         us = "w" if board.turn else "b"
         with AGENDA_LOCK:
-            ag = Agenda(state_of(fen, us), seconds=seconds)  # chase_log stays unset in a server
+            if self.carry is not None:
+                stale = self.carry.facts.advance(board)        # 52.19 (2): the listener -- what the last two plies changed flags the facts that read it (nothing is recomputed here)
+                if stale:
+                    say(f"facts: {len(stale)} flagged stale by the last two plies (recomputed lazily, when a live question needs them)")
+            ag = Agenda(state_of(fen, us), seconds=seconds, carry=self.carry)  # chase_log stays unset in a server
             ag.lines = TraceLines(say)                        # the agenda only ever appends (verified: append / += in agenda.py); no edit to agenda.py
             ag.ask()
             decision = ag.decision()
-            self.carry = ag.ctx                                # kept to think on the human's clock; the next move starts from nothing (item 4 carries it)
+            if self.carry is None:
+                ag.ctx.facts.advance(board)
+            self.carry = ag.ctx
         move = None
         if decision is not None and decision.move:
             try:

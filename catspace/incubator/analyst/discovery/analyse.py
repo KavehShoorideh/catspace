@@ -23,7 +23,7 @@ from catspace.incubator.analyst.discovery.state import state_of
 AGENDA_STORE = "agenda_states.jsonl"       # 52.9: the agenda's own store (plan 50's reasoned_states.jsonl keeps its record of the exhaustive ladder)
 
 
-def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store: bool = False, set_name: str = "", k: int = 3, leaf_all: bool = False, seconds: "float | None" = None, ponder: "float | None" = None) -> dict:
+def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store: bool = False, set_name: str = "", k: int = 3, leaf_all: bool = False, seconds: "float | None" = None, carry=None, ponder: "float | None" = None) -> dict:
     BV.install_terms()
     t0 = time.time()
     fen = p["fen"]
@@ -39,7 +39,9 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
         for sim, r in recalled:
             log(f"recall: seen {r['id']} (sim {sim}): {r.get('goal')} by {r.get('lemma')}, fixes {r.get('fixes')}")
     pc0 = R.PASS_CLAIMS[0]
-    ag = Agenda(st, memory=recalled, leaf_all=leaf_all, chase_log=p["id"], seconds=seconds)
+    if carry is not None:                                        # 52.19 (4): --memory keeps the fact store between the puzzles of a set (unrelated positions: expect few hits)
+        carry.facts.advance(b)
+    ag = Agenda(st, memory=recalled, leaf_all=leaf_all, chase_log=p["id"], seconds=seconds, carry=carry)
     ag.ask()
     fx = ag.facts_delta()
     ans = b.san(chess.Move.from_uci(p["answer"]))
@@ -92,14 +94,16 @@ def main():
     ap.add_argument("--ponder", type=float, default=None, help="52.19 (3): after each puzzle drain the background queue (gap routes by chain stake) for this many seconds")
     ap.add_argument("--no-memory", action="store_true", help="(kept for the batch scripts) the stake-only order, the default")
     a = ap.parse_args()
+    from catspace.incubator.analyst.discovery.agenda import ChaseCtx
+    carry = ChaseCtx() if a.memory else None                     # 52.19 (4): --memory also keeps the fact store (and the exact memos) between the puzzles
     ps = PA.load_set(a.set)
     if a.store:
         done = RM.stored_ids(paths.derived(AGENDA_STORE))
         ps = [p for p in ps if p["id"] not in done] if not a.id else ps
     if a.id:
-        analyse(next(x for x in ps if x["id"] == a.id), memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds, ponder=a.ponder)
+        analyse(next(x for x in ps if x["id"] == a.id), memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds, carry=carry, ponder=a.ponder)
         return
-    res = [analyse(p, quiet=True, memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds, ponder=a.ponder) for p in ps]
+    res = [analyse(p, quiet=True, memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds, carry=carry, ponder=a.ponder) for p in ps]
     if a.store:
         print(f"OBS agenda store: {len(RM.load(paths.derived(AGENDA_STORE)))} records")
     for r in res:
