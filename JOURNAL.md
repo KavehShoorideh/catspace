@@ -31865,3 +31865,24 @@ then 1.3 (07Z0P); builder's before/after: mean overshoot 0.12 -> 0.27 s at 1 s, 
 The overshoot ROSE by design (finishing the route costs their agenda on each remaining reply); decisions at timed budgets unchanged.
 Lesson: caching is no longer the lever; the unit of cost is their agenda after a pass, positional by construction. Open: the chase-claim read set is
 not provably complete (evidence = identical decisions only); bound the route in hand to its current reply if the overshoot matters in play.
+
+## 2026-10-19 22:55 PDT -- 07Z0P DECIDED: A REPLY CLOSES ONLY WHEN THE GOAL IS MET, THE ATTACKER ADDED WITH TEMPO, THE REFUTER FIX (plan 52.22)
+Kaveh walked 07Z0P (2r2rk1/1p4bp/6p1/pP1qpp2/6PP/P1n1BQ2/2B2R2/5RK1 w): down 2; Bb3 skewers on the light diagonal but Qxb3; trade the queens so
+the piece on d5 is a knight, which cannot take the pinner; Bb3 pins; they can add one rook (c5 covered, d8 one), we add two. SF +301 d20 (next
+best -209). The engine missed it: standalone after the trade it found Bb3 but valued it 1 because `_closed_by_rule` closed ...Rfd8 at "exchange
++1" (need = 1 - dbal, one pawn ahead, not the goal's stake); nothing named the trade. Better way than a "trade" word (checked on Kaveh's ask): the
+existing shortcut gets the goal as its condition; the defended defect gets the twin fix "add an attacker with tempo"; and the REFUTER fix -- a
+killed route names the reply that refuted it, and removing/replacing the refuting piece with tempo (a capture with a forced recapture whose piece
+cannot make the refuting move) is the same fix the agenda applies to defenders and blockers. Built by the Sonnet builder: fc280e66 (1), c24ae3d5
+(2, carries the tests of 1 and 2), 032b7885 (3: Ideas/Refuter.lean `Refutes` + `refuter_unforces` on standard axioms -- thin: it states that a
+refuting reply unforces the goal; the recapture condition is read from the rules in Python; glossary + lean_index built). Verified here: 224 tests,
+lake build green (6098 jobs).
+OBS (one run each, directional), my rerun vs the 52.21 run: dev_20 decided 14 -> 15 MATCH 15 (+07Z0P: "Qxd5+: refuter fix -- Bb3 fails to Qxb3
+(the refuter: the Q on d5); exchange it first -- Qxd5+ Nxd5: the N on d5 cannot make that move; Bb3 is asked again after it"; SF loss -3 RIGHT),
+inner agendas 1467 -> 1394, inner questions 14329 -> 14368, replies closed by rule 303 -> 362, refuter fixes 1, seconds 41.4 -> 40.3; fresh_60
+decided 52 MATCH 52 (same 8 undecided), inner agendas 3617 -> 3387, inner questions 30316 -> 28665, closed by rule 2133 -> 2033, refuter fixes 0,
+seconds 96.0 -> 94.9. Explanation-only changes, same move: 02XyH (back to "Nxf6+ then Bxh7" d2; SF loss -28 RIGHT), 08A6a (shorter chase text).
+Honest grading: the DECISION is right and named, but the claim's VALUE is 1, not 3: after ...Rfd8 the re-asked Bb3 still ends at 1 (Rd2 meets the
+fuse inside the re-ask), so Kaveh's two-against-one count is still not read to its end; the refuter fix fired on no other set puzzle; it applies to
+win goals only; the route memo is goal-aware only for win goals. Builder's test edit: 0agl8's exact kill text loosened to "their <move>+ wins 100"
+(the question order changed). Play server restarted on this code.
