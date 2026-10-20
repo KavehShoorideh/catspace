@@ -122,6 +122,8 @@ class ChaseCtx:
         self.roots_served = 0                     # 52.21 (1): root lists (the reach roots) served from the fact store, not rescanned
         self.finished = 0                         # 52.21 (3): routes that were in hand when the deadline passed and were run to their end
         self.chase_served = 0                     # 52.21 (2): chase claims served from the store on a board whose cells matched the claim's read set
+        self.unmet = 0                            # 52.22 (1): replies NOT closed by the exchange because the chased goal (win the piece) is not met by it and a forcing fix of its defect remains
+        self.open_lines: list = []                # ... and the trace line of each (printed by the root)
         self.unaddressed = 0                      # 52.17 (2): forcing moves NOT followed by a chase because they fix no defect of the goal and make no claim of their own
 
 
@@ -160,6 +162,7 @@ class Agenda:
             G.clear_caches()                                    # 52.20 (1): the word / FEN caches live for one root question
         self.their = their                                      # 52.14: THEIR agenda on this board with the move passed to them: its claims are asked as save roots (an inner agenda on a static leaf)
         self.keep = keep                                        # 52.14: the gain (a balance, us to move) the static leaf stands on: a parry of a threat is verified when it keeps at least 1 of it
+        self._chase_q = None                                    # 52.22 (1): the question being chased (a win question's stake is what the exchange must reach to close a reply by rule)
         self._chasing = None                                    # 52.16 (4): the promote question being chased (the inner agendas inherit it as a kill where nothing it read has changed)
         self.threat_qs: list = []                               # 52.14: (question, their claim) of every threat root pushed from `their`
         self.inherit = inherit or {}                            # 52.12 (3), 52.13 (1): key -> {kind: kill | claim, reads, diff, ...} for the outer agenda's SETTLED questions (a kill, or a claim with its reads)
@@ -513,6 +516,9 @@ class Agenda:
         if self.ctx is not None and self.chase_depth == 0 and self.ctx.static_lines:       # 52.14: the static leaves read from their side, and the parries
             self.lines.append(f"static leaves read from their side, threats asked as save roots ({len(self.ctx.static_lines)}):")
             self.lines += ["  " + x for x in self.ctx.static_lines]
+        if self.ctx is not None and self.chase_depth == 0 and self.ctx.open_lines:       # 52.22 (1): the replies the exchange did not close because the goal was not met
+            self.lines.append(f"replies not closed by rule, the goal not met ({self.ctx.unmet}):")
+            self.lines += ["  " + x for x in self.ctx.open_lines[:12]]
         if self.ctx is not None and self.chase_depth == 0 and self.ctx.rows:       # 52.13 (4): the chase log of this root, appended once (per item)
             import json
             from catspace.io import paths
@@ -1373,11 +1379,14 @@ class Agenda:
         b, ctx = self.board, self.ctx
         key = (_pos_key(b.fen()), m.uci() + (":promote" if promote else ""))
         pre = self._pre.pop(key, None) if not cheap else None      # the replies the cheap pass closed by rule (value, why)
+        cq = self._chase_q
+        gstake = cq.stake if cq is not None and cq.goal == "win" and cq.pattern.get("target") is not None else 0        # 52.22 (1): what the exchange must reach to close a reply by rule
         if key in ctx.routes:
             hit = ctx.routes[key]
-            if hit["gap"] is None:
+            stale = hit["gap"] is None and hit["killed"] is None and gstake and hit.get("closed_min", gstake) < gstake and hit.get("stake_checked", 0) < gstake       # a value closed by a short exchange under a lesser goal is not this goal's
+            if hit["gap"] is None and not stale:
                 return hit
-            if ctx.left <= hit["cut_left"]:                      # 52.13 (2a): a GAP stays a GAP while the fuse left is no more than when it was cut
+            if not stale and ctx.left <= hit["cut_left"]:                      # 52.13 (2a): a GAP stays a GAP while the fuse left is no more than when it was cut
                 ctx.gap_reused += 1
                 return dict(hit, reused=True)
         san = b.san(m)
@@ -1421,11 +1430,14 @@ class Agenda:
         rows.sort(key=lambda t: (0 if t[4] else 1 if t[2] else 2 if t[3] else 3, t[0], t[1]))
         gains = []
         closed_now = {}
+        closed_min = BD.MATE_VALUE                               # the least value an exchange closed a reply at (the memo entry keeps it: another goal's stake may ask for more)
         for dbal, uci, chk, cap, rec, mate1 in rows:
             P2 = P2_of(uci)
             san_r = san_of(uci)
             if pre is not None and uci in pre:                   # closed by rule in the cheap pass: counted and logged there
                 val, why = pre[uci]
+                if val < BD.MATE_VALUE:
+                    closed_min = min(closed_min, val)
                 gains.append(val)
                 res["parts"].append(f"after {san_r}: closed by rule: {why} -> {val}")
                 continue
@@ -1436,6 +1448,8 @@ class Agenda:
             closed = ((BD.MATE_VALUE, "mate in one") if (P2.mate_in_one() if mate1 is None else mate1) else None) if promote else self._closed_by_rule(P2, dbal, mate1)
             if closed is not None:
                 val, why = closed
+                if val < BD.MATE_VALUE:
+                    closed_min = min(closed_min, val)
                 gains.append(val)
                 res["parts"].append(f"after {san_r}: closed by rule: {why} -> {val}")
                 ctx.closed += 1
@@ -1545,6 +1559,7 @@ class Agenda:
         if cheap and res.get("pending") and res["killed"] is None:
             self._pre[key] = closed_now                          # not memoised: the second pass finishes it
             return res
+        res["closed_min"], res["stake_checked"] = closed_min, gstake
         if res["killed"] is None and res["gap"] is None:
             res["value"] = min(gains) if gains else 0
         if res["gap"] is not None:
@@ -1625,10 +1640,40 @@ class Agenda:
         best = P2.exchange()
         if best < need:
             return None
+        q = self._chase_q
+        if q is not None and q.goal == "win" and q.pattern.get("target") is not None and dbal + best < q.stake:
+            fix = self._unmet_fix(P2, q)                            # 52.22 (1): the exchange reaches the route's need but not what the goal asks
+            if fix:
+                self.ctx.unmet += 1
+                line = f"not closed by rule: the goal ({q.text}, stake {q.stake}) is not met by the exchange ({dbal + best:+d}); a forcing fix remains ({fix})"
+                if line not in self.ctx.open_lines:
+                    self.ctx.open_lines.append(line)
+                return None
         t, _cl = self._their_pass(P2.fen())
         if t:
             return None
         return dbal + best, f"exchange +{best} ({R.exchange_read(chess.Board(P2.fen()))}), nothing of theirs"
+
+    def _unmet_fix(self, P2: "AC.Pos", q: R.Question) -> "str | None":
+        """52.22 (1): the goal's piece is still on its square on P2 (our move), it is not won by the exchange, and `fixes_of` finds a forcing fix of its defect there
+        (remove the defender with tempo, attack it with tempo, trap it, discover). -> the fix moves, or None (then the reply closes by rule as before)."""
+        t = q.pattern["target"]
+        pc0 = self.board.piece_at(t)
+        b2 = chess.Board(P2.fen())
+        pc2 = b2.piece_at(t)
+        if pc0 is None or pc2 is None or pc2.color == self.me or pc2.piece_type != pc0.piece_type:
+            return None
+        defects = R.material_defects(b2, self.us, t)
+        if not defects:
+            return None
+        saved = R._ids[0]
+        dummy = R.new_question("win", q.stake, dict(q.pattern))
+        sans = []
+        for d in defects:
+            for f in R.fixes_of(d, dummy, b2, self.us):
+                sans += [r.san for r in R.all_routes(f) if r.san not in sans]
+        R._ids[0] = saved
+        return ", ".join(sans[:3]) if sans else None
 
     def _log(self, key: tuple, rep: str, outcome: str, dbal: int, inner: int | None, reads, reason: str | None) -> None:
         """52.13 (4): one row per reply read, for the plan 53 ordering prior (the prior itself is not built). Buffered; written by the root agenda when it ends."""
@@ -1775,6 +1820,7 @@ class Agenda:
         done, cut, route_facts = [], False, []
         pool = self.ctx.left
         self._chasing = q if q.goal == "promote" else None
+        self._chase_q = q
         # 52.17 (4): CHEAPEST REPLY FIRST. Before any route opens an inner agenda, every route's replies are read at the static leaf and what the rules close is closed (a standing
         # kill, a mate or stalemate against us, a mate in one, the exchange with nothing of theirs): a route killed there never draws a share of the fuse, and the routes still open
         # share it in order.
@@ -1823,6 +1869,7 @@ class Agenda:
             else:
                 self.lines.append(f"    {r.san}: value {res['value']} (no gain on the worst reply)")
         self._chasing = None
+        self._chase_q = None
         q._chased = not cut                                      # 52.19: a kill is "chased" only when no route was cut (a GAP); a cut chase is as weak as no chase
         self._qdeps = list(dict.fromkeys(route_facts))           # a kill stands on every route's facts ...
         if self.chase_depth == 0 and pool > 1 and any(t[4].goal in ("mate", "win", "promote") and (self.best is None or self.best[0] < t[4].stake) for t in self.heap):
