@@ -31836,3 +31836,16 @@ whose chase is no stronger (chase power 0/1/2); chase claims stay non-portable; 
 Trace wart: inherited lines print "the piece on ?". Play server restarted on this code (--seconds 5, background tier on); still never opened in a
 browser. Next (discussed, no go): trim the trace (print each line once, variations as an indented tree, a question answered by a stored claim says
 so in one line); the held-measure kill's Lean proof; the landing table over win/promote roots; their threats as roots; play games first.
+
+## 2026-10-19 18:32 PDT -- REPEATED WORK CUT: WORD READS MEMOISED, DEFECT SCANS HOISTED (plan 52.20)
+Kaveh asked how long each puzzle takes (median 0.2 s on both sets; a tail of 8 puzzles at 11-19 s) and for a timing profile. cProfile on 0KCeb
+and 07Z0P, same shape: ~40% in the Rust word reads (203k reads; 149k FEN strings built for 19k distinct boards; 39% exact repeats of (board,
+term, mover); install_terms re-run on every read), ~16% legal-move generation, ~10% the mate defects of the unchanged starting board rescanned
+once per candidate move in _still (84k scans for 3k route lists); the rest spread thin. The deep part (their agenda after every forced reply) is
+the design. Built by me on Kaveh's "Do it": (1) b1f20b83 val_at memoised on (fen, term, mover), a per-board FEN cache on the transposition key,
+install_terms once, caches cleared at every fresh root question; (2)+(3) e718f8b2 the before-defects computed once per routes_of, reach_steps
+lists the legal moves once (two items in one commit: one file, one change set). 214 tests pass (the five agenda files + vocabulary + selfmine).
+OBS (one run each, directional), both sets: every decision, MATCH and tally (inner questions, fuse hits) identical to the 52.19 run; dev_20
+seconds 57.0 -> 41.8; fresh_60 seconds 140.8 -> 96.5; the tail: 07Z0P 19.0 -> 13.2, 0KCeb 18.3 -> 11.8, 0YcEF 17.6 -> 11.3, 06JIF 17.4 -> 11.0,
+04Qx2 16.5 -> 13.0. Remaining time is the chase itself; the next cut would be structural (serving chase claims across positions, or the hot
+loop in Rust as 52.13 named), not a cache. Play server restarted on this code.
