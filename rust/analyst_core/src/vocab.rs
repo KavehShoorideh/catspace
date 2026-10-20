@@ -415,7 +415,13 @@ pub fn set(t: &Term, q: &Chess, lone: Color) -> Bitboard {
         Term::Nearer(a, c) => match (s1(a), s1(c)) {
             (Some(x), Some(y)) => Bitboard::FULL.into_iter().filter(|u| kd(*u, x) < kd(*u, y)).collect(), _ => Bitboard::EMPTY },
         Term::Mobility(a) => { let Some(x) = s1(a) else { return Bitboard::EMPTY }; mobility(q, x) }
-        Term::And(a, c) => set(a, q, lone) & set(c, q, lone),
+        // 54 (B5): the intersection reads the cheap side first and scans the attacked / hit squares only inside it (the same set; `hit` over all 64 squares was the leaf's cost)
+        Term::And(a, c) => {
+            let (first, second) = if is_scan(a) && !is_scan(c) { (c, a) } else { (a, c) };
+            let x = set(first, q, lone);
+            if x.is_empty() { return Bitboard::EMPTY; }
+            x & set_masked(second, q, lone, x)
+        }
         Term::Or(a, c) => set(a, q, lone) | set(c, q, lone),
         Term::Not(a) => !set(a, q, lone),
         Term::Reach(a, c) => {
@@ -434,6 +440,73 @@ pub fn set(t: &Term, q: &Chess, lone: Color) -> Bitboard {
     }
 }
 
+fn is_scan(t: &Term) -> bool { matches!(t, Term::Attacked | Term::Free | Term::Hit | Term::Unhit) }
+
+/// `set(t)` restricted to the squares of `mask` (equal to `set(t) & mask` for every term; the four whole-board scans visit only the mask).
+fn set_masked(t: &Term, q: &Chess, lone: Color, mask: Bitboard) -> Bitboard {
+    if !is_scan(t) { return set(t, q, lone); }
+    let b = q.board();
+    let (king_side, by) = if matches!(t, Term::Attacked | Term::Free) { (lone, !lone) } else { (!lone, lone) };
+    let Some(k) = b.king_of(king_side) else { return Bitboard::EMPTY };
+    let occ = b.occupied().without(k);
+    let at: Bitboard = mask.into_iter().filter(|s| b.attacks_to(*s, by, occ).any()).collect();
+    if matches!(t, Term::Attacked | Term::Hit) { at } else { mask & !at }
+}
+
+/// 54 (B5): a cost class for ordering the summands of a zero test (cheap bitboard counts first, the scans next, the move generation last).
+fn cost(t: &Term) -> u32 {
+    match t {
+        Term::Least(_) | Term::Most(_) | Term::MoveCount | Term::Moves(_) | Term::Forcing(_, _) | Term::Mobility(_) | Term::Attackable(_, _) | Term::Declined(_) => 1000,
+        Term::Hit | Term::Unhit | Term::Attacked | Term::Free => 50,
+        Term::Count(a) | Term::Rank(a) | Term::File(a) => cost(a),
+        Term::And(a, c) | Term::Or(a, c) | Term::Sum(a, c) => cost(a) + cost(c),
+        _ => 1,
+    }
+}
+
+fn sum_terms<'a>(t: &'a Term, out: &mut Vec<&'a Term>) {
+    if let Term::Sum(a, c) = t { sum_terms(a, out); sum_terms(c, out); } else { out.push(t); }
+}
+
+/// `num(Sum ...) == 0`: every summand is a non-negative count, so the first nonzero one decides; the cheapest are read first.
+fn sum_is_zero(t: &Term, q: &Chess, lone: Color) -> bool {
+    let mut v = Vec::with_capacity(8);
+    sum_terms(t, &mut v);
+    if v.len() > 1 { v.sort_by_cached_key(|x| cost(x)); }
+    v.into_iter().all(|x| num(x, q, lone) == 0)
+}
+
+/// 54 (B5): a term over the material alone (balance, our / their material, numbers and their min / max / sum / diff): its value from the two materials
+/// (ours, theirs; each as `material` gives it) with no board.
+fn material_only(t: &Term) -> bool {
+    match t {
+        Term::Balance | Term::MaterialUs | Term::MaterialThem | Term::Int(_) => true,
+        Term::Min(a, c) | Term::Max(a, c) | Term::Sum(a, c) | Term::Diff(a, c) => material_only(a) && material_only(c),
+        _ => false,
+    }
+}
+fn material_val(t: &Term, us: i64, them: i64) -> u32 {
+    match t {
+        Term::Balance => (us.max(0) as u32 + 64).saturating_sub(them.max(0) as u32),
+        Term::MaterialUs => us.max(0) as u32,
+        Term::MaterialThem => them.max(0) as u32,
+        Term::Int(n) => (*n).max(0) as u32,
+        Term::Min(a, c) => material_val(a, us, them).min(material_val(c, us, them)),
+        Term::Max(a, c) => material_val(a, us, them).max(material_val(c, us, them)),
+        Term::Sum(a, c) => material_val(a, us, them) + material_val(c, us, them),
+        Term::Diff(a, c) => material_val(a, us, them).abs_diff(material_val(c, us, them)),
+        _ => 0,
+    }
+}
+/// The two materials (ours, theirs) after the move `m` of the side to move, without playing it: a capture takes the captured kind off, a promotion trades the pawn for the new piece.
+fn material_after(q: &Chess, lone: Color, m: &Move, us: i64, them: i64) -> (i64, i64) {
+    let mover_is_us = q.turn() == !lone;
+    let (mut mine, mut theirs) = if mover_is_us { (us, them) } else { (them, us) };
+    if let Some(r) = m.capture() { theirs -= crate::rules::val(r); }
+    if let Some(r) = m.promotion() { mine += crate::rules::val(r) - crate::rules::val(Role::Pawn); }
+    if mover_is_us { (mine, theirs) } else { (theirs, mine) }
+}
+
 /// `num` with an alpha-beta window: exact whenever the true value lies inside (alpha, beta); outside it the result is only a bound on the right side. Only
 /// `Least` / `Most` pass the window down (a pure min / max over integers, so the pruning is exact); every other term is evaluated plainly. At the top
 /// (0, u32::MAX) the value is exact. No legal moves: 0, as the unpruned fold.
@@ -441,20 +514,44 @@ fn num_ab(t: &Term, q: &Chess, lone: Color, mut alpha: u32, mut beta: u32) -> u3
     match t {
         Term::Least(a) | Term::Most(a) => {
             let least = matches!(t, Term::Least(_));
-            let mut ms: Vec<_> = q.legal_moves().into_iter().collect();
+            let ms = q.legal_moves();
             if ms.is_empty() { return 0; }
-            ms.sort_by_key(|m| !m.is_capture());
+            // 54 (B5): a constant body is its own min / max over the replies (no move is played to read it)
+            if let Term::Int(n) = **a { return n.max(0) as u32; }
             let mut best = if least { u32::MAX } else { 0 };
-            for m in &ms {
-                let v = num_ab(a, &after(q, m), lone, alpha, beta);
-                if least {
-                    best = best.min(v);
-                    beta = beta.min(best);
-                    if best <= alpha { break; }
-                } else {
-                    best = best.max(v);
-                    alpha = alpha.max(best);
-                    if best >= beta { break; }
+            // a body that reads the material alone is read off each move's capture and promotion: no board is built for it
+            if material_only(a) {
+                let (us, them) = (material(q.board(), !lone), material(q.board(), lone));
+                'mmoves: for pass in 0..2 {
+                    for m in ms.iter().filter(|m| m.is_capture() == (pass == 0)) {
+                        let (u2, t2) = material_after(q, lone, m, us, them);
+                        let v = material_val(a, u2, t2);
+                        if least {
+                            best = best.min(v);
+                            beta = beta.min(best);
+                            if best <= alpha { break 'mmoves; }
+                        } else {
+                            best = best.max(v);
+                            alpha = alpha.max(best);
+                            if best >= beta { break 'mmoves; }
+                        }
+                    }
+                }
+                return best;
+            }
+            // captures first, then the rest, each in the generator's order (what the stable sort by `!is_capture` gave), without sorting
+            'moves: for pass in 0..2 {
+                for m in ms.iter().filter(|m| m.is_capture() == (pass == 0)) {
+                    let v = num_ab(a, &after(q, m), lone, alpha, beta);
+                    if least {
+                        best = best.min(v);
+                        beta = beta.min(best);
+                        if best <= alpha { break 'moves; }
+                    } else {
+                        best = best.max(v);
+                        alpha = alpha.max(best);
+                        if best >= beta { break 'moves; }
+                    }
                 }
             }
             best
@@ -507,6 +604,7 @@ pub fn num(t: &Term, q: &Chess, lone: Color) -> u32 {
         Term::Min(a, c) => num(a, q, lone).min(num(c, q, lone)),
         Term::Max(a, c) => num(a, q, lone).max(num(c, q, lone)),
         Term::Diff(a, c) => num(a, q, lone).abs_diff(num(c, q, lone)),
+        Term::Eq(a, c) if matches!(**c, Term::Int(0)) && matches!(**a, Term::Sum(_, _)) => sum_is_zero(a, q, lone) as u32,
         Term::Eq(a, c) => (num(a, q, lone) == num(c, q, lone)) as u32,
         Term::Int(n) => (*n).max(0) as u32,
         _ => 0,
