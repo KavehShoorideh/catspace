@@ -281,6 +281,24 @@ class Agenda:
         walk(q)
         return tuple(out)
 
+    def _better(self, value, second, claim: Claim) -> bool:
+        """53 (3): is (value, second, claim) a better best than the one held? Greater wins; at EQUAL value the tie is broken by the claim itself, never by the order asked (the prior
+        orders, it must not decide: r3oph's Rxd1+ and Nxe5 both read 1 and the first asked won): the question's stake, then the shape key the smallest-loss rule uses (fewest
+        hanging, most guarded, most poking), then the move's uci (a fixed, if arbitrary, last resort)."""
+        if self.best is None:
+            return True
+        if (value, second) != self.best[:2]:
+            return (value, second) > self.best[:2]
+        def key(c):
+            stake = next((q.stake for q in self.all if q.id == c.qid), 0)
+            mv = c.move or ""
+            try:
+                sh = PA.shape_key(PA.shape(self.board.fen(), [(mv[:2], mv[2:4])], self.us, threats=False)) if len(mv) >= 4 else ()
+            except Exception:
+                sh = ()
+            return (stake, tuple(-x for x in sh) if sh else (), mv)
+        return key(claim) > key(self.best[2])
+
     def _stamp(self, claim: Claim, q: R.Question) -> Claim:
         claim.goal = q.goal
         claim.fixes = self._fix_kinds(q, claim.move)
@@ -568,8 +586,8 @@ class Agenda:
             if not self.heap:
                 break
             nstake = self.heap[0][4].stake
-            if self.best and self.best[0] >= nstake:
-                self.lines.append(f"STOP (a): the best claim ({self.best[2].what}, {self.best[0]}) is at least the stake of every open question (next: {nstake})")
+            if self.best and (self.best[0] > nstake or self.best[0] >= BD.MATE_VALUE):      # 53 (3): STRICTLY above the next stake (a question of equal stake may still claim as much with a better shape; the order asked must not decide), a mate ends everything
+                self.lines.append(f"STOP (a): the best claim ({self.best[2].what}, {self.best[0]}) is above the stake of every open question (next: {nstake})")
                 return
             if self.asked >= self.budget:
                 left = [t[4] for t in self.heap]
@@ -639,7 +657,7 @@ class Agenda:
             q.status, q.claimed, q.reads = "verified", (hit["net"], cl, hit["reads"]), hit["reads"]
             self.ctx.inherited_claims += 1
             self.lines.append(f"Q{q.id} {q.text}: inherited: nothing changed for {what}: CLAIM {cl.kind} {cl.what} (value {cl.value}, net {hit['net']}), lemma {cl.lemma}")
-            if self.best is None or (hit["net"], 0) > self.best[:2]:
+            if self._better(hit["net"], 0, cl):
                 self.best = (hit["net"], 0, cl)
                 self.asked_at_claim = self.asked
         else:
@@ -694,7 +712,7 @@ class Agenda:
             q.status, q.claimed, q.reads = "verified", (f.payload["net"], cl, f.reads), f.reads
             self.ctx.inherited_claims += 1
             self.lines.append(f"Q{q.id} {q.text}: inherited: nothing changed for {what}: CLAIM {cl.kind} {cl.what} (value {cl.value}, net {f.payload['net']}), lemma {cl.lemma} -- {src}")
-            if self.best is None or (f.payload["net"], 0) > self.best[:2]:
+            if self._better(f.payload["net"], 0, cl):
                 self.best = (f.payload["net"], 0, cl)
                 self.asked_at_claim = self.asked
         else:
@@ -720,10 +738,8 @@ class Agenda:
             if q.claimed is not None:
                 value, claim, reads = q.claimed[0], q.claimed[1], q.claimed[2]
                 payload = dict(claim=claim, net=q.claimed[0])
-                portable = portable and not claim.lemma.startswith("chase")      # a chase claim reads every reply of the board it was made on: it is not transferable (as in 52.13) -- unless `_chase_reads` below finds it a read set (52.21 (2))
-                if portable and claim.move and reads is not None:           # 52.23 (10): a SCHEMA claim also read its move's squares and their king (its legality, its check, the landing square's attackers): they join the read set, else
-                    b_, mv_ = self.board, chess.Move.from_uci(claim.move)   # served by the target's signature alone it is unsound (2VDtX: "Ng5+ then Nxe6" derived after Rf8+ Kxf8 served at the root, where Ng5 is no check and Bxg5 takes it: SF -697)
-                    reads = frozenset(reads) | {mv_.from_square, mv_.to_square} | ({b_.king(not self.me)} if b_.king(not self.me) is not None else set())
+                portable = portable and not claim.lemma.startswith(("chase", "delayed", "mate_in"))      # a chase claim reads every reply of the board it was made on: it is not transferable (as in 52.13) -- unless `_chase_reads` below finds it a read set (52.21 (2));
+                # 52.23 (10) / 53 (3): a SCHEMA claim reads every reply too (all their moves): served by the target's signature it was unsound (2VDtX: SF -697), and with the move's squares and their king added it still was (OF8nj: bxc3+ valued 6 by a claim from another position where the chase on this board reads 1). Not portable.
             else:
                 claim = new_claims[-1] if new_claims else None
                 value = claim.value if claim is not None else 0
@@ -917,7 +933,7 @@ class Agenda:
         q.status = "verified"
         q.claimed = (worst[0], claim, q.reads)
         self.lines.append(f"  -> CLAIM win {what} (value {worst[0]}), lemma {claim.lemma}, line {claim.line}")
-        if self.best is None or (worst[0], 0) > self.best[:2]:
+        if self._better(worst[0], 0, claim):
             self.best = (worst[0], 0, claim)
             self.asked_at_claim = self.asked
 
@@ -1087,7 +1103,7 @@ class Agenda:
         key = (net, -len(opp))
         if q.pattern.get("inner_threat"):                        # 52.14: the parry of a threat on a static leaf keeps the gain; it is not a gain of its own (the reply's value stays dbal)
             return
-        if self.best is None or key > self.best[:2]:
+        if self._better(key[0], key[1], claim):
             self.best = (net, -len(opp), claim)
             self.asked_at_claim = self.asked
 
@@ -1248,7 +1264,7 @@ class Agenda:
         self.state.claims.append(claim)
         q.status = "verified"
         self.lines.append(f"  -> CLAIM save {r.san} (net {net}), lemma none: the opponent's best claim is {-net + gain}")
-        if self.best is None or (net, 0) > self.best[:2]:
+        if self._better(net, 0, claim):
             self.best = (net, 0, claim)
             self.asked_at_claim = self.asked
         return True
@@ -2107,7 +2123,7 @@ class Agenda:
         self.state.claims.append(claim)
         q.status = "verified"
         self.lines.append(f"  -> CLAIM {kind} {r.san} (value {value}), lemma {lemma}, line {claim.line}")
-        if self.best is None or (net, 0) > self.best[:2]:
+        if self._better(net, 0, claim):
             self.best = (net, 0, claim)
             self.asked_at_claim = self.asked
         return True
@@ -2294,7 +2310,7 @@ class Agenda:
             self.state.claims.append(claim)
             q.status = "verified"
             self.lines.append(f"  -> CLAIM promote {san} (value {claim.value}), lemma {claim.lemma}, line {claim.line}")
-            if self.best is None or (claim.value, 0) > self.best[:2]:
+            if self._better(claim.value, 0, claim):
                 self.best = (claim.value, 0, claim)
                 self.asked_at_claim = self.asked
             return
@@ -2350,7 +2366,7 @@ class Agenda:
         q.status = "verified"
         q.claimed = (net, claim, frozenset(q.reads or ()) | {sq, facts["promo"]})
         self.lines.append(f"  -> CLAIM win {san} (value {net}), lemma {claim.lemma}, line {claim.line}")
-        if self.best is None or (net, 0) > self.best[:2]:
+        if self._better(net, 0, claim):
             self.best = (net, 0, claim)
             self.asked_at_claim = self.asked
         return claim
