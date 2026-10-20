@@ -2640,3 +2640,18 @@ stakes), so the higher stakes are still asked after it. The ordering pays only w
 `--prior` stays OFF by default. Next for it: more data (the log is cheap: 60 puzzles in 2.5 min), the question's defects in the features once asked
 (two-stage: a cheap feature pass before the fixes), and a stop rule that reads the prior's confidence -- a decision for Kaveh, since the stops are the
 reasoning's and the prior must not become a decider.
+
+### 54 Speed: the position and the attack graph in Rust, the hot words in the core (Kaveh 2026-10-20: "tens of microseconds per question in Rust ... how are we 10 seconds per position? we must be wasting something big; everything should be cached; enumerate the moves off the graph's attack edges, mutate the graph in Rust after each move; we need a Rust chess")
+Facts (the 52.20 profile, dev_20 OBS): ~2.8 ms per inner question, ~140 legal-move generations per question (the "still" test and the forcing test run
+every candidate on a fresh python-chess copy; the schemas push every reply again), python-chess ~60% of own time, FEN round trips (board_fen /
+set_board_fen) ~14%, the Rust word evaluator 9%. shakmaty 0.27 (python-chess's author's Rust library) is ALREADY the board of rust/analyst_core (315 uses);
+the agenda never uses it: it copies python-chess boards and passes FEN strings into the core, which re-parses them.
+1. ONE POSITION PER NODE IN RUST: a shakmaty position with make/unmake and a zobrist key is the agenda's board; Python holds a handle, never a FEN; the
+   attack graph (attackers per square, pins, x-rays, batteries) is maintained INCREMENTALLY on make/unmake. Attack edges are the pseudo-moves of the pieces
+   (a piece may go where it attacks when the square is empty or theirs); pawns (straight pushes, the double step, en passant, promotion) and castling are
+   generated apart; legality is the king filter (pins, evasions in check), shakmaty's, read from the graph where the graph has it.
+2. PER-POSITION CACHES in the core: legal moves, attackers, the exchange word (`see`), `landsSafe`, keyed by the zobrist key for the whole agenda
+   (every inner agenda, every chase); python-chess recomputes all of it on every copy today.
+3. THE HOT WORDS IN THE CORE: `forcing_why`, the "still" test's counterfactual reads, the schema binders over every reply (delayed_root / balance d1, d2),
+   their pass's static reads. The chase loop itself stays in Python until the words are fast (then the 52.13 "hot loop in Rust" item).
+Acceptance: microseconds per inner question before/after as OBS on the same random samples, decisions identical (diffed), tests green; the trace unchanged.
