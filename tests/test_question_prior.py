@@ -55,7 +55,7 @@ def test_loop_metrics_check_the_invariant_and_pair_the_reward_on_the_same_puzzle
          + ag("b", False, "d2d4", "RIGHT", 1) + ag("b", True, "g1f3", "WRONG", 0)          # the prior CHANGED b's decision: the invariant must count it
     m = QP.loop_metrics(rows, {"weights": {"stake": 1.0}, "bias": 0.0}, {"weights": {"stake": 1.0, "goal=win": 2.0}, "bias": 0.0})
     assert (m["compared"], m["identical"], m["differ_budget"], m["differ_bug"]) == (2, 1, 0, 1)
-    rows[3]["status"] = "gap"                                                        # the base run was cut by the budget: the difference is the order's, not a bug
+    rows[6]["fuse_hits"] = 2                                                        # b's base run was cut by the budget: the difference is the order's, not a bug
     m = QP.loop_metrics(rows, None, {"weights": {}, "bias": 0.0})
     assert (m["differ_budget"], m["differ_bug"]) == (1, 0)
     assert m["mean_before_prior"] == 0.0 and m["mean_before_base"] == 1.5           # a: 0 vs 2, b: right only in the base run (1): base mean (2+1)/2

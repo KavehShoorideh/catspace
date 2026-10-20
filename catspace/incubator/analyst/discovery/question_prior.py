@@ -266,7 +266,7 @@ def loop_metrics(rows: list, prev_model: dict | None, model: dict) -> dict:
             compared += 1
             if dec[(pid, st, False)].get("decision") == r.get("decision"):
                 identical += 1
-            elif any(x.get("status") == "gap" or "fuse" in (x.get("reason") or "") or "budget" in (x.get("word") or "") for x in by[(pid, st, False)] + by[(pid, st, True)]):
+            elif any(x.get("status") == "gap" or x.get("fuse_hits") for x in by[(pid, st, False)] + by[(pid, st, True)]):      # (`fuse_hits`: the agenda's budget cuts, logged on every row; a question cut on a route keeps the status 'killed')
                 differ_budget += 1                       # the budget cut one run's chase: the ORDER decided what got asked in time (GYWyJ: the stake order's fuse went to the mates, the prior asked the knight first and decided Nd5, SF RIGHT)
             else:
                 differ_bug += 1                          # the same questions, the same budget, a different decision: a BUG (the prior must never decide)
