@@ -31813,3 +31813,26 @@ OBS (one run each, directional), my rerun: dev_20 decided 14 MATCH 14 (unchanged
 after18 122.7). New tally fields (dev_20 / fresh_60): killed by reasoning 79 / 149, routes not addressing a defect 1340 / 2169, time outs 0 / 0,
 landings served from the table 425 / 787, forcing by a claim after a pass 0 / 12. Open: 0GJec (cxb1=Q/R/B/N promote chases each cut by the fuse:
 underpromotions not pruned), the held-measure kill's missing Lean pieces, the landing table over win/promote roots, 52.19 (the fact store) next.
+
+## 2026-10-19 17:26 PDT -- THE FACT STORE WITH JUSTIFICATIONS, STALE FLAGS UP THE CHAIN, TWO TIERS OF THINKING (plan 52.19)
+Built by the Sonnet builder from docs/ANALYST_PLAN.md 52.19 (1)-(4), one commit per item: eaadd31d, 749a76d7, c1d737c6, 5d1158a8; no trailers;
+verified here (165 tests: fact_store 14 new, regress 80, lean_ideas 36, agenda 26, play_server 9; no Lean change). Kaveh's design (Doyle 1979
+TMS): every claim / kill / cut route is a FACT with its read set, a signature (piece + both attacker counts per read square), the facts it stands
+on, its stake and the CHAIN STAKE (the highest stake of any dependant). (1) discovery/facts.py FactStore; consulted before every question at every
+depth, replaces the parent-only inherit walk; the deciding claim's justification graph is printed at the end of the trace (0LRTF: Rh8+ stands on
+5 facts reading {c7, c8, d7}). (2) The listener: the inverted read index flags every fact that read a changed square and, through the
+justifications, every fact built on it; a frame per reply in the chase, advance() for good between moves; nothing recomputed on invalidation.
+(3) Two tiers: foreground = a stale fact is re-asked only when a live question needs it; background = FactStore.queue() of stale facts and cut
+routes ordered by chain stake, drained by ponder.drain (out-of-time GAPs first, resumed at their cut point); the play server's Ponderer thinks on
+the human's clock over his replies ordered by what they disturb, lines marked "background" (own colour), cancelled by his move; --ponder on the
+CLI. (4) --memory keeps the store between puzzles; AgendaPlayer carries it between moves.
+OBS (one run each, directional), my rerun: dev_20 decided 14 MATCH 14 (unchanged), inner questions 17253 -> 14329, fuse hits 809 -> 724, facts
+derived 6963, served from the store 1640, foreground recomputations 1838, seconds 57.8 -> 57.0; fresh_60 decided 52 MATCH 52 (unchanged), inner
+questions 34661 -> 30332, fuse hits 1075 -> 1026, served 5004, seconds ~123 -> 140.8 (slower: serving costs the fuse nothing, so chases go deeper,
+inner agendas 2986 -> 3617). Two decisions changed in form only, same first move, SF RIGHT on both forms (02XyH Nxf6+ loss -8; 0GyJS Ne5+ loss 8).
+Builder's deviations: the signature decides serving, the stale flag only drives the queue / counts / chain stake; a kill is served only to an asker
+whose chase is no stronger (chase power 0/1/2); chase claims stay non-portable; the landing table keeps its own index (no landing facts);
+"reopened"/"new" counters redefined; the 0LRTF mate kills do get flagged by Rh8+ (they read h7/h8); --memory overloaded; background on by default.
+Trace wart: inherited lines print "the piece on ?". Play server restarted on this code (--seconds 5, background tier on); still never opened in a
+browser. Next (discussed, no go): trim the trace (print each line once, variations as an indented tree, a question answered by a stored claim says
+so in one line); the held-measure kill's Lean proof; the landing table over win/promote roots; their threats as roots; play games first.
