@@ -21,7 +21,8 @@ from catspace.incubator.analyst.discovery.state import State
 def _scoped(ctx, end: float, stop=None):
     """Run the agendas of one item under a deadline: the fuse is new, the clock is `end` (now, when `stop()` already says the human moved)."""
     ctx.hit = False
-    ctx.deadline = ctx.final = time.monotonic() if stop is not None and stop() else end
+    ctx.hand, ctx.abort = None, bool(stop is not None and stop())      # 52.21 (3): a new clock, a new route in hand; the human having moved finishes nothing
+    ctx.deadline = ctx.final = time.monotonic() if ctx.abort else end
     if ctx.t0 is None:
         ctx.t0 = time.monotonic()
 
@@ -97,6 +98,7 @@ class Ponderer:
 
     def cancel(self) -> None:
         self.stopped = True
+        self.ctx.abort = True                                  # 52.21 (3): the route in hand is not finished either
         self.ctx.deadline = time.monotonic()                   # every open agenda stops at its next test (STOP (t))
 
     def run(self, board: chess.Board, seconds: "float | None", emit=None) -> dict:

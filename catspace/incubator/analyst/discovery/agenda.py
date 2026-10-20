@@ -114,7 +114,13 @@ class ChaseCtx:
         self.landing_served = 0                   # ... mate roots whose defect list was served from the table (nothing its reads touch had changed)
         self.time_outs = 0                        # ... root agendas that met their deadline
         self.hit = False
+        self.route_depth = 0                      # 52.21 (3): the routes being chased right now (nested: a route's reply opens an inner agenda that chases routes)
+        self.route_names: list = []
+        self.hand: "int | None" = None            # ... the route IN HAND when the deadline was first seen: the innermost one (its depth). It runs to its end; no other route is opened
+        self.abort = False                        # ... the human moved (the background tier): nothing is finished, every test of the clock stops
+        self.finish_lines: list = []              # ... "out of time: finishing <route>, no new routes", printed by the root
         self.roots_served = 0                     # 52.21 (1): root lists (the reach roots) served from the fact store, not rescanned
+        self.finished = 0                         # 52.21 (3): routes that were in hand when the deadline passed and were run to their end
         self.chase_served = 0                     # 52.21 (2): chase claims served from the store on a board whose cells matched the claim's read set
         self.unaddressed = 0                      # 52.17 (2): forcing moves NOT followed by a chase because they fix no defect of the goal and make no claim of their own
 
@@ -128,13 +134,23 @@ class ChaseCtx:
         return c
 
     def out_of_time(self) -> bool:
-        """52.17 (5): the deadline (or the slice of it this route may use) has passed. Never true when no seconds were given."""
+        """52.17 (5): the deadline (or the slice of it this route may use) has passed. Never true when no seconds were given. 52.21 (3): the first time it is seen, the route being chased at that
+        moment (the innermost) is IN HAND: `finishing` says it may run to its end."""
         if self.deadline is None:
             return False
         if time.monotonic() >= self.deadline:
             self.hit = True
+            if self.hand is None:
+                sliced = self.final is not None and self.final - self.deadline > 1e-6          # a SLICE of the final deadline (the root shares the time fairly between its routes): the route is cut where it is, as in 52.17; only the final deadline lets the route in hand finish
+                self.hand = 0 if sliced else self.route_depth
+                if self.hand and not self.abort:
+                    self.finish_lines.append(f"out of time: finishing {self.route_names[-1]} (the route in hand, depth {self.route_depth}), no new routes")
             return True
         return False
+
+    def finishing(self, frame: int) -> bool:
+        """52.21 (3): whether work belonging to the route at nesting depth `frame` may go on past the deadline: only the route in hand (and what it opens to read its replies), unless the human moved."""
+        return self.hand is not None and not self.abort and frame > 0 and frame == self.hand
 
 
 class Agenda:
@@ -199,6 +215,8 @@ class Agenda:
         self._piece = FS.board_piece(self.board)
         self._fs0 = self.ctx.facts.snapshot() if self.ctx is not None else None      # the store's counters when this agenda began (the deltas are its own)
         self._pre: dict = {}                                    # 52.17 (4): route key -> the replies the cheap pass closed by rule
+        self.frame = self.ctx.route_depth if self.ctx is not None else 0       # 52.21 (3): the route (its depth) this agenda was opened to read the reply of
+        self.late = self.ctx is not None and self.ctx.deadline is not None and time.monotonic() >= self.ctx.deadline       # ... opened after the deadline (by the route in hand): it reads its roots; one opened before finishes its current question only
         self._roots()
         for i, q in enumerate(self.all, 1):                      # numbered in the order they are asked
             q.id = i
@@ -212,6 +230,9 @@ class Agenda:
 
     def _push(self, q: R.Question, force: bool = False) -> R.Question:
         if q.stake < self.min_stake and not force:
+            return q
+        if self.ctx is not None and self.ctx.deadline is not None and self.ctx.out_of_time() and not (self.late and self.ctx.finishing(self.frame)):      # 52.21 (3): past the deadline no new question is pushed
+            self.state.gaps.append(f"{q.text} (stake {q.stake}): out of time, not asked")
             return q
         self.all.append(q)
         self._seq += 1
@@ -480,6 +501,9 @@ class Agenda:
                         seen.append(l.key())
                         if len(seen) <= 5:
                             self.lines.append(f"known about the {pc.symbol().upper()} on {G.name(mv.from_square)}: {l.text()}")
+        if self.ctx is not None and self.chase_depth == 0 and self.ctx.finish_lines:         # 52.21 (3)
+            self.lines += self.ctx.finish_lines
+            self.ctx.finish_lines = []
         if self.ctx is not None and self.chase_depth == 0:
             self.lines += self.facts_lines()
         if self.ctx is not None and self.chase_depth == 0 and self.ctx.final is not None:       # 52.17 (5)
@@ -514,7 +538,7 @@ class Agenda:
                 self.lines.append(f"STOP (c): budget {self.budget} questions asked; {len(left)} open questions become gaps")
                 self.state.gaps += [f"budget: {q.text} (stake {q.stake}) not asked" for q in left]
                 return
-            if self.chase_depth and self.ctx.out_of_time():       # 52.17 (5): an inner agenda that meets the deadline stops where it is (its answer is cut, never memoised, never read as "no claim")
+            if self.chase_depth and self.ctx.out_of_time() and not (self.late and self.ctx.finishing(self.frame)):       # 52.17 (5): an inner agenda that meets the deadline stops where it is (its answer is cut, never memoised, never read as "no claim"); 52.21 (3): the ones opened by the route in hand read on
                 self.ctx.budget_hits += 1
                 self.lines.append("STOP (t): out of time")
                 return
@@ -1261,7 +1285,7 @@ class Agenda:
             return hit
         if pk in ctx.active:
             return dict(value=0, claim=None, asked=0, need=need, threats=[(cl, None) for cl in their.state.claims] if wt else [])     # a cycle parries nothing
-        if ctx.left <= 0 or self.chase_depth >= DEPTH_FUSE or ctx.out_of_time():
+        if ctx.left <= 0 or self.chase_depth >= DEPTH_FUSE or (ctx.out_of_time() and not ctx.finishing(ctx.route_depth)):      # 52.21 (3): only the route in hand opens an agenda past the deadline
             if ctx.left > 0:
                 ctx.depth_cuts += 1
             return None
@@ -1299,6 +1323,9 @@ class Agenda:
         frame for the reply being read restored on the way out."""
         saved_rf, saved_frame = self._rf, self._frame
         self._rf, self._frame = [], []
+        ctx = self.ctx
+        ctx.route_depth += 1
+        ctx.route_names.append(self.board.san(m))
         try:
             res = self._chase_route_body(m, promote, cheap)
             res["facts"] = list(dict.fromkeys(res.get("facts", []) + self._rf))
@@ -1306,6 +1333,10 @@ class Agenda:
                 self._gap_fact(m, promote, res)
             return res
         finally:
+            if ctx.hand is not None and not ctx.abort and ctx.route_depth == ctx.hand and not cheap:
+                ctx.finished += 1                                    # 52.21 (3): the route in hand ran to its end (or to a GAP of its own)
+            ctx.route_depth -= 1
+            ctx.route_names.pop()
             self.ctx.facts.restore(self._frame)
             self._rf, self._frame = saved_rf, saved_frame
 
@@ -1704,6 +1735,7 @@ class Agenda:
             return False
         if self.ctx.out_of_time():                                 # 52.17 (5): past the deadline a question is asked only for what closes at the static leaf: no chase
             self.lines.append("  chase: out of time -- not started (a GAP, never a kill)")
+            self.ctx.budget_hits += 1                                # the agenda this question belongs to is cut: its route is a GAP, never refuted by what was not chased
             self._note_resume(q, None, dict(gap="chase not started"))
             self.state.gaps.append(f"Q{q.id} {q.text}: out of time: chase not started")
             return False
@@ -1767,9 +1799,11 @@ class Agenda:
                 if self.chase_depth == 0 and self.ctx.final is not None:       # ... and the time is shared FAIRLY like the fuse: each open route gets an equal slice of what is left
                     now = time.monotonic()
                     self.ctx.deadline = now + max(self.ctx.final - now, 0) / max(open_left, 1)
+                    self.ctx.hand = None                           # (a new slice: the route in hand is the one this slice sees)
                 res = self._chase_route(r.move, promote=q.goal == "promote")
                 if self.chase_depth == 0 and self.ctx.final is not None:
                     self.ctx.deadline = self.ctx.final
+                    self.ctx.hand = None
             if self.chase_depth == 0 and i not in cheap_res:
                 # 52.16 (2): a route is CHARGED at most its share. The frames open when the fuse runs out finish their questions (that is how 08pSj's Rf1+ and 0VSUT's Qxe5 are decided),
                 # but that finishing is free: charged in full it took the share of every later route (0LRTF: 239 questions on a share of 120, then Rd7 got 1).

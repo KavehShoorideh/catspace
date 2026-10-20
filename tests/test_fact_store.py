@@ -357,3 +357,46 @@ def test_52_21_2_a_chase_claim_that_stands_on_a_positional_fact_stays_non_portab
     d = ag.decision()
     f = ag.ctx.facts.facts[ag.claim_fid[id(d)]]
     assert d.lemma.startswith("chase") and not f.portable and not f.payload.get("chase")
+
+
+# ---------------------------------------------------------------------------------------------------------------- 52.21 (3): the deadline finishes the route in hand
+
+def test_52_21_3_past_the_deadline_the_route_in_hand_runs_to_its_end_and_no_new_route_is_opened():
+    ctx = AG.ChaseCtx()
+    ctx.deadline = time.monotonic() + 1e6
+    assert not ctx.out_of_time() and ctx.hand is None
+    ctx.route_depth = 2
+    ctx.route_names.extend(["Rh8+", "Rd8+"])
+    ctx.deadline = time.monotonic() - 1
+    assert ctx.out_of_time() and ctx.hand == 2                                       # the innermost route at the moment the clock was first seen is the route in hand
+    assert ctx.finishing(2) and not ctx.finishing(1) and not ctx.finishing(3) and not ctx.finishing(0)
+    assert ctx.finish_lines == ["out of time: finishing Rd8+ (the route in hand, depth 2), no new routes"]
+    ctx.abort = True                                                                  # the human moved: nothing is finished
+    assert not ctx.finishing(2)
+
+
+def test_52_21_3_in_a_real_chase_the_clock_running_out_in_a_nested_route_opens_nothing_new():
+    orig = AG.Agenda._chase_route_body
+    seen = {"trigger": None, "after": []}
+
+    def wrapped(self, m, promote=False, cheap=False):
+        ctx = self.ctx
+        if not cheap:
+            if seen["trigger"] is None and ctx.route_depth == 2:
+                seen["trigger"] = (self.board.san(m), ctx.route_depth)
+                ctx.deadline = ctx.final = time.monotonic() - 1                       # the clock runs out inside the second route
+            elif seen["trigger"] is not None:
+                seen["after"].append((self.board.san(m), ctx.route_depth))             # a route opened after the deadline
+        return orig(self, m, promote, cheap)
+    AG.Agenda._chase_route_body = wrapped
+    try:
+        ag = AG.Agenda(state_of(LRTF, "w"), seconds=1e6)
+        ag.ask()
+    finally:
+        AG.Agenda._chase_route_body = orig
+    ctx = ag.ctx
+    assert seen["trigger"] is not None and seen["after"] == []                         # no new route at any depth
+    assert ctx.hit and ctx.finished >= 1 and ctx.hand is not None
+    assert any(ln.startswith("out of time: finishing ") and "no new routes" in ln for ln in ag.lines)
+    assert any("out of time" in g for g in ag.state.gaps) or any("out of time" in ln for ln in ag.lines)      # what was left is a GAP, never a kill
+    print(f"OBS 52.21 (3): clock cut inside {seen['trigger'][0]} (depth {seen['trigger'][1]}): routes opened after the deadline {len(seen['after'])}, routes finished {ctx.finished}")
