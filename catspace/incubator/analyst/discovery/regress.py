@@ -482,8 +482,79 @@ def fixes_of(defect: Defect, q: Question, board: chess.Board, us: str | bool) ->
             out.append(a)
         out += trap_fix(q, defect, board, us)
         out += discovery_fix(q, defect, board, us)
+        out += skewer_fix(q, defect, board, us)
     for f in out:
         q.fixes.append(f)
+    return out
+
+
+SKEWER_FIX = True                                               # 52.23 (4) switch (bisect)
+
+
+def skewer_routes(board: chess.Board, us: str | bool, t: int) -> list:
+    """52.23 (4): THE SKEWER AS A NAMED FIX of a win defect: a check by a slider of ours whose line runs through their king to the target `t`; the king must answer the check,
+    and when it steps off the line the slider attacks `t` (Lean `Ideas.Skewer.skewer_attack`; the capture of the checker and the interposition are read by the chase as replies)."""
+    me = G.colour_of(us)
+    b = G.with_turn(board, me)
+    out = []
+    for m in b.legal_moves:
+        if b.is_castling(m) or m.to_square == t:
+            continue
+        c = b.copy(stack=False)
+        c.push(m)
+        if not c.is_check():
+            continue
+        s2 = G.skewer_after(c, me, t)
+        if s2 == m.to_square:
+            pc = board.piece_at(t)
+            out.append(Route(m, b.san(m), f"check; skewer: through their K on {G.name(c.king(not me))} to the {pc.symbol().upper()} on {G.name(t)} (Ideas.Skewer.skewer_attack)"))
+    return out
+
+
+def drive_onto_routes(board: chess.Board, us: str | bool, t: int, stake: int) -> list:
+    """52.23 (4b): DRIVE THEIR KING ONTO THE SKEWER LINE -- a check after which EVERY king reply stands on a line a slider of ours can then check along, through the king
+    to `t` (a skewer route exists on the board after each king reply); the other replies (take the checker, interpose) are read by the chase. Two moves: the fix says `steps` 2."""
+    me = G.colour_of(us)
+    b = G.with_turn(board, me)
+    out = []
+    for m in b.legal_moves:
+        if b.is_castling(m) or m.to_square == t:
+            continue
+        c = b.copy(stack=False)
+        c.push(m)
+        if not c.is_check() or G.skewer_after(c, me, t) == m.to_square:
+            continue
+        kings = [r for r in c.legal_moves if r.from_square == c.king(not me)]
+        if not kings:
+            continue
+        ok = True
+        for r in kings:
+            d = c.copy(stack=False)
+            d.push(r)
+            if d.piece_at(t) is None or d.piece_at(t).color == me or not skewer_routes(d, us, t):
+                ok = False
+                break
+        if ok:
+            out.append(Route(m, b.san(m), f"check; drives their king onto a skewer line to {G.name(t)} (every king reply, then a check through it: Ideas.Skewer.skewer_attack)"))
+    return out
+
+
+def skewer_fix(q: Question, defect: Defect, board: chess.Board, us: str | bool) -> list:
+    """52.23 (4): the sub-question `skewer t: a check through their king` of a win defect ('not attacked', 'defended') -- offered when such a check exists."""
+    if defect.kind not in ("not attacked", "defended") or not SKEWER_FIX:
+        return []
+    t = defect.sq
+    out = []
+    rs = skewer_routes(board, us, t)
+    if rs:
+        f = new_question("cover", q.stake, dict(q.pattern), q, defect_key=defect.key(), text=f"skewer {G.name(t)}: a check through their king, the line runs on to it")
+        f.routes = rs
+        out.append(f)
+    rs = drive_onto_routes(board, us, t, q.stake)
+    if rs:
+        f = new_question("cover", q.stake, dict(q.pattern, steps=2), q, defect_key=defect.key(), text=f"drive their king onto a skewer line to {G.name(t)} (two moves: the check, then the skewer)")
+        f.routes = rs
+        out.append(f)
     return out
 
 

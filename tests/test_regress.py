@@ -649,7 +649,7 @@ def test_52_15_the_parry_claim_carries_the_lean_theorem_and_no_their_view_label_
 def test_52_16_the_fuse_is_charged_by_stake_order_and_a_later_root_is_not_starved_0lrtf_0gjec():
     from catspace.incubator.analyst.discovery import puzzle_apply as PA
     p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0LRTF"][0]
-    ag = AG.Agenda(State(p["fen"], "w", []))
+    ag = AG.Agenda(State(p["fen"], "w", []), seconds=30)                                        # 52.23: the budget is time (the count fuse of 240 cut Rh8+ Kd7 once the inner agendas chase their checking fixes)
     ag.ask()
     t = ag.trace()
     assert "fuse left -" not in t and ag.ctx.left >= 0                                         # before 52.16: -14 (239 questions on a route share of 120)
@@ -1142,3 +1142,56 @@ def test_52_22_3_07z0p_is_decided_qxd5_by_the_refuter_fix_with_the_line_printed(
     assert ag.decision().what == "Qxd5+"
     assert "Qxd5+: refuter fix -- Bb3 fails to Qxb3 (the refuter: the Q on d5); exchange it first -- Qxd5+ Nxd5: the N on d5 cannot make that move; Bb3 is asked again after it" in t
     assert ag.ctx.refuter_fixes >= 1
+
+
+ZB = "2k5/1p6/p1P1p1p1/2P5/P2Pp1p1/4PrPq/2Q1RP1r/3RK3 b - - 0 34"      # zBouR (rand2_10): Rhxf2 cxb7+ Kb8 Rxf2 Qh1+ Ke2 Rxf2+ Kxf2 Qh2+ Ke1 Qxc2
+
+
+def _after(fen, sans):
+    b = chess.Board(fen)
+    for s in sans.split():
+        b.push_san(s)
+    return b
+
+
+def test_52_23_4_the_skewer_is_a_word_proved_in_lean():
+    st = _lean("skewer_attack", "Skewer")["statement"]
+    assert "skewerB" in st and "pieceAttacksB" in st
+    st = _lean("skewer_blocked", "Skewer")["statement"]
+    assert "= false" in st
+
+
+def test_52_23_4_the_skewer_routes_of_zbour_are_the_rook_check_through_e2_and_the_queen_checks_through_f2():
+    b = _after(ZB, "Rhxf2 cxb7+ Kb8 Rxf2 Qh1+ Ke2")
+    rs = R.skewer_routes(b, b.turn, chess.C2)
+    assert [r.san for r in rs] == ["Rxf2+"] and "through their K on e2 to the Q on c2" in rs[0].why
+    b = _after(ZB, "Rhxf2 cxb7+ Kb8 Rxf2 Qh1+ Ke2 Rxf2+ Kxf2")
+    assert sorted(r.san for r in R.skewer_routes(b, b.turn, chess.C2)) == ["Qg2+", "Qh2+"]
+    c = b.copy(); c.push_san("Qh2+")
+    assert G.skewer_after(c, not c.turn, chess.C2) == chess.H2
+    assert chess.H2 not in c.attackers(not c.turn, chess.C2)      # skewer_blocked: the king is in the way
+    c.push_san("Ke1")
+    assert chess.H2 in c.attackers(c.turn, chess.C2)                                                                  # skewer_attack: the king stepped off the line
+
+
+def test_52_23_4_a_rook_does_not_skewer_along_a_diagonal_and_a_blocked_line_is_no_skewer():
+    b = chess.Board("4k3/8/8/8/8/8/8/R3K2q w - - 0 1")      # Ra1-e1? the rook on a1 cannot check e8; put the rook so that a check along a diagonal would be needed
+    assert R.skewer_routes(b, b.turn, chess.H1) == []
+    b = chess.Board("8/8/8/8/8/8/k1q5/R3K3 b - - 0 1")      # their K a2 and Q c2 on the rank; our R a1 checks a2 along the file, not the rank: no skewer on c2
+    b.turn = True
+    assert R.skewer_routes(b, True, chess.C2) == []
+    b = chess.Board("8/8/8/8/8/8/1q6/k1nRK3 w - - 0 1")     # Rd1 checks along the rank? the N on c1 stands between d1 and a1: no check at all
+    assert R.skewer_routes(b, True, chess.B2) == []
+
+
+def test_52_23_3_an_inner_agenda_in_check_chases_its_evasions_once(monkeypatch):
+    monkeypatch.setattr(AG, "EVASION_CHASE", True)               # the item is OFF by default (52.23: the chain items wait for the time regime and the prior)
+    st = state_of(ZB, "b")
+    root = AG.Agenda(st, seconds=60)
+    b = _after(ZB, "Rhxf2 cxb7+")
+    ag = AG.Agenda(State(fen=b.fen(), us="b", pieces=[]), side_depth=0, chase_depth=1, ctx=root.ctx, min_stake=1)
+    q = R.new_question("save", R.STAKE_MATE, dict(checkers=[chess.B7]), text="save our king (in check)")
+    assert ag.evaded is False                                   # the gate alone: an evading agenda chases, an evaded one does not chase a second check of theirs
+    ag2 = AG.Agenda(State(fen=b.fen(), us="b", pieces=[]), side_depth=0, chase_depth=2, ctx=root.ctx, min_stake=1, evaded=True)
+    assert ag2.evaded is True
+    assert ag2._chase(q) is False and "a second check of theirs in a row" in ag2.lines[-1]

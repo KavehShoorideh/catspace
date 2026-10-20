@@ -245,3 +245,26 @@ def discovery_text(board: chess.Board, s1: int, s2: int, rest: list, t: int) -> 
     nm = lambda s: board.piece_at(s).symbol().upper()
     with_ = ("battery with " + ", ".join(f"the {nm(u)} on {name(u)}" for u in rest)) if rest else "almost a battery: nothing else between"
     return f"the {nm(s1)} leaves {name(s1)}, the {nm(s2)} on {name(s2)} joins the attack on {name(t)} ({with_})"
+
+
+def skewer_after(board: chess.Board, colour: bool, t: int) -> "int | None":
+    """52.23 (4): THE SKEWER, read on the board AFTER our move (their turn): a slider of `colour` that gives CHECK and whose line runs on through their king to `t`
+    (a piece of theirs) with every other square between empty -> the slider's square, else None. Lean `Ideas.Skewer.skewerB`; `skewer_attack`: when the king steps off
+    the line the slider attacks `t`; `skewer_blocked`: before that it does not (the king is in the way)."""
+    k = board.king(not colour)
+    pt = board.piece_at(t)
+    if k is None or pt is None or pt.color == colour:
+        return None
+    for s2 in board.checkers():
+        pc = board.piece_at(s2)
+        if pc is None or pc.color != colour or pc.piece_type not in (chess.ROOK, chess.BISHOP, chess.QUEEN):
+            continue
+        line = chess.SquareSet(chess.between(s2, t))
+        if k not in line:
+            continue
+        straight = chess.square_file(s2) == chess.square_file(t) or chess.square_rank(s2) == chess.square_rank(t)
+        if (pc.piece_type == chess.ROOK and not straight) or (pc.piece_type == chess.BISHOP and straight):
+            continue
+        if all(board.piece_at(u) is None for u in line if u != k):
+            return s2
+    return None
