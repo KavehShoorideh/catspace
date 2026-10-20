@@ -2655,3 +2655,29 @@ the agenda never uses it: it copies python-chess boards and passes FEN strings i
 3. THE HOT WORDS IN THE CORE: `forcing_why`, the "still" test's counterfactual reads, the schema binders over every reply (delayed_root / balance d1, d2),
    their pass's static reads. The chase loop itself stays in Python until the words are fast (then the 52.13 "hot loop in Rust" item).
 Acceptance: microseconds per inner question before/after as OBS on the same random samples, decisions identical (diffed), tests green; the trace unchanged.
+
+#### 53 (3) The RL loop for the prior (Kaveh 2026-10-20: "RL loop to improve the prior?" -- "Go on all of it ... RL loops and the such in python")
+`question_prior loop --seeds A-B --rounds R`: each round draws fresh samples (`sample_puzzles`), runs them with the current prior and the log on
+(`analyse --prior --qlog`, the count fuse), grades the log (`grade`), retrains (`build`) on ALL rows so far, and prints OBS: per round the number of
+agendas, the mean questions asked before the deciding one (the reward: lower is better; only agendas whose decision Stockfish grades RIGHT count), the
+held-out rank-first rate (`eval`), decisions right/wrong/none. A ranking bandit, not full RL: the prior orders, the stops stay by stakes; the reward is
+the order, not the time. The labels stay as in (2); the loop adds the round's rows and refits. Never touches agenda.py.
+
+### 54 (staged) The time-sensitive words in Rust (Kaveh 2026-10-20: "Go on all of it. I'm not against doing all time-sensitive stuff in Rust, and things like RL loops in Python")
+Profile of 07Z0P (OBS, 25.2 s under cProfile): python-chess 60% of own time, the Rust core 10%, the agenda's Python 20%. By cumulative time: their
+agendas 79% (they contain everything below), the schema verification `binder.verify_tried` 38% (`puzzle_apply.best_bind` 28%, `binder._read` 23%,
+`_san_pairs` 10%: Python glue that builds s-expression strings and SAN strings around the Rust evaluator, with stdout redirected into a buffer per call),
+`regress.fixes_of` 39% (`routes_of` 20%, `_still` 16%: the "still" test copies the board and rescans the defects for EVERY legal move; `trap_fix` 10%,
+`skewer_fix` 8%), `mate_defects` 8% (41k calls), `forcing_why` 9%. 77% of the 149k legal-move generations repeat a position already generated (one
+position 602 times). `AC.Pos` (pos.rs, 92 lines: push, replies, diff, exchange, mate in one) already serves the chase's reply loop.
+Stage A -- THE SCHEMA VERIFICATION IN RUST: `analyst_core.verify_route(fen, x, y, mover, families, depth, second_moves)` returns, per schema, (name, value
+  or None, note) with exactly `_read` / `_read2` / `best_bind` semantics (the legality legs, the tail read once, the alive test with C = T - 4 / 13), the
+  terms built as the evaluator's AST, no s-expression strings, no stdout capture; Python's `verify_tried` keeps the Binding (SAN only for the winner).
+  Acceptance: identical `tried` tuples and bindings on 07Z0P, 0LRTF, rand1_10-rand3_10 (a comparison harness that runs both and diffs), tests green,
+  OBS seconds before/after.
+Stage B -- THE FIX FILTER IN RUST: `mate_defects`, `material_defects`, `promote_defects` and `_still` / `routes_of` (the counterfactual after each legal
+  move, the goal's positive condition, "no new defect"), `forcing_why` (check, mate threat, capture or threat worth the stake, `landsSafe`), trap and
+  skewer routes; a per-position cache of legal moves and attack maps keyed by the zobrist key, shared by the whole agenda. Acceptance as A.
+Stage C -- THE CHASE LOOP IN RUST (the 52.13 item): the reply loop, the closes by rule, their pass's static reads, the inner agenda's roots; Python keeps the
+  agenda's orchestration, the trace, the fact store, the prior and the RL loop. Acceptance: identical decisions on the random samples, the trace unchanged.
+Order: A, B, C; each stage its own commits by a builder from this section, verified (diffs, tests, OBS) before the next.
