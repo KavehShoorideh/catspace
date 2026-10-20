@@ -31967,3 +31967,13 @@ builder's profile after B2 says the rest of python-chess is in trap / skewer / d
 binder's `second_moves`, and 25% of `verify_tried` calls repeat -- Stage B4 with a builder now. Tests: 48 (the two Rust comparison files) + 60
 (the rest of the discovery files) green. The harness discipline (both paths in separate processes, every answer diffed) is what makes these ports
 safe; it found one artifact (a stale halfmove clock in the cached FEN) and no bug in the old path.
+
+## 2026-10-20 14:54 PDT -- THE LOOP'S INVARIANT CAUGHT TWO ORDER DEPENDENCIES; FIXED (plan 53 (3))
+Rounds 6-8 (seeds 16-18): invariant 10/10, 9/10 BUG, 9/10 BUG; paired questions-before-deciding prior vs stake 0.14/0.57, 0.00/0.00, 0.14/1.33; held-out
+rank-first 29/60 -> 35/67 vs 6/67; drift 0.46, 0.43, 0.60. The two BUGs, traced both ways: OF8nj -- bxc3+ read 1 by the chase in one order and 6 by a
+schema in the other on the same board: a schema claim SERVED from another position; the 52.23 (10) read set (move squares + their king) was still
+unsound (a schema reads every reply of theirs): schema claims are not portable, full stop. r3oph -- Rxd1+ and Nxe5 both claimed 1 and the first asked
+won: equal values now break the tie by the question's stake, then the shape key (fewest hanging, most guarded, most poking), then the move, never
+by the order; and STOP (a) stops only strictly above the next stake (a mate ends everything), so an equal-stake question is still asked. After: both
+puzzles decide the same with and without the prior (r3oph Rxd1+, SF WRONG -- an honest tie between two value-1 claims one of which is false, a claim
+bug not an order bug; OF8nj bxc3+ RIGHT). 233 tests; rand1-3 under the count fuse 9/10, 8/10 (BEKFf decided), 8/10 at 6.7 / 28.6 / 7.9 s (Stage B).
