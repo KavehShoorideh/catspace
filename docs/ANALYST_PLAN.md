@@ -2514,3 +2514,16 @@ Build in `catspace/incubator/analyst/discovery/play_server.py` + the page, one c
    records and the state's move list has 4 SANs.
 Not now (recorded): the hosting adapter (an `infra/providers/<name>` interface: create VM, open port, deploy the compose; Hetzner and GCP first),
 auth / multiple players, the agenda's own game context (52.19 (4) carries facts across moves).
+
+### 52.20 Repeated work in the word reads and the defect scans (Kaveh 2026-10-19 "do a timing profile ... Do it"; GO)
+Profile of the two slowest puzzles (0KCeb 18 s, 0UqOv / 07Z0P 19 s; median puzzle 0.2 s), same shape on both. The deep part is the design (their
+agenda after every forced reply); these three items are repeated work inside it, each changes no decision.
+1. **Word reads memoised.** ~40% of the time: 203k Rust word reads, 149k FEN strings built for 19k distinct boards, 39% of the reads exact
+   repeats of (board, term, mover), `install_terms` re-run on every read (383k times). `val_at` caches on (fen, term, mover); `graph.see` /
+   `graph.word` take the FEN from a per-board cache keyed by python-chess's transposition key (bitboards + turn + castling + e.p.), and
+   `with_turn` copies nothing when the owner is already on move with no e.p. square; `install_terms` runs once. The caches are cleared at every
+   fresh root question (a natural end: the root is the unit of attention; the fact store, not these caches, carries knowledge across moves).
+2. **The defects before the move computed once.** ~10%: `routes_of` calls `_still` per candidate move and `_still` recomputes the mate defects of
+   the unchanged starting board each time (84k scans for 3k route lists). Computed once per `routes_of` and passed in.
+3. **`reach_steps` lists the legal moves once** (it walked the generator twice per call; 1.2M generator steps). Small.
+Acceptance: both sets rerun, every decision and every tally but seconds unchanged; OBS seconds per set before/after; the three slowest puzzles' seconds.
