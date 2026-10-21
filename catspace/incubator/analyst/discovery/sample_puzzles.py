@@ -18,13 +18,18 @@ from catspace.io import paths
 from catspace.incubator.analyst.discovery import ledger_puzzles as LP
 
 
-def rows(n: int, seed: int) -> list:
+def rows(n: int, seed: int, themes: "list | None" = None) -> list:
+    """Uniform reservoir sample of n rows; with `themes`, only rows whose Themes column has every one of them (plan 61 C4: `perpetualCheck`)."""
     import zstandard
     rng = random.Random(seed)
     keep = []
     with open(LP._csv_path(), "rb") as fh:
         reader = csv.DictReader(io.TextIOWrapper(zstandard.ZstdDecompressor().stream_reader(fh), encoding="utf-8"))
-        for i, row in enumerate(reader):
+        i = -1
+        for row in reader:
+            if themes and not set(themes) <= set((row.get("Themes") or "").split()):
+                continue
+            i += 1
             if len(keep) < n:
                 keep.append(row)
             else:
@@ -44,9 +49,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--n", type=int, default=10)
+    ap.add_argument("--themes", nargs="*", default=None, help="plan 61 C4: only puzzles that carry all of these lichess themes (the set is named rand<seed>_<n>_<themes>)")
     a = ap.parse_args(argv)
-    recs = [record(r) for r in rows(a.n, a.seed)]
-    name = f"rand{a.seed}_{a.n}"
+    recs = [record(r) for r in rows(a.n, a.seed, a.themes)]
+    name = f"rand{a.seed}_{a.n}" + ("_" + "_".join(a.themes) if a.themes else "")
     out = paths.derived(f"ledger_puzzles_{name}.json")
     json.dump(recs, open(out, "w"), indent=1)
     print(f"OBS sample {name}: {len(recs)} puzzles -> {out}; ids " + " ".join(r['id'] for r in recs))
