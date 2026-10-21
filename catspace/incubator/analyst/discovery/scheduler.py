@@ -378,7 +378,7 @@ def ask_save_king_g(node, q: R.Question, head: str) -> None:
         node.lines.append(f"  -> Q{f2.id} {f2.text}: " + ", ".join(r.san for r in others))
         q.fixes.append(f2)
         (yield from verify_g(node, q, others, mates_only=False))
-    if len(node.state.claims) == before and not node._decide_by_smallest_loss(q) and AG.EVASION_CHASE:
+    if len(node.state.claims) == before and not node._decide_by_smallest_loss(q) and node._t(AG.EVASION_CHASE, 3):
         (yield T('chase', chase_g(node, q), node))                                       # 52.23 (3): an INNER agenda in check chases its evasions (every legal move answers the check, so each is a route): zBouR's Rhxf2 cxb7+ Kb8 Rxf2 Qh1+
 
 
@@ -593,7 +593,7 @@ def verify_g(node, q: R.Question, routes: list, mates_only: bool) -> None:
                    + ("; " + "; ".join(w for w in why if "the future loses it" in w)[:300]), tempo=False)
         return
     hits.sort(key=lambda h: (-h[3], len(h[1])))               # net value first; the heuristic label only breaks a tie where no claim of theirs bound
-    if AG.NEED_PROPAGATION and node.chase_depth and hits[0][3] < node.min_stake and (yield T('chase', chase_g(node, q), node)):      # 52.23 (7): a bound below what this agenda must reach rescues nothing: the question chases first (zBouR: Rxe3+ bound 1, 6 needed, Qh1+ drives the king onto the skewer line)
+    if node._t(AG.NEED_PROPAGATION, 3) and node.chase_depth and hits[0][3] < node.min_stake and (yield T('chase', chase_g(node, q), node)):      # 52.23 (7): a bound below what this agenda must reach rescues nothing: the question chases first (zBouR: Rxe3+ bound 1, 6 needed, Qh1+ drives the king onto the skewer line)
         return
     bind, opp, r, net, theirs = hits[0]
     for other, oopp, orr, onet, otheirs in hits[1:]:
@@ -621,10 +621,10 @@ def verify_g(node, q: R.Question, routes: list, mates_only: bool) -> None:
 
 def chase_g(node, q: R.Question) -> bool:
     """52.12: the chase of a question that would be killed. -> True when a route CLAIMS (the question is verified)."""
-    evading = AG.EVASION_CHASE and q.goal == "save" and "checkers" in q.pattern          # 52.23 (3): the save-king question of an agenda in check: its routes are the evasions, all forced (`_verify` calls the chase too: the switch is read HERE)
-    if node.ctx is None or (q.goal not in ("mate", "win", "promote") and not evading) or node.min_stake >= BD.MATE_VALUE or (node.chase_depth >= 2 and (q.goal == "promote" or (q.goal == "win" and not AG.DEEP_WIN_CHASE))):      # a mate-only read (the reply already gained, or lost too much for anything but a mate) does not chase on
+    evading = node._t(AG.EVASION_CHASE, 3) and q.goal == "save" and "checkers" in q.pattern          # 52.23 (3): the save-king question of an agenda in check: its routes are the evasions, all forced (`_verify` calls the chase too: the switch is read HERE)
+    if node.ctx is None or (q.goal not in ("mate", "win", "promote") and not evading) or node.min_stake >= BD.MATE_VALUE or (node.chase_depth >= 2 and (q.goal == "promote" or (q.goal == "win" and not node._t(AG.DEEP_WIN_CHASE, 3)))):      # a mate-only read (the reply already gained, or lost too much for anything but a mate) does not chase on
         return False                                               # 52.23 (5): a win question chases at every depth; its checks must address a defect (52.17 (2)) -- the depth-two gate was a numbered limit
-    if node.chase_depth and node.since_capture >= AG.CHASE_CLOCK and not evading:      # 52.23 (8): the chase clock -- a capture that is not bad for us is one-way progress (material never comes back); without one for
+    if node.chase_depth and node.since_capture >= node._clock() and not evading:      # 52.23 (8): the chase clock -- a capture that is not bad for us is one-way progress (material never comes back); without one for
         node.ctx.clock_stops += 1                                   # CHASE_CLOCK of our moves the chain goes nowhere and ends here (a hyperparameter to tune, Kaveh 2026-10-20)
         q._chain_cut = True
         node.lines.append(f"  chase: not started -- the chase clock: {node.since_capture} moves of ours without a capture that is not bad for us")
@@ -644,7 +644,7 @@ def chase_g(node, q: R.Question) -> bool:
         node.state.gaps.append(f"Q{q.id} {q.text}: out of time: chase not started")
         return False
     allow = None
-    if q.goal in ("mate", "win") and AG.GOAL_JUDGE:             # 52.23 (6): TEMPO ARITHMETIC ENDS THE CHAIN (the goal-progress judge, Kaveh 2026-10-20: "mating the king is like mating the bishop").
+    if q.goal in ("mate", "win") and node._t(AG.GOAL_JUDGE, 3):             # 52.23 (6): TEMPO ARITHMETIC ENDS THE CHAIN (the goal-progress judge, Kaveh 2026-10-20: "mating the king is like mating the bishop").
         fresh = q.goal == "win" and node.chase_depth > 0 and node.since_capture == 0      # A pattern with d defects needs at most d prep moves of ours, each fixing one (regress.py's tempo arithmetic); a fix that
         top = node.ctx.mate_levels[-1] if node.ctx.mate_levels else None                  # itself needs two moves (drive the king onto the skewer line, then skewer) says so (`steps`). A chain that has spent
         parent = None if fresh or top is None or q.stake > top[1] else top[0]             # (a BIGGER goal found on the chain is a new goal with its own distance: zBouR's queen under the f2 pawn's chase)
@@ -663,7 +663,7 @@ def chase_g(node, q: R.Question) -> bool:
             pc = b.piece_at(m.to_square)
             routes.append(R.Route(m, b.san(m), f"capture {G.worth(pc)}" if pc is not None else "evade"))
             continue
-        why = R.forcing_why(b, m, q.stake, node.us, mate_threats=True, notes=notes)
+        why = R.forcing_why(b, m, q.stake, node.us, mate_threats=True, notes=notes, mate2=node.ctx.tier >= 2)      # plan 59 tier 2: a mate-in-two threat is forcing too
         if why:
             ok, note = node._addresses(q, m, why)
             if ok:
@@ -673,7 +673,7 @@ def chase_g(node, q: R.Question) -> bool:
             else:
                 node.ctx.unaddressed += 1
                 notes.append(note)
-    if q.goal == "promote" or (q.goal == "win" and AG.DEEP_WIN_CHASE):      # 52.15 (2): the fix routes of the defects (take the stopper or the blocker, push with check) are routes too, at every depth; 52.23 (4): a win's named fixes too (the skewer, the drive onto its line)
+    if q.goal == "promote" or (q.goal == "win" and node._t(AG.DEEP_WIN_CHASE, 3)):      # 52.15 (2): the fix routes of the defects (take the stopper or the blocker, push with check) are routes too, at every depth; 52.23 (4): a win's named fixes too (the skewer, the drive onto its line)
         seen = {r.move for r in routes}
         for f in q.fixes:
             for r in R.all_routes(f):
@@ -683,7 +683,8 @@ def chase_g(node, q: R.Question) -> bool:
     if q.goal == "promote" and not node.chase_depth:        # 52.15 (2): plus a move that attacks a named STOPPER of the question ("threat on the stopper"), or offers the pawn to it
         routes += node._stopper_routes(q, [r.move for r in routes], notes)
     if node.chase_depth and not evading:                    # inner levels follow the most forcing moves only: a check, a capture, a mate threat (the quiet "threat n" moves are the root's)
-        routes = [r for r in routes if r.why.removeprefix("fix: ").startswith(("check", "threat of mate", "capture"))]
+        follow = ("check", "threat of mate", "capture") + (("threat",) if node.ctx.tier >= 1 else ())      # plan 59 tier 1 lifts the cut for the quiet threats worth the stake (and the tier-2 mate-in-two threat)
+        routes = [r for r in routes if r.why.removeprefix("fix: ").startswith(follow)]
     if node.chase_depth >= 2 and q.goal == "win":           # 52.23 (5): below the first inner level a win question follows only the NAMED FIXES of its defects that CHECK (the skewer, the fork-check:
         fix_moves = {r.move for f in q.fixes for r in R.all_routes(f)}     # the reply is forced); every other forcing move is the root's and the first level's (the named fixes that do not check still cost 0LRTF 4x)
         routes = [r for r in routes if r.move in fix_moves and b.gives_check(r.move)]
@@ -932,7 +933,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
         if cheap:                                            # the reply needs an inner agenda: the route stays open for the second pass
             res["pending"] = True
             break                                            # (the replies after it stay for the second pass: reading them all by rule cost 20x their agendas)
-        target = max(1, node.min_stake) if AG.NEED_PROPAGATION else 1      # 52.23 (7): THE NEED PROPAGATES -- the route must reach what this agenda serves (its min_stake), not 1 (zBouR: Qh1+ Rf1 read to 5 when 6 was needed)
+        target = max(1, node.min_stake) if node._t(AG.NEED_PROPAGATION, 3) else 1      # 52.23 (7): THE NEED PROPAGATES -- the route must reach what this agenda serves (its min_stake), not 1 (zBouR: Qh1+ Rf1 read to 5 when 6 was needed)
         need = min(R.STAKE_PROMOTE, 1 - dbal) if promote and dbal <= 0 else R.STAKE_PROMOTE if promote else target - dbal if dbal < target else BD.MATE_VALUE          # a reply that already gains the need is read for a mate only; else its static gain must survive their threats (below)
         node._enter_reply(frozenset(P0.diff(P2)))
         inn = (yield T('reply', inner_g(node, P2.fen(), need, frozenset(P0.diff(P2)), since=0 if node.board.is_capture(node._route_move) and dbal >= 0 else node.since_capture + 1,
@@ -1019,7 +1020,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
             node._log(key, uci, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
             break
         cl = inn["claim"] if inn["value"] >= need else None
-        gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else max(dbal - unparried, dbal + inn["value"] if cl and AG.NEED_PROPAGATION else dbal - unparried) if static else dbal + (inn["value"] if cl else 0))      # 52.23 (7): a reply that already gains carries the inner claim too (it answers every reply of theirs): zBouR's Rxf1+ Kd2 Rf2+, +5 then the queen
+        gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else max(dbal - unparried, dbal + inn["value"] if cl and node._t(AG.NEED_PROPAGATION, 3) else dbal - unparried) if static else dbal + (inn["value"] if cl else 0))      # 52.23 (7): a reply that already gains carries the inner claim too (it answers every reply of theirs): zBouR's Rxf1+ Kd2 Rf2+, +5 then the queen
         res["parts"].append(f"after {san_r}: " + (f"{cl.what} ({cl.line}; value {cl.value})" if cl else f"material {dbal:+d}" + (f", their {claim_their.what} wins {t_their} if we pass" if claim_their else "") + (f", {parry_note}" if parry_note else "")) + (f" -> {gains[-1]}" if cl or claim_their or parry_note else ""))
         node._log(key, uci, "claim" if cl else "material", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
         if cl:
@@ -1066,7 +1067,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
     c = b.copy(stack=False)
     c.push(m)
     res = dict(value=0, killed=None, gap=None, parts=[], lemmas=[])
-    rr = AC.read_route(b.fen(), m.uci(), bool(node.me), node.min_stake, AG.NEED_AWARE_CLOSE, bool(promote), max(1, node.min_stake) if AG.NEED_PROPAGATION else 1,
+    rr = AC.read_route(b.fen(), m.uci(), bool(node.me), node.min_stake, node._t(AG.NEED_AWARE_CLOSE, 3), bool(promote), max(1, node.min_stake) if node._t(AG.NEED_PROPAGATION, 3) else 1,
                        cq.stake if cq is not None and cq.goal == "win" and cq.pattern.get("target") is not None else None, BD.MATE_VALUE, R.STAKE_PROMOTE, list(override) if override else [], list(pre) if pre else [], ctx.reply_kills if not promote else None)
     P0, P1 = rr["p0"], rr["p1"]
     if P1.legal_count() == 0:
@@ -1240,7 +1241,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
             node._log(key, uci, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
             break
         cl = inn["claim"] if inn["value"] >= need else None
-        gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else max(dbal - unparried, dbal + inn["value"] if cl and AG.NEED_PROPAGATION else dbal - unparried) if static else dbal + (inn["value"] if cl else 0))      # 52.23 (7): a reply that already gains carries the inner claim too (it answers every reply of theirs): zBouR's Rxf1+ Kd2 Rf2+, +5 then the queen
+        gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else max(dbal - unparried, dbal + inn["value"] if cl and node._t(AG.NEED_PROPAGATION, 3) else dbal - unparried) if static else dbal + (inn["value"] if cl else 0))      # 52.23 (7): a reply that already gains carries the inner claim too (it answers every reply of theirs): zBouR's Rxf1+ Kd2 Rf2+, +5 then the queen
         res["parts"].append(f"after {san_r}: " + (f"{cl.what} ({cl.line}; value {cl.value})" if cl else f"material {dbal:+d}" + (f", their {claim_their.what} wins {t_their} if we pass" if claim_their else "") + (f", {parry_note}" if parry_note else "")) + (f" -> {gains[-1]}" if cl or claim_their or parry_note else ""))
         node._log(key, uci, "claim" if cl else "material", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
         if cl:

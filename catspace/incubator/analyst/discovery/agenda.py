@@ -93,6 +93,7 @@ class ChaseCtx:
         self.memo: dict = {}                      # fen -> {value, claim, asked}: the inner agenda's best claim, asked once for the whole run
         self.routes: dict = {}                    # (fen, uci) -> the evaluated route (memoised: the same position is chased by many questions)
         self.active: set = set()                  # the FENs being asked (a cycle ends here)
+        self.tier = 0                             # plan 59: the WIDENING TIER of this root's chase (0 = today's moves; 1 quiet threats below the root; 2 + mate-in-two threats; 3 + the 52.23 chain items): a setting of the context, read through it, never a process-wide flag
         self.left = 0                             # 52.13 (2b): the FUSE of the root agenda: 10x its question budget, set once, spent by every chase and inner agenda under it
         self.depth_cuts = 0                       # ... of the fuse hits, the ones from the depth cap (the stack), not the question count
         self.sched = None                         # plan 56: the Scheduler running this context's root agenda (None: the recursive path)
@@ -176,7 +177,7 @@ class ChaseCtx:
 
 
 class Agenda:
-    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None, chase_log: str | None = None, their: "Agenda | None" = None, keep: int = 0, seconds: "float | None" = None, facts: "FS.FactStore | None" = None, carry: "ChaseCtx | None" = None, evaded: bool = False, since: int = 0, free_level: bool = False):
+    def __init__(self, state: State, side_depth: int = 1, memory: list | None = None, leaf_all: bool = False, chase_depth: int = 0, ctx: "ChaseCtx | None" = None, min_stake: int = 0, inherit: dict | None = None, chase_log: str | None = None, their: "Agenda | None" = None, keep: int = 0, seconds: "float | None" = None, facts: "FS.FactStore | None" = None, carry: "ChaseCtx | None" = None, evaded: bool = False, since: int = 0, free_level: bool = False, tier: int = 0):
         R.reset_ids()
         if chase_depth == 0 and ctx is None and carry is None:
             G.clear_caches()                                    # 52.20 (1): the word / FEN caches live for one root question
@@ -219,9 +220,11 @@ class Agenda:
             + sum(1 for m in self.board.legal_moves if self.board.is_capture(m))
         self.notes: list = []
         if ctx is None and self.ctx is not None:
-            self.ctx.left = self.budget * FUSE                  # the root agenda's FUSE (10x the question budget), set ONCE: every chase of every question and the inner agendas spend it
-            if seconds is not None:                             # 52.17 (5): THE BUDGET IS TIME. 52.23 (1): then there is NO question-count fuse (Kaveh 2026-10-20: unlimited time
+            self.ctx.tier = tier                                # plan 59: the tier is a setting of the root's context (the inner agendas share it)
+            self.ctx.left = self.budget * FUSE * (1 << tier)    # the root agenda's FUSE (10x the question budget; plan 59: x 2^tier), set ONCE: every chase of every question and the inner agendas spend it
+            if seconds is not None and not TIERS:                             # 52.17 (5): THE BUDGET IS TIME. 52.23 (1): then there is NO question-count fuse (Kaveh 2026-10-20: unlimited time
                 self.ctx.left = NO_FUSE                         # must mean the chase runs to its end); the time slices share the budget between the routes, the count never
+            if seconds is not None:                             # (plan 59: with TIERS on the count fuse stays under a time budget -- the time is a cap, not a replacement -- and the tiers share the seconds)
                 self.ctx.seconds, self.ctx.t0 = seconds, time.monotonic()
                 self.ctx.deadline = self.ctx.final = self.ctx.t0 + seconds
         self._threats_done = not side_depth and their is None
@@ -254,6 +257,14 @@ class Agenda:
             q.id = i
         R._ids[0] = len(self.all)
 
+    def _t(self, flag: bool, k: int) -> bool:
+        """plan 59: a 52.23 chain item is ON when its module flag forces it (at every tier) or this root's tier is at least `k`. Read through the ctx, so the play server's ponder thread cannot race."""
+        return flag or (self.ctx is not None and self.ctx.tier >= k)
+
+    def _clock(self) -> int:
+        """The chase clock (52.23 (8)): CHASE_CLOCK, and 4 (Kaveh's starting value) from tier 3."""
+        return min(CHASE_CLOCK, 4) if self.ctx is not None and self.ctx.tier >= 3 else CHASE_CLOCK
+
     @property
     def questions(self) -> list:
         return sorted(self.all, key=lambda q: (-q.stake, q.depth, q.id))
@@ -261,7 +272,7 @@ class Agenda:
     # ------------------------------------------------------------------------------------------------------------ roots
 
     def _push(self, q: R.Question, force: bool = False) -> R.Question:
-        if q.stake + (self._top_other(q) if NEED_PROPAGATION else 0) < self.min_stake and not force:      # 52.23 (7): the need may be met by a CHAIN -- this question's gain and one more claim after it (zBouR: Qh1+ Rf1 Qxf1+ Rxf1 Rxf1+ Kd2 Rf2+:
+        if q.stake + (self._top_other(q) if self._t(NEED_PROPAGATION, 3) else 0) < self.min_stake and not force:      # 52.23 (7): the need may be met by a CHAIN -- this question's gain and one more claim after it (zBouR: Qh1+ Rf1 Qxf1+ Rxf1 Rxf1+ Kd2 Rf2+:
             return q                                                         # the rook, 5, then the queen by the skewer, 9, meet a need of 10 that no single stake does)
         if self.ctx is not None and self.ctx.deadline is not None and self.ctx.out_of_time() and not (self.late and self.ctx.finishing(self.frame)):      # 52.21 (3): past the deadline no new question is pushed
             self.state.gaps.append(f"{q.text} (stake {q.stake}): out of time, not asked")
@@ -1144,7 +1155,7 @@ class Agenda:
                        + ("; " + "; ".join(w for w in why if "the future loses it" in w)[:300]), tempo=False)
             return
         hits.sort(key=lambda h: (-h[3], len(h[1])))               # net value first; the heuristic label only breaks a tie where no claim of theirs bound
-        if NEED_PROPAGATION and self.chase_depth and hits[0][3] < self.min_stake and self._chase(q):      # 52.23 (7): a bound below what this agenda must reach rescues nothing: the question chases first (zBouR: Rxe3+ bound 1, 6 needed, Qh1+ drives the king onto the skewer line)
+        if self._t(NEED_PROPAGATION, 3) and self.chase_depth and hits[0][3] < self.min_stake and self._chase(q):      # 52.23 (7): a bound below what this agenda must reach rescues nothing: the question chases first (zBouR: Rxe3+ bound 1, 6 needed, Qh1+ drives the king onto the skewer line)
             return
         bind, opp, r, net, theirs = hits[0]
         for other, oopp, orr, onet, otheirs in hits[1:]:
@@ -1614,7 +1625,7 @@ class Agenda:
             if cheap:                                            # the reply needs an inner agenda: the route stays open for the second pass
                 res["pending"] = True
                 break                                            # (the replies after it stay for the second pass: reading them all by rule cost 20x their agendas)
-            target = max(1, self.min_stake) if NEED_PROPAGATION else 1      # 52.23 (7): THE NEED PROPAGATES -- the route must reach what this agenda serves (its min_stake), not 1 (zBouR: Qh1+ Rf1 read to 5 when 6 was needed)
+            target = max(1, self.min_stake) if self._t(NEED_PROPAGATION, 3) else 1      # 52.23 (7): THE NEED PROPAGATES -- the route must reach what this agenda serves (its min_stake), not 1 (zBouR: Qh1+ Rf1 read to 5 when 6 was needed)
             need = min(R.STAKE_PROMOTE, 1 - dbal) if promote and dbal <= 0 else R.STAKE_PROMOTE if promote else target - dbal if dbal < target else BD.MATE_VALUE          # a reply that already gains the need is read for a mate only; else its static gain must survive their threats (below)
             self._enter_reply(frozenset(P0.diff(P2)))
             inn = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), since=0 if self.board.is_capture(self._route_move) and dbal >= 0 else self.since_capture + 1,
@@ -1701,7 +1712,7 @@ class Agenda:
                 self._log(key, uci, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
                 break
             cl = inn["claim"] if inn["value"] >= need else None
-            gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else max(dbal - unparried, dbal + inn["value"] if cl and NEED_PROPAGATION else dbal - unparried) if static else dbal + (inn["value"] if cl else 0))      # 52.23 (7): a reply that already gains carries the inner claim too (it answers every reply of theirs): zBouR's Rxf1+ Kd2 Rf2+, +5 then the queen
+            gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else max(dbal - unparried, dbal + inn["value"] if cl and self._t(NEED_PROPAGATION, 3) else dbal - unparried) if static else dbal + (inn["value"] if cl else 0))      # 52.23 (7): a reply that already gains carries the inner claim too (it answers every reply of theirs): zBouR's Rxf1+ Kd2 Rf2+, +5 then the queen
             res["parts"].append(f"after {san_r}: " + (f"{cl.what} ({cl.line}; value {cl.value})" if cl else f"material {dbal:+d}" + (f", their {claim_their.what} wins {t_their} if we pass" if claim_their else "") + (f", {parry_note}" if parry_note else "")) + (f" -> {gains[-1]}" if cl or claim_their or parry_note else ""))
             self._log(key, uci, "claim" if cl else "material", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
             if cl:
@@ -1872,7 +1883,7 @@ class Agenda:
         best = P2.exchange()
         if best < need:
             return None
-        if NEED_AWARE_CLOSE and dbal + best < self.min_stake:       # 52.23 (2): a rule closes a reply only at a value that can still rescue the route this agenda serves (its need,
+        if self._t(NEED_AWARE_CLOSE, 3) and dbal + best < self.min_stake:       # 52.23 (2): a rule closes a reply only at a value that can still rescue the route this agenda serves (its need,
             return None                                             # `min_stake`); a lower bound below it decides nothing, so the reply is ASKED (zBouR: Qh1+ Kd2 closed at the rook, 5, when 6 was needed; Rxf2+ Kc1 Rxc2+ wins the queen)
         q = self._chase_q
         if q is not None and q.goal == "win" and q.pattern.get("target") is not None and dbal + best < q.stake:
@@ -2011,10 +2022,10 @@ class Agenda:
 
     def _chase(self, q: R.Question) -> bool:
         """52.12: the chase of a question that would be killed. -> True when a route CLAIMS (the question is verified)."""
-        evading = EVASION_CHASE and q.goal == "save" and "checkers" in q.pattern          # 52.23 (3): the save-king question of an agenda in check: its routes are the evasions, all forced (`_verify` calls the chase too: the switch is read HERE)
-        if self.ctx is None or (q.goal not in ("mate", "win", "promote") and not evading) or self.min_stake >= BD.MATE_VALUE or (self.chase_depth >= 2 and (q.goal == "promote" or (q.goal == "win" and not DEEP_WIN_CHASE))):      # a mate-only read (the reply already gained, or lost too much for anything but a mate) does not chase on
+        evading = self._t(EVASION_CHASE, 3) and q.goal == "save" and "checkers" in q.pattern          # 52.23 (3): the save-king question of an agenda in check: its routes are the evasions, all forced (`_verify` calls the chase too: the switch is read HERE)
+        if self.ctx is None or (q.goal not in ("mate", "win", "promote") and not evading) or self.min_stake >= BD.MATE_VALUE or (self.chase_depth >= 2 and (q.goal == "promote" or (q.goal == "win" and not self._t(DEEP_WIN_CHASE, 3)))):      # a mate-only read (the reply already gained, or lost too much for anything but a mate) does not chase on
             return False                                               # 52.23 (5): a win question chases at every depth; its checks must address a defect (52.17 (2)) -- the depth-two gate was a numbered limit
-        if self.chase_depth and self.since_capture >= CHASE_CLOCK and not evading:      # 52.23 (8): the chase clock -- a capture that is not bad for us is one-way progress (material never comes back); without one for
+        if self.chase_depth and self.since_capture >= self._clock() and not evading:      # 52.23 (8): the chase clock -- a capture that is not bad for us is one-way progress (material never comes back); without one for
             self.ctx.clock_stops += 1                                   # CHASE_CLOCK of our moves the chain goes nowhere and ends here (a hyperparameter to tune, Kaveh 2026-10-20)
             q._chain_cut = True
             self.lines.append(f"  chase: not started -- the chase clock: {self.since_capture} moves of ours without a capture that is not bad for us")
@@ -2034,7 +2045,7 @@ class Agenda:
             self.state.gaps.append(f"Q{q.id} {q.text}: out of time: chase not started")
             return False
         allow = None
-        if q.goal in ("mate", "win") and GOAL_JUDGE:             # 52.23 (6): TEMPO ARITHMETIC ENDS THE CHAIN (the goal-progress judge, Kaveh 2026-10-20: "mating the king is like mating the bishop").
+        if q.goal in ("mate", "win") and self._t(GOAL_JUDGE, 3):             # 52.23 (6): TEMPO ARITHMETIC ENDS THE CHAIN (the goal-progress judge, Kaveh 2026-10-20: "mating the king is like mating the bishop").
             fresh = q.goal == "win" and self.chase_depth > 0 and self.since_capture == 0      # A pattern with d defects needs at most d prep moves of ours, each fixing one (regress.py's tempo arithmetic); a fix that
             top = self.ctx.mate_levels[-1] if self.ctx.mate_levels else None                  # itself needs two moves (drive the king onto the skewer line, then skewer) says so (`steps`). A chain that has spent
             parent = None if fresh or top is None or q.stake > top[1] else top[0]             # (a BIGGER goal found on the chain is a new goal with its own distance: zBouR's queen under the f2 pawn's chase)
@@ -2053,7 +2064,7 @@ class Agenda:
                 pc = b.piece_at(m.to_square)
                 routes.append(R.Route(m, b.san(m), f"capture {G.worth(pc)}" if pc is not None else "evade"))
                 continue
-            why = R.forcing_why(b, m, q.stake, self.us, mate_threats=True, notes=notes)
+            why = R.forcing_why(b, m, q.stake, self.us, mate_threats=True, notes=notes, mate2=self.ctx.tier >= 2)      # plan 59 tier 2: a mate-in-two threat is forcing too
             if why:
                 ok, note = self._addresses(q, m, why)
                 if ok:
@@ -2063,7 +2074,7 @@ class Agenda:
                 else:
                     self.ctx.unaddressed += 1
                     notes.append(note)
-        if q.goal == "promote" or (q.goal == "win" and DEEP_WIN_CHASE):      # 52.15 (2): the fix routes of the defects (take the stopper or the blocker, push with check) are routes too, at every depth; 52.23 (4): a win's named fixes too (the skewer, the drive onto its line)
+        if q.goal == "promote" or (q.goal == "win" and self._t(DEEP_WIN_CHASE, 3)):      # 52.15 (2): the fix routes of the defects (take the stopper or the blocker, push with check) are routes too, at every depth; 52.23 (4): a win's named fixes too (the skewer, the drive onto its line)
             seen = {r.move for r in routes}
             for f in q.fixes:
                 for r in R.all_routes(f):
@@ -2073,7 +2084,8 @@ class Agenda:
         if q.goal == "promote" and not self.chase_depth:        # 52.15 (2): plus a move that attacks a named STOPPER of the question ("threat on the stopper"), or offers the pawn to it
             routes += self._stopper_routes(q, [r.move for r in routes], notes)
         if self.chase_depth and not evading:                    # inner levels follow the most forcing moves only: a check, a capture, a mate threat (the quiet "threat n" moves are the root's)
-            routes = [r for r in routes if r.why.removeprefix("fix: ").startswith(("check", "threat of mate", "capture"))]
+            follow = ("check", "threat of mate", "capture") + (("threat",) if self.ctx.tier >= 1 else ())      # plan 59 tier 1 lifts the cut for the quiet threats worth the stake (and the tier-2 mate-in-two threat)
+            routes = [r for r in routes if r.why.removeprefix("fix: ").startswith(follow)]
         if self.chase_depth >= 2 and q.goal == "win":           # 52.23 (5): below the first inner level a win question follows only the NAMED FIXES of its defects that CHECK (the skewer, the fork-check:
             fix_moves = {r.move for f in q.fixes for r in R.all_routes(f)}     # the reply is forced); every other forcing move is the root's and the first level's (the named fixes that do not check still cost 0LRTF 4x)
             routes = [r for r in routes if r.move in fix_moves and b.gives_check(r.move)]
@@ -2244,7 +2256,7 @@ class Agenda:
             self.lines.append(f"  -> Q{f2.id} {f2.text}: " + ", ".join(r.san for r in others))
             q.fixes.append(f2)
             self._verify(q, others, mates_only=False)
-        if len(self.state.claims) == before and not self._decide_by_smallest_loss(q) and EVASION_CHASE:
+        if len(self.state.claims) == before and not self._decide_by_smallest_loss(q) and self._t(EVASION_CHASE, 3):
             self._chase(q)                                       # 52.23 (3): an INNER agenda in check chases its evasions (every legal move answers the check, so each is a route): zBouR's Rhxf2 cxb7+ Kb8 Rxf2 Qh1+
 
     def _ask_save_piece(self, q: R.Question, head: str) -> None:

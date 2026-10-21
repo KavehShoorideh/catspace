@@ -283,10 +283,25 @@ def mate_threat(board: chess.Board, m: chess.Move, us: str | bool) -> bool:
     return False
 
 
-def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool, mate_threats: bool = False, notes: list | None = None) -> str | None:
-    """The reason `m` is forcing (see `_forcing_why_py`), or None. 54 (B2): read by analyst_core when ROUTES_RUST (the same answer, the same notes)."""
+def mate2_threat(board: chess.Board, m: chess.Move, us: str | bool) -> bool:
+    """plan 59 tier 2: after our (quiet) move m and a pass, we have a FORCED MATE IN TWO, read by the proved word `mate_in_two` (Lean `Ideas.Mined.Schemas.mate_in_two`: a move x -> y after which
+    every reply is met by a mate; bound by `selfmine.bind_mate2`, the premise read in Rust) -- the same word the binder's mate_in_two schema uses, on the board after m with the move passed to them."""
+    from catspace.incubator.analyst.discovery import selfmine as SM
+    me = G.colour_of(us)
+    c = board.copy(stack=False)
+    c.push(m)
+    if c.is_check() or not any(True for _ in G.with_turn(c, me).legal_moves):
+        return False
+    return bool(SM.bind_mate2(G.with_turn(c, me).fen(), "w" if me else "b"))
+
+
+def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool, mate_threats: bool = False, notes: list | None = None, mate2: bool = False) -> str | None:
+    """The reason `m` is forcing (see `_forcing_why_py`), or None. 54 (B2): read by analyst_core when ROUTES_RUST (the same answer, the same notes). plan 59 tier 2 (`mate2`): a quiet move
+    after which a pass leaves us a forced mate in two ('threat of mate in two', `mate2_threat`) is forcing too, whatever the stake (a mate question follows checks and mate threats only)."""
     got = _forcing_batch(board, [m], stake, us, mate_threats, notes) if ROUTES_RUST else None
     why = got[0] if got is not None else _forcing_why_py(board, m, stake, us, mate_threats, notes)
+    if why is None and mate2 and mate_threats and mate2_threat(board, m, us):
+        why = "threat of mate in two"
     if REGRESS_LOG is not None:
         REGRESS_LOG.append(("forcing", board.epd(), m.uci(), stake, mate_threats, why, tuple(notes) if notes is not None else None))
     return why
