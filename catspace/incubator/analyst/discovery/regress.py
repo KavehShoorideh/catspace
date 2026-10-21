@@ -529,20 +529,59 @@ _STANDING: dict = {}
 G.CLEAR_HOOKS.append(_STANDING.clear)
 
 
+def check_threat(board: chess.Board, x: chess.Move, stake: int, us: str | bool) -> str | None:
+    """plan 63.1 (Lean `Ideas.Forcing.checkThreat`): a CHECK x that is also a THREAT. After x their king is in check, so no pass is legal; the pass test is read the way `pass_claim` /
+    `threat_value` read it, on the board after x with US to move again (`G.with_turn`): a move of ours that then MATES (the discovered check Ng1+ that uncovers Qh7#: every reply that does not
+    meet the mate loses), or an exchange worth at least the stake (stake < mate). A bare check with nothing behind it is None; a check that mates is 'check that mates'.
+    -> the reason ('check that also threatens mate (Qh7#)' / 'check that also threatens +v') or None. Not a lambda-1 NEW test by itself: the caller filters moves that already stood before."""
+    me = G.colour_of(us)
+    if not board.gives_check(x):
+        return None
+    c = board.copy(stack=False)
+    c.push(x)
+    if c.is_checkmate():
+        return "check that mates"
+    d = G.with_turn(c, me)
+    ksq = c.king(not me)
+    for mv in list(d.legal_moves):
+        if mv.to_square == ksq:
+            continue
+        if G.mates(d, mv):                                                # (pushes only a move that could give check)
+            return f"check that also threatens mate ({G.with_turn(c, me).san(mv)})"
+    if stake < STAKE_MATE:
+        t = threat_value(c, me)
+        if t >= stake:
+            return f"check that also threatens +{t}"
+    return None
+
+
+def _follow_up(board: chess.Board, x: chess.Move, stake: int, me: bool) -> str | None:
+    """plan 63.1: why `x` (our move on `board`) is a FOLLOW-UP for a delayed threat, or None: (a) a threat / capture worth the stake as in 61 A3 (a bare capture only if the exchange wins);
+    (b) a THREAT OF MATE at any stake (a mate exceeds every stake: read with `mate_threats=True`); (c) a CHECK that is also a threat (`check_threat`). A bare check does not count at a material stake;
+    at the mate stake a check counts as in 61 A3."""
+    w = forcing_why(board, x, stake, me, mate_threats=True)
+    if w is None:
+        return None
+    if w == "check":
+        return "check" if stake >= STAKE_MATE else check_threat(board, x, stake, me)
+    if w.startswith("capture") and stake < STAKE_MATE and G.see(board, x.to_square) <= 0:
+        return None                                                      # (a bare capture counts only if the exchange on it wins)
+    return w
+
+
 def _standing_forcing(board: chess.Board, stake: int, me: bool) -> frozenset:
-    """The UCIs of our moves that are forcing on `board` itself (what is already there before a quiet move is played): a delayed threat is made by the move, not found beside it."""
+    """The UCIs of our moves that are follow-ups on `board` itself (what is already there before a quiet move is played): a delayed threat is made by the move, not found beside it."""
     key = (board.board_fen(), board.turn, board.castling_rights, board.ep_square, stake)
     hit = _STANDING.get(key)
     if hit is None:
-        hit = _STANDING[key] = frozenset(x.uci() for x in board.legal_moves
-                                         if (w := forcing_why(board, x, stake, me, mate_threats=stake >= STAKE_MATE)) and (stake >= STAKE_MATE or w != "check"))
+        hit = _STANDING[key] = frozenset(x.uci() for x in board.legal_moves if _follow_up(board, x, stake, me))
     return hit
 
 
 def delayed_threat(board: chess.Board, m: chess.Move, stake: int, us: str | bool) -> str | None:
-    """plan 61 A3 (Lean `Ideas.Forcing.delayedThreat`; Thomsen's lambda-2): the quiet move `m` is DELAYED-FORCING iff after it, for EVERY legal reply of theirs, some move of ours is forcing by
-    `forcing_why` with a threat worth the stake (one bounded AND level: their replies x our forcing candidates, the forcing test only, no recursion; a plain check counts only for a mate
-    stake). -> "delayed threat: after every reply a threat of ours (tightest: after Rg8+: h2 ...)" naming the reply that leaves the fewest, or None."""
+    """plan 61 A3 (Lean `Ideas.Forcing.delayedThreat`; Thomsen's lambda-2) with plan 63.1: the quiet move `m` is DELAYED-FORCING iff after it, for EVERY legal reply of theirs, some NEW move of ours is a
+    follow-up (`_follow_up`: a threat / capture worth the stake, a threat of mate at any stake, or a check that is also a threat -- Lean `checkThreat`). One bounded AND level: their replies x our
+    candidates, the forcing test only, no recursion. -> "delayed threat: after every reply a new threat of ours (tightest: after Rg8+: h2 ...)" naming the reply that leaves the fewest, or None."""
     me = G.colour_of(us)
     c = board.copy(stack=False)
     c.push(m)
@@ -550,21 +589,24 @@ def delayed_threat(board: chess.Board, m: chess.Move, stake: int, us: str | bool
     if c.is_check() or not replies:
         return None
     standing = _standing_forcing(board, stake, me)
-    tight = None
+    tight, via_check = None, None
     for r in replies:
         d = c.copy(stack=False)
         d.push(r)
-        ours = [x for x in d.legal_moves if x.uci() not in standing]       # the threat must be NEW: a forcing move already there before `m` (a hanging queen) is not made by `m`
+        ours = [x for x in d.legal_moves if x.uci() not in standing]       # the threat must be NEW: a follow-up already there before `m` (a hanging queen) is not made by `m`
         hits = []
         for x in ours:
-            w = forcing_why(d, x, stake, me, mate_threats=stake >= STAKE_MATE)
-            if w and (stake >= STAKE_MATE or w != "check") and not (w.startswith("capture") and G.see(d, x.to_square) <= 0 and stake < STAKE_MATE):      # (a bare capture counts only if the exchange on it wins)
+            w = _follow_up(d, x, stake, me)
+            if w:
                 hits.append((x, w))
         if not hits:
             return None
         if tight is None or len(hits) < tight[0]:
             tight = (len(hits), c.san(r), d.san(hits[0][0]), hits[0][1])
-    return f"delayed threat: after every reply a new threat of ours (tightest, after {tight[1]}: {tight[2]} {tight[3]}; {tight[0]} such move(s))"
+        if via_check is None and all(w.startswith("check that") for _x, w in hits):          # 63.1: the replies after which ONLY a check-that-is-a-threat follows are named
+            via_check = f"after {c.san(r)}: {d.san(hits[0][0])} ({hits[0][1]})"
+    return (f"delayed threat: after every reply a new threat of ours (tightest, after {tight[1]}: {tight[2]} {tight[3]}; {tight[0]} such move(s))"
+            + (f"; by a check that is also a threat, {via_check}" if via_check else ""))
 
 
 def no_safe_move(board: chess.Board, m: chess.Move, stake: int, us: str | bool) -> str | None:

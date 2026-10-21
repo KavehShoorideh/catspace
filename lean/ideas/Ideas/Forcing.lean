@@ -85,6 +85,42 @@ theorem free_move_breaks {loses : Position → Move → Bool} {q : Position} {r 
   have := (noSafeMove_loses h).2 r hr
   rw [hf] at this; exact absurd this (by simp)
 
+/-! ### 63.1: a check that is also a threat is a follow-up
+
+`checkThreat isCheck claim q x`: `x` is a check AND, on the board after it, the claim of ours binds (read with the move passed back to us, the
+null-move device of `pass_claim`: the discovered check that uncovers a mate). `followUp` is the follow-up of a delayed threat: a threat / capture
+worth the stake (`thr`), a threat of mate at any stake (`mateThr`), or a check that is also a threat. -/
+
+/-- The check is also a threat: `x` gives check and the claim binds on the board after it. -/
+def checkThreat (isCheck : Position → Move → Bool) (claim : Position → Bool) (q : Position) (x : Move) : Bool :=
+  isCheck q x && claim (applyMove q x)
+
+/-- THE FOLLOW-UP of a delayed threat (plan 63.1). -/
+def followUp (thr mateThr isCheck : Position → Move → Bool) (claim : Position → Bool) (q : Position) (x : Move) : Bool :=
+  thr q x || mateThr q x || checkThreat isCheck claim q x
+
+/-- A check that is also a threat is a lambda-1 move: it is a check, and a pass (the claim read on the board after it) leaves a claim of ours. -/
+theorem checkThreat_forcing {isCheck : Position → Move → Bool} {claim : Position → Bool} {q : Position} {x : Move}
+    (h : checkThreat isCheck claim q x = true) : isCheck q x = true ∧ claim (applyMove q x) = true := by
+  simpa [checkThreat] using h
+
+/-- A bare check (no claim behind it) is not a check that is also a threat. -/
+theorem bare_check_not_threat {isCheck : Position → Move → Bool} {claim : Position → Bool} {q : Position} {x : Move}
+    (h : claim (applyMove q x) = false) : checkThreat isCheck claim q x = false := by
+  simp [checkThreat, h]
+
+/-- The follow-up includes the check that is also a threat. -/
+theorem followUp_of_checkThreat {thr mateThr isCheck : Position → Move → Bool} {claim : Position → Bool} {q : Position} {x : Move}
+    (h : checkThreat isCheck claim q x = true) : followUp thr mateThr isCheck claim q x = true := by
+  simp [followUp, h]
+
+/-- A delayed threat whose forcing word is `followUp` has, after every reply, a follow-up: a threat, a threat of mate, or a check with a claim behind it. -/
+theorem delayed_followUp {thr mateThr isCheck : Position → Move → Bool} {claim : Position → Bool} {q : Position}
+    (h : delayedThreat (followUp thr mateThr isCheck claim) q = true) {r : Move} (hr : r ∈ legalMoves q) :
+    ∃ x, x ∈ legalMoves (applyMove q r) ∧ followUp thr mateThr isCheck claim (applyMove q r) x = true :=
+  delayed_forcing h hr
+
+
 /-! ## Stage C (ANALYST_PLAN 61 C1, C2, C4): the cost of a route, the judge, the repetition claim -/
 
 /-- C1 THE COST of an open route: one for the route, plus the cost of the unread child of each parry (`regress.route_cost`). -/
