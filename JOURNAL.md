@@ -32083,3 +32083,16 @@ null-move test; every legal reply is read; a fuse cut is a GAP. Correctness trap
 their side can be delayed-forcing too (dual lambda); the judge changes the decision so its inputs must be exact and a learned part may only order.
 Proposed order on a go: parries + lambda-2 words first (RoR8t), the label + quiet-status estimate, an exact proof-number cost replacing the fuse (2zB89),
 then the calibration loop before any learned head.
+
+## 2026-10-21 11:47 PDT -- PLAN 61 STAGE A BUILT: THE THREAT AS AN OBJECT, PARRIES, THE DELAYED THREAT (lambda-2), NO SAFE MOVE; IDENTICAL ON 90, OFF BY DEFAULT
+Builder (Sonnet) commits 2b9a603d (Lean: Ideas.Forcing -- parries / closed_binds / delayedThreat / noSafeMove, standard axioms), 9a947015 (code:
+regress.threat_of, parries, delayed_threat, no_safe_move; agenda.PARRIES / DELAYED_THREAT / NO_SAFE_MOVE; analyse --forcing61; harness switches),
+25fc99b9 (13 tests restating the Lean lemmas by brute force). Verified here: 154 targeted tests pass; compare_regress and compare_scheduler identical
+with the flags on (builder's runs). OBS (one run each, 90 puzzles rand1-9 x 10, Stockfish depth 14): 10 s base 65/2/23 RIGHT/WRONG/none and the same
+under --parries, --delayed --nosafe and --forcing61 (per-puzzle identical); count budget 61/3/26 base and with --parries; set wall times unchanged.
+Deviations the builder reported, accepted: (1) PARRIES only RELABELS -- the existing close (exchange + their pass + after-capture duty) already closes
+every non-parry soundly, so "closed by the threat" names the reason (6528 closed replies checked at 10 s, 5895 did not parry) without changing a value;
+re-closing at the threat's value would have been the kcQil unsoundness again; (2) delayed_threat admits only NEW forcing moves (else every quiet move
+beside a hanging queen was "delayed"), captures only with see > 0, a bare check only at the mate stake; (3) no_safe_move never fired on the 90.
+Acceptance: RoR8t still none -- Kg3 is already a tier-2 route ('threat of mate in two') and dies after Rg8+ at +0: the missing word is the endgame claim
+after Rg8+ Rg4 (two pawns against a lone rook), not forcing; the builder did not fake it. Defaults OFF (no gain measured; A3 adds routes). Next: stage B.
