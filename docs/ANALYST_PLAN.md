@@ -2898,3 +2898,28 @@ trailers; commit by path; no Pool from stdin; the Rust paths (ROUTES_RUST, CORE_
 * C5 GRADE the 85 under 10 s with COST_JUDGE on/off; tests; journal.
 
 Order: A, then B, then C; D (a learned cost/accuracy head as a head of plan 60's policy, ordering only) is NOT in this build.
+
+### 62 Endgame knowledge as a frame: the passer RACE word, tempo-immunity as the frame's soundness condition, the tablebase as a labelled oracle (Kaveh 2026-10-21: "endgame knowledge should be some sort of frame"; written on his "do it", NOT a go to build)
+The case: RoR8t (Kg4 Rf4 f5 h3 v Kg1 Rb8 a2 b3, Black to move; 1...Kg3! 2.Rg8+ Rg4 and the pawns walk, +10). Material is level; our leaf after Rg8+ is
+closed at +0 by the stopper defect ("their K on g1 reaches h1 in 1, the pawn needs 2"), which is true by its definition and too weak: a king in front
+of the h-pawn is not a stopper once the king covers h2 and the f-pawn deflects. Not a depth problem (identical at 60 s): a missing word.
+* 62.1 THE RACE WORD (Lean `Ideas/Race.lean`, on `Passer.lean`/`Passer2.lean`: `pushes`, `path`, `kdist`, `pdist`, `farB`). For a side: `promoTempi` = the
+  pushes of its best passer + the stopper's delay, where a stopper counts only if it can STAND on the path and SURVIVE there (a square covered by our
+  king or rook does not stop; a king on the promotion square blocks but is deflected by a second passer: `deflects`). `race(us, them)`: our promoTempi
+  < their promoTempi and our stopper (rook or king) is within reach of their passer's path (their race is slower AND held). Claim: `race` binds a
+  promote claim (value 8) with the line naming both counts ("we promote in 4 (h2, h1 with the king covering h2; the f-pawn deflects Kh1), they need 6
+  and Rf4 holds b4"). Lemma `race_sound` under the standard axioms, by reasoning (no brute force). Mirror: `regress.race_claim` replacing the 1-ply
+  `stopper` defect's verdict when the race binds; test against the Lean cases; RoR8t decides Kg3 (acceptance), and the 90 lose no RIGHT.
+* 62.2 TEMPO-IMMUNITY, the frame's soundness condition. An endgame FRAME = the pieces the word reads (its read set) with the rest excluded. Exclusion is
+  sound only if the excluded pieces cannot change the outcome: (a) they cannot reach the read set's squares within the word's tempi (`farB` on every
+  excluded piece), AND (b) the win inside the frame is FORCED (every reply of theirs is a parry: `Ideas/Forcing.parries` from plan 61 A), because a
+  forced win is immune to spare tempo moves and a zugzwang win is not (the far pawns a2/b3 are tempo moves). Lemma `frame_sound`: (a) and (b) give
+  the whole-board claim from the frame's claim. Mirror in the binder: a frame claim is served only with (a) and (b) checked on the live board; the
+  trace prints the frame ("frame: Kg3 Rf4 f5 h3 v Kg1 Rb8; excluded a2 b3: far (>= 5) and the win is forced").
+* 62.3 THE TABLEBASE AS A LABELLED ORACLE. `assets/tablebases/syzygy` holds 3-5 men (290 files). A leaf whose WHOLE board is <= 5 men (no exclusion
+  argument needed) may close by Syzygy WDL/DTZ as a claim with the label `proved_by = "table"` (a third label between a proved word and an estimate:
+  exact by exhaustion, unexplained); value: win = the material of their last piece or 100 for a mate line (DTZ gives the distance), draw = minus the
+  balance (level), loss = refuted. The decision prefers proved words, then table claims, then estimates (plan 61 B's order extended); the trace says
+  "closed by the table (KRPvKR: win, DTZ 14)". Switch `agenda.TABLE` (default OFF); graded on the 90 and on the endgame-themed lichess sample
+  (`sample_puzzles --themes rookEndgame pawnEndgame --n 30`, a new sampler option); python-chess's `chess.syzygy` reads the files.
+* 62.4 ORDER: 62.1 first (it is the vocabulary), 62.2 with it (the race word is a frame word), 62.3 last (cheap, bounded). Each OFF until graded.
