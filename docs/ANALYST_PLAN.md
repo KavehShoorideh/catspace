@@ -2755,3 +2755,6 @@ samples, what does its ablation cost -- and retired by subsumption; afterwards t
 as it orders the hand ones. Every candidate is a Lean-mirrored word composed from proved pieces: interpretable by construction (the standing rule).
 Report as questions found + each one's effect, never as a win rate. Remnants to reuse: proposer.py (plan 40.5), the lemma generator, chain_lemmas,
 holes.py, the question log (53 (1)).
+Where it runs (Kaveh 2026-10-20): THE MINING LAYER IN RUST -- the grammar's enumeration, the evaluation of each candidate over the logged and fresh
+positions with the words in the core (vocab_eval, vocab_certify, mine_cases, the regress/route handlers), the effect scores; Python keeps the oracle
+(the hand questions set aside), the Stockfish grader, the reporting and the loop's bookkeeping. The hand-written questions stay in Python.
