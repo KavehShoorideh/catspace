@@ -32111,3 +32111,29 @@ attack; Stockfish 1.Bf2 -2.1, ours Nxf4 +1 proved / -3.1 by Stockfish) is the te
 merit (their Bh4 is pinned to the h-file by the Qh7 mate threat, the queen its only defender, Ng1 unblocks AND unpins before Bxh4) is a two-quiet-move
 plan held by a mate threat; with --forcing61 the engine claims "win Bf2" only one level down (after Nxf4 exf4, the knight gone), never at the root.
 Checked and NOT a bug: "Bxh4 Qxh4 Qxh4" in that line is right (h3 is empty there). Next: stage C.
+
+## 2026-10-21 14:47 PDT -- PLAN 61 STAGE C BUILT: COST, THE JUDGE (OFF: 2 RIGHT LOST, DIAGNOSED), THE REPETITION DRAW (ON); 2zB89 TRACED TO A DELAYED THREAT SEVEN PLIES DOWN
+Builder (Sonnet) commits b3be94a3 (Lean: Ideas.Forcing routeCost, judgeReads monotone, repetitionValue; builds, no sorry in the diff), 9fa2db51
+(regress.node_cost / route_cost: 1 + the cost of the unread child of each parry, scan bounded to the 3 forcing moves with fewest replies), 3e4b9ea1
+(question_prior.forcing_resources logged per root: forcing moves, pieces bearing on the king region, flights, blockers; nothing reads it yet), 64af1aa0
+(sample_puzzles --themes), 46936b79 (agenda.COST_JUDGE OFF and CYCLE ON; scheduler mirrored; analyse --cost-judge / --no-cycle; CATSPACE_QLOG),
+c8057d2b (tests/test_cost61.py). Verified here: 13 tests pass; no trailers; each commit holds stage C hunks only (plan 63's uncommitted hunks were left out
+by staging through the index). OBS (90 puzzles rand1-9 x 10, 10 s, Stockfish depth 14, one run each, builder's grade files):
+    base (--no-cycle)      RIGHT 64, UNKNOWN 24, WRONG 2
+    default (cycle on)     RIGHT 64, UNKNOWN 24, WRONG 2   (per puzzle identical to base)
+    --cost-judge           RIGHT 62, UNKNOWN 25, WRONG 3   (BEKFf Qb5+ RIGHT -> none; lK9WA Nxc6 RIGHT -> Rb6 WRONG)
+Checked against stage A's 65: the one difference (eSJqH, Qa5 RIGHT -> none) is the clock -- it decides in tier 3 after 5.6-5.7 s; rerun alone with the
+duty word off and on, it decides Qa5 both times. CYCLE: the repetition terminal closed many chase lines (builder: 113 on w1Rvt, 40 on 2VDtX) and moved no
+decision on the 90; on an 'equality' sample it decides w91Hv by "CLAIM draw Rf1+ ... repetition" (the puzzle's answer). ctx.history exists but the play
+server does not fill it yet. The judge: builder's diagnosis -- lK9WA's Nxc6 is priced by first-level parries (cost 56) and starved (deep replies many);
+BEKFf's Qb5+ needs more than tier 0's share; six variants (fuse removed, tier splits, rate carried, slices by need) each lost one of the two, so the shipped
+judge keeps the tiers' count fuse and only adds early cuts (a deviation from "replace the fuse"); yPdql and 5JrXD, lost by the first version (a 0.07 s
+slice; a rate never learned), were fixed on the way. Neither acceptance case met: tempo1's Rxc2+ is still cut at Kxc2 by the clock; a 38 s tier 0 the
+builder saw on tempo1 does not reproduce (2.8 / 5.6-5.8 / 1.4-1.7 s per tier now, duty off and on: it was the machine loaded by two grades).
+2zB89 traced here (Qxa5 Qxa1+ Rf1 Qd4+ Kh1, Stockfish line): the judge is not the obstacle. Probing each position as a root: after 1.Qxa5 Qxa1+ ours plays
+Bf1 by the smallest loss (Stockfish Rf1 +4.72, Bf1 -1.06) because Rf1 dies "after Qd4+: no claim of ours"; after 2...Qd4+ ours picks Kh1 (right) but
+cannot prove it: "Kh1: killed -- after Qd6: no claim of ours"; after 3.Kh1 Qd6 the only win is the QUIET 4.Bd5 (Stockfish +5.64, the next best +0.24):
+a delayed threat seven plies below the root, where 61 A3's word does not run (root chase only, and OFF). Black's replies after Kh1 by Stockfish: Qxb6
+-4.82, Qd6 -5.89, the rest mate. So 2zB89 needs the in-check evasion chase in every tier (a 52.23 chain item, OFF) AND the delayed threat inside the
+chase; this goes to plan 64 (the diagnosis round under "off is not built"), with the judge's repricing (by the measured time of the same route in an
+earlier tier) and the 52.23 chain items' 07Z0P regression.
