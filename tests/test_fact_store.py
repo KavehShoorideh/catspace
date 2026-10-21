@@ -179,7 +179,7 @@ def test_52_19_3_a_stale_fact_is_recomputed_only_when_a_live_question_needs_it_a
 
 def test_52_19_3_the_out_of_time_gaps_of_the_live_move_enter_the_queue_and_the_drain_resumes_them_exactly_there():
     from catspace.incubator.analyst.discovery import ponder as PD
-    ag = AG.Agenda(state_of(OPEN, "w"), seconds=0.05)
+    ag = AG.Agenda(state_of(OPEN, "w"), seconds=0.01)                 # (0.05 s no longer cuts anything after plan 54: the whole agenda runs in under it)
     ag.ask()
     fs = ag.ctx.facts
     gaps = [f for f in fs.queue() if f.kind == "gap"]
