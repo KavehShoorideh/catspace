@@ -2791,3 +2791,21 @@ stake below the root; tier 2 mate-in-two threats (`mate_threat` widened); tier 3
 under a time budget the same tiers while time remains (anytime: a status-keeping answer is never lost to a deeper dig; hqGOF). The trace names the
 tier and why it opened ("no move keeps 'level': Re7 loses to Qxe7; tier 1 opened"). Measured on fresh random samples with the grader, run on all
 cores; puzzles always hold a winning move, so a status-keeping move that is not the puzzle's answer is graded by Stockfish, not by MATCH.
+BUILD SPEC (Kaveh 2026-10-20: "go ahead and build it"):
+* STATUS at the root: s0 = our material balance minus the value of THEIR best claim with the move passed (their pass on the root board, the threat the
+  agenda already reads; 100 for a mate threat; 0 when none). The LINE: L = 1 ("winning: stay ahead") if s0 >= 1, else L = 0 ("not losing: reach level").
+* KEEPS THE STATUS: the agenda's best claim c (its net value, as `self.best[0]` ranks it; a save in check by the smallest loss included) keeps it when
+  balance + c.value >= L. No claim = not kept.
+* TIERS (each a SETTING of the root's ChaseCtx, read through the ctx, never a process-wide flag, so the play server's ponder thread cannot race; the
+  module flags stay as overrides that force an item on at every tier): tier 0 = today's defaults; tier 1 = quiet threats worth the stake followed below
+  the root (the `_chase` cut of 52.13 lifted); tier 2 = + mate-in-TWO threats in `forcing_why` (after our move and a pass, a forced mate in two read by a
+  proved word: the mate_in_two schema or the core's forced-mate search -- name it); tier 3 = + the chain items of 52.23 (the in-check chase with one
+  intermezzo, the need propagated, the need-aware close, the deep win chase, the goal judge, the chase clock 4). Tier k's count budget = the base fuse x 2^k.
+* THE DRIVER at the root: run tier 0; if the best claim keeps the status, stop; else run the next tier on a FRESH ctx (a kill under a narrower move set
+  is not a kill under a wider one: facts are not carried across tiers; the play server's carried store stays tier 0's); after the last tier, or when a
+  tier keeps the status, the DECISION is the best claim over all tiers run (by `_better`: claims are verified, a wider tier only finds more). Under a
+  time budget: every tier keeps its count fuse (the time is a cap, not a replacement: 52.23 (1)'s NO_FUSE is not used in tiered mode); tiers continue
+  while time remains; a tier cut by the deadline still contributes its verified claims.
+* THE TRACE names it: "STATUS: losing (balance -3, their threat 0): the line is 'reach level' (0); tier 0's best claim d3 +1 gives -2: not kept; tier 1
+  opened (quiet threats below the root)" ... "tier 2 keeps the status: Rc2+ ...".
+* SWITCH: `agenda.TIERS` (default False until verified); `analyse --tiers`; the play server honours it.
