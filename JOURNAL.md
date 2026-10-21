@@ -32002,3 +32002,15 @@ spread thin (copies in with_piece, the Binding's SAN, Question construction, roo
 reply of three families that walk the same two plies -- a shared transposition memo is the next Rust gain), the agenda's Python 20%. Open from the
 builder: `Term::Ours` in vocab.rs counts the king though its doc says "other than the king" -- the Lean mirror must be checked before either is changed.
 Stage C (the chase loop in Rust) is now a REWRITE of the agenda, not a port of a word: the inner and their agendas are the agenda; raised with Kaveh.
+
+## 2026-10-20 17:32 PDT -- THE CHASE AS A TASK GRAPH ON A WORKER LOOP, NOT A RECURSION (plan 56 stage 1, Python reference): IDENTICAL, TRACE INCLUDED
+Kaveh: "It shouldn't be recursive. We need urgent and non-urgent computation queues ... workers pick the highest priority"; "the prior should have
+access to findings, so it can abandon ideas that won't work" (abandon = sink in the queue, never kill); "this should be in Rust otherwise it'll be
+super slow" -- "ok python first": the Python graph is the REFERENCE the Rust port is checked against. Builder (0e8cdf09 scheduler.py 1144 lines + 13
+lines of dispatch in agenda.py behind `SCHEDULER`; 543df135 harness + tests): tasks node / ask / chase / route / reply as generators yielding the child
+they wait on, a heap keyed (queue, priority, order), the propagation rules as functions (a route's value = min over replies, the best route, killed when
+every route is), their pass a recorded leaf run in line. My rerun of `scripts/compare_scheduler.py`: decisions, claims, counters AND the trace text
+identical on 07Z0P, 0LRTF, rand1-3; seconds unchanged (3.3, 2.8, 13.6/13.9, 3.7). Honest: "most ready at once" is 1 everywhere -- stage 1 reproduces
+today's depth-first order exactly, by design; the queue has nothing to choose between yet; the shared mutable state (route depth, the deadline, the
+listener frames, R._ids) still relies on that order and must move onto tasks before priorities can differ (stage 3) or workers run (stage 4). The
+0.05 s out-of-time test fixed to 0.01 s (after plan 54 the whole agenda ran under its budget). Flag OFF by default until the Rust port.
