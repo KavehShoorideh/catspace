@@ -2742,3 +2742,16 @@ mirrors -- the interpretability rule made structural: a handler that touches a d
 Rust: handlers are trait objects in the registry, the bus a queue of events, the scheduler (2a) the consumer that turns "needs computing" into tasks on
 the heap; Python handlers stay possible by callback (the prior, the RL loop). Stages 2b/2c port the task bodies AS handlers; stage 3 the queues,
 re-prioritisation and the shuffle test; stage 4 the workers (handlers on a pool, the fact store the one shared state).
+
+### 57 Question discovery: mine and auto-generate the questions from the vocabulary, the hand-written ones set aside as the oracle (Kaveh 2026-10-20, discussed, NOT a go: "I want the questions to eventually be mined and auto-generated for good play ... delete all the questions later (set them aside) and see if a priori without my help it could come up with these questions ... use them as a labeling guide ... it took a lot of human effort to get here, that's not scalable")
+The 2026-10-13 criterion made a programme. (1) THE GRAMMAR: a question is a template over the vocabulary -- a goal predicate on a square (win: the
+exchange on s wins; mate: a landing on s checks and leaves no legal move; promote: the pushes reach the last rank with the path clear; save: the
+mirror), its negation decomposed into DEFECT words (attackers, defenders, flights, interpositions, between, lands safe, reach), and FIXES as the forcing
+moves that flip one defect word; the lemma generator of 2026-09-22 (frames -> guards -> subsumption -> prove at scale) enumerates such templates.
+(2) THE ORACLE OUT OF THE LOOP: the hand-written questions are set aside (not deleted); their question log and the Stockfish grader are the labeller;
+a candidate question is kept by EFFECT -- asked on logged and fresh positions, does it lead to the deciding claim (graded RIGHT), does it fire on fresh
+samples, what does its ablation cost -- and retired by subsumption; afterwards the hand questions say how much of their coverage was re-found.
+(3) THE LOOP: propose from the grammar, run a fresh sample with the log on, grade, keep by effect, retire; the prior (53/55) orders the found questions
+as it orders the hand ones. Every candidate is a Lean-mirrored word composed from proved pieces: interpretable by construction (the standing rule).
+Report as questions found + each one's effect, never as a win rate. Remnants to reuse: proposer.py (plan 40.5), the lemma generator, chain_lemmas,
+holes.py, the question log (53 (1)).
