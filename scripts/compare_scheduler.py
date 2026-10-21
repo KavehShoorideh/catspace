@@ -30,6 +30,10 @@ def worker(target: str, mode: str, prior: bool, out: str) -> None:
         AG.PARRIES = True
         if os.environ["F61"] == "2":
             AG.DELAYED_THREAT = AG.NO_SAFE_MOVE = AG.TIERS = True
+    if os.environ.get("CHAIN64"):                                   # plan 64: the 52.23 chain items, the cost judge and the 61 A words ON on both sides (what 64.1-64.4 change)
+        for k in ("NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE"):
+            setattr(AG, k, True)
+        AG.CHASE_CLOCK = 4
     if os.environ.get("EST61"):                                     # plan 61 B: EST61=1 ESTIMATE on both sides (the estimates log of the harness goes to its own file, removed by main)
         AG.ESTIMATE = True
         from catspace.incubator.analyst.discovery import question_prior as QP0
@@ -97,6 +101,7 @@ def main() -> None:
     ap.add_argument("--estimate", action="store_true", help="plan 61 B: ESTIMATE on both sides (the estimated claims and the ESTIMATED decisions are compared like the proved ones)")
     ap.add_argument("--cost-judge", action="store_true", help="plan 61 C2: COST_JUDGE on both sides (it acts only under a time budget; this harness runs the count budget, where the fuse stays)")
     ap.add_argument("--cycle", action="store_true", help="plan 61 C4: CYCLE on both sides (the repetition claims are compared like the others)")
+    ap.add_argument("--chain", action="store_true", help="plan 64: the 52.23 chain items (+ PARRIES, DELAYED_THREAT, NO_SAFE_MOVE) ON on both sides")
     ap.add_argument("--worker", nargs=4, metavar=("TARGET", "SCHED", "PRIOR", "OUT"))
     a = ap.parse_args()
     if a.worker:
@@ -106,6 +111,8 @@ def main() -> None:
     import os
     if a.forcing61:
         os.environ["F61"] = a.forcing61
+    if a.chain:
+        os.environ["CHAIN64"] = "1"
     if a.estimate:
         os.environ["EST61"] = "1"
     if a.cost_judge or a.cycle:

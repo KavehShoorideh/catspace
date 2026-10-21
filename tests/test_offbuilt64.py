@@ -50,3 +50,35 @@ def test_64_0_pos2_no_longer_decides_nxf4():
     r = analyse(p, quiet=True, memory=False, seconds=10)
     print("OBS 64.0 pos2 decision:", r["decision"], r["move"])
     assert r["move"] != "h3f4"
+
+
+def _chain_on(monkeypatch):
+    from catspace.incubator.analyst.discovery import agenda as AGM
+    for k in ("NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE"):
+        monkeypatch.setattr(AGM, k, True)
+    monkeypatch.setattr(AGM, "CHASE_CLOCK", 4)
+
+
+def test_64_1_zB_after_rf1_is_never_killed_by_the_chain_state(monkeypatch):
+    """2zB89 (probe zB_after = after 1.Qxa5 Qxa1+): with the chain items ON, 2.Rf1 Qd4+ is not 'no claim of ours' (a second check of theirs is a chain-stop GAP): Rf1 is a GAP or a claim."""
+    _chain_on(monkeypatch)
+    p = next(x for x in PA.load_set("probe_2zB89") if x["id"] == "zB_after")
+    lines = []
+    analyse(p, quiet=False, log=lines.append, memory=False, seconds=10)
+    text = "\n".join(lines)
+    print("OBS 64.1 Rf1: GAP lines", text.count("Rf1: GAP"), "killed lines", text.count("Rf1: killed"))
+    assert "Rf1: killed" not in text
+    assert "Rf1: GAP" in text or "Rf1: " in text
+
+
+def test_64_1_a_chain_stop_is_a_gap_not_a_kill():
+    """The chase clock / the tempo allowance cut the route as a GAP: the agenda counts a cut, `_cut` names the chain stop, and the question is not filed as a kill."""
+    ag = Agenda(state_of(POS2, "w"))
+    q = ag.heap[0][4] if ag.heap else None
+    assert q is not None
+    before = ag.ctx.budget_hits
+    ag._chain_gap(q, "the chase clock: 4 moves of ours without a capture")
+    assert ag.ctx.budget_hits == before + 1 and q._chased is False
+    assert ag._cut("Bxf4", "exf4", True).startswith("chain stop: Bxf4 not followed past exf4")
+    assert ag.ctx.chain_gap is None
+    assert not hasattr(q, "_chain_cut")

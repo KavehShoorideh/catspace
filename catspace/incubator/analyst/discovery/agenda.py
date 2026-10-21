@@ -154,6 +154,7 @@ class ChaseCtx:
         self.agendas = 0                          # inner agendas run
         self.asked = 0                            # questions they asked
         self.budget_hits = 0
+        self.chain_gap = None                     # 64.1: the reason of the chain stop (clock, tempo allowance) that cut the route in hand, until `_cut` names it
         self.inherited = 0                        # 52.12 (3): questions of the outer agenda inherited, not asked again
         self.inherited_claims = 0                 # 52.13 (1): ... of which claims (the rest are kills)
         self.reopened = 0                         # ... and the ones that met the diff and were asked
@@ -949,7 +950,7 @@ class Agenda:
     def _file(self, q: R.Question, new_claims: list) -> None:
         """52.19 (1): what the question just derived is FILED as a fact: its read set and signature on this board, the facts it was derived from (the route that decided a chase claim, every route
         for a chase kill, the inner answers), the stake and the position it was asked on."""
-        if q.status not in ("killed", "verified", "gap") or (q.status != "verified" and getattr(q, "_chain_cut", False)):      # 52.23 (9): a chain-cut kill is contextual, not filed
+        if q.status not in ("killed", "verified", "gap"):      # 52.23 (9): a chain-cut kill is contextual, not filed
             return
         key = self._fkey(q)
         fs, kind = self.ctx.facts, {"killed": "kill", "verified": "claim", "gap": "gap"}[q.status]
@@ -1577,8 +1578,7 @@ class Agenda:
         pk = _pos_key(fen)
         wt = their is not None
         evading = self._chase_q is not None and self._chase_q.goal == "save" and "checkers" in self._chase_q.pattern
-        chain = (ctx.mate_levels[-1] if ctx.mate_levels else None, self.since_capture + 1 if since is None else since, evading, exchange)     # 52.23 (9): the chain's state (the allowance, the clock, an intermezzo, an exchange)
-        hit = ctx.memo.get((pk, wt, keep if wt else 0, chain))          # ... an answer cut by the chain serves the same chain state only; one not cut serves every chain
+        hit = None
         if hit is None:
             hit = ctx.memo.get((pk, True, keep)) if wt else (ctx.memo.get((pk, False, 0)) or next((h for k_, h in ctx.memo.items() if len(k_) == 3 and k_[0] == pk and k_[1]), None))     # (position, with threats, the gain kept): an answer WITH threats serves an ask without, not the reverse
         if hit is not None and hit["need"] <= need:
@@ -1610,16 +1610,11 @@ class Agenda:
         ctx.agendas += 1
         ctx.asked += ag.asked
         best = ag.best[2] if ag.best and ag.best[0] > 0 else None
-        chain_cut = best is None and any(getattr(x, "_chain_cut", False) for x in ag.all)      # 52.23 (9): "no claim" after a chain cut (the allowance, the clock, a second check) is this chain's answer, not the position's
         reads = None if any(q.reads is None for q in ag.all) else frozenset().union(*(q.reads for q in ag.all))     # 52.13 (4): everything this agenda read (None: some question did not record it)
         threats = [(cl, q.claimed[1] if q.status == "verified" and q.claimed is not None else None) for q, cl in ag.threat_qs]
         out = dict(value=ag.best[0] if best else 0, claim=best, asked=ag.asked, need=need, cut=ctx.budget_hits > hits0, reads=reads, threats=threats,
                    promote=next((c for c in ag.state.claims if c.kind == "promote"), None))      # 52.15 (2): the promote claim of this position, whether or not it is the best claim
         cfid = ag.claim_fid.get(id(best)) if best is not None else None
-        if chain_cut:                                           # 52.23 (9): this chain's "no claim" kills the route here; memoised for this chain state only, never filed (another chain may reach further)
-            if not out["cut"]:
-                ctx.memo[(pk, wt, keep if wt else 0, chain)] = out
-            return out
         f = ctx.facts.add("gap" if out["cut"] else ("claim" if best is not None else "kill"), ("inner", pk, wt, keep), self.me, f"the agenda on {pk.split()[0]}" + (f": {best.what}" if best is not None else ": no claim"),
                           value=out["value"], reads=reads, just=[cfid] if cfid is not None else ag.premises, stake=self._cur.stake if self._cur is not None else need, depth=self.chase_depth + 1,
                           under=f"Q{self._cur.id} at depth {self.chase_depth}" if self._cur is not None else f"depth {self.chase_depth}", pk=pk, portable=False)
@@ -1993,8 +1988,20 @@ class Agenda:
                                     san=r.san if r is not None else None, reply=res.get("reply"), mark=round(time.monotonic() - self.ctx.t0, 3) if self.ctx.t0 is not None else None,
                                     cut_left=self.ctx.left, depth=self.chase_depth))
 
+    def _chain_gap(self, q: R.Question, why: str) -> None:
+        """64.1: the chase of `q` stops by the CHAIN'S STATE (the clock, the tempo allowance): not a fact of the position, so it is never a kill. The route that asked is a GAP (the budget_hits
+        count the agenda as cut, `_cut` names the reason), the question is not 'chased'."""
+        self.ctx.budget_hits += 1
+        self.ctx.chain_gap = why
+        self.lines.append(f"  chase: not started -- {why} (a GAP, never a kill)")
+        self.state.gaps.append(f"Q{q.id} {q.text}: chain stop: {why}")
+        q._chased = False
+
     def _cut(self, san: str, san_r: str, inner: bool = False) -> str:
-        """The GAP text of a route cut at a reply: the TIME when the deadline passed (52.17 (5)), else the fuse."""
+        """The GAP text of a route cut at a reply: the chain's stop (64.1), the TIME when the deadline passed (52.17 (5)), else the fuse."""
+        if self.ctx.chain_gap:
+            why, self.ctx.chain_gap = self.ctx.chain_gap, None
+            return f"chain stop: {san} not followed past {san_r} ({why})"
         if self.ctx.out_of_time():
             return f"out of time: {san} not followed past {san_r}"
         if self.ctx.judged:                                      # plan 61 C2: the judge cut it (a GAP like the clock's: timed, with a resume point)
@@ -2440,14 +2447,11 @@ class Agenda:
             return False                                               # 52.23 (5): a win question chases at every depth; its checks must address a defect (52.17 (2)) -- the depth-two gate was a numbered limit
         if self.chase_depth and self.since_capture >= self._clock() and not evading:      # 52.23 (8): the chase clock -- a capture that is not bad for us is one-way progress (material never comes back); without one for
             self.ctx.clock_stops += 1                                   # CHASE_CLOCK of our moves the chain goes nowhere and ends here (a hyperparameter to tune, Kaveh 2026-10-20)
-            q._chain_cut = True
-            self.lines.append(f"  chase: not started -- the chase clock: {self.since_capture} moves of ours without a capture that is not bad for us")
-            q._chased = True
+            self._chain_gap(q, f"the chase clock: {self.since_capture} moves of ours without a capture that is not bad for us")      # 64.1: a hyperparameter's stop is a GAP, never a kill
             return False
-        if evading and self.evaded:                                    # 52.23 (3): ONE intermezzo check is followed; a second check of theirs against our evasion is their chain, not our line (read as no claim)
-            self.lines.append("  chase: not started -- a second check of theirs in a row (their chain, not our line)")
-            q._chain_cut = True
-            return False
+        if evading and self.evaded:                                    # 52.23 (3): ONE intermezzo check is followed; a second check of theirs against our evasion is not read (their chain, not our line) --
+            self._chain_gap(q, "a second check of theirs in a row (not followed)")      # 64.1: a GAP, never the kill "no claim of ours" it was (2zB89: 1.Qxa5 Qxa1+ 2.Rf1 Qd4+). Following the chain
+            return False                                               # costs lK9WA's Nxc6 at 10 s (the king dance after Rxb6+): the cost judge (64.3) is what may follow it
         if self.best is not None and self.best[0] >= q.stake:      # 52.13 (2c): a question is chased only when its stake exceeds the best claim so far (stop (a) would end the agenda anyway)
             self.lines.append(f"  chase: not asked, the best claim ({self.best[2].what}, {self.best[0]}) is at least the stake {q.stake}")
             return False
@@ -2466,9 +2470,7 @@ class Agenda:
             allow = dist if parent is None else min(parent - (0 if self.free_level else 1), dist)      # 2026-10-20): the allowance starts again (zBouR: Qh1+ Rf1 Qxf1+ Kd2 Rxf2+); a mate's distance is its defects alone.
             if allow <= 0:
                 self.ctx.mate_walks += 1
-                q._chain_cut = True                                  # 52.23 (9): a kill by the chain's state is not a fact of the position: never filed, never served
-                self.lines.append(f"  chase: not started -- tempo arithmetic: the chain has spent the prep moves the goal's defects allow ({len(q.defects)} defect(s), {parent} level(s) left under the {top[1]}-stake goal)")
-                q._chased = True
+                self._chain_gap(q, f"tempo arithmetic: the chain has spent the prep moves the goal's defects allow ({len(q.defects)} defect(s), {parent} level(s) left under the {top[1]}-stake goal)")      # 64.1: a heuristic's stop is a GAP unless it is a proof (the judge is not a lemma)
                 return False
         b = self.board
         routes, notes = [], []
