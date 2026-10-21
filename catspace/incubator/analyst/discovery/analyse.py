@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import time
 from collections import Counter
 
@@ -90,13 +91,46 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
                 decided=d is not None, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs, theirs=ag.their_runs, fx=fx, chase=(cx.agendas, cx.inherited, cx.reopened, cx.budget_hits, cx.asked, cx.inherited_claims, cx.fresh, cx.closed, cx.standing, cx.logged, cx.gap_reused, cx.depth_cuts, cx.static_read, cx.static_parried, cx.static_unparried, cx.reasoned, cx.unaddressed, cx.time_outs, cx.landing_served, R.PASS_CLAIMS[0] - pc0, cx.roots_served, cx.chase_served, cx.finished, cx.unmet, cx.refuter_fixes), until=ag.asked_at_claim, move=d.move if d else None, leaf=ag.leaf_stats)
 
 
+def _append_once(path, text: str) -> None:
+    """Append `text` with ONE write() on an O_APPEND descriptor: parallel workers never interleave inside it."""
+    import os
+    if not text:
+        return
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    try:
+        data = text.encode()
+        while data:
+            n = os.write(fd, data)
+            data = data[n:]
+    finally:
+        os.close(fd)
+
+
+_FLAGS = ("PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK")
+
+
+def _init_worker(flags: dict) -> None:
+    """A pool worker (spawned: module globals are not inherited): the agenda's switches as the parent set them."""
+    from catspace.incubator.analyst.discovery import agenda as AGM
+    for k, v in flags.items():
+        setattr(AGM, k, v)
+    BV.install_terms()
+
+
+def _one(job: tuple) -> dict:
+    p, kw = job
+    return analyse(p, quiet=True, **kw)
+
+
 def _write_qlog(p: dict, set_name: str, fen: str, ag, d, sfv) -> None:
     """plan 53 (1): one row per question of the ROOT agenda in the order asked: what was known before it was asked (features), its outcome (status, the word that answered
     it: the claim's lemma or the kill's reason), whether it decided, the decision, the puzzle's answer and the Stockfish verdict. The prior trains on this."""
     import json
     ans = p["answer"]
     match = bool(d and d.move[:4] == ans[:4])
-    with open(paths.experiment("question_log.jsonl"), "a") as fh:
+    import os
+    buf = []                                                     # (the rows of one agenda are appended in ONE write: puzzles run in parallel processes, 2026-10-20)
+    if True:
         from catspace.incubator.analyst.discovery import question_prior as QP
         for i, q in enumerate(ag.order):
             f = QP.features(q, ag.board, ag.us, 0)
@@ -104,9 +138,10 @@ def _write_qlog(p: dict, set_name: str, fen: str, ag, d, sfv) -> None:
             word = word or (q.claimed[1].lemma if q.claimed is not None else (q.reason.split(":")[0] if q.reason else q.status))
             t = q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn")))
             from catspace.incubator.analyst.discovery import agenda as AGM
-            fh.write(json.dumps(dict(id=p["id"], set=set_name, prior=bool(AGM.PRIOR), fuse_hits=ag.ctx.budget_hits, fen=fen, order=i, qid=q.id, goal=q.goal, stake=q.stake, text=q.text, status=q.status, word=word,
+            buf.append(json.dumps(dict(id=p["id"], set=set_name, prior=bool(AGM.PRIOR), fuse_hits=ag.ctx.budget_hits, fen=fen, order=i, qid=q.id, goal=q.goal, stake=q.stake, text=q.text, status=q.status, word=word,
                                      decided=bool(d and d.qid == q.id), decision=d.move if d else None, answer=ans, match=match, sf=sfv[0], sf_loss=sfv[1], sf_best=sfv[2],
                                      target_sq=t, move=q.pattern.get("move"), features=f)) + "\n")
+    _append_once(paths.experiment("question_log.jsonl"), "".join(buf))
 
 
 def main():
@@ -123,10 +158,17 @@ def main():
     ap.add_argument("--qlog", action="store_true", help="plan 53 (1): append the QUESTION LOG (the root agenda's questions in the order asked, which one decided, which word answered it) to experiments/question_log.jsonl")
     ap.add_argument("--sf", action="store_true", help="plan 53 (1): grade each decision with Stockfish (RIGHT within 50 cp of the best move, else WRONG); the log's label")
     ap.add_argument("--prior", action="store_true", help="plan 53 (2): the learned prior (data/derived/question_prior.json) orders the root agenda's questions")
+    ap.add_argument("--workers", type=int, default=None, help="puzzles in parallel processes (default: all cores but one; 1 = sequential)")
+    ap.add_argument("--chain", action="store_true", help="plan 52.23 (2)-(8): the chain items ON (the need-aware close, the in-check chase, win chases below depth two, the goal judge, the need propagated, the chase clock 4) -- the regime for hard positions under a time budget (x00hu, 2026-10-20)")
     a = ap.parse_args()
     if a.prior:
         from catspace.incubator.analyst.discovery import agenda as AGM
         AGM.PRIOR = True
+    if a.chain:
+        from catspace.incubator.analyst.discovery import agenda as AGM
+        for k in ("NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE"):
+            setattr(AGM, k, True)
+        AGM.CHASE_CLOCK = 4
     if a.sf:                                                     # plan 53 (1): the engine beside an agenda stalled the set runs (its thread; 2026-10-20): grade the log in its own pass instead
         raise SystemExit("--sf is retired: run `question_prior grade` on the log after `analyse --qlog` (the grader never runs beside an agenda)")
     from catspace.incubator.analyst.discovery.agenda import ChaseCtx
@@ -138,7 +180,19 @@ def main():
     if a.id:
         analyse(next(x for x in ps if x["id"] == a.id), memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds, carry=carry, ponder=a.ponder, qlog=a.qlog, sf=a.sf)
         return
-    res = [analyse(p, quiet=True, memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds, carry=carry, ponder=a.ponder, qlog=a.qlog, sf=a.sf) for p in ps]
+    kw = dict(memory=a.memory and not a.no_memory, store=a.store, set_name=a.set, leaf_all=a.leaf_all, seconds=a.seconds, ponder=a.ponder, qlog=a.qlog, sf=a.sf)
+    workers = a.workers if a.workers is not None else max(1, (os.cpu_count() or 2) - 1)      # Kaveh's standing rule: every scan on all cores (exchange_law._workers)
+    t0 = time.monotonic()
+    if workers > 1 and len(ps) > 1 and carry is None and not a.store:                 # (--memory carries the fact store between puzzles and --store writes one file: those stay sequential)
+        import multiprocessing as mp
+        from catspace.incubator.analyst.discovery import agenda as AGM
+        flags = {k: getattr(AGM, k) for k in _FLAGS}
+        with mp.get_context("spawn").Pool(min(workers, len(ps)), initializer=_init_worker, initargs=(flags,)) as pool:
+            res = pool.map(_one, [(p, kw) for p in ps], chunksize=1)
+    else:
+        workers = 1
+        res = [analyse(p, quiet=True, carry=carry, **kw) for p in ps]
+    print(f"OBS set wall time {a.set}: {time.monotonic() - t0:.1f} s on {workers} worker(s) for {len(ps)} puzzles (the per-puzzle seconds below are each puzzle's own)")
     if a.store:
         print(f"OBS agenda store: {len(RM.load(paths.derived(AGENDA_STORE)))} records")
     for r in res:

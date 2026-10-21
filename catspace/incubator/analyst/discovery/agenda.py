@@ -583,9 +583,14 @@ class Agenda:
         if self.ctx is not None and self.chase_depth == 0 and self.ctx.rows:       # 52.13 (4): the chase log of this root, appended once (per item)
             import json
             from catspace.io import paths
-            with open(paths.experiment("chase_log.jsonl"), "a") as f:
-                for row in self.ctx.rows:
-                    f.write(json.dumps(row) + "\n")
+            import os
+            data = "".join(json.dumps(row) + "\n" for row in self.ctx.rows).encode()      # ONE write on an O_APPEND descriptor: puzzles run in parallel processes (2026-10-20)
+            fd = os.open(paths.experiment("chase_log.jsonl"), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+            try:
+                while data:
+                    data = data[os.write(fd, data):]
+            finally:
+                os.close(fd)
             self.ctx.logged = len(self.ctx.rows)
             self.ctx.rows = []
 
