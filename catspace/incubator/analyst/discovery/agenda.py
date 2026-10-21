@@ -67,6 +67,9 @@ PARRIES = False                                                 # plan 61 A2: th
 DELAYED_THREAT = False                                          # plan 61 A3: a quiet move after which EVERY reply allows a forcing move of ours is a route (tier 1+, root chase only; regress.delayed_threat)
 NO_SAFE_MOVE = False                                            # plan 61 A4: a quiet move after which EVERY reply loses at least the stake by rule is a route (tier 1+, root chase only; regress.no_safe_move)
 ESTIMATE = False                                                # plan 61 B2: a GAP route whose open replies are QUIET leaves closes as an ESTIMATED claim (status = material - their pass threat; confidence from data/derived/estimate_calibration.json); the decision consults it only when no proved claim keeps the status
+COST_JUDGE = False                                              # plan 61 C2: under a TIME budget the cost judge (cost x seconds per node <= the route's time left) decides what is read on; the cut is a GAP, never a kill (regress.route_cost / node_cost; Lean Ideas.Forcing.routeCost)
+CYCLE = True                                                    # plan 61 C4 (ON: graded on the 90, no decision changed, nothing lost): a position that repeats one of the line (or of ctx.history) closes as a PROVED claim kind 'draw' (value = minus the balance) when we are behind; `analyse --no-cycle` turns it off
+JUDGE_MIN_AGENDAS = 8                                           # plan 61 C2: the judge reads on until this many cost units have been timed (no rate, no cut)
 TIERS_UNDER_TIME = True                                         # plan 59 default (2026-10-20, graded on 85 random puzzles): ON whenever the budget is TIME -- the tiers share the seconds, so the cost is bounded
                                                                 # (s10: RIGHT 59 -> 61, WRONG 4 -> 4; hqGOF right again); under the COUNT fuse they stay OFF unless TIERS (fuse: +2 RIGHT for ~650 s extra on 25 widened puzzles)
 TIERS = False                                                   # plan 59: STATUS-DRIVEN WIDENING at the root -- tier 0 (today's moves), then wider tiers (settings of the root's ChaseCtx) only while no claim keeps our status; analyse --tiers; the play server honours it
@@ -186,6 +189,20 @@ class ChaseCtx:
         self.nosafe_routes = 0
         self.est_rows: list = []                  # plan 61 B2: the estimated leaves of this root (written to estimates_log.jsonl by `decision()`)
         self.est_set = ""                         # ... the set name the rows carry
+        self.judge_t = 0.0                        # plan 61 C2: seconds spent in the root routes the judge let finish (killed or closed, not cut by a clock) / ...
+        self.judge_n = 0                          # ... the inner agendas those routes ran: seconds_per_node = judge_t / judge_n
+        self.root_end = 0.0                       # ... the end of the root's share of the time for the route being judged (time.monotonic())
+        self.rate_t = 0.0                         # ... the rate measured by the EARLIER tiers of this root (seconds / inner agendas): the run's rate, not the tier's
+        self.rate_n = 0
+        self.judge_reads = 0                      # ... nodes the judge let be read / cut (a GAP)
+        self.judge_cuts = 0
+        self.judge_routes = 0                     # ... root routes judged
+        self.judged = False                       # ... the last cut of `_inner` was the judge's (the GAP text says so)
+        self.c_lines: list = []                   # plan 61 C2 / C4: trace lines of the judge's cuts inside a route and of the cycle claims (the root prints them after the route)
+        self.history: set = set()                 # plan 61 C4: position keys (_pos_key) of the game so far, us to move: a chase position that repeats one is a repetition (the play server may fill it)
+        self.root_pk: "str | None" = None         # ... the root agenda's position (the line's first)
+        self.active_label: dict = {}              # ... position key -> "the position after <route> <reply>" of the inner agendas on the line
+        self.cycles = 0                           # ... cycle claims made
         self.est_routes = 0                       # ... gap routes that closed as an estimated claim
         self.est_why: dict = {}                   # ... and, for the gap routes that did not, the reason (a counter for the OBS line)
         self.overload_opens = 0                   # 2026-10-20: replies not closed by the exchange because our capture left a duty (their claim after it)
@@ -239,6 +256,7 @@ class Agenda:
         self.free_level = free_level                            # 52.23 (6): this agenda follows a recapture on our route's square (an exchange): the chain allowance is not spent by it
         self.since_capture = since                              # 52.23 (8): THE CHASE CLOCK (Kaveh 2026-10-20) -- our moves on this chain since the last capture that was not bad for us
         self._route_move = None                                 # ... the route being read (set by _chase_route)
+        self._reply_san = None                                  # plan 61 C4: the reply being read (the label of the position it leads to)
         self.evaded = evaded                                    # 52.23 (3): this agenda was opened by an EVASION route (the check before it was their intermezzo)
         self.chase_depth = chase_depth                          # 52.12: 0 for the root agenda, +1 per inner agenda of a chase
         self.ctx = ctx if ctx is not None else ((carry.carry() if carry is not None else ChaseCtx(facts)) if side_depth else None)       # their agendas (side_depth 0, no ctx) never chase
@@ -287,6 +305,8 @@ class Agenda:
         self.leaf_stats = dict(read=0, down=0, untrusted=0)       # claims read at the leaf / downgraded / not trusted (the decomposition missed the word)
         self._tv: dict = {}                                     # their view of a route, asked once (the verify and the smallest-loss decision share it)
         self.pk = _pos_key(state.fen)
+        if self._root and self.ctx is not None:
+            self.ctx.root_pk = self.pk                          # plan 61 C4: the line's first position
         self.fact_of: dict = {}                                 # 52.19: question id -> the id of the fact it derived or was served
         self.claim_fid: dict = {}                               # id(claim) -> the fact id that holds it
         self.premises: list = []                                # ... the ids of every fact this agenda derived or was served (an inner answer stands on them)
@@ -683,7 +703,7 @@ class Agenda:
                 self.state.estimated += [dataclasses.replace(c, qid=-1) for c in ag.state.estimated]
                 if ag.best_est is not None and (self.best_est is None or (ag.best_est[0], ag.best_est[2].confidence) > (self.best_est[0], self.best_est[2].confidence)):
                     self.best_est = (ag.best_est[0], 0, dataclasses.replace(ag.best_est[2], qid=-1))
-                for f in ("parry_seen", "parry_closed", "delayed_routes", "nosafe_routes"):
+                for f in ("parry_seen", "parry_closed", "delayed_routes", "nosafe_routes", "judge_routes", "judge_reads", "judge_cuts", "judge_t", "judge_n", "cycles"):
                     setattr(self.ctx, f, getattr(self.ctx, f) + getattr(ag.ctx, f))      # plan 61: the tiers' counters are the root's
                 mark = {id(c): dataclasses.replace(c, qid=-1) for c in ag.state.claims}      # (the question ids are the tier's own: the claim answers no question of tier 0)
                 if ag.best is not None and id(ag.best[2]) not in mark:
@@ -725,6 +745,7 @@ class Agenda:
                 break
             k += 1
             nxt = Agenda(State(fen=self.state.fen, us=self.state.us, pieces=list(self.state.pieces)), memory=self.memory, leaf_all=self.leaf_all, seconds=left, tier=k)
+            nxt.ctx.rate_t, nxt.ctx.rate_n = ag.ctx.judge_t + ag.ctx.rate_t, ag.ctx.judge_n + ag.ctx.rate_n      # plan 61 C2: seconds per node is measured in the RUN so far
             nxt.lines = _TierLines(self.lines, f"[tier {k}] ")
             ag = nxt
         self.tier_decided = decided
@@ -1553,13 +1574,20 @@ class Agenda:
         if hit is not None and hit["need"] <= need:
             self._touch(hit.get("fact"))
             return hit
-        if pk in ctx.active:
+        if pk in ctx.active or (CYCLE and (pk == ctx.root_pk or pk in ctx.history)):
+            if CYCLE and not wt:
+                cyc = self._cycle_claim(fen, pk, need)
+                if cyc is not None:
+                    return cyc
             return dict(value=0, claim=None, asked=0, need=need, threats=[(cl, None) for cl in their.state.claims] if wt else [])     # a cycle parries nothing
         if ctx.left <= 0 or self.chase_depth >= DEPTH_FUSE or (ctx.out_of_time() and not ctx.finishing(ctx.route_depth)):      # 52.21 (3): only the route in hand opens an agenda past the deadline
             if ctx.left > 0:
                 ctx.depth_cuts += 1
             return None
+        if COST_JUDGE and self._judge_node(fen):                # plan 61 C2: the judge re-asked at this node of the route with the remaining cost of the chain
+            return None
         ctx.active.add(pk)
+        ctx.active_label[pk] = f"{self.board.san(self._route_move)} {self._reply_san}" if self._route_move is not None and self._reply_san else "the line"
         hits0 = ctx.budget_hits
         saved = R._ids[0]
         evading = self._chase_q is not None and self._chase_q.goal == "save" and "checkers" in self._chase_q.pattern
@@ -1568,6 +1596,7 @@ class Agenda:
         ag.ask()
         R._ids[0] = saved
         ctx.active.discard(pk)
+        ctx.active_label.pop(pk, None)
         ctx.agendas += 1
         ctx.asked += ag.asked
         best = ag.best[2] if ag.best and ag.best[0] > 0 else None
@@ -1607,7 +1636,11 @@ class Agenda:
         ctx.route_depth += 1
         ctx.route_names.append(self.board.san(m))
         try:
-            res = self._chase_route_body(m, promote, cheap, override)
+            res, tok = self._judge_begin(m, promote, cheap, override) if COST_JUDGE else (None, None)
+            if res is None:
+                res = self._chase_route_body(m, promote, cheap, override)
+            if COST_JUDGE or CYCLE:
+                self._judge_end(tok, res)
             if ESTIMATE and not cheap and not promote and res.get("gap") is not None:
                 self._estimate_route(m, res)                         # plan 61 B2: the quiet leaves of a cut route
             res["facts"] = list(dict.fromkeys(res.get("facts", []) + self._rf))
@@ -1758,6 +1791,7 @@ class Agenda:
             target = max(1, self.min_stake) if self._t(NEED_PROPAGATION, 3) else 1      # 52.23 (7): THE NEED PROPAGATES -- the route must reach what this agenda serves (its min_stake), not 1 (zBouR: Qh1+ Rf1 read to 5 when 6 was needed)
             need = min(R.STAKE_PROMOTE, 1 - dbal) if promote and dbal <= 0 else R.STAKE_PROMOTE if promote else target - dbal if dbal < target else BD.MATE_VALUE          # a reply that already gains the need is read for a mate only; else its static gain must survive their threats (below)
             self._enter_reply(frozenset(P0.diff(P2)))
+            self._reply_san = san_r
             inn = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), since=0 if self.board.is_capture(self._route_move) and dbal >= 0 else self.since_capture + 1,
                               exchange=self.board.is_capture(self._route_move) and chess.Move.from_uci(uci).to_square == self._route_move.to_square)      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
             if inn is None:
@@ -1953,6 +1987,9 @@ class Agenda:
         """The GAP text of a route cut at a reply: the TIME when the deadline passed (52.17 (5)), else the fuse."""
         if self.ctx.out_of_time():
             return f"out of time: {san} not followed past {san_r}"
+        if self.ctx.judged:                                      # plan 61 C2: the judge cut it (a GAP like the clock's: timed, with a resume point)
+            self.ctx.judged = False
+            return f"out of time: {san} cut by the judge past {san_r}"
         return f"chase fuse: {san} not followed past {san_r}" + (" (the inner agenda was cut by the fuse)" if inner else "")
 
     def _promote_stands(self, m: chess.Move, P2: "AC.Pos") -> str | None:
@@ -2037,6 +2074,102 @@ class Agenda:
                     self.ctx.open_lines.append(line)
                 return None
         return dbal + best, f"exchange +{best} ({R.exchange_read(chess.Board(P2.fen()))}), nothing of theirs"
+
+    # ------------------------------------------------------------------------------------------------------------ plan 61 C: the cost judge and the cycle terminal
+
+    def _judge_on(self) -> bool:
+        ctx = self.ctx
+        return COST_JUDGE and ctx is not None and ctx.final is not None and ctx.deadline is not None
+
+    def _spn(self) -> "float | None":
+        """plan 61 C2: SECONDS PER NODE as measured in this run: the time spent in the root routes the judge let be read over their COST (so the cost model's error is absorbed). None until JUDGE_MIN_AGENDAS cost units were timed."""
+        ctx = self.ctx
+        n = ctx.judge_n + ctx.rate_n
+        return (ctx.judge_t + ctx.rate_t) / n if n >= JUDGE_MIN_AGENDAS else None
+
+    def _judge_stake(self) -> int:
+        cq = self._chase_q
+        return cq.stake if cq is not None else 1
+
+    def _judge_begin(self, m: chess.Move, promote: bool, cheap: bool, override) -> tuple:
+        """plan 61 C2 at a ROOT route: the cost of the route (1 + the cost of the unread child of each parry), printed; read on while cost x seconds_per_node <= the time left of this route's slice,
+        else the route is a GAP (value 0, never a kill). -> (the GAP result or None, the token `_judge_end` closes)."""
+        ctx = self.ctx
+        if cheap or override or self.chase_depth != 0 or not self._judge_on():
+            return None, None
+        san = self.board.san(m)
+        cost, kids = R.route_cost(self.board, m, self._judge_stake(), self.us)
+        ctx.judge_routes += 1
+        shown = ", ".join(f"{k} {c}" for k, c in kids[:6]) + (", ..." if len(kids) > 6 else "")
+        what = f"cost {cost} ({len(kids)} parries: {shown})"
+        now = time.monotonic()
+        spn = self._spn()
+        pool = max((ctx.root_end or ctx.final) - now, 0.0)             # what the root's share has left for ALL its open routes
+        equal = max(ctx.deadline - now, 0.0)                             # ... the equal slice plan 52.21 gives this route
+        if spn is None:                                                  # no rate yet: read on, with a slice long enough to measure one
+            slice_ = max(equal, min(pool / 4, 0.5))
+            need = None
+        else:                                                            # the route is read iff it fits in half of what is left (the rest stays for the other routes); it is given the time it needs (twice the estimate), at least its equal slice
+            need = cost * spn
+            slice_ = max(equal, min(2 * need, pool / 2))
+        if need is not None and need > pool / 2 and need > equal:
+            self.lines.append(f"    judge: {san} cut ({what}, {need:.1f} s needed, {pool:.1f} s left of the root's share) -> GAP")
+            ctx.judge_cuts += 1
+            ctx.budget_hits += 1
+            res = dict(value=0, killed=None, gap=f"out of time: {san} cut by the judge ({what}, {need:.1f} s needed, {pool:.1f} s left)", parts=[], lemmas=[])
+            return res, None
+        ctx.deadline = min(now + slice_, ctx.final)
+        self.lines.append(f"    judge: {san} read on ({what}, " + (f"{need:.1f} s needed, " if need is not None else "no rate yet, ") + f"{ctx.deadline - now:.1f} s for it, {pool:.1f} s left of the root's share)")
+        return None, (time.monotonic(), ctx.agendas, cost)
+
+    def _judge_end(self, tok, res: dict) -> None:
+        """plan 61 C2: the route read to its end (a kill or a value, not a GAP) adds its time and its inner agendas to the rate; the cuts the judge made inside it are printed."""
+        ctx = self.ctx
+        if self.chase_depth == 0 and ctx.c_lines:
+            self.lines += ctx.c_lines
+            ctx.c_lines = []
+        if tok is None:
+            return
+        t0, _a0, cost = tok
+        ctx.judge_t += time.monotonic() - t0                             # (a route cut by the clock counts too, with the time it was given: else a slice too short to finish a route never learns the rate)
+        ctx.judge_n += cost
+
+    def _judge_node(self, fen: str) -> bool:
+        """plan 61 C2: the judge asked at a node of the route (the position before an inner agenda opens) with the REMAINING cost of the chain: the number of parries of our best forcing move there
+        (a leaf closed by rule or with nothing forcing costs 0). True = cut (the route becomes a GAP, never a kill)."""
+        ctx = self.ctx
+        ctx.judged = False
+        if not self._judge_on() or ctx.hand is not None:
+            return False
+        spn = self._spn()
+        if spn is None:
+            return False
+        cost, mv = R.node_cost(chess.Board(fen), self._judge_stake(), self.us)
+        left = max(ctx.deadline - time.monotonic(), 0.0)
+        if cost * spn <= left:
+            ctx.judge_reads += 1
+            return False
+        ctx.judged = True
+        ctx.judge_cuts += 1
+        ctx.c_lines.append(f"    judge: {self.board.san(self._route_move) if self._route_move is not None else '?'} cut after {self._reply_san} (remaining cost {cost}" + (f", best forcing {mv}" if mv else "") + f", {cost * spn:.1f} s needed, {left:.1f} s left) -> GAP")
+        return True
+
+    def _cycle_claim(self, fen: str, pk: str, need: int) -> "dict | None":
+        """plan 61 C4: THE CYCLE TERMINAL. `fen` (our move) repeats a position of this line (an inner agenda still open, the root) or of the game history: when we are BEHIND (balance < 0) the repetition
+        is a PROVED claim of kind 'draw' worth minus the balance (it brings the result to level; value + balance = 0, Lean `Ideas.Forcing.repetition_level`). Sound because the route that reached it
+        read EVERY reply at each step of the cycle (the AND of `_chase_route_body`) and the repeating move is ours to make: the position is ours to move there, as it was the first time. Ahead or level:
+        no claim, as before. -> the inner answer or None."""
+        ctx = self.ctx
+        bal = AC.Pos(fen).balance(self.me) - 64
+        if bal >= 0:
+            return None
+        label = "the root position" if pk == ctx.root_pk and pk not in ctx.active_label else ctx.active_label.get(pk, "the game history" if pk in ctx.history else "the line")
+        now = f"{self.board.san(self._route_move)} {self._reply_san}" if self._route_move is not None and self._reply_san else "the line"
+        line = f"the position after {now} repeats {label if label.startswith('the root') or label.startswith('the game') else 'the one after ' + label}"
+        cl = Claim("draw", "repetition", -bal, "repetition", line, goal="draw")
+        ctx.cycles += 1
+        ctx.c_lines.append(f"    closed: repetition ({line}) -> draw, value {-bal:+d} (minus the balance {bal:+d})")
+        return dict(value=-bal, claim=cl, asked=0, need=need, cut=False, reads=None, threats=[], promote=None)
 
     def _parry_label(self, m: chess.Move, uci: str, closed: tuple) -> tuple:
         """plan 61 A2 (Lean `Ideas.Forcing.closed_binds`): a reply the rules CLOSED, checked against the THREAT of the route (`regress.threat_of` from the route's reason): when the reply does not
@@ -2351,6 +2484,7 @@ class Agenda:
                         cap = any(t[4].goal in ("mate", "win", "promote") and (self.best is None or self.best[0] < t[4].stake) for t in self.heap)
                         root_final = now + (self.ctx.final - now) / 2 if cap else self.ctx.final
                     self.ctx.deadline = now + max(min(root_final, self.ctx.final) - now, 0) / max(open_left, 1)
+                    self.ctx.root_end = min(root_final, self.ctx.final)               # plan 61 C2: the end of the root's share of the time (the judge's pool)
                     self.ctx.hand = None                           # (a new slice: the route in hand is the one this slice sees)
                 res = self._chase_route(r.move, promote=q.goal == "promote")
                 if self.chase_depth == 0 and self.ctx.final is not None:
@@ -2399,6 +2533,8 @@ class Agenda:
         self._extra_reads = frozenset(res.get("extra_reads", ()))     # 52.22 (3): and on the squares of the refuter it exchanged
         net = value
         kind = "mate" if value >= BD.MATE_VALUE else ("promote" if q.goal == "promote" and not res.get("material") else "save" if q.goal == "save" else "win")
+        if CYCLE and kind != "mate" and any("repetition" in x for x in res["lemmas"]) and value <= -(AC.Pos(self.board.fen()).balance(self.me) - 64):
+            kind = "draw"                                        # plan 61 C4: the route brings the result to level by a repetition (proved: every reply of the cycle was read)
         parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")
         lemma = "chase: step_after+step_least over " + ", ".join(sorted(set(res["lemmas"]))[:3]) if res["lemmas"] else "chase: step_after+step_least"
         claim = Claim(kind, r.san, value, lemma, f"{r.san}; {parts}", move=r.move.uci())

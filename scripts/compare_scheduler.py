@@ -34,6 +34,9 @@ def worker(target: str, mode: str, prior: bool, out: str) -> None:
         AG.ESTIMATE = True
         from catspace.incubator.analyst.discovery import question_prior as QP0
         QP0.EST_LOG = "estimates_log_harness.jsonl"
+    if os.environ.get("COST61"):                                    # plan 61 C: COST61=judge COST_JUDGE (inert under the count budget this harness runs), cycle CYCLE, both = both
+        AG.COST_JUDGE = os.environ["COST61"] in ("judge", "both")
+        AG.CYCLE = True                                             # (the default now; --cycle names it)
     from catspace.incubator.analyst.discovery import analyse as AN
     AG.SCHEDULER = sched
     AG.PRIOR = prior
@@ -92,6 +95,8 @@ def main() -> None:
     ap.add_argument("--route-vs-recursive", action="store_true", help="the recursive chase (old) vs the Rust core with the Rust route reader (new)")
     ap.add_argument("--forcing61", choices=["1", "2"], help="plan 61 A: 1 = PARRIES on both sides; 2 = + DELAYED_THREAT, NO_SAFE_MOVE and TIERS")
     ap.add_argument("--estimate", action="store_true", help="plan 61 B: ESTIMATE on both sides (the estimated claims and the ESTIMATED decisions are compared like the proved ones)")
+    ap.add_argument("--cost-judge", action="store_true", help="plan 61 C2: COST_JUDGE on both sides (it acts only under a time budget; this harness runs the count budget, where the fuse stays)")
+    ap.add_argument("--cycle", action="store_true", help="plan 61 C4: CYCLE on both sides (the repetition claims are compared like the others)")
     ap.add_argument("--worker", nargs=4, metavar=("TARGET", "SCHED", "PRIOR", "OUT"))
     a = ap.parse_args()
     if a.worker:
@@ -103,6 +108,8 @@ def main() -> None:
         os.environ["F61"] = a.forcing61
     if a.estimate:
         os.environ["EST61"] = "1"
+    if a.cost_judge or a.cycle:
+        os.environ["COST61"] = "both" if a.cost_judge and a.cycle else "judge" if a.cost_judge else "cycle"
     m_old, m_new = ("rust", "route") if a.route else ("rec", "route") if a.route_vs_recursive else ("py", "rust") if a.core else ("rec", "rust") if a.core_vs_recursive else ("rec", "py")
     print(f"OBS scheduler compare: old = {m_old}, new = {m_new}")
     for t in a.targets:

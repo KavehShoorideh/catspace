@@ -93,6 +93,9 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
         f"root lists served {cx.roots_served}, chase claims served {cx.chase_served}, routes finished after the deadline {cx.finished}")
     if cx.parry_seen or cx.delayed_routes or cx.nosafe_routes:
         log(f"OBS forcing61 {p['id']}: closed replies checked against the route's threat {cx.parry_seen}, of which closed by the threat (no parry) {cx.parry_closed}, routes admitted by the delayed threat {cx.delayed_routes}, by no safe move {cx.nosafe_routes}")
+    if cx.judge_routes or cx.judge_cuts or cx.cycles:
+        spn = f"{cx.judge_t / cx.judge_n:.3f}" if cx.judge_n else "-"
+        log(f"OBS cost61 {p['id']}: root routes judged {cx.judge_routes}, nodes read on {cx.judge_reads}, cuts by the judge {cx.judge_cuts}, seconds per node {spn} ({cx.judge_n} timed), cycle claims {cx.cycles}")
     tiers = getattr(ag, "tier_info", None)
     if tiers:                                                    # plan 59: the status, the line, the tiers run, the tier that decided, seconds per tier
         sti = ag.status_info
@@ -122,7 +125,7 @@ def _append_once(path, text: str) -> None:
         os.close(fd)
 
 
-_FLAGS = ("PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS", "TIERS_UNDER_TIME", "CLOSE_AFTER_CAPTURE", "RAISE_TO_WIN", "PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE", "ESTIMATE")
+_FLAGS = ("PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS", "TIERS_UNDER_TIME", "CLOSE_AFTER_CAPTURE", "RAISE_TO_WIN", "PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE", "ESTIMATE", "COST_JUDGE", "CYCLE")
 
 
 def _init_worker(flags: dict) -> None:
@@ -145,6 +148,8 @@ def _write_qlog(p: dict, set_name: str, fen: str, ag, d, sfv, estimated: bool = 
     ans = p["answer"]
     match = bool(d and d.move[:4] == ans[:4])
     import os
+    from catspace.incubator.analyst.discovery import question_prior as QP0
+    res61 = QP0.forcing_resources(ag.board, ag.us)               # plan 61 C3: the forcing resources of the root board (logged for plan 60, no decision use)
     buf = []                                                     # (the rows of one agenda are appended in ONE write: puzzles run in parallel processes, 2026-10-20)
     if True:
         from catspace.incubator.analyst.discovery import question_prior as QP
@@ -156,8 +161,8 @@ def _write_qlog(p: dict, set_name: str, fen: str, ag, d, sfv, estimated: bool = 
             from catspace.incubator.analyst.discovery import agenda as AGM
             buf.append(json.dumps(dict(id=p["id"], set=set_name, prior=bool(AGM.PRIOR), fuse_hits=ag.ctx.budget_hits, fen=fen, order=i, qid=q.id, goal=q.goal, stake=q.stake, text=q.text, status=q.status, word=word,
                                      decided=bool(d and d.qid == q.id), decision=d.move if d else None, estimated=estimated, answer=ans, match=match, sf=sfv[0], sf_loss=sfv[1], sf_best=sfv[2],
-                                     target_sq=t, move=q.pattern.get("move"), features=f)) + "\n")
-    _append_once(paths.experiment("question_log.jsonl"), "".join(buf))
+                                     target_sq=t, move=q.pattern.get("move"), features=f, resources=res61)) + "\n")
+    _append_once(os.environ.get("CATSPACE_QLOG") or paths.experiment("question_log.jsonl"), "".join(buf))      # (CATSPACE_QLOG: a run beside another that writes the default log)
 
 
 def main():
@@ -182,7 +187,14 @@ def main():
     ap.add_argument("--nosafe", action="store_true", help="plan 61 A4: a quiet move after which every reply loses at least the stake by rule (zugzwang) is a route (tier 1+, the root's chase)")
     ap.add_argument("--forcing61", action="store_true", help="plan 61 stage A: --parries --delayed --nosafe")
     ap.add_argument("--estimate", action="store_true", help="plan 61 B2: a cut route whose open replies are quiet leaves closes as an ESTIMATED claim (quiet-status); the decision consults it only when no proved claim keeps the status; every estimated leaf is logged to estimates_log.jsonl")
+    ap.add_argument("--cost-judge", action="store_true", help="plan 61 C2: under --seconds the cost judge (cost x seconds per node <= the route's time left) replaces the cut by the clock; a cut route is a GAP; the trace says 'judge: ...'")
+    ap.add_argument("--cycle", action="store_true", help="plan 61 C4 (the default; kept for the harness): a chase position that repeats one of the line (or the game history) closes as a proved 'draw' claim worth minus the balance when we are behind")
+    ap.add_argument("--no-cycle", action="store_true", help="plan 61 C4: CYCLE off (it is ON by default)")
     a = ap.parse_args()
+    if a.cost_judge or a.cycle or a.no_cycle:
+        from catspace.incubator.analyst.discovery import agenda as AGM
+        AGM.COST_JUDGE = AGM.COST_JUDGE or a.cost_judge
+        AGM.CYCLE = (AGM.CYCLE or a.cycle) and not a.no_cycle
     if a.parries or a.delayed or a.nosafe or a.forcing61:
         from catspace.incubator.analyst.discovery import agenda as AGM
         AGM.PARRIES = AGM.PARRIES or a.parries or a.forcing61

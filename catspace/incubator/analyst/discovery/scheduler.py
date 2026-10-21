@@ -748,6 +748,7 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
                     cap = any(t[4].goal in ("mate", "win", "promote") and (node.best is None or node.best[0] < t[4].stake) for t in node.heap)
                     root_final = now + (node.ctx.final - now) / 2 if cap else node.ctx.final
                 node.ctx.deadline = now + max(min(root_final, node.ctx.final) - now, 0) / max(open_left, 1)
+                node.ctx.root_end = min(root_final, node.ctx.final)               # plan 61 C2: the end of the root's share of the time (the judge's pool)
                 node.ctx.hand = None                           # (a new slice: the route in hand is the one this slice sees)
             res = (yield T('route', chase_route_g(node, r.move, promote=q.goal == "promote"), node))
             if node.chase_depth == 0 and node.ctx.final is not None:
@@ -795,6 +796,8 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
     node._extra_reads = frozenset(res.get("extra_reads", ()))     # 52.22 (3): and on the squares of the refuter it exchanged
     net = value
     kind = "mate" if value >= BD.MATE_VALUE else ("promote" if q.goal == "promote" and not res.get("material") else "save" if q.goal == "save" else "win")
+    if AG.CYCLE and kind != "mate" and any("repetition" in x for x in res["lemmas"]) and value <= -(AC.Pos(node.board.fen()).balance(node.me) - 64):
+        kind = "draw"                                        # plan 61 C4 (mirror of agenda._chase_routes)
     parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")
     lemma = "chase: step_after+step_least over " + ", ".join(sorted(set(res["lemmas"]))[:3]) if res["lemmas"] else "chase: step_after+step_least"
     claim = Claim(kind, r.san, value, lemma, f"{r.san}; {parts}", move=r.move.uci())
@@ -821,7 +824,11 @@ def chase_route_g(node, m: chess.Move, promote: bool = False, cheap: bool = Fals
     ctx.route_depth += 1
     ctx.route_names.append(node.board.san(m))
     try:
-        res = (yield from (chase_route_body_rs_g if ROUTE_RUST else chase_route_body_g)(node, m, promote, cheap, override))
+        res, tok = node._judge_begin(m, promote, cheap, override) if AG.COST_JUDGE else (None, None)      # plan 61 C2 (mirror of agenda._chase_route)
+        if res is None:
+            res = (yield from (chase_route_body_rs_g if ROUTE_RUST else chase_route_body_g)(node, m, promote, cheap, override))
+        if AG.COST_JUDGE or AG.CYCLE:
+            node._judge_end(tok, res)
         if AG.ESTIMATE and not cheap and not promote and res.get("gap") is not None:
             node._estimate_route(m, res)                         # plan 61 B2 (mirror of agenda._chase_route)
         res["facts"] = list(dict.fromkeys(res.get("facts", []) + node._rf))
@@ -949,6 +956,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
         target = max(1, node.min_stake) if node._t(AG.NEED_PROPAGATION, 3) else 1      # 52.23 (7): THE NEED PROPAGATES -- the route must reach what this agenda serves (its min_stake), not 1 (zBouR: Qh1+ Rf1 read to 5 when 6 was needed)
         need = min(R.STAKE_PROMOTE, 1 - dbal) if promote and dbal <= 0 else R.STAKE_PROMOTE if promote else target - dbal if dbal < target else BD.MATE_VALUE          # a reply that already gains the need is read for a mate only; else its static gain must survive their threats (below)
         node._enter_reply(frozenset(P0.diff(P2)))
+        node._reply_san = san_r
         inn = (yield T('reply', inner_g(node, P2.fen(), need, frozenset(P0.diff(P2)), since=0 if node.board.is_capture(node._route_move) and dbal >= 0 else node.since_capture + 1,
                           exchange=node.board.is_capture(node._route_move) and chess.Move.from_uci(uci).to_square == node._route_move.to_square), node))      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
         if inn is None:
@@ -1182,6 +1190,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
         P2 = P2_of(uci)
         dfs = frozenset(P0.diff(P2))
         node._enter_reply(dfs)
+        node._reply_san = san_r
         inn = (yield T('reply', inner_g(node, fen2, need, dfs, since=0 if since0 else node.since_capture + 1, exchange=exch), node))      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
         if inn is None:
             res["gap"] = node._cut(san, san_r)
@@ -1305,13 +1314,20 @@ def inner_g(node, fen: str, need: int, diff: "frozenset | None" = None, their: "
     if hit is not None and hit["need"] <= need:
         node._touch(hit.get("fact"))
         return hit
-    if pk in ctx.active:
+    if pk in ctx.active or (AG.CYCLE and (pk == ctx.root_pk or pk in ctx.history)):
+        if AG.CYCLE and not wt:
+            cyc = node._cycle_claim(fen, pk, need)           # plan 61 C4 (mirror of agenda._inner)
+            if cyc is not None:
+                return cyc
         return dict(value=0, claim=None, asked=0, need=need, threats=[(cl, None) for cl in their.state.claims] if wt else [])     # a cycle parries nothing
     if ctx.left <= 0 or node.chase_depth >= AG.DEPTH_FUSE or (ctx.out_of_time() and not ctx.finishing(ctx.route_depth)):      # 52.21 (3): only the route in hand opens an agenda past the deadline
         if ctx.left > 0:
             ctx.depth_cuts += 1
         return None
+    if AG.COST_JUDGE and node._judge_node(fen):              # plan 61 C2 (mirror of agenda._inner)
+        return None
     ctx.active.add(pk)
+    ctx.active_label[pk] = f"{node.board.san(node._route_move)} {node._reply_san}" if node._route_move is not None and node._reply_san else "the line"
     hits0 = ctx.budget_hits
     saved = R._ids[0]
     evading = node._chase_q is not None and node._chase_q.goal == "save" and "checkers" in node._chase_q.pattern
@@ -1320,6 +1336,7 @@ def inner_g(node, fen: str, need: int, diff: "frozenset | None" = None, their: "
     yield T('node', agenda_g(ag), ag)                   # the inner agenda is a node task: its pool of questions is asked by the worker loop
     R._ids[0] = saved
     ctx.active.discard(pk)
+    ctx.active_label.pop(pk, None)
     ctx.agendas += 1
     ctx.asked += ag.asked
     best = ag.best[2] if ag.best and ag.best[0] > 0 else None
