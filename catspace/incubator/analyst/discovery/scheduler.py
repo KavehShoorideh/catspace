@@ -572,7 +572,7 @@ def verify_g(node, q: R.Question, routes: list, mates_only: bool) -> None:
             else:
                 opp = R.opponent_defects(b, r.move, us)
                 node.lines.append(head + "; their view: no claim of theirs binds" + (f" (fallback label: {'; '.join(opp)})" if opp else ""))
-        if node.side_depth and bind.schema.startswith("delayed_balance") and bind.schema.endswith("_d1"):
+        if (node.side_depth or (node.chase_depth and bind.value >= node.min_stake)) and bind.schema.startswith("delayed_") and bind.schema.endswith("_d1"):
             ref = node._leaf_read(bind, r)
             if ref is not None:
                 gap = f"{r.san}: refuted at the leaf: their {ref['claim'].what} wins {ref['claim'].value} (lemma {ref['claim'].lemma}) after {ref['line']}"

@@ -745,6 +745,7 @@ class Agenda:
                 break
             k += 1
             nxt = Agenda(State(fen=self.state.fen, us=self.state.us, pieces=list(self.state.pieces)), memory=self.memory, leaf_all=self.leaf_all, seconds=left, tier=k)
+            nxt.ctx.theirs, nxt.ctx.their_ags = ag.ctx.theirs, ag.ctx.their_ags      # 64.0 (speed only): THEIR agenda at a position is a function of the position, not of the tier: kept across the tiers
             nxt.ctx.rate_t, nxt.ctx.rate_n = ag.ctx.judge_t + ag.ctx.rate_t, ag.ctx.judge_n + ag.ctx.rate_n      # plan 61 C2: seconds per node is measured in the RUN so far
             nxt.lines = _TierLines(self.lines, f"[tier {k}] ")
             ag = nxt
@@ -1123,7 +1124,10 @@ class Agenda:
             elif mate1 or P2.mate_in_one():
                 net = R.STAKE_MATE
             else:
-                net = shift + dbal + (0 if P2.is_check() else P2.exchange())
+                ex = 0 if P2.is_check() else P2.exchange()
+                if ex > 0 and self.ctx is not None and CLOSE_AFTER_CAPTURE and self._their_after_capture(P2)[0]:
+                    ex = 0                                           # 64.0: their free move after our capture(s) has a claim: the exchange is not PROVED to hold, so it is not counted
+                net = shift + dbal + ex
             if worst is None or net < worst[0]:
                 worst = (net, uci)
         reads = {m.from_square, m.to_square, *(t for t, _w in p["targets"])}
@@ -1281,7 +1285,7 @@ class Agenda:
                 else:
                     opp = R.opponent_defects(b, r.move, us)
                     self.lines.append(head + "; their view: no claim of theirs binds" + (f" (fallback label: {'; '.join(opp)})" if opp else ""))
-            if self.side_depth and bind.schema.startswith("delayed_balance") and bind.schema.endswith("_d1"):
+            if (self.side_depth or (self.chase_depth and bind.value >= self.min_stake)) and bind.schema.startswith("delayed_") and bind.schema.endswith("_d1"):         # 64.0: the root families too, and in the chase's inner agendas (their free move comes after our LAST move, which the tail does not read)
                 ref = self._leaf_read(bind, r)
                 if ref is not None:
                     gap = f"{r.san}: refuted at the leaf: their {ref['claim'].what} wins {ref['claim'].value} (lemma {ref['claim'].lemma}) after {ref['line']}"
@@ -1353,7 +1357,7 @@ class Agenda:
         self._leaf[key] = None
         self.leaf_stats['read'] += 1
         fam = BD.schema(bind.schema).family
-        if fam != "delayed_balance":
+        if fam not in PA.ORDER:
             return None
         b, us, x, y = self.board, self.us, bind.assignment["x"], bind.assignment["y"]
         mv = chess.Move.from_uci(x + y)
@@ -1413,8 +1417,14 @@ class Agenda:
                 line = f"{san_x} {san_r} {d.san(m)}"
                 theirs = None
                 if any(True for _ in e.legal_moves):
-                    ag = self._their_agenda(e)
-                    theirs = max(ag.state.claims, key=lambda cl: cl.value) if ag.state.claims else None
+                    lk = ("leaf", _pos_key(e.fen()))                       # 64.0: memoised by position in the run's `theirs` table (the leaf read now runs in the inner agendas too)
+                    if self.ctx is not None and lk in self.ctx.theirs:
+                        theirs = self.ctx.theirs[lk]
+                    else:
+                        ag = self._their_agenda(e)
+                        theirs = max(ag.state.claims, key=lambda cl: cl.value) if ag.state.claims else None
+                        if self.ctx is not None:
+                            self.ctx.theirs[lk] = theirs
                 if theirs is not None and theirs.value >= gain_here:
                     first_ref = first_ref or dict(claim=theirs, line=line, w=theirs.value, gain=gain_here)
                     continue
@@ -2205,9 +2215,9 @@ class Agenda:
     def _closed_tag(why: str) -> str:
         return "by the threat" if why.startswith("the threat (") else "by rule"
 
-    def _their_after_capture(self, P2: "AC.Pos") -> tuple:
-        """The best static exchange on P2 (our move) begun with its cheapest capture, then THEIR agenda on the board after it (their move): -> (the value of their best claim that
-        does not land on the exchange square, (our capture's SAN, that claim)) or (0, None). Memoised by position in the run's `theirs` table."""
+    def _principal_captures(self, P2: "AC.Pos") -> tuple:
+        """64.0: the PRINCIPAL LINE of the best static exchange on P2 (our move): -> (square, [(our capture's SAN, the board after it, is it our LAST capture of the line)]) or (None, []).
+        The line is the legal captures on the square, the cheapest piece first, each side going on while going on gains (the swap-list's optimal stop), so it ends where the exchange does."""
         b = chess.Board(P2.fen())
         me = b.turn
         best, sq = 0, None
@@ -2219,21 +2229,88 @@ class Agenda:
             if v > best:
                 best, sq = v, x
         if sq is None:
+            return None, []
+        c, gains, moves, sans, boards = b.copy(stack=False), [], [], [], []
+        while len(moves) < 12:
+            caps = [m for m in c.legal_moves if m.to_square == sq]
+            if not caps or c.piece_at(sq) is None:
+                break
+            m = min(caps, key=lambda m: (G.worth(c.piece_at(m.from_square)), m.uci()))
+            gains.append(G.worth(c.piece_at(sq)) + (G.worth(chess.Piece(m.promotion, c.turn)) - G.worth(chess.Piece(chess.PAWN, c.turn)) if m.promotion else 0))
+            sans.append(c.san(m))
+            c.push(m)
+            moves.append(m)
+            boards.append(c.copy(stack=False))
+        n = len(moves)
+        f = [0] * (n + 1)                                            # f[i] = what the side making capture i gets from i on (it may stop, so >= 0)
+        for i in range(n - 1, -1, -1):
+            f[i] = max(0, gains[i] - f[i + 1])
+        taken = 0
+        while taken < n and gains[taken] - f[taken + 1] > 0:
+            taken += 1
+        if taken == 0:
+            return None, []
+        last_ours = max(i for i in range(taken) if i % 2 == 0)
+        return sq, [(sans[i], boards[i], i == last_ours) for i in range(taken) if i % 2 == 0]
+
+    def _principal_captures(self, P2: "AC.Pos") -> tuple:
+        """64.0: the PRINCIPAL LINE of the best static exchange on P2 (our move): -> (square, [(our capture's SAN, the board after it, is it our LAST capture of the line)]) or (None, []).
+        The line is the legal captures on the square, the cheapest piece first, each side going on while going on gains (the swap-list's optimal stop), so it ends where the exchange does."""
+        b = chess.Board(P2.fen())
+        me = b.turn
+        best, sq = 0, None
+        for x in chess.SQUARES:
+            p = b.piece_at(x)
+            if p is None or p.color == me or p.piece_type == chess.KING or not b.is_attacked_by(me, x):
+                continue
+            v = G.see(b, x)
+            if v > best:
+                best, sq = v, x
+        if sq is None:
+            return None, []
+        c, gains, sans, boards = b.copy(stack=False), [], [], []
+        while len(sans) < 12:
+            caps = [m for m in c.legal_moves if m.to_square == sq]
+            if not caps or c.piece_at(sq) is None:
+                break
+            m = min(caps, key=lambda m: (G.worth(c.piece_at(m.from_square)), m.uci()))
+            gains.append(G.worth(c.piece_at(sq)))
+            sans.append(c.san(m))
+            c.push(m)
+            boards.append(c.copy(stack=False))
+        n = len(sans)
+        f = [0] * (n + 1)                                            # f[i] = what the side making capture i gets from i on (it may stop, so >= 0)
+        for i in range(n - 1, -1, -1):
+            f[i] = max(0, gains[i] - f[i + 1])
+        taken = 0
+        while taken < n and gains[taken] - f[taken + 1] > 0:
+            taken += 1
+        if taken == 0:
+            return None, []
+        last_ours = max(i for i in range(taken) if i % 2 == 0)
+        return sq, [(sans[i], boards[i], i == last_ours) for i in range(taken) if i % 2 == 0]
+
+    def _their_after_capture(self, P2: "AC.Pos") -> tuple:
+        """64.0: THEIR agenda after EACH capture of ours on the principal line of the best static exchange on P2 (our move): -> (the value of their best claim, (our capture's SAN, that
+        claim)) or (0, None). After a capture that is not our last, their recaptures on the exchange square are excluded (the exchange already counts them); after our LAST capture the exchange is
+        over and EVERY claim of theirs counts (pos2: Nxf4's close read their agenda after Bxf4 only, and 3.Qxf4 Bg5 pins the queen to the king). Memoised by position in the run's `theirs` table."""
+        sq, caps = self._principal_captures(P2)
+        if sq is None:
             return 0, None
-        caps = [m for m in b.legal_moves if m.to_square == sq]
-        if not caps:
-            return 0, None
-        m = min(caps, key=lambda m: (G.worth(b.piece_at(m.from_square)), m.uci()))
-        san = b.san(m)
-        b.push(m)
-        key = ("after-capture", _pos_key(b.fen()))
-        hit = self.ctx.theirs.get(key)
-        if hit is None:
-            ag = self._their_agenda(b) if any(True for _ in b.legal_moves) else None
-            cls = [c for c in (ag.state.claims if ag is not None else []) if not (c.move and c.move[2:4] == chess.square_name(sq))]
-            cl = max(cls, key=lambda c: c.value) if cls else None
-            hit = self.ctx.theirs[key] = (cl.value if cl is not None and cl.value > 0 else 0, cl)
-        return (hit[0], (san, hit[1])) if hit[0] else (0, None)
+        out = (0, None)
+        for san, b, last in caps:
+            if not any(True for _ in b.legal_moves):
+                continue
+            key = ("after-capture", _pos_key(b.fen()), last)
+            hit = self.ctx.theirs.get(key)
+            if hit is None:
+                ag = self._their_agenda(b)
+                cls = [c for c in (ag.state.claims if ag is not None else []) if last or not (c.move and c.move[2:4] == chess.square_name(sq))]
+                cl = max(cls, key=lambda c: c.value) if cls else None
+                hit = self.ctx.theirs[key] = (cl.value if cl is not None and cl.value > 0 else 0, cl)
+            if hit[0] > out[0]:
+                out = (hit[0], (san, hit[1]))
+        return out
 
     def _unmet_fix(self, P2: "AC.Pos", q: R.Question) -> "str | None":
         """52.22 (1): the goal's piece is still on its square on P2 (our move), it is not won by the exchange, and `fixes_of` finds a forcing fix of its defect there
