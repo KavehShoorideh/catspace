@@ -739,6 +739,8 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
         elif node.ctx.out_of_time():                           # 52.17 (5): the open routes end as GAPs
             res = dict(value=0, killed=None, gap=f"out of time: {r.san} not started", parts=[], lemmas=[])
             node.ctx.budget_hits += 1
+            if AG.ESTIMATE and q.goal != "promote":
+                node._estimate_route(r.move, res)                # plan 61 B2 (mirror of agenda._chase_routes)
         else:
             if node.chase_depth == 0 and node.ctx.final is not None:       # ... and the time is shared FAIRLY like the fuse: each open route gets an equal slice of what is left
                 now = time.monotonic()
@@ -784,6 +786,8 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
         node.lines.append(f"    fuse: this root is charged {charged} of the pool {pool} (routes at most their shares, the root at most half while another root can beat the best claim)")
     node.lines.append(f"    (chase: {node.ctx.agendas} inner agendas, {node.ctx.asked} inner questions, {node.ctx.budget_hits} fuse hit(s), {node.ctx.gap_reused} gap route(s) reused, fuse left {node.ctx.left})")
     node.lines.append("    chase ended: " + ("the FUSE was hit on at least one route (a GAP, never a kill)" if cut else "every route closed (claim on every reply or a refuting reply)"))
+    if AG.ESTIMATE:
+        node._est_claims(q, routes, results, done)             # plan 61 B2 (mirror of agenda._chase_routes)
     if question_killed(done):
         return False
     value, r, res = best_route(done)
@@ -818,6 +822,8 @@ def chase_route_g(node, m: chess.Move, promote: bool = False, cheap: bool = Fals
     ctx.route_names.append(node.board.san(m))
     try:
         res = (yield from (chase_route_body_rs_g if ROUTE_RUST else chase_route_body_g)(node, m, promote, cheap, override))
+        if AG.ESTIMATE and not cheap and not promote and res.get("gap") is not None:
+            node._estimate_route(m, res)                         # plan 61 B2 (mirror of agenda._chase_route)
         res["facts"] = list(dict.fromkeys(res.get("facts", []) + node._rf))
         if not cheap:
             node._gap_fact(m, promote, res)
@@ -1036,6 +1042,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
         node._pre[key] = closed_now                          # not memoised: the second pass finishes it
         return res
     res["closed_min"], res["stake_checked"] = closed_min, gstake
+    res["gains"] = list(gains)                               # plan 61 B2 (mirror of agenda._chase_route_body)
     if res["killed"] is not None and kill_uci is not None:
         res["refuter"] = kill_uci
     if res["killed"] is None and res["gap"] is None:
@@ -1267,6 +1274,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
         node._pre[key] = closed_now                          # not memoised: the second pass finishes it
         return res
     res["closed_min"], res["stake_checked"] = closed_min, gstake
+    res["gains"] = list(gains)                               # plan 61 B2 (mirror of agenda._chase_route_body)
     if res["killed"] is not None and kill_uci is not None:
         res["refuter"] = kill_uci
     if res["killed"] is None and res["gap"] is None:

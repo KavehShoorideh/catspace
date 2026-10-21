@@ -66,6 +66,7 @@ RAISE_TO_WIN = True                                             # plan 59 (4): u
 PARRIES = False                                                 # plan 61 A2: the chase names the threat of a route (regress.threat_of) and labels a closed reply that does NOT parry it "closed by the threat" (regress.parries; Lean Ideas.Forcing); same values
 DELAYED_THREAT = False                                          # plan 61 A3: a quiet move after which EVERY reply allows a forcing move of ours is a route (tier 1+, root chase only; regress.delayed_threat)
 NO_SAFE_MOVE = False                                            # plan 61 A4: a quiet move after which EVERY reply loses at least the stake by rule is a route (tier 1+, root chase only; regress.no_safe_move)
+ESTIMATE = False                                                # plan 61 B2: a GAP route whose open replies are QUIET leaves closes as an ESTIMATED claim (status = material - their pass threat; confidence from data/derived/estimate_calibration.json); the decision consults it only when no proved claim keeps the status
 TIERS_UNDER_TIME = True                                         # plan 59 default (2026-10-20, graded on 85 random puzzles): ON whenever the budget is TIME -- the tiers share the seconds, so the cost is bounded
                                                                 # (s10: RIGHT 59 -> 61, WRONG 4 -> 4; hqGOF right again); under the COUNT fuse they stay OFF unless TIERS (fuse: +2 RIGHT for ~650 s extra on 25 widened puzzles)
 TIERS = False                                                   # plan 59: STATUS-DRIVEN WIDENING at the root -- tier 0 (today's moves), then wider tiers (settings of the root's ChaseCtx) only while no claim keeps our status; analyse --tiers; the play server honours it
@@ -183,6 +184,9 @@ class ChaseCtx:
         self.route_threats: dict = {}             # (position key, uci) -> the Threat of the route (None: no object)
         self.delayed_routes = 0                   # plan 61 A3 / A4: routes admitted by the delayed threat / by no safe move
         self.nosafe_routes = 0
+        self.est_rows: list = []                  # plan 61 B2: the estimated leaves of this root (written to estimates_log.jsonl by `decision()`)
+        self.est_set = ""                         # ... the set name the rows carry
+        self.est_routes = 0                       # ... gap routes that closed as an estimated claim
         self.overload_opens = 0                   # 2026-10-20: replies not closed by the exchange because our capture left a duty (their claim after it)
         self.unmet = 0                            # 52.22 (1): replies NOT closed by the exchange because the chased goal (win the piece) is not met by it and a forcing fix of its defect remains
         self.open_lines: list = []                # ... and the trace line of each (printed by the root)
@@ -256,7 +260,9 @@ class Agenda:
         self.heap: list = []
         self.order: list = []                                   # plan 53 (1): (question, its features) in the order asked
         self.prior_moves = 0                                    # plan 53 (2): questions the prior asked ahead of the stake order
-        self.best: tuple | None = None                          # (value, -opp defects, claim)
+        self.best: tuple | None = None                          # (value, -opp defects, claim): PROVED claims only -- the search flow (stops, tiers, kills) reads this and nothing estimated
+        self.best_est: tuple | None = None                      # plan 61 B2: (value, 0, claim) of the best ESTIMATED claim (proved=False); the decision consults it only when no proved claim keeps the status
+        self._decision = None                                   # ... `decision()` is read once: (claim, estimated?)
         self.budget = sum(1 for s in chess.SQUARES if self.board.piece_at(s) and self.board.piece_at(s).color == self.me) * 8 \
             + sum(1 for m in self.board.legal_moves if self.board.is_capture(m))
         self.notes: list = []
@@ -671,6 +677,11 @@ class Agenda:
             secs = time.monotonic() - t1
             if ag is not self:                                   # fold the wider tier into this root: its claims and gaps, its decision when it beats the one held
                 self.their_runs += ag.their_runs
+                self.ctx.est_rows += ag.ctx.est_rows                 # plan 61 B2: the wider tier's estimated leaves and claims are the root's
+                self.ctx.est_routes += ag.ctx.est_routes
+                self.state.estimated += [dataclasses.replace(c, qid=-1) for c in ag.state.estimated]
+                if ag.best_est is not None and (self.best_est is None or (ag.best_est[0], ag.best_est[2].confidence) > (self.best_est[0], self.best_est[2].confidence)):
+                    self.best_est = (ag.best_est[0], 0, dataclasses.replace(ag.best_est[2], qid=-1))
                 for f in ("parry_seen", "parry_closed", "delayed_routes", "nosafe_routes"):
                     setattr(self.ctx, f, getattr(self.ctx, f) + getattr(ag.ctx, f))      # plan 61: the tiers' counters are the root's
                 mark = {id(c): dataclasses.replace(c, qid=-1) for c in ag.state.claims}      # (the question ids are the tier's own: the claim answers no question of tier 0)
@@ -1596,6 +1607,8 @@ class Agenda:
         ctx.route_names.append(self.board.san(m))
         try:
             res = self._chase_route_body(m, promote, cheap, override)
+            if ESTIMATE and not cheap and not promote and res.get("gap") is not None:
+                self._estimate_route(m, res)                         # plan 61 B2: the quiet leaves of a cut route
             res["facts"] = list(dict.fromkeys(res.get("facts", []) + self._rf))
             if not cheap:
                 self._gap_fact(m, promote, res)
@@ -1837,6 +1850,7 @@ class Agenda:
             self._pre[key] = closed_now                          # not memoised: the second pass finishes it
             return res
         res["closed_min"], res["stake_checked"] = closed_min, gstake
+        res["gains"] = list(gains)                               # plan 61 B2: the replies read before a cut (the estimate continues from here)
         if res["killed"] is not None and kill_uci is not None:
             res["refuter"] = kill_uci
         if res["killed"] is None and res["gap"] is None:
@@ -2327,6 +2341,8 @@ class Agenda:
             elif self.ctx.out_of_time():                           # 52.17 (5): the open routes end as GAPs
                 res = dict(value=0, killed=None, gap=f"out of time: {r.san} not started", parts=[], lemmas=[])
                 self.ctx.budget_hits += 1
+                if ESTIMATE and q.goal != "promote":
+                    self._estimate_route(r.move, res)                # plan 61 B2
             else:
                 if self.chase_depth == 0 and self.ctx.final is not None:       # ... and the time is shared FAIRLY like the fuse: each open route gets an equal slice of what is left
                     now = time.monotonic()
@@ -2372,6 +2388,8 @@ class Agenda:
             self.lines.append(f"    fuse: this root is charged {charged} of the pool {pool} (routes at most their shares, the root at most half while another root can beat the best claim)")
         self.lines.append(f"    (chase: {self.ctx.agendas} inner agendas, {self.ctx.asked} inner questions, {self.ctx.budget_hits} fuse hit(s), {self.ctx.gap_reused} gap route(s) reused, fuse left {self.ctx.left})")
         self.lines.append("    chase ended: " + ("the FUSE was hit on at least one route (a GAP, never a kill)" if cut else "every route closed (claim on every reply or a refuting reply)"))
+        if ESTIMATE:
+            self._est_claims(q, routes, results, done)
         if not done:
             return False
         done.sort(key=lambda t: (-t[0], t[1].move.uci()))
@@ -2394,6 +2412,125 @@ class Agenda:
         return True
 
     # ------------------------------------------------------------------------------------------------------------ kills, saves
+
+    # ------------------------------------------------------------------------------------------------------------ plan 61 B: the proved / estimated label
+
+    def _quiet_leaf(self, fen: str) -> bool:
+        """plan 61 B2: is the leaf QUIET -- not in check, no forcing move of ours by `forcing_why` at the stake of the question being chased, and their pass threat 0 (`_their_pass`: their agenda
+        with the move passed to them finds no claim)?"""
+        b = chess.Board(fen)
+        if b.is_check():
+            return False
+        cq = self._chase_q
+        stake = cq.stake if cq is not None else 1
+        if any(R.forcing_why(b, m, stake, self.us, mate_threats=True) for m in R._moves(b, self.us)):
+            return False
+        t, _cl = self._their_pass(fen)
+        return t == 0
+
+    def _estimate_route(self, m: chess.Move, res: dict) -> None:
+        """plan 61 B2 THE QUIET-STATUS ESTIMATE. A route that ended as a GAP (the fuse, the clock) keeps its flow exactly as before (a gap, counted, never a kill); in ADDITION, when every reply
+        from the cut on is either closed by rule or a QUIET leaf, the route has an ESTIMATED value: the least of the replies read before the cut and, for each quiet leaf, its static status (material
+        balance minus their pass threat = the balance change, their threat being 0 there). Only a value of at least 1 is kept (an estimate below the stake claims nothing). The label: proved False,
+        confidence the PRODUCT of the leaves' calibrated confidences (`question_prior.estimate_confidence`), estimator 'quiet-status'. Reads nothing past the cut with an inner agenda."""
+        if res.get("est_done") or res.get("gap") is None or res.get("killed") or self.chase_depth != 0:       # (the root's routes only: an inner agenda's cut shows up as the root route's gap, read from the reply on)
+            return
+        res["est_done"] = True
+        b, me = self.board, self.me
+        P0 = AC.Pos(b.fen())
+        P1 = P0.push(m.uci())
+        shift = P1.balance(me) - P0.balance(me)
+        rows = [(shift + dbal, uci, chk, cap, rec, mate1) for uci, dbal, chk, cap, rec, mate1 in P1.replies()]
+        rows.sort(key=lambda t: (0 if t[4] else 1 if t[2] else 2 if t[3] else 3, t[0], t[1]))
+        before = res.get("gains", [])
+        reply = res.get("reply")
+        idx = 0 if reply is None else next((i for i, t in enumerate(rows) if t[1] == reply), -1)
+        if idx < 0 or len(before) != idx:
+            return
+        gains, confs, leaves = list(before), [], []
+        for dbal, uci, chk, cap, rec, mate1 in rows[idx:]:
+            P2 = P1.push(uci)
+            if P2.legal_count() == 0:
+                return                                              # they mate us / stalemate: a refutation for the rules to read, not a leaf to estimate
+            closed = self._closed_by_rule(P2, dbal, mate1)
+            if closed is not None:
+                gains.append(closed[0])
+                confs.append((True, 1.0))
+                continue
+            fen = P2.fen()
+            if not self._quiet_leaf(fen):
+                return                                              # a non-quiet gap stays a gap
+            cls = "quiet:us" if chess.Board(fen).turn == me else "quiet:them"
+            conf = QP.estimate_confidence(cls)
+            gains.append(dbal)                                      # (material balance minus their pass threat, which is 0 on a quiet leaf)
+            confs.append((False, conf))
+            leaves.append(dict(fen=fen, value=dbal, status=P2.balance(me) - 64, cls=cls, confidence=conf, estimator="quiet-status", reply=uci, us=self.us))
+        value = min(gains)
+        if not leaves or value < 1:
+            return
+        from catspace.incubator.analyst.discovery.state import combine
+        proved, conf = combine(confs)
+        res["est"] = dict(value=value, proved=proved, confidence=conf, estimator="quiet-status", leaves=leaves, reply_parts=len(rows))
+        self.ctx.est_routes += 1
+        for lf in leaves:
+            self.ctx.est_rows.append(dict(lf, route=m.uci(), route_san=b.san(m), root_fen=b.fen(), depth=self.chase_depth, leaned=False))
+
+    def _est_claims(self, q: R.Question, routes: list, results: dict, done: list) -> None:
+        """plan 61 B1/B2: the ESTIMATED claim of a question: its best route with an estimate, when it is worth more than the best PROVED route (a proved route at least as good needs no estimate).
+        Filed in `state.estimated` and `best_est`, never in `claims` or `best`: the search reads the proved ones only."""
+        cands = [(results[i]["est"]["value"], r, results[i]) for i, r in enumerate(routes) if results.get(i) and results[i].get("est")]
+        if not cands:
+            return
+        cands.sort(key=lambda t: (-t[0], t[1].move.uci()))
+        value, r, res = cands[0]
+        if done and max(d[0] for d in done) >= value:
+            return
+        est = res["est"]
+        kind = "save" if q.goal == "save" else "win"
+        lemma = "chase: quiet-status estimate"
+        parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")
+        claim = Claim(kind, r.san, value, lemma, f"{r.san}; {parts}" + (" / " if parts else "") + f"{len(est['leaves'])} quiet leaf(s) read by their status", move=r.move.uci(),
+                      proved=False, confidence=est["confidence"], estimator=est["estimator"])
+        self._stamp(claim, q)
+        claim.fixes = claim.fixes + ("chase",)
+        self.state.estimated.append(claim)
+        self.lines.append(f"  -> CLAIM ESTIMATED {kind} {r.san} (value {value}, confidence {claim.confidence:.2f} (product) by {claim.estimator}): not proved, {len(est['leaves'])} quiet leaf(s) closed by their status")
+        if self.best_est is None or (value, 0) > self.best_est[:2] or ((value, 0) == self.best_est[:2] and claim.confidence > self.best_est[2].confidence):
+            self.best_est = (value, 0, claim)
+
+    def decision(self) -> Claim | None:
+        """The claim that decides. A PROVED claim that keeps the status decides, and nothing estimated is looked at. Only when ESTIMATE found an estimated claim and no proved claim keeps the status
+        (plan 59's rule: `status()` / `keeps()`), the best estimated claim that keeps it decides, and the trace says so: 'DECISION ESTIMATED: ...'. Read once."""
+        if self._decision is not None:
+            return self._decision[0]
+        dec, est = (self.best[2] if self.best else None), False
+        if ESTIMATE and self.best_est is not None and self.chase_depth == 0 and not (self.best is not None and self.best[0] >= BD.MATE_VALUE):
+            st = getattr(self, "status_info", None) or self.status()
+            if not self.keeps(st, self.best)[0] and self.keeps(st, self.best_est)[0]:
+                dec, est = self.best_est[2], True
+                self.lines.append(f"DECISION ESTIMATED: {dec.what} {dec.value:+d}, confidence {dec.confidence:.2f} by {dec.estimator}; no proved claim keeps the status")
+        self._decision = (dec, est)
+        self._flush_estimates(dec if est else None)
+        return dec
+
+    def decision_estimated(self) -> bool:
+        """plan 61 B1: did the decision lean on an estimated claim (the trace line 'DECISION ESTIMATED' was printed)?"""
+        self.decision()
+        return self._decision[1]
+
+    def _flush_estimates(self, leaned: "Claim | None") -> None:
+        """plan 61 B2: every estimated leaf of this root appended (ONE write) to artifacts/experiments/estimates_log.jsonl with whether the decision leaned on its route."""
+        if not ESTIMATE or self.chase_depth != 0 or self.ctx is None or not self.ctx.est_rows:
+            return
+        import json
+        root = self.board.fen()
+        rows = []
+        for r in self.ctx.est_rows:
+            rows.append(json.dumps(dict(r, id=self.ctx.tag, set=self.ctx.est_set, leaned=bool(leaned is not None and r["root_fen"] == root and r["route"] == leaned.move and r["depth"] == 0))) + "\n")
+        self.ctx.est_rows = []
+        from catspace.io import paths
+        from catspace.incubator.analyst.discovery import analyse as AN
+        AN._append_once(paths.experiment(QP.EST_LOG), "".join(rows))
 
     def _stopper_routes(self, q: R.Question, have: list, notes: list) -> list:
         """52.15 (2): the extra routes of a promote question: a quiet move after which the moved piece attacks a STOPPER of the question (the defect's piece, a blocker of theirs too, not the king: a
@@ -2709,5 +2846,3 @@ class Agenda:
     def trace(self) -> str:
         return "\n".join(self.lines)
 
-    def decision(self) -> Claim | None:
-        return self.best[2] if self.best else None

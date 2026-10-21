@@ -9,6 +9,7 @@ analyser's `chase` tuple: inner agendas, inner questions, replies closed by rule
 from __future__ import annotations
 
 import argparse
+import os
 import pickle
 import subprocess
 import sys
@@ -29,6 +30,10 @@ def worker(target: str, mode: str, prior: bool, out: str) -> None:
         AG.PARRIES = True
         if os.environ["F61"] == "2":
             AG.DELAYED_THREAT = AG.NO_SAFE_MOVE = AG.TIERS = True
+    if os.environ.get("EST61"):                                     # plan 61 B: EST61=1 ESTIMATE on both sides (the estimates log of the harness goes to its own file, removed by main)
+        AG.ESTIMATE = True
+        from catspace.incubator.analyst.discovery import question_prior as QP0
+        QP0.EST_LOG = "estimates_log_harness.jsonl"
     from catspace.incubator.analyst.discovery import analyse as AN
     AG.SCHEDULER = sched
     AG.PRIOR = prior
@@ -45,6 +50,7 @@ def worker(target: str, mode: str, prior: bool, out: str) -> None:
             cx = self.ctx
             roots.append(dict(
                 claims=[(c.kind, c.move, c.what, c.value, c.lemma, c.line, c.goal, c.fixes, c.qid) for c in self.state.claims],
+                estimated=[(c.kind, c.move, c.what, c.value, c.line, c.proved, c.confidence, c.estimator) for c in self.state.estimated],
                 gaps=list(self.state.gaps), kills=list(self.kills), trace=[x for x in self.lines if not x.startswith("budget:")],
                 counters=dict(asked=self.asked, tempo=self.killed_tempo, agendas=cx.agendas, inner_questions=cx.asked, closed=cx.closed, fuse_hits=cx.budget_hits, depth_cuts=cx.depth_cuts,
                               standing=cx.standing, inherited=cx.inherited, reopened=cx.reopened, fresh=cx.fresh, gap_reused=cx.gap_reused, refuter_fixes=cx.refuter_fixes, reasoned=cx.reasoned,
@@ -85,15 +91,18 @@ def main() -> None:
     ap.add_argument("--route", action="store_true", help="plan 56 (2b): the Rust core (old) vs the Rust core with the Rust route reader (new)")
     ap.add_argument("--route-vs-recursive", action="store_true", help="the recursive chase (old) vs the Rust core with the Rust route reader (new)")
     ap.add_argument("--forcing61", choices=["1", "2"], help="plan 61 A: 1 = PARRIES on both sides; 2 = + DELAYED_THREAT, NO_SAFE_MOVE and TIERS")
+    ap.add_argument("--estimate", action="store_true", help="plan 61 B: ESTIMATE on both sides (the estimated claims and the ESTIMATED decisions are compared like the proved ones)")
     ap.add_argument("--worker", nargs=4, metavar=("TARGET", "SCHED", "PRIOR", "OUT"))
     a = ap.parse_args()
     if a.worker:
         worker(a.worker[0], a.worker[1], a.worker[2] == "1", a.worker[3])
         return
     total = 0
+    import os
     if a.forcing61:
-        import os
         os.environ["F61"] = a.forcing61
+    if a.estimate:
+        os.environ["EST61"] = "1"
     m_old, m_new = ("rust", "route") if a.route else ("rec", "route") if a.route_vs_recursive else ("py", "rust") if a.core else ("rec", "rust") if a.core_vs_recursive else ("rec", "py")
     print(f"OBS scheduler compare: old = {m_old}, new = {m_new}")
     for t in a.targets:
@@ -103,7 +112,7 @@ def main() -> None:
             dec.append(("length", len(old["results"]), len(new["results"])))
         cl, cnt, tr = [], [], []
         for i, (o, n) in enumerate(zip(old["roots"], new["roots"])):
-            for k in ("claims", "gaps", "kills"):
+            for k in ("claims", "estimated", "gaps", "kills"):
                 if o[k] != n[k]:
                     cl.append((i, k, [x for x in o[k] if x not in n[k]][:2], [x for x in n[k] if x not in o[k]][:2]))
             cnt += [(i, k, o["counters"][k], n["counters"][k]) for k in o["counters"] if o["counters"][k] != n["counters"][k]]
@@ -126,6 +135,11 @@ def main() -> None:
         for lst, name in ((dec, "decision"), (cl, "claim"), (cnt, "counter"), (tr, "trace")):
             for d in lst[:3]:
                 print(f"  {name} diff:", d)
+    if a.estimate:
+        from catspace.io import paths
+        h = paths.experiment("estimates_log_harness.jsonl")
+        if os.path.exists(h):
+            os.remove(h)
     print(f"OBS scheduler compare total differences (decisions + claims + counters): {total}")
     raise SystemExit(1 if total else 0)
 

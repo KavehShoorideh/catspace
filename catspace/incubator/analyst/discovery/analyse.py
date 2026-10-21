@@ -43,6 +43,7 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
     if carry is not None:                                        # 52.19 (4): --memory keeps the fact store between the puzzles of a set (unrelated positions: expect few hits)
         carry.facts.advance(b)
     ag = Agenda(st, memory=recalled, leaf_all=leaf_all, chase_log=p["id"], seconds=seconds, carry=carry)
+    ag.ctx.est_set = set_name                                    # plan 61 B2: the estimates log rows carry the set
     ag.ask()
     fx = ag.facts_delta()
     ans = b.san(chess.Move.from_uci(p["answer"]))
@@ -58,6 +59,8 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
             log(f"  {c.kind} {c.what} value {c.value} lemma {c.lemma}: {c.line}")
         if not st.claims:
             log("  none")
+        for c in st.estimated:
+            log(f"  ESTIMATED {c.kind} {c.what} value {c.value} (not proved; confidence {c.confidence:.2f} by {c.estimator}): {c.line}")
         log("GAPS")
         for g in st.gaps or ["none"]:
             log("  " + g)
@@ -68,13 +71,16 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
     for line in ag.leaf_obs:
         log(f"OBS leaf {p['id']}: {line}")
     decided = d.what if d else "none"
+    estimated = ag.decision_estimated()
+    if ag.ctx.est_routes:
+        log(f"OBS estimate {p['id']}: gap routes closed as estimated {ag.ctx.est_routes}, estimated claims {len(st.estimated)}, decision {decided}" + (" ESTIMATED" if estimated else " (proved)" if d else ""))
     sfv = (None, None, None)
     if sf:                                                       # plan 53 (1): Stockfish grades the decision (the grader, never a premise)
         from catspace.incubator.analyst.discovery import verdict as VD
         sfv = VD.verdict(fen, d.move if d else None)
         log(f"OBS verdict {p['id']}: {decided} {sfv[0]}" + (f" (loss {sfv[1]} cp vs {chess.Board(fen).san(chess.Move.from_uci(sfv[2]))})" if sfv[2] else ""))
     if qlog:
-        _write_qlog(p, set_name, fen, ag, d, sfv)
+        _write_qlog(p, set_name, fen, ag, d, sfv, estimated)
     cx = ag.ctx
     # a depth-two decision reads "Nxf6+ then Bxh7": it MATCHES the puzzle when its FIRST move is the answer (the second move is the plan's, not the puzzle's)
     verdict = "MATCH" if d and d.move[:4] == p["answer"][:4] and (len(d.move) < 5 or len(p["answer"]) < 5 or d.move[4] == p["answer"][4]) else "MISS"
@@ -95,7 +101,7 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
         pr = PD.drain(ag.ctx, ag.us, ponder, log=lambda t: log(f"OBS ponder {p['id']}: {t}"))
         log(f"OBS ponder {p['id']}: drained {pr['done']} of {pr['queue']} queued items in {pr['secs']} s; queue after {pr['left']}")
     return dict(id=p["id"], asked=ag.asked, tempo=ag.killed_tempo, claims=len(st.claims), decision=decided, match=verdict == "MATCH",
-                decided=d is not None, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs, theirs=ag.their_runs, fx=fx, chase=(cx.agendas, cx.inherited, cx.reopened, cx.budget_hits, cx.asked, cx.inherited_claims, cx.fresh, cx.closed, cx.standing, cx.logged, cx.gap_reused, cx.depth_cuts, cx.static_read, cx.static_parried, cx.static_unparried, cx.reasoned, cx.unaddressed, cx.time_outs, cx.landing_served, R.PASS_CLAIMS[0] - pc0, cx.roots_served, cx.chase_served, cx.finished, cx.unmet, cx.refuter_fixes), f61=(cx.parry_seen, cx.parry_closed, cx.delayed_routes, cx.nosafe_routes), until=ag.asked_at_claim, move=d.move if d else None, leaf=ag.leaf_stats,
+                decided=d is not None, estimated=estimated, est_routes=ag.ctx.est_routes, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs, theirs=ag.their_runs, fx=fx, chase=(cx.agendas, cx.inherited, cx.reopened, cx.budget_hits, cx.asked, cx.inherited_claims, cx.fresh, cx.closed, cx.standing, cx.logged, cx.gap_reused, cx.depth_cuts, cx.static_read, cx.static_parried, cx.static_unparried, cx.reasoned, cx.unaddressed, cx.time_outs, cx.landing_served, R.PASS_CLAIMS[0] - pc0, cx.roots_served, cx.chase_served, cx.finished, cx.unmet, cx.refuter_fixes), f61=(cx.parry_seen, cx.parry_closed, cx.delayed_routes, cx.nosafe_routes), until=ag.asked_at_claim, move=d.move if d else None, leaf=ag.leaf_stats,
                 **(dict(tiers=tiers, status=ag.status_info, tier_decided=ag.tier_decided) if tiers else {}))
 
 
@@ -114,7 +120,7 @@ def _append_once(path, text: str) -> None:
         os.close(fd)
 
 
-_FLAGS = ("PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS", "TIERS_UNDER_TIME", "CLOSE_AFTER_CAPTURE", "RAISE_TO_WIN", "PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE")
+_FLAGS = ("PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS", "TIERS_UNDER_TIME", "CLOSE_AFTER_CAPTURE", "RAISE_TO_WIN", "PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE", "ESTIMATE")
 
 
 def _init_worker(flags: dict) -> None:
@@ -130,7 +136,7 @@ def _one(job: tuple) -> dict:
     return analyse(p, quiet=True, **kw)
 
 
-def _write_qlog(p: dict, set_name: str, fen: str, ag, d, sfv) -> None:
+def _write_qlog(p: dict, set_name: str, fen: str, ag, d, sfv, estimated: bool = False) -> None:
     """plan 53 (1): one row per question of the ROOT agenda in the order asked: what was known before it was asked (features), its outcome (status, the word that answered
     it: the claim's lemma or the kill's reason), whether it decided, the decision, the puzzle's answer and the Stockfish verdict. The prior trains on this."""
     import json
@@ -147,7 +153,7 @@ def _write_qlog(p: dict, set_name: str, fen: str, ag, d, sfv) -> None:
             t = q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn")))
             from catspace.incubator.analyst.discovery import agenda as AGM
             buf.append(json.dumps(dict(id=p["id"], set=set_name, prior=bool(AGM.PRIOR), fuse_hits=ag.ctx.budget_hits, fen=fen, order=i, qid=q.id, goal=q.goal, stake=q.stake, text=q.text, status=q.status, word=word,
-                                     decided=bool(d and d.qid == q.id), decision=d.move if d else None, answer=ans, match=match, sf=sfv[0], sf_loss=sfv[1], sf_best=sfv[2],
+                                     decided=bool(d and d.qid == q.id), decision=d.move if d else None, estimated=estimated, answer=ans, match=match, sf=sfv[0], sf_loss=sfv[1], sf_best=sfv[2],
                                      target_sq=t, move=q.pattern.get("move"), features=f)) + "\n")
     _append_once(paths.experiment("question_log.jsonl"), "".join(buf))
 
@@ -173,12 +179,16 @@ def main():
     ap.add_argument("--delayed", action="store_true", help="plan 61 A3: a quiet move after which every reply allows a forcing move of ours is a route (tier 1+, the root's chase)")
     ap.add_argument("--nosafe", action="store_true", help="plan 61 A4: a quiet move after which every reply loses at least the stake by rule (zugzwang) is a route (tier 1+, the root's chase)")
     ap.add_argument("--forcing61", action="store_true", help="plan 61 stage A: --parries --delayed --nosafe")
+    ap.add_argument("--estimate", action="store_true", help="plan 61 B2: a cut route whose open replies are quiet leaves closes as an ESTIMATED claim (quiet-status); the decision consults it only when no proved claim keeps the status; every estimated leaf is logged to estimates_log.jsonl")
     a = ap.parse_args()
     if a.parries or a.delayed or a.nosafe or a.forcing61:
         from catspace.incubator.analyst.discovery import agenda as AGM
         AGM.PARRIES = AGM.PARRIES or a.parries or a.forcing61
         AGM.DELAYED_THREAT = AGM.DELAYED_THREAT or a.delayed or a.forcing61
         AGM.NO_SAFE_MOVE = AGM.NO_SAFE_MOVE or a.nosafe or a.forcing61
+    if a.estimate:
+        from catspace.incubator.analyst.discovery import agenda as AGM
+        AGM.ESTIMATE = True
     if a.tiers:
         from catspace.incubator.analyst.discovery import agenda as AGM
         AGM.TIERS = True
@@ -221,6 +231,8 @@ def main():
     print(f"OBS questions asked until the deciding claim, total: {sum(r['until'] for r in res)} (of {sum(r['asked'] for r in res)} asked)")
     print(f"OBS forcing61 {a.set}: closed replies checked against the route's threat {sum(r['f61'][0] for r in res)}, closed by the threat (no parry) {sum(r['f61'][1] for r in res)}, "
           f"routes admitted by the delayed threat {sum(r['f61'][2] for r in res)}, by no safe move {sum(r['f61'][3] for r in res)}")
+    if any(r["est_routes"] for r in res):
+        print(f"OBS estimate {a.set}: gap routes closed as estimated {sum(r['est_routes'] for r in res)} on {sum(1 for r in res if r['est_routes'])} puzzles, decisions ESTIMATED {sum(r['estimated'] for r in res)} ({' '.join(r['id'] for r in res if r['estimated'])})")
     kills = Counter(k for r in res for k in r["kills"])
     dec = [r["id"] for r in res if r["decided"]]
     gap = [r["id"] for r in res if not r["decided"]]
