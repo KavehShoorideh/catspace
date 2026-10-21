@@ -32096,3 +32096,18 @@ re-closing at the threat's value would have been the kcQil unsoundness again; (2
 beside a hanging queen was "delayed"), captures only with see > 0, a bare check only at the mate stake; (3) no_safe_move never fired on the 90.
 Acceptance: RoR8t still none -- Kg3 is already a tier-2 route ('threat of mate in two') and dies after Rg8+ at +0: the missing word is the endgame claim
 after Rg8+ Rg4 (two pawns against a lone rook), not forcing; the builder did not fake it. Defaults OFF (no gain measured; A3 adds routes). Next: stage B.
+
+## 2026-10-21 12:43 PDT -- PLAN 61 STAGE B BUILT: THE PROVED/ESTIMATED LABEL, THE QUIET-STATUS ESTIMATE, THE CALIBRATION PASS; THE ESTIMATOR NEVER FIRED ON THE 90
+Builder (Sonnet) commits bbd929ce (Claim.proved/confidence/estimator, combine by product, State.estimated, play server label), 9563d36d
+(question_prior calibrate: Stockfish depth 14 scores logged leaves, HELD per class -> data/derived/estimate_calibration.json), 8b96512d (ESTIMATE
+switch OFF: a cut route whose remaining replies are closed by rule or quiet gets an estimate kept APART from the proved claims (best_est / State.estimated:
+proved-beats-estimated is structural, not a tie-break); decision() reads proved first and prints DECISION ESTIMATED; estimates log; scheduler mirrored;
+compare_scheduler --estimate), 917acd6a (17 tests), e8fe463f (the not-estimated reason counter). Verified here: 23 tests (estimate61 + question_prior)
+pass; builder: 164 targeted, full suite 1240 passed; compare_scheduler 0 differences with --estimate on and off. OBS (90 puzzles, 10 s, one run each):
+65/2/23 RIGHT/WRONG/none with ESTIMATE off AND on, identical per puzzle; 0 estimated leaves, 0 ESTIMATED decisions, calibration log empty: every cut
+route's replies left a forcing move ("a reply leaves a non-quiet leaf"): puzzle chases end in tactics, not quiet positions; 1 s budget the same.
+So the stage is built and inert on puzzles; calibration data needs quiet middlegame leaves (play-server games). Kaveh's pos2 (White a rook down, h-file
+attack; Stockfish 1.Bf2 -2.1, ours Nxf4 +1 proved / -3.1 by Stockfish) is the test case for "proved +1 vs proved 0 with a better estimate": Bf2's
+merit (their Bh4 is pinned to the h-file by the Qh7 mate threat, the queen its only defender, Ng1 unblocks AND unpins before Bxh4) is a two-quiet-move
+plan held by a mate threat; with --forcing61 the engine claims "win Bf2" only one level down (after Nxf4 exf4, the knight gone), never at the root.
+Checked and NOT a bug: "Bxh4 Qxh4 Qxh4" in that line is right (h3 is empty there). Next: stage C.
