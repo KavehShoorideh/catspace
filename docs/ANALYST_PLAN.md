@@ -2994,3 +2994,20 @@ per puzzle by the final `decision` of each id (not only the `decided` root rows:
   RoR8t unchanged (plan 62's race word is its fix); pos2 Bf2 (plan 63); the 90 with no RIGHT lost and every switch above ON.
 * FILES: `agenda.py`, `scheduler.py` (mirror), `analyse.py`, `regress.py` (after plan 63 lands), Lean for any kill that becomes a lemma, tests in
   `tests/test_offbuilt64.py`. One commit per item; sequential after plan 63's hand-back (the grades must not share the machine).
+* 64.0 SOUNDNESS FIRST, BEFORE ANY GRADE (found on pos2 after plan 63, 2026-10-21): A PROVED CLAIM IS FALSE. pos2's "CLAIM win Nxf4 (value 1)" closes
+  the reply 1...Rxf4 by "exchange +3 (Bxf4 wins 3: Bxf4 exf4 Qxf4), nothing of theirs -> 1", but after 2.Bxf4 exf4 3.Qxf4 Black has 3...Bg5, which pins
+  the queen to Kc1 (Stockfish +6.23 for Black: Bg5 Qxg5 Qxg5+; our own engine finds Bg5 as a root in 0.03 s, probe
+  `data/derived/ledger_puzzles_probe_pos2.json`). Cause: `agenda._their_after_capture` plays only our FIRST capture of the exchange and asks their
+  agenda there (claims landing on the exchange square excluded), while the value counts the whole principal line; their free move comes after our LAST
+  capture (Qxf4), where the check never runs. Fix: walk the exchange's principal line (`R.exchange_read`'s sequence) and ask their agenda after EACH of
+  our captures (memo per position as now); after the last one, every claim of theirs counts (the exchange is over). Then audit every other "closed by
+  rule" path (mate in one, the exchange, their pass) for the same one-node-early read. Test: pos2's Nxf4 route no longer closes 1...Rxf4 by the exchange;
+  a unit test on the probe. Grade the 90 after it: this changes values, so every decision that moves gets its trace (a proof that was false is a WRONG
+  waiting to happen; a RIGHT that depended on it is reported, never restored by undoing the fix).
+* 64.6 pos2 AFTER 64.0: report the decision and its claim. Stockfish (depth 22): Bf2 -1.80 (Bf2 Kg8 Ng1 Qg5 Bxh4 Qxg6), Nxf4 -3.22 (Nxf4 Rxf4 Bh3);
+  Black's best replies to Bf2: Bg3 -2.09 (Bxg3 fxg3 Qxg3: a pawn back), Kg8 -2.04 (no material soon), so Bf2's proved floor is about +0 and its merit
+  over Nxf4 is positional. If the decision is not Bf2, do NOT change the decision rule: report it as the proved-versus-estimated question for Kaveh
+  (every move loses by proof; does the estimate break the choice?).
+* 64.7 "their threat 0" in pos2's STATUS (63.4's diagnosis: their verify of fxe3 reads "delayed_balance_d1 69 against 69: no gain" only while the B on h4
+  stands; with it removed fxe3 binds 3): find White's reply that gives the 3 back and say whether the verifier is right; if it is, the status is right
+  too; if not, fix the verifier with a test.
