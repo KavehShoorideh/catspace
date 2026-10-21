@@ -190,7 +190,17 @@ def main():
     ap.add_argument("--cost-judge", action="store_true", help="plan 61 C2: under --seconds the cost judge (cost x seconds per node <= the route's time left) replaces the cut by the clock; a cut route is a GAP; the trace says 'judge: ...'")
     ap.add_argument("--cycle", action="store_true", help="plan 61 C4 (the default; kept for the harness): a chase position that repeats one of the line (or the game history) closes as a proved 'draw' claim worth minus the balance when we are behind")
     ap.add_argument("--no-cycle", action="store_true", help="plan 61 C4: CYCLE off (it is ON by default)")
+    ap.add_argument("--no-delayed", action="store_true", help="plan 63.3: switch the delayed threat (61 A3, ON by default) OFF")
+    ap.add_argument("--duty", action="store_true", help="plan 63.2: the duty word ('pinned to a threat') in the trap/run test (the default: ON)")
+    ap.add_argument("--no-duty", action="store_true", help="plan 63.2: switch the duty word OFF (CATSPACE_DUTY=0, inherited by the workers)")
     a = ap.parse_args()
+    if a.no_delayed and not a.delayed and not a.forcing61:
+        from catspace.incubator.analyst.discovery import agenda as _AG63
+        _AG63.DELAYED_THREAT = False
+    if a.no_duty and not a.duty:
+        from catspace.incubator.analyst.discovery import regress as _R63
+        os.environ["CATSPACE_DUTY"] = "0"
+        _R63.DUTY = False
     if a.cost_judge or a.cycle or a.no_cycle:
         from catspace.incubator.analyst.discovery import agenda as AGM
         AGM.COST_JUDGE = AGM.COST_JUDGE or a.cost_judge

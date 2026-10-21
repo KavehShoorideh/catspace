@@ -116,7 +116,7 @@ def test_a2_a_threat_of_mate_is_parried_by_the_replies_that_stop_the_mate_and_cl
 
 
 def test_a2_the_flag_only_relabels_closed_replies_and_defaults_off():
-    assert AG.PARRIES is False and AG.DELAYED_THREAT is False and AG.NO_SAFE_MOVE is False
+    assert AG.PARRIES is False and AG.DELAYED_THREAT is True and AG.NO_SAFE_MOVE is False         # (63.3: the delayed threat is ON)
     from catspace.incubator.analyst.discovery import analyse as AN
     assert {"PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE"} <= set(AN._FLAGS)
 
