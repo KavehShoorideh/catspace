@@ -393,3 +393,23 @@ def main(argv=None):
 
 if __name__ == "__main__":
     main()
+
+
+def forcing_resources(board, us) -> dict:
+    """plan 61 C3 (logged for plan 60, no decision use): the forcing resources on the root board: OUR forcing moves now (`forcing_why`, stake 1), OUR pieces bearing on their king's region (they attack the
+    king's square or one of the squares next to it), the king's FLIGHTS (adjacent squares not held by their own pieces and not attacked by us) and BLOCKERS (adjacent squares held by their own pieces)."""
+    import chess
+    from catspace.incubator.analyst.discovery import graph as G
+    from catspace.incubator.analyst.discovery import regress as R
+    me = G.colour_of(us)
+    b = G.with_turn(board, me) if board.turn != me else board
+    ksq = b.king(not me)
+    n_forcing = sum(1 for m in b.legal_moves if R.forcing_why(b, m, 1, me, mate_threats=True))
+    if ksq is None:
+        return dict(forcing_moves=n_forcing, bearing=0, flights=0, blockers=0)
+    region = [ksq] + list(chess.SquareSet(chess.BB_KING_ATTACKS[ksq]))
+    bearing = {a for s in region for a in b.attackers(me, s) if b.piece_type_at(a) != chess.KING}
+    adj = list(chess.SquareSet(chess.BB_KING_ATTACKS[ksq]))
+    blockers = sum(1 for s in adj if b.piece_at(s) is not None and b.piece_at(s).color != me)
+    flights = sum(1 for s in adj if b.piece_at(s) is None or b.piece_at(s).color == me if not b.is_attacked_by(me, s))
+    return dict(forcing_moves=n_forcing, bearing=len(bearing), flights=flights, blockers=blockers)
