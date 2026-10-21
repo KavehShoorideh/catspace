@@ -14,6 +14,7 @@ Deviation from 52.2 (signatures): fixes_of / routes_of also take the question an
 """
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 
@@ -609,6 +610,179 @@ def delayed_threat(board: chess.Board, m: chess.Move, stake: int, us: str | bool
             + (f"; by a check that is also a threat, {via_check}" if via_check else ""))
 
 
+# ---------------------------------------------------------------------------------------------------------------- plan 63.2: the duty word (Lean Ideas.Duty)
+
+DUTY = os.environ.get("CATSPACE_DUTY", "1") != "0"       # plan 63.2: a safe square reached by a move that abandons a duty >= the piece's worth is NOT safe (trap_fix, `take its squares`); analyse --no-duty sets CATSPACE_DUTY=0 (inherited by the spawned workers)
+STAKE_DUTY_MATE = 100
+
+
+def iter_safe_moves(board: chess.Board, sq: int):
+    """`safe_moves`, lazily (the callers that need only the first safe square that is kept stop reading there)."""
+    pc = board.piece_at(sq)
+    p = G.with_turn(board, pc.color)
+    for m in p.legal_moves:
+        if m.from_square != sq or p.is_castling(m):
+            continue
+        a = p.copy(stack=False)
+        a.push(m)
+        if G.see_for(a, m.to_square, not pc.color) == 0:
+            yield m
+
+
+def safe_moves(board: chess.Board, sq: int) -> list:
+    """The legal moves of the piece on `sq` (its owner to move, no e.p., castling is not a move of the piece) after which the exchange on the destination wins nothing for the other side: the
+    Rust word `mobility` (vocab.rs, Lean `landsSafe`), listed. `len(safe_moves(b, s)) == G.mobility_of(b, s)`."""
+    return list(iter_safe_moves(board, sq))
+
+
+_MATE_AHEAD: dict = {}
+G.CLEAR_HOOKS.append(_MATE_AHEAD.clear)
+
+
+def _mate_ahead(d: chess.Board, me: bool) -> str | None:
+    """On `d` with US to move: the way we MATE or threaten mate, by rule -- a move that checkmates, a check that also threatens mate (`check_threat`), a quiet move after which a pass leaves a mate
+    in one (`mate_threat`; the same word the Rust forcing path reads, here asked in one batch). -> the move's SAN (with the mate it leads to) or None. (`_their_after_capture` reads a duty the same
+    way: mate -> 100.) Memoised by position."""
+    key = (d.board_fen(), d.turn, d.castling_rights, d.ep_square, me)
+    if key in _MATE_AHEAD:
+        return _MATE_AHEAD[key]
+    moves = list(d.legal_moves)
+    whys = _forcing_batch(d, moves, STAKE_MATE, me, True) if d.turn == me else None
+    out = None
+    if whys is None:
+        whys = []
+        for x in moves:
+            whys.append("check" if d.gives_check(x) else ("threat of mate" if mate_threat(d, x, me) else None))
+    for x, w in zip(moves, whys):                                      # (a quiet threat of mate is read already: the checks, which cost a scan each, only when there is none)
+        if w == "threat of mate":
+            out = f"{d.san(x)} (threat of mate)"
+            break
+    if out is None:
+        for x, w in zip(moves, whys):
+            if w == "check":
+                t = check_threat(d, x, STAKE_MATE, me)
+                if t:
+                    out = f"{d.san(x)} ({t})"
+                    break
+    _MATE_AHEAD[key] = out
+    return out
+
+
+def duty_after(board: chess.Board, r: chess.Move, us: str | bool, ctx: int | None = None, need: int | None = None) -> tuple:
+    """plan 63.2: what we win BY RULE after their move `r` on `board` (them to move), us to move next, beyond what we already won: (value, what). A move that checks us wins nothing (a counter-threat,
+    not an abandonment); a mate (or a threat of mate) we did not have before -> 100; else the best static exchange of ours (`threat_value`) less what `r` itself captured and less the exchange already
+    standing before the move. Lean `Ideas.Duty.dutyAfter`."""
+    me = G.colour_of(us)
+    gain = 1 if board.is_en_passant(r) else (G.worth(board.piece_at(r.to_square)) if board.is_capture(r) else 0)
+    a = board.copy(stack=False)
+    a.push(r)
+    if a.is_check():
+        return 0, "check"
+    now_ex = ctx if ctx is not None else _best_exchange(G.with_turn(board, me), me)                  # what we already won before their move (read once per board by the callers)
+    v = max(0, _best_exchange(a, me) - gain - now_ex)
+    if need is not None and v >= need:                                    # the exchange alone already reaches the piece's worth: the mate need not be read
+        return v, f"the exchange wins {v}"
+    mate = _mate_ahead(a, me)
+    if mate and _mate_ahead(G.with_turn(board, me), me) is None:           # a mate (or threat of mate) that did not stand before the move
+        return STAKE_DUTY_MATE, mate
+    return v, f"the exchange wins {v}" if v else "nothing"
+
+
+def _best_exchange(b: chess.Board, me: bool) -> int:
+    """The most we win by the exchange on a piece of theirs, us to move on `b` (= `threat_value` of a board read with us to move)."""
+    return threat_value(b, me)
+
+
+def duty(board: chess.Board, sq: int, us: str | bool) -> tuple:
+    """plan 63.2 (Lean `Ideas.Duty.duty`): the DUTY of their piece on `sq` = the LEAST, over its legal moves, of what we win by rule after that move (`duty_after`). 'The piece is pinned to a threat.'
+    -> (value, what, move SAN): the least move. A piece with no legal move has duty 0 (it is frozen, not bound). `dutyBound` = value >= the piece's worth (a mate: every worth)."""
+    pc = board.piece_at(sq)
+    p = G.with_turn(board, pc.color)
+    best = None
+    me = G.colour_of(us)
+    now = G.with_turn(board, me)
+    ctx = _best_exchange(now, me)
+    for m in p.legal_moves:
+        if m.from_square != sq or p.is_castling(m):
+            continue
+        v, what = duty_after(p, m, us, ctx)
+        if best is None or v < best[0]:
+            best = (v, what, p.san(m))
+    return best if best is not None else (0, "no legal move", "")
+
+
+def duty_bound(board: chess.Board, sq: int, us: str | bool) -> bool:
+    """The piece is DUTY-BOUND: every move of it abandons a duty worth at least the piece (Lean `Ideas.Duty.dutyBound`)."""
+    pc = board.piece_at(sq)
+    if pc is None or pc.piece_type == chess.KING:
+        return False
+    v, _w, san = duty(board, sq, us)
+    return bool(san) and v >= G.worth(pc)
+
+
+_DUTY: dict = {}
+G.CLEAR_HOOKS.append(_DUTY.clear)
+
+
+def duty_safe_moves(board: chess.Board, sq: int, us: str | bool) -> tuple:
+    """The safe squares of the piece on `sq` that do NOT abandon a duty >= its worth -> (kept moves, [(abandoning move SAN, value, what)]). Memoised by position (cleared with the other caches)."""
+    key = (board.board_fen(), board.castling_rights, sq, G.colour_of(us))
+    hit = _DUTY.get(key)
+    if hit is not None:
+        return hit
+    pc = board.piece_at(sq)
+    kept, cut = [], []
+    p = G.with_turn(board, pc.color)
+    now = G.with_turn(board, G.colour_of(us))
+    ctx = _best_exchange(now, G.colour_of(us))        # what already stood before the move: read once per board, not once per move
+    for m in safe_moves(board, sq):
+        v, what = duty_after(p, m, us, ctx)
+        if pc.piece_type != chess.KING and v >= G.worth(pc):
+            cut.append((p.san(m), v, what))
+        else:
+            kept.append(m)
+    _DUTY[key] = (kept, cut)
+    return kept, cut
+
+
+def can_run(board: chess.Board, sq: int, us: str | bool) -> tuple:
+    """plan 63.2 (a): can the piece on `sq` RUN? True at the first safe square whose move does not abandon a duty >= its worth (a lazy `duty_safe_moves`: the question is whether any is left, so the
+    reading stops there); else False with the list of the abandoning moves [(SAN, value, what)] -- the piece is pinned to a threat on every safe square. -> (bool, cut)."""
+    pc = board.piece_at(sq)
+    if pc.piece_type == chess.KING:
+        return True, []
+    key = ("run", board.board_fen(), board.castling_rights, sq, G.colour_of(us))
+    hit = _DUTY.get(key)
+    if hit is not None:
+        return hit
+    me = G.colour_of(us)
+    p = G.with_turn(board, pc.color)
+    now = G.with_turn(board, me)
+    ctx = _best_exchange(now, me)
+    cut = []
+    out = None
+    for m in iter_safe_moves(board, sq):
+        v, what = duty_after(p, m, us, ctx, need=G.worth(pc))
+        if v >= G.worth(pc):
+            cut.append((p.san(m), v, what))
+        else:
+            out = (True, [])
+            break
+    if out is None:
+        out = (False, cut)
+    _DUTY[key] = out
+    return out
+
+
+def duty_text(board: chess.Board, sq: int, us: str | bool) -> str | None:
+    """The sentence for the trace: 'their B on h4 is pinned to a threat: every safe move of it lets Ng1+ (check that also threatens mate (Qh7#))' or None when it is not duty-bound."""
+    pc = board.piece_at(sq)
+    if not duty_bound(board, sq, us):
+        return None
+    v, what, san = duty(board, sq, us)
+    return f"the {pc.symbol().upper()} on {G.name(sq)} is pinned to a threat: any move of it ({san}, the least) lets us {what}"
+
+
 def no_safe_move(board: chess.Board, m: chess.Move, stake: int, us: str | bool) -> str | None:
     """plan 61 A4 (Lean `Ideas.Forcing.noSafeMove`; zugzwang as 'no safe move'): the quiet move `m` is forcing iff after it EVERY legal reply of theirs loses at least the stake by rule: after
     the reply, the best static exchange of ours on a piece of theirs (the piece that moved or the duty it left -- the stake was not reachable before the reply, `m` being not forcing) less
@@ -1110,12 +1284,21 @@ def trap_fix(q: Question, defect: Defect, board: chess.Board, us: str | bool) ->
     if pc is None or pc.piece_type == chess.KING:
         return []
     got = _trap_rust(board, us, target) if TRAP_RUST else None
+    cut = []
     if got is None:
         n = G.mobility_of(G.with_turn(board, pc.color), target)
         routes = trap_routes(board, us, target) if n else []
+        if DUTY and n and routes:                                              # plan 63.2: the piece cannot run when every safe square is reached by a move that abandons a duty >= its worth
+            run, cut = can_run(board, target, us)
+            if not run:
+                n, routes = 0, []
         forks = fork_routes(board, us, target)
     else:
         n, routes, forks = got
+        if DUTY and n and routes:                                              # 63.2 after the Rust read (only when there are trap routes to drop: the duty can only remove the question): can the piece RUN? not if every safe square is reached by a move that abandons a duty >= its worth (the routes
+            run, cut = can_run(board, target, us)                              # stay the Rust ones: a quiet move after which no square is safe even without the duty traps it a fortiori)
+            if not run:
+                n, routes = 0, []
     if REGRESS_LOG is not None:
         REGRESS_LOG.append(("trap", target, n or 0, [(r.san, r.why, r.trap, r.fork) for r in routes], [(r.san, r.why, r.trap, r.fork) for r in forks]))
     out = []

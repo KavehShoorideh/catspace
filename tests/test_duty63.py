@@ -80,3 +80,74 @@ def test_63_1_ror8t_kg3_is_a_delayed_threat_by_mate_threats_only():
     assert R.delayed_threat(b, m, 9, "b") is None
 
 
+# ---- 63.2 ------------------------------------------------------------------------------------------------------------------------------------------
+
+def test_63_2_the_safe_moves_list_is_the_mobility_word():
+    b, m = _bf2()
+    b.push(m)
+    assert len(R.safe_moves(b, H4)) == G.mobility_of(b, H4)
+    for sq in chess.SQUARES:
+        p = b.piece_at(sq)
+        if p is not None and p.color == chess.BLACK:
+            assert len(R.safe_moves(b, sq)) == G.mobility_of(b, sq)
+
+
+def test_63_2_the_bishop_on_h4_is_pinned_to_the_mate_on_h7():
+    b, m = _bf2()
+    b.push(m)
+    v, what, san = R.duty(b, H4, "w")
+    assert v == 100 and "Qh7#" in what
+    assert R.duty_bound(b, H4, "w")
+    assert "pinned to a threat" in R.duty_text(b, H4, "w")
+    kept, cut = R.duty_safe_moves(b, H4, "w")
+    assert kept == [] and len(cut) == G.mobility_of(b, H4) == 3                 # all 3 safe squares abandon the duty: the bishop cannot run
+
+
+def test_63_2_duty_is_the_least_over_the_moves_lean_duty_le_and_dutyBound_abandons():
+    b, m = _bf2()
+    b.push(m)
+    p = G.with_turn(b, False)
+    vals = [R.duty_after(p, r, "w")[0] for r in p.legal_moves if r.from_square == H4]
+    assert vals and R.duty(b, H4, "w")[0] == min(vals)                         # duty <= value of every legal move, and it is one of them (Ideas.Duty.duty_le)
+    w = G.worth(b.piece_at(H4))
+    assert R.duty_bound(b, H4, "w") == (min(vals) >= w)                        # le_duty_iff: bound <=> every move abandons >= the worth
+
+
+def test_63_2_a_free_piece_is_not_bound_and_a_frozen_piece_has_duty_zero():
+    b = chess.Board("rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2")
+    assert not R.duty_bound(b, chess.F8, "w")
+    f = chess.Board(FROZEN)
+    v, what, san = R.duty(f, chess.F6, "w")
+    assert (v, san) == (0, "") and not R.duty_bound(f, chess.F6, "w")
+
+
+def test_63_2_the_duty_reading_does_not_count_a_check_or_a_standing_threat():
+    """A move that checks us abandons nothing (a counter-threat), and an exchange that already stood before the move is not the move's doing."""
+    b, m = _bf2()
+    b.push(m)
+    p = G.with_turn(b, False)
+    for r in p.legal_moves:
+        if r.from_square == H4 and p.gives_check(r):
+            assert R.duty_after(p, r, "w") == (0, "check")
+
+
+def test_63_2_trap_fix_with_and_without_duty():
+    """`take its squares` on the B on h4: with the duty reading the bishop cannot run (no question); without it, it has 3 safe squares."""
+    from catspace.incubator.analyst.discovery import regress
+    b, m = _bf2()
+    b.push(m)
+    t = chess.parse_square("h4")
+    q = regress.new_question("win", 3, dict(target=t))
+    d = regress.Defect("defended", t, [], "defended 1x")
+    old = regress.DUTY
+    try:
+        regress.DUTY = False
+        off = regress.trap_fix(q, d, b, "w")
+        regress.DUTY = True
+        on = regress.trap_fix(q, d, b, "w")
+    finally:
+        regress.DUTY = old
+    assert any("take its squares" in x.text for x in off)
+    assert not any("take its squares" in x.text for x in on)
+
+
