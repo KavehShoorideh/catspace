@@ -2819,3 +2819,13 @@ named in the trace ("not followed: the prior scored it low given <findings>"); w
 to the reasoning's. 59's fixed tiers are the FALLBACK order and the BASELINE the policy must beat. Training: the question log (53) extended to routes,
 replies and tiers; reward = reaching the status-keeping claim graded RIGHT with fewer tasks; the negative = never following the task that decided;
 a followed task answered wrongly is never a negative (a bug or a missing lemma). Built on 55 (the map) and 56 stage 3 (re-prioritisation).
+60 (representation, Kaveh 2026-10-20: "all of our findings should be a graph of facts and conditions ... a graph neural network over all the pieces and all the
+facts ... nodes of different kinds"): the findings ARE a graph already -- the fact store (52.19: claims / kills / gaps with justification links and read
+sets) and the task graph (56: question -> routes -> replies -> inner nodes) form an AND-OR proof graph (a route holds iff every reply holds; a question
+iff some route holds: the propagation rules). The policy = a HETEROGENEOUS graph network (R-GCN / the heterogeneous graph transformer; PyTorch Geometric
+HeteroData) over node types {square, piece, question, defect, fix, route, reply/position, claim, kill, Lean word} and edge types {attacks, defends,
+reads, justifies, fixes, route-of, reply-of, refutes (naming the refuting piece), claims, kills}; output = a score on each OPEN TASK node (the scheduler's
+priority). Updates stay local (a finding changes scores within a few hops of the squares it read). Needs: (1) one exported graph schema joining the
+fact store, the task graph and the question log; (2) a snapshot of the open tasks and the fact graph logged at each pop (one training example per
+scheduling decision); (3) thousands of agendas (the parallel runner). The guard is unchanged: the network orders; the status rule stops; claims are
+proved by the words.
