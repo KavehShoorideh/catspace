@@ -73,15 +73,17 @@ class TraceLines(list):
 _SAN = r"(?:O-O-O|O-O|[KQRBN][a-h]?[1-8]?x?[a-h][1-8]|[a-h]x[a-h][1-8](?:=[QRBN])?|[a-h][1-8](?:=[QRBN])?)[+#]?"
 SAN_RE = re.compile(r"(?<![A-Za-z0-9])" + _SAN + r"(?![A-Za-z0-9])")
 SQUARE_RE = re.compile(r"(?<![A-Za-z0-9])[a-h][1-8](?![A-Za-z0-9])")
-KINDS = ("claim", "kill", "gap", "stop", "fuse", "chase", "note", "question", "route", "their", "decision", "fallback", "context", "state", "background", "other")
+KINDS = ("claim", "kill", "gap", "stop", "fuse", "chase", "note", "question", "route", "their", "decision", "fallback", "context", "state", "background", "estimated", "other")
 
 
 def classify(text: str) -> str:
     t = text.strip()
     if t.startswith("background:"):                      # 52.19 (3): thinking on the opponent's clock
         return "background"
-    if t.startswith("decision:"):
+    if t.startswith("decision:") or t.startswith("DECISION ESTIMATED"):
         return "decision"
+    if "ESTIMATED" in t:                                 # plan 61 B1: an estimated (not proved) claim or leaf is labelled in the trace
+        return "estimated"
     if t.startswith("no decision:") or t.startswith("fallback "):
         return "fallback"
     if t.startswith("game context"):
@@ -267,7 +269,8 @@ class AgendaPlayer:
             if move is None:
                 say(f"agenda decision {decision.what} carries move {decision.move!r} which is not legal here; falling back")
         if move is not None:
-            say(f"decision: agenda chose {board.san(move)} ({decision.kind} {decision.what}, value {decision.value}, lemma {decision.lemma})")
+            lean = "" if decision.proved else f" [ESTIMATED, not proved: confidence {decision.confidence:.2f} by {decision.estimator}]"
+            say(f"decision: agenda chose {board.san(move)} ({decision.kind} {decision.what}, value {decision.value}, lemma {decision.lemma}){lean}")
             return move, out, "agenda"
         move = self._fallback_move(board)
         say(f"no decision: fallback {self.fallback} chose {board.san(move)}" if decision is None else f"fallback {self.fallback} chose {board.san(move)}")

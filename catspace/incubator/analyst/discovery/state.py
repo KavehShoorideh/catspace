@@ -23,6 +23,9 @@ class Claim:
     goal: str = ""     # 52.9: the root question's goal kind (mate | win | save | promote)
     fixes: tuple = ()  # 52.9: the kinds of the fix sub-questions on the claim's path
     qid: int = -1      # plan 53: the id of the question this claim answered (the question log says which question decided)
+    proved: bool = True        # plan 61 B1: True = every leaf under the claim is closed by a proved rule/lemma; an ESTIMATED claim (a quiet leaf read by its status) is False and never becomes True
+    confidence: float = 1.0    # ... the PRODUCT of the confidences of the estimated leaves under it (an expectation, never a bound); 1.0 for a proved claim
+    estimator: str = ""        # ... the estimator's name ("quiet-status"); "" for a proved claim
 
 
 @dataclass
@@ -32,6 +35,7 @@ class State:
     pieces: list                                           # state_lines' rows, in the order of attention (the header line first)
     claims: list = field(default_factory=list)
     gaps: list = field(default_factory=list)
+    estimated: list = field(default_factory=list)          # plan 61 B2: the ESTIMATED claims (proved=False), kept apart from `claims` -- nothing that reads the proved claims ever sees them
 
     def tokens(self, threat: bool = True) -> set:
         """remember.py's signature (piece tokens, no squares; the threat token) -- the same object the memory store indexes."""
@@ -46,3 +50,19 @@ class State:
 
 def state_of(fen: str, us: str) -> State:
     return State(fen=fen, us=us, pieces=PA.state_lines(fen, us))
+
+
+def combine(replies: list) -> tuple:
+    """plan 61 B1 (the propagation, one place): the label of a ROUTE from the labels of its replies, each (proved, confidence): proved iff every reply is proved, the confidence the PRODUCT of
+    the replies' confidences (the expectation that every estimated leaf holds, never a bound). An estimate never becomes proved: one estimated reply makes the route estimated."""
+    proved = all(p for p, _c in replies)
+    conf = 1.0
+    for _p, c in replies:
+        conf *= c
+    return proved, (1.0 if proved else conf)
+
+
+def best_route_label(routes: list) -> tuple:
+    """plan 61 B1: a QUESTION's claim takes its best route -- routes are (value, proved, confidence); the greatest value wins, and at equal value a proved route beats an estimated one, then the
+    higher confidence. -> the chosen route, or None."""
+    return max(routes, key=lambda r: (r[0], r[1], r[2])) if routes else None
