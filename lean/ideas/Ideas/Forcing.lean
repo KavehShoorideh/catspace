@@ -85,4 +85,50 @@ theorem free_move_breaks {loses : Position → Move → Bool} {q : Position} {r 
   have := (noSafeMove_loses h).2 r hr
   rw [hf] at this; exact absurd this (by simp)
 
+/-! ## Stage C (ANALYST_PLAN 61 C1, C2, C4): the cost of a route, the judge, the repetition claim -/
+
+/-- C1 THE COST of an open route: one for the route, plus the cost of the unread child of each parry (`regress.route_cost`). -/
+def routeCost (childCosts : List Nat) : Nat := 1 + childCosts.sum
+
+/-- A route costs at least one. -/
+theorem routeCost_pos (cs : List Nat) : 0 < routeCost cs := by
+  unfold routeCost; omega
+
+/-- A route costs at least as much as any one child it reads. -/
+theorem routeCost_ge_child {cs : List Nat} {c : Nat} (h : c ∈ cs) : c ≤ routeCost cs := by
+  unfold routeCost
+  have key : ∀ l : List Nat, c ∈ l → c ≤ l.sum := by
+    intro l
+    induction l with
+    | nil => intro h; simp at h
+    | cons a t ih =>
+      intro h
+      simp only [List.mem_cons] at h
+      simp only [List.sum_cons]
+      rcases h with rfl | h
+      · omega
+      · have := ih h; omega
+  have := key cs h
+  omega
+
+/-- C2 THE JUDGE: read on while the cost times the seconds per node fits in the time left (integers: milliseconds per node). -/
+def judgeReads (cost msPerNode leftMs : Nat) : Bool := decide (cost * msPerNode ≤ leftMs)
+
+/-- The judge is monotone in the cost: a chain that is cheaper than one that is read on is read on (re-asking it at each node
+with the REMAINING cost never cuts a chain the first ask would have read). -/
+theorem judge_mono {c c' m l : Nat} (hc : c' ≤ c) (h : judgeReads c m l = true) : judgeReads c' m l = true := by
+  simp only [judgeReads, decide_eq_true_eq] at *
+  exact Nat.le_trans (Nat.mul_le_mul_right m hc) h
+
+/-- C4 THE REPETITION CLAIM: a repeated position where we are behind (balance `bal` < 0) is worth minus the balance. -/
+def repetitionValue (bal : Int) : Int := -bal
+
+/-- It brings the result exactly to level. -/
+theorem repetition_level (bal : Int) : bal + repetitionValue bal = 0 := by
+  unfold repetitionValue; omega
+
+/-- Behind, the claim gains at least one: it clears the chase's bar (value + dbal >= 1). -/
+theorem repetition_gains {bal : Int} (h : bal < 0) : 1 ≤ repetitionValue bal := by
+  unfold repetitionValue; omega
+
 end Ideas.Forcing
