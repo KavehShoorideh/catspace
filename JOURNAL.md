@@ -32073,3 +32073,13 @@ follows Kg3 as a threat of mate in two and reads Rg8+ Rg4 as "no claim of ours (
 and h-pawns with the king -- a missing endgame word (pawns that promote with the king's help against a lone rook), not a soundness bug.
 2zB89 (Qxa5!, a rook given with check for a mate threat, Qxa1+ Rf1 Qd4+ Kh1 Qxb6 Qxb6): tier 3 follows Qxa5 as a threat of mate in two; at 10 s it is cut
 past Qxa1+ by the clock, at 60 s (tier 3 ran 40.9 s) by the chase fuse: more time alone does not decide it; the line is a depth/fuse miss.
+
+## 2026-10-21 10:06 PDT -- REVIEW OF KAVEH'S "FORCED CHAIN + EXACT-VS-ESTIMATE JUDGE" IDEA (no build)
+Kaveh: "check my idea in literature and for cohesion and correctness and add ideas". Report: catspace/research/docs/exact_or_estimate_review_2026_10_21.md.
+Established: immediate/delayed forced = Thomsen's lambda-1/lambda-2 (a found lambda tree is a proof; zugzwang invisible); parry-only replies = threat-space
+search (counter-threat replies must stay in); proved and estimated values are separate labels everywhere (MCTS-Solver, PN-MCTS, HTPS) and learned cost or
+value only ORDERS (df-pn+, PCN); the judge = rational metareasoning (myopic judges stop too early: Hay et al. 2012). Our code: forcing is lambda-1 by the
+null-move test; every legal reply is read; a fuse cut is a GAP. Correctness traps: an estimate at an AND node is unsound without a proved/estimated label;
+their side can be delayed-forcing too (dual lambda); the judge changes the decision so its inputs must be exact and a learned part may only order.
+Proposed order on a go: parries + lambda-2 words first (RoR8t), the label + quiet-status estimate, an exact proof-number cost replacing the fuse (2zB89),
+then the calibration loop before any learned head.
