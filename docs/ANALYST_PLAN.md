@@ -2923,3 +2923,32 @@ of the h-pawn is not a stopper once the king covers h2 and the f-pawn deflects. 
   "closed by the table (KRPvKR: win, DTZ 14)". Switch `agenda.TABLE` (default OFF); graded on the 90 and on the endgame-themed lichess sample
   (`sample_puzzles --themes rookEndgame pawnEndgame --n 30`, a new sampler option); python-chess's `chess.syzygy` reads the files.
 * 62.4 ORDER: 62.1 first (it is the vocabulary), 62.2 with it (the race word is a frame word), 62.3 last (cheap, bounded). Each OFF until graded.
+
+### 63 A check that is also a threat counts as a follow-up; "pinned to a threat" = the duty word for any piece (Kaveh 2026-10-21 GO: "what is the fix? plan it and send it to an agent"; pos2)
+The case (`data/derived/ledger_puzzles_kaveh_pos2.json`, White to move, a rook down): 1.Bf2! (their Bh4 is pinned to the h-file by the Qh7 mate threat; the
+queen is its only defender; 2.Ng1 unblocks the queen and removes the piece that 2.Bxh4? Qxh4 would pin; then Bxh4). Stockfish 1.Bf2 -2.1 against our
+Nxf4 -3.1. Diagnosis: `regress.delayed_threat` (61 A3) says None for Bf2 at stake 3 because after the retreats 1...Be7 / 1...Bf6 our only new forcing
+moves are Ng1+ / Nxf4+ / Ng5+ (discovered checks that uncover Qh7#), and the word discounts a bare check at a material stake. By brute force every other
+reply leaves a new "threat 3" (Ng1), so Bf2 is a delayed threat in Thomsen's sense; the filter is wrong, not the idea.
+* 63.1 THE FOLLOW-UP MAY BE A CHECK THAT IS ALSO A THREAT. In `delayed_threat` (and `_standing_forcing`), a follow-up move x counts iff `forcing_why`
+  gives (a) a threat/capture worth the stake as today, or (b) "threat of mate" at ANY stake (a mate threat exceeds every stake: read with
+  `mate_threats=True` always), or (c) "check" AND the check is also a threat: after x, the pass test (`G.with_turn`, the device `pass_claim` /
+  `threat_value` already use) shows `mate_threat` or a threat >= stake (Ng1+ uncovers Qh7#). A bare check with nothing behind it still does not count.
+  Lean: `Ideas/Forcing.lean`'s `delayedThreat` is generic in `forcing`; document the predicate and add the lemma that (c) is a lambda-1 move (a check
+  whose pass leaves a claim). Test: pos2's Bf2 at stake 3 is a delayed threat naming "after Be7: Ng1+ (uncovers the mate on h7)"; RoR8t unchanged.
+* 63.2 THE DUTY WORD = "pinned to a threat" (Kaveh: "we already have threat and pin; the bishop is pinned to a threat; don't recreate it"). 
+  `regress.duty(board, sq, us) -> (value, what)`: for a piece of theirs on `sq`, the LEAST over its legal moves of what we win by rule after that move
+  if they then pass (the same reading `_their_after_capture` does for a capturing piece, 2026-10-20: `mate_threat` -> 100, else `threat_value` / the
+  exchange on the square it left guarding); a piece with duty >= its worth is DUTY-BOUND ("pinned to the mate on h7": every move of the B on h4 lets
+  Ng1+ then Qh7#). The geometric pin is the special case where the threat behind is the exchange on the piece behind (`Ideas` pin lemma: cite it).
+  Lean `Ideas/Duty.lean`: `duty`, `dutyBound`, lemma `pin_dutyBound` (a pinned piece is duty-bound by the piece behind it), standard axioms. Uses, each
+  OFF by default under one switch `agenda.DUTY`: (a) the trap/run test ("take its squares: the B on h4 can run (safe squares: n)"): a square reached by
+  a move that abandons a duty >= the piece's worth is NOT safe (so the bishop cannot run and "win their B on h4" has the defect "defended 1x" only);
+  (b) the question text and the claim line name it ("their B on h4 is pinned to the mate on h7; its only defender is the Q"); (c) NOT the exchange reader
+  in this stage (pricing a duty-bound recapture is a later item: say so in the trace as a note only).
+* 63.3 GRADE: pos2 decides Bf2 with `--delayed` (and with DUTY on the trace names the pin); the 90 (rand1_10..rand9_10) under 10 s with `--delayed` off/on
+  and DUTY off/on, no RIGHT lost -> DELAYED_THREAT may go ON by default (stage A left it OFF for lack of gain; this is the gain); tests in
+  `tests/test_duty63.py`; harness `scripts/compare_regress.py` with the flags (the Rust forcing path is untouched: the words run after it in Python).
+* FILES: `regress.py` (delayed_threat, _standing_forcing, duty, the trap routes' safe-square test), `lean/ideas/Ideas/Forcing.lean`, new `Ideas/Duty.lean`,
+  tests, `analyse.py` only for `--duty`. Stage C's builder is in `agenda.py` / `scheduler.py` at the same time: do not edit those two files; if a hook
+  there is needed, report it instead of editing.
