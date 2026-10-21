@@ -32049,3 +32049,16 @@ count budget nothing changes (RAISE_TO_WIN, on). OBS on 85 random puzzles at 10 
 g3fFw, qCXKp, XrnZi, 4rutN, x4B5k, kcQil); no decision changed; those puzzles spent their remaining seconds in the wider tiers (qCXKp 9.9 s in tier 3).
 kcQil still plays Qxf3: Qc4 is cut in every tier (tier 0 by the time slice at Rxd4, tier 1 by the fuse at Qf5); only the old unlimited-depth regime
 found it. That is the time-management question Kaveh deferred: how the seconds are split between depth (a deeper tier 0) and width (more tiers).
+
+## 2026-10-20 22:37 PDT -- A CAPTURE CAN LEAVE A DUTY: THE EXCHANGE CLOSE WAS UNSOUND (kcQil); FIXED, BOTH WRONG DECISIONS GONE
+Kaveh, on kcQil: "Q takes F3 is losing. You're still down a pawn, aren't you?" Yes -- and our engine had claimed Qxf3 at +1. The trace: Qxf3 Bxf3 Bxf3
+Rxf3, then "closed by rule: exchange +3 (Rxh6 wins 3), nothing of theirs" -- but the h4 rook was the ONLY guard of the d4 bishop; after Rxh6, Rxd4 wins
+it back. The rule read their pass on the board BEFORE our capture. Fix (9d8b0037, CLOSE_AFTER_CAPTURE): their agenda is also read AFTER our capture
+(their recaptures on the exchange square excluded); any claim there and the reply is asked, not closed. Tried and rejected: subtracting their claim --
+their claim is THEIR guaranteed lower bound, so our remainder is an upper bound (Qxf3 came back at +1): unsound. OBS, 85 random puzzles graded by
+Stockfish (one run each): count budget RIGHT/WRONG/none 58/4/22 -> 58/2/24; 10 s 60/4/20 -> 60/2/22; the two changed are the two WRONG ones (dOC36 Rd2,
+kcQil Qxf3), both the same unsound close; time unchanged (29.2 -> 31.2 s, 89.3 -> 89.4 s wall over the 9 sets on 10 cores). Cost: Kaveh's discovery
+position (Nf6) now needs a time budget (gap under the count budget, Nf6 at 15 s): more replies are read instead of closed; its two tests run with 15 s.
+Kaveh's analysis of kcQil (we're down so no queen trade; Qc4 uncovers Bb7 on the queen and hits f1; the queen can't leave the long diagonal or g2 is
+pinned and Rxh3 mates) is right by Stockfish (Qc4 Qe2 Rxh3#; Qxb7 Qxf1+ mate in 2); White's best, Rxd4 (giving back the exchange to kill the g1 guard),
+is the line he did not read and the one our chase cannot finish in budget. Open: the "avoid trades when behind" word.
