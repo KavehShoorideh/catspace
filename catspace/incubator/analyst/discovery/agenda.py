@@ -678,7 +678,7 @@ class Agenda:
                 self.lines.append(f"tier {k} keeps the status: {overall[2].what}" + ("" if mate else f" ({st['balance'] + overall[0]:+d} against the line {st['line']})"))
             stop = kept or k >= TIER_COUNT - 1 or self.ctx.abort
             left = None if total is None else total - (time.monotonic() - t0)
-            if not stop and left is not None and (left <= 0.05 or ag.ctx.hit):
+            if not stop and left is not None and left <= 0.05:           # (`ctx.hit` alone is a SLICE of the budget met, not the budget)
                 stop = True
             if k == 0 or not kept:
                 why = "" if stop and kept else (f"no time left for tier {k + 1}" if stop and not kept and left is not None and k < TIER_COUNT - 1 else
