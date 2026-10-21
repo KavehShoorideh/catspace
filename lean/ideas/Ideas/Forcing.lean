@@ -1,0 +1,88 @@
+import Ideas.ThreatLemma
+import Ideas.Landing
+
+/-!
+# Forced chains: parries, the delayed threat, no safe move (ANALYST_PLAN 61 stage A, Kaveh GO 2026-10-21)
+
+Three words over the legal moves, each generic in the CLAIM it reads (`bind`: a Bool on a position, e.g. "a mate in one stands",
+"the exchange wins at least the stake", "the passer lemma binds"), so the Python mirror (regress.parries / delayed_threat /
+no_safe_move) instantiates the claim with the rules' reading and the lemmas below hold for every instance.
+
+* `parries bind counter q r` -- the reply `r` of the side to move in `q` PARRIES the threat `bind` when, after it, the claim no
+  longer binds, OR the reply is itself forcing against the other side (`counter q r`: a check, a capture worth the stake, a threat
+  of theirs by the same word with them on move -- Allis's counter-threat hole).
+* `parryList` / `closedList` -- the legal replies that parry / do not.
+  `closed_binds`: a reply outside `parryList` leaves the threat bound -- by the definition. This is why the chase may close it
+  without opening an inner agenda (given the rules' other conditions, which the chase reads as before).
+* `delayedThreat forcing q` -- after EVERY legal reply some legal move of ours is forcing (one bounded AND level: their replies x
+  our forcing candidates, no recursion). `delayed_forcing`: for every legal reply there is a forcing move.
+* `noSafeMove loses q` -- every legal reply loses (`loses q r`, a Bool: the exchange on the piece that moved or on the duty it left
+  reaches the stake) and there is a reply at all (no stalemate). `noSafeMove_loses`: each legal reply loses.
+-/
+
+namespace Ideas.Forcing
+
+open Chess
+
+/-- The reply `r` parries: the claim no longer binds after it, or the reply is itself forcing against the mover. -/
+def parries (bind : Position → Bool) (counter : Position → Move → Bool) (q : Position) (r : Move) : Bool :=
+  !(bind (applyMove q r)) || counter q r
+
+/-- The legal replies that parry. -/
+def parryList (bind : Position → Bool) (counter : Position → Move → Bool) (q : Position) : List Move :=
+  (legalMoves q).filter (parries bind counter q)
+
+/-- The legal replies that do not. -/
+def closedList (bind : Position → Bool) (counter : Position → Move → Bool) (q : Position) : List Move :=
+  (legalMoves q).filter (fun r => !(parries bind counter q r))
+
+/-- A reply that does not parry leaves the threat bound, and is no counter-threat. -/
+theorem not_parries_binds {bind : Position → Bool} {counter : Position → Move → Bool} {q : Position} {r : Move}
+    (h : parries bind counter q r = false) : bind (applyMove q r) = true ∧ counter q r = false := by
+  simp only [parries, Bool.or_eq_false_iff, Bool.not_eq_false'] at h
+  simpa using h
+
+/-- THE LEMMA OF A1/A2: a legal reply outside `parryList` leaves the threat bound. -/
+theorem closed_binds {bind : Position → Bool} {counter : Position → Move → Bool} {q : Position} {r : Move}
+    (h : r ∈ closedList bind counter q) : r ∈ legalMoves q ∧ bind (applyMove q r) = true := by
+  simp only [closedList, List.mem_filter, Bool.not_eq_true'] at h
+  exact ⟨h.1, (not_parries_binds h.2).1⟩
+
+/-- Every legal reply is a parry or closed: the two lists split the replies. -/
+theorem parry_or_closed {bind : Position → Bool} {counter : Position → Move → Bool} {q : Position} {r : Move}
+    (h : r ∈ legalMoves q) : r ∈ parryList bind counter q ∨ r ∈ closedList bind counter q := by
+  by_cases hp : parries bind counter q r = true
+  · left; simp [parryList, h, hp]
+  · right; simp only [closedList, List.mem_filter, Bool.not_eq_true'] at *; simp [h, hp]
+
+/-- THE DELAYED THREAT (lambda-2, Thomsen): after every legal reply of theirs, some legal move of ours is forcing. -/
+def delayedThreat (forcing : Position → Move → Bool) (q : Position) : Bool :=
+  (legalMoves q).all (fun r => (legalMoves (applyMove q r)).any (fun x => forcing (applyMove q r) x))
+
+/-- A delayed threat has a forcing move after each legal reply. -/
+theorem delayed_forcing {forcing : Position → Move → Bool} {q : Position} (h : delayedThreat forcing q = true) {r : Move}
+    (hr : r ∈ legalMoves q) : ∃ x, x ∈ legalMoves (applyMove q r) ∧ forcing (applyMove q r) x = true := by
+  simp only [delayedThreat, List.all_eq_true, List.any_eq_true] at h
+  obtain ⟨x, hx, hf⟩ := h r hr
+  exact ⟨x, hx, hf⟩
+
+/-- NO SAFE MOVE (zugzwang as a word): the side to move has a legal reply, and every legal reply loses. -/
+def noSafeMove (loses : Position → Move → Bool) (q : Position) : Bool :=
+  !(legalMoves q).isEmpty && (legalMoves q).all (loses q)
+
+/-- Each legal reply loses; and there is one (the position is not stalemate or mate). -/
+theorem noSafeMove_loses {loses : Position → Move → Bool} {q : Position} (h : noSafeMove loses q = true) :
+    (legalMoves q) ≠ [] ∧ ∀ r, r ∈ legalMoves q → loses q r = true := by
+  simp only [noSafeMove, Bool.and_eq_true, Bool.not_eq_true', List.all_eq_true] at h
+  refine ⟨?_, h.2⟩
+  intro e; rw [e] at h; simp at h
+
+/-- A free tempo move (a reply that loses nothing) is exactly what breaks it. -/
+theorem free_move_breaks {loses : Position → Move → Bool} {q : Position} {r : Move} (hr : r ∈ legalMoves q)
+    (hf : loses q r = false) : noSafeMove loses q = false := by
+  by_contra hc
+  have h : noSafeMove loses q = true := by simpa using hc
+  have := (noSafeMove_loses h).2 r hr
+  rw [hf] at this; exact absurd this (by simp)
+
+end Ideas.Forcing

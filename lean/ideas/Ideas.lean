@@ -27,6 +27,7 @@ import Ideas.Battery
 import Ideas.Landing
 import Ideas.Refuter
 import Ideas.Skewer
+import Ideas.Forcing
 import Ideas.ForcedByMeasure
 import Ideas.Base.Vocabulary
 import Ideas.Generated.Measures
