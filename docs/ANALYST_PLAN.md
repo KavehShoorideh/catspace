@@ -2952,3 +2952,9 @@ reply leaves a new "threat 3" (Ng1), so Bf2 is a delayed threat in Thomsen's sen
 * FILES: `regress.py` (delayed_threat, _standing_forcing, duty, the trap routes' safe-square test), `lean/ideas/Ideas/Forcing.lean`, new `Ideas/Duty.lean`,
   tests, `analyse.py` only for `--duty`. Stage C's builder is in `agenda.py` / `scheduler.py` at the same time: do not edit those two files; if a hook
   there is needed, report it instead of editing.
+* 63.4 ONE MOVE, SEVERAL QUESTIONS (Kaveh: "Bf2 is needed for a bunch of reasons: it saves the bishop, it sets up a blunder (…Bxf2? Nxf2 and Qh7#), and
+  it brings the attacker"). Explanation only, no change to values: when a decided move is a route of more than one root question, the decision line
+  lists every question it answers ("Bf2: saves our B on e3; attacks their B on h4 (pinned to the mate on h7); sets …Bxf2? Nxf2 (mate on h7)"); replies
+  that lose outright to a claim of ours are listed as "traps set" (the opponent's error as a named omission, 2026-09-15). Also CHECK and report (do not
+  edit agenda.py): pos2's STATUS line says "their threat 0" although fxe3 wins the bishop (Q1 "save our B on e3: they win 3 by the exchange on e3"):
+  find why `status()`'s their-pass-threat is 0 there and report the cause with the line; if it is in regress.py, fix it with a test.
