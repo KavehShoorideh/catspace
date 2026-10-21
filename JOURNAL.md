@@ -32014,3 +32014,16 @@ identical on 07Z0P, 0LRTF, rand1-3; seconds unchanged (3.3, 2.8, 13.6/13.9, 3.7)
 today's depth-first order exactly, by design; the queue has nothing to choose between yet; the shared mutable state (route depth, the deadline, the
 listener frames, R._ids) still relies on that order and must move onto tasks before priorities can differ (stage 3) or workers run (stage 4). The
 0.05 s out-of-time test fixed to 0.01 s (after plan 54 the whole agenda ran under its budget). Flag OFF by default until the Rust port.
+
+## 2026-10-20 18:02 PDT -- THE SCHEDULER CORE AND THE ROUTE READER IN RUST (plan 56 2a, 2b): IDENTICAL, NO TIME GAINED; THE QUESTIONS STAY IN PYTHON; PLAN 57 SET
+Builders 2fdb11f2 (analyst_core.Scheduler: the task graph, the heap, wait/complete/reprioritise, the propagation rules) and 5a61f0fc
+(analyst_core.read_route: every reply of a route read in one call -- dbal, mate in one, the exchange against the need, the standing kills, the pending
+replies; their pass left to Python since their agenda is a whole agenda; the trace formatted in Python from the rows as a LISTENER). Verified: 0
+differences in decisions, claims, counters and trace on 07Z0P, 0LRTF, rand1-3 against the Python scheduler and against the recursion; seconds
+unchanged (3.3, 2.8, 13.3, 3.6). Honest: the scheduler side was never the cost; the 2b profile puts two thirds of 07Z0P in their agendas (337) and the
+rest in asking questions (roots, defects, fixes, 13k verification calls) -- agenda.py and regress.py, the parts whose design still moves. Kaveh's
+decisions tonight: the questions stay in Python (Stage C / 56 (2c) not now); the questions are to be MINED from the vocabulary later with the hand
+ones set aside as the oracle (plan 57, written, not a go), the mining layer in Rust; plan 55 (the question map) and 56's component architecture
+(events, handlers naming their Lean word, the trace as a listener) written. The day in numbers (OBS, one run each): 07Z0P 11.1 -> 3.3 s, rand2_10
+61 -> 13.3 s, every port harness-identical; random samples 25/30 this morning, the prior's loop clean over 11 rounds after two order dependencies
+were caught and fixed; 07Z0P, 0UqOv, 2VDtX, OF8nj, r3oph, GYWyJ and BEKFf all traced to their reasons.
