@@ -32137,3 +32137,12 @@ a delayed threat seven plies below the root, where 61 A3's word does not run (ro
 -4.82, Qd6 -5.89, the rest mate. So 2zB89 needs the in-check evasion chase in every tier (a 52.23 chain item, OFF) AND the delayed threat inside the
 chase; this goes to plan 64 (the diagnosis round under "off is not built"), with the judge's repricing (by the measured time of the same route in an
 earlier tier) and the 52.23 chain items' 07Z0P regression.
+
+## 2026-10-21 14:51 PDT -- CORRECTION TO THE 14:47 ENTRY: 2zB89 IS KILLED BY THE SECOND-CHECK RULE, NOT BY A MISSING DELAYED THREAT
+4.Bd5 (after Qxa5 Qxa1+ Rf1 Qd4+ Kh1 Qd6) is a DIRECT threat of mate in two (Qa7+ Kc8 Bxb7#; `forcing_why(..., mate2=True)` says "threat of mate in
+two"; tier 2 turns mate2 on), so the delayed threat inside the chase is not what 2zB89 needs (`delayed_threat` also accepts Bd5). The killer: with the
+evasion chase on (`--chain`), the probe after Qxa5 Qxa1+ kills Rf1 "after Qd4+: no claim of ours" in every tier, because the rule "a second check of
+theirs in a row is their chain, not our line" returns a chain cut that the caller reads as no claim (cut False -> KILLED). With that one rule disabled
+in-process (scratch monkeypatch; no file edited), Rf1 is a GAP by the chase fuse in tiers 0-2, and from the position after Rf1 Qd4+ the Kh1 route reads
+past Qd6 to a fuse GAP at Qxb6. So the line is: a heuristic stop that kills (fix: follow their checks; a perpetual is CYCLE's terminal; the budget gives a
+GAP), then cost. Written as plan 64 (52a46e14), item 64.1 with an audit of every chain-state cut.
