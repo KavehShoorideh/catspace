@@ -61,6 +61,8 @@ CHASE_CLOCK = 99                                                # 52.23 (8): 99 
 DEEP_WIN_CHASE = False                                           # 52.23 (5) switch (bisect)
 PRIOR = False                                                   # plan 53 (2): the learned prior orders the root agenda's questions (analyse --prior); it never decides
 SCHEDULER = False                                               # plan 56 (1): the chase as an explicit TASK GRAPH on a priority queue with one worker loop (scheduler.py), not the recursion below; the same decisions (scripts/compare_scheduler.py)
+TIERS = False                                                   # plan 59: STATUS-DRIVEN WIDENING at the root -- tier 0 (today's moves), then wider tiers (settings of the root's ChaseCtx) only while no claim keeps our status; analyse --tiers; the play server honours it
+TIER_COUNT = 4                                                  # tiers 0..3
 NO_FUSE = 1 << 40                                               # 52.23 (1): the fuse when the budget is time: never reached (the deadline is the only limit)
 
 
@@ -195,6 +197,7 @@ class Agenda:
         self.ctx = ctx if ctx is not None else ((carry.carry() if carry is not None else ChaseCtx(facts)) if side_depth else None)       # their agendas (side_depth 0, no ctx) never chase
         if self.ctx is not None and chase_log is not None:
             self.ctx.tag = chase_log                            # 52.13 (4): the id the chase log rows carry
+        self._root = ctx is None and self.ctx is not None       # plan 59: a ROOT agenda (the analyser's, the server's): not an inner agenda, not their agenda, not one of ponder.py's
         self.memory = memory or []                              # 52.9: [(sim, record)] recalled for this state; it only REORDERS equal stakes, never adds or removes
         self.asked_at_claim = 0                                 # questions asked when the deciding claim was set
         self.side_depth = side_depth                            # 1: run THEIR agenda (see `their_view`); 0: do not (this is their agenda)
@@ -222,6 +225,7 @@ class Agenda:
                 self.ctx.seconds, self.ctx.t0 = seconds, time.monotonic()
                 self.ctx.deadline = self.ctx.final = self.ctx.t0 + seconds
         self._threats_done = not side_depth and their is None
+        self._pass_done, self._pass_best = False, None          # plan 59: their best claim with the move passed to them (set by `_threat_roots`; read by `status`)
         self._hang: list = []
         self.threat_views: list = []                            # (claim, their agenda) for every threat root
         self._seq = 0
@@ -504,6 +508,8 @@ class Agenda:
             return
         given = self.their is not None                           # 52.14: an inner agenda on a static leaf is handed their agenda; its threat roots are asked whatever `min_stake` says
         ag = self.their if given else self._their_agenda(G.with_turn(b, not self.me))
+        if not given:
+            self._pass_done, self._pass_best = True, (max(ag.state.claims, key=lambda x: x.value) if ag.state.claims else None)      # plan 59: the status reads this (no second run of their agenda)
         seen = set()
         for cl in ag.state.claims:
             m = chess.Move.from_uci(cl.move) if cl.move else None
@@ -544,9 +550,49 @@ class Agenda:
         if SCHEDULER and self.ctx is not None and self.chase_depth == 0 and self.ctx.sched is None:       # plan 56 (1): the root agenda is run by the worker loop (the inner agendas are tasks of it); ponder.py's agendas are not roots and stay recursive
             from catspace.incubator.analyst.discovery import scheduler as SC
             SC.run_root(self)
-            return
-        self._ask_loop()
-        self._ask_finish()
+        else:
+            self._ask_loop()
+            self._ask_finish()
+        if TIERS and self._root:                                 # plan 59 (1): the root's STATUS word and whether its best claim keeps it (the trace line; the driver comes with item 3)
+            self.lines.append(self.status_line(0))
+
+    # ------------------------------------------------------------------------------------------------------------ plan 59: the status
+
+    def status(self) -> dict:
+        """plan 59 (1): THE STATUS of the root. s0 = our material balance minus the value of THEIR best claim with the move passed to them (their agenda on this board, the threat
+        `_threat_roots` reads; 100 for a mate threat; 0 when none or when we are in check: there is no pass). The word: winning (s0 >= 1), level (0), losing (< 0). The LINE we must
+        stay on: 1 ('winning: stay ahead') when s0 >= 1, else 0 ('not losing: reach level')."""
+        b = self.board
+        bal = AC.Pos(b.fen()).balance(self.me) - 64              # (the word adds 64: the owner's material less the other's, plus 64)
+        if b.is_check():
+            cl = None
+        else:
+            if not self._pass_done:                              # (not asked yet: a mate of ours ended the agenda before the threat roots, or the roots were not read)
+                ag = self._their_agenda(G.with_turn(b, not self.me))
+                self._pass_done, self._pass_best = True, (max(ag.state.claims, key=lambda x: x.value) if ag.state.claims else None)
+            cl = self._pass_best
+        threat = min(cl.value, BD.MATE_VALUE) if cl is not None else 0
+        s0 = bal - threat
+        return dict(balance=bal, threat=threat, s0=s0, word="winning" if s0 >= 1 else "level" if s0 == 0 else "losing", line=1 if s0 >= 1 else 0)
+
+    def keeps(self, st: dict, best: "tuple | None" = None) -> tuple:
+        """plan 59 (2): KEEPS THE STATUS -- the best claim (its net value, as `self.best[0]` ranks it; a save in check by the smallest loss included) keeps it when balance + value >= the line.
+        No claim: not kept. -> (kept, the value or None)."""
+        best = self.best if best is None else best
+        if best is None:
+            return False, None
+        return st["balance"] + best[0] >= st["line"], best[0]
+
+    def status_line(self, tier: int, st: "dict | None" = None, best: "tuple | None" = None, opened: str = "") -> str:
+        """The trace line of plan 59: 'STATUS: losing (balance -3, their threat 0): the line is reach level (0); tier 0's best claim d3 +1 gives -2: not kept; tier 1 opened (...)'."""
+        best = self.best if best is None else best
+        if best is not None and best[0] >= BD.MATE_VALUE and st is None:
+            return f"STATUS: tier {tier}'s best claim {best[2].what} is a mate: the status is kept"      # (a mate ends the game: the status needs no reading)
+        st = st or self.status()
+        kept, v = self.keeps(st, best)
+        head = f"STATUS: {st['word']} (balance {st['balance']:+d}, their threat {st['threat']}): the line is '{'stay ahead' if st['line'] else 'reach level'}' ({st['line']}); " if tier == 0 else ""
+        claim = "no claim" if v is None else f"best claim {best[2].what} {v:+d} gives {st['balance'] + v:+d}"
+        return f"{head}tier {tier}'s {claim}: {'kept' if kept else 'not kept'}" + (f"; {opened}" if opened else "")
 
     def _ask_finish(self) -> None:
         """What `ask` adds to the trace once the loop has ended (the root agenda only); the scheduler's node task calls it too."""
