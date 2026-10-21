@@ -783,6 +783,68 @@ def duty_text(board: chess.Board, sq: int, us: str | bool) -> str | None:
     return f"the {pc.symbol().upper()} on {G.name(sq)} is pinned to a threat: any move of it ({san}, the least) lets us {what}"
 
 
+# ---------------------------------------------------------------------------------------------------------------- plan 63.4: one move, several questions (explanation only)
+
+def traps_set(board: chess.Board, m: chess.Move, us: str | bool, limit: int = 4) -> list:
+    """plan 63.4: the replies to our move `m` that LOSE OUTRIGHT to a proved mate: after the reply we have a mate in one (a checkmating move) or a forced MATE IN TWO (`selfmine.bind_mate2`, the
+    proved word `mate_in_two`, the move named). The opponent's error as a named omission (2026-09-15). Explanation only, no value. -> [(reply SAN, our move SAN, 'mate in one' / 'mate in two')],
+    at most `limit`; none when `m` is itself a check (every reply is then forced)."""
+    from catspace.incubator.analyst.discovery import selfmine as SM
+    me = G.colour_of(us)
+    c = board.copy(stack=False)
+    c.push(m)
+    out = []
+    if c.is_check():
+        return out
+    for r in list(c.legal_moves):
+        d = c.copy(stack=False)
+        san = c.san(r)
+        d.push(r)
+        if d.is_check() or not any(True for _ in d.legal_moves):
+            continue
+        mate1 = next((d.san(x) for x in d.legal_moves if d.gives_check(x) and _mates(d, x)), None)
+        if mate1:
+            out.append((san, mate1, "mate in one"))
+        else:
+            got = SM.bind_mate2(d.fen(), "w" if me else "b")
+            if got:
+                (x, y), = got[0]["pairs"]
+                out.append((san, d.san(chess.Move.from_uci(x + y)), "mate in two"))
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _mates(d: chess.Board, x: chess.Move) -> bool:
+    d.push(x)
+    try:
+        return d.is_checkmate()
+    finally:
+        d.pop()
+
+
+def explain_move(board: chess.Board, m: chess.Move, answers: list, us: str | bool) -> str:
+    """plan 63.4: the decision line for a move that is a route of SEVERAL root questions: 'Bf2: saves our B on e3; attacks their B on h4 (pinned to the mate on h7); sets ...Bxf2? Nxf2 (mate on h7)'.
+    `answers` = the root questions' texts the move answers (the caller lists them from the claims whose first move is `m`); the pin is named by the duty word for a target piece of theirs ('win their B on h4');
+    the traps set are `traps_set`. Explanation only: it changes no value and no choice."""
+    me = G.colour_of(us)
+    parts = []
+    after = board.copy(stack=False)
+    after.push(m)
+    for t in answers:
+        text = t
+        mm = re.search(r"their ([KQRBNP]) on ([a-h][1-8])", t)
+        if mm and (pc := after.piece_at(chess.parse_square(mm.group(2)))) is not None and pc.color != me and DUTY:
+            dt = duty_text(after, chess.parse_square(mm.group(2)), me)
+            if dt:
+                text = f"{t} -- {dt}"
+        parts.append(text)
+    traps = traps_set(board, m, me)
+    if traps:
+        parts.append("traps set: " + ", ".join(f"...{san}? {x} ({what})" for san, x, what in traps))
+    return f"{board.san(m)}: " + "; ".join(parts)
+
+
 def no_safe_move(board: chess.Board, m: chess.Move, stake: int, us: str | bool) -> str | None:
     """plan 61 A4 (Lean `Ideas.Forcing.noSafeMove`; zugzwang as 'no safe move'): the quiet move `m` is forcing iff after it EVERY legal reply of theirs loses at least the stake by rule: after
     the reply, the best static exchange of ours on a piece of theirs (the piece that moved or the duty it left -- the stake was not reachable before the reply, `m` being not forcing) less

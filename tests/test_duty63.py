@@ -151,3 +151,11 @@ def test_63_2_trap_fix_with_and_without_duty():
     assert not any("take its squares" in x.text for x in on)
 
 
+# ---- 63.4 ------------------------------------------------------------------------------------------------------------------------------------------
+
+def test_63_4_traps_set_names_the_replies_that_lose_to_a_proved_mate_and_explain_move_lists_every_question():
+    b, m = _bf2()
+    traps = R.traps_set(b, m, "w", limit=40)
+    assert {t[0] for t in traps} >= {"Be7", "Bf6", "Bg5"} and all(t[2] in ("mate in one", "mate in two") for t in traps)       # Ng5+ (discovered) is a forced mate in two
+    line = R.explain_move(b, m, ["saves our B on e3", "win their B on h4 (worth 3)"], "w")
+    assert line.startswith("Bf2: saves our B on e3; win their B on h4 (worth 3) -- the B on h4 is pinned to a threat") and "traps set: ...Be7?" in line
