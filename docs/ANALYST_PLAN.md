@@ -2758,3 +2758,24 @@ holes.py, the question log (53 (1)).
 Where it runs (Kaveh 2026-10-20): THE MINING LAYER IN RUST -- the grammar's enumeration, the evaluation of each candidate over the logged and fresh
 positions with the words in the core (vocab_eval, vocab_certify, mine_cases, the regress/route handlers), the effect scores; Python keeps the oracle
 (the hand questions set aside), the Stockfish grader, the reporting and the loop's bookkeeping. The hand-written questions stay in Python.
+
+### 58 The opening goals as questions: take the centre, develop, castle (Kaveh 2026-10-20: "for the beginning of the game we want to ask questions around three basic handwritten goals ... because we don't have a proper long-term strategic planning layer"; discussed, NOT a go yet)
+Today the opening lives only as TIE-BREAK principles in `opening_rule.py` (castle, develop, develop_central, centre_pawn, steady: functions of (board,
+move) that order the moves the one-ply fallback ties) -- never a question, never a claim with a reason. The planning layer v0 = those principles as ROOT
+QUESTIONS of the agenda, asked when the opening gate holds (`in_opening`: fullmove small and development unfinished) with stakes BELOW every tactical
+stake so that tactics always come first:
+1. CASTLE (stake 2): goal = our king castled; defects read from the rules: a piece between king and rook (the blocker, by name), a square of the king's
+   path attacked (by whom), the right lost; fixes: develop the blocker (with the develop question's words), cover / contest the attacked square.
+2. DEVELOP the N / B on its home square (stake 1 each): goal = the piece on a square off its home rank that LANDS SAFE (`Ideas.Vocabulary.landsSafe`,
+   the exchange word) and is central when it can be (files c-f, ranks 3-6); defects: no safe developing square (which attackers deny which squares),
+   the piece pinned; fixes: the pawn move that opens its diagonal / file, the trade or drive of the denying attacker.
+3. TAKE THE CENTRE (stake 1): goal = a pawn of ours on or attacking d4/e4/d5/e5 that lands safe (the exchange on it wins nothing for them); defects: the
+   pawn push loses by the exchange, the square is held more by them; fixes: support the push first (the move that adds a defender), trade the holder.
+Verification: a route claims when the goal's positive condition holds on the counterfactual, the moved piece lands safe, and THEIR agenda with the move
+passed finds no claim (the quiet move hangs nothing: `_their_pass`) -- the same reading the save questions' smallest-loss rule uses; the "steady"
+principle becomes the kill of a route that loosens (a king walk, the early queen, a flank pawn, a second move of a moved piece), each with its reason.
+Values: the goal met = its stake; two goals met by one move add. The trace prints the opening as questions ("castle: blocked by the B on f1 -> develop
+it: Be2, Bd3 (lands safe), Bc4 (Bxc4 wins 3: not a route)"), and the question log / prior see them like any root. Acceptance: the play server's
+opening (the first 10 moves vs the one-ply fallback and vs Stockfish-2000 as in the 2026-10-06 study) decided by claims, not by the fallback, with the
+reasons printed; the median evaluation after our 5th move vs Stockfish-2000 as OBS, directional. Python first (the questions stay in Python); a
+later plan 57 run may try to re-find these three from the vocabulary.
