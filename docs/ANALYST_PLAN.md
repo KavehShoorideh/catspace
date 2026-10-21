@@ -2829,3 +2829,72 @@ priority). Updates stay local (a finding changes scores within a few hops of the
 fact store, the task graph and the question log; (2) a snapshot of the open tasks and the fact graph logged at each pop (one training example per
 scheduling decision); (3) thousands of agendas (the parallel runner). The guard is unchanged: the network orders; the status rule stops; claims are
 proved by the words.
+
+### 61 Forced chains, the proved/estimated label, and the cost judge in place of the fuse (Kaveh 2026-10-21 GO: "I like all these changes, plan them out and send them to an agent to build"; review: research/docs/exact_or_estimate_review_2026_10_21.md)
+Three stages, built in order by the builder, one hand-back per stage, each verified by the orchestrator before the next starts. Standing rules apply
+throughout: the DECISION is reached only by proved claims unless the trace says "ESTIMATED" where it leaned on one; learned or heuristic numbers only
+ORDER; every new word has a Lean definition in `lean/ideas/Ideas/Forcing.lean` (imported in `Ideas.lean`, axioms check, LEAN_INDEX rebuilt) and a
+Python mirror tested against it; every switch defaults OFF until graded on the 85 random puzzles (sets rand1-rand9 x 10 as plan 59 was: count budget
+and 10 s per puzzle, decisions graded by `question_prior grade`), then ON if no RIGHT is lost; numbers only from OBS lines, directional; no AI commit
+trailers; commit by path; no Pool from stdin; the Rust paths (ROUTES_RUST, CORE_RUST, ROUTE_RUST) must stay harness-identical (`scripts/compare_regress.py`,
+`scripts/compare_scheduler.py`), so a word added to the Python forcing path is added to the Rust one or the Rust path falls back to Python for that word
+(say which).
+
+**Stage A -- the exact vocabulary (threat-space search; Thomsen lambda-2; zugzwang as "no safe move").**
+* A1 THE THREAT AS AN OBJECT. `regress.threat_of(board, m, why) -> Threat | None`: a record (kind in {check, mate, mate2, capture, threat, pass-claim},
+  target square, value, the word that binds it) rebuilt from the reason string + the board after `m` (so the Rust forcing path needs no change: the
+  reason is the same, the object is read in Python). Tested: for every forcing reason `forcing_why` can return, `threat_of` gives the object with the
+  target the reason names.
+* A2 PARRIES. `regress.parries(after, threat, stake) -> (parries, closed)`: of their legal replies, PARRIES are those after which the threat no longer
+  binds (`threat_value` / the mate test / the pass claim on the board after the reply gives < stake) PLUS every reply that is itself forcing against
+  us (a check, a capture >= stake, a threat of theirs >= stake by the same `forcing_why` with them on move: Allis's counter-threat hole); CLOSED are the
+  rest, each with the threat's value re-read on its own board (never assumed). The chase reads parries as today (close by rule or open an inner
+  agenda) and closes the others first with the line "closed by the threat: after <reply> <threat> still binds (+v)". Lean: `parries` definition and the
+  lemma that a reply outside `parries` leaves the threat bound (by the definition). Switch `agenda.PARRIES` (default OFF): with it ON the decisions must
+  be identical or stronger on the 85 (a closed non-parry was a reply that would have been read to the same claim); OBS: replies opened as inner agendas
+  per route before/after, and the set wall times. The scheduler's route reader (`scheduler.py`) mirrors the rule.
+* A3 DELAYED THREAT (lambda-2). A quiet move of ours that is not forcing today is `delayed-forcing` iff after it, for EVERY legal reply of theirs, some
+  move of ours is forcing by `forcing_why` with a threat >= stake (one bounded AND level: their replies x our forcing candidates, the forcing test only, no
+  recursion). Reason text: "delayed threat: after every reply a threat of ours (after Rg8+: h2 ...)" naming the worst case. Admitted as a forcing route
+  in plan 59's tier 1 (quiet threats followed below the root) and in the chase at depth 0 only (no lambda-2 inside lambda-2 in this stage). Lean:
+  `delayedThreat` definition. OBS: RoR8t (Kg3) is the acceptance case -- if the claim after Kg3 needs a word we lack (the passer lemma against the lone
+  rook) say so with the trace rather than forcing it.
+* A4 NO SAFE MOVE (zugzwang). A quiet move of ours is forcing iff after it EVERY legal reply of theirs loses at least the stake by rule (the exchange
+  reader `G.see` on the piece that moved or the duty it left, as `_their_after_capture` reads a duty), the reason "no safe move: every reply loses >= stake
+  (Rb7: Rxb7 ...)" naming the cheapest loss. A reply that loses nothing (a free tempo move) makes the move not forcing. Same tier as A3. Lean: `noSafeMove`.
+* A5 GRADE: the 85 under the count budget and under 10 s, PARRIES on/off, the tier-1 words on/off; tests in `tests/test_forcing61.py`; journal.
+
+**Stage B -- the proved/estimated label and the first estimator (MCTS-Solver's two channels; quiescence).**
+* B1 `Claim.proved: bool = True`, `Claim.confidence: float = 1.0`, `Claim.estimator: str = ""`. Propagation: a route's claim is proved iff every reply's
+  claim is proved; its confidence is the PRODUCT of the replies' confidences (the expectation, never a bound: the trace says "confidence (product)");
+  a question's claim takes its best route. `_better`: a proved claim beats an estimated one whenever both keep the status; otherwise by value as today.
+  The decision reads proved claims first and consults estimated ones ONLY when no proved claim keeps the status (plan 59's rule), and then prints
+  "DECISION ESTIMATED: <move> +v, confidence c by <estimator>; no proved claim keeps the status". The play server's trace shows the label.
+* B2 THE QUIET-STATUS ESTIMATE. A GAP leaf (a route cut by the fuse, the cost judge of C, or the clock) that is QUIET -- not in check, no forcing move
+  for either side by `forcing_why` (ours with the stake, theirs by their pass threat = 0) -- closes as an ESTIMATED claim: value = material balance minus
+  their pass threat on that board (the status line), estimator "quiet-status", confidence from `data/derived/estimate_calibration.json` (one number per
+  class; the class = (quiet, our-move/their-move at the leaf); default 0.5 until measured). A non-quiet gap stays a gap. Switch `agenda.ESTIMATE`
+  (default OFF). Every estimated leaf is logged to `artifacts/experiments/estimates_log.jsonl` (fen, value, confidence, estimator, the route, the set, id).
+* B3 CALIBRATION PASS. `question_prior calibrate`: for logged leaves without a grade, Stockfish (verdict.py's engine, depth 14, never beside an agenda)
+  scores the leaf; a leaf HELD if Stockfish's sign agrees with the estimate's sign relative to the line (level or better when we claimed level or
+  better); writes the held fraction per class into `estimate_calibration.json` and prints OBS counts. The confidence used by B2 is this number, nothing else.
+* B4 GRADE the 85 with ESTIMATE on/off; count how many decisions were ESTIMATED and how many of those were RIGHT; tests; journal.
+
+**Stage C -- the cost judge in place of the fuse (proof numbers with an exact first level; the judge over the chain, not the step).**
+* C1 THE COST of an open route: `cost(route) = 1 + sum over its parries of cost(child)`; an unread child's cost = the number of ITS parries against our
+  best forcing move there (one forcing scan + one parries call), a leaf closed by rule costs 0. Exact, from the board; printed per route: "cost 7 (3
+  parries: Kh2 2, Kf1 3, Rg8+ 1)".
+* C2 THE JUDGE. Under a time budget the count fuse is replaced: a route is read on while `cost(route) x seconds_per_node <= time left for this route's
+  share` (seconds_per_node measured in the run so far, the share as plan 52.21 splits it); otherwise it becomes a GAP (then B2 may estimate it if
+  quiet). The judge is re-asked at every node of the route with the REMAINING cost of the chain (so a long chain with one parry per node reads to its
+  end: 2zB89's Qxa5 line is the acceptance case). Under the count budget the fuse stays as today. Switch `agenda.COST_JUDGE` (default OFF); trace lines
+  "judge: Qxa5 read on (cost 9, 0.4 s needed, 3.1 s left)" / "judge: Bd5 cut (cost 212, 9 s needed, 2 s left) -> GAP".
+* C3 FORCING RESOURCES logged for plan 60 (no decision use): per question in the question log, the number of our forcing moves now, the number of our
+  pieces bearing on their king's region (attack-graph edges into the king's and its flights' squares), the number of flights and blockers.
+* C4 THE CYCLE TERMINAL. A position in the chase line that repeats an earlier position of the same line or of the game history carried in the ctx (the
+  2026-10-12 game-context rule) closes as a PROVED claim kind 'draw', value = minus the balance (it brings the result to level), lemma "repetition"; it
+  is sound because every reply was read at each step of the cycle (the AND) and the repeat is ours to make. Under the status rule it keeps the status
+  exactly when we are at or below level. Test: a perpetual-check puzzle from the lichess themes (`perpetual`... sample one) decides by it.
+* C5 GRADE the 85 under 10 s with COST_JUDGE on/off; tests; journal.
+
+Order: A, then B, then C; D (a learned cost/accuracy head as a head of plan 60's policy, ordering only) is NOT in this build.
