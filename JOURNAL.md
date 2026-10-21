@@ -32146,3 +32146,26 @@ theirs in a row is their chain, not our line" returns a chain cut that the calle
 in-process (scratch monkeypatch; no file edited), Rf1 is a GAP by the chase fuse in tiers 0-2, and from the position after Rf1 Qd4+ the Kh1 route reads
 past Qd6 to a fuse GAP at Qxb6. So the line is: a heuristic stop that kills (fix: follow their checks; a perpetual is CYCLE's terminal; the budget gives a
 GAP), then cost. Written as plan 64 (52a46e14), item 64.1 with an audit of every chain-state cut.
+
+## 2026-10-21 15:36 PDT -- PLAN 63 BUILT (CHECK-THAT-IS-A-THREAT FOLLOW-UP, THE DUTY WORD, EXPLANATION); DELAYED_THREAT AND DUTY ON; pos2 NOT Bf2; A FALSE PROOF FOUND
+Builder (Sonnet) commits 3e756d0e (63.1: a follow-up counts if a threat/capture worth the stake, a mate threat at any stake, or a check whose pass shows
+a mate or a threat >= stake; Lean checkThreat / followUp / checkThreat_forcing / bare_check_not_threat / delayed_followUp), 1f8f0475 (63.2: regress.duty /
+duty_bound / can_run / duty_text; trap_fix: a piece that cannot run without abandoning a duty has no safe square; Lean Ideas/Duty.lean incl.
+pin_dutyBound; LEAN_INDEX rebuilt), 75fd77da (63.4: traps_set, explain_move; explanation only), 24ce6e73 (DELAYED_THREAT ON in agenda.py, DUTY ON via
+regress.DUTY / CATSPACE_DUTY; analyse --no-delayed --no-duty). Verified here: no trailers; tree clean; no sorry in Duty.lean or the Forcing.lean diff;
+55 targeted tests pass (duty63, forcing61, cost61, estimate61); builder: full suite 1265 passed, compare_regress 0 differences over 339,336 calls.
+OBS (90 puzzles, 10 s, one run each, quiet machine; builder's grade files):
+    base2 (duty off, delayed off)   RIGHT 65, UNKNOWN 23, WRONG 2
+    delayed2 (delayed on)           RIGHT 63, UNKNOWN 25, WRONG 2   (eSJqH, FNEJj -> none)
+    duty3 (duty on)                 RIGHT 64, UNKNOWN 24, WRONG 2   (eSJqH -> none)
+    both3 / both4                   RIGHT 64, UNKNOWN 24, WRONG 2   (eSJqH -> none); base4 65/23/2
+The builder said "per-puzzle identical"; checked: not quite -- FNEJj (rand9_10, Rxg8+ RIGHT) has no decision in delayed2. Rerun alone it decides Rxg8+
+with delayed off, on, and with duty off; with the delayed word its tiers 1-2 take 8.3 s against 6.5 s, the decision lands at ~9.8 s of 10: a clock edge the
+word's cost moved closer (plan 64.3's order/cost work). eSJqH is the known tier-3 clock edge. An earlier duty pass lost 7+ RIGHTs by SLOWNESS (yPdql tier 0
+0.42 -> 11.8 s); exact speedups (batched Rust mate-threat read, memos, early stops, duty only where trap routes exist) restored them -- "follow the chain,
+fix it, ON" working as the new rule intends. RoR8t: Kg3 is now a delayed threat (stakes up to 5); still none (the endgame word, plan 62).
+pos2 still decides Nxf4 (+1): Bf2 is a delayed-threat route but dies "after Bg3: no claim of ours" (Bg3 hits Qh2; Stockfish's best reply, -2.09).
+Checking that +1 here found a FALSE PROOF: the claim closes 1...Rxf4 by "exchange +3 (Bxf4 exf4 Qxf4), nothing of theirs", but after 3.Qxf4 Black has
+3...Bg5 pinning the queen to Kc1 (Stockfish +6.23 for Black; our engine finds Bg5 as a root in 0.03 s). Cause: _their_after_capture asks their agenda after
+our FIRST capture only, while the value counts the whole exchange line. Written as plan 64.0 (soundness first, 32f5579f), with 64.6 (pos2 after the fix:
+Stockfish Bf2 -1.80, Nxf4 -3.22) and 64.7 (the "their threat 0" status: 63.4 traced it to their verify of fxe3 reading no gain while the B on h4 stands).
