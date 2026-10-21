@@ -2958,3 +2958,39 @@ reply leaves a new "threat 3" (Ng1), so Bf2 is a delayed threat in Thomsen's sen
   that lose outright to a claim of ours are listed as "traps set" (the opponent's error as a named omission, 2026-09-15). Also CHECK and report (do not
   edit agenda.py): pos2's STATUS line says "their threat 0" although fxe3 wins the bishop (Q1 "save our B on e3: they win 3 by the exchange on e3"):
   find why `status()`'s their-pass-threat is 0 there and report the cause with the line; if it is in regress.py, fix it with a test.
+
+### 64 The diagnosis round: every sound switch ends ON (Kaveh 2026-10-21 STANDING: "off is not built ... another round to figure out methodically what we are leaving on the table: what puzzles went wrong, what happened, is there an edge case, a new rule")
+The rule: a sound word that loses a RIGHT is traced per puzzle (the line, the cause, the rule), fixed, re-graded, and ends ON; "no measured gain" is not a
+reason to leave it off. Speed-only parts (the prior's order, Rust ports, caches) are a different category: identical by harness, chosen by speed.
+Grade = the 90 (rand1_10..rand9_10), 10 s and the count budget, Stockfish depth 14, ONE grade at a time on the machine, a private `CATSPACE_QLOG`; compare
+per puzzle by the final `decision` of each id (not only the `decided` root rows: tier decisions are logged with decided False).
+* 64.1 A CHAIN-STATE CUT IS A GAP OR A PROOF, NEVER A SILENT KILL (found on 2zB89, 2026-10-21). `_inner` returns a chain cut (`_chain_cut`) with
+  `cut` False, so the caller reads it as "no claim of ours" and KILLS the route. The case: 1.Qxa5 Qxa1+ 2.Rf1 Qd4+ 3.Kh1 (Stockfish: Rf1 +4.72 against
+  Bf1 -1.06; after 3.Kh1 Black's best Qxb6 -4.82 / Qd6 -5.89, the rest mate; after 3...Qd6 only the quiet 4.Bd5 wins, +5.64, a threat of mate in two
+  Qa7+ Kc8 Bxb7#, forcing for `forcing_why(..., mate2=True)` from tier 2). Probes (`data/derived/ledger_puzzles_probe_2zB89.json`: zB_after = after
+  Qxa5 Qxa1+, zB_after3 = after Rf1 Qd4+): with `--chain` the Rf1 route is killed "after Qd4+: no claim of ours" in EVERY tier, because the evasion
+  chase's rule "a second check of theirs in a row is their chain, not our line" (`_chase`, `if evading and self.evaded`) stops the inner agenda; with that
+  rule disabled in-process (scratch monkeypatch, nothing edited) Rf1 is a GAP by the chase fuse in tiers 0-2 and Kh1 reads past Qd6 to a fuse GAP at
+  Qxb6. Fix: their checks are forcing and finite -- follow them; a perpetual is the repetition terminal (61 C4, CYCLE ON); the budget ends it as a GAP.
+  Then AUDIT every `_chain_cut` site: the chase clock (`CHASE_CLOCK`, a hyperparameter: its stop is a GAP), tempo arithmetic (`GOAL_JUDGE`: a kill only
+  where the argument is a proof -- write the lemma, Lean first per AGENTS rule 11 -- else a GAP). Test: zB_after's Rf1 is never killed by the chain state.
+* 64.2 THE 52.23 CHAIN ITEMS ON IN EVERY TIER (today ON only in tier 3 under time, or with `--chain`): NEED_AWARE_CLOSE, EVASION_CHASE, DEEP_WIN_CHASE,
+  GOAL_JUDGE, NEED_PROPAGATION, CHASE_CLOCK 4. Grade each alone ON and all together ON against base, after 64.1; per RIGHT lost: the trace, the cause, the
+  rule; fix; re-grade. Include 07Z0P (dev_20, count budget: "Bb3's share no longer finished" with the items on, 2026-10-20): find which item spends the
+  share where, and fix it by ORDER or COST (cheapest-first, the judge of 64.3), not by turning a word off. If the items are ON in every tier, say what
+  tier 3 then means (or fold it).
+* 64.3 THE COST JUDGE (61 C2, OFF: lost BEKFf Qb5+ and lK9WA Nxc6 on the 90). Builder's diagnosis: the first-level parry count underprices a deep chain
+  (lK9WA's Nxc6 cost 56, needed ~4.5 s, given 0.9 s) and tier 0's share is too short for BEKFf's Qb5+ (cost 18, needs > 0.6 s). Reprice by MEASURED
+  cost: a route already read in an earlier tier or question carries its spent seconds (the gap fact has the time mark); the prediction is first-level cost
+  x the measured rate only for a route never read. A cut is a GAP as now. Acceptance: no RIGHT lost on the 90, then ON, and the count fuse under time is
+  replaced as 61 C2 intended (or report the puzzle that prevents it, with its trace).
+* 64.4 THE 61 A WORDS ON: PARRIES (relabels only), DELAYED_THREAT (63.3 grades it), NO_SAFE_MOVE: ON by default once the 90 show no RIGHT lost.
+  Report any puzzle of the 90 whose line needs a delayed threat INSIDE the chase (an inner agenda, not the root): 2zB89's Bd5 is a direct mate-in-two
+  threat (tier 2's mate2), so it is not that case; RoR8t-like quiet follow-ups are.
+* 64.5 ESTIMATE ON (61 B2: inert on puzzles, proved-beats-estimated is structural, so ON costs nothing there); the play server fills `ctx.history`
+  (CYCLE's game repetitions; built but not wired) and logs the quiet leaves that `question_prior calibrate` needs.
+* ACCEPTANCE (each with its printed trace): the probes (zB_after decides Rf1 or leaves it a GAP, never a kill; zB_after3 Kh1 as a claim, not the smallest
+  loss, at some budget: report it); 2zB89 Qxa5 at some budget (10 s, 60 s, count: report which); tempo1's Rxc2+ read to Kxc2 Qc7+ Rc5; 07Z0P Qxd5+;
+  RoR8t unchanged (plan 62's race word is its fix); pos2 Bf2 (plan 63); the 90 with no RIGHT lost and every switch above ON.
+* FILES: `agenda.py`, `scheduler.py` (mirror), `analyse.py`, `regress.py` (after plan 63 lands), Lean for any kill that becomes a lemma, tests in
+  `tests/test_offbuilt64.py`. One commit per item; sequential after plan 63's hand-back (the grades must not share the machine).
