@@ -2779,3 +2779,15 @@ it: Be2, Bd3 (lands safe), Bc4 (Bxc4 wins 3: not a route)"), and the question lo
 opening (the first 10 moves vs the one-ply fallback and vs Stockfish-2000 as in the 2026-10-06 study) decided by claims, not by the fallback, with the
 reasons printed; the median evaluation after our 5th move vs Stockfish-2000 as OBS, directional. Python first (the questions stay in Python); a
 later plan 57 run may try to re-find these three from the vocabulary.
+
+### 59 Status-driven widening: search wider only while no candidate keeps our status (Kaveh 2026-10-20: "the question of whether to continue searching depends on whether we already have a good move or not, one that results in us staying winning or not losing"; discussed, NOT a go)
+Today the root stops when the best claim is above every open stake (a gain maximiser) and the chase's move set is fixed by three hard rules:
+`regress.forcing_why` (a check, a mate-in-one threat, or a capture / quiet threat worth the stake: a mate question follows checks and mate threats
+only), the cut below the root in `_chase` (inner levels: checks, captures, mate threats; quiet threats dropped -- a cost cut of 52.13, not reasoned)
+and `RULE2_FROM` (the walk of checks). Plan: (1) THE STATUS as a word: winning / level / losing, read from the balance and their claim with the move
+passed (their agenda, already computed); (2) KEEPS THE STATUS as the check on a candidate: after our move their best claim does not take us across
+the status line; (3) WIDENING IN TIERS, each opened only while no candidate keeps the status: tier 0 today's moves; tier 1 quiet threats worth the
+stake below the root; tier 2 mate-in-two threats (`mate_threat` widened); tier 3 the in-check chase (52.23 (3)) and the need propagated (52.23 (7));
+under a time budget the same tiers while time remains (anytime: a status-keeping answer is never lost to a deeper dig; hqGOF). The trace names the
+tier and why it opened ("no move keeps 'level': Re7 loses to Qxe7; tier 1 opened"). Measured on fresh random samples with the grader, run on all
+cores; puzzles always hold a winning move, so a status-keeping move that is not the puzzle's answer is graded by Stockfish, not by MATCH.
