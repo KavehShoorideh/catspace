@@ -2809,3 +2809,13 @@ BUILD SPEC (Kaveh 2026-10-20: "go ahead and build it"):
 * THE TRACE names it: "STATUS: losing (balance -3, their threat 0): the line is 'reach level' (0); tier 0's best claim d3 +1 gives -2: not kept; tier 1
   opened (quiet threats below the root)" ... "tier 2 keeps the status: Rc2+ ...".
 * SWITCH: `agenda.TIERS` (default False until verified); `analyse --tiers`; the play server honours it.
+
+### 60 The policy decides what to follow, from the findings; the status rule decides when to stop (Kaveh 2026-10-20: "the prior / the policy has to decide whether or not to follow this line of reasoning, and it should depend on everything else we've found so far"; discussed, NOT a go)
+The policy scores every open TASK of the scheduler (56): a question, a route, a reply, a wider tier (59). Input = the board + the FINDINGS so far: the
+status and the gap between the best claim and the line, the task's question's defects, the routes that died and their refuters, the siblings' claims
+and kills. Output = the task's priority; ABANDON = sink, never kill (a kill needs a printed reason). The guard (the standing interpretability rule): the
+STOP stays the status rule of 59 (a verified claim keeps the status) and every claim stays proved by the words; under a budget a sunk line not read is
+named in the trace ("not followed: the prior scored it low given <findings>"); with budget enough every sunk task is read, so the decision converges
+to the reasoning's. 59's fixed tiers are the FALLBACK order and the BASELINE the policy must beat. Training: the question log (53) extended to routes,
+replies and tiers; reward = reaching the status-keeping claim graded RIGHT with fewer tasks; the negative = never following the task that decided;
+a followed task answered wrongly is never a negative (a bug or a missing lemma). Built on 55 (the map) and 56 stage 3 (re-prioritisation).
