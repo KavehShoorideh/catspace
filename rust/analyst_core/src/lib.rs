@@ -23,6 +23,7 @@ mod regress;
 mod goals;
 mod generated;
 mod pos;
+mod sched;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::collections::HashMap;
@@ -1577,6 +1578,10 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         if let Ok(txt) = std::fs::read_to_string(&path) { let _ = threat::set_forcing_policy(txt); }
     }
     m.add_class::<pos::Pos>()?;
+    m.add_class::<sched::Sched>()?;
+    m.add_function(wrap_pyfunction!(sched::sched_route_value, m)?)?;
+    m.add_function(wrap_pyfunction!(sched::sched_best_route, m)?)?;
+    m.add_function(wrap_pyfunction!(sched::sched_question_killed, m)?)?;
     m.add_function(wrap_pyfunction!(literal_masks, m)?)?;
     m.add_function(wrap_pyfunction!(outcomes, m)?)?;
     m.add_function(wrap_pyfunction!(nodes, m)?)?;

@@ -20,11 +20,16 @@ sys.path.insert(0, str(Path(__file__).parent))
 from compare_regress import PUZZLES, puzzles                      # noqa: E402,F401  (the same five targets)
 
 
-def worker(target: str, sched: bool, prior: bool, out: str) -> None:
+def worker(target: str, mode: str, prior: bool, out: str) -> None:
+    """mode: rec (the recursive chase), py (the task graph, the Python scheduler), rust (the task graph, the Rust core: scheduler.CORE_RUST)."""
+    sched = mode != "rec"
     from catspace.incubator.analyst.discovery import agenda as AG
     from catspace.incubator.analyst.discovery import analyse as AN
     AG.SCHEDULER = sched
     AG.PRIOR = prior
+    if mode == "rust":
+        from catspace.incubator.analyst.discovery import scheduler as SC0
+        SC0.CORE_RUST = True
     roots: list = []
     fin = AG.Agenda._ask_finish
 
@@ -56,10 +61,10 @@ def worker(target: str, sched: bool, prior: bool, out: str) -> None:
     pickle.dump(dict(results=res, roots=roots, seconds=secs), open(out, "wb"))
 
 
-def run(target: str, sched: bool, prior: bool) -> dict:
+def run(target: str, mode: str, prior: bool) -> dict:
     with tempfile.TemporaryDirectory() as d:
         out = str(Path(d) / "r.pkl")
-        subprocess.run([sys.executable, __file__, "--worker", target, "1" if sched else "0", "1" if prior else "0", out], check=True)
+        subprocess.run([sys.executable, __file__, "--worker", target, mode, "1" if prior else "0", out], check=True)
         return pickle.load(open(out, "rb"))
 
 
@@ -67,14 +72,18 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--targets", nargs="*", default=["07Z0P", "0LRTF", "rand1_10", "rand2_10", "rand3_10"])
     ap.add_argument("--prior", action="store_true", help="both sides with agenda.PRIOR on")
+    ap.add_argument("--core", action="store_true", help="plan 56 (2a): the Python scheduler (old) vs the Rust core (new)")
+    ap.add_argument("--core-vs-recursive", action="store_true", help="the recursive chase (old) vs the Rust core (new)")
     ap.add_argument("--worker", nargs=4, metavar=("TARGET", "SCHED", "PRIOR", "OUT"))
     a = ap.parse_args()
     if a.worker:
-        worker(a.worker[0], a.worker[1] == "1", a.worker[2] == "1", a.worker[3])
+        worker(a.worker[0], a.worker[1], a.worker[2] == "1", a.worker[3])
         return
     total = 0
+    m_old, m_new = ("py", "rust") if a.core else ("rec", "rust") if a.core_vs_recursive else ("rec", "py")
+    print(f"OBS scheduler compare: old = {m_old}, new = {m_new}")
     for t in a.targets:
-        old, new = run(t, False, a.prior), run(t, True, a.prior)
+        old, new = run(t, m_old, a.prior), run(t, m_new, a.prior)
         dec = [(o["id"], o["decision"], o["move"], n["decision"], n["move"]) for o, n in zip(old["results"], new["results"]) if (o["decision"], o["move"], o["match"], o["decided"]) != (n["decision"], n["move"], n["match"], n["decided"])]
         if len(old["results"]) != len(new["results"]):
             dec.append(("length", len(old["results"]), len(new["results"])))

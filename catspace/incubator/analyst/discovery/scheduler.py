@@ -48,19 +48,28 @@ from catspace.incubator.analyst.discovery.state import Claim, State
 
 # ---------------------------------------------------------------------------------------------------------------------------- the rules (the values travel by these)
 
+CORE_RUST = False        # plan 56 (2a): the task graph, the heap and the rules live in Rust (analyst_core.Scheduler, sched_*); the generator bodies below stay Python. The same answers (scripts/compare_scheduler.py --core)
+
+
 def route_value(gains: list) -> int:
     """A route's value: the least over its replies (each closed by a rule or answered by an inner agenda); a route with no reply read is worth 0."""
+    if CORE_RUST:
+        return AC.sched_route_value(list(gains))
     return min(gains) if gains else 0
 
 
 def best_route(done: list) -> tuple:
     """A question's claim: its best route -- the greatest value, the move's uci for the tie. `done` is [(value, route, result)]; it is sorted in place. -> the best triple."""
+    if CORE_RUST:
+        return done[AC.sched_best_route([t[0] for t in done], [t[1].move.uci() for t in done])]
     done.sort(key=lambda t: (-t[0], t[1].move.uci()))
     return done[0]
 
 
 def question_killed(done: list) -> bool:
     """A chased question is killed when no route claims (every route was killed, cut, or worth less than 1)."""
+    if CORE_RUST:
+        return AC.sched_question_killed(len(done))
     return not done
 
 
@@ -68,11 +77,12 @@ def question_killed(done: list) -> bool:
 
 class Task:
     """One node of the task graph. `gen` is the suspended computation (a generator); `waits` the tasks it is suspended on; `parent` the task waiting on this one."""
-    __slots__ = ("kind", "gen", "node", "prio", "seq", "parent", "waits", "value", "exc", "started", "done", "result", "error", "label", "depth", "children")
+    __slots__ = ("kind", "gen", "node", "prio", "seq", "parent", "waits", "value", "exc", "started", "done", "result", "error", "label", "depth", "children", "id")
 
     def __init__(self, kind: str, gen, node=None, prio: tuple = (), label: str = ""):
         self.kind, self.gen, self.node, self.prio, self.label = kind, gen, node, prio, label
         self.seq = -1
+        self.id = -1                                        # the id in the Rust core (CORE_RUST)
         self.parent = None
         self.waits: list = []
         self.value = None                                  # what the child it waited on answered (sent in when it is resumed)
@@ -105,6 +115,8 @@ class Scheduler:
         self.ready_max = 0
         self.steps = 0
         self.root = None
+        self.core = AC.Scheduler() if CORE_RUST else None   # the graph and the order in Rust; `tasks` maps its ids to the Python tasks (generators, nodes)
+        self.tasks: dict = {}
 
     def push(self, t: Task, queue: int = 0) -> None:
         heapq.heappush(self.heap, ((queue, t.prio, next(self.count)), t))
@@ -123,11 +135,19 @@ class Scheduler:
         if self.record and parent is not None:
             parent.children.append(t)
         self.counts[t.kind] = self.counts.get(t.kind, 0) + 1
+        if self.core is not None:
+            t.id = self.core.push(t.kind, parent.id if parent is not None else None, 0, [float(x) for x in t.prio])
+            self.tasks[t.id] = t
+            return
         self.push(t)
 
     def _finish(self, t: Task) -> None:
         t.done = True
         t.gen = None
+        if self.core is not None:
+            self.core.complete(t.id, None if t.error is not None else t.result)       # wakes the parent when this was the last child it waited on
+            if not self.record:
+                self.tasks.pop(t.id, None)
         p = t.parent
         if p is None:
             return
@@ -135,16 +155,24 @@ class Scheduler:
         if t.error is not None:
             p.exc = t.error                                 # an exception travels up the graph as it did up the stack: thrown into the task that waited, whose `finally` clauses run
         else:
-            p.value = t.result
-        if not p.waits:
+            p.value = self.core.result(t.id) if self.core is not None else t.result       # (the Rust core's result slot)
+        if self.core is None and not p.waits:
             self.push(p)
 
     def run(self, root: Task):
         """Run the graph from `root` to its end: -> the root's result (or raise what it raised)."""
         self.root = root
         self.submit(root, None)
-        while self.heap:
-            _, t = heapq.heappop(self.heap)
+        while True:
+            if self.core is not None:
+                i = self.core.pop()
+                if i is None:
+                    break
+                t = self.tasks[i]
+            else:
+                if not self.heap:
+                    break
+                _, t = heapq.heappop(self.heap)
             self.steps += 1
             try:
                 if not t.started:
@@ -167,6 +195,10 @@ class Scheduler:
                 t.waits = list(kids)
                 for k in kids:
                     self.submit(k, t)
+                    if self.core is not None:
+                        self.core.wait(t.id, k.id)
+        if self.core is not None:
+            self.ready_max = self.core.stats()["ready_max"]
         if root.error is not None:
             raise root.error
         return root.result
