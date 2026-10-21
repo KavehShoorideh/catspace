@@ -2725,3 +2725,8 @@ board PLUS the findings so far -- the question's own defects once read, which of
 questions claimed or lost, the held measures -- and the scheduler (56, stage 2) re-prioritises the waiting tasks whenever a finding lands. ABANDON means
 sink to the bottom of the queue, never kill: a kill needs a reason the trace can print; the prior gives none (the standing rule on interpretability).
 The question log (53 (1)) therefore gains a findings snapshot per row (the defects known, the sibling claims / kills at the moment of asking).
+Sequence (Kaveh 2026-10-20: "this should be in Rust otherwise it'll be super slow" -- "ok python first"): stage 1 in Python is the REFERENCE: the task graph,
+the propagation rules, the budget accounting and the harness proving decisions identical to the recursion. Stage 2 = the Rust port of the scheduler
+AND the task bodies (the agenda's reads: roots, defects, fixes, routes, verification, replies -- the words are already in the core after plan 54) with the
+Python graph kept behind the flag as the oracle (zero differences). Stage 3 = urgency, re-prioritisation, the prior at every node (plan 55), the
+shuffle test; stage 4 = workers. A Rust queue driving Python task bodies would gain nothing: the bodies are the cost.
