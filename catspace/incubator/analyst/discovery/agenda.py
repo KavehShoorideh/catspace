@@ -60,6 +60,7 @@ CHASE_CLOCK = 99                                                # 52.23 (8): 99 
                                                 # 52.23 (8): our moves on a chain without a capture that is not bad for us (Kaveh 2026-10-20: "four or five ... a hyperparameter, tune it later")
 DEEP_WIN_CHASE = False                                           # 52.23 (5) switch (bisect)
 PRIOR = False                                                   # plan 53 (2): the learned prior orders the root agenda's questions (analyse --prior); it never decides
+SCHEDULER = False                                               # plan 56 (1): the chase as an explicit TASK GRAPH on a priority queue with one worker loop (scheduler.py), not the recursion below; the same decisions (scripts/compare_scheduler.py)
 NO_FUSE = 1 << 40                                               # 52.23 (1): the fuse when the budget is time: never reached (the deadline is the only limit)
 
 
@@ -92,6 +93,8 @@ class ChaseCtx:
         self.active: set = set()                  # the FENs being asked (a cycle ends here)
         self.left = 0                             # 52.13 (2b): the FUSE of the root agenda: 10x its question budget, set once, spent by every chase and inner agenda under it
         self.depth_cuts = 0                       # ... of the fuse hits, the ones from the depth cap (the stack), not the question count
+        self.sched = None                         # plan 56: the Scheduler running this context's root agenda (None: the recursive path)
+        self.stats = None                         # ... and the task counts of its last run
         self.theirs: dict = {}                    # 52.13 (3): fen (their move) -> (value, claim) of THEIR agenda there, asked once for the whole run
         self.their_ags: dict = {}                 # 52.14: ... and that agenda itself (its claims are the save roots of the inner agenda on the static leaf)
         self.static_read = 0                      # 52.14: static leaves (a reply after which the gain stands only as a balance) read from their side
@@ -538,7 +541,15 @@ class Agenda:
     # ------------------------------------------------------------------------------------------------------------ the loop
 
     def ask(self) -> None:
+        if SCHEDULER and self.ctx is not None and self.chase_depth == 0 and self.ctx.sched is None:       # plan 56 (1): the root agenda is run by the worker loop (the inner agendas are tasks of it); ponder.py's agendas are not roots and stay recursive
+            from catspace.incubator.analyst.discovery import scheduler as SC
+            SC.run_root(self)
+            return
         self._ask_loop()
+        self._ask_finish()
+
+    def _ask_finish(self) -> None:
+        """What `ask` adds to the trace once the loop has ended (the root agenda only); the scheduler's node task calls it too."""
         if self.ctx is not None and self.chase_depth == 0 and self.ctx.landings.asked:        # 52.18 (1): the landing table and what it knows about the deciding piece
             tb = self.ctx.landings
             self.lines.append(f"landing table: {tb.asked} landings asked, {tb.served} served from the table" + ("; e.g." if self.ctx.landing_lines else ""))
@@ -1859,6 +1870,8 @@ class Agenda:
         c = G.with_turn(chess.Board(fen), not self.me)
         key = _pos_key(c.fen())
         hit = self.ctx.theirs.get(key)
+        if self.ctx.sched is not None:
+            self.ctx.sched.leaf("their_pass", self, key, hit is not None)          # plan 56: their agenda is a leaf task of the node that asked (it chases nothing)
         if hit is None:
             ag = self._their_agenda(c) if any(True for _ in c.legal_moves) else None
             cl = max(ag.state.claims, key=lambda x: x.value) if ag is not None and ag.state.claims else None
