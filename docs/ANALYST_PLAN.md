@@ -2730,3 +2730,15 @@ the propagation rules, the budget accounting and the harness proving decisions i
 AND the task bodies (the agenda's reads: roots, defects, fixes, routes, verification, replies -- the words are already in the core after plan 54) with the
 Python graph kept behind the flag as the oracle (zero differences). Stage 3 = urgency, re-prioritisation, the prior at every node (plan 55), the
 shuffle test; stage 4 = workers. A Rust queue driving Python task bodies would gain nothing: the bodies are the cost.
+
+#### 56 (components) Events and handlers (Kaveh 2026-10-20: "the scheduler and the rules can become independent components: events come in and some function runs, pointers to that function")
+The blackboard of plan 40 made structural. EVENTS are the findings: question asked, defect read, route popped, reply read, claim made, kill with its
+reason, gap cut, task done (the fact store's write path made explicit). COMPONENTS are HANDLERS registered on event kinds: the defect readers on
+"question asked"; the fix generators on "defect read"; the chase on "no route binds" (it spawns route tasks); the reply reader on "route popped"; the
+propagation rules on "reply settled" (min over replies, best route, killed when all die -- pure folds, the schedule-independence invariant by
+construction); the budget on "task popped"; the prior on any finding (re-prioritise: abandon = sink, never kill); the TRACE, the QUESTION LOG and the
+VERDICT GRADER as listeners (the same words, switchable). The REGISTRY maps an event kind to its handlers and each handler names the Lean word it
+mirrors -- the interpretability rule made structural: a handler that touches a decision has a word, one that touches only a priority need not. In
+Rust: handlers are trait objects in the registry, the bus a queue of events, the scheduler (2a) the consumer that turns "needs computing" into tasks on
+the heap; Python handlers stay possible by callback (the prior, the RL loop). Stages 2b/2c port the task bodies AS handlers; stage 3 the queues,
+re-prioritisation and the shuffle test; stage 4 the workers (handlers on a pool, the fact store the one shared state).
