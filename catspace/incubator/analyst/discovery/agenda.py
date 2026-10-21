@@ -61,6 +61,8 @@ CHASE_CLOCK = 99                                                # 52.23 (8): 99 
 DEEP_WIN_CHASE = False                                           # 52.23 (5) switch (bisect)
 PRIOR = False                                                   # plan 53 (2): the learned prior orders the root agenda's questions (analyse --prior); it never decides
 SCHEDULER = False                                               # plan 56 (1): the chase as an explicit TASK GRAPH on a priority queue with one worker loop (scheduler.py), not the recursion below; the same decisions (scripts/compare_scheduler.py)
+TIERS_UNDER_TIME = True                                         # plan 59 default (2026-10-20, graded on 85 random puzzles): ON whenever the budget is TIME -- the tiers share the seconds, so the cost is bounded
+                                                                # (s10: RIGHT 59 -> 61, WRONG 4 -> 4; hqGOF right again); under the COUNT fuse they stay OFF unless TIERS (fuse: +2 RIGHT for ~650 s extra on 25 widened puzzles)
 TIERS = False                                                   # plan 59: STATUS-DRIVEN WIDENING at the root -- tier 0 (today's moves), then wider tiers (settings of the root's ChaseCtx) only while no claim keeps our status; analyse --tiers; the play server honours it
 TIER_COUNT = 4                                                  # tiers 0..3
 NO_FUSE = 1 << 40                                               # 52.23 (1): the fuse when the budget is time: never reached (the deadline is the only limit)
@@ -250,7 +252,7 @@ class Agenda:
         if ctx is None and self.ctx is not None:
             self.ctx.tier = tier                                # plan 59: the tier is a setting of the root's context (the inner agendas share it)
             self.ctx.left = self.budget * FUSE * (1 << tier)    # the root agenda's FUSE (10x the question budget; plan 59: x 2^tier), set ONCE: every chase of every question and the inner agendas spend it
-            if seconds is not None and not TIERS:                             # 52.17 (5): THE BUDGET IS TIME. 52.23 (1): then there is NO question-count fuse (Kaveh 2026-10-20: unlimited time
+            if seconds is not None and not (TIERS or TIERS_UNDER_TIME):       # 52.17 (5): THE BUDGET IS TIME. 52.23 (1): then there is NO question-count fuse (Kaveh 2026-10-20: unlimited time
                 self.ctx.left = NO_FUSE                         # must mean the chase runs to its end); the time slices share the budget between the routes, the count never
             if seconds is not None:                             # (plan 59: with TIERS on the count fuse stays under a time budget -- the time is a cap, not a replacement -- and the tiers share the seconds)
                 self.ctx.seconds, self.ctx.t0 = seconds, time.monotonic()
@@ -588,7 +590,7 @@ class Agenda:
     # ------------------------------------------------------------------------------------------------------------ the loop
 
     def ask(self) -> None:
-        if TIERS and self._root and self.ctx.tier == 0:          # plan 59 (3): the root is driven through the widening tiers (tier 0 is this agenda; wider tiers run on fresh contexts)
+        if (TIERS or (TIERS_UNDER_TIME and self.ctx is not None and self.ctx.seconds is not None)) and self._root and self.ctx.tier == 0:          # plan 59 (3): the root is driven through the widening tiers (tier 0 is this agenda; wider tiers run on fresh contexts)
             self._ask_tiers()
         else:
             self._ask_once()

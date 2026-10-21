@@ -112,7 +112,7 @@ def _append_once(path, text: str) -> None:
         os.close(fd)
 
 
-_FLAGS = ("PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS")
+_FLAGS = ("PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS", "TIERS_UNDER_TIME")
 
 
 def _init_worker(flags: dict) -> None:
