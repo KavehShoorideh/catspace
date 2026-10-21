@@ -2720,3 +2720,8 @@ plan 54's: the recursive path kept behind a flag, every decision and claim value
 two queues, re-prioritisation, the prior as a priority at every node (plan 55's map when it exists), the shuffle test; (3) WORKERS as processes with a
 shared fact store (the store's reads/writes are the only shared state; the memo per process), measured on the samples. Python first (Kaveh: RL and
 loops in Python); the words stay in Rust (plan 54).
+Addendum (Kaveh 2026-10-20): "the prior should have access to findings, so it can effectively abandon ideas that won't work." So plan 55's input is the
+board PLUS the findings so far -- the question's own defects once read, which of its routes died and to what reply (the refuter), what its sibling
+questions claimed or lost, the held measures -- and the scheduler (56, stage 2) re-prioritises the waiting tasks whenever a finding lands. ABANDON means
+sink to the bottom of the queue, never kill: a kill needs a reason the trace can print; the prior gives none (the standing rule on interpretability).
+The question log (53 (1)) therefore gains a findings snapshot per row (the defects known, the sibling claims / kills at the moment of asking).
