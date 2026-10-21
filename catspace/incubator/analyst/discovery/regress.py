@@ -596,6 +596,67 @@ def no_safe_move(board: chess.Board, m: chess.Move, stake: int, us: str | bool) 
     return f"no safe move: every reply loses >= {stake} ({board.san(m)}: cheapest {cheapest[1]} loses {cheapest[0]}: {cheapest[2]})"
 
 
+# ---------------------------------------------------------------------------------------------------------------- plan 61 stage C: the cost of a route (Lean Ideas.Forcing.routeCost)
+
+_COST: dict = {}
+COST_CANDIDATES = 3       # the forcing moves (fewest replies first) whose parries `node_cost` counts: a bounded scan, the cost is an ORDER of reading, never a value
+G.CLEAR_HOOKS.append(_COST.clear)
+
+
+def node_cost(board: chess.Board, stake: int, us: str | bool) -> tuple:
+    """plan 61 C1: THE COST OF AN UNREAD NODE (our move on `board`) = the number of the parries of OUR BEST forcing move there (best = the fewest parries: the cheapest to read in full); 0 when
+    a move of ours mates (a leaf closed by rule) or when we have no forcing move (nothing to follow). One forcing scan and one `parries` call per forcing move. -> (cost, the move's SAN or None)."""
+    me = G.colour_of(us)
+    key = (board.board_fen(), board.turn, board.castling_rights, board.ep_square, stake, me)
+    hit = _COST.get(key)
+    if hit is not None:
+        return hit
+    b = G.with_turn(board, me) if board.turn != me else board
+    best = (0, None)
+    seen = False
+    for m in b.legal_moves:
+        if b.gives_check(m):
+            c = b.copy(stack=False)
+            c.push(m)
+            if c.is_checkmate():
+                _COST[key] = (0, b.san(m))
+                return _COST[key]
+    cands = []
+    for m in b.legal_moves:
+        why = forcing_why(b, m, stake, me, mate_threats=stake >= STAKE_MATE)
+        if why:
+            after = b.copy(stack=False)
+            after.push(m)
+            cands.append((after.legal_moves.count(), m.uci(), m, why, after))
+    cands.sort(key=lambda t: t[:2])
+    for _n, _u, m, why, after in cands[:COST_CANDIDATES]:      # (the parries are at most the legal replies: the forcing moves with the fewest replies are the ones read, a bounded scan)
+        th = threat_of(b, m, why, me)
+        n = _n if th is None else len(parries(after, th, stake, me)[0])
+        if not seen or n < best[0]:
+            best, seen = (n, b.san(m)), True
+    _COST[key] = best
+    return best
+
+
+def route_cost(board: chess.Board, m: chess.Move, stake: int, us: str | bool, why: str | None = None) -> tuple:
+    """plan 61 C1 (Lean `Ideas.Forcing.routeCost`): cost(route) = 1 + the sum, over the parries of the route's threat, of the cost of the unread child (`node_cost` on the board after the parry).
+    -> (cost, [(parry SAN, child cost)]). A route with no threat object counts every legal reply as a parry."""
+    me = G.colour_of(us)
+    if why is None:
+        why = forcing_why(board, m, stake, me, mate_threats=stake >= STAKE_MATE)
+    th = threat_of(board, m, why, me)
+    after = board.copy(stack=False)
+    after.push(m)
+    par = list(after.legal_moves) if th is None else parries(after, th, stake, me)[0]
+    kids = []
+    for r in par:
+        d = after.copy(stack=False)
+        san = after.san(r)
+        d.push(r)
+        kids.append((san, node_cost(d, stake, me)[0]))
+    return 1 + sum(k for _, k in kids), kids
+
+
 MOVES_CACHE = True        # plan 54 (B5.3): `_moves` answers the same (pieces, castling rights, side, skip) once per root question (graph.clear_caches clears it)
 _MOVES: dict = {}
 
