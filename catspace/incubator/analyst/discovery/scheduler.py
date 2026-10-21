@@ -1133,6 +1133,14 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
                     blocked = True
             if not blocked:
                 t_, _cl = node._their_pass(fen2)
+                if not t_ and AG.CLOSE_AFTER_CAPTURE:            # (mirror of agenda._closed_by_rule, 2026-10-20: their claims AFTER our capture too)
+                    t2, cl2 = node._their_after_capture(P2_of(uci))
+                    if t2:
+                        ctx.overload_opens += 1
+                        line = f"not closed by rule: after {cl2[0]} their {cl2[1].what} wins {t2} (the capturing piece left a duty)"
+                        if line not in ctx.open_lines:
+                            ctx.open_lines.append(line)
+                        t_ = t2
                 if not t_:
                     closed = (dbal + best, f"exchange +{best} ({R.exchange_read(chess.Board(fen2))}), nothing of theirs")
         if closed is not None:

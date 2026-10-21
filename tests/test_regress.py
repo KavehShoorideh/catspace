@@ -700,7 +700,8 @@ def test_52_16_the_knight_sacrifice_that_still_threatens_is_forcing_and_the_hang
 
 
 def test_52_16_the_discovery_position_decides_nf6_with_the_exchange_read():
-    ag = AG.Agenda(State(fen=DISCOVERY, us="w", pieces=[]))
+    ag = AG.Agenda(State(fen=DISCOVERY, us="w", pieces=[]), seconds=15)      # 2026-10-20: a reply closes by the exchange only when their agenda AFTER our capture finds nothing (kcQil);
+    #                                                                          Nf6's replies are now read rather than closed, and the count budget no longer reaches the decision
     ag.ask()
     d = ag.decision()
     assert d is not None and d.what in ("Nf6", "Nd6")                                           # either is right by SF d20 (Nf6 +385, Nd6 +320); the tie of equal claims is broken by the move's uci
@@ -940,7 +941,8 @@ def test_52_17_a_time_budget_cuts_the_chase_to_gaps_names_the_time_and_no_second
     mid.ask()
     assert any(r["route"] and r["reply"] for r in mid.ctx.resume)
     assert any(v.get("timed") and v.get("mark") is not None and "cut_left" in v for v in mid.ctx.routes.values() if v.get("gap"))
-    assert timed.ctx.agendas <= 5                                                              # past the deadline no inner agenda is opened
+    assert timed.ctx.agendas <= 8                                                              # past the deadline no inner agenda is opened (5 -> 8 on 2026-10-20: replies a capture
+    #                                                                                            # would have closed are now read when the capture leaves a duty, so a few more open in the 0.05 s)
     assert timed.decision() is None or timed.decision().value >= 1                             # the best bound claim so far decides, never a guess
     plain = AG.Agenda(State(p["fen"], "w", []))
     plain.ask()
@@ -1019,7 +1021,7 @@ def test_52_18_an_almost_battery_does_not_attack_and_its_front_piece_leaving_mak
 
 
 def test_52_18_the_discovery_position_names_the_discovery_and_the_x_ray_fix_is_offered_on_a_win_defect():
-    ag = AG.Agenda(State(DISCOVERY, "w", []))
+    ag = AG.Agenda(State(DISCOVERY, "w", []), seconds=15)                    # (see the 52.16 discovery test: a time budget since 2026-10-20)
     ag.ask()
     t = ag.trace()
     assert ag.decision().what in ("Nf6", "Nd6")

@@ -61,6 +61,7 @@ CHASE_CLOCK = 99                                                # 52.23 (8): 99 
 DEEP_WIN_CHASE = False                                           # 52.23 (5) switch (bisect)
 PRIOR = False                                                   # plan 53 (2): the learned prior orders the root agenda's questions (analyse --prior); it never decides
 SCHEDULER = False                                               # plan 56 (1): the chase as an explicit TASK GRAPH on a priority queue with one worker loop (scheduler.py), not the recursion below; the same decisions (scripts/compare_scheduler.py)
+CLOSE_AFTER_CAPTURE = True                                      # 2026-10-20 (kcQil): a reply closes by the exchange only if their agenda after our capture finds nothing either
 RAISE_TO_WIN = True                                             # plan 59 (4): under a time budget, a reached 'not losing' that is not 'winning' raises the line while time remains
 TIERS_UNDER_TIME = True                                         # plan 59 default (2026-10-20, graded on 85 random puzzles): ON whenever the budget is TIME -- the tiers share the seconds, so the cost is bounded
                                                                 # (s10: RIGHT 59 -> 61, WRONG 4 -> 4; hqGOF right again); under the COUNT fuse they stay OFF unless TIERS (fuse: +2 RIGHT for ~650 s extra on 25 widened puzzles)
@@ -174,6 +175,7 @@ class ChaseCtx:
         self.slice_len = 0.0                      # 52.23 (11): the time slice the root route in hand was given
         self.clock_stops = 0                      # 52.23 (8): chases not started by the chase clock
         self.mate_walks = 0                       # ... mate chases not started because the chain had spent them (the walk of checks)
+        self.overload_opens = 0                   # 2026-10-20: replies not closed by the exchange because our capture left a duty (their claim after it)
         self.unmet = 0                            # 52.22 (1): replies NOT closed by the exchange because the chased goal (win the piece) is not met by it and a forcing fix of its defect remains
         self.open_lines: list = []                # ... and the trace line of each (printed by the root)
         self.unaddressed = 0                      # 52.17 (2): forcing moves NOT followed by a chase because they fix no defect of the goal and make no claim of their own
@@ -1999,7 +2001,45 @@ class Agenda:
         t, _cl = self._their_pass(P2.fen())
         if t:
             return None
+        if CLOSE_AFTER_CAPTURE:                                   # 2026-10-20 (kcQil, Kaveh: "Qxf3 is losing, you're still down a pawn"): the capture can LEAVE a duty -- Rxh6 "wins 3"
+            t2, cl2 = self._their_after_capture(P2)               # but the h4 rook was the only guard of the d4 bishop, and Rxd4 wins it back. Their claims are read AFTER our
+            if t2:                                                # capture too (their recaptures on the exchange square excluded: the exchange already counts them): their best
+                self.ctx.overload_opens += 1                      # claim there means the rule cannot PROVE the close: the reply is asked, not closed. (Subtracting their claim is
+                line = f"not closed by rule: after {cl2[0]} their {cl2[1].what} wins {t2} (the capturing piece left a duty)"      # unsound: their claim is THEIR lower bound, so
+                if line not in self.ctx.open_lines:               # our remainder would be an upper bound -- kcQil came back at +1.)
+                    self.ctx.open_lines.append(line)
+                return None
         return dbal + best, f"exchange +{best} ({R.exchange_read(chess.Board(P2.fen()))}), nothing of theirs"
+
+    def _their_after_capture(self, P2: "AC.Pos") -> tuple:
+        """The best static exchange on P2 (our move) begun with its cheapest capture, then THEIR agenda on the board after it (their move): -> (the value of their best claim that
+        does not land on the exchange square, (our capture's SAN, that claim)) or (0, None). Memoised by position in the run's `theirs` table."""
+        b = chess.Board(P2.fen())
+        me = b.turn
+        best, sq = 0, None
+        for x in chess.SQUARES:
+            p = b.piece_at(x)
+            if p is None or p.color == me or p.piece_type == chess.KING or not b.is_attacked_by(me, x):
+                continue
+            v = G.see(b, x)
+            if v > best:
+                best, sq = v, x
+        if sq is None:
+            return 0, None
+        caps = [m for m in b.legal_moves if m.to_square == sq]
+        if not caps:
+            return 0, None
+        m = min(caps, key=lambda m: (G.worth(b.piece_at(m.from_square)), m.uci()))
+        san = b.san(m)
+        b.push(m)
+        key = ("after-capture", _pos_key(b.fen()))
+        hit = self.ctx.theirs.get(key)
+        if hit is None:
+            ag = self._their_agenda(b) if any(True for _ in b.legal_moves) else None
+            cls = [c for c in (ag.state.claims if ag is not None else []) if not (c.move and c.move[2:4] == chess.square_name(sq))]
+            cl = max(cls, key=lambda c: c.value) if cls else None
+            hit = self.ctx.theirs[key] = (cl.value if cl is not None and cl.value > 0 else 0, cl)
+        return (hit[0], (san, hit[1])) if hit[0] else (0, None)
 
     def _unmet_fix(self, P2: "AC.Pos", q: R.Question) -> "str | None":
         """52.22 (1): the goal's piece is still on its square on P2 (our move), it is not won by the exchange, and `fixes_of` finds a forcing fix of its defect there
