@@ -32027,3 +32027,17 @@ ones set aside as the oracle (plan 57, written, not a go), the mining layer in R
 (events, handlers naming their Lean word, the trace as a listener) written. The day in numbers (OBS, one run each): 07Z0P 11.1 -> 3.3 s, rand2_10
 61 -> 13.3 s, every port harness-identical; random samples 25/30 this morning, the prior's loop clean over 11 rounds after two order dependencies
 were caught and fixed; 07Z0P, 0UqOv, 2VDtX, OF8nj, r3oph, GYWyJ and BEKFf all traced to their reasons.
+
+## 2026-10-20 20:24 PDT -- STATUS-DRIVEN WIDENING (plan 59): ON UNDER A TIME BUDGET, +2 RIGHT OF 85, NONE WORSE; THE RULE SATISFICES (kcQil)
+Kaveh: "whether to continue searching depends on whether we already have a good move, one that keeps us winning or not losing" -- "build it". Builder
+(10e9e9d4, bf790031, fda1fc9a, d9f54aad): the STATUS (balance minus their pass threat), the LINE (stay ahead / reach level), KEEPS-THE-STATUS (balance +
+best net claim >= line), four TIERS as root-context settings (0 today; 1 quiet threats below the root; 2 + mate-in-two threats by the proved
+mate_in_two word; 3 + the 52.23 chain items), each on a fresh context with the count fuse x 2^tier, the decision = the best claim over the tiers run.
+Verified: tiers off identical to a pre-change baseline (decisions, claims, traces) on 07Z0P, 0LRTF, rand1-3, rand22_5; 201 + 68 tests. Graded by
+Stockfish on 85 random puzzles (OBS, one run each): count fuse RIGHT/WRONG/none 59/4/22 -> 61/4/20 (eSJqH Qa5 by tier 3, axT6n e4+ by tier 1) at ~650 s
+extra on 25 widened puzzles (x29EV 93 s, dOC36 65 s, x00hu 53 s, all still undecided or wrong); 10 s per puzzle 59/4/22 -> 61/4/20 (+eSJqH, axT6n, hqGOF;
+kcQil Qc4 -> Qxf3; xhSWo wrong -> none). Default set (c9ba6232): ON whenever the budget is time (the tiers share the seconds), OFF under the count fuse
+unless --tiers. Play server restarted on it. Findings: (1) kcQil is the rule working as specified -- status "losing (-1)", Qxf3 reaches level (SF -0.07)
+so tier 0 keeps "not losing" and stops, while Qc4 wins (SF +1.94): the rule satisfices; whether a reached "level" should still look for "winning" is
+Kaveh's call; (2) the status uses guaranteed lower-bound values, so a right decision can read "not kept" (07Z0P: Qxd5+ claimed 1, balance -2) and pay
+for every tier; (3) x00hu stays undecided in every tier (the chain items under NO_FUSE found d3 in 28 s; under the tiered count fuse x 8 they do not).
