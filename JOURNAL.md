@@ -32062,3 +32062,14 @@ position (Nf6) now needs a time budget (gap under the count budget, Nf6 at 15 s)
 Kaveh's analysis of kcQil (we're down so no queen trade; Qc4 uncovers Bb7 on the queen and hits f1; the queen can't leave the long diagonal or g2 is
 pinned and Rxh3 mates) is right by Stockfish (Qc4 Qe2 Rxh3#; Qxb7 Qxf1+ mate in 2); White's best, Rxd4 (giving back the exchange to kill the g1 guard),
 is the line he did not read and the one our chase cannot finish in budget. Open: the "avoid trades when behind" word.
+
+## 2026-10-21 09:35 PDT -- A FRESH SET OF 5 (rand23_5): 3 RIGHT, 0 WRONG, 2 NONE; ALL 5 IN 1.5 s WALL
+Kaveh: "where are we now? do a set of 5 puzzles, how you do and how long each one takes." New seed 23 (never drawn), ratings 1173-1728. OBS, one run
+each, 10 workers: default count budget 1.5 s wall for the set; per puzzle 8DZta 0.0 s (Bxf3+, mate_in_two), IjoXp 0.6 s (Bg8+ then Qxd7), ycVP8 1.4 s
+(Qd4+ by the chase), 2zB89 0.4 s none, RoR8t 0.0 s none. Under 10 s per puzzle the same decisions (9.9 s wall; 2zB89 used 9.8 s). Stockfish (depth 14,
+question_prior grade): all three decisions RIGHT and each is Stockfish's own first move. The two misses, read from the traces:
+RoR8t (rook ending, Kg3!): tiers 0-1 list Kg3 as the quiet fix of "guard h2" and "cover g2" but kill it by tempo (a quiet fix gives a free reply); tier 2
+follows Kg3 as a threat of mate in two and reads Rg8+ Rg4 as "no claim of ours (+0)". Stockfish after Kg3 Rg8+ Rg4: about +10 for Black by pushing the f-
+and h-pawns with the king -- a missing endgame word (pawns that promote with the king's help against a lone rook), not a soundness bug.
+2zB89 (Qxa5!, a rook given with check for a mate threat, Qxa1+ Rf1 Qd4+ Kh1 Qxb6 Qxb6): tier 3 follows Qxa5 as a threat of mate in two; at 10 s it is cut
+past Qxa1+ by the clock, at 60 s (tier 3 ran 40.9 s) by the chase fuse: more time alone does not decide it; the line is a depth/fuse miss.
