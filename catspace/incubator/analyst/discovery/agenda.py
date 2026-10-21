@@ -84,6 +84,34 @@ def _pos_key(fen: str) -> str:
     return " ".join(fen.split()[:4])
 
 
+class _TierLines(list):
+    """plan 59: the trace of a wider tier's root agenda: every line is passed on to the root's trace (and its stream) with the tier named, and kept here."""
+
+    def __init__(self, sink, prefix: str):
+        super().__init__()
+        self.sink, self.prefix = sink, prefix
+
+    def append(self, x):
+        super().append(x)
+        self.sink.append(self.prefix + str(x))
+
+    def extend(self, xs):
+        for x in xs:
+            self.append(x)
+
+    def __iadd__(self, xs):
+        self.extend(xs)
+        return self
+
+
+def _wider(owner: "Agenda", ag: "Agenda") -> bool:
+    """plan 59: does the best claim of the wider tier `ag` beat the one held (by `owner`)? `Agenda._better`'s order: greater value / fewer opponent defects, then the claim's own tie-break key."""
+    new, old = ag.best, owner.best
+    if (new[0], new[1]) != (old[0], old[1]):
+        return (new[0], new[1]) > (old[0], old[1])
+    return ag._claim_key(new[2]) > owner._claim_key(old[2])
+
+
 class ChaseCtx:
     """The state shared by the root agenda and its inner agendas (52.12): the FEN memo, the route memo, the shared question budget and the counters."""
     def __init__(self, facts: "FS.FactStore | None" = None):
@@ -307,15 +335,17 @@ class Agenda:
             return True
         if (value, second) != self.best[:2]:
             return (value, second) > self.best[:2]
-        def key(c):
-            stake = next((q.stake for q in self.all if q.id == c.qid), 0)
-            mv = c.move or ""
-            try:
-                sh = PA.shape_key(PA.shape(self.board.fen(), [(mv[:2], mv[2:4])], self.us, threats=False)) if len(mv) >= 4 else ()
-            except Exception:
-                sh = ()
-            return (stake, tuple(-x for x in sh) if sh else (), mv)
-        return key(claim) > key(self.best[2])
+        return self._claim_key(claim) > self._claim_key(self.best[2])
+
+    def _claim_key(self, c: Claim) -> tuple:
+        """The tie-break key of a claim at equal value (see `_better`)."""
+        stake = next((q.stake for q in self.all if q.id == c.qid), 0)
+        mv = c.move or ""
+        try:
+            sh = PA.shape_key(PA.shape(self.board.fen(), [(mv[:2], mv[2:4])], self.us, threats=False)) if len(mv) >= 4 else ()
+        except Exception:
+            sh = ()
+        return (stake, tuple(-x for x in sh) if sh else (), mv)
 
     def _stamp(self, claim: Claim, q: R.Question) -> Claim:
         claim.goal = q.goal
@@ -558,14 +588,19 @@ class Agenda:
     # ------------------------------------------------------------------------------------------------------------ the loop
 
     def ask(self) -> None:
+        if TIERS and self._root and self.ctx.tier == 0:          # plan 59 (3): the root is driven through the widening tiers (tier 0 is this agenda; wider tiers run on fresh contexts)
+            self._ask_tiers()
+        else:
+            self._ask_once()
+
+    def _ask_once(self) -> None:
+        """One run of this root agenda to its end (what `ask` was before plan 59)."""
         if SCHEDULER and self.ctx is not None and self.chase_depth == 0 and self.ctx.sched is None:       # plan 56 (1): the root agenda is run by the worker loop (the inner agendas are tasks of it); ponder.py's agendas are not roots and stay recursive
             from catspace.incubator.analyst.discovery import scheduler as SC
             SC.run_root(self)
         else:
             self._ask_loop()
             self._ask_finish()
-        if TIERS and self._root:                                 # plan 59 (1): the root's STATUS word and whether its best claim keeps it (the trace line; the driver comes with item 3)
-            self.lines.append(self.status_line(0))
 
     # ------------------------------------------------------------------------------------------------------------ plan 59: the status
 
@@ -604,6 +639,63 @@ class Agenda:
         head = f"STATUS: {st['word']} (balance {st['balance']:+d}, their threat {st['threat']}): the line is '{'stay ahead' if st['line'] else 'reach level'}' ({st['line']}); " if tier == 0 else ""
         claim = "no claim" if v is None else f"best claim {best[2].what} {v:+d} gives {st['balance'] + v:+d}"
         return f"{head}tier {tier}'s {claim}: {'kept' if kept else 'not kept'}" + (f"; {opened}" if opened else "")
+
+    TIER_WHY = ("today's moves", "quiet threats worth the stake followed below the root", "mate-in-two threats", "the in-check chase, the need propagated, the need-aware close, the deep win chase, the goal judge, the chase clock 4")
+
+    def _ask_tiers(self) -> None:
+        """plan 59 (3): THE DRIVER. Run tier 0 (this agenda); if the best claim does not keep the status, run the next tier on a FRESH context (a kill under a narrower move set is not a kill under a
+        wider one: facts are not carried across tiers; the play server's carried store stays tier 0's); stop at the first tier that keeps the status or after the last. The DECISION is the best claim
+        over all tiers run (`_better`'s order: claims are verified, a wider tier only finds more). Under a time budget every tier keeps its count fuse (the time is a cap) and the tiers share the
+        seconds: a tier starts only while time remains, and a tier cut by the deadline still contributes its verified claims."""
+        total = self.ctx.seconds
+        t0 = time.monotonic()
+        self.tier_info: list = []
+        self.status_info = None
+        owner, ag, decided, k = self, self, 0, 0
+        while True:
+            t1 = time.monotonic()
+            ag._ask_once()
+            secs = time.monotonic() - t1
+            if ag is not self:                                   # fold the wider tier into this root: its claims and gaps, its decision when it beats the one held
+                self.their_runs += ag.their_runs
+                mark = {id(c): dataclasses.replace(c, qid=-1) for c in ag.state.claims}      # (the question ids are the tier's own: the claim answers no question of tier 0)
+                if ag.best is not None and id(ag.best[2]) not in mark:
+                    mark[id(ag.best[2])] = dataclasses.replace(ag.best[2], qid=-1)
+                self.state.claims += list(mark.values())
+                self.state.gaps += [f"[tier {k}] {g}" for g in ag.state.gaps]
+                if ag.best is not None and (owner.best is None or _wider(owner, ag)):
+                    self.best, owner, decided = (ag.best[0], ag.best[1], mark[id(ag.best[2])]), ag, k
+                    self.asked_at_claim = 0
+            overall = self.best
+            mate = overall is not None and overall[0] >= BD.MATE_VALUE
+            if self.status_info is None and not mate:
+                self.status_info = self.status()                 # (read once, at tier 0's end: their pass is the position's, not the tier's)
+            kept = mate or self.keeps(self.status_info, overall)[0]
+            self.tier_info.append(dict(tier=k, secs=round(secs, 2), asked=ag.asked + ag.ctx.asked, kept=kept, hit=bool(ag.ctx.hit), claims=len(ag.state.claims),
+                                       best=None if ag.best is None else (ag.best[2].what, ag.best[0])))
+            st = self.status_info
+            if kept and k > 0:
+                self.lines.append(f"tier {k} keeps the status: {overall[2].what}" + ("" if mate else f" ({st['balance'] + overall[0]:+d} against the line {st['line']})"))
+            stop = kept or k >= TIER_COUNT - 1 or self.ctx.abort
+            left = None if total is None else total - (time.monotonic() - t0)
+            if not stop and left is not None and (left <= 0.05 or ag.ctx.hit):
+                stop = True
+            if k == 0 or not kept:
+                why = "" if stop and kept else (f"no time left for tier {k + 1}" if stop and not kept and left is not None and k < TIER_COUNT - 1 else
+                                                "all tiers run" if stop and not kept else f"tier {k + 1} opened ({self.TIER_WHY[k + 1]})")
+                if k == 0:
+                    self.lines.append(self.status_line(0, st, overall, why))
+                else:
+                    self.lines.append(f"tier {k}'s " + ("no claim" if ag.best is None else f"best claim {ag.best[2].what} {ag.best[0]:+d} gives {st['balance'] + ag.best[0]:+d}") + f": not kept" + (f"; {why}" if why else ""))
+            if stop:
+                break
+            k += 1
+            nxt = Agenda(State(fen=self.state.fen, us=self.state.us, pieces=list(self.state.pieces)), memory=self.memory, leaf_all=self.leaf_all, seconds=left, tier=k)
+            nxt.lines = _TierLines(self.lines, f"[tier {k}] ")
+            ag = nxt
+        self.tier_decided = decided
+        self.tier_secs = [t["secs"] for t in self.tier_info]
+        self.lines.append(f"TIERS: ran {len(self.tier_info)} (0..{len(self.tier_info) - 1}); the decision is " + (f"{self.best[2].what} ({self.best[0]:+d}) from tier {decided}" if self.best is not None else "none") + f"; seconds per tier {self.tier_secs}")
 
     def _ask_finish(self) -> None:
         """What `ask` adds to the trace once the loop has ended (the root agenda only); the scheduler's node task calls it too."""

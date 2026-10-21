@@ -83,12 +83,18 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
         f"fuse hits {cx.budget_hits} (depth {cx.depth_cuts}), gap routes reused {cx.gap_reused}, replies closed by rule {cx.closed}, replies left open (goal unmet) {cx.unmet}, refuter fixes {cx.refuter_fixes}, standing kills {cx.standing}, chase log rows {cx.logged}, static leaves read {cx.static_read}, parried {cx.static_parried}, unparried {cx.static_unparried}, killed by reasoning {cx.reasoned}, routes not addressing a defect {cx.unaddressed}, time outs {cx.time_outs}, landings served from the table {cx.landing_served}, forcing by a claim after a pass {R.PASS_CLAIMS[0] - pc0}, "
         f"facts derived {fx['derived']}, served from the store {fx['served']}, foreground recomputations {fx['recomputed']}, background queue {fx['queue']} (top stake {fx['top']}), seconds {secs}, "
         f"root lists served {cx.roots_served}, chase claims served {cx.chase_served}, routes finished after the deadline {cx.finished}")
+    tiers = getattr(ag, "tier_info", None)
+    if tiers:                                                    # plan 59: the status, the line, the tiers run, the tier that decided, seconds per tier
+        sti = ag.status_info
+        head = (f"status {sti['word']} (balance {sti['balance']:+d}, their threat {sti['threat']}), line {sti['line']}" if sti else "status mate (a mate of ours keeps every status)")
+        log(f"OBS tiers {p['id']}: {head}, tiers run {[t['tier'] for t in tiers]}, kept {tiers[-1]['kept']}, decided by tier {ag.tier_decided if decided != "none" else "-"}, seconds per tier {[t['secs'] for t in tiers]}, decision {decided}")
     if ponder:                                                   # 52.19 (3): the background tier after the puzzle: the queue drained for `ponder` seconds
         from catspace.incubator.analyst.discovery import ponder as PD
         pr = PD.drain(ag.ctx, ag.us, ponder, log=lambda t: log(f"OBS ponder {p['id']}: {t}"))
         log(f"OBS ponder {p['id']}: drained {pr['done']} of {pr['queue']} queued items in {pr['secs']} s; queue after {pr['left']}")
     return dict(id=p["id"], asked=ag.asked, tempo=ag.killed_tempo, claims=len(st.claims), decision=decided, match=verdict == "MATCH",
-                decided=d is not None, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs, theirs=ag.their_runs, fx=fx, chase=(cx.agendas, cx.inherited, cx.reopened, cx.budget_hits, cx.asked, cx.inherited_claims, cx.fresh, cx.closed, cx.standing, cx.logged, cx.gap_reused, cx.depth_cuts, cx.static_read, cx.static_parried, cx.static_unparried, cx.reasoned, cx.unaddressed, cx.time_outs, cx.landing_served, R.PASS_CLAIMS[0] - pc0, cx.roots_served, cx.chase_served, cx.finished, cx.unmet, cx.refuter_fixes), until=ag.asked_at_claim, move=d.move if d else None, leaf=ag.leaf_stats)
+                decided=d is not None, kills=[r.split(":")[0] for _, r in ag.kills], gaps=len(st.gaps), secs=secs, theirs=ag.their_runs, fx=fx, chase=(cx.agendas, cx.inherited, cx.reopened, cx.budget_hits, cx.asked, cx.inherited_claims, cx.fresh, cx.closed, cx.standing, cx.logged, cx.gap_reused, cx.depth_cuts, cx.static_read, cx.static_parried, cx.static_unparried, cx.reasoned, cx.unaddressed, cx.time_outs, cx.landing_served, R.PASS_CLAIMS[0] - pc0, cx.roots_served, cx.chase_served, cx.finished, cx.unmet, cx.refuter_fixes), until=ag.asked_at_claim, move=d.move if d else None, leaf=ag.leaf_stats,
+                **(dict(tiers=tiers, status=ag.status_info, tier_decided=ag.tier_decided) if tiers else {}))
 
 
 def _append_once(path, text: str) -> None:
@@ -106,7 +112,7 @@ def _append_once(path, text: str) -> None:
         os.close(fd)
 
 
-_FLAGS = ("PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK")
+_FLAGS = ("PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS")
 
 
 def _init_worker(flags: dict) -> None:
@@ -160,7 +166,11 @@ def main():
     ap.add_argument("--prior", action="store_true", help="plan 53 (2): the learned prior (data/derived/question_prior.json) orders the root agenda's questions")
     ap.add_argument("--workers", type=int, default=None, help="puzzles in parallel processes (default: all cores but one; 1 = sequential)")
     ap.add_argument("--chain", action="store_true", help="plan 52.23 (2)-(8): the chain items ON (the need-aware close, the in-check chase, win chases below depth two, the goal judge, the need propagated, the chase clock 4) -- the regime for hard positions under a time budget (x00hu, 2026-10-20)")
+    ap.add_argument("--tiers", action="store_true", help="plan 59: STATUS-DRIVEN WIDENING -- the root runs tier 0, then wider tiers (quiet threats below the root; mate-in-two threats; the 52.23 chain items) only while no claim keeps our status; under --seconds each tier keeps its count fuse and the tiers share the time")
     a = ap.parse_args()
+    if a.tiers:
+        from catspace.incubator.analyst.discovery import agenda as AGM
+        AGM.TIERS = True
     if a.prior:
         from catspace.incubator.analyst.discovery import agenda as AGM
         AGM.PRIOR = True
