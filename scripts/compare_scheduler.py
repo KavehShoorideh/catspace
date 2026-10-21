@@ -24,6 +24,11 @@ def worker(target: str, mode: str, prior: bool, out: str) -> None:
     """mode: rec (the recursive chase), py (the task graph, the Python scheduler), rust (the task graph, the Rust core: scheduler.CORE_RUST)."""
     sched = mode != "rec"
     from catspace.incubator.analyst.discovery import agenda as AG
+    import os
+    if os.environ.get("F61"):                                       # plan 61 A: F61=1 PARRIES on both sides; F61=2 also the delayed threat, no safe move and the tiers (TIERS, so tier 1+ runs under the count budget)
+        AG.PARRIES = True
+        if os.environ["F61"] == "2":
+            AG.DELAYED_THREAT = AG.NO_SAFE_MOVE = AG.TIERS = True
     from catspace.incubator.analyst.discovery import analyse as AN
     AG.SCHEDULER = sched
     AG.PRIOR = prior
@@ -59,6 +64,8 @@ def worker(target: str, mode: str, prior: bool, out: str) -> None:
     secs = time.time() - t0
     for r in res:
         r.pop("secs", None)
+        for t in r.get("tiers", ()):
+            t.pop("secs", None)                                      # (plan 61: tiers run -> their wall seconds are not a decision)
     pickle.dump(dict(results=res, roots=roots, seconds=secs), open(out, "wb"))
 
 
@@ -77,12 +84,16 @@ def main() -> None:
     ap.add_argument("--core-vs-recursive", action="store_true", help="the recursive chase (old) vs the Rust core (new)")
     ap.add_argument("--route", action="store_true", help="plan 56 (2b): the Rust core (old) vs the Rust core with the Rust route reader (new)")
     ap.add_argument("--route-vs-recursive", action="store_true", help="the recursive chase (old) vs the Rust core with the Rust route reader (new)")
+    ap.add_argument("--forcing61", choices=["1", "2"], help="plan 61 A: 1 = PARRIES on both sides; 2 = + DELAYED_THREAT, NO_SAFE_MOVE and TIERS")
     ap.add_argument("--worker", nargs=4, metavar=("TARGET", "SCHED", "PRIOR", "OUT"))
     a = ap.parse_args()
     if a.worker:
         worker(a.worker[0], a.worker[1], a.worker[2] == "1", a.worker[3])
         return
     total = 0
+    if a.forcing61:
+        import os
+        os.environ["F61"] = a.forcing61
     m_old, m_new = ("rust", "route") if a.route else ("rec", "route") if a.route_vs_recursive else ("py", "rust") if a.core else ("rec", "rust") if a.core_vs_recursive else ("rec", "py")
     print(f"OBS scheduler compare: old = {m_old}, new = {m_new}")
     for t in a.targets:

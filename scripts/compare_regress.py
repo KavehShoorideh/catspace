@@ -35,7 +35,8 @@ def puzzles(target: str) -> list:
 # switch name -> (module of catspace.incubator.analyst.discovery, attribute); the 54 (B5.3) spread: moves (regress._moves cache), threat (reasoned._threat_moves in Rust),
 # piece (graph.with_piece), pieces (facts.board_piece memo), mates (graph.mates)
 FLAGS = {"defects": ("regress", "DEFECTS_RUST"), "routes": ("regress", "ROUTES_RUST"), "trap": ("regress", "TRAP_RUST"), "skewer": ("regress", "SKEWER_RUST"),
-         "moves": ("regress", "MOVES_CACHE"), "threat": ("reasoned", "THREAT_RUST"), "piece": ("graph", "FAST_PIECE"), "pieces": ("facts", "PIECE_MEMO"), "mates": ("graph", "MATES_FAST")}
+         "moves": ("regress", "MOVES_CACHE"), "threat": ("reasoned", "THREAT_RUST"), "piece": ("graph", "FAST_PIECE"), "pieces": ("facts", "PIECE_MEMO"), "mates": ("graph", "MATES_FAST"),
+         "parries": ("agenda", "PARRIES"), "delayed": ("agenda", "DELAYED_THREAT"), "nosafe": ("agenda", "NO_SAFE_MOVE"), "tiers": ("agenda", "TIERS")}      # plan 61 A (agenda switches: default OFF on both sides)
 
 
 def worker(target: str, flags: list, out: str) -> None:
@@ -54,6 +55,8 @@ def worker(target: str, flags: list, out: str) -> None:
     secs = time.time() - t0
     for r in res:
         r.pop("secs", None)
+        for t in r.get("tiers", ()):
+            t.pop("secs", None)                                      # (plan 61: tiers run -> their wall seconds are not a decision)
     pickle.dump(dict(results=res, log=R.REGRESS_LOG, seconds=secs), open(out, "wb"))
 
 

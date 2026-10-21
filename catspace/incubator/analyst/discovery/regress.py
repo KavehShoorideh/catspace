@@ -14,6 +14,7 @@ Deviation from 52.2 (signatures): fixes_of / routes_of also take the question an
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 import chess
@@ -295,13 +296,19 @@ def mate2_threat(board: chess.Board, m: chess.Move, us: str | bool) -> bool:
     return bool(SM.bind_mate2(G.with_turn(c, me).fen(), "w" if me else "b"))
 
 
-def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool, mate_threats: bool = False, notes: list | None = None, mate2: bool = False) -> str | None:
+def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool, mate_threats: bool = False, notes: list | None = None, mate2: bool = False,
+                delayed: bool = False, nosafe: bool = False) -> str | None:
     """The reason `m` is forcing (see `_forcing_why_py`), or None. 54 (B2): read by analyst_core when ROUTES_RUST (the same answer, the same notes). plan 59 tier 2 (`mate2`): a quiet move
     after which a pass leaves us a forced mate in two ('threat of mate in two', `mate2_threat`) is forcing too, whatever the stake (a mate question follows checks and mate threats only)."""
     got = _forcing_batch(board, [m], stake, us, mate_threats, notes) if ROUTES_RUST else None
     why = got[0] if got is not None else _forcing_why_py(board, m, stake, us, mate_threats, notes)
     if why is None and mate2 and mate_threats and mate2_threat(board, m, us):
         why = "threat of mate in two"
+    if why is None and (delayed or nosafe) and mate_threats and not board.is_capture(m) and G.colour_of(us) == board.turn:
+        if nosafe:                                                    # plan 61 A4 (Lean `Ideas.Forcing.noSafeMove`)
+            why = no_safe_move(board, m, stake, us)
+        if why is None and delayed:                                   # plan 61 A3 (Lean `Ideas.Forcing.delayedThreat`)
+            why = delayed_threat(board, m, stake, us)
     if REGRESS_LOG is not None:
         REGRESS_LOG.append(("forcing", board.epd(), m.uci(), stake, mate_threats, why, tuple(notes) if notes is not None else None))
     return why
@@ -407,6 +414,186 @@ def pass_claim(board: chess.Board, after: chess.Board, m: chess.Move, us: str | 
     path = [G.name(x) for x in pawn_path(passed, sq, n)]
     PASS_CLAIMS[0] += 1
     return f"threat: {', '.join(path[:-1]) + (' then ' if len(path) > 1 else '')}{path[-1]}=Q binds after a pass (unstoppablePasser2_sound, within {now[sq]} plies)"
+
+
+# ---------------------------------------------------------------------------------------------------------------- plan 61 stage A: the forced chain's words
+
+@dataclass
+class Threat:
+    """plan 61 A1: the threat a forcing move makes, as an object read back from its reason string and the board after the move.
+    kind: check | mate | mate2 | capture | threat | pass-claim (| delayed | zugzwang: the A3 / A4 words, which no single reply parries)."""
+    kind: str
+    target: int | None                        # the square the threat is on: their king (check, mate), the captured piece, the piece the exchange wins, the promotion square
+    value: int                                # what it wins (a mate: 100; a check: 0)
+    word: str                                 # the proved word that binds it
+    why: str                                  # the reason string it was read from
+
+
+def _threat_square(after: chess.Board, us: str | bool) -> tuple:
+    """After our move (their turn) and a pass: (the most we would win by the exchange on a piece of theirs, its square) -- `threat_value`, with the square."""
+    me = G.colour_of(us)
+    c = G.with_turn(after, me)
+    best = (0, None)
+    for s in chess.SQUARES:
+        p = c.piece_at(s)
+        if p and p.color != me and p.piece_type != chess.KING and c.is_attacked_by(me, s):
+            v = G.see(c, s)
+            if v > best[0]:
+                best = (v, s)
+    return best
+
+
+def threat_of(board: chess.Board, m: chess.Move, why: str | None, us: str | bool | None = None) -> "Threat | None":
+    """plan 61 A1: THE THREAT AS AN OBJECT. `why` is the reason `forcing_why` returned for `m` on `board` (the Rust forcing path gives the same string); the object is rebuilt in
+    Python from the reason and the board after `m`. -> Threat or None (no reason)."""
+    if not why:
+        return None
+    me = board.turn if us is None else G.colour_of(us)
+    c = board.copy(stack=False)
+    c.push(m)
+    ksq = c.king(not me)
+    if why == "check":
+        return Threat("check", ksq, 0, "check", why)
+    if why == "threat of mate":
+        return Threat("mate", ksq, STAKE_MATE, "mate in one", why)
+    if why == "threat of mate in two":
+        return Threat("mate2", ksq, STAKE_MATE, "mate_in_two", why)
+    if why.startswith("capture "):
+        return Threat("capture", m.to_square, int(why.split()[1]), "capture", why)
+    if why.startswith("threat:"):                                      # pass_claim: "threat: b7 then b8=Q binds after a pass (unstoppablePasser2_sound, ...)"
+        mm = re.search(r"([a-h][1-8])=Q", why)
+        return Threat("pass-claim", chess.parse_square(mm.group(1)) if mm else None, STAKE_PROMOTE, "unstoppablePasser2_sound", why)
+    if why.startswith("threat "):                                      # "threat n" / "threat n survives X (the P hangs, k)"
+        n = int(why.split()[1])
+        v, sq = _threat_square(c, me)
+        return Threat("threat", sq, n, "survives capture" if "survives" in why else "exchange", why)
+    if why.startswith("delayed threat"):
+        return Threat("delayed", None, 0, "delayedThreat", why)
+    if why.startswith("no safe move"):
+        return Threat("zugzwang", None, 0, "noSafeMove", why)
+    return None
+
+
+def _binds(d: chess.Board, th: Threat, stake: int, me: bool) -> int:
+    """Does the threat still bind on `d` (the board after their reply, our move)? -> the value it binds at (0: it does not). Re-read on the reply's own board, never assumed."""
+    if th.kind == "mate":
+        for mv in list(d.legal_moves):
+            if d.gives_check(mv):
+                d.push(mv)
+                mated = d.is_checkmate()
+                d.pop()
+                if mated:
+                    return STAKE_MATE
+        return 0
+    if th.kind == "mate2":
+        from catspace.incubator.analyst.discovery import selfmine as SM
+        return STAKE_MATE if SM.bind_mate2(d.fen(), "w" if me else "b") else 0
+    if th.kind == "threat":
+        v = threat_value(d, me)
+        return v if v >= stake else 0
+    if th.kind == "pass-claim":
+        from catspace.incubator.analyst import lean_passer_v2_proto as PV
+        return STAKE_PROMOTE if th.target in dict(PV.proved_passers(G.with_turn(d, me), bishops=True)) else 0
+    return 0                                                          # check, capture: already played, nothing stands to be parried; delayed / zugzwang: no single reply
+
+
+def _counter(after: chess.Board, r: chess.Move, stake: int, them: bool) -> bool:
+    """A reply that is itself forcing against us (Allis's counter-threat hole): a check, a capture worth the stake, or a threat of theirs by `forcing_why` with them on move."""
+    if after.gives_check(r):
+        return True
+    if after.is_capture(r):
+        v = 1 if after.is_en_passant(r) else G.worth(after.piece_at(r.to_square))
+        if v >= stake:
+            return True
+    return forcing_why(after, r, stake, them) is not None
+
+
+def parries(after: chess.Board, threat: Threat, stake: int, us: str | bool | None = None) -> tuple:
+    """plan 61 A2 (Lean `Ideas.Forcing.parries` / `parryList` / `closedList`): `after` = the board after our forcing move (their turn). PARRIES are their legal replies after which the
+    threat no longer binds (re-read on the reply's board: `_binds` < stake) plus every reply that is itself forcing against us (`_counter`); CLOSED are the rest, each with the value the
+    threat still binds at on its own board. -> ([parry moves], [(closed move, value)]). A reply outside `parries` leaves the threat bound (`Ideas.Forcing.closed_binds`)."""
+    me = (not after.turn) if us is None else G.colour_of(us)
+    par, closed = [], []
+    for r in list(after.legal_moves):
+        d = after.copy(stack=False)
+        d.push(r)
+        v = _binds(d, threat, stake, me) if not d.is_check() else 0
+        if v and not _counter(after, r, stake, after.turn):
+            closed.append((r, v))
+        else:
+            par.append(r)
+    return par, closed
+
+
+_STANDING: dict = {}
+G.CLEAR_HOOKS.append(_STANDING.clear)
+
+
+def _standing_forcing(board: chess.Board, stake: int, me: bool) -> frozenset:
+    """The UCIs of our moves that are forcing on `board` itself (what is already there before a quiet move is played): a delayed threat is made by the move, not found beside it."""
+    key = (board.board_fen(), board.turn, board.castling_rights, board.ep_square, stake)
+    hit = _STANDING.get(key)
+    if hit is None:
+        hit = _STANDING[key] = frozenset(x.uci() for x in board.legal_moves
+                                         if (w := forcing_why(board, x, stake, me, mate_threats=stake >= STAKE_MATE)) and (stake >= STAKE_MATE or w != "check"))
+    return hit
+
+
+def delayed_threat(board: chess.Board, m: chess.Move, stake: int, us: str | bool) -> str | None:
+    """plan 61 A3 (Lean `Ideas.Forcing.delayedThreat`; Thomsen's lambda-2): the quiet move `m` is DELAYED-FORCING iff after it, for EVERY legal reply of theirs, some move of ours is forcing by
+    `forcing_why` with a threat worth the stake (one bounded AND level: their replies x our forcing candidates, the forcing test only, no recursion; a plain check counts only for a mate
+    stake). -> "delayed threat: after every reply a threat of ours (tightest: after Rg8+: h2 ...)" naming the reply that leaves the fewest, or None."""
+    me = G.colour_of(us)
+    c = board.copy(stack=False)
+    c.push(m)
+    replies = list(c.legal_moves)
+    if c.is_check() or not replies:
+        return None
+    standing = _standing_forcing(board, stake, me)
+    tight = None
+    for r in replies:
+        d = c.copy(stack=False)
+        d.push(r)
+        ours = [x for x in d.legal_moves if x.uci() not in standing]       # the threat must be NEW: a forcing move already there before `m` (a hanging queen) is not made by `m`
+        hits = []
+        for x in ours:
+            w = forcing_why(d, x, stake, me, mate_threats=stake >= STAKE_MATE)
+            if w and (stake >= STAKE_MATE or w != "check") and not (w.startswith("capture") and G.see(d, x.to_square) <= 0 and stake < STAKE_MATE):      # (a bare capture counts only if the exchange on it wins)
+                hits.append((x, w))
+        if not hits:
+            return None
+        if tight is None or len(hits) < tight[0]:
+            tight = (len(hits), c.san(r), d.san(hits[0][0]), hits[0][1])
+    return f"delayed threat: after every reply a new threat of ours (tightest, after {tight[1]}: {tight[2]} {tight[3]}; {tight[0]} such move(s))"
+
+
+def no_safe_move(board: chess.Board, m: chess.Move, stake: int, us: str | bool) -> str | None:
+    """plan 61 A4 (Lean `Ideas.Forcing.noSafeMove`; zugzwang as 'no safe move'): the quiet move `m` is forcing iff after it EVERY legal reply of theirs loses at least the stake by rule: after
+    the reply, the best static exchange of ours on a piece of theirs (the piece that moved or the duty it left -- the stake was not reachable before the reply, `m` being not forcing) less
+    what the reply itself captured. A reply that checks us, promotes, or loses less makes the move not forcing (a free tempo move). -> "no safe move: every reply loses >= stake (cheapest: ...)" or None."""
+    if stake >= STAKE_MATE:
+        return None
+    me = G.colour_of(us)
+    c = board.copy(stack=False)
+    c.push(m)
+    replies = list(c.legal_moves)
+    if c.is_check() or not replies:
+        return None
+    cheapest = None
+    for r in replies:
+        d = c.copy(stack=False)
+        gain = 1 if c.is_en_passant(r) else (G.worth(c.piece_at(r.to_square)) if c.is_capture(r) else 0)
+        san = c.san(r)
+        d.push(r)
+        if d.is_check() or r.promotion:
+            return None
+        best, sq = _threat_square(G.with_turn(d, me), me)
+        loss = best - gain
+        if loss < stake:
+            return None
+        if cheapest is None or loss < cheapest[0]:
+            cheapest = (loss, san, f"{d.san(next(x for x in d.legal_moves if x.to_square == sq))} wins {best}" if sq is not None and any(x.to_square == sq for x in d.legal_moves) else f"wins {best}")
+    return f"no safe move: every reply loses >= {stake} ({board.san(m)}: cheapest {cheapest[1]} loses {cheapest[0]}: {cheapest[2]})"
 
 
 MOVES_CACHE = True        # plan 54 (B5.3): `_moves` answers the same (pieces, castling rights, side, skip) once per root question (graph.clear_caches clears it)

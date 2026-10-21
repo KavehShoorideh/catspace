@@ -663,8 +663,13 @@ def chase_g(node, q: R.Question) -> bool:
             pc = b.piece_at(m.to_square)
             routes.append(R.Route(m, b.san(m), f"capture {G.worth(pc)}" if pc is not None else "evade"))
             continue
-        why = R.forcing_why(b, m, q.stake, node.us, mate_threats=True, notes=notes, mate2=node.ctx.tier >= 2)      # plan 59 tier 2: a mate-in-two threat is forcing too
+        why = R.forcing_why(b, m, q.stake, node.us, mate_threats=True, notes=notes, mate2=node.ctx.tier >= 2,      # plan 59 tier 2: a mate-in-two threat is forcing too
+                            delayed=AG.DELAYED_THREAT and node.ctx.tier >= 1 and not node.chase_depth, nosafe=AG.NO_SAFE_MOVE and node.ctx.tier >= 1 and not node.chase_depth)      # plan 61 A3 / A4 (mirror of agenda._chase)
         if why:
+            if why.startswith("delayed threat"):
+                node.ctx.delayed_routes += 1
+            elif why.startswith("no safe move"):
+                node.ctx.nosafe_routes += 1
             ok, note = node._addresses(q, m, why)
             if ok:
                 routes.append(R.Route(m, b.san(m), why))
@@ -906,19 +911,21 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
             if val < BD.MATE_VALUE:
                 closed_min = min(closed_min, val)
             gains.append(val)
-            res["parts"].append(f"after {san_r}: closed by rule: {why} -> {val}")
+            res["parts"].append(f"after {san_r}: closed {node._closed_tag(why)}: {why} -> {val}")
             continue
         if P2.legal_count() == 0:
             res["killed"] = f"after {san_r} " + ("they mate us" if P2.is_check() else "stalemate")
             node._log(key, uci, "killed", dbal, None, None, res["killed"])
             break
         closed = ((BD.MATE_VALUE, "mate in one") if (P2.mate_in_one() if mate1 is None else mate1) else None) if promote else node._closed_by_rule(P2, dbal, mate1)
+        if closed is not None and not promote:
+            closed = node._parry_label(m, uci, closed)         # plan 61 A2 (mirror of agenda._chase_route_body)
         if closed is not None:
             val, why = closed
             if val < BD.MATE_VALUE:
                 closed_min = min(closed_min, val)
             gains.append(val)
-            res["parts"].append(f"after {san_r}: closed by rule: {why} -> {val}")
+            res["parts"].append(f"after {san_r}: closed {node._closed_tag(why)}: {why} -> {val}")
             ctx.closed += 1
             closed_now[uci] = closed
             node._log(key, uci, "closed", dbal, val, None, why)
@@ -1114,7 +1121,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
             if val < BD.MATE_VALUE:
                 closed_min = min(closed_min, val)
             gains.append(val)
-            res["parts"].append(f"after {san_r}: closed by rule: {why} -> {val}")
+            res["parts"].append(f"after {san_r}: closed {node._closed_tag(why)}: {why} -> {val}")
             continue
         if kind == "dead":
             res["killed"] = f"after {san_r} " + ("they mate us" if chk else "stalemate")
@@ -1143,12 +1150,14 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
                         t_ = t2
                 if not t_:
                     closed = (dbal + best, f"exchange +{best} ({R.exchange_read(chess.Board(fen2))}), nothing of theirs")
+        if closed is not None and not promote:
+            closed = node._parry_label(m, uci, closed)         # plan 61 A2 (mirror of agenda._chase_route_body)
         if closed is not None:
             val, why = closed
             if val < BD.MATE_VALUE:
                 closed_min = min(closed_min, val)
             gains.append(val)
-            res["parts"].append(f"after {san_r}: closed by rule: {why} -> {val}")
+            res["parts"].append(f"after {san_r}: closed {node._closed_tag(why)}: {why} -> {val}")
             ctx.closed += 1
             closed_now[uci] = closed
             node._log(key, uci, "closed", dbal, val, None, why)

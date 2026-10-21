@@ -63,6 +63,9 @@ PRIOR = False                                                   # plan 53 (2): t
 SCHEDULER = False                                               # plan 56 (1): the chase as an explicit TASK GRAPH on a priority queue with one worker loop (scheduler.py), not the recursion below; the same decisions (scripts/compare_scheduler.py)
 CLOSE_AFTER_CAPTURE = True                                      # 2026-10-20 (kcQil): a reply closes by the exchange only if their agenda after our capture finds nothing either
 RAISE_TO_WIN = True                                             # plan 59 (4): under a time budget, a reached 'not losing' that is not 'winning' raises the line while time remains
+PARRIES = False                                                 # plan 61 A2: the chase names the threat of a route (regress.threat_of) and labels a closed reply that does NOT parry it "closed by the threat" (regress.parries; Lean Ideas.Forcing); same values
+DELAYED_THREAT = False                                          # plan 61 A3: a quiet move after which EVERY reply allows a forcing move of ours is a route (tier 1+, root chase only; regress.delayed_threat)
+NO_SAFE_MOVE = False                                            # plan 61 A4: a quiet move after which EVERY reply loses at least the stake by rule is a route (tier 1+, root chase only; regress.no_safe_move)
 TIERS_UNDER_TIME = True                                         # plan 59 default (2026-10-20, graded on 85 random puzzles): ON whenever the budget is TIME -- the tiers share the seconds, so the cost is bounded
                                                                 # (s10: RIGHT 59 -> 61, WRONG 4 -> 4; hqGOF right again); under the COUNT fuse they stay OFF unless TIERS (fuse: +2 RIGHT for ~650 s extra on 25 widened puzzles)
 TIERS = False                                                   # plan 59: STATUS-DRIVEN WIDENING at the root -- tier 0 (today's moves), then wider tiers (settings of the root's ChaseCtx) only while no claim keeps our status; analyse --tiers; the play server honours it
@@ -175,6 +178,11 @@ class ChaseCtx:
         self.slice_len = 0.0                      # 52.23 (11): the time slice the root route in hand was given
         self.clock_stops = 0                      # 52.23 (8): chases not started by the chase clock
         self.mate_walks = 0                       # ... mate chases not started because the chain had spent them (the walk of checks)
+        self.parry_seen = 0                       # plan 61 A2: closed replies checked against the route's threat / ...
+        self.parry_closed = 0                     # ... of which the reply does not parry it (closed by the threat)
+        self.route_threats: dict = {}             # (position key, uci) -> the Threat of the route (None: no object)
+        self.delayed_routes = 0                   # plan 61 A3 / A4: routes admitted by the delayed threat / by no safe move
+        self.nosafe_routes = 0
         self.overload_opens = 0                   # 2026-10-20: replies not closed by the exchange because our capture left a duty (their claim after it)
         self.unmet = 0                            # 52.22 (1): replies NOT closed by the exchange because the chased goal (win the piece) is not met by it and a forcing fix of its defect remains
         self.open_lines: list = []                # ... and the trace line of each (printed by the root)
@@ -663,6 +671,8 @@ class Agenda:
             secs = time.monotonic() - t1
             if ag is not self:                                   # fold the wider tier into this root: its claims and gaps, its decision when it beats the one held
                 self.their_runs += ag.their_runs
+                for f in ("parry_seen", "parry_closed", "delayed_routes", "nosafe_routes"):
+                    setattr(self.ctx, f, getattr(self.ctx, f) + getattr(ag.ctx, f))      # plan 61: the tiers' counters are the root's
                 mark = {id(c): dataclasses.replace(c, qid=-1) for c in ag.state.claims}      # (the question ids are the tier's own: the claim answers no question of tier 0)
                 if ag.best is not None and id(ag.best[2]) not in mark:
                     mark[id(ag.best[2])] = dataclasses.replace(ag.best[2], qid=-1)
@@ -1702,19 +1712,21 @@ class Agenda:
                 if val < BD.MATE_VALUE:
                     closed_min = min(closed_min, val)
                 gains.append(val)
-                res["parts"].append(f"after {san_r}: closed by rule: {why} -> {val}")
+                res["parts"].append(f"after {san_r}: closed {self._closed_tag(why)}: {why} -> {val}")
                 continue
             if P2.legal_count() == 0:
                 res["killed"] = f"after {san_r} " + ("they mate us" if P2.is_check() else "stalemate")
                 self._log(key, uci, "killed", dbal, None, None, res["killed"])
                 break
             closed = ((BD.MATE_VALUE, "mate in one") if (P2.mate_in_one() if mate1 is None else mate1) else None) if promote else self._closed_by_rule(P2, dbal, mate1)
+            if closed is not None and not promote:
+                closed = self._parry_label(m, uci, closed)
             if closed is not None:
                 val, why = closed
                 if val < BD.MATE_VALUE:
                     closed_min = min(closed_min, val)
                 gains.append(val)
-                res["parts"].append(f"after {san_r}: closed by rule: {why} -> {val}")
+                res["parts"].append(f"after {san_r}: closed {self._closed_tag(why)}: {why} -> {val}")
                 ctx.closed += 1
                 closed_now[uci] = closed
                 self._log(key, uci, "closed", dbal, val, None, why)
@@ -2011,6 +2023,40 @@ class Agenda:
                 return None
         return dbal + best, f"exchange +{best} ({R.exchange_read(chess.Board(P2.fen()))}), nothing of theirs"
 
+    def _parry_label(self, m: chess.Move, uci: str, closed: tuple) -> tuple:
+        """plan 61 A2 (Lean `Ideas.Forcing.closed_binds`): a reply the rules CLOSED, checked against the THREAT of the route (`regress.threat_of` from the route's reason): when the reply does not
+        parry it (the threat still binds on the reply's own board and the reply is no counter-threat) the line says so -- "the threat ... still binds (+v)". Same value, same decision:
+        only the reason text changes. Off unless PARRIES."""
+        if not PARRIES or closed is None:
+            return closed
+        ctx, b = self.ctx, self.board
+        cq = self._chase_q
+        stake = cq.stake if cq is not None else 1
+        key = (_pos_key(b.fen()), m.uci(), stake)
+        if key not in ctx.route_threats:
+            why = R.forcing_why(b, m, stake, self.us, mate_threats=True, mate2=ctx.tier >= 2)
+            ctx.route_threats[key] = R.threat_of(b, m, why, self.us)
+        th = ctx.route_threats[key]
+        if th is None or th.kind not in ("mate", "mate2", "threat", "pass-claim"):
+            return closed
+        ctx.parry_seen += 1
+        after = b.copy(stack=False)
+        after.push(m)
+        r = chess.Move.from_uci(uci)
+        if r not in after.legal_moves:
+            return closed
+        d = after.copy(stack=False)
+        d.push(r)
+        v = 0 if d.is_check() else R._binds(d, th, stake, self.me)
+        if v and not R._counter(after, r, stake, after.turn):
+            ctx.parry_closed += 1
+            return closed[0], f"the threat ({th.why}) still binds (+{v}); {closed[1]}"
+        return closed
+
+    @staticmethod
+    def _closed_tag(why: str) -> str:
+        return "by the threat" if why.startswith("the threat (") else "by rule"
+
     def _their_after_capture(self, P2: "AC.Pos") -> tuple:
         """The best static exchange on P2 (our move) begun with its cheapest capture, then THEIR agenda on the board after it (their move): -> (the value of their best claim that
         does not land on the exchange square, (our capture's SAN, that claim)) or (0, None). Memoised by position in the run's `theirs` table."""
@@ -2206,8 +2252,13 @@ class Agenda:
                 pc = b.piece_at(m.to_square)
                 routes.append(R.Route(m, b.san(m), f"capture {G.worth(pc)}" if pc is not None else "evade"))
                 continue
-            why = R.forcing_why(b, m, q.stake, self.us, mate_threats=True, notes=notes, mate2=self.ctx.tier >= 2)      # plan 59 tier 2: a mate-in-two threat is forcing too
+            why = R.forcing_why(b, m, q.stake, self.us, mate_threats=True, notes=notes, mate2=self.ctx.tier >= 2,      # plan 59 tier 2: a mate-in-two threat is forcing too
+                                delayed=DELAYED_THREAT and self.ctx.tier >= 1 and not self.chase_depth, nosafe=NO_SAFE_MOVE and self.ctx.tier >= 1 and not self.chase_depth)      # plan 61 A3 / A4: tier 1+, the root's chase only
             if why:
+                if why.startswith("delayed threat"):
+                    self.ctx.delayed_routes += 1
+                elif why.startswith("no safe move"):
+                    self.ctx.nosafe_routes += 1
                 ok, note = self._addresses(q, m, why)
                 if ok:
                     routes.append(R.Route(m, b.san(m), why))
