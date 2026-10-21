@@ -50,6 +50,8 @@ from catspace.incubator.analyst.discovery.state import Claim, State
 
 CORE_RUST = False        # plan 56 (2a): the task graph, the heap and the rules live in Rust (analyst_core.Scheduler, sched_*); the generator bodies below stay Python. The same answers (scripts/compare_scheduler.py --core)
 
+ROUTE_RUST = False       # plan 56 (2b): the route's replies are read by the Rust handler analyst_core.read_route (one call per route); the effects stay in the Python body. The same answers (scripts/compare_scheduler.py --route)
+
 
 def route_value(gains: list) -> int:
     """A route's value: the least over its replies (each closed by a rule or answered by an inner agenda); a route with no reply read is worth 0."""
@@ -809,7 +811,7 @@ def chase_route_g(node, m: chess.Move, promote: bool = False, cheap: bool = Fals
     ctx.route_depth += 1
     ctx.route_names.append(node.board.san(m))
     try:
-        res = (yield from chase_route_body_g(node, m, promote, cheap, override))
+        res = (yield from (chase_route_body_rs_g if ROUTE_RUST else chase_route_body_g)(node, m, promote, cheap, override))
         res["facts"] = list(dict.fromkeys(res.get("facts", []) + node._rf))
         if not cheap:
             node._gap_fact(m, promote, res)
@@ -1037,6 +1039,228 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
             res["timed"], res["mark"] = True, round(time.monotonic() - ctx.t0, 3) if ctx.t0 is not None else None
     ctx.routes[key] = res
     return res
+
+
+def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: bool = False, override: "dict | None" = None) -> dict:
+    """One forcing route of the chase: every reply of theirs, the whole agenda on each resulting position. -> {value, killed, gap, parts, lemmas}.
+    52.17 (4) `cheap`: CHEAPEST REPLY FIRST -- only what the rules close is read (standing kills, a reply that mates or stalemates us, a mate in one, the exchange with nothing of
+    theirs, a promotion that stands); a reply that needs an inner agenda leaves the route PENDING (not memoised) and the closed replies are kept for the second pass.
+    52.15 (2) `promote`: the question is a promotion; a reply is answered when the inner agenda claims the promotion (or a mate), or the reply itself gave up at least the
+    stake in material; the roots asked there are those of stake >= the promote stake, and the route's value is the promote stake (a mate: 100).
+    PLAN 56 (2b): the replies are read by the Rust handler `analyst_core.read_route` (one call per route: the standing kill, the reading order, the dead / mate-in-one / exchange / open kind of every reply, the need and the chain flags); the effects on shared state stay here, in the order of the reads."""
+    b, ctx = node.board, node.ctx
+    key = (AG._pos_key(b.fen()), m.uci() + (":promote" if promote else "") + (":refuter" if override else ""))      # 52.22 (3) `override`: reply uci -> (value, part, facts) read by the refuter fix, not by an inner agenda
+    pre = node._pre.pop(key, None) if not cheap else None      # the replies the cheap pass closed by rule (value, why)
+    cq = node._chase_q
+    gstake = cq.stake if cq is not None and cq.goal == "win" and cq.pattern.get("target") is not None else 0        # 52.22 (1): what the exchange must reach to close a reply by rule
+    if key in ctx.routes:
+        hit = ctx.routes[key]
+        stale = hit["gap"] is None and hit["killed"] is None and gstake and hit.get("closed_min", gstake) < gstake and hit.get("stake_checked", 0) < gstake       # a value closed by a short exchange under a lesser goal is not this goal's
+        if hit["gap"] is None and not stale:
+            return hit
+        slice_now = max(ctx.deadline - time.monotonic(), 0) if ctx.deadline is not None else None
+        if not stale and (slice_now <= hit.get("cut_slice", 0) if slice_now is not None else ctx.left <= hit["cut_left"]):      # 52.13 (2a): a GAP stays a GAP while the fuse left is no more than when it was cut; 52.23 (11): under a time budget, while its slice is no longer than the one it was cut on
+            ctx.gap_reused += 1
+            return dict(hit, reused=True)
+    san = b.san(m)
+    c = b.copy(stack=False)
+    c.push(m)
+    res = dict(value=0, killed=None, gap=None, parts=[], lemmas=[])
+    rr = AC.read_route(b.fen(), m.uci(), bool(node.me), node.min_stake, AG.NEED_AWARE_CLOSE, bool(promote), max(1, node.min_stake) if AG.NEED_PROPAGATION else 1,
+                       cq.stake if cq is not None and cq.goal == "win" and cq.pattern.get("target") is not None else None, BD.MATE_VALUE, R.STAKE_PROMOTE, list(override) if override else [], list(pre) if pre else [], ctx.reply_kills if not promote else None)
+    P0, P1 = rr["p0"], rr["p1"]
+    if P1.legal_count() == 0:
+        if c.is_checkmate():
+            res.update(value=BD.MATE_VALUE, parts=[f"{san} mates"])
+        else:
+            res["killed"] = "stalemate"
+        ctx.routes[key] = res
+        return res
+    pos_of: dict = {}
+
+    def P2_of(uci: str) -> "AC.Pos":
+        if uci not in pos_of:
+            pos_of[uci] = P1.push(uci)
+        return pos_of[uci]
+
+    def san_of(uci: str) -> str:
+        return c.san(chess.Move.from_uci(uci))
+    # the standing kill (52.13 (4)) was read by the handler over every reply before anything else; a hit ends the route at once and is counted
+    kill_uci = None                                          # 52.22 (3): the reply that killed the route: its piece is the REFUTER (Ideas.Refuter.Refutes)
+    if rr["standing"] is not None:
+        kill_uci, sk_dbal, sk_k = rr["standing"]
+        _, _, sk_reads, sk_san = ctx.reply_kills[kill_uci][sk_k]
+        res["killed"] = f"after {san_of(kill_uci)}: no claim of ours and no material gain (standing kill: nothing the inner agenda read after {sk_san} {san_of(kill_uci)} has changed)"
+        ctx.standing += 1
+        node._log(key, kill_uci, "standing", sk_dbal, None, sorted(sk_reads), res["killed"])
+        res["refuter"] = kill_uci
+        ctx.routes[key] = res
+        return res
+    gains = []
+    closed_now = {}
+    closed_min = BD.MATE_VALUE                               # the least value an exchange closed a reply at (the memo entry keeps it: another goal's stake may ask for more)
+    for uci, dbal, kind, best, chk, fen2, need, since0, exch, unmet in rr["rows"]:
+        san_r = san_of(uci)
+        kill_uci = uci
+        if override and uci in override:                     # 52.22 (3): the reply the refuter fix answered
+            val, part, ofacts = override[uci]
+            gains.append(val)
+            res["parts"].append(part)
+            node._rf.extend(f for f in ofacts if f not in node._rf)
+            continue
+        if pre is not None and uci in pre:                   # closed by rule in the cheap pass: counted and logged there
+            val, why = pre[uci]
+            if val < BD.MATE_VALUE:
+                closed_min = min(closed_min, val)
+            gains.append(val)
+            res["parts"].append(f"after {san_r}: closed by rule: {why} -> {val}")
+            continue
+        if kind == "dead":
+            res["killed"] = f"after {san_r} " + ("they mate us" if chk else "stalemate")
+            node._log(key, uci, "killed", dbal, None, None, res["killed"])
+            break
+        closed = (BD.MATE_VALUE, "mate in one") if kind == "mate1" else None
+        if kind == "exch":                                   # the exchange meets the route's need: the goal's unmet fix and THEIR pass (whole agendas) decide, in the order of the reads
+            blocked = False
+            if unmet:
+                fix = node._unmet_fix(P2_of(uci), cq)
+                if fix:
+                    ctx.unmet += 1
+                    line = f"not closed by rule: the goal ({cq.text}, stake {cq.stake}) is not met by the exchange ({dbal + best:+d}); a forcing fix remains ({fix})"
+                    if line not in ctx.open_lines:
+                        ctx.open_lines.append(line)
+                    blocked = True
+            if not blocked:
+                t_, _cl = node._their_pass(fen2)
+                if not t_:
+                    closed = (dbal + best, f"exchange +{best} ({R.exchange_read(chess.Board(fen2))}), nothing of theirs")
+        if closed is not None:
+            val, why = closed
+            if val < BD.MATE_VALUE:
+                closed_min = min(closed_min, val)
+            gains.append(val)
+            res["parts"].append(f"after {san_r}: closed by rule: {why} -> {val}")
+            ctx.closed += 1
+            closed_now[uci] = closed
+            node._log(key, uci, "closed", dbal, val, None, why)
+            continue
+        if promote and dbal < node.promote_stake:
+            why = node._promote_stands(m, P2_of(uci))
+            if why is not None:
+                res["killed"] = f"after {san_r}: {why}"
+                ctx.promote_stands += 1
+                node._log(key, uci, "killed", dbal, None, None, res["killed"])
+                break
+        if cheap:                                            # the reply needs an inner agenda: the route stays open for the second pass
+            res["pending"] = True
+            break                                            # (the replies after it stay for the second pass: reading them all by rule cost 20x their agendas)
+        P2 = P2_of(uci)
+        dfs = frozenset(P0.diff(P2))
+        node._enter_reply(dfs)
+        inn = (yield T('reply', inner_g(node, fen2, need, dfs, since=0 if since0 else node.since_capture + 1, exchange=exch), node))      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
+        if inn is None:
+            res["gap"] = node._cut(san, san_r)
+            res["reply"] = uci
+            ctx.budget_hits += 1
+            node._log(key, uci, "gap", dbal, None, None, res["gap"])
+            break
+        if promote:                                          # 52.15 (2): the inner agenda asked the promote root (and the mates) again on this reply
+            pc = inn.get("promote")
+            if inn["value"] >= BD.MATE_VALUE:
+                g, part = BD.MATE_VALUE, f"{inn['claim'].what} ({inn['claim'].line}; value {inn['claim'].value})"
+            elif pc is not None:
+                g, part = R.STAKE_PROMOTE, f"{pc.what} ({pc.line}; value {pc.value}, lemma {pc.lemma})"
+            elif inn["claim"] is not None and inn["value"] >= node.promote_stake:     # a claim of at least the stake (the agenda stops at it: the promote root itself is then not asked)
+                g, part = R.STAKE_PROMOTE, f"{inn['claim'].what} ({inn['claim'].line}; value {inn['claim'].value}, at least the stake {node.promote_stake})"
+            elif dbal >= node.promote_stake:
+                g, part = dbal, f"material {dbal:+d} (the reply gave up at least the stake {node.promote_stake})"
+            elif dbal <= 0 and inn["claim"] is not None and inn["value"] >= 1 - dbal:       # no promotion, but the material the reply cost is won back and more (the ordinary chase's reading)
+                g, part = dbal + inn["value"], f"{inn['claim'].what} ({inn['claim'].line}; value {inn['claim'].value}) wins the material back: {dbal:+d} + {inn['value']}"
+                res["material"] = True
+            elif inn.get("cut"):
+                res["gap"] = node._cut(san, san_r, True)
+                res["reply"] = uci
+                ctx.budget_hits += 1
+                node._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
+                break
+            else:
+                res["killed"] = f"after {san_r}: the promotion is not claimed (no promote claim of ours; the reply took {-dbal})" if dbal <= 0 else f"after {san_r}: the promotion is not claimed ({dbal:+d}, below the stake)"
+                node._log(key, uci, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
+                break
+            gains.append(g)
+            res["parts"].append(f"after {san_r}: {part} -> {g}")
+            node._log(key, uci, "claim", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
+            if pc is not None:
+                res["lemmas"].append(pc.lemma)
+            continue
+        static = dbal >= 1 and inn["value"] < BD.MATE_VALUE
+        t_their, claim_their, unparried, parry_note = 0, None, 0, None
+        if static and not chk:                    # 52.13 (3), 52.14: a gain that stands only as a static balance (us to move) is a result only once THEIR agenda has read it, with the move passed to them, at every chase depth
+            t_their, claim_their = node._their_pass(fen2)
+            if claim_their is not None:
+                ctx.static_read += 1
+            if claim_their is not None and dbal - t_their < 1:
+                # 52.14: their claim is a THREAT and a SAVE root of the inner agenda on this position (we are to move: a parry, a counter, taking the attacker); the reply is
+                # killed only by the threats no parry of ours is verified for
+                inn2 = (yield T('reply', inner_g(node, fen2, need, dfs, their=ctx.their_ags.get(AG._pos_key(G.with_turn(chess.Board(fen2), not node.me).fen())), keep=dbal), node))
+                if inn2 is None:
+                    res["gap"] = node._cut(san, san_r)
+                    res["reply"] = uci
+                    ctx.budget_hits += 1
+                    node._log(key, uci, "gap", dbal, None, None, res["gap"])
+                    break
+                inn = dict(inn, cut=inn.get("cut") or inn2.get("cut"))
+                held = [(cl, pc) for cl, pc in inn2["threats"] if pc is not None]
+                lost = [cl for cl, pc in inn2["threats"] if pc is None]
+                unparried = sum(cl.value for cl in lost)
+                parry_note = "; ".join(f"their {cl.what} wins {cl.value} if we pass; parry: {pc.what} (lemma {pc.lemma}) keeps {pc.value:+d}" for cl, pc in held)
+                if lost:
+                    ctx.static_unparried += 1
+                else:
+                    ctx.static_parried += 1
+                node._static_line(san, san_r, dbal, claim_their, parry_note, lost)
+                if dbal - unparried < 1:
+                    worst = max(lost, key=lambda cl: cl.value) if lost else claim_their
+                    res["killed"] = f"after {san_r}: {dbal:+d} stands only as a balance, their {worst.what} wins {worst.value} (lemma {worst.lemma}), no parry"
+                    node._log(key, uci, "killed", dbal, inn["value"], None, res["killed"])
+                    break
+                claim_their = None
+            else:
+                unparried = t_their
+        if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and inn.get("cut"):
+            res["gap"] = node._cut(san, san_r, True)
+            res["reply"] = uci
+            ctx.budget_hits += 1
+            node._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
+            break
+        if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE:
+            res["killed"] = f"after {san_r}: " + (f"our best claim {inn['claim'].what} wins {inn['value']}, the reply took {-dbal}" if inn["claim"] else "no claim of ours and no material gain") + f" ({dbal:+d})"
+            if inn["claim"] is None and not inn.get("cut"):          # a standing kill: the later routes' same reply is skipped while the reads stay untouched
+                ctx.reply_kills.setdefault(uci, []).append((P2, dbal, inn.get("reads"), san))
+            node._log(key, uci, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
+            break
+        cl = inn["claim"] if inn["value"] >= need else None
+        gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else max(dbal - unparried, dbal + inn["value"] if cl and AG.NEED_PROPAGATION else dbal - unparried) if static else dbal + (inn["value"] if cl else 0))      # 52.23 (7): a reply that already gains carries the inner claim too (it answers every reply of theirs): zBouR's Rxf1+ Kd2 Rf2+, +5 then the queen
+        res["parts"].append(f"after {san_r}: " + (f"{cl.what} ({cl.line}; value {cl.value})" if cl else f"material {dbal:+d}" + (f", their {claim_their.what} wins {t_their} if we pass" if claim_their else "") + (f", {parry_note}" if parry_note else "")) + (f" -> {gains[-1]}" if cl or claim_their or parry_note else ""))
+        node._log(key, uci, "claim" if cl else "material", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
+        if cl:
+            res["lemmas"].append(cl.lemma)
+    if cheap and res.get("pending") and res["killed"] is None:
+        node._pre[key] = closed_now                          # not memoised: the second pass finishes it
+        return res
+    res["closed_min"], res["stake_checked"] = closed_min, gstake
+    if res["killed"] is not None and kill_uci is not None:
+        res["refuter"] = kill_uci
+    if res["killed"] is None and res["gap"] is None:
+        res["value"] = route_value(gains)
+    if res["gap"] is not None:
+        res["cut_left"] = ctx.left
+        res["cut_slice"] = ctx.slice_len                     # 52.23 (11): the slice this route had when it was cut (a later, longer slice re-runs it)
+        if res["gap"].startswith("out of time"):                # 52.17 (5): the deadline mark on the GAP memo entry beside cut_left: the background tier resumes exactly here
+            res["timed"], res["mark"] = True, round(time.monotonic() - ctx.t0, 3) if ctx.t0 is not None else None
+    ctx.routes[key] = res
+    return res
+
 
 
 def inner_g(node, fen: str, need: int, diff: "frozenset | None" = None, their: "Agenda | None" = None, keep: int = 0, since: int | None = None, exchange: bool = False) -> "dict | None":

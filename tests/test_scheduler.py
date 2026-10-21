@@ -267,3 +267,133 @@ def test_0lrtf_on_the_rust_core_is_the_same_as_the_python_scheduler(rust_core):
     SC.CORE_RUST = False
     old = decide("0LRTF", True)
     assert new["decision"] == "Rh8+" and old == new
+
+
+# ---- plan 56 (2b): the route reader (analyst_core.read_route) as a handler ----------------------------------------------------------------------------------------------------------
+
+import chess  # noqa: E402
+
+READ_FENS = {
+    "07Z0P": "2r2rk1/1p4bp/6p1/pP1qpp2/6PP/P1n1BQ2/2B2R2/5RK1 w - - 1 29",                    # exchanges close; checks among the replies
+    "0LRTF": "2k5/2P4R/1K6/8/8/p7/8/2r5 w - - 6 62",                                          # a promotion race: mates in one among the replies
+    "back_rank": "3r2k1/5ppp/8/8/8/8/5PPP/R2R2K1 w - - 0 1",                                 # replies that leave us no move (they mate us / stalemate), mates in one, exchanges, open
+    "scholar": "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4",
+    "in_check": "4k3/8/8/8/8/8/3PPP2/r3K3 w - - 0 1",                                        # the side to move is in check
+    "middlegame": "r3k2r/ppp2ppp/2n5/3q4/3P4/2N2N2/PPP2PPP/R2QK2R w KQkq - 0 1",
+}
+
+
+def reference_rows(fen, uci, white, min_stake=1, need_aware=False, promote=False, target=1, goal_stake=None, skip=()):
+    """The reading order and the kinds, derived with the `Pos` methods of plan 54 and agenda.py's rules, in the Python of `_chase_route_body` / `_closed_by_rule`."""
+    P0 = AC.Pos(fen)
+    P1 = P0.push(uci)
+    shift = P1.balance(white) - P0.balance(white)
+    b = chess.Board(fen)
+    route_capture = b.is_capture(chess.Move.from_uci(uci))
+    rows = [(shift + d, u, chk, cap, rec, m1) for u, d, chk, cap, rec, m1 in P1.replies()]
+    rows.sort(key=lambda t: (0 if t[4] else 1 if t[2] else 2 if t[3] else 3, t[0], t[1]))
+    out = []
+    for dbal, u, chk, cap, rec, m1 in rows:
+        P2 = P1.push(u)
+        kind, best, need, f2 = "open", 0, 0, None
+        if u in skip:
+            kind = "skip"
+        elif P2.legal_count() == 0:
+            kind = "dead"
+        elif m1:
+            kind = "mate1"
+        elif not promote and dbal < 1 and not P2.is_check():
+            best = P2.exchange()
+            if best >= 1 - dbal and not (need_aware and dbal + best < min_stake):
+                kind = "exch"
+        if kind in ("exch", "open"):
+            f2 = P2.fen()
+            need = min(8, 1 - dbal) if promote and dbal <= 0 else 8 if promote else target - dbal if dbal < target else 100
+        out.append((u, dbal, kind, best if kind == "exch" else 0, chk, f2, need, route_capture and dbal >= 0, route_capture and rec,
+                    kind == "exch" and goal_stake is not None and dbal + best < goal_stake))
+    return out
+
+
+@pytest.mark.parametrize("name", list(READ_FENS))
+@pytest.mark.parametrize("promote", [False, True])
+def test_the_route_reader_gives_every_reply_the_kind_the_python_body_derives(name, promote):
+    fen = READ_FENS[name]
+    b = chess.Board(fen)
+    kinds = set()
+    for m in b.legal_moves:
+        rr = AC.read_route(fen, m.uci(), b.turn, 3, False, promote, 3, 5, 100, 8, [], [], None)
+        assert rr["standing"] is None
+        assert [tuple(r) for r in rr["rows"]] == reference_rows(fen, m.uci(), b.turn, 3, False, promote, 3, 5)
+        kinds |= {r[2] for r in rr["rows"]}
+    if name in ("back_rank", "scholar", "middlegame"):
+        print(f"OBS route reader {name} promote={promote}: kinds {sorted(kinds)}")
+    if name == "back_rank" and not promote:
+        assert {"dead", "mate1", "exch", "open"} <= kinds                       # all four kinds on one position
+
+
+def test_the_route_reader_need_aware_and_skips_and_the_checks():
+    fen = READ_FENS["07Z0P"]
+    b = chess.Board(fen)
+    m = next(m for m in b.legal_moves if b.san(m) == "Qxd5+")
+    first = AC.read_route(fen, m.uci(), True, 6, True, False, 6, None, 100, 8, [], [], None)["rows"]
+    assert [tuple(r) for r in first] == reference_rows(fen, m.uci(), True, 6, True, False, 6)
+    assert any(r[4] for mv in b.legal_moves for r in AC.read_route(fen, mv.uci(), True, 6, True, False, 6, None, 100, 8, [], [], None)["rows"])      # some reply of theirs gives check
+    skip = [first[0][0], first[-1][0]]
+    got = AC.read_route(fen, m.uci(), True, 6, True, False, 6, None, 100, 8, [skip[0]], [skip[1]], None)["rows"]
+    assert [tuple(r) for r in got] == reference_rows(fen, m.uci(), True, 6, True, False, 6, skip=skip)
+    assert got[0][2] == "skip"
+
+
+def test_the_route_reader_standing_kill_is_the_pythons_rule():
+    fen = READ_FENS["middlegame"]
+    b = chess.Board(fen)
+    P0 = AC.Pos(fen)
+    moves = [m.uci() for m in b.legal_moves]
+    n_hit = 0
+    for a in moves[:12]:
+        Pa = P0.push(a)
+        for rep in [r for r in Pa.replies()][:6]:
+            uci, dbal0 = rep[0], rep[1] + Pa.balance(True) - P0.balance(True)
+            for reads in (frozenset(), frozenset(range(64)), None):
+                kills = {uci: [(Pa.push(uci), dbal0, reads, "San")]}
+                for c_ in moves[12:20]:
+                    rr = AC.read_route(fen, c_, True, 1, False, False, 1, None, 100, 8, [], [], kills)
+                    P1 = P0.push(c_)
+                    shift = P1.balance(True) - P0.balance(True)
+                    want = None
+                    for u, d, *_ in P1.replies():
+                        if u != uci:
+                            continue
+                        d += shift
+                        if reads is None or d >= 1 or dbal0 < d:
+                            continue
+                        if not (reads & frozenset(kills[uci][0][0].diff(P1.push(u)))):
+                            want = (u, d, 0)
+                    got = rr["standing"]
+                    assert (tuple(got) if got else None) == want
+                    n_hit += got is not None
+                    assert not got or rr["rows"] == []
+    print(f"OBS route reader standing kills matched {n_hit} times")
+    assert n_hit > 0
+
+
+@pytest.fixture
+def route_rust():
+    SC.CORE_RUST = SC.ROUTE_RUST = True
+    try:
+        yield
+    finally:
+        SC.CORE_RUST = SC.ROUTE_RUST = False
+
+
+@pytest.mark.parametrize("pid", ["0LRTF", "07Z0P"])
+def test_the_chase_with_the_rust_route_reader_decides_and_counts_the_same(pid):
+    SC.CORE_RUST = True
+    try:
+        old = decide(pid, True)
+        SC.ROUTE_RUST = True
+        new = decide(pid, True)
+    finally:
+        SC.CORE_RUST = SC.ROUTE_RUST = False
+    print(f"OBS route reader {pid}: decision {new['decision']}, inner agendas {new['chase'][0]}, replies closed by rule {new['chase'][2]}")
+    assert old == new

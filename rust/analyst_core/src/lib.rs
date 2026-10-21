@@ -24,6 +24,7 @@ mod goals;
 mod generated;
 mod pos;
 mod sched;
+mod handlers;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::collections::HashMap;
@@ -1579,6 +1580,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     }
     m.add_class::<pos::Pos>()?;
     m.add_class::<sched::Sched>()?;
+    m.add_function(wrap_pyfunction!(handlers::read_route, m)?)?;
     m.add_function(wrap_pyfunction!(sched::sched_route_value, m)?)?;
     m.add_function(wrap_pyfunction!(sched::sched_best_route, m)?)?;
     m.add_function(wrap_pyfunction!(sched::sched_question_killed, m)?)?;

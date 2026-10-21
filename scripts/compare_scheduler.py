@@ -27,9 +27,10 @@ def worker(target: str, mode: str, prior: bool, out: str) -> None:
     from catspace.incubator.analyst.discovery import analyse as AN
     AG.SCHEDULER = sched
     AG.PRIOR = prior
-    if mode == "rust":
+    if mode in ("rust", "route"):
         from catspace.incubator.analyst.discovery import scheduler as SC0
         SC0.CORE_RUST = True
+        SC0.ROUTE_RUST = mode == "route"                            # plan 56 (2b): the Rust route reader
     roots: list = []
     fin = AG.Agenda._ask_finish
 
@@ -74,13 +75,15 @@ def main() -> None:
     ap.add_argument("--prior", action="store_true", help="both sides with agenda.PRIOR on")
     ap.add_argument("--core", action="store_true", help="plan 56 (2a): the Python scheduler (old) vs the Rust core (new)")
     ap.add_argument("--core-vs-recursive", action="store_true", help="the recursive chase (old) vs the Rust core (new)")
+    ap.add_argument("--route", action="store_true", help="plan 56 (2b): the Rust core (old) vs the Rust core with the Rust route reader (new)")
+    ap.add_argument("--route-vs-recursive", action="store_true", help="the recursive chase (old) vs the Rust core with the Rust route reader (new)")
     ap.add_argument("--worker", nargs=4, metavar=("TARGET", "SCHED", "PRIOR", "OUT"))
     a = ap.parse_args()
     if a.worker:
         worker(a.worker[0], a.worker[1], a.worker[2] == "1", a.worker[3])
         return
     total = 0
-    m_old, m_new = ("py", "rust") if a.core else ("rec", "rust") if a.core_vs_recursive else ("rec", "py")
+    m_old, m_new = ("rust", "route") if a.route else ("rec", "route") if a.route_vs_recursive else ("py", "rust") if a.core else ("rec", "rust") if a.core_vs_recursive else ("rec", "py")
     print(f"OBS scheduler compare: old = {m_old}, new = {m_new}")
     for t in a.targets:
         old, new = run(t, m_old, a.prior), run(t, m_new, a.prior)

@@ -10,15 +10,28 @@ use super::*;
 use pyo3::exceptions::PyValueError;
 use shakmaty::Bitboard;
 
-fn bal(p: &Chess, owner: Color) -> i64 {
+pub(crate) fn bal(p: &Chess, owner: Color) -> i64 {
     crate::vocab::material(p.board(), owner) - crate::vocab::material(p.board(), !owner) + 64
 }
 
 #[pyclass]
 #[derive(Clone)]
 pub struct Pos {
-    pos: Chess,
-    last_to: Option<Square>,
+    pub(crate) pos: Chess,
+    pub(crate) last_to: Option<Square>,
+}
+
+impl Pos {
+    pub(crate) fn from_fen(fen: &str) -> PyResult<Pos> {
+        parse(fen).map(|pos| Pos { pos, last_to: None }).ok_or_else(|| PyValueError::new_err(format!("illegal or unparsable fen: {fen}")))
+    }
+    pub(crate) fn push_move(&self, uci: &str) -> PyResult<Pos> {
+        let m = shakmaty::uci::UciMove::from_ascii(uci.as_bytes()).ok().and_then(|u| u.to_move(&self.pos).ok())
+            .ok_or_else(|| PyValueError::new_err(format!("illegal move {uci}")))?;
+        let mut q = self.pos.clone();
+        q.play_unchecked(&m);
+        Ok(Pos { pos: q, last_to: Some(m.to()) })
+    }
 }
 
 #[pymethods]
@@ -62,31 +75,40 @@ impl Pos {
     }
 
     /// The squares whose piece or attacker counts (either colour) differ between this position and `other`.
-    fn diff(&self, other: &Pos) -> Vec<u8> {
-        let (a, b) = (self.pos.board(), other.pos.board());
-        let mut out = vec![];
-        for i in 0..64u32 {
-            let s = Square::new(i);
-            let occ = (a.occupied(), b.occupied());
-            let cnt = |bd: &shakmaty::Board, o: Bitboard, c: Color| bd.attacks_to(s, c, o).count();
-            if a.piece_at(s) != b.piece_at(s)
-                || cnt(a, occ.0, Color::White) != cnt(b, occ.1, Color::White)
-                || cnt(a, occ.0, Color::Black) != cnt(b, occ.1, Color::Black) {
-                out.push(i as u8);
-            }
-        }
-        out
-    }
+    fn diff(&self, other: &Pos) -> Vec<u8> { pos_diff(&self.pos, &other.pos) }
 
     /// The best static exchange the SIDE TO MOVE has on a piece of the other side (a non-king piece it attacks); 0 when none.
-    fn exchange(&self) -> i64 {
-        let b = self.pos.board();
-        let us = self.pos.turn();
-        let mut best = 0;
-        for s in b.by_color(!us) {
-            if b.role_at(s) == Some(Role::King) || b.attacks_to(s, us, b.occupied()).is_empty() { continue; }
-            best = best.max(crate::rules::see(b, s, us));
-        }
-        best
-    }
+    fn exchange(&self) -> i64 { pos_exchange(&self.pos) }
 }
+
+/// The squares whose piece or attacker counts (either colour) differ between two positions.
+pub(crate) fn pos_diff(pa: &Chess, pb: &Chess) -> Vec<u8> {
+    let (a, b) = (pa.board(), pb.board());
+    let mut out = vec![];
+    for i in 0..64u32 {
+        let s = Square::new(i);
+        let occ = (a.occupied(), b.occupied());
+        let cnt = |bd: &shakmaty::Board, o: Bitboard, c: Color| bd.attacks_to(s, c, o).count();
+        if a.piece_at(s) != b.piece_at(s)
+            || cnt(a, occ.0, Color::White) != cnt(b, occ.1, Color::White)
+            || cnt(a, occ.0, Color::Black) != cnt(b, occ.1, Color::Black) {
+            out.push(i as u8);
+        }
+    }
+    out
+}
+
+/// The best static exchange the side to move has on a piece of the other side; 0 when none.
+pub(crate) fn pos_exchange(p: &Chess) -> i64 {
+    let b = p.board();
+    let us = p.turn();
+    let mut best = 0;
+    for s in b.by_color(!us) {
+        if b.role_at(s) == Some(Role::King) || b.attacks_to(s, us, b.occupied()).is_empty() { continue; }
+        best = best.max(crate::rules::see(b, s, us));
+    }
+    best
+}
+
+/// The side to move has a mate in one.
+pub(crate) fn pos_mate_in_one(p: &Chess) -> bool { p.legal_moves().iter().any(|m| { let mut r = p.clone(); r.play_unchecked(m); r.is_checkmate() }) }
