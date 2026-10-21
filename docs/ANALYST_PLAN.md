@@ -2697,3 +2697,26 @@ prior put Q6 before Q1; the budget ended before Q1"). Training: listwise -- a so
 decision by the grader) as the target; the log already carries goal, square and verdict. Data: log the INNER agendas too (hundreds per puzzle, each with
 its own pool and deciding question) and run the loop for hours. Size: 769 -> 256 -> 256 (about 200k parameters), tens of microseconds per call in torch /
 numpy, asked a few hundred times per puzzle (not the bottleneck); the NNUE accumulator trick only if it ever is. Keep the loop's invariant and metrics (53 (3)).
+
+### 56 The question scheduler: the chase as a task graph on priority queues, not a recursion (Kaveh 2026-10-20: "It shouldn't be recursive. We need urgent and non-urgent computation queues, and place questions in the queue or change priorities of questions and have workers pick the highest priority")
+Today the chase is depth-first per root: a root is asked to its end (its routes, every reply, the inner agenda on each unclosed reply, recursively) before
+the next root is picked; the inner agendas' pools are ordered by stake; the prior reaches only the root's pool; sharing between roots is the fuse's
+half rule and the time slices. The scheduler replaces the recursion with an explicit TASK GRAPH and a worker loop:
+* TASKS: `ask(question @ node)` (read defects, fixes, routes; verify; else open a `chase`), `route(question, move @ node)` (read every reply at the static
+  leaf, close what the rules close, spawn `reply` tasks for the rest), `reply(route, reply @ node')` (open the inner agenda's roots as `ask` tasks on node',
+  with the need), `their_pass(node)` (their roots as tasks, side flipped). Each task records what it WAITS ON; a result propagates up the graph by the
+  SAME rules as today: a route's value = min over its replies (closed or answered), a question's claim = its best route (the tie-break of 53 (3)), a
+  node's answer = its best claim against its need, and a question is killed when every route is -- the recursion's values, computed by continuation.
+* QUEUES: URGENT (the chain the current decision waits on: the root in hand, its open replies, a save-king in check, the route in hand at a deadline)
+  and BACKGROUND (gap routes, the ponder queue of 52.19, their agendas not yet needed). Priority within a queue = (urgency, the prior's score when on,
+  stake, depth); a task's priority may be CHANGED while it waits (a bigger claim found elsewhere lowers every task whose question it now dominates;
+  the prior may be re-read). Workers pop the highest; the loop stops by the same rules (a claim above every open stake, every task settled, the
+  deadline: tasks in flight finish, as the route in hand does today).
+* THE INVARIANT (the standing rule on interpretability): the decisions and claim values are independent of the schedule. Test: run with the stake
+  order, with the prior, and with SHUFFLED priorities (several seeds); decisions and claim values identical on 07Z0P, 0LRTF, rand1-3; any difference
+  that is not the budget's cut is a bug.
+Stages: (1) the task graph in ONE process with one worker loop, the same decisions as the recursive chase on the five targets (a harness like
+plan 54's: the recursive path kept behind a flag, every decision and claim value diffed), the fuse accounting carried over as task budgets; (2) the
+two queues, re-prioritisation, the prior as a priority at every node (plan 55's map when it exists), the shuffle test; (3) WORKERS as processes with a
+shared fact store (the store's reads/writes are the only shared state; the memo per process), measured on the samples. Python first (Kaveh: RL and
+loops in Python); the words stay in Rust (plan 54).
