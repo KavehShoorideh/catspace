@@ -15,6 +15,7 @@ The prior ORDERS, it never decides (the all-weapons rule): the agenda still stop
 
 Run:  .venv/bin/python -m catspace.incubator.analyst.discovery.question_prior build [--log question_log.jsonl] [--out question_prior.json]
       .venv/bin/python -m catspace.incubator.analyst.discovery.question_prior loop --seeds 9-12 --rounds 2 [--per-round N]   (plan 53 (3): sample, run, grade, retrain, eval)
+      .venv/bin/python -m catspace.incubator.analyst.discovery.question_prior calibrate [--log estimates_log.jsonl]   (plan 61 B3: Stockfish scores the logged estimated leaves; the HELD fraction per class)
       .venv/bin/python -m catspace.incubator.analyst.discovery.question_prior eval  (held-out by puzzle id: how often the deciding question ranks first)
 """
 from __future__ import annotations
@@ -181,6 +182,78 @@ def grade(log_path, depth: int = 14) -> None:
     print(f"OBS prior grade: {n} decisions graded by Stockfish (depth {depth}) over {len(agendas)} agendas: " + ", ".join(f"{k} {v}" for k, v in sorted(Counter(agendas.values()).items(), key=lambda t: str(t[0]))))
 
 
+EST_LOG = "estimates_log.jsonl"
+CALIBRATION = "estimate_calibration.json"
+DEFAULT_CONFIDENCE = 0.5                          # plan 61 B2: the confidence of an estimated leaf's class until `calibrate` has measured it
+_cal = [None]
+
+
+def estimate_confidence(cls: str) -> float:
+    """plan 61 B2/B3: the confidence of an estimated leaf of class `cls` -- the HELD fraction `calibrate` wrote to data/derived/estimate_calibration.json, nothing else; DEFAULT_CONFIDENCE
+    when the file or the class is absent."""
+    if _cal[0] is None:
+        try:
+            with open(paths.derived(CALIBRATION)) as fh:
+                _cal[0] = json.load(fh)
+        except (OSError, ValueError):
+            _cal[0] = {}
+    row = _cal[0].get(cls)
+    return float(row["confidence"]) if isinstance(row, dict) and row.get("n") else DEFAULT_CONFIDENCE
+
+
+def held(status: int, sf_cp: "int | None", tol: int = 50) -> "bool | None":
+    """plan 61 B3: did an estimate HOLD? The estimate's status is the leaf's material balance (ours) minus their pass threat; its SIGN against the level line is 'level or better' (>= 0) or
+    'worse' (< 0). Stockfish's centipawns from our side give the same sign with `tol` cp of slack around level (verdict.TOL): HELD iff the two signs agree. None when ungraded."""
+    if sf_cp is None:
+        return None
+    return (status >= 0) == (sf_cp >= -tol)
+
+
+def calibrate(log_path=None, depth: int = 14, out=None) -> dict:
+    """plan 61 B3: the CALIBRATION PASS (a separate process, never beside an agenda: the engine stalls the set runs). Every logged estimated leaf without a grade is scored by Stockfish at
+    `depth` (one call per FEN, cached) from the side to move at the leaf (ours); the rows are rewritten with `sf_cp` and `held`; the HELD fraction per class is written to
+    estimate_calibration.json -- the only source of an estimated claim's confidence. -> {class: {n, held, confidence}}."""
+    import chess.engine
+    from catspace.incubator.analyst.discovery import verdict as VD
+    log_path = log_path or paths.experiment(EST_LOG)
+    rows = _rows(log_path)
+    cache, n = {}, 0
+    for r in rows:
+        if r.get("sf_cp") is not None:
+            continue
+        e = VD._get()
+        if e is None:
+            break
+        if r["fen"] not in cache:
+            b = chess.Board(r["fen"])
+            cache[r["fen"]] = e.analyse(b, chess.engine.Limit(depth=depth))["score"].pov(chess.WHITE if r["us"] == "w" else chess.BLACK).score(mate_score=10000)
+            n += 1
+        r["sf_cp"] = cache[r["fen"]]
+        r["held"] = held(r["status"], r["sf_cp"])
+    VD.close()
+    tmp = str(log_path) + ".tmp"
+    with open(tmp, "w") as fh:
+        for r in rows:
+            fh.write(json.dumps(r) + "\n")
+    os.replace(tmp, log_path)
+    table: dict = {}
+    for r in rows:
+        if r.get("held") is None:
+            continue
+        t = table.setdefault(r["cls"], dict(n=0, held=0))
+        t["n"] += 1
+        t["held"] += int(bool(r["held"]))
+    for t in table.values():
+        t["confidence"] = round(t["held"] / t["n"], 4)
+    out = out or paths.derived(CALIBRATION)
+    with open(out, "w") as fh:
+        json.dump(table, fh, indent=1, sort_keys=True)
+    _cal[0] = None
+    print(f"OBS estimate calibrate: {len(rows)} logged leaves, {n} scored by Stockfish (depth {depth}), "
+          + (", ".join(f"{k}: held {v['held']} of {v['n']} (confidence {v['confidence']})" for k, v in sorted(table.items())) or "none graded"))
+    return table
+
+
 def reward(rows: list) -> dict:
     """plan 53 (3): the loop's reward over a set of log rows (pure). Per agenda (id, set): right = Stockfish RIGHT (or the puzzle's answer when ungraded), wrong = a decision
     that is not right, none = no decision. The reward is the mean number of questions asked BEFORE the deciding one (its `order`), over right decisions only; lower is better."""
@@ -292,7 +365,7 @@ def loop_metrics(rows: list, prev_model: dict | None, model: dict) -> dict:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("mode", choices=("build", "eval", "grade", "loop"))
+    ap.add_argument("mode", choices=("build", "eval", "grade", "calibrate", "loop"))
     ap.add_argument("--seeds", default="9-10")
     ap.add_argument("--rounds", type=int, default=1)
     ap.add_argument("--per-round", type=int, default=1)
@@ -306,6 +379,8 @@ def main(argv=None):
         build(log, a.out or paths.derived(MODEL))
     elif a.mode == "grade":
         grade(log)
+    elif a.mode == "calibrate":
+        calibrate(a.log, out=a.out)
     else:
         evaluate(log)
 
