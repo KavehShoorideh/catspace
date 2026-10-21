@@ -61,6 +61,7 @@ CHASE_CLOCK = 99                                                # 52.23 (8): 99 
 DEEP_WIN_CHASE = False                                           # 52.23 (5) switch (bisect)
 PRIOR = False                                                   # plan 53 (2): the learned prior orders the root agenda's questions (analyse --prior); it never decides
 SCHEDULER = False                                               # plan 56 (1): the chase as an explicit TASK GRAPH on a priority queue with one worker loop (scheduler.py), not the recursion below; the same decisions (scripts/compare_scheduler.py)
+RAISE_TO_WIN = True                                             # plan 59 (4): under a time budget, a reached 'not losing' that is not 'winning' raises the line while time remains
 TIERS_UNDER_TIME = True                                         # plan 59 default (2026-10-20, graded on 85 random puzzles): ON whenever the budget is TIME -- the tiers share the seconds, so the cost is bounded
                                                                 # (s10: RIGHT 59 -> 61, WRONG 4 -> 4; hqGOF right again); under the COUNT fuse they stay OFF unless TIERS (fuse: +2 RIGHT for ~650 s extra on 25 widened puzzles)
 TIERS = False                                                   # plan 59: STATUS-DRIVEN WIDENING at the root -- tier 0 (today's moves), then wider tiers (settings of the root's ChaseCtx) only while no claim keeps our status; analyse --tiers; the play server honours it
@@ -678,8 +679,15 @@ class Agenda:
             st = self.status_info
             if kept and k > 0:
                 self.lines.append(f"tier {k} keeps the status: {overall[2].what}" + ("" if mate else f" ({st['balance'] + overall[0]:+d} against the line {st['line']})"))
-            stop = kept or k >= TIER_COUNT - 1 or self.ctx.abort
             left = None if total is None else total - (time.monotonic() - t0)
+            if RAISE_TO_WIN and kept and not mate and left is not None and left > 0.05 and k < TIER_COUNT - 1 and not self.ctx.abort \
+                    and st["line"] == 0 and overall is not None and st["balance"] + overall[0] < 1:
+                # plan 59 (4), Kaveh 2026-10-20 ("if we have time, yes; we'll figure out time management later"): 'not losing' is reached but not 'winning', and time remains: the
+                # line rises to 'stay ahead' and the widening goes on (kcQil: Qxf3 reaches level, Qc4 wins). Under a count budget (no time) nothing changes.
+                self.lines.append(f"STATUS kept at 'not losing' ({overall[2].what}: {st['balance'] + overall[0]:+d}) with {left:.1f} s left: the line rises to 'stay ahead' (1)")
+                self.status_info = st = dict(st, line=1, raised=True)
+                kept = False
+            stop = kept or k >= TIER_COUNT - 1 or self.ctx.abort
             if not stop and left is not None and left <= 0.05:           # (`ctx.hit` alone is a SLICE of the budget met, not the budget)
                 stop = True
             if k == 0 or not kept:

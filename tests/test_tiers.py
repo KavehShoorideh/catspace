@@ -173,3 +173,20 @@ def test_tiers_off_is_identical_to_the_decisions_before_plan_59(pid, set_name, d
     assert not any(l.startswith("OBS tiers") for l in lines)
     r2, lines2 = _decision(pid, set_name, TIERS=True)           # (these two keep the status at tier 0: the same decision, one tier)
     assert r2["decision"] == dec and r2["tiers"][-1]["tier"] >= 0
+
+
+QCX = "r3kb1r/p1P2ppp/b3p3/8/Q3PP2/3qpN1P/1P4P1/RN2K2R b KQkq - 1 16"     # qCXKp (rand3_10): tier 0 reaches level quickly (Bb5)
+
+
+def test_59_4_under_a_time_budget_a_reached_level_raises_the_line_and_widening_goes_on():
+    import chess
+    from catspace.incubator.analyst.discovery import agenda as AG
+    from catspace.incubator.analyst.discovery.state import state_of
+    side = "w" if chess.Board(QCX).turn else "b"
+    ag = AG.Agenda(state_of(QCX, side), seconds=1.0)
+    ag.ask()
+    assert ag.status_info.get("raised") and ag.status_info["line"] == 1 and len(ag.tier_info) > 1
+    assert any("the line rises to 'stay ahead'" in l for l in ag.lines)
+    ag2 = AG.Agenda(state_of(QCX, side))                      # under the count budget nothing changes: no tiers, no raise
+    ag2.ask()
+    assert getattr(ag2, "tier_info", None) in (None, [])
