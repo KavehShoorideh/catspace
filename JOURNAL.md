@@ -32041,3 +32041,11 @@ unless --tiers. Play server restarted on it. Findings: (1) kcQil is the rule wor
 so tier 0 keeps "not losing" and stops, while Qc4 wins (SF +1.94): the rule satisfices; whether a reached "level" should still look for "winning" is
 Kaveh's call; (2) the status uses guaranteed lower-bound values, so a right decision can read "not kept" (07Z0P: Qxd5+ claimed 1, balance -2) and pay
 for every tier; (3) x00hu stays undecided in every tier (the chain items under NO_FUSE found d3 in 28 s; under the tiered count fuse x 8 they do not).
+
+## 2026-10-20 21:16 PDT -- THE LINE RISES TO 'STAY AHEAD' WHEN TIME REMAINS (plan 59 (4))
+Kaveh, on kcQil (the rule settled for level when a win existed): "If we have time, yes. We'll have to figure out time management later." Built: under a
+time budget, when a tier keeps 'not losing' but the result is not 'winning' and time remains, the line rises to 1 and the widening continues; under a
+count budget nothing changes (RAISE_TO_WIN, on). OBS on 85 random puzzles at 10 s each (one run each, directional): the line rose on 8 (yPdql, CMCtT,
+g3fFw, qCXKp, XrnZi, 4rutN, x4B5k, kcQil); no decision changed; those puzzles spent their remaining seconds in the wider tiers (qCXKp 9.9 s in tier 3).
+kcQil still plays Qxf3: Qc4 is cut in every tier (tier 0 by the time slice at Rxd4, tier 1 by the fuse at Qf5); only the old unlimited-depth regime
+found it. That is the time-management question Kaveh deferred: how the seconds are split between depth (a deeper tier 0) and width (more tiers).
