@@ -72,6 +72,8 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
         log(f"OBS leaf {p['id']}: {line}")
     decided = d.what if d else "none"
     estimated = ag.decision_estimated()
+    if ag.ctx.est_routes or ag.ctx.est_why:
+        log(f"OBS estimate gaps {p['id']}: not estimated {dict(ag.ctx.est_why)}")
     if ag.ctx.est_routes:
         log(f"OBS estimate {p['id']}: gap routes closed as estimated {ag.ctx.est_routes}, estimated claims {len(st.estimated)}, decision {decided}" + (" ESTIMATED" if estimated else " (proved)" if d else ""))
     sfv = (None, None, None)

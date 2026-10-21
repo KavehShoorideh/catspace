@@ -187,6 +187,7 @@ class ChaseCtx:
         self.est_rows: list = []                  # plan 61 B2: the estimated leaves of this root (written to estimates_log.jsonl by `decision()`)
         self.est_set = ""                         # ... the set name the rows carry
         self.est_routes = 0                       # ... gap routes that closed as an estimated claim
+        self.est_why: dict = {}                   # ... and, for the gap routes that did not, the reason (a counter for the OBS line)
         self.overload_opens = 0                   # 2026-10-20: replies not closed by the exchange because our capture left a duty (their claim after it)
         self.unmet = 0                            # 52.22 (1): replies NOT closed by the exchange because the chased goal (win the piece) is not met by it and a forcing fix of its defect remains
         self.open_lines: list = []                # ... and the trace line of each (printed by the root)
@@ -2428,6 +2429,9 @@ class Agenda:
         t, _cl = self._their_pass(fen)
         return t == 0
 
+    def _est_no(self, why: str) -> None:
+        self.ctx.est_why[why] = self.ctx.est_why.get(why, 0) + 1
+
     def _estimate_route(self, m: chess.Move, res: dict) -> None:
         """plan 61 B2 THE QUIET-STATUS ESTIMATE. A route that ended as a GAP (the fuse, the clock) keeps its flow exactly as before (a gap, counted, never a kill); in ADDITION, when every reply
         from the cut on is either closed by rule or a QUIET leaf, the route has an ESTIMATED value: the least of the replies read before the cut and, for each quiet leaf, its static status (material
@@ -2446,12 +2450,12 @@ class Agenda:
         reply = res.get("reply")
         idx = 0 if reply is None else next((i for i, t in enumerate(rows) if t[1] == reply), -1)
         if idx < 0 or len(before) != idx:
-            return
+            return self._est_no("replies read before the cut not recoverable")
         gains, confs, leaves = list(before), [], []
         for dbal, uci, chk, cap, rec, mate1 in rows[idx:]:
             P2 = P1.push(uci)
             if P2.legal_count() == 0:
-                return                                              # they mate us / stalemate: a refutation for the rules to read, not a leaf to estimate
+                return self._est_no("a reply mates us / stalemate")  # a refutation for the rules to read, not a leaf to estimate
             closed = self._closed_by_rule(P2, dbal, mate1)
             if closed is not None:
                 gains.append(closed[0])
@@ -2459,7 +2463,7 @@ class Agenda:
                 continue
             fen = P2.fen()
             if not self._quiet_leaf(fen):
-                return                                              # a non-quiet gap stays a gap
+                return self._est_no("a reply leaves a non-quiet leaf")      # a non-quiet gap stays a gap
             cls = "quiet:us" if chess.Board(fen).turn == me else "quiet:them"
             conf = QP.estimate_confidence(cls)
             gains.append(dbal)                                      # (material balance minus their pass threat, which is 0 on a quiet leaf)
@@ -2467,7 +2471,7 @@ class Agenda:
             leaves.append(dict(fen=fen, value=dbal, status=P2.balance(me) - 64, cls=cls, confidence=conf, estimator="quiet-status", reply=uci, us=self.us))
         value = min(gains)
         if not leaves or value < 1:
-            return
+            return self._est_no("estimate below the stake" if leaves else "no quiet leaf")
         from catspace.incubator.analyst.discovery.state import combine
         proved, conf = combine(confs)
         res["est"] = dict(value=value, proved=proved, confidence=conf, estimator="quiet-status", leaves=leaves, reply_parts=len(rows))

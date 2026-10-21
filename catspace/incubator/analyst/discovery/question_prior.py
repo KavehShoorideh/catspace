@@ -216,6 +216,9 @@ def calibrate(log_path=None, depth: int = 14, out=None) -> dict:
     import chess.engine
     from catspace.incubator.analyst.discovery import verdict as VD
     log_path = log_path or paths.experiment(EST_LOG)
+    if not os.path.exists(log_path):
+        print("OBS estimate calibrate: no estimates log (no estimated leaf was logged); nothing written")
+        return {}
     rows = _rows(log_path)
     cache, n = {}, 0
     for r in rows:
@@ -245,6 +248,9 @@ def calibrate(log_path=None, depth: int = 14, out=None) -> dict:
         t["held"] += int(bool(r["held"]))
     for t in table.values():
         t["confidence"] = round(t["held"] / t["n"], 4)
+    if not table:                                                   # nothing graded: the file keeps what it had (an empty table would erase the measured numbers)
+        print(f"OBS estimate calibrate: {len(rows)} logged leaves, none graded; nothing written")
+        return table
     out = out or paths.derived(CALIBRATION)
     with open(out, "w") as fh:
         json.dump(table, fh, indent=1, sort_keys=True)
