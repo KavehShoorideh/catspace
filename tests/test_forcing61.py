@@ -115,8 +115,8 @@ def test_a2_a_threat_of_mate_is_parried_by_the_replies_that_stop_the_mate_and_cl
         assert v == 100 and any(mates)                                           # the mate in one stands on the reply's own board
 
 
-def test_a2_the_flag_only_relabels_closed_replies_and_defaults_off():
-    assert AG.PARRIES is False and AG.DELAYED_THREAT is True and AG.NO_SAFE_MOVE is False         # (63.3: the delayed threat is ON)
+def test_a2_the_flag_only_relabels_closed_replies_and_defaults_on():
+    assert AG.PARRIES is True and AG.DELAYED_THREAT is True and AG.NO_SAFE_MOVE is True         # (63.3: the delayed threat is ON; 64.4: PARRIES and NO_SAFE_MOVE too: the 90 at 10 s are per puzzle identical)
     from catspace.incubator.analyst.discovery import analyse as AN
     assert {"PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE"} <= set(AN._FLAGS)
 

@@ -192,6 +192,8 @@ def main():
     ap.add_argument("--no-cost-judge", action="store_true", help="plan 64.3: switch the cost judge OFF (it is ON by default under a time budget)")
     ap.add_argument("--cycle", action="store_true", help="plan 61 C4 (the default; kept for the harness): a chase position that repeats one of the line (or the game history) closes as a proved 'draw' claim worth minus the balance when we are behind")
     ap.add_argument("--no-cycle", action="store_true", help="plan 61 C4: CYCLE off (it is ON by default)")
+    ap.add_argument("--no-parries", action="store_true", help="plan 64.4: switch PARRIES (61 A2, ON by default) OFF")
+    ap.add_argument("--no-nosafe", action="store_true", help="plan 64.4: switch NO_SAFE_MOVE (61 A4, ON by default) OFF")
     ap.add_argument("--no-delayed", action="store_true", help="plan 63.3: switch the delayed threat (61 A3, ON by default) OFF")
     ap.add_argument("--duty", action="store_true", help="plan 63.2: the duty word ('pinned to a threat') in the trap/run test (the default: ON)")
     ap.add_argument("--no-duty", action="store_true", help="plan 63.2: switch the duty word OFF (CATSPACE_DUTY=0, inherited by the workers)")
@@ -212,6 +214,10 @@ def main():
         AGM.PARRIES = AGM.PARRIES or a.parries or a.forcing61
         AGM.DELAYED_THREAT = AGM.DELAYED_THREAT or a.delayed or a.forcing61
         AGM.NO_SAFE_MOVE = AGM.NO_SAFE_MOVE or a.nosafe or a.forcing61
+    if a.no_parries or a.no_nosafe:
+        from catspace.incubator.analyst.discovery import agenda as AGM
+        AGM.PARRIES = AGM.PARRIES and not a.no_parries
+        AGM.NO_SAFE_MOVE = AGM.NO_SAFE_MOVE and not a.no_nosafe
     if a.estimate:
         from catspace.incubator.analyst.discovery import agenda as AGM
         AGM.ESTIMATE = True
