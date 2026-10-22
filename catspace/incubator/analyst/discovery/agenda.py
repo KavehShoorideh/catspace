@@ -58,6 +58,7 @@ NEED_AWARE_CLOSE = True                                         # 52.23 (2): ON 
 EVASION_CHASE = True                                            # 52.23 (3): ON at every tier (plan 64.2)
 NEED_PROPAGATION = True                                         # 52.23 (7): ON at every tier (plan 64.2) -- the need propagates to the inner agendas, a gaining reply carries the inner claim, the chain of two meets the need, a bound below the need chases first
 GOAL_JUDGE = True                                               # 52.23 (6): ON at every tier (plan 64.2; its stop is a GAP since 64.1)
+CLOCK_PAWN = True                                              # plan 62.1c / 66.5: the chase clock also resets on a PAWN move of ours (an irreversible move, the fifty-move rule's other event); CHASE_CLOCK stays the parameter
 CHASE_CLOCK = 4                                                 # 52.23 (8): ON at every tier (plan 64.2; its stop is a GAP since 64.1); 99 = off; 4 was Kaveh's starting value
                                                 # 52.23 (8): our moves on a chain without a capture that is not bad for us (Kaveh 2026-10-20: "four or five ... a hyperparameter, tune it later")
 DEEP_WIN_CHASE = True                                            # 52.23 (5): ON at every tier (plan 64.2)
@@ -2016,7 +2017,7 @@ class Agenda:
             need = min(R.STAKE_PROMOTE, 1 - dbal) if promote and dbal <= 0 else R.STAKE_PROMOTE if promote else target - dbal if dbal < target else BD.MATE_VALUE          # a reply that already gains the need is read for a mate only; else its static gain must survive their threats (below)
             self._enter_reply(frozenset(P0.diff(P2)))
             self._reply_san = san_r
-            inn = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), since=0 if self.board.is_capture(self._route_move) and dbal >= 0 else self.since_capture + 1,
+            inn = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), since=0 if (self.board.is_capture(self._route_move) and dbal >= 0) or self._pawn_move(self._route_move) else self.since_capture + 1,
                               exchange=self.board.is_capture(self._route_move) and chess.Move.from_uci(uci).to_square == self._route_move.to_square)      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
             if inn is None:
                 res["gap"] = self._cut(san, san_r)
@@ -2730,6 +2731,18 @@ class Agenda:
             steps.append(f"after {san_r}, {c2.san(nxt[0])}")
         return f"a step of driving their king off {G.name(x)} ({'; '.join(steps[:3])} drives it off)"
 
+    def _lift_routes(self, b: chess.Board, sq: int, facts: dict) -> list:
+        """plan 62.1c: the pawn's push as a route of a promote question whose kill was lifted (their king is no stopper by the proved analysis)."""
+        path = facts["path"]
+        push = chess.Move(sq, path[0], promotion=chess.QUEEN if len(path) == 1 else None)
+        if push not in b.legal_moves:
+            return []
+        return [R.Route(push, b.san(push), "push: their king is no stopper")]
+
+    def _pawn_move(self, m: chess.Move) -> bool:
+        """plan 62.1c: a pawn move of ours resets the chase clock (irreversible, like a capture)."""
+        return CLOCK_PAWN and self.board.piece_type_at(m.from_square) == chess.PAWN
+
     def _chase(self, q: R.Question) -> bool:
         """52.12: the chase of a question that would be killed. -> True when a route CLAIMS (the question is verified)."""
         evading = self._t(EVASION_CHASE, 3) and q.goal == "save" and "checkers" in q.pattern          # 52.23 (3): the save-king question of an agenda in check: its routes are the evasions, all forced (`_verify` calls the chase too: the switch is read HERE)
@@ -2791,10 +2804,13 @@ class Agenda:
                     if r.move not in seen:
                         seen.add(r.move)
                         routes.append(R.Route(r.move, r.san, f"fix: {r.why}"))
+        if q.goal == "promote" and getattr(q, "_lift_routes", None):      # plan 62.1c: the pawn's push when their king is no stopper (their other pieces are replies)
+            seen = {r.move for r in routes}
+            routes += [r for r in q._lift_routes if r.move not in seen]
         if q.goal == "promote" and not self.chase_depth:        # 52.15 (2): plus a move that attacks a named STOPPER of the question ("threat on the stopper"), or offers the pawn to it
             routes += self._stopper_routes(q, [r.move for r in routes], notes)
         if self.chase_depth and not evading:                    # inner levels follow the most forcing moves only: a check, a capture, a mate threat (the quiet "threat n" moves are the root's)
-            follow = ("check", "threat of mate", "capture") + (("threat",) if self.ctx.tier >= 1 else ())      # plan 59 tier 1 lifts the cut for the quiet threats worth the stake (and the tier-2 mate-in-two threat)
+            follow = ("check", "threat of mate", "capture") + (("threat",) if self.ctx.tier >= 1 else ()) + (("push",) if q.goal == "promote" else ())      # 62.1c: a lifted promote question follows the pawn's push      # plan 59 tier 1 lifts the cut for the quiet threats worth the stake (and the tier-2 mate-in-two threat)
             routes = [r for r in routes if r.why.removeprefix("fix: ").startswith(follow)]
         if self.chase_depth >= 2 and q.goal == "win":           # 52.23 (5): below the first inner level a win question follows only the NAMED FIXES of its defects that CHECK (the skewer, the fork-check:
             fix_moves = {r.move for f in q.fixes for r in R.all_routes(f)}     # the reply is forced); every other forcing move is the root's and the first level's (the named fixes that do not check still cost 0LRTF 4x)
@@ -3197,12 +3213,17 @@ class Agenda:
         not, the question ends as a GAP naming the hypothesis that fails."""
         b = self.board
         sq = q.pattern["pawn"]
-        q.defects, facts = R.promote_defects(b, sq)
+        q.defects, facts = R.promote_defects(b, sq, lift=True)
         n, promo = facts["pushes"], facts["promo"]
         q.reads = R.reads_of(q, b) | frozenset(facts["path"]) | {sq}            # 52.16 (4): the pawn, its path (the promotion square included), the defects' squares and their pieces: what the question read
         kd = facts["king_dist"]
         self.lines.append(head + (": " + "; ".join(f"defect {d.kind} ({d.why})" for d in q.defects) if q.defects else
                                   ": no defect -- unstoppable by the tempo arithmetic" + (f" (their K needs {kd} to {G.name(promo)}, the pawn {n})" if kd is not None else "")))
+        lifted = facts.get("lifted")
+        if lifted is not None and lifted:
+            self.lines.append("  lifted: " + "; ".join(lifted) + " (their other pieces are replies the chase reads; the kill is a GAP until it closes)")
+        if lifted is not None and not q.defects:
+            q._lift_routes = self._lift_routes(b, sq, facts)
         if q.defects:
             if self._race_claim(q, sq):                           # plan 62.1: the race word binds although a defect stands (the stopper the king cannot be: denied, overloaded)
                 return
@@ -3236,6 +3257,8 @@ class Agenda:
                 self.asked_at_claim = self.asked
             return
         if self._race_claim(q, sq):                               # plan 62.1: no defect, the lemma does not fire (our sliders, say): the race word
+            return
+        if lifted is not None and self._chase(q):                 # plan 62.1c: the kill is lifted, the chase proves or leaves the GAP
             return
         ex = self._promotion_exchange(q, sq, facts)
         if ex is not None:

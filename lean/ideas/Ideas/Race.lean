@@ -338,6 +338,38 @@ theorem king_usable {p : Position} {m : Move} {t : Square} (hl : legalMove p m)
     (hk : kingSquare (applyMove p m).board p.turn = some t) : ¬ isAttacked (applyMove p m) (Color.opposite p.turn) t :=
   legal_king_safe hl hk
 
+/-! ### 62.1c Lifting the kill for the pieces that are not the king (Kaveh 2026-10-22)
+
+With a rook or a knight of theirs on the board the stopper verdict ("it reaches the path in k, the pawn needs n") is a STATIC estimate (the other pieces stand still, no checks): as a KILL of the
+promote question it is unsound for those pieces. Only their KING is judged by the proved analysis above (stand and survive, deny, deflect). The other pieces are not stoppers for the verdict at all: they are
+REPLIES, and the chase reads every reply. A question whose kill is lifted is therefore a GAP until the chase closes it, and is claimed only by what the chase closes -- never by the lift itself. -/
+
+/-- The status of a promote question: killed by the verdict, claimed by a closed chase, or a gap (open). -/
+inductive Status | killed | claim | gap
+  deriving DecidableEq
+
+/-- The status from the verdict's kill and the chase's closing: a kill is final; otherwise only a CLOSED chase claims. -/
+def status (killed closed : Bool) : Status :=
+  if killed then .killed else if closed then .claim else .gap
+
+/-- The kill of the verdict that judges only the king: it kills when the king stops. -/
+def killKingOnly (kingStops : Bool) : Bool := kingStops
+
+/-- The kill of the old verdict: any stopper stops. -/
+def killAny (kingStops otherStops : Bool) : Bool := kingStops || otherStops
+
+/-- THE LIFTED KILL IS SOUND TO LIFT: the king-only verdict kills a subset of what the all-stoppers verdict killed, so no question that was alive is killed by the lift. -/
+theorem stopper_king_only {k o : Bool} (h : killKingOnly k = true) : killAny k o = true := by
+  simp [killKingOnly, killAny] at *; exact Or.inl h
+
+/-- A lifted kill is a GAP until the chase closes it, never a claim. -/
+theorem lifted_is_gap {closed : Bool} (hopen : closed = false) : status false closed = .gap := by
+  simp [status, hopen]
+
+/-- Only a closed chase claims: the lift itself never makes a claim. -/
+theorem claim_only_if_closed {killed closed : Bool} (h : status killed closed = .claim) : closed = true ∧ killed = false := by
+  cases killed <;> cases closed <;> simp [status] at h ⊢
+
 /-! ### The RoR8t cases (checks of the definitions on the squares of the case, mirrored by tests/test_plan62.py; not lemmas)
 
 Squares are (file, rank) from 0: g1 = (6,0), h1 = (7,0), f1 = (5,0), g2 = (6,1), e1 = (4,0), g3 = (6,2) -- Black's king on g3 denies h2, g2, f2 (the squares next to it). -/

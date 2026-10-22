@@ -2955,6 +2955,15 @@ of the h-pawn is not a stopper once the king covers h2 and the f-pawn deflects. 
   ilnKz, 3U6wp, ynsca) keep their decisions: none of them is a king-and-pawns board (each has a rook or a knight of theirs), so neither the race word nor a deny route fired; RoR8t is NOT decided as a proved claim. The mid-run 15 s
   grade (a62_15, before the final fixes of the word, not an acceptance run) read proved 66/1, unproved 5/14, none 4 against 67/2, 4/13, 4 (DdWEG wrong to right, eSJqH right to wrong; eSJqH alone at 15 s decides Qa5, right: timing).
 
+**62.1c built (2026-10-22, Kaveh: lift the kill, do not claim).** With a piece of theirs beyond king and pawns the race word still does not claim. Instead `promote_defects(..., lift=True)` (the ask paths only) judges their KING by
+`race.king_verdict` (the stage test with denied squares, then deflection by a second passer, this pawn walking or resting) and does not read their other pieces as stoppers at all: they are replies. A lifted question prints
+"lifted: ..." and stays a GAP until the chase closes it (Lean `Race.status`, `lifted_is_gap`, `claim_only_if_closed`, `stopper_king_only`); its routes are the pawn's push (`push: their king is no stopper`, followed at inner levels) and,
+while the king holds, `race.support_moves` (our moves after which the king is no stopper). The race word claims at the leaves where the king-and-pawns gate holds. Chase clock: `agenda.CLOCK_PAWN` (ON): a pawn move of ours resets
+`since_capture` like a capture (the length stays the parameter `CHASE_CLOCK`, 4). `--no-lift` is the comparison condition. RESULT on the eight cases (15 s and 30 s alone): ilnKz now DECIDES g6 (Stockfish's move) as an UNPROVED
+unfinished line (before: no decision); the other six lifted ones (3JaeM, 4efZ2, gU0B4, 3U6wp, ynsca) open the push route and the chase but end as GAPs (the cost judge, "a second check of theirs in a row", a rook that blocks the f-pawn);
+9wgF7 keeps a real king stopper (the king takes on f8 from e7) and RoR8t keeps the root verdict "the king takes on h2 (unguarded)": Kg3 is not a `support_move` there because the rook on f4 blocks the f-pawn, so the king still
+holds h3 by blockade; Kg3 is decided as before, unproved, stopped at "a second check of theirs in a row" (Rg8+ Rg4 Rxg4+). NOT MET: RoR8t as a PROVED claim; that needs that chain stop (an exchange of the interposed piece) to be followed.
+
 ### 63 A check that is also a threat counts as a follow-up; "pinned to a threat" = the duty word for any piece (Kaveh 2026-10-21 GO: "what is the fix? plan it and send it to an agent"; pos2)
 The case (`data/derived/ledger_puzzles_kaveh_pos2.json`, White to move, a rook down): 1.Bf2! (their Bh4 is pinned to the h-file by the Qh7 mate threat; the
 queen is its only defender; 2.Ng1 unblocks the queen and removes the piece that 2.Bxh4? Qxh4 would pin; then Bxh4). Stockfish 1.Bf2 -2.1 against our

@@ -33,7 +33,7 @@ def test_lean_file_has_no_sorry_and_is_imported():
     text = RACE_LEAN.read_text()
     code = re.sub(r"/-.*?-/", "", text, flags=re.S)
     assert "sorry" not in code
-    for name in ("race_sound", "race_first", "frame_sound", "frame_sound_pass", "far_stays_off", "deny_sound", "overloaded_exclusive", "no_stand_adjacent", "no_stand_pawn", "lb_step"):
+    for name in ("race_sound", "race_first", "frame_sound", "frame_sound_pass", "far_stays_off", "deny_sound", "stopper_king_only", "lifted_is_gap", "claim_only_if_closed", "overloaded_exclusive", "no_stand_adjacent", "no_stand_pawn", "lb_step"):
         assert f"theorem {name}" in text
     assert "import Ideas.Race" in (ROOT / "lean" / "ideas" / "Ideas.lean").read_text()
 
@@ -212,3 +212,52 @@ def test_table_ranks_after_a_word_at_equal_value():
     t = Claim("win", "Rb8", 100, "syzygy", "x", move="b2b8", proved_by="table")
     w = Claim("win", "Rb8", 100, "word", "x", move="b2b8")
     assert ag._claim_key(w) > ag._claim_key(t)
+
+
+# ---------------------------------------------------------------------------------------------------------------- 62.1c: the lifted kill
+
+AFTER_RG4 = "6R1/8/8/5p2/6r1/1P4kp/P7/6K1 b - - 0 1"        # RoR8t after Kg3 Rg8+ Rg4, Black to move (a pass): the f-pawn deflects the king that holds h1
+
+
+def test_king_verdict_deflection_and_blockade():
+    b = chess.Board(AFTER_RG4)
+    held, why = RC.king_verdict(b, chess.F5)
+    assert not held and "deflected" in why                                                # the king that holds f1 cannot hold h1
+    held, why = RC.king_verdict(chess.Board("1R6/8/8/5p2/5rk1/1P5p/P7/6K1 b - - 1 50"), chess.H3)
+    assert held and "h2" in why                                                           # the root: the king takes on h2 (unguarded)
+    assert RC.king_verdict(chess.Board("8/8/8/8/8/8/8/K6k w - - 0 1"), chess.A1) is None  # not a pawn
+
+
+def test_lifted_verdict_leaves_other_pieces_as_replies(monkeypatch):
+    from catspace.incubator.analyst.discovery import regress as R
+    b = chess.Board("8/8/2k5/3p2P1/n7/2P5/2K5/8 w - - 0 55")                              # ilnKz: the knight on a4 reaches the path "in 3"
+    old, _ = R.promote_defects(b, chess.G5)
+    assert any(d.kind == "stopper" for d in old)
+    new, facts = R.promote_defects(b, chess.G5, lift=True)
+    assert not new and facts["lifted"] is not None                                        # no stopper: the knight is a reply; the king cannot stop it
+    monkeypatch.setattr(RC, "LIFT", False)
+    again, _ = R.promote_defects(b, chess.G5, lift=True)
+    assert any(d.kind == "stopper" for d in again)                                        # --no-lift: the old verdict
+
+
+def test_support_moves_make_the_king_no_stopper():
+    b = chess.Board("8/8/8/8/8/1k6/p7/5K2 b - - 0 1")
+    held = RC.king_verdict(b, chess.A2)
+    assert held is not None
+    if held[0]:
+        for m, why in RC.support_moves(b, chess.BLACK, chess.A2, list(b.legal_moves)):
+            assert "no stopper" in why
+
+
+def test_status_lean_names_present():
+    text = RACE_LEAN.read_text()
+    assert "def status" in text and "inductive Status" in text
+
+
+def test_clock_resets_on_a_pawn_move():
+    from catspace.incubator.analyst.discovery.agenda import Agenda
+    from catspace.incubator.analyst.discovery import agenda as AG
+    from catspace.incubator.analyst.discovery.state import State
+    ag = Agenda(State(fen="8/8/8/8/8/8/4P3/K6k w - - 0 1", us="w", pieces=[]), side_depth=0)
+    assert ag._pawn_move(chess.Move.from_uci("e2e4")) and not ag._pawn_move(chess.Move.from_uci("a1a2"))
+    assert AG.CHASE_CLOCK == 4 and AG.CLOCK_PAWN

@@ -1608,7 +1608,7 @@ def pawn_path(board: chess.Board, sq: int, pushes: int) -> list:
     return [chess.square(f, r + fwd * i) for i in range(1, pushes + 1)]
 
 
-def promote_defects(board: chess.Board, sq: int) -> tuple:
+def promote_defects(board: chess.Board, sq: int, lift: bool = False) -> tuple:
     """What stands between the pawn on `sq` (any colour) and a queen, read with the Rust words (`pushes`, `ahead`, `promo`, `attackers`, `defenders`, `dist`)
     from its owner's side: [Defect] and the facts {pushes, path, promo, king_dist, king_sq}. Kinds: 'blocked' (a piece on the path), 'path attacked' (a path
     square attacked by them more than we guard it), 'promo square attacked' (the same on the promotion square), 'stopper' (a piece of theirs that reaches the
@@ -1616,11 +1616,15 @@ def promote_defects(board: chess.Board, sq: int) -> tuple:
     tempo arithmetic (the owner moves first; the other side's pieces move for free while the pawn runs)."""
     pc = board.piece_at(sq)
     own = pc.color
+    kv = None
+    if lift and RC.LIFT and board.turn == own and (board.occupied_co[not own] & (board.rooks | board.bishops | board.queens | board.knights)):
+        kv = RC.king_verdict(board, sq)                 # plan 62.1c: with a piece of theirs beyond king and pawns the verdict judges only the KING, by the proved analysis; the pieces are replies the chase reads
     n = G.word(board, ("pushes", G.name(sq)), own)
     path = pawn_path(board, sq, n)
     promo = path[-1]
     facts = dict(pushes=n, path=path, promo=promo, king_dist=None, king_sq=board.king(not own))
     out = []
+    lifted = []
     ahead_ours = G.word(board, ("count", ("and", ("ahead", G.name(sq)), "ours")), own)
     ahead_theirs = G.word(board, ("count", ("and", ("ahead", G.name(sq)), "theirs")), own)
     if ahead_ours + ahead_theirs:
@@ -1634,8 +1638,19 @@ def promote_defects(board: chess.Board, sq: int) -> tuple:
         if a > d:
             kind = "promo square attacked" if t == promo else "path attacked"
             by = [x for x in G.attackers_of(board, t, not own)]
+            if kv is not None and not kv[0] and set(by) <= {board.king(not own)}:
+                lifted.append(f"{G.name(t)} is attacked only by their king, which is no stopper ({kv[1]})")
+                continue
             out.append(Defect(kind, t, by, f"{G.name(t)} is attacked by them {a}x and guarded by us {d}x"))
     ek = facts["king_sq"]
+    if kv is not None:
+        facts["lifted"] = lifted
+        if kv[0]:
+            out.append(Defect("stopper", promo, [ek], f"their K stops it: {kv[1]}"))
+        else:
+            lifted.append(f"their K is no stopper: {kv[1]}")
+        facts["king_dist"] = G.word(board, ("dist", "L", ("promo", G.name(sq))), own)
+        return out, facts
     if ek is not None:                                  # a king standing on the path is the blocker (already a defect), not a stopper
         kd = G.word(board, ("dist", "L", ("promo", G.name(sq))), own)
         facts["king_dist"] = kd
@@ -1686,6 +1701,13 @@ def promote_fixes(board: chess.Board, sq: int, defect: Defect, q: "Question") ->
         f.routes = [Route(m, board.san(m), f"capture {G.worth(board.piece_at(m.to_square))}") for m in board.legal_moves if m.to_square == defect.by[0]]
         if push in board.legal_moves and board.gives_check(push):
             f.routes.append(Route(push, board.san(push), "push with check"))
+        if RC.LIFT and defect.why.startswith("their K stops it") and board.turn == own:        # 62.1c: the king is the stopper by the proved analysis: the moves that make it none are routes
+            have = {r.move for r in f.routes}
+            for m, why in RC.support_moves(board, own, sq, list(board.legal_moves)):
+                if m not in have:
+                    f.routes.append(Route(m, board.san(m), why))
+            if any(r.why.startswith("makes their king") for r in f.routes):
+                f.text += " -- or make the king no stopper"
         if RC.DENY and board.turn == own:                          # 62.1b: DENY THE STOPPER'S PATH (a move after which it cannot stand and survive on a square of its path in time) addresses the defect
             n_ = abs((7 if own == chess.WHITE else 0) - chess.square_rank(sq))
             tg = {defect.sq} if defect.by[0] == board.king(not own) else set(pawn_path(board, sq, n_))

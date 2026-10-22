@@ -486,12 +486,17 @@ def ask_promote_g(node, q: R.Question, head: str) -> None:
     not, the question ends as a GAP naming the hypothesis that fails."""
     b = node.board
     sq = q.pattern["pawn"]
-    q.defects, facts = R.promote_defects(b, sq)
+    q.defects, facts = R.promote_defects(b, sq, lift=True)
     n, promo = facts["pushes"], facts["promo"]
     q.reads = R.reads_of(q, b) | frozenset(facts["path"]) | {sq}            # 52.16 (4): the pawn, its path (the promotion square included), the defects' squares and their pieces: what the question read
     kd = facts["king_dist"]
     node.lines.append(head + (": " + "; ".join(f"defect {d.kind} ({d.why})" for d in q.defects) if q.defects else
                               ": no defect -- unstoppable by the tempo arithmetic" + (f" (their K needs {kd} to {G.name(promo)}, the pawn {n})" if kd is not None else "")))
+    lifted = facts.get("lifted")
+    if lifted is not None and lifted:
+        node.lines.append("  lifted: " + "; ".join(lifted) + " (their other pieces are replies the chase reads; the kill is a GAP until it closes)")
+    if lifted is not None and not q.defects:
+        q._lift_routes = node._lift_routes(b, sq, facts)
     if q.defects:
         if node._race_claim(q, sq):                            # plan 62.1: the race word binds although a defect stands
             return
@@ -525,6 +530,8 @@ def ask_promote_g(node, q: R.Question, head: str) -> None:
             node.asked_at_claim = node.asked
         return
     if node._race_claim(q, sq):                                # plan 62.1: no defect, the lemma does not fire: the race word
+        return
+    if lifted is not None and (yield T('chase', chase_g(node, q), node)):      # plan 62.1c: the kill is lifted, the chase proves or leaves the GAP
         return
     ex = node._promotion_exchange(q, sq, facts)
     if ex is not None:
@@ -684,10 +691,13 @@ def chase_g(node, q: R.Question) -> bool:
                 if r.move not in seen:
                     seen.add(r.move)
                     routes.append(R.Route(r.move, r.san, f"fix: {r.why}"))
+    if q.goal == "promote" and getattr(q, "_lift_routes", None):      # plan 62.1c: the pawn's push when their king is no stopper
+        seen = {r.move for r in routes}
+        routes += [r for r in q._lift_routes if r.move not in seen]
     if q.goal == "promote" and not node.chase_depth:        # 52.15 (2): plus a move that attacks a named STOPPER of the question ("threat on the stopper"), or offers the pawn to it
         routes += node._stopper_routes(q, [r.move for r in routes], notes)
     if node.chase_depth and not evading:                    # inner levels follow the most forcing moves only: a check, a capture, a mate threat (the quiet "threat n" moves are the root's)
-        follow = ("check", "threat of mate", "capture") + (("threat",) if node.ctx.tier >= 1 else ())      # plan 59 tier 1 lifts the cut for the quiet threats worth the stake (and the tier-2 mate-in-two threat)
+        follow = ("check", "threat of mate", "capture") + (("threat",) if node.ctx.tier >= 1 else ()) + (("push",) if q.goal == "promote" else ())      # plan 59 tier 1 lifts the cut for the quiet threats worth the stake (and the tier-2 mate-in-two threat)
         routes = [r for r in routes if r.why.removeprefix("fix: ").startswith(follow)]
     if node.chase_depth >= 2 and q.goal == "win":           # 52.23 (5): below the first inner level a win question follows only the NAMED FIXES of its defects that CHECK (the skewer, the fork-check:
         fix_moves = {r.move for f in q.fixes for r in R.all_routes(f)}     # the reply is forced); every other forcing move is the root's and the first level's (the named fixes that do not check still cost 0LRTF 4x)
@@ -962,7 +972,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
         need = min(R.STAKE_PROMOTE, 1 - dbal) if promote and dbal <= 0 else R.STAKE_PROMOTE if promote else target - dbal if dbal < target else BD.MATE_VALUE          # a reply that already gains the need is read for a mate only; else its static gain must survive their threats (below)
         node._enter_reply(frozenset(P0.diff(P2)))
         node._reply_san = san_r
-        inn = (yield T('reply', inner_g(node, P2.fen(), need, frozenset(P0.diff(P2)), since=0 if node.board.is_capture(node._route_move) and dbal >= 0 else node.since_capture + 1,
+        inn = (yield T('reply', inner_g(node, P2.fen(), need, frozenset(P0.diff(P2)), since=0 if (node.board.is_capture(node._route_move) and dbal >= 0) or node._pawn_move(node._route_move) else node.since_capture + 1,
                           exchange=node.board.is_capture(node._route_move) and chess.Move.from_uci(uci).to_square == node._route_move.to_square), node))      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
         if inn is None:
             res["gap"] = node._cut(san, san_r)
@@ -1199,7 +1209,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
         dfs = frozenset(P0.diff(P2))
         node._enter_reply(dfs)
         node._reply_san = san_r
-        inn = (yield T('reply', inner_g(node, fen2, need, dfs, since=0 if since0 else node.since_capture + 1, exchange=exch), node))      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
+        inn = (yield T('reply', inner_g(node, fen2, need, dfs, since=0 if since0 or node._pawn_move(node._route_move) else node.since_capture + 1, exchange=exch), node))      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
         if inn is None:
             res["gap"] = node._cut(san, san_r)
             res["reply"] = uci

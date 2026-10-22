@@ -34,6 +34,7 @@ import chess
 
 RACE = os.environ.get("CATSPACE_RACE", "1") != "0"     # plan 62.1 (ON; `analyse --no-race` sets CATSPACE_RACE=0, inherited by the workers: only a comparison condition)
 DENY = os.environ.get("CATSPACE_DENY", "1") != "0"     # plan 62.1b (ON; `analyse --no-deny` is only a comparison condition)
+LIFT = os.environ.get("CATSPACE_LIFT", "1") != "0"       # plan 62.1c (ON; `analyse --no-lift` is only a comparison condition): the stopper verdict judges only their KING when they have other pieces
 FRAME = os.environ.get("CATSPACE_FRAME", "1") != "0"   # plan 62.2 (ON; `analyse --no-frame`): the frame's condition (b) gate; off = the word is served without the one-ply recheck
 STATS = {"asked": 0, "bound": 0, "single": 0, "overload": 0, "frame_refused": 0}
 
@@ -217,6 +218,69 @@ def _stage_held(me: bool, ek: int, path: list, rest: int, denied: int, defended:
     return None
 
 
+def _king_holds(board: chess.Board, me: bool, sq: int, with_second: bool) -> tuple | None:
+    ek, ok = board.king(not me), board.king(me)
+    n = _pushes(me, sq)
+    if n < 1 or n > 6:
+        return None
+    path = _path(me, sq, n)
+    if any(board.piece_at(t) is not None for t in path):
+        return None
+    stable = _stable_attacks(board, me, ek, ok, n, {sq: path})
+    why = _stage_held(me, ek, path, sq, stable, stable, n)
+    if why is None:
+        return False, "their king cannot stop it: no stage of the walk is reached in time (squares it cannot stand on denied)"
+    if with_second:
+        d = _deflect(board, me, sq, path, n, ek, ok, why, verdict_only=True)
+        if d:
+            return False, f"{d}; the king held it alone: {why}"
+    return True, why
+
+
+def king_verdict(board: chess.Board, sq: int) -> tuple | None:
+    """62.1c: THEIR KING AS A STOPPER of our pawn on `sq` (the owner to move), judged by the proved analysis only (Race.deny_sound, race_sound restricted to the king): the stage test with the squares it cannot stand
+    and survive on denied, then the deflection by a second passer (this pawn as the one that walks, or as the one that rests). -> (held, why): held=False = the king is no stopper (the verdict may not kill the
+    question for it); None = not applicable (not our pawn, path not clear, in check). Their OTHER pieces are not read here at all: they are replies, and the chase reads every reply (Race.lifted_is_gap)."""
+    me = board.turn
+    pc = board.piece_at(sq)
+    if pc is None or pc.piece_type != chess.PAWN or pc.color != me or board.is_check():
+        return None
+    if board.king(not me) is None or board.king(me) is None:
+        return None
+    first = _king_holds(board, me, sq, True)
+    if first is None or not first[0]:
+        return first
+    for q in chess.SquareSet(board.pawns & board.occupied_co[me]):
+        if q == sq:
+            continue
+        o = _king_holds(board, me, q, True)
+        if o is not None and not o[0]:
+            return False, f"the passer on {_name(q)} is not held by the king ({o[1]}); the king that holds {_name(sq)} cannot also stop it"
+    return first
+
+
+def support_moves(board: chess.Board, me: bool, sq: int, legal: list) -> list:
+    """62.1c: our moves (not the pawn's own) after which their king is NO LONGER a stopper of the pawn on `sq` by `king_verdict` (we have the move again: the pass reading): a cover (Kg3 takes h2 and g2 from
+    the king), a second passer's support. Each is a ROUTE of the promote question; the chase reads every reply to it. -> [(move, why)]."""
+    before = king_verdict(board, sq)
+    if before is None or not before[0]:
+        return []
+    out = []
+    for m in legal:
+        if m.from_square == sq:
+            continue
+        after = board.copy(stack=False)
+        after.push(m)
+        if after.is_check():
+            continue
+        after.turn = me
+        after.ep_square = None
+        v = king_verdict(after, sq)
+        if v is not None and not v[0]:
+            out.append((m, f"makes their king no stopper: {v[1]}"))
+    return out
+
+
 def race_claim(board: chess.Board, sq: int, allow_second: bool = True, recheck: bool = True) -> Race | None:
     """THE RACE WORD for our pawn on `sq` (the owner to move, not in check): -> a `Race` when the word binds, else None. See the module docstring for the definition and the Lean theorems it mirrors."""
     if not RACE:
@@ -260,7 +324,7 @@ def race_claim(board: chess.Board, sq: int, allow_second: bool = True, recheck: 
     return res
 
 
-def _deflect(board: chess.Board, me: bool, sq: int, path: list, n: int, ek: int, ok: int, why_held: str) -> Race | None:
+def _deflect(board: chess.Board, me: bool, sq: int, path: list, n: int, ek: int, ok: int, why_held: str, verdict_only: bool = False) -> "Race | str | None":
     best = None
     for sb in chess.SquareSet(board.pawns & board.occupied_co[me]):
         if sb == sq:
@@ -303,6 +367,8 @@ def _deflect(board: chess.Board, me: bool, sq: int, path: list, n: int, ek: int,
         undefended_xb = not (stable & chess.BB_SQUARES[xb])
         if undefended_xb and (h_a & chess.BB_KING_ATTACKS[xb]):
             continue
+        if verdict_only:
+            return f"deflected: the king that holds {_name(xa)} cannot hold {_name(xb)} (second passer {_name(sb)})"
         cand = _bind(board, me, sq, sb, T, path, pathb, ek, ok, text=None, why_free=f"the king that holds {_name(xa)} cannot hold {_name(xb)}", nA=n, nB=nb,
                      why_held=why_held, h_a=h_a, xa=xa, xb=xb)
         if cand is not None and (best is None or cand.ours < best.ours):
