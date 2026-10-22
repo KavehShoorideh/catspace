@@ -3022,3 +3022,46 @@ was tried (with and without the judge) and loses lK9WA at 10 s, so it stays a GA
 bounded; the judge in place of the count fuse under the tiers lets tier 0 take the budget, so the fuse stays the tier's cap. 64.4: PARRIES and NO_SAFE_MOVE ON (per puzzle identical); the delayed threat inside the
 chase gains nothing on the 90. 64.5: ESTIMATE ON (inert on the 90), `play_server.game_history` fills `ctx.history`. 64.6 / 64.7: see the hand-back (pos2 has no proved claim; the fxe3 "no gain" is the balance
 tail's horizon: Ng1 discovers Qxh4 which Qd8 guards).
+
+### 65 -- TIME IS A PRICED CHOICE ACROSS THE TIERS (Kaveh 2026-10-22 "do it your way"); THE UNPROVED DECISION; THE DEEP PASS READ
+
+Diagnosis (plan 64 verification, journal c6dd2f24; 90 at 15 s: RIGHT 66, UNKNOWN 22, WRONG 2): 13 of the 22 UNKNOWN run out of time with tier 0 or 1
+holding the budget to the deadline (2TUzC, 9kUgG, kcQil: tier 0 at 14.9 s; 07Z0P: tier 0 at 14.5 s, decides in tier 1 at 30 s); of the 66 RIGHT, six
+run to the full 15 s after finding their claim early (j3ybl, CMCtT, qCXKp, x4B5k, 2VDtX, lK9WA: the claim does not keep the status, so widening goes on
+to the clock and the early claim is played anyway); p95 of a RIGHT's wall time is the deadline, the median 0.26 s. Under TIME the tier's fuse is
+NO_FUSE (`_ask_tiers`: a tier runs `_ask_once` to its end, the deadline the only cap), so tier k+1 starts with what tier k left. The judge (61 C2)
+prices ROOT routes within a tier only; the tiers themselves are stages, not a priced choice. Tried and reverted in 64.3: the judge in place of the fuse
+(tier 0 took the budget: 4pC83, 5JrXD) -- because the judge never saw the next tier's routes as competitors.
+
+* 65.1 THE NEXT TIER'S ROUTES ARE PRICED COMPETITORS. At the root of tier k, when a root route is about to be read (`_judge_begin`), the judge also
+  knows the CHEAPEST route tier k+1 would ADD (the wider vocabulary's new root routes on this board -- tier 1: quiet threats; tier 2: mate-in-two
+  threats -- generated once per tier boundary with the same forcing filter the next tier uses, priced by `route_cost` first-level, no reading).
+  RULE: tier k stops opening new root routes when every remaining open route of tier k is priced above that cheapest competitor; the remaining routes
+  are GAPs ("cut by the judge: tier k+1's R is cheaper"), and tier k+1 opens at once with the time left. Tier k+1's route set includes tier k's
+  routes, so a route cut in tier k is read in tier k+1 in cost order; 64.3's `route_secs` already carries its measured lower bound ("cut after t:
+  needs more than t"). No fixed share, no count: the only numbers are costs and the measured rate. Lean: a lemma on the order (reading the cheapest
+  open route first minimises the expected time to the first claim when claims are equally likely across routes; or, if that is not provable in our
+  frame, state the rule as a definition `judgeNext` and prove it never reads a route priced above an unread cheaper one). Mirror in the scheduler.
+* 65.2 STOP WHEN NOTHING AFFORDABLE IS LEFT. The widening (and the RAISE_TO_WIN continuation) ends when no open route of ANY tier is priced within the
+  time left (the judge's cut test applied to the cheapest competitor), not at the deadline. A claim found early is then played early. Trace line:
+  "TIERS: stopped at t s: the cheapest unread route (tier k, R) is priced c x rate = s > the time left". Expected: the six slow RIGHTs decide in seconds.
+* 65.3 THE UNPROVED DECISION (pos2: Nxf4 killed after exf4, Bf2 a GAP by the tempo allowance, decision none; the server falls to its fallback).
+  When no claim keeps the status and no claim exists at all: prefer an UNFINISHED route (a GAP) to a KILLED one (a kill is a proved loss, a GAP is
+  not); among GAPs order by the partial floor (the min over the replies read so far; label "unfinished: n of m replies read"), then by the judge's
+  price (cheaper first). The Claim is marked `proved=False`, `word="unfinished line"`; the trace says "no proved claim: Bf2 is played as the best
+  unfinished line (floor +0 over 5 of 8 replies; Nxf4 is refuted)". Never when a proved claim exists; never silently -- the decision line prints it.
+  Decision-rule change, so: grade; every UNKNOWN that becomes a decision is reported with its SF grade; a new WRONG gets its trace (bug-check every
+  negative), none is hidden by turning the rule off. pos2 must decide Bf2 (and say why).
+* 65.4 THE DEEP PASS READ (64.7). `status` reads THEIR pass with the d1 balance family; in pos2 it says "their threat 0" because after fxe3 the reply
+  Ng1 discovers Qxh4 -- which Qd8 guards (a horizon artifact: "cannot prove", not "no threat"). Rule: when the d1 read finds no claim AND a piece of ours
+  is attacked on the board, read their pass with `delayed_balance_deep` (already proved, Lean) and take its value; the status says which family read
+  it. Costs time per position: the judge prices it as a root read (its cost is their route count). Test: pos2's status says "their threat 2 (deep)".
+* ACCEPTANCE: 07Z0P Qxd5+ at 15 s; the discovery position Nf6 at 15 s (tests/test_offbuilt64.py::test_64_discovery_decides_within_15_s turns from
+  strict xfail to a pass -- remove the marker); eSJqH Qa5 at 15 s; the six slow RIGHTs decide under 5 s each (OBS wall per puzzle); 2zB89 at 60 s
+  reported; pos2 decides Bf2 with "unfinished line" printed and status "their threat 2 (deep)"; the 90 at 15 s against ql64_s15 (66/22/2) with no RIGHT
+  lost; the count budget against ql64_scnt (63/24/3) unchanged or explained; compare_scheduler default and --chain: 0 differences; full suite on the
+  LAST commit.
+* FILES: agenda.py (_ask_tiers, _judge_begin, decision, status), scheduler.py (mirror), regress.py, lean/ideas/Ideas/Forcing.lean (judgeNext),
+  docs/LEAN_INDEX.md (rebuild), tests/test_plan65.py.
+* GRADING PROTOCOL: as plan 64's (15 s and the count budget, Stockfish depth 14, one grade at a time, a private CATSPACE_QLOG, per-puzzle diff by the
+  id's final decision). BISECT, don't sweep: one all-ON grade; if a RIGHT is lost, bisect the change on THAT puzzle alone (Kaveh 2026-10-21).
