@@ -130,3 +130,25 @@ def test_64_3_the_cost_judge_is_on_and_a_route_read_carries_its_measured_seconds
     print("OBS 64.3 4pC83 decision:", r["decision"], r["move"], "judge lines", text.count("judge:"))
     assert r["move"] == "d4f3"
     assert "judge:" in text
+
+
+def test_64_5_the_play_server_fills_the_game_history_for_the_cycle_terminal():
+    from catspace.incubator.analyst.discovery.agenda import _pos_key
+    from catspace.incubator.analyst.discovery.play_server import game_history
+    b = chess.Board()
+    for san in ("Nf3", "Nf6", "Ng1", "Ng8"):          # the start position is repeated after 4 plies
+        b.push_san(san)
+    keys = game_history(b)
+    print("OBS 64.5 game history keys:", len(keys))
+    assert _pos_key(b.fen()) in keys                    # the root itself repeats an earlier position of the game (white to move)
+    assert len(keys) == 2                               # (start position == root, and the position after 1.Nf3 Nf6)
+    assert game_history(chess.Board(POS2)) == set()
+
+
+def test_64_5_the_estimate_is_on_and_inert_where_a_proved_claim_keeps_the_status():
+    from catspace.incubator.analyst.discovery import agenda as AGM
+    assert AGM.ESTIMATE is True and AGM.PARRIES is True and AGM.NO_SAFE_MOVE is True and AGM.DELAYED_THREAT is True
+    (p,) = [x for x in PA.load_set("rand3_10") if x["id"] == "qCXKp"]
+    r = analyse(p, quiet=True, memory=False, seconds=10)
+    print("OBS 64.5 qCXKp:", r["decision"], r["move"])
+    assert r["move"] == "a6b5"

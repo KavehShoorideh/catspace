@@ -160,7 +160,7 @@ def test_b2_an_estimate_below_the_stake_claims_nothing():
 
 def test_b2_the_flag_defaults_off(monkeypatch):
     monkeypatch.undo()
-    assert AG.ESTIMATE is False
+    assert AG.ESTIMATE is True                      # plan 64.5: ON (inert on the 90 at 10 s: the decisions are per puzzle identical)
 
 
 def test_b2_the_flag_on_changes_no_decision_on_a_plain_puzzle():

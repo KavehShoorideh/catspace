@@ -253,6 +253,7 @@ class AgendaPlayer:
                     say(f"facts: {len(stale)} flagged stale by the last two plies (recomputed lazily, when a live question needs them)")
             ag = Agenda(state_of(fen, us), seconds=seconds, carry=self.carry)  # chase_log stays unset in a server
             ag.lines = TraceLines(say)                        # the agenda only ever appends (verified: append / += in agenda.py); no edit to agenda.py
+            ag.ctx.history = game_history(board)              # plan 64.5: the positions of the game so far with us to move: CYCLE (61 C4) closes a chase position that repeats one of them
             ag.ask()
             decision = ag.decision()
             if self.carry is None:
@@ -275,6 +276,19 @@ class AgendaPlayer:
         move = self._fallback_move(board)
         say(f"no decision: fallback {self.fallback} chose {board.san(move)}" if decision is None else f"fallback {self.fallback} chose {board.san(move)}")
         return move, out, f"fallback:{self.fallback}"
+
+
+def game_history(board: chess.Board) -> set:
+    """plan 64.5: the position keys (`agenda._pos_key`) of the earlier positions of this game in which it was OUR move (the side to move on `board`), the root itself excluded -- what the agenda's
+    CYCLE terminal reads as the game's repetitions (a chase position that repeats one is a repetition). Empty when the board carries no move stack."""
+    from catspace.incubator.analyst.discovery.agenda import _pos_key
+    b = board.root()
+    keys = set()
+    for mv in board.move_stack:
+        if b.turn == board.turn:
+            keys.add(_pos_key(b.fen()))
+        b.push(mv)
+    return keys
 
 
 # ---------------------------------------------------------------- the game (item 3)
