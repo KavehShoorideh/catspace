@@ -125,7 +125,7 @@ def _append_once(path, text: str) -> None:
         os.close(fd)
 
 
-_FLAGS = ("PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS", "TIERS_UNDER_TIME", "CLOSE_AFTER_CAPTURE", "RAISE_TO_WIN", "PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE", "ESTIMATE", "COST_JUDGE", "CYCLE")
+_FLAGS = ("PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS", "TIERS_UNDER_TIME", "CLOSE_AFTER_CAPTURE", "RAISE_TO_WIN", "PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE", "ESTIMATE", "COST_JUDGE", "CYCLE", "COMPETE")
 
 
 def _init_worker(flags: dict) -> None:
@@ -195,12 +195,16 @@ def main():
     ap.add_argument("--no-parries", action="store_true", help="plan 64.4: switch PARRIES (61 A2, ON by default) OFF")
     ap.add_argument("--no-nosafe", action="store_true", help="plan 64.4: switch NO_SAFE_MOVE (61 A4, ON by default) OFF")
     ap.add_argument("--no-delayed", action="store_true", help="plan 63.3: switch the delayed threat (61 A3, ON by default) OFF")
+    ap.add_argument("--no-compete", action="store_true", help="plan 65.1: the next tier's cheapest new route does NOT compete with this tier's routes (the comparison condition; ON by default)")
     ap.add_argument("--duty", action="store_true", help="plan 63.2: the duty word ('pinned to a threat') in the trap/run test (the default: ON)")
     ap.add_argument("--no-duty", action="store_true", help="plan 63.2: switch the duty word OFF (CATSPACE_DUTY=0, inherited by the workers)")
     a = ap.parse_args()
     if a.no_delayed and not a.delayed and not a.forcing61:
         from catspace.incubator.analyst.discovery import agenda as _AG63
         _AG63.DELAYED_THREAT = False
+    if a.no_compete:
+        from catspace.incubator.analyst.discovery import agenda as _AG65
+        _AG65.COMPETE = False
     if a.no_duty and not a.duty:
         from catspace.incubator.analyst.discovery import regress as _R63
         os.environ["CATSPACE_DUTY"] = "0"

@@ -167,4 +167,49 @@ theorem repetition_level (bal : Int) : bal + repetitionValue bal = 0 := by
 theorem repetition_gains {bal : Int} (h : bal < 0) : 1 ≤ repetitionValue bal := by
   unfold repetitionValue; omega
 
+
+/-! ## Plan 65: time is a priced choice across the tiers -/
+
+/-- 65.1 THE NEXT TIER'S ROUTES ARE PRICED COMPETITORS: a route of tier k is opened only while it is priced no higher than the cheapest route tier k+1 would add
+(`none`: tier k+1 adds no route, nothing competes, the route is read). A route cut here is a GAP (read in tier k+1 in cost order), never a kill. -/
+def judgeNext (competitor : Option Nat) (cost : Nat) : Bool :=
+  match competitor with
+  | none => true
+  | some c => decide (cost ≤ c)
+
+/-- Nothing competes: the route is read. -/
+theorem judgeNext_none (cost : Nat) : judgeNext none cost = true := by
+  simp [judgeNext]
+
+/-- A route priced above a cheaper competitor is never read in this tier. -/
+theorem judgeNext_cut {c k : Nat} (h : c < k) : judgeNext (some c) k = false := by
+  simp only [judgeNext, decide_eq_false_iff_not]; omega
+
+/-- A route priced at or below the competitor is read (a tie is read: the order asked must not decide). -/
+theorem judgeNext_read {c k : Nat} (h : k ≤ c) : judgeNext (some c) k = true := by
+  simp only [judgeNext, decide_eq_true_eq]; exact h
+
+/-- Monotone in the cost: a cheaper route than one that is read is read. -/
+theorem judgeNext_mono {o : Option Nat} {k k' : Nat} (hk : k' ≤ k) (h : judgeNext o k = true) : judgeNext o k' = true := by
+  cases o with
+  | none => exact judgeNext_none k'
+  | some c =>
+    simp only [judgeNext, decide_eq_true_eq] at *
+    omega
+
+/-- Reading in tier k never reads a route priced above an unread cheaper one of tier k+1: if the competitor is `c` and a route of cost `k` is read, `k ≤ c`. -/
+theorem judgeNext_read_le {c k : Nat} (h : judgeNext (some c) k = true) : k ≤ c := by
+  simp only [judgeNext, decide_eq_true_eq] at h; exact h
+
+/-- 65.2 STOP WHEN NOTHING AFFORDABLE IS LEFT: if the CHEAPEST open route (every open cost is at least `c`) does not fit in the time left, no open route does. -/
+theorem none_affordable_of_cheapest {ps : List Nat} {c m l : Nat} (hmin : ∀ x ∈ ps, c ≤ x)
+    (hno : judgeReads c m l = false) : ∀ x ∈ ps, judgeReads x m l = false := by
+  intro x hx
+  by_contra hne
+  have hx' : judgeReads x m l = true := by
+    simpa using hne
+  have := judge_mono (hmin x hx) hx'
+  rw [hno] at this
+  exact absurd this (by decide)
+
 end Ideas.Forcing
