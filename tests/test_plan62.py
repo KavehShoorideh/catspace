@@ -261,3 +261,18 @@ def test_clock_resets_on_a_pawn_move():
     ag = Agenda(State(fen="8/8/8/8/8/8/4P3/K6k w - - 0 1", us="w", pieces=[]), side_depth=0)
     assert ag._pawn_move(chess.Move.from_uci("e2e4")) and not ag._pawn_move(chess.Move.from_uci("a1a2"))
     assert AG.CHASE_CLOCK == 4 and AG.CLOCK_PAWN
+
+
+def test_relabel_lifted_keeps_the_question_a_gap():
+    from catspace.incubator.analyst.discovery.agenda import Agenda
+    from catspace.incubator.analyst.discovery.state import State
+    ag = Agenda(State(fen="8/8/2k5/3p2P1/n7/2P5/2K5/8 w - - 0 55", us="w", pieces=[]), side_depth=0)
+    q = next(x for x in ag.all if x.goal == "promote")
+    ag._kill(q, "stopped: their N on a4 reaches the path", tempo=True)
+    ag._relabel_lifted(q, ["x"])
+    assert q.status == "gap" and "the chase did not close it: unfinished" in q.reason
+    assert not any(k[0] == q.id for k in ag.kills) and any(ln.startswith(f"  -> GAP Q{q.id}") for ln in ag.lines)
+    q2 = next(x for x in ag.all if x.goal == "win")
+    ag._kill(q2, "tempo: something", tempo=True)
+    ag._relabel_lifted(q2, ["x"])
+    assert q2.status == "killed"                                                     # only a "stopped:" kill of a lifted question is relabelled

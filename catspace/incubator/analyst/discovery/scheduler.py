@@ -542,7 +542,9 @@ def ask_promote_g(node, q: R.Question, head: str, lift: bool = True) -> None:
             return
         q._lift_routes = None
         node.lines.append("  lifted kill: not closed by the chase; the unlifted verdict is read")
-        return (yield from ask_promote_g(node, q, head, lift=False))
+        yield from ask_promote_g(node, q, head, lift=False)
+        node._relabel_lifted(q, lifted)
+        return
     h = PV.passer_v2(b, sq)
     bad = [k for k in PV.HYPS if not h[k]]
     why = []

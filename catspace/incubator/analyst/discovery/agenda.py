@@ -2731,6 +2731,21 @@ class Agenda:
             steps.append(f"after {san_r}, {c2.san(nxt[0])}")
         return f"a step of driving their king off {G.name(x)} ({'; '.join(steps[:3])} drives it off)"
 
+    def _relabel_lifted(self, q: R.Question, lifted: list) -> None:
+        """plan 62.1c (Kaveh 2026-10-22): the king-only verdict is PROVED and said the king is no stopper; the unlifted read may still end the question as "stopped: ..." (a static estimate of another piece).
+        That kill would say something false, so the question stays a GAP in the trace and the state: 'the chase did not close it: unfinished'. The decision treats it as any GAP."""
+        if q.status != "killed" or not str(q.reason).startswith("stopped:"):
+            return
+        why = "lifted: their king cannot stop it (race.king_verdict); the chase did not close it: unfinished (the unlifted read said " + q.reason + ")"
+        if self.kills and self.kills[-1][0] == q.id:
+            self.kills.pop()
+        for k in range(len(self.lines) - 1, -1, -1):
+            if self.lines[k].startswith(f"  -> KILLED Q{q.id}: stopped:"):
+                self.lines[k] = f"  -> GAP Q{q.id}: {why}"
+                break
+        q.status, q.reason = "gap", why
+        self.state.gaps.append(f"Q{q.id} {q.text}: {why}")
+
     def _lift_routes(self, b: chess.Board, sq: int, facts: dict) -> list:
         """plan 62.1c: the pawn's push as a route of a promote question whose kill was lifted (their king is no stopper by the proved analysis)."""
         path = facts["path"]
@@ -3269,7 +3284,9 @@ class Agenda:
                 return
             q._lift_routes = None
             self.lines.append("  lifted kill: not closed by the chase; the unlifted verdict is read")
-            return self._ask_promote(q, head, lift=False)
+            self._ask_promote(q, head, lift=False)
+            self._relabel_lifted(q, lifted)
+            return
         h = PV.passer_v2(b, sq)
         bad = [k for k in PV.HYPS if not h[k]]
         why = []
