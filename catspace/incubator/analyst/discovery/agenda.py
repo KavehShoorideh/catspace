@@ -52,13 +52,13 @@ from catspace.incubator.analyst.discovery.state import Claim, State
 DEPTH_FUSE = 30                                                 # 52.13 (2b): ... and a chase this many inner levels deep is cut the same way (python's stack: ~9 frames per level; the 10x fuse alone reached the recursion limit)
 RULE2_FROM = {"mate": 2, "win": 1, "promote": 1}              # 52.17 (2): the chase depth from which a check must address a defect of its goal (the root's chase, depth 0, keeps every forcing move; a mate goal's checks are the first level of an inner agenda, its walk begins one level below)
 FUSE = 10                                                       # 52.13 (2b): the chase's budget is a fuse at this multiple of the old question count
-NEED_AWARE_CLOSE = False                                        # 52.23 (2): OFF by default (2026-10-20: with the chain items on, 07Z0P's Bb3 no longer finishes in its share; the items stay for the time regime + the prior)
-EVASION_CHASE = False                                           # 52.23 (3): OFF by default (same)
-NEED_PROPAGATION = False                                        # 52.23 (7): OFF by default -- the need propagates to the inner agendas, a gaining reply carries the inner claim, the chain of two meets the need, a bound below the need chases first
-GOAL_JUDGE = False                                              # 52.23 (6): OFF by default (same)
-CHASE_CLOCK = 99                                                # 52.23 (8): 99 = off by default; 4 was Kaveh's starting value (same reason)
+NEED_AWARE_CLOSE = True                                         # 52.23 (2): ON at every tier (plan 64.2, 2026-10-21: "off is not built"; it was OFF because 07Z0P's Bb3 no longer finished in its share)
+EVASION_CHASE = True                                            # 52.23 (3): ON at every tier (plan 64.2)
+NEED_PROPAGATION = True                                         # 52.23 (7): ON at every tier (plan 64.2) -- the need propagates to the inner agendas, a gaining reply carries the inner claim, the chain of two meets the need, a bound below the need chases first
+GOAL_JUDGE = True                                               # 52.23 (6): ON at every tier (plan 64.2; its stop is a GAP since 64.1)
+CHASE_CLOCK = 4                                                 # 52.23 (8): ON at every tier (plan 64.2; its stop is a GAP since 64.1); 99 = off; 4 was Kaveh's starting value
                                                 # 52.23 (8): our moves on a chain without a capture that is not bad for us (Kaveh 2026-10-20: "four or five ... a hyperparameter, tune it later")
-DEEP_WIN_CHASE = False                                           # 52.23 (5) switch (bisect)
+DEEP_WIN_CHASE = True                                            # 52.23 (5): ON at every tier (plan 64.2)
 PRIOR = False                                                   # plan 53 (2): the learned prior orders the root agenda's questions (analyse --prior); it never decides
 SCHEDULER = False                                               # plan 56 (1): the chase as an explicit TASK GRAPH on a priority queue with one worker loop (scheduler.py), not the recursion below; the same decisions (scripts/compare_scheduler.py)
 CLOSE_AFTER_CAPTURE = True                                      # 2026-10-20 (kcQil): a reply closes by the exchange only if their agenda after our capture finds nothing either
@@ -681,7 +681,7 @@ class Agenda:
         claim = "no claim" if v is None else f"best claim {best[2].what} {v:+d} gives {st['balance'] + v:+d}"
         return f"{head}tier {tier}'s {claim}: {'kept' if kept else 'not kept'}" + (f"; {opened}" if opened else "")
 
-    TIER_WHY = ("today's moves", "quiet threats worth the stake followed below the root", "mate-in-two threats", "the in-check chase, the need propagated, the need-aware close, the deep win chase, the goal judge, the chase clock 4")
+    TIER_WHY = ("today's moves", "quiet threats worth the stake followed below the root", "mate-in-two threats", "the fuse x8: the 52.23 chain items run at every tier since plan 64.2, so this tier is the widest fuse")
 
     def _ask_tiers(self) -> None:
         """plan 59 (3): THE DRIVER. Run tier 0 (this agenda); if the best claim does not keep the status, run the next tier on a FRESH context (a kill under a narrower move set is not a kill under a
@@ -1876,8 +1876,8 @@ class Agenda:
                 break
             if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE:
                 res["killed"] = f"after {san_r}: " + (f"our best claim {inn['claim'].what} wins {inn['value']}, the reply took {-dbal}" if inn["claim"] else "no claim of ours and no material gain") + f" ({dbal:+d})"
-                if inn["claim"] is None and not inn.get("cut"):          # a standing kill: the later routes' same reply is skipped while the reads stay untouched
-                    ctx.reply_kills.setdefault(uci, []).append((P2, dbal, inn.get("reads"), san))
+                if inn["claim"] is None and not inn.get("cut") and target == 1:          # a standing kill: the later routes' same reply is skipped while the reads stay untouched. 64.2: only a kill made for the need 1 -
+                    ctx.reply_kills.setdefault(uci, []).append((P2, dbal, inn.get("reads"), san))      # a kill made for a bigger need (NEED_PROPAGATION) says nothing about a route that needs 1 (W0VFO: Qb7 Qxa7 was killed by Ra7+ Qxa7)
                 self._log(key, uci, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
                 break
             cl = inn["claim"] if inn["value"] >= need else None

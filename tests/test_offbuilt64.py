@@ -82,3 +82,17 @@ def test_64_1_a_chain_stop_is_a_gap_not_a_kill():
     assert ag._cut("Bxf4", "exf4", True).startswith("chain stop: Bxf4 not followed past exf4")
     assert ag.ctx.chain_gap is None
     assert not hasattr(q, "_chain_cut")
+
+
+def test_64_2_the_chain_items_are_on_by_default():
+    from catspace.incubator.analyst.discovery import agenda as AGM
+    assert all(getattr(AGM, k) for k in ("NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE"))
+    assert AGM.CHASE_CLOCK == 4
+
+
+def test_64_2_a_kill_made_for_a_big_need_is_not_a_standing_kill_for_need_one():
+    """W0VFO (rand8_10) with NEED_PROPAGATION: 'Ra7+ Qxa7' killed for a need of several; it was served as a standing kill to Qb7 Qxa7, which needs 1 (Qb7 decides, Rxa7 recaptures)."""
+    (p,) = [x for x in PA.load_set("rand8_10") if x["id"] == "W0VFO"]
+    r = analyse(p, quiet=True, memory=False, seconds=10)
+    print("OBS 64.2 W0VFO decision:", r["decision"], r["move"])
+    assert r["move"] == "e4b7"

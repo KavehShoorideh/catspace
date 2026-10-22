@@ -180,7 +180,8 @@ def main():
     ap.add_argument("--sf", action="store_true", help="plan 53 (1): grade each decision with Stockfish (RIGHT within 50 cp of the best move, else WRONG); the log's label")
     ap.add_argument("--prior", action="store_true", help="plan 53 (2): the learned prior (data/derived/question_prior.json) orders the root agenda's questions")
     ap.add_argument("--workers", type=int, default=None, help="puzzles in parallel processes (default: all cores but one; 1 = sequential)")
-    ap.add_argument("--chain", action="store_true", help="plan 52.23 (2)-(8): the chain items ON (the need-aware close, the in-check chase, win chases below depth two, the goal judge, the need propagated, the chase clock 4) -- the regime for hard positions under a time budget (x00hu, 2026-10-20)")
+    ap.add_argument("--no-chain", action="store_true", help="plan 64.2: switch the 52.23 chain items OFF (they are ON by default at every tier)")
+    ap.add_argument("--chain", action="store_true", help="plan 52.23 (2)-(8) (the default since plan 64.2; kept for the harness): the chain items ON (the need-aware close, the in-check chase, win chases below depth two, the goal judge, the need propagated, the chase clock 4) -- the regime for hard positions under a time budget (x00hu, 2026-10-20)")
     ap.add_argument("--tiers", action="store_true", help="plan 59: STATUS-DRIVEN WIDENING -- the root runs tier 0, then wider tiers (quiet threats below the root; mate-in-two threats; the 52.23 chain items) only while no claim keeps our status; under --seconds each tier keeps its count fuse and the tiers share the time")
     ap.add_argument("--parries", action="store_true", help="plan 61 A2: a closed reply that does not parry the route's threat says so (\"closed by the threat\"); the same values")
     ap.add_argument("--delayed", action="store_true", help="plan 61 A3: a quiet move after which every reply allows a forcing move of ours is a route (tier 1+, the root's chase)")
@@ -224,6 +225,11 @@ def main():
         for k in ("NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE"):
             setattr(AGM, k, True)
         AGM.CHASE_CLOCK = 4
+    if a.no_chain:                                               # plan 64.2: the chain items are ON by default; this is the comparison condition
+        from catspace.incubator.analyst.discovery import agenda as AGM
+        for k in ("NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE"):
+            setattr(AGM, k, False)
+        AGM.CHASE_CLOCK = 99
     if a.sf:                                                     # plan 53 (1): the engine beside an agenda stalled the set runs (its thread; 2026-10-20): grade the log in its own pass instead
         raise SystemExit("--sf is retired: run `question_prior grade` on the log after `analyse --qlog` (the grader never runs beside an agenda)")
     from catspace.incubator.analyst.discovery.agenda import ChaseCtx

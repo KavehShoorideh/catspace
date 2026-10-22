@@ -1031,7 +1031,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
             break
         if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE:
             res["killed"] = f"after {san_r}: " + (f"our best claim {inn['claim'].what} wins {inn['value']}, the reply took {-dbal}" if inn["claim"] else "no claim of ours and no material gain") + f" ({dbal:+d})"
-            if inn["claim"] is None and not inn.get("cut"):          # a standing kill: the later routes' same reply is skipped while the reads stay untouched
+            if inn["claim"] is None and not inn.get("cut") and not (node._t(AG.NEED_PROPAGATION, 3) and node.min_stake > 1):          # a standing kill: the later routes' same reply is skipped while the reads stay untouched (64.2: only a kill made for the need 1)
                 ctx.reply_kills.setdefault(uci, []).append((P2, dbal, inn.get("reads"), san))
             node._log(key, uci, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
             break
@@ -1264,7 +1264,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
             break
         if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE:
             res["killed"] = f"after {san_r}: " + (f"our best claim {inn['claim'].what} wins {inn['value']}, the reply took {-dbal}" if inn["claim"] else "no claim of ours and no material gain") + f" ({dbal:+d})"
-            if inn["claim"] is None and not inn.get("cut"):          # a standing kill: the later routes' same reply is skipped while the reads stay untouched
+            if inn["claim"] is None and not inn.get("cut") and not (node._t(AG.NEED_PROPAGATION, 3) and node.min_stake > 1):          # a standing kill: the later routes' same reply is skipped while the reads stay untouched (64.2: only a kill made for the need 1)
                 ctx.reply_kills.setdefault(uci, []).append((P2, dbal, inn.get("reads"), san))
             node._log(key, uci, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
             break
