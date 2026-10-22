@@ -869,6 +869,11 @@ class Agenda:
         _key, u, d, floor, read, rest, n, total = best[1]
         refuted = [x["san"] for x in self.root_reads.values() if x["status"] == "killed"][:3]
         label = f"unfinished: {n} of {total} replies read"
+        st = getattr(self, "status_info", None) or self.status()
+        if floor is not None and floor < -st["threat"]:                   # 2026-10-22 (Kav): an unfinished line is played only if its read part beats the pass: it may lose no more than their threat does
+            self.lines.append(f"no proved claim: the best unfinished line {d['san']} (floor {floor:+d}, {label}) loses more than their threat ({st['threat']}) on the replies read: no decision"
+                              + f" ({len(gaps)} unfinished line(s) compared; " + (", ".join(refuted) + " refuted)" if refuted else "nothing is refuted)"))
+            return None
         self.lines.append(f"no proved claim: {d['san']} is played as the best unfinished line (floor " + (f"{floor:+d}" if floor is not None else "unknown") + f", {label}"
                           + (f"; least gain read {read:+d}" if read is not None else "") + (f", the {total - n} unread by their static balance {rest:+d}" if rest is not None else "") + "; "
                           + (", ".join(refuted) + (" is" if len(refuted) == 1 else " are") + " refuted" if refuted else "nothing is refuted") + f"; {len(gaps)} unfinished line(s) compared, {len(tied)} tied at the floor, ordered by the judge's price {best[0]})")
