@@ -108,3 +108,17 @@ def test_67_the_agenda_claims_a_pure_ending_by_the_plan_arithmetic_and_offers_su
     ag2.ask()
     t2 = ag2.trace()
     assert "support (plan 67.4): Ra5" in t2 and "Ra5 (support:" in t2
+
+
+def test_67_a_plan_that_opens_with_a_step_aside_is_not_a_promote_claim_and_their_threat_roots_survive_it():
+    """3U6wp crashed the 15 s grade (2026-10-22): a plan_sound claim whose first move was a blocker's step-aside reached `_threat_roots`, which reads a promote
+    claim's move as the pawn's push. The claim is made only for a plan that opens with the push; the roots skip a claim without a path."""
+    from catspace.incubator.analyst.discovery import table as TB
+    from catspace.incubator.analyst.discovery.agenda import Agenda
+    from catspace.incubator.analyst.discovery.state import state_of
+    b = chess.Board("1r6/8/8/5p2/5rk1/7p/8/6K1 b - - 0 1")
+    pl = P.read(b, chess.F5)
+    assert pl.moves and b.piece_type_at(pl.moves[0].from_square) == chess.ROOK
+    ag = Agenda(state_of("7R/8/1p1P4/p1p5/P1P5/1P4k1/1K5p/7r w - - 3 62", "w"), seconds=3)      # 3U6wp
+    ag.ask()                                                                                        # (no IndexError)
+    assert all(c.kind != "promote" or chess.Move.from_uci(c.move).from_square in chess.SquareSet(ag.board.pawns) for c in ag.state.claims)

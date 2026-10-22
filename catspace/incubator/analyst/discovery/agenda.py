@@ -685,7 +685,10 @@ class Agenda:
             if cl.kind == "promote":
                 pw = m.from_square
                 pb = ag.board
-                dest = R.pawn_path(pb, pw, G.word(pb, ("pushes", G.name(pw)), not self.me))[-1]
+                ppath = R.pawn_path(pb, pw, G.word(pb, ("pushes", G.name(pw)), not self.me))
+                if not ppath:
+                    continue                                     # (their claim's move is not a pawn's push with a path: nothing to stop by this root)
+                dest = ppath[-1]
                 q = self._push(R.new_question("save", cl.value, dict(promoter=pw, push=cl.move, value=cl.value, lemma=cl.lemma, line=cl.line, what=cl.what, inner_threat=given),
                                              text=f"stop their P on {G.name(pw)} (promotes on {G.name(dest)}): their claim {cl.what} wins {cl.value} (lemma {cl.lemma})"), force=given)
                 self.threat_qs.append((q, cl))
@@ -3717,7 +3720,7 @@ class Agenda:
         if not pl.moves:
             return False
         self.lines.append("  " + PL.trace(b, pl))
-        if pl.closed:
+        if pl.closed and pl.moves[0].from_square == sq:         # (a plan that opens with a blocker's step-aside is not claimed as a promote move: a promote claim's move is the pawn's push)
             push = pl.moves[0]
             san = b.san(push)
             claim = Claim("promote", san, R.STAKE_PROMOTE, "plan_sound", f"{pl.line(b)}: {len(pl.weak)} weak moment(s), none reachable by any piece of theirs in time", move=push.uci())
