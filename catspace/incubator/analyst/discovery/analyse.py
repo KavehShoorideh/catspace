@@ -71,6 +71,8 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
     for line in ag.leaf_obs:
         log(f"OBS leaf {p['id']}: {line}")
     decided = d.what if d else "none"
+    if d is not None and getattr(d, "word", ""):
+        log(f"OBS unfinished {p['id']}: decision {d.what} is an {d.word}, not proved: {d.line}")      # plan 65.3
     estimated = ag.decision_estimated()
     if ag.ctx.est_routes or ag.ctx.est_why:
         log(f"OBS estimate gaps {p['id']}: not estimated {dict(ag.ctx.est_why)}")
@@ -125,7 +127,7 @@ def _append_once(path, text: str) -> None:
         os.close(fd)
 
 
-_FLAGS = ("PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS", "TIERS_UNDER_TIME", "CLOSE_AFTER_CAPTURE", "RAISE_TO_WIN", "PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE", "ESTIMATE", "COST_JUDGE", "CYCLE", "COMPETE", "STOP_AFFORD")
+_FLAGS = ("PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS", "TIERS_UNDER_TIME", "CLOSE_AFTER_CAPTURE", "RAISE_TO_WIN", "PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE", "ESTIMATE", "COST_JUDGE", "CYCLE", "COMPETE", "STOP_AFFORD", "UNPROVED")
 
 
 def _init_worker(flags: dict) -> None:
@@ -197,16 +199,18 @@ def main():
     ap.add_argument("--no-delayed", action="store_true", help="plan 63.3: switch the delayed threat (61 A3, ON by default) OFF")
     ap.add_argument("--no-compete", action="store_true", help="plan 65.1: the next tier's cheapest new route does NOT compete with this tier's routes (the comparison condition; ON by default)")
     ap.add_argument("--no-stop-afford", action="store_true", help="plan 65.2: the widening runs to the deadline instead of stopping when nothing affordable is left (comparison; ON by default)")
+    ap.add_argument("--no-unproved", action="store_true", help="plan 65.3: no unfinished-line decision when there is no claim (comparison; ON by default)")
     ap.add_argument("--duty", action="store_true", help="plan 63.2: the duty word ('pinned to a threat') in the trap/run test (the default: ON)")
     ap.add_argument("--no-duty", action="store_true", help="plan 63.2: switch the duty word OFF (CATSPACE_DUTY=0, inherited by the workers)")
     a = ap.parse_args()
     if a.no_delayed and not a.delayed and not a.forcing61:
         from catspace.incubator.analyst.discovery import agenda as _AG63
         _AG63.DELAYED_THREAT = False
-    if a.no_compete or a.no_stop_afford:
+    if a.no_compete or a.no_stop_afford or a.no_unproved:
         from catspace.incubator.analyst.discovery import agenda as _AG65
         _AG65.COMPETE = _AG65.COMPETE and not a.no_compete
         _AG65.STOP_AFFORD = _AG65.STOP_AFFORD and not a.no_stop_afford
+        _AG65.UNPROVED = _AG65.UNPROVED and not a.no_unproved
     if a.no_duty and not a.duty:
         from catspace.incubator.analyst.discovery import regress as _R63
         os.environ["CATSPACE_DUTY"] = "0"

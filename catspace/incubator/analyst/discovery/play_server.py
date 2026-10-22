@@ -270,7 +270,7 @@ class AgendaPlayer:
             if move is None:
                 say(f"agenda decision {decision.what} carries move {decision.move!r} which is not legal here; falling back")
         if move is not None:
-            lean = "" if decision.proved else f" [ESTIMATED, not proved: confidence {decision.confidence:.2f} by {decision.estimator}]"
+            lean = "" if decision.proved else (f" [{decision.word}, not proved: nothing is refuted, no claim exists]" if decision.word else f" [ESTIMATED, not proved: confidence {decision.confidence:.2f} by {decision.estimator}]")
             say(f"decision: agenda chose {board.san(move)} ({decision.kind} {decision.what}, value {decision.value}, lemma {decision.lemma}){lean}")
             return move, out, "agenda"
         move = self._fallback_move(board)

@@ -774,6 +774,7 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
             node.lines.append(f"    {r.san}: value {res['value']} (no gain on the worst reply)")
     if q.goal == "win" and not node.ctx.out_of_time():
         (yield from refuter_fixes_g(node, q, routes, results, done, pool))
+    node._record_roots(routes, results)                      # plan 65.3 (mirror of agenda._chase_routes)
     node._chasing = None
     node._chase_q = None
     q._chased = not cut                                      # 52.19: a kill is "chased" only when no route was cut (a GAP); a cut chase is as weak as no chase

@@ -143,3 +143,41 @@ def test_65_2_the_wider_vocabulary_adds_open_routes():
     ok, line = ag._affordable(ag, 0, 0.5, __import__("time").monotonic())
     print("OBS 65.2 07Z0P:", ok, line)
     assert not ok and "(tier 1, " in line
+
+
+def test_65_3_pos2_decides_bf2_as_an_unfinished_line_and_says_so():
+    """pos2 (count budget, so no clock): no claim of any kind. Nxf4, Bxc5, Bxf4 are refuted (killed); the unfinished lines are GAPs; Bf2 has the best floor and the lowest price among those tied; the decision is marked unproved."""
+    ag = Agenda(state_of(POS2, "w"))
+    ag.ask()
+    d = ag.decision()
+    trace = ag.trace()
+    line = next(x for x in trace.splitlines() if x.startswith("no proved claim"))
+    print("OBS 65.3", line)
+    print("OBS 65.3 decision:", d.what, d.value, "proved" if d.proved else "unproved", d.word)
+    assert d is not None and d.what == "Bf2" and d.proved is False and d.word == "unfinished line" and d.lemma == "unfinished line"
+    assert "Bf2 is played as the best unfinished line" in line and "Nxf4" in line and "refuted" in line
+    assert ag.best is None and ag.best_est is None
+    killed = {x["san"] for x in ag.root_reads.values() if x["status"] == "killed"}
+    assert "Nxf4" in killed and d.what not in killed                       # a kill is a proved loss: an unfinished line is preferred to it
+
+
+def test_65_3_never_when_a_claim_exists():
+    """2VDtX has a proved claim (Nf6+): no 'no proved claim' line, the claim is proved, nothing unfinished decides."""
+    ag = Agenda(state_of(VDTX, "w"))
+    ag.ask()
+    d = ag.decision()
+    print("OBS 65.3 2VDtX:", d.what, "proved" if d.proved else "unproved")
+    assert d is not None and d.proved and d.word == ""
+    assert "no proved claim" not in ag.trace()
+
+
+def test_65_3_off_switch_leaves_no_decision():
+    """The comparison condition (analyse --no-unproved): pos2 decides nothing, as plan 64 left it."""
+    old = AGM.UNPROVED
+    try:
+        AGM.UNPROVED = False
+        ag = Agenda(state_of(POS2, "w"))
+        ag.ask()
+        assert ag.decision() is None
+    finally:
+        AGM.UNPROVED = old

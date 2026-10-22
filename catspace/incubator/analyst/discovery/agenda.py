@@ -76,6 +76,7 @@ TIERS_UNDER_TIME = True                                         # plan 59 defaul
 TIERS = False                                                   # plan 59: STATUS-DRIVEN WIDENING at the root -- tier 0 (today's moves), then wider tiers (settings of the root's ChaseCtx) only while no claim keeps our status; analyse --tiers; the play server honours it
 TIER_COUNT = 4                                                  # tiers 0..3
 COMPETE = True                                                  # plan 65.1: the NEXT tier's cheapest route competes with this tier's root routes (Lean `Ideas.Forcing.judgeNext`): a NEW route (not yet open in this tier) priced above it is a GAP, read in the next tier (deferred once); `analyse --no-compete`
+UNPROVED = True                                                 # plan 65.3: no claim at all -> the best UNFINISHED root route (a GAP) decides, marked unproved; `analyse --no-unproved`
 STOP_AFFORD = True                                              # plan 65.2: the widening (and the RAISE_TO_WIN continuation) ends when no open route of any tier is priced within the time left; `analyse --no-stop-afford`
 NO_FUSE = 1 << 40                                               # 52.23 (1): the fuse when the budget is time: never reached (the deadline is the only limit)
 
@@ -315,6 +316,7 @@ class Agenda:
                 self.ctx.deadline = self.ctx.final = self.ctx.t0 + seconds
         self._threats_done = not side_depth and their is None
         self._pass_done, self._pass_best = False, None          # plan 59: their best claim with the move passed to them (set by `_threat_roots`; read by `status`)
+        self.root_reads: dict = {}                              # plan 65.3: root route (uci) -> how its last read ended: {status: killed | gap, san, why | gains}; a kill is final, a gap keeps the replies read so far
         self._hang: list = []
         self.threat_views: list = []                            # (claim, their agenda) for every threat root
         self._seq = 0
@@ -724,13 +726,16 @@ class Agenda:
             if not self.keeps(st, top)[0]:
                 return False
             return not (RAISE_TO_WIN and st["line"] == 0 and st["balance"] + top[0] < 1)       # (kept at 'not losing' with time left: the line rises to 'stay ahead' and the next tier opens anyway -- 59 (4))
-        self.unfinished: list = []                               # plan 65.3: the root routes that ended as GAPs (with the replies read so far) in the LAST tier that read them
         while True:
             ag.ctx.held = held
             t1 = time.monotonic()
             ag._ask_once()
             secs = time.monotonic() - t1
             if ag is not self:                                   # fold the wider tier into this root: its claims and gaps, its decision when it beats the one held
+                for u, d in ag.root_reads.items():               # plan 65.3: what the wider tier learned of each root route (a kill is final, the longer read of a GAP stands)
+                    old = self.root_reads.get(u)
+                    if old is None or (old["status"] != "killed" and (d["status"] == "killed" or len(d["gains"]) >= len(old["gains"]))):
+                        self.root_reads[u] = d
                 self.their_runs += ag.their_runs
                 self.ctx.est_rows += ag.ctx.est_rows                 # plan 61 B2: the wider tier's estimated leaves and claims are the root's
                 self.ctx.est_routes += ag.ctx.est_routes
@@ -799,7 +804,63 @@ class Agenda:
         self.tier_secs = [t["secs"] for t in self.tier_info]
         self.lines.append(f"TIERS: ran {len(self.tier_info)} (0..{len(self.tier_info) - 1}); the decision is " + (f"{self.best[2].what} ({self.best[0]:+d}) from tier {decided}" if self.best is not None else "none") + f"; seconds per tier {self.tier_secs}")
 
+    def _record_roots(self, routes: list, results: dict) -> None:
+        """plan 65.3: what the ROOT's chase learned of each route: killed (a proved loss under this tier's vocabulary: final) or GAP (unfinished: the replies read so far are `gains`). The decision reads this
+        when no claim exists at all. Inner agendas record nothing."""
+        if self.chase_depth != 0 or self.ctx is None:
+            return
+        for i, r in enumerate(routes):
+            res = results.get(i)
+            u = r.move.uci()
+            if res is None or self.root_reads.get(u, {}).get("status") == "killed":
+                continue
+            if res.get("killed"):
+                self.root_reads[u] = dict(status="killed", san=r.san, why=res["killed"])
+            elif res.get("gap"):
+                gains = list(res.get("gains") or [])
+                old = self.root_reads.get(u)
+                if old is None or len(gains) >= len(old["gains"]):
+                    self.root_reads[u] = dict(status="gap", san=r.san, gap=res["gap"], gains=gains)
+
+    def _unfinished_claim(self) -> "Claim | None":
+        """plan 65.3 THE UNPROVED DECISION: no claim of any kind exists. An UNFINISHED route (a GAP: nothing is proved against it) is preferred to a refuted one (a KILL is a proved loss). Among the GAPs: the best
+        partial floor first, then the judge's price (the cheaper first). The partial floor is the least gain over the replies read so far (the route body reads them in a fixed order, so the replies read are the first
+        `n` of that order); a reply not read yet counts by its static material change (what the route would cost with no further reading), so a route whose one reply read is a mate does not outrank a route read
+        to the end. -> a Claim marked `proved=False`, word 'unfinished line', or None."""
+        ctx = self.ctx
+        gaps = [(u, d) for u, d in self.root_reads.items() if d["status"] == "gap"]
+        if not gaps:
+            return None
+        b = self.board
+        P0 = AC.Pos(b.fen())
+        rows = []
+        for u, d in gaps:
+            P1 = P0.push(u)
+            shift = P1.balance(self.me) - P0.balance(self.me)
+            reps = [(shift + dbal, uc, chk, cap, rec) for uc, dbal, chk, cap, rec, _m1 in P1.replies()]
+            reps.sort(key=lambda t: (0 if t[4] else 1 if t[2] else 2 if t[3] else 3, t[0], t[1]))       # (the order `_chase_route_body` reads them in)
+            n = len(d["gains"])
+            read = min(d["gains"]) if d["gains"] else None
+            rest = min((t[0] for t in reps[n:]), default=None)
+            floor = min(x for x in (read, rest) if x is not None) if (read is not None or rest is not None) else None
+            rows.append(((floor is None, -(floor if floor is not None else 0)), u, d, floor, read, rest, n, len(reps)))
+        top = min(r[0] for r in rows)
+        tied = [r for r in rows if r[0] == top]                       # the best floor; the judge's price (first-level cost, `_price`: priced as far as the cheapest so far) orders the tie
+        best, limit = None, 1 << 12
+        for r in sorted(tied, key=lambda t: t[1]):
+            cost, _kids, lower = self._price(chess.Move.from_uci(r[1]), 1, limit)
+            if best is None or cost < best[0]:
+                best, limit = (cost, r), cost
+        _key, u, d, floor, read, rest, n, total = best[1]
+        refuted = [x["san"] for x in self.root_reads.values() if x["status"] == "killed"][:3]
+        label = f"unfinished: {n} of {total} replies read"
+        self.lines.append(f"no proved claim: {d['san']} is played as the best unfinished line (floor " + (f"{floor:+d}" if floor is not None else "unknown") + f", {label}"
+                          + (f"; least gain read {read:+d}" if read is not None else "") + (f", the {total - n} unread by their static balance {rest:+d}" if rest is not None else "") + "; "
+                          + (", ".join(refuted) + (" is" if len(refuted) == 1 else " are") + " refuted" if refuted else "nothing is refuted") + f"; {len(gaps)} unfinished line(s) compared, {len(tied)} tied at the floor, ordered by the judge's price {best[0]})")
+        return Claim("win", d["san"], floor if floor is not None else 0, "unfinished line", f"{d['san']} (floor " + (f"{floor:+d}" if floor is not None else "unknown") + f", {label}; {d['gap']})", move=u, goal="win", proved=False, confidence=0.0, estimator="", word="unfinished line")
+
     def _affordable(self, ag: "Agenda", k: int, left: float, t0: float) -> tuple:
+
         """plan 65.2 (Lean `Ideas.Forcing.none_affordable_of_cheapest`): is any OPEN route priced within the time left? The open routes after tier k: the root routes that ended tier k as GAPs (cut by the judge, the
         competition, the fuse or the clock; a route cut after t seconds needs more than t) and the routes tier k+1's wider vocabulary ADDS at the root of each question tier k chased (forcing with tier k+1's flags,
         not with tier k's). A route that tier k read to its end (a claim, a kill) is not open. The price of a route is the judge's (`_route_need`: first-level cost x the measured seconds per node, or its measured
@@ -2744,6 +2805,7 @@ class Agenda:
                 self.lines.append(f"    {r.san}: value {res['value']} (no gain on the worst reply)")
         if q.goal == "win" and not self.ctx.out_of_time():
             self._refuter_fixes(q, routes, results, done, pool)
+        self._record_roots(routes, results)
         self._chasing = None
         self._chase_q = None
         q._chased = not cut                                      # 52.19: a kill is "chased" only when no route was cut (a GAP); a cut chase is as weak as no chase
@@ -2883,6 +2945,8 @@ class Agenda:
             if not self.keeps(st, self.best)[0] and self.keeps(st, self.best_est)[0]:
                 dec, est = self.best_est[2], True
                 self.lines.append(f"DECISION ESTIMATED: {dec.what} {dec.value:+d}, confidence {dec.confidence:.2f} by {dec.estimator}; no proved claim keeps the status")
+        if dec is None and UNPROVED and self._root and self.chase_depth == 0 and self.ctx is not None and self.best_est is None:
+            dec = self._unfinished_claim()                       # plan 65.3: no claim of any kind: the best unfinished line, marked unproved, never silently (the trace line above)
         self._decision = (dec, est)
         self._flush_estimates(dec if est else None)
         return dec
