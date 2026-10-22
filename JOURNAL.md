@@ -32208,3 +32208,31 @@ pos2 decides NOTHING at 10/30/60 s (Nxf4 killed after exf4, Bf2 a GAP by the tem
 the second check stays a GAP and the delayed threat inside the chase was REMOVED (both cost lK9WA at 10 s). Common cause of almost all of it: TIME
 ALLOCATION -- tier 0 runs to the deadline and the judge cuts lines that finish in seconds under a larger budget. Decisions for Kaveh: the allocation
 (plan 65), pos2's proved-vs-estimated rule, 64.7's deep read for their pass.
+
+## 2026-10-22 02:28 PDT -- PLAN 65 BUILT AND VERIFIED: time as a priced choice across tiers; the unproved decision; the grade now split by proof
+
+Builder (Sonnet) built docs/ANALYST_PLAN.md "### 65" 65.1-65.4 (9c6e4b0a, 103a0f26, 26fbd93d, 73272002, fix 3a7171a8, note 13a4a9c0, tests 38e93b50,
+LEAN_INDEX dbb4538c); verified here (no trailers, by path, JOURNAL untouched, Lean `judgeNext` + `none_affordable_of_cheapest` build with no sorry,
+compare_scheduler default and --chain 0 differences, suite on the last code commit 1292 passed 2 xfailed, 63 passed 1 xfailed on the touched files after
+1c219283). Numbers from OBS lines, one run each, directional.
+
+65.1 deviates from the spec and the builder said so: the competitor is tier k+1's WHOLE root route set (the spec said only the routes it adds; on 07Z0P
+the deciding claim is a RE-READ of Qxd5+ with tier 1's wider inner vocabulary, so the literal spec changed nothing). Refinements each from a traced loss:
+only a NEW route is cut (4pC83), a cut route is deferred once (2VDtX, discovery), nothing competes while the best claim keeps the status. 65.2 is built to
+the spec and inert on the 90. 65.3 fix: only a kill that proves a loss refutes a route ("(-n)", mate, stalemate, no parry); a question-specific kill or a
+level one stays an unfinished candidate (Qxa5, Qxd5+ were wrongly excluded before). 65.4 fired on 2 of the 90, changed no decision.
+
+The grade line changed here (1c219283): the question log records whether the decision is a PROVED claim or an UNPROVED unfinished line, and
+`question_prior grade` prints "OBS prior grade by proof". The 90 at 15 s (ql64_a65_6, puzzle for puzzle identical to the builder's final run):
+proved RIGHT 67, proved WRONG 2, unproved RIGHT 5, unproved WRONG 16, none 0 -- against plan 64's 66/22/2. The one proved gain is eSJqH (65.1). The 21
+unproved picks are all former UNKNOWNs; the 16 wrong ones lose 236-856 cp against Stockfish. Count: proved 63/3 unchanged, unproved 7 right 17 wrong.
+Clock edges alone at 15 s (twice each): 07Z0P Qxd5+ decided by tier 1 (tiers 8.8/3.7/2.2 s), eSJqH Qa5 by tier 2 (1.3/4.3/3.3/5.1 s).
+
+Not met: the six slow RIGHTs still run 13-15.7 s (every tier RE-READS the root routes on a fresh context; 65.2 never fires because cheap open work
+always remains); the discovery position decides at 15 s only as the unproved Nd6 (strict xfail kept, tightened to a PROVED decision); 2zB89 at 60 s
+picks the unproved Qxd4, wrong (Qxa5 is a GAP at the chain stop, dearer on price). pos2 met: Bf2 as "unfinished line", status "their threat 2 (deep)".
+Concern noted: `_refuted` reads the kill's reason STRING (a regex on "(-n)"); a typed kill reason would be sounder.
+
+Decisions for Kaveh: (1) the unproved pick is wrong 16 of 21 at 15 s; its order (partial floor, mostly a +0 tie, then price) does not find the good line
+where one exists (builder: ~8 of 20 have one). Keep it ON as a marked guess, refuse when the floor is negative (builder's sample: 1 of 7 right), or
+report "no line" and the status only? (2) carrying root reads across tiers (the re-read is the remaining time sink). (3) plan 62 still awaits a go.
