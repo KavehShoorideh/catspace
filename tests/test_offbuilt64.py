@@ -167,8 +167,6 @@ def test_64_5_the_estimate_is_on_and_inert_where_a_proved_claim_keeps_the_status
     assert r["move"] == "a6b5"
 
 
-@pytest.mark.xfail(strict=False, reason="(not strict: it XPASSes under full-suite load, 2026-10-22) cost, not reasoning: the discovery position PROVES Nf6 in ~9 s under a 30 s budget; under 15 s the tiers re-read the promote question's stopper routes (tier 0 7 s, tier 1 6 s) "
-                   "and the cost judge cuts Nf6 (plan 65.1 does not reach it). Since 65.3 it DECIDES at 15 s, but as an unproved unfinished line (Nd6), which is not this test")
 def test_64_discovery_decides_within_15_s():
     from catspace.incubator.analyst.discovery.state import State
     ag = Agenda(State(fen="r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w - - 0 1", us="w", pieces=[]), seconds=15)
