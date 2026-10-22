@@ -2963,6 +2963,7 @@ reply leaves a new "threat 3" (Ng1), so Bf2 is a delayed threat in Thomsen's sen
 The rule: a sound word that loses a RIGHT is traced per puzzle (the line, the cause, the rule), fixed, re-graded, and ends ON; "no measured gain" is not a
 reason to leave it off. Speed-only parts (the prior's order, Rust ports, caches) are a different category: identical by harness, chosen by speed.
 Grade = the 90 (rand1_10..rand9_10), 10 s and the count budget, Stockfish depth 14, ONE grade at a time on the machine, a private `CATSPACE_QLOG`; compare
+Timed grade 15 s from 64.4 on (Kaveh 2026-10-21).
 per puzzle by the final `decision` of each id (not only the `decided` root rows: tier decisions are logged with decided False).
 * 64.1 A CHAIN-STATE CUT IS A GAP OR A PROOF, NEVER A SILENT KILL (found on 2zB89, 2026-10-21). `_inner` returns a chain cut (`_chain_cut`) with
   `cut` False, so the caller reads it as "no claim of ours" and KILLS the route. The case: 1.Qxa5 Qxa1+ 2.Rf1 Qd4+ 3.Kh1 (Stockfish: Rf1 +4.72 against
