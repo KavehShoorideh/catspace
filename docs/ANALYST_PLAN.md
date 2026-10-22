@@ -3093,6 +3093,14 @@ and every proved claim is a proof over the same board and stays one. Only kills 
   with the tier-independent facts, keep kills tier-local). Trace: "resumed Rg8+: 3 of 5 replies carried, 2 read".
 * 66.3 THE STOP (65.2) THEN BITES: with nothing re-read, "no open route of any tier is affordable" is reachable; the six slow RIGHTs must END before the
   deadline (decide, then stop) rather than widen to it. No new rule: 65.2 as built.
+* 66.4 RESUME A CHAIN-STOPPED LINE WHILE IT IS STILL FORCING (Kaveh 2026-10-22: "didn't we write a policy that asked one more move or not?" -- we did: the
+  capture clock and the tempo arithmetic, plan 52.23/64.1, both GAPs since 64.1; the hole is that nothing RESUMES a gapped line inside the budget: the
+  background queue of plan 52.19 is drained only after the puzzle). With time left after the tiers' open work is read (65.2's open set), the root resumes
+  its chain-stopped GAP routes from the background queue in price order (the judge's `_route_need`), and a resumed line gets one more level of the
+  allowance ONLY while it is still forcing: every reply of theirs read so far was a parry (`Ideas.Forcing.parries`, plan 61 A), so a sacrifice whose
+  payoff lies one move past the arithmetic is read, and a line that went quiet is not. The criterion is the existing forcing word, not a number. Trace:
+  "resumed Rxf2+ (chain stop at move 4; every reply a parry; 2.1 s left)". Cases: Wq9B1 Rxf2+ (rand5_10), dOC36 Nf6+ (rand2_10), zBouR Rxf2 (rand2_10),
+  8IQCy Ne6 (rand4_10), xhSWo Rxg2 (rand6_10), mh1q8 Nd7+ (rand6_10; trace first: a check that forks K and Q should be tier 0 -- find why it is not).
 * ACCEPTANCE (OBS lines, one run each, directional): the six slow RIGHTs alone at 15 s decide the same move and END under 5 s wall each; the discovery
   position proves Nf6 at 15 s (remove the strict xfail marker ONLY when the test passes with `proved`); 07Z0P and eSJqH alone still decide at 15 s; the
   90 at 15 s by proof against ql64_a65_7 (the baseline after the beats-the-pass rule): no proved RIGHT lost, every change traced; count against its
