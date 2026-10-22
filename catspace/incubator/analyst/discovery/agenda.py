@@ -42,6 +42,7 @@ from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import landing as LD
 from catspace.incubator.analyst.discovery import region as RG
+from catspace.incubator.analyst.discovery import race as RC
 from catspace.incubator.analyst.discovery import regress as R
 from catspace.incubator.analyst.discovery import question_prior as QP
 from catspace.incubator.analyst.discovery import reasoned as RS
@@ -2213,6 +2214,8 @@ class Agenda:
         pc = b2.piece_at(pawn)
         if pc is None or pc.piece_type != chess.PAWN or pc.color != self.me:
             return None
+        if RC.RACE and b2.turn == self.me and RC.race_claim(b2, pawn) is not None:      # plan 62.1: the race word binds on the reply's board: the stopper defect that stands is not a stop
+            return None
         defects, _facts = R.promote_defects(b2, pawn)
         old = {d.key() for d in q.defects if d.kind in ("stopper", "blocked")}
         standing = [d for d in defects if d.key() in old]
@@ -3174,6 +3177,8 @@ class Agenda:
         self.lines.append(head + (": " + "; ".join(f"defect {d.kind} ({d.why})" for d in q.defects) if q.defects else
                                   ": no defect -- unstoppable by the tempo arithmetic" + (f" (their K needs {kd} to {G.name(promo)}, the pawn {n})" if kd is not None else "")))
         if q.defects:
+            if self._race_claim(q, sq):                           # plan 62.1: the race word binds although a defect stands (the stopper the king cannot be: denied, overloaded)
+                return
             for d in q.defects:
                 f = R.promote_fixes(b, sq, d, q)
                 rs = ", ".join(f"{r.san} ({r.why})" for r in f.routes)
@@ -3203,6 +3208,8 @@ class Agenda:
                 self.best = (claim.value, 0, claim)
                 self.asked_at_claim = self.asked
             return
+        if self._race_claim(q, sq):                               # plan 62.1: no defect, the lemma does not fire (our sliders, say): the race word
+            return
         ex = self._promotion_exchange(q, sq, facts)
         if ex is not None:
             return
@@ -3224,6 +3231,28 @@ class Agenda:
         q.reason = msg
         self.state.gaps.append(msg)
         self.lines.append(f"  -> GAP: {msg}")
+
+    def _race_claim(self, q: R.Question, sq: int) -> bool:
+        """plan 62.1 / 62.2: THE RACE WORD (Lean Ideas.Race.race_sound; regress.race_claim): when it binds for the pawn on `sq` the promotion is a PROVED claim (value 8) whose line names both counts and
+        whose trace line prints the FRAME -- the pieces read, the pieces excluded and why (62.2, Ideas.Race.frame_sound_pass). Served only on a board where the pawn's owner is to move. -> True if the claim was made."""
+        b = self.board
+        if not RC.RACE or b.turn != self.me:
+            return False
+        rc = RC.race_claim(b, sq)
+        if rc is None:
+            return False
+        san = b.san(rc.first)
+        line = f"{san} -- {rc.text}"
+        claim = Claim("promote", san, R.STAKE_PROMOTE, "Ideas.Race.race_sound", line, move=rc.first.uci())
+        self._stamp(claim, q)
+        self.state.claims.append(claim)
+        q.status = "verified"
+        self.lines.append(f"  -> CLAIM promote {san} (value {claim.value}), lemma {claim.lemma}, word race ({rc.text})")
+        self.lines.append(f"     {rc.frame}")
+        if self._better(claim.value, 0, claim):
+            self.best = (claim.value, 0, claim)
+            self.asked_at_claim = self.asked
+        return True
 
     def _promotion_exchange(self, q: R.Question, sq: int, facts: dict) -> "Claim | None":
         """52.17 (3): THE PROMOTION THAT IS AN EXCHANGE. No static defect, the push promotes now (one push), and the passer lemma does not fire because a rook or a queen of

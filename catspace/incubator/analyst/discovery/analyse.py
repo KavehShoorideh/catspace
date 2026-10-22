@@ -202,9 +202,16 @@ def main():
     ap.add_argument("--no-stop-afford", action="store_true", help="plan 65.2: the widening runs to the deadline instead of stopping when nothing affordable is left (comparison; ON by default)")
     ap.add_argument("--no-unproved", action="store_true", help="plan 65.3: no unfinished-line decision when there is no claim (comparison; ON by default)")
     ap.add_argument("--no-deep-pass", action="store_true", help="plan 65.4: the status reads their pass with the d1 family only (comparison; ON by default)")
+    ap.add_argument("--no-race", action="store_true", help="plan 62.1: the passer race word OFF (comparison condition; ON by default; CATSPACE_RACE=0, inherited by the workers)")
+    ap.add_argument("--no-frame", action="store_true", help="plan 62.2: the frame's recheck (condition (b)) OFF (comparison; ON by default)")
+    ap.add_argument("--no-deny", action="store_true", help="plan 62.1b: no 'deny the stopper's path' routes (comparison; ON by default)")
     ap.add_argument("--duty", action="store_true", help="plan 63.2: the duty word ('pinned to a threat') in the trap/run test (the default: ON)")
     ap.add_argument("--no-duty", action="store_true", help="plan 63.2: switch the duty word OFF (CATSPACE_DUTY=0, inherited by the workers)")
     a = ap.parse_args()
+    for flag, env, mod, attr in ((a.no_race, "CATSPACE_RACE", "race", "RACE"), (a.no_frame, "CATSPACE_FRAME", "race", "FRAME"), (a.no_deny, "CATSPACE_DENY", "race", "DENY")):
+        if flag:
+            os.environ[env] = "0"
+            setattr(__import__(f"catspace.incubator.analyst.discovery.{mod}", fromlist=[attr]), attr, False)
     if a.no_delayed and not a.delayed and not a.forcing61:
         from catspace.incubator.analyst.discovery import agenda as _AG63
         _AG63.DELAYED_THREAT = False

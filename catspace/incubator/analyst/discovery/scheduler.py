@@ -493,6 +493,8 @@ def ask_promote_g(node, q: R.Question, head: str) -> None:
     node.lines.append(head + (": " + "; ".join(f"defect {d.kind} ({d.why})" for d in q.defects) if q.defects else
                               ": no defect -- unstoppable by the tempo arithmetic" + (f" (their K needs {kd} to {G.name(promo)}, the pawn {n})" if kd is not None else "")))
     if q.defects:
+        if node._race_claim(q, sq):                            # plan 62.1: the race word binds although a defect stands
+            return
         for d in q.defects:
             f = R.promote_fixes(b, sq, d, q)
             rs = ", ".join(f"{r.san} ({r.why})" for r in f.routes)
@@ -521,6 +523,8 @@ def ask_promote_g(node, q: R.Question, head: str) -> None:
         if node._better(claim.value, 0, claim):
             node.best = (claim.value, 0, claim)
             node.asked_at_claim = node.asked
+        return
+    if node._race_claim(q, sq):                                # plan 62.1: no defect, the lemma does not fire: the race word
         return
     ex = node._promotion_exchange(q, sq, facts)
     if ex is not None:

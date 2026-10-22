@@ -22,6 +22,7 @@ import chess
 
 import analyst_core as _A
 from catspace.incubator.analyst.discovery import graph as G
+from catspace.incubator.analyst.discovery import race as RC
 
 STAKE_MATE = 100
 PASS_CLAIMS = [0]                             # 52.18 (3): forcing_why answers that were a claim bound after a pass (the OBS counter)
@@ -404,17 +405,21 @@ def pass_claim(board: chess.Board, after: chess.Board, m: chess.Move, us: str | 
     from catspace.incubator.analyst import lean_passer_v2_proto as PV
     passed = G.with_turn(after, me)
     now = dict(PV.proved_passers(passed, bishops=True))
-    if not now:
+    rnow = {sq: 2 * o - 1 for sq, o in RC.race_passers(passed).items() if sq not in now}          # plan 62.1: the race word's passers (Ideas.Race.race_sound), after the lemma's
+    if not now and not rnow:
         return None
     before = dict(PV.proved_passers(G.with_turn(board, me), bishops=True))
+    rbefore = RC.race_passers(G.with_turn(board, me)) if rnow else {}
     new = [sq for sq in now if not (sq in before or (sq == m.to_square and m.from_square in before))]
-    if not new:
+    rnew = [sq for sq in rnow if not (sq in before or sq in rbefore or (sq == m.to_square and (m.from_square in before or m.from_square in rbefore)))]
+    if not new and not rnew:
         return None
-    sq = min(new)
+    sq = min(new) if new else min(rnew)
     n = G.word(passed, ("pushes", G.name(sq)), me)
     path = [G.name(x) for x in pawn_path(passed, sq, n)]
     PASS_CLAIMS[0] += 1
-    return f"threat: {', '.join(path[:-1]) + (' then ' if len(path) > 1 else '')}{path[-1]}=Q binds after a pass (unstoppablePasser2_sound, within {now[sq]} plies)"
+    word = f"unstoppablePasser2_sound, within {now[sq]} plies" if new else f"race_sound, within {rnow[sq]} plies"
+    return f"threat: {', '.join(path[:-1]) + (' then ' if len(path) > 1 else '')}{path[-1]}=Q binds after a pass ({word})"
 
 
 # ---------------------------------------------------------------------------------------------------------------- plan 61 stage A: the forced chain's words
@@ -1635,14 +1640,16 @@ def promote_defects(board: chess.Board, sq: int) -> tuple:
         kd = G.word(board, ("dist", "L", ("promo", G.name(sq))), own)
         facts["king_dist"] = kd
         if kd <= n and ek not in path:
-            out.append(Defect("stopper", promo, [ek], f"their K on {G.name(ek)} reaches {G.name(promo)} in {kd}, the pawn needs {n}"))
+            w = RC.stopper_walk(board, ek, {promo}, n)               # 62.1b: the stopper's path, named
+            out.append(Defect("stopper", promo, [ek], f"their K on {G.name(ek)} reaches {G.name(promo)} in {kd}, the pawn needs {n}" + (f" (path {' '.join(G.name(x) for x in w[1])})" if w else "")))
     for s in chess.SQUARES:
         x = board.piece_at(s)
         if x is None or x.color == own or x.piece_type in (chess.KING, chess.PAWN):
             continue
         k = G.piece_moves_to(board, s, set(path), n)
         if k is not None:
-            out.append(Defect("stopper", promo, [s], f"their {x.symbol().upper()} on {G.name(s)} reaches the path in {k} (static board), the pawn needs {n}"))
+            w = RC.stopper_walk(board, s, set(path), n)
+            out.append(Defect("stopper", promo, [s], f"their {x.symbol().upper()} on {G.name(s)} reaches the path in {k} (static board), the pawn needs {n}" + (f" (path {' '.join(G.name(x) for x in w[1])})" if w else "")))
     return out, facts
 
 
@@ -1679,6 +1686,15 @@ def promote_fixes(board: chess.Board, sq: int, defect: Defect, q: "Question") ->
         f.routes = [Route(m, board.san(m), f"capture {G.worth(board.piece_at(m.to_square))}") for m in board.legal_moves if m.to_square == defect.by[0]]
         if push in board.legal_moves and board.gives_check(push):
             f.routes.append(Route(push, board.san(push), "push with check"))
+        if RC.DENY and board.turn == own:                          # 62.1b: DENY THE STOPPER'S PATH (a move after which it cannot stand and survive on a square of its path in time) addresses the defect
+            n_ = abs((7 if own == chess.WHITE else 0) - chess.square_rank(sq))
+            tg = {defect.sq} if defect.by[0] == board.king(not own) else set(pawn_path(board, sq, n_))
+            have = {r.move for r in f.routes}
+            for m, why in RC.deny_moves(board, own, sq, defect.by[0], tg, n_, list(board.legal_moves)):
+                if m not in have:
+                    f.routes.append(Route(m, board.san(m), why))
+            if any("denies the path" in r.why for r in f.routes):
+                f.text += " -- or deny its path"
     if defect.kind in ("path attacked", "promo square attacked"):             # 52.18 (2): a discovery that guards the square (a battery of ours aimed at it, its front piece leaving with tempo)
         have = {r.move for r in f.routes}
         extra = [r for r in discovery_routes(board, own, defect.sq, q.stake) if r.move not in have]
