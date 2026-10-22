@@ -800,6 +800,7 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
             done.append((res["value"], r, res))
         else:
             node.lines.append(f"    {r.san}: value {res['value']} (no gain on the worst reply)")
+        node._resumed_line(r, res)                             # plan 66.2 (mirror of agenda._chase_routes)
     if q.goal == "win" and not node.ctx.out_of_time():
         (yield from refuter_fixes_g(node, q, routes, results, done, pool))
     node._record_roots(routes, results)                      # plan 65.3 (mirror of agenda._chase_routes)
@@ -823,6 +824,7 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
     value, r, res = best_route(done)
     node._qdeps = list(res.get("facts", []))                 # ... a claim only on the facts of the route that decided it
     node._extra_reads = frozenset(res.get("extra_reads", ()))     # 52.22 (3): and on the squares of the refuter it exchanged
+    node._carried_route = res.get("carried", 0)              # plan 66.2 (mirror of agenda._chase_routes)
     net = value
     kind = "mate" if value >= BD.MATE_VALUE else ("promote" if q.goal == "promote" and not res.get("material") else "save" if q.goal == "save" else "win")
     if AG.CYCLE and kind != "mate" and any("repetition" in x for x in res["lemmas"]) and value <= -(AC.Pos(node.board.fen()).balance(node.me) - 64):
@@ -955,6 +957,12 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
             gains.append(val)
             res["parts"].append(f"after {san_r}: closed {node._closed_tag(why)}: {why} -> {val}")
             continue
+        cr = node._carried_reply(key, uci, gstake) if not override else None      # plan 66.2 (mirror of agenda._chase_route_body)
+        if cr is not None:
+            if cr["closed"] and cr["g"] < BD.MATE_VALUE:
+                closed_min = min(closed_min, cr["g"])
+            node._serve_carried(cr, res, gains)
+            continue
         if P2.legal_count() == 0:
             res["killed"] = f"after {san_r} " + ("they mate us" if P2.is_check() else "stalemate")
             node._log(key, uci, "killed", dbal, None, None, res["killed"])
@@ -968,6 +976,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
                 closed_min = min(closed_min, val)
             gains.append(val)
             res["parts"].append(f"after {san_r}: closed {node._closed_tag(why)}: {why} -> {val}")
+            node._proved_reply(key, uci, val, res["parts"][-1], closed=True)
             ctx.closed += 1
             closed_now[uci] = closed
             node._log(key, uci, "closed", dbal, val, None, why)
@@ -1020,6 +1029,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
                 break
             gains.append(g)
             res["parts"].append(f"after {san_r}: {part} -> {g}")
+            node._proved_reply(key, uci, g, res["parts"][-1], pc.lemma if pc is not None else None, material=g == dbal + inn["value"] and res.get("material", False) and pc is None and inn["value"] < BD.MATE_VALUE)
             node._log(key, uci, "claim", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
             if pc is not None:
                 res["lemmas"].append(pc.lemma)
@@ -1074,6 +1084,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
         cl = inn["claim"] if inn["value"] >= need else None
         gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else max(dbal - unparried, dbal + inn["value"] if cl and node._t(AG.NEED_PROPAGATION, 3) else dbal - unparried) if static else dbal + (inn["value"] if cl else 0))      # 52.23 (7): a reply that already gains carries the inner claim too (it answers every reply of theirs): zBouR's Rxf1+ Kd2 Rf2+, +5 then the queen
         res["parts"].append(f"after {san_r}: " + (f"{cl.what} ({cl.line}; value {cl.value})" if cl else f"material {dbal:+d}" + (f", their {claim_their.what} wins {t_their} if we pass" if claim_their else "") + (f", {parry_note}" if parry_note else "")) + (f" -> {gains[-1]}" if cl or claim_their or parry_note else ""))
+        node._proved_reply(key, uci, gains[-1], res["parts"][-1], cl.lemma if cl else None)
         node._log(key, uci, "claim" if cl else "material", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
         if cl:
             res["lemmas"].append(cl.lemma)
@@ -1170,6 +1181,12 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
             gains.append(val)
             res["parts"].append(f"after {san_r}: closed {node._closed_tag(why)}: {why} -> {val}")
             continue
+        cr = node._carried_reply(key, uci, gstake) if not override else None      # plan 66.2 (mirror of agenda._chase_route_body)
+        if cr is not None:
+            if cr["closed"] and cr["g"] < BD.MATE_VALUE:
+                closed_min = min(closed_min, cr["g"])
+            node._serve_carried(cr, res, gains)
+            continue
         if kind == "dead":
             res["killed"] = f"after {san_r} " + ("they mate us" if chk else "stalemate")
             node._log(key, uci, "killed", dbal, None, None, res["killed"])
@@ -1205,6 +1222,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
                 closed_min = min(closed_min, val)
             gains.append(val)
             res["parts"].append(f"after {san_r}: closed {node._closed_tag(why)}: {why} -> {val}")
+            node._proved_reply(key, uci, val, res["parts"][-1], closed=True)
             ctx.closed += 1
             closed_now[uci] = closed
             node._log(key, uci, "closed", dbal, val, None, why)
@@ -1256,6 +1274,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
                 break
             gains.append(g)
             res["parts"].append(f"after {san_r}: {part} -> {g}")
+            node._proved_reply(key, uci, g, res["parts"][-1], pc.lemma if pc is not None else None, material=g == dbal + inn["value"] and res.get("material", False) and pc is None and inn["value"] < BD.MATE_VALUE)
             node._log(key, uci, "claim", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
             if pc is not None:
                 res["lemmas"].append(pc.lemma)
@@ -1310,6 +1329,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
         cl = inn["claim"] if inn["value"] >= need else None
         gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else max(dbal - unparried, dbal + inn["value"] if cl and node._t(AG.NEED_PROPAGATION, 3) else dbal - unparried) if static else dbal + (inn["value"] if cl else 0))      # 52.23 (7): a reply that already gains carries the inner claim too (it answers every reply of theirs): zBouR's Rxf1+ Kd2 Rf2+, +5 then the queen
         res["parts"].append(f"after {san_r}: " + (f"{cl.what} ({cl.line}; value {cl.value})" if cl else f"material {dbal:+d}" + (f", their {claim_their.what} wins {t_their} if we pass" if claim_their else "") + (f", {parry_note}" if parry_note else "")) + (f" -> {gains[-1]}" if cl or claim_their or parry_note else ""))
+        node._proved_reply(key, uci, gains[-1], res["parts"][-1], cl.lemma if cl else None)
         node._log(key, uci, "claim" if cl else "material", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
         if cl:
             res["lemmas"].append(cl.lemma)

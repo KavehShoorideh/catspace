@@ -225,6 +225,11 @@ class ChaseCtx:
         self.carried_q = 0                        # ... root questions served a carried claim / ...
         self.carried_q_kept = 0                   # ... of which not re-asked (the claim keeps the status, or no chase made it: a schema binding is the same in every tier)
         self.carried_q_reasked = 0                # ... re-asked for a better claim above the carried floor
+        self.carry_r: dict = {}                   # plan 66.2: (position key, route key, reply uci) -> {g, part, lemma, closed, tier}: a reply PROVED in an earlier tier (closed by rule, or an inner claim): a proof over the same board
+        self.proofs: dict = {}                    # ... the replies this tier proved (the tier driver hands them on, with carry_r, to the next tier)
+        self.carry_served = 0                     # ... replies served from carry_r / ...
+        self.carry_reread = 0                     # ... carried replies read again: their proof is below what this read needs (the agenda's target, the floor of 66.1, the goal's stake for a close)
+        self.carry_routes = 0                     # ... root routes resumed with at least one carried reply
         self.judge_reads = 0                      # ... nodes the judge let be read / cut (a GAP)
         self.judge_cuts = 0
         self.judge_routes = 0                     # ... root routes judged
@@ -329,6 +334,7 @@ class Agenda:
         self._pass_deep: "tuple | None" = None                  # plan 65.4: their pass read with delayed_balance_deep: (value, their move SAN, candidates read), asked once
         self._q_best: dict = {}                                 # plan 66.1: question id -> (net, second, claim): the best claim each question offered (the tier driver carries the proved ones)
         self._floor: "int | None" = None                        # ... the carried floor of the root question being re-asked (a better claim must beat it)
+        self._carried_route = 0                                 # plan 66.2: the replies the deciding route served from an earlier tier (a chase claim standing on them is filed for this position only)
         self.root_reads: dict = {}                              # plan 65.3: root route (uci) -> how its last read ended: {status: killed | gap, san, why | gains}; a kill is final, a gap keeps the replies read so far
         self._hang: list = []
         self.threat_views: list = []                            # (claim, their agenda) for every threat root
@@ -790,7 +796,7 @@ class Agenda:
                 self.state.estimated += [dataclasses.replace(c, qid=-1) for c in ag.state.estimated]
                 if ag.best_est is not None and (self.best_est is None or (ag.best_est[0], ag.best_est[2].confidence) > (self.best_est[0], self.best_est[2].confidence)):
                     self.best_est = (ag.best_est[0], 0, dataclasses.replace(ag.best_est[2], qid=-1))
-                for f in ("parry_seen", "parry_closed", "delayed_routes", "nosafe_routes", "judge_routes", "judge_reads", "judge_cuts", "judge_t", "judge_n", "cycles", "carried_q", "carried_q_kept", "carried_q_reasked"):
+                for f in ("parry_seen", "parry_closed", "delayed_routes", "nosafe_routes", "judge_routes", "judge_reads", "judge_cuts", "judge_t", "judge_n", "cycles", "carried_q", "carried_q_kept", "carried_q_reasked", "carry_served", "carry_reread", "carry_routes"):
                     setattr(self.ctx, f, getattr(self.ctx, f) + getattr(ag.ctx, f))      # plan 61: the tiers' counters are the root's
                 mark = {id(c): dataclasses.replace(c, qid=-1) for c in ag.state.claims}      # (the question ids are the tier's own: the claim answers no question of tier 0)
                 if ag.best is not None and id(ag.best[2]) not in mark:
@@ -856,6 +862,11 @@ class Agenda:
                         carried[key] = dict(old, dep=old["dep"] or d["dep"])
                 nxt.ctx.carry_q = carried
                 nxt.ctx.carry_status = dict(st)
+                proofs = dict(ag.ctx.carry_r)                        # plan 66.2: the replies proved in every earlier tier (the larger proof of a reply wins)
+                for kk, d in ag.ctx.proofs.items():
+                    if kk not in proofs or d["g"] > proofs[kk]["g"]:
+                        proofs[kk] = d
+                nxt.ctx.carry_r = proofs
             nxt.lines = _TierLines(self.lines, f"[tier {k}] ")
             ag = nxt
         self.tier_decided = decided
@@ -1275,12 +1286,24 @@ class Agenda:
         if claim is not None:
             self.claim_fid[id(claim)] = f.id
 
+    def _resumed_line(self, r: R.Route, res: dict) -> None:
+        """plan 66.2: the trace of a ROOT route that served replies from an earlier tier: 'resumed Rg8+: 3 of 5 replies carried from tier 0, 2 read'."""
+        if not res.get("carried") or self.chase_depth != 0 or res.get("reused"):
+            return
+        self.ctx.carry_routes += 1
+        n = len(res.get("gains") or [])
+        P1 = AC.Pos(self.board.fen()).push(r.move.uci())
+        self.lines.append(f"    resumed {r.san}: {res['carried']} of {P1.legal_count()} replies carried from tier {res.get('carried_from', 0)}, {n - res['carried']} read"
+                          + (" (then a GAP)" if res.get("gap") else " (then killed)" if res.get("killed") else ""))
+
     def _chase_reads(self, q: R.Question, claim: Claim) -> tuple:
         """52.21 (2): THE READ SET OF A CHASE CLAIM, from its justifications. The claim stands on the facts of the route that decided it (the inner answers of its replies, their agendas): the union of what
         they read, the question's own reads, the route's squares, and what the replies themselves depend on -- the pieces of both sides after the route move and what they attack (that decides which
         replies exist, which the rules close, and what a mate in one needs), with the lines from both kings (pins). A fact that read its whole position (an agenda there, their agenda with the move
         passed) makes the claim positional: -> (None, why). -> (the squares, None) otherwise."""
         fs, b = self.ctx.facts, self.board
+        if self._carried_route:                                  # plan 66.2: replies served from an earlier tier stand on that tier's facts, not this store's: the claim's read set is unknown here
+            return None, f"its route served {self._carried_route} replies carried from an earlier tier (their facts are that tier's)"
         reads = set(R.reads_of(q, b))
         for j in self._qdeps:
             f = fs.facts[j]
@@ -1920,6 +1943,46 @@ class Agenda:
         if fid is not None and self._rf is not None and fid not in self._rf:
             self._rf.append(fid)
 
+    def _carried_reply(self, key: tuple, uci: str, gstake: int = 0) -> "dict | None":
+        """plan 66.2 CLOSED REPLIES CARRY INSIDE A ROUTE (Lean `Ideas.Forcing.claim_mono`, `routeLow_mono`): a reply of this route PROVED in an earlier tier (closed by rule or answered by an inner claim) is a
+        proof over the same board and the same reply of theirs: it is served, not read again. Served only when it already meets what THIS read needs -- the agenda's target (the need it propagates), the floor of a
+        re-asked root question (66.1: a reply at or below the floor is the only place the route could rise above it, so it is read again), and for a close by the exchange the goal's stake (52.22 (1): a close below
+        it would not have been made) -- else the reply is read as before. A served value is a floor of what the wider tier would read (never more). Kills and GAPs are never carried."""
+        if not CARRY or not self.ctx.carry_r or key[1].endswith(":refuter"):
+            return None
+        hit = self.ctx.carry_r.get((key[0], key[1], uci))
+        if hit is None:
+            return None
+        need = self._target()
+        if self._floor is not None and self.chase_depth == 0:
+            need = max(need, self._floor + 1)
+        if hit["g"] < need or (hit["closed"] and gstake and hit["g"] < gstake):
+            self.ctx.carry_reread += 1
+            return None
+        self.ctx.carry_served += 1
+        return hit
+
+    def _proved_reply(self, key: tuple, uci: str, g: int, part: str, lemma: "str | None" = None, closed: bool = False, material: bool = False) -> None:
+        """plan 66.2: file a reply this route PROVED (its value g against this reply of theirs) for the next tier. The refuter fix's replies are its own (not filed)."""
+        if not CARRY or key[1].endswith(":refuter"):
+            return
+        k = (key[0], key[1], uci)
+        old = self.ctx.proofs.get(k)
+        if old is None or g > old["g"]:
+            self.ctx.proofs[k] = dict(g=g, part=part, lemma=lemma, closed=closed, material=material, tier=self.ctx.tier)      # (material: a promote route's reply answered by winning the material back, not by the promotion)
+
+    @staticmethod
+    def _serve_carried(cr: dict, res: dict, gains: list) -> None:
+        """plan 66.2: a carried reply enters the route like a read one, said so."""
+        gains.append(cr["g"])
+        res["parts"].append(f"{cr['part']} [carried from tier {cr['tier']}]")
+        if cr["lemma"]:
+            res["lemmas"].append(cr["lemma"])
+        if cr.get("material"):
+            res["material"] = True                               # (a promote route answered by material is a win claim, as when read)
+        res["carried"] = res.get("carried", 0) + 1
+        res["carried_from"] = min(res.get("carried_from", cr["tier"]), cr["tier"])
+
     def _chase_route(self, m: chess.Move, promote: bool = False, cheap: bool = False, override: "dict | None" = None) -> dict:
         """52.19: the route of `_chase_route_body`, with the facts it read (inner answers, their agendas) kept on the result (`facts`) for the claim or kill that stands on it, and the listener's
         frame for the reply being read restored on the way out."""
@@ -2057,6 +2120,12 @@ class Agenda:
                 gains.append(val)
                 res["parts"].append(f"after {san_r}: closed {self._closed_tag(why)}: {why} -> {val}")
                 continue
+            cr = self._carried_reply(key, uci, gstake) if not override else None      # plan 66.2: a reply proved in an earlier tier
+            if cr is not None:
+                if cr["closed"] and cr["g"] < BD.MATE_VALUE:
+                    closed_min = min(closed_min, cr["g"])
+                self._serve_carried(cr, res, gains)
+                continue
             if P2.legal_count() == 0:
                 res["killed"] = f"after {san_r} " + ("they mate us" if P2.is_check() else "stalemate")
                 self._log(key, uci, "killed", dbal, None, None, res["killed"])
@@ -2070,6 +2139,7 @@ class Agenda:
                     closed_min = min(closed_min, val)
                 gains.append(val)
                 res["parts"].append(f"after {san_r}: closed {self._closed_tag(why)}: {why} -> {val}")
+                self._proved_reply(key, uci, val, res["parts"][-1], closed=True)
                 ctx.closed += 1
                 closed_now[uci] = closed
                 self._log(key, uci, "closed", dbal, val, None, why)
@@ -2122,6 +2192,7 @@ class Agenda:
                     break
                 gains.append(g)
                 res["parts"].append(f"after {san_r}: {part} -> {g}")
+                self._proved_reply(key, uci, g, res["parts"][-1], pc.lemma if pc is not None else None, material=g == dbal + inn["value"] and res.get("material", False) and pc is None and inn["value"] < BD.MATE_VALUE)
                 self._log(key, uci, "claim", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
                 if pc is not None:
                     res["lemmas"].append(pc.lemma)
@@ -2176,6 +2247,7 @@ class Agenda:
             cl = inn["claim"] if inn["value"] >= need else None
             gains.append(BD.MATE_VALUE if inn["value"] >= BD.MATE_VALUE else max(dbal - unparried, dbal + inn["value"] if cl and self._t(NEED_PROPAGATION, 3) else dbal - unparried) if static else dbal + (inn["value"] if cl else 0))      # 52.23 (7): a reply that already gains carries the inner claim too (it answers every reply of theirs): zBouR's Rxf1+ Kd2 Rf2+, +5 then the queen
             res["parts"].append(f"after {san_r}: " + (f"{cl.what} ({cl.line}; value {cl.value})" if cl else f"material {dbal:+d}" + (f", their {claim_their.what} wins {t_their} if we pass" if claim_their else "") + (f", {parry_note}" if parry_note else "")) + (f" -> {gains[-1]}" if cl or claim_their or parry_note else ""))
+            self._proved_reply(key, uci, gains[-1], res["parts"][-1], cl.lemma if cl else None)
             self._log(key, uci, "claim" if cl else "material", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
             if cl:
                 res["lemmas"].append(cl.lemma)
@@ -2985,6 +3057,7 @@ class Agenda:
                 done.append((res["value"], r, res))
             else:
                 self.lines.append(f"    {r.san}: value {res['value']} (no gain on the worst reply)")
+            self._resumed_line(r, res)
         if q.goal == "win" and not self.ctx.out_of_time():
             self._refuter_fixes(q, routes, results, done, pool)
         self._record_roots(routes, results)
@@ -3009,6 +3082,7 @@ class Agenda:
         value, r, res = done[0]
         self._qdeps = list(res.get("facts", []))                 # ... a claim only on the facts of the route that decided it
         self._extra_reads = frozenset(res.get("extra_reads", ()))     # 52.22 (3): and on the squares of the refuter it exchanged
+        self._carried_route = res.get("carried", 0)              # plan 66.2: ... and on the replies it served from an earlier tier
         net = value
         kind = "mate" if value >= BD.MATE_VALUE else ("promote" if q.goal == "promote" and not res.get("material") else "save" if q.goal == "save" else "win")
         if CYCLE and kind != "mate" and any("repetition" in x for x in res["lemmas"]) and value <= -(AC.Pos(self.board.fen()).balance(self.me) - 64):

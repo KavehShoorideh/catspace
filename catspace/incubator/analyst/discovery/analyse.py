@@ -98,8 +98,9 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
     if cx.judge_routes or cx.judge_cuts or cx.cycles:
         spn = f"{cx.judge_t / cx.judge_n:.3f}" if cx.judge_n else "-"
         log(f"OBS cost61 {p['id']}: root routes judged {cx.judge_routes}, nodes read on {cx.judge_reads}, cuts by the judge {cx.judge_cuts}, seconds per node {spn} ({cx.judge_n} timed), cycle claims {cx.cycles}")
-    if cx.carried_q:                                             # plan 66.1: the proved claims carried across the tiers
-        log(f"OBS carry {p['id']}: root questions served a carried claim {cx.carried_q}, not asked again {cx.carried_q_kept}, re-asked above the floor {cx.carried_q_reasked}")
+    if cx.carried_q or cx.carry_served or cx.carry_reread:       # plan 66.1 / 66.2: the proofs carried across the tiers
+        log(f"OBS carry {p['id']}: root questions served a carried claim {cx.carried_q}, not asked again {cx.carried_q_kept}, re-asked above the floor {cx.carried_q_reasked}; "
+            f"replies served from an earlier tier {cx.carry_served}, read again (below the need) {cx.carry_reread}, root routes resumed {cx.carry_routes}")
     tiers = getattr(ag, "tier_info", None)
     if tiers:                                                    # plan 59: the status, the line, the tiers run, the tier that decided, seconds per tier
         sti = ag.status_info

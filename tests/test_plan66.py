@@ -119,3 +119,67 @@ def test_66_1_the_tier_hands_on_each_questions_own_best_proved_claim():
     assert ag2._carried_out() == {}
     assert AGM.CARRY is True                                                # ON by default (`analyse --no-carry` is the comparison condition)
 
+
+
+# ---------------------------------------------------------------------------------------------------------------- 66.2 closed replies carry inside a route
+
+LRTF = "2k5/2P4R/1K6/8/8/p7/8/2r5 w - - 0 1"                                  # dev 0LRTF: a chase claim read in a fraction of a second under the count budget
+
+
+def _route_low(gs, top=100):
+    out = top
+    for g in reversed(gs):
+        out = min(g, out)
+    return out
+
+
+def test_66_2_route_low_mono_is_the_lean_statement():
+    """Lean `Ideas.Forcing.routeLow_mono`: carried gains each at most the full read's give a route value at most the full read's (a carried proof is a floor). Mirrored on random lists."""
+    src = LEAN.read_text()
+    assert "def routeLow" in src and "theorem routeLow_mono" in src and "sorry" not in src
+    rng = random.Random(662)
+    for _ in range(500):
+        ts = [rng.randint(-9, 100) for _ in range(rng.randint(0, 6))]
+        gs = [t - rng.randint(0, 5) for t in ts]
+        assert _route_low(gs) <= _route_low(ts)
+        assert _route_low(ts) == (min(ts + [100]))
+
+
+def _carry_ag(fen: str = LRTF) -> Agenda:
+    return Agenda(state_of(fen, "w" if chess.Board(fen).turn else "b"), tier=1)
+
+
+def test_66_2_a_carried_reply_is_served_only_when_it_meets_what_this_read_needs():
+    """`_carried_reply`: served when the proof meets the agenda's target; read again below it, below a re-asked root question's floor + 1, or (a close by the exchange) below the goal's stake. `_proved_reply`
+    keeps the larger proof of a reply; the refuter fix's replies are never filed."""
+    ag = _carry_ag()
+    key = (ag.pk, "h7h8")
+    ag.ctx.carry_r = {(ag.pk, "h7h8", "c1h1"): dict(g=2, part="after Rh1: x -> 2", lemma=None, closed=True, tier=0)}
+    assert ag._carried_reply(key, "c1h1") is not None and ag.ctx.carry_served == 1
+    ag._floor = 2                                                           # a re-asked root question with the carried floor 2: the reply must beat it
+    assert ag._carried_reply(key, "c1h1") is None and ag.ctx.carry_reread == 1
+    ag._floor = None
+    assert ag._carried_reply(key, "c1h1", gstake=5) is None                 # a close below the goal's stake would not have been made
+    ag._proved_reply(key, "c1c2", 1, "p1")
+    ag._proved_reply(key, "c1c2", 3, "p3")
+    ag._proved_reply(key, "c1c2", 2, "p2")
+    assert ag.ctx.proofs[(ag.pk, "h7h8", "c1c2")]["g"] == 3
+    ag._proved_reply((ag.pk, "h7h8:refuter"), "c1c2", 9, "x")
+    assert (ag.pk, "h7h8:refuter", "c1c2") not in ag.ctx.proofs
+
+
+def test_66_2_a_route_read_again_with_its_proofs_carried_decides_the_same_and_opens_fewer_agendas():
+    """0LRTF read once (tier 0, the count budget), then again on a fresh context carrying the replies tier 0 proved: the same decision and value, its replies served ('carried from tier 0'), fewer inner
+    agendas opened. The chase claim that stands on carried replies is filed for this position only (their facts are the earlier tier's)."""
+    ag0 = Agenda(state_of(LRTF, "w"))
+    ag0.ask()
+    d0 = ag0.decision()
+    assert d0 is not None and ag0.ctx.proofs
+    ag1 = _carry_ag()
+    ag1.ctx.carry_r = dict(ag0.ctx.proofs)
+    ag1.ask()
+    d1 = ag1.decision()
+    print(f"OBS 66.2 0LRTF: decision {d0.what} {d0.value} / carried {d1.what} {d1.value}; inner agendas {ag0.ctx.agendas} -> {ag1.ctx.agendas}; replies served {ag1.ctx.carry_served}, read again {ag1.ctx.carry_reread}")
+    assert (d1.move, d1.value) == (d0.move, d0.value)
+    assert ag1.ctx.carry_served > 0 and ag1.ctx.agendas < ag0.ctx.agendas
+    assert any("[carried from tier 0]" in ln for ln in ag1.lines) or any("[carried from tier 0]" in c.line for c in ag1.state.claims)

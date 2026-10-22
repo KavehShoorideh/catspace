@@ -245,6 +245,16 @@ theorem refutation_not_mono : ∃ (ours ours' theirs : Bool → Bool → Prop) (
   · simp [Reach]
   · exact Or.inr ⟨true, rfl, Or.inl rfl⟩
 
+/-- 66.2 A CARRIED REPLY IS A FLOOR. The route's value is the least gain over the replies (`foldr min`, from a top value). Carried gains that are
+each at most the gain a full read would find give a value at most the full read's: the carried value is a proved lower bound, never more. -/
+def routeLow (gs : List Int) (top : Int) : Int := gs.foldr min top
+
+theorem routeLow_mono {top : Int} : ∀ {gs ts : List Int}, List.Forall₂ (· ≤ ·) gs ts → routeLow gs top ≤ routeLow ts top
+  | [], [], _ => le_refl _
+  | _ :: _, _ :: _, List.Forall₂.cons h hs => by
+    simp only [routeLow, List.foldr_cons]
+    exact min_le_min h (routeLow_mono hs)
+
 end Carry
 
 end Ideas.Forcing
