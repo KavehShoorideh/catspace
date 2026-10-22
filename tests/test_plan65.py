@@ -181,3 +181,35 @@ def test_65_3_off_switch_leaves_no_decision():
         assert ag.decision() is None
     finally:
         AGM.UNPROVED = old
+
+
+def test_65_4_pos2_status_reads_their_pass_with_the_deep_family():
+    """pos2: the d1 family finds no claim of theirs ('their threat 0': after fxe3 Ng1 discovers Qxh4, which Qd8 guards -- a horizon artifact), a piece of ours (Be3) is attacked: the deep delayed balance
+    reads fxe3 at 71 against 69, a threat of 2; the status says which family read it."""
+    ag = Agenda(state_of(POS2, "w"))
+    st = ag.status()
+    line = ag.status_line(0, st, None)
+    print("OBS 65.4", line)
+    print("OBS 65.4 deep:", st["deep"])
+    assert st["threat"] == 2 and st["deep"] and "fxe3" in st["deep"]
+    assert "their threat 2 (deep: fxe3" in line
+    old = AGM.DEEP_PASS
+    try:
+        AGM.DEEP_PASS = False
+        ag2 = Agenda(state_of(POS2, "w"))
+        st2 = ag2.status()
+        print("OBS 65.4 d1 only:", st2["threat"])
+        assert st2["threat"] == 0 and not st2["deep"]                 # the comparison condition: plan 64's "their threat 0"
+    finally:
+        AGM.DEEP_PASS = old
+
+
+def test_65_4_not_when_the_d1_family_found_a_claim_or_nothing_of_ours_is_attacked():
+    """The deep read is a fallback for 'cannot prove': a position where the d1 pass finds a claim keeps that value; one with no piece of ours attacked never reads the deep family."""
+    ag = Agenda(state_of(chess.STARTING_FEN, "w"))
+    st = ag.status()
+    assert st["threat"] == 0 and not st["deep"] and ag._pass_deep is None       # nothing of ours is attacked: the deep family is not asked
+    ag2 = Agenda(state_of(VDTX, "w"))
+    st2 = ag2.status()
+    print("OBS 65.4 2VDtX:", st2["threat"], st2["deep"])
+    assert (not st2["deep"]) or ag2._pass_best is None                            # the deep family is read only when the d1 family found nothing

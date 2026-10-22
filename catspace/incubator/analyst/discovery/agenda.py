@@ -77,6 +77,7 @@ TIERS = False                                                   # plan 59: STATU
 TIER_COUNT = 4                                                  # tiers 0..3
 COMPETE = True                                                  # plan 65.1: the NEXT tier's cheapest route competes with this tier's root routes (Lean `Ideas.Forcing.judgeNext`): a NEW route (not yet open in this tier) priced above it is a GAP, read in the next tier (deferred once); `analyse --no-compete`
 UNPROVED = True                                                 # plan 65.3: no claim at all -> the best UNFINISHED root route (a GAP) decides, marked unproved; `analyse --no-unproved`
+DEEP_PASS = True                                                # plan 65.4: the status reads THEIR pass with delayed_balance_deep when the d1 family finds no claim and a piece of ours is attacked; `analyse --no-deep-pass`
 STOP_AFFORD = True                                              # plan 65.2: the widening (and the RAISE_TO_WIN continuation) ends when no open route of any tier is priced within the time left; `analyse --no-stop-afford`
 NO_FUSE = 1 << 40                                               # 52.23 (1): the fuse when the budget is time: never reached (the deadline is the only limit)
 
@@ -316,6 +317,7 @@ class Agenda:
                 self.ctx.deadline = self.ctx.final = self.ctx.t0 + seconds
         self._threats_done = not side_depth and their is None
         self._pass_done, self._pass_best = False, None          # plan 59: their best claim with the move passed to them (set by `_threat_roots`; read by `status`)
+        self._pass_deep: "tuple | None" = None                  # plan 65.4: their pass read with delayed_balance_deep: (value, their move SAN, candidates read), asked once
         self.root_reads: dict = {}                              # plan 65.3: root route (uci) -> how its last read ended: {status: killed | gap, san, why | gains}; a kill is final, a gap keeps the replies read so far
         self._hang: list = []
         self.threat_views: list = []                            # (claim, their agenda) for every threat root
@@ -680,8 +682,13 @@ class Agenda:
                 self._pass_done, self._pass_best = True, (max(ag.state.claims, key=lambda x: x.value) if ag.state.claims else None)
             cl = self._pass_best
         threat = min(cl.value, BD.MATE_VALUE) if cl is not None else 0
+        deep = None
+        if DEEP_PASS and cl is None and not b.is_check() and self._piece_attacked():
+            dv, dsan, dn = self._deep_pass()                     # plan 65.4: the d1 family found no claim of theirs and a piece of ours is attacked: "cannot prove" is not "no threat" -- the deep family reads the pass
+            if dv > 0:
+                threat, deep = dv, f"{dsan}, {dn} candidates read"
         s0 = bal - threat
-        return dict(balance=bal, threat=threat, s0=s0, word="winning" if s0 >= 1 else "level" if s0 == 0 else "losing", line=1 if s0 >= 1 else 0)
+        return dict(balance=bal, threat=threat, s0=s0, word="winning" if s0 >= 1 else "level" if s0 == 0 else "losing", line=1 if s0 >= 1 else 0, deep=deep)
 
     def keeps(self, st: dict, best: "tuple | None" = None) -> tuple:
         """plan 59 (2): KEEPS THE STATUS -- the best claim (its net value, as `self.best[0]` ranks it; a save in check by the smallest loss included) keeps it when balance + value >= the line.
@@ -698,7 +705,7 @@ class Agenda:
             return f"STATUS: tier {tier}'s best claim {best[2].what} is a mate: the status is kept"      # (a mate ends the game: the status needs no reading)
         st = st or self.status()
         kept, v = self.keeps(st, best)
-        head = f"STATUS: {st['word']} (balance {st['balance']:+d}, their threat {st['threat']}): the line is '{'stay ahead' if st['line'] else 'reach level'}' ({st['line']}); " if tier == 0 else ""
+        head = f"STATUS: {st['word']} (balance {st['balance']:+d}, their threat {st['threat']}{' (deep: ' + st['deep'] + ')' if st.get('deep') else ''}): the line is '{'stay ahead' if st['line'] else 'reach level'}' ({st['line']}); " if tier == 0 else ""
         claim = "no claim" if v is None else f"best claim {best[2].what} {v:+d} gives {st['balance'] + v:+d}"
         return f"{head}tier {tier}'s {claim}: {'kept' if kept else 'not kept'}" + (f"; {opened}" if opened else "")
 
@@ -858,6 +865,35 @@ class Agenda:
                           + (f"; least gain read {read:+d}" if read is not None else "") + (f", the {total - n} unread by their static balance {rest:+d}" if rest is not None else "") + "; "
                           + (", ".join(refuted) + (" is" if len(refuted) == 1 else " are") + " refuted" if refuted else "nothing is refuted") + f"; {len(gaps)} unfinished line(s) compared, {len(tied)} tied at the floor, ordered by the judge's price {best[0]})")
         return Claim("win", d["san"], floor if floor is not None else 0, "unfinished line", f"{d['san']} (floor " + (f"{floor:+d}" if floor is not None else "unknown") + f", {label}; {d['gap']})", move=u, goal="win", proved=False, confidence=0.0, estimator="", word="unfinished line")
+
+    def _piece_attacked(self) -> bool:
+        """Is a piece of ours (not the king) attacked by the other side on this board?"""
+        b = self.board
+        return any(pc.color == self.me and pc.piece_type != chess.KING and b.is_attacked_by(not self.me, sq) for sq, pc in b.piece_map().items())
+
+    def _deep_pass(self) -> tuple:
+        """plan 65.4: THEIR PASS read with the proved DEEP delayed balance (Lean `Ideas.TreeStep.tail_four_alive`, family delayed_balance_deep): a move of theirs on the pass board, then whatever we reply, a move of
+        theirs, whatever we reply, a move of theirs, whatever we reply: the minimax tail at the leaves against the balance now. -> (the best value T - B > 0, or 0; their move SAN or None; candidates read). Asked
+        once; a candidate is not started after the final deadline (the candidates read so far stand)."""
+        if self._pass_deep is not None:
+            return self._pass_deep
+        import contextlib
+        import io
+        p = G.with_turn(self.board, not self.me)
+        their = "w" if p.turn else "b"
+        cands = [[pr] for pr in BD.generate(p)]
+        best, done = None, 0
+        fin = self.ctx.final if self.ctx is not None else None
+        with contextlib.redirect_stdout(io.StringIO()):
+            for c in cands:
+                if fin is not None and time.monotonic() >= fin:
+                    break
+                done += 1
+                got = PA.best_bind(1, p.fen(), their, [c], "delayed_balance_deep")
+                if got is not None and got[2] > got[1] and (best is None or got[2] - got[1] > best[0]):
+                    best = (got[2] - got[1], got[0])
+        self._pass_deep = (best[0], best[1], done) if best else (0, None, done)
+        return self._pass_deep
 
     def _affordable(self, ag: "Agenda", k: int, left: float, t0: float) -> tuple:
 
