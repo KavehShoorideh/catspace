@@ -158,7 +158,7 @@ def test_unstoppable_pawn_fires_the_lemma_and_claims_eight():
 
 def test_stopped_pawn_is_killed_with_the_distance_reason():
     ag = _ag(RACE_STOPPED)
-    assert ag.decision() is None
+    assert ag.best is None and (ag.decision() is None or not ag.decision().proved)                  # no PROVED claim (plan 65.3: an unproved unfinished line may be offered)
     assert "stopped: their K on c7 reaches e8 in 2, the pawn needs 2" in ag.trace()
 
 
@@ -733,7 +733,7 @@ def test_52_16_a_reply_that_leaves_the_stopper_standing_ends_the_promote_route_0
     assert ag.ctx.promote_stands > 0 and "defect stands" in t                                  # a route ended at a reply that left the stopper standing, with no new fix
     assert "Qh7+: killed -- after Kxh7: the stopper defect stands" in t or "defect stands" in t
     assert ag.ctx.asked < 1000                                                                 # before: 3742 inner questions (8.2 s); the promote question was re-chased under every reply
-    assert ag.decision() is None                                                               # unchanged: 02XVK is not decided (Bxg6 stays a GAP at the root's mate chase)
+    assert ag.best is None and (ag.decision() is None or not ag.decision().proved)             # unchanged: 02XVK has no proved claim (Bxg6 stays a GAP at the root's mate chase; plan 65.3 may offer an unproved unfinished line)
 
 
 def test_52_16_a_stand_check_does_not_end_the_pawns_own_push_0nv29():
@@ -955,7 +955,7 @@ def test_52_17_a_time_budget_cuts_the_chase_to_gaps_names_the_time_and_no_second
     assert any(v.get("timed") and v.get("mark") is not None and "cut_left" in v for v in mid.ctx.routes.values() if v.get("gap"))
     assert timed.ctx.agendas <= 8                                                              # past the deadline no inner agenda is opened (5 -> 8 on 2026-10-20: replies a capture
     #                                                                                            # would have closed are now read when the capture leaves a duty, so a few more open in the 0.05 s)
-    assert timed.decision() is None or timed.decision().value >= 1                             # the best bound claim so far decides, never a guess
+    assert timed.decision() is None or timed.decision().value >= 1 or not timed.decision().proved      # the best bound claim so far decides; a guess is only ever the marked, unproved unfinished line (plan 65.3)
     plain = AG.Agenda(State(p["fen"], "w", []))
     plain.ask()
     assert plain.ctx.time_outs == 0 and "budget:" not in plain.trace() and "out of time" not in plain.trace()
