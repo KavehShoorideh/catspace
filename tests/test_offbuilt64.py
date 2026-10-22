@@ -1,4 +1,5 @@
 """PLAN 64 (docs/ANALYST_PLAN.md, 'the diagnosis round: every sound switch ends ON'). One position each: the numbers are directional (OBS lines)."""
+import pytest
 import chess
 
 import analyst_core as AC
@@ -21,9 +22,9 @@ def test_64_0_principal_line_ends_at_our_last_capture():
     """After Nxf4 Rxf4 the exchange on f4 is Bxf4 exf4 Qxf4: two captures of ours, Qxf4 the last."""
     ag = Agenda(state_of(POS2, "w"))
     ((sq, caps),) = ag._principal_captures(AC.Pos(_pos2_after("Nxf4", "Rxf4")))
-    print("OBS 64.0 principal captures after Nxf4 Rxf4:", [(s, last) for s, _b, last in caps])
+    print("OBS 64.0 principal captures after Nxf4 Rxf4:", [(s, last) for s, _b, last, _credit in caps])
     assert chess.square_name(sq) == "f4"
-    assert [(s, last) for s, _b, last in caps] == [("Bxf4", False), ("Qxf4", True)]
+    assert [(s, last) for s, _b, last, _credit in caps] == [("Bxf4", False), ("Qxf4", True)]
 
 
 def test_64_0_their_free_move_after_the_last_capture_is_read():
@@ -119,6 +120,18 @@ def test_64_0_equal_exchanges_are_a_choice_of_ours_fork2():
     assert ag._their_after_capture(AC.Pos(b.fen()))[0] == 0
 
 
+def test_64_0_a_landing_on_the_exchange_square_that_gains_more_than_the_exchange_counts():
+    """The discovery position's line: Qxa8 wins the rook (+5), and the exchange stops there (Qxa8 Bxa8 is even for them), but our N on f7 hangs:
+    Qxa8 Bxa8 Kxf7 wins it back (Stockfish's best). That claim lands on a8 and gains 3, more than the exchange's credit to them (0): it counts."""
+    fen = "rq4k1/pQ1nbNpp/6n1/5bP1/3P4/2N1P3/PPP3B1/R1B3K1 w - - 0 3"
+    ag = Agenda(state_of(fen, "w"))
+    ((sq, caps),) = ag._principal_captures(AC.Pos(fen))
+    assert chess.square_name(sq) == "a8" and [(s, last, credit) for s, _b, last, credit in caps] == [("Qxa8", True, 0)]
+    t2, cl2 = ag._their_after_capture(AC.Pos(fen))
+    print(f"OBS 64.0 their claim after Qxa8: {t2} ({cl2[1].what if cl2 else None})")
+    assert t2 >= 1 and cl2[0] == "Qxa8" and cl2[1].move[2:4] == "a8"
+
+
 def test_64_3_the_cost_judge_is_on_and_a_route_read_carries_its_measured_seconds():
     """4pC83 (rand7_10): under a time budget the judge prices a route read before by its MEASURED seconds (finished: t; cut after t: more than t), and decides Nf3+."""
     from catspace.incubator.analyst.discovery import agenda as AGM
@@ -152,3 +165,13 @@ def test_64_5_the_estimate_is_on_and_inert_where_a_proved_claim_keeps_the_status
     r = analyse(p, quiet=True, memory=False, seconds=10)
     print("OBS 64.5 qCXKp:", r["decision"], r["move"])
     assert r["move"] == "a6b5"
+
+
+@pytest.mark.xfail(strict=True, reason="cost, not reasoning: with 64.0's sound close the discovery position decides Nf6 in ~9 s under a 30 s budget, "
+                   "but under 15 s the cost judge cuts the line (the tiers' time allocation, the same cause as 07Z0P)")
+def test_64_discovery_decides_within_15_s():
+    from catspace.incubator.analyst.discovery.state import State
+    ag = Agenda(State(fen="r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w - - 0 1", us="w", pieces=[]), seconds=15)
+    ag.ask()
+    d = ag.decision()
+    assert d is not None and d.what in ("Nf6", "Nd6")

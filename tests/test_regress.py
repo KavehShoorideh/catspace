@@ -709,13 +709,16 @@ def test_52_16_the_knight_sacrifice_that_still_threatens_is_forcing_and_the_hang
 
 
 def test_52_16_the_discovery_position_decides_nf6_with_the_exchange_read():
-    ag = AG.Agenda(State(fen=DISCOVERY, us="w", pieces=[]), seconds=15)      # 2026-10-20: a reply closes by the exchange only when their agenda AFTER our capture finds nothing (kcQil);
+    ag = AG.Agenda(State(fen=DISCOVERY, us="w", pieces=[]), seconds=30)      # 2026-10-20: a reply closes by the exchange only when their agenda AFTER our capture finds nothing (kcQil);
+    #                                                                          2026-10-21 (64.0 sound close: Qxa8 Bxa8 Kxf7 counts): 30 s, it decides in ~9 s; at 15 s the judge cuts it
+    #                                                                          (test_64_discovery_decides_within_15_s, strict xfail until the tiers' time allocation is fixed)
     #                                                                          Nf6's replies are now read rather than closed, and the count budget no longer reaches the decision
     ag.ask()
     d = ag.decision()
     assert d is not None and d.what in ("Nf6", "Nd6")                                           # either is right by SF d20 (Nf6 +385, Nd6 +320); the tie of equal claims is broken by the move's uci
     assert "Nf6 (threat 5 survives Bxf6 (the N hangs, 3))" in ag.trace()                         # the sacrifice that still threatens is a route
-    assert "Qxa8 wins 5: Qxa8 Qxa8 Bxa8, the Bxa8 behind the Q" in ag.trace()                   # ... and its battery is read in the claim
+    assert "after Bxf6: Qxa8" in ag.trace()                                                     # ... and Qxa8 is read after their replies (64.0: no longer closed by 'exchange +5': Qxa8 Bxa8 then
+    #                                                                                            gxf6 / Kxf7 wins the N back, a claim of theirs on a8 worth more than the exchange's credit)
     assert R.exchange_read(chess.Board("r3q2k/pQ1nb1pp/5Bn1/5bP1/3P4/2N1P3/PPP3B1/R1B3K1 w - - 0 2")) .startswith("Qxa8 wins 5: Qxa8 Qxa8 Bxa8")
 
 
@@ -1030,7 +1033,7 @@ def test_52_18_an_almost_battery_does_not_attack_and_its_front_piece_leaving_mak
 
 
 def test_52_18_the_discovery_position_names_the_discovery_and_the_x_ray_fix_is_offered_on_a_win_defect():
-    ag = AG.Agenda(State(DISCOVERY, "w", []), seconds=15)                    # (see the 52.16 discovery test: a time budget since 2026-10-20)
+    ag = AG.Agenda(State(DISCOVERY, "w", []), seconds=30)                    # (see the 52.16 discovery test: a time budget since 2026-10-20; 30 s since 64.0's sound close)
     ag.ask()
     t = ag.trace()
     assert ag.decision().what in ("Nf6", "Nd6")

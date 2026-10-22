@@ -2253,7 +2253,8 @@ class Agenda:
 
     def _principal_captures(self, P2: "AC.Pos") -> list:
         """64.0: the PRINCIPAL LINES of the best static exchange on P2 (our move): one per square whose static exchange is the best (a tie is a choice of ours) -> [(square, [(our capture's SAN, the
-        board after it, does the line END with it)])]. A line is the legal captures on the square, the cheapest piece first, each side going on while going on gains (the swap-list's optimal stop)."""
+        board after it, does the line END with it, the exchange's CREDIT to them there)])]. A line is the legal captures on the square, the cheapest piece first, each side going on while going on
+        gains (the swap-list's optimal stop). The credit is f[i+1], what the swap-list already gives them from that board on (0 after the capture that ends the line)."""
         b = chess.Board(P2.fen())
         me = b.turn
         best, sqs = 0, []
@@ -2286,13 +2287,14 @@ class Agenda:
             while taken < n and gains[taken] - f[taken + 1] > 0:
                 taken += 1
             if taken:
-                lines.append((sq, [(sans[i], boards[i], i == taken - 1) for i in range(taken) if i % 2 == 0]))      # "last" = the line ENDS with this capture of ours (no recapture follows: their free move is next)
+                lines.append((sq, [(sans[i], boards[i], i == taken - 1, f[i + 1]) for i in range(taken) if i % 2 == 0]))      # "last" = the line ENDS with this capture of ours (no recapture follows: their free move is next)
         return lines
 
     def _their_after_capture(self, P2: "AC.Pos") -> tuple:
         """64.0: THEIR agenda after EACH capture of ours on a principal line of the best static exchange on P2 (our move): -> (the value of their best claim, (our capture's SAN, that claim)) or (0, None).
-        Their claims landing on the exchange square are excluded after every capture (the swap-list already priced the recapture); what is read now is their FREE move after each of our captures, the
-        last one included (pos2: Nxf4's close read their agenda after Bxf4 only, and 3.Qxf4 Bg5 pins the queen to the king). Equal best exchanges are a choice of ours: the line with the LEAST claim of theirs
+        A claim of theirs landing on the exchange square is excluded only when it gains no more than the exchange's credit to them there (the swap-list already priced that recapture); a landing that
+        gains MORE is counted (the discovery position: after Qxa8, Qxa8 Bxa8 gxf6 wins the knight back -- a true claim that lands on a8). After the capture that ends the line the credit is 0, so every
+        positive claim counts. What is read is their FREE move after each of our captures, the last one included (pos2: Nxf4's close read their agenda after Bxf4 only, and 3.Qxf4 Bg5 pins the queen to the king). Equal best exchanges are a choice of ours: the line with the LEAST claim of theirs
         is the one that proves the close (FORK2: Ne3 Rc2, Nxf1 allows Rxc4+ but Nxc2 does not). Memoised by position in the run's `theirs` table."""
         lines = self._principal_captures(P2)
         if not lines:
@@ -2300,14 +2302,14 @@ class Agenda:
         least = None
         for sq, caps in lines:
             out = (0, None)
-            for san, b, last in caps:
+            for san, b, last, credit in caps:
                 if not any(True for _ in b.legal_moves):
                     continue
-                key = ("after-capture", _pos_key(b.fen()), chess.square_name(sq))
+                key = ("after-capture", _pos_key(b.fen()), chess.square_name(sq), credit)
                 hit = self.ctx.theirs.get(key)
                 if hit is None:
                     ag = self._their_agenda(b)
-                    cls = [c for c in (ag.state.claims if ag is not None else []) if not (c.move and c.move[2:4] == chess.square_name(sq))]      # (a recapture on the exchange square is the exchange itself: the swap-list already priced it)
+                    cls = [c for c in (ag.state.claims if ag is not None else []) if not (c.move and c.move[2:4] == chess.square_name(sq) and c.value <= credit)]      # (a recapture worth no more than the exchange's credit IS the exchange: the swap-list priced it)
                     cl = max(cls, key=lambda c: c.value) if cls else None
                     hit = self.ctx.theirs[key] = (cl.value if cl is not None and cl.value > 0 else 0, cl)
                 if hit[0] > out[0]:
