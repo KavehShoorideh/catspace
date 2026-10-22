@@ -180,6 +180,16 @@ def grade(log_path, depth: int = 14) -> None:
     agendas = {(r["id"], r.get("set")): r["sf"] for r in rows}
     from collections import Counter
     print(f"OBS prior grade: {n} decisions graded by Stockfish (depth {depth}) over {len(agendas)} agendas: " + ", ".join(f"{k} {v}" for k, v in sorted(Counter(agendas.values()).items(), key=lambda t: str(t[0]))))
+    # plan 65.3: a decision is a PROVED claim or an UNPROVED pick (the best unfinished line, Claim.word); the grade keeps them apart, so an unproved guess never
+    # reads as a proof.  `proved` is None in logs written before 65.3 (every decision there was proved).
+    by = {}
+    for r in rows:
+        k = (r["id"], r.get("set"))
+        p = r.get("proved")
+        by[k] = ("none" if r.get("decision") is None else "proved" if p is None or p else "unproved", r["sf"])
+    if any(v[0] == "unproved" for v in by.values()):
+        c = Counter(f"{kind} {sf}" for kind, sf in by.values() if kind != "none")
+        print("OBS prior grade by proof: " + ", ".join(f"{k} {v}" for k, v in sorted(c.items())) + f", none {sum(1 for v in by.values() if v[0] == 'none')}")
 
 
 EST_LOG = "estimates_log.jsonl"

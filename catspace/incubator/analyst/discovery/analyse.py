@@ -162,7 +162,8 @@ def _write_qlog(p: dict, set_name: str, fen: str, ag, d, sfv, estimated: bool = 
             t = q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn")))
             from catspace.incubator.analyst.discovery import agenda as AGM
             buf.append(json.dumps(dict(id=p["id"], set=set_name, prior=bool(AGM.PRIOR), fuse_hits=ag.ctx.budget_hits, fen=fen, order=i, qid=q.id, goal=q.goal, stake=q.stake, text=q.text, status=q.status, word=word,
-                                     decided=bool(d and d.qid == q.id), decision=d.move if d else None, estimated=estimated, answer=ans, match=match, sf=sfv[0], sf_loss=sfv[1], sf_best=sfv[2],
+                                     decided=bool(d and d.qid == q.id), decision=d.move if d else None, proved=(bool(d.proved) if d else None), decision_word=(d.word if d else None),   # plan 65.3: a proved claim or an unproved 'unfinished line' (the grade reports them apart)
+                                     estimated=estimated, answer=ans, match=match, sf=sfv[0], sf_loss=sfv[1], sf_best=sfv[2],
                                      target_sq=t, move=q.pattern.get("move"), features=f, resources=res61)) + "\n")
     _append_once(os.environ.get("CATSPACE_QLOG") or paths.experiment("question_log.jsonl"), "".join(buf))      # (CATSPACE_QLOG: a run beside another that writes the default log)
 
