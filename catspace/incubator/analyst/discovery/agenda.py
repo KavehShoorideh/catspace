@@ -69,6 +69,8 @@ NO_SAFE_MOVE = True                                             # plan 61 A4 (ON
 ESTIMATE = True                                                 # plan 61 B2 (ON since plan 64.5: inert on the 90, proved beats estimated structurally): a GAP route whose open replies are QUIET leaves closes as an ESTIMATED claim (status = material - their pass threat; confidence from data/derived/estimate_calibration.json); the decision consults it only when no proved claim keeps the status
 COST_JUDGE = True                                               # plan 61 C2, ON since plan 64.3 (2026-10-21): under a TIME budget the cost judge (measured cost x seconds per node <= the route's time left) decides what is read on and REPLACES the count fuse; the cut is a GAP
 CYCLE = True                                                    # plan 61 C4 (ON: graded on the 90, no decision changed, nothing lost): a position that repeats one of the line (or of ctx.history) closes as a PROVED claim kind 'draw' (value = minus the balance) when we are behind; `analyse --no-cycle` turns it off
+JUDGE_PRICE_KIDS = 3                                            # plan 64.3: the parries priced exactly per route; the rest by their mean
+JUDGE_PRICE_CAP = 120                                           # plan 64.3: the pricing of a route stops at this cost while no rate is known (pricing 50-parry routes was 7.2 of 15 s on 07Z0P)
 JUDGE_MIN_AGENDAS = 8                                           # plan 61 C2: the judge reads on until this many cost units have been timed (no rate, no cut)
 TIERS_UNDER_TIME = True                                         # plan 59 default (2026-10-20, graded on 85 random puzzles): ON whenever the budget is TIME -- the tiers share the seconds, so the cost is bounded
                                                                 # (s10: RIGHT 59 -> 61, WRONG 4 -> 4; hqGOF right again); under the COUNT fuse they stay OFF unless TIERS (fuse: +2 RIGHT for ~650 s extra on 25 widened puzzles)
@@ -2127,13 +2129,13 @@ class Agenda:
         san = self.board.san(m)
         spn0 = self._spn()
         now0 = time.monotonic()
-        limit = None                                                     # the cost above which the judge cuts the route whatever it is: need > pool/2 and need > equal (see below)
+        limit = JUDGE_PRICE_CAP                                          # no rate yet: price up to this many cost units (a lower bound above it: such a route is the biggest of the root's, read on or cut later by the measured rate); the cost above which the judge cuts the route whatever it is: need > pool/2 and need > equal (see below)
         if spn0 is not None and spn0 > 0:
             limit = int(max(max((ctx.root_end or ctx.final) - now0, 0.0) / 2, max(ctx.deadline - now0, 0.0)) / spn0) + 1
         ckey = (_pos_key(self.board.fen()), m.uci(), self._judge_stake())
         hit = ctx.route_costs.get(ckey)                                  # 64.3 (speed only): the first-level cost is a function of the position, the move and the stake -- asked once per run; pricing stops at the limit (a lower bound)
         if hit is None or (hit[2] and (limit is None or limit > hit[0])):
-            cost_, kids_ = R.route_cost(self.board, m, self._judge_stake(), self.us, limit=limit)
+            cost_, kids_ = R.route_cost(self.board, m, self._judge_stake(), self.us, limit=limit, max_kids=JUDGE_PRICE_KIDS)
             hit = ctx.route_costs[ckey] = (cost_, kids_, limit is not None and cost_ > limit)
         cost, kids = hit[0], hit[1]
         ctx.judge_routes += 1

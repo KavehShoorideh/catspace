@@ -916,7 +916,7 @@ def node_cost(board: chess.Board, stake: int, us: str | bool) -> tuple:
     return best
 
 
-def route_cost(board: chess.Board, m: chess.Move, stake: int, us: str | bool, why: str | None = None, limit: int | None = None) -> tuple:
+def route_cost(board: chess.Board, m: chess.Move, stake: int, us: str | bool, why: str | None = None, limit: int | None = None, max_kids: int | None = None) -> tuple:
     """plan 61 C1 (Lean `Ideas.Forcing.routeCost`): cost(route) = 1 + the sum, over the parries of the route's threat, of the cost of the unread child (`node_cost` on the board after the parry).
     -> (cost, [(parry SAN, child cost)]). A route with no threat object counts every legal reply as a parry. `limit`: stop pricing once the cost is above it (the result is then a lower bound)."""
     me = G.colour_of(us)
@@ -927,7 +927,10 @@ def route_cost(board: chess.Board, m: chess.Move, stake: int, us: str | bool, wh
     after.push(m)
     par = list(after.legal_moves) if th is None else parries(after, th, stake, me)[0]
     kids, total = [], 1
-    for r in par:
+    for idx, r in enumerate(par):
+        if max_kids is not None and idx >= max_kids:                       # 64.3 (speed): price the first `max_kids` parries and extrapolate by their mean (the cost is an ORDER of reading, never a value)
+            total += round(sum(k for _, k in kids) / max(len(kids), 1) * (len(par) - idx))
+            break
         d = after.copy(stack=False)
         san = after.san(r)
         d.push(r)
