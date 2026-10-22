@@ -186,8 +186,8 @@ def grade(log_path, depth: int = 14) -> None:
     for r in rows:
         k = (r["id"], r.get("set"))
         p = r.get("proved")
-        by[k] = ("none" if r.get("decision") is None else "proved" if p is None or p else "unproved", r["sf"])
-    if any(v[0] == "unproved" for v in by.values()):
+        by[k] = ("none" if r.get("decision") is None else "table" if r.get("proved_by") == "table" else "proved" if p is None or p else "unproved", r["sf"])      # plan 62.3: a table-closed decision is its own label
+    if any(v[0] in ("unproved", "table") for v in by.values()):
         c = Counter(f"{kind} {sf}" for kind, sf in by.values() if kind != "none")
         print("OBS prior grade by proof: " + ", ".join(f"{k} {v}" for k, v in sorted(c.items())) + f", none {sum(1 for v in by.values() if v[0] == 'none')}")
 

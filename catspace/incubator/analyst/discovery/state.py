@@ -26,6 +26,7 @@ class Claim:
     proved: bool = True        # plan 61 B1: True = every leaf under the claim is closed by a proved rule/lemma; an ESTIMATED claim (a quiet leaf read by its status) is False and never becomes True
     confidence: float = 1.0    # ... the PRODUCT of the confidences of the estimated leaves under it (an expectation, never a bound); 1.0 for a proved claim
     estimator: str = ""        # ... the estimator's name ("quiet-status"); "" for a proved claim
+    proved_by: str = ""        # plan 62.3: "" = a proved word (a Lean theorem); "table" = closed by the tablebase (exact by exhaustion, unexplained) -- ranked after the words at equal value, before any estimate
     word: str = ""             # plan 65.3: "unfinished line" -- the best GAP route when no claim exists at all (proved=False); "" for every claim of the search
 
 

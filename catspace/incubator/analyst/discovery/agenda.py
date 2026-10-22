@@ -43,6 +43,7 @@ from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import landing as LD
 from catspace.incubator.analyst.discovery import region as RG
 from catspace.incubator.analyst.discovery import race as RC
+from catspace.incubator.analyst.discovery import table as TB
 from catspace.incubator.analyst.discovery import regress as R
 from catspace.incubator.analyst.discovery import question_prior as QP
 from catspace.incubator.analyst.discovery import reasoned as RS
@@ -348,6 +349,8 @@ class Agenda:
         self._roots()
         for i, q in enumerate(self.all, 1):                      # numbered in the order they are asked
             q.id = i
+        if getattr(self, "_tq", None):
+            self._tq[1].qid = self._tq[0].id
         R._ids[0] = len(self.all)
 
     def _t(self, flag: bool, k: int) -> bool:
@@ -410,7 +413,7 @@ class Agenda:
             sh = PA.shape_key(PA.shape(self.board.fen(), [(mv[:2], mv[2:4])], self.us, threats=False)) if len(mv) >= 4 else ()
         except Exception:
             sh = ()
-        return (stake, tuple(-x for x in sh) if sh else (), mv)
+        return (0 if c.proved_by == "table" else 1, stake, tuple(-x for x in sh) if sh else (), mv)         # plan 62.3: at an equal value a proved word beats a table claim
 
     def _stamp(self, claim: Claim, q: R.Question) -> Claim:
         claim.goal = q.goal
@@ -469,6 +472,30 @@ class Agenda:
             self._push(R.new_question("win", G.worth(b.piece_at(s)), dict(target=s),
                                       text=f"win their {b.piece_at(s).symbol().upper()} on {G.name(s)} (worth {G.worth(b.piece_at(s))})"))
         self._fork_roots()
+        self._table_roots()
+
+    def _table_roots(self) -> None:
+        """plan 62.3: a position whose whole board is at most five men closes by the TABLE (regress-free, exact): a claim labelled `proved_by = "table"` (a win: the material of their last pieces, a bare king left
+        is a mate; a draw when we are behind: minus the balance). It competes like any claim (value first; at an equal value a proved word beats it, `_claim_key`)."""
+        b = self.board
+        if not TB.TABLE or b.turn != self.me or not TB.covered(b):
+            return
+        tc = TB.table_claim(b)
+        if tc is None:
+            return
+        m = chess.Move.from_uci(tc["move"])
+        san = b.san(m)
+        q = R.new_question("win", tc["value"], dict(table=tc["code"]), text=f"{tc['text']}")
+        self.all.append(q)
+        claim = Claim(tc["kind"], san, tc["value"], "syzygy", f"{san} ({tc['text']})", move=tc["move"], goal=q.goal, proved_by="table")
+        self._tq = (q, claim)                                   # (its qid is set once the questions are numbered)
+        self.state.claims.append(claim)
+        q.status = "verified"
+        q.claimed = (0, claim, frozenset())
+        self.lines.append(f"  -> CLAIM {tc['kind']} {san} (value {tc['value']}), {tc['text']}; label: table (exact by exhaustion, unexplained)")
+        if self._better(tc["value"], 0, claim):
+            self.best = (tc["value"], 0, claim)
+            self.asked_at_claim = self.asked
 
     def _top_other(self, q: R.Question) -> int:
         """52.23 (7): the largest worth among their pieces other than this question's target (what one more claim on this chain could add); 0 at the root (no need there)."""
