@@ -32169,3 +32169,42 @@ Checking that +1 here found a FALSE PROOF: the claim closes 1...Rxf4 by "exchang
 3...Bg5 pinning the queen to Kc1 (Stockfish +6.23 for Black; our engine finds Bg5 as a root in 0.03 s). Cause: _their_after_capture asks their agenda after
 our FIRST capture only, while the value counts the whole exchange line. Written as plan 64.0 (soundness first, 32f5579f), with 64.6 (pos2 after the fix:
 Stockfish Bf2 -1.80, Nxf4 -3.22) and 64.7 (the "their threat 0" status: 63.4 traced it to their verify of fxe3 reading no gain while the B on h4 stands).
+
+## 2026-10-21 23:20 PDT -- PLAN 64 BUILT AND VERIFIED (OFF IS NOT BUILT): EVERY SOUND SWITCH ON; TWO FIXES HERE (THE JUDGE'S EXTRAPOLATION, THE EXCHANGE-SQUARE EXCLUSION); WHAT IS LEFT IS COST
+Builder (Sonnet) commits 69513fea (64.0), 08617b1d (64.1), 68d5e080 (64.2), 062b84c5 (64.3), 1b3a4209 + d35e0309 (follow-ups), bce8323d (64.4),
+cac1ecda (64.5), ac800b38 (built note), 7d790f51 (judge pricing cap), f4e913cf (15 s protocol line). Verified here: no trailers on any; by path.
+ON at the end: CYCLE, DELAYED_THREAT, DUTY, CLOSE_AFTER_CAPTURE, RAISE_TO_WIN, TIERS_UNDER_TIME, COST_JUDGE, the six 52.23 chain items (CHASE_CLOCK 4),
+PARRIES, NO_SAFE_MOVE, ESTIMATE (PRIOR untouched). Comparison flags: analyse --no-chain / --no-cost-judge / --no-parries / --no-nosafe.
+What it did: 64.0 their free move is read after EVERY capture of ours on the exchange's principal line (pos2's false Nxf4 +1 is gone; the fork claim had
+the same one-node-early flaw; the binder's delayed leaf is read by their agenda). 64.1 the chase clock, the tempo allowance and the second check are GAPs
+(`_chain_gap`), never kills (2zB89's Rf1 is a GAP). 64.2 the chain items ON at every tier; a SOUNDNESS bug found: a standing kill made for a need of
+several was served to a route needing 1 (W0VFO); kills now carry their need. 64.3 the judge ON, a route read before carries its measured seconds;
+replacing the count fuse under the tiers was tried and reverted (tier 0 takes the budget). 64.4/64.5 PARRIES, NO_SAFE_MOVE, ESTIMATE ON (per puzzle
+identical; ESTIMATE never fires: every gap leaf is non-quiet); the play server fills ctx.history for CYCLE.
+Kaveh during the run: grade at 15 s from 64.4 on (was 10 s); "why not bisect?" (the 64.2 sweep of six items alone + all was my spec; rule now: one
+all-ON grade, per-puzzle diff, bisect only a lost puzzle alone).
+OBS (90 puzzles, one run each, directional; grade files in the scratchpad):
+    before plan 64, 10 s            RIGHT 65, UNKNOWN 23, WRONG 2      count  RIGHT 61, UNKNOWN 26, WRONG 3
+    64.0 / 64.1 / 64.2 / 64.3, 10 s RIGHT 63 / 64 / 66 / 66
+    7d790f51, 15 s                  RIGHT 67, UNKNOWN 21, WRONG 2
+    3f0edc69 (fix 1), 15 s          RIGHT 66, UNKNOWN 22, WRONG 2
+    94a85dec (fix 2), 15 s          RIGHT 66, UNKNOWN 22, WRONG 2      count  RIGHT 63, UNKNOWN 24, WRONG 3   (per puzzle identical to fix 1)
+Per puzzle against before plan 64: 15 s gains 4pC83, x29EV, loses eSJqH (tiers [3.03, 4.31, 6.78, 0.96] s, a clock edge: tier 2 now takes 6.8 s);
+count gains 4pC83, FNEJj, x29EV, loses 5JrXD (the in-check chase of a need of 8 exhausts Bf6+'s share; builder).
+Fix 1 (3f0edc69): my full suite on f4e913cf: 3 failed, 1275 passed, 1 xfailed -- both discovery-position tests failed ALONE (no decision at 15 s; the
+59.4 tier test passes alone: load). Cause: 7d790f51 priced 3 parries and extrapolated the rest by their mean; the judge cuts a route whose price is
+above its limit as a LOWER BOUND, and an extrapolation is not one. OBS discovery at 15 s: extrapolation none; exact pricing Nf6 9.4 s; judge off Nf6
+8.1 s; cap alone Nf6 9.4 s. Removed (matches Lean routeCost); the 120-unit cap stays (a true lower bound). The extrapolation had bought eSJqH at 15 s.
+Fix 2 (94a85dec): 1b3a4209 had put back the exclusion of their claims landing on the exchange square after the LAST capture too (to keep the
+discovery test under 15 s). Probe over the 90 + pos2 (count budget): 1664 calls, 1379 line-ending captures, 0 hidden. Discovery position: 366 hidden
+claims, all their Q recapturing on a8 after our Qxa8, +1..+3; Stockfish's best there is Qxa8 then Bxa8 gxf6 / Kxf7: our N hangs, the claims are TRUE
+and "exchange +5, nothing of theirs" overstated the close. Rule now: a landing on the square is the exchange itself only if it gains no more than the
+swap-list's credit to them there (0 after the last capture). Nf6 is proved at +1 (was +2), decides in 9.0 s under 30 s, none under 15 s (the judge cuts
+it): the 52.16/52.18 tests run at 30 s; test_64_discovery_decides_within_15_s is a strict xfail (cost, not reasoning). compare_scheduler 0 differences.
+LEFT (builder's traces, checked where marked): 07Z0P Qxd5+ misses at 15 s (checked: tiers [0, 1], [14.51, 0.65] s; builder: decides at 30 s, and at
+15 s with the judge off); 2zB89 Qxa5 none at 10 s, 60 s, count (the tier's count fuse past Qxa1+); tempo1 Rxc2+ fuse-cut at Kxc2; RoR8t none (plan 62);
+pos2 decides NOTHING at 10/30/60 s (Nxf4 killed after exf4, Bf2 a GAP by the tempo allowance; ESTIMATE does not choose: non-quiet leaves); 64.7
+"their threat 0" is a horizon artifact (after fxe3, 2.Ng1 discovers Qh2 on Bh4, but h4 is guarded by Qd8; delayed_balance_deep binds +2) -- not fixed;
+the second check stays a GAP and the delayed threat inside the chase was REMOVED (both cost lK9WA at 10 s). Common cause of almost all of it: TIME
+ALLOCATION -- tier 0 runs to the deadline and the judge cuts lines that finish in seconds under a larger budget. Decisions for Kaveh: the allocation
+(plan 65), pos2's proved-vs-estimated rule, 64.7's deep read for their pass.
