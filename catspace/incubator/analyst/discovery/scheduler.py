@@ -480,13 +480,15 @@ def ask_stop_pawn_g(node, q: R.Question, head: str) -> None:
             node.state.gaps.append(f"Q{q.id} {q.text}: no stopper in time ({arith}) and no capture binds")
 
 
-def ask_promote_g(node, q: R.Question, head: str) -> None:
+def ask_promote_g(node, q: R.Question, head: str, lift: bool = True) -> None:
     """The defects of the pawn's path are read with the words; a stopper in time kills the question WITH THE DISTANCE REASON; no defect = unstoppable by the
     tempo arithmetic, and then the claim is made ONLY when the proved passer (Ideas.Passer2.unstoppablePasser2_sound, via proved_passers) fires; if it does
     not, the question ends as a GAP naming the hypothesis that fails."""
     b = node.board
     sq = q.pattern["pawn"]
-    q.defects, facts = R.promote_defects(b, sq, lift=True)
+    q.defects, facts = R.promote_defects(b, sq, lift=lift and node.chase_depth == 0)
+    if facts.get("lifted") is not None and q.defects:           # plan 62.1c: the king holds (or a defect stands): the old verdict, every stopper, stands as it was
+        q.defects, facts = R.promote_defects(b, sq)
     n, promo = facts["pushes"], facts["promo"]
     q.reads = R.reads_of(q, b) | frozenset(facts["path"]) | {sq}            # 52.16 (4): the pawn, its path (the promotion square included), the defects' squares and their pieces: what the question read
     kd = facts["king_dist"]
@@ -531,11 +533,16 @@ def ask_promote_g(node, q: R.Question, head: str) -> None:
         return
     if node._race_claim(q, sq):                                # plan 62.1: no defect, the lemma does not fire: the race word
         return
-    if lifted is not None and (yield T('chase', chase_g(node, q), node)):      # plan 62.1c: the kill is lifted, the chase proves or leaves the GAP
-        return
     ex = node._promotion_exchange(q, sq, facts)
     if ex is not None:
         return
+    if lifted is not None:                                        # plan 62.1c: the kill is lifted: the chase proves it, or the verdict that stood before the lift is read again
+        late = node.ctx is not None and node.ctx.deadline is not None and time.monotonic() >= node.ctx.deadline
+        if not late and (yield T('chase', chase_g(node, q), node)):
+            return
+        q._lift_routes = None
+        node.lines.append("  lifted kill: not closed by the chase; the unlifted verdict is read")
+        return (yield from ask_promote_g(node, q, head, lift=False))
     h = PV.passer_v2(b, sq)
     bad = [k for k in PV.HYPS if not h[k]]
     why = []

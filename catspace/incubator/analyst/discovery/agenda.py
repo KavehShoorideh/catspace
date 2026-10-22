@@ -3207,13 +3207,15 @@ class Agenda:
 
     # ------------------------------------------------------------------------------------------------------------ promotion (52.6)
 
-    def _ask_promote(self, q: R.Question, head: str) -> None:
+    def _ask_promote(self, q: R.Question, head: str, lift: bool = True) -> None:
         """The defects of the pawn's path are read with the words; a stopper in time kills the question WITH THE DISTANCE REASON; no defect = unstoppable by the
         tempo arithmetic, and then the claim is made ONLY when the proved passer (Ideas.Passer2.unstoppablePasser2_sound, via proved_passers) fires; if it does
         not, the question ends as a GAP naming the hypothesis that fails."""
         b = self.board
         sq = q.pattern["pawn"]
-        q.defects, facts = R.promote_defects(b, sq, lift=True)
+        q.defects, facts = R.promote_defects(b, sq, lift=lift and self.chase_depth == 0)
+        if facts.get("lifted") is not None and q.defects:           # plan 62.1c: the king holds (or a defect stands): the old verdict, every stopper, stands as it was
+            q.defects, facts = R.promote_defects(b, sq)
         n, promo = facts["pushes"], facts["promo"]
         q.reads = R.reads_of(q, b) | frozenset(facts["path"]) | {sq}            # 52.16 (4): the pawn, its path (the promotion square included), the defects' squares and their pieces: what the question read
         kd = facts["king_dist"]
@@ -3258,11 +3260,16 @@ class Agenda:
             return
         if self._race_claim(q, sq):                               # plan 62.1: no defect, the lemma does not fire (our sliders, say): the race word
             return
-        if lifted is not None and self._chase(q):                 # plan 62.1c: the kill is lifted, the chase proves or leaves the GAP
-            return
         ex = self._promotion_exchange(q, sq, facts)
         if ex is not None:
             return
+        if lifted is not None:                                    # plan 62.1c: the kill is lifted: the chase proves it, or the verdict that stood before the lift is read again (never worse than without the lift)
+            late = self.ctx is not None and self.ctx.deadline is not None and time.monotonic() >= self.ctx.deadline       # read without `out_of_time`, which marks the route in hand: past the deadline the lifted chase is not started
+            if not late and self._chase(q):
+                return
+            q._lift_routes = None
+            self.lines.append("  lifted kill: not closed by the chase; the unlifted verdict is read")
+            return self._ask_promote(q, head, lift=False)
         h = PV.passer_v2(b, sq)
         bad = [k for k in PV.HYPS if not h[k]]
         why = []

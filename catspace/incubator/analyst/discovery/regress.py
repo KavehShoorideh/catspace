@@ -1701,7 +1701,7 @@ def promote_fixes(board: chess.Board, sq: int, defect: Defect, q: "Question") ->
         f.routes = [Route(m, board.san(m), f"capture {G.worth(board.piece_at(m.to_square))}") for m in board.legal_moves if m.to_square == defect.by[0]]
         if push in board.legal_moves and board.gives_check(push):
             f.routes.append(Route(push, board.san(push), "push with check"))
-        if RC.LIFT and defect.why.startswith("their K stops it") and board.turn == own:        # 62.1c: the king is the stopper by the proved analysis: the moves that make it none are routes
+        if RC.LIFT and defect.by[0] == board.king(not own) and board.turn == own and (board.occupied_co[not own] & (board.rooks | board.bishops | board.queens | board.knights)):        # 62.1c: the king is the stopper by the proved analysis: the moves that make it none are routes
             have = {r.move for r in f.routes}
             for m, why in RC.support_moves(board, own, sq, list(board.legal_moves)):
                 if m not in have:
