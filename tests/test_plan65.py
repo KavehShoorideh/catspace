@@ -115,3 +115,31 @@ def test_65_1_the_competitor_set_includes_the_wider_vocabulary():
     tier1 = {m.uci() for m in R._moves(b, "w" if b.turn else "b") if R.forcing_why(b, m, 1, "w" if b.turn else "b", mate_threats=True, delayed=True, nosafe=True)}
     print("OBS 65.1 07Z0P stake 1: tier 0 routes", len(tier0), "tier 1 routes", len(tier1), "new", sorted(b.san(chess.Move.from_uci(u)) for u in tier1 - tier0))
     assert tier0 < tier1 and tier0
+
+
+def test_65_2_nothing_affordable_stops_the_widening():
+    """Lean none_affordable_of_cheapest: with a rate known, the cheapest open route (a GAP of tier k) priced above the time left ends the widening, with the TIERS line; one that fits does not; no rate, no stop."""
+    ag = _agenda(VDTX)
+    q = _q(ag)
+    nf6, qxh7 = ag.board.parse_san("Nf6+").uci(), ag.board.parse_san("Qxh7+").uci()
+    ag.ctx.root_gaps[(ag.pk, nf6, q.stake)] = (500, nf6)
+    ag.ctx.root_gaps[(ag.pk, qxh7, q.stake)] = (800, qxh7)
+    ok, line = ag._affordable(ag, 0, 1.0, 0.0 + __import__("time").monotonic())
+    print("OBS 65.2", ok, line)
+    assert not ok and line.startswith("TIERS: stopped at") and "(tier 0, Nf6+) is priced 500 x 0.0100 = 5.0 s > the 1.0 s left" in line
+    assert ag._affordable(ag, 0, 10.0, 0.0)[0]                      # 5.0 s fits in 10 s
+    ag.ctx.judge_t, ag.ctx.judge_n = 0.0, 0
+    assert ag._affordable(ag, 0, 1.0, 0.0)[0]                       # no rate yet: nothing is priced, nothing is said
+
+
+def test_65_2_the_wider_vocabulary_adds_open_routes():
+    """07Z0P: tier 0 -> 1 adds Re2 and Rd1 (the delayed threat); with nothing else open they are priced and, being dear (all replies are parries), do not fit in a short time left."""
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    (p,) = [x for x in PA.load_set("dev_20") if x["id"] == "07Z0P"]
+    ag = _agenda(p["fen"])
+    q = next(t[4] for t in ag.heap if t[4].stake == 1)
+    ag._chase_q = q
+    ag._competitor(1.0, 0.01)                                        # fills the candidates of (position, stake 1, tier 0)
+    ok, line = ag._affordable(ag, 0, 0.5, __import__("time").monotonic())
+    print("OBS 65.2 07Z0P:", ok, line)
+    assert not ok and "(tier 1, " in line

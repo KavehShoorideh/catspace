@@ -76,6 +76,7 @@ TIERS_UNDER_TIME = True                                         # plan 59 defaul
 TIERS = False                                                   # plan 59: STATUS-DRIVEN WIDENING at the root -- tier 0 (today's moves), then wider tiers (settings of the root's ChaseCtx) only while no claim keeps our status; analyse --tiers; the play server honours it
 TIER_COUNT = 4                                                  # tiers 0..3
 COMPETE = True                                                  # plan 65.1: the NEXT tier's cheapest route competes with this tier's root routes (Lean `Ideas.Forcing.judgeNext`): a NEW route (not yet open in this tier) priced above it is a GAP, read in the next tier (deferred once); `analyse --no-compete`
+STOP_AFFORD = True                                              # plan 65.2: the widening (and the RAISE_TO_WIN continuation) ends when no open route of any tier is priced within the time left; `analyse --no-stop-afford`
 NO_FUSE = 1 << 40                                               # 52.23 (1): the fuse when the budget is time: never reached (the deadline is the only limit)
 
 
@@ -757,7 +758,14 @@ class Agenda:
             if kept and k > 0:
                 self.lines.append(f"tier {k} keeps the status: {overall[2].what}" + ("" if mate else f" ({st['balance'] + overall[0]:+d} against the line {st['line']})"))
             left = None if total is None else total - (time.monotonic() - t0)
-            if RAISE_TO_WIN and kept and not mate and left is not None and left > 0.05 and k < TIER_COUNT - 1 and not self.ctx.abort \
+            afford = None
+            widens = not kept or (RAISE_TO_WIN and not mate and st["line"] == 0 and overall is not None and st["balance"] + overall[0] < 1)       # (the widening goes on: no claim keeps the status, or 'not losing' is reached and 'winning' is asked)
+            if STOP_AFFORD and widens and left is not None and left > 0.05 and k < TIER_COUNT - 1 and not self.ctx.abort:
+                afford = self._affordable(ag, k, left, t0)           # plan 65.2: nothing affordable is left in ANY tier: the widening (and the raise) ends here
+            if afford is not None and not afford[0]:
+                self.lines.append(afford[1])
+                self.stop_line = afford[1]
+            if RAISE_TO_WIN and (afford is None or afford[0]) and kept and not mate and left is not None and left > 0.05 and k < TIER_COUNT - 1 and not self.ctx.abort \
                     and st["line"] == 0 and overall is not None and st["balance"] + overall[0] < 1:
                 # plan 59 (4), Kaveh 2026-10-20 ("if we have time, yes; we'll figure out time management later"): 'not losing' is reached but not 'winning', and time remains: the
                 # line rises to 'stay ahead' and the widening goes on (kcQil: Qxf3 reaches level, Qc4 wins). Under a count budget (no time) nothing changes.
@@ -767,8 +775,10 @@ class Agenda:
             stop = kept or k >= TIER_COUNT - 1 or self.ctx.abort
             if not stop and left is not None and left <= 0.05:           # (`ctx.hit` alone is a SLICE of the budget met, not the budget)
                 stop = True
+            if not stop and afford is not None and not afford[0]:
+                stop = True
             if k == 0 or not kept:
-                why = "" if stop and kept else (f"no time left for tier {k + 1}" if stop and not kept and left is not None and k < TIER_COUNT - 1 else
+                why = "" if stop and kept else ("nothing affordable is left (see TIERS)" if stop and afford is not None and not afford[0] else f"no time left for tier {k + 1}" if stop and not kept and left is not None and k < TIER_COUNT - 1 else
                                                 "all tiers run" if stop and not kept else f"tier {k + 1} opened ({self.TIER_WHY[k + 1]})")
                 if k == 0:
                     self.lines.append(self.status_line(0, st, overall, why))
@@ -788,6 +798,42 @@ class Agenda:
         self.tier_decided = decided
         self.tier_secs = [t["secs"] for t in self.tier_info]
         self.lines.append(f"TIERS: ran {len(self.tier_info)} (0..{len(self.tier_info) - 1}); the decision is " + (f"{self.best[2].what} ({self.best[0]:+d}) from tier {decided}" if self.best is not None else "none") + f"; seconds per tier {self.tier_secs}")
+
+    def _affordable(self, ag: "Agenda", k: int, left: float, t0: float) -> tuple:
+        """plan 65.2 (Lean `Ideas.Forcing.none_affordable_of_cheapest`): is any OPEN route priced within the time left? The open routes after tier k: the root routes that ended tier k as GAPs (cut by the judge, the
+        competition, the fuse or the clock; a route cut after t seconds needs more than t) and the routes tier k+1's wider vocabulary ADDS at the root of each question tier k chased (forcing with tier k+1's flags,
+        not with tier k's). A route that tier k read to its end (a claim, a kill) is not open. The price of a route is the judge's (`_route_need`: first-level cost x the measured seconds per node, or its measured
+        seconds). -> (True, '') if one fits (or none can be priced: no rate yet, nothing to say), else (False, the TIERS line). Nothing open at all, with a vocabulary still to come, is not 'nothing affordable':
+        the wider vocabulary re-reads the closed routes (a kill under a narrower move set is not a kill under a wider one)."""
+        ctx = ag.ctx
+        spn = ag._spn()
+        if spn is None or spn <= 0:
+            return True, ""
+        limit = int(left / spn) + 1
+        cands = []
+        for mkey, (cost, san) in ctx.root_gaps.items():
+            seen = ctx.route_secs.get(mkey)
+            try:
+                san = self.board.san(chess.Move.from_uci(san)) if len(san) in (4, 5) and san[0] in "abcdefgh" and san[1] in "12345678" else san
+            except (ValueError, AssertionError):
+                pass
+            cands.append((self._route_need(cost, seen, spn), cost, san, k))
+        b = self.board
+        dl, ns = DELAYED_THREAT, NO_SAFE_MOVE
+        for (pk, stake, kk), news in list(ctx.competitors.items()):
+            if kk != k:
+                continue
+            for m, san, _why in news:
+                if R.forcing_why(b, m, stake, self.us, mate_threats=True, mate2=k >= 2, delayed=dl and k >= 1, nosafe=ns and k >= 1):
+                    continue                                         # forcing in tier k already: not new
+                cost, _kids, lower = ag._price(m, stake, limit)
+                cands.append((self._route_need(cost, ctx.route_secs.get((pk, m.uci(), stake)), spn), cost, san, k + 1))
+        if not cands:
+            return True, ""
+        need, cost, san, tier = min(cands)
+        if need <= left:
+            return True, ""
+        return False, f"TIERS: stopped at {time.monotonic() - t0:.1f} s: the cheapest unread route (tier {tier}, {san}) is priced {cost} x {spn:.4f} = {need:.1f} s > the {left:.1f} s left"
 
     def _ask_finish(self) -> None:
         """What `ask` adds to the trace once the loop has ended (the root agenda only); the scheduler's node task calls it too."""
