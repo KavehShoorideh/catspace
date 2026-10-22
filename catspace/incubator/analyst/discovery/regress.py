@@ -916,9 +916,9 @@ def node_cost(board: chess.Board, stake: int, us: str | bool) -> tuple:
     return best
 
 
-def route_cost(board: chess.Board, m: chess.Move, stake: int, us: str | bool, why: str | None = None) -> tuple:
+def route_cost(board: chess.Board, m: chess.Move, stake: int, us: str | bool, why: str | None = None, limit: int | None = None) -> tuple:
     """plan 61 C1 (Lean `Ideas.Forcing.routeCost`): cost(route) = 1 + the sum, over the parries of the route's threat, of the cost of the unread child (`node_cost` on the board after the parry).
-    -> (cost, [(parry SAN, child cost)]). A route with no threat object counts every legal reply as a parry."""
+    -> (cost, [(parry SAN, child cost)]). A route with no threat object counts every legal reply as a parry. `limit`: stop pricing once the cost is above it (the result is then a lower bound)."""
     me = G.colour_of(us)
     if why is None:
         why = forcing_why(board, m, stake, me, mate_threats=stake >= STAKE_MATE)
@@ -926,13 +926,16 @@ def route_cost(board: chess.Board, m: chess.Move, stake: int, us: str | bool, wh
     after = board.copy(stack=False)
     after.push(m)
     par = list(after.legal_moves) if th is None else parries(after, th, stake, me)[0]
-    kids = []
+    kids, total = [], 1
     for r in par:
         d = after.copy(stack=False)
         san = after.san(r)
         d.push(r)
         kids.append((san, node_cost(d, stake, me)[0]))
-    return 1 + sum(k for _, k in kids), kids
+        total += kids[-1][1]
+        if limit is not None and total > limit:                          # 64.3 (speed only): the cost is already above what the judge would read (a LOWER BOUND, the route is cut anyway): the rest of the parries are not priced
+            return total, kids
+    return total, kids
 
 
 MOVES_CACHE = True        # plan 54 (B5.3): `_moves` answers the same (pieces, castling rights, side, skip) once per root question (graph.clear_caches clears it)

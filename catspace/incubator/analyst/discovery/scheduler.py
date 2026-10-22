@@ -717,6 +717,7 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
     # kill, a mate or stalemate against us, a mate in one, the exchange with nothing of theirs): a route killed there never draws a share of the fuse, and the routes still open
     # share it in order.
     cheap_res = {}
+    stopped = False                                          # 64.2 (mirror of agenda._chase_routes)
     root_final = None                                        # 52.23 (11): the root's share of the time (set at the first open route)
     for i, r in enumerate(routes):
         got = (yield T('route', chase_route_g(node, r.move, promote=q.goal == "promote", cheap=True), node))
@@ -758,7 +759,10 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
         if res["gap"] and res["gap"].startswith("out of time"):
             node._note_resume(q, r, res)
         if res["gap"]:
-            cut = True
+            if res["gap"].startswith("chain stop"):
+                stopped = True
+            else:
+                cut = True
             node.lines.append(f"    {r.san}: GAP, {res['gap']}" + (" (seen before with no more fuse: not re-run)" if res.get("reused") else ""))
             node.state.gaps.append(f"Q{q.id} {q.text}: {res['gap']}")
         elif res["killed"]:
@@ -773,6 +777,7 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
     node._chasing = None
     node._chase_q = None
     q._chased = not cut                                      # 52.19: a kill is "chased" only when no route was cut (a GAP); a cut chase is as weak as no chase
+    q._chain_stopped = stopped
     node._qdeps = list(dict.fromkeys(route_facts))           # a kill stands on every route's facts ...
     if node.chase_depth == 0 and pool > 1 and any(t[4].goal in ("mate", "win", "promote") and (node.best is None or node.best[0] < t[4].stake) for t in node.heap):
         # ... and a ROOT question is charged at most half of the pool it started with, while another root that can still beat the best claim is open: by stake order the
@@ -781,7 +786,7 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
         node.ctx.left = max(node.ctx.left, pool - pool // 2)
         node.lines.append(f"    fuse: this root is charged {charged} of the pool {pool} (routes at most their shares, the root at most half while another root can beat the best claim)")
     node.lines.append(f"    (chase: {node.ctx.agendas} inner agendas, {node.ctx.asked} inner questions, {node.ctx.budget_hits} fuse hit(s), {node.ctx.gap_reused} gap route(s) reused, fuse left {node.ctx.left})")
-    node.lines.append("    chase ended: " + ("the FUSE was hit on at least one route (a GAP, never a kill)" if cut else "every route closed (claim on every reply or a refuting reply)"))
+    node.lines.append("    chase ended: " + ("the FUSE was hit on at least one route (a GAP, never a kill)" if cut else "a chain stop on at least one route (a GAP, never a kill)" if stopped else "every route closed (claim on every reply or a refuting reply)"))
     if AG.ESTIMATE:
         node._est_claims(q, routes, results, done)             # plan 61 B2 (mirror of agenda._chase_routes)
     if question_killed(done):
@@ -889,7 +894,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
     # route at once and is counted; otherwise the replies are read recaptures on the route's square, then checks, then captures, then the rest, the worst balance first inside a class.
     kill_uci = None                                          # 52.22 (3): the reply that killed the route: its piece is the REFUTER (Ideas.Refuter.Refutes)
     for dbal, uci, chk, cap, rec, mate1 in rows:
-        sk = None if promote or (override and uci in override) else node._standing_kill(uci, P2_of(uci), dbal)
+        sk = None if promote or (override and uci in override) else node._standing_kill(uci, P2_of(uci), dbal, node._target())
         if sk is not None:
             kill_uci = uci
             res["killed"] = f"after {san_of(uci)}: {sk[0]} (standing kill: nothing the inner agenda read after {sk[1]} {san_of(uci)} has changed)"
@@ -973,10 +978,11 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
             elif dbal <= 0 and inn["claim"] is not None and inn["value"] >= 1 - dbal:       # no promotion, but the material the reply cost is won back and more (the ordinary chase's reading)
                 g, part = dbal + inn["value"], f"{inn['claim'].what} ({inn['claim'].line}; value {inn['claim'].value}) wins the material back: {dbal:+d} + {inn['value']}"
                 res["material"] = True
-            elif inn.get("cut"):
-                res["gap"] = node._cut(san, san_r, True)
+            elif (inn.get("cut") or inn.get("chain")):
+                res["gap"] = node._cut(san, san_r, True, inn)
                 res["reply"] = uci
-                ctx.budget_hits += 1
+                ctx.chain_hits += 0 if inn.get("cut") else 1      # 64.2: a chain stop is counted apart from a budget cut
+                ctx.budget_hits += 1 if inn.get("cut") else 0
                 node._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
                 break
             else:
@@ -1005,7 +1011,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
                     ctx.budget_hits += 1
                     node._log(key, uci, "gap", dbal, None, None, res["gap"])
                     break
-                inn = dict(inn, cut=inn.get("cut") or inn2.get("cut"))
+                inn = dict(inn, cut=inn.get("cut") or inn2.get("cut"), chain=inn.get("chain") or inn2.get("chain"))
                 held = [(cl, pc) for cl, pc in inn2["threats"] if pc is not None]
                 lost = [cl for cl, pc in inn2["threats"] if pc is None]
                 unparried = sum(cl.value for cl in lost)
@@ -1023,16 +1029,17 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
                 claim_their = None
             else:
                 unparried = t_their
-        if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and inn.get("cut"):
-            res["gap"] = node._cut(san, san_r, True)
+        if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and (inn.get("cut") or inn.get("chain")):
+            res["gap"] = node._cut(san, san_r, True, inn)
             res["reply"] = uci
-            ctx.budget_hits += 1
+            ctx.chain_hits += 0 if inn.get("cut") else 1      # 64.2: a chain stop is counted apart from a budget cut
+            ctx.budget_hits += 1 if inn.get("cut") else 0
             node._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
             break
         if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE:
             res["killed"] = f"after {san_r}: " + (f"our best claim {inn['claim'].what} wins {inn['value']}, the reply took {-dbal}" if inn["claim"] else "no claim of ours and no material gain") + f" ({dbal:+d})"
-            if inn["claim"] is None and not inn.get("cut") and not (node._t(AG.NEED_PROPAGATION, 3) and node.min_stake > 1):          # a standing kill: the later routes' same reply is skipped while the reads stay untouched (64.2: only a kill made for the need 1)
-                ctx.reply_kills.setdefault(uci, []).append((P2, dbal, inn.get("reads"), san))
+            if inn["claim"] is None and not inn.get("cut") and not inn.get("chain"):          # a standing kill: the later routes' same reply is skipped while the reads stay untouched (with the need it was made for)
+                ctx.reply_kills.setdefault(uci, []).append((P2, dbal, inn.get("reads"), san, node._target()))
             node._log(key, uci, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
             break
         cl = inn["claim"] if inn["value"] >= need else None
@@ -1084,8 +1091,9 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
     c = b.copy(stack=False)
     c.push(m)
     res = dict(value=0, killed=None, gap=None, parts=[], lemmas=[])
+    kills_view = {u: [e[:4] for e in v if e[4] == 1] for u, v in ctx.reply_kills.items()}
     rr = AC.read_route(b.fen(), m.uci(), bool(node.me), node.min_stake, node._t(AG.NEED_AWARE_CLOSE, 3), bool(promote), max(1, node.min_stake) if node._t(AG.NEED_PROPAGATION, 3) else 1,
-                       cq.stake if cq is not None and cq.goal == "win" and cq.pattern.get("target") is not None else None, BD.MATE_VALUE, R.STAKE_PROMOTE, list(override) if override else [], list(pre) if pre else [], ctx.reply_kills if not promote else None)
+                       cq.stake if cq is not None and cq.goal == "win" and cq.pattern.get("target") is not None else None, BD.MATE_VALUE, R.STAKE_PROMOTE, list(override) if override else [], list(pre) if pre else [], kills_view if not promote else None)      # (the Rust handler knows the kills made for the need 1)
     P0, P1 = rr["p0"], rr["p1"]
     if P1.legal_count() == 0:
         if c.is_checkmate():
@@ -1107,7 +1115,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
     kill_uci = None                                          # 52.22 (3): the reply that killed the route: its piece is the REFUTER (Ideas.Refuter.Refutes)
     if rr["standing"] is not None:
         kill_uci, sk_dbal, sk_k = rr["standing"]
-        _, _, sk_reads, sk_san = ctx.reply_kills[kill_uci][sk_k]
+        _, _, sk_reads, sk_san = kills_view[kill_uci][sk_k]
         res["killed"] = f"after {san_of(kill_uci)}: no claim of ours and no material gain (standing kill: nothing the inner agenda read after {sk_san} {san_of(kill_uci)} has changed)"
         ctx.standing += 1
         node._log(key, kill_uci, "standing", sk_dbal, None, sorted(sk_reads), res["killed"])
@@ -1206,10 +1214,11 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
             elif dbal <= 0 and inn["claim"] is not None and inn["value"] >= 1 - dbal:       # no promotion, but the material the reply cost is won back and more (the ordinary chase's reading)
                 g, part = dbal + inn["value"], f"{inn['claim'].what} ({inn['claim'].line}; value {inn['claim'].value}) wins the material back: {dbal:+d} + {inn['value']}"
                 res["material"] = True
-            elif inn.get("cut"):
-                res["gap"] = node._cut(san, san_r, True)
+            elif (inn.get("cut") or inn.get("chain")):
+                res["gap"] = node._cut(san, san_r, True, inn)
                 res["reply"] = uci
-                ctx.budget_hits += 1
+                ctx.chain_hits += 0 if inn.get("cut") else 1      # 64.2: a chain stop is counted apart from a budget cut
+                ctx.budget_hits += 1 if inn.get("cut") else 0
                 node._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
                 break
             else:
@@ -1238,7 +1247,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
                     ctx.budget_hits += 1
                     node._log(key, uci, "gap", dbal, None, None, res["gap"])
                     break
-                inn = dict(inn, cut=inn.get("cut") or inn2.get("cut"))
+                inn = dict(inn, cut=inn.get("cut") or inn2.get("cut"), chain=inn.get("chain") or inn2.get("chain"))
                 held = [(cl, pc) for cl, pc in inn2["threats"] if pc is not None]
                 lost = [cl for cl, pc in inn2["threats"] if pc is None]
                 unparried = sum(cl.value for cl in lost)
@@ -1256,16 +1265,17 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
                 claim_their = None
             else:
                 unparried = t_their
-        if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and inn.get("cut"):
-            res["gap"] = node._cut(san, san_r, True)
+        if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and (inn.get("cut") or inn.get("chain")):
+            res["gap"] = node._cut(san, san_r, True, inn)
             res["reply"] = uci
-            ctx.budget_hits += 1
+            ctx.chain_hits += 0 if inn.get("cut") else 1      # 64.2: a chain stop is counted apart from a budget cut
+            ctx.budget_hits += 1 if inn.get("cut") else 0
             node._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
             break
         if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE:
             res["killed"] = f"after {san_r}: " + (f"our best claim {inn['claim'].what} wins {inn['value']}, the reply took {-dbal}" if inn["claim"] else "no claim of ours and no material gain") + f" ({dbal:+d})"
-            if inn["claim"] is None and not inn.get("cut") and not (node._t(AG.NEED_PROPAGATION, 3) and node.min_stake > 1):          # a standing kill: the later routes' same reply is skipped while the reads stay untouched (64.2: only a kill made for the need 1)
-                ctx.reply_kills.setdefault(uci, []).append((P2, dbal, inn.get("reads"), san))
+            if inn["claim"] is None and not inn.get("cut") and not inn.get("chain"):          # a standing kill: the later routes' same reply is skipped while the reads stay untouched (with the need it was made for)
+                ctx.reply_kills.setdefault(uci, []).append((P2, dbal, inn.get("reads"), san, node._target()))
             node._log(key, uci, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
             break
         cl = inn["claim"] if inn["value"] >= need else None
@@ -1322,7 +1332,7 @@ def inner_g(node, fen: str, need: int, diff: "frozenset | None" = None, their: "
         return None
     ctx.active.add(pk)
     ctx.active_label[pk] = f"{node.board.san(node._route_move)} {node._reply_san}" if node._route_move is not None and node._reply_san else "the line"
-    hits0 = ctx.budget_hits
+    hits0, chain0 = ctx.budget_hits, ctx.chain_hits
     saved = R._ids[0]
     evading = node._chase_q is not None and node._chase_q.goal == "save" and "checkers" in node._chase_q.pattern
     ag = AG.Agenda(State(fen=fen, us=node.us, pieces=[]), side_depth=0, chase_depth=node.chase_depth + 1, ctx=ctx, min_stake=need, their=their, keep=keep, evaded=evading,
@@ -1336,7 +1346,7 @@ def inner_g(node, fen: str, need: int, diff: "frozenset | None" = None, their: "
     best = ag.best[2] if ag.best and ag.best[0] > 0 else None
     reads = None if any(q.reads is None for q in ag.all) else frozenset().union(*(q.reads for q in ag.all))     # 52.13 (4): everything this agenda read (None: some question did not record it)
     threats = [(cl, q.claimed[1] if q.status == "verified" and q.claimed is not None else None) for q, cl in ag.threat_qs]
-    out = dict(value=ag.best[0] if best else 0, claim=best, asked=ag.asked, need=need, cut=ctx.budget_hits > hits0, reads=reads, threats=threats,
+    out = dict(value=ag.best[0] if best else 0, claim=best, asked=ag.asked, need=need, cut=ctx.budget_hits > hits0, chain=ctx.chain_hits > chain0, reads=reads, threats=threats,
                promote=next((c for c in ag.state.claims if c.kind == "promote"), None))      # 52.15 (2): the promote claim of this position, whether or not it is the best claim
     cfid = ag.claim_fid.get(id(best)) if best is not None else None
     f = ctx.facts.add("gap" if out["cut"] else ("claim" if best is not None else "kill"), ("inner", pk, wt, keep), node.me, f"the agenda on {pk.split()[0]}" + (f": {best.what}" if best is not None else ": no claim"),
@@ -1344,7 +1354,7 @@ def inner_g(node, fen: str, need: int, diff: "frozenset | None" = None, their: "
                       under=f"Q{node._cur.id} at depth {node.chase_depth}" if node._cur is not None else f"depth {node.chase_depth}", pk=pk, portable=False)
     out["fact"] = f.id
     node._touch(f.id)
-    if not out["cut"]:                                      # an answer the budget cut short is not memoised and is never read as "no claim"
+    if not out["cut"] and not out["chain"]:                 # an answer the budget cut short (or a chain stop, which depends on the chain's state) is not memoised and is never read as "no claim"
         ctx.memo[(pk, wt, keep if wt else 0)] = out
     return out
 

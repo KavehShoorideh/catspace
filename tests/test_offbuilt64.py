@@ -20,7 +20,7 @@ def _pos2_after(*sans: str) -> str:
 def test_64_0_principal_line_ends_at_our_last_capture():
     """After Nxf4 Rxf4 the exchange on f4 is Bxf4 exf4 Qxf4: two captures of ours, Qxf4 the last."""
     ag = Agenda(state_of(POS2, "w"))
-    sq, caps = ag._principal_captures(AC.Pos(_pos2_after("Nxf4", "Rxf4")))
+    ((sq, caps),) = ag._principal_captures(AC.Pos(_pos2_after("Nxf4", "Rxf4")))
     print("OBS 64.0 principal captures after Nxf4 Rxf4:", [(s, last) for s, _b, last in caps])
     assert chess.square_name(sq) == "f4"
     assert [(s, last) for s, _b, last in caps] == [("Bxf4", False), ("Qxf4", True)]
@@ -72,15 +72,15 @@ def test_64_1_zB_after_rf1_is_never_killed_by_the_chain_state(monkeypatch):
 
 
 def test_64_1_a_chain_stop_is_a_gap_not_a_kill():
-    """The chase clock / the tempo allowance cut the route as a GAP: the agenda counts a cut, `_cut` names the chain stop, and the question is not filed as a kill."""
+    """The chase clock / the tempo allowance / a second check cut the route as a GAP: counted as a chain stop (not a budget cut), `_cut` names it, the question is not filed as chased to its end."""
     ag = Agenda(state_of(POS2, "w"))
     q = ag.heap[0][4] if ag.heap else None
     assert q is not None
-    before = ag.ctx.budget_hits
+    before = (ag.ctx.budget_hits, ag.ctx.chain_hits)
     ag._chain_gap(q, "the chase clock: 4 moves of ours without a capture")
-    assert ag.ctx.budget_hits == before + 1 and q._chased is False
-    assert ag._cut("Bxf4", "exf4", True).startswith("chain stop: Bxf4 not followed past exf4")
-    assert ag.ctx.chain_gap is None
+    assert (ag.ctx.budget_hits, ag.ctx.chain_hits) == (before[0], before[1] + 1) and q._chased is False
+    assert ag._cut("Bxf4", "exf4", True, dict(chain=True, cut=False)).startswith("chain stop: Bxf4 not followed past exf4")
+    assert ag._cut("Bxf4", "exf4", True, dict(chain=True, cut=True)).startswith("chase fuse")      # a real budget cut wins the label
     assert not hasattr(q, "_chain_cut")
 
 
@@ -96,3 +96,37 @@ def test_64_2_a_kill_made_for_a_big_need_is_not_a_standing_kill_for_need_one():
     r = analyse(p, quiet=True, memory=False, seconds=10)
     print("OBS 64.2 W0VFO decision:", r["decision"], r["move"])
     assert r["move"] == "e4b7"
+
+
+def test_64_2_07z0p_decides_qxd5_under_the_time_budget():
+    """07Z0P (dev_20): with the chain items ON the COUNT fuse does not reach Qxd5+ (the in-check chase of the mate hunts, ~2x the questions); the time regime with the tiers does (30 s with the cost judge ON;
+    10 s with --no-cost-judge: the judge's pricing of the 50-parry routes costs 4.5 of 10 s, see the hand-back)."""
+    (p,) = [x for x in PA.load_set("dev_20") if x["id"] == "07Z0P"]
+    r = analyse(p, quiet=True, memory=False, seconds=30)
+    print("OBS 64.2 07Z0P decision at 30 s:", r["decision"], r["move"])
+    assert str(r["decision"]).startswith("Qxd5")
+
+
+def test_64_0_equal_exchanges_are_a_choice_of_ours_fork2():
+    """FORK2 (Ne3 forks Rf1 and Rg2): after Ne3 Rc2 the captures Nxf1 and Nxc2 both win a rook; Nxf1 allows Rxc4+, Nxc2 does not: the close is proved by the safe one."""
+    fen = "8/8/8/8/K1R5/P6k/6r1/3N1r2 w - - 0 1"
+    b = chess.Board(fen)
+    b.push_san("Ne3")
+    b.push_san("Rc2")
+    ag = Agenda(state_of(fen, "w"))
+    lines = ag._principal_captures(AC.Pos(b.fen()))
+    assert len(lines) == 2
+    assert ag._their_after_capture(AC.Pos(b.fen()))[0] == 0
+
+
+def test_64_3_the_cost_judge_is_on_and_a_route_read_carries_its_measured_seconds():
+    """4pC83 (rand7_10): under a time budget the judge prices a route read before by its MEASURED seconds (finished: t; cut after t: more than t), and decides Nf3+."""
+    from catspace.incubator.analyst.discovery import agenda as AGM
+    assert AGM.COST_JUDGE is True
+    (p,) = [x for x in PA.load_set("rand7_10") if x["id"] == "4pC83"]
+    lines = []
+    r = analyse(p, quiet=False, log=lines.append, memory=False, seconds=10)
+    text = "\n".join(lines)
+    print("OBS 64.3 4pC83 decision:", r["decision"], r["move"], "judge lines", text.count("judge:"))
+    assert r["move"] == "d4f3"
+    assert "judge:" in text

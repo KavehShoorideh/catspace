@@ -135,7 +135,7 @@ def test_game_history_is_a_repetition_too(monkeypatch):
 
 
 def test_flag_defaults():
-    assert AG.COST_JUDGE is False                      # graded on the 90: lost two RIGHT (BEKFf, lK9WA), see the journal
+    assert AG.COST_JUDGE is True                       # plan 64.3: ON (the 90 at 10 s: no RIGHT lost once the chain stops are GAPs and the routes are priced by their measured seconds)
     assert AG.CYCLE is True                            # graded on the 90: no decision changed
     from catspace.incubator.analyst.discovery import analyse as AN
     assert "COST_JUDGE" in AN._FLAGS and "CYCLE" in AN._FLAGS
