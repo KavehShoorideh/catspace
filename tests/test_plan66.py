@@ -183,3 +183,25 @@ def test_66_2_a_route_read_again_with_its_proofs_carried_decides_the_same_and_op
     assert (d1.move, d1.value) == (d0.move, d0.value)
     assert ag1.ctx.carry_served > 0 and ag1.ctx.agendas < ag0.ctx.agendas
     assert any("[carried from tier 0]" in ln for ln in ag1.lines) or any("[carried from tier 0]" in c.line for c in ag1.state.claims)
+
+
+# ---------------------------------------------------------------------------------------------------------------- 66.3 the stop of 65.2 with nothing re-read
+
+def test_66_3_a_cut_routes_measured_seconds_is_no_bound_once_its_proofs_carry():
+    """A route cut after t needed more than t only while a re-read started from nothing; with its proved replies carried the resumed read does not redo them, so the next tier prices it as a route not
+    yet read (first-level cost x the rate). A finished read keeps its measured seconds."""
+    secs = {("p", "a", 1): (2.0, False), ("p", "b", 1): (0.3, True)}
+    out = Agenda._carried_secs(secs)
+    assert out == {("p", "b", 1): (0.3, True)}
+    assert Agenda._route_need(10, out.get(("p", "a", 1)), 0.01) == 10 * 0.01      # priced as never read, not max(cost x rate, 2.0)
+    assert Agenda._route_need(10, secs[("p", "a", 1)], 0.01) == 2.0                # (without carry: more than t)
+
+
+def test_66_3_the_open_line_says_what_was_left_when_the_widening_reached_its_end():
+    ag = _tier1()
+    assert ag._open_line(ag, 1.0).startswith("TIERS: ended at 1.0 s with no root route open")
+    m = ag.board.parse_san("Qxe1")
+    ag.ctx.root_gaps[(ag.pk, m.uci(), 5)] = (40, m.uci())
+    ag.ctx.judge_t, ag.ctx.judge_n = 1.0, 100
+    line = ag._open_line(ag, 2.0)
+    assert "1 root route(s) still open" in line and "the cheapest, Qxe1, priced 40 x 0.0100 = 0.40 s" in line

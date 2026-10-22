@@ -850,6 +850,8 @@ class Agenda:
             nxt.ctx.route_costs = ag.ctx.route_costs
             nxt.ctx.exempt = frozenset(ag.ctx.deferred)              # 65.1: the routes this tier deferred are read in the next one, not deferred again
             nxt.ctx.route_secs = ag.ctx.route_secs                  # 64.3: the measured cost of the routes read so far (the judge's price for a route read before)
+            if CARRY:                                                # plan 66.3: a route CUT after t needed more than t only while the next read started from nothing; with its proved replies carried (66.2) the
+                nxt.ctx.route_secs = self._carried_secs(ag.ctx.route_secs)      # resumed read does not redo them, so t is no longer a lower bound of what is left (an estimate is never a bound): it is priced as a route not yet read
             nxt.ctx.theirs, nxt.ctx.their_ags = ag.ctx.theirs, ag.ctx.their_ags      # 64.0 (speed only): THEIR agenda at a position is a function of the position, not of the tier: kept across the tiers
             nxt.ctx.rate_t, nxt.ctx.rate_n = ag.ctx.judge_t + ag.ctx.rate_t, ag.ctx.judge_n + ag.ctx.rate_n      # plan 61 C2: seconds per node is measured in the RUN so far
             if CARRY:                                                # plan 66.1: the proved claims of the root's questions carry (a refutation does not: kills and GAPs are read again)
@@ -869,6 +871,8 @@ class Agenda:
                 nxt.ctx.carry_r = proofs
             nxt.lines = _TierLines(self.lines, f"[tier {k}] ")
             ag = nxt
+        if not kept and not self.ctx.abort and (afford is None or afford[0]):
+            self.lines.append(self._open_line(ag, time.monotonic() - t0))      # plan 66.3: why the widening did not end before the deadline (what was still open and affordable)
         self.tier_decided = decided
         self.tier_secs = [t["secs"] for t in self.tier_info]
         self.lines.append(f"TIERS: ran {len(self.tier_info)} (0..{len(self.tier_info) - 1}); the decision is " + (f"{self.best[2].what} ({self.best[0]:+d}) from tier {decided}" if self.best is not None else "none") + f"; seconds per tier {self.tier_secs}")
@@ -1006,6 +1010,29 @@ class Agenda:
         if need <= left:
             return True, ""
         return False, f"TIERS: stopped at {time.monotonic() - t0:.1f} s: the cheapest unread route (tier {tier}, {san}) is priced {cost} x {spn:.4f} = {need:.1f} s > the {left:.1f} s left"
+
+    @staticmethod
+    def _carried_secs(route_secs: dict) -> dict:
+        """plan 66.3: the measured seconds the next tier may price a route by when proofs carry: a FINISHED read (its seconds; carrying only removes work); never a CUT one's 'more than t'."""
+        return {k: v for k, v in route_secs.items() if v[1]}
+
+    def _open_line(self, ag: "Agenda", at: float) -> str:
+        """plan 66.3: the root routes still OPEN (GAPs) when the widening ended without the stop of 65.2 (the deadline, or the last tier): how many, and the cheapest by the judge's price. The trace says why the
+        decision was not made earlier: open work that was affordable all along, not a re-read."""
+        ctx = ag.ctx
+        spn = ag._spn()
+        rows = []
+        for mkey, (cost, san) in ctx.root_gaps.items():
+            try:
+                san = self.board.san(chess.Move.from_uci(san)) if len(san) in (4, 5) and san[0] in "abcdefgh" and san[1] in "12345678" else san
+            except (ValueError, AssertionError):
+                pass
+            rows.append(((self._route_need(cost, ctx.route_secs.get(mkey), spn) if spn else None), cost, san))
+        if not rows:
+            return f"TIERS: ended at {at:.1f} s with no root route open (every route read to a claim or a kill)"
+        rows.sort(key=lambda r: (r[0] is None, r[0] or 0, r[1]))
+        p, c, san = rows[0]
+        return f"TIERS: ended at {at:.1f} s with {len(rows)} root route(s) still open (GAPs); the cheapest, {san}, priced {c}" + (f" x {spn:.4f} = {p:.2f} s" if p is not None else " (no rate)") + ": affordable work was left, the stop of 65.2 did not apply"
 
     def _ask_finish(self) -> None:
         """What `ask` adds to the trace once the loop has ended (the root agenda only); the scheduler's node task calls it too."""
