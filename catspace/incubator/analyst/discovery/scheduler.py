@@ -1008,7 +1008,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
         node._enter_reply(frozenset(P0.diff(P2)))
         node._reply_san = san_r
         ctx.line.append((b.fen(), m.uci(), uci, node._judge_stake()))      # plan 66.4 (mirror)
-        inn = (yield T('reply', inner_g(node, P2.fen(), need, frozenset(P0.diff(P2)), since=0 if (node.board.is_capture(node._route_move) and dbal >= 0) or node._pawn_move(node._route_move) else node.since_capture + 1,
+        inn = (yield T('reply', inner_g(node, P2.fen(), need, frozenset(P0.diff(P2)), since=node._since_after(uci, dbal), reset=node._resets(uci),
                           exchange=node.board.is_capture(node._route_move) and chess.Move.from_uci(uci).to_square == node._route_move.to_square), node))      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
         ctx.line.pop()
         if inn is None:
@@ -1261,7 +1261,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
         node._enter_reply(dfs)
         node._reply_san = san_r
         ctx.line.append((b.fen(), m.uci(), uci, node._judge_stake()))      # plan 66.4 (mirror)
-        inn = (yield T('reply', inner_g(node, fen2, need, dfs, since=0 if since0 or node._pawn_move(node._route_move) else node.since_capture + 1, exchange=exch), node))      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
+        inn = (yield T('reply', inner_g(node, fen2, need, dfs, since=(0 if since0 or node._pawn_move(node._route_move) else node.since_capture + 1) if not AG.CLOCK_IRREVERSIBLE else node._since_after(uci, dbal), reset=node._resets(uci), exchange=exch), node))      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
         ctx.line.pop()
         if inn is None:
             res["gap"] = node._cut(san, san_r)
@@ -1377,7 +1377,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
 
 
 
-def inner_g(node, fen: str, need: int, diff: "frozenset | None" = None, their: "Agenda | None" = None, keep: int = 0, since: int | None = None, exchange: bool = False) -> "dict | None":
+def inner_g(node, fen: str, need: int, diff: "frozenset | None" = None, their: "Agenda | None" = None, keep: int = 0, since: int | None = None, exchange: bool = False, reset: bool = False) -> "dict | None":
     """The WHOLE agenda asked again on `fen` (our move), only the roots of stake >= `need` (a smaller claim cannot rescue the route): -> {value, claim, asked, need};
     None when the shared budget is spent. Memoised by FEN (an answer asked with a smaller `need` serves a larger one); a FEN being asked (a cycle) answers no claim.
     52.14: with `their` (their agenda there, the move passed to them) their claims are also asked as SAVE roots; the answer lists them (`threats`: (their claim, our parry claim or None)).
@@ -1409,7 +1409,7 @@ def inner_g(node, fen: str, need: int, diff: "frozenset | None" = None, their: "
     hits0, chain0 = ctx.budget_hits, ctx.chain_hits
     saved = R._ids[0]
     evading = node._chase_q is not None and node._chase_q.goal == "save" and "checkers" in node._chase_q.pattern
-    ag = AG.Agenda(State(fen=fen, us=node.us, pieces=[]), side_depth=0, chase_depth=node.chase_depth + 1, ctx=ctx, min_stake=need, their=their, keep=keep, evaded=(int(node.evaded) + 1) if evading else 0,
+    ag = AG.Agenda(State(fen=fen, us=node.us, pieces=[]), side_depth=0, chase_depth=node.chase_depth + 1, ctx=ctx, min_stake=need, their=their, keep=keep, evaded=(int(node.evaded) + 1) if evading and not reset else 0,
                 since=node.since_capture + 1 if since is None else since, free_level=exchange)      # (52.19: what it inherits comes from the fact store, not from this agenda alone)
     yield T('node', agenda_g(ag), ag)                   # the inner agenda is a node task: its pool of questions is asked by the worker loop
     R._ids[0] = saved

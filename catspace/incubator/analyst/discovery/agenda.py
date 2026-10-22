@@ -59,6 +59,7 @@ EVASION_CHASE = True                                            # 52.23 (3): ON 
 NEED_PROPAGATION = True                                         # 52.23 (7): ON at every tier (plan 64.2) -- the need propagates to the inner agendas, a gaining reply carries the inner claim, the chain of two meets the need, a bound below the need chases first
 GOAL_JUDGE = True                                               # 52.23 (6): ON at every tier (plan 64.2; its stop is a GAP since 64.1)
 CLOCK_PAWN = True                                              # plan 62.1c / 66.5: the chase clock also resets on a PAWN move of ours (an irreversible move, the fifty-move rule's other event); CHASE_CLOCK stays the parameter
+CLOCK_IRREVERSIBLE = True                                       # plan 66.5 (Kaveh 2026-10-22): the chase clock resets on an irreversible event -- a CAPTURE by either side that is not bad for us, or a PAWN move of ours (and the checks evaded in a row: a capturing check is no perpetual); `analyse --no-irreversible` (then: our capture not bad for us, our pawn move)
 CHASE_CLOCK = 4                                                 # 52.23 (8): ON at every tier (plan 64.2; its stop is a GAP since 64.1); 99 = off; 4 was Kaveh's starting value
                                                 # 52.23 (8): our moves on a chain without a capture that is not bad for us (Kaveh 2026-10-20: "four or five ... a hyperparameter, tune it later")
 DEEP_WIN_CHASE = True                                            # 52.23 (5): ON at every tier (plan 64.2)
@@ -1416,7 +1417,9 @@ class Agenda:
         text = f"{claim.kind} {claim.what}: {q.text}" if claim is not None else q.text
         sig = FS.signature(self._cell, reads) if reads is not None else ()
         f = fs.add(kind, key if key is not None else ("q", q.goal, q.text, self.pk), self.me, text, value=value, reads=reads, sig=sig, just=self._qdeps, stake=q.stake, depth=self.chase_depth,
-                   under=f"Q{q.id} at depth {self.chase_depth}", pk=self.pk, portable=portable, power=(2 if getattr(q, "_reasoned", False) else self._power(q) if getattr(q, "_chased", False) and not (kind == "kill" and getattr(q, "_chain_stopped", False)) else 0), payload=payload)
+                   under=f"Q{q.id} at depth {self.chase_depth}", pk=self.pk, portable=portable, power=(2 if getattr(q, "_reasoned", False) or (kind == "claim" and value >= min(q.stake, BD.MATE_VALUE)) else self._power(q) if getattr(q, "_chased", False) and not (kind == "kill" and getattr(q, "_chain_stopped", False)) else 0), payload=payload)
+        # (plan 66.5: a CLAIM at the question's stake is FINAL whatever chase made it -- no chase of any power reads past the stake (52.13 (2c)), and a proof stands under any clock: the chase that found it may
+        #  have been cut elsewhere (the irreversible-move clock lets a chain run on until the fuse cuts another route), which weakens what a KILL says, never what a claim at the stake says)
         self.fact_of[q.id] = f.id
         self.premises.append(f.id)
         if claim is not None:
@@ -2019,7 +2022,7 @@ class Agenda:
 
     # ------------------------------------------------------------------------------------------------------------ the chase (52.12)
 
-    def _inner(self, fen: str, need: int, diff: "frozenset | None" = None, their: "Agenda | None" = None, keep: int = 0, since: int | None = None, exchange: bool = False) -> "dict | None":
+    def _inner(self, fen: str, need: int, diff: "frozenset | None" = None, their: "Agenda | None" = None, keep: int = 0, since: int | None = None, exchange: bool = False, reset: bool = False) -> "dict | None":
         """The WHOLE agenda asked again on `fen` (our move), only the roots of stake >= `need` (a smaller claim cannot rescue the route): -> {value, claim, asked, need};
         None when the shared budget is spent. Memoised by FEN (an answer asked with a smaller `need` serves a larger one); a FEN being asked (a cycle) answers no claim.
         52.14: with `their` (their agenda there, the move passed to them) their claims are also asked as SAVE roots; the answer lists them (`threats`: (their claim, our parry claim or None)).
@@ -2051,7 +2054,7 @@ class Agenda:
         hits0, chain0 = ctx.budget_hits, ctx.chain_hits
         saved = R._ids[0]
         evading = self._chase_q is not None and self._chase_q.goal == "save" and "checkers" in self._chase_q.pattern
-        ag = Agenda(State(fen=fen, us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=need, their=their, keep=keep, evaded=(int(self.evaded) + 1) if evading else 0,
+        ag = Agenda(State(fen=fen, us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=need, their=their, keep=keep, evaded=(int(self.evaded) + 1) if evading and not reset else 0,
                     since=self.since_capture + 1 if since is None else since, free_level=exchange)      # (52.19: what it inherits comes from the fact store, not from this agenda alone)
         ag.ask()
         R._ids[0] = saved
@@ -2296,7 +2299,7 @@ class Agenda:
             self._enter_reply(frozenset(P0.diff(P2)))
             self._reply_san = san_r
             ctx.line.append((b.fen(), m.uci(), uci, self._judge_stake()))      # plan 66.4: the line being read
-            inn = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), since=0 if (self.board.is_capture(self._route_move) and dbal >= 0) or self._pawn_move(self._route_move) else self.since_capture + 1,
+            inn = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), since=self._since_after(uci, dbal), reset=self._resets(uci),
                               exchange=self.board.is_capture(self._route_move) and chess.Move.from_uci(uci).to_square == self._route_move.to_square)      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
             ctx.line.pop()
             if inn is None:
@@ -3046,6 +3049,28 @@ class Agenda:
         if push not in b.legal_moves:
             return []
         return [R.Route(push, b.san(push), "push: their king is no stopper")]
+
+    def _irreversible(self, uci: str) -> bool:
+        """plan 66.5: an event that never comes back (the fifty-move rule's) on the chain: a capture by EITHER side (the route in hand or their reply `uci`), or a pawn move OF OURS (the plan: "a capture or a
+        pawn move of ours"; their pawn push is a reply like any other -- resetting on it let their pawn checks extend our chain: eSJqH's Qa5 e4+ ran out of its slice)."""
+        b, m = self.board, self._route_move
+        if b.is_capture(m) or b.piece_type_at(m.from_square) == chess.PAWN:
+            return True
+        after = b.copy(stack=False)
+        after.push(m)
+        return after.is_capture(chess.Move.from_uci(uci))
+
+    def _since_after(self, uci: str, dbal: int) -> int:
+        """The chase clock of the agenda after the route in hand and their reply `uci`: 0 after an irreversible event that is not bad for us (66.5: a capture by either side with dbal >= 0, or our pawn
+        move), else one more move of ours. Without CLOCK_IRREVERSIBLE: 0 after OUR capture that is not bad for us or our pawn move (62.1c). The checks evaded in a row reset on ANY capture (`_resets`)."""
+        m = self._route_move
+        if CLOCK_IRREVERSIBLE:                                   # a capture by EITHER side that is not bad for us (the balance after the route and the reply not below where it was: dbal >= 0), or a pawn move of ours;
+            return 0 if (self._irreversible(uci) and (dbal >= 0 or self._pawn_move(m))) else self.since_capture + 1      # (their capture that wins material is THEIR progress: eSJqH and xhSWo ran out of time reading on after it)
+        return 0 if (self.board.is_capture(m) and dbal >= 0) or self._pawn_move(m) else self.since_capture + 1
+
+    def _resets(self, uci: str) -> bool:
+        """plan 66.5: the checks evaded in a row start again after an irreversible event (a capturing check, our capture or pawn move): the stop exists for perpetual-check loops, which capture nothing."""
+        return CLOCK_IRREVERSIBLE and self._irreversible(uci)
 
     def _pawn_move(self, m: chess.Move) -> bool:
         """plan 62.1c: a pawn move of ours resets the chase clock (irreversible, like a capture)."""

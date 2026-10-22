@@ -293,3 +293,82 @@ def test_66_4_the_next_tier_resumes_a_forcing_chain_stop_and_says_why_a_quiet_on
     assert nxt.ctx.resume_ext == {(ag._carry_key(q), nd7.uci()): dict(ext=1, moves=1)}
     assert any(ln.startswith("RESUME: not resumed Kg2: the line went quiet (move 1: Kg2 names no threat") for ln in ag.lines)
     assert AGM.RESUME is True
+
+
+# ---------------------------------------------------------------------------------------------------------------- 66.5 the irreversible-move clock
+
+ROR8T = "1R6/8/8/5p2/5rk1/1P5p/P7/6K1 b - - 1 50"                                # rand23_5 RoR8t: Kg3 Rg8+ Rg4 Rxg4+ (a CAPTURING check) Kxg4
+
+
+def test_66_5_a_capture_by_either_side_not_bad_for_us_or_a_pawn_move_of_ours_resets_the_clock():
+    ag = _carry_ag(ROR8T)
+    b = ag.board
+    ag.since_capture = 3
+    ag._route_move = b.parse_san("Kg3")
+    c = b.copy()
+    c.push(ag._route_move)
+    rg8 = c.parse_san("Rg8+").uci()
+    a3 = c.parse_san("a3").uci()
+    assert ag._since_after(rg8, 0) == 4 and not ag._resets(rg8)          # a quiet check: one more move of ours
+    assert ag._since_after(a3, 0) == 4 and not ag._resets(a3)            # their pawn move is a reply like any other (the plan: a capture, or a pawn move OF OURS)
+    ag._route_move = b.parse_san("h2+")                                     # OUR pawn move
+    c2 = b.copy()
+    c2.push(ag._route_move)
+    kxh2 = c2.parse_san("Kxh2").uci()
+    assert ag._since_after(kxh2, 0) == 0 and ag._resets(kxh2)
+    ag._route_move = b.parse_san("Rf1+")                                    # our check, THEIR capture
+    c3 = b.copy()
+    c3.push(ag._route_move)
+    kxf1 = c3.parse_san("Kxf1").uci()
+    assert ag._since_after(kxf1, 0) == 0 and ag._resets(kxf1)              # a capture of theirs that is not bad for us (dbal >= 0): the clock starts again
+    assert ag._since_after(kxf1, -5) == 4 and ag._resets(kxf1)             # one that wins material is their progress, not ours; the checks in a row still start again (no perpetual captures)
+    ag._route_move = b.parse_san("Kg3")
+    try:
+        AGM.CLOCK_IRREVERSIBLE = False
+        ag._route_move = b.parse_san("Rf1+")
+        assert ag._since_after(kxf1, -5) == 4 and not ag._resets(kxf1)   # (the comparison condition: only our capture not bad for us / our pawn move)
+    finally:
+        AGM.CLOCK_IRREVERSIBLE = True
+    assert AGM.CLOCK_IRREVERSIBLE is True and AGM.CHASE_CLOCK == 4      # the length stays a module parameter
+
+
+def _stop_lines(fen: str) -> list:
+    stops = []
+    orig = AGM.Agenda._chain_gap
+
+    def spy(self, q, why):
+        if "second check" in why:
+            steps = []
+            for f, m, r, _s in self.ctx.line:
+                bb = chess.Board(f)
+                mv = chess.Move.from_uci(m)
+                sm = bb.san(mv)
+                bb.push(mv)
+                steps.append((sm, bb.san(chess.Move.from_uci(r)), bb.is_capture(chess.Move.from_uci(r))))
+            stops.append(steps)
+        return orig(self, q, why)
+    AGM.Agenda._chain_gap = spy
+    try:
+        b = chess.Board(fen)
+        Agenda(state_of(fen, "w" if b.turn else "b")).ask()
+    finally:
+        AGM.Agenda._chain_gap = orig
+    return stops
+
+
+def test_66_5_a_capturing_check_is_not_a_second_check_in_a_row():
+    """RoR8t after Kg3 Rg8+: the interposition Rg4 is answered by Rxg4+, a CAPTURING check. The stop for a second check of theirs exists for perpetual-check loops, which capture nothing: with the
+    irreversible clock no stop is made right after Rxg4+ (Kxg4 is read); in the comparison condition it is."""
+    b = chess.Board(ROR8T)
+    for s in ("Kg3", "Rg8+"):
+        b.push_san(s)
+    on = _stop_lines(b.fen())
+    assert on and not any(st[-1][1] == "Rxg4+" for st in on)
+    assert all(not st[-1][2] for st in on)                              # every second-check stop follows a non-capturing check
+    try:
+        AGM.CLOCK_IRREVERSIBLE = False
+        off = _stop_lines(b.fen())
+    finally:
+        AGM.CLOCK_IRREVERSIBLE = True
+    assert any(st[-1][1] == "Rxg4+" for st in off)
+    print(f"OBS 66.5 RoR8t after Kg3 Rg8+: second-check stops {len(on)} (none after a capturing check) against {len(off)} in the comparison condition")

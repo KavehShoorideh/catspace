@@ -132,7 +132,7 @@ def _append_once(path, text: str) -> None:
         os.close(fd)
 
 
-_FLAGS = ("RESUME", "CARRY", "PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS", "TIERS_UNDER_TIME", "CLOSE_AFTER_CAPTURE", "RAISE_TO_WIN", "PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE", "ESTIMATE", "COST_JUDGE", "CYCLE", "COMPETE", "STOP_AFFORD", "UNPROVED", "DEEP_PASS", "CLOCK_PAWN")
+_FLAGS = ("CLOCK_IRREVERSIBLE", "RESUME", "CARRY", "PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS", "TIERS_UNDER_TIME", "CLOSE_AFTER_CAPTURE", "RAISE_TO_WIN", "PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE", "ESTIMATE", "COST_JUDGE", "CYCLE", "COMPETE", "STOP_AFFORD", "UNPROVED", "DEEP_PASS", "CLOCK_PAWN")
 
 
 def _init_worker(flags: dict) -> None:
@@ -207,6 +207,7 @@ def main():
     ap.add_argument("--no-stop-afford", action="store_true", help="plan 65.2: the widening runs to the deadline instead of stopping when nothing affordable is left (comparison; ON by default)")
     ap.add_argument("--no-unproved", action="store_true", help="plan 65.3: no unfinished-line decision when there is no claim (comparison; ON by default)")
     ap.add_argument("--no-deep-pass", action="store_true", help="plan 65.4: the status reads their pass with the d1 family only (comparison; ON by default)")
+    ap.add_argument("--no-irreversible", action="store_true", help="plan 66.5: the chase clock resets only on our capture that is not bad for us or our pawn move, and a capturing check counts as a second check (comparison condition, ON by default)")
     ap.add_argument("--no-resume", action="store_true", help="plan 66.4: no resume pass of the chain-stopped root routes after the tiers (comparison condition, ON by default)")
     ap.add_argument("--no-carry", action="store_true", help="plan 66.1/66.2: proofs do NOT carry across the tiers (every tier re-reads everything; comparison condition, ON by default)")
     ap.add_argument("--no-race", action="store_true", help="plan 62.1: the passer race word OFF (comparison condition; ON by default; CATSPACE_RACE=0, inherited by the workers)")
@@ -224,6 +225,9 @@ def main():
     if a.no_delayed and not a.delayed and not a.forcing61:
         from catspace.incubator.analyst.discovery import agenda as _AG63
         _AG63.DELAYED_THREAT = False
+    if a.no_irreversible:
+        from catspace.incubator.analyst.discovery import agenda as _AG665
+        _AG665.CLOCK_IRREVERSIBLE = False
     if a.no_resume:
         from catspace.incubator.analyst.discovery import agenda as _AG664
         _AG664.RESUME = False
