@@ -1,5 +1,6 @@
 import Ideas.ThreatLemma
 import Ideas.Landing
+import Ideas.ForcedByMeasure
 
 /-!
 # Forced chains: parries, the delayed threat, no safe move (ANALYST_PLAN 61 stage A, Kaveh GO 2026-10-21)
@@ -211,5 +212,39 @@ theorem none_affordable_of_cheapest {ps : List Nat} {c m l : Nat} (hmin : ∀ x 
   have := judge_mono (hmin x hx) hx'
   rw [hno] at this
   exact absurd this (by decide)
+
+
+/-! ## Plan 66: a proof carries across the tiers, a refutation does not -/
+
+section Carry
+
+open Ideas.Forced
+
+variable {α : Type}
+
+/-- 66.1 THE CARRY PRINCIPLE. A claim forced with our route set `ours` (`Reach`: within `n` of our moves, against EVERY reply of theirs) is forced
+with any wider route set `ours'` ⊇ `ours`: the proof names moves of ours that are still there, and their replies are the same (a wider tier
+widens our vocabulary only). So a claim proved in tier k is a claim of tier k+1. -/
+theorem claim_mono {ours ours' theirs : α → α → Prop} {goal target : α → Prop}
+    (hsub : ∀ p q, ours p q → ours' p q) :
+    ∀ {n : Nat} {p : α}, Reach ours theirs goal target n p → Reach ours' theirs goal target n p
+  | 0, _, h => h
+  | _ + 1, p, h => by
+    rcases h with h | ⟨q, hq, hg⟩
+    · exact Or.inl h
+    · refine Or.inr ⟨q, hsub p q hq, ?_⟩
+      rcases hg with hg | ⟨hex, hall⟩
+      · exact Or.inl hg
+      · exact Or.inr ⟨hex, fun r hr => claim_mono hsub (hall r hr)⟩
+
+/-- ... and a REFUTATION DOES NOT CARRY: there is a game where no claim is forced with the narrower route set and one is forced with a wider one
+(a kill under tier k is not a kill under tier k+1, so tier k+1 re-reads every kill and every GAP). -/
+theorem refutation_not_mono : ∃ (ours ours' theirs : Bool → Bool → Prop) (goal : Bool → Prop),
+    (∀ p q, ours p q → ours' p q) ∧ ¬ Reach ours theirs goal (fun _ => False) 1 false ∧ Reach ours' theirs goal (fun _ => False) 1 false := by
+  refine ⟨fun _ _ => False, fun _ q => q = true, fun _ _ => False, fun q => q = true, fun _ _ h => h.elim, ?_, ?_⟩
+  · simp [Reach]
+  · exact Or.inr ⟨true, rfl, Or.inl rfl⟩
+
+end Carry
 
 end Ideas.Forcing

@@ -263,13 +263,17 @@ def ask_loop_g(node) -> None:
                 sc, rec = node._recall_score(q)
                 node.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
         node.order.append(q)                                   # plan 53 (1): the order asked (the features are read at log time: the root board does not change while its agenda runs)
+        if node.ctx is not None and node.ctx.carry_q and node.chase_depth == 0 and node._root and node._carry_question(q):      # plan 66.1 (mirror of agenda._ask_loop)
+            continue
         if node._inherit(q):
             continue
         if node.chase_depth:                                 # an inner agenda pays the shared budget as it asks (a chain of checks meets it on the way down)
             node.ctx.left -= 1
             before = node.asked
         node._cur, node._qdeps, n0 = q, [], len(node.state.claims)
+        node._floor = getattr(q, "_floor", None) if node.chase_depth == 0 else None      # plan 66.1 (mirror of agenda._ask_loop): the carried floor of a re-asked root question
         (yield T('ask', ask_g(node, q), node, prio=item[:4]))
+        node._floor = None
         if node.ctx is not None:
             node._file(q, node.state.claims[n0:])
         if node.chase_depth:
@@ -654,6 +658,7 @@ def chase_g(node, q: R.Question) -> bool:
     if node.best is not None and node.best[0] >= q.stake:      # 52.13 (2c): a question is chased only when its stake exceeds the best claim so far (stop (a) would end the agenda anyway)
         node.lines.append(f"  chase: not asked, the best claim ({node.best[2].what}, {node.best[0]}) is at least the stake {q.stake}")
         return False
+    q._tier_dep = True                                         # plan 66.1 (mirror of agenda._chase)
     if node.ctx.out_of_time():                                 # 52.17 (5): past the deadline a question is asked only for what closes at the static leaf: no chase
         node.lines.append("  chase: out of time -- not started (a GAP, never a kill)")
         node.ctx.budget_hits += 1                                # the agenda this question belongs to is cut: its route is a GAP, never refuted by what was not chased

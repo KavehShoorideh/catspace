@@ -82,6 +82,7 @@ COMPETE = True                                                  # plan 65.1: the
 UNPROVED = True                                                 # plan 65.3: no claim at all -> the best UNFINISHED root route (a GAP) decides, marked unproved; `analyse --no-unproved`
 DEEP_PASS = True                                                # plan 65.4: the status reads THEIR pass with delayed_balance_deep when the d1 family finds no claim and a piece of ours is attacked; `analyse --no-deep-pass`
 STOP_AFFORD = True                                              # plan 65.2: the widening (and the RAISE_TO_WIN continuation) ends when no open route of any tier is priced within the time left; `analyse --no-stop-afford`
+CARRY = True                                                    # plan 66.1 / 66.2: a PROOF CARRIES across the tiers (Lean `Ideas.Forcing.claim_mono`): a wider tier serves the proved claims of the root's questions and the proved replies of every route read before, and re-reads only kills, GAPs and what could beat a floor; `analyse --no-carry`
 NO_FUSE = 1 << 40                                               # 52.23 (1): the fuse when the budget is time: never reached (the deadline is the only limit)
 
 
@@ -219,6 +220,11 @@ class ChaseCtx:
         self.opened: set = set()                  # ... the root routes this tier has opened (read at least once): a route already open is not a NEW route, the competition does not cut it
         self.deferred: set = set()                # ... their keys (position, route, stake): read in the NEXT tier, which does not defer them again
         self.exempt: frozenset = frozenset()      # ... the routes the previous tier deferred to this one: read here, whatever tier k+2's cheapest route costs
+        self.carry_q: dict = {}                   # plan 66.1: (goal, text, stake) of a ROOT question -> {net, second, claim, tier, dep}: its proved claim in an earlier tier (handed on by the tier driver)
+        self.carry_status: "dict | None" = None   # ... the root's status when this tier opened (a carried claim that keeps it ends the question)
+        self.carried_q = 0                        # ... root questions served a carried claim / ...
+        self.carried_q_kept = 0                   # ... of which not re-asked (the claim keeps the status, or no chase made it: a schema binding is the same in every tier)
+        self.carried_q_reasked = 0                # ... re-asked for a better claim above the carried floor
         self.judge_reads = 0                      # ... nodes the judge let be read / cut (a GAP)
         self.judge_cuts = 0
         self.judge_routes = 0                     # ... root routes judged
@@ -321,6 +327,8 @@ class Agenda:
         self._threats_done = not side_depth and their is None
         self._pass_done, self._pass_best = False, None          # plan 59: their best claim with the move passed to them (set by `_threat_roots`; read by `status`)
         self._pass_deep: "tuple | None" = None                  # plan 65.4: their pass read with delayed_balance_deep: (value, their move SAN, candidates read), asked once
+        self._q_best: dict = {}                                 # plan 66.1: question id -> (net, second, claim): the best claim each question offered (the tier driver carries the proved ones)
+        self._floor: "int | None" = None                        # ... the carried floor of the root question being re-asked (a better claim must beat it)
         self.root_reads: dict = {}                              # plan 65.3: root route (uci) -> how its last read ended: {status: killed | gap, san, why | gains}; a kill is final, a gap keeps the replies read so far
         self._hang: list = []
         self.threat_views: list = []                            # (claim, their agenda) for every threat root
@@ -400,6 +408,10 @@ class Agenda:
         """53 (3): is (value, second, claim) a better best than the one held? Greater wins; at EQUAL value the tie is broken by the claim itself, never by the order asked (the prior
         orders, it must not decide: r3oph's Rxd1+ and Nxe5 both read 1 and the first asked won): the question's stake, then the shape key the smallest-loss rule uses (fewest
         hanging, most guarded, most poking), then the move's uci (a fixed, if arbitrary, last resort)."""
+        if claim.proved and not claim.word and any(x.id == claim.qid for x in self.all):      # plan 66.1: each question's own best proved claim (the tier driver hands them to the next tier)
+            old = self._q_best.get(claim.qid)
+            if old is None or (value, second) > old[:2]:
+                self._q_best[claim.qid] = (value, second, claim)
         if self.best is None:
             return True
         if (value, second) != self.best[:2]:
@@ -778,7 +790,7 @@ class Agenda:
                 self.state.estimated += [dataclasses.replace(c, qid=-1) for c in ag.state.estimated]
                 if ag.best_est is not None and (self.best_est is None or (ag.best_est[0], ag.best_est[2].confidence) > (self.best_est[0], self.best_est[2].confidence)):
                     self.best_est = (ag.best_est[0], 0, dataclasses.replace(ag.best_est[2], qid=-1))
-                for f in ("parry_seen", "parry_closed", "delayed_routes", "nosafe_routes", "judge_routes", "judge_reads", "judge_cuts", "judge_t", "judge_n", "cycles"):
+                for f in ("parry_seen", "parry_closed", "delayed_routes", "nosafe_routes", "judge_routes", "judge_reads", "judge_cuts", "judge_t", "judge_n", "cycles", "carried_q", "carried_q_kept", "carried_q_reasked"):
                     setattr(self.ctx, f, getattr(self.ctx, f) + getattr(ag.ctx, f))      # plan 61: the tiers' counters are the root's
                 mark = {id(c): dataclasses.replace(c, qid=-1) for c in ag.state.claims}      # (the question ids are the tier's own: the claim answers no question of tier 0)
                 if ag.best is not None and id(ag.best[2]) not in mark:
@@ -834,6 +846,16 @@ class Agenda:
             nxt.ctx.route_secs = ag.ctx.route_secs                  # 64.3: the measured cost of the routes read so far (the judge's price for a route read before)
             nxt.ctx.theirs, nxt.ctx.their_ags = ag.ctx.theirs, ag.ctx.their_ags      # 64.0 (speed only): THEIR agenda at a position is a function of the position, not of the tier: kept across the tiers
             nxt.ctx.rate_t, nxt.ctx.rate_n = ag.ctx.judge_t + ag.ctx.rate_t, ag.ctx.judge_n + ag.ctx.rate_n      # plan 61 C2: seconds per node is measured in the RUN so far
+            if CARRY:                                                # plan 66.1: the proved claims of the root's questions carry (a refutation does not: kills and GAPs are read again)
+                carried = dict(ag.ctx.carry_q)
+                for key, d in ag._carried_out().items():
+                    old = carried.get(key)
+                    if old is None or (d["net"], d["second"]) > (old["net"], old["second"]):
+                        carried[key] = dict(d, tier=k - 1)
+                    elif old is not None:
+                        carried[key] = dict(old, dep=old["dep"] or d["dep"])
+                nxt.ctx.carry_q = carried
+                nxt.ctx.carry_status = dict(st)
             nxt.lines = _TierLines(self.lines, f"[tier {k}] ")
             ag = nxt
         self.tier_decided = decided
@@ -1056,18 +1078,67 @@ class Agenda:
                     sc, rec = self._recall_score(q)
                     self.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
             self.order.append(q)                                   # plan 53 (1): the order asked (the features are read at log time: the root board does not change while its agenda runs)
+            if self.ctx is not None and self.ctx.carry_q and self.chase_depth == 0 and self._root and self._carry_question(q):
+                continue
             if self._inherit(q):
                 continue
             if self.chase_depth:                                 # an inner agenda pays the shared budget as it asks (a chain of checks meets it on the way down)
                 self.ctx.left -= 1
                 before = self.asked
             self._cur, self._qdeps, n0 = q, [], len(self.state.claims)
+            self._floor = getattr(q, "_floor", None) if self.chase_depth == 0 else None      # plan 66.1: the carried floor of a re-asked root question
             self._ask(q)
+            self._floor = None
             if self.ctx is not None:
                 self._file(q, self.state.claims[n0:])
             if self.chase_depth:
                 self.ctx.left -= max(self.asked - before - 1, 0)
         self.lines.append("STOP (b): every question is closed")
+
+    @staticmethod
+    def _carry_key(q: R.Question) -> tuple:
+        """plan 66.1: a ROOT question across the tiers of one position: its goal, its text and its stake (the root questions of every tier are generated the same way from the same board)."""
+        return (q.goal, q.text, q.stake)
+
+    def _carried_out(self) -> dict:
+        """plan 66.1: what this tier's root PROVED, question by question: (goal, text, stake) -> {net, second, claim, dep}. `dep`: the answer read the chase (the tier's vocabulary); a question answered
+        without it (a schema binding, the smallest loss in check with no chase, a race word, the table) is answered the same way in every tier. Estimated and unfinished claims never carry."""
+        out = {}
+        for q in self.all:
+            hit = self._q_best.get(q.id)
+            if hit is None or q.status != "verified":
+                continue
+            out[self._carry_key(q)] = dict(net=hit[0], second=hit[1], claim=hit[2], dep=bool(getattr(q, "_tier_dep", False)))
+        return out
+
+    def _carry_question(self, q: R.Question) -> bool:
+        """plan 66.1 PROVED ROOT CLAIMS CARRY (Lean `Ideas.Forcing.claim_mono`: a claim forced with our route set R is forced with any R' >= R; the wider tier widens OUR vocabulary only). The question's
+        claim from an earlier tier is SERVED ("carried from tier k: ..."). It is not asked again when the claim keeps the status, or when no chase made it (a schema binding reads no vocabulary of the tier:
+        the wider tier would answer it the same way). Otherwise it is RE-ASKED for a better claim, with the carried claim as its FLOOR (the best already holds it; 66.2: only what could beat it is re-read).
+        -> True when the question is settled (not asked again)."""
+        hit = self.ctx.carry_q.get(self._carry_key(q))
+        if hit is None:
+            return False
+        old = hit["claim"]
+        cl = dataclasses.replace(old, qid=q.id, line=f"carried from tier {hit['tier']}: {old.line}")
+        net = hit["net"]
+        self.state.claims.append(cl)
+        q.status = "verified"
+        self.ctx.carried_q += 1
+        if self._better(net, hit["second"], cl):
+            self.best = (net, hit["second"], cl)
+            self.asked_at_claim = self.asked
+        st = self.ctx.carry_status
+        keeps = net >= BD.MATE_VALUE or (st is not None and st["balance"] + net >= st["line"])
+        head = f"Q{q.id} {q.text}: carried from tier {hit['tier']}: {cl.what} {net:+d} (proved, lemma {cl.lemma})"
+        if keeps or not hit["dep"]:
+            self.ctx.carried_q_kept += 1
+            self.lines.append(head + ("; it keeps the status: not asked again" if keeps else "; no chase made it (the answer reads no vocabulary of a tier): not asked again"))
+            return True
+        self.ctx.carried_q_reasked += 1
+        q._floor = net
+        self.lines.append(head + f"; it does not keep the status: re-asked for a better claim above the floor {net:+d}")
+        return False
 
     def _inherit(self, q: R.Question) -> bool:
         """52.12 (3), 52.13 (1): THE DIFF DECIDES WHAT IS ASKED. An inner agenda asks (a) the question that sent it there (it is not settled in the outer agenda, so it is
@@ -2773,6 +2844,7 @@ class Agenda:
         if self.best is not None and self.best[0] >= q.stake:      # 52.13 (2c): a question is chased only when its stake exceeds the best claim so far (stop (a) would end the agenda anyway)
             self.lines.append(f"  chase: not asked, the best claim ({self.best[2].what}, {self.best[0]}) is at least the stake {q.stake}")
             return False
+        q._tier_dep = True                                         # plan 66.1: the chase reads the tier's vocabulary: this question's answer may differ in a wider tier
         if self.ctx.out_of_time():                                 # 52.17 (5): past the deadline a question is asked only for what closes at the static leaf: no chase
             self.lines.append("  chase: out of time -- not started (a GAP, never a kill)")
             self.ctx.budget_hits += 1                                # the agenda this question belongs to is cut: its route is a GAP, never refuted by what was not chased
