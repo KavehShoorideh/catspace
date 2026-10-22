@@ -3107,3 +3107,28 @@ and every proved claim is a proof over the same board and stays one. Only kills 
   baseline unchanged or explained; compare_scheduler default and --chain 0 differences; full suite on the LAST commit.
 * FILES: agenda.py (`_ask_tiers`, the chase's route/reply read, `root_reads`), scheduler.py (mirror), facts/store keys, lean/ideas/Ideas/Forcing.lean
   (`claim_mono`), LEAN_INDEX rebuild, tests/test_plan66.py. GRADING PROTOCOL: one grade at a time on the machine; bisect a lost puzzle alone, never sweep.
+
+### 67 The plan's own weaknesses: roll OUR plan forward without the opponent, read the weak moments it creates, make them THEIR goals, regress (Kaveh 2026-10-22, dictated; queued after 66, on 62.2's frame lemma)
+Kaveh's chain: (1) a first run in the world where the opponent makes no coherent effort -- only our moves, their reply the obvious one at minimal
+effort -- tells whether a goal is feasible at all (the pawn can run; the counterfactual of regress.py does this today, once, at the start); (2) when
+the run hits the opponent (their pawn blocks, their king arrives) we stop and ask the bigger question (what are they doing); (3) BEFORE that, our own
+plan has weaknesses that have nothing to do with the opponent: the rook IN FRONT of the pawn must step aside, so for one move on one square the pawn is
+unprotected; the rook BEHIND protects it to the end. "Being able to ascertain the weakness in my own position resulting from my own actions, regardless
+of my opponent." (4) each such weak moment is THEIR goal (attack the pawn on that square at that moment), from which we regress, and the fix (put the
+rook behind) is a new ROOT question of ours. The shape "rook behind the passer" is then DERIVED, not handwritten (the mined-shapes note, 2026-10-22).
+* 67.1 THE ROLLOUT (Lean `Ideas/Plan.lean`): a plan = our move sequence to a goal with the opponent passing, the supporting pieces moved as the plan
+  needs (a blocker of our own steps aside: the step is part of the plan). `rollout plan` = the boards after each of our moves. No opponent reply at all in
+  this run (their "obvious" reply is read in 67.3, as a goal of theirs, not as a move).
+* 67.2 THE WEAK MOMENTS: for each step k of the rollout and each plan piece, the frame measures on that board: unprotected, attackable square, the
+  king's distance. A WEAK MOMENT = (piece, square, k) where the piece is unprotected (or its guard is the piece that must move next). Lean def `weak`;
+  the trace lists them ("a7 at move 3: the pawn is unprotected while the rook steps aside").
+* 67.3 THEIR GOALS FROM OUR WEAK MOMENTS: each weak moment generates their question "win our P on a7 by move 3" (a deadline); their routes are read by
+  tempo arithmetic against the deadline (reach within k with every one of our plan moves a tempo they must answer). Lemma `plan_sound`: if no route of
+  theirs reaches any weak moment in time, the pass-world claim holds on the whole board -- 62.2's `frame_sound` with "far from the read set" replaced by
+  "far from every weak moment by its deadline". A reachable weak moment is a DEFECT of the plan.
+* 67.4 REGRESSION: a defect's fixes are alternative plans with no such weak moment (support placed so that no step unprotects: the rook behind the pawn),
+  or a tempo gained; each fix is a ROOT question of ours. The decision prefers the plan with no reachable weak moment; the trace names the weak moment
+  the chosen plan avoids ("Ra1 behind the pawn: no weak moment; Ra7 in front: a7 unprotected at move 3, reached by their rook in 2").
+* ACCEPTANCE: the plan 62 race cases where the support's placement decides (3JaeM a3 + rook behind; 4efZ2 Ra5), traced with the weak-moment lines; the
+  90 by proof: no proved RIGHT lost; compare_scheduler 0; full suite on the last commit. FILES: regress.py (the counterfactual extended to a rollout),
+  agenda.py (their questions from weak moments; the fixes as root questions), lean/ideas/Ideas/Plan.lean, LEAN_INDEX, tests/test_plan67.py.
