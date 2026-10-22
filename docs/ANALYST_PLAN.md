@@ -3101,6 +3101,10 @@ and every proved claim is a proof over the same board and stays one. Only kills 
   payoff lies one move past the arithmetic is read, and a line that went quiet is not. The criterion is the existing forcing word, not a number. Trace:
   "resumed Rxf2+ (chain stop at move 4; every reply a parry; 2.1 s left)". Cases: Wq9B1 Rxf2+ (rand5_10), dOC36 Nf6+ (rand2_10), zBouR Rxf2 (rand2_10),
   8IQCy Ne6 (rand4_10), xhSWo Rxg2 (rand6_10), mh1q8 Nd7+ (rand6_10; trace first: a check that forks K and Q should be tier 0 -- find why it is not).
+* 66.5 THE IRREVERSIBLE-MOVE CLOCK (Kaveh 2026-10-22, "the capture clock should be a capture OR pawn-move clock, anything that moves the game stratum
+  forward, and the 4 a variable"): the chase clock resets on a capture or a pawn move of ours (the fifty-move rule's events), its length a module
+  parameter (`CHASE_CLOCK`) not a literal in the rule; the chain stop stays a GAP (64.1), resumable by 66.4. Included under "everything we talked
+  about"; the smallest item, built last.
 * ACCEPTANCE (OBS lines, one run each, directional): the six slow RIGHTs alone at 15 s decide the same move and END under 5 s wall each; the discovery
   position proves Nf6 at 15 s (remove the strict xfail marker ONLY when the test passes with `proved`); 07Z0P and eSJqH alone still decide at 15 s; the
   90 at 15 s by proof against ql64_a65_7 (the baseline after the beats-the-pass rule): no proved RIGHT lost, every change traced; count against its
