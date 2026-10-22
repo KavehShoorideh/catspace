@@ -2060,7 +2060,7 @@ class Agenda:
         differs from that one only where the inner agenda's reads were not (the reads are recorded; unknown reads never transfer) and the reply took no less.
         -> (why, route san, reads)."""
         for P_old, dbal0, reads, san0, target0 in self.ctx.reply_kills.get(uci, ()):
-            if reads is None or dbal >= 1 or dbal0 < dbal or target - dbal < target0 - dbal0:          # the inner agenda read the roots of stake >= target0 - dbal0: enough for any reply that took at least as much
+            if reads is None or dbal >= 1 or dbal0 < dbal or target0 > target:          # the inner agenda read the roots of stake >= target0 - dbal0: enough for any reply that took at least as much, for a route that needs at least as much
                 continue                                            # 64.2: AND that needs at least as much (W0VFO: a kill made for the need of several was served to Qb7 Qxa7, which needs 1)
             if not (reads & frozenset(P_old.diff(P2))):
                 return ("no claim of ours and no material gain", san0, sorted(reads))

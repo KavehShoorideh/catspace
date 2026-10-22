@@ -1091,9 +1091,9 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
     c = b.copy(stack=False)
     c.push(m)
     res = dict(value=0, killed=None, gap=None, parts=[], lemmas=[])
-    kills_view = {u: [e[:4] for e in v if e[4] == 1] for u, v in ctx.reply_kills.items()}
+    kills_view = {u: [e[:4] for e in v if e[4] <= node._target()] for u, v in ctx.reply_kills.items()}
     rr = AC.read_route(b.fen(), m.uci(), bool(node.me), node.min_stake, node._t(AG.NEED_AWARE_CLOSE, 3), bool(promote), max(1, node.min_stake) if node._t(AG.NEED_PROPAGATION, 3) else 1,
-                       cq.stake if cq is not None and cq.goal == "win" and cq.pattern.get("target") is not None else None, BD.MATE_VALUE, R.STAKE_PROMOTE, list(override) if override else [], list(pre) if pre else [], kills_view if not promote else None)      # (the Rust handler knows the kills made for the need 1)
+                       cq.stake if cq is not None and cq.goal == "win" and cq.pattern.get("target") is not None else None, BD.MATE_VALUE, R.STAKE_PROMOTE, list(override) if override else [], list(pre) if pre else [], kills_view if not promote else None)      # (the Rust handler knows the kills made for a need no bigger than this route's)
     P0, P1 = rr["p0"], rr["p1"]
     if P1.legal_count() == 0:
         if c.is_checkmate():
