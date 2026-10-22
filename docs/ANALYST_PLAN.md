@@ -3011,3 +3011,13 @@ per puzzle by the final `decision` of each id (not only the `decided` root rows:
 * 64.7 "their threat 0" in pos2's STATUS (63.4's diagnosis: their verify of fxe3 reads "delayed_balance_d1 69 against 69: no gain" only while the B on h4
   stands; with it removed fxe3 binds 3): find White's reply that gives the 3 back and say whether the verifier is right; if it is, the status is right
   too; if not, fix the verifier with a test.
+
+**64 built (2026-10-21, builder; numbers from OBS lines, one run each, directional).** Commits per item (git log, "plan 64.x"). 64.0: `_their_after_capture` now reads their agenda after EVERY capture of the
+principal line of the best exchange (the swap-list's optimal stop; equal best exchanges are a choice of ours: the least claim proves the close), recaptures on the exchange square stay the swap-list's;
+the fork claim uses it; `_leaf_read` (their agenda at the leaf of a binder claim) now covers delayed_root / delayed_root_max and the chase's inner agendas (claims at least `min_stake`); pos2's Nxf4 +1 is gone
+(Bg5 found at the leaf of Bxf4 exf4 Qxf4). 64.1: `_chain_cut` is gone; the chase clock, the tempo allowance and the second check are GAPs (`_chain_gap`, counted as `chain_hits`, not budget cuts); following the second check
+was tried (with and without the judge) and loses lK9WA at 10 s, so it stays a GAP. 64.2: the 52.23 items are ON at every tier (`analyse --no-chain` is the comparison); a standing kill carries its need
+(W0VFO); under the COUNT fuse 07Z0P and 5JrXD are not reached (the in-check chase ~doubles the inner work), under the time budget they are. 64.3: COST_JUDGE ON with measured seconds per route, route_cost memoised and
+bounded; the judge in place of the count fuse under the tiers lets tier 0 take the budget, so the fuse stays the tier's cap. 64.4: PARRIES and NO_SAFE_MOVE ON (per puzzle identical); the delayed threat inside the
+chase gains nothing on the 90. 64.5: ESTIMATE ON (inert on the 90), `play_server.game_history` fills `ctx.history`. 64.6 / 64.7: see the hand-back (pos2 has no proved claim; the fxe3 "no gain" is the balance
+tail's horizon: Ng1 discovers Qxh4 which Qd8 guards).
