@@ -43,6 +43,7 @@ from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import landing as LD
 from catspace.incubator.analyst.discovery import region as RG
 from catspace.incubator.analyst.discovery import race as RC
+from catspace.incubator.analyst.discovery import plan67 as PL
 from catspace.incubator.analyst.discovery import table as TB
 from catspace.incubator.analyst.discovery import regress as R
 from catspace.incubator.analyst.discovery import question_prior as QP
@@ -3204,6 +3205,9 @@ class Agenda:
         if q.goal == "promote" and getattr(q, "_lift_routes", None):      # plan 62.1c: the pawn's push when their king is no stopper (their other pieces are replies)
             seen = {r.move for r in routes}
             routes += [r for r in q._lift_routes if r.move not in seen]
+        if q.goal == "promote" and getattr(q, "_support_routes", None):   # plan 67.4: a support placement after which no weak moment of ours is reachable (the rook behind the pawn)
+            seen = {r.move for r in routes}
+            routes += [r for r in q._support_routes if r.move not in seen]
         if q.goal == "promote" and not self.chase_depth:        # 52.15 (2): plus a move that attacks a named STOPPER of the question ("threat on the stopper"), or offers the pawn to it
             routes += self._stopper_routes(q, [r.move for r in routes], notes)
         if self.chase_depth and not evading:                    # inner levels follow the most forcing moves only: a check, a capture, a mate threat (the quiet "threat n" moves are the root's)
@@ -3632,6 +3636,8 @@ class Agenda:
             self.lines.append("  lifted: " + "; ".join(lifted) + " (their other pieces are replies the chase reads; the kill is a GAP until it closes)")
         if lifted is not None and not q.defects:
             q._lift_routes = self._lift_routes(b, sq, facts)
+        if self._plan_claim(q, sq):                               # plan 67: the plan's own weaknesses: closed by arithmetic (no weak moment reachable), or the support placements become routes
+            return
         if q.defects:
             if self._race_claim(q, sq):                           # plan 62.1: the race word binds although a defect stands (the stopper the king cannot be: denied, overloaded)
                 return
@@ -3696,6 +3702,39 @@ class Agenda:
         q.reason = msg
         self.state.gaps.append(msg)
         self.lines.append(f"  -> GAP: {msg}")
+
+    def _plan_claim(self, q: R.Question, sq: int) -> bool:
+        """plan 67 (Lean `Ideas.Plan.plan_sound`): roll the pawn's plan forward without the opponent, list the weak moments it creates (capture, blockade, check
+        squares with deadlines), and test every piece of theirs against them with the proved lower bounds. No weak moment reachable and no stalemate: the
+        promotion is CLAIMED by arithmetic. Otherwise the trace names the reachable weaknesses; at the root (and one level in) the support placements after
+        which no weakness of OURS is reachable (67.4: the rook behind the pawn) become quiet routes of the question (`_support_routes`), read by the chase."""
+        if not PL.PLAN:
+            return False
+        b = self.board
+        if not q.defects and sq in dict(PV.proved_passers(b, bishops=True)):
+            return False                                         # the full-rules lemma (Ideas.Passer2.unstoppablePasser2_sound) fires below: it is the stronger word, it claims first
+        pl = PL.read(b, sq)
+        if not pl.moves:
+            return False
+        self.lines.append("  " + PL.trace(b, pl))
+        if pl.closed:
+            push = pl.moves[0]
+            san = b.san(push)
+            claim = Claim("promote", san, R.STAKE_PROMOTE, "plan_sound", f"{pl.line(b)}: {len(pl.weak)} weak moment(s), none reachable by any piece of theirs in time", move=push.uci())
+            self._stamp(claim, q)
+            self.state.claims.append(claim)
+            q.status = "verified"
+            self.lines.append(f"  -> CLAIM promote {san} (value {claim.value}), lemma {claim.lemma}, line {claim.line}")
+            if self._better(claim.value, 0, claim):
+                self.best = (claim.value, 0, claim)
+                self.asked_at_claim = self.asked
+            return True
+        if self.chase_depth <= 1 and not pl.immune:
+            fixes = PL.support_fixes(b, sq)
+            if fixes:
+                q._support_routes = [R.Route(m, san, f"support: after it no weak moment of ours is reachable ({p2.n} moves; {len(p2.reach)} check square(s) left to the chase)") for m, san, p2 in fixes]
+                self.lines.append("  support (plan 67.4): " + ", ".join(san for _m, san, _p in fixes))
+        return False
 
     def _race_claim(self, q: R.Question, sq: int) -> bool:
         """plan 62.1 / 62.2: THE RACE WORD (Lean Ideas.Race.race_sound; regress.race_claim): when it binds for the pawn on `sq` the promotion is a PROVED claim (value 8) whose line names both counts and

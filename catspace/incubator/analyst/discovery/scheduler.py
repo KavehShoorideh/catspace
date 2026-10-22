@@ -507,6 +507,8 @@ def ask_promote_g(node, q: R.Question, head: str, lift: bool = True) -> None:
         node.lines.append("  lifted: " + "; ".join(lifted) + " (their other pieces are replies the chase reads; the kill is a GAP until it closes)")
     if lifted is not None and not q.defects:
         q._lift_routes = node._lift_routes(b, sq, facts)
+    if node._plan_claim(q, sq):                                # plan 67 (mirror)
+        return
     if q.defects:
         if node._race_claim(q, sq):                            # plan 62.1: the race word binds although a defect stands
             return
@@ -712,6 +714,9 @@ def chase_g(node, q: R.Question) -> bool:
     if q.goal == "promote" and getattr(q, "_lift_routes", None):      # plan 62.1c: the pawn's push when their king is no stopper
         seen = {r.move for r in routes}
         routes += [r for r in q._lift_routes if r.move not in seen]
+    if q.goal == "promote" and getattr(q, "_support_routes", None):   # plan 67.4 (mirror)
+        seen = {r.move for r in routes}
+        routes += [r for r in q._support_routes if r.move not in seen]
     if q.goal == "promote" and not node.chase_depth:        # 52.15 (2): plus a move that attacks a named STOPPER of the question ("threat on the stopper"), or offers the pawn to it
         routes += node._stopper_routes(q, [r.move for r in routes], notes)
     if node.chase_depth and not evading:                    # inner levels follow the most forcing moves only: a check, a capture, a mate threat (the quiet "threat n" moves are the root's)

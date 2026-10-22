@@ -19,6 +19,7 @@ estimated. Every number in the trace is a count printed by this module.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 import chess
@@ -26,7 +27,7 @@ import chess
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery.race import kdist, lb, pdist
 
-PLAN = True                                                      # plan 67 (ON; `analyse --no-plan` is a comparison condition only)
+PLAN = os.environ.get("CATSPACE_PLAN", "1") != "0"                # plan 67 (ON; `analyse --no-plan` sets CATSPACE_PLAN=0, inherited by the workers: a comparison condition only)
 
 _SLIDER_KINDS = (chess.ROOK, chess.BISHOP, chess.QUEEN, chess.KNIGHT)
 
@@ -63,6 +64,7 @@ class Plan:
     reach: list = field(default_factory=list)
     stalemate_at: int | None = None                              # a rollout board where they have no legal move (a draw; the arithmetic refuses it)
     mate_at: int | None = None                                   # ... with their king in check: mate, the plan's end (no weak moment at or after it)
+    their_race: float = float("inf")                             # the fewest pushes a pawn of theirs needs to its promotion rank (blockers ignored: a lower bound)
     why: str = ""
 
     @property
@@ -72,7 +74,7 @@ class Plan:
     @property
     def closed(self) -> bool:
         """The promotion is PROVED by arithmetic: no weak moment of any kind reachable, no stalemate."""
-        return bool(self.moves) and not self.reach and self.stalemate_at is None
+        return bool(self.moves) and not self.reach and self.stalemate_at is None and self.their_race > self.n
 
     @property
     def immune(self) -> bool:
@@ -293,6 +295,10 @@ def read(board: chess.Board, pawn: int) -> Plan:
     if plan.moves:
         weak_moments(board, plan)
         reach(board, plan)
+        them = not board.turn
+        promo_rank = 0 if them == chess.WHITE else 7
+        for s in board.pieces(chess.PAWN, them):
+            plan.their_race = min(plan.their_race, pdist(them, s, chess.square(chess.square_file(s), 7 if them == chess.WHITE else 0)))
     return plan
 
 
@@ -305,6 +311,8 @@ def trace(board: chess.Board, plan: Plan) -> str:
         return head + f"; they are stalemated after move {plan.stalemate_at}: refused"
     if plan.mate_at is not None:
         head += f" (mate at move {plan.mate_at})"
+    if not plan.reach and plan.their_race <= plan.n:
+        return head + f", none reachable, but a pawn of theirs promotes within {int(plan.their_race)}: the race word decides, not this plan"
     if not plan.reach:
         return head + ", none reachable: the promotion is proved by arithmetic"
     own = plan.own_reach

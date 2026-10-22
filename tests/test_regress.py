@@ -179,7 +179,9 @@ def test_blocked_pawn_names_the_blocker():
 
 def test_defects_say_unstoppable_but_the_lemma_does_not_fire_is_a_gap_naming_the_hypothesis(monkeypatch):
     from catspace.incubator.analyst.discovery import race as _RC62
+    from catspace.incubator.analyst.discovery import plan67 as _PL67
     monkeypatch.setattr(_RC62, "RACE", False)          # plan 62.1: with the race word ON this king-and-pawn board (our bishop) is claimed by Ideas.Race.race_sound
+    monkeypatch.setattr(_PL67, "PLAN", False)          # plan 67: and with the plan arithmetic ON it is claimed by Ideas.Plan.plan_sound; this test reads the GAP text of the older lemma alone
     ag = _ag(RACE_GAP)
     assert ag.decision() is None
     assert any("noSliders: our B on b2" in g for g in ag.state.gaps)
@@ -594,7 +596,7 @@ def test_52_15_a_promote_route_is_claimed_when_the_pawn_cannot_be_stopped_on_eve
     ag.ctx.left = 100000
     res = ag._chase_route(chess.Move.from_uci("f7h8"), promote=True)
     assert res["killed"] is None and res["gap"] is None and res["value"] == R.STAKE_PROMOTE
-    assert len(res["parts"]) == 7 and all("-> 8" in x for x in res["parts"]) and "unstoppablePasser2_sound" in res["lemmas"]       # every reply of the lone king is answered by a promote claim
+    assert len(res["parts"]) == 7 and all("-> 8" in x for x in res["parts"]) and ("unstoppablePasser2_sound" in res["lemmas"] or "plan_sound" in res["lemmas"])       # every reply of the lone king is answered by a promote claim (plan 67's arithmetic may close it first)
 
 
 def test_52_15_the_blocker_of_theirs_is_a_stopper_of_the_promote_question_0gjec():

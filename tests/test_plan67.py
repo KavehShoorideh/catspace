@@ -39,6 +39,9 @@ def test_67_a_pure_pawn_ending_closes_by_arithmetic():
     pl = P.read(b, chess.E4)
     print("OBS 67 pure ending:", P.trace(b, pl))
     assert pl.n == 4 and pl.closed
+    r = P.read(chess.Board("8/8/8/8/4P3/8/p7/k3K3 w - - 0 1"), chess.E4)        # their a-pawn promotes in 1: ours is not a claim by this plan (the race word compares)
+    print("OBS 67 their race:", P.trace(chess.Board("8/8/8/8/4P3/8/p7/k3K3 w - - 0 1"), r))
+    assert not r.closed and r.their_race == 1
 
 
 def test_67_the_mate_ends_the_plan_and_a_stalemate_refuses_it():
@@ -82,3 +85,26 @@ def test_67_a_check_square_is_not_a_weakness_of_ours_but_is_counted():
     print("OBS 67 3U6wp:", P.trace(b, pl))
     assert pl.immune and not pl.closed and any(r.weak.kind == "check" for r in pl.reach)
     assert P.support_fixes(b, chess.D6) == []                                           # already immune: no support needed
+
+
+def test_67_the_agenda_claims_a_pure_ending_by_the_plan_arithmetic_and_offers_support_routes(monkeypatch):
+    """Through the agenda (the table off, so the rule machinery is read): K+P v K far away is CLAIMED with lemma plan_sound (the trace prints the plan and
+    its weak moments); 4efZ2's promote question carries the support routes Ra5/Rc1 (67.4) into its chase."""
+    from catspace.incubator.analyst.discovery import race as RC
+    from catspace.incubator.analyst.discovery import table as TB
+    from catspace.incubator.analyst.discovery.agenda import Agenda
+    from catspace.incubator.analyst.discovery.state import state_of
+    monkeypatch.setattr(TB, "TABLE", False)
+    monkeypatch.setattr(RC, "RACE", False)
+    ag = Agenda(state_of("8/8/8/4P3/8/8/8/k3K3 w - - 0 1", "w"))          # (promote roots exist for pawns within 3 pushes)
+    ag.ask()
+    assert any(c.kind == "promote" and c.lemma in ("plan_sound", "unstoppablePasser2_sound") for c in ag.state.claims)      # the full-rules lemma claims first where it fires
+    ag = Agenda(state_of("8/8/4PK2/8/8/8/1B6/7k w - - 0 1", "w"))        # our bishop: the full-rules lemma's bare-king form excludes it; the plan arithmetic claims
+    ag.ask()
+    text = ag.trace()
+    print("OBS 67 agenda plan claim:", [l for l in text.splitlines() if "plan e7" in l or "CLAIM promote" in l][:2])
+    assert any(c.kind == "promote" and c.lemma == "plan_sound" for c in ag.state.claims)
+    ag2 = Agenda(state_of("3k4/3P1R1p/8/2r1pP2/4P3/p3K1P1/7P/8 b - - 0 41", "b"), seconds=5)
+    ag2.ask()
+    t2 = ag2.trace()
+    assert "support (plan 67.4): Ra5" in t2 and "Ra5 (support:" in t2

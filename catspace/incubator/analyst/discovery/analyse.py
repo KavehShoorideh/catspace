@@ -214,11 +214,12 @@ def main():
     ap.add_argument("--no-frame", action="store_true", help="plan 62.2: the frame's recheck (condition (b)) OFF (comparison; ON by default)")
     ap.add_argument("--no-lift", action="store_true", help="plan 62.1c: the stopper verdict judges every piece of theirs as before (comparison; ON by default: with pieces beyond king and pawns only their KING is judged, the others are replies)")
     ap.add_argument("--no-deny", action="store_true", help="plan 62.1b: no 'deny the stopper's path' routes (comparison; ON by default)")
+    ap.add_argument("--no-plan", action="store_true", help="plan 67: the plan's own weaknesses (the rollout read, the arithmetic close, the support routes) OFF (comparison; ON by default)")
     ap.add_argument("--no-table", action="store_true", help="plan 62.3: the tablebase oracle OFF (comparison; ON by default)")
     ap.add_argument("--duty", action="store_true", help="plan 63.2: the duty word ('pinned to a threat') in the trap/run test (the default: ON)")
     ap.add_argument("--no-duty", action="store_true", help="plan 63.2: switch the duty word OFF (CATSPACE_DUTY=0, inherited by the workers)")
     a = ap.parse_args()
-    for flag, env, mod, attr in ((a.no_race, "CATSPACE_RACE", "race", "RACE"), (a.no_frame, "CATSPACE_FRAME", "race", "FRAME"), (a.no_deny, "CATSPACE_DENY", "race", "DENY"), (a.no_lift, "CATSPACE_LIFT", "race", "LIFT"), (a.no_table, "CATSPACE_TABLE", "table", "TABLE")):
+    for flag, env, mod, attr in ((a.no_race, "CATSPACE_RACE", "race", "RACE"), (a.no_frame, "CATSPACE_FRAME", "race", "FRAME"), (a.no_deny, "CATSPACE_DENY", "race", "DENY"), (a.no_lift, "CATSPACE_LIFT", "race", "LIFT"), (a.no_plan, "CATSPACE_PLAN", "plan67", "PLAN"), (a.no_table, "CATSPACE_TABLE", "table", "TABLE")):
         if flag:
             os.environ[env] = "0"
             setattr(__import__(f"catspace.incubator.analyst.discovery.{mod}", fromlist=[attr]), attr, False)
