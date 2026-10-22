@@ -330,6 +330,7 @@ Do not edit by hand.
 - **theorem `Ideas.Forcing.judgeNext_mono`** (line 193): Monotone in the cost: a cheaper route than one that is read is read.
 - **theorem `Ideas.Forcing.judgeNext_read_le`** (line 201): Reading in tier k never reads a route priced above an unread cheaper one of tier k+1: if the competitor is `c` and a route of cost `k` is read, `k ≤ c`.
 - **theorem `Ideas.Forcing.none_affordable_of_cheapest`** (line 205): 65.2 STOP WHEN NOTHING AFFORDABLE IS LEFT: if the CHEAPEST open route (every open cost is at least `c`) does not fit in the time left, no open route does.
+  - used by: catspace/incubator/analyst/discovery/agenda.py
 
 ## lean/ideas/Ideas/Fork.lean
 
@@ -1389,7 +1390,7 @@ Do not edit by hand.
 - **theorem `Ideas.TreeStep.tail_two_alive`** (line 496): THE MINIMAX TAIL, two plies, alive from material: `most (least (min balance (material + C)))` at least `T = C + 4` forces the goal within two plies.
   - used by: catspace/incubator/analyst/discovery/selfmine.py
 - **theorem `Ideas.TreeStep.tail_four_alive`** (line 513): THE MINIMAX TAIL, four plies, alive from material (plan 48): `most (least (most (least (min balance (material + C)))))` at least `T = C + 4` (some move of ours, whatever they reply, some move of ours, whatever they reply
-  - used by: catspace/incubator/analyst/discovery/selfmine.py
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/selfmine.py
 - **theorem `Ideas.TreeStep.promotion_from_seventh`** (line 543): A legal promotion starts from a pawn of the side to move on the rank before promotion (the seventh, from its side).
 - **theorem `Ideas.TreeStep.queenOnly_of_not_promoting`** (line 568): A legal move of a piece that is not about to promote is never a promotion to anything but a queen (it is no promotion at all).
 - **theorem `Ideas.TreeStep.not_promoting_at`** (line 589): THE LEG IN WORDS: `no pawn of ours at x on our seventh rank` (the word `(count (and ourpawns (and (at x) (rank <seventh>))))` at most 0) says the piece on `x`, if it is a pawn, is not about to promote.
