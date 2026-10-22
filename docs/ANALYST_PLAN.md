@@ -2900,6 +2900,7 @@ trailers; commit by path; no Pool from stdin; the Rust paths (ROUTES_RUST, CORE_
 Order: A, then B, then C; D (a learned cost/accuracy head as a head of plan 60's policy, ordering only) is NOT in this build.
 
 ### 62 Endgame knowledge as a frame: the passer RACE word, tempo-immunity as the frame's soundness condition, the tablebase as a labelled oracle (Kaveh 2026-10-21: "endgame knowledge should be some sort of frame"; written on his "do it", NOT a go to build)
+**GO 2026-10-22 (Kaveh: "we haven't done 62. Just go on those plans. Don't wait for me"). Built by the builder; 'each OFF until graded' in 62.4 is superseded by the standing rule 'off is not built': a sound word ends ON, a regression is diagnosed and fixed, not parked. The grade is read by proof ("OBS prior grade by proof").**
 The case: RoR8t (Kg4 Rf4 f5 h3 v Kg1 Rb8 a2 b3, Black to move; 1...Kg3! 2.Rg8+ Rg4 and the pawns walk, +10). Material is level; our leaf after Rg8+ is
 closed at +0 by the stopper defect ("their K on g1 reaches h1 in 1, the pawn needs 2"), which is true by its definition and too weak: a king in front
 of the h-pawn is not a stopper once the king covers h2 and the f-pawn deflects. Not a depth problem (identical at 60 s): a missing word.
@@ -3073,3 +3074,28 @@ prices ROOT routes within a tier only; the tiers themselves are stages, not a pr
 * 65.4 `status()` reads their pass with `delayed_balance_deep` when the d1 pass finds no claim and a piece of ours is attacked: pos2 "their threat 2 (deep: fxe3, 29 candidates read)" (0.04 s for the 29 candidates); fired on 2 of the 90, no decision changed.
 
 **65 verified (2026-10-22, Kav's session; JOURNAL "PLAN 65 BUILT AND VERIFIED").** Clock edges rerun alone hold (07Z0P by tier 1, eSJqH by tier 2); compare_scheduler default and --chain 0; the 90 regraded puzzle-for-puzzle identical. The grade is now split by proof (1c219283, "OBS prior grade by proof"): 15 s proved RIGHT 67 / proved WRONG 2 / unproved RIGHT 5 / unproved WRONG 16; count proved 63/3, unproved 7/17. The headline of a grade is the PROVED count from now; an unproved pick is reported, never counted as a proof. Open: the unproved pick's order (floor then price) and whether a negative floor is refused; the re-read of root routes across tiers (the six slow RIGHTs); 2zB89; the discovery position as a proved decision at 15 s (strict xfail).
+
+### 66 Proofs carry across tiers: a wider tier re-reads only what the narrower one left open (Kaveh 2026-10-22 GO "through 66, autonomously"; the six slow RIGHTs of plan 65)
+The case (plan 65 verification, JOURNAL 2026-10-22 02:28): j3ybl, CMCtT, qCXKp, x4B5k, 2VDtX, lK9WA claim early and then run to the 15 s deadline; j3ybl's
+tiers took [9.1, 3.1, 1.9, 0.3] s, 2VDtX's [2.5, 8.7, 4.5] s. Each tier runs on a FRESH context (plan 59: a kill under a narrower vocabulary is not a kill
+under a wider one), so tier k+1 re-reads every root route tier k read, proved claims included. The discovery position (tests/test_offbuilt64.py, strict
+xfail) proves Nf6 in ~9 s at 30 s but not at 15 s for the same reason (tier 0 and 1 both re-read the promote question's stopper routes). The principle:
+A PROOF CARRIES, A REFUTATION DOES NOT. A wider vocabulary only ADDS routes and replies of ours; every closed reply (a proved lemma binding, a rule close)
+and every proved claim is a proof over the same board and stays one. Only kills and GAPs can change.
+* 66.1 PROVED ROOT CLAIMS CARRY. Lean `Ideas/Forcing.lean`: `claim_mono` -- a claim proved with route set R holds with any R' ⊇ R (the proof's replies are
+  theirs, the vocabulary widens ours only). Mirror: the tier driver (`_ask_tiers`) hands the next tier the proved claims of the root's questions (the
+  `Claim`s with `proved=True`, by (position, question)); the next tier's chase SERVES a carried claim for that question instead of re-reading its routes,
+  and the trace says "carried from tier k: Qxd5+ +2 (proved)". A question whose claim keeps the status is not re-asked at all. A question whose claim
+  does not keep the status is re-asked for a BETTER claim: its carried claim is the floor, routes that cannot beat the floor (first-level cost judge,
+  64.3) are not opened.
+* 66.2 CLOSED REPLIES CARRY INSIDE A GAP ROUTE. A GAP route's replies closed by rule or lemma in tier k are proofs; the next tier resumes the route at its
+  OPEN replies (the chase reads a reply by its (position, stake); the fact store already keys closes by position: serve them across the tier boundary
+  with the tier-independent facts, keep kills tier-local). Trace: "resumed Rg8+: 3 of 5 replies carried, 2 read".
+* 66.3 THE STOP (65.2) THEN BITES: with nothing re-read, "no open route of any tier is affordable" is reachable; the six slow RIGHTs must END before the
+  deadline (decide, then stop) rather than widen to it. No new rule: 65.2 as built.
+* ACCEPTANCE (OBS lines, one run each, directional): the six slow RIGHTs alone at 15 s decide the same move and END under 5 s wall each; the discovery
+  position proves Nf6 at 15 s (remove the strict xfail marker ONLY when the test passes with `proved`); 07Z0P and eSJqH alone still decide at 15 s; the
+  90 at 15 s by proof against ql64_a65_7 (the baseline after the beats-the-pass rule): no proved RIGHT lost, every change traced; count against its
+  baseline unchanged or explained; compare_scheduler default and --chain 0 differences; full suite on the LAST commit.
+* FILES: agenda.py (`_ask_tiers`, the chase's route/reply read, `root_reads`), scheduler.py (mirror), facts/store keys, lean/ideas/Ideas/Forcing.lean
+  (`claim_mono`), LEAN_INDEX rebuild, tests/test_plan66.py. GRADING PROTOCOL: one grade at a time on the machine; bisect a lost puzzle alone, never sweep.
