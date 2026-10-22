@@ -168,10 +168,11 @@ def _decision(pid, set_name, **flags):
 
 @pytest.mark.parametrize("pid,set_name,dec", [("07Z0P", "dev_20", "Qxd5+"), ("0LRTF", "fresh_60_threats_event", "Rh8+")])
 def test_tiers_off_is_identical_to_the_decisions_before_plan_59(pid, set_name, dec):
-    r, lines = _decision(pid, set_name, TIERS=False)
+    off = dict(NEED_AWARE_CLOSE=False, EVASION_CHASE=False, NEED_PROPAGATION=False, GOAL_JUDGE=False, DEEP_WIN_CHASE=False, CHASE_CLOCK=99) if pid == "07Z0P" else {}      # plan 64.2: under the COUNT fuse 07Z0P needs the items off (its Qxd5+ is asserted under the time budget in tests/test_offbuilt64.py)
+    r, lines = _decision(pid, set_name, TIERS=False, **off)
     assert r["decision"] == dec and "tiers" not in r
     assert not any(l.startswith("OBS tiers") for l in lines)
-    r2, lines2 = _decision(pid, set_name, TIERS=True)           # (these two keep the status at tier 0: the same decision, one tier)
+    r2, lines2 = _decision(pid, set_name, TIERS=True, **off)           # (these two keep the status at tier 0: the same decision, one tier)
     assert r2["decision"] == dec and r2["tiers"][-1]["tier"] >= 0
 
 

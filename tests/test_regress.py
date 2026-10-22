@@ -14,6 +14,15 @@ SA = "2Q2bk1/5p1p/p5p1/2p3P1/4B3/7P/qPr2P2/2K4R w - - 0 33"
 QH2 = [(chess.Piece(chess.QUEEN, False), chess.H2, chess.F4)]
 
 
+@pytest.fixture
+def chain_items_off(monkeypatch):
+    """plan 64.2: the 52.23 chain items are ON by default. The tests that pin a cost or a cache mechanism of an EARLIER plan (52.16 / 52.17) isolate it from them (the items roughly double the
+    inner work: DEEP_WIN_CHASE on 0LRTF 41 -> 169 inner questions, 0 -> 3 fuse hits); the decisions with the items ON are asserted in tests/test_offbuilt64.py and the 90."""
+    for k in ("NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE"):
+        monkeypatch.setattr(AG, k, False)
+    monkeypatch.setattr(AG, "CHASE_CLOCK", 99)
+
+
 def kinds(ds):
     return [d.kind for d in ds]
 
@@ -712,7 +721,7 @@ def test_52_16_the_discovery_position_decides_nf6_with_the_exchange_read():
 
 # ---- 52.16 (4): failed promote chases ----------------------------------------------------------------------------------------------------------------
 
-def test_52_16_a_reply_that_leaves_the_stopper_standing_ends_the_promote_route_02xvk():
+def test_52_16_a_reply_that_leaves_the_stopper_standing_ends_the_promote_route_02xvk(chain_items_off):
     from catspace.incubator.analyst.discovery import puzzle_apply as PA
     p = [x for x in PA.load_set("dev_20") if x["id"] == "02XVK"][0]
     ag = AG.Agenda(State(p["fen"], "w", []))
@@ -882,7 +891,7 @@ def test_52_17_rh8_does_not_drive_the_king_off_c8_but_rd8_after_kd7_does():
     assert [r.san for r in f.routes] == ["Rd8+"] and "drive their king off c8" in f.text
 
 
-def test_52_17_0lrtf_is_decided_rh8_by_the_drive_off_step_and_the_exchange_on_the_promotion_square():
+def test_52_17_0lrtf_is_decided_rh8_by_the_drive_off_step_and_the_exchange_on_the_promotion_square(chain_items_off):
     from catspace.incubator.analyst.discovery import puzzle_apply as PA
     p = [x for x in PA.load_set("fresh_60_threats_event") if x["id"] == "0LRTF"][0]
     ag = AG.Agenda(State(p["fen"], "w", []))
@@ -907,7 +916,7 @@ def test_52_17_the_promotion_exchange_is_read_on_the_board_after_the_push_and_no
 
 # ---- 52.17 (4): cheapest reply first ----------------------------------------------------------------------------------------------------------------
 
-def test_52_17_the_cheap_pass_closes_what_the_rules_close_and_leaves_the_rest_pending_without_an_inner_agenda():
+def test_52_17_the_cheap_pass_closes_what_the_rules_close_and_leaves_the_rest_pending_without_an_inner_agenda(chain_items_off):
     ag = AG.Agenda(State(LRTF, "w", []))
     m = chess.Move.from_uci("h7h8")
     key = (AG._pos_key(ag.board.fen()), "h7h8")
@@ -1137,7 +1146,7 @@ def test_52_22_3_the_refuter_is_a_word_proved_in_lean():
     assert "Refutes" in st and "forcedAtLeaves" in st
 
 
-def test_52_22_3_07z0p_is_decided_qxd5_by_the_refuter_fix_with_the_line_printed():
+def test_52_22_3_07z0p_is_decided_qxd5_by_the_refuter_fix_with_the_line_printed(chain_items_off):
     ag = AG.Agenda(state_of(Z0P, "w"))
     ag.ask()
     t = ag.trace()

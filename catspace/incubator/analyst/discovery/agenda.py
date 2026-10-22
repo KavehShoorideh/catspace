@@ -2290,8 +2290,8 @@ class Agenda:
 
     def _their_after_capture(self, P2: "AC.Pos") -> tuple:
         """64.0: THEIR agenda after EACH capture of ours on a principal line of the best static exchange on P2 (our move): -> (the value of their best claim, (our capture's SAN, that claim)) or (0, None).
-        After a capture that is not the end of the line, their recaptures on the exchange square are excluded (the exchange already counts them); after the capture that ENDS the line every claim of
-        theirs counts (pos2: Nxf4's close read their agenda after Bxf4 only, and 3.Qxf4 Bg5 pins the queen to the king). Equal best exchanges are a choice of ours: the line with the LEAST claim of theirs
+        Their claims landing on the exchange square are excluded after every capture (the swap-list already priced the recapture); what is read now is their FREE move after each of our captures, the
+        last one included (pos2: Nxf4's close read their agenda after Bxf4 only, and 3.Qxf4 Bg5 pins the queen to the king). Equal best exchanges are a choice of ours: the line with the LEAST claim of theirs
         is the one that proves the close (FORK2: Ne3 Rc2, Nxf1 allows Rxc4+ but Nxc2 does not). Memoised by position in the run's `theirs` table."""
         lines = self._principal_captures(P2)
         if not lines:
@@ -2302,11 +2302,11 @@ class Agenda:
             for san, b, last in caps:
                 if not any(True for _ in b.legal_moves):
                     continue
-                key = ("after-capture", _pos_key(b.fen()), last)
+                key = ("after-capture", _pos_key(b.fen()), chess.square_name(sq))
                 hit = self.ctx.theirs.get(key)
                 if hit is None:
                     ag = self._their_agenda(b)
-                    cls = [c for c in (ag.state.claims if ag is not None else []) if last or not (c.move and c.move[2:4] == chess.square_name(sq))]
+                    cls = [c for c in (ag.state.claims if ag is not None else []) if not (c.move and c.move[2:4] == chess.square_name(sq))]      # (a recapture on the exchange square is the exchange itself: the swap-list already priced it)
                     cl = max(cls, key=lambda c: c.value) if cls else None
                     hit = self.ctx.theirs[key] = (cl.value if cl is not None and cl.value > 0 else 0, cl)
                 if hit[0] > out[0]:
