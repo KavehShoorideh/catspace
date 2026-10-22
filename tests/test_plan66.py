@@ -205,3 +205,91 @@ def test_66_3_the_open_line_says_what_was_left_when_the_widening_reached_its_end
     ag.ctx.judge_t, ag.ctx.judge_n = 1.0, 100
     line = ag._open_line(ag, 2.0)
     assert "1 root route(s) still open" in line and "the cheapest, Qxe1, priced 40 x 0.0100 = 0.40 s" in line
+
+
+# ---------------------------------------------------------------------------------------------------------------- 66.4 resume a chain-stopped line while it is still forcing
+
+MH1Q8 = "3rrknQ/1pp2p2/p2b1q1p/3pNPp1/1P1P1BP1/P6P/8/R3R1K1 w - g6 0 29"      # rand6_10 mh1q8: Nd7+ checks and attacks the Q; Rxd7 is the only reply
+
+
+def test_66_4_still_forcing_is_the_lean_definition():
+    """Lean `Ideas.Forcing.stillForcing` (every step threatens and its reply parries), `stillForcing_append`, `quiet_breaks`, `stillForcing_parryList`: in the file, no sorry; the Python `_still_forcing` is the
+    conjunction of `_step_forcing` over the steps (mirrored with stubbed steps), and a quiet step anywhere breaks it."""
+    src = LEAN.read_text()
+    for name in ("def stillForcing", "theorem stillForcing_append", "theorem quiet_breaks", "theorem stillForcing_parryList", "structure Step"):
+        assert name in src
+    assert "sorry" not in src
+    ag = _carry_ag(MH1Q8)
+    rng = random.Random(664)
+    for _ in range(200):
+        line = [("f", f"m{i}", f"r{i}", 1) for i in range(rng.randint(0, 5))]
+        verdict = {st: (rng.random() < 0.8, "q") for st in line}
+        ag.ctx.forcing_steps = dict(verdict)
+        ok, _why = ag._still_forcing(line)
+        assert ok == all(v[0] for v in verdict.values())               # stillForcing = List.all
+        if line:
+            ag.ctx.forcing_steps[line[0]] = (False, "quiet")
+            assert ag._still_forcing(line)[0] is False                  # quiet_breaks
+
+
+def test_66_4_a_check_is_parried_by_every_reply_and_a_quiet_move_names_no_threat():
+    ag = _carry_ag(MH1Q8)
+    b = ag.board
+    nd7, rxd7 = b.parse_san("Nd7+"), "d8d7"
+    assert ag._step_forcing((b.fen(), nd7.uci(), rxd7, 9)) == (True, "")
+    a3 = b.parse_san("Kg2")
+    c = b.copy()
+    c.push(a3)
+    r = next(iter(c.legal_moves)).uci()
+    ok, why = ag._step_forcing((b.fen(), a3.uci(), r, 9))
+    assert not ok and why == "Kg2 names no threat"
+
+
+def test_66_4_the_extension_applies_only_while_the_line_is_still_forcing():
+    ag = _carry_ag(MH1Q8)
+    b = ag.board
+    forcing = [(b.fen(), b.parse_san("Nd7+").uci(), "d8d7", 9)]
+    ag.ctx.extend = 1
+    ag.ctx.line = forcing
+    assert ag._extension() == 1 and ag.ctx.ext_used == 1
+    ag.ctx.line = forcing + [(b.fen(), b.parse_san("Kg2").uci(), "d8d7", 9)]
+    assert ag._extension() == 0 and ag.ctx.ext_quiet == 1
+    ag.ctx.extend = 0
+    ag.ctx.line = forcing
+    assert ag._extension() == 0
+
+
+def test_66_4_a_chain_stop_memo_serves_only_its_own_chain_state():
+    """mh1q8: the mate goal's chain stop of Nd7+ (allowance 1 under the 100-stake goal) was served to the queen goal ('seen before with no more fuse: not re-run'). A chain-stop GAP keeps the chain state it
+    was cut under; under another one the route is read again."""
+    ag = _carry_ag(MH1Q8)
+    m = ag.board.parse_san("Nd7+")
+    ag.ctx.mate_levels.append((1, 100))
+    st100 = ag._chain_state()
+    ag.ctx.mate_levels[-1] = (1, 9)
+    assert ag._chain_state() != st100
+    key = (ag.pk, m.uci())
+    ag.ctx.routes[key] = dict(value=0, killed=None, gap="chain stop: Nd7+ not followed past Rxd7 (tempo arithmetic)", parts=[], lemmas=[], cut_left=10 ** 9, cut_slice=10 ** 9, chain_state=st100)
+    ag.ctx.left = 0                                                     # (no inner agenda: the read stops at its first open reply, as a fuse GAP)
+    ag._route_move = m
+    res = ag._chase_route_body(m)
+    assert not res.get("reused")                                        # read again (not 'seen before')
+    ag.ctx.routes[key] = dict(ag.ctx.routes.get(key) or {}, gap="chain stop: x", chain_state=ag._chain_state(), cut_left=10 ** 9, cut_slice=10 ** 9, killed=None)
+    assert ag._chase_route_body(m).get("reused")                        # the same chain state: the GAP stands
+
+
+def test_66_4_the_next_tier_resumes_a_forcing_chain_stop_and_says_why_a_quiet_one_is_not():
+    ag = _tier1(MH1Q8)
+    b = ag.board
+    q = next(q for q in ag.all if q.goal == "win")
+    nd7 = b.parse_san("Nd7+")
+    from catspace.incubator.analyst.discovery import regress as R
+    forcing = [(b.fen(), nd7.uci(), "d8d7", q.stake)]
+    quiet = [(b.fen(), b.parse_san("Kg2").uci(), "d8d7", q.stake)]
+    ag.ctx.chain_gaps = [dict(key=ag._carry_key(q), route=R.Route(nd7, "Nd7+", "check"), uci=nd7.uci(), stake=q.stake, line=forcing, gap="chain stop: a", mkey=None),
+                         dict(key=ag._carry_key(q), route=R.Route(b.parse_san("Kg2"), "Kg2", "x"), uci="g1g2", stake=q.stake, line=quiet, gap="chain stop: b", mkey=None)]
+    ag.status_info = dict(balance=-1, threat=7, s0=-8, word="losing", line=0)
+    nxt = ag._next_agenda(ag, 2, 5.0, ag.status_info, 1)
+    assert nxt.ctx.resume_ext == {(ag._carry_key(q), nd7.uci()): dict(ext=1, moves=1)}
+    assert any(ln.startswith("RESUME: not resumed Kg2: the line went quiet (move 1: Kg2 names no threat") for ln in ag.lines)
+    assert AGM.RESUME is True

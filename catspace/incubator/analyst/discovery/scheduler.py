@@ -263,6 +263,10 @@ def ask_loop_g(node) -> None:
                 sc, rec = node._recall_score(q)
                 node.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
         node.order.append(q)                                   # plan 53 (1): the order asked (the features are read at log time: the root board does not change while its agenda runs)
+        if node.ctx is not None and node.ctx.resume_set is not None and node.chase_depth == 0 and node._root and node._carry_key(q) not in node.ctx.resume_set:      # plan 66.4 (mirror of agenda._ask_loop)
+            if node.ctx.carry_q.get(node._carry_key(q)) is not None:
+                node._carry_question(q, settle=True)
+            continue
         if node.ctx is not None and node.ctx.carry_q and node.chase_depth == 0 and node._root and node._carry_question(q):      # plan 66.1 (mirror of agenda._ask_loop)
             continue
         if node._inherit(q):
@@ -648,11 +652,11 @@ def chase_g(node, q: R.Question) -> bool:
     evading = node._t(AG.EVASION_CHASE, 3) and q.goal == "save" and "checkers" in q.pattern          # 52.23 (3): the save-king question of an agenda in check: its routes are the evasions, all forced (`_verify` calls the chase too: the switch is read HERE)
     if node.ctx is None or (q.goal not in ("mate", "win", "promote") and not evading) or node.min_stake >= BD.MATE_VALUE or (node.chase_depth >= 2 and (q.goal == "promote" or (q.goal == "win" and not node._t(AG.DEEP_WIN_CHASE, 3)))):      # a mate-only read (the reply already gained, or lost too much for anything but a mate) does not chase on
         return False                                               # 52.23 (5): a win question chases at every depth; its checks must address a defect (52.17 (2)) -- the depth-two gate was a numbered limit
-    if node.chase_depth and node.since_capture >= node._clock() and not evading:      # 52.23 (8): the chase clock -- a capture that is not bad for us is one-way progress (material never comes back); without one for
+    if node.chase_depth and node.since_capture >= node._clock() and not evading and node.since_capture >= node._clock() + node._extension():      # (66.4 mirror)      # 52.23 (8): the chase clock -- a capture that is not bad for us is one-way progress (material never comes back); without one for
         node.ctx.clock_stops += 1                                   # CHASE_CLOCK of our moves the chain goes nowhere and ends here (a hyperparameter to tune, Kaveh 2026-10-20)
         node._chain_gap(q, f"the chase clock: {node.since_capture} moves of ours without a capture that is not bad for us")      # 64.1: a hyperparameter's stop is a GAP, never a kill
         return False
-    if evading and node.evaded:                                    # 52.23 (3) / 64.1 (mirror of agenda._chase): a second check of theirs is a GAP, never a kill
+    if evading and node.evaded and node.evaded > node._extension():      # (66.4 mirror)                                    # 52.23 (3) / 64.1 (mirror of agenda._chase): a second check of theirs is a GAP, never a kill
         node._chain_gap(q, "a second check of theirs in a row (not followed)")
         return False
     if node.best is not None and node.best[0] >= q.stake:      # 52.13 (2c): a question is chased only when its stake exceeds the best claim so far (stop (a) would end the agenda anyway)
@@ -672,7 +676,7 @@ def chase_g(node, q: R.Question) -> bool:
         parent = None if fresh or top is None or q.stake > top[1] else top[0]             # (a BIGGER goal found on the chain is a new goal with its own distance: zBouR's queen under the f2 pawn's chase)
         dist = max([1, len(q.defects)] + [f.pattern.get("steps", 1) for f in q.fixes])      # them with the goal unmet is the walk. For a WIN goal a capture that is not bad for us is one-way progress (Kaveh
         allow = dist if parent is None else min(parent - (0 if node.free_level else 1), dist)      # 2026-10-20): the allowance starts again (zBouR: Qh1+ Rf1 Qxf1+ Kd2 Rxf2+); a mate's distance is its defects alone.
-        if allow <= 0:
+        if allow <= 0 and allow + node._extension() <= 0:          # (66.4 mirror)
             node.ctx.mate_walks += 1
             node._chain_gap(q, f"tempo arithmetic: the chain has spent the prep moves the goal's defects allow ({len(q.defects)} defect(s), {parent} level(s) left under the {top[1]}-stake goal)")
             return False
@@ -717,6 +721,9 @@ def chase_g(node, q: R.Question) -> bool:
         fix_moves = {r.move for f in q.fixes for r in R.all_routes(f)}     # the reply is forced); every other forcing move is the root's and the first level's (the named fixes that do not check still cost 0LRTF 4x)
         routes = [r for r in routes if r.move in fix_moves and b.gives_check(r.move)]
     routes.sort(key=lambda r: (0 if r.why.removeprefix("fix: ") == "check" else 1 if r.why.removeprefix("fix: ").startswith("capture") else 2))      # the most forcing first: a check, a capture, a threat (stable inside)
+    if node.chase_depth == 0 and node.ctx.resume_set is not None:      # plan 66.4 (mirror of agenda._chase)
+        want = node.ctx.resume_set.get(node._carry_key(q), [])
+        routes = [r for u in want for r in routes if r.move.uci() == u]
     node.promote_stake = q.stake if q.goal == "promote" else 0
     if not routes:
         node.lines.append("  chase: no forcing move on this board")
@@ -774,7 +781,9 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
                 node.ctx.deadline = now + max(min(root_final, node.ctx.final) - now, 0) / max(open_left, 1)
                 node.ctx.root_end = min(root_final, node.ctx.final)               # plan 61 C2: the end of the root's share of the time (the judge's pool)
                 node.ctx.hand = None                           # (a new slice: the route in hand is the one this slice sees)
+            ext0 = node._resume_begin(q, r)                       # plan 66.4 (mirror of agenda._chase_routes)
             res = (yield T('route', chase_route_g(node, r.move, promote=q.goal == "promote"), node))
+            node.ctx.extend = ext0
             if node.chase_depth == 0 and node.ctx.final is not None:
                 node.ctx.deadline = node.ctx.final
                 node.ctx.hand = None
@@ -788,6 +797,8 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
             node._note_resume(q, r, res)
         if res["gap"]:
             if res["gap"].startswith("chain stop"):
+                if node.chase_depth == 0 and not res.get("reused") and AG.RESUME:      # plan 66.4 (mirror of agenda._chase_routes)
+                    node.ctx.chain_gaps.append(dict(key=node._carry_key(q), route=r, uci=r.move.uci(), stake=q.stake, line=list(res.get("stop_line") or []), gap=res["gap"], mkey=(node.pk, r.move.uci(), q.stake)))
                 stopped = True
             else:
                 cut = True
@@ -889,6 +900,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
     if key in ctx.routes:
         hit = ctx.routes[key]
         stale = hit["gap"] is None and hit["killed"] is None and gstake and hit.get("closed_min", gstake) < gstake and hit.get("stake_checked", 0) < gstake       # a value closed by a short exchange under a lesser goal is not this goal's
+        stale = stale or (hit["gap"] is not None and hit["gap"].startswith("chain stop") and hit.get("chain_state") != node._chain_state())      # (66.4 mirror)
         if hit["gap"] is None and not stale:
             return hit
         slice_now = max(ctx.deadline - time.monotonic(), 0) if ctx.deadline is not None else None
@@ -995,8 +1007,10 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
         need = min(R.STAKE_PROMOTE, 1 - dbal) if promote and dbal <= 0 else R.STAKE_PROMOTE if promote else target - dbal if dbal < target else BD.MATE_VALUE          # a reply that already gains the need is read for a mate only; else its static gain must survive their threats (below)
         node._enter_reply(frozenset(P0.diff(P2)))
         node._reply_san = san_r
+        ctx.line.append((b.fen(), m.uci(), uci, node._judge_stake()))      # plan 66.4 (mirror)
         inn = (yield T('reply', inner_g(node, P2.fen(), need, frozenset(P0.diff(P2)), since=0 if (node.board.is_capture(node._route_move) and dbal >= 0) or node._pawn_move(node._route_move) else node.since_capture + 1,
                           exchange=node.board.is_capture(node._route_move) and chess.Move.from_uci(uci).to_square == node._route_move.to_square), node))      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
+        ctx.line.pop()
         if inn is None:
             res["gap"] = node._cut(san, san_r)
             res["reply"] = uci
@@ -1019,6 +1033,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
             elif (inn.get("cut") or inn.get("chain")):
                 res["gap"] = node._cut(san, san_r, True, inn)
                 res["reply"] = uci
+                node._mark_chain(res)
                 ctx.chain_hits += 0 if inn.get("cut") else 1      # 64.2: a chain stop is counted apart from a budget cut
                 ctx.budget_hits += 1 if inn.get("cut") else 0
                 node._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
@@ -1043,7 +1058,9 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
             if claim_their is not None and dbal - t_their < 1:
                 # 52.14: their claim is a THREAT and a SAVE root of the inner agenda on this position (we are to move: a parry, a counter, taking the attacker); the reply is
                 # killed only by the threats no parry of ours is verified for
+                ctx.line.append((b.fen(), m.uci(), uci, node._judge_stake()))
                 inn2 = (yield T('reply', inner_g(node, P2.fen(), need, frozenset(P0.diff(P2)), their=ctx.their_ags.get(AG._pos_key(G.with_turn(chess.Board(P2.fen()), not node.me).fen())), keep=dbal), node))
+                ctx.line.pop()
                 if inn2 is None:
                     res["gap"] = node._cut(san, san_r)
                     res["reply"] = uci
@@ -1071,6 +1088,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
         if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and (inn.get("cut") or inn.get("chain")):
             res["gap"] = node._cut(san, san_r, True, inn)
             res["reply"] = uci
+            node._mark_chain(res)
             ctx.chain_hits += 0 if inn.get("cut") else 1      # 64.2: a chain stop is counted apart from a budget cut
             ctx.budget_hits += 1 if inn.get("cut") else 0
             node._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
@@ -1121,6 +1139,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
     if key in ctx.routes:
         hit = ctx.routes[key]
         stale = hit["gap"] is None and hit["killed"] is None and gstake and hit.get("closed_min", gstake) < gstake and hit.get("stake_checked", 0) < gstake       # a value closed by a short exchange under a lesser goal is not this goal's
+        stale = stale or (hit["gap"] is not None and hit["gap"].startswith("chain stop") and hit.get("chain_state") != node._chain_state())      # (66.4 mirror)
         if hit["gap"] is None and not stale:
             return hit
         slice_now = max(ctx.deadline - time.monotonic(), 0) if ctx.deadline is not None else None
@@ -1241,7 +1260,9 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
         dfs = frozenset(P0.diff(P2))
         node._enter_reply(dfs)
         node._reply_san = san_r
+        ctx.line.append((b.fen(), m.uci(), uci, node._judge_stake()))      # plan 66.4 (mirror)
         inn = (yield T('reply', inner_g(node, fen2, need, dfs, since=0 if since0 or node._pawn_move(node._route_move) else node.since_capture + 1, exchange=exch), node))      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
+        ctx.line.pop()
         if inn is None:
             res["gap"] = node._cut(san, san_r)
             res["reply"] = uci
@@ -1264,6 +1285,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
             elif (inn.get("cut") or inn.get("chain")):
                 res["gap"] = node._cut(san, san_r, True, inn)
                 res["reply"] = uci
+                node._mark_chain(res)
                 ctx.chain_hits += 0 if inn.get("cut") else 1      # 64.2: a chain stop is counted apart from a budget cut
                 ctx.budget_hits += 1 if inn.get("cut") else 0
                 node._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
@@ -1288,7 +1310,9 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
             if claim_their is not None and dbal - t_their < 1:
                 # 52.14: their claim is a THREAT and a SAVE root of the inner agenda on this position (we are to move: a parry, a counter, taking the attacker); the reply is
                 # killed only by the threats no parry of ours is verified for
+                ctx.line.append((b.fen(), m.uci(), uci, node._judge_stake()))
                 inn2 = (yield T('reply', inner_g(node, fen2, need, dfs, their=ctx.their_ags.get(AG._pos_key(G.with_turn(chess.Board(fen2), not node.me).fen())), keep=dbal), node))
+                ctx.line.pop()
                 if inn2 is None:
                     res["gap"] = node._cut(san, san_r)
                     res["reply"] = uci
@@ -1316,6 +1340,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
         if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and (inn.get("cut") or inn.get("chain")):
             res["gap"] = node._cut(san, san_r, True, inn)
             res["reply"] = uci
+            node._mark_chain(res)
             ctx.chain_hits += 0 if inn.get("cut") else 1      # 64.2: a chain stop is counted apart from a budget cut
             ctx.budget_hits += 1 if inn.get("cut") else 0
             node._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
@@ -1384,7 +1409,7 @@ def inner_g(node, fen: str, need: int, diff: "frozenset | None" = None, their: "
     hits0, chain0 = ctx.budget_hits, ctx.chain_hits
     saved = R._ids[0]
     evading = node._chase_q is not None and node._chase_q.goal == "save" and "checkers" in node._chase_q.pattern
-    ag = AG.Agenda(State(fen=fen, us=node.us, pieces=[]), side_depth=0, chase_depth=node.chase_depth + 1, ctx=ctx, min_stake=need, their=their, keep=keep, evaded=evading,
+    ag = AG.Agenda(State(fen=fen, us=node.us, pieces=[]), side_depth=0, chase_depth=node.chase_depth + 1, ctx=ctx, min_stake=need, their=their, keep=keep, evaded=(int(node.evaded) + 1) if evading else 0,
                 since=node.since_capture + 1 if since is None else since, free_level=exchange)      # (52.19: what it inherits comes from the fact store, not from this agenda alone)
     yield T('node', agenda_g(ag), ag)                   # the inner agenda is a node task: its pool of questions is asked by the worker loop
     R._ids[0] = saved

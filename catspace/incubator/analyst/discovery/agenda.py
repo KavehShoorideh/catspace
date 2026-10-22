@@ -82,6 +82,7 @@ COMPETE = True                                                  # plan 65.1: the
 UNPROVED = True                                                 # plan 65.3: no claim at all -> the best UNFINISHED root route (a GAP) decides, marked unproved; `analyse --no-unproved`
 DEEP_PASS = True                                                # plan 65.4: the status reads THEIR pass with delayed_balance_deep when the d1 family finds no claim and a piece of ours is attacked; `analyse --no-deep-pass`
 STOP_AFFORD = True                                              # plan 65.2: the widening (and the RAISE_TO_WIN continuation) ends when no open route of any tier is priced within the time left; `analyse --no-stop-afford`
+RESUME = True                                                   # plan 66.4: with time left after the tiers, the root's CHAIN-STOPPED GAP routes are resumed in price order, one more level of the chain allowance a pass, ONLY while the line is still forcing (every reply a parry: Lean `Ideas.Forcing.stillForcing`); `analyse --no-resume`
 CARRY = True                                                    # plan 66.1 / 66.2: a PROOF CARRIES across the tiers (Lean `Ideas.Forcing.claim_mono`): a wider tier serves the proved claims of the root's questions and the proved replies of every route read before, and re-reads only kills, GAPs and what could beat a floor; `analyse --no-carry`
 NO_FUSE = 1 << 40                                               # 52.23 (1): the fuse when the budget is time: never reached (the deadline is the only limit)
 
@@ -230,6 +231,17 @@ class ChaseCtx:
         self.carry_served = 0                     # ... replies served from carry_r / ...
         self.carry_reread = 0                     # ... carried replies read again: their proof is below what this read needs (the agenda's target, the floor of 66.1, the goal's stake for a close)
         self.carry_routes = 0                     # ... root routes resumed with at least one carried reply
+        self.line: list = []                      # plan 66.4: the line being read, root first: (position before our move, our move, their reply, the stake) per step
+        self.chain_line: list = []                # ... the line at the last chain stop (copied by `_chain_gap`)
+        self.extend = 0                           # ... the extra levels of the chain allowance a resumed read is given (0: none); applied at a stop only while the line there is still forcing
+        self.forcing_steps: dict = {}             # ... (position, move, reply, stake) -> (still forcing?, why): one step judged once
+        self.chain_gaps: list = []                # ... the ROOT routes this tier ended as chain-stop GAPs: {key, route, uci, stake, line, gap}
+        self.resume_set: "dict | None" = None     # ... a resume pass: carry key of a root question -> the route ucis to read again (None: not a resume pass)
+        self.ext_used = 0                         # ... chain stops passed by the extension (the line was still forcing) / ...
+        self.ext_quiet = 0                        # ... not passed: the line had gone quiet
+        self.resume_passes = 0                    # ... resume passes run by the root
+        self.resume_ext: dict = {}                # ... (carry key of a root question, route uci) -> {ext, moves}: the root routes the previous tier stopped by the chain while the line was still forcing; read here with the allowance +ext
+        self.resumed = 0                          # ... root routes read with the extension
         self.judge_reads = 0                      # ... nodes the judge let be read / cut (a GAP)
         self.judge_cuts = 0
         self.judge_routes = 0                     # ... root routes judged
@@ -786,26 +798,8 @@ class Agenda:
             ag._ask_once()
             secs = time.monotonic() - t1
             if ag is not self:                                   # fold the wider tier into this root: its claims and gaps, its decision when it beats the one held
-                for u, d in ag.root_reads.items():               # plan 65.3: what the wider tier learned of each root route (a kill is final, the longer read of a GAP stands)
-                    old = self.root_reads.get(u)
-                    if old is None or (old["status"] != "killed" and (d["status"] == "killed" or len(d["gains"]) >= len(old["gains"]))):
-                        self.root_reads[u] = d
-                self.their_runs += ag.their_runs
-                self.ctx.est_rows += ag.ctx.est_rows                 # plan 61 B2: the wider tier's estimated leaves and claims are the root's
-                self.ctx.est_routes += ag.ctx.est_routes
-                self.state.estimated += [dataclasses.replace(c, qid=-1) for c in ag.state.estimated]
-                if ag.best_est is not None and (self.best_est is None or (ag.best_est[0], ag.best_est[2].confidence) > (self.best_est[0], self.best_est[2].confidence)):
-                    self.best_est = (ag.best_est[0], 0, dataclasses.replace(ag.best_est[2], qid=-1))
-                for f in ("parry_seen", "parry_closed", "delayed_routes", "nosafe_routes", "judge_routes", "judge_reads", "judge_cuts", "judge_t", "judge_n", "cycles", "carried_q", "carried_q_kept", "carried_q_reasked", "carry_served", "carry_reread", "carry_routes"):
-                    setattr(self.ctx, f, getattr(self.ctx, f) + getattr(ag.ctx, f))      # plan 61: the tiers' counters are the root's
-                mark = {id(c): dataclasses.replace(c, qid=-1) for c in ag.state.claims}      # (the question ids are the tier's own: the claim answers no question of tier 0)
-                if ag.best is not None and id(ag.best[2]) not in mark:
-                    mark[id(ag.best[2])] = dataclasses.replace(ag.best[2], qid=-1)
-                self.state.claims += list(mark.values())
-                self.state.gaps += [f"[tier {k}] {g}" for g in ag.state.gaps]
-                if ag.best is not None and (owner.best is None or _wider(owner, ag)):
-                    self.best, owner, decided = (ag.best[0], ag.best[1], mark[id(ag.best[2])]), ag, k
-                    self.asked_at_claim = 0
+                if self._fold_tier(ag, k, owner):
+                    owner, decided = ag, k
             overall = self.best
             mate = overall is not None and overall[0] >= BD.MATE_VALUE
             if self.status_info is None and not mate:
@@ -846,36 +840,143 @@ class Agenda:
             if stop:
                 break
             k += 1
-            nxt = Agenda(State(fen=self.state.fen, us=self.state.us, pieces=list(self.state.pieces)), memory=self.memory, leaf_all=self.leaf_all, seconds=left, tier=k)
-            nxt.ctx.route_costs = ag.ctx.route_costs
-            nxt.ctx.exempt = frozenset(ag.ctx.deferred)              # 65.1: the routes this tier deferred are read in the next one, not deferred again
-            nxt.ctx.route_secs = ag.ctx.route_secs                  # 64.3: the measured cost of the routes read so far (the judge's price for a route read before)
-            if CARRY:                                                # plan 66.3: a route CUT after t needed more than t only while the next read started from nothing; with its proved replies carried (66.2) the
-                nxt.ctx.route_secs = self._carried_secs(ag.ctx.route_secs)      # resumed read does not redo them, so t is no longer a lower bound of what is left (an estimate is never a bound): it is priced as a route not yet read
-            nxt.ctx.theirs, nxt.ctx.their_ags = ag.ctx.theirs, ag.ctx.their_ags      # 64.0 (speed only): THEIR agenda at a position is a function of the position, not of the tier: kept across the tiers
-            nxt.ctx.rate_t, nxt.ctx.rate_n = ag.ctx.judge_t + ag.ctx.rate_t, ag.ctx.judge_n + ag.ctx.rate_n      # plan 61 C2: seconds per node is measured in the RUN so far
-            if CARRY:                                                # plan 66.1: the proved claims of the root's questions carry (a refutation does not: kills and GAPs are read again)
-                carried = dict(ag.ctx.carry_q)
-                for key, d in ag._carried_out().items():
-                    old = carried.get(key)
-                    if old is None or (d["net"], d["second"]) > (old["net"], old["second"]):
-                        carried[key] = dict(d, tier=k - 1)
-                    elif old is not None:
-                        carried[key] = dict(old, dep=old["dep"] or d["dep"])
-                nxt.ctx.carry_q = carried
-                nxt.ctx.carry_status = dict(st)
-                proofs = dict(ag.ctx.carry_r)                        # plan 66.2: the replies proved in every earlier tier (the larger proof of a reply wins)
-                for kk, d in ag.ctx.proofs.items():
-                    if kk not in proofs or d["g"] > proofs[kk]["g"]:
-                        proofs[kk] = d
-                nxt.ctx.carry_r = proofs
+            nxt = self._next_agenda(ag, k, left, st, k - 1)
             nxt.lines = _TierLines(self.lines, f"[tier {k}] ")
             ag = nxt
         if not kept and not self.ctx.abort and (afford is None or afford[0]):
             self.lines.append(self._open_line(ag, time.monotonic() - t0))      # plan 66.3: why the widening did not end before the deadline (what was still open and affordable)
+        if RESUME and not kept and not self.ctx.abort and total is not None:
+            owner, decided = self._resume_chain_stops(ag, total, t0, owner, decided)      # plan 66.4
         self.tier_decided = decided
         self.tier_secs = [t["secs"] for t in self.tier_info]
         self.lines.append(f"TIERS: ran {len(self.tier_info)} (0..{len(self.tier_info) - 1}); the decision is " + (f"{self.best[2].what} ({self.best[0]:+d}) from tier {decided}" if self.best is not None else "none") + f"; seconds per tier {self.tier_secs}")
+
+    def _fold_tier(self, ag: "Agenda", k, owner: "Agenda") -> bool:
+        """plan 59 (3): fold a wider tier (or a resume pass) into this root: its claims and gaps, its counters; -> True when its best claim beats the one held (it decides)."""
+        for u, d in ag.root_reads.items():               # plan 65.3: what the wider tier learned of each root route (a kill is final, the longer read of a GAP stands)
+            old = self.root_reads.get(u)
+            if old is None or (old["status"] != "killed" and (d["status"] == "killed" or len(d["gains"]) >= len(old["gains"]))):
+                self.root_reads[u] = d
+        self.their_runs += ag.their_runs
+        self.ctx.est_rows += ag.ctx.est_rows                 # plan 61 B2: the wider tier's estimated leaves and claims are the root's
+        self.ctx.est_routes += ag.ctx.est_routes
+        self.state.estimated += [dataclasses.replace(c, qid=-1) for c in ag.state.estimated]
+        if ag.best_est is not None and (self.best_est is None or (ag.best_est[0], ag.best_est[2].confidence) > (self.best_est[0], self.best_est[2].confidence)):
+            self.best_est = (ag.best_est[0], 0, dataclasses.replace(ag.best_est[2], qid=-1))
+        for f in ("parry_seen", "parry_closed", "delayed_routes", "nosafe_routes", "judge_routes", "judge_reads", "judge_cuts", "judge_t", "judge_n", "cycles", "carried_q", "carried_q_kept", "carried_q_reasked", "carry_served", "carry_reread", "carry_routes", "ext_used", "ext_quiet", "resumed"):
+            setattr(self.ctx, f, getattr(self.ctx, f) + getattr(ag.ctx, f))      # plan 61: the tiers' counters are the root's
+        mark = {id(c): dataclasses.replace(c, qid=-1) for c in ag.state.claims}      # (the question ids are the tier's own: the claim answers no question of tier 0)
+        if ag.best is not None and id(ag.best[2]) not in mark:
+            mark[id(ag.best[2])] = dataclasses.replace(ag.best[2], qid=-1)
+        self.state.claims += list(mark.values())
+        self.state.gaps += [f"[tier {k}] {g}" for g in ag.state.gaps]
+        if ag.best is not None and (owner.best is None or _wider(owner, ag)):
+            self.best = (ag.best[0], ag.best[1], mark[id(ag.best[2])])
+            self.asked_at_claim = 0
+            return True
+        return False
+
+    def _next_agenda(self, ag: "Agenda", tier: int, left: float, st: dict, label) -> "Agenda":
+        """plan 59 / 65 / 66: the next root agenda after `ag` (a wider tier, or a resume pass at the same tier), on a FRESH context with what carries: the route costs and measured seconds, their
+        agendas, the rate, the deferred routes, and since 66.1 / 66.2 the proved claims of the root's questions and the proved replies of every route."""
+        k = tier
+        nxt = Agenda(State(fen=self.state.fen, us=self.state.us, pieces=list(self.state.pieces)), memory=self.memory, leaf_all=self.leaf_all, seconds=left, tier=k)
+        nxt.ctx.route_costs = ag.ctx.route_costs
+        nxt.ctx.exempt = frozenset(ag.ctx.deferred)              # 65.1: the routes this tier deferred are read in the next one, not deferred again
+        nxt.ctx.route_secs = ag.ctx.route_secs                  # 64.3: the measured cost of the routes read so far (the judge's price for a route read before)
+        if CARRY:                                                # plan 66.3: a route CUT after t needed more than t only while the next read started from nothing; with its proved replies carried (66.2) the
+            nxt.ctx.route_secs = self._carried_secs(ag.ctx.route_secs)      # resumed read does not redo them, so t is no longer a lower bound of what is left (an estimate is never a bound): it is priced as a route not yet read
+        nxt.ctx.theirs, nxt.ctx.their_ags = ag.ctx.theirs, ag.ctx.their_ags      # 64.0 (speed only): THEIR agenda at a position is a function of the position, not of the tier: kept across the tiers
+        nxt.ctx.rate_t, nxt.ctx.rate_n = ag.ctx.judge_t + ag.ctx.rate_t, ag.ctx.judge_n + ag.ctx.rate_n      # plan 61 C2: seconds per node is measured in the RUN so far
+        if CARRY:                                                # plan 66.1: the proved claims of the root's questions carry (a refutation does not: kills and GAPs are read again)
+            carried = dict(ag.ctx.carry_q)
+            for key, d in ag._carried_out().items():
+                old = carried.get(key)
+                if old is None or (d["net"], d["second"]) > (old["net"], old["second"]):
+                    carried[key] = dict(d, tier=label)
+                elif old is not None:
+                    carried[key] = dict(old, dep=old["dep"] or d["dep"])
+            nxt.ctx.carry_q = carried
+            nxt.ctx.carry_status = dict(st)
+            proofs = dict(ag.ctx.carry_r)                        # plan 66.2: the replies proved in every earlier tier (the larger proof of a reply wins)
+            for kk, d in ag.ctx.proofs.items():
+                if kk not in proofs or d["g"] > proofs[kk]["g"]:
+                    proofs[kk] = d
+            nxt.ctx.carry_r = proofs
+        if RESUME:                                               # plan 66.4: the root routes this read stopped by the chain are read with one more level of the allowance, ONLY while their line is still forcing
+            seen = set()
+            for it in reversed(ag.ctx.chain_gaps):
+                kk = (it["key"], it["uci"])
+                if kk in seen:
+                    continue
+                seen.add(kk)
+                ok, why = ag._still_forcing(it["line"])
+                if ok:
+                    nxt.ctx.resume_ext[kk] = dict(ext=ag.ctx.resume_ext.get(kk, {}).get("ext", 0) + 1, moves=len(it["line"]) or 1)
+                else:
+                    line = f"RESUME: not resumed {it['route'].san}: the line went quiet ({why}; {it['gap']})"
+                    if line not in self.lines:
+                        self.lines.append(line)
+        return nxt
+
+    def _resume_chain_stops(self, ag: "Agenda", total: float, t0: float, owner: "Agenda", decided):
+        """plan 66.4 RESUME A CHAIN-STOPPED LINE WHILE IT IS STILL FORCING. With time left after the tiers, the ROOT routes the last read ended as chain-stop GAPs (the clock, the tempo arithmetic, a second
+        check of theirs: the GAP facts of the background queue that belong to the root) are read again, in price order (the judge's first-level cost x the measured rate), in a RESUME PASS at the widest tier
+        read: a fresh context with every proof carried (66.1 / 66.2) and the chain allowance one level longer per pass -- applied at a stop ONLY while the line to it is still forcing (every move of ours named a
+        threat and every reply of theirs parried it: Lean `Ideas.Forcing.stillForcing`, `quiet_breaks`). A line that went quiet is not resumed and says why. The passes end at a natural end: no forcing
+        chain stop is left, a claim keeps the status, or the time. -> (owner, decided)."""
+        prev, p = ag, 0
+        st = self.status_info
+        while True:
+            left = total - (time.monotonic() - t0)
+            items, seen = [], set()
+            for it in reversed(prev.ctx.chain_gaps):
+                if (it["key"], it["uci"]) not in seen:
+                    seen.add((it["key"], it["uci"]))
+                    items.append(it)
+            if not items:
+                break
+            if left <= 0.05:
+                self.lines.append(f"RESUME: {len(items)} chain-stopped root route(s) left, no time to resume them")
+                break
+            spn = prev._spn()
+            go = []
+            for it in items:
+                ok, why = prev._still_forcing(it["line"])
+                if not ok:
+                    self.lines.append(f"RESUME: not resumed {it['route'].san}: the line went quiet ({why}; {it['gap']})")
+                    continue
+                cost = prev._price(it["route"].move, it["stake"], JUDGE_PRICE_CAP)[0]
+                go.append((cost * spn if spn else float(cost), cost, it))
+            if not go:
+                break
+            go.sort(key=lambda t: (t[0], t[2]["uci"]))
+            p += 1
+            ra = self._next_agenda(prev, prev.ctx.tier, left, st, f"resume {p - 1}" if p > 1 else prev.ctx.tier)
+            ra.ctx.extend = p
+            ra.ctx.held = None
+            want: dict = {}
+            for price, cost, it in go:
+                want.setdefault(it["key"], []).append(it["uci"])
+                moves = sum(1 for _ in it["line"]) or 1
+                self.lines.append(f"RESUME pass {p}: resumed {it['route'].san} (chain stop at move {moves}; every reply a parry; priced {cost}" + (f" x {spn:.4f} = {price:.2f} s" if spn else "") + f"; {left:.1f} s left; the allowance +{p})")
+            ra.ctx.resume_set = want
+            ra.lines = _TierLines(self.lines, f"[resume {p}] ")
+            t1 = time.monotonic()
+            ra._ask_once()
+            secs = time.monotonic() - t1
+            if self._fold_tier(ra, f"resume {p}", owner):
+                owner, decided = ra, f"resume {p}"
+            self.ctx.resume_passes = p
+            overall = self.best
+            kept = overall is not None and (overall[0] >= BD.MATE_VALUE or self.keeps(st, overall)[0])
+            self.tier_info.append(dict(tier=f"resume {p}", secs=round(secs, 2), asked=ra.asked + ra.ctx.asked, kept=kept, hit=bool(ra.ctx.hit), claims=len(ra.state.claims),
+                                       best=None if ra.best is None else (ra.best[2].what, ra.best[0])))
+            self.lines.append(f"RESUME pass {p}: " + ("no claim" if ra.best is None else f"best claim {ra.best[2].what} {ra.best[0]:+d}") + (": the status is kept" if kept else ""))
+            if kept or self.ctx.abort:
+                break
+            prev = ra
+        return owner, decided
 
     @staticmethod
     def _refuted(why: str) -> bool:
@@ -1116,6 +1217,10 @@ class Agenda:
                     sc, rec = self._recall_score(q)
                     self.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
             self.order.append(q)                                   # plan 53 (1): the order asked (the features are read at log time: the root board does not change while its agenda runs)
+            if self.ctx is not None and self.ctx.resume_set is not None and self.chase_depth == 0 and self._root and self._carry_key(q) not in self.ctx.resume_set:
+                if self.ctx.carry_q.get(self._carry_key(q)) is not None:      # plan 66.4: a resume pass reads only the chain-stopped routes; every other root question keeps its carried claim
+                    self._carry_question(q, settle=True)
+                continue
             if self.ctx is not None and self.ctx.carry_q and self.chase_depth == 0 and self._root and self._carry_question(q):
                 continue
             if self._inherit(q):
@@ -1149,7 +1254,7 @@ class Agenda:
             out[self._carry_key(q)] = dict(net=hit[0], second=hit[1], claim=hit[2], dep=bool(getattr(q, "_tier_dep", False)))
         return out
 
-    def _carry_question(self, q: R.Question) -> bool:
+    def _carry_question(self, q: R.Question, settle: bool = False) -> bool:
         """plan 66.1 PROVED ROOT CLAIMS CARRY (Lean `Ideas.Forcing.claim_mono`: a claim forced with our route set R is forced with any R' >= R; the wider tier widens OUR vocabulary only). The question's
         claim from an earlier tier is SERVED ("carried from tier k: ..."). It is not asked again when the claim keeps the status, or when no chase made it (a schema binding reads no vocabulary of the tier:
         the wider tier would answer it the same way). Otherwise it is RE-ASKED for a better claim, with the carried claim as its FLOOR (the best already holds it; 66.2: only what could beat it is re-read).
@@ -1169,6 +1274,10 @@ class Agenda:
         st = self.ctx.carry_status
         keeps = net >= BD.MATE_VALUE or (st is not None and st["balance"] + net >= st["line"])
         head = f"Q{q.id} {q.text}: carried from tier {hit['tier']}: {cl.what} {net:+d} (proved, lemma {cl.lemma})"
+        if settle:                                                 # (a resume pass: the claim is served, the question is not read)
+            self.ctx.carried_q_kept += 1
+            self.lines.append(head + "; not resumed: served")
+            return True
         if keeps or not hit["dep"]:
             self.ctx.carried_q_kept += 1
             self.lines.append(head + ("; it keeps the status: not asked again" if keeps else "; no chase made it (the answer reads no vocabulary of a tier): not asked again"))
@@ -1942,7 +2051,7 @@ class Agenda:
         hits0, chain0 = ctx.budget_hits, ctx.chain_hits
         saved = R._ids[0]
         evading = self._chase_q is not None and self._chase_q.goal == "save" and "checkers" in self._chase_q.pattern
-        ag = Agenda(State(fen=fen, us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=need, their=their, keep=keep, evaded=evading,
+        ag = Agenda(State(fen=fen, us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=need, their=their, keep=keep, evaded=(int(self.evaded) + 1) if evading else 0,
                     since=self.since_capture + 1 if since is None else since, free_level=exchange)      # (52.19: what it inherits comes from the fact store, not from this agenda alone)
         ag.ask()
         R._ids[0] = saved
@@ -2079,6 +2188,7 @@ class Agenda:
         if key in ctx.routes:
             hit = ctx.routes[key]
             stale = hit["gap"] is None and hit["killed"] is None and gstake and hit.get("closed_min", gstake) < gstake and hit.get("stake_checked", 0) < gstake       # a value closed by a short exchange under a lesser goal is not this goal's
+            stale = stale or (hit["gap"] is not None and hit["gap"].startswith("chain stop") and hit.get("chain_state") != self._chain_state())      # 66.4 (mh1q8): a chain stop under another chain state is not this one's
             if hit["gap"] is None and not stale:
                 return hit
             slice_now = max(ctx.deadline - time.monotonic(), 0) if ctx.deadline is not None else None
@@ -2185,8 +2295,10 @@ class Agenda:
             need = min(R.STAKE_PROMOTE, 1 - dbal) if promote and dbal <= 0 else R.STAKE_PROMOTE if promote else target - dbal if dbal < target else BD.MATE_VALUE          # a reply that already gains the need is read for a mate only; else its static gain must survive their threats (below)
             self._enter_reply(frozenset(P0.diff(P2)))
             self._reply_san = san_r
+            ctx.line.append((b.fen(), m.uci(), uci, self._judge_stake()))      # plan 66.4: the line being read
             inn = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), since=0 if (self.board.is_capture(self._route_move) and dbal >= 0) or self._pawn_move(self._route_move) else self.since_capture + 1,
                               exchange=self.board.is_capture(self._route_move) and chess.Move.from_uci(uci).to_square == self._route_move.to_square)      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
+            ctx.line.pop()
             if inn is None:
                 res["gap"] = self._cut(san, san_r)
                 res["reply"] = uci
@@ -2209,6 +2321,7 @@ class Agenda:
                 elif (inn.get("cut") or inn.get("chain")):
                     res["gap"] = self._cut(san, san_r, True, inn)
                     res["reply"] = uci
+                    self._mark_chain(res)
                     ctx.chain_hits += 0 if inn.get("cut") else 1      # 64.2: a chain stop is counted apart from a budget cut
                     ctx.budget_hits += 1 if inn.get("cut") else 0
                     self._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
@@ -2233,7 +2346,9 @@ class Agenda:
                 if claim_their is not None and dbal - t_their < 1:
                     # 52.14: their claim is a THREAT and a SAVE root of the inner agenda on this position (we are to move: a parry, a counter, taking the attacker); the reply is
                     # killed only by the threats no parry of ours is verified for
+                    ctx.line.append((b.fen(), m.uci(), uci, self._judge_stake()))
                     inn2 = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), their=ctx.their_ags.get(_pos_key(G.with_turn(chess.Board(P2.fen()), not self.me).fen())), keep=dbal)
+                    ctx.line.pop()
                     if inn2 is None:
                         res["gap"] = self._cut(san, san_r)
                         res["reply"] = uci
@@ -2261,6 +2376,7 @@ class Agenda:
             if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and (inn.get("cut") or inn.get("chain")):
                 res["gap"] = self._cut(san, san_r, True, inn)
                 res["reply"] = uci
+                self._mark_chain(res)
                 ctx.chain_hits += 0 if inn.get("cut") else 1      # 64.2: a chain stop is counted apart from a budget cut
                 ctx.budget_hits += 1 if inn.get("cut") else 0
                 self._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
@@ -2385,9 +2501,16 @@ class Agenda:
         count the agenda as cut, `_cut` names the reason), the question is not 'chased'."""
         self.ctx.chain_hits += 1
         self.ctx.chain_gap = why
+        self.ctx.chain_line = list(self.ctx.line)                # plan 66.4: the line at the stop (a resume reads it again, one more level, only while it is still forcing)
         self.lines.append(f"  chase: not started -- {why} (a GAP, never a kill)")
         self.state.gaps.append(f"Q{q.id} {q.text}: chain stop: {why}")
         q._chased = False
+
+    def _mark_chain(self, res: dict) -> None:
+        """plan 66.4: a route GAP by a chain stop keeps the line at the stop (the resume reads it) and the chain state it was cut under (its memo serves only that state)."""
+        if res["gap"].startswith("chain stop"):
+            res["stop_line"] = list(self.ctx.chain_line)
+            res["chain_state"] = self._chain_state()
 
     def _cut(self, san: str, san_r: str, inner: bool = False, inn: "dict | None" = None) -> str:
         """The GAP text of a route cut at a reply: the chain's stop (64.1: the inner answer had a chain stop and no budget cut), the TIME when the deadline passed (52.17 (5)), else the fuse."""
@@ -2928,16 +3051,79 @@ class Agenda:
         """plan 62.1c: a pawn move of ours resets the chase clock (irreversible, like a capture)."""
         return CLOCK_PAWN and self.board.piece_type_at(m.from_square) == chess.PAWN
 
+    def _step_forcing(self, step: tuple) -> tuple:
+        """plan 66.4 (Lean `Ideas.Forcing.Step` / `stillForcing`): one step of the line -- our move named a threat (`regress.threat_of` of its forcing reason) and their reply PARRIED it (the threat no longer
+        binds on the reply's board, or the reply is itself a counter-threat: `regress._binds`, `regress._counter`, the reading of `regress.parries`). -> (forcing?, why)."""
+        hit = self.ctx.forcing_steps.get(step)
+        if hit is not None:
+            return hit
+        fen, mu, ru, stake = step
+        b = chess.Board(fen)
+        m, r = chess.Move.from_uci(mu), chess.Move.from_uci(ru)
+        san = b.san(m)
+        why = R.forcing_why(b, m, stake, self.us, mate_threats=True, mate2=self.ctx.tier >= 2)
+        th = R.threat_of(b, m, why, self.us)
+        if th is None:
+            out = (False, f"{san} names no threat")
+        else:
+            after = b.copy(stack=False)
+            after.push(m)
+            d = after.copy(stack=False)
+            d.push(r)
+            v = 0 if d.is_check() else R._binds(d, th, stake, self.me)
+            out = (True, "") if not v or R._counter(after, r, stake, after.turn) else (False, f"{after.san(r)} does not parry {san} ({th.why})")
+        self.ctx.forcing_steps[step] = out
+        return out
+
+    def _still_forcing(self, line: list) -> tuple:
+        """plan 66.4: every step of the line forcing (`_step_forcing`). -> (True, '') or (False, why at the first quiet step)."""
+        for k, st in enumerate(line, 1):
+            ok, why = self._step_forcing(st)
+            if not ok:
+                return False, f"move {k}: {why}"
+        return True, ""
+
+    def _extension(self) -> int:
+        """plan 66.4: the extra levels a chain stop here is given: the resume pass's extension while the line to this position is still forcing, else 0."""
+        if self.ctx is None or not self.ctx.extend:
+            return 0
+        ok, _why = self._still_forcing(self.ctx.line)
+        if ok:
+            self.ctx.ext_used += 1
+            return self.ctx.extend
+        self.ctx.ext_quiet += 1
+        return 0
+
+    def _resume_begin(self, q: R.Question, r: R.Route) -> int:
+        """plan 66.4: before a ROOT route is read, the extension it is given (a route the previous tier stopped by the chain, the line still forcing): the trace says 'resumed Rxf2+ (chain stop at move 4;
+        every reply a parry; t s left; the allowance +1)'. -> the extension in force before (restored after the route)."""
+        ext0 = self.ctx.extend
+        if self.chase_depth != 0 or not self.ctx.resume_ext:
+            return ext0
+        e = self.ctx.resume_ext.get((self._carry_key(q), r.move.uci()))
+        if e is None:
+            return ext0
+        self.ctx.extend = max(ext0, e["ext"])
+        self.ctx.resumed += 1
+        left = max((self.ctx.final or time.monotonic()) - time.monotonic(), 0.0)
+        self.lines.append(f"    resumed {r.san} (chain stop at move {e['moves']}; every reply a parry; {left:.1f} s left; the allowance +{self.ctx.extend})")
+        return ext0
+
+    def _chain_state(self) -> tuple:
+        """plan 66.4 (mh1q8): what a chain stop depends on -- the clock, the checks evaded in a row, the exchange level, the allowance of the goal in hand, the extension. A chain-stop GAP memoised under one
+        chain state is not the answer under another (a mate goal's allowance is not the queen goal's)."""
+        return (self.since_capture, int(self.evaded), self.free_level, tuple(self.ctx.mate_levels[-1:]) if self.ctx is not None else (), self.ctx.extend if self.ctx is not None else 0)
+
     def _chase(self, q: R.Question) -> bool:
         """52.12: the chase of a question that would be killed. -> True when a route CLAIMS (the question is verified)."""
         evading = self._t(EVASION_CHASE, 3) and q.goal == "save" and "checkers" in q.pattern          # 52.23 (3): the save-king question of an agenda in check: its routes are the evasions, all forced (`_verify` calls the chase too: the switch is read HERE)
         if self.ctx is None or (q.goal not in ("mate", "win", "promote") and not evading) or self.min_stake >= BD.MATE_VALUE or (self.chase_depth >= 2 and (q.goal == "promote" or (q.goal == "win" and not self._t(DEEP_WIN_CHASE, 3)))):      # a mate-only read (the reply already gained, or lost too much for anything but a mate) does not chase on
             return False                                               # 52.23 (5): a win question chases at every depth; its checks must address a defect (52.17 (2)) -- the depth-two gate was a numbered limit
-        if self.chase_depth and self.since_capture >= self._clock() and not evading:      # 52.23 (8): the chase clock -- a capture that is not bad for us is one-way progress (material never comes back); without one for
+        if self.chase_depth and self.since_capture >= self._clock() and not evading and self.since_capture >= self._clock() + self._extension():      # 52.23 (8): the chase clock -- a capture that is not bad for us is one-way progress (material never comes back); without one for
             self.ctx.clock_stops += 1                                   # CHASE_CLOCK of our moves the chain goes nowhere and ends here (a hyperparameter to tune, Kaveh 2026-10-20)
             self._chain_gap(q, f"the chase clock: {self.since_capture} moves of ours without a capture that is not bad for us")      # 64.1: a hyperparameter's stop is a GAP, never a kill
             return False
-        if evading and self.evaded:                                    # 52.23 (3): ONE intermezzo check is followed; a second check of theirs against our evasion is not read (their chain, not our line) --
+        if evading and self.evaded and self.evaded > self._extension():      # 52.23 (3): ONE intermezzo check is followed (66.4: one more per level of a resumed, still-forcing line); a second check of theirs against our evasion is not read (their chain, not our line) --
             self._chain_gap(q, "a second check of theirs in a row (not followed)")      # 64.1: a GAP, never the kill "no claim of ours" it was (2zB89: 1.Qxa5 Qxa1+ 2.Rf1 Qd4+). Following the chain
             return False                                               # costs lK9WA's Nxc6 at 10 s (the king dance after Rxb6+): the cost judge (64.3) is what may follow it
         if self.best is not None and self.best[0] >= q.stake:      # 52.13 (2c): a question is chased only when its stake exceeds the best claim so far (stop (a) would end the agenda anyway)
@@ -2957,7 +3143,7 @@ class Agenda:
             parent = None if fresh or top is None or q.stake > top[1] else top[0]             # (a BIGGER goal found on the chain is a new goal with its own distance: zBouR's queen under the f2 pawn's chase)
             dist = max([1, len(q.defects)] + [f.pattern.get("steps", 1) for f in q.fixes])      # them with the goal unmet is the walk. For a WIN goal a capture that is not bad for us is one-way progress (Kaveh
             allow = dist if parent is None else min(parent - (0 if self.free_level else 1), dist)      # 2026-10-20): the allowance starts again (zBouR: Qh1+ Rf1 Qxf1+ Kd2 Rxf2+); a mate's distance is its defects alone.
-            if allow <= 0:
+            if allow <= 0 and allow + self._extension() <= 0:          # 66.4: a resumed line that is still forcing gets one more level of the allowance per pass
                 self.ctx.mate_walks += 1
                 self._chain_gap(q, f"tempo arithmetic: the chain has spent the prep moves the goal's defects allow ({len(q.defects)} defect(s), {parent} level(s) left under the {top[1]}-stake goal)")      # 64.1: a heuristic's stop is a GAP unless it is a proof (the judge is not a lemma)
                 return False
@@ -3002,6 +3188,9 @@ class Agenda:
             fix_moves = {r.move for f in q.fixes for r in R.all_routes(f)}     # the reply is forced); every other forcing move is the root's and the first level's (the named fixes that do not check still cost 0LRTF 4x)
             routes = [r for r in routes if r.move in fix_moves and b.gives_check(r.move)]
         routes.sort(key=lambda r: (0 if r.why.removeprefix("fix: ") == "check" else 1 if r.why.removeprefix("fix: ").startswith("capture") else 2))      # the most forcing first: a check, a capture, a threat (stable inside)
+        if self.chase_depth == 0 and self.ctx.resume_set is not None:      # plan 66.4: a resume pass reads only the chain-stopped routes of this question, in price order
+            want = self.ctx.resume_set.get(self._carry_key(q), [])
+            routes = [r for u in want for r in routes if r.move.uci() == u]
         self.promote_stake = q.stake if q.goal == "promote" else 0
         if not routes:
             self.lines.append("  chase: no forcing move on this board")
@@ -3058,7 +3247,9 @@ class Agenda:
                     self.ctx.deadline = now + max(min(root_final, self.ctx.final) - now, 0) / max(open_left, 1)
                     self.ctx.root_end = min(root_final, self.ctx.final)               # plan 61 C2: the end of the root's share of the time (the judge's pool)
                     self.ctx.hand = None                           # (a new slice: the route in hand is the one this slice sees)
+                ext0 = self._resume_begin(q, r)                       # plan 66.4: a route the last tier stopped by the chain, still forcing: one more level of the allowance
                 res = self._chase_route(r.move, promote=q.goal == "promote")
+                self.ctx.extend = ext0
                 if self.chase_depth == 0 and self.ctx.final is not None:
                     self.ctx.deadline = self.ctx.final
                     self.ctx.hand = None
@@ -3072,6 +3263,8 @@ class Agenda:
                 self._note_resume(q, r, res)
             if res["gap"]:
                 if res["gap"].startswith("chain stop"):
+                    if self.chase_depth == 0 and not res.get("reused") and RESUME:      # plan 66.4: a root route stopped by the chain: the resume pass may read it again
+                        self.ctx.chain_gaps.append(dict(key=self._carry_key(q), route=r, uci=r.move.uci(), stake=q.stake, line=list(res.get("stop_line") or []), gap=res["gap"], mkey=(self.pk, r.move.uci(), q.stake)))
                     stopped = True                                   # 64.2: a chain stop is deterministic (the same chain state stops at the same place whatever the budget): it does not make the chase a CUT one
                 else:
                     cut = True

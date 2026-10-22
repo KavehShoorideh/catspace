@@ -101,6 +101,8 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
     if cx.carried_q or cx.carry_served or cx.carry_reread:       # plan 66.1 / 66.2: the proofs carried across the tiers
         log(f"OBS carry {p['id']}: root questions served a carried claim {cx.carried_q}, not asked again {cx.carried_q_kept}, re-asked above the floor {cx.carried_q_reasked}; "
             f"replies served from an earlier tier {cx.carry_served}, read again (below the need) {cx.carry_reread}, root routes resumed {cx.carry_routes}")
+    if cx.resume_passes or cx.ext_used or cx.ext_quiet or cx.resumed:      # plan 66.4: the resumed routes and passes
+        log(f"OBS resume {p['id']}: root routes resumed in a wider tier {cx.resumed}, passes after the tiers {cx.resume_passes}, chain stops passed by the extension (still forcing) {cx.ext_used}, not passed (the line went quiet) {cx.ext_quiet}")
     tiers = getattr(ag, "tier_info", None)
     if tiers:                                                    # plan 59: the status, the line, the tiers run, the tier that decided, seconds per tier
         sti = ag.status_info
@@ -130,7 +132,7 @@ def _append_once(path, text: str) -> None:
         os.close(fd)
 
 
-_FLAGS = ("CARRY", "PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS", "TIERS_UNDER_TIME", "CLOSE_AFTER_CAPTURE", "RAISE_TO_WIN", "PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE", "ESTIMATE", "COST_JUDGE", "CYCLE", "COMPETE", "STOP_AFFORD", "UNPROVED", "DEEP_PASS", "CLOCK_PAWN")
+_FLAGS = ("RESUME", "CARRY", "PRIOR", "NEED_AWARE_CLOSE", "EVASION_CHASE", "NEED_PROPAGATION", "GOAL_JUDGE", "DEEP_WIN_CHASE", "CHASE_CLOCK", "TIERS", "TIERS_UNDER_TIME", "CLOSE_AFTER_CAPTURE", "RAISE_TO_WIN", "PARRIES", "DELAYED_THREAT", "NO_SAFE_MOVE", "ESTIMATE", "COST_JUDGE", "CYCLE", "COMPETE", "STOP_AFFORD", "UNPROVED", "DEEP_PASS", "CLOCK_PAWN")
 
 
 def _init_worker(flags: dict) -> None:
@@ -205,6 +207,7 @@ def main():
     ap.add_argument("--no-stop-afford", action="store_true", help="plan 65.2: the widening runs to the deadline instead of stopping when nothing affordable is left (comparison; ON by default)")
     ap.add_argument("--no-unproved", action="store_true", help="plan 65.3: no unfinished-line decision when there is no claim (comparison; ON by default)")
     ap.add_argument("--no-deep-pass", action="store_true", help="plan 65.4: the status reads their pass with the d1 family only (comparison; ON by default)")
+    ap.add_argument("--no-resume", action="store_true", help="plan 66.4: no resume pass of the chain-stopped root routes after the tiers (comparison condition, ON by default)")
     ap.add_argument("--no-carry", action="store_true", help="plan 66.1/66.2: proofs do NOT carry across the tiers (every tier re-reads everything; comparison condition, ON by default)")
     ap.add_argument("--no-race", action="store_true", help="plan 62.1: the passer race word OFF (comparison condition; ON by default; CATSPACE_RACE=0, inherited by the workers)")
     ap.add_argument("--no-frame", action="store_true", help="plan 62.2: the frame's recheck (condition (b)) OFF (comparison; ON by default)")
@@ -221,6 +224,9 @@ def main():
     if a.no_delayed and not a.delayed and not a.forcing61:
         from catspace.incubator.analyst.discovery import agenda as _AG63
         _AG63.DELAYED_THREAT = False
+    if a.no_resume:
+        from catspace.incubator.analyst.discovery import agenda as _AG664
+        _AG664.RESUME = False
     if a.no_carry:
         from catspace.incubator.analyst.discovery import agenda as _AG66
         _AG66.CARRY = False

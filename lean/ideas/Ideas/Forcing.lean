@@ -214,7 +214,7 @@ theorem none_affordable_of_cheapest {ps : List Nat} {c m l : Nat} (hmin : ∀ x 
   exact absurd this (by decide)
 
 
-/-! ## Plan 66: a proof carries across the tiers, a refutation does not -/
+/-! ## Plan 66: a proof carries across the tiers, a refutation does not; a chain stop is resumed only while the line is still forcing -/
 
 section Carry
 
@@ -256,5 +256,44 @@ theorem routeLow_mono {top : Int} : ∀ {gs ts : List Int}, List.Forall₂ (· �
     exact min_le_min h (routeLow_mono hs)
 
 end Carry
+
+/-- 66.4 ONE STEP OF A LINE: after our move (`q`, their turn) their reply `r`; `bind` is the claim our move threatened (a Bool on a position) and
+`threatens` says our move named a threat at all (`regress.threat_of` is not None: a check, a capture, a threat of mate, a threat worth the stake). -/
+structure Step where
+  q : Position
+  r : Move
+  bind : Position → Bool
+  threatens : Bool
+
+/-- 66.4 STILL FORCING: at every step our move threatened, and their reply PARRIED it (`parries`: the threat no longer binds, or the reply is itself a
+counter-threat). A chain-stopped line is resumed by one more level of the allowance only while this holds; a line that went quiet is not. -/
+def stillForcing (counter : Position → Move → Bool) (line : List Step) : Bool :=
+  line.all (fun s => s.threatens && parries s.bind counter s.q s.r)
+
+/-- The empty line (the stop at the root's first reply) is still forcing. -/
+theorem stillForcing_nil (counter : Position → Move → Bool) : stillForcing counter [] = true := rfl
+
+/-- Extending a line by one step: still forcing iff the line was and the new step threatens and is parried. -/
+theorem stillForcing_append (counter : Position → Move → Bool) (line : List Step) (s : Step) :
+    stillForcing counter (line ++ [s]) = (stillForcing counter line && (s.threatens && parries s.bind counter s.q s.r)) := by
+  simp [stillForcing, List.all_append]
+
+/-- A QUIET STEP ENDS IT: a step where our move named no threat makes the line not forcing, whatever came before or after. -/
+theorem quiet_breaks {counter : Position → Move → Bool} {line : List Step} {s : Step} (hs : s ∈ line) (hq : s.threatens = false) :
+    stillForcing counter line = false := by
+  by_contra h
+  have h' : stillForcing counter line = true := by simpa using h
+  simp only [stillForcing, List.all_eq_true] at h'
+  have := h' s hs
+  simp [hq] at this
+
+/-- In a still-forcing line every legal reply read is in the parry list of its step (`parryList`): none of them is a reply the chase would have
+closed by the threat (`closed_binds`). -/
+theorem stillForcing_parryList {counter : Position → Move → Bool} {line : List Step} (h : stillForcing counter line = true) {s : Step}
+    (hs : s ∈ line) (hl : s.r ∈ legalMoves s.q) : s.r ∈ parryList s.bind counter s.q := by
+  simp only [stillForcing, List.all_eq_true] at h
+  have := h s hs
+  simp only [Bool.and_eq_true] at this
+  simp [parryList, hl, this.2]
 
 end Ideas.Forcing
