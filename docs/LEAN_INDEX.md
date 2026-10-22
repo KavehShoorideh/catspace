@@ -313,7 +313,7 @@ Do not edit by hand.
 - **theorem `Ideas.Forcing.followUp_of_checkThreat`** (line 113): The follow-up includes the check that is also a threat.
 - **theorem `Ideas.Forcing.delayed_followUp`** (line 118): A delayed threat whose forcing word is `followUp` has, after every reply, a follow-up: a threat, a threat of mate, or a check with a claim behind it.
 - **def `Ideas.Forcing.routeCost`** (line 127): C1 THE COST of an open route: one for the route, plus the cost of the unread child of each parry (`regress.route_cost`).
-  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/regress.py
+  - used by: catspace/incubator/analyst/discovery/regress.py
 - **theorem `Ideas.Forcing.routeCost_pos`** (line 130): A route costs at least one.
 - **theorem `Ideas.Forcing.routeCost_ge_child`** (line 134): A route costs at least as much as any one child it reads.
 - **def `Ideas.Forcing.judgeReads`** (line 151): C2 THE JUDGE: read on while the cost times the seconds per node fits in the time left (integers: milliseconds per node).
