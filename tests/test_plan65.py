@@ -213,3 +213,15 @@ def test_65_4_not_when_the_d1_family_found_a_claim_or_nothing_of_ours_is_attacke
     st2 = ag2.status()
     print("OBS 65.4 2VDtX:", st2["threat"], st2["deep"])
     assert (not st2["deep"]) or ag2._pass_best is None                            # the deep family is read only when the d1 family found nothing
+
+
+def test_65_3_only_a_kill_that_proves_a_loss_is_a_refutation():
+    """A material kill '(-2)', a mate or a stalemate refutes a route; a kill of a question's own goal ('the blocked defect stands') or one that ends level '(+0)' proves no loss: the route stays a candidate (2zB89's Qxa5, 07Z0P's Qxd5+)."""
+    f = Agenda._refuted
+    assert f("after exf4: no claim of ours and no material gain (-2)")
+    assert f("after Qxg2+: our best claim Kxg2 wins 8, the reply took 9 (-9)")
+    assert f("after Nxd5: they mate us")
+    assert f("stalemate")
+    assert not f("after Nxd5: no claim of ours and no material gain (+0)")
+    assert not f("after Qxa1+: the blocked defect stands (their P stands on b7) and no fix is new there")
+    assert not f("after Bxe4: the promotion is not claimed (no promote claim of ours; the reply took 3)")

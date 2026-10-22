@@ -811,9 +811,16 @@ class Agenda:
         self.tier_secs = [t["secs"] for t in self.tier_info]
         self.lines.append(f"TIERS: ran {len(self.tier_info)} (0..{len(self.tier_info) - 1}); the decision is " + (f"{self.best[2].what} ({self.best[0]:+d}) from tier {decided}" if self.best is not None else "none") + f"; seconds per tier {self.tier_secs}")
 
+    @staticmethod
+    def _refuted(why: str) -> bool:
+        """plan 65.3: does a route's kill PROVE a loss? A material kill reads '... (-n)' (a reply of theirs after which we are n down with nothing to win back), or the route walks into a mate / stalemate. A kill of
+        a question's own goal (the promotion is not claimed, the blocked defect stands) or one that ends level ('(+0)') proves no loss: that route is not refuted."""
+        m = re.search(r"\((-\d+)\)\s*$", why)
+        return bool(m) or "they mate us" in why or "stalemate" in why or "no parry" in why
+
     def _record_roots(self, routes: list, results: dict) -> None:
-        """plan 65.3: what the ROOT's chase learned of each route: killed (a proved loss under this tier's vocabulary: final) or GAP (unfinished: the replies read so far are `gains`). The decision reads this
-        when no claim exists at all. Inner agendas record nothing."""
+        """plan 65.3: what the ROOT's chase learned of each route: REFUTED (a kill that proves a loss: final), or UNFINISHED (a GAP, or a kill that proves no loss: the replies read so far are `gains`). The decision
+        reads this when no claim exists at all. Inner agendas record nothing."""
         if self.chase_depth != 0 or self.ctx is None:
             return
         for i, r in enumerate(routes):
@@ -821,13 +828,14 @@ class Agenda:
             u = r.move.uci()
             if res is None or self.root_reads.get(u, {}).get("status") == "killed":
                 continue
-            if res.get("killed"):
-                self.root_reads[u] = dict(status="killed", san=r.san, why=res["killed"])
-            elif res.get("gap"):
-                gains = list(res.get("gains") or [])
+            gains = list(res.get("gains") or [])
+            if res.get("killed") and self._refuted(res["killed"]):
+                self.root_reads[u] = dict(status="killed", san=r.san, why=res["killed"], gains=gains)
+            elif res.get("killed") or res.get("gap"):
+                why = res.get("gap") or f"not refuted: {res['killed']}"
                 old = self.root_reads.get(u)
                 if old is None or len(gains) >= len(old["gains"]):
-                    self.root_reads[u] = dict(status="gap", san=r.san, gap=res["gap"], gains=gains)
+                    self.root_reads[u] = dict(status="gap", san=r.san, gap=why, gains=gains)
 
     def _unfinished_claim(self) -> "Claim | None":
         """plan 65.3 THE UNPROVED DECISION: no claim of any kind exists. An UNFINISHED route (a GAP: nothing is proved against it) is preferred to a refuted one (a KILL is a proved loss). Among the GAPs: the best
