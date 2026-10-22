@@ -2925,6 +2925,36 @@ of the h-pawn is not a stopper once the king covers h2 and the f-pawn deflects. 
   (`sample_puzzles --themes rookEndgame pawnEndgame --n 30`, a new sampler option); python-chess's `chess.syzygy` reads the files.
 * 62.4 ORDER: 62.1 first (it is the vocabulary), 62.2 with it (the race word is a frame word), 62.3 last (cheap, bounded). Each OFF until graded.
 
+**62 built (2026-10-22; commits aee8ade2 = 62.1 + 62.1b + 62.2, c63d4698 = 62.3).** Against the spec, item by item, with every deviation.
+* 62.1 THE RACE WORD. Lean `Ideas/Race.lean` (builds clean, no `sorry`, standard axioms): `promoTempi`, `raceBinds` (`ours <= theirs`: the mover is first; the spec's `<` implies it), `race_sound`
+  (an ABSTRACT game with our tempo measure and theirs: our moves lower ours, their replies never raise it -- `hheld`, the stopper analysis -- and theirs is not faster => `Forced.Reach` of the goal within `ours`
+  moves), `race_first`, `holds`/`holdSet`/`overloaded` with `overloaded_exclusive`/`overloaded_far`/`overload_sound` (the deflection), and the rules link `legal_king_safe`, `no_stand_attacked`, `no_stand_adjacent`,
+  `no_stand_pawn` (a legal move never leaves the mover's king attacked: a square next to the other king or attacked by its pawn is DENIED to a king). Mirror `discovery/race.py` (`race_claim`, served at `_ask_promote`
+  / `ask_promote_g` through `Agenda._race_claim`, in `pass_claim`, and as the "defect stands" exception of `_promote_stands`), tests against the Lean `decide` cases in `tests/test_plan62.py`.
+  DEVIATIONS: (1) `race_sound` is NOT a statement about all legal chess play. The spec's lemma ("our promoTempi < theirs and a stopper within reach => we win the race") is false as a statement about the full rules (a rook of
+  theirs can check, fork, or arrive; counterexample: any position with a rook that skewers the passer's escort), so the theorem is proved over the abstract tempo game with the stopper analysis as a hypothesis; the bridge from the
+  geometry the mirror checks to that hypothesis is NOT proved in Lean (Passer2's 2000-line job); it is checked against an exhaustive race search instead (`race --validate`, `Race.wins_race`: the queen must survive their reply,
+  no stalemate; two bugs of the word were found that way: a promotion that stalemates, and a walk that stalemates). (2) For that reason the word is served ONLY where their side is a king and pawns (the gate): all eight
+  acceptance cases have a piece of theirs, so the word declines on all of them. (3) The stopper analysis is a STAGE test (their king takes the pawn on y_j / the queen, or stands on y_{j+1}, with the squares our king,
+  our pieces and the passer itself attack denied), not the spec's `promoTempi = pushes + the stopper's delay`; the deflection plan is "push A to its 7th, then B" (`ours = (nA - 1) + nB`).
+* 62.1b DENY THE STOPPER'S PATH (Kaveh's addition). The stopper defect names its path ("path e7 f8", `race.stopper_walk`); `promote_fixes` adds the routes `race.deny_moves` (a move of ours after which the stopper has no walk to
+  its targets within n + 1 moves over the squares it can stand and survive on); Lean `UWalk`, `real_is_uwalk`, `deny_sound`, `king_usable`. A denier the stopper can take is refused (RoR8t's `Rf1+` was an unsound
+  "denial" before that rule; a test keeps it out). The verdict itself (a king that "reaches" the promotion square) is unchanged. Step (c) of the order ("re-read promoTempi with that stopper excluded") is the race word's stage
+  test, which stays inside the gate. Result on the eight cases: no route fired on any of them (see below).
+* 62.2 THE FRAME. `Race.frame_sound` / `frame_sound_pass` (a frame claim forced against every frame reply AND the pass is the whole-board claim when every whole-board reply projects onto a frame reply or leaves the projection
+  unchanged and they are never stalemated), `excluded_is_pass` (`FrameLemma.frame_unchanged`), `far_stays_off` / `far_not_bearing` with the 1-Lipschitz bounds `kdist_step`, `lb_step` (kings; pawns by `Passer2.pdist`; the rest by `lb`,
+  so a rook is never excludable beyond one tempo). Mirror: the claim's trace line "frame: <read set>; excluded <pieces>: their pawns are far (>= k ...); the word counts only our tempi ..." and condition (b) as a ONE-PLY recheck
+  (after our first move every legal reply leaves a position on which the word binds again with a tempo fewer; `race._recheck`, switch `--no-frame`). Deviation: (b) is checked one ply deep, not by the full `Forcing.parries`
+  chain; the word counting only our tempi is the argument for the rest.
+* 62.3 THE TABLE. `discovery/table.py` (python-chess `chess.syzygy`, `paths.syzygy_dir()`), claims `proved_by="table"` (`Claim.proved_by`), created at `Agenda._roots` for a board of at most five men with the mover to move; a win is
+  worth their remaining material (a bare king: 100), a draw is worth minus the balance when behind, a loss is no claim; at an equal value a proved word beats a table claim (`_claim_key`); the question log row carries `proved_by`
+  and `question_prior grade` prints `table RIGHT/WRONG` beside `proved`/`unproved`. DECISIONS LEFT OPEN: the win value (the spec says "the material of their last piece or 100 for a mate line"; the table does not say which, so a bare
+  king left = 100, else their material); cursed/blessed (WDL +-1) are draws; the sampler gained `--any-theme` (the spec's `--themes rookEndgame pawnEndgame` means either theme; the old option meant both).
+* 62.4 ORDER kept; "each OFF until graded" superseded: every item is ON, with `--no-race`, `--no-frame`, `--no-deny`, `--no-table` as comparison conditions (env `CATSPACE_RACE/FRAME/DENY/TABLE=0`, inherited by the workers).
+* ACCEPTANCE. No grade of the 90 was run for this item (Kaveh 2026-10-22: one evaluation at the end after plans 66 and 67). Single cases at 15 s, before and after: RoR8t (Kg3, MATCH) and the seven race ids (9wgF7, 3JaeM, 4efZ2, gU0B4,
+  ilnKz, 3U6wp, ynsca) keep their decisions: none of them is a king-and-pawns board (each has a rook or a knight of theirs), so neither the race word nor a deny route fired; RoR8t is NOT decided as a proved claim. The mid-run 15 s
+  grade (a62_15, before the final fixes of the word, not an acceptance run) read proved 66/1, unproved 5/14, none 4 against 67/2, 4/13, 4 (DdWEG wrong to right, eSJqH right to wrong; eSJqH alone at 15 s decides Qa5, right: timing).
+
 ### 63 A check that is also a threat counts as a follow-up; "pinned to a threat" = the duty word for any piece (Kaveh 2026-10-21 GO: "what is the fix? plan it and send it to an agent"; pos2)
 The case (`data/derived/ledger_puzzles_kaveh_pos2.json`, White to move, a rook down): 1.Bf2! (their Bh4 is pinned to the h-file by the Qh7 mate threat; the
 queen is its only defender; 2.Ng1 unblocks the queen and removes the piece that 2.Bxh4? Qxh4 would pin; then Bxh4). Stockfish 1.Bf2 -2.1 against our

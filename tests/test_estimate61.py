@@ -19,6 +19,13 @@ FREE_PAWN = "7k/8/7p/8/8/8/8/2B3K1 w - - 0 1"                    # Bxh6 wins a p
 CHECKABLE = "6k1/8/8/8/8/8/8/R5K1 w - - 0 1"                      # Ra8+ is forcing: not quiet
 NOT_QUIET_AFTER = "4k3/pp6/7p/8/8/8/5PPP/2B3K1 w - - 0 1"         # after Bxh6 a reply leaves a forcing move of ours: the gap stays a gap
 
+@pytest.fixture(autouse=True)
+def _rules_not_the_table(monkeypatch):
+    """These tests read the RULE machinery on small endings; plan 62.3's tablebase would close those boards first (the comparison condition `--no-table`)."""
+    from catspace.incubator.analyst.discovery import table as _TB62
+    monkeypatch.setattr(_TB62, "TABLE", False)
+
+
 
 @pytest.fixture(autouse=True)
 def _setup(monkeypatch, tmp_path):

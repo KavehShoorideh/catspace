@@ -13,6 +13,13 @@ IFU = "r1b2rk1/pp3pp1/3b3p/3Bn3/P4q2/2P4P/1P2NPP1/RN1Q1RK1 b - - 2 17"
 SA = "2Q2bk1/5p1p/p5p1/2p3P1/4B3/7P/qPr2P2/2K4R w - - 0 33"
 QH2 = [(chess.Piece(chess.QUEEN, False), chess.H2, chess.F4)]
 
+@pytest.fixture(autouse=True)
+def _rules_not_the_table(monkeypatch):
+    """These tests read the RULE machinery on small endings; plan 62.3's tablebase would close those boards first (the comparison condition `--no-table`)."""
+    from catspace.incubator.analyst.discovery import table as _TB62
+    monkeypatch.setattr(_TB62, "TABLE", False)
+
+
 
 @pytest.fixture
 def chain_items_off(monkeypatch):
@@ -156,7 +163,9 @@ def test_unstoppable_pawn_fires_the_lemma_and_claims_eight():
     assert R.promote_defects(chess.Board(RACE), chess.E6)[0] == []
 
 
-def test_stopped_pawn_is_killed_with_the_distance_reason():
+def test_stopped_pawn_is_killed_with_the_distance_reason(monkeypatch):
+    from catspace.incubator.analyst.discovery import race as _RC62
+    monkeypatch.setattr(_RC62, "RACE", False)          # plan 62.1: with the race word ON the chase proves this one (e7, then Kf7: won in 5 plies); the 1-ply kill is the comparison condition
     ag = _ag(RACE_STOPPED)
     assert ag.best is None and (ag.decision() is None or not ag.decision().proved)                  # no PROVED claim (plan 65.3: an unproved unfinished line may be offered)
     assert "stopped: their K on c7 reaches e8 in 2, the pawn needs 2" in ag.trace()
@@ -168,7 +177,9 @@ def test_blocked_pawn_names_the_blocker():
     assert "defect blocked (their N stands on e7)" in _ag(RACE_BLOCKED).trace()
 
 
-def test_defects_say_unstoppable_but_the_lemma_does_not_fire_is_a_gap_naming_the_hypothesis():
+def test_defects_say_unstoppable_but_the_lemma_does_not_fire_is_a_gap_naming_the_hypothesis(monkeypatch):
+    from catspace.incubator.analyst.discovery import race as _RC62
+    monkeypatch.setattr(_RC62, "RACE", False)          # plan 62.1: with the race word ON this king-and-pawn board (our bishop) is claimed by Ideas.Race.race_sound
     ag = _ag(RACE_GAP)
     assert ag.decision() is None
     assert any("noSliders: our B on b2" in g for g in ag.state.gaps)
@@ -881,7 +892,9 @@ def test_52_17_the_dev_20_decisions_that_needed_a_discovery_or_a_resumed_gap_are
 
 # ---- 52.17 (3): the king driven off a square, and the promotion that is an exchange -----------------------------------------------------------------
 
-def test_52_17_rh8_does_not_drive_the_king_off_c8_but_rd8_after_kd7_does():
+def test_52_17_rh8_does_not_drive_the_king_off_c8_but_rd8_after_kd7_does(monkeypatch):
+    from catspace.incubator.analyst.discovery import race as _RC62
+    monkeypatch.setattr(_RC62, "DENY", False)          # plan 62.1b adds deny-the-path routes to the stopper fix; this test reads the drive-off routes alone
     b = chess.Board(LRTF)
     assert not R.drives_off(b, chess.Move.from_uci("h7h8"), chess.C8, chess.C8)                 # Kd7 still touches c8
     c = chess.Board(LRTF)
