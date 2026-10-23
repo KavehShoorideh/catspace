@@ -3412,3 +3412,16 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
   promotion squares) within the root's tempo horizon -- a table of (unit, job, material, tempi). It is cheap (one roll per unit, memoised by board), interpretable (it prints as "the N on b8
   can join nothing; their K reaches c7 in 3"), and becomes FEATURES of the question prior and the route policy (plan 53 / 69: the agent sees the board and the claims -- now also what each
   unit can do). The decision stays by proof; the survey only orders. Built after 72.2 under the retrain -> gate -> adopt rule.
+* 72.3 THE STAKE RULE (Kaveh 2026-10-23 11:30: "tempo value depends on the situation; in certain situations we can prove that with one extra tempo we could win so and so material"). A tempo
+  is worth what THE OTHER SIDE PROVES WITH THE MOVE PASSED TO IT: for one tempo that is the threat word as it stands (their claim against our pass; ours against theirs); for k tempi it is
+  their fastest counter-plan within k-1 free moves, read by the same priced reach with the sides swapped (a candidate: it orders and prunes, the chase proves). A join plan STANDS when what it
+  wins exceeds what their counter-plan buys with the tempi it spends; who arrives first is `Game.race_sound` (mu our tempi, nu theirs). Never a constant. GO (Kaveh 2026-10-23): build 72.3 on a
+  branch by an agent; 72.5 likewise; the loop's iteration 2 only after both are merged and gated.
+* 72.6 THE GATE SPLIT (Kaveh 2026-10-23: "how do we stop stuff from taking so long?"): an ENGINE GATE (the files that run the engine: the plan files, regress, agenda, tiers, binder, fact
+  store, game, graph policy, question prior, offbuilt64, cost61/duty63/estimate61/forcing61, plan72) run on every change, one file at a time, unbuffered, durations logged, under a LOCK so two
+  gates never run at once (timed tests are flaky under contention: the two-hour gate of 2026-10-22); the FULL suite only before a commit that touches shared code. `scripts/gate.py engine|full`.
+* 72.7 THE RUST BOUNDARY (Kaveh 2026-10-23: "everything that's not ML should live in Rust"): the profile of 2026-10-23 -- ~20 % of a run builds FEN strings to call the Rust words, ~25 % is
+  python-chess copies / pushes / legal-move generation. Research first (an agent, the internet): the Rust move generators (shakmaty -- already the core's -- cozy-chess, pleco, chess), the pyo3
+  boundary (a Rust position HANDLE held by Python, words called on the handle, no FEN per call; batched calls), what stays in Python (torch, the graph policy, the question prior, orchestration,
+  tests) -> docs/RUST_BOUNDARY.md with the migration order (1. the handle and the word calls on it under the trace guard; 2. the chase's reply loop and the static leaf; 3. the words themselves),
+  the risks (the Lean mirror citations, the read sets, the trace text), and the measured expectation per step. No code in the research step.
