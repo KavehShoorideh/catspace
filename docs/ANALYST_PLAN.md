@@ -3330,3 +3330,7 @@ machinery (defects, fixes, forcing words, endgame words, policies, estimates), t
   90 by proof at the end equal to the pool grade (proved 66 / 1) or each change traced; docs/DOMAIN_MAP.md says which functions are generic and which are
   the instance's; the two variants of 71.6 run. Numbers from OBS lines, directional. Kaveh reviews the map and the interfaces after 71.0 / 71.2 before
   71.3 proceeds (his standing rule: discuss before a refactor).
+* 71.1 CONDITION (Kaveh 2026-10-22: "we need immediate and delayed computation queues; one working version, a copy can be retired"): after the retirement
+  there is exactly ONE immediate path (the recursive chase) and ONE delayed queue (the fact store's gap queue, 52.19, with 66.2's carry_r/proofs and 66.4's
+  chain_gaps folded into it in 71.5), and the delayed queue becomes an explicit interface -- `file(gap, stake, resume_mark)`, `drain(seconds, policy order)` --
+  used by the ponderer, the resume passes and the pool passes alike, instead of three lists poked from three places.
