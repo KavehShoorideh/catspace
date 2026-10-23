@@ -3431,3 +3431,78 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
   LOCK: `<tmpdir>/catspace_gate.lock` (pid, cmd, start); a second gate refuses (exit 2) naming the running gate's pid and start time; a lock whose pid is dead is removed. Other running pytest processes
   are listed as a warning, never killed. Ends with `OBS gate <cmd>: files N, passed P, failed F, xfailed X, errors E, wall S s` and the FAILED ids; exit 1 on any failed/error. Test: tests/test_gate_script.py
   (file lists, lock, summary parser; no engine runs).
+
+### 72.8 THE SKELETON GOALS: imagine the arrangement of our fast pieces against the fixed board, price it, and only then calculate (Kaveh 2026-10-23 afternoon, GO: "I'm very excited to see the results")
+
+THE IDEA (Kaveh): we ask too many questions because we do not know the goal; the lines run into dead ends. A goal should be an ARRANGEMENT of our pieces -- a sequence of arrangements --
+at the end of which a tactic wins (a mate, a piece, a promotion) and the exchange cements it. Pawns move one way and slowly, kings slowly, pinned or stuck pieces not at all: they are the FIXED
+board, the SKELETON. The fast pieces (queens, rooks, bishops, knights with room) are imagined where they do the job, theirs ignored at first (a fast piece of theirs on a square we want is a
+DEFLECTION sub-goal, not a wall), ours priced by the roll forward (72.1), the whole compared with their counter-plan by the race (72.3's stake rule), and the chase proves the survivor.
+"If this pawn were one square forward it would do the job" is allowed (a pawn's push is a slow move it can make); "if this pawn were one square back" is not (the pawn never goes back).
+
+THIS IS A SPECIFICATION FOR AN AGENT. Every term below is defined; build exactly this, nothing more. Stage 1 only (the LATER items at the end are not yours).
+
+DEFINITIONS (all over a python-chess board `b` with the side `us` to move; `k` = the horizon, the reach fuse `regress.REACH_K`):
+1. SLOW unit (either colour): a king; a pawn; a unit with no safe square (`regress.can_run(b, sq, other_side)[0]` is False -- read with the OTHER side as `us`, that is the side that would
+   win it); a unit that is duty-bound (`regress.duty_bound(b, sq, other_side)`). FAST unit: every other unit. Print the partition once per root agenda as the trace line
+   `skeleton: fixed K g1, P a2 b2 f2 g2 h2, N f3 (no safe square), B e2 (duty-bound); fast Q d1, R a1, R f1`.
+2. SKELETON A, `skeleton_a(b, us)`: a copy of `b` with OUR fast units REMOVED (their units all kept). SKELETON B, `skeleton_b(b, us)`: skeleton A with THEIR fast units removed too.
+   Both are counterfactual boards (`graph.with_piece` / `Board.remove_piece_at` on a copy; keep the side to move = us; drop en passant). Never push moves on a skeleton.
+3. TARGET: (i) their king (goal kind `mate`); (ii) each SLOW unit of theirs that is not a king or a pawn (goal kind `win`, its square); (iii) the promotion square of each passer of ours
+   (`regress.is_passer`; goal kind `promote`). No other targets.
+4. PLACEMENT (mate targets only): one FAST unit of ours placed on a square from which it would give check on skeleton A (the squares aligned with their king for that piece kind, as
+   `agenda._scan_reach` / `regress._aligned` read them; the placement square must be empty on the skeleton or hold a unit of theirs that a capture there could remove -- the latter is
+   priced as a job whose landing is that square with bearing=False). For `win` and `promote` targets there is no placement.
+5. JOBS of an arrangement: the DEFECTS of the goal read ON THE SKELETON with the placement applied, by the existing words and nothing else:
+   mate: `words.CHESS_WORDS.mate_defects(skeleton_with_placement, us, placement)` -> for each defect: kind `flight` sq -> job (bear on sq); `checker takeable` -> job (bear on the placement
+   square: a guard); `interposition` sq -> job (bear on sq); other kinds -> job (bear on the defect's square). win: `material_defects(skeleton, us, target)` -> `not attacked` -> job
+   (bear on target); `defended` -> a DEFLECTION entry for each defender (see 7), no job. promote: `promote_defects(skeleton, pawn)` -> `path attacked` / `promo square attacked` -> job (bear on
+   that square); `stopper` -> a DEFLECTION entry; `blocked` by our own unit -> that unit must step aside (a +1 tempo entry, see 6c).
+   A job is `Job(square, kind, why)`. If a goal has MORE THAN 4 jobs it is dropped (a named fuse `SKELETON_MAX_JOBS = 4`, documented: the arrangement is then a plan the chase cannot verify in
+   the horizon; not a limit on the engine's words).
+6. THE PRICE of an arrangement = an ASSIGNMENT of our fast units to the placement (if any) and the jobs, each unit at most one job, minimising the pair (material, tempi) summed:
+   a. the placement unit's cost is `reach_price(skeleton_a, unit_sq, placement_sq, k, bearing=False)` (it LANDS there); a job's cost is `reach_price(skeleton_a, unit_sq, job.square, k,
+      bearing=True)` (it BEARS on it). Read on SKELETON A (our other fast units are off the board, so a path they block is open -- this is how "one knight gives way for the other" is priced).
+      A unit that bears on its job already costs (0, 0).
+   b. enumerate injective assignments (units <= 7, jobs + placement <= 5: at most 7*6*5*4*3 = 2520 tuples; fine) and take the least by (material, tempi); ties by the lexicographic order of
+      the squares. If some job has NO unit that can reach it within k, the arrangement is UNREACHABLE (verdict `unreachable`, the job named).
+   c. STEP-ASIDE: for each assigned unit, if a fast unit of ours that received no job stands on a square of the chosen path (the roll's `path` landings and the squares between consecutive
+      landings on the live board `b`), add 1 tempo and record `step-aside: R a1 off the path`. (Stage 1 does not price what the stepping-aside piece does afterwards.)
+   d. tempi are SUMMED across units (we move one piece per move: the arrangement is a sequence); material is summed.
+7. DEFLECTIONS (skeleton B is read only to find these): for every job square (and the placement square) compute `bearing/occupancy` by THEIR units on the live board `b`: a fast unit of
+   theirs that occupies or bears on a job square (so the job cannot be done as priced) is a `Deflection(their_sq, job_square)` entry. Stage 1 RECORDS deflections and marks the arrangement
+   `open: deflection` when any exists -- it is not pushed as a question and is printed. (A slow unit of theirs guarding a job square makes the job as read on skeleton A: the defects already
+   saw it, since skeleton A keeps their units; so deflections are exactly the FAST guards.)
+8. THE STAKE RULE (72.3): `stake` = 100 for mate, the target's worth for win, `regress.STAKE_PROMOTE` for promote. `counter` = `regress.counter_value(...)` as 72.3 built it, with mu = the
+   arrangement's total tempi (their counter-plan within mu-1 free moves). Verdict `refused` when `stake - material - counter < 1`, with the text 72.3 uses ("their R reaches our Q in 1").
+   Else verdict `reachable`.
+9. OUTPUT: `regress.skeleton_goals(b, us, k=REACH_K) -> list[Arrangement]`, each a dataclass: target (square or 'king'), goal kind, placement (unit sq, square) or None, jobs, assignment
+   [(unit sq, job or 'placement', material, tempi, path)], step_asides, deflections, material, tempi, stake, counter, verdict, text. Sorted: reachable first by (stake - material - counter)
+   descending, then open, then refused, then unreachable. `text` is ONE sentence a player can check, e.g. `arrangement for mate on h7: Q lands on h7 (Qd1-h5-h7, 2), B bears on h7 from d3
+   (Be2-d3, 1), R covers the g-file? no: price (0, 3), their counter 0 -> reachable` -- use the real jobs; the exact format is below.
+10. TRACE TEXT (tests assert on these exact prefixes): per root agenda, after the `skeleton:` line, at most 6 lines `arrangement <goal text>: <unit> <landing/bears> ... ; price (<m>, <t>), counter <c>
+    -> <verdict>` where <unit> items are `Q d1->h7 (2)` for a landing and `B e2->d3 bears on h7 (1)` for a job, `R a1 step-aside (+1)` for 6c, `deflect their Q from d1 (open)` for 7. The
+    goal text is the root question's own text where one exists (`mate on h7 (Q d1->h7, their king on g8)`), else `win their N on e5` / `promote our P on a4`.
+11. AGENDA WIRING, flag `SKELETON_GOALS = True` in agenda.py: in the ROOT agenda only (not inner agendas, not their agendas), after `_roots()` and before the pool orders the questions:
+    (a) compute the arrangements once; print the lines; (b) for each `reachable` arrangement whose goal matches an existing root question (same goal kind and target / placement square), set
+    `q.pattern["arrangement"] = {material, tempi, counter, text}` and ADD the assignment's first steps as fix routes through 72.3's `join_fixes` machinery (the route text `bring the ...` as 72.3
+    prints it, with the arrangement's text appended in brackets) -- the routes are asked like any fix; (c) a `reachable` arrangement with NO matching root question (a mate placement square
+    the one-move roots did not have) pushes a NEW root question of that goal kind with the placement as its pattern (`R.new_question("mate", R.STAKE_MATE, dict(sym=..., at=..., frm=..., king=..., more=[],
+    move=None, reach=[first step uci]))` exactly as `_scan_reach` pushes reach roots) -- so the arrangement becomes a question the chase proves or kills; (d) the POLICY sees it: add one feature
+    to the question prior / graph policy question nodes: the arrangement's (stake - material - counter) or 0 -- following 72.5's padding rule so the saved model still loads and scores
+    unchanged (coordinate with the 72.5 branch's feature versioning if it is merged; if not, add the feature in the same padded way and say so).
+    THE DECISION IS BY PROOF: arrangements add routes, roots and features; they never claim and never kill a question (a `refused` arrangement only means its routes are not added).
+12. COST: the whole of 72.8 runs ONCE per root agenda; print `OBS skeleton goals <id>: targets T, arrangements A (reachable R, open O, refused F, unreachable U), ms M`; it must be under ~5 % of a
+    15 s run on the discovery position and pos2 (measure; if it is not, reduce by the named fuses 5 and `SKELETON_MAX_UNITS = 7`, never by a flag).
+13. TESTS `tests/test_plan72_8.py` (8 tests, count budgets only, run ONLY through `scripts/gate.py engine --only tests/test_plan72_8.py`): the partition (a pinned knight and a stuck bishop are
+    slow; a free rook is fast); skeleton A removes exactly our fast units; a mate arrangement on a small FEN with two jobs priced (0, 3) and verdict reachable; the step-aside case (our own
+    rook blocks the queen's path: +1); a deflection (their queen guards the mating square: verdict open, the deflection named); a refusal by the stake rule (their counter-plan wins more in the
+    tempi we spend); the trace lines' exact prefixes on one acceptance position (the discovery position); the new root question is pushed when no one-move root matched, and nothing is pushed
+    for refused/open/unreachable arrangements.
+14. GUARD: `scripts/trace_identity.py snapshot` before / after and `compare`: decisions may change ONLY by a new or re-ordered ROUTE or ROOT (explain each in the report by its trace); a lost
+    PROVED decision is a regression -- fix or report plainly. Mark 72.8 BUILT in this plan with the OBS lines; append a dated JOURNAL.md entry (date from `date`), OBS numbers only.
+15. LEAN: an arrangement is a conjunction of bearing predicates over a counterfactual board; cite `Ideas.Vocabulary.attackableIn`, `Ideas.Reach.reachPrice` (price-0 = attackableIn) and the mate
+    defect words in docstrings; prove nothing new in stage 1 and SAY SO in the module docstring ("the arrangement is a candidate goal; its proof is the chase").
+LATER (not stage 1): the SHAPE LIBRARY (arrangements mined from proved mates and wins, matched to skeletons -- Kaveh 2026-10-22 "mined shapes", with the lemma miner); DEFLECTION QUESTIONS
+(a deflection entry becomes its own root: drive the fast guard off with tempo); the JOINT ROLL (two units' paths priced together beyond the step-aside rule); arrangements for their side
+(their skeleton goals as threats at the leaf).
