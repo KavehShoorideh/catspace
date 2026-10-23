@@ -2,30 +2,30 @@
 
 Per function: the chess-bound calls (python-chess `chess.*` and board methods, `G.*` graph words, `BD.*`/`PV.*` lemma families). A function with no row is generic as it stands.
 
-OBS domain map: agenda 739, regress 725, race 265, plan67 101, binder 64, table 35, question_prior 28, facts 19, graph_policy 16, ponder 16, analyse 9, state 4
+OBS domain map: agenda 742, regress 725, race 265, plan67 101, binder 64, table 35, question_prior 28, facts 19, graph_policy 16, ponder 16, analyse 9, state 4
 
-## agenda.py -- 99 chess-bound functions, 739 calls
+## agenda.py -- 99 chess-bound functions, 742 calls
 
 | function | calls | the most frequent |
 |---|---|---|
+| `_chase_route_body` | 46 | BD.MATE_VALUE 17, board.fen 9, chess.Move 3, board.push 3, board.pop 3 |
 | `_roots` | 45 | board.piece_at 13, G.name 7, G.worth 7, board.legal_moves 2, G.with_piece 2 |
-| `_chase_route_body` | 44 | BD.MATE_VALUE 15, board.fen 9, chess.Move 3, board.push 3, board.pop 3 |
 | `_refuter_fix` | 38 | board.piece_at 7, board.push 6, board.san 6, board.copy 4, board.legal_moves 3 |
-| `_leaf_read` | 30 | board.san 5, board.fen 5, board.copy 4, board.push 4, chess.square_name 4 |
-| `_ask_promote` | 29 | G.name 7, chess.SquareSet 3, board.occupied_co 3, board.san 2, board.bishops 2 |
+| `_leaf_read` | 29 | board.san 5, board.fen 5, board.copy 4, board.push 4, chess.square_name 4 |
+| `_ask_promote` | 27 | G.name 7, chess.SquareSet 3, board.occupied_co 3, board.san 2, board.bishops 2 |
+| `_parry_keeps` | 20 | board.san 5, board.copy 3, board.push 3, board.fen 2, BD.MATE_VALUE 2 |
 | `_reasoned_kill` | 19 | board.piece_at 7, G.name 3, chess.KING 2, chess.Move 2, board.king 1 |
 | `_stopper_routes` | 19 | board.piece_at 6, G.see_for 2, board.san 2, board.attackers 2, G.name 2 |
 | `_principal_captures` | 18 | board.piece_at 4, board.copy 2, G.worth 2, board.turn 1, chess.SQUARES 1 |
 | `_ask_stop_pawn` | 18 | G.name 6, G.word 3, board.san 3, board.legal_moves 1, board.king 1 |
-| `_verify` | 17 | board.san 13, BD.MATE_VALUE 3, BD.verify_tried 1 |
 | `_ask_fork` | 16 | board.push 3, chess.Move 3, board.is_check 2, board.san 2, board.piece_at 2 |
+| `_verify` | 16 | board.san 13, BD.MATE_VALUE 3 |
 | `_reach_roots` | 15 | G.name 8, chess.SquareSet 1, board.piece_at 1, board.king 1, board.pawns 1 |
 | `_addresses` | 15 | G.name 5, chess.Move 1, board.san 1, board.copy 1, board.push 1 |
-| `_decide_by_smallest_loss` | 14 | board.san 9, chess.square_name 2, board.is_check 1, BD.verify_tried 1, board.fen 1 |
 | `_targets_of` | 13 | board.piece_at 4, board.attacks 2, chess.Move 1, BD.MATE_VALUE 1, G.with_turn 1 |
+| `_decide_by_smallest_loss` | 13 | board.san 9, chess.square_name 2, board.is_check 1, board.fen 1 |
 | `_line_of` | 13 | board.san 4, board.copy 2, board.push 2, chess.Move 2, BD.Binding 1 |
 | `_fixes_promote_defect` | 13 | G.name 3, board.king 2, board.san 2, chess.Move 1, chess.Board 1 |
-| `_parry_keeps` | 12 | board.san 4, board.push 2, board.fen 1, BD.MATE_VALUE 1, board.copy 1 |
 | `_aligned` | 11 | chess.QUEEN 2, chess.BB_SQUARES 2, chess.KNIGHT 1, chess.BISHOP 1, chess.ROOK 1 |
 | `_threat_roots` | 11 | G.name 4, board.piece_at 2, board.is_check 1, G.with_turn 1, BD.MATE_VALUE 1 |
 | `_step_forcing` | 11 | board.san 2, board.copy 2, board.push 2, chess.Move 2, chess.Board 1 |

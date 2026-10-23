@@ -32352,3 +32352,7 @@ and pos2 lost their 10 s decisions -- diagnosed by one run each with the rule of
 0-leaves ONLY in the chase of a save against a MATE threat; a counter (check / capture off the read set) is a one-ply parry only if their mate is gone after every reply (the pass read on each),
 else the chase reads it. OBS: 0AgL8 Nxg2 killed ("their Bc6+ wins 100, no parry"), 2TUzC Rxe5, 04Qx2 Be8+ (count), the 52.17 time-budget test, pos2 / W0VFO / 4pC83 at 10 s, plan 70 3/3 --
 all pass in the same run. The final gate (every file, one at a time) and the trace identity (decisions) follow in the commit.
+
+## 2026-10-22 23:36 PDT -- plan 71.3 (b): the agenda asks the words through the Words interface
+
+52 call sites (R.forcing_why 8 ... BD.generate 1) now go through `W = WD.CHESS_WORDS`; nothing rewritten, the boundary is named. OBS trace identity: 0 of 10 traces differ; quick plan tests 68 passed. The agenda still speaks python-chess directly (OBS domain map: agenda 742 chess-bound calls) -- 71.2 (c), the Game routing of the agenda, is the next stage, call family by call family under the same guard.

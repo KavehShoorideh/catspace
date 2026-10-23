@@ -50,7 +50,10 @@ from catspace.incubator.analyst.discovery import question_prior as QP
 from catspace.incubator.analyst.discovery import graph_policy as GP
 from catspace.incubator.analyst.discovery import reasoned as RS
 from catspace.incubator.analyst.discovery import selfmine as SM
+from catspace.incubator.analyst.discovery import words as WD
 from catspace.incubator.analyst.discovery.state import Claim, State
+
+W = WD.CHESS_WORDS                                              # plan 71.3 (b): the agenda asks the domain's WORDS through the one interface (words.py: BaseWords supplied, Words produced); chess is the instance. The remaining R./BD./RC./TB./PL./PV. names are the machinery's own types and switches (Question, Route, Defect, Binding, MATE_VALUE, RACE, TABLE, PLAN, HYPS), routed in 71.3 (c)
 
 
 DEPTH_FUSE = 30                                                 # 52.13 (2b): ... and a chase this many inner levels deep is cut the same way (python's stack: ~9 frames per level; the 10x fuse alone reached the recursion limit)
@@ -500,7 +503,7 @@ class Agenda:
         scored = []
         for m, pc, placed, more, checker in marks:
             q = R.new_question("mate", R.STAKE_MATE, dict(sym=placed.symbol(), at=m.to_square, frm=m.from_square, king=ksq, more=more, move=m.uci()))
-            q.defects = R.mate_defects(b, self.us, R.placement_of(q))
+            q.defects = W.mate_defects(b, self.us, R.placement_of(q))
             how = b.san(m) if (m.promotion or more) else f"{pc.symbol().upper()} {G.name(m.from_square)}->{G.name(m.to_square)}"
             q.text = f"mate on {G.name(checker)} ({how}, their king on {G.name(ksq)})"
             scored.append((len(q.defects), G.worth(placed), q.id, q))                 # fewest defects, then the CHEAPER piece (the heavy one stays back as a guard)
@@ -524,9 +527,9 @@ class Agenda:
         """plan 62.3: a position whose whole board is at most five men closes by the TABLE (regress-free, exact): a claim labelled `proved_by = "table"` (a win: the material of their last pieces, a bare king left
         is a mate; a draw when we are behind: minus the balance). It competes like any claim (value first; at an equal value a proved word beats it, `_claim_key`)."""
         b = self.board
-        if not TB.TABLE or b.turn != self.me or not TB.covered(b):
+        if not TB.TABLE or b.turn != self.me or not W.table_covered(b):
             return
-        tc = TB.table_claim(b)
+        tc = W.table_claim(b)
         if tc is None:
             return
         m = chess.Move.from_uci(tc["move"])
@@ -630,10 +633,10 @@ class Agenda:
             if not steps:
                 continue
             q = R.new_question("mate", R.STAKE_MATE, dict(sym=pc.symbol(), at=s, frm=frm, king=ksq, more=[], move=None, reach=[m.uci() for m in steps]))
-            q.defects = R.mate_defects(b, self.us, R.placement_of(q))
+            q.defects = W.mate_defects(b, self.us, R.placement_of(q))
             qreads = R.reads_of(q, b)
             reads |= qreads
-            occ |= R.attack_lines(R.future_board(b, R.placement_of(q), not me), qreads)      # the defects are read on the counterfactual (the piece moved): what could attack these squares THERE
+            occ |= W.attack_lines(R.future_board(b, R.placement_of(q), not me), qreads)      # the defects are read on the counterfactual (the piece moved): what could attack these squares THERE
             if q.defects:
                 continue                                         # another defect as well: two prep moves, the tempo arithmetic kills it before it is asked
             specs.append((pc.symbol(), frm, s, tuple(m.uci() for m in steps)))
@@ -650,7 +653,7 @@ class Agenda:
             if 0 < n <= R.PROMOTE_MAX_PUSHES:
                 near.append((n, s))
         for n, s in sorted(near):
-            self._push(R.new_question("promote", R.STAKE_PROMOTE, dict(pawn=s, pushes=n), text=f"promote our P on {G.name(s)} ({n} push{'es' if n > 1 else ''} to {G.name(R.pawn_path(b, s, n)[-1])})"))
+            self._push(R.new_question("promote", R.STAKE_PROMOTE, dict(pawn=s, pushes=n), text=f"promote our P on {G.name(s)} ({n} push{'es' if n > 1 else ''} to {G.name(W.pawn_path(b, s, n)[-1])})"))
         if near:
             self.notes.append(f"promote roots only for pawns with pushes <= {R.PROMOTE_MAX_PUSHES} (the mate / material stakes dominate farther pawns)")
 
@@ -698,7 +701,7 @@ class Agenda:
             if cl.kind == "promote":
                 pw = m.from_square
                 pb = ag.board
-                ppath = R.pawn_path(pb, pw, G.word(pb, ("pushes", G.name(pw)), not self.me))
+                ppath = W.pawn_path(pb, pw, G.word(pb, ("pushes", G.name(pw)), not self.me))
                 if not ppath:
                     continue                                     # (their claim's move is not a pawn's push with a path: nothing to stop by this root)
                 dest = ppath[-1]
@@ -1167,7 +1170,7 @@ class Agenda:
         import io
         p = G.with_turn(self.board, not self.me)
         their = "w" if p.turn else "b"
-        cands = [[pr] for pr in BD.generate(p)]
+        cands = [[pr] for pr in W.binder_generate(p)]
         best, done = None, 0
         fin = self.ctx.final if self.ctx is not None else None
         with contextlib.redirect_stdout(io.StringIO()):
@@ -1207,7 +1210,7 @@ class Agenda:
             if kk != k:
                 continue
             for m, san, _why in news:
-                if R.forcing_why(b, m, stake, self.us, mate_threats=True, mate2=k >= 2, delayed=dl and k >= 1, nosafe=ns and k >= 1):
+                if W.forcing_why(b, m, stake, self.us, mate_threats=True, mate2=k >= 2, delayed=dl and k >= 1, nosafe=ns and k >= 1):
                     continue                                         # forcing in tier k already: not new
                 cost, _kids, lower = ag._price(m, stake, limit)
                 cands.append((self._route_need(cost, ctx.route_secs.get((pk, m.uci(), stake)), spn), cost, san, k + 1))
@@ -1604,7 +1607,7 @@ class Agenda:
         for colour in (chess.WHITE, chess.BLACK):
             k = c.king(colour)
             if k is not None:
-                reads.update(R.slide_region(k, c.occupied))
+                reads.update(W.slide_region(k, c.occupied))
         return frozenset(reads), None
 
     def _inherit_for(self, diff: frozenset) -> dict:
@@ -1658,17 +1661,17 @@ class Agenda:
         if q.goal == "mate":
             q.defects = self._landing_defects(q)
         else:
-            q.defects = R.material_defects(b, us, q.pattern["target"])
+            q.defects = W.material_defects(b, us, q.pattern["target"])
         self.lines.append(head + (": " + "; ".join(f"defect {d.kind} ({d.why})" for d in q.defects) if q.defects else ": no defect -- the pattern already stands"))
         if not q.defects:
             routes = self._direct_routes(q)
         else:
             for d in q.defects:
-                R.fixes_of(d, q, b, us)
+                W.fixes_of(d, q, b, us)
             self.asked += sum(self._count(f) for f in q.fixes)
             for f in q.fixes:
                 self._trace_fix(f, 1)
-            if not R.tempo_ok(q):
+            if not W.tempo_ok(q):
                 if self._chase(q):
                     return
                 self._kill(q, q.reason, tempo=True)
@@ -1683,7 +1686,7 @@ class Agenda:
         p, b = q.pattern, self.board
         frm = p.get("frm")
         if self.ctx is None or p.get("more") or frm is None or b.piece_at(frm) is None or b.piece_at(frm).symbol() != p.get("sym"):
-            return R.mate_defects(b, self.us, R.placement_of(q))
+            return W.mate_defects(b, self.us, R.placement_of(q))
         tbl = self.ctx.landings
         key = (self.me, p["sym"].lower(), frm, p["at"])
         hit = tbl.lookup(b, key)
@@ -1767,7 +1770,7 @@ class Agenda:
             n = G.word(b, ("pushes", G.name(pw)), not self.me)
             if n < 1:
                 continue
-            defects, _facts = R.promote_defects(b, pw)
+            defects, _facts = W.promote_defects(b, pw)
             if any(d.kind != "stopper" or set(d.by) - {rook} for d in defects):
                 continue
             if best is None or n < best[0]:
@@ -1785,7 +1788,7 @@ class Agenda:
         ksq = b.king(not self.me)
         if ksq is None:
             return False
-        defects = q.defects or R.mate_defects(b, us, R.placement_of(q))
+        defects = q.defects or W.mate_defects(b, us, R.placement_of(q))
         flights = [d.sq for d in defects if d.kind == "flight"]
         frm = q.pattern.get("frm")
         why, reads, which = None, None, None
@@ -1797,7 +1800,7 @@ class Agenda:
             heavy = [s for s in chess.SQUARES if b.piece_at(s) is not None and b.piece_at(s).color == self.me and b.piece_at(s).piece_type not in (chess.KING, chess.PAWN)]
             if len(heavy) == 1 and b.piece_at(heavy[0]).piece_type == chess.ROOK and not b.is_check():
                 steps = [chess.Move.from_uci(u) for u in q.pattern["reach"]] if q.pattern.get("reach") else ([chess.Move.from_uci(q.pattern["move"])] if q.pattern.get("move") else [])
-                steps = [m for m in steps if R.forcing_why(b, m, q.stake, us, mate_threats=True)]
+                steps = [m for m in steps if W.forcing_why(b, m, q.stake, us, mate_threats=True)]
                 passer = self._their_passer(heavy[0]) if steps else None
                 if passer is not None:
                     k = RG.held_measure(b, self.me, steps, passer[0])
@@ -1864,7 +1867,7 @@ class Agenda:
             return
         hits, why = [], []
         for r in routes:
-            bind, tried = BD.verify_tried(r.move, b, us, mates_only, trap=r.trap, fork=r.fork)
+            bind, tried = W.verify_tried(r.move, b, us, mates_only, trap=r.trap, fork=r.fork)
             asked = self._asked(tried)
             if bind is None:
                 self.lines.append(f"  verify {r.san}: nothing binds ({asked})")
@@ -1880,7 +1883,7 @@ class Agenda:
                     net = bind.value - theirs.value
                     self.lines.append(head + f"; their view: their {theirs.what} wins {theirs.value} (their claim, lemma {theirs.lemma}; {theirs.line}) -> net {net}")
                 else:
-                    opp = R.opponent_defects(b, r.move, us)
+                    opp = W.opponent_defects(b, r.move, us)
                     self.lines.append(head + "; their view: no claim of theirs binds" + (f" (fallback label: {'; '.join(opp)})" if opp else ""))
             if (self.side_depth or (self.chase_depth and bind.value >= self.min_stake)) and bind.schema.startswith("delayed_") and bind.schema.endswith("_d1"):         # 64.0: the root families too, and in the chase's inner agendas (their free move comes after our LAST move, which the tail does not read)
                 ref = self._leaf_read(bind, r)
@@ -1953,7 +1956,7 @@ class Agenda:
             return self._leaf[key]
         self._leaf[key] = None
         self.leaf_stats['read'] += 1
-        fam = BD.schema(bind.schema).family
+        fam = W.binder_schema(bind.schema).family
         if fam not in PA.ORDER:
             return None
         b, us, x, y = self.board, self.us, bind.assignment["x"], bind.assignment["y"]
@@ -2063,7 +2066,7 @@ class Agenda:
             return False
         rows = []
         for r in routes:
-            bind, _ = BD.verify_tried(r.move, b, us, False)
+            bind, _ = W.verify_tried(r.move, b, us, False)
             gain = bind.value if bind is not None else 0
             theirs, _ag = self.their_view(r.move)
             tv = theirs.value if theirs is not None else 0
@@ -2149,7 +2152,7 @@ class Agenda:
         f = R.new_question("cover", q.stake, dict(q.pattern), q, defect_key=d.key(), text=f"step toward {G.name(q.pattern['at'])} with tempo")
         forcing, quiet = [], []
         for m in steps:
-            why = R.forcing_why(b, m, q.stake, us, mate_threats=True)
+            why = W.forcing_why(b, m, q.stake, us, mate_threats=True)
             (forcing if why else quiet).append(R.Route(m, b.san(m), why) if why else b.san(m))
         f.routes, f.unforced = forcing, quiet
         q.fixes.append(f)
@@ -2700,9 +2703,9 @@ class Agenda:
         pc = b2.piece_at(pawn)
         if pc is None or pc.piece_type != chess.PAWN or pc.color != self.me:
             return None
-        if RC.RACE and b2.turn == self.me and RC.race_claim(b2, pawn) is not None:      # plan 62.1: the race word binds on the reply's board: the stopper defect that stands is not a stop
+        if RC.RACE and b2.turn == self.me and W.race_claim(b2, pawn) is not None:      # plan 62.1: the race word binds on the reply's board: the stopper defect that stands is not a stop
             return None
-        defects, _facts = R.promote_defects(b2, pawn)
+        defects, _facts = W.promote_defects(b2, pawn)
         old = {d.key() for d in q.defects if d.kind in ("stopper", "blocked")}
         standing = [d for d in defects if d.key() in old]
         if not standing:
@@ -2712,7 +2715,7 @@ class Agenda:
         have = {r.move.uci() for f in q.fixes for r in R.all_routes(f)}
         new = set()
         for d in defects:
-            f = R.promote_fixes(b2, pawn, d, dummy)
+            f = W.promote_fixes(b2, pawn, d, dummy)
             new |= {r.move.uci() for r in R.all_routes(f)} - have
         R._ids[0] = saved
         if new:
@@ -2782,7 +2785,7 @@ class Agenda:
                 if line not in self.ctx.open_lines:               # our remainder would be an upper bound -- kcQil came back at +1.)
                     self.ctx.open_lines.append(line)
                 return None
-        return dbal + best, f"exchange +{best} ({R.exchange_read(chess.Board(P2.fen()))}), nothing of theirs"
+        return dbal + best, f"exchange +{best} ({W.exchange_read(chess.Board(P2.fen()))}), nothing of theirs"
 
     # ------------------------------------------------------------------------------------------------------------ plan 61 C: the cost judge and the cycle terminal
 
@@ -2807,7 +2810,7 @@ class Agenda:
         ckey = (_pos_key(self.board.fen()), m.uci(), stake)
         hit = ctx.route_costs.get(ckey)
         if hit is None or (hit[2] and (limit is None or limit > hit[0])):
-            cost_, kids_ = R.route_cost(self.board, m, stake, self.us, limit=limit)
+            cost_, kids_ = W.route_cost(self.board, m, stake, self.us, limit=limit)
             hit = ctx.route_costs[ckey] = (cost_, kids_, limit is not None and cost_ > limit)
         return hit
 
@@ -2836,7 +2839,7 @@ class Agenda:
             dl, ns = DELAYED_THREAT, NO_SAFE_MOVE
             cands = []
             for m in R._moves(b, self.us):
-                why = R.forcing_why(b, m, q.stake, self.us, mate_threats=True, mate2=k + 1 >= 2, delayed=dl and k + 1 >= 1, nosafe=ns and k + 1 >= 1)
+                why = W.forcing_why(b, m, q.stake, self.us, mate_threats=True, mate2=k + 1 >= 2, delayed=dl and k + 1 >= 1, nosafe=ns and k + 1 >= 1)
                 if why:
                     cands.append((m, b.san(m), why))
             ctx.competitors[key] = cands
@@ -2945,7 +2948,7 @@ class Agenda:
         spn = self._spn()
         if spn is None:
             return False
-        cost, mv = R.node_cost(chess.Board(fen), self._judge_stake(), self.us)
+        cost, mv = W.node_cost(chess.Board(fen), self._judge_stake(), self.us)
         left = max(ctx.deadline - time.monotonic(), 0.0)
         if cost * spn <= left:
             ctx.judge_reads += 1
@@ -2983,8 +2986,8 @@ class Agenda:
         stake = cq.stake if cq is not None else 1
         key = (_pos_key(b.fen()), m.uci(), stake)
         if key not in ctx.route_threats:
-            why = R.forcing_why(b, m, stake, self.us, mate_threats=True, mate2=ctx.tier >= 2)
-            ctx.route_threats[key] = R.threat_of(b, m, why, self.us)
+            why = W.forcing_why(b, m, stake, self.us, mate_threats=True, mate2=ctx.tier >= 2)
+            ctx.route_threats[key] = W.threat_of(b, m, why, self.us)
         th = ctx.route_threats[key]
         if th is None or th.kind not in ("mate", "mate2", "threat", "pass-claim"):
             return closed
@@ -3084,14 +3087,14 @@ class Agenda:
         pc2 = b2.piece_at(t)
         if pc0 is None or pc2 is None or pc2.color == self.me or pc2.piece_type != pc0.piece_type:
             return None
-        defects = R.material_defects(b2, self.us, t)
+        defects = W.material_defects(b2, self.us, t)
         if not defects:
             return None
         saved = R._ids[0]
         dummy = R.new_question("win", q.stake, dict(q.pattern))
         sans = []
         for d in defects:
-            for f in R.fixes_of(d, dummy, b2, self.us):
+            for f in W.fixes_of(d, dummy, b2, self.us):
                 sans += [r.san for r in R.all_routes(f) if r.san not in sans]
         R._ids[0] = saved
         return ", ".join(sans[:3]) if sans else None
@@ -3177,7 +3180,7 @@ class Agenda:
         if ek is None or not ((d.kind == "blocked" and d.sq == ek) or (d.kind in ("path attacked", "promo square attacked", "stopper") and ek in d.by)):
             return None
         x = d.sq
-        if R.drives_off(b, m, x, ek):
+        if W.drives_off(b, m, x, ek):
             return f"it drives their king off {G.name(x)}"
         reps = list(c.legal_moves)
         if not reps:
@@ -3188,7 +3191,7 @@ class Agenda:
             san_r = c2.san(r)
             c2.push(r)
             k2 = c2.king(not me)
-            nxt = [m2 for m2 in R._moves(c2, self.us) if k2 is not None and R.drives_off(c2, m2, x, k2)]
+            nxt = [m2 for m2 in R._moves(c2, self.us) if k2 is not None and W.drives_off(c2, m2, x, k2)]
             if not nxt:
                 return None
             steps.append(f"after {san_r}, {c2.san(nxt[0])}")
@@ -3253,8 +3256,8 @@ class Agenda:
         b = chess.Board(fen)
         m, r = chess.Move.from_uci(mu), chess.Move.from_uci(ru)
         san = b.san(m)
-        why = R.forcing_why(b, m, stake, self.us, mate_threats=True, mate2=self.ctx.tier >= 2)
-        th = R.threat_of(b, m, why, self.us)
+        why = W.forcing_why(b, m, stake, self.us, mate_threats=True, mate2=self.ctx.tier >= 2)
+        th = W.threat_of(b, m, why, self.us)
         if th is None:
             out = (False, f"{san} names no threat")
         else:
@@ -3346,7 +3349,7 @@ class Agenda:
                 pc = b.piece_at(m.to_square)
                 routes.append(R.Route(m, b.san(m), f"capture {G.worth(pc)}" if pc is not None else "evade"))
                 continue
-            why = R.forcing_why(b, m, q.stake, self.us, mate_threats=True, notes=notes, mate2=self.ctx.tier >= 2,      # plan 59 tier 2: a mate-in-two threat is forcing too
+            why = W.forcing_why(b, m, q.stake, self.us, mate_threats=True, notes=notes, mate2=self.ctx.tier >= 2,      # plan 59 tier 2: a mate-in-two threat is forcing too
                                 delayed=DELAYED_THREAT and self.ctx.tier >= 1 and not self.chase_depth, nosafe=NO_SAFE_MOVE and self.ctx.tier >= 1 and not self.chase_depth)      # plan 61 A3 / A4: tier 1+, the root's chase only
             if why:
                 if why.startswith("delayed threat"):
@@ -3540,7 +3543,7 @@ class Agenda:
             return False
         cq = self._chase_q
         stake = cq.stake if cq is not None else 1
-        if any(R.forcing_why(b, m, stake, self.us, mate_threats=True) for m in R._moves(b, self.us)):
+        if any(W.forcing_why(b, m, stake, self.us, mate_threats=True) for m in R._moves(b, self.us)):
             return False
         t, _cl = self._their_pass(fen)
         return t == 0
@@ -3820,7 +3823,7 @@ class Agenda:
         notes = []
         if self.keep >= 1:
             for r in order:
-                bind, note = BD.verify_keep(r.move, b, self.us)
+                bind, note = W.verify_keep(r.move, b, self.us)
                 if bind is None:
                     notes.append(f"{r.san}: {note}")
                     continue
@@ -3860,9 +3863,9 @@ class Agenda:
         not, the question ends as a GAP naming the hypothesis that fails."""
         b = self.board
         sq = q.pattern["pawn"]
-        q.defects, facts = R.promote_defects(b, sq, lift=lift and self.chase_depth == 0)
+        q.defects, facts = W.promote_defects(b, sq, lift=lift and self.chase_depth == 0)
         if facts.get("lifted") is not None and q.defects:           # plan 62.1c: the king holds (or a defect stands): the old verdict, every stopper, stands as it was
-            q.defects, facts = R.promote_defects(b, sq)
+            q.defects, facts = W.promote_defects(b, sq)
         n, promo = facts["pushes"], facts["promo"]
         q.reads = R.reads_of(q, b) | frozenset(facts["path"]) | {sq}            # 52.16 (4): the pawn, its path (the promotion square included), the defects' squares and their pieces: what the question read
         kd = facts["king_dist"]
@@ -3879,7 +3882,7 @@ class Agenda:
             if self._race_claim(q, sq):                           # plan 62.1: the race word binds although a defect stands (the stopper the king cannot be: denied, overloaded)
                 return
             for d in q.defects:
-                f = R.promote_fixes(b, sq, d, q)
+                f = W.promote_fixes(b, sq, d, q)
                 rs = ", ".join(f"{r.san} ({r.why})" for r in f.routes)
                 self.lines.append(f"  -> Q{f.id} {f.text}: " + (f"forcing: {rs}" if rs else "no forcing move"))
             self.asked += len(q.fixes)
@@ -3892,7 +3895,7 @@ class Agenda:
                 return
             self._kill(q, reason, tempo=True)
             return
-        ps = dict(PV.proved_passers(b, bishops=True))
+        ps = dict(W.proved_passers(b, bishops=True))
         if sq in ps:
             push = chess.Move(sq, facts["path"][0], promotion=chess.QUEEN if n == 1 else None)
             san = b.san(push)
@@ -3921,7 +3924,7 @@ class Agenda:
             self._ask_promote(q, head, lift=False)
             self._relabel_lifted(q, lifted)
             return
-        h = PV.passer_v2(b, sq)
+        h = W.passer_hyps(b, sq)
         bad = [k for k in PV.HYPS if not h[k]]
         why = []
         for k in bad:
@@ -3948,12 +3951,12 @@ class Agenda:
         if not PL.PLAN:
             return False
         b = self.board
-        if not q.defects and sq in dict(PV.proved_passers(b, bishops=True)):
+        if not q.defects and sq in dict(W.proved_passers(b, bishops=True)):
             return False                                         # the full-rules lemma (Ideas.Passer2.unstoppablePasser2_sound) fires below: it is the stronger word, it claims first
-        pl = PL.read(b, sq)
+        pl = W.plan_read(b, sq)
         if not pl.moves:
             return False
-        self.lines.append("  " + PL.trace(b, pl))
+        self.lines.append("  " + W.plan_trace(b, pl))
         if pl.closed and pl.moves[0].from_square == sq:         # (a plan that opens with a blocker's step-aside is not claimed as a promote move: a promote claim's move is the pawn's push)
             push = pl.moves[0]
             san = b.san(push)
@@ -3967,7 +3970,7 @@ class Agenda:
                 self.asked_at_claim = self.asked
             return True
         if self._root and self.chase_depth == 0 and not pl.immune:      # (the support search is the ROOT's: inside their agendas and the chase it cost 2 s of eSJqH's 15, 2026-10-22 profile)
-            fixes = PL.support_fixes(b, sq)
+            fixes = W.plan_support(b, sq)
             if fixes:
                 q._support_routes = [R.Route(m, san, f"support: after it no weak moment of ours is reachable ({p2.n} moves; {len(p2.reach)} check square(s) left to the chase)") for m, san, p2 in fixes]
                 self.lines.append("  support (plan 67.4): " + ", ".join(san for _m, san, _p in fixes))
@@ -3979,7 +3982,7 @@ class Agenda:
         b = self.board
         if not RC.RACE or b.turn != self.me:
             return False
-        rc = RC.race_claim(b, sq)
+        rc = W.race_claim(b, sq)
         if rc is None:
             return False
         san = b.san(rc.first)
@@ -4017,7 +4020,7 @@ class Agenda:
         net = R.STAKE_PROMOTE - lost
         if lost <= 0 or net < 1:
             return None
-        read = R.exchange_read(G.with_turn(c, not me))
+        read = W.exchange_read(G.with_turn(c, not me))
         claim = Claim("win", san, net, "promotion_exchange: the push, then the x-ray exchange on the promotion square (Ideas.ExchangeLaw seeXB, mirrored by the Rust see)",
                       f"{san}; {read}: the promotion is worth {R.STAKE_PROMOTE}, less the {lost} they win on the new queen = {net}", move=push.uci())
         self._stamp(claim, q)
@@ -4038,7 +4041,7 @@ class Agenda:
         pw = p["promoter"]
         them = not self.me
         n = G.word(b, ("pushes", G.name(pw)), them)
-        promo = R.pawn_path(b, pw, n)[-1]
+        promo = W.pawn_path(b, pw, n)[-1]
         kd = G.word(b, ("dist", "L", ("promo", G.name(pw))), them)               # their pawn's words, read from its owner's side: L = our king
         q.defects = [R.Defect("promotes", promo, [pw], f"their {p['what']} promotes on {G.name(promo)} in {n} ({p['value']}, lemma {p['lemma']})")]
         self.lines.append(head + f": defect promotes (their view: {p['what']}, {p['line']})")

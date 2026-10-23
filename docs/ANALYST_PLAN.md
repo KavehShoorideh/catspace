@@ -3325,7 +3325,7 @@ machinery (defects, fixes, forcing words, endgame words, policies, estimates), t
   (squares) for read sets, `attacks(s, loc, side)`. `ChessGame` wraps python-chess + the Rust core (one file). Route the CLEAN modules first (facts, state,
   binder, graph_policy, question_prior, table), then agenda.py's 105 calls, replacing each `chess.X` / `board.Y` with `self.game.Y`; `G` (graph.py words)
   stays a chess word module behind 71.3. Trace identity after each module.
-* 71.3 THE WORDS INTERFACE (`discovery/words.py`): `Words` protocol -- `goals(s, side) -> [Question]` (the root questions: today `_promote_roots`, the
+* 71.3 THE WORDS INTERFACE (`discovery/words.py`): `Words` protocol -- `goals(s, side) -> [Question]` (the root questions: today `_promote_roots`, the (b) BUILT 2026-10-22: the agenda's 52 word-call sites route through `W = WD.CHESS_WORDS` (forcing_why, threat_of, the defects and fixes, the leaf closes, the race / passer / plan words, the binder families, the costs); trace identity 10/10; (c) next: the machinery's own types and switches out of regress / binder.
   mate / win / save roots), `defects(q, s)`, `fixes(defect, q, s)`, `forcing_why(s, m, stake)`, `threat_of`, `parries`, `leaf_rules(s, ...)` (the rule
   closes: the exchange, mate in one, stalemate, the table), `families` (the binder's lemma families and their Lean names), `endgame` (race, deny, plan).
   `ChessWords` = regress.py + race.py + plan67.py + the binder's families, moved, not rewritten. The agenda imports `Words`, never `chess`.
