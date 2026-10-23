@@ -3282,6 +3282,11 @@ Checked against the code, one line each; "existing" names what was already there
   plan tests and test_regress; the full suite on the last commit. No grade of the 90 (Kaveh's protocol); the next grade reports by proof as usual.
 
 
+* THE LOOP, iteration 1 (2026-10-22 night): sets rand10-13 at 15 s, OBS proved RIGHT 29 / proved WRONG 3 / unproved RIGHT 6 / unproved WRONG 2. Fixed: the in-check leaf GAP at every
+  target (GWigp). LOOP TARGET 2 (I7k2H, 1hUBC): THE LEAF TO QUIESCENCE -- a static leaf after our capture / step reads whether the piece that moved is trapped or deflected within the
+  exchange's reach (the trap words of 52.18 at the leaf; the exchange law's exceptions, 2026-10-07). LOOP TARGET 1 stands (the discovery position; SiySv and 6Cioj are of its kind: nothing
+  proved in 15 s, the floor pick wrong). The heads retrained on every log so far after each batch -- as a CANDIDATE: adopted only after the gate (2026-10-23: the loop-1 retrain lost pos2,
+  4pC83 and 52.17 under the clock; the pre-loop model stays). CORRECTED 2026-10-23: the in-check GAP at every target over-reached (0sjz3) and was withdrawn to target 0; GWigp is LOOP TARGET 2.
 * 70.1 ADDENDA (2026-10-22, found by the regression files run one at a time): (a) SOUNDNESS -- 0AgL8's Nxg2 came back as a claim (+1) instead of its kill: the inner save chase read
   Ne1's checking replies (Ra7+, Rb6+, Bc6+) as static leaves "material +0" and kept them; in check there is no pass to read their threat from (Bc6+ then Ra8#); and a one-ply parry by a
   CHECK (Qc1+) stood against a mate in two. Fixed, in three parts, each the cheapest sound form (the first attempt -- the pass read on EVERY 0-leaf -- cost 04Qx2's Be8+ the fuse and

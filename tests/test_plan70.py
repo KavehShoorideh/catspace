@@ -1,5 +1,6 @@
 """PLAN 70.1 (the audit of 2026-10-22, 2TUzC): a SAVE question is CHASED with KEEP semantics. Numbers are directional (OBS lines)."""
 import chess
+import pytest
 
 from catspace.incubator.analyst.discovery import agenda as AGM
 from catspace.incubator.analyst.discovery import binder as BD
@@ -41,3 +42,15 @@ def test_70_1_off_the_keep_family_alone_kills_the_save(monkeypatch):
     inner = Agenda(State(fen=AFTER_RF5, us="w", pieces=[]), side_depth=0, chase_depth=1, ctx=root.ctx, min_stake=BD.MATE_VALUE, their=their, keep=3, since=1)
     inner.ask()
     assert any(q.status == "killed" for q, _cl in inner.threat_qs) and not any(c.kind == "save" for c in inner.state.claims)
+
+
+@pytest.mark.xfail(strict=True, reason="LOOP TARGET 2 (2026-10-23): GWigp's Rxe6 is 'proved' by one-ply leaves after Ra7+ / Rf5+; what refutes it is their a-pawn running behind the leaf (the leaf is not read to quiescence / their passer plan is not read there). Generalising the in-check GAP to every target fixed it by accident and cost 0sjz3, 52.17, 4pC83 and pos2 their reach: withdrawn. Kaveh decides the leaf word.")
+def test_70_1_gwigp_rxe6_is_refuted_by_their_passer_behind_the_leaf():
+    """THE LOOP, iteration 1: GWigp (rand13_10, Black in check from the e6 pawn; Stockfish: Kf6)."""
+    ag = Agenda(state_of("8/5kp1/4P2p/R6K/P3r2P/8/8/8 b - - 0 46", "b"), seconds=15)
+    ag.ask()
+    d = ag.decision()
+    text = ag.trace()
+    print("OBS loop 1 GWigp:", d.what if d else None, d.value if d else None, "proved", d.proved if d else None)
+    assert d is not None and d.what == "Kf6" and d.proved
+    assert any(l.strip().startswith("Rxe6: GAP") and "we are in check" in l for l in text.splitlines())

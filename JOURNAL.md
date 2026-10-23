@@ -32362,3 +32362,37 @@ all pass in the same run. The final gate (every file, one at a time) and the tra
 101 call sites (G.name 65, chess.square_name 8, G.worth 17, G.word 6, G.see / see_for 5) route through GAME.loc_name and W.base; the BaseWords `see` signature corrected to graph.py's (no side; `see_for` names the capturer) -- caught by the trace guard (a crashed snapshot reads as 10 of 10 differ: the guard must print 10 written). OBS trace identity 0 of 10 differ after the fix; quick plan tests 81 passed. OBS domain map: agenda 641 (was 742); regress 725 is now the largest chess-bound module -- 71.3 (c) splits it.
 
 ## 2026-10-22 23:44 PDT -- plan 71.2 (d) the agenda builds boards through Game.from_key (11 sites, trace identity 0 of 10 differ, 100 quick tests pass); 71.6 the two variants on the Game side (CHESS960 one parameter; KingOfTheHillGame one more terminal, the Lean goal kothGoal); the agenda still reads mate / stalemate through python-chess -- the end-to-end variant run waits on the remaining 71.2 families. OBS domain map: regress 725, agenda 630, race 265, plan67 101, binder 64, table 35, question_prior 28, facts 19, graph_p
+
+## 2026-10-22 23:55 PDT -- THE LOOP, iteration 1: forty fresh puzzles at 15 s in the pool, five misses, one hole fixed, the policy retrained
+
+Kaveh: "test on a bunch of puzzles until you have 5 errors, then track and fix those errors by adding and modifying the machinery to learn chess better, then rinse and repeat; in this
+loop we should also keep retraining the policy for questions and routes." Sets rand10_10 .. rand13_10 (not in the policy's training data), 15 s each, the pool with the graph policy.
+OBS prior grade (40): RIGHT 35, WRONG 5. OBS prior grade by proof: proved RIGHT 29, proved WRONG 3, unproved RIGHT 6, unproved WRONG 2, none 0.
+The five, each traced ALONE (never a set rerun):
+* GWigp (Black in check; answer Kf6; we PROVED Rxe6 in 0.3 s). The trace: Rxe6's replies Ra7+ and Rf5+ were static leaves "material +1" and kept -- in check there is no pass to read
+  their threat from, so "no threat read" passed for "no threat". The 0AgL8 hole again, at target 1 where this morning's fix (target 0 only) did not reach. FIXED: an in-check leaf the inner
+  agenda left without a claim is a GAP at every target. GWigp now decides Kf6, PROVED (Kf6; after Rf5+: Kxf5 ... mate_in_two, delayed_balance_alive_d1). Trace guard: 10 of 10 decisions
+  unchanged (three traces read differently); quick tests 82 + 9 pass.
+* I7k2H (W: Kd6 Pe6 Pa4 Bc2 v Kb6 Pa6 Pb4 Pc4 Bd4; answer a5+; we PROVED e7 +2): e7 Bc5+ Kd7 "wins the material back +2 (every reply: 12 replies)" -- the one-ply window; two plies on,
+  Bxe7 Kxe7 b3! deflects the bishop and the c-pawn runs. The trace's own label says it: "[a gain WITHIN THE WINDOW: the leaf is not read to quiescence]".
+* 1hUBC (W: Kf2 Rg1 Ba2 Ne5 Pd4 v Kf8 Rb8 Rf6 Be6 ...; answer Bxe6; we PROVED save Nxc6 +3): Nxc6 Bxa2 Nxb8 "(every reply: 22 replies) value 4" -- the knight's fate on b8 is beyond the
+  window; the save claim's value is the stake (3) so it outranks Bxe6's +0 keep. Same class.
+* SiySv (answer Bb8; our pick Rxc7+ by an unfinished line) and 6Cioj (answer Rxf7; our pick Qg5+ by an unfinished line): nothing proved in 15 s, the floor pick was wrong -- the order and
+  the time: the policy's targets (with LOOP TARGET 1, the discovery position).
+THE CLASS TO BUILD NEXT (two of three proved-wrong): THE LEAF TO QUIESCENCE for the piece that just moved -- after our capture or our king's step the static leaf must ask whether the piece
+that moved is trapped or deflected within the exchange's reach (plan 52.18's trap words exist for fixes; they are not read at leaves), i.e. the exchange law's exceptions (Kaveh 2026-10-07)
+read at the leaf, not a deeper window. Not built tonight: it is a design item for the morning (Kaveh decides the leaf word), recorded in docs/ANALYST_PLAN.md as LOOP TARGET 2.
+RETRAINED (the loop's step): the graph policy on 24,344 rows (989 agendas, 3,902 decision points) and the route head on 384 (question, routes) groups from 106 puzzles: OBS train-set rank-first
+364/394 (questions), 36/38 (routes; the engine's own order 11/38) -- train-set numbers, directional only; the held-out numbers come with the next batch.
+
+## 2026-10-23 00:11 PDT -- iteration 1, corrected: the in-check generalisation withdrawn; the retrained policy regressed the gate and is NOT adopted; the policy gate rule
+
+Two corrections to the entry above, both from the full gate run after it (every file, one at a time):
+(1) THE IN-CHECK RULE AT EVERY TARGET over-reaches: an in-check inner agenda whose evasion merely keeps material makes no claim (the evasion save has target >= 1), so a harmless check at a
+leaf read as a GAP -- 0sjz3's Rxd6 (exd6+ is harmless) fell to Rg6, 52.17's time-budget resume records vanished, 4pC83 and pos2 lost their 10 s decisions. Withdrawn: the rule stands at
+target 0 (keep semantics, 0AgL8) only. GWigp's Rxe6 is therefore "proved" again, and WRONGLY -- the refutation is their a-pawn running behind the one-ply leaf (Rxe6 Ra7+ Kf6 a5 ...), i.e.
+LOOP TARGET 2 (the leaf to quiescence / their passer plan at the leaf), not the in-check hole; the fix above was right by accident. Strict xfail in tests/test_plan70.py names it.
+(2) THE RETRAINED POLICY (24,344 rows with the loop batch) LOST THREE GATE CASES under the clock (pos2 Nxf4 back, 4pC83 none, 52.17's resume) where the model rebuilt from the pre-loop logs
+(qlog_all + item_log, 968 agendas) passes all three -- attributed by rebuilding each and running the three tests, not by a set rerun. The learned part only ORDERS, but under a clock the order
+decides what is reached, so a retrained policy is a CANDIDATE until it passes the gate (the plan files and the guard positions at their budgets); the loop adopts it only then. The pre-loop
+model is the one in data/derived now; the loop-1 model is kept beside the logs (scratchpad graph_policy_loop1.pt) for the morning. This is the loop's rule from here: retrain -> gate -> adopt.
