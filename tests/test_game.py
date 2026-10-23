@@ -38,3 +38,15 @@ def test_71_4_the_lean_game_structure_states_the_axioms_and_restates_reach_and_t
     assert "import Ideas.Game" in (root / "lean" / "ideas" / "Ideas.lean").read_text()
     idx = (root / "docs" / "LEAN_INDEX.md").read_text()
     assert "Ideas.Game.Game.race_sound" in idx and "Ideas.Game.Game.terminal_iff" in idx
+
+
+def test_71_6_chess960_is_the_same_game_with_one_parameter_and_king_of_the_hill_is_a_goal():
+    import chess
+    from catspace.incubator.analyst.discovery import game as GM
+    b = GM.CHESS960.from_key("bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w KQkq - 0 1")      # a Chess960 start: the castling rights parse by the 960 rule
+    assert b.chess960 and len(GM.CHESS960.moves(b)) == 20 and GM.CHESS960.terminal(b) is None and GM.CHESS960.measure(b, chess.WHITE) == 0
+    k = GM.KING_OF_THE_HILL
+    assert k.terminal(chess.Board()) is None
+    assert k.terminal(chess.Board("8/8/8/3k4/8/8/8/4K3 w - - 0 1")) == "loss"                   # their king stands on d5 with us to move: we have lost
+    assert k.terminal(chess.Board("8/8/8/3K4/8/8/8/4k3 b - - 0 1")) == "loss" and k.terminal(chess.Board("8/8/8/3K4/8/8/8/4k3 w - - 0 1")) == "win"
+    assert k.terminal(chess.Board("7k/6Q1/6K1/8/8/8/8/8 b - - 0 1")) == "mate"               # the chess terminals still hold

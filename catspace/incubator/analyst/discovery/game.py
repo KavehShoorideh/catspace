@@ -167,5 +167,21 @@ class ChessGame:
         return m.promotion is not None
 
 
+class KingOfTheHillGame(ChessGame):
+    """plan 71.6: a VARIANT BY ITS GOAL (Lean `Ideas.Game.kothGoal`): the laws are chess's; a side also wins the moment its king stands on one of the four centre squares.
+    The Game is the same instance with one more terminal; the machinery changes nothing (a goal is a predicate)."""
+
+    CENTRE = (chess.D4, chess.E4, chess.D5, chess.E5)
+
+    def terminal(self, s: chess.Board) -> str | None:
+        for side in (chess.WHITE, chess.BLACK):
+            k = s.king(side)
+            if k is not None and k in self.CENTRE:
+                return "loss" if side != s.turn else "win"       # their king stands there with us to move: we have lost; ours: we have won (the mover reads the terminal)
+        return super().terminal(s)
+
+
 CHESS = ChessGame()
-assert isinstance(CHESS, Game)
+CHESS960 = ChessGame(chess960=True)                              # plan 71.6: the same laws, another start (and castling by the kernel's 960 rule): one parameter, not a second instance
+KING_OF_THE_HILL = KingOfTheHillGame()
+assert isinstance(CHESS, Game) and isinstance(CHESS960, Game) and isinstance(KING_OF_THE_HILL, Game)

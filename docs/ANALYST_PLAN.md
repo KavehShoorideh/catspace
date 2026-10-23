@@ -3336,7 +3336,7 @@ machinery (defects, fixes, forcing words, endgame words, policies, estimates), t
   fact store (carry its proof and gap entries across passes); the three support generators (62.1b deny, 62.1c support, 67.4 support_fixes) into one
   weak-moment generator; `_refuted` from a regex to a typed kill reason; the switches: every "comparison condition" switch that no test or doc compares is
   deleted (list them in the commit), the rest documented in one table.
-* 71.6 THE PROOF OF EXTENSIBILITY, cheap: Chess960 as a second instance of `ChessGame` (castling only) and KING-OF-THE-HILL as a second `Words` goal
+* 71.6 THE PROOF OF EXTENSIBILITY, cheap: Chess960 as a second instance of `ChessGame` (castling only) and KING-OF-THE-HILL as a second `Words` goal BUILT 2026-10-22 (the Game side): `CHESS960 = ChessGame(chess960=True)` (one parameter; the agenda builds boards through GAME.from_key, 11 sites); `KingOfTheHillGame` adds one terminal (Lean `kothGoal`); tests. The agenda still reads terminals through python-chess (mate / stalemate): routing them to GAME.terminal is in the remaining 71.2 families, so a variant run end to end waits on that.
   generator ("reach the centre": a goal with defects = the squares' guards, fixes = the forcing moves that open them); each runs through the unchanged
   engine on a handful of positions with a trace. No grade, no new lemmas beyond the terminal's definition.
 * ACCEPTANCE: trace identity on the case set after 71.1-71.5; compare_scheduler 0 at 71.1's freeze; the full suite on the last commit of each stage; the

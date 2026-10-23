@@ -333,7 +333,7 @@ class Agenda:
         self.side_depth = side_depth                            # 1: run THEIR agenda (see `their_view`); 0: do not (this is their agenda)
         self.their_runs = 0                                     # how many of their agendas this one ran (all levels)
         self.state = state
-        self.board = chess.Board(state.fen)
+        self.board = GAME.from_key(state.fen)
         self.me = self.board.turn
         self.us = "w" if self.me else "b"
         self.lines: list = []
@@ -2505,7 +2505,7 @@ class Agenda:
                     # 52.14: their claim is a THREAT and a SAVE root of the inner agenda on this position (we are to move: a parry, a counter, taking the attacker); the reply is
                     # killed only by the threats no parry of ours is verified for
                     ctx.line.append((b.fen(), m.uci(), uci, self._judge_stake()))
-                    inn2 = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), their=ctx.their_ags.get(_pos_key(G.with_turn(chess.Board(P2.fen()), not self.me).fen())), keep=dbal)
+                    inn2 = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), their=ctx.their_ags.get(_pos_key(G.with_turn(GAME.from_key(P2.fen()), not self.me).fen())), keep=dbal)
                     ctx.line.pop()
                     if inn2 is None:
                         res["gap"] = self._cut(san, san_r)
@@ -2701,7 +2701,7 @@ class Agenda:
         pawn = q.pattern.get("pawn") if q is not None else None
         if pawn is None or m.from_square == pawn:
             return None
-        b2 = chess.Board(P2.fen())
+        b2 = GAME.from_key(P2.fen())
         pc = b2.piece_at(pawn)
         if pc is None or pc.piece_type != chess.PAWN or pc.color != self.me:
             return None
@@ -2787,7 +2787,7 @@ class Agenda:
                 if line not in self.ctx.open_lines:               # our remainder would be an upper bound -- kcQil came back at +1.)
                     self.ctx.open_lines.append(line)
                 return None
-        return dbal + best, f"exchange +{best} ({W.exchange_read(chess.Board(P2.fen()))}), nothing of theirs"
+        return dbal + best, f"exchange +{best} ({W.exchange_read(GAME.from_key(P2.fen()))}), nothing of theirs"
 
     # ------------------------------------------------------------------------------------------------------------ plan 61 C: the cost judge and the cycle terminal
 
@@ -2950,7 +2950,7 @@ class Agenda:
         spn = self._spn()
         if spn is None:
             return False
-        cost, mv = W.node_cost(chess.Board(fen), self._judge_stake(), self.us)
+        cost, mv = W.node_cost(GAME.from_key(fen), self._judge_stake(), self.us)
         left = max(ctx.deadline - time.monotonic(), 0.0)
         if cost * spn <= left:
             ctx.judge_reads += 1
@@ -3015,7 +3015,7 @@ class Agenda:
         """64.0: the PRINCIPAL LINES of the best static exchange on P2 (our move): one per square whose static exchange is the best (a tie is a choice of ours) -> [(square, [(our capture's SAN, the
         board after it, does the line END with it, the exchange's CREDIT to them there)])]. A line is the legal captures on the square, the cheapest piece first, each side going on while going on
         gains (the swap-list's optimal stop). The credit is f[i+1], what the swap-list already gives them from that board on (0 after the capture that ends the line)."""
-        b = chess.Board(P2.fen())
+        b = GAME.from_key(P2.fen())
         me = b.turn
         best, sqs = 0, []
         for x in chess.SQUARES:
@@ -3085,7 +3085,7 @@ class Agenda:
         (remove the defender with tempo, attack it with tempo, trap it, discover). -> the fix moves, or None (then the reply closes by rule as before)."""
         t = q.pattern["target"]
         pc0 = self.board.piece_at(t)
-        b2 = chess.Board(P2.fen())
+        b2 = GAME.from_key(P2.fen())
         pc2 = b2.piece_at(t)
         if pc0 is None or pc2 is None or pc2.color == self.me or pc2.piece_type != pc0.piece_type:
             return None
@@ -3110,7 +3110,7 @@ class Agenda:
 
     def _their_pass(self, fen: str) -> tuple:
         """52.13 (3): THEIR agenda on the position `fen` (our move) with the move passed to them, memoised by FEN across the run: -> (the value of their best claim, the claim) or (0, None)."""
-        c = G.with_turn(chess.Board(fen), not self.me)
+        c = G.with_turn(GAME.from_key(fen), not self.me)
         key = _pos_key(c.fen())
         hit = self.ctx.theirs.get(key)
         if hit is None:
@@ -3255,7 +3255,7 @@ class Agenda:
         if hit is not None:
             return hit
         fen, mu, ru, stake = step
-        b = chess.Board(fen)
+        b = GAME.from_key(fen)
         m, r = chess.Move.from_uci(mu), chess.Move.from_uci(ru)
         san = b.san(m)
         why = W.forcing_why(b, m, stake, self.us, mate_threats=True, mate2=self.ctx.tier >= 2)
@@ -3540,7 +3540,7 @@ class Agenda:
     def _quiet_leaf(self, fen: str) -> bool:
         """plan 61 B2: is the leaf QUIET -- not in check, no forcing move of ours by `forcing_why` at the stake of the question being chased, and their pass threat 0 (`_their_pass`: their agenda
         with the move passed to them finds no claim)?"""
-        b = chess.Board(fen)
+        b = GAME.from_key(fen)
         if b.is_check():
             return False
         cq = self._chase_q
@@ -3585,7 +3585,7 @@ class Agenda:
             fen = P2.fen()
             if not self._quiet_leaf(fen):
                 return self._est_no("a reply leaves a non-quiet leaf")      # a non-quiet gap stays a gap
-            cls = "quiet:us" if chess.Board(fen).turn == me else "quiet:them"
+            cls = "quiet:us" if GAME.from_key(fen).turn == me else "quiet:them"
             conf = QP.estimate_confidence(cls)
             gains.append(dbal)                                      # (material balance minus their pass threat, which is 0 on a quiet leaf)
             confs.append((False, conf))
