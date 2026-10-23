@@ -53,6 +53,7 @@ class Route:
     why: str                                  # 'check', 'capture 5', 'threat 9' ...
     trap: int | None = None                   # 52.10: the square of the piece this move leaves with no safe square (the binder's second move is the capture of it)
     fork: int | None = None                   # 52.12: the square of the piece of theirs this CHECK attacks with the moved piece (a fork: two threats, one reply)
+    price: tuple | None = None                # 72.3: (material, tempi) of the join this move is the first step of (None: not a join)
 
 
 @dataclass
@@ -956,6 +957,13 @@ def node_cost(board: chess.Board, stake: int, us: str | bool) -> tuple:
 
 
 def route_cost(board: chess.Board, m: chess.Move, stake: int, us: str | bool, why: str | None = None, limit: int | None = None) -> tuple:
+    """plan 72.3: a JOIN route (the first step of a priced reach, `join_fixes`) pays its tempi beyond the first as unread nodes (each is a free move they get): + tempi - 1 on the plan 61 cost."""
+    cost, kids = _route_cost(board, m, stake, us, why, limit)
+    j = _JOIN.get((board.board_fen(), m.uci()))
+    return (cost + max(0, j[1] - 1), kids) if j is not None else (cost, kids)
+
+
+def _route_cost(board: chess.Board, m: chess.Move, stake: int, us: str | bool, why: str | None = None, limit: int | None = None) -> tuple:
     """plan 61 C1 (Lean `Ideas.Forcing.routeCost`): cost(route) = 1 + the sum, over the parries of the route's threat, of the cost of the unread child (`node_cost` on the board after the parry).
     -> (cost, [(parry SAN, child cost)]). A route with no threat object counts every legal reply as a parry. `limit`: stop pricing once the cost is above it (the result is then a lower bound)."""
     me = G.colour_of(us)
@@ -1201,6 +1209,10 @@ def _fixes_of(defect: Defect, q: Question, board: chess.Board, us: str | bool) -
         out += trap_fix(q, defect, board, us)
         out += discovery_fix(q, defect, board, us)
         out += skewer_fix(q, defect, board, us)
+    if JOIN_FIXES and defect.kind in JOIN_KINDS.get(q.goal, ()):
+        j = join_fixes(board, us, defect, q)
+        if j is not None:
+            out.append(j)
     for f in out:
         q.fixes.append(f)
     return out
@@ -1788,6 +1800,12 @@ def promote_fixes(board: chess.Board, sq: int, defect: Defect, q: "Question") ->
         f.routes += extra
         if extra:
             f.text += f" -- or drive their king off {G.name(defect.sq)} with a check"
+    if JOIN_FIXES and defect.kind in ("path attacked", "promo square attacked"):          # 72.3: a unit of ours that comes to guard the square within the pawn's pushes
+        j = join_fixes(board, own, defect, q, k=max(1, _pushes_of(board, sq, own)))
+        if j is not None:
+            have = {x.move for x in f.routes}
+            f.routes += [r for r in j.routes if r.move not in have]
+            f.why += j.why
     q.fixes.append(f)
     return f
 
@@ -1967,3 +1985,90 @@ def stuck_threats(board: chess.Board, us: str | bool, k: int = REACH_K) -> list:
         out.append(dict(sq=s, worth=worth, attacker=a, price=e["material"], tempi=e["tempi"], first=e["path"][0], path=list(e["path"]), parry=parry, reads=frozenset(reads)))
     out.sort(key=lambda d: -(d["worth"] - d["price"]))
     return out
+
+
+# ---------------------------------------------------------------------------------------------------------------- plan 72.3: THE JOIN QUESTION
+JOIN_FIXES = True                             # plan 72.3: a defect that needs a piece of ours at L also gets "bring U to bear on L" for each unit U, priced by `reach_price`
+JOIN_KINDS = {"mate": ("flight", "checker takeable"), "win": ("not attacked", "defended")}      # the defect kinds read as "a piece of ours is needed bearing on L"
+JOIN_KING = ("flight", "checker takeable", "path attacked", "promo square attacked")             # the guards the king can give
+_JOIN: dict = {}                              # (board_fen, first step UCI) -> (material, tempi): read by `route_cost`
+G.CLEAR_HOOKS.append(_JOIN.clear)
+
+
+def counter_value(board: chess.Board, us: str | bool, step: chess.Move, mu: int) -> tuple:
+    """plan 72.3 THE STAKE RULE: what THEY buy with the free moves our join of `mu` tempi hands them. Our moves 1..mu are the join, our (mu+1)-th is the strike; they move after each, so
+    they have mu-1 moves to bring a unit to bear before our strike and their strike is the mu-th (the race: our mu against their nu = their reach tempi + 1; `Game.race_sound`, Ideas.Game --
+    here the roll is a CANDIDATE, only the chase proves; nothing is claimed of the race beyond the comparison nu <= mu = they strike first).
+      mu == 1: the threat word with the move passed, APPROXIMATED by `threat_value` for them on the board after our step (what they win by the exchange on a piece of ours, their move),
+               less the same on the board as it stands (what they win whatever we do: not the plan's cost).
+      mu >= 2: their cheapest price-0 `reach_map` landing within mu-1 moves after which a unit of ours is won by the exchange (`G.see`), the largest such win; the board is ours as it stands
+               (our join steps are not played: the approximation).
+    -> (value, text or None)."""
+    me = G.colour_of(us)
+    if mu <= 1:
+        a = board.copy(stack=False)
+        a.push(step)
+        base = threat_value(G.with_turn(board, not me), me)
+        v = threat_value(a, not me)
+        if v <= base:
+            return 0, None
+        return v - base, f"after {board.san(step)} they win {v - base} by the exchange with the move"
+    best, text = 0, None
+    for sq in chess.SQUARES:
+        pc = board.piece_at(sq)
+        if pc is None or pc.color == me or pc.piece_type == chess.KING:
+            continue
+        for at, e in reach_map(board, sq, mu - 1).items():
+            if e["material"] != 0:
+                continue
+            c = G.with_turn(e["board"], not me)
+            for v in c.attacks(at):
+                tp = c.piece_at(v)
+                if tp is None or tp.color != me or tp.piece_type == chess.KING:
+                    continue
+                w = G.see(c, v)
+                if w > best:
+                    best, text = w, f"their {pc.symbol().upper()} on {G.name(sq)} reaches our {tp.symbol().upper()} on {G.name(v)} in {e['tempi']}"
+    return best, text
+
+
+def join_fixes(board: chess.Board, us: str | bool, defect: Defect, q: Question, k: int | None = None) -> "Question | None":
+    """plan 72.3 THE JOIN QUESTION: can a unit of ours come to bear on the location L the defect needs a piece at (the flight to cover, the square to guard, the target to attack)?
+    For each unit U of ours (the king only for the guards it can give, `JOIN_KING`; never the root pattern's mover or a blocker), `reach_price(board, U, L, k, bearing=True)`, k the pawn's
+    pushes for a promotion defect, else the fuse `REACH_K`. A payable reach is a ROUTE whose move is the word's FIRST STEP ("bring the N from g1 to bear on f7 in 2 (via h3), price 0"), with
+    (material, tempi) on the route and in `route_cost`. THE STAKE RULE (Kaveh 2026-10-23): the plan gains `q.stake`; it pays the reach's material and hands them `counter_value` (above);
+    when stake - material - counter < 1 the fix is NOT PUSHED -- a kill of this FIX (a route not asked, the reason in the question's why), not of the goal, which keeps its other fixes.
+    The bar is "worth doing at all" (net positive); the spec's wording "below the goal's stake" is read as that. -> a 'cover' sub-question (routes may be empty when every reach was refused),
+    or None when no unit can reach L (a cut is a GAP, not a kill: nothing is said)."""
+    me = G.colour_of(us)
+    L = defect.sq
+    if L is None:
+        return None
+    pat = q.pattern
+    skip = {pat.get("frm"), pat.get("pawn")} | set(pat.get("blockers", ())) | ({pat["blocker"]} if pat.get("blocker") is not None else set())
+    kk = REACH_K if k is None else k
+    b = G.with_turn(board, me)
+    routes, why = [], []
+    for sq in chess.SQUARES:
+        pc = b.piece_at(sq)
+        if pc is None or pc.color != me or sq in skip or sq == L or (pc.piece_type == chess.KING and defect.kind not in JOIN_KING):
+            continue
+        r = reach_price(b, sq, L, kk)
+        if r is None or r["tempi"] == 0 or r["first"] is None:
+            continue
+        step = chess.Move.from_uci(r["first"])
+        counter, ctext = counter_value(b, me, step, r["tempi"])
+        net = q.stake - r["material"] - counter
+        nm = pc.symbol().upper() if pc.piece_type != chess.PAWN else "pawn"
+        label = f"bring the {nm} from {G.name(sq)} to bear on {G.name(L)} in {r['tempi']}" + (f" (via {G.name(step.to_square)})" if r["tempi"] > 1 else "") + f", price {r['material']}"
+        if net < 1:
+            why.append(f"the {nm} cannot join in time: " + (ctext + ", " if ctext else "") + f"price {r['material']} + their {counter} against a stake of {q.stake}")
+            continue
+        routes.append(Route(step, b.san(step), label, price=(r["material"], r["tempi"])))
+        _JOIN[(b.board_fen(), step.uci())] = (r["material"], r["tempi"])
+    if not routes and not why:
+        return None
+    f = new_question("cover", q.stake, dict(q.pattern, target=L), q, defect_key=defect.key(), text=f"bring a unit to bear on {G.name(L)} (the priced reach)")
+    f.routes = routes
+    f.why = [x.why for x in routes] + why
+    return f

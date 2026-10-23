@@ -32425,3 +32425,15 @@ on the path) then the static read after the move (pricing can only lift piece st
 when it can run; the roll only when it cannot). OBS after: 10.6 s Nf6 proved. Two timed cases were marginal at HEAD too under today's load (W0VFO at 10 s: the judge cut Qb7 with 2.1 s left
 at HEAD as well; 52.17's 0.3 s mid-route cut: the first inner agenda ~0.05 s before the cut at HEAD, ~0.08 s after with the diff -- the constant raised to 0.5, the property kept).
 The lesson in one line: a new word is priced by the gate, and the price is paid by scoping the word (what it reads, when), never by a flag.
+
+## 2026-10-23 -- plan 72.6 built: scripts/gate.py (engine | full), one file at a time under a lock
+The engine gate and the full gate are now one command each (`scripts/gate.py engine`, `scripts/gate.py full`); a second gate started while one runs refuses, naming the running pid and start time (the 2026-10-22 two-hour gate was stacked pytest runs fighting over the CPU). Not run as a full gate here (one timed gate at a time); checked on one file and with --dry-run only.
+
+## 2026-10-23 13:12 PDT -- plan 72.3: the join question and the stake rule built (branch worktree-agent-af542cb44b4ed100c)
+
+BUILT: `regress.join_fixes` (a defect that needs a piece of ours at L -- flight / checker takeable for mates, not attacked / defended for wins, path attacked / promo square attacked for promotions
+via `promote_fixes` with k = the pawn's pushes -- gets one 'cover' sub-question whose routes are the first steps of `reach_price(U, L, k)` for each unit U, text "bring the N from g1 to bear on f7
+in 2 (via h3), price 0", (material, tempi) on the Route, tempi-1 added to `route_cost`), and `counter_value` (THE STAKE RULE: mu=1 their `threat_value` after our step less the baseline, the
+approximation of their pass claim; mu>=2 their price-0 `reach_map` landing within mu-1 moves after which a unit of ours is won by the exchange). A fix with stake - material - counter < 1 is not
+pushed (a kill of the FIX, the reason in the question's why); the roll is a candidate, the chase proves. The bar "net positive" is my reading of "below the goal's stake" (the stake IS the gain).
+OBS tests/test_plan72_3.py: 4 passed (gate engine). OBS trace identity before/after: 0 of 10 traces differ (no acceptance position asks a join that changes a route list at the count budget).

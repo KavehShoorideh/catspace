@@ -3397,6 +3397,7 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
   semantics -- the save is proved, killed, or a GAP; the candidate never kills on its own). 1hUBC: Nxb8 then their king's three steps to c7 -- the knight cannot run -- their claim 3,
   our save question: no parry keeps -> the Nxc6 route is killed, not "proved +2". GWigp: their a4 passer's root at 4 pushes; the stopper arithmetic (our rook e6 on the path in 1
   vs. the pawn's 4) is read as it is for near pawns. I7k2H falls under (a) at the inner level (the b-pawn after the deflection).
+* 72.3 BUILT 2026-10-23 on branch worktree-agent-af542cb44b4ed100c (regress.join_fixes / counter_value, flag JOIN_FIXES; route text "bring the N from g1 to bear on f7 in 2 (via h3), price 0"; the stake rule refuses a FIX, never the goal; mu=1 uses threat_value for them as the approximation of their pass claim; trace guard 0 of 10 differ).
 * 72.3 THE JOIN QUESTION (ours; Kaveh: "can this knight join this attack?" -- a question a human answers at once). A defect that needs a piece at L (a cover, a guard, an attacker) gets,
   beside the one-move fixes it has today, the fix "bring U to L" priced by the word for each unit U of ours, k up to the tempi the goal has (the race's ν: their fastest counter); fixes
   with a price above the stake are not pushed (the kill), the rest are routes whose first step is the word's first step, with the price in the route's cost (61 C1 `route_cost`) so the
@@ -3425,3 +3426,8 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
   boundary (a Rust position HANDLE held by Python, words called on the handle, no FEN per call; batched calls), what stays in Python (torch, the graph policy, the question prior, orchestration,
   tests) -> docs/RUST_BOUNDARY.md with the migration order (1. the handle and the word calls on it under the trace guard; 2. the chase's reply loop and the static leaf; 3. the words themselves),
   the risks (the Lean mirror citations, the read sets, the trace text), and the measured expectation per step. No code in the research step.
+  BUILT 2026-10-23 (72.6): `scripts/gate.py engine|full [--dry-run] [--only FILE] [--log PATH]`. `engine` = the 28 named files (the missing ones are printed and skipped), `full` = every tests/test_*.py;
+  both run one file at a time, each its own `python -m pytest FILE -q -p no:cacheprovider -W ignore --durations=3` with PYTHONUNBUFFERED=1, output appended to artifacts/experiments/gate_<cmd>_<timestamp>.log.
+  LOCK: `<tmpdir>/catspace_gate.lock` (pid, cmd, start); a second gate refuses (exit 2) naming the running gate's pid and start time; a lock whose pid is dead is removed. Other running pytest processes
+  are listed as a warning, never killed. Ends with `OBS gate <cmd>: files N, passed P, failed F, xfailed X, errors E, wall S s` and the FAILED ids; exit 1 on any failed/error. Test: tests/test_gate_script.py
+  (file lists, lock, summary parser; no engine runs).
