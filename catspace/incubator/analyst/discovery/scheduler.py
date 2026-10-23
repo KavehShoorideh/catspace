@@ -246,8 +246,8 @@ def ask_loop_g(node) -> None:
             node.lines.append("STOP (t): out of time")
             return
         plain = min(node.heap, key=lambda t: (t[0], t[2], t[3]))                # the stake-only order
-        if AG.PRIOR and not node.chase_depth and QP.load() is not None:          # plan 53 (2): THE PRIOR ORDERS the root agenda's pool: the open question with the highest score is asked next
-            scored = [(QP.score(QP.features(t[4], node.board, node.us, node.chase_depth)), -t[0], -t[3], t) for t in node.heap]        # (it orders, it never decides: the stops stay by stakes and claims)
+        if (AG.PRIOR or (node.ctx is not None and node.ctx.pool)) and not node.chase_depth and QP.load() is not None:      # plan 53 (2) / 69.1 (mirror)          # plan 53 (2): THE PRIOR ORDERS the root agenda's pool: the open question with the highest score is asked next
+            scored = [(QP.score(QP.features(t[4], node.board, node.us, node.chase_depth, node.status_info if node.ctx is not None and node.ctx.pool else None)), -t[0], -t[3], t) for t in node.heap]        # (it orders, it never decides: the stops stay by stakes and claims)
             best = max(scored)[3]
             node.heap.remove(best)
             heapq.heapify(node.heap)
@@ -262,7 +262,7 @@ def ask_loop_g(node) -> None:
             if plain[4] is not q:
                 sc, rec = node._recall_score(q)
                 node.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
-        if AG.DEFER and node._root and node.chase_depth == 0 and node.ctx is not None and node.ctx.need is not None and node.ctx.need > 0 and q.goal != "save" and q.stake < node.ctx.need:      # plan 68 (mirror)
+        if AG.DEFER and node._root and node.chase_depth == 0 and node.ctx is not None and not node.ctx.pool and node.ctx.need is not None and node.ctx.need > 0 and q.goal != "save" and q.stake < node.ctx.need:      # plan 68 (mirror)
             node.ctx.deferred_qs.append(q)
             node.lines.append(f"deferred: Q{q.id} {q.text} (stake {q.stake} < the status's need {node.ctx.need}): asked after the tiers' relevant questions")
             continue
@@ -823,7 +823,7 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
         node._resumed_line(r, res)                             # plan 66.2 (mirror of agenda._chase_routes)
     if q.goal == "win" and not node.ctx.out_of_time():
         (yield from refuter_fixes_g(node, q, routes, results, done, pool))
-    node._record_roots(routes, results)                      # plan 65.3 (mirror of agenda._chase_routes)
+    node._record_roots(routes, results, q)                      # plan 65.3 (mirror of agenda._chase_routes)
     node._chasing = None
     node._chase_q = None
     q._chased = not cut                                      # 52.19: a kill is "chased" only when no route was cut (a GAP); a cut chase is as weak as no chase

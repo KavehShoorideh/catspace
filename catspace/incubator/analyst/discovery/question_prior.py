@@ -36,10 +36,17 @@ _model = [None]            # the loaded model: dict(weights: {feature: w}, bias:
 _loaded = [False]
 
 
-def features(q, board: chess.Board, us, depth: int) -> dict:
-    """What is known of a question before it is asked. Keys are generic words; values 1 (one-hot) or small counts."""
+def features(q, board: chess.Board, us, depth: int, status: dict | None = None) -> dict:
+    """What is known of a question before it is asked. Keys are generic words; values 1 (one-hot) or small counts. plan 69.1: with the STATUS (plan 59: balance, their threat, the line) the
+    need and the stake's distance to it are features too (plan 68's deferral, learned instead of written)."""
     me = G.colour_of(us)
     f = {"goal=" + q.goal: 1, "stake": q.stake, "depth": min(depth, 3), "in_check": int(board.is_check())}
+    if status is not None:
+        need = status["line"] - status["balance"]
+        f["need"] = need
+        f["stake_minus_need"] = q.stake - need
+        f["stake_reaches_need"] = int(q.stake >= need or q.goal == "save")
+        f["their_threat"] = status.get("threat", 0)
     t = q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn")))
     if t is not None:
         pc = board.piece_at(t)
@@ -81,7 +88,7 @@ def _rows(path):
 
 def _akey(r: dict) -> tuple:
     """One agenda = one (puzzle, set, prior on/off): the loop logs the same set twice (with the prior and the stake order) and they must not merge."""
-    return (r["id"], r.get("set"), bool(r.get("prior", False)))
+    return (r["id"], r.get("set"), bool(r.get("prior", False)), r.get("run"))      # plan 69.3: the grade RUN too (the same puzzle is logged by every grade)
 
 
 def _label(rows_of_agenda: list) -> list:

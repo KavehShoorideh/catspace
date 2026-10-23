@@ -86,6 +86,7 @@ UNPROVED = True                                                 # plan 65.3: no 
 DEEP_PASS = True                                                # plan 65.4: the status reads THEIR pass with delayed_balance_deep when the d1 family finds no claim and a piece of ours is attacked; `analyse --no-deep-pass`
 STOP_AFFORD = True                                              # plan 65.2: the widening (and the RAISE_TO_WIN continuation) ends when no open route of any tier is priced within the time left; `analyse --no-stop-afford`
 RESUME = True                                                   # plan 66.4: with time left after the tiers, the root's CHAIN-STOPPED GAP routes are resumed in price order, one more level of the chain allowance a pass, ONLY while the line is still forcing (every reply a parry: Lean `Ideas.Forcing.stillForcing`); `analyse --no-resume`
+POOL = False                                                    # plan 69.1 (Kaveh 2026-10-22: "no tier label; a question pool, an agent learns what to ask"): the root runs ONE POOL -- every word available, no stages, no count fuse, passes with every proof carried -- and the AGENT orders the questions. OFF until the agent exists: the agent MUST see the board and every claim so far (Kaveh, standing; a GNN over board + facts, plan 60); the blind linear prior (plan 53) is not it -- driven by it the pool spent 11.7 of 15 s on eSJqH's first pass and proved nothing where the tiers prove Qa5 in 8.8 s. The item log (69.3) accrues meanwhile. `analyse --pool` turns it on (the prior as a stand-in), `--no-pool` off
 DEFER = True                                                    # plan 68 (Kaveh 2026-10-22, eSJqH): RELEVANCE TO THE STATUS orders the root questions across the tiers -- a root question whose stake is below the status's need (line - balance; a save is always relevant) is DEFERRED behind the next tier's relevant questions and asked in a last pass with the time left; Lean `Ideas.Forcing.irrelevant_keeps_nothing`; `analyse --no-defer`
 CARRY = True                                                    # plan 66.1 / 66.2: a PROOF CARRIES across the tiers (Lean `Ideas.Forcing.claim_mono`): a wider tier serves the proved claims of the root's questions and the proved replies of every route read before, and re-reads only kills, GAPs and what could beat a floor; `analyse --no-carry`
 NO_FUSE = 1 << 40                                               # 52.23 (1): the fuse when the budget is time: never reached (the deadline is the only limit)
@@ -244,6 +245,8 @@ class ChaseCtx:
         self.ext_used = 0                         # ... chain stops passed by the extension (the line was still forcing) / ...
         self.ext_quiet = 0                        # ... not passed: the line had gone quiet
         self.resume_passes = 0                    # ... resume passes run by the root
+        self.pool = False                          # plan 69.1: this root runs as ONE POOL (no tiers): the policy orders, every word is available
+        self.item_rows: list = []                 # plan 69.3: the ITEM log of this root (question, route words, price, order, outcome) -- the agent's training data
         self.need: "int | None" = None            # plan 68: what a claim must bring to keep the status (line - balance); None: no tiers (nothing deferred)
         self.deferred_qs: list = []               # ... the root questions deferred this tier (stake below the need, not a save)
         self.resume_ext: dict = {}                # ... (carry key of a root question, route uci) -> {ext, moves}: the root routes the previous tier stopped by the chain while the line was still forcing; read here with the allowance +ext
@@ -721,7 +724,10 @@ class Agenda:
 
     def ask(self) -> None:
         if (TIERS or (TIERS_UNDER_TIME and self.ctx is not None and self.ctx.seconds is not None)) and self._root and self.ctx.tier == 0:          # plan 59 (3): the root is driven through the widening tiers (tier 0 is this agenda; wider tiers run on fresh contexts)
-            self._ask_tiers()
+            if POOL and QP.load() is not None:
+                self._ask_pool()                                 # plan 69.1: one pool, the policy orders, no tier
+            else:
+                self._ask_tiers()
         else:
             self._ask_once()
 
@@ -778,6 +784,59 @@ class Agenda:
         return f"{head}tier {tier}'s {claim}: {'kept' if kept else 'not kept'}" + (f"; {opened}" if opened else "")
 
     TIER_WHY = ("today's moves", "quiet threats worth the stake followed below the root", "mate-in-two threats", "the fuse x8: the 52.23 chain items run at every tier since plan 64.2, so this tier is the widest fuse")
+
+    def _ask_pool(self) -> None:
+        """plan 69.1 THE POOL (Kaveh 2026-10-22): no tier label. The root runs ONCE with every word available (checks, captures, mate threats, mate-in-two threats, quiet and delayed
+        threats, pushes, support placements are FEATURES of a route, never a gate); the policy (`question_prior`, trained on the grade logs) orders the open questions (`_ask_loop`'s
+        scored order); the judge prices the routes as before; the run ends by the same rules (a claim above every open stake, the deadline). The status is read first (its need is a feature and a
+        word of the trace). The tiers remain the fallback when no policy is loaded."""
+        total = self.ctx.seconds
+        t0 = time.monotonic()
+        self.tier_info = []
+        self.status_info = self.status()
+        self.ctx.need = self.status_info["line"] - self.status_info["balance"]
+        self.ctx.tier = TIER_COUNT - 1                           # every word available (the chain items, mate-in-two threats, the delayed threat, no safe move)
+        self.ctx.pool = True
+        self.ctx.left = NO_FUSE                                  # no count: the time and the judge's prices are the only limits
+        m = QP.load()
+        self.lines.append(f"POOL: one pool of questions, every word available, no tier, no count fuse; the policy orders (question_prior.json: {m.get('rows', '?')} rows, {m.get('agendas', '?')} puzzles); "
+                          + f"status {self.status_info['word']} (balance {self.status_info['balance']:+d}, their threat {self.status_info['threat']}), need {self.ctx.need}")
+        self._ask_once()
+        secs = time.monotonic() - t0
+        kept = self.keeps(self.status_info)[0]
+        self.tier_info.append(dict(tier="pool", secs=round(secs, 2), asked=self.asked + self.ctx.asked, kept=kept, hit=bool(self.ctx.hit), claims=len(self.state.claims),
+                                   best=None if self.best is None else (self.best[2].what, self.best[0])))
+        owner, decided, prev, p = self, "pool", self, 0
+        while total is not None and not kept and not self.ctx.abort:          # the passes: with time left and the status not kept, the root is asked again with every proof carried (66.1 / 66.2):
+            left = total - (time.monotonic() - t0)                            # only kills and GAPs are read again, the chain allowance one level longer per pass (66.4), until nothing changes
+            open_gaps = [u for u, d in self.root_reads.items() if d["status"] == "gap"]
+            if left <= 0.05 or not open_gaps:
+                break
+            p += 1
+            nxt = self._next_agenda(prev, TIER_COUNT - 1, left, self.status_info, f"pool {p}")
+            nxt.ctx.pool, nxt.ctx.left, nxt.ctx.extend, nxt.ctx.held = True, NO_FUSE, p, None
+            nxt.ctx.need = self.ctx.need
+            nxt.status_info = self.status_info
+            nxt.lines = _TierLines(self.lines, f"[pool {p}] ")
+            self.lines.append(f"POOL pass {p}: {len(open_gaps)} root route(s) still open ({', '.join(self.root_reads[u]['san'] for u in open_gaps[:5])}{', ...' if len(open_gaps) > 5 else ''}); asked again with {left:.1f} s left, the allowance +{p}")
+            before = {u: (d["status"], len(d["gains"])) for u, d in self.root_reads.items()}
+            t1 = time.monotonic()
+            nxt._ask_once()
+            psecs = time.monotonic() - t1
+            if self._fold_tier(nxt, f"pool {p}", owner):
+                owner, decided = nxt, f"pool {p}"
+            kept = self.keeps(self.status_info)[0]
+            self.tier_info.append(dict(tier=f"pool {p}", secs=round(psecs, 2), asked=nxt.asked + nxt.ctx.asked, kept=kept, hit=bool(nxt.ctx.hit), claims=len(nxt.state.claims),
+                                       best=None if nxt.best is None else (nxt.best[2].what, nxt.best[0])))
+            after = {u: (d["status"], len(d["gains"])) for u, d in self.root_reads.items()}
+            if after == before and nxt.best is None:
+                self.lines.append(f"POOL pass {p}: nothing changed (no new claim, no route read further): the passes end")
+                break
+            prev = nxt
+        self.tier_decided = decided if self.best is not None else 0
+        self.tier_secs = [t["secs"] for t in self.tier_info]
+        self.lines.append(f"POOL: ended at {time.monotonic() - t0:.1f} s" + (f" of {total}" if total is not None else "") + f" after {p} extra pass(es); {self.asked} questions asked in the first, {self.prior_moves} moved up by the policy; status "
+                          + ("kept" if kept else "not kept") + "; the decision is " + (f"{self.best[2].what} ({self.best[0]:+d})" if self.best is not None else "none"))
 
     def _ask_tiers(self) -> None:
         """plan 59 (3): THE DRIVER. Run tier 0 (this agenda); if the best claim does not keep the status, run the next tier on a FRESH context (a kill under a narrower move set is not a kill under a
@@ -1016,11 +1075,22 @@ class Agenda:
         m = re.search(r"\((-\d+)\)\s*$", why)
         return bool(m) or "they mate us" in why or "stalemate" in why or "no parry" in why
 
-    def _record_roots(self, routes: list, results: dict) -> None:
+    def _record_roots(self, routes: list, results: dict, q: "R.Question | None" = None) -> None:
         """plan 65.3: what the ROOT's chase learned of each route: REFUTED (a kill that proves a loss: final), or UNFINISHED (a GAP, or a kill that proves no loss: the replies read so far are `gains`). The decision
         reads this when no claim exists at all. Inner agendas record nothing."""
         if self.chase_depth != 0 or self.ctx is None:
             return
+        if q is not None and self._root:                          # plan 69.3: the ITEM log -- one row per (question, route) with its words, price, order and outcome: the agent's data
+            for i, r in enumerate(routes):
+                res = results.get(i)
+                if res is None:
+                    continue
+                words = r.why.removeprefix("fix: ").split(" ")[0] if r.why else ""
+                self.ctx.item_rows.append(dict(q=q.text, goal=q.goal, stake=q.stake, qid=q.id, route=r.san, uci=r.move.uci(), why=r.why[:60], word=words, order=i,
+                                               check=int(self.board.gives_check(r.move)), capture=int(self.board.is_capture(r.move)),
+                                               cost=(self.ctx.route_costs.get((self.pk, r.move.uci(), q.stake)) or (None,))[0],
+                                               outcome=("claim" if res.get("killed") is None and res.get("gap") is None else "killed" if res.get("killed") else "gap"),
+                                               value=res.get("value"), need=self.ctx.need, pool=bool(self.ctx.pool), tier=self.ctx.tier))
         for i, r in enumerate(routes):
             res = results.get(i)
             u = r.move.uci()
@@ -1233,8 +1303,8 @@ class Agenda:
                 self.lines.append("STOP (t): out of time")
                 return
             plain = min(self.heap, key=lambda t: (t[0], t[2], t[3]))                # the stake-only order
-            if PRIOR and not self.chase_depth and QP.load() is not None:          # plan 53 (2): THE PRIOR ORDERS the root agenda's pool: the open question with the highest score is asked next
-                scored = [(QP.score(QP.features(t[4], self.board, self.us, self.chase_depth)), -t[0], -t[3], t) for t in self.heap]        # (it orders, it never decides: the stops stay by stakes and claims)
+            if (PRIOR or (self.ctx is not None and self.ctx.pool)) and not self.chase_depth and QP.load() is not None:          # plan 53 (2) / 69.1: THE PRIOR ORDERS the root agenda's pool: the open question with the highest score is asked next
+                scored = [(QP.score(QP.features(t[4], self.board, self.us, self.chase_depth, self.status_info if self.ctx is not None and self.ctx.pool else None)), -t[0], -t[3], t) for t in self.heap]        # (it orders, it never decides: the stops stay by stakes and claims)
                 best = max(scored)[3]
                 self.heap.remove(best)
                 heapq.heapify(self.heap)
@@ -1247,7 +1317,7 @@ class Agenda:
                 if plain[4] is not q:
                     sc, rec = self._recall_score(q)
                     self.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
-            if DEFER and self._root and self.chase_depth == 0 and self.ctx is not None and self.ctx.need is not None and self.ctx.need > 0 and q.goal != "save" and q.stake < self.ctx.need:
+            if DEFER and self._root and self.chase_depth == 0 and self.ctx is not None and not self.ctx.pool and self.ctx.need is not None and self.ctx.need > 0 and q.goal != "save" and q.stake < self.ctx.need:
                 self.ctx.deferred_qs.append(q)                     # plan 68: a claim below the need keeps no status (Ideas.Forcing.irrelevant_keeps_nothing): asked after the tiers' relevant questions
                 self.lines.append(f"deferred: Q{q.id} {q.text} (stake {q.stake} < the status's need {self.ctx.need}): asked after the tiers' relevant questions")
                 continue
@@ -3293,6 +3363,7 @@ class Agenda:
             if self.chase_depth == 0 and saved > 0 and i not in cheap_res and self.ctx.final is None:             # the root's fuse is shared FAIRLY (52.23 (1): by TIME when seconds are given) by the routes of this chase: each gets an equal share of what is left (a chain of checks must not spend what Qd5 needs: 0DoFB)
                 self.ctx.left = share
             before = self.ctx.left
+            t_item = time.monotonic()
             if i in cheap_res:
                 res = cheap_res[i]
             elif self.ctx.out_of_time():                           # 52.17 (5): the open routes end as GAPs
@@ -3342,7 +3413,7 @@ class Agenda:
             self._resumed_line(r, res)
         if q.goal == "win" and not self.ctx.out_of_time():
             self._refuter_fixes(q, routes, results, done, pool)
-        self._record_roots(routes, results)
+        self._record_roots(routes, results, q)
         self._chasing = None
         self._chase_q = None
         q._chased = not cut                                      # 52.19: a kill is "chased" only when no route was cut (a GAP); a cut chase is as weak as no chase

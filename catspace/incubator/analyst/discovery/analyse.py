@@ -161,7 +161,7 @@ def _write_qlog(p: dict, set_name: str, fen: str, ag, d, sfv, estimated: bool = 
     if True:
         from catspace.incubator.analyst.discovery import question_prior as QP
         for i, q in enumerate(ag.order):
-            f = QP.features(q, ag.board, ag.us, 0)
+            f = QP.features(q, ag.board, ag.us, 0, getattr(ag, "status_info", None))      # plan 69.1: the status features are logged too
             word = next((c.lemma for c in ag.state.claims if c.qid == q.id), None) if q.status == "verified" else None
             word = word or (q.claimed[1].lemma if q.claimed is not None else (q.reason.split(":")[0] if q.reason else q.status))
             t = q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn")))
@@ -170,7 +170,10 @@ def _write_qlog(p: dict, set_name: str, fen: str, ag, d, sfv, estimated: bool = 
                                      decided=bool(d and d.qid == q.id), decision=d.move if d else None, proved=(bool(d.proved) if d else None), proved_by=(d.proved_by if d else None), decision_word=(d.word if d else None),   # plan 65.3: a proved claim or an unproved 'unfinished line' (the grade reports them apart)
                                      estimated=estimated, answer=ans, match=match, sf=sfv[0], sf_loss=sfv[1], sf_best=sfv[2],
                                      target_sq=t, move=q.pattern.get("move"), features=f, resources=res61)) + "\n")
-    _append_once(os.environ.get("CATSPACE_QLOG") or paths.experiment("question_log.jsonl"), "".join(buf))      # (CATSPACE_QLOG: a run beside another that writes the default log)
+    _append_once(os.environ.get("CATSPACE_QLOG") or paths.experiment("question_log.jsonl"), "".join(buf))
+    if ag.ctx is not None and ag.ctx.item_rows:                  # plan 69.3: the ITEM log (question, route words, price, order, outcome) -- the agent's training data
+        rows = [dict(r, id=p["id"], set=set_name, fen=fen, answer=ans, sf=sfv[0], sf_loss=sfv[1], decision=d.move if d else None, decided_proved=(bool(d.proved) if d else None)) for r in ag.ctx.item_rows]
+        _append_once(os.environ.get("CATSPACE_ITEMLOG") or paths.experiment("item_log.jsonl"), "".join(json.dumps(r) + "\n" for r in rows))      # (CATSPACE_QLOG: a run beside another that writes the default log)
 
 
 def main():
@@ -207,6 +210,8 @@ def main():
     ap.add_argument("--no-stop-afford", action="store_true", help="plan 65.2: the widening runs to the deadline instead of stopping when nothing affordable is left (comparison; ON by default)")
     ap.add_argument("--no-unproved", action="store_true", help="plan 65.3: no unfinished-line decision when there is no claim (comparison; ON by default)")
     ap.add_argument("--no-deep-pass", action="store_true", help="plan 65.4: the status reads their pass with the d1 family only (comparison; ON by default)")
+    ap.add_argument("--pool", action="store_true", help="plan 69.1: ONE POOL of questions ordered by the loaded policy instead of the tiers (OFF by default until the agent that sees the board and the claims exists; the linear prior is a stand-in)")
+    ap.add_argument("--no-pool", action="store_true", help="plan 69.1: the tiers (the default)")
     ap.add_argument("--no-defer", action="store_true", help="plan 68: no deferral of the root questions below the status's need (comparison; ON by default)")
     ap.add_argument("--no-irreversible", action="store_true", help="plan 66.5: the chase clock resets only on our capture that is not bad for us or our pawn move, and a capturing check counts as a second check (comparison condition, ON by default)")
     ap.add_argument("--no-resume", action="store_true", help="plan 66.4: no resume pass of the chain-stopped root routes after the tiers (comparison condition, ON by default)")
@@ -233,6 +238,9 @@ def main():
     if a.no_defer:
         from catspace.incubator.analyst.discovery import agenda as _AG68
         _AG68.DEFER = False
+    if a.pool or a.no_pool:
+        from catspace.incubator.analyst.discovery import agenda as _AG69
+        _AG69.POOL = bool(a.pool and not a.no_pool)
     if a.no_resume:
         from catspace.incubator.analyst.discovery import agenda as _AG664
         _AG664.RESUME = False
