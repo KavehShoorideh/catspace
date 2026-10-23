@@ -32425,3 +32425,6 @@ on the path) then the static read after the move (pricing can only lift piece st
 when it can run; the roll only when it cannot). OBS after: 10.6 s Nf6 proved. Two timed cases were marginal at HEAD too under today's load (W0VFO at 10 s: the judge cut Qb7 with 2.1 s left
 at HEAD as well; 52.17's 0.3 s mid-route cut: the first inner agenda ~0.05 s before the cut at HEAD, ~0.08 s after with the diff -- the constant raised to 0.5, the property kept).
 The lesson in one line: a new word is priced by the gate, and the price is paid by scoping the word (what it reads, when), never by a flag.
+
+## 2026-10-23 -- plan 72.6 built: scripts/gate.py (engine | full), one file at a time under a lock
+The engine gate and the full gate are now one command each (`scripts/gate.py engine`, `scripts/gate.py full`); a second gate started while one runs refuses, naming the running pid and start time (the 2026-10-22 two-hour gate was stacked pytest runs fighting over the CPU). Not run as a full gate here (one timed gate at a time); checked on one file and with --dry-run only.
