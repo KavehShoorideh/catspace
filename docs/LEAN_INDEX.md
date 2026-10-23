@@ -409,6 +409,7 @@ Do not edit by hand.
 - **theorem `Ideas.Game.chess_pass_board`** (line 119): The pass leaves the board as it is: what every threat word reads.
 - **theorem `Ideas.Game.chess_measure_pass`** (line 122): The measure is antisymmetric across the pass: their balance is minus ours.
 - **def `Ideas.Game.kothGoal`** (line 134): The four centre squares (files d, e; ranks 4, 5) hold the mover's king of colour `c`.
+  - used by: catspace/incubator/analyst/discovery/game.py
 
 ## lean/ideas/Ideas/Generated/Measures.lean
 
