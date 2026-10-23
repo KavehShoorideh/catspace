@@ -57,3 +57,52 @@ def test_72_3_joins_are_quiet_plans_kept_out_of_the_fixes_and_route_cost_pays_th
         assert R.joins_of(q2, b, "w") == []
     finally:
         R.JOIN_FIXES = True
+
+
+# ---- the cost, by scoping (2026-10-23 evening): the same answers, read where they can matter -------------------------------------------------------------
+
+_SCOPE_FENS = ["4k3/8/8/8/8/8/8/4K1N1 w - - 0 1", "4k3/8/8/8/8/8/6b1/R3K3 w - - 0 1", "r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w - - 0 1",
+               "r1bqnr1k/1p1n2p1/p2p2P1/2pPp3/4Pp1b/2N1BP1N/PPP4Q/2KR1B2 w - - 0 1"]
+
+
+def test_72_cost_a_reach_read_only_where_it_does_the_job_is_the_same_reach():
+    """`reach_price` asks `reach_map` for the landings that do the job only (the last step's other landings are not priced); the answer is the one the whole map gives."""
+    for fen in _SCOPE_FENS:
+        b = chess.Board(fen)
+        for sq in chess.SQUARES:
+            pc = b.piece_at(sq)
+            if pc is None or pc.color != chess.WHITE:
+                continue
+            for target in (t for t in (chess.F7, chess.E8, chess.A8, chess.H2) if t != sq):
+                clear_caches()
+                got = R.reach_price(b, sq, target, 3)
+                clear_caches()
+                full = [e for at, e in R.reach_map(b, sq, 3).items() if target in e["board"].attacks(at)]
+                want = min(((e["material"], e["tempi"]) for e in full), default=None)
+                if target in R.G.with_turn(b, pc.color).attacks(sq):
+                    want = (0, 0)
+                assert (None if got is None else (got["material"], got["tempi"])) == want
+
+
+def test_72_cost_the_geometry_check_never_rejects_a_unit_that_can_bear():
+    for fen in _SCOPE_FENS:
+        b = chess.Board(fen)
+        for sq in chess.SQUARES:
+            pc = b.piece_at(sq)
+            if pc is None or pc.color != chess.WHITE:
+                continue
+            for L in (x for x in chess.SQUARES if x != sq):
+                clear_caches()
+                r = R.reach_price(b, sq, L, 3)
+                if r is not None:
+                    assert R._can_bear_in_principle(pc, sq, L, 3), (fen, chess.square_name(sq), chess.square_name(L))
+
+
+def test_72_cost_the_join_is_asked_at_the_root_not_in_the_inner_agendas_of_a_chase():
+    from catspace.incubator.analyst.discovery.agenda import Agenda
+    from catspace.incubator.analyst.discovery.state import State
+    ag = Agenda(State(fen=_SCOPE_FENS[2], us="w", pieces=[]))
+    q = R.new_question("mate", 100, {})
+    assert ag._joins(q, chess.Board(_SCOPE_FENS[2]), "w") == [] or ag.chase_depth == 0
+    inner = Agenda(State(fen=_SCOPE_FENS[2], us="w", pieces=[]), chase_depth=1, ctx=ag.ctx)
+    assert inner._joins(q, chess.Board(_SCOPE_FENS[2]), "w") == []
