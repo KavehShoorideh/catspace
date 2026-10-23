@@ -3216,12 +3216,19 @@ The state: the prior (plan 53) orders root questions within a tier and is OFF (t
 (plan 59), so a stake-9 question at tier 2 waits for every stake-1 question at tier 1 (plan 68 hand-writes the fix for one case); ESTIMATE (61 B2) values
 only QUIET leaves with a fixed confidence and has never fired on the 90 (every cut leaf is tactical); the unproved pick (65.3) orders unfinished lines by
 their worst read reply, right 6 in 20. The grade logs hold the training data: every root question's interpretable features with the Stockfish label.
-* 69.1 THE POOL AND THE POLICY. One pool of ITEMS = (root question, vocabulary level k) -- the question asked with tier k's route generator -- replacing
-  the stages: the driver takes the item the policy scores highest, asks it (its proofs carry, 66.1/66.2; its routes are priced by the judge as now), and
-  stops by the same rule (a claim keeps the status; nothing affordable left). The policy's features are the question's (`question_prior.features`) plus
-  the level k, the status (balance, threat, need), and the forcing resources; it ORDERS only -- every decision stays the rules'. Checks-first falls out of
-  the data or it does not: report it. Plan 68's deferral becomes the policy's hand-written fallback when no model is loaded. Lean: nothing new to prove
-  (the order of asking does not touch soundness: `claim_mono`); the stop rule's lemma stands.
+* 69.1 THE POOL AND THE AGENT -- NO TIER LABEL (Kaveh: "those are hand-coded and I don't like them; I just want a question pool, and a reinforcement
+  learning agent learns from that pool what questions to ask; hopefully checks and forced captures come first, but I don't want it labeled tier one").
+  One pool of ITEMS = (root question, candidate move): the route generator offers EVERY legal move for every open question, and what the tiers used to
+  gate -- a check, a capture, a mate threat, a quiet threat worth the stake, a delayed threat, a pawn push, a support placement (67.4) -- is read as the
+  item's FEATURES (`forcing_why` and its kin become words on the item, never a filter), with the question's features, the status (balance, threat, need),
+  the judge's price in seconds and the forcing resources. THE AGENT picks the next item to ask; its proofs carry (66.1/66.2), its routes are priced by the
+  judge as now, and the run stops by the same rules (a claim keeps the status; nothing affordable left; the deadline). Inside the chase the same: the
+  inner levels' "follow checks and captures only" filter becomes the agent's order under the judge's price. The agent is trained by reinforcement from
+  the outcomes the engine already logs -- reward = the decision's grade (RIGHT/WRONG by Stockfish, proved or not) less the seconds spent -- seeded by a
+  supervised order from the grade logs (69.3); it ORDERS only, every decision stays the rules' (Lean `claim_mono`: the order of asking does not touch
+  soundness). The tiers, `_ask_tiers`'s stages and plan 68's deferral are REMOVED from the decision path and kept only as the fallback order when no
+  trained agent is loaded (`data/derived/question_policy.json` absent). Report whether checks and captures come first in the learned order (OBS: the
+  mean rank of each feature), and the seconds to the first proved claim on the 90, against the staged run.
 * 69.2 THE BOUNDED LEAF ESTIMATOR. At a cut leaf the PROVED parts give an interval: our best proved claim there wins at least v (floor), their proved pass
   threat wins at most t (ceiling: the leaf's status), the open gaps by stake. The estimator reads the leaf's interpretable features -- the per-piece
   exchange verdicts (the state lines), the forcing resources, the status words, the gap stakes -- and returns a point INSIDE the interval and a confidence.
