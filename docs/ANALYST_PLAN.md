@@ -3405,3 +3405,10 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
   alone before and after 72.2 (the only "rerun" allowed: a single diagnostic, one puzzle, one rule). The retrain -> gate -> adopt rule for the heads.
 * NOT IN 72: a quiescence search of captures at the leaf (Kaveh: not quiescence); a "caged" word; reading their replies inside the word (the pass is the word's definition; the chase
   reads replies). Kaveh decides 72.3's stake arithmetic (what a tempo is worth against material) before it is built; 72.1 and 72.2 are a go ("Sure, let's try this out").
+* 72.5 THE SURVEY BEFORE THE QUESTIONS (Kaveh 2026-10-23: "layers of calculation -- my moves with them doing nothing; my moves with their obvious replies; the robust calculation where the
+  stakes are high; the prior would benefit from a quick pass before deciding on the right questions"). The three layers, named: LAYER 1 the pass (`attackableIn`, price 0, nothing of theirs);
+  LAYER 2 the priced reach (72.1: their paying captures assumed, their quiet moves passed); LAYER 3 the chase (every reply read; the judge spends it where the stake is high). The SURVEY:
+  before the root's questions are ordered, for every unit of ours and theirs the cheapest layer-2 reach to each job on the board (the goals' squares, the units it could bear on, the
+  promotion squares) within the root's tempo horizon -- a table of (unit, job, material, tempi). It is cheap (one roll per unit, memoised by board), interpretable (it prints as "the N on b8
+  can join nothing; their K reaches c7 in 3"), and becomes FEATURES of the question prior and the route policy (plan 53 / 69: the agent sees the board and the claims -- now also what each
+  unit can do). The decision stays by proof; the survey only orders. Built after 72.2 under the retrain -> gate -> adopt rule.
