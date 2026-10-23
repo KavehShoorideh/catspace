@@ -32425,3 +32425,11 @@ on the path) then the static read after the move (pricing can only lift piece st
 when it can run; the roll only when it cannot). OBS after: 10.6 s Nf6 proved. Two timed cases were marginal at HEAD too under today's load (W0VFO at 10 s: the judge cut Qb7 with 2.1 s left
 at HEAD as well; 52.17's 0.3 s mid-route cut: the first inner agenda ~0.05 s before the cut at HEAD, ~0.08 s after with the diff -- the constant raised to 0.5, the property kept).
 The lesson in one line: a new word is priced by the gate, and the price is paid by scoping the word (what it reads, when), never by a flag.
+
+## 2026-10-23 13:07 PDT -- plan 72.7 research: the Rust boundary (docs/RUST_BOUNDARY.md; no code, no runs)
+The core already has a position handle (`Pos` in rust/analyst_core/src/pos.rs, 0.4 us vs 15.4 us per reply with python-chess) and Rust twins of regress/route/sched;
+the cost is that Python rebuilds it from `board.fen()` at ~20 call sites in agenda.py and passes FEN strings to every other Rust function and to `val_at` (which also
+renders and parses an s-expression per read). Recommendation: keep shakmaty (cozy-chess is ~1.6x faster on perft per a third-party leaderboard, but the hot path is
+crossings, not movegen); extend `Pos` into a per-node handle with batched word calls by term id; bridge python-chess with a thin `RBoard`, retire it by step 3.
+Order: 0 sharpen the trace guard (add read sets, SAN and legal-order cross-checks), 1 handle + words, 2 chase reply loop + static leaf, 3 the words. Expectation only:
+step 1 ~12-18 points of wall time, step 2 ~15-25, step 3 ~20-35; 16-22 agent-days. Biggest risk: the read sets (the guard compares trace text only).
