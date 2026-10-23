@@ -32450,3 +32450,14 @@ OBS tests/test_plan72_3.py: 4 passed (gate engine). OBS trace identity before/af
 OBS survey cost, cold (rolls included): discovery position 148 rows in 14 ms, pos2 107 rows in 8 ms; warm features 0.5 ms.
 OBS trace guard (count budget, 10 cases): before and after identical once the `survey:` lines are removed from the after traces, DECISION lines included (10 of 10).
 OBS tests: test_plan72_5.py passed 7; test_graph_policy.py passed 5.
+
+## 2026-10-23 14:05 PDT -- plan 72.3 corrected: joins are quiet plans, not forcing fixes (the gate on main found 7 failures)
+
+CAUSE (read from the gate log of main after the first merge): the join routes were put into `Question.fixes`, so `tempo_ok` counted a QUIET first step as the forcing fix of a defect, the chase
+followed it, and the question count exploded (02XVK inner questions < 1000 -> 4776; 0LRTF's mate roots no longer died by the measure; 04Qx2 Bh5+ for Be8+; 0BHbB's landing table not served;
+tiers 59.4 changed). A quiet step hands them a free move: it is no fix for a tempo count. FIX: joins live in `Question.joins` (`regress.joins_of`, lazily, only for the defects with NO forcing fix, i.e. the ones
+the tempo arithmetic is about to kill; question ids restored), are printed by the agenda as "join Qn: ..." lines (candidates and the stake rule's refusals) and never enter `all_routes`, the chase, the
+fuse or `_count`. They are inputs for the policy / the 72.5 survey, not routes. NOTE: the first guard line above ("0 of 10 differ") was INVALID: scripts/trace_identity.py imported the main checkout's catspace, not the worktree's.
+OBS trace guard (a snapshot script that imports the worktree, join and survey lines filtered): 0 other differing lines and the same DECISION on 10 of 10; join lines 0-29 per trace.
+OBS gate tests/test_regress.py: passed 88, failed 0. OBS tests/test_plan72.py: 6 passed. OBS tests/test_plan72_3.py: 4 passed.
+OBS tests/test_tiers.py: 13 passed, 1 failed (test_59_4 raised-line at seconds=1.0); with JOIN_FIXES False the same case gives raised None too (4 runs, join lines 0 in this case) -- not the joins.
