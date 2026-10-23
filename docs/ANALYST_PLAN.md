@@ -3360,3 +3360,48 @@ machinery (defects, fixes, forcing words, endgame words, policies, estimates), t
   there is exactly ONE immediate path (the recursive chase) and ONE delayed queue (the fact store's gap queue, 52.19, with 66.2's carry_r/proofs and 66.4's
   chain_gaps folded into it in 71.5), and the delayed queue becomes an explicit interface -- `file(gap, stake, resume_mark)`, `drain(seconds, policy order)` --
   used by the ponderer, the resume passes and the pool passes alike, instead of three lists poked from three places.
+
+### 72 THE PRICED REACH: one word, "unit U reaches a job L within k moves at a price", and the leaf, the join question and their threats as its callers (Kaveh 2026-10-23 morning, from the loop's target 2)
+
+THE DIAGNOSIS (loop iteration 1, three of five misses: I7k2H, 1hUBC, GWigp). Their question at the static leaf IS asked (52.13: their agenda with the move passed; 52.14: its claims become
+our save roots). In all three it answered "no claim" because its vocabulary is ONE MOVE deep: a promote root exists only within 3 pushes (a count limit; GWigp's a-pawn needs 4), their
+agenda never chases, and nothing in the vocabulary says "their king walks three steps to the knight that cannot move" (1hUBC's b8) or "the bishop that must take is deflected from
+its pawn" (I7k2H). The miss is not the asking, it is the words. Kaveh: the leaf is not a quiescence search; it is THEIR ROOT, and the words it needs are the roll-forward of one unit.
+
+THE WORD (Kaveh 2026-10-23: "attackable in, I love that", "nothing is illegal in chess, it just costs you something", "the natural form of cost is material and tempo").
+`reach(s, U, L, k) -> (material, tempi) | None`: the cheapest way, by the exchange, for unit U to come to bear on location L within k of ITS OWNER'S moves, the other side's QUIET
+moves passed and its PAYING CAPTURES assumed (Lean `Ideas.Vocabulary.attackableIn`: every landing safe by the exchange; here a landing is allowed at the exchange's price instead
+of forbidden, so `attackableIn` is the price-0 case). The price is a PAIR: material (the sum of what the exchange takes on the landings) and tempi (the moves). The answer "None"
+means no path at all within k. Soundness is asymmetric and that is the point: "the price exceeds the stake" is a KILL of the join question (if the unit cannot get there cheaply
+enough even when they pass, it cannot get there at all); a payable price is a CANDIDATE line of k moves with no reply read -- a question, never a proof. The deflection exception
+(their capture on a landing is a mistake because the capturer had a duty) is NOT read here: it is a forcing route, judged by the existing "capturing piece left a duty" word.
+Kaveh's two knights: the first knight's price to the square is its own worth (it lands on an unsafe square), the second's is the first knight plus four tempi; whether either is worth
+paying is the goal's stake against the price -- the judge's arithmetic, not a new one. Tempi are compared as the race does (`Ideas.Race.race_sound`, `Game.race_sound`): our k against
+the tempi THEIR fastest counter-plan needs; material against the Game's `measure`.
+THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move still does its job where it stands (it guards; it blocks a passer). It is a LIABILITY only as the answer
+"no, at any price" to "can it join THIS attack / defence" -- and a TARGET only when their unit can reach a square bearing on it at a price below its worth while it cannot run
+(63.2 `can_run`). Neither needs a "caged" word; both are the reach word asked with a job.
+
+* 72.1 THE WORD, Python + Lean. `regress.reach_price(board, unit_sq, target_sq, k, bearing=True)` over the owner's legal moves with the other side's turn flipped back (the pass),
+  breadth-first to depth k, each landing priced by the exchange (`G.see` on the landing with the mover's piece there, 0 if nothing is won), the path's price = the sum; the king and the
+  pawn included (the king by its steps, each safe only; the pawn by its pushes -- a passer's "job" is the promotion square). -> the cheapest (material, tempi) with the first step and
+  the read set (the landings, the lines to L), or None. Lean: `Ideas/Reach.lean` restating `attackableIn` with a price (`reachPrice c s : Nat -> Position -> Option (Nat x Nat)`)
+  and the two theorems the callers stand on: `reachPrice_zero_iff_attackableIn` (price-0 reach is attackableIn) and `reach_kill_sound` -- if no priced path exists within k against the
+  pass (every reply of theirs a pass), none exists against their play either (their quiet move never adds a landing the pass lacked; stated over `Game` as a monotonicity of
+  `Reach` in the opponent's relation). The index rebuilt. A test per theorem and a Python-vs-Lean-evaluator check on a handful of positions.
+* 72.2 THEIR THREATS AT THE LEAF (the loop's target 2; 1hUBC, I7k2H, GWigp). Their agenda at the static leaf (`_their_pass`, side_depth 0) gets two roots built on the word:
+  (a) PROMOTE at any distance: the 3-push limit goes (principled, not numbered); a pawn is a promote root when it is a PASSER (no enemy pawn ahead on its file or the adjacent files;
+  the Rust word `passer`) whatever its pushes, and the tempo arithmetic (`promote_defects`: stoppers by `dist` / static reach) decides, as it does today for near pawns;
+  (b) WIN THE UNIT THAT CANNOT RUN: for each unit of ours with `can_run` false, their cheapest `reach_price` to a square bearing on it within its worth; the claim's value is the
+  worth less the price; lemma `stuck_reach` -- a CANDIDATE threat (its proof is our save question: 52.14 makes every claim of theirs a save root, and 70.1 chases a save with keep
+  semantics -- the save is proved, killed, or a GAP; the candidate never kills on its own). 1hUBC: Nxb8 then their king's three steps to c7 -- the knight cannot run -- their claim 3,
+  our save question: no parry keeps -> the Nxc6 route is killed, not "proved +2". GWigp: their a4 passer's root at 4 pushes; the stopper arithmetic (our rook e6 on the path in 1
+  vs. the pawn's 4) is read as it is for near pawns. I7k2H falls under (a) at the inner level (the b-pawn after the deflection).
+* 72.3 THE JOIN QUESTION (ours; Kaveh: "can this knight join this attack?" -- a question a human answers at once). A defect that needs a piece at L (a cover, a guard, an attacker) gets,
+  beside the one-move fixes it has today, the fix "bring U to L" priced by the word for each unit U of ours, k up to the tempi the goal has (the race's ν: their fastest counter); fixes
+  with a price above the stake are not pushed (the kill), the rest are routes whose first step is the word's first step, with the price in the route's cost (61 C1 `route_cost`) so the
+  judge and the policy order them. The Rust `reach_route` already answers the path; this is its priced form in the question algebra.
+* 72.4 THE GATE AND THE LOOP. Every stage: the trace guard (10/10 or each change explained), the plan files one at a time, then rand14-17 at 15 s by proof; the three traced puzzles
+  alone before and after 72.2 (the only "rerun" allowed: a single diagnostic, one puzzle, one rule). The retrain -> gate -> adopt rule for the heads.
+* NOT IN 72: a quiescence search of captures at the leaf (Kaveh: not quiescence); a "caged" word; reading their replies inside the word (the pass is the word's definition; the chase
+  reads replies). Kaveh decides 72.3's stake arithmetic (what a tempo is worth against material) before it is built; 72.1 and 72.2 are a go ("Sure, let's try this out").
