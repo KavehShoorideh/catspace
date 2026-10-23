@@ -47,3 +47,25 @@ def test_60_the_examples_reveal_only_what_was_asked_before_the_decision_point():
     rows2[1]["target_sq"] = chess.A5
     ex2 = GP._examples(rows2)
     assert ex2 and ex2[0][4] == 1
+
+
+def test_69_1_route_nodes_and_the_route_head():
+    b = chess.Board(ESJQH)
+    routes = [dict(q=1, uci="b7c7", why="check", cost=24, order=0), dict(q=1, uci="b4a5", why="delayed threat: after every reply a new threat", cost=382, order=3)]
+    g = GP.build(b, True, _qs(), dict(balance=-3, threat=7, line=0), routes=routes)
+    assert g["route"].x.shape[0] == 2 and g["route", "of", "question"].edge_index.shape[1] == 2 and g["route", "to", "square"].edge_index.shape[1] == 2
+    assert float(g["route"].x[0, len(GP.RWORDS)]) == 1.0 and float(g["route"].x[1, len(GP.RWORDS)]) == 0.0      # Rxc7+ gives check, Qa5 does not
+    m = GP.make_model((g.node_types, g.edge_types))
+    with torch.no_grad():
+        assert m(g, routes=True).shape == (2,) and m(g).shape == (3,)
+
+
+def test_69_1_route_examples_take_the_claiming_route_or_the_answer_as_the_positive(tmp_path):
+    rows = [dict(id="p", set="s", fen=ESJQH, qid=4, pool=False, tier=1, goal="win", stake=3, order=0, uci="b7c7", why="check", cost=24, outcome="killed", answer="b4a5"),
+            dict(id="p", set="s", fen=ESJQH, qid=4, pool=False, tier=1, goal="win", stake=3, order=1, uci="b4a5", why="delayed threat", cost=382, outcome="gap", answer="b4a5"),
+            dict(id="q", set="s", fen=ESJQH, qid=1, pool=False, tier=0, goal="mate", stake=100, order=0, uci="b7c7", why="check", cost=24, outcome="killed", answer="h6h2"),
+            dict(id="q", set="s", fen=ESJQH, qid=1, pool=False, tier=0, goal="mate", stake=100, order=1, uci="b4h4", why="threat 3", cost=50, outcome="claim", answer="h6h2")]
+    p = tmp_path / "items.jsonl"
+    p.write_text("".join(__import__("json").dumps(r) + "\n" for r in rows))
+    ex = GP.route_examples(str(p))
+    assert sorted((e[5], e[4]) for e in ex) == [("p", 1), ("q", 1)]                    # p: the answer's route; q: the claiming route

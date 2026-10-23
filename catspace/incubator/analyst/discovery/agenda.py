@@ -2874,7 +2874,7 @@ class Agenda:
             ctx.root_gaps[(_pos_key(self.board.fen()), m.uci(), self._judge_stake())] = (cost, san)
             ctx.deferred.add(mkey_c)
             return res, None
-        if need is not None and need > pool / 2 and need > equal:
+        if need is not None and need > (pool if ctx.pool else pool / 2) and need > equal:      # plan 69.1: in the POOL the route in hand may take the root's whole share (the policy put it first); the half is the tiers' fair-share rule
             self.lines.append(f"    judge: {san} cut ({what}, {need:.1f} s needed, {pool:.1f} s left of the root's share) -> GAP")
             ctx.judge_cuts += 1
             ctx.budget_hits += 1
@@ -3348,6 +3348,16 @@ class Agenda:
             routes += [r for r in q._support_routes if r.move not in seen]
         if q.goal == "promote" and not self.chase_depth:        # 52.15 (2): plus a move that attacks a named STOPPER of the question ("threat on the stopper"), or offers the pawn to it
             routes += self._stopper_routes(q, [r.move for r in routes], notes)
+        if self.chase_depth == 0 and self._root and routes and self.ctx is not None and (self.ctx.pool or PRIOR) and GP.load() is not None:      # plan 69.1: THE POLICY ORDERS THE ROUTES of a root question (it sees the board, the question, each route's words and price)
+            left_frac = max(0.0, min(1.0, ((self.ctx.final or time.monotonic()) - time.monotonic()) / self.ctx.seconds)) if self.ctx.seconds else 1.0
+            rd = [dict(uci=r.move.uci(), why=r.why, cost=(self.ctx.route_costs.get((self.pk, r.move.uci(), q.stake)) or (None,))[0], order=i) for i, r in enumerate(routes)]
+            qd = dict(goal=q.goal, stake=q.stake, depth=0, target=q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn"))))
+            sc = GP.score_routes(self.board, self.me, qd, rd, getattr(self, "status_info", None), left_frac)
+            if sc:
+                order = sorted(range(len(routes)), key=lambda i: -sc[i])
+                if order != list(range(len(routes))):
+                    self.lines.append("  policy: routes in the policy's order: " + ", ".join(f"{routes[i].san} ({sc[i]:+.1f})" for i in order[:6]) + (", ..." if len(order) > 6 else ""))
+                routes = [routes[i] for i in order]
         if self.chase_depth and not evading:                    # inner levels follow the most forcing moves only: a check, a capture, a mate threat (the quiet "threat n" moves are the root's)
             follow = ("check", "threat of mate", "capture") + (("threat",) if self.ctx.tier >= 1 else ()) + (("push",) if q.goal == "promote" else ())      # 62.1c: a lifted promote question follows the pawn's push      # plan 59 tier 1 lifts the cut for the quiet threats worth the stake (and the tier-2 mate-in-two threat)
             routes = [r for r in routes if r.why.removeprefix("fix: ").startswith(follow)]
@@ -3411,8 +3421,8 @@ class Agenda:
                     now = time.monotonic()
                     if root_final is None:                                     # 52.23 (11): and, like the fuse, the ROOT gets at most half of what is left while another root can beat the best claim (BEKFf: the first mate root ate the whole minute)
                         cap = any(t[4].goal in ("mate", "win", "promote") and (self.best is None or self.best[0] < t[4].stake) for t in self.heap)
-                        root_final = now + (self.ctx.final - now) / 2 if cap else self.ctx.final
-                    self.ctx.deadline = now + max(min(root_final, self.ctx.final) - now, 0) / max(open_left, 1)
+                        root_final = now + (self.ctx.final - now) / 2 if cap and not self.ctx.pool else self.ctx.final      # plan 69.1: in the POOL the question in hand (the policy's first) gets the whole remainder; the half is the tiers' hedge
+                    self.ctx.deadline = now + max(min(root_final, self.ctx.final) - now, 0) / (1 if self.ctx.pool else max(open_left, 1))      # plan 69.1: in the POOL the route in hand (the policy's first) gets the root's whole share; the judge's price still cuts what cannot fit
                     self.ctx.root_end = min(root_final, self.ctx.final)               # plan 61 C2: the end of the root's share of the time (the judge's pool)
                     self.ctx.hand = None                           # (a new slice: the route in hand is the one this slice sees)
                 ext0 = self._resume_begin(q, r)                       # plan 66.4: a route the last tier stopped by the chain, still forcing: one more level of the allowance

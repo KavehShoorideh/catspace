@@ -32,6 +32,7 @@ MODEL = "graph_policy.pt"
 GOALS = ("mate", "win", "save", "promote", "fork", "guard", "cover", "remove", "gap")
 STATUSES = ("open", "verified", "killed", "gap", "routed")
 WORDS = ("tempo", "verify", "stopped", "reasoned", "chase", "budget", "cut", "none")
+RWORDS = ("check", "capture", "threat", "delayed", "denies", "traps", "evade", "support:", "push:", "fix:", "no", "other")      # the route's word (its `why`'s first word)
 HIDDEN = 32
 _model = [None]
 _loaded = [False]
@@ -44,9 +45,10 @@ def _word_class(word: str | None) -> int:
 
 # ---------------------------------------------------------------------------------------------------------------- the graph
 
-def build(board: chess.Board, us: bool, questions: list, status: dict | None, left_frac: float = 1.0):
-    """-> HeteroData. `questions`: dicts with goal, stake, depth, target (square or None), status (open/verified/killed/gap), word, value. The square and piece
-    features are counts a player would name (attacked by us / by them)."""
+def build(board: chess.Board, us: bool, questions: list, status: dict | None, left_frac: float = 1.0, routes: list | None = None):
+    """-> HeteroData. `questions`: dicts with goal, stake, depth, target (square or None), status (open/verified/killed/gap), word, value. `routes` (plan 69.1, the
+    route level): dicts with q (index into questions), uci, why, cost (the judge's first-level cost or None), order. The square and piece features are counts a
+    player would name (attacked by us / by them)."""
     import torch
     from torch_geometric.data import HeteroData
     d = HeteroData()
@@ -101,6 +103,25 @@ def build(board: chess.Board, us: bool, questions: list, status: dict | None, le
     d["root"].x = torch.tensor([[bal / 10, min(thr, 20) / 20, float(line), (line - bal) / 10, left_frac, float(board.is_check())]], dtype=torch.float)
     n = len(questions)
     d["root", "sees", "question"].edge_index = torch.tensor([[0] * n, list(range(n))], dtype=torch.long) if n else torch.zeros((2, 0), dtype=torch.long)
+    # routes (plan 69.1): a candidate move of a question, with its words, its price and its squares
+    r_x, rq_src, rq_dst, rf_src, rf_dst, rt_src, rt_dst = [], [], [], [], [], [], []
+    for i, r in enumerate(routes or []):
+        m = chess.Move.from_uci(r["uci"])
+        w = (r.get("why") or "").removeprefix("fix: ").split(" ")[0]
+        wd = [0.0] * len(RWORDS)
+        wd[RWORDS.index(w) if w in RWORDS else RWORDS.index("other")] = 1.0
+        pc = board.piece_at(m.from_square)
+        cap = board.piece_at(m.to_square)
+        legal = board.is_pseudo_legal(m)                          # (the dummy route of a training graph need not be a move of the board)
+        r_x.append(wd + [float(legal and board.gives_check(m)), float(legal and board.is_capture(m)), (G.worth(cap) / 9) if cap else 0.0, (G.worth(pc) / 9) if pc else 0.0,
+                         math.log1p(r.get("cost") or 0) / 7, min(r.get("order", 0), 12) / 12, float(m.promotion is not None), len(board.attackers(not us, m.to_square)) / 4])
+        rq_src.append(i); rq_dst.append(r["q"])
+        rf_src.append(i); rf_dst.append(m.from_square)
+        rt_src.append(i); rt_dst.append(m.to_square)
+    d["route"].x = torch.tensor(r_x, dtype=torch.float) if r_x else torch.zeros((0, len(RWORDS) + 8))
+    d["route", "of", "question"].edge_index = torch.tensor([rq_src, rq_dst], dtype=torch.long) if rq_src else torch.zeros((2, 0), dtype=torch.long)
+    d["route", "from", "square"].edge_index = torch.tensor([rf_src, rf_dst], dtype=torch.long) if rf_src else torch.zeros((2, 0), dtype=torch.long)
+    d["route", "to", "square"].edge_index = torch.tensor([rt_src, rt_dst], dtype=torch.long) if rt_src else torch.zeros((2, 0), dtype=torch.long)
     # reverse edges so that messages flow both ways
     for (a, r, b) in list(d.edge_types):
         if a != b:
@@ -121,12 +142,15 @@ def make_model(meta):
             self.inp = nn.ModuleDict({t: Linear(-1, HIDDEN) for t in meta[0]})
             self.convs = nn.ModuleList([HeteroConv({et: SAGEConv((-1, -1), HIDDEN) for et in meta[1]}, aggr="sum") for _ in range(2)])
             self.out = nn.Sequential(nn.Linear(HIDDEN, HIDDEN), nn.ReLU(), nn.Linear(HIDDEN, 1))
+            self.out_route = nn.Sequential(nn.Linear(HIDDEN, HIDDEN), nn.ReLU(), nn.Linear(HIDDEN, 1))
 
-        def forward(self, data):
-            x = {t: torch.relu(self.inp[t](data[t].x)) for t in data.node_types if data[t].x.numel() or t == "question"}
+        def forward(self, data, routes: bool = False):
+            x = {t: torch.relu(self.inp[t](data[t].x)) for t in data.node_types if data[t].x.numel() or t in ("question", "route")}
             for conv in self.convs:
                 y = conv(x, data.edge_index_dict)
                 x = {t: torch.relu(y.get(t, x[t])) + x[t] for t in x}
+            if routes:
+                return self.out_route(x["route"]).squeeze(-1)
             return self.out(x["question"]).squeeze(-1)
     return Net()
 
@@ -168,12 +192,88 @@ def _examples(rs):
     return out
 
 
+_DUMMY_ROUTE = [dict(q=0, uci="a1a2", why="other", cost=0, order=0)]      # (a graph always carries the route node type, so one trained module set serves both heads)
+
+
+def route_examples(item_log_path):
+    """plan 69.1 THE ROUTE LEVEL from the item log: per (puzzle, run, question) the routes read, the positive = the route that CLAIMED, else the route equal to the puzzle's answer;
+    the rest asked are negatives. -> [(board, us, questions, routes, pos_index)]."""
+    by = {}
+    for l in open(item_log_path):
+        r = json.loads(l)
+        by.setdefault((r["id"], r.get("set"), r.get("fen"), r["qid"], r.get("pool"), r.get("tier")), []).append(r)
+    out = []
+    for key, rs in by.items():
+        rs = sorted(rs, key=lambda r: r["order"])
+        if len(rs) < 2:
+            continue
+        pos = next((i for i, r in enumerate(rs) if r["outcome"] == "claim"), None)
+        if pos is None:
+            ans = rs[0].get("answer")
+            pos = next((i for i, r in enumerate(rs) if ans and r["uci"][:4] == ans[:4]), None)
+        if pos is None:
+            continue
+        board = chess.Board(rs[0]["fen"])
+        qs = [dict(goal=rs[0]["goal"], stake=rs[0]["stake"], depth=0, target=None, status="open")]
+        routes = [dict(q=0, uci=r["uci"], why=r.get("why", ""), cost=r.get("cost"), order=r["order"]) for r in rs]
+        out.append((board, board.turn, qs, routes, pos, rs[0]["id"]))
+    return out
+
+
+def train_routes(item_log_path, model=None, epochs=6, folds=None, seed=1, verbose=True):
+    """Train (or evaluate, `folds`) the ROUTE head on the item log; the question head's weights are shared through the trunk. -> model."""
+    import torch
+    torch.manual_seed(seed); random.seed(seed)
+    ex = route_examples(item_log_path)
+    ids = sorted({e[5] for e in ex})
+    if verbose:
+        print(f"OBS route policy data: {len(ex)} (question, routes) groups from {len(ids)} puzzles")
+
+    def fit(train_ex, test_ex, model):
+        graphs = [(build(b, us, qs, None, routes=rt), pos) for b, us, qs, rt, pos, _id in train_ex]
+        if model is None:
+            model = make_model((graphs[0][0].node_types, graphs[0][0].edge_types))
+            with torch.no_grad():
+                model(graphs[0][0]); model(graphs[0][0], routes=True)
+        opt = torch.optim.Adam(model.parameters(), lr=3e-3)
+        model.train()
+        for ep in range(epochs):
+            random.shuffle(graphs); tot = 0.0
+            for g, pos in graphs:
+                logits = model(g, routes=True)
+                loss = torch.nn.functional.cross_entropy(logits.unsqueeze(0), torch.tensor([pos]))
+                opt.zero_grad(); loss.backward(); opt.step(); tot += float(loss)
+            if verbose:
+                print(f"OBS route policy epoch {ep + 1}: mean loss {tot / max(len(graphs), 1):.3f} over {len(graphs)} groups")
+        model.eval(); hit = hit_order = n = 0
+        with torch.no_grad():
+            for b, us, qs, rt, pos, _id in test_ex:
+                sc = model(build(b, us, qs, None, routes=rt), routes=True)
+                hit += int(int(torch.argmax(sc)) == pos); hit_order += int(pos == 0); n += 1
+        return model, hit, hit_order, n
+
+    if folds:
+        H = HO = N = 0
+        for f in range(folds):
+            test = {i for j, i in enumerate(ids) if j % folds == f}
+            tr = [e for e in ex if e[5] not in test]; te = [e for e in ex if e[5] in test]
+            if not tr or not te:
+                continue
+            _m, h, ho, n = fit(tr, te, None)
+            H += h; HO += ho; N += n
+        print(f"OBS route policy eval ({folds}-fold by puzzle, {N} groups): the deciding route ranks first under the policy {H}/{N}, under the engine's own order {HO}/{N}")
+        return None
+    model, h, ho, n = fit(ex, ex[: max(1, len(ex) // 10)], model)
+    print(f"OBS route policy built: {len(ex)} groups (train-set rank-first {h}/{n}; the engine's order {ho}/{n})")
+    return model
+
+
 def _stake_order_hit(open_idx, qs, pos):
     best = max(open_idx, key=lambda i: (qs[i]["stake"], -i))
     return int(best == pos)
 
 
-def train(log_path, out_path=None, epochs=6, folds=None, seed=1, verbose=True):
+def train(log_path, out_path=None, epochs=6, folds=None, seed=1, verbose=True, item_log=None):
     import torch
     from catspace.incubator.analyst.discovery import question_prior as QP
     torch.manual_seed(seed); random.seed(seed)
@@ -188,10 +288,11 @@ def train(log_path, out_path=None, epochs=6, folds=None, seed=1, verbose=True):
         graphs = []
         for k, ex in train_items:
             for board, us, qs, open_idx, pos, stake in ex:
-                graphs.append((build(board, us, qs, None), open_idx, pos))
+                graphs.append((build(board, us, qs, None, routes=_DUMMY_ROUTE), open_idx, pos))
         model = make_model((graphs[0][0].node_types, graphs[0][0].edge_types))
         with torch.no_grad():
             model(graphs[0][0])
+            model(graphs[0][0], routes=True)
         opt = torch.optim.Adam(model.parameters(), lr=3e-3)
         for ep in range(epochs):
             random.shuffle(graphs)
@@ -211,7 +312,7 @@ def train(log_path, out_path=None, epochs=6, folds=None, seed=1, verbose=True):
         with torch.no_grad():
             for k, ex in test_items:
                 for board, us, qs, open_idx, pos, stake in ex:
-                    g = build(board, us, qs, None)
+                    g = build(board, us, qs, None, routes=_DUMMY_ROUTE)
                     scores = model(g)
                     best = max(open_idx, key=lambda i: float(scores[i]))
                     hit += int(best == pos); n += 1
@@ -231,6 +332,8 @@ def train(log_path, out_path=None, epochs=6, folds=None, seed=1, verbose=True):
         print(f"OBS graph policy eval ({folds}-fold by puzzle, {N} decision points): the deciding question ranks first under the graph policy {H}/{N}, under the stake order {HS}/{N}")
         return None
     model, h, hs, n = run_fold(items, items[: max(1, len(items) // 10)])
+    if item_log and os.path.exists(item_log):
+        model = train_routes(item_log, model=model, epochs=epochs, verbose=verbose)      # plan 69.1: the route head on the item log, the trunk shared
     out = out_path or paths.derived(MODEL)
     torch.save(dict(state=model.state_dict(), meta=(["square", "piece", "question", "root"], None), hidden=HIDDEN, rows=len(rows), agendas=len(items)), out)
     print(f"OBS graph policy built: {len(items)} agendas, {sum(len(ex) for _, ex in items)} decision points -> {out} (train-set rank-first {h}/{n})")
@@ -248,10 +351,11 @@ def load(path=None):
             import torch
             blob = torch.load(p, weights_only=False)
             board = chess.Board()
-            g = build(board, True, [dict(goal="win", stake=1, depth=0, target=0, status="open")], None)
+            g = build(board, True, [dict(goal="win", stake=1, depth=0, target=0, status="open")], None, routes=[dict(q=0, uci="e2e4", why="threat 1", cost=3, order=0)])
             model = make_model((g.node_types, g.edge_types))
             with torch.no_grad():
                 model(g)
+                model(g, routes=True)
             model.load_state_dict(blob["state"])
             model.eval()
             _model[0] = model
@@ -274,19 +378,33 @@ def score_questions(board: chess.Board, us: bool, questions: list, status: dict 
         return [float(x) for x in model(g)]
 
 
+def score_routes(board: chess.Board, us: bool, question: dict, routes: list, status: dict | None, left_frac: float = 1.0) -> list:
+    """Scores for the `routes` (dicts uci, why, cost, order) of one question; [] when no model."""
+    model = load()
+    if model is None or not routes:
+        return []
+    import torch
+    with torch.no_grad():
+        g = build(board, us, [dict(question, status="open")], status, left_frac, routes=[dict(r, q=0) for r in routes])
+        return [float(x) for x in model(g, routes=True)]
+
+
 def main():
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=("train", "eval"))
+    ap.add_argument("mode", choices=("train", "eval", "eval-routes"))
     ap.add_argument("--log", required=True)
+    ap.add_argument("--items", default=None, help="the item log (plan 69.3) for the route head")
     ap.add_argument("--out", default=None)
     ap.add_argument("--epochs", type=int, default=6)
     ap.add_argument("--folds", type=int, default=5)
     a = ap.parse_args()
     if a.mode == "eval":
         train(a.log, folds=a.folds, epochs=a.epochs, verbose=False)
+    elif a.mode == "eval-routes":
+        train_routes(a.items or a.log, folds=a.folds, epochs=a.epochs, verbose=False)
     else:
-        train(a.log, a.out, epochs=a.epochs)
+        train(a.log, a.out, epochs=a.epochs, item_log=a.items)
 
 
 if __name__ == "__main__":

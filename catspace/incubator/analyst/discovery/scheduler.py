@@ -41,6 +41,7 @@ from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import landing as LD
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import question_prior as QP
+from catspace.incubator.analyst.discovery import graph_policy as GP
 from catspace.incubator.analyst.discovery import reasoned as RS
 from catspace.incubator.analyst.discovery import regress as R
 from catspace.incubator.analyst.discovery.state import Claim, State
@@ -732,6 +733,16 @@ def chase_g(node, q: R.Question) -> bool:
         routes += [r for r in q._support_routes if r.move not in seen]
     if q.goal == "promote" and not node.chase_depth:        # 52.15 (2): plus a move that attacks a named STOPPER of the question ("threat on the stopper"), or offers the pawn to it
         routes += node._stopper_routes(q, [r.move for r in routes], notes)
+    if node.chase_depth == 0 and node._root and routes and node.ctx is not None and (node.ctx.pool or AG.PRIOR) and GP.load() is not None:      # plan 69.1 (mirror): the policy orders the routes of a root question
+        left_frac = max(0.0, min(1.0, ((node.ctx.final or time.monotonic()) - time.monotonic()) / node.ctx.seconds)) if node.ctx.seconds else 1.0
+        rd = [dict(uci=r.move.uci(), why=r.why, cost=(node.ctx.route_costs.get((node.pk, r.move.uci(), q.stake)) or (None,))[0], order=i) for i, r in enumerate(routes)]
+        qd = dict(goal=q.goal, stake=q.stake, depth=0, target=q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn"))))
+        sc = GP.score_routes(node.board, node.me, qd, rd, getattr(node, "status_info", None), left_frac)
+        if sc:
+            order = sorted(range(len(routes)), key=lambda i: -sc[i])
+            if order != list(range(len(routes))):
+                node.lines.append("  policy: routes in the policy's order: " + ", ".join(f"{routes[i].san} ({sc[i]:+.1f})" for i in order[:6]) + (", ..." if len(order) > 6 else ""))
+            routes = [routes[i] for i in order]
     if node.chase_depth and not evading:                    # inner levels follow the most forcing moves only: a check, a capture, a mate threat (the quiet "threat n" moves are the root's)
         follow = ("check", "threat of mate", "capture") + (("threat",) if node.ctx.tier >= 1 else ()) + (("push",) if q.goal == "promote" else ())      # plan 59 tier 1 lifts the cut for the quiet threats worth the stake (and the tier-2 mate-in-two threat)
         routes = [r for r in routes if r.why.removeprefix("fix: ").startswith(follow)]
@@ -795,8 +806,8 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
                 now = time.monotonic()
                 if root_final is None:                                     # 52.23 (11): and, like the fuse, the ROOT gets at most half of what is left while another root can beat the best claim (BEKFf: the first mate root ate the whole minute)
                     cap = any(t[4].goal in ("mate", "win", "promote") and (node.best is None or node.best[0] < t[4].stake) for t in node.heap)
-                    root_final = now + (node.ctx.final - now) / 2 if cap else node.ctx.final
-                node.ctx.deadline = now + max(min(root_final, node.ctx.final) - now, 0) / max(open_left, 1)
+                    root_final = now + (node.ctx.final - now) / 2 if cap and not node.ctx.pool else node.ctx.final      # plan 69.1 (mirror)
+                node.ctx.deadline = now + max(min(root_final, node.ctx.final) - now, 0) / (1 if node.ctx.pool else max(open_left, 1))      # plan 69.1 (mirror)
                 node.ctx.root_end = min(root_final, node.ctx.final)               # plan 61 C2: the end of the root's share of the time (the judge's pool)
                 node.ctx.hand = None                           # (a new slice: the route in hand is the one this slice sees)
             ext0 = node._resume_begin(q, r)                       # plan 66.4 (mirror of agenda._chase_routes)
