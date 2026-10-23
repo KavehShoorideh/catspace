@@ -32266,3 +32266,12 @@ alone proves Qa5 at 13 s but under five workers the clock edge takes it. The str
 (1a4ca1b3): relevance to the status orders the root questions across tiers; the judge's own pricing (~20% of the run) cached across tiers.
 Open decisions: the second-check guard blocks the derived support routes (4efZ2): end a check sequence by repetition or the clock, not by count; the
 six slow RIGHTs need a principle that ENDS the raise-to-win search once a claim keeps the status.
+
+## 2026-10-22 17:35 PDT -- PLAN 68 BUILT (relevance to the status orders the root questions): eSJqH proves Qa5 again, verified on that puzzle alone
+
+Built here (7e5f7f3f), verified on eSJqH ALONE at Kaveh's word (no grade of the 90). The status is read first and gives the NEED (line - balance = 3 on
+eSJqH); a root question whose stake is below the need and is not a save is deferred in every tier and asked in a DEFERRED PASS with the time left; Lean
+`Ideas.Forcing.irrelevant_keeps_nothing` (a claim below the need keeps no status). eSJqH alone at 15 s, five runs: tiers [0.2, 2.8, 5.8, 1.8], Qa5 PROVED
+by tier 2 in four (the first run after a Lean build measured 0.0100 s per node against 0.006 after, and missed); the seven "win their P (worth 1)" roots
+are the deferred ones. Against plan 65's [1.4, 4.3, 3.3, 5.0] the saving is tier 0 and tier 1; tier 2 itself is longer than then (66.4's allowance).
+compare_scheduler 0; tests test_plan68.py (4), tiers/65/66/67 pass. 68.3 measured, not built (prices already cached across tiers).
