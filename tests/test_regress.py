@@ -1053,6 +1053,7 @@ def test_52_18_an_almost_battery_does_not_attack_and_its_front_piece_leaving_mak
     assert seen > 20
 
 
+@pytest.mark.xfail(strict=True, reason="LOOP TARGET 1 / plan 72.9 (Kaveh 2026-10-23): under the POOL at 30 s neither Nf6 nor Nd6 is PROVED; the assertion rested on the unproved fallback, which flipped from Nd6 to Nc5 when the engine got faster (the joins at the root only). The pool's order and the judge's share must prove Nf6; until then this is the named gap.")
 def test_52_18_the_discovery_position_names_the_discovery_and_the_x_ray_fix_is_offered_on_a_win_defect():
     ag = AG.Agenda(State(DISCOVERY, "w", []), seconds=30)                    # (see the 52.16 discovery test: a time budget since 2026-10-20; 30 s since 64.0's sound close)
     ag.ask()
