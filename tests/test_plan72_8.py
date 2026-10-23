@@ -64,9 +64,10 @@ def test_72_8_a_mate_arrangement_with_two_jobs_priced_0_3_is_reachable_and_its_s
     q = next(q for q in ag.all if q.goal == "mate" and q.pattern.get("at") == chess.D8 and q.pattern.get("frm") == chess.D1 and q.pattern.get("move"))
     assert (q.pattern["arrangement"]["material"], q.pattern["arrangement"]["tempi"], q.pattern["arrangement"]["counter"]) == (0, 3, 0) and R.arrangement_value(q) == 100
     f = ag._arrangement_fix(q)
-    assert f is not None and f in q.fixes
-    r = next(r for r in f.routes if r.move == chess.Move.from_uci("e2d3"))
-    assert r.price == (0, 1) and r.why.startswith("bring the B from e2 to bear on h7 in 1, price 0 [arrangement mate on d8 (R d1->d8, their king on h8): ")
+    assert f is not None and f in q.fixes and [r.san for r in f.routes] == ["Rd8+"]                   # only a FORCING first step is a route (72.3 corrected: a quiet step is no fix)
+    r = f.routes[0]
+    assert r.price == (0, 1) and r.why.startswith("check; bring the R from d1 to d8 in 1, price 0 [arrangement mate on d8 (R d1->d8, their king on h8): ")
+    assert f.unforced == ["Bd3", "Nf5"] and f"  arrangement Q{q.id}: quiet first step(s) Bd3, Nf5 -- candidates, not routes (a quiet step hands them a free move)" in ag.lines
 
 
 def test_72_8_step_aside_our_own_rook_blocks_the_queens_path():

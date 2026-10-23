@@ -752,6 +752,7 @@ class Agenda:
             q = R.new_question("promote", R.STAKE_PROMOTE, dict(pawn=pw, pushes=n), text=f"promote our P on {GAME.loc_name(pw)} ({n} push{'es' if n > 1 else ''} to {GAME.loc_name(a.target)}, by the arrangement)")
         else:
             return None
+        q._arr_root = a.goal == "mate"                            # (its reach steps ARE the arrangement's first steps: `_ask_reach` does not add them twice)
         self._push(q)
         return q if q in self.all else None
 
@@ -761,7 +762,9 @@ class Agenda:
         a = getattr(q, "_arr", None)
         if not SKELETON_GOALS or a is None or self.chase_depth or not self._root or q.parent is not None:
             return None
-        f = W.arrangement_fix(self.board, self.us, a, q, q.pattern["arrangement"]["text"])
+        f, quiet = W.arrangement_fix(self.board, self.us, a, q, q.pattern["arrangement"]["text"])
+        if quiet:                                                # (72.3 corrected: a quiet step is a candidate, printed, never a route; it takes no question id)
+            self.lines.append(f"  arrangement Q{q.id}: quiet first step(s) {', '.join(quiet)} -- candidates, not routes (a quiet step hands them a free move)")
         if f is not None:
             q.fixes.append(f)
         return f
@@ -1787,6 +1790,7 @@ class Agenda:
             for f in q.fixes:
                 self._trace_fix(f, 1)
             if not W.tempo_ok(q):
+                self._trace_joins(q, R.joins_of(q, b, us))
                 if self._chase(q):
                     return
                 self._kill(q, q.reason, tempo=True)
@@ -1794,6 +1798,12 @@ class Agenda:
             self.lines.append(f"  tempo: {len(q.defects)} defect(s), each has a forcing fix")
             routes = self._merge_routes(q)
         self._verify(q, routes, mates_only=q.goal == "mate")
+
+    def _trace_joins(self, q: R.Question, joins: list) -> None:
+        """plan 72.3: the join questions of `q` (QUIET plans: candidates and the stake rule's refusals, never routes of the chase)."""
+        for j in joins:
+            for w in j.why:
+                self.lines.append(f"  join Q{q.id}: {w}")
 
     def _landing_defects(self, q: R.Question) -> list:
         """52.18 (1): a mate root is a LANDING that binds (or lacks a claim by its defects). The defect list is the landing's answer, served from the table when nothing its read set
@@ -2304,16 +2314,9 @@ class Agenda:
             (forcing if why else quiet).append(R.Route(m, b.san(m), why) if why else b.san(m))
         f.routes, f.unforced = forcing, quiet
         q.fixes.append(f)
-        af = self._arrangement_fix(q)                            # plan 72.8 (11b): a matched arrangement's first steps are read as the reach's steps are (forcing: verified; quiet: the tempo reason)
+        af = None if getattr(q, "_arr_root", False) else self._arrangement_fix(q)      # plan 72.8 (11b): a matched arrangement's FORCING first steps join the reach's (a root the arrangement pushed has them as its steps already)
         if af is not None:
-            for r in af.routes:
-                if r.move in steps:
-                    continue
-                why = W.forcing_why(b, r.move, q.stake, us, mate_threats=True)
-                if why:
-                    forcing.append(R.Route(r.move, r.san, f"{why}; {r.why}", price=r.price))
-                else:
-                    quiet.append(r.san)
+            forcing += [r for r in af.routes if r.move not in steps]
         self.asked += 1
         self.lines.append(f"  -> Q{f.id} {f.text}: " + (", ".join(f"{r.san} ({r.why})" for r in forcing) if forcing else "no forcing step" + (f" (quiet steps: {', '.join(quiet[:4])})" if quiet else "")))
         q.reads = R.reads_of(q, b)
@@ -4098,15 +4101,16 @@ class Agenda:
                 f = W.promote_fixes(b, sq, d, q)
                 rs = ", ".join(f"{r.san} ({r.why})" for r in f.routes)
                 self.lines.append(f"  -> Q{f.id} {f.text}: " + (f"forcing: {rs}" if rs else "no forcing move"))
-            f = self._arrangement_fix(q)                         # plan 72.8 (11b): the matched arrangement's first steps (the chase reads a promotion's fix routes)
+            f = self._arrangement_fix(q)                         # plan 72.8 (11b): the matched arrangement's FORCING first steps (the chase reads a promotion's fix routes)
             if f is not None:
-                self.lines.append(f"  -> Q{f.id} {f.text}: routes: " + ", ".join(f"{r.san} ({r.why})" for r in f.routes))
+                self.lines.append(f"  -> Q{f.id} {f.text}: forcing: " + ", ".join(f"{r.san} ({r.why})" for r in f.routes))
             self.asked += len(q.fixes)
             stop = [d for d in q.defects if d.kind == "stopper"]
             if stop:
                 reason = "stopped: " + "; ".join(d.why for d in stop)
             else:
                 reason = "tempo: " + "; ".join(f"{d.kind} {GAME.loc_name(d.sq)}: {d.why}" for d in q.defects)
+            self._trace_joins(q, R.joins_of(q, b, self.us, k=max(1, n)))
             if self._chase(q):                                   # 52.15 (2): a promotion that the defects stop is chased: make them move, ask the promote root again on each reply
                 return
             self._kill(q, reason, tempo=True)

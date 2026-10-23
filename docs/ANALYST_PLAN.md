@@ -3434,7 +3434,7 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
 
 ### 72.8 THE SKELETON GOALS: imagine the arrangement of our fast pieces against the fixed board, price it, and only then calculate (Kaveh 2026-10-23 afternoon, GO: "I'm very excited to see the results")
 
-* 72.8 STAGE 1 BUILT 2026-10-23 on branch worktree-agent-a4b061c918e7bdd6d (journal 2026-10-23 14:48). regress: `skeleton_partition`, `skeleton_a` / `skeleton_b`, `skeleton_line`, `skeleton_report` /
+* 72.8 STAGE 1 BUILT 2026-10-23 on branch worktree-agent-a4b061c918e7bdd6d (journal 2026-10-23 14:48 and 15:05: main's corrected 72.3 merged, ONLY A FORCING FIRST STEP IS A ROUTE). regress: `skeleton_partition`, `skeleton_a` / `skeleton_b`, `skeleton_line`, `skeleton_report` /
   `skeleton_goals` (Job, Deflection, Arrangement), `arrangement_line` / `arrangement_items`, `arrangement_steps`, `arrangement_fix`, `arrangement_value`, `_aligned` (agenda's is now this word);
   the fuses SKELETON_MAX_JOBS = 4, SKELETON_MAX_UNITS = 7 (SKELETON_LINES = 6 is the print cap of item 10); words.CHESS_WORDS routes them; agenda.SKELETON_GOALS (CATSPACE_SKELETON=0 turns it
   off) wires (a)-(d); the policy feature is graph_policy FEATURE-SET VERSION 2 (72.5's versioning: survey1 + one question column; TRAIN_ARRANGEMENT off, the saved model is version 0 and
@@ -3445,13 +3445,15 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
   placement's landing is not charged for a capture by their KING alone (the 'checker takeable' guard job pays it); (v) the step-aside path also holds the bearing line to the job square and,
   for a promotion, the pawn's own path on the live board; (vi) their counter roll uses the same fuse (mu capped at k+1); (vii) refused before open (a deflection only adds cost); (viii) a
   promotion blocked by THEIR unit is a deflection; (ix) a reachable arrangement none of whose first steps is a move on the live board (a step-aside must come first) adds nothing; (x) the
-  matched root takes the best arrangement of its own placed unit, else the best on its square; (xi) the OBS cost line is `Agenda.skeleton_obs`, kept out of the trace (the guard reads no clock).
-  OBS skeleton goals discovery: targets 4, arrangements 14 (reachable 2, open 3, refused 2, unreachable 7), ms 25. OBS skeleton goals pos2: targets 3, arrangements 17 (reachable 0, open 4,
-  refused 2, unreachable 11), ms 16. OBS gate engine (one file per call): test_plan72_8 passed 8; test_plan72 passed 6; test_plan72_3 passed 4; test_agenda passed 26; test_question_prior passed 6;
-  test_graph_policy passed 6; test_regress passed 83, failed 5 -- the same 5 tests with the same assertions with CATSPACE_SKELETON=0 (the 72.3 failures being fixed on another branch).
-  OBS trace guard: decisions 10 of 10 identical; with the skeleton / arrangement lines removed 6 of 10 traces identical, the other 4 changed only by a new root (07Z0P mate on g7, killed by the
-  tempo arithmetic; discovery mate on g7, killed by the tempo arithmetic; 4pC83 mate on h2, chased, claims Nf3+ +2 below the deciding Nf3+ +3) or one added fix route (W0VFO: Qb7 on the g7 root),
-  and the renumbering they cause.
+  matched root takes the best arrangement of its own placed unit, else the best on its square; (xi) the OBS cost line is `Agenda.skeleton_obs`, kept out of the trace (the guard reads no clock);
+  (xii) after main's 72.3 correction ("a quiet step hands them a free move: it is no fix for a tempo count"), item 11b's "routes asked like any fix" is read as: only a FORCING first step
+  (`forcing_why`, mate threats included) is a fix route, the quiet ones are printed candidates ("arrangement Qn: quiet first step(s) ...") that take no question id -- as `_ask_reach` reads steps.
+  OBS skeleton goals discovery: targets 4, arrangements 14 (reachable 2, open 3, refused 2, unreachable 7), ms 24. OBS skeleton goals pos2: targets 3, arrangements 17 (reachable 0, open 4,
+  refused 2, unreachable 11), ms 16. OBS gate engine (one file per call, main d9f4cf12 merged): test_plan72_8 passed 8; test_plan72_3 passed 4; test_plan72 passed 6; test_question_prior passed 6;
+  test_graph_policy passed 6; test_agenda passed 26; test_regress passed 88, failed 0.
+  OBS trace guard against main d9f4cf12: decisions 10 of 10 identical; with the skeleton / arrangement lines removed 6 of 10 traces identical, the other 4 changed only by a new root (07Z0P mate on
+  g7, killed by the tempo arithmetic; discovery mate on g7, killed by the tempo arithmetic; 4pC83 mate on h2, chased, claims Nf3+ +2 below the deciding Nf3+ +3) or a forcing fix route (W0VFO:
+  Qb7, threat of mate, on the g7 root; 4pC83 also prints one quiet candidate, Qc6), and the renumbering they cause.
 
 THE IDEA (Kaveh): we ask too many questions because we do not know the goal; the lines run into dead ends. A goal should be an ARRANGEMENT of our pieces -- a sequence of arrangements --
 at the end of which a tactic wins (a mate, a piece, a promotion) and the exchange cements it. Pawns move one way and slowly, kings slowly, pinned or stuck pieces not at all: they are the FIXED

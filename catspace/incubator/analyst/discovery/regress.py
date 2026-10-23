@@ -82,6 +82,7 @@ class Question:
     depth: int = 0
     text: str = ""
     reads: frozenset | None = None            # 52.12: the squares whose occupancy or attack counts this question read (None: not recorded, never inherited)
+    joins: list = field(default_factory=list)      # 72.3: the join sub-questions (`joins_of`): QUIET plans, kept OUT of `fixes` -- a join hands them free moves, so it is no forcing fix (tempo_ok, the chase and the fuse never see it)
     claimed: tuple | None = None              # 52.13 (1): (net value, the Claim, its reads) once a claim verified this question; the reads = the question's plus the squares of the bound atoms
 
 
@@ -1217,10 +1218,6 @@ def _fixes_of(defect: Defect, q: Question, board: chess.Board, us: str | bool) -
         out += trap_fix(q, defect, board, us)
         out += discovery_fix(q, defect, board, us)
         out += skewer_fix(q, defect, board, us)
-    if JOIN_FIXES and defect.kind in JOIN_KINDS.get(q.goal, ()):
-        j = join_fixes(board, us, defect, q)
-        if j is not None:
-            out.append(j)
     for f in out:
         q.fixes.append(f)
     return out
@@ -1808,12 +1805,6 @@ def promote_fixes(board: chess.Board, sq: int, defect: Defect, q: "Question") ->
         f.routes += extra
         if extra:
             f.text += f" -- or drive their king off {G.name(defect.sq)} with a check"
-    if JOIN_FIXES and defect.kind in ("path attacked", "promo square attacked"):          # 72.3: a unit of ours that comes to guard the square within the pawn's pushes
-        j = join_fixes(board, own, defect, q, k=max(1, _pushes_of(board, sq, own)))
-        if j is not None:
-            have = {x.move for x in f.routes}
-            f.routes += [r for r in j.routes if r.move not in have]
-            f.why += j.why
     q.fixes.append(f)
     return f
 
@@ -2081,6 +2072,24 @@ def join_fixes(board: chess.Board, us: str | bool, defect: Defect, q: Question, 
     f.why = [x.why for x in routes] + why
     return f
 
+
+def joins_of(q: Question, board: chess.Board, us: str | bool, k: int | None = None) -> list:
+    """plan 72.3: the join questions of the defects of `q` that have NO forcing fix (the ones the tempo arithmetic is about to kill: only quiet moves could supply the piece). Stored in `q.joins`,
+    NOT in `q.fixes`: a join is a QUIET plan (the first step hands them a free move), so it is not a forcing route -- `tempo_ok`, `all_routes`, the chase and the question count never read it
+    (the first form put the routes in `fixes` and 02XVK's inner questions went from <1000 to 4776, 0LRTF / 04Qx2 / 0BHbB changed their decisions: a quiet route is no fix for a tempo count).
+    The agenda prints them under the question and the policy / the survey (72.5) may order by them; the stake rule has already refused the ones their counter-plan beats. -> the join questions."""
+    if not JOIN_FIXES or q.joins:
+        return q.joins
+    kinds = JOIN_KINDS.get(q.goal, ()) + (("path attacked", "promo square attacked") if q.goal == "promote" else ())
+    saved = _ids[0]                                                  # (the join questions take no id from the numbering the trace prints)
+    for d in q.defects:
+        if d.kind not in kinds or any(all_routes(f) for f in q.fixes if f.defect_key == d.key()):
+            continue
+        j = join_fixes(board, us, d, q, k=k)
+        if j is not None:
+            q.joins.append(j)
+    _ids[0] = saved
+    return q.joins
 
 # ---------------------------------------------------------------------------------------------------------------- plan 72.5: THE SURVEY BEFORE THE QUESTIONS
 SURVEY_LINES = 8                              # plan 72.5: the fuse on the survey's printed lines (a count, named as one); the table itself is whole
@@ -2667,18 +2676,26 @@ def arrangement_steps(board: chess.Board, a: Arrangement) -> list:
     return out
 
 
-def arrangement_fix(board: chess.Board, us: str | bool, a: Arrangement, q: Question, text: "str | None" = None) -> "Question | None":
+def arrangement_fix(board: chess.Board, us: str | bool, a: Arrangement, q: Question, text: "str | None" = None) -> tuple:
     """plan 72.8 (11b): the arrangement's first steps as FIX ROUTES of the root question it matches, through 72.3's join machinery (a priced Route, its tempi in `route_cost`): a 'cover'
-    sub-question 'bring the units of the arrangement into place', route text 72.3's with the arrangement's line in brackets. Asked like any fix (the binder reads them; the chase proves);
-    no defect key: the arrangement fixes the skeleton's defects, not one defect of the live board, so the tempo arithmetic of the live defects is untouched. -> None when no step is a move."""
+    sub-question 'bring the units of the arrangement into place', route text the forcing word, then 72.3's label with the arrangement's line in brackets. ONLY A FORCING STEP IS A ROUTE
+    (72.3 corrected, 2026-10-23 14:05: a quiet step hands them a free move, so it is no fix -- the chase, the fuse and the count never take one); the quiet first steps are returned apart,
+    candidates the agenda prints. No defect key: the arrangement fixes the skeleton's defects, not one defect of the live board, so the tempo arithmetic of the live defects is untouched.
+    -> (the sub-question or None when no step is forcing, [the quiet steps' SAN])."""
     me = G.colour_of(us)
     b = G.with_turn(board, me) if board.turn != me else board
-    steps = arrangement_steps(b, a)
-    if not steps:
-        return None
     text = text or a.text
+    forcing, quiet = [], []
+    for mv, label, price in arrangement_steps(b, a):
+        why = forcing_why(b, mv, q.stake, me, mate_threats=True)
+        if why:
+            forcing.append(Route(mv, b.san(mv), f"{why}; {label} [{text}]", price=price))
+        else:
+            quiet.append(b.san(mv))
+    if not forcing:
+        return None, quiet
     f = new_question("cover", q.stake, dict(q.pattern), q, text=f"bring the units of the arrangement into place ({a.goal_text})")
-    for mv, label, price in steps:
-        f.routes.append(Route(mv, b.san(mv), f"{label} [{text}]", price=price))
-        _JOIN[(b.board_fen(), mv.uci())] = price
-    return f
+    f.routes, f.unforced = forcing, list(quiet)
+    for r in forcing:
+        _JOIN[(b.board_fen(), r.move.uci())] = r.price
+    return f, quiet

@@ -37,19 +37,23 @@ def test_72_3_the_stake_rule_refuses_a_join_their_counter_plan_beats():
     assert any(x.move.from_square == chess.D4 and x.price is not None for x in f.routes)
 
 
-def test_72_3_fixes_of_carries_the_join_and_route_cost_pays_its_tempi():
+def test_72_3_joins_are_quiet_plans_kept_out_of_the_fixes_and_route_cost_pays_their_tempi():
     clear_caches()
     b = chess.Board("4k3/5p2/8/8/8/8/8/4K1N1 w - - 0 1")
     q = R.new_question("win", 3, {"target": chess.F7})
-    fx = R.fixes_of(R.Defect("not attacked", chess.F7), q, b, "w")
-    j = [f for f in fx if f.text.startswith("bring a unit to bear on f7")]
-    assert j and any(r.why.startswith("bring the N from g1") for r in j[0].routes)
+    q.defects = [R.Defect("not attacked", chess.F7)]
+    R.fixes_of(q.defects[0], q, b, "w")
+    assert not any(f.text.startswith("bring a unit") for f in q.fixes)                 # a quiet plan is no forcing fix: tempo_ok / all_routes / the chase never see it
+    assert not R.tempo_ok(q)
+    j = R.joins_of(q, b, "w")
+    assert j and any(r.why.startswith("bring the N from g1") for r in j[0].routes) and q.joins == j
     m = chess.Move.from_uci("g1h3")
     base, _ = R._route_cost(b, m, 3, "w")
     assert R.route_cost(b, m, 3, "w")[0] == base + 1               # two tempi: one extra free move for them
+    q2 = R.new_question("win", 3, {"target": chess.F7})
+    q2.defects = q.defects
     R.JOIN_FIXES = False
     try:
-        fx = R.fixes_of(R.Defect("not attacked", chess.F7), R.new_question("win", 3, {"target": chess.F7}), b, "w")
-        assert not any(f.text.startswith("bring a unit") for f in fx)
+        assert R.joins_of(q2, b, "w") == []
     finally:
         R.JOIN_FIXES = True
