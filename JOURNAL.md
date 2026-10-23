@@ -32236,3 +32236,33 @@ Concern noted: `_refuted` reads the kill's reason STRING (a regex on "(-n)"); a 
 Decisions for Kaveh: (1) the unproved pick is wrong 16 of 21 at 15 s; its order (partial floor, mostly a +0 tie, then price) does not find the good line
 where one exists (builder: ~8 of 20 have one). Keep it ON as a marked guess, refuse when the floor is negative (builder's sample: 1 of 7 right), or
 report "no line" and the status only? (2) carrying root reads across tiers (the re-read is the remaining time sink). (3) plan 62 still awaits a go.
+
+## 2026-10-22 17:21 PDT -- PLANS 62, 66, 67 BUILT; ONE END-OF-RUN GRADE; eSJqH DIAGNOSED BY TRACE AND PROFILE; PLAN 68 WRITTEN
+
+Kaveh's protocol for the day: build the written plans straight through (62 -> 66 -> 67), no 90-grade per plan, ONE grade at the end, a lost puzzle traced
+alone. Plan 62 (Sonnet builder; aee8ade2..6008a44f): Race.lean/race.py (the race word over an abstract tempo game, the frame condition, deny the stopper's
+path, the Syzygy table as a labelled oracle 'proved_by=table'); the first build gated the word to king-and-pawn opponents and touched none of the eight
+cases; 62.1c lifts the stopper kill for their KING only and lets the chase read the other pieces; ilnKz decides g6 (unproved); RoR8t stays unproved.
+Plan 66 (Opus builder; 0485cb3e..513f11e3): claim_mono / refutation_not_mono / stillForcing in Forcing.lean; proved claims and closed replies carry across
+tiers; resume a chain-stopped line while still forcing; the irreversible-move clock; the discovery position PROVES Nf6 at 15 s (xfail removed). Not met:
+the six slow RIGHTs (tier 0 spends the time on RAISE_TO_WIN work after an early claim, shown by the traces, not by re-reading). Plan 67 (built here,
+c6d55583 + 49b0bba4 + 0de828a9): Ideas/Plan.lean (safe, plan_sound from Race.far_not_bearing, rdist/bdist step lemmas), plan67.py (the rollout without
+the opponent, the weak moments capture/blockade/check with deadlines, the reach by the proved bounds, closed vs immune, the support placements), hooked
+into _ask_promote and the scheduler mirror (0 differences): 4efZ2 DERIVES Ra5 -- the rook behind the pawn -- as a route; the chase then stops it at
+"a second check in a row". Suite on the last commit: 1346 passed, 1 xfailed.
+
+The end grade (ql64_a67_15 / a67_cnt vs plan 65's a65_7 / a65_6c), by proof, one run each, directional: 15 s proved RIGHT 66 / proved WRONG 1 /
+unproved 6 RIGHT 14 WRONG / none 3 (before: 67 / 2 / 4 / 13 / 4); count proved 63 / 2, unproved 8 / 14, none 3 (before 63 / 3, 7 / 17, 0). DdWEG is
+now PROVED (Nb3+) under both budgets; ilnKz decides g6 under both; eSJqH, the one proved RIGHT lost, and 3U6wp crashed the 15 s run (a plan_sound claim
+whose first move was a rook's step-aside reached _threat_roots; fixed 0de828a9, graded alone: Rb8 unproved as before).
+
+eSJqH, diagnosed by its trace and a cProfile against the plan 65 trace (Kaveh: "bisect is not the way; follow the trace; is it asking irrelevant
+questions?"): the route COSTS are identical in both runs; the PRICES in seconds doubled because (1) plan 67's support search ran inside their agendas and
+the chase (82 calls, ~2 s of 15; now the analyser's root only) and (2) 66.5's exemption "a capturing check is not a second check in a row" made the Qa5
+read follow capturing checks past Qc6 to the end of its slice; with it off Qa5 is PROVED in tier 2 at 3.8 s (tiers [1.4, 6.0, 3.8, 1.8]). The exemption
+is now a separate switch EVADED_RESET, OFF (500d0ce8); the clock reset stays. Regraded (ql64_a67b_15): proved 66 / 1, unproved 6 / 13, none 4 -- eSJqH
+alone proves Qa5 at 13 s but under five workers the clock edge takes it. The structural waste behind that edge: the root asks 12 questions in every tier,
+7 of them "win their P (worth 1)" in a position needing +3 to reach level; tier 1 chases them before tier 2 (where Qa5 is proved) opens. Plan 68
+(1a4ca1b3): relevance to the status orders the root questions across tiers; the judge's own pricing (~20% of the run) cached across tiers.
+Open decisions: the second-check guard blocks the derived support routes (4efZ2): end a check sequence by repetition or the clock, not by count; the
+six slow RIGHTs need a principle that ENDS the raise-to-win search once a claim keeps the status.
