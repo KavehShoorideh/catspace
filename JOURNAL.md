@@ -32356,3 +32356,7 @@ all pass in the same run. The final gate (every file, one at a time) and the tra
 ## 2026-10-22 23:36 PDT -- plan 71.3 (b): the agenda asks the words through the Words interface
 
 52 call sites (R.forcing_why 8 ... BD.generate 1) now go through `W = WD.CHESS_WORDS`; nothing rewritten, the boundary is named. OBS trace identity: 0 of 10 traces differ; quick plan tests 68 passed. The agenda still speaks python-chess directly (OBS domain map: agenda 742 chess-bound calls) -- 71.2 (c), the Game routing of the agenda, is the next stage, call family by call family under the same guard.
+
+## 2026-10-22 23:41 PDT -- plan 71.2 (c): the agenda names locations and reads the base words through Game / BaseWords
+
+101 call sites (G.name 65, chess.square_name 8, G.worth 17, G.word 6, G.see / see_for 5) route through GAME.loc_name and W.base; the BaseWords `see` signature corrected to graph.py's (no side; `see_for` names the capturer) -- caught by the trace guard (a crashed snapshot reads as 10 of 10 differ: the guard must print 10 written). OBS trace identity 0 of 10 differ after the fix; quick plan tests 81 passed. OBS domain map: agenda 641 (was 742); regress 725 is now the largest chess-bound module -- 71.3 (c) splits it.
