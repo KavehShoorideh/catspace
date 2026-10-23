@@ -32428,3 +32428,9 @@ The lesson in one line: a new word is priced by the gate, and the price is paid 
 
 ## 2026-10-23 -- plan 72.6 built: scripts/gate.py (engine | full), one file at a time under a lock
 The engine gate and the full gate are now one command each (`scripts/gate.py engine`, `scripts/gate.py full`); a second gate started while one runs refuses, naming the running pid and start time (the 2026-10-22 two-hour gate was stacked pytest runs fighting over the CPU). Not run as a full gate here (one timed gate at a time); checked on one file and with --dry-run only.
+
+## 2026-10-23 13:30 PDT -- plan 72.5 built: the survey before the questions (lines in the trace, features for the graph policy; no order changed)
+`regress.survey(board, k=REACH_K)`: one `reach_map` roll per unit of both sides -> rows (unit, owner, kind, job, job kind, material, tempi, via, free count) for the jobs zone (enemy king's neighbourhood), attack (an enemy unit it comes to bear on), path (a passer's way to promotion, either side's), free (landings costing nothing by the exchange). `regress.survey_lines`: plain words, one line per unit, at most SURVEY_LINES = 8, printed once per ROOT agenda (`agenda.SURVEY`), after the roots and before the policy orders. `regress.survey_features` + `graph_policy.build(survey=...)`: feature-set version 1 = +4 per piece, +1 per question; the saved model carries `features` (absent = 0) and runs on the old vectors, so its scores are unchanged (tested); `graph_policy.TRAIN_SURVEY` (off) is what a human-ordered retrain would switch on. No model retrained or adopted.
+OBS survey cost, cold (rolls included): discovery position 148 rows in 14 ms, pos2 107 rows in 8 ms; warm features 0.5 ms.
+OBS trace guard (count budget, 10 cases): before and after identical once the `survey:` lines are removed from the after traces, DECISION lines included (10 of 10).
+OBS tests: test_plan72_5.py passed 7; test_graph_policy.py passed 5.

@@ -3405,7 +3405,7 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
   alone before and after 72.2 (the only "rerun" allowed: a single diagnostic, one puzzle, one rule). The retrain -> gate -> adopt rule for the heads.
 * NOT IN 72: a quiescence search of captures at the leaf (Kaveh: not quiescence); a "caged" word; reading their replies inside the word (the pass is the word's definition; the chase
   reads replies). Kaveh decides 72.3's stake arithmetic (what a tempo is worth against material) before it is built; 72.1 and 72.2 are a go ("Sure, let's try this out").
-* 72.5 THE SURVEY BEFORE THE QUESTIONS (Kaveh 2026-10-23: "layers of calculation -- my moves with them doing nothing; my moves with their obvious replies; the robust calculation where the
+* 72.5 BUILT 2026-10-23 on a branch (regress.survey / survey_lines / survey_features, agenda.SURVEY, graph_policy feature-set version 1; trace-identical bar the survey lines; no model retrained; journal 2026-10-23 13:30). THE SURVEY BEFORE THE QUESTIONS (Kaveh 2026-10-23: "layers of calculation -- my moves with them doing nothing; my moves with their obvious replies; the robust calculation where the
   stakes are high; the prior would benefit from a quick pass before deciding on the right questions"). The three layers, named: LAYER 1 the pass (`attackableIn`, price 0, nothing of theirs);
   LAYER 2 the priced reach (72.1: their paying captures assumed, their quiet moves passed); LAYER 3 the chase (every reply read; the judge spends it where the stake is high). The SURVEY:
   before the root's questions are ordered, for every unit of ours and theirs the cheapest layer-2 reach to each job on the board (the goals' squares, the units it could bear on, the

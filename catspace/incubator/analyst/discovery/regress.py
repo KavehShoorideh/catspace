@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 import chess
 
@@ -1967,3 +1968,149 @@ def stuck_threats(board: chess.Board, us: str | bool, k: int = REACH_K) -> list:
         out.append(dict(sq=s, worth=worth, attacker=a, price=e["material"], tempi=e["tempi"], first=e["path"][0], path=list(e["path"]), parry=parry, reads=frozenset(reads)))
     out.sort(key=lambda d: -(d["worth"] - d["price"]))
     return out
+
+
+# ---------------------------------------------------------------------------------------------------------------- plan 72.5: THE SURVEY BEFORE THE QUESTIONS
+SURVEY_LINES = 8                              # plan 72.5: the fuse on the survey's printed lines (a count, named as one); the table itself is whole
+
+
+class SurveyRow(NamedTuple):
+    """One row of the survey: the unit on `sq` (colour `owner`, python-chess `kind`) and the cheapest layer-2 reach (`reach_map`) to one JOB: job_kind 'zone' (a square of the enemy king's
+    neighbourhood; mate), 'attack' (an enemy unit it comes to bear on; `job` is its square), 'path' (a square of a passer's way to promotion, either side's passer), 'free' (mobility: `count`
+    landings that cost nothing by the exchange). `via` is the landing the unit bears from (None: it bears from where it stands); tempi 0 = already."""
+    sq: int
+    owner: bool
+    kind: int
+    job: "int | None"
+    job_kind: str
+    material: int
+    tempi: int
+    via: "int | None" = None
+    count: int = 0
+
+
+_SURVEY: dict = {}
+G.CLEAR_HOOKS.append(_SURVEY.clear)
+
+
+def passer_path(board: chess.Board, sq: int) -> list:
+    """The squares ahead of the passed pawn on `sq` up to and including its promotion square."""
+    pc = board.piece_at(sq)
+    step = 8 if pc.color else -8
+    out, s = [], sq + step
+    while 0 <= s < 64:
+        out.append(s)
+        s += step
+    return out
+
+
+def survey(board: chess.Board, k: int = REACH_K) -> list:
+    """plan 72.5 THE SURVEY (Kaveh 2026-10-23: "a quick pass before deciding on the right questions"): for every unit of BOTH sides the cheapest layer-2 reach to each job on the board within
+    `k` of its owner's moves -- the enemy king's neighbourhood (zone), each enemy unit it could bear on (attack), the path squares of every passer (path) -- and how many landings are free
+    (free). ONE `reach_map` roll per unit (memoised), nothing else rolls. -> [SurveyRow]. It orders, it never decides: the proof stays the chase's."""
+    key = (board.board_fen(), k)
+    hit = _SURVEY.get(key)
+    if hit is not None:
+        return hit
+    pieces = board.piece_map()
+    paths = {s: passer_path(board, s) for s, p in pieces.items() if is_passer(board, s)}
+    rows = []
+    for sq, pc in pieces.items():
+        spots = [(sq, 0, 0, board.attacks(sq))]
+        rmap = reach_map(board, sq, k)
+        spots += [(at, e["tempi"], e["material"], e["board"].attacks(at)) for at, e in rmap.items() if at != sq]
+        rows.append(SurveyRow(sq, pc.color, pc.piece_type, None, "free", 0, 0, None, sum(1 for at, e in rmap.items() if at != sq and e["material"] == 0)))
+
+        def cheapest(want):                                       # (material, tempi, spot, the first job square) over the spots whose attacks (or standing square) meet `want`
+            best = None
+            for at, t, m, att in spots:
+                hits = [x for x in sorted(want) if x in att or x == at]
+                if hits and (best is None or (m, t) < best[:2]):
+                    best = (m, t, at, hits[0])
+            return best
+        ek = board.king(not pc.color)
+        if ek is not None and pc.piece_type != chess.KING:
+            b = cheapest({ek} | set(chess.SquareSet(chess.BB_KING_ATTACKS[ek])))
+            if b:
+                rows.append(SurveyRow(sq, pc.color, pc.piece_type, b[3], "zone", b[0], b[1], None if b[2] == sq else b[2]))
+        for tsq, tp in pieces.items():
+            if tp.color != pc.color and tp.piece_type != chess.KING:
+                b = cheapest({tsq})
+                if b:
+                    rows.append(SurveyRow(sq, pc.color, pc.piece_type, tsq, "attack", b[0], b[1], None if b[2] == sq else b[2]))
+        for psq, path in paths.items():
+            if psq != sq:
+                b = cheapest(set(path))
+                if b:
+                    rows.append(SurveyRow(sq, pc.color, pc.piece_type, b[3], "path", b[0], b[1], None if b[2] == sq else b[2]))
+    _SURVEY[key] = rows
+    return rows
+
+
+def _unit_name(board: chess.Board, sq: int, us: bool) -> str:
+    pc = board.piece_at(sq)
+    return f"{'our' if pc.color == us else 'their'} {pc.symbol().upper()}"
+
+
+def survey_lines(board: chess.Board, us: bool, k: int = REACH_K) -> list:
+    """The survey as plain words, one line per unit that has something to say, the most telling first, at most SURVEY_LINES:
+    'survey: their K reaches c7 in 3, bearing on our N on b8' / 'survey: our N on b8 can join nothing within 3' / 'survey: our B on c2 holds their c-pawn's path'."""
+    rows = survey(board, k)
+    by: dict = {}
+    for r in rows:
+        by.setdefault(r.sq, []).append(r)
+    out = []                                                       # (priority, tempi, text)
+    for sq, rs in by.items():
+        pc = board.piece_at(sq)
+        name = f"{_unit_name(board, sq, us)} on {chess.square_name(sq)}"
+        free = next(r.count for r in rs if r.job_kind == "free")
+        paths = [r for r in rs if r.job_kind == "path" and r.tempi == 0]
+        if paths and pc.piece_type != chess.PAWN:
+            ps = min(paths, key=lambda r: r.job)
+            pawn = next(s for s in range(64) if s != sq and is_passer(board, s) and ps.job in passer_path(board, s))
+            owner = board.piece_at(pawn).color
+            out.append((1, 0, f"{name} holds {'our' if owner == us else 'their'} {chess.FILE_NAMES[chess.square_file(pawn)]}-pawn's path"))
+            continue
+        att = [r for r in rs if r.job_kind == "attack" and r.tempi > 0 and r.via is not None and r.material < G.worth(board.piece_at(r.job)) and G.worth(board.piece_at(r.job)) > G.worth(pc)]
+        if att:
+            r = min(att, key=lambda r: (r.tempi, r.material, -G.worth(board.piece_at(r.job))))
+            price = f", at a price of {r.material}" if r.material else ""
+            out.append((0, r.tempi, f"{name} reaches {chess.square_name(r.via)} in {r.tempi}, bearing on {_unit_name(board, r.job, us)} on {chess.square_name(r.job)}{price}"))
+            continue
+        if pc.piece_type not in (chess.KING, chess.PAWN) and not any(r.job_kind != "free" for r in rs):
+            out.append((2, 0, f"{name} can join nothing within {k}" + ("" if free else " and has no free landing")))
+            continue
+        z = [r for r in rs if r.job_kind == "zone" and r.tempi > 0 and r.material == 0]
+        if z:
+            r = min(z, key=lambda r: r.tempi)
+            out.append((3, r.tempi, f"{name} comes to bear on {'their' if pc.color == us else 'our'} king's zone in {r.tempi}"))
+    out.sort(key=lambda t: (t[0], t[1], t[2]))
+    return ["survey: " + t for _p, _t, t in out[:SURVEY_LINES]]
+
+
+def survey_features(board: chess.Board, us: bool, targets: list, k: int = REACH_K) -> tuple:
+    """plan 72.5 THE SURVEY AS FEATURES of the graph policy (feature set 'survey1'; an older model runs on the old width, see graph_policy). -> (unit_feats, question_feats):
+    unit_feats[sq] = [a, b, c, d]: a the cheapest tempi to bear on the enemy king's zone, b the cheapest tempi to bear on an enemy unit of higher worth (both over k+1, 1.0 = none within k),
+    c the free landings over 20 (capped), d 1 when the unit holds a passer's path now; question_feats[i] = [t]: the fewest tempi over our units to bear on / land on question i's target
+    (over k+1, 1.0 = none or no target)."""
+    rows = survey(board, k)
+    pieces = board.piece_map()
+    unit = {}
+    for sq, pc in pieces.items():
+        rs = [r for r in rows if r.sq == sq]
+        a = min([r.tempi for r in rs if r.job_kind == "zone"], default=k + 1)
+        b = min([r.tempi for r in rs if r.job_kind == "attack" and G.worth(pieces[r.job]) > G.worth(pc)], default=k + 1)
+        c = sum(r.count for r in rs if r.job_kind == "free")
+        d = any(r.job_kind == "path" and r.tempi == 0 for r in rs)
+        unit[sq] = [a / (k + 1), b / (k + 1), min(c, 20) / 20, float(d)]
+    qf = []
+    for t in targets:
+        best = k + 1
+        if t is not None and 0 <= t < 64:
+            for sq, pc in pieces.items():
+                if pc.color == us and sq != t:
+                    r = reach_price(board, sq, t, k)
+                    if r is not None:
+                        best = min(best, r["tempi"])
+        qf.append([best / (k + 1)])
+    return unit, qf
