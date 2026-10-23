@@ -60,6 +60,7 @@ EVASION_CHASE = True                                            # 52.23 (3): ON 
 NEED_PROPAGATION = True                                         # 52.23 (7): ON at every tier (plan 64.2) -- the need propagates to the inner agendas, a gaining reply carries the inner claim, the chain of two meets the need, a bound below the need chases first
 GOAL_JUDGE = True                                               # 52.23 (6): ON at every tier (plan 64.2; its stop is a GAP since 64.1)
 CLOCK_PAWN = True                                              # plan 62.1c / 66.5: the chase clock also resets on a PAWN move of ours (an irreversible move, the fifty-move rule's other event); CHASE_CLOCK stays the parameter
+EVADED_RESET = False                                            # plan 66.5 (b), separated 2026-10-22 (Kav, eSJqH trace): a CAPTURING check does not count as "a second check in a row". OFF: with it the Qa5 read followed capturing checks past Qc6 and ran out of its slice (tier 2, 6.5 s), while without it Qa5 is PROVED in tier 2 at 3.9 s; the principled end of a check sequence is repetition (CYCLE) or the clock, not an exemption -- open
 CLOCK_IRREVERSIBLE = True                                       # plan 66.5 (Kaveh 2026-10-22): the chase clock resets on an irreversible event -- a CAPTURE by either side that is not bad for us, or a PAWN move of ours (and the checks evaded in a row: a capturing check is no perpetual); `analyse --no-irreversible` (then: our capture not bad for us, our pawn move)
 CHASE_CLOCK = 4                                                 # 52.23 (8): ON at every tier (plan 64.2; its stop is a GAP since 64.1); 99 = off; 4 was Kaveh's starting value
                                                 # 52.23 (8): our moves on a chain without a capture that is not bad for us (Kaveh 2026-10-20: "four or five ... a hyperparameter, tune it later")
@@ -3074,7 +3075,7 @@ class Agenda:
 
     def _resets(self, uci: str) -> bool:
         """plan 66.5: the checks evaded in a row start again after an irreversible event (a capturing check, our capture or pawn move): the stop exists for perpetual-check loops, which capture nothing."""
-        return CLOCK_IRREVERSIBLE and self._irreversible(uci)
+        return EVADED_RESET and self._irreversible(uci)
 
     def _pawn_move(self, m: chess.Move) -> bool:
         """plan 62.1c: a pawn move of ours resets the chase clock (irreversible, like a capture)."""
@@ -3732,7 +3733,7 @@ class Agenda:
                 self.best = (claim.value, 0, claim)
                 self.asked_at_claim = self.asked
             return True
-        if self.chase_depth <= 1 and not pl.immune:
+        if self._root and self.chase_depth == 0 and not pl.immune:      # (the support search is the ROOT's: inside their agendas and the chase it cost 2 s of eSJqH's 15, 2026-10-22 profile)
             fixes = PL.support_fixes(b, sq)
             if fixes:
                 q._support_routes = [R.Route(m, san, f"support: after it no weak moment of ours is reachable ({p2.n} moves; {len(p2.reach)} check square(s) left to the chase)") for m, san, p2 in fixes]

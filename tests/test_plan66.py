@@ -300,7 +300,8 @@ def test_66_4_the_next_tier_resumes_a_forcing_chain_stop_and_says_why_a_quiet_on
 ROR8T = "1R6/8/8/5p2/5rk1/1P5p/P7/6K1 b - - 1 50"                                # rand23_5 RoR8t: Kg3 Rg8+ Rg4 Rxg4+ (a CAPTURING check) Kxg4
 
 
-def test_66_5_a_capture_by_either_side_not_bad_for_us_or_a_pawn_move_of_ours_resets_the_clock():
+def test_66_5_a_capture_by_either_side_not_bad_for_us_or_a_pawn_move_of_ours_resets_the_clock(monkeypatch):
+    monkeypatch.setattr(AGM, "EVADED_RESET", True)                          # (the evaded-checks reset is a separate switch, OFF by default since 2026-10-22: eSJqH)
     ag = _carry_ag(ROR8T)
     b = ag.board
     ag.since_capture = 3
@@ -362,13 +363,13 @@ def test_66_5_a_capturing_check_is_not_a_second_check_in_a_row():
     b = chess.Board(ROR8T)
     for s in ("Kg3", "Rg8+"):
         b.push_san(s)
-    on = _stop_lines(b.fen())
+    try:
+        AGM.EVADED_RESET = True                                             # the exemption (a switch, OFF by default since 2026-10-22: on eSJqH it followed capturing checks past the slice)
+        on = _stop_lines(b.fen())
+    finally:
+        AGM.EVADED_RESET = False
     assert on and not any(st[-1][1] == "Rxg4+" for st in on)
     assert all(not st[-1][2] for st in on)                              # every second-check stop follows a non-capturing check
-    try:
-        AGM.CLOCK_IRREVERSIBLE = False
-        off = _stop_lines(b.fen())
-    finally:
-        AGM.CLOCK_IRREVERSIBLE = True
+    off = _stop_lines(b.fen())                                          # the default
     assert any(st[-1][1] == "Rxg4+" for st in off)
     print(f"OBS 66.5 RoR8t after Kg3 Rg8+: second-check stops {len(on)} (none after a capturing check) against {len(off)} in the comparison condition")
