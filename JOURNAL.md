@@ -32435,3 +32435,12 @@ renders and parses an s-expression per read). Recommendation: keep shakmaty (coz
 crossings, not movegen); extend `Pos` into a per-node handle with batched word calls by term id; bridge python-chess with a thin `RBoard`, retire it by step 3.
 Order: 0 sharpen the trace guard (add read sets, SAN and legal-order cross-checks), 1 handle + words, 2 chase reply loop + static leaf, 3 the words. Expectation only:
 step 1 ~12-18 points of wall time, step 2 ~15-25, step 3 ~20-35; 16-22 agent-days. Biggest risk: the read sets (the guard compares trace text only).
+
+## 2026-10-23 13:12 PDT -- plan 72.3: the join question and the stake rule built (branch worktree-agent-af542cb44b4ed100c)
+
+BUILT: `regress.join_fixes` (a defect that needs a piece of ours at L -- flight / checker takeable for mates, not attacked / defended for wins, path attacked / promo square attacked for promotions
+via `promote_fixes` with k = the pawn's pushes -- gets one 'cover' sub-question whose routes are the first steps of `reach_price(U, L, k)` for each unit U, text "bring the N from g1 to bear on f7
+in 2 (via h3), price 0", (material, tempi) on the Route, tempi-1 added to `route_cost`), and `counter_value` (THE STAKE RULE: mu=1 their `threat_value` after our step less the baseline, the
+approximation of their pass claim; mu>=2 their price-0 `reach_map` landing within mu-1 moves after which a unit of ours is won by the exchange). A fix with stake - material - counter < 1 is not
+pushed (a kill of the FIX, the reason in the question's why); the roll is a candidate, the chase proves. The bar "net positive" is my reading of "below the goal's stake" (the stake IS the gain).
+OBS tests/test_plan72_3.py: 4 passed (gate engine). OBS trace identity before/after: 0 of 10 traces differ (no acceptance position asks a join that changes a route list at the count budget).

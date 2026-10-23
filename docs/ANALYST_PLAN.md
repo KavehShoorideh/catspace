@@ -3397,6 +3397,7 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
   semantics -- the save is proved, killed, or a GAP; the candidate never kills on its own). 1hUBC: Nxb8 then their king's three steps to c7 -- the knight cannot run -- their claim 3,
   our save question: no parry keeps -> the Nxc6 route is killed, not "proved +2". GWigp: their a4 passer's root at 4 pushes; the stopper arithmetic (our rook e6 on the path in 1
   vs. the pawn's 4) is read as it is for near pawns. I7k2H falls under (a) at the inner level (the b-pawn after the deflection).
+* 72.3 BUILT 2026-10-23 on branch worktree-agent-af542cb44b4ed100c (regress.join_fixes / counter_value, flag JOIN_FIXES; route text "bring the N from g1 to bear on f7 in 2 (via h3), price 0"; the stake rule refuses a FIX, never the goal; mu=1 uses threat_value for them as the approximation of their pass claim; trace guard 0 of 10 differ).
 * 72.3 THE JOIN QUESTION (ours; Kaveh: "can this knight join this attack?" -- a question a human answers at once). A defect that needs a piece at L (a cover, a guard, an attacker) gets,
   beside the one-move fixes it has today, the fix "bring U to L" priced by the word for each unit U of ours, k up to the tempi the goal has (the race's ν: their fastest counter); fixes
   with a price above the stake are not pushed (the kill), the rest are routes whose first step is the word's first step, with the price in the route's cost (61 C1 `route_cost`) so the
