@@ -3295,6 +3295,14 @@ Checked against the code, one line each; "existing" names what was already there
   tests/test_offbuilt64.py; the loop's first miss. (d) WITHOUT A CLOCK the pool takes the widest tier's count fuse (it had none: a count-budget run was unbounded; the two-hour gate).
 
 ### 71 The layered engine: a Game interface and a Words interface, chess as the instance; the duplications folded; CHEAP (Kaveh 2026-10-22: "plan and implement a refactor to make it nicely layered, extensible to other domains"; "try to keep it cheap")
+
+* 71 STATE 2026-10-22 (end of the autonomous refactor pass; Kaveh: "keep it cheap"). DONE: 71.0 guard + map; 71.1 scheduler copy retired (one immediate path, one delayed queue);
+  71.2 Game interface, with facts / state / graph_policy / question_prior fully routed and the agenda's names, base words and board constructions routed (agenda 742 -> 630 chess-bound
+  calls); 71.3 Words interface with the agenda's 52 word calls routed; 71.4 Lean Game structure (Reach and the race restated; chess the instance; king-of-the-hill a goal); 71.6 on the
+  Game side (CHESS960 a parameter; KingOfTheHillGame a terminal). DEFERRED, with the reason: the agenda's remaining python-chess calls (legal_moves, push, is_check, piece_at ... the
+  state type's own methods, 630 sites) and 71.3 (c) the regress split (725 sites) are mechanical but large and buy no behaviour -- they go family by family under the trace guard as the
+  loop touches those functions; 71.5 (the carries into the fact store; one support generator; typed `_refuted`) is a consolidation with regression risk, taken when the loop next edits
+  those paths. The loop (fresh puzzles at 15 s until five misses; trace each alone; fix; retrain the question and route heads) starts here.
 The shape the engine already has (one logic, chess interleaved): a GAME (states, the mover's moves, apply, the PASS, a measure, terminals); CLAIMS with proofs
 and READ SETS; THREAT = a claim that binds after our pass; FORCING = every reply leaves a claim binding; PARRY = a move touching the read set that un-binds;
 DEFECT / FIX; REFUTATION / GAP; the AND-OR proof graph (question = OR over routes, route = AND over replies); the frame lemma for locality; the status as a
