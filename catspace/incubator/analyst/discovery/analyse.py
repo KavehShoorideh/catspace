@@ -207,6 +207,7 @@ def main():
     ap.add_argument("--no-stop-afford", action="store_true", help="plan 65.2: the widening runs to the deadline instead of stopping when nothing affordable is left (comparison; ON by default)")
     ap.add_argument("--no-unproved", action="store_true", help="plan 65.3: no unfinished-line decision when there is no claim (comparison; ON by default)")
     ap.add_argument("--no-deep-pass", action="store_true", help="plan 65.4: the status reads their pass with the d1 family only (comparison; ON by default)")
+    ap.add_argument("--no-defer", action="store_true", help="plan 68: no deferral of the root questions below the status's need (comparison; ON by default)")
     ap.add_argument("--no-irreversible", action="store_true", help="plan 66.5: the chase clock resets only on our capture that is not bad for us or our pawn move, and a capturing check counts as a second check (comparison condition, ON by default)")
     ap.add_argument("--no-resume", action="store_true", help="plan 66.4: no resume pass of the chain-stopped root routes after the tiers (comparison condition, ON by default)")
     ap.add_argument("--no-carry", action="store_true", help="plan 66.1/66.2: proofs do NOT carry across the tiers (every tier re-reads everything; comparison condition, ON by default)")
@@ -229,6 +230,9 @@ def main():
     if a.no_irreversible:
         from catspace.incubator.analyst.discovery import agenda as _AG665
         _AG665.CLOCK_IRREVERSIBLE = False
+    if a.no_defer:
+        from catspace.incubator.analyst.discovery import agenda as _AG68
+        _AG68.DEFER = False
     if a.no_resume:
         from catspace.incubator.analyst.discovery import agenda as _AG664
         _AG664.RESUME = False

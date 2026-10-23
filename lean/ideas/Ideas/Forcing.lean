@@ -296,4 +296,27 @@ theorem stillForcing_parryList {counter : Position → Move → Bool} {line : Li
   simp only [Bool.and_eq_true] at this
   simp [parryList, hl, this.2]
 
+/-! ## 68 Relevance to the status (ANALYST_PLAN 68; Kaveh 2026-10-22, eSJqH)
+
+The status (plan 59) sets a LINE a claim must reach: `keepsStatus balance value line` is `line ≤ balance + value`. The NEED is `line - balance`. A root
+question whose stake is below the need cannot keep the status by its own claim (`irrelevant_keeps_nothing`), so the driver asks it only after every
+tier's relevant questions (`relevant`), and a claim that keeps the status came from a relevant question (`relevant_of_keeps`). -/
+
+def keepsStatus (balance value line : Int) : Bool := decide (line ≤ balance + value)
+
+def relevant (stake need : Int) : Bool := decide (need ≤ stake)
+
+theorem irrelevant_keeps_nothing {balance value line : Int} (h : value < line - balance) : keepsStatus balance value line = false := by
+  simp only [keepsStatus, decide_eq_false_iff_not, not_le]
+  omega
+
+theorem relevant_of_keeps {balance value line : Int} (h : keepsStatus balance value line = true) : relevant value (line - balance) = true := by
+  simp only [keepsStatus, decide_eq_true_eq] at h
+  simp only [relevant, decide_eq_true_eq]
+  omega
+
+theorem relevant_of_kept_need {need : Int} (h : need ≤ 0) (stake : Int) (hs : 0 ≤ stake) : relevant stake need = true := by
+  simp only [relevant, decide_eq_true_eq]
+  omega
+
 end Ideas.Forcing

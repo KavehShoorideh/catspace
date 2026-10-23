@@ -86,6 +86,7 @@ UNPROVED = True                                                 # plan 65.3: no 
 DEEP_PASS = True                                                # plan 65.4: the status reads THEIR pass with delayed_balance_deep when the d1 family finds no claim and a piece of ours is attacked; `analyse --no-deep-pass`
 STOP_AFFORD = True                                              # plan 65.2: the widening (and the RAISE_TO_WIN continuation) ends when no open route of any tier is priced within the time left; `analyse --no-stop-afford`
 RESUME = True                                                   # plan 66.4: with time left after the tiers, the root's CHAIN-STOPPED GAP routes are resumed in price order, one more level of the chain allowance a pass, ONLY while the line is still forcing (every reply a parry: Lean `Ideas.Forcing.stillForcing`); `analyse --no-resume`
+DEFER = True                                                    # plan 68 (Kaveh 2026-10-22, eSJqH): RELEVANCE TO THE STATUS orders the root questions across the tiers -- a root question whose stake is below the status's need (line - balance; a save is always relevant) is DEFERRED behind the next tier's relevant questions and asked in a last pass with the time left; Lean `Ideas.Forcing.irrelevant_keeps_nothing`; `analyse --no-defer`
 CARRY = True                                                    # plan 66.1 / 66.2: a PROOF CARRIES across the tiers (Lean `Ideas.Forcing.claim_mono`): a wider tier serves the proved claims of the root's questions and the proved replies of every route read before, and re-reads only kills, GAPs and what could beat a floor; `analyse --no-carry`
 NO_FUSE = 1 << 40                                               # 52.23 (1): the fuse when the budget is time: never reached (the deadline is the only limit)
 
@@ -243,6 +244,8 @@ class ChaseCtx:
         self.ext_used = 0                         # ... chain stops passed by the extension (the line was still forcing) / ...
         self.ext_quiet = 0                        # ... not passed: the line had gone quiet
         self.resume_passes = 0                    # ... resume passes run by the root
+        self.need: "int | None" = None            # plan 68: what a claim must bring to keep the status (line - balance); None: no tiers (nothing deferred)
+        self.deferred_qs: list = []               # ... the root questions deferred this tier (stake below the need, not a save)
         self.resume_ext: dict = {}                # ... (carry key of a root question, route uci) -> {ext, moves}: the root routes the previous tier stopped by the chain while the line was still forcing; read here with the allowance +ext
         self.resumed = 0                          # ... root routes read with the extension
         self.judge_reads = 0                      # ... nodes the judge let be read / cut (a GAP)
@@ -786,6 +789,9 @@ class Agenda:
         self.tier_info: list = []
         self.status_info = None
         owner, ag, decided, k = self, self, 0, 0
+        if DEFER:                                                # plan 68: the status is a fact of the position: read first, so tier 0 already asks only the questions relevant to it
+            self.status_info = self.status()
+            self.ctx.need = self.status_info["line"] - self.status_info["balance"]
 
         def held() -> bool:                                      # plan 65.1: does the best claim so far (this tier's or an earlier one's) END the widening? it does when it keeps the status and no raise is coming
             cands = [x for x in (self.best, ag.best) if x is not None]
@@ -853,6 +859,24 @@ class Agenda:
             self.lines.append(self._open_line(ag, time.monotonic() - t0))      # plan 66.3: why the widening did not end before the deadline (what was still open and affordable)
         if RESUME and not kept and not self.ctx.abort and total is not None:
             owner, decided = self._resume_chain_stops(ag, total, t0, owner, decided)      # plan 66.4
+        if DEFER and not kept and not self.ctx.abort and total is not None and ag.ctx.deferred_qs:      # plan 68: the questions below the need, with the time the relevant ones left
+            left = total - (time.monotonic() - t0)
+            names = ", ".join(q.text for q in ag.ctx.deferred_qs[:4]) + (", ..." if len(ag.ctx.deferred_qs) > 4 else "")
+            if left > 0.05:
+                da = self._next_agenda(ag, ag.ctx.tier, left, self.status_info, "deferred")
+                da.ctx.need = 0
+                da.ctx.held = None
+                da.lines = _TierLines(self.lines, "[deferred] ")
+                self.lines.append(f"DEFERRED PASS: {len(ag.ctx.deferred_qs)} question(s) below the need {ag.ctx.need} ({names}) asked with {left:.1f} s left (the relevant ones are carried)")
+                t1 = time.monotonic()
+                da._ask_once()
+                secs = time.monotonic() - t1
+                if self._fold_tier(da, ag.ctx.tier, owner):
+                    owner, decided = da, ag.ctx.tier
+                self.tier_info.append(dict(tier="deferred", secs=round(secs, 2), asked=da.asked + da.ctx.asked, kept=False, hit=bool(da.ctx.hit), claims=len(da.state.claims),
+                                           best=None if da.best is None else (da.best[2].what, da.best[0])))
+            else:
+                self.lines.append(f"DEFERRED: {len(ag.ctx.deferred_qs)} question(s) below the need {ag.ctx.need} ({names}) not asked: no time left")
         self.tier_decided = decided
         self.tier_secs = [t["secs"] for t in self.tier_info]
         self.lines.append(f"TIERS: ran {len(self.tier_info)} (0..{len(self.tier_info) - 1}); the decision is " + (f"{self.best[2].what} ({self.best[0]:+d}) from tier {decided}" if self.best is not None else "none") + f"; seconds per tier {self.tier_secs}")
@@ -888,6 +912,7 @@ class Agenda:
         k = tier
         nxt = Agenda(State(fen=self.state.fen, us=self.state.us, pieces=list(self.state.pieces)), memory=self.memory, leaf_all=self.leaf_all, seconds=left, tier=k)
         nxt.ctx.route_costs = ag.ctx.route_costs
+        nxt.ctx.need = (st["line"] - st["balance"]) if DEFER and st is not None else None      # plan 68
         nxt.ctx.exempt = frozenset(ag.ctx.deferred)              # 65.1: the routes this tier deferred are read in the next one, not deferred again
         nxt.ctx.route_secs = ag.ctx.route_secs                  # 64.3: the measured cost of the routes read so far (the judge's price for a route read before)
         if CARRY:                                                # plan 66.3: a route CUT after t needed more than t only while the next read started from nothing; with its proved replies carried (66.2) the
@@ -1222,6 +1247,10 @@ class Agenda:
                 if plain[4] is not q:
                     sc, rec = self._recall_score(q)
                     self.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
+            if DEFER and self._root and self.chase_depth == 0 and self.ctx is not None and self.ctx.need is not None and self.ctx.need > 0 and q.goal != "save" and q.stake < self.ctx.need:
+                self.ctx.deferred_qs.append(q)                     # plan 68: a claim below the need keeps no status (Ideas.Forcing.irrelevant_keeps_nothing): asked after the tiers' relevant questions
+                self.lines.append(f"deferred: Q{q.id} {q.text} (stake {q.stake} < the status's need {self.ctx.need}): asked after the tiers' relevant questions")
+                continue
             self.order.append(q)                                   # plan 53 (1): the order asked (the features are read at log time: the root board does not change while its agenda runs)
             if self.ctx is not None and self.ctx.resume_set is not None and self.chase_depth == 0 and self._root and self._carry_key(q) not in self.ctx.resume_set:
                 if self.ctx.carry_q.get(self._carry_key(q)) is not None:      # plan 66.4: a resume pass reads only the chain-stopped routes; every other root question keeps its carried claim

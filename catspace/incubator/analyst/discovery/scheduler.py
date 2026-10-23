@@ -262,6 +262,10 @@ def ask_loop_g(node) -> None:
             if plain[4] is not q:
                 sc, rec = node._recall_score(q)
                 node.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
+        if AG.DEFER and node._root and node.chase_depth == 0 and node.ctx is not None and node.ctx.need is not None and node.ctx.need > 0 and q.goal != "save" and q.stake < node.ctx.need:      # plan 68 (mirror)
+            node.ctx.deferred_qs.append(q)
+            node.lines.append(f"deferred: Q{q.id} {q.text} (stake {q.stake} < the status's need {node.ctx.need}): asked after the tiers' relevant questions")
+            continue
         node.order.append(q)                                   # plan 53 (1): the order asked (the features are read at log time: the root board does not change while its agenda runs)
         if node.ctx is not None and node.ctx.resume_set is not None and node.chase_depth == 0 and node._root and node._carry_key(q) not in node.ctx.resume_set:      # plan 66.4 (mirror of agenda._ask_loop)
             if node.ctx.carry_q.get(node._carry_key(q)) is not None:
