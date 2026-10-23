@@ -32275,3 +32275,16 @@ eSJqH); a root question whose stake is below the need and is not a save is defer
 by tier 2 in four (the first run after a Lean build measured 0.0100 s per node against 0.006 after, and missed); the seven "win their P (worth 1)" roots
 are the deferred ones. Against plan 65's [1.4, 4.3, 3.3, 5.0] the saving is tier 0 and tier 1; tier 2 itself is longer than then (66.4's allowance).
 compare_scheduler 0; tests test_plan68.py (4), tiers/65/66/67 pass. 68.3 measured, not built (prices already cached across tiers).
+
+## 2026-10-22 18:08 PDT -- PLAN 69 IN PART: the question pool is built and OFF; the agent that must drive it is not; its data now accrues
+
+Kaveh: no tier labels ("hand-coded and I don't like them"); one question pool and a reinforcement-learning agent that learns what to ask; and, standing:
+"any ordering agent MUST see the board and whatever we've thought about so far, all the claims" (a graph neural network recommended). Built (6409e5d4):
+the POOL driver (`Agenda._ask_pool`: one run with every word available, no count fuse, the loaded policy's order, passes with every proof carried and
+the allowance +1 per pass until a claim keeps the status or nothing changes; scheduler mirror 0); the question prior retrained on the 45 grade runs of the
+day (24069 rows; 6605 labelled from 95 puzzles; held out by puzzle the deciding question ranks first in 421 of 856 agendas where another was asked first);
+the status features of a question (need, stake - need, their threat); the ITEM LOG per root (question, route words, check/capture, price, order, outcome).
+Shipped OFF: the stand-in prior is blind (a bag of ~15 numbers, no board, no claims) and on eSJqH the pool's first pass took 11.7 of 15 s with every word
+open and proved nothing, where the tiers prove Qa5 in 8.8 s. The pool is the right container and needs plan 60's graph agent over the board and the facts,
+trained on the item log; 69.2 (the bounded leaf estimator inside the proved interval) is written, not built. Open from the day: the second-check guard vs
+the derived support routes (4efZ2), the six slow RIGHTs' raise-to-win search, RoR8t.
