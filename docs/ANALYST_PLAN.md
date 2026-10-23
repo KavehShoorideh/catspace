@@ -3288,6 +3288,14 @@ DEFECT / FIX; REFUTATION / GAP; the AND-OR proof graph (question = OR over route
 measure threshold; the policy ordering the open nodes; TEMPO ARITHMETIC (a progress measure against a Lipschitz reach bound) for the endgame words.
 Measured 2026-10-22: `chess.` calls agenda 105, regress 140, race 106, plan67 40, scheduler 19, binder 17, graph_policy 13, facts 6; no Domain interface.
 CHEAP means: mechanical moves behind interfaces, no re-architecture of the chase, no rewrite; every stage behaviour-identical, one commit per stage.
+THE THREE LAYERS (Kaveh 2026-10-22: "machinery that works generically; for chess, specific Lean axioms; then we TRAIN the machinery on chess to produce
+chess-specific rules, estimates and lemmas; train on a different domain to get different ones"): (1) MACHINERY, generic -- claims, read sets, threats,
+forcing, parries, defects, the AND-OR proof graph, the frame lemma, tempo arithmetic, the judge, the status rule, the policy over a graph, the fact store,
+the Lean theorems over an abstract game; (2) AXIOMS, per domain -- the rules (ChessLean) and the `Game` instance, stated, not proved; (3) VOCABULARY,
+per domain, PRODUCED -- the words, lemmas, estimates and policies: today chess's are handwritten (regress's defects and fixes, race, the binder families) and
+stand as the seed and the benchmark the mined ones must reproduce (policies and estimates from the logs; lemmas mined from proved claims' frames and proved
+against the axioms, the lemma generator). Layer 1 imports nothing from 2 or 3; layer 3 is replaceable module by module; a new domain = a new layer 2 and
+an empty layer 3 filled by the same training.
 * 71.0 THE GUARD AND THE MAP (first commit). `scripts/trace_identity.py`: runs a fixed case set (12 ids incl. eSJqH, 2TUzC, 07Z0P, 4pC83, 0LRTF, the discovery
   position, pos2, RoR8t) at the COUNT budget (deterministic) and diffs the full traces before / after a stage: identical or the stage is wrong. The boundary
   map: a script listing, per function of agenda / regress / race / plan67, the chess calls it makes (the lines each stage moves) -> docs/DOMAIN_MAP.md.
