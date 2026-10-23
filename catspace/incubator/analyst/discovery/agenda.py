@@ -66,6 +66,7 @@ EVASION_CHASE = True                                            # 52.23 (3): ON 
 NEED_PROPAGATION = True                                         # 52.23 (7): ON at every tier (plan 64.2) -- the need propagates to the inner agendas, a gaining reply carries the inner claim, the chain of two meets the need, a bound below the need chases first
 GOAL_JUDGE = True                                               # 52.23 (6): ON at every tier (plan 64.2; its stop is a GAP since 64.1)
 CLOCK_PAWN = True                                              # plan 62.1c / 66.5: the chase clock also resets on a PAWN move of ours (an irreversible move, the fifty-move rule's other event); CHASE_CLOCK stays the parameter
+SURVEY = True                                                   # plan 72.5: once per ROOT agenda, after the roots are built and before the policy orders them, the trace prints the survey (regress.survey_lines): what each unit can reach, in plain words. It adds lines only; the decision is untouched
 PASSER_ROOTS = True                                             # plan 72.2 (a): a passed pawn is a promote root at any distance (the 3-push count stays only for pawns that are not passers)
 PARRY_PASS = True                                               # plan 72.2 (c): at the static leaf a parry that keeps one ply is read once more with the move passed to them after it -- a proved claim of theirs there means "not parried YET" (a GAP): I7k2H's Bd1 "kept" +2 one ply before c3, c2 won the bishop
 THEIR_GAPS = True                                               # plan 72.2 (d): at the static leaf an OPEN question of theirs (a GAP of their agenda: the defects say their passer is unstoppable but no lemma fires yet) that would eat the balance makes our leaf a GAP too -- "not read YET", never a proof (I7k2H: after Bd1 their c-pawn's promotion is open, the stopper lifted)
@@ -402,6 +403,8 @@ class Agenda:
         self.frame = self.ctx.route_depth if self.ctx is not None else 0       # 52.21 (3): the route (its depth) this agenda was opened to read the reply of
         self.late = self.ctx is not None and self.ctx.deadline is not None and time.monotonic() >= self.ctx.deadline       # ... opened after the deadline (by the route in hand): it reads its roots; one opened before finishes its current question only
         self._roots()
+        if SURVEY and self._root:
+            self.lines.extend(R.survey_lines(self.board, self.me))
         for i, q in enumerate(self.all, 1):                      # numbered in the order they are asked
             q.id = i
         if getattr(self, "_tq", None):
