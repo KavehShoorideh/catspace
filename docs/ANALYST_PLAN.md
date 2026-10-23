@@ -3527,3 +3527,13 @@ DEFINITIONS (all over a python-chess board `b` with the side `us` to move; `k` =
 LATER (not stage 1): the SHAPE LIBRARY (arrangements mined from proved mates and wins, matched to skeletons -- Kaveh 2026-10-22 "mined shapes", with the lemma miner); DEFLECTION QUESTIONS
 (a deflection entry becomes its own root: drive the fast guard off with tempo); the JOINT ROLL (two units' paths priced together beyond the step-aside rule); arrangements for their side
 (their skeleton goals as threats at the leaf).
+* 72.9 LOOP TARGET 1 MADE CONCRETE: THE JUDGE'S RATE AND THE SHARE (Kaveh 2026-10-23: "budgets serve the machinery -- attack the reason why we're not able to solve the problem"). W0VFO
+  (rand8_10, `2r2rk1/R5pp/5p2/2q1p3/3pQ3/8/2P2PPP/R5K1 w`) at 10 s: the pool asks the right question first (Q3 mate on d5, graph score +33.6) and the policy puts Qb7 first among its routes
+  (+2.9), yet the trace reads `judge: Qb7 cut (cost 6 (2 parries: Rf7 1, Rc7 4), 5.7 s needed, 2.1 s left of the root's share) -> GAP`: two slow routes before it (Rxg7+, Qd5+) set the
+  judge's seconds-per-node, and that rate priced a 6-node route at 5.7 s when the proof needs about two; at the count budget the same route proves Qb7 +3. THE DEFECTS, each a machinery item,
+  none a budget: (a) the RATE is one number for the run; a route's nodes are not all alike (a check's forced replies are cheap, a quiet reply's inner agenda is dear) -- price the parries by
+  what they are (the forcing word knows), not by the run's mean; (b) the SHARE given to a root question is read before its best route is known; the route the policy ranks first should be
+  able to claim the whole remaining share while its question is the best bound (the 69.1 `one_route` rule already does this for a losing status -- W0VFO's status IS losing (balance -1),
+  so find why the share was 2.1 s of 10 after two routes); (c) the ORDER inside the root: the judge read Rxg7+ and Qd5+ (checks, the stake order) before Qb7 (the policy's first); the policy's
+  order should drive the judge's order too. Acceptance: W0VFO decides Qb7 at 10 s by proof; the trace guard's 10 unchanged; no budget constant changed. An agent's branch, after the cost
+  agent of 2026-10-23 evening has merged (both touch the judge in agenda.py).
