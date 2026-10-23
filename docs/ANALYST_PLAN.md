@@ -3295,7 +3295,11 @@ the Lean theorems over an abstract game; (2) AXIOMS, per domain -- the rules (Ch
 per domain, PRODUCED -- the words, lemmas, estimates and policies: today chess's are handwritten (regress's defects and fixes, race, the binder families) and
 stand as the seed and the benchmark the mined ones must reproduce (policies and estimates from the logs; lemmas mined from proved claims' frames and proved
 against the axioms, the lemma generator). Layer 1 imports nothing from 2 or 3; layer 3 is replaceable module by module; a new domain = a new layer 2 and
-an empty layer 3 filled by the same training.
+an empty layer 3 filled by the same training. Layer 3 has two parts (Kaveh: "we might even supply the base words in the vocab for each domain"): the
+BASE WORDS, supplied per domain -- the primitive predicates and measures over states, hand-written, few, each Lean-defined (chess: graph.py's attacks /
+guards / pushes / distances / worth, the piece values, the terminals); and the PRODUCED vocabulary -- everything built from the base words and the axioms by the
+machinery (defects, fixes, forcing words, endgame words, policies, estimates), trained or mined. 71.3's `Words` is therefore two interfaces: `BaseWords`
+(supplied) and the produced-vocabulary registry; the agenda touches only the second, the second is built only from the first.
 * 71.0 THE GUARD AND THE MAP (first commit). `scripts/trace_identity.py`: runs a fixed case set (12 ids incl. eSJqH, 2TUzC, 07Z0P, 4pC83, 0LRTF, the discovery
   position, pos2, RoR8t) at the COUNT budget (deterministic) and diffs the full traces before / after a stage: identical or the stage is wrong. The boundary
   map: a script listing, per function of agenda / regress / race / plan67, the chess calls it makes (the lines each stage moves) -> docs/DOMAIN_MAP.md.
