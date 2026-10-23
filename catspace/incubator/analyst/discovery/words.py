@@ -32,8 +32,8 @@ class BaseWords(Protocol):
     def word(self, s, key, side) -> int: ...                       # a named measure of the state for a side ("pushes", "dist", ...)
     def worth(self, unit) -> int: ...
     def name(self, loc) -> str: ...
-    def see(self, s, loc, side): ...                               # the exchange count on a location
-    def see_for(self, s, loc, side): ...
+    def see(self, s, loc): ...                                     # the exchange count on a location (the side to move captures)
+    def see_for(self, s, loc, capturer): ...                        # ... for a named capturing side
 
 
 class ChessBaseWords:
@@ -46,11 +46,11 @@ class ChessBaseWords:
     def name(self, loc):
         return G.name(loc)
 
-    def see(self, s, loc, side):
-        return G.see(s, loc, side)
+    def see(self, s, loc):
+        return G.see(s, loc)
 
-    def see_for(self, s, loc, side):
-        return G.see_for(s, loc, side)
+    def see_for(self, s, loc, capturer):
+        return G.see_for(s, loc, capturer)
 
 
 @runtime_checkable

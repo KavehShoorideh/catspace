@@ -2,52 +2,52 @@
 
 Per function: the chess-bound calls (python-chess `chess.*` and board methods, `G.*` graph words, `BD.*`/`PV.*` lemma families). A function with no row is generic as it stands.
 
-OBS domain map: agenda 742, regress 725, race 265, plan67 101, binder 64, table 35, question_prior 28, facts 19, graph_policy 16, ponder 16, analyse 9, state 4
+OBS domain map: regress 725, agenda 641, race 265, plan67 101, binder 64, table 35, question_prior 28, facts 19, graph_policy 16, ponder 16, analyse 9, state 4
 
-## agenda.py -- 99 chess-bound functions, 742 calls
+## agenda.py -- 99 chess-bound functions, 641 calls
 
 | function | calls | the most frequent |
 |---|---|---|
 | `_chase_route_body` | 46 | BD.MATE_VALUE 17, board.fen 9, chess.Move 3, board.push 3, board.pop 3 |
-| `_roots` | 45 | board.piece_at 13, G.name 7, G.worth 7, board.legal_moves 2, G.with_piece 2 |
-| `_refuter_fix` | 38 | board.piece_at 7, board.push 6, board.san 6, board.copy 4, board.legal_moves 3 |
-| `_leaf_read` | 29 | board.san 5, board.fen 5, board.copy 4, board.push 4, chess.square_name 4 |
-| `_ask_promote` | 27 | G.name 7, chess.SquareSet 3, board.occupied_co 3, board.san 2, board.bishops 2 |
+| `_refuter_fix` | 33 | board.piece_at 7, board.push 6, board.san 6, board.copy 4, board.legal_moves 3 |
+| `_roots` | 31 | board.piece_at 13, board.legal_moves 2, G.with_piece 2, chess.Piece 2, chess.KING 2 |
+| `_leaf_read` | 25 | board.san 5, board.fen 5, board.copy 4, board.push 4, board.legal_moves 3 |
 | `_parry_keeps` | 20 | board.san 5, board.copy 3, board.push 3, board.fen 2, BD.MATE_VALUE 2 |
-| `_reasoned_kill` | 19 | board.piece_at 7, G.name 3, chess.KING 2, chess.Move 2, board.king 1 |
-| `_stopper_routes` | 19 | board.piece_at 6, G.see_for 2, board.san 2, board.attackers 2, G.name 2 |
-| `_principal_captures` | 18 | board.piece_at 4, board.copy 2, G.worth 2, board.turn 1, chess.SQUARES 1 |
-| `_ask_stop_pawn` | 18 | G.name 6, G.word 3, board.san 3, board.legal_moves 1, board.king 1 |
-| `_ask_fork` | 16 | board.push 3, chess.Move 3, board.is_check 2, board.san 2, board.piece_at 2 |
+| `_ask_promote` | 20 | chess.SquareSet 3, board.occupied_co 3, board.san 2, board.bishops 2, board.rooks 2 |
+| `_reasoned_kill` | 16 | board.piece_at 7, chess.KING 2, chess.Move 2, board.king 1, chess.SQUARES 1 |
 | `_verify` | 16 | board.san 13, BD.MATE_VALUE 3 |
-| `_reach_roots` | 15 | G.name 8, chess.SquareSet 1, board.piece_at 1, board.king 1, board.pawns 1 |
-| `_addresses` | 15 | G.name 5, chess.Move 1, board.san 1, board.copy 1, board.push 1 |
-| `_targets_of` | 13 | board.piece_at 4, board.attacks 2, chess.Move 1, BD.MATE_VALUE 1, G.with_turn 1 |
-| `_decide_by_smallest_loss` | 13 | board.san 9, chess.square_name 2, board.is_check 1, board.fen 1 |
+| `_ask_fork` | 15 | board.push 3, chess.Move 3, board.is_check 2, board.san 2, board.piece_at 2 |
+| `_principal_captures` | 15 | board.piece_at 4, board.copy 2, board.turn 1, chess.SQUARES 1, chess.Board 1 |
+| `_stopper_routes` | 15 | board.piece_at 6, board.san 2, board.attackers 2, board.copy 1, board.push 1 |
 | `_line_of` | 13 | board.san 4, board.copy 2, board.push 2, chess.Move 2, BD.Binding 1 |
-| `_fixes_promote_defect` | 13 | G.name 3, board.king 2, board.san 2, chess.Move 1, chess.Board 1 |
+| `_targets_of` | 12 | board.piece_at 4, board.attacks 2, chess.Move 1, BD.MATE_VALUE 1, G.with_turn 1 |
 | `_aligned` | 11 | chess.QUEEN 2, chess.BB_SQUARES 2, chess.KNIGHT 1, chess.BISHOP 1, chess.ROOK 1 |
-| `_threat_roots` | 11 | G.name 4, board.piece_at 2, board.is_check 1, G.with_turn 1, BD.MATE_VALUE 1 |
+| `_decide_by_smallest_loss` | 11 | board.san 9, board.is_check 1, board.fen 1 |
 | `_step_forcing` | 11 | board.san 2, board.copy 2, board.push 2, chess.Move 2, chess.Board 1 |
 | `_mate_line_pieces` | 11 | board.piece_at 2, G.with_turn 1, board.copy 1, board.king 1, board.turn 1 |
 | `__init__` | 10 | board.fen 2, board.piece_at 2, board.turn 1, chess.Board 1, G.clear_caches 1 |
 | `_parry_label` | 10 | chess.Move 2, board.copy 2, board.push 2, board.legal_moves 1, board.is_check 1 |
-| `_chase` | 10 | board.san 5, BD.MATE_VALUE 1, board.piece_at 1, board.pop 1, board.gives_check 1 |
+| `_addresses` | 10 | chess.Move 1, board.san 1, board.copy 1, board.push 1, board.legal_moves 1 |
+| `_fixes_promote_defect` | 10 | board.king 2, board.san 2, chess.Move 1, chess.Board 1, board.legal_moves 1 |
 | `_chase_routes` | 10 | board.san 8, BD.MATE_VALUE 1, board.fen 1 |
-| `_ask_save_king` | 10 | board.san 4, board.legal_moves 2, board.piece_at 2, G.name 1, G.worth 1 |
 | `_ask_save_threat` | 10 | board.attackers 2, board.legal_moves 1, chess.Move 1, board.copy 1, board.push 1 |
-| `_promotion_exchange` | 10 | board.legal_moves 2, chess.Move 1, board.san 1, board.copy 1, board.push 1 |
-| `_fork_roots` | 9 | G.name 5, board.piece_at 3, board.is_check 1 |
 | `_scan_reach` | 9 | board.piece_at 2, board.king 2, chess.SQUARES 1, G.with_piece 1, chess.SquareSet 1 |
 | `_escape_note` | 9 | board.san 3, board.copy 2, board.push 2, board.legal_moves 2 |
+| `_chase` | 9 | board.san 5, BD.MATE_VALUE 1, board.piece_at 1, board.pop 1, board.gives_check 1 |
 | `_estimate_route` | 9 | board.fen 3, board.push 2, chess.Move 1, board.turn 1, chess.Board 1 |
+| `_promotion_exchange` | 9 | board.legal_moves 2, chess.Move 1, board.san 1, board.copy 1, board.push 1 |
 | `_chase_reads` | 8 | chess.SquareSet 2, board.copy 1, board.push 1, chess.WHITE 1, chess.BLACK 1 |
-| `_promote_roots` | 7 | G.name 3, chess.SquareSet 1, G.word 1, board.pawns 1, board.occupied_co 1 |
-| `_direct_routes` | 7 | chess.Move 2, board.san 2, board.legal_moves 1, G.worth 1, board.piece_at 1 |
+| `_ask_save_king` | 8 | board.san 4, board.legal_moves 2, board.piece_at 2 |
+| `_ask_stop_pawn` | 8 | board.san 3, board.legal_moves 1, board.king 1, board.copy 1, board.push 1 |
+| `_reach_roots` | 7 | chess.SquareSet 1, board.piece_at 1, board.king 1, board.pawns 1, board.occupied_co 1 |
 | `_irreversible` | 7 | board.is_capture 2, board.copy 1, board.push 1, chess.PAWN 1, board.piece_type_at 1 |
-| `_serve` | 6 | chess.Move 2, board.legal_moves 1, board.piece_at 1, G.name 1, board.san 1 |
+| `_threat_roots` | 6 | board.piece_at 2, board.is_check 1, G.with_turn 1, BD.MATE_VALUE 1, chess.Move 1 |
+| `_direct_routes` | 6 | chess.Move 2, board.san 2, board.legal_moves 1, board.piece_at 1 |
 | `_promote_stands` | 6 | chess.Move 1, chess.Board 1, board.piece_at 1, board.fen 1, chess.PAWN 1 |
 | `_judge_begin` | 6 | board.fen 4, chess.Move 1, board.san 1 |
+| `_unmet_fix` | 6 | board.piece_at 2, board.san 2, chess.Board 1, board.fen 1 |
+| `status` | 5 | board.is_check 2, BD.MATE_VALUE 1, G.with_turn 1, board.fen 1 |
+| `_record_roots` | 5 | board.san 3, board.gives_check 1, board.is_capture 1 |
 
 ## regress.py -- 76 chess-bound functions, 725 calls
 

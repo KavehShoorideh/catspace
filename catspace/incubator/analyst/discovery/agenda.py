@@ -51,8 +51,10 @@ from catspace.incubator.analyst.discovery import graph_policy as GP
 from catspace.incubator.analyst.discovery import reasoned as RS
 from catspace.incubator.analyst.discovery import selfmine as SM
 from catspace.incubator.analyst.discovery import words as WD
+from catspace.incubator.analyst.discovery import game as GM
 from catspace.incubator.analyst.discovery.state import Claim, State
 
+GAME = GM.CHESS                                                 # plan 71.2 (c): the agenda names locations and reads the base words through the Game / BaseWords interfaces (loc_name, worth, word, see); the board calls (python-chess) are the domain's own state type and go next, family by family
 W = WD.CHESS_WORDS                                              # plan 71.3 (b): the agenda asks the domain's WORDS through the one interface (words.py: BaseWords supplied, Words produced); chess is the instance. The remaining R./BD./RC./TB./PL./PV. names are the machinery's own types and switches (Question, Route, Defect, Binding, MATE_VALUE, RACE, TABLE, PLAN, HYPS), routed in 71.3 (c)
 
 
@@ -479,7 +481,7 @@ class Agenda:
             for c in ck:                                         # 52.15 (1): the checker is a win target when some legal move takes it (the king's included); the routes are those captures
                 if any(m.to_square == c for m in b.legal_moves):
                     pc = b.piece_at(c)
-                    self._push(R.new_question("win", G.worth(pc), dict(target=c, checker=True), text=f"win their {pc.symbol().upper()} on {G.name(c)} (it gives check)"))
+                    self._push(R.new_question("win", W.base.worth(pc), dict(target=c, checker=True), text=f"win their {pc.symbol().upper()} on {GAME.loc_name(c)} (it gives check)"))
             self.notes.append("in check: every legal move answers it; the roots are the save-king question and the win of the checker (mate and material goals are read on their routes)")
             return
         marks = []
@@ -504,22 +506,22 @@ class Agenda:
         for m, pc, placed, more, checker in marks:
             q = R.new_question("mate", R.STAKE_MATE, dict(sym=placed.symbol(), at=m.to_square, frm=m.from_square, king=ksq, more=more, move=m.uci()))
             q.defects = W.mate_defects(b, self.us, R.placement_of(q))
-            how = b.san(m) if (m.promotion or more) else f"{pc.symbol().upper()} {G.name(m.from_square)}->{G.name(m.to_square)}"
-            q.text = f"mate on {G.name(checker)} ({how}, their king on {G.name(ksq)})"
-            scored.append((len(q.defects), G.worth(placed), q.id, q))                 # fewest defects, then the CHEAPER piece (the heavy one stays back as a guard)
+            how = b.san(m) if (m.promotion or more) else f"{pc.symbol().upper()} {GAME.loc_name(m.from_square)}->{GAME.loc_name(m.to_square)}"
+            q.text = f"mate on {GAME.loc_name(checker)} ({how}, their king on {GAME.loc_name(ksq)})"
+            scored.append((len(q.defects), W.base.worth(placed), q.id, q))                 # fewest defects, then the CHEAPER piece (the heavy one stays back as a guard)
         for _, _, _, q in sorted(scored, key=lambda t: t[:3]):
             self._push(q)
         self._reach_roots(ksq)
         hang = RS.hanging_of_ours(b, self.us)
         if hang:
-            big = max(hang, key=lambda s: (G.worth(b.piece_at(s)), -s))
-            self._push(R.new_question("save", G.worth(b.piece_at(big)), dict(target=big), text=f"save our {b.piece_at(big).symbol().upper()} on {G.name(big)} (it hangs)"))
+            big = max(hang, key=lambda s: (W.base.worth(b.piece_at(s)), -s))
+            self._push(R.new_question("save", W.base.worth(b.piece_at(big)), dict(target=big), text=f"save our {b.piece_at(big).symbol().upper()} on {GAME.loc_name(big)} (it hangs)"))
         self._hang = hang                                        # the threat roots (52.4a) are asked for lazily: see ask()
         self._promote_roots()
         theirs = [s for s in chess.SQUARES if b.piece_at(s) and b.piece_at(s).color != me and b.piece_at(s).piece_type != chess.KING]
-        for s in sorted(theirs, key=lambda s: (-G.worth(b.piece_at(s)), s)):
-            self._push(R.new_question("win", G.worth(b.piece_at(s)), dict(target=s),
-                                      text=f"win their {b.piece_at(s).symbol().upper()} on {G.name(s)} (worth {G.worth(b.piece_at(s))})"))
+        for s in sorted(theirs, key=lambda s: (-W.base.worth(b.piece_at(s)), s)):
+            self._push(R.new_question("win", W.base.worth(b.piece_at(s)), dict(target=s),
+                                      text=f"win their {b.piece_at(s).symbol().upper()} on {GAME.loc_name(s)} (worth {W.base.worth(b.piece_at(s))})"))
         self._fork_roots()
         self._table_roots()
 
@@ -553,7 +555,7 @@ class Agenda:
         b, t = self.board, q.pattern.get("target")
         if t is None or not b.is_attacked_by(self.me, t):               # only a question whose target we can TAKE now chains (the capture, then one more claim)
             return 0
-        return max([G.worth(p) for s, p in b.piece_map().items() if p.color != self.me and p.piece_type != chess.KING and s != t] or [0])
+        return max([W.base.worth(p) for s, p in b.piece_map().items() if p.color != self.me and p.piece_type != chess.KING and s != t] or [0])
 
     def _fork_roots(self) -> None:
         """52.18 (4): THE FORK SQUARE AS A ROOT -- `fork on s with our <piece>` (stake = the smaller of the two values it attacks; the king and one piece for a check), for the root
@@ -562,13 +564,13 @@ class Agenda:
         if self.chase_depth or self.ctx is None or b.is_check() or self.min_stake:
             return
         for a, c2, reads in LD.knight_fork_kills(b, self.me):
-            self.notes.append(f"fork of the {b.piece_at(a).symbol().upper()} on {G.name(a)} and the {b.piece_at(c2).symbol().upper()} on {G.name(c2)} by a knight: killed by reasoning -- "
-                              f"a knight attacks only squares of one colour (Ideas.GeoLemmas.knight_fork_same_colour), these are of two; reads {{{', '.join(G.name(x) for x in sorted(reads))}}}")
+            self.notes.append(f"fork of the {b.piece_at(a).symbol().upper()} on {GAME.loc_name(a)} and the {b.piece_at(c2).symbol().upper()} on {GAME.loc_name(c2)} by a knight: killed by reasoning -- "
+                              f"a knight attacks only squares of one colour (Ideas.GeoLemmas.knight_fork_same_colour), these are of two; reads {{{', '.join(GAME.loc_name(x) for x in sorted(reads))}}}")
         for f in LD.fork_candidates(b, self.me):
             m = f["move"]
-            names = ", ".join(f"the {b.piece_at(t).symbol().upper()} on {G.name(t)} (wins {w})" for t, w in f["targets"])
+            names = ", ".join(f"the {b.piece_at(t).symbol().upper()} on {GAME.loc_name(t)} (wins {w})" for t, w in f["targets"])
             self._push(R.new_question("fork", f["bound"], dict(move=m.uci(), san=f["san"], frm=m.from_square, at=m.to_square, targets=f["targets"], check=f["check"]),
-                                      text=f"fork on {G.name(m.to_square)} with our {f['piece'].symbol().upper()} ({f['san']}): " + ("check and " if f["check"] else "") + f"attacks {names}"))
+                                      text=f"fork on {GAME.loc_name(m.to_square)} with our {f['piece'].symbol().upper()} ({f['san']}): " + ("check and " if f["check"] else "") + f"attacks {names}"))
 
     def _reach_roots(self, ksq: int | None) -> None:
         """52.12 (4): the mate roots at distance two, only when a mate is the stake (one prep move): a piece of ours that would check their king from a square it needs
@@ -587,18 +589,18 @@ class Agenda:
             if f is not None:
                 specs = f.payload["specs"]
                 self.ctx.roots_served += 1
-                self.lines.append(f"roots served from the store (fact #{f.id}, the reach roots of the {pc.symbol().upper()} on {G.name(frm)}, derived under {f.under})")
+                self.lines.append(f"roots served from the store (fact #{f.id}, the reach roots of the {pc.symbol().upper()} on {GAME.loc_name(frm)}, derived under {f.under})")
             else:
                 specs, reads, occ = self._scan_reach(frm, ksq)
                 if fs is not None:
                     occ = occ - reads
-                    fs.add("roots", key, self.me, f"reach roots of the {pc.symbol().upper()} on {G.name(frm)}, their king on {G.name(ksq)}", reads=reads, occ=occ,
+                    fs.add("roots", key, self.me, f"reach roots of the {pc.symbol().upper()} on {GAME.loc_name(frm)}, their king on {GAME.loc_name(ksq)}", reads=reads, occ=occ,
                            sig=FS.signature(self._cell, reads) + FS.occ_signature(self._piece, occ), stake=R.STAKE_MATE, depth=self.chase_depth, under=f"depth {self.chase_depth}", pk=self.pk, payload=dict(specs=specs))
             for sym, frm_, s, steps in specs:
                 q = R.new_question("mate", R.STAKE_MATE, dict(sym=sym, at=s, frm=frm_, king=ksq, more=[], move=None, reach=list(steps)))
-                via = ", ".join(sorted({G.name(chess.Move.from_uci(u).to_square) for u in steps}))
+                via = ", ".join(sorted({GAME.loc_name(chess.Move.from_uci(u).to_square) for u in steps}))
                 q.defects = [R.Defect("reach", s, [frm_], f"the {pc.symbol().upper()} needs 2 moves (via {via})")]
-                q.text = f"mate on {G.name(s)} ({pc.symbol().upper()} {G.name(frm_)}->{G.name(s)} in 2 moves via {via}, their king on {G.name(ksq)})"
+                q.text = f"mate on {GAME.loc_name(s)} ({pc.symbol().upper()} {GAME.loc_name(frm_)}->{GAME.loc_name(s)} in 2 moves via {via}, their king on {GAME.loc_name(ksq)})"
                 self._push(q)
         if any(q.pattern.get("reach") for q in self.all):
             self.notes.append("reach roots (mate at distance 2) only when a mate is the stake: one prep move, the pattern otherwise a mate")
@@ -649,11 +651,11 @@ class Agenda:
         b = self.board
         near = []
         for s in sorted(chess.SquareSet(b.pawns & b.occupied_co[self.me])):
-            n = G.word(b, ("pushes", G.name(s)), self.me)
+            n = W.base.word(b, ("pushes", GAME.loc_name(s)), self.me)
             if 0 < n <= R.PROMOTE_MAX_PUSHES:
                 near.append((n, s))
         for n, s in sorted(near):
-            self._push(R.new_question("promote", R.STAKE_PROMOTE, dict(pawn=s, pushes=n), text=f"promote our P on {G.name(s)} ({n} push{'es' if n > 1 else ''} to {G.name(W.pawn_path(b, s, n)[-1])})"))
+            self._push(R.new_question("promote", R.STAKE_PROMOTE, dict(pawn=s, pushes=n), text=f"promote our P on {GAME.loc_name(s)} ({n} push{'es' if n > 1 else ''} to {GAME.loc_name(W.pawn_path(b, s, n)[-1])})"))
         if near:
             self.notes.append(f"promote roots only for pawns with pushes <= {R.PROMOTE_MAX_PUSHES} (the mate / material stakes dominate farther pawns)")
 
@@ -701,17 +703,17 @@ class Agenda:
             if cl.kind == "promote":
                 pw = m.from_square
                 pb = ag.board
-                ppath = W.pawn_path(pb, pw, G.word(pb, ("pushes", G.name(pw)), not self.me))
+                ppath = W.pawn_path(pb, pw, W.base.word(pb, ("pushes", GAME.loc_name(pw)), not self.me))
                 if not ppath:
                     continue                                     # (their claim's move is not a pawn's push with a path: nothing to stop by this root)
                 dest = ppath[-1]
                 q = self._push(R.new_question("save", cl.value, dict(promoter=pw, push=cl.move, value=cl.value, lemma=cl.lemma, line=cl.line, what=cl.what, inner_threat=given),
-                                             text=f"stop their P on {G.name(pw)} (promotes on {G.name(dest)}): their claim {cl.what} wins {cl.value} (lemma {cl.lemma})"), force=given)
+                                             text=f"stop their P on {GAME.loc_name(pw)} (promotes on {GAME.loc_name(dest)}): their claim {cl.what} wins {cl.value} (lemma {cl.lemma})"), force=given)
                 self.threat_qs.append((q, cl))
                 self.threat_views.append((cl, ag))
                 continue
             tgt = self._targets_of(m, cl)
-            what = "our king" if cl.value >= BD.MATE_VALUE else (" and ".join(f"our {b.piece_at(t).symbol().upper()} on {G.name(t)}" for t in tgt) or "something of ours")
+            what = "our king" if cl.value >= BD.MATE_VALUE else (" and ".join(f"our {b.piece_at(t).symbol().upper()} on {GAME.loc_name(t)}" for t in tgt) or "something of ours")
             their_q = next((x for x in ag.all if x.id == cl.qid), None) if cl.qid is not None else None
             cl_reads = their_q.claimed[2] if their_q is not None and their_q.claimed is not None else None      # 2026-10-22 (Kaveh): the READ SET of their claim -- every square its proof looked at
             q = self._push(R.new_question("save", cl.value, dict(threat=cl.move, targets=tgt, value=cl.value, lemma=cl.lemma, line=cl.line, what=cl.what, inner_threat=given, reads=cl_reads),
@@ -729,7 +731,7 @@ class Agenda:
         before = set(b.attacks(m.from_square))
         b.push(m)
         out = [t for t in b.attacks(m.to_square) if t not in before and b.piece_at(t) and b.piece_at(t).color == self.me and b.piece_at(t).piece_type != chess.KING]
-        return sorted(out, key=lambda t: (-G.worth(b.piece_at(t)), t))
+        return sorted(out, key=lambda t: (-W.base.worth(b.piece_at(t)), t))
 
     # ------------------------------------------------------------------------------------------------------------ the loop
 
@@ -1260,7 +1262,7 @@ class Agenda:
                     if l.key() not in seen:
                         seen.append(l.key())
                         if len(seen) <= 5:
-                            self.lines.append(f"known about the {pc.symbol().upper()} on {G.name(mv.from_square)}: {l.text()}")
+                            self.lines.append(f"known about the {pc.symbol().upper()} on {GAME.loc_name(mv.from_square)}: {l.text()}")
         if self.ctx is not None and self.chase_depth == 0 and self.ctx.finish_lines:         # 52.21 (3)
             self.lines += self.ctx.finish_lines
             self.ctx.finish_lines = []
@@ -1452,7 +1454,7 @@ class Agenda:
         b = self.board
         sq = q.pattern.get("at") if q.goal == "mate" else q.pattern.get("target")
         pc = b.piece_at(sq) if sq is not None else None
-        what = f"the {pc.symbol().upper() if pc else 'piece'} on {G.name(sq) if sq is not None else '?'}"
+        what = f"the {pc.symbol().upper() if pc else 'piece'} on {GAME.loc_name(sq) if sq is not None else '?'}"
         if hit["kind"] == "claim":
             old = hit["claim"]
             mv = chess.Move.from_uci(old.move)
@@ -1508,7 +1510,7 @@ class Agenda:
             return False
         sq = q.pattern.get("at") if q.goal == "mate" else q.pattern.get("target")
         pc = b.piece_at(sq) if sq is not None else None
-        what = f"the {pc.symbol().upper() if pc else 'piece'} on {G.name(sq) if sq is not None else '?'}"
+        what = f"the {pc.symbol().upper() if pc else 'piece'} on {GAME.loc_name(sq) if sq is not None else '?'}"
         src = f"served from the store (fact #{f.id}, derived under {f.under})"
         if f.kind == "claim":
             old = f.payload["claim"]
@@ -1694,7 +1696,7 @@ class Agenda:
         if hit is not None:
             tbl.served += 1
             self.ctx.landing_served += 1
-            line = f"landing Q{q.id} on {G.name(p['at'])} (depth {self.chase_depth}): {hit.text().split(': ', 1)[1]}, served from the table"
+            line = f"landing Q{q.id} on {GAME.loc_name(p['at'])} (depth {self.chase_depth}): {hit.text().split(': ', 1)[1]}, served from the table"
             self.lines.append(line)
             if len(self.ctx.landing_lines) < 3:
                 self.ctx.landing_lines.append(line)
@@ -1750,7 +1752,7 @@ class Agenda:
             return
         what = f"{p['san']}"
         claim = Claim("win", what, worst[0], "fork: two threats, one move (Ideas.ForkSquare.one_move_touches_one); every reply read by the exchange rule (Ideas.ExchangeLaw)",
-                      f"{what}: " + ("check and " if p["check"] else "") + "attacks " + " and ".join(f"{b.piece_at(t).symbol().upper() if b.piece_at(t) else '?'}{G.name(t)}" for t, _w in p["targets"])
+                      f"{what}: " + ("check and " if p["check"] else "") + "attacks " + " and ".join(f"{b.piece_at(t).symbol().upper() if b.piece_at(t) else '?'}{GAME.loc_name(t)}" for t, _w in p["targets"])
                       + f"; the least over their replies of balance + exchange is {worst[0]} (worst reply {c.san(chess.Move.from_uci(worst[1]))})", move=p["move"])
         self._stamp(claim, q)
         self.state.claims.append(claim)
@@ -1767,7 +1769,7 @@ class Agenda:
         quickest such pawn, or None."""
         b, best = self.board, None
         for pw in chess.SquareSet(b.pawns & b.occupied_co[not self.me]):
-            n = G.word(b, ("pushes", G.name(pw)), not self.me)
+            n = W.base.word(b, ("pushes", GAME.loc_name(pw)), not self.me)
             if n < 1:
                 continue
             defects, _facts = W.promote_defects(b, pw)
@@ -1806,8 +1808,8 @@ class Agenda:
                     k = RG.held_measure(b, self.me, steps, passer[0])
                     if k is not None:
                         pw = passer[1]
-                        bound = [f"our {b.piece_at(g).symbol().upper()} on {G.name(g)} is bound to the {b.piece_at(y).symbol().upper()} on {G.name(y)}" for g, y in RG.bound_pieces(b, self.me) if b.piece_at(g).piece_type == chess.KING][:2]
-                        why = k["why"] + f" (their pawn on {G.name(pw)} promotes in {passer[0]}: {passer[2]})" + ("; " + "; ".join(bound) if bound else "")
+                        bound = [f"our {b.piece_at(g).symbol().upper()} on {GAME.loc_name(g)} is bound to the {b.piece_at(y).symbol().upper()} on {GAME.loc_name(y)}" for g, y in RG.bound_pieces(b, self.me) if b.piece_at(g).piece_type == chess.KING][:2]
+                        why = k["why"] + f" (their pawn on {GAME.loc_name(pw)} promotes in {passer[0]}: {passer[2]})" + ("; " + "; ".join(bound) if bound else "")
                         reads, which = k["reads"] | {pw}, "the measure they hold"
         if why is None:
             return False
@@ -1854,7 +1856,7 @@ class Agenda:
             m = chess.Move.from_uci(q.pattern["move"]) if q.pattern.get("move") else chess.Move(q.pattern["frm"], q.pattern["at"])
             return [R.Route(m, b.san(m), "the placement move")]
         t = q.pattern["target"]
-        return [R.Route(m, b.san(m), f"capture {G.worth(b.piece_at(t))}") for m in b.legal_moves if m.to_square == t and not m.promotion]
+        return [R.Route(m, b.san(m), f"capture {W.base.worth(b.piece_at(t))}") for m in b.legal_moves if m.to_square == t and not m.promotion]
 
     # ------------------------------------------------------------------------------------------------------------ verify and claim
 
@@ -1999,7 +2001,7 @@ class Agenda:
                 e = d.copy(stack=False)
                 e.push(m)
                 leaves.append((m, e))
-            terms = [("after", chess.square_name(m.from_square), chess.square_name(m.to_square), inner2) for m, _ in leaves]
+            terms = [("after", GAME.loc_name(m.from_square), GAME.loc_name(m.to_square), inner2) for m, _ in leaves]
             vals = SM.evaluate(terms, [dict(fen=d.fen(), mover=us)]) if terms else {}
             v2 = [vals[BV.sexpr(t)][0] for t in terms]
             top = max(v2) if v2 else None
@@ -2009,7 +2011,7 @@ class Agenda:
                 return None
             tied = [(m, e) for (m, e), w in zip(leaves, v2) if w == top]
             tied.sort(key=lambda t: (not d.is_capture(t[0]), not d.gives_check(t[0]), t[0].uci()))          # the natural moves first; the order never changes the verdict
-            bterms = [("after", chess.square_name(m.from_square), chess.square_name(m.to_square), "balance") for m, _ in tied]
+            bterms = [("after", GAME.loc_name(m.from_square), GAME.loc_name(m.to_square), "balance") for m, _ in tied]
             bvals = SM.evaluate(bterms, [dict(fen=d.fen(), mover=us)]) if bterms else {}
             gains = [bvals[BV.sexpr(t)][0] - base for t in bterms]         # our gain AT the leaf, before their move: their claim is measured from here
             first_ref, held = None, None
@@ -2070,7 +2072,7 @@ class Agenda:
             gain = bind.value if bind is not None else 0
             theirs, _ag = self.their_view(r.move)
             tv = theirs.value if theirs is not None else 0
-            sh = PA.shape(b.fen(), [(chess.square_name(r.move.from_square), chess.square_name(r.move.to_square))], us, threats=False)
+            sh = PA.shape(b.fen(), [(GAME.loc_name(r.move.from_square), GAME.loc_name(r.move.to_square))], us, threats=False)
             rows.append((gain - tv, PA.shape_key(sh), r, theirs, gain))
         rows.sort(key=lambda t: (-t[0], t[1], t[2].move.uci()))
         net, key, r, theirs, gain = rows[0]
@@ -2149,7 +2151,7 @@ class Agenda:
         d = q.defects[0]
         self.lines.append(head + f": defect reach ({d.why})")
         steps = [chess.Move.from_uci(u) for u in q.pattern["reach"]]
-        f = R.new_question("cover", q.stake, dict(q.pattern), q, defect_key=d.key(), text=f"step toward {G.name(q.pattern['at'])} with tempo")
+        f = R.new_question("cover", q.stake, dict(q.pattern), q, defect_key=d.key(), text=f"step toward {GAME.loc_name(q.pattern['at'])} with tempo")
         forcing, quiet = [], []
         for m in steps:
             why = W.forcing_why(b, m, q.stake, us, mate_threats=True)
@@ -2640,11 +2642,11 @@ class Agenda:
         if any(mv.from_square == x.to_square and mv.to_square == ref.to_square for mv in c3.legal_moves):
             return None                                          # the piece that recaptures can make the refuting move
         hits = [s for s in chess.SquareSet(c3.attacks_mask(r_k.move.to_square)) if c3.piece_at(s) is not None and c3.piece_at(s).color != me and c3.piece_at(s).piece_type != chess.KING]
-        tgt = max(hits, key=lambda s: (G.worth(c3.piece_at(s)), -s)) if hits else None         # the goal asked again: the best piece the route's piece attacks once the refuter is gone
+        tgt = max(hits, key=lambda s: (W.base.worth(c3.piece_at(s)), -s)) if hits else None         # the goal asked again: the best piece the route's piece attacks once the refuter is gone
         pc_t = c2.piece_at(tgt) if tgt is not None else None
         dbal = AC.Pos(b.fen()).push(r2.move.uci()).push(x.uci()).balance(me) - P0.balance(me)
         saved = R._ids[0]
-        q2 = R.new_question("win", G.worth(pc_t), dict(target=tgt), text=f"win their {pc_t.symbol().upper()} on {G.name(tgt)}") if pc_t is not None else None
+        q2 = R.new_question("win", W.base.worth(pc_t), dict(target=tgt), text=f"win their {pc_t.symbol().upper()} on {GAME.loc_name(tgt)}") if pc_t is not None else None
         R._ids[0] = saved
         ag2 = Agenda(State(fen=c2.fen(), us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=1)
         ag2._chase_q = q2
@@ -2654,8 +2656,8 @@ class Agenda:
         v = dbal + res3["value"]
         reads = frozenset({ref.from_square, ref.to_square, r2.move.to_square, r_k.move.from_square, r_k.move.to_square})
         part = f"after {san_x}: {r_k.san} asked again on the board after the exchange ({'; '.join(res3['parts'][:2])}) -> {v}"
-        text = (f"{r_k.san} fails to {san_ref} (the refuter: the {pc_ref.symbol().upper()} on {G.name(ref.from_square)}); exchange it first -- {r2.san} {san_x}: the "
-                f"{c2.piece_at(x.to_square).symbol().upper()} on {G.name(x.to_square)} cannot make that move; {r_k.san} is asked again after it")
+        text = (f"{r_k.san} fails to {san_ref} (the refuter: the {pc_ref.symbol().upper()} on {GAME.loc_name(ref.from_square)}); exchange it first -- {r2.san} {san_x}: the "
+                f"{c2.piece_at(x.to_square).symbol().upper()} on {GAME.loc_name(x.to_square)} cannot make that move; {r_k.san} is asked again after it")
         return dict(value=v, part=part, facts=list(res3.get("facts", [])), reads=reads, text=text)
 
     def _note_resume(self, q: R.Question, r: "R.Route | None", res: dict) -> None:
@@ -3020,7 +3022,7 @@ class Agenda:
             p = b.piece_at(x)
             if p is None or p.color == me or p.piece_type == chess.KING or not b.is_attacked_by(me, x):
                 continue
-            v = G.see(b, x)
+            v = W.base.see(b, x)
             if v > best:
                 best, sqs = v, [x]
             elif v == best and v > 0:
@@ -3032,8 +3034,8 @@ class Agenda:
                 caps = [m for m in c.legal_moves if m.to_square == sq]
                 if not caps or c.piece_at(sq) is None:
                     break
-                m = min(caps, key=lambda m: (G.worth(c.piece_at(m.from_square)), m.uci()))
-                gains.append(G.worth(c.piece_at(sq)))
+                m = min(caps, key=lambda m: (W.base.worth(c.piece_at(m.from_square)), m.uci()))
+                gains.append(W.base.worth(c.piece_at(sq)))
                 sans.append(c.san(m))
                 c.push(m)
                 boards.append(c.copy(stack=False))
@@ -3063,11 +3065,11 @@ class Agenda:
             for san, b, last, credit in caps:
                 if not any(True for _ in b.legal_moves):
                     continue
-                key = ("after-capture", _pos_key(b.fen()), chess.square_name(sq), credit)
+                key = ("after-capture", _pos_key(b.fen()), GAME.loc_name(sq), credit)
                 hit = self.ctx.theirs.get(key)
                 if hit is None:
                     ag = self._their_agenda(b)
-                    cls = [c for c in (ag.state.claims if ag is not None else []) if not (c.move and c.move[2:4] == chess.square_name(sq) and c.value <= credit)]      # (a recapture worth no more than the exchange's credit IS the exchange: the swap-list priced it)
+                    cls = [c for c in (ag.state.claims if ag is not None else []) if not (c.move and c.move[2:4] == GAME.loc_name(sq) and c.value <= credit)]      # (a recapture worth no more than the exchange's credit IS the exchange: the swap-list priced it)
                     cl = max(cls, key=lambda c: c.value) if cls else None
                     hit = self.ctx.theirs[key] = (cl.value if cl is not None and cl.value > 0 else 0, cl)
                 if hit[0] > out[0]:
@@ -3136,7 +3138,7 @@ class Agenda:
             return True, ""
         if why.startswith("fix:") or why != "check":
             return True, ""
-        goal = {"mate": f"mate {G.name(q.pattern['at'])}" if q.pattern.get("at") is not None else "mate", "win": f"win {G.name(q.pattern['target'])}" if q.pattern.get("target") is not None else "win", "promote": f"promote {G.name(q.pattern['pawn'])}" if q.pattern.get("pawn") is not None else "promote"}.get(q.goal, q.goal)
+        goal = {"mate": f"mate {GAME.loc_name(q.pattern['at'])}" if q.pattern.get("at") is not None else "mate", "win": f"win {GAME.loc_name(q.pattern['target'])}" if q.pattern.get("target") is not None else "win", "promote": f"promote {GAME.loc_name(q.pattern['pawn'])}" if q.pattern.get("pawn") is not None else "promote"}.get(q.goal, q.goal)
         if q.goal == "mate" and (q.pattern.get("move") == m.uci() or m.uci() in (q.pattern.get("reach") or ())):
             return True, ""
         hit = self.ctx.routes.get((_pos_key(b.fen()), m.uci()))
@@ -3160,13 +3162,13 @@ class Agenda:
             if q.goal == "win" and q.pattern.get("target") in c.attacks(m.to_square) and d.kind in ("not attacked", "defended"):
                 return True, ""
             if q.goal == "win" and d.kind in ("not attacked", "defended") and G.skewer_after(c, me, q.pattern.get("target")) == m.to_square:     # 52.23 (4): the skewer
-                return True, f"{san}: a route of {goal}: a check through their king, the line runs on to {G.name(q.pattern['target'])} (Ideas.Skewer.skewer_attack)"
+                return True, f"{san}: a route of {goal}: a check through their king, the line runs on to {GAME.loc_name(q.pattern['target'])} (Ideas.Skewer.skewer_attack)"
             if q.goal == "promote":
                 why_fix = self._fixes_promote_defect(q, d, m, c)
                 if why_fix:
                     return True, f"{san}: a route of {goal}: {why_fix}"
             left.append(d)
-        stays = "; ".join(f"{d.sq and G.name(d.sq) + ' ' or ''}{ {'flight': 'stays a flight', 'checker takeable': 'stays takeable', 'interposition': 'stays open', 'not attacked': 'stays unattacked', 'defended': 'stays defended', 'blocked': 'stays blocked', 'stopper': 'stays a stopper', 'reach': 'stays out of reach'}.get(d.kind, 'stands') }" for d in left[:3]) or "no defect"
+        stays = "; ".join(f"{d.sq and GAME.loc_name(d.sq) + ' ' or ''}{ {'flight': 'stays a flight', 'checker takeable': 'stays takeable', 'interposition': 'stays open', 'not attacked': 'stays unattacked', 'defended': 'stays defended', 'blocked': 'stays blocked', 'stopper': 'stays a stopper', 'reach': 'stays out of reach'}.get(d.kind, 'stands') }" for d in left[:3]) or "no defect"
         return False, f"{san}: not a route of {goal} (a check that fixes no defect: {stays})"
 
     def _fixes_promote_defect(self, q: R.Question, d: R.Defect, m: chess.Move, c: chess.Board) -> "str | None":
@@ -3175,13 +3177,13 @@ class Agenda:
         Rd8+). -> the reason, or None."""
         b, me = self.board, self.me
         if m.to_square in d.by:
-            return f"it takes the {b.piece_at(m.to_square).symbol().upper()} on {G.name(m.to_square)}"
+            return f"it takes the {b.piece_at(m.to_square).symbol().upper()} on {GAME.loc_name(m.to_square)}"
         ek = b.king(not me)
         if ek is None or not ((d.kind == "blocked" and d.sq == ek) or (d.kind in ("path attacked", "promo square attacked", "stopper") and ek in d.by)):
             return None
         x = d.sq
         if W.drives_off(b, m, x, ek):
-            return f"it drives their king off {G.name(x)}"
+            return f"it drives their king off {GAME.loc_name(x)}"
         reps = list(c.legal_moves)
         if not reps:
             return None
@@ -3195,7 +3197,7 @@ class Agenda:
             if not nxt:
                 return None
             steps.append(f"after {san_r}, {c2.san(nxt[0])}")
-        return f"a step of driving their king off {G.name(x)} ({'; '.join(steps[:3])} drives it off)"
+        return f"a step of driving their king off {GAME.loc_name(x)} ({'; '.join(steps[:3])} drives it off)"
 
     def _relabel_lifted(self, q: R.Question, lifted: list) -> None:
         """plan 62.1c (Kaveh 2026-10-22): the king-only verdict is PROVED and said the king is no stopper; the unlifted read may still end the question as "stopped: ..." (a static estimate of another piece).
@@ -3347,7 +3349,7 @@ class Agenda:
         for m in R._moves(b, self.us):
             if evading:                                          # 52.23 (3): in check every legal move is a route (it is forced: the check must be answered), none is quiet
                 pc = b.piece_at(m.to_square)
-                routes.append(R.Route(m, b.san(m), f"capture {G.worth(pc)}" if pc is not None else "evade"))
+                routes.append(R.Route(m, b.san(m), f"capture {W.base.worth(pc)}" if pc is not None else "evade"))
                 continue
             why = W.forcing_why(b, m, q.stake, self.us, mate_threats=True, notes=notes, mate2=self.ctx.tier >= 2,      # plan 59 tier 2: a mate-in-two threat is forcing too
                                 delayed=DELAYED_THREAT and self.ctx.tier >= 1 and not self.chase_depth, nosafe=NO_SAFE_MOVE and self.ctx.tier >= 1 and not self.chase_depth)      # plan 61 A3 / A4: tier 1+, the root's chase only
@@ -3670,15 +3672,15 @@ class Agenda:
             c = b.copy(stack=False)
             c.push(m)
             hit = [s for s in stoppers if c.piece_at(s) is not None and c.is_attacked_by(me, s) and m.to_square in chess.SquareSet(c.attackers(me, s))]
-            if hit and G.see_for(c, m.to_square, not me) <= 0:
+            if hit and W.base.see_for(c, m.to_square, not me) <= 0:
                 pc = c.piece_at(hit[0])
-                out.append(R.Route(m, b.san(m), f"threat on the stopper: the {pc.symbol().upper()} on {G.name(hit[0])}"))
+                out.append(R.Route(m, b.san(m), f"threat on the stopper: the {pc.symbol().upper()} on {GAME.loc_name(hit[0])}"))
                 continue
             if m.from_square == q.pattern["pawn"]:
                 by = [s for s in stoppers if c.piece_at(s) is not None and s in c.attackers(not me, m.to_square)]
-                if by and G.see_for(c, m.to_square, not me) <= 0:
+                if by and W.base.see_for(c, m.to_square, not me) <= 0:
                     pc = c.piece_at(by[0])
-                    out.append(R.Route(m, b.san(m), f"offers the pawn to the stopper: the {pc.symbol().upper()} on {G.name(by[0])} takes, and the exchange there loses it"))
+                    out.append(R.Route(m, b.san(m), f"offers the pawn to the stopper: the {pc.symbol().upper()} on {GAME.loc_name(by[0])} takes, and the exchange there loses it"))
         return out
 
     def _kill(self, q: R.Question, reason: str, tempo: bool) -> None:
@@ -3692,9 +3694,9 @@ class Agenda:
     def _ask_save_king(self, q: R.Question, head: str) -> None:
         b = self.board
         ck = q.pattern["checkers"]
-        q.defects = [R.Defect("in check", c, [], f"{b.piece_at(c).symbol().upper()} on {G.name(c)} gives check") for c in ck]
+        q.defects = [R.Defect("in check", c, [], f"{b.piece_at(c).symbol().upper()} on {GAME.loc_name(c)} gives check") for c in ck]
         self.lines.append(head + ": " + "; ".join(f"defect {d.kind} ({d.why})" for d in q.defects))
-        takes = [R.Route(m, b.san(m), f"capture {G.worth(b.piece_at(m.to_square))}") for m in b.legal_moves if m.to_square in ck]
+        takes = [R.Route(m, b.san(m), f"capture {W.base.worth(b.piece_at(m.to_square))}") for m in b.legal_moves if m.to_square in ck]
         others = [R.Route(m, b.san(m), "evade") for m in b.legal_moves if m.to_square not in ck]
         f1 = R.new_question("remove", q.stake, dict(q.pattern), q, defect_key=q.defects[0].key(), text="take the checker")
         f1.routes = takes
@@ -3718,7 +3720,7 @@ class Agenda:
         b = self.board
         sq = q.pattern["target"]
         parries = RS._threat_moves(b, self.us, [sq])
-        q.defects = [R.Defect("hangs", sq, sorted(b.attackers(not self.me, sq)), f"they win {G.see(b, sq)} by the exchange on {G.name(sq)}")]
+        q.defects = [R.Defect("hangs", sq, sorted(b.attackers(not self.me, sq)), f"they win {W.base.see(b, sq)} by the exchange on {GAME.loc_name(sq)}")]
         self.lines.append(head + f": defect hangs ({q.defects[0].why})")
         f = R.new_question("remove", q.stake, dict(q.pattern), q, defect_key=q.defects[0].key(), text="parry it, or check, or take as much")
         f.routes = [R.Route(m, b.san(m), "parry") for m in parries]
@@ -3870,7 +3872,7 @@ class Agenda:
         q.reads = R.reads_of(q, b) | frozenset(facts["path"]) | {sq}            # 52.16 (4): the pawn, its path (the promotion square included), the defects' squares and their pieces: what the question read
         kd = facts["king_dist"]
         self.lines.append(head + (": " + "; ".join(f"defect {d.kind} ({d.why})" for d in q.defects) if q.defects else
-                                  ": no defect -- unstoppable by the tempo arithmetic" + (f" (their K needs {kd} to {G.name(promo)}, the pawn {n})" if kd is not None else "")))
+                                  ": no defect -- unstoppable by the tempo arithmetic" + (f" (their K needs {kd} to {GAME.loc_name(promo)}, the pawn {n})" if kd is not None else "")))
         lifted = facts.get("lifted")
         if lifted is not None and lifted:
             self.lines.append("  lifted: " + "; ".join(lifted) + " (their other pieces are replies the chase reads; the kill is a GAP until it closes)")
@@ -3890,7 +3892,7 @@ class Agenda:
             if stop:
                 reason = "stopped: " + "; ".join(d.why for d in stop)
             else:
-                reason = "tempo: " + "; ".join(f"{d.kind} {G.name(d.sq)}: {d.why}" for d in q.defects)
+                reason = "tempo: " + "; ".join(f"{d.kind} {GAME.loc_name(d.sq)}: {d.why}" for d in q.defects)
             if self._chase(q):                                   # 52.15 (2): a promotion that the defects stop is chased: make them move, ask the promote root again on each reply
                 return
             self._kill(q, reason, tempo=True)
@@ -3899,8 +3901,8 @@ class Agenda:
         if sq in ps:
             push = chess.Move(sq, facts["path"][0], promotion=chess.QUEEN if n == 1 else None)
             san = b.san(push)
-            rest = [G.name(t) for t in facts["path"][1:-1]]
-            line = f"{san}, then {', '.join(rest)}{', ' if rest else ''}{G.name(promo)}=Q within {ps[sq]} plies whatever they do ({n} pushes)" if n > 1 else f"{san} within {ps[sq]} ply"
+            rest = [GAME.loc_name(t) for t in facts["path"][1:-1]]
+            line = f"{san}, then {', '.join(rest)}{', ' if rest else ''}{GAME.loc_name(promo)}=Q within {ps[sq]} plies whatever they do ({n} pushes)" if n > 1 else f"{san} within {ps[sq]} ply"
             claim = Claim("promote", san, R.STAKE_PROMOTE, "unstoppablePasser2_sound", line, move=push.uci())
             self._stamp(claim, q)
             self.state.claims.append(claim)
@@ -3929,11 +3931,11 @@ class Agenda:
         why = []
         for k in bad:
             if k == "enemyPieces":
-                why.append("enemyPieces: " + ", ".join(f"their {b.piece_at(s).symbol().upper()} on {G.name(s)}" for s in chess.SquareSet((b.rooks | b.queens | b.knights) & b.occupied_co[not self.me])))
+                why.append("enemyPieces: " + ", ".join(f"their {b.piece_at(s).symbol().upper()} on {GAME.loc_name(s)}" for s in chess.SquareSet((b.rooks | b.queens | b.knights) & b.occupied_co[not self.me])))
             elif k == "bishopsFar":
-                why.append("bishopsFar: " + ", ".join(f"their B on {G.name(s)}" for s in chess.SquareSet(b.bishops & b.occupied_co[not self.me])))
+                why.append("bishopsFar: " + ", ".join(f"their B on {GAME.loc_name(s)}" for s in chess.SquareSet(b.bishops & b.occupied_co[not self.me])))
             elif k == "noSliders":
-                why.append("noSliders: " + ", ".join(f"our {b.piece_at(s).symbol().upper()} on {G.name(s)}" for s in chess.SquareSet((b.rooks | b.bishops | b.queens) & b.occupied_co[self.me])))
+                why.append("noSliders: " + ", ".join(f"our {b.piece_at(s).symbol().upper()} on {GAME.loc_name(s)}" for s in chess.SquareSet((b.rooks | b.bishops | b.queens) & b.occupied_co[self.me])))
             else:
                 why.append(k)
         msg = (f"Q{q.id} {q.text}: the defects say unstoppable but the lemma unstoppablePasser2_sound does not fire -- failing hypothesis "
@@ -4016,7 +4018,7 @@ class Agenda:
         c.push(push)
         if c.is_checkmate() or not any(m.to_square == facts["promo"] for m in c.legal_moves):
             return None
-        lost = G.see_for(c, facts["promo"], not me)
+        lost = W.base.see_for(c, facts["promo"], not me)
         net = R.STAKE_PROMOTE - lost
         if lost <= 0 or net < 1:
             return None
@@ -4040,21 +4042,21 @@ class Agenda:
         p = q.pattern
         pw = p["promoter"]
         them = not self.me
-        n = G.word(b, ("pushes", G.name(pw)), them)
+        n = W.base.word(b, ("pushes", GAME.loc_name(pw)), them)
         promo = W.pawn_path(b, pw, n)[-1]
-        kd = G.word(b, ("dist", "L", ("promo", G.name(pw))), them)               # their pawn's words, read from its owner's side: L = our king
-        q.defects = [R.Defect("promotes", promo, [pw], f"their {p['what']} promotes on {G.name(promo)} in {n} ({p['value']}, lemma {p['lemma']})")]
+        kd = W.base.word(b, ("dist", "L", ("promo", GAME.loc_name(pw))), them)               # their pawn's words, read from its owner's side: L = our king
+        q.defects = [R.Defect("promotes", promo, [pw], f"their {p['what']} promotes on {GAME.loc_name(promo)} in {n} ({p['value']}, lemma {p['lemma']})")]
         self.lines.append(head + f": defect promotes (their view: {p['what']}, {p['line']})")
-        arith = f"our K reaches {G.name(promo)} in {kd}, the pawn needs {n}"
+        arith = f"our K reaches {GAME.loc_name(promo)} in {kd}, the pawn needs {n}"
         ksq = b.king(self.me)
         runs = []
         for m in b.legal_moves:
             if m.to_square == pw:
-                runs.append(R.Route(m, b.san(m), f"capture {G.worth(b.piece_at(pw))}"))
+                runs.append(R.Route(m, b.san(m), f"capture {W.base.worth(b.piece_at(pw))}"))
             elif m.from_square == ksq:
                 c = b.copy(stack=False)
                 c.push(m)
-                if G.word(c, ("dist", "L", ("promo", G.name(pw))), them) < kd:
+                if W.base.word(c, ("dist", "L", ("promo", GAME.loc_name(pw))), them) < kd:
                     runs.append(R.Route(m, b.san(m), "K runs back"))
         f = R.new_question("remove", q.stake, dict(q.pattern), q, defect_key=q.defects[0].key(), text="stop it: our king runs toward the promotion square, or takes the pawn")
         f.routes = runs
@@ -4065,7 +4067,7 @@ class Agenda:
         # promotion square then (it takes the new queen), i.e. distance <= n + 1 (the same inequality as the lemma's kingOutside, n < dist, for the defender
         # with n - 1 moves). Distance = n + 1 is exact: every move of ours is spent.
         if kd == n + 1:
-            self.lines.append(f"     forced: every move of ours is spent stopping the pawn (distance {kd} = pushes {n} + 1: next to {G.name(promo)} after our {n} moves)")
+            self.lines.append(f"     forced: every move of ours is spent stopping the pawn (distance {kd} = pushes {n} + 1: next to {GAME.loc_name(promo)} after our {n} moves)")
         elif kd > n + 1:
             self.lines.append(f"     no stopper in time: distance {kd} > pushes {n} + 1")
         else:

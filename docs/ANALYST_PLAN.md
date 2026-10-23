@@ -3320,7 +3320,7 @@ machinery (defects, fixes, forcing words, endgame words, policies, estimates), t
   twice) is frozen: no further mirroring, compare_scheduler kept only as a one-time check that the last mirrored state still agrees; the file moves to
   `discovery/archive/` with a banner, the `--scheduler` path raises "retired". (The task graph for a future parallel chase is re-derived from the layered
   chase when needed, not maintained by hand.) Saves half of every later stage.
-* 71.2 THE GAME INTERFACE (`discovery/game.py`): `Game` protocol -- `moves(s)`, `apply(s, m)`, `turn(s)`, `pass_(s)` (the side flipped), `terminal(s)`,
+* 71.2 THE GAME INTERFACE (`discovery/game.py`): `Game` protocol -- `moves(s)`, `apply(s, m)`, `turn(s)`, `pass_(s)` (the side flipped), `terminal(s)`, (c) 2026-10-22: the agenda's location names and base words (G.name 65, square_name 8, worth 17, word 6, see 5) route through GAME.loc_name / W.base; trace identity 10/10; the board calls (Move.from_uci 31, Board 15, SquareSet 12, piece kinds) are the domain's own state type and remain -- next, family by family.
   `measure(s, side)`, `in_check(s)`, `name(m, s)` (SAN), `key(s)` (the position key), `units(s)` (pieces with location, owner, worth) and `locations`
   (squares) for read sets, `attacks(s, loc, side)`. `ChessGame` wraps python-chess + the Rust core (one file). Route the CLEAN modules first (facts, state,
   binder, graph_policy, question_prior, table), then agenda.py's 105 calls, replacing each `chess.X` / `board.Y` with `self.game.Y`; `G` (graph.py words)
