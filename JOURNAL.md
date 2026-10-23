@@ -32481,3 +32481,11 @@ Main moved while 72.8 was built: 72.3 was corrected ("a quiet step hands them a 
 OBS skeleton goals discovery: targets 4, arrangements 14 (reachable 2, open 3, refused 2, unreachable 7), ms 24. OBS skeleton goals pos2: targets 3, arrangements 17 (reachable 0, open 4, refused 2, unreachable 11), ms 16.
 OBS gate engine, one file per call, the merged code: test_plan72_8 passed 8; test_plan72_3 passed 4; test_plan72 passed 6; test_question_prior passed 6; test_graph_policy passed 6; test_agenda passed 26; test_regress passed 88, failed 0.
 OBS trace guard against main d9f4cf12 (main's tree exported and snapshotted with its own catspace): 9 of 10 traces differ, DECISION lines 10 of 10 identical; with the skeleton / arrangement lines removed 6 of 10 identical; the 4 others by a new root (07Z0P and the discovery position: mate on g7, killed by the tempo arithmetic; 4pC83: mate on h2, chased, claims Nf3+ +2 under the deciding Nf3+ +3) or a forcing route (W0VFO: Qb7, threat of mate, on the g7 root, nothing binds) and one printed quiet candidate (4pC83: Qc6), and the renumbering. (Main's own discovery decision is Nc5 0 unfinished since the 72.3 correction; it was Nf6 +1 proved before it -- not a 72.8 change, the same decision with SKELETON_GOALS on.)
+
+## 2026-10-23 15:27 PDT -- main at 4484fb58: 72.8 stage 1 (the skeleton goals, Opus agent) merged; the engine gate on a quiet machine
+
+OBS gate engine (main 4484fb58, no other process running): files 28, passed 391, failed 3, xfailed 2, wall 898.2 s. The same three timed cases as at 697fec9e fail with the machine quiet
+(test_tiers 59.4 at 1.0 s; test_offbuilt64 64.2 W0VFO at 10 s; 64_discovery under the tiers at 15 s): cost, not contention. The root's start-up now carries the survey lines, the lazy join
+candidates and the skeleton goals (OBS skeleton goals discovery: 14 arrangements, 24 ms; pos2: 17, 16 ms), the leaves carry 72.2's reads. To be profiled and scoped on principle (off is not built).
+72.8's arrangements on the discovery position (one run, directional): "mate on g7: Q b7->g7 (3), N e4->h5 bears on g7 (2); price (0, 5), counter 9 -> reachable"; "mate on g8: ... deflect their Q
+from e8 (open)". Reachable mate arrangements become roots or forcing routes; quiet first steps are candidates (main's 72.3 correction: a quiet step is no fix). No decision changed on the guard's 10.
