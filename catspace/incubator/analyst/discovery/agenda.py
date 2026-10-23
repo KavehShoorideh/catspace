@@ -66,6 +66,10 @@ EVASION_CHASE = True                                            # 52.23 (3): ON 
 NEED_PROPAGATION = True                                         # 52.23 (7): ON at every tier (plan 64.2) -- the need propagates to the inner agendas, a gaining reply carries the inner claim, the chain of two meets the need, a bound below the need chases first
 GOAL_JUDGE = True                                               # 52.23 (6): ON at every tier (plan 64.2; its stop is a GAP since 64.1)
 CLOCK_PAWN = True                                              # plan 62.1c / 66.5: the chase clock also resets on a PAWN move of ours (an irreversible move, the fifty-move rule's other event); CHASE_CLOCK stays the parameter
+PASSER_ROOTS = True                                             # plan 72.2 (a): a passed pawn is a promote root at any distance (the 3-push count stays only for pawns that are not passers)
+PARRY_PASS = True                                               # plan 72.2 (c): at the static leaf a parry that keeps one ply is read once more with the move passed to them after it -- a proved claim of theirs there means "not parried YET" (a GAP): I7k2H's Bd1 "kept" +2 one ply before c3, c2 won the bishop
+THEIR_GAPS = True                                               # plan 72.2 (d): at the static leaf an OPEN question of theirs (a GAP of their agenda: the defects say their passer is unstoppable but no lemma fires yet) that would eat the balance makes our leaf a GAP too -- "not read YET", never a proof (I7k2H: after Bd1 their c-pawn's promotion is open, the stopper lifted)
+STUCK_LEAF = True                                               # plan 72.2 (b): at the static leaf a unit of ours that cannot run, reached by their unit at a price below its worth with no guard of ours in time (the priced reach, 72.1), is a threat not parried YET (a GAP, never a kill: the roll reads no reply)
 CHASE_SAVES = True                                              # plan 70.1 (2TUzC, the audit of 2026-10-22): a SAVE question is CHASED like a mate / win / promote question at the root and the first inner level, with KEEP semantics (`_target` 0: a reply after which the balance stands where it stood is kept; the claim is worth the stake saved) -- instead of the one-ply keep family alone, which saw Rxe5 Rf5 Rxf5 Qxf1+ Kh2 as a lost bishop one ply before Rxf1 wins the queen
 SECOND_CHECK_STOP = True                                        # 52.23 (3)'s guard "a second check of theirs in a row is not followed" (a hand-coded count; the principled ends of a check sequence are the CYCLE claim (61 C4) and the clock) -- a switch for the audit of 2026-10-22
 EVADED_RESET = False                                            # plan 66.5 (b), separated 2026-10-22 (Kav, eSJqH trace): a CAPTURING check does not count as "a second check in a row". OFF: with it the Qa5 read followed capturing checks past Qc6 and ran out of its slice (tier 2, 6.5 s), while without it Qa5 is PROVED in tier 2 at 3.9 s; the principled end of a check sequence is repetition (CYCLE) or the clock, not an exemption -- open
@@ -170,6 +174,10 @@ class ChaseCtx:
         self.static_read = 0                      # 52.14: static leaves (a reply after which the gain stands only as a balance) read from their side
         self.static_parried = 0                   # ... of which every threat of theirs had a verified parry (the gain kept) / ...
         self.static_unparried = 0                 # ... at least one threat had no parry (killed, or a gap)
+        self.their_open: dict = {}                # plan 72.2 (d): their-pass position key -> the largest stake among the OPEN (gap) questions of their agenda there
+        self.their_open_gaps = 0                  # ... static leaves left as GAPs by such an open question
+        self.parry_pass_gaps = 0                  # plan 72.2 (c): parries that kept one ply and handed them a proved claim after our pass (GAPs)
+        self.stuck_gaps = 0                       # plan 72.2 (b): static leaves left as GAPs by a unit of ours that cannot run, reached by theirs below its worth
         self.static_lines: list = []              # 52.14: one line per static leaf whose threats were asked as save roots (chase depth, reply, verdict); the root agenda prints them
         self.promote_stands = 0                   # 52.16 (4): promote routes ended at a reply that leaves the question's stopper defect standing with no new fix
         self.standing = 0                         # 52.13 (4): routes ended by a standing kill (no inner agenda)
@@ -654,6 +662,8 @@ class Agenda:
             n = W.base.word(b, ("pushes", GAME.loc_name(s)), self.me)
             if 0 < n <= R.PROMOTE_MAX_PUSHES:
                 near.append((n, s))
+            elif PASSER_ROOTS and n > 0 and R.is_passer(b, s) and not R.promote_defects_cached(b, s, priced=False):      # plan 72.2 (a) (the STATIC read: every agenda builds its roots, a priced read there cost the 0.3 s test its first reply): a FAR PASSER is a promote root when the tempo arithmetic already calls it unstoppable (no defect: no stopper reaches free, nothing blocks or attacks its path); a far passer with a defect is a plan, not a question (the cost rule of 2026-10-23: every far pawn as a root, with its fixes, quartered the engine's speed)
+                near.append((n, s))
         for n, s in sorted(near):
             self._push(R.new_question("promote", R.STAKE_PROMOTE, dict(pawn=s, pushes=n), text=f"promote our P on {GAME.loc_name(s)} ({n} push{'es' if n > 1 else ''} to {GAME.loc_name(W.pawn_path(b, s, n)[-1])})"))
         if near:
@@ -668,6 +678,10 @@ class Agenda:
         ag.ask()
         R._ids[0] = saved
         self.their_runs += 1 + ag.their_runs
+        if self.ctx is not None:                                 # plan 72.2 (d): their OPEN questions there (a gap of their agenda) are read at the leaves
+            key = _pos_key(board.fen())
+            self.ctx.their_ags.setdefault(key, ag)
+            self.ctx.their_open[key] = max([q.stake for q in getattr(ag, "all", []) if q.status == "gap"] + [0])
         return ag
 
     def their_view(self, route: chess.Move) -> tuple:
@@ -1942,6 +1956,35 @@ class Agenda:
                     reads.add(chess.parse_square(bind.assignment[k]))
         q.claimed = (net, claim, frozenset(reads))
 
+    def _leaf_more(self, e: chess.Board, kept: int) -> "Claim | None":
+        """plan 72.2 at the d1 leaf (their move on `e`): what their one-move agenda does not say but the words do -- (d) an OPEN question of theirs there (their passer unstoppable by the tempo
+        arithmetic, no lemma firing yet) with a stake that eats what we keep, or (b) a unit of ours that cannot run, reached by their unit at a price below its worth with no guard of ours in time
+        (the priced reach, `stuck_threats`). -> a Claim-shaped candidate (proved=False) naming it, or None. The leaf read turns it into a DOWNGRADE to a gap, never a kill."""
+        if self.ctx is None or kept < 1:
+            return None
+        lk = ("leafmore", _pos_key(e.fen()), kept)
+        if lk in self.ctx.theirs:
+            return self.ctx.theirs[lk]
+        out = None
+        w = G.with_turn(e, self.me)
+        if THEIR_GAPS:
+            key = _pos_key(e.fen())
+            g = self.ctx.their_open.get(key, 0)
+            if g >= kept:
+                ag = self.ctx.their_ags.get(key)
+                q = max((q for q in ag.all if q.status == "gap"), key=lambda q: q.stake) if ag is not None else None
+                out = Claim("win", "their open question", g, "open: no lemma fires yet (72.2 d)", q.text if q is not None else "an open question", proved=False, confidence=0.0, estimator="their open question")
+        if out is None and STUCK_LEAF and not e.is_check():
+            st = [d for d in R.stuck_threats(w, self.us) if d["parry"] is None and d["worth"] - d["price"] >= kept]
+            if st:
+                d = st[0]
+                out = Claim("win", e.san(chess.Move.from_uci(d["first"])), d["worth"] - d["price"], "stuck_reach (72.1): the priced reach, no reply read",
+                            f"our {w.piece_at(d['sq']).symbol().upper()} on {GAME.loc_name(d['sq'])} cannot run; their {w.piece_at(d['attacker']).symbol().upper()} on {GAME.loc_name(d['attacker'])} reaches it in {d['tempi']} ({' '.join(GAME.loc_name(chess.Move.from_uci(u).to_square) for u in d['path'])}) at price {d['price']}, no guard of ours in time",
+                            move=d["first"], proved=False, confidence=0.0, estimator="stuck_reach")
+                self.ctx.stuck_gaps += 1
+        self.ctx.theirs[lk] = out
+        return out
+
     def _leaf_read(self, bind: BD.Binding, r: R.Route) -> dict | None:
         """52.10: THE LEAF READ BY THEIR AGENDA. A balance claim of ours (d1: our move x->y; the least over their replies of the most over our moves of the
         least over their replies of the balance) is followed to its leaves, the argmin / argmax recomputed over python-chess legal moves by reading the SAME tail
@@ -2029,6 +2072,10 @@ class Agenda:
                             self.ctx.theirs[lk] = theirs
                 if theirs is not None and theirs.value >= gain_here:
                     first_ref = first_ref or dict(claim=theirs, line=line, w=theirs.value, gain=gain_here)
+                    continue
+                more = self._leaf_more(e, gain_here - (theirs.value if theirs is not None else 0))      # plan 72.2: their OPEN question at the leaf, or a unit of ours that cannot run and is reached below its worth: not read YET
+                if more is not None:
+                    first_ref = first_ref or dict(claim=more, line=line, w=more.value, gain=gain_here)
                     continue
                 held = (line, theirs)
                 break
@@ -2523,6 +2570,29 @@ class Agenda:
                         parry_note = (parry_note + "; " if parry_note else "") + f"our claim {inn2['claim'].what} ({inn2['claim'].lemma}) keeps {inn2['value']:+d} against every reply, their threats among them"
                         held = held + [(cl, inn2["claim"]) for cl in lost + unsure]
                         lost, unsure = [], []
+                    if PARRY_PASS and held:                      # plan 72.2 (c): THE PARRY READ ONCE MORE -- after the parry, the move passed to them: a proved claim of theirs there that eats what the parry keeps means the threat is not parried YET
+                        still = []
+                        for cl, pc in held:
+                            mv = chess.Move.from_uci(pc.move) if pc.move else None
+                            P3 = P2.push(pc.move) if mv is not None and mv in GAME.from_key(P2.fen()).legal_moves else None
+                            if P3 is None or P3.is_check() or P3.legal_count() == 0:
+                                still.append((cl, pc))
+                                continue
+                            dbal3 = P3.balance(self.me) - P0.balance(self.me)
+                            f3 = G.with_turn(GAME.from_key(P3.fen()), self.me).fen()
+                            t3, cl3 = self._their_pass(f3)
+                            g3, gt3 = self._their_open(f3) if THEIR_GAPS else (0, None)
+                            if cl3 is not None and dbal3 - t3 < 1:
+                                cl.parry_note = f"{pc.what} keeps one ply, then their {cl3.what} wins {t3} (lemma {cl3.lemma}) after it"
+                                unsure.append(cl)
+                                ctx.parry_pass_gaps += 1
+                            elif g3 and dbal3 - max(t3, 0) - g3 < 1:
+                                cl.parry_note = f"{pc.what} keeps one ply, then their question '{gt3}' (stake {g3}) is OPEN after it (no lemma fires yet)"
+                                unsure.append(cl)
+                                ctx.their_open_gaps += 1
+                            else:
+                                still.append((cl, pc))
+                        held = still
                     if lost:
                         ctx.static_unparried += 1
                     else:
@@ -2530,7 +2600,7 @@ class Agenda:
                     self._static_line(san, san_r, dbal, claim_their, parry_note, lost)
                     if unsure and dbal - unparried - sum(cl.value for cl in unsure) < 1:
                         worst = max(unsure, key=lambda cl: cl.value)
-                        res["gap"] = f"after {san_r}: {dbal:+d} stands only as a balance and their {worst.what} (wins {worst.value}, lemma {worst.lemma}) is not parried YET: the save question was cut, not killed"
+                        res["gap"] = f"after {san_r}: {dbal:+d} stands only as a balance and their {worst.what} (wins {worst.value}, lemma {worst.lemma}) is not parried YET: " + (getattr(worst, "parry_note", None) or "the save question was cut, not killed")
                         res["reply"] = uci
                         ctx.budget_hits += 1
                         self._log(key, uci, "gap", dbal, None, None, res["gap"])
@@ -2543,6 +2613,27 @@ class Agenda:
                     claim_their = None
                 else:
                     unparried = t_their
+                if THEIR_GAPS and res["gap"] is None and res["killed"] is None:      # plan 72.2 (d): their OPEN question at the leaf that would eat the balance: not read YET (a GAP)
+                    g_o, gt_o = self._their_open(P2.fen())
+                    if g_o and dbal - unparried - g_o < 1:
+                        res["gap"] = f"after {san_r}: {dbal:+d} stands only as a balance and their question '{gt_o}' (stake {g_o}) is OPEN with the move passed (no lemma fires yet): not read YET"
+                        res["reply"] = uci
+                        ctx.budget_hits += 1
+                        ctx.their_open_gaps += 1
+                        self._log(key, uci, "gap", dbal, None, None, res["gap"])
+                        break
+                if STUCK_LEAF and dbal - unparried >= 1 and res["gap"] is None and res["killed"] is None:      # plan 72.2 (b): THE UNIT THAT CANNOT RUN, reached by their unit at a price below its worth, no guard of ours in time: not parried YET (the priced reach reads no reply: a GAP, never a kill)
+                    st = [d for d in R.stuck_threats(GAME.from_key(P2.fen()), self.us) if d["parry"] is None and dbal - unparried - (d["worth"] - d["price"]) < 1]
+                    if st:
+                        d = st[0]
+                        bb = GAME.from_key(P2.fen())
+                        res["gap"] = (f"after {san_r}: {dbal:+d} stands only as a balance; our {bb.piece_at(d['sq']).symbol().upper()} on {GAME.loc_name(d['sq'])} cannot run and their {bb.piece_at(d['attacker']).symbol().upper()} on {GAME.loc_name(d['attacker'])} "
+                                      f"reaches it in {d['tempi']} ({' '.join(GAME.loc_name(chess.Move.from_uci(u).to_square) for u in d['path'])}) at price {d['price']}, no guard of ours in time (lemma stuck_reach, 72.1): not parried YET")
+                        res["reply"] = uci
+                        ctx.budget_hits += 1
+                        ctx.stuck_gaps += 1
+                        self._log(key, uci, "gap", dbal, None, None, res["gap"])
+                        break
             if dbal + inn["value"] < target and inn["value"] < BD.MATE_VALUE and (inn.get("cut") or inn.get("chain")):
                 res["gap"] = self._cut(san, san_r, True, inn)
                 res["reply"] = uci
@@ -3119,12 +3210,23 @@ class Agenda:
             hit = self.ctx.theirs[key] = (cl.value if cl else 0, cl)
             if ag is not None:
                 self.ctx.their_ags[key] = ag
+                self.ctx.their_open[key] = max([q.stake for q in getattr(ag, "all", []) if q.status == "gap"] + [0])      # plan 72.2 (d): what their OPEN questions there could still win
             f = self.ctx.facts.add("claim" if cl else "kill", ("theirs", key), not self.me, f"their agenda with the move passed: " + (f"{cl.what} wins {cl.value}" if cl else "no claim"), value=hit[0], reads=None,
                                    stake=self._cur.stake if self._cur is not None else 0, depth=self.chase_depth, under=f"Q{self._cur.id} at depth {self.chase_depth}" if self._cur is not None else f"depth {self.chase_depth}", pk=key, portable=False,
                                    payload=dict(reads=None if ag is None or not getattr(ag, "all", None) or any(q.reads is None for q in ag.all) else frozenset().union(*(q.reads for q in ag.all))))      # 52.21 (2): what their agenda read, kept apart from `reads` (the listener's index) for the claims that stand on it
             self.ctx.their_facts[key] = f.id
         self._touch(self.ctx.their_facts.get(key))
         return hit
+
+    def _their_open(self, fen: str) -> tuple:
+        """plan 72.2 (d): the largest stake among their OPEN questions with the move passed on `fen` (our move), and the text of one; (0, None) when none. Read after `_their_pass`."""
+        key = _pos_key(G.with_turn(GAME.from_key(fen), not self.me).fen())
+        g = self.ctx.their_open.get(key, 0)
+        if not g:
+            return 0, None
+        ag = self.ctx.their_ags.get(key)
+        q = max((q for q in ag.all if q.status == "gap"), key=lambda q: q.stake) if ag is not None else None
+        return g, (q.text if q is not None else "an open question")
 
     def _addresses(self, q: R.Question, m: chess.Move, why: str) -> tuple:
         """52.17 (2): A CHASE ROUTE MUST ADDRESS A DEFECT OF ITS OWN GOAL. A forcing move is followed only when it is (a) forcing by a CLAIM of its own (a threat of mate, a capture or

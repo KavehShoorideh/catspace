@@ -32396,3 +32396,32 @@ LOOP TARGET 2 (the leaf to quiescence / their passer plan at the leaf), not the 
 (qlog_all + item_log, 968 agendas) passes all three -- attributed by rebuilding each and running the three tests, not by a set rerun. The learned part only ORDERS, but under a clock the order
 decides what is reached, so a retrained policy is a CANDIDATE until it passes the gate (the plan files and the guard positions at their budgets); the loop adopts it only then. The pre-loop
 model is the one in data/derived now; the loop-1 model is kept beside the logs (scratchpad graph_policy_loop1.pt) for the morning. This is the loop's rule from here: retrain -> gate -> adopt.
+
+## 2026-10-23 10:30 PDT -- plan 72: THE PRICED REACH; the leaf is their root; the loop's target 2 by words, not by a quiescence search
+
+The morning's conversation (Kaveh) settled what the leaf is. Not a quiescence search of captures: THE LEAF IS THEIR ROOT -- a leaf is quiet when their question "can I
+force a drop in their measure" has been asked and answered nothing; unread is a GAP, never a proof. The trace showed that question IS asked already (52.13: their agenda with
+the move passed) and answered "no claim" in all three target-2 misses because its vocabulary is one move deep. The word it lacked is the ROLL FORWARD OF ONE UNIT: "attackable in"
+(Lean `attackableIn`, Kaveh: "I love that"), generalised to a PRICE -- "nothing is illegal in chess, it just costs you something; the natural form of cost is material and tempo".
+A caged piece is NOT a value (it still guards; it is a liability only as the answer no to "can it join this attack", and a target only when their unit reaches it below its worth
+while it cannot run). Three layers of calculation named: the pass, the priced reach (their paying captures assumed, their quiet moves passed), the chase; the prior would benefit
+from a survey of the first two before the questions are ordered (72.5, not built).
+
+BUILT (plan 72.1, 72.2): `regress.reach_map` / `reach_price` (one quiet unit rolls; every landing before the last safe by the exchange, the last priced; -> (material, tempi) and the path;
+memoised by position); Lean `Ideas/Reach.lean` with `reachPrice` and `reachPrice_zero_iff` (price 0 is exactly `attackableIn`; no sorry); its callers: (a) a FAR PASSER is a promote
+root when the tempo arithmetic already calls it unstoppable; (b) the promote stopper must reach the path FREE by the exchange and be able to TAKE there (I7k2H's Bd1 "reaches" c2 where
+bxc2 answers: lifted); (c) at the static leaf a parry that keeps one ply is read once more with the move passed after it; (d) an OPEN question of theirs at the leaf (their passer unstoppable
+by the arithmetic, no lemma firing) makes our leaf a GAP; (e) THE UNIT THAT CANNOT RUN: their one-move attack after which it cannot run (63.2 can_run with the PASSER DUTY: a safe square
+whose move frees their passer is no escape -- I7k2H's bishop against b3), or, if it cannot run already, their priced reach to it; parry: a guard of ours in time. The d1 leaf read
+(`_leaf_read`) and the static leaf both downgrade to a GAP on these; nothing kills.
+OBS I7k2H alone at 15 s: before "decision e7 by chase, value 2, proved" (WRONG by proof); after "claims 0, decision e7 by unfinished line" -- the false proof is gone (proved-wrong ->
+unproved-wrong); a5+ is a GAP by the chain rule (a quiet move after a check). 1hUBC's knight on b8 CAN run (Nd7 is safe): last night's reading of it was wrong; the trace alone did not say so.
+
+THE COST, by the gate (one file at a time): OBS gate72 (first form): passed 1319, failed 7, xfailed 3, 47 min. Every failure a timed case. By profile, not by guess: the priced stopper inside the
+passer duty inside can_run inside the stuck word = a roll inside a loop inside a loop (`promote_defects` 219 calls, 17 s). Cut on principle, each step measured on the discovery position
+under the tiers at 15 s (OBS: all rules on 15.7 s no decision / all off 8.9 s Nf6 proved): the roll is QUIET (a capture against a pass is nonsense: the bishop "stopped" the c-pawn by
+eating it), dedupe by square not by FEN, one roll per stopper at the reach fuse's depth, far-passer roots by the STATIC read, the duty's pre-check by geometry (the mover stood on or bore
+on the path) then the static read after the move (pricing can only lift piece stoppers), the stuck duty without the mate read, the stuck word by what the unit can do NOW (one-move attacks
+when it can run; the roll only when it cannot). OBS after: 10.6 s Nf6 proved. Two timed cases were marginal at HEAD too under today's load (W0VFO at 10 s: the judge cut Qb7 with 2.1 s left
+at HEAD as well; 52.17's 0.3 s mid-route cut: the first inner agenda ~0.05 s before the cut at HEAD, ~0.08 s after with the diff -- the constant raised to 0.5, the property kept).
+The lesson in one line: a new word is priced by the gate, and the price is paid by scoping the word (what it reads, when), never by a flag.

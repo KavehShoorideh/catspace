@@ -970,7 +970,7 @@ def test_52_17_a_time_budget_cuts_the_chase_to_gaps_names_the_time_and_no_second
     assert "out of time" in t and any("out of time" in g for g in timed.state.gaps) and timed.ctx.time_outs == 1 and timed.ctx.hit
     assert "budget: 0.05 s, used " in t and "OUT OF TIME" in t and "questions" in t.split("budget: ")[1]
     assert timed.ctx.resume and all(r["fen"] and r["text"] and "mark" in r and "cut_left" in r for r in timed.ctx.resume)           # nothing cut by the clock is dropped: each GAP keeps its resume point
-    mid = AG.Agenda(State(p["fen"], "w", []), seconds=0.3)                                         # cut in the middle of a route: the reply it stopped at and the memo's deadline mark
+    mid = AG.Agenda(State(p["fen"], "w", []), seconds=0.5)                                         # cut in the middle of a route: the reply it stopped at and the memo's deadline mark (0.5 since 2026-10-23: at 0.3 the first inner agenda opened ~0.05 s before the cut at HEAD and ~0.08 s after it with plan 72's priced stopper -- the property is the mark, not the constant)
     mid.ask()
     assert any(r["route"] and r["reply"] for r in mid.ctx.resume)
     assert any(v.get("timed") and v.get("mark") is not None and "cut_left" in v for v in mid.ctx.routes.values() if v.get("gap"))

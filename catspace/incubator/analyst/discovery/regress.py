@@ -673,7 +673,7 @@ def _mate_ahead(d: chess.Board, me: bool) -> str | None:
     return out
 
 
-def duty_after(board: chess.Board, r: chess.Move, us: str | bool, ctx: int | None = None, need: int | None = None) -> tuple:
+def duty_after(board: chess.Board, r: chess.Move, us: str | bool, ctx: int | None = None, need: int | None = None, passer: bool = False, mate: bool = True) -> tuple:
     """plan 63.2: what we win BY RULE after their move `r` on `board` (them to move), us to move next, beyond what we already won: (value, what). A move that checks us wins nothing (a counter-threat,
     not an abandonment); a mate (or a threat of mate) we did not have before -> 100; else the best static exchange of ours (`threat_value`) less what `r` itself captured and less the exchange already
     standing before the move. Lean `Ideas.Duty.dutyAfter`."""
@@ -687,10 +687,44 @@ def duty_after(board: chess.Board, r: chess.Move, us: str | bool, ctx: int | Non
     v = max(0, _best_exchange(a, me) - gain - now_ex)
     if need is not None and v >= need:                                    # the exchange alone already reaches the piece's worth: the mate need not be read
         return v, f"the exchange wins {v}"
-    mate = _mate_ahead(a, me)
-    if mate and _mate_ahead(G.with_turn(board, me), me) is None:           # a mate (or threat of mate) that did not stand before the move
-        return STAKE_DUTY_MATE, mate
+    mt = _mate_ahead(a, me) if mate else None                             # (mate=False: the GAP side's cheap duty -- stuck_threats -- reads material duties only; mates are their agenda's own claims)
+    if mt and _mate_ahead(G.with_turn(board, me), me) is None:             # a mate (or threat of mate) that did not stand before the move
+        return STAKE_DUTY_MATE, mt
+    if passer:                                                             # plan 72.2 (b), read for the GAP side only (stuck_threats): the move frees a PASSER of ours -- its promote defects (the tempo arithmetic with the priced stopper) are none after the move and were not before: the duty is the promotion (not Lean `dutyAfter`: a word of the tempo arithmetic, never a proof)
+        held = board.attacks(r.from_square) | chess.SquareSet([r.from_square])      # (the cost rule of 2026-10-23: a move can free a passer only if the moving piece stood ON its path or BORE on a path square; geometry first, the priced defects only then)
+        for pw in chess.SquareSet(board.pawns & board.occupied_co[me]):
+            if a.piece_at(pw) is None or not is_passer(board, pw):
+                continue
+            n_ = _pushes_of(board, pw, me)
+            if n_ < 1 or not (held & chess.SquareSet(pawn_path(board, pw, n_))):
+                continue
+            st = promote_defects_cached(a, pw, priced=False)                 # the static read after the move first: pricing can only LIFT piece stoppers, so any other defect left settles it without a roll
+            ek = a.king(not me)
+            if any(d.kind != "stopper" or d.by == [ek] for d in st):
+                continue
+            if st and promote_defects_cached(a, pw):
+                continue
+            return STAKE_PROMOTE, f"frees our passer on {G.name(pw)} (unstoppable by the tempo arithmetic after it)"
     return v, f"the exchange wins {v}" if v else "nothing"
+
+
+def _pushes_of(board: chess.Board, pw: int, own: bool) -> int:
+    """The pushes to the promotion rank (7 - rank, or the rank, by colour): geometry only, as the Rust `pushes` (a blocker is the `blocked` defect, not fewer pushes); builds no FEN."""
+    r = chess.square_rank(pw)
+    return (7 - r) if own else r
+
+
+_PD: dict = {}
+G.CLEAR_HOOKS.append(_PD.clear)
+
+
+def promote_defects_cached(board: chess.Board, sq: int, priced: "bool | None" = None) -> list:
+    """`promote_defects` (no lift) memoised by position: the duty reads it for every candidate move of every unit."""
+    key = (board.board_fen(), board.turn, sq, priced)
+    hit = _PD.get(key)
+    if hit is None:
+        hit = _PD[key] = promote_defects(board, sq, priced=priced)[0]
+    return hit
 
 
 def _best_exchange(b: chess.Board, me: bool) -> int:
@@ -750,13 +784,13 @@ def duty_safe_moves(board: chess.Board, sq: int, us: str | bool) -> tuple:
     return kept, cut
 
 
-def can_run(board: chess.Board, sq: int, us: str | bool) -> tuple:
+def can_run(board: chess.Board, sq: int, us: str | bool, passer: bool = False) -> tuple:
     """plan 63.2 (a): can the piece on `sq` RUN? True at the first safe square whose move does not abandon a duty >= its worth (a lazy `duty_safe_moves`: the question is whether any is left, so the
     reading stops there); else False with the list of the abandoning moves [(SAN, value, what)] -- the piece is pinned to a threat on every safe square. -> (bool, cut)."""
     pc = board.piece_at(sq)
     if pc.piece_type == chess.KING:
         return True, []
-    key = ("run", board.board_fen(), board.castling_rights, sq, G.colour_of(us))
+    key = ("run", board.board_fen(), board.castling_rights, sq, G.colour_of(us), passer)
     hit = _DUTY.get(key)
     if hit is not None:
         return hit
@@ -767,7 +801,7 @@ def can_run(board: chess.Board, sq: int, us: str | bool) -> tuple:
     cut = []
     out = None
     for m in iter_safe_moves(board, sq):
-        v, what = duty_after(p, m, us, ctx, need=G.worth(pc))
+        v, what = duty_after(p, m, us, ctx, need=G.worth(pc), passer=passer, mate=not passer)
         if v >= G.worth(pc):
             cut.append((p.san(m), v, what))
         else:
@@ -1608,7 +1642,7 @@ def pawn_path(board: chess.Board, sq: int, pushes: int) -> list:
     return [chess.square(f, r + fwd * i) for i in range(1, pushes + 1)]
 
 
-def promote_defects(board: chess.Board, sq: int, lift: bool = False) -> tuple:
+def promote_defects(board: chess.Board, sq: int, lift: bool = False, priced: "bool | None" = None) -> tuple:
     """What stands between the pawn on `sq` (any colour) and a queen, read with the Rust words (`pushes`, `ahead`, `promo`, `attackers`, `defenders`, `dist`)
     from its owner's side: [Defect] and the facts {pushes, path, promo, king_dist, king_sq}. Kinds: 'blocked' (a piece on the path), 'path attacked' (a path
     square attacked by them more than we guard it), 'promo square attacked' (the same on the promotion square), 'stopper' (a piece of theirs that reaches the
@@ -1617,6 +1651,7 @@ def promote_defects(board: chess.Board, sq: int, lift: bool = False) -> tuple:
     pc = board.piece_at(sq)
     own = pc.color
     kv = None
+    priced = PRICED_STOPPER if priced is None else priced                   # plan 72.2: the stoppers read by the priced reach (the duty's cheap pre-check reads them static)
     if lift and RC.LIFT and board.turn == own and (board.occupied_co[not own] & (board.rooks | board.bishops | board.queens | board.knights)):
         kv = RC.king_verdict(board, sq)                 # plan 62.1c: with a piece of theirs beyond king and pawns the verdict judges only the KING, by the proved analysis; the pieces are replies the chase reads
     n = G.word(board, ("pushes", G.name(sq)), own)
@@ -1625,6 +1660,7 @@ def promote_defects(board: chess.Board, sq: int, lift: bool = False) -> tuple:
     facts = dict(pushes=n, path=path, promo=promo, king_dist=None, king_sq=board.king(not own))
     out = []
     lifted = []
+    priced_notes = []                                                          # plan 72.2: the stoppers lifted by the priced reach
     ahead_ours = G.word(board, ("count", ("and", ("ahead", G.name(sq)), "ours")), own)
     ahead_theirs = G.word(board, ("count", ("and", ("ahead", G.name(sq)), "theirs")), own)
     if ahead_ours + ahead_theirs:
@@ -1663,8 +1699,30 @@ def promote_defects(board: chess.Board, sq: int, lift: bool = False) -> tuple:
             continue
         k = G.piece_moves_to(board, s, set(path), n)
         if k is not None:
+            if priced:                                                         # plan 72.2: a stopper must reach a square bearing on the path FREE (Lean `attackableIn`: every landing safe by the exchange) -- a piece that
+                pr = []                                                        # arrives only by being taken for nothing is no stopper, and so is one that bears on a path square it cannot take (I7k2H: the B on d1 bears on c2, where bxc2 answers Bxc2)
+                nb = G.with_turn(board, not own)
+                for t in path:                                                 # bearing on a path square already: tempi 0
+                    if t in nb.attacks(s) and len(board.attackers(not own, t)) > len(board.attackers(own, t)):
+                        pr.append(dict(material=0, tempi=0))
+                if not pr:
+                    mp = reach_map(board, s, min(n, REACH_K))                  # ONE roll per stopper (the cost rule of 2026-10-23), its depth the pawn's pushes capped by the reach fuse
+                    for at, e in mp.items():
+                        if e["material"] != 0:
+                            continue
+                        cf = e["board"]
+                        for t in path:
+                            if t in cf.attacks(at) and len(cf.attackers(not own, t)) > len(cf.attackers(own, t)):      # from its landing the stopper takes on t: their attackers outnumber our guards there
+                                pr.append(dict(material=0, tempi=e["tempi"]))
+                                break
+                if not pr:
+                    priced_notes.append(f"their {x.symbol().upper()} on {G.name(s)} reaches the path only at a price (taken where it lands): no stopper")
+                    continue
+                k = min(r["tempi"] for r in pr)
             w = RC.stopper_walk(board, s, set(path), n)
-            out.append(Defect("stopper", promo, [s], f"their {x.symbol().upper()} on {G.name(s)} reaches the path in {k} (static board), the pawn needs {n}" + (f" (path {' '.join(G.name(x) for x in w[1])})" if w else "")))
+            out.append(Defect("stopper", promo, [s], f"their {x.symbol().upper()} on {G.name(s)} reaches the path in {k} ({'free by the exchange' if priced else 'static board'}), the pawn needs {n}" + (f" (path {' '.join(G.name(x) for x in w[1])})" if w else "")))
+    if priced_notes:
+        facts["priced"] = priced_notes                                         # (kept apart from `lifted`, plan 62.1c's king verdict: that key re-asks the question unlifted)
     return out, facts
 
 
@@ -1732,3 +1790,180 @@ def promote_fixes(board: chess.Board, sq: int, defect: Defect, q: "Question") ->
             f.text += f" -- or drive their king off {G.name(defect.sq)} with a check"
     q.fixes.append(f)
     return f
+
+
+# ---------------------------------------------------------------------------------------------------------------- plan 72: THE PRICED REACH
+PRICED_STOPPER = True                         # plan 72.2: promote_defects' piece stoppers must reach the path free by the exchange (reach_price material 0), not on the static board
+REACH_K = 3                                   # plan 72.1: the fuse on the roll forward's depth (a count, named as one: 72.3 replaces it by the race's tempo horizon -- what their fastest counter-plan needs)
+
+
+def is_passer(board: chess.Board, sq: int) -> bool:
+    """plan 72.2 (a): a PASSED pawn -- no pawn of the other side ahead of it on its file or the adjacent files (the Rust region word `passer`, read directly)."""
+    pc = board.piece_at(sq)
+    if pc is None or pc.piece_type != chess.PAWN:
+        return False
+    f, r = chess.square_file(sq), chess.square_rank(sq)
+    for s in chess.SquareSet(board.pawns & board.occupied_co[not pc.color]):
+        if abs(chess.square_file(s) - f) <= 1 and ((chess.square_rank(s) > r) if pc.color else (chess.square_rank(s) < r)):
+            return False
+    return True
+
+
+def reach_map(board: chess.Board, sq: int, k: int = REACH_K) -> dict:
+    """plan 72.1 THE ROLL FORWARD OF ONE UNIT: every landing the unit on `sq` (either colour) can reach within `k` of ITS OWNER'S moves, the other side's QUIET moves passed and
+    its PAYING CAPTURES assumed -- a landing before the last must be SAFE by the exchange (`landsSafe`; an unsafe one ends the roll: the unit is taken there), the last may be PRICED
+    (what the other side wins by the exchange there). -> {landing: dict(material, tempi, path [UCI], board)} with the cheapest entry by (material, tempi) per landing; the board is the one
+    after the landing (the other side to move: what the unit bears on there is read from it). Memoised by position (cleared with the other caches)."""
+    pc = board.piece_at(sq)
+    if pc is None:
+        return {}
+    key = ("rmap", board.board_fen(), sq, k)
+    hit = _REACH.get(key)
+    if hit is not None:
+        return hit
+    own = pc.color
+    start = G.with_turn(board, own)
+    out: dict = {}
+    frontier = [(start, [], sq, 0)]                                           # (board, path, the unit's square, 0): the roll is quiet, so the board differs from the start only by the unit's square
+    seen = {(sq, 0): 0}
+    for depth in range(1, k + 1):
+        nxt = []
+        for b, path, at, taken in frontier:
+            for m in b.legal_moves:
+                if m.from_square != at or b.is_castling(m) or b.is_capture(m) or (m.promotion is not None and m.promotion != chess.QUEEN):
+                    continue                                                 # QUIET moves only: against a pass a capture is nonsense (the bishop "stopped" I7k2H's c-pawn by eating it); a capture is a one-move word or the chase's
+                a = b.copy(stack=False)
+                a.push(m)
+                price = 0 if pc.piece_type == chess.KING else G.see_for(a, m.to_square, not own)      # what they win by capturing on the landing (a king lands only where it is legal)
+                cand = (price, depth)
+                old = out.get(m.to_square)
+                if old is None or cand < (old["material"], old["tempi"]):
+                    out[m.to_square] = dict(material=price, tempi=depth, path=path + [m.uci()], board=a)
+                if price > 0 or depth == k:
+                    continue
+                taken2 = 0
+                sk = (m.to_square, taken2)
+                if sk in seen and seen[sk] <= depth:
+                    continue
+                seen[sk] = depth
+                nxt.append((G.with_turn(a, own), path + [m.uci()], m.to_square, taken2))
+        frontier = nxt
+        if not frontier:
+            break
+    _REACH[key] = out
+    return out
+
+
+_REACH: dict = {}
+G.CLEAR_HOOKS.append(_REACH.clear)
+
+
+def reach_price(board: chess.Board, sq: int, target: int, k: int = REACH_K, bearing: bool = True) -> dict | None:
+    """plan 72.1 THE PRICED REACH (Kaveh 2026-10-23: "attackable in ... nothing is illegal in chess, it just costs you something; the natural form of cost is material and tempo").
+    The unit on `sq` comes to BEAR on `target` (bearing=True: attacks it from where it lands; False: lands on it) within `k` of its owner's moves, by `reach_map`'s roll: the price is a
+    PAIR (material, tempi), the cheapest by that order; `attackableIn` (Lean `Ideas.Vocabulary`, `Ideas.Reach.reachPrice_zero_iff`) is the price-0 case. -> dict(material, tempi,
+    first (UCI), path, reads), tempi 0 and an empty path when the unit bears on the target already; None when no path within k. ONE unit rolls: a path another unit must open
+    (Kaveh's two knights) is not read here. The answer is asymmetric by construction: no path, or a price above the stake, kills a join NOW (with its read set: a move of theirs that
+    opens a line re-asks it); a payable price is a CANDIDATE line with no reply read."""
+    pc = board.piece_at(sq)
+    if pc is None or target == sq:
+        return None
+    reads = {sq, target}
+    if bearing and target in G.with_turn(board, pc.color).attacks(sq):
+        return dict(material=0, tempi=0, first=None, path=[], reads=frozenset(reads))
+    best = None
+    for at, e in reach_map(board, sq, k).items():
+        if (at == target) if not bearing else (target in e["board"].attacks(at)):
+            if best is None or (e["material"], e["tempi"]) < (best["material"], best["tempi"]):
+                best = e
+    if best is None:
+        return None
+    for u in best["path"]:
+        m = chess.Move.from_uci(u)
+        reads.add(m.to_square)
+        reads.update(chess.SquareSet(chess.between(m.from_square, m.to_square)))
+    if bearing:
+        reads.update(chess.SquareSet(chess.between(chess.Move.from_uci(best["path"][-1]).to_square, target)))
+    return dict(material=best["material"], tempi=best["tempi"], first=best["path"][0], path=list(best["path"]), reads=frozenset(reads))
+
+
+def stuck_threats(board: chess.Board, us: str | bool, k: int = REACH_K) -> list:
+    """plan 72.2 (b) THE UNIT THAT CANNOT RUN, as THEIR threat on a static leaf (`board`: us to move; the move is passed to them). For each unit of ours (not the king, not a pawn:
+    a pawn never runs, its loss is a one-move word) not attacked already (then it hangs: the one-move words), two readings, by what the unit can do NOW (the cost rule of the
+    gate of 2026-10-23: the roll forward of every unit of theirs at every leaf cost tens of seconds a run; a unit that can run is threatened only by an attack that also removes
+    its escape, and that is ONE move of theirs):
+      (1) the unit CAN run now: THEIR ONE-MOVE ATTACKS on it (their legal moves after which it is attacked, the mover's landing safe by the exchange) such that after the attack it
+          cannot run (63.2 `can_run` with the passer duty: a safe square whose move frees a passer of theirs is no escape -- I7k2H's b3 against the bishop on c2);
+      (2) the unit CANNOT run now: their cheapest `reach_price` to a square bearing on it within k at a material price below its worth (the stuck knight, the king's walk).
+    Its PARRY by the same word with the sides swapped: a unit of ours that bears on it already, or (2 only) reaches a square bearing on it within tempi-1 at price 0, or a move of
+    ours after which it can run. -> [dict(sq, worth, attacker, price, tempi, first, path, parry | None, reads)], the worst first. A parry in time is a CANDIDATE (the roll reads
+    no reply), a missing parry is the leaf's GAP text, never a kill."""
+    me = G.colour_of(us)
+    them = not me
+    out = []
+    ours = [s for s in chess.SQUARES if (pc := board.piece_at(s)) is not None and pc.color == me and pc.piece_type not in (chess.KING, chess.PAWN) and not board.is_attacked_by(them, s)]
+    if not ours:
+        return out
+    theirs = G.with_turn(board, them)
+    their_moves = None
+    maps: dict | None = None
+    for s in ours:
+        pc = board.piece_at(s)
+        worth = G.worth(pc)
+        best = None
+        if can_run(board, s, them, passer=True)[0]:
+            if their_moves is None:
+                their_moves = [m for m in theirs.legal_moves if not theirs.is_castling(m)]
+            for m in their_moves:
+                a = theirs.copy(stack=False)
+                a.push(m)
+                if a.is_check() or s not in a.attacks(m.to_square) or a.piece_at(s) is None:
+                    continue
+                price = 0 if theirs.piece_at(m.from_square).piece_type == chess.KING else G.see_for(a, m.to_square, me)
+                if price >= worth:
+                    continue
+                after = G.with_turn(a, me)
+                if can_run(after, s, them, passer=True)[0]:
+                    continue
+                e = dict(material=price, tempi=1, path=[m.uci()], board=a)
+                if best is None or (price, 1) < (best[1]["material"], best[1]["tempi"]):
+                    best = (m.from_square, e)
+        else:
+            if maps is None:
+                maps = {a: reach_map(board, a, k) for a in chess.SQUARES if (ap := board.piece_at(a)) is not None and ap.color == them}
+            for a, mp in maps.items():
+                for at, e in mp.items():
+                    if e["material"] >= worth or s not in e["board"].attacks(at):
+                        continue
+                    if best is None or (e["material"], e["tempi"]) < (best[1]["material"], best[1]["tempi"]):
+                        best = (a, e)
+        if best is None:
+            continue
+        a, e = best
+        parry = None
+        for g in chess.SQUARES:
+            gp = board.piece_at(g)
+            if gp is None or gp.color != me or g == s:
+                continue
+            if s in board.attacks(g):
+                parry = f"our {gp.symbol().upper()} on {G.name(g)} guards it already"
+                break
+            if e["tempi"] > 1:
+                pr = reach_price(board, g, s, e["tempi"] - 1)
+                if pr is not None and pr["material"] == 0 and pr["tempi"] <= e["tempi"] - 1:
+                    parry = f"our {gp.symbol().upper()} on {G.name(g)} guards it in {pr['tempi']} ({board.san(chess.Move.from_uci(pr['first']))} first)"
+                    break
+        if parry is None and e["tempi"] > 1:
+            for m in board.legal_moves:
+                if board.is_capture(m) or board.gives_check(m):
+                    continue
+                c = board.copy(stack=False)
+                c.push(m)
+                c = G.with_turn(c, me)
+                if c.piece_at(s) is not None and can_run(c, s, them, passer=True)[0]:
+                    parry = f"after {board.san(m)} it can run"
+                    break
+        reads = {chess.Move.from_uci(u).to_square for u in e["path"]} | {s, a}
+        out.append(dict(sq=s, worth=worth, attacker=a, price=e["material"], tempi=e["tempi"], first=e["path"][0], path=list(e["path"]), parry=parry, reads=frozenset(reads)))
+    out.sort(key=lambda d: -(d["worth"] - d["price"]))
+    return out
