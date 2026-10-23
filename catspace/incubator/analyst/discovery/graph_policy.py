@@ -25,6 +25,7 @@ import sys
 
 import chess
 
+from catspace.incubator.analyst.discovery import game as GM
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.io import paths
 
@@ -45,40 +46,45 @@ def _word_class(word: str | None) -> int:
 
 # ---------------------------------------------------------------------------------------------------------------- the graph
 
-def build(board: chess.Board, us: bool, questions: list, status: dict | None, left_frac: float = 1.0, routes: list | None = None):
+def build(board, us: bool, questions: list, status: dict | None, left_frac: float = 1.0, routes: list | None = None, game=None):
     """-> HeteroData. `questions`: dicts with goal, stake, depth, target (square or None), status (open/verified/killed/gap), word, value. `routes` (plan 69.1, the
     route level): dicts with q (index into questions), uci, why, cost (the judge's first-level cost or None), order. The square and piece features are counts a
     player would name (attacked by us / by them)."""
     import torch
     from torch_geometric.data import HeteroData
+    game = game or GM.CHESS
     d = HeteroData()
     them = not us
-    # squares
+    locs = list(game.locations())
+    # locations (the squares): coordinates and who bears on them
     sq_x = []
-    for s in chess.SQUARES:
-        sq_x.append([chess.square_file(s) / 7, chess.square_rank(s) / 7, len(board.attackers(us, s)) / 4, len(board.attackers(them, s)) / 4, float(board.is_attacked_by(us, s)), float(board.is_attacked_by(them, s))])
+    for s in locs:
+        a_us, a_them = len(game.attackers(board, us, s)), len(game.attackers(board, them, s))
+        sq_x.append(list(game.coords(s)) + [a_us / 4, a_them / 4, float(a_us > 0), float(a_them > 0)])
     d["square"].x = torch.tensor(sq_x, dtype=torch.float)
-    # pieces
-    pieces = list(board.piece_map().items())
+    # units (the pieces): kind, owner, worth, attacked / guarded, the royal unit in check
+    units = game.units(board)
+    in_check = game.in_check(board)
     p_x, on_src, on_dst, att_src, att_dst = [], [], [], [], []
-    for i, (s, p) in enumerate(pieces):
-        kind = [0.0] * 6
-        kind[p.piece_type - 1] = 1.0
-        p_x.append(kind + [float(p.color == us), G.worth(p) / 9, len(board.attackers(them if p.color == us else us, s)) / 4, len(board.attackers(p.color, s)) / 4, float(p.piece_type == chess.KING and board.is_check() and board.turn == p.color)])
-        on_src.append(i); on_dst.append(s)
-        for t in board.attacks(s):
+    for i, u in enumerate(units):
+        kind = [0.0] * game.kinds()
+        kind[u.kind - 1] = 1.0
+        p_x.append(kind + [float(u.owner == us), u.worth / 9, len(game.attackers(board, them if u.owner == us else us, u.loc)) / 4, len(game.attackers(board, u.owner, u.loc)) / 4,
+                           float(u.loc == game.royal(board, u.owner) and in_check and game.turn(board) == u.owner)])
+        on_src.append(i); on_dst.append(u.loc)
+        for t in game.attacks_from(board, u.loc):
             att_src.append(i); att_dst.append(t)
-    d["piece"].x = torch.tensor(p_x, dtype=torch.float) if p_x else torch.zeros((0, 11))
+    d["piece"].x = torch.tensor(p_x, dtype=torch.float) if p_x else torch.zeros((0, game.kinds() + 5))
     d["piece", "on", "square"].edge_index = torch.tensor([on_src, on_dst], dtype=torch.long) if on_src else torch.zeros((2, 0), dtype=torch.long)
     d["piece", "attacks", "square"].edge_index = torch.tensor([att_src, att_dst], dtype=torch.long) if att_src else torch.zeros((2, 0), dtype=torch.long)
     adj_src, adj_dst = [], []
-    for s in chess.SQUARES:
-        for t in chess.SquareSet(chess.BB_KING_ATTACKS[s]):
+    for s in locs:
+        for t in game.adjacent(s):
             adj_src.append(s); adj_dst.append(t)
     d["square", "adj", "square"].edge_index = torch.tensor([adj_src, adj_dst], dtype=torch.long)
     # questions
     q_x, qt_src, qt_dst, qp_src, qp_dst = [], [], [], [], []
-    sq_index = {s: i for i, (s, _p) in enumerate(pieces)}
+    sq_index = {u.loc: i for i, u in enumerate(units)}
     for j, q in enumerate(questions):
         goal = [0.0] * len(GOALS)
         if q["goal"] in GOALS:
@@ -90,7 +96,7 @@ def build(board: chess.Board, us: bool, questions: list, status: dict | None, le
             wd[_word_class(q.get("word"))] = 1.0
         q_x.append(goal + st + wd + [math.log1p(q["stake"]) / 5, min(q.get("depth", 0), 3) / 3, (q.get("value") or 0) / 10, float(q.get("status", "open") == "open")])
         t = q.get("target")
-        if t is not None and 0 <= t < 64:
+        if t is not None and t in sq_index or (t is not None and 0 <= t < len(locs)):
             qt_src.append(j); qt_dst.append(t)
             if t in sq_index:
                 qp_src.append(j); qp_dst.append(sq_index[t])
@@ -100,24 +106,26 @@ def build(board: chess.Board, us: bool, questions: list, status: dict | None, le
     # the root (status)
     st = status or {}
     bal, thr, line = st.get("balance", 0), st.get("threat", 0), st.get("line", 0)
-    d["root"].x = torch.tensor([[bal / 10, min(thr, 20) / 20, float(line), (line - bal) / 10, left_frac, float(board.is_check())]], dtype=torch.float)
+    d["root"].x = torch.tensor([[bal / 10, min(thr, 20) / 20, float(line), (line - bal) / 10, left_frac, float(in_check)]], dtype=torch.float)
     n = len(questions)
     d["root", "sees", "question"].edge_index = torch.tensor([[0] * n, list(range(n))], dtype=torch.long) if n else torch.zeros((2, 0), dtype=torch.long)
     # routes (plan 69.1): a candidate move of a question, with its words, its price and its squares
     r_x, rq_src, rq_dst, rf_src, rf_dst, rt_src, rt_dst = [], [], [], [], [], [], []
+    legal_keys = {game.move_key(m) for m in game.moves(board)}
     for i, r in enumerate(routes or []):
-        m = chess.Move.from_uci(r["uci"])
+        m = game.move_from_key(board, r["uci"])
+        frm, to = game.move_ends(m)
         w = (r.get("why") or "").removeprefix("fix: ").split(" ")[0]
         wd = [0.0] * len(RWORDS)
         wd[RWORDS.index(w) if w in RWORDS else RWORDS.index("other")] = 1.0
-        pc = board.piece_at(m.from_square)
-        cap = board.piece_at(m.to_square)
-        legal = board.is_pseudo_legal(m)                          # (the dummy route of a training graph need not be a move of the board)
-        r_x.append(wd + [float(legal and board.gives_check(m)), float(legal and board.is_capture(m)), (G.worth(cap) / 9) if cap else 0.0, (G.worth(pc) / 9) if pc else 0.0,
-                         math.log1p(r.get("cost") or 0) / 7, min(r.get("order", 0), 12) / 12, float(m.promotion is not None), len(board.attackers(not us, m.to_square)) / 4])
+        pc = game.unit_at(board, frm)
+        cap = game.unit_at(board, to)
+        legal = r["uci"] in legal_keys                            # (the dummy route of a training graph need not be a move of the board)
+        r_x.append(wd + [float(legal and game.gives_check(board, m)), float(legal and game.is_capture(board, m)), (cap.worth / 9) if cap else 0.0, (pc.worth / 9) if pc else 0.0,
+                         math.log1p(r.get("cost") or 0) / 7, min(r.get("order", 0), 12) / 12, float(game.promotes(m)), len(game.attackers(board, not us, to)) / 4])
         rq_src.append(i); rq_dst.append(r["q"])
-        rf_src.append(i); rf_dst.append(m.from_square)
-        rt_src.append(i); rt_dst.append(m.to_square)
+        rf_src.append(i); rf_dst.append(frm)
+        rt_src.append(i); rt_dst.append(to)
     d["route"].x = torch.tensor(r_x, dtype=torch.float) if r_x else torch.zeros((0, len(RWORDS) + 8))
     d["route", "of", "question"].edge_index = torch.tensor([rq_src, rq_dst], dtype=torch.long) if rq_src else torch.zeros((2, 0), dtype=torch.long)
     d["route", "from", "square"].edge_index = torch.tensor([rf_src, rf_dst], dtype=torch.long) if rf_src else torch.zeros((2, 0), dtype=torch.long)

@@ -36,11 +36,13 @@ _model = [None]            # the loaded model: dict(weights: {feature: w}, bias:
 _loaded = [False]
 
 
-def features(q, board: chess.Board, us, depth: int, status: dict | None = None) -> dict:
+def features(q, board, us, depth: int, status: dict | None = None, game=None) -> dict:
     """What is known of a question before it is asked. Keys are generic words; values 1 (one-hot) or small counts. plan 69.1: with the STATUS (plan 59: balance, their threat, the line) the
     need and the stake's distance to it are features too (plan 68's deferral, learned instead of written)."""
+    from catspace.incubator.analyst.discovery import game as GM
+    game = game or GM.CHESS
     me = G.colour_of(us)
-    f = {"goal=" + q.goal: 1, "stake": q.stake, "depth": min(depth, 3), "in_check": int(board.is_check())}
+    f = {"goal=" + q.goal: 1, "stake": q.stake, "depth": min(depth, 3), "in_check": int(game.in_check(board))}
     if status is not None:
         need = status["line"] - status["balance"]
         f["need"] = need
@@ -49,17 +51,17 @@ def features(q, board: chess.Board, us, depth: int, status: dict | None = None) 
         f["their_threat"] = status.get("threat", 0)
     t = q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn")))
     if t is not None:
-        pc = board.piece_at(t)
+        pc = game.unit_at(board, t)
         if pc is not None:
-            f["target=" + chess.piece_name(pc.piece_type)] = 1
-            f["target_ours"] = int(pc.color == me)
-        f["target_attacked_by_us"] = len(board.attackers(me, t))
-        f["target_guarded"] = len(board.attackers(not me, t))
-    k = board.king(not me)
+            f["target=" + game.kind_name(pc.kind)] = 1
+            f["target_ours"] = int(pc.owner == me)
+        f["target_attacked_by_us"] = len(game.attackers(board, me, t))
+        f["target_guarded"] = len(game.attackers(board, not me, t))
+    k = game.royal(board, not me)
     if k is not None:
-        f["their_king_attacked_squares"] = sum(1 for s in chess.SquareSet(board.attacks(k)) if board.is_attacked_by(me, s))
-    f["our_pieces"] = sum(1 for p in board.piece_map().values() if p.color == me and p.piece_type != chess.PAWN)
-    f["captures_available"] = sum(1 for m in board.legal_moves if board.is_capture(m)) if board.turn == me else 0
+        f["their_king_attacked_squares"] = sum(1 for s in game.attacks_from(board, k) if game.attackers(board, me, s))
+    f["our_pieces"] = sum(1 for u in game.units(board, me) if u.worth != 1)         # (every unit of ours that is not a pawn, the king included, as before)
+    f["captures_available"] = sum(1 for m in game.moves(board) if game.is_capture(board, m)) if game.turn(board) == me else 0
     return f
 
 
@@ -357,23 +359,23 @@ def loop_metrics(rows: list, prev_model: dict | None, model: dict) -> dict:
         rs.sort(key=lambda r: r["order"])
         dec[k] = rs[0]
     compared = identical = differ_budget = differ_bug = 0
-    for (pid, st, pr), r in dec.items():
-        if pr and (pid, st, False) in dec:
+    for (pid, st, pr, run), r in dec.items():                  # (plan 69.3: the key carries the grade run)
+        if pr and (pid, st, False, run) in dec:
             compared += 1
-            if dec[(pid, st, False)].get("decision") == r.get("decision"):
+            if dec[(pid, st, False, run)].get("decision") == r.get("decision"):
                 identical += 1
-            elif any(x.get("status") == "gap" or x.get("fuse_hits") for x in by[(pid, st, False)] + by[(pid, st, True)]):      # (`fuse_hits`: the agenda's budget cuts, logged on every row; a question cut on a route keeps the status 'killed')
+            elif any(x.get("status") == "gap" or x.get("fuse_hits") for x in by[(pid, st, False, run)] + by[(pid, st, True, run)]):      # (`fuse_hits`: the agenda's budget cuts, logged on every row; a question cut on a route keeps the status 'killed')
                 differ_budget += 1                       # the budget cut one run's chase: the ORDER decided what got asked in time (GYWyJ: the stake order's fuse went to the mates, the prior asked the knight first and decided Nd5, SF RIGHT)
             else:
                 differ_bug += 1                          # the same questions, the same budget, a different decision: a BUG (the prior must never decide)
     def before(flag):
         out = []
-        for (pid, st, pr), rs in by.items():
+        for (pid, st, pr, run), rs in by.items():      # (plan 69.3: the key carries the grade run)
             if pr != flag or not rs[0].get("decision"):
                 continue
             ok = rs[0]["sf"] == "RIGHT" if rs[0].get("sf") else bool(rs[0].get("match"))
             d = next((x for x in rs if x.get("decided")), None)
-            if ok and d is not None and (flag or (pid, st, True) in dec):      # the stake order's figure over the puzzles that also ran with the prior
+            if ok and d is not None and (flag or (pid, st, True, run) in dec):      # the stake order's figure over the puzzles that also ran with the prior
                 out.append(d["order"])
         return (sum(out) / len(out)) if out else None
     pr_rows = [r for r in rows if r.get("prior")]

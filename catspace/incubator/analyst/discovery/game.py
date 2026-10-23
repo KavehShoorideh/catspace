@@ -53,6 +53,16 @@ class Game(Protocol):
     def is_capture(self, s, m) -> bool: ...
     def gives_check(self, s, m) -> bool: ...
     def unit_at(self, s, loc: int) -> Unit | None: ...
+    def coords(self, loc: int) -> tuple: ...                       # a location's coordinates in [0, 1], for features
+    def adjacent(self, loc: int) -> Iterable[int]: ...             # the locality graph (what a king's step is in chess)
+    def attacks_from(self, s, loc: int) -> Iterable[int]: ...      # the locations the unit on `loc` bears on
+    def royal(self, s, side: bool) -> int | None: ...              # the unit whose loss is terminal (the king)
+    def kinds(self) -> int: ...                                    # how many unit kinds the domain has (one-hot width)
+    def kind_name(self, kind: int) -> str: ...
+    def move_key(self, m) -> str: ...                              # a move's name independent of the state (UCI)
+    def move_from_key(self, s, key: str): ...
+    def move_ends(self, m) -> tuple: ...                           # (from location, to location)
+    def promotes(self, m) -> bool: ...
 
 
 class ChessGame:
@@ -124,6 +134,37 @@ class ChessGame:
 
     def gives_check(self, s: chess.Board, m: chess.Move) -> bool:
         return s.gives_check(m)
+
+    # geometry and kinds
+    def coords(self, loc: int) -> tuple:
+        return (chess.square_file(loc) / 7, chess.square_rank(loc) / 7)
+
+    def adjacent(self, loc: int) -> Iterable[int]:
+        return chess.SquareSet(chess.BB_KING_ATTACKS[loc])
+
+    def attacks_from(self, s: chess.Board, loc: int) -> Iterable[int]:
+        return s.attacks(loc)
+
+    def royal(self, s: chess.Board, side: bool) -> int | None:
+        return s.king(side)
+
+    def kinds(self) -> int:
+        return 6
+
+    def kind_name(self, kind: int) -> str:
+        return chess.piece_name(kind)
+
+    def move_key(self, m: chess.Move) -> str:
+        return m.uci()
+
+    def move_from_key(self, s: chess.Board, key: str) -> chess.Move:
+        return chess.Move.from_uci(key)
+
+    def move_ends(self, m: chess.Move) -> tuple:
+        return (m.from_square, m.to_square)
+
+    def promotes(self, m: chess.Move) -> bool:
+        return m.promotion is not None
 
 
 CHESS = ChessGame()
