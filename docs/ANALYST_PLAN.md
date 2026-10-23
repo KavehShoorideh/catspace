@@ -3210,3 +3210,30 @@ the QUESTIONS. Profile of the same run (cProfile, one run, directional): the for
   (`relevant`, `irrelevant_keeps_nothing`), LEAN_INDEX, tests/test_plan68.py.
 
 **68 built (2026-10-22, Kav's session; verified on eSJqH ALONE, no grade of the 90 -- Kaveh: "look at the one puzzle that failed and motivate plan 68"). Numbers from OBS lines, directional.** 68.1 Lean `Ideas.Forcing.keepsStatus`, `relevant`, `irrelevant_keeps_nothing`, `relevant_of_keeps`, `relevant_of_kept_need` (lake build clean, no sorry); mirror tests/test_plan68.py. 68.2 the status is read FIRST in `_ask_tiers` (a fact of the position), `ctx.need = line - balance` for tier 0 and every next agenda; the root loop (agenda and scheduler mirror, compare_scheduler 0) defers a root question with stake < need that is not a save ("deferred: Q6 win their P on a4 (worth 1) (stake 1 < the status's need 3): asked after the tiers' relevant questions"); after the tiers and the resume passes, a DEFERRED PASS at the widest tier asks them with the time left (the relevant questions are carried, 66.1), or says there is none. `analyse --no-defer`. eSJqH alone at 15 s (5 runs): tiers [0.2, 2.8, 5.8, 1.8], Qa5 PROVED by tier 2 (4 of 5; the first run after a Lean build measured 0.0100 s per node against 0.006 after and missed) against plan 65's [1.4, 4.3, 3.3, 5.0] and the plan 66/67 state's [1.4, 6.0, 3.8, 1.8]: tier 0 and tier 1 are the deferred pawn questions' saving; tier 2 itself is longer than under plan 65 (66.4's allowance). 68.3 measured, not built: the route prices are already cached across tiers by (position, move, stake) (64.3, `route_costs`); the competitor set is keyed by stake because the forcing test depends on it; the judge's pricing share falls with the deferral (fewer questions priced). Open: the six slow RIGHTs still need the end of the raise-to-win search.
+
+### 69 Learned parts ORDER, proofs BOUND: the policy orders question-and-vocabulary items, a bounded leaf estimator values the unproved leaves, both trained on the grade logs (Kaveh 2026-10-22: "why don't we ask the questions using the policy?", "what happened to the probabilistic outcomes at the leaves?", "pull the proven parts up")
+The state: the prior (plan 53) orders root questions within a tier and is OFF (trained once on 11 records); the tiers are a VOCABULARY GATE run as stages
+(plan 59), so a stake-9 question at tier 2 waits for every stake-1 question at tier 1 (plan 68 hand-writes the fix for one case); ESTIMATE (61 B2) values
+only QUIET leaves with a fixed confidence and has never fired on the 90 (every cut leaf is tactical); the unproved pick (65.3) orders unfinished lines by
+their worst read reply, right 6 in 20. The grade logs hold the training data: every root question's interpretable features with the Stockfish label.
+* 69.1 THE POOL AND THE POLICY. One pool of ITEMS = (root question, vocabulary level k) -- the question asked with tier k's route generator -- replacing
+  the stages: the driver takes the item the policy scores highest, asks it (its proofs carry, 66.1/66.2; its routes are priced by the judge as now), and
+  stops by the same rule (a claim keeps the status; nothing affordable left). The policy's features are the question's (`question_prior.features`) plus
+  the level k, the status (balance, threat, need), and the forcing resources; it ORDERS only -- every decision stays the rules'. Checks-first falls out of
+  the data or it does not: report it. Plan 68's deferral becomes the policy's hand-written fallback when no model is loaded. Lean: nothing new to prove
+  (the order of asking does not touch soundness: `claim_mono`); the stop rule's lemma stands.
+* 69.2 THE BOUNDED LEAF ESTIMATOR. At a cut leaf the PROVED parts give an interval: our best proved claim there wins at least v (floor), their proved pass
+  threat wins at most t (ceiling: the leaf's status), the open gaps by stake. The estimator reads the leaf's interpretable features -- the per-piece
+  exchange verdicts (the state lines), the forcing resources, the status words, the gap stakes -- and returns a point INSIDE the interval and a confidence.
+  Lean: `Estimate.lean`: an estimate clamped to a proved interval never contradicts a proof (`clamp_sound`: v ≤ clamp(e) ≤ t); a proved bound tightens it.
+  It fires on tactical leaves too (ESTIMATE's quiet-only gate goes); the estimated claim stays `proved=False`, consulted only when no proved claim keeps
+  the status (61 B2's rule), and the trace reads "estimated +1 (confidence 0.7): proved at least +2 below ... their threat at most 3; gaps: ...". The
+  unproved pick (65.3) orders the unfinished lines by the estimate instead of the worst read reply.
+* 69.3 TRAINING FROM THE LOGS. `question_prior build` over the scratchpad grade logs (thousands of rows: features + `sf`/`sf_loss` + `decided`) for the
+  policy; the leaf estimator from `estimates_log.jsonl` + the leaves' Stockfish scores (`question_prior calibrate`, 61 B3) -- small linear/logistic models
+  with named weights (the weights are printed: the model is readable), nothing deeper; held-out by puzzle id. Models live in data/derived/*.json and are
+  loaded by name; no model = the hand-written order (68) and no estimate.
+* ACCEPTANCE: eSJqH alone at 15 s still proves Qa5; the six slow RIGHTs' tier seconds reported; the 20 unproved picks of the last grade re-ordered by the
+  estimate (how many right: OBS), the discovery position and 07Z0P unchanged; compare_scheduler 0; full suite on the last commit. Then the grade of the 90.
+* FILES: agenda.py (`_ask_tiers` -> the pool driver; `_unfinished_claim` order; the estimate at `_cut`), scheduler.py (mirror), question_prior.py (features
+  of a leaf, build/calibrate), lean/ideas/Ideas/Estimate.lean, LEAN_INDEX, tests/test_plan69.py.
