@@ -326,8 +326,9 @@ def test_66_5_a_capture_by_either_side_not_bad_for_us_or_a_pawn_move_of_ours_res
     ag._route_move = b.parse_san("Kg3")
     try:
         AGM.CLOCK_IRREVERSIBLE = False
+        AGM.EVADED_RESET = False
         ag._route_move = b.parse_san("Rf1+")
-        assert ag._since_after(kxf1, -5) == 4 and not ag._resets(kxf1)   # (the comparison condition: only our capture not bad for us / our pawn move)
+        assert ag._since_after(kxf1, -5) == 4 and not ag._resets(kxf1)   # (the comparison condition: only our capture not bad for us / our pawn move; no evaded-checks reset)
     finally:
         AGM.CLOCK_IRREVERSIBLE = True
     assert AGM.CLOCK_IRREVERSIBLE is True and AGM.CHASE_CLOCK == 4      # the length stays a module parameter
