@@ -39,7 +39,10 @@ HIDDEN = 32
 # king's zone, tempi to bear on a unit of higher worth, free landings, holds a passer's path) and per question +1 (fewest tempi of our units to the target; `regress.survey_features`).
 # The layer widths are fixed by the first graph a model sees, so the saved model carries its version (`features` in the blob; absent = 0) and `load` builds the probe graph, and
 # `score_*` the live graphs, at THAT version: a version-0 model sees exactly the old vectors (its scores do not change). `train` saves version 1 only when TRAIN_SURVEY is on.
+# plan 72.8 (11d): VERSION 2 = 'survey1' + 'arrangement': per question one more column, log1p(the matched skeleton arrangement's stake - material - counter) / 5, 0 without one (the
+# question dicts carry `arrangement`; the grade log rows carry it in `features`). `train` saves version 2 only when TRAIN_ARRANGEMENT is on; a version-0 or -1 model never sees the column.
 TRAIN_SURVEY = False
+TRAIN_ARRANGEMENT = False
 _feat = [0]                                                    # the loaded model's feature-set version
 _model = [None]
 _loaded = [False]
@@ -52,7 +55,7 @@ def _word_class(word: str | None) -> int:
 
 # ---------------------------------------------------------------------------------------------------------------- the graph
 
-def build(board, us: bool, questions: list, status: dict | None, left_frac: float = 1.0, routes: list | None = None, game=None, survey: tuple | None = None):
+def build(board, us: bool, questions: list, status: dict | None, left_frac: float = 1.0, routes: list | None = None, game=None, survey: tuple | None = None, arrangement: bool = False):
     """-> HeteroData. `questions`: dicts with goal, stake, depth, target (square or None), status (open/verified/killed/gap), word, value. `routes` (plan 69.1, the
     route level): dicts with q (index into questions), uci, why, cost (the judge's first-level cost or None), order. The square and piece features are counts a
     player would name (attacked by us / by them). `survey` (plan 72.5; `regress.survey_features`): (unit features by location, per-question features) appended to the piece and question
@@ -101,7 +104,8 @@ def build(board, us: bool, questions: list, status: dict | None, left_frac: floa
         wd = [0.0] * len(WORDS)
         if q.get("status", "open") != "open":
             wd[_word_class(q.get("word"))] = 1.0
-        q_x.append(goal + st + wd + [math.log1p(q["stake"]) / 5, min(q.get("depth", 0), 3) / 3, (q.get("value") or 0) / 10, float(q.get("status", "open") == "open")] + (survey[1][j] if survey else []))
+        q_x.append(goal + st + wd + [math.log1p(q["stake"]) / 5, min(q.get("depth", 0), 3) / 3, (q.get("value") or 0) / 10, float(q.get("status", "open") == "open")] + (survey[1][j] if survey else [])
+                   + ([math.log1p(max(q.get("arrangement") or 0, 0)) / 5] if arrangement else []))      # plan 72.8: version 2's column
         t = q.get("target")
         if t is not None and t in sq_index or (t is not None and 0 <= t < len(locs)):
             qt_src.append(j); qt_dst.append(t)
@@ -153,7 +157,12 @@ def survey_for(board, us: bool, questions: list):
 
 
 def _sv(board, us, questions):
-    return survey_for(board, us, questions) if TRAIN_SURVEY else None
+    return survey_for(board, us, questions) if (TRAIN_SURVEY or TRAIN_ARRANGEMENT) else None
+
+
+def _train_version() -> int:
+    """The feature-set version `train` builds and saves (72.5 / 72.8): 2 with TRAIN_ARRANGEMENT, 1 with TRAIN_SURVEY, else 0."""
+    return 2 if TRAIN_ARRANGEMENT else int(TRAIN_SURVEY)
 
 
 def make_model(meta):
@@ -211,7 +220,8 @@ def _examples(rs):
         for i, r in enumerate(rs):
             revealed = i < k
             qs.append(dict(goal=r["goal"], stake=r["stake"], depth=0, target=r.get("target_sq"),
-                           status=(r["status"] if revealed else "open"), word=(r.get("word") if revealed else None), value=(r["stake"] if revealed and r["status"] == "verified" else 0)))
+                           status=(r["status"] if revealed else "open"), word=(r.get("word") if revealed else None), value=(r["stake"] if revealed and r["status"] == "verified" else 0),
+                           arrangement=(r.get("features") or {}).get("arrangement", 0)))      # plan 72.8: the logged arrangement feature (0 in logs written before it)
         open_idx = [i for i in range(len(rs)) if i >= k]
         out.append((board, us, qs, open_idx, pos, rs[0]["stake"]))
     return out
@@ -255,7 +265,7 @@ def train_routes(item_log_path, model=None, epochs=6, folds=None, seed=1, verbos
         print(f"OBS route policy data: {len(ex)} (question, routes) groups from {len(ids)} puzzles")
 
     def fit(train_ex, test_ex, model):
-        graphs = [(build(b, us, qs, None, routes=rt, survey=_sv(b, us, qs)), pos) for b, us, qs, rt, pos, _id in train_ex]
+        graphs = [(build(b, us, qs, None, routes=rt, survey=_sv(b, us, qs), arrangement=TRAIN_ARRANGEMENT), pos) for b, us, qs, rt, pos, _id in train_ex]
         if model is None:
             model = make_model((graphs[0][0].node_types, graphs[0][0].edge_types))
             with torch.no_grad():
@@ -273,7 +283,7 @@ def train_routes(item_log_path, model=None, epochs=6, folds=None, seed=1, verbos
         model.eval(); hit = hit_order = n = 0
         with torch.no_grad():
             for b, us, qs, rt, pos, _id in test_ex:
-                sc = model(build(b, us, qs, None, routes=rt, survey=_sv(b, us, qs)), routes=True)
+                sc = model(build(b, us, qs, None, routes=rt, survey=_sv(b, us, qs), arrangement=TRAIN_ARRANGEMENT), routes=True)
                 hit += int(int(torch.argmax(sc)) == pos); hit_order += int(pos == 0); n += 1
         return model, hit, hit_order, n
 
@@ -313,7 +323,7 @@ def train(log_path, out_path=None, epochs=6, folds=None, seed=1, verbose=True, i
         graphs = []
         for k, ex in train_items:
             for board, us, qs, open_idx, pos, stake in ex:
-                graphs.append((build(board, us, qs, None, routes=_DUMMY_ROUTE, survey=_sv(board, us, qs)), open_idx, pos))
+                graphs.append((build(board, us, qs, None, routes=_DUMMY_ROUTE, survey=_sv(board, us, qs), arrangement=TRAIN_ARRANGEMENT), open_idx, pos))
         model = make_model((graphs[0][0].node_types, graphs[0][0].edge_types))
         with torch.no_grad():
             model(graphs[0][0])
@@ -337,7 +347,7 @@ def train(log_path, out_path=None, epochs=6, folds=None, seed=1, verbose=True, i
         with torch.no_grad():
             for k, ex in test_items:
                 for board, us, qs, open_idx, pos, stake in ex:
-                    g = build(board, us, qs, None, routes=_DUMMY_ROUTE, survey=_sv(board, us, qs))
+                    g = build(board, us, qs, None, routes=_DUMMY_ROUTE, survey=_sv(board, us, qs), arrangement=TRAIN_ARRANGEMENT)
                     scores = model(g)
                     best = max(open_idx, key=lambda i: float(scores[i]))
                     hit += int(best == pos); n += 1
@@ -360,7 +370,7 @@ def train(log_path, out_path=None, epochs=6, folds=None, seed=1, verbose=True, i
     if item_log and os.path.exists(item_log):
         model = train_routes(item_log, model=model, epochs=epochs, verbose=verbose)      # plan 69.1: the route head on the item log, the trunk shared
     out = out_path or paths.derived(MODEL)
-    torch.save(dict(state=model.state_dict(), meta=(["square", "piece", "question", "root"], None), hidden=HIDDEN, rows=len(rows), agendas=len(items), features=int(TRAIN_SURVEY)), out)
+    torch.save(dict(state=model.state_dict(), meta=(["square", "piece", "question", "root"], None), hidden=HIDDEN, rows=len(rows), agendas=len(items), features=_train_version()), out)
     print(f"OBS graph policy built: {len(items)} agendas, {sum(len(ex) for _, ex in items)} decision points -> {out} (train-set rank-first {h}/{n})")
     return model
 
@@ -378,7 +388,7 @@ def load(path=None):
             _feat[0] = int(blob.get("features", 0))
             board = chess.Board()
             pq = [dict(goal="win", stake=1, depth=0, target=0, status="open")]
-            g = build(board, True, pq, None, routes=[dict(q=0, uci="e2e4", why="threat 1", cost=3, order=0)], survey=survey_for(board, True, pq) if _feat[0] else None)
+            g = build(board, True, pq, None, routes=[dict(q=0, uci="e2e4", why="threat 1", cost=3, order=0)], survey=survey_for(board, True, pq) if _feat[0] else None, arrangement=_feat[0] >= 2)
             model = make_model((g.node_types, g.edge_types))
             with torch.no_grad():
                 model(g)
@@ -401,7 +411,7 @@ def score_questions(board: chess.Board, us: bool, questions: list, status: dict 
         return []
     import torch
     with torch.no_grad():
-        g = build(board, us, questions, status, left_frac, survey=survey_for(board, us, questions) if _feat[0] else None)
+        g = build(board, us, questions, status, left_frac, survey=survey_for(board, us, questions) if _feat[0] else None, arrangement=_feat[0] >= 2)
         return [float(x) for x in model(g)]
 
 
@@ -413,7 +423,7 @@ def score_routes(board: chess.Board, us: bool, question: dict, routes: list, sta
     import torch
     with torch.no_grad():
         qs = [dict(question, status="open")]
-        g = build(board, us, qs, status, left_frac, routes=[dict(r, q=0) for r in routes], survey=survey_for(board, us, qs) if _feat[0] else None)
+        g = build(board, us, qs, status, left_frac, routes=[dict(r, q=0) for r in routes], survey=survey_for(board, us, qs) if _feat[0] else None, arrangement=_feat[0] >= 2)
         return [float(x) for x in model(g, routes=True)]
 
 

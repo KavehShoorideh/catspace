@@ -776,7 +776,7 @@ Do not edit by hand.
 - **theorem `Ideas.castle_turn`** (line 386)
 - **theorem `Ideas.castle_illegal`** (line 394): Castling is never legal out of check.
 - **theorem `Ideas.checkmate_of_unmeetable_check`** (line 414): **A check that cannot be met is mate.** If the defender's king stands alone on `k`, the attacker's piece on `c` checks it, en passant is off, no square next to the king is a flight, no defender's piece but the king attac
-  - used by: catspace/incubator/analyst/lean_ideas.py, catspace/incubator/analyst/lemma_explorer.py
+  - used by: catspace/incubator/analyst/discovery/regress.py, catspace/incubator/analyst/lean_ideas.py, catspace/incubator/analyst/lemma_explorer.py
 
 ## lean/ideas/Ideas/MateDemand.lean
 
@@ -1346,6 +1346,7 @@ Do not edit by hand.
 - **theorem `Ideas.Reach.minOpt_some_zero_left`** (line 47)
 - **theorem `Ideas.Reach.minOpt_some_zero_right`** (line 48)
 - **def `Ideas.Reach.reachPrice`** (line 53): THE PRICED REACH of side `c` on square `s` within `k` of its own moves (the other side passing): `some 0` when `c` bears on `s` already; else, over `c`'s legal moves on the passed board, the least of (a) the price of lan
+  - used by: catspace/incubator/analyst/discovery/regress.py
 - **theorem `Ideas.Reach.foldl_minOpt_zero`** (line 66): The fold reaches `some 0` only through one of its steps.
 - **theorem `Ideas.Reach.foldl_minOpt_of_zero`** (line 81): And conversely a step at `some 0` pulls the whole fold to `some 0`.
 - **theorem `Ideas.Reach.landsSafe_see`** (line 101): A SAFE landing from which the unit bears on `s` is a price-0 reach of one move (`seeOf` there is 0 by `landsSafe`).

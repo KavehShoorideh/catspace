@@ -60,6 +60,8 @@ def features(q, board, us, depth: int, status: dict | None = None, game=None) ->
     k = game.royal(board, not me)
     if k is not None:
         f["their_king_attacked_squares"] = sum(1 for s in game.attacks_from(board, k) if game.attackers(board, me, s))
+    arr = q.pattern.get("arrangement")                                               # plan 72.8 (11d): the matched skeleton arrangement's stake - material - counter, or 0 -- a saved model has no
+    f["arrangement"] = (q.stake - arr["material"] - arr["counter"]) if arr else 0     # weight for it (`score` reads w.get(k, 0)), so its scores do not change until a retrain is adopted
     f["our_pieces"] = sum(1 for u in game.units(board, me) if u.worth != 1)         # (every unit of ours that is not a pawn, the king included, as before)
     f["captures_available"] = sum(1 for m in game.moves(board) if game.is_capture(board, m)) if game.turn(board) == me else 0
     return f

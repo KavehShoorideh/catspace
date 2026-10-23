@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import dataclasses
 import heapq
+import os
 import re
 import time
 
@@ -67,6 +68,7 @@ NEED_PROPAGATION = True                                         # 52.23 (7): ON 
 GOAL_JUDGE = True                                               # 52.23 (6): ON at every tier (plan 64.2; its stop is a GAP since 64.1)
 CLOCK_PAWN = True                                              # plan 62.1c / 66.5: the chase clock also resets on a PAWN move of ours (an irreversible move, the fifty-move rule's other event); CHASE_CLOCK stays the parameter
 SURVEY = True                                                   # plan 72.5: once per ROOT agenda, after the roots are built and before the policy orders them, the trace prints the survey (regress.survey_lines): what each unit can reach, in plain words. It adds lines only; the decision is untouched
+SKELETON_GOALS = os.environ.get("CATSPACE_SKELETON", "1") != "0"      # plan 72.8 (CATSPACE_SKELETON=0 turns it off, inherited by spawned workers, as CATSPACE_DUTY): once per ROOT agenda, after the roots and before the policy orders them, the SKELETON GOALS (regress.skeleton_goals: our fast units arranged against the fixed board, priced by the roll, weighed by the stake rule) -- a reachable arrangement adds its first steps as fix routes of the root it matches, or pushes a NEW root when none matches, and its (stake - material - counter) is a policy feature. The decision stays by proof: an arrangement never claims and never kills
 PASSER_ROOTS = True                                             # plan 72.2 (a): a passed pawn is a promote root at any distance (the 3-push count stays only for pawns that are not passers)
 PARRY_PASS = True                                               # plan 72.2 (c): at the static leaf a parry that keeps one ply is read once more with the move passed to them after it -- a proved claim of theirs there means "not parried YET" (a GAP): I7k2H's Bd1 "kept" +2 one ply before c3, c2 won the bishop
 THEIR_GAPS = True                                               # plan 72.2 (d): at the static leaf an OPEN question of theirs (a GAP of their agenda: the defects say their passer is unstoppable but no lemma fires yet) that would eat the balance makes our leaf a GAP too -- "not read YET", never a proof (I7k2H: after Bd1 their c-pawn's promotion is open, the stopper lifted)
@@ -112,15 +114,8 @@ def judge_next(competitor: "float | None", price: float) -> bool:
 
 
 def _aligned(piece_type: int, sq: int, ksq: int) -> bool:
-    """Whether a piece of this type on `sq` would attack `ksq` on an EMPTY board (every attack on a real board is one of these)."""
-    if piece_type == chess.KNIGHT:
-        return bool(chess.BB_KNIGHT_ATTACKS[sq] & chess.BB_SQUARES[ksq])
-    hit = 0
-    if piece_type in (chess.BISHOP, chess.QUEEN):
-        hit |= chess.BB_DIAG_ATTACKS[sq][0]
-    if piece_type in (chess.ROOK, chess.QUEEN):
-        hit |= chess.BB_RANK_ATTACKS[sq][0] | chess.BB_FILE_ATTACKS[sq][0]
-    return bool(hit & chess.BB_SQUARES[ksq])
+    """Whether a piece of this type on `sq` would attack `ksq` on an EMPTY board (every attack on a real board is one of these): `regress._aligned`, the one word (72.8 reads it too)."""
+    return R._aligned(piece_type, sq, ksq)
 
 
 def _pos_key(fen: str) -> str:
@@ -405,6 +400,9 @@ class Agenda:
         self._roots()
         if SURVEY and self._root:
             self.lines.extend(R.survey_lines(self.board, self.me))
+        self.skeleton_stats = None                              # plan 72.8: the counts and the cost of the skeleton goals (the OBS line), set by `_skeleton_goals`
+        if SKELETON_GOALS and self._root:
+            self._skeleton_goals()
         for i, q in enumerate(self.all, 1):                      # numbered in the order they are asked
             q.id = i
         if getattr(self, "_tq", None):
@@ -671,6 +669,102 @@ class Agenda:
             self._push(R.new_question("promote", R.STAKE_PROMOTE, dict(pawn=s, pushes=n), text=f"promote our P on {GAME.loc_name(s)} ({n} push{'es' if n > 1 else ''} to {GAME.loc_name(W.pawn_path(b, s, n)[-1])})"))
         if near:
             self.notes.append(f"promote roots only for pawns with pushes <= {R.PROMOTE_MAX_PUSHES} (the mate / material stakes dominate farther pawns)")
+
+    # ------------------------------------------------------------------------------------------------------------ plan 72.8: the skeleton goals
+
+    def _skeleton_goals(self) -> None:
+        """plan 72.8 (11) THE AGENDA WIRING, root agenda only, after the roots and before the policy orders them: (a) the arrangements once (memoised for the passes of the same root); the
+        `skeleton:` line and at most SKELETON_LINES `arrangement` lines; (b) a REACHABLE arrangement whose goal matches a root question (same goal kind, same placement square / target /
+        pawn) gives that question `pattern["arrangement"]` and, when it is asked, its first steps as fix routes (`_arrangement_fix`); (c) a reachable arrangement with no matching root
+        pushes a NEW root of its goal kind (a mate: a reach root exactly as `_scan_reach`'s, its steps the arrangement's first steps), which the chase proves or kills. Nothing is claimed or
+        killed here; open, refused and unreachable arrangements add nothing. In check there is no arrangement (the roots are the save and the checker)."""
+        b = self.board
+        if b.is_check():
+            return
+        t0 = time.perf_counter()
+        rep = W.skeleton_report(b, self.me)
+        arrs = rep["arrangements"]
+        roots = [q for q in self.all if q.parent is None]
+        texts, matched = {}, []
+        for a in arrs:
+            match = [q for q in roots if self._arr_matches(q, a)]
+            if match:
+                pick = next((q for q in match if a.placement is not None and q.pattern.get("frm") == a.placement[0]), match[0])
+                texts[id(a)] = pick.text
+            if a.verdict != "reachable":
+                continue
+            if not match:
+                q = self._arrangement_root(a)
+                if q is None:
+                    continue
+                roots.append(q)
+                match = [q]
+                texts[id(a)] = q.text
+            matched.append((a, match))
+        for same_unit in (True, False):                          # each matched root takes the best reachable arrangement of ITS placed unit, else the best on its square
+            for a, match in matched:
+                for q in match:
+                    if "arrangement" in q.pattern or (same_unit and a.placement is not None and q.pattern.get("frm") != a.placement[0]):
+                        continue
+                    q.pattern["arrangement"] = dict(material=a.material, tempi=a.tempi, counter=a.counter, text=W.arrangement_line(a, texts.get(id(a))))
+                    q._arr = a
+        self.lines.append(rep["line"])
+        self.lines += [W.arrangement_line(a, texts.get(id(a))) for a in arrs[:R.SKELETON_LINES]]
+        n = {v: sum(1 for a in arrs if a.verdict == v) for v in ("reachable", "open", "refused", "unreachable")}
+        self.skeleton_stats = dict(targets=rep["targets"], arrangements=len(arrs), ms=(time.perf_counter() - t0) * 1000, **n)
+
+    def skeleton_obs(self, ident: str) -> str | None:
+        """plan 72.8 (12) the cost line: 'OBS skeleton goals <id>: targets T, arrangements A (reachable R, open O, refused F, unreachable U), ms M' (kept out of the trace: the trace guard reads
+        no wall clock)."""
+        s = self.skeleton_stats
+        if s is None:
+            return None
+        return (f"OBS skeleton goals {ident}: targets {s['targets']}, arrangements {s['arrangements']} (reachable {s['reachable']}, open {s['open']}, refused {s['refused']}, "
+                f"unreachable {s['unreachable']}), ms {s['ms']:.0f}")
+
+    @staticmethod
+    def _arr_matches(q: R.Question, a) -> bool:
+        """72.8 (11b): a root question of the same goal kind about the same square (a mate: the placement square; a win: the target; a promotion: the pawn)."""
+        p = q.pattern
+        if a.goal == "mate":
+            return q.goal == "mate" and p.get("at") == a.about
+        if a.goal == "win":
+            return q.goal == "win" and p.get("target") == a.about and not p.get("checker") and "table" not in p
+        return q.goal == "promote" and p.get("pawn") == a.about
+
+    def _arrangement_root(self, a) -> "R.Question | None":
+        """72.8 (11c): the NEW root a reachable arrangement pushes when no root question matched it. A mate: `R.new_question("mate", STAKE_MATE, dict(sym, at, frm, king, more=[], move=None,
+        reach=[the first steps]))`, the defect `reach`, exactly as `_scan_reach`'s reach roots (asked by `_ask_reach`: a forcing step is verified, a quiet one is chased or killed by the tempo
+        arithmetic). A promotion: the pawn's promote root. A win has a root for every unit of theirs already. -> the question, or None (no first step is a move on the board)."""
+        b = self.board
+        steps = W.arrangement_steps(b, a)
+        if a.goal == "mate" and steps:
+            u, s = a.placement
+            pc = b.piece_at(u)
+            ksq = b.king(not self.me)
+            sym = pc.symbol().upper()
+            q = R.new_question("mate", R.STAKE_MATE, dict(sym=pc.symbol(), at=s, frm=u, king=ksq, more=[], move=None, reach=[m.uci() for m, _l, _p in steps]))
+            q.defects = [R.Defect("reach", s, [u], f"the arrangement needs {a.tempi} move(s) of ours: {W.arrangement_items(a)}")]
+            q.text = f"mate on {GAME.loc_name(s)} ({sym} {GAME.loc_name(u)}->{GAME.loc_name(s)} by the arrangement, their king on {GAME.loc_name(ksq)})"
+        elif a.goal == "promote":
+            pw = a.about
+            n = W.base.word(b, ("pushes", GAME.loc_name(pw)), self.me)
+            q = R.new_question("promote", R.STAKE_PROMOTE, dict(pawn=pw, pushes=n), text=f"promote our P on {GAME.loc_name(pw)} ({n} push{'es' if n > 1 else ''} to {GAME.loc_name(a.target)}, by the arrangement)")
+        else:
+            return None
+        self._push(q)
+        return q if q in self.all else None
+
+    def _arrangement_fix(self, q: R.Question) -> "R.Question | None":
+        """72.8 (11b): when a root question that a reachable arrangement matched is asked, the arrangement's first steps are added as one more fix ('bring the units of the arrangement into
+        place'), 72.3's priced join routes with the arrangement's line in brackets; asked like any fix (the binder reads them, the chase proves). Root agenda only."""
+        a = getattr(q, "_arr", None)
+        if not SKELETON_GOALS or a is None or self.chase_depth or not self._root or q.parent is not None:
+            return None
+        f = W.arrangement_fix(self.board, self.us, a, q, q.pattern["arrangement"]["text"])
+        if f is not None:
+            q.fixes.append(f)
+        return f
 
     # ------------------------------------------------------------------------------------------------------------ their side (52.4)
 
@@ -1319,10 +1413,11 @@ class Agenda:
         for q in asked:
             qs.append(dict(goal=q.goal, stake=q.stake, depth=self.chase_depth, target=q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn"))),
                            status=q.status if q.status in ("verified", "killed", "gap") else "gap", word=q.reason.split(":")[0] if q.reason else q.status,
-                           value=(q.claimed[0] if q.claimed is not None else 0)))
+                           value=(q.claimed[0] if q.claimed is not None else 0), arrangement=R.arrangement_value(q)))
         for t in self.heap:
             q = t[4]
-            qs.append(dict(goal=q.goal, stake=q.stake, depth=self.chase_depth, target=q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn"))), status="open"))
+            qs.append(dict(goal=q.goal, stake=q.stake, depth=self.chase_depth, target=q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn"))), status="open",
+                           arrangement=R.arrangement_value(q)))      # plan 72.8 (11d): the matched arrangement's stake - material - counter, or 0 (a version-2 policy reads it)
             entries.append(t)
         left_frac = 1.0
         if self.ctx is not None and self.ctx.seconds:
@@ -1687,6 +1782,7 @@ class Agenda:
         else:
             for d in q.defects:
                 W.fixes_of(d, q, b, us)
+            self._arrangement_fix(q)                             # plan 72.8 (11b): the matched arrangement's first steps, one more fix (no defect key: the live tempo arithmetic is untouched)
             self.asked += sum(self._count(f) for f in q.fixes)
             for f in q.fixes:
                 self._trace_fix(f, 1)
@@ -2208,6 +2304,16 @@ class Agenda:
             (forcing if why else quiet).append(R.Route(m, b.san(m), why) if why else b.san(m))
         f.routes, f.unforced = forcing, quiet
         q.fixes.append(f)
+        af = self._arrangement_fix(q)                            # plan 72.8 (11b): a matched arrangement's first steps are read as the reach's steps are (forcing: verified; quiet: the tempo reason)
+        if af is not None:
+            for r in af.routes:
+                if r.move in steps:
+                    continue
+                why = W.forcing_why(b, r.move, q.stake, us, mate_threats=True)
+                if why:
+                    forcing.append(R.Route(r.move, r.san, f"{why}; {r.why}", price=r.price))
+                else:
+                    quiet.append(r.san)
         self.asked += 1
         self.lines.append(f"  -> Q{f.id} {f.text}: " + (", ".join(f"{r.san} ({r.why})" for r in forcing) if forcing else "no forcing step" + (f" (quiet steps: {', '.join(quiet[:4])})" if quiet else "")))
         q.reads = R.reads_of(q, b)
@@ -3489,7 +3595,7 @@ class Agenda:
         if self.chase_depth == 0 and self._root and routes and self.ctx is not None and (self.ctx.pool or PRIOR) and GP.load() is not None:      # plan 69.1: THE POLICY ORDERS THE ROUTES of a root question (it sees the board, the question, each route's words and price)
             left_frac = max(0.0, min(1.0, ((self.ctx.final or time.monotonic()) - time.monotonic()) / self.ctx.seconds)) if self.ctx.seconds else 1.0
             rd = [dict(uci=r.move.uci(), why=r.why, cost=(self.ctx.route_costs.get((self.pk, r.move.uci(), q.stake)) or (None,))[0], order=i) for i, r in enumerate(routes)]
-            qd = dict(goal=q.goal, stake=q.stake, depth=0, target=q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn"))))
+            qd = dict(goal=q.goal, stake=q.stake, depth=0, target=q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn"))), arrangement=R.arrangement_value(q))
             sc = GP.score_routes(self.board, self.me, qd, rd, getattr(self, "status_info", None), left_frac)
             if sc:
                 order = sorted(range(len(routes)), key=lambda i: -sc[i])
@@ -3992,6 +4098,9 @@ class Agenda:
                 f = W.promote_fixes(b, sq, d, q)
                 rs = ", ".join(f"{r.san} ({r.why})" for r in f.routes)
                 self.lines.append(f"  -> Q{f.id} {f.text}: " + (f"forcing: {rs}" if rs else "no forcing move"))
+            f = self._arrangement_fix(q)                         # plan 72.8 (11b): the matched arrangement's first steps (the chase reads a promotion's fix routes)
+            if f is not None:
+                self.lines.append(f"  -> Q{f.id} {f.text}: routes: " + ", ".join(f"{r.san} ({r.why})" for r in f.routes))
             self.asked += len(q.fixes)
             stop = [d for d in q.defects if d.kind == "stopper"]
             if stop:

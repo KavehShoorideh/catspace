@@ -11,9 +11,16 @@ guarantee of a route is never read here: binder.py verifies it over every reply.
 Deviation from 52.2 (tempo): a state with d defects needs d prep moves and the opponent gets d replies, one after each (not d-1: the reply after the last prep
 move is the one that can undo the pattern before our final move), so each of the d prep moves must be forcing. One move may serve two defects.
 Deviation from 52.2 (signatures): fixes_of / routes_of also take the question and the board (a fix is read against the board it is asked on).
+
+72.8 THE SKELETON GOALS (`skeleton_goals`, end of the module): the slow units are the fixed board, our fast units are imagined where the goal's defects need them,
+priced by the roll forward. THE ARRANGEMENT IS A CANDIDATE GOAL; ITS PROOF IS THE CHASE. Stage 1 proves nothing new in Lean: an arrangement is a conjunction of
+bearing predicates over a counterfactual board (Lean `Ideas.Vocabulary.attackableIn`; `Ideas.Reach.reachPrice`, price 0 = attackableIn by
+`Ideas.Reach.reachPrice_zero_iff`; the mate defects are the hypotheses of `Ideas.checkmate_of_unmeetable_check` read as a list), and it adds routes, roots and a
+policy feature only -- it never claims and never kills a question.
 """
 from __future__ import annotations
 
+import itertools
 import os
 import re
 from dataclasses import dataclass, field
@@ -2219,3 +2226,459 @@ def survey_features(board: chess.Board, us: bool, targets: list, k: int = REACH_
                         best = min(best, r["tempi"])
         qf.append([best / (k + 1)])
     return unit, qf
+
+
+# ---------------------------------------------------------------------------------------------------------------- plan 72.8: THE SKELETON GOALS
+# Kaveh 2026-10-23: "we ask too many questions because we do not know the goal". A goal is an ARRANGEMENT of our fast pieces against the FIXED board (the slow units: kings, pawns,
+# the units that cannot run), read on counterfactual boards, priced by the roll forward (72.1), weighed by the stake rule (72.3). Stage 1: THE ARRANGEMENT IS A CANDIDATE GOAL; ITS
+# PROOF IS THE CHASE. Nothing new is proved in Lean here (an arrangement is a conjunction of bearing predicates over a counterfactual board: `Ideas.Vocabulary.attackableIn`,
+# `Ideas.Reach.reachPrice` / `reachPrice_zero_iff`, the mate defects = the failed hypotheses of `Ideas.checkmate_of_unmeetable_check`).
+SKELETON_MAX_JOBS = 4                         # plan 72.8 (5), a NAMED FUSE: a goal whose skeleton defects name more than 4 jobs is dropped -- the arrangement is then a plan the chase cannot verify in the horizon (not a limit on the engine's words)
+SKELETON_MAX_UNITS = 7                        # plan 72.8 (12), a NAMED FUSE: at most 7 fast units of ours enter the assignment (7*6*5*4*3 = 2520 tuples at most); with more (a promotion's extra queen) the 7 most valuable
+SKELETON_LINES = 6                            # plan 72.8 (10): the trace prints at most 6 arrangement lines (a print cap; the list itself is whole)
+_VERDICTS = ("reachable", "open", "refused", "unreachable")
+_GOALS = ("mate", "win", "promote")
+
+
+def _aligned(piece_type: int, sq: int, ksq: int) -> bool:
+    """Whether a piece of this type on `sq` would attack `ksq` on an EMPTY board (every attack on a real board is one of these); agenda._aligned is this word."""
+    if piece_type == chess.KNIGHT:
+        return bool(chess.BB_KNIGHT_ATTACKS[sq] & chess.BB_SQUARES[ksq])
+    hit = 0
+    if piece_type in (chess.BISHOP, chess.QUEEN):
+        hit |= chess.BB_DIAG_ATTACKS[sq][0]
+    if piece_type in (chess.ROOK, chess.QUEEN):
+        hit |= chess.BB_RANK_ATTACKS[sq][0] | chess.BB_FILE_ATTACKS[sq][0]
+    return bool(hit & chess.BB_SQUARES[ksq])
+
+
+@dataclass
+class Job:
+    """What an arrangement needs a unit of ours for: to BEAR on `square` (a flight to cover, the checker's square to guard, an interposition square, the target, a path square)."""
+    square: int
+    kind: str                                 # 'flight' | 'guard' | 'interposition' | 'attack' | 'path' | 'promo' | another defect kind
+    why: str = ""
+
+
+@dataclass
+class Deflection:
+    """A fast unit of theirs on `their_sq` that occupies or bears on `job_square` (or a defender / stopper the defects name): the job cannot be done as priced. Stage 1 records it (the
+    arrangement is `open: deflection`); a deflection question is a LATER item."""
+    their_sq: int
+    job_square: int
+    why: str = ""
+
+
+@dataclass
+class Arrangement:
+    """plan 72.8 (9): one skeleton goal. `target`: 'king' for a mate, else the target square (the unit to win; the promotion square). `about`: the square a root question of the same goal names
+    (the placement square, the target, the pawn). `assignment`: [(unit sq, Job or 'placement', material, tempi, path [UCI])]."""
+    target: "int | str"
+    goal: str
+    placement: "tuple | None"                 # (unit sq, square) for a mate, else None
+    jobs: list
+    assignment: list
+    step_asides: list                         # [(unit sq, text)]
+    deflections: list
+    material: int
+    tempi: int
+    stake: int
+    counter: int
+    verdict: str                              # reachable | open | refused | unreachable
+    text: str = ""
+    why: str = ""                             # the verdict's reason: the job not reached, the counter-plan's text
+    goal_text: str = ""
+    about: "int | None" = None
+    syms: dict = field(default_factory=dict)  # square -> the unit's letter (ours assigned or stepping aside, theirs deflected): the text names them
+
+    @property
+    def net(self) -> int:
+        """The stake rule's balance (72.3): stake - material - counter."""
+        return self.stake - self.material - self.counter
+
+
+def skeleton_partition(board: chess.Board) -> dict:
+    """plan 72.8 (1) SLOW and FAST, either colour: {sq: reason} with reason 'king' / 'pawn' / 'no safe square' / 'duty-bound' for a SLOW unit and None for a FAST one. A unit is slow when it
+    cannot run (`can_run(board, sq, the other side)`, 63.2) -- 'duty-bound' when it has safe squares but every one abandons a duty worth at least the unit (the cut list), 'no safe square' when
+    it has none. (`duty_bound` needs no second read: a unit that can run has a safe move whose duty is below its worth, so it is never duty-bound -- the least over its moves is below its worth.)"""
+    out = {}
+    for sq, pc in board.piece_map().items():
+        if pc.piece_type == chess.KING:
+            out[sq] = "king"
+        elif pc.piece_type == chess.PAWN:
+            out[sq] = "pawn"
+        else:
+            run, cut = can_run(board, sq, not pc.color)
+            out[sq] = None if run else ("duty-bound" if cut else "no safe square")
+    return out
+
+
+def _counterfactual(board: chess.Board, me: bool, drop) -> chess.Board:
+    """A copy without the units on `drop`, `me` to move, no en passant, no castling (a counterfactual has no history). Never pushed on."""
+    c = board.copy(stack=False)
+    for s in drop:
+        c.remove_piece_at(s)
+    c.turn = me
+    c.ep_square = None
+    c.castling_rights = chess.BB_EMPTY
+    return c
+
+
+def skeleton_a(board: chess.Board, us: str | bool, part: dict | None = None) -> chess.Board:
+    """plan 72.8 (2) SKELETON A: the board with OUR fast units removed (theirs all kept), us to move."""
+    me = G.colour_of(us)
+    part = skeleton_partition(board) if part is None else part
+    return _counterfactual(board, me, [s for s, why in part.items() if why is None and board.piece_at(s).color == me])
+
+
+def skeleton_b(board: chess.Board, us: str | bool, part: dict | None = None) -> chess.Board:
+    """plan 72.8 (2) SKELETON B: skeleton A with THEIR fast units removed too (read only to find the deflections: their fast units are the ones B lacks)."""
+    me = G.colour_of(us)
+    part = skeleton_partition(board) if part is None else part
+    return _counterfactual(board, me, [s for s, why in part.items() if why is None])
+
+
+def _sym(board: chess.Board, sq: int) -> str:
+    return board.piece_at(sq).symbol().upper()
+
+
+def skeleton_line(board: chess.Board, us: str | bool, part: dict) -> str:
+    """The trace line of the partition (ours): 'skeleton: fixed K g1, P a2 b2 f2 g2 h2, N f3 (no safe square), B e2 (duty-bound); fast Q d1, R a1, R f1'."""
+    me = G.colour_of(us)
+    ours = {s: w for s, w in part.items() if board.piece_at(s).color == me}
+    order = lambda s: (-G.worth(board.piece_at(s)), s)
+    fixed = [f"K {G.name(s)}" for s, w in ours.items() if w == "king"]
+    pawns = sorted(s for s, w in ours.items() if w == "pawn")
+    if pawns:
+        fixed.append("P " + " ".join(G.name(s) for s in pawns))
+    fixed += [f"{_sym(board, s)} {G.name(s)} ({ours[s]})" for s in sorted((s for s, w in ours.items() if w not in (None, "king", "pawn")), key=order)]
+    fast = [f"{_sym(board, s)} {G.name(s)}" for s in sorted((s for s, w in ours.items() if w is None), key=order)]
+    return f"skeleton: fixed {', '.join(fixed) or 'nothing'}; fast {', '.join(fast) or 'none'}"
+
+
+def _path_squares(path: list, start: int, bear_on: "int | None" = None) -> set:
+    """6c: the squares of a chosen path on the live board -- every landing and the squares between consecutive landings (from the start), and for a bearing job the line from the last
+    landing (the start when the unit bears already) to the job square (on skeleton A that line was open only because our other fast units were lifted)."""
+    out, at = set(), start
+    for u in path:
+        m = chess.Move.from_uci(u)
+        out.update(chess.SquareSet(chess.between(m.from_square, m.to_square)))
+        out.add(m.to_square)
+        at = m.to_square
+    if bear_on is not None:
+        out.update(chess.SquareSet(chess.between(at, bear_on)))
+    return out
+
+
+def _mate_jobs(defects: list, s: int) -> list:
+    """plan 72.8 (5) the jobs of a mate placement on `s`: flight -> bear on it; checker takeable -> bear on `s` (a guard); interposition -> bear on it; any other kind -> bear on its square.
+    One job per square (two takers of the checker are one guard job)."""
+    jobs, seen = [], set()
+    for d in defects:
+        if d.kind == "checker takeable":
+            sq, kind = s, "guard"
+        elif d.kind in ("flight", "interposition"):
+            sq, kind = d.sq, d.kind
+        else:
+            sq, kind = d.sq, d.kind
+        if sq is None or sq in seen:
+            continue
+        seen.add(sq)
+        jobs.append(Job(sq, kind, d.why))
+    return jobs
+
+
+def _first_step(entry_path: list) -> "chess.Move | None":
+    return chess.Move.from_uci(entry_path[0]) if entry_path else None
+
+
+def skeleton_report(board: chess.Board, us: str | bool, k: int = REACH_K) -> dict:
+    """plan 72.8, the whole stage-1 reading of one position: -> dict(line, partition, targets, dropped, arrangements). Memoised for the LAST position only (the passes of one root ask it
+    again; a different board replaces it) -- a pure function of the board and the fuses."""
+    me = G.colour_of(us)
+    b = board if board.turn == me else G.with_turn(board, me)
+    key = (b.board_fen(), me, b.castling_rights, k, SKELETON_MAX_JOBS, SKELETON_MAX_UNITS, PRICED_STOPPER, DUTY)
+    if _SKEL.get("key") == key:
+        return _SKEL["report"]
+    rep = _skeleton_report(b, me, k)
+    _SKEL.clear()
+    _SKEL.update(key=key, report=rep)
+    return rep
+
+
+_SKEL: dict = {}
+
+
+def skeleton_goals(board: chess.Board, us: str | bool, k: int = REACH_K) -> list:
+    """plan 72.8 (9) THE SKELETON GOALS of the position (`us` to move): [Arrangement], reachable first by (stake - material - counter) descending, then open, then refused, then unreachable.
+    Every arrangement is a CANDIDATE: it adds routes, roots and a feature in the agenda; it never claims and never kills (the chase proves the survivor)."""
+    return skeleton_report(board, us, k)["arrangements"]
+
+
+def _skeleton_report(b: chess.Board, me: bool, k: int) -> dict:
+    them = not me
+    part = skeleton_partition(b)
+    skel_a = skeleton_a(b, me, part)
+    skel_b = skeleton_b(b, me, part)
+    fast = sorted((s for s, w in part.items() if w is None and b.piece_at(s).color == me), key=lambda s: (-G.worth(b.piece_at(s)), s))
+    units = fast[:SKELETON_MAX_UNITS]
+    their_fast = [s for s in chess.SQUARES if (p := skel_a.piece_at(s)) is not None and p.color == them and skel_b.piece_at(s) is None]
+    alone = {u: G.with_piece(skel_a, b.piece_at(u), u) for u in units}        # 6a: each unit ALONE on skeleton A (our other fast units are off the board: a path they block is open)
+    bears: dict = {}
+
+    def bear(u: int, sq: int):                                               # 6a: the job's cost, reach_price(bearing=True) on skeleton A with the unit -> (material, tempi, path) or None
+        kk = (u, sq)
+        if kk not in bears:
+            r = reach_price(alone[u], u, sq, k, bearing=True)
+            bears[kk] = None if r is None else (r["material"], r["tempi"], list(r["path"]))
+        return bears[kk]
+
+    def land(u: int, s: int):                                                # 6a: the placement's cost, reach_price(bearing=False): the unit LANDS on s
+        occ = skel_a.piece_at(s)
+        if occ is None:
+            e = reach_map(alone[u], u, k).get(s)
+            if e is None:
+                return None
+            after, m, t, path = e["board"], e["material"], e["tempi"], list(e["path"])
+        else:                                                                # (4) their unit on s: a capture removes it -- the roll is quiet (72.1), so the capture is the roll's last step:
+            r = reach_price(alone[u], u, s, k - 1, bearing=True)             # the unit bears on s within k-1, then takes (one more tempo), priced by the exchange after the capture
+            if r is None:
+                return None
+            at = chess.Move.from_uci(r["path"][-1]).to_square if r["path"] else u
+            c = G.with_turn(G.with_piece(alone[u], b.piece_at(u), at, u) if at != u else alone[u], me)
+            mv = chess.Move(at, s)
+            if mv not in c.legal_moves:
+                return None
+            c.push(mv)
+            after, m, t, path = c, G.see_for(c, s, them), r["tempi"] + 1, list(r["path"]) + [mv.uci()]
+        ek_ = after.king(them)
+        if m and not (set(after.attackers(them, s)) - {ek_}):               # the landing is the check: a capture by their KING alone is the defect 'checker takeable', which the guard job
+            m = 0                                                            # of this arrangement pays (a guarded checker cannot be taken by the king); a capture by another unit stays priced
+        return (m, t, path)
+
+    arrs, dropped, targets = [], 0, 0
+    ek = b.king(them)
+    if ek is not None:                                                       # (3)(i) their king: goal `mate`, one arrangement per (piece kind, placement square)
+        targets += 1
+        places: dict = {}
+        for u in units:
+            pc = b.piece_at(u)
+            for s in chess.SQUARES:
+                if s == u or not _aligned(pc.piece_type, s, ek):
+                    continue
+                occ = skel_a.piece_at(s)
+                if occ is not None and (occ.color == me or occ.piece_type == chess.KING):
+                    continue
+                places.setdefault((pc.piece_type, s), []).append(u)
+        for (pt, s), cands in sorted(places.items(), key=lambda t: (t[0][1], -t[0][0])):
+            pc = chess.Piece(pt, me)
+            cf = G.with_piece(skel_a, pc, s)
+            if ek not in cf.attacks(s):
+                continue
+            defects = mate_defects(cf, me, [(pc, s, None)])
+            if any(d.kind == "no check" for d in defects):
+                continue
+            jobs = _mate_jobs(defects, s)
+            if len(jobs) > SKELETON_MAX_JOBS:
+                dropped += 1
+                continue
+            arrs.append(_price(b, me, k, "mate", "king", s, jobs, [], [], STAKE_MATE, units, their_fast, bear, fast=fast, place=(s, cands, land), ek=ek))
+    for sq in sorted(part):                                                  # (3)(ii) each SLOW unit of theirs that is not a king or a pawn: goal `win`
+        pc = b.piece_at(sq)
+        if pc.color != them or part[sq] in (None, "king", "pawn"):
+            continue
+        targets += 1
+        defects = material_defects(skel_a, me, sq)
+        jobs = [Job(sq, "attack", d.why) for d in defects if d.kind == "not attacked"]
+        defl = [Deflection(x, sq, f"their {_sym(b, x)} on {G.name(x)} defends {G.name(sq)}") for d in defects if d.kind == "defended" for x in d.by]
+        if len(jobs) > SKELETON_MAX_JOBS:
+            dropped += 1
+            continue
+        arrs.append(_price(b, me, k, "win", sq, sq, jobs, defl, [], G.worth(pc), units, their_fast, bear, fast=fast))
+    for pw in sorted(chess.SquareSet(b.pawns & b.occupied_co[me])):          # (3)(iii) the promotion square of each passer of ours: goal `promote`
+        n = _pushes_of(b, pw, me)
+        if n < 1 or not is_passer(b, pw):
+            continue
+        targets += 1
+        try:
+            defects, facts = promote_defects(skel_a, pw)
+        except ValueError:
+            continue                                                         # (a skeleton the Rust words cannot read: no arrangement, nothing said)
+        jobs, defl, asides = [], [], []
+        for d in defects:
+            if d.kind in ("path attacked", "promo square attacked"):
+                if d.sq not in [j.square for j in jobs]:
+                    jobs.append(Job(d.sq, "promo" if d.kind == "promo square attacked" else "path", d.why))
+            elif d.kind == "stopper":
+                defl += [Deflection(x, d.sq, d.why) for x in d.by]
+            elif d.kind == "blocked":
+                o = skel_a.piece_at(d.sq)
+                if o is not None and o.color == me:
+                    asides.append((d.sq, f"{_sym(b, d.sq)} {G.name(d.sq)} off the pawn's path"))
+                else:
+                    defl.append(Deflection(d.sq, d.sq, d.why))               # (their unit on the path: it must be driven off -- a deflection, not a job)
+        if len(jobs) > SKELETON_MAX_JOBS:
+            dropped += 1
+            continue
+        arrs.append(_price(b, me, k, "promote", facts["promo"], pw, jobs, defl, asides, STAKE_PROMOTE, units, their_fast, bear, fast=fast, pawn_path_=list(facts["path"])))
+    arrs.sort(key=lambda a: (_VERDICTS.index(a.verdict), -a.net if a.verdict != "unreachable" else 0, a.tempi, _GOALS.index(a.goal), a.about if a.about is not None else -1, a.placement or ()))      # (9): by verdict, then the stake rule's balance; at an equal balance the fewer tempi first
+    return dict(line=skeleton_line(b, me, part), partition=part, targets=targets, dropped=dropped, arrangements=arrs)
+
+
+def _price(b: chess.Board, me: bool, k: int, goal: str, target, about: int, jobs: list, defl: list, asides: list, stake: int, units: list, their_fast: list, bear, fast: "list | None" = None,
+           place: "tuple | None" = None, ek: "int | None" = None, pawn_path_: "list | None" = None) -> Arrangement:
+    """plan 72.8 (6)-(8): the priced assignment, the step-asides, the deflections, the stake rule -> the Arrangement with its verdict and its text."""
+    slots = []                                                               # per slot: {unit: (material, tempi, path)}
+    if place is not None:
+        s, cands, land = place
+        slots.append({u: c for u in cands if (c := land(u, s)) is not None})
+    for j in jobs:
+        slots.append({u: c for u in units if (c := bear(u, j.square)) is not None})
+    names = (["placement"] if place is not None else []) + jobs
+    first_kind = _sym(b, place[1][0]) if place is not None else None
+    goal_text = (f"mate on {G.name(place[0])} ({first_kind} {G.name(place[1][0])}->{G.name(place[0])}, their king on {G.name(ek)})" if goal == "mate" else
+                 f"win their {_sym(b, about)} on {G.name(about)}" if goal == "win" else f"promote our P on {G.name(about)}")
+    base = dict(target=target, goal=goal, jobs=jobs, deflections=list(defl), stake=stake, about=place[0] if place is not None else about, goal_text=goal_text)
+    for i, sl in enumerate(slots):                                           # 6b: a slot no unit reaches within k: UNREACHABLE, the job named
+        if not sl:
+            what = f"the placement on {G.name(place[0])}" if names[i] == "placement" else f"{G.name(names[i].square)} ({names[i].kind})"
+            a = Arrangement(placement=(place[1][0], place[0]) if place is not None else None, assignment=[], step_asides=[], material=0, tempi=0, counter=0, verdict="unreachable",
+                            why=f"no unit of ours reaches {what} within {k}", **base)
+            a.text = arrangement_line(a, goal_text)
+            return a
+    best = None
+    for perm in itertools.permutations(units, len(slots)):                   # 6b: injective assignments, the least (material, tempi), ties by the squares' order
+        tot_m = tot_t = 0
+        ok = True
+        for sl, u in zip(slots, perm):
+            c = sl.get(u)
+            if c is None:
+                ok = False
+                break
+            tot_m += c[0]
+            tot_t += c[1]
+        if ok and (best is None or (tot_m, tot_t, perm) < best):
+            best = (tot_m, tot_t, perm)
+    if best is None:
+        a = Arrangement(placement=(place[1][0], place[0]) if place is not None else None, assignment=[], step_asides=[], material=0, tempi=0, counter=0, verdict="unreachable",
+                        why=f"too few units of ours for {len(slots)} slot(s)", **base)
+        a.text = arrangement_line(a, goal_text)
+        return a
+    tot_m, tot_t, perm = best
+    assignment = [(u, names[i], *slots[i][u]) for i, u in enumerate(perm)]
+    placement = (perm[0], place[0]) if place is not None else None
+    if place is not None:
+        base["goal_text"] = goal_text = f"mate on {G.name(place[0])} ({_sym(b, perm[0])} {G.name(perm[0])}->{G.name(place[0])}, their king on {G.name(ek)})"
+    moving = set(perm)                                                       # 6c: a fast unit of ours with no job standing on a chosen path steps aside (+1 tempo each; what it does then is not priced)
+    free = set(units if fast is None else fast) - moving                    # (every FAST unit of ours with no job, the ones past the unit fuse included)
+    blockers = []
+    for u, what, m_, t_, path in assignment:
+        sqs = _path_squares(path, u, None if what == "placement" else what.square)
+        blockers += [x for x in sorted(sqs) if x in free and x not in blockers]
+    if pawn_path_:                                                           # (the pawn's own path on the live board: our fast unit standing on it is the 'blocked' defect the skeleton hides)
+        blockers += [x for x in pawn_path_ if x in free and x not in blockers]
+    step_asides = list(asides) + [(x, f"{_sym(b, x)} {G.name(x)} off the path") for x in blockers]
+    tempi = tot_t + len(step_asides)
+    deflections = list(defl)                                                 # 7: their FAST units that occupy or bear on a job square (or the placement square) on the live board
+    jsq = ([place[0]] if place is not None else []) + [j.square for j in jobs]
+    for t in jsq:
+        for f in their_fast:
+            if place is not None and t == place[0] and f == place[0]:
+                continue                                                     # (the occupant of the placement square: the capture there removes it)
+            if f == t or t in b.attacks(f):
+                if not any(d.their_sq == f and d.job_square == t for d in deflections):
+                    deflections.append(Deflection(f, t, f"their {_sym(b, f)} on {G.name(f)} {'stands on' if f == t else 'bears on'} {G.name(t)}"))
+    mu = min(tempi, k + 1)                                                   # 8: THE STAKE RULE (72.3) -- their counter-plan within mu-1 free moves (the roll's fuse k binds their roll as ours)
+    counter, ctext = 0, None
+    if mu > 0:
+        step = None
+        for u, what, m_, t_, path in assignment:
+            mv = _first_step(path)
+            if mv is not None and mv in b.legal_moves:
+                step = mv
+                break
+        if mu == 1 and step is None:
+            mu = 2                                                           # (the one step is not a move on the live board: their free move is read by the roll)
+        counter, ctext = counter_value(b, me, step, mu)
+    base["deflections"] = deflections
+    base["syms"] = {x: _sym(b, x) for x in set(perm) | {x for x, _t in step_asides} | {d.their_sq for d in deflections} if b.piece_at(x) is not None}
+    a = Arrangement(placement=placement, assignment=assignment, step_asides=step_asides, material=tot_m, tempi=tempi, counter=counter, verdict="reachable", **base)
+    if a.net < 1:
+        a.verdict, a.why = "refused", (ctext or f"price {tot_m} against a stake of {stake}")
+    elif deflections:
+        a.verdict, a.why = "open", "deflection"
+    a.text = arrangement_line(a, goal_text)
+    return a
+
+
+def arrangement_line(a: Arrangement, goal_text: "str | None" = None) -> str:
+    """plan 72.8 (10) THE TRACE TEXT: 'arrangement <goal text>: Q d1->h7 (2), B e2->d3 bears on h7 (1), R a1 step-aside (+1), deflect their Q from d1 (open); price (0, 4), counter 0 -> open:
+    deflection'. The goal text is the root question's own text where one exists."""
+    goal_text = goal_text or a.goal_text
+    if a.verdict == "unreachable":
+        jobs = ", ".join(f"{G.name(j.square)} ({j.kind})" for j in a.jobs) or "no job"
+        return f"arrangement {goal_text}: jobs {jobs}; price (-, -), counter - -> unreachable: {a.why}"
+    verdict = a.verdict if a.verdict == "reachable" else ("open: deflection" if a.verdict == "open" else f"refused: {a.why}")
+    return f"arrangement {goal_text}: {arrangement_items(a)}; price ({a.material}, {a.tempi}), counter {a.counter} -> {verdict}"
+
+
+def arrangement_value(q: Question) -> int:
+    """plan 72.8 (11d) THE POLICY FEATURE: the matched arrangement's stake - material - counter (`q.pattern["arrangement"]`, set by the agenda for a reachable one), else 0."""
+    a = q.pattern.get("arrangement")
+    return (q.stake - a["material"] - a["counter"]) if a else 0
+
+
+def arrangement_items(a: Arrangement) -> str:
+    """The unit items of the trace text: 'Q d1->h7 (2)' a landing, 'B e2->d3 bears on h7 (1)' a job, 'R a1 step-aside (+1)', 'deflect their Q from d1 (open)'."""
+    items = []
+    for u, what, m_, t_, path in a.assignment:
+        land = chess.Move.from_uci(path[-1]).to_square if path else u
+        nm = a.syms.get(u, "?")
+        if what == "placement":
+            items.append(f"{nm} {G.name(u)}->{G.name(land)} ({t_})")
+        elif path:
+            items.append(f"{nm} {G.name(u)}->{G.name(land)} bears on {G.name(what.square)} ({t_})")
+        else:
+            items.append(f"{nm} {G.name(u)} bears on {G.name(what.square)} (0)")
+    items += [f"{a.syms.get(x, '?')} {G.name(x)} step-aside (+1)" for x, _txt in a.step_asides]
+    seen = []
+    for d in a.deflections:
+        if d.their_sq not in seen:
+            seen.append(d.their_sq)
+            items.append(f"deflect their {a.syms.get(d.their_sq, '?')} from {G.name(d.their_sq)} (open)")
+    return ", ".join(items) or "nothing to arrange"
+
+
+def arrangement_steps(board: chess.Board, a: Arrangement) -> list:
+    """plan 72.8 (11b/c): the arrangement's FIRST STEPS that are moves on the live board -> [(move, label, (material, tempi))], in the assignment's order; the label is 72.3's
+    ('bring the B from e2 to bear on h7 in 1, price 0'; a placement LANDS: 'bring the Q from d1 to h7 in 2 (via h5), price 0')."""
+    out, have = [], set()
+    legal = set(board.legal_moves)
+    for u, what, m_, t_, path in a.assignment:
+        mv = _first_step(path)
+        if mv is None or mv not in legal or mv in have:
+            continue
+        have.add(mv)
+        pc = board.piece_at(u)
+        nm = pc.symbol().upper() if pc.piece_type != chess.PAWN else "pawn"
+        dest = f"to {G.name(a.placement[1])}" if what == "placement" else f"to bear on {G.name(what.square)}"
+        label = f"bring the {nm} from {G.name(u)} {dest} in {t_}" + (f" (via {G.name(mv.to_square)})" if t_ > 1 else "") + f", price {m_}"
+        out.append((mv, label, (m_, t_)))
+    return out
+
+
+def arrangement_fix(board: chess.Board, us: str | bool, a: Arrangement, q: Question, text: "str | None" = None) -> "Question | None":
+    """plan 72.8 (11b): the arrangement's first steps as FIX ROUTES of the root question it matches, through 72.3's join machinery (a priced Route, its tempi in `route_cost`): a 'cover'
+    sub-question 'bring the units of the arrangement into place', route text 72.3's with the arrangement's line in brackets. Asked like any fix (the binder reads them; the chase proves);
+    no defect key: the arrangement fixes the skeleton's defects, not one defect of the live board, so the tempo arithmetic of the live defects is untouched. -> None when no step is a move."""
+    me = G.colour_of(us)
+    b = G.with_turn(board, me) if board.turn != me else board
+    steps = arrangement_steps(b, a)
+    if not steps:
+        return None
+    text = text or a.text
+    f = new_question("cover", q.stake, dict(q.pattern), q, text=f"bring the units of the arrangement into place ({a.goal_text})")
+    for mv, label, price in steps:
+        f.routes.append(Route(mv, b.san(mv), f"{label} [{text}]", price=price))
+        _JOIN[(b.board_fen(), mv.uci())] = price
+    return f

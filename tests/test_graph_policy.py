@@ -69,3 +69,33 @@ def test_69_1_route_examples_take_the_claiming_route_or_the_answer_as_the_positi
     p.write_text("".join(__import__("json").dumps(r) + "\n" for r in rows))
     ex = GP.route_examples(str(p))
     assert sorted((e[5], e[4]) for e in ex) == [("p", 1), ("q", 1)]                    # p: the answer's route; q: the claiming route
+
+
+def test_72_8_feature_version_2_adds_the_arrangement_column_and_an_older_model_never_sees_it(tmp_path):
+    b = chess.Board(ESJQH)
+    qs = [dict(goal="mate", stake=100, depth=0, target=chess.C7, status="open", arrangement=91), dict(goal="win", stake=3, depth=0, target=chess.B3, status="open")]
+    sv = GP.survey_for(b, True, qs)
+    g1 = GP.build(b, True, qs, None, survey=sv)
+    g2 = GP.build(b, True, qs, None, survey=sv, arrangement=True)
+    assert g2["question"].x.shape[1] == g1["question"].x.shape[1] + 1 and torch.equal(g2["question"].x[:, :-1], g1["question"].x)      # the old columns untouched
+    assert float(g2["question"].x[0, -1]) > 0 and float(g2["question"].x[1, -1]) == 0.0                                                 # no arrangement: 0
+    g0 = GP.build(b, True, [dict(q, arrangement=0) for q in qs], None)
+    assert torch.equal(GP.build(b, True, qs, None).x_dict["question"], g0.x_dict["question"])                                            # version 0 ignores the key
+    saved = (GP._model[0], GP._loaded[0], GP._feat[0])
+    try:
+        rt = [dict(q=0, uci="e2e4", why="threat 1", cost=3, order=0)]
+        pb = chess.Board()
+        pq = [dict(goal="win", stake=1, depth=0, target=0, status="open")]
+        gg = GP.build(pb, True, pq, None, routes=rt, survey=GP.survey_for(pb, True, pq), arrangement=True)
+        torch.manual_seed(0)
+        m = GP.make_model((gg.node_types, gg.edge_types))
+        with torch.no_grad():
+            m(gg)
+            m(gg, routes=True)
+        p = tmp_path / "m2.pt"
+        torch.save(dict(state=m.state_dict(), meta=None, hidden=GP.HIDDEN, features=2), p)
+        GP._loaded[0] = False
+        assert GP.load(p) is not None and GP._feat[0] == 2
+        assert len(GP.score_questions(b, True, qs, None)) == 2
+    finally:
+        GP._model[0], GP._loaded[0], GP._feat[0] = saved

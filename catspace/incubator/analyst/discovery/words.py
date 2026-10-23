@@ -91,6 +91,13 @@ class Words(Protocol):
     # the pricing words (the cost of a route / node, 61 C1)
     def route_cost(self, *a, **kw): ...
     def node_cost(self, *a, **kw): ...
+    # the skeleton goals (72.8): arrangements of the fast units against the fixed board, candidates only
+    def skeleton_report(self, s, us, **kw) -> dict: ...
+    def skeleton_goals(self, s, us, **kw) -> list: ...
+    def arrangement_line(self, a, goal_text=None) -> str: ...
+    def arrangement_items(self, a) -> str: ...
+    def arrangement_steps(self, s, a) -> list: ...
+    def arrangement_fix(self, s, us, a, q, text=None): ...
 
 
 class ChessWords:
@@ -181,6 +188,24 @@ class ChessWords:
 
     def node_cost(self, *a, **kw):
         return R.node_cost(*a, **kw)
+
+    def skeleton_report(self, s, us, **kw):
+        return R.skeleton_report(s, us, **kw)
+
+    def skeleton_goals(self, s, us, **kw):
+        return R.skeleton_goals(s, us, **kw)
+
+    def arrangement_line(self, a, goal_text=None):
+        return R.arrangement_line(a, goal_text)
+
+    def arrangement_items(self, a):
+        return R.arrangement_items(a)
+
+    def arrangement_steps(self, s, a):
+        return R.arrangement_steps(s, a)
+
+    def arrangement_fix(self, s, us, a, q, text=None):
+        return R.arrangement_fix(s, us, a, q, text)
 
 
 CHESS_WORDS = ChessWords()
