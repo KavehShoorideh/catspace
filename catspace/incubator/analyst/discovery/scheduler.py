@@ -246,7 +246,16 @@ def ask_loop_g(node) -> None:
             node.lines.append("STOP (t): out of time")
             return
         plain = min(node.heap, key=lambda t: (t[0], t[2], t[3]))                # the stake-only order
-        if (AG.PRIOR or (node.ctx is not None and node.ctx.pool)) and not node.chase_depth and QP.load() is not None:      # plan 53 (2) / 69.1 (mirror)          # plan 53 (2): THE PRIOR ORDERS the root agenda's pool: the open question with the highest score is asked next
+        graph = node._graph_order() if (AG.PRIOR or (node.ctx is not None and node.ctx.pool)) and not node.chase_depth and node._root else None      # plan 60 / 69.1 (mirror)
+        if graph is not None:
+            best, gs = graph
+            node.heap.remove(best)
+            heapq.heapify(node.heap)
+            q = best[4]
+            if plain[4] is not q:
+                node.lines.append(f"policy: Q{q.id} asked first (graph score {gs:+.2f}; the stake order would ask Q{plain[4].id})")
+                node.prior_moves += 1
+        elif (AG.PRIOR or (node.ctx is not None and node.ctx.pool)) and not node.chase_depth and QP.load() is not None:      # plan 53 (2) / 69.1 (mirror)          # plan 53 (2): THE PRIOR ORDERS the root agenda's pool: the open question with the highest score is asked next
             scored = [(QP.score(QP.features(t[4], node.board, node.us, node.chase_depth, node.status_info if node.ctx is not None and node.ctx.pool else None)), -t[0], -t[3], t) for t in node.heap]        # (it orders, it never decides: the stops stay by stakes and claims)
             best = max(scored)[3]
             node.heap.remove(best)

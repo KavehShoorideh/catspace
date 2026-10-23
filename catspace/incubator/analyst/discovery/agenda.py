@@ -47,6 +47,7 @@ from catspace.incubator.analyst.discovery import plan67 as PL
 from catspace.incubator.analyst.discovery import table as TB
 from catspace.incubator.analyst.discovery import regress as R
 from catspace.incubator.analyst.discovery import question_prior as QP
+from catspace.incubator.analyst.discovery import graph_policy as GP
 from catspace.incubator.analyst.discovery import reasoned as RS
 from catspace.incubator.analyst.discovery import selfmine as SM
 from catspace.incubator.analyst.discovery.state import Claim, State
@@ -724,7 +725,7 @@ class Agenda:
 
     def ask(self) -> None:
         if (TIERS or (TIERS_UNDER_TIME and self.ctx is not None and self.ctx.seconds is not None)) and self._root and self.ctx.tier == 0:          # plan 59 (3): the root is driven through the widening tiers (tier 0 is this agenda; wider tiers run on fresh contexts)
-            if POOL and QP.load() is not None:
+            if POOL and (GP.load() is not None or QP.load() is not None):
                 self._ask_pool()                                 # plan 69.1: one pool, the policy orders, no tier
             else:
                 self._ask_tiers()
@@ -798,8 +799,8 @@ class Agenda:
         self.ctx.tier = TIER_COUNT - 1                           # every word available (the chain items, mate-in-two threats, the delayed threat, no safe move)
         self.ctx.pool = True
         self.ctx.left = NO_FUSE                                  # no count: the time and the judge's prices are the only limits
-        m = QP.load()
-        self.lines.append(f"POOL: one pool of questions, every word available, no tier, no count fuse; the policy orders (question_prior.json: {m.get('rows', '?')} rows, {m.get('agendas', '?')} puzzles); "
+        m = QP.load() or {}
+        self.lines.append(f"POOL: one pool of questions, every word available, no tier, no count fuse; the policy orders (" + ("the graph policy over the board and the claims" if GP.load() is not None else f"question_prior.json: {m.get('rows', '?')} rows, {m.get('agendas', '?')} puzzles") + "); "
                           + f"status {self.status_info['word']} (balance {self.status_info['balance']:+d}, their threat {self.status_info['threat']}), need {self.ctx.need}")
         self._ask_once()
         secs = time.monotonic() - t0
@@ -1282,6 +1283,31 @@ class Agenda:
             self.ctx.logged = len(self.ctx.rows)
             self.ctx.rows = []
 
+    def _graph_order(self) -> "tuple | None":
+        """plan 60 / 69.1: the GRAPH POLICY scores the open questions from the board, the questions already asked (with their outcome) and the status; -> the heap entry to ask next, or
+        None (no model). It orders only."""
+        if GP.load() is None or not self.heap:
+            return None
+        asked = [q for q in self.order]
+        qs, entries = [], []
+        for q in asked:
+            qs.append(dict(goal=q.goal, stake=q.stake, depth=self.chase_depth, target=q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn"))),
+                           status=q.status if q.status in ("verified", "killed", "gap") else "gap", word=q.reason.split(":")[0] if q.reason else q.status,
+                           value=(q.claimed[0] if q.claimed is not None else 0)))
+        for t in self.heap:
+            q = t[4]
+            qs.append(dict(goal=q.goal, stake=q.stake, depth=self.chase_depth, target=q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn"))), status="open"))
+            entries.append(t)
+        left_frac = 1.0
+        if self.ctx is not None and self.ctx.seconds:
+            left_frac = max(0.0, min(1.0, ((self.ctx.final or time.monotonic()) - time.monotonic()) / self.ctx.seconds))
+        scores = GP.score_questions(self.board, self.me, qs, getattr(self, "status_info", None), left_frac)
+        if not scores:
+            return None
+        open_scores = scores[len(asked):]
+        k = max(range(len(entries)), key=lambda i: (open_scores[i], -entries[i][0]))
+        return entries[k], open_scores[k]
+
     def _ask_loop(self) -> None:
         while True:
             if not self._threats_done and not (self.best and self.best[0] >= R.STAKE_MATE) and (not self.heap or self.heap[0][4].stake < R.STAKE_MATE):
@@ -1303,7 +1329,16 @@ class Agenda:
                 self.lines.append("STOP (t): out of time")
                 return
             plain = min(self.heap, key=lambda t: (t[0], t[2], t[3]))                # the stake-only order
-            if (PRIOR or (self.ctx is not None and self.ctx.pool)) and not self.chase_depth and QP.load() is not None:          # plan 53 (2) / 69.1: THE PRIOR ORDERS the root agenda's pool: the open question with the highest score is asked next
+            graph = self._graph_order() if (PRIOR or (self.ctx is not None and self.ctx.pool)) and not self.chase_depth and self._root else None      # plan 60 / 69.1: the graph policy first (it sees the board and the claims)
+            if graph is not None:
+                best, gs = graph
+                self.heap.remove(best)
+                heapq.heapify(self.heap)
+                q = best[4]
+                if plain[4] is not q:
+                    self.lines.append(f"policy: Q{q.id} asked first (graph score {gs:+.2f}; the stake order would ask Q{plain[4].id})")
+                    self.prior_moves += 1
+            elif (PRIOR or (self.ctx is not None and self.ctx.pool)) and not self.chase_depth and QP.load() is not None:          # plan 53 (2) / 69.1: THE PRIOR ORDERS the root agenda's pool: the open question with the highest score is asked next
                 scored = [(QP.score(QP.features(t[4], self.board, self.us, self.chase_depth, self.status_info if self.ctx is not None and self.ctx.pool else None)), -t[0], -t[3], t) for t in self.heap]        # (it orders, it never decides: the stops stay by stakes and claims)
                 best = max(scored)[3]
                 self.heap.remove(best)
