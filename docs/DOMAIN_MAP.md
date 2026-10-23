@@ -2,14 +2,14 @@
 
 Per function: the chess-bound calls (python-chess `chess.*` and board methods, `G.*` graph words, `BD.*`/`PV.*` lemma families). A function with no row is generic as it stands.
 
-OBS domain map: agenda 740, regress 725, race 265, scheduler 247, plan67 101, binder 64, question_prior 38, graph_policy 37, table 35, facts 25, analyse 9, state 6
+OBS domain map: agenda 739, regress 725, race 265, plan67 101, binder 64, table 35, question_prior 28, facts 19, graph_policy 16, ponder 16, analyse 9, state 4
 
-## agenda.py -- 99 chess-bound functions, 740 calls
+## agenda.py -- 99 chess-bound functions, 739 calls
 
 | function | calls | the most frequent |
 |---|---|---|
 | `_roots` | 45 | board.piece_at 13, G.name 7, G.worth 7, board.legal_moves 2, G.with_piece 2 |
-| `_chase_route_body` | 43 | BD.MATE_VALUE 15, board.fen 9, chess.Move 3, board.push 3, board.pop 3 |
+| `_chase_route_body` | 44 | BD.MATE_VALUE 15, board.fen 9, chess.Move 3, board.push 3, board.pop 3 |
 | `_refuter_fix` | 38 | board.piece_at 7, board.push 6, board.san 6, board.copy 4, board.legal_moves 3 |
 | `_leaf_read` | 30 | board.san 5, board.fen 5, board.copy 4, board.push 4, chess.square_name 4 |
 | `_ask_promote` | 29 | G.name 7, chess.SquareSet 3, board.occupied_co 3, board.san 2, board.bishops 2 |
@@ -22,10 +22,10 @@ OBS domain map: agenda 740, regress 725, race 265, scheduler 247, plan67 101, bi
 | `_reach_roots` | 15 | G.name 8, chess.SquareSet 1, board.piece_at 1, board.king 1, board.pawns 1 |
 | `_addresses` | 15 | G.name 5, chess.Move 1, board.san 1, board.copy 1, board.push 1 |
 | `_decide_by_smallest_loss` | 14 | board.san 9, chess.square_name 2, board.is_check 1, BD.verify_tried 1, board.fen 1 |
-| `_parry_keeps` | 14 | board.san 4, board.push 2, board.fen 1, BD.MATE_VALUE 1, board.copy 1 |
 | `_targets_of` | 13 | board.piece_at 4, board.attacks 2, chess.Move 1, BD.MATE_VALUE 1, G.with_turn 1 |
 | `_line_of` | 13 | board.san 4, board.copy 2, board.push 2, chess.Move 2, BD.Binding 1 |
 | `_fixes_promote_defect` | 13 | G.name 3, board.king 2, board.san 2, chess.Move 1, chess.Board 1 |
+| `_parry_keeps` | 12 | board.san 4, board.push 2, board.fen 1, BD.MATE_VALUE 1, board.copy 1 |
 | `_aligned` | 11 | chess.QUEEN 2, chess.BB_SQUARES 2, chess.KNIGHT 1, chess.BISHOP 1, chess.ROOK 1 |
 | `_threat_roots` | 11 | G.name 4, board.piece_at 2, board.is_check 1, G.with_turn 1, BD.MATE_VALUE 1 |
 | `_step_forcing` | 11 | board.san 2, board.copy 2, board.push 2, chess.Move 2, chess.Board 1 |
@@ -168,47 +168,45 @@ OBS domain map: agenda 740, regress 725, race 265, scheduler 247, plan67 101, bi
 | `verify_tried` | 2 | chess.Move 1, chess.Board 1 |
 | `verify` | 2 | chess.Move 1, chess.Board 1 |
 
-## facts.py -- 12 chess-bound functions, 25 calls
+## facts.py -- 10 chess-bound functions, 19 calls
 
 | function | calls | the most frequent |
 |---|---|---|
-| `board_cell` | 6 | board.attackers 2, chess.Board 1, board.piece_at 1, chess.WHITE 1, chess.BLACK 1 |
-| `cell` | 5 | board.attackers 2, board.piece_at 1, chess.WHITE 1, chess.BLACK 1 |
+| `board_cell` | 4 | board.attackers 2, chess.Board 1, board.piece_at 1 |
 | `board_piece` | 3 | board.piece_at 2, chess.Board 1 |
+| `cell` | 3 | board.attackers 2, board.piece_at 1 |
 | `_retire` | 2 | board.turn 2 |
 | `advance` | 2 | chess.Board 1, board.copy 1 |
 | `piece` | 1 | board.piece_at 1 |
 | `__init__` | 1 | chess.Board 1 |
 | `_raise` | 1 | board.pop 1 |
 | `invalidate` | 1 | board.pop 1 |
-| `graph_lines` | 1 | chess.square_name 1 |
 | `_count` | 1 | board.pop 1 |
-| `walk` | 1 | chess.square_name 1 |
 
-## state.py -- 2 chess-bound functions, 6 calls
+## state.py -- 2 chess-bound functions, 4 calls
 
 | function | calls | the most frequent |
 |---|---|---|
-| `tokens` | 5 | board.fen 3, board.is_check 1, chess.Board 1 |
+| `tokens` | 3 | board.fen 3 |
 | `lines` | 1 | board.pieces 1 |
 
-## graph_policy.py -- 6 chess-bound functions, 37 calls
+## graph_policy.py -- 6 chess-bound functions, 16 calls
 
 | function | calls | the most frequent |
 |---|---|---|
-| `build` | 29 | board.attackers 5, G.worth 3, chess.SQUARES 2, board.piece_at 2, board.is_attacked_by 2 |
+| `build` | 8 | board.attackers 5, board.gives_check 1, board.is_capture 1, board.turn 1 |
 | `_examples` | 3 | board.turn 1, chess.Board 1, chess.parse_square 1 |
 | `route_examples` | 2 | chess.Board 1, board.turn 1 |
 | `load` | 1 | chess.Board 1 |
 | `score_questions` | 1 | chess.Board 1 |
 | `score_routes` | 1 | chess.Board 1 |
 
-## question_prior.py -- 4 chess-bound functions, 38 calls
+## question_prior.py -- 4 chess-bound functions, 28 calls
 
 | function | calls | the most frequent |
 |---|---|---|
 | `forcing_resources` | 17 | board.piece_at 4, chess.SquareSet 2, chess.BB_KING_ATTACKS 2, G.colour_of 1, board.king 1 |
-| `features` | 16 | board.attackers 2, chess.Board 1, G.colour_of 1, board.king 1, board.piece_at 1 |
+| `features` | 6 | board.attackers 3, G.colour_of 1, board.turn 1, board.is_capture 1 |
 | `calibrate` | 4 | chess.Board 1, chess.WHITE 1, chess.BLACK 1, chess.engine 1 |
 | `_label` | 1 | chess.parse_square 1 |
 
@@ -231,29 +229,11 @@ OBS domain map: agenda 740, regress 725, race 265, scheduler 247, plan67 101, bi
 |---|---|---|
 | `analyse` | 9 | chess.Board 2, board.turn 2, board.san 2, chess.Move 2, board.is_check 1 |
 
-## scheduler.py -- 21 chess-bound functions, 247 calls
+## ponder.py -- 3 chess-bound functions, 16 calls
 
 | function | calls | the most frequent |
 |---|---|---|
-| `chase_route_body_g` | 43 | BD.MATE_VALUE 15, board.fen 9, chess.Move 3, board.push 3, board.pop 3 |
-| `refuter_fix_g` | 38 | board.piece_at 7, board.push 6, board.san 6, board.copy 4, board.legal_moves 3 |
-| `chase_route_body_rs_g` | 34 | BD.MATE_VALUE 15, board.fen 5, board.pop 3, chess.Move 2, board.san 2 |
-| `ask_promote_g` | 29 | G.name 7, chess.SquareSet 3, board.occupied_co 3, board.san 2, board.bishops 2 |
-| `ask_stop_pawn_g` | 18 | G.name 6, G.word 3, board.san 3, board.legal_moves 1, board.king 1 |
-| `verify_g` | 17 | board.san 13, BD.MATE_VALUE 3, BD.verify_tried 1 |
-| `ask_save_king_g` | 10 | board.san 4, board.legal_moves 2, board.piece_at 2, G.name 1, G.worth 1 |
-| `ask_save_threat_g` | 10 | board.attackers 2, board.legal_moves 1, chess.Move 1, board.copy 1, board.push 1 |
-| `chase_g` | 10 | board.san 5, BD.MATE_VALUE 1, board.piece_at 1, board.pop 1, board.gives_check 1 |
-| `chase_routes_g` | 10 | board.san 8, BD.MATE_VALUE 1, board.fen 1 |
-| `ask_reach_g` | 5 | board.san 3, chess.Move 1, G.name 1 |
-| `refuter_fixes_g` | 5 | board.san 2, board.fen 1, chess.Move 1, board.is_capture 1 |
-| `ask_save_piece_g` | 4 | board.san 1, board.attackers 1, G.see 1, G.name 1 |
-| `chase_route_g` | 3 | chess.Move 1, board.san 1, board.pop 1 |
-| `inner_g` | 2 | board.pop 1, board.san 1 |
-| `submit` | 2 | board.push 2 |
-| `_finish` | 2 | board.push 1, board.pop 1 |
-| `san_of` | 2 | board.san 1, chess.Move 1 |
-| `ask_loop_g` | 1 | BD.MATE_VALUE 1 |
-| `run` | 1 | board.pop 1 |
-| `P2_of` | 1 | board.push 1 |
+| `run` | 12 | board.fen 3, board.is_check 2, board.legal_moves 1, chess.Board 1, board.turn 1 |
+| `resume_gap` | 2 | board.pop 1, chess.Move 1 |
+| `recompute_stale` | 2 | board.turn 1, board.fen 1 |
 

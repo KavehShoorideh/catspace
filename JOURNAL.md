@@ -32288,3 +32288,67 @@ Shipped OFF: the stand-in prior is blind (a bag of ~15 numbers, no board, no cla
 open and proved nothing, where the tiers prove Qa5 in 8.8 s. The pool is the right container and needs plan 60's graph agent over the board and the facts,
 trained on the item log; 69.2 (the bounded leaf estimator inside the proved interval) is written, not built. Open from the day: the second-check guard vs
 the derived support routes (4efZ2), the six slow RIGHTs' raise-to-win search, RoR8t.
+
+## 2026-10-22 20:03 PDT -- THE GRAPH POLICY DRIVES ONE QUESTION POOL (no tiers); the audit of the last two days; plan 70.1 (saves chased, keep semantics) fixes 2TUzC's false refutation
+
+Kaveh: "no tier label; a question pool, an RL agent learns what to ask"; "any ordering agent must see the board and whatever we've thought so far, all the
+claims" (GNN recommended). Built here: `graph_policy.py` (PyG heterogeneous message passing over squares, pieces, the questions asked with their outcome, the
+status, and the candidate ROUTES with their words and prices; two heads: a score per open question, a score per route). Trained from the assembled grade logs
+(968 agendas, 3848 decision points, 34 positions) and the new ITEM LOG (one row per root route; 306 (question, routes) groups after two grades). OBS, held out
+by puzzle: the deciding question ranks first 1037/3848 (the linear prior 600 on the same points, not held out); the deciding route 75/291 (the engine's own
+order 39/291). The POOL (one run, every word, no count fuse, the policy's order, the route in hand given the whole remaining share, passes with every proof
+carried) on eSJqH alone proves Qa5 in the first pass (2 of 2); the 90 at 15 s with the pool: proved RIGHT 66 / proved WRONG 1 / unproved 5 / 14 / none 4 --
+the same proved counts as the tiers (ql64_a69_pool vs a67b). POOL is ON by default (6409e5d4 .. this entry); the tiers are the no-model fallback.
+The AUDIT (Kaveh: "were the patches necessary, or did something existing solve it?"), in docs/ANALYST_PLAN.md "AUDIT 2026-10-22": one redundant patch (the
+mate-line parser, replaced by the READ SET rule: a parry touches the squares their claim read, FrameLemma.frame_unchanged; binder claims record no read set yet),
+two duplicate caches beside the fact store (66.2 carry_r, 66.4 chain_gaps), 68 superseded by the policy, the second-check guard tested OFF on 4efZ2 / zBouR /
+Wq9B1 with no change. FOUND: 2TUzC's Rxe5 falsely REFUTED by one-ply save verdicts -- save questions were never chased. Plan 70.1 (this entry's commits):
+a save question is chased with KEEP semantics (`_target` 0: a reply that leaves the balance where it stood is kept; the claim is worth the stake saved; the
+keep family stays the cheap first verdict; a keeping claim of the inner agenda parries the threats it read past; an unverified parry is a GAP, never "no
+parry"). The inner position after Rxe5 Rf5 now CLAIMS save Rxf5 (43 replies read); 2TUzC alone decides Rxe5 (a GAP cut by the judge, 10 s needed; unproved);
+eSJqH unchanged; compare_scheduler 0. Open: the binder's read set (70.2), the carries folded into the store (70.3), the pool's wall time over 15 s by the
+torch import (~2 s per process), the route head trained on 74 puzzles only (every grade adds rows).
+
+## 2026-10-22 22:24 PDT -- plan 71 in stages (the layered engine, cheap): 71.0 guard + map, 71.2 Game, 71.3 Words, 71.4 Lean Game; the two-hour "regression" was an unbounded count-budget pool
+
+Kaveh: "take stock of the architecture ... plan and implement a refactor to make it nicely layered and extensible to other domains ... keep it cheap"; "machinery
+generic; chess-specific Lean axioms; train the machinery on chess to produce chess-specific rules and lemmas"; "we might supply the base words of the vocab per domain".
+The three layers are in docs/ANALYST_PLAN.md ### 71. Built and committed so far, each stage trace-identical (scripts/trace_identity.py: 10 traces at the count
+budget, OBS 0 of 10 differ at every stage): 71.0 the guard and the boundary map (docs/DOMAIN_MAP.md: OBS domain map agenda 740, regress 725, race 265, scheduler
+247, plan67 101 chess-bound calls -- what the interfaces must take over); 71.2 `discovery/game.py` (the Game protocol: moves, apply, pass, terminal, measure, in_check,
+units, locations, attackers, the geometry and kinds for features; ChessGame the instance with chess960 its one parameter; facts.py, state.py, graph_policy.py and
+question_prior.py routed through it, 0 chess calls left in them); 71.3 (a) `discovery/words.py` (BaseWords supplied per domain -- graph.py's Lean-defined words --
+and Words, the produced vocabulary: the agenda's 40-odd calls into regress / race / plan67 / binder / table / the passer family named as one protocol; ChessWords
+delegates one line each; the agenda is routed through it next); 71.4 `lean/ideas/Ideas/Game.lean`: `structure Game (State Move)` (moves, apply, pass, measure,
+inCheck), the derived step / terminal / mated / stalemated (`terminal_iff`), `Game.Reach` (Forced.Reach with the game's step) and `Game.race_sound` (Race.race_sound
+restated with the game's own hypotheses -- nothing reproved), `chess` the instance (the kernel's legalMoves / applyMove; `chess_measure_pass`: the measure flips sign
+across the pass), and king-of-the-hill as a GOAL on the same game (`kothGoal`): a variant whose laws are chess's is the same instance; one whose goal differs is a
+predicate. Lean index rebuilt (OBS indexed 632 theorems). Open in 71: 71.1 retire the scheduler copy (one immediate path, one delayed queue), 71.2 the agenda's own
+chess calls, 71.3 (b) the agenda through Words and the regress split, 71.5 the carries into the fact store, 71.6 Chess960 end to end.
+THE TWO-HOUR GATE. The regression run guarding the 70.1 commit stood at two hours (Kaveh: "Some tests!"). Three pytest runs were stacked (two stale, from earlier
+gates) at 100 % each, and pytest's output was buffered. Run one file at a time the plan files finish in seconds (OBS: plan 70 3.4 s, 65 6.9 s, 66 2.6 s, 67 10.2 s,
+68 14.6 s, 69 14.5 s, graph_policy 2.0 s); the sink was tests/test_tiers.py: with the POOL on by default, a run WITHOUT a clock set no count fuse at all
+(`ctx.left = NO_FUSE`), so the count-budget analyse of 07Z0P was unbounded. Fixed: without a clock the pool takes the widest tier's fuse (`budget * FUSE * 2^3`); the
+plan 68 deferral test forces the tiers (deferral is the tiers' ordering rule; the pool's order is the policy's). Lesson, kept: a gate that runs longer than its
+parts is a bug in the gate, not patience owed.
+
+## 2026-10-22 23:01 PDT -- the regression files, run one at a time, found a soundness hole in 70.1 (fixed), the pool's first loss (LOOP TARGET 1), and 71.1 is done
+
+OBS (files alone, after the fixes): plan 70 3/3, 65 13/13, 66 16/16, 67 7/7, 68 4/4, 69 3/3, graph_policy 5/5, cost61 13/13, game 2/2 (the rest in the next entry).
+SOUNDNESS (0AgL8, Nxg2): with the save chase ON the route came back as a claim of +1 where it was killed before ("their Bc6+ wins 100, lemma mate_in_two, no parry"). The trace: the inner save
+question after Nxg2 Qa4 claimed Ne1 because its checking replies Ra7+ / Rb6+ / Bc6+ were read as static leaves "material +0" and kept -- in check there is no pass, so their threat (Ra8#)
+was never read, and "no threat read" was taken for "no threat". Fixed in the chase leaf: under keep semantics a balance of 0 is a static balance; an in-check static leaf the inner agenda left
+without a claim is a GAP, never a keep; and a check or capture touching nothing their mate read is a counter for the chase, never a one-ply parry. Nxg2 is killed again; 2TUzC still Rxe5 at 15 s.
+THE POOL'S SHARE: the whole share to the route in hand only while the status is LOST (eSJqH Qa5 kept, 4pC83 Nf3+ at need 0 kept); level or winning, the half.
+LOOP TARGET 1: the discovery position under the pool decides nothing at 15 s (the policy asks the quiet promote plan first; Nf6 cut by the judge) where the tiers decide Nf6 in ~9 s; a strict
+xfail names it for the loop (retrain the heads on this trace; price-ordered reading across questions is the candidate rule).
+71.1 DONE: the scheduler copy retired to discovery/archive/scheduler_plan56.py (banner), its guard and test archived, the flag and hooks gone from agenda.py; the engine has ONE immediate path
+(the chase) and ONE delayed queue (FactStore.queue drained by ponder.drain), named so in ponder.py. OBS domain map after: agenda 739, regress 725, race 265, plan67 101, binder 64, table 35, question_prior 28, facts 19, graph_policy 16, ponder 16, analyse 9, state 4.
+
+## 2026-10-22 23:23 PDT -- the 70.1 soundness fix, final form (the first form cost the fuse and was withdrawn)
+
+The first fix read their pass on EVERY balance-0 leaf under keep semantics and sent every counter to the chase: sound, and 04Qx2's Be8+ fell to the fuse ("not followed past Qg7"), W0VFO
+and pos2 lost their 10 s decisions -- diagnosed by one run each with the rule off (not a set rerun). Final form, three parts: an in-check leaf without an inner claim is a GAP; the pass read on
+0-leaves ONLY in the chase of a save against a MATE threat; a counter (check / capture off the read set) is a one-ply parry only if their mate is gone after every reply (the pass read on each),
+else the chase reads it. OBS: 0AgL8 Nxg2 killed ("their Bc6+ wins 100, no parry"), 2TUzC Rxe5, 04Qx2 Be8+ (count), the 52.17 time-budget test, pos2 / W0VFO / 4pC83 at 10 s, plan 70 3/3 --
+all pass in the same run. The final gate (every file, one at a time) and the trace identity (decisions) follow in the commit.

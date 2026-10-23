@@ -5,6 +5,9 @@ the queue of `FactStore.queue` -- the open GAP facts (routes the fuse or the clo
 listener flagged stale on the game's line (re-asked on the current board when it is our move) -- and, when the human is to move (the play server), PONDERS BY LEMMA: for each legal reply of the
 human, in the order of the chain stake of the facts that reply would disturb (the listener's flag set, `touched_stake`), our agenda is asked on the position after it, so the facts are
 fresh when the next move is asked. The only budget is the clock: `seconds`, or "the human moved" (`Ponderer.cancel`, which makes every open agenda stop at its next test of the deadline).
+
+plan 71.1 (2026-10-22): THIS IS THE ENGINE'S ONE DELAYED QUEUE. The immediate computation is the chase (agenda.py: a root asked to its end, recursion); what it cuts (the clock, the fuse, the
+judge) is a GAP fact in the store, and `FactStore.queue` + `drain` here is the delayed path that finishes it. Plan 56's task-graph copy of the chase was retired (discovery/archive).
 """
 from __future__ import annotations
 
@@ -23,6 +26,7 @@ def _scoped(ctx, end: float, stop=None):
     ctx.hit = False
     ctx.hand, ctx.abort = None, bool(stop is not None and stop())      # 52.21 (3): a new clock, a new route in hand; the human having moved finishes nothing
     ctx.deadline = ctx.final = time.monotonic() if ctx.abort else end
+    ctx.one_route = True                                               # 2026-10-22: a resumed route is finished with its whole slice (the root's breadth rule does not apply here)
     if ctx.t0 is None:
         ctx.t0 = time.monotonic()
 
@@ -108,7 +112,7 @@ class Ponderer:
         t0 = time.monotonic()
         end = t0 + (seconds if seconds else 3600.0)
         say = emit or (lambda t: None)
-        g = drain(ctx, us, max(end - t0, 0), log=lambda t: say("background: " + t), stop=lambda: self.stopped)
+        g = drain(ctx, us, max(end - t0, 0) / 2, log=lambda t: say("background: " + t), stop=lambda: self.stopped)      # 2026-10-22: the drain takes at most HALF of the slot (the hedge): the replies get the rest; the queue goes on in the next slot (70.1 reads deeper, so a resumed route may run to the slot's end)
         if g["queue"]:
             say(f"background: gap routes resumed {g['done']} of {g['queue']} queued, {g['left']} left ({g['secs']} s)")
         order = []

@@ -179,15 +179,16 @@ def test_52_19_3_a_stale_fact_is_recomputed_only_when_a_live_question_needs_it_a
 
 def test_52_19_3_the_out_of_time_gaps_of_the_live_move_enter_the_queue_and_the_drain_resumes_them_exactly_there():
     from catspace.incubator.analyst.discovery import ponder as PD
-    ag = AG.Agenda(state_of(OPEN, "w"), seconds=0.01)                 # (0.05 s no longer cuts anything after plan 54: the whole agenda runs in under it)
+    ag = AG.Agenda(state_of(OPEN, "w"), seconds=0.3)                  # (plan 68 reads the STATUS before the search, ~70 ms on this board, and the pool scores each pop: under 0.2 s no route starts and nothing is cut mid-read; 0.3 s cuts two, 2026-10-22)
     ag.ask()
     fs = ag.ctx.facts
     gaps = [f for f in fs.queue() if f.kind == "gap"]
     assert gaps and all(g.resume["timed"] and g.resume["mark"] is not None and g.resume["reply"] for g in gaps)      # the route, the reply it stopped at and the time mark
     assert [g.chain_stake for g in gaps] == sorted((g.chain_stake for g in gaps), reverse=True)
     r = PD.drain(ag.ctx, "w", 30)
-    assert r["done"] == len(gaps) and r["left"] == 0                    # every cut route was followed to its end on the other clock
+    assert r["done"] + sum(1 for g in gaps if g.superseded) == len(gaps)   # every cut route was followed to its end on the other clock (or superseded by a later fact on its key)
     assert all(g.resolved or g.superseded for g in gaps)
+    assert not any(f.id in {g.id for g in gaps} for f in fs.queue())     # none of the live move's gaps is still queued (the gaps the resumed reading itself opened may be: 70.1 reads the saves deeper)
     print(f"OBS 52.19 (3): drained {r['done']} of {r['queue']} queued gap routes in {r['secs']} s")
 
 

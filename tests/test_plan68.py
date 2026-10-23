@@ -23,9 +23,11 @@ def test_68_1_a_claim_below_the_need_keeps_no_status_and_a_kept_claim_was_releva
             assert need <= value                                        # relevant
 
 
-def test_68_2_the_stake_one_questions_are_deferred_behind_the_tiers_and_asked_last():
+def test_68_2_the_stake_one_questions_are_deferred_behind_the_tiers_and_asked_last(monkeypatch):
     """eSJqH under a time budget: the seven 'win their P (worth 1)' roots (stake 1 < need 3) are deferred in every tier; the relevant questions (mate 100, save 9,
-    win 9, win 3) are asked; the deferred pass asks the rest with the time left. The flag off asks them in every tier as before."""
+    win 9, win 3) are asked; the deferred pass asks the rest with the time left. The flag off asks them in every tier as before. (The TIERS are forced: deferral is
+    the tiers' ordering rule; in the pool, the default since 69.1, the policy orders and nothing is deferred.)"""
+    monkeypatch.setattr(AGM, "POOL", False)
     ag = Agenda(state_of(ESJQH, "w"), seconds=6)
     ag.ask()
     text = ag.trace()

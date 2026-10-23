@@ -11,7 +11,7 @@ import re
 from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODULES = ["agenda", "regress", "race", "plan67", "binder", "facts", "state", "graph_policy", "question_prior", "table", "analyse", "scheduler"]
+MODULES = ["agenda", "regress", "race", "plan67", "binder", "facts", "state", "graph_policy", "question_prior", "table", "analyse", "ponder"]
 BOARD_METHODS = {"piece_at", "attackers", "attacks", "is_attacked_by", "legal_moves", "pseudo_legal_moves", "push", "pop", "san", "parse_san", "is_check", "is_checkmate",
                  "is_stalemate", "gives_check", "is_capture", "king", "pieces", "piece_map", "fen", "turn", "copy", "occupied_co", "piece_type_at", "is_legal", "is_pseudo_legal",
                  "epd", "pawns", "rooks", "queens", "knights", "bishops", "kings"}

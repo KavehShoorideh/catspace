@@ -533,7 +533,7 @@ def test_52_14_0vsut_qxe5_is_decided_with_the_inner_static_leaf_read_and_the_par
     assert ag.ctx.static_read > 0 and ag.ctx.static_parried > 0
 
 
-def test_52_14_a_threat_is_parried_and_the_gain_kept_on_a_constructed_static_leaf():
+def test_52_14_a_threat_is_parried_and_the_gain_kept_on_a_constructed_static_leaf(monkeypatch):
     b = chess.Board(VSUT_LEAF)
     outer = AG.Agenda(State(b.fen(), "w", []), side_depth=1)
     t, cl = outer._their_pass(b.fen())
@@ -546,7 +546,12 @@ def test_52_14_a_threat_is_parried_and_the_gain_kept_on_a_constructed_static_lea
     assert inner.best is None                                                                       # the parry keeps the gain, it is not a gain of its own
     gone = AG.Agenda(State(b.fen(), "w", []), side_depth=0, chase_depth=1, ctx=outer.ctx, min_stake=BD.MATE_VALUE, their=their, keep=0)
     gone.ask()
-    assert gone.threat_qs[0][0].status == "killed" and "no parry keeps the gain" in gone.threat_qs[0][0].reason      # a gain of 0 is not kept by any parry (net 0 < 1)
+    q0 = gone.threat_qs[0][0]                                                                        # plan 70.1 (2026-10-22): the one-ply keep family fails at keep 0 (net 0 < 1) and the save is CHASED:
+    assert q0.status == "verified" and gone.best is not None and gone.best[2].what == "Rxb5" and gone.best[2].kind == "save"     # Rxb5 is a threat of mate, read to its end, a claim
+    monkeypatch.setattr(AG, "CHASE_SAVES", False)                                                    # the switch off: the keep family alone, as before 70.1
+    gone0 = AG.Agenda(State(b.fen(), "w", []), side_depth=0, chase_depth=1, ctx=outer.ctx, min_stake=BD.MATE_VALUE, their=their, keep=0)
+    gone0.ask()
+    assert gone0.threat_qs[0][0].status == "killed" and "no parry keeps the gain" in gone0.threat_qs[0][0].reason    # a gain of 0 is not kept by any one-ply parry (net 0 < 1)
 
 
 # ---- 52.15 (1): in check, the checker is a win target -----------------------------------------------------------------------------------------------
@@ -721,7 +726,8 @@ def test_52_16_the_knight_sacrifice_that_still_threatens_is_forcing_and_the_hang
     assert any("Rc6: not a threat: the R on c6 hangs" in n and "does not survive Qxc6" in n for n in notes)
 
 
-def test_52_16_the_discovery_position_decides_nf6_with_the_exchange_read():
+def test_52_16_the_discovery_position_decides_nf6_with_the_exchange_read(monkeypatch):
+    monkeypatch.setattr(AG, "POOL", False)                                   # the TIERS' reading of this position (the trace words below are theirs); the pool's is LOOP TARGET 1 (test_offbuilt64)
     ag = AG.Agenda(State(fen=DISCOVERY, us="w", pieces=[]), seconds=30)      # 2026-10-20: a reply closes by the exchange only when their agenda AFTER our capture finds nothing (kcQil);
     #                                                                          2026-10-21 (64.0 sound close: Qxa8 Bxa8 Kxf7 counts): 30 s, it decides in ~9 s; at 15 s the judge cuts it
     #                                                                          (test_64_discovery_decides_within_15_s, strict xfail until the tiers' time allocation is fixed)

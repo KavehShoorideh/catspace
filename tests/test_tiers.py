@@ -34,6 +34,13 @@ def claim(what="Kd2", value=1) -> Claim:
     return Claim(kind="win", what=what, value=value, lemma="test", line="test line", move="e1d2")
 
 
+@pytest.fixture(autouse=True)
+def _tiers_not_pool(monkeypatch):
+    """This file tests the TIERS (plan 59). Since 69.1 the POOL is the default driver under a clock and under TIERS=True at the count budget alike; the tiers are
+    the fallback. Every test here runs with the pool off."""
+    monkeypatch.setattr(AG, "POOL", False)
+
+
 def test_status_word_and_line_on_small_positions():
     st = agenda(LEVEL).status()
     assert (st["balance"], st["threat"], st["word"], st["line"]) == (0, 0, "level", 0)

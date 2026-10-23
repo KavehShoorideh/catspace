@@ -3281,6 +3281,19 @@ Checked against the code, one line each; "existing" names what was already there
 * ACCEPTANCE: 2TUzC alone: Rxe5 not refuted (a GAP or proved); the inner position after Rxe5 Rf5 claims save Rxf5; eSJqH alone still proves Qa5; compare_scheduler 0; the
   plan tests and test_regress; the full suite on the last commit. No grade of the 90 (Kaveh's protocol); the next grade reports by proof as usual.
 
+
+* 70.1 ADDENDA (2026-10-22, found by the regression files run one at a time): (a) SOUNDNESS -- 0AgL8's Nxg2 came back as a claim (+1) instead of its kill: the inner save chase read
+  Ne1's checking replies (Ra7+, Rb6+, Bc6+) as static leaves "material +0" and kept them; in check there is no pass to read their threat from (Bc6+ then Ra8#); and a one-ply parry by a
+  CHECK (Qc1+) stood against a mate in two. Fixed, in three parts, each the cheapest sound form (the first attempt -- the pass read on EVERY 0-leaf -- cost 04Qx2's Be8+ the fuse and
+  W0VFO / pos2 the clock, and was withdrawn): (1) under keep semantics an IN-CHECK leaf the inner agenda left without a claim is a GAP ("not parried YET"), never a keep; (2) in the chase of
+  a save against a MATE threat a balance-0 leaf is read with the pass like a balance-1 leaf (Qc1+ Qd1: Bc6+ still mates); (3) a COUNTER (a check or a capture touching nothing the mate read;
+  Lean `Forcing.parries`' second clause) is verified one-ply only if after it and after EVERY reply their mate no longer binds (the pass read on each), else the chase reads it. Nxg2 is
+  killed again ("their Bc6+ wins 100, no parry"); 2TUzC still Rxe5; 04Qx2 Be8+, W0VFO Qb7, 4pC83 Nf3+, pos2 not Nxf4 as before; the plan 70 tests pass. (b) THE POOL'S SHARE -- the route in
+  hand takes the root's whole share only while ONE ROUTE must be finished (`ctx.one_route`: the status is LOST -- the pass loses it: eSJqH's Qa5, 4pC83's Nf3+ at need 0 -- or a resumed gap in
+  the ponderer); level or winning, the half (the tiers' hedge: breadth decides). The ponderer's drain takes at most half its slot, the replies the rest. (c) LOOP TARGET 1 -- the discovery
+  position under the pool: the policy asks the quiet promote plan first (36 parries a route), half the clock goes to it, Nf6 is cut by the judge; the tiers decide Nf6 in ~9 s. Strict xfail in
+  tests/test_offbuilt64.py; the loop's first miss. (d) WITHOUT A CLOCK the pool takes the widest tier's count fuse (it had none: a count-budget run was unbounded; the two-hour gate).
+
 ### 71 The layered engine: a Game interface and a Words interface, chess as the instance; the duplications folded; CHEAP (Kaveh 2026-10-22: "plan and implement a refactor to make it nicely layered, extensible to other domains"; "try to keep it cheap")
 The shape the engine already has (one logic, chess interleaved): a GAME (states, the mover's moves, apply, the PASS, a measure, terminals); CLAIMS with proofs
 and READ SETS; THREAT = a claim that binds after our pass; FORCING = every reply leaves a claim binding; PARRY = a move touching the read set that un-binds;
@@ -3303,7 +3316,7 @@ machinery (defects, fixes, forcing words, endgame words, policies, estimates), t
 * 71.0 THE GUARD AND THE MAP (first commit). `scripts/trace_identity.py`: runs a fixed case set (12 ids incl. eSJqH, 2TUzC, 07Z0P, 4pC83, 0LRTF, the discovery
   position, pos2, RoR8t) at the COUNT budget (deterministic) and diffs the full traces before / after a stage: identical or the stage is wrong. The boundary
   map: a script listing, per function of agenda / regress / race / plan67, the chess calls it makes (the lines each stage moves) -> docs/DOMAIN_MAP.md.
-* 71.1 RETIRE THE COPY. `SCHEDULER` is False by default and the pool / policy run on the recursive path; scheduler.py (1571 lines, every chase change made
+* 71.1 RETIRE THE COPY. `SCHEDULER` is False by default and the pool / policy run on the recursive path; scheduler.py (1571 lines, every chase change made BUILT 2026-10-22: scheduler.py -> discovery/archive/scheduler_plan56.py (banner), compare_scheduler.py and its test archived, the SCHEDULER flag and the two hooks gone from agenda.py; the immediate path is the chase, the delayed queue is FactStore.queue + ponder.drain (named so in ponder.py).
   twice) is frozen: no further mirroring, compare_scheduler kept only as a one-time check that the last mirrored state still agrees; the file moves to
   `discovery/archive/` with a banner, the `--scheduler` path raises "retired". (The task graph for a future parallel chase is re-derived from the layered
   chase when needed, not maintained by hand.) Saves half of every later stage.
@@ -3316,7 +3329,7 @@ machinery (defects, fixes, forcing words, endgame words, policies, estimates), t
   mate / win / save roots), `defects(q, s)`, `fixes(defect, q, s)`, `forcing_why(s, m, stake)`, `threat_of`, `parries`, `leaf_rules(s, ...)` (the rule
   closes: the exchange, mate in one, stalemate, the table), `families` (the binder's lemma families and their Lean names), `endgame` (race, deny, plan).
   `ChessWords` = regress.py + race.py + plan67.py + the binder's families, moved, not rewritten. The agenda imports `Words`, never `chess`.
-* 71.4 THE LEAN SIDE. `Ideas/Game.lean`: a structure (State, Move, moves, apply, turn, pass, measure, terminal) and the generic theorems restated over it
+* 71.4 THE LEAN SIDE. `Ideas/Game.lean`: a structure (State, Move, moves, apply, turn, pass, measure, terminal) and the generic theorems restated over it BUILT 2026-10-22: `Ideas/Game.lean` -- `Game.step/terminal/mated/stalemated`, `Game.Reach`, `Game.race_sound` restated; `chess` the instance; `kothGoal` the king-of-the-hill goal on the same game.
   where they are not yet abstract (claim_mono, routeLow_mono, frame_unchanged's statement, the AND-OR propagation); race_sound / far_stays_off / plan_sound
   are abstract already and are cited. Chess = the instance (ChessLean). No proof is redone; theorems are moved or aliased. LEAN_INDEX rebuilt.
 * 71.5 THE CONSOLIDATIONS (from the audit, each its own commit, trace-identical or explained): 66.2 carry_r/proofs and 66.4 chain_gaps folded into the

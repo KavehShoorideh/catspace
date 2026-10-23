@@ -23,3 +23,18 @@ def test_71_2_chess_is_an_instance_of_the_game_protocol_and_its_axioms_read_righ
     mate = chess.Board("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1"); mate.push_san("Ra8#")
     assert g.terminal(mate) == "mate"
     assert g.loc_name(chess.E4) == "e4" and len(list(g.locations())) == 64
+
+
+def test_71_4_the_lean_game_structure_states_the_axioms_and_restates_reach_and_the_race():
+    """plan 71.4: `lean/ideas/Ideas/Game.lean` -- `structure Game` (moves, apply, pass, measure, inCheck), the derived step / terminal / mated / stalemated, `Game.Reach`
+    (Forced.Reach with the game's step) and `Game.race_sound` (Race.race_sound restated with the game's hypotheses); `chess` the instance; `kothGoal` a variant by its goal."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[1]
+    src = (root / "lean" / "ideas" / "Ideas" / "Game.lean").read_text()
+    for name in ("structure Game (State Move : Type) where", "def step", "def terminal", "def mated", "def stalemated", "theorem terminal_iff", "def Reach",
+                 "theorem race_sound", "def chess : Game Position Chess.Move where", "theorem chess_measure_pass", "def kothGoal"):
+        assert name in src, name
+    assert "sorry" not in src
+    assert "import Ideas.Game" in (root / "lean" / "ideas" / "Ideas.lean").read_text()
+    idx = (root / "docs" / "LEAN_INDEX.md").read_text()
+    assert "Ideas.Game.Game.race_sound" in idx and "Ideas.Game.Game.terminal_iff" in idx

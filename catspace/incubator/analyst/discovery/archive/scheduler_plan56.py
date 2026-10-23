@@ -1,3 +1,10 @@
+"""RETIRED 2026-10-22 (plan 71.1, Kaveh: "one working version; a copy can be retired"). This was plan 56 (1): the recursive chase of agenda.py re-expressed as a task graph on a
+priority queue, kept as a LINE-FOR-LINE COPY of agenda.py's bodies and guarded by scripts/compare_scheduler.py (0 differences at every commit since 2026-10-20). Every change to the
+agenda had to be mirrored here (plan 70.1 alone touched four sites). The engine keeps ONE immediate path (the chase: agenda.py, recursion) and ONE delayed queue (the fact store's
+GAP queue, `FactStore.queue`, drained by `ponder.drain` between moves). Stage 2 of plan 56 (urgency, re-prioritisation, workers) was never built; if it is, it is built on the
+one path, not as a copy. This file is not imported anywhere; it is kept for the record (the design is in its docstring below)."""
+
+# ---- the original file follows (not imported) ----
 """PLAN 56 (1) THE QUESTION SCHEDULER: the chase as an explicit TASK GRAPH on a priority queue, run by ONE worker loop in ONE process -- not a recursion.
 
 The recursive chase of agenda.py (kept, reachable with `agenda.SCHEDULER = False`, the default) asks a root to its end: its routes, every reply, the inner agenda on each unclosed reply,
@@ -666,13 +673,13 @@ def verify_g(node, q: R.Question, routes: list, mates_only: bool) -> None:
 def chase_g(node, q: R.Question) -> bool:
     """52.12: the chase of a question that would be killed. -> True when a route CLAIMS (the question is verified)."""
     evading = node._t(AG.EVASION_CHASE, 3) and q.goal == "save" and "checkers" in q.pattern          # 52.23 (3): the save-king question of an agenda in check: its routes are the evasions, all forced (`_verify` calls the chase too: the switch is read HERE)
-    if node.ctx is None or (q.goal not in ("mate", "win", "promote") and not evading) or node.min_stake >= BD.MATE_VALUE or (node.chase_depth >= 2 and (q.goal == "promote" or (q.goal == "win" and not node._t(AG.DEEP_WIN_CHASE, 3)))):      # a mate-only read (the reply already gained, or lost too much for anything but a mate) does not chase on
+    if node.ctx is None or (q.goal not in ("mate", "win", "promote") and not evading and not (AG.CHASE_SAVES and q.goal == "save" and node.chase_depth <= 1)) or (node.min_stake >= BD.MATE_VALUE and not node._keep_goal(q)) or (node.chase_depth >= 2 and (q.goal == "promote" or (q.goal == "win" and not node._t(AG.DEEP_WIN_CHASE, 3)))):      # a mate-only read (the reply already gained, or lost too much for anything but a mate) does not chase on
         return False                                               # 52.23 (5): a win question chases at every depth; its checks must address a defect (52.17 (2)) -- the depth-two gate was a numbered limit
     if node.chase_depth and node.since_capture >= node._clock() and not evading and node.since_capture >= node._clock() + node._extension():      # (66.4 mirror)      # 52.23 (8): the chase clock -- a capture that is not bad for us is one-way progress (material never comes back); without one for
         node.ctx.clock_stops += 1                                   # CHASE_CLOCK of our moves the chain goes nowhere and ends here (a hyperparameter to tune, Kaveh 2026-10-20)
         node._chain_gap(q, f"the chase clock: {node.since_capture} moves of ours without a capture that is not bad for us")      # 64.1: a hyperparameter's stop is a GAP, never a kill
         return False
-    if evading and node.evaded and node.evaded > node._extension():      # (66.4 mirror)                                    # 52.23 (3) / 64.1 (mirror of agenda._chase): a second check of theirs is a GAP, never a kill
+    if AG.SECOND_CHECK_STOP and evading and node.evaded and node.evaded > node._extension():      # (66.4 mirror; the audit switch)                                    # 52.23 (3) / 64.1 (mirror of agenda._chase): a second check of theirs is a GAP, never a kill
         node._chain_gap(q, "a second check of theirs in a row (not followed)")
         return False
     if node.best is not None and node.best[0] >= q.stake:      # 52.13 (2c): a question is chased only when its stake exceeds the best claim so far (stop (a) would end the agenda anyway)
@@ -835,7 +842,7 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
             node.state.gaps.append(f"Q{q.id} {q.text}: {res['gap']}")
         elif res["killed"]:
             node.lines.append(f"    {r.san}: killed -- {res['killed']}")
-        elif res["value"] >= 1:
+        elif res["value"] >= (0 if node._keep_goal(q) else 1):      # 70.1: a save route KEEPS (every reply leaves the balance where it stood)
             node.lines.append(f"    {r.san}: " + " / ".join(res["parts"][:6]) + (f" / ... {len(res['parts'])} replies" if len(res["parts"]) > 6 else "") + f" => value {res['value']}")
             done.append((res["value"], r, res))
         else:
@@ -867,6 +874,8 @@ def chase_routes_g(node, q: R.Question, routes: list, cut: bool, done: list, rou
     node._carried_route = res.get("carried", 0)              # plan 66.2 (mirror of agenda._chase_routes)
     net = value
     kind = "mate" if value >= BD.MATE_VALUE else ("promote" if q.goal == "promote" and not res.get("material") else "save" if q.goal == "save" else "win")
+    if kind == "save" and value < q.stake and node._keep_goal(q):
+        net = value = q.stake                                     # 70.1: the route KEPT the balance on every reply: what it saved is the stake (the piece's value), as the keep family's claims say
     if AG.CYCLE and kind != "mate" and any("repetition" in x for x in res["lemmas"]) and value <= -(AC.Pos(node.board.fen()).balance(node.me) - 64):
         kind = "draw"                                        # plan 61 C4 (mirror of agenda._chase_routes)
     parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")
@@ -1032,7 +1041,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
         if cheap:                                            # the reply needs an inner agenda: the route stays open for the second pass
             res["pending"] = True
             break                                            # (the replies after it stay for the second pass: reading them all by rule cost 20x their agendas)
-        target = max(1, node.min_stake) if node._t(AG.NEED_PROPAGATION, 3) else 1      # 52.23 (7): THE NEED PROPAGATES -- the route must reach what this agenda serves (its min_stake), not 1 (zBouR: Qh1+ Rf1 read to 5 when 6 was needed)
+        target = node._target()      # 52.23 (7) / 70.1: THE NEED PROPAGATES -- the route must reach what this agenda serves (its min_stake), not 1 (zBouR: Qh1+ Rf1 read to 5 when 6 was needed)
         need = min(R.STAKE_PROMOTE, 1 - dbal) if promote and dbal <= 0 else R.STAKE_PROMOTE if promote else target - dbal if dbal < target else BD.MATE_VALUE          # a reply that already gains the need is read for a mate only; else its static gain must survive their threats (below)
         node._enter_reply(frozenset(P0.diff(P2)))
         node._reply_san = san_r
@@ -1097,15 +1106,27 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
                     node._log(key, uci, "gap", dbal, None, None, res["gap"])
                     break
                 inn = dict(inn, cut=inn.get("cut") or inn2.get("cut"), chain=inn.get("chain") or inn2.get("chain"))
-                held = [(cl, pc) for cl, pc in inn2["threats"] if pc is not None]
-                lost = [cl for cl, pc in inn2["threats"] if pc is None]
+                held = [(cl, pc) for cl, pc, _st in inn2["threats"] if pc is not None]
+                lost = [cl for cl, pc, st in inn2["threats"] if pc is None and st == "killed"]           # (mirror of agenda: a parry PROVED absent)
+                unsure = [cl for cl, pc, st in inn2["threats"] if pc is None and st != "killed"]        # the save question cut or open: a GAP, never a kill
                 unparried = sum(cl.value for cl in lost)
                 parry_note = "; ".join(f"their {cl.what} wins {cl.value} if we pass; parry: {pc.what} (lemma {pc.lemma}) keeps {pc.value:+d}" for cl, pc in held)
+                if (lost or unsure) and inn2.get("claim") is not None and inn2["claim"].kind in ("save", "win") and inn2["value"] >= 0:      # 70.1: a claim of ours that KEEPS the balance (every reply of theirs read, the threat's move among them) parries what it read past
+                    parry_note = (parry_note + "; " if parry_note else "") + f"our claim {inn2['claim'].what} ({inn2['claim'].lemma}) keeps {inn2['value']:+d} against every reply, their threats among them"
+                    held = held + [(cl, inn2["claim"]) for cl in lost + unsure]
+                    lost, unsure = [], []
                 if lost:
                     ctx.static_unparried += 1
                 else:
                     ctx.static_parried += 1
                 node._static_line(san, san_r, dbal, claim_their, parry_note, lost)
+                if unsure and dbal - unparried - sum(cl.value for cl in unsure) < 1:
+                    worst = max(unsure, key=lambda cl: cl.value)
+                    res["gap"] = f"after {san_r}: {dbal:+d} stands only as a balance and their {worst.what} (wins {worst.value}, lemma {worst.lemma}) is not parried YET: the save question was cut, not killed"
+                    res["reply"] = uci
+                    ctx.budget_hits += 1
+                    node._log(key, uci, "gap", dbal, None, None, res["gap"])
+                    break
                 if dbal - unparried < 1:
                     worst = max(lost, key=lambda cl: cl.value) if lost else claim_their
                     res["killed"] = f"after {san_r}: {dbal:+d} stands only as a balance, their {worst.what} wins {worst.value} (lemma {worst.lemma}), no parry"
@@ -1114,7 +1135,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
                 claim_their = None
             else:
                 unparried = t_their
-        if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and (inn.get("cut") or inn.get("chain")):
+        if dbal + inn["value"] < target and inn["value"] < BD.MATE_VALUE and (inn.get("cut") or inn.get("chain")):
             res["gap"] = node._cut(san, san_r, True, inn)
             res["reply"] = uci
             node._mark_chain(res)
@@ -1122,7 +1143,7 @@ def chase_route_body_g(node, m: chess.Move, promote: bool = False, cheap: bool =
             ctx.budget_hits += 1 if inn.get("cut") else 0
             node._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
             break
-        if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE:
+        if dbal + inn["value"] < target and inn["value"] < BD.MATE_VALUE:
             res["killed"] = f"after {san_r}: " + (f"our best claim {inn['claim'].what} wins {inn['value']}, the reply took {-dbal}" if inn["claim"] else "no claim of ours and no material gain") + f" ({dbal:+d})"
             if inn["claim"] is None and not inn.get("cut") and not inn.get("chain"):          # a standing kill: the later routes' same reply is skipped while the reads stay untouched (with the need it was made for)
                 ctx.reply_kills.setdefault(uci, []).append((P2, dbal, inn.get("reads"), san, node._target()))
@@ -1349,15 +1370,27 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
                     node._log(key, uci, "gap", dbal, None, None, res["gap"])
                     break
                 inn = dict(inn, cut=inn.get("cut") or inn2.get("cut"), chain=inn.get("chain") or inn2.get("chain"))
-                held = [(cl, pc) for cl, pc in inn2["threats"] if pc is not None]
-                lost = [cl for cl, pc in inn2["threats"] if pc is None]
+                held = [(cl, pc) for cl, pc, _st in inn2["threats"] if pc is not None]
+                lost = [cl for cl, pc, st in inn2["threats"] if pc is None and st == "killed"]           # (mirror of agenda: a parry PROVED absent)
+                unsure = [cl for cl, pc, st in inn2["threats"] if pc is None and st != "killed"]        # the save question cut or open: a GAP, never a kill
                 unparried = sum(cl.value for cl in lost)
                 parry_note = "; ".join(f"their {cl.what} wins {cl.value} if we pass; parry: {pc.what} (lemma {pc.lemma}) keeps {pc.value:+d}" for cl, pc in held)
+                if (lost or unsure) and inn2.get("claim") is not None and inn2["claim"].kind in ("save", "win") and inn2["value"] >= 0:      # 70.1: a claim of ours that KEEPS the balance (every reply of theirs read, the threat's move among them) parries what it read past
+                    parry_note = (parry_note + "; " if parry_note else "") + f"our claim {inn2['claim'].what} ({inn2['claim'].lemma}) keeps {inn2['value']:+d} against every reply, their threats among them"
+                    held = held + [(cl, inn2["claim"]) for cl in lost + unsure]
+                    lost, unsure = [], []
                 if lost:
                     ctx.static_unparried += 1
                 else:
                     ctx.static_parried += 1
                 node._static_line(san, san_r, dbal, claim_their, parry_note, lost)
+                if unsure and dbal - unparried - sum(cl.value for cl in unsure) < 1:
+                    worst = max(unsure, key=lambda cl: cl.value)
+                    res["gap"] = f"after {san_r}: {dbal:+d} stands only as a balance and their {worst.what} (wins {worst.value}, lemma {worst.lemma}) is not parried YET: the save question was cut, not killed"
+                    res["reply"] = uci
+                    ctx.budget_hits += 1
+                    node._log(key, uci, "gap", dbal, None, None, res["gap"])
+                    break
                 if dbal - unparried < 1:
                     worst = max(lost, key=lambda cl: cl.value) if lost else claim_their
                     res["killed"] = f"after {san_r}: {dbal:+d} stands only as a balance, their {worst.what} wins {worst.value} (lemma {worst.lemma}), no parry"
@@ -1366,7 +1399,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
                 claim_their = None
             else:
                 unparried = t_their
-        if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE and (inn.get("cut") or inn.get("chain")):
+        if dbal + inn["value"] < target and inn["value"] < BD.MATE_VALUE and (inn.get("cut") or inn.get("chain")):
             res["gap"] = node._cut(san, san_r, True, inn)
             res["reply"] = uci
             node._mark_chain(res)
@@ -1374,7 +1407,7 @@ def chase_route_body_rs_g(node, m: chess.Move, promote: bool = False, cheap: boo
             ctx.budget_hits += 1 if inn.get("cut") else 0
             node._log(key, uci, "gap", dbal, inn["value"], None, res["gap"])
             break
-        if dbal + inn["value"] < 1 and inn["value"] < BD.MATE_VALUE:
+        if dbal + inn["value"] < target and inn["value"] < BD.MATE_VALUE:
             res["killed"] = f"after {san_r}: " + (f"our best claim {inn['claim'].what} wins {inn['value']}, the reply took {-dbal}" if inn["claim"] else "no claim of ours and no material gain") + f" ({dbal:+d})"
             if inn["claim"] is None and not inn.get("cut") and not inn.get("chain"):          # a standing kill: the later routes' same reply is skipped while the reads stay untouched (with the need it was made for)
                 ctx.reply_kills.setdefault(uci, []).append((P2, dbal, inn.get("reads"), san, node._target()))
@@ -1426,7 +1459,7 @@ def inner_g(node, fen: str, need: int, diff: "frozenset | None" = None, their: "
             cyc = node._cycle_claim(fen, pk, need)           # plan 61 C4 (mirror of agenda._inner)
             if cyc is not None:
                 return cyc
-        return dict(value=0, claim=None, asked=0, need=need, threats=[(cl, None) for cl in their.state.claims] if wt else [])     # a cycle parries nothing
+        return dict(value=0, claim=None, asked=0, need=need, threats=[(cl, None, "killed") for cl in their.state.claims] if wt else [])     # a cycle parries nothing
     if ctx.left <= 0 or node.chase_depth >= AG.DEPTH_FUSE or (ctx.out_of_time() and not ctx.finishing(ctx.route_depth)):      # 52.21 (3): only the route in hand opens an agenda past the deadline
         if ctx.left > 0:
             ctx.depth_cuts += 1
@@ -1448,7 +1481,7 @@ def inner_g(node, fen: str, need: int, diff: "frozenset | None" = None, their: "
     ctx.asked += ag.asked
     best = ag.best[2] if ag.best and ag.best[0] > 0 else None
     reads = None if any(q.reads is None for q in ag.all) else frozenset().union(*(q.reads for q in ag.all))     # 52.13 (4): everything this agenda read (None: some question did not record it)
-    threats = [(cl, q.claimed[1] if q.status == "verified" and q.claimed is not None else None) for q, cl in ag.threat_qs]
+    threats = [(cl, q.claimed[1] if q.status == "verified" and q.claimed is not None else None, q.status) for q, cl in ag.threat_qs]      # (2026-10-22, 2TUzC: the save question's STATUS too -- an unverified parry is not "no parry" unless the save question was KILLED)
     out = dict(value=ag.best[0] if best else 0, claim=best, asked=ag.asked, need=need, cut=ctx.budget_hits > hits0, chain=ctx.chain_hits > chain0, reads=reads, threats=threats,
                promote=next((c for c in ag.state.claims if c.kind == "promote"), None))      # 52.15 (2): the promote claim of this position, whether or not it is the best claim
     cfid = ag.claim_fid.get(id(best)) if best is not None else None

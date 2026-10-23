@@ -11,12 +11,14 @@ from catspace.incubator.analyst.discovery.state import state_of
 ESJQH = "8/1Rb3kp/p2q2p1/2p1pp2/pQ6/1bP4P/1P3PPK/8 w - - 0 35"
 
 
-def test_69_1_the_pool_is_off_by_default_and_runs_as_one_pool_when_on(monkeypatch):
-    assert AGM.POOL is False
+def test_69_1_the_pool_is_on_by_default_and_the_tiers_are_the_fallback(monkeypatch):
+    assert AGM.POOL is True
+    monkeypatch.setattr(AGM, "POOL", False)
     ag = Agenda(state_of(ESJQH, "w"), seconds=4)
     ag.ask()
-    assert "POOL:" not in ag.trace() and ag.tier_info and ag.tier_info[0]["tier"] == 0           # the tiers (the fallback) ran
-    if QP.load() is None:
+    assert "POOL:" not in ag.trace() and ag.tier_info and ag.tier_info[0]["tier"] == 0           # the tiers (the fallback) run with the pool off
+    from catspace.incubator.analyst.discovery import graph_policy as GP
+    if QP.load() is None and GP.load() is None:
         return
     monkeypatch.setattr(AGM, "POOL", True)
     ag2 = Agenda(state_of(ESJQH, "w"), seconds=4)
