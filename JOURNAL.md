@@ -32506,3 +32506,13 @@ OBS guard (scripts/trace_identity.py, a snapshot runner on this worktree, before
 OBS gate (one file per call): test_tiers 14 passed, 0 failed (64.9 s) [59.4 passes]; test_offbuilt64 14 passed, 1 failed, 1 xfailed (104.0 s) [64_discovery_decides_within_15_s passes; W0VFO fails]; test_plan72 6 passed; test_plan72_8 8 passed; test_plan72_3 7 passed (3 new: the job-scoped reach equals the whole map's best, the geometry check never rejects a unit that can bear, no join in an inner agenda); test_regress 87 passed, 1 failed (330.9 s).
 OBS W0VFO alone at 10 s, three runs: Qb7 9.0-10.8 s, Qb7, then no decision (10.7 s, judge cut 154 of 156 routes). Profile of W0VFO: 8 s of 13 in `mate2_threat` / `bind_mate2` (127514 `premise_truth` calls) and 3 s in `graph_policy.load` (31 loads); the 72 words are under 0.5 s. Marginal at the unchanged engine too; not forced.
 OPEN, for the owner: tests/test_regress.py::test_52_18_the_discovery_position_names_the_discovery_and_the_x_ray_fix_is_offered_on_a_win_defect runs the discovery position under the POOL at 30 s and asserts the decision is Nf6 or Nd6; neither is proved at 30 s. OBS main: Nd6 unproved (542 agendas); this branch: Nc5 unproved (816 agendas, repeated); with the joins restored in the inner agendas and cuts 2-7: Nd6 unproved. The decision at the deadline is an unproved fallback that flips with the speed of the run; I did not change the test.
+
+## 2026-10-23 16:35 PDT -- main at 4c31cc69: the cost of the joins scoped (joins at the root only); the engine gate
+
+OBS gate engine (main 4c31cc69, machine quiet): files 28, passed 392, failed 2, xfailed 2, wall 764.1 s. The two failures are both LOOP TARGET 1 (plan 72.9): test_offbuilt64 64.2 W0VFO at 10 s
+(the judge's rate and share; Qb7 proved in 9.0-10.8 s in three runs of the cost agent, cut in one) and test_regress 52.18 (the discovery position under the pool at 30 s: NEITHER Nf6 nor Nd6 is
+proved; the assertion rests on the unproved fallback, which flipped from Nd6 to Nc5 when the engine got faster). Kaveh decides whether 52.18 becomes a strict xfail naming 72.9.
+The cost agent's attribution (discovery under the tiers at 15 s, each flag off in turn, diagnostic only): every flag 15.3-15.4 s unproved except JOIN_FIXES off 10.4 s proved; the hot path
+`joins_of` 5.15 s over 496 calls in inner agendas for a candidate nothing in the chase reads. Cut: joins asked at the ROOT agenda only, plus six scopings of the roll (one unit's moves, the static
+attack check before the exchange, job-scoped landings, bearing-in-principle geometry, the counter-plan roll skipped when the stake clears the price by more than our dearest unit, memoised
+counter_value). After: Nf6 proved in 10.3 s (three runs); the guard's 10 decisions unchanged.
