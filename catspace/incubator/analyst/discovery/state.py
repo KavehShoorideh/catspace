@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 
 import chess
 
+from catspace.incubator.analyst.discovery import game as GM
+
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import remember as RM
 
@@ -43,7 +45,7 @@ class State:
         """remember.py's signature (piece tokens, no squares; the threat token) -- the same object the memory store indexes."""
         thr = None
         if threat:
-            thr = RM.threat_token(self.fen, self.us, check=chess.Board(self.fen).is_check())
+            thr = RM.threat_token(self.fen, self.us, check=GM.CHESS.in_check(GM.CHESS.from_key(self.fen)))
         return RM.signature(RM.piece_tokens(self.fen, self.us), (), thr)
 
     def lines(self) -> list:

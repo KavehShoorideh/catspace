@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 
 import chess
 
+from catspace.incubator.analyst.discovery import game as GM
+
 
 @dataclass
 class Fact:
@@ -91,7 +93,7 @@ def board_cell(board: chess.Board):
         c = memo.get(s)
         if c is None:
             p = board.piece_at(s)
-            c = memo[s] = (s, p.symbol() if p is not None else "", len(board.attackers(chess.WHITE, s)), len(board.attackers(chess.BLACK, s)))
+            c = memo[s] = (s, p.symbol() if p is not None else "", len(GM.CHESS.attackers(board, GM.WHITE, s)), len(GM.CHESS.attackers(board, GM.BLACK, s)))
         return c
     return cell
 
@@ -270,7 +272,7 @@ class FactStore:
             if len(seen) >= limit:
                 return
             seen.add(i)
-            names = ", ".join(chess.square_name(s) for s in sorted(f.reads))
+            names = ", ".join(GM.CHESS.loc_name(s) for s in sorted(f.reads))
             out.append(f"{pad}#{i} {f.kind} {f.text} [value {f.value}, stake {f.stake}, chain stake {f.chain_stake}, {f.under}" + (", stale" if i in self.stale else "") + "] "
                        + (f"reads {{{names}}}" if f.reads else "reads: this whole position (a positional fact: the agenda there)"))
             for j in f.just:
