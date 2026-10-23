@@ -32461,3 +32461,10 @@ fuse or `_count`. They are inputs for the policy / the 72.5 survey, not routes. 
 OBS trace guard (a snapshot script that imports the worktree, join and survey lines filtered): 0 other differing lines and the same DECISION on 10 of 10; join lines 0-29 per trace.
 OBS gate tests/test_regress.py: passed 88, failed 0. OBS tests/test_plan72.py: 6 passed. OBS tests/test_plan72_3.py: 4 passed.
 OBS tests/test_tiers.py: 13 passed, 1 failed (test_59_4 raised-line at seconds=1.0); with JOIN_FIXES False the same case gives raised None too (4 runs, join lines 0 in this case) -- not the joins.
+
+## 2026-10-23 14:16 PDT -- main at 697fec9e: 72.3 (joins as candidates, not fixes), 72.5 (the survey), 72.6 (gate.py), 72.7 (RUST_BOUNDARY.md) merged; the engine gate
+
+OBS gate engine (main 697fec9e, one file at a time under the lock, while the 72.8 agent ran its own snapshots): files 28, passed 390, failed 3, xfailed 2, wall 902.5 s. The three failures are timed
+cases at the margin: test_tiers 59.4 (1.0 s), test_offbuilt64 64.2 W0VFO (10 s; failing at this morning's HEAD under load as well), test_offbuilt64 64_discovery (15 s; passed at 15.3 s this
+morning). To be rerun once the machine is quiet; if they hold, the root's start-up cost (the survey lines, the lazy join candidates) is to be profiled and scoped, never flagged off.
+Branches merged by fast-forward or two-sided keeps of appended sections (JOURNAL, the end of regress.py). Agents: Sonnet for 72.3 / 72.5 / 72.6 / 72.7, Opus for 72.8 (running).
