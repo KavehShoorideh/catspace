@@ -1790,7 +1790,7 @@ class Agenda:
             for f in q.fixes:
                 self._trace_fix(f, 1)
             if not W.tempo_ok(q):
-                self._trace_joins(q, R.joins_of(q, b, us))
+                self._trace_joins(q, self._joins(q, b, us))
                 if self._chase(q):
                     return
                 self._kill(q, q.reason, tempo=True)
@@ -1798,6 +1798,13 @@ class Agenda:
             self.lines.append(f"  tempo: {len(q.defects)} defect(s), each has a forcing fix")
             routes = self._merge_routes(q)
         self._verify(q, routes, mates_only=q.goal == "mate")
+
+    def _joins(self, q: R.Question, b: chess.Board, us, k: int | None = None) -> list:
+        """plan 72.3: the join questions of `q`, asked where the quiet plan can be PLAYED: at the root agenda, the position the decision is about. An inner agenda reads a forcing line (our forcing move,
+        their reply) and the chase never reads a quiet plan, so a join there would be a candidate nobody consumes -- asked once per root question, not once per inner agenda of every chase."""
+        if self.chase_depth or self.ctx is None or not self.side_depth:
+            return []
+        return R.joins_of(q, b, us, k=k)
 
     def _trace_joins(self, q: R.Question, joins: list) -> None:
         """plan 72.3: the join questions of `q` (QUIET plans: candidates and the stake rule's refusals, never routes of the chase)."""
@@ -4110,7 +4117,7 @@ class Agenda:
                 reason = "stopped: " + "; ".join(d.why for d in stop)
             else:
                 reason = "tempo: " + "; ".join(f"{d.kind} {GAME.loc_name(d.sq)}: {d.why}" for d in q.defects)
-            self._trace_joins(q, R.joins_of(q, b, self.us, k=max(1, n)))
+            self._trace_joins(q, self._joins(q, b, self.us, k=max(1, n)))
             if self._chase(q):                                   # 52.15 (2): a promotion that the defects stop is chased: make them move, ask the promote root again on each reply
                 return
             self._kill(q, reason, tempo=True)

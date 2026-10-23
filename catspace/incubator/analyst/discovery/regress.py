@@ -1826,15 +1826,17 @@ def is_passer(board: chess.Board, sq: int) -> bool:
     return True
 
 
-def reach_map(board: chess.Board, sq: int, k: int = REACH_K) -> dict:
+def reach_map(board: chess.Board, sq: int, k: int = REACH_K, job: "tuple | None" = None) -> dict:
     """plan 72.1 THE ROLL FORWARD OF ONE UNIT: every landing the unit on `sq` (either colour) can reach within `k` of ITS OWNER'S moves, the other side's QUIET moves passed and
     its PAYING CAPTURES assumed -- a landing before the last must be SAFE by the exchange (`landsSafe`; an unsafe one ends the roll: the unit is taken there), the last may be PRICED
     (what the other side wins by the exchange there). -> {landing: dict(material, tempi, path [UCI], board)} with the cheapest entry by (material, tempi) per landing; the board is the one
-    after the landing (the other side to move: what the unit bears on there is read from it). Memoised by position (cleared with the other caches)."""
+    after the landing (the other side to move: what the unit bears on there is read from it). Memoised by position (cleared with the other caches).
+    `job` = (target, bearing): the caller reads only the landings that DO the job (bear on / land on the target), so a landing on the roll's LAST step that does not is neither priced nor kept -- the
+    exchange is read where an answer can come from (the last step is the widest, and every landing there paid a priced read for nothing). The earlier steps are kept: they lead on."""
     pc = board.piece_at(sq)
     if pc is None:
         return {}
-    key = ("rmap", board.board_fen(), sq, k)
+    key = ("rmap", board.board_fen(), sq, k, job)
     hit = _REACH.get(key)
     if hit is not None:
         return hit
@@ -1846,12 +1848,15 @@ def reach_map(board: chess.Board, sq: int, k: int = REACH_K) -> dict:
     for depth in range(1, k + 1):
         nxt = []
         for b, path, at, taken in frontier:
-            for m in b.legal_moves:
-                if m.from_square != at or b.is_castling(m) or b.is_capture(m) or (m.promotion is not None and m.promotion != chess.QUEEN):
+            for m in b.generate_legal_moves(from_mask=chess.BB_SQUARES[at]):      # the ONE unit's moves (the roll reads nothing of the other pieces' moves: generating all of them and filtering was the word's whole cost)
+                if b.is_castling(m) or b.is_capture(m) or (m.promotion is not None and m.promotion != chess.QUEEN):
                     continue                                                 # QUIET moves only: against a pass a capture is nonsense (the bishop "stopped" I7k2H's c-pawn by eating it); a capture is a one-move word or the chase's
                 a = b.copy(stack=False)
                 a.push(m)
-                price = 0 if pc.piece_type == chess.KING else G.see_for(a, m.to_square, not own)      # what they win by capturing on the landing (a king lands only where it is legal)
+                if job is not None and depth == k and not ((job[0] in a.attacks(m.to_square)) if job[1] else m.to_square == job[0]):
+                    continue                                                 # (the last step, not the job: nobody reads it)
+                # what they win by capturing on the landing (a king lands only where it is legal). A landing none of theirs attacks has no capture to exchange (the static read first: the priced exchange only where there is one)
+                price = 0 if pc.piece_type == chess.KING or not a.is_attacked_by(not own, m.to_square) else G.see_for(a, m.to_square, not own)
                 cand = (price, depth)
                 old = out.get(m.to_square)
                 if old is None or cand < (old["material"], old["tempi"]):
@@ -1889,7 +1894,7 @@ def reach_price(board: chess.Board, sq: int, target: int, k: int = REACH_K, bear
     if bearing and target in G.with_turn(board, pc.color).attacks(sq):
         return dict(material=0, tempi=0, first=None, path=[], reads=frozenset(reads))
     best = None
-    for at, e in reach_map(board, sq, k).items():
+    for at, e in reach_map(board, sq, k, job=(target, bearing)).items():
         if (at == target) if not bearing else (target in e["board"].attacks(at)):
             if best is None or (e["material"], e["tempi"]) < (best["material"], best["tempi"]):
                 best = e
@@ -1992,9 +1997,20 @@ JOIN_KINDS = {"mate": ("flight", "checker takeable"), "win": ("not attacked", "d
 JOIN_KING = ("flight", "checker takeable", "path attacked", "promo square attacked")             # the guards the king can give
 _JOIN: dict = {}                              # (board_fen, first step UCI) -> (material, tempi): read by `route_cost`
 G.CLEAR_HOOKS.append(_JOIN.clear)
+_COUNTER: dict = {}                           # (board_fen, turn, side, first step UCI, mu) -> counter_value: what their counter-plan buys is a fact of the POSITION, not of the question that asks it
+G.CLEAR_HOOKS.append(_COUNTER.clear)
 
 
 def counter_value(board: chess.Board, us: str | bool, step: chess.Move, mu: int) -> tuple:
+    """Memoised by position: every inner agenda and every question that reaches the same square asks the same board, step and tempi again; see `_counter_value`."""
+    key = (board.board_fen(), board.turn, G.colour_of(us), step.uci() if step is not None else None, mu)
+    hit = _COUNTER.get(key)
+    if hit is None:
+        hit = _COUNTER[key] = _counter_value(board, us, step, mu)
+    return hit
+
+
+def _counter_value(board: chess.Board, us: str | bool, step: chess.Move, mu: int) -> tuple:
     """plan 72.3 THE STAKE RULE: what THEY buy with the free moves our join of `mu` tempi hands them. Our moves 1..mu are the join, our (mu+1)-th is the strike; they move after each, so
     they have mu-1 moves to bring a unit to bear before our strike and their strike is the mu-th (the race: our mu against their nu = their reach tempi + 1; `Game.race_sound`, Ideas.Game --
     here the roll is a CANDIDATE, only the chase proves; nothing is claimed of the race beyond the comparison nu <= mu = they strike first).
@@ -2031,6 +2047,60 @@ def counter_value(board: chess.Board, us: str | bool, step: chess.Move, mu: int)
     return best, text
 
 
+_JOIN_UNIT: dict = {}                         # (board_fen, side, unit square, L, k, stake) -> the unit's verdict: a fact of the position and the stake, read once however many inner agendas and questions ask it
+G.CLEAR_HOOKS.append(_JOIN_UNIT.clear)
+
+
+def _join_unit(b: chess.Board, me: bool, sq: int, L: int, kk: int, stake: int) -> "tuple | None":
+    """One unit's answer to the join question: None (it cannot come to bear, or already does), ("why", the refusal) or ("route", first step UCI, label, (material, tempi)). Memoised by position:
+    the question that asks it (and the inner agenda it sits in) changes nothing the answer reads, only the board, the unit, L, the fuse and the stake do."""
+    if not _can_bear_in_principle(b.piece_at(sq), sq, L, kk):
+        return None
+    key = (b.board_fen(), me, sq, L, kk, stake)
+    if key in _JOIN_UNIT:
+        return _JOIN_UNIT[key]
+    out = None
+    r = reach_price(b, sq, L, kk)
+    if r is not None and r["tempi"] != 0 and r["first"] is not None:
+        pc = b.piece_at(sq)
+        step = chess.Move.from_uci(r["first"])
+        if stake - r["material"] - _counter_ceiling(b, me) >= 1:   # the stake clears the price by more than the most their counter-plan could ever win (our most valuable non-king unit): it cannot refuse the join, so it is not rolled
+            counter, ctext = 0, None
+        else:
+            counter, ctext = counter_value(b, me, step, r["tempi"])
+        nm = pc.symbol().upper() if pc.piece_type != chess.PAWN else "pawn"
+        if stake - r["material"] - counter < 1:
+            out = ("why", f"the {nm} cannot join in time: " + (ctext + ", " if ctext else "") + f"price {r['material']} + their {counter} against a stake of {stake}")
+        else:
+            label = f"bring the {nm} from {G.name(sq)} to bear on {G.name(L)} in {r['tempi']}" + (f" (via {G.name(step.to_square)})" if r["tempi"] > 1 else "") + f", price {r['material']}"
+            out = ("route", r["first"], label, (r["material"], r["tempi"]))
+    _JOIN_UNIT[key] = out
+    return out
+
+
+def _can_bear_in_principle(pc: chess.Piece, sq: int, L: int, k: int) -> bool:
+    """The geometry of the piece, before any roll: whether the unit on `sq` could come to bear on L within k QUIET moves on an empty board. A bishop never leaves its colour complex, so it never
+    bears on a square of the other colour; a king bears on L only from a square next to it and walks k steps; a pawn walks straight (the roll has no captures) and attacks the diagonal
+    ahead, so it bears only on an adjacent file at a rank 1..k+2 ahead (k pushes, the first a double step, and the attack one rank further) -- unless it can promote within k, when it is a queen and the roll decides.
+    A necessary condition only: rooks, queens and knights are always rolled."""
+    pt = pc.piece_type
+    if pt == chess.BISHOP:
+        return (chess.square_file(sq) + chess.square_rank(sq)) % 2 == (chess.square_file(L) + chess.square_rank(L)) % 2
+    if pt == chess.KING:
+        return chess.square_distance(sq, L) <= k + 1
+    if pt == chess.PAWN:
+        d = 1 if pc.color else -1
+        if (7 - chess.square_rank(sq) if pc.color else chess.square_rank(sq)) <= k:
+            return True
+        return abs(chess.square_file(sq) - chess.square_file(L)) == 1 and 1 <= (chess.square_rank(L) - chess.square_rank(sq)) * d <= k + 2
+    return True
+
+
+def _counter_ceiling(b: chess.Board, me: bool) -> int:
+    """The most their counter-plan can ever win: the exchange on a unit of ours wins at most that unit's worth, so at most our most valuable non-king unit."""
+    return max((G.worth(p) for p in b.piece_map().values() if p.color == me and p.piece_type != chess.KING), default=0)
+
+
 def join_fixes(board: chess.Board, us: str | bool, defect: Defect, q: Question, k: int | None = None) -> "Question | None":
     """plan 72.3 THE JOIN QUESTION: can a unit of ours come to bear on the location L the defect needs a piece at (the flight to cover, the square to guard, the target to attack)?
     For each unit U of ours (the king only for the guards it can give, `JOIN_KING`; never the root pattern's mover or a blocker), `reach_price(board, U, L, k, bearing=True)`, k the pawn's
@@ -2052,19 +2122,16 @@ def join_fixes(board: chess.Board, us: str | bool, defect: Defect, q: Question, 
         pc = b.piece_at(sq)
         if pc is None or pc.color != me or sq in skip or sq == L or (pc.piece_type == chess.KING and defect.kind not in JOIN_KING):
             continue
-        r = reach_price(b, sq, L, kk)
-        if r is None or r["tempi"] == 0 or r["first"] is None:
+        verdict = _join_unit(b, me, sq, L, kk, q.stake)
+        if verdict is None:
             continue
-        step = chess.Move.from_uci(r["first"])
-        counter, ctext = counter_value(b, me, step, r["tempi"])
-        net = q.stake - r["material"] - counter
-        nm = pc.symbol().upper() if pc.piece_type != chess.PAWN else "pawn"
-        label = f"bring the {nm} from {G.name(sq)} to bear on {G.name(L)} in {r['tempi']}" + (f" (via {G.name(step.to_square)})" if r["tempi"] > 1 else "") + f", price {r['material']}"
-        if net < 1:
-            why.append(f"the {nm} cannot join in time: " + (ctext + ", " if ctext else "") + f"price {r['material']} + their {counter} against a stake of {q.stake}")
+        if verdict[0] == "why":
+            why.append(verdict[1])
             continue
-        routes.append(Route(step, b.san(step), label, price=(r["material"], r["tempi"])))
-        _JOIN[(b.board_fen(), step.uci())] = (r["material"], r["tempi"])
+        _, step_uci, label, price = verdict
+        step = chess.Move.from_uci(step_uci)
+        routes.append(Route(step, b.san(step), label, price=price))
+        _JOIN[(b.board_fen(), step_uci)] = price
     if not routes and not why:
         return None
     f = new_question("cover", q.stake, dict(q.pattern, target=L), q, defect_key=defect.key(), text=f"bring a unit to bear on {G.name(L)} (the priced reach)")
