@@ -1578,6 +1578,50 @@ def diff_squares(before: chess.Board, after: chess.Board) -> frozenset:
     return frozenset(out)
 
 
+_DIRS = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))      # (file, rank) steps: the four orthogonal, then the four diagonal directions
+
+
+def _ray(occupied: int, sq: int, df: int, dr: int) -> list:
+    """The squares from `sq` (exclusive) in the direction (df, dr) up to and including the first occupied square."""
+    out, f, r = [], chess.square_file(sq) + df, chess.square_rank(sq) + dr
+    while 0 <= f < 8 and 0 <= r < 8:
+        s = chess.square(f, r)
+        out.append(s)
+        if occupied >> s & 1:
+            break
+        f, r = f + df, r + dr
+    return out
+
+
+def move_diff(board: chess.Board, m: chess.Move) -> frozenset:
+    """plan 72.10 (1) THE DIFF of the move `m` on `board` (in the chase: their reply on the board after our route). The TOUCHED squares (from, to, and every square whose piece the move changes:
+    the castling rook's two squares, the pawn en passant takes); what a piece on a touched square attacks, before or after the move (the moved piece's new lines, the old lines of the piece
+    that left or was taken); and every line THROUGH an empty touched square that a slider sees along, before or after the move -- the ray from the touched square up to and including its first
+    piece, on the side away from the slider (the lines the move OPENED: the ray beyond `from`, a discovery as `Ideas.Battery` names it; and CLOSED: the ray beyond `to`).
+    THE NEGLECT THEOREM (Lean `Ideas.Frame.chess_neglect` over `Game.step`, generic `Ideas.Frame.neglect_step`; the frame form `Ideas.Frame.chess_frame`): a word that reads the pieces ON its squares
+    and the attacks ONTO them (`Ideas.FrameLemma`'s two inputs) and whose value differs after the move reads a square of `Ideas.Frame.chessDiff`, of which this set is a superset (each opened or
+    closed line is taken whole). Tested against the brute force -- every square whose piece or whose attackers (either colour, as a set) changed -- on 50 random positions
+    (tests/test_plan72_10.py). `analyst_core.Pos.diff` is not this: it compares attacker COUNTS, so a swap of one attacker for another on a square is missed."""
+    after = board.copy(stack=False)
+    after.push(m)
+    touched = {m.from_square, m.to_square} | {s for s in chess.SquareSet(board.occupied | after.occupied) if board.piece_at(s) != after.piece_at(s)}
+    out = set(touched)
+    for X in (board, after):
+        occ = X.occupied
+        for s in touched:
+            if occ >> s & 1:
+                out.update(chess.SquareSet(X.attacks_mask(s)))
+                continue
+            for i, (df, dr) in enumerate(_DIRS):
+                back = _ray(occ, s, -df, -dr)                     # the slider that would see THROUGH s comes from the other side
+                if not back or not occ >> back[-1] & 1:
+                    continue
+                pc = X.piece_at(back[-1])
+                if pc.piece_type == chess.QUEEN or pc.piece_type == (chess.ROOK if i < 4 else chess.BISHOP):
+                    out.update(_ray(occ, s, df, dr))
+    return frozenset(out)
+
+
 def question_key(q: Question) -> tuple | None:
     """What identifies a root question across positions (the same goal asked about the same squares)."""
     p = q.pattern
