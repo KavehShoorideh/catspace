@@ -3520,6 +3520,7 @@ class Agenda:
             ccost = f"cost {comp[1]}, " if comp[1] is not None else "measured, "
             self.lines.append(f"    judge: {san} cut ({what}, {need:.2f} s): tier {ctx.tier + 1}'s {comp[2]} ({comp[3]}; {ccost}{comp[0]:.2f} s) is cheaper -> GAP, read in tier {ctx.tier + 1}, in price order")
             res = dict(value=0, killed=None, gap=f"out of time: {san} cut by the judge (tier {ctx.tier + 1}'s {comp[2]} is cheaper: {comp[0]:.2f} s against {need:.2f} s)", parts=[], lemmas=[])
+            self._judge_resume(m, res)
             ctx.root_gaps[(_pos_key(self.board.fen()), m.uci(), self._judge_stake())] = (cost, san)
             ctx.deferred.add(mkey_c)
             return res, None
@@ -3530,12 +3531,23 @@ class Agenda:
             ctx.judge_cuts += 1
             ctx.budget_hits += 1
             res = dict(value=0, killed=None, gap=f"out of time: {san} cut by the judge ({what}, {need:.1f} s needed, {pool:.1f} s left)", parts=[], lemmas=[])
+            self._judge_resume(m, res)
             ctx.root_gaps[(_pos_key(self.board.fen()), m.uci(), self._judge_stake())] = (cost, san)
             return res, None
         ctx.opened.add(mkey_c)
         ctx.deadline = min(now + slice_, ctx.final)
         self.lines.append(f"    judge: {san} read on ({what}{why_w}, " + (f"{need:.1f} s needed {rate_w}, " if need is not None else "no rate yet, ") + f"{ctx.deadline - now:.1f} s for it, {pool:.1f} s left of the root's share{share_w})")
         return None, (time.monotonic(), ctx.agendas, cost, mkey)
+
+    def _judge_resume(self, m: chess.Move, res: dict) -> None:
+        """72.9 / 52.17 (5): a route the judge cut BEFORE reading it is an out-of-time GAP like any other: it carries the resume point (timed, the time mark, the reply to start at -- the first of the
+        route's reading order, the recapture/check/capture/worst-balance-first order of `_chase_route_body`) so the ponderer's drain starts the route there."""
+        ctx = self.ctx
+        res["timed"], res["mark"] = True, round(time.monotonic() - ctx.t0, 3) if ctx.t0 is not None else 0.0
+        P1 = AC.Pos(self.board.fen()).push(m.uci())
+        rows = sorted(P1.replies(), key=lambda t: (0 if t[4] else 1 if t[2] else 2 if t[3] else 3, t[1], t[0]))
+        if rows:
+            res["reply"] = rows[0][0]
 
     def _judge_end(self, tok, res: dict) -> None:
         """plan 61 C2: the route read to its end (a kill or a value, not a GAP) adds its time and its inner agendas to the rate; the cuts the judge made inside it are printed."""
