@@ -32695,3 +32695,16 @@ THE CLASSES, for Kaveh: (1) the policy ranks the answer below chance (Rg6 p 0.00
 chain stops -- tempo arithmetic on a recapture, the second check in a row -- cut exactly the recapture lines; SWITCHES.md already marks SECOND_CHECK_STOP vestigial-by-principle ("the
 principled ends of a check sequence are the CYCLE claim and the clock"); the principled form costs count budget, so it is a design decision, not a patch; (3) their quiet move one step from a
 mate threat at the static leaf (r3oph Qb1) -- plan 72's priced reach asked from THEIR pass at the leaf; (4) the in-check chase's cost (2CEDb: 11 questions per inner agenda, 1244 agendas).
+
+## 2026-10-23 22:40 -- THE RETRAIN (the loop's step): candidate -> gate -> NOT adopted (pos2's false proof of Nxf4 comes back under its order)
+Logs: qlog_all2 (24,344 rows) + iteration 2's graded rows (256) = qlog_all3; item logs 6,516 + 1,031 = item_all3 (the rows since 2026-10-22 18:38, every engine state between).
+OBS graph policy built: 1007 agendas, 3950 decision points (train-set rank-first 389/404). OBS route policy built: 407 groups (train-set rank-first 38/40; the engine's order 11/40).
+Candidate gate (the model swapped into data/derived for the run, the pre-loop model restored after): OBS trace identity: 0 of 10 traces differ, 0 of 10 read sets differ (the count budget: the
+order changes nothing that finishes). Gate files one at a time: test_offbuilt64 14 passed, 1 FAILED (test_64_0 pos2: Nxf4 again); test_plan65 13; test_plan70 3 + 1 xfailed; test_tiers 14;
+test_plan72_9 7; test_plan72_10 4; test_regress 87 passed, 0 xfailed (52.18's Nf6 PROVED under the pool at 30 s: the xfail XPASSed).
+The three policy-class misses under the candidate, alone at 15 s: 9QsbL decides Rg6 (the answer; was Nc4); r3oph Rxd1+ (unchanged); KSMKJ gxh5 (unchanged).
+pos2 under the candidate (one diagnostic run, 10 s): "decision Nxf4 by chase: step_after+step_least ... mate_in_two", claims 1 -- a CLAIM, not a fallback. The 64.0 test says this proof is
+FALSE. So the pre-loop order never reaches a false proof the candidate's order reaches in 10 s: a SOUNDNESS HOLE hidden by the order, not a defect of the candidate. The rule (retrain ->
+gate -> adopt) holds: NOT adopted; the candidate is kept at scratchpad/graph_policy_loop2.pt beside the logs. Two things wait for Kaveh: (a) pos2's Nxf4 traced alone under the candidate
+and the hole fixed (then the candidate is re-gated: it wins 9QsbL and 52.18); (b) whether a gate case pinned on ORDER (a false proof not reached in time) is a pin at all.
+Live state: data/derived/graph_policy.pt is the pre-loop model (verified identical to the backup after the restore).
