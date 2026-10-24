@@ -167,8 +167,9 @@ def test_stopped_pawn_is_killed_with_the_distance_reason(monkeypatch):
     from catspace.incubator.analyst.discovery import race as _RC62
     monkeypatch.setattr(_RC62, "RACE", False)          # plan 62.1: with the race word ON the chase proves this one (e7, then Kf7: won in 5 plies); the 1-ply kill is the comparison condition
     ag = _ag(RACE_STOPPED)
-    assert ag.best is None and (ag.decision() is None or not ag.decision().proved)                  # no PROVED claim (plan 65.3: an unproved unfinished line may be offered)
-    assert "stopped: their K on c7 reaches e8 in 2, the pawn needs 2" in ag.trace()
+    assert "defect stopper (their K on c7 reaches e8 in 2, the pawn needs 2" in ag.trace()          # the distance reason is the defect the promote question reads
+    d = ag.decision()                                  # plan 72.10 (2026-10-23): the race word is no longer needed for the proof -- the chase's inner agendas carry the promote goal and ask
+    assert d is not None and d.proved and d.what == "Kf7" and d.value == 8                           # one question each (the pawn's own), so the root's fuse reaches Kf7, then e7, e8=Q: K+P v K, won
 
 
 def test_blocked_pawn_names_the_blocker():
@@ -743,8 +744,10 @@ def test_52_16_the_discovery_position_decides_nf6_with_the_exchange_read(monkeyp
 
 # ---- 52.16 (4): failed promote chases ----------------------------------------------------------------------------------------------------------------
 
-def test_52_16_a_reply_that_leaves_the_stopper_standing_ends_the_promote_route_02xvk(chain_items_off):
+def test_52_16_a_reply_that_leaves_the_stopper_standing_ends_the_promote_route_02xvk(chain_items_off, monkeypatch):
     from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    monkeypatch.setattr(AG, "CHASE_SAVES", False)       # plan 72.10: the route memo is per goal, so the save question's KEEP chase (70.1) reads Bxg6 itself instead of being served the mate goal's kill
+    #                                                     (made at target 1) and decides first (Bxg6, the puzzle's answer); the 52.16 (4) mechanism this test pins is read with the 70.1 chase off
     p = [x for x in PA.load_set("dev_20") if x["id"] == "02XVK"][0]
     ag = AG.Agenda(State(p["fen"], "w", []))
     ag.ask()
@@ -889,12 +892,20 @@ def test_52_17_a_check_that_fixes_no_defect_of_the_goal_is_not_a_route_of_it_and
     assert a._addresses(_win_q(a, chess.A7), chess.Move.from_uci("e1e8"), "check")[0]                                    # a GAP is never a kill: a route the fuse cut stays open for later goals
 
 
+Q04_KEEPS = ("Be8+", "Bh5+", "Bf5+", "Be4+", "Bd3+", "Bc2+", "Bb1+")      # 04Qx2: the bishop's discovered checks off g6 (the queen on g4 checks along the g-file), each keeping the bishop
+
+
 def test_52_17_the_dev_20_decisions_that_needed_a_discovery_or_a_resumed_gap_are_kept_04qx2_0bhbb():
     from catspace.incubator.analyst.discovery import puzzle_apply as PA
     for pid, san in (("04Qx2", "Be8+"), ("0BHbB", "Qb8+")):
         p = [x for x in PA.load_set("dev_20") if x["id"] == pid][0]
         ag = AG.Agenda(State(p["fen"], "w", []))
         ag.ask()
+        if pid == "04Qx2":                             # plan 72.10: the save question's keep chase (the last root, a pool of 7) now reads every discovered check of the bishop to its end, not Be8+ alone; all keep
+            d = ag.decision()                          # the bishop (value 3, 70.1's currency) and the equal claims are broken by the move's uci (53 (3)'s last resort), so the decision is one of them
+            assert d is not None and d.proved and d.value == 3 and d.what in Q04_KEEPS and ag.ctx.unaddressed > 0, (pid, d)
+            assert "Be8+: after Qg5: material +0 / after Qg7: material +0 / after Kh8: material +0 => value 0" in ag.trace()      # the discovery is read to its end
+            continue
         assert ag.decision() is not None and ag.decision().what == san and ag.ctx.unaddressed > 0, pid
 
 
@@ -980,7 +991,7 @@ def test_52_17_a_time_budget_cuts_the_chase_to_gaps_names_the_time_and_no_second
     plain = AG.Agenda(State(p["fen"], "w", []))
     plain.ask()
     assert plain.ctx.time_outs == 0 and "budget:" not in plain.trace() and "out of time" not in plain.trace()
-    assert plain.decision().what == "Be8+"                                                      # seconds=None: today's behaviour (the same decision as the set run)
+    assert plain.decision().proved and plain.decision().what in Q04_KEEPS                         # seconds=None: today's behaviour (the same decision as the set run; 72.10: one of the equal keeps, see above)
 
 
 # ---- 52.18 (1): the landing table ----------------------------------------------------------------------------------------------------------------
@@ -1053,7 +1064,8 @@ def test_52_18_an_almost_battery_does_not_attack_and_its_front_piece_leaving_mak
     assert seen > 20
 
 
-@pytest.mark.xfail(strict=True, reason="LOOP TARGET 1 / plan 72.9 (Kaveh 2026-10-23): under the POOL at 30 s neither Nf6 nor Nd6 is PROVED; the assertion rested on the unproved fallback, which flipped from Nd6 to Nc5 when the engine got faster (the joins at the root only). The pool's order and the judge's share must prove Nf6; until then this is the named gap.")
+# (was xfail strict, LOOP TARGET 1 / plan 72.9: under the POOL at 30 s neither Nf6 nor Nd6 was PROVED. Plan 72.10, 2026-10-23: with the local inner agendas the pool proves Nf6 +1 in
+#  two diagnostic runs (OBS: 19.2 s and 19.5 s of wall) and the strict xfail XPASSed in the gate, so the assertion stands as written.)
 def test_52_18_the_discovery_position_names_the_discovery_and_the_x_ray_fix_is_offered_on_a_win_defect():
     ag = AG.Agenda(State(DISCOVERY, "w", []), seconds=30)                    # (see the 52.16 discovery test: a time budget since 2026-10-20; 30 s since 64.0's sound close)
     ag.ask()
@@ -1172,8 +1184,9 @@ def test_52_22_3_the_refuter_is_a_word_proved_in_lean():
     assert "Refutes" in st and "forcedAtLeaves" in st
 
 
-def test_52_22_3_07z0p_is_decided_qxd5_by_the_refuter_fix_with_the_line_printed(chain_items_off):
-    ag = AG.Agenda(state_of(Z0P, "w"))
+def test_52_22_3_07z0p_is_decided_qxd5_by_the_refuter_fix_with_the_line_printed(chain_items_off, monkeypatch):
+    monkeypatch.setattr(AG, "CHASE_SAVES", False)       # plan 72.10: with the route memo per goal the save question's KEEP chase (70.1) proves Qxd5+ +1 first (no longer served the mate goal's kill
+    ag = AG.Agenda(state_of(Z0P, "w"))                  # made at target 1), so the refuter fix that decides it otherwise is read with the 70.1 chase off
     ag.ask()
     t = ag.trace()
     assert ag.decision().what == "Qxd5+"

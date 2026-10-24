@@ -30,6 +30,7 @@ class Claim:
     estimator: str = ""        # ... the estimator's name ("quiet-status"); "" for a proved claim
     proved_by: str = ""        # plan 62.3: "" = a proved word (a Lean theorem); "table" = closed by the tablebase (exact by exhaustion, unexplained) -- ranked after the words at equal value, before any estimate
     word: str = ""             # plan 65.3: "unfinished line" -- the best GAP route when no claim exists at all (proved=False); "" for every claim of the search
+    kept: bool = False         # plan 70.1 / 72.10: a SAVE claim chased with KEEP semantics. At the root it is worth the stake it saves; as the answer of an inner agenda (a GAIN on the balance the reply left) it is worth what it kept, and it is a claim even at 0 (the balance held is a proof, no claim is not)
 
 
 @dataclass

@@ -3601,3 +3601,48 @@ THIS IS A SPECIFICATION FOR AN AGENT (Opus). Build exactly this.
    diff (the diff defined as a superset of the squares the step's board change touches) -- cite it in `diff`'s docstring; no sorry; LEAN_INDEX rebuilt.
 6. NOT IN 72.10: changing the ROOT agenda (it reads the whole board: the survey and the arrangements live there); changing the words; any new numeric limit.
 Rules as for 72.8: commit by path, no AI trailers, OBS numbers only, tests only through the locked gate, the budgets untouched (Kaveh: budgets serve the machinery), off is not built.
+* 72.10 BUILT 2026-10-23 on branch worktree-agent-a7ae48c971e5a12a7 (agenda.py, regress.move_diff, state.Claim.kept, analyse's OBS line, Lean Ideas/Frame.lean; journal 2026-10-23 19:22).
+  (1) THE DIFF: `AC.Pos.diff` is not it (it compares attacker COUNTS: a swap of one attacker for another is missed), so `regress.move_diff(board, move)` = the touched squares (from, to, every
+  square whose piece changes: castling, en passant), what a piece on a touched square attacks before or after, and every line through an empty touched square that a slider sees along, up to
+  and including its first piece (opened and closed). Lean `Ideas.Frame`: `ReadsOnly`, `IsDiff`, `neglect` / `neglect_step` (generic over `Game.step`), `chessView` (the piece on a square and
+  every attack onto it), `chessDiff`, `chessDiff_isDiff` (from `PathLemma.attack_unchanged`), `chess_neglect`, `chess_frame`; no sorry; `lake build` green; LEAN_INDEX rebuilt.
+  OBS 72.10 (1) diff vs brute force: positions 50, legal moves 1565, changed squares missed by move_diff 0, by the count-based Pos.diff 3699, mean diff size 13.1 of 64.
+  (2) THE CARRIED FRAME AND GOAL: `_inner(..., diff, local=...)` -> `Agenda(..., frame=, goal=, diff=)` from `_local_goal`: the goal (mate: every mate of their king, or for a mate THREAT the
+  mates of the pieces that threaten it; win: the target where it now stands; promote: the pawn), the frame (`_route_frame`: the question's own squares, the route's landing, the threat's mating
+  lines and their king's zone), the reply's diff. A save or an evasion chase carries no goal (the full agenda, as before).
+  (3) THE THREE QUESTIONS (`_local_class`, read off each root as it is built): Q1 the goal's roots on the new board; Q2 a save root whose piece stands in the diff or whose threat read a square of
+  it -- their agenda with the pass runs on the diff's units only (`_unit_root`); Q3 in check every root (their check is a delay, read as today), else the win root of their piece on the square
+  their move went to (what the exchange takes there). Every other root waits in `deferred`; THE FULL AGENDA only when the goal is DEAD there (`_local_next`: no goal question claimed and no
+  chase of one read a route -- a question this depth does not chase was not read with the chase's power, so it is not refuted). READINGS CHOSEN: Q1 for a mate threat is the threatening
+  units' mates (Kaveh's "who can be brought to the defence"); Q3 prices every move by its landing, not only captures; "the route's value still matters" is the min_stake filter (a root below
+  the need is never pushed). Memos per goal: the route memo (`ctx.routes` keyed with the goal), the inner memo and the standing kills; a PROOF of one goal serves every goal, a full answer
+  serves every goal, and an ask read for a mate only takes any answer (it can lower nothing and kill nothing).
+  FOUND AND FIXED (70.1, exposed by the reach 72.10 gives): an inner agenda's KEEP claim was worth the stake it saved, read by the reply loop as a GAIN -- 0UqOv's Qd5 dxe6 Qc6+ counted the
+  queen saved as the queen won (-1 + 9) and proved the false Qd5 +3 (the full inner agenda does the same, OBS inner full after Qd5 dxe6: best save Qc6+ value 9). Now the stake currency is the
+  root's; inside a chase the claim is worth what it kept (`Claim.kept`: a claim even at 0). With LOCAL_INNER off this fix changes 3 of the guard's traces, no decision.
+  (4) THE TRACE: one line per local inner agenda (`local after <reply> (<goal>): frame {..} ∩ diff {..} = {..}; Q1 ...; Q2 threats: ...; Q3 delays: ... -> <answer>; <closed by the frame | full
+  agenda: the goal is dead here | in check ...>`), the ones one level below the root printed by the root; `OBS local inner <id>` in analyse.
+  OBS 72.10 (2) Qb7 Rf7: local after Rf7 (...): Q1 re-asked: 2 question(s) of the goal (defects: checker takeable c8, flight h8, interposition f8); mate on f7 (Q b7->f7, their king on g8): CLAIM Qxf7+ (+100); Q2 threats: save our Q on b7 ...
+  (5) ACCEPTANCE. OBS 72.10 (4) W0VFO count budget: before inner agendas 107, inner questions 1476 (13.8 per inner agenda); after inner agendas 102, inner questions 1261 (12.4 per inner agenda), local 88,
+  full 48, closed by the frame 34; decision before Qb7 3 proved True, after Qb7 3 proved True; every root question's route list as before. (Main before any change, the same count budget: OBS inst W0VFO:
+  decision Qb7 3 proved True, inner agendas 161, inner questions 2243, per agenda 13.9.)
+  OBS 72.10 W0VFO 10 s, three runs: decision Qb7 (e4b7), proved True, wall 11.2 s, root questions 38, inner agendas 195, inner questions 1974 (10.1 per inner agenda) / 197, 2034 (10.3) / 195, 1984 (10.2);
+  OBS local inner W0VFO: inner agendas 195, questions asked 1974 (10.1 per inner agenda), local 168 (questions 1890), full agendas 104 (chase dead there), closed by the frame 53.
+  OBS 72.10 W0VFO 10 s (LOCAL_INNER off): decision Qb7 (e4b7), proved True, wall 10.5 s, root questions 38, inner agendas 150, inner questions 1668 (11.1 per inner agenda).
+  NOT toward ~3: the questions per inner agenda fell 13.9 -> 12.4 at the count budget and 11.1 -> 10.2 at 10 s. Where they go (one run, directional): a CHECK route carries no single pattern, so
+  after the king's step Q1 is every mate root of the walk (5-7 checks with their fixes, in the traces); and an agenda whose goal is dead (104 of the 168 local ones at 10 s) asks the full
+  agenda after the three questions. A win or promote goal asks one question (the stopped K+P's trace: one question per inner agenda).
+  OBS discovery tiers 15 s: decision Nf6, proved True, value 1, wall 7.1 s, inner agendas 241. OBS discovery pool 30 s: decision Nf6, proved True, value 1, wall 19.2 s (and 19.5 s): 52.18's strict
+  xfail XPASSed in the gate and is removed. OBS discovery pool 15 s: decision Nd6, proved False (test_69's xfail stands).
+  OBS guard (scripts/trace_identity.py through a runner importing this worktree, local lines removed): 8 of 10 DECISIONS identical, each with every root question and route list identical; the other
+  lines are route outcomes and chase counters (fewer questions per inner agenda leave the count fuse to more routes). 2 decisions GAINED a proof: 07Z0P Qxd5+ 0 unfinished -> Qxd5+ +1 proved (the save
+  question's keep chase reads Qxd5+ under its own goal instead of being served the mate goal's kill made at target 1; Qxd5+ is the puzzle's answer); discovery Nc5 0 unfinished -> Nf6 +1 proved
+  (Nf6 is read to its end within the fuse); in both the later stake-1 chases are not asked (the claim covers their stake).
+  TESTS CHANGED, each by its trace: the stopped K+P (RACE off) is now PROVED, Kf7 +8 (one question per inner agenda: the fuse reaches it; K+P v K with Kf7 is won); 52.16 (4) 02XVK and 52.22 (3)
+  07Z0P read with CHASE_SAVES off (the per-goal memo lets 70.1's keep chase decide first: Bxg6 and Qxd5+, the puzzles' answers); 52.17's 04Qx2 accepts any of the bishop's equal discovered
+  checks (the save chase, the last root with a pool of 7, now reads all seven to their end; equal claims are broken by the uci -- Be8+ was the one that finished before); 52.18's xfail removed.
+  OBS gate engine (one file per call): test_plan72_10 passed 4; test_plan72_9 7; test_offbuilt64 15, xfailed 1; test_tiers 14; test_agenda 26; test_regress 88; test_fact_store 21; test_plan70 3,
+  xfailed 1; test_plan72 6; test_lean_index 2.
+  NOT BUILT: the DELAY reading of the spec's Q3 "a parry only if after it and every reply of ours the claim no longer binds; otherwise priced and closed" as a NEW closing rule -- a delay is
+  named and priced in the trace and read as today (in check: the evasions; a capture: the exchange on its square); closing it by the price would need the claim's value after the delay, which
+  is the route's own unknown. The local their-agenda is not memoised (a different board per reply).

@@ -32545,3 +32545,21 @@ OBS gate engine, one file per call: test_plan72_9 7 passed; test_offbuilt64 15 p
 test_agenda 26; test_regress 87 passed, 1 xfailed; test_plan68 4; test_plan70 3 passed, 1 xfailed. Directional: one or two runs each.
 
 ## 2026-10-23 18:08 PDT -- 72.9 follow-up: a judge cut made before a route is read now files its GAP with the resume point (timed, mark, first reply in reading order) via `Agenda._judge_resume`; test_fact_store 21 passed, test_plan72_9 7, test_offbuilt64 15 (1 xfailed), test_plan68 4, test_plan66 16, test_regress 87 (1 xfailed). Directional: one run each.
+
+## 2026-10-23 19:22 PDT -- plan 72.10 built: the local inner agenda (branch worktree-agent-a7ae48c971e5a12a7)
+
+THE RULE (ON): the inner agenda of a reply carries the chased goal, its frame and the reply's diff, and asks Q1 the goal on the new board, Q2 their threats through the diff, Q3 the price of
+their move; every other root waits, asked only where the goal is dead (no chase of it read a route). The neglect is a theorem: Lean `Ideas.Frame.chess_neglect` over `Game.step` (generic
+`neglect_step`; no sorry), with the diff `Ideas.Frame.chessDiff` mirrored by `regress.move_diff`. `AC.Pos.diff` was not the diff (attacker counts).
+OBS 72.10 (1) diff vs brute force: positions 50, legal moves 1565, changed squares missed by move_diff 0, by the count-based Pos.diff 3699, mean diff size 13.1 of 64.
+The spec's own example reads as written: after Qb7 Rf7 the goal question is the queen's mate on f7 -- "a rook can, and is lost" (OBS 72.10 (2): ... mate on f7 (Q b7->f7, their king on g8):
+CLAIM Qxf7+ (+100)).
+A FALSE PROOF FOUND ON THE WAY (70.1, pre-existing): an inner agenda's keep claim was worth the STAKE it saved and the reply loop read it as a GAIN (OBS inner full after Qd5 dxe6: best save Qc6+
+value 9; 0UqOv proved the false Qd5 +3 once the local agendas let the fuse reach it). Fixed: the stake is the root's currency; inside a chase a keep claim is worth what it kept.
+OBS W0VFO count budget: before inner agendas 107, inner questions 1476 (13.8 per inner agenda); after 102, 1261 (12.4); Qb7 +3 proved both, the same route lists. (Main, before any change:
+inner agendas 161, inner questions 2243, 13.9.)
+OBS W0VFO 10 s, three runs: Qb7 proved, wall 11.2 s each; inner agendas 195 / 197 / 195, inner questions 1974 / 2034 / 1984 (10.1 / 10.3 / 10.2 per inner agenda); LOCAL_INNER off: 150, 1668 (11.1).
+OBS discovery tiers 15 s: Nf6 proved, 7.1 s. OBS discovery pool 30 s: Nf6 proved, 19.2 s and 19.5 s (52.18's strict xfail XPASSed; removed). Pool 15 s: Nd6, not proved.
+OBS guard: 8 of 10 decisions identical with identical route lists; 2 gained a proof (07Z0P Qxd5+ +1, the discovery position Nf6 +1).
+Directional, one or two runs each: the questions per inner agenda fall, not toward three -- a check's inner agenda still asks every mate of the walk, and 104 of 168 local agendas found their
+goal dead and asked the full agenda. The per-goal memos (needed: a local "no claim" is one goal's) changed four regress tests by their traces (ANALYST_PLAN 72.10 BUILT names each).

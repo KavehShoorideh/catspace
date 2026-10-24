@@ -413,7 +413,7 @@ Do not edit by hand.
 
 - **structure `Ideas.Game.Game`** (line 26): The axioms a domain supplies
 - **def `Ideas.Game.Game.step`** (line 38): ONE STEP of the game: some legal move leads from `p` to `q`
-  - used by: catspace/incubator/analyst/discovery/regress.py
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/regress.py
 - **def `Ideas.Game.Game.terminal`** (line 41): No legal move.
 - **def `Ideas.Game.Game.mated`** (line 44): The mover is MATED: no move, and in check.
 - **def `Ideas.Game.Game.stalemated`** (line 47): The mover is STALEMATED: no move, not in check.

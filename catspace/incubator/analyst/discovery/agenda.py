@@ -23,6 +23,12 @@ over the inner claims, each a bound schema (the composed statement is a TODO in 
 balance with us to move is a result only once THEIR agenda has read it with the move passed to them (52.13 (3): a claim of theirs of t makes the reply worth the gain less t;
 0AgL8's Nxg2 died on this; read on the ROOT agenda's chase only -- at the inner levels "if we pass" refuted 0VSUT's true Qxe5 line, where we have a move to parry). The reach (52.12 (4)): a mate
 root at distance two (one prep move) whose fixes are the first steps; a step is forcing when it checks or leaves a mate in one (a mate threat).
+
+THE LOCAL INNER AGENDA (72.10, `LOCAL_INNER`). The inner agenda of a reply is handed the chased GOAL (mate their king; win the target, where it now stands; promote the pawn) and its FRAME
+(what the chased claim read) and the reply's DIFF (`regress.move_diff`, Lean `Ideas.Frame.chessDiff`). It asks Q1 the goal on the new board, Q2 their threats through the diff (save roots;
+their agenda with the pass on the diff's units only), Q3 the price of their move (in check: the answers to it); every other root waits and is asked only when the goal is DEAD there (no
+chase of it read a route). The licence to neglect the rest is the frame lemma's contrapositive over `Game.step` (`Ideas.Frame.chess_neglect`): anything new after their move reads a
+square of the diff. An answer of one goal is memoised under that goal (the routes too); a proof of one goal serves every goal, and an ask read for a mate only takes any answer.
 """
 from __future__ import annotations
 
@@ -290,6 +296,7 @@ class ChaseCtx:
         self.local_closed = 0                     # ... the ones closed by the frame (the goal alive, the rest of the board neglected)
         self.local_lines: list = []               # ... the trace line of each local inner agenda one level below the root (printed by the root)
         self.route_goals: dict = {}               # ... (position, route uci) -> the goal keys the route was read under (its memo is per goal)
+        self.local_keys: dict = {}                # ... position key -> the memo keys of the local answers asked there (another goal's ask may be served one: `_inner`)
 
 
     def carry(self) -> "ChaseCtx":
@@ -298,6 +305,7 @@ class ChaseCtx:
         c = ChaseCtx(self.facts)
         c.memo, c.routes, c.theirs, c.their_ags, c.landings = self.memo, self.routes, self.theirs, self.their_ags, self.landings
         c.their_facts, c.gap_facts = self.their_facts, self.gap_facts
+        c.route_goals, c.local_keys = self.route_goals, self.local_keys      # (72.10: the per-goal memos' indexes travel with the memos)
         return c
 
     def out_of_time(self) -> bool:
@@ -328,7 +336,7 @@ class Agenda:
         if LOCAL_INNER and goal is not None and frame is not None and diff is not None and chase_depth and their is None and ctx is not None:      # its FRAME (the chased claim's read set) asks Q1 / Q2 / Q3 only (see `_local_class`); the rest of its roots
             self.local = dict(goal=goal, frame=frame, diff=diff, full=False, deferred=[], live=False, routed=0, asked0=0, cls={}, why="")       # wait in `deferred` and are pushed only when the goal is dead here (`_local_next`)
         self.units = units                                      # plan 72.10 Q2: THEIR agenda with the pass run on the diff's squares only -- its roots are the units standing in or bearing on these squares (None: every root)
-        self._routes_read = 0                                   # plan 72.10: routes this agenda read (verified or chased): a goal with no route to read is DEAD here
+        self._routes_read = 0                                   # plan 72.10: the chases this agenda read routes in: a goal question no chase read a route of is DEAD here (a direct route the binder rejects is no read of the goal: a question this depth may not chase was not read with the chase's power)
         if chase_depth == 0 and ctx is None and carry is None:
             G.clear_caches()                                    # 52.20 (1): the word / FEN caches live for one root question
         self.their = their                                      # 52.14: THEIR agenda on this board with the move passed to them: its claims are asked as save roots (an inner agenda on a static leaf)
@@ -1541,7 +1549,7 @@ class Agenda:
             self._floor = getattr(q, "_floor", None) if self.chase_depth == 0 else None      # plan 66.1: the carried floor of a re-asked root question
             self._ask(q)
             self._floor = None
-            q._routed = self._routes_read > r0                   # plan 72.10: did the question read a route (a goal question that did is alive, whatever it concluded)
+            q._routed = self._routes_read > r0                   # plan 72.10: did its chase read a route (a goal question that did is alive here, whatever it concluded)
             if self.ctx is not None:
                 self._file(q, self.state.claims[n0:])
             if self.chase_depth:
@@ -1959,19 +1967,20 @@ class Agenda:
         return not sqs or any(s in S for s in sqs)
 
     def _local_next(self) -> bool:
-        """plan 72.10 (3): the three questions are asked. The FULL agenda is asked only when the chased goal is DEAD here -- none of its questions on this board had a route to read (no fix and no
-        forcing move: the position is genuinely new; a goal question served a kill from the store is alive if its routes were read when it was killed) -- and the route's value still matters
-        (some root of the board can still bring the need: a root below the need was never pushed). Otherwise the rest of the board is neglected (`Ideas.Frame.chess_frame`: a root none of whose reads the reply touched answers what it
+        """plan 72.10 (3): the three questions are asked. The FULL agenda is asked only when the chased goal is DEAD here -- no question of it on this board claimed and no chase of one read a route
+        (no fix and no forcing move, or a chase this depth does not ask: the goal was not read with the chase's power, so it is not refuted here; the position is genuinely new; a goal question
+        served a kill from the store is alive if its chase read routes when it was killed) -- and the route's value still matters (some root of the board can still bring the need: a root below the
+        need was never pushed). Otherwise the rest of the board is neglected (`Ideas.Frame.chess_frame`: a root none of whose reads the reply touched answers what it
         answered before the reply, and the reply loop of every route reads every reply). -> True when the full agenda was opened (the loop goes on)."""
         L = self.local
         if self.board.is_check():
             L["why"] = "in check: their check is a delay, read as today (the roots are the answers to it)"
             return False
         if L["live"]:
-            L["why"] = "closed by the frame: the goal is alive here (its routes were read); the rest of the board is neglected"
+            L["why"] = "closed by the frame: the goal is alive here (its chase read routes); the rest of the board is neglected"
             return False
         L["full"] = True
-        L["why"] = ("full agenda: the goal is dead here (no route of it to read)" if L["deferred"] else "full agenda: the goal is dead here, and no other root can bring the need")
+        L["why"] = ("full agenda: the goal is dead here (no chase of it read a route)" if L["deferred"] else "full agenda: the goal is dead here, and no other root can bring the need")
         for q in L["deferred"]:
             R._ids[0] += 1
             q.id = R._ids[0]
@@ -2002,7 +2011,7 @@ class Agenda:
             cl = [q for q in by["Q1"] if q.status == "verified"]
             dd = sorted({f"{d.kind} {GAME.loc_name(d.sq)}" if d.sq is not None else d.kind for q in by["Q1"] for d in q.defects})
             q1 = (f"re-asked: {len(by['Q1'])} question(s) of the goal" + (f" (defects: {', '.join(dd)})" if dd else "")
-                  + (f"; {said(cl[0])}" if cl else ", routes read, no claim" if L["live"] else ", no route to read (dead)"))
+                  + (f"; {said(cl[0])}" if cl else ", its chase read routes, no claim" if L["live"] else ", no chase of it read a route (dead)"))
         else:
             q1 = "the goal has no question on this board (dead)"
         q2 = "; ".join(said(q) for q in by["Q2"]) or "none"
@@ -2276,7 +2285,6 @@ class Agenda:
                 return
             self._kill(q, "no route: the fixes supply no move", tempo=False)
             return
-        self._routes_read += 1                                   # plan 72.10: a route of this question is read
         hits, why = [], []
         for r in routes:
             bind, tried = W.verify_tried(r.move, b, us, mates_only, trap=r.trap, fork=r.fork)
@@ -2635,6 +2643,12 @@ class Agenda:
             hit = ctx.memo.get((pk, True, keep)) if wt else (ctx.memo.get((pk, False, 0)) or next((h for k_, h in ctx.memo.items() if len(k_) == 3 and k_[0] == pk and k_[1]), None))     # (position, with threats, the gain kept): an answer WITH threats serves an ask without, not the reverse
         if hit is None and gk is not None:
             hit = ctx.memo.get((pk, False, 0, gk))
+        if hit is None and not wt:                               # plan 72.10: another goal's local answer serves this ask when it cannot mislead it -- its claim already brings the need (a proof is a proof
+            for k_ in ctx.local_keys.get(pk, ()):                # whatever goal found it), or the ask is read for a mate only (the reply already meets the target: an answer without a mate lowers
+                h = ctx.memo.get(k_)                             # nothing, kills nothing)
+                if h is not None and k_[3] != gk and h["need"] <= need and (need >= BD.MATE_VALUE or (h["claim"] is not None and h["value"] >= need)):
+                    hit = h
+                    break
         if hit is not None and hit["need"] <= need:
             self._touch(hit.get("fact"))
             return hit
@@ -2664,7 +2678,7 @@ class Agenda:
         ctx.active_label.pop(pk, None)
         ctx.agendas += 1
         ctx.asked += ag.asked
-        best = ag.best[2] if ag.best and ag.best[0] > 0 else None
+        best = ag.best[2] if ag.best and (ag.best[0] > 0 or ag.best[2].kept) else None      # (70.1: a save kept at 0 holds the balance: a claim)
         reads = None if any(q.reads is None for q in ag.all) else frozenset().union(*(q.reads for q in ag.all))     # 52.13 (4): everything this agenda read (None: some question did not record it)
         threats = [(cl, q.claimed[1] if q.status == "verified" and q.claimed is not None else None, q.status) for q, cl in ag.threat_qs]      # (2026-10-22, 2TUzC: the save question's STATUS too -- an unverified parry is not "no parry" unless the save question was KILLED)
         stayed = gk if ag.local is not None and not ag.local["full"] else None      # plan 72.10: the answer of a local agenda that never opened the full agenda is its goal's only
@@ -2678,6 +2692,8 @@ class Agenda:
         self._touch(f.id)
         if not out["cut"] and not out["chain"]:                 # an answer the budget cut short (or a chain stop, which depends on the chain's state) is not memoised and is never read as "no claim"
             ctx.memo[(pk, wt, keep if wt else 0) + ((stayed,) if stayed is not None else ())] = out
+            if stayed is not None:
+                ctx.local_keys.setdefault(pk, []).append((pk, False, 0, stayed))
         return out
 
     def _touch(self, fid) -> None:
@@ -2795,8 +2811,16 @@ class Agenda:
         mkey = key if gk is None else key + (gk,)
         if gk is not None:
             ctx.route_goals.setdefault(key, set()).add(gk)
-        if mkey in ctx.routes:
-            hit = ctx.routes[mkey]
+        hit = ctx.routes.get(mkey)
+        if hit is None and gk is not None:
+            hit = ctx.routes.get(key)                            # 72.10: a route read with the full agenda answers every goal (as before)
+        if hit is None:
+            for g in ctx.route_goals.get(key, ()):              # ... and one another goal PROVED (no kill, no gap: every reply answered) is a proof for this goal too
+                h = ctx.routes.get(key + (g,))
+                if g != gk and h is not None and h["gap"] is None and h["killed"] is None:
+                    hit = h
+                    break
+        if hit is not None:
             stale = hit["gap"] is None and hit["killed"] is None and gstake and hit.get("closed_min", gstake) < gstake and hit.get("stake_checked", 0) < gstake       # a value closed by a short exchange under a lesser goal is not this goal's
             stale = stale or (hit["gap"] is not None and hit["gap"].startswith("chain stop") and hit.get("chain_state") != self._chain_state())      # 66.4 (mh1q8): a chain stop under another chain state is not this one's
             if hit["gap"] is None and not stale:
@@ -4164,13 +4188,16 @@ class Agenda:
         self._carried_route = res.get("carried", 0)              # plan 66.2: ... and on the replies it served from an earlier tier
         net = value
         kind = "mate" if value >= BD.MATE_VALUE else ("promote" if q.goal == "promote" and not res.get("material") else "save" if q.goal == "save" else "win")
-        if kind == "save" and value < q.stake and self._keep_goal(q):
-            net = value = q.stake                                     # 70.1: the route KEPT the balance on every reply: what it saved is the stake (the piece's value), as the keep family's claims say
+        kept = kind == "save" and self._keep_goal(q)
+        if kept and value < q.stake and not self.chase_depth:
+            net = value = q.stake                                     # 70.1: the route KEPT the balance on every reply: what it saved is the stake (the piece's value), as the keep family's claims say -- at the ROOT,
+            #                                                           whose status reads their threat; an inner agenda's answer is a GAIN on the balance the reply left (`_inner`), so there the claim is
+            #                                                           worth what it kept (72.10 found 0UqOv's Qd5 dxe6 read as -1 + 9: the queen saved counted as the queen won)
         if CYCLE and kind != "mate" and any("repetition" in x for x in res["lemmas"]) and value <= -(AC.Pos(self.board.fen()).balance(self.me) - 64):
             kind = "draw"                                        # plan 61 C4: the route brings the result to level by a repetition (proved: every reply of the cycle was read)
         parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")
         lemma = "chase: step_after+step_least over " + ", ".join(sorted(set(res["lemmas"]))[:3]) if res["lemmas"] else "chase: step_after+step_least"
-        claim = Claim(kind, r.san, value, lemma, f"{r.san}; {parts}", move=r.move.uci())
+        claim = Claim(kind, r.san, value, lemma, f"{r.san}; {parts}", move=r.move.uci(), kept=kept)
         self._stamp(claim, q)
         claim.fixes = claim.fixes + ("chase",)
         self.state.claims.append(claim)
