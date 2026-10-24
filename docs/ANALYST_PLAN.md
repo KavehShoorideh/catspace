@@ -3426,6 +3426,8 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
   boundary (a Rust position HANDLE held by Python, words called on the handle, no FEN per call; batched calls), what stays in Python (torch, the graph policy, the question prior, orchestration,
   tests) -> docs/RUST_BOUNDARY.md with the migration order (1. the handle and the word calls on it under the trace guard; 2. the chase's reply loop and the static leaf; 3. the words themselves),
   the risks (the Lean mirror citations, the read sets, the trace text), and the measured expectation per step. No code in the research step.
+  72.7 STEP 0 BUILT 2026-10-23 on branch worktree-agent-a506db989ebdb7e32 (journal 2026-10-23 20:43): the read set of every claim beside each trace (`<id>.reads.txt`, diffed by `compare`),
+  `scripts/trace_identity.py crosscheck` (SAN and python-chess's legal-move order against `Pos.san` / `Pos.legal_ucis`; clean on its sample); tests/test_plan72_7.py.
   BUILT 2026-10-23 (72.6): `scripts/gate.py engine|full [--dry-run] [--only FILE] [--log PATH]`. `engine` = the 28 named files (the missing ones are printed and skipped), `full` = every tests/test_*.py;
   both run one file at a time, each its own `python -m pytest FILE -q -p no:cacheprovider -W ignore --durations=3` with PYTHONUNBUFFERED=1, output appended to artifacts/experiments/gate_<cmd>_<timestamp>.log.
   LOCK: `<tmpdir>/catspace_gate.lock` (pid, cmd, start); a second gate refuses (exit 2) naming the running gate's pid and start time; a lock whose pid is dead is removed. Other running pytest processes

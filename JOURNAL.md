@@ -32576,3 +32576,21 @@ The two failures, each read by its trace:
 OBS gate engine --only test_cost61: passed 13, failed 0 (3.0 s). OBS gate engine --only test_regress: passed 87, failed 0, xfailed 0 (360.8 s; 52.18 passed this run).
 Main is green at this state. Open for Kaveh: the retrain of the route / question heads (candidate -> gate -> adopt); loop iteration 2 (rand14-17 at 15 s by proof); the retirements of
 docs/SWITCHES.md; 72.7 steps 0-1; 72.8 LATER.
+
+## 2026-10-23 20:43 PDT -- plan 72.7 step 0 built: the sharper guard (read sets beside the traces; the SAN and legal-order cross-checks) (branch worktree-agent-a506db989ebdb7e32)
+docs/RUST_BOUNDARY.md section 4 step 0. No engine code changed.
+- `scripts/trace_identity.py snapshot` now writes `<id>.reads.txt` beside each trace: THE READ SET OF EVERY CLAIM in a stable sorted form (the root agenda's questions with their reads
+  and their claims' reads; every fact of the run's store -- claims, kills, gaps, root lists of every inner agenda and their agendas -- with reads, occupancy reads and the payload's read
+  set). `compare` diffs them too and counts them apart ("k of 10 read sets differ").
+- `scripts/trace_identity.py crosscheck` (risks 4, 5): `Pos.legal_ucis()` against `[m.uci() for m in board.legal_moves]` and `Pos.san(uci)` against `board.san(m)` for every legal move,
+  over the case set, 17 hand-made corners (castling with check, promotions and under-promotions, en passant incl. a pinned one, disambiguation by file / rank / both, mates, evasions)
+  and 26 puzzle sets, each position walked 4 plies (seed 727). Rust: `Pos.san`, `Pos.legal_ucis` (pos.rs `py_order`, python-chess 1.11's generation order).
+OBS crosscheck: positions checked 1671 (sets 26, corners 17, random walk 4 plies, seed 727), moves checked 45607, SAN mismatches 0, order mismatches 0, unparsable by shakmaty 0
+OBS guard (parent c2602607 vs step 0): OBS trace identity: 0 of 10 traces differ. Two step-0 snapshots against each other: 0 of 10 traces differ, 0 of 10 read sets differ (11076 read-set lines).
+NEGATIVE CONTROL (not committed): `_record_claim` made every claim read one square less (the risk-2 failure): OBS trace identity: 8 of 10 traces differ; OBS trace identity: 10 of 10 read sets
+differ -- RoR8t and eSJqH moved no trace line and were caught by their read sets only. Reverted.
+OBS gate engine --only tests/test_plan72_7.py: passed 5, failed 0, xfailed 0, errors 0 (0.4 s). OBS gate engine --only tests/test_binder_rust.py: passed 31, failed 0 (0.7 s).
+FINDINGS: (1) regress.rs `py_key` files castling among the king's moves (to = the rook's square); python-chess generates castling after EVERY non-pawn move. An emulation over 4 castling
+positions: OBS py_key emulation: 4 of 4 castling positions order differently from python-chess. Harmless today: every user of `legal_sorted` drops castling (or is in check). `legal_ucis` uses
+its own key with castling in python's place. (2) `rust/analyst_core/target` is TRACKED in git (4297 files, since e5fb85ac): every build dirties ~160 tracked files; commits stay by path.
+SAN and order are clean on this sample; step 1 may read legal moves and names from `Pos` where it needs them (it keeps python-chess's where they are today).

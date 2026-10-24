@@ -115,6 +115,8 @@ trace text only, so it has not been shown to catch a read-set change (see risk 2
 ### Step 0. Make the guard sharper (prerequisite)
 Extend the snapshot with the read set of every claim; add the SAN cross-check and the legal-order cross-check of section 5 over the case set and a sample of
 the puzzle sets. Without this, steps 2 and 3 can break the listener silently.
+STATUS: BUILT 2026-10-23 on branch worktree-agent-a506db989ebdb7e32 (journal 2026-10-23 20:43): `<id>.reads.txt` beside each trace, `trace_identity.py crosscheck`, `Pos.san`,
+`Pos.legal_ucis`; the cross-check clean on its sample; the negative control (claims reading one square less) caught by the read sets where the traces did not move.
 
 ### Step 1. The handle and the word calls on it
 Add the `Pos` methods and term-id compile of 3.1/3.2. Switch `graph.word`, `graph.see` and the `selfmine.val_at` callers to the node's `Pos`; give nodes a

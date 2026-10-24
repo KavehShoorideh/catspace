@@ -32,6 +32,39 @@ impl Pos {
         q.play_unchecked(&m);
         Ok(Pos { pos: q, last_to: Some(m.to()) })
     }
+    /// The LEGAL move `uci` on this position (ValueError when it is not one: `play_unchecked` on anything else corrupts silently, RUST_BOUNDARY risk 7).
+    pub(crate) fn legal_move(&self, uci: &str) -> PyResult<Move> {
+        shakmaty::uci::UciMove::from_ascii(uci.as_bytes()).ok().and_then(|u| u.to_move(&self.pos).ok())
+            .ok_or_else(|| PyValueError::new_err(format!("illegal move {uci}")))
+    }
+}
+
+/// PYTHON-CHESS'S ORDER of the legal moves (`Board.generate_legal_moves`, python-chess 1.11; RUST_BOUNDARY risk 4: Python list order sets tie-breaks, so traces
+/// depend on it). Not in check, the pseudo-legal order: the pieces other than pawns by from-square descending, each by to-square descending; then castling, the
+/// rook's square descending (the king side first); then the pawn captures (from, to descending; promotions Q R B N); the single pushes (to descending; Q R B N); the
+/// double pushes (to descending); en passant. In check, the evasions: the king's moves first (to descending), then the rest in the same order. (regress.rs `py_key`
+/// files castling among the king's moves; every user of it there drops castling, so it never reached an output.)
+pub(crate) fn py_order(p: &Chess) -> Vec<Move> {
+    let evasion = p.is_check();
+    let mut v: Vec<Move> = p.legal_moves().into_iter().collect();
+    v.sort_by_key(|m| py_order_key(m, evasion));
+    v
+}
+
+fn py_order_key(m: &Move, evasion: bool) -> (u8, u8, i32, i32, u8) {
+    let kf = if evasion && m.role() == Role::King { 0 } else { 1 };
+    let promo = match m.promotion() { Some(Role::Rook) => 1, Some(Role::Bishop) => 2, Some(Role::Knight) => 3, _ => 0 };
+    match *m {
+        Move::Castle { rook, .. } => (kf, 1, -(rook as i32), 0, 0),
+        Move::EnPassant { from, to } => (kf, 5, -(from as i32), -(to as i32), 0),
+        Move::Normal { role: Role::Pawn, from, to, capture, .. } => {
+            if capture.is_some() { (kf, 2, -(from as i32), -(to as i32), promo) }
+            else if (to as i32 - from as i32).abs() == 8 { (kf, 3, -(to as i32), 0, promo) }
+            else { (kf, 4, -(to as i32), 0, 0) }
+        }
+        Move::Normal { from, to, .. } => (kf, 0, -(from as i32), -(to as i32), 0),
+        Move::Put { to, .. } => (kf, 6, -(to as i32), 0, 0),
+    }
 }
 
 #[pymethods]
@@ -79,6 +112,16 @@ impl Pos {
 
     /// The best static exchange the SIDE TO MOVE has on a piece of the other side (a non-king piece it attacks); 0 when none.
     fn exchange(&self) -> i64 { pos_exchange(&self.pos) }
+
+    /// The SAN of the legal move `uci`, check and mate suffixes included (shakmaty's `SanPlus`; RUST_BOUNDARY risk 5: the trace and the play server print names, so
+    /// the guard cross-checks this against python-chess's `board.san` before anything relies on it). ValueError on an illegal move.
+    fn san(&self, uci: &str) -> PyResult<String> {
+        let m = self.legal_move(uci)?;
+        Ok(shakmaty::san::SanPlus::from_move(self.pos.clone(), &m).to_string())
+    }
+
+    /// The legal moves as UCI in PYTHON-CHESS'S ORDER (`[m.uci() for m in board.legal_moves]`; see `py_order`).
+    fn legal_ucis(&self) -> Vec<String> { py_order(&self.pos).iter().map(|m| m.to_uci(CastlingMode::Standard).to_string()).collect() }
 }
 
 /// The squares whose piece or attacker counts (either colour) differ between two positions.
