@@ -32659,3 +32659,39 @@ Reading: the engine has no word for the drive -- its goals are mate / win / save
 fallback's. Directional, one play-out; the ratio against a rook lemma (one question per move: does this move shrink the region without stalemate / a draw claim) is the argument for
 lemmas as GOALS with a measure (see the discussion of 2026-10-23 evening: frequent frame class with no claim -> a monotone quantity over won games in the class -> its floor as the Lean
 target).
+OBS gate engine (main e0cdd709, 72.7 steps 0-1 merged, core rebuilt from main's crate, alone on the machine): files 28, passed 393, failed 0, xfailed 3, errors 0, wall 701.2 s (was 755.4 s
+at 04092755; one run each, directional). Main is green. Next, in Kaveh's order: THE LOOP iteration 2 (rand14_10 .. rand17_10 at 15 s in the pool, graded by proof), then the retrain.
+
+## 2026-10-23 22:40 -- THE LOOP, iteration 2: forty fresh puzzles at 15 s in the pool (main e0cdd709), seven misses traced, one label fixed, one fix withdrawn
+Sets rand14_10 .. rand17_10 (not in the policy's training data), 15 s each, the pool with the graph policy; graded by Stockfish depth 14 in its own process.
+OBS prior grade: 40 decisions graded by Stockfish (depth 14) over 40 agendas: RIGHT 31, UNKNOWN 2, WRONG 7
+OBS prior grade by proof: proved RIGHT 30, proved WRONG 4, unproved RIGHT 1, unproved WRONG 3, none 2
+(iteration 1 on rand10-13: RIGHT 35 WRONG 5; proved WRONG 3 -- one batch each, directional, not comparable sets.)
+The seven, each traced ALONE at 15 s (the standalone decisions reproduce the batch's):
+* 2CEDb (Black in check from Rg7+; answer Kxg7; ours Qxg7 "proved"): THE COST CLASS. The judge read Kxg7 first and rightly ("decides, forced", p 0.97) and its chase ate the 15 s: 1244
+  inner agendas, 13,665 inner questions (11 per inner agenda), fuse hits 35 at depth 3, 0.788 s per node, "Kxg7 not followed past Qxc6", Qxg7 "not started". The decision was then the
+  SMALLEST LOSS over one-ply reads (Qxg7 -4 by their Kxf2, Kxg7 -4 by their Qb7+; the shape key broke the tie the wrong way). The one-ply read of Kxg7 Qb7+ "wins 4" is the one-ply window.
+* 4E4iU (Black in check from Bf5+; answer exf5; ours Kg8 "proved"): exf5 was a route and a GAP: "not followed past Rxe8 (tempo arithmetic: 0 defects, 1 level left)" -- the tempo stop fired
+  on OUR RECAPTURE (exf5 Rxe8 Rxe8: their capture bumped the chase clock, so the chain was not "fresh" and the recapture question had allowance 0). Kg8 then won the smallest loss at 0 ("no claim
+  of theirs binds") while their Bxe6+ Rxe6 Rxe6 was never read: the second-check stop cut it ("a second check of theirs in a row (not followed)"). Unread = GAP, never proof: the "proved"
+  label on this decision was false.
+* 9QsbL (Black; answer Rg6; ours Nc4 proved save +3): Rg6 was a route, read, "34 replies => value 0", and the judge: "does not decide: the policy ranks it below chance (p 0.00 of 6
+  routes)". A diagnostic agenda on the position after Rg6 Qh4 finds Nxf3+ +9 PROVED (the fork with check: Rxf3 Qxh4) and after Rg6 Qh3 finds Qxh3 +7 -- but inside the chase the line
+  Nxf3+ Rxf3 Qxh3 meets the same tempo stop on the recapture ("Nxf3+ not followed past Rxf3 (tempo arithmetic ...)"). The vocabulary is there; the stop and the policy's rank are the walls.
+* r3oph (Black; answer Nxe5; ours Rxd1+ proved +1): two holes. (a) Rxd1+'s proof rests on the static leaf after Rxd1+ Qxd1 Qxc4: "exchange +1, nothing of theirs" -- Stockfish: Qb1! (a
+  quiet move; the queen reaches g6 in one more move with the h-file rook behind: a two-move mate threat) +2.2 for White. Their pass at the leaf has no word for a threat one quiet move away
+  (LOOP TARGET 2 / plan 72's priced reach, for THEIR side at the leaf). (b) Nxe5 (+4 by Stockfish: fxe5 Qxg4 Rxd8 Bxe5) was valued 1 by the one-ply floor and its chase under "win their Q
+  on g4" was cut: "does not decide: the policy ranks it below chance (p 0.01 of 10 routes)", read 2.9 s then out of time; in pool 1 "cut by the judge, 0.0 s left". Tied at 1 with Rxd1+,
+  the order chose the check.
+* KSMKJ (ours gxh5, answer Qd6+), L2luA (Ra5 / Re5), kJbxb (g5 / e5): unproved, "unfinished line" -- the order-and-time class, the policy's targets (as iteration 1's SiySv, 6Cioj).
+* 6fnQB (K+P ending, answer Kd5) and frLxu (answer Rxh7): no claim, no decision ("none").
+FIXED (kept): the smallest-loss decision's claim (`lemma none`) is proved=False -- it rests on one-ply reads of their replies while the chases are GAPs; a decision, not a proof (2CEDb,
+4E4iU were counted "proved WRONG" on this label). Guard: 1 of 10 traces differ (qCXKp, 2 lines: the label), 0 of 10 read sets. OBS gate engine --only: test_cost61 13 passed; test_agenda 26
+passed; test_regress 87 passed, 1 xfailed.
+TRIED AND WITHDRAWN the same night: letting a spent chain go on through captures that are not bad for us (the chase clock's own rule, "one-way progress"). It rescued neither 4E4iU (exf5's
+chain then met the second-check stop: Rxh6+ ... Qxf5+) nor 9QsbL, and at the count budget the guard lost the discovery position's Nf6 (-> Nd6 unfinished) and 2TUzC's floor decision (-> none):
+more routes read, less budget for the right one. Recorded in agenda.py beside the stop.
+THE CLASSES, for Kaveh: (1) the policy ranks the answer below chance (Rg6 p 0.00, Nxe5 p 0.01, 52.18's Nf6 p 0.00) and the judge then cuts it -> THE RETRAIN (next); (2) the two hand-coded
+chain stops -- tempo arithmetic on a recapture, the second check in a row -- cut exactly the recapture lines; SWITCHES.md already marks SECOND_CHECK_STOP vestigial-by-principle ("the
+principled ends of a check sequence are the CYCLE claim and the clock"); the principled form costs count budget, so it is a design decision, not a patch; (3) their quiet move one step from a
+mate threat at the static leaf (r3oph Qb1) -- plan 72's priced reach asked from THEIR pass at the leaf; (4) the in-check chase's cost (2CEDb: 11 questions per inner agenda, 1244 agendas).

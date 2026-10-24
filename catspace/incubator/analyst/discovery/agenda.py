@@ -2556,7 +2556,8 @@ class Agenda:
         if tied:
             why += f"; tied at net {net} with {', '.join(t[2].san for t in tied[:5])}: the shape key (fewest hanging, most guarded, most poking) prefers {r.san}"
         self.lines.append(f"  decision {r.san}: {why}")
-        claim = Claim("save", r.san, net, "none", f"{r.san}: the opponent's best claim is {-net + gain}" if theirs is not None else f"{r.san}: no claim of theirs binds", move=r.move.uci())
+        claim = Claim("save", r.san, net, "none", f"{r.san}: the opponent's best claim is {-net + gain}" if theirs is not None else f"{r.san}: no claim of theirs binds", move=r.move.uci(),
+                      proved=False)                              # loop 2 (4E4iU, 2CEDb, 2026-10-23): the smallest loss rests on one-ply reads of their replies while the chases are GAPs -- a decision, not a proof
         self._stamp(claim, q)
         self.state.claims.append(claim)
         q.status = "verified"
@@ -4020,6 +4021,9 @@ class Agenda:
             if allow <= 0 and allow + self._extension() <= 0:          # 66.4: a resumed line that is still forcing gets one more level of the allowance per pass
                 self.ctx.mate_walks += 1
                 self._chain_gap(q, f"tempo arithmetic: the chain has spent the prep moves the goal's defects allow ({len(q.defects)} defect(s), {parent} level(s) left under the {top[1]}-stake goal)")      # 64.1: a heuristic's stop is a GAP unless it is a proof (the judge is not a lemma)
+                #                                                  loop 2 (2026-10-23, 4E4iU exf5 Rxe8 Rxe8; 9QsbL Rg6 Qh4 Nxf3+ Rxf3 Qxh4): this stop fires on OUR RECAPTURE (their capture bumped the clock, so the
+                #                                                  chain is not "fresh"); letting captures that are not bad for us through was tried and withdrawn the same night: it rescued neither puzzle (the
+                #                                                  next wall is the second-check stop, 52.23 (3)) and at the count budget it cost the discovery position its Nf6. The design item is in the journal.
                 return False
         b = self.board
         routes, notes = [], []
