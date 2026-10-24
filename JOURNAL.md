@@ -32516,3 +32516,10 @@ The cost agent's attribution (discovery under the tiers at 15 s, each flag off i
 `joins_of` 5.15 s over 496 calls in inner agendas for a candidate nothing in the chase reads. Cut: joins asked at the ROOT agenda only, plus six scopings of the roll (one unit's moves, the static
 attack check before the exchange, job-scoped landings, bearing-in-principle geometry, the counter-plan roll skipped when the stake clears the price by more than our dearest unit, memoised
 counter_value). After: Nf6 proved in 10.3 s (three runs); the guard's 10 decisions unchanged.
+
+## 2026-10-23 17:19 PDT -- plan 71.5 inventory: docs/SWITCHES.md (read-only; no engine code, no run)
+
+Every module-level switch, env flag and plan-numbered mechanism in agenda/regress/binder/race/plan67/ponder/facts/graph_policy/question_prior/table/landing/words/game, with plan section, default, tests and a verdict.
+OBS 113 rows: LIVE 77, FALLBACK 26, SUPERSEDED 2, VESTIGIAL 8, UNKNOWN 0 (counted by script over the table). The pool is the default driver; the tiers driver and COMPETE / STOP_AFFORD / RAISE_TO_WIN / DEFER / the RESUME pass are the fallback path.
+Found by reading only: analyse._FLAGS omits POOL, DEFER, SURVEY, CHASE_SAVES and others (a parallel --no-pool is lost in workers); --pool help text still says OFF; in the pool the five 52.23 chain flags cannot be turned off (tier 3 forces them).
+Nothing deleted: the retire / keep / fix lists are in the closing section, for the owners decision.
