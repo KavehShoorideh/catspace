@@ -1058,7 +1058,8 @@ def test_52_18_the_discovery_position_names_the_discovery_and_the_x_ray_fix_is_o
     ag = AG.Agenda(State(DISCOVERY, "w", []), seconds=30)                    # (see the 52.16 discovery test: a time budget since 2026-10-20; 30 s since 64.0's sound close)
     ag.ask()
     t = ag.trace()
-    assert ag.decision().what in ("Nf6", "Nd6")
+    d = ag.decision()
+    assert d is not None and d.proved and d.what in ("Nf6", "Nd6")          # (2026-10-23, 72.9: PROVED, as the xfail names the gap -- the unproved fallback flips between Nd6, Nf6 and Nc5 from run to run and XPASSed the strict xfail once)
     assert "discover an attack on a8" in t and "discovery: the N leaves e4, the B on g2 joins the attack on a8 (battery with the Q on b7)" in t
     b = chess.Board(BATT)
     q = AG.Agenda(State(BATT, "w", [])).all[0]

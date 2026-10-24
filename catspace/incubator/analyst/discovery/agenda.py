@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import dataclasses
 import heapq
+import math
 import os
 import re
 import time
@@ -92,6 +93,7 @@ COST_JUDGE = True                                               # plan 61 C2, ON
 CYCLE = True                                                    # plan 61 C4 (ON: graded on the 90, no decision changed, nothing lost): a position that repeats one of the line (or of ctx.history) closes as a PROVED claim kind 'draw' (value = minus the balance) when we are behind; `analyse --no-cycle` turns it off
 JUDGE_PRICE_CAP = 120                                           # plan 64.3: the pricing of a route stops at this cost while no rate is known (pricing 50-parry routes was 7.2 of 15 s on 07Z0P)
 JUDGE_MIN_AGENDAS = 8                                           # plan 61 C2: the judge reads on until this many cost units have been timed (no rate, no cut)
+FORCED_WORDS = ("check", "capture", "threat of mate")           # the words of a FORCED route (its replies are forced: evasions, the recapture, the parries of a mate): the chase follows only these below the root; 72.9: a root route with one of them may decide
 TIERS_UNDER_TIME = True                                         # plan 59 default (2026-10-20, graded on 85 random puzzles): ON whenever the budget is TIME -- the tiers share the seconds, so the cost is bounded
                                                                 # (s10: RIGHT 59 -> 61, WRONG 4 -> 4; hqGOF right again); under the COUNT fuse they stay OFF unless TIERS (fuse: +2 RIGHT for ~650 s extra on 25 widened puzzles)
 TIERS = False                                                   # plan 59: STATUS-DRIVEN WIDENING at the root -- tier 0 (today's moves), then wider tiers (settings of the root's ChaseCtx) only while no claim keeps our status; analyse --tiers; the play server honours it
@@ -230,6 +232,9 @@ class ChaseCtx:
         self.route_secs: dict = {}                # 64.3: (position, root route, stake) -> (seconds it took, did it finish): a route READ before carries its measured cost into the later tiers / questions
         self.rate_t = 0.0                         # ... the rate measured by the EARLIER tiers of this root (seconds / inner agendas): the run's rate, not the tier's
         self.rate_n = 0
+        self.kind_rate: dict = {}                 # 72.9 (a): parry kind (check / capture / quiet) -> (seconds, cost units) of the parries of that kind the root routes read to their end: the kind's own rate (one dict for the run: the tiers and passes share it)
+        self.claim_all = ""                       # 72.9: set while the root route being judged DECIDES (the reason, for the judge's line): it takes the root's whole remaining share and is read whatever the rate; "" -- its fair share, the rate prices it
+        self.why_not = ""                         # ... and, when it does not, why (for the judge's line)
         self.held = None                          # plan 65.1: () -> does the best claim so far already keep the status (set by the tier driver; None: no tiers, no competition)
         self.competitors: dict = {}               # ... (position, stake, tier) -> [(move, san, why)]: the routes the NEXT tier would read at the root of a question (priced on demand, `_price`)
         self.root_gaps: dict = {}                 # plan 65.2: (position, route, stake) -> (cost, san): the root routes of this tier that ended as GAPs and are still open
@@ -940,6 +945,7 @@ class Agenda:
             nxt = self._next_agenda(prev, TIER_COUNT - 1, left, self.status_info, f"pool {p}")
             nxt.ctx.pool, nxt.ctx.left, nxt.ctx.extend, nxt.ctx.held = True, NO_FUSE, p, None
             nxt.ctx.need = self.ctx.need
+            nxt.ctx.one_route = self.ctx.one_route               # 72.9 (b): a pass reads the share by the same status as the first (the context's default, ponder's "finish the route", is not the status)
             nxt.status_info = self.status_info
             nxt.lines = _TierLines(self.lines, f"[pool {p}] ")
             self.lines.append(f"POOL pass {p}: {len(open_gaps)} root route(s) still open ({', '.join(self.root_reads[u]['san'] for u in open_gaps[:5])}{', ...' if len(open_gaps) > 5 else ''}); asked again with {left:.1f} s left, the allowance +{p}")
@@ -1102,6 +1108,7 @@ class Agenda:
             nxt.ctx.route_secs = self._carried_secs(ag.ctx.route_secs)      # resumed read does not redo them, so t is no longer a lower bound of what is left (an estimate is never a bound): it is priced as a route not yet read
         nxt.ctx.theirs, nxt.ctx.their_ags = ag.ctx.theirs, ag.ctx.their_ags      # 64.0 (speed only): THEIR agenda at a position is a function of the position, not of the tier: kept across the tiers
         nxt.ctx.rate_t, nxt.ctx.rate_n = ag.ctx.judge_t + ag.ctx.rate_t, ag.ctx.judge_n + ag.ctx.rate_n      # plan 61 C2: seconds per node is measured in the RUN so far
+        nxt.ctx.kind_rate = ag.ctx.kind_rate                     # 72.9 (a): ... and so is the rate of each parry kind
         if CARRY:                                                # plan 66.1: the proved claims of the root's questions carry (a refutation does not: kills and GAPs are read again)
             carried = dict(ag.ctx.carry_q)
             for key, d in ag._carried_out().items():
@@ -1160,8 +1167,8 @@ class Agenda:
                 if not ok:
                     self.lines.append(f"RESUME: not resumed {it['route'].san}: the line went quiet ({why}; {it['gap']})")
                     continue
-                cost = prev._price(it["route"].move, it["stake"], JUDGE_PRICE_CAP)[0]
-                go.append((cost * spn if spn else float(cost), cost, it))
+                cost, kids, _lower = prev._price(it["route"].move, it["stake"], JUDGE_PRICE_CAP)
+                go.append((prev._priced(cost, kids, spn)[0] if spn else float(cost), cost, it))      # 72.9 (a): in the judge's price order (each parry at the rate of what it is)
             if not go:
                 break
             go.sort(key=lambda t: (t[0], t[2]["uci"]))
@@ -1311,7 +1318,7 @@ class Agenda:
         spn = ag._spn()
         if spn is None or spn <= 0:
             return True, ""
-        limit = int(left / spn) + 1
+        limit = int(left / ag._low_rate(spn)) + 1
         cands = []
         for mkey, (cost, san) in ctx.root_gaps.items():
             seen = ctx.route_secs.get(mkey)
@@ -1319,7 +1326,7 @@ class Agenda:
                 san = self.board.san(chess.Move.from_uci(san)) if len(san) in (4, 5) and san[0] in "abcdefgh" and san[1] in "12345678" else san
             except (ValueError, AssertionError):
                 pass
-            cands.append((self._route_need(cost, seen, spn), cost, san, k))
+            cands.append(ag._judge_price(cost, (ctx.route_costs.get(mkey) or (0, []))[1], seen, spn) + (cost, san, k))      # 72.9 (a): the judge's price, by what each parry is
         b = self.board
         dl, ns = DELAYED_THREAT, NO_SAFE_MOVE
         for (pk, stake, kk), news in list(ctx.competitors.items()):
@@ -1328,14 +1335,15 @@ class Agenda:
             for m, san, _why in news:
                 if W.forcing_why(b, m, stake, self.us, mate_threats=True, mate2=k >= 2, delayed=dl and k >= 1, nosafe=ns and k >= 1):
                     continue                                         # forcing in tier k already: not new
-                cost, _kids, lower = ag._price(m, stake, limit)
-                cands.append((self._route_need(cost, ctx.route_secs.get((pk, m.uci(), stake)), spn), cost, san, k + 1))
+                cost, kids, lower = ag._price(m, stake, limit)
+                cands.append(ag._judge_price(cost, kids, ctx.route_secs.get((pk, m.uci(), stake)), spn) + (cost, san, k + 1))
         if not cands:
             return True, ""
-        need, cost, san, tier = min(cands)
+        need, words, cost, san, tier = min(cands, key=lambda c: (c[0], c[2], c[3], c[4]))
         if need <= left:
             return True, ""
-        return False, f"TIERS: stopped at {time.monotonic() - t0:.1f} s: the cheapest unread route (tier {tier}, {san}) is priced {cost} x {spn:.4f} = {need:.1f} s > the {left:.1f} s left"
+        how = f"{cost} x {spn:.4f}" if not words.startswith("priced by") else f"{cost} ({words})"
+        return False, f"TIERS: stopped at {time.monotonic() - t0:.1f} s: the cheapest unread route (tier {tier}, {san}) is priced {how} = {need:.1f} s > the {left:.1f} s left"
 
     @staticmethod
     def _carried_secs(route_secs: dict) -> dict:
@@ -1353,12 +1361,13 @@ class Agenda:
                 san = self.board.san(chess.Move.from_uci(san)) if len(san) in (4, 5) and san[0] in "abcdefgh" and san[1] in "12345678" else san
             except (ValueError, AssertionError):
                 pass
-            rows.append(((self._route_need(cost, ctx.route_secs.get(mkey), spn) if spn else None), cost, san))
+            p, w = ag._judge_price(cost, (ctx.route_costs.get(mkey) or (0, []))[1], ctx.route_secs.get(mkey), spn) if spn else (None, "")      # 72.9 (a): the judge's price, by what each parry is
+            rows.append((p, cost, san, w))
         if not rows:
             return f"TIERS: ended at {at:.1f} s with no root route open (every route read to a claim or a kill)"
         rows.sort(key=lambda r: (r[0] is None, r[0] or 0, r[1]))
-        p, c, san = rows[0]
-        return f"TIERS: ended at {at:.1f} s with {len(rows)} root route(s) still open (GAPs); the cheapest, {san}, priced {c}" + (f" x {spn:.4f} = {p:.2f} s" if p is not None else " (no rate)") + ": affordable work was left, the stop of 65.2 did not apply"
+        p, c, san, w = rows[0]
+        return f"TIERS: ended at {at:.1f} s with {len(rows)} root route(s) still open (GAPs); the cheapest, {san}, priced {c}" + ((f" x {spn:.4f}" if not w.startswith("priced by") else f" ({w})") + f" = {p:.2f} s" if p is not None else " (no rate)") + ": affordable work was left, the stop of 65.2 did not apply"
 
     def _ask_finish(self) -> None:
         """What `ask` adds to the trace once the loop has ended (the root agenda only)."""
@@ -2557,9 +2566,22 @@ class Agenda:
         gains = []
         closed_now = {}
         closed_min = BD.MATE_VALUE                               # the least value an exchange closed a reply at (the memo entry keeps it: another goal's stake may ask for more)
+        kid_cost = None                                          # 72.9 (a): a ROOT route under the judge: the parries it was priced by (SAN -> the cost of the unread child)
+        if self.chase_depth == 0 and not cheap and not override and self._judge_on():
+            hit = ctx.route_costs.get((_pos_key(b.fen()), m.uci(), self._judge_stake()))
+            kid_cost = dict(hit[1]) if hit is not None else None
+        tally = [None]                                           # ... the parry being read (its SAN, when its read started)
+
+        def flush(done: bool = True) -> None:                    # 72.9 (a): a parry read to its end (closed, served, claimed or refuting; not cut) teaches the rate of its kind: its seconds over its child's cost
+            if tally[0] is not None and done and tally[0][0] in kid_cost:
+                self._kind_tally(tally[0][0], kid_cost[tally[0][0]], time.monotonic() - tally[0][1])
+            tally[0] = None
         for dbal, uci, chk, cap, rec, mate1 in rows:
+            flush()
             P2 = P2_of(uci)
             san_r = san_of(uci)
+            if kid_cost is not None:
+                tally[0] = (san_r, time.monotonic())
             kill_uci = uci
             if override and uci in override:                     # 52.22 (3): the reply the refuter fix answered
                 val, part, ofacts = override[uci]
@@ -2774,6 +2796,7 @@ class Agenda:
             self._log(key, uci, "claim" if cl else "material", dbal, inn["value"], inn.get("reads"), res["parts"][-1])
             if cl:
                 res["lemmas"].append(cl.lemma)
+        flush(res["gap"] is None)                                # (the reply a GAP stopped at was not read to its end: it teaches nothing)
         if cheap and res.get("pending") and res["killed"] is None:
             self._pre[key] = closed_now                          # not memoised: the second pass finishes it
             return res
@@ -3015,6 +3038,41 @@ class Agenda:
         cq = self._chase_q
         return cq.stake if cq is not None else 1
 
+    def _whole_share(self, q: R.Question) -> str:
+        """72.9 (b) THE ROOT QUESTION'S SHARE (69.1's `one_route`, read when its first route opens): in the POOL, while the status is LOST (one route must be finished to keep it) and no claim has kept it
+        yet, a question that can beat the best claim takes the whole remainder of the run; else the half (52.23 (11)). -> the reason, or "" (the half)."""
+        ctx = self.ctx
+        if not (ctx.pool and ctx.one_route):
+            return ""
+        st = getattr(self, "status_info", None)
+        if st is not None and self.keeps(st)[0]:
+            return ""                                            # a claim already keeps the status: breadth decides
+        if self.best is not None and self.best[0] >= q.stake:
+            return ""
+        return f"the status is lost and Q{q.id} (stake {q.stake}) can beat the best claim"
+
+    def _decides(self, q: R.Question, r: R.Route) -> tuple:
+        """72.9 THE JUDGE'S FIRST QUESTION (Kaveh 2026-10-23: "one more question, yes or no"): a ROOT route DECIDES when (1) it can still change the decision -- its question can beat the best claim
+        and the policy ranks the route above chance (its probability over the question's routes at least the uniform 1/n: first or near first) -- and (2) its replies are forced (a check, a capture,
+        a threat of mate: FORCED_WORDS, the words the chase follows below the root), so its nodes are few and cheap. A deciding route takes the root's whole remaining share and is read whatever the
+        run's rate says; every other route is priced by the rate (72.9 (a)) against its fair share. No policy ranked the routes (the tiers): nothing decides, the rate prices every route as before.
+        -> (why it decides, or "", why it does not, or "")."""
+        pol = getattr(self, "_policy_p", None)
+        if pol is None or self.chase_depth != 0:
+            return "", ""
+        probs, n = pol
+        word = r.why.removeprefix("fix: ")
+        kind = word.split(":")[0].split(" (")[0]
+        if self.best is not None and self.best[0] >= q.stake:
+            return "", f"Q{q.id} cannot beat the best claim ({self.best[2].what} {self.best[0]:+d})"
+        p = probs.get(r.move.uci())
+        if p is None or p < 1 / n:
+            return "", "the policy ranks it below chance" + (f" (p {p:.2f} of {n} routes)" if p is not None else "")
+        if not word.startswith(FORCED_WORDS):
+            return "", f"its replies are free ({kind})"
+        best = "none yet" if self.best is None else f"{self.best[2].what} {self.best[0]:+d}"
+        return f"{kind} (its replies are forced), the policy ranks it above chance (p {p:.2f} of {n} routes), Q{q.id} (stake {q.stake}) can beat the best claim ({best})", ""
+
     def _price(self, m: chess.Move, stake: int, limit: "int | None") -> tuple:
         """The first-level cost of the route `m` at the stake (64.3, speed only: a function of the position, the move and the stake, asked once per run; pricing stops at the limit, then the cost is a LOWER bound).
         -> (cost, [(parry SAN, child cost)], is it a lower bound)."""
@@ -3027,12 +3085,64 @@ class Agenda:
         return hit
 
     @staticmethod
-    def _route_need(cost: int, seen: "tuple | None", spn: float) -> float:
-        """plan 64.3 / 65.1: THE PRICE OF A ROUTE IN SECONDS: first-level cost x the measured rate for a route never read; the measured seconds for one that finished before; at least the measured seconds
-        (and the cost x rate) for one that was cut after t (it needs more than t)."""
+    def _route_need(cost: int, seen: "tuple | None", spn: float, priced: "float | None" = None) -> float:
+        """plan 64.3 / 65.1: THE PRICE OF A ROUTE IN SECONDS: first-level cost x the measured rate for a route never read (72.9 (a): `priced`, the cost priced by what each parry is, when given); the measured
+        seconds for one that finished before; at least the measured seconds (and the price) for one that was cut after t (it needs more than t)."""
+        base = cost * spn if priced is None else priced
         if seen is None:
-            return cost * spn
-        return seen[0] if seen[1] else max(cost * spn, seen[0])
+            return base
+        return seen[0] if seen[1] else max(base, seen[0])
+
+    @staticmethod
+    def _parry_kind(san: str) -> str:
+        """72.9 (a): WHAT A REPLY IS, read off its move (the parries are the forcing word's, `regress.parries` of the route's `threat_of`): a check (what follows is our evasion), a capture, or a quiet move."""
+        return "check" if san.endswith(("+", "#")) else "capture" if "x" in san else "quiet"
+
+    def _kind_spn(self, kind: str, spn: float) -> tuple:
+        """72.9 (a) -> (seconds per cost unit after a reply of this kind, the words for the judge's line): the kind's own rate once JUDGE_MIN_AGENDAS of its units were timed in this run, else the run's rate."""
+        t, n = self.ctx.kind_rate.get(kind, (0.0, 0))
+        if n >= JUDGE_MIN_AGENDAS:
+            return t / n, f"{kind} at its own {t / n:.3f} s/unit ({n} units timed)"
+        return spn, f"{kind} at the run's {spn:.3f} s/unit (only {n} of its units timed)"
+
+    def _low_rate(self, spn: float) -> float:
+        """72.9 (a): the cheapest rate any unit can be priced at (the run's or a kind's own): the pricing of a route may stop where even that rate cannot fit the time (64.3: then the cost is a lower bound)."""
+        own = [t / n for t, n in self.ctx.kind_rate.values() if n >= JUDGE_MIN_AGENDAS and t > 0]
+        return min([spn] + own)
+
+    def _priced(self, cost: int, kids: list, spn: float) -> tuple:
+        """72.9 (a) THE PRICE BY WHAT EACH PARRY IS: a route's nodes are not alike, so each parry's unread child (its cost) is priced at the rate of the parry's kind and the route's own node (and any parry
+        not priced) at the run's rate; while no kind has its own rate this is cost x the run's rate. -> (seconds, the words for the judge's line: which rate priced what, and why)."""
+        units: dict = {}
+        for san, c in kids:
+            k = self._parry_kind(san)
+            units[k] = units.get(k, 0) + c
+        rest = max(cost - sum(units.values()), 0)
+        need, words, own = rest * spn, [], False
+        for k in ("check", "capture", "quiet"):
+            if units.get(k):
+                r, w = self._kind_spn(k, spn)
+                own = own or r != spn
+                need += units[k] * r
+                words.append(f"{units[k]} {w}")
+        if not own:
+            return need, f"at the run's rate {spn:.3f} s/unit (no parry kind of this route has {JUDGE_MIN_AGENDAS} units timed)"
+        return need, "priced by what each parry is: " + ", ".join(words) + f", {rest} at the run's {spn:.3f} s/unit (the route's own node)"
+
+    def _judge_price(self, cost: int, kids: list, seen: "tuple | None", spn: float) -> tuple:
+        """THE JUDGE'S PRICE of a root route in seconds and the words that say how it was set: `_route_need` over the cost priced by what each parry is (72.9 (a)), or the seconds measured when it was read before."""
+        priced, words = self._priced(cost, kids, spn)
+        need = self._route_need(cost, seen, spn, priced)
+        if seen is not None and need == seen[0]:
+            words = f"as measured: it {'took' if seen[1] else 'was cut after'} {seen[0]:.1f} s when read before"
+        return need, words
+
+    def _kind_tally(self, san: str, units: int, secs: float) -> None:
+        """72.9 (a): a parry of a ROOT route read to its end (under the judge) adds its seconds and its cost units (the child's cost the route was priced by) to the rate of the parry's kind: the route's
+        measured time is split by what its parries are, in the units its price was counted in."""
+        kind = self._parry_kind(san)
+        t0, n0 = self.ctx.kind_rate.get(kind, (0.0, 0))
+        self.ctx.kind_rate[kind] = (t0 + secs, n0 + units)
 
     def _competitor(self, need: float, spn: float) -> "tuple | None":
         """plan 65.1: THE CHEAPEST ROUTE THE NEXT TIER WOULD READ at the root of the question being chased: tier k+1's route set is tier k's routes (re-read: the inner vocabulary is wider, the fuse doubles, nothing
@@ -3064,20 +3174,21 @@ class Agenda:
             elif seen is not None and seen[0] >= top:
                 continue                                               # cut after t >= the bar: it needs more than the bar
             else:
-                limit = int(top / spn)                                 # cost x rate must stay below the bar: price the cost only up to it
+                limit = int(top / self._low_rate(spn))                 # cost x rate must stay below the bar: price the cost only up to it (72.9 (a): at the cheapest rate a unit can have)
                 if limit < 1:
                     continue
-                cost, _kids, lower = self._price(m, q.stake, limit)
+                cost, kids, lower = self._price(m, q.stake, limit)
                 if lower:
                     continue
-                price = self._route_need(cost, seen, spn)
+                price = self._judge_price(cost, kids, seen, spn)[0]
             if price < top:
                 best, top = (price, cost, san, why), price
         return best
 
     def _judge_begin(self, m: chess.Move, promote: bool, cheap: bool, override) -> tuple:
         """plan 61 C2 at a ROOT route: the cost of the route (1 + the cost of the unread child of each parry), printed; read on while cost x seconds_per_node <= the time left of this route's slice,
-        else the route is a GAP (value 0, never a kill). -> (the GAP result or None, the token `_judge_end` closes)."""
+        else the route is a GAP (value 0, never a kill). 72.9: a route that DECIDES (`_decides`: it can change the decision and its replies are forced) is read with the root's whole share whatever
+        the rate says; the rate (each parry at the rate of its kind) judges only the others. -> (the GAP result or None, the token `_judge_end` closes)."""
         ctx = self.ctx
         if cheap or override or self.chase_depth != 0 or not self._judge_on():
             return None, None
@@ -3086,7 +3197,7 @@ class Agenda:
         now0 = time.monotonic()
         limit = JUDGE_PRICE_CAP                                          # no rate yet: price up to this many cost units (a lower bound above it: such a route is the biggest of the root's, read on or cut later by the measured rate); the cost above which the judge cuts the route whatever it is: need > pool/2 and need > equal (see below)
         if spn0 is not None and spn0 > 0:
-            limit = int(max(max((ctx.root_end or ctx.final) - now0, 0.0) / 2, max(ctx.deadline - now0, 0.0)) / spn0) + 1
+            limit = int(max(max((ctx.root_end or ctx.final) - now0, 0.0) / 2, max(ctx.deadline - now0, 0.0)) / self._low_rate(spn0)) + 1      # (72.9 (a): at the cheapest rate a unit can have, so a lower bound still cannot fit)
         hit = self._price(m, self._judge_stake(), limit)
         cost, kids = hit[0], hit[1]
         ctx.judge_routes += 1
@@ -3101,13 +3212,19 @@ class Agenda:
         measured = None if seen is None else seen[0]                       # ... finished in t: it needs t again; cut after t: it needs MORE than t (a lower bound: the slice below is twice the need, as iterative deepening)
         if spn is None:                                                  # no rate yet: read on, with a slice long enough to measure one
             slice_ = max(equal, min(pool / 4, 0.5))
-            need = measured
+            need, rate_w = measured, "as measured (no rate yet)"
             if need is not None:
                 slice_ = max(equal, min(2 * need, pool / 2))
         else:                                                            # the route is read iff it fits in half of what is left (the rest stays for the other routes); it is given the time it needs (twice the estimate), at least its equal slice
-            need = self._route_need(cost, seen, spn)                       # (the prediction is first-level cost x the rate ONLY for a route never read)
+            need, rate_w = self._judge_price(cost, kids, seen, spn)        # 72.9 (a): each parry priced at the rate of what it is (check, capture, quiet), the run's rate for a kind not yet timed (the priced cost ONLY for a route never read)
             slice_ = max(equal, min(2 * need, pool / 2))
         mkey_c = (_pos_key(self.board.fen()), m.uci(), self._judge_stake())
+        if ctx.claim_all:                                                # 72.9 THE ROUTE DECIDES (it can change the decision and its replies are forced): one more question costs least and is worth most here -- READ, with the root's whole share, whatever the rate says
+            ctx.opened.add(mkey_c)
+            ctx.deadline = min(now + equal, ctx.final)                   # (`_chase_routes` gave it the whole share: its equal slice is all of it)
+            said = f"the rate's {need:.1f} s ({rate_w}) does not apply" if need is not None else "no rate yet"
+            self.lines.append(f"    judge: {san} read on ({what}): decides, forced: read -- {ctx.claim_all}; {said}; {ctx.deadline - now:.1f} s for it, the root's whole share")
+            return None, (time.monotonic(), ctx.agendas, cost, mkey)
         comp = self._competitor(need, spn) if COMPETE and spn is not None and need is not None and mkey_c not in ctx.exempt and mkey_c not in ctx.opened else None       # (tier k stops opening NEW routes: one already open is read on; a route the previous tier deferred is read now: deferred once, never twice)
         if comp is not None and not judge_next(comp[0], need) and not ctx.held():       # plan 65.1: the next tier's cheapest route is priced below this one (and the status is not kept: the next tier opens)
             ctx.compete_cuts += 1
@@ -3119,8 +3236,10 @@ class Agenda:
             ctx.root_gaps[(_pos_key(self.board.fen()), m.uci(), self._judge_stake())] = (cost, san)
             ctx.deferred.add(mkey_c)
             return res, None
-        if need is not None and need > (pool if ctx.pool and ctx.one_route else pool / 2) and need > equal:      # plan 69.1: in the POOL the route in hand may take the root's whole share (the policy put it first) WHILE THE STATUS IS LOST (the pass loses it: one route must be finished to keep it; eSJqH's Qa5 needs 8.8 s, 4pC83's Nf3+ at need 0); level or winning breadth decides -- any kept claim does -- so the half (the tiers' fair-share rule) holds (2026-10-22: the discovery position's pool spent all 15 s on one promote question and decided nothing)
-            self.lines.append(f"    judge: {san} cut ({what}, {need:.1f} s needed, {pool:.1f} s left of the root's share) -> GAP")
+        why_w = f", does not decide: {ctx.why_not}" if ctx.why_not else ""      # 72.9: why the rate prices this route (it cannot change the decision, or its replies are free) ...
+        share_w = "; it may claim half of it" if ctx.pool else ""        # ... and the share it is judged against (the half: the tiers' fair-share rule)
+        if need is not None and need > pool / 2 and need > equal:      # plan 69.1 / 72.9: a route that does not DECIDE is read iff the rate fits it in half of what is left (the rest stays for the other routes); level, winning or lost, breadth decides among such routes (2026-10-22: the discovery position's pool spent all 15 s on one promote question and decided nothing; 2026-10-23 W0VFO: under the lost status every route took the whole share, and the two checks read before Qb7 spent it)
+            self.lines.append(f"    judge: {san} cut ({what}{why_w}, {need:.1f} s needed {rate_w}, {pool:.1f} s left of the root's share{share_w}) -> GAP")
             ctx.judge_cuts += 1
             ctx.budget_hits += 1
             res = dict(value=0, killed=None, gap=f"out of time: {san} cut by the judge ({what}, {need:.1f} s needed, {pool:.1f} s left)", parts=[], lemmas=[])
@@ -3128,7 +3247,7 @@ class Agenda:
             return res, None
         ctx.opened.add(mkey_c)
         ctx.deadline = min(now + slice_, ctx.final)
-        self.lines.append(f"    judge: {san} read on ({what}, " + (f"{need:.1f} s needed, " if need is not None else "no rate yet, ") + f"{ctx.deadline - now:.1f} s for it, {pool:.1f} s left of the root's share)")
+        self.lines.append(f"    judge: {san} read on ({what}{why_w}, " + (f"{need:.1f} s needed {rate_w}, " if need is not None else "no rate yet, ") + f"{ctx.deadline - now:.1f} s for it, {pool:.1f} s left of the root's share{share_w})")
         return None, (time.monotonic(), ctx.agendas, cost, mkey)
 
     def _judge_end(self, tok, res: dict) -> None:
@@ -3162,12 +3281,13 @@ class Agenda:
             return False
         cost, mv = W.node_cost(GAME.from_key(fen), self._judge_stake(), self.us)
         left = max(ctx.deadline - time.monotonic(), 0.0)
-        if cost * spn <= left:
+        rate, rate_w = self._kind_spn(self._parry_kind(self._reply_san), spn) if self._reply_san else (spn, f"the run's {spn:.3f} s/unit")      # 72.9 (a): the node is priced by what the reply that made it is
+        if cost * rate <= left:
             ctx.judge_reads += 1
             return False
         ctx.judged = True
         ctx.judge_cuts += 1
-        ctx.c_lines.append(f"    judge: {self.board.san(self._route_move) if self._route_move is not None else '?'} cut after {self._reply_san} (remaining cost {cost}" + (f", best forcing {mv}" if mv else "") + f", {cost * spn:.1f} s needed, {left:.1f} s left) -> GAP")
+        ctx.c_lines.append(f"    judge: {self.board.san(self._route_move) if self._route_move is not None else '?'} cut after {self._reply_san} (remaining cost {cost}" + (f", best forcing {mv}" if mv else "") + f", {cost * rate:.1f} s needed ({rate_w}), {left:.1f} s left) -> GAP")
         return True
 
     def _cycle_claim(self, fen: str, pk: str, need: int) -> "dict | None":
@@ -3602,6 +3722,8 @@ class Agenda:
             routes += [r for r in q._support_routes if r.move not in seen]
         if q.goal == "promote" and not self.chase_depth:        # 52.15 (2): plus a move that attacks a named STOPPER of the question ("threat on the stopper"), or offers the pawn to it
             routes += self._stopper_routes(q, [r.move for r in routes], notes)
+        policy_ordered = False                                   # 72.9 (c): did the policy order these routes (then its order is the order they are read and judged in)
+        self._policy_p = None                                    # 72.9: the policy's probability of each route (uci -> p over this question's routes) and how many it ranked; None: no policy ranked them
         if self.chase_depth == 0 and self._root and routes and self.ctx is not None and (self.ctx.pool or PRIOR) and GP.load() is not None:      # plan 69.1: THE POLICY ORDERS THE ROUTES of a root question (it sees the board, the question, each route's words and price)
             left_frac = max(0.0, min(1.0, ((self.ctx.final or time.monotonic()) - time.monotonic()) / self.ctx.seconds)) if self.ctx.seconds else 1.0
             rd = [dict(uci=r.move.uci(), why=r.why, cost=(self.ctx.route_costs.get((self.pk, r.move.uci(), q.stake)) or (None,))[0], order=i) for i, r in enumerate(routes)]
@@ -3611,14 +3733,19 @@ class Agenda:
                 order = sorted(range(len(routes)), key=lambda i: -sc[i])
                 if order != list(range(len(routes))):
                     self.lines.append("  policy: routes in the policy's order: " + ", ".join(f"{routes[i].san} ({sc[i]:+.1f})" for i in order[:6]) + (", ..." if len(order) > 6 else ""))
+                top = max(sc)
+                ex = [math.exp(s - top) for s in sc]                 # (the route head is a softmax over the question's routes: graph_policy.train_routes' cross-entropy)
+                self._policy_p = ({routes[i].move.uci(): ex[i] / sum(ex) for i in range(len(routes))}, len(routes))
                 routes = [routes[i] for i in order]
+                policy_ordered = True
         if self.chase_depth and not evading:                    # inner levels follow the most forcing moves only: a check, a capture, a mate threat (the quiet "threat n" moves are the root's)
-            follow = ("check", "threat of mate", "capture") + (("threat",) if self.ctx.tier >= 1 else ()) + (("push",) if q.goal == "promote" else ())      # 62.1c: a lifted promote question follows the pawn's push      # plan 59 tier 1 lifts the cut for the quiet threats worth the stake (and the tier-2 mate-in-two threat)
+            follow = FORCED_WORDS + (("threat",) if self.ctx.tier >= 1 else ()) + (("push",) if q.goal == "promote" else ())      # 62.1c: a lifted promote question follows the pawn's push      # plan 59 tier 1 lifts the cut for the quiet threats worth the stake (and the tier-2 mate-in-two threat)
             routes = [r for r in routes if r.why.removeprefix("fix: ").startswith(follow)]
         if self.chase_depth >= 2 and q.goal == "win":           # 52.23 (5): below the first inner level a win question follows only the NAMED FIXES of its defects that CHECK (the skewer, the fork-check:
             fix_moves = {r.move for f in q.fixes for r in R.all_routes(f)}     # the reply is forced); every other forcing move is the root's and the first level's (the named fixes that do not check still cost 0LRTF 4x)
             routes = [r for r in routes if r.move in fix_moves and b.gives_check(r.move)]
-        routes.sort(key=lambda r: (0 if r.why.removeprefix("fix: ") == "check" else 1 if r.why.removeprefix("fix: ").startswith("capture") else 2))      # the most forcing first: a check, a capture, a threat (stable inside)
+        if not policy_ordered:                                   # 72.9 (c) THE JUDGE'S ORDER IS THE POLICY'S: the policy saw each route's words (check, capture, threat) and ranked them, so the forcing sort orders only routes no policy ranked
+            routes.sort(key=lambda r: (0 if r.why.removeprefix("fix: ") == "check" else 1 if r.why.removeprefix("fix: ").startswith("capture") else 2))      # the most forcing first: a check, a capture, a threat (stable inside)
         if self.chase_depth == 0 and self.ctx.resume_set is not None:      # plan 66.4: a resume pass reads only the chain-stopped routes of this question, in price order
             want = self.ctx.resume_set.get(self._carry_key(q), [])
             routes = [r for u in want for r in routes if r.move.uci() == u]
@@ -3675,15 +3802,18 @@ class Agenda:
                     now = time.monotonic()
                     if root_final is None:                                     # 52.23 (11): and, like the fuse, the ROOT gets at most half of what is left while another root can beat the best claim (BEKFf: the first mate root ate the whole minute)
                         cap = any(t[4].goal in ("mate", "win", "promote") and (self.best is None or self.best[0] < t[4].stake) for t in self.heap)
-                        root_final = now + (self.ctx.final - now) / 2 if cap and not (self.ctx.pool and self.ctx.one_route) else self.ctx.final      # plan 69.1: in the POOL the question in hand (the policy's first) gets the whole remainder while the status is LOST (the pass loses it); level or winning, the half (the tiers' hedge: breadth decides)
-                    self.ctx.deadline = now + max(min(root_final, self.ctx.final) - now, 0) / (1 if self.ctx.pool and self.ctx.one_route else max(open_left, 1))      # plan 69.1: in the POOL the route in hand (the policy's first) gets the root's whole share; the judge's price still cuts what cannot fit
+                        root_final = now + (self.ctx.final - now) / 2 if cap and not self._whole_share(q) else self.ctx.final      # plan 69.1 / 72.9 (b): in the POOL the question in hand gets the whole remainder while the status is LOST (and no claim has kept it); else the half (the tiers' hedge: breadth decides)
+                    claim, self.ctx.why_not = self._decides(q, r)              # 72.9 THE JUDGE'S FIRST QUESTION: can one more question here change the decision, cheaply -- a route that DECIDES takes the root's whole share and is read whatever the rate
+                    self.ctx.deadline = now + max(min(root_final, self.ctx.final) - now, 0) / (1 if claim else max(open_left, 1))      # (72.9 (b): every other route its fair slice; W0VFO: the checks read before Qb7 each took the whole share)
                     self.ctx.root_end = min(root_final, self.ctx.final)               # plan 61 C2: the end of the root's share of the time (the judge's pool)
+                    self.ctx.claim_all = claim
                     self.ctx.hand = None                           # (a new slice: the route in hand is the one this slice sees)
                 ext0 = self._resume_begin(q, r)                       # plan 66.4: a route the last tier stopped by the chain, still forcing: one more level of the allowance
                 res = self._chase_route(r.move, promote=q.goal == "promote")
                 self.ctx.extend = ext0
                 if self.chase_depth == 0 and self.ctx.final is not None:
                     self.ctx.deadline = self.ctx.final
+                    self.ctx.claim_all = self.ctx.why_not = ""
                     self.ctx.hand = None
             if self.chase_depth == 0 and i not in cheap_res:
                 # 52.16 (2): a route is CHARGED at most its share. The frames open when the fuse runs out finish their questions (that is how 08pSj's Rf1+ and 0VSUT's Qxe5 are decided),

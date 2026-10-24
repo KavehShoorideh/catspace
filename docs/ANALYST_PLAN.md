@@ -3539,6 +3539,30 @@ LATER (not stage 1): the SHAPE LIBRARY (arrangements mined from proved mates and
   so find why the share was 2.1 s of 10 after two routes); (c) the ORDER inside the root: the judge read Rxg7+ and Qd5+ (checks, the stake order) before Qb7 (the policy's first); the policy's
   order should drive the judge's order too. Acceptance: W0VFO decides Qb7 at 10 s by proof; the trace guard's 10 unchanged; no budget constant changed. An agent's branch, after the cost
   agent of 2026-10-23 evening has merged (both touch the judge in agenda.py).
+* 72.9 BUILT 2026-10-23 on branch worktree-agent-a9adf3b2833ba0a5b (agenda.py only; journal 2026-10-23 17:39). Built around the owner's framing of the evening: THE JUDGE'S JOB IS "ONE MORE
+  QUESTION, YES OR NO". WHY Qb7 HAD 2.1 s (found, not guessed): the forcing sort (checks first) ran AFTER the policy's order and undid it, and under the lost status 69.1's rule gave EVERY route
+  the root's whole share, so Rxg7+ (read first) took 5 s of the 10 on a chain stop and Qd5+ the rest of its share; the rate those checks taught (0.30-0.46 s/unit) then priced Qb7 out.
+  (c) THE ORDER: a root question's routes the policy ranked are read and judged in the policy's order; the most-forcing sort orders only routes no policy ranked (the tiers, the count budget).
+  (b)+(1)(2) THE ROUTE THAT DECIDES (`Agenda._decides`): a root route DECIDES when its question can beat the best claim, the policy ranks it above chance (its softmax probability over the
+  question's routes at least the uniform 1/n -- the route head is a softmax: "first or near first" with no number), and its replies are forced (FORCED_WORDS: check, capture, threat of mate --
+  the words the chase follows below the root). It takes the root's whole remaining share and is READ whatever the rate says (`judge: Qb7 read on (...): decides, forced: read -- ...; no rate yet;
+  9.7 s for it, the root's whole share`). Every other route gets its fair slice and is read iff the rate fits it in half of what is left (`... does not decide: its replies are free (delayed
+  threat), 4.1 s needed priced by ...; it may claim half of it) -> GAP`). The root question's own share stays 69.1's (the whole run while the status is lost and no claim has kept it, else the
+  half); a pool pass reads the share by the same status (it had the context's default, ponder's "finish the route"). No policy ranked the routes: nothing decides, the tiers as before.
+  (a) THE RATE BY WHAT A PARRY IS (`_priced`, `_kind_spn`, `_kind_tally`): a root route's measured time is split by its parries -- each parry read to its end adds its seconds and its child's cost
+  (the units the route was priced in) to its kind (check / capture / quiet, read off the reply); a parry is priced at its kind's own rate once JUDGE_MIN_AGENDAS of its units are timed, else at the
+  run's rate (the prior: no stored cross-run prior was built -- the judge lines of one run each read "quiet at its own 0.290 s/unit" on W0VFO and "quiet at its own 0.039 s/unit" on the
+  discovery position, so a stored number would be noise; directional); the node
+  judge prices a node by the reply that made it. The judge's line says which rate priced what and why. No new numeric constant (FORCED_WORDS is the existing follow list, named); no budget changed;
+  no flag. The count budget: no judge, no policy order -- untouched.
+  OBS 72.9 W0VFO 10 s (before, this branch at 138b6a0d): OBS agenda W0VFO ... decision none; OBS cost61 W0VFO: root routes judged 156, nodes read on 5, cuts by the judge 154, seconds per node 0.302.
+  OBS 72.9 W0VFO 10 s, three consecutive runs: decision Qb7 (e4b7), proved True, wall 10.5 s / 10.4 s / 10.4 s; judge: Qb7 read on (cost 12 (5 parries: Rf7 1, Rc7 4, Qe7 2, Qc7 2, Qxa7 2)): decides,
+  forced: read -- threat of mate (its replies are forced), the policy ranks it above chance (p 0.50 of 9 routes), Q3 (stake 100) can beat the best claim (none yet); no rate yet; 9.7 s for it.
+  OBS trace identity (snapshot runner importing this worktree, before vs after): 0 of 10 traces differ. OBS discovery tiers 15 s: decision Nf6, proved True, value 1, wall 9.7 s.
+  OBS discovery pool 30 s (52.18): decision Nc5, proved False -- NOT the win: Nf6 "does not decide: the policy ranks it below chance (p 0.00 of 9 routes)" in every question; the policy is the gap.
+  52.18's assertion now requires the proof (the xfail's own words): in one gate run its decision was Nf6 or Nd6 (proof not asserted) and XPASSed the strict xfail; two measurements: Nc5, not proved.
+  OBS gate engine (one file per call): test_plan72_9 passed 7; test_offbuilt64 passed 15, xfailed 1 (64.2 W0VFO and 64.3 4pC83 pass); test_tiers 14; test_plan69 3; test_plan65 13; test_plan66 16;
+  test_cost61 13; test_estimate61 17; test_agenda 26; test_regress 87, xfailed 1; test_plan68 4; test_plan70 3, xfailed 1.
 
 
 ### 72.10 THE LOCAL INNER AGENDA: carry the frame and the goal forward; after their move ask three questions, not twenty-five (Kaveh 2026-10-23 evening, GO)

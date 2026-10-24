@@ -32523,3 +32523,23 @@ Every module-level switch, env flag and plan-numbered mechanism in agenda/regres
 OBS 113 rows: LIVE 77, FALLBACK 26, SUPERSEDED 2, VESTIGIAL 8, UNKNOWN 0 (counted by script over the table). The pool is the default driver; the tiers driver and COMPETE / STOP_AFFORD / RAISE_TO_WIN / DEFER / the RESUME pass are the fallback path.
 Found by reading only: analyse._FLAGS omits POOL, DEFER, SURVEY, CHASE_SAVES and others (a parallel --no-pool is lost in workers); --pool help text still says OFF; in the pool the five 52.23 chain flags cannot be turned off (tier 3 forces them).
 Nothing deleted: the retire / keep / fix lists are in the closing section, for the owners decision.
+
+## 2026-10-23 17:39 PDT -- plan 72.9 built: the judge asks "one more question, yes or no"; W0VFO proves Qb7 at 10 s (branch worktree-agent-a9adf3b2833ba0a5b)
+
+WHY Qb7 HAD 2.1 s OF 10 (read in the trace, not guessed): the policy put Qb7 first (+2.9), but the most-forcing sort ran AFTER the policy's order and put the three checks back in front; and under
+the lost status 69.1's rule gave EVERY route the root's whole share, so Rxg7+ (first) spent ~5 s on a chain stop (judge lines: "Rxg7+ read on ... 9.8 s for it", then "Qd5+ read on ... 4.6 s for it"),
+and the rate those checks taught (OBS cost61 0.302 s per node) priced Qb7 out ("judge: Qb7 cut (cost 12 ...), 5.5 s needed, 4.2 s left").
+BUILT (agenda.py; Kaveh's framing of the evening: the judge's job is one more question, yes or no): (c) the policy's order IS the judge's order (the forcing sort orders only routes no policy ranked);
+the judge's FIRST question: a root route DECIDES when its question can beat the best claim, the policy ranks it above chance (softmax probability >= 1/n over the question's routes) and its replies
+are forced (check, capture, threat of mate -- the words the chase follows below the root); it takes the root's whole remaining share and is read whatever the rate says; every other route gets its
+fair slice and is priced by (a) THE RATE BY WHAT EACH PARRY IS -- a parry read to its end teaches its kind (check / capture / quiet) seconds per unit of its child's cost; a kind with fewer than
+JUDGE_MIN_AGENDAS units timed is priced at the run's rate. Every judge line says which: "decides, forced: read -- threat of mate (its replies are forced), the policy ranks it above chance (p 0.50 of 9
+routes) ..." or "does not decide: its replies are free (delayed threat), 4.1 s needed priced by what each parry is: 13 quiet at its own 0.290 s/unit ...; it may claim half of it -> GAP".
+No budget constant changed, no flag, no new number (FORCED_WORDS names the existing follow list). The count budget has no judge and no policy order: untouched.
+OBS 72.9 W0VFO 10 s, three consecutive runs: Qb7 proved, wall 10.5 / 10.4 / 10.4 s (before: decision none, 154 of 156 root routes cut by the judge).
+OBS trace identity: 0 of 10 traces differ. OBS discovery tiers 15 s: Nf6 proved, 9.7 s. OBS discovery pool 30 s: Nc5, not proved.
+NOT THE WIN for 52.18: under the pool Nf6 "does not decide: the policy ranks it below chance (p 0.00 ...)" in every question -- the route policy is the gap there (the loop's retrain), not the judge.
+52.18's assertion now asks for the proof, as its strict xfail's reason says: in one gate run its decision was Nf6 or Nd6 (the test does not say whether proved) and XPASSed it; my two measurements of the same call (pool, 30 s) were Nc5, not proved.
+A first form of the share rule (the whole share to the first route of the order only) cut 4pC83's Nf3+ (OBS 64.3 4pC83 decision: none, test_64_3 failed): the decider rule reads it (a check the policy ranks above chance, p 0.10 of 16, under the save question) and 4pC83 decides Nf3+ again.
+OBS gate engine, one file per call: test_plan72_9 7 passed; test_offbuilt64 15 passed, 1 xfailed; test_tiers 14; test_plan69 3; test_plan65 13; test_plan66 16; test_cost61 13; test_estimate61 17;
+test_agenda 26; test_regress 87 passed, 1 xfailed; test_plan68 4; test_plan70 3 passed, 1 xfailed. Directional: one or two runs each.
