@@ -32543,3 +32543,5 @@ NOT THE WIN for 52.18: under the pool Nf6 "does not decide: the policy ranks it 
 A first form of the share rule (the whole share to the first route of the order only) cut 4pC83's Nf3+ (OBS 64.3 4pC83 decision: none, test_64_3 failed): the decider rule reads it (a check the policy ranks above chance, p 0.10 of 16, under the save question) and 4pC83 decides Nf3+ again.
 OBS gate engine, one file per call: test_plan72_9 7 passed; test_offbuilt64 15 passed, 1 xfailed; test_tiers 14; test_plan69 3; test_plan65 13; test_plan66 16; test_cost61 13; test_estimate61 17;
 test_agenda 26; test_regress 87 passed, 1 xfailed; test_plan68 4; test_plan70 3 passed, 1 xfailed. Directional: one or two runs each.
+
+## 2026-10-23 18:08 PDT -- 72.9 follow-up: a judge cut made before a route is read now files its GAP with the resume point (timed, mark, first reply in reading order) via `Agenda._judge_resume`; test_fact_store 21 passed, test_plan72_9 7, test_offbuilt64 15 (1 xfailed), test_plan68 4, test_plan66 16, test_regress 87 (1 xfailed). Directional: one run each.
