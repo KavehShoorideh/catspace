@@ -1064,8 +1064,9 @@ def test_52_18_an_almost_battery_does_not_attack_and_its_front_piece_leaving_mak
     assert seen > 20
 
 
-# (was xfail strict, LOOP TARGET 1 / plan 72.9: under the POOL at 30 s neither Nf6 nor Nd6 was PROVED. Plan 72.10, 2026-10-23: with the local inner agendas the pool proves Nf6 +1 in
-#  two diagnostic runs (OBS: 19.2 s and 19.5 s of wall) and the strict xfail XPASSed in the gate, so the assertion stands as written.)
+@pytest.mark.xfail(strict=False, reason="LOOP TARGET 1 / plans 72.9-72.10 (Kaveh 2026-10-23: an expected failure): under the POOL at 30 s the proof of Nf6 is MARGINAL -- "
+                                        "72.10's two diagnostic runs proved Nf6 +1 (OBS 19.2 s and 19.5 s of wall) and the gate of main at 04092755 got Nd6 unfinished (6 of 35 replies read). "
+                                        "The budget is not raised (budgets serve the machinery); the cause is the pool's order and the judge's share (loop target 1), and the retrain of the route head.")
 def test_52_18_the_discovery_position_names_the_discovery_and_the_x_ray_fix_is_offered_on_a_win_defect():
     ag = AG.Agenda(State(DISCOVERY, "w", []), seconds=30)                    # (see the 52.16 discovery test: a time budget since 2026-10-20; 30 s since 64.0's sound close)
     ag.ask()

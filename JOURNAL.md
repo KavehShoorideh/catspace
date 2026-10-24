@@ -32563,3 +32563,16 @@ OBS discovery tiers 15 s: Nf6 proved, 7.1 s. OBS discovery pool 30 s: Nf6 proved
 OBS guard: 8 of 10 decisions identical with identical route lists; 2 gained a proof (07Z0P Qxd5+ +1, the discovery position Nf6 +1).
 Directional, one or two runs each: the questions per inner agenda fall, not toward three -- a check's inner agenda still asks every mate of the walk, and 104 of 168 local agendas found their
 goal dead and asked the full agenda. The per-goal memos (needed: a local "no claim" is one goal's) changed four regress tests by their traces (ANALYST_PLAN 72.10 BUILT names each).
+
+## 2026-10-23 19:42 -- 72.10 merged to main (04092755, fast-forward); the engine gate of main; two tests by their traces
+OBS gate engine (main 04092755, alone on the machine): files 28, passed 392, failed 2, xfailed 2, errors 0, wall 755.4 s.
+The two failures, each read by its trace:
+- test_cost61 `test_cycle_off_is_no_claim_as_before`: a file the 72.10 agent did not run. With CYCLE off the inner agenda of the perpetual position returned a KEPT save claim Rf1+ at
+  0 (proved: the chase holds the balance), where before 72.10 `_inner` dropped every claim at 0 (agenda.py: `ag.best[0] > 0 or ag.best[2].kept`, 70.1's "a save kept at 0 holds the
+  balance"). The pin was wider than its intent (no repetition / draw claim with the cycle word off): narrowed to value 0 and no draw claim. Not a regression of the decision.
+- test_regress 52.18 (the discovery position under the POOL at 30 s): the gate got Nd6 unfinished (6 of 35 replies read); the agent's two runs proved Nf6 (19.2 s, 19.5 s); the re-gate
+  passed it again. MARGINAL both ways: restored as a non-strict expected failure (Kaveh: "make it an expected failure"); the budget is not raised (budgets serve the machinery). The cause
+  stays loop target 1: the pool's order and the judge's share, and the route head that ranks Nf6 last.
+OBS gate engine --only test_cost61: passed 13, failed 0 (3.0 s). OBS gate engine --only test_regress: passed 87, failed 0, xfailed 0 (360.8 s; 52.18 passed this run).
+Main is green at this state. Open for Kaveh: the retrain of the route / question heads (candidate -> gate -> adopt); loop iteration 2 (rand14-17 at 15 s by proof); the retirements of
+docs/SWITCHES.md; 72.7 steps 0-1; 72.8 LATER.

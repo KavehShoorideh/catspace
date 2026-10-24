@@ -113,7 +113,9 @@ def test_cycle_claim_is_a_draw_worth_minus_the_balance_when_behind(monkeypatch):
 def test_cycle_off_is_no_claim_as_before(monkeypatch):
     ag = _repeat_ctx(monkeypatch, cycle=False)
     out = ag._inner(PERPETUAL, 1)
-    assert out["claim"] is None and out["value"] == 0
+    assert out["value"] == 0
+    assert out["claim"] is None or out["claim"].kind != "draw"          # 72.10 (2026-10-23): an inner agenda now returns a KEPT save at 0 (Rf1+ holds the balance) as a claim;
+    #                                                                     the pin here is the cycle word's: with CYCLE off no repetition / draw claim appears, and the value is 0
 
 
 def test_cycle_gives_nothing_when_ahead(monkeypatch):
