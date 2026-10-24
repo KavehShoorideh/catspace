@@ -32644,3 +32644,18 @@ finding) stays as it is: its users drop castling.
 NOT BUILT: a stored `.pos` on Question and Route -- a question is asked on its agenda's board (its handle is `ag.pos`), a route's position is `P1 = ag.pos.push(uci)`, built where the
 route is chased; a stored copy would be read by nothing in step 1 (step 2 keys the route memo by `(pos.key(), uci)`). Handles for the four FEN-taking binders (`bind_mate`,
 `bind_mate2`): they need the python-chess board they build from the FEN (step 2/3). SAN and legal moves still come from python-chess (the cross-check is clean; switching them is step 2).
+
+## 2026-10-23 21:46 -- 72.7 steps 0-1 merged (main e0cdd709, fast-forward; core rebuilt on main); THE K+R v K EXPERIMENT (Kaveh: the engine as a PLAYER, no lemma coded)
+Kaveh's question: "how many questions does it take to do a king and rook mate?" and "is the puzzle tool a player?" Script: scratchpad krk/play_krk.py reproduces the play server's
+move routine (Agenda per move, game history for CYCLE, one-ply fallback when no claim) at the COUNT budget; the lone king defends by the Syzygy table (the slowest mate). Random
+winning start, seed 1: 4K3/R7/8/8/2k5/8/8/8 w, DTZ 27.
+OBS KRK seed 1 (table claim ON, plan 62.3): result 1-0 after 27 plies; white moves 14, by the agenda 14; questions asked 0 (0 per move); every decision lemma "syzygy". -- an ORACLE, not
+reasoning: the five-men table closes the root before a question is asked. Turned off for the experiment (TB.TABLE = False in the script only).
+OBS KRK seed 1 (table claim OFF): result 1/2-1/2 after 35 plies (repetition); white moves 18, by the agenda 12, by the fallback 6; questions asked 637 (35 per move); inner agendas 80;
+moves that shortened the tablebase distance 7 of 18. Every agenda decision was 'win 0, unfinished line' (an unproved tie-break on a chase the chain stop cut); the rook checks and checks
+(Ra4+ Kg3 Ra3+ Kg4 ...). The trace of move 1: two root questions, both MATE roots (mate on c7, mate on a4) with four flight defects each; their routes chased to the chain stop ("4 moves
+of ours without a capture": a GAP, never a kill); STOP (b) every question closed; no claim.
+Reading: the engine has no word for the drive -- its goals are mate / win / save within the chase's reach; the lone king's region never enters a question; the only progress is the
+fallback's. Directional, one play-out; the ratio against a rook lemma (one question per move: does this move shrink the region without stalemate / a draw claim) is the argument for
+lemmas as GOALS with a measure (see the discussion of 2026-10-23 evening: frequent frame class with no claim -> a monotone quantity over won games in the class -> its floor as the Lean
+target).
