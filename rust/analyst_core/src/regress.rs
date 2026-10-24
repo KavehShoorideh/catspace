@@ -149,9 +149,9 @@ fn cache() -> &'static Mutex<HashMap<String, Chess>> { static C: OnceLock<Mutex<
 #[pyfunction]
 pub fn set_caches(on: bool) -> bool { let old = CACHE_ON.swap(on, std::sync::atomic::Ordering::Relaxed); if !on { cache().lock().unwrap().clear(); } old }
 
-/// Forget every cached position (a fresh root question).
+/// Forget every cached position (a fresh root question) and every cached word (plan 72.7 step 1: vocab.rs, the word cache).
 #[pyfunction]
-pub fn clear_caches() { cache().lock().unwrap().clear(); }
+pub fn clear_caches() { cache().lock().unwrap().clear(); crate::vocab::clear_word_cache(); }
 
 /// How many positions are cached.
 #[pyfunction]
@@ -184,6 +184,22 @@ pub fn material_defects(fen: &str, me_white: bool, target: u8) -> PyResult<Vec<D
     Ok(material_defects_pos(&parse_fen(fen)?, me_white, target))
 }
 
+// plan 72.7 step 1 (RUST_BOUNDARY 3.2): THE Pos-TAKING SIBLINGS of the FEN readers the agenda calls through regress.py / binder.py / reasoned.py -- the same inner
+// functions, the position handed over as the node's handle (graph.pos_of) instead of a FEN string parsed per call. The FEN versions stay as shims.
+
+/// mate_defects_pos(pos, me_white, placements): `mate_defects` on the handle's board.
+#[pyfunction]
+pub fn mate_defects_pos(pos: &crate::pos::Pos, me_white: bool, placements: Vec<Placement>) -> PyResult<Vec<Def>> {
+    mate_defects_board(pos.pos.board(), me_white, &placements)
+}
+
+/// material_defects_pos(pos, me_white, target): `material_defects` on the handle.
+#[pyfunction]
+#[pyo3(name = "material_defects_pos")]
+pub fn material_defects_at(pos: &crate::pos::Pos, me_white: bool, target: u8) -> PyResult<Vec<Def>> {
+    Ok(material_defects_pos(&pos.pos, me_white, target))
+}
+
 // ------------------------------------------------------------------------------------------------------------------ _still
 
 /// (root goal, q goal, defect key (kind, sq), placements, `before` keys, q.pattern target, q.pattern frm, q.pattern blocker, root.pattern target)
@@ -206,13 +222,22 @@ fn goal_done(q_goal: &str, cf: &Board, me: Color, target: Option<u8>, frm: Optio
 /// moves (castling excluded by the caller), `spec` the question (see Spec).
 #[pyfunction]
 pub fn still_routes(fen: &str, us_white: bool, ucis: Vec<String>, spec: Spec) -> PyResult<Vec<(String, bool)>> {
+    still_routes_on(&parse_fen(fen)?, us_white, ucis, spec)
+}
+
+/// still_routes_pos(pos, us_white, ucis, spec): `still_routes` on the handle.
+#[pyfunction]
+pub fn still_routes_pos(pos: &crate::pos::Pos, us_white: bool, ucis: Vec<String>, spec: Spec) -> PyResult<Vec<(String, bool)>> {
+    still_routes_on(&pos.pos, us_white, ucis, spec)
+}
+
+fn still_routes_on(p: &Chess, us_white: bool, ucis: Vec<String>, spec: Spec) -> PyResult<Vec<(String, bool)>> {
     let (root_goal, q_goal, dkey, pl, before, tgt, frm, blk, win_tgt) = spec;
-    let p = parse_fen(fen)?;
     let (me, them) = (col(us_white), col(!us_white));
     let before: std::collections::HashSet<(String, Option<u8>)> = before.into_iter().collect();
     let mut out = Vec::with_capacity(ucis.len());
     for u in ucis {
-        let m = shakmaty::uci::UciMove::from_ascii(u.as_bytes()).ok().and_then(|x| x.to_move(&p).ok()).ok_or_else(|| err("illegal candidate"))?;
+        let m = shakmaty::uci::UciMove::from_ascii(u.as_bytes()).ok().and_then(|x| x.to_move(p).ok()).ok_or_else(|| err("illegal candidate"))?;
         let mut c = p.clone();
         c.play_unchecked(&m);
         let still = if root_goal == "mate" {
@@ -270,13 +295,22 @@ fn mate_threat(c: &Chess, me: Color) -> Result<bool, PyErr> {
 /// The board is the one the moves are made on (us to move).
 #[pyfunction]
 pub fn forcing_whys(fen: &str, ucis: Vec<String>, stake: i64, us_white: bool, mate_threats: bool) -> PyResult<Vec<(String, String, i64, i64, String)>> {
-    let p = parse_fen(fen)?;
+    forcing_whys_on(&parse_fen(fen)?, ucis, stake, us_white, mate_threats)
+}
+
+/// forcing_whys_pos(pos, ucis, stake, us_white, mate_threats): `forcing_whys` on the handle.
+#[pyfunction]
+pub fn forcing_whys_pos(pos: &crate::pos::Pos, ucis: Vec<String>, stake: i64, us_white: bool, mate_threats: bool) -> PyResult<Vec<(String, String, i64, i64, String)>> {
+    forcing_whys_on(&pos.pos, ucis, stake, us_white, mate_threats)
+}
+
+fn forcing_whys_on(p: &Chess, ucis: Vec<String>, stake: i64, us_white: bool, mate_threats: bool) -> PyResult<Vec<(String, String, i64, i64, String)>> {
     let me = col(us_white);
     let has_pawn = p.board().by_color(me).intersect(p.board().by_role(Role::Pawn)).any();
     let mut out = Vec::with_capacity(ucis.len());
     let r = |s: &str| (s.to_string(), String::new(), 0, 0, String::new());
     for u in ucis {
-        let m = shakmaty::uci::UciMove::from_ascii(u.as_bytes()).ok().and_then(|x| x.to_move(&p).ok()).ok_or_else(|| err("illegal candidate"))?;
+        let m = shakmaty::uci::UciMove::from_ascii(u.as_bytes()).ok().and_then(|x| x.to_move(p).ok()).ok_or_else(|| err("illegal candidate"))?;
         let mut c = p.clone();
         c.play_unchecked(&m);
         if c.is_check() { out.push(("why".into(), "check".into(), 0, 0, String::new())); continue; }
@@ -392,7 +426,16 @@ pub fn fork_routes(fen: &str, us_white: bool, target: u8) -> PyResult<Vec<(Strin
 /// routes are listed only when n > 0, as the Python twin does. Err(ValueError) when there is no piece of theirs to read (the caller has checked).
 #[pyfunction]
 pub fn trap_fix_routes(fen: &str, us_white: bool, target: u8) -> PyResult<(usize, Vec<(String, String)>, Vec<(String, String)>)> {
-    let p = parse_fen(fen)?;
+    trap_fix_routes_on(&parse_fen(fen)?, us_white, target)
+}
+
+/// trap_fix_routes_pos(pos, us_white, target): `trap_fix_routes` on the handle.
+#[pyfunction]
+pub fn trap_fix_routes_pos(pos: &crate::pos::Pos, us_white: bool, target: u8) -> PyResult<(usize, Vec<(String, String)>, Vec<(String, String)>)> {
+    trap_fix_routes_on(&pos.pos, us_white, target)
+}
+
+fn trap_fix_routes_on(p: &Chess, us_white: bool, target: u8) -> PyResult<(usize, Vec<(String, String)>, Vec<(String, String)>)> {
     let (me, t) = (col(us_white), Square::new(target as u32));
     let owner = p.board().color_at(t).ok_or_else(|| err("no piece on the target"))?;
     let _ = owner;
@@ -447,12 +490,31 @@ pub fn skewer_routes(fen: &str, us_white: bool, target: u8) -> PyResult<Vec<(Str
     Ok(skewer_routes_pos(&w, me, Square::new(target as u32), false))
 }
 
+/// skewer_routes_on_pos(pos, us_white, target): `skewer_routes` on the handle.
+#[pyfunction]
+#[pyo3(name = "skewer_routes_pos")]
+pub fn skewer_routes_at(pos: &crate::pos::Pos, us_white: bool, target: u8) -> PyResult<Vec<(String, String)>> {
+    let me = col(us_white);
+    let w = with_turn_pos(&pos.pos, me)?;
+    Ok(skewer_routes_pos(&w, me, Square::new(target as u32), false))
+}
+
 /// drive_onto_routes(fen, us_white, target, stake) -> [(uci, why)]: checks after which EVERY king reply allows a skewer route to `target` (52.23 (4b)).
 #[pyfunction]
 pub fn drive_onto_routes(fen: &str, us_white: bool, target: u8, stake: i64) -> PyResult<Vec<(String, String)>> {
+    drive_onto_routes_on(&parse_fen(fen)?, us_white, target, stake)
+}
+
+/// drive_onto_routes_pos(pos, us_white, target, stake): `drive_onto_routes` on the handle.
+#[pyfunction]
+pub fn drive_onto_routes_pos(pos: &crate::pos::Pos, us_white: bool, target: u8, stake: i64) -> PyResult<Vec<(String, String)>> {
+    drive_onto_routes_on(&pos.pos, us_white, target, stake)
+}
+
+fn drive_onto_routes_on(p: &Chess, us_white: bool, target: u8, stake: i64) -> PyResult<Vec<(String, String)>> {
     let _ = stake;
     let (me, t) = (col(us_white), Square::new(target as u32));
-    let w = with_turn_pos(&parse_fen(fen)?, me)?;
+    let w = with_turn_pos(p, me)?;
     let mut out = vec![];
     for m in moves_of(&w) {
         if m.to() == t { continue; }
@@ -482,8 +544,18 @@ pub fn drive_onto_routes(fen: &str, us_white: bool, target: u8, stake: i64) -> P
 #[pyfunction]
 #[pyo3(signature = (fen, route, trap=None))]
 pub fn second_moves(fen: &str, route: &str, trap: Option<u8>) -> PyResult<Vec<(String, String)>> {
-    let p = parse_fen(fen)?;
-    let m = shakmaty::uci::UciMove::from_ascii(route.as_bytes()).ok().and_then(|x| x.to_move(&p).ok()).ok_or_else(|| err("illegal route"))?;
+    second_moves_on(&parse_fen(fen)?, route, trap)
+}
+
+/// second_moves_pos(pos, route, trap=None): `second_moves` on the handle.
+#[pyfunction]
+#[pyo3(signature = (pos, route, trap=None))]
+pub fn second_moves_pos(pos: &crate::pos::Pos, route: &str, trap: Option<u8>) -> PyResult<Vec<(String, String)>> {
+    second_moves_on(&pos.pos, route, trap)
+}
+
+fn second_moves_on(p: &Chess, route: &str, trap: Option<u8>) -> PyResult<Vec<(String, String)>> {
+    let m = shakmaty::uci::UciMove::from_ascii(route.as_bytes()).ok().and_then(|x| x.to_move(p).ok()).ok_or_else(|| err("illegal route"))?;
     let mut c = p.clone();
     c.play_unchecked(&m);
     let quiet = !c.is_check();
@@ -513,11 +585,20 @@ pub fn second_moves(fen: &str, route: &str, trap: Option<u8>) -> PyResult<Vec<(S
 /// square's piece (0 when it stands empty) -- `reasoned._see(c.fen(), sq)` on the board after the move, without the FEN round trip. 54 (B5.3).
 #[pyfunction]
 pub fn see_after(fen: &str, ucis: Vec<String>, square: u8) -> PyResult<Vec<i64>> {
-    let p = parse_fen(fen)?;
+    see_after_on(&parse_fen(fen)?, ucis, square)
+}
+
+/// see_after_pos(pos, ucis, square): `see_after` on the handle.
+#[pyfunction]
+pub fn see_after_pos(pos: &crate::pos::Pos, ucis: Vec<String>, square: u8) -> PyResult<Vec<i64>> {
+    see_after_on(&pos.pos, ucis, square)
+}
+
+fn see_after_on(p: &Chess, ucis: Vec<String>, square: u8) -> PyResult<Vec<i64>> {
     let sq = Square::new(square as u32);
     let mut out = Vec::with_capacity(ucis.len());
     for u in ucis {
-        let m = shakmaty::uci::UciMove::from_ascii(u.as_bytes()).ok().and_then(|x| x.to_move(&p).ok()).ok_or_else(|| err("illegal move"))?;
+        let m = shakmaty::uci::UciMove::from_ascii(u.as_bytes()).ok().and_then(|x| x.to_move(p).ok()).ok_or_else(|| err("illegal move"))?;
         let mut c = p.clone();
         c.play_unchecked(&m);
         out.push(c.board().color_at(sq).map_or(0, |col| crate::rules::see(c.board(), sq, !col).max(0)));

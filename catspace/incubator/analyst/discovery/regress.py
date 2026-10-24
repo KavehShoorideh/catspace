@@ -120,7 +120,9 @@ def _mate_defects(board: chess.Board, us: str | bool, placement: list) -> list:
     me = G.colour_of(us)
     if DEFECTS_RUST:
         try:
-            return [Defect(k, sq, list(by), why) for k, sq, by, why in _A.mate_defects(G.fen_of(board), me, [(p.symbol(), at, frm) for p, at, frm in placement])]
+            pl = [(p.symbol(), at, frm) for p, at, frm in placement]
+            h = G.pos_of(board)                   # plan 72.7 step 1: the board's handle (the FEN reader only for a board shakmaty does not hold: it reads the placement alone)
+            return [Defect(k, sq, list(by), why) for k, sq, by, why in (_A.mate_defects_pos(h, me, pl) if h is not None else _A.mate_defects(board.fen(), me, pl))]
         except ValueError:
             pass                                  # a counterfactual shakmaty cannot hold: the Python rules read it
     return mate_defects_on(future_board(board, placement, not me), me)
@@ -213,7 +215,7 @@ def _material_defects(board: chess.Board, us: str | bool, target_sq: int) -> lis
     me = G.colour_of(us)
     if DEFECTS_RUST:
         try:
-            return [Defect(k, sq, list(by), why) for k, sq, by, why in _A.material_defects(G.fen_of(board), me, target_sq)]
+            return [Defect(k, sq, list(by), why) for k, sq, by, why in _A.material_defects_pos(G.handle(board), me, target_sq)]
         except ValueError:
             pass
     if G.see_for(board, target_sq, me) > 0:
@@ -332,7 +334,7 @@ def _forcing_batch(board: chess.Board, moves: list, stake: int, us: str | bool, 
     if board.turn != me or not moves:
         return None
     try:
-        res = _A.forcing_whys(G.fen_of(board), [m.uci() for m in moves], stake, me, mate_threats)
+        res = _A.forcing_whys_pos(G.handle(board), [m.uci() for m in moves], stake, me, mate_threats)
     except ValueError:
         return None
     out = []
@@ -1103,7 +1105,7 @@ def _routes_rust(q: Question, board: chess.Board, us: str | bool, root: Question
     spec = (root.goal, q.goal, dk, [(pc.symbol(), at, frm) for pc, at, frm in placement_of(root)] if root.goal == "mate" else [],
             sorted(before, key=repr) if before is not None else [], p.get("target"), p.get("frm"), p.get("blocker"), root.pattern.get("target"))
     try:
-        stills = _A.still_routes(G.fen_of(board), me, [m.uci() for m in cands], spec)
+        stills = _A.still_routes_pos(G.handle(board), me, [m.uci() for m in cands], spec)
     except ValueError:
         return None
     keep = [m for m, (_, still) in zip(cands, stills) if not still]
@@ -1227,12 +1229,13 @@ SKEWER_FIX = True                                               # 52.23 (4) swit
 
 
 def _rust_routes(fn, board: chess.Board, us: str | bool, *args):
-    """54 (B4): -> [Route] from an analyst_core route reader `fn(fen, us_white, *args)`, or None (the Python path answers: a position shakmaty cannot hold, or the wrong side to move)."""
+    """54 (B4): -> [Route] from an analyst_core route reader `fn(pos, us_white, *args)` (plan 72.7 step 1: the board's handle, `G.handle`), or None (the Python path answers: a
+    position shakmaty cannot hold, or the wrong side to move)."""
     me = G.colour_of(us)
     if board.turn != me:
         return None
     try:
-        got = fn(G.fen_of(board), me, *args)
+        got = fn(G.handle(board), me, *args)
     except ValueError:
         return None
     out = []
@@ -1245,7 +1248,7 @@ def _rust_routes(fn, board: chess.Board, us: str | bool, *args):
 def skewer_routes(board: chess.Board, us: str | bool, t: int) -> list:
     """52.23 (4): THE SKEWER AS A NAMED FIX of a win defect: a check by a slider of ours whose line runs through their king to the target `t`; the king must answer the check,
     and when it steps off the line the slider attacks `t` (Lean `Ideas.Skewer.skewer_attack`; the capture of the checker and the interposition are read by the chase as replies)."""
-    got = _rust_routes(_A.skewer_routes, board, us, t) if SKEWER_RUST else None
+    got = _rust_routes(_A.skewer_routes_pos, board, us, t) if SKEWER_RUST else None
     if got is not None:
         return got
     me = G.colour_of(us)
@@ -1268,7 +1271,7 @@ def skewer_routes(board: chess.Board, us: str | bool, t: int) -> list:
 def drive_onto_routes(board: chess.Board, us: str | bool, t: int, stake: int) -> list:
     """52.23 (4b): DRIVE THEIR KING ONTO THE SKEWER LINE -- a check after which EVERY king reply stands on a line a slider of ours can then check along, through the king
     to `t` (a skewer route exists on the board after each king reply); the other replies (take the checker, interpose) are read by the chase. Two moves: the fix says `steps` 2."""
-    got = _rust_routes(_A.drive_onto_routes, board, us, t, stake) if SKEWER_RUST else None
+    got = _rust_routes(_A.drive_onto_routes_pos, board, us, t, stake) if SKEWER_RUST else None
     if got is not None:
         return got
     me = G.colour_of(us)
@@ -1389,7 +1392,7 @@ def _trap_rust(board: chess.Board, us: str | bool, target: int):
     if board.turn != me:
         return None
     try:
-        n, traps, forks = _A.trap_fix_routes(G.fen_of(board), me, target)
+        n, traps, forks = _A.trap_fix_routes_pos(G.handle(board), me, target)
     except ValueError:
         return None
     t_routes = [Route(m, board.san(m), why, trap=target) for m, why in ((chess.Move.from_uci(u), w) for u, w in traps)]

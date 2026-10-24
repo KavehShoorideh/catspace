@@ -81,7 +81,8 @@ def _threat_moves(board: chess.Board, us: str, hang: list) -> list:
         if THREAT_RUST:
             try:
                 import analyst_core as A
-                seen = A.see_after(board.fen(), [m.uci() for _, m in rest], big)
+                from catspace.incubator.analyst.discovery import graph as G
+                seen = A.see_after_pos(G.handle(board), [m.uci() for _, m in rest], big)          # plan 72.7 step 1: the board's handle, no FEN
             except ValueError:
                 seen = None
         for j, (i, m) in enumerate(rest):

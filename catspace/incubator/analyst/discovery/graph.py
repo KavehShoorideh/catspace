@@ -8,6 +8,8 @@ at the board, so for the exchange WE would win on their piece, put us on move fi
 """
 from __future__ import annotations
 
+import os
+
 import chess
 
 import analyst_core as _A
@@ -48,16 +50,95 @@ def with_turn(board: chess.Board, colour: bool) -> chess.Board:
 
 CLEAR_HOOKS: list = []     # 54 (B4): per-root caches elsewhere (binder's verify_tried) register their `clear` here; graph.clear_caches calls them
 
-_FENS: dict = {}           # 52.20 (1): transposition key (bitboards, turn, castling, e.p.) -> FEN; a board's FEN is built once per root question
+# plan 72.7 step 1 THE BRIDGE (docs/RUST_BOUNDARY.md 3.1, 3.3): a node holds its position twice while python-chess is not retired -- the board for the code not yet
+# ported, the Rust handle (`analyst_core.Pos`) for the words. The handle is built ONCE (at the root from the board's parts, below it by `push`), never from
+# `board.fen()` per call: `fen_of` and its cache are gone (their last callers read the handle).
+BRIDGE_CHECK = os.environ.get("CATSPACE_BRIDGE_CHECK") == "1"      # the one debug flag (the guard run sets it): every handle must print the FEN its board prints
+BRIDGE_CHECKS = [0]                                                 # ... how many pairs it compared (the guard's OBS line)
 
 
-def fen_of(board: chess.Board) -> str:
-    """The FEN of `board` for the Rust evaluator, from the per-board cache (149k FEN strings were built for 19k distinct boards on 0KCeb)."""
-    k = board._transposition_key()
-    f = _FENS.get(k)
-    if f is None:
-        f = _FENS[k] = board.fen()
-    return f
+def _bridge(board: chess.Board, pos) -> None:
+    """The bridge's control (RUST_BOUNDARY risk 9): the handle and the board are one position."""
+    BRIDGE_CHECKS[0] += 1
+    assert pos.fen() == board.fen(), f"the bridge split: the board reads {board.fen()}, its handle {pos.fen()}"
+
+
+def _exact_key(board: chess.Board) -> tuple:
+    """Every field the FEN prints (the bitboards, the side to move, the castling field, the e.p. square, BOTH clocks): boards sharing it print the same FEN."""
+    return (board.pawns, board.knights, board.bishops, board.rooks, board.queens, board.kings, board.occupied_co[True], board.occupied_co[False],
+            board.turn, board.castling_rights, board.ep_square, board.halfmove_clock, board.fullmove_number)
+
+
+_POS: dict = {}            # plan 72.7 step 1: the exact key (and, for a board read for another mover, that mover) -> the Rust handle, or None; per root question
+
+
+def _parts(board: chess.Board, turn: bool, ep) -> "_A.Pos | None":
+    """The handle of `board` with `turn` to move and the e.p. square `ep`, from its parts (no FEN string); None when shakmaty does not hold it."""
+    try:
+        return _A.Pos.from_parts(board.pawns, board.knights, board.bishops, board.rooks, board.queens, board.kings, board.occupied_co[True], board.occupied_co[False],
+                                 turn, board.clean_castling_rights(), ep, board.halfmove_clock, board.fullmove_number)
+    except ValueError:
+        return None
+
+
+def pos_of(board: chess.Board) -> "_A.Pos | None":
+    """THE RUST HANDLE OF A BOARD (plan 72.7 step 1): built from its parts -- the bitboards, the side to move, python-chess's clean castling rights, the e.p. square
+    when a legal en passant exists, the clocks: exactly the fields `board.fen()` prints, so it is the position `Pos(board.fen())` read -- once per exact key per root
+    question. None when shakmaty does not hold the position (where the FEN readers answered None or raised ValueError). A board changed by a push, a pop or a
+    set_piece_at changes the key; nothing is stored on the board."""
+    k = _exact_key(board)
+    try:
+        return _POS[k]
+    except KeyError:
+        pass
+    ep = board.ep_square if board.ep_square is not None and board.has_legal_en_passant() else None
+    p = _POS[k] = _parts(board, board.turn, ep)
+    if BRIDGE_CHECK and p is not None:
+        _bridge(board, p)
+    return p
+
+
+def pos_for(board: chess.Board, colour: bool) -> "_A.Pos | None":
+    """The handle of `with_turn(board, colour)` (the board given to `colour`, e.p. cleared) without building the python-chess copy; the board's own handle when it
+    already reads so (as `word` never copied it then)."""
+    if board.turn == colour and board.ep_square is None:
+        return pos_of(board)
+    k = (_exact_key(board), colour)
+    try:
+        return _POS[k]
+    except KeyError:
+        pass
+    p = _POS[k] = _parts(board, colour, None)
+    if BRIDGE_CHECK and p is not None:
+        _bridge(with_turn(board, colour), p)
+    return p
+
+
+def handle(board) -> "_A.Pos":
+    """The handle of `board` (a board or a handle already) for a Rust reader that takes one; ValueError when shakmaty does not hold it (the FEN readers raised it)."""
+    if isinstance(board, _A.Pos):
+        return board
+    p = pos_of(board)
+    if p is None:
+        raise ValueError("illegal or unparsable position")
+    return p
+
+
+class Node:
+    """THE BRIDGE'S NODE (RUST_BOUNDARY 3.3): a position held as the python-chess board AND its Rust handle. `child(uci)` pushes both -- the board by python-chess, the
+    handle by `Pos.push` -- and renders no FEN; with BRIDGE_CHECK the two must print the same FEN after every push. The handle defaults to the board's own (`pos_of`)."""
+    __slots__ = ("board", "pos")
+
+    def __init__(self, board: chess.Board, pos=None):
+        self.board = board
+        self.pos = pos if pos is not None else handle(board)
+        if BRIDGE_CHECK:
+            _bridge(board, self.pos)
+
+    def child(self, uci: str) -> "Node":
+        c = self.board.copy(stack=False)
+        c.push(chess.Move.from_uci(uci))
+        return Node(c, self.pos.push(uci))
 
 
 _XFENS: dict = {}          # 54 (B5.2): the exact key (every field the FEN prints) -> FEN, per root question
@@ -65,22 +146,22 @@ _XFENS: dict = {}          # 54 (B5.2): the exact key (every field the FEN print
 
 def exact_fen(board: chess.Board) -> str:
     """`board.fen()` from a cache keyed by every field the FEN prints (the bitboards, the side to move, the castling field, the e.p. square, BOTH clocks), so it is the
-    same string `board.fen()` gives for any board that shares them -- unlike `fen_of`, whose key leaves the clocks out. A board changed by a push, a pop or a set_piece_at
-    changes the key; nothing is stored on the board, so no mutation can leave a stale entry."""
-    k = (board.pawns, board.knights, board.bishops, board.rooks, board.queens, board.kings, board.occupied_co[True], board.occupied_co[False],
-         board.turn, board.castling_rights, board.ep_square, board.halfmove_clock, board.fullmove_number)
+    same string `board.fen()` gives for any board that shares them. A board changed by a push, a pop or a set_piece_at changes the key; nothing is stored on the board,
+    so no mutation can leave a stale entry. plan 72.7 step 1: a miss renders it from the board's handle (`Pos.fen_exact`), not python-chess."""
+    k = _exact_key(board)
     f = _XFENS.get(k)
     if f is None:
-        f = _XFENS[k] = board.fen()
+        p = pos_of(board)
+        f = _XFENS[k] = p.fen_exact() if p is not None else board.fen()
     return f
 
 
 def clear_caches() -> None:
     """Called at every fresh root question: the root is the unit of attention; knowledge across moves lives in the fact store, not here."""
-    _FENS.clear()
+    _POS.clear()
     _XFENS.clear()
     SM.clear_word_cache()
-    _A.clear_caches()                          # 54 (B3): the core's parsed positions
+    _A.clear_caches()                          # 54 (B3): the core's parsed positions; plan 72.7: and its word cache
     for hook in CLEAR_HOOKS:
         hook()
 
@@ -214,9 +295,11 @@ def mobility_of(board: chess.Board, sq: int) -> int:
 
 def see(board: chess.Board, sq: int) -> int:
     """The Rust word `see` on `sq`, read with the mover = the side to move at `board`: what the SIDE TO MOVE wins by the exchange started by a capture on `sq`
-    (it reads 0 for the side not to move, and nothing for a piece of the mover's own side). `see_for` puts the capturer on move first."""
+    (it reads 0 for the side not to move, and nothing for a piece of the mover's own side). `see_for` puts the capturer on move first.
+    plan 72.7 step 1: read on the board's Rust handle (`Pos.see`, the same word); `board` may be a node's handle."""
     BV.install_terms()
-    return SM.val_at(fen_of(board), ("see", name(sq)), "w" if board.turn else "b") or 0
+    p = board if isinstance(board, _A.Pos) else pos_of(board)
+    return p.see(sq) if p is not None else 0
 
 
 def see_for(board: chess.Board, sq: int, capturer: bool) -> int:
@@ -228,10 +311,14 @@ def see_for(board: chess.Board, sq: int, capturer: bool) -> int:
 
 def word(board: chess.Board, term, owner: bool) -> int:
     """A word of the Rust vocabulary read on `board` with `owner` as the mover. The evaluator reads from the mover's side, and reads 0 / mirrored squares when
-    the mover is not the side to move, so the board is first given to `owner` (`with_turn`); a pawn word (`pushes`, `ahead`, `promo`) is read with its owner."""
-    BV.install_terms()
-    b = board if (board.turn == owner and board.ep_square is None) else with_turn(board, owner)      # 52.20 (1): no copy when the board already reads so
-    return SM.val_at(fen_of(b), term, "w" if owner else "b")
+    the mover is not the side to move, so the board is first given to `owner` (`with_turn`); a pawn word (`pushes`, `ahead`, `promo`) is read with its owner.
+    plan 72.7 step 1: read on the Rust handle by the compiled term (`Pos.read` on the handle of the board given to `owner`; `board` may be a node's handle, then
+    `Pos.word` gives it): no FEN, no s-expression per read, the word cache in Rust. None where shakmaty does not hold the board so (the FEN reader's None)."""
+    i = SM.term_id(term, "w" if owner else "b")
+    if isinstance(board, _A.Pos):
+        return board.word(i, owner) if i is not None else None
+    p = pos_for(board, owner)                                                                         # 52.20 (1): no copy when the board already reads so
+    return p.read(i) if p is not None and i is not None else None
 
 
 def piece_moves_to(board: chess.Board, frm: int, targets: set, limit: int) -> int | None:

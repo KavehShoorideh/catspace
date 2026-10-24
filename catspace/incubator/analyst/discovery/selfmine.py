@@ -256,22 +256,28 @@ def make_terms(objs: list, pairs: list, line_pairs: list | None = None) -> list:
 
 
 def evaluate(terms: list, poss: list) -> dict:
-    """values[sexpr(term)] = the term's number on every position (read from that position's mover; squares named from the mover's side)."""
-    import analyst_core as A
-    BV.install_terms()
-    vals = {}
-    for t in terms:
-        row = [0] * len(poss)
-        for mover in ("w", "b"):
-            idx = [i for i, p in enumerate(poss) if p["mover"] == mover]
-            if not idx:
-                continue
-            r = A.vocab_values([poss[i]["fen"] for i in idx], BV.sexpr(render(t, mover)))
-            if len(r) != len(idx):
+    """values[sexpr(term)] = the term's number on every position (read from that position's mover; squares named from the mover's side).
+    plan 72.7 step 1: each position's Rust handle (`pos` in its dict, a node's; else its FEN's, parsed once per root question) reads ALL the terms in ONE crossing by
+    their compiled ids (`Pos.values`, the `vocab_values` reading: a set term reads 0; a FEN shakmaty does not hold reads 0)."""
+    vals = {BV.sexpr(t): [0] * len(poss) for t in terms}
+    for mover in ("w", "b"):
+        idx = [i for i, p in enumerate(poss) if p["mover"] == mover]
+        if not idx:
+            continue
+        ids = []
+        for t in terms:
+            i = term_id(t, mover)
+            if i is None:
                 raise ValueError(f"the evaluator does not read {BV.sexpr(t)}")
-            for i, v in zip(idx, r):
-                row[i] = v
-        vals[BV.sexpr(t)] = row
+            ids.append(i)
+        if not ids:
+            continue
+        for i in idx:
+            p = poss[i].get("pos") or pos_at(poss[i]["fen"])
+            if p is None:
+                continue
+            for t, v in zip(terms, p.values(ids)):
+                vals[BV.sexpr(t)][i] = v
     return vals
 
 
@@ -1428,23 +1434,54 @@ LAYERS_HEAD = LEAN_HEAD.replace("import Ideas.TreeStep", "import Ideas.TreeStep\
 PROMO_SQ = "a2"          # their pawn on the rank before promotion, named from the mover's side
 
 
-_WORDS: dict = {}          # 52.20 (1): (fen, term, mover) -> value; cleared at every fresh root question (clear_word_cache)
+_TERM_IDS: dict = {}       # plan 72.7 step 1: (term, mover, the installation of the compositions) -> the compiled term's id (-1: the evaluator does not read it)
+_FEN_POS: dict = {}        # ... a FEN read by `val_at` / `evaluate` -> its Rust handle (None: shakmaty does not hold it); per root question (clear_word_cache)
 
 
-def val_at(fen: str, term, mover: str) -> int:
-    """A word read on `fen` (squares absolute, named from the mover's side as the evaluator reads them). Memoised: the same word on the same board is read
-    once (52.20 (1): 39% of the reads were exact repeats)."""
-    k = (fen, term, mover)
-    v = _WORDS.get(k)
-    if v is None:
+def term_id(term, mover: str) -> int | None:
+    """The id of `term` rendered from `mover`'s side, compiled once (`analyst_core.compile_term`: the s-expression rendered and parsed ONCE, not per read). None when the
+    evaluator does not read it."""
+    k = (term, mover, BV.installed_generation())
+    i = _TERM_IDS.get(k)
+    if i is None:
         import analyst_core as A
         BV.install_terms()
-        v = _WORDS[k] = A.vocab_eval(fen, BV.sexpr(render(term, mover)))
-    return v
+        k = (term, mover, BV.installed_generation())
+        try:
+            i = A.compile_term(BV.sexpr(render(term, mover)))
+        except ValueError:
+            i = -1
+        _TERM_IDS[k] = i
+    return i if i >= 0 else None
+
+
+def pos_at(fen: str):
+    """The Rust handle of `fen`, parsed once per root question; None when shakmaty does not hold it."""
+    try:
+        return _FEN_POS[fen]
+    except KeyError:
+        import analyst_core as A
+        try:
+            p = A.Pos(fen)
+        except ValueError:
+            p = None
+        _FEN_POS[fen] = p
+        return p
+
+
+def val_at(fen: str, term, mover: str, pos=None) -> int:
+    """A word read on `fen` (squares absolute, named from the mover's side as the evaluator reads them). Memoised: the same word on the same board is read
+    once (52.20 (1): 39% of the reads were exact repeats). plan 72.7 step 1: read on the Rust handle (`pos`, a node's, else the FEN's, parsed once per root question)
+    by the compiled term (`Pos.read`): no s-expression is rendered or parsed per read; the memo is the Rust word cache. None where the evaluator reads nothing."""
+    p = pos if pos is not None else pos_at(fen)
+    i = term_id(term, mover)
+    if p is None or i is None:
+        return None
+    return p.read(i)
 
 
 def clear_word_cache() -> None:
-    _WORDS.clear()
+    _FEN_POS.clear()
 
 
 def root_atoms(x: str, y: str, mover: str, delta: int) -> list:

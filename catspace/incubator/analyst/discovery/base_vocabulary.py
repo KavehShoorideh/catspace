@@ -190,7 +190,7 @@ SQUARE_CLASSES = ("a1", "b1", "c1", "d1", "b2", "c2", "d2", "c3", "d3", "d4")
 SQUARE_NAMES = tuple(f + r for f in "abcdefgh" for r in "12345678")
 
 
-_installed = [False]
+_installed = [False, 0]     # (installed?, how many installations: a compiled term belongs to one -- plan 72.7 step 1, selfmine.term_id)
 
 
 def install_terms(force: bool = False) -> None:
@@ -202,6 +202,12 @@ def install_terms(force: bool = False) -> None:
     import analyst_core as A
     A.set_macros([(n, list(ps), body) for n, (ps, body, _) in CHESS_TERMS.items()])
     _installed[0] = True
+    _installed[1] += 1
+
+
+def installed_generation() -> int:
+    """How many times the chess terms were installed (0: not yet): a term compiled under one installation is compiled again after the next."""
+    return _installed[1]
 
 
 def expand(t):

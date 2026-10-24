@@ -3428,6 +3428,10 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
   the risks (the Lean mirror citations, the read sets, the trace text), and the measured expectation per step. No code in the research step.
   72.7 STEP 0 BUILT 2026-10-23 on branch worktree-agent-a506db989ebdb7e32 (journal 2026-10-23 20:43): the read set of every claim beside each trace (`<id>.reads.txt`, diffed by `compare`),
   `scripts/trace_identity.py crosscheck` (SAN and python-chess's legal-move order against `Pos.san` / `Pos.legal_ucis`; clean on its sample); tests/test_plan72_7.py.
+  72.7 STEP 1 BUILT 2026-10-23 on branch worktree-agent-a506db989ebdb7e32 (journal 2026-10-23 21:42): the node's handle (`Agenda.pos`, built once, handed down by `push`; `graph.Node`,
+  the bridge, asserted under CATSPACE_BRIDGE_CHECK=1), the RUST_BOUNDARY 3.1 `Pos` methods, `compile_term` and the words on the handle (`word` / `words` / `read` / `values` / `see`), the
+  Rust word cache replaying the read set on a hit, the Pos siblings of the FEN readers; `fen_of` / `_FENS` deleted. Guard 0 of 10 traces and 0 of 10 read sets differ; the negative
+  control (balance read one more) moved 6 of 10. Not built: a stored `.pos` on Question / Route; handles for `bind_mate` / `bind_mate2` (they build a python-chess board from the FEN).
   BUILT 2026-10-23 (72.6): `scripts/gate.py engine|full [--dry-run] [--only FILE] [--log PATH]`. `engine` = the 28 named files (the missing ones are printed and skipped), `full` = every tests/test_*.py;
   both run one file at a time, each its own `python -m pytest FILE -q -p no:cacheprovider -W ignore --durations=3` with PYTHONUNBUFFERED=1, output appended to artifacts/experiments/gate_<cmd>_<timestamp>.log.
   LOCK: `<tmpdir>/catspace_gate.lock` (pid, cmd, start); a second gate refuses (exit 2) naming the running gate's pid and start time; a lock whose pid is dead is removed. Other running pytest processes

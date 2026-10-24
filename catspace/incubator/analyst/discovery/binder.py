@@ -130,7 +130,7 @@ def second_moves(board: chess.Board, route: chess.Move, trap: int | None = None)
     if SECOND_RUST and board.color_at(route.from_square) == board.turn:
         try:
             import analyst_core as A
-            return sorted(A.second_moves(G.fen_of(board), route.uci(), trap))
+            return sorted(A.second_moves_pos(G.handle(board), route.uci(), trap))          # plan 72.7 step 1: the board's handle, no FEN
         except ValueError:
             pass
     quiet = not board.gives_check(route)

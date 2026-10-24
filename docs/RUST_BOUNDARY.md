@@ -122,6 +122,10 @@ STATUS: BUILT 2026-10-23 on branch worktree-agent-a506db989ebdb7e32 (journal 202
 Add the `Pos` methods and term-id compile of 3.1/3.2. Switch `graph.word`, `graph.see` and the `selfmine.val_at` callers to the node's `Pos`; give nodes a
 `.pos`; replace the `AC.Pos(b.fen())` sites in agenda.py by it; delete `fen_of`/`_FENS` when the last caller is gone. This removes the FEN round trip (the
 20% share) and touches no decision logic: the Rust code behind it is the same inner functions. Python still does board copies, pushes and legal moves.
+STATUS: BUILT 2026-10-23 on branch worktree-agent-a506db989ebdb7e32 (journal 2026-10-23 21:42): the 3.1 methods, `compile_term` and the words on the handle, the word cache
+replaying the read set, the Pos siblings, `Agenda.pos` handed down by push, `graph.Node`, `fen_of`/`_FENS` deleted; guard 0 of 10 traces and 0 of 10 read sets differ. Not
+built: a stored `.pos` on Question / Route (their positions are the agenda's handle and `P1 = pos.push(uci)` where they are read), and handles for the four FEN-taking
+binders (`bind_mate`, `bind_mate2` x3) that build a python-chess board from the FEN.
 
 ### Step 2. The chase's reply loop and the static leaf
 Port `_chase_route_body` (agenda.py 2375 on) and its helpers (`_standing_kill`, `_closed_by_rule`, `_principal_captures`, `_their_after_capture`,

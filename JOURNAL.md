@@ -32594,3 +32594,53 @@ FINDINGS: (1) regress.rs `py_key` files castling among the king's moves (to = th
 positions: OBS py_key emulation: 4 of 4 castling positions order differently from python-chess. Harmless today: every user of `legal_sorted` drops castling (or is in check). `legal_ucis` uses
 its own key with castling in python's place. (2) `rust/analyst_core/target` is TRACKED in git (4297 files, since e5fb85ac): every build dirties ~160 tracked files; commits stay by path.
 SAN and order are clean on this sample; step 1 may read legal moves and names from `Pos` where it needs them (it keeps python-chess's where they are today).
+
+## 2026-10-23 21:42 PDT -- plan 72.7 step 1 built: the handle and the word calls on it (branch worktree-agent-a506db989ebdb7e32)
+docs/RUST_BOUNDARY.md 3.1, 3.2, 3.3 (the bridge), section 4 step 1. No decision logic touched: the Rust behind every new call is the same inner function.
+- Rust. pos.rs: `Pos.from_parts` (a python-chess board's parts -- bitboards, side, clean castling rights, a legal e.p. square, clocks -- no FEN), `fen_exact`, `key`, `with_turn`
+  (graph.with_turn: e.p. cleared, castling and clocks kept; None where shakmaty does not hold the board), `pass_turn`, `piece_at`, `attackers` / `attacks` (u64 masks), `is_capture`,
+  `gives_check`, `king`, `board_fen`, `ep_square`, `is_checkmate`, `is_stalemate`; the words on the handle: `word` / `words` (graph.word), `read` (val_at), `values` (evaluate,
+  one crossing per position), `see` (graph.see). vocab.rs: `compile_term` (once per term; the installation of the compositions is part of the id), THE WORD CACHE keyed (the position
+  read: board, side, castling, legal e.p.; term id; reading), never for a word that reads the clocks or the game's line (halfmoves seen ago delta gained lost forcing_*), and on a hit
+  REPLAYING what the word added to the dependency trackers on its miss (lib.rs `DepState`, `dep_recording`; risk 2). regress.rs: the Pos siblings `mate_defects_pos`,
+  `material_defects_pos`, `forcing_whys_pos`, `still_routes_pos`, `trap_fix_routes_pos`, `skewer_routes_pos`, `drive_onto_routes_pos`, `second_moves_pos`, `see_after_pos` (the FEN
+  versions are shims over the same inner functions); `clear_caches` empties the word cache too. Every new method returns PyResult; an illegal FEN, move, square, term id or bitboard set
+  is a ValueError (tested).
+- Python. graph.py: `pos_of` / `pos_for` / `handle` (the handle from the board's parts, cached per exact key per root question), `Node` (`child(uci)` pushes the board and the handle;
+  CATSPACE_BRIDGE_CHECK=1, the one debug flag, asserts `pos.fen() == board.fen()` for every handle and after every push), `word` / `see` on a board or a handle; `fen_of` and `_FENS`
+  DELETED (no caller left); `exact_fen` renders a miss from the handle. selfmine.py: `term_id`, `pos_at`; `val_at(pos=)` and `evaluate` (a position dict may carry `pos`) read compiled
+  ids on the handle. agenda.py: `Agenda.pos` (built once from the board at the root, handed down by the chase as `P1.push(uci)`: `_inner(pos=)`, the refuter fix's agenda) and
+  `Agenda.fen` (rendered once from it); the 11 `AC.Pos(b.fen())` sites read the node's handle; the chase's route, the fork's route and the leaf read push their boards with their
+  handles (`Node.child`); the node's own words (`pushes`, `dist`, `see`) and the leaf's tail read on its handle. regress.py's six fen_of readers, binder.second_moves and
+  reasoned's see_after call the Pos siblings.
+OBS fen sites before: board.fen()-per-Rust-call sites in discovery/ 34 {'agenda.py': 18, 'binder.py': 1, 'defenders.py': 2, 'graph.py': 2, 'observables.py': 1, 'reasoned.py': 1, 'regress.py': 8, 'watch.py': 1}; AC.Pos( sites agenda.py 12 (from a FEN 12), regress.py 0; val_at call sites agenda.py 1, regress.py 0, all discovery/ 26; fen_of call sites 9
+OBS fen sites after: board.fen()-per-Rust-call sites in discovery/ 9 {'agenda.py': 1, 'defenders.py': 2, 'observables.py': 1, 'regress.py': 4, 'watch.py': 1}; AC.Pos( sites agenda.py 1 (from a FEN 1), regress.py 0; val_at call sites agenda.py 1, regress.py 0, all discovery/ 24; fen_of call sites 0
+  (a SITE: a line that renders a FEN from a board and hands it to the core or to a FEN-taking word reader on the same line. Left on the agenda's path: `bind_mate(c.fen())` and three
+  `bind_mate2(...fen())` -- they build a python-chess board from the FEN; their words read the FEN's handle, parsed once per root -- and mate_defects' fallback for a board shakmaty does
+  not hold. defenders / observables / watch are not on the agenda's path. The one `AC.Pos(fen)` left is `_cycle_claim`'s fallback when no handle is handed (ponder.py's `_inner(fen)`).)
+OBS guard (count budget; step 0 snapshot vs step 1): OBS trace identity: 0 of 10 traces differ; OBS trace identity: 0 of 10 read sets differ -- with the bridge off and with it on
+(OBS bridge: 126573 handle / board pairs compared, none split); against the parent c2602607: OBS trace identity: 0 of 10 traces differ.
+NEGATIVE CONTROL (a wrong build, not committed): the word `balance` read one more in `read_word`: OBS trace identity: 6 of 10 traces differ; OBS trace identity: 6 of 10 read sets differ. Reverted, rebuilt.
+OBS crosscheck (step 1 build): positions checked 1671, moves checked 45607, SAN mismatches 0, order mismatches 0, unparsable by shakmaty 0.
+OBS W0VFO 10 s before: wall 11.0 s, decision Qb7 (e4b7), questions asked 38, inner agendas 206, inner questions 2284
+OBS W0VFO 10 s after: wall 10.5 s, decision Qb7 (e4b7), questions asked 38, inner agendas 517, inner questions 8555
+  (one run each, machine quiet; the run is bounded by the clock, so the wall moves little and the work read inside it is the reading: more inner agendas in the same seconds.)
+OBS count budget parent: case set wall 30.6 s (eSJqH 1.69, 2TUzC 8.40, 07Z0P 4.09, 4pC83 1.79, j3ybl 5.83, qCXKp 0.88, W0VFO 1.08, RoR8t 0.07, discovery 6.03, pos2 0.70)
+OBS count budget step1: case set wall 26.9 s (eSJqH 1.51, 2TUzC 7.31, 07Z0P 3.68, 4pC83 1.59, j3ybl 5.13, qCXKp 0.83, W0VFO 1.01, RoR8t 0.07, discovery 5.16, pos2 0.62)
+  (the SAME work -- identical traces -- the parent's Python against the step-1 core, whose FEN readers are the old ones; one run each: directional.)
+OBS profile before: total 12.1 s; python FEN building 0.52 s (4.3%); s-expression render 0.93 s (7.7%); inside the Rust word readers 1.21 s (10.0%); the three together 21.9%
+OBS profile after: total 12.1 s; python FEN building 0.26 s (2.1%); s-expression render 0.01 s (0.1%); inside the Rust word readers 0.40 s (3.3%); the three together 5.5%
+  (cProfile of one W0VFO 10 s run each; "the Rust word readers" = vocab_eval / vocab_values before -- the FEN and term parsing with the evaluation -- and Pos.read / values / word / see
+  after. Per call: evaluate 2.50 s for 73303 calls before, 1.08 s for 128479 after; premise_truth 2.92 s / 73165, 1.82 s / 128328. The top of the profile is now the Python around the
+  words -- legs_of, BV.size, with_legality, premise_truth -- and python-chess pushes and legal moves: step 2's.)
+OBS gate engine --only (one file per call): test_plan72_7 passed 16, failed 0; test_binder_rust 31, 0; test_agenda 26, 0; test_regress 87, 0, xfailed 1 (312.4 s); test_tiers 14, 0;
+test_fact_store 21, 0; test_offbuilt64 15, 0, xfailed 1; test_plan72_10 4, 0; test_plan72_9 7, 0; test_plan72 6, 0; test_discovery_vocabulary 23, 0; test_selfmine 26, 0.
+(A first test_regress gate failed 10 tests with FileNotFoundError on lean/ideas/.lake/build/bin/ideas -- the worktree had no Lean build; with `.lake` linked to main's, as the setup
+allows, 87 passed. A first test_selfmine gate started a `lake build` from scratch without it and was stopped; the half-built cache was removed.)
+FINDINGS: (1) fen_of's key left the clocks out, so a word read through graph.word read the FIRST transposition's clocks; the word cache leaves them out too but never caches a word that
+reads them (read afresh on the board's own clocks). No word the agenda reads names a clock (the guard is identical). (2) `Pos.with_turn` is None where python-chess keeps a board that is
+not a legal position (the side not to move in check); the FEN readers answered None there too, and graph.word keeps that None. (3) regress.rs `py_key`'s castling place (step 0
+finding) stays as it is: its users drop castling.
+NOT BUILT: a stored `.pos` on Question and Route -- a question is asked on its agenda's board (its handle is `ag.pos`), a route's position is `P1 = ag.pos.push(uci)`, built where the
+route is chased; a stored copy would be read by nothing in step 1 (step 2 keys the route memo by `(pos.key(), uci)`). Handles for the four FEN-taking binders (`bind_mate`,
+`bind_mate2`): they need the python-chess board they build from the FEN (step 2/3). SAN and legal moves still come from python-chess (the cross-check is clean; switching them is step 2).

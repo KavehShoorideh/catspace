@@ -637,6 +637,42 @@ fn dep_global() { GLOBAL.with(|g| g.set(true)); }
 pub(crate) fn take_dep() -> (shakmaty::Bitboard, bool) {
     (DEP.with(|d| d.replace(shakmaty::Bitboard::EMPTY)), GLOBAL.with(|g| g.replace(false)))
 }
+/// THE FOUR DEPENDENCY TRACKERS AS ONE VALUE (plan 72.7 step 1; RUST_BOUNDARY risk 2): what a computation read -- DEP, GLOBAL, the DEP_PARTS breakdown and DEP_ONE_STEP.
+/// The word cache (vocab.rs `cached_word`) takes them before a word reads, keeps what the word added, and REPLAYS it on a hit, so a claim never looks narrower than it was.
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+pub(crate) struct DepState { pub dep: u64, pub global: bool, pub parts: [u64; 3], pub one: u64 }
+/// Take every tracker (each left empty).
+pub(crate) fn dep_take_all() -> DepState {
+    let p = DEP_PARTS.with(|d| d.replace([shakmaty::Bitboard::EMPTY; 3]));
+    DepState { dep: DEP.with(|d| d.replace(shakmaty::Bitboard::EMPTY)).0, global: GLOBAL.with(|g| g.replace(false)), parts: [p[0].0, p[1].0, p[2].0],
+               one: DEP_ONE_STEP.with(|d| d.replace(shakmaty::Bitboard::EMPTY)).0 }
+}
+/// Add `s` to every tracker (a union: what was recorded stays).
+pub(crate) fn dep_add_all(s: &DepState) {
+    DEP.with(|d| d.set(d.get() | shakmaty::Bitboard(s.dep)));
+    if s.global { GLOBAL.with(|g| g.set(true)); }
+    DEP_PARTS.with(|d| { let mut v = d.get(); for i in 0..3 { v[i] |= shakmaty::Bitboard(s.parts[i]); } d.set(v); });
+    DEP_ONE_STEP.with(|d| d.set(d.get() | shakmaty::Bitboard(s.one)));
+}
+/// `f` run with the trackers recording only what it adds: -> (its result, what it added). The trackers hold their earlier content plus that afterwards.
+pub(crate) fn dep_recording<T>(f: impl FnOnce() -> T) -> (T, DepState) {
+    let before = dep_take_all();
+    let out = f();
+    let added = dep_take_all();
+    dep_add_all(&before);
+    dep_add_all(&added);
+    (out, added)
+}
+/// dep_peek() -> (DEP's squares as a mask, GLOBAL, the DEP_PARTS masks, DEP_ONE_STEP's mask) on this thread, nothing cleared -- the test hook of the word cache's replay.
+#[pyfunction]
+fn dep_peek() -> PyResult<(u64, bool, [u64; 3], u64)> {
+    let s = dep_take_all();
+    dep_add_all(&s);
+    Ok((s.dep, s.global, s.parts, s.one))
+}
+/// dep_clear(): every dependency tracker of this thread emptied (the test hook's fresh start).
+#[pyfunction]
+fn dep_clear() -> PyResult<()> { let _ = dep_take_all(); Ok(()) }
 /// The index a frame proof reads: the static exchange for `side` on each of their pieces (`us`) and for them on each of
 /// ours (`them`), as the forcing search carries them (threat.rs FState).
 #[derive(Clone, Copy)]
@@ -1728,6 +1764,22 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(regress::drive_onto_routes, m)?)?;
     m.add_function(wrap_pyfunction!(regress::second_moves, m)?)?;
     m.add_function(wrap_pyfunction!(regress::see_after, m)?)?;
+    // plan 72.7 step 1: the compiled terms, the word cache, and the Pos-taking siblings of the FEN readers
+    m.add_function(wrap_pyfunction!(vocab::compile_term, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::compiled_pure, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::word_cache_size, m)?)?;
+    m.add_function(wrap_pyfunction!(vocab::word_cache_replay_audit, m)?)?;
+    m.add_function(wrap_pyfunction!(dep_peek, m)?)?;
+    m.add_function(wrap_pyfunction!(dep_clear, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::mate_defects_pos, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::material_defects_at, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::still_routes_pos, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::forcing_whys_pos, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::trap_fix_routes_pos, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::skewer_routes_at, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::drive_onto_routes_pos, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::second_moves_pos, m)?)?;
+    m.add_function(wrap_pyfunction!(regress::see_after_pos, m)?)?;
     m.add_function(wrap_pyfunction!(regress::set_caches, m)?)?;
     m.add_function(wrap_pyfunction!(regress::clear_caches, m)?)?;
     m.add_function(wrap_pyfunction!(regress::cache_size, m)?)?;

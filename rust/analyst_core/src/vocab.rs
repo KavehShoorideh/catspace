@@ -77,9 +77,12 @@ pub fn ranked(b: &shakmaty::Board, c: Color) -> Vec<Square> {
 /// have compositional vocab"): name -> (parameters, body over the base words); a term naming one is expanded before
 /// it is read, so every chess term unfolds into the base (set from Python: discovery/base_vocabulary.py CHESS_TERMS).
 static MACROS: std::sync::RwLock<Option<std::collections::HashMap<String, (Vec<String>, String)>>> = std::sync::RwLock::new(None);
+/// How many times the compositions were (re)installed: a compiled term is the compilation under one installation (plan 72.7 step 1, `compile_term`).
+static MACRO_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 #[pyfunction]
 pub fn set_macros(macros: Vec<(String, Vec<String>, String)>) -> PyResult<()> {
     *MACROS.write().unwrap() = Some(macros.into_iter().map(|(n, ps, b)| (n, (ps, b))).collect());
+    MACRO_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     Ok(())
 }
 #[derive(Clone, Debug)]
@@ -755,6 +758,118 @@ pub fn vocab_certify(fens: Vec<String>, term: String, schema: String, k: u32) ->
     use rayon::prelude::*;
     let Some(t) = parse_term(&term) else { return Ok(0) };
     Ok(fens.par_iter().filter(|f| parse(f).map_or(false, |p| certified(&p, &t, &schema, k))).count() as u32)
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// THE WORDS ON THE HANDLE (plan 72.7 step 1, docs/RUST_BOUNDARY.md 3.2): a term is COMPILED once (`compile_term`: the s-expression parsed, the compositions
+// unfolded, an id handed back) and read on a `Pos` by its id -- no s-expression is rendered or parsed per read, and no FEN. The readings are the evaluator's
+// own (`num`, `set`, each the mirror of a definition in Lean `Ideas.Vocabulary`): `Pos.read` / `Pos.word` read as `vocab_eval` does (a number; a set term as
+// its count), `Pos.values` as `vocab_values` does (`num`: a set term reads 0).
+// THE WORD CACHE, keyed (the position read -- board, side to move, castling rights, the LEGAL en passant square; not the move clocks --, the term's id, the
+// reading), lives for one root question (`clear_caches`, called by graph.clear_caches). A term that reads the clocks or the game's line (halfmoves, seen,
+// ago, delta, gained, lost, forcing_*: the fifty-move rule and the repetitions are in the solver) is never cached: it is read afresh. On a miss the
+// dependency trackers' additions while the word read are kept with its value and REPLAYED on a hit (RUST_BOUNDARY risk 2: a claim never looks narrower
+// than it was).
+
+/// A compiled term: the term, whether the cache may keep its value (no clock, no game line), whether it is a number (else a set).
+pub(crate) struct Compiled { pub term: Term, pub pure: bool, pub is_num: bool }
+static COMPILED: std::sync::RwLock<Vec<std::sync::Arc<Compiled>>> = std::sync::RwLock::new(Vec::new());
+fn term_ids() -> &'static Mutex<HashMap<(u64, String), u32>> { static C: OnceLock<Mutex<HashMap<(u64, String), u32>>> = OnceLock::new(); C.get_or_init(|| Mutex::new(HashMap::new())) }
+/// The words whose value depends on more than the position read (the clocks, the game's line).
+const HISTORY_WORDS: [&str; 6] = ["halfmoves", "seen", "ago", "delta", "gained", "lost"];
+
+/// The tokens `parse_term` reads after the compositions are unfolded (None when it would not parse).
+fn expanded_tokens(s: &str) -> Option<Vec<String>> {
+    let mut t = toks(s);
+    if let Some(m) = MACROS.read().unwrap().as_ref() {
+        if !m.is_empty() && t.iter().any(|x| m.contains_key(x)) {
+            let mut i = 0;
+            let x = sx_expand(&sx_parse(&t, &mut i)?, m, 0)?;
+            t = toks(&sx_text(&x));
+        }
+    }
+    Some(t)
+}
+
+/// compile_term(sexpr) -> the term's id: parsed once (the compositions installed now unfolded), read afterwards by id on a `Pos`. ValueError when the evaluator
+/// does not read it. The same s-expression under the same installation of the compositions gets the same id.
+#[pyfunction]
+pub fn compile_term(sexpr: &str) -> PyResult<u32> {
+    let gen = MACRO_GEN.load(std::sync::atomic::Ordering::SeqCst);
+    let key = (gen, sexpr.to_string());
+    if let Some(&id) = term_ids().lock().unwrap().get(&key) { return Ok(id); }
+    let term = parse_term(sexpr).ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("the evaluator does not read {sexpr}")))?;
+    let pure = expanded_tokens(sexpr).map_or(false, |ts| !ts.iter().any(|x| HISTORY_WORDS.contains(&x.as_str()) || x.starts_with("forcing_")));
+    let is_num = is_num(&term);
+    let mut all = COMPILED.write().unwrap();
+    let id = all.len() as u32;
+    all.push(std::sync::Arc::new(Compiled { term, pure, is_num }));
+    term_ids().lock().unwrap().insert(key, id);
+    Ok(id)
+}
+
+/// The compiled term `id` (ValueError for an id `compile_term` never gave).
+pub(crate) fn compiled(id: u32) -> PyResult<std::sync::Arc<Compiled>> {
+    COMPILED.read().unwrap().get(id as usize).cloned().ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("no compiled term {id}")))
+}
+
+/// compiled_pure(id) -> whether the word cache may keep the term's value (it reads no clock and no game line).
+#[pyfunction]
+pub fn compiled_pure(id: u32) -> PyResult<bool> { Ok(compiled(id)?.pure) }
+
+#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+struct WordKey { roles: [u64; 6], white: u64, turn: bool, castles: u64, ep: u8, term: u32, reading: u8 }
+struct WordVal { v: u32, dep: crate::DepState }
+fn word_cache() -> &'static Mutex<HashMap<WordKey, WordVal>> { static C: OnceLock<Mutex<HashMap<WordKey, WordVal>>> = OnceLock::new(); C.get_or_init(|| Mutex::new(HashMap::new())) }
+/// The word cache emptied (a fresh root question: regress.rs `clear_caches`).
+pub(crate) fn clear_word_cache() { word_cache().lock().unwrap().clear(); }
+/// word_cache_size() -> how many word values the cache holds.
+#[pyfunction]
+pub fn word_cache_size() -> PyResult<usize> { Ok(word_cache().lock().unwrap().len()) }
+
+fn word_key(p: &Chess, term: u32, reading: u8) -> WordKey {
+    let b = p.board();
+    WordKey { roles: [b.pawns().0, b.knights().0, b.bishops().0, b.rooks().0, b.queens().0, b.kings().0], white: b.white().0, turn: p.turn() == Color::White,
+              castles: p.castles().castling_rights().0, ep: p.ep_square(shakmaty::EnPassantMode::Legal).map_or(64, |s| s as u8), term, reading }
+}
+
+/// `eval` through the word cache under `key` (when `pure`): a hit replays the dependency trackers' additions recorded on the miss.
+fn cached_word(key: WordKey, pure: bool, eval: impl FnOnce() -> u32) -> u32 {
+    if !pure { return eval(); }
+    if let Some(e) = word_cache().lock().unwrap().get(&key) {
+        crate::dep_add_all(&e.dep);
+        return e.v;
+    }
+    let (v, dep) = crate::dep_recording(eval);
+    word_cache().lock().unwrap().insert(key, WordVal { v, dep });
+    v
+}
+
+/// The compiled term `c` (id `id`) read on `p` as it stands (its side to move the mover): `count` = `vocab_eval`'s reading (a set term as its count), else
+/// `vocab_values`'s (`num`).
+pub(crate) fn read_word(p: &Chess, id: u32, c: &Compiled, count: bool) -> u32 {
+    cached_word(word_key(p, id, count as u8), c.pure, || {
+        let lone = !p.turn();
+        if count && !c.is_num { set(&c.term, p, lone).count() as u32 } else { num(&c.term, p, lone) }
+    })
+}
+
+/// word_cache_replay_audit(fen) -> (squares recorded on the miss, squares on the hit, the two values equal, the hit served from the cache): the cache's replay,
+/// exercised with a reading that records the occupied squares in DEP (no vocabulary word records DEP today: the proofs do) -- the test hook of risk 2.
+#[pyfunction]
+pub fn word_cache_replay_audit(fen: &str) -> PyResult<(u64, u64, bool, bool)> {
+    let p = parse(fen).ok_or_else(|| pyo3::exceptions::PyValueError::new_err(format!("illegal or unparsable fen: {fen}")))?;
+    let key = word_key(&p, u32::MAX, 255);
+    word_cache().lock().unwrap().remove(&key);
+    let occ = p.board().occupied();
+    let _ = crate::dep_take_all();
+    let calls = std::cell::Cell::new(0u32);
+    let v1 = cached_word(key, true, || { calls.set(calls.get() + 1); crate::dep_part(0, occ); occ.count() as u32 });
+    let miss = crate::dep_take_all();
+    let v2 = cached_word(key, true, || { calls.set(calls.get() + 1); occ.count() as u32 });
+    let hit = crate::dep_take_all();
+    word_cache().lock().unwrap().remove(&key);
+    Ok((miss.dep, hit.dep, v1 == v2 && miss == hit, calls.get() == 1))
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
