@@ -3539,3 +3539,41 @@ LATER (not stage 1): the SHAPE LIBRARY (arrangements mined from proved mates and
   so find why the share was 2.1 s of 10 after two routes); (c) the ORDER inside the root: the judge read Rxg7+ and Qd5+ (checks, the stake order) before Qb7 (the policy's first); the policy's
   order should drive the judge's order too. Acceptance: W0VFO decides Qb7 at 10 s by proof; the trace guard's 10 unchanged; no budget constant changed. An agent's branch, after the cost
   agent of 2026-10-23 evening has merged (both touch the judge in agenda.py).
+
+
+### 72.10 THE LOCAL INNER AGENDA: carry the frame and the goal forward; after their move ask three questions, not twenty-five (Kaveh 2026-10-23 evening, GO)
+
+THE OBSERVATION (W0VFO at 10 s, OBS: questions asked 3,846, inner agendas 152 -- ~25 questions per inner agenda where Kaveh's reasoning needs one: "Qb7 threatens mate; who can be brought
+to the defence in one move? the queen cannot; a rook can, and is lost; can they delay? they cannot"). The REPLIES are already local: a reply that touches none of the claim's read set
+leaves the claim binding and is closed by the frame lemma (W0VFO's Qb7: "2 parries: Rf7, Rc7"). The INNER AGENDA opened after a parry is not: it rebuilds every root question of the new board
+(win each piece, save each piece, promote, forks) and runs their whole agenda with the pass. THE PROOF THAT THE REST OF THE BOARD CAN BE NEGLECTED exists: every word carries a read set;
+`Ideas.FrameLemma` (proved) says a move touching none of a word's reads leaves its value; the contrapositive: anything NEW after a move (a parry, a fresh threat of theirs, a delay) has a
+word whose reads meet the move's DIFF (its from and to squares, the lines it opened and closed -- `Ideas.Battery` for the discovered ones). What is not a function of squares (the fifty-move
+count, repetition, insufficient material) is a TERMINAL read by the Game, not a claim: nothing is lost by locality.
+
+THIS IS A SPECIFICATION FOR AN AGENT (Opus). Build exactly this.
+1. THE DIFF of their reply r on board b: `diff(b, r)` = {from, to} ∪ the squares on every line through `from` now opened (the ray beyond `from` in each direction up to the first piece, for
+   sliders of ours and theirs that now see through) ∪ the squares on every line from `to` the moved piece now bears on ∪ (captures) the captured square ∪ (castling / en passant / promotion)
+   the extra squares they touch. Reuse `AC.Pos.diff` / `P0.diff(P2)` (agenda.py: `frozenset(P0.diff(P2))`) if it is this; else write it in regress.py with a test against a brute-force
+   "every word whose value changed" check on 50 random positions (the Lean condition: the diff is a superset of every changed word's reads).
+2. THE CARRIED FRAME: the chased claim's read set (the question's `reads`, the route's facts' reads: agenda `_claim_reads`, 52.21 (2)) and its goal are passed into the inner agenda
+   (`Agenda(..., frame=reads, goal=q)`); today's `inherit`/`diff` machinery (52.12 (3), 52.13 (1), `_inherit_for`) is the place -- extend, do not duplicate.
+3. THE THREE QUESTIONS the local inner agenda asks after a parry, in this order, and NOTHING ELSE while the chased claim is alive:
+   Q1 THE CLAIM ON THE DIFF: re-verify the chased claim with its reads ∩ diff re-read (the binder re-asked on the touched squares; if the claim binds again the reply was no parry -- closed);
+      if it no longer binds, its DEFECTS on the new board (the existing defect words, read on the diff's squares only) and the fixes of those defects are the routes (the chase as today, but
+      only for this goal).
+   Q2 THEIR NEW THREATS THROUGH THE DIFF: the threat word for THEIR moved piece along its new lines, and for every piece of theirs whose line the move opened (the battery/discovery read),
+      each as a save root of ours with the stake of what it wins -- `_threat_roots` restricted to claims whose reads meet the diff (their agenda with the pass is run on the diff's squares
+      only: its roots are the units bearing on or standing in the diff).
+   Q3 THEIR DELAYS: the checks and captures of theirs that touch none of the frame (70.1 `_parry_keeps` counters): each is read as today -- a delay is a parry only if after it and every reply
+      of ours the claim no longer binds; otherwise it is priced (what the exchange takes) and closed.
+   The FULL agenda of the board (every root as today) is asked ONLY when the chased claim is dead there (Q1 found no fix) and the route's value still matters -- the position is then genuinely
+   new. Flag `LOCAL_INNER = True` in agenda.py.
+4. THE TRACE: each inner agenda prints one line `local: frame {g7, h7, b7-g7, a7-g7 ...} ∩ diff {c7, c8, c-file ...} = {...}; Q1 claim binds again | re-asked: <defects>; Q2 threats: <none | their R
+   on c7 attacks our Q>; Q3 delays: <none | Qc1+ (costs 9)>` and `OBS local inner <id>: inner agendas N, questions asked Q, full agendas F (chase dead there), closed by the frame C`.
+5. ACCEPTANCE: W0VFO at the COUNT budget still proves Qb7 +3 with the same route list; at 10 s Qb7 by proof in three runs (with 72.9 merged); OBS questions asked per inner agenda falls from ~25
+   toward ~3 (print before/after); the trace guard: 10 DECISIONS unchanged, each changed line explained; the engine gate green through `scripts/gate.py engine --only <file>` one file at a
+   time; the Lean item: `Ideas/Frame.lean` (or in FrameLemma.lean) states and proves the contrapositive over `Game.step`: a word whose value differs after a step has reads meeting the step's
+   diff (the diff defined as a superset of the squares the step's board change touches) -- cite it in `diff`'s docstring; no sorry; LEAN_INDEX rebuilt.
+6. NOT IN 72.10: changing the ROOT agenda (it reads the whole board: the survey and the arrangements live there); changing the words; any new numeric limit.
+Rules as for 72.8: commit by path, no AI trailers, OBS numbers only, tests only through the locked gate, the budgets untouched (Kaveh: budgets serve the machinery), off is not built.
