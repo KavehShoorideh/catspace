@@ -3432,6 +3432,9 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
   the bridge, asserted under CATSPACE_BRIDGE_CHECK=1), the RUST_BOUNDARY 3.1 `Pos` methods, `compile_term` and the words on the handle (`word` / `words` / `read` / `values` / `see`), the
   Rust word cache replaying the read set on a hit, the Pos siblings of the FEN readers; `fen_of` / `_FENS` deleted. Guard 0 of 10 traces and 0 of 10 read sets differ; the negative
   control (balance read one more) moved 6 of 10. Not built: a stored `.pos` on Question / Route; handles for `bind_mate` / `bind_mate2` (they build a python-chess board from the FEN).
+  72.7 STEP 2a BUILT 2026-10-24 on branch worktree-agent-a501cc77b08a4de59 (journal 2026-10-24 20:20): `rboard.RBoard` over the handle (python-chess's order, `is_legal` with its castling aliases, SAN from Rust, the bridge's
+  shadow), read by the chase's reply loop and the static leaf where they read boards of their own (the words keep their python-chess boards). Guard 0 of 10 traces, 0 of 10 read sets;
+  python-chess sites agenda.py 177 -> 139. The profile first: the step-2 surface is ~3.5% of the count-budget run; the time is in the agendas and the words (step 3).
   BUILT 2026-10-23 (72.6): `scripts/gate.py engine|full [--dry-run] [--only FILE] [--log PATH]`. `engine` = the 28 named files (the missing ones are printed and skipped), `full` = every tests/test_*.py;
   both run one file at a time, each its own `python -m pytest FILE -q -p no:cacheprovider -W ignore --durations=3` with PYTHONUNBUFFERED=1, output appended to artifacts/experiments/gate_<cmd>_<timestamp>.log.
   LOCK: `<tmpdir>/catspace_gate.lock` (pid, cmd, start); a second gate refuses (exit 2) naming the running gate's pid and start time; a lock whose pid is dead is removed. Other running pytest processes

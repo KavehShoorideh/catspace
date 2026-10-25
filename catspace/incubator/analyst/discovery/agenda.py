@@ -48,6 +48,7 @@ from catspace.incubator.analyst.discovery import binder as BD
 from catspace.incubator.analyst.discovery import facts as FS
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
+from catspace.incubator.analyst.discovery import rboard as RB
 from catspace.incubator.analyst.discovery import landing as LD
 from catspace.incubator.analyst.discovery import region as RG
 from catspace.incubator.analyst.discovery import race as RC
@@ -2379,29 +2380,29 @@ class Agenda:
                     reads.add(chess.parse_square(bind.assignment[k]))
         q.claimed = (net, claim, frozenset(reads))
 
-    def _leaf_more(self, e: chess.Board, kept: int) -> "Claim | None":
-        """plan 72.2 at the d1 leaf (their move on `e`): what their one-move agenda does not say but the words do -- (d) an OPEN question of theirs there (their passer unstoppable by the tempo
+    def _leaf_more(self, e_rb: "RB.RBoard", kept: int) -> "Claim | None":
+        """plan 72.2 at the d1 leaf (their move on the leaf): what their one-move agenda does not say but the words do (`e_rb`: the leaf, an RBoard) -- (d) an OPEN question of theirs there (their passer unstoppable by the tempo
         arithmetic, no lemma firing yet) with a stake that eats what we keep, or (b) a unit of ours that cannot run, reached by their unit at a price below its worth with no guard of ours in time
         (the priced reach, `stuck_threats`). -> a Claim-shaped candidate (proved=False) naming it, or None. The leaf read turns it into a DOWNGRADE to a gap, never a kill."""
         if self.ctx is None or kept < 1:
             return None
-        lk = ("leafmore", _pos_key(e.fen()), kept)
+        lk = ("leafmore", _pos_key(e_rb.fen()), kept)
         if lk in self.ctx.theirs:
             return self.ctx.theirs[lk]
         out = None
-        w = G.with_turn(e, self.me)
         if THEIR_GAPS:
-            key = _pos_key(e.fen())
+            key = _pos_key(e_rb.fen())
             g = self.ctx.their_open.get(key, 0)
             if g >= kept:
                 ag = self.ctx.their_ags.get(key)
                 q = max((q for q in ag.all if q.status == "gap"), key=lambda q: q.stake) if ag is not None else None
                 out = Claim("win", "their open question", g, "open: no lemma fires yet (72.2 d)", q.text if q is not None else "an open question", proved=False, confidence=0.0, estimator="their open question")
-        if out is None and STUCK_LEAF and not e.is_check():
+        if out is None and STUCK_LEAF and not e_rb.is_check():
+            w = G.with_turn(GAME.from_key(e_rb.fen()), self.me)       # plan 72.7 step 2a: `e_rb` is the leaf's RBoard; the WORD (`stuck_threats`) reads a python-chess board, built here only (with_turn of the leaf's board, as before)
             st = [d for d in R.stuck_threats(w, self.us) if d["parry"] is None and d["worth"] - d["price"] >= kept]
             if st:
                 d = st[0]
-                out = Claim("win", e.san(chess.Move.from_uci(d["first"])), d["worth"] - d["price"], "stuck_reach (72.1): the priced reach, no reply read",
+                out = Claim("win", e_rb.san(chess.Move.from_uci(d["first"])), d["worth"] - d["price"], "stuck_reach (72.1): the priced reach, no reply read",
                             f"our {w.piece_at(d['sq']).symbol().upper()} on {GAME.loc_name(d['sq'])} cannot run; their {w.piece_at(d['attacker']).symbol().upper()} on {GAME.loc_name(d['attacker'])} reaches it in {d['tempi']} ({' '.join(GAME.loc_name(chess.Move.from_uci(u).to_square) for u in d['path'])}) at price {d['price']}, no guard of ours in time",
                             move=d["first"], proved=False, confidence=0.0, estimator="stuck_reach")
                 self.ctx.stuck_gaps += 1
@@ -2432,12 +2433,12 @@ class Agenda:
         body = SM.tail_body(us, fam, "1000")                              # (least (most (least (min balance alive)))): the first least is over their replies
         inner1, inner2 = body[1], body[1][1]                              # (most (least ..)) after their reply; (least (min ..)) after our move
         t_root = SM.val_at(None, SM.delayed_tail([(x, y)], us, fam, "1000"), us, pos=self.pos)      # plan 72.7 step 1: the node's handle, no FEN
-        route = G.Node(b, self.pos).child(x + y)                          # plan 72.7 step 1: the bridge -- every board below is pushed with its handle, which reads the words (no FEN)
-        c1 = route.board
-        reps = list(c1.legal_moves)
+        r0_rb = RB.RBoard.on(b, self.pos)                                 # plan 72.7 step 2a: every board below is an RBoard -- read on its handle (python-chess's order and names from Rust), no board copy
+        c1_rb = r0_rb.push(mv)
+        reps = list(c1_rb.legal_moves)
         if not reps:
             return None
-        kids = [route.child(rep.uci()) for rep in reps]
+        kids = [c1_rb.push(rep) for rep in reps]
         v1 = SM.evaluate([inner1], [dict(pos=k.pos, mover=us) for k in kids])[BV.sexpr(inner1)]
         lo = min(v1)
         if lo != t_root:                                                   # the decomposition must read what the word reads, else the leaf is not trusted
@@ -2445,24 +2446,18 @@ class Agenda:
             self.leaf_stats['untrusted'] += 1
             return None
         base = lo - bind.value                                             # B: the balance now, in the word's units
-        san_x = b.san(mv)
+        san_x = r0_rb.san(mv)
         order = sorted((i for i in range(len(reps)) if self.leaf_all or v1[i] == lo), key=lambda i: (v1[i], i))
         refuted, shown = None, None
         for i in order:
             rep, v = reps[i], v1[i]
-            d = kids[i].board
-            san_r = c1.san(rep)
+            d_rb = kids[i]
+            san_r = c1_rb.san(rep)
             # the word reads from the side to move at the position it is given (balance = the mover's material less the other's), so a position after OUR move
             # is read from the position before it, with `after x y`, exactly as the tail is built (castling and promotions have no `after`: left out, and a top
             # that then misses the word's is reported, never trusted)
-            leaves = []
-            for m in list(d.legal_moves):
-                if m.promotion or d.is_castling(m):
-                    continue
-                e = d.copy(stack=False)
-                e.push(m)
-                leaves.append((m, e))
-            terms = [("after", GAME.loc_name(m.from_square), GAME.loc_name(m.to_square), inner2) for m, _ in leaves]
+            leaves = [m for m in d_rb.legal_moves if not (m.promotion or d_rb.is_castling(m))]       # (the leaf's board is pushed only for the tied moves read below)
+            terms = [("after", GAME.loc_name(m.from_square), GAME.loc_name(m.to_square), inner2) for m in leaves]
             vals = SM.evaluate(terms, [dict(pos=kids[i].pos, mover=us)]) if terms else {}
             v2 = [vals[BV.sexpr(t)][0] for t in terms]
             top = max(v2) if v2 else None
@@ -2470,28 +2465,29 @@ class Agenda:
                 self.lines.append(f"  leaf read of {r.san}: after {san_r} the argmax decomposition reads {top}, the word reads {v}: not trusted, claim kept")
                 self.leaf_stats['untrusted'] += 1
                 return None
-            tied = [(m, e) for (m, e), w in zip(leaves, v2) if w == top]
-            tied.sort(key=lambda t: (not d.is_capture(t[0]), not d.gives_check(t[0]), t[0].uci()))          # the natural moves first; the order never changes the verdict
-            bterms = [("after", GAME.loc_name(m.from_square), GAME.loc_name(m.to_square), "balance") for m, _ in tied]
+            tied = [m for m, w in zip(leaves, v2) if w == top]
+            tied.sort(key=lambda m: (not d_rb.is_capture(m), not d_rb.gives_check(m), m.uci()))          # the natural moves first; the order never changes the verdict
+            bterms = [("after", GAME.loc_name(m.from_square), GAME.loc_name(m.to_square), "balance") for m in tied]
             bvals = SM.evaluate(bterms, [dict(pos=kids[i].pos, mover=us)]) if bterms else {}
             gains = [bvals[BV.sexpr(t)][0] - base for t in bterms]         # our gain AT the leaf, before their move: their claim is measured from here
             first_ref, held = None, None
-            for (m, e), gain_here in zip(tied, gains):
-                line = f"{san_x} {san_r} {d.san(m)}"
+            for m, gain_here in zip(tied, gains):
+                e_rb = d_rb.push(m)
+                line = f"{san_x} {san_r} {d_rb.san(m)}"
                 theirs = None
-                if any(True for _ in e.legal_moves):
-                    lk = ("leaf", _pos_key(e.fen()))                       # 64.0: memoised by position in the run's `theirs` table (the leaf read now runs in the inner agendas too)
+                if e_rb.legal_moves:
+                    lk = ("leaf", _pos_key(e_rb.fen()))                       # 64.0: memoised by position in the run's `theirs` table (the leaf read now runs in the inner agendas too)
                     if self.ctx is not None and lk in self.ctx.theirs:
                         theirs = self.ctx.theirs[lk]
                     else:
-                        ag = self._their_agenda(e)
+                        ag = self._their_agenda(e_rb)
                         theirs = max(ag.state.claims, key=lambda cl: cl.value) if ag.state.claims else None
                         if self.ctx is not None:
                             self.ctx.theirs[lk] = theirs
                 if theirs is not None and theirs.value >= gain_here:
                     first_ref = first_ref or dict(claim=theirs, line=line, w=theirs.value, gain=gain_here)
                     continue
-                more = self._leaf_more(e, gain_here - (theirs.value if theirs is not None else 0))      # plan 72.2: their OPEN question at the leaf, or a unit of ours that cannot run and is reached below its worth: not read YET
+                more = self._leaf_more(e_rb, gain_here - (theirs.value if theirs is not None else 0))      # plan 72.2: their OPEN question at the leaf, or a unit of ours that cannot run and is reached below its worth: not read YET
                 if more is not None:
                     first_ref = first_ref or dict(claim=more, line=line, w=more.value, gain=gain_here)
                     continue
@@ -2682,7 +2678,7 @@ class Agenda:
         if COST_JUDGE and self._judge_node(fen):                # plan 61 C2: the judge re-asked at this node of the route with the remaining cost of the chain
             return None
         ctx.active.add(pk)
-        ctx.active_label[pk] = f"{self.board.san(self._route_move)} {self._reply_san}" if self._route_move is not None and self._reply_san else "the line"
+        ctx.active_label[pk] = f"{self.pos.san(self._route_move.uci())} {self._reply_san}" if self._route_move is not None and self._reply_san else "the line"
         hits0, chain0 = ctx.budget_hits, ctx.chain_hits
         saved = R._ids[0]
         evading = self._chase_q is not None and self._chase_q.goal == "save" and "checkers" in self._chase_q.pattern
@@ -2768,7 +2764,7 @@ class Agenda:
             self.ctx.slice_len = max(self.ctx.deadline - time.monotonic(), 0)      # 52.23 (11): the slice this root route was given
         ctx = self.ctx
         ctx.route_depth += 1
-        ctx.route_names.append(self.board.san(m))
+        ctx.route_names.append(self.pos.san(m.uci()))                # plan 72.7 step 2a: the name from the handle (Pos.san; the step-0 cross-check)
         try:
             res, tok = self._judge_begin(m, promote, cheap, override) if COST_JUDGE else (None, None)
             if res is None:
@@ -2802,7 +2798,7 @@ class Agenda:
         q = self._cur
         if key in ctx.gap_facts:
             fs.facts[ctx.gap_facts[key]].superseded = True        # the route was cut again: the new gap replaces the old
-        f = fs.add("gap", ("route",) + key, self.me, f"{self.board.san(m)}: {res['gap']}", value=0, stake=q.stake if q is not None else 0, depth=self.chase_depth,
+        f = fs.add("gap", ("route",) + key, self.me, f"{self.pos.san(m.uci())}: {res['gap']}", value=0, stake=q.stake if q is not None else 0, depth=self.chase_depth,
                    under=f"Q{q.id} at depth {self.chase_depth}" if q is not None else f"depth {self.chase_depth}", pk=self.pk, portable=False, just=res["facts"],
                    resume=dict(fen=self.fen, uci=m.uci(), promote=promote, reply=res.get("reply"), timed=bool(res.get("timed")), mark=res.get("mark"), question=q.text if q is not None else ""))
         ctx.gap_facts[key] = f.id
@@ -2846,14 +2842,20 @@ class Agenda:
             if not stale and (slice_now <= hit.get("cut_slice", 0) if slice_now is not None else ctx.left <= hit["cut_left"]):      # 52.13 (2a): a GAP stays a GAP while the fuse left is no more than when it was cut; 52.23 (11): under a time budget, while its slice is no longer than the one it was cut on
                 ctx.gap_reused += 1
                 return dict(hit, reused=True)
-        san = b.san(m)
         P0 = self.pos
-        route = G.Node(b, P0).child(m.uci())                     # plan 72.7 step 1: the route's board and its handle, pushed together (no FEN)
-        c, P1 = route.board, route.pos
+        r0_rb = RB.RBoard.on(b, P0)                              # plan 72.7 step 2a: the route's board READ on its handle (RBoard: python-chess's order and names from Rust, no board copy)
+        san = r0_rb.san(m)
+        c_rb = r0_rb.push(m)
+        P1 = c_rb.pos
+        c_py: list = []
+
+        def board_c() -> chess.Board:                            # ... the python-chess board of the route, built as before (pushed with its handle), only where a WORD reads it (the local goal)
+            if not c_py:
+                c_py.append(G.Node(b, P0).child(m.uci()).board)
+            return c_py[0]
         res = dict(value=0, killed=None, gap=None, parts=[], lemmas=[])
-        replies = list(c.legal_moves)
-        if not replies:
-            if c.is_checkmate():
+        if not c_rb.legal_moves:
+            if c_rb.is_checkmate():
                 res.update(value=BD.MATE_VALUE, parts=[f"{san} mates"])
             else:
                 res["killed"] = "stalemate"
@@ -2870,7 +2872,7 @@ class Agenda:
             return pos_of[uci]
 
         def san_of(uci: str) -> str:
-            return c.san(chess.Move.from_uci(uci))
+            return c_rb.san(chess.Move.from_uci(uci))
         # 52.13 (4): the SHORTLIST. A standing kill (an earlier route's reply, the same reply move, nothing its reads touch has changed in the position it leaves) ends the
         # route at once and is counted; otherwise the replies are read recaptures on the route's square, then checks, then captures, then the rest, the worst balance first inside a class.
         kill_uci = None                                          # 52.22 (3): the reply that killed the route: its piece is the REFUTER (Ideas.Refuter.Refutes)
@@ -2959,9 +2961,9 @@ class Agenda:
             self._enter_reply(frozenset(P0.diff(P2)))
             self._reply_san = san_r
             ctx.line.append((self.fen, m.uci(), uci, self._judge_stake()))      # plan 66.4: the line being read
-            loc = self._local_goal(m, c, uci) if gk is not None and not override else None      # plan 72.10 (2): the chased goal and its frame, carried into the inner agenda of this reply
+            loc = self._local_goal(m, board_c(), uci) if gk is not None and not override else None      # plan 72.10 (2): the chased goal and its frame, carried into the inner agenda of this reply
             inn = self._inner(P2.fen(), need, loc["diff"] if loc is not None else frozenset(P0.diff(P2)), since=self._since_after(uci, dbal), reset=self._resets(uci),
-                              exchange=self.board.is_capture(self._route_move) and chess.Move.from_uci(uci).to_square == self._route_move.to_square, local=loc, pos=P2)      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
+                              exchange=P0.is_capture(self._route_move.uci()) and chess.Move.from_uci(uci).to_square == self._route_move.to_square, local=loc, pos=P2)      # 52.23 (6): a recapture on the route's square: the exchange is ONE event of the chain
             ctx.line.pop()
             if inn is None:
                 res["gap"] = self._cut(san, san_r)
@@ -3011,14 +3013,14 @@ class Agenda:
                 self._log(key, uci, "gap", dbal, None, None, res["gap"])
                 break
             if static and not P2.is_check():                    # 52.13 (3), 52.14: a gain that stands only as a static balance (us to move) is a result only once THEIR agenda has read it, with the move passed to them, at every chase depth
-                t_their, claim_their = self._their_pass(P2.fen())
+                t_their, claim_their = self._their_pass(P2.fen(), pos=P2)
                 if claim_their is not None:
                     ctx.static_read += 1
                 if claim_their is not None and dbal - t_their < 1:
                     # 52.14: their claim is a THREAT and a SAVE root of the inner agenda on this position (we are to move: a parry, a counter, taking the attacker); the reply is
                     # killed only by the threats no parry of ours is verified for
                     ctx.line.append((self.fen, m.uci(), uci, self._judge_stake()))
-                    inn2 = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), their=ctx.their_ags.get(_pos_key(G.with_turn(GAME.from_key(P2.fen()), not self.me).fen())), keep=dbal, pos=P2)
+                    inn2 = self._inner(P2.fen(), need, frozenset(P0.diff(P2)), their=ctx.their_ags.get(self._pass_key(P2.fen(), P2)), keep=dbal, pos=P2)
                     ctx.line.pop()
                     if inn2 is None:
                         res["gap"] = self._cut(san, san_r)
@@ -3040,14 +3042,15 @@ class Agenda:
                         still = []
                         for cl, pc in held:
                             mv = chess.Move.from_uci(pc.move) if pc.move else None
-                            P3 = P2.push(pc.move) if mv is not None and mv in GAME.from_key(P2.fen()).legal_moves else None
+                            P3 = P2.push(pc.move) if mv is not None and mv in RB.RBoard(P2).legal_moves else None      # plan 72.7 step 2a: python-chess's `is_legal` on the handle
                             if P3 is None or P3.is_check() or P3.legal_count() == 0:
                                 still.append((cl, pc))
                                 continue
                             dbal3 = P3.balance(self.me) - P0.balance(self.me)
-                            f3 = G.with_turn(GAME.from_key(P3.fen()), self.me).fen()
-                            t3, cl3 = self._their_pass(f3)
-                            g3, gt3 = self._their_open(f3) if THEIR_GAPS else (0, None)
+                            P3w = P3.with_turn(self.me)                  # (P3 is their move and not in check: the pass to us is a legal position)
+                            f3 = P3w.fen() if P3w is not None else G.with_turn(GAME.from_key(P3.fen()), self.me).fen()
+                            t3, cl3 = self._their_pass(f3, pos=P3w)
+                            g3, gt3 = self._their_open(f3, pos=P3w) if THEIR_GAPS else (0, None)
                             if cl3 is not None and dbal3 - t3 < 1:
                                 cl.parry_note = f"{pc.what} keeps one ply, then their {cl3.what} wins {t3} (lemma {cl3.lemma}) after it"
                                 unsure.append(cl)
@@ -3080,7 +3083,7 @@ class Agenda:
                 else:
                     unparried = t_their
                 if THEIR_GAPS and res["gap"] is None and res["killed"] is None:      # plan 72.2 (d): their OPEN question at the leaf that would eat the balance: not read YET (a GAP)
-                    g_o, gt_o = self._their_open(P2.fen())
+                    g_o, gt_o = self._their_open(P2.fen(), pos=P2)
                     if g_o and dbal - unparried - g_o < 1:
                         res["gap"] = f"after {san_r}: {dbal:+d} stands only as a balance and their question '{gt_o}' (stake {g_o}) is OPEN with the move passed (no lemma fires yet): not read YET"
                         res["reply"] = uci
@@ -3092,8 +3095,8 @@ class Agenda:
                     st = [d for d in R.stuck_threats(GAME.from_key(P2.fen()), self.us) if d["parry"] is None and dbal - unparried - (d["worth"] - d["price"]) < 1]
                     if st:
                         d = st[0]
-                        bb = GAME.from_key(P2.fen())
-                        res["gap"] = (f"after {san_r}: {dbal:+d} stands only as a balance; our {bb.piece_at(d['sq']).symbol().upper()} on {GAME.loc_name(d['sq'])} cannot run and their {bb.piece_at(d['attacker']).symbol().upper()} on {GAME.loc_name(d['attacker'])} "
+                        bb_rb = RB.RBoard(P2)
+                        res["gap"] = (f"after {san_r}: {dbal:+d} stands only as a balance; our {bb_rb.piece_at(d['sq']).symbol().upper()} on {GAME.loc_name(d['sq'])} cannot run and their {bb_rb.piece_at(d['attacker']).symbol().upper()} on {GAME.loc_name(d['attacker'])} "
                                       f"reaches it in {d['tempi']} ({' '.join(GAME.loc_name(chess.Move.from_uci(u).to_square) for u in d['path'])}) at price {d['price']}, no guard of ours in time (lemma stuck_reach, 72.1): not parried YET")
                         res["reply"] = uci
                         ctx.budget_hits += 1
@@ -3181,33 +3184,29 @@ class Agenda:
         """52.22 (3): the exchange `r2`, `rep_uci` (the recapture that killed r2), then `r_k` asked again: -> {value (the exchange's balance + the route's), part, facts, reads, text} or None
         (the reply is not a recapture on the square, the recapturing piece can make the refuting move, the route is no longer legal, or it is not worth a gain there)."""
         b, me, ctx = self.board, self.me, self.ctx
-        c = b.copy(stack=False)
-        pc_ref = c.piece_at(ref.from_square)
-        c.push(r2.move)
+        b_rb = RB.RBoard.on(b, self.pos)                         # plan 72.7 step 2a: the boards of the exchange read on the node's handle (RBoard)
+        pc_ref = b_rb.piece_at(ref.from_square)
+        c_rb = b_rb.push(r2.move)
         x = chess.Move.from_uci(rep_uci)
-        if x not in c.legal_moves or not c.is_capture(x) or x.to_square != r2.move.to_square:
+        if x not in c_rb.legal_moves or not c_rb.is_capture(x) or x.to_square != r2.move.to_square:
             return None
-        san_x = c.san(x)
-        san_ref_c = b.copy(stack=False)
-        san_ref_c.push(r_k.move)
-        san_ref = san_ref_c.san(ref)
-        c2 = c.copy(stack=False)
-        c2.push(x)
-        if r_k.move not in c2.legal_moves:
+        san_x = c_rb.san(x)
+        san_ref = b_rb.push(r_k.move).san(ref)
+        c2_rb = c_rb.push(x)
+        if r_k.move not in c2_rb.legal_moves:
             return None
-        c3 = c2.copy(stack=False)
-        c3.push(r_k.move)
-        if any(mv.from_square == x.to_square and mv.to_square == ref.to_square for mv in c3.legal_moves):
+        c3_rb = c2_rb.push(r_k.move)
+        if any(mv.from_square == x.to_square and mv.to_square == ref.to_square for mv in c3_rb.legal_moves):
             return None                                          # the piece that recaptures can make the refuting move
-        hits = [s for s in chess.SquareSet(c3.attacks_mask(r_k.move.to_square)) if c3.piece_at(s) is not None and c3.piece_at(s).color != me and c3.piece_at(s).piece_type != chess.KING]
-        tgt = max(hits, key=lambda s: (W.base.worth(c3.piece_at(s)), -s)) if hits else None         # the goal asked again: the best piece the route's piece attacks once the refuter is gone
-        pc_t = c2.piece_at(tgt) if tgt is not None else None
-        P2x = self.pos.push(r2.move.uci()).push(x.uci())        # plan 72.7 step 1: the exchange's position, pushed on the node's handle (the agenda asked there is handed it)
+        hits = [s for s in c3_rb.attacks(r_k.move.to_square) if c3_rb.piece_at(s) is not None and c3_rb.piece_at(s).color != me and c3_rb.piece_at(s).piece_type != chess.KING]
+        tgt = max(hits, key=lambda s: (W.base.worth(c3_rb.piece_at(s)), -s)) if hits else None         # the goal asked again: the best piece the route's piece attacks once the refuter is gone
+        pc_t = c2_rb.piece_at(tgt) if tgt is not None else None
+        P2x = c2_rb.pos                                          # plan 72.7 step 1: the exchange's position, pushed on the node's handle (the agenda asked there is handed it)
         dbal = P2x.balance(me) - P0.balance(me)
         saved = R._ids[0]
         q2 = R.new_question("win", W.base.worth(pc_t), dict(target=tgt), text=f"win their {pc_t.symbol().upper()} on {GAME.loc_name(tgt)}") if pc_t is not None else None
         R._ids[0] = saved
-        ag2 = Agenda(State(fen=c2.fen(), us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=1, pos=P2x)
+        ag2 = Agenda(State(fen=c2_rb.fen(), us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=1, pos=P2x)
         ag2._chase_q = q2
         res3 = ag2._chase_route(r_k.move)
         if res3["gap"] is not None or res3["killed"] is not None or res3["value"] < 1 - dbal:
@@ -3216,7 +3215,7 @@ class Agenda:
         reads = frozenset({ref.from_square, ref.to_square, r2.move.to_square, r_k.move.from_square, r_k.move.to_square})
         part = f"after {san_x}: {r_k.san} asked again on the board after the exchange ({'; '.join(res3['parts'][:2])}) -> {v}"
         text = (f"{r_k.san} fails to {san_ref} (the refuter: the {pc_ref.symbol().upper()} on {GAME.loc_name(ref.from_square)}); exchange it first -- {r2.san} {san_x}: the "
-                f"{c2.piece_at(x.to_square).symbol().upper()} on {GAME.loc_name(x.to_square)} cannot make that move; {r_k.san} is asked again after it")
+                f"{c2_rb.piece_at(x.to_square).symbol().upper()} on {GAME.loc_name(x.to_square)} cannot make that move; {r_k.san} is asked again after it")
         return dict(value=v, part=part, facts=list(res3.get("facts", [])), reads=reads, text=text)
 
     def _note_resume(self, q: R.Question, r: "R.Route | None", res: dict) -> None:
@@ -3337,7 +3336,7 @@ class Agenda:
                 if line not in self.ctx.open_lines:
                     self.ctx.open_lines.append(line)
                 return None
-        t, _cl = self._their_pass(P2.fen())
+        t, _cl = self._their_pass(P2.fen(), pos=P2)
         if t:
             return None
         if CLOSE_AFTER_CAPTURE:                                   # 2026-10-20 (kcQil, Kaveh: "Qxf3 is losing, you're still down a pawn"): the capture can LEAVE a duty -- Rxh6 "wins 3"
@@ -3680,13 +3679,14 @@ class Agenda:
     def _principal_captures(self, P2: "AC.Pos") -> list:
         """64.0: the PRINCIPAL LINES of the best static exchange on P2 (our move): one per square whose static exchange is the best (a tie is a choice of ours) -> [(square, [(our capture's SAN, the
         board after it, does the line END with it, the exchange's CREDIT to them there)])]. A line is the legal captures on the square, the cheapest piece first, each side going on while going on
-        gains (the swap-list's optimal stop). The credit is f[i+1], what the swap-list already gives them from that board on (0 after the capture that ends the line)."""
-        b = GAME.from_key(P2.fen())
-        me = b.turn
+        gains (the swap-list's optimal stop). The credit is f[i+1], what the swap-list already gives them from that board on (0 after the capture that ends the line).
+        plan 72.7 step 2a: read on the handle (RBoard); the boards of the lines are RBoards (their agenda is built from their FEN and turn)."""
+        b_rb = RB.RBoard(P2)
+        me = b_rb.turn
         best, sqs = 0, []
         for x in chess.SQUARES:
-            p = b.piece_at(x)
-            if p is None or p.color == me or p.piece_type == chess.KING or not b.is_attacked_by(me, x):
+            p = b_rb.piece_at(x)
+            if p is None or p.color == me or p.piece_type == chess.KING or not b_rb.is_attacked_by(me, x):
                 continue
             v = W.base.see(P2, x)
             if v > best:
@@ -3695,16 +3695,16 @@ class Agenda:
                 sqs.append(x)
         lines = []
         for sq in sqs:
-            c, gains, sans, boards = b.copy(stack=False), [], [], []
+            c_rb, gains, sans, boards = b_rb, [], [], []
             while len(sans) < 12:
-                caps = [m for m in c.legal_moves if m.to_square == sq]
-                if not caps or c.piece_at(sq) is None:
+                caps = [m for m in c_rb.legal_moves if m.to_square == sq]
+                if not caps or c_rb.piece_at(sq) is None:
                     break
-                m = min(caps, key=lambda m: (W.base.worth(c.piece_at(m.from_square)), m.uci()))
-                gains.append(W.base.worth(c.piece_at(sq)))
-                sans.append(c.san(m))
-                c.push(m)
-                boards.append(c.copy(stack=False))
+                m = min(caps, key=lambda m: (W.base.worth(c_rb.piece_at(m.from_square)), m.uci()))
+                gains.append(W.base.worth(c_rb.piece_at(sq)))
+                sans.append(c_rb.san(m))
+                c_rb = c_rb.push(m)
+                boards.append(c_rb)
             n = len(sans)
             f = [0] * (n + 1)                                        # f[i] = what the side making capture i gets from i on (it may stop, so >= 0)
             for i in range(n - 1, -1, -1):
@@ -3728,13 +3728,13 @@ class Agenda:
         least = None
         for sq, caps in lines:
             out = (0, None)
-            for san, b, last, credit in caps:
-                if not any(True for _ in b.legal_moves):
+            for san, b_rb, last, credit in caps:
+                if not b_rb.legal_moves:
                     continue
-                key = ("after-capture", _pos_key(b.fen()), GAME.loc_name(sq), credit)
+                key = ("after-capture", _pos_key(b_rb.fen()), GAME.loc_name(sq), credit)
                 hit = self.ctx.theirs.get(key)
                 if hit is None:
-                    ag = self._their_agenda(b)
+                    ag = self._their_agenda(b_rb)
                     cls = [c for c in (ag.state.claims if ag is not None else []) if not (c.move and c.move[2:4] == GAME.loc_name(sq) and c.value <= credit)]      # (a recapture worth no more than the exchange's credit IS the exchange: the swap-list priced it)
                     cl = max(cls, key=lambda c: c.value) if cls else None
                     hit = self.ctx.theirs[key] = (cl.value if cl is not None and cl.value > 0 else 0, cl)
@@ -3774,9 +3774,23 @@ class Agenda:
         self.ctx.rows.append(dict(id=self.ctx.tag, depth=self.chase_depth, fen=key[0], route=key[1], reply=rep, outcome=outcome, dbal=dbal, inner=inner,
                                   reads=sorted(reads) if reads is not None else None, reason=reason))
 
-    def _their_pass(self, fen: str) -> tuple:
-        """52.13 (3): THEIR agenda on the position `fen` (our move) with the move passed to them, memoised by FEN across the run: -> (the value of their best claim, the claim) or (0, None)."""
-        c = G.with_turn(GAME.from_key(fen), not self.me)
+    def _pass_board(self, fen: str, pos: "AC.Pos | None" = None):
+        """The board `fen` (our move) with the move passed to THEM (graph.with_turn): plan 72.7 step 2a, read on the handle `pos` when the chase hands it (an RBoard: its FEN, its turn,
+        its legal moves -- what their agenda is built from), else the python-chess board as before (also where shakmaty does not hold the pass: we are in check)."""
+        if pos is not None:
+            w = pos.with_turn(not self.me)
+            if w is not None:
+                return RB.RBoard(w)
+        return G.with_turn(GAME.from_key(fen), not self.me)
+
+    def _pass_key(self, fen: str, pos: "AC.Pos | None" = None) -> str:
+        """The memo key of the pass (`_their_pass`'s, `ctx.their_ags`'s)."""
+        return _pos_key(self._pass_board(fen, pos).fen())
+
+    def _their_pass(self, fen: str, pos: "AC.Pos | None" = None) -> tuple:
+        """52.13 (3): THEIR agenda on the position `fen` (our move) with the move passed to them, memoised by FEN across the run: -> (the value of their best claim, the claim) or (0, None).
+        plan 72.7 step 2a `pos`: the position's handle (the pass read on it, `_pass_board`)."""
+        c = self._pass_board(fen, pos)
         key = _pos_key(c.fen())
         hit = self.ctx.theirs.get(key)
         if hit is None:
@@ -3793,9 +3807,10 @@ class Agenda:
         self._touch(self.ctx.their_facts.get(key))
         return hit
 
-    def _their_open(self, fen: str) -> tuple:
-        """plan 72.2 (d): the largest stake among their OPEN questions with the move passed on `fen` (our move), and the text of one; (0, None) when none. Read after `_their_pass`."""
-        key = _pos_key(G.with_turn(GAME.from_key(fen), not self.me).fen())
+    def _their_open(self, fen: str, pos: "AC.Pos | None" = None) -> tuple:
+        """plan 72.2 (d): the largest stake among their OPEN questions with the move passed on `fen` (our move), and the text of one; (0, None) when none. Read after `_their_pass`.
+        plan 72.7 step 2a `pos`: the position's handle (the key read on it)."""
+        key = self._pass_key(fen, pos)
         g = self.ctx.their_open.get(key, 0)
         if not g:
             return 0, None

@@ -119,8 +119,10 @@ def snapshot(out: str) -> None:
         n += 1
     print(f"OBS trace identity: {n} traces and {n} read sets written to {out}")
     from catspace.incubator.analyst.discovery import graph as G
+    from catspace.incubator.analyst.discovery import rboard as RB
     if G.BRIDGE_CHECK:                                   # plan 72.7 step 1: CATSPACE_BRIDGE_CHECK=1 -- every node's handle was compared with its board (an assertion stops the run on a split)
-        print(f"OBS bridge: {G.BRIDGE_CHECKS[0]} handle / board pairs compared, none split")
+        print(f"OBS bridge: {G.BRIDGE_CHECKS[0]} handle / board pairs compared, none split; "           # plan 72.7 step 2a: and every RBoard read with its python-chess shadow
+              f"{RB.BRIDGE_READS[0]} RBoard reads compared with python-chess, none split")
 
 
 def compare(before: str, after: str) -> int:

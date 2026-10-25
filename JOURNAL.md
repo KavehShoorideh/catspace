@@ -32708,3 +32708,51 @@ FALSE. So the pre-loop order never reaches a false proof the candidate's order r
 gate -> adopt) holds: NOT adopted; the candidate is kept at scratchpad/graph_policy_loop2.pt beside the logs. Two things wait for Kaveh: (a) pos2's Nxf4 traced alone under the candidate
 and the hole fixed (then the candidate is re-gated: it wins 9QsbL and 52.18); (b) whether a gate case pinned on ORDER (a false proof not reached in time) is a pin at all.
 Live state: data/derived/graph_policy.pt is the pre-loop model (verified identical to the backup after the restore).
+
+## 2026-10-24 20:20 PDT -- plan 72.7 step 2a built: the Rust board (RBoard) under the chase's reply loop and the static leaf (branch worktree-agent-a501cc77b08a4de59)
+docs/RUST_BOUNDARY.md 3.3 (the retire layer), section 4 step 2. No decision logic touched.
+THE MEASURE FIRST (cProfile of the guard's case set at the COUNT budget, parent 015c1a33, profiled 59.7 s): the step-2 surface -- `_chase_route_body` and its
+helpers, `_leaf_read`, `_leaf_more`, `san_of`, `_local_goal`, `_their_pass`/`_their_open`, `_principal_captures` -- spends 2.09 s of it in its OWN code plus its
+DIRECT python-chess and Rust calls (3.5%). The loop already reads its replies through `Pos` (52.13 (5), step 1). The time is in what it calls: the inner
+agendas (`_inner` cum 46.4 s), their agendas (`_their_agenda` cum 26.8 s), and the WORDS -- `stuck_threats` cum 10.9 s (can_run 6.0, reach_map 2.3; called only
+at the leaf), promote_defects / race.stopper_walk, `forcing_why` -> `mate2_threat` -> `bind_mate2`. Python-chess entered, by caller, top: reach_map 3.35 s,
+stopper_walk 2.91, stuck_threats 2.14, graph.mates 1.29, piece_moves_to 1.26, with_piece 1.13, with_turn 0.96 (all step 3's words). In one W0VFO 10 s run
+(profiled 12.2 s) `forcing_why` -> `mate2_threat` -> `bind_mate2` is 4.36 s; `_chase_route_body` enters python-chess for 0.02 s. Reading: step 2 as written has a
+ceiling of a few percent; "faster" is step 3 (the words), stated plainly before building it.
+BUILT. rboard.py `RBoard` over a `Pos`: the RUST_BOUNDARY subset (`turn`, `legal_moves` in python-chess's order as `chess.Move`, `push` -> a new board, `copy` =
+itself, `piece_at`, `attackers` / `attacks` as SquareSet, `is_check`, `gives_check`, `is_capture`, `san` (Rust), `fen`, `king`, `ep_square`, `board_fen`,
+`is_checkmate`, `is_stalemate`); `in` mirrors python-chess's `is_legal` with its castling aliases (e1h1 = e1g1: `_from_chess960`). CATSPACE_BRIDGE_CHECK=1 gives
+every RBoard a python-chess SHADOW and asserts every read equal to it. agenda.py, the sites where the loop and the leaf read boards of their own, read RBoards:
+the route's board (its legal moves, mate / stalemate, the replies' SAN via `Pos.san`), the route name (`_chase_route`, `_gap_fact`, `_inner`'s label), the pass
+board of `_their_pass` / `_their_open` (new `_pass_board` / `_pass_key`: the handle's `with_turn`, python-chess only where shakmaty does not hold the pass),
+PARRY_PASS (the parry's legality, the pass FEN), STUCK_LEAF's text, `_principal_captures` / `_their_after_capture` (their lines are RBoards), `_refuter_fix`,
+`_leaf_read` (the replies, the kids, the leaves: no python-chess copy per reply or per leaf), `_leaf_more`. Every python-chess board a WORD reads is built where
+and as it was (`_local_goal`'s route board lazily, pushed with its handle; `stuck_threats`' board; `_parry_label`, `_promote_stands`, `_unmet_fix`, `exchange_read`).
+OBS python-chess sites discovery/ (015c1a33): total 781 {copy 143, push 167, legal_moves 156, san 167, is_check 63, gives_check 35, attackers 50}
+OBS python-chess sites agenda.py (015c1a33): total 177 {copy 29, push 29, legal_moves 32, san 53, is_check 19, gives_check 6, attackers 9}
+OBS python-chess sites discovery/ (2a): total 745 {copy 138, push 160, legal_moves 146, san 155, is_check 62, gives_check 34, attackers 50}
+OBS python-chess sites agenda.py (2a): total 139 {copy 22, push 22, legal_moves 22, san 41, is_check 18, gives_check 5, attackers 9}
+  (a SITE: one AST node in discovery/*.py -- a call X.copy / X.push / X.san / X.is_check / X.gives_check / X.attackers, or a read X.legal_moves -- whose receiver
+  is not a Rust handle (P, P<n>..., pos, *.pos), an RBoard (*_rb, RB....) or the bridge's shadow; a count of what the source says, not of what a run calls.
+  graph.py 11 and regress.py 238 unchanged: their boards feed words, step 3.)
+OBS rboard check (scratch, the cross-check's sample): positions 1671, moves 45607, mismatches 0 (every read of the subset, every legal move pushed, `in` on the
+  corner and castling squares, against python-chess).
+OBS guard (count budget, parent snapshot vs 2a): OBS trace identity: 0 of 10 traces differ; OBS trace identity: 0 of 10 read sets differ -- bridge off, and
+  bridge on: OBS bridge: 116246 handle / board pairs compared, none split; 115733 RBoard reads compared with python-chess, none split.
+NEGATIVE CONTROL (a wrong build, not committed): RBoard.legal_moves with its last move dropped: OBS trace identity: 1 of 10 traces differ; OBS trace identity:
+  1 of 10 read sets differ (07Z0P: its leaf / principal-capture reads). Reverted.
+OBS count budget parent: case set wall 26.8 s and 26.9 s (two runs); OBS count budget 2a: case set wall 26.2 s and 26.2 s (two runs) -- the same work
+  (identical traces), directional: about 2 percent.
+OBS W0VFO 10 s before (parent): wall 11.0 s, decision Qb7 (e4b7), questions asked 38, inner agendas 507, inner questions 8335
+OBS W0VFO 10 s after 2a: wall 10.6 s, decision Qb7 (e4b7), questions asked 38, inner agendas 486, inner questions 7894
+  (one run each: under the clock the work read is the reading, and it did not grow -- within the noise of one run; no gain is claimed.)
+OBS gate engine --only (one file per call): test_plan72_7_step2 passed 7, failed 0; test_plan72_7 16, 0; test_binder_rust 31, 0; test_agenda 26, 0; test_fact_store 21, 0;
+  test_regress 87, 0, xfailed 1 (306.8 s); test_tiers 14, 0; test_offbuilt64 15, 0, xfailed 1; test_plan72_10 4, 0; test_plan72_9 7, 0; test_plan72 6, 0; test_plan70 3, 0, xfailed 1.
+FINDINGS: (1) the subset grep found reads outside RUST_BOUNDARY's list: `is_castling` (the leaf drops castling), `is_attacked_by` (the principal captures),
+`attacks_mask` (the refuter fix), `with_turn` (the pass) -- added; agenda.py as a whole also reads `occupied_co`, `pawns` / `rooks` / `queens` / `bishops`,
+`checkers`, `piece_type_at`, `piece_map`, `occupied`, `push_san`, `parse_san`, all outside the loop and the leaf (not added). (2) RBoard.ep_square follows its
+handle: a handle read from a FEN or a board's parts holds only a LEGAL e.p. square (as the FEN prints it); a pushed one holds python-chess's pushed square
+(legal or not). Nothing in the loop or the leaf reads it. (3) python-chess's `move in board.legal_moves` accepts e1h1 / e1a1 / e8h8 / e8a8 as castling
+(`_from_chess960`): RBoard's `in` does too (tested square by square). (4) The words take python-chess boards whose HISTORY they may read (opening_rule reads
+`move_stack`, reasoned keys a cache on `not board.move_stack`, table.py reads the raw `castling_rights`): a board for a word cannot be rebuilt from a FEN
+blindly -- 2a hands every word the board it had; step 3 must port the words, not their inputs.

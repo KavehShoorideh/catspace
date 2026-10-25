@@ -134,6 +134,10 @@ lemmas} plus the replies that still need an inner agenda). Inner agendas stay Py
 uses (closed replies kept, pending ones handed back). Reply order, memo keys and the `ctx.routes` cache key must match exactly; the key becomes
 `(pos.key(), uci + suffix)`. The static leaf goes with it: `leaf_value`, `frame_leaf`, `promo_gain` are already Rust; the Python leaf glue and the reach-price
 callers (plan 72.1/72.2) move. `RBoard` can replace `chess.Board` in agenda.py at the end of this step.
+STATUS 2a: BUILT 2026-10-24 on branch worktree-agent-a501cc77b08a4de59 (journal 2026-10-24 20:20): `rboard.RBoard` (the subset above plus `is_castling`, `is_attacked_by`, `attacks_mask`, `with_turn`;
+python-chess's `is_legal` castling aliases; the bridge's python-chess shadow under CATSPACE_BRIDGE_CHECK=1), read by the loop and the leaf where they read boards of their
+own; every board a word reads is built as before. Guard 0 of 10 traces and 0 of 10 read sets differ; the negative control (one legal move dropped) moved 1 of 10.
+Measured first: the loop's and the leaf's own code is ~3.5% of the profiled count-budget run; the time is in the inner / their agendas and the words (step 3).
 
 ### Step 3. The words themselves
 Make the Python twins of `regress.py` (`mate_defects`, `material_defects`, `_still`, `forcing_why` and the rest of defects/fixes/forcing) call-throughs to
