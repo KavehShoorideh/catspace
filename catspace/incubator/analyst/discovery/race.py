@@ -41,6 +41,11 @@ STATS = {"asked": 0, "bound": 0, "single": 0, "overload": 0, "frame_refused": 0}
 
 # ---------------------------------------------------------------------------------------------------------------- the Lean words (Race.lean)
 
+def _bbs(board: chess.Board) -> tuple:
+    """plan 72.7 step 3: the board's placement as the eight bitboards the Rust words take (graph.bbs; race.py imports no graph)."""
+    return (board.pawns, board.knights, board.bishops, board.rooks, board.queens, board.kings, board.occupied_co[True], board.occupied_co[False])
+
+
 def kdist(a: int, b: int) -> int:
     return chess.square_distance(a, b)
 
@@ -218,67 +223,23 @@ def _stage_held(me: bool, ek: int, path: list, rest: int, denied: int, defended:
     return None
 
 
-def _king_holds(board: chess.Board, me: bool, sq: int, with_second: bool) -> tuple | None:
-    ek, ok = board.king(not me), board.king(me)
-    n = _pushes(me, sq)
-    if n < 1 or n > 6:
-        return None
-    path = _path(me, sq, n)
-    if any(board.piece_at(t) is not None for t in path):
-        return None
-    stable = _stable_attacks(board, me, ek, ok, n, {sq: path})
-    why = _stage_held(me, ek, path, sq, stable, stable, n)
-    if why is None:
-        return False, "their king cannot stop it: no stage of the walk is reached in time (squares it cannot stand on denied)"
-    if with_second:
-        d = _deflect(board, me, sq, path, n, ek, ok, why, verdict_only=True)
-        if d:
-            return False, f"{d}; the king held it alone: {why}"
-    return True, why
-
-
 def king_verdict(board: chess.Board, sq: int) -> tuple | None:
     """62.1c: THEIR KING AS A STOPPER of our pawn on `sq` (the owner to move), judged by the proved analysis only (Race.deny_sound, race_sound restricted to the king): the stage test with the squares it cannot stand
     and survive on denied, then the deflection by a second passer (this pawn as the one that walks, or as the one that rests). -> (held, why): held=False = the king is no stopper (the verdict may not kill the
-    question for it); None = not applicable (not our pawn, path not clear, in check). Their OTHER pieces are not read here at all: they are replies, and the chase reads every reply (Race.lifted_is_gap)."""
-    me = board.turn
-    pc = board.piece_at(sq)
-    if pc is None or pc.piece_type != chess.PAWN or pc.color != me or board.is_check():
-        return None
-    if board.king(not me) is None or board.king(me) is None:
-        return None
-    first = _king_holds(board, me, sq, True)
-    if first is None or not first[0]:
-        return first
-    for q in chess.SquareSet(board.pawns & board.occupied_co[me]):
-        if q == sq:
-            continue
-        o = _king_holds(board, me, q, True)
-        if o is not None and not o[0]:
-            return False, f"the passer on {_name(q)} is not held by the king ({o[1]}); the king that holds {_name(sq)} cannot also stop it"
-    return first
+    question for it); None = not applicable (not our pawn, path not clear, in check). Their OTHER pieces are not read here at all: they are replies, and the chase reads every reply (Race.lifted_is_gap).
+    plan 72.7 step 3d: read in Rust on the board's placement (`analyst_core.king_verdict_bb`, words.rs: `_king_holds`, `_stable_attacks`, `_stage_held` and `_deflect`'s
+    verdict as race.py reads them, the texts as it writes them; those helpers stay here for race_claim). The Python body is the test oracle (tests/test_plan72_7_step3.py)."""
+    import analyst_core as _A
+    return _A.king_verdict_bb(_bbs(board), board.turn, sq)
 
 
 def support_moves(board: chess.Board, me: bool, sq: int, legal: list) -> list:
     """62.1c: our moves (not the pawn's own) after which their king is NO LONGER a stopper of the pawn on `sq` by `king_verdict` (we have the move again: the pass reading): a cover (Kg3 takes h2 and g2 from
-    the king), a second passer's support. Each is a ROUTE of the promote question; the chase reads every reply to it. -> [(move, why)]."""
-    before = king_verdict(board, sq)
-    if before is None or not before[0]:
-        return []
-    out = []
-    for m in legal:
-        if m.from_square == sq:
-            continue
-        after = board.copy(stack=False)
-        after.push(m)
-        if after.is_check():
-            continue
-        after.turn = me
-        after.ep_square = None
-        v = king_verdict(after, sq)
-        if v is not None and not v[0]:
-            out.append((m, f"makes their king no stopper: {v[1]}"))
-    return out
+    the king), a second passer's support. Each is a ROUTE of the promote question; the chase reads every reply to it. -> [(move, why)].
+    plan 72.7 step 3d: read in Rust on the board's placement in ONE call (`analyst_core.support_moves_bb`: python-chess's push on the placement, the verdict after each move with the
+    move passed back to `me`), the moves handed in python-chess's order and returned as the indices of the supporting ones. The Python body is the test oracle."""
+    import analyst_core as _A
+    return [(legal[i], why) for i, why in _A.support_moves_bb(_bbs(board), board.turn, me, sq, [m.uci() for m in legal])]
 
 
 def race_claim(board: chess.Board, sq: int, allow_second: bool = True, recheck: bool = True) -> Race | None:

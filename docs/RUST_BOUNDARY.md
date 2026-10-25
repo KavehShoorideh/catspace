@@ -168,6 +168,11 @@ graph.word reads it, the walks and the priced roll of 3b; `stuck_threats_pos` wi
 `py_legal`, python-chess's legal moves mirrored on a placement for the board given to them while our king stands in check). regress.promote_defects / stuck_threats call-throughs;
 duty_after / can_run stay Python for the MATE duty (trap_fix). Guard 0 differences on the ten and the 99 at tiers 0 and 2; negative control (the king stopper read strictly) 4 of
 10 traces. Finding: the Python stuck_threats raises (TypeError) where their reply could take our king on the board given to them; the port raises on the same boards.
+STATUS 3d: BUILT 2026-10-25 on branch worktree-agent-afa08f337b471dd18 (journal 2026-10-25 00:14): the king verdict in Rust (words.rs `king_verdict_bb`, `support_moves_bb`: race.py's
+`_king_holds`, `_stable_attacks`, `_stage_held`, `_deflect`'s verdict on placements); race.king_verdict / support_moves call-throughs (`_stable_attacks` / `_stage_held` / `_deflect`
+stay in race.py for race_claim, not ported). Guard 0 differences on the ten and the 99 at tiers 0 and 2; negative control 1 of 10 traces (RoR8t). After 3a-3d: the count-budget ten
+~25% faster, at tier 2 ~37%; W0VFO at 10 s reads more than twice the inner work (one run). NOT BUILT in step 3: the mate duty (can_run / duty_after with `_mate_ahead`, check_threat --
+trap_fix's), race_claim, delayed_threat / node_cost, graph.mates / with_piece / with_turn (agenda.py's own python-chess), deleting the defect twins' Python fallbacks.
 
 Do not interleave steps: each diff is revertable alone and the guard locates a regression to one step.
 

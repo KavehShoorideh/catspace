@@ -8,7 +8,8 @@ values, structures, orders, and what each wrote on the dependency trackers (RUST
 `reach_map_bb`, `reach_price_bb`, `stopper_walk_bb`, `deny_moves_bb`, `piece_moves_to_bb`; boards whose side NOT to move is in check (python-chess holds them, the roll reaches them
 after a quiet check) among the positions.
 3c THE PASSER FAMILY: `regress.promote_defects` (52.6, 72.2's priced stopper), `stuck_threats` (72.2 (b)) with the passer duty it asks (`can_run` / `duty_after`
-passers, 63.2), and python-chess's legal moves mirrored on a placement (`py_legal`) -- words.rs `promote_defects_bb`, `stuck_threats_pos`, `can_run_bb`, `py_legal_bb`."""
+passers, 63.2), and python-chess's legal moves mirrored on a placement (`py_legal`) -- words.rs `promote_defects_bb`, `stuck_threats_pos`, `can_run_bb`, `py_legal_bb`.
+3d THE KING VERDICT: `race.king_verdict` / `support_moves` (62.1c) -- words.rs `king_verdict_bb`, `support_moves_bb`."""
 import importlib.util
 import random
 from pathlib import Path
@@ -842,3 +843,109 @@ def test_72_7_3c_the_passer_caches_are_cleared_by_the_hook():
         AC.promote_defects_bb(G.bbs(b), 64)
     with pytest.raises(ValueError):
         AC.can_run_bb(G.bbs(b), 64, True)
+
+
+# ---------------------------------------------------------------------------------------------------------------- 3d: the oracles (the Python bodies before the port, verbatim; race.py's helpers they read stay in race.py for race_claim)
+
+def _king_holds_oracle(board: chess.Board, me: bool, sq: int, with_second: bool) -> tuple | None:
+    from catspace.incubator.analyst.discovery import race as RC
+    ek, ok = board.king(not me), board.king(me)
+    n = RC._pushes(me, sq)
+    if n < 1 or n > 6:
+        return None
+    path = RC._path(me, sq, n)
+    if any(board.piece_at(t) is not None for t in path):
+        return None
+    stable = RC._stable_attacks(board, me, ek, ok, n, {sq: path})
+    why = RC._stage_held(me, ek, path, sq, stable, stable, n)
+    if why is None:
+        return False, "their king cannot stop it: no stage of the walk is reached in time (squares it cannot stand on denied)"
+    if with_second:
+        d = RC._deflect(board, me, sq, path, n, ek, ok, why, verdict_only=True)
+        if d:
+            return False, f"{d}; the king held it alone: {why}"
+    return True, why
+
+
+def king_verdict_oracle(board: chess.Board, sq: int) -> tuple | None:
+    """62.1c: THEIR KING AS A STOPPER of our pawn on `sq` (the owner to move), judged by the proved analysis only (Race.deny_sound, race_sound restricted to the king): the stage test with the squares it cannot stand
+    and survive on denied, then the deflection by a second passer (this pawn as the one that walks, or as the one that rests). -> (held, why): held=False = the king is no stopper (the verdict may not kill the
+    question for it); None = not applicable (not our pawn, path not clear, in check). Their OTHER pieces are not read here at all: they are replies, and the chase reads every reply (Race.lifted_is_gap)."""
+    me = board.turn
+    pc = board.piece_at(sq)
+    if pc is None or pc.piece_type != chess.PAWN or pc.color != me or board.is_check():
+        return None
+    if board.king(not me) is None or board.king(me) is None:
+        return None
+    first = _king_holds_oracle(board, me, sq, True)
+    if first is None or not first[0]:
+        return first
+    for q in chess.SquareSet(board.pawns & board.occupied_co[me]):
+        if q == sq:
+            continue
+        o = _king_holds_oracle(board, me, q, True)
+        if o is not None and not o[0]:
+            return False, f"the passer on {chess.square_name(q)} is not held by the king ({o[1]}); the king that holds {chess.square_name(sq)} cannot also stop it"
+    return first
+
+
+def support_moves_oracle(board: chess.Board, me: bool, sq: int, legal: list) -> list:
+    """62.1c: our moves (not the pawn's own) after which their king is NO LONGER a stopper of the pawn on `sq` by `king_verdict` (we have the move again: the pass reading): a cover (Kg3 takes h2 and g2 from
+    the king), a second passer's support. Each is a ROUTE of the promote question; the chase reads every reply to it. -> [(move, why)]."""
+    before = king_verdict_oracle(board, sq)
+    if before is None or not before[0]:
+        return []
+    out = []
+    for m in legal:
+        if m.from_square == sq:
+            continue
+        after = board.copy(stack=False)
+        after.push(m)
+        if after.is_check():
+            continue
+        after.turn = me
+        after.ep_square = None
+        v = king_verdict_oracle(after, sq)
+        if v is not None and not v[0]:
+            out.append((m, f"makes their king no stopper: {v[1]}"))
+    return out
+
+
+def _race_boards(n: int = 400, seed: int = 7277) -> list:
+    """race.random_race_position's endings (our king and pawns against a king and pawns, sometimes a rook of ours), with the side to move either way."""
+    from catspace.incubator.analyst.discovery import race as RC
+    rng = random.Random(seed)
+    out = []
+    while len(out) < n:
+        b = RC.random_race_position(rng, rook=rng.random() < 0.3)
+        if b is not None:
+            out.append(b)
+            c = b.copy(stack=False)
+            c.turn = not c.turn
+            if c.is_valid():
+                out.append(c)
+    return out
+
+
+# ---------------------------------------------------------------------------------------------------------------- 3d: the tests
+
+def test_72_7_3d_king_verdict_and_support_moves_equal_their_oracles():
+    """race.king_verdict / support_moves (Rust) against the Python bodies for every pawn of the side to move on the race endings, the puzzles and the games: the same
+    verdict and text, the same supporting moves in the same order."""
+    from catspace.incubator.analyst.discovery import race as RC
+    n = held = free = sup = 0
+    for b in _race_boards() + _puzzles(walk=1) + _games(n=6, plies=40):
+        legal = list(b.legal_moves)
+        for sq in chess.SquareSet(b.pawns):
+            want = king_verdict_oracle(b, sq)
+            assert RC.king_verdict(b, sq) == want, (b.fen(), sq)
+            n += 1
+            held += bool(want and want[0])
+            free += bool(want is not None and not want[0])
+            if want is not None and want[0]:
+                ws = support_moves_oracle(b, b.turn, sq, legal)
+                gs = RC.support_moves(b, b.turn, sq, legal)
+                assert [(m.uci(), w) for m, w in gs] == [(m.uci(), w) for m, w in ws], (b.fen(), sq)
+                sup += len(ws)
+    assert held and free and sup
+    print(f"OBS 72.7 3d king_verdict / support_moves against their oracles: pawns {n}, held {held}, no stopper {free}, supporting moves {sup}, every one equal")

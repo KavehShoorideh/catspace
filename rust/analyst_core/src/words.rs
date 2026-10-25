@@ -864,3 +864,177 @@ pub fn stuck_threats_pos(pos: &crate::pos::Pos, me_white: bool, k: u32) -> PyRes
 /// can_run_bb(bbs, sq, me_white) -> regress.can_run(board, sq, me, passer=True)[0] on the placement (the test hook).
 #[pyfunction]
 pub fn can_run_bb(bbs: [u64; 8], sq: u8, me_white: bool) -> PyResult<bool> { can_run_on(&board_of(bbs)?, sq_of(sq)?, colour(me_white)) }
+
+// ------------------------------------------------------------------------------------------------------------------ 3d: the king verdict (race.py, plan 62.1c)
+// race.king_verdict / support_moves and what they read (`_king_holds`, `_stable_attacks`, `_stage_held`, `_deflect` with `verdict_only`): the stage test of
+// `Race.race_sound` restricted to the king, the squares it cannot stand and survive on denied (`Race.no_stand_adjacent` / `no_stand_pawn` / `no_stand_attacked`, `Race.deny_sound`),
+// the deflection by a second passer (`Race.holdSet`, `Race.overloaded`). Placements only; the squares in python-chess's SquareSet order (ascending); the texts as race.py writes them.
+
+fn kdist(a: Square, b: Square) -> u32 { a.distance(b) }
+fn bb(s: Square) -> u64 { 1u64 << (s as u32) }
+
+/// race._pushes: the pushes to the promotion rank.
+fn race_pushes(me: Color, sq: Square) -> i32 { ((if me == Color::White { 7 } else { 0 }) - u32::from(sq.rank()) as i32).abs() }
+
+/// race._path: the squares in front of the pawn, nearest first.
+fn race_path(me: Color, sq: Square, n: i32) -> Vec<Square> {
+    let (f, r) = (u32::from(sq.file()) as i32, u32::from(sq.rank()) as i32);
+    let fwd = if me == Color::White { 1 } else { -1 };
+    (1..=n).map(|i| Square::new((f + 8 * (r + fwd * i)) as u32)).collect()
+}
+
+/// race._stable_attacks on a placement (see its docstring): our king's squares, the pawns outside the plan that their king cannot reach in time, and the squares the other pieces
+/// outside the plan attack on EVERY board of the plan (their king off, the plan's pawns at each combination of their squares, the first 64 combinations in python's order).
+fn stable_attacks(b: &shakmaty::Board, me: Color, ek: Square, ok: Square, t: u32, plan: &[(Square, Vec<Square>)]) -> u64 {
+    let mut att = shakmaty::attacks::king_attacks(ok).0;
+    let starts: Vec<Square> = plan.iter().map(|(p, _)| *p).collect();
+    let outside: Vec<Square> = b.by_color(me).into_iter().filter(|&s| s != ok && !starts.contains(&s) && !b.pawns().contains(s)).collect();
+    for s in (b.pawns() & b.by_color(me)).into_iter().filter(|s| !starts.contains(s)) {
+        if kdist(ek, s) > t { att |= b.attacks_from(s).0; }
+    }
+    if !outside.is_empty() {
+        let mut configs: Vec<Vec<(Square, Square)>> = vec![vec![]];
+        for (p0, walk) in plan {
+            let mut nxt = vec![];
+            for c in &configs {
+                for &s in std::iter::once(p0).chain(walk.iter()) {
+                    let mut c2 = c.clone();
+                    c2.push((*p0, s));
+                    nxt.push(c2);
+                }
+            }
+            configs = nxt;
+        }
+        let mut base = b.clone();
+        base.discard_piece_at(ek);
+        let mut inter: Option<u64> = None;
+        for c in configs.iter().take(64) {
+            let mut d = base.clone();
+            let moved: Vec<(Square, Option<Piece>)> = starts.iter().map(|&p0| (p0, d.piece_at(p0))).collect();
+            for &p0 in &starts { d.discard_piece_at(p0); }
+            for &(p0, s) in c {
+                if let Some(Some(pc)) = moved.iter().find(|(x, _)| *x == p0).map(|(_, pc)| *pc) { d.set_piece_at(s, pc); } else { d.discard_piece_at(s); }
+            }
+            let mut m = 0u64;
+            for &s in &outside { if kdist(ek, s) > t { m |= d.attacks_from(s).0; } }
+            inter = Some(match inter { None => m, Some(i) => i & m });
+        }
+        att |= inter.unwrap_or(0);
+    }
+    att
+}
+
+/// race._stage_held (see its docstring): why their king holds the passer standing on `rest` with `path`, or None.
+fn stage_held(me: Color, ek: Square, path: &[Square], rest: Square, denied: u64, defended: u64, upto: usize, block_upto: Option<usize>) -> Option<String> {
+    let n = path.len();
+    for j in 1..=upto {
+        let yj = path[j - 1];
+        let prev = if j == 1 { rest } else { path[j - 2] };
+        let stand_denied = denied | shakmaty::attacks::pawn_attacks(me, prev).0;
+        if defended & bb(yj) == 0 {
+            for s in shakmaty::attacks::king_attacks(yj) {
+                if kdist(ek, s) as usize <= j - 1 && stand_denied & bb(s) == 0 {
+                    return Some(format!("their K takes on {yj} after push {j} (from {s}, {} away; {yj} is not guarded)", kdist(ek, s)));
+                }
+            }
+        }
+        if j < n && j + 1 <= block_upto.unwrap_or(n) {
+            let nx = path[j];
+            if kdist(ek, nx) as usize <= j && denied & bb(nx) == 0 {
+                return Some(format!("their K stands on {nx} before push {} (it is {} away, {nx} is not covered)", j + 1, kdist(ek, nx)));
+            }
+        }
+    }
+    None
+}
+
+/// race._deflect with `verdict_only` (see its docstring): the first second passer that deflects the king holding the pawn on `sq` -> the sentence, or None.
+fn deflect_verdict(b: &shakmaty::Board, me: Color, sq: Square, path: &[Square], n: i32, ek: Square, ok: Square) -> Option<String> {
+    for sb in b.pawns() & b.by_color(me) {
+        if sb == sq { continue; }
+        let nb = race_pushes(me, sb);
+        if !(1..=6).contains(&nb) { continue; }
+        let pathb = race_path(me, sb, nb);
+        if pathb.iter().any(|&t| b.piece_at(t).is_some() && t != ek) { continue; }
+        let t = ((n - 1) + nb) as u32;
+        let walk_a: Vec<Square> = path[..(n - 1).max(0) as usize].to_vec();
+        let stable = stable_attacks(b, me, ek, ok, t, &[(sq, walk_a), (sb, pathb.clone())]);
+        let rest = if n >= 2 { path[(n - 2) as usize] } else { sq };
+        let xa = *path.last()?;
+        let denied_a = stable | shakmaty::attacks::pawn_attacks(me, rest).0 | shakmaty::attacks::pawn_attacks(me, sb).0;
+        if n >= 2 && stage_held(me, ek, path, sq, stable, stable, (n - 1) as usize, Some((n - 1) as usize)).is_some() { continue; }
+        if stable & bb(rest) == 0 && kdist(ek, rest) <= t + 1 { continue; }
+        if stable & bb(sb) == 0 && kdist(ek, sb) <= t + 1 { continue; }
+        let undefended_x = stable & bb(xa) == 0;
+        let h_a = (bb(xa) & !denied_a) | (if undefended_x { shakmaty::attacks::king_attacks(xa).0 & !denied_a } else { 0 });
+        let xb = *pathb.last()?;
+        let pb_mask = pathb.iter().fold(0u64, |m, s| m | bb(*s));
+        if h_a & pb_mask != 0 { continue; }
+        let undefended_xb = stable & bb(xb) == 0;
+        if undefended_xb && h_a & shakmaty::attacks::king_attacks(xb).0 != 0 { continue; }
+        return Some(format!("deflected: the king that holds {xa} cannot hold {xb} (second passer {sb})"));
+    }
+    None
+}
+
+/// race._king_holds (see its docstring): (held, why) or None.
+fn king_holds(b: &shakmaty::Board, me: Color, sq: Square, with_second: bool) -> Option<(bool, String)> {
+    let ek = (b.kings() & b.by_color(!me)).last()?;
+    let ok = (b.kings() & b.by_color(me)).last()?;
+    let n = race_pushes(me, sq);
+    if !(1..=6).contains(&n) { return None; }
+    let path = race_path(me, sq, n);
+    if path.iter().any(|&t| b.piece_at(t).is_some()) { return None; }
+    let stable = stable_attacks(b, me, ek, ok, n as u32, &[(sq, path.clone())]);
+    let Some(why) = stage_held(me, ek, &path, sq, stable, stable, n as usize, None) else {
+        return Some((false, "their king cannot stop it: no stage of the walk is reached in time (squares it cannot stand on denied)".into()));
+    };
+    if with_second {
+        if let Some(d) = deflect_verdict(b, me, sq, &path, n, ek, ok) { return Some((false, format!("{d}; the king held it alone: {why}"))); }
+    }
+    Some((true, why))
+}
+
+/// race.king_verdict on a placement with `me` to move (see its docstring): their king as a stopper of our pawn on `sq` -> (held, why), or None (not our pawn, we are in
+/// check, a king missing).
+pub(crate) fn king_verdict_on(b: &shakmaty::Board, me: Color, sq: Square) -> Option<(bool, String)> {
+    let pc = b.piece_at(sq)?;
+    if pc.role != Role::Pawn || pc.color != me { return None; }
+    let ok = (b.kings() & b.by_color(me)).last()?;
+    if b.attacks_to(ok, !me, b.occupied()).any() { return None; }                  // board.is_check()
+    (b.kings() & b.by_color(!me)).last()?;
+    let first = king_holds(b, me, sq, true);
+    match &first { None => return None, Some((false, _)) => return first, _ => {} }
+    for q in b.pawns() & b.by_color(me) {
+        if q == sq { continue; }
+        if let Some((false, why)) = king_holds(b, me, q, true) {
+            return Some((false, format!("the passer on {q} is not held by the king ({why}); the king that holds {sq} cannot also stop it")));
+        }
+    }
+    first
+}
+
+/// king_verdict_bb(bbs, me_white, sq) -> race.king_verdict on the placement with that side to move: (held, why) or None.
+#[pyfunction]
+pub fn king_verdict_bb(bbs: [u64; 8], me_white: bool, sq: u8) -> PyResult<Option<(bool, String)>> {
+    Ok(king_verdict_on(&board_of(bbs)?, colour(me_white), sq_of(sq)?))
+}
+
+/// support_moves_bb(bbs, turn_white, me_white, sq, legal) -> [(index into `legal`, why)]: race.support_moves on the placement (see its docstring): the verdict before read with the
+/// board's side to move (`turn`, as king_verdict reads it), our moves (not the pawn's own, python-chess's legal moves as UCI in its order) after which -- the side to move then
+/// (the other side) not in check -- the move passed to `me` leaves their king no stopper.
+#[pyfunction]
+pub fn support_moves_bb(bbs: [u64; 8], turn_white: bool, me_white: bool, sq: u8, legal: Vec<String>) -> PyResult<Vec<(usize, String)>> {
+    let b = board_of(bbs)?;
+    let (turn, me, sq) = (colour(turn_white), colour(me_white), sq_of(sq)?);
+    match king_verdict_on(&b, turn, sq) { Some((true, _)) => {}, _ => return Ok(vec![]) }
+    let mut out = vec![];
+    for (i, u) in legal.iter().enumerate() {
+        let (f, t, p) = uci_parts(u)?;
+        if f == sq { continue; }
+        let a = push_placement(&b, f, t, p);
+        if let Some(k) = (a.kings() & a.by_color(!turn)).last() { if a.attacks_to(k, turn, a.occupied()).any() { continue; } }      // after.is_check(): the other side to move
+        if let Some((false, why)) = king_verdict_on(&a, me, sq) { out.push((i, format!("makes their king no stopper: {why}"))); }
+    }
+    Ok(out)
+}
