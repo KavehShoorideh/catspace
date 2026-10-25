@@ -33003,3 +33003,14 @@ OBS gate engine --only (one file per call), passed, failed: test_plan72_7_step3 
   0; test_plan72_3 7, 0; test_plan72_5 7, 0; test_plan72_8 8, 0; test_duty63 12, 0; test_plan62 28, 0; test_plan66 16, 0; test_plan67 9, 0; test_discovery_vocabulary 23, 0;
   test_agenda 26, 0; test_fact_store 21, 0; test_regress 87, 0, XPASSED 1 (291.0 s; pytest "87 passed, 1 xpassed": the discovery POOL test at 30 s, as at 3c); test_tiers 14, 0;
   test_offbuilt64 15, 0, xfailed 1; test_plan72_10 4, 0; test_plan72_9 7, 0.
+
+## 2026-10-25 00:33 -- 72.7 step 3 merged (main 7298ad32; JOURNAL both sides kept; core rebuilt from main's crate); the gate
+OBS gate engine (main 7298ad32, alone on the machine): files 28, passed 393, failed 0, xfailed 2, errors 0, wall 652.8 s (704.7 s at ec7811e4, 755.4 s at 04092755; one run each, directional).
+The third xfail (52.18, the discovery position under the POOL at 30 s) now XPASSES: the speed reached Nf6's proof; the marker stays non-strict until Kaveh lifts it.
+Step 3's own numbers (its report above): count budget tier 0 27.3 -> 20.7 s, tier 2 124.1 -> 78.4 s; W0VFO 10 s: inner questions 7612 -> 16755 in the same seconds; python-chess own time
+53.2% -> 44.0% of a 59.6 -> 39.6 s profile. Findings to act on (Kaveh): (1) the engine's decisions depend on PYTHONHASHSEED (a set of goal tuples iterated in `_chase_route_body`, plan
+72.10's route_goals): 2 of 99 wide cases differ between two identical runs; the guard pins the seed; the engine is not fixed because the fix changes a decision -- a determinism bug, the fix
+is a sorted iteration; (2) the priced reach's read sets (reach_price, stuck_threats) reach no claim: the listener never re-asks on those squares -- a frame hole in the fact store's service;
+(3) a latent crash in stuck_threats with our king in check (the pass board lets them take our king; 1 of 460 sampled boards); (4) the Python fallbacks of the defect twins still run
+(mate_defects_pos ValueError 616 on the ten) -- deleting them changes traces; a port must read those counterfactual boards through `py_legal`. Not ported (next in cost): the mate duty
+(can_run with _mate_ahead, ~2.6 s of 39.6), race_claim / pass_claim, delayed_threat, node_cost / route_cost (now the W0VFO top), graph.mates / with_piece / with_turn.
