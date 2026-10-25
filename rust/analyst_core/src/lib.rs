@@ -1788,6 +1788,14 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(words::bind_mate2_pos, m)?)?;
     m.add_function(wrap_pyfunction!(words::mate2_threat_pos, m)?)?;
     m.add_function(wrap_pyfunction!(words::mate2_after_pos, m)?)?;
+    m.add_function(wrap_pyfunction!(words::reach_map_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(words::reach_price_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(words::reach_cache_clear, m)?)?;
+    m.add_function(wrap_pyfunction!(words::reach_cache_size, m)?)?;
+    m.add_function(wrap_pyfunction!(words::stopper_walk_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(words::piece_moves_to_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(words::deny_moves_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(words::denial_mask_bb, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::vocab_values, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::vocab_certify, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::verify_mask, m)?)?;

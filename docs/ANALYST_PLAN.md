@@ -3443,6 +3443,9 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
   72.7 STEP 3a BUILT 2026-10-24 on branch worktree-agent-afa08f337b471dd18 (journal 2026-10-24 22:48): the mate in two in Rust (words.rs `bind_mate2_pos` / `mate2_threat_pos` on the handle; selfmine.bind_mate2 and
   regress.mate2_threat call-throughs, the Python bodies the oracles of tests/test_plan72_7_step3.py). The guard: `--sets wide` (99), `--tier 2` (tier 0 never asks the word), the hash seed pinned, the tables
   linked; 0 differences on the ten and the 99 at tiers 0 and 2; negative control 10 of 10 at tier 2 (0 of 10 at tier 0). The ten at tier 2 ~22% faster; W0VFO 10 s: forcing_why 46% -> 17% of the profiled run.
+  72.7 STEP 3b BUILT 2026-10-24 on branch worktree-agent-afa08f337b471dd18 (journal 2026-10-24 23:19): the roll and the static walks in Rust (reach_map / reach_price, race.stopper_walk / deny_moves /
+  denial_mask, graph.piece_moves_to on placements; python-chess's one-unit rules mirrored for the boards shakmaty refuses). Guard 0 differences on the ten and the 99 at tiers 0 and 2; negative control 10 of 10.
+  The count-budget ten 27.3 -> 23.6 s (3a+3b), at tier 2 123.0 -> 87.0 s. Finding: the priced reach's read sets reach no claim (nothing reads `reads`).
   BUILT 2026-10-23 (72.6): `scripts/gate.py engine|full [--dry-run] [--only FILE] [--log PATH]`. `engine` = the 28 named files (the missing ones are printed and skipped), `full` = every tests/test_*.py;
   both run one file at a time, each its own `python -m pytest FILE -q -p no:cacheprovider -W ignore --durations=3` with PYTHONUNBUFFERED=1, output appended to artifacts/experiments/gate_<cmd>_<timestamp>.log.
   LOCK: `<tmpdir>/catspace_gate.lock` (pid, cmd, start); a second gate refuses (exit 2) naming the running gate's pid and start time; a lock whose pid is dead is removed. Other running pytest processes

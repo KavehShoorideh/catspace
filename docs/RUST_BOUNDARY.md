@@ -158,6 +158,11 @@ regress.mate2_threat call-throughs, the Python bodies the test oracles. THE GUAR
 the mate in two is never asked: a wrong build moved 0 of 10 there and 10 of 10 at tier 2), PYTHONHASHSEED pinned (2 of the 99 depend on the string-hash order), the Syzygy tables
 linked (gitignored: a worktree has none). Guard 0 differences on the ten and the 99 at tiers 0 and 2 (traces, read sets, leaf lists). The profile first: under the clock the mate
 in two was a third of W0VFO's run; at the count budget the passer family is the top (3b, 3c).
+STATUS 3b: BUILT 2026-10-24 on branch worktree-agent-afa08f337b471dd18 (journal 2026-10-24 23:19): the roll and the static walks in Rust (words.rs `reach_map_bb`, `reach_price_bb`,
+`stopper_walk_bb`, `piece_moves_to_bb`, `deny_moves_bb`, `denial_mask_bb` on placements; the roll's memo under `_REACH`'s key, cleared by the same hook). The roll goes on from boards
+whose side not to move is in check (after a quiet check): the one unit's moves are python-chess's rules mirrored on the placement. reach_map's entry `board` is a `Landing` (the
+unit's attacks from Rust, the python-chess board replayed on demand). Guard 0 differences on the ten and the 99 at tiers 0 and 2; negative control (the price one too high) 10 of
+10 traces. Finding: the priced reach's read sets (`reach_price` / `stuck_threats` `reads`) reach no claim.
 
 Do not interleave steps: each diff is revertable alone and the guard locates a regression to one step.
 
