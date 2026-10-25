@@ -163,6 +163,11 @@ STATUS 3b: BUILT 2026-10-24 on branch worktree-agent-afa08f337b471dd18 (journal 
 whose side not to move is in check (after a quiet check): the one unit's moves are python-chess's rules mirrored on the placement. reach_map's entry `board` is a `Landing` (the
 unit's attacks from Rust, the python-chess board replayed on demand). Guard 0 differences on the ten and the 99 at tiers 0 and 2; negative control (the price one too high) 10 of
 10 traces. Finding: the priced reach's read sets (`reach_price` / `stuck_threats` `reads`) reach no claim.
+STATUS 3c: BUILT 2026-10-24 on branch worktree-agent-afa08f337b471dd18 (journal 2026-10-24 23:47): the passer family in Rust (words.rs `promote_defects_bb` -- every word read as
+graph.word reads it, the walks and the priced roll of 3b; `stuck_threats_pos` with the passer duty it asks -- can_run / duty_after's passer branch, promote_defects static and priced;
+`py_legal`, python-chess's legal moves mirrored on a placement for the board given to them while our king stands in check). regress.promote_defects / stuck_threats call-throughs;
+duty_after / can_run stay Python for the MATE duty (trap_fix). Guard 0 differences on the ten and the 99 at tiers 0 and 2; negative control (the king stopper read strictly) 4 of
+10 traces. Finding: the Python stuck_threats raises (TypeError) where their reply could take our king on the board given to them; the port raises on the same boards.
 
 Do not interleave steps: each diff is revertable alone and the guard locates a regression to one step.
 

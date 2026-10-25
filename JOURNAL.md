@@ -32918,3 +32918,47 @@ FINDINGS: (1) THE PRICED REACH'S READ SET REACHES NO CLAIM: `reach_price`'s `rea
   why the negative control is a wrong value, not a dropped square: a dropped read there could not move the guard. (2) pyo3 hands a Vec<u8> over as `bytes`: square lists cross as
   u32 (the first build failed the walk test on it). (3) Python's `_REACH` (regress) stays the memo of the Python callers (survey, counter_value, the skeleton): the entries a
   Rust-internal caller computes (3c) live in the Rust memo; the two hold equal landings for a key (the boards differ only where a caller's board did: castling, clocks).
+
+## 2026-10-24 23:47 PDT -- plan 72.7 step 3c built: the passer family in Rust (promote_defects, stuck_threats with the passer duty it asks; python-chess's legal moves mirrored on a placement) (branch worktree-agent-afa08f337b471dd18)
+docs/RUST_BOUNDARY.md section 4 step 3, after 3a and 3b (the count-budget top at the parent: stuck_threats 11.15 s cumulative -> can_run 8.84 -> duty_after 6.10 -> promote_defects
+6.22). No decision logic touched; the Python bodies are the test oracles (tests/test_plan72_7_step3.py).
+BUILT. words.rs: `py_legal` -- python-chess's `generate_legal_moves` mirrored on a placement (pieces by from-square then to-square descending, pawn captures, single and double
+  pushes with Q R B N, the evasions when in check, `_is_safe`), for the board stuck_threats gives THEM while our king may stand in check (shakmaty refuses it; python-chess
+  generates there). `promote_defects_bb` (52.6; 72.2's priced stopper): every word read as `graph.word` reads it -- the compiled term rendered from the owner's side, read on the
+  board given to the owner (`Pos.read`, the word cache) --, the king's and the pieces' walks (3b), the priced roll (3b), the defects and the facts in the Python order and text;
+  the lift's king verdict (62.1c) is race.py's, read in Python and handed in. `stuck_threats_pos` (72.2 (b)) on the board's handle: `can_run` with the passer duty (duty_after's
+  passer branch, Lean `Ideas.Duty.dutyAfter` for the exchange part, promote_defects static then priced, memoised by `_PD`'s key), their one-move attacks by `py_legal`, the roll for
+  the unit that cannot run, the parry by reach_price (SAN from the handle) and by our quiet moves, the rows sorted as Python sorted them. The memos are cleared by graph.clear_caches'
+  hook beside `_PD` (`passer_cache_clear`). regress.promote_defects / stuck_threats are call-throughs; duty_after / can_run stay Python for the MATE duty (trap_fix's: `_mate_ahead`,
+  check_threat -- not ported). Every function PyResult; no rayon; no HashMap reaches output.
+OBS 72.7 3c py_legal against python-chess: boards 1004 (of them with the side not to move in check: 53), every move list equal in order
+OBS 72.7 3c promote_defects against its oracle: asks 8390, stopper defects 37247, every one equal (defects, order, text, facts)
+OBS 72.7 3c stuck_threats against its oracle: positions 460, rows 93, can_run asks 1343, every one equal; both raise on 1
+OBS 3c coverage (ten, tier 0): stuck_threats asked 1743, rows 93 (unparried 31); promote_defects asked 3693 (the Python callers; the duty's reads inside stuck_threats are Rust-internal), defects 25154, stoppers 14240
+OBS guard (parent ec7811e4 vs 3c, tables, seed 0): ten tier 0: 0 of 10 traces, 0 of 10 read sets, 0 of 10 leaf verdict lists differ; wide tier 0: 0 of 99, 0 of 99, 0 of 99;
+  ten tier 2: 0 of 10, 0 of 10, 0 of 10; wide tier 2: 0 of 99, 0 of 99, 0 of 99.
+NEGATIVE CONTROL (a wrong build, not committed): the king stopper read strictly (`kd < n` for `kd <= n`): OBS trace identity: 4 of 10 traces differ; OBS trace identity: 4 of 10
+  read sets differ; OBS trace identity: 1 of 10 leaf verdict lists differ (the ten, tier 0). Reverted, rebuilt; the ten again 0 of 10 on all three.
+MEASURES (one sitting, the 3c core, the parent's Python from `git archive ec7811e4`; directional; 3c includes 3a and 3b):
+OBS count budget (tier 0), alternating: parent 27.6 s, 3c 21.1 s, parent 27.4 s, 3c 21.1 s.
+OBS count budget (tier 2), the ten: parent 124.0 s; 3c 79.0 s.
+OBS W0VFO 10 s: parent wall 10.7 s, decision Qb7 (e4b7), questions asked 38, inner agendas 498, inner questions 8160; 3c wall 10.2 s, Qb7 (e4b7), 38, 774, 9138 (one run each).
+OBS profile 3c-count: total 41.2 s (parent 59.6), python-chess own 18.36 s (44.6%; parent 31.69, 53.2%); stuck_threats 0.10 s cumulative (parent 11.15), promote_defects 0.21
+  (6.22); can_run 2.59 for 3286 calls and duty_after 1.91 -- the mate duty of trap_fix, still Python. The top now: fixes_of 6.91, trap_fix 3.06, can_run 2.59, routes_of 2.07,
+  duty_after 1.91, _mate_ahead 1.70, graph.mates 1.68, _forcing_batch 1.38, with_piece 1.34, race.king_verdict 1.30, race.support_moves 1.19, check_threat 1.12.
+OBS profile 3c-W0VFO: total 10.5 s, python-chess own 4.19 s (39.8%); forcing_why 1.92 (18.2%), race.king_verdict 1.41 (13.4%), race.support_moves 1.36, node_cost 1.16,
+  delayed_threat 1.14, route_cost 1.00.
+OBS python-chess sites discovery/: 739 -> 725 {copy 135 -> 133, push 160 -> 158, legal_moves 144 -> 142, san 155 -> 153, is_check 61 -> 60, gives_check 34 -> 33, attackers 50 -> 46}; regress.py 238 -> 224.
+OBS gate engine --only (one file per call), passed, failed: test_plan72_7_step3 12, 0; test_plan72_7_step2 13, 0; test_plan72_7 16, 0; test_binder_rust 31, 0; test_plan72 6,
+  0; test_plan72_3 7, 0; test_plan72_5 7, 0; test_plan72_8 8, 0; test_duty63 12, 0; test_plan62 28, 0; test_plan66 16, 0; test_plan67 9, 0; test_discovery_vocabulary 23, 0;
+  test_agenda 26, 0; test_fact_store 21, 0; test_regress 87, 0, XPASSED 1 (292.1 s; pytest: "87 passed, 1 xpassed" -- gate.py's summary does not count an xpass);
+  test_tiers 14, 0; test_offbuilt64 15, 0, xfailed 1; test_plan72_10 4, 0; test_plan72_9 7, 0.
+THE XPASS: test_regress `test_52_18_the_discovery_position_names_the_discovery_and_the_x_ray_fix_is_offered_on_a_win_defect` is xfail(strict=False) "under the POOL at 30 s the proof of
+  Nf6 is MARGINAL"; at 3a and 3b it xfailed (pytest "87 passed, 1 xfailed"), at 3c it passes: the same reading, proved inside the 30 s. A timed test, so one run: directional;
+  the marker is the owner's to lift, not changed here.
+FINDINGS: (1) A LATENT CRASH IN THE PYTHON WORD: with our king in check, `stuck_threats` gives the board to them (`with_turn`) and python-chess lets them TAKE our king there (its
+  generator checks only the mover's king); the duty then reads promote_defects on a board with no king of ours, `graph.word` reads None and the word raises TypeError. The port
+  mirrors the generator and raises ValueError on the same boards (1 of the 460 sampled; none in the guard's runs). Not fixed (a decision: the chase asks stuck_threats only after a
+  reply of theirs that left a balance, and a reply that checks us is among them). (2) duty_after / can_run keep two readings under one name -- the passer duty (now Rust, inside
+  stuck_threats) and the mate duty (trap_fix, `_mate_ahead`): the latter is the next family. (3) promote_defects' memo `_PD` (Python, the roots) and the Rust memo inside the duty
+  hold equal answers by key (the word reads the placement and the pawn's side only; the guard's identity is the check).

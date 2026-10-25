@@ -733,6 +733,7 @@ def _pushes_of(board: chess.Board, pw: int, own: bool) -> int:
 
 _PD: dict = {}
 G.CLEAR_HOOKS.append(_PD.clear)
+G.CLEAR_HOOKS.append(_A.passer_cache_clear)                                   # plan 72.7 step 3c: the passer family's Rust memos (promote_defects_cached, can_run), cleared with `_PD`
 
 
 def promote_defects_cached(board: chess.Board, sq: int, priced: "bool | None" = None) -> list:
@@ -1716,85 +1717,25 @@ def promote_defects(board: chess.Board, sq: int, lift: bool = False, priced: "bo
     from its owner's side: [Defect] and the facts {pushes, path, promo, king_dist, king_sq}. Kinds: 'blocked' (a piece on the path), 'path attacked' (a path
     square attacked by them more than we guard it), 'promo square attacked' (the same on the promotion square), 'stopper' (a piece of theirs that reaches the
     promotion square or the path within the pawn's pushes: the king by `dist`, a slider / knight by its static-board `reach`). No defect = unstoppable by the
-    tempo arithmetic (the owner moves first; the other side's pieces move for free while the pawn runs)."""
+    tempo arithmetic (the owner moves first; the other side's pieces move for free while the pawn runs).
+    plan 72.7 step 3c: read in Rust on the board's placement (`analyst_core.promote_defects_bb`, words.rs: every word read as `G.word` reads it -- the compiled terms on the
+    board given to the owner --, the king's and the pieces' walks, the priced roll; the defects and the facts in the order the Python word gave them). The king verdict of the
+    lift (plan 62.1c) is race.py's and is read here. The Python body is the test oracle (tests/test_plan72_7_step3.py)."""
     pc = board.piece_at(sq)
     own = pc.color
     kv = None
     priced = PRICED_STOPPER if priced is None else priced                   # plan 72.2: the stoppers read by the priced reach (the duty's cheap pre-check reads them static)
     if lift and RC.LIFT and board.turn == own and (board.occupied_co[not own] & (board.rooks | board.bishops | board.queens | board.knights)):
         kv = RC.king_verdict(board, sq)                 # plan 62.1c: with a piece of theirs beyond king and pawns the verdict judges only the KING, by the proved analysis; the pieces are replies the chase reads
-    n = G.word(board, ("pushes", G.name(sq)), own)
-    path = pawn_path(board, sq, n)
-    promo = path[-1]
-    facts = dict(pushes=n, path=path, promo=promo, king_dist=None, king_sq=board.king(not own))
-    out = []
-    lifted = []
-    priced_notes = []                                                          # plan 72.2: the stoppers lifted by the priced reach
-    ahead_ours = G.word(board, ("count", ("and", ("ahead", G.name(sq)), "ours")), own)
-    ahead_theirs = G.word(board, ("count", ("and", ("ahead", G.name(sq)), "theirs")), own)
-    if ahead_ours + ahead_theirs:
-        for t in path:
-            b_ = board.piece_at(t)
-            if b_ is not None:
-                out.append(Defect("blocked", t, [t], f"{'our' if b_.color == own else 'their'} {b_.symbol().upper()} stands on {G.name(t)}"))
-    for t in path:
-        a = G.word(board, ("defenders", G.name(t)), own)            # theirs attacking t
-        d = G.word(board, ("attackers", G.name(t)), own)            # ours attacking t
-        if a > d:
-            kind = "promo square attacked" if t == promo else "path attacked"
-            by = [x for x in G.attackers_of(board, t, not own)]
-            if kv is not None and not kv[0] and set(by) <= {board.king(not own)}:
-                lifted.append(f"{G.name(t)} is attacked only by their king, which is no stopper ({kv[1]})")
-                continue
-            out.append(Defect(kind, t, by, f"{G.name(t)} is attacked by them {a}x and guarded by us {d}x"))
-    ek = facts["king_sq"]
-    if kv is not None:
+    G.BV.install_terms()
+    defs, n, path, promo, kd, ksq, priced_notes, lifted = _A.promote_defects_bb(G.bbs(board), sq, kv, priced)
+    out = [Defect(k, t, list(by), why) for k, t, by, why in defs]
+    facts = dict(pushes=n, path=list(path), promo=promo, king_dist=kd, king_sq=ksq)
+    if lifted is not None:
         facts["lifted"] = lifted
-        if kv[0]:
-            out.append(Defect("stopper", promo, [ek], f"their K stops it: {kv[1]}"))
-        else:
-            lifted.append(f"their K is no stopper: {kv[1]}")
-        facts["king_dist"] = G.word(board, ("dist", "L", ("promo", G.name(sq))), own)
-        return out, facts
-    if ek is not None:                                  # a king standing on the path is the blocker (already a defect), not a stopper
-        kd = G.word(board, ("dist", "L", ("promo", G.name(sq))), own)
-        facts["king_dist"] = kd
-        if kd <= n and ek not in path:
-            w = RC.stopper_walk(board, ek, {promo}, n)               # 62.1b: the stopper's path, named
-            out.append(Defect("stopper", promo, [ek], f"their K on {G.name(ek)} reaches {G.name(promo)} in {kd}, the pawn needs {n}" + (f" (path {' '.join(G.name(x) for x in w[1])})" if w else "")))
-    for s in chess.SQUARES:
-        x = board.piece_at(s)
-        if x is None or x.color == own or x.piece_type in (chess.KING, chess.PAWN):
-            continue
-        k = G.piece_moves_to(board, s, set(path), n)
-        if k is not None:
-            if priced:                                                         # plan 72.2: a stopper must reach a square bearing on the path FREE (Lean `attackableIn`: every landing safe by the exchange) -- a piece that
-                pr = []                                                        # arrives only by being taken for nothing is no stopper, and so is one that bears on a path square it cannot take (I7k2H: the B on d1 bears on c2, where bxc2 answers Bxc2)
-                nb = G.with_turn(board, not own)
-                for t in path:                                                 # bearing on a path square already: tempi 0
-                    if t in nb.attacks(s) and len(board.attackers(not own, t)) > len(board.attackers(own, t)):
-                        pr.append(dict(material=0, tempi=0))
-                if not pr:
-                    mp = reach_map(board, s, min(n, REACH_K))                  # ONE roll per stopper (the cost rule of 2026-10-23), its depth the pawn's pushes capped by the reach fuse
-                    for at, e in mp.items():
-                        if e["material"] != 0:
-                            continue
-                        cf = e["board"]
-                        for t in path:
-                            if t in cf.attacks(at) and len(cf.attackers(not own, t)) > len(cf.attackers(own, t)):      # from its landing the stopper takes on t: their attackers outnumber our guards there
-                                pr.append(dict(material=0, tempi=e["tempi"]))
-                                break
-                if not pr:
-                    priced_notes.append(f"their {x.symbol().upper()} on {G.name(s)} reaches the path only at a price (taken where it lands): no stopper")
-                    continue
-                k = min(r["tempi"] for r in pr)
-            w = RC.stopper_walk(board, s, set(path), n)
-            out.append(Defect("stopper", promo, [s], f"their {x.symbol().upper()} on {G.name(s)} reaches the path in {k} ({'free by the exchange' if priced else 'static board'}), the pawn needs {n}" + (f" (path {' '.join(G.name(x) for x in w[1])})" if w else "")))
     if priced_notes:
         facts["priced"] = priced_notes                                         # (kept apart from `lifted`, plan 62.1c's king verdict: that key re-asks the question unlifted)
     return out, facts
-
-
 def drives_off(board: chess.Board, m: chess.Move, x: int, ksq: int) -> bool:
     """52.17 (3): THE KING DRIVEN OFF A SQUARE. `m` is a check after which EVERY legal reply is a move of their king (the one on `ksq`) to a square that does not touch `x`
     (not on it, not next to it): the square is left unattacked by the king whatever it does. 0LRTF: after Rh8+ Kd7, Rd8+ drives the king off c8 (Ke6, Ke7; Kxd8 is
@@ -1965,79 +1906,14 @@ def stuck_threats(board: chess.Board, us: str | bool, k: int = REACH_K) -> list:
       (2) the unit CANNOT run now: their cheapest `reach_price` to a square bearing on it within k at a material price below its worth (the stuck knight, the king's walk).
     Its PARRY by the same word with the sides swapped: a unit of ours that bears on it already, or (2 only) reaches a square bearing on it within tempi-1 at price 0, or a move of
     ours after which it can run. -> [dict(sq, worth, attacker, price, tempi, first, path, parry | None, reads)], the worst first. A parry in time is a CANDIDATE (the roll reads
-    no reply), a missing parry is the leaf's GAP text, never a kill."""
-    me = G.colour_of(us)
-    them = not me
-    out = []
-    ours = [s for s in chess.SQUARES if (pc := board.piece_at(s)) is not None and pc.color == me and pc.piece_type not in (chess.KING, chess.PAWN) and not board.is_attacked_by(them, s)]
-    if not ours:
-        return out
-    theirs = G.with_turn(board, them)
-    their_moves = None
-    maps: dict | None = None
-    for s in ours:
-        pc = board.piece_at(s)
-        worth = G.worth(pc)
-        best = None
-        if can_run(board, s, them, passer=True)[0]:
-            if their_moves is None:
-                their_moves = [m for m in theirs.legal_moves if not theirs.is_castling(m)]
-            for m in their_moves:
-                a = theirs.copy(stack=False)
-                a.push(m)
-                if a.is_check() or s not in a.attacks(m.to_square) or a.piece_at(s) is None:
-                    continue
-                price = 0 if theirs.piece_at(m.from_square).piece_type == chess.KING else G.see_for(a, m.to_square, me)
-                if price >= worth:
-                    continue
-                after = G.with_turn(a, me)
-                if can_run(after, s, them, passer=True)[0]:
-                    continue
-                e = dict(material=price, tempi=1, path=[m.uci()], board=a)
-                if best is None or (price, 1) < (best[1]["material"], best[1]["tempi"]):
-                    best = (m.from_square, e)
-        else:
-            if maps is None:
-                maps = {a: reach_map(board, a, k) for a in chess.SQUARES if (ap := board.piece_at(a)) is not None and ap.color == them}
-            for a, mp in maps.items():
-                for at, e in mp.items():
-                    if e["material"] >= worth or s not in e["board"].attacks(at):
-                        continue
-                    if best is None or (e["material"], e["tempi"]) < (best[1]["material"], best[1]["tempi"]):
-                        best = (a, e)
-        if best is None:
-            continue
-        a, e = best
-        parry = None
-        for g in chess.SQUARES:
-            gp = board.piece_at(g)
-            if gp is None or gp.color != me or g == s:
-                continue
-            if s in board.attacks(g):
-                parry = f"our {gp.symbol().upper()} on {G.name(g)} guards it already"
-                break
-            if e["tempi"] > 1:
-                pr = reach_price(board, g, s, e["tempi"] - 1)
-                if pr is not None and pr["material"] == 0 and pr["tempi"] <= e["tempi"] - 1:
-                    parry = f"our {gp.symbol().upper()} on {G.name(g)} guards it in {pr['tempi']} ({board.san(chess.Move.from_uci(pr['first']))} first)"
-                    break
-        if parry is None and e["tempi"] > 1:
-            for m in board.legal_moves:
-                if board.is_capture(m) or board.gives_check(m):
-                    continue
-                c = board.copy(stack=False)
-                c.push(m)
-                c = G.with_turn(c, me)
-                if c.piece_at(s) is not None and can_run(c, s, them, passer=True)[0]:
-                    parry = f"after {board.san(m)} it can run"
-                    break
-        reads = {chess.Move.from_uci(u).to_square for u in e["path"]} | {s, a}
-        out.append(dict(sq=s, worth=worth, attacker=a, price=e["material"], tempi=e["tempi"], first=e["path"][0], path=list(e["path"]), parry=parry, reads=frozenset(reads)))
-    out.sort(key=lambda d: -(d["worth"] - d["price"]))
-    return out
-
-
-# ---------------------------------------------------------------------------------------------------------------- plan 72.3: THE JOIN QUESTION
+    no reply), a missing parry is the leaf's GAP text, never a kill.
+    plan 72.7 step 3c: read in Rust in ONE call on the board's handle (`analyst_core.stuck_threats_pos`, words.rs: can_run with the passer duty -- duty_after's passer branch,
+    promote_defects static and priced --, their one-move attacks generated by python-chess's rules on the board given to them, where our king may stand in check, the roll for
+    the unit that cannot run, the parry by reach_price and by our moves, the rows in the order the Python word sorted them). The Python body is the test oracle
+    (tests/test_plan72_7_step3.py)."""
+    G.BV.install_terms()
+    return [dict(sq=s_, worth=w, attacker=a, price=p, tempi=t, first=f, path=list(path), parry=parry, reads=frozenset(reads))
+            for s_, w, a, p, t, f, path, parry, reads in _A.stuck_threats_pos(G.handle(board), G.colour_of(us), max(k, 0))]
 JOIN_FIXES = True                             # plan 72.3: a defect that needs a piece of ours at L also gets "bring U to bear on L" for each unit U, priced by `reach_price`
 JOIN_KINDS = {"mate": ("flight", "checker takeable"), "win": ("not attacked", "defended")}      # the defect kinds read as "a piece of ours is needed bearing on L"
 JOIN_KING = ("flight", "checker takeable", "path attacked", "promo square attacked")             # the guards the king can give

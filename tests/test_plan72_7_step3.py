@@ -6,7 +6,9 @@ values, structures, orders, and what each wrote on the dependency trackers (RUST
 `mate2_threat_pos`.
 3b THE ROLL AND THE STATIC WALKS: `regress.reach_map` / `reach_price` (plan 72.1), `race.stopper_walk` / `deny_moves` (62.1b), `graph.piece_moves_to` -- words.rs
 `reach_map_bb`, `reach_price_bb`, `stopper_walk_bb`, `deny_moves_bb`, `piece_moves_to_bb`; boards whose side NOT to move is in check (python-chess holds them, the roll reaches them
-after a quiet check) among the positions."""
+after a quiet check) among the positions.
+3c THE PASSER FAMILY: `regress.promote_defects` (52.6, 72.2's priced stopper), `stuck_threats` (72.2 (b)) with the passer duty it asks (`can_run` / `duty_after`
+passers, 63.2), and python-chess's legal moves mirrored on a placement (`py_legal`) -- words.rs `promote_defects_bb`, `stuck_threats_pos`, `can_run_bb`, `py_legal_bb`."""
 import importlib.util
 import random
 from pathlib import Path
@@ -483,3 +485,360 @@ def test_72_7_3b_the_roll_cache_is_cleared_by_the_hook_and_input_is_checked():
     R.reach_price(b, chess.C3, chess.A8, 3)
     G.piece_moves_to(b, chess.C3, {chess.A8}, 3)
     assert AC.dep_peek() == (0, False, [0, 0, 0], 0)           # the roll writes nothing on the dependency trackers (the Python words wrote nothing there either)
+
+
+# ---------------------------------------------------------------------------------------------------------------- 3c: the oracles (the Python bodies before the port, verbatim; each reads the other oracles)
+
+def threat_value_oracle(board_after: chess.Board, us) -> int:
+    """After our move (their turn) and a pass: the most we would win by the exchange on a piece of theirs (the Rust `see`, us on move)."""
+    me = G.colour_of(us)
+    c = G.with_turn(board_after, me)
+    best = 0
+    for s in chess.SQUARES:
+        p = c.piece_at(s)
+        if p and p.color != me and p.piece_type != chess.KING and c.is_attacked_by(me, s):
+            best = max(best, G.see(c, s))
+    return best
+
+
+def is_passer_oracle(board: chess.Board, sq: int) -> bool:
+    """plan 72.2 (a): a PASSED pawn -- no pawn of the other side ahead of it on its file or the adjacent files (the Rust region word `passer`, read directly)."""
+    pc = board.piece_at(sq)
+    if pc is None or pc.piece_type != chess.PAWN:
+        return False
+    f, r = chess.square_file(sq), chess.square_rank(sq)
+    for s in chess.SquareSet(board.pawns & board.occupied_co[not pc.color]):
+        if abs(chess.square_file(s) - f) <= 1 and ((chess.square_rank(s) > r) if pc.color else (chess.square_rank(s) < r)):
+            return False
+    return True
+
+
+def promote_defects_oracle(board: chess.Board, sq: int, lift: bool = False, priced: "bool | None" = None) -> tuple:
+    """What stands between the pawn on `sq` (any colour) and a queen (the Python body before plan 72.7 step 3c, verbatim, reading the 3b oracles)."""
+    from catspace.incubator.analyst.discovery import race as RC
+    pc = board.piece_at(sq)
+    own = pc.color
+    kv = None
+    priced = R.PRICED_STOPPER if priced is None else priced
+    if lift and RC.LIFT and board.turn == own and (board.occupied_co[not own] & (board.rooks | board.bishops | board.queens | board.knights)):
+        kv = RC.king_verdict(board, sq)
+    n = G.word(board, ("pushes", G.name(sq)), own)
+    path = R.pawn_path(board, sq, n)
+    promo = path[-1]
+    facts = dict(pushes=n, path=path, promo=promo, king_dist=None, king_sq=board.king(not own))
+    out = []
+    lifted = []
+    priced_notes = []
+    ahead_ours = G.word(board, ("count", ("and", ("ahead", G.name(sq)), "ours")), own)
+    ahead_theirs = G.word(board, ("count", ("and", ("ahead", G.name(sq)), "theirs")), own)
+    if ahead_ours + ahead_theirs:
+        for t in path:
+            b_ = board.piece_at(t)
+            if b_ is not None:
+                out.append(R.Defect("blocked", t, [t], f"{'our' if b_.color == own else 'their'} {b_.symbol().upper()} stands on {G.name(t)}"))
+    for t in path:
+        a = G.word(board, ("defenders", G.name(t)), own)
+        d = G.word(board, ("attackers", G.name(t)), own)
+        if a > d:
+            kind = "promo square attacked" if t == promo else "path attacked"
+            by = [x for x in G.attackers_of(board, t, not own)]
+            if kv is not None and not kv[0] and set(by) <= {board.king(not own)}:
+                lifted.append(f"{G.name(t)} is attacked only by their king, which is no stopper ({kv[1]})")
+                continue
+            out.append(R.Defect(kind, t, by, f"{G.name(t)} is attacked by them {a}x and guarded by us {d}x"))
+    ek = facts["king_sq"]
+    if kv is not None:
+        facts["lifted"] = lifted
+        if kv[0]:
+            out.append(R.Defect("stopper", promo, [ek], f"their K stops it: {kv[1]}"))
+        else:
+            lifted.append(f"their K is no stopper: {kv[1]}")
+        facts["king_dist"] = G.word(board, ("dist", "L", ("promo", G.name(sq))), own)
+        return out, facts
+    if ek is not None:
+        kd = G.word(board, ("dist", "L", ("promo", G.name(sq))), own)
+        facts["king_dist"] = kd
+        if kd <= n and ek not in path:
+            w = stopper_walk_oracle(board, ek, {promo}, n)
+            out.append(R.Defect("stopper", promo, [ek], f"their K on {G.name(ek)} reaches {G.name(promo)} in {kd}, the pawn needs {n}" + (f" (path {' '.join(G.name(x) for x in w[1])})" if w else "")))
+    for s in chess.SQUARES:
+        x = board.piece_at(s)
+        if x is None or x.color == own or x.piece_type in (chess.KING, chess.PAWN):
+            continue
+        k = piece_moves_to_oracle(board, s, set(path), n)
+        if k is not None:
+            if priced:
+                pr = []
+                nb = G.with_turn(board, not own)
+                for t in path:
+                    if t in nb.attacks(s) and len(board.attackers(not own, t)) > len(board.attackers(own, t)):
+                        pr.append(dict(material=0, tempi=0))
+                if not pr:
+                    mp = reach_map_oracle(board, s, min(n, R.REACH_K))
+                    for at, e in mp.items():
+                        if e["material"] != 0:
+                            continue
+                        cf = e["board"]
+                        for t in path:
+                            if t in cf.attacks(at) and len(cf.attackers(not own, t)) > len(cf.attackers(own, t)):
+                                pr.append(dict(material=0, tempi=e["tempi"]))
+                                break
+                if not pr:
+                    priced_notes.append(f"their {x.symbol().upper()} on {G.name(s)} reaches the path only at a price (taken where it lands): no stopper")
+                    continue
+                k = min(r["tempi"] for r in pr)
+            w = stopper_walk_oracle(board, s, set(path), n)
+            out.append(R.Defect("stopper", promo, [s], f"their {x.symbol().upper()} on {G.name(s)} reaches the path in {k} ({'free by the exchange' if priced else 'static board'}), the pawn needs {n}" + (f" (path {' '.join(G.name(x) for x in w[1])})" if w else "")))
+    if priced_notes:
+        facts["priced"] = priced_notes
+    return out, facts
+
+
+_PD_O: dict = {}
+
+
+def promote_defects_cached_oracle(board: chess.Board, sq: int, priced: "bool | None" = None) -> list:
+    key = (board.board_fen(), board.turn, sq, priced)
+    hit = _PD_O.get(key)
+    if hit is None:
+        hit = _PD_O[key] = promote_defects_oracle(board, sq, priced=priced)[0]
+    return hit
+
+
+def iter_safe_moves_oracle(board: chess.Board, sq: int):
+    pc = board.piece_at(sq)
+    p = G.with_turn(board, pc.color)
+    for m in p.legal_moves:
+        if m.from_square != sq or p.is_castling(m):
+            continue
+        a = p.copy(stack=False)
+        a.push(m)
+        if G.see_for(a, m.to_square, not pc.color) == 0:
+            yield m
+
+
+def duty_after_oracle(board: chess.Board, r: chess.Move, us, ctx: int | None = None, need: int | None = None, passer: bool = False, mate: bool = True) -> tuple:
+    """plan 63.2 duty_after (the Python body before plan 72.7 step 3c, verbatim; the mate branch is not ported and not compared: `mate` must be False)."""
+    assert not mate
+    me = G.colour_of(us)
+    gain = 1 if board.is_en_passant(r) else (G.worth(board.piece_at(r.to_square)) if board.is_capture(r) else 0)
+    a = board.copy(stack=False)
+    a.push(r)
+    if a.is_check():
+        return 0, "check"
+    now_ex = ctx if ctx is not None else threat_value_oracle(G.with_turn(board, me), me)
+    v = max(0, threat_value_oracle(a, me) - gain - now_ex)
+    if need is not None and v >= need:
+        return v, f"the exchange wins {v}"
+    if passer:
+        held = board.attacks(r.from_square) | chess.SquareSet([r.from_square])
+        for pw in chess.SquareSet(board.pawns & board.occupied_co[me]):
+            if a.piece_at(pw) is None or not is_passer_oracle(board, pw):
+                continue
+            n_ = R._pushes_of(board, pw, me)
+            if n_ < 1 or not (held & chess.SquareSet(R.pawn_path(board, pw, n_))):
+                continue
+            st = promote_defects_cached_oracle(a, pw, priced=False)
+            ek = a.king(not me)
+            if any(d.kind != "stopper" or d.by == [ek] for d in st):
+                continue
+            if st and promote_defects_cached_oracle(a, pw):
+                continue
+            return R.STAKE_PROMOTE, f"frees our passer on {G.name(pw)} (unstoppable by the tempo arithmetic after it)"
+    return v, f"the exchange wins {v}" if v else "nothing"
+
+
+_DUTY_O: dict = {}
+
+
+def can_run_oracle(board: chess.Board, sq: int, us, passer: bool = False) -> tuple:
+    pc = board.piece_at(sq)
+    if pc.piece_type == chess.KING:
+        return True, []
+    key = ("run", board.board_fen(), board.castling_rights, sq, G.colour_of(us), passer)
+    hit = _DUTY_O.get(key)
+    if hit is not None:
+        return hit
+    me = G.colour_of(us)
+    p = G.with_turn(board, pc.color)
+    now = G.with_turn(board, me)
+    ctx = threat_value_oracle(now, me)
+    cut = []
+    out = None
+    for m in iter_safe_moves_oracle(board, sq):
+        v, what = duty_after_oracle(p, m, us, ctx, need=G.worth(pc), passer=passer, mate=not passer)
+        if v >= G.worth(pc):
+            cut.append((p.san(m), v, what))
+        else:
+            out = (True, [])
+            break
+    if out is None:
+        out = (False, cut)
+    _DUTY_O[key] = out
+    return out
+
+
+def stuck_threats_oracle(board: chess.Board, us, k: int = R.REACH_K) -> list:
+    """plan 72.2 (b) THE UNIT THAT CANNOT RUN (the Python body before plan 72.7 step 3c, verbatim, reading the oracles)."""
+    me = G.colour_of(us)
+    them = not me
+    out = []
+    ours = [s for s in chess.SQUARES if (pc := board.piece_at(s)) is not None and pc.color == me and pc.piece_type not in (chess.KING, chess.PAWN) and not board.is_attacked_by(them, s)]
+    if not ours:
+        return out
+    theirs = G.with_turn(board, them)
+    their_moves = None
+    maps: dict | None = None
+    for s in ours:
+        pc = board.piece_at(s)
+        worth = G.worth(pc)
+        best = None
+        if can_run_oracle(board, s, them, passer=True)[0]:
+            if their_moves is None:
+                their_moves = [m for m in theirs.legal_moves if not theirs.is_castling(m)]
+            for m in their_moves:
+                a = theirs.copy(stack=False)
+                a.push(m)
+                if a.is_check() or s not in a.attacks(m.to_square) or a.piece_at(s) is None:
+                    continue
+                price = 0 if theirs.piece_at(m.from_square).piece_type == chess.KING else G.see_for(a, m.to_square, me)
+                if price >= worth:
+                    continue
+                after = G.with_turn(a, me)
+                if can_run_oracle(after, s, them, passer=True)[0]:
+                    continue
+                e = dict(material=price, tempi=1, path=[m.uci()], board=a)
+                if best is None or (price, 1) < (best[1]["material"], best[1]["tempi"]):
+                    best = (m.from_square, e)
+        else:
+            if maps is None:
+                maps = {a: reach_map_oracle(board, a, k) for a in chess.SQUARES if (ap := board.piece_at(a)) is not None and ap.color == them}
+            for a, mp in maps.items():
+                for at, e in mp.items():
+                    if e["material"] >= worth or s not in e["board"].attacks(at):
+                        continue
+                    if best is None or (e["material"], e["tempi"]) < (best[1]["material"], best[1]["tempi"]):
+                        best = (a, e)
+        if best is None:
+            continue
+        a, e = best
+        parry = None
+        for g in chess.SQUARES:
+            gp = board.piece_at(g)
+            if gp is None or gp.color != me or g == s:
+                continue
+            if s in board.attacks(g):
+                parry = f"our {gp.symbol().upper()} on {G.name(g)} guards it already"
+                break
+            if e["tempi"] > 1:
+                pr = reach_price_oracle(board, g, s, e["tempi"] - 1)
+                if pr is not None and pr["material"] == 0 and pr["tempi"] <= e["tempi"] - 1:
+                    parry = f"our {gp.symbol().upper()} on {G.name(g)} guards it in {pr['tempi']} ({board.san(chess.Move.from_uci(pr['first']))} first)"
+                    break
+        if parry is None and e["tempi"] > 1:
+            for m in board.legal_moves:
+                if board.is_capture(m) or board.gives_check(m):
+                    continue
+                c = board.copy(stack=False)
+                c.push(m)
+                c = G.with_turn(c, me)
+                if c.piece_at(s) is not None and can_run_oracle(c, s, them, passer=True)[0]:
+                    parry = f"after {board.san(m)} it can run"
+                    break
+        reads = {chess.Move.from_uci(u).to_square for u in e["path"]} | {s, a}
+        out.append(dict(sq=s, worth=worth, attacker=a, price=e["material"], tempi=e["tempi"], first=e["path"][0], path=list(e["path"]), parry=parry, reads=frozenset(reads)))
+    out.sort(key=lambda d: -(d["worth"] - d["price"]))
+    return out
+
+
+def _clear_oracles():
+    G.clear_caches()
+    for c in (_REACH_O, _PD_O, _DUTY_O):
+        c.clear()
+
+
+def _defs(ds: list) -> list:
+    return [(d.kind, d.sq, list(d.by), d.why) for d in ds]
+
+
+# ---------------------------------------------------------------------------------------------------------------- 3c: the tests
+
+def test_72_7_3c_py_legal_is_python_chess_s_legal_moves_with_their_order():
+    """`py_legal` (words.rs) against python-chess's `legal_moves` (castling dropped; the e.p. square cleared, as `with_turn` clears it) on the games, the puzzles, the corners
+    and the boards whose side NOT to move is in check (python-chess generates there; shakmaty does not hold them): the same moves in the same order."""
+    n = flipped = 0
+    for b in _roll_boards() + [chess.Board(f) for f in TI.CORNERS]:
+        for side in (chess.WHITE, chess.BLACK):
+            c = G.with_turn(b, side)
+            want = [m.uci() for m in c.legal_moves if not c.is_castling(m)]
+            assert AC.py_legal_bb(G.bbs(c), side) == want, (c.fen(), side)
+            n += 1
+            flipped += c.was_into_check()
+    assert flipped > 0
+    print(f"OBS 72.7 3c py_legal against python-chess: boards {n} (of them with the side not to move in check: {flipped}), every move list equal in order")
+
+
+def test_72_7_3c_promote_defects_equals_its_oracle():
+    """promote_defects (Rust) against the Python body for every pawn of both sides, priced and static, and with the lift (the king verdict read in Python): the same
+    defects in the same order with the same text, the same facts (keys in order)."""
+    n = stoppers = 0
+    for i, b in enumerate(_roll_boards()):
+        _clear_oracles()
+        for sq in chess.SquareSet(b.pawns):
+            own = b.piece_at(sq).color
+            if not (0 < chess.square_rank(sq) < 7) or G.pos_for(b, own) is None:
+                continue
+            for priced in (True, False):
+                for lift in ((False, True) if i % 2 == 0 else (False,)):
+                    want = promote_defects_oracle(b, sq, lift=lift, priced=priced)
+                    got = R.promote_defects(b, sq, lift=lift, priced=priced)
+                    assert _defs(got[0]) == _defs(want[0]), (b.fen(), sq, priced, lift)
+                    assert list(got[1].items()) == list(want[1].items()), (b.fen(), sq, priced, lift)
+                    n += 1
+                    stoppers += sum(1 for d in want[0] if d.kind == "stopper")
+    assert stoppers > 0
+    print(f"OBS 72.7 3c promote_defects against its oracle: asks {n}, stopper defects {stoppers}, every one equal (defects, order, text, facts)")
+
+
+def test_72_7_3c_can_run_and_stuck_threats_equal_their_oracles():
+    """can_run (the passer duty, as stuck_threats asks it) and stuck_threats (Rust) against the Python bodies on the puzzles' and the games' positions, us = the side to
+    move: the same answers, the same rows in the same order (the parry's text, the read set)."""
+    n = rows = runs = raised = 0
+    for b in _puzzles(walk=1) + _games(n=8, plies=40):
+        if b.is_check() and not any(True for _ in b.legal_moves):
+            continue
+        _clear_oracles()
+        me = b.turn
+        for s in chess.SquareSet(b.occupied_co[me] & ~b.kings & ~b.pawns):
+            assert AC.can_run_bb(G.bbs(b), s, not me) == can_run_oracle(b, s, not me, passer=True)[0], (b.fen(), s)
+            runs += 1
+        try:                                          # FINDING (3c): with our king in check, python-chess lets them TAKE it on the board given to them; the duty then reads promote_defects
+            want = stuck_threats_oracle(b, me)        # on a board with no king of ours, where graph.word reads None -- the Python word raises (TypeError); the port raises there too (ValueError)
+        except TypeError:
+            want = "raises"
+        try:
+            got = R.stuck_threats(b, me)
+        except ValueError:
+            got = "raises"
+        assert got == want, b.fen()
+        n += 1
+        raised += want == "raises"
+        rows += len(want) if want != "raises" else 0
+    assert rows > 0
+    print(f"OBS 72.7 3c stuck_threats against its oracle: positions {n}, rows {rows}, can_run asks {runs}, every one equal; both raise on {raised}")
+
+
+def test_72_7_3c_the_passer_caches_are_cleared_by_the_hook():
+    b = chess.Board(POS2)
+    G.clear_caches()
+    R.stuck_threats(b, b.turn)
+    G.clear_caches()
+    assert not R._PD and not R._DUTY
+    AC.dep_clear()
+    R.stuck_threats(b, b.turn)
+    R.promote_defects(b, chess.G6)
+    assert AC.dep_peek() == (0, False, [0, 0, 0], 0)
+    with pytest.raises(ValueError):
+        AC.promote_defects_bb(G.bbs(b), 64)
+    with pytest.raises(ValueError):
+        AC.can_run_bb(G.bbs(b), 64, True)

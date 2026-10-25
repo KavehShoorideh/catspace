@@ -1796,6 +1796,11 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(words::piece_moves_to_bb, m)?)?;
     m.add_function(wrap_pyfunction!(words::deny_moves_bb, m)?)?;
     m.add_function(wrap_pyfunction!(words::denial_mask_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(words::py_legal_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(words::promote_defects_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(words::passer_cache_clear, m)?)?;
+    m.add_function(wrap_pyfunction!(words::stuck_threats_pos, m)?)?;
+    m.add_function(wrap_pyfunction!(words::can_run_bb, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::vocab_values, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::vocab_certify, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::verify_mask, m)?)?;
