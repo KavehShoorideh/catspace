@@ -2435,11 +2435,13 @@ class Agenda:
         t_root = SM.val_at(None, SM.delayed_tail([(x, y)], us, fam, "1000"), us, pos=self.pos)      # plan 72.7 step 1: the node's handle, no FEN
         r0_rb = RB.RBoard.on(b, self.pos)                                 # plan 72.7 step 2a: every board below is an RBoard -- read on its handle (python-chess's order and names from Rust), no board copy
         c1_rb = r0_rb.push(mv)
-        reps = list(c1_rb.legal_moves)
+        i1, i2 = SM.term_id(inner1, us), SM.term_id(inner2, us)
+        if i1 is None or i2 is None:
+            raise ValueError(f"the evaluator does not read {BV.sexpr(inner1 if i1 is None else inner2)}")
+        rus, v1, kids = self.pos.leaf_replies(x + y, i1)                  # plan 72.7 step 2b: THE LEAF RECORD from Rust -- their replies (python-chess's order), `inner1` read after each, their handles
+        reps = [chess.Move.from_uci(u) for u in rus]
         if not reps:
             return None
-        kids = [c1_rb.push(rep) for rep in reps]
-        v1 = SM.evaluate([inner1], [dict(pos=k.pos, mover=us) for k in kids])[BV.sexpr(inner1)]
         lo = min(v1)
         if lo != t_root:                                                   # the decomposition must read what the word reads, else the leaf is not trusted
             self.lines.append(f"  leaf read of {r.san}: the argmin decomposition reads {lo}, the word reads {t_root}: not trusted, claim kept")
@@ -2451,29 +2453,22 @@ class Agenda:
         refuted, shown = None, None
         for i in order:
             rep, v = reps[i], v1[i]
-            d_rb = kids[i]
             san_r = c1_rb.san(rep)
             # the word reads from the side to move at the position it is given (balance = the mover's material less the other's), so a position after OUR move
             # is read from the position before it, with `after x y`, exactly as the tail is built (castling and promotions have no `after`: left out, and a top
             # that then misses the word's is reported, never trusted)
-            leaves = [m for m in d_rb.legal_moves if not (m.promotion or d_rb.is_castling(m))]       # (the leaf's board is pushed only for the tied moves read below)
-            terms = [("after", GAME.loc_name(m.from_square), GAME.loc_name(m.to_square), inner2) for m in leaves]
-            vals = SM.evaluate(terms, [dict(pos=kids[i].pos, mover=us)]) if terms else {}
-            v2 = [vals[BV.sexpr(t)][0] for t in terms]
-            top = max(v2) if v2 else None
+            # plan 72.7 step 2b: the record of this reply from Rust (`Pos.leaf_tied`): `(after f t inner2)` over our moves but promotions and castling, its top, the moves
+            # reading it -- the natural ones first (captures, then checks, then by uci; the order never changes the verdict) -- each with `(after f t balance)` and its handle
+            top, tied, _reads = kids[i].leaf_tied(i2, us == "w")              # (_reads: no vocabulary word records the dependency trackers today, so the leaf adds nothing to a claim's reads)
             if top != v:
                 self.lines.append(f"  leaf read of {r.san}: after {san_r} the argmax decomposition reads {top}, the word reads {v}: not trusted, claim kept")
                 self.leaf_stats['untrusted'] += 1
                 return None
-            tied = [m for m, w in zip(leaves, v2) if w == top]
-            tied.sort(key=lambda m: (not d_rb.is_capture(m), not d_rb.gives_check(m), m.uci()))          # the natural moves first; the order never changes the verdict
-            bterms = [("after", GAME.loc_name(m.from_square), GAME.loc_name(m.to_square), "balance") for m in tied]
-            bvals = SM.evaluate(bterms, [dict(pos=kids[i].pos, mover=us)]) if bterms else {}
-            gains = [bvals[BV.sexpr(t)][0] - base for t in bterms]         # our gain AT the leaf, before their move: their claim is measured from here
+            gains = [bal - base for _u, _s, bal, _p in tied]                   # our gain AT the leaf, before their move: their claim is measured from here
             first_ref, held = None, None
-            for m, gain_here in zip(tied, gains):
-                e_rb = d_rb.push(m)
-                line = f"{san_x} {san_r} {d_rb.san(m)}"
+            for (_u, san_m, _bal, P3), gain_here in zip(tied, gains):
+                e_rb = RB.RBoard(P3)
+                line = f"{san_x} {san_r} {san_m}"
                 theirs = None
                 if e_rb.legal_moves:
                     lk = ("leaf", _pos_key(e_rb.fen()))                       # 64.0: memoised by position in the run's `theirs` table (the leaf read now runs in the inner agendas too)

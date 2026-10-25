@@ -267,6 +267,61 @@ impl Pos {
         let named = if us == Color::White { s } else { s.flip_vertical() };          // the square named from the mover's side, as `render` names it
         Ok(crate::vocab::num(&crate::vocab::Term::See(Box::new(crate::vocab::Term::Named(named))), &self.pos, !us))
     }
+
+    // ------------------------------------------------------------------------------------------------------------ plan 72.7 step 2b: the static leaf's decomposition
+    // agenda.py `_leaf_read` (52.10, THE LEAF READ BY THEIR AGENDA): a balance claim of ours (d1: our move x->y; the least over their replies of the most over our
+    // moves of the least over their replies of the balance) is followed to its leaves, the argmin / argmax recomputed over the legal moves by reading the SAME tail
+    // terms of the vocabulary on each child (`least` over theirs, `most` over ours, as the word is defined); their agenda at the leaf stays Python. These two
+    // calls are the decomposition's reads (the words read as `Pos.values` reads them, `num`; python-chess's move order); Python keeps the verdict and the text.
+
+    /// leaf_replies(uci, inner1) -> (their replies after our legal move `uci`, python-chess's order, as ucis; the compiled term `inner1` -- the tail after their
+    /// reply, `(most (least ..))` rendered from OUR side -- read on the board after each reply, as `Pos.values` reads it; the handles of those boards).
+    /// ValueError on an illegal move or an unknown term id.
+    fn leaf_replies(&self, uci: &str, inner1: u32) -> PyResult<(Vec<String>, Vec<u32>, Vec<Pos>)> {
+        let c = crate::vocab::compiled(inner1)?;
+        let c1 = self.push_move(uci)?;
+        let (mut us, mut vs, mut kids) = (vec![], vec![], vec![]);
+        for m in py_order(&c1.pos) {
+            let mut k = c1.pos.clone();
+            k.play_unchecked(&m);
+            vs.push(crate::vocab::read_word(&k, inner1, &c, false));
+            us.push(m.to_uci(CastlingMode::Standard).to_string());
+            kids.push(Pos { pos: k, last_to: Some(m.to()) });
+        }
+        Ok((us, vs, kids))
+    }
+
+    /// leaf_tied(inner2, white) -> (top, tied, reads) on the board after their reply (our move; `white` = the mover the tail is rendered from, ours): over our legal
+    /// moves but promotions and castling (`after` names neither), the term `(after f t inner2)` -- `inner2` the compiled `(least ..)` -- read here as `Pos.values`
+    /// reads it; `top` its largest value (None: no such move); `tied` the moves reading `top`, the natural ones first (captures, then checks, then by uci -- the
+    /// order never changes the verdict), each (uci, SAN, `(after f t balance)` read here, the handle after it); `reads` what the reads added to the dependency
+    /// trackers (RUST_BOUNDARY risk 2; no vocabulary word records them today: the proofs do), replayed onto them.
+    fn leaf_tied(&self, inner2: u32, white: bool) -> PyResult<(Option<u32>, Vec<(String, String, u32, Pos)>, u64)> {
+        use crate::vocab::{num, Term};
+        let c = crate::vocab::compiled(inner2)?;
+        let lone = !self.pos.turn();
+        let named = |s: Square| Box::new(Term::Named(if white { s } else { s.flip_vertical() }));          // a square named from the mover's side (selfmine.view)
+        let after = |m: &Move, t: &Term| Term::After(named(m.from().unwrap_or(m.to())), named(m.to()), Box::new(t.clone()));       // (a board move always has a from-square)
+        let ((top, tied), dep) = crate::dep_recording(|| {
+            let leaves: Vec<Move> = py_order(&self.pos).into_iter().filter(|m| m.promotion().is_none() && !m.is_castle()).collect();
+            let v2: Vec<u32> = leaves.iter().map(|m| num(&after(m, &c.term), &self.pos, lone)).collect();
+            let top = v2.iter().copied().max();
+            let mut tied: Vec<(bool, bool, String, &Move)> = leaves.iter().zip(&v2).filter(|(_, v)| Some(**v) == top).map(|(m, _)| {
+                let mut q = self.pos.clone();
+                q.play_unchecked(m);
+                (!m.is_capture(), !q.is_check(), m.to_uci(CastlingMode::Standard).to_string(), m)
+            }).collect();
+            tied.sort_by(|a, b| (a.0, a.1, &a.2).cmp(&(b.0, b.1, &b.2)));
+            let out = tied.into_iter().map(|(_, _, u, m)| {
+                let mut q = self.pos.clone();
+                q.play_unchecked(m);
+                let san = shakmaty::san::SanPlus::from_move(self.pos.clone(), m).to_string();
+                (u, san, num(&after(m, &Term::Balance), &self.pos, lone), Pos { pos: q, last_to: Some(m.to()) })
+            }).collect::<Vec<_>>();
+            (top, out)
+        });
+        Ok((top, tied, dep.dep))
+    }
 }
 
 /// The squares whose piece or attacker counts (either colour) differ between two positions.

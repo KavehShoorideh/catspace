@@ -198,3 +198,96 @@ def test_72_7_2a_the_principal_captures_on_the_handle_are_the_python_chess_lines
         n += bool(want)
     print(f"OBS 72.7 2a principal captures: {n} positions with a line, RBoard lines equal to python-chess's")
     assert n > 10
+
+
+# ---------------------------------------------------------------------------------------------------------------- 2b: the static leaf's record from Rust
+
+from catspace.incubator.analyst.discovery import base_vocabulary as BV          # noqa: E402
+from catspace.incubator.analyst.discovery import puzzle_apply as PA             # noqa: E402
+from catspace.incubator.analyst.discovery import selfmine as SM                 # noqa: E402
+
+
+def _leaf_python_chess(board: chess.Board, uci: str, us: str, fam: str) -> tuple:
+    """`Agenda._leaf_read`'s decomposition as it read before 72.7 step 2b (agenda.py at 015c1a33: python-chess boards pushed with their handles, the words by
+    `SM.evaluate`): -> (the replies' ucis, `inner1` after each, {reply index: (top, [(uci, SAN, (after f t balance)) of the tied moves, natural first])})."""
+    body = SM.tail_body(us, fam, "1000")
+    inner1, inner2 = body[1], body[1][1]
+    route = G.Node(board, G.handle(board)).child(uci)
+    reps = list(route.board.legal_moves)
+    kids = [route.child(rep.uci()) for rep in reps]
+    v1 = SM.evaluate([inner1], [dict(pos=k.pos, mover=us) for k in kids])[BV.sexpr(inner1)] if kids else []
+    per = {}
+    for i, k in enumerate(kids):
+        d = k.board
+        leaves = [m for m in d.legal_moves if not (m.promotion or d.is_castling(m))]
+        terms = [("after", chess.square_name(m.from_square), chess.square_name(m.to_square), inner2) for m in leaves]
+        vals = SM.evaluate(terms, [dict(pos=k.pos, mover=us)]) if terms else {}
+        v2 = [vals[BV.sexpr(t)][0] for t in terms]
+        top = max(v2) if v2 else None
+        tied = sorted((m for m, w in zip(leaves, v2) if w == top), key=lambda m: (not d.is_capture(m), not d.gives_check(m), m.uci()))
+        bterms = [("after", chess.square_name(m.from_square), chess.square_name(m.to_square), "balance") for m in tied]
+        bvals = SM.evaluate(bterms, [dict(pos=k.pos, mover=us)]) if bterms else {}
+        per[i] = (top, [(m.uci(), d.san(m), bvals[BV.sexpr(t)][0]) for m, t in zip(tied, bterms)])
+    return [r.uci() for r in reps], list(v1), per
+
+
+def test_72_7_2b_the_leaf_record_is_the_python_leaf_decomposition():
+    """`Pos.leaf_replies` / `Pos.leaf_tied` against the python-chess decomposition they replace, every family the leaf reads (puzzle_apply.ORDER), both colours,
+    on the guard's positions and random games: the replies in python-chess's order, `inner1` after each, and after EVERY reply the top of `(after f t inner2)`, the
+    tied moves in the natural order with their SAN, `(after f t balance)` and the board after them."""
+    BV.install_terms()
+    rng = random.Random(2722)
+    n = tied_n = 0
+    for b in _games(10, 24, seed=27222)[::3]:
+        us = "w" if b.turn else "b"
+        P0 = G.handle(b)
+        for mv in rng.sample(list(b.legal_moves), min(2, b.legal_moves.count())):
+            for fam in PA.ORDER:
+                body = SM.tail_body(us, fam, "1000")
+                i1, i2 = SM.term_id(body[1], us), SM.term_id(body[1][1], us)
+                want_r, want_v1, want = _leaf_python_chess(b, mv.uci(), us, fam)
+                rus, v1, kids = P0.leaf_replies(mv.uci(), i1)
+                assert (rus, v1) == (want_r, want_v1)
+                for i, k in enumerate(kids):
+                    top, tied, reads = k.leaf_tied(i2, us == "w")
+                    assert (top, [(u, s, bal) for u, s, bal, _p in tied]) == want[i]
+                    assert reads == 0
+                    for u, _s, _bal, P3 in tied:
+                        c = chess.Board(k.fen())
+                        c.push(chess.Move.from_uci(u))
+                        assert P3.fen() == c.fen()
+                    tied_n += len(tied)
+                n += 1
+    print(f"OBS 72.7 2b leaf record against python-chess: route reads {n}, tied leaves {tied_n}, all equal")
+    assert n > 60 and tied_n > 200
+
+
+def test_72_7_2b_the_leaf_record_refuses_illegal_input_and_records_no_read():
+    """Risk 7: an illegal route move or an unknown term id is a ValueError. Risk 2: the leaf's reads add nothing to the dependency trackers (no vocabulary word records
+    them) -- what was there stays, nothing is added."""
+    BV.install_terms()
+    P0 = AC.Pos(POS2)
+    i1 = SM.term_id(SM.tail_body("w", "delayed_balance", "1000")[1], "w")
+    with pytest.raises(ValueError):
+        P0.leaf_replies("e2e5", i1)
+    with pytest.raises(ValueError):
+        P0.leaf_replies("h3g5", 10 ** 9)
+    with pytest.raises(ValueError):
+        AC.Pos(chess.STARTING_FEN).leaf_tied(10 ** 9, True)
+    AC.dep_clear()
+    before = AC.dep_peek()
+    _rus, _v1, kids = P0.leaf_replies("h3g5", i1)
+    i2 = SM.term_id(SM.tail_body("w", "delayed_balance", "1000")[1][1], "w")
+    assert all(k.leaf_tied(i2, True)[2] == 0 for k in kids)
+    assert AC.dep_peek() == before
+
+
+def test_72_7_2b_the_guard_records_the_leaf_verdicts():
+    """The guard's third file: every static leaf read of a run as it is computed (qCXKp reads four), the method restored after the run."""
+    p = next(x for x in PA.load_set("rand3_10") if x["id"] == "qCXKp")
+    us = "w" if chess.Board(p["fen"]).turn else "b"
+    orig = Agenda._leaf_read
+    leaf: list = []
+    TI._run(p["fen"], us, leaf)
+    assert Agenda._leaf_read is orig
+    assert len(leaf) >= 1 and all(" -> " in x and "| obs [" in x for x in leaf)

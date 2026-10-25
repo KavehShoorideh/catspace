@@ -12,6 +12,8 @@ plan 72.7 step 0 (docs/RUST_BOUNDARY.md section 4, risk 2): beside each trace `<
 sorted form -- the root agenda's questions (what each read, and the reads of the claim that verified it) and every fact of the run's store (the claims, kills, gaps and
 root lists of every inner agenda and of their agendas, with their reads, their occupancy reads and the read set kept in the payload). The trace prints none of them,
 so a claim that silently reads less (a word cache that does not replay its read set) moves no trace line; `compare` diffs these files too and counts them apart.
+plan 72.7 step 2b: and `<id>.leaf.txt`, THE LEAF'S VERDICTS -- every static leaf read of the run as it is computed (route, schema, value, kept / refuted by what,
+the lines it added): no trace line of the ten cases prints a leaf, so a wrong leaf moved nothing before (two wrong leaf builds proved it); `compare` counts them apart.
 `crosscheck` (risks 4 and 5): over the case set's positions, a sample of the puzzle sets, a seeded random walk from each and a list of hand-made corners (castling,
 promotions, en passant, disambiguation, mates, evasions), `Pos.legal_ucis()` must equal `[m.uci() for m in board.legal_moves]` and `Pos.san(uci)` must equal
 `board.san(move)` for every legal move; every corner that differs is printed as a FINDING.
@@ -85,10 +87,37 @@ def _reads(ag) -> str:
     return "\n".join(out) + "\n"
 
 
-def _run(fen: str, us: str) -> tuple:
-    """-> (the trace with the DECISION line, the read sets)."""
-    ag = Agenda(State(fen=fen, us=us, pieces=[]))
-    ag.ask()
+LEAF = ".leaf.txt"
+
+
+def _leaf_hook(out: list):
+    """plan 72.7 step 2b: THE LEAF'S VERDICTS. Every static leaf read (`Agenda._leaf_read`, every agenda of the run, in call order) recorded as it is COMPUTED (a memo hit
+    is not): the agenda's position and side, the route, the bound schema and value, the verdict (None or the refuting claim, its line, w, our gain there) and the
+    lines and OBS lines the read added. The trace prints a leaf only when it downgrades or is not trusted (none of the ten cases does), so without this a wrong
+    leaf moves nothing. -> the original method (to restore)."""
+    orig = Agenda._leaf_read
+
+    def wrapped(self, bind, r):
+        fresh = r.move not in self._leaf
+        n_lines, n_obs = len(self.lines), len(self.leaf_obs)
+        got = orig(self, bind, r)
+        if fresh:
+            v = "kept" if got is None else f"refuted by {got['claim'].what} {got['claim'].value} ({got['claim'].lemma}) after {got['line']}, w {got['w']}, gain {got['gain']}"
+            out.append(f"{self.pk} {self.us} {r.san} {bind.schema} {bind.value} -> {v} | lines {self.lines[n_lines:]} | obs {self.leaf_obs[n_obs:]}")
+        return got
+    Agenda._leaf_read = wrapped
+    return orig
+
+
+def _run(fen: str, us: str, leaf: "list | None" = None) -> tuple:
+    """-> (the trace with the DECISION line, the read sets); `leaf` (a list) receives the leaf's verdicts (`_leaf_hook`)."""
+    orig = _leaf_hook(leaf) if leaf is not None else None
+    try:
+        ag = Agenda(State(fen=fen, us=us, pieces=[]))
+        ag.ask()
+    finally:
+        if orig is not None:
+            Agenda._leaf_read = orig
     d = ag.decision()
     trace = ag.trace() + f"\nDECISION {d.what if d else None} {d.value if d else None} {d.lemma if d else None} proved={d.proved if d else None}\n"
     return trace, _reads(ag)
@@ -113,11 +142,13 @@ def snapshot(out: str) -> None:
     os.makedirs(out, exist_ok=True)
     n = 0
     for pid, fen, us in _cases():
-        trace, reads = _run(fen, us)
+        leaf: list = []
+        trace, reads = _run(fen, us, leaf)
         open(os.path.join(out, pid + ".txt"), "w").write(_SECS.sub("<t>", trace))
         open(os.path.join(out, pid + READS), "w").write(reads)
+        open(os.path.join(out, pid + LEAF), "w").write("\n".join(leaf) + "\n")
         n += 1
-    print(f"OBS trace identity: {n} traces and {n} read sets written to {out}")
+    print(f"OBS trace identity: {n} traces, {n} read sets and {n} leaf verdict lists written to {out}")
     from catspace.incubator.analyst.discovery import graph as G
     from catspace.incubator.analyst.discovery import rboard as RB
     if G.BRIDGE_CHECK:                                   # plan 72.7 step 1: CATSPACE_BRIDGE_CHECK=1 -- every node's handle was compared with its board (an assertion stops the run on a split)
@@ -126,10 +157,10 @@ def snapshot(out: str) -> None:
 
 
 def compare(before: str, after: str) -> int:
-    bad = {"trace": 0, "reads": 0}
-    seen = {"trace": 0, "reads": 0}
+    bad = {"trace": 0, "reads": 0, "leaf": 0}
+    seen = {"trace": 0, "reads": 0, "leaf": 0}
     for f in sorted(os.listdir(before)):
-        kind = "reads" if f.endswith(READS) else "trace"
+        kind = "reads" if f.endswith(READS) else "leaf" if f.endswith(LEAF) else "trace"
         seen[kind] += 1
         a = os.path.join(after, f)
         if not os.path.exists(a):
@@ -144,7 +175,9 @@ def compare(before: str, after: str) -> int:
     print(f"OBS trace identity: {bad['trace']} of {seen['trace']} traces differ")
     if seen["reads"]:
         print(f"OBS trace identity: {bad['reads']} of {seen['reads']} read sets differ")
-    return 1 if bad["trace"] or bad["reads"] else 0
+    if seen["leaf"]:
+        print(f"OBS trace identity: {bad['leaf']} of {seen['leaf']} leaf verdict lists differ")
+    return 1 if bad["trace"] or bad["reads"] or bad["leaf"] else 0
 
 
 # ---------------------------------------------------------------------------------------------------------------- plan 72.7 step 0: the cross-checks (risks 4, 5)

@@ -138,6 +138,9 @@ STATUS 2a: BUILT 2026-10-24 on branch worktree-agent-a501cc77b08a4de59 (journal 
 python-chess's `is_legal` castling aliases; the bridge's python-chess shadow under CATSPACE_BRIDGE_CHECK=1), read by the loop and the leaf where they read boards of their
 own; every board a word reads is built as before. Guard 0 of 10 traces and 0 of 10 read sets differ; the negative control (one legal move dropped) moved 1 of 10.
 Measured first: the loop's and the leaf's own code is ~3.5% of the profiled count-budget run; the time is in the inner / their agendas and the words (step 3).
+STATUS 2b: BUILT 2026-10-24 on branch worktree-agent-a501cc77b08a4de59 (journal 2026-10-24 20:47): `Pos.leaf_replies` / `Pos.leaf_tied`, the static leaf's decomposition as a record (ucis, values, SAN, handles,
+the trackers' additions); Python keeps the verdict and the text; their agendas at the leaf and `stuck_threats` (a word) stay Python. The guard now writes the leaf's
+verdicts (`<id>.leaf.txt`): two wrong leaf builds had moved no trace and no read set. Guard 0 of 10 traces, read sets and leaf lists differ.
 
 ### Step 3. The words themselves
 Make the Python twins of `regress.py` (`mate_defects`, `material_defects`, `_still`, `forcing_why` and the rest of defects/fixes/forcing) call-throughs to

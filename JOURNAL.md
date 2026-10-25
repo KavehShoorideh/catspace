@@ -32756,3 +32756,35 @@ handle: a handle read from a FEN or a board's parts holds only a LEGAL e.p. squa
 (`_from_chess960`): RBoard's `in` does too (tested square by square). (4) The words take python-chess boards whose HISTORY they may read (opening_rule reads
 `move_stack`, reasoned keys a cache on `not board.move_stack`, table.py reads the raw `castling_rights`): a board for a word cannot be rebuilt from a FEN
 blindly -- 2a hands every word the board it had; step 3 must port the words, not their inputs.
+
+## 2026-10-24 20:47 PDT -- plan 72.7 step 2b built: the static leaf's record from Rust; the guard learns the leaf's verdicts (branch worktree-agent-a501cc77b08a4de59)
+docs/RUST_BOUNDARY.md section 4 step 2. No decision logic touched; the trace text is formatted in Python as before (risk 3).
+- Rust. pos.rs `Pos.leaf_replies(uci, inner1)` (their replies after our move in python-chess's order, the tail `inner1` read after each as `Pos.values` reads it,
+  their handles) and `Pos.leaf_tied(inner2, white)` (over our moves but promotions and castling, `(after f t inner2)` read as the words read it -- the squares named
+  from the mover's side, selfmine.view --, its top, the moves reading it in the natural order -- captures, checks, uci --, each with its SAN, `(after f t balance)`
+  and its handle; and the dependency trackers' additions while it read, 0 today: no vocabulary word records them). Both return PyResult (an illegal move, an
+  unknown term id: ValueError).
+- Python. `_leaf_read` reads the record and keeps the verdict, the untrusted checks and every line as they were; their agendas at the leaf and `_leaf_more`
+  stay Python (spec). The reach-price callers at the leaf read the handle since 2a; `stuck_threats` itself is a word (can_run, duty_after, promote_defects ->
+  race.py): step 3.
+- THE GUARD WAS BLIND TO THE LEAF. Two wrong leaf builds (one reply dropped from the leaf's reply list; the black mover's squares not mirrored) moved 0 of 10
+  traces and 0 of 10 read sets: no trace line of the ten cases prints a leaf (a leaf prints only when it downgrades or is not trusted, and a "not trusted" leaf
+  keeps the claim -- a wrong decomposition can only hide a refutation). `scripts/trace_identity.py` now writes `<id>.leaf.txt`, every static leaf read of the
+  run as it is computed (298 over the ten cases at the parent; 6 of them refutations, in inner agendas) and `compare` counts them apart.
+OBS guard, parent 015c1a33 re-snapshotted with the leaf verdicts (its agenda.py swapped in) against the old snapshot: OBS trace identity: 0 of 10 traces differ;
+  OBS trace identity: 0 of 10 read sets differ (the hook changes nothing).
+OBS guard (parent vs 2b): OBS trace identity: 0 of 10 traces differ; OBS trace identity: 0 of 10 read sets differ; OBS trace identity: 0 of 10 leaf verdict lists
+  differ -- bridge off and on (OBS bridge: 116246 handle / board pairs compared, none split; 64919 RBoard reads compared with python-chess, none split).
+NEGATIVE CONTROLS (wrong builds, not committed), against the leaf-aware guard: (a) one reply dropped from `leaf_replies`: OBS trace identity: 0 of 10 traces differ;
+  0 of 10 read sets differ; 2 of 10 leaf verdict lists differ (07Z0P, 4pC83). (b) no mirror for a black mover in `leaf_tied`: 0 of 10 traces, 0 of 10 read sets,
+  2 of 10 leaf verdict lists differ (4pC83, qCXKp: "the argmax decomposition reads 0, the word reads 67: not trusted, claim kept"). Reverted, rebuilt.
+OBS count budget, like for like on the 2b build (one session): parent code 27.7 s; 2a code 27.8 s; 2b 27.1 s, 27.0 s, 27.0 s. (The same parent code read 26.8-26.9 s
+  an hour earlier on main's build: the machine or the build drifted by about a second -- every comparison here is within one build and one sitting, directional.)
+OBS W0VFO 10 s after 2b: wall 10.7 s, decision Qb7 (e4b7), questions asked 38, inner agendas 485, inner questions 7872 (one run; the parent's was 507 / 8335 -- no gain shown).
+OBS python-chess sites: unchanged from 2a (agenda.py 139; the leaf's were removed in 2a).
+OBS tests/test_plan72_7_step2.py (2b): the leaf record against the python-chess decomposition (every family of puzzle_apply.ORDER, both colours, guard positions and
+  random games, every reply), illegal input, the trackers untouched, the guard's leaf hook.
+OBS gate engine --only (one file per call): test_plan72_7_step2 passed 10, failed 0; test_plan72_7 16, 0; test_binder_rust 31, 0; test_agenda 26, 0; test_fact_store 21, 0;
+  test_regress 87, 0, xfailed 1 (309.5 s); test_tiers 14, 0; test_offbuilt64 15, 0, xfailed 1; test_plan72_10 4, 0; test_plan72_9 7, 0; test_plan72 6, 0; test_plan70 3, 0, xfailed 1.
+FINDING: the leaf's after-terms are read by `num` directly, not through the word cache (they have no compiled id): equal values, no dependency to replay (no word
+records one), the cache no longer holds them.
