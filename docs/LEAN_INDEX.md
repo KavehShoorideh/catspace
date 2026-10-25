@@ -126,7 +126,7 @@ Do not edit by hand.
 - **def `Ideas.Vocabulary.landsSafe`** (line 461): A move lands safely: after it, the exchange on its destination wins nothing for the other side.
   - used by: catspace/incubator/analyst/discovery/regress.py
 - **def `Ideas.Vocabulary.attackableIn`** (line 465): Side `c` can attack square `s` within `k` of its own moves (the other side passes), every landing square safe by the exchange; already attacked counts (0 moves).
-  - used by: catspace/incubator/analyst/discovery/regress.py
+  - used by: catspace/incubator/analyst/discovery/regress.py, rust/analyst_core/src/words.rs
 - **def `Ideas.Vocabulary.attackableOf`** (line 475): **attackable** (the REACH of ANALYST_PLAN 40.2; the name `reach` was taken by the king's walk): 1 when the side that does not own the piece on `s` can attack `s` within `k` moves, every landing square safe by the exchang
   - used by: catspace/incubator/analyst/discovery/base_vocabulary.py, catspace/incubator/analyst/discovery/selfmine.py
 - **def `Ideas.Vocabulary.declinedOf`** (line 483): **declined** (Kaveh 2026-10-15, "if they don't"): what the side to move can win by the exchange on a square OTHER than `s` -- its best capture if it declines to take on `s`
@@ -424,7 +424,7 @@ Do not edit by hand.
 - **def `Ideas.Game.Game.Reach`** (line 72): REACH in a game: from `p` (us to move) we force the `goal` (read after our move) within `n` of our moves against every reply (`Ideas.Forced.Reach` with the game's step relation on both sides; a stalemate -- no reply and 
 - **theorem `Ideas.Game.Game.Reach.mono`** (line 75)
 - **theorem `Ideas.Game.Game.race_sound`** (line 81): THE RACE IN A GAME (`Ideas.Race.race_sound` with the game's hypotheses): `μ` our remaining tempi, `ν` theirs; our move lowers `μ` by one while there is one (`hprog`); `μ = 0` is the goal (`hgoal`); no reply raises `μ` or
-  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/race.py, catspace/incubator/analyst/discovery/regress.py
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/race.py, catspace/incubator/analyst/discovery/regress.py, rust/analyst_core/src/words.rs
 - **def `Ideas.Game.chess`** (line 109): Chess: the kernel's legal moves and `applyMove`; the pass flips the side to move (and drops the en-passant right, which the other side cannot use); the measure is the mover's material less the other side's; in check by t
 - **theorem `Ideas.Game.chess_pass_turn`** (line 116)
 - **theorem `Ideas.Game.chess_pass_board`** (line 119): The pass leaves the board as it is: what every threat word reads.
@@ -1305,22 +1305,22 @@ Do not edit by hand.
 - **theorem `Ideas.Race.raceBinds_false`** (line 50): A claim read when the word does NOT bind is not a claim: `b + 1 ≤ a` (theirs strictly faster) never binds.
 - **theorem `Ideas.Race.race_arith`** (line 55): Counting fact behind the word: after `j` rounds (our move, then theirs) with `j + 1 ≤ ours ≤ theirs`, they have still made fewer than `theirs` moves when we make our `(j+1)`-th: the first to finish is us.
 - **theorem `Ideas.Race.race_sound`** (line 64): THE RACE IS SOUND (the arithmetic): an abstract game whose positions carry our remaining tempi `μ` and theirs `ν`
-  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/race.py, catspace/incubator/analyst/discovery/regress.py
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/race.py, catspace/incubator/analyst/discovery/regress.py, rust/analyst_core/src/words.rs
 - **theorem `Ideas.Race.race_first`** (line 94): THEY ARE NOT FIRST: on the line of `race_sound` no reply of theirs has completed their race -- `ν` stays positive after every reply, so a goal of theirs (`ν = 0`) is never on the board when we make our next move.
 - **theorem `Ideas.Race.legal_king_safe`** (line 105): A LEGAL move leaves the mover's king on a square the other side does not attack.
 - **theorem `Ideas.Race.no_stand_attacked`** (line 113): DENIED BY ATTACK: after a legal move of `p.turn` whose king stands on `t`, no piece of the other side attacks `t`.
-  - used by: catspace/incubator/analyst/discovery/race.py
+  - used by: catspace/incubator/analyst/discovery/race.py, rust/analyst_core/src/words.rs
 - **theorem `Ideas.Race.kingGeometryB_of_kdist`** (line 119): A step of the king is a king step: `kdist ≤ 1` between distinct squares.
 - **theorem `Ideas.Race.no_stand_adjacent`** (line 125): DENIED BY THE OTHER KING: a king never stands next to the other king (`kdist ≤ 1`, distinct squares)
-  - used by: catspace/incubator/analyst/discovery/race.py
+  - used by: catspace/incubator/analyst/discovery/race.py, rust/analyst_core/src/words.rs
 - **theorem `Ideas.Race.no_stand_pawn`** (line 134): DENIED BY A PAWN: a king never stands on a square a pawn of the other side attacks (this is how the f-pawn on f2 takes g1 and e1 from the king).
-  - used by: catspace/incubator/analyst/discovery/race.py
+  - used by: catspace/incubator/analyst/discovery/race.py, rust/analyst_core/src/words.rs
 - **def `Ideas.Race.holds`** (line 146): The king stops a pawn about to promote on `x` from `s` when it stands on `x` (the block) or next to it (it takes the queen).
   - used by: catspace/incubator/analyst/discovery/race.py
 - **def `Ideas.Race.holdSet`** (line 149): The squares from which it holds `x` and may stand: not DENIED (next to our king, attacked by our pawns or pieces -- the theorems above).
-  - used by: catspace/incubator/analyst/discovery/race.py
+  - used by: catspace/incubator/analyst/discovery/race.py, rust/analyst_core/src/words.rs
 - **def `Ideas.Race.overloaded`** (line 152): OVERLOADED: no square holds both `a` and `b`.
-  - used by: catspace/incubator/analyst/discovery/race.py
+  - used by: catspace/incubator/analyst/discovery/race.py, rust/analyst_core/src/words.rs
 - **theorem `Ideas.Race.overloaded_exclusive`** (line 156): A king that holds one of two overloaded promotion squares does not hold the other.
 - **theorem `Ideas.Race.overloaded_far`** (line 164): Promotion squares more than two apart are overloaded whatever is denied (the triangle inequality).
 - **theorem `Ideas.Race.overload_sound`** (line 175): THE DEFLECTION IN TIME: if a king must stay on a hold square of `a` from step `i` on (else `a` promotes), then from that step it is on no hold square of `b` (and `b` promotes when it arrives).
@@ -1343,7 +1343,7 @@ Do not edit by hand.
 - **def `Ideas.Race.UWalk`** (line 311): A walk over usable squares only: every landing square is one the piece can stand on and survive on.
 - **theorem `Ideas.Race.real_is_uwalk`** (line 316): The real walks of a piece (its legal moves) are walks over usable squares, when every legal move is a step that lands on a usable square.
 - **theorem `Ideas.Race.deny_sound`** (line 330): DENY SOUND: if no walk over usable squares of at most `k` moves reaches a target, the piece never reaches a target in `k` real moves -- its path is denied, it does not stop the pawn within `k`
-  - used by: catspace/incubator/analyst/discovery/race.py
+  - used by: catspace/incubator/analyst/discovery/race.py, rust/analyst_core/src/words.rs
 - **theorem `Ideas.Race.king_usable`** (line 337): The denial for a KING, tied to the rules: a king that lands by a legal move is on an unattacked square, so "usable" for it is "not attacked by the other side".
 - **inductive `Ideas.Race.Status`** (line 348): The status of a promote question: killed by the verdict, claimed by a closed chase, or a gap (open).
 - **def `Ideas.Race.status`** (line 352): The status from the verdict's kill and the chase's closing: a kill is final; otherwise only a CLOSED chase claims.
@@ -1366,12 +1366,12 @@ Do not edit by hand.
 - **theorem `Ideas.Reach.minOpt_some_zero_left`** (line 47)
 - **theorem `Ideas.Reach.minOpt_some_zero_right`** (line 48)
 - **def `Ideas.Reach.reachPrice`** (line 53): THE PRICED REACH of side `c` on square `s` within `k` of its own moves (the other side passing): `some 0` when `c` bears on `s` already; else, over `c`'s legal moves on the passed board, the least of (a) the price of lan
-  - used by: catspace/incubator/analyst/discovery/regress.py
+  - used by: catspace/incubator/analyst/discovery/regress.py, rust/analyst_core/src/words.rs
 - **theorem `Ideas.Reach.foldl_minOpt_zero`** (line 66): The fold reaches `some 0` only through one of its steps.
 - **theorem `Ideas.Reach.foldl_minOpt_of_zero`** (line 81): And conversely a step at `some 0` pulls the whole fold to `some 0`.
 - **theorem `Ideas.Reach.landsSafe_see`** (line 101): A SAFE landing from which the unit bears on `s` is a price-0 reach of one move (`seeOf` there is 0 by `landsSafe`).
 - **theorem `Ideas.Reach.reachPrice_zero_iff`** (line 105): THE LINK (72.1): a reach at price 0 is exactly `attackableIn`.
-  - used by: catspace/incubator/analyst/discovery/regress.py
+  - used by: catspace/incubator/analyst/discovery/regress.py, rust/analyst_core/src/words.rs
 
 ## lean/ideas/Ideas/Refutation.lean
 

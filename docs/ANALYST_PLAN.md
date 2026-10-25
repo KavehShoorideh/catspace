@@ -3440,6 +3440,18 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
   72.7 STEP 2c BUILT 2026-10-24 on branch worktree-agent-a501cc77b08a4de59 (journal 2026-10-24 21:15): the chase's reply table from Rust (`Pos.route_table`: one call per route, the rule's closes, the pending replies read in
   Python as before); the route memo keyed by the handle's exact transposition key (`Pos.tkey`, not the 64-bit key). Guard 0 of 10; negative control 10 of 10. STEP 2's measure: the
   surface ~3.5% -> ~1.2% of the profiled count-budget run, case set ~2% faster, W0VFO at 10 s the same work. The speed is in the words: step 3 next (stuck_threats' family, mate2_threat / bind_mate2).
+  72.7 STEP 3a BUILT 2026-10-24 on branch worktree-agent-afa08f337b471dd18 (journal 2026-10-24 22:48): the mate in two in Rust (words.rs `bind_mate2_pos` / `mate2_threat_pos` on the handle; selfmine.bind_mate2 and
+  regress.mate2_threat call-throughs, the Python bodies the oracles of tests/test_plan72_7_step3.py). The guard: `--sets wide` (99), `--tier 2` (tier 0 never asks the word), the hash seed pinned, the tables
+  linked; 0 differences on the ten and the 99 at tiers 0 and 2; negative control 10 of 10 at tier 2 (0 of 10 at tier 0). The ten at tier 2 ~22% faster; W0VFO 10 s: forcing_why 46% -> 17% of the profiled run.
+  72.7 STEP 3b BUILT 2026-10-24 on branch worktree-agent-afa08f337b471dd18 (journal 2026-10-24 23:19): the roll and the static walks in Rust (reach_map / reach_price, race.stopper_walk / deny_moves /
+  denial_mask, graph.piece_moves_to on placements; python-chess's one-unit rules mirrored for the boards shakmaty refuses). Guard 0 differences on the ten and the 99 at tiers 0 and 2; negative control 10 of 10.
+  The count-budget ten 27.3 -> 23.6 s (3a+3b), at tier 2 123.0 -> 87.0 s. Finding: the priced reach's read sets reach no claim (nothing reads `reads`).
+  72.7 STEP 3c BUILT 2026-10-24 on branch worktree-agent-afa08f337b471dd18 (journal 2026-10-24 23:47): the passer family in Rust (promote_defects; stuck_threats with the passer duty it asks; python-chess's
+  legal moves mirrored on a placement). Guard 0 differences on the ten and the 99 at tiers 0 and 2; negative control 4 of 10. The count-budget ten 27.6 -> 21.1 s, at tier 2 124.0 -> 79.0 s (3a-3c);
+  the discovery position's POOL test at 30 s XPASSes (proved in time). Not ported: duty_after / can_run's MATE duty (trap_fix), race.py's race_claim. Finding: a latent TypeError in stuck_threats (kingless board).
+  72.7 STEP 3d BUILT 2026-10-25 on branch worktree-agent-afa08f337b471dd18 (journal 2026-10-25 00:14): race.king_verdict / support_moves in Rust (the W0VFO top after 3c). Guard 0 differences on the ten and the
+  99 at tiers 0 and 2; negative control 1 of 10. 3a-3d: the count-budget ten 27.3 -> 20.7 s, at tier 2 124.1 -> 78.4 s; W0VFO 10 s inner agendas 472 -> 1076 (one run). Next by the profile: the mate duty
+  (trap_fix's can_run / _mate_ahead / check_threat), delayed_threat / node_cost under the clock.
   BUILT 2026-10-23 (72.6): `scripts/gate.py engine|full [--dry-run] [--only FILE] [--log PATH]`. `engine` = the 28 named files (the missing ones are printed and skipped), `full` = every tests/test_*.py;
   both run one file at a time, each its own `python -m pytest FILE -q -p no:cacheprovider -W ignore --durations=3` with PYTHONUNBUFFERED=1, output appended to artifacts/experiments/gate_<cmd>_<timestamp>.log.
   LOCK: `<tmpdir>/catspace_gate.lock` (pid, cmd, start); a second gate refuses (exit 2) naming the running gate's pid and start time; a lock whose pid is dead is removed. Other running pytest processes

@@ -41,6 +41,11 @@ STATS = {"asked": 0, "bound": 0, "single": 0, "overload": 0, "frame_refused": 0}
 
 # ---------------------------------------------------------------------------------------------------------------- the Lean words (Race.lean)
 
+def _bbs(board: chess.Board) -> tuple:
+    """plan 72.7 step 3: the board's placement as the eight bitboards the Rust words take (graph.bbs; race.py imports no graph)."""
+    return (board.pawns, board.knights, board.bishops, board.rooks, board.queens, board.kings, board.occupied_co[True], board.occupied_co[False])
+
+
 def kdist(a: int, b: int) -> int:
     return chess.square_distance(a, b)
 
@@ -218,67 +223,23 @@ def _stage_held(me: bool, ek: int, path: list, rest: int, denied: int, defended:
     return None
 
 
-def _king_holds(board: chess.Board, me: bool, sq: int, with_second: bool) -> tuple | None:
-    ek, ok = board.king(not me), board.king(me)
-    n = _pushes(me, sq)
-    if n < 1 or n > 6:
-        return None
-    path = _path(me, sq, n)
-    if any(board.piece_at(t) is not None for t in path):
-        return None
-    stable = _stable_attacks(board, me, ek, ok, n, {sq: path})
-    why = _stage_held(me, ek, path, sq, stable, stable, n)
-    if why is None:
-        return False, "their king cannot stop it: no stage of the walk is reached in time (squares it cannot stand on denied)"
-    if with_second:
-        d = _deflect(board, me, sq, path, n, ek, ok, why, verdict_only=True)
-        if d:
-            return False, f"{d}; the king held it alone: {why}"
-    return True, why
-
-
 def king_verdict(board: chess.Board, sq: int) -> tuple | None:
     """62.1c: THEIR KING AS A STOPPER of our pawn on `sq` (the owner to move), judged by the proved analysis only (Race.deny_sound, race_sound restricted to the king): the stage test with the squares it cannot stand
     and survive on denied, then the deflection by a second passer (this pawn as the one that walks, or as the one that rests). -> (held, why): held=False = the king is no stopper (the verdict may not kill the
-    question for it); None = not applicable (not our pawn, path not clear, in check). Their OTHER pieces are not read here at all: they are replies, and the chase reads every reply (Race.lifted_is_gap)."""
-    me = board.turn
-    pc = board.piece_at(sq)
-    if pc is None or pc.piece_type != chess.PAWN or pc.color != me or board.is_check():
-        return None
-    if board.king(not me) is None or board.king(me) is None:
-        return None
-    first = _king_holds(board, me, sq, True)
-    if first is None or not first[0]:
-        return first
-    for q in chess.SquareSet(board.pawns & board.occupied_co[me]):
-        if q == sq:
-            continue
-        o = _king_holds(board, me, q, True)
-        if o is not None and not o[0]:
-            return False, f"the passer on {_name(q)} is not held by the king ({o[1]}); the king that holds {_name(sq)} cannot also stop it"
-    return first
+    question for it); None = not applicable (not our pawn, path not clear, in check). Their OTHER pieces are not read here at all: they are replies, and the chase reads every reply (Race.lifted_is_gap).
+    plan 72.7 step 3d: read in Rust on the board's placement (`analyst_core.king_verdict_bb`, words.rs: `_king_holds`, `_stable_attacks`, `_stage_held` and `_deflect`'s
+    verdict as race.py reads them, the texts as it writes them; those helpers stay here for race_claim). The Python body is the test oracle (tests/test_plan72_7_step3.py)."""
+    import analyst_core as _A
+    return _A.king_verdict_bb(_bbs(board), board.turn, sq)
 
 
 def support_moves(board: chess.Board, me: bool, sq: int, legal: list) -> list:
     """62.1c: our moves (not the pawn's own) after which their king is NO LONGER a stopper of the pawn on `sq` by `king_verdict` (we have the move again: the pass reading): a cover (Kg3 takes h2 and g2 from
-    the king), a second passer's support. Each is a ROUTE of the promote question; the chase reads every reply to it. -> [(move, why)]."""
-    before = king_verdict(board, sq)
-    if before is None or not before[0]:
-        return []
-    out = []
-    for m in legal:
-        if m.from_square == sq:
-            continue
-        after = board.copy(stack=False)
-        after.push(m)
-        if after.is_check():
-            continue
-        after.turn = me
-        after.ep_square = None
-        v = king_verdict(after, sq)
-        if v is not None and not v[0]:
-            out.append((m, f"makes their king no stopper: {v[1]}"))
-    return out
+    the king), a second passer's support. Each is a ROUTE of the promote question; the chase reads every reply to it. -> [(move, why)].
+    plan 72.7 step 3d: read in Rust on the board's placement in ONE call (`analyst_core.support_moves_bb`: python-chess's push on the placement, the verdict after each move with the
+    move passed back to `me`), the moves handed in python-chess's order and returned as the indices of the supporting ones. The Python body is the test oracle."""
+    import analyst_core as _A
+    return [(legal[i], why) for i, why in _A.support_moves_bb(_bbs(board), board.turn, me, sq, [m.uci() for m in legal])]
 
 
 def race_claim(board: chess.Board, sq: int, allow_second: bool = True, recheck: bool = True) -> Race | None:
@@ -526,82 +487,41 @@ def stopper_walk(board: chess.Board, s: int, targets: set, limit: int, deny: int
     """The shortest walk of the piece on `s` to a square of `targets` in at most `limit` moves over the squares NOT in the `deny` mask (static board: the other pieces stand; a square holding a piece
     of its own colour is not entered; a king may take a piece of ours that is not denied). -> (moves, [the squares it lands on, in order]) or None. This is the PATH of the stopper
     (Kaveh 2026-10-22: my intent is to promote; their intent is to stop it; how -- which piece, along which path), and `deny` is the set of squares it cannot STAND and SURVIVE on
-    (Race.deny_sound: a walk that needs a denied square is not a walk)."""
-    pc = board.piece_at(s)
-    if pc is None:
-        return None
-    seen, frontier = {s}, [(s, [])]
-    for k in range(1, limit + 1):
-        nxt = []
-        for sq, path in frontier:
-            if pc.piece_type == chess.KING:
-                cand = chess.SquareSet(chess.BB_KING_ATTACKS[sq])
-            else:
-                c = board.copy(stack=False)
-                c.remove_piece_at(s)
-                c.set_piece_at(sq, pc)
-                cand = chess.SquareSet(c.attacks_mask(sq))
-            for t in cand:
-                if t in seen:
-                    continue
-                o = board.piece_at(t)
-                if o is not None and o.color == pc.color and t != s:
-                    continue
-                if deny & chess.BB_SQUARES[t]:
-                    continue
-                if t in targets:
-                    return k, path + [t]
-                seen.add(t)
-                nxt.append((t, path + [t]))
-        frontier = nxt
-    return None
+    (Race.deny_sound: a walk that needs a denied square is not a walk).
+    plan 72.7 step 3b: the walk read in Rust on the board's placement (`analyst_core.stopper_walk_bb`: the same walk, each step's squares in ascending order, as
+    python-chess's SquareSet iterates them). The Python body is the test oracle (tests/test_plan72_7_step3.py)."""
+    import analyst_core as _A
+    tm = 0
+    for t in targets:
+        tm |= chess.BB_SQUARES[t]
+    return _A.stopper_walk_bb((board.pawns, board.knights, board.bishops, board.rooks, board.queens, board.kings, board.occupied_co[True], board.occupied_co[False]),
+                              s, tm, max(limit, 0), deny)
 
 
 def denial_mask(after: chess.Board, me: bool, stopper: int, skip: int) -> int:
     """The squares the stopper (their piece on `stopper`, `after` = the board after our move, their turn) cannot stand and survive on: for a KING every square we attack (their king
     removed from the board, our pawn `skip` -- the passer, which moves -- not counted): a legal move never leaves a king attacked (Race.no_stand_attacked); for another piece the squares
-    our pawns (the passer excluded) attack, when the piece is worth more than a pawn (it is taken for a pawn)."""
-    pc = after.piece_at(stopper)
-    c = after.copy(stack=False)
-    mask = 0
-    if pc is None:
-        return 0
-    if pc.piece_type == chess.KING:
-        c.remove_piece_at(stopper)
-        for t in chess.SquareSet(c.occupied_co[me]):
-            if t != skip:
-                mask |= c.attacks_mask(t)
-        return mask
-    if pc.piece_type in (chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN):
-        for t in chess.SquareSet(c.pawns & c.occupied_co[me]):
-            if t != skip:
-                mask |= c.attacks_mask(t)
-    return mask
+    our pawns (the passer excluded) attack, when the piece is worth more than a pawn (it is taken for a pawn).
+    plan 72.7 step 3b: read in Rust on the board's placement (`analyst_core.denial_mask_bb`, the mask `deny_moves_bb` reads). The Python body is the test oracle
+    (tests/test_plan72_7_step3.py)."""
+    import analyst_core as _A
+    return _A.denial_mask_bb((after.pawns, after.knights, after.bishops, after.rooks, after.queens, after.kings, after.occupied_co[True], after.occupied_co[False]),
+                             me, stopper, skip)
 
 
 def deny_moves(board: chess.Board, me: bool, sq: int, stopper: int, targets: set, n: int, legal: list) -> list:
     """62.1b: the moves of ours (not the passer's own) after which the stopper's walk to `targets` no longer exists within n + 1 moves (they get a reply before our first push) over the
-    squares it can stand on -- DENY THE STOPPER'S PATH. -> [(move, why)] with the path it had named."""
-    before = stopper_walk(board, stopper, targets, n)
-    if before is None:
-        return []
-    pc = board.piece_at(stopper)
-    name = f"{pc.symbol().upper()}{chess.square_name(stopper)}"
-    out = []
-    for m in legal:
-        if m.from_square == sq or m.to_square == stopper:
-            continue
-        after = board.copy(stack=False)
-        after.push(m)
-        if after.piece_at(stopper) is None:
-            continue
-        if after.attacks_mask(stopper) & chess.BB_SQUARES[m.to_square]:          # the stopper can take the piece that denies: only a guarded piece denies a KING (it cannot take into attack), none denies another piece
-            if not (after.piece_at(stopper).piece_type == chess.KING and after.is_attacked_by(me, m.to_square)):
-                continue
-        deny = denial_mask(after, me, stopper, sq)
-        if stopper_walk(after, stopper, targets, n + 1, deny) is None:
-            out.append((m, f"denies the path of their {name} ({' '.join(chess.square_name(x) for x in before[1])}): it cannot stand on a square of it in {n + 1} moves"))
-    return out
+    squares it can stand on -- DENY THE STOPPER'S PATH. -> [(move, why)] with the path it had named.
+    plan 72.7 step 3b: read in Rust on the board's placement in ONE call (`analyst_core.deny_moves_bb`: python-chess's push on the placement -- castling's rook and en
+    passant's pawn included --, the stopper's walk before and after, `denial_mask`, the stopper taking the piece that denies), the moves handed in python-chess's order
+    and returned as the indices of the ones that deny. The Python body is the test oracle (tests/test_plan72_7_step3.py)."""
+    import analyst_core as _A
+    tm = 0
+    for t in targets:
+        tm |= chess.BB_SQUARES[t]
+    got = _A.deny_moves_bb((board.pawns, board.knights, board.bishops, board.rooks, board.queens, board.kings, board.occupied_co[True], board.occupied_co[False]),
+                           me, sq, stopper, tm, max(n, 0), [m.uci() for m in legal])
+    return [(legal[i], why) for i, why in got]
 
 
 # ---------------------------------------------------------------------------------------------------------------- the bridge: an exhaustive race search

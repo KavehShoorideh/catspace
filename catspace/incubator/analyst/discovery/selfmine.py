@@ -1132,29 +1132,28 @@ def mate2_instance_proof(atoms: list, delta: int, mover: str = "w") -> str | Non
                        f"exact Ideas.Mined.Schemas.mate_in_two p c hc {_lean_sq(x, mover)} {_lean_sq(y, mover)} {delta} {' '.join(names)}"])
 
 
-def bind_mate2(fen: str, mover: str, candidates: list | None = None) -> list:
+def bind_mate2(fen: str, mover: str, candidates: list | None = None, pos=None) -> list:
     """BIND `mate_in_two` to a position: the candidates in order (every legal move but castling and promotions), each tail read in Rust (`premise_truth`);
-    STOPS AT THE FIRST that reads (no mate in two beats another). -> [dict(depth=1, pairs, B=None, T=None, prem, atoms, family='mate2')] (zero or one)."""
-    import chess
-    if candidates is None:
-        bd = chess.Board(fen)
-        seen, candidates = set(), []
-        for m in bd.legal_moves:
-            if m.promotion or bd.is_castling(m):
-                continue
-            pr = (chess.square_name(m.from_square), chess.square_name(m.to_square))
-            if pr not in seen:
-                seen.add(pr)
-                candidates.append([pr])
-    for pairs in candidates:
-        if len(pairs) != 1:
-            continue
-        (x, y), = pairs
-        with using_mover(mover):
-            prem = [atom_of(mate2_tail(x, y), ">=", 1)]
-        if premise_truth(prem, [dict(fen=fen, mover=mover)])[0]:
-            return [dict(depth=1, pairs=pairs, B=None, T=None, prem=prem, atoms=with_legality(prem), family=MATE2)]
-    return []
+    STOPS AT THE FIRST that reads (no mate in two beats another). -> [dict(depth=1, pairs, B=None, T=None, prem, atoms, family='mate2')] (zero or one).
+    plan 72.7 step 3a: the candidates and the premise read in Rust in ONE call on the position's handle (`analyst_core.bind_mate2_pos`: the same atoms -- the
+    tail and its legs, compiled from the s-expressions rendered here -- read by the same evaluator, python-chess's order, the first that binds); `pos` = the
+    handle (a node's), else the FEN's (`pos_at`). A FEN shakmaty does not hold binds nothing (its atoms read 0, as before). The Python body is the test oracle
+    (tests/test_plan72_7_step3.py)."""
+    import analyst_core as A
+    p = pos if pos is not None else (pos_at(fen) if fen is not None else None)
+    if p is None:
+        return []
+    BV.install_terms()
+    given = None if candidates is None else [pairs for pairs in candidates if len(pairs) == 1]
+    got = A.bind_mate2_pos(p, mover == "w", None if given is None else [tuple(pairs[0]) for pairs in given])
+    if got is None:
+        return []
+    i, x, y = got
+    pairs = [(x, y)] if given is None else given[i]
+    (x, y), = pairs
+    with using_mover(mover):
+        prem = [atom_of(mate2_tail(x, y), ">=", 1)]
+    return [dict(depth=1, pairs=pairs, B=None, T=None, prem=prem, atoms=with_legality(prem), family=MATE2)]
 
 
 def write_mate2_instance(tag: str, fen: str, mover: str, x: str, y: str, log=print) -> dict:

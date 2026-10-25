@@ -321,27 +321,25 @@ def word(board: chess.Board, term, owner: bool) -> int:
     return p.read(i) if p is not None and i is not None else None
 
 
+def bbs(board: chess.Board) -> tuple:
+    """plan 72.7 step 3b: the board's PLACEMENT as the eight bitboards the Rust words take (pawns, knights, bishops, rooks, queens, kings, white, black)."""
+    return (board.pawns, board.knights, board.bishops, board.rooks, board.queens, board.kings, board.occupied_co[True], board.occupied_co[False])
+
+
+def mask_of(squares) -> int:
+    """A set of squares as a bitboard."""
+    m = 0
+    for s in squares:
+        m |= chess.BB_SQUARES[s]
+    return m
+
+
 def piece_moves_to(board: chess.Board, frm: int, targets: set, limit: int) -> int | None:
     """Fewest moves the non-pawn piece on `frm` needs to stand on one of `targets` (static board: the other pieces do not move, own-colour squares are not
-    entered, a piece of the other colour may be taken; no pins, no checks), or None beyond `limit`. The `reach` of a slider / knight."""
-    pc = board.piece_at(frm)
-    seen, frontier = {frm}, [frm]
-    for k in range(1, limit + 1):
-        nxt = []
-        for s in frontier:
-            c = board.copy(stack=False)
-            c.remove_piece_at(frm)
-            c.set_piece_at(s, pc)
-            for t in c.attacks(s):
-                o = board.piece_at(t)
-                if t in seen or (o is not None and o.color == pc.color and t != frm):
-                    continue
-                if t in targets:
-                    return k
-                seen.add(t)
-                nxt.append(t)
-        frontier = nxt
-    return None
+    entered, a piece of the other colour may be taken; no pins, no checks), or None beyond `limit`. The `reach` of a slider / knight.
+    plan 72.7 step 3b: the walk read in Rust on the board's placement (`analyst_core.piece_moves_to_bb`: the same walk, each step's squares in ascending order, as
+    python-chess's SquareSet iterates them). The Python body is the test oracle (tests/test_plan72_7_step3.py)."""
+    return _A.piece_moves_to_bb(bbs(board), frm, mask_of(targets), max(limit, 0))
 
 
 # ---------------------------------------------------------------------------------------------------------------- the battery and the discovery (52.18 (2); Lean Ideas.Battery)

@@ -152,6 +152,27 @@ Make the Python twins of `regress.py` (`mate_defects`, `material_defects`, `_sti
 `regress.rs`, then delete them, keeping the Python versions only as test oracles while the guard runs on a wider case set (30 to 50 positions beyond the ten).
 Then the Python words in `graph.py` (`piece_moves_to`, reach, ...) and the last python-chess uses in discovery/. The 90-puzzle timed grade stays the
 end-of-plan evaluation, not a per-step grade (standing rule).
+STATUS 3a: BUILT 2026-10-24 on branch worktree-agent-afa08f337b471dd18 (journal 2026-10-24 22:48): the mate in two in Rust (words.rs `bind_mate2_pos`, `mate2_threat_pos`: the
+binder's candidates and the premise of `mate_in_two`, its terms compiled from the s-expressions Python renders, read by the same evaluator and word cache); selfmine.bind_mate2 /
+regress.mate2_threat call-throughs, the Python bodies the test oracles. THE GUARD for step 3: `--sets wide` (99 positions), `--tier K` (the count-budget guard runs tier 0, where
+the mate in two is never asked: a wrong build moved 0 of 10 there and 10 of 10 at tier 2), PYTHONHASHSEED pinned (2 of the 99 depend on the string-hash order), the Syzygy tables
+linked (gitignored: a worktree has none). Guard 0 differences on the ten and the 99 at tiers 0 and 2 (traces, read sets, leaf lists). The profile first: under the clock the mate
+in two was a third of W0VFO's run; at the count budget the passer family is the top (3b, 3c).
+STATUS 3b: BUILT 2026-10-24 on branch worktree-agent-afa08f337b471dd18 (journal 2026-10-24 23:19): the roll and the static walks in Rust (words.rs `reach_map_bb`, `reach_price_bb`,
+`stopper_walk_bb`, `piece_moves_to_bb`, `deny_moves_bb`, `denial_mask_bb` on placements; the roll's memo under `_REACH`'s key, cleared by the same hook). The roll goes on from boards
+whose side not to move is in check (after a quiet check): the one unit's moves are python-chess's rules mirrored on the placement. reach_map's entry `board` is a `Landing` (the
+unit's attacks from Rust, the python-chess board replayed on demand). Guard 0 differences on the ten and the 99 at tiers 0 and 2; negative control (the price one too high) 10 of
+10 traces. Finding: the priced reach's read sets (`reach_price` / `stuck_threats` `reads`) reach no claim.
+STATUS 3c: BUILT 2026-10-24 on branch worktree-agent-afa08f337b471dd18 (journal 2026-10-24 23:47): the passer family in Rust (words.rs `promote_defects_bb` -- every word read as
+graph.word reads it, the walks and the priced roll of 3b; `stuck_threats_pos` with the passer duty it asks -- can_run / duty_after's passer branch, promote_defects static and priced;
+`py_legal`, python-chess's legal moves mirrored on a placement for the board given to them while our king stands in check). regress.promote_defects / stuck_threats call-throughs;
+duty_after / can_run stay Python for the MATE duty (trap_fix). Guard 0 differences on the ten and the 99 at tiers 0 and 2; negative control (the king stopper read strictly) 4 of
+10 traces. Finding: the Python stuck_threats raises (TypeError) where their reply could take our king on the board given to them; the port raises on the same boards.
+STATUS 3d: BUILT 2026-10-25 on branch worktree-agent-afa08f337b471dd18 (journal 2026-10-25 00:14): the king verdict in Rust (words.rs `king_verdict_bb`, `support_moves_bb`: race.py's
+`_king_holds`, `_stable_attacks`, `_stage_held`, `_deflect`'s verdict on placements); race.king_verdict / support_moves call-throughs (`_stable_attacks` / `_stage_held` / `_deflect`
+stay in race.py for race_claim, not ported). Guard 0 differences on the ten and the 99 at tiers 0 and 2; negative control 1 of 10 traces (RoR8t). After 3a-3d: the count-budget ten
+~25% faster, at tier 2 ~37%; W0VFO at 10 s reads more than twice the inner work (one run). NOT BUILT in step 3: the mate duty (can_run / duty_after with `_mate_ahead`, check_threat --
+trap_fix's), race_claim, delayed_threat / node_cost, graph.mates / with_piece / with_turn (agenda.py's own python-chess), deleting the defect twins' Python fallbacks.
 
 Do not interleave steps: each diff is revertable alone and the guard locates a regression to one step.
 
