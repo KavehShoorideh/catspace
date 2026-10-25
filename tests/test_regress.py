@@ -888,7 +888,7 @@ def test_52_17_a_check_that_fixes_no_defect_of_the_goal_is_not_a_route_of_it_and
     assert a._addresses(_win_q(a, chess.A7), chess.Move.from_uci("e1e8"), "threat of mate")[0]                            # forcing by a claim of its own
     root = _inner_agenda("6k1/p6p/8/8/8/8/8/4R1K1 w - - 0 1", depth=0)
     assert root._addresses(_win_q(root, chess.A7), chess.Move.from_uci("e1e8"), "check")[0]                               # the root's own chase keeps every forcing move
-    a.ctx.routes[(AG._pos_key(a.board.fen()), "e1e8")] = dict(gap="chase fuse")
+    a.ctx.routes[a._route_key(chess.Move.from_uci("e1e8"))] = dict(gap="chase fuse")            # (plan 72.7 step 2c: the memo's key is the handle's, `_route_key`)
     assert a._addresses(_win_q(a, chess.A7), chess.Move.from_uci("e1e8"), "check")[0]                                    # a GAP is never a kill: a route the fuse cut stays open for later goals
 
 
@@ -954,14 +954,14 @@ def test_52_17_the_promotion_exchange_is_read_on_the_board_after_the_push_and_no
 def test_52_17_the_cheap_pass_closes_what_the_rules_close_and_leaves_the_rest_pending_without_an_inner_agenda(chain_items_off):
     ag = AG.Agenda(State(LRTF, "w", []))
     m = chess.Move.from_uci("h7h8")
-    key = (AG._pos_key(ag.board.fen()), "h7h8")
+    key = ag._route_key(m)                                                                         # (plan 72.7 step 2c: the memo's key is the handle's)
     res = ag._chase_route(m, cheap=True)
     assert res.get("pending") and key not in ctx_routes(ag) and ag.ctx.agendas == 0              # Kd7 needs an inner agenda: pending, none opened, nothing memoised
     full = ag._chase_route(m)
     assert not full.get("pending") and key in ctx_routes(ag) and ag.ctx.agendas > 0
     ag.ask()                                                                                       # a route an earlier reply already killed is killed by the cheap pass alone
     before = ag.ctx.agendas
-    ag.ctx.routes.pop((AG._pos_key(ag.board.fen()), "h7d7"), None)
+    ag.ctx.routes.pop(ag._route_key(chess.Move.from_uci("h7d7")), None)
     killed = ag._chase_route(chess.Move.from_uci("h7d7"), cheap=True)
     assert killed["killed"] and "standing kill" in killed["killed"] and ag.ctx.agendas == before
 

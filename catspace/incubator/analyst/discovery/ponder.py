@@ -40,7 +40,7 @@ def resume_gap(ctx, us: str, fact, end: float, stop=None) -> bool:
         ag = Agenda(State(fen=r["fen"], us=us, pieces=[]), side_depth=0, chase_depth=fact.depth, ctx=ctx)
         ag._cur = R.new_question("win", fact.stake, {}, text=r.get("question", ""))
         ctx.left = ag.budget * FUSE
-        ctx.routes.pop((fact.pk, r["uci"] + (":promote" if r["promote"] else "")), None)      # the memo says "cut, and no more budget has come": it has now
+        ctx.routes.pop(ag._route_key(chess.Move.from_uci(r["uci"]), ":promote" if r["promote"] else ""), None)      # the memo says "cut, and no more budget has come": it has now (plan 72.7 step 2c: the memo's key, from the position's handle)
         _scoped(ctx, end, stop)
         res = ag._chase_route(chess.Move.from_uci(r["uci"]), promote=bool(r["promote"]))
     finally:

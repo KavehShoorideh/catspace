@@ -3437,6 +3437,9 @@ THE CAGED PIECE IS NOT A VALUE (Kaveh 2026-10-23): a unit with no safe move stil
   python-chess sites agenda.py 177 -> 139. The profile first: the step-2 surface is ~3.5% of the count-budget run; the time is in the agendas and the words (step 3).
   72.7 STEP 2b BUILT 2026-10-24 on branch worktree-agent-a501cc77b08a4de59 (journal 2026-10-24 20:47): the static leaf's record from Rust (`Pos.leaf_replies` / `Pos.leaf_tied`; Python keeps the verdict and the text);
   the guard writes every leaf verdict (`<id>.leaf.txt`) -- it was blind to the leaf (two wrong leaf builds moved no trace). Guard 0 of 10 on traces, read sets and leaf lists.
+  72.7 STEP 2c BUILT 2026-10-24 on branch worktree-agent-a501cc77b08a4de59 (journal 2026-10-24 21:15): the chase's reply table from Rust (`Pos.route_table`: one call per route, the rule's closes, the pending replies read in
+  Python as before); the route memo keyed by the handle's exact transposition key (`Pos.tkey`, not the 64-bit key). Guard 0 of 10; negative control 10 of 10. STEP 2's measure: the
+  surface ~3.5% -> ~1.2% of the profiled count-budget run, case set ~2% faster, W0VFO at 10 s the same work. The speed is in the words: step 3 next (stuck_threats' family, mate2_threat / bind_mate2).
   BUILT 2026-10-23 (72.6): `scripts/gate.py engine|full [--dry-run] [--only FILE] [--log PATH]`. `engine` = the 28 named files (the missing ones are printed and skipped), `full` = every tests/test_*.py;
   both run one file at a time, each its own `python -m pytest FILE -q -p no:cacheprovider -W ignore --durations=3` with PYTHONUNBUFFERED=1, output appended to artifacts/experiments/gate_<cmd>_<timestamp>.log.
   LOCK: `<tmpdir>/catspace_gate.lock` (pid, cmd, start); a second gate refuses (exit 2) naming the running gate's pid and start time; a lock whose pid is dead is removed. Other running pytest processes

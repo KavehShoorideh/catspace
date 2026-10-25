@@ -32788,3 +32788,45 @@ OBS gate engine --only (one file per call): test_plan72_7_step2 passed 10, faile
   test_regress 87, 0, xfailed 1 (309.5 s); test_tiers 14, 0; test_offbuilt64 15, 0, xfailed 1; test_plan72_10 4, 0; test_plan72_9 7, 0; test_plan72 6, 0; test_plan70 3, 0, xfailed 1.
 FINDING: the leaf's after-terms are read by `num` directly, not through the word cache (they have no compiled id): equal values, no dependency to replay (no word
 records one), the cache no longer holds them.
+
+## 2026-10-24 21:15 PDT -- plan 72.7 step 2c built: the chase's reply table from Rust (the pending protocol on the handle), the route memo keyed by the handle; step 2's measures (branch worktree-agent-a501cc77b08a4de59)
+docs/RUST_BOUNDARY.md section 4 step 2. No decision logic touched; the trace text is formatted in Python as before.
+- Rust. pos.rs `Pos.route_table(uci, white)`: ONE call per route -- the route's position; every reply in shakmaty's order (the standing-kill scan's) with its balance
+  change from the agenda's position (the route's own capture included), check, capture, recapture on the route's square, our mate in one after it, THE RULE that
+  closes it with no agenda ("dead": no legal move of ours -- they mate or stalemate us; "mate": our mate in one; "" pending) and the handle after it; the reading
+  order (recaptures, checks, captures, the rest; the worst balance first; by uci). `Pos.tkey()`: python-chess's `_transposition_key` exactly. Both PyResult.
+- Python. `_chase_route_body` (and `_estimate_route`) read the table: the rule's replies are closed or killed from it, every pending one is read as before (the exchange's
+  close with their pass, the inner agenda, the static leaf -- Python), the cheap pass keeps its closed replies for the second pass (the protocol of 52.17 (4)).
+  THE MEMO KEY: `Agenda._route_key(m, suffix)` = (`pos.tkey()`, uci + suffix) for `ctx.routes`, `_pre`, `route_goals`, the carried replies, `_addresses` and ponder's
+  `resume_gap`; the chase log's rows still name the position by its FEN. NOT `pos.key()` as RUST_BOUNDARY wrote it: the 64-bit zobrist would serve one position's proof
+  to another on a collision; the exact key serves exactly what the FEN key served (tested on a transposition: the second ask returns the memo entry itself).
+OBS guard (parent vs 2c): OBS trace identity: 0 of 10 traces differ; OBS trace identity: 0 of 10 read sets differ; OBS trace identity: 0 of 10 leaf verdict lists differ
+  -- bridge off and on (OBS bridge: 116246 handle / board pairs compared, none split; 64919 RBoard reads compared with python-chess, none split).
+NEGATIVE CONTROL (a wrong build, not committed): one reply dropped from the route's reply table: OBS trace identity: 10 of 10 traces differ; OBS trace identity: 10 of 10
+  read sets differ; OBS trace identity: 9 of 10 leaf verdict lists differ. Reverted, rebuilt.
+TWO TESTS built the memo key by hand (the FEN form): test_regress `test_52_17_a_check_that_fixes_no_defect...` and `test_52_17_the_cheap_pass_closes_what_the_rules_close...`
+  now read it from `_route_key`; what they assert is unchanged (no trace text in either). Every trace-text test passes unchanged.
+OBS gate engine --only (one file per call): test_plan72_7_step2 passed 13, failed 0; test_plan72_7 16, 0; test_binder_rust 31, 0; test_agenda 26, 0; test_fact_store 21, 0;
+  test_regress 87, 0, xfailed 1 (308.9 s; the first run, before the two key reads were updated: 85, 2); test_tiers 14, 0; test_offbuilt64 15, 0, xfailed 1; test_plan72_10 4, 0;
+  test_plan72_9 7, 0; test_plan72 6, 0; test_plan70 3, 0, xfailed 1.
+STEP 2's MEASURES (directional: one sitting, one build -- the step-2 core -- for every number below, the parent's agenda.py swapped in for its side):
+OBS python-chess sites discovery/: 781 -> 745 {copy 143 -> 138, push 167 -> 160, legal_moves 156 -> 146, san 167 -> 155, is_check 63 -> 62, gives_check 35 -> 34, attackers 50};
+  agenda.py 177 -> 139; graph.py 11 and regress.py 238 unchanged (the words' boards: step 3). (The site definition: journal 2026-10-24 20:20.)
+OBS count budget, case set, alternating: parent 27.9 s, step 2 27.0 s, parent 27.8 s, step 2 27.4 s (the same work: identical traces) -- about 2 percent.
+OBS W0VFO 10 s, one run each: parent wall 10.8 s, decision Qb7 (e4b7), questions asked 38, inner agendas 472, inner questions 7612; step 2 wall 10.7 s, Qb7 (e4b7), 38, 472, 7612
+  -- no more work read under the clock.
+OBS profile, case set at the count budget (cProfile; python-chess = the own time of the functions in the python-chess package): parent total 59.7 s, python-chess 32.59 s
+  (54.6%), cumulative copy 8.86 / push 5.89 / generate_legal_moves 6.65 / san 3.34 s, the step-2 surface 2.09 s (3.5%); step 2 total 59.7 s, python-chess 31.90 s (53.4%),
+  copy 8.95 / push 5.71 / generate_legal_moves 6.30 / san 2.97 s, the step-2 surface 0.71 s (1.2%).
+OBS profile, W0VFO 10 s: parent total 11.5 s, python-chess 3.62 s (31.5%), copy 0.88 / push 0.60 / generate_legal_moves 0.86 / san 0.18 s, the surface 0.12 s (1.0%); step 2 total
+  11.4 s, python-chess 3.54 s (31.0%), copy 0.88 / push 0.57 / generate_legal_moves 0.83 / san 0.15 s, the surface 0.04 s (0.3%).
+  (the step-2 surface = the own time of the reply loop's and the leaf's functions plus their DIRECT python-chess and Rust calls.)
+READING, for Kaveh: step 2 is built and identical, and it is not the speed-up: the loop and the leaf were already on the handle for their replies (52.13 (5), step 1);
+what they still paid themselves was ~3.5% of the count-budget run, now ~1%. Half of the profiled run is python-chess INSIDE THE WORDS -- by caller (parent profile):
+reach_map 3.35 s, race.stopper_walk 2.91, stuck_threats 2.14, graph.mates 1.29, piece_moves_to 1.26, with_piece 1.13, with_turn 0.96, binder._binding 0.94,
+threat_value 0.88, iter_safe_moves 0.77, can_run 0.76; under the clock `forcing_why` -> `mate2_threat` -> `bind_mate2` is 4.36 s of 12.2 s. The next real gain is step 3,
+the words, in that order of cost (the leaf's `stuck_threats` -> can_run -> duty_after -> promote_defects -> race.py is one family; `mate2_threat`/`bind_mate2` the other).
+FINDINGS: (1) RUST_BOUNDARY's `(pos.key(), uci + suffix)` would trade exactness for nothing (the FEN key was rendered once per agenda): the exact `tkey` is used.
+(2) The guard could not see the leaf (2b) -- fixed by the leaf verdict lists; it still sees no ponder (the background tier): `resume_gap`'s memo pop now uses the
+memo's key (before, it popped by the gap fact's `pk`, the position's FEN AS GIVEN, which equals the memo's FEN key only where that FEN prints what the handle prints: a legal e.p. square or none, clean castling rights).
+(3) No HashMap reaches output in the new Rust (the table is in generation order, the order sorted); no rayon; every new pyo3 function returns PyResult.

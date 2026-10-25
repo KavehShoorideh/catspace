@@ -141,6 +141,11 @@ Measured first: the loop's and the leaf's own code is ~3.5% of the profiled coun
 STATUS 2b: BUILT 2026-10-24 on branch worktree-agent-a501cc77b08a4de59 (journal 2026-10-24 20:47): `Pos.leaf_replies` / `Pos.leaf_tied`, the static leaf's decomposition as a record (ucis, values, SAN, handles,
 the trackers' additions); Python keeps the verdict and the text; their agendas at the leaf and `stuck_threats` (a word) stay Python. The guard now writes the leaf's
 verdicts (`<id>.leaf.txt`): two wrong leaf builds had moved no trace and no read set. Guard 0 of 10 traces, read sets and leaf lists differ.
+STATUS 2c: BUILT 2026-10-24 on branch worktree-agent-a501cc77b08a4de59 (journal 2026-10-24 21:15): `Pos.route_table` -- one Rust call per route: the replies with their balances, checks, captures, mates in one, the RULE
+that closes a reply with no agenda ("dead", "mate") and the handles; the pending replies are read in Python as before (inner agendas, their pass, the leaf). The memo key
+is `(pos.tkey(), uci + suffix)` (`Agenda._route_key`): the EXACT transposition key, not the 64-bit `key()`, which could serve a proof to another position on a collision.
+Guard 0 of 10 traces, read sets and leaf lists; the negative control (one reply dropped) moved 10 of 10. THE MEASURE: the step-2 surface fell from ~3.5% to ~1.2% of the
+profiled count-budget run; the case set ~2% faster; W0VFO at 10 s read the same work. The speed is in the words (step 3): half the profiled run is python-chess called by them.
 
 ### Step 3. The words themselves
 Make the Python twins of `regress.py` (`mate_defects`, `material_defects`, `_still`, `forcing_why` and the rest of defects/fixes/forcing) call-throughs to

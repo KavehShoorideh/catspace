@@ -291,3 +291,75 @@ def test_72_7_2b_the_guard_records_the_leaf_verdicts():
     TI._run(p["fen"], us, leaf)
     assert Agenda._leaf_read is orig
     assert len(leaf) >= 1 and all(" -> " in x and "| obs [" in x for x in leaf)
+
+
+# ---------------------------------------------------------------------------------------------------------------- 2c: the chase's reply table, the pending protocol, the memo key
+
+from catspace.incubator.analyst.discovery import binder as BD                   # noqa: E402
+
+QUEENS = "5k2/8/8/8/Q6Q/8/8/Q3K3 w - - 0 1"          # Qf2+ (h4f2): Ke7 lets Qa4-e8 ... mate in one (closed by the rule), Kg8 needs an agenda (pending)
+
+
+def test_72_7_2c_the_route_table_is_the_replies_read_one_by_one():
+    """`Pos.route_table` against the reads it replaces (agenda.py at 015c1a33: `P1.replies()` with the route's balance shift, `P1.push(uci)`, `legal_count`, the python
+    sort): the replies in shakmaty's order with the same balances, checks, captures, recaptures and mates in one, the RULE ("dead" iff no legal move of ours after it,
+    "mate" iff our mate in one), the handles after them, and the reading order."""
+    rng = random.Random(2723)
+    n = 0
+    for b in _games(10, 30, seed=27233)[::2]:
+        P0, me = AC.Pos(b.fen()), b.turn
+        for mv in rng.sample(list(b.legal_moves), min(3, b.legal_moves.count())):
+            P1, table, order = P0.route_table(mv.uci(), me)
+            P1r = P0.push(mv.uci())
+            assert P1.fen() == P1r.fen()
+            shift = P1r.balance(me) - P0.balance(me)
+            want = [(uci, shift + dbal, chk, cap, rec, mate1) for uci, dbal, chk, cap, rec, mate1 in P1r.replies()]
+            assert [t[:6] for t in table] == want
+            for t in table:
+                P2 = P1r.push(t[0])
+                assert t[7].fen() == P2.fen() and t[6] == ("dead" if P2.legal_count() == 0 else "mate" if t[5] else "")
+            rows = [(dbal, uci, chk, cap, rec, mate1) for uci, dbal, chk, cap, rec, mate1 in want]
+            assert [rows[i] for i in order] == sorted(rows, key=lambda t: (0 if t[4] else 1 if t[2] else 2 if t[3] else 3, t[0], t[1]))
+            n += 1
+    print(f"OBS 72.7 2c route table against the reads it replaces: routes {n}, all equal")
+    assert n > 80
+    with pytest.raises(ValueError):
+        AC.Pos(chess.STARTING_FEN).route_table("e2e5", True)
+
+
+def test_72_7_2c_the_pending_protocol_keeps_the_closed_replies_for_the_second_pass():
+    """The cheap pass reads only what the rules close: Qf2+ Ke7 is closed by the table's rule (our mate in one) and kept; Kg8 needs an agenda, so the route is PENDING
+    (not memoised). The second pass serves Ke7 from the cheap pass and reads Kg8 with its inner agenda."""
+    ag = Agenda(State(fen=QUEENS, us="w", pieces=[]))
+    m = chess.Move.from_uci("h4f2")
+    _P1, table, order = ag.pos.route_table("h4f2", True)
+    assert [(table[i][0], table[i][6]) for i in order] == [("f8e7", "mate"), ("f8g8", "")]
+    key = ag._route_key(m)
+    res = ag._chase_route(m, cheap=True)
+    assert res.get("pending") and res["killed"] is None and res["gap"] is None
+    assert set(ag._pre[key]) == {"f8e7"} and ag._pre[key]["f8e7"][0] == BD.MATE_VALUE and key not in ag.ctx.routes
+    res2 = ag._chase_route(m)
+    print("OBS 72.7 2c pending protocol, second pass:", res2["parts"])
+    assert key not in ag._pre and res2["parts"][0].startswith("after Ke7: closed") and res2["parts"][0].endswith("-> 100")
+    assert len(res2["parts"]) == 2 and res2["parts"][1].startswith("after Kg8:")
+
+
+def test_72_7_2c_the_memo_key_is_the_exact_transposition_key_and_serves_a_transposition():
+    """`Pos.tkey` is python-chess's `_transposition_key` (the clocks and the move order apart; the e.p. square only when legal) on random games; the route memo is keyed
+    by it, so the same position at other clocks is served the route read before (the second ask returns the memo entry itself)."""
+    for b in _games(8, 40, seed=27234):
+        assert AC.Pos(b.fen()).tkey() == b._transposition_key()
+    a, s = chess.Board(), chess.Board()
+    for u in ("g1f3", "g8f6", "b1c3", "b8c6"):
+        a.push_uci(u)
+    for u in ("b1c3", "b8c6", "g1f3", "g8f6"):
+        s.push_uci(u)
+    assert AC.Pos(a.fen()).tkey() == AC.Pos(s.fen()).tkey()
+    ag1 = Agenda(State(fen=QUEENS, us="w", pieces=[]))
+    ag2 = Agenda(State(fen=QUEENS.replace(" 0 1", " 7 12"), us="w", pieces=[]), side_depth=0, chase_depth=1, ctx=ag1.ctx)
+    m = chess.Move.from_uci("h4f2")
+    assert ag1.fen != ag2.fen and ag1._route_key(m) == ag2._route_key(m)
+    r1 = ag1._chase_route(m)
+    assert r1["gap"] is None
+    r2 = ag2._chase_route(m)
+    assert r2 is r1                                                                             # served from ctx.routes: the transposition's memo

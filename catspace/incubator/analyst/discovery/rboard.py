@@ -138,6 +138,14 @@ class RBoard:
             shadow.push(chess.Move.from_uci(u))
         return RBoard(self.pos.push(u), shadow)
 
+    def pushed(self, move: chess.Move, pos: "_A.Pos") -> "RBoard":
+        """The board after the legal `move` whose handle the caller already holds (`pos`: the route table's); under the bridge its shadow is this board's pushed."""
+        shadow = None
+        if G.BRIDGE_CHECK:
+            shadow = self._shadow.copy(stack=False)
+            shadow.push(move)
+        return RBoard(pos, shadow)
+
     def with_turn(self, colour: bool) -> "RBoard | None":
         """graph.with_turn on the handle (that side to move, en passant cleared, castling and clocks kept); None where shakmaty does not hold the board so (the
         side not to move would stand in check)."""

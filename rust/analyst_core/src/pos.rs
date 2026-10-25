@@ -322,6 +322,49 @@ impl Pos {
         });
         Ok((top, tied, dep.dep))
     }
+
+    // ------------------------------------------------------------------------------------------------------------ plan 72.7 step 2c: the chase's reply table
+    // agenda.py `_chase_route_body` (52.13 (4)/(5), 52.17 (4)): one forcing route of the chase -- every reply of theirs read; the replies the RULES close need no agenda
+    // (a reply after which we have no legal move: they mate or stalemate us -- the route dies; a reply after which we mate in one -- closed at MATE), the rest are
+    // PENDING: Python asks them (the exchange's close with their pass, the inner agendas, the static leaf) and keeps the verdict and the text (RUST_BOUNDARY risk 3).
+
+    /// route_table(uci, white) -> (the route's position after our legal move `uci`; its replies; the reading order). Each reply, in shakmaty's generation order (the
+    /// order the standing-kill scan reads them: `Pos.replies`' order): (uci, the balance change for `white` from THIS position -- the route's own capture included --,
+    /// it checks us, it captures, it captures on the route's square, we then mate in one, the RULE ("dead": we have no legal move after it; "mate": our mate in one;
+    /// "": pending), the handle after it). The reading order: recaptures on the route's square, then checks, then captures, then the rest; the worst balance first;
+    /// then by uci. ValueError on an illegal move.
+    #[allow(clippy::type_complexity)]
+    fn route_table(&self, uci: &str, white: bool) -> PyResult<(Pos, Vec<(String, i64, bool, bool, bool, bool, String, Pos)>, Vec<usize>)> {
+        let me = colour(white);
+        let p1 = self.push_move(uci)?;
+        let base = bal(&self.pos, me);
+        let rows: Vec<(String, i64, bool, bool, bool, bool, String, Pos)> = p1.pos.legal_moves().iter().map(|m| {
+            let mut q = p1.pos.clone();
+            q.play_unchecked(m);
+            let ours = q.legal_moves();
+            let mate1 = ours.iter().any(|m2| { let mut r = q.clone(); r.play_unchecked(m2); r.is_checkmate() });
+            let rule = if ours.is_empty() { "dead" } else if mate1 { "mate" } else { "" };
+            let cap = m.is_capture();
+            (m.to_uci(CastlingMode::Standard).to_string(), bal(&q, me) - base, q.is_check(), cap, cap && Some(m.to()) == p1.last_to, mate1, rule.to_string(),
+             Pos { pos: q, last_to: Some(m.to()) })
+        }).collect();
+        let mut order: Vec<usize> = (0..rows.len()).collect();
+        order.sort_by(|&a, &b| {
+            let k = |r: &(String, i64, bool, bool, bool, bool, String, Pos)| (if r.4 { 0 } else if r.2 { 1 } else if r.3 { 2 } else { 3 }, r.1);
+            (k(&rows[a]), &rows[a].0).cmp(&(k(&rows[b]), &rows[b].0))
+        });
+        Ok((p1, rows, order))
+    }
+
+    /// THE TRANSPOSITION KEY, EXACT (python-chess's `board._transposition_key()`): (the six piece bitboards, white's, black's, white to move, the castling rights as the
+    /// rooks' squares, the LEGAL en passant square or None) -- not the clocks. The route memo is keyed by it: `key()` (the 64-bit zobrist) would serve a proof to
+    /// another position on a collision.
+    #[allow(clippy::type_complexity)]
+    fn tkey(&self) -> PyResult<(u64, u64, u64, u64, u64, u64, u64, u64, bool, u64, Option<u8>)> {
+        let b = self.pos.board();
+        Ok((b.pawns().0, b.knights().0, b.bishops().0, b.rooks().0, b.queens().0, b.kings().0, b.white().0, b.black().0, self.pos.turn() == Color::White,
+            self.pos.castles().castling_rights().0, self.pos.ep_square(shakmaty::EnPassantMode::Legal).map(|s| s as u8)))
+    }
 }
 
 /// The squares whose piece or attacker counts (either colour) differ between two positions.
