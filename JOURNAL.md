@@ -32830,3 +32830,11 @@ FINDINGS: (1) RUST_BOUNDARY's `(pos.key(), uci + suffix)` would trade exactness 
 (2) The guard could not see the leaf (2b) -- fixed by the leaf verdict lists; it still sees no ponder (the background tier): `resume_gap`'s memo pop now uses the
 memo's key (before, it popped by the gap fact's `pk`, the position's FEN AS GIVEN, which equals the memo's FEN key only where that FEN prints what the handle prints: a legal e.p. square or none, clean castling rights).
 (3) No HashMap reaches output in the new Rust (the table is in generation order, the order sorted); no rayon; every new pyo3 function returns PyResult.
+
+## 2026-10-24 21:30 -- 72.7 step 2 merged (main ec7811e4, fast-forward; core rebuilt from main's crate); the gate; step 3 launched
+OBS gate engine (main ec7811e4, alone on the machine): files 28, passed 393, failed 0, xfailed 3, errors 0, wall 704.7 s (701.2 s at e0cdd709; one run each, directional).
+Step 2's own report (above) is the finding: the reply loop and the leaf were ~3.5% of a run; identical to the parent on traces, read sets and the new leaf-verdict lists; no gain under the clock
+(W0VFO 10 s: the same 472 inner agendas / 7612 inner questions read). The guard was BLIND to the leaf until 2b (two wrong leaf builds moved nothing): `<id>.leaf.txt` is now part of it. The time
+is in the Python words (reach_map, stopper_walk, stuck_threats -> can_run -> duty_after -> promote_defects -> race; graph.mates, piece_moves_to, with_piece, with_turn; under the clock
+forcing_why -> mate2_threat -> bind_mate2 = 4.36 s of 12.2 s). Kaveh: "make it faster before more training" -> STEP 3 (the words) launched as one Opus agent, one word family per
+sub-commit in the profile's cost order, each guard-identical on the ten cases AND a wider set (30-50 positions), Python bodies kept as test oracles. No retrain until it lands.
