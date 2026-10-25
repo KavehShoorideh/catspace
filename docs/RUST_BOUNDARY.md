@@ -152,6 +152,12 @@ Make the Python twins of `regress.py` (`mate_defects`, `material_defects`, `_sti
 `regress.rs`, then delete them, keeping the Python versions only as test oracles while the guard runs on a wider case set (30 to 50 positions beyond the ten).
 Then the Python words in `graph.py` (`piece_moves_to`, reach, ...) and the last python-chess uses in discovery/. The 90-puzzle timed grade stays the
 end-of-plan evaluation, not a per-step grade (standing rule).
+STATUS 3a: BUILT 2026-10-24 on branch worktree-agent-afa08f337b471dd18 (journal 2026-10-24 22:48): the mate in two in Rust (words.rs `bind_mate2_pos`, `mate2_threat_pos`: the
+binder's candidates and the premise of `mate_in_two`, its terms compiled from the s-expressions Python renders, read by the same evaluator and word cache); selfmine.bind_mate2 /
+regress.mate2_threat call-throughs, the Python bodies the test oracles. THE GUARD for step 3: `--sets wide` (99 positions), `--tier K` (the count-budget guard runs tier 0, where
+the mate in two is never asked: a wrong build moved 0 of 10 there and 10 of 10 at tier 2), PYTHONHASHSEED pinned (2 of the 99 depend on the string-hash order), the Syzygy tables
+linked (gitignored: a worktree has none). Guard 0 differences on the ten and the 99 at tiers 0 and 2 (traces, read sets, leaf lists). The profile first: under the clock the mate
+in two was a third of W0VFO's run; at the count budget the passer family is the top (3b, 3c).
 
 Do not interleave steps: each diff is revertable alone and the guard locates a regression to one step.
 

@@ -79,6 +79,8 @@ pub fn ranked(b: &shakmaty::Board, c: Color) -> Vec<Square> {
 static MACROS: std::sync::RwLock<Option<std::collections::HashMap<String, (Vec<String>, String)>>> = std::sync::RwLock::new(None);
 /// How many times the compositions were (re)installed: a compiled term is the compilation under one installation (plan 72.7 step 1, `compile_term`).
 static MACRO_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// The installation of the compositions now (plan 72.7 step 3: words.rs keys its compiled ids by it, as `compile_term` does).
+pub(crate) fn macro_gen() -> u64 { MACRO_GEN.load(std::sync::atomic::Ordering::SeqCst) }
 #[pyfunction]
 pub fn set_macros(macros: Vec<(String, Vec<String>, String)>) -> PyResult<()> {
     *MACROS.write().unwrap() = Some(macros.into_iter().map(|(n, ps, b)| (n, (ps, b))).collect());

@@ -23,6 +23,7 @@ mod regress;
 mod goals;
 mod generated;
 mod pos;
+mod words;
 mod sched;
 mod handlers;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -1783,6 +1784,10 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(regress::set_caches, m)?)?;
     m.add_function(wrap_pyfunction!(regress::clear_caches, m)?)?;
     m.add_function(wrap_pyfunction!(regress::cache_size, m)?)?;
+    // plan 72.7 step 3: the Python words in Rust (words.rs)
+    m.add_function(wrap_pyfunction!(words::bind_mate2_pos, m)?)?;
+    m.add_function(wrap_pyfunction!(words::mate2_threat_pos, m)?)?;
+    m.add_function(wrap_pyfunction!(words::mate2_after_pos, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::vocab_values, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::vocab_certify, m)?)?;
     m.add_function(wrap_pyfunction!(vocab::verify_mask, m)?)?;

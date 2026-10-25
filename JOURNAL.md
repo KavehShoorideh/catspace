@@ -32830,3 +32830,49 @@ FINDINGS: (1) RUST_BOUNDARY's `(pos.key(), uci + suffix)` would trade exactness 
 (2) The guard could not see the leaf (2b) -- fixed by the leaf verdict lists; it still sees no ponder (the background tier): `resume_gap`'s memo pop now uses the
 memo's key (before, it popped by the gap fact's `pk`, the position's FEN AS GIVEN, which equals the memo's FEN key only where that FEN prints what the handle prints: a legal e.p. square or none, clean castling rights).
 (3) No HashMap reaches output in the new Rust (the table is in generation order, the order sorted); no rayon; every new pyo3 function returns PyResult.
+
+## 2026-10-24 22:48 PDT -- plan 72.7 step 3a built: the mate in two in Rust (bind_mate2 / mate2_threat on the handle); the guard learns the wider set, the widening tier and the hash seed (branch worktree-agent-afa08f337b471dd18)
+docs/RUST_BOUNDARY.md section 4 step 3. No decision logic touched; the Python bodies are the test oracles (tests/test_plan72_7_step3.py).
+THE PROFILE FIRST (parent ec7811e4, cProfile; python-chess = the own time of its functions):
+OBS profile parent-count: total 59.6 s, python-chess own 31.69 s (53.2%) -- the guard's ten at the count budget; the words by cumulative time: stuck_threats 11.15 s (18.7%),
+  can_run 8.84 (14.8%), fixes_of 6.85, promote_defects 6.22 (10.4%), duty_after 6.10 (10.2%), reach_map 4.59 (7.7%), race.stopper_walk 4.36 (7.3%), promote_defects_cached 4.36,
+  race.deny_moves 4.03 (6.8%), trap_fix 3.00, routes_of 2.07, piece_moves_to 1.76, _mate_ahead 1.67, graph.mates 1.64, threat_value 1.50; python-chess entered by caller:
+  reach_map 3.46, stopper_walk 3.04, stuck_threats 2.23, graph.mates 1.35, piece_moves_to 1.32, with_piece 1.21, binder._binding 0.98, with_turn 0.96.
+OBS profile parent-W0VFO: total 12.2 s, python-chess own 3.65 s (29.8%) -- one W0VFO 10 s run: forcing_why 5.65 s (46.2%), mate2_threat 4.43 (36.2%), selfmine.bind_mate2
+  4.10 (33.5%; premise_truth 1.86, atom_of 1.41, legs_of 0.58), delayed_threat 1.11 (9.1%), race.king_verdict 0.98 (8.0%), race.support_moves 0.95 (7.8%).
+  Reading: under the clock the mate in two is a third of the run (the order of the task); at the count budget the passer family (stuck_threats -> can_run -> duty_after ->
+  promote_defects -> reach_map / stopper_walk, and deny_moves) is the top (3b, 3c next).
+BUILT. words.rs (new): `bind_mate2_pos(pos, mover, candidates=None)` -- the binder's candidates (every legal move but promotions and castling, python-chess's order) and the
+  premise of `mate_in_two` (Lean `Ideas.Mined.Schemas.mate_in_two`): the tail `(after x y (least (most (min check (eq movecount 0)))))` >= 1 and its three legs (legal x y,
+  ours on x, no pawn of ours on x about to promote <= 0), each COMPILED FROM THE S-EXPRESSION PYTHON RENDERS (selfmine.render; the ids cached by the installation of the
+  compositions) and read by the same `vocab::read_word` as `Pos.values` (the word cache included), stopping at the first that binds; `mate2_threat_pos(pos, uci, me)` (push,
+  the pass by `with_turn`, the binding). selfmine.bind_mate2 / regress.mate2_threat are call-throughs returning what they returned (the binding dict, its prem and atoms
+  rebuilt for the one pair); _binds and traps_set hand the board's handle (no FEN). vocab.rs `macro_gen`. Every function PyResult; no rayon; no HashMap reaches output.
+THE GUARD, three findings first (scripts/trace_identity.py; `snapshot <dir> [--sets wide] [--tier K]`):
+  (1) `--sets wide`: every puzzle of dev_20 and rand14_10 .. rand21_10 not in the ten -- 99 positions (the whole sets, not a hand-picked part of them: more than the
+      doc's 30 to 50, cheap at the count budget). (2) THE HASH SEED: two snapshots of the parent differed on 2 of the 99 (aEC9x, fth9B: a reply closed by rule in one run, by an inner agenda
+      in the other); unpinned three runs gave two hashes, pinned (PYTHONHASHSEED=0) three runs one. Cause: agenda.py `_chase_route_body` serves another goal's proof by
+      iterating `ctx.route_goals[key]`, a SET of goal tuples ('mate',) / ('win', sq) / ('promote', sq), whose order follows the string hash (plan 72.10's code). The guard now
+      re-executes itself at seed 0; the engine's dependence on the seed is reported, not fixed (a decision change). (3) THE GUARD WAS BLIND TO THE WORD: at the count budget the
+      root runs tier 0 and never asks the mate in two (`mate2=ctx.tier >= 2`): `--tier 2` runs the root at the widening tier 2 with no clock (deterministic as far as
+      checked: the parent's five cases that moved, re-run, gave the same files -- OBS subset compare: 0 of 15 files differ). (4) THE WORKTREE HAD NO TABLES: assets/tablebases/ is gitignored and was empty here, so the first tier-2 comparison moved 5 of 99 cases
+      (5-men endings: the table claim present in the parent's tree, absent in the worktree's) -- an environment split, not the port. Linked to main's tables; every snapshot
+      below redone with them. (At tier 0 the tables changed nothing: OBS 0 of 99 traces, read sets and leaf lists differ between the two parent snapshots.)
+OBS guard (parent ec7811e4 vs 3a, the same core build, tables, seed 0): ten tier 0: 0 of 10 traces, 0 of 10 read sets, 0 of 10 leaf verdict lists differ; wide tier 0:
+  0 of 99, 0 of 99, 0 of 99; ten tier 2: 0 of 10, 0 of 10, 0 of 10; wide tier 2: 0 of 99, 0 of 99, 0 of 99.
+OBS 3a coverage (ten, tier 2): mate2_threat asked 66064, true 568; bind_mate2 asked 90, bound 64.
+NEGATIVE CONTROL (a wrong build, not committed): the tail read as always holding (`>= 0`): tier 2: OBS trace identity: 10 of 10 traces differ; 10 of 10 read sets differ;
+  10 of 10 leaf verdict lists differ. The same build at tier 0: 0 of 10, 0 of 10, 0 of 10 -- the old guard could not have seen it. Reverted, rebuilt.
+MEASURES (one sitting, one build -- the 3a core -- the parent's Python from `git archive ec7811e4`; directional):
+OBS count budget (tier 0), alternating: parent 27.3 s, 3a 27.4 s, parent 26.8 s, 3a 27.4 s (tier 0 never asks the word: the same).
+OBS count budget (tier 2), the ten: parent 122.8 s (2TUzC 24.85, 4pC83 24.03, discovery 33.63, W0VFO 9.89 ...); 3a 96.3 s (2TUzC 21.80, 4pC83 16.89, discovery 26.53, W0VFO 5.28 ...).
+OBS W0VFO 10 s: parent wall 10.7 s, decision Qb7 (e4b7), questions asked 38, inner agendas 486, inner questions 7891; 3a wall 10.0 s, Qb7 (e4b7), 38, 556, 5552
+  (one run each; under the clock the work read is the reading: more inner agendas, fewer inner questions in the same seconds -- not a gain claimed beyond that).
+OBS profile 3a-W0VFO: total 10.3 s, python-chess own 4.27 s (41.2%); forcing_why 1.75 s (16.9%; parent 5.65, 46.2%), mate2_threat 0.41 s for 6758 calls (parent 4.43 s for
+  3698); the top now: race.king_verdict 1.14 (11.0%), delayed_threat 1.12 (10.8%), race.support_moves 1.10, node_cost 1.04, route_cost 0.99.
+OBS python-chess sites discovery/ (the step-2 definition, recounted: the parent 745 exactly): 745 -> 742 {legal_moves 146 -> 144, is_check 62 -> 61}; selfmine.py 21 -> 20, regress.py 238 -> 236.
+OBS gate engine --only (one file per call): test_plan72_7_step3 passed 3, failed 0; test_plan72_7_step2 13, 0; test_plan72_7 16, 0; test_binder_rust 31, 0; test_plan72 6, 0;
+  test_plan72_3 7, 0; test_plan72_5 7, 0; test_plan72_8 8, 0; test_duty63 12, 0; test_plan62 28, 0; test_plan66 16, 0; test_plan67 9, 0; test_discovery_vocabulary 23, 0;
+  test_agenda 26, 0; test_fact_store 21, 0; test_regress 87, 0, xfailed 1 (308.7 s); test_tiers 14, 0; test_offbuilt64 15, 0, xfailed 1; test_plan72_10 4, 0; test_plan72_9 7, 0.
+FINDINGS: the four guard findings above; and (5) the word reads no dependency tracker (the oracle and the port leave `dep_peek` as they found it: tested); (6) a board shakmaty
+  does not hold binds nothing in both (its atoms read 0).

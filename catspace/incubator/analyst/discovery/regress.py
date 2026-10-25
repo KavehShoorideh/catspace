@@ -300,14 +300,19 @@ def mate_threat(board: chess.Board, m: chess.Move, us: str | bool) -> bool:
 
 def mate2_threat(board: chess.Board, m: chess.Move, us: str | bool) -> bool:
     """plan 59 tier 2: after our (quiet) move m and a pass, we have a FORCED MATE IN TWO, read by the proved word `mate_in_two` (Lean `Ideas.Mined.Schemas.mate_in_two`: a move x -> y after which
-    every reply is met by a mate; bound by `selfmine.bind_mate2`, the premise read in Rust) -- the same word the binder's mate_in_two schema uses, on the board after m with the move passed to them."""
-    from catspace.incubator.analyst.discovery import selfmine as SM
+    every reply is met by a mate; bound by `selfmine.bind_mate2`, the premise read in Rust) -- the same word the binder's mate_in_two schema uses, on the board after m with the move passed to them.
+    plan 72.7 step 3a: read in Rust on the board's handle in ONE call (`analyst_core.mate2_threat_pos`: the push, the pass, the binder's candidates and atoms -- words.rs); a board
+    whose handle shakmaty does not hold is pushed here and read on the handle after the move. The Python body is the test oracle (tests/test_plan72_7_step3.py)."""
+    from catspace.incubator.analyst.discovery import base_vocabulary as BV
     me = G.colour_of(us)
+    BV.install_terms()
+    h = G.pos_of(board)
+    if h is not None:
+        return _A.mate2_threat_pos(h, m.uci(), me)
     c = board.copy(stack=False)
     c.push(m)
-    if c.is_check() or not any(True for _ in G.with_turn(c, me).legal_moves):
-        return False
-    return bool(SM.bind_mate2(G.with_turn(c, me).fen(), "w" if me else "b"))
+    hc = G.pos_of(c)
+    return _A.mate2_after_pos(hc, me) if hc is not None else False
 
 
 def forcing_why(board: chess.Board, m: chess.Move, stake: int, us: str | bool, mate_threats: bool = False, notes: list | None = None, mate2: bool = False,
@@ -505,7 +510,7 @@ def _binds(d: chess.Board, th: Threat, stake: int, me: bool) -> int:
         return 0
     if th.kind == "mate2":
         from catspace.incubator.analyst.discovery import selfmine as SM
-        return STAKE_MATE if SM.bind_mate2(d.fen(), "w" if me else "b") else 0
+        return STAKE_MATE if SM.bind_mate2(None, "w" if me else "b", pos=G.pos_of(d)) else 0      # plan 72.7 step 3a: on d's handle (no FEN)
     if th.kind == "threat":
         v = threat_value(d, me)
         return v if v >= stake else 0
@@ -857,7 +862,7 @@ def traps_set(board: chess.Board, m: chess.Move, us: str | bool, limit: int = 4)
         if mate1:
             out.append((san, mate1, "mate in one"))
         else:
-            got = SM.bind_mate2(d.fen(), "w" if me else "b")
+            got = SM.bind_mate2(None, "w" if me else "b", pos=G.pos_of(d))                # plan 72.7 step 3a: on d's handle (no FEN)
             if got:
                 (x, y), = got[0]["pairs"]
                 out.append((san, d.san(chess.Move.from_uci(x + y)), "mate in two"))

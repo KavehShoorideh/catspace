@@ -2,6 +2,8 @@
 (deterministic: no clock). Usage:
 
   .venv/bin/python scripts/trace_identity.py snapshot <dir>          # write the traces (and the read sets) of the case set into <dir>
+  .venv/bin/python scripts/trace_identity.py snapshot <dir> --sets wide   # plan 72.7 step 3: the WIDER case set instead (WIDE_SETS, every puzzle not in the ten)
+  .venv/bin/python scripts/trace_identity.py snapshot <dir> --tier 3      # plan 72.7 step 3: the root at widening tier 3 (count budget): the wider tiers' words asked
   .venv/bin/python scripts/trace_identity.py compare <before> <after>  # diff two snapshots; prints OBS lines; exit 1 on any difference
   .venv/bin/python scripts/trace_identity.py crosscheck               # plan 72.7 step 0: SAN and legal-move order, python-chess against the Rust Pos
 
@@ -14,6 +16,11 @@ root lists of every inner agenda and of their agendas, with their reads, their o
 so a claim that silently reads less (a word cache that does not replay its read set) moves no trace line; `compare` diffs these files too and counts them apart.
 plan 72.7 step 2b: and `<id>.leaf.txt`, THE LEAF'S VERDICTS -- every static leaf read of the run as it is computed (route, schema, value, kept / refuted by what,
 the lines it added): no trace line of the ten cases prints a leaf, so a wrong leaf moved nothing before (two wrong leaf builds proved it); `compare` counts them apart.
+plan 72.7 step 3 (docs/RUST_BOUNDARY.md section 4: "the guard runs on a wider case set, 30 to 50 positions beyond the ten"): `snapshot <dir> --sets wide` writes the same three
+files for EVERY puzzle of WIDE_SETS (dev_20 and rand14_10 .. rand21_10) that is not one of the ten -- 99 positions: the whole sets are taken rather than a hand-picked
+part of them. `--tier K` runs the root at the widening tier K (count budget, no clock): at tier 0 the wider tiers' words (the mate in two, the delayed threat, no safe
+move) are never asked, so a port of them is invisible there. Every snapshot runs at PYTHONHASHSEED=0 (the script re-executes itself): the traces of 2 of the 99 depend
+on the string-hash order (agenda.py iterates a set of goal tuples, `ctx.route_goals`).
 `crosscheck` (risks 4 and 5): over the case set's positions, a sample of the puzzle sets, a seeded random walk from each and a list of hand-made corners (castling,
 promotions, en passant, disambiguation, mates, evasions), `Pos.legal_ucis()` must equal `[m.uci() for m in board.legal_moves]` and `Pos.san(uci)` must equal
 `board.san(move)` for every legal move; every corner that differs is printed as a FINDING.
@@ -109,11 +116,13 @@ def _leaf_hook(out: list):
     return orig
 
 
-def _run(fen: str, us: str, leaf: "list | None" = None) -> tuple:
-    """-> (the trace with the DECISION line, the read sets); `leaf` (a list) receives the leaf's verdicts (`_leaf_hook`)."""
+def _run(fen: str, us: str, leaf: "list | None" = None, tier: int = 0) -> tuple:
+    """-> (the trace with the DECISION line, the read sets); `leaf` (a list) receives the leaf's verdicts (`_leaf_hook`). `tier` (plan 72.7 step 3): the root's widening
+    tier at the count budget (`Agenda(tier=k)`: the context's tier -- 2 opens the mate-in-two threats, 1 the delayed threat and no safe move, 3 the chain items -- and a
+    count fuse of 2^k times tier 0's; no clock, so deterministic like tier 0). At tier 0 (the default) the words of the wider tiers are never asked."""
     orig = _leaf_hook(leaf) if leaf is not None else None
     try:
-        ag = Agenda(State(fen=fen, us=us, pieces=[]))
+        ag = Agenda(State(fen=fen, us=us, pieces=[]), tier=tier)
         ag.ask()
     finally:
         if orig is not None:
@@ -127,7 +136,26 @@ def _trace(fen: str, us: str) -> str:
     return _run(fen, us)[0]
 
 
-def _cases():
+WIDE_SETS = ("dev_20",) + tuple(f"rand{i}_10" for i in range(14, 22))      # plan 72.7 step 3: the wider case set's puzzle sets (every puzzle of them not in CASES)
+
+
+def _wide_cases():
+    """plan 72.7 step 3: every puzzle of WIDE_SETS that is not one of the ten, in set order then file order (a set missing on disk is skipped)."""
+    ten = {pid for _s, pid in CASES}
+    for set_name in WIDE_SETS:
+        try:
+            ps = PA.load_set(set_name)
+        except FileNotFoundError:
+            continue
+        for p in ps:
+            if p["id"] not in ten:
+                yield p["id"], p["fen"], "w" if chess.Board(p["fen"]).turn else "b"
+
+
+def _cases(sets: str = "ten"):
+    if sets == "wide":
+        yield from _wide_cases()
+        return
     for set_name, pid in CASES:
         try:
             p = next(x for x in PA.load_set(set_name) if x["id"] == pid)
@@ -138,12 +166,12 @@ def _cases():
         yield name, fen, us
 
 
-def snapshot(out: str) -> None:
+def snapshot(out: str, sets: str = "ten", tier: int = 0) -> None:
     os.makedirs(out, exist_ok=True)
     n = 0
-    for pid, fen, us in _cases():
+    for pid, fen, us in _cases(sets):
         leaf: list = []
-        trace, reads = _run(fen, us, leaf)
+        trace, reads = _run(fen, us, leaf, tier)
         open(os.path.join(out, pid + ".txt"), "w").write(_SECS.sub("<t>", trace))
         open(os.path.join(out, pid + READS), "w").write(reads)
         open(os.path.join(out, pid + LEAF), "w").write("\n".join(leaf) + "\n")
@@ -250,8 +278,11 @@ def crosscheck_main() -> int:
 
 
 if __name__ == "__main__":
+    if os.environ.get("PYTHONHASHSEED") != "0":           # plan 72.7 step 3: the traces of 2 of the 99 wide cases (aEC9x, fth9B) depend on Python's string-hash seed (two runs of the
+        os.execve(sys.executable, [sys.executable] + sys.argv, dict(os.environ, PYTHONHASHSEED="0"))       # same code differ unpinned, never pinned): every snapshot runs at seed 0
     if sys.argv[1] == "snapshot":
-        snapshot(sys.argv[2])
+        snapshot(sys.argv[2], sys.argv[sys.argv.index("--sets") + 1] if "--sets" in sys.argv else "ten",
+                 int(sys.argv[sys.argv.index("--tier") + 1]) if "--tier" in sys.argv else 0)
     elif sys.argv[1] == "crosscheck":
         sys.exit(crosscheck_main())
     else:
