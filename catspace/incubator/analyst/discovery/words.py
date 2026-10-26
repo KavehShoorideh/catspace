@@ -18,6 +18,7 @@ from typing import Protocol, runtime_checkable
 
 from catspace.incubator.analyst.discovery import binder as BD
 from catspace.incubator.analyst.discovery import graph as G
+from catspace.incubator.analyst.discovery import lemma_store as LS
 from catspace.incubator.analyst.discovery import plan67 as PL
 from catspace.incubator.analyst.discovery import race as RC
 from catspace.incubator.analyst.discovery import regress as R
@@ -98,6 +99,8 @@ class Words(Protocol):
     def arrangement_items(self, a) -> str: ...
     def arrangement_steps(self, s, a) -> list: ...
     def arrangement_fix(self, s, us, a, q, text=None): ...
+    # plan 73.4: the domain tells the machinery which produced words it has, where each came from and whether it is proved (the lemma store)
+    def lemmas(self) -> dict: ...
 
 
 class ChessWords:
@@ -206,6 +209,9 @@ class ChessWords:
 
     def arrangement_fix(self, s, us, a, q, text=None):
         return R.arrangement_fix(s, us, a, q, text)
+
+    def lemmas(self):
+        return LS.load()
 
 
 CHESS_WORDS = ChessWords()

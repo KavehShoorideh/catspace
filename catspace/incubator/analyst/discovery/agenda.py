@@ -50,6 +50,7 @@ from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import rboard as RB
 from catspace.incubator.analyst.discovery import landing as LD
+from catspace.incubator.analyst.discovery import lemma_store as LS      # plan 73.4: every claim lemma, kill reason and GAP reason passes LS.name (returns it unchanged; counts uses and uncatalogued words)
 from catspace.incubator.analyst.discovery import region as RG
 from catspace.incubator.analyst.discovery import race as RC
 from catspace.incubator.analyst.discovery import plan67 as PL
@@ -221,6 +222,8 @@ class ChaseCtx:
         self.roots_served = 0                     # 52.21 (1): root lists (the reach roots) served from the fact store, not rescanned
         self.finished = 0                         # 52.21 (3): routes that were in hand when the deadline passed and were run to their end
         self.chase_served = 0                     # 52.21 (2): chase claims served from the store on a board whose cells matched the claim's read set
+        self.uncatalogued = 0                     # plan 73.4: lemma / kill / GAP strings of the run that no entry or pattern of the lemma store names (the validator fails on any)
+        self.lemma_uses: dict = {}                # plan 73.4: entry name -> the uses of the word in the run (claims made, kills, GAPs), read by the analyser's `OBS lemma uses` line
         self.refuter_fixes = 0                    # 52.22 (3): killed routes saved by the refuter fix (the refuting piece exchanged with tempo, the route asked again after it)
         self.mate_levels: list = []               # 52.23 (6): the prep moves the mate chain in hand may still spend (tempo arithmetic: a mate pattern with d defects needs at most d prep moves)
         self.slice_len = 0.0                      # 52.23 (11): the time slice the root route in hand was given
@@ -476,7 +479,7 @@ class Agenda:
         if q.stake + (self._top_other(q) if self._t(NEED_PROPAGATION, 3) else 0) < self.min_stake and not force:      # 52.23 (7): the need may be met by a CHAIN -- this question's gain and one more claim after it (zBouR: Qh1+ Rf1 Qxf1+ Rxf1 Rxf1+ Kd2 Rf2+:
             return q                                                         # the rook, 5, then the queen by the skewer, 9, meet a need of 10 that no single stake does)
         if self.ctx is not None and self.ctx.deadline is not None and self.ctx.out_of_time() and not (self.late and self.ctx.finishing(self.frame)):      # 52.21 (3): past the deadline no new question is pushed
-            self.state.gaps.append(f"{q.text} (stake {q.stake}): out of time, not asked")
+            self.state.gaps.append(f"{q.text} (stake {q.stake}): {LS.name('out of time, not asked')}")
             return q
         if self.units is not None and not force and not self._unit_root(q):      # plan 72.10 Q2: their agenda on the diff's squares only
             return q
@@ -604,7 +607,7 @@ class Agenda:
         san = b.san(m)
         q = R.new_question("win", tc["value"], dict(table=tc["code"]), text=f"{tc['text']}")
         self.all.append(q)
-        claim = Claim(tc["kind"], san, tc["value"], "syzygy", f"{san} ({tc['text']})", move=tc["move"], goal=q.goal, proved_by="table")
+        claim = Claim(tc["kind"], san, tc["value"], LS.name("syzygy"), f"{san} ({tc['text']})", move=tc["move"], goal=q.goal, proved_by="table")
         self._tq = (q, claim)                                   # (its qid is set once the questions are numbered)
         self.state.claims.append(claim)
         q.status = "verified"
@@ -910,6 +913,7 @@ class Agenda:
     # ------------------------------------------------------------------------------------------------------------ the loop
 
     def ask(self) -> None:
+        mark = LS.mark() if self._root else None                 # plan 73.4: the lemma store's counters before the run (the root reads the change)
         if (TIERS or (TIERS_UNDER_TIME and self.ctx is not None and self.ctx.seconds is not None)) and self._root and self.ctx.tier == 0:          # plan 59 (3): the root is driven through the widening tiers (tier 0 is this agenda; wider tiers run on fresh contexts)
             if POOL and (GP.load() is not None or QP.load() is not None):
                 self._ask_pool()                                 # plan 69.1: one pool, the policy orders, no tier
@@ -917,6 +921,18 @@ class Agenda:
                 self._ask_tiers()
         else:
             self._ask_once()
+        if mark is not None:
+            self._lemma_tally(mark)
+
+    def _lemma_tally(self, mark: tuple) -> None:
+        """plan 73.4: the words of the run. `ctx.uncatalogued` counts the lemma / kill / GAP strings no entry of the lemma store names (each distinct one is a GAP note in
+        the trace: the trace gains no line when every word is catalogued); `ctx.lemma_uses` the uses of each word. Nothing is written back (the uses feed `evidence` later)."""
+        n, new, uses = LS.since(mark)
+        self.ctx.uncatalogued += n
+        for k, v in uses.items():
+            self.ctx.lemma_uses[k] = self.ctx.lemma_uses.get(k, 0) + v
+        for s in new:
+            self.lines.append(f"GAP: uncatalogued word {s}")
 
     def _ask_once(self) -> None:
         """One run of this root agenda to its end (what `ask` was before plan 59)."""
@@ -1332,7 +1348,7 @@ class Agenda:
         self.lines.append(f"no proved claim: {d['san']} is played as the best unfinished line (floor " + (f"{floor:+d}" if floor is not None else "unknown") + f", {label}"
                           + (f"; least gain read {read:+d}" if read is not None else "") + (f", the {total - n} unread by their static balance {rest:+d}" if rest is not None else "") + "; "
                           + (", ".join(refuted) + (" is" if len(refuted) == 1 else " are") + " refuted" if refuted else "nothing is refuted") + f"; {len(gaps)} unfinished line(s) compared, {len(tied)} tied at the floor, ordered by the judge's price {best[0]})")
-        return Claim("win", d["san"], floor if floor is not None else 0, "unfinished line", f"{d['san']} (floor " + (f"{floor:+d}" if floor is not None else "unknown") + f", {label}; {d['gap']})", move=u, goal="win", proved=False, confidence=0.0, estimator="", word="unfinished line")
+        return Claim("win", d["san"], floor if floor is not None else 0, LS.name("unfinished line"), f"{d['san']} (floor " + (f"{floor:+d}" if floor is not None else "unknown") + f", {label}; {d['gap']})", move=u, goal="win", proved=False, confidence=0.0, estimator="", word="unfinished line")
 
     def _piece_attacked(self) -> bool:
         """Is a piece of ours (not the king) attacked by the other side on this board?"""
@@ -1518,7 +1534,7 @@ class Agenda:
             if self.asked >= self.budget:
                 left = [t[4] for t in self.heap]
                 self.lines.append(f"STOP (c): budget {self.budget} questions asked; {len(left)} open questions become gaps")
-                self.state.gaps += [f"budget: {q.text} (stake {q.stake}) not asked" for q in left]
+                self.state.gaps += [f"{LS.name('budget')}: {q.text} (stake {q.stake}) not asked" for q in left]
                 return
             if self.chase_depth and self.ctx.out_of_time() and not (self.late and self.ctx.finishing(self.frame)):       # 52.17 (5): an inner agenda that meets the deadline stops where it is (its answer is cut, never memoised, never read as "no claim"); 52.21 (3): the ones opened by the route in hand read on
                 self.ctx.budget_hits += 1
@@ -1666,7 +1682,7 @@ class Agenda:
                 self.best = (hit["net"], 0, cl)
                 self.asked_at_claim = self.asked
         else:
-            q.status, q.reason, q.reads = "killed", "inherited: " + hit["why"], hit["reads"]
+            q.status, q.reason, q.reads = "killed", LS.name("inherited: " + hit["why"]), hit["reads"]
             self.kills.append((q.id, q.reason))
             self.lines.append(f"Q{q.id} {q.text}: inherited: nothing changed for {what} ({hit['why']})")
         self.inherited += 1
@@ -1721,7 +1737,7 @@ class Agenda:
                 self.best = (f.payload["net"], 0, cl)
                 self.asked_at_claim = self.asked
         else:
-            q.status, q.reason, q.reads = "killed", "inherited: " + f.payload.get("why", ""), f.reads
+            q.status, q.reason, q.reads = "killed", LS.name("inherited: " + f.payload.get("why", "")), f.reads
             q._routed = f.payload.get("routed", False)
             self.kills.append((q.id, q.reason))
             self.lines.append(f"Q{q.id} {q.text}: inherited: nothing changed for {what} ({f.payload.get('why', '')}) -- {src}")
@@ -2189,7 +2205,7 @@ class Agenda:
             self._kill(q, f"after {c.san(r) if r is not None else '?'} ({how}) we win {worst[0] if worst else 0}, less than 1: one move answers both threats", tempo=False)
             return
         what = f"{p['san']}"
-        claim = Claim("win", what, worst[0], "fork: two threats, one move (Ideas.ForkSquare.one_move_touches_one); every reply read by the exchange rule (Ideas.ExchangeLaw)",
+        claim = Claim("win", what, worst[0], LS.name("fork: two threats, one move (Ideas.ForkSquare.one_move_touches_one); every reply read by the exchange rule (Ideas.ExchangeLaw)"),
                       f"{what}: " + ("check and " if p["check"] else "") + "attacks " + " and ".join(f"{b.piece_at(t).symbol().upper() if b.piece_at(t) else '?'}{GAME.loc_name(t)}" for t, _w in p["targets"])
                       + f"; the least over their replies of balance + exchange is {worst[0]} (worst reply {c.san(chess.Move.from_uci(worst[1]))})", move=p["move"])
         self._stamp(claim, q)
@@ -2277,8 +2293,9 @@ class Agenda:
     def _trace_fix(self, f: R.Question, lvl: int) -> None:
         pad = "  " * lvl
         if f.status == "gap":
-            self.lines.append(f"{pad}-> Q{f.id} {f.text}: GAP, {f.reason}")
-            self.state.gaps.append(f"Q{f.id} {f.text}: {f.reason}")
+            why = LS.name(f.reason)
+            self.lines.append(f"{pad}-> Q{f.id} {f.text}: GAP, {why}")
+            self.state.gaps.append(f"Q{f.id} {f.text}: {why}")
         else:
             rs = ", ".join(f"{r.san} ({r.why})" for r in f.routes)
             tail = f"{'routes' if f.text.startswith(('take its squares', 'fork')) else 'forcing'}: {rs}" if rs else "no forcing move" + (f" (quiet fixes: {', '.join(f.unforced[:4])})" if f.unforced else "")
@@ -2328,7 +2345,7 @@ class Agenda:
             if (self.side_depth or (self.chase_depth and bind.value >= self.min_stake)) and bind.schema.startswith("delayed_") and bind.schema.endswith("_d1"):         # 64.0: the root families too, and in the chase's inner agendas (their free move comes after our LAST move, which the tail does not read)
                 ref = self._leaf_read(bind, r)
                 if ref is not None:
-                    gap = f"{r.san}: refuted at the leaf: their {ref['claim'].what} wins {ref['claim'].value} (lemma {ref['claim'].lemma}) after {ref['line']}"
+                    gap = LS.name(f"{r.san}: refuted at the leaf: their {ref['claim'].what} wins {ref['claim'].value} (lemma {ref['claim'].lemma}) after {ref['line']}")
                     self.state.gaps.append(f"Q{q.id} {q.text}: {gap}")
                     self.lines.append(f"  {r.san} DOWNGRADED to a gap: {gap}; our claimed gain {bind.value} is not decided by")
                     why.append(f"{r.san}: {gap}")
@@ -2357,7 +2374,7 @@ class Agenda:
             elif otheirs is not None and net > onet:
                 self.lines.append(f"  {orr.san} demoted: bound value {other.value} less their {otheirs.what} ({otheirs.value}, lemma {otheirs.lemma}) = net {onet}, against {r.san} net {net}")
         kind = "mate" if bind.value >= BD.MATE_VALUE else ("save" if q.goal == "save" else "win")
-        claim = Claim(kind, bind.san, bind.value, bind.theorem, self._line_of(bind), move=bind.assignment["x"] + bind.assignment["y"])
+        claim = Claim(kind, bind.san, bind.value, LS.name(bind.theorem), self._line_of(bind), move=bind.assignment["x"] + bind.assignment["y"])
         self._stamp(claim, q)
         self.state.claims.append(claim)
         q.status = "verified"
@@ -2396,13 +2413,13 @@ class Agenda:
             if g >= kept:
                 ag = self.ctx.their_ags.get(key)
                 q = max((q for q in ag.all if q.status == "gap"), key=lambda q: q.stake) if ag is not None else None
-                out = Claim("win", "their open question", g, "open: no lemma fires yet (72.2 d)", q.text if q is not None else "an open question", proved=False, confidence=0.0, estimator="their open question")
+                out = Claim("win", "their open question", g, LS.name("open: no lemma fires yet (72.2 d)"), q.text if q is not None else "an open question", proved=False, confidence=0.0, estimator="their open question")
         if out is None and STUCK_LEAF and not e_rb.is_check():
             w = G.with_turn(GAME.from_key(e_rb.fen()), self.me)       # plan 72.7 step 2a: `e_rb` is the leaf's RBoard; the WORD (`stuck_threats`) reads a python-chess board, built here only (with_turn of the leaf's board, as before)
             st = [d for d in R.stuck_threats(w, self.us) if d["parry"] is None and d["worth"] - d["price"] >= kept]
             if st:
                 d = st[0]
-                out = Claim("win", e_rb.san(chess.Move.from_uci(d["first"])), d["worth"] - d["price"], "stuck_reach (72.1): the priced reach, no reply read",
+                out = Claim("win", e_rb.san(chess.Move.from_uci(d["first"])), d["worth"] - d["price"], LS.name("stuck_reach (72.1): the priced reach, no reply read"),
                             f"our {w.piece_at(d['sq']).symbol().upper()} on {GAME.loc_name(d['sq'])} cannot run; their {w.piece_at(d['attacker']).symbol().upper()} on {GAME.loc_name(d['attacker'])} reaches it in {d['tempi']} ({' '.join(GAME.loc_name(chess.Move.from_uci(u).to_square) for u in d['path'])}) at price {d['price']}, no guard of ours in time",
                             move=d["first"], proved=False, confidence=0.0, estimator="stuck_reach")
                 self.ctx.stuck_gaps += 1
@@ -2547,7 +2564,7 @@ class Agenda:
         if tied:
             why += f"; tied at net {net} with {', '.join(t[2].san for t in tied[:5])}: the shape key (fewest hanging, most guarded, most poking) prefers {r.san}"
         self.lines.append(f"  decision {r.san}: {why}")
-        claim = Claim("save", r.san, net, "none", f"{r.san}: the opponent's best claim is {-net + gain}" if theirs is not None else f"{r.san}: no claim of theirs binds", move=r.move.uci(),
+        claim = Claim("save", r.san, net, LS.name("none"), f"{r.san}: the opponent's best claim is {-net + gain}" if theirs is not None else f"{r.san}: no claim of theirs binds", move=r.move.uci(),
                       proved=False)                              # loop 2 (4E4iU, 2CEDb, 2026-10-23): the smallest loss rests on one-ply reads of their replies while the chases are GAPs -- a decision, not a proof
         self._stamp(claim, q)
         self.state.claims.append(claim)
@@ -2863,7 +2880,7 @@ class Agenda:
             if c_rb.is_checkmate():
                 res.update(value=BD.MATE_VALUE, parts=[f"{san} mates"])
             else:
-                res["killed"] = "stalemate"
+                res["killed"] = LS.name("stalemate")
             ctx.routes[mkey] = res
             return res
         # 52.13 (5): the replies are read through the Rust `Pos` (no FEN, no board copy per reply); a python-chess board is built only for a reply that is read further.
@@ -2885,7 +2902,7 @@ class Agenda:
             sk = None if promote or (override and uci in override) else self._standing_kill(uci, P2_of(uci), dbal, self._target(), gk)
             if sk is not None:
                 kill_uci = uci
-                res["killed"] = f"after {san_of(uci)}: {sk[0]} (standing kill: nothing the inner agenda read after {sk[1]} {san_of(uci)} has changed)"
+                res["killed"] = LS.name(f"after {san_of(uci)}: {sk[0]} (standing kill: nothing the inner agenda read after {sk[1]} {san_of(uci)} has changed)")
                 ctx.standing += 1
                 self._log(lkey, uci, "standing", dbal, None, sk[2], res["killed"])
                 break
@@ -2934,7 +2951,7 @@ class Agenda:
                 self._serve_carried(cr, res, gains)
                 continue
             if rule_of[uci] == "dead":                           # the rule (Rust): no legal move of ours after it
-                res["killed"] = f"after {san_r} " + ("they mate us" if chk else "stalemate")
+                res["killed"] = LS.name(f"after {san_r} " + ("they mate us" if chk else "stalemate"))
                 self._log(lkey, uci, "killed", dbal, None, None, res["killed"])
                 break
             closed = (BD.MATE_VALUE, "mate in one") if rule_of[uci] == "mate" else None if promote else self._closed_by_rule(P2, dbal, False)      # the rule (Rust): our mate in one; else PENDING -- Python closes by the exchange with their pass, or asks
@@ -2954,7 +2971,7 @@ class Agenda:
             if promote and dbal < self.promote_stake:
                 why = self._promote_stands(m, P2)
                 if why is not None:
-                    res["killed"] = f"after {san_r}: {why}"
+                    res["killed"] = LS.name(f"after {san_r}: {why}")
                     ctx.promote_stands += 1
                     self._log(lkey, uci, "killed", dbal, None, None, res["killed"])
                     break
@@ -2998,7 +3015,7 @@ class Agenda:
                     self._log(lkey, uci, "gap", dbal, inn["value"], None, res["gap"])
                     break
                 else:
-                    res["killed"] = f"after {san_r}: the promotion is not claimed (no promote claim of ours; the reply took {-dbal})" if dbal <= 0 else f"after {san_r}: the promotion is not claimed ({dbal:+d}, below the stake)"
+                    res["killed"] = LS.name(f"after {san_r}: the promotion is not claimed (no promote claim of ours; the reply took {-dbal})" if dbal <= 0 else f"after {san_r}: the promotion is not claimed ({dbal:+d}, below the stake)")
                     self._log(lkey, uci, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
                     break
                 gains.append(g)
@@ -3012,7 +3029,7 @@ class Agenda:
             static = (dbal >= 1 or (mate_save and dbal >= target)) and inn["value"] < BD.MATE_VALUE      # under keep semantics a balance of 0 too stands only as a static balance; against a mate threat it is read with the pass (Qc1+ Qd1: Bc6+ still mates), elsewhere the keep family's one-ply read is the standard (the pass read on every 0-leaf cost 04Qx2's Be8+ the fuse)
             t_their, claim_their, unparried, parry_note = 0, None, 0, None
             if target < 1 and dbal >= target and inn["value"] < BD.MATE_VALUE and P2.is_check() and inn["claim"] is None:      # 2026-10-22 (0AgL8): under KEEP semantics, IN CHECK (at target >= 1 the rule over-reaches: an in-check inner agenda whose evasion merely keeps makes no claim -- 0sjz3's Rxd6 exd6+ would read as a GAP; GWigp's Rxe6 is wrong for their a-pawn behind the leaf, LOOP TARGET 2, not for this) there is no pass to read their threat from -- a leaf the inner agenda left without a claim cannot be kept by its balance: a GAP (not parried YET), never a keep (Ne1 Bc6+ "material +0", then Ra8#); a claim of the inner agenda (the forced reply read, 2TUzC's Rxf5 Qxf1+ Kh2) keeps as any claim does
-                res["gap"] = f"after {san_r}: {dbal:+d} stands only as a balance and we are in check (no pass to read their threat, no claim of ours): not parried YET"
+                res["gap"] = LS.name(f"after {san_r}: {dbal:+d} stands only as a balance and we are in check (no pass to read their threat, no claim of ours): not parried YET")
                 res["reply"] = uci
                 ctx.budget_hits += 1
                 self._log(lkey, uci, "gap", dbal, None, None, res["gap"])
@@ -3074,14 +3091,14 @@ class Agenda:
                     self._static_line(san, san_r, dbal, claim_their, parry_note, lost)
                     if unsure and dbal - unparried - sum(cl.value for cl in unsure) < 1:
                         worst = max(unsure, key=lambda cl: cl.value)
-                        res["gap"] = f"after {san_r}: {dbal:+d} stands only as a balance and their {worst.what} (wins {worst.value}, lemma {worst.lemma}) is not parried YET: " + (getattr(worst, "parry_note", None) or "the save question was cut, not killed")
+                        res["gap"] = LS.name(f"after {san_r}: {dbal:+d} stands only as a balance and their {worst.what} (wins {worst.value}, lemma {worst.lemma}) is not parried YET: " + (getattr(worst, "parry_note", None) or "the save question was cut, not killed"))
                         res["reply"] = uci
                         ctx.budget_hits += 1
                         self._log(lkey, uci, "gap", dbal, None, None, res["gap"])
                         break
                     if dbal - unparried < 1:
                         worst = max(lost, key=lambda cl: cl.value) if lost else claim_their
-                        res["killed"] = f"after {san_r}: {dbal:+d} stands only as a balance, their {worst.what} wins {worst.value} (lemma {worst.lemma}), no parry"
+                        res["killed"] = LS.name(f"after {san_r}: {dbal:+d} stands only as a balance, their {worst.what} wins {worst.value} (lemma {worst.lemma}), no parry")
                         self._log(lkey, uci, "killed", dbal, inn["value"], None, res["killed"])
                         break
                     claim_their = None
@@ -3090,7 +3107,7 @@ class Agenda:
                 if THEIR_GAPS and res["gap"] is None and res["killed"] is None:      # plan 72.2 (d): their OPEN question at the leaf that would eat the balance: not read YET (a GAP)
                     g_o, gt_o = self._their_open(P2.fen(), pos=P2)
                     if g_o and dbal - unparried - g_o < 1:
-                        res["gap"] = f"after {san_r}: {dbal:+d} stands only as a balance and their question '{gt_o}' (stake {g_o}) is OPEN with the move passed (no lemma fires yet): not read YET"
+                        res["gap"] = LS.name(f"after {san_r}: {dbal:+d} stands only as a balance and their question '{gt_o}' (stake {g_o}) is OPEN with the move passed (no lemma fires yet): not read YET")
                         res["reply"] = uci
                         ctx.budget_hits += 1
                         ctx.their_open_gaps += 1
@@ -3103,6 +3120,7 @@ class Agenda:
                         bb_rb = RB.RBoard(P2)
                         res["gap"] = (f"after {san_r}: {dbal:+d} stands only as a balance; our {bb_rb.piece_at(d['sq']).symbol().upper()} on {GAME.loc_name(d['sq'])} cannot run and their {bb_rb.piece_at(d['attacker']).symbol().upper()} on {GAME.loc_name(d['attacker'])} "
                                       f"reaches it in {d['tempi']} ({' '.join(GAME.loc_name(chess.Move.from_uci(u).to_square) for u in d['path'])}) at price {d['price']}, no guard of ours in time (lemma stuck_reach, 72.1): not parried YET")
+                        res["gap"] = LS.name(res["gap"])
                         res["reply"] = uci
                         ctx.budget_hits += 1
                         ctx.stuck_gaps += 1
@@ -3117,7 +3135,7 @@ class Agenda:
                 self._log(lkey, uci, "gap", dbal, inn["value"], None, res["gap"])
                 break
             if dbal + inn["value"] < target and inn["value"] < BD.MATE_VALUE:
-                res["killed"] = f"after {san_r}: " + (f"our best claim {inn['claim'].what} wins {inn['value']}, the reply took {-dbal}" if inn["claim"] else "no claim of ours and no material gain") + f" ({dbal:+d})"
+                res["killed"] = LS.name(f"after {san_r}: " + (f"our best claim {inn['claim'].what} wins {inn['value']}, the reply took {-dbal}" if inn["claim"] else "no claim of ours and no material gain") + f" ({dbal:+d})")
                 if inn["claim"] is None and not inn.get("cut") and not inn.get("chain"):          # a standing kill: the later routes' same reply is skipped while the reads stay untouched (with the need it was made for)
                     ctx.reply_kills.setdefault(uci, []).append((P2, dbal, inn.get("reads"), san, target, gk if inn.get("local") is not None else None))
                 self._log(lkey, uci, "killed", dbal, inn["value"], inn.get("reads"), res["killed"])
@@ -3232,6 +3250,7 @@ class Agenda:
     def _chain_gap(self, q: R.Question, why: str) -> None:
         """64.1: the chase of `q` stops by the CHAIN'S STATE (the clock, the tempo allowance): not a fact of the position, so it is never a kill. The route that asked is a GAP (the budget_hits
         count the agenda as cut, `_cut` names the reason), the question is not 'chased'."""
+        why = LS.name(why)
         self.ctx.chain_hits += 1
         self.ctx.chain_gap = why
         self.ctx.chain_line = list(self.ctx.line)                # plan 66.4: the line at the stop (a resume reads it again, one more level, only while it is still forcing)
@@ -3248,13 +3267,13 @@ class Agenda:
     def _cut(self, san: str, san_r: str, inner: bool = False, inn: "dict | None" = None) -> str:
         """The GAP text of a route cut at a reply: the chain's stop (64.1: the inner answer had a chain stop and no budget cut), the TIME when the deadline passed (52.17 (5)), else the fuse."""
         if inn is not None and inn.get("chain") and not inn.get("cut"):
-            return f"chain stop: {san} not followed past {san_r} ({self.ctx.chain_gap})"
+            return LS.name(f"chain stop: {san} not followed past {san_r} ({self.ctx.chain_gap})")
         if self.ctx.out_of_time():
-            return f"out of time: {san} not followed past {san_r}"
+            return LS.name(f"out of time: {san} not followed past {san_r}")
         if self.ctx.judged:                                      # plan 61 C2: the judge cut it (a GAP like the clock's: timed, with a resume point)
             self.ctx.judged = False
-            return f"out of time: {san} cut by the judge past {san_r}"
-        return f"chase fuse: {san} not followed past {san_r}" + (" (the inner agenda was cut by the fuse)" if inner else "")
+            return LS.name(f"out of time: {san} cut by the judge past {san_r}")
+        return LS.name(f"chase fuse: {san} not followed past {san_r}" + (" (the inner agenda was cut by the fuse)" if inner else ""))
 
     def _promote_stands(self, m: chess.Move, P2: "AC.Pos") -> str | None:
         """52.16 (4): a promote route ends AT ONCE at a reply that leaves the question's stopper defect standing and brings no new fix: the same stopper (or blocker) of the
@@ -3564,7 +3583,7 @@ class Agenda:
             ctx.budget_hits += 1
             ccost = f"cost {comp[1]}, " if comp[1] is not None else "measured, "
             self.lines.append(f"    judge: {san} cut ({what}, {need:.2f} s): tier {ctx.tier + 1}'s {comp[2]} ({comp[3]}; {ccost}{comp[0]:.2f} s) is cheaper -> GAP, read in tier {ctx.tier + 1}, in price order")
-            res = dict(value=0, killed=None, gap=f"out of time: {san} cut by the judge (tier {ctx.tier + 1}'s {comp[2]} is cheaper: {comp[0]:.2f} s against {need:.2f} s)", parts=[], lemmas=[])
+            res = dict(value=0, killed=None, gap=LS.name(f"out of time: {san} cut by the judge (tier {ctx.tier + 1}'s {comp[2]} is cheaper: {comp[0]:.2f} s against {need:.2f} s)"), parts=[], lemmas=[])
             self._judge_resume(m, res)
             ctx.root_gaps[(_pos_key(self.fen), m.uci(), self._judge_stake())] = (cost, san)
             ctx.deferred.add(mkey_c)
@@ -3575,7 +3594,7 @@ class Agenda:
             self.lines.append(f"    judge: {san} cut ({what}{why_w}, {need:.1f} s needed {rate_w}, {pool:.1f} s left of the root's share{share_w}) -> GAP")
             ctx.judge_cuts += 1
             ctx.budget_hits += 1
-            res = dict(value=0, killed=None, gap=f"out of time: {san} cut by the judge ({what}, {need:.1f} s needed, {pool:.1f} s left)", parts=[], lemmas=[])
+            res = dict(value=0, killed=None, gap=LS.name(f"out of time: {san} cut by the judge ({what}, {need:.1f} s needed, {pool:.1f} s left)"), parts=[], lemmas=[])
             self._judge_resume(m, res)
             ctx.root_gaps[(_pos_key(self.fen), m.uci(), self._judge_stake())] = (cost, san)
             return res, None
@@ -3646,7 +3665,7 @@ class Agenda:
         label = "the root position" if pk == ctx.root_pk and pk not in ctx.active_label else ctx.active_label.get(pk, "the game history" if pk in ctx.history else "the line")
         now = f"{self.board.san(self._route_move)} {self._reply_san}" if self._route_move is not None and self._reply_san else "the line"
         line = f"the position after {now} repeats {label if label.startswith('the root') or label.startswith('the game') else 'the one after ' + label}"
-        cl = Claim("draw", "repetition", -bal, "repetition", line, goal="draw")
+        cl = Claim("draw", "repetition", -bal, LS.name("repetition"), line, goal="draw")
         ctx.cycles += 1
         ctx.c_lines.append(f"    closed: repetition ({line}) -> draw, value {-bal:+d} (minus the balance {bal:+d})")
         return dict(value=-bal, claim=cl, asked=0, need=need, cut=False, reads=None, threats=[], promote=None)
@@ -3902,7 +3921,7 @@ class Agenda:
         That kill would say something false, so the question stays a GAP in the trace and the state: 'the chase did not close it: unfinished'. The decision treats it as any GAP."""
         if q.status != "killed" or not str(q.reason).startswith("stopped:"):
             return
-        why = "lifted: their king cannot stop it (race.king_verdict); the chase did not close it: unfinished (the unlifted read said " + q.reason + ")"
+        why = LS.name("lifted: their king cannot stop it (race.king_verdict); the chase did not close it: unfinished (the unlifted read said " + q.reason + ")")
         if self.kills and self.kills[-1][0] == q.id:
             self.kills.pop()
         for k in range(len(self.lines) - 1, -1, -1):
@@ -4029,7 +4048,7 @@ class Agenda:
             self.lines.append("  chase: out of time -- not started (a GAP, never a kill)")
             self.ctx.budget_hits += 1                                # the agenda this question belongs to is cut: its route is a GAP, never refuted by what was not chased
             self._note_resume(q, None, dict(gap="chase not started"))
-            self.state.gaps.append(f"Q{q.id} {q.text}: out of time: chase not started")
+            self.state.gaps.append(f"Q{q.id} {q.text}: {LS.name('out of time: chase not started')}")
             return False
         allow = None
         if q.goal in ("mate", "win") and self._t(GOAL_JUDGE, 3):             # 52.23 (6): TEMPO ARITHMETIC ENDS THE CHAIN (the goal-progress judge, Kaveh 2026-10-20: "mating the king is like mating the bishop").
@@ -4154,7 +4173,7 @@ class Agenda:
             if i in cheap_res:
                 res = cheap_res[i]
             elif self.ctx.out_of_time():                           # 52.17 (5): the open routes end as GAPs
-                res = dict(value=0, killed=None, gap=f"out of time: {r.san} not started", parts=[], lemmas=[])
+                res = dict(value=0, killed=None, gap=LS.name(f"out of time: {r.san} not started"), parts=[], lemmas=[])
                 self.ctx.budget_hits += 1
                 if ESTIMATE and q.goal != "promote":
                     self._estimate_route(r.move, res)                # plan 61 B2
@@ -4237,7 +4256,7 @@ class Agenda:
             kind = "draw"                                        # plan 61 C4: the route brings the result to level by a repetition (proved: every reply of the cycle was read)
         parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")
         lemma = "chase: step_after+step_least over " + ", ".join(sorted(set(res["lemmas"]))[:3]) if res["lemmas"] else "chase: step_after+step_least"
-        claim = Claim(kind, r.san, value, lemma, f"{r.san}; {parts}", move=r.move.uci(), kept=kept)
+        claim = Claim(kind, r.san, value, LS.name(lemma), f"{r.san}; {parts}", move=r.move.uci(), kept=kept)
         self._stamp(claim, q)
         claim.fixes = claim.fixes + ("chase",)
         self.state.claims.append(claim)
@@ -4329,7 +4348,7 @@ class Agenda:
         kind = "save" if q.goal == "save" else "win"
         lemma = "chase: quiet-status estimate"
         parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")
-        claim = Claim(kind, r.san, value, lemma, f"{r.san}; {parts}" + (" / " if parts else "") + f"{len(est['leaves'])} quiet leaf(s) read by their status", move=r.move.uci(),
+        claim = Claim(kind, r.san, value, LS.name(lemma), f"{r.san}; {parts}" + (" / " if parts else "") + f"{len(est['leaves'])} quiet leaf(s) read by their status", move=r.move.uci(),
                       proved=False, confidence=est["confidence"], estimator=est["estimator"])
         self._stamp(claim, q)
         claim.fixes = claim.fixes + ("chase",)
@@ -4399,6 +4418,7 @@ class Agenda:
         return out
 
     def _kill(self, q: R.Question, reason: str, tempo: bool) -> None:
+        reason = LS.name(reason)
         q.status, q.reason = "killed", reason
         if q.reads is None and q.goal in ("mate", "win"):
             q.reads = R.reads_of(q, self.board)
@@ -4445,7 +4465,7 @@ class Agenda:
         before = len(self.state.claims)
         self._verify(q, f.routes, mates_only=False)
         if len(self.state.claims) == before and not self._decide_by_smallest_loss(q):
-            self.state.gaps.append(f"Q{q.id} {q.text}: no parry binds a guaranteed gain and none could be read from their view")
+            self.state.gaps.append(f"Q{q.id} {q.text}: {LS.name('no parry binds a guaranteed gain and none could be read from their view')}")
 
     def _ask_save_threat(self, q: R.Question, head: str) -> None:
         """A root from THEIR agenda on the pass board: parries are our moves of the threatened pieces, checks, captures of the threatening piece, and moves that add
@@ -4476,7 +4496,7 @@ class Agenda:
         before = len(self.state.claims)
         self._verify(q, f.routes, mates_only=False)
         if len(self.state.claims) == before and not self._decide_by_smallest_loss(q):
-            self.state.gaps.append(f"Q{q.id} {q.text}: no parry binds a guaranteed gain and none could be read from their view")
+            self.state.gaps.append(f"Q{q.id} {q.text}: {LS.name('no parry binds a guaranteed gain and none could be read from their view')}")
 
     def _mate_line_pieces(self, line: str) -> set:
         """The squares (on the board NOW) of their pieces that the named mate line uses: the pieces that move in it, and at its end the pieces of theirs attacking our king's square
@@ -4561,7 +4581,7 @@ class Agenda:
                     if still is not None:
                         notes.append(f"{r.san}: a counter; their mate still binds after {still}")
                         continue
-                claim = Claim("save", r.san, self.keep, bind.theorem, f"{r.san} (every reply: {len(bind.replies)} replies; the balance is held)", move=r.move.uci())
+                claim = Claim("save", r.san, self.keep, LS.name(bind.theorem), f"{r.san} (every reply: {len(bind.replies)} replies; the balance is held)", move=r.move.uci())
                 self._stamp(claim, q)
                 self.state.claims.append(claim)
                 q.status = "verified"
@@ -4622,7 +4642,7 @@ class Agenda:
             san = b.san(push)
             rest = [GAME.loc_name(t) for t in facts["path"][1:-1]]
             line = f"{san}, then {', '.join(rest)}{', ' if rest else ''}{GAME.loc_name(promo)}=Q within {ps[sq]} plies whatever they do ({n} pushes)" if n > 1 else f"{san} within {ps[sq]} ply"
-            claim = Claim("promote", san, R.STAKE_PROMOTE, "unstoppablePasser2_sound", line, move=push.uci())
+            claim = Claim("promote", san, R.STAKE_PROMOTE, LS.name("unstoppablePasser2_sound"), line, move=push.uci())
             self._stamp(claim, q)
             self.state.claims.append(claim)
             q.status = "verified"
@@ -4657,8 +4677,8 @@ class Agenda:
                 why.append("noSliders: " + ", ".join(f"our {b.piece_at(s).symbol().upper()} on {GAME.loc_name(s)}" for s in chess.SquareSet((b.rooks | b.bishops | b.queens) & b.occupied_co[self.me])))
             else:
                 why.append(k)
-        msg = (f"Q{q.id} {q.text}: the defects say unstoppable but the lemma unstoppablePasser2_sound does not fire -- failing hypothesis "
-               + ("; ".join(why) if why else "none in the Python mirror (the Lean detector declined)") + " (the next lemma to prove)")
+        msg = (f"Q{q.id} {q.text}: " + LS.name("the defects say unstoppable but the lemma unstoppablePasser2_sound does not fire -- failing hypothesis "
+               + ("; ".join(why) if why else "none in the Python mirror (the Lean detector declined)") + " (the next lemma to prove)"))
         q.status = "gap"
         q.reason = msg
         self.state.gaps.append(msg)
@@ -4681,7 +4701,7 @@ class Agenda:
         if pl.closed and pl.moves[0].from_square == sq:         # (a plan that opens with a blocker's step-aside is not claimed as a promote move: a promote claim's move is the pawn's push)
             push = pl.moves[0]
             san = b.san(push)
-            claim = Claim("promote", san, R.STAKE_PROMOTE, "plan_sound", f"{pl.line(b)}: {len(pl.weak)} weak moment(s), none reachable by any piece of theirs in time", move=push.uci())
+            claim = Claim("promote", san, R.STAKE_PROMOTE, LS.name("plan_sound"), f"{pl.line(b)}: {len(pl.weak)} weak moment(s), none reachable by any piece of theirs in time", move=push.uci())
             self._stamp(claim, q)
             self.state.claims.append(claim)
             q.status = "verified"
@@ -4708,7 +4728,7 @@ class Agenda:
             return False
         san = b.san(rc.first)
         line = f"{san} -- {rc.text}"
-        claim = Claim("promote", san, R.STAKE_PROMOTE, "Ideas.Race.race_sound", line, move=rc.first.uci())
+        claim = Claim("promote", san, R.STAKE_PROMOTE, LS.name("Ideas.Race.race_sound"), line, move=rc.first.uci())
         self._stamp(claim, q)
         self.state.claims.append(claim)
         q.status = "verified"
@@ -4742,7 +4762,7 @@ class Agenda:
         if lost <= 0 or net < 1:
             return None
         read = W.exchange_read(G.with_turn(c, not me))
-        claim = Claim("win", san, net, "promotion_exchange: the push, then the x-ray exchange on the promotion square (Ideas.ExchangeLaw seeXB, mirrored by the Rust see)",
+        claim = Claim("win", san, net, LS.name("promotion_exchange: the push, then the x-ray exchange on the promotion square (Ideas.ExchangeLaw seeXB, mirrored by the Rust see)"),
                       f"{san}; {read}: the promotion is worth {R.STAKE_PROMOTE}, less the {lost} they win on the new queen = {net}", move=push.uci())
         self._stamp(claim, q)
         self.state.claims.append(claim)
@@ -4800,7 +4820,7 @@ class Agenda:
         if len(self.state.claims) == before:
             self.lines.append(f"  no route binds a guaranteed gain against the passer (the binder has no promotion tail); {arith}")
             if kd > n + 1:
-                self.state.gaps.append(f"Q{q.id} {q.text}: no stopper in time ({arith}) and no capture binds")
+                self.state.gaps.append(f"Q{q.id} {q.text}: " + LS.name(f"no stopper in time ({arith}) and no capture binds"))
 
     # ------------------------------------------------------------------------------------------------------------ outputs
 

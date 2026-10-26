@@ -33124,3 +33124,34 @@ none of the four base words of 73 names.
 (9) THE STORES CUT THE WORDS: the fact store keeps a kill's reason cut at 80 characters and at its first ';' (agenda._file), the question log to its first ':'
 (analyse._write_qlog). A word is read from its head (the fork's refutation template is written to survive the cut); on a question log `uses` reads "reasoned", which names
 two words.
+
+## 2026-10-25 20:20 PDT -- plan 73.4 built: the adapter at every claim, kill and GAP site; ctx.uncatalogued, the uses tally, Words.lemmas(); the guard identical (branch worktree-agent-a7beb0ae9a40834cc)
+BUILT. agenda.py passes through `LS.name(...)` every string that becomes a claim's lemma (the 15 Claim constructions: syzygy, unfinished line, the fork, the binder's theorem
+twice, their open question, stuck_reach, none, repetition, the chase and its estimate, the passer lemma, the plan, the race, the promotion exchange), a kill reason (`_kill`;
+the inherited kills of `_inherit` / `_serve`; the route kills of `_chase_route_body`: stalemate, the standing kill, they mate us, the promotion stands, the promotion not
+claimed, the no-parry kill, no claim / our best claim) and a GAP reason (`_cut`, `_chain_gap`, the leaf GAPs of `_chase_route_body`, the judge's cuts, the clock's,
+`_trace_fix`, the leaf's downgrade in `_verify`, `_relabel_lifted`, the save and passer GAPs, the budget's). Outside agenda.py two functions build such strings: regress.py
+`tempo_ok` (q.reason "tempo: ...") and `_fixes_of` (the fix GAP "no fix for '...' in this slice"), routed where the agenda prints them (`_kill`, `_trace_fix`); ponder.py
+and facts.py build none. The root's `ask` reads the counters' change into `ctx.uncatalogued` and `ctx.lemma_uses` (ChaseCtx) and prints `GAP: uncatalogued word <s>` per
+new one -- no line when every word is catalogued. analyse.py: `OBS lemma uses <id>: name count, ...` right after `OBS agenda <id>` (an OBS line, outside the trace the guard
+reads; "; uncatalogued N" only when N > 0). words.py: `lemmas()` on the `Words` protocol and `ChessWords` (the store). scripts/trace_identity.py: beside each trace the
+snapshot writes `<id>.words.txt` (the run's words, the fact store's lemma fields among them); `compare` counts them apart; `lemma_store validate <dir>` reads them.
+tests/test_plan73.py (9 tests: the store and its schema; every PROVED theorem a proved theorem of the index; the guard's two fixed positions written as a small snapshot,
+every word catalogued, ctx.uncatalogued 0; name() returns its string and counts an unknown one; the chase's list word by word; the K+Q measure; the report's OBS lines;
+Words.lemmas(); the negative control on a copy of the store).
+OBS guard (main eb4ea36d vs this commit; the same core build, tables linked, seed 0): ten tier 0: 0 of 10 traces, 0 of 10 read sets, 0 of 10 leaf verdict lists differ;
+  wide tier 0: 0 of 99, 0 of 99, 0 of 99; ten tier 2: 0 of 10, 0 of 10, 0 of 10; wide tier 2: 0 of 99, 0 of 99, 0 of 99.
+OBS lemma store validate on this commit's four snapshots and the two fixed positions: entries 96, patterns 29; words read 32145 (fact 695, fact-why 17255, gap 8099, kill
+  4242, lemma 1854); uncatalogued 0 (0 distinct); problems 0.
+OBS the adapter at run time (the four sets run once more with this commit's code, every string handed to name() counted): ten tier 0:
+  uncatalogued 0, uses 28677 over 35 entries; ten tier 2: 0, 105293 over 40; wide tier 0: 0, 98841 over 49; wide tier 2: 0, 435721 over 49.
+OBS guard wall, the four snapshots in parallel at the count budget (one run each, directional): before 22.28 / 82.79 / 64.75 / 303.59 s (ten0 / ten2 / wide0 / wide2),
+  after 22.35 / 83.52 / 65.26 / 315.94 s.
+NEGATIVE CONTROL (in the worktree, not committed: the entry `mate_in_one` renamed, name and file; restored byte for byte after): the ten at tier 0 -- OBS trace identity:
+  3 of 10 traces differ; 0 of 10 read sets differ; 0 of 10 leaf verdict lists differ (2TUzC, W0VFO, j3ybl: only "GAP: uncatalogued word ..." lines added -- no decision
+  moved); `validate` on that snapshot: "uncatalogued 11 (6 distinct); problems 6", exit 1; the analyser on W0VFO: "OBS lemma uses W0VFO: ...; uncatalogued 4"; restored:
+  "... mate_in_one 4, ..." and no uncatalogued.
+OBS gate engine --only, one file per call (passed, failed; xfailed when any): test_plan73 9, 0; test_agenda 26, 0; test_fact_store 21, 0; test_regress 87, 0
+  (299.8 s); test_tiers 14, 0; test_offbuilt64 15, 0, xfailed 1; test_plan72_10 4, 0; test_plan72_9 7, 0; test_lean_index 2, 0; test_game 3, 0; test_plan72_7 16, 0;
+  test_plan72_7_step2 13, 0; test_plan72_7_step3 13, 0 (tests/test_switches.py does not exist). test_lean_index rebuilds docs/LEAN_INDEX.md: three 'used by' lines
+  now name lemma_store.py; restored to main's, not committed (no theorem was added).

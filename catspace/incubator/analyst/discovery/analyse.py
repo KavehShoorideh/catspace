@@ -14,6 +14,7 @@ import chess
 
 from catspace.io import paths
 from catspace.incubator.analyst.discovery import base_vocabulary as BV
+from catspace.incubator.analyst.discovery import lemma_store as LS
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import regress as R
 from catspace.incubator.analyst.discovery import remember as RM
@@ -93,6 +94,7 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
         f"fuse hits {cx.budget_hits} (depth {cx.depth_cuts}), gap routes reused {cx.gap_reused}, replies closed by rule {cx.closed}, replies left open (goal unmet) {cx.unmet}, refuter fixes {cx.refuter_fixes}, standing kills {cx.standing}, chase log rows {cx.logged}, static leaves read {cx.static_read}, parried {cx.static_parried}, unparried {cx.static_unparried}, killed by reasoning {cx.reasoned}, routes not addressing a defect {cx.unaddressed}, time outs {cx.time_outs}, landings served from the table {cx.landing_served}, forcing by a claim after a pass {R.PASS_CLAIMS[0] - pc0}, "
         f"facts derived {fx['derived']}, served from the store {fx['served']}, foreground recomputations {fx['recomputed']}, background queue {fx['queue']} (top stake {fx['top']}), seconds {secs}, "
         f"root lists served {cx.roots_served}, chase claims served {cx.chase_served}, routes finished after the deadline {cx.finished}")
+    log(LS.uses_line(Counter(cx.lemma_uses), p["id"]) + (f"; uncatalogued {cx.uncatalogued}" if cx.uncatalogued else ""))      # plan 73.3: the words that claimed, killed or stopped in this run (nothing is written back)
     if cx.local_agendas:                                         # plan 72.10: the local inner agendas (the chased goal and its frame carried; three questions, the full agenda only where the goal is dead)
         log(f"OBS local inner {p['id']}: inner agendas {cx.agendas}, questions asked {cx.asked} ({cx.asked / max(cx.agendas, 1):.1f} per inner agenda), local {cx.local_agendas} (questions {cx.local_asked}), "
             f"full agendas {cx.local_full} (chase dead there), closed by the frame {cx.local_closed}")
