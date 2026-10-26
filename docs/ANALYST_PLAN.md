@@ -3792,3 +3792,19 @@ measure and its failing positions -- a result, not a relaxation. Cheapest first:
 by (position key, d, measure); print the cost.
 THEN (4) the entry and (5) the technique question exactly as 73.5, the question's routes now = the first moves of a d-strategy that drops M against every reply (the AND-OR search at the
 root, the never-rules on every node), at the floor the n-move mate search decides; and the acceptance (a)-(d) as 73.5, with the K+Q comparison blind as before.
+
+73.5b BUILT 2026-10-26 on branch worktree-agent-a3b8d9ac59ad69fb8 (journal 2026-10-26 00:03, 00:08, 00:10, 00:28, 00:30, 00:54). (1) THE SAMPLE `technique_sample.py`
+(the 73.5 corpus positions + 3000 uniform won positions, the rule of three; the floor: n = 2 the mate words, n = 3 mating.rs's net through a thin binding
+`analyst_core.net_mate_of`). (2) THE AMENDED MINER `technique_miner.py` (the atoms less the tempo one -- tempo is d; sums, products, lexicographic tuples to three
+ranks; the AND-OR search as a min-max over the class graph, memoised by (position, d, measure); simplest first to the fuse (3, 3, 3)). (3) THE ENTRY "mined technique
+KRvK" (TECHNIQUE, MINED, CONJECTURE; the measure schema may now say class / depth / n / obligation). (4) THE TECHNIQUE QUESTION `technique_question.py` + agenda
+`_technique_roots` (switch TECHNIQUE; generic over any entry whose class is the position's signature; the target carried; the unproved claim decides only when no proved
+claim keeps the status; GAP "no measure-dropping move"). DEVIATION (4b, a finding): the sample's choice, (sum (area (reach L free)) (dist W L)) at d 3, was REFUTED by
+its own first play-out (8/8/8/8/1K6/1R6/k7/8 w; 64 positions of the class fail it) -- a technique walks into the near-mate region a uniform sample rarely draws; for
+the three-man classes the miner's d = 3 graph already spans the class, so the criterion was read on EVERY position of the class (`--whole-class`): the entry is now
+(lex (area (reach L free)) (dist L corner) (dist W L)), d 3, n 2, zero failures in 175168 (four measures tied; the term's string order broke the tie). K+Q v K: beyond
+the fuse on the sample and on the class (the best fails 48, every one a mate in four at the measure's floor); nothing written. ACCEPTANCE (journal 00:54): (a) K+R v K
+seeds 1-3, table off: mate after 41 / 31 / 29 plies (baseline re-run: repetition after 35 / 47 / 37, 35 / 49 / 31 questions per move); questions per move did not fall
+(50 / 48 / 53); (b) blind: the hand-made K+Q measure has zero failures at d = 3 on every position of the class, the mined best 48 -- not equivalent, the missing word is
+our king's way to the front zone; both mate their three play-outs; (c) the guard identical (ten + wide, tiers 0 and 2); (d) table on unchanged. LEAN: the obligation
+is stated, not proved (CONJECTURE).

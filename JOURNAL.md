@@ -33527,3 +33527,85 @@ fallback 0; questions asked 1056 (50 per move); inner agendas 159; moves that sh
 chase: step_after+step_least over mate_in_two 1, chase: step_after+step_least over mate_in_two 1, mate_in_one 1, mate_in_two 1, mined technique KRvK 17; technique
 questions asked 21; wall 1 s
 (no "no measure-dropping move" GAP in the play log: the technique spoke at every move of ours.)
+
+
+## 2026-10-26 00:54 PDT -- plan 73.5b (5) ACCEPTANCE (directional, one play-out per seed): K+R v K mates from all three starts with the mined entry (the baseline draws all three); K+Q v K: the hand-made measure passes the criterion on every position, the mined best does not; the guard identical; the table outranks the technique (branch worktree-agent-a3b8d9ac59ad69fb8)
+The entry played: "mined technique KRvK" = (lex (area (reach L free)) (dist L corner) (dist W L)), d 3, n 2 (4b). One sitting, seeds 1-3 of play_technique.py at floor 20
+(seed 1 = the 2026-10-23 start), the lone king by the table's slowest line.
+(a) TABLE CLAIM OFF, THE MINED ENTRY ON, against the baseline re-run in the same sitting (`--technique off`):
+OBS play KRvK seed 1 table off technique on: start 4K3/R7/8/8/2k5/8/8/8 w - - 0 1; dtz at start 27; result 1-0 (mate) after 41 plies; our moves 21, by the agenda 21, by the
+fallback 0; questions asked 1056 (50 per move); inner agendas 159; moves that shortened the table's distance 16 of 21; decision lemmas chase: step_after+step_least over
+chase: step_after+step_least over mate_in_two 1, chase: step_after+step_least over mate_in_two 1, mate_in_one 1, mate_in_two 1, mined technique KRvK 17; technique
+questions asked 21; wall 1 s
+OBS play KRvK seed 2 table off technique on: start 8/8/8/K7/3R4/8/8/4k3 w - - 0 1; dtz at start 21; result 1-0 (mate) after 31 plies; our moves 16, by the agenda 16, by the
+fallback 0; questions asked 762 (48 per move); inner agendas 114; moves that shortened the table's distance 12 of 16; decision lemmas mate_in_one 1, mined technique KRvK 15;
+technique questions asked 16; wall 1 s
+OBS play KRvK seed 3 table off technique on: start 4K3/8/8/8/8/8/R7/1k6 w - - 0 1; dtz at start 21; result 1-0 (mate) after 29 plies; our moves 15, by the agenda 15, by the
+fallback 0; questions asked 792 (53 per move); inner agendas 117; moves that shortened the table's distance 13 of 15; decision lemmas mate_in_one 1, mined technique KRvK 14;
+technique questions asked 15; wall 0 s
+OBS play KRvK seed 1 table off technique off: start 4K3/R7/8/8/2k5/8/8/8 w - - 0 1; dtz at start 27; result 1/2-1/2 (repetition) after 35 plies; our moves 18, by the agenda
+12, by the fallback 6; questions asked 637 (35 per move); inner agendas 80; moves that shortened the table's distance 7 of 18; decision lemmas unfinished line 12; technique
+questions asked 0; wall 0 s
+OBS play KRvK seed 2 table off technique off: start 8/8/8/K7/3R4/8/8/4k3 w - - 0 1; dtz at start 21; result 1/2-1/2 (repetition) after 47 plies; our moves 24, by the agenda
+18, by the fallback 6; questions asked 1185 (49 per move); inner agendas 124; moves that shortened the table's distance 6 of 24; decision lemmas unfinished line 18;
+technique questions asked 0; wall 0 s
+OBS play KRvK seed 3 table off technique off: start 4K3/8/8/8/8/8/R7/1k6 w - - 0 1; dtz at start 21; result 1/2-1/2 (repetition) after 37 plies; our moves 19, by the agenda
+13, by the fallback 6; questions asked 580 (31 per move); inner agendas 73; moves that shortened the table's distance 7 of 19; decision lemmas unfinished line 13; technique
+questions asked 0; wall 0 s
+Reading (a): mate, mate, mate (41, 31, 29 plies) against repetition, repetition, repetition (the baseline reproduces 73.5's 35 / 49 / 31 questions per move exactly).
+The technique decided 17, 15, 14 moves; the agenda's own proved mate words the last one or two; the technique was never silent (no "no measure-dropping move" GAP in the
+three logs, artifacts/experiments/technique_play/). Questions per move did NOT fall (50 / 48 / 53 against 35 / 49 / 31): the technique's claim is unproved, so it ends no
+search -- the agenda asks all it asked before and the technique's AND-OR search comes on top (its nodes per move are in the logs).
+(b) BLIND GENERICITY, K+Q v K. The generator ran on K+Q v K before mating.rs's measure code or the two hand-made entries were read: on the sample and on the whole class it
+chose NOTHING (beyond the fuse; the 4b entry). Caveat on the blindness: the 73.5 journal entry (required reading) and mating.rs's doc header (read to find the engine's
+n-move mate search) describe the hand-made measure's ranks in words; the generator's library and order were fixed before either run and nothing was added after.
+Then both measures under the SAME criterion on every position of the class, and both played (scripts/technique_compare.py: the mined one by the technique question's own
+routes, no agenda; the hand-made one by its own driver, analyst_core.kq_move_of; its three ranks read by analyst_core.component_values):
+OBS compare KQvK mined (lex (count (and (reach L free) (not edge))) (dist L corner) (dist W L)): d=1 n=2: failures 4688 of 144508 (e.g. 8/8/8/8/8/k7/8/KQ6 w - - 0 1)
+OBS compare KQvK mined (lex (count (and (reach L free) (not edge))) (dist L corner) (dist W L)): d=1 n=3: failures 4136 of 144508 (e.g. 8/8/8/8/8/k7/8/KQ6 w - - 0 1)
+OBS compare KQvK mined (lex (count (and (reach L free) (not edge))) (dist L corner) (dist W L)): d=2 n=2: failures 96 of 144508 (e.g. 8/8/8/8/8/k7/8/KQ6 w - - 0 1)
+OBS compare KQvK mined (lex (count (and (reach L free) (not edge))) (dist L corner) (dist W L)): d=2 n=3: failures 64 of 144508 (e.g. 8/8/8/8/8/k7/8/KQ6 w - - 0 1)
+OBS compare KQvK mined (lex (count (and (reach L free) (not edge))) (dist L corner) (dist W L)): d=3 n=2: failures 48 of 144508 (e.g. 8/8/8/8/8/k7/8/KQ6 w - - 0 1)
+OBS compare KQvK mined (lex (count (and (reach L free) (not edge))) (dist L corner) (dist W L)): d=3 n=3: failures 48 of 144508 (e.g. 8/8/8/8/8/k7/8/KQ6 w - - 0 1)
+OBS compare KQvK hand-made (fn:kq_offedge, fn:kq_approach, fn:kq_region): d=1 n=2: failures 864 of 144508 (e.g. 8/8/8/8/8/8/4Q3/K1k5 w - - 0 1)
+OBS compare KQvK hand-made (fn:kq_offedge, fn:kq_approach, fn:kq_region): d=1 n=3: failures 704 of 144508 (e.g. 8/8/8/8/8/8/4Q3/K1k5 w - - 0 1)
+OBS compare KQvK hand-made (fn:kq_offedge, fn:kq_approach, fn:kq_region): d=2 n=2: failures 80 of 144508 (e.g. 8/8/8/8/8/8/4Q3/K1k5 w - - 0 1)
+OBS compare KQvK hand-made (fn:kq_offedge, fn:kq_approach, fn:kq_region): d=2 n=3: failures 80 of 144508 (e.g. 8/8/8/8/8/8/4Q3/K1k5 w - - 0 1)
+OBS compare KQvK hand-made (fn:kq_offedge, fn:kq_approach, fn:kq_region): d=3 n=2: failures 0 of 144508
+OBS compare KQvK hand-made (fn:kq_offedge, fn:kq_approach, fn:kq_region): d=3 n=3: failures 0 of 144508
+OBS compare KQvK: the same criterion on 144508 positions, the graph 144508 nodes; 116.3 s
+OBS compare play KQvK mined (lex (count (and (reach L free) (not edge))) (dist L corner) (dist W L)) (d 3, n 3) seed 1: start 4K3/Q7/8/8/2k5/8/8/8 w - - 0 1; result 1-0 (mate) after 25 plies; our moves 13; silent 0
+OBS compare play KQvK hand-made kq_move_of seed 1: start 4K3/Q7/8/8/2k5/8/8/8 w - - 0 1; result 1-0 (mate) after 11 plies; our moves 6; silent 0
+OBS compare play KQvK mined (lex (count (and (reach L free) (not edge))) (dist L corner) (dist W L)) (d 3, n 3) seed 2: start 8/8/8/K7/3Q4/8/8/4k3 w - - 0 1; result 1-0 (mate) after 17 plies; our moves 9; silent 0
+OBS compare play KQvK hand-made kq_move_of seed 2: start 8/8/8/K7/3Q4/8/8/4k3 w - - 0 1; result 1-0 (mate) after 15 plies; our moves 8; silent 0
+OBS compare play KQvK mined (lex (count (and (reach L free) (not edge))) (dist L corner) (dist W L)) (d 3, n 3) seed 3: start 4K3/8/8/1Q6/5k2/8/8/8 w - - 0 1; result 1-0 (mate) after 19 plies; our moves 10; silent 0
+OBS compare play KQvK hand-made kq_move_of seed 3: start 4K3/8/8/1Q6/5k2/8/8/8 w - - 0 1; result 1-0 (mate) after 21 plies; our moves 11; silent 0
+Reading (b): NOT EQUIVALENT. Read by the generator's own criterion, the hand-made K+Q measure is a technique (zero failures at d = 3 on every position of the class); the
+mined best is not (48). They share the first rank (the region's squares off the edge: the same atom); the difference is the second -- the hand-made one ranks OUR KING'S
+DISTANCE TO THE FRONT ZONE of the proved mate shapes (Lean edge_shape / corner_shape), a derived word the library does not have; the base atoms offer only their king's
+corner distance and the kings' distance, which stall at the 48 mates in four. On their play-outs both mate from all three starts (mined 25 / 17 / 19 plies, hand-made 11
+/ 15 / 21): the mined best mates its own play-outs, the criterion still rejects it. No K+Q entry is written; the hand-made entry's evidence now records the check.
+(c) THE GUARD (before = main ea8a2cf4 exported, after = this branch; PYTHONHASHSEED=0; count budget):
+OBS trace identity ten tier 0: 0 of 10 traces differ; 0 of 10 read sets differ; 0 of 10 leaf verdict lists differ; 0 of 10 word lists differ
+OBS trace identity ten tier 2: 0 of 10 traces differ; 0 of 10 read sets differ; 0 of 10 leaf verdict lists differ; 0 of 10 word lists differ
+OBS trace identity wide tier 0: 0 of 99 traces differ; 0 of 99 read sets differ; 0 of 99 leaf verdict lists differ; 0 of 99 word lists differ
+OBS trace identity wide tier 2: 0 of 99 traces differ; 0 of 99 read sets differ; 0 of 99 leaf verdict lists differ; 0 of 99 word lists differ
+(each line the four OBS lines of `trace_identity.py compare`, joined.)
+OBS lemma store validate: entries 98, patterns 29; words read 32145 (fact 695, fact-why 17255, gap 8099, kill 4242, lemma 1854) from 4 snapshot dir(s) and the two fixed
+positions; uncatalogued 0 (0 distinct); problems 0
+(d) TABLE CLAIM ON (technique on): unchanged against 73.5's table-on play-outs (mate after 27 / 21 / 21, 0 questions):
+OBS play KRvK seed 1 table on technique on: start 4K3/R7/8/8/2k5/8/8/8 w - - 0 1; dtz at start 27; result 1-0 (mate) after 27 plies; our moves 14, by the agenda 14, by the
+fallback 0; questions asked 0 (0 per move); inner agendas 0; moves that shortened the table's distance 14 of 14; decision lemmas syzygy 14; technique questions asked 0; wall 0 s
+OBS play KRvK seed 2 table on technique on: start 8/8/8/K7/3R4/8/8/4k3 w - - 0 1; dtz at start 21; result 1-0 (mate) after 21 plies; our moves 11, by the agenda 11, by the
+fallback 0; questions asked 0 (0 per move); inner agendas 0; moves that shortened the table's distance 11 of 11; decision lemmas syzygy 11; technique questions asked 0; wall 0 s
+OBS play KRvK seed 3 table on technique on: start 4K3/8/8/8/8/8/R7/1k6 w - - 0 1; dtz at start 21; result 1-0 (mate) after 21 plies; our moves 11, by the agenda 11, by the
+fallback 0; questions asked 0 (0 per move); inner agendas 0; moves that shortened the table's distance 11 of 11; decision lemmas syzygy 11; technique questions asked 0; wall 0 s
+The table claims first, so the technique is not asked (a position with a claim); were it asked, the decision would still take the table's proved claim (tested).
+THE GATE (one file per call, the branch's final code):
+OBS gate engine --only, passed / failed / xfailed / errors, wall: test_plan73_5b 11/0/0/0 6.8 s (re-gated after the table-ranking check joined the agenda test); test_plan73_5 7/0/0/0 2.0 s; test_plan73 9/0/0/0 10.3 s; test_agenda 26/0/0/0
+97.3 s; test_regress 87/0/0/0 290.6 s; test_tiers 14/0/0/0 29.4 s; test_offbuilt64 15/0/1/0 94.9 s; test_plan62 28/0/0/0 7.8 s; test_plan72_10 4/0/0/0 2.1 s; test_plan72_9
+7/0/0/0 3.4 s; test_fact_store 21/0/0/0 22.4 s
+LEAN: the K+R entry's obligation is stated (3, 4b) and NOT proved -- a CONJECTURE, checked on every position of the class by the min-max, which is not a Lean proof.
+THE SHARED EDITABLE INSTALL of analyst_core points at this branch's crate (main's Rust plus `net_mate_of`); rust/analyst_core/target is tracked in git and was rebuilt:
+those files are left modified and uncommitted.
+docs/LEAN_INDEX.md: its "used by" lines regenerated by the gate run (technique_miner.py cites Ideas.Forced.Reach and Ideas.Forced.forced_by_measure).

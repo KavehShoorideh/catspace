@@ -23,7 +23,9 @@
  },
  "evidence": {
   "uses": {},
-  "confirmed": [],
+  "confirmed": [
+   "plan 73.5b acceptance (b), 2026-10-26 (scripts/technique_compare.py KQvK --whole-class): under the amended criterion its three ranks (fn:kq_offedge, fn:kq_approach, fn:kq_region) as one lexicographic measure have zero failures at d = 3 on every position of the class (144508; 80 at d = 2, 864 at d = 1, floor n = 2) -- checked by the miner's min-max over the class graph, not proved"
+  ],
   "refuted": []
  },
  "implementation": [

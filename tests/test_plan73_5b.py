@@ -213,6 +213,11 @@ def test_the_store_entry_is_asked_by_the_agenda_and_the_table_outranks_it(monkey
     d = ag.decision()
     assert d is not None and d.proved_by == "table" and d.lemma == "syzygy"
     assert not any(ln.startswith("TECHNIQUE ") for ln in ag.lines)            # the table claimed: a position of the class WITH a claim asks no technique
+    from catspace.incubator.analyst.discovery.state import Claim
+    ag = AG.Agenda(State(fen=fen, us="w", pieces=[]))
+    ag._tech = (ag.all[0], Claim("technique", "Kd8", 0, "mined technique KRvK", "x", move="e8d8", goal="technique", proved=False, word="mined technique KRvK"))
+    ag.ask()
+    assert ag.decision().proved_by == "table"                                   # were the technique's claim there, the table's proved claim still decides
     monkeypatch.setattr(TB, "TABLE", False)
     monkeypatch.setattr(AG, "TECHNIQUE", False)
     ag = AG.Agenda(State(fen=fen, us="w", pieces=[]))

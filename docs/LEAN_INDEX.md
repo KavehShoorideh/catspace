@@ -275,12 +275,12 @@ Do not edit by hand.
 ## lean/ideas/Ideas/ForcedByMeasure.lean
 
 - **def `Ideas.Forced.Reach`** (line 22): REACH: from `p` (us to move) we force, within `n` of our moves and against every reply, the `goal` (on our move) or a position (us to move) satisfying `target`.
-  - used by: catspace/incubator/analyst/lemma_explorer.py
+  - used by: catspace/incubator/analyst/discovery/technique_miner.py, catspace/incubator/analyst/lemma_explorer.py
 - **theorem `Ideas.Forced.Reach.mono`** (line 29): More moves never hurt.
 - **theorem `Ideas.Forced.Reach.bind`** (line 44): A target that is itself force-able: reaching it within `n`, then the goal within `j` from it, is the goal within `n + j`.
   - used by: catspace/incubator/analyst/discovery/observe.py, catspace/incubator/analyst/lemma_explorer.py, rust/analyst_core/src/mating.rs, rust/analyst_core/src/vocab.rs
 - **theorem `Ideas.Forced.forced_by_measure`** (line 60): THE METHOD: a frame `S` with a measure `μ` such that from every position of it we force, within `k` moves, the goal or a position of the frame with a lower measure -- then from every position of the frame the goal is for
-  - used by: catspace/incubator/analyst/discovery/patterns.py, catspace/incubator/analyst/discovery/tower.py, catspace/incubator/analyst/lemma_explorer.py, rust/analyst_core/src/mating.rs
+  - used by: catspace/incubator/analyst/discovery/patterns.py, catspace/incubator/analyst/discovery/technique_miner.py, catspace/incubator/analyst/discovery/tower.py, catspace/incubator/analyst/lemma_explorer.py, rust/analyst_core/src/mating.rs
 - **theorem `Ideas.Forced.reach_false_goal`** (line 83): Forcing with no target left is forcing the goal: `Reach … (fun _ => False) n p` says that from `p` every line of ours (against every reply) ends in the goal within `n` moves.
 - **theorem `Ideas.Forced.Reach.dominate`** (line 101): DOMINANCE (Kaveh 2026-10-12: "put the king in the farthest point, prove that, and then the closer points will also be proven"): if `a` (us to move) is at least as good for us as `b` -- every move of ours from `b` is matc
 - **theorem `Ideas.Forced.hold_blocks`** (line 127): THE DEFENDER'S HOLD (Kaveh 2026-10-12: "if we can prove the other way around, like what is the condition in which they can draw? ..

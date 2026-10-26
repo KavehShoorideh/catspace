@@ -29,7 +29,8 @@
  "evidence": {
   "uses": {},
   "confirmed": [
-   "technique_miner KRvK (2026-10-26): zero failures at d=3 ranks=3 n=2 on 175168 positions (technique_sample.whole_class: every position of the class with the winning side to move); tied at that level: (lex (area (reach L free)) (dist L corner) (dist W L)), (lex (area (reach L free)) (dist W L) (dist L corner)), (lex (count (reach L free)) (dist L corner) (dist W L)), (lex (count (reach L free)) (dist W L) (dist L corner)); the graph 175168 nodes, 175160 expanded, 15735888 (move, reply) pairs; 221.9 s"
+   "technique_miner KRvK (2026-10-26): zero failures at d=3 ranks=3 n=2 on 175168 positions (technique_sample.whole_class: every position of the class with the winning side to move); tied at that level: (lex (area (reach L free)) (dist L corner) (dist W L)), (lex (area (reach L free)) (dist W L) (dist L corner)), (lex (count (reach L free)) (dist L corner) (dist W L)), (lex (count (reach L free)) (dist W L) (dist L corner)); the graph 175168 nodes, 175160 expanded, 15735888 (move, reply) pairs; 221.9 s",
+   "acceptance (a), 2026-10-26: scripts/play_technique.py KRvK --floor 20 --table off, seeds 1-3 (the table's slowest defence): mate after 41, 31, 29 plies (50, 48, 53 questions per move); the baseline re-run in the same sitting (technique off): repetition after 35, 47, 37 plies; table on: mate after 27, 21, 21, the table decides"
   ],
   "refuted": []
  },
