@@ -371,69 +371,43 @@ def mine(sig: str, rows: list, log=print, top: int = TOP) -> dict:
     return out
 
 
-# ---------------------------------------------------------------------------------------------------------------- the CLI
-
-def main(argv=None) -> None:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("signature")
-    ap.add_argument("--corpus", default=None, help="the 73.5 corpus file (default: artifacts/experiments/technique_corpus/<sig>_seed1.jsonl)")
-    ap.add_argument("--uniform", type=int, default=TS.UNIFORM)
-    ap.add_argument("--seed", type=int, default=TS.SAMPLE_SEED)
-    ap.add_argument("--explain", action="store_true", help="read the saved result's failing positions again (beyond the fuse), nothing mined")
-    ap.add_argument("--write", action="store_true", help="write the saved result's chosen measure into the lemma store as the class's mined technique (nothing mined)")
-    a = ap.parse_args(argv)
-    if a.explain:
-        return explain(a.signature)
-    if a.write:
-        res = json.load(open(paths.experiment("technique_miner", f"{a.signature}.json")))
-        if res.get("choice") is None:
-            print(f"OBS miner {a.signature}: no measure was chosen (beyond the fuse): no entry is written")
-            return None
-        e = entry_for(res, time.strftime("%Y-%m-%d"))
-        print(f"OBS miner {a.signature} entry written: {os.path.relpath(write_entry(e), str(paths.REPO_ROOT))} -- {e['name']}: {e['measure']['quantity']}, d {e['measure']['depth']}, "
-              f"n {e['measure']['n']}, {e['status']}, {e['origin']}")
-        return e
-    corpus = a.corpus or paths.experiment("technique_corpus", f"{a.signature}_seed1.jsonl")
-    rows = TS.sample(a.signature, corpus, a.uniform, a.seed)
-    got = mine(a.signature, rows)
-    print(f"(the levels: {save(got)})")
-    return got
-
-
 # ---------------------------------------------------------------------------------------------------------------- the entry (73.5b (3), as 73.5 (4))
 
 ENTRY_NAME = "mined technique {sig}"          # the store's word for a class's mined technique (lemma_store.slug: mined-technique-<sig>.json)
 
 
-def obligation_text(sig: str, m: Measure, d: int, n: int) -> str:
-    """THE LEAN OBLIGATION of a mined technique, as a statement (the twin of kq_mate_on_edge's use in the hand-made one: what would make the entry PROVED)."""
+def obligation_text(sig: str, m: Measure, d: int, n: int, checked: str) -> str:
+    """THE LEAN OBLIGATION of a mined technique, as a statement (what would make the entry PROVED); `checked`: on what it was checked."""
     k = max(d, n)
     return (f"Let S be the positions of the class {sig} with the winning side to move, ours the moves of that side that neither stalemate, nor leave a unit of ours the "
             f"exchange law loses, nor allow a claimable draw, mu p the mixed-radix number of {m.sexpr} at p. OBLIGATION: for every p in S, "
             f"Ideas.Forced.Reach ours theirs mate (fun r => S r and mu r < mu p) {k} p -- a mate within {n} moves (the floor), or a strategy of at most {d} moves after "
             f"which, against every reply, mu is strictly lower or they are mated. Then Ideas.Forced.forced_by_measure (proved) gives the mate from every p in S within "
-            f"{k} * (mu p + 1) moves. The obligation is checked on the sample, NOT proved: no theorem of docs/LEAN_INDEX.md states it.")
+            f"{k} * (mu p + 1) moves. The obligation is checked {checked}, NOT proved: no theorem of docs/LEAN_INDEX.md states it.")
 
 
-def entry_for(res: dict, journal: str) -> dict:
+def entry_for(res: dict, journal: str, note: str = "") -> dict:
     """THE ENTRY of a class's mined technique from the miner's saved result (`save`): kind TECHNIQUE, origin MINED, status CONJECTURE; `measure` = the chosen term,
-    its floor and terminal (the floor's mate word), its class, its tempo depth d, its floor's n and the Lean obligation; `evidence` = the run."""
+    its floor and terminal (the floor's mate word), its class, its tempo depth d, its floor's n and the Lean obligation; `evidence` = the run; `note` = what more
+    the note says (an earlier entry it replaces)."""
     sig, c = res["sig"], res["choice"]
     m, d, n = measure_of(c["measure"]), c["d"], c["n"]
     lv = res["levels"][-1]
     words = "the mate words mate_in_one / mate_in_two" if n == 2 else "mating.rs's net (net_mate_of, n = 3)"
+    sample = res.get("sample") or f"technique_sample: the 73.5 corpus positions + {TS.UNIFORM} uniform won positions, seed {TS.SAMPLE_SEED}"
+    checked = "on every position of the class (by the miner's min-max over the class graph)" if res.get("sample") else "on the sample"
     return dict(
         name=ENTRY_NAME.format(sig=sig), kind="TECHNIQUE", reads=sorted(set(m.reads) | {"tempo", "material", "movement", "attack"}), terms=[m.sexpr], status="CONJECTURE", lean=[],
         origin="MINED", plan=["73.5b"], journal=journal,
         measure={"quantity": m.sexpr, "floor": f"a mate within {n} moves found by the engine's mate search ({words})", "terminal": "mate_in_two" if n == 2 else "net_mate",
-                 "class": sig, "depth": d, "n": n, "obligation": obligation_text(sig, m, d, n)},
+                 "class": sig, "depth": d, "n": n, "obligation": obligation_text(sig, m, d, n, checked)},
         evidence=dict(uses={}, confirmed=[
-            f"technique_miner {sig} ({journal}): zero failures at d={d} ranks={c['ranks']} n={n} on {res['positions']} sample positions (technique_sample: the 73.5 corpus "
-            f"positions + {TS.UNIFORM} uniform won positions, seed {TS.SAMPLE_SEED}); tied at that level: {', '.join(c['zero'])}; the graph {lv['nodes']} nodes, "
-            f"{lv['expanded']} expanded, {lv['edges']} (move, reply) pairs; {res['secs']} s"], refuted=[]),
-        implementation=["catspace/incubator/analyst/discovery/technique_miner.py:mine", "catspace/incubator/analyst/discovery/technique_miner.py:entry_for"],
+            f"technique_miner {sig} ({journal}): zero failures at d={d} ranks={c['ranks']} n={n} on {res['positions']} positions ({sample}); tied at that level: "
+            f"{', '.join(c['zero'])}; the graph {lv['nodes']} nodes, {lv['expanded']} expanded, {lv['edges']} (move, reply) pairs; {res['secs']} s"], refuted=[]),
+        implementation=["catspace/incubator/analyst/discovery/technique_miner.py:mine", "catspace/incubator/analyst/discovery/technique_miner.py:entry_for",
+                        "catspace/incubator/analyst/discovery/technique_question.py:technique_routes", "catspace/incubator/analyst/discovery/agenda.py:_technique_roots"],
         note=(f"Mined by plan 73.5b from the base atoms, not written: in {sig}, a mate at the floor, else a strategy of at most {d} moves that lowers {m.sexpr} against "
-              "every reply; a CONJECTURE -- the obligation is checked on a sample, not proved in Lean."))
+              f"every reply; a CONJECTURE -- the obligation is checked {checked}, not proved in Lean." + (f" {note}" if note else "")))
 
 
 def write_entry(e: dict) -> str:
@@ -446,46 +420,90 @@ def write_entry(e: dict) -> str:
     return str(p)
 
 
-def explain(sig: str, log=print) -> list:
+def explain(sig: str, log=print, tag: str = "", others: bool = True) -> list:
     """THE NEGATIVE, BUG-CHECKED (Kaveh's standing rule): for a run beyond the fuse (the saved result), each failing position of the best measure read again --
     the table's DTZ, the shortest mate the net finds within 4 moves, the measure's ranks there, and the drop at d = 1, 2, 3 by the per-root AND-OR search
     (technique_question.Search, a second implementation of the graph's min-max) -- and how many measures of the library do drop there within 3 (the position
-    fails the best measure, not every measure). Prints `OBS miner <sig> failing position ...`."""
+    fails the best measure, not every measure; `others` False skips that count). Prints `OBS miner <sig> failing position ...` and a summary line."""
+    from collections import Counter as _C
     from catspace.incubator.analyst.discovery import technique_question as TQ
-    got = json.load(open(paths.experiment("technique_miner", f"{sig}.json")))
+    got = json.load(open(paths.experiment("technique_miner", f"{sig}{tag}.json")))
     best = got.get("best")
     if not best:
         log(f"OBS miner {sig}: no failing positions (a measure was chosen)")
         return []
     m = measure_of(best["measure"])
     lib = [c for r in RANKS for c in candidates(r)]
-    out = []
+    out, summary = [], []
     for f in best["failures"]:
         b = chess.Board(f)
         v = m.value(TM.atom_values(b, b.turn))
         net = TS.net(b, 4)
         drop = [TQ.Search(m, b.turn, v, frozenset(), b.halfmove_clock).force(b, d, 0) for d in DEPTHS]
-        others = sum(TQ.Search(c, b.turn, c.value(TM.atom_values(b, b.turn)), frozenset(), b.halfmove_clock).force(b, max(DEPTHS), 0) for c in lib)
+        k = sum(TQ.Search(c, b.turn, c.value(TM.atom_values(b, b.turn)), frozenset(), b.halfmove_clock).force(b, max(DEPTHS), 0) for c in lib) if others else None
         G.clear_caches()
         line = (f"OBS miner {sig} failing position {f}: DTZ {TC.tablebase().probe_dtz(b)}, the net's shortest mate " + (f"{net[1]} moves ({net[0]})" if net else "none within 4")
-                + f"; {best['measure']} = {TQ.show(m, v)}; a drop within d = 1, 2, 3 by the per-root search: {drop}; measures of the library that drop here within 3: "
-                f"{others} of {len(lib)}")
+                + f"; {best['measure']} = {TQ.show(m, v)}; a drop within d = 1, 2, 3 by the per-root search: {drop}"
+                + (f"; measures of the library that drop here within 3: {k} of {len(lib)}" if others else ""))
+        summary.append((TC.tablebase().probe_dtz(b), net[1] if net else None, TQ.show(m, v), any(drop)))
         log(line)
         out.append(line)
+    log(f"OBS miner {sig} failing positions of {best['measure']}: {len(summary)}; by (DTZ, the net's mate within 4, the measure): "
+        + ", ".join(f"{k} {v}" for k, v in sorted(_C((a, b, c) for a, b, c, _d in summary).items(), key=str)) + f"; a drop found by the per-root search at any d: "
+        f"{sum(x[3] for x in summary)}")
     return out
 
 
-def save(got: dict) -> str:
+def save(got: dict, tag: str = "") -> str:
     """The miner's result as JSON under artifacts/experiments/technique_miner/<sig>.json (the levels, the choice or the best and its failing positions)."""
     res = {k: v for k, v in got.items() if k not in ("graph", "roots", "choice")}
     if got["choice"] is not None:
         c = got["choice"]
         res["choice"] = dict(measure=c["measure"].sexpr, d=c["d"], ranks=c["ranks"], n=c["n"], tied=c["tied"], zero=c["zero"])
-    out = paths.experiment("technique_miner", f"{got['sig']}.json")
+    out = paths.experiment("technique_miner", f"{got['sig']}{tag}.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w") as f:
         json.dump(res, f, indent=1, default=str)
     return out
+
+
+# ---------------------------------------------------------------------------------------------------------------- the CLI
+
+def main(argv=None) -> None:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("signature")
+    ap.add_argument("--corpus", default=None, help="the 73.5 corpus file (default: artifacts/experiments/technique_corpus/<sig>_seed1.jsonl)")
+    ap.add_argument("--uniform", type=int, default=TS.UNIFORM)
+    ap.add_argument("--seed", type=int, default=TS.SAMPLE_SEED)
+    ap.add_argument("--explain", action="store_true", help="read the saved result's failing positions again (beyond the fuse), nothing mined")
+    ap.add_argument("--write", action="store_true", help="write the saved result's chosen measure into the lemma store as the class's mined technique (nothing mined)")
+    ap.add_argument("--whole-class", action="store_true", help="the sample is EVERY position of the class (technique_sample.whole_class); saved as <sig>_class.json")
+    ap.add_argument("--from", dest="src", default="", help="with --write / --explain: the saved result's tag ('' the sample, '_class' the whole class)")
+    ap.add_argument("--quick", action="store_true", help="with --explain: skip the count of the library's measures that drop at each failing position")
+    ap.add_argument("--note", default="", help="with --write: a sentence more for the entry's note (the earlier entry it replaces and why)")
+    a = ap.parse_args(argv)
+    if a.explain:
+        return explain(a.signature, tag=a.src, others=not a.quick)
+    if a.write:
+        res = json.load(open(paths.experiment("technique_miner", f"{a.signature}{a.src}.json")))
+        if res.get("choice") is None:
+            print(f"OBS miner {a.signature}: no measure was chosen (beyond the fuse): no entry is written")
+            return None
+        e = entry_for(res, time.strftime("%Y-%m-%d"), a.note)
+        print(f"OBS miner {a.signature} entry written: {os.path.relpath(write_entry(e), str(paths.REPO_ROOT))} -- {e['name']}: {e['measure']['quantity']}, d {e['measure']['depth']}, "
+              f"n {e['measure']['n']}, {e['status']}, {e['origin']}")
+        return e
+    if a.whole_class:
+        rows = TS.whole_class(a.signature)
+        got = mine(a.signature, rows)
+        got["sample"] = "technique_sample.whole_class: every position of the class with the winning side to move"
+        print(f"(the levels: {save(got, tag='_class')})")
+        return got
+    corpus = a.corpus or paths.experiment("technique_corpus", f"{a.signature}_seed1.jsonl")
+    rows = TS.sample(a.signature, corpus, a.uniform, a.seed)
+    got = mine(a.signature, rows)
+    print(f"(the levels: {save(got)})")
+    return got
 
 
 if __name__ == "__main__":

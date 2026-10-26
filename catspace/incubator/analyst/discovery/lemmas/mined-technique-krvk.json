@@ -8,7 +8,7 @@
   "tempo"
  ],
  "terms": [
-  "(sum (area (reach L free)) (dist W L))"
+  "(lex (area (reach L free)) (dist L corner) (dist W L))"
  ],
  "status": "CONJECTURE",
  "lean": [],
@@ -18,18 +18,18 @@
  ],
  "journal": "2026-10-26",
  "measure": {
-  "quantity": "(sum (area (reach L free)) (dist W L))",
+  "quantity": "(lex (area (reach L free)) (dist L corner) (dist W L))",
   "floor": "a mate within 2 moves found by the engine's mate search (the mate words mate_in_one / mate_in_two)",
   "terminal": "mate_in_two",
   "class": "KRvK",
   "depth": 3,
   "n": 2,
-  "obligation": "Let S be the positions of the class KRvK with the winning side to move, ours the moves of that side that neither stalemate, nor leave a unit of ours the exchange law loses, nor allow a claimable draw, mu p the mixed-radix number of (sum (area (reach L free)) (dist W L)) at p. OBLIGATION: for every p in S, Ideas.Forced.Reach ours theirs mate (fun r => S r and mu r < mu p) 3 p -- a mate within 2 moves (the floor), or a strategy of at most 3 moves after which, against every reply, mu is strictly lower or they are mated. Then Ideas.Forced.forced_by_measure (proved) gives the mate from every p in S within 3 * (mu p + 1) moves. The obligation is checked on the sample, NOT proved: no theorem of docs/LEAN_INDEX.md states it."
+  "obligation": "Let S be the positions of the class KRvK with the winning side to move, ours the moves of that side that neither stalemate, nor leave a unit of ours the exchange law loses, nor allow a claimable draw, mu p the mixed-radix number of (lex (area (reach L free)) (dist L corner) (dist W L)) at p. OBLIGATION: for every p in S, Ideas.Forced.Reach ours theirs mate (fun r => S r and mu r < mu p) 3 p -- a mate within 2 moves (the floor), or a strategy of at most 3 moves after which, against every reply, mu is strictly lower or they are mated. Then Ideas.Forced.forced_by_measure (proved) gives the mate from every p in S within 3 * (mu p + 1) moves. The obligation is checked on every position of the class (by the miner's min-max over the class graph), NOT proved: no theorem of docs/LEAN_INDEX.md states it."
  },
  "evidence": {
   "uses": {},
   "confirmed": [
-   "technique_miner KRvK (2026-10-26): zero failures at d=3 ranks=1 n=2 on 3803 sample positions (technique_sample: the 73.5 corpus positions + 3000 uniform won positions, seed 2); tied at that level: (sum (area (reach L free)) (dist W L)), (sum (count (reach L free)) (dist W L)); the graph 174864 nodes, 174853 expanded, 15732405 (move, reply) pairs; 138.0 s"
+   "technique_miner KRvK (2026-10-26): zero failures at d=3 ranks=3 n=2 on 175168 positions (technique_sample.whole_class: every position of the class with the winning side to move); tied at that level: (lex (area (reach L free)) (dist L corner) (dist W L)), (lex (area (reach L free)) (dist W L) (dist L corner)), (lex (count (reach L free)) (dist L corner) (dist W L)), (lex (count (reach L free)) (dist W L) (dist L corner)); the graph 175168 nodes, 175160 expanded, 15735888 (move, reply) pairs; 221.9 s"
   ],
   "refuted": []
  },
@@ -39,5 +39,5 @@
   "catspace/incubator/analyst/discovery/technique_question.py:technique_routes",
   "catspace/incubator/analyst/discovery/agenda.py:_technique_roots"
  ],
- "note": "Mined by plan 73.5b from the base atoms, not written: in KRvK, a mate at the floor, else a strategy of at most 3 moves that lowers (sum (area (reach L free)) (dist W L)) against every reply; a CONJECTURE -- the obligation is checked on a sample, not proved in Lean."
+ "note": "Mined by plan 73.5b from the base atoms, not written: in KRvK, a mate at the floor, else a strategy of at most 3 moves that lowers (lex (area (reach L free)) (dist L corner) (dist W L)) against every reply; a CONJECTURE -- the obligation is checked on every position of the class (by the miner's min-max over the class graph), not proved in Lean. It replaces the sample's choice (sum (area (reach L free)) (dist W L)) (d 3, ranks 1): REFUTED by 8/8/8/8/1K6/1R6/k7/8 w, reached by its first play-out (no drop within 3, mate in 4), and failing 64 positions of the class."
 }

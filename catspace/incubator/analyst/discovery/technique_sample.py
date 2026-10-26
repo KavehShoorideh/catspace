@@ -138,18 +138,52 @@ def sample(sig: str, corpus: str, n_uniform: int = UNIFORM, seed: int = SAMPLE_S
         f"({len(fens)} drawn, seed {seed}, {dup} already in the corpus; of {drawn['valid']} valid placements drawn the table judged {drawn['won']} won); "
         f"DTZ {min(r['dtz'] for r in rows)}..{max(r['dtz'] for r in rows)}; largest fifty-move clock {max(clocks)} (below 100 - {MAX_PLIES}: no claimable draw within d = 3)")
     if floors:
-        words, agree = Counter(), 0
-        for j, r in enumerate(rows):
-            b = chess.Board(r["fen"])
-            r["floor2"], w3 = floor_word(b, 2), floor_word(b, 3)
-            r["floor3"] = r["floor2"] or w3                       # (the floor at n = 3 holds the floor at n = 2)
-            words.update(w for w in (r["floor2"], w3) if w)
-            agree += (r["floor2"] is not None) == (net(b, 2) is not None)
-            if j % 500 == 0:
-                G.clear_caches()
-        log(f"OBS sample {sig} floor: at n = 2 (the mate words) {sum(r['floor2'] is not None for r in rows)}, at n = 3 (the net) {sum(r['floor3'] is not None for r in rows)} "
-            f"of {len(rows)}; " + ", ".join(f"{k} {v}" for k, v in sorted(words.items())) + f"; the mate words and the net agree at n = 2 on {agree} of {len(rows)}; "
-            f"{time.monotonic() - t0:.1f} s")
+        read_floors(rows, log, sig)
+    return rows
+
+
+def read_floors(rows: list, log=print, sig: str = "") -> None:
+    """The floor words of every row (`floor2`, `floor3`), in place; prints `OBS sample <sig> floor: ...`."""
+    t0 = time.monotonic()
+    words, agree = Counter(), 0
+    for j, r in enumerate(rows):
+        b = chess.Board(r["fen"])
+        r["floor2"], w3 = floor_word(b, 2), floor_word(b, 3)
+        r["floor3"] = r["floor2"] or w3                       # (the floor at n = 3 holds the floor at n = 2)
+        words.update(w for w in (r["floor2"], w3) if w)
+        agree += (r["floor2"] is not None) == (net(b, 2) is not None)
+        if j % 500 == 0:
+            G.clear_caches()
+    log(f"OBS sample {sig} floor: at n = 2 (the mate words) {sum(r['floor2'] is not None for r in rows)}, at n = 3 (the net) {sum(r['floor3'] is not None for r in rows)} "
+        f"of {len(rows)}; " + ", ".join(f"{k} {v}" for k, v in sorted(words.items())) + f"; the mate words and the net agree at n = 2 on {agree} of {len(rows)}; "
+        f"{time.monotonic() - t0:.1f} s")
+
+
+def whole_class(sig: str, log=print) -> list:
+    """THE CLASS AS THE SAMPLE (73.5b, after the first K+R play-out refuted the sampled entry -- the journal of 2026-10-26): EVERY position of the class, the
+    winning side to move (every legal placement, not in check, not over, judged won by the table), with its floors. For the three-man classes the miner's own
+    d = 3 graph from the sample already holds all but a few hundred of these positions (printed in the journal), so checking every one costs only its floor;
+    a larger class is sampled."""
+    import itertools
+    t0 = time.monotonic()
+    ours, theirs = TC.parse_signature(sig)
+    tb = TC.tablebase()
+    rows, valid = [], 0
+    for sq in itertools.permutations(range(64), len(ours) + len(theirs)):
+        b = chess.Board(None)
+        for s, ch in zip(sq[:len(ours)], ours):
+            b.set_piece_at(s, chess.Piece(TC.UNITS[ch], chess.WHITE))
+        for s, ch in zip(sq[len(ours):], theirs):
+            b.set_piece_at(s, chess.Piece(TC.UNITS[ch], chess.BLACK))
+        b.turn = chess.WHITE
+        if not b.is_valid() or b.is_check() or b.is_game_over():
+            continue
+        valid += 1
+        if tb.probe_wdl(b) == 2:
+            rows.append(dict(fen=b.fen(), source="class", dtz=tb.probe_dtz(b)))
+    log(f"OBS sample {sig} THE WHOLE CLASS: positions {len(rows)} (every legal placement with the winning side to move, not in check, not over: {valid}; won by the table: "
+        f"{len(rows)}); DTZ {min(r['dtz'] for r in rows)}..{max(r['dtz'] for r in rows)}; {time.monotonic() - t0:.1f} s")
+    read_floors(rows, log, sig)
     return rows
 
 
