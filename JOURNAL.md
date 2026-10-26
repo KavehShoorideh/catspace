@@ -33183,3 +33183,19 @@ THE GATE'S LIST: scripts/gate.py's engine list predated 72.3; it never ran test_
 alone). Added (37 files; test_lean_index and test_gate_script stay in `full`: the first rewrites docs/LEAN_INDEX.md, the second takes the gate's lock).
 OBS gate engine (37 files, the fix in): passed 477, failed 0, xfailed 2, errors 0, wall 713.5 s. docs/LEAN_INDEX.md: regenerated "used by" lines (the lemma store cites three theorems).
 Next: plan 73 part 2 (73.5, the generator: the K+R v K technique mined from a table-written corpus by base-derived measures).
+
+
+## 2026-10-25 22:55 PDT -- plan 73.5 (2) built: THE CORPUS -- won games of a material class, written by the table (the oracle only there) (branch worktree-agent-ac897cd3efa06e77b)
+`catspace/incubator/analyst/discovery/technique_corpus.py`, CLI `python -m catspace.incubator.analyst.discovery.technique_corpus <sig> [--games] [--seed] [--floor] [--out]`: random legal
+starts of the signature (the winning side White to move, not in check, not over, the table's WDL +2, DTZ at least the floor), the winning side by the table's DTZ-best move
+(table.table_claim's key: a mate, else the smallest |DTZ| of a lost reply), the defender by the table's slowest line (play_krk.py's `defend`), the game's rules end it
+(`is_game_over(claim_draw=True)`); one JSONL row per position (fen, side, winner, move, san, the DTZ before and after; the last row of a game its result). The table writes the corpus
+and answers nothing in the agenda.
+THE FLOOR (a named parameter, measured): the median DTZ of 1000 won starts of the class drawn the same way (seed 0) -- generic in the signature (a fixed 20 admits no K+Q start:
+its longest win by this table is 17 plies), far beyond the mate words' reach (mate_in_two: 3 plies), so every game holds a drive. GAMES 100, the middle of the plan's 50-200.
+The draw consumes the generator as play_krk.py did: KRvK, seed 1, floor 20 is the 2026-10-23 start 4K3/R7/8/8/2k5/8/8/8 w.
+OBS corpus KRvK: games 100, positions 2406, mean length 23.1 plies, mates 100; winning moves 1203; results mate 100; starts with DTZ >= 19 (the median DTZ of 1000 won starts of
+the class, seed 0; their DTZ 1..31); seed 1; 13.4 s
+OBS corpus KQvK: games 100, positions 1366, mean length 12.7 plies, mates 100; winning moves 683; results mate 100; starts with DTZ >= 11 (the median DTZ of 1000 won starts of
+the class, seed 0; their DTZ 1..17); seed 1; 9.5 s
+(the corpora: artifacts/experiments/technique_corpus/<sig>_seed1.jsonl, untracked.)
