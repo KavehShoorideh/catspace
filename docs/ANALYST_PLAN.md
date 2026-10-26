@@ -3770,3 +3770,25 @@ criterion) reads the obligation's own form ("a dropping move against every reply
 kings' distance) and two moves deep (a tempo move), with a few positions still failing -- the shape of mating.rs's hand-made K+Q technique (three ranks, a tempo move, a three-move
 net as the floor). `scripts/play_technique.py`: the 2026-10-23 driver generalised to a signature (the baseline re-run: 23:11 entry). For Kaveh to decide (not a go): the next
 generator's compositions (lexicographic, depth two, a net at the floor) and its criterion (existence of a drop, not the oracle's move).
+
+
+### 73.5b THE GENERATOR, AMENDED (2026-10-25; the first run of 73.5 found no technique in K+R v K or K+Q v K -- the SPEC asked the wrong question)
+THE ERROR (the spec's, not the agent's): 73.5 (3) chose a measure that is non-increasing ON THE TABLE'S MOVES. The table's fastest play is not a technique: it takes shortcuts every
+measure counts as backwards (OBS: game 0, 8/8/4K3/6k1/3R4/8/8/8 w, after Re4 and the table's reply the region's area 16 -> 32; the line still mates). The plan's own Lean obligation
+(73.5 (4)) asks something else: "above the floor a measure-dropping move exists against every reply". The corpus play need not follow the measure; the measure must ADMIT a drop.
+OBS (73.5's labelled diagnostic, directional): the lexicographic pair (region size, then kings' distance) has no dropping move against every reply at 168 of 1116 KRvK positions one
+move deep and at 5 two moves deep; KQvK 23 of 683 one move deep, 4 two moves deep. The hand-made K+Q technique (mating.rs) has exactly the three missing parts: a lexicographic measure
+of three ranks, a tempo move within two or three moves, a floor that is a three-move net.
+THE AMENDED CRITERION. A measure M is a TECHNIQUE for a class when, on a SAMPLE of the class's won positions (the corpus positions AND uniformly sampled won positions of the class, the
+table judging "won"; the winning side to move), every position is either AT THE FLOOR -- the engine's existing mate search finds a mate within n moves (n = 2, the mate words; then
+n = 3, a full three-move mate search, as mating.rs's net) -- or admits a DROP: a strategy of ours of at most d moves (an AND-OR search: some move of ours, every legal reply, ...) after which M
+is strictly lower, never passing through a stalemate, a unit the exchange law loses, or a claimable draw (the game's rules). M bounded below and strictly dropping makes the technique
+terminate; the floor makes it mate.
+THE COMPOSITIONS (generic combinators over the base atoms of 73.5 (3), never a formula named after an ending): the atoms; their sums and products (as before); and the LEXICOGRAPHIC
+TUPLE of atoms (compare the first; on a tie the second; ...). TEMPO enters as d (our moves allowed before the drop: a waiting move is a move of ours that drops nothing yet).
+THE SEARCH, simplest first, principled: d = 1, then 2, then 3; for each d, one rank, then two, then three; the first (d, ranks) where some measure has ZERO failures on the sample is the
+answer; among those, the fewest base reads. The named fuse is the hand-made K+Q technique's own shape (three ranks, d three, n three): beyond it the generator stops and reports the best
+measure and its failing positions -- a result, not a relaxation. Cheapest first: every candidate at d = 1 on every sample position; only its failures at d = 2; only those at d = 3; memo
+by (position key, d, measure); print the cost.
+THEN (4) the entry and (5) the technique question exactly as 73.5, the question's routes now = the first moves of a d-strategy that drops M against every reply (the AND-OR search at the
+root, the never-rules on every node), at the floor the n-move mate search decides; and the acceptance (a)-(d) as 73.5, with the K+Q comparison blind as before.

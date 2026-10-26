@@ -33275,3 +33275,16 @@ test_plan72_10 4; test_plan72_9 7; test_fact_store 21 -- failed 0, errors 0 in e
 Not built and why: (4) the entry (no measure was chosen); (5) the question (no entry to ask; a technique path the store cannot open would be "off is not built" in disguise); the Lean
 obligation (no entry states one); acceptance (a)/(b) mined sides. Next for Kaveh (no go asked): the diagnostic's pointer -- a lexicographic composition read two moves deep, a net at
 the floor, and the existence criterion -- or another corpus (the table's play is the fastest, not a technique).
+
+
+## 2026-10-25 23:25 -- plan 73.5 merged (main 619041b4, fast-forward): the generator found NO technique; the spec's criterion was wrong; 73.5b written
+The agent's report (its journal entries above are the detail): corpora written by the table (OBS corpus KRvK: games 100, positions 2406, mates 100; KQvK: games 100, positions 1366,
+mates 100); 81 base-derived candidates (9 atoms, 36 sums, 36 products, each a vocabulary term with its base reads); OBS miner KRvK: NO TECHNIQUE CANDIDATE (best (sum (dist L edge)
+(dist W L)) 117/1203 violations); KQvK the same (best 25/683). No entry written, no technique question built: the plan's escape hatch, nothing relaxed. Baseline re-run like for like:
+KRvK seed 1 draw by repetition, 35 questions per move (exactly 2026-10-23); seeds 2 and 3 draws (49 and 31 per move). Guard identical (ten + wide, tiers 0 and 2, all four lists).
+OBS gate engine (main 619041b4, 38 files incl. test_plan73_5): passed 484, failed 0, xfailed 2, errors 0, wall 719.0 s.
+THE NEGATIVE, bug-checked (Kaveh's standing rule): the criterion was the SPEC's error -- "non-increasing on the table's moves" asks whether the oracle follows a measure; the table takes
+shortcuts every measure counts as backwards. The plan's own Lean obligation asks whether a dropping move EXISTS against every reply. By that question (the agent's labelled diagnostic)
+the lexicographic pair (region size, kings' distance) fails 168 of 1116 KRvK positions at depth one, 5 at depth two -- and the hand-made K+Q technique has exactly the missing parts
+(three lexicographic ranks, a tempo move, a three-move net). 73.5b (ANALYST_PLAN) amends the criterion to the obligation's question, adds the lexicographic combinator and the tempo depth d,
+simplest first, the hand-made technique's shape as the named fuse.
