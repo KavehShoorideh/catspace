@@ -33025,3 +33025,25 @@ OPEN (Kaveh's decisions): the hash-seed sort in `_chase_route_body` (2/99 decisi
 chain stops; the remaining words -- and KAVEH'S CONCERN, raised now: porting hand-coded words to Rust hides that they are hand-coded. The base concepts are movement/attack, tempo and
 material; the pass claim, the race claim, the mate duty should be DERIVED by the machinery and kept in a LEMMA STORE, not written by us. Today nothing derives them and no lemma store
 exists (the fact store is per position; training learns order only; Lean's library is human-written). The design conversation starts here (plan 73 when written).
+
+## 2026-10-25 20:14 PDT -- plan 73.2 built: the lemma store's loader, validator, report and the adapter's grammar (branch worktree-agent-a7beb0ae9a40834cc)
+docs/ANALYST_PLAN.md 73 (Kaveh 2026-10-25 GO "Do the lemma store"). Part 1 makes the vocabulary visible and checkable and changes no decision. This commit is 73.2:
+`catspace/incubator/analyst/discovery/lemma_store.py` and `discovery/lemmas/README.md` (the schema in one screen). The entries are the next commit (73.3), the agenda's
+calls the one after (73.4); until the entries come, `validate` fails on the patterns' names (no entry yet).
+BUILT. `load()` reads one JSON per entry from `discovery/lemmas/`, cached, checked on load: exactly the 13 fields of 73.1, the six kinds, `reads` a non-empty subset of
+movement / attack / tempo / material, `lean` non-empty if and only if PROVED, `measure` {quantity, floor, terminal} if and only if TECHNIQUE, the file named by the entry's
+name, no two entries of one name (a bad store raises; the failure is cached, so a run never re-reads the directory per word). `get(name)`. `name(s)`, THE ADAPTER: returns `s`
+(the same object); a string that is an entry's name, or that a PATTERN builds from entry names, or that begins with an entry's name followed by its detail (": ", " (", ", ",
+"; ", " -- "), counts a use of every word it is made of (`USES`); any other string is counted in `UNCATALOGUED`; it never raises. `PATTERNS`: prefixes that are not words
+("after Qxd5: ", "inherited: ", "Q12 <question>: ", "[pool 1] ", "carried from tier 0: " ...), suffixes (the standing kill, "seen before"), compositions whose slots are
+words again ("chase: step_after+step_least over X, Y" word by word -- an item of the list is a word or nothing, no detail swallows the items after it; "chain stop: X not
+followed past Y (<the stop>)"; "the <defect> defect stands (...) and no fix is new there"; the no-parry kill and the not-parried-YET GAP with their lemma; the leaf's
+downgrade; "the threat (...) still binds (+v); <the closer>"; "no fix for '<defect>' in this slice"), and templates (the fuse, the judge's cut, the budget, "our best claim X
+wins N, the reply took M", the in-check leaf, their open question, stuck_reach, the fork's refutation, the exchange close). `report()` prints the OBS lines. `validate(dirs,
+run)` exits 1 on: a schema break; a PROVED entry citing a name that is not a proved theorem of docs/LEAN_INDEX.md (absent, a definition, OPEN); no reads; a duplicate; an
+implementation `path:function` the repo does not define; a term reading a base word its entry does not list (`term_reads`: each primitive of base_vocabulary mapped to the
+base words it reads, the chess terms unfolded); a pattern naming no entry; an uncatalogued word in the trace guard snapshots' traces (`extract_trace`: the claims' lemma
+slots, the KILLED / killed -- / GAP lines, the judge's cuts, the DECISION line) and word lists, and (`run`, the CLI default) in a fresh count-budget run of the guard's two
+fixed positions (the trace; `harvest(ag)`: the root's claims, kills, GAPs, the decision and every fact's lemma field; the run's own counter). `uses(path)`: a trace or a
+question log -> `OBS lemma uses: name count, ...`. CLI: `python -m catspace.incubator.analyst.discovery.lemma_store report | validate [<dir> ...] | uses <path>`.
+No engine file imports the module in this commit: the engine is main's (eb4ea36d) byte for byte.
