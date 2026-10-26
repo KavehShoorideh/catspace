@@ -220,3 +220,15 @@ on `ChaseCtx`; `_refuted` is still text; the three support generators are still 
 and AP 72.10 (the local inner agenda: `grep` finds no `_local_inner`) are written but not in the code; REACH_K waits for 72.3's tempo horizon.
 
 **Not found / unknown:** no mechanism in scope was left without a stated reason, except 72.10 (not built). `landing.py`, `words.py` and `game.py` have no flags of their own.
+
+## Words: the lemma store (plan 73, 2026-10-25)
+
+This inventory is of switches and mechanisms. The engine's WORDS -- every claim lemma, kill reason and GAP reason it prints, its defects, fixes and forcing words, its
+techniques and its stops -- are catalogued one per file in `catspace/incubator/analyst/discovery/lemmas/` (the schema: its README), each with its kind, the base words it
+reads (movement, attack, tempo, material), its Lean citations or their absence, its origin and where it is implemented. `python -m catspace.incubator.analyst.discovery.lemma_store
+report` prints the inventory; `validate` fails on a word the engine prints that the store does not name. Rows above that name a word: FUSE / DEPTH_FUSE (5, 3) are `chase fuse`;
+GOAL_JUDGE (9) is `tempo arithmetic`; CHASE_CLOCK (12) is `the chase clock`; SECOND_CHECK_STOP (16) is `a second check of theirs in a row`; SKELETON_GOALS (20) is
+`arrangement`; THEIR_GAPS / STUCK_LEAF (23, 24) are `their open question` / `stuck_reach`; PARRIES (25) is `the threat ... still binds`; DELAYED_THREAT / NO_SAFE_MOVE
+(26, 27) are `delayed threat` / `no safe move`; ESTIMATE (28) is `chase: quiet-status estimate`; COST_JUDGE (29) is `cut by the judge`; CYCLE (30) is `repetition`;
+UNPROVED (44) is `unfinished line`; DUTY (48) is `the duty`; PRICED_STOPPER (59) is `stopper`; JOIN_FIXES (61) is `join`; RACE (71) is `Ideas.Race.race_sound` and
+`lifted`; DENY (72) is `deny the stopper's path`; PLAN (76) is `plan_sound`; TABLE (77) is `syzygy`; LOCAL_INNER (agenda.py, plan 72.10) is `closed by the frame`.

@@ -3723,6 +3723,15 @@ The engine prints lemma names from many sites. The adapter is ONE place: `lemma_
 (never an exception in a run: the gap is counted, `ctx.uncatalogued`, and the validator fails on it). The agenda's claim/kill/GAP sites call it where they set `lemma`. Behaviour identical;
 the trace gains no line when every word is catalogued. Words.py's `Words` protocol gets `lemmas()` -> the store (the domain tells the machinery which produced words it has and their status).
 
+73.1-73.4 BUILT 2026-10-25 on branch worktree-agent-a7beb0ae9a40834cc (journal 2026-10-25 20:14, 20:15, 20:20 and the documentation entry after them): THE STORE
+`discovery/lemma_store.py` (load / get / name / report / validate / uses, the trace extractor and the run harvest) and `discovery/lemmas/` (one JSON per entry, the schema in
+its README); THE INVENTORY, 96 entries (OBS lemma store by kind: CLOSING 38, DEFECT_FIX 25, FORCING 15, TECHNIQUE 2, STOP 15, TABLE 1; by status: PROVED 28, CONJECTURE 50,
+REFUTED 0, HEURISTIC 18; by origin: BASE 4, HAND 92, MINED 0; the 50 with no proving theorem and the findings in the 20:15 entry); THE ADAPTER at every claim / kill / GAP
+site of agenda.py (`ctx.uncatalogued`, `ctx.lemma_uses`, a GAP note per uncatalogued word, `OBS lemma uses <id>` in the analyser, `Words.lemmas()`); the trace guard identical
+(ten + wide, tier 0 and 2: traces, read sets, leaf lists) and its snapshots now carry a word list per trace (`<id>.words.txt`). Deviations from the text above: a template's
+name writes each slot as "..."; the 29 patterns are code (`lemma_store.PATTERNS`) and `validate` checks every name they use; the deep pass, the shape key and mating.rs's
+king-and-rook frame are entries too; mating.rs carries no plan number (commit d7f82ae4, 2026-10-12; 62.3 is the table). 73.5 is next.
+
 ### 73.5 The generator (part 2, agent B, after part 1 is merged): the K+R v K lemma, mined not written
 THE RECIPE (the K+R v K discussion, 2026-10-23): (1) THE CLASS: a frame class where the engine often has NO CLAIM -- the material signature (K+R v K first; the generator takes the
 signature as its argument and must work unchanged on K+Q v K, see acceptance); (2) THE CORPUS: won games in the class -- play-outs from random legal starts, the winning side moved by the

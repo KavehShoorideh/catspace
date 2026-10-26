@@ -33155,3 +33155,14 @@ OBS gate engine --only, one file per call (passed, failed; xfailed when any): te
   (299.8 s); test_tiers 14, 0; test_offbuilt64 15, 0, xfailed 1; test_plan72_10 4, 0; test_plan72_9 7, 0; test_lean_index 2, 0; test_game 3, 0; test_plan72_7 16, 0;
   test_plan72_7_step2 13, 0; test_plan72_7_step3 13, 0 (tests/test_switches.py does not exist). test_lean_index rebuilds docs/LEAN_INDEX.md: three 'used by' lines
   now name lemma_store.py; restored to main's, not committed (no theorem was added).
+
+## 2026-10-25 20:25 PDT -- plan 73 part 1 (73.1-73.4) documented: ANALYST_PLAN marks it built, SWITCHES points to the store for the words (branch worktree-agent-a7beb0ae9a40834cc)
+docs/ANALYST_PLAN.md 73: 73.1-73.4 marked BUILT (the branch, the four journal entries of today, what was built and the deviations: the names of templates write each slot
+as "...", the patterns are code in lemma_store.py, the guard writes a word list per trace, the K+R frame and the deep pass and the shape key are entries too). docs/SWITCHES.md:
+a closing section "Words: the lemma store" -- the store holds the words; the rows of the switch table that name one point to its entry. NOT BUILT (73.5 is the next agent's):
+the generator, a mined entry, any `evidence` written from a run, any Lean theorem; the closers inside a claim's line ("closed by rule: ...") and the forcing, defect and fix
+words are catalogued but not routed through the adapter (they are not claim lemmas, kills or GAPs), so the validator reads them in no run.
+OBS guard after the inventory commit (2643483b, its tree exported and run as is; the engine files are main's): ten tier 0: 0 of 10 traces, 0 of 10 read sets, 0 of 10
+  leaf verdict lists differ; ten tier 2: 0 of 10, 0 of 10, 0 of 10; wide tier 0: 0 of 99, 0 of 99, 0 of 99; wide tier 2: 0 of 99, 0 of 99, 0 of 99 (the guard after the
+  adapter: the 20:20 entry). The exported tree needs the tables and lean/ideas/.lake linked (the wide sets call the Lean passer detector): without the Lean binary the
+  wide snapshots stop with FileNotFoundError.
