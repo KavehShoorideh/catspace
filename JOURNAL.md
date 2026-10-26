@@ -33014,3 +33014,14 @@ is a sorted iteration; (2) the priced reach's read sets (reach_price, stuck_thre
 (3) a latent crash in stuck_threats with our king in check (the pass board lets them take our king; 1 of 460 sampled boards); (4) the Python fallbacks of the defect twins still run
 (mate_defects_pos ValueError 616 on the ten) -- deleting them changes traces; a port must read those counterfactual boards through `py_legal`. Not ported (next in cost): the mate duty
 (can_run with _mate_ahead, ~2.6 s of 39.6), race_claim / pass_claim, delayed_threat, node_cost / route_cost (now the W0VFO top), graph.mates / with_piece / with_turn.
+
+## 2026-10-25 00:40 -- WHERE WE ARE (Kaveh: "make sure to record where we are now")
+Main 7d0cb65c; gate 393 passed / 0 failed / 2 xfailed, 652.8 s. BUILT since 2026-10-23: plan 72 whole (72.1-72.10: the priced reach, the stake rule and joins, the survey, the gate split,
+the Rust boundary research, skeleton goals, the judge, the local inner agenda) and Rust boundary steps 0-3 (handle, words by term id, Rust word cache, RBoard, route_table, the leaf record,
+words.rs). Speed, like for like at the count budget: ~30.6 s (before step 1) -> 20.7 s (after step 3); under the clock W0VFO reads 7612 -> 16755 inner questions in 10 s (one run each).
+THE LOOP: iterations 1 (rand10-13, 35/40) and 2 (rand14-17, 31/40) done; the retrain's candidate wins 9QsbL and 52.18 but reaches pos2's false Nxf4 proof -> held, not adopted. The
+K+R v K experiment: with the table an oracle (0 questions), without it a draw at 35 questions per move: no word for the drive.
+OPEN (Kaveh's decisions): the hash-seed sort in `_chase_route_body` (2/99 decisions change); the priced reach's read sets reach no claim; pos2's hole then the candidate's re-gate; the two
+chain stops; the remaining words -- and KAVEH'S CONCERN, raised now: porting hand-coded words to Rust hides that they are hand-coded. The base concepts are movement/attack, tempo and
+material; the pass claim, the race claim, the mate duty should be DERIVED by the machinery and kept in a LEMMA STORE, not written by us. Today nothing derives them and no lemma store
+exists (the fact store is per position; training learns order only; Lean's library is human-written). The design conversation starts here (plan 73 when written).
