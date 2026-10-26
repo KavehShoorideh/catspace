@@ -824,7 +824,7 @@ Do not edit by hand.
   - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/binder.py
 - **theorem `Ideas.Mined.Schemas.delayed_balance_alive_d2`** (line 398): THE DELAYED BALANCE (the minimax tail), depth 2 (plan 44.2, the operators DELAY / RECAPTURE)
 - **theorem `Ideas.Mined.Schemas.mate_in_one`** (line 443): THE MATE IN ONE (plan 47, written by hand: the schema generator does not regenerate it)
-  - used by: catspace/incubator/analyst/contrast.py, catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/archive/scheduler_plan56.py, catspace/incubator/analyst/discovery/binder.py, catspace/incubator/analyst/discovery/puzzle_apply.py, catspace/incubator/analyst/discovery/remember.py ...
+  - used by: catspace/incubator/analyst/contrast.py, catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/archive/scheduler_plan56.py, catspace/incubator/analyst/discovery/binder.py, catspace/incubator/analyst/discovery/lemma_store.py, catspace/incubator/analyst/discovery/puzzle_apply.py ...
 - **theorem `Ideas.Mined.Schemas.mate_in_two`** (line 475): THE MATE IN TWO (plan 49, written by hand: the schema generator does not regenerate it)
   - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/binder.py, catspace/incubator/analyst/discovery/puzzle_apply.py, catspace/incubator/analyst/discovery/regress.py, catspace/incubator/analyst/discovery/remember.py, catspace/incubator/analyst/discovery/selfmine.py ...
 - **theorem `Ideas.Mined.Schemas.delayed_balance_deep_alive_d1`** (line 517): THE DEEP DELAYED BALANCE (the minimax tail, one level deeper; plan 48), depth 1 (plan 44.2, the operators DELAY / RECAPTURE)
@@ -1537,9 +1537,9 @@ Do not edit by hand.
 - **theorem `Ideas.TreeStep.moves_of_count`** (line 320): `x can go to y`: the `moves` word, read as a Bool.
   - used by: catspace/incubator/analyst/discovery/selfmine.py
 - **theorem `Ideas.TreeStep.step_after`** (line 329): OUR STEP IN THE WORDS: our non-pawn piece on `x` can legally go to `y`, and after the kernel's move the goal is forced within `n`; the words after the move are read on that very position.
-  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/archive/scheduler_plan56.py, catspace/incubator/analyst/discovery/selfmine.py
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/archive/scheduler_plan56.py, catspace/incubator/analyst/discovery/lemma_store.py, catspace/incubator/analyst/discovery/selfmine.py
 - **theorem `Ideas.TreeStep.step_least`** (line 343): THEIR STEP IN THE WORDS: on their turn, some `least` reads at least 1 (so they have a move), and after every reply the goal is forced within `n`.
-  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/archive/scheduler_plan56.py, catspace/incubator/analyst/discovery/selfmine.py
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/archive/scheduler_plan56.py, catspace/incubator/analyst/discovery/lemma_store.py, catspace/incubator/analyst/discovery/selfmine.py
 - **def `Ideas.TreeStep.nonKing`** (line 351): The squares holding a non-king piece.
 - **def `Ideas.TreeStep.contrib`** (line 355): What a square contributes to `materialOf q c`.
 - **theorem `Ideas.TreeStep.materialOf_eq_sum`** (line 358)

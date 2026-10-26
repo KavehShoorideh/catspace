@@ -33166,3 +33166,20 @@ OBS guard after the inventory commit (2643483b, its tree exported and run as is;
   leaf verdict lists differ; ten tier 2: 0 of 10, 0 of 10, 0 of 10; wide tier 0: 0 of 99, 0 of 99, 0 of 99; wide tier 2: 0 of 99, 0 of 99, 0 of 99 (the guard after the
   adapter: the 20:20 entry). The exported tree needs the tables and lean/ideas/.lake linked (the wide sets call the Lean passer detector): without the Lean binary the
   wide snapshots stop with FileNotFoundError.
+
+
+## 2026-10-25 22:26 -- plan 73 part 1 merged (main e88402f4, fast-forward); the gate found plan 68's deferral hole (fixed); the engine gate now runs the plan 72-73 files
+The lemma store on main: OBS lemma store: entries 96; by kind: CLOSING 38, DEFECT_FIX 25, FORCING 15, TECHNIQUE 2, STOP 15, TABLE 1; by status: PROVED 28, CONJECTURE 50, REFUTED 0,
+HEURISTIC 18; by origin: BASE 4, HAND 92, MINED 0 (the agent's report, reprinted by `lemma_store report` on main). Of the 28 PROVED, five rest on theorems that do not say what the word
+claims (repetition: the value arithmetic only; the fork claim and the fork forcing word; the priced reach: two definitions related; the K+Q technique: a certificate checked at run time) --
+for Kaveh: re-label them CONJECTURE with a "rests on" field (a schema change, his call). Two cited names are absent from the index (Ideas.Duty.dutyAfter, Ideas.ForcedByMeasure.Reach.bind);
+nine citations are definitions, not theorems.
+OBS gate engine (main e88402f4, 28 files): passed 392, failed 1, xfailed 2, wall 635.8 s -- test_68_2 (eSJqH at 6 s, the TIERS forced): no DEFERRED PASS. Traced, not guessed: the faster
+words (72.7 step 3) let all four tiers finish in 3.8 s; tier 1 defers the seven stake-1 roots, tiers 2 and 3 stop before the low stakes and defer none; the deferred pass read only the
+LAST tier's queue, so the seven were never asked with 2.2 s left. Not the hash seed (four seeds, the same). The test passed once on rerun (a slower moment). FIX: the pass runs on the
+questions deferred by ANY tier (`deferred_all` in `_ask_tiers`); the decision is unchanged (Qa5 +2 proved, the answer) and the pass now runs.
+OBS trace identity (count budget, ten; before = main, after = the fix): 0 of 10 traces, 0 of 10 read sets, 0 of 10 leaf verdict lists, 0 of 10 word lists differ (the pass needs a clock).
+THE GATE'S LIST: scripts/gate.py's engine list predated 72.3; it never ran test_plan72_3 / 72_5 / 72_7 / 72_7_step2 / 72_7_step3 / 72_8 / 72_9 / 72_10 / test_plan73 (each agent gated them
+alone). Added (37 files; test_lean_index and test_gate_script stay in `full`: the first rewrites docs/LEAN_INDEX.md, the second takes the gate's lock).
+OBS gate engine (37 files, the fix in): passed 477, failed 0, xfailed 2, errors 0, wall 713.5 s. docs/LEAN_INDEX.md: regenerated "used by" lines (the lemma store cites three theorems).
+Next: plan 73 part 2 (73.5, the generator: the K+R v K technique mined from a table-written corpus by base-derived measures).

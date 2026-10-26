@@ -41,7 +41,9 @@ ENGINE_NAMES = (
     "test_plan72 test_regress test_agenda test_tiers test_binder_rust test_fact_store test_game "
     "test_graph_policy test_question_prior test_offbuilt64 test_cost61 test_duty63 test_estimate61 "
     "test_forcing61 test_discovery_race test_discovery_vocabulary test_discovery_evidence "
-    "test_discovery_known test_least_loss_keeps_material test_floor_at_decision test_anytime"
+    "test_discovery_known test_least_loss_keeps_material test_floor_at_decision test_anytime "
+    "test_plan72_3 test_plan72_5 test_plan72_8 test_plan72_9 test_plan72_10 "          # 2026-10-25: the plan 72 / 73 files each agent gated alone, never on main's gate
+    "test_plan72_7 test_plan72_7_step2 test_plan72_7_step3 test_plan73"
 ).split()
 
 PYTEST_FLAGS = ["-q", "-p", "no:cacheprovider", "-W", "ignore", "--durations=3"]

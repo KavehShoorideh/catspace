@@ -1066,11 +1066,14 @@ class Agenda:
             if not self.keeps(st, top)[0]:
                 return False
             return not (RAISE_TO_WIN and st["line"] == 0 and st["balance"] + top[0] < 1)       # (kept at 'not losing' with time left: the line rises to 'stay ahead' and the next tier opens anyway -- 59 (4))
+        deferred_all: list = []                                   # plan 68 (2026-10-25): the questions EVERY tier deferred (a wider tier that stops before the low stakes defers none of them)
         while True:
             ag.ctx.held = held
             t1 = time.monotonic()
             ag._ask_once()
             secs = time.monotonic() - t1
+            seen_d = {q.text for q in deferred_all}
+            deferred_all += [q for q in ag.ctx.deferred_qs if q.text not in seen_d]
             if ag is not self:                                   # fold the wider tier into this root: its claims and gaps, its decision when it beats the one held
                 if self._fold_tier(ag, k, owner):
                     owner, decided = ag, k
@@ -1121,15 +1124,16 @@ class Agenda:
             self.lines.append(self._open_line(ag, time.monotonic() - t0))      # plan 66.3: why the widening did not end before the deadline (what was still open and affordable)
         if RESUME and not kept and not self.ctx.abort and total is not None:
             owner, decided = self._resume_chain_stops(ag, total, t0, owner, decided)      # plan 66.4
-        if DEFER and not kept and not self.ctx.abort and total is not None and ag.ctx.deferred_qs:      # plan 68: the questions below the need, with the time the relevant ones left
+        if DEFER and not kept and not self.ctx.abort and total is not None and deferred_all:      # plan 68: the questions below the need, with the time the relevant ones left
+            #                                                  (2026-10-25: deferred by ANY tier -- with the faster words tiers 2-3 stop before the stake-1 roots and defer none; eSJqH lost its pass)
             left = total - (time.monotonic() - t0)
-            names = ", ".join(q.text for q in ag.ctx.deferred_qs[:4]) + (", ..." if len(ag.ctx.deferred_qs) > 4 else "")
+            names = ", ".join(q.text for q in deferred_all[:4]) + (", ..." if len(deferred_all) > 4 else "")
             if left > 0.05:
                 da = self._next_agenda(ag, ag.ctx.tier, left, self.status_info, "deferred")
                 da.ctx.need = 0
                 da.ctx.held = None
                 da.lines = _TierLines(self.lines, "[deferred] ")
-                self.lines.append(f"DEFERRED PASS: {len(ag.ctx.deferred_qs)} question(s) below the need {ag.ctx.need} ({names}) asked with {left:.1f} s left (the relevant ones are carried)")
+                self.lines.append(f"DEFERRED PASS: {len(deferred_all)} question(s) below the need {ag.ctx.need} ({names}) asked with {left:.1f} s left (the relevant ones are carried)")
                 t1 = time.monotonic()
                 da._ask_once()
                 secs = time.monotonic() - t1
@@ -1138,7 +1142,7 @@ class Agenda:
                 self.tier_info.append(dict(tier="deferred", secs=round(secs, 2), asked=da.asked + da.ctx.asked, kept=False, hit=bool(da.ctx.hit), claims=len(da.state.claims),
                                            best=None if da.best is None else (da.best[2].what, da.best[0])))
             else:
-                self.lines.append(f"DEFERRED: {len(ag.ctx.deferred_qs)} question(s) below the need {ag.ctx.need} ({names}) not asked: no time left")
+                self.lines.append(f"DEFERRED: {len(deferred_all)} question(s) below the need {ag.ctx.need} ({names}) not asked: no time left")
         self.tier_decided = decided
         self.tier_secs = [t["secs"] for t in self.tier_info]
         self.lines.append(f"TIERS: ran {len(self.tier_info)} (0..{len(self.tier_info) - 1}); the decision is " + (f"{self.best[2].what} ({self.best[0]:+d}) from tier {decided}" if self.best is not None else "none") + f"; seconds per tier {self.tier_secs}")
