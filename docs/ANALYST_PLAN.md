@@ -3672,3 +3672,81 @@ Rules as for 72.8: commit by path, no AI trailers, OBS numbers only, tests only 
   NOT BUILT: the DELAY reading of the spec's Q3 "a parry only if after it and every reply of ours the claim no longer binds; otherwise priced and closed" as a NEW closing rule -- a delay is
   named and priced in the trace and read as today (in check: the evasions; a capture: the exchange on its square); closing it by the price would need the claim's value after the delay, which
   is the route's own unknown. The local their-agenda is not memoised (a different board per reply).
+
+
+## 73. THE LEMMA STORE: derived words, not hand-coded ones (Kaveh 2026-10-25 GO "Do the lemma store"; spec for Opus agents, two parts in sequence)
+
+Kaveh, 2026-10-25, on the Rust boundary's ports of the pass claim, the race claim and the mate duty: "we've been hand-coding a lot of things, and by taking them from Python to
+Rust we will never find that we've been hand-coding them ... The concept of a tempo and the concept of material are the only base concepts. Attacks, movements, tempo, time and
+material are the base concepts. Everything else should be derived ... by the machinery and not by us ... I would expect these things to be in a lemma store, not a fact store."
+
+THE THREE STORES, kept apart: the FACT STORE (plan 52.19-52.21) holds per-position claims keyed by what they read, served on transpositions; the POLICY (plans 60, 69) holds
+ORDER, which question and which route first; LEAN holds proofs. None holds a WORD. The LEMMA STORE holds the derived words: what the agenda may ask beyond the base, where each
+came from, what it rests on, and whether it is proved.
+
+THE BASE (supplied, never derived; plan 71.3's `BaseWords`): MOVEMENT and ATTACK (a unit's moves and the squares it bears on; legality), TEMPO (whose move; a count of moves), MATERIAL
+(a unit's worth; the exchange count on a square, the exchange law `Ideas.ExchangeLaw`). The rules of the game (check, mate, stalemate, the draws) are the game's, not words.
+
+### 73.1 What an entry is
+A LEMMA ENTRY is a derived word with: `name` (the string the trace already prints in `Claim.lemma` / the kill and GAP reasons: "delayed_root_max_alive_d1", "chase: step_after+step_least",
+"mate_in_two", "repetition", "syzygy", "stuck_reach", "tempo arithmetic ...", ...); `kind` -- CLOSING (closes a line at a leaf: the exchange reading, "nothing of theirs"), DEFECT/FIX (why a
+goal fails and what mends it: flight, stopper, blocker, interposition, deflection, the priced stopper), FORCING (why a move forces: check, capture, threat of mate, the delayed threat, the
+passer threat), TECHNIQUE (a goal with a MEASURE and a terminal theorem: the K+Q mate's region, plan 62.3's `mating.rs`), STOP (a chain stop: the chase clock, tempo arithmetic, the second
+check in a row), TABLE (the five-men table: an oracle, kind of its own); `reads` -- the base words it is built from (movement, attack, tempo, material: at least one; a word reading none is a
+finding); `terms` -- the vocabulary s-expressions it compiles, when it is a term (the compiled terms are ALREADY compositions over the base: the generic part we have); `status` -- PROVED
+(the Lean theorem names it mirrors, each present in docs/LEAN_INDEX.md: AGENTS rule 11), CONJECTURE (evidence, no proof), REFUTED (a position where it is wrong), HEURISTIC (a stop or a
+tie-break with no proof obligation: labelled so, never called proved); `origin` -- BASE, HAND (we wrote it: the plan number and the journal date), MINED (the generator produced it: the run
+and the corpus); `measure` (TECHNIQUE only: the quantity the per-move question drops; the floor at which the terminal theorem binds); `evidence` -- use counts from runs (how often asked,
+how often it closed or claimed, printed as OBS), the positions that refuted or confirmed it; `implementation` -- where it runs (regress.py / words.rs / race.py / mating.rs / agenda.py: the
+function names) so the port is visible, not hidden.
+
+### 73.2 The store (part 1, agent A)
+A tracked directory `catspace/incubator/analyst/discovery/lemmas/` (small JSON, one file per entry, git-tracked -- NOT data/derived), a loader `lemma_store.py` (load, get by name,
+report, validate), and a CLI `python -m catspace.incubator.analyst.discovery.lemma_store report|validate|uses <trace or qlog>`. VALIDATE fails when: a PROVED entry cites a theorem not in
+LEAN_INDEX; an entry has no `reads`; two entries share a name; a `name` printed by the engine (in a trace's claims, kills, GAPs, judge lines) is not in the store -- the agenda's lemma
+strings are collected from the trace guard's snapshots (traces + the fact store's lemma fields) and from the ten + wide case sets, so an uncatalogued word is a test failure
+(`tests/test_plan73.py`). The store does not change a single decision: the guard (traces, read sets, leaf lists, ten + wide, tier 0 and 2) is identical before and after.
+
+### 73.3 The honest inventory (part 1, agent A)
+Every produced word the engine prints today becomes an entry with origin HAND: from regress.py / words.rs (defects, fixes, forcing reasons, the priced stopper, reach/stuck, the passer
+duty, the race words), graph.py's terms (the vocabulary s-expressions: list them with their base reads), race.py, mating.rs (the K+Q TECHNIQUE: measure = the region's off-edge squares,
+terminal `Ideas.QueenMate.kq_mate_on_edge`), table.py (TABLE), the chase's lemma strings ("chase: step_after+step_least", "repetition", "unfinished line", "none" = the smallest loss,
+"stuck_reach", "their open question"), the STOPs (the chase clock, tempo arithmetic, the second check in a row, the fuse, the judge's cut: all HEURISTIC), and docs/SWITCHES.md's
+plan-numbered mechanisms where they name a word. Each PROVED entry cites its Lean theorems by name (from the docstrings, verbatim; where a docstring cites none, status is CONJECTURE and
+that is a FINDING in the report, never a silent upgrade). The report prints OBS: entries total, by kind, by status, by origin; the words whose Lean citation is missing; the words that
+read no base word. A per-run OBS line in the agenda's tally: `OBS lemma uses <id>: name count, ...` for the lemmas that closed, claimed or stopped in that run (the use counts feed `evidence`
+later; nothing is written back during a run).
+
+### 73.4 The adapter (part 1, agent A)
+The engine prints lemma names from many sites. The adapter is ONE place: `lemma_store.name(s)` returns `s` after checking it is a known entry (or a known PATTERN: the chase composes
+"chase: step_after+step_least over X, Y" from entry names; "carried from tier ...", "[tier pool 1]" are prefixes, not words); unknown -> a `GAP` note "uncatalogued word <s>" in the trace
+(never an exception in a run: the gap is counted, `ctx.uncatalogued`, and the validator fails on it). The agenda's claim/kill/GAP sites call it where they set `lemma`. Behaviour identical;
+the trace gains no line when every word is catalogued. Words.py's `Words` protocol gets `lemmas()` -> the store (the domain tells the machinery which produced words it has and their status).
+
+### 73.5 The generator (part 2, agent B, after part 1 is merged): the K+R v K lemma, mined not written
+THE RECIPE (the K+R v K discussion, 2026-10-23): (1) THE CLASS: a frame class where the engine often has NO CLAIM -- the material signature (K+R v K first; the generator takes the
+signature as its argument and must work unchanged on K+Q v K, see acceptance); (2) THE CORPUS: won games in the class -- play-outs from random legal starts, the winning side moved by the
+Syzygy table (DTZ-best), the defender by the table's slowest line, 50 to 200 games, the fifty-move rule and repetition observed (`scripts/play_krk.py`-style driver, generalised to the
+signature; the table is the ORACLE here and only here: it writes the corpus, it never answers in the agenda); (3) THE MEASURES: a small library of quantities DERIVED FROM THE BASE, each a
+function of (board, side): the REGION of their king (the squares it can reach by king moves without stepping onto a square we attack, our units held still: movement + attack; its size, its
+off-edge part, its bounding box area), the distance of their king to the nearest edge / corner (movement), the king distance (movement), our material and theirs (material), the tempo
+count (tempo), and the PRODUCTS and SUMS of two of them (one level of composition; no hand-picked K+R formula); a measure is a CANDIDATE TECHNIQUE when over the corpus it is non-increasing
+on every winning move (strictly decreasing on at least one move in every game) and its FLOOR (the minimum before the mate) is where the existing mate words bind (`mate_in_one` /
+`mate_in_two` / the planner's three-move net), printed as OBS per measure: games, moves, violations, floor; the generator chooses the measure with no violation and the smallest floor
+spread, and if several tie, the one with the fewest base reads (the simplest); (4) THE ENTRY: kind TECHNIQUE, origin MINED, status CONJECTURE, `measure` = the chosen quantity's term
+(a composition over the base, printed), `terminal` = the mate word at the floor, the Lean OBLIGATION written as a statement in the entry (the twin of `kq_mate_on_edge`: "in the class, mate
+only at the floor"); it becomes PROVED only when the theorem is in LEAN_INDEX (agent B may prove it if it is within reach; else it stays a CONJECTURE and says so); (5) THE QUESTION: the
+agenda asks a TECHNIQUE entry as a GOAL: in a position of the class with no claim, the root question "drop the measure" with routes = the legal moves after which the measure is lower
+against EVERY reply (the minimax of the measure at depth one, the existing "can I force a drop in our measure" reading), each route refused if it stalemates, hangs the piece (the exchange
+law) or allows a claimable draw (the game's rules); ties by the smaller floor distance; no route -> the technique is silent (GAP "no measure-dropping move", never a kill) and the agenda
+goes on as today. The entry's `evidence` records the corpus and the acceptance runs.
+ACCEPTANCE (printed, directional): (a) `play_krk.py` with the table claim OFF and the mined entry ON: result, questions per move, moves to mate, three random starts -- against the
+2026-10-23 baseline (draw by repetition, 35 questions per move); (b) GENERICITY: the same generator on K+Q v K must produce a measure equivalent to the hand-made one in mating.rs (the
+region's off-edge squares, or one that mates the corpus equally) WITHOUT reading mating.rs; print both measures' OBS; (c) the guard's ten + wide cases: identical (no case is in the class);
+(d) K+R v K with the table claim ON is unchanged (the table outranks a conjecture: `_claim_key`). The K+Q entry from mating.rs is re-labelled HAND/PROVED in the store and the mined K+Q
+entry sits beside it as MINED/CONJECTURE: the two are the store's first comparison.
+NOT IN 73: deriving the pass claim, the race claim and the mate duty from the base (the inventory makes them visible as HAND; their derivation is the generator's next class, over the
+puzzle corpus rather than endings, and is written after 73.5 reports what the generator can and cannot find).
+
+COST: part 1 none (identical); part 2's corpus is written once (the table), the measures are evaluated offline; the technique question costs one measure evaluation per legal move per
+reply at the root of a position in the class and nothing elsewhere.
