@@ -33288,3 +33288,32 @@ shortcuts every measure counts as backwards. The plan's own Lean obligation asks
 the lexicographic pair (region size, kings' distance) fails 168 of 1116 KRvK positions at depth one, 5 at depth two -- and the hand-made K+Q technique has exactly the missing parts
 (three lexicographic ranks, a tempo move, a three-move net). 73.5b (ANALYST_PLAN) amends the criterion to the obligation's question, adds the lexicographic combinator and the tempo depth d,
 simplest first, the hand-made technique's shape as the named fuse.
+
+
+## 2026-10-26 00:03 PDT -- plan 73.5b (1) built: THE SAMPLE -- the corpus positions and 3000 uniform won positions of each class; the floor read by the engine's own mate search (branch worktree-agent-a3b8d9ac59ad69fb8)
+`catspace/incubator/analyst/discovery/technique_sample.py`, CLI `python -m catspace.incubator.analyst.discovery.technique_sample <sig> [--corpus] [--uniform 3000] [--seed 2]`.
+THE SAMPLE = the 73.5 corpus positions (the winning side's turns of the table's games, one row per position) and UNIFORM won positions of the class (technique_corpus's
+random legal placements: the winning side to move, not in check, not over; kept when the table judges them won). UNIFORM = 3000 by the RULE OF THREE: zero failures on
+N independent uniform draws bound the per-position failure rate below 3/N at 95% -- below 1 in 1000 at N = 3000, so a play-out over the fifty-move horizon (50 moves)
+meets a failing position with probability at most about 5%. The uniform draw has its own seed (2; the corpus games are seed 1).
+THE FLOOR: n = 2 -- the mate words (mate_in_one, the binder's mate_in_two: technique_measures.mate_words); n = 3 -- mating.rs's NET, the existing `mating::net_mate`
+(a forced mate in at most n moves against every reply, every move tried, never through a stalemate or a claimable draw), read from Python through a new thin binding
+`analyst_core.net_mate_of(fen, n)` in rust/analyst_core/src/lib.rs -- a binding, not a new mate solver. The crate was rebuilt (maturin develop --release): THE SHARED
+EDITABLE INSTALL NOW POINTS AT THIS BRANCH'S CRATE (main ea8a2cf4's Rust plus the binding).
+The 73.5 corpora were gone from artifacts/ (untracked) and were rewritten by technique_corpus.py with 73.5's defaults; they reproduce 73.5's OBS exactly:
+OBS corpus KRvK: games 100, positions 2406, mean length 23.1 plies, mates 100; winning moves 1203; results mate 100; starts with DTZ >= 19 (the median DTZ of 1000 won starts
+of the class, seed 0; their DTZ 1..31); seed 1; 12.3 s
+OBS corpus KQvK: games 100, positions 1366, mean length 12.7 plies, mates 100; winning moves 683; results mate 100; starts with DTZ >= 11 (the median DTZ of 1000 won starts
+of the class, seed 0; their DTZ 1..17); seed 1; 8.6 s
+OBS sample KRvK: positions 3803 -- corpus 841 (the distinct positions of 1203 winning-side turns of artifacts/experiments/technique_corpus/KRvK_seed1.jsonl), uniform 2962
+(3000 drawn, seed 2, 38 already in the corpus; of 3000 valid placements drawn the table judged 3000 won); DTZ 1..31; largest fifty-move clock 28 (below 100 - 6: no
+claimable draw within d = 3)
+OBS sample KRvK floor: at n = 2 (the mate words) 183, at n = 3 (the net) 316 of 3803; mate_in_one 58, mate_in_two 125, net_mate_in_1 58, net_mate_in_2 125, net_mate_in_3 133;
+the mate words and the net agree at n = 2 on 3803 of 3803; 1.9 s
+OBS sample KQvK: positions 3577 -- corpus 622 (the distinct positions of 683 winning-side turns of artifacts/experiments/technique_corpus/KQvK_seed1.jsonl), uniform 2955
+(3000 drawn, seed 2, 45 already in the corpus; of 3000 valid placements drawn the table judged 3000 won); DTZ 1..17; largest fifty-move clock 16 (below 100 - 6: no
+claimable draw within d = 3)
+OBS sample KQvK floor: at n = 2 (the mate words) 307, at n = 3 (the net) 576 of 3577; mate_in_one 122, mate_in_two 185, net_mate_in_1 122, net_mate_in_2 185, net_mate_in_3 269;
+the mate words and the net agree at n = 2 on 3577 of 3577; 3.6 s
+Reading (directional, one sample each): every valid placement drawn was won, so the sample's class is the class with the winning side to move; the table's games
+revisit their own positions (1203 turns, 841 positions); the mate words and the net find the same mates in two (no stalemate counted as a mate by either).

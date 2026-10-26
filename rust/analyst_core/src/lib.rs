@@ -315,6 +315,16 @@ pub(crate) const SETTLE_DEPTH: u32 = 12;
 pub static LEAF_BOUND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 #[pyfunction]
 fn set_leaf_bound(flag: bool) -> PyResult<()> { LEAF_BOUND.store(flag, Ordering::Relaxed); Ok(()) }
+/// plan 73.5b: THE NET read from Python -- mating.rs's own `net_mate` (a forced mate in at most `n` moves of ours against
+/// every reply, every move of ours tried; never through a stalemate or a claimable draw), not a new solver: the generator's
+/// floor at n = 3 and the technique question's mate at that floor. net_mate_of(fen, n) -> (the first move's uci, the moves
+/// to mate) or None (no such mate, or a FEN shakmaty does not hold).
+#[pyfunction]
+fn net_mate_of(fen: String, n: u32) -> Option<(String, u32)> {
+    let p = parse(&fen)?;
+    mating::net_mate(&p, n).map(|(m, k)| (m.to_uci(CastlingMode::Standard).to_string(), k))
+}
+
 /// settle_audit(fen) -> (positions compared, equal values, nodes without, nodes with): the capture settle of the position
 /// and of every child, with and without the leaf bound -- the bound must not change a single value.
 #[pyfunction]
@@ -1675,6 +1685,7 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(threat::set_exact_value, m)?)?;
     m.add_function(wrap_pyfunction!(plan::gain_floor_of, m)?)?;
     m.add_function(wrap_pyfunction!(settle_audit, m)?)?;
+    m.add_function(wrap_pyfunction!(net_mate_of, m)?)?;
     m.add_function(wrap_pyfunction!(threat::forcing_mate_of, m)?)?;
     m.add_function(wrap_pyfunction!(threat::rl_log, m)?)?;
     m.add_function(wrap_pyfunction!(threat::forcing_log, m)?)?;
