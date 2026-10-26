@@ -33199,3 +33199,53 @@ the class, seed 0; their DTZ 1..31); seed 1; 13.4 s
 OBS corpus KQvK: games 100, positions 1366, mean length 12.7 plies, mates 100; winning moves 683; results mate 100; starts with DTZ >= 11 (the median DTZ of 1000 won starts of
 the class, seed 0; their DTZ 1..17); seed 1; 9.5 s
 (the corpora: artifacts/experiments/technique_corpus/<sig>_seed1.jsonl, untracked.)
+
+
+## 2026-10-25 22:59 PDT -- plan 73.5 (3) built: THE MEASURES AND THE MINER -- no technique candidate in K+R v K or K+Q v K under the table's play: the finding; no entry written (branch worktree-agent-ac897cd3efa06e77b)
+`catspace/incubator/analyst/discovery/technique_measures.py`, CLI `python -m catspace.incubator.analyst.discovery.technique_measures <sig> [--corpus] [--diagnose]`. THE LIBRARY: nine
+atoms built from the base and printed as vocabulary s-expressions -- their king's region `(reach L free)` (the squares it walks to without stepping onto a square we attack, our units
+held still) by its size, its part off the edge and its rectangle's area; `(dist L edge)`, `(dist L corner)`, `(dist W L)` (king steps); `material_us`, `material_them`; `halfmoves`
+(the moves played) -- and the sum and the product of every two: 81 candidates. A term's base reads are lemma_store.term_reads of its s-expression (the vocabulary's own table), so the
+library cannot hold a term reading anything else; the edge and the corner are read from movement (fewer than eight / exactly three king steps). The seven atoms the vocabulary also
+says read the same number through the Rust evaluator (graph.word) on every board it holds, both colours (a scratch check: 22,192 reads equal; the test reads them again). Nothing names
+a unit kind: the terms name W and L only.
+THE MINER (the plan's criterion): at the winning side's turns, the value now and at its next turn (after our move and the table's reply); a violation = it rose; the game floor = the
+value before the mate; the floor positions = the corpus positions at or below the largest game floor, each asked mate_in_one (the handle) and mate_in_two (selfmine.bind_mate2).
+OBS miner KRvK library: candidates 81 (atoms 9, sums 36, products 36); base reads of the atoms: region / off-edge / area attack, movement; the three distances movement; the two
+materials material; halfmoves tempo
+OBS miner KRvK corpus: games 100, winning-side positions 1203, with a mate the words find 200 (mate_in_one 100, mate_in_two 100)
+OBS miner KRvK zero violations: 11 term(s), none a technique candidate -- material_us, material_them, their sum and product, and every product with material_them (0 in the class):
+each "games never dropped 100"
+OBS miner KRvK best by violation rate of the terms that drop in every game: (sum (dist L edge) (dist W L)) 117/1203 (0.097); (area (reach L free)) 164/1203 (0.136); ...
+OBS miner KRvK #34 (count (reach L free)): violations 238 (0.198), games never dropped 0, floor 44 (game floors 2..44, spread 42)
+OBS miner KRvK violation of (area (reach L free)): game 0, 8/8/4K3/6k1/3R4/8/8/8 w - - 14 8: after Re4 and the table's reply it reads 32 (was 16)
+OBS miner KRvK: NO TECHNIQUE CANDIDATE -- no technique candidate among the 81: the 11 with 0 violations never drop in a game (constants of the class); every term that drops in every
+game rises on a winning move of the table's play (the best (sum (dist L edge) (dist W L)): 117 of 1203); nothing is relaxed and no entry is written
+OBS miner KQvK best by violation rate of the terms that drop in every game: (sum (dist L edge) (dist W L)) 25/683 (0.037); (sum (count (and (reach L free) (not edge))) (dist W L))
+40/683 (0.059); (sum (count (reach L free)) (dist W L)) 55/683 (0.081); ...
+OBS miner KQvK #15 (count (and (reach L free) (not edge))): violations 43 (0.063), games never dropped 1, floor 17 (game floors 0..17, spread 17)
+OBS miner KQvK: NO TECHNIQUE CANDIDATE -- the 11 with 0 violations never drop (constants of the class); the best (sum (dist L edge) (dist W L)): 25 of 683
+Reading (directional, one corpus per class): the table's DTZ-best play is not a technique. It takes shortcuts a measure counts as regress -- KRvK game 0: Re4 moves the rook's cut
+from the d-file to the e-file, where our own king on e6 blocks it, and opens the way round by e8-d8: the region's rectangle doubles (16 -> 32) while the table's line still mates six
+moves later. One corpus each, seed 1: the numbers are a guide, not a verdict.
+THE DIAGNOSTIC (`--diagnose`; NOT the plan's criterion, it chooses and writes nothing): the Lean obligation's own form on the same positions -- above a measured floor (the largest value
+at or below which every corpus position has a mate the words find), does SOME move (no stalemate, no unit lost by the exchange law) drop the measure against EVERY reply; where none
+does, within two of our moves. For the 81 terms and the 72 ordered lexicographic pairs of atoms (drop the first, or keep it and drop the second).
+OBS miner KRvK DIAGNOSTIC depth one, one term (sum (count (reach L free)) (dist W L)): positions above the floor 1116, with no measure-dropping move 186
+OBS miner KRvK DIAGNOSTIC depth one, lexicographic pair ((count (reach L free)), then (dist W L)): positions above the floor 1116, with no measure-dropping move 168
+OBS miner KRvK DIAGNOSTIC depth two, ((count (reach L free)), then (dist W L)): of the 168 positions with no depth-one drop, 163 drop within two of our moves, 5 do not (e.g.
+8/8/8/3RK3/2k5/8/8/8 w - - 8 5)
+OBS miner KQvK DIAGNOSTIC depth one, lexicographic pair ((count (reach L free)), then (dist W L)): positions above the floor 683, with no measure-dropping move 23
+OBS miner KQvK DIAGNOSTIC depth two, ((count (reach L free)), then (dist W L)): of the 23 positions with no depth-one drop, 19 drop within two of our moves, 4 do not (e.g.
+8/5k1K/3Q4/8/8/8/8/8 w - - 6 4)
+Reading: even in the obligation's own form no measure of the library holds everywhere at depth one; the nearest is a composition the library does not have (the region, then the kings'
+distance: lexicographic) read to depth two (a TEMPO move: their king must move), and a handful of positions still fail. The hand-made K+Q technique (mating.rs, read after the K+Q
+result, as the spec says) has exactly these parts: a three-rank lexicographic measure (off-edge squares; our king's distance to the farthest front-zone target of the proved shapes;
+the region's size), a tempo move within two or three moves, and a floor that is a NET (a region of at most two squares: a forced mate within three moves searched in full) -- beyond
+mate_in_two. The one-level library cannot express it; this is the generator's limit, not a bug (the Re4 example, the 22,192 equal reads, the tests).
+FOR KAVEH (no go asked, no run): the next generator would need (i) lexicographic composition, (ii) drops within two moves (tempo), (iii) a floor read by a three-move net; and the
+criterion "a dropping move exists against every reply" (the obligation) instead of "the oracle's move dropped it". The plan's escape hatch was taken: nothing relaxed, no entry.
+tests/test_plan73_5.py (7): the signature; the library from the base only (no unit word); the corpus written by the table (the 2026-10-23 start); the atoms against the Rust evaluator;
+the miner chooses a measure with 0 violations on five short games of the table (DTZ 3: a choice exists there); the finding on five K+R v K games; the never-rules (Qf7 stalemates,
+Rc5 / Rc6+ next to their king is lost). scripts/gate.py: test_plan73_5 in the engine list (38 files).
+OBS gate engine --only tests/test_plan73_5.py: passed 7, failed 0, xfailed 0, errors 0, wall 1.9 s
