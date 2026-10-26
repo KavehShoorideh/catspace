@@ -33249,3 +33249,29 @@ tests/test_plan73_5.py (7): the signature; the library from the base only (no un
 the miner chooses a measure with 0 violations on five short games of the table (DTZ 3: a choice exists there); the finding on five K+R v K games; the never-rules (Qf7 stalemates,
 Rc5 / Rc6+ next to their king is lost). scripts/gate.py: test_plan73_5 in the engine list (38 files).
 OBS gate engine --only tests/test_plan73_5.py: passed 7, failed 0, xfailed 0, errors 0, wall 1.9 s
+
+
+## 2026-10-25 23:11 PDT -- plan 73.5 (4)-(5) NOT built (no mined entry); the baseline play-outs re-run, the guard identical, the gate; ANALYST_PLAN marks 73.5 (branch worktree-agent-ac897cd3efa06e77b)
+No technique candidate (22:59), so by the plan's escape hatch no entry was written: there is no TECHNIQUE entry with a measure the agenda could ask, the technique question (5) was
+not built (it would be a path nothing in the store can open), and acceptance (a) (mined vs baseline) and (b) (the mined K+Q measure against mating.rs's) have nothing on the mined side.
+`scripts/play_technique.py`: the 2026-10-23 driver (scratchpad krk/play_krk.py) generalised to a signature and copied into the repo -- the agenda as White at the COUNT budget, the
+play server's routine (with the server's first-move `facts.advance`, which play_krk.py lacked), the table's slowest defence, `--table off|on`, the game's rules end it. THE BASELINE,
+re-run on the branch's engine (= main 7186aa4b's: no engine file changed), K+R v K, floor 20 (play_krk.py's), seeds 1-3:
+OBS play KRvK seed 1 table off: start 4K3/R7/8/8/2k5/8/8/8 w - - 0 1; dtz at start 27; result 1/2-1/2 (repetition) after 35 plies; our moves 18, by the agenda 12, by the fallback 6;
+questions asked 637 (35 per move); inner agendas 80; moves that shortened the table's distance 7 of 18; decision lemmas ['unfinished line']
+OBS play KRvK seed 2 table off: start 8/8/8/K7/3R4/8/8/4k3 w - - 0 1; dtz at start 21; result 1/2-1/2 (repetition) after 47 plies; our moves 24, by the agenda 18, by the fallback 6;
+questions asked 1185 (49 per move); inner agendas 124; moves that shortened the table's distance 6 of 24; decision lemmas ['unfinished line']
+OBS play KRvK seed 3 table off: start 4K3/8/8/8/8/8/R7/1k6 w - - 0 1; dtz at start 21; result 1/2-1/2 (repetition) after 37 plies; our moves 19, by the agenda 13, by the fallback 6;
+questions asked 580 (31 per move); inner agendas 73; moves that shortened the table's distance 7 of 19; decision lemmas ['unfinished line']
+OBS play KRvK seed 1 table on: result 1-0 (mate) after 27 plies; our moves 14, by the agenda 14; questions asked 0 (0 per move); decision lemmas ['syzygy']
+OBS play KRvK seed 2 table on: result 1-0 (mate) after 21 plies; our moves 11, by the agenda 11; questions asked 0 (0 per move); decision lemmas ['syzygy']
+OBS play KRvK seed 3 table on: result 1-0 (mate) after 21 plies; our moves 11, by the agenda 11; questions asked 0 (0 per move); decision lemmas ['syzygy']
+Seed 1 reproduces the 2026-10-23 numbers exactly (637 questions, 35 per move, repetition after 35 plies). Seeds 2 and 3 draw the same way. One play-out each: directional.
+OBS trace identity (before = main 7186aa4b exported, after = the branch; PYTHONHASHSEED=0): ten tier 0: 0 of 10 traces, 0 of 10 read sets, 0 of 10 leaf verdict lists, 0 of 10 word
+lists differ; ten tier 2: 0 / 0 / 0 / 0 of 10; wide tier 0: 0 of 99 traces, 0 of 99 read sets, 0 of 99 leaf verdict lists, 0 of 99 word lists differ; wide tier 2: 0 / 0 / 0 / 0 of 99.
+OBS lemma store validate: entries 96, patterns 29; words read 944; uncatalogued 0; problems 0 (the store is untouched: no MINED entry).
+OBS gate engine, one file per call: test_plan73_5 passed 7; test_plan73 9; test_agenda 26; test_regress 87; test_tiers 14; test_offbuilt64 15, xfailed 1; test_plan62 28;
+test_plan72_10 4; test_plan72_9 7; test_fact_store 21 -- failed 0, errors 0 in every file.
+Not built and why: (4) the entry (no measure was chosen); (5) the question (no entry to ask; a technique path the store cannot open would be "off is not built" in disguise); the Lean
+obligation (no entry states one); acceptance (a)/(b) mined sides. Next for Kaveh (no go asked): the diagnostic's pointer -- a lexicographic composition read two moves deep, a net at
+the floor, and the existence criterion -- or another corpus (the table's play is the fastest, not a technique).

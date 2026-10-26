@@ -3759,3 +3759,14 @@ puzzle corpus rather than endings, and is written after 73.5 reports what the ge
 
 COST: part 1 none (identical); part 2's corpus is written once (the table), the measures are evaluated offline; the technique question costs one measure evaluation per legal move per
 reply at the root of a position in the class and nothing elsewhere.
+
+73.5 (2)-(3) BUILT 2026-10-25 on branch worktree-agent-ac897cd3efa06e77b (journal 2026-10-25 22:55, 22:59, 23:11); (4)-(5) NOT BUILT -- the escape hatch above was taken. THE CORPUS
+`discovery/technique_corpus.py` (a signature's random legal starts at DTZ >= the class's median, the table's DTZ-best winner, its slowest defence; KRvK and KQvK, 100 games each).
+THE MEASURES AND THE MINER `discovery/technique_measures.py` (nine atoms printed as vocabulary terms, their reads by `lemma_store.term_reads`, 81 candidates with the sums and
+products). THE FINDING: no technique candidate in either class under the table's play -- the zero-violation terms are the class's constants (they never drop), every term that drops
+in every game rises on some winning move of the table (directional, one corpus each: see the 22:59 entry). So no entry was written, there is no technique question to ask (5) and no
+play-out with one (acceptance (a), (b)); the guard is identical and the table-on play unchanged because the engine is unchanged. A labelled DIAGNOSTIC (`--diagnose`, not the
+criterion) reads the obligation's own form ("a dropping move against every reply") and finds the nearest measure outside the one-level library: lexicographic (the region, then the
+kings' distance) and two moves deep (a tempo move), with a few positions still failing -- the shape of mating.rs's hand-made K+Q technique (three ranks, a tempo move, a three-move
+net as the floor). `scripts/play_technique.py`: the 2026-10-23 driver generalised to a signature (the baseline re-run: 23:11 entry). For Kaveh to decide (not a go): the next
+generator's compositions (lexicographic, depth two, a net at the floor) and its criterion (existence of a drop, not the oracle's move).
