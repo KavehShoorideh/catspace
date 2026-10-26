@@ -1,0 +1,25 @@
+{
+ "name": "no parry move",
+ "kind": "CLOSING",
+ "reads": [
+  "movement"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.15"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_parry_keeps"
+ ],
+ "note": "The threat on a static leaf has no parry move to try: the save is killed."
+}

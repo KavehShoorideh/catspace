@@ -1,0 +1,27 @@
+{
+ "name": "... stands only as a balance and we are in check (no pass to read their threat, no claim of ours): not parried YET",
+ "kind": "STOP",
+ "reads": [
+  "attack",
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "70.1"
+ ],
+ "journal": "2026-10-22",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_chase_route_body"
+ ],
+ "note": "In check there is no pass to read their threat from, so a leaf the inner agenda left without a claim is a GAP, never a keep."
+}

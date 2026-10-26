@@ -1,0 +1,33 @@
+{
+ "name": "lifted",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Race.lifted_is_gap",
+  "Ideas.Race.deny_sound",
+  "Ideas.Race.race_sound"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "62.1"
+ ],
+ "journal": "2026-10-22",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_relabel_lifted",
+  "catspace/incubator/analyst/discovery/race.py:king_verdict",
+  "rust/analyst_core/src/words.rs:king_verdict_on"
+ ],
+ "note": "Their king is no stopper by the proved king verdict, so a stopper kill read from their other pieces is relabelled a GAP until the chase closes it."
+}

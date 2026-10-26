@@ -33047,3 +33047,80 @@ slots, the KILLED / killed -- / GAP lines, the judge's cuts, the DECISION line) 
 fixed positions (the trace; `harvest(ag)`: the root's claims, kills, GAPs, the decision and every fact's lemma field; the run's own counter). `uses(path)`: a trace or a
 question log -> `OBS lemma uses: name count, ...`. CLI: `python -m catspace.incubator.analyst.discovery.lemma_store report | validate [<dir> ...] | uses <path>`.
 No engine file imports the module in this commit: the engine is main's (eb4ea36d) byte for byte.
+
+## 2026-10-25 20:15 PDT -- plan 73.3 built: the honest inventory -- 96 words, each with the base words it reads and its Lean citation or the missing one (branch worktree-agent-a7beb0ae9a40834cc)
+HOW THE NAMES WERE COLLECTED (mechanically, nothing from memory): the trace guard's four snapshots of main eb4ea36d (ten and wide, tier 0 and tier 2; the tables linked,
+PYTHONHASHSEED 0) read by the extractor; the same four sets run again with the adapter recording every string the agenda handed it -- first with an EMPTY store, so every
+claim lemma, kill reason and GAP reason came back uncatalogued -- normalised to its forms (moves, squares and numbers abstracted) and cut to its heads; then the words the
+code holds that no run printed: the defects, fixes and forcing words of regress.py / regress.rs / words.rs, race.py, plan67.py, region.py, landing.py, table.py, mating.rs's
+two frames. The terms graph.word / selfmine.term_id compile were recorded per run (42-49 shapes per set); they live in the `terms` of the entries that compile them (the
+binder's legs, atoms and tails, the passer's square, the trap, the shape key, the deep pass) -- `see`, `pushes`, `balance` read alone are the base. ONE ENTRY PER WORD; the
+printed compositions are PATTERNS (lemma_store.py), not entries.
+THE CITATIONS: a script printed every Lean name each implementation's docstring and body cites, tagged by the index (theorem / OPEN / def / absent). An entry is PROVED only
+when its implementation's DOCSTRINGS name proved theorems of the index (a short name qualified to its one full name: unstoppablePasser2_sound, step_after,
+king_region_wall_file ...); a definition, a module or a file is not a theorem; a stop, a GAP-maker or a tie-break with no citation is HEURISTIC; every other word with no
+proving theorem is CONJECTURE. Never upgraded, no theorem added, no name invented.
+THE REPORT (`python -m catspace.incubator.analyst.discovery.lemma_store report`), verbatim:
+OBS lemma store: entries 96
+OBS lemma store by kind: CLOSING 38, DEFECT_FIX 25, FORCING 15, TECHNIQUE 2, STOP 15, TABLE 1
+OBS lemma store by status: PROVED 28, CONJECTURE 50, REFUTED 0, HEURISTIC 18
+OBS lemma store by origin: BASE 4, HAND 92, MINED 0
+OBS lemma store by base read: movement 68, attack 61, tempo 60, material 44
+OBS lemma store PROVED entries whose theorem is missing from LEAN_INDEX (0): none
+OBS lemma store no citation (CONJECTURE: no theorem of the index proves it as stated -- its implementation cites none, or a definition, or a part) (50): ... stands only as a balance, their ... wins ... (lemma ...), no parry | arrangement | blocked | capture | chase: quiet-status estimate | chase: step_after+step_least | check | check that also threatens | checker takeable | defended | delayed threat | deny the stopper's path | drive off | flight | in check | interposition | join | king and rook | mate in one | no check | no claim of ours and no material gain | no parry keeps the gain | no parry move | no route: the fixes supply no move | no safe move | no stopper in time | not attacked | nothing of theirs | our best claim ... wins ..., the reply took ... | path attacked | promo square attacked | promotes | promotion_exchange: the push, then the x-ray exchange on the promotion square (Ideas.ExchangeLaw seeXB, mirrored by the Rust see) | refuter fix | stalemate | standing kill | stopped | stopper | support | syzygy | tempo | the ... defect stands (...) and no fix is new there | the duty | the promotion is not claimed | they mate us | threat | threat ... survives ... (the ... hangs, ...) | threat of mate | trap | verify: no route binds
+OBS lemma store HEURISTIC (a stop or a tie-break, no proof obligation) (18): ... stands only as a balance and their ... (wins ..., lemma ...) is not parried YET: ... | ... stands only as a balance and we are in check (no pass to read their threat, no claim of ours): not parried YET | a second check of theirs in a row | budget | chase fuse | cut by the judge | no fix for '...' in this slice | no parry binds a guaranteed gain and none could be read from their view | none | out of time | refuted at the leaf | stuck_reach | tempo arithmetic | the chase clock | the defects say unstoppable but the lemma unstoppablePasser2_sound does not fire | the shape key | their open question | unfinished line
+OBS lemma store entries with no reads (0): none
+OBS lemma store terms: 54 s-expressions in 12 entries (24 distinct)
+OBS lemma store term (see s): reads attack, material; in the shape key
+OBS lemma store term (pushes X): reads movement, tempo; in no stopper in time
+OBS lemma store term (after x y check): reads attack, movement, tempo; in mate_in_one
+OBS lemma store term (dist L (promo X)): reads movement; in no stopper in time
+OBS lemma store term (after x y (see s)): reads attack, material, movement, tempo; in the shape key
+OBS lemma store term (count (mobility T)): reads attack, material, movement; in trap
+OBS lemma store term (after x y movecount): reads movement, tempo; in mate_in_one
+OBS lemma store term (after x y (dist W s)): reads movement, tempo; in the shape key
+OBS lemma store term (count (and ours (at x))): reads none; in delayed_balance_alive_d1 | delayed_balance_alive_d2 | delayed_root_alive_d1 | delayed_root_alive_d2 ...
+OBS lemma store term (count (and (moves x) (at y))): reads movement; in delayed_balance_alive_d1 | delayed_balance_alive_d2 | delayed_root_alive_d1 | delayed_root_alive_d2 ...
+OBS lemma store term (after x y (count (and ours attacked))): reads attack, movement, tempo; in the shape key
+OBS lemma store term (after x y (count (and theirs attacked))): reads attack, movement, tempo; in the shape key
+OBS lemma store term (count (and ourpawns (and (at x) (rank a7)))): reads none; in delayed_balance_alive_d1 | delayed_balance_alive_d2 | delayed_root_alive_d1 | delayed_root_alive_d2 ...
+OBS lemma store term (after x y (least (count (and ours (at x2))))): reads movement, tempo; in delayed_balance_alive_d2 | delayed_root_alive_d2 | delayed_root_max_alive_d2
+OBS lemma store term (after x y (least (count (and (moves x2) (at y2))))): reads movement, tempo; in delayed_balance_alive_d2 | delayed_root_alive_d2 | delayed_root_max_alive_d2
+OBS lemma store term (after x y (least (most (min check (eq movecount 0))))): reads attack, movement, tempo; in mate_in_two
+OBS lemma store term (after x y (most (count (and ourpawns (and (at x2) (rank a7)))))): reads movement, tempo; in delayed_balance_alive_d2 | delayed_root_alive_d2 | delayed_root_max_alive_d2
+OBS lemma store term (after x y (least (most (least (min balance (sum material_us C)))))): reads material, movement, tempo; in delayed_balance_alive_d1
+OBS lemma store term (after x y (least (most (least (most (least (min balance (sum material_us C)))))))): reads material, movement, tempo; in the deep pass
+OBS lemma store term (after x y (least (after x2 y2 (least (most (least (min balance (sum material_us C)))))))): reads material, movement, tempo; in delayed_balance_alive_d2
+OBS lemma store term (after x y (least (most (min (if (eq (sum (sum (sum (count (and ours hit)) (count (and theirpawns (rank a2)))) (count (and theirpawns (rank a4)))) (eq (least 1) 0)) 0) balance 0) (sum material_us C))))): reads attack, material, movement, tempo; in delayed_root_alive_d1
+OBS lemma store term (after x y (least (most (min (if (eq (sum (sum (count (and theirpawns (rank a2))) (count (and theirpawns (rank a4)))) (eq (least 1) 0)) 0) (diff balance (maxworth (and ours hit))) 0) (sum material_us C))))): reads attack, material, movement, tempo; in delayed_root_max_alive_d1
+OBS lemma store term (after x y (least (after x2 y2 (least (most (min (if (eq (sum (sum (sum (count (and ours hit)) (count (and theirpawns (rank a2)))) (count (and theirpawns (rank a4)))) (eq (least 1) 0)) 0) balance 0) (sum material_us C))))))): reads attack, material, movement, tempo; in delayed_root_alive_d2
+OBS lemma store term (after x y (least (after x2 y2 (least (most (min (if (eq (sum (sum (count (and theirpawns (rank a2))) (count (and theirpawns (rank a4)))) (eq (least 1) 0)) 0) (diff balance (maxworth (and ours hit))) 0) (sum material_us C))))))): reads attack, material, movement, tempo; in delayed_root_max_alive_d2
+OBS lemma store terms reading no base word (2): (count (and ours (at x))) | (count (and ourpawns (and (at x) (rank a7))))
+OBS lemma store patterns: 29 (prefix 8, suffix 2, composition 8, template 11)
+OBS lemma store validate on main's four snapshots (ten and wide, tier 0 and 2): entries 96, patterns 29; words read 8893 (gap 4008, kill 3299, lemma 1586) from 4 snapshot dir(s); uncatalogued 0 (0 distinct); problems 0
+FINDINGS (directional: one inventory, read from code; the numbers above are the report's).
+(1) NO THEOREM PROVES 50 OF THE 96 AS STATED (the list above): every defect of the regression and most fixes, the chase's own composition, the chase's kills (no claim
+of ours and no material gain; our best claim ... the reply took ...; the promotion is not claimed), nine forcing words (check, capture, threat of mate, the exchange threat,
+the sacrifice that still threatens, the delayed threat, no safe move, the check that also threatens, the trap), the race's deny and support, the duty, the join and the
+arrangement, the table.
+(2) CITATIONS THAT DO NOT SAY WHAT THE DOCSTRING CLAIMS: `repetition` -- Ideas.Forcing.repetition_level proves only bal + repetitionValue bal = 0 (the draw is the game's
+rule; that every reply along the cycle was read is argued in the docstring); the fork claim and its refutation -- Ideas.ForkSquare.one_move_touches_one says a move touches
+two squares only by moving between them, the value is the reply-by-reply reading, and the claim's lemma also names Ideas.ExchangeLaw, a module; `fork` as a forcing word --
+Ideas.GeoLemmas.knight_fork_same_colour kills knight forks of opposite colours, it proves no fork forces; `the priced reach` -- Ideas.Reach.reachPrice_zero_iff relates two
+definitions (price 0 iff attackableIn); `king and queen` -- the terminal and the method theorems are proved, but that every position of the frame has a certificate is
+checked, not proved (mating.rs); the chase -- its parts Ideas.TreeStep.step_after and step_least are proved, the agenda's docstring says the composed statement is a TODO
+in Schemas.lean, so it is a CONJECTURE.
+(3) CITED NAMES ABSENT FROM THE INDEX: Ideas.Duty.dutyAfter (regress.duty_after, words.rs), Ideas.ForcedByMeasure.Reach.bind (mating.rs frame_move); modules cited as
+if theorems: Ideas.ExchangeLaw, Ideas.Battery, Ideas.Vocabulary, Ideas.Plan, Ideas.Passer2, Ideas.StalemateLemmas.
+(4) DEFINITIONS CITED AS A WORD'S LEAN: the delayed threat (Ideas.Forcing.delayedThreat), no safe move (noSafeMove), the check that also threatens (checkThreat), the
+exchange threat (Ideas.Vocabulary.landsSafe), the duty (Ideas.Duty.duty, dutyBound), the refuter fix (Ideas.Refuter.Refutes), the judge's cost (Ideas.Forcing.routeCost),
+the promotion exchange (Ideas.ExchangeLaw.seeXB), king and rook's territory term (Ideas.Generated.kr_territory).
+(5) THE GAME'S RULES AS WORDS, cited by no theorem: check, mate in one (the rule's closer), they mate us, stalemate (origin BASE).
+(6) TWO COMPILED TERMS READ NO BASE WORD: the binder's legs "ours on x" and "no pawn of ours on x about to promote" read the PLACEMENT (which unit stands where), which
+none of the four base words of 73 names.
+(7) mating.rs's KING AND ROOK frame is a hand-written TECHNIQUE too (no component of its measure cites a theorem; "the Lean cut lemma to come"): 73.5's comparison point.
+73's text says "plan 62.3's mating.rs"; mating.rs came with commit d7f82ae4 (2026-10-12), before the numbered agenda plans, and 62.3 is the table: recorded with no plan.
+(8) base_vocabulary.CHESS_TERMS (18 macros: en_prise, pinned_ours, ..., job) are installed in the evaluator; the agenda compiles none of them: not catalogued.
+(9) THE STORES CUT THE WORDS: the fact store keeps a kill's reason cut at 80 characters and at its first ';' (agenda._file), the question log to its first ':'
+(analyse._write_qlog). A word is read from its head (the fork's refutation template is written to survive the cut); on a question log `uses` reads "reasoned", which names
+two words.

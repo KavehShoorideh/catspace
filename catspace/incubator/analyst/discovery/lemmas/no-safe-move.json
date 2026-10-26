@@ -1,0 +1,28 @@
+{
+ "name": "no safe move",
+ "kind": "FORCING",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "61"
+ ],
+ "journal": "2026-10-21",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:no_safe_move"
+ ],
+ "note": "A quiet move after which every reply loses at least the stake by rule, zugzwang as no safe move (it cites Ideas.Forcing.noSafeMove, a definition)."
+}

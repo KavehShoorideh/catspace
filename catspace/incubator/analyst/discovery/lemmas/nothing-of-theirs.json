@@ -1,0 +1,31 @@
+{
+ "name": "nothing of theirs",
+ "kind": "CLOSING",
+ "reads": [
+  "attack",
+  "material",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.13",
+  "52.22"
+ ],
+ "journal": "2026-10-18",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_closed_by_rule",
+  "catspace/incubator/analyst/discovery/regress.py:exchange_read",
+  "rust/analyst_core/src/pos.rs:exchange",
+  "catspace/incubator/analyst/discovery/agenda.py:_their_after_capture"
+ ],
+ "note": "A reply closes by the exchange when our capture wins at least what the route needs and their agenda, with the move passed and after our capture, finds no claim."
+}

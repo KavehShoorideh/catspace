@@ -1,0 +1,30 @@
+{
+ "name": "cut by the judge",
+ "kind": "STOP",
+ "reads": [
+  "movement"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "61",
+  "72.9"
+ ],
+ "journal": "2026-10-21",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_judge_begin",
+  "catspace/incubator/analyst/discovery/agenda.py:_judge_node",
+  "catspace/incubator/analyst/discovery/agenda.py:_cut",
+  "catspace/incubator/analyst/discovery/regress.py:_route_cost",
+  "catspace/incubator/analyst/discovery/regress.py:node_cost"
+ ],
+ "note": "The judge prices a route by its parries counted (movement) times the measured seconds per unit and cuts it as a GAP when it does not fit the time left."
+}

@@ -1,0 +1,26 @@
+{
+ "name": "promotes",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.17"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_stop_pawn"
+ ],
+ "note": "Their passer promotes in n unless we stop it: the defect of our save root against their passer claim."
+}

@@ -1,0 +1,26 @@
+{
+ "name": "in check",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "attack",
+  "movement"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.4"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_save_king"
+ ],
+ "note": "Our king is in check: the save-the-king question, whose routes are the captures of the checker and the evasions."
+}

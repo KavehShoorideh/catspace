@@ -1,0 +1,26 @@
+{
+ "name": "the defects say unstoppable but the lemma unstoppablePasser2_sound does not fire",
+ "kind": "STOP",
+ "reads": [
+  "movement",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.6"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_promote"
+ ],
+ "note": "The pawn has no defect by the tempo arithmetic but the proved passer does not fire: a GAP naming the failing hypothesis (the next lemma to prove)."
+}

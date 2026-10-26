@@ -1,0 +1,30 @@
+{
+ "name": "arrangement",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "72.8"
+ ],
+ "journal": "2026-10-23",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:skeleton_goals",
+  "catspace/incubator/analyst/discovery/regress.py:arrangement_fix",
+  "catspace/incubator/analyst/discovery/agenda.py:_arrangement_fix"
+ ],
+ "note": "Our fast units imagined arranged against the fixed board, priced by the roll; the forcing first steps become fix routes, a candidate that never claims or kills."
+}

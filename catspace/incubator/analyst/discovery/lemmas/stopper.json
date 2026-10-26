@@ -1,0 +1,33 @@
+{
+ "name": "stopper",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.6",
+  "52.16",
+  "72.2"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:promote_defects",
+  "rust/analyst_core/src/words.rs:promote_defects_on",
+  "catspace/incubator/analyst/discovery/regress.py:PRICED_STOPPER",
+  "rust/analyst_core/src/words.rs:stopper_walk_on"
+ ],
+ "note": "A piece of theirs reaches the promotion square or the path within the pawn's pushes (the king by distance, a piece by its walk; since 72.2 a piece only when it reaches free by the exchange)."
+}

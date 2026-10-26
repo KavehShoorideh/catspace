@@ -1,0 +1,30 @@
+{
+ "name": "threat of mate in two",
+ "kind": "FORCING",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Mined.Schemas.mate_in_two"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "59"
+ ],
+ "journal": "2026-10-20",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:mate2_threat",
+  "rust/analyst_core/src/words.rs:mate2_threat_pos"
+ ],
+ "note": "A quiet move after which a pass leaves us a forced mate in two, read by the binder's mate_in_two, is forcing."
+}

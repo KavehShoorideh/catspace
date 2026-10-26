@@ -1,0 +1,27 @@
+{
+ "name": "chase: quiet-status estimate",
+ "kind": "CLOSING",
+ "reads": [
+  "material",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "61"
+ ],
+ "journal": "2026-10-21",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_est_claims",
+  "catspace/incubator/analyst/discovery/agenda.py:_estimate_route"
+ ],
+ "note": "A GAP route whose replies from the cut on are closed by rule or quiet is ESTIMATED by the quiet leaves' static status (proved False, a calibrated confidence)."
+}

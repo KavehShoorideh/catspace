@@ -1,0 +1,35 @@
+{
+ "name": "the deep pass",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "tempo",
+  "material"
+ ],
+ "terms": [
+  "(count (and (moves x) (at y)))",
+  "(count (and ourpawns (and (at x) (rank a7))))",
+  "(count (and ours (at x)))",
+  "(after x y (least (most (least (most (least (min balance (sum material_us C))))))))"
+ ],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.TreeStep.tail_four_alive"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "65.4"
+ ],
+ "journal": "2026-10-22",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_deep_pass",
+  "catspace/incubator/analyst/discovery/agenda.py:status"
+ ],
+ "note": "When the one-move family finds no claim of theirs with the move passed and a piece of ours is attacked, the status reads their pass with the proved deep delayed balance (a move of theirs, our reply, theirs, ours, theirs)."
+}

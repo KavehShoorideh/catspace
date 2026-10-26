@@ -1,0 +1,31 @@
+{
+ "name": "no stopper in time",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "tempo"
+ ],
+ "terms": [
+  "(pushes X)",
+  "(dist L (promo X))"
+ ],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.6",
+  "52.17"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_stop_pawn",
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_promote"
+ ],
+ "note": "The king's distance to the promotion square exceeds the pawn's pushes plus one (the rule of the square), read by two words of the vocabulary."
+}

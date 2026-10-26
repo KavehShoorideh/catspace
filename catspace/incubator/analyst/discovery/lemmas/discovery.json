@@ -1,0 +1,31 @@
+{
+ "name": "discovery",
+ "kind": "FORCING",
+ "reads": [
+  "movement",
+  "attack"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Battery.discovered_attack",
+  "Ideas.Battery.battery_persists"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "52.18"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:discovery_routes",
+  "catspace/incubator/analyst/discovery/regress.py:discovery_fix",
+  "catspace/incubator/analyst/discovery/graph.py:discoverers"
+ ],
+ "note": "A blocker of ours in front of a rear slider aimed at the target leaves the line with tempo: the rear attacks the target or joins the exchange behind it."
+}

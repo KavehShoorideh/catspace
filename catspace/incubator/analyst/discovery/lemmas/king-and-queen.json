@@ -1,0 +1,36 @@
+{
+ "name": "king and queen",
+ "kind": "TECHNIQUE",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.QueenMate.kq_mate_on_edge",
+  "Ideas.QueenMate.edge_shape",
+  "Ideas.Forced.forced_by_measure"
+ ],
+ "origin": "HAND",
+ "plan": [],
+ "journal": "2026-10-12",
+ "measure": {
+  "quantity": "the region's squares off the edge (the squares their king walks to without stepping onto a square we attack), then our king's distance to the front zone, then the region's size",
+  "floor": "a region of at most two squares: the net, a forced mate within three moves searched in full",
+  "terminal": "Ideas.QueenMate.kq_mate_on_edge"
+ },
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "rust/analyst_core/src/mating.rs:KQ_FRAME",
+  "rust/analyst_core/src/mating.rs:KQ_MEASURE",
+  "rust/analyst_core/src/mating.rs:frame_move",
+  "rust/analyst_core/src/mating.rs:off_edge"
+ ],
+ "note": "The lone king is driven to the edge by a measure that falls against every reply, each move certified on the board; that every position of the frame has a certificate is checked, not proved (mating.rs, commit d7f82ae4, no plan section)."
+}

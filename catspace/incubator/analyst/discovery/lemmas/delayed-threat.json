@@ -1,0 +1,29 @@
+{
+ "name": "delayed threat",
+ "kind": "FORCING",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "61",
+  "63.1"
+ ],
+ "journal": "2026-10-21",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:delayed_threat"
+ ],
+ "note": "A quiet move after which every reply allows a new forcing move of ours (it cites Ideas.Forcing.delayedThreat, a definition)."
+}

@@ -1,0 +1,29 @@
+{
+ "name": "threat: ... binds after a pass",
+ "kind": "FORCING",
+ "reads": [
+  "movement",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Passer2.unstoppablePasser2_sound"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "52.18",
+  "62.1"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:pass_claim"
+ ],
+ "note": "A move after which a pass lets a promotion claim of ours bind that did not bind before is forcing (the docstring cites the passer lemma; the race word's branch cites Ideas.Race.race_sound in a comment only)."
+}

@@ -1,0 +1,32 @@
+{
+ "name": "plan_sound",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Plan.plan_sound"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "67"
+ ],
+ "journal": "2026-10-22",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_plan_claim",
+  "catspace/incubator/analyst/discovery/plan67.py:read",
+  "catspace/incubator/analyst/discovery/plan67.py:rollout",
+  "catspace/incubator/analyst/discovery/plan67.py:weak_moments"
+ ],
+ "note": "Our pawn's plan rolled forward without the opponent has no weak moment any piece of theirs reaches in time: the promotion is claimed by arithmetic."
+}

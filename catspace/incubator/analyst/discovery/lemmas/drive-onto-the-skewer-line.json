@@ -1,0 +1,29 @@
+{
+ "name": "drive onto the skewer line",
+ "kind": "FORCING",
+ "reads": [
+  "movement",
+  "attack"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Skewer.skewer_attack"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "52.23"
+ ],
+ "journal": "2026-10-20",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:drive_onto_routes",
+  "rust/analyst_core/src/regress.rs:drive_onto_routes_on"
+ ],
+ "note": "A check after which every king reply stands on a line a slider of ours can then skewer along."
+}

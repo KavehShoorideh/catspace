@@ -1,0 +1,31 @@
+{
+ "name": "fork: two threats, one move (Ideas.ForkSquare.one_move_touches_one); every reply read by the exchange rule (Ideas.ExchangeLaw)",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack",
+  "material",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.ForkSquare.one_move_touches_one"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "52.18"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_fork",
+  "catspace/incubator/analyst/discovery/landing.py:fork_candidates"
+ ],
+ "note": "The fork square as a root, verified reply by reply by the balance plus our best exchange; the cited theorem says only that a move touches two squares only by moving between them, and Ideas.ExchangeLaw is cited by its module, not a theorem."
+}

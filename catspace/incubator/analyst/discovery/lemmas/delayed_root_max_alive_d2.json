@@ -1,0 +1,42 @@
+{
+ "name": "delayed_root_max_alive_d2",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo",
+  "material"
+ ],
+ "terms": [
+  "(after x y (least (count (and (moves x2) (at y2)))))",
+  "(after x y (least (count (and ours (at x2)))))",
+  "(after x y (most (count (and ourpawns (and (at x2) (rank a7))))))",
+  "(count (and (moves x) (at y)))",
+  "(count (and ourpawns (and (at x) (rank a7))))",
+  "(count (and ours (at x)))",
+  "(after x y (least (after x2 y2 (least (most (min (if (eq (sum (sum (count (and theirpawns (rank a2))) (count (and theirpawns (rank a4)))) (eq (least 1) 0)) 0) (diff balance (maxworth (and ours hit))) 0) (sum material_us C)))))))"
+ ],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Mined.Schemas.delayed_root_max_alive_d2"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "44.2",
+  "52.1",
+  "52.5"
+ ],
+ "journal": "2026-10-15",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/binder.py:SCHEMAS2",
+  "catspace/incubator/analyst/discovery/selfmine.py:tail_body",
+  "catspace/incubator/analyst/discovery/selfmine.py:schema_name"
+ ],
+ "note": "The binder's gain schema of depth 2 (a check, every reply, then a named capture), the delayed root weakened: they may take back at most one piece, the balance less the most valuable piece of ours attacked; the tail is our hand-written operator (selfmine.tail_body), the Lean statement was generated from it."
+}

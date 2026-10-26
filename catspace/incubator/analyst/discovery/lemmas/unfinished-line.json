@@ -1,0 +1,25 @@
+{
+ "name": "unfinished line",
+ "kind": "CLOSING",
+ "reads": [
+  "material"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "65.3"
+ ],
+ "journal": "2026-10-22",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_unfinished_claim"
+ ],
+ "note": "No claim of any kind: the best unfinished root route (a GAP) decides by its floor, the least gain over the replies read, marked not proved."
+}

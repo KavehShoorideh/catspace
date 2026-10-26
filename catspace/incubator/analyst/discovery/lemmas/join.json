@@ -1,0 +1,30 @@
+{
+ "name": "join",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "72.3"
+ ],
+ "journal": "2026-10-23",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:join_fixes",
+  "catspace/incubator/analyst/discovery/regress.py:joins_of",
+  "catspace/incubator/analyst/discovery/agenda.py:_joins"
+ ],
+ "note": "A defect needing a piece of ours at L gets the quiet plan 'bring U to bear on L', priced by the reach and kept out of the fixes (a quiet plan is no forcing fix)."
+}

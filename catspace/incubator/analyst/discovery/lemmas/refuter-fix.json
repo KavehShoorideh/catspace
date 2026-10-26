@@ -1,0 +1,28 @@
+{
+ "name": "refuter fix",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "attack",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.22"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_refuter_fixes",
+  "catspace/incubator/analyst/discovery/agenda.py:_refuter_fix"
+ ],
+ "note": "A route killed by a reply is asked again after the exchange of the refuting piece with tempo (it cites Ideas.Refuter.Refutes, a definition)."
+}

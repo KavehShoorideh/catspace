@@ -1,0 +1,26 @@
+{
+ "name": "no check",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "attack"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.2"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:mate_defects_on",
+  "rust/analyst_core/src/regress.rs:mate_defects_board"
+ ],
+ "note": "Nothing of ours attacks their king in the mate pattern's future."
+}

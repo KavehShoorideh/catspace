@@ -1,0 +1,31 @@
+{
+ "name": "the duty",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "attack",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "63.2"
+ ],
+ "journal": "2026-10-21",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:duty",
+  "catspace/incubator/analyst/discovery/regress.py:duty_after",
+  "catspace/incubator/analyst/discovery/regress.py:duty_bound",
+  "catspace/incubator/analyst/discovery/regress.py:can_run",
+  "rust/analyst_core/src/words.rs:can_run_on"
+ ],
+ "note": "A piece pinned to a threat: the least, over its moves, of what we win by rule after it; it cites Ideas.Duty.duty and Ideas.Duty.dutyBound (definitions) and Ideas.Duty.dutyAfter, which is not in the index."
+}

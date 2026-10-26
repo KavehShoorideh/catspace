@@ -1,0 +1,30 @@
+{
+ "name": "one move answers both threats",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack",
+  "material",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.ForkSquare.one_move_touches_one"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "52.18"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_fork"
+ ],
+ "note": "The fork is killed by a reply after which we win less than 1 (it takes the forker, moves one piece to guard the other, or checks); the cited theorem is the fork's, about which moves can touch both squares."
+}

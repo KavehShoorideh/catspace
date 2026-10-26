@@ -1,0 +1,29 @@
+{
+ "name": "verify: no route binds",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.2"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_verify",
+  "catspace/incubator/analyst/discovery/binder.py:verify_tried"
+ ],
+ "note": "No schema of the binder binds on any route and the chase claims nothing: killed (only as complete as the schema set)."
+}

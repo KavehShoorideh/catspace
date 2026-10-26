@@ -1,0 +1,28 @@
+{
+ "name": "threat of mate",
+ "kind": "FORCING",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.12"
+ ],
+ "journal": "2026-10-18",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:mate_threat",
+  "rust/analyst_core/src/regress.rs:mate_threat"
+ ],
+ "note": "A quiet move after which a pass leaves us a mate in one is forcing: every reply must meet it."
+}

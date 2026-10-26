@@ -1,0 +1,26 @@
+{
+ "name": "no parry binds a guaranteed gain and none could be read from their view",
+ "kind": "STOP",
+ "reads": [
+  "material"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.4"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_save_piece",
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_save_threat"
+ ],
+ "note": "A save root none of whose parries binds a gain and none of which their agenda could read stays a GAP."
+}

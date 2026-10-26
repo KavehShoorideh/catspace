@@ -1,0 +1,38 @@
+{
+ "name": "mate_in_two",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [
+  "(count (and (moves x) (at y)))",
+  "(count (and ourpawns (and (at x) (rank a7))))",
+  "(count (and ours (at x)))",
+  "(after x y (least (most (min check (eq movecount 0)))))"
+ ],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Mined.Schemas.mate_in_two"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "49",
+  "52.1",
+  "72.7"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/binder.py:SCHEMAS",
+  "catspace/incubator/analyst/discovery/selfmine.py:mate2_atoms",
+  "rust/analyst_core/src/words.rs:bind_mate2_pos"
+ ],
+ "note": "Our move x to y after which every reply of theirs is met by a mate of ours: the binder's mate-in-two schema, read in Rust since 72.7 step 3a."
+}

@@ -1,0 +1,25 @@
+{
+ "name": "no route: the fixes supply no move",
+ "kind": "CLOSING",
+ "reads": [
+  "movement"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.2"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_verify"
+ ],
+ "note": "The question's fixes supply no move to verify and the chase claims nothing: killed (only as complete as the fixes the words generate)."
+}

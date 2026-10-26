@@ -1,0 +1,28 @@
+{
+ "name": "interposition",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "attack"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.7"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:mate_defects_on",
+  "rust/analyst_core/src/regress.rs:mate_defects_board",
+  "catspace/incubator/analyst/discovery/regress.py:_fixes_of"
+ ],
+ "note": "A piece of theirs can step between the checker and their king; the fix takes the interposer with check."
+}

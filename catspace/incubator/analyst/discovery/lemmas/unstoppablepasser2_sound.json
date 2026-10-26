@@ -1,0 +1,30 @@
+{
+ "name": "unstoppablePasser2_sound",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Passer2.unstoppablePasser2_sound"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "52.6"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_promote",
+  "catspace/incubator/analyst/lean_passer_v2_proto.py:proved_passers",
+  "catspace/incubator/analyst/lean_passer_v2_proto.py:passer_v2"
+ ],
+ "note": "The passed pawn promotes whatever they do, claimed only when the proved passer detector fires (the docstring names the theorem by its short name)."
+}

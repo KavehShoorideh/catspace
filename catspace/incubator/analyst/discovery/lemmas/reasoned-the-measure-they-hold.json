@@ -1,0 +1,31 @@
+{
+ "name": "reasoned: the measure they hold",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Region.evasion_step",
+  "Ideas.Region.no_rook_mate_in_open"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "52.17"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_reasoned_kill",
+  "catspace/incubator/analyst/discovery/region.py:held_measure"
+ ],
+ "note": "A king and one rook against a king with room: every first move is answered by a step into the open that keeps the distance, while their passer promotes."
+}

@@ -1,0 +1,26 @@
+{
+ "name": "no claim of ours and no material gain",
+ "kind": "CLOSING",
+ "reads": [
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.12"
+ ],
+ "journal": "2026-10-18",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_chase_route_body",
+  "catspace/incubator/analyst/discovery/agenda.py:_standing_kill"
+ ],
+ "note": "A reply after which the inner agenda finds no claim of ours and the balance did not reach the need kills the route (only as complete as the inner agenda's words)."
+}

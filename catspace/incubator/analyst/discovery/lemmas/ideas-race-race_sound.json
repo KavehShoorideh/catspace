@@ -1,0 +1,32 @@
+{
+ "name": "Ideas.Race.race_sound",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Race.race_sound",
+  "Ideas.Race.frame_sound_pass"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "62.1",
+  "62.2"
+ ],
+ "journal": "2026-10-21",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_race_claim",
+  "catspace/incubator/analyst/discovery/race.py:race_claim"
+ ],
+ "note": "The passer race: our promotion takes no more of our moves than their king needs to stop it or their pawns need to matter, read over a frame whose exclusions are sound against a pass."
+}

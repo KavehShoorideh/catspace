@@ -1,0 +1,27 @@
+{
+ "name": "drive off",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "attack"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.17"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_fixes_promote_defect",
+  "catspace/incubator/analyst/discovery/regress.py:drives_off"
+ ],
+ "note": "A check after which every king reply leaves the defect's square, or a step of such a fix, mends a promotion defect."
+}

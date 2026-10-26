@@ -1,0 +1,26 @@
+{
+ "name": "the promotion is not claimed",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.15"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_chase_route_body"
+ ],
+ "note": "A promote route's reply after which the inner agenda claims neither the promotion nor a mate nor the material back kills the route."
+}

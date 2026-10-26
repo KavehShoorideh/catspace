@@ -1,0 +1,25 @@
+{
+ "name": "budget",
+ "kind": "STOP",
+ "reads": [
+  "tempo"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.2"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_loop"
+ ],
+ "note": "The count budget (eight questions per piece of ours): past it the open root questions become GAPs (STOP (c)), a count read as tempo."
+}

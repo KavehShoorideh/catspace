@@ -1,0 +1,32 @@
+{
+ "name": "stuck_reach",
+ "kind": "STOP",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "72.1",
+  "72.2"
+ ],
+ "journal": "2026-10-23",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:stuck_threats",
+  "rust/analyst_core/src/words.rs:stuck_threats_on",
+  "catspace/incubator/analyst/discovery/agenda.py:_leaf_more",
+  "catspace/incubator/analyst/discovery/agenda.py:_chase_route_body"
+ ],
+ "note": "A unit of ours that cannot run, reached by a unit of theirs at a price below its worth with no guard of ours in time, makes the leaf a GAP (not parried YET), never a kill."
+}

@@ -1,0 +1,27 @@
+{
+ "name": "blocked",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.6"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:promote_defects",
+  "rust/analyst_core/src/words.rs:promote_defects_on",
+  "catspace/incubator/analyst/discovery/regress.py:promote_fixes"
+ ],
+ "note": "A piece stands on the pawn's path to the promotion square."
+}

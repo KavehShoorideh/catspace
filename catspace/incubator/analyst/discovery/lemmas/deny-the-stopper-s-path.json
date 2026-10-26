@@ -1,0 +1,28 @@
+{
+ "name": "deny the stopper's path",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "attack"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "62.1"
+ ],
+ "journal": "2026-10-21",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/race.py:deny_moves",
+  "catspace/incubator/analyst/discovery/race.py:denial_mask",
+  "rust/analyst_core/src/words.rs:deny_moves_bb"
+ ],
+ "note": "A move of ours after which the stopper's walk to the pawn's path no longer exists within the pushes plus one is a route of the promote question."
+}

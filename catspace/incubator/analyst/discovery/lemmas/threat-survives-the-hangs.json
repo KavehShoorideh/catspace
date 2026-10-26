@@ -1,0 +1,28 @@
+{
+ "name": "threat ... survives ... (the ... hangs, ...)",
+ "kind": "FORCING",
+ "reads": [
+  "attack",
+  "material",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.16"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:_forcing_why_py",
+  "rust/analyst_core/src/regress.rs:forcing_whys_on"
+ ],
+ "note": "A sacrifice that still threatens: after every capture of the moved piece our best exchange is still worth the stake."
+}

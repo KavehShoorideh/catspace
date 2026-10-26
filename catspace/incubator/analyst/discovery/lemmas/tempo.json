@@ -1,0 +1,28 @@
+{
+ "name": "tempo",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.2",
+  "52.12"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:tempo_ok",
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_reach",
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_promote"
+ ],
+ "note": "d defects need d prep moves and the opponent answers each, so a defect with only quiet fixes or none kills the question (the tempo count)."
+}

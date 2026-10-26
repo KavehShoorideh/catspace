@@ -1,0 +1,28 @@
+{
+ "name": "a second check of theirs in a row",
+ "kind": "STOP",
+ "reads": [
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.23",
+  "64.1"
+ ],
+ "journal": "2026-10-20",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_chase",
+  "catspace/incubator/analyst/discovery/agenda.py:SECOND_CHECK_STOP"
+ ],
+ "note": "A second check of theirs in a row is not followed: a hand-coded count, a GAP, never the kill it was."
+}

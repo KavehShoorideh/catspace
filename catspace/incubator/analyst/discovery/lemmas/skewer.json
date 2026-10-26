@@ -1,0 +1,32 @@
+{
+ "name": "skewer",
+ "kind": "FORCING",
+ "reads": [
+  "movement",
+  "attack"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Skewer.skewer_attack",
+  "Ideas.Skewer.skewer_blocked"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "52.23"
+ ],
+ "journal": "2026-10-20",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:skewer_routes",
+  "catspace/incubator/analyst/discovery/regress.py:skewer_fix",
+  "rust/analyst_core/src/regress.rs:skewer_routes_pos",
+  "catspace/incubator/analyst/discovery/graph.py:skewer_after"
+ ],
+ "note": "A check by a slider of ours whose line runs through their king to the target: when the king steps off the line the slider attacks it."
+}

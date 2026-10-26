@@ -1,0 +1,28 @@
+{
+ "name": "chase fuse",
+ "kind": "STOP",
+ "reads": [
+  "tempo"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.13"
+ ],
+ "journal": "2026-10-18",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_cut",
+  "catspace/incubator/analyst/discovery/agenda.py:_inner",
+  "catspace/incubator/analyst/discovery/agenda.py:DEPTH_FUSE",
+  "catspace/incubator/analyst/discovery/agenda.py:FUSE"
+ ],
+ "note": "The count fuse of the chase (FUSE times the root's question budget, and DEPTH_FUSE inner levels) cuts a route as a GAP: a count read as tempo (each inner agenda is one reply deeper), never a fact of the position."
+}

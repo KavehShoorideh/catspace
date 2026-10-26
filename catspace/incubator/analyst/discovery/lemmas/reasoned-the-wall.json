@@ -1,0 +1,30 @@
+{
+ "name": "reasoned: the wall",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Region.king_region_wall_file",
+  "Ideas.Region.rook_wall_file"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "52.17"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_reasoned_kill",
+  "catspace/incubator/analyst/discovery/region.py:region_kill"
+ ],
+ "note": "A mate goal dies before any chase when the covers it still needs are out of reach of our king's region (a held line is a wall) and no pawn can supply them."
+}

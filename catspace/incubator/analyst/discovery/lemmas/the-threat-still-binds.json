@@ -1,0 +1,29 @@
+{
+ "name": "the threat ... still binds",
+ "kind": "CLOSING",
+ "reads": [
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Forcing.closed_binds"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "61"
+ ],
+ "journal": "2026-10-21",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_parry_label",
+  "catspace/incubator/analyst/discovery/regress.py:parries"
+ ],
+ "note": "A reply the rules closed is checked against the route's threat: when it does not parry it, the line says the threat still binds (the same value, only the text)."
+}

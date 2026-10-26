@@ -1,0 +1,27 @@
+{
+ "name": "tempo arithmetic",
+ "kind": "STOP",
+ "reads": [
+  "tempo"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.23",
+  "64.1"
+ ],
+ "journal": "2026-10-20",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_chase",
+  "catspace/incubator/analyst/discovery/agenda.py:GOAL_JUDGE"
+ ],
+ "note": "A mate or win chain that has spent the prep moves its goal's defects allow stops as a GAP (mating the king is like mating the bishop)."
+}

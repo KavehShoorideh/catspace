@@ -1,0 +1,32 @@
+{
+ "name": "king and rook",
+ "kind": "TECHNIQUE",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [],
+ "journal": "2026-10-12",
+ "measure": {
+  "quantity": "the rows beyond the rook's wall, then our king's distance to the opposition square plus their king's territory (the generated term)",
+  "floor": "the wall at most one row from the edge: the net",
+  "terminal": "none proved: the Lean cut lemma is to come"
+ },
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "rust/analyst_core/src/mating.rs:KR_FRAME",
+  "rust/analyst_core/src/mating.rs:KR_MEASURE_GENERATED",
+  "rust/analyst_core/src/mating.rs:frame_move",
+  "rust/analyst_core/src/mating.rs:wall_rows"
+ ],
+ "note": "The rook's line is a wall the lone king never crosses and each step moves it up a row; no component of the measure cites a theorem (the Lean cut lemma is to come), the territory term cites the definition Ideas.Generated.kr_territory."
+}

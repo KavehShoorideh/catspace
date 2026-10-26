@@ -1,0 +1,26 @@
+{
+ "name": "no fix for '...' in this slice",
+ "kind": "STOP",
+ "reads": [
+  "movement"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.2"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:_fixes_of",
+  "catspace/incubator/analyst/discovery/agenda.py:_trace_fix"
+ ],
+ "note": "A mate defect of a kind the fixes do not cover is a GAP fix question."
+}

@@ -1,0 +1,28 @@
+{
+ "name": "mate in one",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "BASE",
+ "plan": [
+  "52.13"
+ ],
+ "journal": "2026-10-18",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_closed_by_rule",
+  "rust/analyst_core/src/pos.rs:mate_in_one"
+ ],
+ "note": "A reply after which some legal move of ours mates closes by the rules with no inner agenda (every legal move tried: exact, but the closer cites no theorem)."
+}

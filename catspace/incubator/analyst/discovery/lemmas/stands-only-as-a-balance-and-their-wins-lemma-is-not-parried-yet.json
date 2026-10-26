@@ -1,0 +1,27 @@
+{
+ "name": "... stands only as a balance and their ... (wins ..., lemma ...) is not parried YET: ...",
+ "kind": "STOP",
+ "reads": [
+  "material",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.14",
+  "72.2"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_chase_route_body"
+ ],
+ "note": "A threat of theirs on a static leaf whose save question was cut, or whose parry hands them a claim one ply later, leaves the leaf a GAP."
+}

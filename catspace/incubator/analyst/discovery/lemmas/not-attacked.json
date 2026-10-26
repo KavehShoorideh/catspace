@@ -1,0 +1,28 @@
+{
+ "name": "not attacked",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "attack",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.2"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:_material_defects",
+  "rust/analyst_core/src/regress.rs:material_defects_pos",
+  "catspace/incubator/analyst/discovery/regress.py:_fixes_of"
+ ],
+ "note": "Nothing of ours attacks the target; the fix attacks it with tempo."
+}

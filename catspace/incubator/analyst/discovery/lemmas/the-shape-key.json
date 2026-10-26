@@ -1,0 +1,37 @@
+{
+ "name": "the shape key",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo",
+  "material"
+ ],
+ "terms": [
+  "(after x y (see s))",
+  "(after x y (count (and ours attacked)))",
+  "(after x y (count (and theirs attacked)))",
+  "(after x y (dist W s))",
+  "(see s)"
+ ],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.8"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/puzzle_apply.py:shape",
+  "catspace/incubator/analyst/discovery/puzzle_apply.py:shape_key",
+  "catspace/incubator/analyst/discovery/agenda.py:_claim_key",
+  "catspace/incubator/analyst/discovery/agenda.py:_decide_by_smallest_loss"
+ ],
+ "note": "At an equal value a claim (and a parry by the smallest loss) is preferred by its shape after the move: fewer pieces of ours hanging, fewer checks of theirs that fork a loose one, more guarded, more poked: a tie-break."
+}

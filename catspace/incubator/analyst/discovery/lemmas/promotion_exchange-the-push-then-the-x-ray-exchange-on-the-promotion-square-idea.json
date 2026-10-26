@@ -1,0 +1,27 @@
+{
+ "name": "promotion_exchange: the push, then the x-ray exchange on the promotion square (Ideas.ExchangeLaw seeXB, mirrored by the Rust see)",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.17"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_promotion_exchange"
+ ],
+ "note": "The push that promotes now, read with the x-ray exchange on the promotion square; it cites Ideas.ExchangeLaw.seeXB, a definition, and Schemas.lean by file: no theorem."
+}

@@ -1,0 +1,25 @@
+{
+ "name": "our best claim ... wins ..., the reply took ...",
+ "kind": "CLOSING",
+ "reads": [
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.12"
+ ],
+ "journal": "2026-10-18",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_chase_route_body"
+ ],
+ "note": "A reply that took more than our best inner claim wins back kills the route."
+}

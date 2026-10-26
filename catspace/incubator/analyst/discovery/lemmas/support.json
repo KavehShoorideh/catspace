@@ -1,0 +1,30 @@
+{
+ "name": "support",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "62.1",
+  "67"
+ ],
+ "journal": "2026-10-22",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/race.py:support_moves",
+  "rust/analyst_core/src/words.rs:support_moves_bb",
+  "catspace/incubator/analyst/discovery/plan67.py:support_fixes"
+ ],
+ "note": "A quiet move of ours after which their king is no stopper (a cover, a second passer) or our plan has no reachable weak moment (the rook behind the pawn) is a route."
+}

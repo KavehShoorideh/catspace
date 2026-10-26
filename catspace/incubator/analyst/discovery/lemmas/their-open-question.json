@@ -1,0 +1,27 @@
+{
+ "name": "their open question",
+ "kind": "STOP",
+ "reads": [
+  "tempo"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "72.2"
+ ],
+ "journal": "2026-10-23",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_leaf_more",
+  "catspace/incubator/analyst/discovery/agenda.py:_their_open",
+  "catspace/incubator/analyst/discovery/agenda.py:_chase_route_body"
+ ],
+ "note": "An open question of theirs with the move passed (no lemma fires yet) whose stake eats what we keep makes our leaf a GAP, never a proof or a kill."
+}

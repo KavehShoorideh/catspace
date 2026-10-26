@@ -1,0 +1,27 @@
+{
+ "name": "no parry keeps the gain",
+ "kind": "CLOSING",
+ "reads": [
+  "material",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.15"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_parry_keeps",
+  "catspace/incubator/analyst/discovery/binder.py:verify_keep"
+ ],
+ "note": "No parry of a threat on a static leaf holds the balance by the keep family: the save is killed."
+}

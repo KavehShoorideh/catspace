@@ -1,0 +1,33 @@
+{
+ "name": "fork",
+ "kind": "FORCING",
+ "reads": [
+  "movement",
+  "attack",
+  "material"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.GeoLemmas.knight_fork_same_colour"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "52.12",
+  "52.18"
+ ],
+ "journal": "2026-10-18",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:fork_routes",
+  "rust/analyst_core/src/regress.rs:fork_routes_pos",
+  "catspace/incubator/analyst/discovery/landing.py:knight_fork_kills",
+  "catspace/incubator/analyst/discovery/agenda.py:_fork_roots"
+ ],
+ "note": "A check after which the moved piece also attacks a piece of theirs: two threats, one reply; the cited theorem kills the knight forks of two squares of opposite colours."
+}

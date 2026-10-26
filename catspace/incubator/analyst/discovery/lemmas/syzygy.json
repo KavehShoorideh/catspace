@@ -1,0 +1,29 @@
+{
+ "name": "syzygy",
+ "kind": "TABLE",
+ "reads": [
+  "movement",
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "62.3"
+ ],
+ "journal": "2026-10-21",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/table.py:table_claim",
+  "catspace/incubator/analyst/discovery/table.py:probe",
+  "catspace/incubator/analyst/discovery/agenda.py:_table_roots"
+ ],
+ "note": "A position of at most five men closes by the Syzygy table (exact by exhaustion, labelled proved_by table): an oracle with no Lean statement, it says nothing about why."
+}

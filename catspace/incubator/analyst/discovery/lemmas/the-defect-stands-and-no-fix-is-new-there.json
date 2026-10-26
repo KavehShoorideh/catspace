@@ -1,0 +1,27 @@
+{
+ "name": "the ... defect stands (...) and no fix is new there",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.16"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_promote_stands"
+ ],
+ "note": "A promote route ends at a reply that leaves the question's stopper or blocker defect standing with no new forcing fix: cut by the defects and the fixes, not by a count."
+}

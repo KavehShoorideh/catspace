@@ -1,0 +1,31 @@
+{
+ "name": "trap",
+ "kind": "FORCING",
+ "reads": [
+  "movement",
+  "attack",
+  "material"
+ ],
+ "terms": [
+  "(count (mobility T))"
+ ],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.10"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:trap_routes",
+  "catspace/incubator/analyst/discovery/regress.py:trap_fix",
+  "rust/analyst_core/src/regress.rs:trap_routes_pos"
+ ],
+ "note": "A quiet move after which their piece has no safe square (its mobility by the exchange is zero, no check on the board)."
+}

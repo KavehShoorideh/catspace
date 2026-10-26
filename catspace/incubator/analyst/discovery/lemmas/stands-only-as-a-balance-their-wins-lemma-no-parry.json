@@ -1,0 +1,27 @@
+{
+ "name": "... stands only as a balance, their ... wins ... (lemma ...), no parry",
+ "kind": "CLOSING",
+ "reads": [
+  "material",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.14"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_chase_route_body",
+  "catspace/incubator/analyst/discovery/agenda.py:_their_pass"
+ ],
+ "note": "A gain that stands only as a balance is killed when a claim of theirs with the move passed eats it and no parry of ours is verified."
+}

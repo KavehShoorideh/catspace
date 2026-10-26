@@ -1,0 +1,27 @@
+{
+ "name": "capture",
+ "kind": "FORCING",
+ "reads": [
+  "material",
+  "movement"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.2"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:_forcing_why_py",
+  "rust/analyst_core/src/regress.rs:forcing_whys_on"
+ ],
+ "note": "A capture worth at least the question's stake is forcing."
+}

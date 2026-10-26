@@ -1,0 +1,30 @@
+{
+ "name": "threat",
+ "kind": "FORCING",
+ "reads": [
+  "attack",
+  "material",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.12",
+  "52.13"
+ ],
+ "journal": "2026-10-18",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:_forcing_why_py",
+  "catspace/incubator/analyst/discovery/regress.py:threat_value",
+  "rust/analyst_core/src/regress.rs:forcing_whys_on"
+ ],
+ "note": "A move after which a pass leaves us an exchange worth the stake, the moved piece safe on its square (it cites Ideas.Vocabulary.landsSafe, a definition)."
+}

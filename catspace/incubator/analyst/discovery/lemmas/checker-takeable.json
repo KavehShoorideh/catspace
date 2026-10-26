@@ -1,0 +1,28 @@
+{
+ "name": "checker takeable",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "attack"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.2"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:mate_defects_on",
+  "rust/analyst_core/src/regress.rs:mate_defects_board",
+  "catspace/incubator/analyst/discovery/regress.py:_fixes_of"
+ ],
+ "note": "A piece of theirs can take the checker of the mate pattern; the fixes guard the square, remove an x-ray blocker with tempo, or take or pin the taker."
+}

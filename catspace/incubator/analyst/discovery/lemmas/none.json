@@ -1,0 +1,25 @@
+{
+ "name": "none",
+ "kind": "CLOSING",
+ "reads": [
+  "material"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.8"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_decide_by_smallest_loss"
+ ],
+ "note": "A save root whose parries bind no gain decides the parry after which they have the least (the smallest loss), ties by the shape key: a tie-break, never a proof."
+}

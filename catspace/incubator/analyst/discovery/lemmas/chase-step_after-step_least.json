@@ -1,0 +1,29 @@
+{
+ "name": "chase: step_after+step_least",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.12"
+ ],
+ "journal": "2026-10-18",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_chase",
+  "catspace/incubator/analyst/discovery/agenda.py:_chase_routes",
+  "catspace/incubator/analyst/discovery/agenda.py:_chase_route_body",
+  "catspace/incubator/analyst/discovery/agenda.py:_inner"
+ ],
+ "note": "Our named forcing move, then every reply of theirs, each answered by an inner claim; its parts are the proved Ideas.TreeStep.step_after and step_least, but the agenda's docstring says the composed statement is a TODO in Schemas.lean, so the whole is not proved."
+}

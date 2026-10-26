@@ -1,0 +1,29 @@
+{
+ "name": "refuted at the leaf",
+ "kind": "STOP",
+ "reads": [
+  "movement",
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.10",
+  "64.0"
+ ],
+ "journal": "2026-10-17",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_verify",
+  "catspace/incubator/analyst/discovery/agenda.py:_leaf_read"
+ ],
+ "note": "A delayed claim of ours whose leaf their agenda refutes (their claim there eats our gain) is downgraded to a GAP."
+}

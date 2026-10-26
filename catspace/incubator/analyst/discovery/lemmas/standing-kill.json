@@ -1,0 +1,26 @@
+{
+ "name": "standing kill",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.13"
+ ],
+ "journal": "2026-10-18",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_standing_kill"
+ ],
+ "note": "A reply that killed an earlier route kills this one too when the position it leaves differs only where the inner agenda read nothing and the reply took no less."
+}

@@ -1,0 +1,39 @@
+{
+ "name": "delayed_balance_alive_d1",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "tempo",
+  "material"
+ ],
+ "terms": [
+  "(count (and (moves x) (at y)))",
+  "(count (and ourpawns (and (at x) (rank a7))))",
+  "(count (and ours (at x)))",
+  "(after x y (least (most (least (min balance (sum material_us C))))))"
+ ],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Mined.Schemas.delayed_balance_alive_d1"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "44.2",
+  "52.1",
+  "52.15"
+ ],
+ "journal": "2026-10-15",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/binder.py:SCHEMAS",
+  "catspace/incubator/analyst/discovery/selfmine.py:tail_body",
+  "catspace/incubator/analyst/discovery/selfmine.py:schema_name",
+  "catspace/incubator/analyst/discovery/binder.py:verify_keep"
+ ],
+ "note": "The binder's gain schema of depth 1 (one named move), the delayed balance: the minimax of the balance over their reply, our move and their reply; the tail is our hand-written operator (selfmine.tail_body), the Lean statement was generated from it; the keep family (52.15) binds it with the gain 0 to verify a parry."
+}

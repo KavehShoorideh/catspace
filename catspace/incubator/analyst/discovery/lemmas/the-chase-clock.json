@@ -1,0 +1,29 @@
+{
+ "name": "the chase clock",
+ "kind": "STOP",
+ "reads": [
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.23",
+  "66.5"
+ ],
+ "journal": "2026-10-20",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_chase",
+  "catspace/incubator/analyst/discovery/agenda.py:_clock",
+  "catspace/incubator/analyst/discovery/agenda.py:CHASE_CLOCK"
+ ],
+ "note": "A chain stops as a GAP after four moves of ours with no capture that is not bad for us and no pawn move (an echo of the fifty-move rule; four is a hyperparameter)."
+}

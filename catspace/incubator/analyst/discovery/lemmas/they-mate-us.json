@@ -1,0 +1,26 @@
+{
+ "name": "they mate us",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "BASE",
+ "plan": [
+  "52.12"
+ ],
+ "journal": "2026-10-18",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_chase_route_body"
+ ],
+ "note": "A reply after which we have no legal move and are in check kills the route: the game's rule, cited by no Lean theorem."
+}

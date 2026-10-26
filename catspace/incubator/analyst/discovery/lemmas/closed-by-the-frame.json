@@ -1,0 +1,28 @@
+{
+ "name": "closed by the frame",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Frame.chess_frame"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "72.10"
+ ],
+ "journal": "2026-10-23",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_local_next"
+ ],
+ "note": "The local inner agenda after a reply asks the chased goal, their threats through the diff and the price of the move; while the goal is alive the rest of the board is neglected."
+}

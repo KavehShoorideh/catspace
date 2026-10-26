@@ -1,0 +1,33 @@
+{
+ "name": "the priced reach",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Reach.reachPrice_zero_iff"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "72.1"
+ ],
+ "journal": "2026-10-23",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regress.py:reach_price",
+  "catspace/incubator/analyst/discovery/regress.py:reach_map",
+  "rust/analyst_core/src/words.rs:reach_price_on",
+  "rust/analyst_core/src/words.rs:roll_fresh"
+ ],
+ "note": "A unit comes to bear on a job within k of its owner's moves at a price (material, tempi); the cited theorem says only that price 0 is the definition attackableIn."
+}

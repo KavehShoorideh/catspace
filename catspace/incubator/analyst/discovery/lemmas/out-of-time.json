@@ -1,0 +1,29 @@
+{
+ "name": "out of time",
+ "kind": "STOP",
+ "reads": [
+  "tempo"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.17",
+  "52.21"
+ ],
+ "journal": "2026-10-19",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_cut",
+  "catspace/incubator/analyst/discovery/agenda.py:_push",
+  "catspace/incubator/analyst/discovery/agenda.py:_chase",
+  "catspace/incubator/analyst/discovery/agenda.py:_chase_routes"
+ ],
+ "note": "The clock: past the deadline a route, a chase or a root question is a GAP with a resume point, never a kill."
+}
