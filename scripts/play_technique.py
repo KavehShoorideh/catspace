@@ -20,6 +20,7 @@ import time
 
 import chess
 
+from catspace.incubator.analyst.discovery import agenda as AG
 from catspace.incubator.analyst.discovery import table as TBMOD
 from catspace.incubator.analyst.discovery import technique_corpus as TC
 from catspace.incubator.analyst.discovery.agenda import Agenda
@@ -28,8 +29,9 @@ from catspace.incubator.analyst.discovery.state import state_of
 from catspace.io import paths
 
 
-def play(sig: str, seed: int, floor: "int | None", table: bool, out: str, log=print) -> dict:
+def play(sig: str, seed: int, floor: "int | None", table: bool, out: str, log=print, technique: bool = True) -> dict:
     TBMOD.TABLE = table
+    AG.TECHNIQUE = technique                                     # plan 73.5b: the technique question on (the store's mined entry of the class is asked) or off (the 73.5 baseline)
     tb = TC.tablebase()
     if floor is None:
         floor = TC.dtz_floor(sig)[0]
@@ -40,7 +42,7 @@ def play(sig: str, seed: int, floor: "int | None", table: bool, out: str, log=pr
     carry = None
     rows = []
     os.makedirs(out, exist_ok=True)
-    tag = f"{sig}_seed{seed}_table{'on' if table else 'off'}"
+    tag = f"{sig}_seed{seed}_table{'on' if table else 'off'}_technique{'on' if technique else 'off'}"
     f = open(os.path.join(out, tag + ".log"), "w")
     print(f"START {start} dtz {dtz0} (floor {floor}, table {'on' if table else 'off'})", file=f, flush=True)
     t_all = time.monotonic()
@@ -69,10 +71,15 @@ def play(sig: str, seed: int, floor: "int | None", table: bool, out: str, log=pr
             san = board.san(mv)
             board.push(mv)
             d1 = tb.probe_dtz(board) if not board.is_game_over() else 0
+            tech = next((ln for ln in ag.lines if ln.startswith("TECHNIQUE ")), None)
             row = dict(ply=len(board.move_stack), san=san, src=src, asked=asked, inner=inner, secs=round(time.monotonic() - t0, 1), dtz_before=d0, dtz_after=d1,
-                       decision=(d.what, d.kind, d.value, d.proved, d.lemma) if d else None)
+                       decision=(d.what, d.kind, d.value, d.proved, d.lemma) if d else None, technique=tech)
             rows.append(row)
             print(f"MOVE {row['ply']:3d} {san:6s} {src:16s} asked {asked:5d} inner {inner:4d} {row['secs']:6.1f} s  dtz {d0} -> {d1}  decision {row['decision']}", file=f, flush=True)
+            if tech:
+                print(f"         {tech}", file=f, flush=True)
+                for ln in ag.lines[ag.lines.index(tech) + 1:ag.lines.index(tech) + 2]:
+                    print(f"         {ln.strip()}", file=f, flush=True)
         else:
             mv = TC.defender_move(board)
             san = board.san(mv)
@@ -83,10 +90,15 @@ def play(sig: str, seed: int, floor: "int | None", table: bool, out: str, log=pr
     n_ag = sum(1 for r in rows if r["src"] == "agenda")
     shorter = sum(1 for r in rows if r["dtz_after"] is not None and r["dtz_before"] is not None and abs(r["dtz_after"]) < abs(r["dtz_before"]))
     tot = sum(r["asked"] for r in rows)
-    line = (f"OBS play {sig} seed {seed} table {'on' if table else 'off'}: start {start}; dtz at start {dtz0}; result {res} ({why}) after {len(board.move_stack)} plies; "
-            f"our moves {len(rows)}, by the agenda {n_ag}, by the fallback {len(rows) - n_ag}; questions asked {tot} ({tot / max(1, len(rows)):.0f} per move); "
-            f"inner agendas {sum(r['inner'] for r in rows)}; moves that shortened the table's distance {shorter} of {len(rows)}; "
-            f"decision lemmas {sorted({r['decision'][4] for r in rows if r['decision']})}; wall {time.monotonic() - t_all:.0f} s")
+    lem: dict = {}
+    for r in rows:
+        if r["decision"]:
+            lem[r["decision"][4]] = lem.get(r["decision"][4], 0) + 1
+    line = (f"OBS play {sig} seed {seed} table {'on' if table else 'off'} technique {'on' if technique else 'off'}: start {start}; dtz at start {dtz0}; result {res} ({why}) "
+            f"after {len(board.move_stack)} plies; our moves {len(rows)}, by the agenda {n_ag}, by the fallback {len(rows) - n_ag}; questions asked {tot} "
+            f"({tot / max(1, len(rows)):.0f} per move); inner agendas {sum(r['inner'] for r in rows)}; moves that shortened the table's distance {shorter} of {len(rows)}; "
+            f"decision lemmas {', '.join(f'{k} {v}' for k, v in sorted(lem.items()))}; technique questions asked {sum(1 for r in rows if r['technique'])}; "
+            f"wall {time.monotonic() - t_all:.0f} s")
     print(line, file=f, flush=True)
     f.close()
     log(line)
@@ -99,9 +111,10 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--floor", type=int, default=None, help="the start's DTZ floor (default: the class's median, technique_corpus.dtz_floor)")
     ap.add_argument("--table", choices=("on", "off"), default="off")
+    ap.add_argument("--technique", choices=("on", "off"), default="on", help="plan 73.5b: the technique question (the store's mined entry of the class) on, or off (the baseline)")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
-    play(a.signature, a.seed, a.floor, a.table == "on", a.out or paths.experiment("technique_play"))
+    play(a.signature, a.seed, a.floor, a.table == "on", a.out or paths.experiment("technique_play"), technique=a.technique == "on")
 
 
 if __name__ == "__main__":

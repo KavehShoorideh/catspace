@@ -35,7 +35,9 @@
  },
  "implementation": [
   "catspace/incubator/analyst/discovery/technique_miner.py:mine",
-  "catspace/incubator/analyst/discovery/technique_miner.py:entry_for"
+  "catspace/incubator/analyst/discovery/technique_miner.py:entry_for",
+  "catspace/incubator/analyst/discovery/technique_question.py:technique_routes",
+  "catspace/incubator/analyst/discovery/agenda.py:_technique_roots"
  ],
  "note": "Mined by plan 73.5b from the base atoms, not written: in KRvK, a mate at the floor, else a strategy of at most 3 moves that lowers (sum (area (reach L free)) (dist W L)) against every reply; a CONJECTURE -- the obligation is checked on a sample, not proved in Lean."
 }

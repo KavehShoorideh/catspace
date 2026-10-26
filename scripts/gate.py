@@ -43,7 +43,7 @@ ENGINE_NAMES = (
     "test_forcing61 test_discovery_race test_discovery_vocabulary test_discovery_evidence "
     "test_discovery_known test_least_loss_keeps_material test_floor_at_decision test_anytime "
     "test_plan72_3 test_plan72_5 test_plan72_8 test_plan72_9 test_plan72_10 "          # 2026-10-25: the plan 72 / 73 files each agent gated alone, never on main's gate
-    "test_plan72_7 test_plan72_7_step2 test_plan72_7_step3 test_plan73 test_plan73_5"
+    "test_plan72_7 test_plan72_7_step2 test_plan72_7_step3 test_plan73 test_plan73_5 test_plan73_5b"
 ).split()
 
 PYTEST_FLAGS = ["-q", "-p", "no:cacheprovider", "-W", "ignore", "--durations=3"]

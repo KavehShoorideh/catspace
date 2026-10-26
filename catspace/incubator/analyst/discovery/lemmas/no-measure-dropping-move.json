@@ -1,0 +1,30 @@
+{
+ "name": "no measure-dropping move",
+ "kind": "STOP",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "73.5",
+  "73.5b"
+ ],
+ "journal": "2026-10-26",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_technique_roots",
+  "catspace/incubator/analyst/discovery/technique_question.py:technique_routes"
+ ],
+ "note": "The technique question's silence: no strategy of at most d moves lowers the entry's measure against every reply (and no mate at its floor), a GAP and never a kill -- the agenda goes on without the technique."
+}

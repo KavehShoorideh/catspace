@@ -70,8 +70,9 @@ def floor_move(board: chess.Board, n: int) -> "tuple | None":
         got = SM.bind_mate2(None, "w" if board.turn else "b", pos=G.pos_of(board))
         if not got:
             return None
-        (x, y), = got[0]["pairs"]
-        return chess.Move(x, y).uci(), w
+        (x, y), = got[0]["pairs"]                                  # (the binding's squares, by name)
+        sq = lambda s: chess.parse_square(s) if isinstance(s, str) else s
+        return chess.Move(sq(x), sq(y)).uci(), w
     got = net(board, n)
     return (got[0], w) if got is not None else None
 

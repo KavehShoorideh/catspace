@@ -109,6 +109,7 @@ TIERS = False                                                   # plan 59: STATU
 TIER_COUNT = 4                                                  # tiers 0..3
 COMPETE = True                                                  # plan 65.1: the NEXT tier's cheapest route competes with this tier's root routes (Lean `Ideas.Forcing.judgeNext`): a NEW route (not yet open in this tier) priced above it is a GAP, read in the next tier (deferred once); `analyse --no-compete`
 UNPROVED = True                                                 # plan 65.3: no claim at all -> the best UNFINISHED root route (a GAP) decides, marked unproved; `analyse --no-unproved`
+TECHNIQUE = True                                                # plan 73.5b (4): a TECHNIQUE entry of the lemma store whose class is the position's is asked at the root ("drop the measure"); its UNPROVED claim decides only when no proved claim keeps the status (before an estimate, before an unfinished line)
 DEEP_PASS = True                                                # plan 65.4: the status reads THEIR pass with delayed_balance_deep when the d1 family finds no claim and a piece of ours is attacked; `analyse --no-deep-pass`
 STOP_AFFORD = True                                              # plan 65.2: the widening (and the RAISE_TO_WIN continuation) ends when no open route of any tier is priced within the time left; `analyse --no-stop-afford`
 RESUME = True                                                   # plan 66.4: with time left after the tiers, the root's CHAIN-STOPPED GAP routes are resumed in price order, one more level of the chain allowance a pass, ONLY while the line is still forcing (every reply a parry: Lean `Ideas.Forcing.stillForcing`); `analyse --no-resume`
@@ -301,6 +302,7 @@ class ChaseCtx:
         self.local_lines: list = []               # ... the trace line of each local inner agenda one level below the root (printed by the root)
         self.route_goals: dict = {}               # ... (position, route uci) -> the goal keys the route was read under (its memo is per goal)
         self.local_keys: dict = {}                # ... position key -> the memo keys of the local answers asked there (another goal's ask may be served one: `_inner`)
+        self.technique: dict = {}                 # plan 73.5b (4): technique entry name -> the strategy in hand {target, expect}: carried to the next root (the target holds until the measure drops)
 
 
     def carry(self) -> "ChaseCtx":
@@ -310,6 +312,7 @@ class ChaseCtx:
         c.memo, c.routes, c.theirs, c.their_ags, c.landings = self.memo, self.routes, self.theirs, self.their_ags, self.landings
         c.their_facts, c.gap_facts = self.their_facts, self.gap_facts
         c.route_goals, c.local_keys = self.route_goals, self.local_keys      # (72.10: the per-goal memos' indexes travel with the memos)
+        c.technique = self.technique                                          # (73.5b: the technique's strategy in hand)
         return c
 
     def out_of_time(self) -> bool:
@@ -433,6 +436,7 @@ class Agenda:
         self._pre: dict = {}                                    # 52.17 (4): route key -> the replies the cheap pass closed by rule
         self.frame = self.ctx.route_depth if self.ctx is not None else 0       # 52.21 (3): the route (its depth) this agenda was opened to read the reply of
         self.late = self.ctx is not None and self.ctx.deadline is not None and time.monotonic() >= self.ctx.deadline       # ... opened after the deadline (by the route in hand): it reads its roots; one opened before finishes its current question only
+        self._tech: "tuple | None" = None                       # plan 73.5b (4): (the technique question, its claim) -- an UNPROVED claim kept apart from `best` (the decision consults it)
         self._roots()
         if SURVEY and self._root:
             self.lines.extend(R.survey_lines(self.board, self.me))
@@ -443,6 +447,8 @@ class Agenda:
             q.id = i
         if getattr(self, "_tq", None):
             self._tq[1].qid = self._tq[0].id
+        if self._tech is not None:
+            self._tech[1].qid = self._tech[0].id
         R._ids[0] = len(self.all)
 
     def _t(self, flag: bool, k: int) -> bool:
@@ -593,6 +599,7 @@ class Agenda:
                                       text=f"win their {b.piece_at(s).symbol().upper()} on {GAME.loc_name(s)} (worth {W.base.worth(b.piece_at(s))})"))
         self._fork_roots()
         self._table_roots()
+        self._technique_roots()
 
     def _table_roots(self) -> None:
         """plan 62.3: a position whose whole board is at most five men closes by the TABLE (regress-free, exact): a claim labelled `proved_by = "table"` (a win: the material of their last pieces, a bare king left
@@ -616,6 +623,47 @@ class Agenda:
         if self._better(tc["value"], 0, claim):
             self.best = (tc["value"], 0, claim)
             self.asked_at_claim = self.asked
+
+    def _technique_roots(self) -> None:
+        """plan 73.5b (4) THE TECHNIQUE QUESTION: at the ROOT, in a position of a class with no claim (the table has not claimed), every TECHNIQUE entry of the lemma
+        store whose class is this position's material signature (read from our side) is asked as the goal "drop the measure" (technique_question.py: at the floor the
+        entry's n-move mate search decides; else the routes are the first moves of a strategy of at most d moves that lowers the measure against every reply, the
+        never-rules on every node, the game's history read as a repetition). A route -> an UNPROVED claim (kind 'technique', lemma = the entry's name, proved=False),
+        kept apart from `best`: the decision takes it only when no proved claim keeps the status (`decision`). No route -> a GAP 'no measure-dropping move', never a
+        kill. The carry of the strategy (its target and the positions it expects) travels in the context to the next root (`ChaseCtx.carry`)."""
+        if not TECHNIQUE or not self._root or self.ctx is None or self.ctx.tier != 0 or self.board.turn != self.me or getattr(self, "_tq", None) is not None:
+            return
+        from catspace.incubator.analyst.discovery import technique_question as TQ
+        ents = TQ.entries_for(self.board, self.me)
+        for e in ents[:1]:                                       # (one technique per class: the first by name)
+            t0 = time.monotonic()
+            got = TQ.technique_routes(self.board, e, history=self.ctx.history, carried=self.ctx.technique.get(e["name"]))
+            m = TQ.MN.measure_of(e["measure"]["quantity"])
+            name = e["name"]
+            q = R.new_question("technique", 0, dict(technique=name), text=f"drop the measure of {name}: {m.sexpr} = {TQ.show(m, got['value'])}")
+            self.all.append(q)
+            head = (f"TECHNIQUE {name} ({e['status']}, {e['origin']}): {m.sexpr} = {TQ.show(m, got['value'])}"
+                    + (f", the target {TQ.show(m, got['target'])} carried from the strategy in hand" if got["carried"] else "")
+                    + f"; d {e['measure'].get('depth')}, floor n {e['measure'].get('n')}; {got['nodes']} nodes, {time.monotonic() - t0:.2f} s")
+            self.lines.append(head)
+            if not got["routes"]:
+                q.status = "gap"
+                gap = f"{LS.name('no measure-dropping move')} ({name}: no strategy of at most {e['measure'].get('depth')} moves lowers {TQ.show(m, got['value'])} against every reply)"
+                self.state.gaps.append(gap)
+                self.lines.append(f"  -> GAP: {gap}")
+                self.ctx.technique.pop(name, None)
+                continue
+            u, san, j, worst = got["routes"][0]
+            why = (f"the floor: a mate within {e['measure'].get('n')} moves by {got['word']}" if got["kind"] == "floor" else
+                   f"a strategy of {j} move(s) after which {m.sexpr} is below {TQ.show(m, got['target'])} against every reply" + (f" (at most {TQ.show(m, worst)} after the replies)" if worst is not None and worst >= 0 and j == 1 else ""))
+            claim = Claim("technique", san, 0, LS.name(name), f"{san} ({why}; routes {', '.join(r[1] for r in got['routes'][:8])}{', ...' if len(got['routes']) > 8 else ''})",
+                          move=u, goal="technique", proved=False, confidence=0.0, estimator="", word=name)
+            q.status = "verified"
+            q.claimed = (0, claim, frozenset())
+            self._tech = (q, claim)
+            self.ctx.technique[name] = got["next"]
+            self.lines.append(f"  -> CLAIM technique {san}, {why} (lemma {name}, proved=False; {len(got['routes'])} route(s): "
+                              + ", ".join(r[1] for r in got["routes"][:8]) + (", ..." if len(got["routes"]) > 8 else "") + ")")
 
     def _top_other(self, q: R.Question) -> int:
         """52.23 (7): the largest worth among their pieces other than this question's target (what one more claim on this chain could add); 0 at the root (no need there)."""
@@ -4367,6 +4415,13 @@ class Agenda:
         if self._decision is not None:
             return self._decision[0]
         dec, est = (self.best[2] if self.best else None), False
+        if TECHNIQUE and self._tech is not None and self.chase_depth == 0 and not (self.best is not None and (self.best[0] >= BD.MATE_VALUE or self.keeps(
+                getattr(self, "status_info", None) or self.status(), self.best)[0])):
+            dec = self._tech[1]                                  # plan 73.5b (4): no proved claim keeps the status -- the technique's route (a CONJECTURE) decides, before an estimate or an unfinished line
+            self.lines.append(f"DECISION TECHNIQUE: {dec.what} by {dec.lemma} (not proved: a mined technique, a CONJECTURE); no proved claim keeps the status")
+            self._decision = (dec, False)
+            self._flush_estimates(None)
+            return dec
         if ESTIMATE and self.best_est is not None and self.chase_depth == 0 and not (self.best is not None and self.best[0] >= BD.MATE_VALUE):
             st = getattr(self, "status_info", None) or self.status()
             if not self.keeps(st, self.best)[0] and self.keeps(st, self.best_est)[0]:

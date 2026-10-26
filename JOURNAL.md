@@ -33415,3 +33415,39 @@ OBS lemma store by status: PROVED 28, CONJECTURE 51, REFUTED 0, HEURISTIC 18
 OBS lemma store by origin: BASE 4, HAND 92, MINED 1
 OBS lemma store validate: entries 97, patterns 29; words read 944 (fact 145, fact-why 588, gap 89, kill 99, lemma 23) from 0 snapshot dir(s) and the two fixed positions;
 uncatalogued 0 (0 distinct); problems 0
+
+
+## 2026-10-26 00:28 PDT -- plan 73.5b (4) built: THE TECHNIQUE QUESTION -- the agenda asks the store's mined entry of the class; its first play-out mates, and REFUTES the sampled entry on the way (branch worktree-agent-a3b8d9ac59ad69fb8)
+`catspace/incubator/analyst/discovery/technique_question.py` and agenda.py `_technique_roots` (switch `TECHNIQUE`, ON). GENERIC: the question is asked for any TECHNIQUE
+entry of the lemma store, not REFUTED, whose measure declares a class equal to the position's material signature read from the side to move (technique_corpus.signature)
+and whose quantity is a term of the miner's library -- no rook or queen code path (tests/test_plan73_5b.py reads the three modules' code for a unit name). The two
+hand-made TECHNIQUE entries declare no class: the agenda does not ask them.
+THE ROUTES (73.5b): at the floor the entry's n-move mate search decides (technique_sample.floor_move: the mate words at n = 2, the net at n = 3); else the FIRST MOVES OF A
+STRATEGY of at most d moves that lowers the measure below the target against every reply -- a per-root AND-OR search (`Search`, memoised by position, moves left and ply),
+the never-rules on every node: no stalemate, no unit the exchange law loses, no claimable draw (the fifty-move clock; a position the game has seen, `ctx.history`, the
+engine's CYCLE reading of a repetition); the fewest moves first, then the lowest worst measure after the replies. THE TARGET CARRIES (`ctx.technique`, through
+`ChaseCtx.carry`): a position the last question's strategy expected (after its route and a reply), whose measure has not yet dropped below that strategy's target, is
+read against that target -- with a fresh target at every move a tempo move could let the measure rise from move to move and cycle. No route -> the GAP "no
+measure-dropping move" (a new STOP entry, HEURISTIC), never a kill. THE CLAIM: kind 'technique', lemma = the entry's name through lemma_store.name, proved=False, kept
+apart from `best`; THE DECISION takes it only when no proved claim keeps the status (before an estimate, before an unfinished line); the table claim is proved, so it
+outranks it -- and the question is not asked at all where the table has claimed ("a position of the class with no claim"). One technique per class (the first by name).
+`scripts/play_technique.py --technique on|off` (off: the 73.5 baseline); the OBS line gains the decisions by lemma and the technique questions asked.
+FIX on the way: technique_sample.floor_move read the binder's mate_in_two squares as numbers; they are names (the first play-out crashed on it; a test now plays the floor
+move and checks every reply is mated).
+THE FIRST PLAY-OUT (a short run before the acceptance runs, the entry as written in (3): (sum (area (reach L free)) (dist W L)), d 3, n 2):
+OBS play KRvK seed 1 table off technique on: start 4K3/R7/8/8/2k5/8/8/8 w - - 0 1; dtz at start 27; result 1-0 (mate) after 39 plies; our moves 20, by the agenda 20, by the
+fallback 0; questions asked 1075 (54 per move); inner agendas 162; moves that shortened the table's distance 16 of 20; decision lemmas chase: step_after+step_least over
+chase: step_after+step_least over mate_in_two, mate_in_two 1, chase: step_after+step_least over mate_in_two 1, mate_in_one 1, mate_in_two 1, mined technique KRvK 15,
+unfinished line 1; technique questions asked 20; wall 1 s
+It MATES (the 73.5 baseline drew by repetition from this start) -- but at ply 29 the technique was SILENT: 8/8/8/8/1K6/1R6/k7/8 w (their king a2 boxed with a1, our king
+b4): the measure reads 4, its least value bar 3 (an area of one square and the kings two apart), the mate is four moves away (the table's DTZ 7) and no strategy of three
+moves lowers it; the agenda's own unfinished line (Ra3+) played on and the technique took over again two plies later. The position is won, of the class, not at the floor
+and admits no drop: A COUNTEREXAMPLE TO THE ENTRY'S OBLIGATION, outside the 3803 sampled positions. The rule-of-three argument of (1) assumed the play visits positions
+like a uniform draw; a technique drives the play INTO the near-mate region where such positions live. The next entry reads the whole class (4b).
+OBS gate engine --only tests/test_plan73_5b.py: passed 11, failed 0, xfailed 0, errors 0, wall 7.0 s (the state of 4b's working tree; the test file is in this commit).
+tests/test_plan73_5b.py (11): the lexicographic order; a drop in one move (Kc8, Rb7 v Kg8: Kd8, the only one); a drop that needs a tempo move (Kf8, Re7 v Kd8: none in one,
+Rf7 then Ke8 in two); the never-rules refuse the stalemating Rb7 (Kb6, Rh7 v Ka8) and see the lost rook; the floor move is a mate's first move; the graph's min-max
+equals the per-root search (40 uniform positions, three measures, d = 1, 2); the miner chooses a zero-failure measure, the simplest of its level, on a small fixture;
+the question proposes exactly the first moves of a dropping strategy, carries its target, refuses a reply into a seen position; the agenda asks the store's entry
+(table off: the technique decides; table on: the table decides and no technique is asked; TECHNIQUE off: nothing); no unit name in the three modules; the schema.
+scripts/gate.py: test_plan73_5b in the engine list (39 files).
