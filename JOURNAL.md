@@ -33387,3 +33387,31 @@ COST (the level lines above): KRvK 138.0 s for the whole search, its graph 17486
 reaches; KQvK to the fuse 144500 nodes, 144443 expanded, 15542584 pairs. The graph's growth dominates (python-chess's move generation: 77.5 s of KRvK's d=2 rank-1
 level, 94.8 s of KQvK's); the min-max over the whole graph for every candidate of a level takes seconds (3.2 s for KRvK's 56 pairs at d = 2, 44.5 s for KQvK's 336
 triples at d = 3).
+
+
+## 2026-10-26 00:10 PDT -- plan 73.5b (3) built: THE ENTRY -- "mined technique KRvK" in the lemma store (TECHNIQUE, MINED, CONJECTURE); no K+Q entry (beyond the fuse) (branch worktree-agent-a3b8d9ac59ad69fb8)
+`technique_miner.py --write <sig>` writes the saved result's choice (nothing is mined again): `entry_for` and `write_entry` (the schema check first).
+OBS miner KRvK entry written: catspace/incubator/analyst/discovery/lemmas/mined-technique-krvk.json -- mined technique KRvK: (sum (area (reach L free)) (dist W L)), d 3, n 2, CONJECTURE, MINED
+OBS miner KQvK: no measure was chosen (beyond the fuse): no entry is written
+THE ENTRY AS WRITTEN: name "mined technique KRvK"; kind TECHNIQUE; reads attack, material, movement, tempo (the measure reads movement and attack; tempo is d and the
+mate's moves; material is the exchange law of the never-rules); terms [(sum (area (reach L free)) (dist W L))]; status CONJECTURE; lean []; origin MINED; plan 73.5b;
+measure {quantity (sum (area (reach L free)) (dist W L)); floor "a mate within 2 moves found by the engine's mate search (the mate words mate_in_one / mate_in_two)";
+terminal mate_in_two; class KRvK; depth 3; n 2; obligation (below)}; evidence.confirmed = the miner's run (zero failures at d=3 ranks=1 n=2 on 3803 positions, the tie
+named); implementation technique_miner.py:mine, :entry_for.
+THE LEAN OBLIGATION, as the entry states it: "Let S be the positions of the class KRvK with the winning side to move, ours the moves of that side that neither stalemate,
+nor leave a unit of ours the exchange law loses, nor allow a claimable draw, mu p the mixed-radix number of (sum (area (reach L free)) (dist W L)) at p. OBLIGATION: for
+every p in S, Ideas.Forced.Reach ours theirs mate (fun r => S r and mu r < mu p) 3 p -- a mate within 2 moves (the floor), or a strategy of at most 3 moves after which,
+against every reply, mu is strictly lower or they are mated. Then Ideas.Forced.forced_by_measure (proved) gives the mate from every p in S within 3 * (mu p + 1) moves.
+The obligation is checked on the sample, NOT proved: no theorem of docs/LEAN_INDEX.md states it."
+LEAN, said plainly: NOT PROVED, not attempted -- the method (`forced_by_measure`) is proved and abstract; the obligation is a statement about every K+R v K position,
+and lean/ideas has no model of that class in which the measure could be lowered BY REASONING (a proof by enumerating the class's positions would be the brute force the
+standing rule forbids). The entry is a CONJECTURE and says so; the next proof is a rung lemma over the measure's shapes, not over positions.
+THE SCHEMA (lemma_store.py, lemmas/README.md): a TECHNIQUE's measure keeps {quantity, floor, terminal} and may now also say `class`, `depth`, `n`, `obligation`
+(checked: a material signature, whole numbers >= 1, a statement) -- what the agenda needs to ASK a technique (4). The two hand-made entries are unchanged (they say no
+class: the agenda does not ask them; their technique runs in mating.rs).
+OBS lemma store: entries 97
+OBS lemma store by kind: CLOSING 38, DEFECT_FIX 25, FORCING 15, TECHNIQUE 3, STOP 15, TABLE 1
+OBS lemma store by status: PROVED 28, CONJECTURE 51, REFUTED 0, HEURISTIC 18
+OBS lemma store by origin: BASE 4, HAND 92, MINED 1
+OBS lemma store validate: entries 97, patterns 29; words read 944 (fact 145, fact-why 588, gap 89, kill 99, lemma 23) from 0 snapshot dir(s) and the two fixed positions;
+uncatalogued 0 (0 distinct); problems 0

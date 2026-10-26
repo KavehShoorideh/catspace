@@ -32,6 +32,8 @@ KINDS = ("CLOSING", "DEFECT_FIX", "FORCING", "TECHNIQUE", "STOP", "TABLE")
 BASE = ("movement", "attack", "tempo", "material")
 STATUSES = ("PROVED", "CONJECTURE", "REFUTED", "HEURISTIC")
 ORIGINS = ("BASE", "HAND", "MINED")
+MEASURE_KEYS = ("quantity", "floor", "terminal")
+MEASURE_OPTIONAL = ("class", "depth", "n", "obligation")     # plan 73.5b: a technique the agenda ASKS says its class (a material signature), its tempo depth d, its floor's n, its Lean obligation
 
 USES: Counter = Counter()           # entry name -> how many printed strings of this process resolved to it (a claim made, a kill, a GAP: the word was used)
 UNCATALOGUED: Counter = Counter()   # printed string -> how many times it resolved to no entry (the root agenda reads the change into ctx.uncatalogued)
@@ -84,8 +86,10 @@ def check_entry(e: dict, where: str = "") -> list:
         bad.append(f"{at}: journal must be the date (a string)")
     if e["kind"] == "TECHNIQUE":
         m = e["measure"]
-        if not isinstance(m, dict) or set(m) != {"quantity", "floor", "terminal"}:
-            bad.append(f"{at}: a TECHNIQUE has a measure {{quantity, floor, terminal}}")
+        if not isinstance(m, dict) or not set(MEASURE_KEYS) <= set(m) <= set(MEASURE_KEYS) | set(MEASURE_OPTIONAL):
+            bad.append(f"{at}: a TECHNIQUE has a measure {{quantity, floor, terminal}} (and may say {', '.join(MEASURE_OPTIONAL)})")
+        else:
+            bad += _measure_problems(m, at)
     elif e["measure"] is not None:
         bad.append(f"{at}: only a TECHNIQUE has a measure")
     ev = e["evidence"]
@@ -95,6 +99,24 @@ def check_entry(e: dict, where: str = "") -> list:
         bad.append(f"{at}: implementation must list 'file:function' strings")
     if not isinstance(e["note"], str) or not e["note"]:
         bad.append(f"{at}: note must be one plain sentence")
+    return bad
+
+
+def _measure_problems(m: dict, at: str) -> list:
+    """plan 73.5b: the optional parts of a technique's measure -- `class` a material signature (technique_corpus.parse_signature), `depth` and `n` whole numbers
+    of at least 1, `obligation` a statement (a string)."""
+    bad = []
+    if "class" in m:
+        from catspace.incubator.analyst.discovery import technique_corpus as TC
+        try:
+            TC.parse_signature(m["class"])
+        except (ValueError, AttributeError):
+            bad.append(f"{at}: measure class {m['class']!r} is no material signature")
+    for k in ("depth", "n"):
+        if k in m and not (isinstance(m[k], int) and m[k] >= 1):
+            bad.append(f"{at}: measure {k} must be a whole number >= 1")
+    if "obligation" in m and not (isinstance(m["obligation"], str) and m["obligation"]):
+        bad.append(f"{at}: measure obligation must be a statement")
     return bad
 
 

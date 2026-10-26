@@ -15,7 +15,7 @@ letters, digits and `_` one `-`).
 | `lean` | the theorem names its implementation's docstrings cite, qualified to their full name in the index; non-empty if and only if PROVED |
 | `origin` | BASE (the game's rule) / HAND (we wrote it) / MINED (a generator produced it) |
 | `plan`, `journal` | the ANALYST_PLAN section(s) and the date |
-| `measure` | TECHNIQUE only: `{quantity, floor, terminal}`; `null` otherwise |
+| `measure` | TECHNIQUE only: `{quantity, floor, terminal}`, and for a technique the agenda ASKS (plan 73.5b) also `class` (the material signature, e.g. `KRvK`), `depth` (d: our moves before the measure must be lower), `n` (the floor's mate search) and `obligation` (the Lean statement that would prove it); `null` otherwise |
 | `evidence` | `{uses: {}, confirmed: [], refuted: []}`: filled from runs later, never during one |
 | `implementation` | where it runs, `path:function` from the repo root (validated: the file defines the name) |
 | `note` | one plain sentence |
