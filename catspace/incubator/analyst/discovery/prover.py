@@ -429,6 +429,7 @@ class Prover:
         self.samples = 0
         self.seed = 1
         self.nsub = 0                    # sub-goals named so far
+        self.top = ""                    # the top goal's name (it prefixes the sub-goals' names)
         self.checked = 0                 # the model's candidates and sketches Lean has checked (a round adding none ends the goal's loop)
         self.capped = 0                  # the samples cut by the token cap (unfinished answers: they do not end the loop)
         self.context, imported = context_of(path)
@@ -558,7 +559,33 @@ class Prover:
                 prompt = SKETCH_REVISE.format(sketch=base, attempt=lemmas + goal.stmt + "\n" + indent(sketch) + "\n", errors="\n\n".join(chk.errors[:4])[:6000],
                                               name=goal.name)
                 continue
+            again = self.restating(goal, lemmas, chk.infos)
+            if again:
+                err = f"the sketch's sub-goal {again} restates the goal (the goal follows from it by `apply` and the goal's own hypotheses): no progress"
+                self.results.setdefault(goal.name, {})["last"] = "sketch: " + err
+                self.log.write(tool="llm sketch refused", goal=goal.name, depth=goal.depth, accepted=False, why=[err])
+                if err == last_err:
+                    return None
+                last_err = err
+                prompt = SKETCH_REVISE.format(sketch=base, attempt=lemmas + goal.stmt + "\n" + indent(sketch) + "\n", errors=err, name=goal.name)
+                continue
             return self.solve_sketch(goal, sketch, lemmas, chk.infos)
+        return None
+
+    def restating(self, goal: Goal, lemmas: str, infos: list) -> "str | None":
+        """NO PROGRESS (Lean decides): the first sub-goal of a sketch from which the goal follows by `apply` and the goal's own hypotheses -- one no easier
+        than the goal (the model wrote the goal again as a `have`) -- or None."""
+        target = closed_prop(goal.stmt)
+        for k, info in enumerate(infos, 1):
+            sub = closed_prop(re.sub(r":= sorry$", ":= by", info.strip()).replace("✝", "_d"))
+            if not sub or not target:
+                continue
+            test = goal.prefix + self.lemmas() + lemmas + f"theorem restating_test (hk : {sub}) : {target} := by\n  intros\n  apply hk <;> assumption\n" + goal.suffix
+            chk = lean_check(test, (), "ideas", tag=f"restating_{goal.name}")
+            self.log.write(tool="no-progress check", goal=goal.name, depth=goal.depth, sub=k, accepted=False, restates=chk.ok, secs=chk.secs,
+                           errors=chk.errors[:1])
+            if chk.ok:
+                return f"#{k}"
         return None
 
     def solve_sketch(self, goal: Goal, sketch: str, lemmas: str, infos: list) -> "dict | None":
@@ -566,7 +593,7 @@ class Prover:
         ns = namespace_of(goal.prefix)
         for k, info in enumerate(infos, 1):
             self.nsub += 1
-            name = f"{self.mode}_s{self.nsub}"                       # (unique in the run and across the two runs; its parent is recorded)
+            name = (f"{self.top}_" if self.top else "") + f"{self.mode}_s{self.nsub}"   # (unique in the run, across runs and tops; its parent recorded)
             stmt = re.sub(r"^theorem \S*?extracted_\w+", f"theorem {name}", info.strip())
             stmt = re.sub(r":= sorry$", ":= by", stmt).replace("✝", "_d")
             subs.append(Goal(name=name, stmt=stmt, prefix=goal.prefix + lemmas, suffix=f"\nend {ns}\n" if ns else "\n",
@@ -616,6 +643,24 @@ def fill_sorries(proof: str, fill) -> str:
     return re.sub(r"(\bby\s+)sorry\b|(^[ \t]*)sorry\b|\bsorry\b", sub, proof, flags=re.M)
 
 
+def closed_prop(stmt: str) -> str:
+    """A theorem's statement `theorem X binders : concl := by` (a docstring before it allowed) as one closed proposition `∀ binders, concl`."""
+    m = re.search(r"(?:^|\n)theorem \S+", stmt)
+    if m is None:
+        return ""
+    head = stmt[m.end():].split(":= by")[0]
+    depth = 0
+    for i, ch in enumerate(head):
+        if ch in "([{⦃":
+            depth += 1
+        elif ch in ")]}⦄":
+            depth -= 1
+        elif ch == ":" and depth == 0:
+            binders, concl = head[:i].strip(), head[i + 1:].strip()
+            return f"∀ {binders}, {concl}" if binders else concl
+    return ""
+
+
 def binder_names(stmt: str) -> list:
     """The explicit binder names of a `theorem X (a b : T) (h : P) ... : goal` statement, in order (instance and implicit binders are inferred)."""
     head = stmt.split(":= by")[0]
@@ -652,6 +697,7 @@ def prove(module: str, mode: str = "blind", tools: tuple = ("automation", "copil
                    started=time.strftime("%Y-%m-%d %H:%M:%S"), hint=hint_text() if mode == "hinted" else None)
     for g in goals:
         P = Prover(path, mode, tuple(tools), log, fuse, think)
+        P.top = g.name
         res = P.attack(g)
         secs = round(time.monotonic() - P.t0, 1)
         summary["goals"][g.name] = dict(
@@ -785,6 +831,68 @@ def _entry_of_module(module: str) -> "tuple":
     raise SystemExit(f"no TECHNIQUE entry of the store emits {module}")
 
 
+def no_word(module: str, ns: str, stmt: str, ancestors: list) -> "str | None":
+    """NOT A WORD (Lean decides, in the built module's context): a sub-lemma whose conclusion is one of its own hypotheses (`intros; assumption` closes it)
+    states nothing; one from which an ancestor goal follows by `apply` and the ancestor's own hypotheses restates the ancestor. -> the reason, or None. Such a
+    sub-goal is shown in the run's record and never entered in the store (a word must say something its parents do not)."""
+    head = f"import Ideas.Mined.{module}\n\nnamespace {ns}\n\nopen Chess hiding between\nopen Ideas.Vocabulary\n\n"
+    prop = closed_prop(stmt)
+    if not prop:
+        return None
+    t = lean_check(head + f"theorem no_word_tautology : {prop} := by\n  intros\n  assumption\n\nend {ns}\n", (), "ideas", tag="no_word")
+    if t.ok:
+        return "a tautology: its conclusion is one of its hypotheses (`intros; assumption` closes it)"
+    for a in ancestors:
+        ap = closed_prop(a)
+        if not ap:
+            continue
+        r = lean_check(head + f"theorem no_word_restates (hk : {prop}) : {ap} := by\n  intros\n  apply hk <;> assumption\n\nend {ns}\n", (), "ideas",
+                       tag="no_word")
+        if r.ok:
+            return "a restatement of an ancestor goal (the ancestor follows from it by `apply` and its own hypotheses)"
+    return None
+
+
+def ancestors_of(name: str, proposed: list, top_stmt: str) -> list:
+    """The statements of a sub-goal's ancestors, its parent first, the top goal last."""
+    by = {d["name"]: d for d in proposed}
+    out, cur = [], by.get(name, {}).get("parent")
+    while cur in by:
+        out.append(by[cur]["statement"])
+        cur = by[cur].get("parent")
+    return out + [top_stmt]
+
+
+def words_of(module: str, ns: str, g: dict, top_stmt: str, log=print) -> tuple:
+    """The run's sub-goals that are WORDS (proved, open) and the ones that are not ({name: reason}), by `no_word`."""
+    proved = dict(g.get("proved") or {})
+    open_ = {n: v for n, v in (g.get("open") or {}).items() if n not in proved}
+    dropped = {}
+    for pool in (proved, open_):
+        for n in list(pool):
+            why = no_word(module, ns, pool[n]["statement"], ancestors_of(n, g.get("proposed") or [], top_stmt))
+            if why:
+                dropped[n] = why
+                del pool[n]
+                log(f"OBS prover record: {n} is not a word -- {why}")
+    return proved, open_, dropped
+
+
+def drop_run_entries(sub: str) -> list:
+    """Re-recording a run replaces its own outputs: the store entries implemented in the run's file and the file itself -> the names removed."""
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    gone = []
+    for e in LS.load(force=True).values():
+        if any(i.startswith(f"lean/ideas/Ideas/Mined/{sub}.lean:") for i in e["implementation"]):
+            (LS.DIR / f"{LS.slug(e['name'])}.json").unlink()
+            gone.append(e["name"])
+    f = MINED_DIR / f"{sub}.lean"
+    if f.exists():
+        f.unlink()
+    LS.load(force=True)
+    return gone
+
+
 def _axioms_of(module: str, names: tuple, proofs: tuple, tag: str) -> tuple:
     """The acceptance check of theorems of a BUILT module (imported, not re-elaborated): `#print axioms` and the scan of the proof texts."""
     chk = lean_check(f"import Ideas.Mined.{module}\n", names, "ideas", tag=tag)
@@ -859,8 +967,10 @@ def record(summary_path: str, log=print) -> dict:
             out["entries"].append(e["name"])
         else:
             TL.emit(entry)                                            # (not accepted: the statement as it was, the sorry back)
-    proved = {n: v for n, v in (g.get("proved") or {}).items()}
-    open_ = {n: v for n, v in (g.get("open") or {}).items() if n not in proved}
+    drop_run_entries(f"{module}_{mode}")
+    top_stmt = goals_of(MINED_DIR / f"{module}.lean")[0].stmt if goals_of(MINED_DIR / f"{module}.lean") else ""
+    proved, open_, dropped = words_of(module, ns, g, top_stmt, log)
+    out["not_words"] = dropped
     if proved or open_:
         sub = f"{module}_{mode}"
         path = MINED_DIR / f"{sub}.lean"

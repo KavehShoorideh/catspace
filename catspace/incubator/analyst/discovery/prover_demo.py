@@ -170,10 +170,11 @@ def store(entry: dict, summary: dict, log=print) -> dict:
                       + str(g.get("last") or "?")[:400])))
     MN.write_entry(e)
     out = dict(entry=e, accepted=ok, why=why, sub_entries=[])
-    proved = g.get("proved") or {}
-    open_ = {n: v for n, v in (g.get("open") or {}).items() if n not in proved}
+    sub = f"{mod}_{summary['mode']}"
+    out["replaced"] = PR.drop_run_entries(sub)
+    top_stmt = PR.goals_of(path)[0].stmt if PR.goals_of(path) else STATEMENT
+    proved, open_, out["not_words"] = PR.words_of(mod, ns, g, top_stmt, log)
     if proved or open_:
-        sub = f"{mod}_{summary['mode']}"
         (TL.MINED_DIR / f"{sub}.lean").write_text(PR.sub_file_text(mod, ns, summary["run"], summary["mode"], proved, open_))
         b = TL.build(sub)
         if b["ok"]:
@@ -230,24 +231,55 @@ def run(fuse: float = PR.FUSE_SECONDS, tools: tuple = ("automation", "copilot", 
         lines.append(f"OPEN after the fuse ({g['secs']} s, {g['samples']} model samples). The goal stays as stated above with `sorry`. The last state:\n\n"
                      + _block(_trim(str(g.get("last") or "?"), 1500)))
     st = store(entry, summary, log)
+    lines = finish_lines(g, st, lines)
+    T.tail = "\n".join(lines) + "\n"
+    T.write()
+    log(f"OBS prover demo {mod}: {'CLOSED by ' + g['closed_by'] if g.get('closed_by') else 'OPEN after the fuse'}; samples {g['samples']}; sub-goals proposed "
+        f"{len(subs)}, proved {len(g.get('proved') or {})}; not words {len(st['not_words'])}; the store entry {st['entry']['name']} {st['entry']['status']}; "
+        f"transcript {T.path}")
+    return dict(summary=summary, store=st)
+
+
+def finish_lines(g: dict, st: dict, lines: list) -> list:
+    """The transcript's last sections: which sub-goals are not words (and why), the store entry written."""
+    if st.get("not_words"):
+        lines.append("\n### Sub-goals not entered in the store (Lean decides: `prover.no_word`)\n")
+        for n, why in st["not_words"].items():
+            lines.append(f"- `{n}`: {why}.")
     lines.append("\n## The store entry written\n")
     lines.append(f"Accepted by the check on the built module: {st['accepted']} ({'; '.join(st['why']) if not st['accepted'] else 'no sorry, standard axioms, no enumeration'}). "
                  f"The index: {st['index']}. lemma_store validate: {'passes' if st['validate'] == 0 else 'FAILS'}.\n\n"
                  + _block(json.dumps(st["entry"], indent=1, ensure_ascii=False), "json"))
     for se in st["sub_entries"]:
         lines.append(f"Sub-goal entry `{se['name']}`: {se['status']}, kind {se['kind']}.")
-    T.tail = "\n".join(lines) + "\n"
-    T.write()
-    log(f"OBS prover demo {mod}: {'CLOSED by ' + g['closed_by'] if g.get('closed_by') else 'OPEN after the fuse'}; samples {g['samples']}; sub-goals proposed "
-        f"{len(subs)}, proved {len(g.get('proved') or {})}; the store entry {st['entry']['name']} {st['entry']['status']}; transcript {TRANSCRIPT}")
-    return dict(summary=summary, store=st)
+    if st.get("replaced"):
+        lines.append("Replaced (an earlier record of this run): " + ", ".join(f"`{n}`" for n in st["replaced"]) + ".")
+    return lines
+
+
+def rerecord(summary_path: str, log=print) -> dict:
+    """Re-store a saved demonstration run (no proving) and rewrite the transcript's end from "## The sub-goals the model proposed"."""
+    entry = LS.load(force=True)[ENTRY]
+    summary = json.load(open(summary_path))
+    g = summary["goals"][THEOREM]
+    st = store(entry, summary, log)
+    md = TRANSCRIPT.read_text()
+    head = md[:md.index("## The store entry written")] if "## The store entry written" in md else md
+    head = head[:head.index("### Sub-goals not entered")] if "### Sub-goals not entered" in head else head
+    TRANSCRIPT.write_text(head.rstrip("\n") + "\n" + "\n".join(finish_lines(g, st, [])) + "\n")
+    log(f"OBS prover demo re-recorded {summary['run']}: not words {len(st['not_words'])}, sub entries {len(st['sub_entries'])}, replaced {len(st['replaced'])}; "
+        f"the store entry {st['entry']['name']} {st['entry']['status']}")
+    return st
 
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--fuse", type=float, default=PR.FUSE_SECONDS)
     ap.add_argument("--tools", default="automation,copilot,llm")
+    ap.add_argument("--record", default=None, help="re-store a saved run's summary.json (no proving) and rewrite the transcript's end")
     a = ap.parse_args(argv)
+    if a.record:
+        return rerecord(a.record)
     run(a.fuse, tuple(a.tools.split(",")))
 
 

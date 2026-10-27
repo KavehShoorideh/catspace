@@ -287,6 +287,27 @@ def test_a_round_with_no_candidate_ends_the_goals_loop(monkeypatch, tmp_path):
     assert P.llm(g) is None and len(calls) == 2 and "no candidate in a whole round" in P.results["toyg"]["last"]
 
 
+RESTATED = """```lean4
+theorem toyg (a b : Nat) (h : a ≤ b) : a < b + 1 ∧ b ≤ b := by
+  have hall : a < b + 1 ∧ b ≤ b := by sorry
+  exact hall
+```"""
+
+
+def test_a_sketch_that_restates_the_goal_is_refused_as_no_progress(monkeypatch, tmp_path):
+    """A sketch whose `have` is the goal again (the demonstration's first sketch did this) yields a sub-goal from which the goal follows by `apply` and its
+    own hypotheses -- Lean decides -- so it is no progress: refused, the model asked to revise; the same refusal twice ends the step."""
+    calls = []
+    monkeypatch.setattr(PR, "generate", _fake(RESTATED, calls))
+    f = tmp_path / "toy.lean"
+    f.write_text(TOY_GOAL)
+    (g,) = PR.goals_of(f)
+    P = PR.Prover(f, "blind", ("automation", "llm"), PR.Log(tmp_path / "log"), 900)
+    assert P.decompose(g, f.read_text()) is None and len(calls) == 2 and not P.proposed
+    assert "restates the goal" in P.results["toyg"]["last"]
+    assert "llm sketch refused" in (tmp_path / "log" / "attempts.jsonl").read_text()
+
+
 # ---------------------------------------------------------------------------------------------------------------- (4) THE STORE
 
 def test_a_sub_lemma_entry_by_role_and_reads():
@@ -336,13 +357,28 @@ def test_a_sub_goals_entry_is_proved_only_when_accepted():
     assert o["status"] == "CONJECTURE" and "the prover's last state: depends on sorryAx" in o["note"] and o["kind"] == "DEFECT_FIX"
 
 
+def test_a_tautology_or_a_restatement_is_not_a_word():
+    """The demonstration's six sub-goals were three tautologies and three restatements of the lemma: Lean decides which a sub-lemma is (`prover.no_word`), in
+    the built module's context, on toys here."""
+    taut = "theorem t1 (n : Nat) (h : n = 1) : n = 1 := by"
+    rest = "theorem t2 (n m : Nat) (h : n ≤ m) : n ≤ m + 1 := by"
+    word = "theorem t3 (n : Nat) : n ≤ n + 1 := by"
+    top = "theorem top : ∀ n m : Nat, n ≤ m → n ≤ m + 1 := by"
+    assert "tautology" in PR.no_word("mined_technique_krvk", NS, taut, [top])
+    assert "restatement" in PR.no_word("mined_technique_krvk", NS, rest, [top])
+    assert PR.no_word("mined_technique_krvk", NS, word, [top]) is None
+    assert PR.closed_prop(rest) == "∀ (n m : Nat) (h : n ≤ m), n ≤ m + 1"
+    proposed = [dict(name="a", parent="top", statement=rest), dict(name="b", parent="a", statement=word)]
+    assert PR.ancestors_of("b", proposed, top) == [rest, top]
+
+
 def test_a_run_with_no_result_changes_nothing(tmp_path):
     """Nothing is upgraded without the check: a run that closed nothing and proposed nothing writes no entry and no file."""
     before = {n: dict(e) for n, e in LS.load(force=True).items()}
     s = tmp_path / "summary.json"
     s.write_text(PR.json.dumps(dict(module="mined_technique_krvk", mode="blind", run="test", goals={"hprog": dict(closed_by=None, proof=None, proved={}, open={})})))
     out = PR.record(str(s), log=lambda *a: None)
-    assert out == dict(proved_top=False, entries=[], file=None) and LS.load(force=True) == before
+    assert out == dict(proved_top=False, entries=[], file=None, not_words={}) and LS.load(force=True) == before
 
 
 # ---------------------------------------------------------------------------------------------------------------- THE DEMONSTRATION (Kaveh 2026-10-27)

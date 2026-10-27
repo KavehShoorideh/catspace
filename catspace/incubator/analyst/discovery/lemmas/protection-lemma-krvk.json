@@ -1,0 +1,27 @@
+{
+ "name": "protection lemma KRvK",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "attack",
+  "movement",
+  "tempo"
+ ],
+ "terms": [],
+ "origin": "MINED",
+ "plan": [
+  "73.6"
+ ],
+ "journal": "2026-10-27",
+ "measure": null,
+ "implementation": [
+  "lean/ideas/Ideas/Mined/mined_technique_krvk_protection.lean:protection"
+ ],
+ "status": "CONJECTURE",
+ "lean": [],
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "note": "Kaveh's protection lemma (2026-10-27), stated by the engine (prover_demo.py) over the class of mined technique KRvK; not proved by the tools within the fuse (run 20261027_134042_mined_technique_krvk_protection_blind_demo); the prover's last state: error(lean.projNonPropFromProp): Invalid projection: Cannot project a value of non-propositional type\n  Square\nfrom the expression\n  hp.left.2\nwhich has propositional type\n  \u2203 P L,\n    p.board \u22ef.1 = some { color := p.turn, kind := PieceKind.king } \u2227\n      p.board P = some { color := p.turn, kind := PieceKind.rook } \u2227\n        p.board L = some { color := p.turn.opposite, kind := PieceKind.king } \u2227\n "
+}

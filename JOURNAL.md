@@ -33893,3 +33893,38 @@ OTHER FIXES the demonstration needed: a file that imports another mined module s
 ours (prover.context_of); technique_lean.build counts only the target module's own sorry warnings (Lake replays its imports' warnings: the demo read 2 for 1);
 scratch files are named per process (the demo and the gate's tests ran at once); the Log hands every attempt to a callback (the transcript).
 OBS gate engine --only tests/test_plan73_6.py: passed 24, failed 0, xfailed 0, errors 0, wall 27.9 s
+
+
+## 2026-10-27 15:23 PDT -- plan 73.6, THE DEMONSTRATION run: Kaveh's protection lemma (K+R v K) through the whole loop -- OPEN after the 90-minute fuse; 13 model samples, 6 sub-goals proposed, none a word; the store keeps "protection lemma KRvK" as a CONJECTURE (branch worktree-agent-aeb5da3edbf8fc955)
+THE RUN (prover_demo.py; transcript artifacts/experiments/prover/demo.md, untracked; attempts 20261027_134042_mined_technique_krvk_protection_blind_demo):
+the statement of the 13:42 entry, cheapest first. Lean's automation (aesop, simp_all, omega, grind, tauto, exact?; each as it is and after `intros`) and
+Duper: no progress. LeanCopilot's search_proof: no first step (each try about 30 to 135 s). Goedel-Prover-V2-8B: 13 samples (by the attempt log: 10240 tokens in
+1164.9 s cut by the cap; the others ended by themselves, 266 to 8256 tokens, 31.1 to 921.6 s). Its Lean names what does not exist (`Move.mk`,
+`Position.kingSq`) or projects the class's existential as if it were a pair (the last error: "Invalid projection: Cannot project a value of non-propositional
+type Square from the expression hp.left.2"). ITS SKETCHES restated the goal: `have h₅ : <the whole goal> := by sorry` and then `sorry`, so each sketch's two
+sub-goals were the lemma again (s1, s3, s5: open) and "the goal, given the goal" (s2, s4, s6: aesop closed them by assumption).
+OBS prover demo: stated Ideas.Mined.mined_technique_krvk_protection.protection; lake build ok True, sorry warnings 1, 1.5 s
+OBS prover mined_technique_krvk_protection blind goal protection: OPEN after the fuse; last: error(lean.projNonPropFromProp): Invalid projection: Cannot project a value of non-propositional type
+OBS prover mined_technique_krvk_protection blind tally (tried, accepted): automation aesop 11/3; automation duper [*] 8/0; automation exact? 8/0; automation grind 8/0; automation omega 8/0; automation simp_all 8/0; automation tauto 8/0; copilot search_proof 8/0; llm sketch 3/0; llm whole 10/0; attempts logged 80 in artifacts/experiments/prover/20261027_134042_mined_technique_krvk_protection_blind_demo/attempts.jsonl
+OBS lemma store validate: entries 105, patterns 29; words read 0 () from 0 snapshot dir(s); uncatalogued 0 (0 distinct); problems 0
+OBS prover demo mined_technique_krvk_protection: OPEN after the fuse; samples 13; sub-goals proposed 6, proved 3; the store entry protection lemma KRvK CONJECTURE; transcript /Users/kav/code/remote/github/catspace/.claude/worktrees/agent-aeb5da3edbf8fc955/artifacts/experiments/prover/demo.md
+THE STORE: the first record took the six as entries (three PROVED, three CONJECTURE). They are no words: the three proved ones are TAUTOLOGIES (their
+conclusion is a hypothesis) and the three open ones RESTATE the lemma. Two rules, both decided by Lean, were added and the run re-recorded from its saved
+summary (no proving): prover.no_word -- a sub-lemma `intros; assumption` closes, or one from which an ancestor follows by `apply` and its own hypotheses, is
+not entered; re-recording a run replaces that run's own entries and file. And, for the K+R runs to come: a sketch whose sub-goal implies its parent by
+`apply` and the parent's hypotheses is REFUSED as no progress (the model asked to revise) -- the demonstration ran before this rule. Sub-goals are now named
+after their top goal (protection_blind_s1, hprog_blind_s1): the demo's and the blind run's would have shared names in one namespace.
+OBS prover record: blind_s4 is not a word -- a tautology: its conclusion is one of its hypotheses (`intros; assumption` closes it)
+OBS prover record: blind_s2 is not a word -- a tautology: its conclusion is one of its hypotheses (`intros; assumption` closes it)
+OBS prover record: blind_s6 is not a word -- a tautology: its conclusion is one of its hypotheses (`intros; assumption` closes it)
+OBS prover record: blind_s3 is not a word -- a restatement of an ancestor goal (the ancestor follows from it by `apply` and its own hypotheses)
+OBS prover record: blind_s1 is not a word -- a restatement of an ancestor goal (the ancestor follows from it by `apply` and its own hypotheses)
+OBS prover record: blind_s5 is not a word -- a restatement of an ancestor goal (the ancestor follows from it by `apply` and its own hypotheses)
+OBS lemma store validate: entries 99, patterns 29; words read 0 () from 0 snapshot dir(s); uncatalogued 0 (0 distinct); problems 0
+OBS prover demo re-recorded 20261027_134042_mined_technique_krvk_protection_blind_demo: not words 6, sub entries 0, replaced 6; the store entry protection lemma KRvK CONJECTURE
+THE OUTCOME: the protection lemma is OPEN -- the tools could not prove the owner's "simple" lemma over the kernel within the fuse. The store gains one
+word, "protection lemma KRvK" (MINED, DEFECT_FIX, reads attack / movement / tempo, CONJECTURE, the last state in its note; implementation the demo's Lean file).
+WHAT THE TOOLS COULD NOT DO (directional, one run): see through the kernel's executable definitions (legalMoves filters a list of every candidate move,
+isAttackedB folds over the 64 squares, stalemate is `legalMoves = []` after the move): a proof must exhibit a move and evaluate legality and attacks
+symbolically, and none of the tools produced a first step that Lean accepted.
+OBS gate engine --only tests/test_plan73_6.py: passed 26, failed 0, xfailed 0, errors 0, wall 43.6 s
