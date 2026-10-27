@@ -1,7 +1,9 @@
 """PLAN 73.6 THE PROVER (docs/ANALYST_PLAN.md 73.6): the engine states a mined technique's obligation in Lean and off-the-shelf tools search for its proof.
 (1) THE ATOMS: the per-axis distances and whose move are vocabulary terms reading only base words (movement, tempo), the same readings for every unit and pair;
 their values are their terms' (the king-step distance to the term's set) and the vocabulary's (the Rust evaluator over `bv`); the 73.6 library holds them and
-leaves the class's constants out, 73.5b's library is the record; the miner runs with it; the entry records the re-mine without changing its status."""
+leaves the class's constants out, 73.5b's library is the record; the miner runs with it; the entry records the re-mine without changing its status.
+(2) THE STATEMENT: the emitted files are the emitter's output; hprog has the shape of forced_by_measure's premise with one sorry; the file BUILDS with exactly
+one sorry (the shared .lake: a cached build, seconds); the measure's Lean atoms read the miner's numbers."""
 import random
 import re
 
@@ -103,3 +105,71 @@ def test_the_entry_records_the_remine_and_keeps_its_status():
     assert e["status"] == "CONJECTURE" and e["measure"]["quantity"] == "(lex (area (reach L free)) (dist L corner) (dist W L))"
     line = [x for x in e["evidence"]["confirmed"] if "--library 73.6" in x]
     assert line and "every zero-failure measure there" in line[0] and "the entry's measure is among them" in line[0]
+
+
+# ---------------------------------------------------------------------------------------------------------------- (2) THE STATEMENT
+
+from pathlib import Path  # noqa: E402
+
+from catspace.incubator.analyst.discovery import technique_lean as TL  # noqa: E402
+
+ENTRY = "mined technique KRvK"
+
+
+def test_the_emitted_file_is_the_emitters_output_and_states_the_obligation():
+    """The committed file is the emitter's output (generated, never hand-edited); `hprog` is the premise of forced_by_measure at k = max(d, n) with one
+    `sorry`; the corollary applies the generic theorem; the class comes from the signature and the atoms from the term."""
+    e = LS.get(ENTRY)
+    text = TL.emit_text(e)
+    assert TL.lean_path(e).read_text() == text
+    k = max(e["measure"]["depth"], e["measure"]["n"])
+    assert f"theorem hprog : ∀ p, inClass p → Ideas.Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) {k} p := by\n  sorry\n" in text
+    assert len(re.findall(r"^\s*sorry\s*$", text, re.M)) == 1
+    assert f"Ideas.Forced.forced_by_measure inClass mu {k} hprog" in text
+    src = (TL.LEAN_DIR / "Ideas" / "ForcedByMeasure.lean").read_text()
+    assert "(hprog : ∀ p, S p → Reach ours theirs goal (fun r => S r ∧ μ r < μ p) k p)" in src           # the generic premise, the same shape
+    assert "p.board P = some ⟨p.turn, .rook⟩" in text and "p.board L = some ⟨Color.opposite p.turn, .king⟩" in text
+    assert "def atom1 (p : Position) (c : Color) (W L P O : Square) : Nat := (areaOf (oreach (some L) (fun u => !(attackedBy p c L u))))" in text
+    assert f"* {MN.RADIX} + atom2" in text and "def ours (p q : Position) : Prop := ∃ m, m ∈ legalMoves p ∧ q = applyMove p m ∧ ¬ stalemate q ∧ ¬ unitLost q" in text
+    assert "WITHOUT the claimable draws" in text                                         # the narrowest faithful version, labelled
+    kq = dict(e, name="test technique KQvK", measure=dict(e["measure"], **{"class": "KQvK"}))  # the same code states another class and another term
+    t2 = TL.emit_text(kq, "(lex (count (and (reach L free) (not edge))) (dist L corner) (dist W L))")
+    assert "p.board P = some ⟨p.turn, .queen⟩" in t2 and "(count (fun u => (oreach (some L)" in t2
+    t3 = TL.emit_text(e, "(lex (area (reach L free)) (dist L corner) (dist W (file P)))", "_t")
+    assert "(odistSet (some W) (oset fileOf (some P)))" in t3 and "namespace Ideas.Mined.mined_technique_krvk_t" in t3
+
+
+def test_the_alternative_statements_are_the_emitters_output():
+    """Every zero-failure measure of the re-mined level has its statement (`<module>_z<i>.lean`), each the emitter's output."""
+    e = LS.get(ENTRY)
+    zs = sorted(TL.MINED_DIR.glob(f"{TL.module_name(e)}_z*.lean"), key=lambda p: int(re.search(r"_z(\d+)", p.stem).group(1)))
+    assert zs
+    for p in zs:
+        m = re.search(r"here the ALTERNATIVE measure (\(lex .*?\)) \(a zero-failure", p.read_text())
+        assert m, p
+        assert TL.emit_text(e, m.group(1), p.stem[len(TL.module_name(e)):]) == p.read_text(), p
+
+
+def test_the_emitter_names_no_unit_kind():
+    t = Path(TL.__file__).read_text()
+    t = re.sub(r'"""(?:.|\n)*?"""', "", t)
+    code = "\n".join(ln.split("  #")[0] for ln in t.splitlines())
+    assert not re.search(r"\b(rook|queen|bishop|knight|ROOK|QUEEN)\b", code)
+    assert not re.search(r"['\"](KRvK|KQvK)['\"]", code)
+
+
+def test_the_statement_builds_with_exactly_one_sorry():
+    """The Lean build of the emitted module (the shared .lake: a cached build takes seconds)."""
+    b = TL.build(TL.module_name(LS.get(ENTRY)))
+    print(f"OBS 73.6 build: ok {b['ok']}, sorry warnings {b['sorries']}, {b['secs']} s")
+    assert b["ok"] and b["sorries"] == 1, b["errors"]
+
+
+def test_the_statement_measure_reads_as_the_miner():
+    """Lean's atoms (#eval on the kernel's FEN parse) equal the miner's on positions of the class; the `reach` atom is not evaluated, and says why."""
+    e = LS.get(ENTRY)
+    c = TL.check_measure(e, TL.class_fens("KRvK", 12, seed=3))
+    print("OBS 73.6 measure check: " + "; ".join(f"{n} {s} {eq if why is None else why}" for n, (s, eq, why) in c["atoms"].items()))
+    assert not c["diffs"], c["diffs"]
+    assert [n for n, (s, eq, why) in c["atoms"].items() if why is None and eq == 12] == ["atom2", "atom3"]
+    assert "exponential" in c["atoms"]["atom1"][2]

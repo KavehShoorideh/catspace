@@ -33717,3 +33717,71 @@ K+Q v K: still BEYOND THE FUSE (3, 3, 3); the best measure is now (lex (dist W (
 the queen, then its rank distance, then the region's area -- failing 4 positions of the class (73.5b's library: 48), the four printed above (the queen a knight's
 move from the corner, our king beside it, their king in the corner). Nothing is written (no K+Q entry; 73.6 does not take the K+Q technique).
 COST: K+R v K 1922.5 s in all (its CHOICE line); K+Q v K: each level line prints its cost (a run beyond the fuse prints no total); ps printed the K+Q miner at RSS 19876064 KB five minutes in (the machine has 36 GB; nothing else ran).
+
+
+## 2026-10-27 11:10 PDT -- plan 73.6 (2) built: THE STATEMENT -- the engine emits the mined technique's obligation in Lean (technique_lean.py): twelve files, each builds with exactly one sorry; nothing is proved here (branch worktree-agent-aeb5da3edbf8fc955)
+WHAT: `technique_lean.py emit "mined technique KRvK" [--zero <the re-mine's json>] [--build] [--check-measure N]` writes lean/ideas/Ideas/Mined/<module>.lean
+from the store entry, by code: THE CLASS from the material signature (the side to move has exactly its units on squares named W, P, the other side L; every
+other square empty; no castling right, no en-passant square; neither side in check; a legal move exists -- the miner's class); THEIRS the kernel's legal moves
+(legalMoves, applyMove); OURS the same under the miner's never-rules (no stalemate; no unit of ours the exchange law loses: the vocabulary's seeOf > 0);
+THE GOAL the kernel's checkmate; THE MEASURE's atoms compiled from their terms (base_vocabulary.lean for the vocabulary; the miner's own readings -- distSet,
+areaOf, whose move -- emitted as generic definitions beside them), the lexicographic tuple as its radix-128 number (technique_miner.RADIX); `theorem hprog :
+∀ p, inClass p → Ideas.Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p := by sorry` -- exactly the premise of the PROVED
+Ideas.Forced.forced_by_measure at k = max(d, n) = 3; and `forced_mate` (the mate within 3 * (mu p + 1) of our moves from every position of the class) =
+`Ideas.Forced.forced_by_measure inClass mu 3 hprog`, one application, emitted. The module name is the store's slug with '_' (a Lean module name is an
+identifier). The entry's own measure is mined_technique_krvk.lean; the 11 other zero-failure measures of the re-mined level are mined_technique_krvk_z1..z11.
+FINDINGS (what the kernel cannot express, and what cannot be read):
+(i) THE CLAIMABLE DRAWS are not in `ours`: the kernel states repetition over a game's HISTORY (Chess.threefoldClaimable of a list of positions) and the
+fifty-move claim over a position's clock; Ideas.Forced.Reach relates single positions, so repetition is not expressible there, and the fifty-move rule over
+the clock would make the obligation FALSE (from a clock of 99 every move of ours reaches a claimable draw) while the corollary's bound can pass fifty moves.
+The narrowest faithful version, labelled in each file's header: the game of moves, check, mate and stalemate (a stalemate no success) without the claimable
+draws -- the miner's own reading (its docstring: its search needs neither).
+(ii) The class does not say "won" (the kernel has no table); every position of the K+R class is won (the 2026-10-26 whole-class OBS line), so nothing is lost.
+(iii) THE MEASURE'S LEAN READING, checked against the miner's (`#eval` of each atom on the kernel's own parseFen, the units bound as mu binds them): every
+atom without `reach` equals the miner's on 40 of 40 random positions of the class in all twelve files; the region atoms (area / count of (reach L free)) are
+NOT evaluated -- the vocabulary's Lean `reach` is `Nat.repeat step 64` over closures, each step reading the last at up to 65 squares, so its #eval is
+exponential (the first attempt ran past ten minutes on 40 positions and was stopped). That is a property of evaluating the definition, not of its truth;
+the region's agreement rests on the vocabulary's own mirror tests (the Rust evaluator, test_plan73_5). It also means a proof cannot `decide` its way
+through `reach` even where enumeration were allowed.
+docs/LEAN_INDEX.md rebuilt on purpose (AGENTS rule 11): the 24 new theorems (hprog and forced_mate of each file) are OPEN (the corollary's body says it rests on
+the sorry), so no store entry can cite them as proved.
+OBS technique_lean emitted lean/ideas/Ideas/Mined/mined_technique_krvk.lean: mined technique KRvK, measure (lex (area (reach L free)) (dist L corner) (dist W L))
+OBS technique_lean build Ideas.Mined.mined_technique_krvk: ok True, sorry warnings 1, error lines 0, 4.2 s
+OBS technique_lean measure check Ideas.Mined.mined_technique_krvk on 40 random positions of the class: atom1 (area (reach L free)): not evaluated: the vocabulary's Lean `reach` iterates a closure 64 times (an exponential #eval); atom2 (dist L corner): Lean equals the miner on 40 of 40; atom3 (dist W L): Lean equals the miner on 40 of 40; 10.9 s
+OBS technique_lean emitted lean/ideas/Ideas/Mined/mined_technique_krvk_z1.lean: mined technique KRvK, measure (lex (area (reach L free)) (dist W L) (dist L corner))
+OBS technique_lean build Ideas.Mined.mined_technique_krvk_z1: ok True, sorry warnings 1, error lines 0, 2.6 s
+OBS technique_lean measure check Ideas.Mined.mined_technique_krvk_z1 on 40 random positions of the class: atom1 (area (reach L free)): not evaluated: the vocabulary's Lean `reach` iterates a closure 64 times (an exponential #eval); atom2 (dist W L): Lean equals the miner on 40 of 40; atom3 (dist L corner): Lean equals the miner on 40 of 40; 3.2 s
+OBS technique_lean emitted lean/ideas/Ideas/Mined/mined_technique_krvk_z2.lean: mined technique KRvK, measure (lex (count (reach L free)) (dist L corner) (dist W L))
+OBS technique_lean build Ideas.Mined.mined_technique_krvk_z2: ok True, sorry warnings 1, error lines 0, 2.5 s
+OBS technique_lean measure check Ideas.Mined.mined_technique_krvk_z2 on 40 random positions of the class: atom1 (count (reach L free)): not evaluated: the vocabulary's Lean `reach` iterates a closure 64 times (an exponential #eval); atom2 (dist L corner): Lean equals the miner on 40 of 40; atom3 (dist W L): Lean equals the miner on 40 of 40; 3.2 s
+OBS technique_lean emitted lean/ideas/Ideas/Mined/mined_technique_krvk_z3.lean: mined technique KRvK, measure (lex (count (reach L free)) (dist W L) (dist L corner))
+OBS technique_lean build Ideas.Mined.mined_technique_krvk_z3: ok True, sorry warnings 1, error lines 0, 2.5 s
+OBS technique_lean measure check Ideas.Mined.mined_technique_krvk_z3 on 40 random positions of the class: atom1 (count (reach L free)): not evaluated: the vocabulary's Lean `reach` iterates a closure 64 times (an exponential #eval); atom2 (dist W L): Lean equals the miner on 40 of 40; atom3 (dist L corner): Lean equals the miner on 40 of 40; 3.6 s
+OBS technique_lean emitted lean/ideas/Ideas/Mined/mined_technique_krvk_z4.lean: mined technique KRvK, measure (lex (area (reach L free)) (dist L corner) (dist W (file P)))
+OBS technique_lean build Ideas.Mined.mined_technique_krvk_z4: ok True, sorry warnings 1, error lines 0, 2.7 s
+OBS technique_lean measure check Ideas.Mined.mined_technique_krvk_z4 on 40 random positions of the class: atom1 (area (reach L free)): not evaluated: the vocabulary's Lean `reach` iterates a closure 64 times (an exponential #eval); atom2 (dist L corner): Lean equals the miner on 40 of 40; atom3 (dist W (file P)): Lean equals the miner on 40 of 40; 3.4 s
+OBS technique_lean emitted lean/ideas/Ideas/Mined/mined_technique_krvk_z5.lean: mined technique KRvK, measure (lex (area (reach L free)) (dist L corner) (dist W (rank P)))
+OBS technique_lean build Ideas.Mined.mined_technique_krvk_z5: ok True, sorry warnings 1, error lines 0, 2.5 s
+OBS technique_lean measure check Ideas.Mined.mined_technique_krvk_z5 on 40 random positions of the class: atom1 (area (reach L free)): not evaluated: the vocabulary's Lean `reach` iterates a closure 64 times (an exponential #eval); atom2 (dist L corner): Lean equals the miner on 40 of 40; atom3 (dist W (rank P)): Lean equals the miner on 40 of 40; 3.3 s
+OBS technique_lean emitted lean/ideas/Ideas/Mined/mined_technique_krvk_z6.lean: mined technique KRvK, measure (lex (area (reach L free)) (dist W (file P)) (dist L corner))
+OBS technique_lean build Ideas.Mined.mined_technique_krvk_z6: ok True, sorry warnings 1, error lines 0, 2.6 s
+OBS technique_lean measure check Ideas.Mined.mined_technique_krvk_z6 on 40 random positions of the class: atom1 (area (reach L free)): not evaluated: the vocabulary's Lean `reach` iterates a closure 64 times (an exponential #eval); atom2 (dist W (file P)): Lean equals the miner on 40 of 40; atom3 (dist L corner): Lean equals the miner on 40 of 40; 3.3 s
+OBS technique_lean emitted lean/ideas/Ideas/Mined/mined_technique_krvk_z7.lean: mined technique KRvK, measure (lex (area (reach L free)) (dist W (rank P)) (dist L corner))
+OBS technique_lean build Ideas.Mined.mined_technique_krvk_z7: ok True, sorry warnings 1, error lines 0, 3.0 s
+OBS technique_lean measure check Ideas.Mined.mined_technique_krvk_z7 on 40 random positions of the class: atom1 (area (reach L free)): not evaluated: the vocabulary's Lean `reach` iterates a closure 64 times (an exponential #eval); atom2 (dist W (rank P)): Lean equals the miner on 40 of 40; atom3 (dist L corner): Lean equals the miner on 40 of 40; 3.4 s
+OBS technique_lean emitted lean/ideas/Ideas/Mined/mined_technique_krvk_z8.lean: mined technique KRvK, measure (lex (count (reach L free)) (dist L corner) (dist W (file P)))
+OBS technique_lean build Ideas.Mined.mined_technique_krvk_z8: ok True, sorry warnings 1, error lines 0, 2.5 s
+OBS technique_lean measure check Ideas.Mined.mined_technique_krvk_z8 on 40 random positions of the class: atom1 (count (reach L free)): not evaluated: the vocabulary's Lean `reach` iterates a closure 64 times (an exponential #eval); atom2 (dist L corner): Lean equals the miner on 40 of 40; atom3 (dist W (file P)): Lean equals the miner on 40 of 40; 3.8 s
+OBS technique_lean emitted lean/ideas/Ideas/Mined/mined_technique_krvk_z9.lean: mined technique KRvK, measure (lex (count (reach L free)) (dist L corner) (dist W (rank P)))
+OBS technique_lean build Ideas.Mined.mined_technique_krvk_z9: ok True, sorry warnings 1, error lines 0, 3.0 s
+OBS technique_lean measure check Ideas.Mined.mined_technique_krvk_z9 on 40 random positions of the class: atom1 (count (reach L free)): not evaluated: the vocabulary's Lean `reach` iterates a closure 64 times (an exponential #eval); atom2 (dist L corner): Lean equals the miner on 40 of 40; atom3 (dist W (rank P)): Lean equals the miner on 40 of 40; 3.4 s
+OBS technique_lean emitted lean/ideas/Ideas/Mined/mined_technique_krvk_z10.lean: mined technique KRvK, measure (lex (count (reach L free)) (dist W (file P)) (dist L corner))
+OBS technique_lean build Ideas.Mined.mined_technique_krvk_z10: ok True, sorry warnings 1, error lines 0, 2.6 s
+OBS technique_lean measure check Ideas.Mined.mined_technique_krvk_z10 on 40 random positions of the class: atom1 (count (reach L free)): not evaluated: the vocabulary's Lean `reach` iterates a closure 64 times (an exponential #eval); atom2 (dist W (file P)): Lean equals the miner on 40 of 40; atom3 (dist L corner): Lean equals the miner on 40 of 40; 3.4 s
+OBS technique_lean emitted lean/ideas/Ideas/Mined/mined_technique_krvk_z11.lean: mined technique KRvK, measure (lex (count (reach L free)) (dist W (rank P)) (dist L corner))
+OBS technique_lean build Ideas.Mined.mined_technique_krvk_z11: ok True, sorry warnings 1, error lines 0, 2.7 s
+OBS technique_lean measure check Ideas.Mined.mined_technique_krvk_z11 on 40 random positions of the class: atom1 (count (reach L free)): not evaluated: the vocabulary's Lean `reach` iterates a closure 64 times (an exponential #eval); atom2 (dist W (rank P)): Lean equals the miner on 40 of 40; atom3 (dist L corner): Lean equals the miner on 40 of 40; 3.3 s
+TESTS (test_plan73_6, (2)): the committed files are the emitter's output (never hand-edited); hprog's text is the premise's shape, one sorry; the class from
+the signature and the atoms from the term (the same code states K+Q v K and a per-axis measure); the emitter names no unit kind; the build (the shared .lake,
+cached: seconds) has exactly one sorry; the atoms read as the miner's.
+OBS gate engine --only tests/test_plan73_6.py: passed 10, failed 0, xfailed 0, errors 0, wall 4.3 s
