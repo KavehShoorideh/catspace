@@ -33785,3 +33785,49 @@ TESTS (test_plan73_6, (2)): the committed files are the emitter's output (never 
 the signature and the atoms from the term (the same code states K+Q v K and a per-axis measure); the emitter names no unit kind; the build (the shared .lake,
 cached: seconds) has exactly one sorry; the atoms read as the miner's.
 OBS gate engine --only tests/test_plan73_6.py: passed 10, failed 0, xfailed 0, errors 0, wall 4.3 s
+
+
+## 2026-10-27 12:14 PDT -- plan 73.6 (3) built: THE HARNESS -- prover.py: Lean's automation and Duper, LeanCopilot, Goedel-Prover-V2-8B in an agentic loop with subgoal decomposition, Aristotle only with a key; every candidate checked by Lean in a scratch copy, the acceptance check; probes only, the two runs are (5) (branch worktree-agent-aeb5da3edbf8fc955)
+THE TOOLS, what works on this machine (Lean 4.32.0, Mathlib v4.32.0, nothing of Mathlib rebuilt):
+(a) Lean's automation: aesop, simp_all, omega, grind, tauto, exact? (each as it is and after `intros`) -- in lean/ideas. DUPER v4.32.0 (tag commit 0992bfad;
+    its manifest pins batteries 023ce7d6, the very revision of lean/ideas) with lean-auto at the commit it pins (fcbce0f2, no requirements of its own): WORKS, in a
+    scratch tool project (artifacts/experiments/prover/lean_tools: its own .lake, lean/ideas's packages linked, the manifest copying their revisions so Lake
+    resolves nothing; `prover.py setup` builds it). Building Duper's precompiled modules added Batteries' native objects (110 `c.o` and one shared library) to
+    the shared Batteries build directory -- no .olean rebuilt, Mathlib untouched. lean-auto's own `auto` tactic is not run: it needs an external backend.
+(b) LEANCOPILOT v4.32.0 (tag commit 2a5cd0ea; its batteries and aesop pins are lean/ideas's): WORKS after two fixes made by code in `prover.py setup`: its source
+    build of ct2.cpp fails when the copied ctranslate2 headers are nested twice (include/ctranslate2/ctranslate2: a quote-include resolves to the stale copy,
+    "redefinition of 'Device'"), the nested copy is removed and the build repeated; and its FFI library finds libctranslate2 only in the toolchain's directory,
+    so the checks run with DYLD_LIBRARY_PATH at LeanCopilot's own lib (the owner's toolchain is not touched). Its model download wrote ~/.cache/lean_copilot
+    (2.2G, du; the tactic generator ct2-leandojo-lean4-tacgen-byt5-small, model.bin 1198563189 bytes, the size Hugging Face lists); its Git LFS step reported
+    "Failed to initialize Git LFS" on the first run (git-lfs is not installed; nothing was installed). A toy check: search_proof found `omega`, duper closed
+    a propositional toy.
+(c) THE OPEN-WEIGHT PROVER: Goedel-Prover-V2-8B (Goedel-LM), the GGUF of hf.co/mradermacher/Goedel-Prover-V2-8B-GGUF at Q8_0 (ollama: architecture qwen3,
+    8.19B parameters, context 40960, quantization Q8_0, 8.7 GB), pulled through ollama (disk before: 71 GB free). The agentic loop: whole-proof samples in the
+    model's own prompt format, Lean's errors fed back until Lean's first error repeats; SUBGOAL DECOMPOSITION -- the model writes a sketch of `have` steps
+    closed by sorry, Lean's extract_goal (Mathlib) states each as a standalone goal, each attacked by (a)-(c) with its share of the time left, a proved one kept
+    and offered to every later attempt, the parent assembled from them (`exact <sub-lemma> <binders>`) and checked; a round that gives Lean nothing to check
+    ends a goal's loop. Not tried: DeepSeek-Prover-V2-7B, NanoProof (one model was enough to build the loop; the fuse buys one model's samples).
+(d) HARMONIC ARISTOTLE: ARISTOTLE_API_KEY is not set -- "skipped: no key", nothing sent (tested with the network patched to fail).
+THE ACCEPTANCE CHECK (`accept`): no Lean error, no sorry warning; `#print axioms` of the theorem and of the file's corollary within propext, Classical.choice,
+Quot.sound; a scan of the tools' text rejecting native_decide, decide, fin_cases, interval_cases, Fintype, Finset.univ, List.finRange, sorry, admit, axiom,
+ofReduceBool, implemented_by, extern, unsafe. On toys: native_decide REJECTED (Lean 4.32 shows it in #print axioms as `toy._native.native_decide.ax_1_1`,
+not Lean.ofReduceBool -- the allow-list catches either), sorry REJECTED (sorryAx), a new axiom REJECTED (toyAx), a genuine proof ACCEPTED (no axiom).
+PROBES (plumbing, not the two runs of (5)):
+OBS prover mined_technique_krvk blind: aristotle skipped: no key
+OBS prover mined_technique_krvk blind goal hprog: OPEN after the fuse; last: None; samples 0; sub-goals proposed 0, proved 0, open 0; wall 157.1 s
+OBS prover mined_technique_krvk blind tally (tried, accepted): aristotle 1/0; automation aesop 2/0; automation duper [*] 2/0; automation exact? 2/0; automation grind 2/0; automation omega 2/0; automation simp_all 2/0; automation tauto 2/0; copilot search_proof 2/0; attempts logged 17 in artifacts/experiments/prover/20261027_103144_mined_technique_krvk_blind/attempts.jsonl
+(every rejection a real verdict: "made no progress" from aesop, simp_all, omega, grind, tauto, exact?; Duper "unable to solve with the current configuration";
+search_proof no progress. The run's "last: None" was a reporting gap, fixed: the tactic tries now report their last error.)
+THE MODEL'S REASONING MODE, measured (the attempt logs, read by a script): ON -- one sample reached the cap of 10240 tokens in 1178.0 s still reasoning, the
+answer empty (it looped on "hprog is false ... we must assume it"); OFF -- samples of 4243 tokens in 464.4 s and 1923 in 241.0 s, each with Lean code
+(rejected: a projection of the wrong conjunct, an identifier that does not exist, `decide`):
+OBS prover mined_technique_krvk blind goal hprog: OPEN after the fuse; last: the model's answer held no proof of the goal (length); samples 1; sub-goals proposed 0, proved 0, open 0; wall 1178.0 s
+OBS prover mined_technique_krvk blind goal hprog: OPEN after the fuse; last: Ideas.Mined.mined_technique_krvk.hprog depends on sorryAx; Ideas.Mined.mined_technique_krvk.forced_mate depends on sorryAx; banned: decide; samples 2; sub-goals proposed 0, proved 0, open 0; wall 734.8 s
+So the runs use the reasoning mode OFF (the model writes its plan and its code in the answer, as its prompt asks); `--think` turns it on. The second probe's
+"last" showed Lean 4.32's coded messages (`error(lean.unknownIdentifier):`) escaping the error parser: fixed (the check had rejected it all the same).
+THE FUSE: 90 minutes of wall-clock per top obligation per run (FUSE_SECONDS, docstring): the time this plan has for each of its two runs in one sitting; at about
+nine tokens a second it buys about a dozen samples with their feedback and one or two decompositions. TOKEN_CAP 10240 per sample.
+A FAKE-MODEL TEST of the decomposition (test_plan73_6): a sketch with two `have ... := by sorry`, extract_goal states `blind_s1 (a b : Nat) (h : a ≤ b) : a < b + 1`
+and `blind_s2 ... (h1 : a < b + 1) : b ≤ b`, omega and simp_all prove them, the parent `exact blind_s1 a b h` ... is accepted. Found on the way and fixed: a proved
+sub-lemma entered a sub-goal's file twice; a fake model answering nothing spun the loop (23 GB of log in a temp directory, removed) -- hence the no-candidate rule.
+OBS gate engine --only tests/test_plan73_6.py: passed 17, failed 0, xfailed 0, errors 0, wall 20.3 s

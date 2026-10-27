@@ -3,7 +3,10 @@
 their values are their terms' (the king-step distance to the term's set) and the vocabulary's (the Rust evaluator over `bv`); the 73.6 library holds them and
 leaves the class's constants out, 73.5b's library is the record; the miner runs with it; the entry records the re-mine without changing its status.
 (2) THE STATEMENT: the emitted files are the emitter's output; hprog has the shape of forced_by_measure's premise with one sorry; the file BUILDS with exactly
-one sorry (the shared .lake: a cached build, seconds); the measure's Lean atoms read the miner's numbers."""
+one sorry (the shared .lake: a cached build, seconds); the measure's Lean atoms read the miner's numbers.
+(3) THE HARNESS: the acceptance check rejects native_decide, sorry and a new axiom and accepts a genuine toy proof; the scan; Aristotle skipped
+without a key (nothing sent); the goal, the splice and the sketch helpers; the hint verbatim; the decomposition path end to end with a fake model;
+a round with no candidate ends the loop."""
 import random
 import re
 
@@ -173,3 +176,112 @@ def test_the_statement_measure_reads_as_the_miner():
     assert not c["diffs"], c["diffs"]
     assert [n for n, (s, eq, why) in c["atoms"].items() if why is None and eq == 12] == ["atom2", "atom3"]
     assert "exponential" in c["atoms"]["atom1"][2]
+
+
+# ---------------------------------------------------------------------------------------------------------------- (3) THE HARNESS
+
+from catspace.incubator.analyst.discovery import prover as PR  # noqa: E402
+
+TOYS = {
+    "native_decide": ("theorem toy : 2 + 2 = 4 := by\n  native_decide\n", "native_decide"),
+    "sorry": ("theorem toy : 2 + 2 = 5 := by\n  sorry\n", "sorry"),
+    "a new axiom": ("axiom toyAx : 2 + 2 = 5\ntheorem toy : 2 + 2 = 5 := by\n  exact toyAx\n", "exact toyAx"),
+    "genuine": ("theorem toy (a b : Nat) : a + b = b + a := by\n  exact Nat.add_comm a b\n", "exact Nat.add_comm a b"),
+}
+
+
+def test_the_acceptance_check_rejects_native_decide_sorry_and_a_new_axiom_and_accepts_a_genuine_proof():
+    got = {}
+    for k, (text, proof) in TOYS.items():
+        chk = PR.lean_check(text, ("toy",), "ideas", tag="test_toy_" + re.sub(r"\W", "_", k))
+        got[k] = PR.accept(chk, ("toy",), (proof,))
+        print(f"OBS 73.6 acceptance {k}: {got[k]}, axioms {chk.axioms}")
+    assert got["genuine"] == (True, [])
+    assert not got["native_decide"][0] and "banned: native_decide" in got["native_decide"][1]
+    assert any("native_decide" in w for w in got["native_decide"][1] if "depends on" in w)          # #print axioms sees it too (an auxiliary axiom)
+    assert not got["sorry"][0] and any("sorryAx" in w for w in got["sorry"][1])
+    assert not got["a new axiom"][0] and "toy depends on toyAx" in got["a new axiom"][1]
+
+
+def test_the_scan_bans_enumeration_and_reads_past_comments_and_lemma_names():
+    assert PR.scan("simp [decide_eq_true_eq]\n-- native_decide in a comment\nexact Nat.le_refl _") == []
+    for bad in ("native_decide", "decide", "simp (config := {decide := true})", "fin_cases s", "interval_cases x", "exact Finset.univ", "sorry", "admit"):
+        assert PR.scan(bad), bad
+
+
+def test_the_harness_skips_aristotle_without_a_key(monkeypatch, tmp_path):
+    monkeypatch.delenv("ARISTOTLE_API_KEY", raising=False)
+
+    def no_network(*a, **k):
+        raise AssertionError("a file was sent")
+    monkeypatch.setattr(PR.urllib.request, "urlopen", no_network)
+    log = PR.Log(tmp_path)
+    g = PR.goals_of(PR.MINED_DIR / "mined_technique_krvk.lean")[0]
+    assert PR.aristotle(g, log) == "skipped: no key"
+    assert "skipped: no key" in (tmp_path / "attempts.jsonl").read_text()
+
+
+def test_the_goal_the_splice_and_the_sketch_helpers():
+    """The emitted file's one goal (its docstring with it, the corollary's axioms checked too); a model's answer contributes only its proof and its new
+    lemmas -- our definitions and statement are kept; a sketch's sorries are filled in order; a sub-goal's binders are read."""
+    path = PR.MINED_DIR / "mined_technique_krvk.lean"
+    (g,) = PR.goals_of(path)
+    assert g.name == "hprog" and g.full == "Ideas.Mined.mined_technique_krvk.hprog" and g.extra_axioms == ("Ideas.Mined.mined_technique_krvk.forced_mate",)
+    assert g.stmt.lstrip().startswith("/-- THE OBLIGATION") and g.text("sorry") == path.read_text()
+    answer = ("def inClass (p : Position) : Prop := True\n\nlemma helper (n : Nat) : n ≤ n := le_refl n\n\n"
+              "theorem hprog : ∀ p, inClass p → True := by\n  intro p hp\n  exact helper\n")
+    proof, lemmas = PR.take_proof(answer, g, {"inClass", "ours", "theirs", "mu", "hprog"})
+    assert proof.strip() == "intro p hp\n  exact helper".strip() and "def inClass" not in lemmas and lemmas.startswith("theorem helper")
+    assert PR.fill_sorries("have h : A := by sorry\nhave h2 : B := sorry\nsorry", lambda k, f: f"<{k}:{f}>") == "have h : A := <0:by>\nhave h2 : B := <1:term>\n<2:tactic>"
+    assert PR.binder_names("theorem s1 (p : Position) (hp : inClass p) {x : Nat} [inst : Inhabited Nat] (h1 : ∃ q, ours p q) :\n  mu p < 1 := by") == ["p", "hp", "h1"]
+
+
+def test_the_hint_is_the_journal_text_verbatim():
+    h = PR.hint_text()
+    j = " ".join((Path(PR.paths.REPO_ROOT) / "JOURNAL.md").read_text().split())
+    assert h in j and h.startswith('"doing an exhaustive check on all king+rook positions is dumb. The proof is simple.')
+    assert h.endswith('"distance from opposition on each rank".') and "i don't want you to write this" not in h
+
+
+SKETCH = """Plan: split the conjunction.
+```lean4
+theorem toyg (a b : Nat) (h : a ≤ b) : a < b + 1 ∧ b ≤ b := by
+  have h1 : a < b + 1 := by
+    sorry
+  have h2 : b ≤ b := by sorry
+  exact ⟨h1, h2⟩
+```"""
+TOY_GOAL = "theorem toyg (a b : Nat) (h : a ≤ b) : a < b + 1 ∧ b ≤ b := by\n  sorry\n"
+
+
+def _fake(answer, calls):
+    def gen(prompt, seed, think=False):
+        calls.append(prompt)
+        return dict(response=answer, thinking="", tokens=0, secs=0.0, prompt_tokens=0, done_reason="stop")
+    return gen
+
+
+def test_the_decomposition_states_the_sketchs_goals_proves_them_and_assembles_the_parent(monkeypatch, tmp_path):
+    """SUBGOAL DECOMPOSITION without the model (a fake answer): Lean's extract_goal states each `sorry` of the sketch with its context; the automation proves
+    each; the parent is assembled from the proved sub-lemmas and accepted; every sub-goal is recorded with its parent."""
+    calls = []
+    monkeypatch.setattr(PR, "generate", _fake(SKETCH, calls))
+    f = tmp_path / "toy.lean"
+    f.write_text(TOY_GOAL)
+    (g,) = PR.goals_of(f)
+    P = PR.Prover(f, "blind", ("automation", "llm"), PR.Log(tmp_path / "log"), 900)
+    r = P.decompose(g, f.read_text())
+    assert r is not None and r["tool"].startswith("decomposition") and "exact blind_s1 a b h" in r["proof"]
+    assert [n for n, _p, _s in P.proposed] == ["blind_s1", "blind_s2"] and set(P.proved) == {"blind_s1", "blind_s2"}
+    assert P.proposed[1][2] == "theorem blind_s2 (a b : Nat) (h : a ≤ b) (h1 : a < b + 1) : b ≤ b := by" and len(calls) == 1
+
+
+def test_a_round_with_no_candidate_ends_the_goals_loop(monkeypatch, tmp_path):
+    """A model that never answers the goal (here: always another theorem) gives Lean nothing to check in a round: the loop ends, it does not spin to the fuse."""
+    calls = []
+    monkeypatch.setattr(PR, "generate", _fake("```lean4\ntheorem other : True := trivial\n```", calls))
+    f = tmp_path / "toy.lean"
+    f.write_text(TOY_GOAL)
+    (g,) = PR.goals_of(f)
+    P = PR.Prover(f, "blind", ("llm",), PR.Log(tmp_path / "log"), 900)
+    assert P.llm(g) is None and len(calls) == 2 and "no candidate in a whole round" in P.results["toyg"]["last"]
