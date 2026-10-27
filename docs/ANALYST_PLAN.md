@@ -3808,3 +3808,32 @@ seeds 1-3, table off: mate after 41 / 31 / 29 plies (baseline re-run: repetition
 (50 / 48 / 53); (b) blind: the hand-made K+Q measure has zero failures at d = 3 on every position of the class, the mined best 48 -- not equivalent, the missing word is
 our king's way to the front zone; both mate their three play-outs; (c) the guard identical (ten + wide, tiers 0 and 2); (d) table on unchanged. LEAN: the obligation
 is stated, not proved (CONJECTURE).
+
+
+### 73.6 THE PROVER: the engine states the obligation and an off-the-shelf prover finds the proof (Kaveh 2026-10-27 GO: "instruct the engine to try to find the proof using alpha proof
+or whatever off the shelf tool instead of exhaustive search"; "I don't want you to write this")
+The 73.5b technique's obligation was CHECKED on all 175168 positions of the class: an enumeration, not a proof (Kaveh: "doing an exhaustive check on all king+rook positions is dumb. The
+proof is simple."). The reference proof is his, in the journal of 2026-10-27, and it is NOT given to the prover in the blind attempt. Nobody writes the proof: the engine writes the
+STATEMENT, the tools search for the proof, Lean checks it.
+(1) THE STATEMENT, emitted by the engine. `technique_lean.py` turns a TECHNIQUE entry of the store into a Lean file `lean/ideas/Ideas/Mined/<slug>.lean` over the chess-lean rule kernel
+the library already uses (Game.step / the board model of QueenMateBoard, Ideas.Forced): the class predicate (the material signature, the winning side to move), the moves `ours` (legal,
+with the never-rules: no stalemate, no unit the exchange law loses, no claimable draw) and `theirs` (legal), the measure as DEFINITIONS generated from its term (each vocabulary atom
+compiled to a Lean definition over positions; the lexicographic tuple to its mixed-radix number, as the entry's obligation already says), and the theorem `hprog` of
+Ideas.Forced.forced_by_measure at k = the entry's depth, with `sorry`; the corollary (the forced mate from every position of the class) is proved from `hprog` by forced_by_measure in the
+emitted file, mechanically. The file must BUILD with the one `sorry` (the statement type-checks) before any prover runs; a statement the kernel cannot express is a FINDING.
+(2) THE ATOMS, generic: add per-axis distances (a unit's rank / file distance to an edge; the rank / file distance between two units) and the side to move's parity to the miner's library
+(73.5 (3)), so "distance from opposition on each rank" is expressible from movement and tempo; re-mine KRvK (and KQvK); emit the statement for the chosen measure and for every zero-failure
+measure of the chosen level (the prover may find one easier than another). The whole-class check stays EVIDENCE, never the proof.
+(3) THE PROVER HARNESS `prover.py`, cheapest first, each attempt checked by Lean: (a) Lean's own automation on each `sorry` (aesop, simp, omega; Duper / lean-auto if a version matches Lean
+4.32 and Mathlib v4.32); (b) LeanCopilot's search_proof if it builds on 4.32; (c) an OPEN-WEIGHT PROVER run locally through ollama (Goedel-Prover-V2-8B, DeepSeek-Prover-V2-7B or NanoProof:
+whichever is available as weights that fit 36 GB; name it and its version) in an AGENTIC LOOP: whole-proof attempts with the compiler's errors fed back, and SUBGOAL DECOMPOSITION -- the
+model proposes `have` lemmas, each becomes its own `sorry` attacked recursively (the DeepSeek-Prover-V2 / Discover-and-Prove pattern); (d) Harmonic's Aristotle API ONLY when a key is
+configured (`ARISTOTLE_API_KEY`; absent -> skipped with a line saying so; never send files without it). A named fuse per obligation (wall-clock, stated), not a count tuned to a result.
+BANNED in an accepted proof (Kaveh's rule: by reasoning, never brute force): `native_decide` (`#print axioms` must show no `Lean.ofReduceBool`), `decide` / `Fintype` enumeration over
+positions or squares-of-the-class, `sorry`, new axioms. A proof that passes `lake build` and these checks is accepted.
+(4) THE STORE: an accepted proof makes the entry PROVED (lean = the theorem names; LEAN_INDEX rebuilt); every SUB-LEMMA the prover proved on the way becomes its own entry (origin MINED,
+kind by role -- a lemma like "the rook is never lost to a lone king" is a word in itself, Kaveh: "This should be a lemma in itself"), reusable by the agenda and by the next proof. Unproved
+sub-goals become CONJECTURE entries with the prover's last state. Everything the prover tried is logged (artifacts/experiments/prover/), the tally printed as OBS.
+(5) TWO ATTEMPTS, reported apart: BLIND (the statement only), then HINTED (Kaveh's natural-language proof from the journal handed to the prover as a sketch, as one hands a human proof to
+an autoformalizer) -- the difference is itself a result.
+NOT IN 73.6: proving by hand; the K+Q technique (no mined entry yet); AlphaProof (application-only: Kaveh's call).

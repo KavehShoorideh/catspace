@@ -33628,3 +33628,21 @@ DEVIATION by the agent (Kaveh's call): the sampled criterion (corpus + 3000 unif
 tied at the chosen level; the term's string order broke the tie (arbitrary).
 OPEN (Kaveh): whole-class checking vs a sample for enumerable classes; a technique that applies should END the other questions (the reason questions per move rose); the missing
 "front zone" atom for K+Q (derived how?); the obligation's proof by reasoning; the five weak PROVED labels of part 1.
+
+
+## 2026-10-27 -- Kaveh on the mined K+R technique: an exhaustive check is not a proof; the engine must FIND the proof with an off-the-shelf prover
+Kaveh, verbatim: "doing an exhaustive check on all king+rook positions is dumb. The proof is simple. In any given position, first you prove that you can prevent losing your rook no matter
+what he does because you have a king. This should be a lemma in itself. Any piece other than a pawn can be protected against a lone opponent king by the friendly king no matter what the
+king does. So you can walk your king to the center and put the rook next to it. That limits the opponent to one quarter of the board. Then you prove that no matter where the opponent king
+goes, you can chase trying to set up opposition to push the king back. Either the king has to move back, or to the side to give you opposition, or away from you toward an edge, until an
+edge is reached. At which point the opposition is unavoidable and the king moves back until it hits the back row. Repeat at the back row and the king has no other row to go to because it's
+the last row, therefore checkmate." Then: "so the measure is opposition on each rank" / "distance from opposition on each rank". Then: "i don't want you to write this, i want you to instruct
+the engine to try to find the proof using alpha proof or whatever off the shelf tool instead of exhaustive search."
+RECORDED AS THE REFERENCE PROOF (not given to the prover in its blind attempt). One correction for the record (rigor): the protection lemma as stated ("any piece other than a pawn") holds
+for the long-range pieces (rook, queen: a line of seven squares, the lone king covers at most three of it, our king blocks at most one) but not for a knight or bishop in a corner (knight a1,
+their king b2: both its squares b3, c2 are attacked; bishop a1, their king b2: its one diagonal is blocked) unless our king is near -- the prover will meet the precondition if it is needed.
+The measure: per rank, the distance from opposition -- the miner's atoms had no per-axis distance (only the kings' Chebyshev distance), so it could not express it; 73.6 adds the generic
+per-axis atoms.
+TOOLS (web, 2026-10-27): AlphaProof -- an application-only interactive tool on DeepMind's servers; AlphaProof Nexus (2026-10-08) published results, access terms not found; Harmonic Aristotle --
+an API with an SDK (aristotlelib) that fills `sorry`s in Lean files, account and key needed; open weights -- Goedel-Prover-V2, DeepSeek-Prover-V2 (7B), NanoProof (2026-10); in Lean --
+LeanCopilot (search_proof = model tactics + aesop), Duper, lean-auto. This machine: M3 Pro, 36 GB, ollama installed, 73 GB free (a 7-8B prover fits). Plan 73.6 written: local first.
