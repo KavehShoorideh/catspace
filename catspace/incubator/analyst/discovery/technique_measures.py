@@ -30,6 +30,14 @@ find at every floor position. THE CHOICE: among the candidates, the smallest flo
 If there is no technique candidate nothing is relaxed: the zero-violation terms (if any) and the best by violation rate are printed, with one violation each,
 and the miner stops -- that is the finding; no entry is written.
 
+THE PER-AXIS ATOMS (plan 73.6 (2), `AXIS_ATOMS`; read by `atom_values` beside the nine, used by the 73.6 library of technique_miner.py -- 73.5's library above is
+the record and unchanged): for every unit U of a three-man class (W our king, L their king, P our other piece, the vocabulary's names) its RANK DISTANCE TO AN EDGE
+`(dist U (or (rank a1) (rank a8)))` and its FILE DISTANCE TO AN EDGE `(dist U (or (file a1) (file h1)))` (the king steps to the nearest square of the first or the
+last rank / file: movement); for every two units U, V the RANK DISTANCE and the FILE DISTANCE between them, `(dist U (rank V))` and `(dist U (file V))` (the king
+steps from U to V's rank / file: movement); and WHOSE MOVE, `turn` (0 when the winning side is to move, 1 when the other side is: TEMPO, the base's "whose move";
+a reading of the library like `area`). No formula is named after an ending: the same per-axis readings for every unit and every pair, the class's units by the
+vocabulary's names. Each that the vocabulary also says carries its `bv` (rankof / fileof / min / diff), read through the Rust evaluator in the tests.
+
 THE DIAGNOSTIC (`diagnose`, `--diagnose`; NOT the plan's criterion -- it chooses nothing and writes nothing): the Lean obligation's own form read on the same
 positions -- at each corpus position (winning side to move) above a measured floor, does SOME move drop the measure against EVERY reply (depth one; and, where
 none does, within two of our moves: depth two), refusing a move that stalemates or leaves a unit of ours that the exchange law loses (graph.see_for); the floor
@@ -154,16 +162,66 @@ ATOMS = (
     Atom("material_them", "material_them", "their material", "material_them"),
     Atom("tempo", "halfmoves", "the moves played since the last capture or pawn move", "halfmoves"),
 )
-ATOM_BY_KEY = {a.key: a for a in ATOMS}
+UNITS = (("W", "our king"), ("L", "their king"), ("P", "our other piece"))      # the vocabulary's names of a three-man class's units (base_vocabulary.PRIMITIVES)
+
+
+def _axis_atoms() -> tuple:
+    """THE PER-AXIS ATOMS (73.6 (2); see the docstring): every unit's rank and file distance to an edge, every two units' rank and file distance, whose move."""
+    out = []
+    for u, g in UNITS:
+        out.append(Atom(f"{u}_rank_edge", f"(dist {u} (or (rank a1) (rank a8)))", f"{g}'s rank distance to the nearest edge rank (the first or the last)",
+                        f"(min (rankof {u}) (diff (rankof {u}) 7))"))
+        out.append(Atom(f"{u}_file_edge", f"(dist {u} (or (file a1) (file h1)))", f"{g}'s file distance to the nearest edge file (the a-file or the h-file)",
+                        f"(min (fileof {u}) (diff (fileof {u}) 7))"))
+    for (u, g), (v, h) in itertools.combinations(UNITS, 2):
+        out.append(Atom(f"{u}{v}_rank", f"(dist {u} (rank {v}))", f"the rank distance between {g} and {h} (the king steps from {g} to {h}'s rank)",
+                        f"(diff (rankof {u}) (rankof {v}))"))
+        out.append(Atom(f"{u}{v}_file", f"(dist {u} (file {v}))", f"the file distance between {g} and {h} (the king steps from {g} to {h}'s file)",
+                        f"(diff (fileof {u}) (fileof {v}))"))
+    out.append(Atom("turn", "turn", "whose move: 0 when the winning side is to move, 1 when the other side is", None))
+    return tuple(out)
+
+
+AXIS_ATOMS = _axis_atoms()
+ATOM_BY_KEY = {a.key: a for a in ATOMS + AXIS_ATOMS}
+_KIND_ORDER = (chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT, chess.PAWN)
+
+
+def other_unit(board: chess.Board, side: bool) -> "int | None":
+    """`P`, our other piece (the vocabulary's first-ranked non-king piece of `side`: the strongest kind, a pawn the most advanced, then the lower square), or None."""
+    for k in _KIND_ORDER:
+        sq = list(chess.scan_forward(board.pieces_mask(k, side)))
+        if sq:
+            if k == chess.PAWN:
+                return max(sq, key=lambda s: ((chess.square_rank(s) if side else 7 - chess.square_rank(s)), -s))
+            return min(sq)
+    return None
+
+
+def axis_values(board: chess.Board, side: bool) -> dict:
+    """THE PER-AXIS ATOMS' values (73.6 (2)): the king steps to the nearest square of a rank / file set are the rank / file differences (a king steps one rank and
+    one file at once), read here as the arithmetic (the tests compare `dist_to` and the vocabulary's evaluator); a unit not on the board reads 0 (as `onum` does)."""
+    sq = dict(W=board.king(side), L=board.king(not side), P=other_unit(board, side))
+    out = {}
+    for u, _g in UNITS:
+        s = sq[u]
+        out[f"{u}_rank_edge"] = 0 if s is None else min(chess.square_rank(s), 7 - chess.square_rank(s))
+        out[f"{u}_file_edge"] = 0 if s is None else min(chess.square_file(s), 7 - chess.square_file(s))
+    for (u, _g), (v, _h) in itertools.combinations(UNITS, 2):
+        s, t = sq[u], sq[v]
+        out[f"{u}{v}_rank"] = 0 if s is None or t is None else abs(chess.square_rank(s) - chess.square_rank(t))
+        out[f"{u}{v}_file"] = 0 if s is None or t is None else abs(chess.square_file(s) - chess.square_file(t))
+    out["turn"] = 0 if board.turn == side else 1
+    return out
 
 
 def atom_values(board: chess.Board, side: bool) -> dict:
-    """Every atom's value on `board` read for the winning side `side` (one flood fill serves the three region atoms)."""
+    """Every atom's value on `board` read for the winning side `side` (one flood fill serves the three region atoms); the per-axis atoms of 73.6 too."""
     reg = region(board, side)
     lk, wk = board.king(not side), board.king(side)
     return dict(region=chess.popcount(reg), region_off_edge=chess.popcount(reg & ~EDGE), region_area=area(reg), edge_dist=dist_to(lk, EDGE),
                 corner_dist=dist_to(lk, CORNER), kings_dist=chess.square_distance(wk, lk) if lk is not None and wk is not None else 0,
-                material_us=material(board, side), material_them=material(board, not side), tempo=board.halfmove_clock)
+                material_us=material(board, side), material_them=material(board, not side), tempo=board.halfmove_clock, **axis_values(board, side))
 
 
 @dataclass(frozen=True)

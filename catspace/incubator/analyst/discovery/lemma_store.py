@@ -455,7 +455,8 @@ TERM_READS = {
                 | {f"forcing_{s}_{v}" for s in ("us", "them") for v in ("1", "3", "5", "9", "mate")},
     "attack": {"attacks", "attacked", "free", "hit", "unhit", "xray", "attackers", "defenders", "check", "attackable", "mobility", "see", "declined"}
               | {f"forcing_{s}_{v}" for s in ("us", "them") for v in ("1", "3", "5", "9", "mate")},
-    "tempo": {"pushes", "halfmoves", "ago", "seen", "movecount", "after", "least", "most", "delta", "gained", "lost"}
+    "tempo": {"pushes", "halfmoves", "ago", "seen", "movecount", "after", "least", "most", "delta", "gained", "lost",
+              "turn"}                                                   # (plan 73.6: whose move, a reading of the technique miner's library)
              | {f"forcing_{s}_{v}" for s in ("us", "them") for v in ("1", "3", "5", "9", "mate")},
     "material": {"see", "worth", "maxworth", "balance", "material_us", "material_them", "declined", "without", "mobility", "attackable"}
                 | {f"forcing_{s}_{v}" for s in ("us", "them") for v in ("1", "3", "5", "9", "mate")},

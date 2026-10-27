@@ -13,6 +13,11 @@ technique spends; a clock that rises on every ply cannot fall, and it is no func
 COMPOSITIONS (generic, never named after an ending): rank 1 -- every atom, the sum and the product of every two (73.5 (3)); ranks 2 and 3 -- the LEXICOGRAPHIC
 TUPLE of two or three distinct atoms, `(lex A B ...)`: compare A; on a tie, B; ...
 
+THE 73.6 LIBRARY (`--library 73.6`, plan 73.6 (2)): the same atoms and the PER-AXIS ATOMS of technique_measures.AXIS_ATOMS (every unit's rank / file distance to
+an edge, every two units' rank / file distance, whose move), the class's constant atoms left out (`constant_atoms`: a candidate with one equals one without it);
+the search, the criterion and the fuse unchanged. `--record --from _class_736` writes the run into the class's mined entry's evidence (status and measure
+unchanged: the whole-class check is evidence, never the proof).
+
 THE SEARCH, simplest first (73.5b): d = 1, 2, 3; for each d, ranks 1, 2, 3; for each (d, ranks), the floor n = 2, then n = 3. The FIRST (d, ranks, n) where some
 measure has ZERO failures is the answer; among those the fewest base reads (then the fewest atoms, the shorter term). THE FUSE is the hand-made K+Q technique's
 own shape (mating.rs's doc header: three ranks, a tempo move within three, a three-move net): (d, ranks, n) = (3, 3, 3) -- beyond it the generator stops and
@@ -58,7 +63,12 @@ TOP = 5                     # the best candidates printed per level
 INF = 1 << 50
 
 ATOMS = tuple(a for a in TM.ATOMS if "tempo" not in LS.term_reads(a.sexpr))      # "TEMPO enters as d"
-KEYS = tuple(a.key for a in ATOMS)
+# PLAN 73.6 (2): the library with the PER-AXIS ATOMS (technique_measures.AXIS_ATOMS: every unit's rank / file distance to an edge, every two units' rank / file
+# distance, whose move). The clock stays out (73.5b's reason: it rises on every ply and is no function of the position); WHOSE MOVE is a function of the position
+# and enters. 73.5b's library (ATOMS) is the record and the default.
+ATOMS_736 = ATOMS + TM.AXIS_ATOMS
+LIBRARIES = {"73.5b": ATOMS, "73.6": ATOMS_736}
+KEYS = tuple(a.key for a in ATOMS_736)                  # the graph's atom row: every atom of every library
 COL = {k: i for i, k in enumerate(KEYS)}
 
 
@@ -117,17 +127,18 @@ class Measure:
         return v
 
 
-def candidates(ranks: int) -> list:
-    """THE CANDIDATES of a rank: rank 1 -- the atoms, the sum and the product of every two (73.5 (3)); rank k > 1 -- the lexicographic tuple of k distinct atoms."""
+def candidates(ranks: int, atoms: tuple = ATOMS) -> list:
+    """THE CANDIDATES of a rank over `atoms` (a library): rank 1 -- the atoms, the sum and the product of every two (73.5 (3)); rank k > 1 -- the lexicographic
+    tuple of k distinct atoms."""
     if ranks == 1:
-        out = [Measure(a.sexpr, "atom", (a.key,), a.gloss) for a in ATOMS]
-        for a, b in itertools.combinations(ATOMS, 2):
+        out = [Measure(a.sexpr, "atom", (a.key,), a.gloss) for a in atoms]
+        for a, b in itertools.combinations(atoms, 2):
             out.append(Measure(f"(sum {a.sexpr} {b.sexpr})", "sum", (a.key, b.key), f"{a.gloss} plus {b.gloss}"))
-        for a, b in itertools.combinations(ATOMS, 2):
+        for a, b in itertools.combinations(atoms, 2):
             out.append(Measure(f"(product {a.sexpr} {b.sexpr})", "product", (a.key, b.key), f"{a.gloss} times {b.gloss}"))
         return out
     out = []
-    for t in itertools.permutations(ATOMS, ranks):
+    for t in itertools.permutations(atoms, ranks):
         out.append(Measure("(lex " + " ".join(a.sexpr for a in t) + ")", "lex", tuple(a.key for a in t),
                            "lexicographic: " + "; on a tie, ".join(a.gloss for a in t)))
     return out
@@ -137,11 +148,20 @@ _BY_SEXPR: dict = {}
 
 
 def measure_of(sexpr: str) -> "Measure | None":
-    """The library's measure printed as `sexpr` (an entry's quantity), or None when it is no term of the library (a hand-made entry's prose)."""
+    """The measure printed as `sexpr` (an entry's quantity) in any library (73.6's holds 73.5b's), or None when it is no term of a library (a hand-made entry's
+    prose)."""
     if not _BY_SEXPR:
         for r in RANKS:
-            _BY_SEXPR.update({m.sexpr: m for m in candidates(r)})
+            _BY_SEXPR.update({m.sexpr: m for m in candidates(r, ATOMS_736)})
     return _BY_SEXPR.get(sexpr)
+
+
+def constant_atoms(graph: "Graph", atoms: tuple) -> list:
+    """The atoms of `atoms` that read one value on every node of the graph (the class's constants: material in a class where nothing is captured, whose move at
+    nodes where the winning side always moves) -- a candidate with one is EQUIVALENT to one without it (a sum shifts, a product scales or reads 0, a lexicographic
+    rank on it ties everywhere), so the 73.6 library leaves them out (printed); 73.5b's run kept them (the record)."""
+    A = np.array(graph.rows, dtype=np.int64)
+    return [a for a in atoms if A[:, COL[a.key]].min() == A[:, COL[a.key]].max()]
 
 
 def atom_row(board: chess.Board, side: bool) -> tuple:
@@ -299,8 +319,9 @@ def drops(graph: Graph, m: Measure, roots: list, d: int) -> list:
 
 # ---------------------------------------------------------------------------------------------------------------- the miner
 
-def mine(sig: str, rows: list, log=print, top: int = TOP) -> dict:
-    """THE AMENDED MINER over a sample -> {sig, levels, choice (a dict or None), best (when beyond the fuse), floor}; prints the OBS lines."""
+def mine(sig: str, rows: list, log=print, top: int = TOP, library: str = "73.5b") -> dict:
+    """THE AMENDED MINER over a sample -> {sig, levels, choice (a dict or None), best (when beyond the fuse), floor}; prints the OBS lines. `library`: 73.5b's
+    atoms (the record) or 73.6's (with the per-axis atoms; the class's constant atoms left out, `constant_atoms`)."""
     TC.parse_signature(sig)
     t_all = time.monotonic()
     graph = Graph(chess.WHITE)
@@ -308,12 +329,20 @@ def mine(sig: str, rows: list, log=print, top: int = TOP) -> dict:
     fl = {n: {j for j, r in enumerate(rows) if r[f"floor{n}"] is not None} for n in NETS}      # the sample's floors (technique_sample.py)
     big = int(np.array(graph.rows).max())
     assert big < RADIX, f"an atom reads {big} >= RADIX"
-    lib = {r: candidates(r) for r in RANKS}
+    atoms = LIBRARIES[library]
+    dropped = []
+    if library != "73.5b":
+        dropped = constant_atoms(graph, atoms)
+        atoms = tuple(a for a in atoms if a not in dropped)
+        log(f"OBS miner {sig} library {library}: the constants of the class left out (a candidate with one equals one without it): "
+            + (", ".join(f"{a.sexpr} = {graph.rows[0][COL[a.key]]}" for a in dropped) or "none"))
+    lib = {r: candidates(r, atoms) for r in RANKS}
     for r in RANKS:
         for m in lib[r]:
             assert m.reads and m.reads <= set(LS.BASE), m.sexpr
-    log(f"OBS miner {sig} library: atoms {len(ATOMS)} ({', '.join(a.sexpr for a in ATOMS)}; the tempo atom is d), candidates rank 1 {len(lib[1])} (atoms, sums, products), "
-        f"rank 2 {len(lib[2])}, rank 3 {len(lib[3])} (lexicographic tuples of distinct atoms); the fuse (d, ranks, n) = {FUSE}")
+    log(f"OBS miner {sig} library{'' if library == '73.5b' else ' ' + library}: atoms {len(atoms)} ({', '.join(a.sexpr for a in atoms)}; the tempo atom is d), "
+        f"candidates rank 1 {len(lib[1])} (atoms, sums, products), rank 2 {len(lib[2])}, rank 3 {len(lib[3])} (lexicographic tuples of distinct atoms); the fuse "
+        f"(d, ranks, n) = {FUSE}")
     todo = {(m.sexpr, 0): set(range(len(rows))) - fl[2] for r in RANKS for m in lib[r]}       # no drop "at d = 0": every position off the n = 2 floor
     levels, choice = [], None
     best_seen = None
@@ -355,12 +384,15 @@ def mine(sig: str, rows: list, log=print, top: int = TOP) -> dict:
         if choice is not None:
             break
     out = dict(sig=sig, levels=levels, choice=choice, floor={2: len(fl[2]), 3: len(fl[3])}, positions=len(rows), refused=dict(graph.refused),
-               secs=round(time.monotonic() - t_all, 1))
+               secs=round(time.monotonic() - t_all, 1), library=library, dropped=[a.sexpr for a in dropped], atoms=[a.sexpr for a in atoms])
     if choice is not None:
         m = choice["measure"]
         log(f"OBS miner {sig} CHOICE: {m.sexpr} -- {m.gloss}; d {choice['d']}, ranks {choice['ranks']}, floor n {choice['n']}; zero failures on {len(rows)} positions; "
             f"{choice['tied']} measure(s) with zero failures at this level ({', '.join(choice['zero'][:6])}{', ...' if choice['tied'] > 6 else ''}); reads {', '.join(sorted(m.reads))}; "
             f"never-rule refusals {dict(graph.refused)}; {out['secs']} s")
+        if library != "73.5b":
+            log(f"OBS miner {sig} library {library} every zero-failure measure of the chosen level (d={choice['d']}, ranks={choice['ranks']}, n={choice['n']}; "
+                f"{choice['tied']}, simplest first): " + "; ".join(choice["zero"]))
     else:
         m, f, d, rk, n = best_seen
         out["best"] = dict(measure=m.sexpr, failures=[rows[j]["fen"] for j in f], d=d, ranks=rk, n=n)
@@ -454,6 +486,31 @@ def explain(sig: str, log=print, tag: str = "", others: bool = True) -> list:
     return out
 
 
+def record_evidence(sig: str, tag: str, journal: str, log=print) -> "str | None":
+    """PLAN 73.6 (2): the re-mine's result (the saved `<sig><tag>.json`) into the evidence of the class's mined entry (its status and its measure unchanged: the
+    whole-class check is EVIDENCE, never the proof) -> the entry's path, or None when the class has no mined entry (the result stays in the journal)."""
+    got = json.load(open(paths.experiment("technique_miner", f"{sig}{tag}.json")))
+    e = LS.load(force=True).get(ENTRY_NAME.format(sig=sig))
+    c = got.get("choice")
+    if c is not None:
+        line = (f"technique_miner {sig} --whole-class --library {got.get('library')} ({journal}, plan 73.6 (2): the per-axis atoms): the first zero-failure level "
+                f"d={c['d']} ranks={c['ranks']} n={c['n']} on {got['positions']} positions; every zero-failure measure there ({c['tied']}): {', '.join(c['zero'])}; "
+                f"the constants left out: {', '.join(got.get('dropped') or []) or 'none'}; the entry's measure {'is' if e and e['measure']['quantity'] in c['zero'] else 'is not'} "
+                f"among them; {got['secs']} s")
+    else:
+        b = got.get("best") or {}
+        line = (f"technique_miner {sig} --whole-class --library {got.get('library')} ({journal}, plan 73.6 (2): the per-axis atoms): beyond the fuse {FUSE}; the best "
+                f"{b.get('measure')} fails {len(b.get('failures', []))} at d={b.get('d')} ranks={b.get('ranks')} n={b.get('n')}; {got['secs']} s")
+    if e is None:
+        log(f"OBS miner {sig}: no mined entry -- the re-mine's result stays in the journal: {line}")
+        return None
+    if line not in e["evidence"]["confirmed"]:
+        e["evidence"]["confirmed"].append(line)
+    p = write_entry(e)
+    log(f"OBS miner {sig} evidence recorded in {os.path.relpath(p, str(paths.REPO_ROOT))} (status {e['status']}, measure {e['measure']['quantity']}, unchanged): {line}")
+    return p
+
+
 def save(got: dict, tag: str = "") -> str:
     """The miner's result as JSON under artifacts/experiments/technique_miner/<sig>.json (the levels, the choice or the best and its failing positions)."""
     res = {k: v for k, v in got.items() if k not in ("graph", "roots", "choice")}
@@ -481,7 +538,11 @@ def main(argv=None) -> None:
     ap.add_argument("--from", dest="src", default="", help="with --write / --explain: the saved result's tag ('' the sample, '_class' the whole class)")
     ap.add_argument("--quick", action="store_true", help="with --explain: skip the count of the library's measures that drop at each failing position")
     ap.add_argument("--note", default="", help="with --write: a sentence more for the entry's note (the earlier entry it replaces and why)")
+    ap.add_argument("--library", default="73.5b", choices=sorted(LIBRARIES), help="the atoms: 73.5b's (the record) or 73.6's (the per-axis atoms)")
+    ap.add_argument("--record", action="store_true", help="with --from: the saved result into the class's mined entry's evidence (nothing mined; plan 73.6 (2))")
     a = ap.parse_args(argv)
+    if a.record:
+        return record_evidence(a.signature, a.src, time.strftime("%Y-%m-%d"))
     if a.explain:
         return explain(a.signature, tag=a.src, others=not a.quick)
     if a.write:
@@ -493,16 +554,17 @@ def main(argv=None) -> None:
         print(f"OBS miner {a.signature} entry written: {os.path.relpath(write_entry(e), str(paths.REPO_ROOT))} -- {e['name']}: {e['measure']['quantity']}, d {e['measure']['depth']}, "
               f"n {e['measure']['n']}, {e['status']}, {e['origin']}")
         return e
+    lt = "" if a.library == "73.5b" else "_" + a.library.replace(".", "")
     if a.whole_class:
         rows = TS.whole_class(a.signature)
-        got = mine(a.signature, rows)
+        got = mine(a.signature, rows, library=a.library)
         got["sample"] = "technique_sample.whole_class: every position of the class with the winning side to move"
-        print(f"(the levels: {save(got, tag='_class')})")
+        print(f"(the levels: {save(got, tag='_class' + lt)})")
         return got
     corpus = a.corpus or paths.experiment("technique_corpus", f"{a.signature}_seed1.jsonl")
     rows = TS.sample(a.signature, corpus, a.uniform, a.seed)
-    got = mine(a.signature, rows)
-    print(f"(the levels: {save(got)})")
+    got = mine(a.signature, rows, library=a.library)
+    print(f"(the levels: {save(got, tag=lt)})")
     return got
 
 
