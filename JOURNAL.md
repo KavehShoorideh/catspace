@@ -33831,3 +33831,24 @@ A FAKE-MODEL TEST of the decomposition (test_plan73_6): a sketch with two `have 
 and `blind_s2 ... (h1 : a < b + 1) : b ≤ b`, omega and simp_all prove them, the parent `exact blind_s1 a b h` ... is accepted. Found on the way and fixed: a proved
 sub-lemma entered a sub-goal's file twice; a fake model answering nothing spun the loop (23 GB of log in a temp directory, removed) -- hence the no-candidate rule.
 OBS gate engine --only tests/test_plan73_6.py: passed 17, failed 0, xfailed 0, errors 0, wall 20.3 s
+
+
+## 2026-10-27 12:18 PDT -- plan 73.6 (4) built: THE STORE -- `prover.py record <run>/summary.json`: an accepted proof makes the entry PROVED, every proved sub-lemma its own MINED entry, every open sub-goal a CONJECTURE with the prover's last state; nothing upgraded without the check (branch worktree-agent-aeb5da3edbf8fc955)
+WHAT: `record` reads a run's summary. AN ACCEPTED TOP PROOF is written into the emitted file BY CODE (technique_lean.emit_text with the run's proof: the tool's
+text in place of the sorry, its helper lemmas before the statement, a line naming the tool and the run; one indentation function shared with the scratch
+check, so what is written is what was accepted), then `lake build` of the module (no sorry), the acceptance check AGAIN on the built module (#print axioms of
+hprog and forced_mate, the scan), and only then the entry: status PROVED, lean = [<module>.hprog, <module>.forced_mate], the evidence line naming the tool and
+the run; a proof that fails any of it puts the statement back (the sorry) and changes nothing. THE SUB-GOALS go into the run's own Lean file
+Ideas/Mined/<module>_<mode>.lean (importing the emitted module, sharing its namespace; the OPEN ones first with `sorry` and the prover's last state in their
+docstring, then the PROVED ones with the tools' proofs -- open first because lean_index reads a theorem's body to the next declaration), built, each proved
+one checked on the built module; each gets an entry "mined lemma <namespace>.<name>" -- origin MINED, KIND BY ROLE (it concludes a forcing, Reach -> FORCING;
+a mate -> CLOSING; anything else, a never-rule kept, a move that exists, a bound -> DEFECT_FIX), reads by the kernel words its statement names (moves:
+movement and tempo; attacks and checks: attack; the exchange: material and attack; the measure: the measure's reads), implementation its theorem in the run's
+file; PROVED (lean = its name) only when accepted, else CONJECTURE (a rejected one says why; an open one carries the last state). Then docs/LEAN_INDEX.md is
+rebuilt and the store validated. lemma_store's implementation check now accepts a Lean `theorem` / `lemma` as what implements an entry.
+Not exercised on a real proof yet (the runs are (5)); tested on a toy (test_plan73_6, (4)): the sub-goal file compiles against the emitted module with exactly
+its open sorry, the index reads the proved toy as proved and the open sub-goal as OPEN, an entry is PROVED only when accepted, and a run with no result writes
+no entry and no file.
+OBS gate engine --only tests/test_plan73_6.py: passed 21, failed 0, xfailed 0, errors 0, wall 22.5 s
+OBS gate engine --only tests/test_plan73.py: passed 9, failed 0, xfailed 0, errors 0, wall 13.7 s
+OBS lemma store validate: entries 98, patterns 29; words read 944 (fact 145, fact-why 588, gap 89, kill 99, lemma 23) from 0 snapshot dir(s) and the two fixed positions; uncatalogued 0 (0 distinct); problems 0

@@ -506,7 +506,8 @@ def citation_problems(store: dict, idx: "dict | None" = None) -> list:
 
 
 def implementation_problems(store: dict) -> list:
-    """An implementation 'file:function' whose file is missing under the repo, or does not define the name (def / fn / class / an assignment)."""
+    """An implementation 'file:function' whose file is missing under the repo, or does not define the name (def / fn / class / an assignment; a Lean theorem or
+    lemma, plan 73.6: a mined sub-lemma is implemented by its Lean file)."""
     bad, texts = [], {}
     for n, e in store.items():
         for imp in e["implementation"]:
@@ -517,7 +518,7 @@ def implementation_problems(store: dict) -> list:
             t = texts[f]
             if t is None:
                 bad.append(f"implementation: {n}: {f} does not exist")
-            elif not re.search(r"(?:\bdef |\bfn |\bclass |\bstatic |\bconst |^)" + re.escape(fn) + r"\b\s*[(:=<\[]", t, re.M):
+            elif not re.search(r"(?:\bdef |\bfn |\bclass |\bstatic |\bconst |\btheorem |\blemma |^)" + re.escape(fn) + r"\b\s*[(:=<\[]", t, re.M):
                 bad.append(f"implementation: {n}: {f} defines no {fn}")
     return bad
 

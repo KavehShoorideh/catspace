@@ -770,6 +770,40 @@ def _axioms_of(module: str, names: tuple, proofs: tuple, tag: str) -> tuple:
     return accept(chk, names, proofs)
 
 
+def sub_file_text(module: str, ns: str, run: str, mode: str, proved: dict, open_: dict) -> str:
+    """THE RUN'S LEAN FILE of sub-goals (Ideas/Mined/<module>_<mode>.lean): the PROVED ones with the proofs the tools found, the OPEN ones with `sorry` and the
+    prover's last state above it; it imports the emitted module (the definitions) and shares its namespace."""
+    lines = [f"import Ideas.Mined.{module}", "",
+             f"/-! AUTO-WRITTEN by catspace/incubator/analyst/discovery/prover.py (record) from prover run {run} ({mode}) on Ideas.Mined.{module} -- do not edit by",
+             "hand. The SUB-GOALS the tools proposed on the way (plan 73.6 (4)): each PROVED one with the proof the tools found (accepted on its own: no sorry,",
+             "the standard axioms only, no enumeration); each OPEN one with `sorry` and the prover's last state above it. Nobody wrote these proofs. -/", "",
+             "set_option linter.unusedVariables false", "", f"namespace {ns}", "", "open Chess hiding between", "open Ideas.Vocabulary", ""]
+    for n, v in open_.items():                                          # (the OPEN ones first: lean_index reads a theorem's body to the next declaration)
+        last = re.sub(r"-/", "- /", str(v.get("last") or "?"))[:900]
+        lines += [f"/-- OPEN sub-goal of {v.get('parent')} (run {run}); the prover's last state: {last} -/", v["statement"].rstrip(), "  sorry", ""]
+    for n, v in proved.items():
+        lines += [f"/-- PROVED by {v['tool']} (sub-goal of {v['parent']}, run {run}). -/", v["text"].rstrip(), ""]
+    lines += [f"end {ns}", ""]
+    return "\n".join(lines)
+
+
+def sub_entry(n: str, v: dict, ns: str, sub: str, run: str, mode: str, entry_name: str, mreads: tuple, day: str, accepted: "bool | None",
+              why: tuple = ()) -> dict:
+    """A sub-goal's STORE ENTRY: origin MINED, kind by role, reads by its statement, implementation its theorem in the run's file; PROVED (lean = its name) only
+    when `accepted` (the acceptance check on the built file), else CONJECTURE -- a proved one the check rejected says why, an open one (`accepted` None)
+    carries the prover's last state."""
+    base = dict(name=f"mined lemma {ns}.{n}", kind=role(v["statement"]), reads=reads_of(v["statement"], mreads), terms=[], origin="MINED", plan=["73.6"],
+                journal=day, measure=None, implementation=[f"lean/ideas/Ideas/Mined/{sub}.lean:{n}"])
+    if accepted is None:
+        return dict(base, status="CONJECTURE", lean=[], evidence=dict(uses={}, confirmed=[], refuted=[]),
+                    note=f"A sub-goal the prover proposed for {v.get('parent')} and did not prove (run {run}, {mode}); the prover's last state: "
+                         f"{str(v.get('last') or '?')[:400]}")
+    return dict(base, status="PROVED" if accepted else "CONJECTURE", lean=[f"{ns}.{n}"] if accepted else [],
+                evidence=dict(uses={}, confirmed=[f"proved by {v['tool']} in prover run {run} ({mode}), a sub-goal of {v['parent']}" + ("" if accepted else
+                              f"; the acceptance check REJECTED it: {'; '.join(why)}")], refuted=[]),
+                note=f"A sub-lemma the tools proposed and proved on the way to {entry_name}'s obligation (plan 73.6): {conclusion(v['statement'])[:300]}")
+
+
 def record(summary_path: str, log=print) -> dict:
     """(4) THE STORE from a run's summary: an ACCEPTED top proof -> written into the emitted file by code (technique_lean.emit), `lake build` of it (no sorry),
     the acceptance check again on the built module, the entry PROVED (lean = hprog and the corollary); every PROVED sub-lemma (accepted on its own) -> the run's
@@ -808,19 +842,8 @@ def record(summary_path: str, log=print) -> dict:
     open_ = {n: v for n, v in (g.get("open") or {}).items() if n not in proved}
     if proved or open_:
         sub = f"{module}_{mode}"
-        lines = [f"import Ideas.Mined.{module}", "",
-                 f"/-! AUTO-WRITTEN by catspace/incubator/analyst/discovery/prover.py (record) from prover run {run} ({mode}) on Ideas.Mined.{module} -- do not edit by",
-                 "hand. The SUB-GOALS the tools proposed on the way (plan 73.6 (4)): each PROVED one with the proof the tools found (accepted on its own: no sorry,",
-                 "the standard axioms only, no enumeration); each OPEN one with `sorry` and the prover's last state above it. Nobody wrote these proofs. -/", "",
-                 "set_option linter.unusedVariables false", "", f"namespace {ns}", "", "open Chess hiding between", "open Ideas.Vocabulary", ""]
-        for n, v in proved.items():
-            lines += [f"/-- PROVED by {v['tool']} (sub-goal of {v['parent']}, run {run}). -/", v["text"].rstrip(), ""]
-        for n, v in open_.items():
-            last = re.sub(r"-/", "- /", str(v.get("last") or "?"))[:900]
-            lines += [f"/-- OPEN sub-goal of {v.get('parent')} (run {run}); the prover's last state: {last} -/", v["statement"].rstrip(), "  sorry", ""]
-        lines += [f"end {ns}", ""]
         path = MINED_DIR / f"{sub}.lean"
-        path.write_text("\n".join(lines))
+        path.write_text(sub_file_text(module, ns, run, mode, proved, open_))
         b = TL.build(sub)
         log(f"OBS prover record {sub}: written, lake build ok {b['ok']}, sorry warnings {b['sorries']} (the open sub-goals: {len(open_)})"
             + ("".join("\n  " + x for x in b["errors"][:6]) if b["errors"] else ""))
@@ -828,20 +851,11 @@ def record(summary_path: str, log=print) -> dict:
         if b["ok"]:
             for n, v in proved.items():
                 ok, why = _axioms_of(sub, (f"{ns}.{n}",), (v["proof"],), f"record_{sub}_{n}")
-                e = dict(name=f"mined lemma {ns}.{n}", kind=role(v["statement"]), reads=reads_of(v["statement"], mreads), terms=[], status="PROVED" if ok else "CONJECTURE",
-                         lean=[f"{ns}.{n}"] if ok else [], origin="MINED", plan=["73.6"], journal=day, measure=None,
-                         evidence=dict(uses={}, confirmed=[f"proved by {v['tool']} in prover run {run} ({mode}), a sub-goal of {v['parent']}" + ("" if ok else
-                                       f"; the acceptance check REJECTED it: {'; '.join(why)}")], refuted=[]),
-                         implementation=[f"lean/ideas/Ideas/Mined/{sub}.lean:{n}"],
-                         note=f"A sub-lemma the tools proposed and proved on the way to {entry['name']}'s obligation (plan 73.6): {conclusion(v['statement'])[:300]}")
+                e = sub_entry(n, v, ns, sub, run, mode, entry["name"], mreads, day, accepted=ok, why=why)
                 MN.write_entry(e)
                 out["entries"].append(e["name"])
             for n, v in open_.items():
-                e = dict(name=f"mined lemma {ns}.{n}", kind=role(v["statement"]), reads=reads_of(v["statement"], mreads), terms=[], status="CONJECTURE", lean=[],
-                         origin="MINED", plan=["73.6"], journal=day, measure=None, evidence=dict(uses={}, confirmed=[], refuted=[]),
-                         implementation=[f"lean/ideas/Ideas/Mined/{sub}.lean:{n}"],
-                         note=f"A sub-goal the prover proposed for {v.get('parent')} and did not prove (run {run}, {mode}); the prover's last state: "
-                              f"{str(v.get('last') or '?')[:400]}")
+                e = sub_entry(n, v, ns, sub, run, mode, entry["name"], mreads, day, accepted=None)
                 MN.write_entry(e)
                 out["entries"].append(e["name"])
     if out["entries"] or out["file"]:

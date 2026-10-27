@@ -6,7 +6,9 @@ leaves the class's constants out, 73.5b's library is the record; the miner runs 
 one sorry (the shared .lake: a cached build, seconds); the measure's Lean atoms read the miner's numbers.
 (3) THE HARNESS: the acceptance check rejects native_decide, sorry and a new axiom and accepts a genuine toy proof; the scan; Aristotle skipped
 without a key (nothing sent); the goal, the splice and the sketch helpers; the hint verbatim; the decomposition path end to end with a fake model;
-a round with no candidate ends the loop."""
+a round with no candidate ends the loop.
+(4) THE STORE: a sub-lemma's kind by role and its reads; a Lean theorem implements an entry; the run's sub-goal file compiles with exactly its open
+sorries and the index reads it right; an entry is PROVED only when accepted; a run with no result changes nothing."""
 import random
 import re
 
@@ -285,3 +287,61 @@ def test_a_round_with_no_candidate_ends_the_goals_loop(monkeypatch, tmp_path):
     (g,) = PR.goals_of(f)
     P = PR.Prover(f, "blind", ("llm",), PR.Log(tmp_path / "log"), 900)
     assert P.llm(g) is None and len(calls) == 2 and "no candidate in a whole round" in P.results["toyg"]["last"]
+
+
+# ---------------------------------------------------------------------------------------------------------------- (4) THE STORE
+
+def test_a_sub_lemma_entry_by_role_and_reads():
+    s_force = "theorem blind_s1 (p : Position) (hp : inClass p) : Ideas.Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 1 p := by"
+    s_keep = "theorem blind_s2 (p q : Position) (h : ours p q) : ¬ unitLost q := by"
+    s_mate = "theorem blind_s3 (q : Position) (h : inClass q) : ¬ checkmate q := by"
+    assert (PR.role(s_force), PR.role(s_keep), PR.role(s_mate)) == ("FORCING", "DEFECT_FIX", "CLOSING")
+    assert PR.reads_of(s_force, ("attack", "movement")) == ["attack", "movement", "tempo"]
+    assert PR.reads_of(s_keep, ()) == ["attack", "material", "movement", "tempo"]
+    assert PR.conclusion(s_keep) == "¬ unitLost q"
+    e = dict(name="mined lemma test", kind=PR.role(s_keep), reads=PR.reads_of(s_keep, ()), terms=[], status="CONJECTURE", lean=[], origin="MINED", plan=["73.6"],
+             journal="2026-10-27", measure=None, evidence=dict(uses={}, confirmed=[], refuted=[]),
+             implementation=["lean/ideas/Ideas/Mined/mined_technique_krvk.lean:hprog"], note="a test entry")
+    assert LS.check_entry(e) == [] and LS.implementation_problems({e["name"]: e}) == []          # a Lean theorem implements an entry
+
+
+NS = "Ideas.Mined.mined_technique_krvk"
+OPEN_STMT = "theorem blind_s8 (p : Position) (hp : inClass p) : ∃ q, ours p q := by"
+PROVED = {"blind_s9": dict(statement="theorem blind_s9 (n : Nat) : n + 0 = n := by", proof="omega", tool="automation: omega", parent="hprog",
+                           text="theorem blind_s9 (n : Nat) : n + 0 = n := by\n  omega\n")}           # a toy: the pipeline, not a chess fact
+OPEN = {"blind_s8": dict(statement=OPEN_STMT, last="depends on sorryAx (a toy last state)", parent="hprog")}
+
+
+def test_the_runs_sub_goal_file_compiles_and_the_index_reads_it():
+    """The run's file (prover.sub_file_text): the open sub-goal with `sorry` and its last state, the proved one with its proof; it compiles against the emitted
+    module with exactly the open sorry; the index reads the proved theorem as proved and the open one as OPEN (the open ones are written first)."""
+    from catspace.incubator.analyst import lean_index as LI
+    text = PR.sub_file_text("mined_technique_krvk", NS, "run0", "blind", PROVED, OPEN)
+    chk = PR.lean_check(text, (f"{NS}.blind_s9",), "ideas", tag="test_subfile")
+    assert chk.ok and chk.sorries == 1, chk.errors                                       # (the open sub-goal's sorry; record checks each proved one on the built module)
+    assert set(chk.axioms[f"{NS}.blind_s9"]) <= set(PR.ALLOWED_AXIOMS) and PR.scan("omega") == []
+    f = Path(PR.paths.experiment("prover", "scratch", "test_subfile_index.lean"))
+    f.write_text(text)
+    got = {d["name"]: d["open"] for d in LI._decls(f) if d["kind"] == "theorem"}
+    assert got == {"blind_s8": True, "blind_s9": False}
+
+
+def test_a_sub_goals_entry_is_proved_only_when_accepted():
+    p = PR.sub_entry("blind_s9", PROVED["blind_s9"], NS, "mined_technique_krvk_blind", "run0", "blind", ENTRY, ("attack", "movement"), "2026-10-27", accepted=True)
+    r = PR.sub_entry("blind_s9", PROVED["blind_s9"], NS, "mined_technique_krvk_blind", "run0", "blind", ENTRY, ("attack", "movement"), "2026-10-27",
+                     accepted=False, why=("banned: decide",))
+    o = PR.sub_entry("blind_s8", OPEN["blind_s8"], NS, "mined_technique_krvk_blind", "run0", "blind", ENTRY, ("attack", "movement"), "2026-10-27", accepted=None)
+    for e in (p, r, o):
+        assert LS.check_entry(e) == [] and e["origin"] == "MINED" and e["implementation"][0].startswith("lean/ideas/Ideas/Mined/mined_technique_krvk_blind.lean:")
+    assert (p["status"], p["lean"]) == ("PROVED", [f"{NS}.blind_s9"]) and (r["status"], r["lean"]) == ("CONJECTURE", [])
+    assert "REJECTED it: banned: decide" in r["evidence"]["confirmed"][0]
+    assert o["status"] == "CONJECTURE" and "the prover's last state: depends on sorryAx" in o["note"] and o["kind"] == "DEFECT_FIX"
+
+
+def test_a_run_with_no_result_changes_nothing(tmp_path):
+    """Nothing is upgraded without the check: a run that closed nothing and proposed nothing writes no entry and no file."""
+    before = {n: dict(e) for n, e in LS.load(force=True).items()}
+    s = tmp_path / "summary.json"
+    s.write_text(PR.json.dumps(dict(module="mined_technique_krvk", mode="blind", run="test", goals={"hprog": dict(closed_by=None, proof=None, proved={}, open={})})))
+    out = PR.record(str(s), log=lambda *a: None)
+    assert out == dict(proved_top=False, entries=[], file=None) and LS.load(force=True) == before
