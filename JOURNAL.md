@@ -33852,3 +33852,44 @@ no entry and no file.
 OBS gate engine --only tests/test_plan73_6.py: passed 21, failed 0, xfailed 0, errors 0, wall 22.5 s
 OBS gate engine --only tests/test_plan73.py: passed 9, failed 0, xfailed 0, errors 0, wall 13.7 s
 OBS lemma store validate: entries 98, patterns 29; words read 944 (fact 145, fact-why 588, gap 89, kill 99, lemma 23) from 0 snapshot dir(s) and the two fixed positions; uncatalogued 0 (0 distinct); problems 0
+
+
+## 2026-10-27 13:42 PDT -- plan 73.6: the owner's two changes (everything local; a demonstration first, his protection lemma); a CORRECTION of the 12:14 entry's reasoning-mode reading; the first blind run aborted on a design flaw (branch worktree-agent-aeb5da3edbf8fc955)
+KAVEH, 2026-10-27 (relayed by the coordinator): (1) EVERYTHING LOCAL -- the Aristotle path is not built at all, not even as a skipped stub; no network service
+is called for proving. Done: prover.py has no Aristotle code; the test now checks that the one URL the harness opens is the local ollama server's (the
+github URLs are the tool pins `prover.py setup` clones). The 12:14 entry's "(d) skipped: no key" line stands as the record of what was built then.
+(2) A DEMONSTRATION FIRST, on one small lemma -- his protection lemma, rook version ("you can prevent losing your rook no matter what he does because you
+have a king ... This should be a lemma in itself"), the whole loop end to end, a human-readable transcript at artifacts/experiments/prover/demo.md rewritten
+after every attempt (untracked). Built: prover_demo.py states it BY CODE in lean/ideas/Ideas/Mined/mined_technique_krvk_protection.lean (importing the
+emitted K+R statement for the class), THE NARROWEST FAITHFUL FORM -- if a unit of ours other than the king is attacked by their side, we have a legal move
+after which they are not stalemated and every unit of ours other than the king is not attacked by their side or is defended by ours:
+  theorem protection : ∀ p, inClass p → ∀ s pc, p.board s = some pc → pc.color = p.turn → pc.kind ≠ .king →
+      isAttackedB p (Color.opposite p.turn) s = true →
+      ∃ m, m ∈ legalMoves p ∧ ¬ stalemate (applyMove p m) ∧
+        ∀ t qc, (applyMove p m).board t = some qc → qc.color = p.turn → qc.kind ≠ .king →
+          isAttackedB (applyMove p m) (Color.opposite p.turn) t = false ∨ isAttackedB (applyMove p m) p.turn t = true := by sorry
+WHY FAITHFUL: a lone king takes a unit only when it attacks it and nothing of ours defends it (taking a defended unit is moving into check, not a legal move of
+the kernel), so "not attacked, or defended" is "not lost", read on the kernel's own attack relation; "no matter what he does" is the universal over every
+position of the class with the unit attacked; "because you have a king" is the defence half of the disjunction; the hypothesis (attacked) makes it the
+narrowest form; not stalemating is the technique's never-rule (a move that saves the rook by stalemating saves nothing). It builds with exactly one sorry.
+The demo then runs the harness cheapest first with the named fuse and writes the outcome to the store (an entry "protection lemma KRvK": PROVED only if
+accepted, else CONJECTURE with the last state). Its run is reported in the next entry.
+CORRECTION of the 12:14 entry ("THE MODEL'S REASONING MODE, measured ... OFF -- samples of 4243 tokens ... with Lean code ... So the runs use the reasoning mode
+OFF"): WRONG. Ollama 0.30.8's `think: false` does not change the prompt for this GGUF -- its chat template always opens the answer with `<think>`; the flag only
+moves the text from the `thinking` field to `response`. Printed by artifacts/experiments/prover/think_flag_probe.py (one prompt, seed 2, 40 tokens):
+  think=True: prompt tokens 45, thinking "Okay, let's think about this problem. ...", response ''
+  think=False: prompt tokens 45, thinking '', response "Okay, let's think about this problem. ..."
+  think=None: prompt tokens 45, thinking "Okay, let's think about this problem. ...", response ''
+So the 4243-token sample was sampling variation, not the mode. OFF is now the model's own template sent RAW with an empty think block (RAW_NO_THINK). Its
+probe on hprog: 10240 tokens in 1163.2 s, cut by the cap, the answer degenerating into repetition ("we must provide a proof that hprog is true ..."):
+OBS prover mined_technique_krvk blind goal hprog: OPEN after the fuse; last: the model's answer held no proof of the goal (length); samples 1; sub-goals proposed 0, proved 0, open 0; wall 1163.2 s
+On hprog the model runs to the cap in either mode.
+THE FIRST BLIND RUN (started 12:18, artifacts/experiments/prover/20261027_121837_mined_technique_krvk_blind_ABORTED) was STOPPED after two samples, both cut by
+the cap (10240 tokens in 1172.1 s; 10240 in 1155.2 s; the first's last complete code block restated the theorem with sorry, the second held none): a cut answer
+made the chain resample the same prompt, so the run would never have reached SUBGOAL DECOMPOSITION. Fixed: an answer cut by the cap ends the step it was asked
+for (the whole-proof chain moves on to the sketch); the no-candidate stop counts cut answers as unfinished, not refused. The blind run is re-run from scratch
+after the demonstration; the aborted one is not reported as a run.
+OTHER FIXES the demonstration needed: a file that imports another mined module shows the model the imported DEFINITIONS as context and counts their names as
+ours (prover.context_of); technique_lean.build counts only the target module's own sorry warnings (Lake replays its imports' warnings: the demo read 2 for 1);
+scratch files are named per process (the demo and the gate's tests ran at once); the Log hands every attempt to a callback (the transcript).
+OBS gate engine --only tests/test_plan73_6.py: passed 24, failed 0, xfailed 0, errors 0, wall 27.9 s

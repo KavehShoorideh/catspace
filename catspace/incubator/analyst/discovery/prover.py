@@ -11,14 +11,17 @@ nobody writes the proof by hand. The tools, cheapest first, on every `sorry` (a 
       moves), and SUBGOAL DECOMPOSITION (the DeepSeek-Prover-V2 pattern): the model writes a SKETCH of `have` steps closed by `sorry`; Lean's `extract_goal`
       (Mathlib) turns each `sorry` into a standalone goal with its context; each is attacked by (a)-(c) recursively; a proved sub-lemma is kept, offered to
       every later attempt and reused; when every goal of a sketch is proved the parent is assembled from them and checked;
-  (d) HARMONIC'S ARISTOTLE only when ARISTOTLE_API_KEY is set -- absent, it is skipped with a line saying so and no file is ever sent.
+EVERYTHING IS LOCAL (Kaveh 2026-10-27): no network service is ever called for proving -- the model runs in the local ollama server, the tools in Lean on
+this machine (the plan's Aristotle path is not built).
 
 THE FUSE (named, per top obligation per run, wall-clock): FUSE_SECONDS = 90 minutes. Why: the time this plan has for each of its two runs (blind, hinted) in one
 sitting beside the re-mine and the gate, on a machine where the model writes about nine tokens a second (the probes of 2026-10-27, journal: a sample of 4243
 tokens in 464.4 s, one of 1923 in 241.0 s) -- about a dozen whole samples, the feedback rounds and one or two decompositions. Sub-goals spend the top
-obligation's fuse (each its share of what is left); nothing is retried past it. TOKEN_CAP = 10240 tokens per sample. THE MODEL'S REASONING MODE IS OFF
-(`think` false; `--think` turns it on): with it on, the probe's sample reached the cap in 1178.0 s still reasoning, no code written -- the model card's 32k
-cap would make one sample over an hour here; with it off the model writes its plan and its code in the answer, as its prompt asks.
+obligation's fuse (each its share of what is left); nothing is retried past it. TOKEN_CAP = 10240 tokens per sample; an answer cut by it ends the step it
+was asked for (the loop moves on: a whole-proof chain to the sketch, a sketch to the next round). THE MODEL'S REASONING MODE IS OFF (`--think` turns it on):
+the model's chat template always opens the answer with `<think>` and ollama's `think: false` only moves the text to another field (it does not change the
+prompt: journal 2026-10-27), so OFF is the template itself sent raw with an EMPTY think block (RAW_NO_THINK). With the reasoning on, samples reached the cap
+in 1178.0 s and 1155.2 s still reasoning -- the model card's 32k cap would make one sample over an hour here.
 
 THE ACCEPTANCE CHECK of any proof (`accept`): the scratch copy compiles with no error and no `sorry` warning; `#print axioms` of the theorem (and of the file's
 corollary) shows only propext, Classical.choice, Quot.sound (no Lean.ofReduceBool, no sorryAx, no new axiom); a syntactic scan of the proof text (everything
@@ -31,7 +34,7 @@ by code (`hint_text`), handed to the model as a sketch -- nothing is added to it
 Every attempt is logged (artifacts/experiments/prover/<run>/attempts.jsonl: the tool, the goal, the prompt, the model's output and reasoning, the candidate,
 Lean's errors, the verdict, the seconds); the run's summary is <run>/summary.json and its OBS lines.
 
-  python -m catspace.incubator.analyst.discovery.prover prove mined_technique_krvk --mode blind|hinted [--fuse 5400] [--tools automation,copilot,llm,aristotle]
+  python -m catspace.incubator.analyst.discovery.prover prove mined_technique_krvk --mode blind|hinted [--fuse 5400] [--tools automation,copilot,llm]
   python -m catspace.incubator.analyst.discovery.prover accept <scratch .lean> <theorem> ...      # the acceptance check of a file as it stands
   python -m catspace.incubator.analyst.discovery.prover setup                                     # the scratch tool project (Duper, LeanCopilot)
   python -m catspace.incubator.analyst.discovery.prover record <run>/summary.json                 # (4) the store from a run
@@ -179,6 +182,7 @@ def lean_check(text: str, names: tuple, project: str = "ideas", tag: str = "atte
     """Compile `text` (a scratch copy) with `#print axioms` of `names` appended -> Check. project 'ideas': `lake env lean` in lean/ideas; 'tools': a module of the
     scratch tool project built by `lake build` (Duper / LeanCopilot are precompiled libraries; LeanCopilot's ctranslate2 is found through DYLD_LIBRARY_PATH)."""
     body = "".join(f"import {i}\n" for i in imports) + text + "\n" + "".join(f"#print axioms {n}\n" for n in names)
+    tag = f"{tag}_p{os.getpid()}"                                       # (one scratch file per process: two runs never share one)
     t0 = time.monotonic()
     if project == "ideas":
         scratch = Path(paths.experiment("prover", "scratch", f"{tag}.lean"))
@@ -237,17 +241,22 @@ def accept(chk: Check, names: tuple, proof_texts: tuple) -> tuple:
 # ---------------------------------------------------------------------------------------------------------------- the log
 
 class Log:
-    def __init__(self, run_dir: Path):
+    """The run's attempts, one JSON line each; `on_write(row)` is called after every attempt (the demonstration's live transcript, prover_demo.py)."""
+
+    def __init__(self, run_dir: Path, on_write=None):
         self.dir = run_dir
         self.dir.mkdir(parents=True, exist_ok=True)
         self.path = run_dir / "attempts.jsonl"
         self.n = 0
+        self.on_write = on_write
 
     def write(self, **row) -> None:
         self.n += 1
         row = dict(i=self.n, t=time.strftime("%H:%M:%S"), **row)
         with open(self.path, "a") as f:
             f.write(json.dumps(row, default=str) + "\n")
+        if self.on_write is not None:
+            self.on_write(dict(row, run=self.dir.name))
 
 
 def first_error(chk: Check) -> str:
@@ -282,10 +291,16 @@ def try_tactics(goal: Goal, tool: str, log: Log, deadline: float, lemmas: str = 
 
 # ---------------------------------------------------------------------------------------------------------------- (c): the open-weight prover
 
+RAW_NO_THINK = "<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"     # the model's own chat template (ollama show --template)
+
+
 def generate(prompt: str, seed: int, think: bool = False) -> dict:
     """One sample of the local model (ollama) -> {response, thinking, tokens, secs, prompt_tokens}."""
-    body = dict(model=MODEL, prompt=prompt, stream=False, think=think,
-                options=dict(num_ctx=CONTEXT, num_predict=TOKEN_CAP, temperature=0.6, top_p=0.95, seed=seed))
+    opts = dict(num_ctx=CONTEXT, num_predict=TOKEN_CAP, temperature=0.6, top_p=0.95, seed=seed)
+    if think:
+        body = dict(model=MODEL, prompt=prompt, stream=False, think=True, options=opts)
+    else:                                      # the model's template always opens the answer with <think>; `think: false` only moves the text (journal
+        body = dict(model=MODEL, prompt=RAW_NO_THINK.format(prompt=prompt), raw=True, stream=False, options=opts)   # 2026-10-27): an empty think block, raw
     t0 = time.monotonic()
     req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
     try:
@@ -336,7 +351,7 @@ def take_proof(code: str, goal: Goal, known: set) -> "tuple | None":
     return proof, "".join(lemmas)
 
 
-WHOLE = ("Complete the following Lean 4 code:\n\n```lean4\n{code}```\n\n"
+WHOLE = ("{context}Complete the following Lean 4 code:\n\n```lean4\n{code}```\n\n"
          "Before producing the Lean 4 code to formally prove the given theorem, provide a detailed proof plan outlining the main proof steps and strategies.\n"
          "The plan should highlight key ideas, intermediate lemmas, and proof structures that will guide the construction of the final formal proof.\n\n"
          "{rules}{hint}{known}")
@@ -345,13 +360,34 @@ RULES = ("Rules for the proof: replace the `sorry` of `{name}` with a complete p
          "sorry, admit or new axioms -- a proof that checks positions or squares one by one is rejected.\n\n")
 REVISE = ("{whole}\n\nA previous attempt:\n```lean4\n{attempt}```\n\nLean 4 rejected it with these errors:\n```\n{errors}\n```\n\n"
           "Revise the proof. Answer with the complete corrected Lean 4 code in one ```lean4 block.")
-SKETCH = ("Here is a Lean 4 file whose theorem `{name}` is not yet proved:\n\n```lean4\n{code}```\n\n{hint}{known}"
+SKETCH = ("{context}Here is a Lean 4 file whose theorem `{name}` is not yet proved:\n\n```lean4\n{code}```\n\n{hint}{known}"
           "Do not prove it in one go. Write a PROOF SKETCH of `{name}`: a structured Lean 4 proof that states the key intermediate facts as `have` steps, EACH "
           "closed by `sorry`, and then closes the goal from those facts with no further `sorry`. Name every hypothesis you introduce. Each `have` should be a "
           "meaningful lemma about the definitions above that a later proof can attack on its own. Answer with the complete Lean 4 code of `{name}` in one "
           "```lean4 block.")
 SKETCH_REVISE = ("{sketch}\n\nA previous sketch:\n```lean4\n{attempt}```\n\nLean 4 rejected it (apart from the `sorry`s, which are expected) with:\n```\n{errors}\n```\n\n"
                  "Revise the sketch. Answer with the complete Lean 4 code of `{name}` in one ```lean4 block.")
+
+
+def context_of(path: Path) -> tuple:
+    """The DEFINITIONS a file imports from other mined modules (`import Ideas.Mined.<m>`: the text of <m> before its first theorem), shown to the model as
+    context, and their names (a model's copy of one is dropped) -> (the context block, the names)."""
+    blocks, names = [], set()
+    for m in re.findall(r"^import Ideas\.Mined\.(\S+)", path.read_text(), re.M):
+        src = (MINED_DIR / f"{m}.lean").read_text()
+        chunks = split_decls(src)
+        lead = len(src) - len("".join(c for _k, _n, c in chunks))
+        keep = []
+        for k, _n, c in chunks:
+            if k in ("theorem", "lemma"):
+                if keep and keep[-1].lstrip().startswith("/--"):
+                    keep.pop()                                         # (the theorem's docstring goes with it)
+                break
+            keep.append(c)
+        defs = src[:lead] + "".join(keep)
+        names |= {n for k, n, _c in split_decls(defs) if n}
+        blocks.append(f"The definitions it uses, from the imported module Ideas.Mined.{m}:\n\n```lean4\n{defs.rstrip()}\n```\n\n")
+    return "".join(blocks), names
 
 
 def hint_text() -> str:
@@ -394,7 +430,9 @@ class Prover:
         self.seed = 1
         self.nsub = 0                    # sub-goals named so far
         self.checked = 0                 # the model's candidates and sketches Lean has checked (a round adding none ends the goal's loop)
-        self.known = {n for _k, n, _c in split_decls(path.read_text()) if n}
+        self.capped = 0                  # the samples cut by the token cap (unfinished answers: they do not end the loop)
+        self.context, imported = context_of(path)
+        self.known = {n for _k, n, _c in split_decls(path.read_text()) if n} | imported
         self.results: dict = {}          # goal name -> {closed_by, last}
         self.share: list = []            # the deadlines of the sub-goals being attacked (each its share of what was left)
 
@@ -433,14 +471,16 @@ class Prover:
     def sample(self, prompt: str) -> dict:
         self.samples += 1
         self.seed += 1
-        return generate(prompt, self.seed, self.think)
+        out = generate(prompt, self.seed, self.think)
+        self.capped += out.get("done_reason") == "length"
+        return out
 
     # -- (c) whole-proof chains, then decomposition, until the fuse
     def llm(self, goal: Goal) -> "dict | None":
         code = goal.prefix + self.lemmas() + goal.stmt + "\n  sorry\n" + goal.suffix
-        whole = WHOLE.format(code=code, rules=RULES.format(name=goal.name), hint=_hint_block(self.mode), known=_known_block(self.proved))
+        whole = WHOLE.format(context=self.context, code=code, rules=RULES.format(name=goal.name), hint=_hint_block(self.mode), known=_known_block(self.proved))
         while self.left() > 0:
-            c0 = self.checked
+            c0, k0 = self.checked, self.capped
             res = self.chain(goal, whole)
             if res:
                 return res
@@ -449,7 +489,7 @@ class Prover:
             res = self.decompose(goal, code)
             if res:
                 return res
-            if self.checked == c0:                                     # (a round gave Lean nothing to check: the model does not address this goal)
+            if self.checked == c0 and self.capped == k0:              # (a round gave Lean nothing to check and no answer was cut: the model does not address it)
                 self.results.setdefault(goal.name, {})["last"] = (self.results.get(goal.name, {}).get("last") or "") + " [no candidate in a whole round: stopped]"
                 return None
         return None
@@ -465,9 +505,7 @@ class Prover:
             if got is None:
                 self.log.write(tool="llm whole", goal=goal.name, depth=goal.depth, accepted=False, why=["no proof of the goal in the answer"], **extra)
                 self.results.setdefault(goal.name, {})["last"] = "the model's answer held no proof of the goal (" + (out.get("done_reason") or "?") + ")"
-                if out.get("done_reason") == "length":
-                    continue                                       # (cut by the token cap: a fresh sample, the chain not yet moved)
-                return None
+                return None                                        # (no proof, or cut by the token cap: the loop moves on to the sketch)
             proof, lemmas = got
             ok, chk, why = self.check(goal, proof, lemmas, "llm whole", extra)
             if ok:
@@ -488,7 +526,7 @@ class Prover:
 
     def decompose(self, goal: Goal, code: str) -> "dict | None":
         """SUBGOAL DECOMPOSITION: a sketch of `have` steps closed by sorry; Lean's extract_goal states each; each attacked recursively; the parent assembled."""
-        base = SKETCH.format(name=goal.name, code=code, hint=_hint_block(self.mode), known=_known_block(self.proved))
+        base = SKETCH.format(context=self.context, name=goal.name, code=code, hint=_hint_block(self.mode), known=_known_block(self.proved))
         prompt, last_err = base, None
         while self.left() > 0:
             out = self.sample(prompt)
@@ -497,8 +535,7 @@ class Prover:
                          done_reason=out.get("done_reason"))
             if got is None:
                 self.log.write(tool="llm sketch", goal=goal.name, depth=goal.depth, accepted=False, why=["no sketch of the goal in the answer"], **extra)
-                if out.get("done_reason") == "length":
-                    continue
+                self.results.setdefault(goal.name, {})["last"] = "the model's answer held no sketch of the goal (" + (out.get("done_reason") or "?") + ")"
                 return None
             sketch, lemmas = got
             if not re.search(r"\bsorry\b", sketch):                  # (a whole proof after all: checked as one)
@@ -602,35 +639,19 @@ def binder_names(stmt: str) -> list:
     return out
 
 
-# ---------------------------------------------------------------------------------------------------------------- (d) and the run
+# ---------------------------------------------------------------------------------------------------------------- the run
 
-def aristotle(goal: Goal, log: Log) -> str:
-    """(d): Harmonic's Aristotle -- only with a key; absent, skipped and nothing is sent."""
-    if not os.environ.get("ARISTOTLE_API_KEY"):
-        log.write(tool="aristotle", goal=goal.name, accepted=False, why=["skipped: no key"])
-        return "skipped: no key"
-    try:
-        import aristotlelib  # noqa: F401
-    except ImportError:
-        log.write(tool="aristotle", goal=goal.name, accepted=False, why=["skipped: aristotlelib is not installed"])
-        return "skipped: aristotlelib is not installed (the key is set; nothing was sent)"
-    return "not run: the Aristotle path is wired only to the key check here (nothing was sent)"
-
-
-def prove(module: str, mode: str = "blind", tools: tuple = ("automation", "copilot", "llm", "aristotle"), fuse: float = FUSE_SECONDS, log_print=print,
-          think: bool = False, tag: str = "") -> dict:
-    """THE RUN on the emitted file's goals -> the summary (also <run>/summary.json); prints the OBS lines."""
+def prove(module: str, mode: str = "blind", tools: tuple = ("automation", "copilot", "llm"), fuse: float = FUSE_SECONDS, log_print=print,
+          think: bool = False, tag: str = "", on_write=None) -> dict:
+    """THE RUN on the emitted file's goals -> the summary (also <run>/summary.json); prints the OBS lines. `on_write`: called after every attempt."""
     path = MINED_DIR / f"{module}.lean"
     run = time.strftime("%Y%m%d_%H%M%S") + f"_{module}_{mode}" + (f"_{tag}" if tag else "")
-    log = Log(Path(paths.experiment("prover", run)))
+    log = Log(Path(paths.experiment("prover", run)), on_write)
     goals = goals_of(path)
     summary = dict(module=module, mode=mode, tools=list(tools), fuse=fuse, model=MODEL, think=think, token_cap=TOKEN_CAP, run=run, goals={},
                    started=time.strftime("%Y-%m-%d %H:%M:%S"), hint=hint_text() if mode == "hinted" else None)
-    if "aristotle" in tools:
-        summary["aristotle"] = aristotle(goals[0], log) if goals else "no goal"
-        log_print(f"OBS prover {module} {mode}: aristotle {summary['aristotle']}")
     for g in goals:
-        P = Prover(path, mode, tuple(t for t in tools if t != "aristotle"), log, fuse, think)
+        P = Prover(path, mode, tuple(tools), log, fuse, think)
         res = P.attack(g)
         secs = round(time.monotonic() - P.t0, 1)
         summary["goals"][g.name] = dict(
@@ -876,7 +897,7 @@ def main(argv=None) -> None:
     p.add_argument("module", help="the module under lean/ideas/Ideas/Mined/, e.g. mined_technique_krvk")
     p.add_argument("--mode", choices=("blind", "hinted"), default="blind")
     p.add_argument("--fuse", type=float, default=FUSE_SECONDS, help="seconds of wall-clock for the top obligation (default: the named fuse)")
-    p.add_argument("--tools", default="automation,copilot,llm,aristotle")
+    p.add_argument("--tools", default="automation,copilot,llm")
     p.add_argument("--think", action="store_true", help="the model's reasoning mode on (off by default: see the docstring's fuse)")
     p.add_argument("--tag", default="", help="a tag for the run's directory (e.g. probe)")
     c = sub.add_parser("accept", help="the acceptance check of a Lean file as it stands (compiled in lean/ideas)")

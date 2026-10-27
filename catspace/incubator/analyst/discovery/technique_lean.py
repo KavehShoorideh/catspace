@@ -292,7 +292,8 @@ def build(module: str, timeout: int = 1800) -> dict:
     r = subprocess.run(["lake", "build", f"Ideas.Mined.{module}"], cwd=LEAN_DIR, capture_output=True, text=True, timeout=timeout)
     out = r.stdout + r.stderr
     errs = [ln for ln in out.splitlines() if "error" in ln.lower() and "Build completed" not in ln]
-    return dict(ok=r.returncode == 0, sorries=len(SORRY_WARNING.findall(out)), errors=errs, secs=round(time.monotonic() - t0, 1), output=out)
+    own = re.compile(r"Ideas/Mined/" + re.escape(module) + r"\.lean:\d+:\d+: declaration uses [`']sorry[`']")      # (Lake replays the imports' warnings too)
+    return dict(ok=r.returncode == 0, sorries=len(own.findall(out)), errors=errs, secs=round(time.monotonic() - t0, 1), output=out)
 
 
 UNEVALUABLE = ("reach",)       # the vocabulary's Lean `reach` is `Nat.repeat step 64` over closures: its #eval is exponential (each step reads the last at 65 squares)

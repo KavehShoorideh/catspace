@@ -4,11 +4,13 @@ their values are their terms' (the king-step distance to the term's set) and the
 leaves the class's constants out, 73.5b's library is the record; the miner runs with it; the entry records the re-mine without changing its status.
 (2) THE STATEMENT: the emitted files are the emitter's output; hprog has the shape of forced_by_measure's premise with one sorry; the file BUILDS with exactly
 one sorry (the shared .lake: a cached build, seconds); the measure's Lean atoms read the miner's numbers.
-(3) THE HARNESS: the acceptance check rejects native_decide, sorry and a new axiom and accepts a genuine toy proof; the scan; Aristotle skipped
-without a key (nothing sent); the goal, the splice and the sketch helpers; the hint verbatim; the decomposition path end to end with a fake model;
+(3) THE HARNESS: the acceptance check rejects native_decide, sorry and a new axiom and accepts a genuine toy proof; the scan; everything local (no
+network service but the local model server); the goal, the splice and the sketch helpers; the hint verbatim; the decomposition path end to end with a fake model;
 a round with no candidate ends the loop.
 (4) THE STORE: a sub-lemma's kind by role and its reads; a Lean theorem implements an entry; the run's sub-goal file compiles with exactly its open
-sorries and the index reads it right; an entry is PROVED only when accepted; a run with no result changes nothing."""
+sorries and the index reads it right; an entry is PROVED only when accepted; a run with no result changes nothing.
+THE DEMONSTRATION (Kaveh 2026-10-27): his protection lemma stated by code, building with its one sorry; the model shown the imported definitions; the
+transcript shows every attempt."""
 import random
 import re
 
@@ -211,16 +213,12 @@ def test_the_scan_bans_enumeration_and_reads_past_comments_and_lemma_names():
         assert PR.scan(bad), bad
 
 
-def test_the_harness_skips_aristotle_without_a_key(monkeypatch, tmp_path):
-    monkeypatch.delenv("ARISTOTLE_API_KEY", raising=False)
-
-    def no_network(*a, **k):
-        raise AssertionError("a file was sent")
-    monkeypatch.setattr(PR.urllib.request, "urlopen", no_network)
-    log = PR.Log(tmp_path)
-    g = PR.goals_of(PR.MINED_DIR / "mined_technique_krvk.lean")[0]
-    assert PR.aristotle(g, log) == "skipped: no key"
-    assert "skipped: no key" in (tmp_path / "attempts.jsonl").read_text()
+def test_everything_is_local():
+    """The owner's rule (2026-10-27): no network service is called for proving -- the one URL the harness opens is the local model server's."""
+    src = re.sub(r'"""(?:.|\n)*?"""', "", Path(PR.__file__).read_text())
+    urls = set(re.findall(r"https?://[^\s\"']+", src))
+    assert PR.OLLAMA.startswith("http://localhost:") and {u for u in urls if "github.com" not in u} == {PR.OLLAMA}     # (github: the tool pins, cloned by setup)
+    assert "aristotle" not in src.lower() and src.count("urlopen(") == 1
 
 
 def test_the_goal_the_splice_and_the_sketch_helpers():
@@ -345,3 +343,40 @@ def test_a_run_with_no_result_changes_nothing(tmp_path):
     s.write_text(PR.json.dumps(dict(module="mined_technique_krvk", mode="blind", run="test", goals={"hprog": dict(closed_by=None, proof=None, proved={}, open={})})))
     out = PR.record(str(s), log=lambda *a: None)
     assert out == dict(proved_top=False, entries=[], file=None) and LS.load(force=True) == before
+
+
+# ---------------------------------------------------------------------------------------------------------------- THE DEMONSTRATION (Kaveh 2026-10-27)
+
+from catspace.incubator.analyst.discovery import prover_demo as DEMO  # noqa: E402
+
+
+def test_the_demo_states_the_protection_lemma_and_it_builds_with_one_sorry():
+    """The owner's protection lemma, stated by code over the entry's class (the file is prover_demo.lean_text's output unless an accepted proof replaced the
+    sorry); its statement is the chosen narrowest form; it builds with exactly its own sorry (the imported statement's replayed warning not counted)."""
+    e = LS.get(ENTRY)
+    path = TL.MINED_DIR / f"{DEMO.module(e)}.lean"
+    text = path.read_text()
+    assert text == DEMO.lean_text(e) or "was FOUND by" in text
+    assert DEMO.STATEMENT in text and text.startswith(f"import Ideas.Mined.{TL.module_name(e)}\n")
+    assert "isAttackedB p (Color.opposite p.turn) s = true →" in DEMO.STATEMENT and "¬ stalemate (applyMove p m)" in DEMO.STATEMENT
+    b = TL.build(DEMO.module(e))
+    assert b["ok"] and b["sorries"] == (0 if "was FOUND by" in text else 1), b["errors"]
+
+
+def test_the_demo_shows_the_model_the_imported_definitions():
+    e = LS.get(ENTRY)
+    ctx, names = PR.context_of(TL.MINED_DIR / f"{DEMO.module(e)}.lean")
+    assert {"inClass", "ours", "theirs", "mate", "mu", "unitLost"} <= names and "def inClass" in ctx and "theorem hprog" not in ctx
+
+
+def test_the_transcript_shows_every_attempt(tmp_path):
+    e = LS.get(ENTRY)
+    T = DEMO.Transcript(e, dict(run="r0", started="now", tools=["automation", "llm"], think=False, fuse=60), tmp_path / "demo.md")
+    T.row(dict(i=1, t="12:00:00", tool="automation", tactic="aesop", goal="protection", depth=0, proof="aesop", accepted=False, secs=2.5,
+               errors=["x.lean:9:2: error: aesop: failed to prove the goal after exhaustive search."]))
+    T.row(dict(i=2, t="12:10:00", tool="llm whole", goal="protection", depth=0, tokens=900, gen_secs=100.0, done_reason="stop", response="Plan: move away.\n```lean4\n```",
+               proof="intro p hp\n  exact foo", lemmas="", accepted=False, why=["Lean errors: 1"], errors=["x.lean:12:4: error: unknown identifier 'foo'"]))
+    md = (tmp_path / "demo.md").read_text()
+    assert "## The statement" in md and "theorem protection" in md and "## The attempts (2 so far)" in md
+    assert "### 1. 12:00:00 -- automation `aesop` on `protection` -- REJECTED" in md and "aesop: failed to prove the goal" in md
+    assert "The model wrote 900 tokens in 100.0 s" in md and "unknown identifier 'foo'" in md and "> Plan: move away." in md
