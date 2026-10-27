@@ -3890,3 +3890,36 @@ for ROOT questions only (the heap replaced; selection as today) -- decisions ide
 depths -- decisions identical, questions not higher; (d) observations as nodes with the promotion rule -- decisions identical on the guard (no promotion fires there unless shown and read).
 NOT IN 74: distribution (the worklist is the seam: AND-OR nodes are independent work; later), new chess words, the Rust port of the loop (72.7's remaining steps), any change to the judge's
 rule or the policy.
+
+
+## 75. THE GENERIC GOAL AND THE SUPPLIED VOCABULARY (Kaveh 2026-10-27 GO "go ahead and do it")
+
+Kaveh: "the goal is actually very generic: first of all, don't lose, and then win ... some chess vocab has to be provided by us because we want the engine to be able to talk in the same
+language as we do. We don't want it to learn everything. But from those basic things -- attacking, moving and sliding pieces, winning and drawing -- everything else should be derived from
+the basic rules."
+THE PRINCIPLE, in three lines: (1) THE GOAL is the outcome: don't lose, then win (the status line of plan 59 is already this ladder: losing / level / winning; status-driven widening = don't
+lose, then win). Mate, material, promotion are not goals: mate is the rule's terminal, material is a DERIVED valuation, promotion is a rule. (2) WE SUPPLY NAMES, not knowledge: a NAMES
+table binding our words (attack, move, slide, capture, check, mate, stalemate, draw, win, lose, the unit kinds, rank/file, tempo) to definitions of the RULE KERNEL, so the engine speaks our
+language; a name is never bound to a derived fact. (3) EVERYTHING ELSE IS DERIVED: words, valuations, techniques, stops -- mined into the store, stated in Lean, proved by the prover, read by
+the agenda from the store. A test guards it: the agenda's core names nothing beyond the NAMES table and the store.
+
+### 75.1 The audit (read-only agent; runs beside the prover: it runs no gate and edits no engine file)
+Every branch, constant and comparison of agenda.py (and the ponder, the tiers driver, the judge) classified as one of: LOGIC (goal regression, AND-OR, frames, the worklist, the budgets'
+mechanics), RULE (a fact of the game's rules: check, mate, legal moves, the draws -- allowed, read through the kernel), NAME (a supplied name from the table), CHESS FACT (derived knowledge
+written as code: the goal kinds mate/win/save/promote and their stakes, piece worth, the status line's thresholds, "a check is forcing", the stops' shapes, the smallest-loss tie-break's shape
+key, the fuse's shape, the judge's forcedness words, the leaf's estimators), HEURISTIC (a tuned number or rule with no proof obligation). Output docs/AGENDA_AUDIT.md: one row per item (file:line,
+the text, the class, and for a CHESS FACT the store entry it should become -- an existing one, or a new one named), the counts as OBS lines, and the list of CHESS FACTS in the order they
+should move (by how many decisions depend on them, read from the traces of the ten + wide guard snapshots). No engine change in 75.1.
+
+### 75.2 The move (after 74 lands; one agent; each stage guard-checked: decisions identical)
+(a) THE GOAL LADDER from the outcome: the agenda's root asks "don't lose" (keep the status) then "win" (raise it), read from the status line; the goal KINDS it pursues come from the store
+(GOAL entries: `mate` = the terminal rule [RULE], `promotion` = the rule [RULE], `material` = the valuation entry [HAND today; MINED when 76 delivers it], `save` = don't lose material = the
+same valuation), each with its stake read from the entry, never from a constant in agenda.py. (b) THE STOPS consulted from the store (HEURISTIC entries: the chase clock, tempo arithmetic,
+the second check, the fuse, the judge's cut): the agenda asks "does a stop apply" and prints which entry; the shapes leave agenda.py. (c) THE NAMES TABLE `names.py`: every name bound to a
+kernel definition (and its Lean twin); the trace prints names from it; reads in the store refer to it. (d) THE GENERIC TEST: the agenda's core (the worklist, the chase, the leaf glue, the
+judge) names nothing outside names.py and the store -- the test of 73.5b extended to agenda.py's core modules after 74's split. Acceptance per stage: decisions identical on the ten + wide,
+the gate green, the audit's CHESS FACT count printed before/after (the number to drive to zero).
+
+### 75.3 Then (plan 76, written after 75.2's count is known): one term language (the miner's atoms as Rust terms with typed combinators: sets of locations, reach, counts, per-axis
+distances, min over units, who moves; the generator proposes terms priced by size) and MINING MATERIAL (the count term over game records that predicts the outcome; the hand values stay a
+HAND entry beside the MINED one; the exchange law restated over the mined term for the prover). Then the second game (a checkers kernel: the acid test, no code outside the kernel).
