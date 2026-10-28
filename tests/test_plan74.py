@@ -170,3 +170,55 @@ def test_74_2b_the_question_price_is_the_judges_price_of_its_routes_read_before(
     ag.status_info = dict(balance=-1, line=0, word="losing", threat=0, s0=-1)
     st, best = ag._wl_status()
     assert st is ag.status_info and best is None and abs(q._wi.price - 0.12) < 1e-9
+
+
+# ---------------------------------------------------------------------------------------------------------------- (c) inner questions enqueued: the pending protocol and convergence
+
+def _w0vfo_graph():
+    ag = Agenda(State(W0VFO, "w", []))
+    ag.ask()
+    return ag, ag.ctx.graph
+
+
+def test_74_3_enqueue_and_serve_convergence_on_a_transposition():
+    """W0VFO: the line Rxg7+ Kxg7 Qg4+ Kf7 Qg6+ Kxg6 reaches the position Rxg7+ Kxg7 Qg6+ Kxg6 reached by another move order: it is served the answer derived there (two lines meet at
+    one answer), not asked again."""
+    ag, g = _w0vfo_graph()
+    met = []
+    for n in g.nodes.values():
+        if n.kind == RN.LINE and n.state == "served":
+            a = g.nodes.get(g.answer_of.get(n.data.get("served_by"), -1))
+            first = g.nodes.get(a.data.get("line")) if a is not None else None
+            if first is not None and first.pk == n.pk and first.steps != n.steps:
+                met.append((g.line_name(n), g.line_name(first)))
+    assert ("Rxg7+ Kxg7 Qg4+ Kf7 Qg6+ Kxg6", "Rxg7+ Kxg7 Qg6+ Kxg6") in met
+    t = g.tally()
+    assert t["lines_served"] >= len(met) and t["converged"] > 0
+
+
+def test_74_3_the_pending_protocol_closes_a_line_when_its_queued_questions_are_answered():
+    """A line whose goal is dead at its position waits on the questions queued there (enqueued, never asked inline): it closes when they are answered or cut, and none of them is left
+    queued; the questions of a line whose goal is alive stay queued in the run's passive set (the frame lemma neglects them)."""
+    ag, g = _w0vfo_graph()
+    pend = [n for n in g.nodes.values() if n.kind == RN.LINE and n.data.get("was_pending")]
+    assert pend and all(n.state in ("closed", "cut") for n in pend)
+    for n in pend:
+        states = {g.nodes[q].state for q in n.data["pending_on"]}
+        assert "deferred" not in states                              # every queued question of a waiting line was opened
+        assert all(g.nodes[q].data.get("activated") for q in n.data["pending_on"])
+    closed = [n for n in pend if n.state == "closed"]
+    assert closed and all(any(g.nodes[q].state in ("asked", "served", "inherited") for q in n.data["pending_on"]) for n in closed)
+    queued = [i for i in ag.ctx.worklist.queued() if i.state == WL.DEFERRED and not i.data.get("observation")]
+    assert queued and all(g.nodes[i.node].state == "deferred" and g.nodes[i.node].depth >= 1 for i in queued)
+    assert all(g.why(i.node).startswith("deferred: arose from ") for i in queued[:20])
+
+
+def test_74_3_a_cut_queued_question_is_a_gap_with_a_resume_point():
+    """A waiting line cut (the chain's stop, the fuse) leaves its route a GAP fact with the resume point -- the route and the reply that made the line -- never a kill."""
+    ag, g = _w0vfo_graph()
+    cut = [n for n in g.nodes.values() if n.kind == RN.LINE and n.data.get("was_pending") and n.state == "cut" and len(n.steps) >= 2]
+    assert cut
+    gaps = {(f.resume.get("uci"), f.resume.get("reply")) for f in ag.ctx.facts.facts.values() if f.kind == "gap" and f.resume is not None}
+    hit = [n for n in cut if (n.steps[-2], n.steps[-1]) in gaps]
+    assert hit and any(g.line_name(n) == "Rxg7+ Kxg7 Qb7+ Qc7" for n in hit)
+    assert not any(f.kind == "kill" and "Qb7+ not followed past Qc7" in f.text for f in ag.ctx.facts.facts.values())

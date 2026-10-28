@@ -34147,3 +34147,34 @@ lists, 6 of 10 provenance lists differ -- the guard fires.
 OBS audit recount: CHESS FACT rows 428 -> 428 (agenda.py 423 -> 423); rows total 1746 -> 1756 (LOGIC 1150 -> 1160).
 Tests changed for the API (not for a claim or a decision): test_offbuilt64, test_plan65, test_remember read the open questions through `Agenda.open_questions` (the heap's array / its order).
 OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_plan74 8/0/0/0 1.1 s; test_agenda 26/0/0/0 103.6 s; test_tiers 14/0/0/0 34.7 s; test_offbuilt64 15/0/1/0 96.7 s; test_fact_store 21/0/0/0 27.7 s; test_plan68 4/0/0/0 14.6 s; test_plan69 3/0/0/0 15.2 s; test_plan70 3/0/1/0 4.5 s; test_plan72_9 7/0/0/0 4.5 s; test_plan72_10 4/0/0/0 2.5 s; test_plan73 9/0/0/0 14.6 s; test_plan73_5b 11/0/0/0 8.2 s; test_cost61 13/0/0/0 3.9 s; test_plan66 16/0/0/0 4.2 s; test_plan65 13/0/0/0 7.3 s; test_plan72_7 16/0/0/0 1.5 s; test_plan72_7_step2 13/0/0/0 8.3 s; test_plan72_7_step3 13/0/0/0 43.3 s; test_remember 8/0/0/0 1.1 s; test_regress 87/0/1/0 390.1 s. Total 20 files: passed 304, failed 0, xfailed 3, errors 0.
+
+## 2026-10-27 22:33 -- plan 74 (c) INNER QUESTIONS ENQUEUED through the pending protocol, depth 1 first, then all depths (branch worktree-agent-a783b98ab9a640248)
+agenda.py (LOGIC only): an inner agenda's root that is not one of 72.10's three questions (outside the frame of the line in hand) is ENQUEUED in the run's worklist as a DEFERRED item of
+its frame, at depth d+1, its graph node AROSE_FROM the line (the route and reply that made the position) -- never asked inline; 72.10's "the full agenda when the goal is dead there" is
+now: the frame's queued items are OPENED (`Worklist.activate`: numbered and keyed as 72.10 numbered them), the LINE is marked PENDING on them, and the route in hand waits on them; the
+line closes when they are answered (closed) or cut (a GAP with its resume point, as before). Their selection is depth-first within the frame (the route in hand's pending questions are
+its frame's next items), which is exactly 72.10's order. A frame closes with its agenda; what it queued and never needed stays in the run's passive set (the frame lemma neglects it):
+"why: the worklist: 3078 question(s) taken (asked or served) over 724 frame(s); 873 in the passive set (546 queued outside the frame of their line and never needed ...; 327 left open by
+a stop)" (W0VFO 10 s). Convergence: an opened question whose key and read set have an answer is SERVED by the store (`_serve`, with its SERVES edge), as before.
+WHY DEPTH-FIRST AND NOT A REORDERED CONTINUATION (the agenda's shape resisted): reading the other replies of a route before a pending one would let a cheaper reply kill the route first
+(fewer questions), but which reply kills a route decides the kill's text and its read set, the standing kills of later routes and the shared fuse's spending -- the acceptance's read-set
+identity pins the reply order, so the "continue" of 74.3 is the route in hand's own pending items. The recursive call stays as the expansion step (74.3: replaced in the end state).
+DEPTH 1 FIRST (a dev step, not committed: only the inner agendas one level below the root queued in the worklist): ten t0 0 of 10 traces / read sets / leaf lists / word lists differ;
+ten t2 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 of 99; the provenance lists only gain the worklist's line.
+OBS trace identity, ALL DEPTHS, against the parent 813fadc8: ten t0, ten t2 0 of 10 traces / read sets / leaf lists / word lists differ; wide t0, wide t2 0 / 0 / 0 / 0 of 99. Against
+stage (b): the provenance lists differ by the worklist's summary line only (with it dropped: 10, 10, 99, 99 identical).
+OBS measure: questions asked ten t0 11806 -> 11806 (count to the first keeping move 3059 -> 3059, 5 of 10), ten t2 36902 -> 36902 (9582 -> 9582, 4 of 10), wide t0 58321 -> 58321
+(16276 -> 16276, 66 of 99); per case identical -- NOT lower: the queued questions 72.10 never asked are still not asked, the ones it asked are still asked.
+OBS over the guard's ten + wide at tier 0 (109 cases; the graph's summary lines): root and inner questions asked 21524, served 7378 (every one the answer of another question: converged),
+queued and never needed 6967, left open by a stop 3401; lines 16458, of which 2970 met a known answer (two lines, one position: e.g. W0VFO's Rxg7+ Kxg7 Qg4+ Kf7 Qg6+ Kxg6 served the
+answer of Rxg7+ Kxg7 Qg6+ Kxg6), 2771 waited on queued questions, 7974 cut.
+OBS W0VFO 10 s: Qb7 +3 proved (chase), the pool ended at 8.1 s; root questions 38, inner agendas 723, inner questions 8499 (11.8 per inner agenda); before (stage a) 790 / 10578, (b)
+784 / 10301 (one run each: the clocked counts vary with the measured rate).
+OBS loop-2 batch (15 s, one batch, directional): RIGHT 32, UNKNOWN 2, WRONG 6; by proof proved RIGHT 32, proved WRONG 2, unproved WRONG 4, none 2 -- every decision as stage (b)'s
+(the same-day stage (a) batch: 31 / 2 / 7; the one change kJbxb, (b)'s clause).
+NEGATIVE CONTROL (monkeypatch: a dead goal's line opens all but the last of its queued questions): ten t0: 10 of 10 traces, 10 of 10 read sets, 5 of 10 leaf lists, 9 of 10 word lists,
+10 of 10 provenance lists differ -- the guard fires.
+OBS audit recount: CHESS FACT rows 428 -> 428 (agenda.py 423 -> 423); rows total 1756 -> 1760.
+A TEST CHANGED for the API (no claim or decision): test_plan72_10's 72.10 (2) read the waiting roots off `local["deferred"]` (KeyError in the first gate run); they are queued in the
+worklist now and the test reads them there (`ag.wl.deferred(ag._wf)`): the same assertions (queued, none asked), passed in the rerun below.
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_plan74 11/0/0/0 3.1 s; test_agenda 26/0/0/0 104.6 s; test_tiers 14/0/0/0 34.4 s; test_offbuilt64 15/0/1/0 96.5 s; test_fact_store 21/0/0/0 27.7 s; test_plan68 4/0/0/0 14.5 s; test_plan69 3/0/0/0 15.2 s; test_plan70 3/0/1/0 4.6 s; test_plan72_9 7/0/0/0 4.5 s; test_plan73 9/0/0/0 14.2 s; test_plan73_5b 11/0/0/0 8.3 s; test_cost61 13/0/0/0 4.0 s; test_plan66 16/0/0/0 4.2 s; test_plan65 13/0/0/0 7.3 s; test_plan72_7 16/0/0/0 1.5 s; test_plan72_7_step2 13/0/0/0 8.3 s; test_plan72_7_step3 13/0/0/0 43.3 s; test_remember 8/0/0/0 1.1 s; test_regress 87/0/1/0 390.3 s; test_plan72_10 4/0/0/0 2.7 s. Total 20 files: passed 307, failed 0, xfailed 3, errors 0.

@@ -188,9 +188,11 @@ class Graph:
             whose = f"of {self.line_name(ol)}" if ol is not None else "derived before"
             return f"served: the answer #{a.key} {whose}, its reads agreeing here ({src}{at}{tail})"
         if n.state == "deferred":
-            return f"deferred: {src}{at}{tail}; outside the frame of the line in hand, queued (not asked)"
-        if n.state in ("asked", "open"):
+            return f"deferred: {src}{at}{tail}; " + ("queued below every open question (not asked for this decision)" if obs else "outside the frame of the line in hand, queued (not asked)")
+        if n.state == "asked":
             return f"asked: {src}{at}{tail}"
+        if n.state == "open":
+            return f"open: {src}{at}{tail}; not asked (its agenda stopped first)"
         how = n.data.get("how")
         return f"{n.state}: " + (f"{how} " if how else "") + f"({src}{at}{tail})"
 

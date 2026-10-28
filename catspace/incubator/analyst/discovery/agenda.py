@@ -349,7 +349,7 @@ class Agenda:
         R.reset_ids()
         self.local = None                                       # plan 72.10: THE LOCAL INNER AGENDA -- an inner agenda of a chase handed the chased GOAL (`goal`: its kind and square on this board, the question, the reply that made the board) and
         if LOCAL_INNER and goal is not None and frame is not None and diff is not None and chase_depth and their is None and ctx is not None:      # its FRAME (the chased claim's read set) asks Q1 / Q2 / Q3 only (see `_local_class`); the rest of its roots
-            self.local = dict(goal=goal, frame=frame, diff=diff, full=False, deferred=[], live=False, routed=0, asked0=0, cls={}, why="")       # wait in `deferred` and are pushed only when the goal is dead here (`_local_next`)
+            self.local = dict(goal=goal, frame=frame, diff=diff, full=False, live=False, routed=0, asked0=0, cls={}, why="")       # are QUEUED in the worklist (74.3) and opened only when the goal is dead here (`_local_next`)
         self.units = units                                      # plan 72.10 Q2: THEIR agenda with the pass run on the diff's squares only -- its roots are the units standing in or bearing on these squares (None: every root)
         self._routes_read = 0                                   # plan 72.10: the chases this agenda read routes in: a goal question no chase read a route of is DEAD here (a direct route the binder rejects is no read of the goal: a question this depth may not chase was not read with the chase's power)
         if chase_depth == 0 and ctx is None and carry is None:
@@ -509,8 +509,8 @@ class Agenda:
         if self.local is not None and not self.local["full"] and not force:
             cls = self._local_class(q)
             if cls is None:                                      # plan 72.10: not one of the three questions -- it waits; asked only if the goal is dead here (the full agenda)
-                self.local["deferred"].append(q)
-                self._g_node(q, "deferred")                      # plan 74.1: a node with its provenance (arose from this line, outside its frame: queued, not asked)
+                self._g_node(q, "deferred")                      # plan 74.3: ENQUEUED with its provenance (arose from this line at this position, outside its frame): queued in the
+                q._wi = self.wl.defer(WL.Item(q, self._wf, (), stake=q.stake, depth=self.chase_depth, node=q._gn))      # worklist at depth d+1, never asked inline
                 return q
             self.local["cls"][id(q)] = cls
         if self.ctx is not None:
@@ -520,9 +520,15 @@ class Agenda:
         self._wl_push(q)
         return q
 
-    def _wl_push(self, q: R.Question) -> None:
-        """plan 74.2: the question enters the worklist, OPEN in this agenda's frame, with the policy's order key when no policy scores it -- the old heap's: (-stake, -recall, depth, seq)."""
-        q._wi = self.wl.push(WL.Item(q, self._wf, (-q.stake, -self._recall_score(q)[0], q.depth, self._seq), stake=q.stake, depth=self.chase_depth, node=getattr(q, "_gn", None)))
+    def _wl_push(self, q: R.Question, it: "WL.Item | None" = None) -> None:
+        """plan 74.2: the question enters the worklist, OPEN in this agenda's frame, with the policy's order key when no policy scores it -- the old heap's: (-stake, -recall, depth, seq).
+        74.3: a queued item (`it`) is opened with its key made now (its number and sequence are given when it opens)."""
+        order = (-q.stake, -self._recall_score(q)[0], q.depth, self._seq)
+        if it is None:
+            it = WL.Item(q, self._wf, order, stake=q.stake, depth=self.chase_depth, node=getattr(q, "_gn", None))
+        else:
+            it.order = order
+        q._wi = self.wl.push(it)
 
     def open_questions(self, ordered: bool = False) -> list:
         """plan 74.2: the open questions of this agenda's frame (the old heap's array order; `ordered`: by the order key)."""
@@ -1079,6 +1085,8 @@ class Agenda:
         self._ask_loop()
         if self.local is not None:
             self._local_report()                                 # plan 72.10 (4)
+        if self.ctx is not None:
+            self.wl.close(self._wf)                              # plan 74.3: its frame closes; what it queued and never needed stays in the run's passive set
         self._ask_finish()
 
     # ------------------------------------------------------------------------------------------------------------ plan 59: the status
@@ -2221,19 +2229,21 @@ class Agenda:
             L["why"] = "closed by the frame: the goal is alive here (its chase read routes); the rest of the board is neglected"
             return False
         L["full"] = True
-        L["why"] = ("full agenda: the goal is dead here (no chase of it read a route)" if L["deferred"] else "full agenda: the goal is dead here, and no other root can bring the need")
-        for q in L["deferred"]:
+        queued = self.wl.activate(self._wf)                      # plan 74.3: the questions ENQUEUED at this line's position (outside its frame) are opened at depth d+1, the line their provenance ...
+        L["why"] = ("full agenda: the goal is dead here (no chase of it read a route)" if queued else "full agenda: the goal is dead here, and no other root can bring the need")
+        for it in queued:
+            q = it.payload
             R._ids[0] += 1
             q.id = R._ids[0]
             self.all.append(q)
             self._seq += 1
-            self._wl_push(q)
-            self.ctx.graph.activate(self._g_node(q).id, f"Q{q.id}")      # plan 74.1: the queued question is opened (the goal is dead here) ...
-        if L["deferred"]:                                        # ... and the line waits on them: PENDING until they are answered or cut
-            self.ctx.graph.mark_line(self._gline, "pending", on=[q._gn for q in L["deferred"]])
+            self._wl_push(q, it)
+            self.ctx.graph.activate(self._g_node(q).id, f"Q{q.id}")
+        if queued:                                               # ... and the line is PENDING on them: the route in hand waits (they are its frame's next items, read depth-first, exactly as
+            self.ctx.graph.mark_line(self._gline, "pending", on=[it.node for it in queued])      # 72.10 read them) until they are answered (closed) or cut (a GAP with its resume point)
         if self._threats_done and getattr(self, "_threats_local", False):
             self._threats_done = False                           # their threats are asked again with their WHOLE agenda (the local one read the diff's units only)
-        return bool(L["deferred"]) or not self._threats_done
+        return bool(queued) or not self._threats_done
 
     def _local_report(self) -> None:
         """plan 72.10 (4): the trace line of a local inner agenda and its counts."""
@@ -5073,6 +5083,11 @@ class Agenda:
             out.append(f"{RN.PREFIX}the question edges of the decision's justification graph (plan 74.5: which question derived each fact, and why it was asked):")
             out += self._g_question_edges(fid)
         out.append(self.ctx.graph.summary())                    # plan 74.1: the reasoning graph of the run, counted
+        wl = self.ctx.worklist                                  # plan 74.3: and the run's passive set
+        qd = wl.queued()
+        nd = sum(1 for i in qd if i.state == WL.DEFERRED)
+        out.append(f"{RN.PREFIX}the worklist: {wl.taken} question(s) taken (asked or served) over {wl.next_frame - 1} frame(s); {len(qd)} in the passive set ({nd} queued outside the frame "
+                   f"of their line and never needed -- the frame lemma neglects them; {len(qd) - nd} left open by a stop)")
         return out
 
     def trace(self) -> str:

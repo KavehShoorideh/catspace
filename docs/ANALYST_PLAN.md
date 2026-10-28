@@ -3919,6 +3919,12 @@ rule or the policy.
   traces / read sets / leaf lists / word lists / provenance lists differ; questions asked and the count to the first keeping move identical). Clocked: W0VFO 10 s Qb7 +3 proved before
   and after; loop-2 RIGHT 31 / WRONG 7 (same day, before) -> 32 / 6 (kJbxb e5 proved by clause (1)); one batch, directional. A question not yet asked has no price: the price bites from a
   root's second pass on.
+* 74 (c) BUILT 2026-10-27 on branch worktree-agent-a783b98ab9a640248 (journal 2026-10-27 22:33): an inner agenda's roots outside the frame of the line in hand are ENQUEUED in the run's
+  worklist (deferred items at depth d+1, provenance the line), never asked inline; where the goal is dead the frame's queued items are opened and the LINE is PENDING on them until they
+  are answered (closed) or cut (a GAP with its resume point); selection depth-first within the frame (the route in hand's pending items first = 72.10's order: a reordered
+  continuation would change which reply kills a route, hence the kill's read set -- the acceptance pins it). Depth 1 first (dev step), then all depths: guard 0 of 218 traces / read sets
+  / leaf lists / word lists differ; questions asked identical per case (not lower: what 72.10 never asked stays unasked); over the 109 tier-0 cases 6967 questions queued and never needed,
+  7378 served (convergence), 2970 lines met a known answer. W0VFO 10 s Qb7 proved; loop-2 32 / 6 (as (b)). The recursive call stays as the expansion step.
 
 
 ## 75. THE GENERIC GOAL AND THE SUPPLIED VOCABULARY (Kaveh 2026-10-27 GO "go ahead and do it")

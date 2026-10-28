@@ -87,9 +87,10 @@ def test_72_10_2_after_a_parry_three_questions_are_asked_and_nothing_else_while_
     ag.ask()
     L = ag.local
     print("OBS 72.10 (2) Qb7 Rf7:", ag.lines[0][:400])
-    assert L is not None and not L["full"] and L["deferred"]
+    queued = [i.payload for i in ag.wl.deferred(ag._wf)]                                    # (plan 74 (c): the roots that wait are QUEUED in the worklist, no longer a list on `local`)
+    assert L is not None and not L["full"] and queued
     assert all(L["cls"].get(id(q)) in ("Q1", "Q2", "Q3") for q in ag.all)                 # nothing else was asked
-    assert not any(q in ag.all for q in L["deferred"])
+    assert not any(q in ag.all for q in queued)
     assert {L["cls"][id(q)] for q in ag.all} >= {"Q1", "Q2"}
     assert ag.best is not None and ag.best[2].what == "Qxf7+" and ag.best[0] >= 100
     assert ag.lines[0].startswith("local after Rf7 (") and "Q1 re-asked" in ag.lines[0] and "Q2 threats: save our Q on b7" in ag.lines[0]
