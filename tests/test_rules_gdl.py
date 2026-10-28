@@ -1,10 +1,12 @@
 """plan 76.0 THE SPIKE: the rule spec (rules/chess.gdl) read by the GDL interpreter (discovery/gdl.py, gdl_chess.py) against the fast kernels; the surprises it
-filed (rules/surprises/) replayed forever; the guard's `--jobs` identical to its serial run."""
+filed (rules/surprises/) replayed forever; the rook's clauses translated to Lean (scripts/gdl_to_lean.py -> lean/ideas/Ideas/Spec/Rook.lean) and proved equal to the
+kernel's (Ideas/Spec/RookEquiv.lean); the guard's `--jobs` identical to its serial run."""
 from __future__ import annotations
 
 import filecmp
 import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -84,6 +86,27 @@ def test_the_crossplay_fires_on_a_wrong_spec():
     res = CP.compare("1n2k3/P7/8/8/8/8/8/4K3 w - - 0 1", rust=False, prog=wrong)
     assert [d for d in res["disagree"] if d[:2] == ("python", "legal")]
     assert not CP.compare("1n2k3/P7/8/8/8/8/8/4K3 w - - 0 1", rust=False)["disagree"]
+
+
+def test_the_generated_rook_is_current(tmp_path):
+    """The committed Ideas/Spec/Rook.lean is what the translator writes from the spec today (regenerated, byte for byte)."""
+    out = tmp_path / "Rook.lean"
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "gdl_to_lean.py"), "rook", "--out", str(out)], check=True, capture_output=True,
+                   env=dict(os.environ, PYTHONPATH=str(ROOT)))
+    assert out.read_text() == (ROOT / "lean" / "ideas" / "Ideas" / "Spec" / "Rook.lean").read_text()
+
+
+@pytest.mark.slow
+def test_the_generated_rook_builds_and_its_proofs_hold():
+    """SLOW (a Lean build, ~10 s with the library built): the generated file and the equivalence proofs build; no sorry, no native_decide in either."""
+    lake = shutil.which("lake") or str(Path.home() / ".elan" / "bin" / "lake")
+    if not Path(lake).exists():
+        pytest.skip("no lake")
+    for f in ("Rook.lean", "RookEquiv.lean"):
+        text = (ROOT / "lean" / "ideas" / "Ideas" / "Spec" / f).read_text()
+        assert "sorry" not in text.replace("no `sorry`", "") and "native_decide" not in text.replace("no `native_decide`", "")
+    r = subprocess.run([lake, "build", "Ideas.Spec.RookEquiv"], cwd=ROOT / "lean" / "ideas", capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
 
 
 def test_snapshot_jobs_is_the_serial_run(tmp_path):

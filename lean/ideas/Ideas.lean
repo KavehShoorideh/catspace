@@ -42,3 +42,5 @@ import Ideas.Game
 import Ideas.Reach
 import Ideas.Frame
 import Ideas.Draws
+import Ideas.Spec.Rook
+import Ideas.Spec.RookEquiv
