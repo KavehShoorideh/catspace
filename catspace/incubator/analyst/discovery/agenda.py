@@ -696,9 +696,10 @@ class Agenda:
             placed = chess.Piece(m.promotion, pc.color) if m.promotion else pc        # a promotion places the NEW piece (Kaveh 2026-10-17)
             more = []
             if b.is_castling(m):                                                       # castling places the king AND the rook; the rook is the checker
-                rf, rt = (chess.H1 if m.to_square > m.from_square else chess.A1), (chess.F1 if m.to_square > m.from_square else chess.D1)
-                if pc.color == chess.BLACK:
-                    rf, rt = rf + 56, rt + 56
+                after = GAME.apply(b, m)                                               # plan 75.2 (d): the rook's squares are the kernel's (the move applied), not written here:
+                rest = [s for s in GAME.locations() if s not in (m.from_square, m.to_square)]      # the square the move empties besides the king's, and the one it fills
+                rf = next(s for s in rest if b.piece_at(s) is not None and after.piece_at(s) is None)
+                rt = next(s for s in rest if b.piece_at(s) is None and after.piece_at(s) is not None)
                 more = [(b.piece_at(rf).symbol(), rt, rf)]
             cf = G.with_piece(b, placed, m.to_square, m.from_square)
             for sym, at, frm in more:
@@ -1460,9 +1461,10 @@ class Agenda:
     @staticmethod
     def _refuted(why: str) -> bool:
         """plan 65.3: does a route's kill PROVE a loss? A material kill reads '... (-n)' (a reply of theirs after which we are n down with nothing to win back), or the route walks into a mate / stalemate. A kill of
-        a question's own goal (the promotion is not claimed, the blocked defect stands) or one that ends level ('(+0)') proves no loss: that route is not refuted."""
+        a question's own goal (the promotion is not claimed, the blocked defect stands) or one that ends level ('(+0)') proves no loss: that route is not refuted. Which kill words prove a loss
+        is their entries' field (plan 75.2 (d): `refutes`)."""
         m = re.search(r"\((-\d+)\)\s*$", why)
-        return bool(m) or "they mate us" in why or "stalemate" in why or "no parry" in why
+        return bool(m) or LS.says(why, "refutes")
 
     def _record_roots(self, routes: list, results: dict, q: "R.Question | None" = None) -> None:
         """plan 65.3: what the ROOT's chase learned of each route: REFUTED (a kill that proves a loss: final), or UNFINISHED (a GAP, or a kill that proves no loss: the replies read so far are `gains`). The decision
@@ -2122,7 +2124,7 @@ class Agenda:
             out.update(W.pawn_path(self.board, q.pattern[g.about], q.pattern.get("pushes") or 1))      # (the pawn's way to its promotion square)
         units = None
         ksq = c.king(not self.me)
-        if th is not None and ksq is not None and th.kind in ("mate", "mate2", "check"):
+        if th is not None and ksq is not None and LS.at_king(th.why):          # the king's zone joins the frame of a word aimed at their royal unit (its entry's `at_king`, 75.2 (d))
             out.add(ksq)
             out.update(GAME.adjacent(ksq))
             if th.kind == "check":
@@ -2444,7 +2446,7 @@ class Agenda:
         for t, _w in p["targets"]:
             reads.update(LD.exchange_reads(c, t))
         q.reads = frozenset(reads)
-        if worst is None or worst[0] < 1:
+        if worst is None or worst[0] < self.unit:
             r = chess.Move.from_uci(worst[1]) if worst is not None else None
             how = ""
             if r is not None:
@@ -2507,8 +2509,8 @@ class Agenda:
             if k is not None:
                 why, reads, which = k["why"], k["reads"], "the wall"
         if why is None:
-            heavy = [s for s in chess.SQUARES if b.piece_at(s) is not None and b.piece_at(s).color == self.me and b.piece_at(s).piece_type not in (chess.KING, chess.PAWN)]
-            if len(heavy) == 1 and b.piece_at(heavy[0]).piece_type == chess.ROOK and not b.is_check():
+            heavy = [s for s in GAME.locations() if b.piece_at(s) is not None and b.piece_at(s).color == self.me and not NM.royal(b.piece_at(s)) and not NM.pawn(b.piece_at(s))]
+            if sorted(b.piece_at(s).symbol().upper() for s in heavy) == LS.params_of("reasoned: the measure they hold")["units"] and not b.is_check():      # the units the measure holds for: its entry's (75.2 (d))
                 steps = [chess.Move.from_uci(u) for u in q.pattern["reach"]] if q.pattern.get("reach") else ([chess.Move.from_uci(q.pattern["move"])] if q.pattern.get("move") else [])
                 steps = [m for m in steps if W.forcing_why(b, m, q.stake, us, mate_threats=True)]
                 passer = self._their_passer(heavy[0]) if steps else None
@@ -3266,7 +3268,7 @@ class Agenda:
                     g, part = self.goals.promotion.stake, f"{inn['claim'].what} ({inn['claim'].line}; value {inn['claim'].value}, at least the stake {self.promote_stake})"
                 elif dbal >= self.promote_stake:
                     g, part = dbal, f"material {dbal:+d} (the reply gave up at least the stake {self.promote_stake})"
-                elif dbal <= 0 and inn["claim"] is not None and inn["value"] >= 1 - dbal:       # no promotion, but the material the reply cost is won back and more (the ordinary chase's reading)
+                elif dbal <= 0 and inn["claim"] is not None and inn["value"] >= self.unit - dbal:       # no promotion, but the material the reply cost is won back and more (the ordinary chase's reading)
                     g, part = dbal + inn["value"], f"{inn['claim'].what} ({inn['claim'].line}; value {inn['claim'].value}) wins the material back: {dbal:+d} + {inn['value']}"
                     res["material"] = True
                 elif (inn.get("cut") or inn.get("chain")):
@@ -3289,7 +3291,7 @@ class Agenda:
                     res["lemmas"].append(pc.lemma)
                 continue
             mate_save = target < self.unit and self._chase_q is not None and self._chase_q.pattern.get("value", 0) >= self.end_stake      # 70.1 / 2026-10-22 (0AgL8): the chase of a save against a MATE threat
-            static = (dbal >= 1 or (mate_save and dbal >= target)) and inn["value"] < self.end_stake      # under keep semantics a balance of 0 too stands only as a static balance; against a mate threat it is read with the pass (Qc1+ Qd1: Bc6+ still mates), elsewhere the keep family's one-ply read is the standard (the pass read on every 0-leaf cost 04Qx2's Be8+ the fuse)
+            static = (dbal >= self.unit or (mate_save and dbal >= target)) and inn["value"] < self.end_stake      # under keep semantics a balance of 0 too stands only as a static balance; against a mate threat it is read with the pass (Qc1+ Qd1: Bc6+ still mates), elsewhere the keep family's one-ply read is the standard (the pass read on every 0-leaf cost 04Qx2's Be8+ the fuse)
             t_their, claim_their, unparried, parry_note = 0, None, 0, None
             if target < self.unit and dbal >= target and inn["value"] < self.end_stake and P2.is_check() and inn["claim"] is None:      # 2026-10-22 (0AgL8): under KEEP semantics, IN CHECK (at target >= 1 the rule over-reaches: an in-check inner agenda whose evasion merely keeps makes no claim -- 0sjz3's Rxd6 exd6+ would read as a GAP; GWigp's Rxe6 is wrong for their a-pawn behind the leaf, LOOP TARGET 2, not for this) there is no pass to read their threat from -- a leaf the inner agenda left without a claim cannot be kept by its balance: a GAP (not parried YET), never a keep (Ne1 Bc6+ "material +0", then Ra8#); a claim of the inner agenda (the forced reply read, 2TUzC's Rxf5 Qxf1+ Kh2) keeps as any claim does
                 res["gap"] = LS.name(f"after {san_r}: {dbal:+d} stands only as a balance and we are in check (no pass to read their threat, no claim of ours): not parried YET")
@@ -3301,7 +3303,7 @@ class Agenda:
                 t_their, claim_their = self._their_pass(P2.fen(), pos=P2)
                 if claim_their is not None:
                     ctx.static_read += 1
-                if claim_their is not None and dbal - t_their < 1:
+                if claim_their is not None and dbal - t_their < self.unit:
                     # 52.14: their claim is a THREAT and a SAVE root of the inner agenda on this position (we are to move: a parry, a counter, taking the attacker); the reply is
                     # killed only by the threats no parry of ours is verified for
                     ctx.line.append((self.fen, m.uci(), uci, self._judge_stake()))
@@ -3336,11 +3338,11 @@ class Agenda:
                             f3 = P3w.fen() if P3w is not None else G.with_turn(GAME.from_key(P3.fen()), self.me).fen()
                             t3, cl3 = self._their_pass(f3, pos=P3w)
                             g3, gt3 = self._their_open(f3, pos=P3w) if THEIR_GAPS else (0, None)
-                            if cl3 is not None and dbal3 - t3 < 1:
+                            if cl3 is not None and dbal3 - t3 < self.unit:
                                 cl.parry_note = f"{pc.what} keeps one ply, then their {cl3.what} wins {t3} (lemma {cl3.lemma}) after it"
                                 unsure.append(cl)
                                 ctx.parry_pass_gaps += 1
-                            elif g3 and dbal3 - max(t3, 0) - g3 < 1:
+                            elif g3 and dbal3 - max(t3, 0) - g3 < self.unit:
                                 cl.parry_note = f"{pc.what} keeps one ply, then their question '{gt3}' (stake {g3}) is OPEN after it (no lemma fires yet)"
                                 unsure.append(cl)
                                 ctx.their_open_gaps += 1
@@ -3352,14 +3354,14 @@ class Agenda:
                     else:
                         ctx.static_parried += 1
                     self._static_line(san, san_r, dbal, claim_their, parry_note, lost)
-                    if unsure and dbal - unparried - sum(cl.value for cl in unsure) < 1:
+                    if unsure and dbal - unparried - sum(cl.value for cl in unsure) < self.unit:
                         worst = max(unsure, key=lambda cl: cl.value)
                         res["gap"] = LS.name(f"after {san_r}: {dbal:+d} stands only as a balance and their {worst.what} (wins {worst.value}, lemma {worst.lemma}) is not parried YET: " + (getattr(worst, "parry_note", None) or "the save question was cut, not killed"))
                         res["reply"] = uci
                         ctx.budget_hits += 1
                         self._log(lkey, uci, "gap", dbal, None, None, res["gap"])
                         break
-                    if dbal - unparried < 1:
+                    if dbal - unparried < self.unit:
                         worst = max(lost, key=lambda cl: cl.value) if lost else claim_their
                         res["killed"] = LS.name(f"after {san_r}: {dbal:+d} stands only as a balance, their {worst.what} wins {worst.value} (lemma {worst.lemma}), no parry")
                         self._log(lkey, uci, "killed", dbal, inn["value"], None, res["killed"])
@@ -3369,15 +3371,15 @@ class Agenda:
                     unparried = t_their
                 if THEIR_GAPS and res["gap"] is None and res["killed"] is None:      # plan 72.2 (d): their OPEN question at the leaf that would eat the balance: not read YET (a GAP)
                     g_o, gt_o = self._their_open(P2.fen(), pos=P2)
-                    if g_o and dbal - unparried - g_o < 1:
+                    if g_o and dbal - unparried - g_o < self.unit:
                         res["gap"] = LS.name(f"after {san_r}: {dbal:+d} stands only as a balance and their question '{gt_o}' (stake {g_o}) is OPEN with the move passed (no lemma fires yet): not read YET")
                         res["reply"] = uci
                         ctx.budget_hits += 1
                         ctx.their_open_gaps += 1
                         self._log(lkey, uci, "gap", dbal, None, None, res["gap"])
                         break
-                if STUCK_LEAF and dbal - unparried >= 1 and res["gap"] is None and res["killed"] is None:      # plan 72.2 (b): THE UNIT THAT CANNOT RUN, reached by their unit at a price below its worth, no guard of ours in time: not parried YET (the priced reach reads no reply: a GAP, never a kill)
-                    st = [d for d in R.stuck_threats(GAME.from_key(P2.fen()), self.us) if d["parry"] is None and dbal - unparried - (d["worth"] - d["price"]) < 1]
+                if STUCK_LEAF and dbal - unparried >= self.unit and res["gap"] is None and res["killed"] is None:      # plan 72.2 (b): THE UNIT THAT CANNOT RUN, reached by their unit at a price below its worth, no guard of ours in time: not parried YET (the priced reach reads no reply: a GAP, never a kill)
+                    st = [d for d in R.stuck_threats(GAME.from_key(P2.fen()), self.us) if d["parry"] is None and dbal - unparried - (d["worth"] - d["price"]) < self.unit]
                     if st:
                         d = st[0]
                         bb_rb = RB.RBoard(P2)
@@ -3498,7 +3500,7 @@ class Agenda:
         ag2 = Agenda(State(fen=c2_rb.fen(), us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=self.unit, pos=P2x)
         ag2._chase_q = q2
         res3 = ag2._chase_route(r_k.move)
-        if res3["gap"] is not None or res3["killed"] is not None or res3["value"] < 1 - dbal:
+        if res3["gap"] is not None or res3["killed"] is not None or res3["value"] < self.unit - dbal:
             return None
         v = dbal + res3["value"]
         reads = frozenset({ref.from_square, ref.to_square, r2.move.to_square, r_k.move.from_square, r_k.move.to_square})
@@ -3597,7 +3599,7 @@ class Agenda:
         for P_old, dbal0, reads, san0, target0, gk0 in self.ctx.reply_kills.get(uci, ()):
             if gk0 is not None and gk0 != gk:                       # plan 72.10: a kill an agenda made for one goal only (a local inner agenda) stands for that goal only
                 continue
-            if reads is None or dbal >= 1 or dbal0 < dbal or target0 > target:          # the inner agenda read the roots of stake >= target0 - dbal0: enough for any reply that took at least as much, for a route that needs at least as much
+            if reads is None or dbal >= self.unit or dbal0 < dbal or target0 > target:          # the inner agenda read the roots of stake >= target0 - dbal0: enough for any reply that took at least as much, for a route that needs at least as much
                 continue                                            # 64.2: AND that needs at least as much (W0VFO: a kill made for the need of several was served to Qb7 Qxa7, which needs 1)
             if not (reads & frozenset(P_old.diff(P2))):
                 return ("no claim of ours and no material gain", san0, sorted(reads))
@@ -3605,11 +3607,11 @@ class Agenda:
 
     def _closed_by_rule(self, P2: "AC.Pos", dbal: int, mate1: bool | None = None) -> tuple | None:
         """52.13 (4): a reply that the RULES close, no inner agenda: (a) we have a mate in one (some legal move of ours checkmates); (b) a capture of ours wins by the
-        exchange at least what the route still needs (`need` = 1 - dbal) and THEIR agenda with the move passed to them finds no claim. `P2` = the position after the reply
+        exchange at least what the route still needs (`need` = the unit - dbal) and THEIR agenda with the move passed to them finds no claim. `P2` = the position after the reply
         (our move). -> (route value for this reply, why) or None."""
         if (P2.mate_in_one() if mate1 is None else mate1):
             return self.end_stake, "mate in one"
-        if dbal >= 1 or P2.is_check():
+        if dbal >= self.unit or P2.is_check():
             return None
         need = self.unit - dbal
         best = P2.exchange()
@@ -4601,7 +4603,7 @@ class Agenda:
             confs.append((False, conf))
             leaves.append(dict(fen=fen, value=dbal, status=P2.balance(me) - 64, cls=cls, confidence=conf, estimator="quiet-status", reply=uci, us=self.us))
         value = min(gains)
-        if not leaves or value < 1:
+        if not leaves or value < self.unit:
             return self._est_no("estimate below the stake" if leaves else "no quiet leaf")
         from catspace.incubator.analyst.discovery.state import combine
         proved, conf = combine(confs)
@@ -5042,7 +5044,7 @@ class Agenda:
             return None
         lost = W.base.see_for(c, facts["promo"], not me)
         net = self.goals.promotion.stake - lost
-        if lost <= 0 or net < 1:
+        if lost <= 0 or net < self.unit:
             return None
         read = W.exchange_read(G.with_turn(c, not me))
         claim = Claim(self.goals.gain.question, san, net, LS.name("promotion_exchange: the push, then the x-ray exchange on the promotion square (Ideas.ExchangeLaw seeXB, mirrored by the Rust see)"),
@@ -5087,13 +5089,14 @@ class Agenda:
         q.fixes.append(f)
         # WE move first on the real board and the pawn is promoted by its nth push, so we make n moves before it; the king stops it when it is next to the
         # promotion square then (it takes the new queen), i.e. distance <= n + 1 (the same inequality as the lemma's kingOutside, n < dist, for the defender
-        # with n - 1 moves). Distance = n + 1 is exact: every move of ours is spent.
-        if kd == n + 1:
-            self.lines.append(f"     forced: every move of ours is spent stopping the pawn (distance {kd} = pushes {n} + 1: next to {GAME.loc_name(promo)} after our {n} moves)")
-        elif kd > n + 1:
-            self.lines.append(f"     no stopper in time: distance {kd} > pushes {n} + 1")
+        # with n - 1 moves). Distance = n + 1 is exact: every move of ours is spent. (Plan 75.2 (d): the one move in hand is the entry's `ahead`.)
+        a = LS.params_of("no stopper in time")["ahead"]
+        if kd == n + a:
+            self.lines.append(f"     forced: every move of ours is spent stopping the pawn (distance {kd} = pushes {n} + {a}: next to {GAME.loc_name(promo)} after our {n} moves)")
+        elif kd > n + a:
+            self.lines.append(f"     no stopper in time: distance {kd} > pushes {n} + {a}")
         else:
-            self.lines.append(f"     slack: distance {kd} <= pushes {n}: {n - kd + 1} spare move(s)")
+            self.lines.append(f"     slack: distance {kd} <= pushes {n}: {n - kd + a} spare move(s)")
         before = len(self.state.claims)
         if self.their is not None:                               # 52.14: on a static leaf the stopper keeps the gain or not
             self._parry_keeps(q, runs)
@@ -5102,7 +5105,7 @@ class Agenda:
             self._verify(q, runs, mates_only=False)
         if len(self.state.claims) == before:
             self.lines.append(f"  no route binds a guaranteed gain against the passer (the binder has no promotion tail); {arith}")
-            if kd > n + 1:
+            if kd > n + a:
                 self.state.gaps.append(f"Q{q.id} {q.text}: " + LS.name(f"no stopper in time ({arith}) and no capture binds"))
 
     # ------------------------------------------------------------------------------------------------------------ outputs

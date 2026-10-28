@@ -164,9 +164,13 @@ def _params_problems(e: dict, at: str) -> list:
         allowed = WORD_PARAMS[k]
         if not isinstance(p, dict) or not p or any(f not in allowed or not isinstance(v, allowed[f]) or isinstance(v, bool) != (allowed[f] is bool) for f, v in p.items()):
             return [f"{at}: a {k}'s params are among {', '.join(f'{f} ({t.__name__})' for f, t in allowed.items())}"]
+        if "units" in p and (not p["units"] or not all(isinstance(u, str) and len(u) == 1 for u in p["units"])):
+            return [f"{at}: params units must be unit kinds (one letter each)"]
+        if "order" in p and (not p["order"] or not all(isinstance(c, list) and len(c) == 2 and isinstance(c[0], str) and c[1] in (1, -1) for c in p["order"])):
+            return [f"{at}: params order must be [component, sign] pairs, sign 1 (fewer first) or -1 (more first)"]
         return []
     if p is not None:
-        return [f"{at}: only a GOAL, a VALUATION, a STOP, a FORCING or a CLOSING entry has params"]
+        return [f"{at}: only a GOAL, a VALUATION, a STOP, a FORCING, a CLOSING or a DEFECT_FIX entry has params"]
     return []
 
 
@@ -175,8 +179,12 @@ def _params_problems(e: dict, at: str) -> list:
 # of the word's entry: a FORCING word is `forced` (its replies are forced: the chase follows it below the root, the judge may let it decide), ranks the chase's routes (`rank`
 # when the route's word IS the entry's name, `rank_any` when it begins with it), is `walked` (a plain check: the walk of checks tests it); a CLOSING word `reads_every_reply` (its
 # claim is no fact of another position), was made by the `chase`, is followed to its `leaf_read`, is a gain within the `window`, or is a `draw`.
-WORD_PARAMS = {"FORCING": {"forced": bool, "rank": int, "rank_any": int, "walked": bool},
-               "CLOSING": {"reads_every_reply": bool, "chase": bool, "leaf_read": bool, "window": bool, "draw": bool}}
+# Plan 75.2 (d) adds: a FORCING word `at_king` (its threat is on their royal unit: the king's zone joins its route's frame); a CLOSING word `refutes` (a route killed by it is REFUTED: the kill proves a loss), the `units` a measure holds for (the unit kinds of ours beside the
+# royal unit and the pawns), the `order` of a tie-break key (its components, each [name, sign]: +1 fewer first, -1 more first); a DEFECT_FIX its arithmetic's `ahead` (the
+# moves the side to move has in hand over the count it is compared with).
+WORD_PARAMS = {"FORCING": {"forced": bool, "rank": int, "rank_any": int, "walked": bool, "at_king": bool},
+               "CLOSING": {"reads_every_reply": bool, "chase": bool, "leaf_read": bool, "window": bool, "draw": bool, "refutes": bool, "units": list, "order": list},
+               "DEFECT_FIX": {"ahead": int}}
 _WORDS: list = [None, None]          # (the store object, the derived tables)
 
 
@@ -190,7 +198,8 @@ def _word_tables() -> dict:
             exact={n: p["rank"] for n, p in ranked if "rank" in p},
             prefix=sorted(((n, p["rank_any"]) for n, p in ranked if "rank_any" in p), key=lambda t: -len(t[0])),
             rest=1 + max([p.get("rank", p.get("rank_any", 0)) for _n, p in ranked] or [-1]),
-            walked=frozenset(n for n, p in forcing if p.get("walked")))
+            walked=frozenset(n for n, p in forcing if p.get("walked")),
+            at_king=frozenset(n for n, p in forcing if p.get("at_king")))
     return _WORDS[1]
 
 
@@ -212,10 +221,23 @@ def walked(why: str) -> bool:
     return why in _word_tables()["walked"]
 
 
+def at_king(why: str) -> bool:
+    """Is the route's word a FORCING entry whose threat is on their royal unit (`at_king`: the frame of its route takes the king's zone -- its square and the squares next to it)?"""
+    return why in _word_tables()["at_king"]
+
+
 def says(word: str, field: str) -> bool:
     """Does an entry the printed word resolves to (the word itself, its composition's head, its slots) say `field`? (False when the word is not catalogued.)"""
     store = load()
     return any((store[n].get("params") or {}).get(field) for n in (resolve(word) or ()) if n in store)
+
+
+def params_of(name: str) -> dict:
+    """The params of the entry named `name` (the agenda reads a word's shape there: a measure's units, a key's order, an arithmetic's `ahead`). KeyError when the entry or its params are missing."""
+    p = load()[name].get("params")
+    if p is None:
+        raise KeyError(f"the store entry {name!r} has no params")
+    return p
 
 
 def head_says(word: str, field: str) -> bool:

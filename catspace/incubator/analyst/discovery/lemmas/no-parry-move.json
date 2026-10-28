@@ -21,5 +21,8 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/agenda.py:_parry_keeps"
  ],
- "note": "The threat on a static leaf has no parry move to try: the save is killed."
+ "note": "The threat on a static leaf has no parry move to try: the save is killed.",
+ "params": {
+  "refutes": true
+ }
 }

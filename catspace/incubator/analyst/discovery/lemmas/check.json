@@ -26,6 +26,7 @@
  "params": {
   "forced": true,
   "rank": 0,
-  "walked": true
+  "walked": true,
+  "at_king": true
  }
 }

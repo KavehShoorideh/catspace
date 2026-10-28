@@ -34296,3 +34296,38 @@ counts no xpass); test_tiers 14/0/0/0 30.2 s; test_offbuilt64 15/0/1/0 94.8 s; t
 gains: every name bound with its twin; the words' tests read the fields; the GENERIC TEST (75.2 (d)'s, written now): the agenda's core functions (selection, the status, the chase's
 expansion, the judge) name no unit kind, no SAN mark and no goal or word literal outside names.py and the store -- the covered list and the not-yet list with their reasons in the test.
 docs/LEAN_INDEX.md rebuilt (`lean_index build`): only the used-by lines (names.py cites the twins); no theorem added.
+
+## 2026-10-28 02:11 -- plan 75.2 (d) THE REST: KERNEL READS, THE STORE'S FIELDS, THE GENERIC TEST (branch worktree-agent-a96bad5c641e60ec1)
+KERNEL READS: castling's rook squares are read off the kernel's castling (the move applied: the square it empties and the one it fills besides the king's), not written in the
+agenda. OBS castling check (dev, scratch tools/check_d.py): 692 castling moves on 300 random walks, the kernel's squares equal the old formula's on 692. THE STORE'S FIELDS (schema in
+lemmas/README.md, `check_entry`): the gain unit written as 1 in sixteen material comparisons of the agenda is the VALUATION's unit; the kill words that prove a loss are the CLOSING
+entries' `refutes` (they mate us, stalemate, no parry keeps the gain, no parry move, ... stands only as a balance, ... no parry: `_refuted`; the '(-n)' read off a kill's printed value
+stays); the words aimed at their royal unit are the FORCING entries' `at_king` (check, threat of mate, threat of mate in two: the king's zone joins the route's frame); the measure they
+hold's "a king and one rook" is its entry's `units` (["R"]; the royal unit and the pawns by the names table); the rule of the square's one move in hand is `no stopper in time`'s
+`ahead` (1; DEFECT_FIX gains params); the shape key's order is `the shape key`'s `order` (puzzle_apply.shape_key builds the key from it). `lemma_store.params_of`, `at_king`.
+OBS stage (d) check (dev: `_refuted` and the shape key against the code they replaced, every call of the 218 guard runs): ten t0 / ten t2 / wide t0 / wide t2 -- shape key 1936 / 6688 /
+5951 / 22882 calls, refuted 81 / 50 / 375 / 395 calls, disagreements 0.
+OBS trace identity against stage (c) (count budget, PYTHONHASHSEED=0): ten t0, ten t2 0 of 10 traces / read sets / leaf verdict lists / word lists / provenance lists differ; wide t0,
+wide t2 0 / 0 / 0 / 0 / 0 of 99. The trace text did not change.
+NEGATIVE CONTROL (lemmas/the-shape-key.json order: hanging sign 1 -> -1, ten t0, restored after): 1 of 10 traces, 0 of 10 read sets, 0 of 10 leaf lists, 0 of 10 word lists, 2 of 10
+provenance lists differ, and 1 of 10 DECISION lines: qCXKp Bb5 -> Qb5 (both 0, lemma none: the smallest loss's tie at an equal net is broken by the shape key) -- the guard fires,
+and a decision rides on the HEURISTIC entry's order (a finding, directional).
+OBS audit recount: CHESS FACT rows 216 -> 210 (D9 4 -> 2, D7 4 -> 3, D10 6 -> 5, D11 5 -> 4, D24 5 -> 4; 51 readings kept on edited lines, 129 dropped, every one printed and read: the
+static leaf's, close-by-rule's, the promote chase's, the promotion exchange's, the standing kill's, the race's and the '(-n)' readings stay); RULE rows 107 -> 106 (castling's).
+What stays and why: docs/AGENDA_AUDIT.md's 75.2 recount, stage (d).
+FINDINGS (reported, nothing added to the kernel): the threefold and fifty-move rules are not in Game.terminal and the chase's cycle is one repeat (Lean repetition_level); `_pos_key`
+equals the kernel's EPD on a FEN the kernel rendered, but the root's key is cut from the input FEN, whose en-passant field may be pseudo-legal (checked: 'e6' kept by the key, dropped
+by the kernel's EPD); the promotion push is built by hand with the one placed unit (no underpromotion); the judge's rates read check / capture off the kernel's SAN; the principal
+lines (D23) duplicate the Rust exchange; mate in one is read by python-chess and by the Rust core.
+THE GENERIC TEST (tests/test_plan75.py, written in (c)): 25 of the agenda's 34 core functions covered; not yet coverable, with their rows: _push 1, _ask_loop 1, status 2, _keep_goal 1,
+_target 1, _chase_routes 4, _inner 4, _competitor 1, _judge_resume 1 (three of them name the in-check pattern key 'checkers').
+OBS W0VFO 10 s (the pool, alone): Qb7 +3 by the chase claim, the pool ended at 9.0 s; root questions 38, inner agendas 1070, inner questions 16669 (after (a): 8.2 s, 38, 771,
+9811; one run each, the clocked counts follow the measured rate: 0.021 s per node here, 0.026 after (a)).
+OBS loop-2 batch (rand14_10 .. rand17_10, 15 s, the pool, graded by Stockfish depth 14 in its own process; one batch, directional): RIGHT 32, UNKNOWN 2, WRONG 6; by proof proved RIGHT 32,
+proved WRONG 3, unproved WRONG 3, none 2 (after (a): the same).
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_plan75 11/0/0/0 0.5 s; test_plan74 13/0/0/0 3.1 s; test_plan73 9/0/0/0 13.8 s; test_agenda
+26/0/0/0 89.8 s; test_regress 87/0/1/0 347.3 s; test_tiers 14/0/0/0 30.1 s; test_offbuilt64 15/0/1/0 94.4 s; test_fact_store 21/0/0/0 22.7 s; test_game 3/0/0/0 0.3 s; test_binder_rust
+31/0/0/0 0.7 s; test_plan62 28/0/0/0 7.7 s; test_duty63 12/0/0/0 0.4 s; test_plan72_9 7/0/0/0 3.5 s; test_plan72_10 4/0/0/0 2.2 s; test_discovery_vocabulary 23/0/0/0 16.9 s; test_cost61
+13/0/0/0 2.9 s; and for puzzle_apply's readers test_forcing61 13/0/0/0 2.7 s, test_plan65 13/0/0/0 6.2 s, test_plan72_7_step2 13/0/0/0 7.6 s, test_plan72_7_step3 13/0/0/0 38.7 s,
+test_plan73_5b 11/0/0/0 7.4 s. test_plan75 gains: the castling rook from the kernel (both colours); refutes, at_king (against regress.threat_of's kinds), the shape key's order, the
+measure's units and the stopper's move in hand are entry fields, a patched field moves the reading. OBS lemma store validate: entries 108, problems 0.

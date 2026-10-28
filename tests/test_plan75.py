@@ -204,6 +204,42 @@ def test_75c_the_words_read_their_entries_fields():
     assert LS.head_says("delayed_balance_alive_d2", "window") and LS.says("chase: step_after+step_least over repetition", "draw")
 
 
+# ---------------------------------------------------------------------------------------------------------------- (d) the rest: kernel reads, the store's fields
+
+def test_75d_the_castling_rook_is_read_off_the_kernel():
+    """A castling mate root places the rook where the kernel's castling puts it (75.2 (d): no rook squares written in the agenda)."""
+    for fen, want in (("5k2/8/8/8/8/8/8/4K2R w K - 0 1", ("R", chess.F1, chess.H1)), ("4k2r/8/8/8/8/8/8/5K2 b k - 0 1", ("r", chess.F8, chess.H8))):
+        ag = _agenda(fen)
+        mores = [q.pattern["more"] for q in ag.all if q.goal == "mate" and q.pattern.get("more")]
+        assert mores and all(tuple(m[0]) == want for m in mores), (fen, mores)
+
+
+def test_75d_the_words_and_shapes_of_the_rest_are_the_entries(monkeypatch):
+    """The kill words that refute, the words aimed at their king, the shape key's order, the measure's units and the stopper arithmetic's move in hand are store fields; a patched
+    field moves the agenda's reading."""
+    from catspace.incubator.analyst.discovery import puzzle_apply as PA
+    assert Agenda._refuted("after Rxd5 they mate us") and Agenda._refuted("stalemate") and Agenda._refuted("route Qd5: lost a piece (-3)")
+    assert not Agenda._refuted("the promotion is not claimed") and not Agenda._refuted("no claim of ours and no material gain (+0)")
+    b = chess.Board(RA8)
+    m = chess.Move.from_uci("a1a8")
+    for why in ("check", "threat of mate", "threat of mate in two", "capture 3", "threat 3"):
+        th = R.threat_of(b, m, why)
+        assert LS.at_king(why) == (th.kind in ("mate", "mate2", "check")), why          # the king's zone: exactly the words whose threat is on their royal unit
+    sh = dict(mate=False, loss=0, hanging=["e4"], checks=[("Qh5+", ["e4"]), ("Bb5+", [])], guarded=3, poking=2)
+    assert PA.shape_key(sh) == (0, 1, 1, -3, -2) and PA.shape_key(dict(sh, mate=True)) == (-1,)
+    assert LS.params_of("reasoned: the measure they hold")["units"] == ["R"] and LS.params_of("no stopper in time")["ahead"] == 1
+    store = copy.deepcopy(LS.load())
+    store["the shape key"]["params"]["order"] = [["poking", -1], ["hanging", 1]]
+    store["they mate us"]["params"]["refutes"] = False
+    monkeypatch.setattr(LS, "_STORE", [store])
+    assert PA.shape_key(sh) == (-2, 1)
+    assert not Agenda._refuted("after Rxd5 they mate us") and Agenda._refuted("stalemate")
+    bad = copy.deepcopy(store["the shape key"])
+    bad["params"]["order"] = [["poking", 2]]
+    assert LS.check_entry(bad)                                                          # a component's sign is 1 or -1
+    print("OBS 75d store fields: refutes, at_king, the shape key's order, the measure's units, the stopper's move in hand -- a patched field moves the reading")
+
+
 AGENDA_CORE = {                                                                           # 75.2 (d)'s generic test: the agenda's functions that must name nothing outside names.py and the store
     "selection": ("_push", "_wl_push", "open_questions", "_wl_status", "_wl_price", "_wl_said", "_graph_order", "_ask_loop"),
     "the status": ("status", "keeps", "status_line", "_keep_goal", "_target"),

@@ -2064,3 +2064,39 @@ A dev check compared every field read with the string test it replaced on the 21
 What stays, and why: D9's "our only piece a rook" (the reasoned kill: stage (d)); the rows of stage (d)'s families (the defect words, the exchange's principal lines, the
 leaf's estimators, the passer words, the static leaf).
 
+### Stage (d): the rest -- kernel reads, the store's fields, the generic test
+
+```
+OBS audit rows total 1600: LOGIC 1228, RULE 106, NAME 21, CHESS FACT 210, HEURISTIC 35
+OBS audit rows agenda.py 1566: LOGIC 1202, RULE 104, NAME 19, CHESS FACT 208, HEURISTIC 33
+OBS audit rows ponder.py 34: LOGIC 26, RULE 2, NAME 2, CHESS FACT 2, HEURISTIC 2
+OBS audit hand readings carried onto an edited line (the family's fact stays there): 51
+OBS audit hand readings dropped (their line changed since 65024fbf): 129
+OBS audit recount CHESS FACT rows 216 -> 210
+OBS audit recount fact D10: rows 6 -> 5
+OBS audit recount fact D11: rows 5 -> 4
+OBS audit recount fact D24: rows 5 -> 4
+OBS audit recount fact D7: rows 4 -> 3
+OBS audit recount fact D9: rows 4 -> 2
+```
+
+What left agenda.py: castling's rook squares (read off the kernel's castling: the move applied, the square it empties and the one it fills besides the king's -- the three RULE
+readings of section 5's first rule left with them); the gain unit written as 1 in the material comparisons (the VALUATION's `unit`; the readings of D7, D10 and D11 were of the
+literal itself and left, those of D2, D3, D8c, D8e and D25 read the line's other atoms and stay, carried); the measure they hold's "a king and one rook" (D9: the entry's `units`, the
+royal unit and the pawns by the names table); the kill words that prove a loss (D13: the entries' `refutes` -- the '(-n)' read off the kill's printed value stays, carried); the king's
+zone joining the frame of a check or a mate threat (D24: the FORCING entries' `at_king`); the rule of the square's one move in hand (D8b: `no stopper in time`'s `ahead`; the race's
+comparison stays, carried). Outside the counted files: puzzle_apply's shape key reads its order from `the shape key` entry (`order`).
+
+What stays, and why. Section 5's rules re-implemented in Python, not moved (FINDINGS): the threefold and fifty-move rules are not in Game.terminal (mate, stalemate, insufficient
+material only) and the chase's CYCLE is one repeat (Lean `Ideas.Forcing.repetition_level`): no kernel rule added in 75.2; `_pos_key` is the kernel's EPD on a FEN the kernel rendered,
+but the root's key is cut from the input FEN, whose en-passant field may be pseudo-legal (then the kernel's position and the root key differ); the promotion push is built by hand
+with the promotion entry's one placed unit (underpromotion is never asked); the judge's rates read check and capture off the kernel's SAN (its tables carry SAN, not moves); the
+exchange's principal lines (D23) are Python beside the Rust `Pos.exchange` / `see` (two implementations: the lines are read, not only the value); mate in one is read by python-chess
+and by the Rust core. The families left are the agenda's reasoning written as code: the defect kinds by name (D1a-D1h: which fix addresses which defect would be the DEFECT_FIX
+entries' relation), the static leaf (D2), in check (D21: the save-the-king question is known by its pattern key 'checkers'), the need's comparisons (A7, keyed on variable names),
+the principal lines (D23), the passer words' order (D8h), the walk's defect tests (B5), the parry set (D6), the local goal (D17), the forcing order (D22).
+
+THE GENERIC TEST (tests/test_plan75.py): worklist.py and reasoning.py name no game object; of the agenda's 34 core functions (selection, the status, the chase's expansion, the judge)
+25 name nothing outside names.py and the store and hold no CHESS FACT row. Not yet coverable, with their rows: `_push` (A7 1), `_ask_loop` (A5 1), `status` (D18 2), `_keep_goal`
+(D21 1, the pattern key 'checkers'), `_target` (A10 1), `_chase_routes` (D10, D8c, A10, A8: 4), `_inner` (B1, B2: 4, 'checkers'), `_competitor` (D21 1, 'checkers'), `_judge_resume`
+(D22 1).

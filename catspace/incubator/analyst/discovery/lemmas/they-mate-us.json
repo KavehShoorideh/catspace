@@ -22,5 +22,8 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/agenda.py:_chase_route_body"
  ],
- "note": "A reply after which we have no legal move and are in check kills the route: the game's rule, cited by no Lean theorem."
+ "note": "A reply after which we have no legal move and are in check kills the route: the game's rule, cited by no Lean theorem.",
+ "params": {
+  "refutes": true
+ }
 }

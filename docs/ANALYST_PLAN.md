@@ -3971,6 +3971,12 @@ the gate green, the audit's CHESS FACT count printed before/after (the number to
   Lean twin present in docs/LEAN_INDEX.md (checked by `lemma_store validate`); the store's base reads are names of the table; agenda.py's unit kinds, king step and SAN marks read it;
   FORCED_WORDS and the word-name tests (prefixes, suffixes, substrings) replaced by the FORCING / CLOSING entries' fields (`forced`, `rank`, `walked`, `reads_every_reply`, `chase`,
   `leaf_read`, `window`, `draw`). Guard 0 of 218 on all five lists; CHESS FACT rows 241 -> 216; the generic test (tests/test_plan75.py) written with its covered and not-yet lists.
+* 75.2 (d) BUILT 2026-10-28 on branch worktree-agent-a96bad5c641e60ec1 (journal 2026-10-28 02:11): castling's rook squares read off the kernel; the gain unit written as 1 is the
+  VALUATION's unit; new entry fields `refutes` (the kill words that prove a loss), `at_king` (the forcing words whose frame takes the king's zone), `units` (the measure they hold's
+  king and rook), `order` (the shape key's), `ahead` (the rule of the square's move in hand; DEFECT_FIX gains params). Guard 0 of 218 on all five lists; CHESS FACT rows 216 -> 210;
+  the generic test covers 25 of the 34 core functions (the rest listed with their rows). NOT moved, as findings: the threefold / fifty-move rules (not in Game.terminal; the cycle
+  is one repeat), the root's position key cut from the input FEN, the queen-only promotion push, SAN-read parry kinds, the Python principal lines beside the Rust exchange; the
+  families left (the defect kinds by name, the static leaf, in check, the need's comparisons, the passer words' order, the parry set) are the agenda's reasoning written as code.
 
 ### 75.3 Then (plan 76, written after 75.2's count is known): one term language (the miner's atoms as Rust terms with typed combinators: sets of locations, reach, counts, per-axis
 distances, min over units, who moves; the generator proposes terms priced by size) and MINING MATERIAL (the count term over game records that predicts the outcome; the hand values stay a

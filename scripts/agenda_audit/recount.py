@@ -49,6 +49,16 @@ KEEP_ON_EDIT = {"agenda.py": {
     4368: ["tier"],                                    # HEURISTIC: the tier-1 threat words (the tier composition)
     # stage (c)
     1072: ["not in before"],                           # D14: their threat's targets are the squares newly attacked (the royal unit's exclusion: the names table)
+    # stage (d): the gain unit written as 1 is the VALUATION's unit; where the audit read the line's fact in its other atoms (the static leaf's balance less their threats, the
+    # standing kill's conditions, close-by-rule's "not when already ahead", the promote chase's material won back, the promotion exchange) the reading stays; where it read the
+    # literal 1 itself (D7 2428, D10 3482, D11 4577) it is dropped
+    3250: [None],                                      # D8c: a promote route's reply answered by the material won back
+    3285: ["dbal"], 3320: ["dbal"], 3324: ["dbal"], 3336: ["dbal"], 3343: [None], 3353: ["dbal"], 3360: ["dbal"], 3361: [None],      # D2: the static leaf (the balance less their threats)
+    3581: ["dbal|target"],                             # D25: the standing kill's conditions
+    3593: ["dbal"],                                    # D3: close by rule, not when already ahead
+    5018: [None],                                      # D8e: the promotion exchange
+    5064: [None], 5066: [None], 5078: [None],          # D8b: the race of our king and their pawn (the rule of the square: its one move in hand is the entry's `ahead`)
+    1449: [(None, "bool\\(m\\)")],                     # D13: a loss read off the kill's printed value '(-n)' (the kill words that refute: their entries' `refutes`)
 }}
 SCRIPTS = ("extract.py", "classify.py", "count.py", "facts.py", "findings_text.py")
 

@@ -23,6 +23,7 @@ import chess
 
 from catspace.io import paths
 from catspace.incubator.analyst.discovery import base_vocabulary as BV
+from catspace.incubator.analyst.discovery import lemma_store as _LS
 from catspace.incubator.analyst.discovery import remember as RM
 from catspace.incubator.analyst.discovery import reasoned as RS
 from catspace.incubator.analyst.discovery import ruler as RU
@@ -381,10 +382,12 @@ def _shape(fen: str, pairs: list, us: str) -> dict:
 
 
 def shape_key(sh: dict) -> tuple:
-    """Better first: fewer hanging, then fewer checks that fork a loose piece, then more guarded, then more poked (defence, then attack)."""
+    """Better first, in the order of the store entry `the shape key` (plan 75.2 (d): its params' `order`, each component with its sign -- today fewer lost to their threats, fewer
+    hanging, then fewer checks that fork a loose piece, then more guarded, then more poked: defence, then attack). A mate (the rule's terminal) comes before any shape."""
     if sh.get("mate"):
         return (-1,)
-    return (sh.get("loss", 0), len(sh["hanging"]), sum(1 for _, f in sh["checks"] if f), -sh["guarded"], -sh["poking"])
+    parts = {"loss": sh.get("loss", 0), "hanging": len(sh["hanging"]), "forking checks": sum(1 for _, f in sh["checks"] if f), "guarded": sh["guarded"], "poking": sh["poking"]}
+    return tuple(sign * parts[c] for c, sign in _LS.params_of("the shape key")["order"])
 
 
 def shape_line(sh: dict) -> str:

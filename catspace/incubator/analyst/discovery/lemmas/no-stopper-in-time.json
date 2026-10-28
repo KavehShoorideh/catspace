@@ -27,5 +27,8 @@
   "catspace/incubator/analyst/discovery/agenda.py:_ask_stop_pawn",
   "catspace/incubator/analyst/discovery/agenda.py:_ask_promote"
  ],
- "note": "The king's distance to the promotion square exceeds the pawn's pushes plus one (the rule of the square), read by two words of the vocabulary."
+ "note": "The king's distance to the promotion square exceeds the pawn's pushes plus one (the rule of the square), read by two words of the vocabulary.",
+ "params": {
+  "ahead": 1
+ }
 }

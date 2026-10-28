@@ -28,6 +28,7 @@
  ],
  "note": "A quiet move after which a pass leaves us a forced mate in two, read by the binder's mate_in_two, is forcing.",
  "params": {
-  "forced": true
+  "forced": true,
+  "at_king": true
  }
 }

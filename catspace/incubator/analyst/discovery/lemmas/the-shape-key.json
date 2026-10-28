@@ -33,5 +33,29 @@
   "catspace/incubator/analyst/discovery/agenda.py:_claim_key",
   "catspace/incubator/analyst/discovery/agenda.py:_decide_by_smallest_loss"
  ],
- "note": "At an equal value a claim (and a parry by the smallest loss) is preferred by its shape after the move: fewer pieces of ours hanging, fewer checks of theirs that fork a loose one, more guarded, more poked: a tie-break."
+ "note": "At an equal value a claim (and a parry by the smallest loss) is preferred by its shape after the move: fewer pieces of ours hanging, fewer checks of theirs that fork a loose one, more guarded, more poked: a tie-break.",
+ "params": {
+  "order": [
+   [
+    "loss",
+    1
+   ],
+   [
+    "hanging",
+    1
+   ],
+   [
+    "forking checks",
+    1
+   ],
+   [
+    "guarded",
+    -1
+   ],
+   [
+    "poking",
+    -1
+   ]
+  ]
+ }
 }

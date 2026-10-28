@@ -27,5 +27,10 @@
   "catspace/incubator/analyst/discovery/agenda.py:_reasoned_kill",
   "catspace/incubator/analyst/discovery/region.py:held_measure"
  ],
- "note": "A king and one rook against a king with room: every first move is answered by a step into the open that keeps the distance, while their passer promotes."
+ "note": "A king and one rook against a king with room: every first move is answered by a step into the open that keeps the distance, while their passer promotes.",
+ "params": {
+  "units": [
+   "R"
+  ]
+ }
 }

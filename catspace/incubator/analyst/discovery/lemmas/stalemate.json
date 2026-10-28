@@ -22,5 +22,8 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/agenda.py:_chase_route_body"
  ],
- "note": "A route or a reply that leaves a side with no legal move and not in check ends with no gain: the game's rule, cited by no Lean theorem."
+ "note": "A route or a reply that leaves a side with no legal move and not in check ends with no gain: the game's rule, cited by no Lean theorem.",
+ "params": {
+  "refutes": true
+ }
 }
