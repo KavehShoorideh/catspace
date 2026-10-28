@@ -34530,3 +34530,15 @@ FINDINGS (unchanged): second copies of the draw rules in technique_question and 
 position is served across records -- the same shape of gap as the one closed); the ponderer carries no record; the play server queens a letterless human promotion.
 docs/AGENT_BRIEF.md (bb75569c): the standing brief, with Kaveh's speed rules of 2026-10-28 (one parent snapshot per plan, the guard across the cores, per-stage gates of the touched files
 only, the full gate by the parent at the merge). Plan 76.0 THE SPIKE launched under it.
+
+
+## 2026-10-28 12:57 -- plan 76.0 (0) THE GUARD ACROSS THE CORES: `scripts/trace_identity.py snapshot ... --jobs N`; THE PARENT SNAPSHOT of plan 76 (branch worktree-agent-ababbaddc3af91dc2)
+`snapshot <dir> --jobs N`: every case runs in its OWN process (`trace_identity.py case <dir> <sets> <tier> <id>`, at most N at once through a thread pool of
+subprocesses), the same per-case writer `_write_case` as the serial run, the bridge counts summed from the children's last line. A child inherits the parent's
+environment (PYTHONHASHSEED=0). No engine file touched.
+OBS 76.0 (0) jobs identity (main d366ee81's engine, count budget, PYTHONHASHSEED=0): ten t0 serial wall 25.59 s, --jobs 4 wall 9.91 s, files byte-identical (diff -r: none;
+compare: 0 of 10 traces / read sets / leaf verdict lists / word lists / provenance lists differ); ten t2 serial wall 97.54 s, --jobs 4 wall 46.23 s, byte-identical -- so on the
+ten no case's trace depends on the cases run before it in one process.
+THE PARENT SNAPSHOT OF PLAN 76 (taken once; every 76.x agent reuses it): /Users/kav/code/remote/github/catspace/artifacts/experiments/plan76/parent/{ten_t0,ten_t2,wide_t0,wide_t2}
+(ten + wide, tiers 0 and 2, count budget, PYTHONHASHSEED=0, --jobs 11, main d366ee81's engine). OBS parent snapshot ten t0: wall 9 s; ten t2: wall 33 s; wide t0: wall 19 s;
+wide t2: wall 67 s (218 runs, 128 s; 10 / 10 / 99 / 99 cases, five files each). Its ten t0 and ten t2 are byte-identical to the serial runs above.

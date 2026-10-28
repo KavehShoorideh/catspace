@@ -4,6 +4,7 @@
   .venv/bin/python scripts/trace_identity.py snapshot <dir>          # write the traces (and the read sets) of the case set into <dir>
   .venv/bin/python scripts/trace_identity.py snapshot <dir> --sets wide   # plan 72.7 step 3: the WIDER case set instead (WIDE_SETS, every puzzle not in the ten)
   .venv/bin/python scripts/trace_identity.py snapshot <dir> --tier 3      # plan 72.7 step 3: the root at widening tier 3 (count budget): the wider tiers' words asked
+  .venv/bin/python scripts/trace_identity.py snapshot <dir> --jobs 10     # plan 76.0 (0): one case per process, at most 10 at once (the files are the serial run's)
   .venv/bin/python scripts/trace_identity.py compare <before> <after>  # diff two snapshots; prints OBS lines; exit 1 on any difference
   .venv/bin/python scripts/trace_identity.py crosscheck               # plan 72.7 step 0: SAN and legal-move order, python-chess against the Rust Pos
 
@@ -188,27 +189,75 @@ def _cases(sets: str = "ten"):
         yield name, fen, us
 
 
-def snapshot(out: str, sets: str = "ten", tier: int = 0) -> None:
-    os.makedirs(out, exist_ok=True)
-    n = 0
-    for pid, fen, us in _cases(sets):
-        leaf: list = []
-        words: list = []
-        graph: list = []
-        trace, reads = _run(fen, us, leaf, tier, words, graph)
-        trace, whys = mask_why(trace)
-        open(os.path.join(out, pid + ".txt"), "w").write(_SECS.sub("<t>", trace))
-        open(os.path.join(out, pid + WHY), "w").write(_SECS.sub("<t>", "\n".join(whys + graph)) + "\n")
-        open(os.path.join(out, pid + READS), "w").write(reads)
-        open(os.path.join(out, pid + LEAF), "w").write("\n".join(leaf) + "\n")
-        open(os.path.join(out, pid + LS.SNAPSHOT_WORDS), "w").write("".join(f"{slot}\t{s}\n" for slot, s in sorted(set(words))))
-        n += 1
-    print(f"OBS trace identity: {n} traces, {n} read sets, {n} leaf verdict lists, {n} word lists and {n} provenance lists written to {out}")
+def _write_case(out: str, pid: str, fen: str, us: str, tier: int) -> None:
+    """One case's five files (the trace, the provenance list, the read sets, the leaf verdicts, the words) -- the same code for the serial run and for `--jobs`."""
+    leaf: list = []
+    words: list = []
+    graph: list = []
+    trace, reads = _run(fen, us, leaf, tier, words, graph)
+    trace, whys = mask_why(trace)
+    open(os.path.join(out, pid + ".txt"), "w").write(_SECS.sub("<t>", trace))
+    open(os.path.join(out, pid + WHY), "w").write(_SECS.sub("<t>", "\n".join(whys + graph)) + "\n")
+    open(os.path.join(out, pid + READS), "w").write(reads)
+    open(os.path.join(out, pid + LEAF), "w").write("\n".join(leaf) + "\n")
+    open(os.path.join(out, pid + LS.SNAPSHOT_WORDS), "w").write("".join(f"{slot}\t{s}\n" for slot, s in sorted(set(words))))
+
+
+def _bridge_counts() -> tuple:
     from catspace.incubator.analyst.discovery import graph as G
     from catspace.incubator.analyst.discovery import rboard as RB
-    if G.BRIDGE_CHECK:                                   # plan 72.7 step 1: CATSPACE_BRIDGE_CHECK=1 -- every node's handle was compared with its board (an assertion stops the run on a split)
-        print(f"OBS bridge: {G.BRIDGE_CHECKS[0]} handle / board pairs compared, none split; "           # plan 72.7 step 2a: and every RBoard read with its python-chess shadow
-              f"{RB.BRIDGE_READS[0]} RBoard reads compared with python-chess, none split")
+    return G.BRIDGE_CHECK, G.BRIDGE_CHECKS[0], RB.BRIDGE_READS[0]
+
+
+_CASE_DONE = "trace identity case done:"         # the line a `--jobs` child prints last (its bridge counts), read back by the parent
+
+
+def _snapshot_case(out: str, sets: str, tier: int, pid: str) -> None:
+    """plan 76.0 (0): ONE CASE in this process (the child of `snapshot --jobs`): its five files, then its bridge counts on one line."""
+    for p, fen, us in _cases(sets):
+        if p == pid:
+            _write_case(out, p, fen, us, tier)
+            _on, checks, reads = _bridge_counts()
+            print(f"{_CASE_DONE} {pid} {checks} {reads}", flush=True)
+            return
+    raise SystemExit(f"no case {pid} in the {sets} set")
+
+
+def snapshot(out: str, sets: str = "ten", tier: int = 0, jobs: int = 1) -> None:
+    """Write the case set's files into `out`. plan 76.0 (0) `jobs` > 1 (the brief's speed rule: the snapshot across the cores): every case runs in its OWN process
+    (`python trace_identity.py case ...`, at most `jobs` at once), the same `_write_case`, so each case starts from a fresh interpreter -- the files are the serial
+    run's exactly when no case's trace depends on the cases run before it in one process (the identity the test checks on the ten). The children inherit this
+    process's environment (PYTHONHASHSEED=0: the script re-executes itself pinned)."""
+    os.makedirs(out, exist_ok=True)
+    cases = list(_cases(sets))
+    checks = reads = 0
+    if jobs <= 1:
+        for pid, fen, us in cases:
+            _write_case(out, pid, fen, us, tier)
+        bridge, checks, reads = _bridge_counts()
+    else:
+        import subprocess
+        from concurrent.futures import ThreadPoolExecutor
+        script = os.path.abspath(__file__)
+
+        def child(pid: str) -> tuple:
+            r = subprocess.run([sys.executable, script, "case", out, sets, str(tier), pid], capture_output=True, text=True)
+            done = [l for l in r.stdout.splitlines() if l.startswith(_CASE_DONE)]
+            if r.returncode != 0 or not done:
+                raise RuntimeError(f"case {pid} failed (exit {r.returncode}):\n{r.stdout[-2000:]}\n{r.stderr[-4000:]}")
+            f = done[-1].split()
+            return int(f[-2]), int(f[-1])
+
+        with ThreadPoolExecutor(max_workers=jobs) as ex:
+            for c, rd in ex.map(child, [pid for pid, _f, _u in cases]):
+                checks += c
+                reads += rd
+        bridge = _bridge_counts()[0]
+    n = len(cases)
+    print(f"OBS trace identity: {n} traces, {n} read sets, {n} leaf verdict lists, {n} word lists and {n} provenance lists written to {out}")
+    if bridge:                                           # plan 72.7 step 1: CATSPACE_BRIDGE_CHECK=1 -- every node's handle was compared with its board (an assertion stops the run on a split)
+        print(f"OBS bridge: {checks} handle / board pairs compared, none split; "           # plan 72.7 step 2a: and every RBoard read with its python-chess shadow
+              f"{reads} RBoard reads compared with python-chess, none split")
 
 
 def compare(before: str, after: str) -> int:
@@ -313,7 +362,10 @@ if __name__ == "__main__":
         os.execve(sys.executable, [sys.executable] + sys.argv, dict(os.environ, PYTHONHASHSEED="0"))       # same code differ unpinned, never pinned): every snapshot runs at seed 0
     if sys.argv[1] == "snapshot":
         snapshot(sys.argv[2], sys.argv[sys.argv.index("--sets") + 1] if "--sets" in sys.argv else "ten",
-                 int(sys.argv[sys.argv.index("--tier") + 1]) if "--tier" in sys.argv else 0)
+                 int(sys.argv[sys.argv.index("--tier") + 1]) if "--tier" in sys.argv else 0,
+                 int(sys.argv[sys.argv.index("--jobs") + 1]) if "--jobs" in sys.argv else 1)
+    elif sys.argv[1] == "case":                           # plan 76.0 (0): one case of `snapshot --jobs`, in its own process: case <dir> <sets> <tier> <id>
+        _snapshot_case(sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5])
     elif sys.argv[1] == "crosscheck":
         sys.exit(crosscheck_main())
     else:
