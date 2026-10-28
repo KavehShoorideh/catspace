@@ -34516,3 +34516,17 @@ OBS audit recount CHESS FACT rows 210 -> 210
 So 75.4's count is CHESS FACT rows 210 -> 210 at every commit (the rows moved are RULE rows: 106 -> 99, the rules now read through the kernel's interface); the section is
 appended to docs/AGENDA_AUDIT.md ("75.4 recount"). Main bb75569c (plan 76, docs/AGENT_BRIEF.md: docs only) was merged before this commit, ANALYST_PLAN.md keeping both
 appended sections.
+
+
+## 2026-10-28 12:37 -- plan 75.4 merged (main 56bdd0b2, fast-forward); the gate; docs/AGENT_BRIEF.md; 76.0 the spike launched
+OBS gate engine (main 56bdd0b2, 43 files incl. test_rules_draws): passed 563, failed 0, xfailed 3, errors 0, wall 840.4 s.
+75.4 (the agent's six journal entries above): the draws in the kernel (Game.terminal: threefold by the kernel's identity -- legal e.p. only -- and fifty-move, read from a game Record
+carried by the play server and the chase); the cycle claim relabelled (store `repetition` PROVED -> CONJECTURE; Lean Draws.lean: Record.step_sound, chess_threefold_iff, chess_fifty_iff,
+forced_cycle_threefold proved, the entry a CONJECTURE because the chase reads every reply rather than requiring their only move and Congruent is not proved for the kernel); the chase
+clock, the position key and promotion read from the kernel (every hand-built queen push in six files routed; the valuation picks the piece). Guard: 0 DECISION changed over 218 runs at every
+commit; traces differ only in the relabelled cycle lines. Controls: clock limit 100 -> 2 moves 5 of 10 decisions; clocks in the identity move 10/10 read sets. The rules fire nowhere on the
+puzzle sets (halfmove clock 0-9 in 2972 of 3023; no game record in a puzzle): the play server is where they matter. Recount 210 -> 210 (RULE rows 106 -> 99). Store 110 entries, 0 problems.
+FINDINGS (unchanged): second copies of the draw rules in technique_question and Rust game.rs; `ctx.memo` / `ctx.routes` keyed by position not record (an answer memoised above a drawn
+position is served across records -- the same shape of gap as the one closed); the ponderer carries no record; the play server queens a letterless human promotion.
+docs/AGENT_BRIEF.md (bb75569c): the standing brief, with Kaveh's speed rules of 2026-10-28 (one parent snapshot per plan, the guard across the cores, per-stage gates of the touched files
+only, the full gate by the parent at the merge). Plan 76.0 THE SPIKE launched under it.
