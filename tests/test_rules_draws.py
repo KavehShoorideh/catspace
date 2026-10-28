@@ -8,7 +8,9 @@
     CONJECTURE in the store; its strict form is proved generically in Lean (`Ideas.Game.forced_cycle_threefold`), the chase's own reading is not.
 (3) THE CHASE CLOCK READS THE KERNEL'S EVENTS: `Game.clock_events` (a capture, a pawn move: what resets the halfmove clock, Lean `Chess.applyMove_halfmove`) in place of the
     tests written in the agenda; the clock reads them exactly as before.
-(4) THE POSITION KEY IS THE KERNEL'S: `agenda._pos_key` is the kernel's identity of the position a FEN names (a legal e.p. square only), not the FEN's first four fields."""
+(4) THE POSITION KEY IS THE KERNEL'S: `agenda._pos_key` is the kernel's identity of the position a FEN names (a legal e.p. square only), not the FEN's first four fields.
+(5) PROMOTION FROM THE KERNEL: the pushes the words build are the kernel's moves (`Game.moves_to`: every unit a promotion may place), the unit chosen by the store's
+    valuation (`Game.placing_most`), not "always a queen"."""
 import random
 
 import chess
@@ -328,3 +330,47 @@ def test_75_4_4_a_root_written_with_a_pseudo_legal_square_is_the_position_the_ch
     ag._route_move, ag._reply_san = chess.Move.from_uci("f2f1"), "Kg2"
     out = ag._inner(PERPETUAL, 1)
     assert out["claim"] is not None and out["claim"].lemma == "repetition" and out["asked"] == 0 and any("repeats the root position" in x for x in ag.ctx.c_lines)
+
+
+# ---------------------------------------------------------------------------------------------------------------- (5) promotion from the kernel
+
+def test_75_4_5_every_promotion_piece_comes_from_the_kernel_and_the_valuation_chooses():
+    b = chess.Board("1n2k3/P7/8/8/8/8/8/4K3 w - - 0 1")
+    assert sorted(chess.piece_symbol(m.promotion) for m in G.moves_to(b, chess.A7, chess.A8)) == ["b", "n", "q", "r"]       # every unit the promotion may place
+    assert sorted(chess.piece_symbol(m.promotion) for m in G.moves_to(b, chess.A7, chess.B8)) == ["b", "n", "q", "r"]       # a capturing promotion too
+    V = LS.goal_kinds().valuation
+    push = G.push_to(b, chess.A7, chess.A8, V)
+    assert push.promotion == chess.QUEEN and chess.piece_symbol(push.promotion) == LS.goal_kinds().promotion.places       # the valuation's choice is the promotion entry's unit
+
+    class Patched:                                                                            # a valuation that prices the rook above the queen chooses the rook: the choice is read
+        def of(self, sym):
+            return 10 if sym == "r" else V.of(sym)
+    assert G.push_to(b, chess.A7, chess.A8, Patched()).promotion == chess.ROOK
+    assert len(G.moves_to(chess.Board(), chess.E2, chess.E4)) == 1 and G.push_to(chess.Board(), chess.E2, chess.E4, V).promotion is None
+    pinned = chess.Board("8/r5PK/8/8/8/8/8/k7 w - - 0 1")                                    # the pawn on g7 is pinned along the rank: no legal push, though one is drawn on the board
+    assert G.moves_to(pinned, chess.G7, chess.G8) == [] and G.push_to(pinned, chess.G7, chess.G8, V) is None
+    assert len(G.moves_to(pinned, chess.G7, chess.G8, legal=False)) == 4                     # the static exchange's pseudo-legal reading still sees four
+
+
+def test_75_4_5_the_kernels_push_is_the_old_one_wherever_that_was_legal():
+    """On seeded walks: for every pawn and every square it may step to, the kernel's push equals the move the words built by hand (a queen on the last rank) whenever that
+    was legal, and is None exactly when it was not."""
+    V = LS.goal_kinds().valuation
+    same = none = promos = 0
+    for b in _positions(24, 40):
+        for sq in chess.SquareSet(b.pawns & b.occupied_co[b.turn]):
+            step = 8 if b.turn else -8
+            for to in (sq + step, sq + 2 * step):
+                if not 0 <= to < 64:
+                    continue
+                old = chess.Move(sq, to, promotion=chess.QUEEN if chess.square_rank(to) in (0, 7) else None)
+                new = G.push_to(b, sq, to, V)
+                if old in b.legal_moves:
+                    assert new == old
+                    same += 1
+                    promos += old.promotion is not None
+                else:
+                    assert new is None
+                    none += 1
+    print(f"OBS 75.4 (5) pushes: {same} equal to the hand-built move ({promos} promotions), {none} with no legal push (the hand-built move illegal)")
+    assert same and promos and none

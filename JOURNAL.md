@@ -34455,3 +34455,50 @@ OBS gate engine --only (one file per call; passed / failed / xfailed / errors, w
 test_cost61 13/0/0/0 3.0 s; test_plan66 16/0/0/0 3.1 s; test_plan62 28/0/0/0 7.7 s; test_plan73 9/0/0/0 14.2 s; test_plan74 13/0/0/0 3.2 s; test_plan75 11/0/0/0 0.5 s;
 test_fact_store 21/0/0/0 22.6 s; test_tiers 14/0/0/0 29.9 s; test_offbuilt64 15/0/1/0 94.7 s; test_rules_draws 15/0/0/0 3.5 s (the key drops a pseudo-legal square, keeps a
 legal one, equals the cut on every kernel-rendered FEN; the root written with 'a3' is the position the chase returns to).
+
+
+## 2026-10-28 12:18 -- plan 75.4 (5) PROMOTION FROM THE KERNEL: every push the words build is the kernel's move, the unit placed chosen by the store's valuation (branch worktree-agent-a842a98bf140be46b)
+game.py: `moves_to(s, frm, to, legal=True)` (python-chess's generator between two squares: a pawn reaching its last rank gives one move per unit the promotion may place --
+queen, rook, bishop, knight; `legal=False` the pseudo-legal ones a static exchange reads), `placing_most(moves, valuation)` (the move placing the unit the VALUATION entry
+values most; a move that places nothing is the only one between its squares) and `push_to` (the two). The pushes built by hand, each always to a queen, now ask it with the
+store's `material` valuation: agenda.py `_lift_routes`, the proved passer's claim, `_promotion_exchange` (`promo_kind`, the promotion entry's placed unit, is gone: the stake
+still reads the entry); race.py `_bind` (all three first pushes, the plain one too; no legal push, no race); plan67.py `rollout`; landing.py (the landing move); regress.py
+`exchange_read` (the swap list's capture, pseudo-legal). The promotion entry's `stake {unit q, less p}` stays its definition; the test checks the valuation's choice IS the
+entry's unit (a patched valuation that prices the rook higher chooses the rook).
+OBS 75.4 (5) pushes: 1433 equal to the hand-built move (54 promotions), 1201 with no legal push (the hand-built move illegal) -- seeded walks, every pawn and every square it may
+step to (test_rules_draws).
+OBS promocheck (dev, every kernel push of the guard's 218 runs against the move the old code built): ten t0 calls 3081, equal 3081 (promotions 395); ten t2 9544, equal 9544
+(1157); wide t0 13651, equal 13643, the old move illegal and the kernel's none 8 (all in plan67 `rollout`, which tested legality before: same outcome) (1757); wide t2 50255,
+equal 50227, illegal / none 28 (all in `rollout`) (6729); different 0.
+OBS trace identity against 75.4 (4) (count budget, PYTHONHASHSEED=0, the snapshots taken WITH the promocheck wrapper -- it only observes): ten t0, ten t2 0 of 10
+traces / read sets / leaf verdict lists / word lists / provenance lists differ; wide t0, wide t2 0 / 0 / 0 / 0 / 0 of 99; DECISION lines 0 of 218.
+NEGATIVE CONTROL (in the guard's process: the valuation's choice replaced by the rook): ten t0 1 of 10 traces differ (RoR8t: plan h2+ h1=Q+ -> h2+ h1=R+), ten t2 1 of 10;
+read sets, leaf lists, word lists, provenance lists 0; DECISION lines 0 -- the pushes are chosen where the words build them.
+THE DIAGNOSTIC (the puzzle sets searched for a solution move with a non-queen promotion): 3 of 3023, all in rand62_30_rookEndgame_pawnEndgame_any and all the DEFENDER's
+(lichess takes the defender's moves from the game): TvbOz g7 e1=R Rxe1 Rxe1 g8=Q; Z6p9Y Ra1+ Kb5 Rxa7 b8=R Kxb8; u06uy Kc7 a7 Kb7 a8=R Kxa8. No solver promotes to anything but
+a queen. The agenda (count budget, tier 0) at the three roots: TvbOz g7 0 (unfinished line; the solution's move), Z6p9Y Ra1+ 5 (the solution's), u06uy none; at the
+defender's promotion: TvbOz e1=Q 4 (promotion_exchange) where the game played e1=R, Z6p9Y Kxc5 0 (unfinished) where it played b8=R, u06uy none where it played a8=R; the
+traces at the three defender positions and at TvbOz's root name the under-promotions (=R, =B, =N: the kernel's legal moves read), Z6p9Y's and u06uy's roots none; the same
+lines before and after this commit. Checked in a separate
+process (Stockfish depth 22, never a premise; one run each, directional), the promoting side's view: TvbOz e1=Q -538, e1=R -593, e1=B mated in 15, e1=N+ -1108; Z6p9Y b8=Q+
+-491, b8=R -908, b8=B+ -8115, b8=N -8114; u06uy a8=Q+ -626, a8=R -2844, a8=B+ -7194, a8=N -7278 -- in none of the three does the under-promotion beat the queen, so no
+position of the sets shows the valuation's choice (the queen) to be wrong; the kernel now generates the four, a word that weighs a stalemate could choose otherwise.
+OBS audit recount: CHESS FACT rows 209 -> 208 (D8h, the passer words' push, 9 -> 8); RULE rows 103 -> 99 (the hand-built moves are the kernel's).
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_game 3/0/0/0 0.3 s; test_agenda 26/0/0/0 89.4 s; test_regress 87/0/0/0 348.5 s;
+test_cost61 13/0/0/0 2.9 s; test_plan66 16/0/0/0 3.1 s; test_plan62 28/0/0/0 7.8 s; test_plan73 9/0/0/0 14.1 s (14.0 s after the promotion entry's note); test_plan74 13/0/0/0 3.2 s;
+test_plan75 11/0/0/0 0.5 s; test_fact_store 21/0/0/0 23.0 s; test_tiers 14/0/0/0 30.1 s; test_offbuilt64 15/0/1/0 94.5 s; test_rules_draws 17/0/0/0 3.5 s; and for the modules
+this commit touched test_plan67 9/0/0/0 10.5 s, test_discovery_race 2/0/0/0 0.9 s, test_plan72_7_step3 13/0/0/0 38.6 s, test_plan72 6/0/0/0 0.4 s. OBS lemma store validate:
+entries 110, problems 0.
+THE PLAY SERVER (once, after this commit's code): `python -m catspace.incubator.analyst.web --port 8799 --play --seconds 3`; a new game as white; e2e4 -> the agenda replied Nf6
+(4.48 s), g1f3 -> b6 (3.02 s), no error, 870 trace records; stopped.
+FINDINGS OF 75.4 (reported, not changed): (a) technique_question.Search.drawn is a second copy of both draw rules (its own four-field key; `clock + ply >= 100` with no reset)
+-- equal on its class (K+R v K: no pawn, the only capture loses the unit); (b) the Rust core's game.rs keeps its own claimable draws (zobrist key, `seen >= 2`, the clock at
+100) -- the same rule, a second implementation, not routed (no Rust build here); (c) the ponderer's agendas carry no game record (ChaseCtx.carry starts an empty one); (d)
+ctx.memo and ctx.routes (carried across the play server's moves) are keyed by the position, not the record: the rule is read before them at the position itself, but an
+answer memoised above a drawn position is served across records -- the cycle claim has had the same limit since 61 C4; (e) a repeat of THEIR position (after our move) is
+read only at its third occurrence (the rule): the cycle claim (the derived lemma) stays at our positions, as 61 C4 built it; (f) Game.terminal reports the claimable draws
+(threefold, fifty moves) and insufficient material, not the kernel's wider dead position (`Chess.deadPosition`: no mate reachable) nor the automatic fivefold / 75-move
+draws apart (they are inside the claimable ones); (g) the play server's human input still makes a promotion without a letter a queen (UI, play_server.human_move), and
+catspace/incubator/analyst/{defense,needs,plans,threats,fates,dynamics}.py (outside the agenda) still build queen promotions by hand; (h) in passing: ponder.py tests
+`_pos_key(c.fen()) in ctx.memo`, whose keys are tuples -- the test never holds; (i) the store's composed words take bare entry names: a lemma carrying a detail ("repetition
+(...)") made "chase: ... over repetition (...)" uncatalogued and moved a search (75.4 (2)'s first build).

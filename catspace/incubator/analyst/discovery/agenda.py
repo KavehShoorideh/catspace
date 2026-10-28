@@ -374,7 +374,6 @@ class Agenda:
         self.V = self.goals.valuation                           # ... the VALUATION their stakes count in (the unit worths, the unit of a gain): no stake, worth or unit is written here
         self.end_stake = self.goals.terminal.stake              # ... the stake of the goal that ends the game (a value at least this is the terminal)
         self.unit = self.V.unit                                 # ... the least gain
-        self.promo_kind = chess.Piece.from_symbol(self.goals.promotion.places).piece_type      # ... the unit the promotion places (its GOAL entry's stake is that unit less the pawn)
         self.stops = LS.stops_for("chase")                      # plan 75.2 (b): THE STOPS of the chase (STOP entries: their shapes, read at run time; a stop's GAP text begins with its entry's name)
         self.judge_stop = LS.stops_for("judge")["cut by the judge"]      # ... and the judge's (its price cap, its timed units)
         self.forced = LS.forced_words()                         # plan 75.2 (c): the FORCING words whose replies are forced (their entries' field), not their spelled names
@@ -4299,8 +4298,8 @@ class Agenda:
     def _lift_routes(self, b: chess.Board, sq: int, facts: dict) -> list:
         """plan 62.1c: the pawn's push as a route of a promote question whose kill was lifted (their king is no stopper by the proved analysis)."""
         path = facts["path"]
-        push = chess.Move(sq, path[0], promotion=self.promo_kind if len(path) == 1 else None)
-        if push not in b.legal_moves:
+        push = GAME.push_to(b, sq, path[0], self.V)              # plan 75.4 (5): the kernel's push (a promotion: the unit the valuation values most), not one built here
+        if push is None:
             return []
         return [R.Route(push, b.san(push), "push: their king is no stopper")]
 
@@ -5017,8 +5016,8 @@ class Agenda:
             self._kill(q, reason, tempo=True)
             return
         ps = dict(W.proved_passers(b, bishops=True))
-        if sq in ps:
-            push = chess.Move(sq, facts["path"][0], promotion=self.promo_kind if n == 1 else None)
+        push = GAME.push_to(b, sq, facts["path"][0], self.V) if sq in ps else None      # plan 75.4 (5): the kernel's push (no legal push: no claim on it)
+        if push is not None:
             san = b.san(push)
             rest = [GAME.loc_name(t) for t in facts["path"][1:-1]]
             line = f"{san}, then {', '.join(rest)}{', ' if rest else ''}{GAME.loc_name(promo)}=Q within {ps[sq]} plies whatever they do ({n} pushes)" if n > 1 else f"{san} within {ps[sq]} ply"
@@ -5129,8 +5128,8 @@ class Agenda:
         b, me = self.board, self.me
         if facts["pushes"] != 1:
             return None
-        push = chess.Move(sq, facts["promo"], promotion=self.promo_kind)
-        if push not in b.legal_moves:
+        push = GAME.push_to(b, sq, facts["promo"], self.V)       # plan 75.4 (5): the kernel's promotion, the unit the valuation values most
+        if push is None:
             return None
         san = b.san(push)
         c = b.copy(stack=False)

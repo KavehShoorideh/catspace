@@ -108,6 +108,9 @@ class Game(Protocol):
     def clock(self, s) -> int: ...                                # plan 75.4: the state's clock (the moves since the last clock event)
     def key_clock(self, key: str) -> int: ...                     # plan 75.4: the clock a state's key carries (without building the state)
     def clock_events(self, s, m) -> frozenset: ...                # plan 75.4 (3): what of the move resets the clock (empty: the clock goes on)
+    def moves_to(self, s, frm: int, to: int, legal: bool = True) -> list: ...      # plan 75.4 (5): the moves from one location to another (a promotion: one per unit it may place)
+    def placing_most(self, moves: list, valuation): ...           # plan 75.4 (5): among them, the one placing the unit a valuation values most
+    def push_to(self, s, frm: int, to: int, valuation, legal: bool = True): ...   # ... the two together (None: no such move)
     def measure(self, s, side: bool) -> int: ...
     def in_check(self, s) -> bool: ...
     def name(self, s, m) -> str: ...
@@ -204,6 +207,22 @@ class ChessGame:
         if NM.pawn(s.piece_at(m.from_square)):
             ev.append(NM.EVENT_PAWN)
         return frozenset(ev)
+
+    def moves_to(self, s: chess.Board, frm: int, to: int, legal: bool = True) -> list:
+        """plan 75.4 (5): the kernel's moves from `frm` to `to` -- python-chess's generator, LEGAL ones (or, with `legal` False, the pseudo-legal ones a static exchange reads):
+        a pawn reaching its last rank gives one move per unit the promotion may place (queen, rook, bishop, knight; Lean `Chess.Move.promotion`); empty when none goes there."""
+        gen = s.generate_legal_moves if legal else s.generate_pseudo_legal_moves
+        return list(gen(chess.BB_SQUARES[frm], chess.BB_SQUARES[to]))
+
+    def placing_most(self, moves: list, valuation) -> "chess.Move | None":
+        """plan 75.4 (5): among moves between two locations, the one placing the unit `valuation` (the store's VALUATION entry: `material`) values most -- the promotion's
+        choice by the valuation, not by a unit written here (a move that places nothing is the only one between its squares); None for no move."""
+        return max(moves, key=lambda m: valuation.of(chess.piece_symbol(m.promotion)) if m.promotion else 0, default=None)
+
+    def push_to(self, s: chess.Board, frm: int, to: int, valuation, legal: bool = True) -> "chess.Move | None":
+        """plan 75.4 (5): THE PUSH (or the capture) from `frm` to `to` the words build: the kernel's moves there (`moves_to`), the unit placed chosen by `valuation`
+        (`placing_most`); None when the kernel has no such move."""
+        return self.placing_most(self.moves_to(s, frm, to, legal), valuation)
 
     def measure(self, s: chess.Board, side: bool) -> int:
         """The material balance for `side` (the sum of the worths of its units less the other side's)."""

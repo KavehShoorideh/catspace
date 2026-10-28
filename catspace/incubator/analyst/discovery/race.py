@@ -357,16 +357,20 @@ def _bind(board, me, sq, sb, T, path, pathb, ek, ok, text, why_free, nA=None, nB
         return None
     fwd = 1 if me else -1
     san_first = None
+    from catspace.incubator.analyst.discovery import game as GM                     # plan 75.4 (5): the first push from the kernel (a promotion: the unit the store's valuation
+    from catspace.incubator.analyst.discovery import lemma_store as LS              # values most); no legal push, no race (race.py imports no graph at module level)
+    V = LS.goal_kinds().valuation
     if sb is None:
-        first = chess.Move(sq, path[0], promotion=chess.QUEEN if len(path) == 1 else None)
+        first = GM.CHESS.push_to(board, sq, path[0], V)
+        if first is None:
+            return None
         plan = [first.uci()]
         line = f"{', '.join(_name(t) for t in path[:-1])}{', ' if len(path) > 1 else ''}{_name(path[-1])}=Q"
         text = (f"we promote in {T} ({_name(sq)} to {_name(path[-1])}; {why_free}); " + (f"they need {int(quick)}" if quick != float("inf") else "they have no passer"))
     else:
-        if nA >= 2:
-            first = chess.Move(sq, path[0])
-        else:
-            first = chess.Move(sb, pathb[0], promotion=chess.QUEEN if len(pathb) == 1 else None)
+        first = GM.CHESS.push_to(board, sq, path[0], V) if nA >= 2 else GM.CHESS.push_to(board, sb, pathb[0], V)
+        if first is None:
+            return None
         plan = [first.uci()]
         line = (f"{_name(sq)} to {_name(path[-2]) if nA >= 2 else _name(sq)}, then {_name(sb)} to {_name(pathb[-1])}=Q (the K that holds {_name(xa)} is deflected)")
         text = (f"we promote in {T} ({_name(sq)} rests on {_name(path[-2]) if nA >= 2 else _name(sq)}, {_name(sb)} walks to {_name(pathb[-1])}; the K held {_name(sq)}: {why_held}; "

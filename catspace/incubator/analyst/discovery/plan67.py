@@ -24,7 +24,9 @@ from dataclasses import dataclass, field
 
 import chess
 
+from catspace.incubator.analyst.discovery import game as GM
 from catspace.incubator.analyst.discovery import graph as G
+from catspace.incubator.analyst.discovery import lemma_store as LS
 from catspace.incubator.analyst.discovery.race import kdist, lb, pdist
 
 PLAN = os.environ.get("CATSPACE_PLAN", "1") != "0"                # plan 67 (ON; `analyse --no-plan` sets CATSPACE_PLAN=0, inherited by the workers: a comparison condition only)
@@ -141,9 +143,9 @@ def rollout(board: chess.Board, pawn: int) -> Plan:
             plan.moves.append(m)
             b = _our_move(b, m)
             plan.boards.append(b)
-        promo = chess.QUEEN if chess.square_rank(nxt) in (0, 7) else None
-        push = chess.Move(sq, nxt, promotion=promo)
-        if push not in b.legal_moves:
+        push = GM.CHESS.push_to(b, sq, nxt, LS.goal_kinds().valuation)     # plan 75.4 (5): the kernel's push (a promotion: the unit the store's valuation values most)
+        promo = push.promotion if push is not None else None
+        if push is None:
             plan.why = f"the push {G.name(sq)}-{G.name(nxt)} is not legal (a pin, a check)"
             break
         plan.moves.append(push)

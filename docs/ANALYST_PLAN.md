@@ -4019,3 +4019,12 @@ the input FEN keeps a pseudo-legal en-passant square the kernel drops (a repetit
   e.p. square only), so the root's key cut from the input FEN is the key of the same position the chase reaches. Over the 3025 input FENs of the sets the key changed on 0 (one
   names an e.p. square, a legal one); on PERPETUAL written with a pseudo-legal 'a3' the old key missed the repetition of the root (23 inner questions read again), the new one
   closes it (the cycle claim, 0 asked); guard 0 of 218 on all five lists; CHESS FACT rows 209 -> 209.
+* 75.4 (5) BUILT 2026-10-28 (journal 2026-10-28 12:18): PROMOTION FROM THE KERNEL -- `Game.moves_to` (every unit a promotion may place), `Game.placing_most` (the unit the
+  store's valuation values most), `Game.push_to`; the hand-built queen pushes of agenda.py (`_lift_routes`, the passer claim, `_promotion_exchange`), race.py, plan67.py,
+  landing.py and regress.py's exchange read ask it. Identical: every kernel push of the 218 guard runs equals the hand-built move or both are absent (36 illegal ones, all in
+  plan67's rollout, which tested legality); guard 0 of 218 on all five lists; negative control (the rook chosen) moves RoR8t's plan line; the sets hold no solver's
+  under-promotion (3 defenders' moves, none better than the queen by Stockfish d22 in a separate process); CHESS FACT rows 209 -> 208.
+
+THE FINDINGS OF 75.4 (rules the kernel lacks beyond these, and places where the engine disagreed with the rules), in the journal of 2026-10-28 12:18 (75.4 (5)'s entry): reported, not changed.
+75.4 in sum: CHESS FACT rows 210 -> 210 -> 210 -> 209 -> 209 -> 208 over the five commits (scripts/agenda_audit/recount.py); the guard identical at every commit but the
+label lines of (2); one new Lean file, Ideas/Draws.lean (no sorry); tests/test_rules_draws.py in the engine gate.

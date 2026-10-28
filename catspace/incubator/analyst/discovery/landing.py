@@ -13,7 +13,9 @@ from dataclasses import dataclass, field
 
 import chess
 
+from catspace.incubator.analyst.discovery import game as GM
 from catspace.incubator.analyst.discovery import graph as G
+from catspace.incubator.analyst.discovery import lemma_store as LS
 from catspace.incubator.analyst.discovery import regress as R
 
 
@@ -84,9 +86,9 @@ def evaluate(board: chess.Board, side: bool, frm: int, to: int) -> Landing:
             lnd.defect_objs = defects
             lnd.defects = sorted({d.kind for d in defects})
     if lnd.kind != "target":
-        m = chess.Move(frm, to, promotion=chess.QUEEN if pc.piece_type == chess.PAWN and chess.square_rank(to) in (0, 7) else None)
         mover = G.with_turn(board, side)
-        if m in mover.legal_moves and not mover.gives_check(m):
+        m = GM.CHESS.push_to(mover, frm, to, LS.goal_kinds().valuation)       # plan 75.4 (5): the kernel's move (a promotion: the unit the store's valuation values most)
+        if m is not None and not mover.gives_check(m):
             why = R.forcing_why(mover, m, 1, side)
             if why and (why.startswith("threat") or why.startswith("capture")):
                 import re

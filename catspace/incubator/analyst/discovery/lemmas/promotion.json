@@ -11,7 +11,8 @@
  "origin": "BASE",
  "plan": [
   "75.2",
-  "52.6"
+  "52.6",
+  "75.4"
  ],
  "journal": "2026-10-27",
  "measure": null,
@@ -24,9 +25,10 @@
   "catspace/incubator/analyst/discovery/game.py:promotes",
   "catspace/incubator/analyst/discovery/agenda.py:_promote_roots",
   "catspace/incubator/analyst/discovery/agenda.py:_ask_promote",
-  "catspace/incubator/analyst/discovery/lemma_store.py:goal_kinds"
+  "catspace/incubator/analyst/discovery/lemma_store.py:goal_kinds",
+  "catspace/incubator/analyst/discovery/game.py:push_to"
  ],
- "note": "The promotion rule as a goal (Game.promotes): a pawn of ours reaching its last rank is replaced by a queen, so its stake is the material valuation's worth of the queen less the pawn's (8); the queen is the only unit the agenda places (underpromotion is never asked: a choice of ours, HAND); a pawn within three pushes is a root (near, 52.6: the mate and material stakes dominate farther pawns; a far passer the tempo arithmetic calls unstoppable is one too), cited by no Lean theorem as a goal.",
+ "note": "The promotion rule as a goal (Game.promotes): a pawn of ours reaching its last rank is replaced by a queen, so its stake is the material valuation's worth of the queen less the pawn's (8); the pushes are the kernel's moves (Game.moves_to: every unit the promotion may place) and the unit placed is the one the material valuation values most (Game.placing_most: the queen; plan 75.4 (5)); a pawn within three pushes is a root (near, 52.6: the mate and material stakes dominate farther pawns; a far passer the tempo arithmetic calls unstoppable is one too), cited by no Lean theorem as a goal.",
  "params": {
   "question": "promote",
   "basis": "RULE",

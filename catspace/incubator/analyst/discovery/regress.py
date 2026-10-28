@@ -241,6 +241,12 @@ def threat_value(board_after: chess.Board, us: str | bool) -> int:
     return best
 
 
+def _game():
+    """plan 75.4 (5): the Game instance (imported late: game.py imports graph, which this module's importers load first)."""
+    from catspace.incubator.analyst.discovery import game as GM
+    return GM.CHESS
+
+
 def exchange_read(board: chess.Board) -> str:
     """52.16 (3): the best static exchange of the side to move on `board`, READ: where it is, what it wins, the captures in order (the cheapest attacker first, each
     side going on while it has an attacker) and any attacker that stands BEHIND a piece of its own side on the line (an x-ray: the bishop that comes through the vacated
@@ -276,7 +282,10 @@ def exchange_read(board: chess.Board) -> str:
             if blockers:
                 front = min(blockers, key=lambda x: chess.square_distance(x, sq))
                 behind.append(f"the {txt} behind the {board.piece_at(front).symbol().upper()}")
-        c.push(chess.Move(a, sq, promotion=chess.QUEEN if pc.piece_type == chess.PAWN and chess.square_rank(sq) in (0, 7) else None))
+        cap = _game().push_to(c, a, sq, LS.goal_kinds().valuation, legal=False)      # plan 75.4 (5): the kernel's capture (pseudo-legal: the static exchange; a promotion: the valuation's unit)
+        if cap is None:
+            break
+        c.push(cap)
     return f"{seq[0]} wins {v}: {' '.join(seq)}" + (", " + ", ".join(behind) if behind else "")
 
 
