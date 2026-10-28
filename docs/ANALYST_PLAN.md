@@ -4032,6 +4032,20 @@ enumeration). Report: agreement rate and the surprises; whether the Lean generat
   the journal's 13:52 entry.
 ### 76.1 THE ONTOLOGY SHELF: object and relation kinds declared once with the three bindings; the Datalog's relations renamed to the shelf's names; the term atoms become the relations; the
 GNN's node kinds read from the shelf (today four, hand-chosen); the names table folded in.
+* 76.1 BUILT 2026-10-28 on branch worktree-agent-a12092dcf58ba7325 (journal 2026-10-28 14:43, 15:29, 15:35, 15:59, 16:16, 16:18): (a) THE SHELF -- ontology.py and
+  catspace/incubator/analyst/discovery/lemmas/ontology/ (117 kinds after (b): 23 objects, 94 relations; one name each -- a names-table word or the spec's own relation
+  name, none invented -- with its gdl / rust / lean / python bindings, null only with its reason), `ontology validate` (every spec relation bound: 99 of 99, 0 unnamed; every
+  binding resolves; reads computed; the bindings agree on 20 positions, the GDL interpreter against python-chess, the Rust core and the Lean kernel by `#eval`); names.py
+  reads its 24 words from the shelf (identical). (b) THE FIVE NAMED EXTENSIONS in rules/chess.gdl / gdl.py / gdl_to_lean.py: sorts and typed signatures (the spec
+  type-checks); the fluent bindings, the move binding (Ideas/Spec/Binding.lean: MoveTerm, Does, moveOf, termOf) and the record input in the shelf's `bind` (the
+  translator's table); the whole spec generated into Ideas/Spec/Chess.lean (92 of 92 heads translate; 76.0: 48 of 90) with `applyMoveSpec`; Ideas/Spec/NextEquiv.lean
+  PROVES it functional and equal to the kernel's `applyMove` on every position for every pseudo-legal move, and `moveOf_termOf`; threefold through the game record
+  (`drawByRepetition_kernel`); Ideas/Spec/DeadPosition.lean PROVES the one-colour-bishops dead position for every continuation (`one_colour_dead`, `dead_of_spec_draw`; the
+  store's `dead position (one-colour bishops)`, PROVED); no sorry, no native_decide. (c) every vocabulary primitive bound to shelf relations (162 symbols, 0 unbound);
+  the technique atoms' `rels`. (d) graph_policy's node kinds (square, piece, question, root, route) and board edges from the shelf, the feature-version rule; graphs and
+  the trained model's scores identical on 17 positions; rules.rs's Datalog renamed piece -> cell, attacks -> attack. (e) game.rs `insufficient` = the kernel's rule: the
+  nine surprises agree; the holdout cross-play 69567 of 69567 with both kernels. Guard 0 of 218 on all five lists at every commit; CHESS FACT rows 210 -> 210. Two Rust
+  builds: the shared editable install points at this branch's crate.
 ### 76.2 THE RULE SHELF: the full GDL chess, certified by cross-play with the surprise store; the Lean definitions generated; `Game` reads legality and terminals through the certified kernel
 with the GDL as the oracle in tests; the 75.1 findings of "rules re-implemented in Python" close by construction.
 ### 76.3 THE SURPRISE LOOP IN THE ENGINE: (1)-(3) above; the loop's misses, the cross-play's disagreements and the miner's refutations all land in the one surprise shelf.

@@ -2121,3 +2121,19 @@ What changed: RULE rows 106 -> 99 -- the rules the agenda read or re-wrote now c
 clock's events (`_irreversible`, `_since_after`, `_pawn_move`), the hand-built promotion pushes (`_lift_routes`, the passer claim, `_promotion_exchange`); the two new readers of
 the draws by rule (`_rule_draw`, `_route_rule`) added LOGIC rows only (the draw's kind is the names table's `draw`, its need the route's target). Section 5's "rules re-implemented
 in Python" items 2 (position identity and repetition; the irreversible event) and 5 (promotion built by hand) are closed by 75.4; the other items are as the 75.2 recount left them.
+
+## 76.1 recount (appended by plan 76.1, the ontology shelf and the GDL extensions; the sections above stay as written)
+
+The recount (scripts/agenda_audit/recount.py) at each of 76.1's five commits (a)-(e): agenda.py and ponder.py are untouched by 76.1 (the shelf, the spec, the translator,
+the proofs, the graph policy's names and the Rust core are read through names.py, graph_policy.py and the Rust crate), so every recount reads the same rows.
+
+```
+OBS audit rows total 1618: LOGIC 1253, RULE 99, NAME 21, CHESS FACT 210, HEURISTIC 35
+OBS audit rows agenda.py 1584: LOGIC 1227, RULE 97, NAME 19, CHESS FACT 208, HEURISTIC 33
+OBS audit rows ponder.py 34: LOGIC 26, RULE 2, NAME 2, CHESS FACT 2, HEURISTIC 2
+OBS audit CHESS FACT rows 210 (families 50)
+```
+
+CHESS FACT rows 210 -> 210 at every commit. Section 5's "names used as knowledge" item reads the names table: its 24 words are entries of the ontology shelf now
+(catspace/incubator/analyst/discovery/lemmas/ontology/), names.py their accessor; no word was added to the table. The second copy of the insufficient-material rule that
+75.4's findings named (rust/analyst_core/src/game.rs) is the kernel's rule now (shakmaty's `is_insufficient_material`, 76.1 (e)).

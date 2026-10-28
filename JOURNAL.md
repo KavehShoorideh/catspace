@@ -34853,3 +34853,20 @@ the shelf agreement on its 20 positions: disagreements 2 -- by kernel and relati
 move: the wrong build reads a draw, the spec none). The fix restored and rebuilt.
 OBS audit recount: CHESS FACT rows 210 -> 210. OBS gate engine --only: test_plan76 20/0/0/0 61.6 s (its new test: the nine cases agree, each successor's Rust draw is the
 kernel's, the near misses stay sufficient); test_rules_gdl 12/0/0/0 3.8 s (every filed surprise replays); test_game 3/0/0/0 0.3 s; test_rules_draws 17/0/0/0 3.5 s.
+
+
+## 2026-10-28 16:18 -- plan 76.1 THE ONTOLOGY SHELF BUILT: the shelf, the five extensions, the terms, the GNN's kinds, the Rust fix; 76.1 marked BUILT; docs/AGENDA_AUDIT.md's 76.1 recount (branch worktree-agent-a12092dcf58ba7325)
+76.1 in sum (the five entries above, 14:43 to 16:16): ONE NAME, THREE BINDINGS -- 117 kinds in lemmas/ontology/ (23 objects, 94 relations; supplied 23 + 42, derived 0 +
+52; the names table's 24 words among them, names.py their accessor), every relation of the spec bound (99 of 99, 0 unnamed), every vocabulary symbol bound (162),
+the graph network's five node kinds and three board edges declared there, the Rust Datalog's relations named by it; THE SPEC TYPED AND WHOLE IN LEAN -- 12 sorts, 90
+signatures, 0 type errors; 92 of 92 heads translated (76.0: 48 of 90); THE NEXT STATE PROVED a function and the kernel's applyMove on every pseudo-legal move; THREEFOLD an
+input through the game record; THE DEAD POSITION's one-colour-bishops case proved for every continuation and stored as a PROVED lemma; THE RUST CORE's insufficient material
+the kernel's rule, the nine surprises agreements, the holdout 69567 of 69567. Guard 0 of 218 on all five lists at every commit (said with it: the trace guard reads neither
+the graph policy at the count budget nor the insufficient-material rule on the puzzle sets -- each stage's own direct check carries those). CHESS FACT rows 210 -> 210
+at every commit (docs/AGENDA_AUDIT.md "76.1 recount"). docs/ANALYST_PLAN.md 76.1 marked BUILT.
+FINDINGS: (1) the trace guard is blind to two of the paths 76.1 changed (the graph policy orders only under the prior or the time pool; no puzzle line at the count budget
+reaches insufficient material) -- the negative controls showed it, the direct checks replaced it; (2) rules.rs's prefilter path (set_see_threats(False)) is
+nondeterministic in a fork's target order between runs of one build (a Rust HashMap's order); (3) the criterion's knight clause (K+N against kings and queens) is proved only
+in the position itself, not for every continuation; (4) the shelf's Lean column binds names-table twins that are approximations (Ideas.Vocabulary's set-valued words for
+the unit kinds), kept as the table had them; (5) the index's citation scan read only *.py and *.rs, so moving the names table's twins into JSON dropped 13 "used by" lines
+-- it reads the shelf's JSON now (409 cited, was 350 before 76.1, 337 without the fix).
