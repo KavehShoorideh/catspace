@@ -34686,3 +34686,16 @@ NOT BUILT, and why: threefold in the spec (needs the history: finding (5)); the 
 the rook's clauses are proved equal to it instead); the bindings of the e.p. square, the castling rights, the clock and the moves, so 42 relations stay untranslated
 (that is 76.1's shelf); the bishop / queen / king / knight / pawn equivalences (the rook was the spike); no Rust build (the editable install did not move); the shared
 lean/ideas/.lake received the oleans of Ideas.Spec.Rook and Ideas.Spec.RookEquiv from the builds.
+
+
+## 2026-10-28 14:11 -- plan 76.0 merged (main adb38522, fast-forward); the gate; 76.1 launched
+OBS gate engine (main adb38522, 44 files incl. test_rules_gdl): passed 575, failed 0, xfailed 3, errors 0, wall 1010.9 s.
+76.0 (the agent's journal entries above): rules/chess.gdl (363 clauses, 96 relations; threefold left out: it needs the history); gdl.py (a game-agnostic semi-naive Datalog evaluator) and
+gdl_chess.py (the binding); crossplay.py on a holdout of 69,566 positions / 1.58M moves: python-chess 100 %, Rust 99.905 % -- the one class: Rust game.rs `insufficient` misses the
+same-colour-bishops dead position (FIDE 5.2.2); nine surprises shrunk and filed under rules/surprises/ as replayed tests (THE SURPRISE LOOP's first outing: the spec was right, the kernel
+wrong). gdl_to_lean.py: relations -> inductive predicates (one constructor per clause); Ideas/Spec/Rook.lean generated and proved equivalent to the kernel's rook attack on every position
+(RookEquiv.lean, by reasoning; interval_cases over the 8-row successor table accepted as rule-level: Kaveh asked, agreed it is not position enumeration); rook_attacks_empty_file re-proved
+from the generated slide. 48 of 90 relations translate; the five extensions GDL needs are named (sorts; fluent bindings; a move binding that reads the position; `next` as a function with a
+functionality proof; non-local rules as inputs). RECOMMENDATION taken: GDL with named extensions; 76.1 stands. trace_identity --jobs (ten t0 25.6 s -> 9.9 s, byte-identical); the plan 76
+parent snapshot at artifacts/experiments/plan76/parent/. Kaveh: "keep going as planned" -> 76.1 (the ontology shelf, the five extensions, the terms as the shelf's relations, the GNN's
+node kinds from the shelf, the Rust insufficient-material fix the surprises pin) launched as one agent under docs/AGENT_BRIEF.md.
