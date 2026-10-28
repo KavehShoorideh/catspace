@@ -176,6 +176,11 @@ def _wide_cases():
 
 
 def _cases(sets: str = "ten"):
+    if ":" in sets:                                       # plan 76.0 (0): "<set>:<id>,<id>" -- those cases of the set only (the --jobs identity test on two cases)
+        base, ids = sets.split(":", 1)
+        keep = set(ids.split(","))
+        yield from (c for c in _cases(base) if c[0] in keep)
+        return
     if sets == "wide":
         yield from _wide_cases()
         return

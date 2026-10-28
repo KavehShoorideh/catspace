@@ -1,0 +1,13 @@
+{
+ "fen": "8/8/6k1/4B3/8/8/1B6/6K1 b - - 0 186",
+ "found_at": "8/7P/6k1/4B3/8/8/1B6/6K1 b - - 0 186",
+ "kernel": "rust",
+ "class": "draw",
+ "signature": "spec insufficient material kernel None: KB(d)B(d) v K",
+ "spec_vs_kernel": "after g6f5: spec insufficient material, Rust game_draw_check None",
+ "status": "read",
+ "wrong": "rust",
+ "fide": "FIDE Laws of Chess (1 January 2023) Art. 5.2.2: the game is drawn when a position has arisen in which neither player can checkmate the opponent's king with any series of legal moves (a dead position); this immediately ends the game. With every bishop on the board on squares of one colour and no other unit but the kings, no checkmate exists: the checked king stands on the bishops' colour, its orthogonal neighbours are of the other colour, which no bishop covers and no unit of its own can block (the argument of Ideas.InsufficientMaterial for one minor piece)",
+ "change": "none to the spec (its `draw` is python-chess `Board.has_insufficient_material`, the rule Game.terminal reads, whose bishop case covers this class). A KERNEL FINDING, reported, not patched (plan 76.0): rust/analyst_core/src/game.rs `insufficient` reads only two kings and at most one knight or bishop, so `drawn` / `game_draw_check` miss these dead positions",
+ "expect": "known"
+}

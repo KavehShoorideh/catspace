@@ -34571,3 +34571,43 @@ COUNTERFACTUAL BOARD keyed by the move: the object Ideas.Landing.land is for a l
 `exposed` (the king attacked after the move: the pin / discovered-check relation). THE END -- `has_move`, `mating_material`, `has_kind`, `two_units`,
 `selfmate_material`, `mixed_bishops`, `any_pawn`, `any_knight`, `insufficient`, `drawn`. THE NEXT STATE -- `castled`, `passant_taken`, `lifted`, `landed`, `touched`
 (= Ideas.PathLemma.touched: the squares a move changes), `right_lost`, `clock_event` (= Game.clock_events' 'capture' / 'pawn'), `clock_reset`.
+
+
+## 2026-10-28 13:44 -- plan 76.0 (b) CROSS-PLAY: a GDL interpreter, the spec against python-chess and the Rust core, every disagreement shrunk and filed (branch worktree-agent-ababbaddc3af91dc2)
+discovery/gdl.py: a plain Datalog fixpoint over KIF clauses, knowing no game -- strongly connected components of the dependency graph (a negative edge inside one is
+an error), bottom-up in topological order, semi-naive iteration on a recursive one, hash indexes on the bound arguments; the static relations (the geometry, the
+tables) evaluated once at load; `or` expanded, `distinct`, `not` of a lower stratum. discovery/gdl_chess.py: THE BINDING of the kernel's state to the spec's facts
+(`cell` = the piece map, `control` = the turn, `castling_right` = the CLEAN rights, `ep_square` = the RAW square, `halfmove` = min(clock, 100)) and of the moves to UCI.
+scripts/crossplay.py: at every position the legal move set, the next state after EVERY legal move, the terminal reasons (each read alone), Game.terminal's verdict and
+the goal values -- spec vs python-chess; legal moves, next states (from `Pos.push(uci).fen_exact()` and its raw `ep_square()`), mate / stalemate and the Rust core's draws
+(game.rs `drawn` through `game_draw_check`, at the successors, in its own order) -- spec vs the Rust `Pos`. A disagreement is SHRUNK (a non-king unit, a castling right,
+the e.p. square removed, the clock reset, while the board stays valid and the same (kernel, class, signature) persists) and FILED under rules/surprises/ (FEN, where
+found, the two answers, then -- after reading the rules -- the side that was wrong, the FIDE article, the change). THE SAMPLE (named): every distinct position of the 47
+puzzle sets (the whole sets), 38 rule corners (trace_identity.CORNERS + 21 RULE_CORNERS: the draws, the clock at its limit, castling through an attacked square, a right
+lost to a capture, e.p. pins), and EVERY position of random play-outs from the initial position (uniform random legal moves, seeded, each game played to the kernel's
+terminal -- the rules end every game, no ply cap); the size by the rule of three (zero disagreements in N positions: the rate below 3/N at 95%).
+OBS crossplay run 1 (seed 76, 40 games): positions 15770, legal moves (python-chess) 364211, next states compared 364211 (python-chess) and 364211 (Rust); wall 122.2 s on
+11 processes; coverage castle 206, en passant 26, each promotion unit 570, check 930, castling right lost 4048, the clock at its limit after the move 357, terminal
+reasons mate 7, stalemate 4, draw 24, fifty-move 14; disagreements: positions with one 12 of 15770 (with python-chess 0), by class rust draw 45; agreement 15758 of 15770
+(99.924%), with python-chess 15770 of 15770. Filed s001-s006.
+OBS crossplay run 2, the HOLDOUT (seed 77, 200 games; nothing in the spec changed between the runs: no disagreement with python-chess to fix): positions 69566, legal moves
+1579216, next states compared 1579216 (python-chess) and 1579216 (Rust), Rust draw readings 1578841; wall 484.1 s on 11 processes; coverage castle 678, en passant 120,
+each promotion unit 2988, check 3952, castling right lost 19314, the clock at its limit after the move 1123, mate 27, stalemate 14, draw 123, fifty-move 45;
+disagreements: positions with one 66 of 69566 (with python-chess 0), by class rust draw 111; agreement 69500 of 69566 (99.905%), with python-chess 69566 of 69566. Filed
+s007-s009. (Both runs left out one corner as invalid -- python-chess `is_valid`: its black king stood in check with White to move; the corner is corrected in the
+committed list, 8/8/3k4/8/8/8/1B6/KB6 w, and agrees.)
+THE SURPRISES (9, ONE CAUSE): every one is the Rust core's insufficient material -- rust/analyst_core/src/game.rs `insufficient` reads only "two kings and at most one
+knight or bishop", so `drawn` / `game_draw_check` report no draw where every bishop of the board stands on one colour (K+B v K+B one colour, K+BB v K, K+BB v K+B, ...),
+which python-chess `has_insufficient_material` (the spec's `draw`, Game.terminal's) reads as drawn. Read against FIDE (Laws of Chess 2023) Art. 5.2.2 -- the game is drawn
+when neither player can checkmate by any series of legal moves (a dead position) -- the RUST CORE is wrong (it misses dead positions: a checked king on the bishops' colour
+has its orthogonal neighbours on the other colour, which no bishop covers and no unit of its side can block); a KERNEL FINDING, reported, NOT patched (plan 76.0). The cases
+are kept as `expect: known`: the replay asserts python-chess agrees on every reading and the Rust differs only in that class (when game.rs is fixed the test says so).
+OBS gdl speed (one process, the 1497 puzzle positions): reading (legal moves, terminal, goals) 19.2 ms per position; next state 0.29 ms per move (45018 moves); python-chess
+legal moves and every push 0.14 ms per position.
+NEGATIVE CONTROLS (a spec with one clause changed; the corners, the first 300 puzzle positions and 3 play-outs, 1607 valid positions; not committed): castling through an
+attacked square allowed -- 11 positions disagree (python legal 11); the e.p. victim not lifted in the legality board -- 3 (python legal 3); no promotion to a knight -- 44
+(python legal 44); the clock does not saturate -- 3 positions (python next 51); the slide does not stop at a blocker -- 996 (python legal 996).
+tests/test_rules_gdl.py (this stage): the spec starts where the kernel starts; the interpreter on six fixed positions gives python-chess's and the Rust's legal moves and
+every next state; every filed surprise replays; the cross-play fires on a wrong spec; `--jobs` identity on two cases (W0VFO, pos2: trace_identity.py's `--sets
+<set>:<id>,<id>` keeps those cases of a set). OBS gate engine --only
+tests/test_rules_gdl.py: passed 10, failed 0, xfailed 0, errors 0, wall 3.6 s.
