@@ -1,0 +1,25 @@
+{
+ "name": "pawn",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "kind",
+ "reads": [],
+ "gdl": {
+  "fluent": "cell",
+  "slot": 3,
+  "constant": "pawn"
+ },
+ "rust": "rules.rs:Pawn",
+ "lean": "Ideas.Vocabulary.kindSet",
+ "python": "chess.PAWN",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "the unit that pushes forward and promotes on its last rank (Game.promotes)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

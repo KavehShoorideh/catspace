@@ -1,0 +1,27 @@
+{
+ "name": "score",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "score",
+ "reads": [],
+ "gdl": {
+  "relation": "goal",
+  "slot": 1
+ },
+ "rust": null,
+ "lean": null,
+ "python": "catspace.incubator.analyst.discovery.gdl_chess.goals_of",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "a goal value of the game: 100 the win, 50 the draw, 0 the loss (the spec's goal)",
+ "why": {
+  "rust": "the Rust core reads outcomes as material and mate values, no goal score",
+  "lean": "the kernel's outcome is Chess.GameStatus (a win, a draw), no number"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

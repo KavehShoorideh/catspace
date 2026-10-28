@@ -1,0 +1,32 @@
+{
+ "name": "attack",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [
+  "cell",
+  "diagonal",
+  "file",
+  "file_succ",
+  "orthogonal",
+  "pawn_diagonal",
+  "rank",
+  "rank_succ"
+ ],
+ "gdl": {
+  "relation": "attack"
+ },
+ "rust": "rules.rs:attacks",
+ "lean": "Ideas.Vocabulary.attackedBy",
+ "python": "chess.Board.is_attacked_by",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "a unit bears on a square (Game.attackers, Game.attacks_from)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

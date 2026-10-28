@@ -1,0 +1,27 @@
+{
+ "name": "home_rank",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [],
+ "gdl": {
+  "relation": "home_rank"
+ },
+ "rust": null,
+ "lean": null,
+ "python": null,
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the rank a side's king and rooks start on",
+ "why": {
+  "lean": "the kernel computes it as arithmetic (Fin 8, Nat): no definition of the table; the generated one is 76.1 (b)'s",
+  "python": "python-chess has no predicate of its own for it (the spec's device, read through the binding gdl_chess.py)",
+  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

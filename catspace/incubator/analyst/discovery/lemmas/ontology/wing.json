@@ -1,0 +1,26 @@
+{
+ "name": "wing",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "wing",
+ "reads": [],
+ "gdl": {
+  "fluent": "castling_right",
+  "slot": 1
+ },
+ "rust": null,
+ "lean": "Chess.CastleRight",
+ "python": "chess.Board.has_kingside_castling_rights",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the side of the board a castling goes to: kingside or queenside (the kernel joins it to the side in its CastleRight)",
+ "why": {
+  "rust": "shakmaty's castling rights are rook squares: no wing value in the crate"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

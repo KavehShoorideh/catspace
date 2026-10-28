@@ -1,0 +1,42 @@
+{
+ "name": "next",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [
+  "castling_path",
+  "castling_right",
+  "cell",
+  "clock_limit",
+  "count_succ",
+  "does",
+  "ep_square",
+  "file",
+  "file_succ",
+  "forward",
+  "halfmove",
+  "home_rank",
+  "opponent",
+  "pawn_start",
+  "rank",
+  "rank_succ",
+  "right_square",
+  "tempo"
+ ],
+ "gdl": {
+  "keyword": "next"
+ },
+ "rust": "pos.rs:push",
+ "lean": "Chess.applyMove",
+ "python": "chess.Board.push",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the next state after a move: the board, the side to move, the rights, the e.p. square and the clock it leaves",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

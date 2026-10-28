@@ -1,0 +1,25 @@
+{
+ "name": "init",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [],
+ "gdl": {
+  "keyword": "init"
+ },
+ "rust": null,
+ "lean": "Chess.initialPosition",
+ "python": "chess.STARTING_FEN",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the initial position: the units on their home squares, White to move, every right, the clock at 0",
+ "why": {
+  "rust": "the Rust core starts from a FEN: no initial position of its own"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

@@ -1,0 +1,33 @@
+{
+ "name": "touched",
+ "kind": "RELATION",
+ "origin": "DERIVED",
+ "sort": null,
+ "reads": [
+  "castling_path",
+  "cell",
+  "does",
+  "ep_square",
+  "file",
+  "home_rank",
+  "rank_succ"
+ ],
+ "gdl": {
+  "relation": "touched"
+ },
+ "rust": "rules.rs:touched_by",
+ "lean": "Ideas.PathLemma.touched",
+ "python": null,
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "a square the move played changes (lifted or landed)",
+ "why": {
+  "python": "python-chess has no predicate of its own for it (the spec's device, read through the binding gdl_chess.py)"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

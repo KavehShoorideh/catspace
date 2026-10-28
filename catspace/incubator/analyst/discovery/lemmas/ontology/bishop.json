@@ -1,0 +1,25 @@
+{
+ "name": "bishop",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "kind",
+ "reads": [],
+ "gdl": {
+  "fluent": "cell",
+  "slot": 3,
+  "constant": "bishop"
+ },
+ "rust": "rules.rs:Bishop",
+ "lean": "Ideas.Vocabulary.kindSet",
+ "python": "chess.BISHOP",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "the unit that slides on the diagonals",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

@@ -1,0 +1,23 @@
+{
+ "name": "cell",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [],
+ "gdl": {
+  "fluent": "cell"
+ },
+ "rust": "rules.rs:piece",
+ "lean": "Chess.Position.board",
+ "python": "chess.Board.piece_at",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "a unit of a side and a kind stands on a square (the board's fluent)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

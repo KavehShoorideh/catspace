@@ -1,0 +1,26 @@
+{
+ "name": "knight_jump",
+ "kind": "RELATION",
+ "origin": "DERIVED",
+ "sort": null,
+ "reads": [
+  "file_succ",
+  "rank_succ"
+ ],
+ "gdl": {
+  "relation": "knight_jump"
+ },
+ "rust": "rules.rs:knight_attacks",
+ "lean": "Chess.knightGeometry",
+ "python": "chess.BB_KNIGHT_ATTACKS",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the knight's jump",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

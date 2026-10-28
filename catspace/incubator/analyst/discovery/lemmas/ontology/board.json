@@ -1,0 +1,23 @@
+{
+ "name": "board",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "board",
+ "reads": [],
+ "gdl": {
+  "keyword": "true"
+ },
+ "rust": "pos.rs:Pos",
+ "lean": "Chess.Position",
+ "python": "chess.Board",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the position: every fluent of the state (the units on their squares, the side to move, the castling rights, the e.p. square, the clock)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

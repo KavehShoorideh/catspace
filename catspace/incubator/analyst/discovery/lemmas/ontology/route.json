@@ -1,0 +1,25 @@
+{
+ "name": "route",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [],
+ "gdl": null,
+ "rust": null,
+ "lean": null,
+ "python": "catspace.incubator.analyst.discovery.agenda.ChaseCtx",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "a candidate move of a question, with its words and its price",
+ "why": {
+  "gdl": "an object of the machinery (the agenda), not of the game: no rule of the spec names it",
+  "rust": "an object of the machinery (the agenda), not of the game: no rule of the spec names it",
+  "lean": "an object of the machinery (the agenda), not of the game: no rule of the spec names it"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

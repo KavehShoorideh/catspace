@@ -1,0 +1,23 @@
+{
+ "name": "best",
+ "kind": "RELATION",
+ "origin": "DERIVED",
+ "sort": null,
+ "reads": [],
+ "gdl": null,
+ "rust": "rules.rs:best",
+ "lean": "Ideas.ExchangeLaw.seeXB",
+ "python": "catspace.incubator.analyst.discovery.graph.see_for",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the largest static gain on a unit of theirs",
+ "why": {
+  "gdl": "a word of the threat layer (rules.rs's Datalog), derived from the board, not a rule: no relation of the spec (76.4 mines such kinds)"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

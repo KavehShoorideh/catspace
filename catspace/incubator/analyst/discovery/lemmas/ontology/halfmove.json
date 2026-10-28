@@ -1,0 +1,23 @@
+{
+ "name": "halfmove",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [],
+ "gdl": {
+  "fluent": "halfmove"
+ },
+ "rust": "game.rs:halfmoves",
+ "lean": "Chess.Position.halfmove",
+ "python": "chess.Board.halfmove_clock",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the board's clock: the half-moves since the last capture or pawn move, saturating at 100",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

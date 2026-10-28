@@ -33,7 +33,7 @@ from catspace.incubator.analyst.discovery import gdl_chess as GC
 from catspace.incubator.analyst.discovery.game import CHESS
 from catspace.io import paths
 
-SURPRISES = paths.REPO_ROOT / "rules" / "surprises"
+SURPRISES = GC.SURPRISES
 PUZZLE_GLOB = "ledger_puzzles_*.json"
 
 RULE_CORNERS = [
@@ -163,33 +163,11 @@ def _compare_rust(b: chess.Board, st, r, prog, cov) -> list:
 
 
 def _expected_rust_draw(ns, prog) -> "str | None":
-    """The Rust core's draw reason after a move, as the SPEC's facts give it in the Rust core's own order (game.rs `drawn`): the clock at 100 and no mate on the move ->
-    'the fifty-move rule'; else the spec's insufficient material -> 'insufficient material'; else None (a stalemate is compared at the position)."""
-    clock = next((int(a[0]) for rel, a in ns if rel == "true.halfmove"), 0)
-    if clock >= GC.CLOCK_LIMIT:
-        db = prog.run(ns, wanted=("mate",))
-        if not prog.holds(db, "mate"):
-            return "the fifty-move rule"
-        return None
-    db = prog.run(ns, wanted=("draw",))
-    if prog.holds(db, "draw"):
-        return "insufficient material"
-    return None
+    return GC.expected_rust_draw(ns, prog)            # (plan 76.1 (a): moved to gdl_chess, read by the ontology shelf's agreement too)
 
 
 def _material(state) -> str:
-    """A state's material by colour (the signature of a draw disagreement): e.g. 'KB(l) v KB(l)'."""
-    sides = {"white": [], "black": []}
-    for rel, a in state:
-        if rel == "true.cell":
-            f, rk, c, k = a
-            letter = "N" if k == "knight" else k[0].upper()
-            if k == "bishop":
-                letter += "(d)" if (ord(f) - 97 + int(rk) - 1) % 2 == 0 else "(l)"
-            sides[c].append(letter)
-    order = "KQRB(d)B(l)NP"
-    key = lambda x: order.index(x[0]) if x[0] in "KQRNP" else order.index(x)
-    return " v ".join("".join(sorted(sides[c], key=key)) for c in ("white", "black"))
+    return GC.material_signature(state)
 
 
 def _move_kind(b: chess.Board, uci: str) -> str:
@@ -316,19 +294,13 @@ def _shrink_candidates(b: chess.Board):
 
 def file_surprise(key: tuple, fen: str, shrunk: str, detail: str) -> Path:
     """A new case under rules/surprises/ (status 'open': the reading of the rules, the side that was wrong and the change are written after reading them)."""
-    SURPRISES.mkdir(parents=True, exist_ok=True)
     res = compare(shrunk, rust=(key[0] == "rust"))
     det = [d for k, c, s, d in res["disagree"] if (k, c, s) == key]
-    n = len(list(SURPRISES.glob("*.json")))
-    p = SURPRISES / f"s{n + 1:03d}_{key[0]}_{key[1]}.json"
-    case = {"fen": shrunk, "found_at": fen, "kernel": key[0], "class": key[1], "signature": key[2],
-            "spec_vs_kernel": det[0] if det else detail, "status": "open", "wrong": None, "fide": None, "change": None, "expect": "agree"}
-    p.write_text(json.dumps(case, indent=1) + "\n")
-    return p
+    return GC.file_surprise(key, fen, shrunk, det[0] if det else detail)
 
 
 def load_surprises() -> list:
-    return [dict(json.loads(p.read_text()), file=p.name) for p in sorted(SURPRISES.glob("*.json"))]
+    return GC.load_surprises()
 
 
 def replay(case: dict) -> list:

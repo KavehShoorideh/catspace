@@ -1,0 +1,26 @@
+{
+ "name": "direction",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "direction",
+ "reads": [],
+ "gdl": {
+  "relation": "step",
+  "slot": 0
+ },
+ "rust": null,
+ "lean": "Ideas.Spec.Rook.Dir",
+ "python": "catspace.incubator.analyst.discovery.graph.SLIDING",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "one of the eight directions a step goes (the spec's geometry: north, south, east, west and the four diagonals)",
+ "why": {
+  "rust": "shakmaty's rays (attacks with an occupancy): no direction value in the crate"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

@@ -1,0 +1,25 @@
+{
+ "name": "knight",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "kind",
+ "reads": [],
+ "gdl": {
+  "fluent": "cell",
+  "slot": 3,
+  "constant": "knight"
+ },
+ "rust": "rules.rs:Knight",
+ "lean": "Ideas.Vocabulary.kindSet",
+ "python": "chess.KNIGHT",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "the unit that hops (Ideas.Vocabulary.knight1)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

@@ -1,0 +1,38 @@
+{
+ "name": "capture",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [
+  "cell",
+  "diagonal",
+  "ep_square",
+  "file",
+  "file_succ",
+  "forward",
+  "opponent",
+  "orthogonal",
+  "pawn_diagonal",
+  "pawn_start",
+  "rank",
+  "rank_succ",
+  "side",
+  "tempo"
+ ],
+ "gdl": {
+  "relation": "capture"
+ },
+ "rust": "pos.rs:is_capture",
+ "lean": "Ideas.Vocabulary.seeOf",
+ "python": "chess.Board.is_capture",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "a move onto a unit of the other side, which leaves the board (Game.is_capture)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

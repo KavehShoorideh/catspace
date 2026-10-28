@@ -1,0 +1,23 @@
+{
+ "name": "file",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "file",
+ "reads": [],
+ "gdl": {
+  "relation": "file"
+ },
+ "rust": "rules.rs:file",
+ "lean": "Ideas.Vocabulary.fileOf",
+ "python": "chess.square_file",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "the column of a square",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

@@ -126,3 +126,58 @@ def goals_of(kind: "str | None", mover: str) -> dict:
     if kind == "mate":
         return {mover: ["0"], other: ["100"]}
     return {mover: ["50"], other: ["50"]}
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ the surprise store
+# (plan 76.0 (b) wrote these in scripts/crossplay.py; plan 76.1 (a) moved them here, the one place both the cross-play and the ontology shelf's agreement read)
+
+SURPRISES = paths.REPO_ROOT / "rules" / "surprises"
+
+
+def expected_rust_draw(ns, prog=None) -> "str | None":
+    """The Rust core's draw reason after a move, as the SPEC's facts give it in the Rust core's own order (game.rs `drawn`): the clock at 100 and no mate on the move ->
+    'the fifty-move rule'; else the spec's insufficient material -> 'insufficient material'; else None (a stalemate is compared at the position)."""
+    prog = prog or program()
+    clock = next((int(a[0]) for rel, a in ns if rel == "true.halfmove"), 0)
+    if clock >= CLOCK_LIMIT:
+        db = prog.run(ns, wanted=("mate",))
+        if not prog.holds(db, "mate"):
+            return "the fifty-move rule"
+        return None
+    db = prog.run(ns, wanted=("draw",))
+    if prog.holds(db, "draw"):
+        return "insufficient material"
+    return None
+
+
+def material_signature(state) -> str:
+    """A state's material by colour (the signature of a draw disagreement): e.g. 'KB(l) v KB(l)'."""
+    sides = {"white": [], "black": []}
+    for rel, a in state:
+        if rel == "true.cell":
+            f, rk, c, k = a
+            letter = "N" if k == "knight" else k[0].upper()
+            if k == "bishop":
+                letter += "(d)" if (ord(f) - 97 + int(rk) - 1) % 2 == 0 else "(l)"
+            sides[c].append(letter)
+    order = "KQRB(d)B(l)NP"
+    key = lambda x: order.index(x[0]) if x[0] in "KQRNP" else order.index(x)
+    return " v ".join("".join(sorted(sides[c], key=key)) for c in ("white", "black"))
+
+
+def load_surprises() -> list:
+    """Every filed case of rules/surprises/ (with its file name)."""
+    import json
+    return [dict(json.loads(p.read_text()), file=p.name) for p in sorted(SURPRISES.glob("*.json"))]
+
+
+def file_surprise(key: tuple, fen: str, shrunk: str, detail: str):
+    """A new case under rules/surprises/ (status 'open': the reading of the rules, the side that was wrong and the change are written after reading them)."""
+    import json
+    SURPRISES.mkdir(parents=True, exist_ok=True)
+    n = len(list(SURPRISES.glob("*.json")))
+    p = SURPRISES / f"s{n + 1:03d}_{key[0]}_{key[1].replace(' ', '_')}.json"
+    case = {"fen": shrunk, "found_at": fen, "kernel": key[0], "class": key[1], "signature": key[2],
+            "spec_vs_kernel": detail, "status": "open", "wrong": None, "fide": None, "change": None, "expect": "agree"}
+    p.write_text(json.dumps(case, indent=1) + "\n")
+    return p

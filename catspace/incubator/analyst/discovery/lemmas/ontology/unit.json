@@ -1,0 +1,27 @@
+{
+ "name": "unit",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "unit",
+ "reads": [],
+ "gdl": {
+  "fluent": "cell",
+  "slot": [
+   2,
+   3
+  ]
+ },
+ "rust": "pos.rs:piece_type",
+ "lean": "Chess.Piece",
+ "python": "chess.Piece",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "a unit of the board: a side and a kind (the kernel's piece)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

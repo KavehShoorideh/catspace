@@ -34699,3 +34699,35 @@ from the generated slide. 48 of 90 relations translate; the five extensions GDL 
 functionality proof; non-local rules as inputs). RECOMMENDATION taken: GDL with named extensions; 76.1 stands. trace_identity --jobs (ten t0 25.6 s -> 9.9 s, byte-identical); the plan 76
 parent snapshot at artifacts/experiments/plan76/parent/. Kaveh: "keep going as planned" -> 76.1 (the ontology shelf, the five extensions, the terms as the shelf's relations, the GNN's
 node kinds from the shelf, the Rust insufficient-material fix the surprises pin) launched as one agent under docs/AGENT_BRIEF.md.
+
+
+## 2026-10-28 14:43 -- plan 76.1 (a) THE ONTOLOGY SHELF: every object and relation kind declared once, one name and its bindings; the names table read from it (branch worktree-agent-a12092dcf58ba7325)
+catspace/incubator/analyst/discovery/ontology.py and lemmas/ontology/ (114 JSON files, one per kind; a sibling of the lemma store's directory, which it does not read).
+An entry: ONE NAME, its kind (OBJECT / RELATION), `origin` (SUPPLIED: a word of the names table, an object kind, or a base of the spec -- a fluent, the input, a
+table of facts; DERIVED: a relation the spec defines by its clauses, or the Rust Datalog's own), `reads` (the supplied base entries a relation reads in the spec:
+its dependency closure, computed and checked), and the BINDINGS `gdl` (the relation / fluent / keyword / slot / constant of rules/chess.gdl), `rust`
+(`<file>:<identifier>` of rust/analyst_core/src), `lean` (the kernel's definition or one in docs/LEAN_INDEX.md), `python` (the kernel predicate the engine calls),
+each null only with its reason. NO NAME INVENTED: an entry is a names-table word or the spec's own relation name (the plan's examples map as at = `cell`,
+moves_to = `legal` / `move_by`, attacks = `attack`, on_line / ray = `slide` / `king_ray`, captures = `capture`, checks = `check`; `defends` is rules.rs's
+`defended`; `blocks` and `reach_k` are no relation of the spec or the Datalog -- 76.4 mines such kinds). names.py is the thin accessor: NAMES is read from the
+entries marked `names` in the table's order (WORDS); its 24 words, kernel predicates, Lean twins and sentences are the ones before (compared: identical).
+`ontology validate`: the schema; every relation of chess.gdl bound by an entry or listed UNNAMED; every binding resolves; the stored reads are the spec's; and
+THE BINDINGS AGREE on a named sample of 20 positions (the rule corners: castling both ways and through an attacked square, rights in part, e.p. legal and pinned,
+promotions, mate, stalemate, the clock at and below its limit, insufficient material of each kind and its near misses, the initial position, pos2) -- the GDL
+interpreter against python-chess and the Rust core (analyst_core.Pos), and with `--lean` the chess-lean kernel's decidable definitions by `#eval` (parseFen,
+pieceAttacksB, isAttackedB, inCheckB, legalMoves, applyMove / printFen, moveIsCapture, checkmateB, stalemateB) in one `lake env lean` run. A disagreement not
+filed already is filed under rules/surprises/ (the cross-play's surprise store: its helpers moved to gdl_chess.py, crossplay.py calls them).
+OBS ontology shelf: entries 114 -- object kinds 22 (supplied 22, derived 0), relation kinds 92 (supplied 40, derived 52); words of the names table 24; node kinds []
+OBS ontology bindings: gdl 106, rust 53, lean 62, python 69 of 114
+OBS ontology spec coverage: relations of rules/chess.gdl 96, bound by an entry 96, UNNAMED 0
+OBS ontology agreement (20 positions; spec vs python-chess, the Rust core and the Lean kernel): readings compared attack (lean 20/python 20/rust 20), attacked (lean 20/python 20/rust 20), capture (lean 20/python 20/rust 20), castling_right (lean 20/python 20/rust 20), cell (lean 20/python 20/rust 20), check (lean 20/python 20/rust 20), draw (python 20), draw (at the successors) (rust 20), draw by the fifty-move rule (lean 20/python 20), ep_square (lean 20/python 20/rust 20), halfmove (lean 20/python 20/rust 20), legal (lean 20/python 20/rust 20), mate (lean 20/python 20/rust 20), next (lean 20/python 20/rust 20), promotion (lean 20/python 20/rust 20), stalemate (lean 20/python 20/rust 20), tempo (lean 20/python 20/rust 20); disagreements 2 (filed already 2, new 0)
+The two: the Rust core's insufficient material at the successors of the one-colour-bishops corners (s004, s005: 76.0's known class). OBS ontology validate: problems 0 (wall 20.1 s with --lean,
+1.1 s without).
+NEGATIVE CONTROL of the agreement (a test): the spec's bishop also sliding on files and ranks disagrees with python-chess and the Rust core on attack and legal at pos2.
+NEGATIVE CONTROL of the guard (not committed): names.py's accessor binding the clock's pawn event to the word of the `capture` entry -- OBS guard ten t0: 3 of 10
+traces, 2 read sets, 0 leaf lists, 2 word lists, 2 provenance lists differ; ten t2: 7 / 7 / 3 / 4 / 7 of 10; DECISION lines 0 of 10 in both.
+THE GUARD (the branch against the plan 76 parent snapshot, --jobs 11): OBS ten t0 0 / 0 / 0 / 0 / 0 of 10 (traces / read sets / leaf verdict lists / word lists /
+provenance lists); ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 9 s, 33 s, 20 s, 69 s).
+OBS audit recount: CHESS FACT rows 210 -> 210 (rows 1618: LOGIC 1253, RULE 99, NAME 21, CHESS FACT 210, HEURISTIC 35). OBS lemma store validate: entries 110,
+problems 0. OBS gate engine --only: test_plan76 6/0/0/0 21.6 s (the Lean agreement test marked slow, run); test_rules_gdl 12/0/0/0 4.8 s; test_plan75 11/0/0/0
+0.7 s; test_rules_draws 17/0/0/0 4.0 s. scripts/gate.py ENGINE_NAMES gains test_plan76.

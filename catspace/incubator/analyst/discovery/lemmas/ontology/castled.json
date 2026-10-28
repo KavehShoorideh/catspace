@@ -1,0 +1,30 @@
+{
+ "name": "castled",
+ "kind": "RELATION",
+ "origin": "DERIVED",
+ "sort": null,
+ "reads": [
+  "castling_path",
+  "cell",
+  "does",
+  "home_rank"
+ ],
+ "gdl": {
+  "relation": "castled"
+ },
+ "rust": "rules.rs:Castle",
+ "lean": null,
+ "python": "chess.Board.is_castling",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the move played is a castling: the king's two-file move from its home square",
+ "why": {
+  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

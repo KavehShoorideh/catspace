@@ -1,0 +1,29 @@
+{
+ "name": "slide",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [
+  "cell",
+  "file",
+  "file_succ",
+  "rank",
+  "rank_succ"
+ ],
+ "gdl": {
+  "relation": "slide"
+ },
+ "rust": "vocab.rs:Segment",
+ "lean": "Ideas.Vocabulary.lineThrough",
+ "python": "chess.Board.attacks",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "a unit's move along a line of empty squares (the kernel's rays, blockers stop them)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

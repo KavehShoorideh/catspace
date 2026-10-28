@@ -1,0 +1,23 @@
+{
+ "name": "does",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [],
+ "gdl": {
+  "relation": "does"
+ },
+ "rust": "pos.rs:push",
+ "lean": "Chess.applyMove",
+ "python": "chess.Board.push",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "a side plays a move (the turn's input; the side not to move plays noop)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

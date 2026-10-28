@@ -1,0 +1,25 @@
+{
+ "name": "king",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "kind",
+ "reads": [],
+ "gdl": {
+  "fluent": "cell",
+  "slot": 3,
+  "constant": "king"
+ },
+ "rust": "rules.rs:King",
+ "lean": "Ideas.Vocabulary.kindSet",
+ "python": "chess.KING",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "the ROYAL unit (Game.royal): its loss is the terminal, it is worth nothing in the valuation; it steps to the adjacent squares (Game.adjacent)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

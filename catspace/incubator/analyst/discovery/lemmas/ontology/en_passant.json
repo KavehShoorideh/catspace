@@ -1,0 +1,35 @@
+{
+ "name": "en_passant",
+ "kind": "RELATION",
+ "origin": "DERIVED",
+ "sort": null,
+ "reads": [
+  "cell",
+  "diagonal",
+  "ep_square",
+  "file",
+  "file_succ",
+  "opponent",
+  "orthogonal",
+  "pawn_diagonal",
+  "rank",
+  "rank_succ",
+  "tempo"
+ ],
+ "gdl": {
+  "relation": "en_passant"
+ },
+ "rust": "rules.rs:EnPassant",
+ "lean": "Chess.pseudoLegalEnPassant",
+ "python": "chess.Board.is_en_passant",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "a pawn takes, onto the passed-over square, the pawn that just passed it",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

@@ -1,0 +1,44 @@
+{
+ "name": "promotion",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [
+  "castling_empty",
+  "castling_path",
+  "castling_right",
+  "castling_safe",
+  "cell",
+  "diagonal",
+  "ep_square",
+  "file",
+  "file_succ",
+  "forward",
+  "home_rank",
+  "last_rank",
+  "opponent",
+  "orthogonal",
+  "pawn_diagonal",
+  "pawn_start",
+  "rank",
+  "rank_succ",
+  "side",
+  "tempo"
+ ],
+ "gdl": {
+  "relation": "promotes"
+ },
+ "rust": "pos.rs:legal_ucis",
+ "lean": "Ideas.Vocabulary.promoOf",
+ "python": "chess.Move.promotion",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "a pawn on its last rank is replaced by another unit (Game.promotes)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

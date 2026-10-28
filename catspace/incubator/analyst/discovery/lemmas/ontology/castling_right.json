@@ -1,0 +1,23 @@
+{
+ "name": "castling_right",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [],
+ "gdl": {
+  "fluent": "castling_right"
+ },
+ "rust": "pos.rs:tkey",
+ "lean": "Chess.Position.castling",
+ "python": "chess.Board.clean_castling_rights",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "a side may still castle on a wing (the state's rights; python-chess's clean rights)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

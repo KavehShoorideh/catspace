@@ -1,0 +1,51 @@
+{
+ "name": "terminal",
+ "kind": "RELATION",
+ "origin": "DERIVED",
+ "sort": null,
+ "reads": [
+  "castling_empty",
+  "castling_path",
+  "castling_right",
+  "castling_safe",
+  "cell",
+  "clock_limit",
+  "diagonal",
+  "ep_square",
+  "file",
+  "file_parity",
+  "file_succ",
+  "forward",
+  "halfmove",
+  "home_rank",
+  "last_rank",
+  "opponent",
+  "orthogonal",
+  "pawn_diagonal",
+  "pawn_start",
+  "promotable",
+  "rank",
+  "rank_parity",
+  "rank_succ",
+  "side",
+  "tempo"
+ ],
+ "gdl": {
+  "relation": "terminal"
+ },
+ "rust": "game.rs:drawn",
+ "lean": null,
+ "python": "catspace.incubator.analyst.discovery.game.ChessGame.terminal",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the game is over (the GDL keyword: mate, stalemate, a draw)",
+ "why": {
+  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

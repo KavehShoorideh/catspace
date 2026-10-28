@@ -1,0 +1,23 @@
+{
+ "name": "ep_square",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [],
+ "gdl": {
+  "fluent": "ep_square"
+ },
+ "rust": "pos.rs:ep_square",
+ "lean": "Chess.Position.enPassant",
+ "python": "chess.Board.ep_square",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the square a pawn passed over on the last move (set after every double push; the capture there is legal only when a pawn can take)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

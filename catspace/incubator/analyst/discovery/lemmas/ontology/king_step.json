@@ -1,0 +1,28 @@
+{
+ "name": "king_step",
+ "kind": "RELATION",
+ "origin": "DERIVED",
+ "sort": null,
+ "reads": [
+  "file",
+  "file_succ",
+  "rank",
+  "rank_succ"
+ ],
+ "gdl": {
+  "relation": "king_step"
+ },
+ "rust": "rules.rs:king_attacks",
+ "lean": "Chess.kingGeometry",
+ "python": "chess.BB_KING_ATTACKS",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the king's step: a square next to another",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

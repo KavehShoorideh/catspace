@@ -1,0 +1,32 @@
+{
+ "name": "attack_by",
+ "kind": "RELATION",
+ "origin": "DERIVED",
+ "sort": null,
+ "reads": [
+  "cell",
+  "diagonal",
+  "file",
+  "file_succ",
+  "orthogonal",
+  "pawn_diagonal",
+  "rank",
+  "rank_succ"
+ ],
+ "gdl": {
+  "relation": "attack_by"
+ },
+ "rust": "pos.rs:attacks",
+ "lean": "Chess.pieceAttacks",
+ "python": "chess.Board.attacks",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the unit of a kind and a side on one square bears on another, by its geometry alone (a pinned unit still attacks)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

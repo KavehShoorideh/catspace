@@ -7,6 +7,10 @@ store, the goal kinds its GOAL entries, the stops its STOP entries; the outcome'
 The store's `reads` (movement, attack, tempo, material) refer to this table (`READS`: each base word is a name here); the agenda reads the names it needs from here (the unit
 kinds by their kernel kinds, the royal unit, the king's step) and the trace prints the kernel's own spelling (square names, unit letters, move notation).
 
+PLAN 76.1 (a): the table's words are entries of THE ONTOLOGY SHELF (ontology.py, lemmas/ontology/: one name, its bindings -- the spec's relation, the Rust core's, the
+Lean definition, the kernel predicate). This module is the thin accessor: `NAMES` is read from the shelf's entries that are words of the table (`names: true`), in the
+table's order (`WORDS`); `kernel` is the entry's python binding, `lean` its Lean binding. A word of WORDS with no entry is an error at import.
+
   python -m catspace.incubator.analyst.discovery.names      # OBS lines: the names, their kernel predicates, their Lean twins (present / missing in the index)
 """
 from __future__ import annotations
@@ -14,6 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import chess
+
+from catspace.incubator.analyst.discovery import ontology as ON
 
 
 @dataclass(frozen=True)
@@ -24,39 +30,21 @@ class Name:
     means: str           # one plain sentence
 
 
-NAMES: dict = {n.word: n for n in (
-    # the unit kinds (the kernel's piece types; Lean names a kind through the squares of its units)
-    Name("pawn", "chess.PAWN", "Ideas.Vocabulary.kindSet", "the unit that pushes forward and promotes on its last rank (Game.promotes)"),
-    Name("knight", "chess.KNIGHT", "Ideas.Vocabulary.kindSet", "the unit that hops (Ideas.Vocabulary.knight1)"),
-    Name("bishop", "chess.BISHOP", "Ideas.Vocabulary.kindSet", "the unit that slides on the diagonals"),
-    Name("rook", "chess.ROOK", "Ideas.Vocabulary.kindSet", "the unit that slides on the ranks and files"),
-    Name("queen", "chess.QUEEN", "Ideas.Vocabulary.kindSet", "the unit that slides on both"),
-    Name("king", "chess.KING", "Ideas.Vocabulary.kindSet", "the ROYAL unit (Game.royal): its loss is the terminal, it is worth nothing in the valuation; it steps to the adjacent squares (Game.adjacent)"),
-    # the board
-    Name("square", "chess.SQUARES", "Ideas.Vocabulary.sqIndex", "a location of the board (Game.locations), named by the kernel's square name (Game.loc_name)"),
-    Name("rank", "chess.square_rank", "Ideas.Vocabulary.rankOf", "the row of a square"),
-    Name("file", "chess.square_file", "Ideas.Vocabulary.fileOf", "the column of a square"),
-    # the rules' verbs
-    Name("move", "chess.Board.legal_moves", "Ideas.Game.Game.step", "a legal move of the side to move (Game.moves, Game.apply)"),
-    Name("attack", "chess.Board.is_attacked_by", "Ideas.Vocabulary.attackedBy", "a unit bears on a square (Game.attackers, Game.attacks_from)"),
-    Name("slide", "chess.Board.attacks", "Ideas.Vocabulary.lineThrough", "a unit's move along a line of empty squares (the kernel's rays, blockers stop them)"),
-    Name("capture", "chess.Board.is_capture", "Ideas.Vocabulary.seeOf", "a move onto a unit of the other side, which leaves the board (Game.is_capture)"),
-    Name("check", "chess.Board.is_check", "Ideas.Vocabulary.checkOf", "the side to move's royal unit is attacked (Game.in_check, Game.gives_check)"),
-    Name("promotion", "chess.Move.promotion", "Ideas.Vocabulary.promoOf", "a pawn on its last rank is replaced by another unit (Game.promotes)"),
-    Name("tempo", "chess.Board.ply", "Ideas.Game.chess", "whose move it is and a count of moves (Game.turn, the board's ply count; the pass flips the side to move, Game.pass_)"),
-    # the outcomes
-    Name("mate", "chess.Board.is_checkmate", "Ideas.Game.Game.mated", "the mover is in check and has no legal move: the game ends (Game.terminal says 'mate')"),
-    Name("stalemate", "chess.Board.is_stalemate", "Ideas.Game.Game.stalemated", "the mover has no legal move and is not in check: a draw (Game.terminal says 'stalemate')"),
-    Name("draw", "chess.Board.is_insufficient_material", "Ideas.Vocabulary.deadDraw", "the game ends level (Game.terminal says 'draw': no mate can be reached); the claimable draws are the two names below (plan 75.4)"),
-    Name("draw by repetition", "catspace.incubator.analyst.discovery.game.ChessGame.repetition", "Ideas.Game.Record.threefold",
-         "the position occurs a third time -- its identity (Game.position_key: board, side to move, castling, a LEGAL en-passant square) twice in the game record before it (Game.terminal says 'repetition'; Lean Chess.threefoldClaimable, Ideas.Game.chess_threefold_iff)"),
-    Name("draw by the fifty-move rule", "chess.Board.is_fifty_moves", "Ideas.Game.fifty",
-         "a hundred half-moves with no capture and no pawn move, and no mate on the move (Game.terminal says 'fifty-move'; Lean Chess.fiftyMoveClaimable, Ideas.Game.chess_fifty_iff)"),
-    Name("win", "chess.Board.is_checkmate", "Ideas.Vocabulary.gainGoal", "the other side is mated, or a gain held ahead (the ladder's winning rung)"),
-    Name("lose", "chess.Board.is_checkmate", "Ideas.Game.Game.mated", "we are mated, or behind (the ladder's losing rung)"),
-    # the count the stakes are in (the worths are the VALUATION entry's, never this table's)
-    Name("material", "analyst_core.Pos.balance", "Ideas.Vocabulary.materialOf", "the side's units counted by the material VALUATION (Game.measure; the worths are the store's)"),
-)}
+# the table's words in its order: the unit kinds (the kernel's piece types; Lean names a kind through the squares of its units); the board; the rules' verbs; the
+# outcomes; the count the stakes are in (the worths are the VALUATION entry's, never this table's)
+WORDS = ("pawn", "knight", "bishop", "rook", "queen", "king", "square", "rank", "file", "move", "attack", "slide", "capture", "check", "promotion", "tempo",
+         "mate", "stalemate", "draw", "draw by repetition", "draw by the fifty-move rule", "win", "lose", "material")
+
+
+def _names() -> dict:
+    shelf = {e["name"]: e for e in ON.names_table()}
+    missing = [w for w in WORDS if w not in shelf]
+    if missing or len(shelf) != len(WORDS):
+        raise ON.OntologyError(f"the names table and the shelf differ: words with no entry {missing}, entries not in the table {sorted(set(shelf) - set(WORDS))}")
+    return {w: Name(w, shelf[w]["python"], shelf[w]["lean"], shelf[w]["means"]) for w in WORDS}
+
+
+NAMES: dict = _names()
 
 READS = {"movement": "move", "attack": "attack", "tempo": "tempo", "material": "material"}      # the store's base reads (lemma_store.BASE) -> the names they are
 DRAW_BY = {"repetition": "draw by repetition", "fifty-move": "draw by the fifty-move rule"}      # plan 75.4 (1): Game.terminal's draws by rule (game.DRAWS_BY_RULE) -> the names they are

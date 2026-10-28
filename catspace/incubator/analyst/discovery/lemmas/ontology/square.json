@@ -1,0 +1,23 @@
+{
+ "name": "square",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "square",
+ "reads": [],
+ "gdl": {
+  "relation": "square"
+ },
+ "rust": "pos.rs:square",
+ "lean": "Ideas.Vocabulary.sqIndex",
+ "python": "chess.SQUARES",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "a location of the board (Game.locations), named by the kernel's square name (Game.loc_name)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

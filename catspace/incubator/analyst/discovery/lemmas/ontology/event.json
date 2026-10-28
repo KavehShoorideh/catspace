@@ -1,0 +1,26 @@
+{
+ "name": "event",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "event",
+ "reads": [],
+ "gdl": {
+  "relation": "clock_event",
+  "slot": 0
+ },
+ "rust": null,
+ "lean": "Ideas.Game.clockResets",
+ "python": "catspace.incubator.analyst.discovery.game.ChessGame.clock_events",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "what of a move resets the clock: a pawn move or a capture (the fifty-move rule's events)",
+ "why": {
+  "rust": "the Rust core reads shakmaty's halfmove counter: no event value"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

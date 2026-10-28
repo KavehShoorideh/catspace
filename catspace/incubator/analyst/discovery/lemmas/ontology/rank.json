@@ -1,0 +1,23 @@
+{
+ "name": "rank",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "rank",
+ "reads": [],
+ "gdl": {
+  "relation": "rank"
+ },
+ "rust": "rules.rs:rank",
+ "lean": "Ideas.Vocabulary.rankOf",
+ "python": "chess.square_rank",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "the row of a square",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

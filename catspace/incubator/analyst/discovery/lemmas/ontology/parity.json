@@ -1,0 +1,27 @@
+{
+ "name": "parity",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "parity",
+ "reads": [],
+ "gdl": {
+  "relation": "file_parity",
+  "slot": 1
+ },
+ "rust": null,
+ "lean": "Ideas.GeoLemmas.colour",
+ "python": null,
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the parity of a file or a rank number: a square is dark when its file and rank have the same parity (the spec's way to say a square's colour)",
+ "why": {
+  "rust": "the crate reads a square's colour from shakmaty's DARK_SQUARES / LIGHT_SQUARES bitboards, no parity value",
+  "python": "python-chess reads the colour from BB_DARK_SQUARES: no parity value"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

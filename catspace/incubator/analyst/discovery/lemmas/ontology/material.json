@@ -1,0 +1,23 @@
+{
+ "name": "material",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [],
+ "gdl": null,
+ "rust": "pos.rs:balance",
+ "lean": "Ideas.Vocabulary.materialOf",
+ "python": "analyst_core.Pos.balance",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "the side's units counted by the material VALUATION (Game.measure; the worths are the store's)",
+ "why": {
+  "gdl": "a count by the VALUATION entry of the lemma store (the unit worths), not a rule: the spec has no material"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

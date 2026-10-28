@@ -1,0 +1,30 @@
+{
+ "name": "ep_victim",
+ "kind": "RELATION",
+ "origin": "DERIVED",
+ "sort": null,
+ "reads": [
+  "file",
+  "rank_succ"
+ ],
+ "gdl": {
+  "relation": "ep_victim"
+ },
+ "rust": null,
+ "lean": null,
+ "python": null,
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "where the pawn taken en passant stands, behind the passed-over square from the capturer's side",
+ "why": {
+  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own",
+  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)",
+  "python": "python-chess has no predicate of its own for it (the spec's device, read through the binding gdl_chess.py)"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

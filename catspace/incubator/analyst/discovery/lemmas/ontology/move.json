@@ -1,0 +1,24 @@
+{
+ "name": "move",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "move",
+ "reads": [],
+ "gdl": {
+  "relation": "legal",
+  "slot": 1
+ },
+ "rust": "pos.rs:legal_move",
+ "lean": "Ideas.Game.Game.step",
+ "python": "chess.Board.legal_moves",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "a legal move of the side to move (Game.moves, Game.apply)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

@@ -1,0 +1,29 @@
+{
+ "name": "draw",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [
+  "cell",
+  "file_parity",
+  "opponent",
+  "rank_parity",
+  "side"
+ ],
+ "gdl": {
+  "relation": "draw"
+ },
+ "rust": "game.rs:insufficient",
+ "lean": "Ideas.Vocabulary.deadDraw",
+ "python": "chess.Board.is_insufficient_material",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "the game ends level (Game.terminal says 'draw': no mate can be reached); the claimable draws are the two names below (plan 75.4)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

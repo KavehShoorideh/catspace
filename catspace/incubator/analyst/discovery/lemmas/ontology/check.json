@@ -1,0 +1,34 @@
+{
+ "name": "check",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [
+  "cell",
+  "diagonal",
+  "file",
+  "file_succ",
+  "opponent",
+  "orthogonal",
+  "pawn_diagonal",
+  "rank",
+  "rank_succ",
+  "tempo"
+ ],
+ "gdl": {
+  "relation": "check"
+ },
+ "rust": "pos.rs:is_check",
+ "lean": "Ideas.Vocabulary.checkOf",
+ "python": "chess.Board.is_check",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "the side to move's royal unit is attacked (Game.in_check, Game.gives_check)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

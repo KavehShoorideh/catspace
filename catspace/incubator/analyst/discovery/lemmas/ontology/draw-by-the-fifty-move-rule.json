@@ -1,0 +1,47 @@
+{
+ "name": "draw by the fifty-move rule",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [
+  "castling_empty",
+  "castling_path",
+  "castling_right",
+  "castling_safe",
+  "cell",
+  "clock_limit",
+  "diagonal",
+  "ep_square",
+  "file",
+  "file_succ",
+  "forward",
+  "halfmove",
+  "home_rank",
+  "last_rank",
+  "opponent",
+  "orthogonal",
+  "pawn_diagonal",
+  "pawn_start",
+  "promotable",
+  "rank",
+  "rank_succ",
+  "side",
+  "tempo"
+ ],
+ "gdl": {
+  "relation": "draw_by_fifty_moves"
+ },
+ "rust": "game.rs:claimable_draw",
+ "lean": "Ideas.Game.fifty",
+ "python": "chess.Board.is_fifty_moves",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "a hundred half-moves with no capture and no pawn move, and no mate on the move (Game.terminal says 'fifty-move'; Lean Chess.fiftyMoveClaimable, Ideas.Game.chess_fifty_iff)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

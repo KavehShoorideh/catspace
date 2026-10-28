@@ -1,0 +1,25 @@
+{
+ "name": "rook",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "kind",
+ "reads": [],
+ "gdl": {
+  "fluent": "cell",
+  "slot": 3,
+  "constant": "rook"
+ },
+ "rust": "rules.rs:Rook",
+ "lean": "Ideas.Vocabulary.kindSet",
+ "python": "chess.ROOK",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "the unit that slides on the ranks and files",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

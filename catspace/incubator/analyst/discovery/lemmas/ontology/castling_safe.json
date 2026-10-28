@@ -1,0 +1,26 @@
+{
+ "name": "castling_safe",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [],
+ "gdl": {
+  "relation": "castling_safe"
+ },
+ "rust": null,
+ "lean": "Chess.castleSafeSquares",
+ "python": null,
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "a file the castling king stands on or passes, which must not be attacked",
+ "why": {
+  "python": "python-chess has no predicate of its own for it (the spec's device, read through the binding gdl_chess.py)",
+  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own"
+ },
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

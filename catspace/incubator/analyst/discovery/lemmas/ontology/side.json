@@ -1,0 +1,23 @@
+{
+ "name": "side",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "side",
+ "reads": [],
+ "gdl": {
+  "relation": "role"
+ },
+ "rust": "pos.rs:colour",
+ "lean": "Chess.Color",
+ "python": "chess.COLORS",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "a player: white or black (the spec's roles)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

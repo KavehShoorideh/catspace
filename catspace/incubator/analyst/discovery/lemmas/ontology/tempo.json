@@ -1,0 +1,23 @@
+{
+ "name": "tempo",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": null,
+ "reads": [],
+ "gdl": {
+  "fluent": "control"
+ },
+ "rust": "pos.rs:turn_white",
+ "lean": "Ideas.Game.chess",
+ "python": "chess.Board.ply",
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": true,
+ "means": "whose move it is and a count of moves (Game.turn, the board's ply count; the pass flips the side to move, Game.pass_)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}
