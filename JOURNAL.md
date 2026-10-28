@@ -33928,3 +33928,50 @@ WHAT THE TOOLS COULD NOT DO (directional, one run): see through the kernel's exe
 isAttackedB folds over the 64 squares, stalemate is `legalMoves = []` after the move): a proof must exhibit a move and evaluate legality and attacks
 symbolically, and none of the tools produced a first step that Lean accepted.
 OBS gate engine --only tests/test_plan73_6.py: passed 26, failed 0, xfailed 0, errors 0, wall 43.6 s
+
+
+## 2026-10-27 17:09 PDT -- plan 73.6 (5) THE BLIND RUN: the K+R obligation `hprog`, the statement only -- OPEN after the 90-minute fuse; 17 model samples; one sketch, its two sub-goals the goal again and a tautology; nothing to the store (branch worktree-agent-aeb5da3edbf8fc955)
+THE RUN (prover.py prove mined_technique_krvk --mode blind; artifacts/experiments/prover/20261027_152335_mined_technique_krvk_blind): every tool, cheapest first,
+on the one sorry of lean/ideas/Ideas/Mined/mined_technique_krvk.lean, the named fuse of 90 minutes, the model's reasoning mode off (raw template, empty think
+block), the cap 10240 tokens a sample. Everything local.
+PER TOOL on `hprog` (each as it is and after `intros`): aesop, simp_all, omega, grind, tauto, exact? -- "made no progress" / "could not close the goal";
+Duper -- "unable to solve with the current configuration"; LeanCopilot search_proof -- no first step. The model: whole-proof chains (Lean's errors fed back)
+and decompositions; its candidates misuse the class's existential as a pair ("Invalid projection ... hp.left.2"), name constants that do not exist
+(the last: "Unknown constant `Chess.Position.inCheckB`"), and use `decide` (banned). Its one compiled sketch wrote `hprog` again as a `have` (sub-goal s1 =
+the goal; s2 = the goal given the goal): the no-progress check meant to refuse it did not, by a bug found here (its test theorem was compiled with the goal's
+corollary, which names the goal, so it never compiled) -- fixed, with the blind run's own sub-goal as the regression test; the hinted run has the fix.
+OBS prover mined_technique_krvk blind goal hprog: OPEN after the fuse; last: error(lean.unknownIdentifier): Unknown constant `Chess.Position.inCheckB`; samples 17; sub-goals proposed 2, proved 1, open 1; wall 5583.9 s
+OBS prover mined_technique_krvk blind tally (tried, accepted): automation aesop 5/1; automation duper [*] 4/0; automation exact? 4/0; automation grind 4/0; automation omega 4/0; automation simp_all 4/0; automation tauto 4/0; copilot search_proof 4/0; llm sketch 2/0; llm sketch (no sorry: a whole proof) 4/0; llm whole 11/0; no-progress check 2/0; attempts logged 52 in artifacts/experiments/prover/20261027_152335_mined_technique_krvk_blind/attempts.jsonl
+OBS digest 20261027_152335_mined_technique_krvk_blind: attempts 52; automation aesop 5/1; automation duper [*] 4/0; automation exact? 4/0; automation grind 4/0; automation omega 4/0; automation simp_all 4/0; automation tauto 4/0; copilot search_proof 4/0; llm sketch 2/0; llm sketch (no sorry: a whole proof) 4/0; llm whole 11/0; no-progress check 2/0
+OBS digest 20261027_152335_mined_technique_krvk_blind: model samples 17 (cut by the cap 2); tokens 173..10240, total 45861; seconds 19.5..1167.9, total 5133.3
+OBS digest 20261027_152335_mined_technique_krvk_blind: sketches 2 (compiled with sub-goals 1, sub-goals stated 2); refused as no progress 0
+OBS digest 20261027_152335_mined_technique_krvk_blind goal hprog: OPEN; samples 17; wall 5583.9 s; sub-goals proposed 2, proved 1, open 1
+OBS digest 20261027_152335_mined_technique_krvk_blind goal hprog last: error(lean.unknownIdentifier): Unknown constant `Chess.Position.inCheckB`
+OBS digest 20261027_152335_mined_technique_krvk_blind sub-goal hprog_blind_s1 (of hprog): OPEN: theorem hprog_blind_s1 (p : Position) (hp : inClass p) : Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p := by
+OBS digest 20261027_152335_mined_technique_krvk_blind sub-goal hprog_blind_s2 (of hprog): PROVED by automation: aesop: theorem hprog_blind_s2 (p : Position) (hp : inClass p) (h_main : Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p) : Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p := by
+THE STORE (prover.py record): no entry -- the two sub-goals are not words (Lean decides):
+OBS prover record: hprog_blind_s2 is not a word -- a tautology: its conclusion is one of its hypotheses (`intros; assumption` closes it)
+OBS prover record: hprog_blind_s1 is not a word -- a restatement of an ancestor goal (the ancestor follows from it by `apply` and its own hypotheses)
+OBS prover record mined_technique_krvk blind: the top obligation not proved; store entries written 0
+THE OUTCOME, BLIND: OPEN. The furthest the tools got: no sub-lemma that is a word; the open goal is `hprog` as stated (the last error above).
+THE GUARD (before = main e3c7c97b exported, after = this branch; PYTHONHASHSEED=0; count budget), no engine decision changed:
+(set) ten_t0
+OBS trace identity: 0 of 10 traces differ
+OBS trace identity: 0 of 10 read sets differ
+OBS trace identity: 0 of 10 leaf verdict lists differ
+OBS trace identity: 0 of 10 word lists differ
+(set) ten_t2
+OBS trace identity: 0 of 10 traces differ
+OBS trace identity: 0 of 10 read sets differ
+OBS trace identity: 0 of 10 leaf verdict lists differ
+OBS trace identity: 0 of 10 word lists differ
+(set) wide_t0
+OBS trace identity: 0 of 99 traces differ
+OBS trace identity: 0 of 99 read sets differ
+OBS trace identity: 0 of 99 leaf verdict lists differ
+OBS trace identity: 0 of 99 word lists differ
+(set) wide_t2
+OBS trace identity: 0 of 99 traces differ
+OBS trace identity: 0 of 99 read sets differ
+OBS trace identity: 0 of 99 leaf verdict lists differ
+OBS trace identity: 0 of 99 word lists differ

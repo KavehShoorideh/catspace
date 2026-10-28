@@ -580,7 +580,9 @@ class Prover:
             sub = closed_prop(re.sub(r":= sorry$", ":= by", info.strip()).replace("✝", "_d"))
             if not sub or not target:
                 continue
-            test = goal.prefix + self.lemmas() + lemmas + f"theorem restating_test (hk : {sub}) : {target} := by\n  intros\n  apply hk <;> assumption\n" + goal.suffix
+            ns = namespace_of(goal.prefix)                              # (the goal's own suffix may name the goal -- the corollary does: only close the namespace)
+            test = (goal.prefix + self.lemmas() + lemmas + f"theorem restating_test (hk : {sub}) : {target} := by\n  intros\n  apply hk <;> assumption\n"
+                    + (f"\nend {ns}\n" if ns else "\n"))
             chk = lean_check(test, (), "ideas", tag=f"restating_{goal.name}")
             self.log.write(tool="no-progress check", goal=goal.name, depth=goal.depth, sub=k, accepted=False, restates=chk.ok, secs=chk.secs,
                            errors=chk.errors[:1])

@@ -308,6 +308,17 @@ def test_a_sketch_that_restates_the_goal_is_refused_as_no_progress(monkeypatch, 
     assert "llm sketch refused" in (tmp_path / "log" / "attempts.jsonl").read_text()
 
 
+def test_the_no_progress_check_sees_the_blind_runs_restatement(tmp_path):
+    """The blind run's first sketch (2026-10-27) wrote `hprog` again as a `have`; extract_goal stated it as below. The check must flag it in the emitted file's
+    own context -- it did not in that run: the test theorem was compiled with the goal's suffix, whose corollary names the goal (fixed: only the namespace is
+    closed)."""
+    (g,) = PR.goals_of(PR.MINED_DIR / "mined_technique_krvk.lean")
+    info = ("theorem Ideas.Mined.mined_technique_krvk.hprog.extracted_1 (p : Position) (hp : inClass p) :\n"
+            "  Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p := sorry")
+    P = PR.Prover(PR.MINED_DIR / "mined_technique_krvk.lean", "blind", ("llm",), PR.Log(tmp_path / "log"), 600)
+    assert P.restating(g, "", [info]) == "#1"
+
+
 # ---------------------------------------------------------------------------------------------------------------- (4) THE STORE
 
 def test_a_sub_lemma_entry_by_role_and_reads():
