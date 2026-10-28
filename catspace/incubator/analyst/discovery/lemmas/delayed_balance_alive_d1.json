@@ -35,5 +35,10 @@
   "catspace/incubator/analyst/discovery/selfmine.py:schema_name",
   "catspace/incubator/analyst/discovery/binder.py:verify_keep"
  ],
- "note": "The binder's gain schema of depth 1 (one named move), the delayed balance: the minimax of the balance over their reply, our move and their reply; the tail is our hand-written operator (selfmine.tail_body), the Lean statement was generated from it; the keep family (52.15) binds it with the gain 0 to verify a parry."
+ "note": "The binder's gain schema of depth 1 (one named move), the delayed balance: the minimax of the balance over their reply, our move and their reply; the tail is our hand-written operator (selfmine.tail_body), the Lean statement was generated from it; the keep family (52.15) binds it with the gain 0 to verify a parry.",
+ "params": {
+  "reads_every_reply": true,
+  "leaf_read": true,
+  "window": true
+ }
 }

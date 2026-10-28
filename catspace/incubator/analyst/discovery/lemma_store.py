@@ -30,7 +30,8 @@ LEAN_INDEX = ROOT / "docs" / "LEAN_INDEX.md"
 FIELDS = ("name", "kind", "reads", "terms", "status", "lean", "origin", "plan", "journal", "measure", "evidence", "implementation", "note")
 OPTIONAL = ("params",)              # plan 75.2: the values the agenda READS from an entry at run time (a GOAL's stake and roles, a VALUATION's worths, a STOP's shape)
 KINDS = ("CLOSING", "DEFECT_FIX", "FORCING", "TECHNIQUE", "STOP", "TABLE", "GOAL", "VALUATION")
-BASE = ("movement", "attack", "tempo", "material")
+from catspace.incubator.analyst.discovery import names as NM  # noqa: E402  (plan 75.2 (c): the store's base reads are names of the names table)
+BASE = tuple(NM.READS)                                         # movement, attack, tempo, material: each bound to a kernel predicate and a Lean twin (names.py)
 STATUSES = ("PROVED", "CONJECTURE", "REFUTED", "HEURISTIC")
 ORIGINS = ("BASE", "HAND", "MINED")
 MEASURE_KEYS = ("quantity", "floor", "terminal")
@@ -159,9 +160,71 @@ def _params_problems(e: dict, at: str) -> list:
         if not isinstance(p, dict) or p.get("context") not in STOP_CONTEXTS:
             return [f"{at}: a STOP's params say the context it applies in ({', '.join(STOP_CONTEXTS)}) and its shape"]
         return []
+    if k in WORD_PARAMS and p is not None:
+        allowed = WORD_PARAMS[k]
+        if not isinstance(p, dict) or not p or any(f not in allowed or not isinstance(v, allowed[f]) or isinstance(v, bool) != (allowed[f] is bool) for f, v in p.items()):
+            return [f"{at}: a {k}'s params are among {', '.join(f'{f} ({t.__name__})' for f, t in allowed.items())}"]
+        return []
     if p is not None:
-        return [f"{at}: only a GOAL, a VALUATION or a STOP has params"]
+        return [f"{at}: only a GOAL, a VALUATION, a STOP, a FORCING or a CLOSING entry has params"]
     return []
+
+
+# ---------------------------------------------------------------------------------------------------------------- plan 75.2 (c): what a printed word's entry says
+# The agenda used to read a word's properties off its printed text (the forced words by their names, the schema families by their prefixes). Plan 75.2 (c) makes them FIELDS
+# of the word's entry: a FORCING word is `forced` (its replies are forced: the chase follows it below the root, the judge may let it decide), ranks the chase's routes (`rank`
+# when the route's word IS the entry's name, `rank_any` when it begins with it), is `walked` (a plain check: the walk of checks tests it); a CLOSING word `reads_every_reply` (its
+# claim is no fact of another position), was made by the `chase`, is followed to its `leaf_read`, is a gain within the `window`, or is a `draw`.
+WORD_PARAMS = {"FORCING": {"forced": bool, "rank": int, "rank_any": int, "walked": bool},
+               "CLOSING": {"reads_every_reply": bool, "chase": bool, "leaf_read": bool, "window": bool, "draw": bool}}
+_WORDS: list = [None, None]          # (the store object, the derived tables)
+
+
+def _word_tables() -> dict:
+    store = load()
+    if _WORDS[0] is not store:
+        forcing = [(n, e.get("params") or {}) for n, e in store.items() if e["kind"] == "FORCING"]
+        ranked = [(n, p) for n, p in forcing if "rank" in p or "rank_any" in p]
+        _WORDS[0], _WORDS[1] = store, dict(
+            forced=tuple(n for n, p in forcing if p.get("forced")),
+            exact={n: p["rank"] for n, p in ranked if "rank" in p},
+            prefix=sorted(((n, p["rank_any"]) for n, p in ranked if "rank_any" in p), key=lambda t: -len(t[0])),
+            rest=1 + max([p.get("rank", p.get("rank_any", 0)) for _n, p in ranked] or [-1]),
+            walked=frozenset(n for n, p in forcing if p.get("walked")))
+    return _WORDS[1]
+
+
+def forced_words() -> tuple:
+    """The FORCING words whose replies are forced (their entries' `forced`): a printed route word that begins with one of them is forced."""
+    return _word_tables()["forced"]
+
+
+def forcing_rank(why: str) -> int:
+    """The chase's order of a route by its word: the entry the word IS (`rank`), else the longest entry it begins with (`rank_any`), else after every ranked word."""
+    t = _word_tables()
+    if why in t["exact"]:
+        return t["exact"][why]
+    return next((r for n, r in t["prefix"] if why.startswith(n)), t["rest"])
+
+
+def walked(why: str) -> bool:
+    """Is the route's word the one the walk of checks tests (a FORCING entry the word IS, `walked`)?"""
+    return why in _word_tables()["walked"]
+
+
+def says(word: str, field: str) -> bool:
+    """Does an entry the printed word resolves to (the word itself, its composition's head, its slots) say `field`? (False when the word is not catalogued.)"""
+    store = load()
+    return any((store[n].get("params") or {}).get(field) for n in (resolve(word) or ()) if n in store)
+
+
+def head_says(word: str, field: str) -> bool:
+    """Does the entry the printed word is headed by (the word itself, or its composition's head) say `field`?"""
+    r = resolve(word)
+    if not r:
+        return False
+    e = load().get(r[0])
+    return bool(e is not None and (e.get("params") or {}).get(field))
 
 
 # ---------------------------------------------------------------------------------------------------------------- plan 75.2 (b): the stops
@@ -795,6 +858,7 @@ def validate(dirs: "list | None" = None, log=print, run: bool = True) -> int:
         GoalKinds(store)
     except LemmaStoreError as x:
         bad.append(f"goal kinds: {x}")
+    bad += [f"names: {x}" for x in NM.problems()]       # plan 75.2 (c): every name bound to a kernel predicate and a Lean twin present in the index
     bad += implementation_problems(store)
     for n, e in store.items():
         for t in e["terms"]:

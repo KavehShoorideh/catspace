@@ -47,6 +47,8 @@ KEEP_ON_EDIT = {"agenda.py": {
     4306: ["free_level"],                              # B3: a recapture spends no level (the exchange is one event)
     4343: [("goal", None)], 4346: [("goal", None)], 4349: [("goal|chase_depth", None)],      # D8h / D8f: a promotion's lifted, support and stopper routes
     4368: ["tier"],                                    # HEURISTIC: the tier-1 threat words (the tier composition)
+    # stage (c)
+    1072: ["not in before"],                           # D14: their threat's targets are the squares newly attacked (the royal unit's exclusion: the names table)
 }}
 SCRIPTS = ("extract.py", "classify.py", "count.py", "facts.py", "findings_text.py")
 

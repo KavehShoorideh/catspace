@@ -24,5 +24,8 @@
   "catspace/incubator/analyst/discovery/regress.py:mate_threat",
   "rust/analyst_core/src/regress.rs:mate_threat"
  ],
- "note": "A quiet move after which a pass leaves us a mate in one is forcing: every reply must meet it."
+ "note": "A quiet move after which a pass leaves us a mate in one is forcing: every reply must meet it.",
+ "params": {
+  "forced": true
+ }
 }

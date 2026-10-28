@@ -22,5 +22,10 @@
   "catspace/incubator/analyst/discovery/regress.py:_forcing_why_py",
   "rust/analyst_core/src/regress.rs:forcing_whys_on"
  ],
- "note": "A move that gives check is forcing: the game's rule, cited by no Lean theorem."
+ "note": "A move that gives check is forcing: the game's rule, cited by no Lean theorem.",
+ "params": {
+  "forced": true,
+  "rank": 0,
+  "walked": true
+ }
 }

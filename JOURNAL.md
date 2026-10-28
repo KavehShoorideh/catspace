@@ -34270,3 +34270,29 @@ OBS gate engine --only (one file per call; passed / failed / xfailed / errors, w
 0.7 s; test_plan62 28/0/0/0 7.8 s; test_duty63 12/0/0/0 0.4 s; test_plan72_9 7/0/0/0 3.5 s; test_plan72_10 4/0/0/0 2.2 s; test_discovery_vocabulary 23/0/0/0 17.2 s; test_cost61
 13/0/0/0 3.0 s. test_plan75 gains: the stops are store entries with their shapes; a patched shape moves the stop (the budget per unit 8 -> 3, the tier-3 clock 4 -> 2, a win's power at
 depth 2 off -> on). OBS lemma store validate: entries 108, problems 0.
+
+## 2026-10-28 01:36 -- plan 75.2 (c) THE NAMES TABLE AND THE WORDS' FIELDS (branch worktree-agent-a96bad5c641e60ec1)
+`discovery/names.py` (new): the supplied names, each bound to a rule-kernel definition (python-chess or the Rust kernel) and to its Lean twin in docs/LEAN_INDEX.md -- the six unit
+kinds (Ideas.Vocabulary.kindSet), square, rank, file, move (Board.legal_moves / Ideas.Game.Game.step), attack, slide, capture, check, promotion, tempo, mate, stalemate, draw (insufficient
+material, Ideas deadDraw), win, lose, material (analyst_core.Pos.balance / materialOf); the store's base reads (movement, attack, tempo, material) are names of the table
+(lemma_store.BASE = names.READS); `names.problems()` runs inside `lemma_store validate`. OBS names report: 22 names, every kernel binding resolves, every Lean twin present in the index.
+agenda.py reads the table where it spelled a unit kind or the notation: the royal unit and the pawn (`names.royal`, `names.pawn`; the royal square by `Game.royal`), the king's step
+(`Game.adjacent`), the SAN marks (`names.san_kind`, `names.move_number`). The words' tests read entry FIELDS instead of their names: FORCED_WORDS left agenda.py (the FORCING entries'
+`forced`: check, capture, threat of mate, check that also threatens, threat of mate in two); the route order by "check" / "capture" is the entries' `rank` / `rank_any`; the walk's
+plain check is `walked`; the schema families read off prefixes, suffixes and substrings ("chase", "delayed", "mate_in", "_d1", "balance", "repetition") are the CLOSING entries'
+`reads_every_reply`, `chase`, `leaf_read`, `window`, `draw` (lemmas/README.md). OBS word fields check (dev, scratch tools/check_words.py): 218 runs, every field read compared with the
+string test it replaced, disagreements 0.
+OBS trace identity against stage (b) (count budget, PYTHONHASHSEED=0): ten t0, ten t2 0 of 10 traces / read sets / leaf verdict lists / word lists / provenance lists differ; wide t0,
+wide t2 0 / 0 / 0 / 0 / 0 of 99.
+NEGATIVE CONTROL (lemmas/capture.json `forced` true -> false, ten t0, restored after): 8 of 10 traces, 8 of 10 read sets, 7 of 10 leaf lists, 8 of 10 word lists, 8 of 10 provenance
+lists differ, the ten DECISION lines unchanged -- the guard fires: the chase follows what the entry says is forced.
+OBS audit recount: CHESS FACT rows 241 -> 216 (C1 8 -> 0, C2 2 -> 0, C3 2 -> 0, C6 2 -> 0, D26 4 -> 0, A1m 1 -> 0, B7 1 -> 0, B1 6 -> 5, B5 9 -> 8, B6 5 -> 4, D16 3 -> 2,
+D22 6 -> 5); NAME rows 23 -> 22, RULE rows 105 -> 107 (the kernel reads). What stays and why: docs/AGENDA_AUDIT.md's 75.2 recount, stage (c) (D9's rook: stage (d); the defect words,
+the principal lines, the leaf's estimators, the passer words, the static leaf).
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_plan75 9/0/0/0 0.5 s; test_plan74 13/0/0/0 3.2 s; test_plan73 9/0/0/0 13.5 s; test_agenda 26/0/0/0
+91.1 s; test_regress 87/0/0/0 347.6 s (pytest: 87 passed, 1 xpassed -- the non-strict xfail of LOOP TARGET 1, the pool's marginal 30 s proof of Nf6, passed this run; the gate's line
+counts no xpass); test_tiers 14/0/0/0 30.2 s; test_offbuilt64 15/0/1/0 94.8 s; test_fact_store 21/0/0/0 22.7 s; test_game 3/0/0/0 0.3 s; test_binder_rust 31/0/0/0 0.7 s; test_plan62
+28/0/0/0 7.7 s; test_duty63 12/0/0/0 0.4 s; test_plan72_9 7/0/0/0 3.4 s; test_plan72_10 4/0/0/0 2.2 s; test_discovery_vocabulary 23/0/0/0 17.0 s; test_cost61 13/0/0/0 3.0 s. test_plan75
+gains: every name bound with its twin; the words' tests read the fields; the GENERIC TEST (75.2 (d)'s, written now): the agenda's core functions (selection, the status, the chase's
+expansion, the judge) name no unit kind, no SAN mark and no goal or word literal outside names.py and the store -- the covered list and the not-yet list with their reasons in the test.
+docs/LEAN_INDEX.md rebuilt (`lean_index build`): only the used-by lines (names.py cites the twins); no theorem added.

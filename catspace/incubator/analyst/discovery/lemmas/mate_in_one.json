@@ -34,5 +34,8 @@
   "catspace/incubator/analyst/discovery/selfmine.py:mate_atoms",
   "catspace/incubator/analyst/discovery/binder.py:verify_tried"
  ],
- "note": "Our move x to y after which they have no legal move and are in check: the binder's mate schema (Schemas.lean says it is written by hand, not regenerated)."
+ "note": "Our move x to y after which they have no legal move and are in check: the binder's mate schema (Schemas.lean says it is written by hand, not regenerated).",
+ "params": {
+  "reads_every_reply": true
+ }
 }

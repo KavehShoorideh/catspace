@@ -36,18 +36,21 @@ Do not edit by hand.
 - **def `Ideas.Vocabulary.edge`** (line 44): **edge**: the squares on the board's edge.
 - **def `Ideas.Vocabulary.corner`** (line 47): **corner**: the four corner squares.
 - **def `Ideas.Vocabulary.rankOf`** (line 50): **rank of**: the squares on `s`'s rank.
+  - used by: catspace/incubator/analyst/discovery/names.py
 - **def `Ideas.Vocabulary.fileOf`** (line 53): **file of**: the squares on `s`'s file.
+  - used by: catspace/incubator/analyst/discovery/names.py
 - **def `Ideas.Vocabulary.lineThrough`** (line 57): **line through**: the squares on the line (rank, file or diagonal) through `s` and `t`, when they share one; none otherwise.
-  - used by: catspace/incubator/analyst/discovery/base_vocabulary.py
+  - used by: catspace/incubator/analyst/discovery/base_vocabulary.py, catspace/incubator/analyst/discovery/names.py
 - **def `Ideas.Vocabulary.between`** (line 63): **between**: the squares strictly between `s` and `t` on their line.
 - **def `Ideas.Vocabulary.nearer`** (line 66): **nearer**: the squares nearer to `s` than to `t` (in king steps) -- `s`'s side of the board against `t`.
 - **def `Ideas.Vocabulary.attackedBy`** (line 70): **attacked by**: the squares side `c` attacks with the king on `k` lifted off the board (it cannot hide behind itself).
-  - used by: catspace/incubator/analyst/discovery/base_vocabulary.py, catspace/incubator/analyst/discovery/prover.py, rust/analyst_core/src/vocab.rs
+  - used by: catspace/incubator/analyst/discovery/base_vocabulary.py, catspace/incubator/analyst/discovery/names.py, catspace/incubator/analyst/discovery/prover.py, rust/analyst_core/src/vocab.rs
 - **def `Ideas.Vocabulary.piecesOf`** (line 75): **pieces of**: the squares holding a piece of side `c`, THE KING INCLUDED as of 2026-10-16 (Kaveh: "King is a piece!"; it was left out before, so a king recapture had no name) (Kaveh 2026-10-12: "base vocab should be com
 - **def `Ideas.Vocabulary.lines`** (line 86): **lines**: the squares on `s`'s rank or file (a rook's lines through `s`, blockers ignored).
 - **def `Ideas.Vocabulary.diagonals`** (line 89): **diagonals**: the squares on the diagonals through `s` (a bishop's lines, blockers ignored).
 - **def `Ideas.Vocabulary.segment`** (line 93): **segment**: the squares from `s` to `t` along the rank, file or diagonal they share, both ends included (none when they share no line).
 - **def `Ideas.Vocabulary.knight1`** (line 96): **one knight hop**: the squares a knight on `s` reaches.
+  - used by: catspace/incubator/analyst/discovery/names.py
 - **def `Ideas.Vocabulary.knight2`** (line 99): **two knight hops**: the squares a knight on `s` reaches in two hops.
 - **def `Ideas.Vocabulary.center`** (line 102): **the centre**: d4, e4, d5, e5.
 - **def `Ideas.Vocabulary.light`** (line 106): the light squares
@@ -71,16 +74,19 @@ Do not edit by hand.
 - **def `Ideas.Vocabulary.onum`** (line 182): A number word over an optional square: 0 when there is no square.
 - **def `Ideas.Vocabulary.oreach`** (line 191): reach from an optional square
 - **def `Ideas.Vocabulary.sqIndex`** (line 194): A square's index rank by rank from a1 (the evaluator's order).
+  - used by: catspace/incubator/analyst/discovery/names.py
 - **def `Ideas.Vocabulary.kindRank`** (line 197): The strength order of the kinds: queen, rook, bishop, knight, pawn.
 - **def `Ideas.Vocabulary.ranksBefore`** (line 201): `s` before `t` among side `c`'s pieces: the stronger kind, then (pawns) the more advanced, then the lower square.
 - **def `Ideas.Vocabulary.ranked`** (line 207): **every piece named**: side `c`'s pieces other than its king, ranked (P, P2, P3, ...; O, O2, ...).
 - **def `Ideas.Vocabulary.nthPiece`** (line 211): the `i`-th piece of side `c` (from 1)
 - **def `Ideas.Vocabulary.kindSet`** (line 214): **a kind as a set**: the squares of side `c`'s pieces of kind `k`.
+  - used by: catspace/incubator/analyst/discovery/names.py
 - **def `Ideas.Vocabulary.ownerOf`** (line 218): The colour of the piece on `s`.
 - **def `Ideas.Vocabulary.aheadOf`** (line 221): **ahead**: the squares in front of the piece on `s` on its file, toward its owner's far side.
 - **def `Ideas.Vocabulary.passerOf`** (line 227): **the passed-pawn zone**: in front of the piece on `s`, on its file and the two beside it.
 - **def `Ideas.Vocabulary.frontOf`** (line 233): **front**: the square in front of the piece on `s` (its owner's direction).
 - **def `Ideas.Vocabulary.promoOf`** (line 238): **promotion square**: the piece's file on its owner's last rank.
+  - used by: catspace/incubator/analyst/discovery/names.py
 - **def `Ideas.Vocabulary.pushesOf`** (line 243): **pushes**: the ranks the piece on `s` has still to go to its owner's last rank.
 - **def `Ideas.Vocabulary.offsetOf`** (line 246): **offset**: the square `df` files and `dr` ranks from `s`, from side `c`'s view (ranks toward the other side).
 - **def `Ideas.Vocabulary.beyondOf`** (line 255): **beyond**: the squares past `t` on the ray from `s` through `t` (none when they share no line).
@@ -89,10 +95,10 @@ Do not edit by hand.
 - **def `Ideas.Vocabulary.attackerCount`** (line 275): **attackers**: how many of side `c`'s pieces attack `s`.
   - used by: catspace/incubator/analyst/discovery/base_vocabulary.py, catspace/incubator/analyst/discovery/selfmine.py
 - **def `Ideas.Vocabulary.seeOf`** (line 279): **the exchange**: what the side not owning the piece on `s` wins by capturing there first (the x-ray static exchange of `Ideas.ExchangeLaw`, never below 0).
-  - used by: catspace/incubator/analyst/discovery/selfmine.py
+  - used by: catspace/incubator/analyst/discovery/names.py, catspace/incubator/analyst/discovery/selfmine.py
 - **def `Ideas.Vocabulary.movesOf`** (line 286): **moves**: the squares the piece on `s` can legally move to, its side to move (as if it were, when it is not and the side to move is not in check).
 - **def `Ideas.Vocabulary.materialOf`** (line 297): **material**: side `c`'s pieces at queen 9, rook 5, bishop 3, knight 3, pawn 1.
-  - used by: catspace/incubator/analyst/discovery/base_vocabulary.py, catspace/incubator/analyst/discovery/selfmine.py
+  - used by: catspace/incubator/analyst/discovery/base_vocabulary.py, catspace/incubator/analyst/discovery/names.py, catspace/incubator/analyst/discovery/selfmine.py
 - **def `Ideas.Vocabulary.worthOf`** (line 302): **worth** (Kaveh 2026-10-15, plan 42.2): the declared value of the piece on `s` (pawn 1, knight 3, bishop 3, rook 5, queen 9), whoever owns it; a king or an empty square 0
 - **def `Ideas.Vocabulary.maxWorthOf`** (line 307): **maxworth** (Kaveh 2026-10-15, plan 44): the largest `worthOf` among the squares of `S` (0 when `S` is empty or holds only kings and empty squares)
   - used by: catspace/incubator/analyst/discovery/base_vocabulary.py
@@ -102,10 +108,13 @@ Do not edit by hand.
 - **def `Ideas.Vocabulary.moveCountOf`** (line 340): **movecount** (plan 47): how many legal moves the side to move has (`mobility X` is a piece's safe squares; this is the whole side's count)
   - used by: catspace/incubator/analyst/discovery/base_vocabulary.py
 - **def `Ideas.Vocabulary.checkOf`** (line 343): **check** (plan 47): 1 when the side to move is in check, else 0
+  - used by: catspace/incubator/analyst/discovery/names.py
 - **def `Ideas.Vocabulary.balanceOf`** (line 347): **balance** (Kaveh 2026-10-15, the observable itself): our material minus theirs on an offset of 64 (64: level; above: ahead)
 - **def `Ideas.Vocabulary.deadDraw`** (line 350): A dead draw: kings alone, or one knight or bishop beside them.
+  - used by: catspace/incubator/analyst/discovery/names.py
 - **def `Ideas.Vocabulary.mateGain`** (line 357): A value no material reaches: only a mate counts.
 - **def `Ideas.Vocabulary.gainGoal`** (line 361): The tactic's goal for side `c`: on its own turn, a gain of `v` over `base` held and the game alive -- or the other side mated.
+  - used by: catspace/incubator/analyst/discovery/names.py
 - **def `Ideas.Vocabulary.forcingOf`** (line 368): **the short window's tactic**: the fewest moves (1 to 3) in which side `c` forces a gain of `v` or more, or a mate, against every defence (as if the other side passed when it is not `c`'s turn); 0 when none
   - used by: catspace/incubator/analyst/discovery/selfmine.py
 - **def `Ideas.Vocabulary.sameSpot`** (line 380): Two positions with the same board and the same side to move.
@@ -413,11 +422,15 @@ Do not edit by hand.
 ## lean/ideas/Ideas/Game.lean
 
 - **structure `Ideas.Game.Game`** (line 26): The axioms a domain supplies
+  - used by: catspace/incubator/analyst/discovery/names.py
 - **def `Ideas.Game.Game.step`** (line 38): ONE STEP of the game: some legal move leads from `p` to `q`
-  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/regress.py
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/names.py, catspace/incubator/analyst/discovery/regress.py
 - **def `Ideas.Game.Game.terminal`** (line 41): No legal move.
+  - used by: catspace/incubator/analyst/discovery/names.py
 - **def `Ideas.Game.Game.mated`** (line 44): The mover is MATED: no move, and in check.
+  - used by: catspace/incubator/analyst/discovery/names.py
 - **def `Ideas.Game.Game.stalemated`** (line 47): The mover is STALEMATED: no move, not in check.
+  - used by: catspace/incubator/analyst/discovery/names.py
 - **theorem `Ideas.Game.Game.step_of_mem`** (line 49)
 - **theorem `Ideas.Game.Game.terminal_no_step`** (line 52): A terminal state has no step out of it.
 - **theorem `Ideas.Game.Game.step_of_not_terminal`** (line 58): A non-terminal state has a step (the mover has a reply: `hlive` of the race).
@@ -427,7 +440,7 @@ Do not edit by hand.
 - **theorem `Ideas.Game.Game.race_sound`** (line 81): THE RACE IN A GAME (`Ideas.Race.race_sound` with the game's hypotheses): `μ` our remaining tempi, `ν` theirs; our move lowers `μ` by one while there is one (`hprog`); `μ = 0` is the goal (`hgoal`); no reply raises `μ` or
   - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/race.py, catspace/incubator/analyst/discovery/regress.py, rust/analyst_core/src/words.rs
 - **def `Ideas.Game.chess`** (line 109): Chess: the kernel's legal moves and `applyMove`; the pass flips the side to move (and drops the en-passant right, which the other side cannot use); the measure is the mover's material less the other side's; in check by t
-  - used by: catspace/incubator/analyst/discovery/technique_lean.py
+  - used by: catspace/incubator/analyst/discovery/names.py, catspace/incubator/analyst/discovery/technique_lean.py
 - **theorem `Ideas.Game.chess_pass_turn`** (line 116)
 - **theorem `Ideas.Game.chess_pass_board`** (line 119): The pass leaves the board as it is: what every threat word reads.
 - **theorem `Ideas.Game.chess_measure_pass`** (line 122): The measure is antisymmetric across the pass: their balance is minus ours.

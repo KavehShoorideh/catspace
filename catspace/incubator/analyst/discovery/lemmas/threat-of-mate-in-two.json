@@ -26,5 +26,8 @@
   "catspace/incubator/analyst/discovery/regress.py:mate2_threat",
   "rust/analyst_core/src/words.rs:mate2_threat_pos"
  ],
- "note": "A quiet move after which a pass leaves us a forced mate in two, read by the binder's mate_in_two, is forcing."
+ "note": "A quiet move after which a pass leaves us a forced mate in two, read by the binder's mate_in_two, is forcing.",
+ "params": {
+  "forced": true
+ }
 }

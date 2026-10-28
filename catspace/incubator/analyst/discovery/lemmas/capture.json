@@ -23,5 +23,9 @@
   "catspace/incubator/analyst/discovery/regress.py:_forcing_why_py",
   "rust/analyst_core/src/regress.rs:forcing_whys_on"
  ],
- "note": "A capture worth at least the question's stake is forcing."
+ "note": "A capture worth at least the question's stake is forcing.",
+ "params": {
+  "forced": true,
+  "rank_any": 1
+ }
 }

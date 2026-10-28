@@ -23,5 +23,9 @@
   "catspace/incubator/analyst/discovery/agenda.py:_est_claims",
   "catspace/incubator/analyst/discovery/agenda.py:_estimate_route"
  ],
- "note": "A GAP route whose replies from the cut on are closed by rule or quiet is ESTIMATED by the quiet leaves' static status (proved False, a calibrated confidence)."
+ "note": "A GAP route whose replies from the cut on are closed by rule or quiet is ESTIMATED by the quiet leaves' static status (proved False, a calibrated confidence).",
+ "params": {
+  "reads_every_reply": true,
+  "chase": true
+ }
 }

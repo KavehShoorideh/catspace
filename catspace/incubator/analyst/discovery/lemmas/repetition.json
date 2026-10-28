@@ -24,5 +24,8 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/agenda.py:_cycle_claim"
  ],
- "note": "A position of the line or the game repeating when we are behind is a draw claim worth minus the balance; the cited theorem proves only that value plus balance is 0, the draw is the game's rule and the reading of every reply is argued in the docstring."
+ "note": "A position of the line or the game repeating when we are behind is a draw claim worth minus the balance; the cited theorem proves only that value plus balance is 0, the draw is the game's rule and the reading of every reply is argued in the docstring.",
+ "params": {
+  "draw": true
+ }
 }

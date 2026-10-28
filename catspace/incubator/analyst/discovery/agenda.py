@@ -50,6 +50,7 @@ from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import rboard as RB
 from catspace.incubator.analyst.discovery import landing as LD
 from catspace.incubator.analyst.discovery import lemma_store as LS      # plan 73.4: every claim lemma, kill reason and GAP reason passes LS.name (returns it unchanged; counts uses and uncatalogued words)
+from catspace.incubator.analyst.discovery import names as NM            # plan 75.2 (c): THE NAMES TABLE -- the words we supply, bound to the kernel (the royal unit, the pawn, the notation's marks)
 from catspace.incubator.analyst.discovery import region as RG
 from catspace.incubator.analyst.discovery import reasoning as RN       # plan 74.1: THE REASONING GRAPH (questions, lines, answers, observations; provenance), generic over position keys
 from catspace.incubator.analyst.discovery import worklist as WL        # plan 74.2: THE WORKLIST (one passive set of questions for the run, every depth; 74.2b's selection), generic
@@ -101,7 +102,8 @@ NO_SAFE_MOVE = True                                             # plan 61 A4 (ON
 ESTIMATE = True                                                 # plan 61 B2 (ON since plan 64.5: inert on the 90, proved beats estimated structurally): a GAP route whose open replies are QUIET leaves closes as an ESTIMATED claim (status = material - their pass threat; confidence from data/derived/estimate_calibration.json); the decision consults it only when no proved claim keeps the status
 COST_JUDGE = True                                               # plan 61 C2, ON since plan 64.3 (2026-10-21): under a TIME budget the cost judge (measured cost x seconds per node <= the route's time left) decides what is read on and REPLACES the count fuse; the cut is a GAP
 CYCLE = True                                                    # plan 61 C4 (ON: graded on the 90, no decision changed, nothing lost): a position that repeats one of the line (or of ctx.history) closes as a PROVED claim kind 'draw' (value = minus the balance) when we are behind; `analyse --no-cycle` turns it off
-FORCED_WORDS = ("check", "capture", "threat of mate")           # the words of a FORCED route (its replies are forced: evasions, the recapture, the parries of a mate): the chase follows only these below the root; 72.9: a root route with one of them may decide
+# (plan 75.2 (c): the words of a FORCED route -- its replies are forced: evasions, the recapture, the parries of a mate; the chase follows only these below the root; 72.9: a root
+#  route with one of them may decide -- are the FORCING entries whose `forced` field says so: `lemma_store.forced_words()`, read into `Agenda.forced`)
 TIERS_UNDER_TIME = True                                         # plan 59 default (2026-10-20, graded on 85 random puzzles): ON whenever the budget is TIME -- the tiers share the seconds, so the cost is bounded
                                                                 # (s10: RIGHT 59 -> 61, WRONG 4 -> 4; hqGOF right again); under the COUNT fuse they stay OFF unless TIERS (fuse: +2 RIGHT for ~650 s extra on 25 widened puzzles)
 TIERS = False                                                   # plan 59: STATUS-DRIVEN WIDENING at the root -- tier 0 (today's moves), then wider tiers (settings of the root's ChaseCtx) only while no claim keeps our status; analyse --tiers; the play server honours it
@@ -352,6 +354,7 @@ class Agenda:
         self.promo_kind = chess.Piece.from_symbol(self.goals.promotion.places).piece_type      # ... the unit the promotion places (its GOAL entry's stake is that unit less the pawn)
         self.stops = LS.stops_for("chase")                      # plan 75.2 (b): THE STOPS of the chase (STOP entries: their shapes, read at run time; a stop's GAP text begins with its entry's name)
         self.judge_stop = LS.stops_for("judge")["cut by the judge"]      # ... and the judge's (its price cap, its timed units)
+        self.forced = LS.forced_words()                         # plan 75.2 (c): the FORCING words whose replies are forced (their entries' field), not their spelled names
         self.local = None                                       # plan 72.10: THE LOCAL INNER AGENDA -- an inner agenda of a chase handed the chased GOAL (`goal`: its kind and square on this board, the question, the reply that made the board) and
         if LOCAL_INNER and goal is not None and frame is not None and diff is not None and chase_depth and their is None and ctx is not None:      # its FRAME (the chased claim's read set) asks Q1 / Q2 / Q3 only (see `_local_class`); the rest of its roots
             self.local = dict(goal=goal, frame=frame, diff=diff, full=False, live=False, routed=0, asked0=0, cls={}, why="")       # are QUEUED in the worklist (74.3) and opened only when the goal is dead here (`_local_next`)
@@ -688,7 +691,7 @@ class Agenda:
         marks = []
         for m in b.legal_moves:
             pc = b.piece_at(m.from_square)
-            if ksq is None or (pc.piece_type == chess.KING and not b.is_castling(m)):
+            if ksq is None or (NM.royal(pc) and not b.is_castling(m)):
                 continue
             placed = chess.Piece(m.promotion, pc.color) if m.promotion else pc        # a promotion places the NEW piece (Kaveh 2026-10-17)
             more = []
@@ -719,7 +722,7 @@ class Agenda:
             self._push(R.new_question(self.goals.keep.question, self.V.worth_of(b.piece_at(big)), dict(target=big), text=f"save our {b.piece_at(big).symbol().upper()} on {GAME.loc_name(big)} (it hangs)"))
         self._hang = hang                                        # the threat roots (52.4a) are asked for lazily: see ask()
         self._promote_roots()
-        theirs = [s for s in chess.SQUARES if b.piece_at(s) and b.piece_at(s).color != me and b.piece_at(s).piece_type != chess.KING]
+        theirs = [s for s in chess.SQUARES if b.piece_at(s) and b.piece_at(s).color != me and not NM.royal(b.piece_at(s))]
         for s in sorted(theirs, key=lambda s: (-self.V.worth_of(b.piece_at(s)), s)):
             self._push(R.new_question(self.goals.gain.question, self.V.worth_of(b.piece_at(s)), dict(target=s),
                                       text=f"win their {b.piece_at(s).symbol().upper()} on {GAME.loc_name(s)} (worth {self.V.worth_of(b.piece_at(s))})"))
@@ -798,7 +801,7 @@ class Agenda:
         b, t = self.board, q.pattern.get("target")
         if t is None or not b.is_attacked_by(self.me, t):               # only a question whose target we can TAKE now chains (the capture, then one more claim)
             return 0
-        return max([W.base.worth(p) for s, p in b.piece_map().items() if p.color != self.me and p.piece_type != chess.KING and s != t] or [0])
+        return max([self.V.worth_of(p) for s, p in b.piece_map().items() if p.color != self.me and not NM.royal(p) and s != t] or [0])
 
     def _fork_roots(self) -> None:
         """52.18 (4): THE FORK SQUARE AS A ROOT -- `fork on s with our <piece>` (stake = the smaller of the two values it attacks; the king and one piece for a check), for the root
@@ -1083,7 +1086,7 @@ class Agenda:
             return [m.to_square]
         before = set(b.attacks(m.from_square))
         b.push(m)
-        out = [t for t in b.attacks(m.to_square) if t not in before and b.piece_at(t) and b.piece_at(t).color == self.me and b.piece_at(t).piece_type != chess.KING]
+        out = [t for t in b.attacks(m.to_square) if t not in before and b.piece_at(t) and b.piece_at(t).color == self.me and not NM.royal(b.piece_at(t))]
         return sorted(out, key=lambda t: (-self.V.worth_of(b.piece_at(t)), t))
 
     # ------------------------------------------------------------------------------------------------------------ the loop
@@ -1535,7 +1538,7 @@ class Agenda:
     def _piece_attacked(self) -> bool:
         """Is a piece of ours (not the king) attacked by the other side on this board?"""
         b = self.board
-        return any(pc.color == self.me and pc.piece_type != chess.KING and b.is_attacked_by(not self.me, sq) for sq, pc in b.piece_map().items())
+        return any(pc.color == self.me and not NM.royal(pc) and b.is_attacked_by(not self.me, sq) for sq, pc in b.piece_map().items())
 
     def _deep_pass(self) -> tuple:
         """plan 65.4: THEIR PASS read with the proved DEEP delayed balance (Lean `Ideas.TreeStep.tail_four_alive`, family delayed_balance_deep): a move of theirs on the pass board, then whatever we reply, a move of
@@ -2000,13 +2003,13 @@ class Agenda:
             if q.claimed is not None:
                 value, claim, reads = q.claimed[0], q.claimed[1], q.claimed[2]
                 payload = dict(claim=claim, net=q.claimed[0])
-                portable = portable and not claim.lemma.startswith(("chase", "delayed", "mate_in"))      # a chase claim reads every reply of the board it was made on: it is not transferable (as in 52.13) -- unless `_chase_reads` below finds it a read set (52.21 (2));
+                portable = portable and not LS.head_says(claim.lemma, "reads_every_reply")      # a chase claim reads every reply of the board it was made on: it is not transferable (as in 52.13) -- unless `_chase_reads` below finds it a read set (52.21 (2));
                 # 52.23 (10) / 53 (3): a SCHEMA claim reads every reply too (all their moves): served by the target's signature it was unsound (2VDtX: SF -697), and with the move's squares and their king added it still was (OF8nj: bxc3+ valued 6 by a claim from another position where the chase on this board reads 1). Not portable.
             else:
                 claim = new_claims[-1] if new_claims else None
                 value = claim.value if claim is not None else 0
                 portable = False
-            if claim is not None and claim.lemma.startswith("chase") and key is not None:      # 52.21 (2): a chase claim is portable when the facts it stands on have read sets
+            if claim is not None and LS.head_says(claim.lemma, "chase") and key is not None:      # 52.21 (2): a chase claim is portable when the facts it stands on have read sets
                 creads, why = self._chase_reads(q, claim)
                 if creads is None:
                     self.lines.append(f"  (chase claim filed for this position only: {why})")
@@ -2077,7 +2080,7 @@ class Agenda:
                 continue
             if q.status == "killed" and q.reads is not None:
                 out[key] = dict(kind="kill", reads=q.reads, diff=diff, why=q.reason.removeprefix("inherited: ").split(";")[0][:80])
-            elif q.status == "verified" and q.claimed is not None and not q.claimed[1].lemma.startswith("chase"):
+            elif q.status == "verified" and q.claimed is not None and not LS.head_says(q.claimed[1].lemma, "chase"):
                 out[key] = dict(kind="claim", reads=q.claimed[2], diff=diff, net=q.claimed[0], claim=q.claimed[1])
         return out
 
@@ -2121,7 +2124,7 @@ class Agenda:
         ksq = c.king(not self.me)
         if th is not None and ksq is not None and th.kind in ("mate", "mate2", "check"):
             out.add(ksq)
-            out.update(chess.SquareSet(chess.BB_KING_ATTACKS[ksq]))
+            out.update(GAME.adjacent(ksq))
             if th.kind == "check":
                 out.update(chess.SquareSet(chess.between(m.to_square, ksq)))
             elif th.kind == "mate":
@@ -2183,7 +2186,7 @@ class Agenda:
                     return None
                 p = m.to_square
             pw = d.piece_at(p)
-            if pw is None or pw.color != self.me or pw.piece_type != chess.PAWN:
+            if pw is None or pw.color != self.me or not NM.pawn(pw):
                 return None
             sq = p
         th = self._route_threat(m)
@@ -2513,7 +2516,7 @@ class Agenda:
                     k = RG.held_measure(b, self.me, steps, passer[0])
                     if k is not None:
                         pw = passer[1]
-                        bound = [f"our {b.piece_at(g).symbol().upper()} on {GAME.loc_name(g)} is bound to the {b.piece_at(y).symbol().upper()} on {GAME.loc_name(y)}" for g, y in RG.bound_pieces(b, self.me) if b.piece_at(g).piece_type == chess.KING][:2]
+                        bound = [f"our {b.piece_at(g).symbol().upper()} on {GAME.loc_name(g)} is bound to the {b.piece_at(y).symbol().upper()} on {GAME.loc_name(y)}" for g, y in RG.bound_pieces(b, self.me) if NM.royal(b.piece_at(g))][:2]
                         why = k["why"] + f" (their pawn on {GAME.loc_name(pw)} promotes in {passer[0]}: {passer[2]})" + ("; " + "; ".join(bound) if bound else "")
                         reads, which = k["reads"] | {pw}, "the measure they hold"
         if why is None:
@@ -2593,7 +2596,7 @@ class Agenda:
                 else:
                     opp = W.opponent_defects(b, r.move, us)
                     self.lines.append(head + "; their view: no claim of theirs binds" + (f" (fallback label: {'; '.join(opp)})" if opp else ""))
-            if (self.side_depth or (self.chase_depth and bind.value >= self.min_stake)) and bind.schema.startswith("delayed_") and bind.schema.endswith("_d1"):         # 64.0: the root families too, and in the chase's inner agendas (their free move comes after our LAST move, which the tail does not read)
+            if (self.side_depth or (self.chase_depth and bind.value >= self.min_stake)) and LS.head_says(bind.theorem, "leaf_read"):         # 64.0: the root families too, and in the chase's inner agendas (their free move comes after our LAST move, which the tail does not read)
                 ref = self._leaf_read(bind, r)
                 if ref is not None:
                     gap = LS.name(f"{r.san}: refuted at the leaf: their {ref['claim'].what} wins {ref['claim'].value} (lemma {ref['claim'].lemma}) after {ref['line']}")
@@ -2630,7 +2633,7 @@ class Agenda:
         self.state.claims.append(claim)
         q.status = "verified"
         self._record_claim(q, net, claim, bind)
-        window = " [a gain WITHIN THE WINDOW: the leaf is not read to quiescence -- 0UqOv's queen was trapped two plies beyond it]" if "balance" in str(claim.lemma) else ""
+        window = " [a gain WITHIN THE WINDOW: the leaf is not read to quiescence -- 0UqOv's queen was trapped two plies beyond it]" if LS.head_says(str(claim.lemma), "window") else ""
         self.lines.append(f"  -> CLAIM {kind} {claim.what} (value {claim.value}{'' if net == claim.value else f', net {net} of their best claim'}), lemma {claim.lemma}, line {claim.line}{window}")
         key = (net, -len(opp))
         if q.pattern.get("inner_threat"):                        # 52.14: the parry of a threat on a static leaf keeps the gain; it is not a gain of its own (the reply's value stays dbal)
@@ -3481,7 +3484,7 @@ class Agenda:
         c3_rb = c2_rb.push(r_k.move)
         if any(mv.from_square == x.to_square and mv.to_square == ref.to_square for mv in c3_rb.legal_moves):
             return None                                          # the piece that recaptures can make the refuting move
-        hits = [s for s in c3_rb.attacks(r_k.move.to_square) if c3_rb.piece_at(s) is not None and c3_rb.piece_at(s).color != me and c3_rb.piece_at(s).piece_type != chess.KING]
+        hits = [s for s in c3_rb.attacks(r_k.move.to_square) if c3_rb.piece_at(s) is not None and c3_rb.piece_at(s).color != me and not NM.royal(c3_rb.piece_at(s))]
         tgt = max(hits, key=lambda s: (self.V.worth_of(c3_rb.piece_at(s)), -s)) if hits else None         # the goal asked again: the best piece the route's piece attacks once the refuter is gone
         pc_t = c2_rb.piece_at(tgt) if tgt is not None else None
         P2x = c2_rb.pos                                          # plan 72.7 step 1: the exchange's position, pushed on the node's handle (the agenda asked there is handed it)
@@ -3548,7 +3551,7 @@ class Agenda:
             return None
         b2 = GAME.from_key(P2.fen())
         pc = b2.piece_at(pawn)
-        if pc is None or pc.piece_type != chess.PAWN or pc.color != self.me:
+        if pc is None or not NM.pawn(pc) or pc.color != self.me:
             return None
         if RC.RACE and b2.turn == self.me and W.race_claim(b2, pawn) is not None:      # plan 62.1: the race word binds on the reply's board: the stopper defect that stands is not a stop
             return None
@@ -3668,7 +3671,7 @@ class Agenda:
     def _decides(self, q: R.Question, r: R.Route) -> tuple:
         """72.9 THE JUDGE'S FIRST QUESTION (Kaveh 2026-10-23: "one more question, yes or no"): a ROOT route DECIDES when (1) it can still change the decision -- its question can beat the best claim
         and the policy ranks the route above chance (its probability over the question's routes at least the uniform 1/n: first or near first) -- and (2) its replies are forced (a check, a capture,
-        a threat of mate: FORCED_WORDS, the words the chase follows below the root), so its nodes are few and cheap. A deciding route takes the root's whole remaining share and is read whatever the
+        a threat of mate: the FORCING entries marked forced, the words the chase follows below the root), so its nodes are few and cheap. A deciding route takes the root's whole remaining share and is read whatever the
         run's rate says; every other route is priced by the rate (72.9 (a)) against its fair share. No policy ranked the routes (the tiers): nothing decides, the rate prices every route as before.
         -> (why it decides, or "", why it does not, or "")."""
         pol = getattr(self, "_policy_p", None)
@@ -3682,7 +3685,7 @@ class Agenda:
         p = probs.get(r.move.uci())
         if p is None or p < 1 / n:
             return "", "the policy ranks it below chance" + (f" (p {p:.2f} of {n} routes)" if p is not None else "")
-        if not word.startswith(FORCED_WORDS):
+        if not word.startswith(self.forced):
             return "", f"its replies are free ({kind})"
         best = "none yet" if self.best is None else f"{self.best[2].what} {self.best[0]:+d}"
         return f"{kind} (its replies are forced), the policy ranks it above chance (p {p:.2f} of {n} routes), Q{q.id} (stake {q.stake}) can beat the best claim ({best})", ""
@@ -3710,7 +3713,7 @@ class Agenda:
     @staticmethod
     def _parry_kind(san: str) -> str:
         """72.9 (a): WHAT A REPLY IS, read off its move (the parries are the forcing word's, `regress.parries` of the route's `threat_of`): a check (what follows is our evasion), a capture, or a quiet move."""
-        return "check" if san.endswith(("+", "#")) else "capture" if "x" in san else "quiet"
+        return NM.san_kind(san)
 
     def _kind_spn(self, kind: str, spn: float) -> tuple:
         """72.9 (a) -> (seconds per cost unit after a reply of this kind, the words for the judge's line): the kind's own rate once the judge entry's `min_units` of its units were timed in this run, else the run's rate."""
@@ -3973,7 +3976,7 @@ class Agenda:
         best, sqs = 0, []
         for x in chess.SQUARES:
             p = b_rb.piece_at(x)
-            if p is None or p.color == me or p.piece_type == chess.KING or not b_rb.is_attacked_by(me, x):
+            if p is None or p.color == me or NM.royal(p) or not b_rb.is_attacked_by(me, x):
                 continue
             v = W.base.see(P2, x)
             if v > best:
@@ -4116,9 +4119,10 @@ class Agenda:
         fd = self.stops["the walk of checks"]["from_depth"].get(q.goal)      # plan 75.2 (b): the walk's depth per goal is the entry's (a goal it does not list never walks)
         if fd is None or self.chase_depth < fd:                 # the ROOT's own chase keeps every forcing move (its routes are the first level, 52.12); the WALK of checks is below it
             return True, ""
-        if why.startswith("fix:") or why != "check":
+        if why.startswith("fix:") or not LS.walked(why):
             return True, ""
-        goal = {"mate": f"mate {GAME.loc_name(q.pattern['at'])}" if q.pattern.get("at") is not None else "mate", "win": f"win {GAME.loc_name(q.pattern['target'])}" if q.pattern.get("target") is not None else "win", "promote": f"promote {GAME.loc_name(q.pattern['pawn'])}" if q.pattern.get("pawn") is not None else "promote"}.get(q.goal, q.goal)
+        ga = self.gk(q.goal)                                     # plan 75.2 (c): the label names the goal by its GOAL entry's word and the square its `about` key names
+        goal = f"{q.goal} {GAME.loc_name(q.pattern[ga.about])}" if ga.chase and q.pattern.get(ga.about) is not None else q.goal
         if self.gk(q.goal).ends_game and (q.pattern.get("move") == m.uci() or m.uci() in (q.pattern.get("reach") or ())):
             return True, ""
         rk = self._route_key(m)                                  # plan 72.7 step 2c: the route memo's key
@@ -4227,7 +4231,7 @@ class Agenda:
 
     def _pawn_move(self, m: chess.Move) -> bool:
         """plan 62.1c: a pawn move of ours resets the chase clock (irreversible, like a capture)."""
-        return CLOCK_PAWN and self.board.piece_type_at(m.from_square) == chess.PAWN
+        return CLOCK_PAWN and NM.pawn(self.board.piece_at(m.from_square))
 
     def _step_forcing(self, step: tuple) -> tuple:
         """plan 66.4 (Lean `Ideas.Forcing.Step` / `stillForcing`): one step of the line -- our move named a threat (`regress.threat_of` of its forcing reason) and their reply PARRIED it (the threat no longer
@@ -4386,14 +4390,14 @@ class Agenda:
                 routes = [routes[i] for i in order]
                 policy_ordered = True
         if self.chase_depth and not evading:                    # inner levels follow the most forcing moves only: a check, a capture, a mate threat (the quiet "threat n" moves are the root's)
-            follow = FORCED_WORDS + (("threat",) if self.ctx.tier >= 1 else ()) + tuple(F["goal_words"].get(q.goal, ()))      # 62.1c: a lifted promote question follows the pawn's push (the follow list's goal words)      # plan 59 tier 1 lifts the cut for the quiet threats worth the stake (and the tier-2 mate-in-two threat)
+            follow = self.forced + (("threat",) if self.ctx.tier >= 1 else ()) + tuple(F["goal_words"].get(q.goal, ()))      # 62.1c: a lifted promote question follows the pawn's push (the follow list's goal words)      # plan 59 tier 1 lifts the cut for the quiet threats worth the stake (and the tier-2 mate-in-two threat)
             routes = [r for r in routes if r.why.removeprefix("fix: ").startswith(follow)]
         fc = F["fixes_check_from"].get(q.goal)
         if fc is not None and self.chase_depth >= fc:           # 52.23 (5): below the first inner level a win question follows only the NAMED FIXES of its defects that CHECK (the skewer, the fork-check:
             fix_moves = {r.move for f in q.fixes for r in R.all_routes(f)}     # the reply is forced); every other forcing move is the root's and the first level's (the named fixes that do not check still cost 0LRTF 4x)
             routes = [r for r in routes if r.move in fix_moves and b.gives_check(r.move)]
         if not policy_ordered:                                   # 72.9 (c) THE JUDGE'S ORDER IS THE POLICY'S: the policy saw each route's words (check, capture, threat) and ranked them, so the forcing sort orders only routes no policy ranked
-            routes.sort(key=lambda r: (0 if r.why.removeprefix("fix: ") == "check" else 1 if r.why.removeprefix("fix: ").startswith("capture") else 2))      # the most forcing first: a check, a capture, a threat (stable inside)
+            routes.sort(key=lambda r: LS.forcing_rank(r.why.removeprefix("fix: ")))      # the most forcing first: a check, a capture, a threat (stable inside)
         if self.chase_depth == 0 and self.ctx.resume_set is not None:      # plan 66.4: a resume pass reads only the chain-stopped routes of this question, in price order
             want = self.ctx.resume_set.get(self._carry_key(q), [])
             routes = [r for u in want for r in routes if r.move.uci() == u]
@@ -4524,7 +4528,7 @@ class Agenda:
             net = value = q.stake                                     # 70.1: the route KEPT the balance on every reply: what it saved is the stake (the piece's value), as the keep family's claims say -- at the ROOT,
             #                                                           whose status reads their threat; an inner agenda's answer is a GAIN on the balance the reply left (`_inner`), so there the claim is
             #                                                           worth what it kept (72.10 found 0UqOv's Qd5 dxe6 read as -1 + 9: the queen saved counted as the queen won)
-        if CYCLE and not self.gk(kind).ends_game and any("repetition" in x for x in res["lemmas"]) and value <= -(self.pos.balance(self.me) - 64):
+        if CYCLE and not self.gk(kind).ends_game and any(LS.says(x, "draw") for x in res["lemmas"]) and value <= -(self.pos.balance(self.me) - 64):
             kind = "draw"                                        # plan 61 C4: the route brings the result to level by a repetition (proved: every reply of the cycle was read)
         parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")
         lemma = "chase: step_after+step_least over " + ", ".join(sorted(set(res["lemmas"]))[:3]) if res["lemmas"] else "chase: step_after+step_least"
@@ -4677,7 +4681,7 @@ class Agenda:
         check is already a route) and is not lost by the exchange on its own square (the 52.13 (2d) rule) -- "threat on the stopper"; and the push of the promoting pawn
         itself onto a square a stopper (not the king) attacks, the pawn guarded so that the exchange there loses them the stopper -- "offers the pawn to the stopper"."""
         b, me = self.board, self.me
-        stoppers = sorted({s for d in q.defects if d.kind in ("stopper", "blocked") for s in d.by if s != b.king(not me) and b.piece_at(s) is not None and b.piece_at(s).color != me})      # (the blocker of theirs is a stopper too)
+        stoppers = sorted({s for d in q.defects if d.kind in ("stopper", "blocked") for s in d.by if s != GAME.royal(b, not me) and b.piece_at(s) is not None and b.piece_at(s).color != me})      # (the blocker of theirs is a stopper too)
         out = []
         for m in R._moves(b, self.us):
             if m in have or b.is_castling(m):
@@ -4785,7 +4789,7 @@ class Agenda:
         c = b.copy(stack=False)
         for tok in line.replace("...", " ").split():
             tok = tok.strip(",;()").rstrip("!?")
-            if not tok or tok[0].isdigit():
+            if not tok or NM.move_number(tok):
                 continue
             try:
                 m = c.parse_san(tok)
@@ -4801,7 +4805,7 @@ class Agenda:
         k = c.king(self.me)
         if k is not None:
             now_of = {v: k0 for k0, v in movers.items()}
-            for s in [k] + list(chess.SquareSet(chess.BB_KING_ATTACKS[k])):
+            for s in [k] + list(GAME.adjacent(k)):
                 for a in c.attackers(not self.me, s):
                     orig = now_of.get(a, a)
                     if self.board.piece_at(orig) is not None and self.board.piece_at(orig).color != self.me:

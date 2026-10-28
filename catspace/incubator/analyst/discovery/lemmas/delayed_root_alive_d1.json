@@ -34,5 +34,9 @@
   "catspace/incubator/analyst/discovery/selfmine.py:tail_body",
   "catspace/incubator/analyst/discovery/selfmine.py:schema_name"
  ],
- "note": "The binder's gain schema of depth 1 (one named move), the delayed root: after our move and every reply, some move of ours leaves nothing of ours attacked and the balance read; the tail is our hand-written operator (selfmine.tail_body), the Lean statement was generated from it."
+ "note": "The binder's gain schema of depth 1 (one named move), the delayed root: after our move and every reply, some move of ours leaves nothing of ours attacked and the balance read; the tail is our hand-written operator (selfmine.tail_body), the Lean statement was generated from it.",
+ "params": {
+  "reads_every_reply": true,
+  "leaf_read": true
+ }
 }

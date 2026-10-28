@@ -25,5 +25,9 @@
   "catspace/incubator/analyst/discovery/agenda.py:_chase_route_body",
   "catspace/incubator/analyst/discovery/agenda.py:_inner"
  ],
- "note": "Our named forcing move, then every reply of theirs, each answered by an inner claim; its parts are the proved Ideas.TreeStep.step_after and step_least, but the agenda's docstring says the composed statement is a TODO in Schemas.lean, so the whole is not proved."
+ "note": "Our named forcing move, then every reply of theirs, each answered by an inner claim; its parts are the proved Ideas.TreeStep.step_after and step_least, but the agenda's docstring says the composed statement is a TODO in Schemas.lean, so the whole is not proved.",
+ "params": {
+  "reads_every_reply": true,
+  "chase": true
+ }
 }

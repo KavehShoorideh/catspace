@@ -23,5 +23,8 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/regress.py:check_threat"
  ],
- "note": "A check after which, us to move again, a mate or an exchange worth the stake stands (it cites Ideas.Forcing.checkThreat, a definition)."
+ "note": "A check after which, us to move again, a mate or an exchange worth the stake stands (it cites Ideas.Forcing.checkThreat, a definition).",
+ "params": {
+  "forced": true
+ }
 }

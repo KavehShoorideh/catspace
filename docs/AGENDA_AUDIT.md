@@ -2032,3 +2032,35 @@ clock's reset rule (an irreversible event not bad for us, or our pawn move) is s
 -- the walk's defect tests (which check fixes which defect kind: stage (d)'s defect words). B6 (5) -- the forced words (stage (c)) and the inner levels' gates. B7, B8 -- the judge's
 forced words (stage (c)) and still-forcing (Ideas.Forcing.stillForcing: the definition, not a shape).
 
+### Stage (c): the names table and the words' fields
+
+```
+OBS audit rows total 1606: LOGIC 1226, RULE 107, NAME 22, CHESS FACT 216, HEURISTIC 35
+OBS audit rows agenda.py 1572: LOGIC 1200, RULE 105, NAME 20, CHESS FACT 214, HEURISTIC 33
+OBS audit rows ponder.py 34: LOGIC 26, RULE 2, NAME 2, CHESS FACT 2, HEURISTIC 2
+OBS audit hand readings carried onto an edited line (the family's fact stays there): 35
+OBS audit hand readings dropped (their line changed since 65024fbf): 120
+OBS audit recount CHESS FACT rows 241 -> 216
+OBS audit recount fact A1m: rows 1 -> 0
+OBS audit recount fact B1: rows 6 -> 5
+OBS audit recount fact B5: rows 9 -> 8
+OBS audit recount fact B6: rows 5 -> 4
+OBS audit recount fact B7: rows 1 -> 0
+OBS audit recount fact C1: rows 8 -> 0
+OBS audit recount fact C2: rows 2 -> 0
+OBS audit recount fact C3: rows 2 -> 0
+OBS audit recount fact C6: rows 2 -> 0
+OBS audit recount fact D16: rows 3 -> 2
+OBS audit recount fact D22: rows 6 -> 5
+OBS audit recount fact D26: rows 4 -> 0
+```
+
+What left agenda.py: the unit kinds spelled as kernel constants (the royal unit and the pawn by the names table: `names.royal`, `names.pawn`; their square by `Game.royal`), the
+king's step (`Game.adjacent`), the notation's marks (`names.san_kind`, `names.move_number`), FORCED_WORDS (the FORCING entries' `forced` field: `lemma_store.forced_words()`),
+the route order by the words "check" / "capture" (`rank` / `rank_any`), the walk's "check" (`walked`), and the schema families read off their names -- "chase" / "delayed" /
+"mate_in" prefixes, "_d1" suffixes, "balance" and "repetition" substrings -- now the CLOSING entries' fields (`reads_every_reply`, `chase`, `leaf_read`, `window`, `draw`).
+A dev check compared every field read with the string test it replaced on the 218 guard runs: 0 disagreements (scratch tools/check_words.py).
+
+What stays, and why: D9's "our only piece a rook" (the reasoned kill: stage (d)); the rows of stage (d)'s families (the defect words, the exchange's principal lines, the
+leaf's estimators, the passer words, the static leaf).
+

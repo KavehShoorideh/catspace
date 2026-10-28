@@ -34,5 +34,8 @@
   "catspace/incubator/analyst/discovery/selfmine.py:mate2_atoms",
   "rust/analyst_core/src/words.rs:bind_mate2_pos"
  ],
- "note": "Our move x to y after which every reply of theirs is met by a mate of ours: the binder's mate-in-two schema, read in Rust since 72.7 step 3a."
+ "note": "Our move x to y after which every reply of theirs is met by a mate of ours: the binder's mate-in-two schema, read in Rust since 72.7 step 3a.",
+ "params": {
+  "reads_every_reply": true
+ }
 }
