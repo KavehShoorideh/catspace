@@ -34409,3 +34409,26 @@ OBS audit recount: CHESS FACT rows 210 -> 210. OBS lemma store validate: entries
 OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_game 3/0/0/0 0.3 s; test_agenda 26/0/0/0 89.9 s; test_regress 87/0/0/0 341.5 s; test_cost61 13/0/0/0 2.9 s (the cycle tests read the new text);
 test_plan66 16/0/0/0 3.1 s; test_plan62 28/0/0/0 7.8 s; test_plan73 9/0/0/0 14.0 s; test_plan74 13/0/0/0 3.3 s; test_plan75 11/0/0/0 0.5 s; test_fact_store 21/0/0/0 22.7 s; test_tiers 14/0/0/0 29.8 s;
 test_offbuilt64 15/0/1/0 95.9 s; test_lean_index 2/0/0/0 143.3 s; test_rules_draws 11/0/0/0 2.3 s (the label, the entry a conjecture, the Lean names in the index).
+
+
+## 2026-10-28 11:31 -- plan 75.4 (3) THE CHASE CLOCK READS THE KERNEL'S EVENTS (branch worktree-agent-a842a98bf140be46b)
+`Game.clock_events(s, m)` (game.py, new): what of a move resets the halfmove clock -- the fifty-move rule's events, by the names table's names: 'capture' (python-chess
+`Board.is_capture`, en passant included) and 'pawn' (the unit moved is the pawn, a promotion included); non-empty exactly when `Board.is_zeroing(m)`, the clock after it 0
+(Lean `Chess.applyMove_halfmove`, mirrored as `Ideas.Game.clockResets` / `Ideas.Game.chess_clock`, 75.4 (1)). The agenda asks it: `_irreversible` (our move resets the
+kernel's clock, or their reply is a capture), `_pawn_move` (our move's 'pawn' event), `_since_after`'s other setting (our move's 'capture' event); `GAME.apply` for the
+board after our move. Which events the chase clock counts (ours, and their captures; their pawn push is a reply like any other: 66.5) is the clock's own shape, the STOP
+entry `the chase clock` (its note and implementation say so); names.py `EVENT_CAPTURE`, `EVENT_PAWN`.
+OBS 75.4 (3) clock events: 36311 moves, captures 1710, pawn moves 3962; every one the kernel's is_zeroing and the clock after it (seeded random walks from eight corners:
+castling both sides, promotions with and without capture, en passant on either wing and as an evasion, a promotion race).
+OBS 75.4 (3) the chase clock: 73530 (route, reply, balance, setting) readings equal to the formulas replaced (66.5 / 75.2 (b): our move `Board.is_zeroing`, their reply
+`Board.is_capture`, our pawn by the piece on the from-square; both CLOCK_IRREVERSIBLE settings).
+OBS trace identity against 75.4 (2) (count budget, PYTHONHASHSEED=0): ten t0, ten t2 0 of 10 traces / read sets / leaf verdict lists / word lists / provenance lists differ;
+wide t0, wide t2 0 / 0 / 0 / 0 / 0 of 99; DECISION lines 0 of 218.
+NEGATIVE CONTROL (in the guard's process: the kernel's 'pawn' event dropped from Game.clock_events): ten t0 3 of 10 traces, 3 read sets, 2 leaf lists, 3 word lists, 3 provenance
+lists differ; ten t2 6 / 6 / 4 / 6 / 6 of 10; DECISION lines 0 -- the chase clock reads the kernel's events.
+OBS audit recount: CHESS FACT rows 210 -> 209 (B1, the chase clock's reset, 5 -> 4); RULE rows 106 -> 104 (the kernel reads moved into the kernel's interface).
+OBS lemma store validate: entries 110, problems 0.
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_game 3/0/0/0 0.3 s; test_agenda 26/0/0/0 89.6 s; test_regress 87/0/0/0 341.6 s;
+test_cost61 13/0/0/0 2.9 s; test_plan66 16/0/0/0 3.1 s; test_plan62 28/0/0/0 7.8 s; test_plan73 9/0/0/0 14.3 s; test_plan74 13/0/0/0 3.3 s; test_plan75 11/0/0/0 0.5 s;
+test_fact_store 21/0/0/0 22.9 s; test_tiers 14/0/0/0 29.6 s; test_offbuilt64 15/0/1/0 95.7 s; test_rules_draws 13/0/0/0 3.4 s (the events against is_zeroing and the
+clock after the move; the clock against the formulas replaced). No index rebuild (no theorem added).

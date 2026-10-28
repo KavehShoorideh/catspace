@@ -11,7 +11,8 @@
  "origin": "HAND",
  "plan": [
   "52.23",
-  "66.5"
+  "66.5",
+  "75.4"
  ],
  "journal": "2026-10-20",
  "measure": null,
@@ -23,9 +24,11 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/agenda.py:_chase",
   "catspace/incubator/analyst/discovery/agenda.py:_clock",
-  "catspace/incubator/analyst/discovery/agenda.py:CHASE_CLOCK"
+  "catspace/incubator/analyst/discovery/agenda.py:CHASE_CLOCK",
+  "catspace/incubator/analyst/discovery/agenda.py:_irreversible",
+  "catspace/incubator/analyst/discovery/game.py:clock_events"
  ],
- "note": "A chain stops as a GAP after four moves of ours with no capture that is not bad for us and no pawn move (an echo of the fifty-move rule; four is a hyperparameter: the module's CHASE_CLOCK starts from moves, a harness may set it; from_tier on it is at most at_most).",
+ "note": "A chain stops as a GAP after four moves of ours with no irreversible event that is not bad for us (an echo of the fifty-move rule: the events are the kernel's, Game.clock_events -- a capture, a pawn move -- of which the clock counts ours and their captures; four is a hyperparameter: the module's CHASE_CLOCK starts from moves, a harness may set it; from_tier on it is at most at_most).",
  "params": {
   "context": "chase",
   "moves": 4,

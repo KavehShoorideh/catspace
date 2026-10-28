@@ -5,7 +5,9 @@
     `Ideas.Game.chess_threefold_iff`, `Ideas.Game.fifty`, `Ideas.Game.chess_fifty_iff`); the record keeps its count invariant along the game (`Ideas.Game.Record.step_sound`);
     the chase reads the rule at the positions of its line (the record before them: the game's, the root, the line's).
 (2) THE CYCLE CLAIM RE-LABELLED AS WHAT IT IS: one repeat of a position of the line is a derived lemma ("repetition (a forced cycle: the threefold rule is reachable)"), a
-    CONJECTURE in the store; its strict form is proved generically in Lean (`Ideas.Game.forced_cycle_threefold`), the chase's own reading is not."""
+    CONJECTURE in the store; its strict form is proved generically in Lean (`Ideas.Game.forced_cycle_threefold`), the chase's own reading is not.
+(3) THE CHASE CLOCK READS THE KERNEL'S EVENTS: `Game.clock_events` (a capture, a pawn move: what resets the halfmove clock, Lean `Chess.applyMove_halfmove`) in place of the
+    tests written in the agenda; the clock reads them exactly as before."""
 import random
 
 import chess
@@ -229,3 +231,69 @@ def test_75_4_2_the_strict_form_is_proved_in_lean_and_the_rule_is_not_the_cycle(
     import pathlib
     src = (pathlib.Path(__file__).resolve().parents[1] / "lean" / "ideas" / "Ideas" / "Draws.lean").read_text()
     assert "sorry" not in src and "theorem forced_cycle_threefold" in src
+
+
+# ---------------------------------------------------------------------------------------------------------------- (3) the chase clock reads the kernel's events
+
+CORNERS = ["r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1", "1n2k3/P7/8/8/8/8/8/4K3 w - - 0 1", "3k4/1P6/8/8/8/8/8/4K3 w - - 0 1", "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 2",
+           "4k3/8/8/2Pp4/8/8/8/4K3 w - d6 0 2", "8/8/8/2k5/3Pp3/8/8/4K3 b - d3 0 1", "8/6P1/8/4R3/3p4/3k3P/4p1K1/5r2 b - - 0 54", chess.STARTING_FEN]
+
+
+def _positions(n_walks: int = 40, plies: int = 60):
+    for i, f in enumerate(CORNERS * (n_walks // len(CORNERS) + 1)):
+        if i >= n_walks:
+            break
+        rng = random.Random(1000 + i)
+        b = chess.Board(f)
+        for _ in range(plies):
+            yield b
+            ms = list(b.legal_moves)
+            if not ms:
+                break
+            b = b.copy(stack=False)
+            b.push(rng.choice(ms))
+
+
+def test_75_4_3_the_clock_events_are_the_kernels_what_resets_the_halfmove_clock():
+    """`Game.clock_events` against python-chess's `Board.is_zeroing` and the clock after the move (Lean `Chess.applyMove_halfmove`, `Ideas.Game.chess_clock`): castling,
+    en passant and promotions included."""
+    moves = cap = pawn = 0
+    for b in _positions():
+        for m in b.legal_moves:
+            ev = G.clock_events(b, m)
+            after = G.apply(b, m)
+            assert bool(ev) == b.is_zeroing(m) == (after.halfmove_clock == 0)
+            assert (NM.EVENT_CAPTURE in ev) == b.is_capture(m) and (NM.EVENT_PAWN in ev) == (b.piece_type_at(m.from_square) == chess.PAWN)
+            moves += 1
+            cap += NM.EVENT_CAPTURE in ev
+            pawn += NM.EVENT_PAWN in ev
+    print(f"OBS 75.4 (3) clock events: {moves} moves, captures {cap}, pawn moves {pawn}; every one the kernel's is_zeroing and the clock after it")
+    assert cap and pawn
+
+
+def test_75_4_3_the_chase_clock_reads_them_exactly_as_before(monkeypatch):
+    """The chase clock's reset (`_irreversible`, `_pawn_move`, `_since_after`, both CLOCK_IRREVERSIBLE settings) against the formulas it replaced (66.5 / 75.2 (b): our move
+    `Board.is_zeroing`, their reply `Board.is_capture`, our pawn by the piece on the from-square) on every route and reply of a sample."""
+    checked = 0
+    for b in list(_positions(16, 12)):
+        if b.is_game_over():
+            continue
+        ag = AG.Agenda(state_of(b.fen(), "w" if b.turn else "b"))
+        for m in list(b.legal_moves)[:12]:
+            ag._route_move = m
+            after = b.copy(stack=False)
+            after.push(m)
+            for r in list(after.legal_moves)[:8]:
+                old_irr = b.is_zeroing(m) or after.is_capture(r)
+                assert ag._irreversible(r.uci()) == old_irr
+                old_pawn = AG.CLOCK_PAWN and b.piece_type_at(m.from_square) == chess.PAWN
+                assert ag._pawn_move(m) == old_pawn
+                for dbal in (-1, 0, 1):
+                    for irr in (True, False):
+                        monkeypatch.setattr(AG, "CLOCK_IRREVERSIBLE", irr)
+                        old = (0 if (old_irr and (dbal >= 0 or old_pawn)) else ag.since_capture + 1) if irr else \
+                              (0 if (b.is_capture(m) and dbal >= 0) or old_pawn else ag.since_capture + 1)
+                        assert ag._since_after(r.uci(), dbal) == old
+                        checked += 1
+    print(f"OBS 75.4 (3) the chase clock: {checked} (route, reply, balance, setting) readings equal to the formulas replaced")
+    assert checked > 1000

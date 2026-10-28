@@ -61,6 +61,8 @@ NAMES: dict = {n.word: n for n in (
 READS = {"movement": "move", "attack": "attack", "tempo": "tempo", "material": "material"}      # the store's base reads (lemma_store.BASE) -> the names they are
 DRAW_BY = {"repetition": "draw by repetition", "fifty-move": "draw by the fifty-move rule"}      # plan 75.4 (1): Game.terminal's draws by rule (game.DRAWS_BY_RULE) -> the names they are
 DRAW = NAMES["draw"].word                # plan 75.4 (1): the outcome every draw reaches (the name a draw claim carries as its kind and goal)
+EVENT_CAPTURE = NAMES["capture"].word    # plan 75.4 (3): the fifty-move rule's events as the table names them (Game.clock_events): a capture ...
+EVENT_PAWN = NAMES["pawn"].word          # ... and a move of the pawn
 
 
 KIND = {"p": chess.PAWN, "n": chess.KNIGHT, "b": chess.BISHOP, "r": chess.ROOK, "q": chess.QUEEN, "k": chess.KING}      # a unit kind's letter (the valuation's keys) -> the kernel's kind

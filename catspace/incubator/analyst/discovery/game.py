@@ -28,6 +28,7 @@ import chess
 
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import lemma_store as LS
+from catspace.incubator.analyst.discovery import names as NM
 
 WHITE, BLACK = chess.WHITE, chess.BLACK
 MATE_VALUE = LS.goal_kinds().terminal.stake       # plan 75.2 (a): the stake of the goal that ends the game, read from its GOAL entry (lemmas/mate.json: ONE definition)
@@ -106,6 +107,7 @@ class Game(Protocol):
     def position_key(self, s) -> str: ...                         # plan 75.4: the state's identity (what a repetition repeats; the clocks omitted)
     def clock(self, s) -> int: ...                                # plan 75.4: the state's clock (the moves since the last clock event)
     def key_clock(self, key: str) -> int: ...                     # plan 75.4: the clock a state's key carries (without building the state)
+    def clock_events(self, s, m) -> frozenset: ...                # plan 75.4 (3): what of the move resets the clock (empty: the clock goes on)
     def measure(self, s, side: bool) -> int: ...
     def in_check(self, s) -> bool: ...
     def name(self, s, m) -> str: ...
@@ -191,6 +193,17 @@ class ChessGame:
         key has none). Equal to `clock(from_key(key))`."""
         f = key.split()
         return int(f[4]) if len(f) > 4 else 0
+
+    def clock_events(self, s: chess.Board, m: chess.Move) -> frozenset:
+        """plan 75.4 (3): what of the move `m` resets the clock -- the fifty-move rule's events (Lean `Chess.applyMove_halfmove`: `moveIsPawn || moveIsCapture`,
+        `Ideas.Game.clockResets`, `Ideas.Game.chess_clock`), by the names table's names: 'capture' (python-chess `Board.is_capture`, en passant included) and 'pawn' (the unit
+        moved is a pawn, a promotion included). Non-empty exactly when python-chess's `Board.is_zeroing(m)`: the clock after the move is 0."""
+        ev = []
+        if s.is_capture(m):
+            ev.append(NM.EVENT_CAPTURE)
+        if NM.pawn(s.piece_at(m.from_square)):
+            ev.append(NM.EVENT_PAWN)
+        return frozenset(ev)
 
     def measure(self, s: chess.Board, side: bool) -> int:
         """The material balance for `side` (the sum of the worths of its units less the other side's)."""

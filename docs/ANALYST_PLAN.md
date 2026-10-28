@@ -4011,3 +4011,7 @@ the input FEN keeps a pseudo-legal en-passant square the kernel drops (a repetit
   Ideas/Draws.lean proves the STRICT form generically (`forced_cycle_threefold`: their replies their only moves, the identity a congruence -- neither checked by the chase,
   the congruence unproved for the chess kernel: hence a conjecture). Decision logic unchanged: guard 19 of 218 traces differ in the label lines only (0 with the label put
   back; read sets, leaf lists, word lists, provenance lists 0), DECISION lines 0; CHESS FACT rows 210 -> 210.
+* 75.4 (3) BUILT 2026-10-28 (journal 2026-10-28 11:31): THE CHASE CLOCK READS THE KERNEL'S EVENTS -- `Game.clock_events` (a capture, a pawn move: what resets the halfmove
+  clock, Lean `Chess.applyMove_halfmove` / `Ideas.Game.chess_clock`) in place of the agenda's tests (`_irreversible`, `_pawn_move`, `_since_after`); which events the chase
+  clock counts stays its STOP entry's shape. Identical: 73530 clock readings equal to the formulas replaced; guard 0 of 218 on all five lists; negative control (the kernel's
+  pawn event dropped) moves 3 of 10 ten-t0 and 6 of 10 ten-t2 traces; CHESS FACT rows 210 -> 209.

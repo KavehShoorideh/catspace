@@ -191,6 +191,7 @@ Do not edit by hand.
 - **theorem `Ideas.Game.chess_fifty_iff`** (line 107): The clock at its limit is the kernel's `Chess.fiftyMoveClaimable`.
   - used by: catspace/incubator/analyst/discovery/game.py, catspace/incubator/analyst/discovery/names.py
 - **def `Ideas.Game.clockResets`** (line 111): THE CLOCK'S EVENTS (the fifty-move rule's): a pawn move or a capture.
+  - used by: catspace/incubator/analyst/discovery/game.py
 - **theorem `Ideas.Game.chess_clock`** (line 115): After a move the kernel's clock is 0 on a clock event, else one more (`Chess.applyMove_halfmove`).
   - used by: catspace/incubator/analyst/discovery/game.py
 - **def `Ideas.Game.chessDrawByRule`** (line 120): THE DRAW BY RULE IN CHESS: the instance's mate (the kernel's legal moves and check), the kernel's identity, the kernel's clock.

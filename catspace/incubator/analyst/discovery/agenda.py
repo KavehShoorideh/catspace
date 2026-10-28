@@ -4301,13 +4301,13 @@ class Agenda:
 
     def _irreversible(self, uci: str) -> bool:
         """plan 66.5: an event that never comes back (the fifty-move rule's) on the chain: a capture by EITHER side (the route in hand or their reply `uci`), or a pawn move OF OURS (the plan: "a capture or a
-        pawn move of ours"; their pawn push is a reply like any other -- resetting on it let their pawn checks extend our chain: eSJqH's Qa5 e4+ ran out of its slice)."""
+        pawn move of ours"; their pawn push is a reply like any other -- resetting on it let their pawn checks extend our chain: eSJqH's Qa5 e4+ ran out of its slice).
+        plan 75.4 (3): the events are the KERNEL's (`Game.clock_events`: what resets the halfmove clock, Lean `Chess.applyMove_halfmove`); which of them the chase clock counts
+        (ours, and their captures) is the clock's own shape (the STOP entry `the chase clock`)."""
         b, m = self.board, self._route_move
-        if b.is_zeroing(m):                                      # plan 75.2 (b): the kernel's own fifty-move-rule event (python-chess: a capture or a pawn move), not re-written here
+        if GAME.clock_events(b, m):                              # our move resets the kernel's clock (a capture or a pawn move)
             return True
-        after = b.copy(stack=False)
-        after.push(m)
-        return after.is_capture(chess.Move.from_uci(uci))
+        return NM.EVENT_CAPTURE in GAME.clock_events(GAME.apply(b, m), chess.Move.from_uci(uci))      # their reply is a capture
 
     def _since_after(self, uci: str, dbal: int) -> int:
         """The chase clock of the agenda after the route in hand and their reply `uci`: 0 after an irreversible event that is not bad for us (66.5: a capture by either side with dbal >= 0, or our pawn
@@ -4315,15 +4315,15 @@ class Agenda:
         m = self._route_move
         if CLOCK_IRREVERSIBLE:                                   # a capture by EITHER side that is not bad for us (the balance after the route and the reply not below where it was: dbal >= 0), or a pawn move of ours;
             return 0 if (self._irreversible(uci) and (dbal >= 0 or self._pawn_move(m))) else self.since_capture + 1      # (their capture that wins material is THEIR progress: eSJqH and xhSWo ran out of time reading on after it)
-        return 0 if (self.board.is_capture(m) and dbal >= 0) or self._pawn_move(m) else self.since_capture + 1
+        return 0 if (NM.EVENT_CAPTURE in GAME.clock_events(self.board, m) and dbal >= 0) or self._pawn_move(m) else self.since_capture + 1
 
     def _resets(self, uci: str) -> bool:
         """plan 66.5: the checks evaded in a row start again after an irreversible event (a capturing check, our capture or pawn move): the stop exists for perpetual-check loops, which capture nothing."""
         return EVADED_RESET and self._irreversible(uci)
 
     def _pawn_move(self, m: chess.Move) -> bool:
-        """plan 62.1c: a pawn move of ours resets the chase clock (irreversible, like a capture)."""
-        return CLOCK_PAWN and NM.pawn(self.board.piece_at(m.from_square))
+        """plan 62.1c: a pawn move of ours resets the chase clock (irreversible, like a capture) -- plan 75.4 (3): the kernel's clock event (`Game.clock_events`)."""
+        return CLOCK_PAWN and NM.EVENT_PAWN in GAME.clock_events(self.board, m)
 
     def _step_forcing(self, step: tuple) -> tuple:
         """plan 66.4 (Lean `Ideas.Forcing.Step` / `stillForcing`): one step of the line -- our move named a threat (`regress.threat_of` of its forcing reason) and their reply PARRIED it (the threat no longer
