@@ -34072,3 +34072,22 @@ marginal under the pool -- no engine file changed here); test_lean_index 2/0/0/0
 OBS lemma store validate: entries 101, patterns 29; words read 944 (fact 145, fact-why 588, gap 89, kill 99, lemma 23) from 0 snapshot dir(s) and the two fixed positions; uncatalogued 0 (0 distinct); problems 0
 THE STORE AFTER 73.6: 101 entries -- "mined technique KRvK" (CONJECTURE, its evidence the re-mine), "protection lemma KRvK" (CONJECTURE), and the hinted
 run's two conditional restatements (CONJECTURE); nothing PROVED by 73.6 (no accepted proof).
+
+
+## 2026-10-27 20:49 -- 73.6 merged (main b974efff, fast-forward): the prover found no proof; 75.1 the audit merged (6eb9f32d); the gate; plan 74 launched
+OBS gate engine (main b974efff, 40 files incl. test_plan73_6): passed 522, failed 0, xfailed 3, errors 0, wall 943.8 s (the third xfail: 52.18, timing-marginal, non-strict).
+73.6, the agent's report in its journal entries: a clean NEGATIVE. Every local tool ran (aesop, simp_all, omega, grind, tauto, exact?, Duper v4.32.0 via lean-auto, LeanCopilot v4.32.0
+search_proof, Goedel-Prover-V2-8B Q8_0 via ollama); the protection lemma demo OPEN (80 attempts, 5490 s); hprog OPEN blind (5584 s, 17 samples) and hinted (6105 s, 27 samples; Kaveh's text
+verbatim in every prompt); the 11 alternative measures OPEN at the cheap tiers. Why: automation cannot see through the kernel's executable definitions (legalMoves, isAttackedB, stalemate
+over 64 squares); the 8B model invents identifiers, misreads the class's existential, uses the banned decide, restates the goal as its own sub-lemma (the harness now refuses no-progress
+sketches and tautologies, Lean deciding). The emitter works: twelve statements build with exactly one sorry; the claimable draws are LEFT OUT of `ours` (repetition needs the history, which
+Reach over single positions lacks; the fifty-move rule would make the statement false) -- a kernel gap, labelled in each file. Re-mine with per-axis atoms: KRvK unchanged (12 zero-failure
+measures at d 3 / ranks 3; Kaveh's "distance from opposition on each rank" is NOT among them); KQvK still beyond the fuse (best fails 4, was 48). Store: 101 entries, PROVED 28 (all HAND),
+CONJECTURE 54, HEURISTIC 19; MINED 4. Disk 71 -> 48 GB (LeanCopilot cache 2.2 GB, the model 8.7 GB).
+THE READING, for Kaveh: the provers fail at the kernel's SHAPE, not at chess -- a human proof's first line ("a rook on a line attacks every empty square of it") has no lemma for the tools to
+pick up. Rule-level lifting lemmas are RULE under plan 75 (allowed to be written); a 32B prover at 4-bit fits the machine; or proving stays human-assisted with honest conjectures.
+75.1 AUDIT (docs/AGENDA_AUDIT.md): OBS audit rows total 1719: LOGIC 1123, RULE 104, NAME 23, CHESS FACT 428, HEURISTIC 41; 65 CHESS FACT families (38 with a store entry, 27 proposed); the
+top by guard cases: the goal kind mate (100/109), the stake of mate 100, the goal kind win, the fuse's shape, material as the stake currency, the local goal, save, the gain unit, close by
+rule, the mate defect kinds. Findings: rules re-implemented in Python (castling squares, repetition as one repeat on a four-field key, the fifty-move rule as the chase clock, promotion to a
+queen only, check/capture read off SAN); material in Game.measure and BaseWords.worth; names used as knowledge (lemma prefixes decide portability; FORCED_WORDS matched as strings).
+Plan 74 (the reasoning graph, with 74.2b cheapest-keep-first) launched as one Opus agent; 75.2 follows it.
