@@ -33975,3 +33975,38 @@ OBS trace identity: 0 of 99 traces differ
 OBS trace identity: 0 of 99 read sets differ
 OBS trace identity: 0 of 99 leaf verdict lists differ
 OBS trace identity: 0 of 99 word lists differ
+
+
+## 2026-10-27 17:28 -- plan 75.1 THE AGENDA AUDIT (read-only): docs/AGENDA_AUDIT.md
+Every branch, constant and comparison of discovery/agenda.py (the agenda, the chase, the tiers driver `_ask_tiers`, the pool driver `_ask_pool`, the judge -- all in agenda.py)
+and ponder.py, classified LOGIC / RULE / NAME / CHESS FACT / HEURISTIC by an AST extractor and a rule table (scratch scripts, not committed; the rules are stated in the doc's
+section 1 and 3). One row per line, class and fact family; each CHESS FACT row names its store entry (existing, or proposed: name, kind, reads) and how many guard cases pass
+through it. No engine file, test or other doc changed; no gate, no snapshot, no timed run (the prover agent was running beside).
+OBS audit atoms agenda.py: 2490 (CONST 49, BRANCH 2132, COMPARE 27, ORDER 37, LITERAL 180, KIND 47, read by hand 18)
+OBS audit atoms ponder.py: 48 (CONST 0, BRANCH 38, COMPARE 1, ORDER 1, LITERAL 4, KIND 1, read by hand 3)
+OBS audit rows total 1719: LOGIC 1123, RULE 104, NAME 23, CHESS FACT 428, HEURISTIC 41
+OBS audit rows agenda.py 1682: LOGIC 1097, RULE 102, NAME 21, CHESS FACT 423, HEURISTIC 39
+OBS audit rows ponder.py 37: LOGIC 26, RULE 2, NAME 2, CHESS FACT 5, HEURISTIC 2
+OBS audit CHESS FACT rows 428: with an existing store entry 171, without (an entry proposed) 257; families 65 (existing 38, proposed 27)
+OBS audit HEURISTIC rows 41
+OBS audit CHESS FACT rows that only shape trace text 5 (counted: the knowledge is still written in agenda.py)
+OBS audit store names checked: 82 citations of 98 entries; not in the store 0
+OBS audit guard snapshots read: tier 0 cases 109, tier 2 cases 109 (ten + wide, the count budget, PYTHONHASHSEED=0; main ba587d27's agenda.py = this commit's)
+Decisions depending, read from the 73.5b guard snapshots (guard_after/, ten + wide, tiers 0 and 2, count budget; agenda.py unchanged since 635990e9): the top ten families by cases
+passing through (directional: 'passes through' is an upper bound of 'depends on'; the count budget never runs the status driver, the pool or the judge):
+OBS audit fact A1m: cases t0 100 / t2 100 of 109, DECISION lines citing 0 of 218, rows 18
+OBS audit fact A2: cases t0 97 / t2 97 of 109, DECISION lines citing 0 of 218, rows 34
+OBS audit fact A1w: cases t0 83 / t2 86 of 109, DECISION lines citing 0 of 218, rows 12
+OBS audit fact B4: cases t0 85 / t2 84 of 109, DECISION lines citing 0 of 218, rows 3
+OBS audit fact A4: cases t0 82 / t2 85 of 109, DECISION lines citing 0 of 218, rows 4
+OBS audit fact D17: cases t0 81 / t2 82 of 109, DECISION lines citing 0 of 218, rows 5
+OBS audit fact A1s: cases t0 78 / t2 83 of 109, DECISION lines citing 0 of 218, rows 12
+OBS audit fact A6: cases t0 80 / t2 80 of 109, DECISION lines citing 0 of 218, rows 13
+OBS audit fact D3: cases t0 70 / t2 81 of 109, DECISION lines citing 0 of 218, rows 10
+OBS audit fact D1a: cases t0 75 / t2 75 of 109, DECISION lines citing 0 of 218, rows 4
+Reading (directional): the goal kinds and the stakes (mate 100, unit worth, the gain unit 1) are the most-travelled chess facts in agenda.py, so 75.2 (a) moves the most;
+the stops (b) are few rows, but the fuse's shape (85 / 84) and tempo arithmetic (61 / 74) pass through most cases and the second check through 30 / 56 (the OBS lines of the
+doc's section 4). Findings for 75.2 (the doc's section 5): castling's rook,
+the repetition key and the exchange's swap list are rules re-implemented in Python; check and capture are read off the SAN for the judge; lemma names and the forcing words are
+tested as strings; material is supplied by the Game and BaseWords interfaces although plan 75 calls it derived; the stake of mate is defined three times; ponder.resume_gap files
+every resumed route under a 'win' question.

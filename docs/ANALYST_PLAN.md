@@ -3837,3 +3837,98 @@ sub-goals become CONJECTURE entries with the prover's last state. Everything the
 (5) TWO ATTEMPTS, reported apart: BLIND (the statement only), then HINTED (Kaveh's natural-language proof from the journal handed to the prover as a sketch, as one hands a human proof to
 an autoformalizer) -- the difference is itself a result.
 NOT IN 73.6: proving by hand; the K+Q technique (no mined entry yet); AlphaProof (application-only: Kaveh's call).
+
+
+## 74. THE REASONING GRAPH: one worklist over a justification graph, generic (Kaveh 2026-10-27 GO: "Do it because it seems generic. As long as it's generic, I'm happy to do these
+advances so that we can automatically ask questions and find the answers."; spec for an Opus agent, queued behind 73.6 -- both touch agenda.py, one agent at a time)
+
+Kaveh's picture: "a chain or a line of reasoning ... I do this, then he wants to do this or that ... lines of reasoning converge and the reasoning progresses ... a graph of reasoning ... if
+I'm analyzing one line and a question pops in my head, I queue it for later." The shape has names: a GIVEN-CLAUSE worklist (passive / active sets, the best passive item processed next,
+its consequences re-queued: Otter, E), a JUSTIFICATION-BASED TRUTH MAINTENANCE SYSTEM (every belief with its justifications; a retracted premise retracts its dependents: Doyle, de Kleer),
+Soar's IMPASSE -> SUBGOAL -> CHUNK, and AND-OR search over replies (Allis). What exists: the agenda heap (root only), GAPs with resume points drained by the ponder, the fact store keyed by
+read sets with the listener (the TMS), the chase (the impasse step), the survey's clues (trace + policy features only), the printed justification graph of a decision. What is missing: ONE
+worklist across depths (inner agendas are recursive calls: a question found three plies deep cannot be handed to the root's queue), PROVENANCE on questions ("arose from that line"), and
+clues as nodes. Nothing in 74 is chess: a test asserts the new modules name no unit, no piece, no square word (as 73.5b's does).
+
+### 74.1 The graph
+Nodes: QUESTION (goal, stake, its FRAME = the read set it binds on, depth, provenance), LINE (a route and the reply path to a position: the moves as ucis, the position key), ANSWER (a claim,
+a kill, a GAP, with the justification edges the trace already prints as `#id claim ... reads {...}`), OBSERVATION (74.4). Edges: AROSE_FROM (question <- line or observation), SERVES
+(answer -> question), READS (answer -> the position's read set: the fact store's key, so two lines that reach positions agreeing on the read set meet at one answer: convergence),
+REFINES (a chase question -> the question it chases). One store: the fact store extended with questions and edges (its keys and listener unchanged), or the Rust kernel's Datalog
+(`ascent`, plan 40's agenda.rs) if it fits without a rewrite -- the agent decides from the code and says why; Python first is acceptable.
+
+### 74.2 One worklist
+A single PASSIVE set of questions for the whole run, every depth; an item carries (stake, depth, provenance, forcedness of its replies, the policy's score). SELECTION = the judge's rule
+(72.9: can this question change the decision? are its replies forced? then read it whatever the rate) and the policy's order, as today -- one rule for root and inner alike. The
+budgets are today's (count / time); 74 adds no number. An item whose key (position read set + goal) has an ANSWER in the store is SERVED, not asked (convergence); an item whose frame is
+hit by a later move is re-asked by the listener, as claims are today.
+
+### 74.3 The chase as expansion
+A route is expanded depth-first WITHIN ITS FRAME exactly as 72.10 does (the three local questions inline: the goal on the diff, their threats through the diff, the price of their move).
+Any question outside the frame is ENQUEUED with provenance (arose from this line at this position), never asked inline. 72.10's "the full agenda when the goal is dead there" becomes:
+enqueue that position's root questions (depth d+1, provenance the line), mark the route PENDING on them (the cheap pass's pending protocol), continue; the route closes when its pending
+questions are answered or cut (a cut is a GAP with the resume point, as today). The inner agenda as a recursive call disappears in the end state; in the build it is replaced stage by stage.
+
+### 74.4 Clues
+An OBSERVATION node = a term evaluated at a position with its reads (the survey lines of 72.5 are the first; a bounded-reach fact "no attack along this line for at least t tempi while these
+blockers stand" is another, reads = the blockers; a mobility count another). Observations sit low in the worklist; one is PROMOTED to a question when a goal's frame touches its reads or
+the policy scores it above an open question. Words to mine, not code: 74 adds the node type and the promotion rule, no new chess word.
+
+### 74.5 Provenance in the trace
+Every question prints why it was asked ("asked: arose from Qb7 Rf7 at depth 1" / "served: the answer of <line> read the same squares"); the decision's justification graph (already printed)
+gains the question edges. The explanation a user reads is the chain Kaveh described.
+
+### 74.6 Acceptance (printed, directional)
+The restructure may reorder trace LINES; it may not change DECISIONS. On the ten + the 99 wide cases at the count budget (PYTHONHASHSEED=0): every DECISION line identical; the set of claims
+(what, value, proved) identical per case; the read sets identical; the leaf verdict lists identical; the trace text diff listed and read (order only). Questions asked per case NOT higher
+(the point: inline full agendas become queued, deduplicated items) -- print before/after per case and the total. W0VFO at 10 s: decision and proof unchanged, inner questions printed.
+The loop-2 batch (rand14_10 .. rand17_10 at 15 s, graded by proof in a separate process): not worse than 31 RIGHT / 7 WRONG (one batch each, directional). The gate: every file green.
+
+### 74.7 Stages, one commit each, each acceptance-checked before the next
+(a) the graph store with provenance and the trace lines of 74.5 -- behaviour identical (traces identical modulo the new lines, which the guard masks by a prefix); (b) the single worklist
+for ROOT questions only (the heap replaced; selection as today) -- decisions identical, traces identical; (c) inner questions enqueued with the pending protocol, depth 1 first, then all
+depths -- decisions identical, questions not higher; (d) observations as nodes with the promotion rule -- decisions identical on the guard (no promotion fires there unless shown and read).
+NOT IN 74: distribution (the worklist is the seam: AND-OR nodes are independent work; later), new chess words, the Rust port of the loop (72.7's remaining steps), any change to the judge's
+rule or the policy.
+
+
+## 75. THE GENERIC GOAL AND THE SUPPLIED VOCABULARY (Kaveh 2026-10-27 GO "go ahead and do it")
+
+Kaveh: "the goal is actually very generic: first of all, don't lose, and then win ... some chess vocab has to be provided by us because we want the engine to be able to talk in the same
+language as we do. We don't want it to learn everything. But from those basic things -- attacking, moving and sliding pieces, winning and drawing -- everything else should be derived from
+the basic rules."
+THE PRINCIPLE, in three lines: (1) THE GOAL is the outcome: don't lose, then win (the status line of plan 59 is already this ladder: losing / level / winning; status-driven widening = don't
+lose, then win). Mate, material, promotion are not goals: mate is the rule's terminal, material is a DERIVED valuation, promotion is a rule. (2) WE SUPPLY NAMES, not knowledge: a NAMES
+table binding our words (attack, move, slide, capture, check, mate, stalemate, draw, win, lose, the unit kinds, rank/file, tempo) to definitions of the RULE KERNEL, so the engine speaks our
+language; a name is never bound to a derived fact. (3) EVERYTHING ELSE IS DERIVED: words, valuations, techniques, stops -- mined into the store, stated in Lean, proved by the prover, read by
+the agenda from the store. A test guards it: the agenda's core names nothing beyond the NAMES table and the store.
+
+### 75.1 The audit (read-only agent; runs beside the prover: it runs no gate and edits no engine file)
+Every branch, constant and comparison of agenda.py (and the ponder, the tiers driver, the judge) classified as one of: LOGIC (goal regression, AND-OR, frames, the worklist, the budgets'
+mechanics), RULE (a fact of the game's rules: check, mate, legal moves, the draws -- allowed, read through the kernel), NAME (a supplied name from the table), CHESS FACT (derived knowledge
+written as code: the goal kinds mate/win/save/promote and their stakes, piece worth, the status line's thresholds, "a check is forcing", the stops' shapes, the smallest-loss tie-break's shape
+key, the fuse's shape, the judge's forcedness words, the leaf's estimators), HEURISTIC (a tuned number or rule with no proof obligation). Output docs/AGENDA_AUDIT.md: one row per item (file:line,
+the text, the class, and for a CHESS FACT the store entry it should become -- an existing one, or a new one named), the counts as OBS lines, and the list of CHESS FACTS in the order they
+should move (by how many decisions depend on them, read from the traces of the ten + wide guard snapshots). No engine change in 75.1.
+
+### 75.2 The move (after 74 lands; one agent; each stage guard-checked: decisions identical)
+(a) THE GOAL LADDER from the outcome: the agenda's root asks "don't lose" (keep the status) then "win" (raise it), read from the status line; the goal KINDS it pursues come from the store
+(GOAL entries: `mate` = the terminal rule [RULE], `promotion` = the rule [RULE], `material` = the valuation entry [HAND today; MINED when 76 delivers it], `save` = don't lose material = the
+same valuation), each with its stake read from the entry, never from a constant in agenda.py. (b) THE STOPS consulted from the store (HEURISTIC entries: the chase clock, tempo arithmetic,
+the second check, the fuse, the judge's cut): the agenda asks "does a stop apply" and prints which entry; the shapes leave agenda.py. (c) THE NAMES TABLE `names.py`: every name bound to a
+kernel definition (and its Lean twin); the trace prints names from it; reads in the store refer to it. (d) THE GENERIC TEST: the agenda's core (the worklist, the chase, the leaf glue, the
+judge) names nothing outside names.py and the store -- the test of 73.5b extended to agenda.py's core modules after 74's split. Acceptance per stage: decisions identical on the ten + wide,
+the gate green, the audit's CHESS FACT count printed before/after (the number to drive to zero).
+
+### 75.3 Then (plan 76, written after 75.2's count is known): one term language (the miner's atoms as Rust terms with typed combinators: sets of locations, reach, counts, per-axis
+distances, min over units, who moves; the generator proposes terms priced by size) and MINING MATERIAL (the count term over game records that predicts the outcome; the hand values stay a
+HAND entry beside the MINED one; the exchange law restated over the mined term for the prover). Then the second game (a checkers kernel: the acid test, no code outside the kernel).
+
+
+### 74.2b THE SELECTION RULE'S FIRST CLAUSE (Kaveh 2026-10-27): the cheapest move that keeps the status, then a better one
+Kaveh: "spend your resources when searching for a move to find the cheapest move that'll maintain your state. If you're winning, keep winning; if you're drawing, keep drawing. And then you
+look for a better move from there." This is plan 59's ladder (status-driven widening) made the WORKLIST's selection rule, root and chase alike, in two clauses in this order: (1) while no move
+is PROVED to keep the status, select the open question whose answer would keep it at the lowest expected cost -- cost = the judge's own price (nodes x the measured rate, 72.9), the policy
+ordering only among questions of equal price class; (2) once a keeping move is proved, select by the judge's existing question "can this change the decision, are its replies forced". The
+pool today orders by stake and the policy first (a stake-100 mate question before a cheap save that already keeps the status: W0VFO's and 2CEDb's seconds); after 74 it orders by clause (1)
+first. No new number. Acceptance adds: on the ten + wide, the time (or count) to the FIRST proved keeping move, printed before/after, not higher.
