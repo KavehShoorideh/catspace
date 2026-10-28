@@ -1,0 +1,36 @@
+{
+ "name": "the walk of checks",
+ "kind": "STOP",
+ "reads": [
+  "attack",
+  "movement",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.17",
+  "75.2"
+ ],
+ "journal": "2026-10-18",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_addresses"
+ ],
+ "note": "From a goal's chase depth `from_depth` on (mate 2, win 1, promote 1; a goal not listed never walks) a check of ours is followed only when it fixes a defect of its goal: a check that fixes none is the walk of checks, not a route (the note 'not a route of ...').",
+ "params": {
+  "context": "chase",
+  "from_depth": {
+   "mate": 2,
+   "win": 1,
+   "promote": 1
+  }
+ }
+}

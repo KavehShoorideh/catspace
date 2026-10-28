@@ -24,5 +24,9 @@
   "catspace/incubator/analyst/discovery/agenda.py:_chase",
   "catspace/incubator/analyst/discovery/agenda.py:SECOND_CHECK_STOP"
  ],
- "note": "A second check of theirs in a row is not followed: a hand-coded count, a GAP, never the kill it was."
+ "note": "A second check of theirs in a row is not followed (follow: the checks of theirs in a row that are followed): a hand-coded count, a GAP, never the kill it was.",
+ "params": {
+  "context": "chase",
+  "follow": 1
+ }
 }

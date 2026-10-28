@@ -155,9 +155,33 @@ def _params_problems(e: dict, at: str) -> list:
         if p.get("royal") not in (p["worth"] if isinstance(p["worth"], dict) else {}):
             bad.append(f"{at}: params royal must be a unit kind of the worth table")
         return bad
-    if p is not None and not (k == "STOP" and isinstance(p, dict)):
+    if k == "STOP" and p is not None:
+        if not isinstance(p, dict) or p.get("context") not in STOP_CONTEXTS:
+            return [f"{at}: a STOP's params say the context it applies in ({', '.join(STOP_CONTEXTS)}) and its shape"]
+        return []
+    if p is not None:
         return [f"{at}: only a GOAL, a VALUATION or a STOP has params"]
     return []
+
+
+# ---------------------------------------------------------------------------------------------------------------- plan 75.2 (b): the stops
+# A STOP's params hold its SHAPE (the counts it stops at, the goals it judges) and the CONTEXT it applies in: 'root' (the root agenda's question budget), 'chase' (the chase's
+# stops: the clock, tempo arithmetic, the second check, the fuse, the walk of checks, the follow list), 'judge' (the cost judge's cut). The agenda asks `stops_for(context)` and
+# reads each stop's shape at run time; a stop's GAP text begins with the entry's name.
+STOP_CONTEXTS = ("root", "chase", "judge")
+_STOPS: list = [None, None]          # (the store object, {context: {name: params}})
+
+
+def stops_for(context: str) -> dict:
+    """The STOP entries that apply in `context`: {entry name: its params} (built once per loaded store)."""
+    store = load()
+    if _STOPS[0] is not store:
+        by: dict = {c: {} for c in STOP_CONTEXTS}
+        for n, e in store.items():
+            if e["kind"] == "STOP" and e.get("params") is not None:
+                by[e["params"]["context"]][n] = e["params"]
+        _STOPS[0], _STOPS[1] = store, by
+    return _STOPS[1][context]
 
 
 class Valuation:

@@ -21,8 +21,12 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/agenda.py:_cut",
   "catspace/incubator/analyst/discovery/agenda.py:_inner",
-  "catspace/incubator/analyst/discovery/agenda.py:DEPTH_FUSE",
-  "catspace/incubator/analyst/discovery/agenda.py:FUSE"
+  "catspace/incubator/analyst/discovery/lemma_store.py:stops_for"
  ],
- "note": "The count fuse of the chase (FUSE times the root's question budget, and DEPTH_FUSE inner levels) cuts a route as a GAP: a count read as tempo (each inner agenda is one reply deeper), never a fact of the position."
+ "note": "The count fuse of the chase (fuse times the root's question budget, and depth inner levels) cuts a route as a GAP: a count read as tempo (each inner agenda is one reply deeper), never a fact of the position.",
+ "params": {
+  "context": "chase",
+  "fuse": 10,
+  "depth": 30
+ }
 }

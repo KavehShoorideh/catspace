@@ -1,0 +1,58 @@
+{
+ "name": "the chase's follow list",
+ "kind": "STOP",
+ "reads": [
+  "attack",
+  "movement",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.12",
+  "52.15",
+  "52.23",
+  "70.1",
+  "75.2"
+ ],
+ "journal": "2026-10-20",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_chase",
+  "catspace/incubator/analyst/discovery/agenda.py:_can_chase"
+ ],
+ "note": "Which goals the chase follows and how deep: a chased goal (the GOAL entry's chase) or a keep goal is read to the depth `depth` names (promote 1, save 1; a goal not listed: every depth; `deep_win`: a win goal's depth when the DEEP_WIN_CHASE switch is off), its power below the root to `power_depth` (win 1, promote 1), the fixes' routes are routes for `fix_routes`, a goal adds `goal_words` to the words followed below the root, and below `fixes_check_from` only its named fixes that check are followed.",
+ "params": {
+  "context": "chase",
+  "depth": {
+   "promote": 1,
+   "save": 1
+  },
+  "deep_win": {
+   "win": 1
+  },
+  "power_depth": {
+   "win": 1,
+   "promote": 1
+  },
+  "fix_routes": [
+   "promote",
+   "win"
+  ],
+  "goal_words": {
+   "promote": [
+    "push"
+   ]
+  },
+  "fixes_check_from": {
+   "win": 2
+  }
+ }
+}

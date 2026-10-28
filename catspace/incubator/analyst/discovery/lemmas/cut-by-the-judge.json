@@ -26,5 +26,10 @@
   "catspace/incubator/analyst/discovery/regress.py:_route_cost",
   "catspace/incubator/analyst/discovery/regress.py:node_cost"
  ],
- "note": "The judge prices a route by its parries counted (movement) times the measured seconds per unit and cuts it as a GAP when it does not fit the time left."
+ "note": "The judge prices a route by its parries counted (movement) times the measured seconds per unit and cuts it as a GAP when it does not fit the time left (price_cap: the cost it prices to while no rate is known, 64.3; min_units: the cost units timed before a rate is read, 61 C2).",
+ "params": {
+  "context": "judge",
+  "price_cap": 120,
+  "min_units": 8
+ }
 }

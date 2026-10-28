@@ -18,7 +18,7 @@ import chess
 
 from catspace.incubator.analyst.discovery import lemma_store as LS
 from catspace.incubator.analyst.discovery import regress as R
-from catspace.incubator.analyst.discovery.agenda import Agenda, FUSE, _pos_key
+from catspace.incubator.analyst.discovery.agenda import Agenda, _pos_key
 from catspace.incubator.analyst.discovery.state import State
 
 
@@ -40,7 +40,7 @@ def resume_gap(ctx, us: str, fact, end: float, stop=None) -> bool:
     try:
         ag = Agenda(State(fen=r["fen"], us=us, pieces=[]), side_depth=0, chase_depth=fact.depth, ctx=ctx)
         ag._cur = R.new_question(ag.goals.gain.question, fact.stake, {}, text=r.get("question", ""))      # (the resumed route's question stands for the stake: filed under the gain goal of the store)
-        ctx.left = ag.budget * FUSE
+        ctx.left = ag.budget * ag.stops["chase fuse"]["fuse"]      # (plan 75.2 (b): the fuse is the chase fuse entry's)
         ctx.routes.pop(ag._route_key(chess.Move.from_uci(r["uci"]), ":promote" if r["promote"] else ""), None)      # the memo says "cut, and no more budget has come": it has now (plan 72.7 step 2c: the memo's key, from the position's handle)
         _scoped(ctx, end, stop)
         res = ag._chase_route(chess.Move.from_uci(r["uci"]), promote=bool(r["promote"]))

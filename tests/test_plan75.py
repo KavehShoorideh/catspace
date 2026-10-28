@@ -111,3 +111,48 @@ def test_75a_the_outcome_ladder_is_the_worklists_and_the_status_reads_it():
     ag = _agenda("4k3/8/8/8/8/8/8/3qK3 w - - 0 1")
     st = ag.status()
     assert {k: st[k] for k in ("balance", "threat", "s0", "word", "line")} == WL.ladder(st["balance"], st["threat"], ag.unit)
+
+
+# ---------------------------------------------------------------------------------------------------------------- (b) the stops
+
+STOPS = {"root": ("budget",), "chase": ("chase fuse", "the chase clock", "a second check of theirs in a row", "tempo arithmetic", "the walk of checks", "the chase's follow list"),
+         "judge": ("cut by the judge",)}
+
+
+def _patched(monkeypatch, name: str, **kw) -> None:
+    store = copy.deepcopy(LS.load())
+    store[name]["params"].update(kw)
+    monkeypatch.setattr(LS, "_STORE", [store])
+
+
+def test_75b_the_stops_are_store_entries_with_their_shapes():
+    store = LS.load(force=True)
+    for ctx, names in STOPS.items():
+        got = LS.stops_for(ctx)
+        for n in names:
+            assert store[n]["kind"] == "STOP" and store[n]["status"] == "HEURISTIC" and n in got, n
+    print("OBS 75b stops: " + "; ".join(f"{n} {dict((k, v) for k, v in store[n]['params'].items() if k != 'context')}" for names in STOPS.values() for n in names))
+    bad = copy.deepcopy(store["budget"])
+    bad["params"]["context"] = "nowhere"
+    assert LS.check_entry(bad)                                                          # a stop says where it applies
+
+
+def test_75b_a_stops_parameter_changed_moves_the_stop(monkeypatch):
+    """The agenda reads the stops' shapes at run time: the question budget per unit, the chase clock's cap from its tier, the follow list's power below the root."""
+    ag = _agenda(RA8)
+    units, caps = 2, sum(1 for m in ag.board.legal_moves if ag.board.is_capture(m))
+    assert ag.budget == units * 8 + caps
+    deep = Agenda(State(fen=RA8, us="w", pieces=[]), tier=3)
+    assert deep._clock() == min(4, 4)
+    win = next(q for q in ag.all if q.goal == "win")
+    ag.chase_depth = 2
+    assert not ag._can_chase(win)                                                       # a win question's power stops below the first level
+    _patched(monkeypatch, "budget", per_unit=3)
+    assert _agenda(RA8).budget == units * 3 + caps
+    _patched(monkeypatch, "the chase clock", at_most=2)
+    assert Agenda(State(fen=RA8, us="w", pieces=[]), tier=3)._clock() == 2
+    _patched(monkeypatch, "the chase's follow list", power_depth={"promote": 1})
+    ag2 = _agenda(RA8)
+    ag2.chase_depth = 2
+    assert ag2._can_chase(next(q for q in ag2.all if q.goal == "win"))
+    print(f"OBS 75b patched stops: budget {ag.budget} -> {units * 3 + caps} (per unit 8 -> 3), the tier-3 clock 4 -> 2, a win's power at depth 2 off -> on")

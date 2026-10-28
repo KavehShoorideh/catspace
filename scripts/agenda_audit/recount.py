@@ -27,7 +27,6 @@ CARRY = {"agenda.py": {1575: 1734, 4236: 4433, 4283: 4480}}
 # and printed. Every other reading on an edited line is dropped and printed: its fact left the line.
 KEEP_ON_EDIT = {"agenda.py": {
     1042: [None],                                      # D14: their promote claim answered by 'stop their pawn' (the test now reads the GOAL entry's role; the root kind stays D14's)
-    1919: ["goal|chase_depth"],                        # B6: the follow list's depth limit (stage b)
     2311: ["checkers"], 2322: ["reach"], 2325: ["promoter"], 2328: ["threat"],      # D21 / D1e / D14: the save and mate sub-kinds by their pattern keys (stage d)
     2763: ["goal"],                                    # D4: the smallest loss is for the keep goal only
     2900: ["goal|checkers"], 2937: ["goal|checkers"],  # B2: the checks evaded in a row (stage b)
@@ -36,13 +35,18 @@ KEEP_ON_EDIT = {"agenda.py": {
     954: ["table"],                                    # D20: a table root matches no arrangement
     4690: [None],                                      # D21: in check, the captures of the checker are the routes
     4184: ["len\\(path\\)"], 4897: ["n == 1"],         # RULE: the push promotes on its last step
-    4281: ["^evading$", "_keep_goal", "goal|chase_depth|CHASE_SAVES|DEEP_WIN", "min_stake"],      # D21 / A10 / B6 / A7: the chase's guard (stage b)
+    4281: ["^evading$", "_keep_goal", "min_stake"],    # D21 / A10 / A7: the chase's guard (its B6 depths: the follow list entry, stage b)
     3602: ["stake"],                                   # D3: the exchange must reach the goal's stake
     4105: ["move|reach"],                              # B5: the goal's own move or a reach step is a route of the walk of checks (stage b)
     4472: ["goal"],                                    # D10: the refuter fix is for the gain goal only
     4498: ["material"],                                # D8c: a promote route answered by material is a win claim
     4504: ["kind|repetition|balance"],                 # A8: a repetition when behind is a draw (stage a's draw: not moved)
     4737: ["MATE_VALUE|in tg|m.from_square"], 4796: [None],      # D6: the parry set of a threat; a mate threat is parried only by the threatener's capture or a mate
+    # stage (b); an item (old, new) keeps the reading with a new atom regex (None: every atom of the edited line) where the edit changed the atom's text
+    4126: ["attacks\\(|q.goal"], 4128: ["skewer|q.goal"], 4130: [None],      # B5: the checks that fix a defect of a gain / a promotion (the walk's defect tests stay)
+    4306: ["free_level"],                              # B3: a recapture spends no level (the exchange is one event)
+    4343: [("goal", None)], 4346: [("goal", None)], 4349: [("goal|chase_depth", None)],      # D8h / D8f: a promotion's lifted, support and stopper routes
+    4368: ["tier"],                                    # HEURISTIC: the tier-1 threat words (the tier composition)
 }}
 SCRIPTS = ("extract.py", "classify.py", "count.py", "facts.py", "findings_text.py")
 

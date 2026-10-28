@@ -23,5 +23,17 @@
   "catspace/incubator/analyst/discovery/agenda.py:_chase",
   "catspace/incubator/analyst/discovery/agenda.py:GOAL_JUDGE"
  ],
- "note": "A mate or win chain that has spent the prep moves its goal's defects allow stops as a GAP (mating the king is like mating the bishop)."
+ "note": "A mate or win chain that has spent the prep moves its goal's defects allow stops as a GAP (mating the king is like mating the bishop): goals the goals it judges, fresh the goals whose allowance a capture that is not bad for us restarts, least the prep moves a goal may always spend, per_move the levels one move of ours spends.",
+ "params": {
+  "context": "chase",
+  "goals": [
+   "mate",
+   "win"
+  ],
+  "fresh": [
+   "win"
+  ],
+  "least": 1,
+  "per_move": 1
+ }
 }

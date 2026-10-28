@@ -3964,6 +3964,9 @@ the gate green, the audit's CHESS FACT count printed before/after (the number to
   worths and the gain unit each defined once (game.py, binder.py, regress.py, selfmine.py and the agenda read them); every goal word and goal-kind test of agenda.py / ponder.py reads the
   entries; the status ladder is worklist.py's outcome ladder. Guard 0 of 218 on traces, read sets, leaf lists, word lists, provenance lists; CHESS FACT rows 428 -> 255
   (scripts/agenda_audit/recount.py; docs/AGENDA_AUDIT.md "75.2 recount"); W0VFO 10 s Qb7 +3 proved; loop-2 32 RIGHT / 6 WRONG.
+* 75.2 (b) BUILT 2026-10-28 on branch worktree-agent-a96bad5c641e60ec1 (journal 2026-10-28 01:00): the STOP entries' `params` (their shapes and contexts) read at run time through
+  `lemma_store.stops_for(context)` -- the question budget, the chase fuse, the chase clock's tier cap, the second check, tempo arithmetic, the judge's cap and timed units, and two new
+  entries, `the walk of checks` and `the chase's follow list`; the stop texts unchanged. Guard 0 of 218 on all five lists; CHESS FACT rows 255 -> 241, HEURISTIC rows 41 -> 35.
 
 ### 75.3 Then (plan 76, written after 75.2's count is known): one term language (the miner's atoms as Rust terms with typed combinators: sets of locations, reach, counts, per-axis
 distances, min over units, who moves; the generator proposes terms priced by size) and MINING MATERIAL (the count term over game records that predicts the outcome; the hand values stay a

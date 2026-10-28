@@ -34247,3 +34247,26 @@ terminal stake, its mate roots and its promotion stake follow), material's one d
 the outcome ladder and the status reading it. OBS lemma store validate: entries 106, problems 0.
 FINDINGS: the Rust core keeps its own copies of the worths (rules.rs val, lib.rs, words.rs worth_of) and of the stake of mate (regress.rs STAKE_MATE): agreement is tested, not one
 definition (no Rust build in 75.2); Lean's `Ideas.Vocabulary.mateGain` is 100000, the engine's terminal stake 100 (both "a value no material reaches").
+
+## 2026-10-28 01:00 -- plan 75.2 (b) THE STOPS FROM THE STORE (branch worktree-agent-a96bad5c641e60ec1)
+A STOP's `params` hold its SHAPE and the context it applies in (root / chase / judge); the agenda asks `lemma_store.stops_for(context)` and reads each shape at run time; the stop
+texts are unchanged (each begins with its entry's name). `budget`: 8 per unit of ours, 1 per capture (the question budget, 52.2); `chase fuse`: fuse 10, depth 30 (FUSE and DEPTH_FUSE
+left agenda.py; ponder.py, test_regress and test_tiers read the entry, noted 75); `the chase clock`: moves 4, from tier 3 at most 4 (the module's CHASE_CLOCK stays the run's setting
+a harness sets -- analyse --chain / --no-chain -- started from `moves`); `a second check of theirs in a row`: follow 1; `tempo arithmetic`: the goals it judges (mate, win), the goal a
+capture freshens (win), the least allowance 1, a move's spend 1; `cut by the judge`: price cap 120, timed units 8 (JUDGE_PRICE_CAP / JUDGE_MIN_AGENDAS left); two new HEURISTIC STOP
+entries, `the walk of checks` (from depth mate 2, win 1, promote 1: RULE2_FROM left) and `the chase's follow list` (the depths: promote 1, save 1; a win's depth without
+DEEP_WIN_CHASE 1; the power below the root: win 1, promote 1; the goals whose fixes are routes; the goal words followed below the root: promote's push; the depth from which a win
+follows only checking fixes: 2). The share rule's chased goals read the GOAL entries' `chase`; the clock's irreversible event is the kernel's (`chess.Board.is_zeroing`: a capture or
+a pawn move; equal to the old test on 20689 moves of a random walk, castling, en passant and promotions included).
+OBS trace identity against stage (a) (count budget, PYTHONHASHSEED=0): ten t0, ten t2 0 of 10 traces / read sets / leaf verdict lists / word lists / provenance lists differ; wide t0,
+wide t2 0 / 0 / 0 / 0 / 0 of 99. The trace text did not change.
+NEGATIVE CONTROL (lemmas/budget.json per_unit 8 -> 7, ten t0, restored after): 10 of 10 traces, 8 of 10 read sets, 6 of 10 leaf lists, 8 of 10 word lists, 8 of 10 provenance lists
+differ, the ten DECISION lines unchanged -- the guard fires: the question budget is the entry's.
+OBS audit recount: CHESS FACT rows 255 -> 241 (B3 7 -> 4, B4 3 -> 0, B5 12 -> 9, B6 10 -> 5; 34 readings kept on edited lines, 102 dropped, every one printed and read); HEURISTIC rows
+41 -> 35 (the counts moved with their stops). What stays and why: docs/AGENDA_AUDIT.md's 75.2 recount, stage (b) (the clock's and the evasions' counters are keyed on their variable
+names; the walk's defect tests are stage (d)'s defect words; the forced words are stage (c)'s).
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_plan75 6/0/0/0 0.4 s; test_plan74 13/0/0/0 3.2 s; test_plan73 9/0/0/0 13.6 s; test_agenda 26/0/0/0
+93.0 s; test_regress 87/0/1/0 353.2 s; test_tiers 14/0/0/0 30.3 s; test_offbuilt64 15/0/1/0 94.7 s; test_fact_store 21/0/0/0 23.1 s; test_game 3/0/0/0 0.3 s; test_binder_rust 31/0/0/0
+0.7 s; test_plan62 28/0/0/0 7.8 s; test_duty63 12/0/0/0 0.4 s; test_plan72_9 7/0/0/0 3.5 s; test_plan72_10 4/0/0/0 2.2 s; test_discovery_vocabulary 23/0/0/0 17.2 s; test_cost61
+13/0/0/0 3.0 s. test_plan75 gains: the stops are store entries with their shapes; a patched shape moves the stop (the budget per unit 8 -> 3, the tier-3 clock 4 -> 2, a win's power at
+depth 2 off -> on). OBS lemma store validate: entries 108, problems 0.

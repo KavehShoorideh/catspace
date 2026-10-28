@@ -469,7 +469,7 @@ def test_52_13_0agl8_is_not_decided_nxg2_at_four_times_the_fuse(monkeypatch):
         orig(self, *a, **k)
         self.budget *= 4
         if self.ctx is not None and k.get("ctx") is None and self.chase_depth == 0:
-            self.ctx.left = self.budget * AG.FUSE
+            self.ctx.left = self.budget * self.stops["chase fuse"]["fuse"]      # (plan 75.2 (b): the fuse is read from the chase fuse entry)
     monkeypatch.setattr(AG.Agenda, "__init__", init)
     ag = AG.Agenda(state_of(AGL8, "b"))
     res = ag._chase_route(chess.Move.from_uci("f4g2"))        # Nxg2 itself, followed to its end

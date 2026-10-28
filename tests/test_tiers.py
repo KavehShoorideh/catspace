@@ -146,7 +146,7 @@ def test_tier_is_a_setting_of_the_ctx_not_a_module_flag():
     assert all(a._t(True, 3) for a in ags)                                            # a module flag forces an item on at every tier
     base = ags[0].ctx.left
     assert [a.ctx.left for a in ags] == [base, base * 2, base * 4, base * 8]          # tier k's count budget = the base fuse x 2^k
-    assert base == ags[0].budget * AG.FUSE
+    assert base == ags[0].budget * ags[0].stops["chase fuse"]["fuse"]                  # (plan 75.2 (b): the fuse is read from the chase fuse entry)
 
 
 def test_tier_one_lifts_the_cut_and_tier_two_adds_the_mate_in_two_threat():

@@ -2005,3 +2005,30 @@ king move is no checking placement (stage (c): the royal unit). A1p (1) -- a far
 promotions. A1f (2) -- the fork question kind (no GOAL entry: the store's "fork" is a FORCING word). A8 (1) / A1d (1) -- the draw: a repetition when behind is a draw claim (the
 rung now reads the ladder; the draw is no GOAL entry: the kernel has no repetition rule, a finding).
 
+### Stage (b): the stops from the store
+
+```
+OBS audit rows total 1621: LOGIC 1217, RULE 105, NAME 23, CHESS FACT 241, HEURISTIC 35
+OBS audit rows agenda.py 1587: LOGIC 1191, RULE 103, NAME 21, CHESS FACT 239, HEURISTIC 33
+OBS audit rows ponder.py 34: LOGIC 26, RULE 2, NAME 2, CHESS FACT 2, HEURISTIC 2
+OBS audit hand readings carried onto an edited line (the family's fact stays there): 34
+OBS audit hand readings dropped (their line changed since 65024fbf): 102
+OBS audit recount CHESS FACT rows 255 -> 241
+OBS audit recount fact B3: rows 7 -> 4
+OBS audit recount fact B4: rows 3 -> 0
+OBS audit recount fact B5: rows 12 -> 9
+OBS audit recount fact B6: rows 10 -> 5
+```
+
+What left agenda.py (into STOP entries' params, read through `lemma_store.stops_for(context)` at run time): the question budget's shape (`budget`: 8 per unit, 1 per
+capture), the chase fuse's counts (`chase fuse`: 10, depth 30), the chase clock's tier cap (`the chase clock`: from tier 3 at most 4; the module's CHASE_CLOCK, the run's setting a
+harness may change, starts from its `moves`), the second check (`follow` 1), tempo arithmetic's goals, its freshened goals, its least allowance and a move's spend, the judge's price
+cap and timed units (`cut by the judge`), the walk of checks' depths per goal (new entry `the walk of checks`: RULE2_FROM) and the follow list's depths, deep-win switch depth, power,
+fix-route goals, goal words and checking-fix depth (new entry `the chase's follow list`); the share rule's chased goals read the GOAL entries' `chase`; the clock's irreversible event is
+the kernel's (`Board.is_zeroing`). Six HEURISTIC rows left with their counts (41 -> 35).
+
+What stays, and why: B1 (6) and B2 (4) -- the clock's and the evasions' counters (`since_capture`, `evaded`) are the machinery's own variables, the classifier keys on their names; the
+clock's reset rule (an irreversible event not bad for us, or our pawn move) is still written in `_since_after`. B3 (4) -- the bigger-goal restart and the recapture's free level. B5 (9)
+-- the walk's defect tests (which check fixes which defect kind: stage (d)'s defect words). B6 (5) -- the forced words (stage (c)) and the inner levels' gates. B7, B8 -- the judge's
+forced words (stage (c)) and still-forcing (Ideas.Forcing.stillForcing: the definition, not a shape).
+

@@ -29,17 +29,24 @@ CARRYMAP = json.load(open(_CMP)) if os.path.exists(_CMP) else {}      # (recount
 DROPPED, CARRIED = [], []
 
 
-def _m(file, line, what="", rx="EXTRA"):
+def _mr(file, line, what="", rx="EXTRA"):
+    """-> (the line now, the atom regex to apply there): the regex as written, or the one recount.py's KEEP_ON_EDIT gives for an edited line; (None, None): dropped."""
     if LINEMAP is None:
-        return line
+        return line, rx
     got = LINEMAP.get(file, {}).get(str(line))
     if got is None:
         c = CARRYMAP.get(file, {}).get(str(line))
-        if c is not None and rx in c["rx"]:
-            CARRIED.append(dict(file=file, line=line, to=c["to"], what=what))
-            return c["to"]
+        for item in (c["rx"] if c is not None else ()):
+            if item == rx or (isinstance(item, list) and item[0] == rx):
+                CARRIED.append(dict(file=file, line=line, to=c["to"], what=what))
+                return c["to"], (item[1] if isinstance(item, list) else rx)
         DROPPED.append(dict(file=file, line=line, what=what))
-    return got
+        return None, None
+    return got, rx
+
+
+def _m(file, line, what="", rx="EXTRA"):
+    return _mr(file, line, what, rx)[0]
 
 # ---- extra items the AST passes do not see as atoms (literal 1 as the unit of material, formulas outside a test, dict labels): read off the source by hand
 EXTRA = [
@@ -76,7 +83,7 @@ O = {}
 
 
 def ov(line, rx, cls, fact=None, file="agenda.py"):
-    line = _m(file, line, f"ov {rx!r} -> {cls} {fact}", rx)
+    line, rx = _mr(file, line, f"ov {rx!r} -> {cls} {fact}", rx)
     if line is None:
         return
     O.setdefault((file, line), []).append((re.compile(rx) if rx else None, cls, fact))

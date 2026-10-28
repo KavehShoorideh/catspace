@@ -21,5 +21,10 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/agenda.py:_ask_loop"
  ],
- "note": "The count budget (eight questions per piece of ours): past it the open root questions become GAPs (STOP (c)), a count read as tempo."
+ "note": "The count budget (eight questions per piece of ours): past it the open root questions become GAPs (STOP (c)), a count read as tempo.",
+ "params": {
+  "context": "root",
+  "per_unit": 8,
+  "per_capture": 1
+ }
 }
