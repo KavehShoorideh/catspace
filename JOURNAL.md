@@ -34331,3 +34331,18 @@ OBS gate engine --only (one file per call; passed / failed / xfailed / errors, w
 13/0/0/0 2.9 s; and for puzzle_apply's readers test_forcing61 13/0/0/0 2.7 s, test_plan65 13/0/0/0 6.2 s, test_plan72_7_step2 13/0/0/0 7.6 s, test_plan72_7_step3 13/0/0/0 38.7 s,
 test_plan73_5b 11/0/0/0 7.4 s. test_plan75 gains: the castling rook from the kernel (both colours); refutes, at_king (against regress.threat_of's kinds), the shape key's order, the
 measure's units and the stopper's move in hand are entry fields, a patched field moves the reading. OBS lemma store validate: entries 108, problems 0.
+
+
+## 2026-10-28 02:26 -- plan 75.2 merged (main 151bdc6d, fast-forward); the gate
+OBS gate engine (main 151bdc6d, 42 files incl. test_plan75): passed 546, failed 0, xfailed 2, errors 0, wall 825.6 s (52.18's non-strict xfail XPASSed this run).
+75.2 (the agent's four journal entries above): CHESS FACT rows 428 -> 255 -> 241 -> 216 -> 210 (scripts/agenda_audit/recount.py; rows keyed on variable names stay counted where the value
+now comes from the store -- no renaming to dodge the count). Guard 0 of 218 on traces, read sets, leaf lists, word lists, provenance lists at every stage; the trace text unchanged. Controls:
+mate stake 100 -> 50 in the store moves 10/10 traces (the agenda READS the store); the shape key's sign flipped moves one DECISION (qCXKp Bb5 -> Qb5: a decision resting on a tie-break).
+Store 108 entries, 0 problems: new kinds GOAL (mate, promotion, win, save) and VALUATION (material: 1/3/3/5/9, unit 1), ONE definition each (game.py, binder.py, regress.py, selfmine.py and
+the agenda read it); STOP params through stops_for(context); FORCING / CLOSING / DEFECT_FIX fields replace the string matching; names.py 22 names, every one with a Lean twin in the index.
+Clocked (one each, directional): W0VFO 10 s Qb7 +3; the loop-2 batch RIGHT 32 / WRONG 6 after (a) and after (d), every decision as before.
+LEFT IN CODE (the agent's list; the next plan's work): the defect kinds compared by name (D1a-D1h), the static leaf, in-check, the need comparisons, the exchange's principal lines, the
+passer words' order, the walk's defect tests, the parry set, the local goal, the forcing order -- "turning code into a defect-to-fix relation or typed question kinds".
+FINDINGS (reported, unchanged): threefold and fifty-move not in Game.terminal (the chase: one repeat = a draw); the root key keeps a pseudo-legal e.p. square the kernel drops; promotion
+built by hand, queen only; the judge's rates read check / capture off SAN; principal lines in Python beside the Rust see; mate in one computed twice; Rust keeps its own worths and mate stake;
+Lean mateGain 100000 vs the engine's 100.
