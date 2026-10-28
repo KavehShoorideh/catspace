@@ -3906,6 +3906,12 @@ for ROOT questions only (the heap replaced; selection as today) -- decisions ide
 depths -- decisions identical, questions not higher; (d) observations as nodes with the promotion rule -- decisions identical on the guard (no promotion fires there unless shown and read).
 NOT IN 74: distribution (the worklist is the seam: AND-OR nodes are independent work; later), new chess words, the Rust port of the loop (72.7's remaining steps), any change to the judge's
 rule or the policy.
+* 74 (a) BUILT 2026-10-27 on branch worktree-agent-a783b98ab9a640248 (journal 2026-10-27 21:40): `discovery/reasoning.py` (new, generic: the test finds no game word) -- the graph beside
+  the fact store (an ANSWER's key is the fact id; the store's keys and listener unchanged; a sibling module because the store signs read sets off the board, and not the Rust Datalog: the
+  questions are Python objects answered in Python); agenda.py wires it (LOGIC only): every question AROSE_FROM its agenda's LINE (the root line, or the route and reply that opened it)
+  and REFINES the chased question; answers from `_file` / `_inner` / `_serve` (SERVES: convergence); the 74.5 lines under the prefix "why: " (per root question, the decision's question
+  edges, a summary), masked by scripts/trace_identity.py into `<id>.why.txt` with the graph's dump. OBS guard 0 of 218 traces / read sets / leaf lists / word lists differ; negative
+  control (provenance mis-attributed): 10 of 10 provenance lists differ, traces identical; audit CHESS FACT rows 428 -> 428.
 
 
 ## 75. THE GENERIC GOAL AND THE SUPPLIED VOCABULARY (Kaveh 2026-10-27 GO "go ahead and do it")

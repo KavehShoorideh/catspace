@@ -27,7 +27,7 @@ for p in pats:
             for cid, fs in files(d).items():
                 hit = False
                 for f in fs:
-                    if f.endswith((".reads.txt", ".leaf.txt")):
+                    if f.endswith((".reads.txt", ".leaf.txt", ".why.txt")):
                         continue
                     for line in open(f, errors="replace"):
                         if rx.search(line):

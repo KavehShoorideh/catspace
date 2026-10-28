@@ -23,6 +23,10 @@ move) are never asked, so a port of them is invisible there. Every snapshot runs
 on the string-hash order (agenda.py iterates a set of goal tuples, `ctx.route_goals`).
 plan 73.2 (the lemma store): and `<id>.words.txt`, THE WORDS OF THE RUN -- every claim lemma, kill reason and GAP reason the root set and every lemma field of the run's
 fact store (a claim's lemma, a kill's reason), distinct and sorted (`lemma_store.harvest`); `compare` counts them apart; `lemma_store validate <dir>` reads them beside the traces.
+plan 74 (a) (the reasoning graph): and `<id>.why.txt`, THE PROVENANCE LIST -- the trace lines of the reasoning graph (plan 74.5: every line whose text, after the tier's
+"[tier k] " label, begins with the graph's prefix "why: ") are MASKED out of `<id>.txt` and written here, followed by the run's whole graph (`reasoning.Graph.dump`: every
+question with why it was asked, every line, answer and observation); `compare` counts them apart, so a restructure that keeps the traces may still be caught moving a
+question's provenance.
 `crosscheck` (risks 4 and 5): over the case set's positions, a sample of the puzzle sets, a seeded random walk from each and a list of hand-made corners (castling,
 promotions, en passant, disambiguation, mates, evasions), `Pos.legal_ucis()` must equal `[m.uci() for m in board.legal_moves]` and `Pos.san(uci)` must equal
 `board.san(move)` for every legal move; every corner that differs is printed as a FINDING.
@@ -40,6 +44,7 @@ import chess
 import analyst_core as AC
 from catspace.incubator.analyst.discovery import lemma_store as LS
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
+from catspace.incubator.analyst.discovery import reasoning as RN
 from catspace.incubator.analyst.discovery.agenda import Agenda
 from catspace.incubator.analyst.discovery.state import State
 
@@ -49,6 +54,8 @@ FENS = {"discovery": ("r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w - - 0 
         "pos2": ("r1bqnr1k/1p1n2p1/p2p2P1/2pPp3/4Pp1b/2N1BP1N/PPP4Q/2KR1B2 w - - 0 1", "w")}
 _SECS = re.compile(r"\b\d+\.\d+ s\b|\(\d+\.\d+ s\)|seconds \d+\.\d+|\d+\.\d+ s needed|\d+\.\d+ s for it|\d+\.\d+ s left|\d+\.\d+ms")
 READS = ".reads.txt"
+WHY = ".why.txt"                                       # plan 74 (a): the provenance list (the masked "why: " lines, then the graph's dump)
+_WHY = re.compile(r"^\s*(\[[^\]]*\] )*" + re.escape(RN.PREFIX))
 
 # the cross-check's sample: the puzzle sets of the plans (the guard's own sets, the rest of the rand sets, the dev set, an equality set and an endgame set) ...
 SAMPLE_SETS = ("dev_20",) + tuple(f"rand{i}_10" for i in range(1, 22)) + ("rand22_5", "rand23_5", "rand61_40_equality", "rand62_30_rookEndgame_pawnEndgame_any")
@@ -119,11 +126,12 @@ def _leaf_hook(out: list):
     return orig
 
 
-def _run(fen: str, us: str, leaf: "list | None" = None, tier: int = 0, words: "list | None" = None) -> tuple:
+def _run(fen: str, us: str, leaf: "list | None" = None, tier: int = 0, words: "list | None" = None, why: "list | None" = None) -> tuple:
     """-> (the trace with the DECISION line, the read sets); `leaf` (a list) receives the leaf's verdicts (`_leaf_hook`). `tier` (plan 72.7 step 3): the root's widening
     tier at the count budget (`Agenda(tier=k)`: the context's tier -- 2 opens the mate-in-two threats, 1 the delayed threat and no safe move, 3 the chain items -- and a
     count fuse of 2^k times tier 0's; no clock, so deterministic like tier 0). At tier 0 (the default) the words of the wider tiers are never asked. `words` (a list;
-    plan 73.2) receives the run's words, (slot, string), from the agenda and its fact store (`lemma_store.harvest`)."""
+    plan 73.2) receives the run's words, (slot, string), from the agenda and its fact store (`lemma_store.harvest`). `why` (a list; plan 74 (a)) receives the dump of the
+    run's reasoning graph."""
     orig = _leaf_hook(leaf) if leaf is not None else None
     try:
         ag = Agenda(State(fen=fen, us=us, pieces=[]), tier=tier)
@@ -135,7 +143,15 @@ def _run(fen: str, us: str, leaf: "list | None" = None, tier: int = 0, words: "l
     trace = ag.trace() + f"\nDECISION {d.what if d else None} {d.value if d else None} {d.lemma if d else None} proved={d.proved if d else None}\n"
     if words is not None:
         words += LS.harvest(ag)
+    if why is not None and ag.ctx is not None:
+        why += ag.ctx.graph.dump()
     return trace, _reads(ag)
+
+
+def mask_why(trace: str) -> tuple:
+    """plan 74 (a): -> (the trace without the reasoning graph's lines, those lines in order)."""
+    lines = trace.split("\n")
+    return "\n".join(x for x in lines if not _WHY.match(x)), [x for x in lines if _WHY.match(x)]
 
 
 def _trace(fen: str, us: str) -> str:
@@ -178,13 +194,16 @@ def snapshot(out: str, sets: str = "ten", tier: int = 0) -> None:
     for pid, fen, us in _cases(sets):
         leaf: list = []
         words: list = []
-        trace, reads = _run(fen, us, leaf, tier, words)
+        graph: list = []
+        trace, reads = _run(fen, us, leaf, tier, words, graph)
+        trace, whys = mask_why(trace)
         open(os.path.join(out, pid + ".txt"), "w").write(_SECS.sub("<t>", trace))
+        open(os.path.join(out, pid + WHY), "w").write(_SECS.sub("<t>", "\n".join(whys + graph)) + "\n")
         open(os.path.join(out, pid + READS), "w").write(reads)
         open(os.path.join(out, pid + LEAF), "w").write("\n".join(leaf) + "\n")
         open(os.path.join(out, pid + LS.SNAPSHOT_WORDS), "w").write("".join(f"{slot}\t{s}\n" for slot, s in sorted(set(words))))
         n += 1
-    print(f"OBS trace identity: {n} traces, {n} read sets, {n} leaf verdict lists and {n} word lists written to {out}")
+    print(f"OBS trace identity: {n} traces, {n} read sets, {n} leaf verdict lists, {n} word lists and {n} provenance lists written to {out}")
     from catspace.incubator.analyst.discovery import graph as G
     from catspace.incubator.analyst.discovery import rboard as RB
     if G.BRIDGE_CHECK:                                   # plan 72.7 step 1: CATSPACE_BRIDGE_CHECK=1 -- every node's handle was compared with its board (an assertion stops the run on a split)
@@ -193,10 +212,10 @@ def snapshot(out: str, sets: str = "ten", tier: int = 0) -> None:
 
 
 def compare(before: str, after: str) -> int:
-    bad = {"trace": 0, "reads": 0, "leaf": 0, "words": 0}
-    seen = {"trace": 0, "reads": 0, "leaf": 0, "words": 0}
+    bad = {"trace": 0, "reads": 0, "leaf": 0, "words": 0, "why": 0}
+    seen = {"trace": 0, "reads": 0, "leaf": 0, "words": 0, "why": 0}
     for f in sorted(os.listdir(before)):
-        kind = "reads" if f.endswith(READS) else "leaf" if f.endswith(LEAF) else "words" if f.endswith(LS.SNAPSHOT_WORDS) else "trace"
+        kind = "reads" if f.endswith(READS) else "leaf" if f.endswith(LEAF) else "words" if f.endswith(LS.SNAPSHOT_WORDS) else "why" if f.endswith(WHY) else "trace"
         seen[kind] += 1
         a = os.path.join(after, f)
         if not os.path.exists(a):
@@ -215,7 +234,9 @@ def compare(before: str, after: str) -> int:
         print(f"OBS trace identity: {bad['leaf']} of {seen['leaf']} leaf verdict lists differ")
     if seen["words"]:
         print(f"OBS trace identity: {bad['words']} of {seen['words']} word lists differ")
-    return 1 if bad["trace"] or bad["reads"] or bad["leaf"] or bad["words"] else 0
+    if seen["why"]:
+        print(f"OBS trace identity: {bad['why']} of {seen['why']} provenance lists differ")
+    return 1 if bad["trace"] or bad["reads"] or bad["leaf"] or bad["words"] or bad["why"] else 0
 
 
 # ---------------------------------------------------------------------------------------------------------------- plan 72.7 step 0: the cross-checks (risks 4, 5)

@@ -562,7 +562,7 @@ SNAPSHOT_WORDS = ".words.txt"       # the trace guard's file of a run's words be
 
 
 def _snapshot_texts(d: Path) -> list:
-    return [p for p in sorted(Path(d).glob("*.txt")) if not p.name.endswith((".reads.txt", ".leaf.txt", SNAPSHOT_WORDS))]
+    return [p for p in sorted(Path(d).glob("*.txt")) if not p.name.endswith((".reads.txt", ".leaf.txt", ".why.txt", SNAPSHOT_WORDS))]      # (plan 74 (a): the provenance list is no trace)
 
 
 def _snapshot_words(d: Path) -> list:

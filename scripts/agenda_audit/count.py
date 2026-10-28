@@ -24,7 +24,7 @@ for tier in ("t0", "t2"):
     for d in (f"ten_{tier}", f"wide_{tier}"):
         for f in glob.glob(os.path.join(SNAP, d, "*.txt")):
             b = os.path.basename(f)
-            if b.endswith((".reads.txt", ".leaf.txt")):
+            if b.endswith((".reads.txt", ".leaf.txt", ".why.txt")):
                 continue
             cid = b.split(".")[0]
             cases.setdefault((tier, cid), []).append(open(f, errors="replace").read().splitlines())

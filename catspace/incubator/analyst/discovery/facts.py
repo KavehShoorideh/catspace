@@ -282,6 +282,20 @@ class FactStore:
             out.append(f"... and {total - len(seen)} more facts below")
         return out
 
+    def graph_ids(self, fid: int, limit: int = 60) -> list:
+        """plan 74.5: the ids of the facts `graph_lines` prints, in its order (each once, at most `limit`)."""
+        out, seen = [], set()
+
+        def walk(i: int):
+            if i in seen or len(seen) >= limit:
+                return
+            seen.add(i)
+            out.append(i)
+            for j in self.facts[i].just:
+                walk(j)
+        walk(fid)
+        return out
+
     def _count(self, fid: int) -> int:
         seen, todo = set(), [fid]
         while todo:

@@ -34091,3 +34091,30 @@ top by guard cases: the goal kind mate (100/109), the stake of mate 100, the goa
 rule, the mate defect kinds. Findings: rules re-implemented in Python (castling squares, repetition as one repeat on a four-field key, the fifty-move rule as the chase clock, promotion to a
 queen only, check/capture read off SAN); material in Game.measure and BaseWords.worth; names used as knowledge (lemma prefixes decide portability; FORCED_WORDS matched as strings).
 Plan 74 (the reasoning graph, with 74.2b cheapest-keep-first) launched as one Opus agent; 75.2 follows it.
+
+## 2026-10-27 21:40 -- plan 74 (a) THE GRAPH STORE WITH PROVENANCE (branch worktree-agent-a783b98ab9a640248; behaviour identical)
+`discovery/reasoning.py` (new, generic: position keys, read sets and steps are opaque; the generic test finds no game word in it): nodes QUESTION / LINE / ANSWER / OBSERVATION, edges
+AROSE_FROM / SERVES / READS / REFINES. An ANSWER's key is the fact store's fact id: the store's keys, signatures and listener are unchanged. WHY A SIBLING MODULE AND NOT THE STORE OR
+THE RUST DATALOG (74.1 left it to the code): the store signs a read set by reading the board (`facts.board_cell`) while questions and lines read nothing; the Rust Datalog (`ascent` in
+rules.rs) and the event kernel (agenda.rs, plan 40) hold string premise keys of their own, and the agenda's questions are Python objects built and answered in Python, so a Rust graph
+crosses the boundary at every node with nothing read there -- it fits only by moving the loop (72.7's remaining steps, not 74).
+WIRING (agenda.py, LOGIC only): every question an agenda pushes (the root's, an inner agenda's, the questions a 72.10 local agenda queues outside its frame) is a node AROSE_FROM the agenda's
+LINE -- the root line of the position, or below it the route and reply that opened the inner agenda (`ctx.line`'s last step, named as the trace names them) -- and REFINES the question
+that line's route chases; answers from `_file` (SERVES its question, READS its read-set key), `_inner` (the agenda's answer at the line's position) and `_serve` (a SERVES edge from the
+answer derived before: convergence); a line is open / served (a memo hit: two lines meet at one answer) / cycle / cut / pending (a dead goal's queued questions opened) / closed.
+THE TRACE (74.5): per root question "why: Q3 asked: a root of the position at depth 0" / "why: Q5 served: the answer #12 of <line>, its reads agreeing here (...)"; the decision's
+justification graph gains its question edges, e.g. W0VFO: "why:   #73 answers Q5 save our Q on b7 (it hangs) -- asked: arose from Qb7 Qxa7 at depth 1 (refines Q1 mate on h7 (Q e4->h7,
+their king on g8))"; one summary line. THE GUARD: scripts/trace_identity.py masks every line whose text (after a "[tier k] " label) begins with "why: " out of <id>.txt into <id>.why.txt,
+followed by the graph's dump (every node with its provenance); `compare` counts "provenance lists" apart; lemma_store and the audit's count.py / sigtest.py skip the new file.
+OBS trace identity (base = parent 813fadc8, after = this stage, the count budget, PYTHONHASHSEED=0): ten tier 0: 0 of 10 traces, 0 of 10 read sets, 0 of 10 leaf verdict lists, 0 of 10
+word lists differ; ten tier 2: 0 / 0 / 0 / 0 of 10; wide tier 0: 0 / 0 / 0 / 0 of 99; wide tier 2: 0 / 0 / 0 / 0 of 99 (the masked "why: " lines are the only new lines).
+OBS measure (questions asked, root + inner; the count when the root first held a PROVED claim that keeps the status): ten t0 11806 before / 11806 after, keeping move in 5 of 10, summed
+count to it 3059 / 3059; wide t0 58321 / 58321, keeping move in 66 of 99, summed count 16276 / 16276 (per case identical, as the traces are).
+OBS W0VFO graph (count budget): 566 question(s) (asked 325, served 66, deferred 151, other 24; 132 queued then opened), 129 line(s) (5 met a known answer, 33 waited on queued questions,
+83 cut), 427 answer(s); converged: 66 question(s) served the answer another question derived.
+NEGATIVE CONTROL (a deliberately wrong build by a monkeypatch: an inner agenda's questions said to arise from the PARENT's line): ten tier 0 against this stage: 0 of 10 traces, read sets,
+leaf lists and word lists differ; 10 of 10 provenance lists differ -- the guard fires on provenance.
+OBS audit recount (scripts/agenda_audit, the classifier's line overrides remapped through a diff of agenda.py against the parent): before: rows total 1719 (LOGIC 1123, RULE 104, NAME 23,
+CHESS FACT 428, HEURISTIC 41), agenda.py CHESS FACT 423; after: rows total 1746 (LOGIC 1150, RULE 104, NAME 23, CHESS FACT 428, HEURISTIC 41), agenda.py CHESS FACT 423. No CHESS FACT row
+added.
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_plan74 4/0/0/0 1.1 s; test_agenda 26/0/0/0 105.7 s; test_tiers 14/0/0/0 34.5 s; test_offbuilt64 15/0/1/0 96.2 s; test_fact_store 21/0/0/0 25.9 s; test_plan68 4/0/0/0 14.6 s; test_plan69 3/0/0/0 15.0 s; test_plan70 3/0/1/0 4.6 s; test_plan72_9 7/0/0/0 4.5 s; test_plan72_10 4/0/0/0 2.5 s; test_plan73 9/0/0/0 14.0 s; test_plan73_5b 11/0/0/0 8.3 s; test_cost61 13/0/0/0 4.0 s; test_plan66 16/0/0/0 4.2 s; test_plan65 13/0/0/0 7.2 s; test_plan72_7 16/0/0/0 1.5 s; test_plan72_7_step2 13/0/0/0 8.3 s; test_plan72_7_step3 13/0/0/0 43.2 s; test_regress 87/0/1/0 388.6 s. Total 19 files: passed 292, failed 0, xfailed 3, errors 0.

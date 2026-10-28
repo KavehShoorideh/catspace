@@ -52,6 +52,7 @@ from catspace.incubator.analyst.discovery import rboard as RB
 from catspace.incubator.analyst.discovery import landing as LD
 from catspace.incubator.analyst.discovery import lemma_store as LS      # plan 73.4: every claim lemma, kill reason and GAP reason passes LS.name (returns it unchanged; counts uses and uncatalogued words)
 from catspace.incubator.analyst.discovery import region as RG
+from catspace.incubator.analyst.discovery import reasoning as RN       # plan 74.1: THE REASONING GRAPH (questions, lines, answers, observations; provenance), generic over position keys
 from catspace.incubator.analyst.discovery import race as RC
 from catspace.incubator.analyst.discovery import plan67 as PL
 from catspace.incubator.analyst.discovery import table as TB
@@ -303,6 +304,9 @@ class ChaseCtx:
         self.route_goals: dict = {}               # ... (position, route uci) -> the goal keys the route was read under (its memo is per goal)
         self.local_keys: dict = {}                # ... position key -> the memo keys of the local answers asked there (another goal's ask may be served one: `_inner`)
         self.technique: dict = {}                 # plan 73.5b (4): technique entry name -> the strategy in hand {target, expect}: carried to the next root (the target holds until the measure drops)
+        self.graph = RN.Graph()                   # plan 74.1: THE REASONING GRAPH of the run (its answers are this store's facts: it travels with them, `carry`)
+        self.next_line: "int | None" = None       # ... the LINE node the next inner agenda is opened on (set by `_inner` / `_refuter_fix`, taken by the agenda's constructor)
+        self.next_refines: "int | None" = None    # ... and the question node its route chases (the REFINES edge of its questions)
 
 
     def carry(self) -> "ChaseCtx":
@@ -313,6 +317,7 @@ class ChaseCtx:
         c.their_facts, c.gap_facts = self.their_facts, self.gap_facts
         c.route_goals, c.local_keys = self.route_goals, self.local_keys      # (72.10: the per-goal memos' indexes travel with the memos)
         c.technique = self.technique                                          # (73.5b: the technique's strategy in hand)
+        c.graph = self.graph                                                  # (74.1: the reasoning graph travels with the store whose facts are its answers)
         return c
 
     def out_of_time(self) -> bool:
@@ -437,6 +442,12 @@ class Agenda:
         self.frame = self.ctx.route_depth if self.ctx is not None else 0       # 52.21 (3): the route (its depth) this agenda was opened to read the reply of
         self.late = self.ctx is not None and self.ctx.deadline is not None and time.monotonic() >= self.ctx.deadline       # ... opened after the deadline (by the route in hand): it reads its roots; one opened before finishes its current question only
         self._tech: "tuple | None" = None                       # plan 73.5b (4): (the technique question, its claim) -- an UNPROVED claim kept apart from `best` (the decision consults it)
+        self._gline, self._gref = None, None                    # plan 74.1: this agenda's LINE node in the reasoning graph (the root line of its position, or the line the chase opened it on) and the
+        if self.ctx is not None:                                # question its line's route chases (the REFINES edge of every question it asks)
+            g = self.ctx.graph
+            self._gline = self.ctx.next_line if self.ctx.next_line is not None else g.line(None, pk=self.pk).id
+            self._gref = self.ctx.next_refines
+            self.ctx.next_line = self.ctx.next_refines = None
         self._roots()
         if SURVEY and self._root:
             self.lines.extend(R.survey_lines(self.board, self.me))
@@ -445,6 +456,8 @@ class Agenda:
             self._skeleton_goals()
         for i, q in enumerate(self.all, 1):                      # numbered in the order they are asked
             q.id = i
+            if self.ctx is not None:
+                self._g_node(q).label = f"Q{i}"                  # plan 74.1: its node in the reasoning graph (the table's and the technique's questions were filed straight into `all`)
         if getattr(self, "_tq", None):
             self._tq[1].qid = self._tq[0].id
         if self._tech is not None:
@@ -493,12 +506,78 @@ class Agenda:
             cls = self._local_class(q)
             if cls is None:                                      # plan 72.10: not one of the three questions -- it waits; asked only if the goal is dead here (the full agenda)
                 self.local["deferred"].append(q)
+                self._g_node(q, "deferred")                      # plan 74.1: a node with its provenance (arose from this line, outside its frame: queued, not asked)
                 return q
             self.local["cls"][id(q)] = cls
+        if self.ctx is not None:
+            self._g_node(q)                                      # plan 74.1: the question's node, with why it was asked (the line it arose from, the question that line's route chases)
         self.all.append(q)
         self._seq += 1
         heapq.heappush(self.heap, (-q.stake, -self._recall_score(q)[0], q.depth, self._seq, q))
         return q
+
+    # ------------------------------------------------------------------------------------------------------------ plan 74.1 / 74.5: the reasoning graph
+
+    def _g_node(self, q: R.Question, state: str = "open") -> "RN.Node":
+        """plan 74.1: the QUESTION node of `q`, made on first sight with its PROVENANCE -- AROSE_FROM this agenda's line (the root line of the position, or the route and reply the
+        chase opened it on), REFINES the question that line's route chases -- its key (`regress.question_key`), stake, depth and frame (a local agenda's carried frame)."""
+        g = self.ctx.graph
+        nid = getattr(q, "_gn", None)
+        if nid is not None:
+            return g.nodes[nid]
+        n = g.question(q.text, R.question_key(q), q.stake, self.chase_depth, pk=self.pk, frame=self.local["frame"] if self.local is not None else frozenset(),
+                       arose=self._gline, refines=self._gref, state=state)
+        q._gn = n.id
+        return n
+
+    def _g_why(self, q: R.Question, state: "str | None" = None, how: str = "") -> None:
+        """plan 74.5: the question is settled in the graph (asked, served, carried, inherited, waits, skipped) and, at the root, the trace says why: 'why: Q3 asked: a root of the
+        position at depth 0' / 'why: Q5 served: the answer #12 of <line>, its reads agreeing here ...'. The prefix is the guard's mask (scripts/trace_identity.py)."""
+        if self.ctx is None:
+            return
+        g = self.ctx.graph
+        n = self._g_node(q)
+        if state == "asked":
+            g.asked(n.id)
+        elif state is not None:
+            n.state = state
+            n.data["how"] = how
+        if self.chase_depth == 0:
+            self.lines.append(f"{RN.PREFIX}Q{q.id} {g.why(n.id)}")
+
+    def _g_line(self, pk: str, state: str = "open") -> "RN.Node":
+        """plan 74.1: the LINE node of the position the chase reaches now -- this agenda's line, then the route and the reply being read (`ctx.line`'s last step: our move, their
+        reply), named as the trace names them -- with the question that route chases."""
+        st = self.ctx.line[-1] if self.ctx.line else None
+        names = (self.pos.san(self._route_move.uci()), self._reply_san) if self._route_move is not None and self._reply_san else ()
+        n = self.ctx.graph.line(self._gline, steps=(st[1], st[2]) if st is not None else (), names=names, pk=pk)
+        n.state = state
+        n.data["refines"] = self._g_chased()
+        return n
+
+    def _g_chased(self) -> "int | None":
+        """plan 74.1: the node of the question whose route is being read (the chase's question, else the question being asked)."""
+        q = self._chase_q if self._chase_q is not None else self._cur
+        return getattr(q, "_gn", None) if q is not None else None
+
+    def _g_question_edges(self, fid: int) -> list:
+        """plan 74.5: the QUESTION EDGES of a justification graph: for each fact of it (the store's walk order), the question that derived it and why that question was asked -- or,
+        for an inner agenda's answer, the line it answers and the question that line's route chases."""
+        g = self.ctx.graph
+        out = []
+        for i in self.ctx.facts.graph_ids(fid):
+            a = g.nodes.get(g.answer_of.get(i, -1))
+            if a is None:
+                continue
+            if a.data.get("line") is not None:
+                ln = g.nodes[a.data["line"]]
+                ch = g.nodes.get(ln.data.get("refines"))
+                out.append(f"{RN.PREFIX}  #{i} answers the line {g.line_name(ln)}" + (f" (the chase of {ch.label or 'N' + str(ch.id)} {ch.text})" if ch is not None else ""))
+                continue
+            o = g.origin(a.id)
+            if o is not None:
+                out.append(f"{RN.PREFIX}  #{i} answers {o.label or 'N' + str(o.id)} {o.text} -- {g.why(o.id)}")
+        return out
 
     def _recall_score(self, q: R.Question) -> tuple:
         """52.9: (summed similarity of the recalled records whose goal kind is this question's goal kind, the best such record or None)."""
@@ -1619,18 +1698,25 @@ class Agenda:
             if DEFER and self._root and self.chase_depth == 0 and self.ctx is not None and not self.ctx.pool and self.ctx.need is not None and self.ctx.need > 0 and q.goal != "save" and q.stake < self.ctx.need:
                 self.ctx.deferred_qs.append(q)                     # plan 68: a claim below the need keeps no status (Ideas.Forcing.irrelevant_keeps_nothing): asked after the tiers' relevant questions
                 self.lines.append(f"deferred: Q{q.id} {q.text} (stake {q.stake} < the status's need {self.ctx.need}): asked after the tiers' relevant questions")
+                self._g_why(q, "waits", f"its stake {q.stake} is below the status's need {self.ctx.need}: asked after the tiers' relevant questions")
                 continue
             self.order.append(q)                                   # plan 53 (1): the order asked (the features are read at log time: the root board does not change while its agenda runs)
             if self.ctx is not None and self.ctx.resume_set is not None and self.chase_depth == 0 and self._root and self._carry_key(q) not in self.ctx.resume_set:
                 if self.ctx.carry_q.get(self._carry_key(q)) is not None:      # plan 66.4: a resume pass reads only the chain-stopped routes; every other root question keeps its carried claim
                     self._carry_question(q, settle=True)
+                    self._g_why(q, "carried", "the proved claim of an earlier pass, not resumed")
+                else:
+                    self._g_why(q, "skipped", "a resume pass reads only the chain-stopped routes")
                 continue
             if self.ctx is not None and self.ctx.carry_q and self.chase_depth == 0 and self._root and self._carry_question(q):
+                self._g_why(q, "carried", "the proved claim of an earlier pass")
                 continue
             r0 = self._routes_read
             if self._inherit(q):
+                self._g_why(q)                                     # plan 74.5: served (the store's answer: `_serve`) or inherited (the parent's settled question)
                 self._local_seen(q, r0)
                 continue
+            self._g_why(q, "asked")                                # plan 74.5: asked, and why (the line it arose from)
             if self.chase_depth:                                 # an inner agenda pays the shared budget as it asks (a chain of checks meets it on the way down)
                 self.ctx.left -= 1
                 before = self.asked
@@ -1739,6 +1825,8 @@ class Agenda:
             self.lines.append(f"Q{q.id} {q.text}: inherited: nothing changed for {what} ({hit['why']})")
         self.inherited += 1
         self.ctx.inherited += 1
+        n = self._g_node(q)                                      # plan 74.1: the parent's settled question, nothing its reads touch changed
+        n.state, n.data["how"] = "inherited", f"nothing changed for {what}"
         return True
 
     def _can_chase(self, q: R.Question) -> bool:
@@ -1797,6 +1885,7 @@ class Agenda:
         self.premises.append(f.id)
         self.inherited += 1
         self.ctx.inherited += 1
+        self.ctx.graph.serve(self._g_node(q).id, f.id, text=f.text, kind=f.kind, value=f.value)      # plan 74.1: SERVES -- the answer derived before (under its own line) serves this question: convergence
         return True
 
     def _file(self, q: R.Question, new_claims: list) -> None:
@@ -1837,6 +1926,8 @@ class Agenda:
         self.premises.append(f.id)
         if claim is not None:
             self.claim_fid[id(claim)] = f.id
+        self.ctx.graph.answer(f.id, text, kind, value, reads_key=("store", f.key, f.turn, f.reads, f.occ, f.sig) if f.portable else ("position", f.key, self.pk),
+                              question=self._g_node(q).id, frame=f.reads)      # plan 74.1: the ANSWER (the fact), SERVES its question, READS its read-set key
 
     def _resumed_line(self, r: R.Route, res: dict) -> None:
         """plan 66.2: the trace of a ROOT route that served replies from an earlier tier: 'resumed Rg8+: 3 of 5 replies carried from tier 0, 2 read'."""
@@ -2076,6 +2167,9 @@ class Agenda:
             self.all.append(q)
             self._seq += 1
             heapq.heappush(self.heap, (-q.stake, -self._recall_score(q)[0], q.depth, self._seq, q))
+            self.ctx.graph.activate(self._g_node(q).id, f"Q{q.id}")      # plan 74.1: the queued question is opened (the goal is dead here) ...
+        if L["deferred"]:                                        # ... and the line waits on them: PENDING until they are answered or cut
+            self.ctx.graph.mark_line(self._gline, "pending", on=[q._gn for q in L["deferred"]])
         if self._threats_done and getattr(self, "_threats_local", False):
             self._threats_done = False                           # their threats are asked again with their WHOLE agenda (the local one read the diff's units only)
         return bool(L["deferred"]) or not self._threats_done
@@ -2728,8 +2822,10 @@ class Agenda:
                     break
         if hit is not None and hit["need"] <= need:
             self._touch(hit.get("fact"))
+            self._g_line(pk, "served").data["served_by"] = hit.get("fact")      # plan 74.1: this line reaches a position whose answer is known: two lines meet at one answer
             return hit
         if pk in ctx.active or (CYCLE and (pk == ctx.root_pk or pk in ctx.history)):
+            self._g_line(pk, "cycle")
             if CYCLE and not wt:
                 cyc = self._cycle_claim(fen, pk, need, pos)
                 if cyc is not None:
@@ -2738,11 +2834,15 @@ class Agenda:
         if ctx.left <= 0 or self.chase_depth >= DEPTH_FUSE or (ctx.out_of_time() and not ctx.finishing(ctx.route_depth)):      # 52.21 (3): only the route in hand opens an agenda past the deadline
             if ctx.left > 0:
                 ctx.depth_cuts += 1
+            self._g_line(pk, "cut")
             return None
         if COST_JUDGE and self._judge_node(fen):                # plan 61 C2: the judge re-asked at this node of the route with the remaining cost of the chain
+            self._g_line(pk, "cut")
             return None
+        ln = self._g_line(pk)                                    # plan 74.1: THE LINE the inner agenda is opened on (its questions arise from it; they refine the question this route chases)
+        ctx.next_line, ctx.next_refines = ln.id, self._g_chased()
         ctx.active.add(pk)
-        ctx.active_label[pk] = f"{self.pos.san(self._route_move.uci())} {self._reply_san}" if self._route_move is not None and self._reply_san else "the line"
+        ctx.active_label[pk] = " ".join(ln.names[-2:]) if self._route_move is not None and self._reply_san else "the line"
         hits0, chain0 = ctx.budget_hits, ctx.chain_hits
         saved = R._ids[0]
         evading = self._chase_q is not None and self._chase_q.goal == "save" and "checkers" in self._chase_q.pattern
@@ -2767,6 +2867,9 @@ class Agenda:
                           under=f"Q{self._cur.id} at depth {self.chase_depth}" if self._cur is not None else f"depth {self.chase_depth}", pk=pk, portable=False)
         out["fact"] = f.id
         self._touch(f.id)
+        a = ctx.graph.answer(f.id, f.text, f.kind, out["value"], reads_key=("position", f.key, pk), question=ln.data.get("refines"), frame=f.reads)      # plan 74.1: the agenda's answer at the line's position
+        a.data["line"] = ln.id
+        ctx.graph.mark_line(ln.id, "cut" if out["cut"] or out["chain"] else "closed")
         if not out["cut"] and not out["chain"]:                 # an answer the budget cut short (or a chain stop, which depends on the chain's state) is not memoised and is never read as "no claim"
             ctx.memo[(pk, wt, keep if wt else 0) + ((stayed,) if stayed is not None else ())] = out
             if stayed is not None:
@@ -3281,6 +3384,9 @@ class Agenda:
         saved = R._ids[0]
         q2 = R.new_question("win", W.base.worth(pc_t), dict(target=tgt), text=f"win their {pc_t.symbol().upper()} on {GAME.loc_name(tgt)}") if pc_t is not None else None
         R._ids[0] = saved
+        ln = ctx.graph.line(self._gline, steps=(r2.move.uci(), rep_uci), names=(r2.san, san_x), pk=_pos_key(c2_rb.fen()))      # plan 74.1: the exchange's line (the refuter taken)
+        ln.data["refines"] = getattr(q, "_gn", None)
+        ctx.next_line, ctx.next_refines = ln.id, ln.data["refines"]
         ag2 = Agenda(State(fen=c2_rb.fen(), us=self.us, pieces=[]), side_depth=0, chase_depth=self.chase_depth + 1, ctx=ctx, min_stake=1, pos=P2x)
         ag2._chase_q = q2
         res3 = ag2._chase_route(r_k.move)
@@ -4901,6 +5007,9 @@ class Agenda:
         if fid is not None:
             out.append(f"justification graph of the decision ({self.best[2].what}):")
             out += ["  " + x for x in self.ctx.facts.graph_lines(fid)]
+            out.append(f"{RN.PREFIX}the question edges of the decision's justification graph (plan 74.5: which question derived each fact, and why it was asked):")
+            out += self._g_question_edges(fid)
+        out.append(self.ctx.graph.summary())                    # plan 74.1: the reasoning graph of the run, counted
         return out
 
     def trace(self) -> str:
