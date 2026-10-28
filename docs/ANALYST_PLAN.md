@@ -3992,6 +3992,44 @@ pool today orders by stake and the policy first (a stake-100 mate question befor
 first. No new number. Acceptance adds: on the ten + wide, the time (or count) to the FIRST proved keeping move, printed before/after, not higher.
 
 
+## 76. THE RULE SPEC AND THE ONTOLOGY: chess becomes an input (Kaveh 2026-10-28 GO "Yes, and go")
+
+Kaveh: "the machinery -- the learning and storing and remembering and applying machinery -- has nothing to do with chess. Chess is a rule set which comes and becomes the base layer of
+every other learned reasoning on top of it." And on risk: "if there is a disagreement somewhere, that's a surprise. We look at that disagreement and say what do we need to add or subtract
+... and keep asking questions logically. That is the essence of the machinery." The complication is accepted for the generality.
+
+THE DESIGN. One physical store, three logical shelves: RULE (the game's rules: given, never derived; in Lean they are DEFINITIONS, not axioms), LEMMA (derived words, plan 73), FACT (per
+position, plan 52.19). Below the rules, THE ONTOLOGY: object kinds (supplied: square, unit, side, move, board, clock; derived: line, ray, blocked, region, reach, ...) and relation kinds
+(at, moves_to, attacks, blocks, on_line, defends, reach_k, ...), each ONE NAME with THREE BINDINGS -- the Rust relation (the Datalog in rules.rs), the Lean definition, the store entry -- and a
+test that the three agree (as names.py's 22 names do today). No fifth vocabulary: the names table grows into the ontology shelf; the term language's atoms ARE the relations.
+
+THE RULE LANGUAGE: GDL (Stanford's Game Description Language: Datalog clauses -- roles, init, legal, next, terminal, goal; GDL-II adds `sees` and `random` for hidden information and chance,
+so fog-of-war chess is expressible later). Chosen because it IS Datalog and the Rust core runs Datalog; Ludii's chess description and its concept list are the cross-reference, not the
+format. SPEC + IMPLEMENTATION: the GDL file is the source of truth and is slow; the fast kernel (shakmaty / python-chess) is an IMPLEMENTATION certified against it by cross-play; the Lean
+definitions are GENERATED from the GDL (Datalog -> inductive definitions), never hand-written per piece again.
+
+THE SURPRISE LOOP (the borrowings of 2026-10-28, each a small mechanism): (1) COUNTEREXAMPLES ARE PERMANENT: every cross-play disagreement, every refuted measure, every puzzle miss is
+SHRUNK to its smallest position and written to a case set the guard and the miner read forever (the surprise store: a shelf of the one store); (2) CHUNK USE COUNTS: `evidence.uses` written
+from the run tally; unused entries are pruned by a stated rule, never by a number; (3) AGE / WEIGHT: the worklist reads the OLDEST open item once per pass so cheapest-first never starves a
+question (one principled rule); later, in the mining stages: (4) LEARNING FROM FAILURES: a measure violated at position P prunes every measure implied by it on P (the term language computes
+implication); (5) INTERESTINGNESS FROM USE: a derived object's worth is how often accepted measures and proofs cite it (evidence.uses as the miner's prior) -- never a hand-written score
+(AM / Eurisko's death).
+
+### 76.0 THE SPIKE (first; one agent; bounded; its result decides 76.1): (a) chess in GDL -- take or write a description (castling, en passant, promotion to every piece; the draws may
+wait); (b) CROSS-PLAY against our kernel on a large random sample of positions (legal moves, terminals, next state): every disagreement printed, shrunk and filed as a surprise; (c) the ROOK
+alone translated from GDL clauses to Lean definitions by code (Datalog -> Lean), and ONE existing lemma about rook attack re-proved from the generated definition (reasoning, no
+enumeration). Report: agreement rate and the surprises; whether the Lean generation is mechanical; the cost. If (c) fails, 76.1 is rewritten before anything else is built.
+### 76.1 THE ONTOLOGY SHELF: object and relation kinds declared once with the three bindings; the Datalog's relations renamed to the shelf's names; the term atoms become the relations; the
+GNN's node kinds read from the shelf (today four, hand-chosen); the names table folded in.
+### 76.2 THE RULE SHELF: the full GDL chess, certified by cross-play with the surprise store; the Lean definitions generated; `Game` reads legality and terminals through the certified kernel
+with the GDL as the oracle in tests; the 75.1 findings of "rules re-implemented in Python" close by construction.
+### 76.3 THE SURPRISE LOOP IN THE ENGINE: (1)-(3) above; the loop's misses, the cross-play's disagreements and the miner's refutations all land in the one surprise shelf.
+### 76.4 MINING OBJECTS: the miner proposes derived relations over the shelf's base relations (line, blocked, region are the test cases: we know what they should be); an accepted relation
+is a node kind; (4) and (5) above; then MATERIAL as the first mined valuation (the hand entry stays beside it); then the second game (checkers: a GDL file, a fast kernel certified by
+cross-play, zero code outside them).
+NOT IN 76: fog-of-war (GDL-II's `sees`; the chase over information sets; the frame as the observation -- recorded as the natural extension), the Rust port of the loop.
+
+
 ### 75.4 THE KERNEL'S RULE GAPS (Kaveh 2026-10-28: "item number two is a no-brainer"; branch worktree-agent-a842a98bf140be46b, one commit per gap, each guard-checked)
 The gaps found by 75.1 (docs/AGENDA_AUDIT.md section 5) and 75.2 (its findings): (1) `Game.terminal` had no threefold-repetition and no fifty-move terminal -- the game context
 (the positions with their counts, the halfmove clock) was carried by the play server (`game_history`) and the chase (`ctx.history`) but the terminal rule did not read it; (2) the
