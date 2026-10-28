@@ -137,6 +137,19 @@ def _pos_key(fen: str) -> str:
     return " ".join(fen.split()[:4])
 
 
+class _LineRecord:
+    """plan 75.4 (1): THE RECORD BEFORE A POSITION OF THE LINE being read (duck-typed `game.Record`: `count`), what `Game.terminal` reads there: the game's positions before
+    the root (`ctx.history`), the root, the line's open positions of ours (`ctx.active`) and of theirs (`ctx.line_theirs`). The identities carry the side to move, so
+    each kind of position only ever meets its own."""
+
+    def __init__(self, ctx: "ChaseCtx"):
+        self.ctx = ctx
+
+    def count(self, key) -> int:
+        c = self.ctx
+        return c.history.count(key) + (key == c.root_pk) + (key in c.active) + c.line_theirs.get(key, 0)
+
+
 class _TierLines(list):
     """plan 59: the trace of a wider tier's root agenda: every line is passed on to the root's trace (and its stream) with the tier named, and kept here."""
 
@@ -286,10 +299,13 @@ class ChaseCtx:
         self.judge_routes = 0                     # ... root routes judged
         self.judged = False                       # ... the last cut of `_inner` was the judge's (the GAP text says so)
         self.c_lines: list = []                   # plan 61 C2 / C4: trace lines of the judge's cuts inside a route and of the cycle claims (the root prints them after the route)
-        self.history: set = set()                 # plan 61 C4: position keys (_pos_key) of the game so far, us to move: a chase position that repeats one is a repetition (the play server may fill it)
+        self.history: GM.Record = GM.Record()     # plan 61 C4 / 75.4 (1): THE GAME RECORD -- how often each position of the game before the root occurred, by the kernel's identity (Game.position_key;
+        #                                           the play server fills it, `play_server.game_history`): a chase position that repeats one is a repetition; three occurrences are the rule's draw
+        self.line_theirs: dict = {}               # plan 75.4 (1): the identities of the positions after our moves on the line being read (their move; ours are `active`), with their counts
         self.root_pk: "str | None" = None         # ... the root agenda's position (the line's first)
         self.active_label: dict = {}              # ... position key -> "the position after <route> <reply>" of the inner agendas on the line
         self.cycles = 0                           # ... cycle claims made
+        self.rule_draws = 0                       # plan 75.4 (1): positions of the line the kernel's rule draws (the third occurrence, the fifty-move clock)
         self.est_routes = 0                       # ... gap routes that closed as an estimated claim
         self.est_why: dict = {}                   # ... and, for the gap routes that did not, the reason (a counter for the OBS line)
         self.overload_opens = 0                   # 2026-10-20: replies not closed by the exchange because our capture left a duty (their claim after it)
@@ -2915,6 +2931,9 @@ class Agenda:
         ctx = self.ctx
         pk = _pos_key(fen)
         wt = their is not None
+        rule = self._rule_draw(fen, pk)                          # plan 75.4 (1): THE KERNEL'S DRAW BY RULE here (the game record and the line before this position): the game ends -- read before
+        if rule is not None:                                     # any memo (an answer read where the rule did not apply serves nothing here) and never memoised (it is the record's, not the position's)
+            return self._rule_draw_answer(fen, rule, need, pos)
         if wt:
             local = None                                         # (a static leaf reads their claims as save roots: its whole agenda, as before)
         gk = local["gk"] if local is not None else None
@@ -3034,6 +3053,9 @@ class Agenda:
     def _chase_route(self, m: chess.Move, promote: bool = False, cheap: bool = False, override: "dict | None" = None) -> dict:
         """52.19: the route of `_chase_route_body`, with the facts it read (inner answers, their agendas) kept on the result (`facts`) for the claim or kill that stands on it, and the listener's
         frame for the reply being read restored on the way out."""
+        k1, drawn = self._route_rule(m)                          # plan 75.4 (1): the position after our move (their move) against the kernel's draws by rule first: a draw ends the route there
+        if drawn is not None:
+            return drawn
         saved_rf, saved_frame = self._rf, self._frame
         self._rf, self._frame = [], []
         self._route_move = m
@@ -3042,6 +3064,7 @@ class Agenda:
         ctx = self.ctx
         ctx.route_depth += 1
         ctx.route_names.append(self.pos.san(m.uci()))                # plan 72.7 step 2a: the name from the handle (Pos.san; the step-0 cross-check)
+        ctx.line_theirs[k1] = ctx.line_theirs.get(k1, 0) + 1     # ... and it is ON THE LINE while its replies are read (the record of the positions below it)
         try:
             res, tok = self._judge_begin(m, promote, cheap, override) if COST_JUDGE else (None, None)
             if res is None:
@@ -3059,6 +3082,9 @@ class Agenda:
                 ctx.finished += 1                                    # 52.21 (3): the route in hand ran to its end (or to a GAP of its own)
             ctx.route_depth -= 1
             ctx.route_names.pop()
+            ctx.line_theirs[k1] -= 1
+            if not ctx.line_theirs[k1]:
+                del ctx.line_theirs[k1]
             self.ctx.facts.restore(self._frame)
             self._rf, self._frame = saved_rf, saved_frame
 
@@ -3258,6 +3284,18 @@ class Agenda:
                 ctx.budget_hits += 1
                 self._log(lkey, uci, "gap", dbal, None, None, res["gap"])
                 break
+            if inn.get("terminal"):                              # plan 75.4 (1): the reply leaves a DRAW BY THE KERNEL'S RULE (the third occurrence, the fifty-move clock): the game ends there -- the reply is worth
+                g = dbal + inn["value"]                          # the draw (the result brought to level), whatever could be read below it
+                if g < target:                                   # (the route must reach what it serves; a promote route too: the draw is its least reply)
+                    res["killed"] = LS.name(f"after {san_r}: {inn['claim'].lemma} ({g:+d})")
+                    self._log(lkey, uci, "killed", dbal, inn["value"], None, res["killed"])
+                    break
+                gains.append(g)
+                res["parts"].append(f"after {san_r}: {inn['claim'].lemma} ({inn['claim'].line}; value {inn['value']}) -> {g}")
+                self._proved_reply(key, uci, g, res["parts"][-1], inn["claim"].lemma)
+                self._log(lkey, uci, "claim", dbal, inn["value"], None, res["parts"][-1])
+                res["lemmas"].append(inn["claim"].lemma)
+                continue
             if promote:                                          # 52.15 (2): the inner agenda asked the promote root (and the mates) again on this reply
                 pc = inn.get("promote")
                 if inn["value"] >= self.end_stake:
@@ -3921,6 +3959,52 @@ class Agenda:
         ctx.c_lines.append(f"    judge: {self.board.san(self._route_move) if self._route_move is not None else '?'} cut after {self._reply_san} (remaining cost {cost}" + (f", best forcing {mv}" if mv else "") + f", {cost * rate:.1f} s needed ({rate_w}), {left:.1f} s left) -> GAP")
         return True
 
+    # ------------------------------------------------------------------------------------------------------------ plan 75.4 (1): the kernel's draws by rule on the line
+
+    def _rule_draw(self, fen: str, pk: str) -> "str | None":
+        """plan 75.4 (1): THE KERNEL'S DRAW BY RULE at a position of the line being read (either side to move): `Game.terminal` with the record before it (`_LineRecord`: the
+        game record, the root, the line's open positions) says 'repetition' (its third occurrence) or 'fifty-move' (the clock at its limit, no mate on the move); None
+        otherwise. The board is built only when the record or the clock the key carries can reach one."""
+        before = _LineRecord(self.ctx)
+        if before.count(pk) + 1 < GAME.REPETITIONS and GAME.key_clock(fen) < GAME.CLOCK_LIMIT:
+            return None
+        t = GAME.terminal(GAME.from_key(fen), before)
+        return t if t in GM.DRAWS_BY_RULE else None
+
+    def _rule_draw_answer(self, fen: str, rule: str, need: int, pos: "AC.Pos | None" = None) -> dict:
+        """plan 75.4 (1): the inner answer at a position (our move) the kernel's rule draws: the game ends level -- worth minus the balance there, ahead or behind (Lean
+        `Ideas.Forcing.repetition_level`: value + balance = 0); `terminal` says the reply's read is the draw (`_chase_route_body`). Never memoised."""
+        ctx = self.ctx
+        bal = (pos if pos is not None else AC.Pos(fen)).balance(self.me) - 64
+        word = NM.DRAW_BY[rule]
+        now = f"{self.board.san(self._route_move)} {self._reply_san}" if self._route_move is not None and self._reply_san else "the line"
+        line = f"the position after {now} occurs a third time" if rule == "repetition" else f"the clock reads {GAME.key_clock(fen)} half-moves after {now}"
+        cl = Claim(NM.DRAW, word, -bal, LS.name(word), line, goal=NM.DRAW)       # (the outcome's name: the table's 'draw')
+        ctx.rule_draws += 1
+        ctx.c_lines.append(f"    closed: {word} ({line}) -> draw, value {-bal:+d} (minus the balance {bal:+d})")
+        return dict(value=-bal, claim=cl, asked=0, need=need, cut=False, reads=None, threats=[], promote=None, terminal=rule)
+
+    def _route_rule(self, m: chess.Move) -> tuple:
+        """plan 75.4 (1): the position after our move `m` (their move) read against the kernel's draws by rule (`_rule_draw`, the record before it) -> (its identity, the route's
+        result when the rule draws it, else None). Either side may claim the draw: the route is worth the draw (minus our balance), a claim only when that reaches what the route
+        must reach. Not memoised: it is the record's, not the position's."""
+        P1 = self.pos.push(m.uci())
+        f1 = P1.fen()
+        k1 = _pos_key(f1)
+        rule = self._rule_draw(f1, k1)
+        if rule is None:
+            return k1, None
+        bal0 = self.pos.balance(self.me) - 64
+        v = -bal0
+        word = NM.DRAW_BY[rule]
+        san = self.pos.san(m.uci())
+        line = f"after {san} the position occurs a third time" if rule == "repetition" else f"after {san} the clock reads {GAME.key_clock(f1)} half-moves"
+        self.ctx.rule_draws += 1
+        self.ctx.c_lines.append(f"    closed: {word} ({line}) -> draw, value {v:+d} (minus the balance {bal0:+d})")
+        if v < self._target():
+            return k1, dict(value=0, killed=LS.name(f"{word} ({line}; {v:+d})"), gap=None, parts=[], lemmas=[], facts=[])
+        return k1, dict(value=v, killed=None, gap=None, parts=[f"{san}: {word} ({line}) -> {v}"], lemmas=[LS.name(word)], facts=[])
+
     def _cycle_claim(self, fen: str, pk: str, need: int, pos: "AC.Pos | None" = None) -> "dict | None":
         """plan 61 C4: THE CYCLE TERMINAL. `fen` (our move) repeats a position of this line (an inner agenda still open, the root) or of the game history: when we are BEHIND (balance < 0) the repetition
         is a PROVED claim of kind 'draw' worth minus the balance (it brings the result to level; value + balance = 0, Lean `Ideas.Forcing.repetition_level`). Sound because the route that reached it
@@ -4530,8 +4614,8 @@ class Agenda:
             net = value = q.stake                                     # 70.1: the route KEPT the balance on every reply: what it saved is the stake (the piece's value), as the keep family's claims say -- at the ROOT,
             #                                                           whose status reads their threat; an inner agenda's answer is a GAIN on the balance the reply left (`_inner`), so there the claim is
             #                                                           worth what it kept (72.10 found 0UqOv's Qd5 dxe6 read as -1 + 9: the queen saved counted as the queen won)
-        if CYCLE and not self.gk(kind).ends_game and any(LS.says(x, "draw") for x in res["lemmas"]) and value <= -(self.pos.balance(self.me) - 64):
-            kind = "draw"                                        # plan 61 C4: the route brings the result to level by a repetition (proved: every reply of the cycle was read)
+        if not self.gk(kind).ends_game and any(LS.says(x, "draw") and (CYCLE or LS.says(x, "terminal")) for x in res["lemmas"]) and value <= -(self.pos.balance(self.me) - 64):
+            kind = "draw"                                        # plan 61 C4: the route brings the result to level by a repetition (proved: every reply of the cycle was read); plan 75.4 (1): or by the kernel's rule (no switch)
         parts = " / ".join(res["parts"][:4]) + (" / ..." if len(res["parts"]) > 4 else "")
         lemma = "chase: step_after+step_least over " + ", ".join(sorted(set(res["lemmas"]))[:3]) if res["lemmas"] else "chase: step_after+step_least"
         claim = Claim(kind, r.san, value, LS.name(lemma), f"{r.san}; {parts}", move=r.move.uci(), kept=kept)

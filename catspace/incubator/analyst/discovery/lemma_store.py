@@ -183,7 +183,7 @@ def _params_problems(e: dict, at: str) -> list:
 # royal unit and the pawns), the `order` of a tie-break key (its components, each [name, sign]: +1 fewer first, -1 more first); a DEFECT_FIX its arithmetic's `ahead` (the
 # moves the side to move has in hand over the count it is compared with).
 WORD_PARAMS = {"FORCING": {"forced": bool, "rank": int, "rank_any": int, "walked": bool, "at_king": bool},
-               "CLOSING": {"reads_every_reply": bool, "chase": bool, "leaf_read": bool, "window": bool, "draw": bool, "refutes": bool, "units": list, "order": list},
+               "CLOSING": {"reads_every_reply": bool, "chase": bool, "leaf_read": bool, "window": bool, "draw": bool, "refutes": bool, "units": list, "order": list, "terminal": bool},
                "DEFECT_FIX": {"ahead": int}}
 _WORDS: list = [None, None]          # (the store object, the derived tables)
 

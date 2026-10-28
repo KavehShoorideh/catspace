@@ -34346,3 +34346,41 @@ passer words' order, the walk's defect tests, the parry set, the local goal, the
 FINDINGS (reported, unchanged): threefold and fifty-move not in Game.terminal (the chase: one repeat = a draw); the root key keeps a pseudo-legal e.p. square the kernel drops; promotion
 built by hand, queen only; the judge's rates read check / capture off SAN; principal lines in Python beside the Rust see; mate in one computed twice; Rust keeps its own worths and mate stake;
 Lean mateGain 100000 vs the engine's 100.
+
+
+## 2026-10-28 10:32 -- plan 75.4 (1) THE TERMINAL RULES IN THE KERNEL: Game.terminal reads the game record and the clock (branch worktree-agent-a842a98bf140be46b)
+RULES, not knowledge (plan 75). THE LEAN SIDE CITED: the chess-lean kernel already states the draws over a game's history -- `Chess.repetitionKey` (board, side to move,
+castling, an en-passant square only when the capture is legal: `Chess.effectiveEnPassant`), `Chess.keyOccurrences`, `Chess.threefoldClaimable`, `Chess.fiftyMoveClaimable`
+(100 <= halfmove), `Chess.gameStatus` (checkmate first), `Chess.applyMove_halfmove` (a pawn move or a capture resets the clock). The kernel is not in docs/LEAN_INDEX.md
+(lean/ideas only), so lean/ideas/Ideas/Draws.lean (new) names them for the machinery's GAME RECORD (the positions before the current one, counted by identity), generic over
+a `Game`: `Record`, `Record.Sound` (the count invariant), `Record.push_sound`, `Record.step_sound` (a step of the game keeps the invariant), `Record.threefold`, `fifty`,
+`Record.drawByRule` (a mate on the move first: `Record.mated_not_draw`); for chess `chess_threefold_iff` (a sound record's third occurrence IS `Chess.threefoldClaimable` of
+the history), `chess_fifty_iff`, `chess_clock`. `lake build` clean, no sorry, standard axioms (propext, Classical.choice, Quot.sound); LEAN_INDEX rebuilt.
+THE KERNEL (game.py): `Record` (counts by identity; `add` = Lean `Record.push`), `position_key` (python-chess's EPD with en_passant='legal': the kernel's identity, never the
+raw FEN fields), `terminal(s, before=None)` adds 'repetition' (the identity twice in the record before s) and 'fifty-move' (`Board.is_fifty_moves`) after mate, stalemate and
+insufficient material, `clock`, `key_clock`. play_server.game_history returns the Record of every earlier position (either side; the root excluded). THE CHASE: `ctx.history`
+is that Record (counts, not a set); `_LineRecord` is the record before a position of the line (the game's, the root, the open positions of ours, `ctx.line_theirs` of theirs);
+`_inner` (our move after their reply) and `_chase_route` (their move after ours) read `Game.terminal` with it BEFORE any memo, never memoised: a draw by rule ends the line
+at the draw's value (minus the balance: a claim when behind, a kill when the route needs more). names.py: `draw by repetition` (ChessGame.repetition, Lean
+Ideas.Game.Record.threefold), `draw by the fifty-move rule` (Board.is_fifty_moves, Lean Ideas.Game.fifty), `DRAW_BY`, `DRAW`; store entries of the same names (CLOSING, BASE,
+PROVED on chess_threefold_iff / chess_fifty_iff with repetition_level; new CLOSING field `terminal`: a rule is read whatever the CYCLE switch).
+OBS trace identity against main 243c7949 (count budget, PYTHONHASHSEED=0): ten t0, ten t2 0 of 10 traces / read sets / leaf verdict lists / word lists / provenance lists differ;
+wide t0, wide t2 0 / 0 / 0 / 0 / 0 of 99. No decision changed: on the puzzle sets the record is empty (no game) and every clock is below 30 (OBS halfmove clock histogram over
+3023 puzzles of 47 sets: 0-9 2972, 10-19 50, 20-29 1), so neither rule can fire there; the guard's line positions occur at most twice.
+NEGATIVE CONTROLS (patched in the guard's process, nothing on disk): the clock's limit 100 -> 2: ten t0 10 of 10 traces, 10 of 10 read sets, 7 of 10 leaf lists, 10 of 10 word
+lists, 10 of 10 provenance lists differ and 5 of 10 DECISION lines (07Z0P Qxd5+ -> Rd2 and 2TUzC Rc1 -> Ra2, both over "draw by the fifty-move rule"; W0VFO Qb7 -> Rxg7+; discovery
+Nf6 -> none; 4pC83 Nf3+ by another lemma): the chase reads the rule;
+the third occurrence 3 -> 2: ten t2 2 of 10 traces, 2 of 10 read sets, 1 of 10 leaf lists, 1 of 10 word lists, 2 of 10 provenance lists, 0 of 10 DECISION lines differ.
+OBS audit recount (scripts/agenda_audit/recount.py): CHESS FACT rows 210 -> 210 (the draw claim's kind is the names table's `draw`; the draw's need is the route's target).
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_game 3/0/0/0 0.3 s; test_agenda 26/0/0/0 87.6 s; test_regress 86/1/0/0 338.3 s, after
+the test fix below 87/0/0/0 337.3 s (the non-strict xfail of LOOP TARGET 1 passed: the gate counts no xpass); test_cost61 13/0/0/0 2.8 s; test_plan66 16/0/0/0 3.1 s; test_plan62 28/0/0/0 7.9 s; test_plan73 9/0/0/0 14.1 s;
+test_plan74 13/0/0/0 3.3 s; test_plan75 11/0/0/0 0.5 s; test_fact_store 21/0/0/0 22.7 s; test_tiers 14/0/0/0 29.4 s; test_offbuilt64 15/0/1/0 95.8 s; test_lean_index 2/0/0/0
+141.2 s; test_rules_draws (new, in ENGINE_NAMES) 9/0/0/0 2.3 s. The failure was test_52_16's constructed state: the root AND an open line position on one identity, so one more
+is the THIRD occurrence -- the rule's draw now, read before the cycle (a state no run reaches: the cycle closes a repeat of the root before it opens). The test moved to another
+root (its point, the move counters are no part of the key, kept); the rule's reading of the old state is a test of test_rules_draws.
+OBS 75.4 (1) record vs python-chess is_repetition(3): 1025 positions agree, 3 third occurrences (scripted games: the start position, the position after 1.e4 e5 whose e6 no pawn
+can use, and a legal-e.p. position that is NOT repeated by the same board without the right; knight shuffles; random walks).
+FINDINGS: technique_question.Search.drawn is a second copy of both rules (its own 4-field key, `clock + ply >= 100` with no reset) -- equal on its class (K+R v K: no pawn, the
+only capture loses the unit), not routed here; the ponderer's agendas carry no record (ChaseCtx.carry starts an empty one); the memos (ctx.memo, ctx.routes) are keyed by
+the position, not the record -- the rule is read before them at the position itself, but an answer memoised above a drawn position is served across records (the cycle claim
+has had the same limit since 61 C4).

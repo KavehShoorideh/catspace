@@ -47,7 +47,11 @@ NAMES: dict = {n.word: n for n in (
     # the outcomes
     Name("mate", "chess.Board.is_checkmate", "Ideas.Game.Game.mated", "the mover is in check and has no legal move: the game ends (Game.terminal says 'mate')"),
     Name("stalemate", "chess.Board.is_stalemate", "Ideas.Game.Game.stalemated", "the mover has no legal move and is not in check: a draw (Game.terminal says 'stalemate')"),
-    Name("draw", "chess.Board.is_insufficient_material", "Ideas.Vocabulary.deadDraw", "the game ends level (Game.terminal says 'draw'); the repetition and the fifty-move draws are NOT in the kernel's terminal (a finding of 75.2)"),
+    Name("draw", "chess.Board.is_insufficient_material", "Ideas.Vocabulary.deadDraw", "the game ends level (Game.terminal says 'draw': no mate can be reached); the claimable draws are the two names below (plan 75.4)"),
+    Name("draw by repetition", "catspace.incubator.analyst.discovery.game.ChessGame.repetition", "Ideas.Game.Record.threefold",
+         "the position occurs a third time -- its identity (Game.position_key: board, side to move, castling, a LEGAL en-passant square) twice in the game record before it (Game.terminal says 'repetition'; Lean Chess.threefoldClaimable, Ideas.Game.chess_threefold_iff)"),
+    Name("draw by the fifty-move rule", "chess.Board.is_fifty_moves", "Ideas.Game.fifty",
+         "a hundred half-moves with no capture and no pawn move, and no mate on the move (Game.terminal says 'fifty-move'; Lean Chess.fiftyMoveClaimable, Ideas.Game.chess_fifty_iff)"),
     Name("win", "chess.Board.is_checkmate", "Ideas.Vocabulary.gainGoal", "the other side is mated, or a gain held ahead (the ladder's winning rung)"),
     Name("lose", "chess.Board.is_checkmate", "Ideas.Game.Game.mated", "we are mated, or behind (the ladder's losing rung)"),
     # the count the stakes are in (the worths are the VALUATION entry's, never this table's)
@@ -55,6 +59,8 @@ NAMES: dict = {n.word: n for n in (
 )}
 
 READS = {"movement": "move", "attack": "attack", "tempo": "tempo", "material": "material"}      # the store's base reads (lemma_store.BASE) -> the names they are
+DRAW_BY = {"repetition": "draw by repetition", "fifty-move": "draw by the fifty-move rule"}      # plan 75.4 (1): Game.terminal's draws by rule (game.DRAWS_BY_RULE) -> the names they are
+DRAW = NAMES["draw"].word                # plan 75.4 (1): the outcome every draw reaches (the name a draw claim carries as its kind and goal)
 
 
 KIND = {"p": chess.PAWN, "n": chess.KNIGHT, "b": chess.BISHOP, "r": chess.ROOK, "q": chess.QUEEN, "k": chess.KING}      # a unit kind's letter (the valuation's keys) -> the kernel's kind
@@ -102,10 +108,18 @@ def problems(idx: "dict | None" = None) -> list:
     idx = lean_index() if idx is None else idx
     bad = []
     for n in NAMES.values():
-        mod, _, rest = n.kernel.partition(".")
+        parts = n.kernel.split(".")
         try:
-            obj = importlib.import_module(mod)
-            for part in rest.split("."):
+            obj, k = None, 0
+            for i in range(len(parts), 0, -1):                  # the longest importable module of the dotted name (plan 75.4: a Game method of ours), then its attributes
+                try:
+                    obj, k = importlib.import_module(".".join(parts[:i])), i
+                    break
+                except ImportError:
+                    continue
+            if obj is None:
+                raise ImportError(f"no module in {n.kernel}")
+            for part in parts[k:]:
                 obj = getattr(obj, part)
         except (ImportError, AttributeError) as x:
             bad.append(f"{n.word}: kernel {n.kernel} does not resolve ({x})")

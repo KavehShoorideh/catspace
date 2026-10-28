@@ -154,8 +154,9 @@ def test_64_5_the_play_server_fills_the_game_history_for_the_cycle_terminal():
     keys = game_history(b)
     print("OBS 64.5 game history keys:", len(keys))
     assert _pos_key(b.fen()) in keys                    # the root itself repeats an earlier position of the game (white to move)
-    assert len(keys) == 2                               # (start position == root, and the position after 1.Nf3 Nf6)
-    assert game_history(chess.Board(POS2)) == set()
+    assert keys.count(_pos_key(b.fen())) == 1           # plan 75.4 (1): the record COUNTS (the start position once before the root) ...
+    assert keys.total() == 4 and len(keys) == 4         # ... every earlier position, either side to move (the kernel's identity carries the side): 4 plies, 4 positions
+    assert len(game_history(chess.Board(POS2))) == 0
 
 
 def test_64_5_the_estimate_is_on_and_inert_where_a_proved_claim_keeps_the_status():

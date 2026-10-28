@@ -700,8 +700,8 @@ def test_52_16_a_route_is_charged_at_most_its_share_and_the_later_route_keeps_it
 
 def test_52_16_a_position_asked_again_under_other_move_counters_is_a_cycle():
     a = "2k5/2P4R/1K6/8/8/p7/8/2r5 w - - 10 64"
-    ag = AG.Agenda(State(a, "w", []))
-    ag.ctx.left = 1000
+    ag = AG.Agenda(State("2k5/2P4R/1K6/8/8/p7/8/4r3 w - - 10 64", "w", []))                  # (plan 75.4 (1): another root -- the root AND an open position of the line on one identity
+    ag.ctx.left = 1000                                                                     #  would make this the THIRD occurrence, the rule's draw: tests/test_rules_draws.py)
     ag.ctx.active.add(AG._pos_key(a))
     r = ag._inner("2k5/2P4R/1K6/8/8/p7/8/2r5 w - - 14 66", 1)                                 # the same board two moves later
     assert r["claim"] is None and r["asked"] == 0 and r["value"] == 0

@@ -278,17 +278,18 @@ class AgendaPlayer:
         return move, out, f"fallback:{self.fallback}"
 
 
-def game_history(board: chess.Board) -> set:
-    """plan 64.5: the position keys (`agenda._pos_key`) of the earlier positions of this game in which it was OUR move (the side to move on `board`), the root itself excluded -- what the agenda's
-    CYCLE terminal reads as the game's repetitions (a chase position that repeats one is a repetition). Empty when the board carries no move stack."""
-    from catspace.incubator.analyst.discovery.agenda import _pos_key
+def game_history(board: chess.Board) -> "GM.Record":
+    """plan 64.5 / 75.4 (1): THE GAME RECORD (game.Record, Lean `Ideas.Game.Record`) -- every earlier position of this game, either side to move, the root itself excluded, counted by the
+    kernel's identity (`Game.position_key`: board, side to move, castling rights, a LEGAL en-passant square): what `Game.terminal` reads as the positions before the root (its third
+    occurrence draws) and the chase reads beside its line (a chase position that repeats one is a repetition: the CYCLE claim; three occurrences are the rule's draw). Built by one push
+    per move of the game (the count invariant, Lean `Record.step_sound`). Empty when the board carries no move stack."""
+    from catspace.incubator.analyst.discovery import game as GM
     b = board.root()
-    keys = set()
+    rec = GM.Record()
     for mv in board.move_stack:
-        if b.turn == board.turn:
-            keys.add(_pos_key(b.fen()))
+        rec.push(GM.CHESS, b)
         b.push(mv)
-    return keys
+    return rec
 
 
 # ---------------------------------------------------------------- the game (item 3)

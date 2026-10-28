@@ -1,0 +1,38 @@
+{
+ "name": "draw by repetition",
+ "kind": "CLOSING",
+ "reads": [
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Game.chess_threefold_iff",
+  "Ideas.Game.Record.step_sound",
+  "Ideas.Forcing.repetition_level"
+ ],
+ "origin": "BASE",
+ "plan": [
+  "75.4"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:terminal",
+  "catspace/incubator/analyst/discovery/game.py:repetition",
+  "catspace/incubator/analyst/discovery/agenda.py:_rule_draw",
+  "catspace/incubator/analyst/discovery/agenda.py:_rule_draw_answer",
+  "catspace/incubator/analyst/discovery/agenda.py:_route_rule"
+ ],
+ "note": "The game's rule (Game.terminal says 'repetition'): a position whose identity (board, side to move, castling, a legal en-passant square) occurred twice before it in the game record and the line is drawn, either side may claim it; the record's reading is the kernel's Chess.threefoldClaimable (Ideas.Game.chess_threefold_iff, the record built by steps that keep its counts: Record.step_sound) and the draw is worth minus the balance (repetition_level).",
+ "params": {
+  "draw": true,
+  "terminal": true
+ }
+}

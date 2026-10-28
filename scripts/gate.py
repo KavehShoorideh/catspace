@@ -45,7 +45,8 @@ ENGINE_NAMES = (
     "test_plan72_3 test_plan72_5 test_plan72_8 test_plan72_9 test_plan72_10 "          # 2026-10-25: the plan 72 / 73 files each agent gated alone, never on main's gate
     "test_plan72_7 test_plan72_7_step2 test_plan72_7_step3 test_plan73 test_plan73_5 test_plan73_5b test_plan73_6 "
     "test_plan74 "                                                                      # 2026-10-27: plan 74 the reasoning graph (the graph store, the worklist, the pending protocol, observations)
-    "test_plan75"                                                                       # 2026-10-27: plan 75.2 the move (goal kinds and the valuation from the store, the stops, the names table, the generic test)
+    "test_plan75 "                                                                      # 2026-10-27: plan 75.2 the move (goal kinds and the valuation from the store, the stops, the names table, the generic test)
+    "test_rules_draws"                                                                  # 2026-10-28: plan 75.4 the kernel's rule gaps (the draws by rule, the cycle claim, the clock's events, the identity, promotion)
 ).split()
 
 PYTEST_FLAGS = ["-q", "-p", "no:cacheprovider", "-W", "ignore", "--durations=3"]

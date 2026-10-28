@@ -3990,3 +3990,19 @@ is PROVED to keep the status, select the open question whose answer would keep i
 ordering only among questions of equal price class; (2) once a keeping move is proved, select by the judge's existing question "can this change the decision, are its replies forced". The
 pool today orders by stake and the policy first (a stake-100 mate question before a cheap save that already keeps the status: W0VFO's and 2CEDb's seconds); after 74 it orders by clause (1)
 first. No new number. Acceptance adds: on the ten + wide, the time (or count) to the FIRST proved keeping move, printed before/after, not higher.
+
+
+### 75.4 THE KERNEL'S RULE GAPS (Kaveh 2026-10-28: "item number two is a no-brainer"; branch worktree-agent-a842a98bf140be46b, one commit per gap, each guard-checked)
+The gaps found by 75.1 (docs/AGENDA_AUDIT.md section 5) and 75.2 (its findings): (1) `Game.terminal` had no threefold-repetition and no fifty-move terminal -- the game context
+(the positions with their counts, the halfmove clock) was carried by the play server (`game_history`) and the chase (`ctx.history`) but the terminal rule did not read it; (2) the
+chase's CYCLE claim (61 C4) read ONE repeat of the line or the game as a draw under the rule's name ("repetition", kind CLOSING, PROVED on `repetition_level`, which proves only
+value arithmetic): a derived lemma, not the rule; (3) the chase clock's irreversible event (66.5) wrote the fifty-move rule's events in Python; (4) the root's position key cut from
+the input FEN keeps a pseudo-legal en-passant square the kernel drops (a repetition missed or invented at the root); (5) promotion moves built by hand and only to a queen. Plan
+75's principle: the RULES may be written (read through the kernel); nothing here is chess knowledge (the audit's CHESS FACT rows do not rise).
+* 75.4 (1) BUILT 2026-10-28 (journal 2026-10-28 10:32): THE TERMINAL RULES IN THE KERNEL -- lean/ideas/Ideas/Draws.lean cites the chess-lean kernel's `Chess.repetitionKey`,
+  `Chess.threefoldClaimable`, `Chess.fiftyMoveClaimable`, `Chess.applyMove_halfmove` and states the game record over a generic `Game` (`Record`, `Record.Sound`,
+  `Record.step_sound`, `Record.threefold`, `fifty`, `Record.drawByRule`), with `chess_threefold_iff` / `chess_fifty_iff` / `chess_clock` (no sorry); game.py `Record`,
+  `position_key` (legal e.p. only), `terminal(s, before)` with 'repetition' and 'fifty-move', `clock`, `key_clock`; the play server's `game_history` and the chase's
+  `ctx.history` are a Record (counts); the chase reads the rule at its line's positions (both sides to move) before any memo; names `draw by repetition` and `draw by the
+  fifty-move rule` with store entries (PROVED). Guard 0 of 218 on all five lists (the rules cannot fire on the puzzle sets: no record, clocks below 30); negative control (the
+  clock's limit 100 -> 2) moves 10 of 10 ten-t0 traces and 5 DECISION lines; CHESS FACT rows 210 -> 210.

@@ -9,9 +9,18 @@ are differences of it), UNITS (the pieces: location, owner, worth) and LOCATIONS
 on a location), IN_CHECK (the forced-reply condition), and NAMES for the trace.
 
 Cheap by construction: states are python-chess boards (no conversion); every method is a one-line delegation; the engine's calls are routed here module by
-module (71.2), each step trace-identical (scripts/trace_identity.py)."""
+module (71.2), each step trace-identical (scripts/trace_identity.py).
+
+plan 75.4 (1) THE GAME CONTEXT IS A FIRST-CLASS ARGUMENT (Kaveh 2026-10-12: "every frame carries the 50-move clock and the triple position"). A state's IDENTITY
+(`position_key`: what a repetition repeats -- for chess the board, the side to move, the castling rights and an en-passant square only when the capture is LEGAL,
+Lean `Chess.repetitionKey`) and the GAME RECORD (`Record`: how often each identity occurred before the state, Lean `Ideas.Game.Record`) are the domain's; TERMINAL
+reads the record and the state's clock and adds the draws by rule (the third occurrence, Lean `Chess.threefoldClaimable` / `Ideas.Game.chess_threefold_iff`; the
+clock at its limit with no mate on the move, Lean `Chess.fiftyMoveClaimable` / `Ideas.Game.chess_fifty_iff`); CLOCK_EVENTS names what resets the clock (Lean
+`Chess.applyMove_halfmove` / `Ideas.Game.chess_clock`). The play server builds the record from the game (`play_server.game_history`), the chase reads it beside the
+line it is reading (agenda.py `ChaseCtx.history`, `_LineRecord`)."""
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from typing import Iterable, Protocol, runtime_checkable
 
@@ -22,6 +31,58 @@ from catspace.incubator.analyst.discovery import lemma_store as LS
 
 WHITE, BLACK = chess.WHITE, chess.BLACK
 MATE_VALUE = LS.goal_kinds().terminal.stake       # plan 75.2 (a): the stake of the goal that ends the game, read from its GOAL entry (lemmas/mate.json: ONE definition)
+DRAWS_BY_RULE = ("repetition", "fifty-move")      # plan 75.4 (1): the terminals TERMINAL reads off the game record and the clock (each a draw; Lean `Ideas.Game.Record.drawByRule`)
+
+
+class Record:
+    """plan 75.4 (1) THE GAME RECORD (Lean `Ideas.Game.Record`): how often each position occurred BEFORE the current one, by the domain's identity
+    (`Game.position_key`). `add` is the Lean `Record.push` (the count invariant `Record.Sound` is kept by every push, `Record.push_sound`, so along every step of
+    the game, `Record.step_sound`). Empty: no game before the position (a puzzle). `key in record` -- the identity occurred before."""
+
+    __slots__ = ("counts",)
+
+    def __init__(self, counts=None):
+        self.counts = Counter(counts or {})
+
+    @classmethod
+    def of_line(cls, game: "Game", states: Iterable) -> "Record":
+        """The record of a line of states (oldest first) played past: each pushed once."""
+        r = cls()
+        for s in states:
+            r.push(game, s)
+        return r
+
+    def count(self, key) -> int:
+        """How often the identity `key` occurred before."""
+        return self.counts.get(key, 0)
+
+    def add(self, key, n: int = 1) -> "Record":
+        """`key`'s position played past (Lean `Record.push`)."""
+        self.counts[key] += n
+        return self
+
+    def push(self, game: "Game", s) -> "Record":
+        """The state `s` played past: its identity counted once more."""
+        return self.add(game.position_key(s))
+
+    def copy(self) -> "Record":
+        return Record(self.counts)
+
+    def total(self) -> int:
+        """The positions before (with their repeats)."""
+        return sum(self.counts.values())
+
+    def __contains__(self, key) -> bool:
+        return self.counts.get(key, 0) > 0
+
+    def __len__(self) -> int:                     # the distinct identities (an empty record is falsy)
+        return len(self.counts)
+
+    def __iter__(self):
+        return iter(self.counts)
+
+    def __repr__(self) -> str:
+        return f"Record({dict(self.counts)!r})"
 
 
 @dataclass(frozen=True)
@@ -41,7 +102,10 @@ class Game(Protocol):
     def apply(self, s, m): ...
     def turn(self, s) -> bool: ...
     def pass_(self, s): ...
-    def terminal(self, s) -> str | None: ...                      # None, or 'mate' (the mover is mated), 'stalemate', 'draw'
+    def terminal(self, s, before: "Record | None" = None) -> str | None: ...      # None, or 'mate' (the mover is mated), 'stalemate', 'draw', or a draw by rule (DRAWS_BY_RULE) read off the record and the clock
+    def position_key(self, s) -> str: ...                         # plan 75.4: the state's identity (what a repetition repeats; the clocks omitted)
+    def clock(self, s) -> int: ...                                # plan 75.4: the state's clock (the moves since the last clock event)
+    def key_clock(self, key: str) -> int: ...                     # plan 75.4: the clock a state's key carries (without building the state)
     def measure(self, s, side: bool) -> int: ...
     def in_check(self, s) -> bool: ...
     def name(self, s, m) -> str: ...
@@ -87,14 +151,46 @@ class ChessGame:
     def pass_(self, s: chess.Board) -> chess.Board:
         return G.with_turn(s, not s.turn)
 
-    def terminal(self, s: chess.Board) -> str | None:
+    REPETITIONS = 3                                   # plan 75.4 (1): the occurrence that draws (the kernel's: Lean `Chess.threefoldClaimable`, 3 <= the identity's occurrences)
+    CLOCK_LIMIT = 100                                 # ... and the clock's limit in half-moves (the kernel's: Lean `Chess.fiftyMoveClaimable`, 100 <= halfmove; python-chess `Board.is_fifty_moves`)
+
+    def terminal(self, s: chess.Board, before: "Record | None" = None) -> str | None:
+        """The rule's terminals in the kernel's order (Lean `Chess.gameStatus`: a mate on the move comes first): 'mate', 'stalemate', 'draw' (insufficient material),
+        then the DRAWS BY RULE (plan 75.4 (1)): 'repetition' -- the state's identity occurred at least twice BEFORE it in the game record `before` (the third occurrence,
+        Lean `Ideas.Game.Record.threefold` = `Chess.threefoldClaimable` of the history, `Ideas.Game.chess_threefold_iff`); 'fifty-move' -- the clock at its limit
+        (python-chess `Board.is_fifty_moves`: a hundred half-moves and a legal move, Lean `Chess.fiftyMoveClaimable`, `Ideas.Game.chess_fifty_iff`). Without a record no
+        repetition is read (the clock rides on the state). Both are the CLAIMABLE draws: either side may claim, so no claim to win survives one."""
         if s.is_checkmate():
             return "mate"
         if s.is_stalemate():
             return "stalemate"
         if s.is_insufficient_material():
             return "draw"
+        if before is not None and self.repetition(s, before):
+            return "repetition"
+        if s.is_fifty_moves():
+            return "fifty-move"
         return None
+
+    def repetition(self, s: chess.Board, before: "Record") -> bool:
+        """plan 75.4 (1): the third occurrence of `s` -- its identity occurred at least twice before it (Lean `Ideas.Game.Record.threefold`)."""
+        return before.count(self.position_key(s)) + 1 >= self.REPETITIONS
+
+    def position_key(self, s: chess.Board) -> str:
+        """plan 75.4 (1) / (4): THE KERNEL'S IDENTITY of a position (Lean `Chess.repetitionKey`): the board, the side to move, the castling rights and the en-passant
+        square ONLY when an en-passant capture is legal (`Chess.effectiveEnPassant`), the clocks omitted -- python-chess's EPD with its default `en_passant='legal'`
+        (and its cleaned castling rights), never the raw FEN's fields."""
+        return s.epd()
+
+    def clock(self, s: chess.Board) -> int:
+        """plan 75.4 (1): the halfmove clock (Lean `Position.halfmove`)."""
+        return s.halfmove_clock
+
+    def key_clock(self, key: str) -> int:
+        """plan 75.4 (1): the clock a state's key carries without building the state -- the halfmove field of the kernel's notation (the FEN the kernel rendered; 0 when the
+        key has none). Equal to `clock(from_key(key))`."""
+        f = key.split()
+        return int(f[4]) if len(f) > 4 else 0
 
     def measure(self, s: chess.Board, side: bool) -> int:
         """The material balance for `side` (the sum of the worths of its units less the other side's)."""
@@ -174,12 +270,12 @@ class KingOfTheHillGame(ChessGame):
 
     CENTRE = (chess.D4, chess.E4, chess.D5, chess.E5)
 
-    def terminal(self, s: chess.Board) -> str | None:
+    def terminal(self, s: chess.Board, before: "Record | None" = None) -> str | None:
         for side in (chess.WHITE, chess.BLACK):
             k = s.king(side)
             if k is not None and k in self.CENTRE:
                 return "loss" if side != s.turn else "win"       # their king stands there with us to move: we have lost; ours: we have won (the mover reads the terminal)
-        return super().terminal(s)
+        return super().terminal(s, before)
 
 
 CHESS = ChessGame()

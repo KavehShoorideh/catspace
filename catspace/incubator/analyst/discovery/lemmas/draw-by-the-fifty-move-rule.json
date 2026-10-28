@@ -1,0 +1,37 @@
+{
+ "name": "draw by the fifty-move rule",
+ "kind": "CLOSING",
+ "reads": [
+  "tempo",
+  "material"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.Game.chess_fifty_iff",
+  "Ideas.Game.chess_clock",
+  "Ideas.Forcing.repetition_level"
+ ],
+ "origin": "BASE",
+ "plan": [
+  "75.4"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:terminal",
+  "catspace/incubator/analyst/discovery/agenda.py:_rule_draw",
+  "catspace/incubator/analyst/discovery/agenda.py:_rule_draw_answer",
+  "catspace/incubator/analyst/discovery/agenda.py:_route_rule"
+ ],
+ "note": "The game's rule (Game.terminal says 'fifty-move'): a position whose halfmove clock reads a hundred with no mate on the move is drawn, either side may claim it; the clock's reading is the kernel's Chess.fiftyMoveClaimable (Ideas.Game.chess_fifty_iff), its events the kernel's (Ideas.Game.chess_clock: a pawn move or a capture), and the draw is worth minus the balance (repetition_level).",
+ "params": {
+  "draw": true,
+  "terminal": true
+ }
+}
