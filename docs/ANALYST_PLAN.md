@@ -3923,3 +3923,12 @@ the gate green, the audit's CHESS FACT count printed before/after (the number to
 ### 75.3 Then (plan 76, written after 75.2's count is known): one term language (the miner's atoms as Rust terms with typed combinators: sets of locations, reach, counts, per-axis
 distances, min over units, who moves; the generator proposes terms priced by size) and MINING MATERIAL (the count term over game records that predicts the outcome; the hand values stay a
 HAND entry beside the MINED one; the exchange law restated over the mined term for the prover). Then the second game (a checkers kernel: the acid test, no code outside the kernel).
+
+
+### 74.2b THE SELECTION RULE'S FIRST CLAUSE (Kaveh 2026-10-27): the cheapest move that keeps the status, then a better one
+Kaveh: "spend your resources when searching for a move to find the cheapest move that'll maintain your state. If you're winning, keep winning; if you're drawing, keep drawing. And then you
+look for a better move from there." This is plan 59's ladder (status-driven widening) made the WORKLIST's selection rule, root and chase alike, in two clauses in this order: (1) while no move
+is PROVED to keep the status, select the open question whose answer would keep it at the lowest expected cost -- cost = the judge's own price (nodes x the measured rate, 72.9), the policy
+ordering only among questions of equal price class; (2) once a keeping move is proved, select by the judge's existing question "can this change the decision, are its replies forced". The
+pool today orders by stake and the policy first (a stake-100 mate question before a cheap save that already keeps the status: W0VFO's and 2CEDb's seconds); after 74 it orders by clause (1)
+first. No new number. Acceptance adds: on the ten + wide, the time (or count) to the FIRST proved keeping move, printed before/after, not higher.
