@@ -15,6 +15,10 @@ library cannot hold a term reading anything else. Where the vocabulary says the 
 the BaseWords of words.py) and compare: the Python reading here is python-chess's move generation on the same definitions, chosen for speed (one flood fill per
 position serves three atoms).
 
+PLAN 76.1 (c) THE TERMS ARE THE RELATIONS: every symbol of the vocabulary is bound to the ontology shelf's relations (ontology.py, the entries' `vocabulary`), so an
+atom's and a candidate's term reads named relations of the rule spec -- `Atom.rels` / `Term.rels` (ontology.term_relations): the region reads `cell`, `king_step`
+and `attack`, the material atoms `material`, the tempo `halfmove`, whose move `tempo`. A reference only: the miner reads nothing new.
+
 THE ATOMS (nine; the plan's list): their king's REGION `(reach L free)` -- the squares it walks to without stepping onto a square we attack, our units held still --
 its size, its part off the edge, its rectangle's area; their king's distance to the nearest edge square and to the nearest corner; the kings' distance; our
 material and theirs; the tempo count (the fifty-move clock: the moves played since the last capture or pawn move). THE EDGE and THE CORNER are read from movement:
@@ -146,6 +150,13 @@ class Atom:
     gloss: str          # the term in plain words
     bv: "str | None"    # the vocabulary s-expression of the same number (read by the Rust evaluator in the tests), when the vocabulary has one
 
+    @property
+    def rels(self) -> tuple:
+        """plan 76.1 (c) THE TERMS ARE THE RELATIONS: the ontology shelf's relations the atom's term reads (each symbol's binding, ontology.term_relations) --
+        e.g. the region `(count (reach L free))` reads `cell` (where their king stands), `king_step` (its walk) and `attack` (the squares we bear on)."""
+        from catspace.incubator.analyst.discovery import ontology as ON
+        return tuple(ON.term_relations(self.sexpr))
+
 
 ATOMS = (
     Atom("region", "(count (reach L free))", "the size of their king's region (the squares it walks to without stepping onto a square we attack)",
@@ -236,6 +247,12 @@ class Term:
     def reads(self) -> frozenset:
         """THE BASE READS: the base words the term's s-expression reads, by the vocabulary's own table (lemma_store.term_reads)."""
         return frozenset(LS.term_reads(self.sexpr))
+
+    @property
+    def rels(self) -> tuple:
+        """plan 76.1 (c): the ontology shelf's relations the term reads (ontology.term_relations of its s-expression)."""
+        from catspace.incubator.analyst.discovery import ontology as ON
+        return tuple(ON.term_relations(self.sexpr))
 
     def value(self, vals: dict) -> int:
         if self.op == "atom":

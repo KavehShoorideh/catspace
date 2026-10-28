@@ -16,7 +16,10 @@
  "bind": null,
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "promo",
+  "pushes"
+ ],
  "names": false,
  "means": "the rank a side's pawns promote on",
  "why": {

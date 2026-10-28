@@ -25,7 +25,11 @@
  },
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "drank",
+  "rank",
+  "rankof"
+ ],
  "names": true,
  "means": "the row of a square",
  "why": {},

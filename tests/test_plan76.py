@@ -228,3 +228,34 @@ def test_b4_the_next_state_is_the_lean_kernels_on_the_corners():
     res = ON.agreement(fens=fens, lean=True)
     assert res["compared"]["next"].get("lean") == len(fens)
     assert not [d for d in res["disagree"] if d[0] == "lean"], res["disagree"][:3]
+
+
+# ---------------------------------------------------------------------------------------------------------------- (c) the terms are the relations
+
+def test_c_every_vocabulary_primitive_is_bound_to_the_shelf():
+    """Every primitive of the base vocabulary (base_vocabulary.PRIMITIVES: the symbols of graph.py's words and of the Rust compile_term) that reads the position or the
+    board's geometry is bound to shelf relations; every bound symbol is a primitive or a reading of the technique library."""
+    from catspace.incubator.analyst.discovery import base_vocabulary as BV
+    assert ON.vocabulary_problems() == []
+    vm = ON.vocabulary_map()
+    store = ON.load()
+    assert all(r in store for rs in vm.values() for r in rs)
+    for s, rels in {"attacked": ["attack"], "reach": ["king_step"], "W": ["cell"], "halfmoves": ["halfmove"], "seen": ["record"], "moves": ["legal"],
+                    "see": ["capture", "material"], "knight1": ["knight_jump"]}.items():
+        assert vm[s] == rels, s
+    assert all(t in BV.PRIMITIVES or t in ON.READINGS for t in vm)
+
+
+def test_c_every_atom_reads_shelf_relations():
+    """technique_measures.py's atoms (and every candidate of its library) read named relations of the shelf; the nine atoms of plan 73.5 as written in its
+    docstring: the region reads where their king stands, its walk and our attack; the material atoms the material; the tempo the clock."""
+    from catspace.incubator.analyst.discovery import technique_measures as TM
+    store = ON.load()
+    for a in TM.ATOMS + TM.AXIS_ATOMS:
+        assert a.rels and all(r in store for r in a.rels), a.key
+    assert all(t.rels for t in TM.library())
+    by = {a.key: a.rels for a in TM.ATOMS}
+    assert by["region"] == ("attack", "cell", "king_step") and by["edge_dist"] == ("cell", "king_step") and by["kings_dist"] == ("cell", "king_step")
+    assert by["material_us"] == ("material",) and by["tempo"] == ("halfmove",) and TM.ATOM_BY_KEY["turn"].rels == ("tempo",)
+    with pytest.raises(ON.OntologyError):
+        ON.term_relations("(count (flurb L))")

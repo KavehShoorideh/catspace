@@ -25,7 +25,11 @@
  },
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "dfile",
+  "file",
+  "fileof"
+ ],
  "names": true,
  "means": "the column of a square",
  "why": {},

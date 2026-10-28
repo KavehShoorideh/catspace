@@ -19,7 +19,10 @@
  "bind": null,
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "colour",
+  "light"
+ ],
  "names": false,
  "means": "a light square",
  "why": {

@@ -23,7 +23,14 @@
  "bind": null,
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "box",
+  "corner",
+  "dist",
+  "edge",
+  "nearer",
+  "reach"
+ ],
  "names": false,
  "means": "the king's step: a square next to another",
  "why": {},

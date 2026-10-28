@@ -16,7 +16,12 @@
  "bind": null,
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "ahead",
+  "front",
+  "passer",
+  "pushes"
+ ],
  "names": false,
  "means": "the direction a side's pawns push",
  "why": {

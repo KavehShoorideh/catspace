@@ -20,7 +20,9 @@
  },
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "halfmoves"
+ ],
  "names": false,
  "means": "the board's clock: the half-moves since the last capture or pawn move, saturating at 100",
  "why": {},

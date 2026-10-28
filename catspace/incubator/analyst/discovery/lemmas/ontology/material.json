@@ -11,7 +11,14 @@
  "bind": null,
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "balance",
+  "material_them",
+  "material_us",
+  "maxworth",
+  "see",
+  "worth"
+ ],
  "names": true,
  "means": "the side's units counted by the material VALUATION (Game.measure; the worths are the store's)",
  "why": {

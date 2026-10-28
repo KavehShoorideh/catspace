@@ -35,7 +35,10 @@
  "bind": null,
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "declined",
+  "see"
+ ],
  "names": true,
  "means": "a move onto a unit of the other side, which leaves the board (Game.is_capture)",
  "why": {},

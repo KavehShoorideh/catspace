@@ -25,7 +25,16 @@
  "bind": null,
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "between",
+  "beyond",
+  "diagonals",
+  "line",
+  "lines",
+  "next",
+  "segment",
+  "xray"
+ ],
  "names": true,
  "means": "a unit's move along a line of empty squares (the kernel's rays, blockers stop them)",
  "why": {},

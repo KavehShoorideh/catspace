@@ -203,6 +203,51 @@ def vocabulary_map() -> dict:
     return {k: sorted(v) for k, v in out.items()}
 
 
+# 76.1 (c) THE TERMS ARE THE RELATIONS: the base vocabulary's primitives (base_vocabulary.PRIMITIVES, the Rust compile_term's symbols) each read shelf relations (the
+# entries' `vocabulary`); these combine numbers and sets and read none; these are the technique library's own readings (technique_measures.py), bound like primitives
+COMBINATORS = ("and", "not", "count", "sum", "or", "min", "max", "diff", "eq", "if", "area", "product")
+READINGS = ("turn",)
+
+
+def _symbols(sexpr: str) -> set:
+    from catspace.incubator.analyst.discovery import base_vocabulary as BV
+    out: set = set()
+
+    def walk(u):
+        if isinstance(u, str):
+            out.add(u)
+        else:
+            for v in u:
+                walk(v)
+    walk(BV.expand(BV.parse(sexpr)))
+    return out
+
+
+def term_relations(sexpr: str) -> list:
+    """76.1 (c): the shelf relations an s-expression of the vocabulary reads (its chess terms unfolded; combinators and numbers read none), sorted. An unbound symbol
+    raises OntologyError (the term would read something the shelf does not name)."""
+    vm = vocabulary_map()
+    out: set = set()
+    for s in _symbols(sexpr):
+        if s in COMBINATORS or s.lstrip("-").isdigit():
+            continue
+        if s not in vm:
+            raise OntologyError(f"the term {sexpr!r} reads {s!r}, which no shelf entry binds")
+        out |= set(vm[s])
+    return sorted(out)
+
+
+def vocabulary_problems() -> list:
+    """Every primitive of the vocabulary that reads the position or the board's geometry is bound to a shelf relation; every bound symbol is a primitive (or a reading
+    of the technique library)."""
+    from catspace.incubator.analyst.discovery import base_vocabulary as BV
+    vm = vocabulary_map()
+    bad = [f"vocabulary: the primitive {s} is bound to no shelf entry" for s in BV.PRIMITIVES
+           if s not in vm and s not in COMBINATORS and s not in BV.CHESS_TERMS and not s.lstrip("-").isdigit()]
+    bad += [f"vocabulary: {s} (bound by {vm[s]}) is no primitive of the vocabulary" for s in vm if s not in BV.PRIMITIVES and s not in READINGS]
+    return bad
+
+
 def _spec_rels(g: dict) -> list:
     """The GDL relations (program nodes) a gdl binding names: a relation, the `true` fluent, or a keyword's flattened relations."""
     if "relation" in g:
@@ -796,6 +841,7 @@ def validate(lean: bool = False, log=print, file: bool = True) -> int:
             owners.setdefault(r, []).append(e["name"])
     bad += [f"two entries bind {r}: {ns}" for r, ns in sorted(owners.items()) if len(ns) > 1]
     bad += sort_problems(store, prog)
+    bad += vocabulary_problems()
     covered, unnamed = coverage(store, prog)
     reads = spec_reads(prog, store)
     bad += [f"{n}: reads {store[n]['reads']} but the spec's reads are {r}" for n, r in sorted(reads.items()) if store[n]["reads"] != r]
@@ -827,6 +873,9 @@ def validate(lean: bool = False, log=print, file: bool = True) -> int:
         f"{sum(e['lean'] is not None for e in store.values())}, python {sum(e['python'] is not None for e in store.values())} of {len(store)}")
     log(f"OBS ontology spec coverage: relations of rules/chess.gdl {len(prog.nodes)}, bound by an entry {len(covered)}, UNNAMED {len(unnamed)}"
         + (f": {', '.join(unnamed)}" if unnamed else ""))
+    vm = vocabulary_map()
+    log(f"OBS ontology vocabulary: symbols bound {len(vm)} (by {sum(bool(e['vocabulary']) for e in store.values())} entries); unbound primitives "
+        f"{sum(1 for x in bad if 'is bound to no shelf entry' in x)}")
     log(f"OBS ontology agreement ({len(SAMPLE)} positions; spec vs python-chess, the Rust core{' and the Lean kernel' if lean else ''}): readings compared "
         + ", ".join(f"{r} ({'/'.join(f'{k} {n}' for k, n in sorted(ks.items()))})" for r, ks in sorted(ag['compared'].items()))
         + f"; disagreements {len(ag['disagree'])} (filed already {len(ag['disagree']) - len(new)}, new {len(new)})")

@@ -21,7 +21,10 @@
  "bind": null,
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "knight1",
+  "knight2"
+ ],
  "names": false,
  "means": "the knight's jump",
  "why": {},

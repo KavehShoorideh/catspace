@@ -28,7 +28,16 @@
  "bind": null,
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "attackable",
+  "attacked",
+  "attackers",
+  "attacks",
+  "defenders",
+  "free",
+  "hit",
+  "unhit"
+ ],
  "names": true,
  "means": "a unit bears on a square (Game.attackers, Game.attacks_from)",
  "why": {},

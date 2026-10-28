@@ -19,7 +19,10 @@
  "bind": null,
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "colour",
+  "dark"
+ ],
  "names": false,
  "means": "a dark square (file and rank of the same parity; a1 is dark)",
  "why": {

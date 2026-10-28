@@ -20,7 +20,9 @@
  },
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "turn"
+ ],
  "names": true,
  "means": "whose move it is and a count of moves (Game.turn, the board's ply count; the pass flips the side to move, Game.pass_)",
  "why": {},

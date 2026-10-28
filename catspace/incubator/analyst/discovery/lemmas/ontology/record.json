@@ -21,7 +21,10 @@
  },
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "ago",
+  "seen"
+ ],
  "names": false,
  "means": "the game record's reading of the position: how often its identity occurred before it, saturating at 2 (an INPUT, as `does` is: threefold reads the history, not the state)",
  "why": {},

@@ -34790,3 +34790,21 @@ THE GUARD (no engine path reads the spec, the interpreter or the translator; nam
 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s, 24 s, 16 s, 58 s). OBS audit recount: CHESS FACT rows 210 -> 210.
 OBS gate engine --only: test_plan76 15/0/0/0 58.4 s (its slow Lean tests run); test_rules_gdl 12/0/0/0 3.7 s; test_rules_draws 17/0/0/0 3.6 s; test_plan73 9/0/0/0
 14.4 s; test_lean_index 2/0/0/0 187.0 s. The shared lean/ideas/.lake received the oleans of Ideas.Spec.{Binding,Chess,NextEquiv,DeadPosition}.
+
+
+## 2026-10-28 15:35 -- plan 76.1 (c) THE TERMS ARE THE RELATIONS: every symbol of the vocabulary bound to the shelf's relations; the technique atoms read named relations (branch worktree-agent-a12092dcf58ba7325)
+The shelf's entries carry `vocabulary`: the base vocabulary's primitives (base_vocabulary.PRIMITIVES -- the symbols of graph.py's words and of the Rust compile_term)
+that read each relation. cell: the unit names (W, L, P, O, P2..O5, ours, theirs, ourqueens .. theirpawns), without, worth, maxworth; attack: attacked, free, hit, unhit,
+attacks, attackers, defenders, attackable; slide: xray, beyond, next, segment, between, line, lines, diagonals; step: offset; king_step: reach, dist, box, edge, corner,
+nearer; knight_jump: knight1, knight2; the objects file / rank / square: their coordinate and square names; dark / light: dark, light, colour; forward / last_rank:
+the pawn's words; legal: moves, movecount, mobility, least, most, forcing_*; next: after, delta, gained, lost, least, most, forcing_*; capture: see, declined; check;
+halfmove: halfmoves; record: seen, ago; tempo: the technique library's `turn`; material: material_us, material_them, balance, worth, maxworth, see. Combinators and
+numbers read none (ontology.COMBINATORS). `ontology.term_relations(sexpr)`: the relations a term reads (its chess terms unfolded); an unbound symbol is an error.
+`validate` checks every primitive bound and every bound symbol a primitive. technique_measures.py: `Atom.rels` / `Term.rels` -- the region reads attack, cell,
+king_step; edge_dist, corner_dist, kings_dist cell, king_step; material_us / material_them material; tempo halfmove; turn tempo; the per-axis atoms cell, king_step,
+rank / file (and square for the edge ranks / files). A reference only: no reading of the miner changed.
+OBS ontology vocabulary: symbols bound 162 (by 21 entries); unbound primitives 0. OBS ontology validate: problems 0.
+NEGATIVE CONTROL (not committed): `reach` bound to knight_jump instead of king_step -- OBS 76.1 (c) negative control (reach bound to knight_jump): region reads
+('attack', 'cell', 'knight_jump'); the test's expected ('attack', 'cell', 'king_step'): FIRES (the shelf restored).
+THE GUARD: OBS ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s, 24 s, 16 s,
+59 s). OBS audit recount: CHESS FACT rows 210 -> 210. OBS gate engine --only: test_plan76 17/0/0/0 56.4 s; test_plan73_5 7/0/0/0 2.0 s; test_plan73_6 27/0/0/0 34.0 s.

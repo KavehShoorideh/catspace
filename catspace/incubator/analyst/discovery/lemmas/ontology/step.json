@@ -24,7 +24,9 @@
  "bind": null,
  "node": null,
  "edge": null,
- "vocabulary": [],
+ "vocabulary": [
+  "offset"
+ ],
  "names": false,
  "means": "one step along a direction from one square to the next",
  "why": {
