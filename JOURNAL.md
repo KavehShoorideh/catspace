@@ -34650,3 +34650,39 @@ LEAN_INDEX rebuilt: OBS indexed 706 theorems/lemmas (179 open) and 619 documente
 OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_rules_gdl 12/0/0/0 4.8 s (the Lean build test marked slow, run: ~1 s on the
 built library); test_game 3/0/0/0 0.4 s; test_rules_draws 17/0/0/0 4.0 s; test_lean_index 2/0/0/0 168.6 s; test_plan73 9/0/0/0 16.0 s. OBS lemma store validate: entries
 110, problems 0. scripts/gate.py ENGINE_NAMES gains test_rules_gdl.
+
+
+## 2026-10-28 13:52 -- plan 76.0 THE SPIKE DECIDES 76.1: GDL WITH NAMED EXTENSIONS; the guard; the findings; 76.0 marked BUILT (branch worktree-agent-ababbaddc3af91dc2)
+THE GUARD (no engine decision path touched: the interpreter, the binding, the cross-play and the translator are new modules; trace_identity.py's --jobs is
+output-identical), the branch's head against the parent snapshot, --jobs 11: OBS guard ten t0: 0 of 10 traces / read sets / leaf verdict lists / word lists /
+provenance lists differ; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 9 s, 34 s, 21 s, 71 s).
+NEGATIVE CONTROL of the guard (not committed: a copy of trace_identity.py whose --jobs children run at PYTHONHASHSEED=1): wide t0 3 of 99 traces differ (MsF80, aEC9x,
+fth9B), 1 of 99 read sets, 0 leaf lists, 1 word list, 2 provenance lists -- the guard fires, and the children must inherit the parent's seed (they do).
+OBS audit recount: CHESS FACT rows 210 -> 210 (rows total 1618: LOGIC 1253, RULE 99, NAME 21, CHESS FACT 210, HEURISTIC 35; no engine file changed).
+THE COST: the spec 307 lines (129 rules, 234 facts); the interpreter 565 lines (gdl.py) + the binding 128 (gdl_chess.py); the cross-play 445 (crossplay.py); the
+translator 403 (gdl_to_lean.py); the generated rook 190 Lean lines, its proofs 376 (hand-written). Speed (one process): a reading 19.2 ms per position, a next state
+0.29 ms per move, python-chess's moves and pushes 0.14 ms per position -- the spec is an oracle, not a kernel.
+THE RECOMMENDATION (one paragraph): GDL WITH NAMED EXTENSIONS. The rule language is not the risk: chess went into 129 rules and 234 facts written once, and python-chess
+agreed on every reading (legal moves, every next state, the terminal reasons, the verdict, the goals) of the 15770 positions of run 1 and the 69566 of the holdout with no
+fix to the spec; the one class of disagreement is a real gap of the Rust kernel, found by reading FIDE 5.2.2. The Lean generation is mechanical for the board-level
+clauses (eight shapes; the rook's 57 clauses and the survey's 151 compile) and the proofs went through one general lemma (`slide_iff`, all eight directions), so the
+bishop and the queen are near. What GDL as written lacks is exactly where the translator stopped: (1) SORTS -- its constants are untyped (the clock's numerals 1..8 are the
+ranks'); (2) BINDINGS for the remaining fluents (the e.p. square, the castling rights as the kernel's CastleRight set, the saturating clock): the ontology shelf's Lean
+column, of which the translator's table is a small version; (3) a MOVE binding that reads the position (the spec's e1g1 is Move.whiteKingCastle only with the king on e1; a
+pawn's diagonal move onto the e.p. square is Move.enPassant); (4) the GAME LAYER: `next` is a relation, and making it `applyMove` is a functionality obligation per spec;
+(5) the rules that are not state-local -- threefold (the history) and FIDE's dead position (every continuation) -- as named inputs (the Record, supplied as `does` is) or
+as lemmas (insufficient material IS a lemma of 5.2.2: the spec encodes python-chess's sufficient criterion as if it were the rule), not as clauses. So 76.1 builds the
+ontology shelf with these five extensions named, starting from gdl_to_lean.py's binding table; nothing in the spike asks for 76.1 to be rewritten.
+FINDINGS: (a) the Rust core's game.rs `insufficient` is narrower than python-chess's and than FIDE 5.2.2 (the nine surprises); (b) three definitions of insufficient material
+live side by side -- python-chess (Game.terminal, the spec), game.rs (two kings and at most one minor), chess-lean (`kingsOnlyMaterial`; the unbounded `deadPosition`) --
+and Lean proves only K + one minor v K (`Ideas.InsufficientMaterial`); the one-colour bishops class is a candidate lemma by the same colour argument, not in Lean; (c) GDL's
+untyped constants (the survey's count_succ); (d) the kernels' e.p. square is the RAW one (set after every double push) while the identity and the FEN cut it to a legal
+capture: the spec follows the state, the identity is a separate reading; (e) the spec's clock saturates at 100, the kernels count on (the rule reads only "100 or more");
+(f) the relations beyond the names table (13:35 entry) -- among them `touched` (= Ideas.PathLemma.touched), `after` (a counterfactual board, as Ideas.Landing.land),
+`king_ray` / `slide` (the ray), `exposed` (pin and discovered check), `may_land` (= destinationFriendlyB), the square's colour class; (g) the random sample is thin on the
+rarest rules (en passant 120 moves and castling 678 in the holdout, mate 27, stalemate 14 positions): the corners carry them; (h) the cross-play compares the spec with
+the kernels it was written beside: its faithfulness to FIDE beyond them rests on the reading of the rules, done here for the one disagreement.
+NOT BUILT, and why: threefold in the spec (needs the history: finding (5)); the chess-lean kernel's executable `legalMoves` as a third party of the cross-play (not asked;
+the rook's clauses are proved equal to it instead); the bindings of the e.p. square, the castling rights, the clock and the moves, so 42 relations stay untranslated
+(that is 76.1's shelf); the bishop / queen / king / knight / pawn equivalences (the rook was the spike); no Rust build (the editable install did not move); the shared
+lean/ideas/.lake received the oleans of Ideas.Spec.Rook and Ideas.Spec.RookEquiv from the builds.

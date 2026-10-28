@@ -4019,6 +4019,17 @@ implication); (5) INTERESTINGNESS FROM USE: a derived object's worth is how ofte
 wait); (b) CROSS-PLAY against our kernel on a large random sample of positions (legal moves, terminals, next state): every disagreement printed, shrunk and filed as a surprise; (c) the ROOK
 alone translated from GDL clauses to Lean definitions by code (Datalog -> Lean), and ONE existing lemma about rook attack re-proved from the generated definition (reasoning, no
 enumeration). Report: agreement rate and the surprises; whether the Lean generation is mechanical; the cost. If (c) fails, 76.1 is rewritten before anything else is built.
+* 76.0 BUILT 2026-10-28 on branch worktree-agent-ababbaddc3af91dc2 (journal 2026-10-28 12:57, 13:35, 13:44, 13:51, 13:52): (0) `scripts/trace_identity.py snapshot --jobs N`
+  (one case per process; byte-identical to the serial run on the ten, tiers 0 and 2) and THE PARENT SNAPSHOT of plan 76 at
+  /Users/kav/code/remote/github/catspace/artifacts/experiments/plan76/parent/{ten_t0,ten_t2,wide_t0,wide_t2}; (a) `rules/chess.gdl` (clauses 363: rules 129, facts 234;
+  threefold left out, said so); (b) `discovery/gdl.py` (a stratified semi-naive Datalog fixpoint), `discovery/gdl_chess.py` (the binding), `scripts/crossplay.py`:
+  python-chess agrees on every reading of 15770 positions (run 1) and of 69566 (the holdout); the Rust core disagrees in one class only -- game.rs `insufficient`
+  misses the one-colour bishops (FIDE 5.2.2): nine surprises in rules/surprises/, reported, not patched; (c) `scripts/gdl_to_lean.py` (eight clause shapes, sorts
+  inferred): the rook generated into Ideas/Spec/Rook.lean (17 relations, 57 clauses); Ideas/Spec/RookEquiv.lean proves the generated attack, move and capture equal
+  to the kernel's on every position and re-proves `Ideas.Region.rook_attacks_empty_file` from the generated slide (no sorry, no native_decide); 48 of 90 relations
+  translate. Guard 0 of 218 on all five lists. (c) did not fail: THE DECISION FOR 76.1 is GDL WITH NAMED EXTENSIONS (sorts; the remaining fluents' bindings; a move
+  binding that reads the position; `next` as a relation with a functionality obligation; the record and the dead position as inputs or lemmas, not clauses) --
+  the journal's 13:52 entry.
 ### 76.1 THE ONTOLOGY SHELF: object and relation kinds declared once with the three bindings; the Datalog's relations renamed to the shelf's names; the term atoms become the relations; the
 GNN's node kinds read from the shelf (today four, hand-chosen); the names table folded in.
 ### 76.2 THE RULE SHELF: the full GDL chess, certified by cross-play with the surprise store; the Lean definitions generated; `Game` reads legality and terminals through the certified kernel
