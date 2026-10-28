@@ -18,9 +18,10 @@ from typing import Iterable, Protocol, runtime_checkable
 import chess
 
 from catspace.incubator.analyst.discovery import graph as G
+from catspace.incubator.analyst.discovery import lemma_store as LS
 
 WHITE, BLACK = chess.WHITE, chess.BLACK
-MATE_VALUE = 100
+MATE_VALUE = LS.goal_kinds().terminal.stake       # plan 75.2 (a): the stake of the goal that ends the game, read from its GOAL entry (lemmas/mate.json: ONE definition)
 
 
 @dataclass(frozen=True)

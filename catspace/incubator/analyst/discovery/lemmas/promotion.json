@@ -1,0 +1,46 @@
+{
+ "name": "promotion",
+ "kind": "GOAL",
+ "reads": [
+  "movement",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "BASE",
+ "plan": [
+  "75.2",
+  "52.6"
+ ],
+ "journal": "2026-10-27",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:promotes",
+  "catspace/incubator/analyst/discovery/agenda.py:_promote_roots",
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_promote",
+  "catspace/incubator/analyst/discovery/lemma_store.py:goal_kinds"
+ ],
+ "note": "The promotion rule as a goal (Game.promotes): a pawn of ours reaching its last rank is replaced by a queen, so its stake is the material valuation's worth of the queen less the pawn's (8); the queen is the only unit the agenda places (underpromotion is never asked: a choice of ours, HAND); a pawn within three pushes is a root (near, 52.6: the mate and material stakes dominate farther pawns; a far passer the tempo arithmetic calls unstoppable is one too), cited by no Lean theorem as a goal.",
+ "params": {
+  "question": "promote",
+  "basis": "RULE",
+  "rule": "Game.promotes",
+  "valuation": "material",
+  "stake": {
+   "unit": "q",
+   "less": "p"
+  },
+  "ends_game": false,
+  "keep": false,
+  "about": "pawn",
+  "chase": true,
+  "reads_on_kill": false,
+  "near": 3
+ }
+}

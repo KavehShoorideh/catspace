@@ -31,16 +31,17 @@ import chess
 import analyst_core as _A
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import race as RC
+from catspace.incubator.analyst.discovery import lemma_store as LS
 
-STAKE_MATE = 100
+STAKE_MATE = LS.goal_kinds().terminal.stake    # plan 75.2 (a): the stake of the goal that ends the game, read from its GOAL entry (lemmas/mate.json: ONE definition)
 PASS_CLAIMS = [0]                             # 52.18 (3): forcing_why answers that were a claim bound after a pass (the OBS counter)
-STAKE_PROMOTE = 8                             # a queen less the pawn
+STAKE_PROMOTE = LS.goal_kinds().promotion.stake      # plan 75.2 (a): a queen less the pawn, read from the promotion GOAL entry and the material VALUATION
 DEFECTS_RUST = True                           # 54 (B1): mate_defects / material_defects read by analyst_core (the Python path below stays; ValueError = a position shakmaty cannot hold -> Python)
 ROUTES_RUST = True                            # 54 (B2): routes_of's `_still` filter and `forcing_why` for the whole candidate list in two Rust calls (the Python path stays)
 TRAP_RUST = True                              # 54 (B4): trap_fix's three reads (safe squares, quiet trap routes, fork routes) in one Rust call (the Python path stays)
 SKEWER_RUST = True                            # 54 (B4): skewer_routes / drive_onto_routes read by analyst_core (the Python path stays)
 REGRESS_LOG = None                            # 54 (B): a list -> every fixes_of / routes_of / forcing_why call appends what it answered (scripts/compare_regress.py diffs these)
-PROMOTE_MAX_PUSHES = 3                        # farther pawns: the mate / material stakes dominate (52.6)
+# (plan 75.2 (a): PROMOTE_MAX_PUSHES = 3 left for the promotion GOAL entry's `near`, lemmas/promotion.json)
 
 
 @dataclass

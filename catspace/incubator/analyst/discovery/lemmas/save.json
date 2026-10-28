@@ -1,0 +1,43 @@
+{
+ "name": "save",
+ "kind": "GOAL",
+ "reads": [
+  "material",
+  "attack"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "75.2",
+  "52.4",
+  "70.1"
+ ],
+ "journal": "2026-10-27",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_save_piece",
+  "catspace/incubator/analyst/discovery/agenda.py:_keep_goal",
+  "catspace/incubator/analyst/discovery/lemma_store.py:goal_kinds"
+ ],
+ "note": "Don't lose material (the same valuation, kept): save a unit of ours, the king's check, or their threat, its stake what it saves; chased with keep semantics (a reply after which the balance stands where it stood is kept).",
+ "params": {
+  "question": "save",
+  "basis": "VALUATION",
+  "rule": null,
+  "valuation": "material",
+  "stake": null,
+  "ends_game": false,
+  "keep": true,
+  "about": "target",
+  "chase": false,
+  "reads_on_kill": false,
+  "near": null
+ }
+}

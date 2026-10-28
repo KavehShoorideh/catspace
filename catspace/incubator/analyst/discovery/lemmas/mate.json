@@ -1,0 +1,41 @@
+{
+ "name": "mate",
+ "kind": "GOAL",
+ "reads": [
+  "movement",
+  "attack"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "BASE",
+ "plan": [
+  "75.2"
+ ],
+ "journal": "2026-10-27",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:terminal",
+  "catspace/incubator/analyst/discovery/agenda.py:_roots",
+  "catspace/incubator/analyst/discovery/lemma_store.py:goal_kinds"
+ ],
+ "note": "The goal that ends the game, the rule's terminal (Game.terminal says 'mate': the mover is checked and has no legal move): its questions place a checking unit, its stake 100 stands above every count of the material valuation (a number of ours, HAND; Lean's Ideas.Vocabulary.mateGain is 100000), cited by no Lean theorem as a goal.",
+ "params": {
+  "question": "mate",
+  "basis": "RULE",
+  "rule": "Game.terminal",
+  "valuation": "material",
+  "stake": 100,
+  "ends_game": true,
+  "keep": false,
+  "about": "at",
+  "chase": true,
+  "reads_on_kill": true,
+  "near": null
+ }
+}

@@ -3959,6 +3959,11 @@ the second check, the fuse, the judge's cut): the agenda asks "does a stop apply
 kernel definition (and its Lean twin); the trace prints names from it; reads in the store refer to it. (d) THE GENERIC TEST: the agenda's core (the worklist, the chase, the leaf glue, the
 judge) names nothing outside names.py and the store -- the test of 73.5b extended to agenda.py's core modules after 74's split. Acceptance per stage: decisions identical on the ten + wide,
 the gate green, the audit's CHESS FACT count printed before/after (the number to drive to zero).
+* 75.2 (a) BUILT 2026-10-28 on branch worktree-agent-a96bad5c641e60ec1 (journal 2026-10-28 00:34): the store's GOAL and VALUATION kinds and `params` (lemmas/README.md); the entries
+  `mate`, `promotion`, `win`, `save` (GOAL) and `material` (VALUATION), read through `lemma_store.goal_kinds()` -- the stake of mate, the promotion's stake and placed unit, the unit
+  worths and the gain unit each defined once (game.py, binder.py, regress.py, selfmine.py and the agenda read them); every goal word and goal-kind test of agenda.py / ponder.py reads the
+  entries; the status ladder is worklist.py's outcome ladder. Guard 0 of 218 on traces, read sets, leaf lists, word lists, provenance lists; CHESS FACT rows 428 -> 255
+  (scripts/agenda_audit/recount.py; docs/AGENDA_AUDIT.md "75.2 recount"); W0VFO 10 s Qb7 +3 proved; loop-2 32 RIGHT / 6 WRONG.
 
 ### 75.3 Then (plan 76, written after 75.2's count is known): one term language (the miner's atoms as Rust terms with typed combinators: sets of locations, reach, counts, per-axis
 distances, min over units, who moves; the generator proposes terms priced by size) and MINING MATERIAL (the count term over game records that predicts the outcome; the hand values stay a

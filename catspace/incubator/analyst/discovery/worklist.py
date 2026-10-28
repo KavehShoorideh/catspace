@@ -24,6 +24,48 @@ from dataclasses import dataclass, field
 
 OPEN, DEFERRED, TAKEN, OBSERVED = "open", "deferred", "taken", "observed"
 
+# ---------------------------------------------------------------------------------------------------------------- plan 75.2 (a): THE OUTCOME LADDER (plan 59)
+# The goal is the outcome: don't lose, then win. The STATUS of a position is the balance of a valuation less the threat against it, read on three rungs -- losing
+# (below level), level (0), winning (at least one unit of the valuation ahead) -- and the LINE an answer must keep: one unit ahead when winning ('stay ahead'),
+# level otherwise ('reach level'). An answer KEEPS the status when the balance plus its value reaches the line; at 'not losing' with time left the line RISES to
+# 'stay ahead'. The unit is the valuation's (the engine passes it: this module names no valuation).
+LOSING, LEVEL, WINNING = "losing", "level", "winning"
+
+
+def rung(s0: int, unit: int) -> str:
+    """The rung of a status s0: winning (at least one unit ahead), losing (below level), level."""
+    return WINNING if s0 >= unit else LOSING if s0 < 0 else LEVEL
+
+
+def ladder(balance: int, threat: int, unit: int) -> dict:
+    """The status read on the outcome ladder: {balance, threat, s0 (balance less the threat), word (the rung), line (what an answer must keep)}."""
+    s0 = balance - threat
+    return dict(balance=balance, threat=threat, s0=s0, word=rung(s0, unit), line=unit if s0 >= unit else 0)
+
+
+def kept(status: dict, value: "int | None") -> bool:
+    """Does an answer worth `value` keep the status (None: no answer)?"""
+    return value is not None and status["balance"] + value >= status["line"]
+
+
+def raises(status: dict, value: int, unit: int) -> bool:
+    """Kept at 'not losing' but not 'winning': the line may rise to 'stay ahead' (the next rung)."""
+    return status["line"] == 0 and status["balance"] + value < unit
+
+
+def raised(status: dict, unit: int) -> dict:
+    """The status with its line risen one rung: 'stay ahead'."""
+    return dict(status, line=unit, raised=True)
+
+
+def losing(status: dict) -> bool:
+    return status["word"] == LOSING
+
+
+def line_name(status: dict) -> str:
+    """The line in words: 'stay ahead' (a rung above level) or 'reach level'."""
+    return "stay ahead" if status["line"] else "reach level"
+
 
 @dataclass(eq=False)
 class Item:

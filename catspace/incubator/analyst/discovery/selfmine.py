@@ -1759,7 +1759,9 @@ def bind(depth: int, fen: str, mover: str, need: int, candidates: list | None = 
 
 # ---------------------------------------------------------------------------------------------------------------- verdicts (ANALYST_PLAN 45)
 
-PIECE_WORTH = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 0}
+from . import lemma_store as _LS  # noqa: E402
+
+PIECE_WORTH = dict(_LS.goal_kinds().valuation.worth)       # plan 75.2 (a): the unit worths read from the material VALUATION entry (lemmas/material.json: ONE definition)
 
 
 class VerdictCache:

@@ -1947,3 +1947,61 @@ These have a stated source:
 - **The kinds of the proposed entries** are the six this audit was asked for: GOAL, STOP, FORCING, CLOSING, HEURISTIC, VALUATION. GOAL and VALUATION are new to the store (plan 75.2 (a)). The store's own DEFECT_FIX kind is not used for a proposal: a defect that is not in the store is proposed as part of its goal. Their 'reads' are the four base words of 73.1.
 - **The number for 75.2 to drive to zero** is the CHESS FACT row count of section 2. These scripts can recount it if they are kept: they are not committed (the spec asked for one document).
 
+## 75.2 recount (appended by plan 75.2; the sections above are the audit of 2026-10-27 and stay as written)
+
+THE RECOUNT (scripts/agenda_audit/recount.py, committed with stage (a)): the audit's own scripts, re-run on the working tree. The classifier's hand readings are keyed by the lines
+of agenda.py / ponder.py at 65024fbf; recount.py maps them to the file being counted (difflib, through main 9e4e5673 with the plan 74 agent's three hand carries). A hand reading on a
+line 75.2 EDITED is dropped (its fact left the line: the edited line is classified by the content rules alone) unless it is listed in recount.py's KEEP_ON_EDIT -- the readings whose
+family's fact is still written on the edited line (the edit moved a goal word, a stake or the unit out of it, the family's own rule stayed); every dropped and every kept reading is
+printed by the recount and was read. The baseline recount on 9e4e5673 reproduces the audit: 428 CHESS FACT rows, the plan 74 agent's per-family rows.
+
+### Stage (a): the goal ladder and the goal kinds from the store
+
+```
+OBS audit rows total 1635: LOGIC 1211, RULE 105, NAME 23, CHESS FACT 255, HEURISTIC 41
+OBS audit rows agenda.py 1601: LOGIC 1185, RULE 103, NAME 21, CHESS FACT 253, HEURISTIC 39
+OBS audit rows ponder.py 34: LOGIC 26, RULE 2, NAME 2, CHESS FACT 2, HEURISTIC 2
+OBS audit hand readings carried onto an edited line (the family's fact stays there): 29
+OBS audit hand readings dropped (their line changed since 65024fbf): 80
+OBS audit recount CHESS FACT rows 428 -> 255
+OBS audit recount fact A10: rows 9 -> 4
+OBS audit recount fact A1f: rows 3 -> 2
+OBS audit recount fact A1m: rows 18 -> 1
+OBS audit recount fact A1p: rows 21 -> 1
+OBS audit recount fact A1s: rows 12 -> 0
+OBS audit recount fact A1t: rows 3 -> 0
+OBS audit recount fact A1w: rows 12 -> 1
+OBS audit recount fact A1x: rows 1 -> 0
+OBS audit recount fact A2: rows 34 -> 0
+OBS audit recount fact A3: rows 14 -> 0
+OBS audit recount fact A5: rows 20 -> 1
+OBS audit recount fact A6: rows 13 -> 0
+OBS audit recount fact A7: rows 15 -> 10
+OBS audit recount fact A8: rows 2 -> 1
+OBS audit recount fact A9: rows 3 -> 0
+OBS audit recount fact D10: rows 7 -> 6
+OBS audit recount fact D12: rows 2 -> 1
+OBS audit recount fact D2: rows 17 -> 14
+OBS audit recount fact D20: rows 2 -> 1
+OBS audit recount fact D21: rows 10 -> 11
+OBS audit recount fact D3: rows 10 -> 6
+OBS audit recount fact D4: rows 3 -> 2
+OBS audit recount fact D6: rows 10 -> 8
+OBS audit recount fact D8d: rows 3 -> 2
+OBS audit recount fact D8e: rows 3 -> 2
+```
+
+What left agenda.py: every goal word a question or a claim is built with (the GOAL entries' `question`: the terminal's, the promotion's, the gain's, the keep's; a technique's
+from its entry's kind), every goal-kind test that decides (the entries' roles: ends the game, a keep, the promotion, a gain, chased, reads on a kill), the stake of mate (the terminal
+GOAL entry, also read by game.py, binder.py and regress.py: one definition), the stake of promotion and the queen it places (the promotion entry over the material VALUATION), the unit
+worths (the VALUATION entry: selfmine's table, Game.measure and BaseWords.worth read it), the gain unit (the VALUATION's `unit`), the promotion's near scope (the entry's `near`), and the
+status ladder (worklist.py's outcome ladder: the rung, the line, kept, the raise). The D rows that fell held a goal word or the terminal's stake as their only atom (a claim's or a
+question's kind literal; "a mate in one closes at 100"). D21 rose by one: `_keep_goal`'s in-check exclusion is now a D21 row of its own.
+
+What stays, and why: A7 (10) -- the need's comparisons (`value >= min_stake`, `inn["value"] >= need`): machinery comparisons once the unit and the stakes are the store's; the
+classifier keys on the need's variable names. A10 (4) -- the calls of `_keep_goal` and the root's kept-claim rule (its body reads the keep entry). A5 (1) -- the deferral test still
+reads the run's need (`ctx.need`). A4 (4, unchanged) -- the orders by the valuation's worth (the classifier keys on the word "worth"; the worths are the entry's). A1m (1) -- a
+king move is no checking placement (stage (c): the royal unit). A1p (1) -- a far passer can still push (`n > 0`). A1w (1) -- the gain goal's direct routes are captures, not
+promotions. A1f (2) -- the fork question kind (no GOAL entry: the store's "fork" is a FORCING word). A8 (1) / A1d (1) -- the draw: a repetition when behind is a draw claim (the
+rung now reads the ladder; the draw is no GOAL entry: the kernel has no repetition rule, a finding).
+

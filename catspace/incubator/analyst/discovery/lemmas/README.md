@@ -8,7 +8,7 @@ letters, digits and `_` one `-`).
 | field | what it holds |
 |---|---|
 | `name` | the string the engine prints (a claim's lemma, a kill or GAP reason); a template writes each slot (a move, a square, a number, another word) as `...` |
-| `kind` | CLOSING (closes a line or a question: a claim, a closer, a refutation) / DEFECT_FIX (why a goal fails, what mends it) / FORCING (why a move forces) / TECHNIQUE (a goal with a measure and a terminal theorem) / STOP (a GAP, a cut, a floor: never a kill) / TABLE (the five-men oracle) |
+| `kind` | CLOSING (closes a line or a question: a claim, a closer, a refutation) / DEFECT_FIX (why a goal fails, what mends it) / FORCING (why a move forces) / TECHNIQUE (a goal with a measure and a terminal theorem) / STOP (a GAP, a cut, a floor: never a kill) / TABLE (the five-men oracle) / GOAL (plan 75.2: a goal kind the agenda pursues toward the outcome -- its questions' word, its stake, its role) / VALUATION (plan 75.2: a count the stakes are in -- the unit worths) |
 | `reads` | the base words it is built from, a non-empty subset of `movement`, `attack`, `tempo`, `material` |
 | `terms` | the vocabulary s-expressions it compiles (may be empty); their own reads must be within `reads` |
 | `status` | PROVED (every name in `lean` is a proved theorem of docs/LEAN_INDEX.md) / CONJECTURE (no theorem proves it as stated) / REFUTED / HEURISTIC (a stop or a tie-break: no proof obligation) |
@@ -19,6 +19,7 @@ letters, digits and `_` one `-`).
 | `evidence` | `{uses: {}, confirmed: [], refuted: []}`: filled from runs later, never during one |
 | `implementation` | where it runs, `path:function` from the repo root (validated: the file defines the name; a Lean `theorem` counts -- plan 73.6: a mined sub-lemma is implemented by its Lean file) |
 | `note` | one plain sentence |
+| `params` | optional (plan 75.2): what the agenda READS of the entry at run time. A GOAL has exactly `question` (the goal word its questions and claims carry), `basis` (RULE: bound to a kernel predicate, named in `rule`; VALUATION: a count of the `valuation` entry), `rule`, `valuation`, `stake` (a number; `{unit, less}`: the valuation's worth of the unit it places less the one it replaces; null: the question's own, its target's worth), `ends_game`, `keep` (don't lose: chased with keep semantics), `about` (the question's pattern key naming its location), `chase`, `reads_on_kill`, `near` (how near a unit must be for a root: null, every one). A VALUATION has exactly `worth` (unit kind -> a whole number), `unit` (the least gain), `royal` (the unit kind of no worth: its loss is the terminal). The store has exactly one GOAL that ends the game, one that places a unit, one gain, one keep, all counting in one valuation (`lemma_store.goal_kinds`). A STOP may carry its shape here (a dict); no other kind has params. |
 
 A printed string is CATALOGUED when it is an entry's name, or one of `lemma_store.PATTERNS` builds it from entry names (a prefix such as `after Qxd5: ` or
 `inherited: `, a suffix, a composition such as `chase: step_after+step_least over X, Y`, a template), or it begins with an entry's name followed by its detail

@@ -28,7 +28,8 @@ ROOT = Path(__file__).resolve().parents[4]
 LEAN_INDEX = ROOT / "docs" / "LEAN_INDEX.md"
 
 FIELDS = ("name", "kind", "reads", "terms", "status", "lean", "origin", "plan", "journal", "measure", "evidence", "implementation", "note")
-KINDS = ("CLOSING", "DEFECT_FIX", "FORCING", "TECHNIQUE", "STOP", "TABLE")
+OPTIONAL = ("params",)              # plan 75.2: the values the agenda READS from an entry at run time (a GOAL's stake and roles, a VALUATION's worths, a STOP's shape)
+KINDS = ("CLOSING", "DEFECT_FIX", "FORCING", "TECHNIQUE", "STOP", "TABLE", "GOAL", "VALUATION")
 BASE = ("movement", "attack", "tempo", "material")
 STATUSES = ("PROVED", "CONJECTURE", "REFUTED", "HEURISTIC")
 ORIGINS = ("BASE", "HAND", "MINED")
@@ -59,8 +60,8 @@ def check_entry(e: dict, where: str = "") -> list:
     """The schema of one entry (73.1) -> the list of what is wrong (empty: a good entry). The Lean citations are checked by `validate` against the index."""
     bad = []
     at = where or e.get("name", "?")
-    if set(e) != set(FIELDS):
-        bad.append(f"{at}: fields {sorted(set(e) ^ set(FIELDS))} (the schema is exactly {', '.join(FIELDS)})")
+    if set(e) - set(OPTIONAL) != set(FIELDS):
+        bad.append(f"{at}: fields {sorted((set(e) - set(OPTIONAL)) ^ set(FIELDS))} (the schema is exactly {', '.join(FIELDS)}, and may say {', '.join(OPTIONAL)})")
         return bad
     if not isinstance(e["name"], str) or not e["name"]:
         bad.append(f"{at}: name must be a non-empty string")
@@ -99,7 +100,168 @@ def check_entry(e: dict, where: str = "") -> list:
         bad.append(f"{at}: implementation must list 'file:function' strings")
     if not isinstance(e["note"], str) or not e["note"]:
         bad.append(f"{at}: note must be one plain sentence")
+    bad += _params_problems(e, at)
     return bad
+
+
+# ---------------------------------------------------------------------------------------------------------------- plan 75.2 (a): the goal kinds and the valuation
+#
+# THE GOAL is the outcome (plan 75: don't lose, then win -- the status ladder of plan 59, kept in the worklist's keep arithmetic). The goal KINDS the agenda pursues
+# toward it are GOAL entries, each with what the agenda reads of it: the word its questions carry, its basis (a RULE of the game bound to a kernel predicate, or
+# a count of a VALUATION entry), its stake (a number, the valuation's worth of the unit a promotion places less the unit it replaces, or the question's own: the
+# worth of its target), whether it ends the game, whether it is a keep (don't lose), the question's pattern key naming its location, whether it is chased, and
+# whether a kill records the question's reads, and how near (in the goal's own count: a pawn's pushes) a unit must be for a root to be asked (null: every one).
+# The VALUATION is one entry: the worth of each unit kind (by its symbol), the unit of a gain, the royal unit.
+GOAL_PARAMS = ("question", "basis", "rule", "valuation", "stake", "ends_game", "keep", "about", "chase", "reads_on_kill", "near")
+VALUATION_PARAMS = ("worth", "unit", "royal")
+BASES = ("RULE", "VALUATION")
+
+
+def _params_problems(e: dict, at: str) -> list:
+    """plan 75.2: a GOAL or a VALUATION entry has `params` of its schema; a STOP may carry its shape there (a dict); no other kind has params."""
+    p = e.get("params")
+    k = e["kind"]
+    if k == "GOAL":
+        if not isinstance(p, dict) or set(p) != set(GOAL_PARAMS):
+            return [f"{at}: a GOAL has params exactly {', '.join(GOAL_PARAMS)}"]
+        bad = []
+        if not isinstance(p["question"], str) or not p["question"]:
+            bad.append(f"{at}: params question must be the goal word its questions carry")
+        if p["basis"] not in BASES:
+            bad.append(f"{at}: params basis {p['basis']!r} not in {BASES}")
+        elif (p["basis"] == "RULE") != isinstance(p["rule"], str):
+            bad.append(f"{at}: params rule names the kernel predicate if and only if the basis is RULE")
+        if not isinstance(p["valuation"], str):
+            bad.append(f"{at}: params valuation must name the VALUATION entry its stake counts in")
+        s = p["stake"]
+        if not (s is None or (isinstance(s, int) and not isinstance(s, bool)) or (isinstance(s, dict) and set(s) == {"unit", "less"} and all(isinstance(v, str) for v in s.values()))):
+            bad.append(f"{at}: params stake must be a number, {{unit, less}} (two unit kinds of the valuation) or null (the question's own)")
+        for b in ("ends_game", "keep", "chase", "reads_on_kill"):
+            if not isinstance(p[b], bool):
+                bad.append(f"{at}: params {b} must be true or false")
+        if not isinstance(p["about"], str):
+            bad.append(f"{at}: params about must be the question's pattern key")
+        if not (p["near"] is None or (isinstance(p["near"], int) and not isinstance(p["near"], bool) and p["near"] >= 1)):
+            bad.append(f"{at}: params near must be null or a whole number >= 1")
+        return bad
+    if k == "VALUATION":
+        if not isinstance(p, dict) or set(p) != set(VALUATION_PARAMS):
+            return [f"{at}: a VALUATION has params exactly {', '.join(VALUATION_PARAMS)}"]
+        bad = []
+        if not isinstance(p["worth"], dict) or not p["worth"] or any(not isinstance(v, int) or isinstance(v, bool) for v in p["worth"].values()):
+            bad.append(f"{at}: params worth must map each unit kind to a whole number")
+        if not isinstance(p["unit"], int) or p["unit"] < 1:
+            bad.append(f"{at}: params unit (the least gain) must be a whole number >= 1")
+        if p.get("royal") not in (p["worth"] if isinstance(p["worth"], dict) else {}):
+            bad.append(f"{at}: params royal must be a unit kind of the worth table")
+        return bad
+    if p is not None and not (k == "STOP" and isinstance(p, dict)):
+        return [f"{at}: only a GOAL, a VALUATION or a STOP has params"]
+    return []
+
+
+class Valuation:
+    """A VALUATION entry as the agenda reads it: the worth of a unit (by its symbol, either case), the unit of a gain, the royal unit (worth nothing: its loss is terminal)."""
+
+    def __init__(self, e: dict):
+        p = e["params"]
+        self.name = e["name"]
+        self.worth = dict(p["worth"])
+        self.unit = p["unit"]
+        self.royal = p["royal"]
+
+    def of(self, symbol: str) -> int:
+        return self.worth[symbol.lower()]
+
+    def worth_of(self, unit) -> int:
+        """The worth of a unit (an object with `.symbol()`, the domain's piece), 0 for none."""
+        return 0 if unit is None else self.worth[unit.symbol().lower()]
+
+
+class Goal:
+    """A GOAL entry as the agenda reads it (plan 75.2 (a)). `stake` is a number, or None: the question's own (the worth of its target)."""
+
+    def __init__(self, e: dict, valuation: Valuation):
+        p = e["params"]
+        self.name, self.entry = e["name"], e
+        self.question, self.basis, self.rule = p["question"], p["basis"], p["rule"]
+        self.valuation = p["valuation"]
+        self.ends_game, self.keep, self.about = p["ends_game"], p["keep"], p["about"]
+        self.chase, self.reads_on_kill, self.near = p["chase"], p["reads_on_kill"], p["near"]
+        s = p["stake"]
+        self.places = s["unit"] if isinstance(s, dict) else None          # (a promotion: the unit kind it places)
+        self.stake = valuation.of(s["unit"]) - valuation.of(s["less"]) if isinstance(s, dict) else s
+
+    @property
+    def promotes(self) -> bool:
+        """The goal is the promotion rule (it places a unit)."""
+        return self.places is not None
+
+    @property
+    def gains(self) -> bool:
+        """The goal raises the valuation (a count, not a keep)."""
+        return self.basis == "VALUATION" and not self.keep
+
+    def __repr__(self) -> str:
+        return f"Goal({self.name!r}, {self.question!r}, stake {self.stake})"
+
+
+class _NoGoal:
+    """What a question kind no GOAL entry names reads as (a fork, a technique, a draw, a fix question): no role, no stake."""
+    name = question = basis = rule = valuation = about = stake = places = entry = near = None
+    ends_game = keep = chase = reads_on_kill = promotes = gains = False
+
+
+NO_GOAL = _NoGoal()
+
+
+class GoalKinds:
+    """THE GOAL KINDS OF THE STORE (plan 75.2 (a)): every GOAL entry by the word its questions carry, the four roles the agenda reads -- the TERMINAL (the goal that
+    ends the game: its stake is above every count), the PROMOTION (the rule that places a unit), the GAIN (raise the valuation), the KEEP (don't lose it) -- and the
+    VALUATION they count in. Built from the loaded store; `goal_kinds()` rebuilds it when the store object changes (a test's patched store)."""
+
+    def __init__(self, store: dict):
+        vals = {n: Valuation(e) for n, e in store.items() if e["kind"] == "VALUATION"}
+        goals = [e for e in store.values() if e["kind"] == "GOAL"]
+        self.by_question = {}
+        for e in goals:
+            v = vals.get(e["params"]["valuation"])
+            if v is None:
+                raise LemmaStoreError(f"{e['name']}: its valuation {e['params']['valuation']!r} is no VALUATION entry")
+            g = Goal(e, v)
+            if g.question in self.by_question:
+                raise LemmaStoreError(f"{e['name']}: two GOAL entries carry the question word {g.question!r}")
+            self.by_question[g.question] = g
+        gs = list(self.by_question.values())
+
+        def one(what, pred):
+            hit = [g for g in gs if pred(g)]
+            if len(hit) != 1:
+                raise LemmaStoreError(f"the store must have exactly one {what} GOAL entry (it has {len(hit)})")
+            return hit[0]
+        self.terminal = one("game-ending", lambda g: g.ends_game)
+        self.promotion = one("promotion", lambda g: g.promotes)
+        self.gain = one("gain", lambda g: g.gains)
+        self.keep = one("keep", lambda g: g.keep)
+        names = {g.valuation for g in gs}
+        if len(names) != 1:
+            raise LemmaStoreError(f"the GOAL entries count in {len(names)} valuations: one is read")
+        self.valuation = vals[names.pop()]
+
+    def of(self, word: str) -> "Goal | _NoGoal":
+        """The GOAL entry whose questions carry `word` (a question's or a claim's goal); NO_GOAL for a kind no GOAL entry names."""
+        return self.by_question.get(word, NO_GOAL)
+
+
+_GOALS: list = [None, None]          # (the store object it was built from, the GoalKinds)
+
+
+def goal_kinds() -> GoalKinds:
+    """THE GOAL KINDS of the loaded store, built once per store object (plan 75.2 (a): the agenda reads them at run time)."""
+    store = load()
+    if _GOALS[0] is not store:
+        _GOALS[0], _GOALS[1] = store, GoalKinds(store)
+    return _GOALS[1]
 
 
 def _measure_problems(m: dict, at: str) -> list:
@@ -605,6 +767,10 @@ def validate(dirs: "list | None" = None, log=print, run: bool = True) -> int:
         return 1
     bad += [f"citation: {x}" for x in citation_problems(store)]
     bad += [f"no reads: {n}" for n, e in store.items() if not e["reads"]]
+    try:                                                 # plan 75.2 (a): the goal kinds the agenda reads (one terminal, one promotion, one gain, one keep, one valuation)
+        GoalKinds(store)
+    except LemmaStoreError as x:
+        bad.append(f"goal kinds: {x}")
     bad += implementation_problems(store)
     for n, e in store.items():
         for t in e["terms"]:

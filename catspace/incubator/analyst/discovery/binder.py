@@ -20,8 +20,9 @@ from catspace.incubator.analyst.discovery import base_vocabulary as BV
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import selfmine as SM
+from catspace.incubator.analyst.discovery import lemma_store as LS
 
-MATE_VALUE = 100
+MATE_VALUE = LS.goal_kinds().terminal.stake       # plan 75.2 (a): the stake of the goal that ends the game, read from its GOAL entry (lemmas/mate.json: ONE definition)
 BINDER_RUST = True        # plan 54 (A): the schema reads go to `analyst_core.verify_route`, one call per route; False = the Python path (`_read` / `_read2`), kept for the comparison harness
 SECOND_RUST = True        # plan 54 (B4): `second_moves` read by `analyst_core.second_moves` (the Python path stays)
 VERIFY_CACHE = True       # plan 54 (B4): verify_tried answers the same (fen, route, us, mates_only, trap, fork) once per root agenda (cleared by graph.clear_caches at every fresh root)

@@ -1,0 +1,42 @@
+{
+ "name": "win",
+ "kind": "GOAL",
+ "reads": [
+  "material",
+  "attack"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "75.2",
+  "52.2"
+ ],
+ "journal": "2026-10-27",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_roots",
+  "catspace/incubator/analyst/discovery/agenda.py:_direct_routes",
+  "catspace/incubator/analyst/discovery/lemma_store.py:goal_kinds"
+ ],
+ "note": "Raise the material valuation: win a unit of theirs, its stake the unit's worth (the question's own); a goal of ours toward the outcome, not a rule of the game.",
+ "params": {
+  "question": "win",
+  "basis": "VALUATION",
+  "rule": null,
+  "valuation": "material",
+  "stake": null,
+  "ends_game": false,
+  "keep": false,
+  "about": "target",
+  "chase": true,
+  "reads_on_kill": true,
+  "near": null
+ }
+}

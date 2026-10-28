@@ -34213,3 +34213,37 @@ one batch each, directional. Convergence over 109 cases: 7378 served questions, 
 NOT built, with the reason: pricing a question before it is asked (needs the expand / read split of `_ask`); reading a route's other replies before the pending one (which reply kills a route
 sets the kill's text and read set: the identity pins the order); the passive set has no consumer yet (the ponderer drains GAPs). Plan 75.2 launched: the 428 chess facts leave agenda.py for
 the store, stages (a) goal ladder and kinds, (b) stops, (c) the names table, (d) the rest; recount after each.
+
+## 2026-10-28 00:34 -- plan 75.2 (a) THE GOAL LADDER AND THE GOAL KINDS FROM THE STORE (branch worktree-agent-a96bad5c641e60ec1)
+THE STORE: two new kinds, GOAL and VALUATION, and an optional `params` field (what the agenda reads of an entry at run time; schema in lemmas/README.md, checked by `check_entry`).
+Five entries: `mate` (GOAL, basis RULE bound to Game.terminal, stake 100, ends the game; BASE, CONJECTURE as the other rule entries), `promotion` (GOAL, RULE Game.promotes, stake the
+valuation's queen less its pawn = 8, places the queen, `near` 3 -- regress.PROMOTE_MAX_PUSHES left for it), `win` (GOAL, VALUATION: raise it, the target's worth), `save` (GOAL,
+VALUATION: keep it, chased with keep semantics), `material` (VALUATION, HAND, HEURISTIC: p 1, n 3, b 3, r 5, q 9, k 0, the unit 1, the royal k). `lemma_store.goal_kinds()` builds them
+per loaded store (exactly one terminal, one promotion, one gain, one keep, one valuation; `validate` checks it). ONE DEFINITION: game.MATE_VALUE, binder.MATE_VALUE, regress.STAKE_MATE /
+STAKE_PROMOTE and selfmine.PIECE_WORTH (so graph.worth, Game.measure, BaseWords.worth) read the entries; the agenda reads them at run time (`Agenda.goals`, `.V`, `.end_stake`, `.unit`).
+THE AGENDA: every goal word a question or a claim is built with comes from the entries (a technique's from its entry's kind), every goal-kind test that decides reads an entry's role
+(`gk(word)`: ends_game / keep / promotes / gains / chase / reads_on_kill / about), every stake and gain unit is the entries', and the status ladder is worklist.py's generic outcome ladder
+(rung, line, kept, raises, raised, line_name; the need was already there): "don't lose" = keep the line, "win" = raise it, no goal-kind constant added. The labels a trace prints
+(question texts, "save our king", "mate on ...") are unchanged.
+OBS trace identity against the parent 9e4e5673 (count budget, PYTHONHASHSEED=0): ten t0, ten t2 0 of 10 traces / read sets / leaf verdict lists / word lists / provenance lists differ;
+wide t0, wide t2 0 / 0 / 0 / 0 / 0 of 99. The trace text did not change at all: every value now read from the store is the value the constant held.
+NEGATIVE CONTROL (lemmas/mate.json stake 100 -> 50, ten t0, restored after): 10 of 10 traces, 0 of 10 read sets, 0 of 10 leaf lists, 3 of 10 word lists, 10 of 10 provenance lists
+differ, the ten DECISION lines unchanged -- the guard fires: the agenda (and binder / regress / game) read the entry.
+OBS audit recount (scripts/agenda_audit/recount.py, new: the audit's scripts on the working tree, the hand readings mapped by line, a reading on an edited line dropped unless the family's
+fact stays written there -- 29 kept, 80 dropped, every one printed and read): CHESS FACT rows 428 -> 255; A2 34 -> 0, A1p 21 -> 1, A1m 18 -> 1, A5 20 -> 1, A3 14 -> 0, A6 13 -> 0,
+A1s 12 -> 0, A1w 12 -> 1, A7 15 -> 10, A10 9 -> 4, A1t 3 -> 0, A9 3 -> 0, A1f 3 -> 2, A8 2 -> 1, A1x 1 -> 0; D3 10 -> 6, D2 17 -> 14, D6 10 -> 8, D10 7 -> 6, D4 3 -> 2, D8d 3 -> 2,
+D8e 3 -> 2, D12 2 -> 1, D20 2 -> 1 (rows whose only atom was a goal word or the terminal's stake); D21 10 -> 11 (`_keep_goal`'s in-check exclusion is now its own row). Left, with the
+reason, in docs/AGENDA_AUDIT.md's 75.2 recount section (A7's need comparisons and A5's deferral are keyed on the need's variable names; A4's orders by the store's worths on the word
+"worth"; the king, the far passer, the fork, the draw).
+OBS W0VFO 10 s (the pool, alone): Qb7 +3 proved (chase), the pool ended at 8.2 s; root questions 38, inner agendas 771, inner questions 9811 (plan 74 (d): 8.1 s, 38, 784, 10301; one run
+each, the clocked counts vary with the measured rate).
+OBS loop-2 batch (rand14_10 .. rand17_10, 15 s, the pool, graded by Stockfish depth 14 in its own process; one batch, directional): RIGHT 32, UNKNOWN 2, WRONG 6; by proof proved RIGHT 32,
+proved WRONG 3, unproved WRONG 3, none 2 (plan 74 (d): 32 / 2 / 6; proved WRONG 2, unproved WRONG 4).
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_plan75 4/0/0/0 0.5 s; test_plan74 13/0/0/0 4.0 s; test_plan73 9/0/0/0 15.2 s; test_agenda 26/0/0/0
+105.0 s; test_regress 87/0/1/0 398.8 s; test_tiers 14/0/0/0 36.3 s; test_offbuilt64 15/0/1/0 95.8 s; test_fact_store 21/0/0/0 28.4 s; test_game 3/0/0/0 0.5 s; test_binder_rust 31/0/0/0
+0.9 s; test_plan62 28/0/0/0 8.7 s; test_duty63 12/0/0/0 0.5 s; test_plan72_9 7/0/0/0 4.7 s; test_plan72_10 4/0/0/0 2.6 s; test_discovery_vocabulary 23/0/0/0 23.9 s; test_cost61
+13/0/0/0 4.1 s. tests/test_plan75.py (new, in the engine gate): the GOAL entries and their roles, the stake of mate read from a patched store (stake 123, the queen 7: the agenda's
+terminal stake, its mate roots and its promotion stake follow), material's one definition (selfmine, graph, BaseWords, Game.measure and the Rust kernel's balance agree with the entry),
+the outcome ladder and the status reading it. OBS lemma store validate: entries 106, problems 0.
+FINDINGS: the Rust core keeps its own copies of the worths (rules.rs val, lib.rs, words.rs worth_of) and of the stake of mate (regress.rs STAKE_MATE): agreement is tested, not one
+definition (no Rust build in 75.2); Lean's `Ideas.Vocabulary.mateGain` is 100000, the engine's terminal stake 100 (both "a value no material reaches").

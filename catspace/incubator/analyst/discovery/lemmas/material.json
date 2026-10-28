@@ -1,0 +1,42 @@
+{
+ "name": "material",
+ "kind": "VALUATION",
+ "reads": [
+  "material"
+ ],
+ "terms": [],
+ "status": "HEURISTIC",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "75.2",
+  "42.2"
+ ],
+ "journal": "2026-10-27",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:measure",
+  "catspace/incubator/analyst/discovery/words.py:worth",
+  "catspace/incubator/analyst/discovery/graph.py:worth",
+  "catspace/incubator/analyst/discovery/selfmine.py:PIECE_WORTH",
+  "catspace/incubator/analyst/discovery/lemma_store.py:goal_kinds"
+ ],
+ "note": "The material valuation, the one definition of the unit worths (pawn 1, knight 3, bishop 3, rook 5, queen 9, the king none: its loss is the terminal) that Game.measure, BaseWords.worth and the agenda read; the least gain is one unit; HAND today (Lean's Ideas.Vocabulary.worthOf declares the same values), MINED when plan 76 delivers it.",
+ "params": {
+  "worth": {
+   "p": 1,
+   "n": 3,
+   "b": 3,
+   "r": 5,
+   "q": 9,
+   "k": 0
+  },
+  "unit": 1,
+  "royal": "k"
+ }
+}

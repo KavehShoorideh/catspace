@@ -17,6 +17,30 @@ for f in ("items_agenda.jsonl", "items_ponder.jsonl"):
     for line in open("/tmp/audit751/" + f):
         items.append(json.loads(line))
 
+# plan 75.2 (the recount): the hand overrides and the hand-read items below are keyed by the lines of agenda.py / ponder.py at 65024fbf (the audit's
+# commit). `recount.py` writes linemap.json beside this script: {file: {old line: new line}} for the lines difflib finds UNCHANGED between that commit and the
+# file being recounted. An override or a hand-read item on a line that changed is DROPPED (listed in dropped.json): its hand reading was of the old text, so
+# the changed line is classified by the content rules alone. Without linemap.json the lines are used as written (the audit's own run).
+import os  # noqa: E402
+_LMP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "linemap.json")
+LINEMAP = json.load(open(_LMP)) if os.path.exists(_LMP) else None
+_CMP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "carry.json")
+CARRYMAP = json.load(open(_CMP)) if os.path.exists(_CMP) else {}      # (recount.py: the readings kept on a line 75.2 edited -- {file: {line: {to, rx, mid}}})
+DROPPED, CARRIED = [], []
+
+
+def _m(file, line, what="", rx="EXTRA"):
+    if LINEMAP is None:
+        return line
+    got = LINEMAP.get(file, {}).get(str(line))
+    if got is None:
+        c = CARRYMAP.get(file, {}).get(str(line))
+        if c is not None and rx in c["rx"]:
+            CARRIED.append(dict(file=file, line=line, to=c["to"], what=what))
+            return c["to"]
+        DROPPED.append(dict(file=file, line=line, what=what))
+    return got
+
 # ---- extra items the AST passes do not see as atoms (literal 1 as the unit of material, formulas outside a test, dict labels): read off the source by hand
 EXTRA = [
     ("agenda.py", 702, "LITERAL", "_reach_roots", "b.occupied_co[self.me] & ~b.kings & ~b.pawns (the reach roots' pieces: not the king, not a pawn)", FACT, "D1e"),
@@ -42,6 +66,9 @@ EXTRA = [
     ("ponder.py", 137, "LITERAL", "run", "h._inner(c.fen(), 1) (the reply read for a gain of one unit)", FACT, "A6"),
 ]
 for fl, ln, kind, func, text, cls, fact in EXTRA:
+    ln = _m(fl, ln, f"EXTRA {cls} {fact}: {text}")
+    if ln is None:
+        continue
     items.append(dict(file=fl, line=ln, end=ln, kind=kind, func=func, text=text, text_only=False, _cls=cls, _fact=fact))
 
 # ---- per-line overrides: (file, line, regex on the atom text or None for every atom of the line) -> (class, fact)
@@ -49,6 +76,9 @@ O = {}
 
 
 def ov(line, rx, cls, fact=None, file="agenda.py"):
+    line = _m(file, line, f"ov {rx!r} -> {cls} {fact}", rx)
+    if line is None:
+        return
     O.setdefault((file, line), []).append((re.compile(rx) if rx else None, cls, fact))
 
 
@@ -538,7 +568,9 @@ for it in items:
     r["kinds"].add(it["kind"])
     r["text_only"] = r["text_only"] and bool(it["text_only"])
 # RULE2_FROM's numbers: a HEURISTIC row of their own (the line mixes classes)
-rows[("agenda.py", 72, HEUR, None)] = dict(file="agenda.py", line=72, cls=HEUR, fact=None, texts=["RULE2_FROM values 2 / 1 / 1 (the depths)"], kinds={"CONST"}, text_only=False, func="<module>")
+_r2 = _m("agenda.py", 72, "the RULE2_FROM values row (HEURISTIC)")
+if _r2 is not None:
+    rows[("agenda.py", _r2, HEUR, None)] = dict(file="agenda.py", line=_r2, cls=HEUR, fact=None, texts=["RULE2_FROM values 2 / 1 / 1 (the depths)"], kinds={"CONST"}, text_only=False, func="<module>")
 out = sorted(rows.values(), key=lambda r: (r["file"] != "agenda.py", r["line"], [LOGIC, RULE, NAME, FACT, HEUR].index(r["cls"]), r["fact"] or ""))
 with open("/tmp/audit751/rows.jsonl", "w") as fh:
     for r in out:
@@ -550,3 +582,6 @@ print(collections.Counter(r["cls"] for r in out))
 print(collections.Counter(r["fact"] for r in out if r["cls"] == FACT).most_common())
 missing = sorted({r["fact"] for r in out if r["cls"] == FACT} - set(FACTS))
 print("facts not in the catalogue:", missing)
+if LINEMAP is not None:
+    json.dump(DROPPED, open("/tmp/audit751/dropped.json", "w"), indent=1)
+    json.dump(CARRIED, open("/tmp/audit751/carried.json", "w"), indent=1)
