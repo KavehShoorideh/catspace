@@ -4015,3 +4015,7 @@ the input FEN keeps a pseudo-legal en-passant square the kernel drops (a repetit
   clock, Lean `Chess.applyMove_halfmove` / `Ideas.Game.chess_clock`) in place of the agenda's tests (`_irreversible`, `_pawn_move`, `_since_after`); which events the chase
   clock counts stays its STOP entry's shape. Identical: 73530 clock readings equal to the formulas replaced; guard 0 of 218 on all five lists; negative control (the kernel's
   pawn event dropped) moves 3 of 10 ten-t0 and 6 of 10 ten-t2 traces; CHESS FACT rows 210 -> 209.
+* 75.4 (4) BUILT 2026-10-28 (journal 2026-10-28 11:51): THE POSITION KEY IS THE KERNEL'S -- `agenda._pos_key` is `Game.position_key` of the kernel's reading of the FEN (a legal
+  e.p. square only), so the root's key cut from the input FEN is the key of the same position the chase reaches. Over the 3025 input FENs of the sets the key changed on 0 (one
+  names an e.p. square, a legal one); on PERPETUAL written with a pseudo-legal 'a3' the old key missed the repetition of the root (23 inner questions read again), the new one
+  closes it (the cycle claim, 0 asked); guard 0 of 218 on all five lists; CHESS FACT rows 209 -> 209.

@@ -7,11 +7,14 @@
 (2) THE CYCLE CLAIM RE-LABELLED AS WHAT IT IS: one repeat of a position of the line is a derived lemma ("repetition (a forced cycle: the threefold rule is reachable)"), a
     CONJECTURE in the store; its strict form is proved generically in Lean (`Ideas.Game.forced_cycle_threefold`), the chase's own reading is not.
 (3) THE CHASE CLOCK READS THE KERNEL'S EVENTS: `Game.clock_events` (a capture, a pawn move: what resets the halfmove clock, Lean `Chess.applyMove_halfmove`) in place of the
-    tests written in the agenda; the clock reads them exactly as before."""
+    tests written in the agenda; the clock reads them exactly as before.
+(4) THE POSITION KEY IS THE KERNEL'S: `agenda._pos_key` is the kernel's identity of the position a FEN names (a legal e.p. square only), not the FEN's first four fields."""
 import random
 
 import chess
 import pytest
+
+import analyst_core as AC
 
 import catspace.incubator.analyst  # noqa: F401
 from catspace.incubator.analyst.discovery import agenda as AG
@@ -297,3 +300,31 @@ def test_75_4_3_the_chase_clock_reads_them_exactly_as_before(monkeypatch):
                         checked += 1
     print(f"OBS 75.4 (3) the chase clock: {checked} (route, reply, balance, setting) readings equal to the formulas replaced")
     assert checked > 1000
+
+
+# ---------------------------------------------------------------------------------------------------------------- (4) the position key is the kernel's
+
+PERPETUAL_EP = "1Q6/2R2pp1/5k1p/pB6/P1pb4/6PP/5r2/7K b - a3 0 41"      # PERPETUAL as a FEN may write it after a2-a4: a3 named, no black pawn can take there
+
+
+def test_75_4_4_the_key_is_the_kernels_identity_a_pseudo_legal_en_passant_square_dropped():
+    assert AG._pos_key(PSEUDO_EP) == G.position_key(chess.Board(PSEUDO_EP)) != " ".join(PSEUDO_EP.split()[:4])
+    assert AG._pos_key(PERPETUAL_EP) == AG._pos_key(PERPETUAL) and AG._pos_key(LEGAL_EP).endswith(" d6")
+    n = 0
+    for b in _positions(24, 30):                                                              # a FEN the kernel renders (python-chess, the Rust core): the old cut and the identity agree
+        f = b.fen()
+        assert AG._pos_key(f) == " ".join(f.split()[:4]) == G.position_key(b)
+        r = AC.Pos(f).fen()
+        assert AG._pos_key(r) == " ".join(r.split()[:4]) == G.position_key(b)
+        n += 1
+    print(f"OBS 75.4 (4) kernel-rendered FENs: {n} positions, the cut of python-chess's and of the Rust core's FEN equal to the identity on every one")
+
+
+def test_75_4_4_a_root_written_with_a_pseudo_legal_square_is_the_position_the_chase_comes_back_to():
+    """The root's key is the identity, so a line that returns to the root (Rf1+ Kg2 Rf2+ Kh1: the kernel renders the position without a3) is a repeat of it -- with the
+    FEN's first four fields (a3 kept) the repeat of the root was missed and the position read again as a new one."""
+    ag = AG.Agenda(state_of(PERPETUAL_EP, "b"))
+    assert ag.pk == ag.ctx.root_pk == AG._pos_key(PERPETUAL) and ag.pk != " ".join(PERPETUAL_EP.split()[:4])
+    ag._route_move, ag._reply_san = chess.Move.from_uci("f2f1"), "Kg2"
+    out = ag._inner(PERPETUAL, 1)
+    assert out["claim"] is not None and out["claim"].lemma == "repetition" and out["asked"] == 0 and any("repeats the root position" in x for x in ag.ctx.c_lines)

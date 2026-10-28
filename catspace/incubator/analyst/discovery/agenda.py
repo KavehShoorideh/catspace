@@ -33,6 +33,7 @@ square of the diff. An answer of one goal is memoised under that goal (the route
 from __future__ import annotations
 
 import dataclasses
+import functools
 import math
 import os
 import re
@@ -133,10 +134,14 @@ def _aligned(piece_type: int, sq: int, ksq: int) -> bool:
     return R._aligned(piece_type, sq, ksq)
 
 
+@functools.lru_cache(maxsize=1 << 16)
 def _pos_key(fen: str) -> str:
-    """The position without its move counters (board, turn, castling, en passant): the chase's memo key. A check chain that comes back to a position only the move number
-    apart is a CYCLE (0DoFB: the same board at moves 32, 34, 36 ... each re-asked, 1033 inner questions)."""
-    return " ".join(fen.split()[:4])
+    """The position without its move counters: the chase's memo key and what a repetition repeats. A check chain that comes back to a position only the move number apart
+    is a CYCLE (0DoFB: the same board at moves 32, 34, 36 ... each re-asked, 1033 inner questions). plan 75.4 (4): THE KERNEL'S IDENTITY of the position the FEN names
+    (`Game.position_key` of the kernel's reading of it: board, side to move, castling rights, and an en-passant square only when the capture is LEGAL -- Lean
+    `Chess.repetitionKey`), not the FEN's first four fields: a FEN written by hand or by a puzzle set may name a pseudo-legal e.p. square, which the cut kept (the root's
+    key then differed from the same position reached in the chase: a repetition of the root missed, or a position counted apart from itself). Cached by FEN."""
+    return GAME.position_key(GAME.from_key(fen))
 
 
 class _LineRecord:

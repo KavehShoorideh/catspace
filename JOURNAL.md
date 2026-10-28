@@ -34432,3 +34432,26 @@ OBS gate engine --only (one file per call; passed / failed / xfailed / errors, w
 test_cost61 13/0/0/0 2.9 s; test_plan66 16/0/0/0 3.1 s; test_plan62 28/0/0/0 7.8 s; test_plan73 9/0/0/0 14.3 s; test_plan74 13/0/0/0 3.3 s; test_plan75 11/0/0/0 0.5 s;
 test_fact_store 21/0/0/0 22.9 s; test_tiers 14/0/0/0 29.6 s; test_offbuilt64 15/0/1/0 95.7 s; test_rules_draws 13/0/0/0 3.4 s (the events against is_zeroing and the
 clock after the move; the clock against the formulas replaced). No index rebuild (no theorem added).
+
+
+## 2026-10-28 11:51 -- plan 75.4 (4) THE POSITION KEY IS THE KERNEL'S: agenda._pos_key is Game.position_key of the kernel's reading of the FEN (branch worktree-agent-a842a98bf140be46b)
+`_pos_key(fen)` (the chase's memo key and what a repetition repeats) was the FEN's first four fields; it is now `GAME.position_key(GAME.from_key(fen))` (cached by FEN): the
+kernel's identity (board, side to move, castling rights, an en-passant square only when the capture is legal; Lean `Chess.repetitionKey`), so the root's key (`self.pk`,
+`ctx.root_pk`, cut from the INPUT FEN) is the key of the same position reached in the chase (always a FEN the kernel rendered). On a FEN the kernel rendered the two agree
+(OBS 75.4 (4) kernel-rendered FENs: 720 positions, the cut of python-chess's and of the Rust core's FEN equal to the identity on every one).
+WHERE THE KEY CHANGED, by the diagnostic over every input FEN: OBS 75.4 (4) input FENs 3025 (puzzle sets 47 + the two fixed positions): an e.p. field named in 1; key changed on
+0 (the one named square is a legal capture; no castling field cleaned). So on the guard and the sets no key changed -- the gap shows on a FEN written by hand: PERPETUAL
+(test_cost61's lichess w91Hv) written after a2-a4 with 'a3' (no black pawn can take there). OBS 75.4 (4) old (the FEN's first four fields): root key '... b - a3'; after Rf1+ Kg2
+Rf2+ Kh1 the key '... b - -': claim chase: step_after+step_least, value 0, inner questions asked 23. OBS 75.4 (4) new (the kernel's identity): root key '... b - -', the same key
+after the line: claim repetition, value 7, inner questions asked 0 -- the old key MISSED the repetition of the root (it read the repeated position again as a new one). The whole
+root agenda there (count budget): old key DECISION Rf1+ 1, inner questions 319, cycle claims 0; new key DECISION Rf1+ 1, inner questions 314, cycle claims 1 -- the same
+decision, the repetition now seen.
+OBS trace identity against 75.4 (3) (count budget, PYTHONHASHSEED=0): ten t0, ten t2 0 of 10 traces / read sets / leaf verdict lists / word lists / provenance lists differ;
+wide t0, wide t2 0 / 0 / 0 / 0 / 0 of 99; DECISION lines 0 of 218 (no input FEN of the guard names a pseudo-legal square).
+NEGATIVE CONTROL (in the guard's process: the identity with the clocks in it, Game.position_key = the whole FEN): ten t0 1 of 10 traces, 10 of 10 read sets, 8 of 10
+leaf lists, 0 word lists, 1 provenance list differ; ten t2 4 / 10 / 10 / 1 / 4 of 10; DECISION lines 0 -- the memos and the repetitions read the identity.
+OBS audit recount: CHESS FACT rows 209 -> 209; RULE rows 104 -> 103 (the cut of the FEN's fields is the kernel's identity now).
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_game 3/0/0/0 0.3 s; test_agenda 26/0/0/0 91.3 s; test_regress 87/0/0/0 349.6 s;
+test_cost61 13/0/0/0 3.0 s; test_plan66 16/0/0/0 3.1 s; test_plan62 28/0/0/0 7.7 s; test_plan73 9/0/0/0 14.2 s; test_plan74 13/0/0/0 3.2 s; test_plan75 11/0/0/0 0.5 s;
+test_fact_store 21/0/0/0 22.6 s; test_tiers 14/0/0/0 29.9 s; test_offbuilt64 15/0/1/0 94.7 s; test_rules_draws 15/0/0/0 3.5 s (the key drops a pseudo-legal square, keeps a
+legal one, equals the cut on every kernel-rendered FEN; the root written with 'a3' is the position the chase returns to).
