@@ -22,12 +22,12 @@
  "gdl": {
   "relation": "attack"
  },
- "rust": "rules.rs:attacks",
+ "rust": "rules.rs:attack",
  "lean": "Ideas.Vocabulary.attackedBy",
  "python": "chess.Board.is_attacked_by",
  "bind": null,
  "node": null,
- "edge": null,
+ "edge": "attacks",
  "vocabulary": [
   "attackable",
   "attacked",

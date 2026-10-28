@@ -12,7 +12,7 @@
  "gdl": {
   "fluent": "cell"
  },
- "rust": "rules.rs:piece",
+ "rust": "rules.rs:cell",
  "lean": "Chess.Position.board",
  "python": "chess.Board.piece_at",
  "bind": {
@@ -22,7 +22,7 @@
   ]
  },
  "node": null,
- "edge": null,
+ "edge": "on",
  "vocabulary": [
   "L",
   "O",

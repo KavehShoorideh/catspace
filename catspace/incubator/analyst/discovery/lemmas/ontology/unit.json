@@ -25,7 +25,11 @@
    "pawn": "Chess.PieceKind.pawn"
   }
  },
- "node": null,
+ "node": {
+  "kind": "piece",
+  "order": 1,
+  "since": 0
+ },
  "edge": null,
  "vocabulary": [],
  "names": false,

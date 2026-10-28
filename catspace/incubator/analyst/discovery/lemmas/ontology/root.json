@@ -9,7 +9,11 @@
  "lean": null,
  "python": "catspace.incubator.analyst.discovery.state.State",
  "bind": null,
- "node": null,
+ "node": {
+  "kind": "root",
+  "order": 3,
+  "since": 0
+ },
  "edge": null,
  "vocabulary": [],
  "names": false,

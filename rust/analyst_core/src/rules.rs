@@ -1,6 +1,7 @@
 //! THE RULE LAYER (Kaveh 2026-10-08: forward reasoning from basic facts, fast -- Datalog in Rust via Ascent).
-//! Base facts of a position, read for one side ("us" = the side that may threaten): piece(square, ours, value) and
-//! attacks(from, to). Derived without search:
+//! Base facts of a position, read for one side ("us" = the side that may threaten): cell(square, ours, value) and
+//! attack(from, to) -- named by the ontology shelf (plan 76.1 (d): lemmas/ontology/cell.json, attack.json; the spec's
+//! `cell` and `attack`, read here for one side, with the unit's worth). Derived without search:
 //!   defended(t)     a piece of t's own side attacks t
 //!   gain(t, g)      t (theirs, not the king) is attacked by ours and hangs (undefended: g = its value) or the
 //!                   attacker is cheaper (g = the difference) -- the static exchange's first term, a PREFILTER
@@ -13,15 +14,15 @@ use shakmaty::{Chess, Color, Position, Role, Square};
 
 ascent! {
     struct ThreatRules;
-    relation piece(u8, bool, i64);
-    relation attacks(u8, u8);
+    relation cell(u8, bool, i64);
+    relation attack(u8, u8);
     relation defended(u8);
     relation gain(u8, i64);
     relation best(u8, i64);
 
-    defended(t) <-- piece(t, false, _), attacks(d, t), piece(d, false, _);
-    gain(t, vt) <-- piece(t, false, vt), if *vt > 0, attacks(a, t), piece(a, true, _), !defended(t);
-    gain(t, vt - va) <-- piece(t, false, vt), if *vt > 0, attacks(a, t), piece(a, true, va), if *va < *vt;
+    defended(t) <-- cell(t, false, _), attack(d, t), cell(d, false, _);
+    gain(t, vt) <-- cell(t, false, vt), if *vt > 0, attack(a, t), cell(a, true, _), !defended(t);
+    gain(t, vt - va) <-- cell(t, false, vt), if *vt > 0, attack(a, t), cell(a, true, va), if *va < *vt;
     best(t, g) <-- gain(t, _), agg g = max(x) in gain(t, x);
 }
 
@@ -177,9 +178,9 @@ pub fn threats_of_prefilter(pos: &Chess, us: Color) -> std::collections::HashMap
     let mut prog = ThreatRules::default();
     for sq in occ {
         if let Some(p) = b.piece_at(sq) {
-            prog.piece.push((sq as u8, p.color == us, val(p.role)));
+            prog.cell.push((sq as u8, p.color == us, val(p.role)));
             for t in shakmaty::attacks::attacks(sq, p, occ) {
-                prog.attacks.push((sq as u8, t as u8));
+                prog.attack.push((sq as u8, t as u8));
             }
         }
     }

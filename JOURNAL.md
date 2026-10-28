@@ -34808,3 +34808,27 @@ NEGATIVE CONTROL (not committed): `reach` bound to knight_jump instead of king_s
 ('attack', 'cell', 'knight_jump'); the test's expected ('attack', 'cell', 'king_step'): FIRES (the shelf restored).
 THE GUARD: OBS ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s, 24 s, 16 s,
 59 s). OBS audit recount: CHESS FACT rows 210 -> 210. OBS gate engine --only: test_plan76 17/0/0/0 56.4 s; test_plan73_5 7/0/0/0 2.0 s; test_plan73_6 27/0/0/0 34.0 s.
+
+
+## 2026-10-28 15:59 -- plan 76.1 (d) THE GNN READS THE SHELF; the Rust Datalog's relations renamed to the shelf's names (branch worktree-agent-a12092dcf58ba7325)
+THE NODE KINDS: the shelf's OBJECT entries declare `node` {kind, order, since}: square -> square, unit -> piece, question, root, route (the agenda's objects: the
+machinery's, not the game's), all since feature-set version 0; the relations declare `edge`: cell -> on, attack -> attacks, king_step -> adj. graph_policy.py reads
+them (SQUARE, PIECE, QUESTION, ROOT, ROUTE, ON_EDGE, ATTACKS_EDGE, ADJ_EDGE; NODE_KINDS = ontology.node_kinds(0)): the same strings in the same construction
+order. The machinery's edges (targets, about, sees, of, from, to) stay the file's. THE FEATURE-VERSION RULE (graph_policy.py's comment): an object kind's node enters at
+the version its `since` says; a kind declared later (a derived object of 76.4) becomes a node type by its declaration, and that is a new feature-set version -- a model
+of an earlier version sees its old graph. One record changed: the saved blob's `meta` lists the shelf's five node kinds (it listed four; `load` does not read it).
+THE GUARD DOES NOT READ THE GRAPH POLICY at the count budget (the agenda asks it only under the prior or the time pool), so the identity is read directly -- graph_policy.py
+of (c) against (d) on 17 fixed positions (the shelf's sample, ESJQH, the discovery position) with three questions and six routes each: OBS 76.1 (d) graph network
+identity: graphs 17 (node types ['square', 'piece', 'question', 'root', 'route']), scores 147 (the trained model loaded); differing 0. NEGATIVE CONTROL (not committed):
+the shelf's edges of cell and attack swapped -- the same check: differing 17 (the edge types' order and contents), and the trained model scores nothing (scores 0).
+The ten under the swap: 0 of 10 traces differ at tiers 0 and 2 (the guard does not see the policy -- said above).
+THE RUST DATALOG (rules.rs `ThreatRules`, the threat layer's prefilter): `piece` -> `cell`, `attacks` -> `attack` (the shelf's names); `defended`, `gain`, `best` are
+shelf entries by their own names (DERIVED, Rust-only: a word of the threat layer, not a rule). The table, rules.rs -> shelf: piece -> cell (renamed), attacks -> attack
+(renamed), defended -> defended, gain -> gain, best -> best. A Rust build (`maturin develop --release`, 65 s): THE SHARED EDITABLE INSTALL NOW POINTS AT THIS BRANCH'S
+CRATE (main's build kept at /tmp/catspace_scratch/a761/analyst_core_main_backup). The prefilter runs only with `set_see_threats(False)`, which no guard run sets, so it
+is read directly: `threat_claims` with the prefilter on 40 puzzle positions, main's build against this one -- equal as sets on 40 of 40; byte-equal on 37: the order
+of a fork's targets varies -- and it varies between TWO RUNS OF MAIN'S OWN BUILD on 5 of the 40 (a FINDING: the prefilter path reads a Rust HashMap's order, random per
+process; the default path, SEE_THREATS on, is the one the guard reads).
+THE GUARD (the rebuilt core): OBS ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99
+(walls 6 s, 23 s, 15 s, 58 s). OBS ontology validate: problems 0 (node kinds ['square', 'piece', 'question', 'root', 'route']). OBS audit recount: CHESS FACT rows
+210 -> 210. OBS gate engine --only: test_plan76 19/0/0/0 62.0 s; test_graph_policy 6/0/0/0 2.8 s.

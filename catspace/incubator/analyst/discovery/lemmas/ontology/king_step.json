@@ -22,7 +22,7 @@
  "python": "chess.BB_KING_ATTACKS",
  "bind": null,
  "node": null,
- "edge": null,
+ "edge": "adj",
  "vocabulary": [
   "box",
   "corner",

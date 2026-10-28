@@ -9,7 +9,11 @@
  "lean": null,
  "python": "catspace.incubator.analyst.discovery.agenda.Agenda",
  "bind": null,
- "node": null,
+ "node": {
+  "kind": "question",
+  "order": 2,
+  "since": 0
+ },
  "edge": null,
  "vocabulary": [],
  "names": false,

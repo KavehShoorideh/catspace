@@ -259,3 +259,39 @@ def test_c_every_atom_reads_shelf_relations():
     assert by["material_us"] == ("material",) and by["tempo"] == ("halfmove",) and TM.ATOM_BY_KEY["turn"].rels == ("tempo",)
     with pytest.raises(ON.OntologyError):
         ON.term_relations("(count (flurb L))")
+
+
+# ---------------------------------------------------------------------------------------------------------------- (d) the GNN reads the shelf; the Datalog's names
+
+def test_d_the_graph_network_s_node_kinds_are_the_shelf_s():
+    """graph_policy.py's node types are the shelf's OBJECT kinds that declare a node (the square, the unit as `piece`, the question, the root, the route), its board
+    edges the shelf's relations that declare an edge; THE FEATURE-VERSION CHECK: every kind enters at version 0 and the version-0 graph keeps its widths."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("torch_geometric")
+    from catspace.incubator.analyst.discovery import graph_policy as GP
+    assert list(GP.NODE_KINDS) == ON.node_kinds() == ON.node_kinds(0) == ["square", "piece", "question", "root", "route"]
+    assert (GP.SQUARE, GP.PIECE, GP.QUESTION, GP.ROOT, GP.ROUTE) == ("square", "piece", "question", "root", "route")
+    assert (GP.ON_EDGE, GP.ATTACKS_EDGE, GP.ADJ_EDGE) == ("on", "attacks", "adj") == (ON.edge_of("cell"), ON.edge_of("attack"), ON.edge_of("king_step"))
+    b = chess.Board("8/1Rb3kp/p2q2p1/2p1pp2/pQ6/1bP4P/1P3PPK/8 w - - 0 35")
+    qs = [dict(goal="win", stake=3, depth=0, target=chess.B3, status="open")]
+    g = GP.build(b, True, qs, None, routes=[dict(q=0, uci="b4a5", why="threat", cost=3, order=0)])
+    assert set(g.node_types) == set(ON.node_kinds(0))
+    assert {(a, r, c) for a, r, c in g.edge_types if not r.startswith("rev_")} == {
+        ("piece", "on", "square"), ("piece", "attacks", "square"), ("square", "adj", "square"), ("question", "targets", "square"), ("question", "about", "piece"),
+        ("root", "sees", "question"), ("route", "of", "question"), ("route", "from", "square"), ("route", "to", "square")}
+    widths = {t: g[t].x.shape[1] for t in g.node_types}
+    assert widths == {"square": 6, "piece": 11, "question": len(GP.GOALS) + len(GP.STATUSES) + len(GP.WORDS) + 4, "root": 6, "route": len(GP.RWORDS) + 8}
+    assert GP._train_version() == 0
+
+
+def test_d_the_rust_datalog_s_relations_are_shelf_entries():
+    """rules.rs's Datalog (the threat layer's prefilter) names its relations by the shelf: `cell` and `attack` (renamed from piece / attacks), and its own derived
+    `defended`, `gain`, `best` -- each a shelf entry whose Rust binding is that relation."""
+    import re
+    src = (ROOT / "rust" / "analyst_core" / "src" / "rules.rs").read_text()
+    block = src[src.index("ascent! {"):src.index("}", src.index("ascent! {"))]
+    rels = re.findall(r"relation (\w+)\(", block)
+    assert rels == ["cell", "attack", "defended", "gain", "best"]
+    store = ON.load()
+    for r in rels:
+        assert store[r]["rust"] == f"rules.rs:{r}", r

@@ -27,9 +27,20 @@ import chess
 
 from catspace.incubator.analyst.discovery import game as GM
 from catspace.incubator.analyst.discovery import graph as G
+from catspace.incubator.analyst.discovery import ontology as ON
 from catspace.io import paths
 
 MODEL = "graph_policy.pt"
+# plan 76.1 (d) THE GNN READS THE SHELF (Kaveh 2026-10-28: "whatever we define as an object will therefore get a node in the graph"): the node types are the ontology
+# shelf's OBJECT kinds that declare a `node` (ontology.node_kinds: the square, the unit -- the node type `piece` --, the agenda's question, the root's status, a
+# question's route), the board's edges its relations that declare an `edge` (`cell` -> on, `attack` -> attacks, `king_step` -> adj); the machinery's edges (targets,
+# about, sees, of, from, to) join the machinery's objects to the board's and are this file's. THE FEATURE-VERSION RULE: an object kind's node enters at the
+# feature-set version its `since` says (all five at 0); a kind declared later -- a derived object the miner proposes (76.4) -- becomes a node type by its
+# declaration, and that is a NEW feature-set version (the layer widths and the message passing change): `build` gives it a node only at that version, so a model
+# of an earlier version sees exactly its old graph (`NODE_KINDS` is the version-0 set, the saved blob's meta).
+SQUARE, PIECE, QUESTION, ROOT, ROUTE = (ON.node_of(k) for k in ("square", "unit", "question", "root", "route"))
+ON_EDGE, ATTACKS_EDGE, ADJ_EDGE = ON.edge_of("cell"), ON.edge_of("attack"), ON.edge_of("king_step")
+NODE_KINDS = tuple(ON.node_kinds(0))
 GOALS = ("mate", "win", "save", "promote", "fork", "guard", "cover", "remove", "gap")
 STATUSES = ("open", "verified", "killed", "gap", "routed")
 WORDS = ("tempo", "verify", "stopped", "reasoned", "chase", "budget", "cut", "none")
@@ -71,7 +82,7 @@ def build(board, us: bool, questions: list, status: dict | None, left_frac: floa
     for s in locs:
         a_us, a_them = len(game.attackers(board, us, s)), len(game.attackers(board, them, s))
         sq_x.append(list(game.coords(s)) + [a_us / 4, a_them / 4, float(a_us > 0), float(a_them > 0)])
-    d["square"].x = torch.tensor(sq_x, dtype=torch.float)
+    d[SQUARE].x = torch.tensor(sq_x, dtype=torch.float)
     # units (the pieces): kind, owner, worth, attacked / guarded, the royal unit in check
     units = game.units(board)
     in_check = game.in_check(board)
@@ -84,14 +95,14 @@ def build(board, us: bool, questions: list, status: dict | None, left_frac: floa
         on_src.append(i); on_dst.append(u.loc)
         for t in game.attacks_from(board, u.loc):
             att_src.append(i); att_dst.append(t)
-    d["piece"].x = torch.tensor(p_x, dtype=torch.float) if p_x else torch.zeros((0, game.kinds() + 5 + (4 if survey else 0)))
-    d["piece", "on", "square"].edge_index = torch.tensor([on_src, on_dst], dtype=torch.long) if on_src else torch.zeros((2, 0), dtype=torch.long)
-    d["piece", "attacks", "square"].edge_index = torch.tensor([att_src, att_dst], dtype=torch.long) if att_src else torch.zeros((2, 0), dtype=torch.long)
+    d[PIECE].x = torch.tensor(p_x, dtype=torch.float) if p_x else torch.zeros((0, game.kinds() + 5 + (4 if survey else 0)))
+    d[PIECE, ON_EDGE, SQUARE].edge_index = torch.tensor([on_src, on_dst], dtype=torch.long) if on_src else torch.zeros((2, 0), dtype=torch.long)
+    d[PIECE, ATTACKS_EDGE, SQUARE].edge_index = torch.tensor([att_src, att_dst], dtype=torch.long) if att_src else torch.zeros((2, 0), dtype=torch.long)
     adj_src, adj_dst = [], []
     for s in locs:
         for t in game.adjacent(s):
             adj_src.append(s); adj_dst.append(t)
-    d["square", "adj", "square"].edge_index = torch.tensor([adj_src, adj_dst], dtype=torch.long)
+    d[SQUARE, ADJ_EDGE, SQUARE].edge_index = torch.tensor([adj_src, adj_dst], dtype=torch.long)
     # questions
     q_x, qt_src, qt_dst, qp_src, qp_dst = [], [], [], [], []
     sq_index = {u.loc: i for i, u in enumerate(units)}
@@ -111,15 +122,15 @@ def build(board, us: bool, questions: list, status: dict | None, left_frac: floa
             qt_src.append(j); qt_dst.append(t)
             if t in sq_index:
                 qp_src.append(j); qp_dst.append(sq_index[t])
-    d["question"].x = torch.tensor(q_x, dtype=torch.float)
-    d["question", "targets", "square"].edge_index = torch.tensor([qt_src, qt_dst], dtype=torch.long) if qt_src else torch.zeros((2, 0), dtype=torch.long)
-    d["question", "about", "piece"].edge_index = torch.tensor([qp_src, qp_dst], dtype=torch.long) if qp_src else torch.zeros((2, 0), dtype=torch.long)
+    d[QUESTION].x = torch.tensor(q_x, dtype=torch.float)
+    d[QUESTION, "targets", SQUARE].edge_index = torch.tensor([qt_src, qt_dst], dtype=torch.long) if qt_src else torch.zeros((2, 0), dtype=torch.long)
+    d[QUESTION, "about", PIECE].edge_index = torch.tensor([qp_src, qp_dst], dtype=torch.long) if qp_src else torch.zeros((2, 0), dtype=torch.long)
     # the root (status)
     st = status or {}
     bal, thr, line = st.get("balance", 0), st.get("threat", 0), st.get("line", 0)
-    d["root"].x = torch.tensor([[bal / 10, min(thr, 20) / 20, float(line), (line - bal) / 10, left_frac, float(in_check)]], dtype=torch.float)
+    d[ROOT].x = torch.tensor([[bal / 10, min(thr, 20) / 20, float(line), (line - bal) / 10, left_frac, float(in_check)]], dtype=torch.float)
     n = len(questions)
-    d["root", "sees", "question"].edge_index = torch.tensor([[0] * n, list(range(n))], dtype=torch.long) if n else torch.zeros((2, 0), dtype=torch.long)
+    d[ROOT, "sees", QUESTION].edge_index = torch.tensor([[0] * n, list(range(n))], dtype=torch.long) if n else torch.zeros((2, 0), dtype=torch.long)
     # routes (plan 69.1): a candidate move of a question, with its words, its price and its squares
     r_x, rq_src, rq_dst, rf_src, rf_dst, rt_src, rt_dst = [], [], [], [], [], [], []
     legal_keys = {game.move_key(m) for m in game.moves(board)}
@@ -137,10 +148,10 @@ def build(board, us: bool, questions: list, status: dict | None, left_frac: floa
         rq_src.append(i); rq_dst.append(r["q"])
         rf_src.append(i); rf_dst.append(frm)
         rt_src.append(i); rt_dst.append(to)
-    d["route"].x = torch.tensor(r_x, dtype=torch.float) if r_x else torch.zeros((0, len(RWORDS) + 8))
-    d["route", "of", "question"].edge_index = torch.tensor([rq_src, rq_dst], dtype=torch.long) if rq_src else torch.zeros((2, 0), dtype=torch.long)
-    d["route", "from", "square"].edge_index = torch.tensor([rf_src, rf_dst], dtype=torch.long) if rf_src else torch.zeros((2, 0), dtype=torch.long)
-    d["route", "to", "square"].edge_index = torch.tensor([rt_src, rt_dst], dtype=torch.long) if rt_src else torch.zeros((2, 0), dtype=torch.long)
+    d[ROUTE].x = torch.tensor(r_x, dtype=torch.float) if r_x else torch.zeros((0, len(RWORDS) + 8))
+    d[ROUTE, "of", QUESTION].edge_index = torch.tensor([rq_src, rq_dst], dtype=torch.long) if rq_src else torch.zeros((2, 0), dtype=torch.long)
+    d[ROUTE, "from", SQUARE].edge_index = torch.tensor([rf_src, rf_dst], dtype=torch.long) if rf_src else torch.zeros((2, 0), dtype=torch.long)
+    d[ROUTE, "to", SQUARE].edge_index = torch.tensor([rt_src, rt_dst], dtype=torch.long) if rt_src else torch.zeros((2, 0), dtype=torch.long)
     # reverse edges so that messages flow both ways
     for (a, r, b) in list(d.edge_types):
         if a != b:
@@ -179,13 +190,13 @@ def make_model(meta):
             self.out_route = nn.Sequential(nn.Linear(HIDDEN, HIDDEN), nn.ReLU(), nn.Linear(HIDDEN, 1))
 
         def forward(self, data, routes: bool = False):
-            x = {t: torch.relu(self.inp[t](data[t].x)) for t in data.node_types if data[t].x.numel() or t in ("question", "route")}
+            x = {t: torch.relu(self.inp[t](data[t].x)) for t in data.node_types if data[t].x.numel() or t in (QUESTION, ROUTE)}
             for conv in self.convs:
                 y = conv(x, data.edge_index_dict)
                 x = {t: torch.relu(y.get(t, x[t])) + x[t] for t in x}
             if routes:
-                return self.out_route(x["route"]).squeeze(-1)
-            return self.out(x["question"]).squeeze(-1)
+                return self.out_route(x[ROUTE]).squeeze(-1)
+            return self.out(x[QUESTION]).squeeze(-1)
     return Net()
 
 
@@ -370,7 +381,7 @@ def train(log_path, out_path=None, epochs=6, folds=None, seed=1, verbose=True, i
     if item_log and os.path.exists(item_log):
         model = train_routes(item_log, model=model, epochs=epochs, verbose=verbose)      # plan 69.1: the route head on the item log, the trunk shared
     out = out_path or paths.derived(MODEL)
-    torch.save(dict(state=model.state_dict(), meta=(["square", "piece", "question", "root"], None), hidden=HIDDEN, rows=len(rows), agendas=len(items), features=_train_version()), out)
+    torch.save(dict(state=model.state_dict(), meta=(list(NODE_KINDS), None), hidden=HIDDEN, rows=len(rows), agendas=len(items), features=_train_version()), out)
     print(f"OBS graph policy built: {len(items)} agendas, {sum(len(ex) for _, ex in items)} decision points -> {out} (train-set rank-first {h}/{n})")
     return model
 

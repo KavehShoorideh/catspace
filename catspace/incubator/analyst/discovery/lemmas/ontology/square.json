@@ -14,7 +14,11 @@
  "lean": "Ideas.Vocabulary.sqIndex",
  "python": "chess.SQUARES",
  "bind": null,
- "node": null,
+ "node": {
+  "kind": "square",
+  "order": 0,
+  "since": 0
+ },
  "edge": null,
  "vocabulary": [
   "a1",

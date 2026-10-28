@@ -105,8 +105,9 @@ def check_entry(e: dict, where: str = "") -> list:
             if (e[b] is None) != (b in why):
                 bad.append(f"{at}: the binding {b} is {'null without a reason' if e[b] is None else 'set and has a reason'} (why names exactly the null bindings)")
     n = e["node"]
-    if n is not None and (e["kind"] != "OBJECT" or not isinstance(n, dict) or set(n) != {"kind", "order"} or not isinstance(n["kind"], str) or not isinstance(n["order"], int)):
-        bad.append(f"{at}: node is null or, on an OBJECT, {{kind, order}} (the graph network's node type)")
+    if n is not None and (e["kind"] != "OBJECT" or not isinstance(n, dict) or set(n) != {"kind", "order", "since"} or not isinstance(n["kind"], str)
+                          or not isinstance(n["order"], int) or not isinstance(n["since"], int)):
+        bad.append(f"{at}: node is null or, on an OBJECT, {{kind, order, since}} (the graph network's node type; the feature-set version it enters at)")
     if e["edge"] is not None and (e["kind"] != "RELATION" or not isinstance(e["edge"], str)):
         bad.append(f"{at}: edge is null or, on a RELATION, the graph network's edge name")
     if not isinstance(e["vocabulary"], list) or any(not isinstance(v, str) for v in e["vocabulary"]):
@@ -173,9 +174,11 @@ def names_table() -> list:
     return [e for e in load().values() if e["names"]]
 
 
-def node_kinds() -> list:
-    """76.1 (d): the graph network's node types, by the OBJECT kinds that declare one, in their declared order."""
-    return [e["node"]["kind"] for e in sorted((e for e in objects() if e["node"]), key=lambda e: e["node"]["order"])]
+def node_kinds(version: "int | None" = None) -> list:
+    """76.1 (d): the graph network's node types, by the OBJECT kinds that declare one, in their declared order; `version`: only those that enter at that feature-set
+    version or before (graph_policy.py's rule: a kind declared later is a new feature-set version, and a model of an earlier one never sees it)."""
+    es = [e for e in objects() if e["node"] and (version is None or e["node"]["since"] <= version)]
+    return [e["node"]["kind"] for e in sorted(es, key=lambda e: e["node"]["order"])]
 
 
 def node_of(name: str) -> str:
