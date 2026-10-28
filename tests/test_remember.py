@@ -95,7 +95,7 @@ def test_the_key_reorders_equal_stakes_only():
     # a memory that loves 'win' roots: a win root may overtake an equal-stake root of another goal, never a higher stake
     mem = [(0.9, dict(id="x", goal="win", lemma="L", fixes=[]))]
     _, ag = _agenda("000Sa", mem)
-    order = [t[4].stake for t in sorted(ag.heap)]
+    order = [q.stake for q in ag.open_questions(ordered=True)]           # (plan 74 (b): the heap is the worklist, read in its order key)
     assert order == sorted(order, reverse=True)                         # still ordered by stake first
     assert sorted(q.stake for q in ag.all) == sorted(q.stake for q in plain.all)   # nothing added or removed
     assert ag.asked <= ag.budget and goals

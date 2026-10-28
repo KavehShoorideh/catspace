@@ -33,7 +33,6 @@ square of the diff. An answer of one goal is memoised under that goal (the route
 from __future__ import annotations
 
 import dataclasses
-import heapq
 import math
 import os
 import re
@@ -53,6 +52,7 @@ from catspace.incubator.analyst.discovery import landing as LD
 from catspace.incubator.analyst.discovery import lemma_store as LS      # plan 73.4: every claim lemma, kill reason and GAP reason passes LS.name (returns it unchanged; counts uses and uncatalogued words)
 from catspace.incubator.analyst.discovery import region as RG
 from catspace.incubator.analyst.discovery import reasoning as RN       # plan 74.1: THE REASONING GRAPH (questions, lines, answers, observations; provenance), generic over position keys
+from catspace.incubator.analyst.discovery import worklist as WL        # plan 74.2: THE WORKLIST (one passive set of questions for the run, every depth; 74.2b's selection), generic
 from catspace.incubator.analyst.discovery import race as RC
 from catspace.incubator.analyst.discovery import plan67 as PL
 from catspace.incubator.analyst.discovery import table as TB
@@ -307,6 +307,8 @@ class ChaseCtx:
         self.graph = RN.Graph()                   # plan 74.1: THE REASONING GRAPH of the run (its answers are this store's facts: it travels with them, `carry`)
         self.next_line: "int | None" = None       # ... the LINE node the next inner agenda is opened on (set by `_inner` / `_refuter_fix`, taken by the agenda's constructor)
         self.next_refines: "int | None" = None    # ... and the question node its route chases (the REFINES edge of its questions)
+        self.worklist = WL.Worklist()             # plan 74.2: THE WORKLIST -- one passive set of questions for the run (every agenda that chases asks from its own frame of it)
+        self.q_routes: dict = {}                  # plan 74.2b: carry key of a ROOT question -> the route ucis its chase read (the judge's price of the question, once its routes are priced)
 
 
     def carry(self) -> "ChaseCtx":
@@ -318,6 +320,7 @@ class ChaseCtx:
         c.route_goals, c.local_keys = self.route_goals, self.local_keys      # (72.10: the per-goal memos' indexes travel with the memos)
         c.technique = self.technique                                          # (73.5b: the technique's strategy in hand)
         c.graph = self.graph                                                  # (74.1: the reasoning graph travels with the store whose facts are its answers)
+        c.worklist = self.worklist                                            # (74.2: and the passive set of questions with it)
         return c
 
     def out_of_time(self) -> bool:
@@ -389,7 +392,8 @@ class Agenda:
         self.killed_tempo = 0
         self.kills: list = []                                   # (question id, reason) for every kill
         self.all: list = []
-        self.heap: list = []
+        self.wl = self.ctx.worklist if self.ctx is not None else WL.Worklist()      # plan 74.2: THE WORKLIST (the run's: the context's; their agendas, which never chase, a private one) -- the heap is gone
+        self._wf = self.wl.frame()                              # ... this agenda's FRAME in it: the questions it asks at its position, for its line
         self.order: list = []                                   # plan 53 (1): (question, its features) in the order asked
         self.prior_moves = 0                                    # plan 53 (2): questions the prior asked ahead of the stake order
         self.best: tuple | None = None                          # (value, -opp defects, claim): PROVED claims only -- the search flow (stops, tiers, kills) reads this and nothing estimated
@@ -513,8 +517,17 @@ class Agenda:
             self._g_node(q)                                      # plan 74.1: the question's node, with why it was asked (the line it arose from, the question that line's route chases)
         self.all.append(q)
         self._seq += 1
-        heapq.heappush(self.heap, (-q.stake, -self._recall_score(q)[0], q.depth, self._seq, q))
+        self._wl_push(q)
         return q
+
+    def _wl_push(self, q: R.Question) -> None:
+        """plan 74.2: the question enters the worklist, OPEN in this agenda's frame, with the policy's order key when no policy scores it -- the old heap's: (-stake, -recall, depth, seq)."""
+        q._wi = self.wl.push(WL.Item(q, self._wf, (-q.stake, -self._recall_score(q)[0], q.depth, self._seq), stake=q.stake, depth=self.chase_depth, node=getattr(q, "_gn", None)))
+
+    def open_questions(self, ordered: bool = False) -> list:
+        """plan 74.2: the open questions of this agenda's frame (the old heap's array order; `ordered`: by the order key)."""
+        its = self.wl.items(self._wf)
+        return [i.payload for i in (sorted(its, key=lambda i: i.order) if ordered else its)]
 
     # ------------------------------------------------------------------------------------------------------------ plan 74.1 / 74.5: the reasoning graph
 
@@ -1313,6 +1326,7 @@ class Agenda:
         nxt.ctx.theirs, nxt.ctx.their_ags = ag.ctx.theirs, ag.ctx.their_ags      # 64.0 (speed only): THEIR agenda at a position is a function of the position, not of the tier: kept across the tiers
         nxt.ctx.rate_t, nxt.ctx.rate_n = ag.ctx.judge_t + ag.ctx.rate_t, ag.ctx.judge_n + ag.ctx.rate_n      # plan 61 C2: seconds per node is measured in the RUN so far
         nxt.ctx.kind_rate = ag.ctx.kind_rate                     # 72.9 (a): ... and so is the rate of each parry kind
+        nxt.ctx.q_routes = ag.ctx.q_routes                       # plan 74.2b: ... and the routes each root question's chase read (its price in the next pass)
         if CARRY:                                                # plan 66.1: the proved claims of the root's questions carry (a refutation does not: kills and GAPs are read again)
             carried = dict(ag.ctx.carry_q)
             for key, d in ag._carried_out().items():
@@ -1623,10 +1637,11 @@ class Agenda:
             self.ctx.logged = len(self.ctx.rows)
             self.ctx.rows = []
 
-    def _graph_order(self) -> "tuple | None":
-        """plan 60 / 69.1: the GRAPH POLICY scores the open questions from the board, the questions already asked (with their outcome) and the status; -> the heap entry to ask next, or
-        None (no model). It orders only."""
-        if GP.load() is None or not self.heap:
+    def _graph_order(self, cands: list) -> "tuple | None":
+        """plan 60 / 69.1: the GRAPH POLICY scores the open questions from the board, the questions already asked (with their outcome) and the status; -> the worklist item to ask next,
+        or None (no model). It orders only. plan 74.2b: it scores every open question (it sees them all) and picks among `cands`, the open items 74.2b's clauses left."""
+        items = self.wl.items(self._wf)
+        if GP.load() is None or not items:
             return None
         asked = [q for q in self.order]
         qs, entries = [], []
@@ -1634,11 +1649,11 @@ class Agenda:
             qs.append(dict(goal=q.goal, stake=q.stake, depth=self.chase_depth, target=q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn"))),
                            status=q.status if q.status in ("verified", "killed", "gap") else "gap", word=q.reason.split(":")[0] if q.reason else q.status,
                            value=(q.claimed[0] if q.claimed is not None else 0), arrangement=R.arrangement_value(q)))
-        for t in self.heap:
-            q = t[4]
+        for it in items:
+            q = it.payload
             qs.append(dict(goal=q.goal, stake=q.stake, depth=self.chase_depth, target=q.pattern.get("target", q.pattern.get("at", q.pattern.get("pawn"))), status="open",
                            arrangement=R.arrangement_value(q)))      # plan 72.8 (11d): the matched arrangement's stake - material - counter, or 0 (a version-2 policy reads it)
-            entries.append(t)
+            entries.append(it)
         left_frac = 1.0
         if self.ctx is not None and self.ctx.seconds:
             left_frac = max(0.0, min(1.0, ((self.ctx.final or time.monotonic()) - time.monotonic()) / self.ctx.seconds))
@@ -1646,24 +1661,65 @@ class Agenda:
         if not scores:
             return None
         open_scores = scores[len(asked):]
-        k = max(range(len(entries)), key=lambda i: (open_scores[i], -entries[i][0]))
+        ok = {id(i) for i in cands}
+        k = max((i for i in range(len(entries)) if id(entries[i]) in ok), key=lambda i: (open_scores[i], entries[i].stake))
         return entries[k], open_scores[k]
 
+    def _wl_status(self) -> "tuple | None":
+        """plan 74.2b: what the selection's first clause reads at the ROOT -- the status (the pool's and the first tier's `status_info`; a wider tier's or a pass's carried status)
+        and the best PROVED claim's value -- and, on every open item, the judge's price of its routes (`_wl_price`). -> (status, best value) or None: an inner agenda, or no
+        status read (the count budget: no clock, no tiers): then the policy's order alone."""
+        if not self._root or self.chase_depth != 0 or self.ctx is None:
+            return None
+        st = getattr(self, "status_info", None) or self.ctx.carry_status
+        if st is None:
+            return None
+        for it in self.wl.items(self._wf):
+            it.price = self._wl_price(it.payload)
+            it.data["avoids"] = self._keep_goal(it.payload)      # (70.1 / 68.1: a question chased for keeping avoids a loss -- what it saves counts against the need, whatever its stake)
+        return st, (self.best[0] if self.best is not None else None)
+
+    def _wl_price(self, q: R.Question) -> "float | None":
+        """plan 74.2b: THE QUESTION'S PRICE, the judge's own (72.9: each route's first-level cost at the rate of what its parries are, or its measured seconds): the cheapest of the routes
+        its chase read in this run (an earlier pass or tier; `ctx.q_routes`) that the judge priced. None: its routes are not known yet (it is found by asking it) or no rate is measured."""
+        if not self._judge_on():
+            return None
+        spn = self._spn()
+        routes = self.ctx.q_routes.get(self._carry_key(q)) if spn is not None else None
+        if not routes:
+            return None
+        best = None
+        for u in routes:
+            mkey = (self.pk, u, q.stake)
+            hit = self.ctx.route_costs.get(mkey)
+            if hit is not None:
+                p = self._judge_price(hit[0], hit[1], self.ctx.route_secs.get(mkey), spn)[0]
+                best = p if best is None or p < best else best
+        return best
+
+    def _wl_said(self, q: R.Question, cands: list) -> None:
+        """plan 74.2b: the trace says when the first clause narrowed the choice."""
+        priced = [i.price for i in cands if i.price is not None]
+        self.lines.append(f"{RN.PREFIX}Q{q.id} selected by 74.2b clause (1): no move is proved to keep the status; {len(cands)} open question(s) could keep it"
+                          + (f", the cheapest price class {priced[0]:.2f} s (the judge's price of its routes read before)" if priced else ", none priced yet") + "; the policy orders inside it")
+
     def _ask_loop(self) -> None:
+        wl, wf = self.wl, self._wf
         while True:
-            if not self._threats_done and not (self.best and self.best[0] >= R.STAKE_MATE) and (not self.heap or self.heap[0][4].stake < R.STAKE_MATE):
+            head = wl.head(wf)
+            if not self._threats_done and not (self.best and self.best[0] >= R.STAKE_MATE) and (head is None or head.payload.stake < R.STAKE_MATE):
                 self._threats_done = True                        # a mate of ours ends the game, so their threats are asked only once no mate root is left to ask
                 self._threat_roots(self._hang)
-            if not self.heap:
+            if not wl.has_open(wf):
                 if self.local is not None and not self.local["full"] and self._local_next():      # plan 72.10: the three questions are asked; the full agenda only if the goal is dead here
                     continue
                 break
-            nstake = self.heap[0][4].stake
+            nstake = wl.head(wf).payload.stake
             if self.best and (self.best[0] > nstake or self.best[0] >= BD.MATE_VALUE):      # 53 (3): STRICTLY above the next stake (a question of equal stake may still claim as much with a better shape; the order asked must not decide), a mate ends everything
                 self.lines.append(f"STOP (a): the best claim ({self.best[2].what}, {self.best[0]}) is above the stake of every open question (next: {nstake})")
                 return
             if self.asked >= self.budget:
-                left = [t[4] for t in self.heap]
+                left = [i.payload for i in wl.items(wf)]
                 self.lines.append(f"STOP (c): budget {self.budget} questions asked; {len(left)} open questions become gaps")
                 self.state.gaps += [f"{LS.name('budget')}: {q.text} (stake {q.stake}) not asked" for q in left]
                 return
@@ -1671,30 +1727,35 @@ class Agenda:
                 self.ctx.budget_hits += 1
                 self.lines.append("STOP (t): out of time")
                 return
-            plain = min(self.heap, key=lambda t: (t[0], t[2], t[3]))                # the stake-only order
-            graph = self._graph_order() if (PRIOR or (self.ctx is not None and self.ctx.pool)) and not self.chase_depth and self._root else None      # plan 60 / 69.1: the graph policy first (it sees the board and the claims)
+            plain = wl.first_by(wf, lambda o: (o[0], o[2], o[3])).payload        # the stake-only order
+            sel = self._wl_status()                                # plan 74.2b: THE SELECTION'S TWO CLAUSES -- (1) while no move is proved to keep the status, the open questions whose answer
+            cands, clause = wl.candidates(wf, *sel) if sel is not None else (wl.items(wf), 0)      # could keep it, the cheapest price class of them; (2) once one is: every open question.
+            graph = self._graph_order(cands) if (PRIOR or (self.ctx is not None and self.ctx.pool)) and not self.chase_depth and self._root else None      # plan 60 / 69.1: the graph policy first (it sees the board and the claims), inside the clause's candidates
             if graph is not None:
-                best, gs = graph
-                self.heap.remove(best)
-                heapq.heapify(self.heap)
-                q = best[4]
-                if plain[4] is not q:
-                    self.lines.append(f"policy: Q{q.id} asked first (graph score {gs:+.2f}; the stake order would ask Q{plain[4].id})")
+                it, gs = graph
+                wl.take(it)
+                q = it.payload
+                if plain is not q:
+                    self.lines.append(f"policy: Q{q.id} asked first (graph score {gs:+.2f}; the stake order would ask Q{plain.id})")
                     self.prior_moves += 1
             elif (PRIOR or (self.ctx is not None and self.ctx.pool)) and not self.chase_depth and QP.load() is not None:          # plan 53 (2) / 69.1: THE PRIOR ORDERS the root agenda's pool: the open question with the highest score is asked next
-                scored = [(QP.score(QP.features(t[4], self.board, self.us, self.chase_depth, self.status_info if self.ctx is not None and self.ctx.pool else None)), -t[0], -t[3], t) for t in self.heap]        # (it orders, it never decides: the stops stay by stakes and claims)
-                best = max(scored)[3]
-                self.heap.remove(best)
-                heapq.heapify(self.heap)
-                q = best[4]
-                if plain[4] is not q:
-                    self.lines.append(f"prior: Q{q.id} asked first (score {max(scored)[0]:+.2f}; the stake order would ask Q{plain[4].id})")
+                scored = [(QP.score(QP.features(i.payload, self.board, self.us, self.chase_depth, self.status_info if self.ctx is not None and self.ctx.pool else None)), i.stake, -i.order[3], i) for i in cands]        # (it orders, it never decides: the stops stay by stakes and claims)
+                top = max(scored, key=lambda x: x[:3])
+                it = top[3]
+                wl.take(it)
+                q = it.payload
+                if plain is not q:
+                    self.lines.append(f"prior: Q{q.id} asked first (score {top[0]:+.2f}; the stake order would ask Q{plain.id})")
                     self.prior_moves += 1
             else:
-                _, _, _, _, q = heapq.heappop(self.heap)
-                if plain[4] is not q:
+                it = wl.head(wf) if not clause else min(cands, key=lambda i: i.order)
+                wl.take(it, pop=not clause)                          # (the policy's order with no policy: the order key -- the old heap's pop)
+                q = it.payload
+                if plain is not q and not clause:
                     sc, rec = self._recall_score(q)
                     self.lines.append(f"memory: Q{q.id} moved up by {sc} (seen {rec['id']}: {rec['goal']} by {rec['lemma']})")
+            if clause:
+                self._wl_said(q, cands)
             if DEFER and self._root and self.chase_depth == 0 and self.ctx is not None and not self.ctx.pool and self.ctx.need is not None and self.ctx.need > 0 and q.goal != "save" and q.stake < self.ctx.need:
                 self.ctx.deferred_qs.append(q)                     # plan 68: a claim below the need keeps no status (Ideas.Forcing.irrelevant_keeps_nothing): asked after the tiers' relevant questions
                 self.lines.append(f"deferred: Q{q.id} {q.text} (stake {q.stake} < the status's need {self.ctx.need}): asked after the tiers' relevant questions")
@@ -2166,7 +2227,7 @@ class Agenda:
             q.id = R._ids[0]
             self.all.append(q)
             self._seq += 1
-            heapq.heappush(self.heap, (-q.stake, -self._recall_score(q)[0], q.depth, self._seq, q))
+            self._wl_push(q)
             self.ctx.graph.activate(self._g_node(q).id, f"Q{q.id}")      # plan 74.1: the queued question is opened (the goal is dead here) ...
         if L["deferred"]:                                        # ... and the line waits on them: PENDING until they are answered or cut
             self.ctx.graph.mark_line(self._gline, "pending", on=[q._gn for q in L["deferred"]])
@@ -4293,6 +4354,8 @@ class Agenda:
             return False
         for n in notes[:6]:
             self.lines.append("  chase: " + n)
+        if self.chase_depth == 0:
+            self.ctx.q_routes[self._carry_key(q)] = [r.move.uci() for r in routes]      # plan 74.2b: the question's routes (its price, once the judge priced them, orders a later pass's first clause)
         self.lines.append(f"  chase: make them move -- {len(routes)} forcing route(s): " + ", ".join(f"{r.san} ({r.why})" for r in routes[:12]) + (" ..." if len(routes) > 12 else ""))
         done, cut, route_facts = [], False, []
         results: dict = {}
@@ -4339,7 +4402,7 @@ class Agenda:
                 if self.chase_depth == 0 and self.ctx.final is not None:       # ... and the time is shared FAIRLY like the fuse: each open route gets an equal slice of what is left
                     now = time.monotonic()
                     if root_final is None:                                     # 52.23 (11): and, like the fuse, the ROOT gets at most half of what is left while another root can beat the best claim (BEKFf: the first mate root ate the whole minute)
-                        cap = any(t[4].goal in ("mate", "win", "promote") and (self.best is None or self.best[0] < t[4].stake) for t in self.heap)
+                        cap = any(i.payload.goal in ("mate", "win", "promote") and (self.best is None or self.best[0] < i.payload.stake) for i in self.wl.items(self._wf))
                         root_final = now + (self.ctx.final - now) / 2 if cap and not self._whole_share(q) else self.ctx.final      # plan 69.1 / 72.9 (b): in the POOL the question in hand gets the whole remainder while the status is LOST (and no claim has kept it); else the half (the tiers' hedge: breadth decides)
                     claim, self.ctx.why_not = self._decides(q, r)              # 72.9 THE JUDGE'S FIRST QUESTION: can one more question here change the decision, cheaply -- a route that DECIDES takes the root's whole share and is read whatever the rate
                     self.ctx.deadline = now + max(min(root_final, self.ctx.final) - now, 0) / (1 if claim else max(open_left, 1))      # (72.9 (b): every other route its fair slice; W0VFO: the checks read before Qb7 each took the whole share)
@@ -4386,7 +4449,7 @@ class Agenda:
         q._chased = not cut                                      # 52.19: a kill is "chased" only when no route was cut (a GAP); a cut chase is as weak as no chase
         q._chain_stopped = stopped                               # 64.2: ... and a KILL is not filed as chased to its end when a route was a chain stop (a claim is: it is true whatever the other routes did)
         self._qdeps = list(dict.fromkeys(route_facts))           # a kill stands on every route's facts ...
-        if self.chase_depth == 0 and pool > 1 and any(t[4].goal in ("mate", "win", "promote") and (self.best is None or self.best[0] < t[4].stake) for t in self.heap):
+        if self.chase_depth == 0 and pool > 1 and any(i.payload.goal in ("mate", "win", "promote") and (self.best is None or self.best[0] < i.payload.stake) for i in self.wl.items(self._wf)):
             # ... and a ROOT question is charged at most half of the pool it started with, while another root that can still beat the best claim is open: by stake order the
             # question that matters most gets the larger share, never all of it (0GJec: the promotion's chase took 618 of 570 and every later root was read with nothing)
             charged = pool - max(self.ctx.left, pool - pool // 2)

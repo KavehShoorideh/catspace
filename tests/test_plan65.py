@@ -23,7 +23,7 @@ def _agenda(fen: str, seconds: float = 15.0) -> Agenda:
 
 
 def _q(ag: Agenda, stake: int = 100):
-    return next(t[4] for t in ag.heap if t[4].stake == stake)
+    return next(q for q in ag.open_questions() if q.stake == stake)      # (plan 74 (b): the heap is the worklist)
 
 
 def test_65_1_judge_next_is_the_lean_definition():
@@ -137,7 +137,7 @@ def test_65_2_the_wider_vocabulary_adds_open_routes():
     from catspace.incubator.analyst.discovery import puzzle_apply as PA
     (p,) = [x for x in PA.load_set("dev_20") if x["id"] == "07Z0P"]
     ag = _agenda(p["fen"])
-    q = next(t[4] for t in ag.heap if t[4].stake == 1)
+    q = next(q for q in ag.open_questions() if q.stake == 1)      # (plan 74 (b): the heap is the worklist)
     ag._chase_q = q
     ag._competitor(1.0, 0.01)                                        # fills the candidates of (position, stake 1, tier 0)
     ok, line = ag._affordable(ag, 0, 0.5, __import__("time").monotonic())

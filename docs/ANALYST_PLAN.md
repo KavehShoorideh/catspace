@@ -3912,6 +3912,13 @@ rule or the policy.
   and REFINES the chased question; answers from `_file` / `_inner` / `_serve` (SERVES: convergence); the 74.5 lines under the prefix "why: " (per root question, the decision's question
   edges, a summary), masked by scripts/trace_identity.py into `<id>.why.txt` with the graph's dump. OBS guard 0 of 218 traces / read sets / leaf lists / word lists differ; negative
   control (provenance mis-attributed): 10 of 10 provenance lists differ, traces identical; audit CHESS FACT rows 428 -> 428.
+* 74 (b) BUILT 2026-10-27 on branch worktree-agent-a783b98ab9a640248 (journal 2026-10-27 22:07): `discovery/worklist.py` (new, generic) replaces the heap -- one passive set per run, a
+  frame per agenda, the open set the old heap's array; 74.2b's clauses at the root: (1) while no move is proved to keep the status, the open questions that could keep it (stake reaches
+  the need, or a keep goal), the cheapest price class (the judge's price of the routes the question's chase read before in this run), the policy inside; (2) once one is, the policy's
+  order. The keep arithmetic lives in the worklist (no status code added to agenda.py). At the count budget no status and no rate: both clauses are the order key (the guard: 0 of 218
+  traces / read sets / leaf lists / word lists / provenance lists differ; questions asked and the count to the first keeping move identical). Clocked: W0VFO 10 s Qb7 +3 proved before
+  and after; loop-2 RIGHT 31 / WRONG 7 (same day, before) -> 32 / 6 (kJbxb e5 proved by clause (1)); one batch, directional. A question not yet asked has no price: the price bites from a
+  root's second pass on.
 
 
 ## 75. THE GENERIC GOAL AND THE SUPPLIED VOCABULARY (Kaveh 2026-10-27 GO "go ahead and do it")

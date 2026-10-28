@@ -75,7 +75,7 @@ def test_64_1_zB_after_rf1_is_never_killed_by_the_chain_state(monkeypatch):
 def test_64_1_a_chain_stop_is_a_gap_not_a_kill():
     """The chase clock / the tempo allowance / a second check cut the route as a GAP: counted as a chain stop (not a budget cut), `_cut` names it, the question is not filed as chased to its end."""
     ag = Agenda(state_of(POS2, "w"))
-    q = ag.heap[0][4] if ag.heap else None
+    q = (ag.open_questions(ordered=True) or [None])[0]             # (plan 74 (b): the heap is the worklist; its first item by the order key, the heap's old top)
     assert q is not None
     before = (ag.ctx.budget_hits, ag.ctx.chain_hits)
     ag._chain_gap(q, "the chase clock: 4 moves of ours without a capture")

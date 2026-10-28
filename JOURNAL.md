@@ -34118,3 +34118,32 @@ OBS audit recount (scripts/agenda_audit, the classifier's line overrides remappe
 CHESS FACT 428, HEURISTIC 41), agenda.py CHESS FACT 423; after: rows total 1746 (LOGIC 1150, RULE 104, NAME 23, CHESS FACT 428, HEURISTIC 41), agenda.py CHESS FACT 423. No CHESS FACT row
 added.
 OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_plan74 4/0/0/0 1.1 s; test_agenda 26/0/0/0 105.7 s; test_tiers 14/0/0/0 34.5 s; test_offbuilt64 15/0/1/0 96.2 s; test_fact_store 21/0/0/0 25.9 s; test_plan68 4/0/0/0 14.6 s; test_plan69 3/0/0/0 15.0 s; test_plan70 3/0/1/0 4.6 s; test_plan72_9 7/0/0/0 4.5 s; test_plan72_10 4/0/0/0 2.5 s; test_plan73 9/0/0/0 14.0 s; test_plan73_5b 11/0/0/0 8.3 s; test_cost61 13/0/0/0 4.0 s; test_plan66 16/0/0/0 4.2 s; test_plan65 13/0/0/0 7.2 s; test_plan72_7 16/0/0/0 1.5 s; test_plan72_7_step2 13/0/0/0 8.3 s; test_plan72_7_step3 13/0/0/0 43.2 s; test_regress 87/0/1/0 388.6 s. Total 19 files: passed 292, failed 0, xfailed 3, errors 0.
+
+## 2026-10-27 22:07 -- plan 74 (b) THE SINGLE WORKLIST replaces the heap; 74.2b's two clauses select (branch worktree-agent-a783b98ab9a640248)
+`discovery/worklist.py` (new, generic: an item is a payload with a stake, a depth, a frame, the policy's order key, a price, whether it could keep the status): ONE passive set per run
+(`ChaseCtx.worklist`, carried with the store), a FRAME per agenda (the questions it asks at its position for its line; their agendas, which never chase, a private worklist). The open set
+of a frame is the old heap's array (the same pushes, pops and remove + heapify), so every iteration meets the items in the old order. The heap is gone (no switch).
+SELECTION (74.2b), at the root, read off the status the root already holds (the pool's and the first tier's `status_info`, a pass's or a wider tier's carried status): (1) while no move is
+PROVED to keep the status (best + balance < line), the open questions that could keep it (the stake reaches the need, or 70.1's keep goal: what it saves counts against the need), the
+cheapest price class of them -- the price is the judge's own (72.9: the first-level cost of each route at the rate of what its parries are, or its measured seconds), read for the routes
+the question's chase read before in this run (`ctx.q_routes`, carried to the next pass / tier) -- and the policy (the graph policy, the prior, or the order key) inside it; (2) once a
+keeping move is proved, every open question in the policy's order, as before (the judge's question is asked of the routes, unchanged). The keep arithmetic is the worklist's (generic: the
+ladder's balance and line, a stake, a value); agenda.py adds no status code. A narrowed choice says so: "why: Q1 selected by 74.2b clause (1): no move is proved to keep the status; 6 open
+question(s) could keep it, none priced yet; the policy orders inside it". AT THE COUNT BUDGET (the guard): no status is read before the root loop and no rate exists, so both clauses are
+the policy's order (the order key): the guard exercises the worklist's mechanics and that fall-through, not the price; the clocked evidence is W0VFO and the loop-2 batch below. A question
+not asked yet has no price (its routes are found by asking it): clause (1)'s price bites from a root's second pass on.
+OBS trace identity (count budget, PYTHONHASHSEED=0), against the parent 813fadc8: ten t0 0 of 10 traces / read sets / leaf lists / word lists differ; ten t2 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 /
+0 / 0 of 99; wide t2 0 / 0 / 0 / 0 of 99; against stage (a): 0 of 218 provenance lists differ.
+OBS measure (questions asked root + inner; count to the first proved keeping move): ten t0 11806 -> 11806, 3059 -> 3059 (5 of 10 cases); ten t2 36902 -> 36902, 9582 -> 9582 (4 of 10);
+wide t0 58321 -> 58321, 16276 -> 16276 (66 of 99); per case identical. (wide t2 base: 175078, 51933, 66 of 99; its traces are identical after.)
+OBS W0VFO 10 s (the pool, alone): before (stage a): decision Qb7 +3 proved (chase), wall 8.1 s of the pool, root questions 38, inner agendas 790, inner questions 10578; after: Qb7 +3 proved
+(chase), 8.2 s, 38, 784, 10301; clause (1) narrowed nothing (the need is 1, every root stake reaches it).
+OBS loop-2 batch (rand14_10 .. rand17_10, 15 s, the pool, graded by Stockfish depth 14 in its own process; one batch each, directional): before (stage a, same day): RIGHT 31, UNKNOWN 2,
+WRONG 7; by proof: proved RIGHT 31, proved WRONG 2, unproved WRONG 5, none 2. After: RIGHT 32, UNKNOWN 2, WRONG 6; by proof: proved RIGHT 32, proved WRONG 2, unproved WRONG 4, none 2.
+The one changed decision: kJbxb (rand16_10) g5 unproved WRONG -> e5 +5 proved RIGHT; traced alone at 15 s: status losing (balance -2), need 2, clause (1) selected Q1, Q2, Q3 among the 6, 5,
+4 open questions that could keep the status (the stake-1 roots after them), the pool ended at 7.7 s with e5 kept.
+NEGATIVE CONTROL (monkeypatch: the first stake-1 root question never enters the open set): ten t0 against this stage: 6 of 10 traces, 10 of 10 read sets, 2 of 10 leaf lists, 6 of 10 word
+lists, 6 of 10 provenance lists differ -- the guard fires.
+OBS audit recount: CHESS FACT rows 428 -> 428 (agenda.py 423 -> 423); rows total 1746 -> 1756 (LOGIC 1150 -> 1160).
+Tests changed for the API (not for a claim or a decision): test_offbuilt64, test_plan65, test_remember read the open questions through `Agenda.open_questions` (the heap's array / its order).
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_plan74 8/0/0/0 1.1 s; test_agenda 26/0/0/0 103.6 s; test_tiers 14/0/0/0 34.7 s; test_offbuilt64 15/0/1/0 96.7 s; test_fact_store 21/0/0/0 27.7 s; test_plan68 4/0/0/0 14.6 s; test_plan69 3/0/0/0 15.2 s; test_plan70 3/0/1/0 4.5 s; test_plan72_9 7/0/0/0 4.5 s; test_plan72_10 4/0/0/0 2.5 s; test_plan73 9/0/0/0 14.6 s; test_plan73_5b 11/0/0/0 8.2 s; test_cost61 13/0/0/0 3.9 s; test_plan66 16/0/0/0 4.2 s; test_plan65 13/0/0/0 7.3 s; test_plan72_7 16/0/0/0 1.5 s; test_plan72_7_step2 13/0/0/0 8.3 s; test_plan72_7_step3 13/0/0/0 43.3 s; test_remember 8/0/0/0 1.1 s; test_regress 87/0/1/0 390.1 s. Total 20 files: passed 304, failed 0, xfailed 3, errors 0.
