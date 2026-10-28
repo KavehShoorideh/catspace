@@ -34870,3 +34870,18 @@ nondeterministic in a fork's target order between runs of one build (a Rust Hash
 in the position itself, not for every continuation; (4) the shelf's Lean column binds names-table twins that are approximations (Ideas.Vocabulary's set-valued words for
 the unit kinds), kept as the table had them; (5) the index's citation scan read only *.py and *.rs, so moving the names table's twins into JSON dropped 13 "used by" lines
 -- it reads the shelf's JSON now (409 cited, was 350 before 76.1, 337 without the fix).
+
+
+## 2026-10-28 16:37 -- plan 76.1 merged (main 4a79629c, fast-forward; core rebuilt from main's crate); the gate; 76.2 + 76.3 launched
+OBS gate engine (main 4a79629c, 45 files incl. test_plan76): passed 595, failed 0, xfailed 2, errors 0, wall 1013.9 s.
+76.1 (the agent's journal entries above): THE ONTOLOGY SHELF -- ontology.py + lemmas/ontology/, 117 kinds (23 object kinds, supplied; 94 relation kinds: 42 supplied, 52 derived); every
+one of the spec's 99 relations bound, 0 unnamed; names.py reads its 24 words from the shelf; the bindings gdl / rust / lean / python agree on the sample positions. THE FIVE EXTENSIONS:
+12 sorts and 90 signatures (type check 0 problems); fluent and move bindings in the shelf's `bind`; Ideas/Spec/Chess.lean = the whole spec generated (92 of 92 relations translate; 76.0: 48
+of 90); NextEquiv.lean: applyMoveSpec = the kernel's applyMove on every pseudo-legal move, functionality proved, by reasoning (the clock's 100-row table split accepted as rule-level);
+threefold through the Record; DeadPosition.lean: one_colour_dead PROVED (the store entry PROVED). The terms bound to shelf relations (162 symbols, 0 unbound); the GNN's node and edge kinds
+read from the shelf (identity 147 of 147 scores); the Datalog renamed (piece -> cell, attacks -> attack); Rust `insufficient` = shakmaty's: OBS crossplay agreement 69567 of 69567 (100.000 %),
+the nine surprises now agreements. Guard 0 of 218 at every commit; recount 210 -> 210; store 111 entries, ontology validate 0 problems.
+FINDINGS: `legal` not yet proved equal to the kernel's legalMove (76.2 (a)); the next-state equivalence holds for pseudo-legal moves; the guard is blind to the policy and to insufficient
+material at the count budget (direct identity checks used); the prefilter's fork-target order is nondeterministic between runs (5 of 40; sets agree). Kaveh: "keep going as planned" ->
+76.2 (legal / terminal / goal proved against the kernel; Game through the certified kernel with the spec as the test oracle; the RULE shelf in the store; the Rust second copies routed) and
+76.3 (the surprise loop in the engine: counterexamples permanent and shrunk, evidence.uses from the tally, the oldest-item pick) launched as one agent under docs/AGENT_BRIEF.md.
