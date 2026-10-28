@@ -6,13 +6,12 @@
   "material"
  ],
  "terms": [],
- "status": "PROVED",
- "lean": [
-  "Ideas.Forcing.repetition_level"
- ],
+ "status": "CONJECTURE",
+ "lean": [],
  "origin": "HAND",
  "plan": [
-  "61"
+  "61",
+  "75.4"
  ],
  "journal": "2026-10-21",
  "measure": null,
@@ -24,7 +23,7 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/agenda.py:_cycle_claim"
  ],
- "note": "A position of the line or the game repeating when we are behind is a draw claim worth minus the balance; the cited theorem proves only that value plus balance is 0, the draw is the game's rule and the reading of every reply is argued in the docstring.",
+ "note": "A DERIVED LEMMA, not the rule (plan 75.4 (2); printed 'repetition (a forced cycle: the threefold rule is reachable)'): a position of the line or the game repeated ONCE, every reply of the cycle read, is taken as evidence that the rule's draw (the third occurrence: 'draw by repetition') is reachable, and when we are behind closes as a draw claim worth minus the balance (Ideas.Forcing.repetition_level: the value arithmetic only). Lean proves the strict form generically (Ideas.Game.forced_cycle_threefold: with their replies along the cycle their only moves and the identity a congruence of the game, replaying the cycle reaches the third occurrence); the chase checks neither hypothesis (it reads every reply, it does not require one) and the congruence is not proved for the chess kernel, so the claim is a conjecture.",
  "params": {
   "draw": true
  }

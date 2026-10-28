@@ -206,7 +206,7 @@ def main():
     ap.add_argument("--estimate", action="store_true", help="plan 61 B2: a cut route whose open replies are quiet leaves closes as an ESTIMATED claim (quiet-status); the decision consults it only when no proved claim keeps the status; every estimated leaf is logged to estimates_log.jsonl")
     ap.add_argument("--cost-judge", action="store_true", help="plan 61 C2: under --seconds the cost judge (cost x seconds per node <= the route's time left) replaces the cut by the clock; a cut route is a GAP; the trace says 'judge: ...'")
     ap.add_argument("--no-cost-judge", action="store_true", help="plan 64.3: switch the cost judge OFF (it is ON by default under a time budget)")
-    ap.add_argument("--cycle", action="store_true", help="plan 61 C4 (the default; kept for the harness): a chase position that repeats one of the line (or the game history) closes as a proved 'draw' claim worth minus the balance when we are behind")
+    ap.add_argument("--cycle", action="store_true", help="plan 61 C4 (the default; kept for the harness): a chase position that repeats one of the line (or the game history) closes as a 'draw' claim worth minus the balance when we are behind (plan 75.4 (2): a derived lemma, a conjecture -- the rule's draw is the third occurrence)")
     ap.add_argument("--no-cycle", action="store_true", help="plan 61 C4: CYCLE off (it is ON by default)")
     ap.add_argument("--no-parries", action="store_true", help="plan 64.4: switch PARRIES (61 A2, ON by default) OFF")
     ap.add_argument("--no-nosafe", action="store_true", help="plan 64.4: switch NO_SAFE_MOVE (61 A4, ON by default) OFF")

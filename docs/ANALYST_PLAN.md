@@ -4006,3 +4006,8 @@ the input FEN keeps a pseudo-legal en-passant square the kernel drops (a repetit
   `ctx.history` are a Record (counts); the chase reads the rule at its line's positions (both sides to move) before any memo; names `draw by repetition` and `draw by the
   fifty-move rule` with store entries (PROVED). Guard 0 of 218 on all five lists (the rules cannot fire on the puzzle sets: no record, clocks below 30); negative control (the
   clock's limit 100 -> 2) moves 10 of 10 ten-t0 traces and 5 DECISION lines; CHESS FACT rows 210 -> 210.
+* 75.4 (2) BUILT 2026-10-28 (journal 2026-10-28 11:13): THE CYCLE CLAIM RE-LABELLED -- one repeat of the line is the derived lemma "repetition (a forced cycle: the
+  threefold rule is reachable; ...)" (agenda.CYCLE_DETAIL in the claim's line; the lemma stays the entry's name); lemmas/repetition.json PROVED -> CONJECTURE (lean []); Lean
+  Ideas/Draws.lean proves the STRICT form generically (`forced_cycle_threefold`: their replies their only moves, the identity a congruence -- neither checked by the chase,
+  the congruence unproved for the chess kernel: hence a conjecture). Decision logic unchanged: guard 19 of 218 traces differ in the label lines only (0 with the label put
+  back; read sets, leaf lists, word lists, provenance lists 0), DECISION lines 0; CHESS FACT rows 210 -> 210.

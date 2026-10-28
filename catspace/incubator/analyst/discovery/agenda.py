@@ -101,7 +101,9 @@ DELAYED_THREAT = True                                           # plan 61 A3 (ON
 NO_SAFE_MOVE = True                                             # plan 61 A4 (ON since plan 64.4): a quiet move after which EVERY reply loses at least the stake by rule is a route (tier 1+, root chase only; regress.no_safe_move)
 ESTIMATE = True                                                 # plan 61 B2 (ON since plan 64.5: inert on the 90, proved beats estimated structurally): a GAP route whose open replies are QUIET leaves closes as an ESTIMATED claim (status = material - their pass threat; confidence from data/derived/estimate_calibration.json); the decision consults it only when no proved claim keeps the status
 COST_JUDGE = True                                               # plan 61 C2, ON since plan 64.3 (2026-10-21): under a TIME budget the cost judge (measured cost x seconds per node <= the route's time left) decides what is read on and REPLACES the count fuse; the cut is a GAP
-CYCLE = True                                                    # plan 61 C4 (ON: graded on the 90, no decision changed, nothing lost): a position that repeats one of the line (or of ctx.history) closes as a PROVED claim kind 'draw' (value = minus the balance) when we are behind; `analyse --no-cycle` turns it off
+CYCLE = True                                                    # plan 61 C4 (ON: graded on the 90, no decision changed, nothing lost): a position that repeats one of the line (or of ctx.history) closes as a claim kind 'draw' (value = minus the balance) when we are behind; `analyse --no-cycle` turns it off.
+#                                                                 plan 75.4 (2): a DERIVED LEMMA, not the rule (the rule is the third occurrence, `draw by repetition`): the store entry `repetition`, a CONJECTURE
+CYCLE_DETAIL = "a forced cycle: the threefold rule is reachable"      # plan 75.4 (2): what the cycle claim is -- evidence that the rule's draw is reachable; its claim reads "repetition (a forced cycle: ...; the position ...)"
 # (plan 75.2 (c): the words of a FORCED route -- its replies are forced: evasions, the recapture, the parries of a mate; the chase follows only these below the root; 72.9: a root
 #  route with one of them may decide -- are the FORCING entries whose `forced` field says so: `lemma_store.forced_words()`, read into `Agenda.forced`)
 TIERS_UNDER_TIME = True                                         # plan 59 default (2026-10-20, graded on 85 random puzzles): ON whenever the budget is TIME -- the tiers share the seconds, so the cost is bounded
@@ -4006,10 +4008,13 @@ class Agenda:
         return k1, dict(value=v, killed=None, gap=None, parts=[f"{san}: {word} ({line}) -> {v}"], lemmas=[LS.name(word)], facts=[])
 
     def _cycle_claim(self, fen: str, pk: str, need: int, pos: "AC.Pos | None" = None) -> "dict | None":
-        """plan 61 C4: THE CYCLE TERMINAL. `fen` (our move) repeats a position of this line (an inner agenda still open, the root) or of the game history: when we are BEHIND (balance < 0) the repetition
-        is a PROVED claim of kind 'draw' worth minus the balance (it brings the result to level; value + balance = 0, Lean `Ideas.Forcing.repetition_level`). Sound because the route that reached it
-        read EVERY reply at each step of the cycle (the AND of `_chase_route_body`) and the repeating move is ours to make: the position is ours to move there, as it was the first time. Ahead or level:
-        no claim, as before. -> the inner answer or None."""
+        """plan 61 C4: THE CYCLE CLAIM. `fen` (our move) repeats a position of this line (an inner agenda still open, the root) or of the game history ONCE: when we are BEHIND (balance < 0) the repetition
+        is a claim of kind 'draw' worth minus the balance (it brings the result to level; value + balance = 0, Lean `Ideas.Forcing.repetition_level`). Argued, not proved: the route that reached it
+        read EVERY reply at each step of the cycle (the AND of `_chase_route_body`) and the repeating move is ours to make: the position is ours to move there, as it was the first time.
+        plan 75.4 (2): this is a DERIVED LEMMA, not the game's rule -- the rule's draw is the THIRD occurrence (`Game.terminal` 'repetition', `_rule_draw`); one repeat is evidence that it is
+        reachable (CYCLE_DETAIL: the claim reads "repetition (a forced cycle: the threefold rule is reachable; ...)"; its lemma is the entry's name, lemmas/repetition.json, a CONJECTURE). Lean proves the strict form generically (`Ideas.Game.forced_cycle_threefold`:
+        their replies along the cycle their ONLY moves and the identity a congruence of the game) -- the chase checks neither, so the claim stays a conjecture. Ahead or level: no claim, as before.
+        -> the inner answer or None."""
         ctx = self.ctx
         bal = (pos if pos is not None else AC.Pos(fen)).balance(self.me) - 64       # plan 72.7 step 1: the position's handle when the chase handed it
         if WL.rung(bal, self.unit) != WL.LOSING:                # plan 75.2 (a): a repetition brings level only from below it (the outcome ladder's rung)
@@ -4017,6 +4022,7 @@ class Agenda:
         label = "the root position" if pk == ctx.root_pk and pk not in ctx.active_label else ctx.active_label.get(pk, "the game history" if pk in ctx.history else "the line")
         now = f"{self.board.san(self._route_move)} {self._reply_san}" if self._route_move is not None and self._reply_san else "the line"
         line = f"the position after {now} repeats {label if label.startswith('the root') or label.startswith('the game') else 'the one after ' + label}"
+        line = f"{CYCLE_DETAIL}; {line}"                       # plan 75.4 (2): the claim says what it is (the lemma stays the entry's name: the words composed of it resolve as before)
         cl = Claim("draw", "repetition", -bal, LS.name("repetition"), line, goal="draw")
         ctx.cycles += 1
         ctx.c_lines.append(f"    closed: repetition ({line}) -> draw, value {-bal:+d} (minus the balance {bal:+d})")

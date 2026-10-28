@@ -3,7 +3,9 @@
 (1) THE TERMINAL RULES IN THE KERNEL: `Game.terminal` reads the game record and the clock -- the third occurrence (counted by the kernel's identity: board, side to move,
     castling rights, a LEGAL en-passant square; never the raw FEN's fields) and the fifty-move clock at 100 with no mate on the move (Lean `Ideas.Game.Record.threefold`,
     `Ideas.Game.chess_threefold_iff`, `Ideas.Game.fifty`, `Ideas.Game.chess_fifty_iff`); the record keeps its count invariant along the game (`Ideas.Game.Record.step_sound`);
-    the chase reads the rule at the positions of its line (the record before them: the game's, the root, the line's)."""
+    the chase reads the rule at the positions of its line (the record before them: the game's, the root, the line's).
+(2) THE CYCLE CLAIM RE-LABELLED AS WHAT IT IS: one repeat of a position of the line is a derived lemma ("repetition (a forced cycle: the threefold rule is reachable)"), a
+    CONJECTURE in the store; its strict form is proved generically in Lean (`Ideas.Game.forced_cycle_threefold`), the chase's own reading is not."""
 import random
 
 import chess
@@ -203,3 +205,27 @@ def test_75_4_1_a_route_into_a_third_occurrence_of_their_position_ends_there():
     quiet = chess.Board(clocked).parse_san("Rf1+")
     k, d = ag3._route_rule(quiet)
     assert d is not None and d["lemmas"] == ["draw by the fifty-move rule"]                   # the clock reaches 100 with their move: no mate there
+
+
+# ---------------------------------------------------------------------------------------------------------------- (2) the cycle claim re-labelled
+
+def test_75_4_2_the_cycle_claim_is_the_derived_lemma_a_conjecture_not_the_rule():
+    e = LS.load()["repetition"]
+    assert e["kind"] == "CLOSING" and e["status"] == "CONJECTURE" and e["lean"] == [] and LS.says("repetition", "draw") and not LS.says("repetition", "terminal")
+    assert AG.CYCLE_DETAIL == "a forced cycle: the threefold rule is reachable"
+    word = f"repetition ({AG.CYCLE_DETAIL})"                                                    # how the claim reads in a route's parts and the trace
+    assert LS.resolve(word) is not None and LS.says(word, "draw") and not LS.says(word, "terminal")       # the entry's (its detail in brackets): a draw, not the rule
+    ag = AG.Agenda(state_of(PERPETUAL, "b"))
+    ag._route_move, ag._reply_san = chess.Move.from_uci("f2f1"), "Kg2"
+    out = ag._inner(PERPETUAL, 1)
+    assert out["claim"].lemma == "repetition" and out["claim"].line.startswith(AG.CYCLE_DETAIL + "; ") and out["value"] == 7 and "terminal" not in out      # the decision logic is the cycle's, unchanged
+    assert any(x.startswith("    closed: repetition (a forced cycle: the threefold rule is reachable; the position after") for x in ag.ctx.c_lines)
+
+
+def test_75_4_2_the_strict_form_is_proved_in_lean_and_the_rule_is_not_the_cycle():
+    idx = LS.lean_index()
+    for n in ("Ideas.Game.forced_cycle_threefold", "Ideas.Game.forcedLine_replays", "Ideas.Game.Congruent", "Ideas.Game.ForcedLine"):
+        assert n in idx, n
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parents[1] / "lean" / "ideas" / "Ideas" / "Draws.lean").read_text()
+    assert "sorry" not in src and "theorem forced_cycle_threefold" in src

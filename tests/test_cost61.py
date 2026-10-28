@@ -106,8 +106,9 @@ def test_cycle_claim_is_a_draw_worth_minus_the_balance_when_behind(monkeypatch):
     ag._route_move, ag._reply_san = chess.Move.from_uci("f2f1"), "Kg2"
     out = ag._inner(PERPETUAL, 1)                                           # the root position again: a repeat of the line's first
     assert out["claim"].kind == "draw" and out["claim"].lemma == "repetition" and out["claim"].proved
+    assert out["claim"].line.startswith(AG.CYCLE_DETAIL + "; the position after")                         # plan 75.4 (2): the claim says what it is (a derived lemma, not the rule)
     assert out["value"] == 7 and out["claim"].value == -(-7)
-    assert any(x.startswith("    closed: repetition (the position after") and "repeats the root position" in x for x in ag.ctx.c_lines)
+    assert any(x.startswith("    closed: repetition (a forced cycle: the threefold rule is reachable; the position after") and "repeats the root position" in x for x in ag.ctx.c_lines)
 
 
 def test_cycle_off_is_no_claim_as_before(monkeypatch):

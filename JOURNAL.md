@@ -34384,3 +34384,28 @@ FINDINGS: technique_question.Search.drawn is a second copy of both rules (its ow
 only capture loses the unit), not routed here; the ponderer's agendas carry no record (ChaseCtx.carry starts an empty one); the memos (ctx.memo, ctx.routes) are keyed by
 the position, not the record -- the rule is read before them at the position itself, but an answer memoised above a drawn position is served across records (the cycle claim
 has had the same limit since 61 C4).
+
+
+## 2026-10-28 11:13 -- plan 75.4 (2) THE CYCLE CLAIM RE-LABELLED AS WHAT IT IS: a derived lemma, a CONJECTURE; its strict form proved generically in Lean (branch worktree-agent-a842a98bf140be46b)
+The chase's CYCLE claim (61 C4: ONE repeat of a position of the line or the game, every reply of the cycle read, worth minus the balance when behind) is no rule -- the rule's
+draw is the third occurrence (75.4 (1): `draw by repetition`). Its claim now says what it is: "repetition (a forced cycle: the threefold rule is reachable; the position after
+... repeats ...)" (agenda.CYCLE_DETAIL in the claim's line; the lemma stays the entry's name `repetition`, so the words composed of it resolve as before -- a first build put the
+detail in the lemma and the composed chase words went uncatalogued, which moved 1JPml's search: caught by the guard, undone). The store entry `repetition`: kind CLOSING,
+status PROVED -> CONJECTURE, lean [] (its only theorem, Ideas.Forcing.repetition_level, proves the value arithmetic), the note says it is evidence the rule is reachable.
+THE LEAN SIDE (lean/ideas/Ideas/Draws.lean, appended): the obligation in its STRICT form, proved generically from 75.4 (1)'s definitions by reasoning (induction on the cycle,
+no chess): `forced_cycle_threefold` -- if `b` repeats `a` (one identity, the record before `b` holding it once at least) and a line of (our move, their reply) pairs, legal from
+`a` with THEIR REPLY THEIR ONLY MOVE each time (`ForcedLine`), brings `a` back to its identity, then under an identity that is a congruence of the game (`Congruent`: one identity,
+the same moves, one identity after each move) the line replays from `b`, forced again, and its end reads the threefold on the record (`pushLine`); with `forcedLine_replays`,
+`pushLine_count_le`. No sorry; axioms propext, Quot.sound. It does NOT make the entry PROVED: the chase reads every reply (an AND) and never requires their reply to be the only
+one, and `Congruent` is not proved for the chess kernel (the kernel's moves and applyMove must not read the clocks or an en-passant square no capture can use) -- so the claim as
+the chase makes it stays a CONJECTURE. LEAN_INDEX rebuilt.
+THE DECISION LOGIC IS UNCHANGED (no code path changed, only the claim's text and the entry's status).
+OBS trace identity against 75.4 (1) (count budget, PYTHONHASHSEED=0): ten t0 0 of 10 traces differ; ten t2 1 of 10; wide t0 5 of 99; wide t2 13 of 99 -- the label lines only:
+0 read sets, 0 leaf verdict lists, 0 word lists, 0 provenance lists differ anywhere; with the label put back (the detail removed from the snapshot) 0 of 218 on all five lists;
+DECISION lines 0 of 218 differ.
+NEGATIVE CONTROL (in the guard's process: the entry `repetition`'s `draw` true -> false): wide t2 6 of 99 provenance lists differ (the route claim's kind 'draw' reads the field),
+traces / read sets / leaf lists / word lists 0, DECISION lines 0.
+OBS audit recount: CHESS FACT rows 210 -> 210. OBS lemma store validate: entries 110, problems 0, uncatalogued 0 (the two snapshot dirs ten t2, wide t2).
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_game 3/0/0/0 0.3 s; test_agenda 26/0/0/0 89.9 s; test_regress 87/0/0/0 341.5 s; test_cost61 13/0/0/0 2.9 s (the cycle tests read the new text);
+test_plan66 16/0/0/0 3.1 s; test_plan62 28/0/0/0 7.8 s; test_plan73 9/0/0/0 14.0 s; test_plan74 13/0/0/0 3.3 s; test_plan75 11/0/0/0 0.5 s; test_fact_store 21/0/0/0 22.7 s; test_tiers 14/0/0/0 29.8 s;
+test_offbuilt64 15/0/1/0 95.9 s; test_lean_index 2/0/0/0 143.3 s; test_rules_draws 11/0/0/0 2.3 s (the label, the entry a conjecture, the Lean names in the index).
