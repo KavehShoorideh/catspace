@@ -8,6 +8,7 @@
  "rust": "pos.rs:balance",
  "lean": "Ideas.Vocabulary.materialOf",
  "python": "analyst_core.Pos.balance",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

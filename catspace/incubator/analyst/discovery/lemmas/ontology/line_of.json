@@ -2,7 +2,10 @@
  "name": "line_of",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "unit",
+  "direction"
+ ],
  "reads": [
   "diagonal",
   "orthogonal"
@@ -11,8 +14,9 @@
   "relation": "line_of"
  },
  "rust": null,
- "lean": null,
+ "lean": "Ideas.Spec.Chess.lineOf",
  "python": null,
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
@@ -20,7 +24,6 @@
  "means": "the directions a slider of a kind slides along",
  "why": {
   "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own",
-  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)",
   "python": "python-chess has no predicate of its own for it (the spec's device, read through the binding gdl_chess.py)"
  },
  "plan": [

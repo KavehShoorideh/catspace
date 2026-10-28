@@ -2,7 +2,13 @@
  "name": "promotion",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "side",
+  "file",
+  "rank",
+  "file",
+  "rank"
+ ],
  "reads": [
   "castling_empty",
   "castling_path",
@@ -31,6 +37,7 @@
  "rust": "pos.rs:legal_ucis",
  "lean": "Ideas.Vocabulary.promoOf",
  "python": "chess.Move.promotion",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

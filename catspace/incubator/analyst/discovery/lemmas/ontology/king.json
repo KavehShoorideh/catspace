@@ -12,6 +12,7 @@
  "rust": "rules.rs:King",
  "lean": "Ideas.Vocabulary.kindSet",
  "python": "chess.KING",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

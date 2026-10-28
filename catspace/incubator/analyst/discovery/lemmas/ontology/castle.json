@@ -2,7 +2,10 @@
  "name": "castle",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "side",
+  "wing"
+ ],
  "reads": [
   "castling_empty",
   "castling_path",
@@ -24,16 +27,15 @@
   "relation": "castle"
  },
  "rust": "rules.rs:Castle",
- "lean": null,
+ "lean": "Ideas.Spec.Chess.castle",
  "python": "chess.Board.is_castling",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
  "names": false,
  "means": "the side to move may castle on a wing: the right kept, king and rook home, the squares between empty, the king's three squares not attacked",
- "why": {
-  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)"
- },
+ "why": {},
  "plan": [
   "76.1"
  ],

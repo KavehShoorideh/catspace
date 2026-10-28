@@ -1,0 +1,32 @@
+{
+ "name": "record",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": [
+  "seen"
+ ],
+ "reads": [],
+ "gdl": {
+  "relation": "record"
+ },
+ "rust": "game.rs:seen",
+ "lean": "Ideas.Spec.Binding.seen",
+ "python": "catspace.incubator.analyst.discovery.gdl_chess.inputs_of",
+ "bind": {
+  "template": "Ideas.Spec.Binding.seen rec {p} = {0}",
+  "params": [
+   "p",
+   "rec"
+  ]
+ },
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the game record's reading of the position: how often its identity occurred before it, saturating at 2 (an INPUT, as `does` is: threefold reads the history, not the state)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

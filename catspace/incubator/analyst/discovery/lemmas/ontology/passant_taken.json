@@ -2,12 +2,16 @@
  "name": "passant_taken",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "file",
+  "rank"
+ ],
  "reads": [
   "cell",
   "does",
   "ep_square",
   "file",
+  "rank",
   "rank_succ"
  ],
  "gdl": {
@@ -16,6 +20,7 @@
  "rust": "rules.rs:EnPassant",
  "lean": "Chess.epCapturedSquare",
  "python": "chess.Board.is_en_passant",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

@@ -2,7 +2,10 @@
  "name": "win",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "side",
+  "score"
+ ],
  "reads": [
   "castling_empty",
   "castling_path",
@@ -27,6 +30,8 @@
   "rank",
   "rank_parity",
   "rank_succ",
+  "record",
+  "repetition_limit",
   "side",
   "tempo"
  ],
@@ -39,6 +44,7 @@
  "rust": "pos.rs:is_checkmate",
  "lean": "Ideas.Vocabulary.gainGoal",
  "python": "chess.Board.is_checkmate",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

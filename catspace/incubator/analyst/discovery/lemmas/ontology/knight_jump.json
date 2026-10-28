@@ -2,7 +2,12 @@
  "name": "knight_jump",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "file",
+  "rank",
+  "file",
+  "rank"
+ ],
  "reads": [
   "file_succ",
   "rank_succ"
@@ -13,6 +18,7 @@
  "rust": "rules.rs:knight_attacks",
  "lean": "Chess.knightGeometry",
  "python": "chess.BB_KNIGHT_ATTACKS",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

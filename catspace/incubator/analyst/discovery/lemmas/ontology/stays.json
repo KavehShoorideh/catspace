@@ -2,7 +2,16 @@
  "name": "stays",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "file",
+  "rank",
+  "file",
+  "rank",
+  "file",
+  "rank",
+  "side",
+  "unit"
+ ],
  "reads": [
   "castling_empty",
   "castling_path",
@@ -28,8 +37,9 @@
   "relation": "stays"
  },
  "rust": null,
- "lean": null,
+ "lean": "Ideas.Spec.Chess.stays",
  "python": null,
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
@@ -37,7 +47,6 @@
  "means": "a unit a candidate leaves where it stands",
  "why": {
   "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own",
-  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)",
   "python": "python-chess has no predicate of its own for it (the spec's device, read through the binding gdl_chess.py)"
  },
  "plan": [

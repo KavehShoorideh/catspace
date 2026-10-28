@@ -2,14 +2,24 @@
  "name": "does",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "side",
+  "move"
+ ],
  "reads": [],
  "gdl": {
   "relation": "does"
  },
  "rust": "pos.rs:push",
- "lean": "Chess.applyMove",
+ "lean": "Ideas.Spec.Binding.Does",
  "python": "chess.Board.push",
+ "bind": {
+  "template": "Ideas.Spec.Binding.Does {p} mv {0} {1}",
+  "params": [
+   "p",
+   "mv"
+  ]
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],

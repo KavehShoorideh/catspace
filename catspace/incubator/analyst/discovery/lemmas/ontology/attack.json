@@ -2,7 +2,13 @@
  "name": "attack",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "side",
+  "file",
+  "rank",
+  "file",
+  "rank"
+ ],
  "reads": [
   "cell",
   "diagonal",
@@ -19,6 +25,7 @@
  "rust": "rules.rs:attacks",
  "lean": "Ideas.Vocabulary.attackedBy",
  "python": "chess.Board.is_attacked_by",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

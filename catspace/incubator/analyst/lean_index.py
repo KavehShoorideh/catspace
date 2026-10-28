@@ -23,6 +23,7 @@ from catspace.io import paths
 ROOT = Path(__file__).resolve().parents[3]
 LEAN = ROOT / "lean" / "ideas"
 CODE_DIRS = [ROOT / "rust" / "analyst_core" / "src", ROOT / "catspace"]
+SHELF_DIR = ROOT / "catspace" / "incubator" / "analyst" / "discovery" / "lemmas" / "ontology"      # plan 76.1: the ontology shelf (JSON)
 
 DECL = re.compile(r"^\s*(?:@\[[^\]]*\]\s*)?(?:private\s+|protected\s+|noncomputable\s+)*(theorem|lemma|def|abbrev|structure|inductive)\s+([A-Za-z_][\w.'!?]*)")
 
@@ -90,7 +91,9 @@ def _used_by(names: list) -> dict:
         try:
             r = subprocess.run(["grep", "-rlwF", "--include=*.rs", "--include=*.py", pattern] + [str(d) for d in CODE_DIRS],
                                capture_output=True, text=True, timeout=30)
-            files = sorted({str(Path(f).relative_to(ROOT)) for f in r.stdout.split() if "lean_index" not in f})
+            # plan 76.1 (a): the ontology shelf's entries bind Lean names (the names table's twins moved there from names.py): its JSON is read too
+            r2 = subprocess.run(["grep", "-rlwF", "--include=*.json", pattern, str(SHELF_DIR)], capture_output=True, text=True, timeout=30)
+            files = sorted({str(Path(f).relative_to(ROOT)) for f in (r.stdout + "\n" + r2.stdout).split() if "lean_index" not in f})
             if files:
                 used[n] = files
         except Exception:

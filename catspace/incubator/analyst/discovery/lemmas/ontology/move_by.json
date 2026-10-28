@@ -2,7 +2,14 @@
  "name": "move_by",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "unit",
+  "side",
+  "file",
+  "rank",
+  "file",
+  "rank"
+ ],
  "reads": [
   "cell",
   "diagonal",
@@ -23,16 +30,16 @@
   "relation": "move_by"
  },
  "rust": null,
- "lean": null,
+ "lean": "Ideas.Spec.Chess.moveBy",
  "python": "chess.Board.pseudo_legal_moves",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
  "names": false,
  "means": "the side to move's unit of a kind goes from one square to another (pseudo-legal)",
  "why": {
-  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own",
-  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)"
+  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own"
  },
  "plan": [
   "76.1"

@@ -2,7 +2,9 @@
  "name": "check",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "side"
+ ],
  "reads": [
   "cell",
   "diagonal",
@@ -21,6 +23,7 @@
  "rust": "pos.rs:is_check",
  "lean": "Ideas.Vocabulary.checkOf",
  "python": "chess.Board.is_check",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

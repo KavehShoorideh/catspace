@@ -2,7 +2,10 @@
  "name": "dark",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "file",
+  "rank"
+ ],
  "reads": [
   "file_parity",
   "rank_parity"
@@ -11,16 +14,16 @@
   "relation": "dark"
  },
  "rust": null,
- "lean": null,
+ "lean": "Ideas.Spec.Chess.dark",
  "python": "chess.BB_DARK_SQUARES",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
  "names": false,
  "means": "a dark square (file and rank of the same parity; a1 is dark)",
  "why": {
-  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own",
-  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)"
+  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own"
  },
  "plan": [
   "76.1"

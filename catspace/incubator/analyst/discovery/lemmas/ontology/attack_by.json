@@ -2,7 +2,14 @@
  "name": "attack_by",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "unit",
+  "side",
+  "file",
+  "rank",
+  "file",
+  "rank"
+ ],
  "reads": [
   "cell",
   "diagonal",
@@ -19,6 +26,7 @@
  "rust": "pos.rs:attacks",
  "lean": "Chess.pieceAttacks",
  "python": "chess.Board.attacks",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

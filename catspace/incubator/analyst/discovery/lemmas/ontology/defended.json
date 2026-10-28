@@ -8,6 +8,7 @@
  "rust": "rules.rs:defended",
  "lean": null,
  "python": "catspace.incubator.analyst.discovery.graph.defenders_of",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

@@ -2,7 +2,12 @@
  "name": "king_step",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "file",
+  "rank",
+  "file",
+  "rank"
+ ],
  "reads": [
   "file",
   "file_succ",
@@ -15,6 +20,7 @@
  "rust": "rules.rs:king_attacks",
  "lean": "Chess.kingGeometry",
  "python": "chess.BB_KING_ATTACKS",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

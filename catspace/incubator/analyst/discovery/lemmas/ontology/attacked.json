@@ -2,7 +2,11 @@
  "name": "attacked",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "side",
+  "file",
+  "rank"
+ ],
  "reads": [
   "cell",
   "diagonal",
@@ -19,6 +23,7 @@
  "rust": "pos.rs:attackers",
  "lean": "Chess.isAttacked",
  "python": "chess.Board.is_attacked_by",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

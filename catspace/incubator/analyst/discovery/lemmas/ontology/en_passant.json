@@ -2,7 +2,13 @@
  "name": "en_passant",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "side",
+  "file",
+  "rank",
+  "file",
+  "rank"
+ ],
  "reads": [
   "cell",
   "diagonal",
@@ -22,6 +28,7 @@
  "rust": "rules.rs:EnPassant",
  "lean": "Chess.pseudoLegalEnPassant",
  "python": "chess.Board.is_en_passant",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

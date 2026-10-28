@@ -2,7 +2,10 @@
  "name": "legal",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "side",
+  "move"
+ ],
  "reads": [
   "castling_empty",
   "castling_path",
@@ -32,6 +35,7 @@
  "rust": "pos.rs:legal_ucis",
  "lean": "Chess.legalMove",
  "python": "chess.Board.is_legal",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

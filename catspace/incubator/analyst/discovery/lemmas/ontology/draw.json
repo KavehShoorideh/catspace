@@ -2,7 +2,7 @@
  "name": "draw",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [],
  "reads": [
   "cell",
   "file_parity",
@@ -16,6 +16,7 @@
  "rust": "game.rs:insufficient",
  "lean": "Ideas.Vocabulary.deadDraw",
  "python": "chess.Board.is_insufficient_material",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

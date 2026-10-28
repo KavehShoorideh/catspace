@@ -2,7 +2,9 @@
  "name": "tempo",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "side"
+ ],
  "reads": [],
  "gdl": {
   "fluent": "control"
@@ -10,6 +12,12 @@
  "rust": "pos.rs:turn_white",
  "lean": "Ideas.Game.chess",
  "python": "chess.Board.ply",
+ "bind": {
+  "template": "{p}.turn = {0}",
+  "params": [
+   "p"
+  ]
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],

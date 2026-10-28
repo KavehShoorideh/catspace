@@ -10,6 +10,19 @@
  "rust": "rules.rs:file",
  "lean": "Ideas.Vocabulary.fileOf",
  "python": "chess.square_file",
+ "bind": {
+  "type": "Fin 8",
+  "constants": {
+   "a": "0",
+   "b": "1",
+   "c": "2",
+   "d": "3",
+   "e": "4",
+   "f": "5",
+   "g": "6",
+   "h": "7"
+  }
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],

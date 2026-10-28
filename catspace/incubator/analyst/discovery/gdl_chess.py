@@ -6,6 +6,8 @@
   (castling_right ?c ?side)   `Board.clean_castling_rights()` (the rook squares h1 / a1 / h8 / a8 -> kingside / queenside)
   (ep_square ?f ?r)           `Board.ep_square` -- the RAW square (set after every double push, legal capture or not: what the spec's `next` sets)
   (halfmove ?n)               min(`Board.halfmove_clock`, 100) -- the spec's clock saturates at its limit (the rule reads only "100 or more")
+  (record ?n)                 plan 76.1 (b) (5), an INPUT: min(how often the game record holds the position's identity before it, 2) -- game.py `Record.count` of
+                              `Game.position_key` (the kernel's identity: a LEGAL e.p. square only); 0 with no record (a puzzle)
 
 and the moves: (move f1 r1 f2 r2) / (promote f1 r1 f2 r2 k) are the UCI text (castling the king's two-file move, en passant the pawn's diagonal move). The fullmove
 number is no rule: it is not in the state.
@@ -75,15 +77,29 @@ def fact_text(f) -> str:
     return "(" + " ".join((name,) + tuple(GDL.term_text(a) for a in args)) + ")"
 
 
+REPETITION_LIMIT = 2                                  # the record's count saturates where the rule stops reading it (the third occurrence: twice before)
+
+
+def inputs_of(board: "chess.Board | None" = None, before=None) -> tuple:
+    """plan 76.1 (b) (5): the INPUT facts a turn supplies besides `does` -- `(record ?n)`: how often the game record `before` (game.py `Record`) holds the board's
+    identity, saturating at REPETITION_LIMIT; 0 with no record."""
+    n = 0
+    if before is not None and board is not None:
+        from catspace.incubator.analyst.discovery.game import CHESS
+        n = before.count(CHESS.position_key(board))
+    return (("record", (str(min(n, REPETITION_LIMIT)),)),)
+
+
 class Reading:
-    """The spec's answers at one state: the mover's legal moves (UCI), the terminal verdict, the terminal reasons that hold, the goal values."""
+    """The spec's answers at one state: the mover's legal moves (UCI), the terminal verdict, the terminal reasons that hold, the goal values. `inputs`: the
+    turn's input facts (`inputs_of`: the game record's reading; none given -- no record)."""
 
-    REASONS = ("mate", "stalemate", "draw", "draw_by_fifty_moves")
+    REASONS = ("mate", "stalemate", "draw", "draw_by_repetition", "draw_by_fifty_moves")
 
-    def __init__(self, state: frozenset, prog: "GDL.Program | None" = None):
+    def __init__(self, state: frozenset, prog: "GDL.Program | None" = None, inputs: "tuple | None" = None):
         prog = prog or program()
         self.state = state
-        self.db = prog.run(state)
+        self.db = prog.run(state, inputs=inputs if inputs is not None else inputs_of())
         mover = next(a[0] for rel, a in state if rel == "true.control")
         self.mover = mover
         self.legal = sorted(uci_of(m) for role, m in self.db.facts("legal") if role == mover and m != "noop")
@@ -100,12 +116,13 @@ def next_state(state: frozenset, uci: str, mover: str, prog: "GDL.Program | None
 
 
 # the kernel's terminal kinds (Game.terminal) and the spec's reasons, by name
-KERNEL_KIND = {"mate": "mate", "stalemate": "stalemate", "draw": "draw", "fifty-move": "draw_by_fifty_moves"}
-KERNEL_ORDER = ("mate", "stalemate", "draw", "draw_by_fifty_moves")      # Game.terminal's order (Lean `Chess.gameStatus`: a mate on the move first)
+KERNEL_KIND = {"mate": "mate", "stalemate": "stalemate", "draw": "draw", "repetition": "draw_by_repetition", "fifty-move": "draw_by_fifty_moves"}
+KERNEL_ORDER = ("mate", "stalemate", "draw", "draw_by_repetition", "draw_by_fifty_moves")      # Game.terminal's order (Lean `Chess.gameStatus`: a mate first)
 
 
-def kernel_reasons(board: chess.Board) -> tuple:
-    """python-chess's terminal predicates, each read on its own (not only the first): the reasons that hold."""
+def kernel_reasons(board: chess.Board, before=None) -> tuple:
+    """python-chess's terminal predicates, each read on its own (not only the first): the reasons that hold. `before` (plan 76.1 (b) (5)): the game record --
+    the repetition, Game.repetition."""
     out = []
     if board.is_checkmate():
         out.append("mate")
@@ -113,6 +130,10 @@ def kernel_reasons(board: chess.Board) -> tuple:
         out.append("stalemate")
     if board.is_insufficient_material():
         out.append("draw")
+    if before is not None:
+        from catspace.incubator.analyst.discovery.game import CHESS
+        if CHESS.repetition(board, before):
+            out.append("draw_by_repetition")
     if board.is_fifty_moves():
         out.append("draw_by_fifty_moves")
     return tuple(out)

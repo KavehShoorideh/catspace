@@ -10,6 +10,7 @@
  "rust": null,
  "lean": "Chess.initialPosition",
  "python": "chess.STARTING_FEN",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

@@ -2,7 +2,9 @@
  "name": "halfmove",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "clock"
+ ],
  "reads": [],
  "gdl": {
   "fluent": "halfmove"
@@ -10,6 +12,12 @@
  "rust": "game.rs:halfmoves",
  "lean": "Chess.Position.halfmove",
  "python": "chess.Board.halfmove_clock",
+ "bind": {
+  "template": "Ideas.Spec.Binding.clock {p} = {0}",
+  "params": [
+   "p"
+  ]
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],

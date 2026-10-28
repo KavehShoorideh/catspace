@@ -2,7 +2,9 @@
  "name": "clock_event",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "event"
+ ],
  "reads": [
   "cell",
   "does"
@@ -13,6 +15,7 @@
  "rust": null,
  "lean": "Ideas.Game.clockResets",
  "python": "catspace.incubator.analyst.discovery.game.ChessGame.clock_events",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

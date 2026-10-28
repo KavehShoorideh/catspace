@@ -8,6 +8,7 @@
  "rust": "rules.rs:gain",
  "lean": "Ideas.ExchangeLaw.seeXB",
  "python": null,
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

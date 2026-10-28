@@ -12,6 +12,7 @@
  "rust": "rules.rs:Rook",
  "lean": "Ideas.Vocabulary.kindSet",
  "python": "chess.ROOK",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

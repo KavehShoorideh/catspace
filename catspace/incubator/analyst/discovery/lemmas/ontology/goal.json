@@ -2,7 +2,10 @@
  "name": "goal",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "side",
+  "score"
+ ],
  "reads": [
   "castling_empty",
   "castling_path",
@@ -27,6 +30,8 @@
   "rank",
   "rank_parity",
   "rank_succ",
+  "record",
+  "repetition_limit",
   "side",
   "tempo"
  ],
@@ -34,16 +39,16 @@
   "relation": "goal"
  },
  "rust": null,
- "lean": null,
+ "lean": "Ideas.Spec.Chess.goal",
  "python": "catspace.incubator.analyst.discovery.gdl_chess.goals_of",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
  "names": false,
  "means": "a side's goal value when the game is over (the GDL keyword: 100 for the mating side, 0 for the mated, 50 each in a draw)",
  "why": {
-  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own",
-  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)"
+  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own"
  },
  "plan": [
   "76.1"

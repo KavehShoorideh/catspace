@@ -2,7 +2,9 @@
  "name": "insufficient",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "side"
+ ],
  "reads": [
   "cell",
   "file_parity",
@@ -14,16 +16,15 @@
   "relation": "insufficient"
  },
  "rust": "game.rs:insufficient",
- "lean": null,
+ "lean": "Ideas.Spec.Chess.insufficient",
  "python": "chess.Board.has_insufficient_material",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
  "names": false,
  "means": "a side lacks mating material by its material alone (python-chess's criterion: the knight case, the one-colour bishops, the bare king)",
- "why": {
-  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)"
- },
+ "why": {},
  "plan": [
   "76.1"
  ],

@@ -2,7 +2,9 @@
  "name": "promotable",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "unit"
+ ],
  "reads": [],
  "gdl": {
   "relation": "promotable"
@@ -10,6 +12,7 @@
  "rust": null,
  "lean": "Chess.PromotionKind",
  "python": null,
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

@@ -44,3 +44,7 @@ import Ideas.Frame
 import Ideas.Draws
 import Ideas.Spec.Rook
 import Ideas.Spec.RookEquiv
+import Ideas.Spec.Binding
+import Ideas.Spec.Chess
+import Ideas.Spec.NextEquiv
+import Ideas.Spec.DeadPosition

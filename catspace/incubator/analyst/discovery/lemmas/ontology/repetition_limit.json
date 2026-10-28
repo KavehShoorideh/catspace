@@ -1,0 +1,26 @@
+{
+ "name": "repetition_limit",
+ "kind": "RELATION",
+ "origin": "SUPPLIED",
+ "sort": [
+  "seen"
+ ],
+ "reads": [],
+ "gdl": {
+  "relation": "repetition_limit"
+ },
+ "rust": "game.rs:claimable_draw",
+ "lean": "Ideas.Game.Record.threefold",
+ "python": "catspace.incubator.analyst.discovery.game.ChessGame.REPETITIONS",
+ "bind": null,
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "the record's count at which the position occurs a third time (2 before it)",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

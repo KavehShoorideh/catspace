@@ -27,8 +27,9 @@
   "keyword": "next"
  },
  "rust": "pos.rs:push",
- "lean": "Chess.applyMove",
+ "lean": "Ideas.Spec.Chess.applyMoveSpec",
  "python": "chess.Board.push",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

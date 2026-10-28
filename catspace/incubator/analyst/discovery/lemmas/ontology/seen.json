@@ -1,0 +1,27 @@
+{
+ "name": "seen",
+ "kind": "OBJECT",
+ "origin": "SUPPLIED",
+ "sort": "seen",
+ "reads": [],
+ "gdl": {
+  "relation": "record",
+  "slot": 0
+ },
+ "rust": "game.rs:seen",
+ "lean": "Ideas.Game.Record.count",
+ "python": "catspace.incubator.analyst.discovery.game.Record.count",
+ "bind": {
+  "type": "Nat"
+ },
+ "node": null,
+ "edge": null,
+ "vocabulary": [],
+ "names": false,
+ "means": "how often the game record holds a position's identity before it (the record's count; the spec reads it saturating at 2: the rule reads only \"2 or more\")",
+ "why": {},
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28"
+}

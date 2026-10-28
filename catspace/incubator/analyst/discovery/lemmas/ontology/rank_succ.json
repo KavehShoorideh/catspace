@@ -2,21 +2,24 @@
  "name": "rank_succ",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "rank",
+  "rank"
+ ],
  "reads": [],
  "gdl": {
   "relation": "rank_succ"
  },
  "rust": null,
- "lean": null,
+ "lean": "Ideas.Spec.Chess.rankSucc",
  "python": null,
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
  "names": false,
  "means": "the rank next toward the eighth",
  "why": {
-  "lean": "the kernel computes it as arithmetic (Fin 8, Nat): no definition of the table; the generated one is 76.1 (b)'s",
   "python": "python-chess has no predicate of its own for it (the spec's device, read through the binding gdl_chess.py)",
   "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own"
  },

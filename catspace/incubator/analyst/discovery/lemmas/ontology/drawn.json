@@ -2,7 +2,7 @@
  "name": "drawn",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [],
  "reads": [
   "castling_empty",
   "castling_path",
@@ -27,6 +27,8 @@
   "rank",
   "rank_parity",
   "rank_succ",
+  "record",
+  "repetition_limit",
   "side",
   "tempo"
  ],
@@ -34,16 +36,15 @@
   "relation": "drawn"
  },
  "rust": "game.rs:drawn",
- "lean": null,
+ "lean": "Ideas.Spec.Chess.drawn",
  "python": "chess.Board.is_game_over",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
  "names": false,
  "means": "the game is over level: stalemate or a draw",
- "why": {
-  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)"
- },
+ "why": {},
  "plan": [
   "76.1"
  ],

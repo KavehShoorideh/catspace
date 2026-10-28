@@ -2,7 +2,13 @@
  "name": "candidate",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "side",
+  "file",
+  "rank",
+  "file",
+  "rank"
+ ],
  "reads": [
   "castling_empty",
   "castling_path",
@@ -28,16 +34,16 @@
   "relation": "candidate"
  },
  "rust": null,
- "lean": null,
+ "lean": "Ideas.Spec.Chess.candidate",
  "python": "chess.Board.pseudo_legal_moves",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
  "names": false,
  "means": "a pseudo-legal move of the side to move, by its two squares",
  "why": {
-  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own",
-  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)"
+  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own"
  },
  "plan": [
   "76.1"

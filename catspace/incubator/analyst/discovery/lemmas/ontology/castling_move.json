@@ -2,7 +2,14 @@
  "name": "castling_move",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "side",
+  "wing",
+  "file",
+  "rank",
+  "file",
+  "rank"
+ ],
  "reads": [
   "castling_empty",
   "castling_path",
@@ -24,16 +31,16 @@
   "relation": "castling_move"
  },
  "rust": null,
- "lean": null,
+ "lean": "Ideas.Spec.Chess.castlingMove",
  "python": "chess.Board.is_castling",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
  "names": false,
  "means": "the king's two-file move of a castling, by its squares",
  "why": {
-  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own",
-  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)"
+  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own"
  },
  "plan": [
   "76.1"

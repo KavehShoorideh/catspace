@@ -2,7 +2,11 @@
  "name": "may_land",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "side",
+  "file",
+  "rank"
+ ],
  "reads": [
   "cell",
   "file",
@@ -16,6 +20,7 @@
  "rust": null,
  "lean": "Chess.destinationFriendly",
  "python": null,
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

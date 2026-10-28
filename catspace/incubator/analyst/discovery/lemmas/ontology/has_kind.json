@@ -2,7 +2,10 @@
  "name": "has_kind",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "side",
+  "unit"
+ ],
  "reads": [
   "cell"
  ],
@@ -10,16 +13,16 @@
   "relation": "has_kind"
  },
  "rust": null,
- "lean": null,
+ "lean": "Ideas.Spec.Chess.hasKind",
  "python": "chess.Board.pieces",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
  "names": false,
  "means": "a side has a unit of a kind",
  "why": {
-  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own",
-  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)"
+  "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own"
  },
  "plan": [
   "76.1"

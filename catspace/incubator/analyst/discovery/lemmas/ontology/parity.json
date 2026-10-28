@@ -9,8 +9,11 @@
   "slot": 1
  },
  "rust": null,
- "lean": "Ideas.GeoLemmas.colour",
+ "lean": "Ideas.Spec.Chess.Parity",
  "python": null,
+ "bind": {
+  "enum": "Parity"
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],

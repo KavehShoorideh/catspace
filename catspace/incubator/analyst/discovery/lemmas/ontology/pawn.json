@@ -12,6 +12,7 @@
  "rust": "rules.rs:Pawn",
  "lean": "Ideas.Vocabulary.kindSet",
  "python": "chess.PAWN",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

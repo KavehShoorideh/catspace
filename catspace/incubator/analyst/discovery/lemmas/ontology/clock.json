@@ -11,6 +11,9 @@
  "rust": "game.rs:halfmoves",
  "lean": "Chess.Position.halfmove",
  "python": "chess.Board.halfmove_clock",
+ "bind": {
+  "type": "Nat"
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],

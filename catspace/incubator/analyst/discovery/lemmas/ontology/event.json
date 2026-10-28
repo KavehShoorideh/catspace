@@ -9,8 +9,11 @@
   "slot": 0
  },
  "rust": null,
- "lean": "Ideas.Game.clockResets",
+ "lean": "Ideas.Spec.Chess.Event",
  "python": "catspace.incubator.analyst.discovery.game.ChessGame.clock_events",
+ "bind": {
+  "enum": "Event"
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],

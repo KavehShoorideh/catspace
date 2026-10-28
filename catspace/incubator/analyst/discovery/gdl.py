@@ -13,7 +13,13 @@ the others against everything known). Relations that read neither `true` nor `do
 description is loaded. A body is joined left to right in an order chosen once per rule (the next positive literal with the most bound arguments; a negation or a
 `distinct` as soon as its variables are bound -- GDL's safety rule guarantees they all are), each positive literal read through a hash index on its bound arguments.
 
-  python -m catspace.incubator.analyst.discovery.gdl rules/chess.gdl      # OBS lines: clauses, relations, strata, static facts
+PLAN 76.1 (b) THE NAMED EXTENSIONS this reader keeps (rules/chess.gdl's header states them): (1) SORTS -- the DECLARATIONS `(sort <name> <constant> ...)` (a constant
+may be `(range lo hi)`, the numerals between; or a compound pattern `(f <sort> ...)`, a term sort such as the moves) and `(signature <relation> <sort> ...)` (a fluent's
+signature serves its `true` / `next` / `init` forms) are not clauses: they are kept in `Program.sorts` / `Program.signatures`, and `typecheck` reads every clause
+against them (each argument a member of its slot's sort, each variable of one sort, every relation typed); (5) INPUTS -- besides the state and `does`, a relation
+of `INPUTS` (`record`: what the game's record says of the position, a rule that is not state-local) is supplied by the binding at every turn (`run(..., inputs=)`).
+
+  python -m catspace.incubator.analyst.discovery.gdl rules/chess.gdl      # OBS lines: clauses, relations, strata, static facts, sorts, the type check
 """
 from __future__ import annotations
 
@@ -129,9 +135,45 @@ def _unparse(x) -> str:
     return x if isinstance(x, str) else "(" + " ".join(_unparse(y) for y in x) + ")"
 
 
+DECLARATIONS = ("sort", "signature")       # plan 76.1 (b) (1): the forms that declare the sorts and the relations' signatures (not clauses)
+
+
+def split_declarations(sexprs: list) -> tuple:
+    """-> (sorts {name: [member ...]}, signatures {relation: (sort, ...)}, the other s-expressions). A sort's member is a constant, `(range lo hi)` (expanded to
+    its numerals) or a compound pattern (a tuple: functor, argument sorts)."""
+    sorts: dict = {}
+    sigs: dict = {}
+    rest = []
+    for x in sexprs:
+        if isinstance(x, list) and x and x[0] in DECLARATIONS:
+            if len(x) < 2 or not isinstance(x[1], str):
+                raise GDLError(f"a declaration names what it declares: {_unparse(x)}")
+            if x[0] == "sort":
+                if x[1] in sorts:
+                    raise GDLError(f"sort {x[1]} declared twice")
+                mem = []
+                for y in x[2:]:
+                    if isinstance(y, list) and y and y[0] == "range":
+                        mem += [str(n) for n in range(int(y[1]), int(y[2]) + 1)]
+                    elif isinstance(y, list):
+                        mem.append(tuple(y))
+                    else:
+                        mem.append(y)
+                sorts[x[1]] = mem
+            else:
+                if x[1] in sigs:
+                    raise GDLError(f"signature of {x[1]} declared twice")
+                sigs[x[1]] = tuple(x[2:])
+        else:
+            rest.append(x)
+    return sorts, sigs, rest
+
+
 def clauses(sexprs: list) -> list:
     out = []
     for x in sexprs:
+        if isinstance(x, list) and x and x[0] in DECLARATIONS:
+            continue                                   # (plan 76.1: a declaration is no clause)
         text = _unparse(x)
         if isinstance(x, list) and x and x[0] == "<=":
             head = to_atom(x[1])
@@ -354,7 +396,7 @@ def _sccs(nodes, edges) -> list:
     return out
 
 
-INPUTS = ("does",)                           # the relations a turn supplies besides the state (`true.*`)
+INPUTS = ("does", "record")                  # the relations a turn supplies besides the state (`true.*`); plan 76.1 (b) (5): `record`, the game record's reading
 
 
 def _is_input(rel: str) -> bool:
@@ -366,6 +408,7 @@ class Program:
 
     def __init__(self, text: str, source: str = "<text>"):
         self.source = source
+        self.sorts, self.signatures, _rest = split_declarations(parse(text))
         self.clauses = clauses(parse(text))
         self.rules_of: dict = defaultdict(list)
         deps: dict = defaultdict(set)
@@ -403,6 +446,72 @@ class Program:
         self.static = {k: v for k, v in static_db.rels.items()}
         self._needed_cache: dict = {}
 
+    # ---------------------------------------------------------------------------------------------- plan 76.1 (b) (1): the sorts
+
+    def signature(self, rel: str) -> "tuple | None":
+        """A relation's declared signature (its argument sorts); a fluent's `true` / `next` / `init` forms read the fluent's."""
+        for k in FLAT:
+            if rel.startswith(k + "."):
+                return self.signatures.get(rel[len(k) + 1:])
+        return self.signatures.get(rel)
+
+    def member(self, t, sort: str, env: dict, where: str, bad: list) -> None:
+        """Check the term `t` is a member of `sort` (a variable takes the sort; a constant is one of its members; a compound term matches one of its patterns)."""
+        if sort not in self.sorts:
+            bad.append(f"{where}: sort {sort} is not declared")
+            return
+        if is_var(t):
+            if env.setdefault(t, sort) != sort:
+                bad.append(f"{where}: variable {t} is of sort {env[t]} and of sort {sort}")
+            return
+        mem = self.sorts[sort]
+        if isinstance(t, str):
+            if t not in mem:
+                bad.append(f"{where}: {t} is no member of the sort {sort}")
+            return
+        pat = next((m for m in mem if isinstance(m, tuple) and m[0] == t[0] and len(m) == len(t)), None)
+        if pat is None:
+            bad.append(f"{where}: the term {term_text(t)} matches no pattern of the sort {sort}")
+            return
+        for a, s in zip(t[1:], pat[1:]):
+            self.member(a, s, env, where, bad)
+
+    def typecheck(self) -> list:
+        """THE TYPE CHECK (76.1 (b) (1)) -> what is wrong: a relation with no signature, an argument outside its slot's sort, a variable of two sorts, a `distinct`
+        of two sorts. Empty: every clause is well sorted."""
+        bad = []
+        for rel in sorted(self.nodes):
+            sig = self.signature(rel)
+            if sig is None:
+                bad.append(f"{rel}: no signature")
+            else:
+                bad += [f"{rel}: its signature's sort {s} is not declared" for s in sig if s not in self.sorts]
+        if bad:
+            return bad
+        for c in self.clauses:
+            env: dict = {}
+            where = c.text[:80]
+            for rel, args in [c.head] + [(l[1], l[2]) for l in c.body if l[0] in ("pos", "neg")]:
+                sig = self.signature(rel)
+                if len(sig) != len(args):
+                    bad.append(f"{where}: {rel} takes {len(sig)} arguments, given {len(args)}")
+                    continue
+                for a, s in zip(args, sig):
+                    self.member(a, s, env, where, bad)
+            for l in c.body:
+                if l[0] != "distinct":
+                    continue
+                x, y = l[1], l[2]
+                sx = env.get(x) if is_var(x) else None
+                sy = env.get(y) if is_var(y) else None
+                if sx and sy and sx != sy:
+                    bad.append(f"{where}: distinct of the sorts {sx} and {sy}")
+                elif sx and not is_var(y):
+                    self.member(y, sx, env, where, bad)
+                elif sy and not is_var(x):
+                    self.member(x, sy, env, where, bad)
+        return bad
+
     def needed(self, wanted: tuple) -> frozenset:
         """The relations the `wanted` ones depend on (themselves included)."""
         key = tuple(sorted(wanted))
@@ -420,9 +529,10 @@ class Program:
 
     # ---------------------------------------------------------------------------------------------- evaluation
 
-    def run(self, state, does=(), wanted: "tuple | None" = None) -> DB:
+    def run(self, state, does=(), wanted: "tuple | None" = None, inputs=()) -> DB:
         """Evaluate the description on a state (an iterable of (rel, args) facts, rel 'true.f') and the moves `does` (a list of (role, move term)). `wanted`: the
-        relations to compute (and what they need); None -- every relation."""
+        relations to compute (and what they need); None -- every relation. `inputs` (plan 76.1 (b) (5)): the other input relations' facts ((rel, args), rel in
+        INPUTS: the game record's reading)."""
         db = DB(self.static)
         for rel, args in state:
             db.writable(rel).add(tuple(args))
@@ -430,6 +540,10 @@ class Program:
             d = db.writable("does")
             for role, m in does:
                 d.add((role, m))
+        for rel, args in inputs:
+            if rel not in INPUTS:
+                raise GDLError(f"{rel} is no input relation ({INPUTS})")
+            db.writable(rel).add(tuple(args))
         need = self.needed(tuple(wanted)) if wanted is not None else None
         for comp, rules in self.strata:
             if not any(self.reads_input[h] for h in comp):
@@ -559,6 +673,9 @@ def report(prog: Program, log=print) -> None:
     nstatic = sum(len(r.facts) for r in prog.static.values())
     log(f"OBS gdl {prog.source}: clauses {len(prog.clauses)} (rules {nrules}, facts {nfacts}), relations {len(prog.nodes)}, strata {len(prog.strata)}, "
         f"static relations {sum(1 for h in prog.nodes if not prog.reads_input.get(h, _is_input(h)))} with {nstatic} facts")
+    bad = prog.typecheck()
+    log(f"OBS gdl {prog.source} sorts: {len(prog.sorts)} declared ({', '.join(f'{k} {len(v)}' for k, v in prog.sorts.items())}), signatures {len(prog.signatures)}; "
+        f"type check: problems {len(bad)}" + ("".join(f"\n  {x}" for x in bad[:20]) if bad else ""))
 
 
 if __name__ == "__main__":

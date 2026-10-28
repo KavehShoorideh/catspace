@@ -2,7 +2,7 @@
  "name": "unit",
  "kind": "OBJECT",
  "origin": "SUPPLIED",
- "sort": "unit",
+ "sort": "kind",
  "reads": [],
  "gdl": {
   "fluent": "cell",
@@ -14,6 +14,17 @@
  "rust": "pos.rs:piece_type",
  "lean": "Chess.Piece",
  "python": "chess.Piece",
+ "bind": {
+  "type": "Chess.PieceKind",
+  "constants": {
+   "king": "Chess.PieceKind.king",
+   "queen": "Chess.PieceKind.queen",
+   "rook": "Chess.PieceKind.rook",
+   "bishop": "Chess.PieceKind.bishop",
+   "knight": "Chess.PieceKind.knight",
+   "pawn": "Chess.PieceKind.pawn"
+  }
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],

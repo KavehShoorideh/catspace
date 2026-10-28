@@ -11,6 +11,9 @@
  "rust": null,
  "lean": null,
  "python": "catspace.incubator.analyst.discovery.gdl_chess.goals_of",
+ "bind": {
+  "type": "Nat"
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],

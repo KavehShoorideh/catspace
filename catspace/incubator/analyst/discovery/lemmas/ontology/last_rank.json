@@ -2,7 +2,10 @@
  "name": "last_rank",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "side",
+  "rank"
+ ],
  "reads": [],
  "gdl": {
   "relation": "last_rank"
@@ -10,6 +13,7 @@
  "rust": null,
  "lean": "Chess.promotionRank",
  "python": null,
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

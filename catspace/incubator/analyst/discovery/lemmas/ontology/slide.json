@@ -2,7 +2,13 @@
  "name": "slide",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "direction",
+  "file",
+  "rank",
+  "file",
+  "rank"
+ ],
  "reads": [
   "cell",
   "file",
@@ -16,6 +22,7 @@
  "rust": "vocab.rs:Segment",
  "lean": "Ideas.Vocabulary.lineThrough",
  "python": "chess.Board.attacks",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

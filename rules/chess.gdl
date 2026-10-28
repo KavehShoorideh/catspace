@@ -1,13 +1,13 @@
-;;; rules/chess.gdl -- THE RULES OF CHESS in Stanford GDL (ANALYST_PLAN 76.0 (a), 2026-10-28).
+;;; rules/chess.gdl -- THE RULES OF CHESS in Stanford GDL (ANALYST_PLAN 76.0 (a), 2026-10-28; the named extensions of 76.1 (b), 2026-10-28).
 ;;;
 ;;; The SPEC: the game's rules as Datalog clauses (role, init, true, does, legal, next, terminal, goal). The fast kernels (python-chess, the Rust
 ;;; core's shakmaty) are IMPLEMENTATIONS certified against it by cross-play (scripts/crossplay.py); the Lean definitions are generated from it
-;;; (scripts/gdl_to_lean.py; the rook in lean/ideas/Ideas/Spec/Rook.lean).
+;;; (scripts/gdl_to_lean.py: the whole spec in lean/ideas/Ideas/Spec/Chess.lean; the rook alone, 76.0's spike, in Ideas/Spec/Rook.lean).
 ;;;
 ;;; Written for this plan (no GDL or Ludii chess text was available offline to start from; the Stanford GGP chess description and Ludii's
 ;;; Chess.lud are the cross-reference by name only). Relations are named by the names table (discovery/names.py) where a name exists --
-;;; attack, move, slide, capture, check, mate, stalemate, draw, promotion -- and every other relation is listed in the plan's report as a FINDING
-;;; (a candidate object or relation kind for 76.1).
+;;; attack, move, slide, capture, check, mate, stalemate, draw, promotion -- and every relation is an entry of the ontology shelf
+;;; (discovery/ontology.py, lemmas/ontology/: one name, its bindings in the Rust core, in Lean and in the kernel).
 ;;;
 ;;; THE STATE (the `true` fluents):
 ;;;   (cell ?f ?r ?c ?k)        a unit of colour ?c and kind ?k on file ?f, rank ?r (files a..h, ranks 1..8)
@@ -19,11 +19,73 @@
 ;;; THE MOVES (the `does` terms; their text is the UCI notation): (move ?f1 ?r1 ?f2 ?r2) -- castling is the king's move e1g1 / e1c1 / e8g8 / e8c8,
 ;;;   en passant the pawn's diagonal move; (promote ?f1 ?r1 ?f2 ?r2 ?k) -- a pawn reaching its last rank, ?k one of queen rook bishop knight;
 ;;;   noop -- the side not to move.
-;;; LEFT OUT (said so): THREEFOLD REPETITION needs the game's history (the identities of the positions before); carrying it in `true` would put
-;;;   every earlier board in the state -- not clean, so it is not here (Game.terminal reads it off its Record, plan 75.4). The fivefold and
-;;;   seventy-five-move automatic draws (FIDE 9.6) are inside the claimable ones the kernel's terminal reports. The fullmove number is no rule.
-;;; INSUFFICIENT MATERIAL is the fast kernel's rule (python-chess `Board.is_insufficient_material`, which `Game.terminal` reads as 'draw'): every
-;;;   side lacks mating material by its material alone -- a sound part of FIDE 5.2.2's dead position (no checkmate by any series of legal moves).
+;;; The fivefold and seventy-five-move automatic draws (FIDE 9.6) are inside the claimable ones the kernel's terminal reports. The fullmove number is no rule.
+;;;
+;;; THE NAMED EXTENSIONS (76.1 (b): what GDL as written lacks, where 76.0's translator to Lean stopped; each read by discovery/gdl.py and
+;;; scripts/gdl_to_lean.py, each bound in the ontology shelf):
+;;;   (1) SORTS. GDL's constants are untyped (the clock's numerals 1..8 are the ranks' too). `(sort <name> <member> ...)` declares a sort -- its
+;;;       constants, a `(range lo hi)` of numerals, or the patterns of a term sort (the moves) -- and `(signature <relation> <sort> ...)` types every
+;;;       relation (a fluent's signature serves its true / next / init forms). The declarations are not clauses: gdl.py keeps them and checks every
+;;;       clause against them (`typecheck`); the translator reads a constant by its slot's sort (the rank 1 is Fin 8's 0, the clock's 1 is the Nat 1).
+;;;   (2) FLUENT BINDINGS. Every fluent of the state is bound to the kernel's field (the shelf's `bind`): the e.p. square to `Position.enPassant`,
+;;;       the castling rights to the kernel's set `Position.castling` (through `Ideas.Spec.Binding.right`), the saturating clock to `min halfmove 100`.
+;;;   (3) THE MOVE BINDING. A move term is read against the position: e1g1 is castling only when the king stands on e1 (`castled`); a pawn's
+;;;       sideways move onto the EMPTY passed-over square is en passant only then (`passant_taken`, as python-chess's push reads it). In Lean the
+;;;       term is `Ideas.Spec.Binding.MoveTerm` and `moveOf` reads the position to give the kernel's `Chess.Move`.
+;;;   (4) NEXT AS A FUNCTION. `next` is a relation; that it is a function -- at most one unit per square, one side to move, one e.p. square, one
+;;;       clock -- and that it IS the kernel's `applyMove` on every position, for every pseudo-legal move, is proved in Lean
+;;;       (Ideas.Spec.NextEquiv: the generated `applyMoveSpec`).
+;;;   (5) NON-LOCAL RULES AS INPUTS OR LEMMAS. THREEFOLD REPETITION reads the game's history, not the state: it is the INPUT `(record ?n)` -- how
+;;;       often the game record holds the position's identity before it (the kernel's `Chess.repetitionKey`: board, side to move, castling, a
+;;;       LEGAL e.p. square; Lean `Ideas.Game.Record`, plan 75.4), saturating at 2 (the rule reads only "2 or more"), supplied by the binding as
+;;;       `does` is. THE DEAD POSITION (FIDE 5.2.2: no checkmate by any series of legal moves) is no state-local clause: the `insufficient`
+;;;       clauses below are python-chess's SOUND CRITERION of it, a LEMMA of 5.2.2 (the lemma store's `dead position by insufficient material`;
+;;;       its one-colour-bishops case proved in Lean, Ideas.Spec.DeadPosition), not the rule itself.
+
+;;; ---------------------------------------------------------------------------------------------------------------- (1) the sorts and the signatures
+
+(sort file a b c d e f g h)
+(sort rank 1 2 3 4 5 6 7 8)
+(sort side white black)
+(sort kind king queen rook bishop knight pawn)
+(sort direction north south east west northeast northwest southeast southwest)
+(sort wing kingside queenside)
+(sort parity even odd)
+(sort event pawn capture)
+(sort clock (range 0 100))
+(sort seen (range 0 2))
+(sort score 0 50 100)
+(sort move (move file rank file rank) (promote file rank file rank kind) noop)
+
+;;; the state, the inputs
+(signature cell file rank side kind) (signature control side) (signature castling_right side wing) (signature ep_square file rank) (signature halfmove clock)
+(signature does side move) (signature record seen)
+;;; the tables and the geometry
+(signature role side) (signature opponent side side) (signature file file) (signature rank rank) (signature file_succ file file) (signature rank_succ rank rank)
+(signature square file rank) (signature step direction file rank file rank) (signature orthogonal direction) (signature diagonal direction)
+(signature line_of kind direction) (signature king_step file rank file rank) (signature knight_jump file rank file rank)
+(signature forward side direction) (signature pawn_diagonal side direction) (signature pawn_start side rank) (signature last_rank side rank)
+(signature promotable kind) (signature ep_victim side file rank file rank) (signature home_rank side rank) (signature castling_path wing file file file)
+(signature castling_empty wing file) (signature castling_safe wing file) (signature right_square side wing file rank)
+(signature file_parity file parity) (signature rank_parity rank parity) (signature dark file rank) (signature light file rank)
+(signature count_succ clock clock) (signature clock_limit clock) (signature repetition_limit seen)
+;;; the board read, the moves, legality
+(signature occupied file rank) (signature empty file rank) (signature slide direction file rank file rank)
+(signature attack_by kind side file rank file rank) (signature attack side file rank file rank) (signature attacked side file rank) (signature check side)
+(signature may_land side file rank) (signature move_by kind side file rank file rank) (signature en_passant side file rank file rank)
+(signature capture kind side file rank file rank) (signature castle_blocked side wing) (signature castle_unsafe side wing) (signature castle side wing)
+(signature castling_move side wing file rank file rank) (signature candidate side file rank file rank) (signature promotes side file rank file rank)
+(signature vacates file rank file rank file rank) (signature fills file rank file rank file rank side kind) (signature filled file rank file rank file rank)
+(signature stays file rank file rank file rank side kind) (signature after file rank file rank file rank side kind)
+(signature after_occupied file rank file rank file rank) (signature king_after side file rank file rank file rank)
+(signature king_ray file rank file rank direction file rank) (signature exposed file rank file rank) (signature legal side move) (signature has_move)
+;;; the end of the game
+(signature mate) (signature stalemate) (signature mating_material side) (signature has_kind side kind) (signature two_units side)
+(signature selfmate_material side) (signature mixed_bishops) (signature any_pawn) (signature any_knight) (signature insufficient side) (signature draw)
+(signature draw_by_fifty_moves) (signature draw_by_repetition) (signature terminal) (signature drawn) (signature goal side score)
+;;; the next state
+(signature castled side wing) (signature passant_taken file rank) (signature lifted file rank) (signature landed file rank) (signature touched file rank)
+(signature right_lost side wing) (signature clock_event event) (signature clock_reset)
 
 ;;; ---------------------------------------------------------------------------------------------------------------- the roles and the board
 
@@ -226,7 +288,8 @@
 (<= mate (check ?c) (not has_move))
 (<= stalemate (true (control ?c)) (not (check ?c)) (not has_move))
 
-;;; DRAW (insufficient material, the fast kernel's rule): neither side has mating material by its material alone
+;;; DRAW (insufficient material, the fast kernel's rule): neither side has mating material by its material alone. Extension (5): a LEMMA of FIDE
+;;; 5.2.2 (the dead position), python-chess's sound criterion of it -- not the rule itself (no state-local clause states "no mate by any series of moves")
 (<= (mating_material ?c) (true (cell ?f ?r ?c pawn)))
 (<= (mating_material ?c) (true (cell ?f ?r ?c rook)))
 (<= (mating_material ?c) (true (cell ?f ?r ?c queen)))
@@ -250,14 +313,21 @@
 ;;; DRAW BY THE FIFTY-MOVE RULE: the clock at its limit and a legal move to make (a mate on the move comes first: FIDE 9.3)
 (<= draw_by_fifty_moves (clock_limit ?n) (true (halfmove ?n)) has_move)
 
+;;; DRAW BY REPETITION (FIDE 9.2), extension (5): the game record's INPUT says the position's identity occurred twice before it -- this is its third
+;;; occurrence (Game.terminal's 'repetition', Lean Ideas.Game.Record.threefold = Chess.threefoldClaimable of the history)
+(repetition_limit 2)
+(<= draw_by_repetition (repetition_limit ?n) (record ?n))
+
 (<= terminal mate)
 (<= terminal stalemate)
 (<= terminal draw)
 (<= terminal draw_by_fifty_moves)
+(<= terminal draw_by_repetition)
 
 (<= drawn stalemate)
 (<= drawn draw)
 (<= drawn draw_by_fifty_moves)
+(<= drawn draw_by_repetition)
 (<= (goal ?c 0) mate (true (control ?c)))
 (<= (goal ?o 100) mate (true (control ?c)) (opponent ?c ?o))
 (<= (goal ?r 50) (role ?r) drawn (not mate))
@@ -266,8 +336,8 @@
 
 ;;; castling, read off the king's two-file move from its home square
 (<= (castled ?c ?side) (does ?c (move e ?r ?kt ?r)) (home_rank ?c ?r) (true (cell e ?r ?c king)) (castling_path ?side ?kt ?rt ?rf))
-;;; the en-passant capture, read off a pawn's sideways move onto the passed-over square
-(<= (passant_taken ?f3 ?r3) (does ?c (move ?f1 ?r1 ?f2 ?r2)) (true (cell ?f1 ?r1 ?c pawn)) (true (ep_square ?f2 ?r2)) (distinct ?f1 ?f2)
+;;; the en-passant capture, read off a pawn's sideways move onto the EMPTY passed-over square (extension (3): the move binding reads the position)
+(<= (passant_taken ?f3 ?r3) (does ?c (move ?f1 ?r1 ?f2 ?r2)) (true (cell ?f1 ?r1 ?c pawn)) (true (ep_square ?f2 ?r2)) (empty ?f2 ?r2) (distinct ?f1 ?f2)
     (ep_victim ?c ?f2 ?r2 ?f3 ?r3))
 
 ;;; the squares a move lifts a unit from, and lands a unit on

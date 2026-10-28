@@ -2,7 +2,10 @@
  "name": "castling_right",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "side",
+  "wing"
+ ],
  "reads": [],
  "gdl": {
   "fluent": "castling_right"
@@ -10,6 +13,12 @@
  "rust": "pos.rs:tkey",
  "lean": "Chess.Position.castling",
  "python": "chess.Board.clean_castling_rights",
+ "bind": {
+  "template": "Ideas.Spec.Binding.right {0} {1} ∈ {p}.castling",
+  "params": [
+   "p"
+  ]
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],

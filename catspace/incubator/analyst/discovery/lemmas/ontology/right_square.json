@@ -2,7 +2,12 @@
  "name": "right_square",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "side",
+  "wing",
+  "file",
+  "rank"
+ ],
  "reads": [],
  "gdl": {
   "relation": "right_square"
@@ -10,6 +15,7 @@
  "rust": null,
  "lean": "Chess.rightsRemovedForSquare",
  "python": null,
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

@@ -2,7 +2,10 @@
  "name": "castling_empty",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "wing",
+  "file"
+ ],
  "reads": [],
  "gdl": {
   "relation": "castling_empty"
@@ -10,6 +13,7 @@
  "rust": null,
  "lean": "Chess.castleEmptySquares",
  "python": null,
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

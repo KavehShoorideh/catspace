@@ -2,7 +2,7 @@
  "name": "board",
  "kind": "OBJECT",
  "origin": "SUPPLIED",
- "sort": "board",
+ "sort": null,
  "reads": [],
  "gdl": {
   "keyword": "true"
@@ -10,6 +10,7 @@
  "rust": "pos.rs:Pos",
  "lean": "Chess.Position",
  "python": "chess.Board",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

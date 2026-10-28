@@ -8,6 +8,7 @@
  "rust": "rules.rs:best",
  "lean": "Ideas.ExchangeLaw.seeXB",
  "python": "catspace.incubator.analyst.discovery.graph.see_for",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

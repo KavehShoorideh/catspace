@@ -2,21 +2,26 @@
  "name": "castling_path",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "wing",
+  "file",
+  "file",
+  "file"
+ ],
  "reads": [],
  "gdl": {
   "relation": "castling_path"
  },
  "rust": null,
- "lean": null,
+ "lean": "Ideas.Spec.Chess.castlingPath",
  "python": null,
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
  "names": false,
  "means": "where a castling's king lands and its rook goes, by wing",
  "why": {
-  "lean": "the kernel computes it as arithmetic (Fin 8, Nat): no definition of the table; the generated one is 76.1 (b)'s",
   "python": "python-chess has no predicate of its own for it (the spec's device, read through the binding gdl_chess.py)",
   "rust": "the Rust core reads it inside shakmaty's move generator: no relation or method of its own"
  },

@@ -10,7 +10,9 @@ with ONE NAME and its BINDINGS:
   lean    the Lean definition by its full name: the chess-lean kernel's, or lean/ideas's (present in docs/LEAN_INDEX.md);
   python  the python-chess / Game predicate the engine calls (the names table's `kernel`, plan 75.2 (c));
 
-each null only with its reason (`why`). THE NAMES ARE NOT NEW: an entry is named by the names table's word (names.py: the words we supply, now read from here)
+each null only with its reason (`why`); and (76.1 (b)) `bind`, the translator's binding (scripts/gdl_to_lean.py reads its table from here: an object's Lean type
+and its constants' terms or a generated enumeration's name, a fluent's or an input's Lean template), and `sort` (an object's sort of the spec; a relation's
+signature by object kinds, checked against the spec's declared one). THE NAMES ARE NOT NEW: an entry is named by the names table's word (names.py: the words we supply, now read from here)
 or, for every other relation of the spec, by the spec's own relation name -- no name is invented. `origin`: SUPPLIED (a word of the names table, an object kind,
 or a base of the spec: a fluent of its state, an input, a table of facts) or DERIVED (a relation the spec defines by its clauses, or the engine derives). `reads`:
 the SUPPLIED base entries a relation reads in the spec (its dependency closure, computed from chess.gdl and checked). `node` (an object) / `edge` (a relation): the
@@ -40,7 +42,7 @@ KERNEL_SRC = ROOT / "lean" / "ideas" / ".lake" / "packages" / "ChessLean" / "Che
 LEAN_INDEX = ROOT / "docs" / "LEAN_INDEX.md"
 SPEC = ROOT / "rules" / "chess.gdl"
 
-FIELDS = ("name", "kind", "origin", "sort", "reads", "gdl", "rust", "lean", "python", "node", "edge", "vocabulary", "names", "means", "why", "plan", "journal")
+FIELDS = ("name", "kind", "origin", "sort", "reads", "gdl", "rust", "lean", "python", "bind", "node", "edge", "vocabulary", "names", "means", "why", "plan", "journal")
 KINDS = ("OBJECT", "RELATION")
 ORIGINS = ("SUPPLIED", "DERIVED")
 BINDINGS = ("gdl", "rust", "lean", "python")
@@ -73,8 +75,15 @@ def check_entry(e: dict, where: str = "") -> list:
         bad.append(f"{at}: kind {e['kind']!r} not in {KINDS}")
     if e["origin"] not in ORIGINS:
         bad.append(f"{at}: origin {e['origin']!r} not in {ORIGINS}")
-    if e["kind"] == "OBJECT" and not (e["sort"] is None or isinstance(e["sort"], str)):
-        bad.append(f"{at}: an OBJECT's sort is the spec's sort name (a string) or null")
+    if e["kind"] == "OBJECT" and not (e["sort"] is None or isinstance(e["sort"], str) or (isinstance(e["sort"], list) and all(isinstance(s, str) for s in e["sort"]))):
+        bad.append(f"{at}: an OBJECT's sort is the spec's sort name (a string), a product of sorts (a list) or null")
+    b = e["bind"]
+    if b is not None:
+        ok = isinstance(b, dict) and (
+            (e["kind"] == "OBJECT" and (set(b) in ({"type"}, {"type", "constants"}, {"type", "terms"}, {"enum"})))
+            or (e["kind"] == "RELATION" and set(b) == {"template", "params"} and isinstance(b["template"], str) and isinstance(b["params"], list)))
+        if not ok:
+            bad.append(f"{at}: bind is null, an OBJECT's Lean type ({{type [, constants | terms]}} or {{enum}}) or a RELATION's template ({{template, params}})")
     if e["kind"] == "RELATION" and not (e["sort"] is None or (isinstance(e["sort"], list) and all(isinstance(s, str) for s in e["sort"]))):
         bad.append(f"{at}: a RELATION's sort is its signature (a list of object kinds) or null")
     if not isinstance(e["reads"], list) or any(not isinstance(r, str) for r in e["reads"]):
@@ -461,7 +470,7 @@ def readings_gdl(fen: str, prog=None) -> dict:
     prog = prog or program()
     b = chess.Board(fen)
     st = GC.state_of(b)
-    db = prog.run(st)
+    db = prog.run(st, inputs=GC.inputs_of())
     mover = COLOUR[b.turn]
     legal = sorted(GC.uci_of(m) for role, m in db.facts("legal") if role == mover and m != "noop")
     two = lambda t: t[0] + t[1] + t[2] + t[3]
@@ -720,6 +729,45 @@ def surprise_keys() -> set:
 
 # ---------------------------------------------------------------------------------------------------------------- the validator, the report
 
+def object_of_sort(store: dict) -> dict:
+    """76.1 (b) (1): the spec's sort -> the OBJECT kind that is it (a kind's own sort; a value of a sort, the unit kind `pawn`, is not the sort's object)."""
+    out = {}
+    for e in store.values():
+        if e["kind"] == "OBJECT" and isinstance(e["sort"], str) and not (e["gdl"] or {}).get("constant"):
+            out.setdefault(e["sort"], []).append(e["name"])
+    return out
+
+
+def sort_problems(store: dict, prog) -> list:
+    """76.1 (b) (1), (2): the spec type-checks; every declared sort is one OBJECT kind with a Lean binding, every object's sort is declared; every relation's
+    signature (`sort`, by object kinds) is the spec's; every fluent and input of the spec has a binding template."""
+    bad = [f"spec type check: {x}" for x in prog.typecheck()]
+    obj = object_of_sort(store)
+    bad += [f"sort {s}: more than one object kind {ns}" for s, ns in sorted(obj.items()) if len(ns) > 1]
+    for s in prog.sorts:
+        if s not in obj:
+            bad.append(f"sort {s} of the spec is no object kind of the shelf")
+        elif store[obj[s][0]]["bind"] is None:
+            bad.append(f"sort {s}: its object {obj[s][0]} has no Lean binding")
+    for e in store.values():
+        if e["kind"] == "OBJECT" and e["sort"] is not None:
+            for s in ([e["sort"]] if isinstance(e["sort"], str) else e["sort"]):
+                if s not in prog.sorts:
+                    bad.append(f"{e['name']}: sort {s} is not declared in the spec")
+        if e["kind"] != "RELATION" or e["gdl"] is None or "keyword" in e["gdl"]:
+            continue
+        rel = _spec_rels(e["gdl"])[0]
+        sig = prog.signature(rel)
+        want = [obj[s][0] if s in obj else f"?{s}" for s in sig] if sig is not None else None
+        if e["sort"] != want:
+            bad.append(f"{e['name']}: signature {e['sort']} but the spec's is {want}")
+    for r in sorted(prog.nodes):
+        if r.startswith("true.") or (r in prog.nodes and base_kind(prog, r) == "input"):
+            if not any(covers(e, prog.nodes) & {r} and e["bind"] for e in store.values()):
+                bad.append(f"{r}: a fluent or input of the spec with no binding template")
+    return bad
+
+
 def coverage(store: dict, prog) -> tuple:
     """(covered relations of the spec, the UNNAMED ones: no entry binds them), each sorted."""
     covered = set()
@@ -747,6 +795,7 @@ def validate(lean: bool = False, log=print, file: bool = True) -> int:
         for r in covers(e, prog.nodes):
             owners.setdefault(r, []).append(e["name"])
     bad += [f"two entries bind {r}: {ns}" for r, ns in sorted(owners.items()) if len(ns) > 1]
+    bad += sort_problems(store, prog)
     covered, unnamed = coverage(store, prog)
     reads = spec_reads(prog, store)
     bad += [f"{n}: reads {store[n]['reads']} but the spec's reads are {r}" for n, r in sorted(reads.items()) if store[n]["reads"] != r]

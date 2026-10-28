@@ -2,7 +2,12 @@
  "name": "cell",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "file",
+  "rank",
+  "side",
+  "unit"
+ ],
  "reads": [],
  "gdl": {
   "fluent": "cell"
@@ -10,6 +15,12 @@
  "rust": "rules.rs:piece",
  "lean": "Chess.Position.board",
  "python": "chess.Board.piece_at",
+ "bind": {
+  "template": "{p}.board ({0}, {1}) = some ⟨{2}, {3}⟩",
+  "params": [
+   "p"
+  ]
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],

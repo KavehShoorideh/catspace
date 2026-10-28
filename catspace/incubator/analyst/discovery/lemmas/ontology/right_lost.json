@@ -2,7 +2,10 @@
  "name": "right_lost",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "side",
+  "wing"
+ ],
  "reads": [
   "castling_path",
   "cell",
@@ -10,6 +13,7 @@
   "ep_square",
   "file",
   "home_rank",
+  "rank",
   "rank_succ",
   "right_square"
  ],
@@ -19,6 +23,7 @@
  "rust": null,
  "lean": "Chess.rightsRemovedForMove",
  "python": null,
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

@@ -2,7 +2,9 @@
  "name": "clock_limit",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "clock"
+ ],
  "reads": [],
  "gdl": {
   "relation": "clock_limit"
@@ -10,6 +12,7 @@
  "rust": "game.rs:claimable_draw",
  "lean": "Chess.fiftyMoveClaimable",
  "python": "chess.Board.is_fifty_moves",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

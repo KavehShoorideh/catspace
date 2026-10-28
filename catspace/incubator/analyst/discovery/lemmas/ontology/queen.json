@@ -12,6 +12,7 @@
  "rust": "rules.rs:Queen",
  "lean": "Ideas.Vocabulary.kindSet",
  "python": "chess.QUEEN",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

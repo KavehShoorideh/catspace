@@ -2,7 +2,10 @@
  "name": "occupied",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "file",
+  "rank"
+ ],
  "reads": [
   "cell"
  ],
@@ -10,16 +13,15 @@
   "relation": "occupied"
  },
  "rust": "rules.rs:occupied",
- "lean": null,
+ "lean": "Ideas.Spec.Chess.occupied",
  "python": "chess.Board.piece_at",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
  "names": false,
  "means": "a square holds a unit",
- "why": {
-  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)"
- },
+ "why": {},
  "plan": [
   "76.1"
  ],

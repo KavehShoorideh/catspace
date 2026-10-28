@@ -1,0 +1,34 @@
+{
+ "name": "dead position (one-colour bishops)",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack",
+  "material"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.DeadPosition.one_colour_dead",
+  "Ideas.DeadPosition.dead_of_spec_draw",
+  "Ideas.DeadPosition.no_mate_one_colour",
+  "Ideas.DeadPosition.one_colour_step"
+ ],
+ "origin": "HAND",
+ "plan": [
+  "76.1"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "lean/ideas/Ideas/Spec/DeadPosition.lean:one_colour_dead",
+  "catspace/incubator/analyst/discovery/game.py:terminal",
+  "rust/analyst_core/src/game.rs:insufficient"
+ ],
+ "note": "A LEMMA of FIDE 5.2.2, not the rule (the dead position quantifies over every continuation, which no state-local clause states): kings and bishops on squares of one colour, one king each and the kings apart, admit no checkmate by any series of legal moves (Chess.deadPosition: one_colour_dead -- the check is a bishop's, so the mated king stands on the bishops' colour, its orthogonal neighbours fall to the other king alone, and a legal move keeps the class), so the spec's insufficient-material draw with no knight on the board is a dead position (dead_of_spec_draw); the criterion's knight clause is proved in the position only (Ideas.InsufficientMaterial.insufficient_material)."
+}

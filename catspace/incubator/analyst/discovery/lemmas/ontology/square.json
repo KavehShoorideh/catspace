@@ -2,7 +2,10 @@
  "name": "square",
  "kind": "OBJECT",
  "origin": "SUPPLIED",
- "sort": "square",
+ "sort": [
+  "file",
+  "rank"
+ ],
  "reads": [],
  "gdl": {
   "relation": "square"
@@ -10,6 +13,7 @@
  "rust": "pos.rs:square",
  "lean": "Ideas.Vocabulary.sqIndex",
  "python": "chess.SQUARES",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

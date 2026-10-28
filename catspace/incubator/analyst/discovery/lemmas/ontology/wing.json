@@ -9,8 +9,15 @@
   "slot": 1
  },
  "rust": null,
- "lean": "Chess.CastleRight",
+ "lean": "Ideas.Spec.Binding.Wing",
  "python": "chess.Board.has_kingside_castling_rights",
+ "bind": {
+  "type": "Ideas.Spec.Binding.Wing",
+  "constants": {
+   "kingside": "Ideas.Spec.Binding.Wing.kingside",
+   "queenside": "Ideas.Spec.Binding.Wing.queenside"
+  }
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],

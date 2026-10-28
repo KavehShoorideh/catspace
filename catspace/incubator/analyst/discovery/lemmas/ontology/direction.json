@@ -9,8 +9,11 @@
   "slot": 0
  },
  "rust": null,
- "lean": "Ideas.Spec.Rook.Dir",
+ "lean": "Ideas.Spec.Chess.Dir",
  "python": "catspace.incubator.analyst.discovery.graph.SLIDING",
+ "bind": {
+  "enum": "Dir"
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],

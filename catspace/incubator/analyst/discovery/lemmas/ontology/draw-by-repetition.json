@@ -2,20 +2,24 @@
  "name": "draw by repetition",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
- "reads": [],
- "gdl": null,
+ "sort": [],
+ "reads": [
+  "record",
+  "repetition_limit"
+ ],
+ "gdl": {
+  "relation": "draw_by_repetition"
+ },
  "rust": "game.rs:claimable_draw",
  "lean": "Ideas.Game.Record.threefold",
  "python": "catspace.incubator.analyst.discovery.game.ChessGame.repetition",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
  "names": true,
  "means": "the position occurs a third time -- its identity (Game.position_key: board, side to move, castling, a LEGAL en-passant square) twice in the game record before it (Game.terminal says 'repetition'; Lean Chess.threefoldClaimable, Ideas.Game.chess_threefold_iff)",
- "why": {
-  "gdl": "threefold reads the game's history, not the state: the spec of 76.0 left it out (extension (5) of 76.1 (b) adds it as an input, the game record)"
- },
+ "why": {},
  "plan": [
   "76.1"
  ],

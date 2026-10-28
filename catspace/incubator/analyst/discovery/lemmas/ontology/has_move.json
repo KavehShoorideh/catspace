@@ -2,7 +2,7 @@
  "name": "has_move",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [],
  "reads": [
   "castling_empty",
   "castling_path",
@@ -30,16 +30,15 @@
   "relation": "has_move"
  },
  "rust": "pos.rs:legal_count",
- "lean": null,
+ "lean": "Ideas.Spec.Chess.hasMove",
  "python": "chess.Board.legal_moves",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],
  "names": false,
  "means": "the side to move has a legal move",
- "why": {
-  "lean": "no hand-written or kernel definition is this relation: its Lean definition is generated from the spec (76.1 (b), Ideas.Spec.Chess)"
- },
+ "why": {},
  "plan": [
   "76.1"
  ],

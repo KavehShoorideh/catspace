@@ -2,7 +2,10 @@
  "name": "file_parity",
  "kind": "RELATION",
  "origin": "SUPPLIED",
- "sort": null,
+ "sort": [
+  "file",
+  "parity"
+ ],
  "reads": [],
  "gdl": {
   "relation": "file_parity"
@@ -10,6 +13,7 @@
  "rust": null,
  "lean": "Ideas.GeoLemmas.colour",
  "python": null,
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

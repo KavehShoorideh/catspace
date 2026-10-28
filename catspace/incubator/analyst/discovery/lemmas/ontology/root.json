@@ -8,6 +8,7 @@
  "rust": null,
  "lean": null,
  "python": "catspace.incubator.analyst.discovery.state.State",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

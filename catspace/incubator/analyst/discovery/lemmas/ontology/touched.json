@@ -2,7 +2,10 @@
  "name": "touched",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [
+  "file",
+  "rank"
+ ],
  "reads": [
   "castling_path",
   "cell",
@@ -10,6 +13,7 @@
   "ep_square",
   "file",
   "home_rank",
+  "rank",
   "rank_succ"
  ],
  "gdl": {
@@ -18,6 +22,7 @@
  "rust": "rules.rs:touched_by",
  "lean": "Ideas.PathLemma.touched",
  "python": null,
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

@@ -10,6 +10,13 @@
  "rust": "pos.rs:colour",
  "lean": "Chess.Color",
  "python": "chess.COLORS",
+ "bind": {
+  "type": "Chess.Color",
+  "constants": {
+   "white": "Chess.Color.white",
+   "black": "Chess.Color.black"
+  }
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],

@@ -2,7 +2,7 @@
  "name": "clock_reset",
  "kind": "RELATION",
  "origin": "DERIVED",
- "sort": null,
+ "sort": [],
  "reads": [
   "cell",
   "does"
@@ -13,6 +13,7 @@
  "rust": null,
  "lean": "Ideas.Game.clockResets",
  "python": "chess.Board.is_zeroing",
+ "bind": null,
  "node": null,
  "edge": null,
  "vocabulary": [],

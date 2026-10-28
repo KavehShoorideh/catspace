@@ -11,6 +11,14 @@
  "rust": "pos.rs:legal_move",
  "lean": "Ideas.Game.Game.step",
  "python": "chess.Board.legal_moves",
+ "bind": {
+  "type": "Ideas.Spec.Binding.MoveTerm",
+  "terms": {
+   "move": "(Ideas.Spec.Binding.MoveTerm.move ({0}, {1}) ({2}, {3}))",
+   "promote": "(Ideas.Spec.Binding.MoveTerm.promote ({0}, {1}) ({2}, {3}) {4})",
+   "noop": "Ideas.Spec.Binding.MoveTerm.noop"
+  }
+ },
  "node": null,
  "edge": null,
  "vocabulary": [],
