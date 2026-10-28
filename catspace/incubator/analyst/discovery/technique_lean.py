@@ -17,7 +17,8 @@ uses -- generated from the entry by code, nothing typed by hand per ending:
     king-step distance to the nearest square of a set, 0 for none; `areaOf`: the squares of the smallest rectangle of files and ranks holding a set, 0 for
     none; whose move: 0 when the measured side is to move); a sum, a product, and THE LEXICOGRAPHIC TUPLE as its mixed-radix number at technique_miner.RADIX
     (every atom of the class reads below it: asserted by the miner) -- `mu p`, read for the side to move.
-  THE OBLIGATION `hprog`, `by sorry`: exactly the premise of the PROVED Ideas.Forced.forced_by_measure at k = max(d, n) --
+  THE OBLIGATION `hprog`, `by sorry`: exactly the premise of the PROVED Ideas.Forced.forced_by_measure at k = max(d, n) (named `conjecture_hprog` while
+    it is open, the repo's name for a statement holding `sorry` -- tests/test_lean_index.py; `hprog` once an accepted proof is written) --
     `∀ p, inClass p → Ideas.Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) k p` (a mate within n is a Reach of the goal within k).
   THE COROLLARY `forced_mate`, proved from hprog by forced_by_measure (one application, emitted): the mate from every position of the class within
     k * (mu p + 1) of our moves. While hprog is a sorry the corollary rests on it (its body says so, and the index marks it OPEN).
@@ -248,14 +249,15 @@ def emit_text(entry: dict, sexpr: "str | None" = None, suffix: str = "", proof: 
             out += [proof["lemmas"].rstrip(), ""]
     body = indent_proof(proof["proof"]).splitlines() if proof is not None else ["  sorry"]
     status = "PROVED (the proof found by the tools, below)" if proof is not None else "OPEN: the provers' task (plan 73.6 (3))"
-    rests = "  -- from hprog, proved above" if proof is not None else "  -- rests on hprog: OPEN while hprog's proof is the sorry above"
+    rests = "  -- from hprog, proved above" if proof is not None else "  -- rests on conjecture_hprog: OPEN while its proof is the sorry above"
+    pre = "" if proof is not None else "conjecture_"                  # (the repo's name for a statement that still holds `sorry`: tests/test_lean_index.py)
     out += [f"/-- THE OBLIGATION (the entry's; the premise `hprog` of the PROVED Ideas.Forced.forced_by_measure at k = {k}): from every position of the class we force,\n"
             f"within {k} of our moves and against every reply, the mate or a position of the class whose measure is lower. {status}. -/",
-            f"theorem hprog : ∀ p, inClass p → Ideas.Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) {k} p := by"] + body + ["",
+            f"theorem {pre}hprog : ∀ p, inClass p → Ideas.Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) {k} p := by"] + body + ["",
             f"/-- THE FORCED MATE from every position of the class within {k} * (mu p + 1) of our moves: Ideas.Forced.forced_by_measure applied to `hprog`. -/",
-            f"theorem forced_mate : ∀ p, inClass p → Ideas.Forced.Reach ours theirs mate (fun _ => False) ({k} * (mu p + 1)) p :=",
+            f"theorem {pre}forced_mate : ∀ p, inClass p → Ideas.Forced.Reach ours theirs mate (fun _ => False) ({k} * (mu p + 1)) p :=",
             rests,
-            f"  Ideas.Forced.forced_by_measure inClass mu {k} hprog", "",
+            f"  Ideas.Forced.forced_by_measure inClass mu {k} {pre}hprog", "",
             f"end {namespace(entry, suffix)}", ""]
     return "\n".join(out)
 

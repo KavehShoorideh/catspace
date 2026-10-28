@@ -85,12 +85,12 @@ def mu (p : Position) : Nat :=
 
 /-- THE OBLIGATION (the entry's; the premise `hprog` of the PROVED Ideas.Forced.forced_by_measure at k = 3): from every position of the class we force,
 within 3 of our moves and against every reply, the mate or a position of the class whose measure is lower. OPEN: the provers' task (plan 73.6 (3)). -/
-theorem hprog : ∀ p, inClass p → Ideas.Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p := by
+theorem conjecture_hprog : ∀ p, inClass p → Ideas.Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p := by
   sorry
 
 /-- THE FORCED MATE from every position of the class within 3 * (mu p + 1) of our moves: Ideas.Forced.forced_by_measure applied to `hprog`. -/
-theorem forced_mate : ∀ p, inClass p → Ideas.Forced.Reach ours theirs mate (fun _ => False) (3 * (mu p + 1)) p :=
-  -- rests on hprog: OPEN while hprog's proof is the sorry above
-  Ideas.Forced.forced_by_measure inClass mu 3 hprog
+theorem conjecture_forced_mate : ∀ p, inClass p → Ideas.Forced.Reach ours theirs mate (fun _ => False) (3 * (mu p + 1)) p :=
+  -- rests on conjecture_hprog: OPEN while its proof is the sorry above
+  Ideas.Forced.forced_by_measure inClass mu 3 conjecture_hprog
 
 end Ideas.Mined.mined_technique_krvk_z9

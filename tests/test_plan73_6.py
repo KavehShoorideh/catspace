@@ -130,9 +130,10 @@ def test_the_emitted_file_is_the_emitters_output_and_states_the_obligation():
     text = TL.emit_text(e)
     assert TL.lean_path(e).read_text() == text
     k = max(e["measure"]["depth"], e["measure"]["n"])
-    assert f"theorem hprog : ∀ p, inClass p → Ideas.Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) {k} p := by\n  sorry\n" in text
+    assert f"theorem conjecture_hprog : ∀ p, inClass p → Ideas.Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) {k} p := by\n  sorry\n" in text
     assert len(re.findall(r"^\s*sorry\s*$", text, re.M)) == 1
-    assert f"Ideas.Forced.forced_by_measure inClass mu {k} hprog" in text
+    assert f"Ideas.Forced.forced_by_measure inClass mu {k} conjecture_hprog" in text and "theorem conjecture_forced_mate" in text    # (open: the repo's name)
+    assert "theorem hprog :" in TL.emit_text(e, proof=dict(proof="exact h", tool="t", run="r"))                                      # (proved: the plain name)
     src = (TL.LEAN_DIR / "Ideas" / "ForcedByMeasure.lean").read_text()
     assert "(hprog : ∀ p, S p → Reach ours theirs goal (fun r => S r ∧ μ r < μ p) k p)" in src           # the generic premise, the same shape
     assert "p.board P = some ⟨p.turn, .rook⟩" in text and "p.board L = some ⟨Color.opposite p.turn, .king⟩" in text
@@ -226,11 +227,12 @@ def test_the_goal_the_splice_and_the_sketch_helpers():
     lemmas -- our definitions and statement are kept; a sketch's sorries are filled in order; a sub-goal's binders are read."""
     path = PR.MINED_DIR / "mined_technique_krvk.lean"
     (g,) = PR.goals_of(path)
-    assert g.name == "hprog" and g.full == "Ideas.Mined.mined_technique_krvk.hprog" and g.extra_axioms == ("Ideas.Mined.mined_technique_krvk.forced_mate",)
+    assert g.name == "conjecture_hprog" and g.full == "Ideas.Mined.mined_technique_krvk.conjecture_hprog"
+    assert g.extra_axioms == ("Ideas.Mined.mined_technique_krvk.conjecture_forced_mate",)
     assert g.stmt.lstrip().startswith("/-- THE OBLIGATION") and g.text("sorry") == path.read_text()
     answer = ("def inClass (p : Position) : Prop := True\n\nlemma helper (n : Nat) : n ≤ n := le_refl n\n\n"
-              "theorem hprog : ∀ p, inClass p → True := by\n  intro p hp\n  exact helper\n")
-    proof, lemmas = PR.take_proof(answer, g, {"inClass", "ours", "theirs", "mu", "hprog"})
+              "theorem conjecture_hprog : ∀ p, inClass p → True := by\n  intro p hp\n  exact helper\n")
+    proof, lemmas = PR.take_proof(answer, g, {"inClass", "ours", "theirs", "mu", "conjecture_hprog"})
     assert proof.strip() == "intro p hp\n  exact helper".strip() and "def inClass" not in lemmas and lemmas.startswith("theorem helper")
     assert PR.fill_sorries("have h : A := by sorry\nhave h2 : B := sorry\nsorry", lambda k, f: f"<{k}:{f}>") == "have h : A := <0:by>\nhave h2 : B := <1:term>\n<2:tactic>"
     assert PR.binder_names("theorem s1 (p : Position) (hp : inClass p) {x : Nat} [inst : Inhabited Nat] (h1 : ∃ q, ours p q) :\n  mu p < 1 := by") == ["p", "hp", "h1"]
@@ -331,7 +333,7 @@ def test_a_sub_lemma_entry_by_role_and_reads():
     assert PR.conclusion(s_keep) == "¬ unitLost q"
     e = dict(name="mined lemma test", kind=PR.role(s_keep), reads=PR.reads_of(s_keep, ()), terms=[], status="CONJECTURE", lean=[], origin="MINED", plan=["73.6"],
              journal="2026-10-27", measure=None, evidence=dict(uses={}, confirmed=[], refuted=[]),
-             implementation=["lean/ideas/Ideas/Mined/mined_technique_krvk.lean:hprog"], note="a test entry")
+             implementation=["lean/ideas/Ideas/Mined/mined_technique_krvk.lean:conjecture_hprog"], note="a test entry")
     assert LS.check_entry(e) == [] and LS.implementation_problems({e["name"]: e}) == []          # a Lean theorem implements an entry
 
 
@@ -353,7 +355,7 @@ def test_the_runs_sub_goal_file_compiles_and_the_index_reads_it():
     f = Path(PR.paths.experiment("prover", "scratch", "test_subfile_index.lean"))
     f.write_text(text)
     got = {d["name"]: d["open"] for d in LI._decls(f) if d["kind"] == "theorem"}
-    assert got == {"blind_s8": True, "blind_s9": False}
+    assert got == {"conjecture_blind_s8": True, "blind_s9": False}                        # (an open one under the repo's name for it)
 
 
 def test_a_sub_goals_entry_is_proved_only_when_accepted():
@@ -404,7 +406,7 @@ def test_the_demo_states_the_protection_lemma_and_it_builds_with_one_sorry():
     path = TL.MINED_DIR / f"{DEMO.module(e)}.lean"
     text = path.read_text()
     assert text == DEMO.lean_text(e) or "was FOUND by" in text
-    assert DEMO.STATEMENT in text and text.startswith(f"import Ideas.Mined.{TL.module_name(e)}\n")
+    assert DEMO.STATEMENT.format(name="conjecture_protection") in text and text.startswith(f"import Ideas.Mined.{TL.module_name(e)}\n")
     assert "isAttackedB p (Color.opposite p.turn) s = true →" in DEMO.STATEMENT and "¬ stalemate (applyMove p m)" in DEMO.STATEMENT
     b = TL.build(DEMO.module(e))
     assert b["ok"] and b["sorries"] == (0 if "was FOUND by" in text else 1), b["errors"]
@@ -424,6 +426,6 @@ def test_the_transcript_shows_every_attempt(tmp_path):
     T.row(dict(i=2, t="12:10:00", tool="llm whole", goal="protection", depth=0, tokens=900, gen_secs=100.0, done_reason="stop", response="Plan: move away.\n```lean4\n```",
                proof="intro p hp\n  exact foo", lemmas="", accepted=False, why=["Lean errors: 1"], errors=["x.lean:12:4: error: unknown identifier 'foo'"]))
     md = (tmp_path / "demo.md").read_text()
-    assert "## The statement" in md and "theorem protection" in md and "## The attempts (2 so far)" in md
+    assert "## The statement" in md and "theorem conjecture_protection" in md and "## The attempts (2 so far)" in md
     assert "### 1. 12:00:00 -- automation `aesop` on `protection` -- REJECTED" in md and "aesop: failed to prove the goal" in md
     assert "The model wrote 900 tokens in 100.0 s" in md and "unknown identifier 'foo'" in md and "> Plan: move away." in md

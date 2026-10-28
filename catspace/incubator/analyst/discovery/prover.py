@@ -699,7 +699,7 @@ def prove(module: str, mode: str = "blind", tools: tuple = ("automation", "copil
                    started=time.strftime("%Y-%m-%d %H:%M:%S"), hint=hint_text() if mode == "hinted" else None)
     for g in goals:
         P = Prover(path, mode, tuple(tools), log, fuse, think)
-        P.top = g.name
+        P.top = g.name.removeprefix("conjecture_")
         res = P.attack(g)
         secs = round(time.monotonic() - P.t0, 1)
         summary["goals"][g.name] = dict(
@@ -911,11 +911,16 @@ def sub_file_text(module: str, ns: str, run: str, mode: str, proved: dict, open_
              "set_option linter.unusedVariables false", "", f"namespace {ns}", "", "open Chess hiding between", "open Ideas.Vocabulary", ""]
     for n, v in open_.items():                                          # (the OPEN ones first: lean_index reads a theorem's body to the next declaration)
         last = re.sub(r"-/", "- /", str(v.get("last") or "?"))[:900]
-        lines += [f"/-- OPEN sub-goal of {v.get('parent')} (run {run}); the prover's last state: {last} -/", v["statement"].rstrip(), "  sorry", ""]
+        lines += [f"/-- OPEN sub-goal of {v.get('parent')} (run {run}); the prover's last state: {last} -/", open_name(v["statement"]).rstrip(), "  sorry", ""]
     for n, v in proved.items():
         lines += [f"/-- PROVED by {v['tool']} (sub-goal of {v['parent']}, run {run}). -/", v["text"].rstrip(), ""]
     lines += [f"end {ns}", ""]
     return "\n".join(lines)
+
+
+def open_name(stmt: str) -> str:
+    """An open statement under the repo's name for one (`conjecture_<name>`: tests/test_lean_index.py)."""
+    return re.sub(r"^theorem (?!conjecture_)(\S+)", r"theorem conjecture_\1", stmt.strip())
 
 
 def sub_entry(n: str, v: dict, ns: str, sub: str, run: str, mode: str, entry_name: str, mreads: tuple, day: str, accepted: "bool | None",
@@ -923,6 +928,7 @@ def sub_entry(n: str, v: dict, ns: str, sub: str, run: str, mode: str, entry_nam
     """A sub-goal's STORE ENTRY: origin MINED, kind by role, reads by its statement, implementation its theorem in the run's file; PROVED (lean = its name) only
     when `accepted` (the acceptance check on the built file), else CONJECTURE -- a proved one the check rejected says why, an open one (`accepted` None)
     carries the prover's last state."""
+    n = n if accepted is not None else ("" if n.startswith("conjecture_") else "conjecture_") + n      # (an open one is named as the file names it)
     base = dict(name=f"mined lemma {ns}.{n}", kind=role(v["statement"]), reads=reads_of(v["statement"], mreads), terms=[], origin="MINED", plan=["73.6"],
                 journal=day, measure=None, implementation=[f"lean/ideas/Ideas/Mined/{sub}.lean:{n}"])
     if accepted is None:
@@ -949,7 +955,7 @@ def record(summary_path: str, log=print) -> dict:
     ns = TL.namespace(entry)
     mreads = tuple(sorted(MN.measure_of(entry["measure"]["quantity"]).reads))
     out = dict(proved_top=False, entries=[], file=None)
-    g = s["goals"].get("hprog") or {}
+    g = next(iter((s.get("goals") or {}).values()), {})               # (the run's one top goal: hprog, or conjecture_hprog while it is open)
     day = time.strftime("%Y-%m-%d")
     if g.get("closed_by"):
         TL.emit(entry, proof=dict(proof=g["proof"], lemmas=g.get("lemmas") or "", tool=g["closed_by"], run=run))

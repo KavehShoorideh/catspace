@@ -14,7 +14,7 @@
  "journal": "2026-10-27",
  "measure": null,
  "implementation": [
-  "lean/ideas/Ideas/Mined/mined_technique_krvk_protection.lean:protection"
+  "lean/ideas/Ideas/Mined/mined_technique_krvk_protection.lean:conjecture_protection"
  ],
  "status": "CONJECTURE",
  "lean": [],

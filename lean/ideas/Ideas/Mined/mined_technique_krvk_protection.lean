@@ -15,7 +15,7 @@ open Ideas.Vocabulary
 /-- THE PROTECTION LEMMA: in a position of the class, if a unit of ours other than the king is attacked by their side, we have a legal move after
 which they are not stalemated and every unit of ours other than the king is not attacked by their side, or is defended by ours.
 OPEN: the tools task. -/
-theorem protection : ∀ p, inClass p → ∀ s pc, p.board s = some pc → pc.color = p.turn → pc.kind ≠ .king →
+theorem conjecture_protection : ∀ p, inClass p → ∀ s pc, p.board s = some pc → pc.color = p.turn → pc.kind ≠ .king →
     isAttackedB p (Color.opposite p.turn) s = true →
     ∃ m, m ∈ legalMoves p ∧ ¬ stalemate (applyMove p m) ∧
       ∀ t qc, (applyMove p m).board t = some qc → qc.color = p.turn → qc.kind ≠ .king →

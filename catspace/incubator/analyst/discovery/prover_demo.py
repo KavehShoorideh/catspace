@@ -41,7 +41,7 @@ from catspace.io import paths
 
 ENTRY = "mined technique KRvK"
 THEOREM = "protection"
-STATEMENT = ("theorem protection : ∀ p, inClass p → ∀ s pc, p.board s = some pc → pc.color = p.turn → pc.kind ≠ .king →\n"
+STATEMENT = ("theorem {name} : ∀ p, inClass p → ∀ s pc, p.board s = some pc → pc.color = p.turn → pc.kind ≠ .king →\n"
              "    isAttackedB p (Color.opposite p.turn) s = true →\n"
              "    ∃ m, m ∈ legalMoves p ∧ ¬ stalemate (applyMove p m) ∧\n"
              "      ∀ t qc, (applyMove p m).board t = some qc → qc.color = p.turn → qc.kind ≠ .king →\n"
@@ -72,7 +72,7 @@ def lean_text(entry: dict, proof: "dict | None" = None) -> str:
             f"/-- THE PROTECTION LEMMA: in a position of the class, if a unit of ours other than the king is attacked by their side, we have a legal move after\n"
             f"which they are not stalemated and every unit of ours other than the king is not attacked by their side, or is defended by ours.\n"
             f"{'PROVED (the proof found by the tools, below).' if proof else 'OPEN: the tools task.'} -/\n"
-            f"{STATEMENT}\n{body}\n\nend {ns}\n")
+            f"{STATEMENT.format(name=THEOREM if proof else 'conjecture_' + THEOREM)}\n{body}\n\nend {ns}\n")
 
 
 # ---------------------------------------------------------------------------------------------------------------- the transcript
@@ -147,7 +147,7 @@ class Transcript:
 def store(entry: dict, summary: dict, log=print) -> dict:
     """The outcome into the store: an ACCEPTED proof -> written into the file by code, built, checked again on the built module, the entry PROVED; else the
     entry CONJECTURE with the prover's last state. The sub-goals the tools proposed: the run's file and their entries (prover.sub_file_text / sub_entry)."""
-    g = summary["goals"][THEOREM]
+    g = next(iter(summary["goals"].values()))                         # (the run's one top goal: protection, or conjecture_protection while open)
     ns, mod, day = TL.namespace(entry), module(entry), time.strftime("%Y-%m-%d")
     mreads = tuple(sorted(MN.measure_of(entry["measure"]["quantity"]).reads))
     path = TL.MINED_DIR / f"{mod}.lean"
@@ -159,9 +159,9 @@ def store(entry: dict, summary: dict, log=print) -> dict:
             mod, (f"{ns}.{THEOREM}",), (g["proof"], g.get("lemmas") or ""), "demo_record")
         if not ok:
             path.write_text(lean_text(entry))
-    stmt = STATEMENT
+    stmt = STATEMENT.format(name=THEOREM)
     e = dict(name=f"protection lemma {entry['measure']['class']}", kind=PR.role(stmt), reads=PR.reads_of(stmt, mreads), terms=[], origin="MINED", plan=["73.6"],
-             journal=day, measure=None, implementation=[f"lean/ideas/Ideas/Mined/{mod}.lean:{THEOREM}"],
+             journal=day, measure=None, implementation=[f"lean/ideas/Ideas/Mined/{mod}.lean:{THEOREM if ok else 'conjecture_' + THEOREM}"],
              status="PROVED" if ok else "CONJECTURE", lean=[f"{ns}.{THEOREM}"] if ok else [],
              evidence=dict(uses={}, confirmed=[f"PROVED by {g['closed_by']} (prover run {summary['run']}): accepted -- lake build, no sorry, the standard axioms "
                                                f"only, no enumeration"] if ok else [], refuted=[]),
@@ -172,7 +172,7 @@ def store(entry: dict, summary: dict, log=print) -> dict:
     out = dict(entry=e, accepted=ok, why=why, sub_entries=[])
     sub = f"{mod}_{summary['mode']}"
     out["replaced"] = PR.drop_run_entries(sub)
-    top_stmt = PR.goals_of(path)[0].stmt if PR.goals_of(path) else STATEMENT
+    top_stmt = PR.goals_of(path)[0].stmt if PR.goals_of(path) else STATEMENT.format(name=THEOREM)
     proved, open_, out["not_words"] = PR.words_of(mod, ns, g, top_stmt, log)
     if proved or open_:
         (TL.MINED_DIR / f"{sub}.lean").write_text(PR.sub_file_text(mod, ns, summary["run"], summary["mode"], proved, open_))
@@ -201,7 +201,7 @@ def run(fuse: float = PR.FUSE_SECONDS, tools: tuple = ("automation", "copilot", 
     mod = module(entry)
     (TL.MINED_DIR / f"{mod}.lean").write_text(lean_text(entry))
     b = TL.build(mod)
-    log(f"OBS prover demo: stated Ideas.Mined.{mod}.{THEOREM}; lake build ok {b['ok']}, sorry warnings {b['sorries']}, {b['secs']} s")
+    log(f"OBS prover demo: stated Ideas.Mined.{mod}.conjecture_{THEOREM}; lake build ok {b['ok']}, sorry warnings {b['sorries']}, {b['secs']} s")
     if not b["ok"] or b["sorries"] != 1:
         raise SystemExit("the statement does not build with exactly one sorry: " + "; ".join(b["errors"][:4]))
     info = dict(run="(starting)", started=time.strftime("%Y-%m-%d %H:%M:%S"), tools=list(tools), think=False, fuse=fuse)
@@ -213,7 +213,7 @@ def run(fuse: float = PR.FUSE_SECONDS, tools: tuple = ("automation", "copilot", 
         T.row(row)
     summary = PR.prove(mod, "blind", tools, fuse, log_print=log, on_write=on_write, tag="demo")
     T.info["run"] = summary["run"]
-    g = summary["goals"][THEOREM]
+    g = next(iter(summary["goals"].values()))
     subs = g.get("proposed") or []
     lines = ["## The sub-goals the model proposed\n"]
     if subs:
@@ -261,7 +261,7 @@ def rerecord(summary_path: str, log=print) -> dict:
     """Re-store a saved demonstration run (no proving) and rewrite the transcript's end from "## The sub-goals the model proposed"."""
     entry = LS.load(force=True)[ENTRY]
     summary = json.load(open(summary_path))
-    g = summary["goals"][THEOREM]
+    g = next(iter(summary["goals"].values()))
     st = store(entry, summary, log)
     md = TRANSCRIPT.read_text()
     head = md[:md.index("## The store entry written")] if "## The store entry written" in md else md

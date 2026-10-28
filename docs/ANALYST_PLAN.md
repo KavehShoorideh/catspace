@@ -3838,6 +3838,22 @@ sub-goals become CONJECTURE entries with the prover's last state. Everything the
 an autoformalizer) -- the difference is itself a result.
 NOT IN 73.6: proving by hand; the K+Q technique (no mined entry yet); AlphaProof (application-only: Kaveh's call).
 
+73.6 BUILT 2026-10-27 on branch worktree-agent-aeb5da3edbf8fc955 (journal 2026-10-27 11:04, 11:10, 12:14, 12:18, 13:42, 15:23, 17:09 and the closing entry after
+them). (1) THE ATOMS technique_measures.AXIS_ATOMS (each unit's rank / file distance to an edge, each pair's rank / file distance, whose move), the miner's
+`--library 73.6` (the class's constants left out); K+R v K re-mined: the same first level (d 3, ranks 3, n 2), 12 zero-failure measures, the entry's own the
+choice, NONE of the owner's opposition form (the new ones use our king's rank / file distance to the rook); K+Q v K still beyond the fuse (best fails 4, was 48).
+(2) THE STATEMENT technique_lean.py: twelve files Ideas/Mined/mined_technique_krvk(_z1..z11).lean, each builds with exactly one sorry; the claimable draws are
+not expressible per position (the narrowest version, labelled); the `reach` atom cannot be #eval-ed (exponential), the others equal the miner's. (3) THE
+HARNESS prover.py: Lean automation, Duper v4.32.0, LeanCopilot v4.32.0 (a scratch tool project on the shared build, nothing of Mathlib rebuilt),
+Goedel-Prover-V2-8B Q8_0 via ollama (whole proofs with Lean's errors fed back; subgoal decomposition by extract_goal; a sketch restating its goal refused), the
+acceptance check, the 90-minute fuse; everything local (Kaveh 2026-10-27: the Aristotle path not built). (4) THE STORE `prover.py record` (PROVED only when
+accepted; sub-goals that are tautologies or restatements are not words). THE DEMONSTRATION first (Kaveh 2026-10-27): his protection lemma, prover_demo.py,
+transcript artifacts/experiments/prover/demo.md. (5) BLIND and HINTED runs on the obligation and the cheap tiers on the 11 alternatives: ALL OPEN -- no
+accepted proof, no sub-lemma that is a step of the owner's proof; the store gains "protection lemma KRvK" and two conditional restatements, all CONJECTURE.
+DEVIATIONS: open statements are named conjecture_* (tests/test_lean_index.py's convention; the plain name once proved); the model's reasoning mode is off
+(its template sent raw with an empty think block: on, every sample ran to the cap); the alternatives got the cheap tiers only (the model's budget went to the
+entry's obligation).
+
 
 ## 74. THE REASONING GRAPH: one worklist over a justification graph, generic (Kaveh 2026-10-27 GO: "Do it because it seems generic. As long as it's generic, I'm happy to do these
 advances so that we can automatically ask questions and find the answers."; spec for an Opus agent, queued behind 73.6 -- both touch agenda.py, one agent at a time)

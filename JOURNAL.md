@@ -34010,3 +34010,65 @@ doc's section 4). Findings for 75.2 (the doc's section 5): castling's rook,
 the repetition key and the exchange's swap list are rules re-implemented in Python; check and capture are read off the SAN for the judge; lemma names and the forcing words are
 tested as strings; material is supplied by the Game and BaseWords interfaces although plan 75 calls it derived; the stake of mate is defined three times; ponder.resume_gap files
 every resumed route under a 'win' question.
+
+
+## 2026-10-27 20:31 PDT -- plan 73.6 (5) THE HINTED RUN: hprog with Kaveh's natural-language proof in the prompt (verbatim from this journal's 2026-10-27 entry) -- OPEN after the fuse; 27 samples; 12 sketches, 5 refused as no progress; no sub-goal of the owner's shape; two conditional restatements enter the store as CONJECTURES (branch worktree-agent-aeb5da3edbf8fc955)
+THE RUN (prover.py prove mined_technique_krvk --mode hinted; artifacts/experiments/prover/20261027_165835_mined_technique_krvk_hinted): the same tools, fuse,
+cap and mode as the blind run; the prompt carries prover.hint_text() -- the passage after "Kaveh, verbatim:" through "distance from opposition on each rank",
+extracted by code, nothing added (checked: present in every model prompt of the run). The no-progress check is the fixed one (the blind entry). A first
+start of this run at 16:56 was stopped after one minute to take that fix (its directory is marked _ABORTED; it is not reported).
+PER TOOL: Lean's automation, Duper, LeanCopilot exactly as blind (the statement is the same: no progress). The model: whole-proof chains and sketches;
+OBS prover mined_technique_krvk hinted goal hprog: OPEN after the fuse; last: the model's answer held no proof of the goal (length); samples 27; sub-goals proposed 5, proved 3, open 2; wall 6104.6 s
+OBS prover mined_technique_krvk hinted tally (tried, accepted): automation aesop 9/3; automation duper [*] 6/0; automation exact? 6/0; automation grind 6/0; automation omega 6/0; automation simp_all 6/0; automation tauto 6/0; copilot search_proof 6/0; llm sketch 12/0; llm sketch (no sorry: a whole proof) 1/0; llm sketch refused 5/0; llm whole 14/0; no-progress check 11/0; attempts logged 94 in artifacts/experiments/prover/20261027_165835_mined_technique_krvk_hinted/attempts.jsonl
+OBS digest 20261027_165835_mined_technique_krvk_hinted: attempts 94; automation aesop 9/3; automation duper [*] 6/0; automation exact? 6/0; automation grind 6/0; automation omega 6/0; automation simp_all 6/0; automation tauto 6/0; copilot search_proof 6/0; llm sketch 12/0; llm sketch (no sorry: a whole proof) 1/0; llm sketch refused 5/0; llm whole 14/0; no-progress check 11/0
+OBS digest 20261027_165835_mined_technique_krvk_hinted: model samples 27 (cut by the cap 3); tokens 87..10240, total 48891; seconds 11.9..1170.4, total 5533.2
+OBS digest 20261027_165835_mined_technique_krvk_hinted: sketches 12 (compiled with sub-goals 10, sub-goals stated 27); refused as no progress 5
+OBS digest 20261027_165835_mined_technique_krvk_hinted goal hprog: OPEN; samples 27; wall 6104.6 s; sub-goals proposed 5, proved 3, open 2
+OBS digest 20261027_165835_mined_technique_krvk_hinted goal hprog last: the model's answer held no proof of the goal (length)
+OBS digest 20261027_165835_mined_technique_krvk_hinted sub-goal hprog_hinted_s1 (of hprog): OPEN: theorem hprog_hinted_s1 (p : Position) (hp : inClass p) (r : Position) (hr : inClass r ∧ mu r < mu p) (h2 : inClass r) (h3 : mu r < mu p) : Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p := by
+OBS digest 20261027_165835_mined_technique_krvk_hinted sub-goal hprog_hinted_s2 (of hprog): PROVED by automation: aesop: theorem hprog_hinted_s2 (p : Position) (hp : inClass p) (r : Position) (hr : inClass r ∧ mu r < mu p) (h2 : inClass r) (h3 : mu r < mu p) (h4 : Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p) : Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p := by
+OBS digest 20261027_165835_mined_technique_krvk_hinted sub-goal hprog_hinted_s3 (of hprog): OPEN: theorem hprog_hinted_s3 (p : Position) (hp h3 : inClass p) (h4 : ∀ (r : Position), inClass r ∧ mu r < mu p → Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p) : Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p := by
+OBS digest 20261027_165835_mined_technique_krvk_hinted sub-goal hprog_hinted_s4 (of hprog): PROVED by automation: aesop: theorem hprog_hinted_s4 (p : Position) (hp h3 : inClass p) (h4 : ∀ (r : Position), inClass r ∧ mu r < mu p → Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p) (h5 : Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p) : Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p := by
+OBS digest 20261027_165835_mined_technique_krvk_hinted sub-goal hprog_hinted_s5 (of hprog): PROVED by automation: aesop: theorem hprog_hinted_s5 (p : Position) (hp : inClass p) (h2 : Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p) : Forced.Reach ours theirs mate (fun r => inClass r ∧ mu r < mu p) 3 p := by
+WHAT THE HINT DID (read from the run's sketches, directional, one run): the sketches came more often (12, against the blind run's 2), and a few plans name
+the rook, but no `have` states a step of the owner's proof -- not the protection of the rook, not the quarter board, not the opposition, not the back row:
+the steps unpack the class predicate (`p.castling = ∅ := hp.1.2.1`, the checks, the move list) or write the goal again, five of them refused as no progress.
+The sub-goals the loop attacked: three tautologies (the goal given the goal) and two CONDITIONAL RESTATEMENTS -- the goal under an extra hypothesis that a
+position of the class with a lower measure exists (s1: `(r : Position) (hr : inClass r ∧ mu r < mu p) ... : Forced.Reach ... 3 p`; s3: `(h4 : ∀ r, inClass r ∧
+mu r < mu p → Forced.Reach ... 3 p) : Forced.Reach ... 3 p`). Lean's no-word rule does not catch these (the goal does not follow from them by `apply`: their
+extra hypothesis is not the goal's), so by the spec they enter the store as CONJECTURES with the prover's last state; they are no progress in substance --
+said here so no one reads them as the owner's sub-lemmas.
+THE STORE (prover.py record):
+OBS prover record: hprog_hinted_s2 is not a word -- a tautology: its conclusion is one of its hypotheses (`intros; assumption` closes it)
+OBS prover record: hprog_hinted_s4 is not a word -- a tautology: its conclusion is one of its hypotheses (`intros; assumption` closes it)
+OBS prover record: hprog_hinted_s5 is not a word -- a tautology: its conclusion is one of its hypotheses (`intros; assumption` closes it)
+OBS prover record mined_technique_krvk_hinted: written, lake build ok True, sorry warnings 2 (the open sub-goals: 2)
+OBS prover record: lean_index build exit 0: OBS indexed 675 theorems/lemmas (179 open) and 583 documented defs in 73 files; 324 cited by code -> docs/LEAN_INDEX.md
+OBS lemma store validate: entries 101, patterns 29; words read 0 () from 0 snapshot dir(s); uncatalogued 0 (0 distinct); problems 0
+OBS prover record mined_technique_krvk hinted: the top obligation not proved; store entries written 2: mined lemma Ideas.Mined.mined_technique_krvk.conjecture_hprog_hinted_s1, mined lemma Ideas.Mined.mined_technique_krvk.conjecture_hprog_hinted_s3
+THE OUTCOME, HINTED: OPEN, as blind. The difference (one run each, directional): the hint made the model decompose more but not along the proof it was
+given; neither run produced a sub-lemma that is a step of that proof.
+THE ALTERNATIVE STATEMENTS (the 11 other zero-failure measures of the re-mined level, mined_technique_krvk_z1..z11): the cheap tiers only -- Lean's automation, Duper, LeanCopilot (the model's budget went to the entry's own obligation, in the two runs above; the alternatives differ from it only in the measure):
+OBS prover mined_technique_krvk_z1 blind goal hprog: OPEN after the fuse; last: copilot 'search_proof': error: ProverTools/copilot_hprog_p93877.lean:98:2: Tactic `aesop` failed, made no progress
+OBS prover mined_technique_krvk_z2 blind goal hprog: OPEN after the fuse; last: copilot 'search_proof': error: ProverTools/copilot_hprog_p94793.lean:91:2: Tactic `aesop` failed, made no progress
+OBS prover mined_technique_krvk_z3 blind goal hprog: OPEN after the fuse; last: copilot 'search_proof': error: ProverTools/copilot_hprog_p95587.lean:91:2: Tactic `aesop` failed, made no progress
+OBS prover mined_technique_krvk_z4 blind goal hprog: OPEN after the fuse; last: copilot 'search_proof': error: ProverTools/copilot_hprog_p96339.lean:98:2: Tactic `aesop` failed, made no progress
+OBS prover mined_technique_krvk_z5 blind goal hprog: OPEN after the fuse; last: copilot 'search_proof': error: ProverTools/copilot_hprog_p97079.lean:98:2: Tactic `aesop` failed, made no progress
+OBS prover mined_technique_krvk_z6 blind goal hprog: OPEN after the fuse; last: copilot 'search_proof': error: ProverTools/copilot_hprog_p97839.lean:98:2: Tactic `aesop` failed, made no progress
+OBS prover mined_technique_krvk_z7 blind goal hprog: OPEN after the fuse; last: copilot 'search_proof': error: ProverTools/copilot_hprog_p98590.lean:98:2: Tactic `aesop` failed, made no progress
+OBS prover mined_technique_krvk_z8 blind goal hprog: OPEN after the fuse; last: copilot 'search_proof': error: ProverTools/copilot_hprog_p99404.lean:91:2: Tactic `aesop` failed, made no progress
+OBS prover mined_technique_krvk_z9 blind goal hprog: OPEN after the fuse; last: copilot 'search_proof': error: ProverTools/copilot_hprog_p247.lean:91:2: Tactic `aesop` failed, made no progress
+OBS prover mined_technique_krvk_z10 blind goal hprog: OPEN after the fuse; last: copilot 'search_proof': error: ProverTools/copilot_hprog_p1181.lean:91:2: Tactic `aesop` failed, made no progress
+OBS prover mined_technique_krvk_z11 blind goal hprog: OPEN after the fuse; last: copilot 'search_proof': error: ProverTools/copilot_hprog_p2123.lean:91:2: Tactic `aesop` failed, made no progress
+THE OPEN STATEMENTS RENAMED (a deviation from 73.6 (1)'s literal `theorem hprog`, for the repo's own rule): tests/test_lean_index.py holds that a theorem
+still holding `sorry` is named premise_* or conjecture_* (the self-mining loop's convention: the statement is the finding). So while open the emitted
+obligation is `conjecture_hprog` and its corollary `conjecture_forced_mate` (twelve files regenerated; each builds with exactly one sorry), the demonstration's
+lemma `conjecture_protection`, an open sub-goal in a run's file `conjecture_<name>`; an accepted proof is written under the plain name (`hprog`, `forced_mate`,
+`protection`). The runs and their records are unchanged in substance (re-recorded from their summaries, no proving); docs/LEAN_INDEX.md rebuilt on purpose.
+THE GATE (one file per call, the branch's final code; main merged at 98604d75):
+OBS gate engine --only, passed / failed / xfailed / errors, wall: test_plan73_6 27/0/0/0 46.5 s; test_plan73_5b 11/0/0/0 8.1 s; test_plan73_5 7/0/0/0 2.2 s;
+test_plan73 9/0/0/0 13.7 s; test_agenda 26/0/0/0 103.4 s; test_regress 87/0/1/0 393.2 s (the xfail is the file's non-strict LOOP TARGET 1, a timed proof
+marginal under the pool -- no engine file changed here); test_lean_index 2/0/0/0 157.7 s (the index it rewrites is identical to the one rebuilt on purpose)
+OBS lemma store validate: entries 101, patterns 29; words read 944 (fact 145, fact-why 588, gap 89, kill 99, lemma 23) from 0 snapshot dir(s) and the two fixed positions; uncatalogued 0 (0 distinct); problems 0
+THE STORE AFTER 73.6: 101 entries -- "mined technique KRvK" (CONJECTURE, its evidence the re-mine), "protection lemma KRvK" (CONJECTURE), and the hinted
+run's two conditional restatements (CONJECTURE); nothing PROVED by 73.6 (no accepted proof).
