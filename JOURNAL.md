@@ -34832,3 +34832,24 @@ process; the default path, SEE_THREATS on, is the one the guard reads).
 THE GUARD (the rebuilt core): OBS ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99
 (walls 6 s, 23 s, 15 s, 58 s). OBS ontology validate: problems 0 (node kinds ['square', 'piece', 'question', 'root', 'route']). OBS audit recount: CHESS FACT rows
 210 -> 210. OBS gate engine --only: test_plan76 19/0/0/0 62.0 s; test_graph_policy 6/0/0/0 2.8 s.
+
+
+## 2026-10-28 16:16 -- plan 76.1 (e) THE RUST FIX THE SURPRISES PINNED: game.rs `insufficient` is the kernel's rule; the nine surprises are agreements; the holdout agrees 100 % (branch worktree-agent-a12092dcf58ba7325)
+rust/analyst_core/src/game.rs `insufficient(q)` = shakmaty's `q.is_insufficient_material()`: both sides lack mating material by their material alone (python-chess's
+`has_insufficient_material`, the rule Game.terminal reads and the spec's `draw`): the bare king, a king and a knight against kings and queens, and every bishop of the
+board on one colour with no pawn and no knight -- FIDE 5.2.2's dead position (the bishops case for every continuation: Lean Ideas.DeadPosition.one_colour_dead, 76.1 (b)).
+It read "two kings and at most one knight or bishop", which missed the one-colour bishops. A Rust build (`maturin develop --release`): the shared editable install points at
+this branch's crate. THE NINE SURPRISES (rules/surprises/s001..s009, the class 76.0 found): OBS surprises replayed: 9, as expected 0 with the cases still `known` (every
+one left [] -- the fix changed them, as the replay was built to say), then each case read again (`expect` agree, its change PATCHED by 76.1 (e)): OBS surprises replayed:
+9, as expected 9. The shelf's agreement with --lean on its 20 positions: disagreements 0 (filed already 0, new 0) (2 before the fix).
+THE HOLDOUT CROSS-PLAY (seed 77, 200 games, 76.0's run 2): OBS crossplay: positions 69567, legal moves (python-chess) 1579232, next states compared 1579232 (python-chess)
+and 1579232 (Rust), Rust draw readings 1578857; wall 508.3 s on 11 processes. OBS crossplay disagreements: positions with one 0 of 69567 (with python-chess 0); by class none.
+OBS crossplay agreement: 69567 of 69567 positions agree on every reading (100.000%); with python-chess 69567 of 69567 (76.0's holdout: 69500 of 69566 with the Rust core).
+THE GUARD (the fixed core): OBS ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s,
+24 s, 16 s, 59 s). WHAT THE GUARD SEES OF THIS RULE: nothing -- NEGATIVE CONTROL (not committed): game.rs `insufficient` read for the side to move only
+(`has_insufficient_material(q.turn())`, a one-sided bug) moves 0 of 10 traces (ten t0, t2) and 0 of 99 (wide t0, t2), DECISION lines 0: no line the engine reads on the
+puzzle sets at the count budget reaches such material. The check that does see it: OBS 76.1 (e) negative control (game.rs insufficient read for the side to move only):
+the shelf agreement on its 20 positions: disagreements 2 -- by kernel and relation [('rust', 'draw')] ; positions 2 (e.g. K+P v K after White's move, the bare king to
+move: the wrong build reads a draw, the spec none). The fix restored and rebuilt.
+OBS audit recount: CHESS FACT rows 210 -> 210. OBS gate engine --only: test_plan76 20/0/0/0 61.6 s (its new test: the nine cases agree, each successor's Rust draw is the
+kernel's, the near misses stay sufficient); test_rules_gdl 12/0/0/0 3.8 s (every filed surprise replays); test_game 3/0/0/0 0.3 s; test_rules_draws 17/0/0/0 3.5 s.

@@ -295,3 +295,27 @@ def test_d_the_rust_datalog_s_relations_are_shelf_entries():
     store = ON.load()
     for r in rels:
         assert store[r]["rust"] == f"rules.rs:{r}", r
+
+
+# ---------------------------------------------------------------------------------------------------------------- (e) the Rust fix the surprises pinned
+
+def test_e_the_rust_insufficient_material_is_the_kernels_on_the_nine_surprises():
+    """game.rs `insufficient` is the kernel's rule (shakmaty's is_insufficient_material = python-chess's = the spec's `draw`): the nine surprises of plan 76.0 (the
+    one-colour bishops the Rust core missed) are agreements now, every reading of both kernels at each, and each case says so."""
+    import analyst_core as AC
+    CP = _script("crossplay")
+    cases = [c for c in CP.load_surprises() if c["kernel"] == "rust" and c["class"] == "draw"]
+    assert len(cases) == 9
+    for c in cases:
+        assert c["expect"] == "agree" and "PATCHED by plan 76.1 (e)" in c["change"], c["file"]
+        assert CP.replay(c) == [], c["file"]
+        b = chess.Board(c["fen"])
+        reads = dict(AC.game_draw_check(c["fen"], []))
+        for m in b.legal_moves:
+            s = b.copy(stack=False)
+            s.push(m)
+            if s.is_insufficient_material() and s.halfmove_clock < 100:
+                assert reads.get(m.uci()) == "insufficient material", (c["file"], m.uci())
+    # the near misses stay sufficient: bishops on both colours, a bishop and a knight
+    for fen in ("8/8/8/4k3/8/2b5/8/KB6 w - - 0 1", "8/8/3k4/8/8/8/1B6/KB6 w - - 0 1", "8/8/8/4k3/8/8/3n4/KB6 w - - 0 1"):
+        assert not [w for _u, w in AC.game_draw_check(fen, []) if w == "insufficient material"], fen

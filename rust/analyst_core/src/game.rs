@@ -12,7 +12,8 @@
 //! fiftyMoveClaimable; and the proved `Ideas.InsufficientMaterial.insufficient_material`):
 //!   CLAIMABLE   a position reached in analysis for the third time (the history's count plus this one), or with 100
 //!               plies since the last capture or pawn move -- either side may claim it, so no claim to win survives it
-//!   INSUFFICIENT two kings and at most one knight or bishop: no checkmate exists (proved, static)
+//!   INSUFFICIENT the kernel's rule (shakmaty / python-chess): the bare king, the lone knight, one-colour bishops --
+//!               a dead position (Lean Ideas.DeadPosition for the bishops; plan 76.1 (e))
 //!   STALEMATE   no legal move and not in check
 use super::*;
 use std::cell::RefCell;
@@ -53,17 +54,15 @@ pub fn claimable_draw(q: &Chess) -> Option<&'static str> {
     None
 }
 
-/// INSUFFICIENT MATERIAL, the proved static rule (Lean Ideas.InsufficientMaterial.insufficient_material): two kings and
-/// at most one more piece, a knight or a bishop of either side -- no checkmate exists. (That no continuation adds
-/// material -- no pawn, so no promotion -- is the dynamic step, not yet proved in Lean.)
+/// INSUFFICIENT MATERIAL, the kernel's rule (plan 76.1 (e)): shakmaty's `is_insufficient_material` -- both sides lack
+/// mating material by their material alone, python-chess's `has_insufficient_material` (the rule Game.terminal reads and
+/// the spec's `draw`, rules/chess.gdl): the bare king, a king and a knight against kings and queens, and EVERY BISHOP OF
+/// THE BOARD ON ONE COLOUR with no pawn and no knight. A dead position (FIDE 5.2.2): the bishops case and the bare kings
+/// for every continuation (Lean Ideas.DeadPosition.one_colour_dead, dead_of_spec_draw), a king and one minor piece in the
+/// position itself (Ideas.InsufficientMaterial.insufficient_material). It read only "two kings and at most one knight or
+/// bishop" before, which missed the one-colour bishops (the nine surprises of rules/surprises/, plan 76.0).
 pub fn insufficient(q: &Chess) -> bool {
-    let b = q.board();
-    let others = b.occupied() & !b.kings();
-    match others.count() {
-        0 => true,
-        1 => (b.knights() | b.bishops()).contains(others.first().unwrap()),
-        _ => false,
-    }
+    q.is_insufficient_material()
 }
 
 /// A DRAWN position for a decision: stalemate, a claimable draw, insufficient material.
