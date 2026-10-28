@@ -34542,3 +34542,32 @@ ten no case's trace depends on the cases run before it in one process.
 THE PARENT SNAPSHOT OF PLAN 76 (taken once; every 76.x agent reuses it): /Users/kav/code/remote/github/catspace/artifacts/experiments/plan76/parent/{ten_t0,ten_t2,wide_t0,wide_t2}
 (ten + wide, tiers 0 and 2, count budget, PYTHONHASHSEED=0, --jobs 11, main d366ee81's engine). OBS parent snapshot ten t0: wall 9 s; ten t2: wall 33 s; wide t0: wall 19 s;
 wide t2: wall 67 s (218 runs, 128 s; 10 / 10 / 99 / 99 cases, five files each). Its ten t0 and ten t2 are byte-identical to the serial runs above.
+
+
+## 2026-10-28 13:35 -- plan 76.0 (a) CHESS IN GDL: rules/chess.gdl, the rules as Datalog clauses (branch worktree-agent-ababbaddc3af91dc2)
+`rules/` is a new top-level directory of SPEC FILES (no __init__.py, not a package). rules/chess.gdl: Stanford GDL in KIF syntax -- role, init, true, does, legal, next,
+terminal, goal -- WRITTEN for this plan: no GDL or Ludii chess text was available offline to start from (the Stanford GGP chess description and Ludii's Chess.lud are
+the cross-reference by name only). It states: the board as cells (`(cell f r colour kind)`), every unit's movement (the sliders by `slide` along `line_of` their kind,
+the knight's jump, the king's step, the pawn's push, double push, capture), capture (`capture`, en passant included), CHECK (the mover's king attacked), legality (the
+mover's king not attacked on the board AFTER the candidate: `after`, `king_ray`, `exposed`), castling (the right, the king and rook on their home squares, the squares
+between empty, the king's three squares not attacked; a right ends when a unit leaves or lands on the king's or that rook's square), en passant (the passed-over square
+set after EVERY double push, as both kernels do; the capture only where a pawn can take), promotion to each of queen / rook / bishop / knight, MATE, STALEMATE, the
+halfmove clock (a pawn move or a capture resets it; it SATURATES at 100: the rule reads only "100 or more") and the fifty-move rule (the clock at 100 and a legal move),
+and INSUFFICIENT MATERIAL as the fast kernel Game.terminal reads defines it (python-chess `has_insufficient_material`: the knight case, the one-colour bishops case, the
+bare king). LEFT OUT and said so in the file: THREEFOLD REPETITION (it needs the history; carrying every earlier board in `true` is not clean), the automatic fivefold /
+75-move draws (inside the claimable ones), the fullmove number (no rule).
+OBS gdl rules/chess.gdl: clauses 363 (rules 129, facts 234), relations 96, strata 96, static relations 34 with 1666 facts (307 lines).
+NAMES USED (discovery/names.py): square, rank, file, the six unit kinds (constants), move (`move_by`, the `move` term), attack (`attack`, `attack_by`, `attacked`), slide,
+capture, check, promotion (`promotes`, `promotable`, the `promote` term), mate, stalemate, draw (insufficient material), the fifty-move rule (`draw_by_fifty_moves`),
+tempo as `control`.
+FINDINGS -- every relation introduced beyond the names (candidate object or relation kinds for 76.1): GEOMETRY (static) -- `file_succ` / `rank_succ` (the coordinate
+order: GDL has no arithmetic), `step` (a unit vector along a direction), `orthogonal` / `diagonal` (the DIRECTION object and the line kinds), `line_of` (a unit kind's
+lines), `king_step`, `knight_jump`, `dark` / `light` with `file_parity` / `rank_parity` (the square's COLOUR CLASS), `forward`, `pawn_diagonal`, `pawn_start`,
+`last_rank`, `ep_victim` (the pawn's per-colour geometry), `home_rank`, `castling_path`, `castling_empty`, `castling_safe`, `right_square` (castling's squares),
+`count_succ` / `clock_limit` (the clock's numbers), `role` / `opponent` (the sides). THE BOARD -- `occupied` / `empty` (FREE vs BLOCKED), `may_land` (a landing square:
+empty or a unit of the other side that is not its king = the kernel's destinationFriendlyB), `en_passant`, `castle`, `castle_blocked`, `castle_unsafe`, `castling_move`,
+`candidate` (a pseudo-legal move by its two squares). THE BOARD AFTER A MOVE (legality) -- `vacates`, `fills`, `filled`, `stays`, `after`, `after_occupied` (a
+COUNTERFACTUAL BOARD keyed by the move: the object Ideas.Landing.land is for a landing), `king_after`, `king_ray` (the RAY from a square: the lines out of the king),
+`exposed` (the king attacked after the move: the pin / discovered-check relation). THE END -- `has_move`, `mating_material`, `has_kind`, `two_units`,
+`selfmate_material`, `mixed_bishops`, `any_pawn`, `any_knight`, `insufficient`, `drawn`. THE NEXT STATE -- `castled`, `passant_taken`, `lifted`, `landed`, `touched`
+(= Ideas.PathLemma.touched: the squares a move changes), `right_lost`, `clock_event` (= Game.clock_events' 'capture' / 'pawn'), `clock_reset`.

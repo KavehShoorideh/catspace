@@ -1,0 +1,307 @@
+;;; rules/chess.gdl -- THE RULES OF CHESS in Stanford GDL (ANALYST_PLAN 76.0 (a), 2026-10-28).
+;;;
+;;; The SPEC: the game's rules as Datalog clauses (role, init, true, does, legal, next, terminal, goal). The fast kernels (python-chess, the Rust
+;;; core's shakmaty) are IMPLEMENTATIONS certified against it by cross-play (scripts/crossplay.py); the Lean definitions are generated from it
+;;; (scripts/gdl_to_lean.py; the rook in lean/ideas/Ideas/Spec/Rook.lean).
+;;;
+;;; Written for this plan (no GDL or Ludii chess text was available offline to start from; the Stanford GGP chess description and Ludii's
+;;; Chess.lud are the cross-reference by name only). Relations are named by the names table (discovery/names.py) where a name exists --
+;;; attack, move, slide, capture, check, mate, stalemate, draw, promotion -- and every other relation is listed in the plan's report as a FINDING
+;;; (a candidate object or relation kind for 76.1).
+;;;
+;;; THE STATE (the `true` fluents):
+;;;   (cell ?f ?r ?c ?k)        a unit of colour ?c and kind ?k on file ?f, rank ?r (files a..h, ranks 1..8)
+;;;   (control ?c)              ?c is to move
+;;;   (castling_right ?c ?side) ?c may still castle on ?side (kingside / queenside)
+;;;   (ep_square ?f ?r)         the square a pawn passed over on the last move (set after EVERY double push, as both kernels do; the capture
+;;;                             there is legal only when a pawn can take: FIDE 3.7.d)
+;;;   (halfmove ?n)             the moves since the last capture or pawn move, 0..100; it SATURATES at 100 (the rule reads only "100 or more")
+;;; THE MOVES (the `does` terms; their text is the UCI notation): (move ?f1 ?r1 ?f2 ?r2) -- castling is the king's move e1g1 / e1c1 / e8g8 / e8c8,
+;;;   en passant the pawn's diagonal move; (promote ?f1 ?r1 ?f2 ?r2 ?k) -- a pawn reaching its last rank, ?k one of queen rook bishop knight;
+;;;   noop -- the side not to move.
+;;; LEFT OUT (said so): THREEFOLD REPETITION needs the game's history (the identities of the positions before); carrying it in `true` would put
+;;;   every earlier board in the state -- not clean, so it is not here (Game.terminal reads it off its Record, plan 75.4). The fivefold and
+;;;   seventy-five-move automatic draws (FIDE 9.6) are inside the claimable ones the kernel's terminal reports. The fullmove number is no rule.
+;;; INSUFFICIENT MATERIAL is the fast kernel's rule (python-chess `Board.is_insufficient_material`, which `Game.terminal` reads as 'draw'): every
+;;;   side lacks mating material by its material alone -- a sound part of FIDE 5.2.2's dead position (no checkmate by any series of legal moves).
+
+;;; ---------------------------------------------------------------------------------------------------------------- the roles and the board
+
+(role white)
+(role black)
+(opponent white black)
+(opponent black white)
+
+(file a) (file b) (file c) (file d) (file e) (file f) (file g) (file h)
+(rank 1) (rank 2) (rank 3) (rank 4) (rank 5) (rank 6) (rank 7) (rank 8)
+(file_succ a b) (file_succ b c) (file_succ c d) (file_succ d e) (file_succ e f) (file_succ f g) (file_succ g h)
+(rank_succ 1 2) (rank_succ 2 3) (rank_succ 3 4) (rank_succ 4 5) (rank_succ 5 6) (rank_succ 6 7) (rank_succ 7 8)
+
+(<= (square ?f ?r) (file ?f) (rank ?r))
+
+;;; one step in each of the eight directions
+(<= (step north ?f ?r1 ?f ?r2) (file ?f) (rank_succ ?r1 ?r2))
+(<= (step south ?f ?r1 ?f ?r2) (file ?f) (rank_succ ?r2 ?r1))
+(<= (step east ?f1 ?r ?f2 ?r) (rank ?r) (file_succ ?f1 ?f2))
+(<= (step west ?f1 ?r ?f2 ?r) (rank ?r) (file_succ ?f2 ?f1))
+(<= (step northeast ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?f2) (rank_succ ?r1 ?r2))
+(<= (step northwest ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?f1) (rank_succ ?r1 ?r2))
+(<= (step southeast ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?f2) (rank_succ ?r2 ?r1))
+(<= (step southwest ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?f1) (rank_succ ?r2 ?r1))
+
+(orthogonal north) (orthogonal south) (orthogonal east) (orthogonal west)
+(diagonal northeast) (diagonal northwest) (diagonal southeast) (diagonal southwest)
+
+;;; the lines a slider slides on, by its kind
+(<= (line_of rook ?d) (orthogonal ?d))
+(<= (line_of bishop ?d) (diagonal ?d))
+(<= (line_of queen ?d) (orthogonal ?d))
+(<= (line_of queen ?d) (diagonal ?d))
+
+(<= (king_step ?f1 ?r1 ?f2 ?r2) (step ?d ?f1 ?r1 ?f2 ?r2))
+
+(<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?f2) (rank_succ ?r1 ?x) (rank_succ ?x ?r2))
+(<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?f1) (rank_succ ?r1 ?x) (rank_succ ?x ?r2))
+(<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?f2) (rank_succ ?r2 ?x) (rank_succ ?x ?r1))
+(<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?f1) (rank_succ ?r2 ?x) (rank_succ ?x ?r1))
+(<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?x) (file_succ ?x ?f2) (rank_succ ?r1 ?r2))
+(<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?x) (file_succ ?x ?f1) (rank_succ ?r1 ?r2))
+(<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f1 ?x) (file_succ ?x ?f2) (rank_succ ?r2 ?r1))
+(<= (knight_jump ?f1 ?r1 ?f2 ?r2) (file_succ ?f2 ?x) (file_succ ?x ?f1) (rank_succ ?r2 ?r1))
+
+;;; the pawn's directions and ranks, by its colour
+(forward white north) (forward black south)
+(pawn_diagonal white northeast) (pawn_diagonal white northwest)
+(pawn_diagonal black southeast) (pawn_diagonal black southwest)
+(pawn_start white 2) (pawn_start black 7)
+(last_rank white 8) (last_rank black 1)
+(promotable queen) (promotable rook) (promotable bishop) (promotable knight)
+;;; the pawn taken en passant stands next to the passed-over square, behind it from the capturer's side
+(<= (ep_victim white ?f ?r2 ?f ?r1) (file ?f) (rank_succ ?r1 ?r2))
+(<= (ep_victim black ?f ?r1 ?f ?r2) (file ?f) (rank_succ ?r1 ?r2))
+
+;;; castling: the home rank; the king's and rook's squares; the squares that must be empty; the squares the king stands on or passes that must not be attacked
+(home_rank white 1) (home_rank black 8)
+(castling_path kingside g f h)        ; the king goes to g, the rook from h to f
+(castling_path queenside c d a)       ; the king goes to c, the rook from a to d
+(castling_empty kingside f) (castling_empty kingside g)
+(castling_empty queenside b) (castling_empty queenside c) (castling_empty queenside d)
+(castling_safe kingside e) (castling_safe kingside f) (castling_safe kingside g)
+(castling_safe queenside e) (castling_safe queenside d) (castling_safe queenside c)
+;;; the squares whose unit's move (or capture) ends a castling right: the king's and that rook's home squares
+(right_square white kingside e 1) (right_square white kingside h 1)
+(right_square white queenside e 1) (right_square white queenside a 1)
+(right_square black kingside e 8) (right_square black kingside h 8)
+(right_square black queenside e 8) (right_square black queenside a 8)
+
+;;; the colour of a square (a1 is dark): file and rank of the same parity
+(file_parity a even) (file_parity b odd) (file_parity c even) (file_parity d odd)
+(file_parity e even) (file_parity f odd) (file_parity g even) (file_parity h odd)
+(rank_parity 1 even) (rank_parity 2 odd) (rank_parity 3 even) (rank_parity 4 odd)
+(rank_parity 5 even) (rank_parity 6 odd) (rank_parity 7 even) (rank_parity 8 odd)
+(<= (dark ?f ?r) (file_parity ?f ?p) (rank_parity ?r ?p))
+(<= (light ?f ?r) (file_parity ?f ?p) (rank_parity ?r ?q) (distinct ?p ?q))
+
+;;; the clock's numbers (GDL has no arithmetic: the successor is a table)
+(count_succ 0 1) (count_succ 1 2) (count_succ 2 3) (count_succ 3 4) (count_succ 4 5) (count_succ 5 6) (count_succ 6 7) (count_succ 7 8) (count_succ 8 9) (count_succ 9 10)
+(count_succ 10 11) (count_succ 11 12) (count_succ 12 13) (count_succ 13 14) (count_succ 14 15) (count_succ 15 16) (count_succ 16 17) (count_succ 17 18) (count_succ 18 19) (count_succ 19 20)
+(count_succ 20 21) (count_succ 21 22) (count_succ 22 23) (count_succ 23 24) (count_succ 24 25) (count_succ 25 26) (count_succ 26 27) (count_succ 27 28) (count_succ 28 29) (count_succ 29 30)
+(count_succ 30 31) (count_succ 31 32) (count_succ 32 33) (count_succ 33 34) (count_succ 34 35) (count_succ 35 36) (count_succ 36 37) (count_succ 37 38) (count_succ 38 39) (count_succ 39 40)
+(count_succ 40 41) (count_succ 41 42) (count_succ 42 43) (count_succ 43 44) (count_succ 44 45) (count_succ 45 46) (count_succ 46 47) (count_succ 47 48) (count_succ 48 49) (count_succ 49 50)
+(count_succ 50 51) (count_succ 51 52) (count_succ 52 53) (count_succ 53 54) (count_succ 54 55) (count_succ 55 56) (count_succ 56 57) (count_succ 57 58) (count_succ 58 59) (count_succ 59 60)
+(count_succ 60 61) (count_succ 61 62) (count_succ 62 63) (count_succ 63 64) (count_succ 64 65) (count_succ 65 66) (count_succ 66 67) (count_succ 67 68) (count_succ 68 69) (count_succ 69 70)
+(count_succ 70 71) (count_succ 71 72) (count_succ 72 73) (count_succ 73 74) (count_succ 74 75) (count_succ 75 76) (count_succ 76 77) (count_succ 77 78) (count_succ 78 79) (count_succ 79 80)
+(count_succ 80 81) (count_succ 81 82) (count_succ 82 83) (count_succ 83 84) (count_succ 84 85) (count_succ 85 86) (count_succ 86 87) (count_succ 87 88) (count_succ 88 89) (count_succ 89 90)
+(count_succ 90 91) (count_succ 91 92) (count_succ 92 93) (count_succ 93 94) (count_succ 94 95) (count_succ 95 96) (count_succ 96 97) (count_succ 97 98) (count_succ 98 99) (count_succ 99 100)
+(clock_limit 100)
+
+;;; ---------------------------------------------------------------------------------------------------------------- the initial position
+
+(init (cell a 1 white rook)) (init (cell b 1 white knight)) (init (cell c 1 white bishop)) (init (cell d 1 white queen))
+(init (cell e 1 white king)) (init (cell f 1 white bishop)) (init (cell g 1 white knight)) (init (cell h 1 white rook))
+(init (cell a 2 white pawn)) (init (cell b 2 white pawn)) (init (cell c 2 white pawn)) (init (cell d 2 white pawn))
+(init (cell e 2 white pawn)) (init (cell f 2 white pawn)) (init (cell g 2 white pawn)) (init (cell h 2 white pawn))
+(init (cell a 7 black pawn)) (init (cell b 7 black pawn)) (init (cell c 7 black pawn)) (init (cell d 7 black pawn))
+(init (cell e 7 black pawn)) (init (cell f 7 black pawn)) (init (cell g 7 black pawn)) (init (cell h 7 black pawn))
+(init (cell a 8 black rook)) (init (cell b 8 black knight)) (init (cell c 8 black bishop)) (init (cell d 8 black queen))
+(init (cell e 8 black king)) (init (cell f 8 black bishop)) (init (cell g 8 black knight)) (init (cell h 8 black rook))
+(init (control white))
+(init (castling_right white kingside)) (init (castling_right white queenside))
+(init (castling_right black kingside)) (init (castling_right black queenside))
+(init (halfmove 0))
+
+;;; ---------------------------------------------------------------------------------------------------------------- the board read
+
+(<= (occupied ?f ?r) (true (cell ?f ?r ?c ?k)))
+(<= (empty ?f ?r) (square ?f ?r) (not (occupied ?f ?r)))
+
+;;; SLIDE: from (f1, r1) along ?d to (f2, r2), every square strictly between empty (a blocker stops the line: it is the last square reached)
+(<= (slide ?d ?f1 ?r1 ?f2 ?r2) (step ?d ?f1 ?r1 ?f2 ?r2))
+(<= (slide ?d ?f1 ?r1 ?f3 ?r3) (slide ?d ?f1 ?r1 ?f2 ?r2) (empty ?f2 ?r2) (step ?d ?f2 ?r2 ?f3 ?r3))
+
+;;; ATTACK: the unit of kind ?k and colour ?c on (f1, r1) bears on (f2, r2) -- by its geometry alone, legality aside (a pinned unit still attacks)
+(<= (attack_by ?k ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f1 ?r1 ?c ?k)) (line_of ?k ?d) (slide ?d ?f1 ?r1 ?f2 ?r2))
+(<= (attack_by knight ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f1 ?r1 ?c knight)) (knight_jump ?f1 ?r1 ?f2 ?r2))
+(<= (attack_by king ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f1 ?r1 ?c king)) (king_step ?f1 ?r1 ?f2 ?r2))
+(<= (attack_by pawn ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f1 ?r1 ?c pawn)) (pawn_diagonal ?c ?d) (step ?d ?f1 ?r1 ?f2 ?r2))
+(<= (attack ?c ?f1 ?r1 ?f2 ?r2) (attack_by ?k ?c ?f1 ?r1 ?f2 ?r2))
+(<= (attacked ?c ?f ?r) (attack ?c ?f1 ?r1 ?f ?r))
+
+;;; CHECK: the side to move's king is attacked
+(<= (check ?c) (true (control ?c)) (true (cell ?f ?r ?c king)) (opponent ?c ?o) (attacked ?o ?f ?r))
+
+;;; ---------------------------------------------------------------------------------------------------------------- the moves (pseudo-legal)
+
+;;; a unit of ?c may land on an empty square or on a unit of the other side that is not its king
+(<= (may_land ?c ?f ?r) (role ?c) (empty ?f ?r))
+(<= (may_land ?c ?f ?r) (true (cell ?f ?r ?o ?j)) (opponent ?c ?o) (distinct ?j king))
+
+;;; MOVE: the side to move's unit of kind ?k goes from (f1, r1) to (f2, r2)
+(<= (move_by ?k ?c ?f1 ?r1 ?f2 ?r2) (true (control ?c)) (attack_by ?k ?c ?f1 ?r1 ?f2 ?r2) (distinct ?k pawn) (may_land ?c ?f2 ?r2))
+(<= (move_by pawn ?c ?f ?r1 ?f ?r2) (true (control ?c)) (true (cell ?f ?r1 ?c pawn)) (forward ?c ?d) (step ?d ?f ?r1 ?f ?r2) (empty ?f ?r2))
+(<= (move_by pawn ?c ?f ?r1 ?f ?r3) (true (control ?c)) (true (cell ?f ?r1 ?c pawn)) (pawn_start ?c ?r1) (forward ?c ?d)
+    (step ?d ?f ?r1 ?f ?r2) (empty ?f ?r2) (step ?d ?f ?r2 ?f ?r3) (empty ?f ?r3))
+(<= (move_by pawn ?c ?f1 ?r1 ?f2 ?r2) (true (control ?c)) (attack_by pawn ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f2 ?r2 ?o ?j)) (opponent ?c ?o) (distinct ?j king))
+(<= (move_by pawn ?c ?f1 ?r1 ?f2 ?r2) (en_passant ?c ?f1 ?r1 ?f2 ?r2))
+
+;;; EN PASSANT: a pawn takes, onto the passed-over square, the pawn that just passed it
+(<= (en_passant ?c ?f1 ?r1 ?f2 ?r2) (true (control ?c)) (attack_by pawn ?c ?f1 ?r1 ?f2 ?r2) (true (ep_square ?f2 ?r2)) (empty ?f2 ?r2)
+    (ep_victim ?c ?f2 ?r2 ?f3 ?r3) (true (cell ?f3 ?r3 ?o pawn)) (opponent ?c ?o))
+
+;;; CAPTURE: a move onto a unit of the other side (en passant included)
+(<= (capture ?k ?c ?f1 ?r1 ?f2 ?r2) (move_by ?k ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f2 ?r2 ?o ?j)) (opponent ?c ?o))
+(<= (capture pawn ?c ?f1 ?r1 ?f2 ?r2) (en_passant ?c ?f1 ?r1 ?f2 ?r2))
+
+;;; CASTLING: the right kept, the king and the rook on their home squares, the squares between empty, the king's three squares not attacked
+(<= (castle_blocked ?c ?side) (home_rank ?c ?r) (castling_empty ?side ?f) (occupied ?f ?r))
+(<= (castle_unsafe ?c ?side) (home_rank ?c ?r) (castling_safe ?side ?f) (opponent ?c ?o) (attacked ?o ?f ?r))
+(<= (castle ?c ?side) (true (control ?c)) (true (castling_right ?c ?side)) (home_rank ?c ?r) (true (cell e ?r ?c king))
+    (castling_path ?side ?kt ?rt ?rf) (true (cell ?rf ?r ?c rook)) (not (castle_blocked ?c ?side)) (not (castle_unsafe ?c ?side)))
+(<= (castling_move ?c ?side e ?r ?kt ?r) (castle ?c ?side) (home_rank ?c ?r) (castling_path ?side ?kt ?rt ?rf))
+
+;;; the candidate moves of the side to move, by their two squares
+(<= (candidate ?c ?f1 ?r1 ?f2 ?r2) (move_by ?k ?c ?f1 ?r1 ?f2 ?r2))
+(<= (candidate ?c ?f1 ?r1 ?f2 ?r2) (castling_move ?c ?side ?f1 ?r1 ?f2 ?r2))
+;;; PROMOTION: a pawn's candidate onto its last rank
+(<= (promotes ?c ?f1 ?r1 ?f2 ?r2) (candidate ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f1 ?r1 ?c pawn)) (last_rank ?c ?r2))
+
+;;; ---------------------------------------------------------------------------------------------------------------- legality: the mover's king not attacked after the move
+
+;;; the board after a candidate (f1 r1 f2 r2): the squares it empties, the units it places, the units that stay
+(<= (vacates ?f1 ?r1 ?f2 ?r2 ?f1 ?r1) (candidate ?c ?f1 ?r1 ?f2 ?r2))
+(<= (vacates ?f1 ?r1 ?f2 ?r2 ?f3 ?r3) (en_passant ?c ?f1 ?r1 ?f2 ?r2) (ep_victim ?c ?f2 ?r2 ?f3 ?r3))
+(<= (vacates e ?r ?kt ?r ?rf ?r) (castling_move ?c ?side e ?r ?kt ?r) (castling_path ?side ?kt ?rt ?rf))
+(<= (fills ?f1 ?r1 ?f2 ?r2 ?f2 ?r2 ?c ?k) (candidate ?c ?f1 ?r1 ?f2 ?r2) (true (cell ?f1 ?r1 ?c ?k)))
+(<= (fills e ?r ?kt ?r ?rt ?r ?c rook) (castling_move ?c ?side e ?r ?kt ?r) (castling_path ?side ?kt ?rt ?rf))
+(<= (filled ?f1 ?r1 ?f2 ?r2 ?f ?r) (fills ?f1 ?r1 ?f2 ?r2 ?f ?r ?c ?k))
+(<= (stays ?f1 ?r1 ?f2 ?r2 ?f ?r ?c ?k) (candidate ?m ?f1 ?r1 ?f2 ?r2) (true (cell ?f ?r ?c ?k))
+    (not (vacates ?f1 ?r1 ?f2 ?r2 ?f ?r)) (not (filled ?f1 ?r1 ?f2 ?r2 ?f ?r)))
+(<= (after ?f1 ?r1 ?f2 ?r2 ?f ?r ?c ?k) (fills ?f1 ?r1 ?f2 ?r2 ?f ?r ?c ?k))
+(<= (after ?f1 ?r1 ?f2 ?r2 ?f ?r ?c ?k) (stays ?f1 ?r1 ?f2 ?r2 ?f ?r ?c ?k))
+(<= (after_occupied ?f1 ?r1 ?f2 ?r2 ?f ?r) (after ?f1 ?r1 ?f2 ?r2 ?f ?r ?c ?k))
+(<= (king_after ?c ?f1 ?r1 ?f2 ?r2 ?f ?r) (candidate ?c ?f1 ?r1 ?f2 ?r2) (after ?f1 ?r1 ?f2 ?r2 ?f ?r ?c king))
+
+;;; the lines out of the mover's king after the move: every square up to and including the first unit on each
+(<= (king_ray ?f1 ?r1 ?f2 ?r2 ?d ?f ?r) (king_after ?c ?f1 ?r1 ?f2 ?r2 ?kf ?kr) (step ?d ?kf ?kr ?f ?r))
+(<= (king_ray ?f1 ?r1 ?f2 ?r2 ?d ?f3 ?r3) (king_ray ?f1 ?r1 ?f2 ?r2 ?d ?f ?r) (not (after_occupied ?f1 ?r1 ?f2 ?r2 ?f ?r)) (step ?d ?f ?r ?f3 ?r3))
+
+;;; EXPOSED: after the candidate a unit of the other side attacks the mover's king
+(<= (exposed ?f1 ?r1 ?f2 ?r2) (king_after ?c ?f1 ?r1 ?f2 ?r2 ?kf ?kr) (king_ray ?f1 ?r1 ?f2 ?r2 ?d ?f ?r)
+    (after ?f1 ?r1 ?f2 ?r2 ?f ?r ?o ?k) (opponent ?c ?o) (line_of ?k ?d))
+(<= (exposed ?f1 ?r1 ?f2 ?r2) (king_after ?c ?f1 ?r1 ?f2 ?r2 ?kf ?kr) (knight_jump ?kf ?kr ?f ?r) (after ?f1 ?r1 ?f2 ?r2 ?f ?r ?o knight) (opponent ?c ?o))
+(<= (exposed ?f1 ?r1 ?f2 ?r2) (king_after ?c ?f1 ?r1 ?f2 ?r2 ?kf ?kr) (king_step ?kf ?kr ?f ?r) (after ?f1 ?r1 ?f2 ?r2 ?f ?r ?o king) (opponent ?c ?o))
+(<= (exposed ?f1 ?r1 ?f2 ?r2) (king_after ?c ?f1 ?r1 ?f2 ?r2 ?kf ?kr) (opponent ?c ?o) (pawn_diagonal ?o ?d) (step ?d ?f ?r ?kf ?kr)
+    (after ?f1 ?r1 ?f2 ?r2 ?f ?r ?o pawn))
+
+;;; LEGAL: a candidate that does not expose the king (a promotion once per unit it may place); the other side passes
+(<= (legal ?c (move ?f1 ?r1 ?f2 ?r2)) (candidate ?c ?f1 ?r1 ?f2 ?r2) (not (promotes ?c ?f1 ?r1 ?f2 ?r2)) (not (exposed ?f1 ?r1 ?f2 ?r2)))
+(<= (legal ?c (promote ?f1 ?r1 ?f2 ?r2 ?k)) (promotes ?c ?f1 ?r1 ?f2 ?r2) (not (exposed ?f1 ?r1 ?f2 ?r2)) (promotable ?k))
+(<= (legal ?o noop) (true (control ?c)) (opponent ?c ?o))
+
+(<= has_move (true (control ?c)) (legal ?c ?m))
+
+;;; ---------------------------------------------------------------------------------------------------------------- the end of the game
+
+;;; MATE: in check and no legal move; STALEMATE: no legal move, not in check (FIDE 5.1.1, 5.2.1)
+(<= mate (check ?c) (not has_move))
+(<= stalemate (true (control ?c)) (not (check ?c)) (not has_move))
+
+;;; DRAW (insufficient material, the fast kernel's rule): neither side has mating material by its material alone
+(<= (mating_material ?c) (true (cell ?f ?r ?c pawn)))
+(<= (mating_material ?c) (true (cell ?f ?r ?c rook)))
+(<= (mating_material ?c) (true (cell ?f ?r ?c queen)))
+(<= (has_kind ?c ?k) (true (cell ?f ?r ?c ?k)))
+;;; two different units of ?c that are not its king
+(<= (two_units ?c) (true (cell ?f1 ?r1 ?c ?k1)) (distinct ?k1 king) (true (cell ?f2 ?r2 ?c ?k2)) (distinct ?k2 king) (distinct ?f1 ?f2))
+(<= (two_units ?c) (true (cell ?f1 ?r1 ?c ?k1)) (distinct ?k1 king) (true (cell ?f2 ?r2 ?c ?k2)) (distinct ?k2 king) (distinct ?r1 ?r2))
+;;; a unit of ?c that could block its own king into a mate (anything but its king and its queens)
+(<= (selfmate_material ?c) (true (cell ?f ?r ?c ?k)) (distinct ?k king) (distinct ?k queen))
+(<= mixed_bishops (true (cell ?f1 ?r1 ?c1 bishop)) (dark ?f1 ?r1) (true (cell ?f2 ?r2 ?c2 bishop)) (light ?f2 ?r2))
+(<= any_pawn (true (cell ?f ?r ?c pawn)))
+(<= any_knight (true (cell ?f ?r ?c knight)))
+;;; a knight: the king and that knight alone, and the other side nothing but its king and queens
+(<= (insufficient ?c) (role ?c) (not (mating_material ?c)) (has_kind ?c knight) (not (two_units ?c)) (opponent ?c ?o) (not (selfmate_material ?o)))
+;;; bishops (and no knight): every bishop of the board on one colour, no pawn and no knight on the board
+(<= (insufficient ?c) (role ?c) (not (mating_material ?c)) (not (has_kind ?c knight)) (has_kind ?c bishop) (not mixed_bishops) (not any_pawn) (not any_knight))
+;;; the king alone
+(<= (insufficient ?c) (role ?c) (not (mating_material ?c)) (not (has_kind ?c knight)) (not (has_kind ?c bishop)))
+(<= draw (insufficient white) (insufficient black))
+
+;;; DRAW BY THE FIFTY-MOVE RULE: the clock at its limit and a legal move to make (a mate on the move comes first: FIDE 9.3)
+(<= draw_by_fifty_moves (clock_limit ?n) (true (halfmove ?n)) has_move)
+
+(<= terminal mate)
+(<= terminal stalemate)
+(<= terminal draw)
+(<= terminal draw_by_fifty_moves)
+
+(<= drawn stalemate)
+(<= drawn draw)
+(<= drawn draw_by_fifty_moves)
+(<= (goal ?c 0) mate (true (control ?c)))
+(<= (goal ?o 100) mate (true (control ?c)) (opponent ?c ?o))
+(<= (goal ?r 50) (role ?r) drawn (not mate))
+
+;;; ---------------------------------------------------------------------------------------------------------------- the next state
+
+;;; castling, read off the king's two-file move from its home square
+(<= (castled ?c ?side) (does ?c (move e ?r ?kt ?r)) (home_rank ?c ?r) (true (cell e ?r ?c king)) (castling_path ?side ?kt ?rt ?rf))
+;;; the en-passant capture, read off a pawn's sideways move onto the passed-over square
+(<= (passant_taken ?f3 ?r3) (does ?c (move ?f1 ?r1 ?f2 ?r2)) (true (cell ?f1 ?r1 ?c pawn)) (true (ep_square ?f2 ?r2)) (distinct ?f1 ?f2)
+    (ep_victim ?c ?f2 ?r2 ?f3 ?r3))
+
+;;; the squares a move lifts a unit from, and lands a unit on
+(<= (lifted ?f1 ?r1) (does ?c (move ?f1 ?r1 ?f2 ?r2)))
+(<= (lifted ?f1 ?r1) (does ?c (promote ?f1 ?r1 ?f2 ?r2 ?k)))
+(<= (lifted ?rf ?r) (castled ?c ?side) (home_rank ?c ?r) (castling_path ?side ?kt ?rt ?rf))
+(<= (lifted ?f ?r) (passant_taken ?f ?r))
+(<= (landed ?f2 ?r2) (does ?c (move ?f1 ?r1 ?f2 ?r2)))
+(<= (landed ?f2 ?r2) (does ?c (promote ?f1 ?r1 ?f2 ?r2 ?k)))
+(<= (landed ?rt ?r) (castled ?c ?side) (home_rank ?c ?r) (castling_path ?side ?kt ?rt ?rf))
+
+(<= (next (cell ?f2 ?r2 ?c ?k)) (does ?c (move ?f1 ?r1 ?f2 ?r2)) (true (cell ?f1 ?r1 ?c ?k)))
+(<= (next (cell ?f2 ?r2 ?c ?k)) (does ?c (promote ?f1 ?r1 ?f2 ?r2 ?k)))
+(<= (next (cell ?rt ?r ?c rook)) (castled ?c ?side) (home_rank ?c ?r) (castling_path ?side ?kt ?rt ?rf))
+(<= (next (cell ?f ?r ?c ?k)) (true (cell ?f ?r ?c ?k)) (not (lifted ?f ?r)) (not (landed ?f ?r)))
+
+(<= (next (control ?o)) (true (control ?c)) (opponent ?c ?o))
+
+;;; a castling right ends when a unit leaves or lands on the king's or that rook's home square (a capture of the rook there included)
+(<= (touched ?f ?r) (lifted ?f ?r))
+(<= (touched ?f ?r) (landed ?f ?r))
+(<= (right_lost ?c ?side) (right_square ?c ?side ?f ?r) (touched ?f ?r))
+(<= (next (castling_right ?c ?side)) (true (castling_right ?c ?side)) (not (right_lost ?c ?side)))
+
+;;; the passed-over square of a double push
+(<= (next (ep_square ?f ?r2)) (does ?c (move ?f ?r1 ?f ?r3)) (true (cell ?f ?r1 ?c pawn)) (pawn_start ?c ?r1) (forward ?c ?d)
+    (step ?d ?f ?r1 ?f ?r2) (step ?d ?f ?r2 ?f ?r3))
+
+;;; THE CLOCK: a pawn move or a capture sets it to 0, any other move adds one; it saturates at its limit
+(<= (clock_event pawn) (does ?c (move ?f1 ?r1 ?f2 ?r2)) (true (cell ?f1 ?r1 ?c pawn)))
+(<= (clock_event pawn) (does ?c (promote ?f1 ?r1 ?f2 ?r2 ?k)))
+(<= (clock_event capture) (does ?c (move ?f1 ?r1 ?f2 ?r2)) (occupied ?f2 ?r2))
+(<= (clock_event capture) (does ?c (promote ?f1 ?r1 ?f2 ?r2 ?k)) (occupied ?f2 ?r2))
+(<= clock_reset (clock_event ?e))
+(<= (next (halfmove 0)) clock_reset)
+(<= (next (halfmove ?m)) (true (halfmove ?n)) (count_succ ?n ?m) (not clock_reset))
+(<= (next (halfmove ?n)) (clock_limit ?n) (true (halfmove ?n)) (not clock_reset))
