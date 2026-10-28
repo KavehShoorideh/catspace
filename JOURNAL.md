@@ -34201,3 +34201,15 @@ NEGATIVE CONTROL (monkeypatch: every observation raised on any frame, its reads 
 the guard fires on provenance (the rule decides nothing, so a wrong rule moves only the provenance).
 OBS audit recount: CHESS FACT rows 428 -> 428 (agenda.py 423 -> 423); rows total 1760 -> 1765.
 OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_plan74 13/0/0/0 3.8 s; test_plan72_5 7/0/0/0 3.9 s; test_agenda 26/0/0/0 104.2 s; test_tiers 14/0/0/0 34.4 s; test_offbuilt64 15/0/1/0 96.1 s; test_fact_store 21/0/0/0 27.9 s; test_plan68 4/0/0/0 14.7 s; test_plan69 3/0/0/0 15.1 s; test_plan70 3/0/1/0 4.5 s; test_plan72_9 7/0/0/0 4.5 s; test_plan72_10 4/0/0/0 2.6 s; test_plan73 9/0/0/0 14.3 s; test_plan73_5b 11/0/0/0 8.2 s; test_cost61 13/0/0/0 4.0 s; test_plan66 16/0/0/0 4.2 s; test_plan65 13/0/0/0 7.4 s; test_plan72_7 16/0/0/0 1.5 s; test_plan72_7_step2 13/0/0/0 8.3 s; test_plan72_7_step3 13/0/0/0 43.6 s; test_remember 8/0/0/0 1.1 s; test_regress 87/0/1/0 389.6 s. Total 21 files: passed 316, failed 0, xfailed 3, errors 0.
+
+
+## 2026-10-27 23:14 -- plan 74 merged (main 5ea43560, fast-forward); the gate; 75.2 launched
+OBS gate engine (main 5ea43560, 41 files incl. test_plan74): passed 535, failed 0, xfailed 3, errors 0, wall 958.6 s.
+Plan 74 (the agent's four journal entries above): reasoning.py (the generic graph; an ANSWER's key is the fact store's fact id, the store unchanged), worklist.py (one passive set; 74.2b's
+two clauses; the heap replaced), inner roots enqueued through the pending protocol, observations elevated on a frame touch. Guard: 0 of 218 differ on traces, read sets, leaf lists and
+word lists at every stage; questions asked and the count to the first proved keeping move identical per case at the count budget (no clock: no rate, no price); CHESS FACT rows 428 -> 428.
+Clocked: W0VFO 10 s Qb7 +3 proved at every stage; the loop-2 batch 31 RIGHT / 7 WRONG -> 32 / 6 (kJbxb g5 unproved -> e5 +5 proved: clause (1) asked the six keeping questions first) --
+one batch each, directional. Convergence over 109 cases: 7378 served questions, 2970 lines met a known answer (W0VFO: Rxg7+ Kxg7 Qg4+ Kf7 Qg6+ Kxg6 served by Rxg7+ Kxg7 Qg6+ Kxg6).
+NOT built, with the reason: pricing a question before it is asked (needs the expand / read split of `_ask`); reading a route's other replies before the pending one (which reply kills a route
+sets the kill's text and read set: the identity pins the order); the passive set has no consumer yet (the ponderer drains GAPs). Plan 75.2 launched: the 428 chess facts leave agenda.py for
+the store, stages (a) goal ladder and kinds, (b) stops, (c) the names table, (d) the rest; recount after each.
