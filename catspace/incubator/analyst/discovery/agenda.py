@@ -454,7 +454,11 @@ class Agenda:
             self.ctx.next_line = self.ctx.next_refines = None
         self._roots()
         if SURVEY and self._root:
-            self.lines.extend(R.survey_lines(self.board, self.me))
+            for text, reads, term in R.survey_items(self.board, self.me):      # plan 74.4: the survey's lines are OBSERVATIONS -- a term at this position with its reads -- low in the worklist
+                self.lines.append(text)
+                if self.ctx is not None:
+                    n = self.ctx.graph.observation(term, self.pk, reads, text=text.removeprefix("survey: "))
+                    self.wl.observe(WL.Item(n.id, self._wf, (), node=n.id))
         self.skeleton_stats = None                              # plan 72.8: the counts and the cost of the skeleton goals (the OBS line), set by `_skeleton_goals`
         if SKELETON_GOALS and self._root:
             self._skeleton_goals()
@@ -573,6 +577,18 @@ class Agenda:
         n.state = state
         n.data["refines"] = self._g_chased()
         return n
+
+    def _g_elevate(self, frame: frozenset, q: R.Question, m: chess.Move) -> None:
+        """plan 74.4 THE PROMOTION RULE: an OBSERVATION of this position whose reads the goal's FRAME touches is raised to a QUESTION -- its provenance the observation, refining the goal
+        whose frame touched it -- and queued LOW in the worklist (below every open question: it is not asked while the decision is made). No word is added: the observation is the
+        survey's, the frame is 72.10's. (The rule's other trigger, the policy scoring an observation above an open question, needs a policy that sees observations: the graph policy has
+        no observation node, and 74 changes no policy -- not wired.)"""
+        g = self.ctx.graph
+        for n in g.elevate(frame, pk=self.pk, refines=getattr(q, "_gn", None), depth=self.chase_depth):
+            ob = g.nodes[g.targets(n.id, RN.AROSE_FROM)[0]]
+            self.wl.defer(WL.Item(n.id, self._wf, (), node=n.id, data=dict(observation=True)))
+            self.lines.append(f"{RN.PREFIX}observation raised to a question: '{ob.text}' -- the frame of Q{q.id}'s route {self.board.san(m)} reads "
+                              + "{" + ", ".join(GAME.loc_name(x) for x in sorted(ob.frame & frame)) + "}; queued below every open question (not asked for this decision)")
 
     def _g_chased(self) -> "int | None":
         """plan 74.1: the node of the question whose route is being read (the chase's question, else the question being asked)."""
@@ -2105,6 +2121,8 @@ class Agenda:
                 units = frozenset(units)
         elif th is not None and th.target is not None:
             out.add(th.target)
+        if self.chase_depth == 0 and self.ctx is not None:
+            self._g_elevate(frozenset(out), q, m)              # plan 74.4: a goal's frame at the root touches the observations of the root position
         self._frames[key] = (frozenset(out), units)
         return self._frames[key]
 
@@ -5085,9 +5103,10 @@ class Agenda:
         out.append(self.ctx.graph.summary())                    # plan 74.1: the reasoning graph of the run, counted
         wl = self.ctx.worklist                                  # plan 74.3: and the run's passive set
         qd = wl.queued()
-        nd = sum(1 for i in qd if i.state == WL.DEFERRED)
+        no = sum(1 for i in qd if i.data.get("observation"))
+        nd = sum(1 for i in qd if i.state == WL.DEFERRED) - no
         out.append(f"{RN.PREFIX}the worklist: {wl.taken} question(s) taken (asked or served) over {wl.next_frame - 1} frame(s); {len(qd)} in the passive set ({nd} queued outside the frame "
-                   f"of their line and never needed -- the frame lemma neglects them; {len(qd) - nd} left open by a stop)")
+                   f"of their line and never needed -- the frame lemma neglects them; {no} raised from observations; {len(qd) - nd - no} left open by a stop)")
         return out
 
     def trace(self) -> str:

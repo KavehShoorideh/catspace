@@ -2165,6 +2165,12 @@ def _unit_name(board: chess.Board, sq: int, us: bool) -> str:
 def survey_lines(board: chess.Board, us: bool, k: int = REACH_K) -> list:
     """The survey as plain words, one line per unit that has something to say, the most telling first, at most SURVEY_LINES:
     'survey: their K reaches c7 in 3, bearing on our N on b8' / 'survey: our N on b8 can join nothing within 3' / 'survey: our B on c2 holds their c-pawn's path'."""
+    return [t for t, _r, _w in survey_items(board, us, k)]
+
+
+def survey_items(board: chess.Board, us: bool, k: int = REACH_K) -> list:
+    """plan 74.4: the lines `survey_lines` prints as OBSERVATIONS -- (the line, its READS: the squares it names (the unit's, the landing's, the job's, a held pawn's), its TERM: (the
+    word, the unit's square, the job's square)). The same words, the same order, the same cap; the reads are what a goal's frame is compared with (the promotion rule)."""
     rows = survey(board, k)
     by: dict = {}
     for r in rows:
@@ -2179,23 +2185,23 @@ def survey_lines(board: chess.Board, us: bool, k: int = REACH_K) -> list:
             ps = min(paths, key=lambda r: r.job)
             pawn = next(s for s in range(64) if s != sq and is_passer(board, s) and ps.job in passer_path(board, s))
             owner = board.piece_at(pawn).color
-            out.append((1, 0, f"{name} holds {'our' if owner == us else 'their'} {chess.FILE_NAMES[chess.square_file(pawn)]}-pawn's path"))
+            out.append((1, 0, f"{name} holds {'our' if owner == us else 'their'} {chess.FILE_NAMES[chess.square_file(pawn)]}-pawn's path", frozenset({sq, ps.job, pawn}), ("holds", sq, pawn)))
             continue
         att = [r for r in rs if r.job_kind == "attack" and r.tempi > 0 and r.via is not None and r.material < G.worth(board.piece_at(r.job)) and G.worth(board.piece_at(r.job)) > G.worth(pc)]
         if att:
             r = min(att, key=lambda r: (r.tempi, r.material, -G.worth(board.piece_at(r.job))))
             price = f", at a price of {r.material}" if r.material else ""
-            out.append((0, r.tempi, f"{name} reaches {chess.square_name(r.via)} in {r.tempi}, bearing on {_unit_name(board, r.job, us)} on {chess.square_name(r.job)}{price}"))
+            out.append((0, r.tempi, f"{name} reaches {chess.square_name(r.via)} in {r.tempi}, bearing on {_unit_name(board, r.job, us)} on {chess.square_name(r.job)}{price}", frozenset({sq, r.via, r.job}), ("bears", sq, r.job)))
             continue
         if pc.piece_type not in (chess.KING, chess.PAWN) and not any(r.job_kind != "free" for r in rs):
-            out.append((2, 0, f"{name} can join nothing within {k}" + ("" if free else " and has no free landing")))
+            out.append((2, 0, f"{name} can join nothing within {k}" + ("" if free else " and has no free landing"), frozenset({sq}), ("idle", sq, None)))
             continue
         z = [r for r in rs if r.job_kind == "zone" and r.tempi > 0 and r.material == 0]
         if z:
             r = min(z, key=lambda r: r.tempi)
-            out.append((3, r.tempi, f"{name} comes to bear on {'their' if pc.color == us else 'our'} king's zone in {r.tempi}"))
+            out.append((3, r.tempi, f"{name} comes to bear on {'their' if pc.color == us else 'our'} king's zone in {r.tempi}", frozenset(x for x in (sq, r.via, r.job) if x is not None), ("zone", sq, r.job)))
     out.sort(key=lambda t: (t[0], t[1], t[2]))
-    return ["survey: " + t for _p, _t, t in out[:SURVEY_LINES]]
+    return [("survey: " + t, rd, term) for _p, _t, t, rd, term in out[:SURVEY_LINES]]
 
 
 def survey_features(board: chess.Board, us: bool, targets: list, k: int = REACH_K) -> tuple:

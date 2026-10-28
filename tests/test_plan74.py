@@ -79,7 +79,9 @@ def test_74_5_W0VFO_every_question_records_why_it_was_asked_and_the_decision_sho
     assert d is not None and d.what == "Qb7" and d.proved
     g = ag.ctx.graph
     qs = [n for n in g.nodes.values() if n.kind == RN.QUESTION]
-    assert qs and all(g.line_of(n.id) is not None for n in qs)                    # every question arose from a line
+    obs = [n for n in qs if any(g.nodes[d].kind == RN.OBSERVATION for d in g.targets(n.id, RN.AROSE_FROM))]      # (d): raised from an observation
+    qs = [n for n in qs if n not in obs]
+    assert qs and all(g.line_of(n.id) is not None for n in qs)                    # every other question arose from a line
     roots = [n for n in qs if n.depth == 0]
     assert roots and all(not g.line_of(n.id).names for n in roots)                 # the root's arose from the position itself
     deep = [n for n in qs if g.line_name(g.line_of(n.id)) == "Qb7 Rf7"]
@@ -222,3 +224,38 @@ def test_74_3_a_cut_queued_question_is_a_gap_with_a_resume_point():
     hit = [n for n in cut if (n.steps[-2], n.steps[-1]) in gaps]
     assert hit and any(g.line_name(n) == "Rxg7+ Kxg7 Qb7+ Qc7" for n in hit)
     assert not any(f.kind == "kill" and "Qb7+ not followed past Qc7" in f.text for f in ag.ctx.facts.facts.values())
+
+
+# ---------------------------------------------------------------------------------------------------------------- (d) observations as nodes, the promotion rule
+
+def test_74_4_an_observation_is_raised_to_a_question_when_a_frame_touches_its_reads():
+    g = RN.Graph()
+    root = g.line(None, pk="P0")
+    goal = g.question("goal", ("g",), 9, 0, pk="P0", arose=root.id)
+    goal.label = "Q1"
+    o1 = g.observation(("bears", 1, 2), "P0", frozenset({1, 2, 3}), text="unit 1 bears on unit 2")
+    o2 = g.observation(("idle", 7, None), "P0", frozenset({7}), text="unit 7 joins nothing")
+    o3 = g.observation(("bears", 1, 2), "P9", frozenset({3}), text="another position's")
+    assert g.elevate(frozenset({9, 10}), pk="P0", refines=goal.id) == []          # no read touched: nothing raised
+    up = g.elevate(frozenset({3, 4}), pk="P0", refines=goal.id)
+    assert [g.targets(q.id, RN.AROSE_FROM) for q in up] == [[o1.id]] and up[0].state == "deferred"
+    assert g.targets(up[0].id, RN.REFINES) == [goal.id] and o1.state == "elevated" and o2.state != "elevated" and o3.state != "elevated"
+    assert g.why(up[0].id).startswith("deferred: arose from the observation 'unit 1 bears on unit 2' at depth 0 (refines Q1 goal)")
+    assert g.elevate(frozenset({3}), pk="P0") == []                                   # raised once
+    assert g.tally()["elevated"] == 1
+
+
+def test_74_4_W0VFO_the_survey_lines_are_observations_and_a_root_route_frame_raises_them():
+    ag = Agenda(State(W0VFO, "w", []))
+    ag.ask()
+    g = ag.ctx.graph
+    obs = [n for n in g.nodes.values() if n.kind == RN.OBSERVATION]
+    survey = [x for x in ag.lines if x.startswith("survey: ")]
+    assert obs and [n.text for n in obs] == [x.removeprefix("survey: ") for x in survey] and all(n.frame for n in obs)
+    raised = [n for n in obs if n.state == "elevated"]
+    tr = [x for x in ag.trace().splitlines() if x.startswith("why: observation raised to a question: ")]
+    assert len(tr) == len(raised)
+    qs = [i for i in ag.ctx.worklist.queued() if i.data.get("observation")]
+    assert len(qs) == len(raised) and all(i.state == WL.DEFERRED for i in qs)          # queued below every open question: none was asked for the decision
+    d = ag.decision()
+    assert d.what == "Qb7" and d.proved

@@ -151,7 +151,7 @@ class Graph:
         return self.nodes[ids[-1]] if ids else None
 
     def line_of(self, q: int) -> "Node | None":
-        """The line a question arose from (following an observation to the line it was read on, when it arose from one)."""
+        """The line a question arose from (None for a question raised from an observation: it arose from the observation, `why` names it)."""
         for d in self.targets(q, AROSE_FROM):
             n = self.nodes.get(d)
             if n is not None and n.kind == LINE:

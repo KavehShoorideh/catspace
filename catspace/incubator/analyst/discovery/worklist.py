@@ -100,7 +100,7 @@ class Worklist:
         return item
 
     def close(self, frame: int) -> None:
-        """The frame's agenda ended: what is still open or queued stays in the passive set (asked later, or by the ponderer), the taken items release their payloads."""
+        """The frame's agenda ended: what is still open or queued stays in the run's passive set (nothing asks it yet: the ponderer drains the fact store's GAP queue, not this set)."""
         self.closed.add(frame)
 
     # ------------------------------------------------------------------------------------------------------------ reads

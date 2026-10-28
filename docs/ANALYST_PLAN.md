@@ -3925,6 +3925,11 @@ rule or the policy.
   continuation would change which reply kills a route, hence the kill's read set -- the acceptance pins it). Depth 1 first (dev step), then all depths: guard 0 of 218 traces / read sets
   / leaf lists / word lists differ; questions asked identical per case (not lower: what 72.10 never asked stays unasked); over the 109 tier-0 cases 6967 questions queued and never needed,
   7378 served (convergence), 2970 lines met a known answer. W0VFO 10 s Qb7 proved; loop-2 32 / 6 (as (b)). The recursive call stays as the expansion step.
+* 74 (d) BUILT 2026-10-27 on branch worktree-agent-a783b98ab9a640248 (journal 2026-10-27 22:57): the survey's lines (72.5; `regress.survey_items`: each line with the squares it names)
+  are OBSERVATION nodes at the root, observed low in the worklist; THE PROMOTION RULE (`Graph.elevate`): a root goal's frame (72.10) touching an observation's reads raises it to a
+  QUESTION (provenance the observation, refining that goal), queued below every open question, not asked for the decision. Fires on the guard (tier 0: 400 of 699 observations raised in
+  79 of 109 cases); its effect: nodes, a masked line and a queued item each -- traces identical (0 of 218), questions asked identical. The second trigger (the policy scores an
+  observation above an open question) is not wired: no policy reads observations and 74 changes none. W0VFO 10 s Qb7 proved; loop-2 32 / 6.
 
 
 ## 75. THE GENERIC GOAL AND THE SUPPLIED VOCABULARY (Kaveh 2026-10-27 GO "go ahead and do it")

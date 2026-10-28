@@ -34178,3 +34178,26 @@ OBS audit recount: CHESS FACT rows 428 -> 428 (agenda.py 423 -> 423); rows total
 A TEST CHANGED for the API (no claim or decision): test_plan72_10's 72.10 (2) read the waiting roots off `local["deferred"]` (KeyError in the first gate run); they are queued in the
 worklist now and the test reads them there (`ag.wl.deferred(ag._wf)`): the same assertions (queued, none asked), passed in the rerun below.
 OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_plan74 11/0/0/0 3.1 s; test_agenda 26/0/0/0 104.6 s; test_tiers 14/0/0/0 34.4 s; test_offbuilt64 15/0/1/0 96.5 s; test_fact_store 21/0/0/0 27.7 s; test_plan68 4/0/0/0 14.5 s; test_plan69 3/0/0/0 15.2 s; test_plan70 3/0/1/0 4.6 s; test_plan72_9 7/0/0/0 4.5 s; test_plan73 9/0/0/0 14.2 s; test_plan73_5b 11/0/0/0 8.3 s; test_cost61 13/0/0/0 4.0 s; test_plan66 16/0/0/0 4.2 s; test_plan65 13/0/0/0 7.3 s; test_plan72_7 16/0/0/0 1.5 s; test_plan72_7_step2 13/0/0/0 8.3 s; test_plan72_7_step3 13/0/0/0 43.3 s; test_remember 8/0/0/0 1.1 s; test_regress 87/0/1/0 390.3 s; test_plan72_10 4/0/0/0 2.7 s. Total 20 files: passed 307, failed 0, xfailed 3, errors 0.
+
+## 2026-10-27 22:57 -- plan 74 (d) OBSERVATIONS AS NODES with the promotion rule (branch worktree-agent-a783b98ab9a640248)
+regress.survey_items: the survey's printed lines with their READS (the squares each line names: the unit's, the landing's, the job's, a held pawn's) and a TERM (the word, the unit, the
+job); survey_lines is its text (the same words, order and cap; test_plan72_5 green). At the root each survey line is an OBSERVATION node (a term at this position with its reads) and an
+item OBSERVED low in the worklist (below every question). THE PROMOTION RULE (reasoning.Graph.elevate -- the generic module avoids the game word "promote"): when a goal's FRAME at the
+root (72.10's `_route_frame`, read for a root route of a mate / win / promote question) touches an observation's reads, the observation is raised to a QUESTION -- its provenance the
+observation, refining the goal whose frame touched it -- and queued in the root's frame below every open question; it is not asked for this decision. The trace (masked): e.g. W0VFO 10 s
+"why: observation raised to a question: 'their P on f6 reaches f5 in 1, bearing on our Q on e4' -- the frame of Q3's route Qf5 reads {f5}; queued below every open question (not asked
+for this decision)". No chess word is added (the survey's words, 72.10's frame). NOT WIRED: the rule's second trigger (the policy scores an observation above an open question) -- the
+graph policy has no observation node, and 74 changes no policy.
+OBS trace identity against the parent 813fadc8: ten t0, ten t2 0 of 10 traces / read sets / leaf lists / word lists differ; wide t0, wide t2 0 / 0 / 0 / 0 of 99. Against stage (c), the
+provenance lists with (d)'s own additions removed (the observation nodes, the questions raised from them, their lines, the two summary lines) and the nodes renumbered (the observations,
+made first, shift every later id): ten t0 10, ten t2 10, wide t0 99, wide t2 99 identical.
+THE PROMOTION FIRES ON THE GUARD (tier 0, 109 cases): 699 observations, 400 raised to questions, in 79 cases; its effect read: graph nodes, a "why: " line each and a queued item each --
+no question asked, no trace line outside the mask, no decision moved (the traces are identical).
+OBS measure: questions asked ten t0 11806 -> 11806 (count to the first keeping move 3059 -> 3059), ten t2 36902 -> 36902 (9582 -> 9582), wide t0 58321 -> 58321 (16276 -> 16276); per case
+identical.
+OBS W0VFO 10 s: Qb7 +3 proved (chase), the pool ended at 8.1 s, root questions 38, inner agendas 784, inner questions 10301 (13.1 per inner agenda); 4 observations raised.
+OBS loop-2 batch (15 s, one batch, directional): RIGHT 32, UNKNOWN 2, WRONG 6; by proof proved RIGHT 32, proved WRONG 2, unproved WRONG 4, none 2 -- every decision as stage (c)'s.
+NEGATIVE CONTROL (monkeypatch: every observation raised on any frame, its reads ignored): ten t0: 0 of 10 traces / read sets / leaf lists / word lists, 9 of 10 provenance lists differ --
+the guard fires on provenance (the rule decides nothing, so a wrong rule moves only the provenance).
+OBS audit recount: CHESS FACT rows 428 -> 428 (agenda.py 423 -> 423); rows total 1760 -> 1765.
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_plan74 13/0/0/0 3.8 s; test_plan72_5 7/0/0/0 3.9 s; test_agenda 26/0/0/0 104.2 s; test_tiers 14/0/0/0 34.4 s; test_offbuilt64 15/0/1/0 96.1 s; test_fact_store 21/0/0/0 27.9 s; test_plan68 4/0/0/0 14.7 s; test_plan69 3/0/0/0 15.1 s; test_plan70 3/0/1/0 4.5 s; test_plan72_9 7/0/0/0 4.5 s; test_plan72_10 4/0/0/0 2.6 s; test_plan73 9/0/0/0 14.3 s; test_plan73_5b 11/0/0/0 8.2 s; test_cost61 13/0/0/0 4.0 s; test_plan66 16/0/0/0 4.2 s; test_plan65 13/0/0/0 7.4 s; test_plan72_7 16/0/0/0 1.5 s; test_plan72_7_step2 13/0/0/0 8.3 s; test_plan72_7_step3 13/0/0/0 43.6 s; test_remember 8/0/0/0 1.1 s; test_regress 87/0/1/0 389.6 s. Total 21 files: passed 316, failed 0, xfailed 3, errors 0.
