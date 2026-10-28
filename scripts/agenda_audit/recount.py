@@ -59,6 +59,9 @@ KEEP_ON_EDIT = {"agenda.py": {
     5018: [None],                                      # D8e: the promotion exchange
     5064: [None], 5066: [None], 5078: [None],          # D8b: the race of our king and their pawn (the rule of the square: its one move in hand is the entry's `ahead`)
     1449: [(None, "bool\\(m\\)")],                     # D13: a loss read off the kill's printed value '(-n)' (the kill words that refute: their entries' `refutes`)
+    # plan 75.4: lines 75.4 edited where the family's fact stays written (the edit moved a RULE read into the kernel's interface, not the fact)
+    4205: ["dbal|_pawn_move"],                         # B1: the chase clock's reset rule (a capture of ours not bad for us, or our pawn move); the capture is the kernel's event now (75.4 (3))
+    4896: [None],                                      # D8h: the proved passer's claim before the promotion exchange; its push is the kernel's now (75.4 (5))
 }}
 SCRIPTS = ("extract.py", "classify.py", "count.py", "facts.py", "findings_text.py")
 

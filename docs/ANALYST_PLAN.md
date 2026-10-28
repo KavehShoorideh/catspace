@@ -4066,3 +4066,5 @@ the input FEN keeps a pseudo-legal en-passant square the kernel drops (a repetit
 THE FINDINGS OF 75.4 (rules the kernel lacks beyond these, and places where the engine disagreed with the rules), in the journal of 2026-10-28 12:18 (75.4 (5)'s entry): reported, not changed.
 75.4 in sum: CHESS FACT rows 210 -> 210 -> 210 -> 209 -> 209 -> 208 over the five commits (scripts/agenda_audit/recount.py); the guard identical at every commit but the
 label lines of (2); one new Lean file, Ideas/Draws.lean (no sorry); tests/test_rules_draws.py in the engine gate.
+75.4's recount, corrected (journal 2026-10-28 12:21): two hand readings on edited lines whose fact stays (B1, D8h) are carried, so CHESS FACT rows 210 -> 210 at every commit
+(the "-> 209" / "-> 208" above read them as dropped); RULE rows 106 -> 99; docs/AGENDA_AUDIT.md "75.4 recount".

@@ -34502,3 +34502,17 @@ draws apart (they are inside the claimable ones); (g) the play server's human in
 catspace/incubator/analyst/{defense,needs,plans,threats,fates,dynamics}.py (outside the agenda) still build queen promotions by hand; (h) in passing: ponder.py tests
 `_pos_key(c.fen()) in ctx.memo`, whose keys are tuples -- the test never holds; (i) the store's composed words take bare entry names: a lemma carrying a detail ("repetition
 (...)") made "chase: ... over repetition (...)" uncatalogued and moved a search (75.4 (2)'s first build).
+
+
+## 2026-10-28 12:21 -- plan 75.4: THE RECOUNT CORRECTED (two hand readings carried, not dropped) and docs/AGENDA_AUDIT.md's 75.4 recount; main merged (branch worktree-agent-a842a98bf140be46b)
+CORRECTION of the 11:31 (75.4 (3)) and 12:18 (75.4 (5)) entries' recount lines ("CHESS FACT rows 210 -> 209 (B1 5 -> 4)", "209 -> 208 (D8h 9 -> 8)"): both drops were hand
+readings on lines 75.4 edited where the family's fact stays written -- `_since_after`'s other setting keeps the clock's reset rule (a capture of ours not bad for us, or our pawn
+move; only the capture's read moved to `Game.clock_events`), the proved passer's claim keeps its branch (only the push moved to `Game.push_to`). By 75.2's rule (no renaming to
+dodge the count) they are carried: scripts/agenda_audit/recount.py's KEEP_ON_EDIT gains MID lines 4205 (B1) and 4896 (D8h).
+OBS audit rows total 1618: LOGIC 1253, RULE 99, NAME 21, CHESS FACT 210, HEURISTIC 35
+OBS audit hand readings carried onto an edited line (the family's fact stays there): 53
+OBS audit hand readings dropped (their line changed since 65024fbf): 131
+OBS audit recount CHESS FACT rows 210 -> 210
+So 75.4's count is CHESS FACT rows 210 -> 210 at every commit (the rows moved are RULE rows: 106 -> 99, the rules now read through the kernel's interface); the section is
+appended to docs/AGENDA_AUDIT.md ("75.4 recount"). Main bb75569c (plan 76, docs/AGENT_BRIEF.md: docs only) was merged before this commit, ANALYST_PLAN.md keeping both
+appended sections.

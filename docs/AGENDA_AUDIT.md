@@ -2100,3 +2100,24 @@ THE GENERIC TEST (tests/test_plan75.py): worklist.py and reasoning.py name no ga
 25 name nothing outside names.py and the store and hold no CHESS FACT row. Not yet coverable, with their rows: `_push` (A7 1), `_ask_loop` (A5 1), `status` (D18 2), `_keep_goal`
 (D21 1, the pattern key 'checkers'), `_target` (A10 1), `_chase_routes` (D10, D8c, A10, A8: 4), `_inner` (B1, B2: 4, 'checkers'), `_competitor` (D21 1, 'checkers'), `_judge_resume`
 (D22 1).
+
+## 75.4 recount (appended by plan 75.4, the kernel's rule gaps; the sections above stay as written)
+
+The recount (scripts/agenda_audit/recount.py) on the tree after 75.4 (5), against main 243c7949 (210 CHESS FACT rows). Two hand readings sit on lines 75.4 edited where the
+family's fact stays written -- the edit moved only a RULE read into the kernel's interface -- and are carried (KEEP_ON_EDIT, MID lines 4205 and 4896): B1 on `_since_after`'s
+other setting (the clock's reset rule, "a capture of ours not bad for us, or our pawn move": the capture is `Game.clock_events`' now) and D8h on the proved passer's claim
+(its push is `Game.push_to`'s now). Without the carry they read as B1 5 -> 4 and D8h 9 -> 8 (the 75.4 (3) and (5) journal entries' recount lines; corrected in the journal).
+
+```
+OBS audit rows total 1618: LOGIC 1253, RULE 99, NAME 21, CHESS FACT 210, HEURISTIC 35
+OBS audit rows agenda.py 1584: LOGIC 1227, RULE 97, NAME 19, CHESS FACT 208, HEURISTIC 33
+OBS audit rows ponder.py 34: LOGIC 26, RULE 2, NAME 2, CHESS FACT 2, HEURISTIC 2
+OBS audit hand readings carried onto an edited line (the family's fact stays there): 53
+OBS audit hand readings dropped (their line changed since 65024fbf): 131
+OBS audit recount CHESS FACT rows 210 -> 210
+```
+
+What changed: RULE rows 106 -> 99 -- the rules the agenda read or re-wrote now come through the kernel's interface (game.py): the position key's cut of the FEN (`_pos_key`), the
+clock's events (`_irreversible`, `_since_after`, `_pawn_move`), the hand-built promotion pushes (`_lift_routes`, the passer claim, `_promotion_exchange`); the two new readers of
+the draws by rule (`_rule_draw`, `_route_rule`) added LOGIC rows only (the draw's kind is the names table's `draw`, its need the route's target). Section 5's "rules re-implemented
+in Python" items 2 (position identity and repetition; the irreversible event) and 5 (promotion built by hand) are closed by 75.4; the other items are as the 75.2 recount left them.
