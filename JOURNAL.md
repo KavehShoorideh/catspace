@@ -35620,3 +35620,14 @@ become ONE definition (the Rust tables reading the store's worths) before a mine
 NEGATIVE CONTROL: the experiment's build (the GOAL entries counting in the mined valuation) is the wrong build for the default path -- the guard fires on it
 (above). OBS gate engine --only: test_plan76_4c 15 / 0 / 0 1.2 s; test_plan73 10 / 0 / 0 16.3 s; test_plan75 11 / 0 / 0 0.6 s.
 OBS audit rows total 1609: CHESS FACT 198 (198 -> 198; agenda.py untouched).
+
+
+
+## 2026-10-29 03:31 -- plan 76.4c: (a)-(c) marked BUILT; (d) THE SECOND GAME not built -- its brief written (branch worktree-agent-a07aeaec17cb5fe3c)
+docs/ANALYST_PLAN.md 76.4 marked (a)-(c) BUILT (journal 02:05, 02:57, 03:28). (d) checkers -- a GDL rule set, a kernel certified by cross-play, the Lean
+generation unchanged, the material and an object mined with no code outside them -- was NOT attempted in this run: the brief is docs/PLAN76_4D_CHECKERS_BRIEF.md
+(the task, the acceptance, and the places the 76.4c agent read as likely leaks of chess into "generic" code: ontology.py's one-game DIR / SPEC / SAMPLE and its
+kernel cross-checks, the regression's native core loading chess.gdl, the lemma store's chess GOAL entries and the VALUATION's kernel letters, the KRvK technique
+machinery's python-chess boards and Syzygy table; unverified). The three generic modules of 76.4c (terms.py, object_miner.py, valuation_miner.py) pass the
+generic test (no relation, constant or word of the game in their code); terms.Domain finds its sorts by role, so a spec with a product location, roles, a
+placement fluent, a turn fluent and an opponents table is all it reads.

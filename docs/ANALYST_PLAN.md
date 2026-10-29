@@ -4069,6 +4069,19 @@ with the GDL as the oracle in tests; the 75.1 findings of "rules re-implemented 
 ### 76.4 MINING OBJECTS: the miner proposes derived relations over the shelf's base relations (line, blocked, region are the test cases: we know what they should be); an accepted relation
 is a node kind; (4) and (5) above; then MATERIAL as the first mined valuation (the hand entry stays beside it); then the second game (checkers: a GDL file, a fast kernel certified by
 cross-play, zero code outside them).
+* 76.4 (a)-(c) BUILT 2026-10-29 on branch worktree-agent-a07aeaec17cb5fe3c (journal 2026-10-29 02:05, 02:57, 03:28; the parent snapshot main fba136dd): (a) ONE TERM
+  LANGUAGE, discovery/terms.py (generic: the sorts found in the spec by role -- the shelf's product object, the roles, the placement fluent; 34 constructors:
+  literals of the spec's relations with free / anonymous / constant / side slots, set operations, closure, reach, restrict, compose, via, without, counts, per-axis
+  distances, extreme, area, first, lex, defined names; printed, read back, priced by size, implication on the syntax); the technique atoms re-expressed
+  (technique_measures.ATOM_TERMS) equal python-chess's reading on 246 guard readings but the six P atoms on five pawn endings (the vocabulary's per-kind pawn
+  order: a finding). (b) MINING OBJECTS, discovery/object_miner.py: defined relations scored by use only (the regression's derivations: readings with their leaves,
+  flips by a witness; the stated obligation's cited sets), the fuse the spec's largest clause body, levels simplest first, pruning by implication; LINE, BLOCKED and
+  REGION rediscovered (246 of 246 guard readings each), the KRvK whole-class miner re-run with the mined atoms gives 73.5b's four zero-failure measures, all citing
+  them; five MINED ontology entries (free, corner, region, line, blocked) declaring their nodes at feature-set version 3 (nothing retrained). (c) MATERIAL,
+  discovery/valuation_miner.py: worths fit only to outcomes by the priced search -- q 14 r 8 b 5 n 4 p 2 from 4000 lichess games, beside the HAND entry
+  (lemmas/material-mined.json, its term, the exchange law over it a stated obligation); the agenda reads the hand one. The one experiment (the agenda on the mined
+  valuation) is reported, not merged: the valuation is not one definition (the Rust core's and several Python modules' own worth tables). Guard 0 of 218 at every
+  commit; CHESS FACT rows 198 -> 198. No Rust build. (d) THE SECOND GAME NOT BUILT: its brief is docs/PLAN76_4D_CHECKERS_BRIEF.md.
 NOT IN 76: fog-of-war (GDL-II's `sees`; the chase over information sets; the frame as the observation -- recorded as the natural extension), the Rust port of the loop.
 
 
