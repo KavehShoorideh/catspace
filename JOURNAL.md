@@ -35109,3 +35109,20 @@ OBS gate engine --only: test_plan74 14/0/0/0 3.1 s (the rule: tests changed for 
 14/0/0/0 29.2 s; test_plan68 4/0/0/0 12.8 s.
 76.3 IN SUM (d)-(f): docs/ANALYST_PLAN.md 76.3 marked BUILT. THE SURPRISE SHELF BY CLASS: the rules' 11 (rust draw 9, spec clock_event 1, game moves_to 1 -- all
 patched, agreeing), the engine's 8 (loop miss 7: 6 open, 1 fixed; refuted measure 1: fixed).
+
+
+## 2026-10-28 19:40 -- plans 76.2 + 76.3 merged (bcc07441, by hash after a collision); the gate; two oracle tests pointed at the oracle; 76.4a launched
+The merge: my plan commit b7233962 landed on main during the fast-forward chain, the ff was lost and the chain's `git branch -D` deleted the branch name; the commit bb2b11d5 was
+intact and merged by hash with no conflicts; the core rebuilt from main's crate. LESSON: no commit to main while a merge chain runs.
+OBS gate engine (main bcc07441, 46 files incl. test_rules_shelf): passed 608, failed 2, xfailed 2, errors 0, wall 1112.0 s -- the two: test_52_11 and test_52_13 in test_regress, both
+calling `Agenda._mates`, the python-chess mate-in-one the agent retired for the Rust word `Pos.mates` (76.2 (b): mate in one computed once); the agent's per-stage gate list did not
+include test_regress (my brief's omission). Fixed by pointing both tests at the python-chess ORACLE `graph.mates` (the Rust docstring names it so); nothing else changed.
+OBS gate engine --only test_regress: passed 87, failed 0, xfailed 0, wall 527.8 s (52.18 XPASSed).
+76.2 + 76.3 (the agent's six journal entries above): `legal` PROVED equal to the kernel's legalMove on reachable positions (LegalEquiv.lean, 125 theorems; check, mate, stalemate,
+fifty-move, threefold through the Record, win/loss proved; terminal sound and complete modulo FIDE dead positions beyond the material criterion -- the knight clause a CONJECTURE); Game the
+one rules surface (21 rule methods bound to shelf relations; the GDL oracle on 8979 positions: 0 disagreements after two new surprises -- s010 the e.p. capture's clock event missing from
+the spec, s011 castling missing from Game.moves_to); the judge's kinds from Game.reply_kind, principal lines in Rust, mate in one once; the RULE kind in the store (11 entries, 9 PROVED);
+game.rs one definition per rule end. 76.3: the surprise shelf (rules/surprises/ 11; lemmas/surprises/ 8 engine cases: 7 loop-2 misses re-graded, 6 open; the refuted K+R measure);
+`trace_identity --sets surprises` + `decisions` (RIGHT 3, WRONG 5 at the count budget); the miner reads refuted cases; `lemma_store uses --write` (57 of 123 entries unused across five
+batches: a list for Kaveh, nothing deleted); the age rule (the oldest open item once per pass). Loop-2 32 RIGHT / 6 WRONG. CHESS FACT rows 210 -> 205 (D23 moved into Rust).
+76.4a launched: defects and fixes derived from the spec by goal regression; the hand tables become test oracles.

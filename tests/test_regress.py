@@ -349,7 +349,7 @@ def test_52_11_escape_note_by_the_rules_equals_the_binder_reading():
             c = b.copy(stack=False); c.push(m)
             for rep in list(c.legal_moves)[:12]:
                 d = c.copy(stack=False); d.push(rep)
-                rules = any(AG.Agenda._mates(d, mv) for mv in d.legal_moves)
+                rules = any(G.mates(d, mv) for mv in d.legal_moves)                   # 76.2 (b): mate in one is the Rust word Pos.mates; graph.mates is the python-chess ORACLE
                 assert rules == bool(SM.bind_mate(d.fen(), us))
 
 
@@ -507,7 +507,7 @@ def test_52_13_pos_replies_diff_and_exchange_equal_python_chess_on_dev_20():
             d = c.copy()
             d.push(r)
             _u, dbal, chk, cap, rec, mate1 = rows[r.uci()]
-            mates = any(d.gives_check(x) and AG.Agenda._mates(d, x) for x in list(d.legal_moves))
+            mates = any(d.gives_check(x) and G.mates(d, x) for x in list(d.legal_moves))      # 76.2 (b): the python-chess oracle (Agenda._mates was retired)
             assert (dbal, chk, cap, rec, mate1) == (G.balance(d, b.turn) - G.balance(c, b.turn), d.is_check(), c.is_capture(r), c.is_capture(r) and r.to_square == m.to_square, mates)
             P2 = P1.push(r.uci())
             assert set(P.diff(P2)) == set(R.diff_squares(b, d)) and P2.mate_in_one() == mates and P2.legal_count() == d.legal_moves.count()
