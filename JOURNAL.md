@@ -35823,3 +35823,24 @@ OBS gate engine --only: test_plan76_5 10 / 0 / 0 4.0 s; test_reasoned 6 / 0 / 0 
 11 / 0 / 0 0.5 s; test_plan76_4c 15 / 0 / 0 1.0 s; test_regress 87 / 0 / 1 xfailed 494.6 s.
 76.5 IN SUM: docs/ANALYST_PLAN.md 76.5 marked BUILT. Commits 8f88201c (a), 1d31fb62 (b), 30e4ccea (c), this one (d). Two Rust builds (a; b's ensure_ready): THE SHARED
 EDITABLE INSTALL POINTS AT THIS BRANCH'S CRATE -- the parent rebuilds main's after the merge.
+
+
+## 2026-10-29 09:46 -- plan 76.5 merged (main 8a3ac922, fast-forward; core rebuilt from main's crate); the gate; checkers withdrawn
+OBS gate engine (main 8a3ac922, 50 files incl. test_plan76_5): passed 661, failed 0, xfailed 3, errors 0, wall 1159.7 s.
+Kaveh 2026-10-29: "checkers isn't a good example. stick to chess." -- 76.4d withdrawn; the genericity claim is tested within chess.
+76.5 (the agent's four journal entries above): THE VALUATION IS ONE DEFINITION -- rust/analyst_core/src/valuation.rs, one process-wide table set by `analyst_core.set_valuation` from
+`lemma_store.install_valuation` (the store loaded on first use; no default; a store without one raises); every Rust worth literal (lib.rs, rules.rs, words.rs, regress.rs, plan.rs, threat.rs,
+waiting.rs, reasoning.rs) became a derived quantity (more_than_pawn, promotion_stake, piece_floor, unit, the royal's order key); the Python copies routed (ruler.py's table and import-time
+assertion gone; table, ledger, ledger_puzzles, watch, surprise_loop, observables, puzzle_apply, regress, lean_backrank_puzzles, lean_passer_v2_proto read the store; selfmine VALUE deleted).
+Two defects met and fixed: the first-use load deadlocked when a rayon worker read first (now only on the GIL thread; `ensure_ready()` before every parallel section); five ontology unit
+kinds bound to rules.rs re-bound to pos.rs. OBS scan: ENGINE hits 74 (FINDINGS 25, UNEXPLAINED 49) -> 22 (FINDINGS 22, UNEXPLAINED 0); the scan is a test. Guard 0 of 218 at every stage;
+controls fire (the pawn at 2 in the core: 10/10 traces). CHESS FACT 198 -> 198 (A4's four rows already read the store).
+THE EXPERIMENT (one sitting, directional): mined worths q14 r8 b5 n4 p2 (unit 2) vs the hand 9/5/3/3/1: guard decisions differ in 7 of 218 (RIGHT -> WRONG 3: 04Qx2 Be8+ -> Bb1+ at both
+tiers, 08A6a Bxe5 -> Qh5; -> none 4; none gained); loop-2 at 15 s: hand RIGHT 32 / WRONG 6, mined 31 / 7 (Bn8pS c4 proved -> Ba6 unproved); W0VFO Qb7 both ways. Scale control (hand
+worths doubled): 0 of 218 moves differ. VERDICT (the agent's, adopted by no one): KEEP THE HAND TABLE -- the mined entry is inconsistent with itself (unit 2, yet bishop 5 for knight 4
+gains 1; the store defines the unit as the least gain) and falsifies Ideas.TreeStep.contrib_le_three (a minor piece is worth at most 3). A usable mined valuation: unit = the worths' gcd,
+the exchange-against-0 sites routed, that theorem restated. The Lean obligation written into both VALUATION entries' notes: the theorems hold for any worth table with the properties they use
+(Fork.lean pieceValue, ExchangeLaw valueAt with the king at 100, Vocabulary worthOf / materialOf, mateGain 100000 vs the engine's 100).
+LEFT (findings, unrouted): the royal as a number (lib.rs 100, plan.rs 1000, reasoning.rs 100, waiting.rs 10) standing in for the terminal stake, which is a GOAL entry the core does not
+hold; the terminal stake's copies (regress.rs STAKE_MATE 100, MATE_GOAL 500, reasoning MATE 1000, regress.py STAKE_DUTY_MATE, watch MATE_SIZE); 18 exchanges read against 0 (7 Rust, 11
+Python); binder.py's `+ 1` and the alive floor `C + 4`.
