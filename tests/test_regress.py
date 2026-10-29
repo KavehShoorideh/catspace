@@ -2,6 +2,7 @@
 import analyst_core as AC
 import chess
 import pytest
+import re
 
 from catspace.incubator.analyst.discovery import agenda as AG
 from catspace.incubator.analyst.discovery import binder as BD
@@ -904,7 +905,8 @@ def test_52_17_the_dev_20_decisions_that_needed_a_discovery_or_a_resumed_gap_are
         if pid == "04Qx2":                             # plan 72.10: the save question's keep chase (the last root, a pool of 7) now reads every discovered check of the bishop to its end, not Be8+ alone; all keep
             d = ag.decision()                          # the bishop (value 3, 70.1's currency) and the equal claims are broken by the move's uci (53 (3)'s last resort), so the decision is one of them
             assert d is not None and d.proved and d.value == 3 and d.what in Q04_KEEPS and ag.ctx.unaddressed > 0, (pid, d)
-            assert "Be8+: after Qg5: material +0 / after Qg7: material +0 / after Kh8: material +0 => value 0" in ag.trace()      # the discovery is read to its end
+            assert re.search(r"Be8\+: after Qg5: .* / after Qg7: .* / after Kh8: .* => value", ag.trace())      # the discovery is read to its end (76.4a + the goal's own move as a route, 2026-10-28:
+            #                                                                                                        the leaves now read Qxg5+ / Qxg7+ / Rxc8 instead of "material +0"; the decision is unchanged)
             continue
         assert ag.decision() is not None and ag.decision().what == san and ag.ctx.unaddressed > 0, pid
 

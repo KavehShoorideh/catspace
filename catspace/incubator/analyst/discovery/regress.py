@@ -1120,7 +1120,11 @@ def routes_of(q: Question, board: chess.Board, us: str | bool, root: Question | 
         if q.goal in ("guard", "cover") and m.from_square in root.pattern.get("blockers", ()):
             continue
         cands.append(m)
-    keep = [m for m in cands if not _still(q, board, us, m, root, before)]       # plan 76.4a: the regression's fix test
+    goal_sq = root.pattern.get("target") if root.goal == "win" else None
+    keep = [m for m in cands if (goal_sq is not None and m.to_square == goal_sq) or not _still(q, board, us, m, root, before)]       # plan 76.4a: the regression's fix test
+    #   (2026-10-28, after 76.4a's gate: THE GOAL'S OWN MOVE -- the capture of the target -- is a ROUTE of a win question whether or not it mends a defect: its merit is the exchange law's,
+    #    read by the verifier; the hand oracle admitted it by accident (it read the exchange on our own unit there) and the regression rightly says it fixes nothing, but an agenda without a
+    #    chase (theirs, side_depth 0) has no other way to the capture: test_64_0's their-claim-after-Qxa8 fell to 0 without it)
     whys = _forcing_batch(board, keep, q.stake, us) if ROUTES_RUST and keep else None       # 54 (B2): the forcing reasons in one Rust call (the Python twin where it answers None)
     if whys is None:
         whys = [_forcing_why_py(board, m, q.stake, us) for m in keep]
