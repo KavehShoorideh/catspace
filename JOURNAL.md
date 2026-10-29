@@ -35631,3 +35631,21 @@ kernel cross-checks, the regression's native core loading chess.gdl, the lemma s
 machinery's python-chess boards and Syzygy table; unverified). The three generic modules of 76.4c (terms.py, object_miner.py, valuation_miner.py) pass the
 generic test (no relation, constant or word of the game in their code); terms.Domain finds its sorts by role, so a spec with a product location, roles, a
 placement fluent, a turn fluent and an opponents table is all it reads.
+
+
+## 2026-10-29 03:52 -- plan 76.4c merged (main 14f06830, fast-forward); the gate
+OBS gate engine (main 14f06830, 49 files incl. test_plan76_4c): passed 651, failed 0, xfailed 3, errors 0, wall 1150.8 s.
+76.4c (the agent's journal entries above): ONE TERM LANGUAGE (terms.py: 7 sorts, 34 constructors, game-free -- the sorts found in the spec by ROLE, not by name; atoms re-expressed equal
+on 241-246 of 246 guard readings: the six P atoms differ on five pawn endings because "most advanced pawn first" is a per-kind order the language has no construct for, and the agent rightly
+did not add one). MINING OBJECTS (object_miner.py): the spec has no line / ray / blocked / region; from step, king_step, slide, occupied, cell, attack the generator REDISCOVERED
+LINE `(via (closure (step ? ? ?)) (closure (step ? ? ?)))`, BLOCKED `(exists 3 (restrict line (occupied ?)))`, REGION `(reach (restrict (king_step ? ?) free) (cell ? them king))` with free
+`(not (attack us _ ?))`, and corner -- each equal on 246 of 246 guard readings; scored by USE only (the regression's derivations, the KRvK obligation's cited sets) with implication
+pruning (candidates 160344, pruned 19223, accepted 5); five MINED ontology entries, node kinds at feature version 3 (nothing retrained); the KRvK miner re-run with the mined atoms gives
+the 73.5b measure, citing a derived atom 4 of 4. MATERIAL MINED (valuation_miner.py): 4000 lichess games, 236305 positions, results only; worths q14 r8 b5 n4 p2 (7 / 4 / 2.5 / 2 / 1 per
+pawn; continuous 7.34 / 3.89 / 2.46 / 2.23 / 1); log loss 0.84104 vs the hand 9/5/3/3/1 at 0.84130 -- the same piece order; on 28600 tablebase endings the pawn outranks the knight and no
+integer vector met the rule. Entry material-mined.json (VALUATION, MINED, unit 2) beside the HAND one; the agenda reads the hand one; guard 0 of 218.
+THE FINDING: THE VALUATION IS NOT ONE DEFINITION. The experiment (the GOAL entries pointed at the mined valuation) crashed: ruler.py asserts its own worth table at import; the Rust core
+keeps its own worths (lib.rs value / kernel_value, rules.rs val, words.rs worth_of, plan.rs val with a >= 3 threshold); Python copies in table.py, selfmine, ledger, ledger_puzzles,
+surprise_loop, watch. Run with the units mixed, 25 decisions moved (loop-2 34 / 3 vs 32 / 7 the same sitting) -- none creditable to the worths. The hand entry in the store (75.2) was the
+one definition for the AGENDA; the words and the kernel never read it. NEXT, for Kaveh's word: the valuation as ONE definition read by Rust too (a Rust change); then the mined valuation can
+be judged; checkers (docs/PLAN76_4D_CHECKERS_BRIEF.md) after.
