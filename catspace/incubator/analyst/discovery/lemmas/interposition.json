@@ -10,7 +10,8 @@
  "lean": [],
  "origin": "HAND",
  "plan": [
-  "52.7"
+  "52.7",
+  "76.4a"
  ],
  "journal": "2026-10-17",
  "measure": null,
@@ -43,7 +44,24 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/regress.py:mate_defects_on",
   "rust/analyst_core/src/regress.rs:mate_defects_board",
-  "catspace/incubator/analyst/discovery/regress.py:_fixes_of"
+  "catspace/incubator/analyst/discovery/regress.py:_fixes_of",
+  "catspace/incubator/analyst/discovery/regression.py:name"
  ],
- "note": "A piece of theirs can step between the checker and their king; the fix takes the interposer with check."
+ "note": "A piece of theirs can step between the checker and their king; the fix takes the interposer with check.",
+ "params": {
+  "gdl": {
+   "goal": "mate",
+   "defect": "witness",
+   "leaf": [
+    "empty",
+    0,
+    1
+   ],
+   "sq": "leaf",
+   "by": "from",
+   "group": "sq",
+   "order": 3,
+   "text": "a piece can step between on {sq}"
+  }
+ }
 }

@@ -9,7 +9,8 @@
  "lean": [],
  "origin": "HAND",
  "plan": [
-  "52.2"
+  "52.2",
+  "76.4a"
  ],
  "journal": "2026-10-17",
  "measure": null,
@@ -41,7 +42,21 @@
  },
  "implementation": [
   "catspace/incubator/analyst/discovery/regress.py:mate_defects_on",
-  "rust/analyst_core/src/regress.rs:mate_defects_board"
+  "rust/analyst_core/src/regress.rs:mate_defects_board",
+  "catspace/incubator/analyst/discovery/regression.py:name"
  ],
- "note": "Nothing of ours attacks their king in the mate pattern's future."
+ "note": "Nothing of ours attacks their king in the mate pattern's future.",
+ "params": {
+  "gdl": {
+   "goal": "mate",
+   "defect": "false",
+   "clause": 0,
+   "lit": 0,
+   "order": 0,
+   "text": {
+    "attack_by": "nothing of ours attacks {sq}",
+    "true.cell": "their king is not on the board"
+   }
+  }
+ }
 }

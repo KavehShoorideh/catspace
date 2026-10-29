@@ -35126,3 +35126,41 @@ game.rs one definition per rule end. 76.3: the surprise shelf (rules/surprises/ 
 `trace_identity --sets surprises` + `decisions` (RIGHT 3, WRONG 5 at the count budget); the miner reads refuted cases; `lemma_store uses --write` (57 of 123 entries unused across five
 batches: a list for Kaveh, nothing deleted); the age rule (the oldest open item once per pass). Loop-2 32 RIGHT / 6 WRONG. CHESS FACT rows 210 -> 205 (D23 moved into Rust).
 76.4a launched: defects and fixes derived from the spec by goal regression; the hand tables become test oracles.
+
+
+## 2026-10-28 20:40 -- plan 76.4a (a) THE REGRESSION: a goal's defects and fixes derived from the spec's clause bodies (branch worktree-agent-aad9b2e21eb1ed682)
+WHAT (discovery/regression.py, GENERIC: it names no game object -- tests/test_plan76_4a.py asserts it with test_plan75's word list): a top-down, tabled reading of
+rules/chess.gdl (the clauses gdl.py evaluates bottom-up; a recursive ray relation is a table iterated to its fixpoint; negation as failure over a lower stratum) on a
+state given through a BINDING (gdl_chess.Binding: the board's fluents read where asked; the CERTIFIED relations read through the kernel -- `legal` (RULE "the rule:
+legal move", Ideas.LegalEquiv.legal_iff) and `attack_by` (new RULE entry "the rule: attack", PROVED: Ideas.LegalEquiv.attackBy_iff, unconditional; their TRUTH from
+the kernel, their DERIVATION still their clauses); the next state through Game's certified apply (Ideas.NextEquiv.applyMoveSpec_eq_applyMove); the exchange law's
+value through the Rust see). A GOAL entry's new `gdl` param says which spec relation it is: mate = `mate` (= check(?c), not has_move) on the question's
+counterfactual; win = `capture(?k, $us, ?f1, ?r1, $target)` with us on move and the exchange as its value (need: the valuation's unit). The regression answers the
+DERIVATION (each clause literal TRUE / FALSE), the DEFECTS (a false positive literal with its deepest single-point false atom; each WITNESS of a true negated
+literal -- for mate the legal moves of theirs, `has_move`'s witnesses -- with the LEAVES of the positive literals' derivations its next state flips beyond the pass;
+the value short of the need with the atoms it reads), and the FIXES (`regression.fixes`: our legal actions after which, in the next state, the named defect is gone and
+no named defect is new). THE NAMES are the DEFECT_FIX entries' new `gdl` params, each bound to a place of the spec: no check = mate's literal 0 false; checker
+takeable = a witness flipping literal 0 of an `attack_by` clause (the attacker's cell); flight = flipping check's literal 1 (the checked unit's cell), not when the
+attacker's cell flips too; interposition = flipping empty's literal 1 (`not occupied`, reached through slide's recursive clause); not attacked = the capture clause's
+literal 0 false; defended = the value short. `lemma_store validate` checks every binding against the spec (gdl_problems). Cached per (state key, goal); a regression
+of the same goal is VALIDATED on a new state (every base query it asked answers the same, its values the same, the state the same at its witnesses' locations --
+the evaluation being a function of those answers, it IS the regression there). Lean: sound by construction over the certified relations; no new theorem.
+THE GUARD QUESTIONS (scripts/plan76_4a.py harvest: the 218 guard runs, count budget, PYTHONHASHSEED=0, with recorders on the hand tables; regress: the regression on
+every distinct question of every case; --jobs 11):
+OBS 76.4a harvest ten t0: 10 cases, hand-table calls 98082, distinct questions 84734, wall 10.1 s
+OBS 76.4a harvest ten t2: 10 cases, hand-table calls 335774, distinct questions 291965, wall 36.0 s
+OBS 76.4a harvest wide t0: 99 cases, hand-table calls 349944, distinct questions 278615, wall 20.2 s
+OBS 76.4a harvest wide t2: 99 cases, hand-table calls 1527682, distinct questions 1280149, wall 74.9 s
+OBS 76.4a regress mate: questions regressed 508705, defects derived 1606102, ms per question 0.722 (the hand table's 0.0195)
+OBS 76.4a regress win: questions regressed 327579, defects derived 294327, ms per question 0.074 (the hand table's 0.0062)
+OBS 76.4a regress fix (mate): candidate lists 163469, candidates 3331439, fixes derived 94797, ms per candidate 0.215 (the hand filter's 0.0018)
+OBS 76.4a regress fix (win): candidate lists 294293, candidates 8738915, fixes derived 333669, ms per candidate 0.059 (the hand filter's 0.0008)
+OBS 76.4a regress: 218 case files, wall 196.1 s
+(directional: one run; the hand figures are the hand calls' own clocks in the guard runs, the regression's in the harness.) The cost before/after for the engine is
+stage (c)'s.
+THE GUARD (no engine path reads regression.py yet; the store changed): OBS guard ten t0 0 / 0 / 0 / 0 / 0 of 10 (traces / read sets / leaf verdict lists / word
+lists / provenance lists); ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (snapshots wall 123 s).
+NEGATIVE CONTROL (not committed: flight's binding without its `unless`): OBS gate engine: files 1, passed 7, failed 1 (test_76_4a_the_regression_gives_the_hand_tables_defects).
+OBS audit recount CHESS FACT rows 205 -> 205 (agenda.py untouched). OBS lemma store validate: entries 124, problems 0. OBS ontology validate: problems 0.
+OBS gate engine --only: test_plan76_4a 8/0/0/0 0.9 s; test_plan73 10/0/0/0 16.5 s; test_plan75 11/0/0/0 0.7 s; test_rules_gdl 12/0/0/0 7.1 s; test_plan76 20/0/0/0
+75.6 s; test_rules_shelf 12/0/0/0 70.0 s.

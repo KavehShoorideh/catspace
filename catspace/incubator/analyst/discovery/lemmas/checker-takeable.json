@@ -10,7 +10,8 @@
  "lean": [],
  "origin": "HAND",
  "plan": [
-  "52.2"
+  "52.2",
+  "76.4a"
  ],
  "journal": "2026-10-17",
  "measure": null,
@@ -43,7 +44,25 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/regress.py:mate_defects_on",
   "rust/analyst_core/src/regress.rs:mate_defects_board",
-  "catspace/incubator/analyst/discovery/regress.py:_fixes_of"
+  "catspace/incubator/analyst/discovery/regress.py:_fixes_of",
+  "catspace/incubator/analyst/discovery/regression.py:name"
  ],
- "note": "A piece of theirs can take the checker of the mate pattern; the fixes guard the square, remove an x-ray blocker with tempo, or take or pin the taker."
+ "note": "A piece of theirs can take the checker of the mate pattern; the fixes guard the square, remove an x-ray blocker with tempo, or take or pin the taker.",
+ "params": {
+  "gdl": {
+   "goal": "mate",
+   "defect": "witness",
+   "leaf": [
+    "attack_by",
+    null,
+    0
+   ],
+   "sq": "leaf",
+   "by": "from",
+   "group": "witness",
+   "sort": "sq",
+   "order": 1,
+   "text": "{unit} on {frm} can take the checker on {sq}"
+  }
+ }
 }

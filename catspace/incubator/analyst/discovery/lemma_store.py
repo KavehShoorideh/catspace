@@ -116,6 +116,10 @@ def check_entry(e: dict, where: str = "") -> list:
 # whether a kill records the question's reads, and how near (in the goal's own count: a pawn's pushes) a unit must be for a root to be asked (null: every one).
 # The VALUATION is one entry: the worth of each unit kind (by its symbol), the unit of a gain, the royal unit.
 GOAL_PARAMS = ("question", "basis", "rule", "valuation", "stake", "ends_game", "keep", "about", "chase", "reads_on_kill", "near")
+# plan 76.4a: a GOAL entry may say `gdl` -- THE SPEC RELATION THE GOAL IS (discovery/regression.py regresses it): `head` [relation, arg ...] (constants, '?x'
+# variables, and the question's parameters '$us', '$them', '$target', '$unit'), `on_move` (the role whose turn the head is read on, or null), `value` (null, or
+# {law, args, need, reads}: the valuation the head's truth must also reach, and the atom pattern it reads). Its defects' NAMES are DEFECT_FIX entries' `gdl`.
+GOAL_GDL = ("gdl",)
 VALUATION_PARAMS = ("worth", "unit", "royal")
 # plan 76.2 (c) THE RULE SHELF: a RULE entry is a rule of the game the engine reads -- GIVEN, never derived; in Lean a DEFINITION (generated from rules/chess.gdl), never
 # an axiom. Its params say where it lives: `spec` (the generated Lean definition, Ideas.Spec.Chess.*), `gdl` (the spec's relation), `surface` (the Game methods that
@@ -130,9 +134,11 @@ def _params_problems(e: dict, at: str) -> list:
     p = e.get("params")
     k = e["kind"]
     if k == "GOAL":
-        if not isinstance(p, dict) or set(p) != set(GOAL_PARAMS):
-            return [f"{at}: a GOAL has params exactly {', '.join(GOAL_PARAMS)}"]
+        if not isinstance(p, dict) or set(p) - set(GOAL_GDL) != set(GOAL_PARAMS):
+            return [f"{at}: a GOAL has params exactly {', '.join(GOAL_PARAMS)} (and may say {', '.join(GOAL_GDL)})"]
         bad = []
+        if "gdl" in p and (not isinstance(p["gdl"], dict) or set(p["gdl"]) != {"head", "on_move", "value"}):
+            bad.append(f"{at}: params gdl is {{head, on_move, value}} (plan 76.4a: the spec relation the goal is, read by regression.py)")
         if not isinstance(p["question"], str) or not p["question"]:
             bad.append(f"{at}: params question must be the goal word its questions carry")
         if p["basis"] not in BASES:
@@ -202,7 +208,14 @@ def _params_problems(e: dict, at: str) -> list:
 # moves the side to move has in hand over the count it is compared with).
 WORD_PARAMS = {"FORCING": {"forced": bool, "rank": int, "rank_any": int, "walked": bool, "at_king": bool},
                "CLOSING": {"reads_every_reply": bool, "chase": bool, "leaf_read": bool, "window": bool, "draw": bool, "refutes": bool, "units": list, "order": list, "terminal": bool},
-               "DEFECT_FIX": {"ahead": int}}
+               "DEFECT_FIX": {"ahead": int, "gdl": dict}}
+# plan 76.4a: a DEFECT_FIX entry's `gdl` is THE NAME'S BINDING TO A PLACE OF THE SPEC -- `goal` (the GOAL entry whose defects it names), `defect` ('false': a positive
+# literal of the goal's clause no binding satisfies, at `clause` / `lit`; 'witness': a witness of a true negated literal, named by the `leaf` of the goal's positive
+# derivations it flips, [relation, clause index or null, literal index], not when `unless` flips too; 'value': the goal's value short of its need), how a witness
+# reads as a location (`sq`, `by`: 'leaf', 'from', 'to'), whether witnesses group per witness or per location (`group`; `sort` 'sq': by location first), its place
+# among the goal's names (`order`), and its `text` (a template; for 'false' a dict by the deepest false atom's relation).
+DEFECT_GDL_FIELDS = {"goal": str, "defect": str, "clause": int, "lit": int, "leaf": list, "unless": list, "sq": str, "by": str, "group": str, "sort": str,
+                     "order": int, "text": (str, dict)}
 _WORDS: list = [None, None]          # (the store object, the derived tables)
 
 
@@ -883,6 +896,55 @@ def rule_problems(store: dict, idx: "dict | None" = None) -> list:
     return bad
 
 
+def gdl_goals(store: "dict | None" = None) -> dict:
+    """plan 76.4a: the GOAL entries that say which spec relation they are -> {name: their `gdl`}."""
+    store = load() if store is None else store
+    return {n: e["params"]["gdl"] for n, e in store.items() if e["kind"] == "GOAL" and "gdl" in (e.get("params") or {})}
+
+
+def defect_names(store: "dict | None" = None) -> list:
+    """plan 76.4a: THE DEFECTS' NAMES -- every DEFECT_FIX entry bound to a place of the spec, [{name, gdl}] (regression.name reads them)."""
+    store = load() if store is None else store
+    return [dict(name=n, gdl=e["params"]["gdl"]) for n, e in sorted(store.items()) if e["kind"] == "DEFECT_FIX" and "gdl" in (e.get("params") or {})]
+
+
+def gdl_problems(store: dict) -> list:
+    """plan 76.4a: a GOAL's `gdl` head that is no relation of the spec; a DEFECT_FIX name binding whose goal says no relation, whose kind or reading is not one
+    regression.name reads, or whose leaf is no literal of the spec (its relation has no clause with that literal)."""
+    from catspace.incubator.analyst.discovery import gdl_chess as GC
+    prog = GC.program()
+    bad = []
+    goals = gdl_goals(store)
+    for n, g in goals.items():
+        h = g["head"]
+        if not isinstance(h, list) or not h or h[0] not in prog.nodes:
+            bad.append(f"{n}: gdl head {h!r} is no relation of the spec")
+        v = g["value"]
+        if v is not None and (not isinstance(v, dict) or set(v) != {"law", "args", "need", "reads"} or not isinstance(v["reads"], list) or v["reads"][0] not in prog.nodes):
+            bad.append(f"{n}: gdl value is null or {{law, args, need, reads}} with reads a spec relation pattern")
+    for e in defect_names(store):
+        n, g = e["name"], e["gdl"]
+        if any(f not in DEFECT_GDL_FIELDS or not isinstance(v, DEFECT_GDL_FIELDS[f]) for f, v in g.items()):
+            bad.append(f"{n}: gdl fields are among {', '.join(DEFECT_GDL_FIELDS)}")
+            continue
+        if g.get("goal") not in goals:
+            bad.append(f"{n}: gdl goal {g.get('goal')!r} is no GOAL entry with a gdl head")
+        if g.get("defect") not in ("false", "witness", "value") or "order" not in g or "text" not in g:
+            bad.append(f"{n}: gdl defect is 'false', 'witness' or 'value', with an order and a text")
+            continue
+        if g["defect"] == "witness":
+            if g.get("sq") not in ("leaf", "from", "to") or g.get("by") not in ("leaf", "from", "to") or g.get("group") not in ("witness", "sq"):
+                bad.append(f"{n}: a witness name reads sq and by as 'leaf', 'from' or 'to' and groups per 'witness' or per 'sq'")
+            for f in ("leaf", "unless"):
+                pat = g.get(f)
+                if pat is None:
+                    continue
+                cs = prog.rules_of.get(pat[0], []) if isinstance(pat, list) and len(pat) == 3 else []
+                if not cs or not any((pat[1] is None or i == pat[1]) and isinstance(pat[2], int) and pat[2] < len(c.body) for i, c in enumerate(cs)):
+                    bad.append(f"{n}: gdl {f} {pat!r} is no literal of a clause of the spec")
+    return bad
+
+
 SNAPSHOT_WORDS = ".words.txt"       # the trace guard's file of a run's words beside its trace (scripts/trace_identity.py): "slot<TAB>string" per line
 
 
@@ -936,6 +998,7 @@ def validate(dirs: "list | None" = None, log=print, run: bool = True) -> int:
         bad.append(f"goal kinds: {x}")
     bad += [f"names: {x}" for x in NM.problems()]       # plan 75.2 (c): every name bound to a kernel predicate and a Lean twin present in the index
     bad += [f"rule: {x}" for x in rule_problems(store)]  # plan 76.2 (c): every RULE entry's Spec definition in the index, its surface the Game's
+    bad += [f"gdl: {x}" for x in gdl_problems(store)]    # plan 76.4a: every goal a spec relation, every defect's name a place of the spec
     bad += implementation_problems(store)
     for n, e in store.items():
         for t in e["terms"]:

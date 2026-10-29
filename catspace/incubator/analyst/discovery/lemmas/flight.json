@@ -10,7 +10,8 @@
  "lean": [],
  "origin": "HAND",
  "plan": [
-  "52.2"
+  "52.2",
+  "76.4a"
  ],
  "journal": "2026-10-17",
  "measure": null,
@@ -43,7 +44,29 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/regress.py:mate_defects_on",
   "rust/analyst_core/src/regress.rs:mate_defects_board",
-  "catspace/incubator/analyst/discovery/regress.py:_fixes_of"
+  "catspace/incubator/analyst/discovery/regress.py:_fixes_of",
+  "catspace/incubator/analyst/discovery/regression.py:name"
  ],
- "note": "Their king can step to a square of the pattern; the fix covers the flight with tempo."
+ "note": "Their king can step to a square of the pattern; the fix covers the flight with tempo.",
+ "params": {
+  "gdl": {
+   "goal": "mate",
+   "defect": "witness",
+   "leaf": [
+    "check",
+    0,
+    1
+   ],
+   "unless": [
+    "attack_by",
+    null,
+    0
+   ],
+   "sq": "to",
+   "by": "leaf",
+   "group": "witness",
+   "order": 2,
+   "text": "the king can go to {sq}"
+  }
+ }
 }

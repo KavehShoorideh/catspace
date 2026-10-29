@@ -10,7 +10,8 @@
  "lean": [],
  "origin": "BASE",
  "plan": [
-  "75.2"
+  "75.2",
+  "76.4a"
  ],
  "journal": "2026-10-27",
  "measure": null,
@@ -43,7 +44,8 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/game.py:terminal",
   "catspace/incubator/analyst/discovery/agenda.py:_roots",
-  "catspace/incubator/analyst/discovery/lemma_store.py:goal_kinds"
+  "catspace/incubator/analyst/discovery/lemma_store.py:goal_kinds",
+  "catspace/incubator/analyst/discovery/regression.py:Regressor"
  ],
  "note": "The goal that ends the game, the rule's terminal (Game.terminal says 'mate': the mover is checked and has no legal move): its questions place a checking unit, its stake 100 stands above every count of the material valuation (a number of ours, HAND; Lean's Ideas.Vocabulary.mateGain is 100000), cited by no Lean theorem as a goal.",
  "params": {
@@ -57,6 +59,13 @@
   "about": "at",
   "chase": true,
   "reads_on_kill": true,
-  "near": null
+  "near": null,
+  "gdl": {
+   "head": [
+    "mate"
+   ],
+   "on_move": null,
+   "value": null
+  }
  }
 }

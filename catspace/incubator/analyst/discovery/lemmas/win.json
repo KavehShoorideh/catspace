@@ -11,7 +11,8 @@
  "origin": "HAND",
  "plan": [
   "75.2",
-  "52.2"
+  "52.2",
+  "76.4a"
  ],
  "journal": "2026-10-27",
  "measure": null,
@@ -44,7 +45,8 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/agenda.py:_roots",
   "catspace/incubator/analyst/discovery/agenda.py:_direct_routes",
-  "catspace/incubator/analyst/discovery/lemma_store.py:goal_kinds"
+  "catspace/incubator/analyst/discovery/lemma_store.py:goal_kinds",
+  "catspace/incubator/analyst/discovery/regression.py:Regressor"
  ],
  "note": "Raise the material valuation: win a unit of theirs, its stake the unit's worth (the question's own); a goal of ours toward the outcome, not a rule of the game.",
  "params": {
@@ -58,6 +60,32 @@
   "about": "target",
   "chase": true,
   "reads_on_kill": true,
-  "near": null
+  "near": null,
+  "gdl": {
+   "head": [
+    "capture",
+    "?k",
+    "$us",
+    "?f1",
+    "?r1",
+    "$target"
+   ],
+   "on_move": "$us",
+   "value": {
+    "law": "exchange",
+    "args": [
+     "$target",
+     "$us"
+    ],
+    "need": "$unit",
+    "reads": [
+     "attack",
+     "$them",
+     "?f",
+     "?r",
+     "$target"
+    ]
+   }
+  }
  }
 }

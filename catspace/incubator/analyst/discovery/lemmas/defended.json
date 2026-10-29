@@ -11,7 +11,8 @@
  "origin": "HAND",
  "plan": [
   "52.2",
-  "52.22"
+  "52.22",
+  "76.4a"
  ],
  "journal": "2026-10-17",
  "measure": null,
@@ -44,7 +45,16 @@
  "implementation": [
   "catspace/incubator/analyst/discovery/regress.py:_material_defects",
   "rust/analyst_core/src/regress.rs:material_defects_pos",
-  "catspace/incubator/analyst/discovery/regress.py:_fixes_of"
+  "catspace/incubator/analyst/discovery/regress.py:_fixes_of",
+  "catspace/incubator/analyst/discovery/regression.py:name"
  ],
- "note": "The target is attacked but guarded and the exchange gives nothing; the fixes remove the defender with tempo or add an attacker with tempo (52.22 (2))."
+ "note": "The target is attacked but guarded and the exchange gives nothing; the fixes remove the defender with tempo or add an attacker with tempo (52.22 (2)).",
+ "params": {
+  "gdl": {
+   "goal": "win",
+   "defect": "value",
+   "order": 1,
+   "text": "attacked, guarded {n}x, the exchange gives nothing"
+  }
+ }
 }

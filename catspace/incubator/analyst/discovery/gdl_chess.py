@@ -149,6 +149,227 @@ def goals_of(kind: "str | None", mover: str) -> dict:
     return {mover: ["50"], other: ["50"]}
 
 
+# ------------------------------------------------------------------------------------------------------------------------------------------ plan 76.4a: THE REGRESSION'S BINDING
+# What discovery/regression.py (generic: it names no game object) needs of a game, for chess on python-chess boards: the spec's state of a board (`state_of`), the
+# CERTIFIED relations read through the kernel -- `legal` (the store's RULE "the rule: legal move", PROVED: Ideas.LegalEquiv.legal_iff; Game.moves) -- the certified next
+# state (RULE "the rule: next state", PROVED: Ideas.NextEquiv.applyMoveSpec_eq_applyMove; Game.apply), the turn passed (Game.pass_: the null move), a board given to a
+# side, the exchange law's value (the Rust `see`, the mirror of Lean Ideas.ExchangeLaw; None where the kernel holds no position: the side not to move in check), and the
+# reading of the spec's terms as squares (a location is a (file, rank) pair of the spec's sorts).
+
+CERTIFIED = ("legal", "attack_by")                      # the spec relations the regression reads through the kernel (their RULE entries are PROVED): legal moves
+LOCATION_SORTS = ("file", "rank")                       # (Ideas.LegalEquiv.legal_iff), a unit's attack (Ideas.LegalEquiv.attackBy_iff: unconditional)
+_KIND = {chess.PAWN: "pawn", chess.KNIGHT: "knight", chess.BISHOP: "bishop", chess.ROOK: "rook", chess.QUEEN: "queen", chess.KING: "king"}
+_SQ = {(chess.FILE_NAMES[f], str(r + 1)): chess.square(f, r) for f in range(8) for r in range(8)}
+
+
+class Binding:
+    """The chess binding of the regression (plan 76.4a): python-chess boards as the states, the kernel's legal moves and next state as the certified relations."""
+
+    def __init__(self, prog: "GDL.Program | None" = None):
+        self.prog = prog or program()
+        self._facts: dict = {}
+        self._slots: dict = {}
+
+    @staticmethod
+    def key(b: chess.Board) -> tuple:
+        return (b.pawns, b.knights, b.bishops, b.rooks, b.queens, b.kings, b.occupied_co[True], b.occupied_co[False], b.turn, b.clean_castling_rights(),
+                b.ep_square, min(b.halfmove_clock, CLOCK_LIMIT))
+
+    def facts(self, b: chess.Board) -> frozenset:
+        k = self.key(b)
+        got = self._facts.get(k)
+        if got is None:
+            if len(self._facts) > 200_000:
+                self._facts.clear()
+            got = self._facts[k] = state_of(b) | frozenset(inputs_of())
+        return got
+
+    @staticmethod
+    def inputs(b: chess.Board):
+        """The spec's state of `b` read where it is asked: (rel, pattern) -> the matching rows of `true.cell` (the unit on a square), `true.control`,
+        `true.castling_right`, `true.ep_square`, `true.halfmove` and the input `record` (no game record: 0) -- `state_of`'s facts, by pattern."""
+        def rows(rel: str, pat: tuple):
+            if rel == "true.cell":
+                f, r, c, k = pat
+                if f is not None and r is not None:
+                    s = _SQ[(f, r)]
+                    p = b.piece_at(s)
+                    if p is None:
+                        return ()
+                    row = (f, r, COLOUR[p.color], _KIND[p.piece_type])
+                    return (row,) if (c is None or c == row[2]) and (k is None or k == row[3]) else ()
+                out = []
+                for s, p in b.piece_map().items():
+                    row = sq(s) + (COLOUR[p.color], _KIND[p.piece_type])
+                    if (f is None or f == row[0]) and (r is None or r == row[1]) and (c is None or c == row[2]) and (k is None or k == row[3]):
+                        out.append(row)
+                return out
+            if rel == "true.control":
+                row = (COLOUR[b.turn],)
+                return (row,) if pat[0] is None or pat[0] == row[0] else ()
+            if rel == "true.castling_right":
+                out = [RIGHT[s] for s in chess.SquareSet(b.clean_castling_rights())]
+                return [t for t in out if all(v is None or v == t[i] for i, v in enumerate(pat))]
+            if rel == "true.ep_square":
+                if b.ep_square is None:
+                    return ()
+                row = sq(b.ep_square)
+                return (row,) if all(v is None or v == row[i] for i, v in enumerate(pat)) else ()
+            if rel == "true.halfmove":
+                row = (str(min(b.halfmove_clock, CLOCK_LIMIT)),)
+                return (row,) if pat[0] is None or pat[0] == row[0] else ()
+            if rel == "record":
+                return (("0",),) if pat[0] in (None, "0") else ()
+            return ()
+        return rows
+
+    def certified(self, b: chess.Board):
+        """The rows of the certified relations on `b` matching a pattern (None where free): `legal` (the kernel's legal moves of the side to move, in its order; the
+        other side's noop), `attack_by` (each unit's kind, colour, square and a square it bears on: python-chess's attacks, the unit's geometry with the line stopped
+        at the first unit)."""
+        mover = COLOUR[b.turn]
+        other = COLOUR[not b.turn]
+        memo: list = []
+
+        def rows(rel: str, pat: tuple) -> list:
+            if rel == "legal":
+                if not memo:
+                    memo.append([(mover, move_term(m.uci())) for m in b.legal_moves] + [(other, "noop")])
+                return [t for t in memo[0] if (pat[0] is None or pat[0] == t[0]) and (pat[1] is None or pat[1] == t[1])]
+            if rel == "attack_by":
+                k, c, f1, r1, f2, r2 = pat
+                out = []
+                if f2 is not None and r2 is not None:
+                    t = _SQ[(f2, r2)]
+                    for colour in ((c == "white",) if c is not None else (True, False)):
+                        for s in b.attackers(colour, t):
+                            kind = _KIND[b.piece_type_at(s)]
+                            fs, rs = sq(s)
+                            if (k is None or k == kind) and (f1 is None or f1 == fs) and (r1 is None or r1 == rs):
+                                out.append((kind, COLOUR[colour], fs, rs, f2, r2))
+                    return out
+                srcs = [_SQ[(f1, r1)]] if f1 is not None and r1 is not None else list(chess.SquareSet(b.occupied))
+                for s in srcs:
+                    p = b.piece_at(s)
+                    if p is None or (c is not None and COLOUR[p.color] != c) or (k is not None and _KIND[p.piece_type] != k):
+                        continue
+                    fs, rs = sq(s)
+                    for t in b.attacks(s):
+                        ft, rt = sq(t)
+                        if (f2 is None or f2 == ft) and (r2 is None or r2 == rt):
+                            out.append((_KIND[p.piece_type], COLOUR[p.color], fs, rs, ft, rt))
+                return out
+            raise KeyError(f"{rel} is not a certified relation of the chess binding")
+        return rows
+
+    @staticmethod
+    def action(args: tuple):
+        role, term = args
+        return None if term == "noop" else (role, term)
+
+    @staticmethod
+    def apply(b: chess.Board, action) -> chess.Board:
+        c = b.copy(stack=False)
+        c.push(chess.Move.from_uci(uci_of(action[1])))
+        return c
+
+    @staticmethod
+    def pass_(b: chess.Board) -> chess.Board:
+        c = b.copy(stack=False)
+        c.turn = not b.turn
+        c.ep_square = None
+        return c
+
+    @staticmethod
+    def side(role: str) -> bool:
+        return role == "white"
+
+    def to_move(self, b: chess.Board, role: str) -> chess.Board:
+        colour = self.side(role)
+        if b.turn == colour:
+            return b
+        c = b.copy(stack=False)
+        c.turn = colour
+        c.ep_square = None
+        return c
+
+    def value(self, b: chess.Board, law: str, args: tuple):
+        if law != "exchange":
+            raise KeyError(f"no valuation law {law!r} in the chess binding")
+        from catspace.incubator.analyst.discovery import graph as G
+        f, r, role = args
+        p = G.pos_of(self.to_move(b, role))
+        return None if p is None else p.see(chess.square(chess.FILE_NAMES.index(f), int(r) - 1))
+
+    @staticmethod
+    def touched(b: chess.Board, action) -> tuple:
+        """The squares an action's next state changes on `b` (the spec's `lifted` and `landed`): its two squares, the castling rook's two, the pawn taken en passant."""
+        m = chess.Move.from_uci(uci_of(action[1]))
+        out = [m.from_square, m.to_square]
+        if b.is_castling(m):
+            rank = chess.square_rank(m.from_square)
+            ks = chess.square_file(m.to_square) > chess.square_file(m.from_square)
+            out += [chess.square(7 if ks else 0, rank), chess.square(5 if ks else 3, rank)]
+        elif b.is_en_passant(m):
+            out.append(chess.square(chess.square_file(m.to_square), chess.square_rank(m.from_square)))
+        return tuple(out)
+
+    @staticmethod
+    def same_at(b0: chess.Board, b1: chess.Board, locs) -> bool:
+        """THE CONTRACT the regression's validation reads (plan 76.4a): `b0` and `b1` hold the same unit on every location of `locs` and the same side to move, castling
+        rights and e.p. square -- then every leaf the regression reads at those locations (a unit on a square, a square occupied, the side to move) has the same truth in
+        the next state of any action whose touched squares are among them."""
+        if b0.turn != b1.turn or b0.castling_rights != b1.castling_rights or b0.ep_square != b1.ep_square:
+            return False
+        return all(b0.piece_at(s) == b1.piece_at(s) for s in locs if s is not None)
+
+    @staticmethod
+    def ends(action) -> tuple:
+        t = action[1]
+        return (chess.square(chess.FILE_NAMES.index(t[1]), int(t[2]) - 1), chess.square(chess.FILE_NAMES.index(t[3]), int(t[4]) - 1))
+
+    def loc(self, atom) -> "int | None":
+        """The first ground location (a file and a rank slot of the relation's signature) of an atom; None when it has none."""
+        rel, args = atom
+        slots = self._slots.get(rel)
+        if slots is None:
+            sig = self.prog.signature(rel) or ()
+            slots = self._slots[rel] = tuple(i for i in range(len(sig) - 1) if sig[i] == LOCATION_SORTS[0] and sig[i + 1] == LOCATION_SORTS[1])
+        for i in slots:
+            if i + 1 < len(args) and args[i] is not None and args[i + 1] is not None:
+                return chess.square(chess.FILE_NAMES.index(args[i]), int(args[i + 1]) - 1)
+        return None
+
+    @staticmethod
+    def terms(sq: int) -> tuple:
+        return sq_terms(sq)
+
+    @staticmethod
+    def role(side: bool) -> str:
+        return COLOUR[side]
+
+    @staticmethod
+    def other(role: str) -> str:
+        return "black" if role == "white" else "white"
+
+    @staticmethod
+    def loc_name(sq) -> str:
+        return chess.square_name(sq) if sq is not None else ""
+
+    @staticmethod
+    def order_key(sq) -> int:
+        return -1 if sq is None else sq
+
+    @staticmethod
+    def unit_letter(b: chess.Board, sq: int) -> str:
+        p = b.piece_at(sq)
+        return p.symbol().upper() if p is not None else "?"
+
+
+def sq_terms(s: int) -> tuple:
+    return sq(s)
+
+
 # ------------------------------------------------------------------------------------------------------------------------------------------ the surprise store
 # (plan 76.0 (b) wrote these in scripts/crossplay.py; plan 76.1 (a) moved them here, the one place both the cross-play and the ontology shelf's agreement read)
 
