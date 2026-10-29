@@ -2211,3 +2211,21 @@ What moved: the four B5 rows of python-chess readings (`c.checkers()`, `c.is_att
 `c.attacks(m.to_square)` with them. What stays: the dispatch on the names (D1a 3, D1b 3: which defect kind a test reads -- the walk's notion, looser than the
 regression's one-move mend, two-move tactics among it), the move landing on a taker (B5: a comparison of locations, no reading), the skewer (B5: a line through their
 king, no literal of one state) and the promotion's tests (B5: the drive-off and its step read two states).
+
+
+## 76.5 recount (appended by plan 76.5, the valuation as one definition; the sections above stay as written)
+
+The recount (scripts/agenda_audit/recount.py) before the plan (main f4c23f6b) and after its stages (a) and (b) -- agenda.py's one edit is `_principal_captures`, which no longer
+passes the worths to the Rust core (`P2.principal_lines()`: the core reads its own table, the store's entry):
+
+```
+before  OBS audit rows total 1609: LOGIC 1264, RULE 93, NAME 21, CHESS FACT 198, HEURISTIC 33
+after   OBS audit rows total 1607: LOGIC 1263, RULE 93, NAME 20, CHESS FACT 198, HEURISTIC 33
+after   OBS audit recount CHESS FACT rows 198 -> 198
+```
+
+A4 (MATERIAL as the stake currency) stays 4: its four rows are ORDERS by the agenda's valuation reader -- agenda.py 747 / 752 `_roots` (`max(... key=lambda s:
+(self.V.worth_of(b.piece_at(s)), -s))`, `sorted(... key=lambda s: (-self.V.worth_of(b.piece_at(s)), s))`), 1116 `_targets_of` (`sorted(... key=lambda t:
+(-self.V.worth_of(b.piece_at(t)), t))`), 3546 `_refuter_fix` (`max(... key=lambda s: (self.V.worth_of(c3_rb.piece_at(s)), -s))`) -- which read the store's entry since
+75.2 (the classifier keys on the word "worth"); 76.5 made the REST of the engine read that same entry (the Rust core, the Python copies), not these rows. They do not fall
+without a rename, and none was made. The two rows that left (LOGIC 1, NAME 1) were the worths' list comprehension in `_principal_captures`.

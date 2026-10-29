@@ -35741,3 +35741,22 @@ test_threat_learning 8 / 0 / 0 2.5 s; test_vocab_fastpaths 12 / 0 / 0 4.9 s; tes
 31 / 0 / 0 0.8 s; test_regress_rust 61 / 0 / 0 0.9 s; test_plan72_7_step3 13 / 0 / 0 40.7 s; test_game 3 / 0 / 0 0.4 s; test_discovery_vocabulary 23 / 0 / 0 19.2 s;
 test_plan73 10 / 0 / 0 17.1 s; test_plan75 11 / 0 / 0 0.6 s; test_plan76_4c 15 / 0 / 0 1.5 s; test_plan76_4b 13 / 0 / 0 1.6 s; test_rules_shelf 12 / 0 / 0 71.9 s;
 test_agenda 26 / 0 / 0 96.1 s; test_duty63 12 / 0 / 0 0.4 s; test_plan62 28 / 0 / 0 8.0 s; test_regress 87 / 0 / 1 xfailed 507.1 s.
+
+
+## 2026-10-29 08:50 -- plan 76.5 (c) THE GUARD: the default valuation unchanged -- identical to the parent at both commits; the recount; the store and the shelf validate (branch worktree-agent-a26115eb81d6af9dc)
+THE GUARD against this plan's parent snapshot (main f4c23f6b; artifacts/experiments/plan76_5/parent): (a) 8f88201c and (b) 1d31fb62 (on the rebuilt core) each OBS ten t0
+0 / 0 / 0 / 0 / 0 of 10, ten t2 0 / 0 / 0 / 0 / 0 of 10, wide t0 0 / 0 / 0 / 0 / 0 of 99, wide t2 0 / 0 / 0 / 0 / 0 of 99 (traces / read sets / leaf verdict lists / word
+lists / provenance lists). The controls fired: (a)'s 10 / 10 / 9 / 10 / 10 of ten t0; (b)'s wide t0 2 of 99 traces and 3 of 99 provenance lists.
+THE RECOUNT (scripts/agenda_audit/recount.py; docs/AGENDA_AUDIT.md "76.5 recount", appended):
+OBS (before, f4c23f6b) audit rows total 1609: LOGIC 1264, RULE 93, NAME 21, CHESS FACT 198, HEURISTIC 33
+OBS (after) audit rows total 1607: LOGIC 1263, RULE 93, NAME 20, CHESS FACT 198, HEURISTIC 33
+OBS audit recount CHESS FACT rows 198 -> 198
+A4 PRINTED (it stays 4): agenda.py 747 `_roots` max(... key=lambda s: (self.V.worth_of(b.piece_at(s)), -s)); 752 `_roots` sorted(... key=lambda s:
+(-self.V.worth_of(b.piece_at(s)), s)); 1116 `_targets_of` sorted(... key=lambda t: (-self.V.worth_of(b.piece_at(t)), t)); 3546 `_refuter_fix` max(... key=lambda s:
+(self.V.worth_of(c3_rb.piece_at(s)), -s)) -- ORDERS by the agenda's valuation reader, which reads the store's entry since 75.2 (the classifier keys on "worth"). 76.5 made the
+rest of the engine read that entry; these rows do not fall without a rename, and none was made. The two rows that left (LOGIC 1, NAME 1): the worths' list comprehension
+`_principal_captures` passed to the core.
+OBS lemma store validate: entries 129, patterns 29; words read 951 (fact 144, fact-why 596, gap 89, kill 99, lemma 23) from 0 snapshot dir(s) and the two fixed positions;
+uncatalogued 0 (0 distinct); problems 0
+OBS ontology validate: problems 0 (after (b)'s re-binding of the five unit kinds; at (a)'s commit it was 5 -- (b)'s journal)
+docs/LEAN_INDEX.md rebuilt (lean_index build): Ideas.ExchangeLaw.valueAt "used by" ruler.py and valuation.rs (their comments cite it).

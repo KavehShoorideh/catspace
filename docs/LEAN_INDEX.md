@@ -241,6 +241,7 @@ Do not edit by hand.
 
 - **def `Ideas.ExchangeLaw.attackersOf`** (line 48): The squares of `c`'s pieces attacking `s`.
 - **def `Ideas.ExchangeLaw.valueAt`** (line 53): A piece's value in the exchange: the king counts 100 (it cannot be won, and as a capturer it is dearer than anything; review 2026-10-07: at 0 it was a free recapturer).
+  - used by: catspace/incubator/analyst/discovery/ruler.py, rust/analyst_core/src/valuation.rs
 - **def `Ideas.ExchangeLaw.valuesOf`** (line 59): The values of `c`'s attackers of `s`, ascending.
 - **def `Ideas.ExchangeLaw.seeB`** (line 65): The static exchange for the side to move CAPTURING on `s` with its cheapest piece: what the capture itself is worth, the sequence beyond it played out with each side free to stop (possibly negative: the law is a lower bo
 - **def `Ideas.ExchangeLaw.cheapestCapture`** (line 71): `c`'s cheapest legal capture on `s`, if any.
