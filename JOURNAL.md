@@ -35051,3 +35051,25 @@ THE GUARD (the standard sets; no engine path touched): OBS guard ten t0 0 / 0 / 
 wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s, 24 s, 16 s, 58 s). OBS audit recount: CHESS FACT rows 205 -> 205 (rows 1609, RULE 94). OBS lemma store validate: entries
 123; problems 0. OBS gate engine --only: test_rules_shelf 12/0/0/0 68.8 s (the shelf and its guard set); test_plan73_5b 12/0/0/0 7.8 s (the miner's constraint);
 test_rules_gdl 12/0/0/0 3.8 s (trace_identity's sets); test_plan73 9/0/0/0 14.9 s.
+
+
+## 2026-10-28 18:52 -- plan 76.3 (e) USE COUNTS: evidence.uses written from a batch's tally after it (`lemma_store uses --write`); the pruning rule's list, "unused since", printed by the report -- nothing deleted (branch worktree-agent-ad149634c92619751)
+THE TALLY (lemma_store.tally): a batch's output resolved to the store's entries -- a question log (every row's word), a trace, or a GUARD SNAPSHOT DIRECTORY (every
+case's trace -- its printed lemmas, kills and GAPs as often as printed -- and every case's word list, each word once per case: what the run's fact store set).
+THE STEP (`python -m catspace.incubator.analyst.discovery.lemma_store uses --write <trace dir or qlog> --source <name> [--date]`): every entry's
+`evidence.uses[<source>] = {count, date}` (0 when the batch never used it), each file's formatting kept; the parent runs it AFTER a batch, never during a run
+(`check_entry` now holds a use record to {count, date}). THE PRUNING RULE (lemma_store.unused, stated in the code and the store's README): an entry is a candidate
+when it was never used in any batch tallied since it was written (its `journal` date), at least one such batch tallied; RULE, GOAL and VALUATION entries, which the
+agenda reads through their fields rather than prints, are no candidates; NOTHING IS DELETED -- `lemma_store report` prints the list for the owner ("OBS lemma store
+unused since <date>: <name> (in k batch(es))").
+THE STEP RUN ONCE HERE (as the parent will after each batch), on this stage's four guard sets: OBS lemma uses written: source guard ten_t0 (plan 76.3 (e)), entries 123,
+used 28 (2329 uses); guard ten_t2 ... used 29 (3063 uses); guard wide_t0 ... used 43 (9881 uses); guard wide_t2 ... used 46 (17099 uses). OBS lemma store unused since
+written (...): 61 of 123 entries; batches tallied 4 -- at the count budget the judge, the pool and the tiers' words never print (the method notes of the audit), so the
+list is long until a timed batch is tallied (76.3 (f) tallies the loop-2 batch).
+NEGATIVE CONTROL (not committed): OBS 76.3 (e) negative control (the tally without the word lists): wide t2 entries used 46 -> 37; uses 17099 -> 4557; entries the control
+would list unused wrongly 9: budget, delayed_root_alive_d2, no parry binds a guaranteed gain and none could be read from their view, no parry keeps the gain, no parry
+move, no route: the fixes supply no move, refuted at the leaf, repetition.
+THE GUARD (no engine path touched; the tallies written after it): OBS guard ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0
+of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s, 24 s, 16 s, 58 s). OBS audit recount: rows total 1609 ... CHESS FACT 205 (205 -> 205). OBS lemma store validate:
+entries 123; problems 0. OBS gate engine --only: test_plan73 10/0/0/0 14.7 s (the tally, the write, the rule, nothing deleted -- on a copy of the store);
+test_plan75 11/0/0/0 0.5 s; test_plan73_5b 12/0/0/0 7.9 s; test_plan73_6 27/0/0/0 34.2 s; test_rules_shelf 12/0/0/0 68.9 s.

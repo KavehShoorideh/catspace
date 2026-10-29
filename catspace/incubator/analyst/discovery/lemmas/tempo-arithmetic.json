@@ -15,7 +15,24 @@
  "journal": "2026-10-20",
  "measure": null,
  "evidence": {
-  "uses": {},
+  "uses": {
+   "guard ten_t0 (plan 76.3 (e))": {
+    "count": 382,
+    "date": "2026-10-28"
+   },
+   "guard ten_t2 (plan 76.3 (e))": {
+    "count": 304,
+    "date": "2026-10-28"
+   },
+   "guard wide_t0 (plan 76.3 (e))": {
+    "count": 776,
+    "date": "2026-10-28"
+   },
+   "guard wide_t2 (plan 76.3 (e))": {
+    "count": 1405,
+    "date": "2026-10-28"
+   }
+  },
   "confirmed": [],
   "refuted": []
  },

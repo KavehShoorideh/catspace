@@ -97,6 +97,8 @@ def check_entry(e: dict, where: str = "") -> list:
     ev = e["evidence"]
     if not isinstance(ev, dict) or set(ev) != {"uses", "confirmed", "refuted"} or not isinstance(ev["uses"], dict) or not isinstance(ev["confirmed"], list) or not isinstance(ev["refuted"], list):
         bad.append(f"{at}: evidence must be {{uses: {{}}, confirmed: [], refuted: []}}")
+    elif any(not isinstance(u, dict) or set(u) != set(USE_FIELDS) or not isinstance(u["count"], int) or not isinstance(u["date"], str) for u in ev["uses"].values()):
+        bad.append(f"{at}: evidence.uses maps a batch to {{count, date}} (plan 76.3 (e), written by `lemma_store uses --write`)")
     if not isinstance(e["implementation"], list) or not e["implementation"] or any(not isinstance(x, str) or ":" not in x for x in e["implementation"]):
         bad.append(f"{at}: implementation must list 'file:function' strings")
     if not isinstance(e["note"], str) or not e["note"]:
@@ -841,6 +843,7 @@ def report(log=print, store: "dict | None" = None) -> list:
     lines.append(f"OBS lemma store terms reading no base word ({len(none)}): " + (" | ".join(none) if none else "none"))
     lines.append(f"OBS lemma store patterns: {len(PATTERNS)} (" + ", ".join(f"{k} {sum(p[0] == k for p in PATTERNS)}" for k in ("prefix", "suffix", "composition", "template")) + ")")
     lines += rule_shelf_lines(store, idx)
+    lines += unused_lines(store)
     for x in lines:
         log(x)
     return lines
@@ -974,24 +977,34 @@ def validate(dirs: "list | None" = None, log=print, run: bool = True) -> int:
     return 1 if bad else 0
 
 
-def uses(path: str, log=print) -> Counter:
-    """`OBS lemma uses: name count, ...` of a trace file (a guard snapshot or the analyser's output) or a question log (jsonl: every row's `word`)."""
-    p = Path(path)
-    c: Counter = Counter()
-    unres: Counter = Counter()
+def _pairs_of(p: Path) -> list:
+    """The (slot, printed string) pairs a run left: a question log (jsonl: every row's `word`), a trace file, or a guard SNAPSHOT DIRECTORY (plan 76.3 (e): every
+    case's trace -- its printed lemmas, kills and GAPs, each as often as printed -- and every case's word list, each word once per case: what the run's fact store set)."""
+    if p.is_dir():
+        out = []
+        for t in _snapshot_texts(p):
+            out += extract_trace(t.read_text())
+        return out + _snapshot_words(p)
     if p.suffix == ".jsonl":
-        pairs = []
+        out = []
         for ln in p.read_text().splitlines():
             try:
                 row = json.loads(ln)
             except ValueError:
                 continue
             if row.get("word"):
-                pairs.append(("word", row["word"]))
-    else:
-        pairs = extract_trace(p.read_text())
+                out.append(("word", row["word"]))
+        return out
+    return extract_trace(p.read_text())
+
+
+def tally(path: str) -> tuple:
+    """THE RUN TALLY of a run's output -> (uses: entry name -> how many printed strings resolved to it, the strings that resolved to none)."""
+    p = Path(path)
+    c: Counter = Counter()
+    unres: Counter = Counter()
     store = load()
-    for slot, s in pairs:
+    for slot, s in _pairs_of(p):
         r = resolve(s)
         if r is None and slot == "word":                  # the question log keeps a kill's reason up to its first ':' -- the entry it begins, when only one does
             heads = [n for n in store if n.startswith(s + ":")]
@@ -1000,11 +1013,72 @@ def uses(path: str, log=print) -> Counter:
             unres[s] += 1
         else:
             c.update(r)
+    return c, unres
+
+
+USE_FIELDS = ("count", "date")       # plan 76.3 (e): evidence.uses = {source: {count, date}} -- one record per tallied batch, written AFTER the batch (never during a run)
+
+
+def write_uses(c: Counter, source: str, date: str, d: Path = DIR) -> int:
+    """plan 76.3 (e): THE USE COUNTS WRITTEN: every entry's `evidence.uses[source]` = {count: its uses in the batch (0 when none), date: the batch's date}. Each file keeps
+    its formatting. -> the entries written."""
+    n = 0
+    for f in sorted(d.glob("*.json")):
+        text = f.read_text()
+        e = json.loads(text)
+        ascii_ = json.dumps(e, indent=1, ensure_ascii=True) + "\n" == text
+        e["evidence"]["uses"][source] = {"count": int(c.get(e["name"], 0)), "date": date}
+        f.write_text(json.dumps(e, indent=1, ensure_ascii=ascii_) + "\n")
+        n += 1
+    load(force=True)
+    return n
+
+
+def uses(path: str, log=print, write: bool = False, source: "str | None" = None, date: "str | None" = None) -> Counter:
+    """`OBS lemma uses: name count, ...` of a trace file (a guard snapshot or the analyser's output), a guard snapshot directory, or a question log (jsonl: every row's
+    `word`). plan 76.3 (e) `write`: the tally into every entry's evidence.uses under `source` (default: the path's name) with `date` (default: today) -- the step the
+    parent runs AFTER a batch (the guard sets, the loop batches), never during a run."""
+    import time
+    p = Path(path)
+    c, unres = tally(path)
     log(uses_line(c))
     if unres:
         log(f"OBS lemma uses not catalogued: {sum(unres.values())} ({len(unres)} distinct): " + " | ".join(s[:80] for s, _ in unres.most_common(10))
             + (" (a question log's word is a kill's reason cut at its first ':')" if p.suffix == ".jsonl" else ""))
+    if write:
+        src = source or p.name
+        n = write_uses(c, src, date or time.strftime("%Y-%m-%d"))
+        log(f"OBS lemma uses written: source {src}, entries {n}, used {sum(1 for v in c.values() if v)} ({sum(c.values())} uses)")
     return c
+
+
+# plan 76.3 (e) THE PRUNING RULE (Kaveh 2026-10-28: "unused entries are pruned by a stated rule, never by a number"): an entry is a PRUNING CANDIDATE when it was never
+# used -- no printed claim, kill or GAP resolved to it -- in any batch tallied since it was written (its `journal` date), at least one such batch tallied. The kinds the
+# agenda reads through their fields rather than prints (RULE, GOAL, VALUATION) are no candidates. NOTHING IS DELETED by the machinery: the list is for the owner.
+NOT_PRINTED = ("RULE", "GOAL", "VALUATION")
+
+
+def unused(store: dict) -> list:
+    """-> [(name, written, the batches tallied since, their sources)] of the pruning candidates (the rule above), by name."""
+    out = []
+    for n, e in sorted(store.items()):
+        if e["kind"] in NOT_PRINTED:
+            continue
+        since = {src: u for src, u in e["evidence"]["uses"].items() if isinstance(u, dict) and u.get("date", "") >= e["journal"]}
+        if since and not any(u.get("count") for u in since.values()):
+            out.append((n, e["journal"], len(since), sorted(since)))
+    return out
+
+
+def unused_lines(store: dict) -> list:
+    cands = unused(store)
+    tallied = sorted({src for e in store.values() for src in e["evidence"]["uses"]})
+    out = [f"OBS lemma store unused since written (the pruning rule: never used in the guard sets and loop batches tallied since it was written; RULE, GOAL and "
+           f"VALUATION entries, read through their fields, are no candidates; nothing is deleted -- the list is for the owner): {len(cands)} of {len(store)} entries; "
+           f"batches tallied {len(tallied)}" + (f" ({', '.join(tallied)})" if tallied else "")]
+    for n, written, k, _srcs in cands:
+        out.append(f"OBS lemma store unused since {written}: {n} (in {k} batch(es))")
+    return out
 
 
 if __name__ == "__main__":
@@ -1014,6 +1088,9 @@ if __name__ == "__main__":
     elif cmd == "validate":
         sys.exit(validate(sys.argv[2:]))
     elif cmd == "uses":
-        uses(sys.argv[2])
+        a = sys.argv[2:]
+        uses(a[-1] if "--write" not in a else a[a.index("--write") + 1], write="--write" in a,
+             source=a[a.index("--source") + 1] if "--source" in a else None, date=a[a.index("--date") + 1] if "--date" in a else None)
     else:
-        sys.exit(f"usage: python -m catspace.incubator.analyst.discovery.lemma_store report | validate [<snapshot dir> ...] | uses <trace or qlog.jsonl>")
+        sys.exit("usage: python -m catspace.incubator.analyst.discovery.lemma_store report | validate [<snapshot dir> ...] | "
+                 "uses [--write] <trace, snapshot dir or qlog.jsonl> [--source <name>] [--date YYYY-MM-DD]")
