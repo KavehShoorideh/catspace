@@ -4140,3 +4140,15 @@ Then 76.4 as written: mining objects (line, blocked, region as test cases), mate
   was written for -- GOAL `exchange` (win this exchange) -- and the K+R floor's mate in two (regression.within), by the same code, with traces; W0VFO 10 s Qb7 +3
   proved; loop-2 RIGHT 32 / UNKNOWN 2 / WRONG 6 (two proofs not reached in 15 s). NOT built: the walk of checks' defect tests (a looser, two-move notion than a
   mend), the promotion's and the reach defects (no literal of one state), the Rust port. No Rust build.
+
+
+### 76.4b THE REGRESSION IN RUST (the cost of 76.4a, 2026-10-28: the Python regression over the GDL interpreter is ~3x the hand tables at the count budget -- mate 0.72 ms vs 0.02 ms per
+question; W0VFO and the loop batch hold, but two 15 s proofs became unfinished lines and the 1 s and 15 s clocked tests fail)
+THE RULE: correctness first, then the port recovers the time (72.7's remaining step, applied to the regression). BUILD: `regression.rs` in rust/analyst_core -- the generic goal regression
+over the spec's clauses (the clauses loaded from rules/chess.gdl at module init through the same binding table ontology.py holds; the Datalog `ascent` or a direct evaluator: the agent decides
+from cost), `Pos.regress(goal, args)` -> the derivation (true / false body atoms with their witnesses and read squares) and `Pos.fixes(goal, args)` -> the legal moves that mend each false
+atom (through the kernel's legality and next state: the certified ones). Python regression.py stays as the TEST ORACLE (equality on every guard question, as the hand tables were). The
+guard: identical to 76.4a's snapshots on all five lists (a port, not a change); the cost printed before/after per question; the clocked tests of 76.4a's gate (test_59_4 at 1 s, the
+discovery position under tiers at 15 s, 52.18 at 30 s) re-run, expected green again without touching a budget; the loop batch not worse than 32 / 6 with the proofs reached within 15 s.
+Also: THE GOAL'S OWN MOVE (2026-10-28, after 76.4a's gate): the capture of the target is a ROUTE of a win question whether or not it mends a defect (its merit is the exchange law's); the
+hand oracle admitted it by accident, the regression dropped it, and their reduced agenda (no chase) lost the recapture claim (test_64_0). Fixed in regress.routes_of; the port keeps it.
