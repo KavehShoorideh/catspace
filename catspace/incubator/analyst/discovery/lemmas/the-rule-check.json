@@ -1,0 +1,43 @@
+{
+ "name": "the rule: check",
+ "kind": "RULE",
+ "reads": [
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.LegalEquiv.check_iff",
+  "Ideas.LegalEquiv.attacked_iff",
+  "Ideas.LegalEquiv.attackBy_iff"
+ ],
+ "origin": "BASE",
+ "plan": [
+  "76.2"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:in_check",
+  "catspace/incubator/analyst/discovery/game.py:gives_check",
+  "catspace/incubator/analyst/discovery/game.py:attackers",
+  "lean/ideas/Ideas/Spec/LegalEquiv.lean:check_iff"
+ ],
+ "note": "The side to move's king attacked (FIDE 3.9): the spec's attack is the kernel's Chess.pieceAttacks for every unit kind on every position (Ideas.LegalEquiv.attackBy_iff), its `attacked` the kernel's Chess.isAttacked, its `check` the kernel's Chess.inCheck of the side to move with one king (check_iff).",
+ "params": {
+  "spec": "Ideas.Spec.Chess.check",
+  "gdl": "check",
+  "surface": [
+   "in_check",
+   "gives_check",
+   "attackers",
+   "attacks_from"
+  ]
+ }
+}

@@ -237,3 +237,53 @@ def test_the_routed_second_copies_equal_their_oracles():
             moves += 1
     print(f"OBS 76.2 (b) twins test: positions {n}, principal lines {lines}, mating moves {mates}, moves {moves}: every one equal to its oracle")
     assert lines and mates and moves
+
+
+# ---------------------------------------------------------------------------------------------------------------- (c) the rule shelf in the store
+
+def test_the_rule_shelf_is_in_the_store():
+    """Every RULE entry names its generated Spec definition (in the index), its spec relation and the Game methods implementing it (rule methods of game.SPEC); a
+    PROVED one cites only proved theorems of the index; the report prints the shelf -- the RULE entries and the names table's words."""
+    from catspace.incubator.analyst.discovery import names as NM
+    store = LS.load(force=True)
+    rules = {n: e for n, e in store.items() if e["kind"] == "RULE"}
+    assert {"the rule: legal move", "the rule: next state", "the rule: checkmate", "the rule: stalemate", "the rule: the fifty-move draw",
+            "the rule: threefold repetition", "the rule: the clock's events", "the rule: the end of the game", "the rule: win and loss"} <= set(rules)
+    assert not LS.rule_problems(store) and not LS.citation_problems(store)
+    assert rules["the rule: legal move"]["status"] == "PROVED" and "Ideas.LegalEquiv.legal_iff" in rules["the rule: legal move"]["lean"]
+    assert rules["the rule: the end of the game"]["status"] == "CONJECTURE" and "obstacle" in rules["the rule: the end of the game"]["note"]
+    lines = LS.rule_shelf_lines(store)
+    print(lines[0])
+    assert lines[0].startswith(f"OBS lemma store RULE shelf: {len(rules) + len(NM.NAMES)} rules")
+    assert sum(ln.startswith("OBS rule ") and "(name)" not in ln for ln in lines) == len(rules)
+
+
+def test_the_rust_terminal_is_the_surfaces():
+    """The Rust core's one definition of the rules' ends (game.rs `terminal`, the readings `claimable_draw` and `drawn` beside it) gives Game.terminal's kind on the
+    oracle's sample, the game record passed as the history."""
+    n = 0
+    for fen, before in _sample():
+        b = chess.Board(fen)
+        hist = [] if before is None else [f for f, c in _record_fens(before) for _ in range(c)]
+        assert AC.game_terminal(b.fen(), hist) == GM.CHESS.terminal(b, before), fen
+        n += 1
+    assert n > 400
+
+
+def _record_fens(before: "GM.Record") -> list:
+    """A record's identities as FENs the Rust parser reads (an EPD with the clocks appended), with their counts."""
+    return [(k + " 0 1", c) for k, c in before.counts.items()]
+
+
+def test_the_technique_reads_the_draws_through_the_surface():
+    """technique_question's draw (its second copy of the rules, plan 76.2 (c)) reads Game.clock along the line: a capture on the line resets the clock (the kernel's
+    count), where the copy added the plies to the root's clock."""
+    from catspace.incubator.analyst.discovery import technique_question as TQ
+    s = TQ.Search(None, chess.WHITE, 0, frozenset(), 99)
+    b = chess.Board("8/8/8/8/8/2k5/r7/R3K3 w - - 99 80")
+    assert s.drawn(b, 0) is False
+    b.push(chess.Move.from_uci("a1a2"))                                                      # Rxa2: a capture resets the clock
+    assert GM.CHESS.clock(b) == 0 and s.drawn(b, 1) is False                                 # (the copy read 99 + 1 >= 100: a draw)
+    b2 = chess.Board("8/8/8/8/8/2k5/8/R3K3 w - - 99 80")
+    b2.push(chess.Move.from_uci("a1a3"))                                                     # a quiet move: the clock reaches 100
+    assert s.drawn(b2, 1) is True

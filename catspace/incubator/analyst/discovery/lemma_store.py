@@ -29,7 +29,7 @@ LEAN_INDEX = ROOT / "docs" / "LEAN_INDEX.md"
 
 FIELDS = ("name", "kind", "reads", "terms", "status", "lean", "origin", "plan", "journal", "measure", "evidence", "implementation", "note")
 OPTIONAL = ("params",)              # plan 75.2: the values the agenda READS from an entry at run time (a GOAL's stake and roles, a VALUATION's worths, a STOP's shape)
-KINDS = ("CLOSING", "DEFECT_FIX", "FORCING", "TECHNIQUE", "STOP", "TABLE", "GOAL", "VALUATION")
+KINDS = ("CLOSING", "DEFECT_FIX", "FORCING", "TECHNIQUE", "STOP", "TABLE", "GOAL", "VALUATION", "RULE")      # plan 76.2 (c): RULE -- a rule of the game (given)
 from catspace.incubator.analyst.discovery import names as NM  # noqa: E402  (plan 75.2 (c): the store's base reads are names of the names table)
 BASE = tuple(NM.READS)                                         # movement, attack, tempo, material: each bound to a kernel predicate and a Lean twin (names.py)
 STATUSES = ("PROVED", "CONJECTURE", "REFUTED", "HEURISTIC")
@@ -115,6 +115,11 @@ def check_entry(e: dict, where: str = "") -> list:
 # The VALUATION is one entry: the worth of each unit kind (by its symbol), the unit of a gain, the royal unit.
 GOAL_PARAMS = ("question", "basis", "rule", "valuation", "stake", "ends_game", "keep", "about", "chase", "reads_on_kill", "near")
 VALUATION_PARAMS = ("worth", "unit", "royal")
+# plan 76.2 (c) THE RULE SHELF: a RULE entry is a rule of the game the engine reads -- GIVEN, never derived; in Lean a DEFINITION (generated from rules/chess.gdl), never
+# an axiom. Its params say where it lives: `spec` (the generated Lean definition, Ideas.Spec.Chess.*), `gdl` (the spec's relation), `surface` (the Game methods that
+# implement it, game.SPEC); its `lean` (when PROVED) the theorems that prove the spec's definition equal to the rule kernel's (Ideas.Spec.LegalEquiv, NextEquiv);
+# CONJECTURE with no such theorem, its obstacle in the note. The names table's words (the ontology shelf's entries marked `names`) are the shelf's other half.
+RULE_PARAMS = ("spec", "gdl", "surface")
 BASES = ("RULE", "VALUATION")
 
 
@@ -156,6 +161,17 @@ def _params_problems(e: dict, at: str) -> list:
         if p.get("royal") not in (p["worth"] if isinstance(p["worth"], dict) else {}):
             bad.append(f"{at}: params royal must be a unit kind of the worth table")
         return bad
+    if k == "RULE":
+        if not isinstance(p, dict) or set(p) != set(RULE_PARAMS):
+            return [f"{at}: a RULE has params exactly {', '.join(RULE_PARAMS)}"]
+        bad = []
+        if not isinstance(p["spec"], str) or not p["spec"].startswith("Ideas.Spec."):
+            bad.append(f"{at}: params spec must name the generated Lean definition (Ideas.Spec.*)")
+        if not isinstance(p["gdl"], str) or not p["gdl"]:
+            bad.append(f"{at}: params gdl must name the spec's relation")
+        if not isinstance(p["surface"], list) or not p["surface"] or not all(isinstance(x, str) for x in p["surface"]):
+            bad.append(f"{at}: params surface must list the Game methods implementing it")
+        return bad
     if k == "STOP" and p is not None:
         if not isinstance(p, dict) or p.get("context") not in STOP_CONTEXTS:
             return [f"{at}: a STOP's params say the context it applies in ({', '.join(STOP_CONTEXTS)}) and its shape"]
@@ -170,7 +186,7 @@ def _params_problems(e: dict, at: str) -> list:
             return [f"{at}: params order must be [component, sign] pairs, sign 1 (fewer first) or -1 (more first)"]
         return []
     if p is not None:
-        return [f"{at}: only a GOAL, a VALUATION, a STOP, a FORCING, a CLOSING or a DEFECT_FIX entry has params"]
+        return [f"{at}: only a GOAL, a VALUATION, a RULE, a STOP, a FORCING, a CLOSING or a DEFECT_FIX entry has params"]
     return []
 
 
@@ -824,9 +840,44 @@ def report(log=print, store: "dict | None" = None) -> list:
     none = sorted((t for t in terms if not term_reads(t)), key=lambda x: (len(x), x))
     lines.append(f"OBS lemma store terms reading no base word ({len(none)}): " + (" | ".join(none) if none else "none"))
     lines.append(f"OBS lemma store patterns: {len(PATTERNS)} (" + ", ".join(f"{k} {sum(p[0] == k for p in PATTERNS)}" for k in ("prefix", "suffix", "composition", "template")) + ")")
+    lines += rule_shelf_lines(store, idx)
     for x in lines:
         log(x)
     return lines
+
+
+def rule_shelf_lines(store: dict, idx: "dict | None" = None) -> list:
+    """plan 76.2 (c) THE RULE SHELF, printed: the RULE entries of the store (each with its generated Spec definition, its spec relation, the Game methods implementing it
+    and the theorems proving the definition the kernel's, or why not) and the names table's words (the ontology shelf's `names` entries, each bound to the kernel and a
+    Lean twin)."""
+    idx = lean_index() if idx is None else idx
+    rules = sorted((e for e in store.values() if e["kind"] == "RULE"), key=lambda e: e["name"])
+    words = list(NM.NAMES.values())
+    out = [f"OBS lemma store RULE shelf: {len(rules) + len(words)} rules -- the RULE entries {len(rules)} (PROVED {sum(e['status'] == 'PROVED' for e in rules)}, "
+           f"CONJECTURE {sum(e['status'] == 'CONJECTURE' for e in rules)}) and the names table's words {len(words)} (with a Lean twin in the index "
+           f"{sum(1 for n in words if n.lean in idx)})"]
+    for e in rules:
+        p = e["params"]
+        eq = ", ".join(e["lean"]) if e["lean"] else "none (a CONJECTURE: the obstacle is the entry's note)"
+        out.append(f"OBS rule {e['name']}: {e['status']}; spec {p['spec']} (GDL {p['gdl']}); surface {', '.join(p['surface'])}; equivalence {eq}")
+    for n in words:
+        out.append(f"OBS rule (name) {n.word}: kernel {n.kernel}; Lean {n.lean or 'none'}")
+    return out
+
+
+def rule_problems(store: dict, idx: "dict | None" = None) -> list:
+    """plan 76.2 (c): a RULE entry whose generated Spec definition is absent from docs/LEAN_INDEX.md, or whose surface names a method the Game protocol does not bind
+    to a rule (game.SPEC)."""
+    from catspace.incubator.analyst.discovery import game as GM
+    idx = lean_index() if idx is None else idx
+    bad = []
+    for n, e in store.items():
+        if e["kind"] != "RULE":
+            continue
+        if e["params"]["spec"] not in idx:
+            bad.append(f"{n}: spec {e['params']['spec']} absent from docs/LEAN_INDEX.md")
+        bad += [f"{n}: surface {m} is no rule method of the Game surface (game.SPEC)" for m in e["params"]["surface"] if m not in GM.SPEC]
+    return bad
 
 
 SNAPSHOT_WORDS = ".words.txt"       # the trace guard's file of a run's words beside its trace (scripts/trace_identity.py): "slot<TAB>string" per line
@@ -881,6 +932,7 @@ def validate(dirs: "list | None" = None, log=print, run: bool = True) -> int:
     except LemmaStoreError as x:
         bad.append(f"goal kinds: {x}")
     bad += [f"names: {x}" for x in NM.problems()]       # plan 75.2 (c): every name bound to a kernel predicate and a Lean twin present in the index
+    bad += [f"rule: {x}" for x in rule_problems(store)]  # plan 76.2 (c): every RULE entry's Spec definition in the index, its surface the Game's
     bad += implementation_problems(store)
     for n, e in store.items():
         for t in e["terms"]:

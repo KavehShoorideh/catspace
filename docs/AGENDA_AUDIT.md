@@ -2137,3 +2137,25 @@ OBS audit CHESS FACT rows 210 (families 50)
 CHESS FACT rows 210 -> 210 at every commit. Section 5's "names used as knowledge" item reads the names table: its 24 words are entries of the ontology shelf now
 (catspace/incubator/analyst/discovery/lemmas/ontology/), names.py their accessor; no word was added to the table. The second copy of the insufficient-material rule that
 75.4's findings named (rust/analyst_core/src/game.rs) is the kernel's rule now (shakmaty's `is_insufficient_material`, 76.1 (e)).
+
+## 76.2 recount (appended by plan 76.2, the rule shelf; the sections above stay as written)
+
+The recount (scripts/agenda_audit/recount.py) at each of 76.2's three commits: (a) touches no engine file; (b) routes three of section 5's "rules re-implemented in
+Python" through one implementation; (c) touches technique_question.py, the Rust core and the store, none of them the audit's files.
+
+```
+(a) OBS audit rows total 1618: LOGIC 1253, RULE 99, NAME 21, CHESS FACT 210, HEURISTIC 35
+(b) OBS audit rows total 1609: LOGIC 1255, RULE 94, NAME 21, CHESS FACT 205, HEURISTIC 34
+(b) OBS audit recount CHESS FACT rows 210 -> 205
+(b) OBS audit recount fact D23: rows 9 -> 4
+(c) OBS audit rows total 1609: LOGIC 1255, RULE 94, NAME 21, CHESS FACT 205, HEURISTIC 34
+(c) OBS audit recount CHESS FACT rows 205 -> 205
+```
+
+What changed in (b): fact D23 (the exchange's principal lines: the swap list, cheapest capturer first, the optimal stop) left agenda.py for the Rust core
+(`Pos.principal_lines`, beside the `see` that mirrors Lean Ideas.ExchangeLaw) -- MOVED, not removed: the knowledge is written in rust/analyst_core/src/pos.rs now, the
+valuation's worths passed in from the store; the proposed D23 store entry is not written. RULE rows 99 -> 94: the python-chess mate-in-one loops (`G.mates` in the
+mate threat's frame and in the escape note: the Rust word `Pos.mates` now) and the judge's reading of check / capture off the SAN's marks (`_parry_kind`: the Game
+surface's `reply_kind` now). Section 5's "rules re-implemented in Python": item 1 (castling's rook) was closed by 75.2 (d); items 3 (the swap list), 4 (check and capture
+read off the notation, for the judge's rates) and 7 (mate in one twice) are closed by 76.2 (b); item 4's `_mate_line_pieces` (a claim's line replayed by parsing its SAN:
+the kernel's notation reader) and item 6 (attack geometry on an empty board) stay as they were; item 8 (material in the interfaces) is a valuation, not a rule.

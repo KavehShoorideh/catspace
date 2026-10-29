@@ -23,6 +23,7 @@ from catspace.incubator.analyst.discovery import technique_corpus as TC
 from catspace.incubator.analyst.discovery import technique_measures as TM
 from catspace.incubator.analyst.discovery import technique_miner as MN
 from catspace.incubator.analyst.discovery import technique_sample as TS
+from catspace.incubator.analyst.discovery.game import CHESS as GAME           # plan 76.2 (c): the rules read through the Game surface
 
 
 def entries_for(board: chess.Board, side: bool) -> list:
@@ -62,8 +63,11 @@ class Search:
         return v
 
     def drawn(self, b: chess.Board, ply: int) -> bool:
-        """A claimable draw at this node: the fifty-move clock, or (us to move) a position the game has seen."""
-        return self.clock + ply >= 100 or (b.turn == self.side and _key(b.fen()) in self.history)
+        """A claimable draw at this node, READ BY THE GAME SURFACE (plan 76.2 (c); it was a second copy of the rules): the fifty-move clock at its limit (`Game.clock` of
+        the board the line reached -- the kernel's count, reset by a capture or a pawn move on the line, where the copy added the plies to the root's clock), or (us
+        to move) a position the game has seen (`Game.position_key` in the record: the engine's CYCLE reading of a repetition, one repeat -- the store's `repetition`,
+        a CONJECTURE; the rule's draw is the third occurrence, Game.terminal's). `ply` stays the caller's (the search's depth), no longer read here."""
+        return GAME.clock(b) >= GAME.CLOCK_LIMIT or (b.turn == self.side and GAME.position_key(b) in self.history)
 
     def first(self, b: chess.Board, m: chess.Move, j: int, ply: int) -> "tuple | None":
         """Our move `m` at `b` -> ('mate', None) / ('drop', the worst measure after the replies) when it forces the drop within j moves, else None."""

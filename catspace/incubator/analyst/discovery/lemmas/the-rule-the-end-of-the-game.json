@@ -1,0 +1,38 @@
+{
+ "name": "the rule: the end of the game",
+ "kind": "RULE",
+ "reads": [
+  "movement",
+  "attack",
+  "material",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "BASE",
+ "plan": [
+  "76.2"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:terminal",
+  "rust/analyst_core/src/game.rs:terminal",
+  "lean/ideas/Ideas/Spec/LegalEquiv.lean:terminal_sound",
+  "lean/ideas/Ideas/Spec/LegalEquiv.lean:terminal_complete"
+ ],
+ "note": "The game ends by a mate, a stalemate, the material criterion, the fifty-move clock or the third occurrence: Lean proves a position the spec ends is one the kernel's Chess.gameStatus ends but possibly for the criterion's knight clause (Ideas.LegalEquiv.terminal_sound), and a position Chess.gameStatus ends is one the spec ends or a FIDE dead position beyond the criterion (terminal_complete) -- the two terminals are not equal, that is the obstacle, so a CONJECTURE; in the Rust core game.rs `terminal`, certified by the oracle test.",
+ "params": {
+  "spec": "Ideas.Spec.Chess.terminal",
+  "gdl": "terminal",
+  "surface": [
+   "terminal"
+  ]
+ }
+}

@@ -1,0 +1,38 @@
+{
+ "name": "the rule: win and loss",
+ "kind": "RULE",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.LegalEquiv.goal_win_iff",
+  "Ideas.LegalEquiv.goal_loss_iff"
+ ],
+ "origin": "BASE",
+ "plan": [
+  "76.2"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:goal",
+  "lean/ideas/Ideas/Spec/LegalEquiv.lean:goal_win_iff"
+ ],
+ "note": "The outcome's score: the side mated scores 0, the other 100 (a draw 50 each, the end of the game's): the spec's 100 and 0 are exactly the kernel's Chess.gameStatus win and loss of the game's history (Ideas.LegalEquiv.goal_win_iff, goal_loss_iff); the draw's 50 rests on the end of the game, a CONJECTURE.",
+ "params": {
+  "spec": "Ideas.Spec.Chess.goal",
+  "gdl": "goal",
+  "surface": [
+   "goal"
+  ]
+ }
+}

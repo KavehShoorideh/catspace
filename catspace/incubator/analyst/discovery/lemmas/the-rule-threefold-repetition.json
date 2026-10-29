@@ -1,0 +1,42 @@
+{
+ "name": "the rule: threefold repetition",
+ "kind": "RULE",
+ "reads": [
+  "movement",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.NextEquiv.drawByRepetition_kernel",
+  "Ideas.NextEquiv.drawByRepetition_iff",
+  "Ideas.Game.chess_threefold_iff"
+ ],
+ "origin": "BASE",
+ "plan": [
+  "76.2"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:repetition",
+  "catspace/incubator/analyst/discovery/game.py:position_key",
+  "rust/analyst_core/src/game.rs:threefold",
+  "lean/ideas/Ideas/Spec/NextEquiv.lean:drawByRepetition_kernel"
+ ],
+ "note": "The third occurrence of the position's identity (FIDE 9.2, claimable; the identity the kernel's Chess.repetitionKey: board, side to move, castling rights, a LEGAL e.p. square): the spec reads the game record's input, and on a sound record its draw is the kernel's Chess.threefoldClaimable of the history (Ideas.NextEquiv.drawByRepetition_kernel).",
+ "params": {
+  "spec": "Ideas.Spec.Chess.drawByRepetition",
+  "gdl": "draw_by_repetition",
+  "surface": [
+   "terminal",
+   "repetition",
+   "goal"
+  ]
+ }
+}

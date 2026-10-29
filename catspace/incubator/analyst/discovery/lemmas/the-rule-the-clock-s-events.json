@@ -1,0 +1,43 @@
+{
+ "name": "the rule: the clock's events",
+ "kind": "RULE",
+ "reads": [
+  "movement",
+  "material"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.NextEquiv.clock_equiv",
+  "Ideas.NextEquiv.reset_normal",
+  "Ideas.NextEquiv.reset_promotion",
+  "Ideas.NextEquiv.reset_ep",
+  "Ideas.NextEquiv.reset_castle",
+  "Ideas.Game.chess_clock"
+ ],
+ "origin": "BASE",
+ "plan": [
+  "76.2"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:clock_events",
+  "catspace/incubator/analyst/discovery/game.py:clock",
+  "lean/ideas/Ideas/Spec/NextEquiv.lean:clock_equiv"
+ ],
+ "note": "A capture or a pawn move resets the clock, any other move adds one (FIDE 9.3): the spec's clock reset is the kernel's moveIsPawn || moveIsCapture for every pseudo-legal move (Ideas.NextEquiv.reset_*, clock_equiv), the clock after the move the kernel's applyMove_halfmove (Ideas.Game.chess_clock); the en-passant capture is a capture event too (surprise s010, plan 76.2 (b)).",
+ "params": {
+  "spec": "Ideas.Spec.Chess.clockReset",
+  "gdl": "clock_event",
+  "surface": [
+   "clock_events",
+   "clock"
+  ]
+ }
+}

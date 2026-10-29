@@ -34983,3 +34983,38 @@ test_cost61 13/0/0/0 2.9 s; test_plan75 11/0/0/0 0.5 s; test_rules_draws 17/0/0/
 NOT ROUTED, and why: regress.check_threat's mate in one after a CHECK and a pass (its board has the side not to move in check: a position the Rust kernel refuses to
 hold, so `G.mates` stays there -- the one python-chess mate word left); `_mate_line_pieces` replays a claim's line by parsing its SAN (the kernel's notation reader,
 `parse_san`; not a rule read off the marks).
+
+
+## 2026-10-28 18:32 -- plan 76.2 (c) THE RULE SHELF IN THE STORE: kind RULE (11 entries, 9 PROVED by their equivalence theorems) beside the names table; game.rs's rules one definition each, certified against Game.terminal; the technique's draw through the surface; 76.2 marked BUILT (branch worktree-agent-ad149634c92619751)
+THE RULE KIND (lemma_store.py, lemmas/README.md): a RULE entry is a rule of the game the engine reads -- given, never derived; in Lean a definition generated from
+rules/chess.gdl -- with params `spec` (the generated definition, Ideas.Spec.Chess.*, present in the index), `gdl` (the spec's relation), `surface` (the Game methods
+implementing it, each a rule method of game.SPEC); PROVED when theorems of the index prove the definition the kernel's (cited in `lean`), CONJECTURE otherwise with
+the obstacle in its note; `validate` checks the spec and the surface (`rule_problems`). THE ENTRIES (origin BASE): legal move (PROVED: Ideas.LegalEquiv.legal_iff,
+legal_iff_reachable, legal_moveOf), next state (PROVED: Ideas.NextEquiv.applyMoveSpec_applyMove, _eq_applyMove, _unique), check (PROVED: check_iff, attacked_iff,
+attackBy_iff), checkmate (PROVED: mate_iff, mate_iff_mated), stalemate (PROVED: stalemate_iff, stalemate_iff_stalemated), the fifty-move draw (PROVED:
+drawByFiftyMoves_iff, Ideas.Game.chess_fifty_iff), threefold repetition (PROVED: drawByRepetition_kernel, drawByRepetition_iff, chess_threefold_iff), the clock's events
+(PROVED: Ideas.NextEquiv.clock_equiv, reset_normal / _promotion / _ep / _castle, Ideas.Game.chess_clock), win and loss (PROVED: goal_win_iff, goal_loss_iff),
+insufficient material (CONJECTURE: the knight clause), the end of the game (CONJECTURE: the two terminals are not equal -- terminal_sound / terminal_complete).
+`lemma_store report` prints THE RULE SHELF: OBS lemma store RULE shelf: 35 rules -- the RULE entries 11 (PROVED 9, CONJECTURE 2) and the names table's words 24 (with a
+Lean twin in the index 24); one `OBS rule ...` line each (the spec, the relation, the surface, the equivalence). OBS lemma store: entries 123 (by kind ... RULE 11).
+THE RUST SECOND COPIES THE AUDITS FOUND: game.rs `claimable_draw` -- the rules' ends are ONE DEFINITION EACH in game.rs (`mate`, `stalemate`, `threefold`, `fifty`,
+`insufficient`), composed by `terminal` in Game.terminal's kinds and order (Lean Chess.gameStatus: a mate first) and read by `claimable_draw` and `drawn` in their own
+order (their semantics and reason strings unchanged); reasoning.rs's three readings of stalemate / insufficient material read them; `game_terminal(fen, history)` (new,
+Python) is certified against Game.terminal on the oracle's sample with each position's record (a test). technique_question's `Search.drawn` -- READ THROUGH THE SURFACE:
+`Game.clock` of the board the line reached (the kernel's count: a capture or a pawn move on the line resets it, where the copy added the plies to the root's clock) and
+`Game.position_key` in the record (the engine's CYCLE reading, one repeat: the store's `repetition`, a CONJECTURE; identical to the FEN cut it replaced on every
+position: OBS 15931 positions of 200 random walks, key differs 0). A Rust build (`maturin develop --release`): THE SHARED EDITABLE INSTALL POINTS AT THIS BRANCH'S CRATE.
+THE GUARD: OBS guard ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s,
+24 s, 16 s, 58 s) -- blind here, as 76.1 found for the draws: no puzzle line at the count budget reaches the clock's limit or a record. The direct checks are the tests
+and the NEGATIVE CONTROLS (not committed): OBS 76.2 (c) negative control (1) (a RULE entry with a wrong spec and surface): ['the rule: legal move: spec
+Ideas.Spec.Chess.noSuchRule absent from docs/LEAN_INDEX.md', 'the rule: legal move: surface name is no rule method of the Game surface (game.SPEC)']; OBS 76.2 (c)
+negative control (2) (the technique's old clock, 99 + 1 plies, after Rxa2): the copy reads a draw True; the surface False (Game.clock 0); OBS 76.2 (c) negative control
+(3) (the Rust terminal without the record): Game.terminal repetition; Rust with the record repetition, without it None.
+OBS audit recount: rows total 1609: LOGIC 1255, RULE 94, NAME 21, CHESS FACT 205, HEURISTIC 34 (CHESS FACT rows 205 -> 205). OBS lemma store validate: entries 123,
+patterns 29; uncatalogued 0; problems 0. OBS ontology validate: problems 0. LEAN_INDEX rebuilt: unchanged (955 theorems/lemmas, 414 cited by code).
+OBS gate engine --only: test_rules_shelf 11/0/0/0 69.0 s (the shelf, the Rust terminal against Game.terminal, the technique's draw); test_plan73 9/0/0/0 14.6 s;
+test_plan73_5b 11/0/0/0 7.4 s; test_rules_draws 17/0/0/0 3.5 s; test_rules_gdl 12/0/0/0 3.8 s; test_plan76 20/0/0/0 60.0 s; test_plan75 11/0/0/0 0.5 s.
+76.2 IN SUM (a)-(c): docs/ANALYST_PLAN.md 76.2 marked BUILT; docs/AGENDA_AUDIT.md's "76.2 recount" appended. THE STATUS OF EACH EQUIVALENCE: legal PROVED (on every
+position with one king of the side to move and the e.p. square placed; every reachable position); next state PROVED (76.1); mate, stalemate, the fifty-move draw,
+threefold (through the record), win and loss PROVED; the terminal: sound PROVED but for the knight clause (CONJECTURE `dead position (the knight clause)`), complete PROVED
+but for FIDE dead positions beyond the criterion (the terminals are not equal); the draw's goal (50) rests on the terminal.

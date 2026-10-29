@@ -1,0 +1,42 @@
+{
+ "name": "the rule: the fifty-move draw",
+ "kind": "RULE",
+ "reads": [
+  "movement",
+  "material",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.LegalEquiv.drawByFiftyMoves_iff",
+  "Ideas.Game.chess_fifty_iff"
+ ],
+ "origin": "BASE",
+ "plan": [
+  "76.2"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:terminal",
+  "catspace/incubator/analyst/discovery/game.py:clock",
+  "rust/analyst_core/src/game.rs:fifty",
+  "lean/ideas/Ideas/Spec/LegalEquiv.lean:drawByFiftyMoves_iff"
+ ],
+ "note": "A hundred half-moves with no capture and no pawn move, and a legal move to make (FIDE 9.3, claimable; a mate or a stalemate on the move comes first): the spec's draw is the kernel's Chess.fiftyMoveClaimable with a legal move (Ideas.LegalEquiv.drawByFiftyMoves_iff).",
+ "params": {
+  "spec": "Ideas.Spec.Chess.drawByFiftyMoves",
+  "gdl": "draw_by_fifty_moves",
+  "surface": [
+   "terminal",
+   "clock",
+   "goal"
+  ]
+ }
+}

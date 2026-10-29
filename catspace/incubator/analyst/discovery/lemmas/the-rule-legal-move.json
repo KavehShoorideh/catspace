@@ -1,0 +1,43 @@
+{
+ "name": "the rule: legal move",
+ "kind": "RULE",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.LegalEquiv.legal_iff",
+  "Ideas.LegalEquiv.legal_iff_reachable",
+  "Ideas.LegalEquiv.legal_moveOf"
+ ],
+ "origin": "BASE",
+ "plan": [
+  "76.2"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:moves",
+  "catspace/incubator/analyst/discovery/game.py:legal",
+  "catspace/incubator/analyst/discovery/game.py:moves_to",
+  "lean/ideas/Ideas/Spec/LegalEquiv.lean:legal_iff"
+ ],
+ "note": "The side to move's legal moves (FIDE 3-4): the spec's `legal` (a candidate move -- a unit's move by its geometry onto a square it may land on, the en passant, the castling with its squares empty and its king's three squares not attacked -- that does not leave the mover's king attacked) is the kernel's Chess.legalMove on every position with one king of the side to move and the e.p. square where the rule puts it, and so on every reachable position (Ideas.LegalEquiv.legal_iff, legal_iff_reachable); the move binding reads every legal term back (legal_moveOf).",
+ "params": {
+  "spec": "Ideas.Spec.Chess.legal",
+  "gdl": "legal",
+  "surface": [
+   "moves",
+   "legal",
+   "moves_to"
+  ]
+ }
+}
