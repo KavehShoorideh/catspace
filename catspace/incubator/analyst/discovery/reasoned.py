@@ -20,6 +20,7 @@ from __future__ import annotations
 import chess
 
 from catspace.incubator.analyst.discovery import base_vocabulary as BV
+from catspace.incubator.analyst.discovery import lemma_store as LS
 from catspace.incubator.analyst.discovery import remember as RM
 from catspace.incubator.analyst.discovery import ruler as RU
 from catspace.incubator.analyst.discovery import selfmine as SM
@@ -30,6 +31,12 @@ THREAT_RUST = True         # plan 54 (B5.3): `_threat_moves` reads the exchange 
 
 def _key(board: chess.Board) -> str:
     return " ".join(board.fen().split()[:4])
+
+
+# plan 76.5: a unit of ours HANGS when the other side wins at least the UNIT OF A GAIN by the exchange on it -- their win GOAL's need, the store's (the regression's
+# `hangs` defect reads the same goal); `> 0` agreed with it only while the unit divides every worth (the hand table: 1), not under the mined entry (unit 2,
+# a bishop 5 for a knight 4: a gain of 1) -- where the save question it raised found no defect (76.4c's crash in _ask_save_piece, 76.5's again)
+UNIT = LS.valuation().unit
 
 
 def _see(fen: str, sq: int, us: str | None = None) -> int:
@@ -43,10 +50,10 @@ def _worth(board: chess.Board, sq: int) -> int:
 
 
 def hanging_of_ours(board: chess.Board, us: str) -> list:
-    """Squares of our pieces (not the king) the other side wins by the exchange on (`see` > 0), the level-one state's `hanging` rows."""
+    """Squares of our pieces (not the king) the other side wins by the exchange on (`see` at least the unit of a gain), the level-one state's `hanging` rows."""
     fen = board.fen()
     return [s for s in chess.SQUARES if board.piece_at(s) and board.piece_at(s).color == board.turn
-            and board.piece_at(s).piece_type != chess.KING and _see(fen, s, us) > 0]
+            and board.piece_at(s).piece_type != chess.KING and _see(fen, s, us) >= UNIT]
 
 
 def _mate_move(board: chess.Board, us: str):
@@ -87,11 +94,11 @@ def _threat_moves(board: chess.Board, us: str, hang: list) -> list:
                 seen = None
         for j, (i, m) in enumerate(rest):
             if seen is not None:
-                low = seen[j] <= 0
+                low = seen[j] < UNIT                 # (plan 76.5: no longer hangs -- they win less than the unit)
             else:
                 c = board.copy()
                 c.push(m)
-                low = _see(c.fen(), big, us) <= 0
+                low = _see(c.fen(), big, us) < UNIT
             if low:                                  # an added defender or an interposition: the biggest hanging piece no longer wins for them
                 out[i] = m
     return [m for m in out if m is not None]
@@ -106,7 +113,7 @@ def _creates_hanging(board: chess.Board, m: chess.Move, us: str) -> bool:
     fen = c.fen()
     for s in chess.SQUARES:
         p = c.piece_at(s)
-        if p and p.color != c.turn and p.piece_type != chess.KING and c.is_attacked_by(c.turn, s) and _see(fen, s, us) > 0:
+        if p and p.color != c.turn and p.piece_type != chess.KING and c.is_attacked_by(c.turn, s) and _see(fen, s, us) >= UNIT:
             return True
     return False
 

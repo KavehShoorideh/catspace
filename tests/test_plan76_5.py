@@ -152,6 +152,9 @@ def test_76_5_b_the_scan_finds_no_worth_literal_in_the_engine_outside_the_entrie
     print(f"OBS 76.5b scan: ENGINE hits {len(got['ENGINE'])} (each a listed FINDING), unexplained {len(bare)}; OUTSIDE {len(got['OUTSIDE'])}, TESTS {len(got['TESTS'])}, "
           f"LEAN {len(got['LEAN'])}")
     assert not bare, bare
+    unit = [h for h in got["ENGINE"] if h[2] == "UNIT"]
+    print(f"OBS 76.5b scan: exchanges read against 0 (the unit as a literal; listed, not routed) {len(unit)} -- ceiling {H.UNIT_FINDINGS_AT_76_5}")
+    assert len(unit) <= H.UNIT_FINDINGS_AT_76_5
     # the scan sees a copy: a table of the hand worths, a pawn literal, a threshold (its own fixture lines, read as code)
     assert H.table_hit(H.pairs_of_line("VAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}")) == "bnpqr"
     assert H.table_hit(H.pairs_of_line("match r { Role::Pawn => 1, Role::Knight | Role::Bishop => 3, Role::Rook => 5, Role::Queen => 9 }")) == "bnpqr"
@@ -197,3 +200,48 @@ def test_76_5_b_the_readers_agree_with_the_store_on_fixed_positions():
         assert max(0, RU.see(b, cap)) == x(w), fen                                    # ruler's own swap list, its worths the store's
     print(f"OBS 76.5b readers: {len(FENS)} positions x 2 sides, {len(EXCHANGES)} exchanges -- Game.measure, BaseWords.worth, the Rust balance and see, ruler, table, "
           f"ledger, ledger_puzzles, watch, surprise_loop, selfmine, lean_backrank_puzzles, lean_passer_v2_proto read {v.name!r} {w}")
+
+
+def test_76_5_b_a_unit_hangs_when_they_win_the_unit_of_a_gain():
+    """plan 76.5 (d)'s fix: reasoned.py's hanging test (and its parries) read the store's unit -- the need of their win goal, which the regression's `hangs` defect reads."""
+    from catspace.incubator.analyst.discovery import reasoned as RS
+    assert RS.UNIT == LS.valuation().unit
+    b = chess.Board("4k3/8/2p5/3q4/8/4N3/8/4K3 b - - 0 1")                               # their queen d5, attacked by our knight, defended by the c6 pawn: it hangs
+    assert chess.D5 in RS.hanging_of_ours(b, "b")
+
+
+# ---------------------------------------------------------------------------------------------------------------- (d) the experiment's switch; the Lean side
+
+def test_76_5_d_the_two_valuation_entries_state_the_lean_obligation_and_cite_its_files():
+    """Lean holds the worths as a VALUATION, not a rule: both entries' notes cite the files (pieceValue, valueAt, the vocabulary's worthOf / mateGain, the bound of
+    TreeStep.contrib_le_three) and state the OBLIGATION -- the theorems hold for any table with the properties they use; no proof is rewritten."""
+    store = LS.load()
+    root = ROOT / "lean" / "ideas"
+    for name in ("material", "material (mined)"):
+        note = store[name]["note"]
+        assert "OBLIGATION" in note and "not re-proved" in note, name
+        for f in ("Ideas/Fork.lean", "Ideas/ExchangeLaw.lean", "Ideas/Base/Vocabulary.lean", "Ideas/TreeStep.lean"):
+            assert f in note and (root / f).exists(), (name, f)
+    assert "contrib_le_three does NOT" in store["material (mined)"]["note"]
+    assert "theorem contrib_le_three" in (root / "Ideas" / "TreeStep.lean").read_text()
+    assert "def mateGain : Int := 100000" in (root / "Ideas" / "Base" / "Vocabulary.lean").read_text()
+
+
+def test_76_5_d_the_switch_is_a_run_time_choice_and_restores_byte_for_byte(tmp_path, monkeypatch):
+    """The harness's switch (no flag in the code): the GOAL entries pointed at the mined entry and back, the files restored byte for byte -- on a copy of the store."""
+    import json
+    import shutil
+    H = _harness()
+    store = tmp_path / "lemmas"
+    shutil.copytree(LS.DIR, store)
+    saved = tmp_path / "saved"
+    saved.mkdir()
+    monkeypatch.setattr(H, "_store_dir", lambda: store)
+    monkeypatch.setattr(H, "_saved_dir", lambda: saved)
+    monkeypatch.setattr(H, "ROOT", tmp_path)
+    before = {n: (store / f"{n}.json").read_bytes() for n in H.GOAL_FILES}
+    H.swap("mined", log=lambda *_a: None)
+    assert all(json.loads((store / f"{n}.json").read_text())["params"]["valuation"] == H.MINED for n in H.GOAL_FILES)
+    monkeypatch.setattr(H.subprocess, "run", lambda *a, **k: type("R", (), {"returncode": 0})())      # (the git check is the real run's; here the bytes are compared)
+    H.swap("hand", log=lambda *_a: None)
+    assert {n: (store / f"{n}.json").read_bytes() for n in H.GOAL_FILES} == before

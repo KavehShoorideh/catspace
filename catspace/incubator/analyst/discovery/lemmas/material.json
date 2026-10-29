@@ -45,9 +45,11 @@
   "catspace/incubator/analyst/discovery/words.py:worth",
   "catspace/incubator/analyst/discovery/graph.py:worth",
   "catspace/incubator/analyst/discovery/selfmine.py:PIECE_WORTH",
-  "catspace/incubator/analyst/discovery/lemma_store.py:goal_kinds"
+  "catspace/incubator/analyst/discovery/lemma_store.py:goal_kinds",
+  "rust/analyst_core/src/valuation.rs:set_valuation",
+  "catspace/incubator/analyst/discovery/lemma_store.py:install_valuation"
  ],
- "note": "The material valuation, the one definition of the unit worths (pawn 1, knight 3, bishop 3, rook 5, queen 9, the king none: its loss is the terminal) that Game.measure, BaseWords.worth and the agenda read; the least gain is one unit; HAND today (Lean's Ideas.Vocabulary.worthOf declares the same values), MINED when plan 76 delivers it.",
+ "note": "The material valuation, the one definition of the unit worths (pawn 1, knight 3, bishop 3, rook 5, queen 9, the king none: its loss is the terminal) that Game.measure, BaseWords.worth, the agenda and (plan 76.5) the Rust core read when the GOAL entries count in it (the core's table set from this entry by lemma_store.install_valuation, the store loaded on the core's first worth read; every routed module's table is its by_kind); the least gain is one unit; HAND. LEAN (plan 76.5): the theorems' worths are a VALUATION held in Lean, not a rule -- Ideas/Fork.lean `pieceValue` (p 1, n 3, b 3, r 5, q 9, k 0), read by Ideas/ExchangeLaw.lean `valueAt` (the king 100 as a capturer, 'dearer than anything') and its static exchange `seeXB`, Ideas/ExchangeLocal.lean (valueAt_local, seeXB_le_value), Ideas/Root.lean (worthOf_eq, the material of a capture), Ideas/TreeStep.lean (contrib, contrib_le_three), Ideas/Base/Vocabulary.lean (worthOf, maxWorthOf, materialOf; mateGain 100000, 'a value no material reaches', where the engine's terminal stake is 100) and the mined schemas (Ideas/Mined/Schemas.lean and the drill layers, over worthOf); Ideas/Exchange.lean's capture game (value, cheapestXF, cheapestXF_nonneg) is stated over lists of values and holds for any table. OBLIGATION (stated, not re-proved; no proof rewritten in 76.5): the theorems hold for any worth table with the properties they use -- the order of the units, the pawn the unit of a gain, the king's capturing value above every unit, mateGain above every material, and Ideas.TreeStep.contrib_le_three's bound: a knight or a bishop worth at most 3 -- this table has each of them.",
  "params": {
   "worth": {
    "p": 1,

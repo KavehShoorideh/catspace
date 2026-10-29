@@ -69,6 +69,9 @@ _DERIVED = [
     ("THRESHOLD", re.compile(r"need_left\.clamp\(1,\s*3\)")),                                       # the need between the unit and a minor's worth, written
     ("THRESHOLD", re.compile(r"\bv\s*<\s*3\s*\|\|")),                                               # rules.rs trapped: a worth below 3
     ("THRESHOLD", re.compile(r"kernel_value\([^()]*\)\.max\(1\)")),                                 # a worth at least the unit, written as 1
+    # (plan 76.5 (d), found by the mined run's crash) AN EXCHANGE READ AGAINST 0 OR 1 -- "they win something / nothing": the unit of a gain written as a literal; it
+    # agrees with the store's `unit` only while the unit divides every worth (the hand table; the scale control), not under the mined entry (unit 2, 5 - 4 = 1)
+    ("UNIT", re.compile(r"(?:_see|see_for|see_on|rules::see|G\.see|\bsee)\(.*?\)\s*(?:>|>=|<|<=|==|!=)\s*[01]\b")),
 ]
 # the royal's place in an order of worths, written as a number ("the king counts 100": Lean Ideas.ExchangeLaw.valueAt)
 _ROYAL = [re.compile(r"Role::King\s*\{\s*[1-9]\d*(?:\.0)?\s*\}"), re.compile(r"Role::King\s*=>\s*100"), re.compile(r"chess\.KING:\s*100\b"),
@@ -232,11 +235,21 @@ FINDINGS = [
 ]
 
 
-def finding_for(rel: str, text: str) -> "str | None":
+BY_CATEGORY = {
+    "UNIT": "AN EXCHANGE READ AGAINST 0 ('they win nothing / something'): the unit of a gain written as a literal -- it reads as the store's `unit` while the unit "
+            "divides every worth (the hand table: the guard identical; the scale control, every worth and the unit doubled, moved no move of the 218), not under "
+            "the mined entry (unit 2 -- its least worth -- while a bishop 5 for a knight 4 gains 1); not routed in 76.5: the hanging test and its parries "
+            "(reasoned.py), which met the regression's goal (`>= $unit`) and crashed the mined run, are -- the rest is the next step if a valuation whose unit is "
+            "not the greatest common divisor of its worths is adopted",
+}
+UNIT_FINDINGS_AT_76_5 = 18           # the ceiling the test holds: routing one lowers it; a new one fails the test
+
+
+def finding_for(rel: str, text: str, cat: str = "") -> "str | None":
     for path, rx, why in FINDINGS:
         if rel == path and re.search(rx, text):
             return why
-    return None
+    return BY_CATEGORY.get(cat)
 
 
 def scan(show_all: bool = False, log=print) -> dict:
@@ -259,7 +272,7 @@ def scan(show_all: bool = False, log=print) -> dict:
         if rel == "scripts/plan76_5.py" or rel == "tests/test_plan76_5.py":
             continue
         for n, cat, text in hits_of_file(_code_lines(p)):
-            out[scope].append((rel, n, cat, text, finding_for(rel, text) if scope == "ENGINE" else None))
+            out[scope].append((rel, n, cat, text, finding_for(rel, text, cat) if scope == "ENGINE" else None))
     eng_hits = out["ENGINE"]
     bare = [h for h in eng_hits if h[4] is None]
     log(f"OBS plan76.5 scan: engine modules (discovery/ and what it imports) {len(eng)}; hits ENGINE {len(eng_hits)} (routed-or-explained: FINDINGS {len(eng_hits) - len(bare)}, "

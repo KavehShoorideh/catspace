@@ -4195,6 +4195,20 @@ ACCEPTANCE: the guard identical (the default valuation is unchanged: 0 of 218 on
 source (a run-time choice, not a flag left in the code: the experiment harness points the GOAL entries at `material-mined`, runs, restores), decisions on the ten + wide listed and read
 (Stockfish depth 14 in a separate process judges the chess, never a premise), the loop-2 batch at 15 s graded in its own process -- hand vs mined, one sitting; the report says which worths
 the engine should read, with the reason; nothing adopted by the agent (Kaveh decides). Then 76.4d CHECKERS (docs/PLAN76_4D_CHECKERS_BRIEF.md) as the next agent.
+* 76.5 BUILT 2026-10-29 on branch worktree-agent-a26115eb81d6af9dc (journal 2026-10-29 08:16, 08:45, 08:50, 09:24; the parent snapshot main f4c23f6b): (a)
+  rust/analyst_core/src/valuation.rs, ONE process-wide table set by `analyst_core.set_valuation(worths, unit, royal)` from the store's entry
+  (lemma_store.install_valuation, the one place; THE STORE LOADED ON FIRST USE -- on the GIL's thread, every parallel section calling `ensure_ready` first --,
+  never a default); every Rust worth reads it (lib.rs value / kernel_value, rules.rs val, words.rs worth_of, regress.rs, plan.rs, threat.rs, waiting.rs,
+  reasoning.rs, gdl_chess.rs's 'exchange from' law, pos.rs principal_lines), the literals derived (more_than_pawn for `>= 3`, promotion_stake for 8,
+  piece_floor, unit, the royal as an order key). (b) every Python copy routed or deleted (ruler.py's table and import-time assertion gone; table, selfmine,
+  ledger, ledger_puzzles, watch, surprise_loop, observables, puzzle_apply, regress, lean_backrank_puzzles, lean_passer_v2_proto); `scripts/plan76_5.py scan`
+  ENGINE hits 53 -> 22, every one a listed FINDING (4 the royal as a number; 18 an exchange read against 0, the unit as a literal); the scan, the
+  readers' agreement, the first use and the negative control as tests (tests/test_plan76_5.py). (c) guard 0 of 218 on all five lists at every commit; CHESS
+  FACT 198 -> 198 (A4's 4 rows printed: orders by the store's reader already); lemma_store and ontology validate 0 problems. (d) the experiment ran
+  (the mined run's crash in _ask_save_piece found the last double definition: reasoned.py's hanging test `> 0` against the goal's `>= $unit`, routed);
+  guard decisions 7 of 218 moved, the loop-2 batch hand 32 / 2 / 6 vs mined 31 / 2 / 7, W0VFO Qb7 both ways; the scale control (worths and unit x 2)
+  moved no move; recommendation in the journal (keep the hand table; the mined entry's unit is not its least gain), nothing adopted. Lean: the
+  obligation in both VALUATION entries' notes (Ideas.TreeStep.contrib_le_three fails for the mined table), no proof rewritten. Two Rust builds.
 
 (Kaveh 2026-10-29: "checkers isn't a good example. stick to chess." -- 76.4d WITHDRAWN; the genericity claim is tested within chess: new goals, new endings, new words the machinery
 derives without new code; the brief docs/PLAN76_4D_CHECKERS_BRIEF.md stays as a record, not a plan.)

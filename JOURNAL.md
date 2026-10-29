@@ -35760,3 +35760,66 @@ OBS lemma store validate: entries 129, patterns 29; words read 951 (fact 144, fa
 uncatalogued 0 (0 distinct); problems 0
 OBS ontology validate: problems 0 (after (b)'s re-binding of the five unit kinds; at (a)'s commit it was 5 -- (b)'s journal)
 docs/LEAN_INDEX.md rebuilt (lean_index build): Ideas.ExchangeLaw.valueAt "used by" ruler.py and valuation.rs (their comments cite it).
+
+
+## 2026-10-29 09:24 -- plan 76.5 (d) THE EXPERIMENT 76.4c COULD NOT RUN: the engine on the mined valuation, through the one source; the hand vs the mined decisions read by Stockfish; the Lean obligation; 76.5 marked BUILT (branch worktree-agent-a26115eb81d6af9dc)
+THE SWITCH (scripts/plan76_5.py swap, a run-time choice of the harness; no flag in the code): the five GOAL entries' `params.valuation` pointed at `material (mined)`, each
+file's bytes saved first, then written back byte for byte (OBS 76.5 experiment: the GOAL entries restored byte for byte ...; git diff on them: none -- after every swap). The
+Python readers take the entry at their import, the Rust core on its first worth read: one valuation per process.
+THE FIRST SITTING CRASHED, as 76.4c's did (artifacts/experiments/plan76_5/experiment.log): every one of the four mined snapshot runs and each of the four batch sets
+raised IndexError in agenda._ask_save_piece (`q.defects[0]`: a save question with no defect; ten t0's 07Z0P and discovery were not written; the batch graded 28 of 40). THE LAST DOUBLE DEFINITION, read off the traceback: reasoned.hanging_of_ours called a unit HANGING when their exchange
+on it is `> 0`; the regression's `hangs` defect is their win GOAL holding, whose need is `$unit`. With the hand table (unit 1, whole worths) the two agree; the mined entry's
+unit is 2 while a bishop 5 for a knight 4 gains 1 -- hanging by one definition, not by the other. ROUTED: the hanging test, `_creates_hanging` and the parry test (`< UNIT`,
+the Rust and the Python readings) read `reasoned.UNIT = LS.valuation().unit`. OBS the guard (hand, against the parent): 0 / 0 / 0 / 0 / 0 of 10, 10, 99, 99. The other 18
+exchanges read against 0 (7 Rust, 11 Python: "they win nothing / something") are listed by the scan's new UNIT role as FINDINGS (a ceiling in the test), not routed:
+they read as the unit while the unit divides every worth. A FINDING ABOUT THE MINED ENTRY: its `unit` 2 ("its least worth") is not the least gain its worths allow (1:
+b 5 - n 4); the store defines the unit as the least gain.
+OBS the scan on the parent export with the final roles: hits ENGINE 74 (routed-or-explained: FINDINGS 25, UNEXPLAINED 49), OUTSIDE 74, TESTS 16, LEAN 2; on this commit: hits
+ENGINE 22 (routed-or-explained: FINDINGS 22, UNEXPLAINED 0), OUTSIDE 74, TESTS 13, LEAN 2 (4 the royal as a number, 18 the exchanges against 0).
+THE SITTING (one sitting, 09:03 .. 09:11; artifacts/experiments/plan76_5/experiment2.log), the code of this commit:
+OBS 76.5 batch hand (wall 76 s): prior grade: 40 decisions graded by Stockfish (depth 14) over 40 agendas: RIGHT 32, UNKNOWN 2, WRONG 6
+OBS 76.5 batch hand (wall 76 s): prior grade by proof: proved RIGHT 32, proved WRONG 3, unproved WRONG 3, none 2
+OBS 76.5 batch mined (wall 78 s): prior grade: 40 decisions graded by Stockfish (depth 14) over 40 agendas: RIGHT 31, UNKNOWN 2, WRONG 7
+OBS 76.5 batch mined (wall 78 s): prior grade by proof: proved RIGHT 31, proved WRONG 3, unproved WRONG 4, none 2
+OBS 76.5 batch: 1 of 40 agendas differ (decision, grade or proof) -- rand15_10 Bn8pS: hand c2c4 (RIGHT, proved; Stockfish's own move) | mined d3a6 (WRONG, unproved, loss 582)
+OBS W0VFO 10 s hand: POOL: ended at 8.8 s of 10.0 after 0 extra pass(es); 38 questions asked in the first, 6 moved up by the policy; status kept; the decision is Qb7 (+3);
+inner agendas 884, questions asked 11854. Mined: POOL: ended at 8.8 s of 10.0 ...; the decision is Qb7 (+4) (the mined units); inner agendas 882, questions asked 11777.
+(The first sitting's W0VFO lines were filtered out by the harness's grep; both were run again in this sitting, one run each.)
+THE GUARD POSITIONS AT THE COUNT BUDGET (hand = this commit's hand snapshot, identical to the parent; mined = the switch), every DECISION that differs, Stockfish depth 14
+reading both moves in a separate process (verdict.verdict, RIGHT within 50 cp; never a premise):
+OBS 76.5 experiment ten_t0: DECISION lines differ in 6 of 10; the MOVE differs in 1 / ten_t2: 7 of 10; 0 / wide_t0: 51 of 99; 3 / wide_t2: 53 of 99; 3 (the rest: the value in
+the mined units, or the proof's word)
+  2TUzC ten t0 [r4rk1/1p1b3p/p3p1p1/3pb3/P1P5/B6P/5qP1/R2QRB1K w - - 2 20]: hand Rc1 (unproved; WRONG, loss 743) | mined no decision; best e1e5
+  04Qx2 wide t0 and t2 [2r2rk1/3pq2p/pb2p1B1/1p2P3/6Q1/P5P1/1n3PP1/2R2RK1 w - - 1 23]: hand Be8+ (proved; RIGHT) | mined Bb1+ (proved +5; WRONG, loss 695 / 711); best g6e8
+  06J6T wide t0 and t2 [4r2k/6b1/Q7/P2Rn3/2p1B2p/4q2P/1r4P1/5R1K w - - 2 33]: hand Bg6 (unproved; WRONG, loss 1013 / 950) | mined no decision; best d5e5
+  08A6a wide t0 [2b3k1/2b2qp1/2p1p2p/1pPnN3/1P1Q4/2B5/r4PPP/2R1R1K1 b - - 6 27]: hand Bxe5 (unproved; RIGHT) | mined no decision; wide t2: mined Qh5 (unproved; WRONG, loss 527)
+OBS 76.5 experiment the moved decisions by Stockfish (hand -> mined): RIGHT -> WRONG 3, RIGHT -> none 1, WRONG -> none 3
+THE SCALE CONTROL (swap scaled: a temporary entry, the hand worths AND the unit times two, removed after): if every reading of a worth is the table's, the decisions keep
+their moves. OBS 76.5 experiment ten_t0: DECISION lines differ in 6 of 10; the MOVE differs in 0 / ten_t2: 7 of 10; 0 / wide_t0: 52 of 99; 0 / wide_t2: 54 of 99; 0
+(the same in both sittings). OBS 76.5 scale control: 213 of 218 DECISION lines are the hand line
+with the value doubled (or the terminal stake kept); the other 5 (3DNlC t0 / t2, OF8nj t0 / t2, r9JUH t2) keep the move and the doubled value and are proved by another word
+(`delayed_balance_alive_d1` -> `delayed_root_max_alive_d1`): THE LEAN-BOUND GAIN SCHEMAS of binder.py write the hand unit (`(after x y <tail>) >= balance + 1`, Lean
+delayed_balance_alive_d1 instantiated at v = 1; the alive floor C + 4 = T, a lone minor's 3 + 1) -- a FINDING: the obligation's instance in the binder, not routed (the
+theorem is general in v; the alive floor is TreeStep's minor bound).
+READING (directional: one run of each, the count-budget guard and one clocked batch): the mined worths do not make the engine better. On the guard the 7 moved decisions are
+RIGHT -> WRONG 3, RIGHT -> none 1, WRONG -> none 3 (the mined run decides nothing where the hand run guessed wrong; it gains no RIGHT move); on the batch RIGHT 31 against 32,
+the one difference a proved RIGHT move (Bn8pS c4) lost to an unproved WRONG one (not traced: a clocked run); W0VFO the same move. With 76.4c's fit (games log loss mined 0.84104
+against hand 0.84130, paired error 0.00040: one paired error apart) the evidence does not prefer the mined table for the engine.
+RECOMMENDATION (the owner decides; nothing adopted): THE ENGINE SHOULD KEEP READING `material` (HAND). Reasons: (1) the engine's decisions on the mined table are no better
+-- 0 RIGHT moves gained and 4 lost on the guard, 32 -> 31 RIGHT on the batch; (2) the fit's advantage is within about one paired error of the game corpus, and on the
+table-judged endings no integer vector fits at all (76.4c); (3) the mined ENTRY is not a consistent valuation as the store defines one: its unit (2) is not its least gain
+(1), and 18 engine sites plus binder.py's schemas still read the unit as 0 / 1, which is the hand table's (and any table whose unit divides its worths); (4) Lean's
+theorems are instantiated at the hand table and one (Ideas.TreeStep.contrib_le_three, a knight or a bishop worth at most 3) is false for the mined worths -- adopting them
+needs that restatement first. If a mined valuation is wanted: re-mine with the unit fixed at the worths' greatest common divisor (or the hand's unit structure imposed on
+the integer search), route the 18 exchange-against-0 sites and the binder's `+ 1` to the unit, restate contrib_le_three over the table, then repeat this experiment.
+THE LEAN SIDE (the plan: a VALUATION, not a rule; no proof rewritten): written into both VALUATION entries' notes -- Ideas/Fork.lean `pieceValue` (the table), read by
+Ideas/ExchangeLaw.lean `valueAt` (the king 100 as a capturer) and `seeXB`, Ideas/ExchangeLocal.lean, Ideas/Root.lean, Ideas/TreeStep.lean (contrib, contrib_le_three),
+Ideas/Base/Vocabulary.lean (worthOf, maxWorthOf, materialOf; mateGain 100000, where the engine's terminal stake is 100) and the mined schemas; Ideas/Exchange.lean's capture
+game is over lists of values (any table). THE OBLIGATION: the theorems hold for any worth table with the properties they use -- the order of the units, the pawn the
+unit of a gain, the king's capturing value above every unit, mateGain above every material, and contrib_le_three's bound -- for the mined table all hold but the last.
+OBS lemma store validate: entries 129 ... problems 0 (after the notes). tests/test_plan76_5.py (d): the obligation in both notes, citing files that exist; the switch restores
+byte for byte (on a copy of the store); reasoned.UNIT is the store's unit.
+OBS gate engine --only: test_plan76_5 10 / 0 / 0 4.0 s; test_reasoned 6 / 0 / 0 0.3 s; test_spread_fastpaths 6 / 0 / 0 11.5 s; test_plan73 10 / 0 / 0 15.8 s; test_plan75
+11 / 0 / 0 0.5 s; test_plan76_4c 15 / 0 / 0 1.0 s; test_regress 87 / 0 / 1 xfailed 494.6 s.
+76.5 IN SUM: docs/ANALYST_PLAN.md 76.5 marked BUILT. Commits 8f88201c (a), 1d31fb62 (b), 30e4ccea (c), this one (d). Two Rust builds (a; b's ensure_ready): THE SHARED
+EDITABLE INSTALL POINTS AT THIS BRANCH'S CRATE -- the parent rebuilds main's after the merge.
