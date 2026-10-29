@@ -9,7 +9,7 @@
   "slot": 3,
   "constant": "queen"
  },
- "rust": "rules.rs:Queen",
+ "rust": "pos.rs:Queen",
  "lean": "Ideas.Vocabulary.kindSet",
  "python": "chess.QUEEN",
  "bind": null,

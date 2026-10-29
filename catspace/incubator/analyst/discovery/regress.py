@@ -305,7 +305,7 @@ def exchange_read(board: chess.Board) -> str:
         atts = list(c.attackers(c.turn, sq))
         if not atts:
             break
-        a = min(atts, key=lambda x: (G.worth(c.piece_at(x)) if c.piece_at(x).piece_type != chess.KING else 99, x))
+        a = min(atts, key=lambda x: (c.piece_at(x).piece_type == chess.KING, G.worth(c.piece_at(x)), x))      # (by worth, the royal last)
         pc = c.piece_at(a)
         if pc.piece_type == chess.KING and any(True for _ in c.attackers(not c.turn, sq)):
             break

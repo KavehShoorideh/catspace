@@ -13,8 +13,10 @@ from dataclasses import asdict, dataclass
 import chess
 
 from . import ledger as LG
+from . import lemma_store as LS
 
 PVAL = LG.PVAL
+ROYAL_SEE = LS.goal_kinds().terminal.stake      # plan 76.5: the royal's place in the exchange (Lean valueAt's 100): the terminal GOAL entry's stake
 
 
 @dataclass
@@ -154,7 +156,7 @@ class ChessDomain:
         if victim is None or victim.color == board.turn or not board.attackers(board.turn, sq):
             return 0
         b = board.copy(stack=False)
-        val = lambda pt: 100 if pt == chess.KING else PVAL.get(pt, 0)
+        val = lambda pt: ROYAL_SEE if pt == chess.KING else PVAL.get(pt, 0)
         d = [val(victim.piece_type)]
         color = board.turn
         while True:

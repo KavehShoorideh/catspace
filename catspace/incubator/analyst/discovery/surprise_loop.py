@@ -49,8 +49,8 @@ LIMIT = 120                    # moves of ours per game
 
 def lead_of(b) -> tuple:
     """(our material minus theirs, theirs) -- White is us."""
-    import chess
-    v = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
+    from catspace.incubator.analyst.discovery import lemma_store as LS
+    v = LS.valuation().by_kind(royal=False)          # plan 76.5: the store's valuation (the royal unit aside)
     ours = sum(v[p.piece_type] for p in b.piece_map().values() if p.color and p.piece_type in v)
     theirs = sum(v[p.piece_type] for p in b.piece_map().values() if not p.color and p.piece_type in v)
     return ours - theirs, theirs

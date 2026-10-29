@@ -24,8 +24,9 @@ from collections import defaultdict
 import chess
 
 from catspace.io import paths
+from catspace.incubator.analyst.discovery import lemma_store as LS
 
-VAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
+VAL = LS.valuation().by_kind(royal=False)        # plan 76.5: the store's valuation (the royal unit aside), not a table of its own
 CAP_DEPTH = 6
 BUDGET = 1_000_000
 NODE_CAP = 30_000_000           # the solver alone stops deepening past this many nodes (not found)

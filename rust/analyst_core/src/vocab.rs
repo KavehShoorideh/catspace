@@ -751,6 +751,7 @@ pub fn vocab_eval(fen: String, term: String) -> PyResult<Option<u32>> {
 pub fn vocab_values(fens: Vec<String>, term: String) -> PyResult<Vec<u32>> {
     use rayon::prelude::*;
     let Some(t) = parse_term(&term) else { return Ok(vec![]) };
+    crate::valuation::ensure_ready();          // plan 76.5: the table loaded on this (the GIL's) thread before the workers read it
     Ok(fens.par_iter().map(|f| parse(f).map_or(0, |p| { let lone = !p.turn(); num(&t, &p, lone) })).collect())
 }
 
@@ -759,6 +760,7 @@ pub fn vocab_values(fens: Vec<String>, term: String) -> PyResult<Vec<u32>> {
 pub fn vocab_certify(fens: Vec<String>, term: String, schema: String, k: u32) -> PyResult<u32> {
     use rayon::prelude::*;
     let Some(t) = parse_term(&term) else { return Ok(0) };
+    crate::valuation::ensure_ready();          // plan 76.5: the table loaded on this (the GIL's) thread before the workers read it
     Ok(fens.par_iter().filter(|f| parse(f).map_or(false, |p| certified(&p, &t, &schema, k))).count() as u32)
 }
 
@@ -970,6 +972,7 @@ fn spec(base: &[String], cand: &Option<String>, schema: &str, piece: &str) -> Op
 pub fn verify_mask(fens: Vec<String>, base: Vec<String>, cand: Option<String>, schema: String, k: u32, piece: String) -> PyResult<Vec<bool>> {
     use rayon::prelude::*;
     let Some(sp) = spec(&base, &cand, &schema, &piece) else { return Ok(vec![]) };
+    crate::valuation::ensure_ready();          // plan 76.5: the table loaded on this (the GIL's) thread before the workers read it
     Ok(fens.par_iter().map(|f| parse(f).map_or(false, |p| sp.certified(&p, k))).collect())
 }
 
@@ -986,6 +989,7 @@ pub fn verify_count(fens: Vec<String>, base: Vec<String>, cand: Option<String>, 
 pub fn component_values(fens: Vec<String>, specs: Vec<String>) -> PyResult<Vec<Vec<u32>>> {
     use rayon::prelude::*;
     let comps: Vec<Comp> = specs.iter().filter_map(|s| comp(s)).collect();
+    crate::valuation::ensure_ready();          // plan 76.5: the table loaded on this (the GIL's) thread before the workers read it
     Ok(fens.par_iter().map(|f| parse(f).map_or(vec![0; comps.len()], |p| { let lone = !p.turn(); comps.iter().map(|c| cval(c, &p, lone)).collect() })).collect())
 }
 
@@ -996,6 +1000,7 @@ pub fn component_values_us(fens: Vec<String>, specs: Vec<String>, us_white: bool
     use rayon::prelude::*;
     let comps: Vec<Comp> = specs.iter().filter_map(|s| comp(s)).collect();
     let lone = if us_white { Color::Black } else { Color::White };
+    crate::valuation::ensure_ready();          // plan 76.5: the table loaded on this (the GIL's) thread before the workers read it
     Ok(fens.par_iter().map(|f| parse(f).map_or(vec![0; comps.len()], |p| comps.iter().map(|c| cval(c, &p, lone)).collect())).collect())
 }
 
@@ -1093,6 +1098,7 @@ pub fn frame_choose(fen: String, base: Vec<String>, cand: Option<String>, schema
 pub fn verify_play(fens: Vec<String>, base: Vec<String>, cand: Option<String>, schema: String, piece: String, limit: u32) -> PyResult<(u32, u32, u32, u32)> {
     use rayon::prelude::*;
     let Some(sp) = spec(&base, &cand, &schema, &piece) else { return Ok((0, 0, 0, 0)) };
+    crate::valuation::ensure_ready();          // plan 76.5: the table loaded on this (the GIL's) thread before the workers read it
     let r: Vec<(Option<u32>, u32, u32)> = fens.par_iter().map(|f| parse(f).map_or((None, 0, 0), |p| sp.play(&p, limit))).collect();
     Ok((r.iter().filter(|x| x.0.is_some()).count() as u32, r.iter().filter_map(|x| x.0).sum(),
         r.iter().map(|x| x.1).sum(), r.iter().map(|x| x.2).sum()))
@@ -1104,6 +1110,7 @@ pub fn verify_play(fens: Vec<String>, base: Vec<String>, cand: Option<String>, s
 pub fn term_dynamics(fens: Vec<String>, term: String) -> PyResult<Vec<(f32, f32)>> {
     use rayon::prelude::*;
     let Some(t) = parse_term(&term) else { return Ok(vec![]) };
+    crate::valuation::ensure_ready();          // plan 76.5: the table loaded on this (the GIL's) thread before the workers read it
     Ok(fens.par_iter().map(|f| {
         let Some(p) = parse(f) else { return (0.0, 0.0) };
         let lone = !p.turn();
@@ -1505,6 +1512,7 @@ pub fn trap_check(fens: Vec<String>, frame_terms: Vec<String>, region_term: Stri
     let Some(rt) = parse_term(&region_term) else { return Ok(vec![]) };
     let base: Vec<Comp> = frame_terms.iter().filter_map(|t| comp(t)).collect();
     let meas = |q: &Chess, lone: Color| -> Vec<u32> { base.iter().map(|c| cval(c, q, lone)).collect() };
+    crate::valuation::ensure_ready();          // plan 76.5: the table loaded on this (the GIL's) thread before the workers read it
     Ok(fens.par_iter().map(|f| {
         let p = parse(f)?;
         let us = p.turn();

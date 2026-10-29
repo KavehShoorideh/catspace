@@ -54,7 +54,7 @@ def _other_table() -> dict:
 
 def _child(code: str) -> str:
     env = dict(os.environ, PYTHONPATH=str(ROOT), PYTHONHASHSEED="0")
-    r = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT), env=env, capture_output=True, text=True, timeout=300)
+    r = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT), env=env, capture_output=True, text=True, timeout=120)      # (a hang is a failure)
     return r.stdout + r.stderr
 
 
@@ -73,6 +73,17 @@ def test_76_5_a_the_store_is_loaded_on_first_use():
     assert f"table {sorted(v.worth.items())} {v.unit} {v.royal}" in out
 
 
+def test_76_5_a_a_parallel_section_as_the_first_reader_loads_the_store_first():
+    """The first worth read of a fresh process inside a rayon section (vocab_values over several boards): the section loads the table on the GIL's thread before
+    its workers read (2026-10-29: without it a worker waited for the GIL its caller held -- the gate's test_threat_learning hung)."""
+    fens = [f for f, _s, _x in EXCHANGES]
+    out = _child("import analyst_core as AC\n"
+                 f"print('read', AC.vocab_values({fens!r}, 'balance'), AC.valuation_state())\n")
+    print("OBS 76.5a parallel first use:", out.strip().splitlines()[-1])
+    w = LS.valuation().worth
+    assert f"read {[64 + _material(chess.Board(f), chess.WHITE, w) for f in fens]} (True, 1)" in out
+
+
 def test_76_5_a_a_store_that_does_not_set_the_table_raises():
     """Never a silent default: when the store's install does not set the table, the first worth read raises (a Rust panic: PanicException)."""
     out = _child("from catspace.incubator.analyst.discovery import lemma_store as LS\n"
@@ -84,7 +95,7 @@ def test_76_5_a_a_store_that_does_not_set_the_table_raises():
                  "except BaseException as e:\n"
                  "    print('raised', type(e).__name__, str(e)[:120])\n"
                  "print('state', AC.valuation_state())\n")
-    print("OBS 76.5a no table:", " | ".join(out.strip().splitlines()[-2:]))
+    print("OBS 76.5a no table:", " | ".join(ln for ln in out.strip().splitlines() if ln.startswith(("raised", "state", "READ"))))
     assert "READ WITHOUT A TABLE" not in out and "raised PanicException" in out and "state (False, 0)" in out
 
 
@@ -130,3 +141,59 @@ def test_76_5_a_a_different_table_changes_the_rust_words_and_the_store_puts_them
     print(f"OBS 76.5a control: the core set to {other['worth']} (unit {other['unit']}) moved {moved} of {len(FENS)} positions' readings; "
           f"the store's {v.worth} put back: {sum(before[f] == after[f] for f in FENS)} of {len(FENS)} equal")
     assert moved >= len(FENS) - 1 and after == before
+
+
+# ---------------------------------------------------------------------------------------------------------------- (b) every copy routed
+
+def test_76_5_b_the_scan_finds_no_worth_literal_in_the_engine_outside_the_entries_but_its_findings():
+    H = _harness()
+    got = H.scan(log=lambda *_a: None)
+    bare = [h for h in got["ENGINE"] if h[4] is None]
+    print(f"OBS 76.5b scan: ENGINE hits {len(got['ENGINE'])} (each a listed FINDING), unexplained {len(bare)}; OUTSIDE {len(got['OUTSIDE'])}, TESTS {len(got['TESTS'])}, "
+          f"LEAN {len(got['LEAN'])}")
+    assert not bare, bare
+    # the scan sees a copy: a table of the hand worths, a pawn literal, a threshold (its own fixture lines, read as code)
+    assert H.table_hit(H.pairs_of_line("VAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}")) == "bnpqr"
+    assert H.table_hit(H.pairs_of_line("match r { Role::Pawn => 1, Role::Knight | Role::Bishop => 3, Role::Rook => 5, Role::Queen => 9 }")) == "bnpqr"
+    assert H.table_hit(H.pairs_of_line("match r { Role::Pawn => 1, Role::Knight => 2, Role::Bishop => 3, Role::Rook => 4 }")) is None     # piece-type codes
+    assert [c for c, _w in H.hits_of_line("let v = if m.is_en_passant() { 1 } else { worth(r) };")] == ["PAWN"]
+    assert [c for c, _w in H.hits_of_line("if p.role == Role::King || kernel_value(p.role) < 3 { continue; }")] == ["THRESHOLD"]
+
+
+def test_76_5_b_the_readers_agree_with_the_store_on_fixed_positions():
+    """Game.measure, BaseWords.worth, graph.worth, selfmine's tables, the Rust balance / see / principal lines, and every routed module's table read the store's entry."""
+    from catspace.incubator.analyst import lean_backrank_puzzles as LB
+    from catspace.incubator.analyst import lean_passer_v2_proto as PV
+    from catspace.incubator.analyst.discovery import ledger as LG
+    from catspace.incubator.analyst.discovery import ledger_puzzles as LP
+    from catspace.incubator.analyst.discovery import ruler as RU
+    from catspace.incubator.analyst.discovery import surprise_loop as SL
+    from catspace.incubator.analyst.discovery import table as TB
+    from catspace.incubator.analyst.discovery import watch as WT
+    LS.install_valuation()
+    v = LS.valuation()
+    w = v.worth
+    base = WD.CHESS_WORDS.base
+    for sym in w:
+        for colour in (chess.WHITE, chess.BLACK):
+            pc = chess.Piece.from_symbol(sym if colour == chess.BLACK else sym.upper())
+            assert base.worth(pc) == G.worth(pc) == v.worth_of(pc) == SM.PIECE_WORTH[sym] == w[sym]
+    by = v.by_kind()
+    assert RU.VAL == by and TB._VALUE == LG.PVAL == LP.VAL == WT.VAL == v.by_kind(royal=False) and not hasattr(SM, "VALUE")
+    assert LB.VALUE == by and PV.VALUE == {k: float(x) for k, x in by.items()} and RU.SEE_VAL[chess.KING] == RU.MATE == LS.goal_kinds().terminal.stake
+    assert PV.QUEEN_GAIN == LS.goal_kinds().promotion.stake == max(w[k] for k in "qrbn") - v.pawn and RU.PAWN_WORTH == v.pawn == w["p"]
+    for fen in FENS:
+        b = chess.Board(fen)
+        p = AC.Pos(fen)
+        for side in (chess.WHITE, chess.BLACK):
+            m = _material(b, side, w)
+            assert GM.CHESS.measure(b, side) == m == p.balance(side) - 64 == RU.material(b, side) - RU.material(b, not side) == SM.balance(fen, side)
+            assert TB._material(b, side) - TB._material(b, not side) == m and LG._bal(b) * (1 if side else -1) == m
+        assert SL.lead_of(b)[0] == _material(b, chess.WHITE, w)
+    for fen, s, x in EXCHANGES:
+        b = chess.Board(fen)
+        assert AC.Pos(fen).see(s) == x(w), fen
+        cap = min((m for m in b.legal_moves if m.to_square == s), key=lambda m: w[b.piece_at(m.from_square).symbol().lower()])
+        assert max(0, RU.see(b, cap)) == x(w), fen                                    # ruler's own swap list, its worths the store's
+    print(f"OBS 76.5b readers: {len(FENS)} positions x 2 sides, {len(EXCHANGES)} exchanges -- Game.measure, BaseWords.worth, the Rust balance and see, ruler, table, "
+          f"ledger, ledger_puzzles, watch, surprise_loop, selfmine, lean_backrank_puzzles, lean_passer_v2_proto read {v.name!r} {w}")

@@ -12,11 +12,12 @@ import chess
 import chess.syzygy
 
 from catspace.io import paths
+from catspace.incubator.analyst.discovery import lemma_store as LS
 
 TABLE = os.environ.get("CATSPACE_TABLE", "1") != "0"        # plan 62.3 (ON; `analyse --no-table` sets CATSPACE_TABLE=0, inherited by the workers: only a comparison condition)
 MEN = 5
 _TB: list = [None]
-_VALUE = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
+_VALUE = LS.valuation().by_kind(royal=False)                # plan 76.5: the store's valuation (the royal unit aside), not a table of its own
 STATS = {"probed": 0, "hit": 0}
 
 

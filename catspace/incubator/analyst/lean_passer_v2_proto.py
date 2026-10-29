@@ -142,7 +142,9 @@ def passer_v2(b: chess.Board, sq: int) -> dict:
 
 HYPS = ("ownPawn", "pathClear", "noSliders", "enemyPieces", "notInCheck", "kingOutside", "pawnsFar", "bishopsFar", "kingRoom")
 
-QUEEN_GAIN = 8.0        # a queen for a pawn, the value the zone search already uses for a promotion
+from catspace.incubator.analyst.discovery import lemma_store as LS  # noqa: E402
+
+QUEEN_GAIN = float(LS.goal_kinds().promotion.stake)        # a queen for a pawn: the promotion GOAL entry's stake over the store's valuation (plan 76.5)
 
 
 def passer_gate(b: chess.Board, bishops: bool = False) -> bool:
@@ -172,7 +174,7 @@ def proved_passers(b: chess.Board, bishops: bool = False) -> list[tuple[int, int
     return out
 
 
-VALUE = {chess.PAWN: 1.0, chess.KNIGHT: 3.0, chess.BISHOP: 3.0, chess.ROOK: 5.0, chess.QUEEN: 9.0, chess.KING: 0.0}
+VALUE = {k: float(w) for k, w in LS.valuation().by_kind().items()}     # plan 76.5: the store's valuation, not a table of its own
 
 
 def proved_passer_gains(b: chess.Board) -> dict:

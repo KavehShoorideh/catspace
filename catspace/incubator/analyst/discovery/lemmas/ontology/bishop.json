@@ -9,7 +9,7 @@
   "slot": 3,
   "constant": "bishop"
  },
- "rust": "rules.rs:Bishop",
+ "rust": "pos.rs:Bishop",
  "lean": "Ideas.Vocabulary.kindSet",
  "python": "chess.BISHOP",
  "bind": null,

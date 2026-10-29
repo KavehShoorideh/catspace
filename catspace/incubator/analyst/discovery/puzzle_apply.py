@@ -441,7 +441,7 @@ def state_lines(fen: str, us: str) -> list:
         w = SM.PIECE_WORTH[pc.symbol().lower()]
         a, d, see = SM.val_at(fen, ("attackers", n), us), SM.val_at(fen, ("defenders", n), us), SM.val_at(fen, ("see", n), us)
         hit, guard = (d, a) if ours else (a, d)
-        rank = 100 if pc.piece_type == chess.KING else w
+        rank = _LS.goal_kinds().terminal.stake if pc.piece_type == chess.KING else w      # (the royal first: the terminal's stake, above every worth)
         rows.append((-rank, 0 if ours else 1, n, pc.symbol(), w, hit, guard, see, ours))
     rows.sort()
     out = [f"EV 1 state ({len(rows)} pieces, in the order of attention: kings, then by value, ours before theirs):"]

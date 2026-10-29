@@ -397,14 +397,11 @@ def coverage(prem, poss, win_ks):
 
 # ---------------------------------------------------------------------------------------------------------------- the solver
 
-VALUE = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9}
-
-
 def balance(fen: str, white: bool) -> int:
-    """Material (pawn 1, minor 3, rook 5, queen 9) of one side minus the other's."""
+    """Material (the store's valuation, PIECE_WORTH -- plan 76.5: the solver's own table is gone) of one side minus the other's."""
     b = fen.split()[0]
-    w = sum(VALUE[c.lower()] for c in b if c.lower() in VALUE and c.isupper())
-    k = sum(VALUE[c] for c in b if c in VALUE)
+    w = sum(PIECE_WORTH[c.lower()] for c in b if c.lower() in PIECE_WORTH and c.isupper())
+    k = sum(PIECE_WORTH[c] for c in b if c in PIECE_WORTH)
     return (w - k) if white else (k - w)
 
 
@@ -1521,7 +1518,7 @@ def root_readings(fen: str, mover: str, delta: int) -> list:
         promo = val_at(fen, ("after", x, y, ("count", ("and", "theirpawns", ("rank", view(PROMO_SQ, mover))))), mover)
         mov = val_at(fen, ("after", x, y, ("least", "1")), mover)
         mat = val_at(fen, "material_us", mover)
-        k = wy - w - (8 if promo else 0)
+        k = wy - w - (_LS.goal_kinds().promotion.stake if promo else 0)        # plan 76.5: the promotion's stake, the store's
         pawn = pc.piece_type == chess.PAWN
         out.append(dict(san=bd.san(m), x=x, y=y, worth=wy, attacked_after=hitn, w=w, promo=promo, reply=mov, material=mat, k=k, pawn=pawn,
                         applies=(not pawn and hitn == 0 and promo == 0 and mov >= 1 and mat >= 4)))

@@ -9,7 +9,7 @@
   "slot": 3,
   "constant": "knight"
  },
- "rust": "rules.rs:Knight",
+ "rust": "pos.rs:Knight",
  "lean": "Ideas.Vocabulary.kindSet",
  "python": "chess.KNIGHT",
  "bind": null,

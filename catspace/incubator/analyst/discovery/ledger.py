@@ -231,7 +231,8 @@ def chain_main(argv=None):
 #   python -m catspace.incubator.analyst.discovery.ledger walk --pgn-index 2979 --events 7
 
 LICHESS_PGN = "assets/corpora/raw/lichess_db_standard_rated_2019-01.pgn.zst"
-PVAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
+from catspace.incubator.analyst.discovery import lemma_store as LS  # noqa: E402
+PVAL = LS.valuation().by_kind(royal=False)       # plan 76.5: the store's valuation (the royal unit aside), not a table of its own
 
 
 def find_game(index: int, path: str = LICHESS_PGN):

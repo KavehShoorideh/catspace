@@ -25,9 +25,19 @@ const LETTERS: [char; 6] = ['p', 'n', 'b', 'r', 'q', 'k'];               // the 
 #[inline]
 fn ensure() { if !SET.load(Ordering::Acquire) { load_from_store(); } }
 
-/// THE STORE ON FIRST USE: `lemma_store.install_valuation()` (which calls `set_valuation` with the entry the GOAL entries count in).
+/// THE TABLE LOADED BEFORE A PARALLEL SECTION: every rayon section (vocab.rs's batch readers, waiting.rs's frame pools) calls this on the thread that holds
+/// the GIL before it fans out -- a worker thread must never be the first reader (it cannot take the GIL the waiting caller holds: 2026-10-29, the gate's
+/// test_threat_learning hung in vocab::component_values until this was in place).
+#[inline]
+pub(crate) fn ensure_ready() { ensure(); }
+
+/// THE STORE ON FIRST USE: `lemma_store.install_valuation()` (which calls `set_valuation` with the entry the GOAL entries count in). Only on a thread that holds
+/// the GIL: elsewhere (a parallel section that did not call `ensure_ready`) it raises -- it never waits for the GIL a caller holds.
 #[cold]
 fn load_from_store() {
+    if unsafe { pyo3::ffi::PyGILState_Check() } == 0 {
+        panic!("the valuation: a worth was read on a thread that does not hold the GIL before the table was set (a parallel section must call valuation::ensure_ready first)");
+    }
     if LOADING.swap(true, Ordering::AcqRel) {
         panic!("the valuation: a worth was read while the lemma store's valuation was being installed (install_valuation must read no Rust worth)");
     }

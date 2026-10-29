@@ -2,8 +2,8 @@
 
 `solve(fen, need, max_depth, trace, answer_uci)`: iterative deepening negamax over ALL legal moves of both sides, then a quiescence search over
 captures (and promotions; the first quiescence ply also tries the quiet checks) with stand-pat. An in-check quiescence node tries every evasion
-and has no stand-pat. The leaf is the material balance in `selfmine.PIECE_WORTH` read from the root side, minus the root's own balance (so a score
-is a GAIN); checkmate is +-100 whatever the distance; stalemate, a repeated position on the path and the 50-move clock are 0.
+and has no stand-pat. The leaf is the material balance in the store's valuation (plan 76.5: `lemma_store.valuation()`) read from the root side, minus the root's own balance (so a score
+is a GAIN); checkmate is +-MATE (the terminal GOAL entry's stake) whatever the distance; stalemate, a repeated position on the path and the 50-move clock are 0.
 "forced" = the root's score at the finishing depth is >= `need` against every defence (the smallest depth at which it holds). Each root move is
 searched in the null window (need-1, need), so cuts are against the target; that is also why `line` is the best-scoring line the search kept,
 not a proof of optimal play. It is a search claim, not a proof: the horizon is material at a quiet leaf, so the exact labeller (Rust
@@ -29,12 +29,17 @@ import shutil
 
 import chess
 
-from catspace.incubator.analyst.discovery.selfmine import PIECE_WORTH
+from catspace.incubator.analyst.discovery import lemma_store as LS
+from catspace.incubator.analyst.discovery import names as NM
 
-MATE = 100
-VAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
-SEE_VAL = {**VAL, chess.KING: 100}
-assert all(VAL[t] == PIECE_WORTH[chess.piece_symbol(t)] for t in VAL)
+# plan 76.5: the ruler's worths are the store's valuation (the entry the GOAL entries count in) -- its own table and the import-time assertion that it
+# equalled selfmine's are gone. The royal's place in the exchange ("the king counts 100": Lean Ideas.ExchangeLaw.valueAt) and a mate's score are the
+# terminal GOAL entry's stake (the royal's loss ends the game: above every count).
+_V = LS.valuation()
+MATE = LS.goal_kinds().terminal.stake
+VAL = _V.by_kind()
+PAWN_WORTH = _V.pawn
+SEE_VAL = {**VAL, NM.kind(_V.royal): MATE}
 
 
 def material(board: chess.Board, color: bool) -> int:
@@ -46,7 +51,7 @@ def see(board: chess.Board, move: chess.Move) -> int:
     to = move.to_square
     mover = board.piece_type_at(move.from_square)
     if board.is_en_passant(move):
-        victim = 1
+        victim = PAWN_WORTH
     else:
         vt = board.piece_type_at(to)
         victim = VAL[vt] if vt else 0
@@ -106,12 +111,12 @@ class Ruler:
             cap = b.is_capture(m)
             if cap or m.promotion:
                 if b.is_en_passant(m):
-                    victim = 1
+                    victim = PAWN_WORTH
                 else:
                     vt = b.piece_type_at(m.to_square)
                     victim = VAL[vt] if vt else 0
                 att = SEE_VAL[b.piece_type_at(m.from_square)]
-                promo = VAL[m.promotion] - 1 if m.promotion else 0
+                promo = VAL[m.promotion] - PAWN_WORTH if m.promotion else 0
                 mvvlva = -(victim * 16 + promo * 16 - att)
                 if cap and (victim < att) and see(b, m) < 0:
                     keyed.append(((6, mvvlva), m))

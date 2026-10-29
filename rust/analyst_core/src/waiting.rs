@@ -491,6 +491,7 @@ pub fn conditions(pos: &Chess, s: &Seed, cache: &Cache, base: &Hints, deep: bool
         }
     }
     let cands = if unified { key_candidates(pos, s) } else { candidates(pos, s, z, false) };
+    crate::valuation::ensure_ready();          // plan 76.5: the table loaded on this (the GIL's) thread before the workers read it
     let rows: Vec<(Atom, bool, i64, Hints, u64, u8)> = cands.par_iter().filter_map(|a| {
         let p2 = perturb(pos, a, us)?;
         BUDGET.store(50_000, Ordering::Relaxed);
@@ -519,6 +520,7 @@ pub fn conditions(pos: &Chess, s: &Seed, cache: &Cache, base: &Hints, deep: bool
 pub fn breakers(pos: &Chess, s: &Seed, cache: &Cache) -> (Found, u64) {
     let us = pos.turn();
     let z = zone(pos, s);
+    crate::valuation::ensure_ready();          // plan 76.5: the table loaded on this (the GIL's) thread before the workers read it
     let rows: Vec<(Atom, bool, Hints, u64)> = candidates(pos, s, z, true).par_iter().filter_map(|a| {
         let p2 = perturb(pos, a, us)?;
         let (ok, rec, n, spent) = prove_n(&p2, &s.uci, &s.focus, s.goal, cache.get(&Some(*a)).cloned());
@@ -645,8 +647,10 @@ pub fn evaluate(p: &Chess, s: &Seed, born: u32, cache: &Cache, prev: Option<(Sta
 /// Both sides' frames: the side to move's on the position, the other side's on the null move (none when in check).
 pub fn frames_both(pos: &Chess, born: u32) -> Vec<Frame> {
     let empty = Cache::new();
+    crate::valuation::ensure_ready();          // plan 76.5: the table loaded on this (the GIL's) thread before the workers read it
     let mut out: Vec<Frame> = seeds(pos).par_iter().map(|s| evaluate(pos, s, born, &empty, None, true)).collect();
     if let Some(p) = pass(pos) {
+        crate::valuation::ensure_ready();          // plan 76.5: the table loaded on this (the GIL's) thread before the workers read it
         out.extend(seeds(&p).par_iter().map(|s| evaluate(&p, s, born, &empty, None, false)).collect::<Vec<_>>());
     }
     out
@@ -679,6 +683,7 @@ type ArmRow = (String, String, String, Vec<String>, i64, Vec<(String, String, St
 pub fn arming_core(pos: &Chess, frames: &[Frame]) -> (Vec<ArmRow>, Vec<ArmRow>, Vec<ArmRow>) {
     let us = pos.turn();
     let moves: Vec<Move> = pos.legal_moves().into_iter().collect();
+    crate::valuation::ensure_ready();          // plan 76.5: the table loaded on this (the GIL's) thread before the workers read it
     let res: Vec<(Vec<ArmRow>, Vec<ArmRow>, Vec<ArmRow>)> = moves.par_iter().map(|mm| {
         let q = after(pos, mm);
         let muci = mm.to_uci(CastlingMode::Standard).to_string();
@@ -751,6 +756,7 @@ pub fn pool_step(old_frames: &[Frame], ply: u32, pos: &Chess, proofs: bool) -> (
         let ss = seeds(p);
         let old: HashMap<String, &Frame> = old_frames.iter().filter(|f| f.owner == owner).map(|f| (f.seed.key(), f)).collect();
         let empty = Cache::new();
+        crate::valuation::ensure_ready();          // plan 76.5: the table loaded on this (the GIL's) thread before the workers read it
         let done: Vec<(Frame, Option<Status>, bool)> = ss.par_iter().map(|s| {
             match old.get(&s.key()) {
                 Some(f) => {

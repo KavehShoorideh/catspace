@@ -30,7 +30,9 @@ from catspace.io import paths
 
 from .lean_ideas import LeanIdeas, rank_check_possible
 
-VALUE = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
+from catspace.incubator.analyst.discovery import lemma_store as LS  # noqa: E402
+
+VALUE = LS.valuation().by_kind()                 # plan 76.5: the store's valuation, not a table of its own
 ARMS = ("base", "close", "target")
 
 

@@ -9,7 +9,7 @@
   "slot": 3,
   "constant": "pawn"
  },
- "rust": "rules.rs:Pawn",
+ "rust": "pos.rs:Pawn",
  "lean": "Ideas.Vocabulary.kindSet",
  "python": "chess.PAWN",
  "bind": null,

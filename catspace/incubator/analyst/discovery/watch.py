@@ -23,6 +23,7 @@ import time
 import chess
 
 from catspace.io import paths
+from catspace.incubator.analyst.discovery import lemma_store as LS
 
 TB = ENG = None
 
@@ -339,14 +340,14 @@ def extract(targets: set, limit_games: int | None = None, workers: int = 10, log
 # notion is the PASS TEST: a threat against side S in position P (S to move, not in check) is a move m that the other side O could make if S
 # passed, sized by what S then loses with S's best defence. pass(P) = the same board with O to move. The teacher labels every O move on pass(P).
 
-VAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
+VAL = LS.valuation().by_kind(royal=False)        # plan 76.5: the store's valuation (the royal unit aside), not a table of its own
 THREAT_DEPTH = 10
 WALK_PLIES = 8
 MATE_SIZE = 100
 
 
 def _bal(b: chess.Board, color: bool) -> int:
-    """Material balance from `color`'s side (P/N/B/R/Q = 1/3/3/5/9)."""
+    """Material balance from `color`'s side (the store's valuation)."""
     return sum(VAL.get(p.piece_type, 0) * (1 if p.color == color else -1) for p in b.piece_map().values())
 
 

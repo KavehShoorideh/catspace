@@ -35687,3 +35687,57 @@ tests/test_plan76_5.py (new; (a)): a fresh process importing only the core has n
 exchange in it, the store's put back reads them back exactly).
 OBS gate engine --only: test_plan76_5 4 / 0 / 0 0.6 s; test_plan76_4b 13 / 0 / 0 1.6 s; test_plan75 11 / 0 / 0 0.6 s; test_rules_shelf 12 / 0 / 0 74.3 s; test_binder_rust
 31 / 0 / 0 0.7 s; test_regress_rust 61 / 0 / 0 0.9 s.
+
+
+## 2026-10-29 08:45 -- plan 76.5 (b) EVERY PYTHON COPY ROUTED OR DELETED; the scan as a test (branch worktree-agent-a26115eb81d6af9dc)
+THE SCAN (scripts/plan76_5.py scan, new): the crate, catspace/, tests/ and lean/ideas/Ideas grepped for the hand valuation's numbers in a WORTH ROLE -- a run of lines mapping
+two or more unit kinds to their hand worths and none to another number (a dict, a match, a Lean match; python-chess's piece-type codes and the vocabulary's order of kinds
+are no copy), the kinds' list in order, the pawn's worth as a literal (an en-passant victim, a promotion's "less 1"), the promotion's stake as 8, a threshold on a worth
+reading ('>= 3', '< 3', '>= 5', the fork's clamp(1, 3), '.max(1)'), and the royal's place in a worth order as a number -- docstrings and comments blanked. Each hit has a
+SCOPE: ENGINE (the crate; every module of discovery/; every catspace module those import when imported -- 83 modules: lean_passer_v2_proto, lean_backrank_puzzles,
+lean_passer_check, lean_ideas beside discovery/; an import inside a function is a tool's), OUTSIDE (no engine module imports it), TESTS, LEAN. An ENGINE hit is routed or is a
+FINDING listed in the harness with its reason; the test fails on an unexplained one.
+OBS (the final scan on an export of the parent, main f4c23f6b) plan76.5 scan: engine modules (discovery/ and what it imports) 83; hits ENGINE 53 (routed-or-explained:
+FINDINGS 4, UNEXPLAINED 49), OUTSIDE 70, TESTS 6, LEAN 2
+OBS (this commit) plan76.5 scan: engine modules (discovery/ and what it imports) 83; hits ENGINE 4 (routed-or-explained: FINDINGS 4, UNEXPLAINED 0), OUTSIDE 70, TESTS 3,
+LEAN 2
+ROUTED in (a) (the Rust 31 and the two signature changes) and here (the Python 18): ruler.py (its VAL table and the IMPORT-TIME ASSERTION that it equalled selfmine's are gone:
+`VAL = LS.valuation().by_kind()`, the en-passant victim and the promotion's "- 1" the valuation's pawn, SEE_VAL's king and MATE the terminal GOAL entry's stake -- "the king
+counts 100", Lean valueAt); table.py `_VALUE`, ledger.py `PVAL` (observables reads it; its SEE's king the terminal stake), ledger_puzzles.py `VAL`, watch.py `VAL`,
+surprise_loop.py `lead_of` -- `LS.valuation().by_kind(royal=False)`; selfmine.py `VALUE` DELETED (`balance` reads PIECE_WORTH), `root_readings`' 8 the promotion GOAL entry's
+stake; puzzle_apply.py the order of attention's king 100 (the terminal stake); regress.py's exchange print the least attacker by (royal, worth) (its 99 gone);
+lean_backrank_puzzles.py `VALUE`, lean_passer_v2_proto.py `VALUE` and `QUEEN_GAIN` (8.0: the promotion's stake). lemma_store.py (a): `valuation()`, `Valuation.by_kind`,
+`Valuation.pawn`, `install_valuation`. A PROCESS READS ONE VALUATION: the modules that keep a table take it at their import (as selfmine.PIECE_WORTH did since 75.2).
+THE FINDINGS (ENGINE, 4): the royal as a NUMBER where it enters arithmetic, a print or a learned feature -- lib.rs `target_profile` (100), plan.rs `val` (1000), reasoning.rs
+`val` (100), waiting.rs `gate_features` (10, a trained gate's input) -- not the table's worth (the royal's is 0) but the terminal's stand-in, whose definition is the terminal
+GOAL entry's stake, which the core does not hold. TESTS (3): test_vocab_fastpaths, test_vocab_maxworth (oracles fixing the default valuation), test_analyst_tactic_coverage (a
+legacy module's own table). LEAN (2): Ideas/Fork.lean `pieceValue`, Ideas/ExchangeLaw.lean `valueAt`'s king 100 -- a VALUATION, the obligation ((d)). OUTSIDE (70): the older
+analyst modules (incubator/analyst 42, watch/ 7, loop/stages 1) and research/ (20) -- no engine module imports them; not routed (research/'s src/ must not import the incubator).
+NOT IN THE SCAN'S ROLE, LISTED: the terminal stake's own copies (regress.rs STAKE_MATE 100, waiting.rs MATE_GOAL 500, reasoning.rs MATE 1000; regress.py STAKE_DUTY_MATE 100,
+watch.py MATE_SIZE 100) -- a GOAL entry's, not the valuation's.
+OBS the guard (against the parent snapshot): ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99
+(walls 8 s, 30 s, 21 s, 78 s).
+NEGATIVE CONTROL (never committed: `Valuation.by_kind` serves the pawn at 2 -- every routed Python table at once, the Rust core and PIECE_WORTH keep the store's): OBS ten t0
+0 of 10 on all five lists; wide t0 2 of 99 traces, 0 read sets, 0 leaf verdict lists, 0 word lists, 3 of 99 provenance lists differ -- the routed tables are read on 2-3 of the
+218 cases (the guard sees them; most are tools').
+A DEFECT OF (a), FOUND BY THIS STAGE'S GATE AND FIXED HERE: the store loaded on first use DEADLOCKED when the first worth read of a process came from a rayon worker
+(test_threat_learning hung in vocab::component_values: the worker waited for the GIL that its caller, waiting for the workers, held). Fixed in valuation.rs: the load runs
+only on a thread that holds the GIL (PyGILState_Check; elsewhere it raises, it never waits), and every parallel section -- vocab.rs's 8, waiting.rs's 6 -- calls
+`valuation::ensure_ready()` on the calling thread before it fans out. A second Rust build: the shared editable install points at this branch's crate. The test: a fresh
+process whose first worth read is vocab_values over four boards reads the store's balances (OBS 76.5a parallel first use: read [62, 57, 65, 69] (True, 1)).
+A SECOND DEFECT OF (a), FOUND BY `ontology validate` (not run at (a)'s commit: it failed there): the shelf's unit kinds bound their Rust name to rules.rs (`rules.rs:Pawn`
+.. `rules.rs:Queen`: the old `val` match), which (a) removed -- OBS ontology validate: problems 5 (FAIL bishop / knight / pawn / queen / rook: rust rules.rs has no
+identifier ...). The five entries (lemmas/ontology/{pawn,knight,bishop,rook,queen}.json) now bind pos.rs (`piece_type`: the kernel's kinds to python-chess's codes; the
+king's binding, rules.rs:King, still holds) -- OBS ontology validate: problems 0. The engine does not read the kinds' `rust` field (gdl_chess.native_bindings skips a
+slot entry): the guard is unmoved by it.
+tests/test_plan76_5.py (b): the scan is a test (no unexplained ENGINE hit; the scan sees a table, a pawn literal, a threshold; not python-chess's codes); the readers agree
+with the store's entry on 7 fixed positions and 4 exchanges -- Game.measure, BaseWords.worth, graph.worth, selfmine (PIECE_WORTH, balance), the Rust balance and see, ruler
+(material, see, MATE, SEE_VAL, PAWN_WORTH), table, ledger, ledger_puzzles, watch, surprise_loop, lean_backrank_puzzles, lean_passer_v2_proto (VALUE, QUEEN_GAIN).
+THE STORE'S OTHER ENTRIES hold no worth: the numbers in their params are counts and costs (budget 8 questions per piece, the judge's cost units, tempo, the chase clock)
+and mate's stake 100 (the terminal GOAL entry's); only the two VALUATION entries hold worths.
+scripts/gate.py: test_plan76_5 in ENGINE_NAMES (50 files).
+OBS gate engine --only (one file per call): test_plan76_5 7 / 0 / 0 4.0 s; test_ruler 12 / 0 / 0 0.5 s; test_ledger 8 / 0 / 0 20.3 s; test_windows 9 / 0 / 0 0.6 s;
+test_threat_learning 8 / 0 / 0 2.5 s; test_vocab_fastpaths 12 / 0 / 0 4.9 s; test_vocab_maxworth 3 / 0 / 0 0.3 s; test_plan76 20 / 0 / 0 64.8 s; test_binder_rust
+31 / 0 / 0 0.8 s; test_regress_rust 61 / 0 / 0 0.9 s; test_plan72_7_step3 13 / 0 / 0 40.7 s; test_game 3 / 0 / 0 0.4 s; test_discovery_vocabulary 23 / 0 / 0 19.2 s;
+test_plan73 10 / 0 / 0 17.1 s; test_plan75 11 / 0 / 0 0.6 s; test_plan76_4c 15 / 0 / 0 1.5 s; test_plan76_4b 13 / 0 / 0 1.6 s; test_rules_shelf 12 / 0 / 0 71.9 s;
+test_agenda 26 / 0 / 0 96.1 s; test_duty63 12 / 0 / 0 0.4 s; test_plan62 28 / 0 / 0 8.0 s; test_regress 87 / 0 / 1 xfailed 507.1 s.

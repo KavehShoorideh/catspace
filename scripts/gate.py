@@ -52,7 +52,8 @@ ENGINE_NAMES = (
     "test_rules_shelf "                                                                 # 2026-10-28: plan 76.2 the rule shelf (legal / terminal / goal proved; the GDL oracle against Game; the RULE entries)
     "test_plan76_4a "                                                                   # 2026-10-28: plan 76.4a defects and fixes from the spec (the regression; the hand tables as oracles)
     "test_plan76_4b "                                                                   # 2026-10-29: plan 76.4b the regression in Rust (the spec loaded from its text; the Python reading the oracle)
-    "test_plan76_4c"                                                                    # 2026-10-29: plan 76.4c mining objects and material (the term language; mined relations; the mined valuation)
+    "test_plan76_4c "                                                                   # 2026-10-29: plan 76.4c mining objects and material (the term language; mined relations; the mined valuation)
+    "test_plan76_5"                                                                     # 2026-10-29: plan 76.5 the valuation as one definition (the core's table from the store; the scan; the readers agree)
 ).split()
 
 PYTEST_FLAGS = ["-q", "-p", "no:cacheprovider", "-W", "ignore", "--durations=3"]
