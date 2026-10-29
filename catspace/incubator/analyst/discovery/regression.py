@@ -24,6 +24,12 @@ terminal), the next state by Ideas.NextEquiv.applyMoveSpec_eq_applyMove (a funct
 the spec's own clause evaluated by the interpreter. THE READ SET of a regression is the atoms its derivations and witnesses read; a step that touches none of them
 leaves them as they were (the frame lemma, Ideas.FrameLemma.frame_unchanged, for the board's squares). CONJECTURE (stated, not proved, not relied on for a claim): that a
 fix mending one defect preserves the others is NOT assumed -- the fix test re-reads every defect after the action (no defect may be new), it does not infer it.
+
+PLAN 76.4b THE REGRESSION IN THE NATIVE CORE (76.4a's reading cost ~3x the hand tables at the count budget): `Regressor` is a call-through to the binding's native
+core (the same reading, mirrored line by line: the description loaded there from its own text, the binding's readers chosen by the ontology shelf's table, the names
+bound by the same DEFECT_FIX params handed over as data; the texts stay here); `PyRegressor` -- the Python reading below, unchanged -- is its TEST ORACLE. A
+regression is a function of the state's reading and the goal alone (76.4a's validation of a near regression returned what a fresh reading returns), so the native
+core reads afresh and caches per (state key, goal) with the read set kept beside the names.
 """
 from __future__ import annotations
 
@@ -533,10 +539,63 @@ class Regression:
 
 
 class Regressor:
-    """THE REGRESSION over one spec and one binding, cached per (state key, goal). `binding` supplies: `inputs(x)` -> a function (rel, pattern) -> the state's
-    `true.*` and input rows (the spec's state, read where asked), `certified(x)` -> a function (rel, pattern) -> rows for the certified relations (`spec.certified`),
-    `apply(x, action)` (the certified next state), `pass_(x)` (the turn passed), `to_move(x, role)`, `key(x)`, `action(row)` (a certified `legal` row -> the
-    binding's action or None), `value(x, law, args)` (None where the valuation reads no position)."""
+    """THE REGRESSION (plan 76.4b): read by the binding's NATIVE core -- `B.native_regress(x, goal)` (the whole regression, regression.rs: the same reading as
+    `PyRegressor`'s below, the description loaded there from its own text), `B.native_names(x, goal, entries, theirs, future)` (the names' records, cached there per
+    (the state's key, the goal); their texts filled here from the entries' templates) and `B.native_fixes(...)` (the fix test of a list of actions in one crossing).
+    The whole regression is cached here per (state key, goal), as 76.4a's was. `PyRegressor` (76.4a's Python reading) is its TEST ORACLE: equal on every question
+    of the guard positions (scripts/plan76_4a.py compare). The binding contract is PyRegressor's, plus `future(x, fut)` (the goal's future of a state, as data:
+    None -- the state itself) and the native methods."""
+
+    CACHE_MAX = 400_000                                         # a fuse on the memory the cache may hold (a count, named as one: cleared whole when reached, never a cut of an answer)
+
+    def __init__(self, spec: Spec, binding):
+        self.spec = spec
+        self.B = binding
+        self.cache: dict = {}
+        self.stats = {"regressions": 0, "cached": 0, "validated": 0, "ms": 0.0}
+
+    def clear(self) -> None:
+        self.cache.clear()
+        self.B.native_clear()
+
+    def prover(self, x) -> Prover:
+        return Prover(self.spec, self.B.inputs(x), self.B.certified(x))
+
+    def regress(self, x, goal: Goal, near: "Regression | None" = None) -> Regression:
+        """The regression of `goal` on the state `x` (the goal's role on move): from the cache (the same state, the same goal), else read by the native core.
+        (`near`: 76.4a's validation hint, read by the oracle only -- the native reading is cheaper than a validation.)"""
+        if goal.on_move is not None:
+            x = self.B.to_move(x, goal.on_move)
+        key = (self.B.key(x), goal)
+        got = self.cache.get(key)
+        if got is not None:
+            self.stats["cached"] += 1
+            return got
+        t0 = time.perf_counter()
+        got = self.B.native_regress(x, goal)
+        got.ms = (time.perf_counter() - t0) * 1000
+        self.stats["regressions"] += 1
+        self.stats["ms"] += got.ms
+        if len(self.cache) >= self.CACHE_MAX:
+            self.cache.clear()
+        self.cache[key] = got
+        return got
+
+    def names(self, x, goal: Goal, entries: list, theirs: bool = False, future=None) -> list:
+        """THE NAMES of the goal's defects on the future of `x` (`future`: the binding's counterfactual of it, as data; None -- `x`) -- `name(regress(B.future(x,
+        future), goal), entries, B, ...)`, read by the native core in one crossing (its cache per (key, goal) replays the read set with the names)."""
+        return self.B.native_names(x, goal, entries, theirs, future)
+
+    def fixes(self, x, goal: Goal, key, actions, future, entries: list, before: "list | None" = None) -> list:
+        """regression.fixes read by the native core: every action's fix test in one crossing (no callback per action)."""
+        return self.B.native_fixes(x, goal, key, actions, future, entries, before)
+
+
+class PyRegressor:
+    """THE TEST ORACLE (plan 76.4b): the Python reading of 76.4a -- THE REGRESSION over one spec and one binding, cached per (state key, goal). `binding` supplies:
+    `inputs(x)` -> a function (rel, pattern) -> the state's `true.*` and input rows (the spec's state, read where asked), `certified(x)` -> a function (rel, pattern)
+    -> rows for the certified relations (`spec.certified`), `apply(x, action)` (the certified next state), `pass_(x)` (the turn passed), `to_move(x, role)`, `key(x)`,
+    `action(row)` (a certified `legal` row -> the binding's action or None), `value(x, law, args)` (None where the valuation reads no position), `future(x, fut)`."""
 
     CACHE_MAX = 400_000                                         # a fuse on the memory the cache may hold (a count, named as one: cleared whole when reached, never a cut of an answer)
 
@@ -550,6 +609,25 @@ class Regressor:
     def clear(self) -> None:
         self.cache.clear()
         self.last.clear()
+
+    def names(self, x, goal: Goal, entries: list, theirs: bool = False, future=None) -> list:
+        y = self.B.future(x, future)
+        return name(self.regress(y, goal), entries, self.B, y, theirs=theirs)
+
+    def fixes(self, x, goal: Goal, key, actions, future, entries: list, before: "list | None" = None) -> list:
+        """76.4a's fix test, action by action (the oracle of the native one)."""
+        fut = self.B.future
+        r0 = self.regress(fut(x, future), goal)
+        if before is None:
+            before = {(n.kind, n.sq) for n in name(r0, entries, self.B, fut(x, future))} - {key}
+        out = []
+        for a in actions:
+            x1 = self.B.apply(x, a)
+            y = fut(x1, future)
+            r1 = self.regress(y, goal, near=r0)
+            keys = [(n.kind, n.sq) for n in name(r1, entries, self.B, y)]
+            out.append((a, key not in keys, [k for k in keys if k not in before]))
+        return out
 
     def prover(self, x) -> Prover:
         return Prover(self.spec, self.B.inputs(x), self.B.certified(x))
@@ -824,7 +902,7 @@ def _text(tmpl: str, fields: dict) -> str:
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ a goal within n moves
 
-def actions(R: "Regressor", x, role: str) -> list:
+def actions(R: "Regressor | PyRegressor", x, role: str) -> list:
     """The legal actions of `role` at `x`: the spec's `legal` (GDL's keyword: a role's moves), read through its certified relation, in its order."""
     P = R.prover(x)
     return [a for a in (R.B.action(row) for row in P.ans("legal", (role, None))) if a is not None]
@@ -839,7 +917,7 @@ class Within:
     near: tuple = (1, 0)                           # depth 1: how far the goal is -- (a positive literal of its clause false, the named defects): the best answer is the least
 
 
-def within(R: "Regressor", x, goal: Goal, us: str, n: int, entries: list) -> list:
+def within(R: "Regressor | PyRegressor", x, goal: Goal, us: str, n: int, entries: list) -> list:
     """THE GOAL WITHIN `n` MOVES OF OURS, every reply of theirs read -- an AND-OR over the spec's certified `legal` and next state, the regression of the goal at
     its leaves (the same regression: no table per depth): n = 1, the goal regressed after each of our actions (its named defects; none = it holds there); n > 1,
     an action holds when every reply leaves an action that holds within n - 1 (a reply is an ESCAPE otherwise, with the named defects of our best answer: the
@@ -873,19 +951,11 @@ def within(R: "Regressor", x, goal: Goal, us: str, n: int, entries: list) -> lis
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ fixes
 
-def fixes(R: Regressor, x, goal: Goal, key, actions, future, entries: list, before: "list | None" = None) -> list:
+def fixes(R: "Regressor | PyRegressor", x, goal: Goal, key, actions, future, entries: list, before: "list | None" = None) -> list:
     """THE FIXES of the named defect `key` (its (name, location)) of `goal`, read on the state `x` (the goal's side to move): for each action of `actions` (legal
-    there: the caller lists them from the certified relation), its certified next state, the goal's future of it (`future(x1)`: the state the goal is read on, e.g.
-    the question's placement), the regression there, named -> [(action, mended, new)] where `mended` = no named defect with the key is left, `new` = the named
-    defects whose key was not a defect before (`before`: the keys before, less the one fixed; None -- read from `x`). A FIX is an action mended and with nothing new."""
-    r0 = R.regress(future(x), goal)
-    if before is None:
-        before = {(n.kind, n.sq) for n in name(r0, entries, R.B, future(x))} - {key}
-    out = []
-    for a in actions:
-        x1 = R.B.apply(x, a)
-        fut = future(x1)
-        r1 = R.regress(fut, goal, near=r0)
-        keys = [(n.kind, n.sq) for n in name(r1, entries, R.B, fut)]
-        out.append((a, key not in keys, [k for k in keys if k not in before]))
-    return out
+    there: the caller lists them from the certified relation), its certified next state, the goal's future of it (`future`: as data, the binding's counterfactual
+    -- `B.future(x1, future)`: the state the goal is read on, e.g. the question's placement; None -- the next state itself), the regression there, named ->
+    [(action, mended, new)] where `mended` = no named defect with the key is left, `new` = the named defects whose key was not a defect before (`before`: the keys
+    before, less the one fixed; None -- read from `x`). A FIX is an action mended and with nothing new. plan 76.4b: a call-through -- the native core reads every
+    action in one crossing (`Regressor.fixes`); the oracle reads them one by one (`PyRegressor.fixes`)."""
+    return R.fixes(x, goal, key, actions, future, entries, before)

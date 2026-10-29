@@ -50,7 +50,8 @@ ENGINE_NAMES = (
     "test_rules_gdl "                                                                   # 2026-10-28: plan 76.0 the rule spec in GDL (the interpreter, the surprises replayed, the generated rook, --jobs)
     "test_plan76 "                                                                      # 2026-10-28: plan 76.1 the ontology shelf (the bindings agree; the extensions; the terms, the GNN's kinds, the Rust fix)
     "test_rules_shelf "                                                                 # 2026-10-28: plan 76.2 the rule shelf (legal / terminal / goal proved; the GDL oracle against Game; the RULE entries)
-    "test_plan76_4a"                                                                    # 2026-10-28: plan 76.4a defects and fixes from the spec (the regression; the hand tables as oracles)
+    "test_plan76_4a "                                                                   # 2026-10-28: plan 76.4a defects and fixes from the spec (the regression; the hand tables as oracles)
+    "test_plan76_4b"                                                                    # 2026-10-29: plan 76.4b the regression in Rust (the spec loaded from its text; the Python reading the oracle)
 ).split()
 
 PYTEST_FLAGS = ["-q", "-p", "no:cacheprovider", "-W", "ignore", "--durations=3"]

@@ -154,9 +154,15 @@ def _goal(kind: str, me: bool, target=None, placement: list = ()) -> "RGN.Goal":
     return g
 
 
-def _named(reg: "RGN.Regression", x, theirs: bool = False) -> list:
-    """The regression's defects by the store's names, as the machinery's Defects (`theirs`: the goal is the other side's, read for the keeper)."""
-    return [Defect(n.kind, n.sq, list(n.by), n.why) for n in RGN.name(reg, _store()[0], regressor().B, x, theirs=theirs)]
+def _named(x, goal: "RGN.Goal", theirs: bool = False, future=None) -> list:
+    """The goal's defects on the future of `x` by the store's names, as the machinery's Defects (`theirs`: the goal is the other side's, read for the keeper) -- plan
+    76.4b: read by the regression's native core in one crossing (regression.Regressor.names), the texts the entries' templates."""
+    return [Defect(n.kind, n.sq, list(n.by), n.why) for n in regressor().names(x, goal, _store()[0], theirs=theirs, future=future)]
+
+
+def _future_spec(placement: list, them: bool) -> tuple:
+    """`future_board`'s counterfactual as data (the regression's binding reads it: gdl_chess.Binding.future): the placements by symbol, their side to move."""
+    return ([(p.symbol(), at, frm) for p, at, frm in placement], them)
 
 
 def threat_defects(board: chess.Board, us: str | bool, target: "int | None" = None) -> list:
@@ -165,10 +171,8 @@ def threat_defects(board: chess.Board, us: str | bool, target: "int | None" = No
     on it (their capturers, the exchange law's value for them)."""
     me = G.colour_of(us)
     if target is None:
-        reg = regressor().regress(board, _goal("mate", not me))
-    else:
-        reg = regressor().regress(board, _goal("win", not me, target=target))
-    return _named(reg, board, theirs=True)
+        return _named(board, _goal("mate", not me), theirs=True)
+    return _named(board, _goal("win", not me, target=target), theirs=True)
 
 
 def landings(defects: list) -> list:
@@ -186,23 +190,17 @@ def mate_defects(board: chess.Board, us: str | bool, placement: list) -> list:
     return out
 
 
-def _mate_regression(board: chess.Board, me: bool, placement: list, near: "RGN.Regression | None" = None) -> tuple:
-    """The regression of the mate goal on the question's counterfactual (the placements made, their move) -> (the regression, the counterfactual)."""
-    cf = future_board(board, placement, not me)
-    return regressor().regress(cf, _goal("mate", me, placement=placement), near=near), cf
-
-
 def _mate_defects(board: chess.Board, us: str | bool, placement: list) -> list:
-    """What stands between the pattern and a mate: the regression of the mate goal on the counterfactual (placements made, their move), named. [] = the pattern IS a
-    mate (in check, no legal move). The names' order is the store's: the checker takeable, flights, interpositions (or 'no check' alone)."""
+    """What stands between the pattern and a mate: the regression of the mate goal on the counterfactual (placements made, their move: `future_board`, built by the
+    regression's binding), named. [] = the pattern IS a mate (in check, no legal move). The names' order is the store's: the checker takeable, flights,
+    interpositions (or 'no check' alone)."""
     me = G.colour_of(us)
-    reg, cf = _mate_regression(board, me, placement)
-    return _named(reg, cf)
+    return _named(board, _goal("mate", me, placement=placement), future=_future_spec(placement, not me))
 
 
 def mate_defects_on(cf: chess.Board, me: bool) -> list:
     """The defects of an already-built future `cf` (their move), regressed: [] = they are mated."""
-    return _named(regressor().regress(cf, _goal("mate", me)), cf)
+    return _named(cf, _goal("mate", me))
 
 
 def _interposers_mated(cf: chess.Board, placement: list, defect: Defect, me: bool) -> tuple:
@@ -256,13 +254,12 @@ def material_defects(board: chess.Board, us: str | bool, target_sq: int) -> list
     return out
 
 
-def _material_defects(board: chess.Board, us: str | bool, target_sq: int, near: "RGN.Regression | None" = None) -> list:
+def _material_defects(board: chess.Board, us: str | bool, target_sq: int) -> list:
     """Why we do not win the piece on `target_sq` now: the regression of the gain goal (capture of the target, us on move, the exchange law its value), named --
     [] when the capture's exchange already wins (at least the valuation's unit); otherwise 'not attacked' (the capture's literal false: nothing of ours attacks
     it) or 'defended' (the capture holds, its exchange short: the attacks of theirs on it read)."""
     me = G.colour_of(us)
-    reg = regressor().regress(board, _goal("win", me, target=target_sq), near=near)
-    return _named(reg, board)
+    return _named(board, _goal("win", me, target=target_sq))
 
 
 # ---------------------------------------------------------------------------------------------------------------- forcing, routes
@@ -1082,22 +1079,27 @@ def _still(q: Question, board: chess.Board, us: str | bool, m: chess.Move, root:
     is validated against first (regression.Regressor.regress: unchanged answers, the same regression). The hand filter this replaces is a test oracle
     (tests/oracles/regress_tables.py `still`); where they differ (76.4a (b)): a square covered along a line through their king is a fix here, the capture of the
     target itself is not."""
-    c = board.copy(stack=False)
-    c.push(m)
+    return _stills(q, board, us, [m], root, before)[0]
+
+
+_NO_KEY = ("", None)                          # (the win root's fix test reads no key: every named defect after the move keeps the candidate out)
+
+
+def _stills(q: Question, board: chess.Board, us: str | bool, moves: list, root: Question, before: set | None = None) -> list:
+    """`_still` for every move of a candidate list in ONE crossing (plan 76.4b: regression.fixes read by the native core -- each move's certified next state, the
+    goal's future of it, the regression there, named -- no Python callback per candidate): [is m NOT a fix]. A mate root: the defect `q` names is left, or a named
+    defect is new (`before`, read once when not given); a win root: any named defect of the gain goal is left after the move."""
     me = G.colour_of(us)
     if root.goal == "mate":
         pl = placement_of(root)
-        r0, _cf0 = _mate_regression(board, me, pl)
-        reg, cf = _mate_regression(c, me, pl, near=r0)
-        after = {d.key()[:2] for d in _named(reg, cf)}
         if before is None:
             before = _defects_before(q, board, me, root)
-        return q.defect_key[:2] in after or not after <= before
+        got = regressor().fixes(board, _goal("mate", me, placement=pl), q.defect_key[:2], moves, _future_spec(pl, not me), _store()[0], sorted(before, key=repr))
+        return [not mended or bool(new) for _m, mended, new in got]
     if root.goal == "win":
-        t = root.pattern["target"]
-        r0 = regressor().regress(board, _goal("win", me, target=t))
-        return bool(_material_defects(c, me, t, near=r0))
-    return True
+        got = regressor().fixes(board, _goal("win", me, target=root.pattern["target"]), _NO_KEY, moves, None, _store()[0], [])
+        return [bool(new) for _m, _mended, new in got]
+    return [True for _m in moves]
 
 
 def _defects_before(q: Question, board: chess.Board, me: bool, root: Question) -> set:
@@ -1121,7 +1123,9 @@ def routes_of(q: Question, board: chess.Board, us: str | bool, root: Question | 
             continue
         cands.append(m)
     goal_sq = root.pattern.get("target") if root.goal == "win" else None
-    keep = [m for m in cands if (goal_sq is not None and m.to_square == goal_sq) or not _still(q, board, us, m, root, before)]       # plan 76.4a: the regression's fix test
+    asked = [m for m in cands if not (goal_sq is not None and m.to_square == goal_sq)]
+    still = dict(zip(asked, _stills(q, board, us, asked, root, before))) if asked else {}           # plan 76.4b: the whole list in one crossing
+    keep = [m for m in cands if (goal_sq is not None and m.to_square == goal_sq) or not still[m]]       # plan 76.4a: the regression's fix test
     #   (2026-10-28, after 76.4a's gate: THE GOAL'S OWN MOVE -- the capture of the target -- is a ROUTE of a win question whether or not it mends a defect: its merit is the exchange law's,
     #    read by the verifier; the hand oracle admitted it by accident (it read the exchange on our own unit there) and the regression rightly says it fixes nothing, but an agenda without a
     #    chase (theirs, side_depth 0) has no other way to the capture: test_64_0's their-claim-after-Qxa8 fell to 0 without it)

@@ -35336,3 +35336,31 @@ tables read in one pass (no fixpoint) -- OBS cross-check disagreements 562 (the 
 THE GUARD at this commit's state (the native core built, the engine not yet reading it): OBS ten t0 0 of 10 traces, read sets, leaf verdict lists, word lists and
 provenance lists differ (against this plan's parent snapshot artifacts/experiments/plan76_4b/parent, main 77160f84, taken with --jobs 11: ten t0 17 s, ten t2 70 s,
 wide t0 50 s, wide t2 194 s). The Rust builds re-point the shared editable install to this branch's crate.
+
+
+## 2026-10-29 00:26 -- plan 76.4b (b) THE SWITCH-OVER: regression.py's public functions call through to the native core; the Python reading stays as the TEST ORACLE (branch worktree-agent-a128c491905ea4974)
+WHAT MOVED: discovery/regression.py -- `Regressor` is a call-through to the binding's native core (`B.native_regress`: the whole regression, converted to the same
+dataclasses; `Regressor.names`: the names' RECORDS read in Rust -- the store's DEFECT_FIX bindings handed over as data, the template's fields returned, the TEXT
+filled in Python from the entries (RUST_BOUNDARY risk 3); `Regressor.fixes`: every action's fix test in one crossing, no Python callback per candidate);
+`PyRegressor` is 76.4a's Python reading, unchanged, the oracle; `fixes`' future is DATA now (the binding's counterfactual: placements and the side to move,
+`B.future`), not a callable. The native regression keeps no validation of a near regression (76.4a's `_valid`): a regression is a function of the state's
+reading and the goal alone, so a fresh native reading IS what a validation returned; it is cached per (the board's key, the goal) in Rust with the read set beside
+the names (a hit replays it: test_76_4b_b_the_cache_replays_the_read_set); nothing writes the lib.rs dependency trackers (regression.py wrote none: risk 2); every
+set reaching an output is a BTreeSet or sorted (risk 4); every pyo3 entry returns PyResult (risk 7: ValueError on inconsistent bitboards, a square out of range, a
+move with no unit on its square, an unknown goal, law or relation, a description that does not parse, is not stratified or binds a relation no reader reads);
+no rayon (risk 8). discovery/regress.py -- the engine's defects (`mate_defects`, `mate_defects_on`, `material_defects`, `threat_defects`) are the native names in one
+crossing (the counterfactual built by the binding from the placements); the fix filter of `routes_of` reads its whole candidate list in one crossing (`_stills`;
+`_still` its one-move form); `_mate_regression` and the `near` hints left. `Pos.regress(goal)` / `Pos.fixes(goal, key, moves, future, before)` read the same on the
+handle (the position as shakmaty holds it). tests/test_plan76_4b.py (new, 12 tests); test_plan76_4a's two `fixes` calls take the future as data and its
+switch-over test counts the native core's readings; scripts/gate.py: test_plan76_4b in ENGINE_NAMES.
+THE GUARD (against the parent snapshot of main 77160f84, --jobs 11; a port, not a change): OBS ten t0 0 of 10 traces, 0 read sets, 0 leaf verdict lists, 0 word
+lists, 0 provenance lists differ; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 -- 0 of 218 on all five lists.
+Snapshot walls 7 s, 28 s, 19 s, 70 s (the parent's 17 s, 70 s, 50 s, 194 s).
+NEGATIVE CONTROL (not committed): a name binding's `unless` ignored in the native naming (a flight named where the king's move also takes the checker) -- OBS ten t0
+9 of 10 traces, 8 read sets, 5 leaf verdict lists, 6 word lists, 8 provenance lists differ. (The one-pass control of (a) moved nothing here, 0 of 10 on all five:
+a FINDING -- the regression's readings never iterate a recursive table; regression.py's join order reads a ray back from its bound end, each step its own
+all-bound table, so the fixpoint iteration is exercised only by (a)'s cross-check.)
+OBS gate engine --only: test_plan76_4b 12 passed / 0 failed / 0 xfailed 1.5 s; test_plan76_4a 13 / 0 / 0 0.7 s; test_regress_rust 61 / 0 / 0 0.8 s; test_binder_rust
+31 / 0 / 0 0.7 s; test_plan72_7_step3 13 / 0 / 0 38.7 s; test_discovery_vocabulary 23 / 0 / 0 27.3 s; test_agenda 26 / 0 / 0 91.6 s; test_plan73 10 / 0 / 0 16.2 s;
+test_plan76 20 / 0 / 0 61.3 s (the clocked files in (c)). OBS lemma store validate: entries 128, problems 0 (uncatalogued 0). OBS ontology validate: problems 0.
+OBS audit recount: rows total 1608 ... CHESS FACT 202 (202 -> 202; agenda.py untouched).

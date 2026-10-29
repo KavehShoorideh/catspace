@@ -183,7 +183,7 @@ def test_76_4a_c_the_engine_reads_its_defects_from_the_regression():
     assert not hasattr(R, "DEFECTS_RUST") and not hasattr(R, "_routes_rust") and not hasattr(R, "_goal_done")
     src = inspect.getsource(R)
     assert "mate_defects_pos" not in src and "material_defects_pos" not in src and "still_routes_pos" not in src
-    n0 = R.regressor().stats["regressions"] + R.regressor().stats["cached"] + R.regressor().stats["validated"]
+    n0 = sum(R.regressor().B.native_stats()[:2])                # (plan 76.4b: the engine reads the regression's native core: its regressions read and served)
     b = chess.Board(DISCOVERY)
     for m in list(b.legal_moves)[:20]:
         pc = b.piece_at(m.from_square)
@@ -194,7 +194,7 @@ def test_76_4a_c_the_engine_reads_its_defects_from_the_regression():
     for t in chess.SquareSet(b.occupied_co[chess.BLACK]):
         if b.piece_type_at(t) != chess.KING:
             assert [(d.kind, d.sq, d.by, d.why) for d in R.material_defects(b, chess.WHITE, t)] == _hand_win(b, chess.WHITE, t)
-    assert R.regressor().stats["regressions"] + R.regressor().stats["cached"] + R.regressor().stats["validated"] > n0
+    assert sum(R.regressor().B.native_stats()[:2]) > n0
 
 
 def test_76_4a_c_a_keep_questions_defects_are_the_other_sides_goal_holding():
@@ -242,7 +242,7 @@ def test_76_4a_d_a_goal_no_table_was_written_for_win_this_exchange():
     ne = RG.name(rg.regress(e, ge), NAMES, B, e)
     assert [(n.kind, n.by) for n in ne] == [("the exchange loses", [chess.D6])]
     acts = [a for a in RG.actions(rg, e, "white") if B.ends(a)[0] != chess.B7]
-    fixes = [e.san(chess.Move(*B.ends(a))) for a, mended, new in RG.fixes(rg, e, ge, (ne[0].kind, ne[0].sq), acts, (lambda x: x), NAMES) if mended and not new]
+    fixes = [e.san(chess.Move(*B.ends(a))) for a, mended, new in RG.fixes(rg, e, ge, (ne[0].kind, ne[0].sq), acts, None, NAMES) if mended and not new]
     assert "Qb6" in fixes                                                    # after Qb6 the capture from b7 wins by the exchange, nothing new
 
 
@@ -266,9 +266,9 @@ def test_76_4a_the_fix_test_reads_the_line_through_their_king():
     rg = _rg()
     b = chess.Board(XRAY)
     pl = [(chess.Piece.from_symbol("N"), chess.E8, chess.D6)]
-    fut = lambda x: R.future_board(x, pl, chess.BLACK)          # noqa: E731
+    fut = R._future_spec(pl, chess.BLACK)                        # (plan 76.4b: the goal's future as data, read by the binding)
     g = RG.goal_of("mate", LS.gdl_goals()["mate"], B, "white")
-    keys = [(n.kind, n.sq) for n in RG.name(rg.regress(fut(b), g), NAMES, B, fut(b))]
+    keys = [(n.kind, n.sq) for n in RG.name(rg.regress(B.future(b, fut), g), NAMES, B, B.future(b, fut))]
     assert ("flight", chess.E8) in keys
     qb5 = ("white", GC.move_term("e2b5"))
     (_a, mended, new), = RG.fixes(rg, b, g, ("flight", chess.E8), [qb5], fut, NAMES)
