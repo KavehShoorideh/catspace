@@ -1,0 +1,61 @@
+{
+ "name": "the rule: checkmate",
+ "kind": "RULE",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.LegalEquiv.mate_iff",
+  "Ideas.LegalEquiv.mate_iff_mated"
+ ],
+ "origin": "BASE",
+ "plan": [
+  "76.2"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {
+   "guard ten_t0 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "guard ten_t2 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "guard wide_t0 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "guard wide_t2 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "loop-2 batch (plan 76.3 (f))": {
+    "count": 0,
+    "date": "2026-10-28"
+   }
+  },
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:terminal",
+  "rust/analyst_core/src/game.rs:mate",
+  "lean/ideas/Ideas/Spec/LegalEquiv.lean:mate_iff"
+ ],
+ "note": "In check and no legal move (FIDE 5.1.1): the spec's `mate` is the kernel's Chess.checkmate and the machinery's Ideas.Game.chess.mated (Ideas.LegalEquiv.mate_iff, mate_iff_mated); in the Rust core game.rs `mate` (shakmaty's is_checkmate), certified by the oracle test.",
+ "params": {
+  "spec": "Ideas.Spec.Chess.mate",
+  "gdl": "mate",
+  "surface": [
+   "terminal",
+   "goal"
+  ]
+ }
+}

@@ -1,0 +1,61 @@
+{
+ "name": "the rule: stalemate",
+ "kind": "RULE",
+ "reads": [
+  "movement",
+  "attack",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.LegalEquiv.stalemate_iff",
+  "Ideas.LegalEquiv.stalemate_iff_stalemated"
+ ],
+ "origin": "BASE",
+ "plan": [
+  "76.2"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {
+   "guard ten_t0 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "guard ten_t2 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "guard wide_t0 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "guard wide_t2 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "loop-2 batch (plan 76.3 (f))": {
+    "count": 0,
+    "date": "2026-10-28"
+   }
+  },
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:terminal",
+  "rust/analyst_core/src/game.rs:stalemate",
+  "lean/ideas/Ideas/Spec/LegalEquiv.lean:stalemate_iff"
+ ],
+ "note": "No legal move and not in check (FIDE 5.2.1): the spec's `stalemate` is the kernel's Chess.stalemate and the machinery's Ideas.Game.chess.stalemated (Ideas.LegalEquiv.stalemate_iff, stalemate_iff_stalemated).",
+ "params": {
+  "spec": "Ideas.Spec.Chess.stalemate",
+  "gdl": "stalemate",
+  "surface": [
+   "terminal",
+   "goal"
+  ]
+ }
+}

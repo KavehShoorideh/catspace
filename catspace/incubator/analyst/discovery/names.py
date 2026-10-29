@@ -73,13 +73,9 @@ def pawn(piece) -> bool:
     return piece is not None and piece.piece_type == PAWN
 
 
-CHECK_MARKS = ("+", "#")                 # the kernel's notation (python-chess / the Rust core's SAN) marks a check with + (a mate with #) ...
-CAPTURE_MARK = "x"                       # ... and a capture with x
-
-
-def san_kind(san: str) -> str:
-    """What a move written in the kernel's notation is: 'check', 'capture' or 'quiet' (its marks: CHECK_MARKS, CAPTURE_MARK)."""
-    return "check" if san.endswith(CHECK_MARKS) else "capture" if CAPTURE_MARK in san else "quiet"
+# plan 76.2 (b): what a move IS (a check, a capture, a quiet move) is read by the Game surface (`Game.reply_kind`: the kernel's `gives_check` and `is_capture`), no
+# longer off the notation's marks ('+' / '#', 'x'): the notation is printed, never read for a rule (the marks' reading is kept as the test oracle of
+# tests/test_rules_shelf.py).
 
 
 def move_number(token: str) -> bool:

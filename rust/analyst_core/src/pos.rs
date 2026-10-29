@@ -110,6 +110,51 @@ impl Pos {
     fn legal_count(&self) -> usize { self.pos.legal_moves().len() }
     /// The side to move has a mate in one (the rules: some legal move checkmates).
     fn mate_in_one(&self) -> bool { self.pos.legal_moves().iter().any(|m| { let mut r = self.pos.clone(); r.play_unchecked(m); r.is_checkmate() }) }
+    /// plan 76.2 (b) THE MATE IN ONE, ITS MOVES: the side to move's legal moves that checkmate, in python-chess's order -- the ONE mate-in-one word (agenda.py reads it
+    /// for a mate threat's frame and for the escape note; python-chess's `graph.mates` stays as the test oracle). Empty: no mate in one (`mate_in_one` false).
+    fn mates(&self) -> Vec<String> {
+        py_order(&self.pos).iter().filter(|m| { let mut r = self.pos.clone(); r.play_unchecked(m); r.is_checkmate() })
+            .map(|m| m.to_uci(CastlingMode::Standard).to_string()).collect()
+    }
+    /// plan 76.2 (b) THE EXCHANGE'S PRINCIPAL LINES (agenda.py `_principal_captures`, plan 64.0; its Python twin is the test oracle): the squares of the other side's
+    /// units (no king) the side to move attacks whose static exchange (`see`, the mirror of Lean Ideas.ExchangeLaw.seeXB) is the best and positive, a1 first (a tie is
+    /// a choice of ours); on each THE LINE -- the LEGAL captures on the square (what is pushed must be a move), the cheapest capturer first (`worth`: the valuation's
+    /// worth of each unit kind, pawn .. king, passed in; then the uci), at most 12 captures -- cut where the swap list stops (each side goes on while going on gains).
+    /// -> [(square, the line's ucis up to its stop, the exchange's credit to them after each capture: f[i+1])].
+    fn principal_lines(&self, worth: Vec<i64>) -> PyResult<Vec<(u8, Vec<String>, Vec<i64>)>> {
+        if worth.len() != 6 { return Err(PyValueError::new_err("worth: one value per unit kind, pawn .. king")); }
+        let w = |r: Role| -> i64 { worth[r as usize - 1] };
+        let me = self.pos.turn();
+        let b = self.pos.board();
+        let (mut best, mut sqs): (u32, Vec<Square>) = (0, vec![]);
+        for x in Square::ALL {
+            let Some(p) = b.piece_at(x) else { continue };
+            if p.color == me || p.role == Role::King || (b.attacks_to(x, me, b.occupied()) & b.by_color(me)).is_empty() { continue; }
+            let v = self.see(x as u8)?;
+            if v > best { best = v; sqs = vec![x]; } else if v == best && v > 0 { sqs.push(x); }
+        }
+        let mut out = vec![];
+        for sq in sqs {
+            let mut c = self.pos.clone();
+            let (mut gains, mut ucis): (Vec<i64>, Vec<String>) = (vec![], vec![]);
+            while ucis.len() < 12 {
+                let Some(on) = c.board().piece_at(sq) else { break };
+                let caps: Vec<(i64, String, Move)> = c.legal_moves().into_iter().filter(|m| m.to() == sq)
+                    .map(|m| (w(m.role()), m.to_uci(CastlingMode::Standard).to_string(), m)).collect();
+                let Some((_, u, m)) = caps.into_iter().min_by(|a, bb| (a.0, &a.1).cmp(&(bb.0, &bb.1))) else { break };
+                gains.push(w(on.role));
+                ucis.push(u);
+                c.play_unchecked(&m);
+            }
+            let n = ucis.len();
+            let mut f = vec![0i64; n + 1];
+            for i in (0..n).rev() { f[i] = (gains[i] - f[i + 1]).max(0); }
+            let mut taken = 0;
+            while taken < n && gains[taken] - f[taken + 1] > 0 { taken += 1; }
+            if taken > 0 { out.push((sq as u8, ucis[..taken].to_vec(), f[1..=taken].to_vec())); }
+        }
+        Ok(out)
+    }
     fn is_check(&self) -> bool { self.pos.is_check() }
     fn turn_white(&self) -> bool { self.pos.turn() == Color::White }
 

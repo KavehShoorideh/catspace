@@ -1,0 +1,49 @@
+{
+ "name": "dead position (the knight clause)",
+ "kind": "CLOSING",
+ "reads": [
+  "movement",
+  "attack",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "76.2"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {
+   "guard ten_t0 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "guard ten_t2 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "guard wide_t0 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "guard wide_t2 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "loop-2 batch (plan 76.3 (f))": {
+    "count": 0,
+    "date": "2026-10-28"
+   }
+  },
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "lean/ideas/Ideas/Spec/LegalEquiv.lean:terminal_sound",
+  "catspace/incubator/analyst/discovery/game.py:terminal"
+ ],
+ "note": "THE OPEN CLAUSE OF THE SPEC'S TERMINAL (plan 76.2 (a)): the spec's insufficient-material draw by its knight clause (a king and one knight against a king and queens only) is a FIDE 5.2.2 dead position for every continuation; Lean proves the spec's terminal is a Chess.gameStatus terminal in every other case (Ideas.LegalEquiv.terminal_sound) and this clause only in the position itself (Ideas.InsufficientMaterial), the obstacle being an invariant over every continuation in which the queens move and may be captured while the knight side has no mate (the bishops' colour argument of Ideas.DeadPosition does not apply to a knight)."
+}

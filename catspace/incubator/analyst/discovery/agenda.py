@@ -399,6 +399,7 @@ class Agenda:
         self.since_capture = since                              # 52.23 (8): THE CHASE CLOCK (Kaveh 2026-10-20) -- our moves on this chain since the last capture that was not bad for us
         self._route_move = None                                 # ... the route being read (set by _chase_route)
         self._reply_san = None                                  # plan 61 C4: the reply being read (the label of the position it leads to)
+        self._reply_at = None                                   # plan 76.2 (b): ... its board and move (the judge reads what it is through the Game surface)
         self.evaded = evaded                                    # 52.23 (3): this agenda was opened by an EVASION route (the check before it was their intermezzo)
         self.chase_depth = chase_depth                          # 52.12: 0 for the root agenda, +1 per inner agenda of a chase
         self.ctx = ctx if ctx is not None else ((carry.carry() if carry is not None else ChaseCtx(facts)) if side_depth else None)       # their agendas (side_depth 0, no ctx) never chase
@@ -1762,7 +1763,11 @@ class Agenda:
         return best
 
     def _wl_said(self, q: R.Question, cands: list) -> None:
-        """plan 74.2b: the trace says when the first clause narrowed the choice."""
+        """plan 74.2b: the trace says when the first clause narrowed the choice (plan 76.3 (f): and when the age rule picked)."""
+        if self.wl.aged_pick is not None and self.wl.aged_pick.payload is q:
+            self.lines.append(f"{RN.PREFIX}Q{q.id} selected by the age rule (76.3 (f): every pass, one pick is the oldest): the oldest open question that could keep the "
+                              f"status and that cheapest-first left out")
+            return
         priced = [i.price for i in cands if i.price is not None]
         self.lines.append(f"{RN.PREFIX}Q{q.id} selected by 74.2b clause (1): no move is proved to keep the status; {len(cands)} open question(s) could keep it"
                           + (f", the cheapest price class {priced[0]:.2f} s (the judge's price of its routes read before)" if priced else ", none priced yet") + "; the policy orders inside it")
@@ -2154,11 +2159,10 @@ class Agenda:
             elif th.kind == "mate":
                 w = G.with_turn(c, self.me)
                 units = {m.to_square}
-                for mv in list(w.legal_moves):
-                    if w.gives_check(mv) and G.mates(w, mv):
-                        units.add(mv.from_square)
-                        out.update({mv.from_square, mv.to_square})
-                        out.update(chess.SquareSet(chess.between(mv.from_square, mv.to_square)))
+                for mv in self._mating_moves(w):                  # plan 76.2 (b): the mate in one is the Rust word (`Pos.mates`), computed once
+                    units.add(mv.from_square)
+                    out.update({mv.from_square, mv.to_square})
+                    out.update(chess.SquareSet(chess.between(mv.from_square, mv.to_square)))
                 units = frozenset(units)
         elif th is not None and th.target is not None:
             out.add(th.target)
@@ -2877,8 +2881,13 @@ class Agenda:
         return f"{bind.san} " + " / ".join(parts)
 
     @staticmethod
-    def _mates(c: chess.Board, mv: chess.Move) -> bool:
-        return G.mates(c, mv)
+    def _mating_moves(c: chess.Board) -> list:
+        """plan 76.2 (b) THE MATE IN ONE, ONCE: the side to move's legal moves that checkmate, by the Rust word (`Pos.mates`, the one the chase reads as `Pos.mate_in_one`;
+        python-chess's `graph.mates` is its test oracle, tests/test_rules_shelf.py). None of them on a board the kernel holds no position for."""
+        try:
+            return [chess.Move.from_uci(u) for u in AC.Pos(c.fen()).mates()]
+        except ValueError:
+            return []
 
     def _escape_note(self, r: R.Route, tried: list) -> str:
         """Why a mate route did not bind: the replies after which we have no mate in one."""
@@ -2891,7 +2900,7 @@ class Agenda:
         for rep in list(b.legal_moves):
             c = b.copy(stack=False)
             c.push(rep)
-            if any(self._mates(c, mv) for mv in c.legal_moves):         # 52.11: mate in one is a rules fact (the binder's mirror of it is tested in test_regress)
+            if self._mating_moves(c):                                    # 52.11: mate in one is a rules fact (plan 76.2 (b): the Rust word, computed once)
                 continue
             esc.append(b.san(rep))
         return f"{r.san} fails" + (f" ({'; '.join(notes)})" if notes else "") + (f", no mate in one after {', '.join(esc[:4])}" if esc and 0 < len(esc) <= 40 else "")
@@ -3214,12 +3223,12 @@ class Agenda:
         kid_cost = None                                          # 72.9 (a): a ROOT route under the judge: the parries it was priced by (SAN -> the cost of the unread child)
         if self.chase_depth == 0 and not cheap and not override and self._judge_on():
             hit = ctx.route_costs.get((_pos_key(self.fen), m.uci(), self._judge_stake()))
-            kid_cost = dict(hit[1]) if hit is not None else None
+            kid_cost = {s_: (c_, k_) for s_, c_, k_ in hit[1]} if hit is not None else None      # (plan 76.2 (b): SAN -> (the child's cost, the parry's kind read by the Game surface))
         tally = [None]                                           # ... the parry being read (its SAN, when its read started)
 
         def flush(done: bool = True) -> None:                    # 72.9 (a): a parry read to its end (closed, served, claimed or refuting; not cut) teaches the rate of its kind: its seconds over its child's cost
             if tally[0] is not None and done and tally[0][0] in kid_cost:
-                self._kind_tally(tally[0][0], kid_cost[tally[0][0]], time.monotonic() - tally[0][1])
+                self._kind_tally(kid_cost[tally[0][0]][1], kid_cost[tally[0][0]][0], time.monotonic() - tally[0][1])
             tally[0] = None
         for dbal, uci, chk, cap, rec, mate1 in rows:
             flush()
@@ -3279,6 +3288,7 @@ class Agenda:
             need = min(self.goals.promotion.stake, self.unit - dbal) if promote and dbal <= 0 else self.goals.promotion.stake if promote else target - dbal if dbal < target else self.end_stake          # a reply that already gains the need is read for a mate only; else its static gain must survive their threats (below)
             self._enter_reply(frozenset(P0.diff(P2)))
             self._reply_san = san_r
+            self._reply_at = (c_rb, uci)                         # plan 76.2 (b): the reply's board and move -- what it is (check, capture, quiet) is read from them by the Game surface when the judge asks
             ctx.line.append((self.fen, m.uci(), uci, self._judge_stake()))      # plan 66.4: the line being read
             loc = self._local_goal(m, board_c(), uci) if gk is not None and not override else None      # plan 72.10 (2): the chased goal and its frame, carried into the inner agenda of this reply
             inn = self._inner(P2.fen(), need, loc["diff"] if loc is not None else frozenset(P0.diff(P2)), since=self._since_after(uci, dbal), reset=self._resets(uci),
@@ -3756,10 +3766,13 @@ class Agenda:
             return base
         return seen[0] if seen[1] else max(base, seen[0])
 
-    @staticmethod
-    def _parry_kind(san: str) -> str:
-        """72.9 (a): WHAT A REPLY IS, read off its move (the parries are the forcing word's, `regress.parries` of the route's `threat_of`): a check (what follows is our evasion), a capture, or a quiet move."""
-        return NM.san_kind(san)
+    def _reply_kind(self) -> "str | None":
+        """72.9 (a) / plan 76.2 (b): WHAT THE REPLY BEING READ IS (the one that made this node): a check, a capture or a quiet move -- the kernel's predicates through the
+        Game surface (`Game.reply_kind` on the route's board), never the notation's marks; None outside a reply."""
+        if self._reply_at is None:
+            return None
+        board, uci = self._reply_at
+        return GAME.reply_kind(board, chess.Move.from_uci(uci))
 
     def _kind_spn(self, kind: str, spn: float) -> tuple:
         """72.9 (a) -> (seconds per cost unit after a reply of this kind, the words for the judge's line): the kind's own rate once the judge entry's `min_units` of its units were timed in this run, else the run's rate."""
@@ -3777,8 +3790,7 @@ class Agenda:
         """72.9 (a) THE PRICE BY WHAT EACH PARRY IS: a route's nodes are not alike, so each parry's unread child (its cost) is priced at the rate of the parry's kind and the route's own node (and any parry
         not priced) at the run's rate; while no kind has its own rate this is cost x the run's rate. -> (seconds, the words for the judge's line: which rate priced what, and why)."""
         units: dict = {}
-        for san, c in kids:
-            k = self._parry_kind(san)
+        for _san, c, k in kids:                                   # (plan 76.2 (b): each parry's kind read by the Game surface where it was priced, regress.route_cost)
             units[k] = units.get(k, 0) + c
         rest = max(cost - sum(units.values()), 0)
         need, words, own = rest * spn, [], False
@@ -3800,10 +3812,9 @@ class Agenda:
             words = f"as measured: it {'took' if seen[1] else 'was cut after'} {seen[0]:.1f} s when read before"
         return need, words
 
-    def _kind_tally(self, san: str, units: int, secs: float) -> None:
-        """72.9 (a): a parry of a ROOT route read to its end (under the judge) adds its seconds and its cost units (the child's cost the route was priced by) to the rate of the parry's kind: the route's
-        measured time is split by what its parries are, in the units its price was counted in."""
-        kind = self._parry_kind(san)
+    def _kind_tally(self, kind: str, units: int, secs: float) -> None:
+        """72.9 (a): a parry of a ROOT route read to its end (under the judge) adds its seconds and its cost units (the child's cost the route was priced by) to the rate of the parry's kind (plan 76.2 (b):
+        the kind read by the Game surface): the route's measured time is split by what its parries are, in the units its price was counted in."""
         t0, n0 = self.ctx.kind_rate.get(kind, (0.0, 0))
         self.ctx.kind_rate[kind] = (t0 + secs, n0 + units)
 
@@ -3864,7 +3875,7 @@ class Agenda:
         hit = self._price(m, self._judge_stake(), limit)
         cost, kids = hit[0], hit[1]
         ctx.judge_routes += 1
-        shown = ", ".join(f"{k} {c}" for k, c in kids[:6]) + (", ..." if len(kids) > 6 else "")
+        shown = ", ".join(f"{k} {c}" for k, c, _kind in kids[:6]) + (", ..." if len(kids) > 6 else "")
         what = f"cost {cost} ({len(kids)} parries: {shown})"
         now = time.monotonic()
         spn = self._spn()
@@ -3956,7 +3967,8 @@ class Agenda:
             return False
         cost, mv = W.node_cost(GAME.from_key(fen), self._judge_stake(), self.us)
         left = max(ctx.deadline - time.monotonic(), 0.0)
-        rate, rate_w = self._kind_spn(self._parry_kind(self._reply_san), spn) if self._reply_san else (spn, f"the run's {spn:.3f} s/unit")      # 72.9 (a): the node is priced by what the reply that made it is
+        kind = self._reply_kind() if self._reply_san else None
+        rate, rate_w = self._kind_spn(kind, spn) if kind is not None else (spn, f"the run's {spn:.3f} s/unit")      # 72.9 (a): the node is priced by what the reply that made it is (plan 76.2 (b): read by the Game surface)
         if cost * rate <= left:
             ctx.judge_reads += 1
             return False
@@ -4066,40 +4078,21 @@ class Agenda:
         """64.0: the PRINCIPAL LINES of the best static exchange on P2 (our move): one per square whose static exchange is the best (a tie is a choice of ours) -> [(square, [(our capture's SAN, the
         board after it, does the line END with it, the exchange's CREDIT to them there)])]. A line is the legal captures on the square, the cheapest piece first, each side going on while going on
         gains (the swap-list's optimal stop). The credit is f[i+1], what the swap-list already gives them from that board on (0 after the capture that ends the line).
-        plan 72.7 step 2a: read on the handle (RBoard); the boards of the lines are RBoards (their agenda is built from their FEN and turn)."""
+        plan 72.7 step 2a: read on the handle (RBoard); the boards of the lines are RBoards (their agenda is built from their FEN and turn).
+        plan 76.2 (b): THE LINE IS THE RUST CORE'S (`Pos.principal_lines`, beside its `see`: the squares, the captures, the stop and the credits), the valuation's worths passed
+        in; the Python swap list it replaced is the test oracle (tests/test_rules_shelf.py). Here only the boards are pushed and the captures named."""
         b_rb = RB.RBoard(P2)
-        me = b_rb.turn
-        best, sqs = 0, []
-        for x in chess.SQUARES:
-            p = b_rb.piece_at(x)
-            if p is None or p.color == me or NM.royal(p) or not b_rb.is_attacked_by(me, x):
-                continue
-            v = W.base.see(P2, x)
-            if v > best:
-                best, sqs = v, [x]
-            elif v == best and v > 0:
-                sqs.append(x)
+        BV.install_terms()
         lines = []
-        for sq in sqs:
-            c_rb, gains, sans, boards = b_rb, [], [], []
-            while len(sans) < 12:
-                caps = [m for m in c_rb.legal_moves if m.to_square == sq]
-                if not caps or c_rb.piece_at(sq) is None:
-                    break
-                m = min(caps, key=lambda m: (W.base.worth(c_rb.piece_at(m.from_square)), m.uci()))
-                gains.append(W.base.worth(c_rb.piece_at(sq)))
-                sans.append(c_rb.san(m))
+        for sq, ucis, credits in P2.principal_lines([W.base.worth(chess.Piece(k, chess.WHITE)) for k in chess.PIECE_TYPES]):
+            c_rb, caps = b_rb, []
+            for i, u in enumerate(ucis):
+                m = chess.Move.from_uci(u)
+                san = c_rb.san(m)
                 c_rb = c_rb.push(m)
-                boards.append(c_rb)
-            n = len(sans)
-            f = [0] * (n + 1)                                        # f[i] = what the side making capture i gets from i on (it may stop, so >= 0)
-            for i in range(n - 1, -1, -1):
-                f[i] = max(0, gains[i] - f[i + 1])
-            taken = 0
-            while taken < n and gains[taken] - f[taken + 1] > 0:
-                taken += 1
-            if taken:
-                lines.append((sq, [(sans[i], boards[i], i == taken - 1, f[i + 1]) for i in range(taken) if i % 2 == 0]))      # "last" = the line ENDS with this capture of ours (no recapture follows: their free move is next)
+                if i % 2 == 0:
+                    caps.append((san, c_rb, i == len(ucis) - 1, credits[i]))      # "last" = the line ENDS with this capture of ours (no recapture follows: their free move is next)
+            lines.append((sq, caps))
         return lines
 
     def _their_after_capture(self, P2: "AC.Pos") -> tuple:

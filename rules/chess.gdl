@@ -371,6 +371,9 @@
 (<= (clock_event pawn) (does ?c (promote ?f1 ?r1 ?f2 ?r2 ?k)))
 (<= (clock_event capture) (does ?c (move ?f1 ?r1 ?f2 ?r2)) (occupied ?f2 ?r2))
 (<= (clock_event capture) (does ?c (promote ?f1 ?r1 ?f2 ?r2 ?k)) (occupied ?f2 ?r2))
+;;; an en-passant capture is a capture (FIDE 9.3: "without any capture"; the kernel's `moveIsCapture`): plan 76.2 (b), surprise s010 -- the clause was missing
+;;; (the clock was reset all the same, by the pawn's event)
+(<= (clock_event capture) (passant_taken ?f ?r))
 (<= clock_reset (clock_event ?e))
 (<= (next (halfmove 0)) clock_reset)
 (<= (next (halfmove ?m)) (true (halfmove ?n)) (count_succ ?n ?m) (not clock_reset))

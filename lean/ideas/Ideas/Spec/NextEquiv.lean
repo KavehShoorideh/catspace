@@ -333,6 +333,9 @@ theorem clockReset_iff (p : Position) (mv : MoveTerm) :
     | c2 hd => exact Or.inr ⟨_, _, _, (does_promote.1 hd).2⟩
     | c3 hd ho => exact Or.inl ⟨_, _, (does_move.1 hd).2, Or.inr ((occupied_iff _ _ _).1 ho)⟩
     | c4 hd _ => exact Or.inr ⟨_, _, _, (does_promote.1 hd).2⟩
+    | c5 hp =>                                            -- plan 76.2 (b) (surprise s010): an en-passant capture is a capture event too (its pawn's event resets the clock already)
+        obtain ⟨s, t, hm, hb, _⟩ := (passantTaken_iff _ _ _ _).1 hp
+        exact Or.inl ⟨s, t, hm, Or.inl hb⟩
   · rintro (⟨⟨f1, r1⟩, ⟨f2, r2⟩, hm, hb | ho⟩ | ⟨⟨f1, r1⟩, ⟨f2, r2⟩, k, hm⟩)
     · exact clockReset.c1 (clockEvent.c1 (does_move.2 ⟨rfl, hm⟩) hb)
     · exact clockReset.c1 (clockEvent.c3 (does_move.2 ⟨rfl, hm⟩) ((occupied_iff _ _ _).2 ho))

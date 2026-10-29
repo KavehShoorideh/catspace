@@ -319,11 +319,30 @@ def drops(graph: Graph, m: Measure, roots: list, d: int) -> list:
 
 # ---------------------------------------------------------------------------------------------------------------- the miner
 
+def with_surprises(sig: str, rows: list, log=print) -> list:
+    """plan 76.3 (d) THE MINER READS THE SURPRISES: the class's REFUTED MEASURES' cases (discovery/surprises.py, lemmas/surprises/) join the sample as CONSTRAINTS --
+    every candidate must drop (or be at the floor) on each of them too, so a measure the play refuted is never chosen again (counterexamples are permanent). A case
+    already in the sample is not added twice; one with the losing side to move is no position of the miner's (the winning side moves first). -> the rows with the
+    new cases appended, their floors read."""
+    from catspace.incubator.analyst.discovery import surprises as SU
+    have = {TS._key(r["fen"]) for r in rows}
+    cases = SU.refuted_for(sig)
+    new = [dict(fen=c["fen"], source=f"surprise {c['id']}", dtz=None) for c in cases
+           if TS._key(c["fen"]) not in have and chess.Board(c["fen"]).turn == chess.WHITE]
+    if new:
+        TS.read_floors(new, log=lambda *_a: None, sig=sig)
+    log(f"OBS miner {sig} surprises: the class's refuted cases {len(cases)} ({len(new)} new to the sample) join it as constraints"
+        + (": " + "; ".join(r["fen"] for r in new) if new else ""))
+    return rows + new
+
+
 def mine(sig: str, rows: list, log=print, top: int = TOP, library: str = "73.5b") -> dict:
     """THE AMENDED MINER over a sample -> {sig, levels, choice (a dict or None), best (when beyond the fuse), floor}; prints the OBS lines. `library`: 73.5b's
-    atoms (the record) or 73.6's (with the per-axis atoms; the class's constant atoms left out, `constant_atoms`)."""
+    atoms (the record) or 73.6's (with the per-axis atoms; the class's constant atoms left out, `constant_atoms`). plan 76.3 (d): the class's refuted cases join the
+    sample first (`with_surprises`)."""
     TC.parse_signature(sig)
     t_all = time.monotonic()
+    rows = with_surprises(sig, rows, log)
     graph = Graph(chess.WHITE)
     roots = [graph.add(chess.Board(r["fen"])) for r in rows]
     fl = {n: {j for j, r in enumerate(rows) if r[f"floor{n}"] is not None} for n in NETS}      # the sample's floors (technique_sample.py)

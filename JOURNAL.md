@@ -34885,3 +34885,227 @@ FINDINGS: `legal` not yet proved equal to the kernel's legalMove (76.2 (a)); the
 material at the count budget (direct identity checks used); the prefilter's fork-target order is nondeterministic between runs (5 of 40; sets agree). Kaveh: "keep going as planned" ->
 76.2 (legal / terminal / goal proved against the kernel; Game through the certified kernel with the spec as the test oracle; the RULE shelf in the store; the Rust second copies routed) and
 76.3 (the surprise loop in the engine: counterexamples permanent and shrunk, evidence.uses from the tally, the oldest-item pick) launched as one agent under docs/AGENT_BRIEF.md.
+
+
+## 2026-10-28 17:32 -- plan 76.2 (a) `legal` PROVED: the generated spec's legal moves ARE the kernel's `legalMove`; mate, stalemate, the fifty-move draw and the goals the kernel's; the terminal sound but for one conjecture (branch worktree-agent-ad149634c92619751)
+lean/ideas/Ideas/Spec/LegalEquiv.lean (hand-written, BY REASONING; 1905 lines, 125 theorems): `legal_iff` -- on every position where the side to move has one king
+(`Chess.exactlyOneKing`) and the e.p. square stands where the rule puts it (`EpPlaced`: rank 6 with White to move, rank 3 with Black), the spec's `legal p c mv` holds
+exactly when c is the side to move and mv is the term (`termOf`) of a move `Chess.legalMove` accepts, or c is the other side and mv is noop; `legal_iff_reachable` --
+on every reachable position, no hypothesis left (`Chess.reachable_positionInvariant`, `reachable_epPlaced` proved here); `legal_moveOf` (the move binding reads every
+legal term back to its kernel move). With NextEquiv (76.1: the next state = `applyMove` on pseudo-legal moves) the generated spec is a certified model of the kernel
+for moves and states. WHY THE TWO HYPOTHESES (both hold on reachable positions): a side with no king is in check for the kernel (`inCheckB`: none -> true) and never
+exposed for the spec; a misplaced e.p. square lets the spec take en passant (its `ep_victim` reads no rank) where the kernel has no captured square.
+HOW (the closed forms, each by reasoning): a step is a unit vector and a slide a ray (`step_iff`, `slide_iff`); the kernel's rook / bishop / queen lines are the same
+rays (`rook_line_iff`, `bishop_line_iff`, `ray_clear`: `betweenB` read as arithmetic, `split_ifs` on `absDiff`), the knight's jump and the king's step the kernel's
+geometry (`knightJump_iff`, `kingStep_iff`, `pawnStep_iff`); so THE ATTACK IS THE KERNEL'S FOR EVERY KIND (`attackBy_iff`; 76.0 proved the rook's alone),
+`attacked_iff` (= `Chess.isAttacked`), `check_iff`; the moves the kernel's pseudo-legal moves (`moveBy_iff`, `enPassant_of_kernel` / `kernel_of_enPassant`,
+`castle_iff` = `pseudoLegal` + `castleSafeSquares`, `candidate_iff`); legality's counterfactual board `after` IS the spec's own next board (`after_iff_nextCell`),
+hence the kernel's (76.1's `applyMoveSpec_applyMove`); the spec's `exposed` IS the kernel's check after the move (`exposed_iff_inCheck_move`,
+`exposed_iff_inCheck_promotion`: the promotion's board differs from the spec's at one square, the mover's own unit, no king; `isAttacked_iff_exposedR`). The rule
+tables read by their rows as in NextEquiv; no position or square pair enumerated; no `decide`, no `native_decide`, no `interval_cases`, no `sorry`.
+THE END OF THE GAME: `hasMove_iff` (= `legalMoves p ≠ []`), `mate_iff` (= `Chess.checkmate`), `stalemate_iff` (= `Chess.stalemate`), `mate_iff_mated` /
+`stalemate_iff_stalemated` (= the machinery's `Ideas.Game.chess`), `drawByFiftyMoves_iff` (= `Chess.fiftyMoveClaimable` and a legal move), the repetition through the
+record (76.1's `drawByRepetition_kernel`); `goal_win_iff` / `goal_loss_iff` (a side scores 100 / 0 exactly when `Chess.gameStatus` of the record's history says it
+won / lost). THE TERMINAL, the status of each direction: `terminal_sound` PROVED -- on a sound record, one king each side standing apart, a position the spec ends is
+one `Chess.gameStatus` ends, EXCEPT POSSIBLY a `draw` by the criterion's knight clause (K+N against kings and queens): a CONJECTURE, the store's new entry `dead
+position (the knight clause)` (CLOSING, CONJECTURE; obstacle: an invariant over every continuation in which the queens move and may be taken -- the bishops' colour
+argument does not carry to a knight; Lean has it in the position only, Ideas.InsufficientMaterial). `terminal_complete` PROVED -- a position `Chess.gameStatus` ends
+is one the spec ends or a FIDE dead position: the converse of `terminal_sound` FAILS beyond the material criterion (a locked pawn chain is dead, not the spec's
+draw) -- the spec is the engine's (python-chess's) rule there, not FIDE 5.2.2: the two terminals are not equal, and that is the exact obstacle (a finding, not a
+conjecture). `#print axioms` of legal_iff, legal_iff_reachable, mate_iff, stalemate_iff, drawByFiftyMoves_iff, goal_win_iff, goal_loss_iff, terminal_sound,
+terminal_complete, attackBy_iff, check_iff, hasMove_iff: [propext, Classical.choice, Quot.sound] -- no sorryAx, no Lean.ofReduceBool. Ideas.lean imports it;
+`lake build`: Build completed successfully (6130 jobs).
+LEAN_INDEX rebuilt: OBS indexed 955 theorems/lemmas (179 open) and 744 documented defs in 81 files; 411 cited by code -> docs/LEAN_INDEX.md.
+NEGATIVE CONTROL (not committed): the spec's kingside castling without the king's own square among `castling_safe` (castling out of check allowed), regenerated
+into Chess.lean -> `lake build Ideas.Spec.LegalEquiv` fails (castlingSafe_iff: no applicable constructor); the true spec regenerated byte-identical, the library
+builds again.
+THE GUARD (no engine path touched), the branch against the plan 76 parent snapshot, --jobs 11: OBS guard ten t0 0 / 0 / 0 / 0 / 0 of 10 (traces / read sets / leaf
+verdict lists / word lists / provenance lists); ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s, 24 s,
+16 s, 59 s). OBS audit recount: rows total 1618: LOGIC 1253, RULE 99, NAME 21, CHESS FACT 210, HEURISTIC 35 (CHESS FACT rows 210 -> 210). OBS lemma store validate:
+entries 112, patterns 29; uncatalogued 0; problems 0. OBS ontology validate: problems 0.
+OBS gate engine --only: test_rules_shelf 3/0/0/0 3.5 s (new; its Lean test marked slow, run); test_plan73 9/0/0/0 13.9 s; test_lean_index 2/0/0/0 199.7 s.
+scripts/gate.py ENGINE_NAMES gains test_rules_shelf.
+
+
+## 2026-10-28 18:15 -- plan 76.2 (b) THE GAME LAYER READS THROUGH THE CERTIFIED KERNEL: one surface (game.py) with its spec; the GDL oracle against every rule method; the judge's kinds, the exchange's lines and the mate in one each computed once (branch worktree-agent-ad149634c92619751)
+THE SURFACE: game.py's `Game` protocol is where the machinery reads the rules -- legality (`moves`, `legal` new, `moves_to`), the next state (`apply`), the terminals
+(`terminal`, `repetition` now in the protocol) and the goal (`goal` new: the outcome's score per side, the spec's 100 / 50 / 0) -- with `reply_kind` (new: what a move IS
+for the judge: check, capture, quiet, from the kernel's `gives_check` / `is_capture`). Its implementation is the fast kernel (python-chess, the Rust core beside it); its
+SPEC is rules/chess.gdl: `game.SPEC` binds each of the 21 rule methods to the ontology shelf relation it implements (moves -> legal, apply -> next, terminal -> terminal,
+goal -> goal, turn -> tempo, in_check / gives_check -> check, is_capture -> capture, clock_events -> clock_event, units -> cell, attackers -> attack, adjacent ->
+king_step, ...), `game.NOT_RULES` lists the 18 that read no rule (the notation, keys, coordinates, the valuation, the pass) with why; a test holds every protocol
+method to one of the two.
+THE ORACLE (gdl_chess.game_oracle): the GDL interpreter read against every method of game.SPEC at one state with its game record -- the legal moves, legality of every
+pseudo-legal move, the moves between two squares, the next state after every legal move, the side to move, the terminal, both goals, the repetition, check, the clock and
+each move's clock events, every unit, every attack (both ways), the king's step, the capture and what each move is. OBS 76.2 (b) oracle: positions 8979 (corners and
+surprises 47, puzzle positions 1497, play-outs 20 seed 762 with their records: 7435 positions, a third occurrence at 1); wall 188 s on 11 processes; disagreements 0 (none)
+-- after the TWO SURPRISES IT FOUND on its first run (corners + one play-out, 460 positions: moves_to 11, clock_events 4), each read against the rules and filed:
+* s010 (spec, clock_event): exd6 e.p. -- the spec's clock events [pawn], the surface's [capture, pawn]. FIDE 9.3 / 3.7.d: an e.p. capture is a capture; the kernel's
+  `Chess.moveIsCapture` counts it. THE SPEC WAS WRONG (incomplete): rules/chess.gdl gains `(<= (clock_event capture) (passant_taken ?f ?r))`; the clock was reset all the
+  same (by the pawn's event), which is why no next state differed and the 76.0 / 76.1 cross-play (next states only) never saw it. Chess.lean regenerated (clockEvent
+  gains a constructor), NextEquiv's `clockReset_iff` reads it (its statement unchanged); the shelf's clock_event / clock_reset reads gain ep_square, file, rank, rank_succ.
+* s011 (game, moves_to): Game.moves_to(e1, g1) found no castling where the spec's legal has e1g1 -- python-chess's to-mask reads a castling by its ROOK's square (h1).
+  THE SURFACE WAS WRONG: moves_to filters the generator's moves by the move's own squares. No engine read asks moves_to for a castling (the pushes ask pawns).
+Both PATCHED, `expect: agree`; OBS surprises replayed: 11, as expected 11. THE CROSS-PLAY of the patched spec (76.0's run 1, seed 76, 40 games): OBS crossplay: positions
+15771 ... OBS crossplay agreement: 15771 of 15771 positions agree on every reading (100.000%); with python-chess 15771 of 15771.
+THE SECOND COPIES THE AUDIT FOUND (docs/AGENDA_AUDIT.md section 5, "rules re-implemented in Python"), each routed to one implementation, the replaced code kept in
+tests/test_rules_shelf.py as its oracle:
+* castling's rook squares: already the kernel's (75.2 (d): read off `Game.apply`) -- nothing to do.
+* check / capture read off the SAN for the judge's rates (`_parry_kind` -> names.san_kind, the marks '+' '#' 'x'): READ FROM GAME. regress.route_cost's priced parries
+  carry their kind (`Game.reply_kind` on the board after the route); the judge's node prices the reply that made it by `Game.reply_kind` on the route's handle
+  (`_reply_kind`, read only when the judge asks); `_priced` / `_kind_tally` / the route judge read the kinds; names.py's san_kind and marks are gone.
+* the exchange's principal lines (`_principal_captures`, the Python swap list beside the Rust `see`): THE RUST CORE'S -- `Pos.principal_lines(worths)` (pos.rs, beside
+  `see`: the squares by its static exchange, the LEGAL captures on the square cheapest first by the valuation's worths passed in from the store, then the uci, the swap
+  list's stop, the credits); Python only pushes the boards and names the captures. (The line is legal-move based, the `see` value pseudo-legal with x-rays: unchanged
+  from before -- the squares were always the `see`'s, the line the legal captures'.)
+* the mate in one computed twice (python-chess `G.mates` in the mate threat's frame and in the escape note, the Rust `Pos.mate_in_one` in the chase): ONCE -- the Rust
+  word, `Pos.mates()` (new: the mating moves in python-chess's order) / `Pos.mate_in_one`, read by `_mating_moves`.
+OBS 76.2 (b) twins: positions 47073 (every puzzle position, the corners, and every position one legal move after them; unparsable by shakmaty 0); principal lines 35360
+(positions where the Rust lines differ from the Python swap list: 0); mating moves 2090 (positions where Pos.mates differs from graph.mates: 0); moves 1559466
+(Game.reply_kind against the SAN marks, differing: 0); wall 5 s on 11 processes. (The guard does not see the judge at the count budget: this check carries the kinds.)
+A Rust build (`maturin develop --release`, 64 s): THE SHARED EDITABLE INSTALL NOW POINTS AT THIS BRANCH'S CRATE.
+THE GUARD (the branch against the plan 76 parent snapshot, --jobs 11): OBS guard ten t0 0 / 0 / 0 / 0 / 0 of 10 (traces / read sets / leaf verdict lists / word lists /
+provenance lists); ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s, 24 s, 16 s, 58 s). No judge rate line
+moved (none is printed at the count budget). NEGATIVE CONTROLS (not committed): the first mating move of `Pos.mates` dropped -- OBS guard ten t0: 3 of 10 traces, 2 read
+sets, 2 leaf lists, 2 word lists, 3 provenance lists differ; ten t2 5 / 6 / 3 / 2 / 7 of 10; wide t0 22 / 14 / 7 / 10 / 18 of 99; the principal lines' credits + 1 --
+ten t0 1 / 1 / 1 / 1 / 1 of 10, wide t0 0 of 99 (the exchange path is read by one of the ten); the oracle's own control is a test (a surface reading the SAN's '+'
+only and losing the e.p. capture event: the oracle names reply_kind and clock_events).
+OBS audit recount: rows total 1609: LOGIC 1255, RULE 94, NAME 21, CHESS FACT 205, HEURISTIC 34 -- CHESS FACT rows 210 -> 205 (fact D23, the exchange's principal lines,
+9 -> 4: the swap list left agenda.py for the Rust core beside `see` -- moved, not removed: the store's proposed D23 VALUATION entry is not written here), RULE rows
+99 -> 94 (the mate-in-one loops and the SAN reads). Neither rose.
+OBS ontology validate: problems 0. OBS lemma store validate: entries 112; uncatalogued 0; problems 0. LEAN_INDEX rebuilt: OBS indexed 955 theorems/lemmas (179 open)
+and 744 documented defs in 81 files; 414 cited by code. `lake build`: Build completed successfully (6130 jobs).
+Tests changed for the API (no claim, no decision): test_plan72_9 (the kinds carried with the price: route_cost's triples, `_kind_tally` by kind, the node's reply as a
+board and a move), test_cost61 (route_cost's triples), test_plan75 (`_parry_kind` -> `_reply_kind` in the judge's function list).
+OBS gate engine --only (one file per call; passed / failed / xfailed / errors, wall): test_rules_shelf 8/0/0/0 65.9 s (the oracle test on 462 positions, the twins
+test, the controls; its Lean test slow, run); test_plan76 20/0/0/0 61.8 s; test_rules_gdl 12/0/0/0 3.7 s; test_game 3/0/0/0 0.3 s; test_plan72_9 7/0/0/0 3.5 s;
+test_cost61 13/0/0/0 2.9 s; test_plan75 11/0/0/0 0.5 s; test_rules_draws 17/0/0/0 3.6 s; test_lean_index 2/0/0/0 203.0 s; test_plan73 9/0/0/0 14.4 s.
+NOT ROUTED, and why: regress.check_threat's mate in one after a CHECK and a pass (its board has the side not to move in check: a position the Rust kernel refuses to
+hold, so `G.mates` stays there -- the one python-chess mate word left); `_mate_line_pieces` replays a claim's line by parsing its SAN (the kernel's notation reader,
+`parse_san`; not a rule read off the marks).
+
+
+## 2026-10-28 18:32 -- plan 76.2 (c) THE RULE SHELF IN THE STORE: kind RULE (11 entries, 9 PROVED by their equivalence theorems) beside the names table; game.rs's rules one definition each, certified against Game.terminal; the technique's draw through the surface; 76.2 marked BUILT (branch worktree-agent-ad149634c92619751)
+THE RULE KIND (lemma_store.py, lemmas/README.md): a RULE entry is a rule of the game the engine reads -- given, never derived; in Lean a definition generated from
+rules/chess.gdl -- with params `spec` (the generated definition, Ideas.Spec.Chess.*, present in the index), `gdl` (the spec's relation), `surface` (the Game methods
+implementing it, each a rule method of game.SPEC); PROVED when theorems of the index prove the definition the kernel's (cited in `lean`), CONJECTURE otherwise with
+the obstacle in its note; `validate` checks the spec and the surface (`rule_problems`). THE ENTRIES (origin BASE): legal move (PROVED: Ideas.LegalEquiv.legal_iff,
+legal_iff_reachable, legal_moveOf), next state (PROVED: Ideas.NextEquiv.applyMoveSpec_applyMove, _eq_applyMove, _unique), check (PROVED: check_iff, attacked_iff,
+attackBy_iff), checkmate (PROVED: mate_iff, mate_iff_mated), stalemate (PROVED: stalemate_iff, stalemate_iff_stalemated), the fifty-move draw (PROVED:
+drawByFiftyMoves_iff, Ideas.Game.chess_fifty_iff), threefold repetition (PROVED: drawByRepetition_kernel, drawByRepetition_iff, chess_threefold_iff), the clock's events
+(PROVED: Ideas.NextEquiv.clock_equiv, reset_normal / _promotion / _ep / _castle, Ideas.Game.chess_clock), win and loss (PROVED: goal_win_iff, goal_loss_iff),
+insufficient material (CONJECTURE: the knight clause), the end of the game (CONJECTURE: the two terminals are not equal -- terminal_sound / terminal_complete).
+`lemma_store report` prints THE RULE SHELF: OBS lemma store RULE shelf: 35 rules -- the RULE entries 11 (PROVED 9, CONJECTURE 2) and the names table's words 24 (with a
+Lean twin in the index 24); one `OBS rule ...` line each (the spec, the relation, the surface, the equivalence). OBS lemma store: entries 123 (by kind ... RULE 11).
+THE RUST SECOND COPIES THE AUDITS FOUND: game.rs `claimable_draw` -- the rules' ends are ONE DEFINITION EACH in game.rs (`mate`, `stalemate`, `threefold`, `fifty`,
+`insufficient`), composed by `terminal` in Game.terminal's kinds and order (Lean Chess.gameStatus: a mate first) and read by `claimable_draw` and `drawn` in their own
+order (their semantics and reason strings unchanged); reasoning.rs's three readings of stalemate / insufficient material read them; `game_terminal(fen, history)` (new,
+Python) is certified against Game.terminal on the oracle's sample with each position's record (a test). technique_question's `Search.drawn` -- READ THROUGH THE SURFACE:
+`Game.clock` of the board the line reached (the kernel's count: a capture or a pawn move on the line resets it, where the copy added the plies to the root's clock) and
+`Game.position_key` in the record (the engine's CYCLE reading, one repeat: the store's `repetition`, a CONJECTURE; identical to the FEN cut it replaced on every
+position: OBS 15931 positions of 200 random walks, key differs 0). A Rust build (`maturin develop --release`): THE SHARED EDITABLE INSTALL POINTS AT THIS BRANCH'S CRATE.
+THE GUARD: OBS guard ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s,
+24 s, 16 s, 58 s) -- blind here, as 76.1 found for the draws: no puzzle line at the count budget reaches the clock's limit or a record. The direct checks are the tests
+and the NEGATIVE CONTROLS (not committed): OBS 76.2 (c) negative control (1) (a RULE entry with a wrong spec and surface): ['the rule: legal move: spec
+Ideas.Spec.Chess.noSuchRule absent from docs/LEAN_INDEX.md', 'the rule: legal move: surface name is no rule method of the Game surface (game.SPEC)']; OBS 76.2 (c)
+negative control (2) (the technique's old clock, 99 + 1 plies, after Rxa2): the copy reads a draw True; the surface False (Game.clock 0); OBS 76.2 (c) negative control
+(3) (the Rust terminal without the record): Game.terminal repetition; Rust with the record repetition, without it None.
+OBS audit recount: rows total 1609: LOGIC 1255, RULE 94, NAME 21, CHESS FACT 205, HEURISTIC 34 (CHESS FACT rows 205 -> 205). OBS lemma store validate: entries 123,
+patterns 29; uncatalogued 0; problems 0. OBS ontology validate: problems 0. LEAN_INDEX rebuilt: unchanged (955 theorems/lemmas, 414 cited by code).
+OBS gate engine --only: test_rules_shelf 11/0/0/0 69.0 s (the shelf, the Rust terminal against Game.terminal, the technique's draw); test_plan73 9/0/0/0 14.6 s;
+test_plan73_5b 11/0/0/0 7.4 s; test_rules_draws 17/0/0/0 3.5 s; test_rules_gdl 12/0/0/0 3.8 s; test_plan76 20/0/0/0 60.0 s; test_plan75 11/0/0/0 0.5 s.
+76.2 IN SUM (a)-(c): docs/ANALYST_PLAN.md 76.2 marked BUILT; docs/AGENDA_AUDIT.md's "76.2 recount" appended. THE STATUS OF EACH EQUIVALENCE: legal PROVED (on every
+position with one king of the side to move and the e.p. square placed; every reachable position); next state PROVED (76.1); mate, stalemate, the fifty-move draw,
+threefold (through the record), win and loss PROVED; the terminal: sound PROVED but for the knight clause (CONJECTURE `dead position (the knight clause)`), complete PROVED
+but for FIDE dead positions beyond the criterion (the terminals are not equal); the draw's goal (50) rests on the terminal.
+
+
+## 2026-10-28 18:43 -- plan 76.3 (d) COUNTEREXAMPLES PERMANENT: the surprise shelf (rules/surprises/ + lemmas/surprises/), read by the guard as a set and by the miner as constraints (branch worktree-agent-ad149634c92619751)
+THE SHELF: discovery/surprises.py -- one shelf, two directories: rules/surprises/ (the rules' cases: the spec against a kernel, the cross-play, or against the Game
+surface, the oracle -- 11) and catspace/incubator/analyst/discovery/lemmas/surprises/ (the ENGINE'S cases -- a sibling of the store's files, which the store does not
+read). An engine case: the position and the side the engine played, where it was found, the engine's answer and the trace's reading of why, the RIGHT ANSWER AND ITS
+SOURCE, the shrunk position or why no shrinker applies, the status (open: a known miss; fixed, by what), a refuted measure's measure; schema-checked (`check_case`).
+THE CASES FILED (8): the seven loop-2 misses of the loop's iteration 2 (journal 2026-10-23 22:40), each graded again for its case by Stockfish depth 14 in a separate
+process (discovery/verdict.py): 2CEDb (engine Qxg7, right Kxg7, 637 cp), 4E4iU (Kg8 / exf5, 760), 9QsbL (Nc4 / Rg6, 386), r3oph (Rxd1+ / Nxe5, 324), KSMKJ (gxh5 /
+Qd6+, 272), L2luA (Ra5 / Re5, 572) -- open; kJbxb (g5 / e5, 678) -- fixed by plan 74 (b); a puzzle miss is its position (no shrinker applies). And the REFUTED MEASURE:
+the sampled K+R choice (sum (area (reach L free)) (dist W L)), d 3, n 2, refuted at 8/8/8/8/1K6/1R6/k7/8 w by its first play-out (the technique silent; right Kc4, the
+five-men table: a win, DTZ 7) -- fixed by 73.5b (4b) (the whole-class miner); its class fixes the material, so no shrinker applies. The store had no entry of status
+REFUTED (OBS lemma store by status: ... REFUTED 0): the miner's refuted measure lived in the mined entry's note only, now it is a case. The cross-play's
+disagreements were filed already (rules/surprises/: s001-s009 by 76.0, s010-s011 by 76.2 (b)).
+OBS surprise shelf: cases 19 -- the engine's 8 (lemmas/surprises/), the rules' 11 (rules/surprises/); OBS surprise shelf engine by class: loop miss 7, refuted measure 1;
+OBS surprise shelf engine by status: fixed 2, open 6; OBS surprise shelf rules by kernel and class: game moves_to 1, rust draw 9, spec clock_event 1.
+THE GUARD SET: `scripts/trace_identity.py snapshot <dir> --sets surprises --jobs 11` (every case of both directories whose position is not over; 14 of 19: the five
+rules' cases at a drawn position are game over) and `trace_identity.py decisions <dir>` (each DECISION printed; an engine case against its right answer). At the count
+budget, tier 0: OBS surprise decision 2CEDb (loop miss, open): Qxg7 -4 none proved=False -- right Kxg7: WRONG; 4E4iU: Kg8 0 none proved=False -- WRONG; 9QsbL: Nc4 3
+chase: step_after+step_least over delayed_root_max_alive_d1 proved=True -- WRONG; KSMKJ: gxh5 4 unfinished line proved=False -- WRONG; L2luA: Ra5 0 unfinished line
+proved=False -- WRONG; kJbxb (fixed): e5 5 ... proved=True -- RIGHT; krvk-sampled-measure (fixed): Kc4 100 syzygy proved=True -- RIGHT; r3oph: Nxe5 1
+delayed_balance_alive_d1 proved=True -- RIGHT (at the count budget; its miss was at 15 s); OBS surprise decisions: engine cases RIGHT 3, WRONG 5. (Decisions printed,
+not required identical: a surprise is a known miss until fixed.)
+THE MINER READS THE REFUTED CASES AS CONSTRAINTS: technique_miner.mine first joins the class's refuted cases to its sample (`with_surprises`: once, the winning side to
+move, the floors read): OBS miner KRvK surprises: the class's refuted cases 1 (1 new to the sample) join it as constraints: 8/8/8/8/1K6/1R6/k7/8 w - - 0 1. There the
+refuted measure admits no drop at d = 1, 2, 3 and the class's mined measure (lex (area (reach L free)) (dist L corner) (dist W L)) drops at each (a test).
+NEGATIVE CONTROL (not committed, the shelf switched off): OBS 76.3 (d) negative control (the miner without the surprise shelf): 60 uniform KRvK positions (seed 3); with the
+refuted case ('(lex (count (reach L free)) (dist L corner))', 1, 2, 2); without it ('(count (reach L free))', 1, 1, 2) -- on a small sample the shelf moves the
+choice: the case refutes the simpler measure too.
+THE GUARD (the standard sets; no engine path touched): OBS guard ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99;
+wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s, 24 s, 16 s, 58 s). OBS audit recount: CHESS FACT rows 205 -> 205 (rows 1609, RULE 94). OBS lemma store validate: entries
+123; problems 0. OBS gate engine --only: test_rules_shelf 12/0/0/0 68.8 s (the shelf and its guard set); test_plan73_5b 12/0/0/0 7.8 s (the miner's constraint);
+test_rules_gdl 12/0/0/0 3.8 s (trace_identity's sets); test_plan73 9/0/0/0 14.9 s.
+
+
+## 2026-10-28 18:52 -- plan 76.3 (e) USE COUNTS: evidence.uses written from a batch's tally after it (`lemma_store uses --write`); the pruning rule's list, "unused since", printed by the report -- nothing deleted (branch worktree-agent-ad149634c92619751)
+THE TALLY (lemma_store.tally): a batch's output resolved to the store's entries -- a question log (every row's word), a trace, or a GUARD SNAPSHOT DIRECTORY (every
+case's trace -- its printed lemmas, kills and GAPs as often as printed -- and every case's word list, each word once per case: what the run's fact store set).
+THE STEP (`python -m catspace.incubator.analyst.discovery.lemma_store uses --write <trace dir or qlog> --source <name> [--date]`): every entry's
+`evidence.uses[<source>] = {count, date}` (0 when the batch never used it), each file's formatting kept; the parent runs it AFTER a batch, never during a run
+(`check_entry` now holds a use record to {count, date}). THE PRUNING RULE (lemma_store.unused, stated in the code and the store's README): an entry is a candidate
+when it was never used in any batch tallied since it was written (its `journal` date), at least one such batch tallied; RULE, GOAL and VALUATION entries, which the
+agenda reads through their fields rather than prints, are no candidates; NOTHING IS DELETED -- `lemma_store report` prints the list for the owner ("OBS lemma store
+unused since <date>: <name> (in k batch(es))").
+THE STEP RUN ONCE HERE (as the parent will after each batch), on this stage's four guard sets: OBS lemma uses written: source guard ten_t0 (plan 76.3 (e)), entries 123,
+used 28 (2329 uses); guard ten_t2 ... used 29 (3063 uses); guard wide_t0 ... used 43 (9881 uses); guard wide_t2 ... used 46 (17099 uses). OBS lemma store unused since
+written (...): 61 of 123 entries; batches tallied 4 -- at the count budget the judge, the pool and the tiers' words never print (the method notes of the audit), so the
+list is long until a timed batch is tallied (76.3 (f) tallies the loop-2 batch).
+NEGATIVE CONTROL (not committed): OBS 76.3 (e) negative control (the tally without the word lists): wide t2 entries used 46 -> 37; uses 17099 -> 4557; entries the control
+would list unused wrongly 9: budget, delayed_root_alive_d2, no parry binds a guaranteed gain and none could be read from their view, no parry keeps the gain, no parry
+move, no route: the fixes supply no move, refuted at the leaf, repetition.
+THE GUARD (no engine path touched; the tallies written after it): OBS guard ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0
+of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s, 24 s, 16 s, 58 s). OBS audit recount: rows total 1609 ... CHESS FACT 205 (205 -> 205). OBS lemma store validate:
+entries 123; problems 0. OBS gate engine --only: test_plan73 10/0/0/0 14.7 s (the tally, the write, the rule, nothing deleted -- on a copy of the store);
+test_plan75 11/0/0/0 0.5 s; test_plan73_5b 12/0/0/0 7.9 s; test_plan73_6 27/0/0/0 34.2 s; test_rules_shelf 12/0/0/0 68.9 s.
+
+
+## 2026-10-28 19:05 -- plan 76.3 (f) AGE / WEIGHT: every pass, one pick is the oldest (the worklist); W0VFO 10 s and the loop-2 batch; the batch tallied; 76.3 marked BUILT (branch worktree-agent-ad149634c92619751)
+THE RULE (worklist.py; no number -- the given-clause loop's age-weight pick with no ratio): a frame's agenda is ONE PASS over its open items; the first time in the pass
+that 74.2b's clause (1) narrows to the cheapest price class AND leaves a keeping item out, the pick is the OLDEST item it left out (`born`: when the item first entered the
+worklist, stamped by push / defer); once per pass; every other pick as before. So cheapest-first never starves a question: in each pass the oldest question it passed
+over is asked. The trace says so ("why: Q.. selected by the age rule (76.3 (f): every pass, one pick is the oldest): ..."); analyse prints `OBS worklist <id>: picks narrowed
+by clause (1) N, by the age rule M` when either narrowed (new; not in this batch's output, which ran before it).
+WHAT THE GUARD EXERCISES: at the count budget the root reads no status (`_wl_status` is None), so `_ask_loop` never reaches the clauses: the guard exercises the order
+key's fall-through and the age stamps on every push and deferral, not the age pick -- the rule fires only where prices exist, from a pool's or a tier's second pass on
+(a question's price is its routes read in an earlier pass). NEGATIVE CONTROLS (not committed): (1) the age pick forced wherever (the count budget included) inside the
+clauses -- OBS guard f_ctl ten t0 0 of 10, wide t0 0 of 99 on all five lists: the guard never calls the clauses at the count budget (what it exercises, shown); (2) the
+youngest left out picked instead of the oldest -- the worklist tests fail (3 failed: test_74_2b_clause_one..., test_74_2b_equal_price..., test_76_3_f_every_pass...).
+THE GUARD: OBS guard ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s,
+24 s, 16 s, 58 s).
+CLOCKED (one run each, directional): OBS W0VFO 10 s (the pool, alone): POOL: ended at 8.9 s of 10.0 after 0 extra pass(es); 38 questions asked in the first, 6 moved
+up by the policy; status kept; the decision is Qb7 (+3) (a chase claim: answer Qb7 MATCH); inner agendas 1015, inner questions 15347 -- one pass, so the age rule could
+not fire (as 74's journal found, clause (1) narrows nothing there: the need is 1). OBS loop-2 batch (rand14_10 .. rand17_10 at 15 s in the pool, the question log to a
+fresh file, graded by Stockfish depth 14 in a separate process, `question_prior grade`): OBS prior grade: 40 decisions graded by Stockfish (depth 14) over 40 agendas:
+RIGHT 32, UNKNOWN 2, WRONG 6; OBS prior grade by proof: proved RIGHT 32, proved WRONG 3, unproved WRONG 3, none 2 -- the acceptance (not worse than 32 RIGHT / 6
+WRONG) holds; the six WRONG are the six open misses of the surprise shelf (2CEDb Qxg7, 4E4iU Kg8, 9QsbL Nc4, KSMKJ gxh5, L2luA Ra5, r3oph Rxd1+), every decision as
+the shelf filed it. ONE LABEL MOVED: KSMKJ's gxh5 is proved now (a chase claim, +4; Stockfish: Qd6+, 226 cp better) where 74's batch had it unproved -- traced alone at
+15 s: one pass, no clause (1) narrowing and no age pick, the chase finished its claim at 13.3 s; read as the clock's variation (the proof is of a gain, not of the best
+move), not the rule -- directional, one batch.
+THE BATCH TALLIED (76.3 (e)'s step, as the parent will after a batch): `lemma_store uses --write <the batch's outputs> --source "loop-2 batch (plan 76.3 (f))"` -- the
+batch's own `OBS lemma uses <id>` lines read as printed (lemma_store.obs_uses, new: the run tally, where the question log holds only the answering words): OBS lemma uses
+written: source loop-2 batch (plan 76.3 (f)), entries 123, used 48 (302497 uses). THE UNUSED LIST: OBS lemma store unused since written (...): 57 of 123 entries;
+batches tallied 5 (the four guard sets of 76.3 (e), the loop-2 batch) -- listed in `lemma_store report`, each "unused since <its date>: <name> (in 5 batch(es))";
+nothing deleted.
+OBS audit recount: rows total 1611: LOGIC 1257, RULE 94, NAME 21, CHESS FACT 205, HEURISTIC 34 (CHESS FACT rows 205 -> 205: two LOGIC rows, the age rule's trace
+line). OBS lemma store validate: entries 123; problems 0. OBS ontology validate: problems 0.
+OBS gate engine --only: test_plan74 14/0/0/0 3.1 s (the rule: tests changed for the API -- the pass's first narrowing is the age pick; a new test); test_plan73 10/0/0/0
+14.3 s (the batch's own tally lines); test_plan72_9 7/0/0/0 3.4 s; test_cost61 13/0/0/0 2.8 s; test_plan69 3/0/0/0 13.8 s; test_plan70 3/0/1/0 3.4 s; test_tiers
+14/0/0/0 29.2 s; test_plan68 4/0/0/0 12.8 s.
+76.3 IN SUM (d)-(f): docs/ANALYST_PLAN.md 76.3 marked BUILT. THE SURPRISE SHELF BY CLASS: the rules' 11 (rust draw 9, spec clock_event 1, game moves_to 1 -- all
+patched, agreeing), the engine's 8 (loop miss 7: 6 open, 1 fixed; refuted measure 1: fixed).

@@ -142,3 +142,38 @@ def test_negative_control_a_renamed_entry_fails_validate_and_fires_the_counter(t
         LS.load(force=True)
     assert LS.resolve("mate_in_one") == ("mate_in_one",)
     assert LS.validate([str(snap)], log=lambda x: None, run=False) == 0
+
+
+def test_76_3_e_use_counts_are_written_after_a_batch_and_the_unused_are_listed(tmp_path):
+    """plan 76.3 (e): THE USE COUNTS -- a batch's tally (a guard snapshot directory: its traces and its word lists) is written into every entry's evidence.uses under
+    the batch's name with its date, AFTER the batch (`lemma_store uses --write`); THE PRUNING RULE lists the entries never used in a batch tallied since they were
+    written (the kinds read through their fields -- RULE, GOAL, VALUATION -- are no candidates); nothing is deleted."""
+    snap = tmp_path / "snap"
+    snap.mkdir()
+    (snap / "case1.txt").write_text("  -> KILLED Q3: verify: no route binds\n  -> KILLED Q4: verify: no route binds\nDECISION Qb7 3 standing kill proved=True\n")
+    (snap / ("case1" + LS.SNAPSHOT_WORDS)).write_text("kill\ttempo arithmetic: the chain has spent its moves\n")
+    c, unres = LS.tally(str(snap))
+    assert c["verify: no route binds"] == 2 and c["tempo arithmetic"] == 1, (c, unres)
+    batch = tmp_path / "batch.txt"                                                                     # a batch's own tally: analyse's per-puzzle OBS lines, read as printed
+    batch.write_text("OBS agenda X: ...\nOBS lemma uses X: tempo 3, our best claim ... wins ..., the reply took ... 2\nOBS lemma uses Y: tempo 1; uncatalogued 1\n")
+    cb, _ = LS.tally(str(batch))
+    assert cb == {"tempo": 4, "our best claim ... wins ..., the reply took ...": 2}, cb
+    store_dir = tmp_path / "lemmas"
+    shutil.copytree(LS.DIR, store_dir, ignore=shutil.ignore_patterns("ontology", "surprises"))
+    for f in store_dir.glob("*.json"):                                                                 # (a fresh store: the batches tallied so far left out)
+        e = json.loads(f.read_text())
+        e["evidence"]["uses"] = {}
+        f.write_text(json.dumps(e, indent=1) + "\n")
+    files = sorted(p.name for p in store_dir.glob("*.json"))
+    n = LS.write_uses(c, "test batch", "2099-01-01", d=store_dir)
+    assert n == len(files) and sorted(p.name for p in store_dir.glob("*.json")) == files               # every entry written, nothing deleted
+    store, bad = LS._read_dir(store_dir)
+    assert not bad, bad[:3]
+    assert store["verify: no route binds"]["evidence"]["uses"]["test batch"] == {"count": 2, "date": "2099-01-01"}
+    assert store["syzygy"]["evidence"]["uses"]["test batch"] == {"count": 0, "date": "2099-01-01"}
+    cands = {name for name, *_ in LS.unused(store)}
+    assert "syzygy" in cands and "verify: no route binds" not in cands and "tempo arithmetic" not in cands
+    assert not any(store[x]["kind"] in LS.NOT_PRINTED for x in cands)
+    assert LS.unused_lines(store)[0].startswith(f"OBS lemma store unused since written") and f": {len(cands)} of {len(store)} entries" in LS.unused_lines(store)[0]
+    broken = dict(store["syzygy"], evidence=dict(store["syzygy"]["evidence"], uses={"test batch": 2}))
+    assert any("evidence.uses" in x for x in LS.check_entry(broken))                                     # a use record is {count, date}

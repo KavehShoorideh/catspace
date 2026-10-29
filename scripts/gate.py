@@ -48,7 +48,8 @@ ENGINE_NAMES = (
     "test_plan75 "                                                                      # 2026-10-27: plan 75.2 the move (goal kinds and the valuation from the store, the stops, the names table, the generic test)
     "test_rules_draws "                                                                 # 2026-10-28: plan 75.4 the kernel's rule gaps (the draws by rule, the cycle claim, the clock's events, the identity, promotion)
     "test_rules_gdl "                                                                   # 2026-10-28: plan 76.0 the rule spec in GDL (the interpreter, the surprises replayed, the generated rook, --jobs)
-    "test_plan76"                                                                       # 2026-10-28: plan 76.1 the ontology shelf (the bindings agree; the extensions; the terms, the GNN's kinds, the Rust fix)
+    "test_plan76 "                                                                      # 2026-10-28: plan 76.1 the ontology shelf (the bindings agree; the extensions; the terms, the GNN's kinds, the Rust fix)
+    "test_rules_shelf"                                                                  # 2026-10-28: plan 76.2 the rule shelf (legal / terminal / goal proved; the GDL oracle against Game; the RULE entries)
 ).split()
 
 PYTEST_FLAGS = ["-q", "-p", "no:cacheprovider", "-W", "ignore", "--durations=3"]

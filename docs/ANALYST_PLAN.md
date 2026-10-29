@@ -4048,7 +4048,24 @@ GNN's node kinds read from the shelf (today four, hand-chosen); the names table 
   builds: the shared editable install points at this branch's crate.
 ### 76.2 THE RULE SHELF: the full GDL chess, certified by cross-play with the surprise store; the Lean definitions generated; `Game` reads legality and terminals through the certified kernel
 with the GDL as the oracle in tests; the 75.1 findings of "rules re-implemented in Python" close by construction.
+* 76.2 BUILT 2026-10-28 on branch worktree-agent-ad149634c92619751 (journal 2026-10-28 17:32, 18:15, 18:32): (a) Ideas/Spec/LegalEquiv.lean PROVES the spec's `legal` the kernel's
+  `legalMove` (one king of the side to move, the e.p. square where the rule puts it; so on every reachable position), mate / stalemate / the fifty-move draw / win and
+  loss the kernel's; the terminal SOUND but for the criterion's knight clause (a CONJECTURE entry) and COMPLETE but for FIDE dead positions beyond the material
+  criterion (the two terminals are not equal: the obstacle); no sorry, no native_decide. (b) game.py is the one surface (`SPEC`: 21 rule methods bound to shelf relations,
+  `NOT_RULES` 18 with why), gdl_chess.game_oracle runs the GDL interpreter against every one -- 8979 positions, 0 disagreements after the two surprises it found (s010
+  the spec's e.p. clock event, s011 Game.moves_to castling: both patched); the judge's check / capture from Game, the exchange's principal lines in Rust, the mate in
+  one once (the Rust word), each equal to its replaced twin on 47073 positions. (c) the RULE shelf: kind RULE in the store, 11 entries (9 PROVED with their equivalence
+  theorems, 2 CONJECTURE) beside the names table's 24 words, printed by `lemma_store report`; game.rs's rules one definition each (`terminal` certified against
+  Game.terminal), technique_question's draw read through the surface. Guard 0 of 218 on all five lists at every commit; CHESS FACT rows 210 -> 210 -> 205 -> 205 (D23
+  moved to the Rust core), RULE rows 99 -> 99 -> 94 -> 94. Two Rust builds: the shared editable install points at this branch's crate.
 ### 76.3 THE SURPRISE LOOP IN THE ENGINE: (1)-(3) above; the loop's misses, the cross-play's disagreements and the miner's refutations all land in the one surprise shelf.
+* 76.3 BUILT 2026-10-28 on branch worktree-agent-ad149634c92619751 (journal 2026-10-28 18:43, 18:52, 19:05): (d) the surprise shelf (discovery/surprises.py; rules/surprises/ 11
+  cases + lemmas/surprises/ 8: the seven loop-2 misses graded again by Stockfish depth 14 in a separate process, the refuted K+R measure with the table's answer),
+  `trace_identity.py --sets surprises` with `decisions` printed (RIGHT 3, WRONG 5 at the count budget), the miner joining a class's refuted cases to its sample
+  (a constraint: the refuted measure admits no drop there). (e) `lemma_store uses --write <trace dir, batch output or qlog> --source <name>`: every entry's
+  evidence.uses[batch] = {count, date}, the batch's own `OBS lemma uses` lines read as printed; the pruning rule's list ("unused since") in the report, nothing deleted
+  (57 of 123 after the four guard sets and the loop-2 batch). (f) the worklist's age rule: every pass, one pick is the oldest keeping item cheapest-first leaves out
+  (never at the count budget: the guard does not reach the clauses); W0VFO 10 s Qb7 +3; the loop-2 batch RIGHT 32, UNKNOWN 2, WRONG 6. Guard 0 of 218 at every commit.
 ### 76.4 MINING OBJECTS: the miner proposes derived relations over the shelf's base relations (line, blocked, region are the test cases: we know what they should be); an accepted relation
 is a node kind; (4) and (5) above; then MATERIAL as the first mined valuation (the hand entry stays beside it); then the second game (checkers: a GDL file, a fast kernel certified by
 cross-play, zero code outside them).

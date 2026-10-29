@@ -46,12 +46,49 @@ pub fn seen(q: &Chess) -> u8 {
     SEEN.with(|s| { let s = s.borrow(); if s.is_empty() { 0 } else { s.get(&crate::threat::zkey(q)).copied().unwrap_or(0) } })
 }
 
-/// A position reached in ANALYSIS (not the root) that either side may claim as a draw: its third occurrence, or the
-/// fifty-move clock run out (a checkmate on that move comes first).
-pub fn claimable_draw(q: &Chess) -> Option<&'static str> {
-    if q.halfmoves() >= 100 && !q.is_checkmate() { return Some("the fifty-move rule"); }
-    if seen(q) >= 2 { return Some("threefold repetition"); }
+/// THE RULES' ENDS, ONE DEFINITION EACH (plan 76.2 (c)): the Rust core's implementation of the Game surface's `terminal` (game.py; its spec rules/chess.gdl,
+/// proved the kernel's in Lean Ideas.Spec.LegalEquiv / NextEquiv): each rule read once from the kernel, here and nowhere else in the crate. `terminal` composes
+/// them in Game.terminal's order (Lean Chess.gameStatus: a mate on the move comes first) and is certified against Game.terminal and the spec by the oracle test
+/// (tests/test_rules_shelf.py, through `game_terminal`); `claimable_draw` and `drawn` are readings of the same rules for the searches, in their own order.
+pub fn mate(q: &Chess) -> bool { q.is_checkmate() }
+/// No legal move and not in check.
+pub fn stalemate(q: &Chess) -> bool { !q.is_check() && q.legal_moves().is_empty() }
+/// The third occurrence: the game's record holds the position's identity twice before it (`seen`: the history installed).
+pub fn threefold(q: &Chess) -> bool { seen(q) >= 2 }
+/// The fifty-move clock at its limit (a hundred half-moves with no capture and no pawn move).
+pub fn fifty(q: &Chess) -> bool { q.halfmoves() >= 100 }
+
+/// THE TERMINAL, in Game.terminal's kinds and order: 'mate', 'stalemate', 'draw' (insufficient material), 'repetition', 'fifty-move'; None: the game goes on.
+pub fn terminal(q: &Chess) -> Option<&'static str> {
+    if mate(q) { return Some("mate"); }
+    if stalemate(q) { return Some("stalemate"); }
+    if insufficient(q) { return Some("draw"); }
+    if threefold(q) { return Some("repetition"); }
+    if fifty(q) { return Some("fifty-move"); }
     None
+}
+
+/// A position reached in ANALYSIS (not the root) that either side may claim as a draw: its third occurrence, or the
+/// fifty-move clock run out (a checkmate on that move comes first) -- the claimable ends of `terminal`, read by the searches.
+pub fn claimable_draw(q: &Chess) -> Option<&'static str> {
+    if fifty(q) && !mate(q) { return Some("the fifty-move rule"); }
+    if threefold(q) { return Some("threefold repetition"); }
+    None
+}
+
+/// game_terminal(fen, history) -> the Game surface's terminal of the position `fen` with the game's positions BEFORE it (`history`, the game record's FENs) --
+/// the Rust implementation read for the oracle test (plan 76.2 (c)).
+#[pyfunction]
+pub fn game_terminal(fen: String, history: Vec<String>) -> Option<String> {
+    let pos = parse(&fen)?;
+    let mut seen: HashMap<u64, u8> = HashMap::new();
+    for f in history.iter() {
+        if let Some(p) = parse(f) { *seen.entry(crate::threat::zkey(&p)).or_insert(0) += 1; }
+    }
+    install(seen);
+    let out = terminal(&pos).map(|s| s.to_string());
+    clear();
+    out
 }
 
 /// INSUFFICIENT MATERIAL, the kernel's rule (plan 76.1 (e)): shakmaty's `is_insufficient_material` -- both sides lack
@@ -69,7 +106,7 @@ pub fn insufficient(q: &Chess) -> bool {
 pub fn drawn(q: &Chess) -> Option<&'static str> {
     if let Some(w) = claimable_draw(q) { return Some(w); }
     if insufficient(q) { return Some("insufficient material"); }
-    if !q.is_check() && q.legal_moves().is_empty() { return Some("stalemate"); }
+    if stalemate(q) { return Some("stalemate"); }
     None
 }
 

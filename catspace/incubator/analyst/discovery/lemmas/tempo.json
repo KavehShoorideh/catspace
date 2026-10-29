@@ -15,7 +15,28 @@
  "journal": "2026-10-17",
  "measure": null,
  "evidence": {
-  "uses": {},
+  "uses": {
+   "guard ten_t0 (plan 76.3 (e))": {
+    "count": 368,
+    "date": "2026-10-28"
+   },
+   "guard ten_t2 (plan 76.3 (e))": {
+    "count": 594,
+    "date": "2026-10-28"
+   },
+   "guard wide_t0 (plan 76.3 (e))": {
+    "count": 1977,
+    "date": "2026-10-28"
+   },
+   "guard wide_t2 (plan 76.3 (e))": {
+    "count": 3614,
+    "date": "2026-10-28"
+   },
+   "loop-2 batch (plan 76.3 (f))": {
+    "count": 101702,
+    "date": "2026-10-28"
+   }
+  },
   "confirmed": [],
   "refuted": []
  },

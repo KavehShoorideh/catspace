@@ -112,6 +112,7 @@ def _wl(stakes_prices: list, avoids: tuple = ()):
 def test_74_2b_clause_one_before_clause_two_on_synthetic_items():
     w, f, (a, b, c, d) = _wl([(100, 5.0), (3, 0.5), (1, None), (5, 0.5)])
     st = dict(balance=-1, line=0)                                  # the need: 1
+    assert w.candidates(f, st, None) == ([a], 1) and w.aged_pick is a      # plan 76.3 (f): the pass's first narrowing is the age pick -- the oldest item cheapest-first leaves out
     cands, clause = w.candidates(f, st, None)                       # (1): no move proved to keep the status -- the cheapest price class of those that could keep it
     assert clause == 1 and set(cands) == {b, d}
     assert w.select(f, st, None)[0] is d                            # ... the policy's order inside the class: the order key (stake 5 before stake 3)
@@ -130,7 +131,26 @@ def test_74_2b_equal_price_class_falls_to_the_policy_order_and_no_status_is_the_
     assert w2.candidates(f2, None, None) == (w2.items(f2), 0)       # the count budget: no status read -- the order key, the old heap's top
     assert w2.select(f2)[0] is y and w2.head(f2) is y
     w3, f3, (p, q, r) = _wl([(1, 0.1), (9, None), (5, None)], avoids=(1,))
+    assert w3.candidates(f3, dict(balance=0, line=5), None) == ([q], 1)      # (plan 76.3 (f): the pass's age pick first -- the oldest of those cheapest-first leaves out)
     assert w3.candidates(f3, dict(balance=0, line=5), None) == ([p], 1)      # a loss avoided could keep it whatever its stake; the priced one is the cheapest class
+
+
+def test_76_3_f_every_pass_one_pick_is_the_oldest():
+    """plan 76.3 (f) AGE / WEIGHT: in each frame's pass, the first time cheapest-first narrows the choice and leaves a keeping item out, the pick is the OLDEST item it
+    left out (the first to enter the worklist); once per pass; never where nothing is priced (the count budget) or nothing is left out."""
+    w, f, (a, b, c) = _wl([(5, 2.0), (5, None), (5, 0.5)])
+    st = dict(balance=-1, line=0)
+    assert w.candidates(f, st, None) == ([a], 1) and w.by_clause["oldest"] == 1                # a (born first, priced dearer) and b (never priced) left out: a is the oldest
+    w.take(a)
+    assert w.candidates(f, st, None) == ([c], 1) and w.aged_pick is None                       # the pass made its oldest pick: cheapest-first again (b waits)
+    g = w.frame()                                                                              # the next pass (a new frame: the pool's next pass, a tier)
+    b2 = w.push(WL.Item("b2", g, (-5, 0, 0, 9), stake=5, price=None))
+    c2 = w.push(WL.Item("c2", g, (-5, 0, 0, 10), stake=5, price=0.5))
+    assert w.candidates(g, st, None) == ([b2], 1)                                              # ... picks its own oldest left out (the never-priced one): never starved
+    w0, f0, _its = _wl([(5, None), (5, None)])
+    assert w0.candidates(f0, st, None)[1] == 0 and w0.aged_pick is None                       # nothing priced: no narrowing, no age pick
+    assert w0.candidates(f0, None, None)[1] == 0 and w0.by_clause["oldest"] == 0               # the count budget: no status -- the engine's order, untouched
+    assert [i.data["born"] for i in _wl([(1, None), (2, None)])[2]] == [0, 1]
 
 
 def test_74_2_the_open_set_is_the_old_heap_array():

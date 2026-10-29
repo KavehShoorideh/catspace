@@ -202,3 +202,113 @@ def file_surprise(key: tuple, fen: str, shrunk: str, detail: str):
             "spec_vs_kernel": detail, "status": "open", "wrong": None, "fide": None, "change": None, "expect": "agree"}
     p.write_text(json.dumps(case, indent=1) + "\n")
     return p
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ plan 76.2 (b): THE ORACLE
+# The GDL interpreter read against EVERY Game method that reads a rule (game.SPEC: the method -> the spec's relation): the same state, the spec's answer and the
+# surface's, compared. One reading of the state (the legal moves, the terminal reasons, the goals, check, the cells, the attacks, the captures), one next state and
+# one clock-event reading per legal move, one check reading per next state.
+
+def _squares(game, board) -> dict:
+    return {s: sq(s) for s in game.locations()}
+
+
+def game_oracle(game, board: chess.Board, before=None, prog: "GDL.Program | None" = None) -> list:
+    """-> [(method, detail)]: every Game method of game.SPEC whose answer at `board` (with the game record `before`) differs from the spec's. Empty: the surface
+    agrees with rules/chess.gdl at this state, on every legal move."""
+    from catspace.incubator.analyst.discovery import game as GM
+    prog = prog or program()
+    out = []
+    state = state_of(board)
+    mover = COLOUR[board.turn]
+    other = "black" if mover == "white" else "white"
+    r = Reading(state, prog, inputs_of(board, before))
+    db = r.db
+    name = _squares(game, board)
+    legal = list(game.moves(board))
+    ucis = sorted(m.uci() for m in legal)
+    if ucis != r.legal:
+        out.append(("moves", f"surface {sorted(set(ucis) - set(r.legal))} not the spec's; spec {sorted(set(r.legal) - set(ucis))} not the surface's"))
+    for m in list(board.generate_pseudo_legal_moves()) + legal:
+        if game.legal(board, m) != (m.uci() in r.legal):
+            out.append(("legal", f"{m.uci()}: surface {game.legal(board, m)}"))
+    for m in legal:
+        frm, to = m.from_square, m.to_square
+        got = sorted(x.uci() for x in game.moves_to(board, frm, to))
+        exp = sorted(u for u in r.legal if u[:4] == m.uci()[:4])
+        if got != exp:
+            out.append(("moves_to", f"{m.uci()[:4]}: surface {got}, spec {exp}"))
+    if COLOUR[game.turn(board)] not in {a[0] for rel, a in state if rel == "true.control"}:
+        out.append(("turn", f"surface {game.turn(board)}"))
+    kind = game.terminal(board, before)
+    spec_kind = next((k for k in KERNEL_ORDER if k in r.reasons), None)
+    if (KERNEL_KIND.get(kind) if kind is not None else None) != spec_kind:
+        out.append(("terminal", f"surface {kind}, spec reasons {r.reasons}"))
+    for side, role in ((chess.WHITE, "white"), (chess.BLACK, "black")):
+        g = game.goal(board, side, before)
+        exp = r.goals.get(role, [])
+        if (sorted([str(g)]) if g is not None else []) != exp:
+            out.append(("goal", f"{role}: surface {g}, spec {exp}"))
+    if before is not None and game.repetition(board, before) != ("draw_by_repetition" in r.reasons):
+        out.append(("repetition", f"surface {game.repetition(board, before)}"))
+    if game.in_check(board) != r.check:
+        out.append(("in_check", f"surface {game.in_check(board)}, spec {r.check}"))
+    clock = next(int(a[0]) for rel, a in state if rel == "true.halfmove")
+    if min(game.clock(board), CLOCK_LIMIT) != clock:
+        out.append(("clock", f"surface {game.clock(board)}, spec {clock}"))
+    cells = {(a[0], a[1]): (a[2], a[3]) for rel, a in state if rel == "true.cell"}
+    for s in game.locations():
+        u = game.unit_at(board, s)
+        exp = cells.get(name[s])
+        got = (COLOUR[u.owner], chess.piece_name(u.kind)) if u is not None else None
+        if got != exp:
+            out.append(("unit_at", f"{chess.square_name(s)}: surface {got}, spec {exp}"))
+    units = sorted((name[u.loc], COLOUR[u.owner], chess.piece_name(u.kind)) for u in game.units(board))
+    if units != sorted((fr, ck[0], ck[1]) for fr, ck in cells.items()):
+        out.append(("units", "the units differ"))
+    for side, role in ((chess.WHITE, "white"), (chess.BLACK, "black")):
+        k = game.royal(board, side)
+        exp = [fr for fr, ck in cells.items() if ck == (role, "king")]
+        if ([name[k]] if k is not None else []) != exp[:1] or len(exp) > 1:
+            out.append(("royal", f"{role}: surface {k}, spec {exp}"))
+    attacks = db.facts("attack")
+    for s in game.locations():
+        for side, role in ((chess.WHITE, "white"), (chess.BLACK, "black")):
+            got = sorted(name[x] for x in game.attackers(board, side, s))
+            exp = sorted((a[1], a[2]) for a in attacks if a[0] == role and (a[3], a[4]) == name[s])
+            if got != exp:
+                out.append(("attackers", f"{role} on {chess.square_name(s)}: surface {got}, spec {exp}"))
+        u = game.unit_at(board, s)
+        if u is not None:
+            got = sorted(name[x] for x in game.attacks_from(board, s))
+            exp = sorted((a[3], a[4]) for a in attacks if a[0] == COLOUR[u.owner] and (a[1], a[2]) == name[s])
+            if got != exp:
+                out.append(("attacks_from", f"{chess.square_name(s)}: surface {got}, spec {exp}"))
+        got = sorted(name[x] for x in game.adjacent(s))
+        exp = sorted((a[2], a[3]) for a in prog.static["king_step"].facts if (a[0], a[1]) == name[s])
+        if got != exp:
+            out.append(("adjacent", f"{chess.square_name(s)}: surface {got}, spec {exp}"))
+    captures = {(a[2], a[3], a[4], a[5]) for a in db.facts("capture") if a[1] == mover}
+    nexts = tuple(rel for rel in prog.nodes if rel.startswith("next."))
+    for m in legal:
+        u = m.uci()
+        term = move_term(u)
+        dbn = prog.run(state, [(mover, term), (other, "noop")], wanted=nexts + ("clock_event",))      # (one run: the next state and the move's clock events)
+        ns = frozenset(("true." + rel[5:], t) for rel in nexts for t in dbn.facts(rel))
+        if state_of(game.apply(board, m)) != ns:
+            out.append(("apply", f"{u}: the next states differ"))
+        chk = (other,) in prog.run(ns, wanted=("check",)).facts("check")
+        if game.gives_check(board, m) != chk:
+            out.append(("gives_check", f"{u}: surface {game.gives_check(board, m)}, spec {chk}"))
+        cap = (sq(m.from_square) + sq(m.to_square)) in captures
+        if game.is_capture(board, m) != cap:
+            out.append(("is_capture", f"{u}: surface {game.is_capture(board, m)}, spec {cap}"))
+        rk = "check" if chk else "capture" if cap else GM.QUIET
+        if game.reply_kind(board, m) != rk:
+            out.append(("reply_kind", f"{u}: surface {game.reply_kind(board, m)}, spec {rk}"))
+        ev = {a[0] for a in dbn.facts("clock_event")}
+        if set(game.clock_events(board, m)) != ev:
+            out.append(("clock_events", f"{u}: surface {sorted(game.clock_events(board, m))}, spec {sorted(ev)}"))
+        if game.promotes(m) != (term[0] == "promote"):
+            out.append(("promotes", f"{u}: surface {game.promotes(m)}"))
+    return out

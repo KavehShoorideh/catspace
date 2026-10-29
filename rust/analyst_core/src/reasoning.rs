@@ -925,7 +925,7 @@ impl ReasoningLedger {
     fn rule_interval(&self, m: &Move) -> (i64, i64) {
         let mut q = self.pos.clone(); q.play_unchecked(m);
         if q.is_checkmate() { return (MATE, MATE); }
-        if q.is_stalemate() || q.is_insufficient_material() { return (0, 0); }
+        if crate::game::stalemate(&q) || crate::game::insufficient(&q) { return (0, 0); }      // plan 76.2 (c): the rules' one definition (game.rs)
         let me = self.pos.turn();
         let b = q.board();
         let cap = gain_of(m);
@@ -1626,7 +1626,7 @@ impl ReasoningLedger {
         self.nodes += 1;
         let legal: Vec<Move> = self.pos.legal_moves().into_iter().collect();
         if legal.is_empty() { return (if self.pos.is_check() { (-MATE, -MATE) } else { (0, 0) }, vec![]); }
-        if self.pos.is_insufficient_material() { return ((0, 0), vec![]); }
+        if crate::game::insufficient(&self.pos) { return ((0, 0), vec![]); }      // plan 76.2 (c): the rule's one definition (game.rs)
         let key = (crate::threat::zkey(&self.pos), d + if self.deep { 1000 } else { 0 });
         if let Some(v) = self.tt.get(&key) { return v.clone(); }
         let in_check = self.pos.is_check();
@@ -1757,7 +1757,7 @@ impl ReasoningLedger {
         let t = self.pos.turn();
         let who = if t == Color::White { "White" } else { "Black" };
         if legal.is_empty() { self.say(if self.pos.is_check() { format!("{who} is checkmated.") } else { format!("{who} has no move: stalemate.") }); return (if self.pos.is_check() { (-MATE, -MATE) } else { (0, 0) }, vec![]); }
-        if self.pos.is_insufficient_material() { return ((0, 0), vec![]); }
+        if crate::game::insufficient(&self.pos) { return ((0, 0), vec![]); }      // plan 76.2 (c): the rule's one definition (game.rs)
         let key = (crate::threat::zkey(&self.pos), d + if self.deep { 1000 } else { 0 } + 5000);
         if let Some(v) = self.tt.get(&key) { self.say("(this position was already examined)".into()); return v.clone(); }
         let in_check = self.pos.is_check();

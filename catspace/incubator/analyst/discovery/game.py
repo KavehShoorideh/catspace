@@ -17,7 +17,14 @@ Lean `Chess.repetitionKey`) and the GAME RECORD (`Record`: how often each identi
 reads the record and the state's clock and adds the draws by rule (the third occurrence, Lean `Chess.threefoldClaimable` / `Ideas.Game.chess_threefold_iff`; the
 clock at its limit with no mate on the move, Lean `Chess.fiftyMoveClaimable` / `Ideas.Game.chess_fifty_iff`); CLOCK_EVENTS names what resets the clock (Lean
 `Chess.applyMove_halfmove` / `Ideas.Game.chess_clock`). The play server builds the record from the game (`play_server.game_history`), the chase reads it beside the
-line it is reading (agenda.py `ChaseCtx.history`, `_LineRecord`)."""
+line it is reading (agenda.py `ChaseCtx.history`, `_LineRecord`).
+
+plan 76.2 (b) THE RULES' ONE SURFACE. This protocol is where the machinery reads the rules -- legality (`moves`, `legal`, `moves_to`), the next state (`apply`), the
+terminals (`terminal`) and the goal (`goal`), and the rule readings beside them (check, capture, the clock's events, the units, the attacks). Its IMPLEMENTATION is
+the fast kernel (python-chess here, the Rust core beside it); its SPEC is rules/chess.gdl: `SPEC` names, for every method that reads a rule, the spec's relation it
+implements, and tests/test_rules_shelf.py runs the GDL interpreter as the ORACLE against each of them on the corners, the filed surprises and a random sample; Lean
+proves the spec's `legal`, `next`, `terminal` and `goal` the kernel's (Ideas.Spec.LegalEquiv, Ideas.Spec.NextEquiv). `NOT_RULES` lists the methods that read no rule
+(names, keys, coordinates, the valuation), each with why."""
 from __future__ import annotations
 
 from collections import Counter
@@ -104,6 +111,7 @@ class Game(Protocol):
     def turn(self, s) -> bool: ...
     def pass_(self, s): ...
     def terminal(self, s, before: "Record | None" = None) -> str | None: ...      # None, or 'mate' (the mover is mated), 'stalemate', 'draw', or a draw by rule (DRAWS_BY_RULE) read off the record and the clock
+    def repetition(self, s, before: "Record") -> bool: ...        # plan 75.4 (1) / 76.2 (b): the third occurrence of the state's identity (the record holds it twice before)
     def position_key(self, s) -> str: ...                         # plan 75.4: the state's identity (what a repetition repeats; the clocks omitted)
     def clock(self, s) -> int: ...                                # plan 75.4: the state's clock (the moves since the last clock event)
     def key_clock(self, key: str) -> int: ...                     # plan 75.4: the clock a state's key carries (without building the state)
@@ -133,6 +141,29 @@ class Game(Protocol):
     def move_from_key(self, s, key: str): ...
     def move_ends(self, m) -> tuple: ...                           # (from location, to location)
     def promotes(self, m) -> bool: ...
+    def legal(self, s, m) -> bool: ...                             # plan 76.2 (b): is `m` a legal move of the mover in `s`
+    def goal(self, s, side: bool, before: "Record | None" = None) -> int | None: ...      # plan 76.2 (b): the outcome's score for `side` (100 win, 50 draw, 0 loss), None if not terminal
+    def reply_kind(self, s, m) -> str: ...                         # plan 76.2 (b): what a move IS for the judge's rates: 'check', 'capture' or 'quiet' (the kernel's predicates)
+
+
+# plan 76.2 (b): THE SPEC OF THE SURFACE -- each Game method that reads a rule, and the relation of rules/chess.gdl it implements (an ontology shelf name). The
+# oracle test reads the spec's relation on the same state and compares (tests/test_rules_shelf.py).
+SPEC = {
+    "moves": "legal", "legal": "legal", "moves_to": "legal", "apply": "next", "turn": "tempo", "terminal": "terminal", "goal": "goal",
+    "repetition": "draw by repetition", "in_check": "check", "gives_check": "check", "is_capture": "capture", "reply_kind": "check",
+    "clock": "halfmove", "clock_events": "clock_event", "unit_at": "cell", "units": "cell", "royal": "cell", "attackers": "attack",
+    "attacks_from": "attack", "adjacent": "king_step", "promotes": "promotion",
+}
+# ... and the methods that read no rule: names, keys and coordinates (the notation), the valuation (a derived count: the store's VALUATION entry), the pass (a
+# counterfactual the machinery makes, no state of the game), the position's identity (an input the record keys by: the spec reads its count, `record`)
+NOT_RULES = {
+    "name": "the notation (SAN)", "key": "the notation (FEN)", "from_key": "the notation (FEN)", "loc_name": "the notation (square names)",
+    "move_key": "the notation (UCI)", "move_from_key": "the notation (UCI)", "move_ends": "the move term's squares (the spec's move term itself)",
+    "kinds": "the number of unit kinds (the spec's sort `kind`)", "kind_name": "the notation (unit names)", "coords": "features (no rule)",
+    "locations": "the spec's sort `square`", "measure": "the valuation (material: a VALUATION entry, derived)", "placing_most": "the valuation's choice",
+    "push_to": "moves_to and the valuation's choice", "pass_": "a counterfactual of the machinery (no state of the game)",
+    "position_key": "the record's identity (the spec's input `record` counts it)", "key_clock": "the clock carried by a key (the notation)",
+}
 
 
 class ChessGame:
@@ -212,7 +243,8 @@ class ChessGame:
         """plan 75.4 (5): the kernel's moves from `frm` to `to` -- python-chess's generator, LEGAL ones (or, with `legal` False, the pseudo-legal ones a static exchange reads):
         a pawn reaching its last rank gives one move per unit the promotion may place (queen, rook, bishop, knight; Lean `Chess.Move.promotion`); empty when none goes there."""
         gen = s.generate_legal_moves if legal else s.generate_pseudo_legal_moves
-        return list(gen(chess.BB_SQUARES[frm], chess.BB_SQUARES[to]))
+        return [m for m in gen(chess.BB_SQUARES[frm]) if m.to_square == to]      # plan 76.2 (b), surprise s011: filtered by the move's own squares -- python-chess's
+                                                                                  # to-mask reads a castling by its ROOK's square, so e1 -> g1 found no castling
 
     def placing_most(self, moves: list, valuation) -> "chess.Move | None":
         """plan 75.4 (5): among moves between two locations, the one placing the unit `valuation` (the store's VALUATION entry: `material`) values most -- the promotion's
@@ -294,6 +326,30 @@ class ChessGame:
 
     def promotes(self, m: chess.Move) -> bool:
         return m.promotion is not None
+
+    # plan 76.2 (b): the surface's last readings
+    def legal(self, s: chess.Board, m: chess.Move) -> bool:
+        """Is `m` a legal move of the mover (python-chess `Board.is_legal`; Lean `Chess.legalMove` = the spec's `legal`, Ideas.LegalEquiv.legal_iff)."""
+        return s.is_legal(m)
+
+    OUTCOME = {"mate": 0, "loss": 0, "win": 100}                   # the mover's score at a terminal the mover has lost / won; every other terminal is a draw (50)
+
+    def goal(self, s: chess.Board, side: bool, before: "Record | None" = None) -> int | None:
+        """The outcome's score for `side` at a terminal state (the spec's `goal`: the mated side 0, the other 100, a draw 50 each; Lean `Chess.gameStatus`,
+        Ideas.LegalEquiv.goal_win_iff / goal_loss_iff); None when the game goes on."""
+        t = self.terminal(s, before)
+        if t is None:
+            return None
+        mover = self.OUTCOME.get(t, 50)
+        return mover if side == s.turn else 100 - mover
+
+    def reply_kind(self, s: chess.Board, m: chess.Move) -> str:
+        """plan 76.2 (b): WHAT A MOVE IS, for the judge's rates (72.9 (a)): 'check' when it gives check (a mate included), else 'capture' when it takes a unit (en
+        passant included), else 'quiet' -- read off the kernel's predicates (`gives_check`, `is_capture`), never off the notation's marks."""
+        return NM.NAMES["check"].word if self.gives_check(s, m) else NM.NAMES["capture"].word if self.is_capture(s, m) else QUIET
+
+
+QUIET = "quiet"                                                  # the judge's third kind of reply (neither a check nor a capture): a word of the machinery, not of the rules
 
 
 class KingOfTheHillGame(ChessGame):

@@ -250,3 +250,18 @@ def test_the_entry_schema_takes_a_class_and_a_depth():
     assert any("no material signature" in x for x in LS.check_entry(bad))
     assert any("whole number" in x for x in LS.check_entry(dict(e, measure=dict(mm, depth=0))))
     assert LS.get("no measure-dropping move")["kind"] == "STOP"
+
+
+def test_the_miner_reads_the_refuted_cases_as_constraints():
+    """plan 76.3 (d): the class's refuted measures' cases (lemmas/surprises/) join the miner's sample -- the measure the play refuted (the sampled K+R choice, at
+    8/8/8/8/1K6/1R6/k7/8 w) admits no drop within its depth there, so it can never be chosen again; the class's mined measure drops there; a case already in the sample
+    is not added twice."""
+    rows = MN.with_surprises("KRvK", [], log=lambda *a: None)
+    assert [r["fen"] for r in rows] == ["8/8/8/8/1K6/1R6/k7/8 w - - 0 1"] and rows[0]["floor2"] is None
+    assert MN.with_surprises("KRvK", rows, log=lambda *a: None) == rows
+    assert MN.with_surprises("KQvK", [], log=lambda *a: None) == []
+    g = MN.Graph(chess.WHITE)
+    root = g.add(chess.Board(rows[0]["fen"]))
+    g.grow([root], 3)
+    assert MN.drops(g, MN.measure_of("(sum (area (reach L free)) (dist W L))"), [root], 3) == [False]
+    assert MN.drops(g, MN.measure_of(LS.get("mined technique KRvK")["measure"]["quantity"]), [root], 3) == [True]

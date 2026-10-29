@@ -1,0 +1,63 @@
+{
+ "name": "the rule: the fifty-move draw",
+ "kind": "RULE",
+ "reads": [
+  "movement",
+  "material",
+  "tempo"
+ ],
+ "terms": [],
+ "status": "PROVED",
+ "lean": [
+  "Ideas.LegalEquiv.drawByFiftyMoves_iff",
+  "Ideas.Game.chess_fifty_iff"
+ ],
+ "origin": "BASE",
+ "plan": [
+  "76.2"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {
+   "guard ten_t0 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "guard ten_t2 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "guard wide_t0 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "guard wide_t2 (plan 76.3 (e))": {
+    "count": 0,
+    "date": "2026-10-28"
+   },
+   "loop-2 batch (plan 76.3 (f))": {
+    "count": 0,
+    "date": "2026-10-28"
+   }
+  },
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/game.py:terminal",
+  "catspace/incubator/analyst/discovery/game.py:clock",
+  "rust/analyst_core/src/game.rs:fifty",
+  "lean/ideas/Ideas/Spec/LegalEquiv.lean:drawByFiftyMoves_iff"
+ ],
+ "note": "A hundred half-moves with no capture and no pawn move, and a legal move to make (FIDE 9.3, claimable; a mate or a stalemate on the move comes first): the spec's draw is the kernel's Chess.fiftyMoveClaimable with a legal move (Ideas.LegalEquiv.drawByFiftyMoves_iff).",
+ "params": {
+  "spec": "Ideas.Spec.Chess.drawByFiftyMoves",
+  "gdl": "draw_by_fifty_moves",
+  "surface": [
+   "terminal",
+   "clock",
+   "goal"
+  ]
+ }
+}
