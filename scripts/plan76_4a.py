@@ -12,6 +12,12 @@
   .venv/bin/python scripts/plan76_4a.py compare <dir> --jobs N
         (b) THE COMPARISON: per question, the derived defects against the hand table's AS SETS (the names map each hand kind to its place of the spec, printed), every
         disagreement printed; the same for the fixes (the fix filter's verdict per candidate; the fix families' routes against the derived fixes)
+  .venv/bin/python scripts/plan76_4a.py crosscheck --jobs N
+        plan 76.4b (a): THE SPEC IN RUST -- on the ten + wide root positions and the surprise shelf, every relation's extension from the native core's evaluation
+        (rules/chess.gdl read at run time) against gdl.py's, the state alone and with each legal move; the regression's top-down prover on the relations it reads
+  .venv/bin/python scripts/plan76_4a.py compare4b <dir> --jobs N
+        plan 76.4b (c): THE NATIVE CORE AGAINST THE PYTHON READING (the oracle) on every harvested question (the harvest records the keep questions and the fix
+        filter's candidate lists too): names, whole regressions, read sets, fix verdicts equal; the milliseconds per question of each
 Outputs under artifacts/experiments/ (untracked)."""
 from __future__ import annotations
 
@@ -29,6 +35,11 @@ import chess  # noqa: E402
 from catspace.incubator.analyst.discovery import gdl_chess as GC  # noqa: E402
 from catspace.incubator.analyst.discovery import lemma_store as LS  # noqa: E402
 from catspace.incubator.analyst.discovery import regression as RG  # noqa: E402
+
+
+def _fen(b: chess.Board) -> str:
+    """plan 76.4b: a recorded board as the regression read it -- the FEN with the RAW e.p. square (python-chess's "fen" mode: after every double push), the clocks."""
+    return b.fen(en_passant="fen")
 
 
 def _j(x):
@@ -56,36 +67,44 @@ def _install(rec: list) -> None:
         return [[d.kind, d.sq, list(d.by), d.why] for d in ds]
 
     om, omc, omat, opro, ofix = R.mate_defects, R.mate_defects_on, R.material_defects, R.promote_defects, R.fixes_of
-    ostill = R._A.still_routes_pos
+    okeep, ostills = R.threat_defects, getattr(R, "_stills", None)      # (plan 76.4b (b): the fix filter's batch; absent before the switch-over)
 
     def mate_defects(board, us, placement):
         t = time.perf_counter()
         out = om(board, us, placement)
-        rec.append(["mate", G.exact_fen(board), G.colour_of(us), [[p.symbol(), at, frm] for p, at, frm in placement], defs(out), (time.perf_counter() - t) * 1000])
+        rec.append(["mate", _fen(board), G.colour_of(us), [[p.symbol(), at, frm] for p, at, frm in placement], defs(out), (time.perf_counter() - t) * 1000])
         return out
 
     def mate_defects_on(cf, me):
         t = time.perf_counter()
         out = omc(cf, me)
-        rec.append(["mate_cf", cf.fen(), me, defs(out), (time.perf_counter() - t) * 1000])
+        rec.append(["mate_cf", _fen(cf), me, defs(out), (time.perf_counter() - t) * 1000])
         return out
 
     def material_defects(board, us, target):
         t = time.perf_counter()
         out = omat(board, us, target)
-        rec.append(["win", G.exact_fen(board), G.colour_of(us), target, defs(out), (time.perf_counter() - t) * 1000])
+        rec.append(["win", _fen(board), G.colour_of(us), target, defs(out), (time.perf_counter() - t) * 1000])
+        return out
+
+    def threat_defects(board, us, target=None):                  # plan 76.4b: the keep questions (the other side's goal read for the keeper)
+        t = time.perf_counter()
+        out = okeep(board, us, target)
+        rec.append(["keep", _fen(board), G.colour_of(us), target, defs(out), (time.perf_counter() - t) * 1000])
+        return out
+
+    def stills(q, board, us, moves, root, before=None):         # plan 76.4b: the fix filter's candidate lists (the question's spec and the engine's verdicts)
+        t = time.perf_counter()
+        out = ostills(q, board, us, moves, root, before)
+        rec.append(["stills", _fen(board), G.colour_of(us), [m.uci() for m in moves], root.goal, list(q.defect_key[:2]) if q.defect_key else None,
+                    [[p.symbol(), at, frm] for p, at, frm in R.placement_of(root)], None if before is None else sorted(_j(list(before)), key=repr),
+                    root.pattern.get("target"), list(out), (time.perf_counter() - t) * 1000])
         return out
 
     def promote_defects(board, sq, lift=False, priced=None):
         t = time.perf_counter()
         out = opro(board, sq, lift=lift, priced=priced)
         rec.append(["promote", G.exact_fen(board), sq, bool(lift), priced, defs(out[0]), _j(out[1]), (time.perf_counter() - t) * 1000])
-        return out
-
-    def still_routes_pos(pos, me, ucis, spec):
-        t = time.perf_counter()
-        out = ostill(pos, me, ucis, spec)
-        rec.append(["still", pos.fen(), me, list(ucis), _j(spec), [s for _u, s in out], (time.perf_counter() - t) * 1000])
         return out
 
     def fixes_of(defect, q, board, us):
@@ -95,7 +114,9 @@ def _install(rec: list) -> None:
         return out
 
     R.mate_defects, R.mate_defects_on, R.material_defects, R.promote_defects, R.fixes_of = mate_defects, mate_defects_on, material_defects, promote_defects, fixes_of
-    R._A.still_routes_pos = still_routes_pos
+    R.threat_defects = threat_defects
+    if ostills is not None:
+        R._stills = stills
     from catspace.incubator.analyst.discovery import words as WD
     from catspace.incubator.analyst.discovery import landing as LD
     LD.R.mate_defects_on = mate_defects_on                       # (landing.py reads regress as R: the same module object, patched once)
@@ -122,7 +143,7 @@ def harvest_case(out: str, sets: str, tier: int, pid: str) -> None:
         wall = time.perf_counter() - t
         seen, rows = set(), []
         for r in rec:
-            k = json.dumps(r[:-1] if r[0] in ("mate", "mate_cf", "win", "promote", "still") else r)
+            k = json.dumps(r[:-1] if r[0] in ("mate", "mate_cf", "win", "promote", "still", "keep", "stills") else r)
             if k in seen:
                 continue
             seen.add(k)
@@ -308,13 +329,27 @@ def cost_case(sets: str, tier: int, pid: str) -> None:
     R.mate_defects = wrap("mate", R.mate_defects)
     R.mate_defects_on = wrap("mate", R.mate_defects_on)
     R.material_defects = wrap("win", R.material_defects)
-    R._still = wrap("fix filter (per candidate)", R._still)
     R.threat_defects = wrap("keep", R.threat_defects)
+    ostills = R._stills                                  # plan 76.4b: the fix filter reads a candidate list in one crossing -- clocked per list, counted per candidate
+
+    def stills(q, board, us, moves, root, before=None):
+        t = time.perf_counter()
+        try:
+            return ostills(q, board, us, moves, root, before)
+        finally:
+            s = tally.setdefault("fix filter (per candidate)", [0, 0.0])
+            s[0] += len(moves)
+            s[1] += (time.perf_counter() - t) * 1000
+    R._stills = stills
     for p, fen, us in TI._cases(sets):
         if p == pid:
             t = time.perf_counter()
             TI._run(fen, us, tier=tier)
-            print("cost case done: " + json.dumps(dict(pid=pid, wall=time.perf_counter() - t, tally=tally, stats=R.regressor().stats)), flush=True)
+            st = dict(R.regressor().stats)
+            nat = R.regressor().B.native_stats()
+            st["regressions"] += nat[0]                  # (plan 76.4b: the native core's regressions read and cache hits)
+            st["cached"] += nat[1]
+            print("cost case done: " + json.dumps(dict(pid=pid, wall=time.perf_counter() - t, tally=tally, stats=st)), flush=True)
             return
 
 
@@ -710,6 +745,204 @@ def compare(d: str, jobs: int) -> None:
     print(f"OBS 76.4a compare: {len(files)} case files, wall {time.perf_counter() - t0:.1f} s")
 
 
+# ------------------------------------------------------------------------------------------------------------------------------------------ plan 76.4b (a): the spec in Rust
+
+CROSS_RELS = ("slide", "attack", "attacked", "check", "empty", "occupied", "move_by", "capture", "may_land", "en_passant", "has_move", "mate")      # the regression's reads
+
+
+def _cross_position(arg) -> dict:
+    """One position: (1) the native core's bottom-up evaluation of EVERY relation against gdl.py's -- the state alone, then each legal move as the joint move (the next
+    state's relations); (2) the top-down prover (the regression's evaluator) on the relations the regression reads, the certified relations read through the binding
+    and, separately, from their own clauses. -> counts and the first disagreements."""
+    pid, fen = arg
+    B = GC.Binding()
+    A = GC.native()
+    prog = B.prog
+    b = chess.Board(fen)
+    out = dict(positions=1, runs=0, relations=0, facts=0, ans=0, ans_facts=0, disagreements=0, samples=[])
+    state = GC.state_of(b) | frozenset(GC.inputs_of())
+    mover, other = ("white", "black") if b.turn else ("black", "white")
+    for m in [None] + list(b.legal_moves):
+        db = prog.run(state) if m is None else prog.run(state, [(mover, GC.move_term(m.uci())), (other, "noop")])
+        got = A.spec_run_bb(GC.parts(b), None if m is None else m.uci())
+        out["runs"] += 1
+        for rel in prog.nodes:
+            py = set(db.facts(rel))
+            out["relations"] += 1
+            out["facts"] += len(py)
+            if py != set(got[rel]):
+                out["disagreements"] += 1
+                if len(out["samples"]) < 3:
+                    out["samples"].append(f"{pid} {fen} {m} {rel}: gdl.py {len(py)}, native {len(got[rel])}")
+    db = prog.run(state)
+    for certified in (True, False):
+        for rel in CROSS_RELS + (() if certified else GC.CERTIFIED):
+            n = len(prog.signature(rel))
+            py = set(db.facts(rel))
+            out["ans"] += 1
+            out["ans_facts"] += len(py)
+            if set(A.spec_ans_bb(GC.parts(b), rel, [None] * n, certified)) != py:
+                out["disagreements"] += 1
+                if len(out["samples"]) < 3:
+                    out["samples"].append(f"{pid} {fen} top-down {rel} certified={certified}")
+    return out
+
+
+def crosscheck(jobs: int) -> None:
+    """(76.4b (a)) THE SPEC IN RUST against gdl.py on the ten + wide root positions and the surprise shelf (every filed case)."""
+    import trace_identity as TI
+    from catspace.incubator.analyst.discovery import surprises as SU
+    pos = [(pid, fen) for sets in ("ten", "wide") for pid, fen, _us in TI._cases(sets)] + [(cid, fen) for cid, fen, _us in SU.guard_cases()]
+    t0 = time.perf_counter()
+    tot: dict = {}
+    samples = []
+    for got in _pool(_cross_position, pos, jobs):
+        for k, v in got.items():
+            if k == "samples":
+                samples += v
+            else:
+                tot[k] = tot.get(k, 0) + v
+    prog = GC.program()
+    print(f"OBS 76.4b (a) cross-check: relations {len(prog.nodes)} (every relation of the spec), positions {tot['positions']} (ten + wide {len(pos) - len(SU.guard_cases())}, "
+          f"the surprise shelf {len(SU.guard_cases())}), evaluations {tot['runs']} (the state and each legal move as the joint move), relation extensions compared "
+          f"{tot['relations']}, facts compared {tot['facts']}; the top-down prover: {tot['ans']} relation readings, facts {tot['ans_facts']}; disagreements "
+          f"{tot['disagreements']}; wall {time.perf_counter() - t0:.1f} s")
+    for s in samples[:6]:
+        print("   ", s)
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ plan 76.4b (c): Rust against Python
+
+def _rset(r) -> tuple:
+    ds = [(d.kind, d.clause, d.lit, d.atom, d.deep, None if d.witness is None else (d.witness.atom, d.witness.body, d.witness.action, d.witness.flips), d.value)
+          for d in r.defects]
+    return (r.holds, r.clauses, ds, r.reads, r.rows, r.value, r.leaves)
+
+
+def _nm(ns) -> list:
+    return [(n.kind, n.sq, list(n.by), n.why) for n in ns]
+
+
+def _compare4b_file(path: str) -> dict:
+    """(76.4b (c)) on one case's questions: the native core against the Python reading of 76.4a (the oracle, with its cache and validation) -- per goal kind, the
+    names (kinds, squares, pieces, texts, order), the whole regression (the derivation, the defects with their witnesses and flipped leaves, the read set, the rows,
+    the value, the leaves) and the read set apart; per fix-filter candidate the verdict and the fix test's (mended, new); the milliseconds of each reading."""
+    from collections import Counter
+    from catspace.incubator.analyst.discovery import regress as R
+    B = GC.Binding()
+    spec = RG.Spec(B.prog, certified=GC.CERTIFIED)
+    po, na = RG.PyRegressor(spec, B), RG.Regressor(spec, B)
+    names, goals, unit = LS.defect_names(), LS.gdl_goals(), LS.goal_kinds().valuation.unit
+    cnt: Counter = Counter()
+    ms: Counter = Counter()
+    samples: dict = {}
+    case = Path(path).parent.name + "/" + Path(path).stem
+
+    def sample(cls, what):
+        s = samples.setdefault(cls, [])
+        if len(s) < 3:
+            s.append(f"{case}: {what}")
+
+    def question(kind, b, g, fut, theirs, recorded):
+        t = time.perf_counter()
+        no = _nm(po.names(b, g, names, theirs=theirs, future=fut))
+        ms[kind + " oracle"] += (time.perf_counter() - t) * 1000
+        t = time.perf_counter()
+        nn = _nm(na.names(b, g, names, theirs=theirs, future=fut))
+        ms[kind + " native"] += (time.perf_counter() - t) * 1000
+        cnt[kind + " questions"] += 1
+        x = B.future(b, fut)
+        ro, rn = po.regress(x, g), B.native_regress(B.to_move(x, g.on_move) if g.on_move is not None else x, g)
+        same_names, same_reg, same_reads = no == nn, _rset(ro) == _rset(rn), ro.reads == rn.reads
+        cnt[kind + " names equal"] += same_names
+        cnt[kind + " regressions equal"] += same_reg
+        cnt[kind + " read sets equal"] += same_reads
+        cnt[kind + " the engine's recorded answer equal"] += [list(d) for d in recorded] == [list(d) for d in nn]
+        if not (same_names and same_reg and same_reads):
+            sample(kind, f"{x.fen()} {g.head} oracle {no} native {nn} reads {len(ro.reads)}/{len(rn.reads)}")
+
+    for ln in open(path):
+        r = json.loads(ln)
+        k = r[0]
+        if k == "mate":
+            b, me, pl = chess.Board(r[1]), r[2], r[3]
+            g = RG.goal_of("mate", goals["mate"], B, B.role(me), extra=tuple(tuple(p) for p in pl))
+            question("mate", b, g, ([tuple(p) for p in pl], not me), False, r[4])
+        elif k == "mate_cf":
+            question("mate", chess.Board(r[1]), RG.goal_of("mate", goals["mate"], B, B.role(r[2])), None, False, r[3])
+        elif k == "win":
+            question("win", chess.Board(r[1]), RG.goal_of("win", goals["win"], B, B.role(r[2]), target=r[3], unit=unit), None, False, r[4])
+        elif k == "keep":
+            b, me, t = chess.Board(r[1]), r[2], r[3]
+            g = RG.goal_of("mate", goals["mate"], B, B.role(not me)) if t is None else RG.goal_of("win", goals["win"], B, B.role(not me), target=t, unit=unit)
+            question("keep", b, g, None, True, r[4])
+        elif k == "stills":
+            _k, fen, me, ucis, rgoal, key, pl, before, tgt, verdicts, _ms = r
+            b = chess.Board(fen)
+            moves = [chess.Move.from_uci(u) for u in ucis]
+            acts = [(B.role(b.turn), GC.move_term(u)) for u in ucis]
+            if rgoal == "mate":
+                g = RG.goal_of("mate", goals["mate"], B, B.role(me), extra=tuple(tuple(p) for p in pl))
+                fut, key, bef = ([tuple(p) for p in pl], not me), tuple(key), [tuple(x) for x in before]
+            elif rgoal == "win":
+                g = RG.goal_of("win", goals["win"], B, B.role(me), target=tgt, unit=unit)
+                fut, key, bef = None, R._NO_KEY, []
+            else:
+                cnt["fix (other roots: no regression) candidates"] += len(ucis)
+                continue
+            t = time.perf_counter()
+            fo = po.fixes(b, g, key, acts, fut, names, bef)
+            ms[f"fix ({rgoal}) oracle"] += (time.perf_counter() - t) * 1000
+            t = time.perf_counter()
+            fn = na.fixes(b, g, key, moves, fut, names, bef)
+            ms[f"fix ({rgoal}) native"] += (time.perf_counter() - t) * 1000
+            vo = [not m or bool(n) for _a, m, n in fo] if rgoal == "mate" else [bool(n) for _a, _m, n in fo]
+            vn = [not m or bool(n) for _a, m, n in fn] if rgoal == "mate" else [bool(n) for _a, _m, n in fn]
+            cnt[f"fix ({rgoal}) lists"] += 1
+            for u, a, o, n, vr, x1, x2 in zip(ucis, verdicts, vo, vn, verdicts, fo, fn):
+                cnt[f"fix ({rgoal}) candidates"] += 1
+                cnt[f"fix ({rgoal}) verdicts equal"] += o == n
+                cnt[f"fix ({rgoal}) (mended, new) equal"] += (x1[1], x1[2]) == (x2[1], x2[2])
+                cnt[f"fix ({rgoal}) the engine's recorded verdict equal"] += vr == n
+                if o != n or (x1[1], x1[2]) != (x2[1], x2[2]):
+                    sample(f"fix ({rgoal})", f"{fen} candidate {u} oracle {x1[1:]} native {x2[1:]}")
+    return dict(counts=dict(cnt), ms=dict(ms), samples=samples)
+
+
+def compare4b(d: str, jobs: int) -> None:
+    """(76.4b (c)) EQUALITY AND COST over every harvested question of the guard positions (`harvest` with the native core in the engine)."""
+    from collections import Counter
+    files = _files(d)
+    t0 = time.perf_counter()
+    tot: Counter = Counter()
+    ms: Counter = Counter()
+    samples: dict = {}
+    for got in _pool(_compare4b_file, files, jobs):
+        tot.update(got["counts"])
+        ms.update(got["ms"])
+        for cls, xs in got["samples"].items():
+            samples.setdefault(cls, []).extend(xs[: max(0, 6 - len(samples.get(cls, [])))])
+    for k in ("mate", "win", "keep"):
+        n = tot[k + " questions"]
+        if n:
+            print(f"OBS 76.4b (c) equality {k}: questions {n}; names equal {tot[k + ' names equal']}, whole regressions equal {tot[k + ' regressions equal']}, read sets "
+                  f"equal {tot[k + ' read sets equal']}, the engine's recorded answer equal {tot[k + ' the engine' + chr(39) + 's recorded answer equal']}; ms per question: "
+                  f"the Python reading (76.4a) {ms[k + ' oracle'] / n:.4f}, the native core {ms[k + ' native'] / n:.4f}")
+    for g in ("mate", "win"):
+        n = tot[f"fix ({g}) candidates"]
+        if n:
+            print(f"OBS 76.4b (c) equality fix filter ({g}): lists {tot[f'fix ({g}) lists']}, candidates {n}; verdicts equal {tot[f'fix ({g}) verdicts equal']}, "
+                  f"(mended, new) equal {tot[f'fix ({g}) (mended, new) equal']}, the engine's recorded verdict equal {tot[f'fix ({g}) the engine' + chr(39) + 's recorded verdict equal']}; "
+                  f"ms per candidate: the Python reading {ms[f'fix ({g}) oracle'] / n:.4f}, the native core {ms[f'fix ({g}) native'] / n:.4f}")
+    if tot["fix (other roots: no regression) candidates"]:
+        print(f"OBS 76.4b (c) fix filter (other roots, no regression read): candidates {tot['fix (other roots: no regression) candidates']}")
+    print(f"OBS 76.4b (c) disagreement samples: {sum(len(v) for v in samples.values())}")
+    for cls in sorted(samples):
+        for s in samples[cls]:
+            print(f"   [{cls}] {s[:500]}")
+    print(f"OBS 76.4b (c) compare: {len(files)} case files, wall {time.perf_counter() - t0:.1f} s")
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
 
@@ -731,5 +964,9 @@ if __name__ == "__main__":
         cost(opt("--sets", "ten"), int(opt("--tier", "0")), int(opt("--jobs", "1")))
     elif a[0] == "newgoals":
         newgoals(a[1] if len(a) > 1 else "")
+    elif a[0] == "crosscheck":
+        crosscheck(int(opt("--jobs", "1")))
+    elif a[0] == "compare4b":
+        compare4b(a[1], int(opt("--jobs", "1")))
     else:
         sys.exit(__doc__)

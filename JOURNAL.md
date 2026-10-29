@@ -35309,3 +35309,30 @@ both marked xfail(strict=False) naming plan 76.4b, THE REGRESSION IN RUST, as th
 OBS gate engine --only: test_offbuilt64 14 passed, 2 xfailed; test_tiers 13 passed, 1 xfailed; test_regress 87 passed, 1 xfailed (617 s).
 76.4b launched as one agent under docs/AGENT_BRIEF.md: the spec loaded into Rust from rules/chess.gdl (no clause transcribed), Pos.regress / Pos.fixes with read sets on the trackers,
 regression.py the test oracle, equality on every guard question, the cost before/after, the clocked tests re-run without a budget change, the guard identical to its parent.
+
+
+## 2026-10-29 00:25 -- plan 76.4b (a) THE SPEC IN RUST: rules/chess.gdl loaded into the native core from its text, the shelf's binding table, the python-chess board mirrored (branch worktree-agent-a128c491905ea4974)
+THE EVALUATOR CHOSEN: a direct evaluator in Rust mirroring gdl.py, not the crate's `ascent`: ascent compiles its clauses into Rust at build time, so the spec would have
+to be transcribed into its macro by hand -- a description read from a file at run time cannot be (the brief's rule: no clause transcribed). rust/analyst_core/src/gdl.rs
+reads the text as gdl.py does (KIF s-expressions; `or` expanded per branch; `true` / `next` / `init` flattened by the fluent's functor; the 76.1 (b) declarations
+`sort` / `signature` kept, not clauses; `does` and `record` inputs), cuts the dependency graph into strongly connected components (a negative edge inside one is an
+error: the description must be stratified), evaluates the static relations once and the rest bottom-up by SEMI-NAIVE rounds (the fixpoint of a recursive component:
+the rays `slide`, `king_ray`). Terms are interned (a ground term one u32: a constant or a compound); a row is eight of them. regression.rs holds the top-down tabled
+reading (76.4a's `Prover`, mirrored line by line: the plans per call pattern with regression.py's join order, the tables, the SCC iteration with its low links,
+negation as failure, `derivations`, `leaves`, `why_not`) and the regression itself (b's subject). THE BINDING TABLE IS THE SHELF'S: gdl_chess.py hands the native core
+(relation, the ontology entry's `rust` name) for every input relation and every certified one (`native_bindings`: true.cell rules.rs:cell, true.control
+pos.rs:turn_white, true.castling_right pos.rs:tkey, true.ep_square pos.rs:ep_square, true.halfmove game.rs:halfmoves, record game.rs:seen, does pos.rs:push,
+legal pos.rs:legal_ucis, attack_by pos.rs:attacks), each looked up in gdl_chess.rs's READERS; a spec relation without a reader is a load error. THE BOARD IS READ AS
+PYTHON-CHESS HOLDS IT (pyboard.rs): the regression's states are counterfactual boards shakmaty's Chess refuses (the side not to move in check, a king missing), and
+76.4a's binding read them through python-chess -- so `generate_legal_moves` (its order: `_slider_blockers`, `_generate_evasions`, `_is_safe`, `pin_mask`,
+`_ep_skewered`, `generate_castling_moves` with `clean_castling_rights`), `push` (`_to_chess960`, the castling rights, the raw e.p. square after every double push, the
+clocks) and the attack masks are mirrored; graph.pos_of's position (the clean rights, the e.p. square only when legal) for the exchange law's `see`.
+OBS 76.4b (a) cross-check: relations 99 (every relation of the spec), positions 123 (ten + wide 109, the surprise shelf 14), evaluations 3575 (the state and each legal
+move as the joint move), relation extensions compared 353925, facts compared 20558599; the top-down prover: 3198 relation readings, facts 333012; disagreements 0;
+wall 12.6 s (scripts/plan76_4a.py crosscheck --jobs 11: gdl.py's Program.run against the native core's, every relation as a set; the top-down prover on the twelve
+relations the regression reads, the certified ones through the binding and from their own clauses).
+NEGATIVE CONTROLS (not committed): the semi-naive rounds dropped (only the first round of a recursive component) -- OBS cross-check disagreements 57238; the top-down
+tables read in one pass (no fixpoint) -- OBS cross-check disagreements 562 (the guard does not see this one: see (b)).
+THE GUARD at this commit's state (the native core built, the engine not yet reading it): OBS ten t0 0 of 10 traces, read sets, leaf verdict lists, word lists and
+provenance lists differ (against this plan's parent snapshot artifacts/experiments/plan76_4b/parent, main 77160f84, taken with --jobs 11: ten t0 17 s, ten t2 70 s,
+wide t0 50 s, wide t2 194 s). The Rust builds re-point the shared editable install to this branch's crate.

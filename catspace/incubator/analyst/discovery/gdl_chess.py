@@ -383,6 +383,159 @@ class Binding:
         p = b.piece_at(sq)
         return p.symbol().upper() if p is not None else "?"
 
+    # -------------------------------------------------------------------------------- plan 76.4b: THE NATIVE CORE (rust/analyst_core/src/regression.rs)
+    # The regression read in Rust (the spec loaded there from rules/chess.gdl's text, the binding mirrored there: gdl_chess.rs reads the board as python-chess
+    # holds it, pyboard.rs); the Python reading of regression.py is its TEST ORACLE (`regression.PyRegressor`). What crosses: the board's parts, a goal's id (the
+    # GOAL entry's `gdl` substituted, registered once), the store's DEFECT_FIX bindings (registered once); back: the regression's fields, or the names' records
+    # (the template's fields -- the TEXT is formatted here, RUST_BOUNDARY risk 3), or per move the fix test's verdict. No Python callback per candidate.
+
+    @staticmethod
+    def future(b: chess.Board, fut) -> chess.Board:
+        """The goal's future of a state (regress.future_board, read here for the oracle): None -- the state itself; else (placements [(symbol, at, lifted from)], white
+        to move) -- each unit placed (graph.with_piece: whatever stood there gone, lifted from its square), then that side to move, the e.p. square dropped."""
+        if fut is None:
+            return b
+        pl, turn = fut
+        c = b
+        for sym, at, frm in pl:
+            c = c.copy(stack=False)
+            p = chess.Piece.from_symbol(sym)
+            if frm is not None:
+                c._remove_piece_at(frm)
+            c._set_piece_at(at, p.piece_type, p.color)
+        c = c.copy(stack=False)
+        c.turn = turn
+        c.ep_square = None
+        return c
+
+    def native_goal(self, goal) -> int:
+        """The goal's id in the native core (registered once per process: the head with its variables None, the role on move, the value)."""
+        gid = _GIDS.get(goal)
+        if gid is None:
+            A = native()
+            rel, args = goal.head
+            v = goal.value
+            val = None if v is None else (v[0], list(v[1]), int(v[2]), v[3][0], [None if GDL.is_var(a) else a for a in v[3][1]])
+            gid = _GIDS[goal] = A.spec_goal(goal.name, rel, [None if GDL.is_var(a) else a for a in args], goal.on_move, val)
+        return gid
+
+    @staticmethod
+    def native_entries(entries: list) -> None:
+        """The store's DEFECT_FIX bindings handed to the native core (once per list: the store's `defect_names`), the templates' keys with them; the texts stay here."""
+        if _ENTRIES[0] is entries:
+            return
+        A = native()
+        rows, keys = [], []
+        for e in entries:
+            g = e["gdl"]
+            lf, un = g.get("leaf"), g.get("unless")
+            rows.append((e["name"], g["goal"], g.get("for", "ours") == "theirs", g["defect"], g["order"], None if lf is None else tuple(lf), None if un is None else tuple(un),
+                         g.get("sq", ""), g.get("by", ""), g.get("group", ""), g.get("sort") == "sq", None if g.get("clause") is None else (g["clause"], g["lit"])))
+            keys.append(sorted(g["text"]) if isinstance(g["text"], dict) else None)
+        A.spec_names(rows, keys)
+        _ENTRIES[0] = entries
+
+    def native_regress(self, b: chess.Board, goal):
+        """THE REGRESSION read by the native core, as regression.py's Regression (its dataclasses): the derivation, the defects with their witnesses and the leaves
+        they flip, the read set, the head's rows, the value read, the leaves."""
+        from catspace.incubator.analyst.discovery import regression as RG
+        holds, clauses, defects, reads, rows, value, leaves = native().regress_bb(parts(b), self.native_goal(goal))
+
+        def leaf(t):
+            return RG.Leaf(t[0], t[1], t[2])
+        ds = []
+        for kind, clause, lit, atom, deep, w, val in defects:
+            wit = None if w is None else RG.Witness(w[0], tuple(w[1]), w[2], frozenset(leaf(f) for f in w[3]))
+            ds.append(RG.Derived(kind, clause, lit, atom, deep if deep is not None else (), wit, None if val is None else (val[0], val[1], tuple(sorted(val[2])))))
+        return RG.Regression(goal, holds, [(i, list(ls)) for i, ls in clauses], ds, frozenset(reads), rows=list(rows), value=value,
+                             leaves=frozenset(leaf(t) for t in leaves), state=b)
+
+    def native_names(self, b: chess.Board, goal, entries: list, theirs: bool = False, fut=None) -> list:
+        """THE NAMES of the goal's defects on the state's future, read by the native core (cached there per (key, goal)): the records' fields filled into the entries'
+        templates here (regression.name's texts)."""
+        from catspace.incubator.analyst.discovery import regression as RG
+        self.native_entries(entries)
+        out = []
+        for idx, s, by, frm, to, unit, value, rel in native().names_bb(parts(b), self.native_goal(goal), theirs, fut):
+            e = entries[idx]
+            g = e["gdl"]
+            d = g["defect"]
+            name = chess.square_name(s) if s is not None else ""
+            if d == "witness":
+                why = g["text"].format(sq=name, frm=chess.square_name(frm), to=chess.square_name(to), unit=unit, n=len(by))
+            elif d == "false":
+                tmpl = g["text"].get(rel) if isinstance(g["text"], dict) else g["text"]
+                why = tmpl.format(sq=name)
+            elif d == "leaf":
+                why = g["text"].format(sq=name, unit=unit)
+            else:
+                why = g["text"].format(sq=name, n=len(by), value=value)
+            out.append(RG.Named(e["name"], s, list(by), why, []))
+        return out
+
+    def native_fixes(self, b: chess.Board, goal, key: tuple, actions: list, fut, entries: list, before=None) -> list:
+        """THE FIX TEST of the named defect `key` for each action (a binding action (role, term) or the kernel's move), read by the native core in one crossing:
+        [(action, mended, new)] as regression.fixes."""
+        self.native_entries(entries)
+        moves = []
+        for a in actions:
+            if isinstance(a, chess.Move):
+                moves.append((a.from_square, a.to_square, a.promotion or 0))
+            else:
+                m = chess.Move.from_uci(uci_of(a[1]))
+                moves.append((m.from_square, m.to_square, m.promotion or 0))
+        got = native().fixes_bb(parts(b), self.native_goal(goal), (key[0], key[1]), moves, fut, None if before is None else list(before))
+        return [(a, mended, [tuple(k) for k in new]) for a, (mended, new) in zip(actions, got)]
+
+    @staticmethod
+    def native_clear() -> None:
+        if _NATIVE[0] is not None:
+            _NATIVE[0].spec_cache_clear()
+
+    @staticmethod
+    def native_stats() -> tuple:
+        return _NATIVE[0].spec_stats() if _NATIVE[0] is not None else (0, 0, 0)
+
+
+_NATIVE: list = [None]               # plan 76.4b: the native core (analyst_core with the spec loaded), once per process
+_GIDS: dict = {}                     # Goal -> its id in the native core
+_ENTRIES: list = [None]              # the DEFECT_FIX list registered there
+
+
+def parts(b: chess.Board) -> tuple:
+    """The board's fields as the native core reads a python-chess board: the eight bitboards, white to move, the RAW castling rights, the RAW e.p. square, the clocks."""
+    return ([b.pawns, b.knights, b.bishops, b.rooks, b.queens, b.kings, b.occupied_co[True], b.occupied_co[False]], b.turn, b.castling_rights, b.ep_square,
+            (b.halfmove_clock, b.fullmove_number))
+
+
+def native_bindings(prog: "GDL.Program | None" = None) -> list:
+    """THE BINDING TABLE handed to the native core (plan 76.4b (a)): the ontology shelf's entry of every input relation of the spec (a `true` fluent, `does`, `record`)
+    and of every certified relation -- (relation, the entry's `rust` binding); an object kind's slot entry is no relation's binding."""
+    from catspace.incubator.analyst.discovery import ontology as ON
+    prog = prog or program()
+    want = {r for r in prog.nodes if GDL._is_input(r)} | set(CERTIFIED)
+    out = []
+    for e in ON.load().values():
+        g = e.get("gdl") or {}
+        if "slot" in g or not e.get("rust"):
+            continue
+        rel = ("true." + g["fluent"]) if "fluent" in g else g.get("relation")
+        if rel in want:
+            out.append((rel, e["rust"]))
+    return sorted(out)
+
+
+def native():
+    """The native core with rules/chess.gdl loaded (its TEXT read here, the file the source; the shelf's binding table; the certified relations; the store's material
+    worth for the 'exchange from' law), once per process."""
+    if _NATIVE[0] is None:
+        import analyst_core as A
+        from catspace.incubator.analyst.discovery import lemma_store as LS
+        worth = LS.goal_kinds().valuation.worth
+        A.spec_load(SPEC.read_text(), native_bindings(), list(CERTIFIED), LOCATION_SORTS, CLOCK_LIMIT, [worth.get(k, 0) for k in "pnbrqk"])
+        _NATIVE[0] = A
+    return _NATIVE[0]
+
 
 def sq_terms(s: int) -> tuple:
     return sq(s)

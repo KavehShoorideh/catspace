@@ -26,6 +26,10 @@ mod pos;
 mod words;
 mod sched;
 mod handlers;
+mod gdl;
+mod regression;
+mod pyboard;
+mod gdl_chess;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::collections::HashMap;
@@ -1855,5 +1859,19 @@ fn analyst_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(plan::set_see_threats, m)?)?;
     m.add_function(wrap_pyfunction!(plan::set_harass, m)?)?;
     m.add_function(wrap_pyfunction!(waiting::set_one_move_waits, m)?)?;
+    m.add_function(wrap_pyfunction!(gdl_chess::spec_load, m)?)?;
+    m.add_function(wrap_pyfunction!(gdl_chess::spec_loaded, m)?)?;
+    m.add_function(wrap_pyfunction!(gdl_chess::spec_names, m)?)?;
+    m.add_function(wrap_pyfunction!(gdl_chess::spec_goal, m)?)?;
+    m.add_function(wrap_pyfunction!(gdl_chess::regress_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(gdl_chess::names_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(gdl_chess::reads_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(gdl_chess::fixes_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(gdl_chess::spec_cache_clear, m)?)?;
+    m.add_function(wrap_pyfunction!(gdl_chess::spec_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(gdl_chess::spec_run_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(gdl_chess::spec_ans_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(gdl_chess::py_legal_full_bb, m)?)?;
+    m.add_function(wrap_pyfunction!(gdl_chess::py_push_bb, m)?)?;
     Ok(())
 }

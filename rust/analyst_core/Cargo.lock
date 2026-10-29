@@ -28,6 +28,7 @@ dependencies = [
  "maia-chess",
  "pyo3",
  "rayon",
+ "rustc-hash",
  "serde_json",
  "shakmaty",
 ]

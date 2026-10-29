@@ -401,6 +401,24 @@ impl Pos {
         Ok((p1, rows, order))
     }
 
+    // ------------------------------------------------------------------------------------------------------------ plan 76.4b: THE REGRESSION on the handle
+
+    /// regress(goal) -> the whole regression of a registered goal (`spec_goal`: a GOAL entry's `gdl` head with its arguments substituted) on this position, as
+    /// gdl_chess.rs's `regress_bb` returns it: (holds, clauses, defects, reads, rows, value, leaves) -- the derivation (the clause read, its body atoms true / false,
+    /// the witnesses with the leaves they flip, the squares read). The position is read as shakmaty holds it (its e.p. square shakmaty's). ValueError when the spec is
+    /// not loaded or the goal unknown.
+    fn regress(&self, py: Python<'_>, goal: u32) -> PyResult<PyObject> { crate::gdl_chess::regress_pos(py, &self.pos, goal) }
+
+    /// fixes(goal, key, moves, future, before) -> per move (mended, new): the moves (from, to, promotion) after which the named defect `key` (name, location) of the
+    /// goal is gone in the goal's future of the next state and nothing named is new (gdl_chess.rs `fixes_bb` on this position; the kernel's next state, no Python
+    /// callback per candidate).
+    #[pyo3(signature = (goal, key, moves, future=None, before=None))]
+    #[allow(clippy::type_complexity)]
+    fn fixes(&self, goal: u32, key: (String, Option<u8>), moves: Vec<(u8, u8, u8)>, future: Option<(Vec<(String, u8, Option<u8>)>, bool)>,
+             before: Option<Vec<(String, Option<u8>)>>) -> PyResult<Vec<(bool, Vec<(String, Option<u8>)>)>> {
+        crate::gdl_chess::fixes_pos(&self.pos, goal, key, moves, future, before)
+    }
+
     /// THE TRANSPOSITION KEY, EXACT (python-chess's `board._transposition_key()`): (the six piece bitboards, white's, black's, white to move, the castling rights as the
     /// rooks' squares, the LEGAL en passant square or None) -- not the clocks. The route memo is keyed by it: `key()` (the 64-bit zobrist) would serve a proof to
     /// another position on a collision.
