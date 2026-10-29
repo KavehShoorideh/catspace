@@ -4093,3 +4093,18 @@ THE FINDINGS OF 75.4 (rules the kernel lacks beyond these, and places where the 
 label lines of (2); one new Lean file, Ideas/Draws.lean (no sorry); tests/test_rules_draws.py in the engine gate.
 75.4's recount, corrected (journal 2026-10-28 12:21): two hand readings on edited lines whose fact stays (B1, D8h) are carried, so CHESS FACT rows 210 -> 210 at every commit
 (the "-> 209" / "-> 208" above read them as dropped); RULE rows 106 -> 99; docs/AGENDA_AUDIT.md "75.4 recount".
+
+
+### 76.4a DEFECTS AND FIXES FROM THE SPEC (Kaveh 2026-10-28, "how are the defects found and raised?": by hand, a fixed list per goal kind -- the largest chess fact still in code)
+Today a goal is a pattern tested by a word; when the word fails the DEFECTS are a hand-written list per goal kind (mate: a flight square, the checker takeable, an interposition, the landing
+attacked; material: defended, not attacked, can run; promotion: stopper, blocker, the square or the path attacked; fork: the landing unsafe, one target defends the other), and a second
+hand-written table maps each defect to its FIX family (cover or block the flight, deflect or remove the taker, ...). The lists are a human reading of each definition's conjuncts.
+Since 76.1-76.2 the definitions are the SPEC: mate, capture, promotion, check are relations of rules/chess.gdl with clause bodies, generated into Lean and proved equal to the kernel. GOAL
+REGRESSION over a clause body is generic: the goal is a head; its DEFECTS are the body atoms false in this position (with the squares that make them false: the read set); a FIX is a move
+after which such an atom becomes true, computed by the spec's next-state relation (certified: NextEquiv), filtered by legality (LegalEquiv). Nothing in that knows what a flight square is.
+BUILD: `regression.py` (generic: works on any relation of the spec through the ontology shelf and the GDL interpreter; names no chess object) producing defects and fixes for the GOAL
+entries; the hand tables (regress.py / words.rs: the D1a-D1h families of the audit) become TEST ORACLES; on the guard (ten + wide, tiers 0 and 2) the derived defects equal the hand defects
+as sets per question (print disagreements and read each: a derived defect the table lacks is a FINDING -- the table was incomplete -- never a reason to filter); decisions identical; the
+recount: the D1 families leave agenda.py / regress.py; then one goal we never wrote a table for ("win this exchange"; a mined technique's floor) regressed by the same code, shown in a
+trace. Speed: the regression is cached per (position key, goal); the Rust port of the regression is 72.7's remaining step, not 76.4a; print the cost (ms per question) before and after.
+Then 76.4 as written: mining objects (line, blocked, region as test cases), material as the first mined valuation, the second game.
