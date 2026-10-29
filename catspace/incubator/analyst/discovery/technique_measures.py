@@ -195,6 +195,60 @@ def _axis_atoms() -> tuple:
 
 AXIS_ATOMS = _axis_atoms()
 ATOM_BY_KEY = {a.key: a for a in ATOMS + AXIS_ATOMS}
+
+# PLAN 76.4c (a) THE ATOMS AS TERMS OF THE ONE TERM LANGUAGE (terms.py: typed combinators over the ontology shelf's relations, read through the spec): every atom
+# above re-expressed, each value equal to the python-chess reading here on the guard positions and the surprise shelf (tests/test_plan76_4c.py; the OBS of
+# scripts/plan76_4c.py atoms). The units by the spec's placement: W (cell ? us king), L (cell ? them king), P the first of our units with our king lifted (the
+# unit sort's declared order, then the location's); THE REGION reaches by the king's step only onto the squares we do not attack with their king lifted (a line
+# through it runs on); THE EDGE the squares with fewer king steps than the most, THE CORNER those with the fewest; material the wcount of a VALUATION's worths.
+ATOM_DEFS = (
+    ("W", "(cell ? us king)"),
+    ("L", "(cell ? them king)"),
+    ("P", "(first (without W (cell ? us ?)))"),
+    ("free", "(not (without L (attacked us ?)))"),
+    ("region_set", "(reach (restrict (king_step ? ?) free) L)"),
+    ("edge", "(not (extreme max all (king_step ? ?)))"),
+    ("corner", "(extreme min all (king_step ? ?))"),
+)
+ATOM_TERMS = {
+    "region": "(count region_set)",
+    "region_off_edge": "(count (and region_set (not edge)))",
+    "region_area": "(area region_set)",
+    "edge_dist": "(dist (king_step ? ?) L edge)",
+    "corner_dist": "(dist (king_step ? ?) L corner)",
+    "kings_dist": "(dist (king_step ? ?) W L)",
+    "material_us": "(wcount 1 material (cell ? us ?))",
+    "material_them": "(wcount 1 material (cell ? them ?))",
+    "tempo": "(value (halfmove ?))",
+    **{f"{u}_rank_edge": f"(axisdist rank {u} (axisends rank))" for u, _g in UNITS},
+    **{f"{u}_file_edge": f"(axisdist file {u} (axisends file))" for u, _g in UNITS},
+    **{f"{u}{v}_rank": f"(axisdist rank {u} {v})" for (u, _g), (v, _h) in itertools.combinations(UNITS, 2)},
+    **{f"{u}{v}_file": f"(axisdist file {u} {v})" for (u, _g), (v, _h) in itertools.combinations(UNITS, 2)},
+    "turn": "(ind (notb (eq mover us)))",
+}
+
+
+def term_language():
+    """(the domain of rules/chess.gdl and the shelf, the chess reader, the atoms' defined names, the atoms' terms by key) -- plan 76.4c (a)."""
+    from catspace.incubator.analyst.discovery import gdl_chess as GC
+    from catspace.incubator.analyst.discovery import ontology as ON
+    from catspace.incubator.analyst.discovery import terms as TL
+    dom = TL.Domain(GC.program(), ON.load())
+    vals = {"material": GC.valuation_weights(LS.goal_kinds().valuation)}
+    defs = TL.Defs()
+    for name, body in ATOM_DEFS:
+        defs.define(name, TL.parse(body, dom, defs, vals))
+    atoms = {k: TL.parse(s, dom, defs, vals) for k, s in ATOM_TERMS.items()}
+    return dom, GC.TermReader(), defs, atoms
+
+
+def term_atom_values(board: chess.Board, side: bool, lang=None) -> dict:
+    """plan 76.4c (a): every atom's value read through the term language (the same keys as `atom_values`)."""
+    from catspace.incubator.analyst.discovery import gdl_chess as GC
+    from catspace.incubator.analyst.discovery import terms as TL
+    dom, reader, defs, atoms = lang or term_language()
+    ctx = TL.Ctx(dom, reader, board, GC.COLOUR[side], defs)
+    return {k: ctx.ev(t) for k, t in atoms.items()}
 _KIND_ORDER = (chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT, chess.PAWN)
 
 

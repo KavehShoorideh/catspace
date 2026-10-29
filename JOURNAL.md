@@ -35450,3 +35450,43 @@ batch (15 s, one batch): RIGHT 32, UNKNOWN 2, WRONG 6; proved RIGHT 32. Gates: t
 test_offbuilt64 15 + 1 xfailed, test_tiers 14, test_regress 87 + 1 xfailed.
 76.4 MINING launched: one term language with typed combinators; mining objects (line, blocked, region rediscovered or not); material as the first mined valuation beside the hand entry;
 checkers as the acid test if time allows.
+
+
+
+## 2026-10-29 02:05 -- plan 76.4c (a) ONE TERM LANGUAGE WITH TYPED COMBINATORS over the ontology shelf's relations; the technique atoms re-expressed in it (branch worktree-agent-a07aeaec17cb5fe3c)
+THE PARENT SNAPSHOT of this plan step (main fba136dd, ten + wide, tiers 0 and 2, count budget, PYTHONHASHSEED=0, --jobs 11): artifacts/experiments/plan76_4c/parent in
+this worktree; OBS walls ten t0 8 s, ten t2 28 s, wide t0 19 s, wide t2 73 s.
+WHAT WAS BUILT: discovery/terms.py (new, GENERIC: its code names no relation, constant or word of a game -- tests/test_plan76_4c.py reads its strings and identifiers
+against the spec's relations, every sort's members, the names table and the shelf's kinds). THE SORTS are found in the spec BY ROLE: the location (the shelf's one
+OBJECT kind whose sort is a product: here square = (file, rank), each component ordered by the spec's successor table), the side (the spec's roles), the placement
+fluent (the one fluent of (location, side, X): cell) and its unit sort X, whose turn (the one fluent of one side), the opponents (the static relation of two sides);
+the plan's seven sorts location, side, unit, locations, units, count, bool, and every other sort of the spec an opaque slot sort (direction, wing, clock, ...).
+THE CONSTRUCTORS (33, `terms.CONSTRUCTORS`): the spec's relations as LITERALS (each slot free, a constant or a side term us / them / mover), not / and / or / minus,
+exists, closure (a transitive closure in the last two location slots, the leading slots held), reach (k steps or any), restrict, compose, without (a relation read
+with the units on a set of locations lifted), count, wcount (a VALUATION's worths over a unit slot), dist (the fewest steps of a relation between two sets),
+axisdist / axisends (the per-axis distances along a component's successor table), extreme (min / max successors), all, area, first, sum / product / sub, ind, eq,
+nonempty, notb, value, lex, and DEFINED names (`define name := term`, terms.Defs). Every term prints as its s-expression (`parse` reads it back), has its reads
+(the spec relations, `rels`; the shelf's SUPPLIED base kinds through the entries, `base_reads`) and is PRICED BY SIZE (a literal one, a constructor one, a side term
+or a constant in a literal's slot none, a defined name one). IMPLICATION (`terms.implies`): a sound syntactic order (and / minus / restrict imply their first
+argument; A implies (or A B) and (closure A); a bounded reach implies a longer one; closed under the constructors) -- the pruning of (b) reads it. Two readers:
+terms.GDLReader (gdl.py's interpreter: the oracle) and gdl_chess.TermReader (the native core's prover, 76.4b's reading; `lift` takes units off a python-chess board).
+THE ATOMS RE-EXPRESSED (technique_measures.ATOM_DEFS / ATOM_TERMS, `term_atom_values`): W (cell ? us king), L (cell ? them king), P (first (without W (cell ? us ?))),
+free (not (without L (attacked us ?))), the region (reach (restrict (king_step ? ?) free) L), the edge (not (extreme max all (king_step ? ?))), the corner (extreme min
+all (king_step ? ?)); the nine 73.5 atoms and the thirteen 73.6 axis atoms over them (sizes 2 to 5).
+OBS 76.4c (a) atoms as terms: positions 123 (ten, wide, surprise shelf), readings 246 (each side as the side read for), atoms 22; equal to python-chess's reading:
+region 246/246, region_off_edge 246/246, region_area 246/246, edge_dist 246/246, corner_dist 246/246, kings_dist 246/246, material_us 246/246, material_them
+246/246, tempo 246/246, W_rank_edge 246/246, L_rank_edge 246/246, P_rank_edge 242/246, W_file_edge 246/246, L_file_edge 246/246, P_file_edge 241/246, WL_rank
+246/246, WP_rank 241/246, LP_rank 241/246, WL_file 246/246, WP_file 241/246, LP_file 241/246, turn 246/246; differences 29
+OBS 76.4c (a) readers: the chess reader (the native core's prover) against the GDL oracle (gdl.py) on the same 22 terms: 246 of 246 readings agree on every term
+FINDING (the 29 differences, read): all are the six P atoms on five pawn endings of the wide set (6fnQB, B4dy4, Clhax, iAVbH, Yq763), White read for, whose only
+non-royal units are pawns: the vocabulary's P names "pawns the most advanced first, then the lower square" (base_vocabulary), a PER-KIND order (every other kind the
+lowest square); the language's `first` orders by the unit sort's declared order then the location's -- one rule for every kind. The language has no per-kind order and
+none was added (it would be a chess fact in the language); the K+R / K+Q classes the axis atoms serve have one P. Every other atom equal on every reading.
+NEGATIVE CONTROL (not committed; `scripts/plan76_4c.py atoms --control`: the free squares read off THEIR attack): OBS region 5/246, region_off_edge 14/246,
+region_area 58/246. A second wrong build the guard positions cannot see (`--unlifted`: their king not lifted): 0 differences -- no guard reading has the opponent
+in check along a line with a free square behind its king; tests/test_plan76_4c.py pins it on a fixture (the region with the king lifted 47, unlifted 49).
+THE GUARD (against the parent): OBS ten t0 0 / 0 / 0 / 0 / 0 of 10 (traces, read sets, leaf verdict lists, word lists, provenance lists); ten t2 0 / 0 / 0 / 0 / 0 of 10;
+wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 8 s, 28 s, 18 s, 71 s) -- the engine reads none of it.
+OBS audit rows total 1609: LOGIC 1264, RULE 93, NAME 21, CHESS FACT 198, HEURISTIC 33 (CHESS FACT 198 -> 198). OBS lemma store validate: entries 128, problems 0.
+OBS ontology validate: problems 0. OBS gate engine --only: test_plan76_4c 7 / 0 / 0 0.5 s; test_plan73_5 7 / 0 / 0 2.0 s; test_plan73_5b 12 / 0 / 0 7.9 s;
+test_rules_gdl 12 / 0 / 0 4.4 s. scripts/gate.py: test_plan76_4c in ENGINE_NAMES.

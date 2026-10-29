@@ -546,6 +546,39 @@ def sq_terms(s: int) -> tuple:
     return sq(s)
 
 
+# ------------------------------------------------------------------------------------------------------------------------------------------ plan 76.4c: the term language's reader
+
+class TermReader:
+    """PLAN 76.4c (a): the chess reading of the term language (terms.py, which names no game object): a state is a python-chess board; `rows` -- every row of a
+    relation of the spec, read by the native core's prover with the certified relations through the binding (the regression's reading, 76.4b: equal to the GDL
+    interpreter on every relation of the guard positions, scripts/plan76_4a.py crosscheck); `lift` -- the board with the units on the given locations taken off
+    (the side to move, the rights, the clocks kept: the counterfactual the regression's boards already are)."""
+
+    def __init__(self, prog: "GDL.Program | None" = None):
+        self.prog = prog or program()
+
+    @staticmethod
+    def key(b: chess.Board):
+        return Binding.key(b)
+
+    def rows(self, b: chess.Board, rel: str):
+        sig = self.prog.signature(rel)
+        return Binding.native_rows(b, rel, (None,) * len(sig))
+
+    @staticmethod
+    def lift(b: chess.Board, locs, dom) -> chess.Board:
+        c = b.copy(stack=False)
+        for i in locs:
+            c.remove_piece_at(_SQ[tuple(dom.ungroup(i))])
+        return c
+
+
+def valuation_weights(valuation) -> dict:
+    """PLAN 76.4c: a VALUATION entry's worths (by the kernel's unit letters) as weights of the spec's unit sort (its members by name) -- the binding's mapping."""
+    from catspace.incubator.analyst.discovery import names as NM
+    return {_KIND[NM.kind(letter)]: w for letter, w in valuation.worth.items()}
+
+
 # ------------------------------------------------------------------------------------------------------------------------------------------ the surprise store
 # (plan 76.0 (b) wrote these in scripts/crossplay.py; plan 76.1 (a) moved them here, the one place both the cross-play and the ontology shelf's agreement read)
 
