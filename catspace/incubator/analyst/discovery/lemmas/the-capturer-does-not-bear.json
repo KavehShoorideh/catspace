@@ -1,0 +1,36 @@
+{
+ "name": "the capturer does not bear",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "attack",
+  "movement"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "76.4a"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regression.py:name"
+ ],
+ "note": "The exchange goal's capture literal is false: the unit on the given square does not bear on the target (plan 76.4a (d): move_by's clauses, the deepest false atom).",
+ "params": {
+  "gdl": {
+   "goal": "exchange",
+   "defect": "false",
+   "clause": 0,
+   "lit": 0,
+   "order": 0,
+   "text": "the unit on {sq} does not bear on the target"
+  }
+ }
+}

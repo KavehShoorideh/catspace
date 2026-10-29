@@ -35254,3 +35254,37 @@ test_plan72_8 8/0/0/0 0.6 s; test_duty63 12/0/0/0 0.4 s; test_plan62 28/0/0/0 8.
 test_plan75 11/0/0/0 0.6 s; test_plan76 20/0/0/0 62.1 s; test_regress 87/0/1/0 567.3 s -- its one xfail (non-strict) is 52.18, the discovery position proved under the POOL at 30 s, which XPASSed on
 main (journal 19:40): a clock-bound test, read as the engine's cost at the clock (about 3x, above), not a decision of the count budget. OBS lemma store validate: entries 125, problems 0 (uncatalogued 0). OBS ontology validate: problems 0.
 IN THIS COMMIT besides (c): regression.within / actions, goal_of's $from and the binding's "exchange from" law (unread by the engine: (d) uses them), the harness's cost and newgoals commands.
+
+
+## 2026-10-28 22:02 -- plan 76.4a (d) THE NEW GOALS by the same code (win this exchange; the K+R floor's mate in two); W0VFO 10 s and the loop-2 batch; 76.4a marked BUILT (branch worktree-agent-aad9b2e21eb1ed682)
+WIN THIS EXCHANGE (a goal no table was written for): the store's new GOAL `exchange` -- `gdl` head capture(?k, $us, $from, $target), us on move, its value the
+binding's law "exchange from" (the target's worth by the material valuation, less what they win back on the square after that capture: the Rust see, the mirror of
+Ideas.ExchangeLaw), need the valuation's unit; basis RULE (Game.is_capture), none of the agenda's four roles (not pursued: a demonstration of the regression); its
+names, two new DEFECT_FIX entries -- `the capturer does not bear` (the capture's literal 0 false) and `the exchange loses` (the value short, the attacks of theirs on
+the target read). No code of its own: regression.py, the binding and the store. OBS 76.4a (d) exchange goal on the ten + wide root positions: captures of ours 264,
+losing now (a defect) 182, with a fix 83. A TRACE (scripts/plan76_4a.py newgoals; ten/eSJqH):
+  EXCHANGE 8/1Rb3kp/p2q2p1/2p1pp2/pQ6/1bP4P/1P3PPK/8 w - - 0 35: win this exchange -- Rxc7+ (capture(?k, white, b, 7, c, 7), value: the exchange begun by it, need 1)
+    derivation: the head holds (1 row(s)); the value read -2
+    defect the exchange loses (the exchange begun from there gives -2; 1 unit(s) of theirs bear on it); by ['d6']
+    fixes (our moves after which Rxc7+ wins by the exchange, nothing new): Qb6, Qxc5, Qa5
+THE MINED K+R TECHNIQUE'S FLOOR (its measure's floor: a mate within two moves, mate_in_one / mate_in_two): the mate goal -- the same GOAL entry, the same names --
+regressed at the leaves of regression.within (an AND-OR over the spec's certified legal and next state, every reply read; no table per depth). A TRACE on
+k7/8/2K5/8/8/8/8/7R w (mate in two, none in one): "Kc7: a FIX -- every reply met: Ka7 Ra1#"; "Kb6: a FIX -- every reply met: Kb8 Rh8#"; "Rh7: 1 escape(s) -- Kb8
+escapes (flight a7)"; "Rh8+: 1 escape(s) -- Ka7 escapes (checker takeable a8)"; "Kd7: 3 escape(s) -- Kb8 escapes (flight a8, flight a7); ..."; fixes (mate in two):
+Kc7, Kb6 -- each escape named by the mate defects of our nearest answer there (no clause literal false, then the fewest names). OBS 76.4a (d) the K+R floor
+k7/8/2K5/8/8/8/8/7R w (mate in two, none in one): the mate goal within two moves, fixes ['Kc7', 'Kb6'].
+THE GUARD (the store gained a GOAL entry the engine loads): against the (c) build 0 / 0 / 0 / 0 / 0 of 10, 10, 99, 99 on all five lists; DECISION lines against the
+parent 0 of 218 (snapshots wall 330 s).
+NEGATIVE CONTROL (not committed: the exchange's value read for the other side): OBS gate engine: files 1, passed 12, failed 1 (test_76_4a_d_a_goal_no_table_was_written_for_win_this_exchange).
+CLOCKED (one run each, directional): OBS W0VFO 10 s (the pool, alone): POOL: ended at 7.3 s of 10.0 after 0 extra pass(es); 38 questions asked in the first, 6 moved
+up by the policy; status kept; the decision is Qb7 (+3) (by chase: step_after+step_least, answer Qb7 MATCH); inner agendas 267, inner questions 3743 (76.3 (f): 1015,
+15347 -- about a quarter of the work per second). OBS loop-2 batch (rand14_10 .. rand17_10 at 15 s in the pool, the question log to a fresh file, graded by
+Stockfish depth 14 in a separate process, `question_prior grade`; wall 77 s): OBS prior grade: 40 decisions graded by Stockfish (depth 14) over 40 agendas: RIGHT 32,
+UNKNOWN 2, WRONG 6; OBS prior grade by proof: proved RIGHT 31, proved WRONG 2, unproved RIGHT 1, unproved WRONG 4, none 2 -- not worse than 32 RIGHT / 6 WRONG; the six
+WRONG are the same six decisions (2CEDb Qxg7, 4E4iU Kg8, 9QsbL Nc4, KSMKJ gxh5, L2luA Ra5, r3oph Rxd1+); TWO PROOFS NOT REACHED in 15 s, read as the cost: 0QxXi's Qf7
+(RIGHT) and KSMKJ's gxh5 are decided by the unfinished line (76.3 (f) had them as chase claims; KSMKJ's was already read there as the clock's variation). The
+clock bears the regression on this batch and on W0VFO; it does not on test_regress's 52.18 at 30 s (its non-strict xfail, (c)). The Rust port of the regression
+(72.7's step) is what gives the time back.
+OBS lemma store validate: entries 128, problems 0. OBS gate engine --only: test_plan76_4a 13/0/0/0 0.8 s; test_plan75 11/0/0/0 0.6 s; test_plan73 10/0/0/0 23.0 s.
+docs/LEAN_INDEX.md: its generated "used by" lines (regression.py cites Ideas.FrameLemma.frame_unchanged, gdl_chess.py Ideas.LegalEquiv.attackBy_iff), rebuilt.
+76.4a IN SUM: docs/ANALYST_PLAN.md 76.4a marked BUILT.

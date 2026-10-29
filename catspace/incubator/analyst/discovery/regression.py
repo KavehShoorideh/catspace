@@ -834,15 +834,17 @@ def actions(R: "Regressor", x, role: str) -> list:
 class Within:
     action: object             # our action
     holds: bool                # the goal is reached within the moves, every reply read
-    escapes: list              # [(their reply, the named defects of our best answer there -- fewest -- or of the position itself at the last move)]
+    escapes: list              # [(their reply, the named defects of our best answer there, or of the position itself at the last move)]
     names: list = field(default_factory=list)      # depth 1: the goal's named defects after the action (none: it holds)
+    near: tuple = (1, 0)                           # depth 1: how far the goal is -- (a positive literal of its clause false, the named defects): the best answer is the least
 
 
 def within(R: "Regressor", x, goal: Goal, us: str, n: int, entries: list) -> list:
     """THE GOAL WITHIN `n` MOVES OF OURS, every reply of theirs read -- an AND-OR over the spec's certified `legal` and next state, the regression of the goal at
     its leaves (the same regression: no table per depth): n = 1, the goal regressed after each of our actions (its named defects; none = it holds there); n > 1,
     an action holds when every reply leaves an action that holds within n - 1 (a reply is an ESCAPE otherwise, with the named defects of our best answer: the
-    fewest). The DEFECTS of the goal within n moves at `x` are, per action of ours, its escapes; its FIXES the actions with none. -> [Within] in the actions' order."""
+    nearest -- no positive literal of the goal's clause false, then the fewest named defects). The DEFECTS of the goal within n moves at `x` are, per action of
+    ours, its escapes; its FIXES the actions with none. -> [Within] in the actions' order."""
     out = []
     them = R.B.other(us)
     for a in actions(R, x, us):
@@ -850,7 +852,7 @@ def within(R: "Regressor", x, goal: Goal, us: str, n: int, entries: list) -> lis
         if n <= 1:
             reg = R.regress(x1, goal)
             nm = name(reg, entries, R.B, x1)
-            out.append(Within(a, reg.holds, [], nm))
+            out.append(Within(a, reg.holds, [], nm, (int(any(d.kind == "false" for d in reg.defects)), len(nm))))
             continue
         escapes = []
         replies = actions(R, x1, them)
@@ -863,7 +865,7 @@ def within(R: "Regressor", x, goal: Goal, us: str, n: int, entries: list) -> lis
             sub = within(R, x2, goal, us, n - 1, entries)
             if any(w.holds for w in sub):
                 continue
-            best = min(sub, key=lambda w: (len(w.names) if n == 2 else len(w.escapes), repr(w.action)), default=None)
+            best = min(sub, key=lambda w: (w.near if n == 2 else (len(w.escapes),), repr(w.action)), default=None)
             escapes.append((r, best.names if best is not None and n == 2 else (best.escapes if best is not None else [])))
         out.append(Within(a, not escapes, escapes))
     return out

@@ -1,0 +1,66 @@
+{
+ "name": "exchange",
+ "kind": "GOAL",
+ "reads": [
+  "attack",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "BASE",
+ "plan": [
+  "76.4a"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regression.py:Regressor",
+  "catspace/incubator/analyst/discovery/gdl_chess.py:Binding"
+ ],
+ "note": "Win this exchange (plan 76.4a (d): a goal no table was written for): the spec's capture of the target by the unit on a given square, us on move, its value the exchange begun by that capture -- the target's worth less what they win back on the square -- at least the valuation's unit; regressed by regression.py with no code of its own; no role of the four (the agenda does not pursue it), cited by no Lean theorem as a goal.",
+ "params": {
+  "question": "exchange",
+  "basis": "RULE",
+  "rule": "Game.is_capture",
+  "valuation": "material",
+  "stake": null,
+  "ends_game": false,
+  "keep": false,
+  "about": "target",
+  "chase": false,
+  "reads_on_kill": false,
+  "near": null,
+  "gdl": {
+   "head": [
+    "capture",
+    "?k",
+    "$us",
+    "$from",
+    "$target"
+   ],
+   "on_move": "$us",
+   "value": {
+    "law": "exchange from",
+    "args": [
+     "$target",
+     "$from",
+     "$us"
+    ],
+    "need": "$unit",
+    "reads": [
+     "attack",
+     "$them",
+     "?f",
+     "?r",
+     "$target"
+    ]
+   }
+  }
+ }
+}

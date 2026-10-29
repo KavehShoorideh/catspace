@@ -219,6 +219,46 @@ def test_76_4a_c_the_walls_flights_are_the_landings_of_the_names():
     assert R.landings(ds) == [d.sq for d in ds if d.kind == "flight"] == [chess.H7]
 
 
+def test_76_4a_d_a_goal_no_table_was_written_for_win_this_exchange():
+    """(d) THE NEW GOAL, by the same code: 'win this exchange' (the store's GOAL `exchange`: the capture from a given unit, the exchange begun by it as the value)
+    -- a capture that loses now names its defect (the value short, the attacks of theirs on the target read); a capture by a unit that does not bear names the
+    false literal; regression.fixes finds the moves after which the same capture wins (nothing new); a winning capture has no defect."""
+    rg = _rg()
+    gx = LS.gdl_goals()["exchange"]
+    b = chess.Board("4k3/8/2p5/3p4/8/8/8/3QK3 w - - 0 1")                    # Qxd5? the c6 pawn takes back: the exchange gives 1 - 9 = -8
+    g = RG.goal_of("exchange", gx, B, "white", target=chess.D5, unit=1, frm=chess.D1)
+    r = rg.regress(b, g)
+    nm = RG.name(r, NAMES, B, b)
+    assert not r.holds and [(n.kind, n.sq, n.by) for n in nm] == [("the exchange loses", chess.D1, [chess.C6])] and "-8" in nm[0].why
+    g2 = RG.goal_of("exchange", gx, B, "white", target=chess.C6, unit=1, frm=chess.D1)      # the queen does not bear on c6
+    assert [(n.kind, n.sq) for n in RG.name(rg.regress(b, g2), NAMES, B, b)] == [("the capturer does not bear", chess.D1)]
+    b3 = chess.Board("4k3/8/2p5/3p4/8/8/3R4/3QK3 w - - 0 1")                 # the rook in front: Rxd5 cxd5 Qxd5 -- the exchange from the rook gives 1 - (5 - 1) = -3
+    g3 = RG.goal_of("exchange", gx, B, "white", target=chess.D5, unit=1, frm=chess.D2)
+    assert [(n.kind, "-3" in n.why) for n in RG.name(rg.regress(b3, g3), NAMES, B, b3)] == [("the exchange loses", True)]
+    b4 = chess.Board("4k3/8/8/3p4/8/8/8/3QK3 w - - 0 1")                     # an undefended pawn: Qxd5 wins it
+    assert rg.regress(b4, RG.goal_of("exchange", gx, B, "white", target=chess.D5, unit=1, frm=chess.D1)).holds
+    e = chess.Board("8/1Rb3kp/p2q2p1/2p1pp2/pQ6/1bP4P/1P3PPK/8 w - - 0 35")  # eSJqH (the guard's ten): Rxc7+ Qxc7 loses 2 now
+    ge = RG.goal_of("exchange", gx, B, "white", target=chess.C7, unit=1, frm=chess.B7)
+    ne = RG.name(rg.regress(e, ge), NAMES, B, e)
+    assert [(n.kind, n.by) for n in ne] == [("the exchange loses", [chess.D6])]
+    acts = [a for a in RG.actions(rg, e, "white") if B.ends(a)[0] != chess.B7]
+    fixes = [e.san(chess.Move(*B.ends(a))) for a, mended, new in RG.fixes(rg, e, ge, (ne[0].kind, ne[0].sq), acts, (lambda x: x), NAMES) if mended and not new]
+    assert "Qb6" in fixes                                                    # after Qb6 the capture from b7 wins by the exchange, nothing new
+
+
+def test_76_4a_d_the_kr_floor_mate_in_two_by_the_same_regression():
+    """(d) the mined K+R technique's floor (its measure's floor: a mate within two moves): the mate goal regressed at the leaves of regression.within -- every
+    reply read -- has Kb6 as a fix (Kb8 forced, Rh8#) and names the escapes of a first move that is no fix."""
+    rg = _rg()
+    b = chess.Board("k7/8/2K5/8/8/8/8/7R w - - 0 1")
+    g = RG.goal_of("mate", LS.gdl_goals()["mate"], B, "white")
+    res = RG.within(rg, b, g, "white", 2, NAMES)
+    by = {GC.uci_of(w.action[1]): w for w in res}
+    assert by["c6b6"].holds and not by["c6b6"].escapes
+    assert not by["h1h2"].holds and by["h1h2"].escapes                        # a waiting rook move: their king walks out
+    assert all(not w.holds for w in RG.within(rg, b, g, "white", 1, NAMES))     # no mate in one there
+
+
 def test_76_4a_the_fix_test_reads_the_line_through_their_king():
     """A FIX is an action after which the defect is gone and nothing is new (regression.fixes). Nd6 discovers the rook's check on d7; Qb5 covers the flight e8 along
     the line THROUGH the king (the king on e8 would be attacked from b5): the derived fix test finds it -- the hand table's cover test (the flight square attacked

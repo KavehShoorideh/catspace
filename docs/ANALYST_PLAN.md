@@ -4125,3 +4125,18 @@ as sets per question (print disagreements and read each: a derived defect the ta
 recount: the D1 families leave agenda.py / regress.py; then one goal we never wrote a table for ("win this exchange"; a mined technique's floor) regressed by the same code, shown in a
 trace. Speed: the regression is cached per (position key, goal); the Rust port of the regression is 72.7's remaining step, not 76.4a; print the cost (ms per question) before and after.
 Then 76.4 as written: mining objects (line, blocked, region as test cases), material as the first mined valuation, the second game.
+* 76.4a BUILT 2026-10-28 on branch worktree-agent-aad9b2e21eb1ed682 (journal 2026-10-28 20:40, 20:50, 21:50, 22:02): (a) discovery/regression.py, GENERIC (a
+  top-down tabled reading of rules/chess.gdl; certified relations -- `legal`, `attack_by` (new RULE entry "the rule: attack", Ideas.LegalEquiv.attackBy_iff) -- read
+  through the kernel for their truth, their clauses for their derivation; the next state through Game.apply, NextEquiv): the derivation, the defects (false
+  literals with their deepest atom; the witnesses of a true negated literal with the leaves their next state flips; the value short), the fixes, cached and
+  validated per (state, goal); GOAL `gdl` heads (mate, win) and DEFECT_FIX `gdl` names (no check, checker takeable, flight, interposition, not attacked,
+  defended); on the 218 guard runs' questions mate 508705 (0.722 ms against the hand's 0.0195), win 327579 (0.074 / 0.0062). (b) the derived defects equal the
+  hand tables EXACTLY on every question (mate 508705, win 327579); the fix filter 99.84 / 99.56 percent of 3.3 M / 8.7 M candidates, every disagreement one of two
+  classes, read: a square covered along a line through their king (the table incomplete: kept) and the capture of the target itself (the hand reads the exchange on
+  our own unit: a bug of the table); promotion's attacked squares a mapping gap (a count, no literal), the stopper not regressible; the save goal 100 percent. (c)
+  the switch-over: the agenda's defects and fix filter read the regression, the hand tables test oracles (tests/oracles/regress_tables.py), the keep questions'
+  defects the other side's goal holding (`in check`, new `hangs`); DECISIONS 0 of 218 differ, every trace difference attributed to (b)'s two classes by a control
+  (reinstated: 0 of 218 on all five lists); CHESS FACT rows 205 -> 202; the engine about 3x slower at the count budget (the Rust port is 72.7's). (d) a goal no table
+  was written for -- GOAL `exchange` (win this exchange) -- and the K+R floor's mate in two (regression.within), by the same code, with traces; W0VFO 10 s Qb7 +3
+  proved; loop-2 RIGHT 32 / UNKNOWN 2 / WRONG 6 (two proofs not reached in 15 s). NOT built: the walk of checks' defect tests (a looser, two-move notion than a
+  mend), the promotion's and the reach defects (no literal of one state), the Rust port. No Rust build.

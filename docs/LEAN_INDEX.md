@@ -458,7 +458,7 @@ Do not edit by hand.
 - **theorem `Ideas.FrameLemma.between_reach`** (line 75): Every square strictly between `s` and `t` lies on a line through `t`.
   - used by: catspace/incubator/analyst/lemma_explorer.py
 - **theorem `Ideas.FrameLemma.frame_unchanged`** (line 83): THE FRAME-INDEPENDENCE LEMMA: if no touched square bears on any square of the frame `F`, the board on `F` and every attack onto `F` are unchanged by the move.
-  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/lemma_explorer.py, rust/analyst_core/src/lib.rs, rust/analyst_core/src/plan.rs, rust/analyst_core/src/rules.rs
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/regression.py, catspace/incubator/analyst/lemma_explorer.py, rust/analyst_core/src/lib.rs, rust/analyst_core/src/plan.rs, rust/analyst_core/src/rules.rs
 - **theorem `Ideas.FrameLemma.attacked_unchanged`** (line 118): The corollary the index uses: whether a frame square is attacked by either side is unchanged.
 
 ## lean/ideas/Ideas/Game.lean
@@ -2013,6 +2013,7 @@ Do not edit by hand.
 - **theorem `Ideas.LegalEquiv.pieceAttacks_of`** (line 461): The kernel's piece attack once the unit is known.
 - **theorem `Ideas.LegalEquiv.slider_line_iff`** (line 470)
 - **theorem `Ideas.LegalEquiv.attackBy_iff`** (line 495): THE GENERATED ATTACK IS THE KERNEL'S, FOR EVERY KIND, ON EVERY POSITION: the spec's `attack_by k` holds from `s` to `t` exactly when a unit of kind `k` and colour `c` stands on `s` and the kernel's `Chess.pieceAttacks` s
+  - used by: catspace/incubator/analyst/discovery/gdl_chess.py
 - **theorem `Ideas.LegalEquiv.attack_iff`** (line 525)
 - **theorem `Ideas.LegalEquiv.attacked_iff`** (line 543): THE GENERATED `attacked` IS THE KERNEL'S `Chess.isAttacked`, on every position.
 - **theorem `Ideas.LegalEquiv.oneKing_sq`** (line 554): One king of a side: its square.
@@ -2092,10 +2093,11 @@ Do not edit by hand.
 - **theorem `Ideas.LegalEquiv.not_isCastle_ep`** (line 1599)
 - **theorem `Ideas.LegalEquiv.legal_of_castle`** (line 1601)
 - **theorem `Ideas.LegalEquiv.legal_iff`** (line 1619): THE SPEC'S `legal` IS THE KERNEL'S `legalMove`, on every position with one king of the side to move and the e.p
-  - used by: catspace/incubator/analyst/discovery/game.py
+  - used by: catspace/incubator/analyst/discovery/game.py, catspace/incubator/analyst/discovery/gdl_chess.py, catspace/incubator/analyst/discovery/regression.py
 - **theorem `Ideas.LegalEquiv.legal_iff_reachable`** (line 1698): THE EQUIVALENCE ON EVERY REACHABLE POSITION (no hypothesis left: one king each side, `Chess.reachable_positionInvariant`; the e.p
 - **theorem `Ideas.LegalEquiv.legal_moveOf`** (line 1708): The move binding reads every legal term back to the kernel's move it came from (`moveOf`).
 - **theorem `Ideas.LegalEquiv.hasMove_iff`** (line 1717): The side to move HAS A MOVE in the spec exactly when the kernel lists a legal move.
+  - used by: catspace/incubator/analyst/discovery/regression.py
 - **theorem `Ideas.LegalEquiv.mate_iff`** (line 1732): THE SPEC'S MATE IS THE KERNEL'S CHECKMATE (`Chess.checkmate`: in check, no legal move).
 - **theorem `Ideas.LegalEquiv.stalemate_iff`** (line 1744): THE SPEC'S STALEMATE IS THE KERNEL'S (`Chess.stalemate`: not in check, no legal move).
 - **theorem `Ideas.LegalEquiv.mate_iff_mated`** (line 1763): The spec's mate and stalemate are the machinery's game's (`Ideas.Game.chess`: the kernel's legal moves and check).
@@ -2211,6 +2213,7 @@ Do not edit by hand.
 - **theorem `Ideas.NextEquiv.castle_case`** (line 1206): A pseudo-legal castling: the side to move's, its right kept, king and rook home, the king's and the rook's landing squares empty
 - **theorem `Ideas.NextEquiv.applyMoveSpec_applyMove`** (line 1212): THE KERNEL'S NEXT STATE IS THE SPEC'S: on every position, for every pseudo-legal move `m` of the kernel, `Chess.applyMove p m` is the position the spec's `next` facts after the move's term describe -- its board, its side
 - **theorem `Ideas.NextEquiv.applyMoveSpec_eq_applyMove`** (line 1225): THE NEXT STATE IS A FUNCTION AND IT IS `applyMove`: every position the spec's next facts describe after a pseudo-legal move's term agrees with the kernel's `applyMove` on everything the spec states.
+  - used by: catspace/incubator/analyst/discovery/gdl_chess.py, catspace/incubator/analyst/discovery/regression.py
 - **theorem `Ideas.NextEquiv.moveOf_castle`** (line 1230)
 - **theorem `Ideas.NextEquiv.moveOf_termOf`** (line 1239): THE MOVE BINDING READS EVERY PSEUDO-LEGAL MOVE BACK: the kernel's move a term means at the position (`moveOf`, reading the position) is the move the term was written from -- e1g1 is the castling exactly where it is pseud
 - **theorem `Ideas.NextEquiv.drawByRepetition_iff`** (line 1278): The spec's draw by repetition is the record's third occurrence (`Ideas.Game.Record.threefold`).

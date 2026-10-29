@@ -1,0 +1,34 @@
+{
+ "name": "the exchange loses",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "attack",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "76.4a"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/regression.py:name"
+ ],
+ "note": "The exchange goal's value is short: the exchange begun by that capture gives less than the valuation's unit; the attacks of theirs on the target read (plan 76.4a (d)).",
+ "params": {
+  "gdl": {
+   "goal": "exchange",
+   "defect": "value",
+   "order": 1,
+   "text": "the exchange begun from there gives {value}; {n} unit(s) of theirs bear on it"
+  }
+ }
+}

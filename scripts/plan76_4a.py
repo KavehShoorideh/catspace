@@ -401,9 +401,9 @@ def floor_trace(C: Ctx, fen: str, log=print) -> dict:
     for w in res:
         x1 = C.B.apply(b, w.action)
         if w.holds:
-            met = [f"{_san(x1, r)} {next(_san(C.B.apply(x1, r), v.action) for v in RG.within(C.R, C.B.apply(x1, r), g, us, 1, C.names) if v.holds)}#"
+            met = [f"{_san(x1, r)} {next(_san(C.B.apply(x1, r), v.action) for v in RG.within(C.R, C.B.apply(x1, r), g, us, 1, C.names) if v.holds)}"
                    for r in RG.actions(C.R, x1, C.B.other(us))]
-            log(f"  {_san(b, w.action)}: a FIX -- every reply met: {', '.join(met)}")
+            log(f"  {_san(b, w.action)}: a FIX -- " + (f"every reply met: {', '.join(met)}" if met else "no reply: the goal holds"))
         else:
             esc = "; ".join(f"{_san(x1, r)} escapes ({', '.join(f'{n.kind} {chess.square_name(n.sq) if n.sq is not None else chess.square_name(0)[:0]}' for n in ns) or 'no landing reads a mate'})"
                             for r, ns in w.escapes[:3])
@@ -442,8 +442,11 @@ def newgoals(d: str) -> None:
                         exchange_trace(C, fen, m.from_square, m.to_square)
     print(f"OBS 76.4a (d) exchange goal on the ten + wide root positions: captures of ours {n_caps}, losing now (a defect) {n_def}, with a fix {n_fix}")
     print("-- the K+R floor")
-    got = floor_trace(C, "k7/8/1K6/8/8/8/8/7R w - - 0 1")
-    print(f"OBS 76.4a (d) the K+R floor k7/8/1K6/8/8/8/8/7R w: the mate goal within two moves, fixes {got['fixes']}")
+    got = floor_trace(C, FLOOR)
+    print(f"OBS 76.4a (d) the K+R floor {FLOOR.split()[0]} w (mate in two, none in one): the mate goal within two moves, fixes {got['fixes']}")
+
+
+FLOOR = "k7/8/2K5/8/8/8/8/7R w - - 0 1"           # a KRvK position at the mined technique's floor (its measure's floor: a mate within two moves)
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ (b) the comparison
