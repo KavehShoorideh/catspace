@@ -4180,3 +4180,18 @@ hand oracle admitted it by accident, the regression dropped it, and their reduce
   the flight covered, the deflection, the target attacked by the moved unit); the move landing on a taker, the skewer and the promotion's two-state tests stay; guard
   0 of 218; CHESS FACT rows 202 -> 198 (B5 8 -> 4). FINDING: the regression's readings never iterate a recursive table (a one-pass control moved no guard line; the
   ray is read back from its bound end), the fixpoint is exercised by (a)'s cross-check only. Rust builds: the shared editable install points at this branch's crate.
+
+
+### 76.5 THE VALUATION AS ONE DEFINITION (Kaveh 2026-10-29 GO "sure, lets go"; the 76.4c finding: the store's `material` entry was the one definition for the AGENDA only -- the Rust core
+keeps its own worths (lib.rs value / kernel_value, rules.rs val, words.rs worth_of, plan.rs val with a `>= 3` threshold) and Python copies live in ruler.py, table.py, selfmine, ledger,
+ledger_puzzles, surprise_loop, watch; a mined valuation could not even be tried)
+ONE SOURCE: the store's VALUATION entry (`material`, HAND; `material-mined`, MINED). The Rust core takes the valuation at init (`analyst_core.set_valuation(worths, unit, royal)` called by the
+Python side from the store before any word is read; every Rust site reads that table; the `>= 3` threshold in plan.rs becomes what it means -- "a unit worth more than a pawn" / "the smallest
+non-pawn worth" -- derived from the table, never a literal); every Python copy is deleted or routed to `lemma_store` (ruler.py's import-time assertion goes; the ledgers read the entry).
+A test asserts no worth literal remains outside the two entries (the generic test's sibling: grep the crate and discovery/ for the hand table's numbers in a worth role; list every hit as
+a FINDING if it cannot be routed). Lean: the worths in lean/ideas (the audit: mateGain 100000 vs the engine's 100; Ideas' worth constants) are a VALUATION, not a rule -- record as an
+OBLIGATION that the theorems hold for any worth table with the properties they use (ordering, the pawn unit), do not rewrite proofs in 76.5; cite the files.
+ACCEPTANCE: the guard identical (the default valuation is unchanged: 0 of 218 on all five lists); then THE EXPERIMENT 76.4c could not run: the mined valuation switched in through the one
+source (a run-time choice, not a flag left in the code: the experiment harness points the GOAL entries at `material-mined`, runs, restores), decisions on the ten + wide listed and read
+(Stockfish depth 14 in a separate process judges the chess, never a premise), the loop-2 batch at 15 s graded in its own process -- hand vs mined, one sitting; the report says which worths
+the engine should read, with the reason; nothing adopted by the agent (Kaveh decides). Then 76.4d CHECKERS (docs/PLAN76_4D_CHECKERS_BRIEF.md) as the next agent.
