@@ -1763,7 +1763,11 @@ class Agenda:
         return best
 
     def _wl_said(self, q: R.Question, cands: list) -> None:
-        """plan 74.2b: the trace says when the first clause narrowed the choice."""
+        """plan 74.2b: the trace says when the first clause narrowed the choice (plan 76.3 (f): and when the age rule picked)."""
+        if self.wl.aged_pick is not None and self.wl.aged_pick.payload is q:
+            self.lines.append(f"{RN.PREFIX}Q{q.id} selected by the age rule (76.3 (f): every pass, one pick is the oldest): the oldest open question that could keep the "
+                              f"status and that cheapest-first left out")
+            return
         priced = [i.price for i in cands if i.price is not None]
         self.lines.append(f"{RN.PREFIX}Q{q.id} selected by 74.2b clause (1): no move is proved to keep the status; {len(cands)} open question(s) could keep it"
                           + (f", the cheapest price class {priced[0]:.2f} s (the judge's price of its routes read before)" if priced else ", none priced yet") + "; the policy orders inside it")

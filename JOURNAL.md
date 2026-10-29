@@ -35073,3 +35073,39 @@ THE GUARD (no engine path touched; the tallies written after it): OBS guard ten 
 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s, 24 s, 16 s, 58 s). OBS audit recount: rows total 1609 ... CHESS FACT 205 (205 -> 205). OBS lemma store validate:
 entries 123; problems 0. OBS gate engine --only: test_plan73 10/0/0/0 14.7 s (the tally, the write, the rule, nothing deleted -- on a copy of the store);
 test_plan75 11/0/0/0 0.5 s; test_plan73_5b 12/0/0/0 7.9 s; test_plan73_6 27/0/0/0 34.2 s; test_rules_shelf 12/0/0/0 68.9 s.
+
+
+## 2026-10-28 19:05 -- plan 76.3 (f) AGE / WEIGHT: every pass, one pick is the oldest (the worklist); W0VFO 10 s and the loop-2 batch; the batch tallied; 76.3 marked BUILT (branch worktree-agent-ad149634c92619751)
+THE RULE (worklist.py; no number -- the given-clause loop's age-weight pick with no ratio): a frame's agenda is ONE PASS over its open items; the first time in the pass
+that 74.2b's clause (1) narrows to the cheapest price class AND leaves a keeping item out, the pick is the OLDEST item it left out (`born`: when the item first entered the
+worklist, stamped by push / defer); once per pass; every other pick as before. So cheapest-first never starves a question: in each pass the oldest question it passed
+over is asked. The trace says so ("why: Q.. selected by the age rule (76.3 (f): every pass, one pick is the oldest): ..."); analyse prints `OBS worklist <id>: picks narrowed
+by clause (1) N, by the age rule M` when either narrowed (new; not in this batch's output, which ran before it).
+WHAT THE GUARD EXERCISES: at the count budget the root reads no status (`_wl_status` is None), so `_ask_loop` never reaches the clauses: the guard exercises the order
+key's fall-through and the age stamps on every push and deferral, not the age pick -- the rule fires only where prices exist, from a pool's or a tier's second pass on
+(a question's price is its routes read in an earlier pass). NEGATIVE CONTROLS (not committed): (1) the age pick forced wherever (the count budget included) inside the
+clauses -- OBS guard f_ctl ten t0 0 of 10, wide t0 0 of 99 on all five lists: the guard never calls the clauses at the count budget (what it exercises, shown); (2) the
+youngest left out picked instead of the oldest -- the worklist tests fail (3 failed: test_74_2b_clause_one..., test_74_2b_equal_price..., test_76_3_f_every_pass...).
+THE GUARD: OBS guard ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s,
+24 s, 16 s, 58 s).
+CLOCKED (one run each, directional): OBS W0VFO 10 s (the pool, alone): POOL: ended at 8.9 s of 10.0 after 0 extra pass(es); 38 questions asked in the first, 6 moved
+up by the policy; status kept; the decision is Qb7 (+3) (a chase claim: answer Qb7 MATCH); inner agendas 1015, inner questions 15347 -- one pass, so the age rule could
+not fire (as 74's journal found, clause (1) narrows nothing there: the need is 1). OBS loop-2 batch (rand14_10 .. rand17_10 at 15 s in the pool, the question log to a
+fresh file, graded by Stockfish depth 14 in a separate process, `question_prior grade`): OBS prior grade: 40 decisions graded by Stockfish (depth 14) over 40 agendas:
+RIGHT 32, UNKNOWN 2, WRONG 6; OBS prior grade by proof: proved RIGHT 32, proved WRONG 3, unproved WRONG 3, none 2 -- the acceptance (not worse than 32 RIGHT / 6
+WRONG) holds; the six WRONG are the six open misses of the surprise shelf (2CEDb Qxg7, 4E4iU Kg8, 9QsbL Nc4, KSMKJ gxh5, L2luA Ra5, r3oph Rxd1+), every decision as
+the shelf filed it. ONE LABEL MOVED: KSMKJ's gxh5 is proved now (a chase claim, +4; Stockfish: Qd6+, 226 cp better) where 74's batch had it unproved -- traced alone at
+15 s: one pass, no clause (1) narrowing and no age pick, the chase finished its claim at 13.3 s; read as the clock's variation (the proof is of a gain, not of the best
+move), not the rule -- directional, one batch.
+THE BATCH TALLIED (76.3 (e)'s step, as the parent will after a batch): `lemma_store uses --write <the batch's outputs> --source "loop-2 batch (plan 76.3 (f))"` -- the
+batch's own `OBS lemma uses <id>` lines read as printed (lemma_store.obs_uses, new: the run tally, where the question log holds only the answering words): OBS lemma uses
+written: source loop-2 batch (plan 76.3 (f)), entries 123, used 48 (302497 uses). THE UNUSED LIST: OBS lemma store unused since written (...): 57 of 123 entries;
+batches tallied 5 (the four guard sets of 76.3 (e), the loop-2 batch) -- listed in `lemma_store report`, each "unused since <its date>: <name> (in 5 batch(es))";
+nothing deleted.
+OBS audit recount: rows total 1611: LOGIC 1257, RULE 94, NAME 21, CHESS FACT 205, HEURISTIC 34 (CHESS FACT rows 205 -> 205: two LOGIC rows, the age rule's trace
+line). OBS lemma store validate: entries 123; problems 0. OBS ontology validate: problems 0.
+OBS gate engine --only: test_plan74 14/0/0/0 3.1 s (the rule: tests changed for the API -- the pass's first narrowing is the age pick; a new test); test_plan73 10/0/0/0
+14.3 s (the batch's own tally lines); test_plan72_9 7/0/0/0 3.4 s; test_cost61 13/0/0/0 2.8 s; test_plan69 3/0/0/0 13.8 s; test_plan70 3/0/1/0 3.4 s; test_tiers
+14/0/0/0 29.2 s; test_plan68 4/0/0/0 12.8 s.
+76.3 IN SUM (d)-(f): docs/ANALYST_PLAN.md 76.3 marked BUILT. THE SURPRISE SHELF BY CLASS: the rules' 11 (rust draw 9, spec clock_event 1, game moves_to 1 -- all
+patched, agreeing), the engine's 8 (loop miss 7: 6 open, 1 fixed; refuted measure 1: fixed).

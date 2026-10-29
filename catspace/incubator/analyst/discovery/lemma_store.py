@@ -998,12 +998,49 @@ def _pairs_of(p: Path) -> list:
     return extract_trace(p.read_text())
 
 
+_OBS_USES = re.compile(r"^OBS lemma uses(?: [^:]+)?: (?P<items>.*?)(?:; uncatalogued \d+)?$")
+
+
+def obs_uses(text: str, names) -> "Counter | None":
+    """THE RUN'S OWN TALLY (plan 76.3 (e)): the `OBS lemma uses <id>: name count, ...` lines a batch printed (analyse prints one per puzzle, its LS.USES since the
+    run's mark) -> {entry name: count}, summed over the lines; None when the text has none. An item is read as the longest entry name followed by its count (a name
+    may hold ', ')."""
+    out: Counter = Counter()
+    seen = False
+    ordered = sorted(names, key=len, reverse=True)
+    for ln in text.splitlines():
+        m = _OBS_USES.match(ln)
+        if m is None:
+            continue
+        seen = True
+        rest = m.group("items")
+        if rest == "none":
+            continue
+        while rest:
+            hit = next((n for n in ordered if rest.startswith(n + " ") and re.match(r"\d+", rest[len(n) + 1:])), None)
+            if hit is None:
+                break                                     # (a name no entry holds: the store changed since the run -- the rest of the line is not read)
+            k = re.match(r"\d+", rest[len(hit) + 1:]).group(0)
+            out[hit] += int(k)
+            rest = rest[len(hit) + 1 + len(k):]
+            rest = rest[2:] if rest.startswith(", ") else ""
+    return out if seen else None
+
+
 def tally(path: str) -> tuple:
-    """THE RUN TALLY of a run's output -> (uses: entry name -> how many printed strings resolved to it, the strings that resolved to none)."""
+    """THE RUN TALLY of a run's output -> (uses: entry name -> its count, the strings that resolved to none). A batch's printed `OBS lemma uses` lines (the run's
+    own tally, analyse's per puzzle) are read as they are; else the printed strings of the traces (and a snapshot's word lists) are resolved."""
     p = Path(path)
     c: Counter = Counter()
     unres: Counter = Counter()
     store = load()
+    texts = [t for t in (sorted(p.glob("*.txt")) if p.is_dir() else [p]) if t.suffix == ".txt" or t.suffix == ".log"]
+    own = [obs_uses(t.read_text(), store) for t in texts]
+    if any(x is not None for x in own):
+        for x in own:
+            if x is not None:
+                c.update(x)
+        return c, unres
     for slot, s in _pairs_of(p):
         r = resolve(s)
         if r is None and slot == "word":                  # the question log keeps a kill's reason up to its first ':' -- the entry it begins, when only one does

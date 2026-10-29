@@ -30,6 +30,10 @@
    "guard wide_t2 (plan 76.3 (e))": {
     "count": 1727,
     "date": "2026-10-28"
+   },
+   "loop-2 batch (plan 76.3 (f))": {
+    "count": 136,
+    "date": "2026-10-28"
    }
   },
   "confirmed": [],

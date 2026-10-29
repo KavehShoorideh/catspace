@@ -14,6 +14,11 @@ SELECTION (74.2b), in two clauses, in this order:
   (2) once a keeping move is proved: the policy's order as today (the judge's question -- can this change the decision, are its replies forced -- is asked of the routes).
 With no status and no price (the count budget: no clock, no rate) both clauses are the policy's order: the engine's order key. 74 adds no number.
 
+plan 76.3 (f) AGE / WEIGHT (the given-clause loop's age-weight pick, with no ratio): EVERY PASS, ONE PICK IS THE OLDEST. A frame's agenda is one pass over its open
+items; the first time in the pass that clause (1)'s cheapest-first narrows the choice and leaves a keeping item out, the pick is the OLDEST item it left out (the first
+to enter the worklist: `born`), so cheapest-first never starves a question; every other pick is as above. Where nothing is priced (the count budget) cheapest-first
+never narrows and the rule never picks: the order is the engine's as before.
+
 The open set of a frame is a binary heap on the order key (`heapq`): the same array, pushes and pops the engine's heap had, so an iteration over it meets the items in the
 same order.
 """
@@ -90,8 +95,11 @@ class Worklist:
         self._observed: dict = {}                      # frame -> [item] (74.4: observations, below every question)
         self.next_frame = 1
         self.taken = 0
-        self.by_clause = {1: 0, 2: 0}                  # selections made by each clause where it narrowed the choice
+        self.by_clause = {1: 0, 2: 0, "oldest": 0}     # selections made by each clause where it narrowed the choice (76.3 (f): and by the age rule)
         self.closed: set = set()
+        self.born = 0                                  # 76.3 (f): the entry clock -- an item's `born` is when it first entered the worklist
+        self.aged: set = set()                         # 76.3 (f): the frames whose pass made its oldest pick already
+        self.aged_pick: "Item | None" = None           # ... the item the age rule picked last (the agenda's trace says so)
 
     def frame(self) -> int:
         """A new frame (one per agenda: the questions asked at one position for one line)."""
@@ -103,12 +111,18 @@ class Worklist:
     # ------------------------------------------------------------------------------------------------------------ the states
     def push(self, item: Item) -> Item:
         item.state = OPEN
+        if "born" not in item.data:                    # 76.3 (f): the first entry stamps its age (an opened deferred item keeps its first)
+            item.data["born"] = self.born
+            self.born += 1
         item.data["entry"] = item.order + (item,)
         heapq.heappush(self._open.setdefault(item.frame, []), item.data["entry"])
         return item
 
     def defer(self, item: Item) -> Item:
         item.state = DEFERRED
+        if "born" not in item.data:
+            item.data["born"] = self.born
+            self.born += 1
         self._deferred.setdefault(item.frame, []).append(item)
         return item
 
@@ -195,9 +209,17 @@ class Worklist:
         if not keep:
             return its, 0
         priced = [i for i in keep if i.price is not None]
+        self.aged_pick = None
         if priced:
             low = min(i.price for i in priced)
-            keep = [i for i in priced if i.price == low]
+            cheap = [i for i in priced if i.price == low]
+            left = [i for i in keep if i.price is None or i.price > low]
+            if left and frame not in self.aged:        # 76.3 (f): EVERY PASS, ONE PICK IS THE OLDEST -- the oldest keeping item cheapest-first leaves out
+                self.aged.add(frame)
+                self.by_clause["oldest"] += 1
+                self.aged_pick = min(left, key=lambda i: i.data["born"])
+                return [self.aged_pick], 1
+            keep = cheap
         if len(keep) == len(its):
             return its, 0
         self.by_clause[1] += 1

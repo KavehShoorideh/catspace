@@ -95,6 +95,9 @@ def analyse(p: dict, quiet: bool = False, log=print, memory: bool = True, store:
         f"facts derived {fx['derived']}, served from the store {fx['served']}, foreground recomputations {fx['recomputed']}, background queue {fx['queue']} (top stake {fx['top']}), seconds {secs}, "
         f"root lists served {cx.roots_served}, chase claims served {cx.chase_served}, routes finished after the deadline {cx.finished}")
     log(LS.uses_line(Counter(cx.lemma_uses), p["id"]) + (f"; uncatalogued {cx.uncatalogued}" if cx.uncatalogued else ""))      # plan 73.3: the words that claimed, killed or stopped in this run (nothing is written back)
+    bc = cx.worklist.by_clause                                   # plan 76.3 (f): what narrowed the root's choices (74.2b's clause (1), the age rule: every pass, one pick is the oldest)
+    if bc.get(1) or bc.get("oldest"):
+        log(f"OBS worklist {p['id']}: picks narrowed by clause (1) {bc.get(1, 0)}, by the age rule {bc.get('oldest', 0)}")
     if cx.local_agendas:                                         # plan 72.10: the local inner agendas (the chased goal and its frame carried; three questions, the full agenda only where the goal is dead)
         log(f"OBS local inner {p['id']}: inner agendas {cx.agendas}, questions asked {cx.asked} ({cx.asked / max(cx.agendas, 1):.1f} per inner agenda), local {cx.local_agendas} (questions {cx.local_asked}), "
             f"full agendas {cx.local_full} (chase dead there), closed by the frame {cx.local_closed}")

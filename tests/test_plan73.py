@@ -154,6 +154,10 @@ def test_76_3_e_use_counts_are_written_after_a_batch_and_the_unused_are_listed(t
     (snap / ("case1" + LS.SNAPSHOT_WORDS)).write_text("kill\ttempo arithmetic: the chain has spent its moves\n")
     c, unres = LS.tally(str(snap))
     assert c["verify: no route binds"] == 2 and c["tempo arithmetic"] == 1, (c, unres)
+    batch = tmp_path / "batch.txt"                                                                     # a batch's own tally: analyse's per-puzzle OBS lines, read as printed
+    batch.write_text("OBS agenda X: ...\nOBS lemma uses X: tempo 3, our best claim ... wins ..., the reply took ... 2\nOBS lemma uses Y: tempo 1; uncatalogued 1\n")
+    cb, _ = LS.tally(str(batch))
+    assert cb == {"tempo": 4, "our best claim ... wins ..., the reply took ...": 2}, cb
     store_dir = tmp_path / "lemmas"
     shutil.copytree(LS.DIR, store_dir, ignore=shutil.ignore_patterns("ontology", "surprises"))
     for f in store_dir.glob("*.json"):                                                                 # (a fresh store: the batches tallied so far left out)
