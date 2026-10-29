@@ -4212,3 +4212,63 @@ the engine should read, with the reason; nothing adopted by the agent (Kaveh dec
 
 (Kaveh 2026-10-29: "checkers isn't a good example. stick to chess." -- 76.4d WITHDRAWN; the genericity claim is tested within chess: new goals, new endings, new words the machinery
 derives without new code; the brief docs/PLAN76_4D_CHECKERS_BRIEF.md stays as a record, not a plan.)
+
+
+## 77. CLOSING THE THREE GAPS: the core in Rust, the loop that proposes its own words, the prover (Kaveh 2026-10-29 "yep"; written for the cloud session; main 1510345b)
+
+WHERE WE STAND (2026-10-29, main 1510345b, gate 661 passed / 0 failed / 3 xfailed, 50 files): the rule spec rules/chess.gdl certified against the fast kernel by cross-play and
+generated into Lean with legality, next state and results PROVED equal (Ideas/Spec/*); the ontology shelf (one name, four bindings; 5 of 122 kinds MINED); the lemma store (129 entries:
+93 HAND, 9 MINED, 28 PROVED -- all hand); goal regression from the spec in Rust (defects and fixes; the hand tables are oracles); the agenda = one worklist over a provenance graph, the
+chase, the judge with the keep-first clause, the age rule and the measurement read (32 of 40 fresh puzzles at 15 s); mining: terms.py, object_miner.py (line / blocked / region
+rediscovered), technique_miner.py (the K+R measure), valuation_miner.py (material in the hand order; the hand table kept); the surprise shelf; the valuation one definition. Against
+Kaveh's five requirements: (1) any 8x8 turn game -- designed and tested for genericity, not demonstrated (chess is the one game: "stick to chess"); (2) learning the rules' implications
+from experience -- half: derivation and mining exist, the MISS -> WORD step is still a human (I read the trace, name the word, an agent builds it); (3) analyse and decide -- built;
+(4) guarantees -- the rules certified, the generic theorems proved, but every MINED word is a CONJECTURE (no local prover sees through the executable kernel) and 65 hand words are
+unproved; (5) knowledge in the store -- the vocabulary and the valuation yes; 198 CHESS FACT rows remain in agenda.py (the chase's `_addresses`, the static leaf, in-check) and the scan
+lists 22 worth-shaped literals (the royal as a number, the terminal stake's copies, 18 exchanges against 0); (6) the core in Rust -- the words, the regression, the GDL evaluator, the
+handle and the reply table are Rust; the agenda loop, the judge, the inner agendas and all four miners are PYTHON.
+
+THE DECISION (Kaveh): 77.1 then 77.3, with 77.2 as a bounded experiment beside them.
+
+### 77.1 THE CORE IN RUST (72.7's remaining steps, applied to the loop and the miners)
+(a) THE AGENDA LOOP: worklist.py, reasoning.py (the graph), the chase's expansion (`_chase_route_body` on `Pos.route_table`, the pending protocol), the inner agendas, the judge
+(`_judge_begin`, `_judge_node`, the rates, the measurement read), the static leaf glue -- one Rust crate module per Python module, same names, Python keeps the trace FORMATTING and the
+decision surface (`Agenda`, `State`, `decision()`, `trace()`: the play server needs no edit); read sets travel with every result; the guard IDENTICAL on all five lists (ten + wide, tiers 0
+and 2) per sub-commit; cost printed before / after (the clocked tests, W0VFO 10 s, the loop batch at 15 s -- the proofs reached, not the budget moved).
+(b) THE MINERS: terms.rs (the typed term language: the same s-expressions parse and print), object_miner.rs, technique_miner.rs (the AND-OR drop search and the whole-class check), valuation_miner.rs
+(the fit over records); Python keeps the harness and the store writes; equality with the Python miners on the recorded runs (the same rediscoveries, the same measure, the same worths)
+before the Python bodies become test oracles; cost before / after.
+(c) THE REMAINING CHESS FACTS as the port passes them: `_addresses` as a defect-to-fix relation read from the store (the two-move tactics named as entries), the static leaf's word list
+from the store (which words are asked of the opponent at a leaf: r3oph's missing their-side mate-in-two is a ROW there, not code), the in-check logic as GOAL fields; the 22 scan findings
+routed (the royal as the terminal GOAL's stake read from the store; the exchange tests against the unit). Recount printed per sub-commit; 198 -> toward 0.
+ACCEPTANCE: identical decisions throughout (the guard); the engine gate green; the recount falling; the walls falling (one run each, directional). Agents: docs/AGENT_BRIEF.md; one
+parent snapshot per plan; sub-commits one per module.
+
+### 77.2 THE PROVER, BOUNDED (the experiment)
+(a) RULE-LEVEL LIFTING LEMMAS in Lean (allowed: they are rules): the first lines a human proof uses -- a sliding unit attacks every empty square of its line until the first occupied one;
+a king's reach is the eight neighbours less the attacked; a check is an attack on the royal; legal = pseudo-legal and not self-check -- stated over the GENERATED spec definitions
+(Ideas/Spec/Chess.lean) and proved by reasoning (the row-table splits accepted), so every later proof over the spec has them; (b) the prover harness re-run (local only: Lean automation,
+Duper, LeanCopilot, the 8B prover via ollama, and a 32B prover at 4-bit if it fits 36 GB -- name it) on the protection lemma and the K+R `hprog`, blind and hinted, with the lifting lemmas
+in scope; the referee as before (no sorry, no enumeration, the three axioms); (c) the result decides: proofs found -> entries PROVED and 77.2 (d) the harness runs on every CONJECTURE of the
+store; none -> the finding stands and proving stays human-assisted with honest labels. Fuse: one agent run; report what each tool did with the lemmas in scope that it could not do without.
+
+### 77.3 THE LOOP PROPOSES ITS OWN WORDS (the miss -> word step, the heart of the first system)
+(a) THE MISS AS INPUT: a loop miss (the surprise shelf: the position, the engine's answer, the right answer from the table / Stockfish in its own process, the trace with its GAPs and the
+words it asked) is read by a PROPOSER: from the right answer's line (the moves that refute the engine's claim or prove the answer), the proposer asks the regression WHY the engine's claim
+failed there (which body atoms were false) and WHAT the answer's line reads (its read set), and searches the term language (priced by size, pruned by implication) for a WORD -- a predicate
+over the base relations -- that is TRUE on the answer's line and FALSE where the engine's claim stood (the frame of the miss), scored by use on the surprise shelf's other cases (does it
+separate right from wrong there too?); the best candidates are filed as CONJECTURE entries with the miss as evidence and the Lean obligation stated (the emitter of 73.6); (b) THE WORD ASKED:
+a filed word enters the agenda through the store as a CLOSING / FORCING word (the kind the proposer labels from where it bites: at the leaf, at the forcing read, at their pass), so the next
+run of the miss asks it; the guard: decisions elsewhere identical, the miss's decision read (fixed / unchanged / changed otherwise, with Stockfish's reading); (c) THE LOOP RUN: iteration 3
+(rand18_10 .. rand21_10 at 15 s): the misses traced by the proposer, not by hand; the words it proposes listed with their frames and their effect; the ones that fix a miss without breaking
+the guard are kept as CONJECTURE (Kaveh adopts; nothing adopted by the machinery); the ones that fix nothing are the report (what the term language could not express: the next atom to
+derive). Prior test of the proposer: the SEVEN loop-2 misses already on the surprise shelf, with their known causes (the leaf's their-side mate-in-two for r3oph; the recapture tempo stop;
+the judge's cut) -- does the proposer find the word we found by hand? Print per miss.
+ACCEPTANCE: every proposed word is a term over the shelf's relations (the generic test), filed with its evidence, asked through the store; decisions on the guard identical; the loop-3 grade
+printed (not worse than 32 / 6 is NOT the bar -- a fresh set; the bar is: misses traced by the machinery, words proposed, the report honest).
+
+HANDOFF NOTES (for the cloud session): standing rules in docs/AGENT_BRIEF.md (point every agent at it); the store at catspace/incubator/analyst/discovery/lemmas/; the state memory of
+this session is in the owner's memory dir (where_we_are_2026_10_25.md); the engine gate `scripts/gate.py engine` (50 files, ~19 min) runs once on main at every merge; the guard
+`scripts/trace_identity.py snapshot --jobs N` / `compare` (ten + wide, tiers 0 and 2, PYTHONHASHSEED=0); the maturin editable install re-points to whichever crate last ran
+`maturin develop`: rebuild main's after every merge of a Rust change; never commit to main while a merge chain runs; merge by hash if a branch name is lost; an old idle play server may sit
+on port 8765.
