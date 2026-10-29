@@ -35405,3 +35405,25 @@ CLOCKED EVIDENCE (one run each, directional): OBS W0VFO 10 s (the pool, alone): 
 proof: proved RIGHT 32, proved WRONG 3, unproved WRONG 3, none 2 (76.4a: proved RIGHT 31, proved WRONG 2, unproved RIGHT 1, unproved WRONG 4) -- the same six WRONG
 (2CEDb Qxg7, 4E4iU Kg8, 9QsbL Nc4, KSMKJ gxh5, L2luA Ra5, r3oph Rxd1+); both proofs 76.4a did not reach in 15 s are reached: 0QxXi's Qf7 (RIGHT) and KSMKJ's gxh5
 (WRONG) are chase claims again, as at 76.3 (f).
+
+
+## 2026-10-29 00:49 -- plan 76.4b (d) THE WALK'S DEFECT TESTS read through the regression where a literal of one state exists; 76.4b marked BUILT (branch worktree-agent-a128c491905ea4974)
+WHAT MOVED (agenda.py `_addresses`, 52.17 (2)'s "a check must address a defect of its goal"): four of its tests read python-chess on the board after the check; each
+is a literal of ONE state of the spec and is read now as the regression reads it (`Regressor.rows` / `holds`: the native core's prover, the certified relations
+through the binding -- equal by Ideas.LegalEquiv.attackBy_iff / legal_iff): THE CHECKERS (a discovered or double check) are our mate goal's `in check` names read for
+them (regress.threat_defects: the leaves of `check`'s derivation); a FLIGHT COVERED is `attacked(us, the square)`; THE DEFLECTION (every reply is the defender's)
+reads their `legal` rows' squares; THE TARGET ATTACKED BY THE MOVED UNIT is `attack_by(?, us | ?, the landing, the square)`. What has no literal of one state stays as
+written, and is said so in the code: the move landing on a taker (a comparison of locations, nothing read), the skewer (a line through their king), the promotion's
+drive-off and its step (two states: every king reply read). Not replaced by the regression's one-move mend (76.4a's reading: a looser notion, the chase would
+change); the dispatch on the names stays.
+THE GUARD (against the parent): OBS ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99; wide t2 0 / 0 / 0 / 0 / 0 of 99
+(walls 7 s, 27 s, 19 s, 71 s). NEGATIVE CONTROL (not committed: the flight's `attacked` read for the other side): OBS ten t2 8 of 10 traces, 8 read sets, 4 leaf
+verdict lists, 4 word lists, 8 provenance lists differ.
+OBS audit recount: rows total 1607: LOGIC 1261, RULE 93, NAME 21, CHESS FACT 198, HEURISTIC 34 (CHESS FACT rows 202 -> 198: B5 8 -> 4; docs/AGENDA_AUDIT.md "76.4b
+recount" lists the rows). tests/test_plan76_4b.py: the walk's literals equal python-chess's readings and the oracle's rows (13 tests now).
+OBS gate engine --only: test_plan76_4b 13 / 0 / 0 1.5 s; test_plan75 11 / 0 / 0 0.6 s; test_agenda 26 / 0 / 0 91.7 s; test_tiers 13 passed, 1 xpassed 34.7 s
+(test_59_4 1.89 s); test_offbuilt64 14 passed, 1 xfailed, 1 xpassed 94.3 s; test_regress 87 passed, 1 xfailed 493.0 s (52.18 17.65 s). CLOCKED, the final state (one
+run each): OBS W0VFO 10 s: POOL ended at 8.0 s of 10.0; the decision is Qb7 (+3) by the chase, answer Qb7 MATCH; inner agendas 819, inner questions 10883. OBS
+loop-2 batch (wall 76 s): RIGHT 32, UNKNOWN 2, WRONG 6; proved RIGHT 32, proved WRONG 3, unproved WRONG 3, none 2.
+76.4b IN SUM: docs/ANALYST_PLAN.md 76.4b marked BUILT. The Rust builds re-point the shared editable install to this branch's crate (rust/analyst_core): main must
+be rebuilt after the merge.

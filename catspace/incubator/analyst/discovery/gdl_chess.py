@@ -488,6 +488,11 @@ class Binding:
         return [(a, mended, [tuple(k) for k in new]) for a, (mended, new) in zip(actions, got)]
 
     @staticmethod
+    def native_rows(b: chess.Board, rel: str, pattern: tuple) -> list:
+        """The rows of a spec relation on the board (plan 76.4b (d)), by the native core's prover with the certified relations read through the binding."""
+        return native().spec_ans_bb(parts(b), rel, list(pattern), True)
+
+    @staticmethod
     def native_clear() -> None:
         if _NATIVE[0] is not None:
             _NATIVE[0].spec_cache_clear()

@@ -2191,3 +2191,23 @@ THE BRIEF'S "D2-D4 (the fixes)": the audit's D2, D3 and D4 are the static leaf, 
 (`_fixes_of`: which sub-questions a defect raises) lives in regress.py, outside the audit's files, and keeps its dispatch on the names -- its families' routes are
 filtered by the regression's fix test where they are one-move mends (cover the flight, guard, remove a blocker, attack with tempo, add an attacker), and are
 two-move tactics otherwise (take or pin the taker, take the interposer, trap, discovery, skewer, drive onto a skewer: 76.4a (b) (4)).
+
+
+## 76.4b recount (appended by plan 76.4b, the regression in Rust; the sections above stay as written)
+
+The recount (scripts/agenda_audit/recount.py) at each of 76.4b's stages: (a), (b) and (c) touch no audited file (the native core, regression.py, regress.py, the
+harness); (d) reads four of the walk of checks' tests in `_addresses` (agenda.py) as literals of one state through the regression -- the checkers (our mate goal's
+`in check` names read for them), the flight covered (`attacked`), the deflection (their `legal` rows, every one from the defender), the target attacked by the moved
+unit (`attack_by`) -- in place of python-chess's readings (equal by the certified relations: Ideas.LegalEquiv.attackBy_iff, legal_iff; guard 0 of 218 on all five lists).
+
+```
+(a)-(c) OBS audit rows total 1608: LOGIC 1257, RULE 94, NAME 21, CHESS FACT 202, HEURISTIC 34
+(d)     OBS audit rows total 1607: LOGIC 1261, RULE 93, NAME 21, CHESS FACT 198, HEURISTIC 34
+(d)     OBS audit CHESS FACT rows 202 -> 198: B5 8 -> 4
+```
+
+What moved: the four B5 rows of python-chess readings (`c.checkers()`, `c.is_attacked_by(me, d.sq)`, `replies` / `all(r.from_square in d.by ...)`,
+`c.attackers(me, d.sq)`) are spec reads now, classified LOGIC by the content rules (their hand readings dropped: the lines changed), and the RULE row of
+`c.attacks(m.to_square)` with them. What stays: the dispatch on the names (D1a 3, D1b 3: which defect kind a test reads -- the walk's notion, looser than the
+regression's one-move mend, two-move tactics among it), the move landing on a taker (B5: a comparison of locations, no reading), the skewer (B5: a line through their
+king, no literal of one state) and the promotion's tests (B5: the drive-off and its step read two states).

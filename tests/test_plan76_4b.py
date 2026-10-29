@@ -278,6 +278,30 @@ def test_76_4b_the_python_chess_board_is_mirrored():
     assert n > 1000
 
 
+def test_76_4b_d_the_walks_literals_are_the_kernels_readings():
+    """(d) the walk of checks' tests read as literals of one state through the regression (agenda `_addresses`): on the board after each of our moves, `attacked`
+    is python-chess's is_attacked_by, `attack_by` from the moved unit its attackers / attacks, their `legal` rows' squares their legal moves', and our mate goal's
+    `in check` names read for them its checkers -- the native core's rows equal to the Python reading's (the oracle)."""
+    na, po = _native(), _oracle()
+    n = 0
+    for fen in CORNERS:
+        b = chess.Board(fen)
+        me = b.turn
+        ours, theirs = B.role(me), B.role(not me)
+        for m in list(b.legal_moves)[:12]:
+            c = b.copy(stack=False)
+            c.push(m)
+            assert sorted(x.sq for x in R.threat_defects(c, not me)) == sorted(c.checkers()), (fen, m.uci())
+            froms = [B.ends(r)[0] for r in na.rows(c, "legal", (theirs, None))]
+            assert froms == [r.from_square for r in c.legal_moves] and na.rows(c, "legal", (theirs, None)) == po.rows(c, "legal", (theirs, None))
+            for s in (chess.E4, chess.D5, chess.H7, chess.A1, m.from_square):
+                assert na.holds(c, "attacked", (ours,) + B.terms(s)) == c.is_attacked_by(me, s) == po.holds(c, "attacked", (ours,) + B.terms(s))
+                assert na.holds(c, "attack_by", (None, ours) + B.terms(m.to_square) + B.terms(s)) == (m.to_square in c.attackers(me, s))
+                assert na.holds(c, "attack_by", (None, None) + B.terms(m.to_square) + B.terms(s)) == (s in c.attacks(m.to_square))
+                n += 1
+    assert n > 300
+
+
 CHESS_WORDS = r"\b(chess|python-chess|king|queen|rook|bishop|knight|pawn|piece|square|board|mate|check|capture|castl\w*|promot\w*|uci|san|fen|file|rank|" \
               r"KING|QUEEN|ROOK|BISHOP|KNIGHT|PAWN|[a-h][1-8])\b"          # (test_plan76_4a's: a generic module names no game object)
 

@@ -2013,7 +2013,7 @@ Do not edit by hand.
 - **theorem `Ideas.LegalEquiv.pieceAttacks_of`** (line 461): The kernel's piece attack once the unit is known.
 - **theorem `Ideas.LegalEquiv.slider_line_iff`** (line 470)
 - **theorem `Ideas.LegalEquiv.attackBy_iff`** (line 495): THE GENERATED ATTACK IS THE KERNEL'S, FOR EVERY KIND, ON EVERY POSITION: the spec's `attack_by k` holds from `s` to `t` exactly when a unit of kind `k` and colour `c` stands on `s` and the kernel's `Chess.pieceAttacks` s
-  - used by: catspace/incubator/analyst/discovery/gdl_chess.py, rust/analyst_core/src/gdl_chess.rs, rust/analyst_core/src/regression.rs
+  - used by: catspace/incubator/analyst/discovery/agenda.py, catspace/incubator/analyst/discovery/gdl_chess.py, rust/analyst_core/src/gdl_chess.rs, rust/analyst_core/src/regression.rs
 - **theorem `Ideas.LegalEquiv.attack_iff`** (line 525)
 - **theorem `Ideas.LegalEquiv.attacked_iff`** (line 543): THE GENERATED `attacked` IS THE KERNEL'S `Chess.isAttacked`, on every position.
 - **theorem `Ideas.LegalEquiv.oneKing_sq`** (line 554): One king of a side: its square.

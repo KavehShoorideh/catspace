@@ -4220,20 +4220,31 @@ class Agenda:
             return True, ""
         c = b.copy(stack=False)
         c.push(m)
-        if any(ch != m.to_square for ch in c.checkers()):          # a DISCOVERED check (or a double check): the move opens a line of another piece onto the king -- a new threat from the vacated line (Kaveh's source 2; the word comes in 52.18 (2))
+        # plan 76.4b (d): the walk's tests that are a LITERAL OF ONE STATE are read through the regression -- the spec's relations on the board after the move, the
+        # certified ones through the kernel (Ideas.LegalEquiv.attackBy_iff, legal_iff): the checkers are our mate goal's `in check` names read for them; a flight
+        # covered is `attacked`; the deflection reads their `legal` rows; the target attacked by the moved unit is `attack_by`. What is no literal of one state stays:
+        # the move landing on a taker (a comparison of locations), the skewer (a line through their king), the promotion's drive-off and its step (two states).
+        rg = R.regressor()
+        B = rg.B
+        ours = B.role(me)
+        if any(ch != m.to_square for ch in [x.sq for x in R.threat_defects(c, not me)]):          # a DISCOVERED check (or a double check): the move opens a line of another piece onto the king -- a new threat from the vacated line (Kaveh's source 2; the word comes in 52.18 (2))
             return True, ""
-        replies = list(c.legal_moves)
+        froms = None
         left = []
         for d in q.defects:
-            if d.kind == "flight" and d.sq is not None and c.is_attacked_by(me, d.sq):
+            if d.kind == "flight" and d.sq is not None and rg.holds(c, "attacked", (ours,) + B.terms(d.sq)):
                 return True, ""
             if d.kind == "checker takeable" and m.to_square in d.by:
                 return True, ""
-            if d.kind in ("defended", "checker takeable") and replies and all(r.from_square in d.by for r in replies):
+            if d.kind in ("defended", "checker takeable"):
+                if froms is None:
+                    froms = [B.ends(r)[0] for r in rg.rows(c, "legal", (B.role(not me), None))]      # where every reply of theirs starts
+                if froms and all(f in d.by for f in froms):
+                    return True, ""
+            if d.kind == "not attacked" and rg.holds(c, "attack_by", (None, ours) + B.terms(m.to_square) + B.terms(d.sq)):
                 return True, ""
-            if d.kind == "not attacked" and m.to_square in c.attackers(me, d.sq):
-                return True, ""
-            if self.gk(q.goal).gains and q.pattern.get("target") in c.attacks(m.to_square) and d.kind in ("not attacked", "defended"):
+            t = q.pattern.get("target")
+            if self.gk(q.goal).gains and t is not None and rg.holds(c, "attack_by", (None, None) + B.terms(m.to_square) + B.terms(t)) and d.kind in ("not attacked", "defended"):
                 return True, ""
             if self.gk(q.goal).gains and d.kind in ("not attacked", "defended") and G.skewer_after(c, me, q.pattern.get("target")) == m.to_square:     # 52.23 (4): the skewer
                 return True, f"{san}: a route of {goal}: a check through their king, the line runs on to {GAME.loc_name(q.pattern['target'])} (Ideas.Skewer.skewer_attack)"

@@ -4152,3 +4152,18 @@ guard: identical to 76.4a's snapshots on all five lists (a port, not a change); 
 discovery position under tiers at 15 s, 52.18 at 30 s) re-run, expected green again without touching a budget; the loop batch not worse than 32 / 6 with the proofs reached within 15 s.
 Also: THE GOAL'S OWN MOVE (2026-10-28, after 76.4a's gate): the capture of the target is a ROUTE of a win question whether or not it mends a defect (its merit is the exchange law's); the
 hand oracle admitted it by accident, the regression dropped it, and their reduced agenda (no chase) lost the recapture claim (test_64_0). Fixed in regress.routes_of; the port keeps it.
+* 76.4b BUILT 2026-10-29 on branch worktree-agent-a128c491905ea4974 (journal 2026-10-29 00:25, 00:26, 00:47, 00:49): (a) rules/chess.gdl read into the native core from
+  its text (rust/analyst_core/src/gdl.rs: a direct semi-naive evaluator mirroring gdl.py -- ascent compiles its clauses at build time, so it cannot load the spec as
+  written; regression.rs the top-down tabled reading and the regression, mirroring regression.py; the binding's readers chosen by the ontology shelf's `rust` names;
+  the python-chess board mirrored, pyboard.rs, since the regression's counterfactuals are boards shakmaty refuses); cross-check 0 disagreements (123 positions -- ten +
+  wide and the surprise shelf --, 353925 relation extensions, 20558599 facts; the top-down prover 3198 readings). (b) regression.Regressor a call-through (the whole
+  regression; the names' records with the texts filled in Python; the fix test of a candidate list in one crossing), PyRegressor -- 76.4a's Python reading -- the test
+  oracle; regress.py's defects and fix filter read it; Pos.regress / Pos.fixes; guard 0 of 218 on all five lists against this plan's parent (main 77160f84). (c) equal
+  to the oracle on every guard question (mate 506215, win 326764, keep 45737 -- names, whole regressions, read sets; fix filter 3387218 + 8664197 candidates); ms per
+  question mate 0.6920 -> 0.0543, win 0.0635 -> 0.0159, keep 0.3840 -> 0.0408, fix filter 0.1712 / 0.0428 -> 0.0133 / 0.0051 per candidate; the engine's ten t0
+  85.3 s -> 29.8 s summed; test_59_4 and the discovery position at 15 s XPASS (no budget, no marker touched); 52.18 still xfails -- its run ends at 16.5 s of 30 with
+  nothing new (main's: 22.3 s, the same unproved Nf2): 76.4a's fix classes, not the clock; W0VFO 10 s Qb7 +3 by the chase (inner agendas 824, questions 11068);
+  loop-2 RIGHT 32 / UNKNOWN 2 / WRONG 6, proved RIGHT 32. (d) the walk of checks' tests that are literals of one state read through the regression (the checkers,
+  the flight covered, the deflection, the target attacked by the moved unit); the move landing on a taker, the skewer and the promotion's two-state tests stay; guard
+  0 of 218; CHESS FACT rows 202 -> 198 (B5 8 -> 4). FINDING: the regression's readings never iterate a recursive table (a one-pass control moved no guard line; the
+  ray is read back from its bound end), the fixpoint is exercised by (a)'s cross-check only. Rust builds: the shared editable install points at this branch's crate.

@@ -590,6 +590,14 @@ class Regressor:
         """regression.fixes read by the native core: every action's fix test in one crossing (no callback per action)."""
         return self.B.native_fixes(x, goal, key, actions, future, entries, before)
 
+    def rows(self, x, rel: str, pattern: tuple) -> list:
+        """THE ROWS of a relation of the spec on the state `x` matching `pattern` (None free) -- a literal of ONE state read as the regression reads it (plan 76.4b
+        (d)): by the native core's prover, the certified relations through the binding."""
+        return self.B.native_rows(x, rel, pattern)
+
+    def holds(self, x, rel: str, args: tuple) -> bool:
+        return bool(self.rows(x, rel, args))
+
 
 class PyRegressor:
     """THE TEST ORACLE (plan 76.4b): the Python reading of 76.4a -- THE REGRESSION over one spec and one binding, cached per (state key, goal). `binding` supplies:
@@ -613,6 +621,12 @@ class PyRegressor:
     def names(self, x, goal: Goal, entries: list, theirs: bool = False, future=None) -> list:
         y = self.B.future(x, future)
         return name(self.regress(y, goal), entries, self.B, y, theirs=theirs)
+
+    def rows(self, x, rel: str, pattern: tuple) -> list:
+        return list(self.prover(x).ans(rel, tuple(pattern)))
+
+    def holds(self, x, rel: str, args: tuple) -> bool:
+        return bool(self.rows(x, rel, args))
 
     def fixes(self, x, goal: Goal, key, actions, future, entries: list, before: "list | None" = None) -> list:
         """76.4a's fix test, action by action (the oracle of the native one)."""
