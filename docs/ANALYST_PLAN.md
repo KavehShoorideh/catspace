@@ -4195,3 +4195,6 @@ ACCEPTANCE: the guard identical (the default valuation is unchanged: 0 of 218 on
 source (a run-time choice, not a flag left in the code: the experiment harness points the GOAL entries at `material-mined`, runs, restores), decisions on the ten + wide listed and read
 (Stockfish depth 14 in a separate process judges the chess, never a premise), the loop-2 batch at 15 s graded in its own process -- hand vs mined, one sitting; the report says which worths
 the engine should read, with the reason; nothing adopted by the agent (Kaveh decides). Then 76.4d CHECKERS (docs/PLAN76_4D_CHECKERS_BRIEF.md) as the next agent.
+
+(Kaveh 2026-10-29: "checkers isn't a good example. stick to chess." -- 76.4d WITHDRAWN; the genericity claim is tested within chess: new goals, new endings, new words the machinery
+derives without new code; the brief docs/PLAN76_4D_CHECKERS_BRIEF.md stays as a record, not a plan.)
