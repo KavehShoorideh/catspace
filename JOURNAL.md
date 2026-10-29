@@ -35164,3 +35164,45 @@ NEGATIVE CONTROL (not committed: flight's binding without its `unless`): OBS gat
 OBS audit recount CHESS FACT rows 205 -> 205 (agenda.py untouched). OBS lemma store validate: entries 124, problems 0. OBS ontology validate: problems 0.
 OBS gate engine --only: test_plan76_4a 8/0/0/0 0.9 s; test_plan73 10/0/0/0 16.5 s; test_plan75 11/0/0/0 0.7 s; test_rules_gdl 12/0/0/0 7.1 s; test_plan76 20/0/0/0
 75.6 s; test_rules_shelf 12/0/0/0 70.0 s.
+
+
+## 2026-10-28 20:50 -- plan 76.4a (b) THE COMPARISON: the derived defects against the hand tables on every question of the guard positions; nothing changes in the engine
+HOW (scripts/plan76_4a.py compare, over the harvest of (a): the 218 guard runs' distinct questions, each with the hand table's answer; --jobs 11): per question the
+derived NAMED defects against the hand table's AS SETS of (kind, square, pieces) and exactly (with the texts and the order); the fix filter's verdict per candidate
+(the hand's `still_routes` against `regression.fixes`' test: the defect gone, nothing new); each route of the hand's other fix families tested as a derived fix; the
+promotion pushed square by square (`move_by(pawn, ...)` regressed on the pawn placed on each square of its path, the exchange law on the landing); the save goal's
+`hangs` (the opponent's win goal) and `in check` (check's derivation). THE MAPPING, printed by the script (each hand kind -> its place of the spec): no check =
+mate's literal 0 FALSE; checker takeable = a witness of `has_move` flipping an `attack_by` clause's literal 0 (the capture atom); flight = flipping check's literal 1
+(the king-move atom), not with the attacker's cell; interposition = flipping empty's literal 1 under slide's recursion (the blocking atom); not attacked = capture's
+clause 0 literal 0 FALSE; defended = the exchange value short; blocked = the push's `empty` FALSE; path / promo square attacked = the exchange law on the landing
+(the hand counts); stopper, threatened, promotes, reach = no literal of one state.
+OBS 76.4a agreement mate: questions 508705, exact (kinds, squares, pieces, texts, order) 508705, as sets 508705 (100.000%)
+OBS 76.4a agreement win: questions 327579, exact (kinds, squares, pieces, texts, order) 327579, as sets 327579 (100.000%)
+OBS 76.4a agreement fix filter (mate): candidates 3331439, the same verdict 3326117 (99.8402%)
+OBS 76.4a agreement fix filter (win): candidates 8738915, the same verdict 8700879 (99.5648%)
+OBS 76.4a compare mate hand defect checker takeable / flight / interposition / no check: 531740 / 866849 / 198897 / 8616 (the derived: the same four numbers)
+OBS 76.4a compare win hand defect defended / not attacked: 48510 / 245817
+OBS 76.4a compare fix (mate) derived fix, hand still: a line through their king (the hand's cover test reads the square with the king on it): 5322
+OBS 76.4a compare fix (win) hand fix, derived still: the candidate captures the target (the hand reads the exchange on our own unit there): 38036
+OBS 76.4a compare promote blocked agree: 62427; promote attacked agree: 44425, differ: 18002; promote hand stoppers (not regressed): 183948
+OBS 76.4a compare save hangs agree: 28258; save in check agree: 17240; save _ask_save_threat (not regressed): 970; save _ask_stop_pawn (not regressed): 3
+OBS 76.4a compare (the routes of the hand's other families tested as derived fixes, a derived fix / not): mate take or pin the taker 219 / 453 (46565 sub-questions);
+mate take the interposer 0 / 1186 (26632); win fork 13276 / 0 (9781) and 34903 / 0 (28504); win trap 3771 / 33864 and 5932 / 81636; win discovery 937 / 596 and
+8834 / 5484; win skewer 606 / 190 and 2 / 5330; win drive onto a skewer 434 / 439 and 609 / 4405 (defended, then not attacked)
+OBS 76.4a compare: 218 case files, wall 200.1 s
+EVERY DISAGREEMENT, READ: (1) DERIVED FIXES THE TABLE LACKS (5322, all one class): a flight or a guarded checker square covered along a line THROUGH their king --
+07Z0P 2r5/1p2R1bp/6p1/pP1kpp2/6PP/P3Bq2/8/5RK1 w: Rd1 covers d6 behind the king on d5 (the king cannot go there: the spec's `legal` says so), the hand's cover test
+(`_goal_done`: the square attacked by us with the king still on it) says not. A TABLE INCOMPLETENESS -- a FINDING, kept. (2) HAND FIXES THE REGRESSION LACKS (38036,
+all one class): the candidate captures the target itself -- 07Z0P 2r2rk1/1p4bp/6p1/pP1npp2/6PP/P3B3/2B2R2/5RK1 b, target c2, Rxc2 -- after which the hand reads the
+exchange on a square holding OUR unit (the Rust see there: 9 for our queen on c5 in 2TUzC's case, what they would win back) as "the exchange gives something" and
+calls the defect fixed; the spec's head (capture of THEIR unit on the target) is false there. NOT a regression bug and NOT a mapping gap: A BUG OF THE HAND FIX
+FILTER (the capture of the target is the goal's own move, read by the direct routes and the binder, not a fix of its defect). (3) PROMOTION ATTACKED (18002 of
+62427 differ): a MAPPING GAP -- the hand kind is a COUNT heuristic on the static board (attackers > defenders), no literal of the push's clause; the derived reads the
+exchange law on the counterfactual with the pawn walked there (07Z0P's f5 pawn: with the pawn gone up the file the rook on f8 defends f1, so the queen there is not
+lost; the hand counts Rf2 and Kg1 on the static board). Blocked agrees on all 62427. (4) THE OTHER FIX FAMILIES (take or pin the taker, take the interposer, trap,
+discovery, skewer, drive onto a skewer): most of their routes are NOT one-move mends -- they are TWO-MOVE tactics (a forcing move whose fix comes after their reply,
+verified by the binder: the interposer taken with check, the trapped unit taken next move); only the fork's routes are all one-move mends. They are not the D1
+defect tables and stay their own families (what they are: forcing sequences). RESISTED REGRESSION: stopper (a unit of theirs reaching the path in time: a multi-move
+reach, the tempo race), threatened (their move after a pass), promotes (their passer's lemma), reach (a mate root two moves away) -- no literal of one state holds them.
+NEGATIVE CONTROL (not committed: flight's binding without `unless`): OBS 76.4a agreement mate: questions 22888, exact 13747, as sets 13747 (60.062%) (ten t0).
+No engine file touched (the harness only): the guard of (a) stands. OBS audit recount CHESS FACT rows 205 -> 205.
