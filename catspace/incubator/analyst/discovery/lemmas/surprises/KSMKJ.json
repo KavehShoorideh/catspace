@@ -1,0 +1,28 @@
+{
+ "id": "KSMKJ",
+ "class": "loop miss",
+ "fen": "5qk1/p4p2/1p3Pp1/2p4R/7Q/P2rr2P/1P4PK/5R2 b - - 1 41",
+ "us": "b",
+ "found": "THE LOOP, iteration 2 (rand14_10 .. rand17_10 at 15 s in the pool, main e0cdd709; journal 2026-10-23 22:40): the decision graded WRONG, the trace read alone; rand14_10",
+ "engine": {
+  "answer": "gxh5",
+  "uci": "g6h5",
+  "read": "unproved, 'unfinished line': the order-and-time class (the policy's targets)"
+ },
+ "right": {
+  "answer": "Qd6+",
+  "uci": "f8d6",
+  "source": "Stockfish depth 14 in a separate process (discovery/verdict.py, the loop's grade: RIGHT within 50 cp of the best; graded again for this case on 2026-10-28)",
+  "loss_cp": 272
+ },
+ "shrunk": null,
+ "shrink": "not applicable: a puzzle miss -- the position is the case (the engine's decision there is the surprise)",
+ "status": "open",
+ "fixed_by": null,
+ "measure": null,
+ "plan": [
+  "76.3"
+ ],
+ "journal": "2026-10-28",
+ "note": "A puzzle the loop got wrong, filed as a case: the guard reads it (trace_identity.py --sets surprises, its decision printed) until it is fixed; its class of miss is the iteration's reading (journal 2026-10-23 22:40)."
+}

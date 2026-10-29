@@ -7,6 +7,8 @@
   .venv/bin/python scripts/trace_identity.py snapshot <dir> --jobs 10     # plan 76.0 (0): one case per process, at most 10 at once (the files are the serial run's)
   .venv/bin/python scripts/trace_identity.py compare <before> <after>  # diff two snapshots; prints OBS lines; exit 1 on any difference
   .venv/bin/python scripts/trace_identity.py crosscheck               # plan 72.7 step 0: SAN and legal-move order, python-chess against the Rust Pos
+  .venv/bin/python scripts/trace_identity.py snapshot <dir> --sets surprises --jobs 11   # plan 76.3 (d): THE SURPRISE SHELF as a guard set (every filed case)
+  .venv/bin/python scripts/trace_identity.py decisions <dir>          # plan 76.3 (d): each case's DECISION printed, an engine case against its right answer
 
 The case set covers the plans' acceptance positions (eSJqH, 2TUzC, 07Z0P, 4pC83, 0LRTF, W0VFO, qCXKp, j3ybl, RoR8t, 02XVK) and the two fixed positions
 (the discovery position, pos2). Lines carrying wall-clock seconds are masked before the diff (the count budget decides, the seconds vary).
@@ -184,6 +186,10 @@ def _cases(sets: str = "ten"):
     if sets == "wide":
         yield from _wide_cases()
         return
+    if sets == "surprises":                               # plan 76.3 (d): THE SURPRISE SHELF as a guard set -- every filed case (the engine's and the rules'); its
+        from catspace.incubator.analyst.discovery import surprises as SU      # decisions are PRINTED (`decisions`), never required identical: a surprise is a known
+        yield from SU.guard_cases()                       # miss until it is fixed
+        return
     for set_name, pid in CASES:
         try:
             p = next(x for x in PA.load_set(set_name) if x["id"] == pid)
@@ -295,6 +301,29 @@ def compare(before: str, after: str) -> int:
 
 # ---------------------------------------------------------------------------------------------------------------- plan 72.7 step 0: the cross-checks (risks 4, 5)
 
+def decisions(d: str) -> int:
+    """plan 76.3 (d): every case's DECISION line of the snapshot `d`; an engine case of the surprise shelf against its right answer (the move named the same: RIGHT,
+    else WRONG -- a known miss until fixed), a rules' case printed as it is. -> 0 (decisions are printed, never required)."""
+    from catspace.incubator.analyst.discovery import surprises as SU
+    right = {c["id"]: c for c in SU.load_engine()}
+    tally: dict = {}
+    for f in sorted(os.listdir(d)):
+        if not f.endswith(".txt") or f.endswith((READS, WHY, LEAF, LS.SNAPSHOT_WORDS)):
+            continue
+        pid = f[:-4]
+        line = next((ln for ln in open(os.path.join(d, f)).read().splitlines() if ln.startswith("DECISION ")), "DECISION ?")
+        what = line.split()[1] if len(line.split()) > 1 else "?"
+        c = right.get(pid)
+        if c is not None:
+            verdict = "RIGHT" if what.rstrip("+#") == str(c["right"]["answer"]).rstrip("+#") else "WRONG"
+            tally[verdict] = tally.get(verdict, 0) + 1
+            print(f"OBS surprise decision {pid} ({c['class']}, {c['status']}): {line[9:]} -- right {c['right']['answer']}: {verdict}")
+        else:
+            print(f"OBS surprise decision {pid} (rules' case): {line[9:]}")
+    print("OBS surprise decisions: engine cases " + ", ".join(f"{k} {v}" for k, v in sorted(tally.items())))
+    return 0
+
+
 def crosscheck_positions(sets=SAMPLE_SETS, walk: int = WALK, seed: int = SEED, cases_only: bool = False) -> list:
     """The FENs the cross-check reads: the case set's positions, the corners, the puzzle sets' positions (unless `cases_only`), each followed by a seeded random walk of
     `walk` plies; every position on a walk is one more FEN. Duplicates dropped, the order kept."""
@@ -371,6 +400,8 @@ if __name__ == "__main__":
                  int(sys.argv[sys.argv.index("--jobs") + 1]) if "--jobs" in sys.argv else 1)
     elif sys.argv[1] == "case":                           # plan 76.0 (0): one case of `snapshot --jobs`, in its own process: case <dir> <sets> <tier> <id>
         _snapshot_case(sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5])
+    elif sys.argv[1] == "decisions":                     # plan 76.3 (d): a snapshot's decisions, printed (the surprise set's are never required identical)
+        sys.exit(decisions(sys.argv[2]))
     elif sys.argv[1] == "crosscheck":
         sys.exit(crosscheck_main())
     else:

@@ -1,0 +1,28 @@
+{
+ "id": "4E4iU",
+ "class": "loop miss",
+ "fen": "3rr3/pqp3pk/1p2pb1p/5B2/P2P4/2P2P1R/1PQ2P1P/4R2K b - - 0 28",
+ "us": "b",
+ "found": "THE LOOP, iteration 2 (rand14_10 .. rand17_10 at 15 s in the pool, main e0cdd709; journal 2026-10-23 22:40): the decision graded WRONG, the trace read alone; rand15_10",
+ "engine": {
+  "answer": "Kg8",
+  "uci": "h7g8",
+  "read": "exf5 was a route and a GAP: 'not followed past Rxe8 (tempo arithmetic: 0 defects, 1 level left)' -- the tempo stop fired on our recapture; Kg8 won the smallest loss at 0 while Bxe6+ Rxe6 Rxe6 was cut by the second-check stop"
+ },
+ "right": {
+  "answer": "exf5",
+  "uci": "e6f5",
+  "source": "Stockfish depth 14 in a separate process (discovery/verdict.py, the loop's grade: RIGHT within 50 cp of the best; graded again for this case on 2026-10-28)",
+  "loss_cp": 760
+ },
+ "shrunk": null,
+ "shrink": "not applicable: a puzzle miss -- the position is the case (the engine's decision there is the surprise)",
+ "status": "open",
+ "fixed_by": null,
+ "measure": null,
+ "plan": [
+  "76.3"
+ ],
+ "journal": "2026-10-28",
+ "note": "A puzzle the loop got wrong, filed as a case: the guard reads it (trace_identity.py --sets surprises, its decision printed) until it is fixed; its class of miss is the iteration's reading (journal 2026-10-23 22:40)."
+}

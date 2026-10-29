@@ -287,3 +287,23 @@ def test_the_technique_reads_the_draws_through_the_surface():
     b2 = chess.Board("8/8/8/8/8/2k5/8/R3K3 w - - 99 80")
     b2.push(chess.Move.from_uci("a1a3"))                                                     # a quiet move: the clock reaches 100
     assert s.drawn(b2, 1) is True
+
+
+# ---------------------------------------------------------------------------------------------------------------- 76.3 (d) the surprise shelf
+
+def test_the_surprise_shelf_is_permanent_and_read_by_the_guard():
+    """plan 76.3 (d): the engine's cases (the loop-2 misses, the refuted K+R measure) are schema-checked, each with its position, the engine's answer, the right answer
+    and its source; the guard set `--sets surprises` is every case of both directories (the engine's and the rules')."""
+    from catspace.incubator.analyst.discovery import surprises as SU
+    eng = SU.load_engine()
+    ids = {c["id"] for c in eng}
+    assert {"2CEDb", "4E4iU", "9QsbL", "r3oph", "KSMKJ", "L2luA", "kJbxb", "krvk-sampled-measure"} <= ids
+    for c in eng:
+        b = chess.Board(c["fen"])
+        assert c["right"]["source"] and (c["right"]["uci"] is None or chess.Move.from_uci(c["right"]["uci"]) in b.legal_moves), c["id"]
+        if c["engine"]["uci"]:
+            assert chess.Move.from_uci(c["engine"]["uci"]) in b.legal_moves, c["id"]
+    assert SU.check_case(dict(eng[0], right=dict(eng[0]["right"], source="")))                  # a right answer with no source is refused
+    guard = [pid for pid, _f, _u in _script("trace_identity")._cases("surprises")]
+    assert ids <= set(guard) and len(guard) == len(set(guard))
+    assert any(p.startswith("s0") for p in guard)                                             # the rules' cases too

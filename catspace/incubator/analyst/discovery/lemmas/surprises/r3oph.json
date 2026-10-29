@@ -1,0 +1,28 @@
+{
+ "id": "r3oph",
+ "class": "loop miss",
+ "fen": "3r4/p3p1bk/1pn3pp/2p1P3/2P1qPQN/8/PP4P1/K2R3R b - - 7 28",
+ "us": "b",
+ "found": "THE LOOP, iteration 2 (rand14_10 .. rand17_10 at 15 s in the pool, main e0cdd709; journal 2026-10-23 22:40): the decision graded WRONG, the trace read alone; rand17_10",
+ "engine": {
+  "answer": "Rxd1+",
+  "uci": "d8d1",
+  "read": "Rxd1+'s proof rests on the static leaf after Rxd1+ Qxd1 Qxc4 ('exchange +1, nothing of theirs') where Qb1! threatens a mate two quiet moves away; Nxe5 (fxe5 Qxg4 Rxd8 Bxe5) was valued 1 by the one-ply floor and its chase cut by the judge (p 0.01 of 10 routes)"
+ },
+ "right": {
+  "answer": "Nxe5",
+  "uci": "c6e5",
+  "source": "Stockfish depth 14 in a separate process (discovery/verdict.py, the loop's grade: RIGHT within 50 cp of the best; graded again for this case on 2026-10-28)",
+  "loss_cp": 324
+ },
+ "shrunk": null,
+ "shrink": "not applicable: a puzzle miss -- the position is the case (the engine's decision there is the surprise)",
+ "status": "open",
+ "fixed_by": null,
+ "measure": null,
+ "plan": [
+  "76.3"
+ ],
+ "journal": "2026-10-28",
+ "note": "A puzzle the loop got wrong, filed as a case: the guard reads it (trace_identity.py --sets surprises, its decision printed) until it is fixed; its class of miss is the iteration's reading (journal 2026-10-23 22:40)."
+}

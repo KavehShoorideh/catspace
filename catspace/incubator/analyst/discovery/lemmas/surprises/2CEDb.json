@@ -1,0 +1,28 @@
+{
+ "id": "2CEDb",
+ "class": "loop miss",
+ "fen": "r5k1/p5Rp/Q1p5/6q1/3P4/2P5/PP3rPP/RN4K1 b - - 0 20",
+ "us": "b",
+ "found": "THE LOOP, iteration 2 (rand14_10 .. rand17_10 at 15 s in the pool, main e0cdd709; journal 2026-10-23 22:40): the decision graded WRONG, the trace read alone; rand15_10",
+ "engine": {
+  "answer": "Qxg7",
+  "uci": "g5g7",
+  "read": "the cost class: the judge read Kxg7 first ('decides, forced', p 0.97) and its chase ate the 15 s (1244 inner agendas, 13,665 inner questions); the decision was then the smallest loss over one-ply reads (Qxg7 -4 by Kxf2, Kxg7 -4 by Qb7+), the shape key breaking the tie the wrong way"
+ },
+ "right": {
+  "answer": "Kxg7",
+  "uci": "g8g7",
+  "source": "Stockfish depth 14 in a separate process (discovery/verdict.py, the loop's grade: RIGHT within 50 cp of the best; graded again for this case on 2026-10-28)",
+  "loss_cp": 637
+ },
+ "shrunk": null,
+ "shrink": "not applicable: a puzzle miss -- the position is the case (the engine's decision there is the surprise)",
+ "status": "open",
+ "fixed_by": null,
+ "measure": null,
+ "plan": [
+  "76.3"
+ ],
+ "journal": "2026-10-28",
+ "note": "A puzzle the loop got wrong, filed as a case: the guard reads it (trace_identity.py --sets surprises, its decision printed) until it is fixed; its class of miss is the iteration's reading (journal 2026-10-23 22:40)."
+}

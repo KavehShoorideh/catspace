@@ -1,0 +1,34 @@
+{
+ "id": "krvk-sampled-measure",
+ "class": "refuted measure",
+ "fen": "8/8/8/8/1K6/1R6/k7/8 w - - 0 1",
+ "us": "w",
+ "found": "plan 73.5b (4), the entry's first play-out (KRvK seed 1, table off, technique on; journal 2026-10-26 00:30 / the (4) entry before it): at ply 29 the technique was SILENT",
+ "engine": {
+  "answer": "silent",
+  "uci": null,
+  "read": "the measure (sum (area (reach L free)) (dist W L)) reads 4 here, its least bar 3; no strategy of three of our moves lowers it against every reply, and the position is not at the floor (a mate in two)"
+ },
+ "right": {
+  "answer": "Kc4",
+  "uci": "b4c4",
+  "source": "the five-men table (Syzygy, assets/tablebases: a win, DTZ 7 -- the mate four moves away; the table's move by the least DTZ after it, table.table_claim)",
+  "loss_cp": null
+ },
+ "shrunk": null,
+ "shrink": "not applicable: the class K+R v K fixes the material (no unit can be removed and keep the class); the position is the counterexample",
+ "status": "fixed",
+ "fixed_by": "plan 73.5b (4b) (journal 2026-10-26 00:30): the class as the sample -- the whole-class miner chose (lex (area (reach L free)) (dist L corner) (dist W L)), zero failures in 175168; the sampled measure fails 64 positions of the class",
+ "measure": {
+  "class": "KRvK",
+  "quantity": "(sum (area (reach L free)) (dist W L))",
+  "depth": 3,
+  "n": 2
+ },
+ "plan": [
+  "73.5b",
+  "76.3"
+ ],
+ "journal": "2026-10-28",
+ "note": "A measure the play refuted, filed as a case: the miner reads it as a CONSTRAINT (technique_miner: the class's refuted cases join its sample, so no candidate that fails here can be chosen again); the guard reads it too."
+}

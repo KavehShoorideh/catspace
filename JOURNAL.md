@@ -35018,3 +35018,36 @@ test_plan73_5b 11/0/0/0 7.4 s; test_rules_draws 17/0/0/0 3.5 s; test_rules_gdl 1
 position with one king of the side to move and the e.p. square placed; every reachable position); next state PROVED (76.1); mate, stalemate, the fifty-move draw,
 threefold (through the record), win and loss PROVED; the terminal: sound PROVED but for the knight clause (CONJECTURE `dead position (the knight clause)`), complete PROVED
 but for FIDE dead positions beyond the criterion (the terminals are not equal); the draw's goal (50) rests on the terminal.
+
+
+## 2026-10-28 18:43 -- plan 76.3 (d) COUNTEREXAMPLES PERMANENT: the surprise shelf (rules/surprises/ + lemmas/surprises/), read by the guard as a set and by the miner as constraints (branch worktree-agent-ad149634c92619751)
+THE SHELF: discovery/surprises.py -- one shelf, two directories: rules/surprises/ (the rules' cases: the spec against a kernel, the cross-play, or against the Game
+surface, the oracle -- 11) and catspace/incubator/analyst/discovery/lemmas/surprises/ (the ENGINE'S cases -- a sibling of the store's files, which the store does not
+read). An engine case: the position and the side the engine played, where it was found, the engine's answer and the trace's reading of why, the RIGHT ANSWER AND ITS
+SOURCE, the shrunk position or why no shrinker applies, the status (open: a known miss; fixed, by what), a refuted measure's measure; schema-checked (`check_case`).
+THE CASES FILED (8): the seven loop-2 misses of the loop's iteration 2 (journal 2026-10-23 22:40), each graded again for its case by Stockfish depth 14 in a separate
+process (discovery/verdict.py): 2CEDb (engine Qxg7, right Kxg7, 637 cp), 4E4iU (Kg8 / exf5, 760), 9QsbL (Nc4 / Rg6, 386), r3oph (Rxd1+ / Nxe5, 324), KSMKJ (gxh5 /
+Qd6+, 272), L2luA (Ra5 / Re5, 572) -- open; kJbxb (g5 / e5, 678) -- fixed by plan 74 (b); a puzzle miss is its position (no shrinker applies). And the REFUTED MEASURE:
+the sampled K+R choice (sum (area (reach L free)) (dist W L)), d 3, n 2, refuted at 8/8/8/8/1K6/1R6/k7/8 w by its first play-out (the technique silent; right Kc4, the
+five-men table: a win, DTZ 7) -- fixed by 73.5b (4b) (the whole-class miner); its class fixes the material, so no shrinker applies. The store had no entry of status
+REFUTED (OBS lemma store by status: ... REFUTED 0): the miner's refuted measure lived in the mined entry's note only, now it is a case. The cross-play's
+disagreements were filed already (rules/surprises/: s001-s009 by 76.0, s010-s011 by 76.2 (b)).
+OBS surprise shelf: cases 19 -- the engine's 8 (lemmas/surprises/), the rules' 11 (rules/surprises/); OBS surprise shelf engine by class: loop miss 7, refuted measure 1;
+OBS surprise shelf engine by status: fixed 2, open 6; OBS surprise shelf rules by kernel and class: game moves_to 1, rust draw 9, spec clock_event 1.
+THE GUARD SET: `scripts/trace_identity.py snapshot <dir> --sets surprises --jobs 11` (every case of both directories whose position is not over; 14 of 19: the five
+rules' cases at a drawn position are game over) and `trace_identity.py decisions <dir>` (each DECISION printed; an engine case against its right answer). At the count
+budget, tier 0: OBS surprise decision 2CEDb (loop miss, open): Qxg7 -4 none proved=False -- right Kxg7: WRONG; 4E4iU: Kg8 0 none proved=False -- WRONG; 9QsbL: Nc4 3
+chase: step_after+step_least over delayed_root_max_alive_d1 proved=True -- WRONG; KSMKJ: gxh5 4 unfinished line proved=False -- WRONG; L2luA: Ra5 0 unfinished line
+proved=False -- WRONG; kJbxb (fixed): e5 5 ... proved=True -- RIGHT; krvk-sampled-measure (fixed): Kc4 100 syzygy proved=True -- RIGHT; r3oph: Nxe5 1
+delayed_balance_alive_d1 proved=True -- RIGHT (at the count budget; its miss was at 15 s); OBS surprise decisions: engine cases RIGHT 3, WRONG 5. (Decisions printed,
+not required identical: a surprise is a known miss until fixed.)
+THE MINER READS THE REFUTED CASES AS CONSTRAINTS: technique_miner.mine first joins the class's refuted cases to its sample (`with_surprises`: once, the winning side to
+move, the floors read): OBS miner KRvK surprises: the class's refuted cases 1 (1 new to the sample) join it as constraints: 8/8/8/8/1K6/1R6/k7/8 w - - 0 1. There the
+refuted measure admits no drop at d = 1, 2, 3 and the class's mined measure (lex (area (reach L free)) (dist L corner) (dist W L)) drops at each (a test).
+NEGATIVE CONTROL (not committed, the shelf switched off): OBS 76.3 (d) negative control (the miner without the surprise shelf): 60 uniform KRvK positions (seed 3); with the
+refuted case ('(lex (count (reach L free)) (dist L corner))', 1, 2, 2); without it ('(count (reach L free))', 1, 1, 2) -- on a small sample the shelf moves the
+choice: the case refutes the simpler measure too.
+THE GUARD (the standard sets; no engine path touched): OBS guard ten t0 0 / 0 / 0 / 0 / 0 of 10; ten t2 0 / 0 / 0 / 0 / 0 of 10; wide t0 0 / 0 / 0 / 0 / 0 of 99;
+wide t2 0 / 0 / 0 / 0 / 0 of 99 (walls 7 s, 24 s, 16 s, 58 s). OBS audit recount: CHESS FACT rows 205 -> 205 (rows 1609, RULE 94). OBS lemma store validate: entries
+123; problems 0. OBS gate engine --only: test_rules_shelf 12/0/0/0 68.8 s (the shelf and its guard set); test_plan73_5b 12/0/0/0 7.8 s (the miner's constraint);
+test_rules_gdl 12/0/0/0 3.8 s (trace_identity's sets); test_plan73 9/0/0/0 14.9 s.
