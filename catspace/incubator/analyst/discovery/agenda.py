@@ -265,6 +265,7 @@ class ChaseCtx:
         self.route_secs: dict = {}                # 64.3: (position, root route, stake) -> (seconds it took, did it finish): a route READ before carries its measured cost into the later tiers / questions
         self.rate_t = 0.0                         # ... the rate measured by the EARLIER tiers of this root (seconds / inner agendas): the run's rate, not the tier's
         self.rate_n = 0
+        self.measuring: set = set()               # 2026-10-29 (52.18): the parry kinds under a MEASUREMENT READ -- priced at the run's rate inside that route so its parries reach their end
         self.kind_rate: dict = {}                 # 72.9 (a): parry kind (check / capture / quiet) -> (seconds, cost units) of the parries of that kind the root routes read to their end: the kind's own rate (one dict for the run: the tiers and passes share it)
         self.claim_all = ""                       # 72.9: set while the root route being judged DECIDES (the reason, for the judge's line): it takes the root's whole remaining share and is read whatever the rate; "" -- its fair share, the rate prices it
         self.why_not = ""                         # ... and, when it does not, why (for the judge's line)
@@ -375,6 +376,7 @@ class Agenda:
         self.end_stake = self.goals.terminal.stake              # ... the stake of the goal that ends the game (a value at least this is the terminal)
         self.unit = self.V.unit                                 # ... the least gain
         self.stops = LS.stops_for("chase")                      # plan 75.2 (b): THE STOPS of the chase (STOP entries: their shapes, read at run time; a stop's GAP text begins with its entry's name)
+        self._measured_kinds: set = set()         # 2026-10-29 (52.18): the parry kinds whose own rate this agenda (one pool pass) has already re-measured by reading one route whatever its price
         self.judge_stop = LS.stops_for("judge")["cut by the judge"]      # ... and the judge's (its price cap, its timed units)
         self.forced = LS.forced_words()                         # plan 75.2 (c): the FORCING words whose replies are forced (their entries' field), not their spelled names
         self.local = None                                       # plan 72.10: THE LOCAL INNER AGENDA -- an inner agenda of a chase handed the chased GOAL (`goal`: its kind and square on this board, the question, the reply that made the board) and
@@ -3777,6 +3779,8 @@ class Agenda:
     def _kind_spn(self, kind: str, spn: float) -> tuple:
         """72.9 (a) -> (seconds per cost unit after a reply of this kind, the words for the judge's line): the kind's own rate once the judge entry's `min_units` of its units were timed in this run, else the run's rate."""
         t, n = self.ctx.kind_rate.get(kind, (0.0, 0))
+        if kind in self.ctx.measuring:                           # 2026-10-29 (52.18): under a measurement read the kind is priced at the run's rate, so the parries that re-measure it can reach their end
+            return spn, f"{kind} at the run's {spn:.3f} s/unit (being measured)"
         if n >= self.judge_stop["min_units"]:
             return t / n, f"{kind} at its own {t / n:.3f} s/unit ({n} units timed)"
         return spn, f"{kind} at the run's {spn:.3f} s/unit (only {n} of its units timed)"
@@ -3913,7 +3917,11 @@ class Agenda:
             return res, None
         why_w = f", does not decide: {ctx.why_not}" if ctx.why_not else ""      # 72.9: why the rate prices this route (it cannot change the decision, or its replies are free) ...
         share_w = "; it may claim half of it" if ctx.pool else ""        # ... and the share it is judged against (the half: the tiers' fair-share rule)
-        if need is not None and need > pool / 2 and need > equal:      # plan 69.1 / 72.9: a route that does not DECIDE is read iff the rate fits it in half of what is left (the rest stays for the other routes); level, winning or lost, breadth decides among such routes (2026-10-22: the discovery position's pool spent all 15 s on one promote question and decided nothing; 2026-10-23 W0VFO: under the lost status every route took the whole share, and the two checks read before Qb7 spent it)
+        measure = [k for k in re.findall(r"(\w+) at its own", rate_w or "") if k not in self._measured_kinds] if (need is not None and need > pool / 2 and need > equal) else []
+        if measure:                                              # 2026-10-29 (52.18): THE MEASUREMENT READ -- a kind's own rate is a mean over the parries of that kind read to their END; a route the rate cuts
+            self._measured_kinds.update(measure); ctx.measuring = set(measure)      #  teaches it nothing, so one slow early parry (6.0 s for 10 units) fixed the capture rate at 0.600 s/unit for a whole run (613 cuts, 63 reads,
+            self.lines.append(f"    judge: {san} read on to MEASURE the {', '.join(measure)} rate ({what}{why_w}, {need:.1f} s needed {rate_w}): one route per kind per pass is read whatever its price")      #  Nf6 priced at 17 s, unproved Nf2). The worklist's age rule applied to the price: once per pass, per kind, one route the kind's own rate would cut is read, and its parries re-measure the rate.
+        elif need is not None and need > pool / 2 and need > equal:      # plan 69.1 / 72.9: a route that does not DECIDE is read iff the rate fits it in half of what is left (the rest stays for the other routes); level, winning or lost, breadth decides among such routes (2026-10-22: the discovery position's pool spent all 15 s on one promote question and decided nothing; 2026-10-23 W0VFO: under the lost status every route took the whole share, and the two checks read before Qb7 spent it)
             self.lines.append(f"    judge: {san} cut ({what}{why_w}, {need:.1f} s needed {rate_w}, {pool:.1f} s left of the root's share{share_w}) -> GAP")
             ctx.judge_cuts += 1
             ctx.budget_hits += 1
@@ -3939,6 +3947,7 @@ class Agenda:
     def _judge_end(self, tok, res: dict) -> None:
         """plan 61 C2: the route read to its end (a kill or a value, not a GAP) adds its time and its inner agendas to the rate; the cuts the judge made inside it are printed."""
         ctx = self.ctx
+        ctx.measuring = set()                                    # 2026-10-29 (52.18): the measurement read ends with the route
         if self.chase_depth == 0 and ctx.c_lines:
             self.lines += ctx.c_lines
             ctx.c_lines = []

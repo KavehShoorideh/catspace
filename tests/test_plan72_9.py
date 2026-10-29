@@ -64,7 +64,13 @@ def test_72_9_a_the_route_judge_says_which_rate_it_used():
     ag.ctx.root_end, ag.ctx.deadline = time.monotonic() + 10.0, time.monotonic() + 1.0          # 10 s left of the root's share, a 1 s slice
     ag.ctx.kind_rate = {"quiet": (80.0, 8)}                                                     # quiet replies timed at 10 s a unit
     ag.ctx.route_costs[(AGM._pos_key(BARE_KING), "a1a8", 1)] = (5, [("Kg7", 2, "quiet"), ("Kh7", 2, "quiet")], False)      # the price of Ra8+: two quiet parries with children of cost 2
-    res, _tok = ag._judge_begin(chess.Move.from_uci("a1a8"), False, False, None)
+    res0, tok0 = ag._judge_begin(chess.Move.from_uci("a1a8"), False, False, None)       # 2026-10-29 (52.18) THE MEASUREMENT READ: the first route a kind's own rate would cut is read
+    line0 = next(x for x in ag.lines if "judge: Ra8+" in x)                             # whatever its price, once per kind per pass, so the rate is re-measured (one slow early parry had fixed it)
+    assert res0 is None and tok0 is not None and "read on to MEASURE the quiet rate" in line0 and "quiet at its own 10.000 s/unit (8 units timed)" in line0, line0
+    assert ag._measured_kinds == {"quiet"} and ag.ctx.measuring == {"quiet"}
+    ag.ctx.measuring = set()                                                                   # (the route's end clears it: _judge_end)
+    ag.lines.clear()
+    res, _tok = ag._judge_begin(chess.Move.from_uci("a1a8"), False, False, None)       # the second time the kind is measured for this pass: the price cuts, with the words as before
     line = next(x for x in ag.lines if "judge: Ra8+" in x)
     print("OBS 72.9 (a) route judge:", line.strip())
     assert res is not None and res["gap"].startswith("out of time")

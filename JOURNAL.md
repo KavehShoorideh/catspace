@@ -35427,3 +35427,26 @@ run each): OBS W0VFO 10 s: POOL ended at 8.0 s of 10.0; the decision is Qb7 (+3)
 loop-2 batch (wall 76 s): RIGHT 32, UNKNOWN 2, WRONG 6; proved RIGHT 32, proved WRONG 3, unproved WRONG 3, none 2.
 76.4b IN SUM: docs/ANALYST_PLAN.md 76.4b marked BUILT. The Rust builds re-point the shared editable install to this branch's crate (rust/analyst_core): main must
 be rebuilt after the merge.
+
+
+## 2026-10-29 01:45 -- plan 76.4b merged (ebbfc81b, fast-forward; core rebuilt from main's crate); the gate; the two clocked markers lifted; 52.18 read by its trace: THE JUDGE'S RATE
+OBS gate engine (main ebbfc81b, 48 files incl. test_plan76_4b): passed 634, failed 0, xfailed 3, errors 0, wall 1149.8 s (1375 s on 76.4a: the port's time recovered).
+76.4b (the agent's four journal entries above): gdl.rs loads rules/chess.gdl at run time (ascent rejected: it compiles clauses at build time, which would mean transcribing the spec);
+regression.rs mirrors regression.py (names no game object); pyboard.rs for the counterfactual boards shakmaty refuses; cross-check 99 relations / 20.6M facts, 0 disagreements; equality
+with the Python reading on every guard question (mate 506215, win 326764, keep 45737; fix filters 3.39M + 8.66M candidates; read sets too); guard 0 of 218 vs its parent; cost per mate
+question 0.692 -> 0.054 ms (the hand tables 0.0195); ten t0 wall 85 -> 30 s; test_59_4 and the discovery-at-15-s test XPASS (markers lifted here); loop-2 32 / 6 with 32 proved again;
+CHESS FACT 202 -> 198.
+52.18 (the discovery position under the POOL at 30 s) still fails and NOT for time (the agent: the run ends at 16.5 s "nothing changed", unproved Nf2). TRACED ALONE: judge cuts 613, reads
+63; "judge: Nf6 cut (cost 319 ... 17.0 s needed priced by what each parry is: 22 capture at its own 0.600 s/unit (10 units timed) ...)". The capture kind's rate was (6.0 s, 10 units) from
+ONE parry and never changed: 72.9 (a)'s rate learns only from parries read to their END, and at 0.6 s/unit every later route with capture parries was cut before its end -- a cut taught
+the rate nothing, so the first sample ruled the run. Not a startup cost: the first regression call is 17 ms. FIX (the worklist's age rule applied to the price): THE MEASUREMENT READ -- once
+per pass, per kind, one route the kind's own rate would cut is read whatever its price, the kind priced at the run's rate inside it so its parries can reach their end and re-measure the
+rate (`_measured_kinds`, `ctx.measuring`; the words "read on to MEASURE the capture rate"). A first form -- tallying a cut parry's seconds over "the child's cost less the remaining" -- was
+tried and withdrawn: it under-counts the units read (depth-first descent leaves little remaining) and dragged the capture rate to 0.0001 s/unit (26 cuts of 1783: the judge toothless).
+OBS discovery 30 s with the measurement read: Nf6 read to measure, decision Nf2 unproved at 19.4 s; the capture rate stays (8.0 s, 10 units): Nf6's capture parries are GENUINELY slow now
+(one inner agenda 8 s) -- 76.4a's two corrected fix classes add routes in exactly those agendas; the judge's price of 17 s for Nf6 is honest. So 52.18 stays an expected failure (non-strict,
+its marker already so) with the cause named: the extra routes' cost, loop target 1's class. OBS W0VFO 10 s: Qb7 +3 proved, 8.6 s, judge reads 838 cuts 17, 2 measurement reads. OBS loop-2
+batch (15 s, one batch): RIGHT 32, UNKNOWN 2, WRONG 6; proved RIGHT 32. Gates: test_plan72_9 7 (its judge-words test updated to the measurement read), test_cost61 13, test_plan74 14,
+test_offbuilt64 15 + 1 xfailed, test_tiers 14, test_regress 87 + 1 xfailed.
+76.4 MINING launched: one term language with typed combinators; mining objects (line, blocked, region rediscovered or not); material as the first mined valuation beside the hand entry;
+checkers as the acid test if time allows.
