@@ -1,9 +1,12 @@
-"""Plan 54 (B): the Rust twins of regress.py (`mate_defects`, `material_defects`, `_still`, `forcing_why`) answer exactly as the Python functions did."""
+"""Plan 54 (B): the Rust twins of regress.py (`mate_defects`, `material_defects`, `_still`, `forcing_why`) answer exactly as the Python functions did.
+Plan 76.4a (c): the mate and material defects and the fix filter are the regression's now (discovery/regression.py); the hand tables are test oracles
+(tests/oracles/regress_tables.py) -- the hand table, its Rust twin and the regression are compared here; `both` toggles the forcing reasons' path alone."""
 import chess
 import pytest
 
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import regress as R
+from oracles import regress_tables as HT
 
 FENS = [
     "2k5/2P4R/1K6/8/8/p7/8/2r5 w - - 6 62",                                          # 0LRTF
@@ -18,15 +21,15 @@ FENS = [
 
 
 def both(fn, *args):
-    """fn under the Python path, then under the Rust path."""
-    old = (R.DEFECTS_RUST, R.ROUTES_RUST)
+    """fn with the forcing reasons read in Python, then in Rust."""
+    old = R.ROUTES_RUST
     try:
-        R.DEFECTS_RUST = R.ROUTES_RUST = False
+        R.ROUTES_RUST = False
         a = fn(*args)
-        R.DEFECTS_RUST = R.ROUTES_RUST = True
+        R.ROUTES_RUST = True
         b = fn(*args)
     finally:
-        R.DEFECTS_RUST, R.ROUTES_RUST = old
+        R.ROUTES_RUST = old
     return a, b
 
 
@@ -34,8 +37,17 @@ def shape(ds):
     return [(d.kind, d.sq, tuple(d.by), d.why) for d in ds]
 
 
+def twin(rust_fn, py_fn, *args):
+    """The Rust twin as the engine called it until 76.4a (a position shakmaty holds no such way: the Python table answered)."""
+    try:
+        return rust_fn(*args)
+    except ValueError:
+        return py_fn(*args)
+
+
 @pytest.mark.parametrize("fen", FENS)
 def test_mate_defects_rust_equals_python_for_every_placement(fen):
+    """The hand mate table (the oracle), its Rust twin and the regression (regress.mate_defects) agree on every placement: kinds, squares, pieces, texts, order."""
     board = chess.Board(fen)
     handled = 0
     for me in (True, False):
@@ -43,8 +55,8 @@ def test_mate_defects_rust_equals_python_for_every_placement(fen):
             sym = sym.upper() if me else sym.lower()
             for at in chess.SQUARES:
                 pl = [(chess.Piece.from_symbol(sym), at, None)]
-                a, b = both(R.mate_defects, board, me, pl)
-                assert shape(a) == shape(b), (fen, me, sym, chess.square_name(at))
+                a, b, c = HT.mate_defects(board, me, pl), twin(HT.rust_mate_defects, HT.mate_defects, board, me, pl), R.mate_defects(board, me, pl)
+                assert shape(a) == shape(b) == shape(c), (fen, me, sym, chess.square_name(at))
                 handled += bool(a)
         # a move of an existing piece as the placement (the pattern's `frm`)
         for frm in chess.SQUARES:
@@ -52,18 +64,23 @@ def test_mate_defects_rust_equals_python_for_every_placement(fen):
             if pc is None or pc.color != me or pc.piece_type == chess.KING:
                 continue
             for at in board.attacks(frm):
-                a, b = both(R.mate_defects, board, me, [(pc, at, frm)])
-                assert shape(a) == shape(b), (fen, me, chess.square_name(frm), chess.square_name(at))
+                pl = [(pc, at, frm)]
+                a, b, c = HT.mate_defects(board, me, pl), twin(HT.rust_mate_defects, HT.mate_defects, board, me, pl), R.mate_defects(board, me, pl)
+                assert shape(a) == shape(b) == shape(c), (fen, me, chess.square_name(frm), chess.square_name(at))
     assert handled > 0
 
 
 @pytest.mark.parametrize("fen", FENS)
 def test_material_defects_rust_equals_python_on_every_piece(fen):
+    """The hand material table, its Rust twin and the regression agree on every piece of theirs (a square of no unit of theirs is no material question)."""
     board = chess.Board(fen)
     for me in (True, False):
         for sq in chess.SQUARES:
-            a, b = both(R.material_defects, board, me, sq)
-            assert shape(a) == shape(b), (fen, me, chess.square_name(sq))
+            a, b = HT.material_defects(board, me, sq), twin(HT.rust_material_defects, HT.material_defects, board, me, sq)
+            assert shape(a) == shape(b), (fen, me, chess.square_name(sq))            # the twins, on every square as before
+            p = board.piece_at(sq)
+            if p is not None and p.color != me and p.piece_type != chess.KING:
+                assert shape(R.material_defects(board, me, sq)) == shape(a), (fen, me, chess.square_name(sq))
 
 
 def test_the_rust_mate_defects_really_runs():

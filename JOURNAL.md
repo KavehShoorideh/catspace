@@ -35206,3 +35206,51 @@ defect tables and stay their own families (what they are: forcing sequences). RE
 reach, the tempo race), threatened (their move after a pass), promotes (their passer's lemma), reach (a mate root two moves away) -- no literal of one state holds them.
 NEGATIVE CONTROL (not committed: flight's binding without `unless`): OBS 76.4a agreement mate: questions 22888, exact 13747, as sets 13747 (60.062%) (ten t0).
 No engine file touched (the harness only): the guard of (a) stands. OBS audit recount CHESS FACT rows 205 -> 205.
+
+
+## 2026-10-28 21:50 -- plan 76.4a (c) THE SWITCH-OVER: the agenda's defects and its fix filter read the regression; the hand tables are test oracles (branch worktree-agent-aad9b2e21eb1ed682)
+WHAT: regress.py's `mate_defects` / `mate_defects_on` / `material_defects` are the regression of the store's mate and win goals (named by the DEFECT_FIX
+bindings), one regressor per process (its cache and goals cleared with every fresh root, graph.CLEAR_HOOKS); the fix filter `_still` is the regression's fix test
+(the defect gone in the goal's next state and nothing new -- the hand's positive condition `_goal_done` left); routes_of keeps its candidates and its forcing
+reasons (the Rust batch where it answers). DEFECTS_RUST and `_routes_rust` left ("off is not built"). THE HAND TABLES moved verbatim to tests/oracles/regress_tables.py
+(mate_defects_on, material_defects, still, goal_done, and the plan 54 Rust twins as the engine called them); tests/test_regress_rust.py compares the hand table, its
+Rust twin and the regression three ways, tests/test_plan76_4a.py the regression against the oracles. WHAT STILL CALLS THE RUST TWINS (analyst_core mate_defects /
+mate_defects_pos / material_defects / material_defects_pos / still_routes / still_routes_pos, still words of the crate): tests/oracles/regress_tables.py,
+tests/test_regress_rust.py, tests/test_plan72_7.py (the Pos siblings against the FEN readers) -- nothing in the engine. THE CONSUMERS (the D1 rows of agenda.py):
+the keep questions' defects are the OTHER side's goal read for the keeper (`regress.threat_defects`; DEFECT_FIX `in check` = their terminal goal's positive literal
+`check` holding, one per attacker of our king; new DEFECT_FIX `hangs` = their gain goal holding on our unit, their capturers and the exchange's value for them; both
+equal to the hand constructions on every harvested question: OBS save in check 17240 of 17240, hangs 28258 of 28258, texts included); the wall's flights are
+`regress.landings` (the defects read at a witness's landing, off the names' bindings). The walk of checks' defect tests (`_addresses`, B5) are NOT replaced: they
+are a looser notion than a mend (a check that ADDRESSES a defect: covers the flight square on the real board, takes the taker, deflects the defender by its forced
+reply, attacks the target, skewers) and are exercised (OBS ten t2: 28374 calls, 26981 below the walk's depth, 1298 rejected): replacing them by the regression's
+one-move mend would change the chase -- reported, not built.
+THE GUARD (against the plan 76 parent snapshot, --jobs 11; the defects are identical, the fixes differ where (b) read the hand filter wrong or incomplete):
+OBS guard ten t0: 5 / 6 / 2 / 9 / 3 of 10 (traces / read sets / leaf verdict lists / word lists / provenance lists); DECISION lines 0 of 10 differ
+OBS guard ten t2: 6 / 6 / 2 / 8 / 6 of 10; DECISION lines 0 of 10 differ
+OBS guard wide t0: 31 / 24 / 1 / 55 / 12 of 99; DECISION lines 0 of 99 differ
+OBS guard wide t2: 38 / 44 / 11 / 64 / 31 of 99; DECISION lines 0 of 99 differ (snapshots wall 329 s; the parent's 128 s)
+EVERY DIFFERING TRACE, READ (artifacts/experiments/plan76_4a/attribution_c.txt lists the 138 cases with a differing list, each with its lists and class): THE
+ATTRIBUTION CONTROL (not committed: the hand verdict reinstated at exactly the two classes of (b), and an AssertionError on any other disagreement) -- OBS guard
+0 / 0 / 0 / 0 / 0 of 10, 10, 99, 99 on all five lists, DECISION lines 0, no assertion: EVERY difference is one of the two classes. With only the target's own
+capture reinstated: OBS traces 1 / 3 / 13 / 24, read sets 4 / 5 / 20 / 38, leaf lists 0 / 0 / 0 / 7, word lists 5 / 4 / 15 / 28, provenance lists 0 / 1 / 3 / 16
+(ten t0, ten t2, wide t0, wide t2): the line-through-their-king class. OBS 76.4a (c) differing cases 138 of 218: line through their king only 5, the target's own
+capture only 66, both 67; every DECISION unchanged. WHAT MOVED: the hand's capture of the target listed as a fix (pos2 t0: "add an attacker of f4 with tempo:
+forcing: Nxf4 (capture 1), Bxf4 (capture 1), Qxf4 (capture 1)" -> "no forcing move"; the kill reasons' route lists shorten); covers along a line through their king
+added as routes (07Z0P's Rd1 covering d6 behind the king on d5). OBS word-list lines moved by slot: fact-why 4071, kill 139, gap 45, fact 3, lemma 0 (the root's
+claim lemmas unmoved); the three fact lemmas: W0VFO t2 an inner delayed_balance_alive_d2 claim gone (the capture class: its route was the hand's capture of the
+target), 0A2fe wide t2 an inner chase claim replaced by a mate_in_two claim (the line-through-the-king class: the covering route found a mate in two inside);
+0A2fe's decision Qg2+ 5 (the chase, proved) unchanged. The decisions the rules support are unchanged everywhere: no decision moved.
+NEGATIVE CONTROL (not committed: the mate fix test without "nothing new"): OBS ten t0 against the (c) build 5 / 6 / 0 / 8 / 1 of 10 differ (DECISION 0).
+OBS audit recount CHESS FACT rows 205 -> 202: D1a 4 -> 3 (the wall's flights), D1d 2 -> 1 (in check), D1h 3 -> 2 (hangs); D2 14, D3 6, D4 2 unchanged -- the audit's
+D2 / D3 / D4 are the static leaf, close by rule and the smallest loss, not fix families; the fix table `_fixes_of` lives in regress.py, outside the audit's files
+(its dispatch on the defect names stays: the families' shapes, two-move tactics among them, (b) (4)).
+THE COST (the engine's calls' own clocks in the guard runs; before: the hand tables' in the harvest of (a)):
+OBS 76.4a cost ten t0: mate 0.4808 ms per call (before 0.0195), win 0.1146 (0.0062), fix filter 0.0588 per candidate (0.0018), keep 0.2757; the runs' wall summed
+80.9 s (the parent's serial ten t0 25.59 s, journal 76.0); regressions read 103883, served from the cache 735449, validated 468442
+OBS 76.4a cost ten t2: mate 0.4714, win 0.1095, fix filter 0.0567, keep 0.3282; the runs' wall summed 284.6 s (the parent's serial 97.54 s)
+-- the engine about 3x slower at the count budget (the Rust port of the regression is 72.7's step); the clocked runs are (d)'s.
+OBS gate engine --only: test_plan76_4a 11/0/0/0 0.7 s; test_regress_rust 61/0/0/0 2.6 s; test_discovery_vocabulary 23/0/0/0 18.4 s; test_plan72 6/0/0/0 0.5 s; test_plan72_3 7/0/0/0 0.4 s;
+test_plan72_8 8/0/0/0 0.6 s; test_duty63 12/0/0/0 0.4 s; test_plan62 28/0/0/0 8.0 s; test_agenda 26/0/0/0 90.9 s; test_binder_rust 31/0/0/0 0.7 s; test_plan73 10/0/0/0 24.4 s;
+test_plan75 11/0/0/0 0.6 s; test_plan76 20/0/0/0 62.1 s; test_regress 87/0/1/0 567.3 s -- its one xfail (non-strict) is 52.18, the discovery position proved under the POOL at 30 s, which XPASSed on
+main (journal 19:40): a clock-bound test, read as the engine's cost at the clock (about 3x, above), not a decision of the count budget. OBS lemma store validate: entries 125, problems 0 (uncatalogued 0). OBS ontology validate: problems 0.
+IN THIS COMMIT besides (c): regression.within / actions, goal_of's $from and the binding's "exchange from" law (unread by the engine: (d) uses them), the harness's cost and newgoals commands.

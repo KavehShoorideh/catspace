@@ -1,0 +1,38 @@
+{
+ "name": "hangs",
+ "kind": "DEFECT_FIX",
+ "reads": [
+  "attack",
+  "material"
+ ],
+ "terms": [],
+ "status": "CONJECTURE",
+ "lean": [],
+ "origin": "HAND",
+ "plan": [
+  "52.4",
+  "76.4a"
+ ],
+ "journal": "2026-10-28",
+ "measure": null,
+ "evidence": {
+  "uses": {},
+  "confirmed": [],
+  "refuted": []
+ },
+ "implementation": [
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_save_piece",
+  "catspace/incubator/analyst/discovery/regress.py:threat_defects",
+  "catspace/incubator/analyst/discovery/regression.py:name"
+ ],
+ "note": "A unit of ours hangs: the save question's defect is their gain goal holding on it (their capture of it, the exchange law's value for them at least the valuation's unit); its pieces involved are their capturers, its text the value (plan 76.4a: read off their goal, not written per goal kind).",
+ "params": {
+  "gdl": {
+   "goal": "win",
+   "for": "theirs",
+   "defect": "holds",
+   "order": 0,
+   "text": "they win {value} by the exchange on {sq}"
+  }
+ }
+}

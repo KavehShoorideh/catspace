@@ -2527,7 +2527,7 @@ class Agenda:
         if ksq is None:
             return False
         defects = q.defects or W.mate_defects(b, us, R.placement_of(q))
-        flights = [d.sq for d in defects if d.kind == "flight"]
+        flights = W.landings(defects)                            # plan 76.4a: the squares their king can step to -- the defects read at a witness's landing (the names' bindings)
         frm = q.pattern.get("frm")
         why, reads, which = None, None, None
         if flights and frm is not None:
@@ -4801,7 +4801,7 @@ class Agenda:
     def _ask_save_king(self, q: R.Question, head: str) -> None:
         b = self.board
         ck = q.pattern["checkers"]
-        q.defects = [R.Defect("in check", c, [], f"{b.piece_at(c).symbol().upper()} on {GAME.loc_name(c)} gives check") for c in ck]
+        q.defects = W.threat_defects(b, self.us)                 # plan 76.4a: their terminal goal's positive literal `check` holding -- one defect per attacker of our king (regressed)
         self.lines.append(head + ": " + "; ".join(f"defect {d.kind} ({d.why})" for d in q.defects))
         takes = [R.Route(m, b.san(m), f"capture {self.V.worth_of(b.piece_at(m.to_square))}") for m in b.legal_moves if m.to_square in ck]
         others = [R.Route(m, b.san(m), "evade") for m in b.legal_moves if m.to_square not in ck]
@@ -4827,7 +4827,7 @@ class Agenda:
         b = self.board
         sq = q.pattern["target"]
         parries = RS._threat_moves(b, self.us, [sq])
-        q.defects = [R.Defect("hangs", sq, sorted(b.attackers(not self.me, sq)), f"they win {W.base.see(self.pos, sq)} by the exchange on {GAME.loc_name(sq)}")]
+        q.defects = W.threat_defects(b, self.us, sq)             # plan 76.4a: their gain goal holding on our unit (their capturers, the exchange law's value for them: regressed)
         self.lines.append(head + f": defect hangs ({q.defects[0].why})")
         f = R.new_question("remove", q.stake, dict(q.pattern), q, defect_key=q.defects[0].key(), text="parry it, or check, or take as much")
         f.routes = [R.Route(m, b.san(m), "parry") for m in parries]

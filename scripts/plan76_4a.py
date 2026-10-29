@@ -287,6 +287,165 @@ def regress(d: str, jobs: int) -> None:
     print(f"OBS 76.4a regress: {len(files)} case files, wall {time.perf_counter() - t0:.1f} s")
 
 
+# ------------------------------------------------------------------------------------------------------------------------------------------ (c) the cost in the engine
+
+def cost_case(sets: str, tier: int, pid: str) -> None:
+    """One guard case with clocks on the engine's defect and fix-filter calls (after the switch-over: the regression's) -> one line: calls and ms per kind, the wall."""
+    import trace_identity as TI
+    from catspace.incubator.analyst.discovery import regress as R
+    tally = {}
+
+    def wrap(name, fn):
+        def w(*a, **k):
+            t = time.perf_counter()
+            try:
+                return fn(*a, **k)
+            finally:
+                s = tally.setdefault(name, [0, 0.0])
+                s[0] += 1
+                s[1] += (time.perf_counter() - t) * 1000
+        return w
+    R.mate_defects = wrap("mate", R.mate_defects)
+    R.mate_defects_on = wrap("mate", R.mate_defects_on)
+    R.material_defects = wrap("win", R.material_defects)
+    R._still = wrap("fix filter (per candidate)", R._still)
+    R.threat_defects = wrap("keep", R.threat_defects)
+    for p, fen, us in TI._cases(sets):
+        if p == pid:
+            t = time.perf_counter()
+            TI._run(fen, us, tier=tier)
+            print("cost case done: " + json.dumps(dict(pid=pid, wall=time.perf_counter() - t, tally=tally, stats=R.regressor().stats)), flush=True)
+            return
+
+
+def cost(sets: str, tier: int, jobs: int) -> None:
+    import subprocess
+    from concurrent.futures import ThreadPoolExecutor
+    import trace_identity as TI
+    env = dict(os.environ, PYTHONHASHSEED="0")
+    cases = [pid for pid, _f, _u in TI._cases(sets)]
+
+    def child(pid):
+        r = subprocess.run([sys.executable, __file__, "costcase", sets, str(tier), pid], capture_output=True, text=True, env=env)
+        line = [ln for ln in r.stdout.splitlines() if ln.startswith("cost case done: ")]
+        if r.returncode != 0 or not line:
+            raise RuntimeError(f"case {pid}: {r.stderr[-3000:]}")
+        return json.loads(line[-1][len("cost case done: "):])
+    t0 = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        got = list(ex.map(child, cases))
+    tot: dict = {}
+    for g in got:
+        for k, (n, ms) in g["tally"].items():
+            s = tot.setdefault(k, [0, 0.0])
+            s[0] += n
+            s[1] += ms
+    st = {k: sum(g["stats"][k] for g in got) for k in ("regressions", "cached", "validated")}
+    print(f"OBS 76.4a cost {sets} t{tier}: cases {len(cases)}, the runs' wall summed {sum(g['wall'] for g in got):.1f} s (wall {time.perf_counter() - t0:.1f} s, --jobs {jobs}); "
+          f"regressions read {st['regressions']}, served from the cache {st['cached']}, validated {st['validated']}")
+    for k in sorted(tot):
+        n, ms = tot[k]
+        print(f"OBS 76.4a cost {sets} t{tier} {k}: calls {n}, ms {ms:.0f}, ms per call {ms / max(n, 1):.4f}")
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ (d) the new goals
+
+def _san(b: chess.Board, action) -> str:
+    return b.san(chess.Move.from_uci(GC.uci_of(action[1])))
+
+
+def exchange_trace(C: Ctx, fen: str, frm: int, to: int, log=print) -> dict:
+    """THE NEW GOAL 'win this exchange' (the store's GOAL `exchange`: the capture of the target by the unit on `frm`, its value the exchange begun by that capture)
+    regressed on one position, printed: the derivation, the named defects, the fixes (our legal moves after which the same capture wins and nothing is new)."""
+    b = chess.Board(fen)
+    me = b.turn
+    us = C.B.role(me)
+    g = RG.goal_of("exchange", C.goals["exchange"], C.B, us, target=to, unit=C.unit, frm=frm)
+    reg = C.R.regress(b, g)
+    names = RG.name(reg, C.names, C.B, b)
+    cap = b.san(chess.Move(frm, to)) if chess.Move(frm, to) in b.legal_moves else f"{chess.square_name(frm)}x{chess.square_name(to)}"
+    log(f"EXCHANGE {fen}: win this exchange -- {cap} (capture({', '.join(GDL_text(a) for a in g.head[1])}), value: the exchange begun by it, need {C.unit})")
+    if reg.clauses:
+        for idx, lits in reg.clauses:
+            log(f"  derivation: capture's clause {idx}: " + "; ".join(f"{kind} {rel}{tuple(a) if a else ''} {'TRUE' if t else 'FALSE'}" for _j, kind, (rel, a), t in lits if rel))
+    else:
+        log(f"  derivation: the head holds ({len(reg.rows)} row(s)); the value read {reg.value if reg.value is not None else [d.value for d in reg.defects]}")
+    for n in names:
+        log(f"  defect {n.kind} ({n.why}); by {[chess.square_name(s) for s in n.by]}")
+    fixes = []
+    if names:
+        key = (names[0].kind, names[0].sq)
+        acts = [a for a in RG.actions(C.R, b, us) if not (C.B.ends(a)[0] == frm)]
+        for a, mended, new in RG.fixes(C.R, b, g, key, acts, (lambda x: x), C.names):
+            if mended and not new:
+                fixes.append(_san(b, a))
+        log(f"  fixes (our moves after which {cap} wins by the exchange, nothing new): " + (", ".join(fixes) if fixes else "none"))
+    else:
+        log("  no defect: the exchange already wins")
+    return dict(defects=[(n.kind, n.why) for n in names], fixes=fixes)
+
+
+def GDL_text(a) -> str:
+    return a if isinstance(a, str) else "(" + " ".join(GDL_text(y) for y in a) + ")"
+
+
+def floor_trace(C: Ctx, fen: str, log=print) -> dict:
+    """THE MINED K+R TECHNIQUE'S FLOOR (its measure's floor: a mate within two moves): the mate goal (the store's `mate`, the same names) regressed within two of
+    our moves, every reply read (regression.within), printed: per first move its escapes (each with our best answer's named defects) and the fixes."""
+    b = chess.Board(fen)
+    us = C.B.role(b.turn)
+    g = RG.goal_of("mate", C.goals["mate"], C.B, us)
+    res = RG.within(C.R, b, g, us, 2, C.names)
+    fixes = [_san(b, w.action) for w in res if w.holds]
+    log(f"FLOOR {fen}: mate within 2 moves of ours (the mate goal regressed at the leaves, every reply read)")
+    for w in res:
+        x1 = C.B.apply(b, w.action)
+        if w.holds:
+            met = [f"{_san(x1, r)} {next(_san(C.B.apply(x1, r), v.action) for v in RG.within(C.R, C.B.apply(x1, r), g, us, 1, C.names) if v.holds)}#"
+                   for r in RG.actions(C.R, x1, C.B.other(us))]
+            log(f"  {_san(b, w.action)}: a FIX -- every reply met: {', '.join(met)}")
+        else:
+            esc = "; ".join(f"{_san(x1, r)} escapes ({', '.join(f'{n.kind} {chess.square_name(n.sq) if n.sq is not None else chess.square_name(0)[:0]}' for n in ns) or 'no landing reads a mate'})"
+                            for r, ns in w.escapes[:3])
+            log(f"  {_san(b, w.action)}: {len(w.escapes)} escape(s) -- {esc}{' ...' if len(w.escapes) > 3 else ''}")
+    log(f"  fixes (mate in two): {', '.join(fixes) if fixes else 'none'}")
+    return dict(fixes=fixes)
+
+
+def newgoals(d: str) -> None:
+    """(d): the exchange goal on the guard positions (every capture of ours that loses now and has a fix: the first few printed, the counts as OBS) and the K+R floor."""
+    import trace_identity as TI
+    C = Ctx()
+    n_caps = n_def = n_fix = 0
+    shown = 0
+    for sets in ("ten", "wide"):
+        for pid, fen, us in TI._cases(sets):
+            b = chess.Board(fen)
+            me = b.turn
+            for m in b.legal_moves:
+                if not b.is_capture(m) or b.is_en_passant(m) or b.piece_type_at(m.to_square) == chess.KING:
+                    continue
+                n_caps += 1
+                g = RG.goal_of("exchange", C.goals["exchange"], C.B, C.B.role(me), target=m.to_square, unit=C.unit, frm=m.from_square)
+                names = RG.name(C.R.regress(b, g), C.names, C.B, b)
+                if not names:
+                    continue
+                n_def += 1
+                key = (names[0].kind, names[0].sq)
+                acts = [a for a in RG.actions(C.R, b, C.B.role(me)) if C.B.ends(a)[0] != m.from_square]
+                fx = [a for a, mended, new in RG.fixes(C.R, b, g, key, acts, (lambda x: x), C.names) if mended and not new]
+                if fx:
+                    n_fix += 1
+                    if shown < 3:
+                        shown += 1
+                        print(f"-- {sets}/{pid}")
+                        exchange_trace(C, fen, m.from_square, m.to_square)
+    print(f"OBS 76.4a (d) exchange goal on the ten + wide root positions: captures of ours {n_caps}, losing now (a defect) {n_def}, with a fix {n_fix}")
+    print("-- the K+R floor")
+    got = floor_trace(C, "k7/8/1K6/8/8/8/8/7R w - - 0 1")
+    print(f"OBS 76.4a (d) the K+R floor k7/8/1K6/8/8/8/8/7R w: the mate goal within two moves, fixes {got['fixes']}")
+
+
 # ------------------------------------------------------------------------------------------------------------------------------------------ (b) the comparison
 
 MAPPING = [
@@ -563,5 +722,11 @@ if __name__ == "__main__":
         regress(a[1], int(opt("--jobs", "1")))
     elif a[0] == "compare":
         compare(a[1], int(opt("--jobs", "1")))
+    elif a[0] == "costcase":
+        cost_case(a[1], int(a[2]), a[3])
+    elif a[0] == "cost":
+        cost(opt("--sets", "ten"), int(opt("--tier", "0")), int(opt("--jobs", "1")))
+    elif a[0] == "newgoals":
+        newgoals(a[1] if len(a) > 1 else "")
     else:
         sys.exit(__doc__)

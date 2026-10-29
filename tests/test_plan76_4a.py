@@ -15,6 +15,7 @@ from catspace.incubator.analyst.discovery import lemma_store as LS
 from catspace.incubator.analyst.discovery import puzzle_apply as PA
 from catspace.incubator.analyst.discovery import regress as R
 from catspace.incubator.analyst.discovery import regression as RG
+from oracles import regress_tables as HT                            # plan 76.4a (c): the hand tables, test oracles
 
 CHESS_WORDS = r"\b(chess|analyst_core|python-chess|king|queen|rook|bishop|knight|pawn|piece|square|board|mate|check|capture|castl\w*|promot\w*|uci|san|fen|file|rank|" \
               r"KING|QUEEN|ROOK|BISHOP|KNIGHT|PAWN|[a-h][1-8])\b"          # (tests/test_plan75.py's: a generic module names no game object)
@@ -39,11 +40,11 @@ def _win(rg, board, me: bool, t: int) -> list:
 
 
 def _hand_mate(cf, me) -> list:
-    return [(d.kind, d.sq, d.by, d.why) for d in R.mate_defects_on(cf, me)]
+    return [(d.kind, d.sq, d.by, d.why) for d in HT.mate_defects_on(cf, me)]
 
 
 def _hand_win(board, me, t) -> list:
-    return [(d.kind, d.sq, d.by, d.why) for d in R._material_defects(board, me, t)]
+    return [(d.kind, d.sq, d.by, d.why) for d in HT.material_defects(board, me, t)]
 
 
 DISCOVERY = "r3q2k/pQ1nb1pp/6n1/5bP1/3PN3/2N1P3/PPP3B1/R1B3K1 w - - 0 1"
@@ -175,6 +176,49 @@ def test_76_4a_the_certified_attacks_are_the_specs():
             b.push(rng.choice(list(b.legal_moves)))
 
 
+def test_76_4a_c_the_engine_reads_its_defects_from_the_regression():
+    """(c) THE SWITCH-OVER: regress.mate_defects / material_defects are the regression's (the hand tables are the oracles): equal to the oracles on the fixed
+    positions, and a regression is read (the regressor's count moves); the plan 54 Rust twins are no longer read by the engine (no DEFECTS_RUST)."""
+    import inspect
+    assert not hasattr(R, "DEFECTS_RUST") and not hasattr(R, "_routes_rust") and not hasattr(R, "_goal_done")
+    src = inspect.getsource(R)
+    assert "mate_defects_pos" not in src and "material_defects_pos" not in src and "still_routes_pos" not in src
+    n0 = R.regressor().stats["regressions"] + R.regressor().stats["cached"] + R.regressor().stats["validated"]
+    b = chess.Board(DISCOVERY)
+    for m in list(b.legal_moves)[:20]:
+        pc = b.piece_at(m.from_square)
+        if pc.piece_type == chess.KING:
+            continue
+        pl = [(pc, m.to_square, m.from_square)]
+        assert [(d.kind, d.sq, d.by, d.why) for d in R.mate_defects(b, chess.WHITE, pl)] == [(d.kind, d.sq, d.by, d.why) for d in HT.mate_defects(b, chess.WHITE, pl)]
+    for t in chess.SquareSet(b.occupied_co[chess.BLACK]):
+        if b.piece_type_at(t) != chess.KING:
+            assert [(d.kind, d.sq, d.by, d.why) for d in R.material_defects(b, chess.WHITE, t)] == _hand_win(b, chess.WHITE, t)
+    assert R.regressor().stats["regressions"] + R.regressor().stats["cached"] + R.regressor().stats["validated"] > n0
+
+
+def test_76_4a_c_a_keep_questions_defects_are_the_other_sides_goal_holding():
+    """(c) the save goal is the other side's goal read for the keeper: in check, their terminal goal's positive literal `check` holds -- one 'in check' per
+    attacker of our king; a unit that hangs, their gain goal holds on it -- 'hangs' with their capturers and the exchange's value for them."""
+    assert R.threat_defects(chess.Board("4k3/8/8/8/1b6/8/3r4/4K3 w - - 0 1"), chess.WHITE) == []          # the rook on d2 blocks the bishop: no check
+    one = R.threat_defects(chess.Board("4k3/8/8/8/8/8/3rr3/4K3 w - - 0 1"), chess.WHITE)
+    assert [(x.kind, x.sq, x.by, x.why) for x in one] == [("in check", chess.E2, [], "R on e2 gives check")]
+    two = R.threat_defects(chess.Board("4k3/8/8/8/1b6/8/8/r3K3 w - - 0 1"), chess.WHITE)                   # a double check: one defect per attacker
+    assert [(x.kind, x.sq) for x in two] == [("in check", chess.A1), ("in check", chess.B4)]
+    h = R.threat_defects(chess.Board("4k3/8/8/3n4/4P3/8/8/4K3 b - - 0 1"), chess.BLACK, chess.D5)          # the knight on d5, attacked by the e4 pawn, undefended
+    assert [(x.kind, x.sq, x.by, x.why) for x in h] == [("hangs", chess.D5, [chess.E4], "they win 3 by the exchange on d5")]
+    h2 = R.threat_defects(chess.Board("4k3/8/2p5/3n4/4P3/8/8/4K3 b - - 0 1"), chess.BLACK, chess.D5)       # defended by the c6 pawn: they still win 2 (N for P)
+    assert [(x.kind, x.why) for x in h2] == [("hangs", "they win 2 by the exchange on d5")]
+    assert R.threat_defects(chess.Board("4k3/8/2p5/3p4/4P3/8/8/4K3 b - - 0 1"), chess.BLACK, chess.D5) == []      # a pawn defended by a pawn: they win nothing
+
+
+def test_76_4a_c_the_walls_flights_are_the_landings_of_the_names():
+    """(c) the squares their king can step to are read off the names' bindings (a witness read at its landing), not the word 'flight'."""
+    b = chess.Board("6k1/5pp1/8/8/8/8/8/R5K1 w - - 0 1")
+    ds = R.mate_defects(b, chess.WHITE, [(chess.Piece.from_symbol("R"), chess.A8, chess.A1)])
+    assert R.landings(ds) == [d.sq for d in ds if d.kind == "flight"] == [chess.H7]
+
+
 def test_76_4a_the_fix_test_reads_the_line_through_their_king():
     """A FIX is an action after which the defect is gone and nothing is new (regression.fixes). Nd6 discovers the rook's check on d7; Qb5 covers the flight e8 along
     the line THROUGH the king (the king on e8 would be attacked from b5): the derived fix test finds it -- the hand table's cover test (the flight square attacked
@@ -191,4 +235,5 @@ def test_76_4a_the_fix_test_reads_the_line_through_their_king():
     assert mended and new == []
     q = R.new_question("mate", 100, dict(sym="N", at=chess.E8, frm=chess.D6, move="d6e8"))
     f = R.new_question("cover", 100, dict(q.pattern, target=chess.E8), q, defect_key=("flight", chess.E8, (chess.D7,)))
-    assert R._still(f, b, chess.WHITE, chess.Move.from_uci("e2b5"), q)           # the hand table: still (not a fix)
+    assert HT.still(f, b, chess.WHITE, chess.Move.from_uci("e2b5"), q)           # the hand table: still (not a fix)
+    assert not R._still(f, b, chess.WHITE, chess.Move.from_uci("e2b5"), q)       # plan 76.4a (c): the engine's filter is the regression's -- a fix

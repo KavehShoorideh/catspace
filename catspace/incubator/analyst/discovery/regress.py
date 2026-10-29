@@ -29,16 +29,19 @@ from typing import NamedTuple
 import chess
 
 import analyst_core as _A
+from catspace.incubator.analyst.discovery import gdl_chess as GC
 from catspace.incubator.analyst.discovery import graph as G
 from catspace.incubator.analyst.discovery import race as RC
 from catspace.incubator.analyst.discovery import lemma_store as LS
+from catspace.incubator.analyst.discovery import regression as RGN      # plan 76.4a: THE REGRESSION -- the defects and the fix filter read off the spec
 from catspace.incubator.analyst.discovery.game import CHESS as _GAME              # plan 76.2 (b): the rules read through the Game surface (the judge's parry kinds)
 
 STAKE_MATE = LS.goal_kinds().terminal.stake    # plan 75.2 (a): the stake of the goal that ends the game, read from its GOAL entry (lemmas/mate.json: ONE definition)
 PASS_CLAIMS = [0]                             # 52.18 (3): forcing_why answers that were a claim bound after a pass (the OBS counter)
 STAKE_PROMOTE = LS.goal_kinds().promotion.stake      # plan 75.2 (a): a queen less the pawn, read from the promotion GOAL entry and the material VALUATION
-DEFECTS_RUST = True                           # 54 (B1): mate_defects / material_defects read by analyst_core (the Python path below stays; ValueError = a position shakmaty cannot hold -> Python)
-ROUTES_RUST = True                            # 54 (B2): routes_of's `_still` filter and `forcing_why` for the whole candidate list in two Rust calls (the Python path stays)
+# (plan 76.4a: DEFECTS_RUST left -- the mate and material defects are the regression's, regression.py over rules/chess.gdl; the hand tables and the plan 54 Rust
+#  twins are test oracles, tests/oracles/regress_tables.py)
+ROUTES_RUST = True                            # 54 (B2): `forcing_why` for the whole candidate list in one Rust call (the Python path stays); plan 76.4a: the fix filter is the regression's
 TRAP_RUST = True                              # 54 (B4): trap_fix's three reads (safe squares, quiet trap routes, fork routes) in one Rust call (the Python path stays)
 SKEWER_RUST = True                            # 54 (B4): skewer_routes / drive_onto_routes read by analyst_core (the Python path stays)
 REGRESS_LOG = None                            # 54 (B): a list -> every fixes_of / routes_of / forcing_why call appends what it answered (scripts/compare_regress.py diffs these)
@@ -106,7 +109,74 @@ def future_board(board: chess.Board, placement: list, them: bool) -> chess.Board
     return G.with_turn(cf, them)
 
 
-# ---------------------------------------------------------------------------------------------------------------- defects read from the rules
+# ---------------------------------------------------------------------------------------------------------------- defects read from the rules: THE REGRESSION (plan 76.4a)
+# The defects of a mate question and of a material question are the regression's (discovery/regression.py: the GOAL entry's spec relation -- `mate` on the
+# question's counterfactual, `capture` of the target with the exchange as its value -- regressed over rules/chess.gdl's clause bodies, its defects named by the
+# store's DEFECT_FIX entries); the hand tables they replace (the audit's D1a / D1b: the defect kinds by name) are test oracles (tests/oracles/regress_tables.py),
+# equal on every question of the guard positions (76.4a (b)).
+
+_REG: list = [None]
+_RGOALS: dict = {}                                # (goal, side, the question's key) -> its Goal (per root question)
+_STORE: list = [None, None, None]                # (the store object, its defect names, its goal relations)
+
+
+def regressor() -> "RGN.Regressor":
+    """plan 76.4a: the process's regression (the spec, the chess binding); its cache and the goals cleared with every fresh root (graph.clear_caches)."""
+    if _REG[0] is None:
+        B = GC.Binding()
+        _REG[0] = RGN.Regressor(RGN.Spec(B.prog, certified=GC.CERTIFIED), B)
+    return _REG[0]
+
+
+def _clear_regression() -> None:
+    if _REG[0] is not None:
+        _REG[0].clear()
+    _RGOALS.clear()
+
+
+G.CLEAR_HOOKS.append(_clear_regression)
+
+
+def _store() -> tuple:
+    st = LS.load()
+    if _STORE[0] is not st:
+        _STORE[0], _STORE[1], _STORE[2] = st, LS.defect_names(st), LS.gdl_goals(st)
+    return _STORE[1], _STORE[2]
+
+
+def _goal(kind: str, me: bool, target=None, placement: list = ()) -> "RGN.Goal":
+    """The Goal of the store's GOAL entry `kind` for one question (its side; its target; its placements, the key a regression of the same question is validated by)."""
+    key = (kind, me, target, tuple((p.symbol(), at, frm) for p, at, frm in placement))
+    g = _RGOALS.get(key)
+    if g is None:
+        B = regressor().B
+        g = _RGOALS[key] = RGN.goal_of(kind, _store()[1][kind], B, B.role(me), target=target, unit=LS.goal_kinds().valuation.unit, extra=key[3])
+    return g
+
+
+def _named(reg: "RGN.Regression", x, theirs: bool = False) -> list:
+    """The regression's defects by the store's names, as the machinery's Defects (`theirs`: the goal is the other side's, read for the keeper)."""
+    return [Defect(n.kind, n.sq, list(n.by), n.why) for n in RGN.name(reg, _store()[0], regressor().B, x, theirs=theirs)]
+
+
+def threat_defects(board: chess.Board, us: str | bool, target: "int | None" = None) -> list:
+    """plan 76.4a: THE DEFECTS OF A KEEP QUESTION -- the OTHER side's goal read on the board, named by the store's names bound `for` theirs: our king in check is
+    their terminal goal's positive literal `check` holding (its attackers: one defect per checker); a unit of ours on `target` that hangs is their gain goal holding
+    on it (their capturers, the exchange law's value for them)."""
+    me = G.colour_of(us)
+    if target is None:
+        reg = regressor().regress(board, _goal("mate", not me))
+    else:
+        reg = regressor().regress(board, _goal("win", not me, target=target))
+    return _named(reg, board, theirs=True)
+
+
+def landings(defects: list) -> list:
+    """plan 76.4a: the locations of the defects whose name reads a witness at its LANDING (the store's binding `sq` 'to': for the mate goal, the squares their checked
+    unit can step to) -- read off the names' bindings, not their words."""
+    by = {e["name"]: e["gdl"] for e in _store()[0]}
+    return [d.sq for d in defects if by.get(d.kind, {}).get("sq") == "to"]
+
 
 def mate_defects(board: chess.Board, us: str | bool, placement: list) -> list:
     """What stands between the pattern and a mate (`_mate_defects`); the call is logged when REGRESS_LOG is set."""
@@ -116,48 +186,23 @@ def mate_defects(board: chess.Board, us: str | bool, placement: list) -> list:
     return out
 
 
+def _mate_regression(board: chess.Board, me: bool, placement: list, near: "RGN.Regression | None" = None) -> tuple:
+    """The regression of the mate goal on the question's counterfactual (the placements made, their move) -> (the regression, the counterfactual)."""
+    cf = future_board(board, placement, not me)
+    return regressor().regress(cf, _goal("mate", me, placement=placement), near=near), cf
+
+
 def _mate_defects(board: chess.Board, us: str | bool, placement: list) -> list:
-    """What stands between the pattern and a mate, read from the rules on the counterfactual (placements made, their move). [] = they have no legal move and are
-    in check: the pattern IS a mate. Order: the checker takeable, flights, interpositions."""
+    """What stands between the pattern and a mate: the regression of the mate goal on the counterfactual (placements made, their move), named. [] = the pattern IS a
+    mate (in check, no legal move). The names' order is the store's: the checker takeable, flights, interpositions (or 'no check' alone)."""
     me = G.colour_of(us)
-    if DEFECTS_RUST:
-        try:
-            pl = [(p.symbol(), at, frm) for p, at, frm in placement]
-            h = G.pos_of(board)                   # plan 72.7 step 1: the board's handle (the FEN reader only for a board shakmaty does not hold: it reads the placement alone)
-            return [Defect(k, sq, list(by), why) for k, sq, by, why in (_A.mate_defects_pos(h, me, pl) if h is not None else _A.mate_defects(board.fen(), me, pl))]
-        except ValueError:
-            pass                                  # a counterfactual shakmaty cannot hold: the Python rules read it
-    return mate_defects_on(future_board(board, placement, not me), me)
+    reg, cf = _mate_regression(board, me, placement)
+    return _named(reg, cf)
 
 
 def mate_defects_on(cf: chess.Board, me: bool) -> list:
-    """The defects of an already-built future `cf` (their move): [] = they are mated."""
-    ksq = cf.king(not me)
-    if ksq is None:
-        return [Defect("no check", None, [], "their king is not on the board")]
-    checkers = list(cf.checkers())
-    if not checkers:
-        return [Defect("no check", ksq, [], f"nothing of ours attacks {G.name(ksq)}")]
-    out = []
-    legal = list(cf.legal_moves)
-    for c in checkers:
-        for m in legal:
-            if m.to_square == c:
-                pc = cf.piece_at(m.from_square)
-                out.append(Defect("checker takeable", c, [m.from_square], f"{pc.symbol().upper()} on {G.name(m.from_square)} can take the checker on {G.name(c)}"))
-    for m in legal:
-        if m.from_square == ksq and m.to_square not in checkers:
-            out.append(Defect("flight", m.to_square, [ksq], f"the king can go to {G.name(m.to_square)}"))
-    if len(checkers) == 1:
-        c = checkers[0]
-        between = set(chess.SquareSet(chess.between(c, ksq)))
-        by_sq: dict = {}
-        for m in legal:
-            if m.from_square != ksq and m.to_square in between:
-                by_sq.setdefault(m.to_square, []).append(m.from_square)
-        for sq, frm in sorted(by_sq.items()):
-            out.append(Defect("interposition", sq, frm, f"a piece can step between on {G.name(sq)}"))
-    return out
+    """The defects of an already-built future `cf` (their move), regressed: [] = they are mated."""
+    return _named(regressor().regress(cf, _goal("mate", me)), cf)
 
 
 def _interposers_mated(cf: chess.Board, placement: list, defect: Defect, me: bool) -> tuple:
@@ -211,21 +256,13 @@ def material_defects(board: chess.Board, us: str | bool, target_sq: int) -> list
     return out
 
 
-def _material_defects(board: chess.Board, us: str | bool, target_sq: int) -> list:
-    """Why we do not win the piece on `target_sq` now: [] when the exchange on it already wins for us (`see` from our side > 0); otherwise 'not attacked' (no
-    piece of ours attacks it) or 'defended' (attacked, but it is guarded and the exchange gives nothing)."""
+def _material_defects(board: chess.Board, us: str | bool, target_sq: int, near: "RGN.Regression | None" = None) -> list:
+    """Why we do not win the piece on `target_sq` now: the regression of the gain goal (capture of the target, us on move, the exchange law its value), named --
+    [] when the capture's exchange already wins (at least the valuation's unit); otherwise 'not attacked' (the capture's literal false: nothing of ours attacks
+    it) or 'defended' (the capture holds, its exchange short: the attacks of theirs on it read)."""
     me = G.colour_of(us)
-    if DEFECTS_RUST:
-        try:
-            return [Defect(k, sq, list(by), why) for k, sq, by, why in _A.material_defects_pos(G.handle(board), me, target_sq)]
-        except ValueError:
-            pass
-    if G.see_for(board, target_sq, me) > 0:
-        return []
-    if not G.attackers_of(board, target_sq, me):
-        return [Defect("not attacked", target_sq, [], f"nothing of ours attacks {G.name(target_sq)}")]
-    d = G.defenders_of(board, target_sq)
-    return [Defect("defended", target_sq, d, f"attacked, guarded {len(d)}x, the exchange gives nothing")]
+    reg = regressor().regress(board, _goal("win", me, target=target_sq), near=near)
+    return _named(reg, board)
 
 
 # ---------------------------------------------------------------------------------------------------------------- forcing, routes
@@ -1035,40 +1072,31 @@ def _moves(board: chess.Board, us: str | bool, skip_from: int | None = None) -> 
 G.CLEAR_HOOKS.append(_MOVES.clear)
 
 
-def _goal_done(q: Question, cf: chess.Board, me: bool) -> bool:
-    """52.11 (a): the POSITIVE condition of the fix's goal on the counterfactual `cf` (placements made, their move, after our prep move)."""
-    p = q.pattern
-    if q.goal == "cover":
-        return cf.is_attacked_by(me, p["target"])
-    if q.goal == "guard":                      # the checker's square is attacked by another piece of ours
-        return any(a != p.get("frm") and a != p["target"] for a in cf.attackers(me, p["target"]))
-    if q.goal == "remove" and p.get("blocker") is not None:     # the named blocker is gone from its square (it stepped away)
-        pc = cf.piece_at(p["blocker"])
-        return pc is None or pc.color != me
-    return True
-
-
 def _still(q: Question, board: chess.Board, us: str | bool, m: chess.Move, root: Question, before: set | None = None) -> bool:
-    """Is the fix `q` NOT done by m? A fix is a move that does what the fix names and introduces no new defect; the disappearance of a defect for another
-    reason is not a fix (52.11). For a mate root, on the counterfactual after m: (a) the goal's positive condition holds (cover: a piece of ours attacks the
-    flight square; guard: the checker's square is attacked by another piece of ours; remove: the blocker has left) and (b) every defect after m was a defect
-    before m, less the fixed one; 'no check' is never allowed. `before` = the defects of `board` less the fixed one, computed once by the caller
-    (52.20 (2): they were rescanned for every candidate move)."""
+    """Is the fix `q` NOT done by m? plan 76.4a: THE REGRESSION'S FIX TEST (regression.fixes) -- a fix is a move after which, in the goal's next state, the defect
+    `q` names is gone and no defect is new (52.11: the disappearance of a defect is read by the spec itself -- the witness of the defect, a legal move of theirs, is no
+    witness there -- not by a hand-written positive condition). A mate root: the regression of the mate goal on the counterfactual after m (the placements made,
+    their move); every defect after m must have been a defect before m, less the fixed one ('no check' never was: it is new). A win root: the gain goal's
+    regression after m (us on move; where the exchange law reads no position -- our move gave check -- its head alone decides, the binder reads the rest).
+    `before` = the defects of `board` less the fixed one, computed once by the caller (52.20 (2)). The regression read on `board` is the one every candidate's
+    is validated against first (regression.Regressor.regress: unchanged answers, the same regression). The hand filter this replaces is a test oracle
+    (tests/oracles/regress_tables.py `still`); where they differ (76.4a (b)): a square covered along a line through their king is a fix here, the capture of the
+    target itself is not."""
     c = board.copy(stack=False)
     c.push(m)
     me = G.colour_of(us)
     if root.goal == "mate":
         pl = placement_of(root)
-        after = {d.key()[:2] for d in _mate_defects(c, me, pl)}
+        r0, _cf0 = _mate_regression(board, me, pl)
+        reg, cf = _mate_regression(c, me, pl, near=r0)
+        after = {d.key()[:2] for d in _named(reg, cf)}
         if before is None:
             before = _defects_before(q, board, me, root)
-        if q.defect_key[:2] in after or any(k[0] == "no check" for k in after) or not after <= before:
-            return True
-        return not _goal_done(q, future_board(c, pl, not me), me)
+        return q.defect_key[:2] in after or not after <= before
     if root.goal == "win":
-        if c.is_check():                       # our move checks: the board cannot be turned back to us (their king would be in check on our move), so the defect
-            return not G.attackers_of(c, root.pattern["target"], me)       # is read as 'attacked or not'; the binder alone decides what the route is worth
-        return bool(_material_defects(G.with_turn(c, me), me, root.pattern["target"]))
+        t = root.pattern["target"]
+        r0 = regressor().regress(board, _goal("win", me, target=t))
+        return bool(_material_defects(c, me, t, near=r0))
     return True
 
 
@@ -1092,51 +1120,20 @@ def routes_of(q: Question, board: chess.Board, us: str | bool, root: Question | 
         if q.goal in ("guard", "cover") and m.from_square in root.pattern.get("blockers", ()):
             continue
         cands.append(m)
-    got = _routes_rust(q, board, us, root, cands, before) if ROUTES_RUST else None
-    if got is None:
-        out, unforced = [], []
-        for m in cands:
-            if _still(q, board, us, m, root, before):
-                continue
-            why = _forcing_why_py(board, m, q.stake, us)
-            if why:
-                out.append(Route(m, board.san(m), why))
-            else:
-                unforced.append(board.san(m))
-    else:
-        out, unforced = got
-    q.unforced = unforced
-    if REGRESS_LOG is not None:
-        REGRESS_LOG.append(("routes", q.text, [(r.san, r.why) for r in out], list(unforced)))
-    return out
-
-
-def _routes_rust(q: Question, board: chess.Board, us: str | bool, root: Question, cands: list, before: set | None):
-    """54 (B2): the `_still` filter and the forcing reasons of the whole candidate list in two Rust calls -> (routes, unforced SAN) or None (the Python loop answers)."""
-    me = G.colour_of(us)
-    if board.turn != me or root.goal not in ("mate", "win") or not cands:
-        return None
-    if root.goal == "mate" and q.defect_key is None:
-        return None
-    p = q.pattern
-    dk = tuple(q.defect_key[:2]) if root.goal == "mate" else ("", None)
-    spec = (root.goal, q.goal, dk, [(pc.symbol(), at, frm) for pc, at, frm in placement_of(root)] if root.goal == "mate" else [],
-            sorted(before, key=repr) if before is not None else [], p.get("target"), p.get("frm"), p.get("blocker"), root.pattern.get("target"))
-    try:
-        stills = _A.still_routes_pos(G.handle(board), me, [m.uci() for m in cands], spec)
-    except ValueError:
-        return None
-    keep = [m for m, (_, still) in zip(cands, stills) if not still]
-    whys = _forcing_batch(board, keep, q.stake, us) if keep else []
+    keep = [m for m in cands if not _still(q, board, us, m, root, before)]       # plan 76.4a: the regression's fix test
+    whys = _forcing_batch(board, keep, q.stake, us) if ROUTES_RUST and keep else None       # 54 (B2): the forcing reasons in one Rust call (the Python twin where it answers None)
     if whys is None:
-        return None
+        whys = [_forcing_why_py(board, m, q.stake, us) for m in keep]
     out, unforced = [], []
     for m, why in zip(keep, whys):
         if why:
             out.append(Route(m, board.san(m), why))
         else:
             unforced.append(board.san(m))
-    return out, unforced
+    q.unforced = unforced
+    if REGRESS_LOG is not None:
+        REGRESS_LOG.append(("routes", q.text, [(r.san, r.why) for r in out], list(unforced)))
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------------------- fixes (sub-questions)

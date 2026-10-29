@@ -3,7 +3,7 @@ each in a fresh process (the memo caches must not leak between the two), diffing
 `forcing_why` answered (regress.REGRESS_LOG).
 
   .venv/bin/python scripts/compare_regress.py                       # 07Z0P, 0LRTF, rand1_10, rand2_10, rand3_10
-  .venv/bin/python scripts/compare_regress.py --targets rand1_10 --flags defects routes     # defects | routes | cache | trap | skewer | moves | threat | piece | pieces | mates (the new side's switches)
+  .venv/bin/python scripts/compare_regress.py --targets rand1_10 --flags routes     # routes | cache | trap | skewer | moves | threat | piece | pieces | mates (the new side's switches)
 """
 from __future__ import annotations
 
@@ -34,7 +34,8 @@ def puzzles(target: str) -> list:
 
 # switch name -> (module of catspace.incubator.analyst.discovery, attribute); the 54 (B5.3) spread: moves (regress._moves cache), threat (reasoned._threat_moves in Rust),
 # piece (graph.with_piece), pieces (facts.board_piece memo), mates (graph.mates)
-FLAGS = {"defects": ("regress", "DEFECTS_RUST"), "routes": ("regress", "ROUTES_RUST"), "trap": ("regress", "TRAP_RUST"), "skewer": ("regress", "SKEWER_RUST"),
+# (plan 76.4a: the "defects" switch left with regress.DEFECTS_RUST -- the defects and the fix filter are the regression's, no Rust path to switch)
+FLAGS = {"routes": ("regress", "ROUTES_RUST"), "trap": ("regress", "TRAP_RUST"), "skewer": ("regress", "SKEWER_RUST"),
          "moves": ("regress", "MOVES_CACHE"), "threat": ("reasoned", "THREAT_RUST"), "piece": ("graph", "FAST_PIECE"), "pieces": ("facts", "PIECE_MEMO"), "mates": ("graph", "MATES_FAST"),
          "parries": ("agenda", "PARRIES"), "delayed": ("agenda", "DELAYED_THREAT"), "nosafe": ("agenda", "NO_SAFE_MOVE"), "tiers": ("agenda", "TIERS")}      # plan 61 A (agenda switches: default OFF on both sides)
 

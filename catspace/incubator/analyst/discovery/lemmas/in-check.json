@@ -10,7 +10,8 @@
  "lean": [],
  "origin": "HAND",
  "plan": [
-  "52.4"
+  "52.4",
+  "76.4a"
  ],
  "journal": "2026-10-17",
  "measure": null,
@@ -41,7 +42,23 @@
   "refuted": []
  },
  "implementation": [
-  "catspace/incubator/analyst/discovery/agenda.py:_ask_save_king"
+  "catspace/incubator/analyst/discovery/agenda.py:_ask_save_king",
+  "catspace/incubator/analyst/discovery/regress.py:threat_defects",
+  "catspace/incubator/analyst/discovery/regression.py:name"
  ],
- "note": "Our king is in check: the save-the-king question, whose routes are the captures of the checker and the evasions."
+ "note": "Our king is in check: the save-the-king question, whose routes are the captures of the checker and the evasions; plan 76.4a: its defects are their terminal goal's positive literal check holding, one per attacker of our king (the leaf of attack_by's literal 0 in check's derivation).",
+ "params": {
+  "gdl": {
+   "goal": "mate",
+   "for": "theirs",
+   "defect": "leaf",
+   "leaf": [
+    "attack_by",
+    null,
+    0
+   ],
+   "order": 0,
+   "text": "{unit} on {sq} gives check"
+  }
+ }
 }

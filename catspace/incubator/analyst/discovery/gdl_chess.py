@@ -294,12 +294,30 @@ class Binding:
         return c
 
     def value(self, b: chess.Board, law: str, args: tuple):
-        if law != "exchange":
-            raise KeyError(f"no valuation law {law!r} in the chess binding")
+        """The valuation laws the store's goals read: 'exchange' (args: the target's square, the capturing side) -- what the side wins by the exchange on the square
+        (the Rust see, the mirror of Lean Ideas.ExchangeLaw); 'exchange from' (args: the target's square, the capturer's square, the side; plan 76.4a (d)) -- the
+        exchange begun by that capture: the target's worth (the store's material valuation) less what the other side then wins back on the square (their exchange,
+        at least 0). None where the kernel holds no position to read it on."""
         from catspace.incubator.analyst.discovery import graph as G
-        f, r, role = args
-        p = G.pos_of(self.to_move(b, role))
-        return None if p is None else p.see(chess.square(chess.FILE_NAMES.index(f), int(r) - 1))
+        if law == "exchange":
+            f, r, role = args
+            p = G.pos_of(self.to_move(b, role))
+            return None if p is None else p.see(chess.square(chess.FILE_NAMES.index(f), int(r) - 1))
+        if law == "exchange from":
+            tf, tr, ff, fr, role = args
+            t, s = _SQ[(tf, tr)], _SQ[(ff, fr)]
+            x = self.to_move(b, role)
+            m = chess.Move(s, t)
+            if x.piece_at(t) is None or x.piece_at(s) is None or not x.is_pseudo_legal(m):
+                return None
+            from catspace.incubator.analyst.discovery import lemma_store as LS
+            worth = LS.goal_kinds().valuation.worth
+            gain = worth.get(x.piece_at(t).symbol().lower(), 0)
+            after = x.copy(stack=False)
+            after.push(m)
+            p = G.pos_of(after)
+            return None if p is None else gain - max(0, p.see(t))
+        raise KeyError(f"no valuation law {law!r} in the chess binding")
 
     @staticmethod
     def touched(b: chess.Board, action) -> tuple:

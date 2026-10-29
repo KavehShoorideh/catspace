@@ -465,8 +465,8 @@ class Goal:
     extra: tuple = ()
 
 
-def goal_of(name: str, gdl: dict, B, us: str, target=None, unit=None, extra: tuple = ()) -> Goal:
-    """The Goal of a GOAL entry's `gdl` for one question: '$us' / '$them' the roles, '$target' the target location's terms (the binding's), '$unit' the
+def goal_of(name: str, gdl: dict, B, us: str, target=None, unit=None, extra: tuple = (), frm=None) -> Goal:
+    """The Goal of a GOAL entry's `gdl` for one question: '$us' / '$them' the roles, '$target' / '$from' a location's terms (the binding's), '$unit' the
     valuation's least gain."""
     them = B.other(us)
 
@@ -477,6 +477,8 @@ def goal_of(name: str, gdl: dict, B, us: str, target=None, unit=None, extra: tup
             return (them,)
         if tok == "$target":
             return tuple(B.terms(target))
+        if tok == "$from":
+            return tuple(B.terms(frm))
         if tok == "$unit":
             return (unit,)
         return (tok,)
@@ -521,6 +523,9 @@ class Regression:
     defects: list              # [Derived]
     reads: frozenset           # the atoms read: the literals, their deepest false atoms, the leaves, the witnesses' bodies, the valuation's reads
     ms: float = 0.0
+    rows: list = field(default_factory=list)          # the head's rows where it holds (its derivations' bindings)
+    value: object = None                              # the value the goal's valuation read (None: not read)
+    leaves: frozenset = frozenset()                   # the leaves of the clause's TRUE positive literals (what a witness, or a keeping move of the other side, must flip)
     state: object = None       # the state it was read on
     queries: dict = field(default_factory=dict)      # every BASE query it asked there (an input or a certified relation, its pattern) -> the rows answered
     values: list = field(default_factory=list)       # every value it read: (law, args, value)
@@ -615,20 +620,27 @@ class Regressor:
         if rows:
             reads |= {(rel, r) for r in rows}
             if goal.value is None:
-                return Regression(goal, True, [], [], frozenset(reads))
+                self._leaves = frozenset()                     # (a holding rule head: its clause is read for the leaves its true literals rest on -- what a keeper must flip)
+                if self.spec.kind(rel) == "derived":
+                    for idx, head, nvars, _steps, written in self.spec.plans(rel, tuple(i for i, v in enumerate(hpat) if v is not None)):
+                        env = [None] * nvars
+                        if all(_match(head[i], v, env, []) for i, v in enumerate(hpat) if v is not None):
+                            self._read_clause(P, x, idx, written, env, reads)
+                return Regression(goal, True, [], [], frozenset(reads), rows=rows, leaves=self._leaves)
             law, vargs, need, vreads = goal.value
             v = self.B.value(x, law, vargs)
             self._values.append((law, vargs, v))
             rr = self._pattern_rows(P, vreads)
             reads |= rr
             if v is None or v >= need:                          # (None: the valuation reads no position here -- the head alone decides; the binder verifies)
-                return Regression(goal, True, [], [], frozenset(reads))
-            return Regression(goal, False, [], [Derived("value", -1, -1, (rel, hpat), value=(v, need, tuple(sorted(rr))))], frozenset(reads))
+                return Regression(goal, True, [], [], frozenset(reads), rows=rows, value=v)
+            return Regression(goal, False, [], [Derived("value", -1, -1, (rel, hpat), value=(v, need, tuple(sorted(rr))))], frozenset(reads), rows=rows, value=v)
         clauses, defects = [], []
         if self.spec.kind(rel) != "derived" or not self.spec.rules.get(rel):
             deep = P.why_not(rel, hpat)
             reads.add(deep)
             return Regression(goal, False, [], [Derived("false", -1, -1, (rel, hpat), deep=deep)], frozenset(reads))
+        self._leaves = frozenset()
         for idx, head, nvars, _steps, written in self.spec.plans(rel, tuple(i for i, v in enumerate(hpat) if v is not None)):
             env = [None] * nvars
             trail: list = []
@@ -636,10 +648,8 @@ class Regressor:
                 continue
             lits, ds = self._read_clause(P, x, idx, written, env, reads)
             clauses.append((idx, lits))
-            defects += ds
-        if len(clauses) > 1 and goal.head[1]:
-            pass                                                 # (a disjunctive head: each clause's defects are an alternative; the names say which clause they read)
-        return Regression(goal, False, clauses, defects, frozenset(reads))
+            defects += ds                                        # (a disjunctive head: each clause's defects are an alternative; the names say which clause they read)
+        return Regression(goal, False, clauses, defects, frozenset(reads), leaves=self._leaves)
 
     def _pattern_rows(self, P: Prover, pattern: tuple) -> set:
         rel, args = pattern
@@ -684,6 +694,8 @@ class Regressor:
         for rel, row in positives:
             leaves |= P.leaves(rel, row)
         reads |= {lf.atom for lf in leaves}
+        self._leaves = self._leaves | leaves
+        self._locs |= {self.B.loc(lf.atom) for lf in leaves}
         base_flips = None
         for j, rel, callpat in negs:
             if not P.ans(rel, callpat):
@@ -738,17 +750,31 @@ class Named:
     src: list = field(default_factory=list)       # the derived defects it names
 
 
-def name(reg: Regression, entries: list, B, x) -> list:
+def name(reg: Regression, entries: list, B, x, theirs: bool = False) -> list:
     """THE NAMES of a regression's defects: every DEFECT_FIX entry whose `gdl` param names a defect of the goal (entries in their `order`), each binding a derived
     defect by its place in the spec -- a 'witness' by the leaf it flips (`leaf`, and not when `unless` flips too), a 'false' literal by its place (`clause`, `lit`), a
     'value' -- grouped per witness or per location (`group`), its location and its locations involved read through the binding (`sq`, `by`), its text filled from
-    the template (`text`; a dict: by the deepest false atom's relation). A derived defect no name binds is not named (the comparison counts it)."""
+    the template (`text`; a dict: by the deepest false atom's relation). A derived defect no name binds is not named (the comparison counts it).
+    `theirs`: the goal is the OTHER side's, read for the side that must keep (the names bound `for` 'theirs'): what makes it stand is the keeper's defect -- 'holds'
+    (the head holds and its value meets the need: the head's rows, the value read) or 'leaf' (a leaf of a TRUE positive literal of its clause, one per location)."""
     out = []
-    mine = sorted((e for e in entries if e["gdl"]["goal"] == reg.goal.name), key=lambda e: e["gdl"]["order"])
+    side = "theirs" if theirs else "ours"
+    mine = sorted((e for e in entries if e["gdl"]["goal"] == reg.goal.name and e["gdl"].get("for", "ours") == side), key=lambda e: e["gdl"]["order"])
     for e in mine:
         g = e["gdl"]
         groups: dict = {}
         order = []
+        if g["defect"] == "holds":
+            if reg.holds and reg.rows:
+                sq = B.loc((reg.goal.head[0], tuple(None if GDL.is_var(a) else a for a in reg.goal.head[1])))
+                by = sorted({B.loc((reg.goal.head[0], r)) for r in reg.rows} - {None}, key=B.order_key)
+                out.append(Named(e["name"], sq, by, _text(g["text"], dict(sq=B.loc_name(sq), n=len(by), value=reg.value)), []))
+            continue
+        if g["defect"] == "leaf":
+            for lf in sorted((lf for lf in reg.leaves if _at_matches(lf.at, g["leaf"])), key=lambda lf: B.order_key(B.loc(lf.atom))):
+                sq = B.loc(lf.atom)
+                out.append(Named(e["name"], sq, [], _text(g["text"], dict(sq=B.loc_name(sq), unit=B.unit_letter(x, sq))), []))
+            continue
         for i, d in enumerate(reg.defects):
             if d.kind != g["defect"]:
                 continue
@@ -794,6 +820,53 @@ def name(reg: Regression, entries: list, B, x) -> list:
 
 def _text(tmpl: str, fields: dict) -> str:
     return tmpl.format(**fields)
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ a goal within n moves
+
+def actions(R: "Regressor", x, role: str) -> list:
+    """The legal actions of `role` at `x`: the spec's `legal` (GDL's keyword: a role's moves), read through its certified relation, in its order."""
+    P = R.prover(x)
+    return [a for a in (R.B.action(row) for row in P.ans("legal", (role, None))) if a is not None]
+
+
+@dataclass
+class Within:
+    action: object             # our action
+    holds: bool                # the goal is reached within the moves, every reply read
+    escapes: list              # [(their reply, the named defects of our best answer there -- fewest -- or of the position itself at the last move)]
+    names: list = field(default_factory=list)      # depth 1: the goal's named defects after the action (none: it holds)
+
+
+def within(R: "Regressor", x, goal: Goal, us: str, n: int, entries: list) -> list:
+    """THE GOAL WITHIN `n` MOVES OF OURS, every reply of theirs read -- an AND-OR over the spec's certified `legal` and next state, the regression of the goal at
+    its leaves (the same regression: no table per depth): n = 1, the goal regressed after each of our actions (its named defects; none = it holds there); n > 1,
+    an action holds when every reply leaves an action that holds within n - 1 (a reply is an ESCAPE otherwise, with the named defects of our best answer: the
+    fewest). The DEFECTS of the goal within n moves at `x` are, per action of ours, its escapes; its FIXES the actions with none. -> [Within] in the actions' order."""
+    out = []
+    them = R.B.other(us)
+    for a in actions(R, x, us):
+        x1 = R.B.apply(x, a)
+        if n <= 1:
+            reg = R.regress(x1, goal)
+            nm = name(reg, entries, R.B, x1)
+            out.append(Within(a, reg.holds, [], nm))
+            continue
+        escapes = []
+        replies = actions(R, x1, them)
+        if not replies:                                        # no reply: the goal is read where the line stops
+            reg = R.regress(x1, goal)
+            out.append(Within(a, reg.holds, [], name(reg, entries, R.B, x1)))
+            continue
+        for r in replies:
+            x2 = R.B.apply(x1, r)
+            sub = within(R, x2, goal, us, n - 1, entries)
+            if any(w.holds for w in sub):
+                continue
+            best = min(sub, key=lambda w: (len(w.names) if n == 2 else len(w.escapes), repr(w.action)), default=None)
+            escapes.append((r, best.names if best is not None and n == 2 else (best.escapes if best is not None else [])))
+        out.append(Within(a, not escapes, escapes))
+    return out
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ fixes

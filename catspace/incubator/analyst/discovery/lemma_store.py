@@ -215,7 +215,9 @@ WORD_PARAMS = {"FORCING": {"forced": bool, "rank": int, "rank_any": int, "walked
 # reads as a location (`sq`, `by`: 'leaf', 'from', 'to'), whether witnesses group per witness or per location (`group`; `sort` 'sq': by location first), its place
 # among the goal's names (`order`), and its `text` (a template; for 'false' a dict by the deepest false atom's relation).
 DEFECT_GDL_FIELDS = {"goal": str, "defect": str, "clause": int, "lit": int, "leaf": list, "unless": list, "sq": str, "by": str, "group": str, "sort": str,
-                     "order": int, "text": (str, dict)}
+                     "order": int, "text": (str, dict), "for": str}
+# (plan 76.4a (c): `for` 'theirs' -- the goal is the OTHER side's, read for the side that keeps: its 'holds' (the head holds, its value met: the head's rows and the
+#  value) or a 'leaf' of a TRUE positive literal of its clause (one per location) is the keeper's defect -- the save question's 'hangs' and 'in check')
 _WORDS: list = [None, None]          # (the store object, the derived tables)
 
 
@@ -929,9 +931,16 @@ def gdl_problems(store: dict) -> list:
             continue
         if g.get("goal") not in goals:
             bad.append(f"{n}: gdl goal {g.get('goal')!r} is no GOAL entry with a gdl head")
-        if g.get("defect") not in ("false", "witness", "value") or "order" not in g or "text" not in g:
-            bad.append(f"{n}: gdl defect is 'false', 'witness' or 'value', with an order and a text")
+        if g.get("defect") not in ("false", "witness", "value", "holds", "leaf") or "order" not in g or "text" not in g or g.get("for", "ours") not in ("ours", "theirs"):
+            bad.append(f"{n}: gdl defect is 'false', 'witness', 'value' (a goal of ours) or 'holds', 'leaf' (the other side's), with an order and a text; `for` ours or theirs")
             continue
+        if (g["defect"] in ("holds", "leaf")) != (g.get("for") == "theirs"):
+            bad.append(f"{n}: gdl 'holds' and 'leaf' name a goal of THEIRS read for the keeper (`for` theirs), and only they do")
+        if g["defect"] == "leaf":
+            pat = g.get("leaf")
+            cs = prog.rules_of.get(pat[0], []) if isinstance(pat, list) and len(pat) == 3 else []
+            if not cs or not any((pat[1] is None or i == pat[1]) and isinstance(pat[2], int) and pat[2] < len(c.body) for i, c in enumerate(cs)):
+                bad.append(f"{n}: gdl leaf {pat!r} is no literal of a clause of the spec")
         if g["defect"] == "witness":
             if g.get("sq") not in ("leaf", "from", "to") or g.get("by") not in ("leaf", "from", "to") or g.get("group") not in ("witness", "sq"):
                 bad.append(f"{n}: a witness name reads sq and by as 'leaf', 'from' or 'to' and groups per 'witness' or per 'sq'")

@@ -65,6 +65,8 @@ class Words(Protocol):
     # goals, defects, fixes
     def mate_defects(self, s, us, placement) -> list: ...
     def material_defects(self, s, us, target) -> list: ...
+    def threat_defects(self, s, us, target=None) -> list: ...      # plan 76.4a: a keep question's defects: the other side's goal holding (regressed)
+    def landings(self, defects) -> list: ...                       # plan 76.4a: the defects located at a witness's landing (read off the names' bindings)
     def promote_defects(self, s, sq, lift=False) -> tuple: ...
     def opponent_defects(self, *a, **kw): ...
     def fixes_of(self, defect, q, s, us) -> list: ...
@@ -122,6 +124,12 @@ class ChessWords:
 
     def material_defects(self, s, us, target):
         return R.material_defects(s, us, target)
+
+    def threat_defects(self, s, us, target=None):
+        return R.threat_defects(s, us, target)
+
+    def landings(self, defects):
+        return R.landings(defects)
 
     def promote_defects(self, s, sq, lift=False):
         return R.promote_defects(s, sq, lift=lift)

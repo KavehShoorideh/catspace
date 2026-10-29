@@ -2159,3 +2159,35 @@ mate threat's frame and in the escape note: the Rust word `Pos.mates` now) and t
 surface's `reply_kind` now). Section 5's "rules re-implemented in Python": item 1 (castling's rook) was closed by 75.2 (d); items 3 (the swap list), 4 (check and capture
 read off the notation, for the judge's rates) and 7 (mate in one twice) are closed by 76.2 (b); item 4's `_mate_line_pieces` (a claim's line replayed by parsing its SAN:
 the kernel's notation reader) and item 6 (attack geometry on an empty board) stay as they were; item 8 (material in the interfaces) is a valuation, not a rule.
+
+## 76.4a recount (appended by plan 76.4a, defects and fixes from the spec; the sections above stay as written)
+
+The recount (scripts/agenda_audit/recount.py) at each of 76.4a's stages: (a) and (b) touch no audited file; (c) moves the D1 tables out of the engine (regress.py's
+mate and material defect tables and its fix filter -- outside the audit's files -- read discovery/regression.py now, the hand bodies are test oracles in
+tests/oracles/regress_tables.py) and three of agenda.py's D1 rows.
+
+```
+(a) OBS audit rows total 1611: LOGIC 1257, RULE 94, NAME 21, CHESS FACT 205, HEURISTIC 34
+(a) OBS audit recount CHESS FACT rows 205 -> 205
+(b) OBS audit recount CHESS FACT rows 205 -> 205
+(c) OBS audit rows total 1608: LOGIC 1257, RULE 94, NAME 21, CHESS FACT 202, HEURISTIC 34
+(c) OBS audit recount CHESS FACT rows 205 -> 202
+(c) OBS audit recount fact D1a: rows 4 -> 3
+(c) OBS audit recount fact D1d: rows 2 -> 1
+(c) OBS audit recount fact D1h: rows 3 -> 2
+```
+
+What left agenda.py in (c): the wall's flights read by the word 'flight' (D1a: `regress.landings`, the defects a name reads at a witness's landing, off the store's
+bindings); the save-the-king defect built by hand (D1d `Defect('in check', ...)`: `regress.threat_defects`, their terminal goal's positive literal `check` holding,
+one defect per attacker of our king, named by the DEFECT_FIX `in check`); the hanging unit's defect built by hand (D1h `Defect('hangs', ...)`: their gain goal
+holding on it, named by the new DEFECT_FIX `hangs`). Both are equal to the hand constructions on every save question of the 218 guard runs (texts included).
+
+What stays, and why: D1a (3) and D1b (3) -- the walk of checks' defect tests (`_addresses`, beside B5): a check that ADDRESSES a defect (covers the flight square on
+the real board, takes the taker, deflects the defender by its forced reply, attacks or skewers the target) is a looser notion than the regression's one-move mend,
+two-move tactics among it, and it is exercised (28374 calls on the ten at tier 2, 1298 rejections): not replaced. D1c (4) -- the promotion's defects (the stopper is
+a multi-move reach; the path / promotion square attacked a COUNT, no literal of the push's clause: 76.4a (b)). D1d (1) `promotes` (their passer's lemma claim),
+D1h (2) `threatened` (their move after a pass) and the hanging unit's fix question, D1e (6) the reach defect (a mate root two moves away): no literal of one state.
+THE BRIEF'S "D2-D4 (the fixes)": the audit's D2, D3 and D4 are the static leaf, close by rule and the smallest loss (rows 14, 6, 2: unchanged); the fix table
+(`_fixes_of`: which sub-questions a defect raises) lives in regress.py, outside the audit's files, and keeps its dispatch on the names -- its families' routes are
+filtered by the regression's fix test where they are one-move mends (cover the flight, guard, remove a blocker, attack with tempo, add an attacker), and are
+two-move tactics otherwise (take or pin the taker, take the interposer, trap, discovery, skewer, drive onto a skewer: 76.4a (b) (4)).
